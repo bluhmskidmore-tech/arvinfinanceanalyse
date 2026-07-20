@@ -1,8 +1,9 @@
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
+import { apiQueryKeys } from "../../../api/queryKeys";
 import {
   buildModuleHomeView,
   type ModuleHomeTone,
@@ -20,6 +21,11 @@ import {
   buildRiskV6KrdBars,
   buildRiskV6LineageRows,
   buildRiskV6YieldCurveChart,
+  buildRiskBondComparisonPlan,
+  buildRiskBondDv01Summary,
+  type RiskBondComparisonReadout,
+  type RiskBondHistoryObservation,
+  type RiskBondMetricKey,
   type RiskV6CurveTone,
   type RiskV6KpiCard,
 } from "./riskHomeAdapter";
@@ -29,6 +35,10 @@ import styles from "./riskOverview.module.css";
 type RiskOverviewPageProps = {
   kind?: ModuleWorkbenchHomeKind;
 };
+
+const BOND_EVIDENCE_TOP_N = 1;
+const BOND_EVIDENCE_SHOCK_BPS = "1";
+const BOND_EVIDENCE_CLASSES = ["OCI", "TPL"] as const;
 
 function dhStateClass(tone: ModuleHomeTone): string {
   if (tone === "ok") return dh.dhApiStateOk;
@@ -55,6 +65,263 @@ function curveToneClass(tone: RiskV6CurveTone): string {
   if (tone === "amber") return styles.roV6CurveAmber;
   if (tone === "acc") return styles.roV6CurveAcc;
   return styles.roV6CurveInk;
+}
+
+/* ── 债券分析辅助证据（OCI / TPL 独立状态） ───────────────────── */
+type RiskBondDv01Summary = ReturnType<typeof buildRiskBondDv01Summary>;
+type RiskBondComparisonPeriod = "mom" | "yoy";
+
+function bondSummaryTone(summary: RiskBondDv01Summary): ModuleHomeTone {
+  if (summary.state === "ready") return "ok";
+  if (summary.state === "review") return "watch";
+  if (summary.state === "error" || summary.state === "blocked") return "error";
+  return "muted";
+}
+
+function BondMetricComparison({
+  summaryKey,
+  metricKey,
+  period,
+  readout,
+  unavailableText,
+}: {
+  summaryKey: RiskBondDv01Summary["key"];
+  metricKey: RiskBondMetricKey;
+  period: RiskBondComparisonPeriod;
+  readout: RiskBondComparisonReadout | undefined;
+  unavailableText: string;
+}) {
+  const label = period === "mom" ? "系统环比" : "系统同比";
+  const absoluteText =
+    !readout || readout.state === "unavailable"
+      ? unavailableText
+      : readout.absoluteText;
+  return (
+    <div
+      className={styles.roBondComparison}
+      data-state={readout?.state ?? "unavailable"}
+      data-testid={`risk-overview-${summaryKey}-${metricKey}-${period}`}
+    >
+      <span>{label}</span>
+      <strong className={styles.roNum}>{absoluteText}</strong>
+      <em className={styles.roNum}>{readout?.percentText ?? "—"}</em>
+    </div>
+  );
+}
+
+function formatBondTrendValue(value: number): string {
+  return value.toLocaleString("zh-CN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function BondDv01Trend({
+  summary,
+  comparisonLoading,
+}: {
+  summary: RiskBondDv01Summary;
+  comparisonLoading: boolean;
+}) {
+  const trend = summary.trend;
+  const availablePointCount = trend?.points.length ?? 0;
+  const expectedPointCount = trend?.dates.length ?? 6;
+  const segmentCount = trend?.linePaths.length ?? 0;
+  const dateRange =
+    trend && trend.dates.length > 0
+      ? `${trend.dates[0]} → ${trend.dates[trend.dates.length - 1]}`
+      : "基期日期待接入";
+  const emptyText =
+    (comparisonLoading ? "系统口径近 6 个报告月趋势读取中。" : trend?.notices[0]) ??
+    (trend === null
+      ? "系统口径近 6 个报告月趋势待接入。"
+      : "系统口径近 6 个报告月数据不完整，暂不连线。");
+  const firstPoint = trend?.points[0];
+  const lastPoint = trend?.points[trend.points.length - 1];
+  const valueRangeLabel = trend?.sparkline
+    ? "期初 → 本期"
+    : availablePointCount > 1
+      ? "首个有效点 → 最近有效点"
+      : "有效点";
+  const valueRangeText =
+    trend && firstPoint && lastPoint
+      ? availablePointCount > 1
+        ? `${formatBondTrendValue(firstPoint.value)} → ${formatBondTrendValue(lastPoint.value)} ${trend.unit}`
+        : `${formatBondTrendValue(firstPoint.value)} ${trend.unit}`
+      : "暂无有效月末点";
+  const trendNoticeText =
+    trend && trend.notices.length > 0
+      ? availablePointCount === expectedPointCount
+        ? `历史趋势含 ${trend.notices.length} 条待复核提示。`
+        : `${trend.notices[0]}${
+            trend.notices.length > 1
+              ? ` 另有 ${trend.notices.length - 1} 条待复核提示。`
+              : ""
+          }`
+      : null;
+
+  return (
+    <div
+      className={styles.roBondTrend}
+      data-expected-points={expectedPointCount}
+      data-point-count={availablePointCount}
+      data-segment-count={segmentCount}
+      data-state={trend?.state ?? "unavailable"}
+      data-testid={`risk-overview-${summary.key}-dv01-trend`}
+    >
+      <div className={styles.roBondTrendHead}>
+        <b>系统口径 · 近 6 个报告月 DV01 趋势</b>
+        <span>{trend?.unit ?? "万元/bp"}</span>
+      </div>
+      {trend && trend.points.length > 0 ? (
+        <svg
+          aria-label={`${summary.title}系统口径近 6 个报告月 DV01 趋势`}
+          className={styles.roBondTrendSvg}
+          preserveAspectRatio="none"
+          role="img"
+          data-testid={`risk-overview-${summary.key}-dv01-trend-plot`}
+          viewBox="0 0 96 30"
+        >
+          {trend.sparkline ? (
+            <path className={styles.roBondTrendArea} d={trend.sparkline.areaPath} />
+          ) : null}
+          {trend.linePaths.map((linePath, segmentIndex) => (
+            <path
+              className={styles.roBondTrendLine}
+              d={linePath}
+              data-segment-index={segmentIndex}
+              data-testid={`risk-overview-${summary.key}-dv01-trend-segment-${segmentIndex}`}
+              key={`${segmentIndex}-${linePath}`}
+            />
+          ))}
+          {trend.points.map((point) => (
+            <circle
+              className={styles.roBondTrendDot}
+              cx={point.x}
+              cy={point.y}
+              data-report-date={point.reportDate}
+              data-slot-index={point.slotIndex}
+              data-testid={`risk-overview-${summary.key}-dv01-trend-point-${point.slotIndex}`}
+              data-value={point.value}
+              key={point.reportDate}
+              r="2.2"
+            />
+          ))}
+        </svg>
+      ) : (
+        <p className={styles.roBondTrendEmpty}>{emptyText}</p>
+      )}
+      <div className={styles.roBondTrendDates}>
+        <span>{dateRange}</span>
+        <span>{availablePointCount}/{expectedPointCount} 点</span>
+      </div>
+      <div className={styles.roBondTrendValues}>
+        <span>{valueRangeLabel}</span>
+        <b className={styles.roNum}>{valueRangeText}</b>
+      </div>
+      {trendNoticeText && trend && trend.points.length > 0 ? (
+        <p className={styles.roBondTrendNotice}>{trendNoticeText}</p>
+      ) : null}
+    </div>
+  );
+}
+
+function BondEvidenceCard({
+  summary,
+  comparisonLoading,
+}: {
+  summary: RiskBondDv01Summary;
+  comparisonLoading: boolean;
+}) {
+  const tone = bondSummaryTone(summary);
+  const currentNotices = summary.notices.filter(
+    (notice) => !/^\d{4}-\d{2}-\d{2}：/.test(notice),
+  );
+  const historyNotices = summary.notices.filter((notice) =>
+    /^\d{4}-\d{2}-\d{2}：/.test(notice),
+  );
+  const visibleNotices = [...currentNotices, ...historyNotices.slice(0, 2)];
+  const hiddenHistoryNoticeCount = Math.max(0, historyNotices.length - 2);
+  const comparisonUnavailableText = comparisonLoading ? "读取中" : "基期不可用";
+
+  return (
+    <article
+      className={`${styles.roBondCard} ${styles[`roBondCard${summary.state}`] ?? ""}`}
+      data-testid={`risk-overview-${summary.key}`}
+    >
+      <div className={styles.roBondCardHead}>
+        <div>
+          <span>{summary.accountingClass}</span>
+          <h3>{summary.title}</h3>
+        </div>
+        <span className={v6PillClass(tone)}>
+          <i aria-hidden="true" />
+          {summary.statusLabel}
+        </span>
+      </div>
+
+      {summary.metrics.length > 0 ? (
+        <div className={styles.roBondMetrics}>
+          {summary.metrics.map((metric) => {
+            const comparison = summary.comparisons[metric.key];
+            return (
+              <div className={styles.roBondMetric} key={metric.key}>
+                <span>{metric.label}</span>
+                <strong className={styles.roNum}>
+                  {metric.value} <small>{metric.unit}</small>
+                </strong>
+                <div className={styles.roBondComparisonGrid}>
+                  <BondMetricComparison
+                    metricKey={metric.key}
+                    period="mom"
+                    readout={comparison?.mom}
+                    summaryKey={summary.key}
+                    unavailableText={comparisonUnavailableText}
+                  />
+                  <BondMetricComparison
+                    metricKey={metric.key}
+                    period="yoy"
+                    readout={comparison?.yoy}
+                    summaryKey={summary.key}
+                    unavailableText={comparisonUnavailableText}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className={styles.roBondState}>{summary.statusLabel}</p>
+      )}
+
+      <div className={styles.roBondComparisonBasis}>
+        <span>系统比较基期</span>
+        <b>
+          {comparisonLoading
+            ? "精确月末基期读取中。"
+            : summary.comparisonBasisText}
+        </b>
+      </div>
+      <BondDv01Trend
+        comparisonLoading={comparisonLoading}
+        summary={summary}
+      />
+      <div className={styles.roBondMeta}>
+        <span>报告日</span>
+        <b className={styles.roNum}>{summary.reportDate ?? "—"}</b>
+      </div>
+      {summary.notices.length > 0 ? (
+        <div className={styles.roBondNotices}>
+          {visibleNotices.map((notice) => (
+            <p key={notice}>{notice}</p>
+          ))}
+          {hiddenHistoryNoticeCount > 0 ? (
+            <p>另有 {hiddenHistoryNoticeCount} 条历史基期提示未逐条展开。</p>
+          ) : null}
+        </div>
+      ) : null}
+    </article>
+  );
 }
 
 /* ── KPI 曜石卡（渐变描边 ::before mask + 渐变数字 + 辉光走势 + 涨跌胶囊） ── */
@@ -125,6 +392,20 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
   });
   const riskReportDate = riskDatesQuery.data?.result.report_dates[0] ?? "";
   const blockedReportDates = riskDatesQuery.data?.result.blocked_report_dates ?? [];
+  const bondDatesQuery = useQuery({
+    queryKey: ["risk-overview", "bond-analytics-dates", client.mode],
+    queryFn: () => client.getBondAnalyticsDates(),
+    retry: false,
+    staleTime: 60_000,
+  });
+  const bondComparisonPlan = useMemo(
+    () =>
+      buildRiskBondComparisonPlan(
+        riskReportDate,
+        bondDatesQuery.data?.result.report_dates ?? [],
+      ),
+    [riskReportDate, bondDatesQuery.data],
+  );
   const latestBlocked =
     blockedReportDates.length > 0
       ? [...blockedReportDates].sort((a, b) =>
@@ -163,6 +444,76 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
     staleTime: 60_000,
   });
 
+  const bondOciQuery = useQuery({
+    queryKey: apiQueryKeys.bondAnalyticsDv01Risk(
+      client.mode,
+      riskReportDate,
+      "OCI",
+      BOND_EVIDENCE_TOP_N,
+      BOND_EVIDENCE_SHOCK_BPS,
+    ),
+    queryFn: () =>
+      client.getBondAnalyticsDv01Risk(riskReportDate, {
+        accountingClass: "OCI",
+        topN: BOND_EVIDENCE_TOP_N,
+        shockBps: BOND_EVIDENCE_SHOCK_BPS,
+      }),
+    enabled: Boolean(riskReportDate),
+    retry: false,
+    staleTime: 60_000,
+  });
+  const bondTplQuery = useQuery({
+    queryKey: apiQueryKeys.bondAnalyticsDv01Risk(
+      client.mode,
+      riskReportDate,
+      "TPL",
+      BOND_EVIDENCE_TOP_N,
+      BOND_EVIDENCE_SHOCK_BPS,
+    ),
+    queryFn: () =>
+      client.getBondAnalyticsDv01Risk(riskReportDate, {
+        accountingClass: "TPL",
+        topN: BOND_EVIDENCE_TOP_N,
+        shockBps: BOND_EVIDENCE_SHOCK_BPS,
+      }),
+    enabled: Boolean(riskReportDate),
+    retry: false,
+    staleTime: 60_000,
+  });
+
+  const bondHistoryRequests = useMemo(
+    () =>
+      bondComparisonPlan.requestDates
+        .filter((reportDate) => reportDate !== riskReportDate)
+        .flatMap((reportDate) =>
+          BOND_EVIDENCE_CLASSES.map((accountingClass) => ({
+            accountingClass,
+            reportDate,
+          })),
+        ),
+    [bondComparisonPlan.requestDates, riskReportDate],
+  );
+  const bondHistoryQueries = useQueries({
+    queries: bondHistoryRequests.map(({ accountingClass, reportDate }) => ({
+      queryKey: apiQueryKeys.bondAnalyticsDv01Risk(
+        client.mode,
+        reportDate,
+        accountingClass,
+        BOND_EVIDENCE_TOP_N,
+        BOND_EVIDENCE_SHOCK_BPS,
+      ),
+      queryFn: () =>
+        client.getBondAnalyticsDv01Risk(reportDate, {
+          accountingClass,
+          topN: BOND_EVIDENCE_TOP_N,
+          shockBps: BOND_EVIDENCE_SHOCK_BPS,
+        }),
+      enabled: bondComparisonPlan.enabled,
+      retry: false,
+      staleTime: 60_000,
+    })),
+  });
+
   const config = moduleWorkbenchHomeConfigs[kind];
   const view = useMemo(
     () =>
@@ -173,6 +524,136 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
       }),
     [kind, client, riskDatesQuery, riskTensorQuery, cashflowQuery],
   );
+
+  const bondHistoryByClass = useMemo(() => {
+    const observations: Record<
+      (typeof BOND_EVIDENCE_CLASSES)[number],
+      RiskBondHistoryObservation[]
+    > = { OCI: [], TPL: [] };
+    bondHistoryRequests.forEach((request, index) => {
+      const query = bondHistoryQueries[index];
+      observations[request.accountingClass].push({
+        reportDate: request.reportDate,
+        envelope: query?.data,
+        error: query?.error,
+        isLoading: query?.isLoading ?? false,
+      });
+    });
+    return observations;
+  }, [bondHistoryQueries, bondHistoryRequests]);
+
+  const bondOciSummary = useMemo(
+    () =>
+      buildRiskBondDv01Summary({
+        accountingClass: "OCI",
+        reportDate: riskReportDate,
+        envelope: bondOciQuery.data,
+        isLoading: riskDatesQuery.isLoading || bondOciQuery.isLoading,
+        error: bondOciQuery.error ?? riskDatesQuery.error,
+        comparisonPlan: bondComparisonPlan,
+        history: bondHistoryByClass.OCI,
+      }),
+    [
+      riskReportDate,
+      riskDatesQuery.isLoading,
+      riskDatesQuery.error,
+      bondOciQuery.data,
+      bondOciQuery.isLoading,
+      bondOciQuery.error,
+      bondComparisonPlan,
+      bondHistoryByClass.OCI,
+    ],
+  );
+  const bondTplSummary = useMemo(
+    () =>
+      buildRiskBondDv01Summary({
+        accountingClass: "TPL",
+        reportDate: riskReportDate,
+        envelope: bondTplQuery.data,
+        isLoading: riskDatesQuery.isLoading || bondTplQuery.isLoading,
+        error: bondTplQuery.error ?? riskDatesQuery.error,
+        comparisonPlan: bondComparisonPlan,
+        history: bondHistoryByClass.TPL,
+      }),
+    [
+      riskReportDate,
+      riskDatesQuery.isLoading,
+      riskDatesQuery.error,
+      bondTplQuery.data,
+      bondTplQuery.isLoading,
+      bondTplQuery.error,
+      bondComparisonPlan,
+      bondHistoryByClass.TPL,
+    ],
+  );
+  const bondComparisonHistoryLoading = bondHistoryQueries.some(
+    (query) => query.isLoading,
+  );
+  const bondComparisonHistoryError = bondHistoryQueries.some(
+    (query) => query.isError && query.data === undefined,
+  );
+  const bondCurrentLoading =
+    riskDatesQuery.isLoading ||
+    bondOciQuery.isLoading ||
+    bondTplQuery.isLoading;
+  const currentSnapshotDisabledText =
+    "系统口径快照比较未启用：当前快照为回退或日期与请求月末不一致。";
+  const disabledComparisonClasses = [
+    { label: "OCI", summary: bondOciSummary },
+    { label: "TPL", summary: bondTplSummary },
+  ].filter(
+    ({ summary }) =>
+      summary.metrics.length > 0 &&
+      summary.comparisonBasisText.startsWith(currentSnapshotDisabledText),
+  );
+  const anyComparisonReview = [bondOciSummary, bondTplSummary].some(
+    (summary) =>
+      summary.trend?.state === "review" ||
+      Object.values(summary.comparisons).some(
+        (comparison) =>
+          comparison.mom.state === "review" ||
+          comparison.yoy.state === "review",
+      ),
+  );
+  const comparisonLoading =
+    bondDatesQuery.isLoading ||
+    bondCurrentLoading ||
+    bondComparisonHistoryLoading;
+  const comparisonPlanDisabled = !bondComparisonPlan.enabled;
+  const bothComparisonClassesDisabled = disabledComparisonClasses.length === 2;
+  const oneComparisonClassDisabled = disabledComparisonClasses.length === 1;
+  const disabledComparisonClassLabel = disabledComparisonClasses[0]?.label;
+  const availableComparisonClassLabel =
+    disabledComparisonClassLabel === "OCI" ? "TPL" : "OCI";
+  const bondComparisonStatusState = comparisonLoading
+    ? "loading"
+    : bondDatesQuery.isError ||
+        comparisonPlanDisabled ||
+        bondComparisonHistoryError ||
+        bothComparisonClassesDisabled
+      ? "unavailable"
+      : oneComparisonClassDisabled || anyComparisonReview
+        ? "review"
+        : "ready";
+  const bondComparisonStatusText = comparisonLoading
+    ? "系统环比、系统同比基期与近 6 个报告月趋势读取中。"
+    : bondDatesQuery.isError
+      ? "债券报告日读取失败；当前值仍可读取，系统比较与趋势暂不可用。"
+      : comparisonPlanDisabled
+        ? bondComparisonPlan.disabledReason ?? bondComparisonPlan.basisText
+        : bondComparisonHistoryError
+          ? "部分精确月末基期读取失败；当前值仍可读取，失败点不补数。"
+          : bothComparisonClassesDisabled
+            ? "OCI、TPL 当前快照为回退或日期与请求月末不一致；两类系统环比、系统同比和趋势均已禁用。"
+            : oneComparisonClassDisabled
+              ? `${disabledComparisonClassLabel} 当前快照为回退或日期与请求月末不一致；${disabledComparisonClassLabel} 系统环比、系统同比和趋势已禁用，${availableComparisonClassLabel} 仍可使用系统比较与趋势。`
+              : bondComparisonPlan.basisText;
+  const bondOciComparisonLoading =
+    bondDatesQuery.isLoading ||
+    bondHistoryByClass.OCI.some((observation) => observation.isLoading);
+  const bondTplComparisonLoading =
+    bondDatesQuery.isLoading ||
+    bondHistoryByClass.TPL.some((observation) => observation.isLoading);
 
   const tensor = riskTensorQuery.data?.result;
   const history = riskHistoryQuery.data?.result;
@@ -200,7 +681,11 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
     riskTensorQuery.isFetching ||
     cashflowQuery.isFetching ||
     riskHistoryQuery.isFetching ||
-    yieldCurveQuery.isFetching;
+    yieldCurveQuery.isFetching ||
+    bondDatesQuery.isFetching ||
+    bondOciQuery.isFetching ||
+    bondTplQuery.isFetching ||
+    bondHistoryQueries.some((query) => query.isFetching);
 
   const refreshAll = () => {
     void riskDatesQuery.refetch();
@@ -208,6 +693,12 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
     void cashflowQuery.refetch();
     void riskHistoryQuery.refetch();
     void yieldCurveQuery.refetch();
+    void bondDatesQuery.refetch();
+    void bondOciQuery.refetch();
+    void bondTplQuery.refetch();
+    bondHistoryQueries.forEach((query) => {
+      void query.refetch();
+    });
   };
 
   const reportDate = view.decision?.facts.find((fact) => fact.label === "报告日")?.value ?? "-";
@@ -243,7 +734,7 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
 
   return (
     <section
-      className={`${dh.dhPage} ${dh.dhApiBackedHome} ${styles.roV6Scope}`}
+      className={`theme-dh-api ${dh.dhPage} ${dh.dhApiBackedHome} ${styles.roV6Scope}`}
       data-testid="risk-overview-page"
     >
       <main className={dh.dhLayout}>
@@ -380,6 +871,47 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
                   </div>
                 </div>
               </div>
+            </div>
+          </section>
+
+          <section
+            aria-labelledby="risk-overview-bond-evidence-title"
+            className={styles.roBondEvidence}
+            data-manual-comparison="blocked"
+            data-testid="risk-overview-bond-evidence"
+          >
+            <div className={styles.roBondEvidenceHead}>
+              <div>
+                <span>系统正式读面</span>
+                <h2 id="risk-overview-bond-evidence-title">债券分析正式口径</h2>
+                <p>与上方 Risk Tensor 正式风险结论分开展示；本区只反映系统债券分析口径。</p>
+              </div>
+              <Link className={styles.roBondEvidenceLink} to="/bond-analysis">
+                查看债券分析明细 →
+              </Link>
+            </div>
+            <div className={styles.roBondBoundary}>
+              <span>630 对账状态</span>
+              <b>不可直接比较：金额列定义不同，TPL 还缺分账簿与市值型基金正式源。</b>
+              <em>以下数值、环比、同比和趋势仅代表系统正式债券分析口径，不替代 630 手工小计或监管 DV01。</em>
+            </div>
+            <div
+              className={styles.roBondPlanState}
+              data-state={bondComparisonStatusState}
+              data-testid="risk-overview-bond-comparison-status"
+            >
+              <span>系统比较与趋势</span>
+              <b>{bondComparisonStatusText}</b>
+            </div>
+            <div className={styles.roBondGrid}>
+              <BondEvidenceCard
+                comparisonLoading={bondOciComparisonLoading}
+                summary={bondOciSummary}
+              />
+              <BondEvidenceCard
+                comparisonLoading={bondTplComparisonLoading}
+                summary={bondTplSummary}
+              />
             </div>
           </section>
 

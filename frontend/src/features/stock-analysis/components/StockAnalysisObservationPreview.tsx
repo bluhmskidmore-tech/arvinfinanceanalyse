@@ -96,9 +96,15 @@ export function StockAnalysisObservationPreview({
         <span className="stock-analysis-page__mean-reversion-metrics">
           <span>{row.sector_name}</span>
           <span className="stock-analysis-page__mean-reversion-dd">
-            20日回撤 {(row.drawdown_20d * 100).toFixed(1)}%
+            20日回撤{" "}
+            {row.drawdown_20d != null && Number.isFinite(row.drawdown_20d)
+              ? `${(row.drawdown_20d * 100).toFixed(1)}%`
+              : "待补"}
           </span>
-          <span>评分 {row.score.toFixed(2)}</span>
+          <span>
+            评分{" "}
+            {row.score != null && Number.isFinite(row.score) ? row.score.toFixed(2) : "待补"}
+          </span>
         </span>
       </li>
     );

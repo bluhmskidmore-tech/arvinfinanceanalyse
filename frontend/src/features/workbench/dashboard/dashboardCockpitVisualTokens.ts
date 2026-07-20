@@ -64,9 +64,9 @@ export const COCKPIT_VISUAL = {
 /** 经营驾驶舱 typography（展示层，对齐 ref-fidelity 目标稿） */
 export const COCKPIT_TYPOGRAPHY = {
   fontSans:
-    '"Inter", "PingFang SC", "Microsoft YaHei", Arial, sans-serif',
+    '"PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif',
   fontTabular:
-    '"IBM Plex Mono", ui-monospace, "Noto Sans Mono", Menlo, Monaco, Consolas, monospace',
+    'ui-monospace, "Cascadia Mono", "Microsoft YaHei UI", Menlo, Monaco, Consolas, monospace',
   size: {
     base: 13,
     caption: 11,

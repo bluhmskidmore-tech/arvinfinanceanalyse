@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>市场数据 · 目标态视觉样张</title>
+<style>
+  :root{
+    --paper:#f4f3f0; --card:#ffffff; --sub:#f7f6f3; --hair:#e2e0da;
+    --ink:#16191d; --ink2:#5c6370; --ink3:#8a8f98;
+    --up:#1f7a4d; --down:#b42318; --warn:#b54708;
+    --accent:#14366b;
+    --rail:#10161f; --gold:#c9a85c;
+    --sans:-apple-system,'PingFang SC','Microsoft YaHei UI','Segoe UI',sans-serif;
+    --mono:ui-monospace,'SF Mono','Cascadia Mono',Consolas,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{background:var(--paper);}
+  body{
+    font-family:var(--sans); color:var(--ink); font-size:13px;
+    -webkit-font-smoothing:antialiased; min-width:1440px;
+  }
+  .num{font-family:var(--mono); font-variant-numeric:tabular-nums;}
+  .up{color:var(--up);} .down{color:var(--down);}
+
+  /* ===== 左侧 MOSS 导航 rail ===== */
+  .rail{
+    position:fixed; left:0; top:0; bottom:0; width:220px;
+    background:var(--rail); color:#c7cdd6; z-index:10;
+    display:flex; flex-direction:column;
+  }
+  .rail-brand{
+    display:flex; align-items:center; gap:10px;
+    padding:18px 18px 16px 18px; border-bottom:1px solid rgba(255,255,255,.06);
+  }
+  .rail-brand .m{
+    width:26px;height:26px;border:1px solid var(--gold); color:var(--gold);
+    display:flex;align-items:center;justify-content:center;
+    font-size:13px;font-weight:600;border-radius:2px;
+  }
+  .rail-brand .name{color:#f2f4f7;font-size:16px;font-weight:600;letter-spacing:.12em;}
+  .rail-nav{flex:1;padding:10px 0;overflow:hidden;}
+  .rail-group{margin-bottom:14px;}
+  .rail-group-title{
+    padding:6px 18px;font-size:11px;color:#6b7280;letter-spacing:.06em;
+  }
+  .rail-item{
+    position:relative;display:flex;align-items:center;gap:10px;
+    padding:8px 18px;font-size:13px;color:#aeb5c0;
+  }
+  .rail-item .ic{
+    width:12px;height:12px;border:1px solid #5b6470;border-radius:2px;flex:none;
+  }
+  .rail-item .lbl{flex:1;}
+  .rail-item .sub{font-size:11px;color:#5b6470;}
+  .rail-item.active{background:rgba(201,168,92,.10);color:#f2f4f7;}
+  .rail-item.active::before{
+    content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--gold);
+  }
+  .rail-item.active .ic{border-color:var(--gold);}
+  .rail-badge{
+    font-size:10px;color:var(--gold);border:1px solid rgba(201,168,92,.5);
+    border-radius:2px;padding:1px 5px;font-family:var(--mono);
+  }
+  .rail-sub{padding:2px 18px 8px 40px;font-size:11px;color:#6b7280;}
+
+  /* ===== 主区 ===== */
+  .main{margin-left:220px;min-height:100vh;}
+
+  /* 顶栏 */
+  .topbar{
+    background:var(--paper);border-bottom:1px solid var(--hair);
+    padding:14px 24px 12px 24px;
+  }
+  .topbar-row{display:flex;align-items:flex-start;gap:14px;}
+  .topbar h1{font-size:22px;font-weight:600;line-height:1.2;white-space:nowrap;}
+  .pill{
+    display:inline-flex;align-items:center;gap:5px;
+    border:1px solid var(--hair);background:var(--card);color:var(--ink2);
+    border-radius:2px;padding:3px 9px;font-size:11px;white-space:nowrap;margin-top:4px;
+  }
+  .pill .dot{width:5px;height:5px;border-radius:50%;background:var(--up);}
+  .quick{
+    flex:1;display:flex;flex-wrap:wrap;gap:4px 18px;
+    font-size:11px;color:var(--ink3);padding-top:2px;line-height:1.9;
+  }
+  .quick .q{white-space:nowrap;}
+  .quick .q b{color:var(--ink);font-weight:600;font-family:var(--mono);font-variant-numeric:tabular-nums;}
+  .quick .q .chg{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:10px;}
+  .top-actions{display:flex;align-items:center;gap:8px;padding-top:2px;}
+  .top-actions .pill{color:var(--ink2);}
+  .top-actions a{color:var(--accent);text-decoration:none;font-size:12px;white-space:nowrap;}
+
+  .content{padding:18px 24px 28px 24px;}
+
+  /* 卡片基座：圆角 2px、唯一一档阴影 */
+  .card{
+    background:var(--card);border:1px solid var(--hair);border-radius:2px;
+    box-shadow:0 1px 2px rgba(22,25,29,.05);
+  }
+
+  /* ===== 市场数据终端卡 ===== */
+  .terminal{padding:18px 20px 16px 20px;margin-bottom:16px;}
+  .term-head{display:flex;align-items:flex-start;}
+  .term-head .kicker{font-size:11px;color:var(--ink3);margin-bottom:4px;}
+  .term-head h2{font-size:19px;font-weight:600;margin-bottom:6px;}
+  .term-head .q{font-size:13px;color:var(--ink2);}
+  .term-tools{margin-left:auto;display:flex;gap:8px;}
+  .select-btn{
+    display:inline-flex;align-items:center;gap:6px;
+    background:var(--card);border:1px solid var(--hair);border-radius:2px;
+    padding:6px 12px;font-size:12px;color:var(--ink);cursor:default;
+  }
+  .select-btn .caret{font-size:9px;color:var(--ink3);}
+  .btn-primary{
+    background:var(--accent);color:#fff;border:1px solid var(--accent);
+    border-radius:2px;padding:6px 14px;font-size:12px;cursor:default;
+  }
+  .date-row{display:flex;align-items:center;gap:10px;margin:14px 0 10px 0;}
+  .date-input{
+    display:inline-flex;align-items:center;gap:8px;
+    border:1px solid var(--hair);background:var(--card);border-radius:2px;
+    padding:5px 10px;font-size:12px;
+  }
+  .date-input svg{flex:none;}
+  .date-label{font-size:12px;color:var(--ink2);}
+  .status-row{
+    display:flex;align-items:center;gap:8px;
+    border:1px solid var(--hair);background:var(--sub);border-radius:2px;
+    padding:8px 12px;font-size:12px;color:var(--ink2);width:62%;
+  }
+  .status-row .sd{width:6px;height:6px;border-radius:50%;background:var(--up);}
+  .status-row .sep{color:var(--ink3);}
+
+  .strip{
+    display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+    margin:14px 0 12px 0;padding:8px 2px;
+    border-top:1px solid var(--hair);border-bottom:1px solid var(--hair);
+    font-size:12px;color:var(--ink2);
+  }
+  .strip .it{white-space:nowrap;}
+  .strip .it b{color:var(--ink);font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:600;}
+  .strip .it .chg{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:11px;}
+  .strip .right{margin-left:auto;color:var(--ink2);font-size:11px;}
+  .strip .right .formal{
+    color:var(--accent);border:1px solid var(--accent);border-radius:2px;
+    padding:0 5px;margin-left:4px;font-size:10px;
+  }
+
+  .rate-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+  .rate-card{
+    border:1px solid var(--hair);border-radius:2px;background:var(--card);
+    box-shadow:0 1px 2px rgba(22,25,29,.05);padding:12px 14px;
+  }
+  .rate-card .t{font-size:12px;color:var(--ink2);margin-bottom:6px;}
+  .rate-card .v{font-size:22px;font-weight:600;font-family:var(--mono);font-variant-numeric:tabular-nums;}
+  .rate-card .m{margin-top:6px;font-size:11px;color:var(--ink3);font-family:var(--mono);font-variant-numeric:tabular-nums;}
+  .rate-card .m .chg{font-size:11px;}
+
+  /* ===== 下半区两栏 ===== */
+  .grid{display:grid;grid-template-columns:1fr 336px;gap:16px;align-items:start;}
+
+  /* 宏观深度读面 */
+  .depth{padding:16px 18px 18px 18px;}
+  .depth-tag{
+    display:inline-block;border:1px solid var(--hair);background:var(--sub);
+    color:var(--ink2);border-radius:2px;padding:2px 8px;font-size:11px;margin-bottom:8px;
+  }
+  .depth h3{font-size:16px;font-weight:600;margin-bottom:4px;}
+  .depth .note{font-size:12px;color:var(--ink2);margin-bottom:12px;}
+  .tabs{display:flex;gap:2px;border-bottom:1px solid var(--hair);margin-bottom:12px;}
+  .tab{
+    padding:7px 14px;font-size:13px;color:var(--ink2);cursor:default;
+    border-bottom:2px solid transparent;margin-bottom:-1px;
+  }
+  .tab.active{color:var(--accent);font-weight:600;border-bottom-color:var(--accent);}
+  .warn-bar{
+    display:flex;align-items:center;gap:8px;
+    border:1px solid var(--warn);background:#fdf8ee;border-radius:2px;
+    padding:8px 12px;font-size:12px;color:var(--ink);margin-bottom:14px;
+  }
+  .warn-bar .wd{width:7px;height:7px;border-radius:50%;background:var(--warn);flex:none;}
+  .warn-bar b{color:var(--warn);font-weight:600;}
+  .sec-head{display:flex;align-items:baseline;margin-bottom:4px;}
+  .sec-head h4{font-size:14px;font-weight:600;}
+  .sec-head .restore{margin-left:auto;font-size:11px;color:var(--accent);}
+  .sec-desc{font-size:12px;color:var(--ink2);margin-bottom:12px;}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;}
+  .chip{
+    border:1px solid var(--hair);background:var(--sub);color:var(--ink2);
+    border-radius:2px;padding:4px 10px;font-size:11px;
+  }
+  .chip.on{border-color:var(--accent);color:var(--accent);background:#fff;}
+  .chart-wrap{border-top:1px solid var(--hair);padding-top:10px;}
+  .chart-legend{display:flex;justify-content:flex-end;gap:14px;font-size:11px;color:var(--ink2);margin-bottom:4px;}
+  .chart-legend .lg{display:inline-flex;align-items:center;gap:6px;}
+  .chart-legend .ln{width:14px;height:2px;background:var(--accent);}
+
+  /* 证据口径总览（目标态：浅色 IB 面板） */
+  .evidence{padding:0 0 10px 0;}
+  .ev-head{
+    display:flex;align-items:center;
+    padding:12px 16px;border-bottom:1px solid var(--hair);
+  }
+  .ev-head .t{font-size:14px;font-weight:600;color:var(--accent);}
+  .ev-head .r{margin-left:auto;font-size:12px;color:var(--accent);}
+  .ev-rows{padding:6px 16px 0 16px;}
+  .ev-row{
+    display:flex;align-items:center;gap:10px;
+    padding:9px 0;border-bottom:1px solid var(--hair);
+  }
+  .ev-row:last-child{border-bottom:none;}
+  .ev-row .dot{width:7px;height:7px;border-radius:50%;flex:none;}
+  .ev-row .txt{flex:1;}
+  .ev-row .txt .l{font-size:13px;color:var(--ink);}
+  .ev-row .txt .s{font-size:11px;color:var(--ink3);margin-top:1px;}
+  .ev-row .c{font-size:15px;font-weight:600;font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--ink);}
+  .ev-foot{
+    margin:10px 16px 0 16px;border-top:1px solid var(--hair);
+    padding:9px 0 0 0;display:flex;justify-content:space-between;
+    font-size:11px;color:var(--ink2);
+  }
+  .ev-foot .num{color:var(--ink);}
+
+  /* 样张角标 */
+  .sample-badge{
+    position:fixed;right:14px;bottom:12px;z-index:50;
+    background:#fff;border:1px solid var(--hair);border-radius:2px;
+    box-shadow:0 1px 2px rgba(22,25,29,.08);
+    color:var(--ink2);font-size:11px;padding:5px 10px;
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== 左侧 MOSS 导航 rail ===== -->
+<aside class="rail">
+  <div class="rail-brand">
+    <div class="m">M</div>
+    <div class="name">MOSS</div>
+  </div>
+  <nav class="rail-nav">
+    <div class="rail-group">
+      <div class="rail-group-title">工作台</div>
+      <div class="rail-item"><span class="ic"></span><span class="lbl">经营日报</span><span class="sub">首页</span></div>
+      <div class="rail-item"><span class="ic"></span><span class="lbl">组合工作台</span><span class="sub">首页</span></div>
+      <div class="rail-item active"><span class="ic"></span><span class="lbl">市场工作台</span><span class="sub">首页</span></div>
+      <div class="rail-item"><span class="ic"></span><span class="lbl">风险工作台</span><span class="sub">首页</span></div>
+      <div class="rail-item"><span class="ic"></span><span class="lbl">绩效工作台</span><span class="sub">首页</span></div>
+      <div class="rail-item"><span class="ic"></span><span class="lbl">报表与数据</span><span class="sub">首页</span></div>
+    </div>
+    <div class="rail-group">
+      <div class="rail-group-title">对话</div>
+      <div class="rail-item"><span class="ic"></span><span class="lbl">MOSS Chat</span><span class="rail-badge">可用</span></div>
+      <div class="rail-sub">直接提问</div>
+    </div>
+    <div class="rail-group">
+      <div class="rail-group-title">支持入口</div>
+      <div class="rail-item"><span class="ic"></span><span class="lbl">报表中心</span></div>
+      <div class="rail-item"><span class="ic"></span><span class="lbl">中台配置</span></div>
+      <div class="rail-item"><span class="ic"></span><span class="lbl">帮助文档</span></div>
+    </div>
+  </nav>
+</aside>
+
+<div class="main">
+
+  <!-- ===== 顶栏 ===== -->
+  <header class="topbar">
+    <div class="topbar-row">
+      <h1>市场数据</h1>
+      <span class="pill"><span class="dot"></span>报告日 默认路由</span>
+      <div class="quick">
+        <span class="q">市场快讯</span>
+        <span class="q">10年国债 <b>1.74%</b> <span class="chg up">+0.2bp</span></span>
+        <span class="q">10年国开 <b>1.79%</b> <span class="chg" style="color:var(--ink3)">--</span></span>
+        <span class="q">10年美债 <b>4.56%</b> <span class="chg up">+2bp</span></span>
+        <span class="q">中美10年利差 <b>-282bp</b> <span class="chg down">-2bp</span></span>
+        <span class="q">DR007 <b>1.38%</b> <span class="chg" style="color:var(--ink3)">0bp</span></span>
+        <span class="q">美元/人民币 <b>6.8CNY/USD</b> <span class="chg" style="color:var(--ink3)">-0CNY/USD</span></span>
+      </div>
+      <div class="top-actions">
+        <span class="pill">管理视角</span>
+        <a href="#">报表中心</a>
+        <a href="#">中台配置</a>
+      </div>
+    </div>
+  </header>
+
+  <div class="content">
+
+    <!-- ===== 市场数据终端 ===== -->
+    <section class="card terminal">
+      <div class="term-head">
+        <div>
+          <div class="kicker">市场数据终端</div>
+          <h2>市场数据</h2>
+          <div class="q">当前市场利率、资金面、外汇状况如何？</div>
+        </div>
+        <div class="term-tools">
+          <span class="select-btn">国债+国开 <span class="caret">▼</span></span>
+          <span class="select-btn">全部来源 <span class="caret">▼</span></span>
+          <span class="btn-primary">刷新数据</span>
+        </div>
+      </div>
+
+      <div class="date-row">
+        <span class="date-input">
+          <span class="num">07/10/2026</span>
+          <svg width="12" height="12" viewBox="0 0 12 12"><rect x="1" y="2" width="10" height="9" rx="1" fill="none" stroke="#8a8f98"/><line x1="1" y1="4.5" x2="11" y2="4.5" stroke="#8a8f98"/><line x1="3.5" y1="1" x2="3.5" y2="3" stroke="#8a8f98"/><line x1="8.5" y1="1" x2="8.5" y2="3" stroke="#8a8f98"/></svg>
+        </span>
+        <span class="date-label">数据日期 <span class="num">2026-07-10</span></span>
+      </div>
+
+      <div class="status-row">
+        <span class="sd"></span>数据正常<span class="sep">·</span><span class="sd"></span>数据正常
+      </div>
+
+      <div class="strip">
+        <span class="it">10年国债 <b>1.74%</b> <span class="chg up">+0.2bp</span></span>
+        <span class="it">10年国开 <b>1.79%</b> <span class="chg up">+1bp</span></span>
+        <span class="it">5年国债 <b>1.44%</b> <span class="chg up">+0.8bp</span></span>
+        <span class="it">5年国开 <b>1.54%</b> <span class="chg up">+0.3bp</span></span>
+        <span class="it">DR007 <b>1.38%</b> <span class="chg" style="color:var(--ink3)">0bp</span></span>
+        <span class="right"><span class="num">2026-07-10</span><span class="formal">正式</span></span>
+      </div>
+
+      <div class="rate-cards">
+        <div class="rate-card">
+          <div class="t">10年国债</div>
+          <div class="v">1.74%</div>
+          <div class="m"><span class="chg up">+0.2bp</span> · 2026-07-10 · E1000180</div>
+        </div>
+        <div class="rate-card">
+          <div class="t">10年国开</div>
+          <div class="v">1.79%</div>
+          <div class="m"><span class="chg up">+1bp</span> · 2026-07-07 · EMM00166502</div>
+        </div>
+        <div class="rate-card">
+          <div class="t">5年国债</div>
+          <div class="v">1.44%</div>
+          <div class="m"><span class="chg up">+0.8bp</span> · 2026-07-07 · EMM00166462</div>
+        </div>
+        <div class="rate-card">
+          <div class="t">5年国开</div>
+          <div class="v">1.54%</div>
+          <div class="m"><span class="chg up">+0.3bp</span> · 2026-07-07 · EMM00166498</div>
+        </div>
+      </div>
+    </section>
+
+    <div class="grid">
+
+      <!-- ===== 宏观深度读面 ===== -->
+      <section class="card depth">
+        <span class="depth-tag">分析深度</span>
+        <h3>宏观深度读面</h3>
+        <div class="note">曲线走势、信用利差与压力背景均为分析口径观察，不替代正式指标。</div>
+
+        <div class="tabs">
+          <span class="tab active">曲线（M8）</span>
+          <span class="tab">信用利差</span>
+          <span class="tab">压力与情景（M11/M15）</span>
+        </div>
+
+        <div class="warn-bar">
+          <span class="wd"></span>
+          <span><b>宏观序列最新读面已返回数据。</b> 外部数据水位读取失败，无法判断输入年龄。</span>
+        </div>
+
+        <div class="sec-head">
+          <h4>收益率曲线</h4>
+          <span class="restore">恢复默认</span>
+        </div>
+        <div class="sec-desc">国债、国开与 SHIBOR 近期走势，来自 macro latest 的 recent_points。</div>
+
+        <div class="chips">
+          <span class="chip on">铝主力期货收盘价</span>
+          <span class="chip">Brent spot price</span>
+          <span class="chip">铜主力期货收盘价</span>
+          <span class="chip">沪深300指数收盘价</span>
+          <span class="chip">沪深300指数涨跌幅</span>
+          <span class="chip">沪深300市盈率</span>
+          <span class="chip">CSI 500 index close</span>
+          <span class="chip">存款类机构质押式回购加权利率:DR007</span>
+        </div>
+
+        <div class="chart-wrap">
+          <div class="chart-legend">
+            <span class="lg"><span class="ln"></span><span class="num">10Y CGB</span></span>
+          </div>
+          <svg width="100%" height="240" viewBox="0 0 720 240" preserveAspectRatio="none" style="display:block">
+            <!-- hairline 网格 -->
+            <g stroke="#e2e0da" stroke-width="1">
+              <line x1="40" y1="20"  x2="680" y2="20"/>
+              <line x1="40" y1="80"  x2="680" y2="80"/>
+              <line x1="40" y1="140" x2="680" y2="140"/>
+              <line x1="40" y1="200" x2="680" y2="200"/>
+            </g>
+            <!-- y 轴标签 -->
+            <g font-family="ui-monospace,'SF Mono','Cascadia Mono',Consolas,monospace" font-size="10" fill="#8a8f98" text-anchor="end">
+              <text x="34" y="24">1.8</text>
+              <text x="34" y="84">1.7</text>
+              <text x="34" y="144">1.6</text>
+              <text x="34" y="204">1.5</text>
+            </g>
+            <!-- accent 单线：10Y CGB（约 1.72–1.74 区间） -->
+            <polyline fill="none" stroke="#14366b" stroke-width="1.6" stroke-linejoin="round"
+              points="48,60.8 79.2,59.6 110.3,61.4 141.5,64.4 172.6,65 203.8,63.8 234.9,61.4 266.1,60.2 297.3,62 328.4,64.4 359.6,66.8 390.7,65 421.9,62.6 453.1,63.8 484.2,61.4 515.4,63.2 546.5,64.4 577.7,63.8 608.8,63.2 640,63.8"/>
+            <g fill="#14366b">
+              <circle cx="48" cy="60.8" r="2.4"/><circle cx="79.2" cy="59.6" r="2.4"/>
+              <circle cx="110.3" cy="61.4" r="2.4"/><circle cx="141.5" cy="64.4" r="2.4"/>
+              <circle cx="172.6" cy="65" r="2.4"/><circle cx="203.8" cy="63.8" r="2.4"/>
+              <circle cx="234.9" cy="61.4" r="2.4"/><circle cx="266.1" cy="60.2" r="2.4"/>
+              <circle cx="297.3" cy="62" r="2.4"/><circle cx="328.4" cy="64.4" r="2.4"/>
+              <circle cx="359.6" cy="66.8" r="2.4"/><circle cx="390.7" cy="65" r="2.4"/>
+              <circle cx="421.9" cy="62.6" r="2.4"/><circle cx="453.1" cy="63.8" r="2.4"/>
+              <circle cx="484.2" cy="61.4" r="2.4"/><circle cx="515.4" cy="63.2" r="2.4"/>
+              <circle cx="546.5" cy="64.4" r="2.4"/><circle cx="577.7" cy="63.8" r="2.4"/>
+              <circle cx="608.8" cy="63.2" r="2.4"/><circle cx="640" cy="63.8" r="2.4"/>
+            </g>
+            <text x="648" y="66" font-family="ui-monospace,'SF Mono','Cascadia Mono',Consolas,monospace" font-size="10" fill="#5c6370">10Y CGB</text>
+          </svg>
+        </div>
+      </section>
+
+      <!-- ===== 证据口径总览（目标态：浅色 IB 面板） ===== -->
+      <aside class="card evidence">
+        <div class="ev-head">
+          <span class="t">证据口径总览</span>
+          <span class="r">供给证据</span>
+        </div>
+        <div class="ev-rows">
+          <div class="ev-row">
+            <span class="dot" style="background:var(--up)"></span>
+            <div class="txt"><div class="l">正式口径</div><div class="s">可正式使用</div></div>
+            <span class="c">2</span>
+          </div>
+          <div class="ev-row">
+            <span class="dot" style="background:var(--accent)"></span>
+            <div class="txt"><div class="l">分析口径</div><div class="s">用于辅助观察</div></div>
+            <span class="c">4</span>
+          </div>
+          <div class="ev-row">
+            <span class="dot" style="background:var(--warn)"></span>
+            <div class="txt"><div class="l">代理数据</div><div class="s">不作正式结论</div></div>
+            <span class="c">1</span>
+          </div>
+          <div class="ev-row">
+            <span class="dot" style="background:var(--down)"></span>
+            <div class="txt"><div class="l">未接入</div><div class="s">数据源未闭合</div></div>
+            <span class="c">2</span>
+          </div>
+          <div class="ev-row">
+            <span class="dot" style="background:var(--warn)"></span>
+            <div class="txt"><div class="l">数据延迟</div><div class="s">超过预期时点</div></div>
+            <span class="c">0</span>
+          </div>
+          <div class="ev-row">
+            <span class="dot" style="background:var(--down)"></span>
+            <div class="txt"><div class="l">不可用</div><div class="s">当前不可读取</div></div>
+            <span class="c">0</span>
+          </div>
+        </div>
+        <div class="ev-foot">
+          <span>报告日期</span>
+          <span class="num">2026-07-12</span>
+        </div>
+      </aside>
+
+    </div>
+  </div>
+</div>
+
+<div class="sample-badge">视觉样张 · 数据来自真实 API 快照（采集 2026-07-19）</div>
+
+</body>
+</html>

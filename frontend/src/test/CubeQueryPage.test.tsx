@@ -94,6 +94,14 @@ describe("CubeQueryPage", () => {
 
     expect(await screen.findByTestId("cube-results-table")).toBeInTheDocument();
     expect(await screen.findByText("1,234.5678")).toBeInTheDocument();
-    expect(await screen.findByTestId("cube-result-meta")).toHaveTextContent("tr_cube_test");
+    const meta = await screen.findByTestId("cube-result-meta");
+    expect(meta).toHaveTextContent("tr_cube_test");
+    expect(meta).toHaveTextContent("sv_test");
+    expect(meta).toHaveTextContent("正常");
+    const metaLines = [...meta.querySelectorAll(".ant-typography")].map((el) => el.textContent ?? "");
+    expect(metaLines.length).toBeGreaterThanOrEqual(1);
+    for (const line of metaLines) {
+      expect((line.match(/·/g) ?? []).length).toBeLessThanOrEqual(1);
+    }
   });
 });

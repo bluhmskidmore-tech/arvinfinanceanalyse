@@ -35,6 +35,12 @@ const DeferredTerminalHomeContent = lazy(() =>
   })),
 );
 
+const LazyDashboardHomeAgentDrawer = lazy(() =>
+  import("./DashboardHomeAgentDrawer").then((module) => ({
+    default: module.DashboardHomeAgentDrawer,
+  })),
+);
+
 type HydratedFirstScreenState = {
   signature: string;
   view: DashboardHomeFirstScreenHydration;
@@ -249,7 +255,14 @@ export default function DashboardHomePage() {
       : "normal";
   const [hydratedFirstScreen, setHydratedFirstScreen] =
     useState<HydratedFirstScreenState | null>(null);
+  const [agentPanelOpen, setAgentPanelOpen] = useState(false);
+  const [agentPanelMounted, setAgentPanelMounted] = useState(false);
   const activeReportDate = view.reportDate;
+
+  const openAgentPanel = useCallback(() => {
+    setAgentPanelMounted(true);
+    setAgentPanelOpen(true);
+  }, []);
 
   useEffect(() => {
     setHydratedFirstScreen(null);
@@ -282,6 +295,13 @@ export default function DashboardHomePage() {
         : view,
     [activeReportDate, hydratedFirstScreen, view],
   );
+  const agentPanelFilters = useMemo(
+    () => ({
+      allow_partial: allowPartial,
+      data_status: firstScreenView.headerStatus.dataStatusKind,
+    }),
+    [allowPartial, firstScreenView.headerStatus.dataStatusKind],
+  );
   const deferredHomeContent = loadDeferredContent ? (
     <Suspense fallback={<DeferredEvidenceIndexPreview />}>
       <DeferredTerminalHomeContent
@@ -300,7 +320,7 @@ export default function DashboardHomePage() {
     <div className="dark text-foreground bg-background min-h-screen">
       <section
         data-testid="dashboard-home-page"
-        className={`${styles.dhPage} ${styles.dhApiBackedHome}`}
+        className={`theme-dh-api ${styles.dhPage} ${styles.dhApiBackedHome}`}
       >
         <DashboardHomeToolbar
           title="组合经营日报"
@@ -317,6 +337,7 @@ export default function DashboardHomePage() {
           onRefresh={() => void refreshSnapshot()}
           refreshLabel={snapshotQuery.isFetching ? "刷新中…" : "刷新"}
           refreshAriaLabel="刷新首页数据"
+          onOpenAgentPanel={openAgentPanel}
         />
 
         <main className={styles.dhLayout}>
@@ -348,6 +369,17 @@ export default function DashboardHomePage() {
           dataSyncPrefix={firstScreenView.headerStatus.dataSyncPrefix}
           dataStatusKind={firstScreenView.headerStatus.dataStatusKind}
         />
+
+        {agentPanelMounted ? (
+          <Suspense fallback={null}>
+            <LazyDashboardHomeAgentDrawer
+              open={agentPanelOpen}
+              reportDate={firstScreenView.reportDate}
+              currentFilters={agentPanelFilters}
+              onClose={() => setAgentPanelOpen(false)}
+            />
+          </Suspense>
+        ) : null}
       </section>
     </div>
   );

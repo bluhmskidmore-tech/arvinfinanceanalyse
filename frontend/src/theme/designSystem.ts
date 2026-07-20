@@ -244,17 +244,24 @@ export const designTokens = {
       'ui-monospace, "Cascadia Mono", "Microsoft YaHei UI", Menlo, Monaco, Consolas, monospace',
   },
   radius: {
-    sm: 6,
+    /*
+     * Shape Lock (DESIGN.md §5): aligned with `tokens.css` `--moss-radius-*`.
+     * Page cards/panels must use `--ib-radius` (2px, IB light) or
+     * `--dh-api-radius` / `dhApiTokens.radius` (6px, dark terminal).
+     * `sm` mirrors IB / `--moss-radius-sm` (2px); do not use it as a dark
+     * terminal substitute — use `dhApiTokens.radius` instead.
+     */
+    sm: 2,
     md: 12,
     lg: 18,
     xl: 24,
   },
   shadow: {
-    /** Hero / shell panels (legacy Workbench lift) */
-    panel: "0 20px 44px rgba(22, 35, 46, 0.08)",
-    card: "0 10px 24px rgba(22, 35, 46, 0.06)",
-    popover: "0 12px 32px rgba(22, 35, 46, 0.12)",
-    modal: "0 24px 48px rgba(22, 35, 46, 0.16)",
+    /** Flattened to the lightest hairline lift (DESIGN.md §2 / tokens.css). */
+    panel: "0 1px 2px rgba(16, 24, 29, 0.05)",
+    card: "0 1px 2px rgba(16, 24, 29, 0.05)",
+    popover: "0 1px 2px rgba(16, 24, 29, 0.05)",
+    modal: "0 1px 2px rgba(16, 24, 29, 0.05)",
   },
   density: {
     tableRowCompact: 28,
@@ -326,3 +333,36 @@ export const ibTokens = {
 } as const;
 
 export type IbTokens = typeof ibTokens;
+
+/**
+ * Dark terminal (Decision Desk) canonical palette — TS mirror of the
+ * `.theme-dh-api` CSS block in `src/styles/tokens.css` (DESIGN.md §2.2).
+ * Use for canvas/chart code that cannot read CSS variables; keep both
+ * sources in sync.
+ */
+export const dhApiTokens = {
+  color: {
+    bg: "#070a12",
+    rail: "#0a1019",
+    panel: "#0c1421",
+    panel2: "#101a2a",
+    panel3: "#132033",
+    line: "rgba(103, 119, 142, 0.34)",
+    lineSoft: "rgba(103, 119, 142, 0.22)",
+    ink: "#e8eef7",
+    inkSoft: "#a9b6c7",
+    inkMuted: "#8593a8",
+    blue: "#72a7dc",
+    green: "#66b98b",
+    amber: "#c9a565",
+    gold: "#c9a565",
+    red: "#d47a72",
+    blueSoft: "rgba(114, 167, 220, 0.12)",
+    greenSoft: "rgba(102, 185, 139, 0.12)",
+    amberSoft: "rgba(201, 165, 101, 0.13)",
+    redSoft: "rgba(212, 122, 114, 0.13)",
+  },
+  radius: 6,
+} as const;
+
+export type DhApiTokens = typeof dhApiTokens;

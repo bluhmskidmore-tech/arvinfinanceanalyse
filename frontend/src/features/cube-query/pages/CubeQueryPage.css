@@ -1,0 +1,52 @@
+.cube-query-page {
+  min-height: 100%;
+  padding: 16px;
+  background: var(--ib-paper);
+}
+
+.cube-query-page__title {
+  margin-top: 0;
+}
+
+.cube-query-page__card {
+  margin-top: 16px;
+}
+
+.cube-query-page__stack {
+  width: 100%;
+}
+
+.cube-query-page__field-control {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.cube-query-page__execute {
+  margin-top: 28px;
+}
+
+.cube-query-page__section-body {
+  margin-top: 8px;
+}
+
+.cube-query-page__results-row {
+  margin-top: 16px;
+}
+
+.cube-query-page__pagination {
+  margin-top: 16px;
+}
+
+.cube-query-page__result-meta {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.cube-query-page__drill-tag {
+  cursor: pointer;
+}
+
+.cube-query-page .ant-card {
+  border-radius: var(--ib-radius, 2px);
+}

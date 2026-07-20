@@ -218,15 +218,17 @@ function emptyProductPayload(): ProductCategoryPnlPayload {
 }
 
 describe("TeamPerformancePage", () => {
-  it("keeps page state surfaces on the homepage blue-gray token family", () => {
+  it("keeps page surfaces on the IB light token family without bare hex colors", () => {
     const css = readFileSync(
       resolve(process.cwd(), "src/features/team-performance/TeamPerformancePage.css"),
       "utf8",
     );
 
-    expect(css).not.toMatch(/#fffdf8|#fffaf4|moss-color-warm-|designTokens\.color\.warm/);
-    expect(css).toContain("#f8fafc");
-    expect(css).toContain("#ffffff");
+    expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    expect(css).not.toMatch(/moss-color-warm-|designTokens\.color\.warm/);
+    expect(css).toContain("var(--ib-surface)");
+    expect(css).toContain("var(--ib-surface-muted)");
+    expect(css).toContain("var(--ib-radius, 2px)");
   });
 
   it("locks to 2025-12-31 and renders the matrix, detail panel, warnings, and meta evidence", async () => {
@@ -478,7 +480,7 @@ describe("TeamPerformancePage", () => {
     });
 
     expect(await screen.findByTestId("team-performance-page-title")).toHaveTextContent(
-      "Team Performance 工作损益分析",
+      "团队绩效工作损益分析",
     );
 
     await waitFor(() => {

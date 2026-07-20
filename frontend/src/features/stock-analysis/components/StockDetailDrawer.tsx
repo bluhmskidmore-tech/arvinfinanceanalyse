@@ -747,7 +747,7 @@ export function StockDetailDrawer({
     >
       {open ? (
         <div
-          className="stock-detail-drawer__body"
+          className="theme-dh-api stock-detail-drawer__body"
           style={stockAnalysisPageCssVars}
         >
           <header className="stock-detail-drawer__header">

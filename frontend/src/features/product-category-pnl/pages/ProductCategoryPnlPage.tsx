@@ -139,8 +139,8 @@ function ProductCategoryCandidateMetricNotice(props: {
     <PageStateSurface
       variant="definition-pending"
       testId={props.testId}
-      title={props.title}
-      description={`${props.status.label}：${props.status.disclaimer} status=${props.status.status}; formal_use_allowed=${props.status.formalUseAllowed ? "true" : "false"}; pending_confirmation=${props.status.pendingConfirmation ? "true" : "false"}。`}
+      title={<span title={`status=${props.status.status}; formal_use_allowed=${props.status.formalUseAllowed}; pending_confirmation=${props.status.pendingConfirmation}`}>{props.title}</span>}
+      description={`${props.status.label}：${props.status.disclaimer}`}
     />
   );
 }
@@ -1027,7 +1027,7 @@ function buildInterestSpreadChartOption(input: {
       showSymbol: true,
       symbol: "circle",
       symbolSize: symbolSizes[index] ?? 7,
-      itemStyle: { color: series.color, borderColor: "#fff", borderWidth: 2 },
+      itemStyle: { color: series.color, borderColor: designTokens.color.cockpit.white, borderWidth: 2 },
       lineStyle: { color: series.color, width: lineWidths[index] ?? 3.4 },
       endLabel: {
         show: true,
@@ -1234,7 +1234,7 @@ function buildLiabilitySideTrendChartOption(input: {
         showSymbol: true,
         symbol: "circle",
         symbolSize: 7,
-        itemStyle: { color: designTokens.color.warning[600], borderColor: "#fff", borderWidth: 2 },
+        itemStyle: { color: designTokens.color.warning[600], borderColor: designTokens.color.cockpit.white, borderWidth: 2 },
         lineStyle: { color: designTokens.color.warning[600], width: 3.4 },
         emphasis: { focus: "series" },
       },

@@ -8,6 +8,7 @@ import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPan
 import { FilterBar } from "../../components/FilterBar";
 import { KpiCard } from "../../components/KpiCard";
 import { SectionLead } from "../../components/page/SectionLead";
+import { EM_DASH } from "../../utils/format";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import {
   ASSESSMENT_CENTERS_2025,
@@ -368,7 +369,7 @@ export default function TeamPerformancePage() {
       <div className="team-performance-page__hero">
         <div className="team-performance-page__hero-copy">
           <h1 data-testid="team-performance-page-title" className="team-performance-page__title">
-            Team Performance 工作损益分析
+            团队绩效工作损益分析
           </h1>
           <p className="team-performance-page__subtitle">
             聚焦回答“2025 年各部室考核得分如何，相关工作损益证据是多少”。Excel
@@ -414,7 +415,7 @@ export default function TeamPerformancePage() {
       </FilterBar>
 
       <SectionLead
-        eyebrow="Assessment"
+        eyebrow="考核总览"
         title="2025 部室考核矩阵"
         description="首屏先看各部室总分、映射证据覆盖情况和正式读链路状态。所有损益都明确标为“映射分析”，不替代正式中心归属口径。"
       />
@@ -462,7 +463,7 @@ export default function TeamPerformancePage() {
       <section data-testid="team-performance-q1-caliber" className="team-performance-page__q1-panel">
         <div className="team-performance-page__q1-header">
           <div>
-            <div className="team-performance-page__meta-eyebrow">Q1 Actual</div>
+            <div className="team-performance-page__meta-eyebrow">季度实际</div>
             <h2 className="team-performance-page__q1-title">2026 Q1实际口径拆解</h2>
             <p className="team-performance-page__q1-copy">
               只展示实际证据、来源行和口径状态；年度目标、达成判断和 Excel 外推数均不进入本区汇总。
@@ -502,7 +503,7 @@ export default function TeamPerformancePage() {
                     <span>{center.centerName}</span>
                     <strong>{formatYiFromYuan(center.includedTotalYuan)}</strong>
                     <em>
-                      纳入 {center.includedRuleCount} · 另列 {exceptionRules.length} · 待拆 {center.pendingRuleCount}
+                      纳入 {center.includedRuleCount}，另列 {exceptionRules.length}，待拆 {center.pendingRuleCount}
                     </em>
                   </div>
                   <div className="team-performance-page__q1-lane-grid">
@@ -600,7 +601,7 @@ export default function TeamPerformancePage() {
                       <div className="team-performance-page__q1-source-cell">
                         <span>{rule.sourceLabel}</span>
                         <code>{rule.rowId ?? "暂无独立行"}</code>
-                        <span>{rule.amountField ?? "-"}</span>
+                        <span>{rule.amountField ?? EM_DASH}</span>
                         <span>来源行：{rule.rowName}</span>
                       </div>
                     </td>
@@ -632,7 +633,7 @@ export default function TeamPerformancePage() {
           tone="warning"
           badge="待正式日期"
           title="2025 证据日期未就绪"
-          description="正式日期列表未包含 2025-12-31，因此当前页面只保留 2025 方案底稿视图，不会 silently substitute 2026。"
+          description="正式日期列表未包含 2025-12-31，因此当前页面只保留 2025 方案底稿视图，不会静默替代为 2026 数据。"
           facts={[
             { label: "考核年度", value: "锁定 2025" },
             { label: "目标日期", value: "2025-12-31" },
@@ -707,7 +708,7 @@ export default function TeamPerformancePage() {
         <div className="team-performance-page__section-stack">
           <section className="team-performance-page__panel">
             <SectionLead
-              eyebrow="Matrix"
+              eyebrow="部室对照"
               title="部室矩阵"
               description="按部室汇总显示 Excel 得分、映射损益、映射规模和覆盖状态。点击任一部室，下方查看对应的底稿指标和映射证据。"
             />
@@ -830,7 +831,7 @@ export default function TeamPerformancePage() {
 
           <section data-testid="team-performance-detail" className="team-performance-page__panel">
             <SectionLead
-              eyebrow="Detail"
+              eyebrow="部室下钻"
               title={`${selectedCenter.centerName} 明细`}
               description="左侧保留 Excel 底稿指标，右侧展示正式接口中的映射分析证据。页面不会重算得分，只显示方案底稿中的分值和完成情况。"
             />
@@ -1048,7 +1049,7 @@ export default function TeamPerformancePage() {
           <section data-testid="team-performance-result-meta" className="team-performance-page__meta-shell">
             <div className="team-performance-page__meta-header">
               <div>
-                <div className="team-performance-page__meta-eyebrow">Evidence</div>
+                <div className="team-performance-page__meta-eyebrow">溯源证据</div>
                 <h3 className="team-performance-page__meta-title">结果元信息摘要</h3>
               </div>
               <p className="team-performance-page__meta-copy">

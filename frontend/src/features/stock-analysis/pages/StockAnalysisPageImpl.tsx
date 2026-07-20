@@ -2757,7 +2757,7 @@ export default function StockAnalysisPage() {
     >
       <section
         data-testid="stock-analysis-page"
-        className={`${SA_SHELL_PAGE} stock-analysis-page stock-analysis-page--market-shell dark text-foreground`}
+        className={`${SA_SHELL_PAGE} theme-dh-api stock-analysis-page stock-analysis-page--market-shell dark text-foreground`}
         data-layout-rev="2026-05-31e"
         data-data-viz-rev="2026-05-31e"
         style={stockAnalysisPageCssVars}
@@ -4354,7 +4354,7 @@ export default function StockAnalysisPage() {
                 badgeLabel={
                   themeBreakoutPanelSummary?.badgeLabel ??
                   `${localizeThemeRadarBadge(
-                    strategyPayload?.theme_breakout?.is_proxy ?? true,
+                    strategyPayload?.theme_breakout?.is_proxy === true,
                     strategyPayload?.theme_breakout?.formula_version,
                   )}${themeBreakoutCards.length > 0 ? ` · ${themeBreakoutCards.length} 项` : ""}`
                 }
@@ -4620,11 +4620,29 @@ export default function StockAnalysisPage() {
                                     </div>
                                     <div className="stock-analysis-page__mean-reversion-metrics stock-analysis-page__tabular">
                                       <span className="stock-analysis-page__mean-reversion-dd">
-                                        20日回撤 {(row.drawdown_20d * 100).toFixed(1)}%
+                                        20日回撤{" "}
+                                        {row.drawdown_20d != null && Number.isFinite(row.drawdown_20d)
+                                          ? `${(row.drawdown_20d * 100).toFixed(1)}%`
+                                          : "待补"}
                                       </span>
-                                      <span>收盘强度 {(row.close_strength * 100).toFixed(0)}%</span>
-                                      <span>量比 {row.vol_ratio.toFixed(1)}x</span>
-                                      <span>得分 {row.score.toFixed(2)}</span>
+                                      <span>
+                                        收盘强度{" "}
+                                        {row.close_strength != null && Number.isFinite(row.close_strength)
+                                          ? `${(row.close_strength * 100).toFixed(0)}%`
+                                          : "待补"}
+                                      </span>
+                                      <span>
+                                        量比{" "}
+                                        {row.vol_ratio != null && Number.isFinite(row.vol_ratio)
+                                          ? `${row.vol_ratio.toFixed(1)}x`
+                                          : "待补"}
+                                      </span>
+                                      <span>
+                                        得分{" "}
+                                        {row.score != null && Number.isFinite(row.score)
+                                          ? row.score.toFixed(2)
+                                          : "待补"}
+                                      </span>
                                     </div>
                                   </li>
                                 );
@@ -4935,7 +4953,7 @@ export default function StockAnalysisPage() {
             </AntButton>
           }
         >
-          <div style={stockAnalysisPageCssVars} className="stock-analysis-page__agent-drawer-body">
+          <div style={stockAnalysisPageCssVars} className="theme-dh-api stock-analysis-page__agent-drawer-body">
             {agentDrawerOpen ? (
               <Suspense fallback={<TextSkeleton className="w-full" />}>
                 <LazyAgentPanel

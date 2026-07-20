@@ -74,18 +74,12 @@ function barOption(items: BucketYi[]): EChartsOption {
 
 function PieLegend({ items }: { items: NamedYi[] }) {
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 8 }}>
+    <div className="liability-legend">
       {items.map((item, index) => (
-        <Text key={item.name} style={{ fontSize: 12 }} type="secondary">
+        <Text key={item.name} className="liability-legend__item" type="secondary">
           <span
-            style={{
-              display: "inline-block",
-              width: 10,
-              height: 10,
-              borderRadius: 999,
-              background: COLORS[index % COLORS.length],
-              marginRight: 6,
-            }}
+            className="liability-legend__swatch"
+            style={{ background: COLORS[index % COLORS.length] }}
           />
           {item.name}: {numericOrDash(item.amountYi)}
         </Text>
@@ -117,11 +111,11 @@ export function LiabilityStructureGrids({
         <Col xs={24} lg={8}>
           <Card size="small" title="负债结构总览（单位：亿元）">
             {structurePieCaption ? (
-              <Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 8 }}>
+              <Text type="secondary" className="liability-panel-caption--tight">
                 {structurePieCaption}
               </Text>
             ) : null}
-            <div style={{ height: 300 }}>
+            <div className="liability-chart-frame liability-chart-frame--structure">
               <ReactECharts option={pieOption(structure)} style={{ height: 300 }} notMerge lazyUpdate />
             </div>
             <PieLegend items={structure} />
@@ -129,29 +123,39 @@ export function LiabilityStructureGrids({
         </Col>
         <Col xs={24} lg={16}>
           <Card size="small" title="期限结构（单位：亿元）">
-            <Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 8 }}>
+            <Text type="secondary" className="liability-panel-caption--tight">
               口径：发行债券（asset_class 含“发行类”）+ 同业负债（direction=Liability）。
             </Text>
-            <div style={{ height: 300 }}>
+            <div className="liability-chart-frame liability-chart-frame--structure">
               <ReactECharts option={barOption(term)} style={{ height: 300 }} notMerge lazyUpdate />
             </div>
           </Card>
         </Col>
       </Row>
 
-      <Row gutter={[16, 16]} style={{ marginTop: 0 }}>
+      <Row gutter={[16, 16]}>
         <Col xs={24} lg={12}>
           <Card size="small" title="同业负债业务结构（按产品类型，亿元）">
-            <div style={{ height: 300 }}>
-              <ReactECharts option={pieOption(interbankStructure)} style={{ height: 300 }} notMerge lazyUpdate />
+            <div className="liability-chart-frame liability-chart-frame--structure">
+              <ReactECharts
+                option={pieOption(interbankStructure)}
+                style={{ height: 300 }}
+                notMerge
+                lazyUpdate
+              />
             </div>
             <PieLegend items={interbankStructure} />
           </Card>
         </Col>
         <Col xs={24} lg={12}>
           <Card size="small" title="同业负债期限结构（亿元）">
-            <div style={{ height: 300 }}>
-              <ReactECharts option={barOption(interbankTerm)} style={{ height: 300 }} notMerge lazyUpdate />
+            <div className="liability-chart-frame liability-chart-frame--structure">
+              <ReactECharts
+                option={barOption(interbankTerm)}
+                style={{ height: 300 }}
+                notMerge
+                lazyUpdate
+              />
             </div>
           </Card>
         </Col>
@@ -160,15 +164,20 @@ export function LiabilityStructureGrids({
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={12}>
           <Card size="small" title="发行负债业务结构（按业务种类，亿元）">
-            <div style={{ height: 300 }}>
-              <ReactECharts option={pieOption(issuedStructure)} style={{ height: 300 }} notMerge lazyUpdate />
+            <div className="liability-chart-frame liability-chart-frame--structure">
+              <ReactECharts
+                option={pieOption(issuedStructure)}
+                style={{ height: 300 }}
+                notMerge
+                lazyUpdate
+              />
             </div>
             <PieLegend items={issuedStructure} />
           </Card>
         </Col>
         <Col xs={24} lg={12}>
           <Card size="small" title="发行负债期限结构（亿元）">
-            <div style={{ height: 300 }}>
+            <div className="liability-chart-frame liability-chart-frame--structure">
               <ReactECharts option={barOption(issuedTerm)} style={{ height: 300 }} notMerge lazyUpdate />
             </div>
           </Card>

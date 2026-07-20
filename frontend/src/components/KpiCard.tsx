@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 
+import { designTokens } from "../theme/designSystem";
 import { displayTokens } from "../theme/displayTokens";
 
 export type KpiCardProps = {
@@ -188,11 +189,14 @@ export function KpiCard({
 
   const valueStyle = {
     color: valueColor,
+    /* DESIGN.md §3: comparative numbers must use the tabular monospace stack. */
+    fontFamily: designTokens.fontFamily.tabular,
+    fontVariantNumeric: "tabular-nums",
     fontSize: isMetric ? 24 : 16,
     fontWeight: 700,
     letterSpacing: isMetric ? "-0.02em" : "normal",
     lineHeight: isMetric ? 1.15 : 1.5,
-  };
+  } satisfies CSSProperties;
 
   const unitStyle = {
     color: UNIT_COLOR,

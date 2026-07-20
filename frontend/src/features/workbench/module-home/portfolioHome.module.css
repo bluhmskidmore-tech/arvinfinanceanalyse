@@ -12,10 +12,10 @@
   gap: 9px;
   min-width: 0;
   padding: 10px;
-  border: 1px solid rgba(125, 211, 252, 0.18);
+  border: 1px solid rgba(114, 167, 220, 0.18);
   border-radius: 6px;
   background:
-    linear-gradient(180deg, rgba(125, 211, 252, 0.07), rgba(125, 211, 252, 0.015)),
+    linear-gradient(180deg, rgba(114, 167, 220, 0.07), rgba(114, 167, 220, 0.015)),
     rgba(16, 31, 51, 0.58);
 }
 
@@ -43,7 +43,7 @@
 
 .holdingsHeroFigureHead strong {
   color: var(--dh-blue);
-  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
   font-size: 13px;
   font-weight: 900;
   font-variant-numeric: tabular-nums;
@@ -55,12 +55,12 @@
   height: 12px;
   overflow: hidden;
   border-radius: 999px;
-  background: rgba(125, 211, 252, 0.09);
+  background: rgba(114, 167, 220, 0.09);
 }
 
 .holdingsHeroStackSegment {
   flex: 0 0 var(--holdings-hero-segment-width);
-  border-right: 1px solid #0b1728;
+  border-right: 1px solid var(--dh-api-panel);
   background: var(--portfolio-chart-blue);
 }
 
@@ -84,143 +84,88 @@
   background: var(--portfolio-chart-red);
 }
 
+/* Page-level dark palette: remap legacy --ib- / --dh- / --moss- consumer vars
+   onto the official --dh-api-* tokens (DESIGN.md §2.2). */
 .portfolioPage {
-  --ib-paper: #07111f;
-  --ib-surface: #0b1728;
-  --ib-surface-muted: #101f33;
-  --ib-hairline: #203650;
-  --ib-rule-strong: #355a7c;
-  --ib-ink: #f3f8ff;
-  --ib-ink-secondary: #afc0d5;
-  --ib-ink-muted: #8493a7;
-  --ib-accent: #7dd3fc;
-  --ib-accent-hover: #a5e5ff;
-  --ib-accent-surface: rgba(125, 211, 252, 0.1);
-  --ib-up: #b7e08a;
-  --ib-down: #f2a0a0;
-  --ib-warn: #f6c56f;
-  --ib-gold: #f6c56f;
-  --dh-card: #0b1728;
-  --dh-card-soft: #101f33;
-  --dh-surface-muted: #0d1a2c;
-  --dh-line: #24425f;
-  --dh-line-soft: #1e3148;
-  --dh-ink: #f3f8ff;
-  --dh-ink-2: #d7e3f5;
-  --dh-muted: #afc0d5;
-  --dh-muted-2: #8493a7;
-  --dh-blue: #7dd3fc;
-  --dh-blue-deep: #7dd3fc;
-  --dh-blue-soft: rgba(125, 211, 252, 0.1);
-  --dh-green: #b7e08a;
-  --dh-green-soft: rgba(183, 224, 138, 0.1);
-  --dh-red: #f2a0a0;
-  --dh-red-soft: rgba(242, 160, 160, 0.12);
-  --dh-amber: #f6c56f;
-  --dh-amber-soft: rgba(246, 197, 111, 0.12);
-  --moss-color-card-bg: #0b1728;
-  --moss-color-neutral-50: #101f33;
-  --moss-color-neutral-100: #1e3148;
-  --moss-color-neutral-200: #24425f;
-  --moss-color-neutral-300: #355a7c;
-  --moss-color-neutral-600: #afc0d5;
-  --moss-color-neutral-700: #d7e3f5;
-  --moss-color-neutral-900: #f3f8ff;
-  --moss-color-primary-50: rgba(125, 211, 252, 0.1);
-  --moss-color-primary-100: rgba(125, 211, 252, 0.16);
-  --moss-color-primary-200: rgba(125, 211, 252, 0.28);
-  --moss-color-primary-700: #7dd3fc;
-  --moss-color-primary-900: #eaf6ff;
-  --moss-color-info-100: #d9f2ff;
-  --moss-color-info-300: #8ed8ff;
-  --moss-color-info-400: #7dd3fc;
-  --moss-color-info-500: #38bdf8;
-  --moss-color-success-100: rgba(183, 224, 138, 0.18);
-  --moss-color-success-300: #b7e08a;
-  --moss-color-success-500: #86d58f;
-  --moss-color-warning-50: rgba(246, 197, 111, 0.12);
-  --moss-color-warning-200: rgba(246, 197, 111, 0.3);
-  --moss-color-warning-300: #f6c56f;
-  --moss-color-warning-400: #f2a93b;
-  --moss-color-danger-50: rgba(242, 160, 160, 0.12);
-  --moss-color-danger-200: rgba(242, 160, 160, 0.3);
-  --moss-color-danger-500: #f2a0a0;
+  --ib-paper: var(--dh-api-bg);
+  --ib-surface: var(--dh-api-panel);
+  --ib-surface-muted: var(--dh-api-panel-2);
+  --ib-hairline: var(--dh-api-line-soft);
+  --ib-rule-strong: var(--dh-api-line);
+  --ib-ink: var(--dh-api-ink);
+  --ib-ink-secondary: var(--dh-api-soft);
+  --ib-ink-muted: var(--dh-api-muted);
+  --ib-accent: var(--dh-api-blue);
+  --ib-accent-hover: color-mix(in srgb, var(--dh-api-blue) 78%, var(--dh-api-ink));
+  --ib-accent-surface: var(--dh-api-blue-soft);
+  --ib-up: var(--dh-api-green);
+  --ib-down: var(--dh-api-red);
+  --ib-warn: var(--dh-api-amber);
+  --ib-gold: var(--dh-api-amber);
+  --ib-radius: var(--dh-api-radius, 6px);
+  --dh-card: var(--dh-api-panel);
+  --dh-card-soft: var(--dh-api-panel-3);
+  --dh-surface-muted: var(--dh-api-panel-2);
+  --dh-line: var(--dh-api-line);
+  --dh-line-soft: var(--dh-api-line-soft);
+  --dh-ink: var(--dh-api-ink);
+  --dh-ink-2: var(--dh-api-ink);
+  --dh-muted: var(--dh-api-soft);
+  --dh-muted-2: var(--dh-api-muted);
+  --dh-blue: var(--dh-api-blue);
+  --dh-blue-deep: var(--dh-api-blue);
+  --dh-blue-soft: var(--dh-api-blue-soft);
+  --dh-green: var(--dh-api-green);
+  --dh-green-soft: var(--dh-api-green-soft);
+  --dh-red: var(--dh-api-red);
+  --dh-red-soft: var(--dh-api-red-soft);
+  --dh-amber: var(--dh-api-amber);
+  --dh-amber-soft: var(--dh-api-amber-soft);
+  --moss-color-card-bg: var(--dh-api-panel);
+  --moss-color-neutral-50: var(--dh-api-panel-3);
+  --moss-color-neutral-100: var(--dh-api-line-soft);
+  --moss-color-neutral-200: var(--dh-api-line);
+  --moss-color-neutral-300: var(--dh-api-line);
+  --moss-color-neutral-600: var(--dh-api-soft);
+  --moss-color-neutral-700: var(--dh-api-ink);
+  --moss-color-neutral-900: var(--dh-api-ink);
+  --moss-color-primary-50: var(--dh-api-blue-soft);
+  --moss-color-primary-100: rgba(114, 167, 220, 0.16);
+  --moss-color-primary-200: rgba(114, 167, 220, 0.28);
+  --moss-color-primary-700: var(--dh-api-blue);
+  --moss-color-primary-900: var(--dh-api-ink);
+  --moss-color-info-100: color-mix(in srgb, var(--dh-api-blue) 30%, var(--dh-api-ink));
+  --moss-color-info-300: color-mix(in srgb, var(--dh-api-blue) 72%, var(--dh-api-ink));
+  --moss-color-info-400: var(--dh-api-blue);
+  --moss-color-info-500: var(--dh-api-blue);
+  --moss-color-success-100: rgba(102, 185, 139, 0.18);
+  --moss-color-success-300: var(--dh-api-green);
+  --moss-color-success-500: var(--dh-api-green);
+  --moss-color-warning-50: var(--dh-api-amber-soft);
+  --moss-color-warning-200: rgba(201, 165, 101, 0.3);
+  --moss-color-warning-300: var(--dh-api-amber);
+  --moss-color-warning-400: var(--dh-api-amber);
+  --moss-color-danger-50: var(--dh-api-red-soft);
+  --moss-color-danger-200: rgba(212, 122, 114, 0.3);
+  --moss-color-danger-500: var(--dh-api-red);
   gap: 14px;
   min-height: calc(100vh - 32px);
   width: 100%;
   padding: 16px;
-  border: 1px solid #132a44;
-  border-radius: 8px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius, 6px);
   background:
-    linear-gradient(180deg, rgba(12, 23, 39, 0.98), #07111f 360px),
-    #07111f;
+    linear-gradient(180deg, color-mix(in srgb, var(--dh-api-panel) 88%, transparent), var(--dh-api-bg) 360px),
+    var(--dh-api-bg);
   color: var(--dh-ink);
 }
 
-:global(.workbench-shell-grid--cockpit:has([data-testid="module-workbench-home"]):has([data-testid="module-home-portfolio-cockpit"])) {
-  background:
-    radial-gradient(circle at 18% 0%, rgba(114, 167, 220, 0.06), transparent 26%),
-    radial-gradient(circle at 90% 12%, rgba(201, 165, 101, 0.04), transparent 28%),
-    #070b12 !important;
-}
-
-:global(.workbench-shell-grid--cockpit:has([data-testid="module-workbench-home"]):has([data-testid="module-home-portfolio-cockpit"]) .workbench-shell-rail) {
-  background:
-    linear-gradient(180deg, rgba(17, 27, 42, 0.98), rgba(8, 13, 22, 0.98)),
-    #0a1019 !important;
-  border-right: 1px solid rgba(126, 157, 194, 0.18) !important;
-  box-shadow: none !important;
-}
-
-:global(.workbench-shell-grid--cockpit:has([data-testid="module-workbench-home"]):has([data-testid="module-home-portfolio-cockpit"]) .workbench-shell-rail-brand-wrap) {
-  margin-bottom: 12px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid rgba(126, 157, 194, 0.14);
-}
-
-:global(.workbench-shell-grid--cockpit:has([data-testid="module-workbench-home"]):has([data-testid="module-home-portfolio-cockpit"]) .workbench-shell-rail-mark) {
-  background:
-    linear-gradient(145deg, rgba(232, 238, 247, 0.08), rgba(7, 12, 20, 0.9)),
-    #0d1728 !important;
-  border: 1px solid rgba(126, 157, 194, 0.24) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(232, 238, 247, 0.08),
-    0 10px 24px rgba(0, 0, 0, 0.18);
-}
-
-:global(.workbench-shell-grid--cockpit:has([data-testid="module-workbench-home"]):has([data-testid="module-home-portfolio-cockpit"]) .workbench-shell-group-link),
-:global(.workbench-shell-grid--cockpit:has([data-testid="module-workbench-home"]):has([data-testid="module-home-portfolio-cockpit"]) .workbench-shell-agent-nav__link),
-:global(.workbench-shell-grid--cockpit:has([data-testid="module-workbench-home"]):has([data-testid="module-home-portfolio-cockpit"]) .workbench-shell-support-link) {
-  position: relative;
-  border: 1px solid transparent !important;
-  border-radius: 4px !important;
-  transition:
-    background 160ms ease,
-    border-color 160ms ease,
-    color 160ms ease;
-}
-
-:global(.workbench-shell-grid--cockpit:has([data-testid="module-workbench-home"]):has([data-testid="module-home-portfolio-cockpit"]) .workbench-shell-group-link:hover),
-:global(.workbench-shell-grid--cockpit:has([data-testid="module-workbench-home"]):has([data-testid="module-home-portfolio-cockpit"]) .workbench-shell-agent-nav__link:hover),
-:global(.workbench-shell-grid--cockpit:has([data-testid="module-workbench-home"]):has([data-testid="module-home-portfolio-cockpit"]) .workbench-shell-support-link:hover) {
-  background: rgba(114, 167, 220, 0.08) !important;
-  border-color: rgba(114, 167, 220, 0.2) !important;
-}
-
-:global(.workbench-shell-grid--cockpit:has([data-testid="module-workbench-home"]):has([data-testid="module-home-portfolio-cockpit"]) .workbench-shell-group-link[data-active="true"]) {
-  background:
-    linear-gradient(90deg, rgba(201, 165, 101, 0.16), rgba(114, 167, 220, 0.08)),
-    rgba(16, 26, 42, 0.88) !important;
-  border-color: rgba(201, 165, 101, 0.28) !important;
-  box-shadow: inset 3px 0 0 rgba(201, 165, 101, 0.84) !important;
-}
-
+/* Dark shell reflow (background/rail/nav) is owned by the central
+   `.workbench-shell-grid--cockpit:has(.theme-dh-api)` variant in
+   src/styles/workbenchShell.css; only layout-scoped overrides remain here. */
 :global(.workbench-shell-grid--cockpit:has([data-testid="module-workbench-home"]):has([data-testid="module-home-portfolio-cockpit"]) .workbench-main-surface--minimal) {
   justify-items: start !important;
   padding: 0 !important;
-  border: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
 }
 
 :global(.workbench-shell-grid--cockpit:has([data-testid="module-workbench-home"]):has([data-testid="module-home-portfolio-cockpit"]) .workbench-main-column) {
@@ -229,11 +174,11 @@
 }
 
 .portfolioPageMain {
-  --portfolio-chart-blue: #9fb4c7;
-  --portfolio-chart-info: #688bb2;
-  --portfolio-chart-green: #7d9a7f;
-  --portfolio-chart-amber: #b09261;
-  --portfolio-chart-red: #aa7778;
+  --portfolio-chart-blue: var(--dh-api-blue);
+  --portfolio-chart-info: var(--dh-api-ink-soft);
+  --portfolio-chart-green: var(--dh-api-green);
+  --portfolio-chart-amber: var(--dh-api-amber);
+  --portfolio-chart-red: var(--dh-api-red);
   --portfolio-chart-ink: var(--ib-ink);
   --portfolio-chart-grid: var(--ib-hairline);
   display: grid;
@@ -260,7 +205,7 @@
   padding: 10px 14px;
   border: 1px solid var(--dh-line);
   border-left: 3px solid var(--dh-blue);
-  border-radius: 8px;
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-card);
   color: var(--dh-ink);
   box-shadow: none;
@@ -385,11 +330,10 @@
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--dh-line);
-  border-radius: 8px;
+  border-radius: var(--dh-api-radius, 6px);
   background:
     linear-gradient(180deg, rgba(16, 31, 51, 0.96), rgba(7, 17, 31, 0.98)),
     var(--dh-card);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .workbenchMain {
@@ -405,7 +349,7 @@
   min-width: 0;
   padding: 12px;
   border: 1px solid var(--dh-line-soft);
-  border-radius: 8px;
+  border-radius: var(--dh-api-radius, 6px);
   background: rgba(11, 23, 40, 0.72);
 }
 
@@ -432,11 +376,11 @@
   place-items: center;
   width: 28px;
   height: 28px;
-  border: 1px solid rgba(125, 211, 252, 0.38);
+  border: 1px solid rgba(114, 167, 220, 0.38);
   border-radius: 6px;
-  background: rgba(125, 211, 252, 0.1);
+  background: rgba(114, 167, 220, 0.1);
   color: var(--dh-blue);
-  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
   font-size: 11px;
   font-weight: 900;
 }
@@ -531,14 +475,14 @@
   min-width: 0;
   padding: 11px 12px;
   border-color: var(--dh-line-soft, var(--ib-hairline));
-  border-radius: 8px;
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-card);
   box-shadow: none;
 }
 
 .closureGateBlocked {
-  border-color: rgba(246, 197, 111, 0.34);
-  background: rgba(246, 197, 111, 0.1);
+  border-color: rgba(201, 165, 101, 0.34);
+  background: rgba(201, 165, 101, 0.1);
 }
 
 .closureGateHead {
@@ -603,7 +547,7 @@
   padding: 0;
   overflow: hidden;
   border-color: var(--dh-line-soft, var(--ib-hairline));
-  border-radius: 8px;
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-card);
   box-shadow: none;
 }
@@ -660,7 +604,7 @@
 .structureTabBadge {
   min-width: 18px;
   padding: 1px 5px;
-  border-radius: var(--ib-radius);
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-card-soft, var(--ib-paper));
   color: var(--dh-muted, var(--ib-ink-muted));
   font-size: 11px;
@@ -691,7 +635,7 @@
   min-height: 54px;
   padding: 9px 10px;
   border-color: var(--dh-line-soft, var(--ib-hairline));
-  border-radius: 8px;
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-card);
   color: var(--dh-ink, var(--ib-ink));
   text-decoration: none;
@@ -700,7 +644,7 @@
 
 .quickAccessCard:hover,
 .drillCard:hover {
-  border-color: rgba(125, 211, 252, 0.42);
+  border-color: rgba(114, 167, 220, 0.42);
   background: var(--moss-color-primary-50);
   text-decoration: none;
 }
@@ -752,7 +696,7 @@
   min-width: 0;
   overflow: hidden;
   border: 0;
-  border-radius: 0 5px 5px 0;
+  border-radius: 0 var(--dh-api-radius, 6px) var(--dh-api-radius, 6px) 0;
   box-shadow: none;
 }
 
@@ -788,7 +732,7 @@
   align-self: stretch;
   overflow: hidden;
   border: 1px solid var(--dh-line);
-  border-radius: 8px;
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-line-soft);
   box-shadow: none;
 }
@@ -800,7 +744,7 @@
   padding: 10px 12px 12px;
   overflow: hidden;
   border: 1px solid var(--dh-line-soft);
-  border-radius: 8px;
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-card);
   box-shadow: none;
 }
@@ -839,7 +783,7 @@
   min-width: 0;
   padding: 9px 10px;
   border: 1px solid var(--dh-line-soft);
-  border-radius: 8px;
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-card-soft);
 }
 
@@ -863,7 +807,7 @@
 .chartSnapshotCardHead strong {
   justify-self: start;
   color: var(--dh-ink);
-  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
   font-size: 11px;
   font-weight: 850;
   font-variant-numeric: tabular-nums;
@@ -896,7 +840,7 @@
 
 .chartMiniMetric {
   color: var(--moss-color-info-100);
-  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
   font-size: 12px;
   font-weight: 850;
   white-space: nowrap;
@@ -906,8 +850,8 @@
   grid-column: 1 / -1;
   height: 7px;
   overflow: hidden;
-  border-radius: 99px;
-  background: rgba(125, 211, 252, 0.12);
+  border-radius: 999px;
+  background: rgba(114, 167, 220, 0.12);
 }
 
 .chartMiniFill {
@@ -916,7 +860,6 @@
   height: 100%;
   border-radius: inherit;
   background: var(--moss-color-info-400);
-  box-shadow: 6px 0 14px rgba(96, 165, 250, 0.22);
 }
 
 .chartMiniFill[data-color-index="1"] {
@@ -929,7 +872,7 @@
 
 .chartMiniSkeleton span {
   height: 7px;
-  border-radius: var(--ib-radius);
+  border-radius: var(--dh-api-radius, 6px);
   background: rgba(226, 239, 255, 0.2);
 }
 
@@ -1052,7 +995,7 @@
   min-height: 22px;
   padding: 1px 8px;
   border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
-  border-radius: var(--ib-radius);
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--ib-surface);
   font-size: 11px;
   font-weight: 700;
@@ -1094,7 +1037,7 @@
   overflow-wrap: normal;
   word-break: normal;
   color: var(--dh-ink, var(--ib-ink));
-  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
   font-size: 12px;
   font-weight: 850;
   line-height: 1.35;
@@ -1164,7 +1107,7 @@
 .decisionActionDot {
   width: 8px;
   height: 24px;
-  border-radius: var(--ib-radius);
+  border-radius: var(--dh-api-radius, 6px);
   background: currentColor;
 }
 
@@ -1209,7 +1152,7 @@
   padding: 1px;
   overflow: hidden;
   border: 1px solid var(--dh-line-soft);
-  border-radius: 8px;
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-line-soft);
 }
 
@@ -1221,7 +1164,7 @@
   padding: 7px 9px;
   overflow: hidden;
   border: 0;
-  border-radius: 7px;
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-card);
 }
 
@@ -1230,7 +1173,7 @@
   position: absolute;
   inset: 0 auto 0 0;
   width: 3px;
-  border-radius: var(--ib-radius);
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-blue, var(--ib-accent));
 }
 
@@ -1247,7 +1190,7 @@
 }
 
 .briefCardPrimary {
-  background: rgba(125, 211, 252, 0.1);
+  background: rgba(114, 167, 220, 0.1);
   box-shadow: none;
 }
 
@@ -1300,7 +1243,7 @@
 }
 
 .kpiGridTape::-webkit-scrollbar-thumb {
-  border-radius: var(--ib-radius);
+  border-radius: var(--dh-api-radius, 6px);
   background: rgba(24, 80, 161, 0.22);
 }
 
@@ -1308,7 +1251,7 @@
   min-width: 0;
   padding: 8px 10px;
   border: 1px solid rgba(114, 147, 190, 0.28);
-  border-radius: var(--ib-radius);
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-card-soft, var(--ib-paper));
   box-shadow: none;
 }
@@ -1347,7 +1290,7 @@
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--dh-line-soft, var(--ib-hairline));
-  border-radius: var(--ib-radius);
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-line-soft, var(--ib-hairline));
 }
 
@@ -1417,13 +1360,13 @@
   padding: 12px 13px 10px;
   overflow: hidden;
   border: 1px solid var(--dh-line-soft);
-  border-radius: 8px;
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-card);
   box-shadow: none;
 }
 
 .kpiCard:nth-child(-n + 2) {
-  background: linear-gradient(180deg, rgba(125, 211, 252, 0.08), rgba(125, 211, 252, 0.015)), var(--dh-card);
+  background: linear-gradient(180deg, rgba(114, 167, 220, 0.08), rgba(114, 167, 220, 0.015)), var(--dh-card);
 }
 
 .kpiCard::before {
@@ -1440,8 +1383,8 @@
   inset: 10px 12px auto auto;
   width: 28px;
   height: 2px;
-  border-radius: 99px;
-  background: rgba(125, 211, 252, 0.22);
+  border-radius: 999px;
+  background: rgba(114, 167, 220, 0.22);
 }
 
 .kpiCard[data-tone="ok"]::before {
@@ -1457,11 +1400,11 @@
 }
 
 .kpiCard:nth-child(5n + 1) {
-  border-color: rgba(125, 211, 252, 0.32);
+  border-color: rgba(114, 167, 220, 0.32);
 }
 
 .kpiCard:hover {
-  border-color: rgba(125, 211, 252, 0.42);
+  border-color: rgba(114, 167, 220, 0.42);
   box-shadow: none;
 }
 
@@ -1482,7 +1425,7 @@
   width: 100%;
   margin-top: 10px;
   color: var(--dh-blue);
-  font-family: "Bahnschrift", "Aptos Display", "DIN Alternate", var(--dh-font-mono, ui-monospace, monospace);
+  font-family: var(--moss-font-mono);
   font-size: 22px;
   font-weight: 800;
   line-height: 1;
@@ -1553,7 +1496,7 @@
   padding: 12px 14px;
   background: var(--dh-card);
   border: 1px solid var(--dh-line-soft, var(--ib-hairline));
-  border-radius: 8px;
+  border-radius: var(--dh-api-radius, 6px);
   box-shadow: none;
 }
 
@@ -1567,7 +1510,7 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 1px;
   overflow: hidden;
-  border-radius: 8px;
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-line-soft, var(--ib-hairline));
 }
 
@@ -1689,7 +1632,7 @@
 .distTopHighlight em {
   justify-self: end;
   color: var(--dist-accent);
-  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
   font-size: 13px;
   font-style: normal;
   font-weight: 800;
@@ -1726,7 +1669,7 @@
   min-height: var(--dist-chart-height, 206px);
   overflow: hidden;
   border: 1px solid var(--dh-line-soft);
-  border-radius: 8px;
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-card-soft);
 }
 
@@ -1750,7 +1693,7 @@
 
 .distChartCenter strong {
   color: var(--portfolio-chart-ink, var(--ib-ink));
-  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
   font-size: 16px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
@@ -1764,7 +1707,7 @@
   padding: 0;
   overflow: hidden;
   border: 1px solid var(--dh-line-soft);
-  border-radius: 8px;
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-card);
   list-style: none;
   min-width: 0;
@@ -1797,7 +1740,7 @@
 .distDot {
   width: 8px;
   height: 20px;
-  border-radius: var(--ib-radius);
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--portfolio-chart-blue, var(--ib-accent));
   box-shadow: none;
 }
@@ -1834,7 +1777,7 @@
 
 .distMetric {
   color: var(--dist-accent);
-  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
   font-size: 12px;
   font-weight: 850;
   font-variant-numeric: tabular-nums;
@@ -1845,7 +1788,7 @@
   grid-column: 2 / -1;
   margin-top: -2px;
   color: var(--dh-muted-2, var(--ib-ink-muted));
-  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
   font-size: 12px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
@@ -1857,8 +1800,8 @@
   margin-left: 0;
   overflow: hidden;
   border: 0;
-  border-radius: var(--ib-radius);
-  background: rgba(125, 211, 252, 0.14);
+  border-radius: var(--dh-api-radius, 6px);
+  background: rgba(114, 167, 220, 0.14);
 }
 
 .distBarFill {
@@ -1898,7 +1841,7 @@
   min-height: 176px;
   padding: 12px;
   border: 1px dashed var(--dh-line);
-  border-radius: 8px;
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-card-soft);
 }
 
@@ -1945,7 +1888,7 @@
 .distEmptyBars span {
   display: block;
   height: 10px;
-  border-radius: var(--ib-radius);
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--portfolio-chart-blue, var(--ib-accent));
   opacity: 0.28;
 }
@@ -2008,7 +1951,7 @@
   min-height: 280px;
   padding: 10px 12px 8px;
   border: 1px solid var(--dh-line-soft);
-  border-radius: 8px;
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-card-soft);
 }
 
@@ -2032,7 +1975,7 @@
   content: "";
   width: 3px;
   height: 14px;
-  border-radius: var(--ib-radius);
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--ib-surface);
 }
 
@@ -2042,7 +1985,7 @@
   min-height: 240px;
   padding: 16px;
   border: 1px dashed rgba(24, 80, 161, 0.26);
-  border-radius: 8px;
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-card);
   background-position: left 46px, left 86px, left 126px, left 166px, 0 0;
   background-repeat: no-repeat;
@@ -2094,7 +2037,7 @@
 
 .compactValue {
   color: var(--dh-blue, var(--ib-accent));
-  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
   font-size: 12px;
   font-weight: 700;
   line-height: 1.45;
@@ -2150,7 +2093,7 @@
 
 .detailValue {
   color: var(--dh-blue, var(--ib-accent));
-  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
   font-size: 13px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
@@ -2169,7 +2112,7 @@
   padding: 12px;
   overflow: hidden;
   border: 1px solid var(--dh-line-soft, var(--ib-hairline));
-  border-radius: 8px;
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-card);
   box-shadow: none;
 }
@@ -2229,7 +2172,7 @@
 .holdingsHeroEmpty {
   padding: 12px;
   border: 1px dashed var(--dh-line-soft, var(--ib-hairline));
-  border-radius: var(--ib-radius);
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-card-soft, var(--ib-paper));
 }
 
@@ -2282,8 +2225,8 @@
 }
 
 .holdingsHeroBarTop strong {
-  color: #9fb4c7;
-  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  color: var(--dh-api-ink-soft);
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
   font-size: 11.5px;
   font-weight: 850;
   font-variant-numeric: tabular-nums;
@@ -2293,7 +2236,7 @@
 .holdingsHeroBarTrack {
   height: 7px;
   overflow: hidden;
-  border-radius: var(--ib-radius);
+  border-radius: var(--dh-api-radius, 6px);
   background: rgba(159, 180, 199, 0.14);
 }
 
@@ -2324,7 +2267,7 @@
 .holdingsHeroBarValue {
   overflow: hidden;
   color: var(--dh-muted-2, var(--ib-ink-muted));
-  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
   font-size: 12px;
   font-weight: 700;
   text-overflow: ellipsis;
@@ -2350,7 +2293,7 @@
   min-width: 0;
   padding: 10px;
   border: 1px solid var(--dh-line-soft);
-  border-radius: 7px;
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-card);
 }
 
@@ -2372,7 +2315,7 @@
   min-height: 26px;
   padding: 5px 8px;
   border: 1px solid rgba(159, 180, 199, 0.22);
-  border-radius: 4px;
+  border-radius: var(--dh-api-radius, 6px);
   background: rgba(16, 31, 51, 0.58);
   color: var(--dh-muted);
   text-decoration: none;
@@ -2403,7 +2346,7 @@
   width: auto;
   align-self: start;
   color: var(--portfolio-signal-info-strong);
-  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
   font-size: 11px;
   font-weight: 900;
   font-variant-numeric: tabular-nums;
@@ -2521,7 +2464,7 @@
   padding: 12px;
   overflow: hidden;
   border: 1px solid var(--dh-line-soft);
-  border-radius: 7px;
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-card);
 }
 
@@ -2553,7 +2496,7 @@
   min-height: 30px;
   padding: 7px 9px;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-card-soft);
 }
 
@@ -2566,7 +2509,7 @@
   gap: 1px;
   overflow: hidden;
   border: 1px solid var(--dh-line-soft);
-  border-radius: 4px;
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-line-soft);
 }
 
@@ -2616,7 +2559,7 @@
   gap: 10px;
   min-height: 0;
   padding: 11px;
-  border-radius: 7px;
+  border-radius: var(--dh-api-radius, 6px);
 }
 
 .holdingsHeroBand table.srOnly {
@@ -2663,7 +2606,7 @@
 }
 
 .holdingsHeroBarTrack {
-  background: rgba(125, 211, 252, 0.12);
+  background: rgba(114, 167, 220, 0.12);
 }
 
 .holdingsHeroBarFill {
@@ -2678,7 +2621,7 @@
   min-height: 0;
   padding: 11px;
   border: 1px solid var(--dh-line-soft);
-  border-radius: 7px;
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-card);
 }
 
@@ -2728,7 +2671,7 @@
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--dh-line-soft);
-  border-radius: 5px;
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-line-soft);
 }
 
@@ -2762,7 +2705,7 @@
 
 .exposureLedgerRow strong {
   color: var(--dh-blue);
-  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
   font-weight: 850;
   font-variant-numeric: tabular-nums;
 }
@@ -2781,7 +2724,7 @@
 .closureGate,
 .closureReviewCard {
   min-height: 180px;
-  border-radius: 7px;
+  border-radius: var(--dh-api-radius, 6px);
 }
 
 .closureReviewCard {
@@ -2796,7 +2739,7 @@
 }
 
 .closureReviewCardRisk {
-  border-color: rgba(246, 197, 111, 0.34);
+  border-color: rgba(201, 165, 101, 0.34);
 }
 
 .closureReviewCard .embeddedPanel {
@@ -2812,7 +2755,7 @@
 .structureTableWorkbench {
   gap: 10px;
   padding: 12px;
-  border-radius: 7px;
+  border-radius: var(--dh-api-radius, 6px);
 }
 
 .structureTableHead {
@@ -2839,14 +2782,14 @@
 .structureTableWorkbench :global(.ant-tabs-tab) {
   min-width: 132px;
   padding: 6px 8px;
-  border: 1px solid rgba(125, 211, 252, 0.28);
-  border-radius: 5px;
-  background: rgba(125, 211, 252, 0.1);
+  border: 1px solid rgba(114, 167, 220, 0.28);
+  border-radius: var(--dh-api-radius, 6px);
+  background: rgba(114, 167, 220, 0.1);
 }
 
 .structureTableWorkbench :global(.ant-tabs-tab:nth-child(2)) {
-  border-color: rgba(246, 197, 111, 0.34);
-  background: rgba(246, 197, 111, 0.16);
+  border-color: rgba(201, 165, 101, 0.34);
+  background: rgba(201, 165, 101, 0.16);
 }
 
 .structureTableWorkbench :global(.ant-tabs-ink-bar) {
@@ -2890,7 +2833,7 @@
   min-height: 34px;
   padding: 7px 10px;
   border-bottom: 0;
-  border-radius: 4px;
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-card-soft);
 }
 
@@ -2920,7 +2863,7 @@
   min-height: 34px;
   padding: 7px 9px;
   border-color: rgba(159, 180, 199, 0.2);
-  border-radius: 5px;
+  border-radius: var(--dh-api-radius, 6px);
   background: rgba(16, 31, 51, 0.46);
 }
 
@@ -2929,9 +2872,9 @@
   width: 20px;
   height: 20px;
   border: 1px solid rgba(159, 180, 199, 0.18);
-  border-radius: 4px;
+  border-radius: var(--dh-api-radius, 6px);
   background: rgba(11, 23, 40, 0.72);
-  color: #9fb4c7;
+  color: var(--dh-api-ink-soft);
   font-size: 11px;
 }
 
@@ -2956,7 +2899,7 @@
 
 .decisionPanel {
   grid-template-columns: minmax(254px, 0.68fr) minmax(0, 1.32fr);
-  border-color: rgba(125, 211, 252, 0.32);
+  border-color: rgba(114, 167, 220, 0.32);
 }
 
 .decisionLedger {
@@ -2993,9 +2936,9 @@
 }
 
 .kpiCard[data-empty="true"] {
-  border-color: rgba(246, 197, 111, 0.32);
+  border-color: rgba(201, 165, 101, 0.32);
   background:
-    linear-gradient(180deg, rgba(246, 197, 111, 0.1), rgba(246, 197, 111, 0.018)),
+    linear-gradient(180deg, rgba(201, 165, 101, 0.1), rgba(201, 165, 101, 0.018)),
     var(--dh-card);
 }
 
@@ -3022,19 +2965,19 @@
 
 .summaryLedgerCard {
   min-height: 158px;
-  border-color: rgba(125, 211, 252, 0.2);
+  border-color: rgba(114, 167, 220, 0.2);
 }
 
 .summaryLedgerCard .chartSnapshotCard,
 .summaryLedgerCard .briefCard,
 .summaryLedgerCard .statusCell {
   min-height: 34px;
-  border-left: 2px solid rgba(125, 211, 252, 0.28);
+  border-left: 2px solid rgba(114, 167, 220, 0.28);
 }
 
 .summaryLedgerCard .briefCardWatch,
 .summaryLedgerCard .statusCell:has(.toneWatch) {
-  border-left-color: rgba(246, 197, 111, 0.58);
+  border-left-color: rgba(201, 165, 101, 0.58);
 }
 
 .summaryLedgerCard .chartMiniSkeleton {
@@ -3043,7 +2986,7 @@
 
 .summaryLedgerCard .chartMiniSkeleton span {
   height: 8px;
-  background: linear-gradient(90deg, rgba(125, 211, 252, 0.28), rgba(125, 211, 252, 0.1));
+  background: linear-gradient(90deg, rgba(114, 167, 220, 0.28), rgba(114, 167, 220, 0.1));
 }
 
 .holdingsHeroEmpty {
@@ -3053,16 +2996,16 @@
   padding: 14px;
   border-style: solid;
   background:
-    linear-gradient(rgba(125, 211, 252, 0.08) 0 0) 14px 34px / 76% 8px no-repeat,
-    linear-gradient(rgba(125, 211, 252, 0.12) 0 0) 14px 58px / 62% 8px no-repeat,
-    linear-gradient(rgba(246, 197, 111, 0.18) 0 0) 14px 82px / 46% 8px no-repeat,
+    linear-gradient(rgba(114, 167, 220, 0.08) 0 0) 14px 34px / 76% 8px no-repeat,
+    linear-gradient(rgba(114, 167, 220, 0.12) 0 0) 14px 58px / 62% 8px no-repeat,
+    linear-gradient(rgba(201, 165, 101, 0.18) 0 0) 14px 82px / 46% 8px no-repeat,
     var(--dh-card-soft);
   color: var(--dh-amber);
   font-weight: 820;
 }
 
 .exposureWorkbenchSection {
-  border-color: rgba(125, 211, 252, 0.22);
+  border-color: rgba(114, 167, 220, 0.22);
 }
 
 .exposureLedgerRow strong {
@@ -3075,7 +3018,7 @@
 }
 
 .closureReviewCard {
-  border-color: rgba(125, 211, 252, 0.18);
+  border-color: rgba(114, 167, 220, 0.18);
 }
 
 .closureReviewCard .detailRow {
@@ -3087,7 +3030,7 @@
 }
 
 .structureTableWorkbench {
-  border-color: rgba(125, 211, 252, 0.2);
+  border-color: rgba(114, 167, 220, 0.2);
   padding: 10px;
 }
 
@@ -3107,8 +3050,8 @@
 
 .quickAccessBlock,
 .drilldownBlock {
-  border: 1px solid rgba(125, 211, 252, 0.14);
-  border-radius: 7px;
+  border: 1px solid rgba(114, 167, 220, 0.14);
+  border-radius: var(--dh-api-radius, 6px);
   background: rgba(16, 31, 51, 0.48);
 }
 
@@ -3139,7 +3082,7 @@
   margin: 0;
   padding: 9px 12px;
   border: 1px solid var(--dh-line-soft);
-  border-radius: 8px;
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-card-soft);
   color: var(--dh-muted);
   font-size: 11px;
@@ -3180,7 +3123,7 @@
   min-height: 26px;
   padding: 4px 8px;
   border: 1px solid var(--dh-line, var(--ib-hairline));
-  border-radius: var(--ib-radius);
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--ib-surface);
   color: var(--dh-ink, var(--ib-ink));
   line-height: 1.2;
@@ -3218,7 +3161,7 @@
   display: inline-flex;
   align-items: center;
   padding: 2px 10px;
-  border-radius: var(--ib-radius);
+  border-radius: var(--dh-api-radius, 6px);
   font-size: 11px;
   font-weight: 700;
   border: 1px solid var(--dh-line, var(--ib-hairline));
@@ -3534,7 +3477,7 @@
 
   .decisionPanel {
     grid-template-columns: minmax(268px, 0.66fr) minmax(0, 1.34fr);
-    border-color: rgba(125, 211, 252, 0.38);
+    border-color: rgba(114, 167, 220, 0.38);
   }
 
   .decisionLedger {
@@ -4243,7 +4186,7 @@
     max-height: 148px;
     overflow: hidden;
     border: 1px solid var(--dh-line-soft);
-    border-radius: 4px;
+    border-radius: var(--dh-api-radius, 6px);
     background: var(--dh-line-soft);
   }
 
@@ -4499,12 +4442,12 @@
 
 /* Portfolio cockpit color polish: amber carries review, blue carries structure. */
 .portfolioPage {
-  --portfolio-signal-info: #8faec3;
-  --portfolio-signal-info-strong: #acc6d6;
-  --portfolio-signal-info-muted: #6f879b;
-  --portfolio-signal-review: #e4b363;
-  --portfolio-signal-ok: #8fb486;
-  --portfolio-signal-danger: #c9878a;
+  --portfolio-signal-info: var(--dh-api-blue);
+  --portfolio-signal-info-strong: color-mix(in srgb, var(--dh-api-blue) 72%, var(--dh-api-ink));
+  --portfolio-signal-info-muted: var(--dh-api-muted);
+  --portfolio-signal-review: var(--dh-api-amber);
+  --portfolio-signal-ok: var(--dh-api-green);
+  --portfolio-signal-danger: var(--dh-api-red);
   --portfolio-info-soft: rgba(143, 174, 195, 0.095);
   --portfolio-info-border: rgba(143, 174, 195, 0.22);
   --portfolio-info-border-strong: rgba(143, 174, 195, 0.32);
@@ -4515,7 +4458,7 @@
   --portfolio-danger-soft: rgba(201, 135, 138, 0.13);
   --portfolio-danger-border: rgba(201, 135, 138, 0.28);
   --ib-accent: var(--portfolio-signal-info);
-  --ib-accent-hover: #c0d5e1;
+  --ib-accent-hover: color-mix(in srgb, var(--dh-api-blue) 78%, var(--dh-api-ink));
   --ib-accent-surface: var(--portfolio-info-soft);
   --ib-up: var(--portfolio-signal-ok);
   --ib-down: var(--portfolio-signal-danger);
@@ -4534,25 +4477,25 @@
   --moss-color-primary-100: rgba(143, 174, 195, 0.14);
   --moss-color-primary-200: var(--portfolio-info-border);
   --moss-color-primary-700: var(--portfolio-signal-info);
-  --moss-color-info-100: #d4e1ea;
+  --moss-color-info-100: color-mix(in srgb, var(--dh-api-blue) 30%, var(--dh-api-ink));
   --moss-color-info-300: var(--portfolio-signal-info-strong);
   --moss-color-info-400: var(--portfolio-signal-info);
-  --moss-color-info-500: #789ab1;
+  --moss-color-info-500: var(--dh-api-muted);
   --moss-color-success-100: var(--portfolio-ok-border);
   --moss-color-success-300: var(--portfolio-signal-ok);
-  --moss-color-success-500: #9cc08f;
+  --moss-color-success-500: var(--dh-api-green);
   --moss-color-warning-50: var(--portfolio-review-soft);
   --moss-color-warning-200: var(--portfolio-review-border);
   --moss-color-warning-300: var(--portfolio-signal-review);
-  --moss-color-warning-400: #d89f4b;
+  --moss-color-warning-400: var(--dh-api-amber);
   --moss-color-danger-50: var(--portfolio-danger-soft);
   --moss-color-danger-200: var(--portfolio-danger-border);
   --moss-color-danger-500: var(--portfolio-signal-danger);
-  --portfolio-chart-blue: #8ea6b7;
-  --portfolio-chart-info: #6583a0;
-  --portfolio-chart-green: #7f9a7b;
-  --portfolio-chart-amber: #b69762;
-  --portfolio-chart-red: #a87578;
+  --portfolio-chart-blue: var(--dh-api-blue);
+  --portfolio-chart-info: var(--dh-api-ink-soft);
+  --portfolio-chart-green: var(--dh-api-green);
+  --portfolio-chart-amber: var(--dh-api-amber);
+  --portfolio-chart-red: var(--dh-api-red);
 }
 
 .decisionAction:hover {
@@ -4725,7 +4668,7 @@
   height: auto;
   min-height: 350px;
   padding: 16px 20px 18px;
-  border-radius: 12px;
+  border-radius: var(--dh-api-radius, 6px);
   background:
     linear-gradient(180deg, rgba(17, 29, 49, 0.94), rgba(12, 23, 39, 0.96)),
     var(--dh-card);
@@ -4753,7 +4696,7 @@
 
 .portfolioStructureWorkbench .workbenchSectionHead p {
   grid-column: 1;
-  color: #6f879b;
+  color: var(--dh-api-muted);
   font-size: 13px;
   font-weight: 720;
   line-height: 1.32;
@@ -4764,12 +4707,12 @@
   padding: 0;
   border: 0;
   background: transparent;
-  color: #91a8bd;
+  color: var(--dh-api-soft);
   font-size: 12px;
 }
 
 .portfolioStructureWorkbench .workbenchSectionMeta em::first-letter {
-  color: #35e58f;
+  color: var(--dh-api-green);
 }
 
 .structureTableWorkbench {
@@ -4806,7 +4749,7 @@
   margin: 0;
   padding: 0 14px;
   border: 1px solid rgba(143, 174, 195, 0.18);
-  border-radius: 10px;
+  border-radius: var(--dh-api-radius, 6px);
   background: rgba(13, 25, 43, 0.54);
 }
 
@@ -4821,7 +4764,7 @@
 }
 
 .structureTableWorkbench :global(.ant-tabs-tab-btn) {
-  color: #8fa7bc;
+  color: var(--dh-api-ink-soft);
   font-size: 14px;
   font-weight: 760;
   text-shadow: none;
@@ -4846,7 +4789,7 @@
   padding: 0;
   border: 0;
   background: transparent;
-  color: #6da3ee;
+  color: var(--dh-api-blue);
   font-size: 11px;
 }
 
@@ -4862,7 +4805,7 @@
   min-height: 24px;
   padding: 0 12px 7px;
   border-bottom: 1px solid rgba(143, 174, 195, 0.18);
-  color: #5f7890;
+  color: var(--dh-api-muted);
   font-size: 12px;
   font-weight: 680;
 }
@@ -4899,7 +4842,7 @@
 .structureTableWorkbench .compactSource,
 .structureTableWorkbench .compactCount,
 .structureTableWorkbench .compactValue {
-  font-family: "Bahnschrift", "Aptos Mono", "IBM Plex Mono", ui-monospace, monospace;
+  font-family: var(--moss-font-mono);
   font-size: 14px;
   font-weight: 760;
   letter-spacing: 0;
@@ -4914,7 +4857,7 @@
 
 .structureTableWorkbench .compactSource,
 .structureTableWorkbench .compactCount {
-  color: #9bb6d2;
+  color: color-mix(in srgb, var(--dh-api-blue) 55%, var(--dh-api-ink));
   text-align: right;
 }
 
@@ -5101,7 +5044,7 @@
   width: 18px;
   height: 18px;
   border: 1px solid var(--dh-line-soft);
-  border-radius: 5px;
+  border-radius: var(--dh-api-radius, 6px);
   color: var(--dh-blue);
   font-family: var(--dh-font-mono, ui-monospace, monospace);
   font-size: 12px;
@@ -5275,7 +5218,7 @@
     min-height: 30px;
     padding: 5px 11px;
     border-color: rgba(143, 174, 195, 0.22);
-    border-radius: 8px;
+    border-radius: var(--dh-api-radius, 6px);
     background: rgba(18, 32, 52, 0.78);
   }
 
@@ -5290,7 +5233,7 @@
     min-height: 126px;
     padding: 16px 20px;
     border-color: rgba(228, 179, 99, 0.38);
-    border-radius: 12px;
+    border-radius: var(--dh-api-radius, 6px);
     background:
       linear-gradient(180deg, rgba(22, 28, 40, 0.94), rgba(15, 22, 34, 0.96)),
       var(--dh-card);
@@ -5351,7 +5294,7 @@
   .decisionAction {
     min-height: 31px;
     padding: 5px 8px;
-    border-radius: 7px;
+    border-radius: var(--dh-api-radius, 6px);
   }
 
   .decisionActionText strong {
@@ -5397,7 +5340,7 @@
   .kpiCard {
     min-height: 108px;
     padding: 14px 15px 12px;
-    border-radius: 10px;
+    border-radius: var(--dh-api-radius, 6px);
   }
 
   .kpiCard::before {
@@ -5411,7 +5354,7 @@
   }
 
   .kpiLabel {
-    color: #8fa7bc;
+    color: var(--dh-api-ink-soft);
     font-size: 12px;
     font-weight: 760;
   }
@@ -5457,8 +5400,8 @@
 
 /* Status taxonomy pass: quiet pending/data states, reserve warm color for real review blockers. */
 .portfolioPage {
-  --portfolio-status-idle: #7f93a7;
-  --portfolio-status-idle-strong: #a4b6c7;
+  --portfolio-status-idle: var(--dh-api-muted);
+  --portfolio-status-idle-strong: var(--dh-api-ink-soft);
   --portfolio-status-idle-soft: rgba(127, 147, 167, 0.11);
   --portfolio-status-idle-border: rgba(127, 147, 167, 0.22);
   --portfolio-status-review-soft: rgba(203, 161, 92, 0.1);
@@ -5481,7 +5424,7 @@
 
 .stateError,
 .terminalStatus.toneError {
-  color: color-mix(in srgb, var(--portfolio-signal-danger) 86%, #f3f8ff);
+  color: color-mix(in srgb, var(--portfolio-signal-danger) 86%, var(--dh-api-ink));
   border-color: rgba(201, 135, 138, 0.32);
   background: rgba(201, 135, 138, 0.11);
 }
@@ -5611,10 +5554,6 @@
 }
 
 @media (min-width: 1101px) {
-  .kpiCard[data-empty="true"] {
-    box-shadow: inset 0 0 0 1px rgba(127, 147, 167, 0.035);
-  }
-
   .terminalStatus.toneWatch,
   .stateWatch {
     font-weight: 760;
@@ -5699,7 +5638,7 @@
 .workbenchSectionHead h2 i[data-section-index] {
   margin-right: 9px;
   color: var(--dh-api-blue, var(--dh-blue));
-  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
   font-size: 11px;
   font-style: normal;
   font-weight: 760;
@@ -5715,7 +5654,7 @@
 
 .decisionAction i[data-row-index] {
   color: var(--dh-api-blue, var(--dh-blue));
-  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
   font-size: 10.5px;
   font-style: normal;
   font-weight: 760;
@@ -5727,7 +5666,7 @@
 .portfolioPageMain p[data-empty] {
   position: relative;
   padding: 10px 12px 10px 34px;
-  border: 1px dashed var(--dh-line-soft, rgba(125, 211, 252, 0.3));
+  border: 1px dashed var(--dh-line-soft, rgba(114, 167, 220, 0.3));
   border-radius: 6px;
 }
 
@@ -5738,9 +5677,9 @@
   top: 50%;
   width: 12px;
   height: 12px;
-  border: 1px solid rgba(125, 211, 252, 0.35);
-  border-radius: 99px;
-  background: radial-gradient(circle at center, rgba(125, 211, 252, 0.55) 0 2px, transparent 2px);
+  border: 1px solid rgba(114, 167, 220, 0.35);
+  border-radius: 999px;
+  background: radial-gradient(circle at center, rgba(114, 167, 220, 0.55) 0 2px, transparent 2px);
   transform: translateY(-50%);
 }
 
@@ -5784,7 +5723,7 @@
 .exposureLedgerRow:hover span,
 .exposureLedgerRow:hover strong,
 .exposureLedgerRow:hover em {
-  background: rgba(125, 211, 252, 0.07);
+  background: rgba(114, 167, 220, 0.07);
 }
 
 /* Decision fact labels read as quiet caps above tabular values. */
@@ -5803,5 +5742,156 @@
   .exposureLedgerRow strong,
   .exposureLedgerRow em {
     transition: none;
+  }
+}
+
+/* ── 统一纪律样张层（2026-07-19）：
+   1) 数字统一 tabular 等宽声部（--moss-font-mono 系统栈）；
+   2) 读数不是链接：KPI 主值与表格读数一律中性 ink，蓝色只留交互；
+   3) 状态只由色条与徽标承载，主值不再整体染色（error 保留红）；
+   4) 层级靠面板递进与发丝线：去渐变洗底、装饰划线与随机边框强调。── */
+
+.portfolioPage {
+  --dh-font-sans: var(--moss-font-sans);
+  --dh-font-mono: var(--moss-font-mono);
+  background: var(--dh-api-bg);
+}
+
+.kpiValue {
+  font-family: var(--moss-font-mono);
+  letter-spacing: -0.01em;
+}
+
+.structureTableWorkbench .compactLabel,
+.structureTableWorkbench .compactSource,
+.structureTableWorkbench .compactCount,
+.structureTableWorkbench .compactValue {
+  font-family: var(--moss-font-mono);
+}
+
+.kpiValue,
+.kpiValue.toneOk,
+.kpiValue.toneWatch,
+.kpiValue.toneMuted {
+  color: var(--dh-api-ink);
+}
+
+.kpiValue.toneError {
+  color: color-mix(in srgb, var(--dh-api-red) 86%, var(--dh-api-ink));
+}
+
+.kpiCard[data-empty="true"] .kpiValue,
+.kpiCard[data-empty="true"] .kpiValue.toneWatch,
+.kpiCard[data-empty="true"] .kpiValue.toneMuted {
+  color: var(--portfolio-status-idle-strong);
+}
+
+.terminalPanelHead span {
+  color: var(--dh-api-muted);
+}
+
+.chartMiniMetric,
+.structureTableWorkbench .compactValue,
+.holdingsHeroFigureHead strong {
+  color: var(--dh-api-ink);
+}
+
+.structureTableWorkbench .compactSource,
+.structureTableWorkbench .compactCount {
+  color: var(--dh-api-soft);
+}
+
+.kpiCard:nth-child(-n + 2),
+.kpiCard[data-empty="true"],
+.kpiCard[data-empty="true"]:hover {
+  background: var(--dh-card);
+}
+
+.kpiCard::after {
+  content: none;
+}
+
+.kpiCard:nth-child(5n + 1) {
+  border-color: var(--dh-line-soft);
+}
+
+.kpiCard:hover {
+  border-color: var(--portfolio-info-border-strong);
+}
+
+.holdingsHeroFigure {
+  background: var(--dh-api-panel-2);
+}
+
+.exposureWorkbenchHead h2 {
+  color: var(--dh-api-ink);
+}
+
+.exposureLedgerRow strong,
+.detailValue {
+  color: var(--dh-api-ink);
+  font-family: var(--moss-font-mono);
+}
+
+/* ── 审美优先打磨层（2026-07-19，业主确认可不严格遵循 DESIGN.md 锁项）：
+   1) 呼吸感：页级间距与卡片内边距放宽，降低"塞满一屏"的压迫感；
+   2) 软化形状：本页圆角 6px→10px（覆盖 --dh-api-radius 页级变量）；
+   3) 减少框套框：卡内嵌套面板去边框，只留背景递进；
+   4) 活性：状态圆点加缓慢呼吸脉动（呼应业主喜欢的呼吸动效），
+      reduced-motion 下退化为静态。── */
+
+.portfolioPage {
+  --dh-api-radius: 10px;
+  gap: 20px;
+  padding: 20px;
+}
+
+.portfolioPageMain {
+  gap: 20px;
+}
+
+.kpiGrid {
+  gap: 12px;
+}
+
+.kpiCard {
+  min-height: 118px;
+  padding: 16px 17px 14px;
+}
+
+.kpiCard.kpiCardSecondary {
+  padding: 12px 14px 11px;
+}
+
+.kpiValue {
+  margin-top: 13px;
+}
+
+.holdingsHeroFigure {
+  border: 0;
+  padding: 12px;
+}
+
+.exposureLedgerTable {
+  border-radius: 8px;
+}
+
+.decisionActionDot {
+  animation: portfolioDotBreathe 3.2s ease-in-out infinite;
+}
+
+@keyframes portfolioDotBreathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .decisionActionDot {
+    animation: none;
   }
 }

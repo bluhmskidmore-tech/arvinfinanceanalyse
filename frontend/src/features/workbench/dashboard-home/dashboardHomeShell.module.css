@@ -32,8 +32,8 @@
   --dh-shadow-hover: none;
   --dh-radius: 6px;
   --dh-radius-lg: 8px;
-  --dh-font-sans: "Inter", "PingFang SC", "Microsoft YaHei UI", -apple-system, BlinkMacSystemFont, sans-serif;
-  --dh-font-mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo, Monaco, Consolas, monospace;
+  --dh-font-sans: var(--moss-font-sans);
+  --dh-font-mono: var(--moss-font-mono);
 
   /* ── IB light-theme overrides for dark dashboard scope ──
      The --ib-* tokens are defined globally for the light IB theme.
@@ -2668,7 +2668,7 @@ a.dhEvidenceRow:hover {
   position: relative;
   transition: background 0.22s ease;
 }
-/* Top color band for each cell (semantic: scale=blue, pnl=green, risk=amber, credit=purple) */
+/* Top color band for each cell (semantic: scale=blue, pnl=green, risk=amber, credit=dh-api-blue) */
 .dhKpiLedgerGrid > div:nth-child(1)::before,
 .dhKpiLedgerGrid > div:nth-child(5)::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, rgba(59,130,246,0.7), rgba(59,130,246,0.2)); border-radius: 6px 6px 0 0; }
 .dhKpiLedgerGrid > div:nth-child(2)::before,
@@ -2676,7 +2676,7 @@ a.dhEvidenceRow:hover {
 .dhKpiLedgerGrid > div:nth-child(3)::before,
 .dhKpiLedgerGrid > div:nth-child(7)::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, rgba(245,158,11,0.7), rgba(245,158,11,0.2)); border-radius: 6px 6px 0 0; }
 .dhKpiLedgerGrid > div:nth-child(4)::before,
-.dhKpiLedgerGrid > div:nth-child(8)::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, rgba(139,92,246,0.7), rgba(139,92,246,0.2)); border-radius: 6px 6px 0 0; }
+.dhKpiLedgerGrid > div:nth-child(8)::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: rgba(114, 167, 220, 0.6); border-radius: 6px 6px 0 0; }
 
 .dhKpiLedgerCell:hover {
   background: rgba(255, 255, 255, 0.022);
@@ -4532,73 +4532,9 @@ i.dhApiStateMuted {
   }
 }
 
-/* 首页深色驾驶舱接管壳层背景，消除深色容器四周的浅色接缝。
-   色值须与 .dhPage 的 --dh-bg 一致（壳层选择器取不到该变量）；
-   !important 用于压过 dashboardCockpit.css 中 --cockpit 的 !important 背景声明。 */
-:global(.workbench-shell-grid--cockpit:has([data-testid="dashboard-home-page"])) {
-  background: #070b12 !important;
-}
-
-/* Dashboard home cohesion pass: shell chrome, rail tasks, evidence chain, and status motion. */
-:global(.workbench-shell-grid--cockpit:has([data-testid="dashboard-home-page"])) {
-  background:
-    radial-gradient(circle at 18% 0%, rgba(114, 167, 220, 0.06), transparent 26%),
-    radial-gradient(circle at 90% 12%, rgba(201, 165, 101, 0.04), transparent 28%),
-    #070b12 !important;
-}
-
-:global(.workbench-shell-grid--cockpit:has([data-testid="dashboard-home-page"]) .workbench-shell-rail) {
-  background:
-    linear-gradient(180deg, rgba(17, 27, 42, 0.98), rgba(8, 13, 22, 0.98)),
-    #0a1019 !important;
-  border-right: 1px solid rgba(126, 157, 194, 0.18) !important;
-  box-shadow:
-    inset -1px 0 0 rgba(232, 238, 247, 0.04),
-    18px 0 48px rgba(0, 0, 0, 0.18);
-}
-
-:global(.workbench-shell-grid--cockpit:has([data-testid="dashboard-home-page"]) .workbench-shell-rail-brand-wrap) {
-  border-bottom: 1px solid rgba(126, 157, 194, 0.14);
-  margin-bottom: 12px;
-  padding-bottom: 16px;
-}
-
-:global(.workbench-shell-grid--cockpit:has([data-testid="dashboard-home-page"]) .workbench-shell-rail-mark) {
-  background:
-    linear-gradient(145deg, rgba(232, 238, 247, 0.08), rgba(7, 12, 20, 0.9)),
-    #0d1728;
-  border: 1px solid rgba(126, 157, 194, 0.24);
-  box-shadow:
-    inset 0 1px 0 rgba(232, 238, 247, 0.08),
-    0 10px 24px rgba(0, 0, 0, 0.18);
-}
-
-:global(.workbench-shell-grid--cockpit:has([data-testid="dashboard-home-page"]) .workbench-shell-group-link),
-:global(.workbench-shell-grid--cockpit:has([data-testid="dashboard-home-page"]) .workbench-shell-agent-nav__link),
-:global(.workbench-shell-grid--cockpit:has([data-testid="dashboard-home-page"]) .workbench-shell-support-link) {
-  border: 1px solid transparent;
-  border-radius: 4px;
-  position: relative;
-  transition:
-    background 160ms ease,
-    border-color 160ms ease,
-    color 160ms ease;
-}
-
-:global(.workbench-shell-grid--cockpit:has([data-testid="dashboard-home-page"]) .workbench-shell-group-link:hover),
-:global(.workbench-shell-grid--cockpit:has([data-testid="dashboard-home-page"]) .workbench-shell-agent-nav__link:hover),
-:global(.workbench-shell-grid--cockpit:has([data-testid="dashboard-home-page"]) .workbench-shell-support-link:hover) {
-  background: rgba(114, 167, 220, 0.08);
-  border-color: rgba(114, 167, 220, 0.2);
-}
-
-:global(.workbench-shell-grid--cockpit:has([data-testid="dashboard-home-page"]) .workbench-shell-group-link[data-active="true"]) {
-  background:
-    linear-gradient(90deg, rgba(201, 165, 101, 0.16), rgba(114, 167, 220, 0.08)),
-    rgba(16, 26, 42, 0.88);
-  border-color: rgba(201, 165, 101, 0.28);
-  box-shadow: inset 3px 0 0 rgba(201, 165, 101, 0.84);
-}
+/* 壳层深色驾驶舱反写已上收到 src/styles/workbenchShell.css 的
+   `.workbench-shell-grid--cockpit:has(.theme-dh-api)` 变体（页根挂 theme-dh-api 即生效），
+   此处不再保留页级 :global 壳层覆盖。 */
 
 .dhApiBackedHome .dhTopbar {
   background:
@@ -5282,6 +5218,17 @@ i.dhApiStateMuted {
   will-change: opacity;
 }
 
+/* DESIGN.md §8 单点豁免（2026-07-19）：首页 hero 环境呼吸光，仅此一处。 */
+@keyframes dhAmbientCanvasBreathe {
+  0%,
+  100% {
+    opacity: 0.76;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 .dhApiDecisionBand,
 .dhApiSourceGate,
 .dhApiKpiGrid,
@@ -5331,16 +5278,6 @@ i.dhApiStateMuted {
   to {
     opacity: 1;
     transform: translateY(0);
-  }
-}
-
-@keyframes dhAmbientCanvasBreathe {
-  0%,
-  100% {
-    opacity: 0.76;
-  }
-  50% {
-    opacity: 1;
   }
 }
 
@@ -5493,11 +5430,7 @@ i.dhApiStateMuted {
   background: none;
 }
 
-/* 装饰画布：仅作为透明占位（动画已在 TS 中静态化） */
-.dhApiHeroCanvas {
-  opacity: 0;
-  display: none;
-}
+/* 装饰画布：hero 环境呼吸光（DESIGN.md §8 豁免），reduced-motion 时由下方规则隐藏。 */
 
 /* ── 3. 决策/来源/KPI 卡：去玻璃、阴影、网格线；改用面板背景 + 细线 ── */
 .dhApiBackedHome .dhApiDecisionBand,
@@ -6652,4 +6585,17 @@ i.dhApiStateMuted {
     min-height: 52px;
     padding: 10px 12px;
   }
+}
+
+/* 复核助手入口：沿用刷新按钮语言，仅取消 reload 图标的 hover 旋转 */
+.dhAgentEntryBtn {
+  composes: dhRefreshBtn;
+}
+
+.dhApiBackedHome .dhAgentEntryBtn:hover :global(.moss-light-icon) {
+  transform: none;
+}
+
+.dhAgentDrawerBody {
+  min-height: 200px;
 }

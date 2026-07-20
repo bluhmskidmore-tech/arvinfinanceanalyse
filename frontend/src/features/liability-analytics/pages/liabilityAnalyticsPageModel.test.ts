@@ -43,7 +43,7 @@ describe("buildLiabilityAnalyticsPageReadModel", () => {
     });
 
     expect(model.statusBadges.map((badge) => badge.label)).toContain("真实链路");
-    expect(model.statusBadges.map((badge) => badge.label)).toContain("2 个兼容端点缺少可见 meta");
+    expect(model.statusBadges.map((badge) => badge.label)).toContain("2 个兼容端点缺少可见元数据");
     expect(model.kpis).toHaveLength(6);
     expect(model.kpis.find((kpi) => kpi.key === "warnings")?.value).toBe("3条");
     expect(model.evidenceCards).toHaveLength(3);
@@ -109,7 +109,7 @@ describe("buildLiabilityAnalyticsPageReadModel", () => {
       syntheticSections: [],
     });
 
-    expect(model.reportLine).toBe("2026 年 · 2026-04 · 月度日均");
+    expect(model.reportLine).toBe("2026 年 · 2026-04（月度日均）");
     expect(model.kpis).toEqual([
       { key: "year", label: "统计年份", value: "2026", detail: "月度日均口径" },
       { key: "month", label: "当前月份", value: "2026-04", detail: "按月选择" },

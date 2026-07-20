@@ -32,36 +32,13 @@ import {
   numericToYiNumeric,
   shareOfTotalNumeric,
 } from "../utils/money";
-import { designTokens } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
 import { buildLiabilityAnalyticsPageReadModel } from "./liabilityAnalyticsPageModel";
 import "./LiabilityAnalyticsPage.css";
 
 const { Text } = Typography;
 
-const numericTabularStyle = { fontVariantNumeric: "tabular-nums" as const };
-
 type TabKey = "daily" | "monthly";
-
-const threeColumnGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-  gap: designTokens.space[4],
-  marginBottom: designTokens.space[4],
-} as const;
-
-const twoColumnGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
-  gap: designTokens.space[4],
-  marginBottom: designTokens.space[4],
-} as const;
-
-const sectionCardStyle = {
-  borderRadius: designTokens.radius.lg,
-  border: `1px solid ${designTokens.color.neutral[200]}`,
-  background: "#ffffff",
-  boxShadow: designTokens.shadow.card,
-} as const;
 
 function sumKnownNumericRaw(values: Array<number | null | undefined>): number | null {
   let hasValue = false;
@@ -77,7 +54,7 @@ function sumKnownNumericRaw(values: Array<number | null | undefined>): number | 
 
 function formatYiOrDash(value: number | null | undefined, digits = 0): string {
   if (value === null || value === undefined || !Number.isFinite(value)) {
-    return "—";
+    return EM_DASH;
   }
   return value.toFixed(digits);
 }
@@ -106,7 +83,7 @@ function buildDailyLiabilityConclusion(args: {
     return {
       title: "当前结论",
       body: "负债成本已经压过资产收益，净息差承压。",
-      detail: `当前 NIM ${args.yieldKpi?.nim?.display ?? "—"}，需优先检查高成本资金来源与期限结构。`,
+      detail: `当前 NIM ${args.yieldKpi?.nim?.display ?? EM_DASH}，需优先检查高成本资金来源与期限结构。`,
     };
   }
 
@@ -114,14 +91,14 @@ function buildDailyLiabilityConclusion(args: {
     return {
       title: "当前结论",
       body: "净息差仍为正，但资金来源集中度偏高，头部对手方依赖需要重点关注。",
-      detail: `头部对手方占比 ${args.counterpartyRows[0]?.share?.display ?? "—"}，当前 NIM ${args.yieldKpi?.nim?.display ?? "—"}。`,
+      detail: `头部对手方占比 ${args.counterpartyRows[0]?.share?.display ?? EM_DASH}，当前 NIM ${args.yieldKpi?.nim?.display ?? EM_DASH}。`,
     };
   }
 
   return {
     title: "当前结论",
     body: "净息差仍为正，资金来源分布相对均衡。",
-    detail: `头部对手方占比 ${args.counterpartyRows[0]?.share?.display ?? "—"}，当前 NIM ${args.yieldKpi?.nim?.display ?? "—"}。`,
+    detail: `头部对手方占比 ${args.counterpartyRows[0]?.share?.display ?? EM_DASH}，当前 NIM ${args.yieldKpi?.nim?.display ?? EM_DASH}。`,
   };
 }
 
@@ -460,7 +437,7 @@ export default function LiabilityAnalyticsPage() {
       dailyTerm.filter((item) => bucketFallsWithinOneYear(item.bucket)).map((item) => item.amountYi?.raw),
     );
   }, [dailyTerm]);
-  const topCounterpartyShare = dailyCpRows[0]?.share?.display ?? "—";
+  const topCounterpartyShare = dailyCpRows[0]?.share?.display ?? EM_DASH;
   const watchItems: CockpitWatchItem[] = cockpitWarningsQuery.data?.result?.watch_items ?? [];
   const alertEvents: CockpitAlertEvent[] = cockpitWarningsQuery.data?.result?.alert_events ?? [];
   const syntheticSections = useMemo(() => getLiabilitySyntheticSectionStates(), []);
@@ -469,27 +446,33 @@ export default function LiabilityAnalyticsPage() {
     () => [
       {
         label: "期限错配",
-        level: firstYearPressureYi === null ? "—" : firstYearPressureYi > 0 ? "中高" : "低",
+        level: firstYearPressureYi === null ? EM_DASH : firstYearPressureYi > 0 ? "中高" : "低",
         trend: "↑",
         status: "关注",
         detail: `${formatYiOrDash(firstYearPressureYi)} 亿`,
       },
       {
         label: "流动性压力",
-        level: liabilityTotalYi === null ? "—" : liabilityTotalYi > 0 ? "中高" : "低",
+        level: liabilityTotalYi === null ? EM_DASH : liabilityTotalYi > 0 ? "中高" : "低",
         trend: "↑",
         status: "关注",
         detail: `${formatYiOrDash(liabilityTotalYi)} 亿`,
       },
       {
         label: "负债滚续压力",
-        level: firstYearPressureYi === null ? "—" : firstYearPressureYi > 100 ? "高" : "中",
+        level: firstYearPressureYi === null ? EM_DASH : firstYearPressureYi > 100 ? "高" : "中",
         trend: "↑",
         status: "预警",
         detail: `${formatYiOrDash(firstYearPressureYi)} 亿`,
       },
       { label: "对手方集中度", level: topCounterpartyShare, trend: "→", status: "关注", detail: topCounterpartyShare },
-      { label: "已发资产", level: assetTotalYi === null ? "—" : `${assetTotalYi.toFixed(0)} 亿`, trend: "↓", status: "正常", detail: balanceOverviewQuery.data?.result.report_date ?? "—" },
+      {
+        label: "已发资产",
+        level: assetTotalYi === null ? EM_DASH : `${assetTotalYi.toFixed(0)} 亿`,
+        trend: "↓",
+        status: "正常",
+        detail: balanceOverviewQuery.data?.result.report_date ?? EM_DASH,
+      },
     ],
     [assetTotalYi, balanceOverviewQuery.data?.result.report_date, firstYearPressureYi, liabilityTotalYi, topCounterpartyShare],
   );
@@ -570,7 +553,7 @@ export default function LiabilityAnalyticsPage() {
       <PageDecisionHero
         testId="liability-analytics-decision-hero"
         title="负债结构分析"
-        eyebrow="兼容/分析读面"
+        eyebrow="分析读面"
         businessQuestion="先判断资金来源是否集中、负债成本是否压缩 NIM，再看短端到期与预警证据。"
         reportDateSlot={<span>{pageReadModel.reportLine}</span>}
         actions={
@@ -637,27 +620,27 @@ export default function LiabilityAnalyticsPage() {
                 </div>
                 <dl>
                   <div>
-                    <dt>kind</dt>
+                    <dt title="result_kind">结果类型</dt>
                     <dd>{card.resultKind}</dd>
                   </div>
                   <div>
-                    <dt>quality</dt>
+                    <dt title="quality_flag">质量</dt>
                     <dd>{card.qualityLabel}</dd>
                   </div>
                   <div>
-                    <dt>fallback</dt>
+                    <dt title="fallback_mode">兜底</dt>
                     <dd>{card.fallbackLabel}</dd>
                   </div>
                   <div>
-                    <dt>as-of</dt>
+                    <dt title="as_of_date">截至日</dt>
                     <dd>{card.asOfDate}</dd>
                   </div>
                   <div>
-                    <dt>trace</dt>
+                    <dt title="trace_id">追踪号</dt>
                     <dd>{card.traceId}</dd>
                   </div>
                   <div>
-                    <dt>rule</dt>
+                    <dt title="rule_version">规则版本</dt>
                     <dd>{card.ruleVersion}</dd>
                   </div>
                 </dl>
@@ -707,7 +690,7 @@ export default function LiabilityAnalyticsPage() {
             <Alert
               type="warning"
               showIcon
-              style={{ marginBottom: designTokens.space[4] }}
+              className="liability-analytics-page__alert-spaced"
               message="市场资产（正式总览·资产口径）加载失败"
               description={(balanceOverviewQuery.error as Error)?.message ?? "请求失败"}
               action={
@@ -741,11 +724,11 @@ export default function LiabilityAnalyticsPage() {
           ) : null}
 
           {datesBlockingError || datesEmpty ? null : riskQuery.isLoading ? (
-            <Space direction="vertical" size="large" style={{ width: "100%" }}>
+            <div className="liability-analytics-page__stack">
               <Skeleton active paragraph={{ rows: 1 }} title={{ width: "40%" }} />
-              <Skeleton.Node active style={{ width: "100%", height: 120 }} />
+              <Skeleton.Node active className="liability-analytics-page__skeleton-block" />
               <Skeleton active paragraph={{ rows: 6 }} />
-            </Space>
+            </div>
           ) : dailyPrimaryError ? (
             <Alert
               data-testid="liability-page-state"
@@ -784,7 +767,7 @@ export default function LiabilityAnalyticsPage() {
                 <Alert
                   type="warning"
                   showIcon
-                  style={{ marginBottom: designTokens.space[4] }}
+                  className="liability-analytics-page__alert-spaced"
                   message="收益率/NIM 指标加载失败，压力测试卡片将降级为空。"
                   action={
                     <Button size="small" onClick={() => void yieldQuery.refetch()}>
@@ -793,74 +776,61 @@ export default function LiabilityAnalyticsPage() {
                   }
                 />
               ) : null}
-              <Space direction="vertical" size={designTokens.space[4]} style={{ width: "100%" }}>
-                <div style={threeColumnGridStyle}>
-                  <Card title="收益成本分解（静态口径）" style={sectionCardStyle}>
-                    <div style={{ display: "grid", gap: designTokens.space[3] }}>
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-                          gap: designTokens.space[3],
-                          ...numericTabularStyle,
-                        }}
-                      >
-                        <KpiCard label="资产收益" value={yieldKpi?.asset_yield?.display ?? "—"} detail="静态口径" valueVariant="text" />
-                        <KpiCard label="负债成本" value={yieldKpi?.liability_cost?.display ?? "—"} detail="静态口径" valueVariant="text" />
-                        <KpiCard label="净息差" value={yieldKpi?.nim?.display ?? "—"} detail="NIM" valueVariant="text" />
-                        <KpiCard label="1Y压力" value={`${formatYiOrDash(firstYearPressureYi, 2)}亿`} detail="到期负债" valueVariant="text" />
+              <div className="liability-analytics-page__stack">
+                <div className="liability-analytics-page__grid-3col">
+                  <Card title="收益成本分解（静态口径）" className="liability-analytics-page__section-card">
+                    <div className="liability-analytics-page__section-body">
+                      <div className="liability-analytics-page__kpi-grid">
+                        <KpiCard
+                          label="资产收益"
+                          value={yieldKpi?.asset_yield?.display ?? EM_DASH}
+                          detail="静态口径"
+                          valueVariant="text"
+                        />
+                        <KpiCard
+                          label="负债成本"
+                          value={yieldKpi?.liability_cost?.display ?? EM_DASH}
+                          detail="静态口径"
+                          valueVariant="text"
+                        />
+                        <KpiCard
+                          label="净息差"
+                          value={yieldKpi?.nim?.display ?? EM_DASH}
+                          detail="NIM"
+                          valueVariant="text"
+                        />
+                        <KpiCard
+                          label="1Y压力"
+                          value={`${formatYiOrDash(firstYearPressureYi, 2)}亿`}
+                          detail="到期负债"
+                          valueVariant="text"
+                        />
                       </div>
-                      <div
-                        style={{
-                          color: designTokens.color.neutral[700],
-                          fontSize: designTokens.fontSize[13],
-                          lineHeight: designTokens.lineHeight.relaxed,
-                        }}
-                      >
+                      <div className="liability-analytics-page__section-copy">
                         这里保留静态资产收益、负债成本和净息差的首屏拆解，用来判断收益成本是否仍由资产端主导。
                       </div>
                     </div>
                   </Card>
 
-                  <Card title="风险全景" style={sectionCardStyle}>
-                    <table
-                      style={{
-                        width: "100%",
-                        borderCollapse: "collapse",
-                        fontSize: designTokens.fontSize[13],
-                        ...numericTabularStyle,
-                      }}
-                    >
+                  <Card title="风险全景" className="liability-analytics-page__section-card">
+                    <table className="liability-analytics-page__data-table">
                       <thead>
-                        <tr style={{ textAlign: "left", color: designTokens.color.neutral[600] }}>
-                          <th style={{ paddingBottom: 8 }}>风险维度</th>
-                          <th style={{ paddingBottom: 8 }}>水平</th>
-                          <th style={{ paddingBottom: 8 }}>趋势</th>
-                          <th style={{ paddingBottom: 8 }}>状态</th>
-                          <th style={{ paddingBottom: 8 }}>说明</th>
+                        <tr>
+                          <th>风险维度</th>
+                          <th>水平</th>
+                          <th>趋势</th>
+                          <th>状态</th>
+                          <th>说明</th>
                         </tr>
                       </thead>
                       <tbody>
                         {riskOverviewRows.map((row) => (
-                          <tr
-                            key={row.label}
-                            style={{ borderTop: `1px solid ${designTokens.color.neutral[200]}` }}
-                          >
-                            <td
-                              style={{
-                                padding: "10px 0",
-                                color: designTokens.color.neutral[900],
-                                fontWeight: 600,
-                              }}
-                            >
-                              {row.label}
-                            </td>
-                            <td style={{ padding: "10px 0" }}>{row.level}</td>
-                            <td style={{ padding: "10px 0" }}>{row.trend}</td>
-                            <td style={{ padding: "10px 0" }}>{row.status}</td>
-                            <td style={{ padding: "10px 0", color: designTokens.color.neutral[700] }}>
-                              {row.detail}
-                            </td>
+                          <tr key={row.label}>
+                            <td className="is-label">{row.label}</td>
+                            <td>{row.level}</td>
+                            <td>{row.trend}</td>
+                            <td>{row.status}</td>
+                            <td className="is-muted">{row.detail}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -868,8 +838,8 @@ export default function LiabilityAnalyticsPage() {
                   </Card>
                 </div>
 
-                <div style={threeColumnGridStyle}>
-                  <Card title="资产 / 负债 / 缺口贡献" style={sectionCardStyle}>
+                <div className="liability-analytics-page__grid-3col">
+                  <Card title="资产 / 负债 / 缺口贡献" className="liability-analytics-page__section-card">
                     {contributionRows.length === 0 ? (
                       <Alert
                         type="info"
@@ -878,43 +848,41 @@ export default function LiabilityAnalyticsPage() {
                         description={contributionQuery.isLoading ? "加载中…" : "所选报告日无可用拆分数据。"}
                       />
                     ) : (
-                      <table
-                        style={{
-                          width: "100%",
-                          borderCollapse: "collapse",
-                          fontSize: designTokens.fontSize[13],
-                          ...numericTabularStyle,
-                        }}
-                      >
+                      <table className="liability-analytics-page__data-table liability-analytics-page__data-table--compact">
                         <thead>
-                          <tr style={{ textAlign: "left", color: designTokens.color.neutral[600] }}>
-                            <th style={{ paddingBottom: 8 }}>分类</th>
-                            <th style={{ paddingBottom: 8 }}>方向</th>
-                            <th style={{ paddingBottom: 8, textAlign: "right" }}>金额（亿）</th>
-                            <th style={{ paddingBottom: 8, textAlign: "right" }}>收益/成本</th>
-                            <th style={{ paddingBottom: 8, textAlign: "right" }}>贡献（亿）</th>
+                          <tr>
+                            <th>分类</th>
+                            <th>方向</th>
+                            <th className="is-numeric">金额（亿）</th>
+                            <th className="is-numeric">收益/成本</th>
+                            <th className="is-numeric">贡献（亿）</th>
                           </tr>
                         </thead>
                         <tbody>
                           {contributionRows.map((row) => (
-                            <tr
-                              key={`${row.side}-${row.category}`}
-                              style={{ borderTop: `1px solid ${designTokens.color.neutral[200]}` }}
-                            >
-                              <td style={{ padding: "8px 0", fontWeight: 600 }}>{row.category}</td>
-                              <td style={{ padding: "8px 0" }}>
-                                <Tag color={row.side === "asset" ? "green" : "gold"}>
+                            <tr key={`${row.side}-${row.category}`}>
+                              <td className="is-label">{row.category}</td>
+                              <td>
+                                <Tag
+                                  className={
+                                    row.side === "asset"
+                                      ? "liability-ib-tag liability-ib-tag--up"
+                                      : "liability-ib-tag liability-ib-tag--warn"
+                                  }
+                                >
                                   {row.side === "asset" ? "资产" : "负债"}
                                 </Tag>
                               </td>
-                              <td style={{ padding: "8px 0", textAlign: "right" }}>
-                                {row.amount_yi !== null ? row.amount_yi.toFixed(2) : "—"}
+                              <td className="is-numeric">
+                                {row.amount_yi !== null ? row.amount_yi.toFixed(2) : EM_DASH}
                               </td>
-                              <td style={{ padding: "8px 0", textAlign: "right" }}>
-                                {row.yield_or_cost !== null ? `${(row.yield_or_cost * 100).toFixed(2)}%` : "—"}
+                              <td className="is-numeric">
+                                {row.yield_or_cost !== null
+                                  ? `${(row.yield_or_cost * 100).toFixed(2)}%`
+                                  : EM_DASH}
                               </td>
-                              <td style={{ padding: "8px 0", textAlign: "right" }}>
-                                {row.contribution_yi !== null ? row.contribution_yi.toFixed(4) : "—"}
+                              <td className="is-numeric">
+                                {row.contribution_yi !== null ? row.contribution_yi.toFixed(4) : EM_DASH}
                               </td>
                             </tr>
                           ))}
@@ -923,7 +891,7 @@ export default function LiabilityAnalyticsPage() {
                     )}
                   </Card>
 
-                  <Card title="待关注事项" style={sectionCardStyle}>
+                  <Card title="待关注事项" className="liability-analytics-page__section-card">
                     {watchItems.length === 0 ? (
                       <Alert
                         type="info"
@@ -932,7 +900,7 @@ export default function LiabilityAnalyticsPage() {
                         description={cockpitWarningsQuery.isLoading ? "加载中…" : "所有指标均在正常范围内。"}
                       />
                     ) : (
-                      <Space direction="vertical" size={designTokens.space[2]} style={{ width: "100%" }}>
+                      <div className="liability-analytics-page__stack liability-analytics-page__stack--tight">
                         {watchItems.map((item) => (
                           <Alert
                             key={item.id}
@@ -942,11 +910,11 @@ export default function LiabilityAnalyticsPage() {
                             description={item.detail}
                           />
                         ))}
-                      </Space>
+                      </div>
                     )}
                   </Card>
 
-                  <Card title="预警与事件" style={sectionCardStyle}>
+                  <Card title="预警与事件" className="liability-analytics-page__section-card">
                     {alertEvents.length === 0 ? (
                       <Alert
                         type="info"
@@ -955,22 +923,22 @@ export default function LiabilityAnalyticsPage() {
                         description={cockpitWarningsQuery.isLoading ? "加载中…" : "未触发预警阈值。"}
                       />
                     ) : (
-                      <Space direction="vertical" size={designTokens.space[2]} style={{ width: "100%" }}>
+                      <div className="liability-analytics-page__stack liability-analytics-page__stack--tight">
                         {alertEvents.map((evt) => (
                           <Alert
                             key={evt.id}
                             type={evt.severity === "high" ? "error" : evt.severity === "medium" ? "warning" : "info"}
                             showIcon
                             message={evt.title}
-                            description={`${evt.occurred_at} — ${evt.detail}`}
+                            description={`${evt.occurred_at}：${evt.detail}`}
                           />
                         ))}
-                      </Space>
+                      </div>
                     )}
                   </Card>
                 </div>
 
-                <Card title="期限结构（资产 / 负债 / 净缺口）" style={sectionCardStyle}>
+                <Card title="期限结构（资产 / 负债 / 净缺口）" className="liability-analytics-page__section-card">
                   <LiabilityStructureGrids
                     structure={dailyStructure}
                     term={dailyTerm}
@@ -981,8 +949,8 @@ export default function LiabilityAnalyticsPage() {
                   />
                 </Card>
 
-                <div style={twoColumnGridStyle}>
-                  <Card title="风险指标" style={sectionCardStyle}>
+                <div className="liability-analytics-page__grid-2col">
+                  <Card title="风险指标" className="liability-analytics-page__section-card">
                     <Alert
                       type="info"
                       showIcon
@@ -991,7 +959,7 @@ export default function LiabilityAnalyticsPage() {
                     />
                   </Card>
 
-                  <Card title="关键日历（负债到期关注）" style={sectionCardStyle}>
+                  <Card title="关键日历（负债到期关注）" className="liability-analytics-page__section-card">
                     <Alert
                       type="info"
                       showIcon
@@ -1026,19 +994,19 @@ export default function LiabilityAnalyticsPage() {
                   loading={cpQuery.isLoading}
                   subtitle='口径：TYWL 负债端（对手方名称 × 金额；剔除「青岛银行股份有限公司」；空值归「其它」）。'
                 />
-              </Space>
+              </div>
             </>
           )}
         </>
       ) : (
         <>
-          <Card size="small" style={{ marginBottom: 16 }}>
+          <Card size="small" className="liability-analytics-page__monthly-filters">
             <Space wrap align="center">
-              <div>
+              <div className="liability-analytics-page__filter-field">
                 <Text type="secondary">选择年份</Text>
                 <div>
                   <Select
-                    style={{ minWidth: 120 }}
+                    className="liability-analytics-page__select--year"
                     value={selectedYear}
                     options={yearOptions.map((y) => ({ value: y, label: `${y} 年` }))}
                     onChange={(y) => {
@@ -1048,11 +1016,11 @@ export default function LiabilityAnalyticsPage() {
                   />
                 </div>
               </div>
-              <div>
+              <div className="liability-analytics-page__filter-field">
                 <Text type="secondary">按月选择</Text>
                 <div>
                   <Select
-                    style={{ minWidth: 200 }}
+                    className="liability-analytics-page__select--month"
                     value={selectedMonth || undefined}
                     placeholder="选择月份"
                     options={monthlyMonthsSorted.map((m) => ({ value: m.month, label: m.month_label }))}
@@ -1067,10 +1035,10 @@ export default function LiabilityAnalyticsPage() {
           </Card>
 
           {monthlyQuery.isLoading ? (
-            <Space direction="vertical" size="large" style={{ width: "100%" }}>
+            <div className="liability-analytics-page__stack">
               <Skeleton active paragraph={{ rows: 1 }} />
               <Skeleton active paragraph={{ rows: 8 }} />
-            </Space>
+            </div>
           ) : monthlyQuery.isError ? (
             <Alert
               type="error"
@@ -1086,7 +1054,7 @@ export default function LiabilityAnalyticsPage() {
           ) : !selectedMonthData ? (
             <Alert type="info" showIcon message={`暂无 ${selectedYear} 年的月度数据`} />
           ) : (
-            <Space direction="vertical" size={16} style={{ width: "100%" }}>
+            <div className="liability-analytics-page__stack">
               {adbMonthlyQuery.isError ? (
                 <Alert
                   type="warning"
@@ -1125,7 +1093,7 @@ export default function LiabilityAnalyticsPage() {
                 loading={false}
                 subtitle="口径：月度日均（TYWL 负债端）。"
               />
-            </Space>
+            </div>
           )}
         </>
       )}

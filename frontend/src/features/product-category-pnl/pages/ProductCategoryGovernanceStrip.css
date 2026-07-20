@@ -15,7 +15,7 @@
   padding: 7px 10px;
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: var(--ib-radius, 2px);
-  background: var(--ib-surface, #fff);
+  background: var(--ib-surface);
 }
 
 .product-category-governance-strip__health[data-health-state="ready"] {
@@ -43,7 +43,7 @@
 
 .product-category-governance-strip__health[data-health-state="ready"]
   .product-category-governance-strip__health-marker {
-  background: var(--moss-color-success-600);
+  background: var(--ib-up);
 }
 
 .product-category-governance-strip__health[data-health-state="degraded"]
@@ -55,7 +55,7 @@
 
 .product-category-governance-strip__health[data-health-state="error"]
   .product-category-governance-strip__health-marker {
-  background: var(--moss-color-danger-600);
+  background: var(--ib-down);
 }
 
 .product-category-governance-strip__health-content {
@@ -83,13 +83,13 @@
 
 .product-category-governance-strip__health[data-health-state="ready"]
   .product-category-governance-strip__health-copy strong {
-  color: var(--moss-color-success-700);
+  color: var(--ib-up);
 }
 
 .product-category-governance-strip__health-copy span {
   margin-top: 1px;
   color: var(--moss-color-neutral-600);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.4;
 }
 
@@ -98,18 +98,18 @@
   padding-inline-start: 10px;
   border-inline-start: 1px solid var(--moss-color-neutral-200);
   color: var(--moss-color-neutral-700);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   line-height: 1.35;
   white-space: nowrap;
 }
 
 .product-category-governance-strip__judgement[data-judgement-state="allowed"] {
-  color: var(--moss-color-success-700);
+  color: var(--ib-up);
 }
 
 .product-category-governance-strip__judgement[data-judgement-state="blocked"] {
-  color: var(--moss-color-danger-700);
+  color: var(--ib-down);
 }
 
 .product-category-governance-strip__facts {
@@ -132,7 +132,7 @@
 .product-category-governance-strip__facts dd {
   margin: 0;
   white-space: nowrap;
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.35;
 }
 
@@ -156,7 +156,7 @@
   color: var(--moss-color-primary-700);
   background: var(--moss-color-primary-50);
   font: inherit;
-  font-size: 10px;
+  font-size: 11px;
   cursor: pointer;
 }
 
@@ -185,7 +185,7 @@
   cursor: pointer;
   list-style: none;
   color: var(--moss-color-neutral-700);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -196,7 +196,7 @@
 .product-category-governance-strip__evidence > summary strong {
   margin-left: auto;
   color: var(--moss-color-warning-700);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 600;
 }
 
@@ -224,7 +224,7 @@
   margin: 0;
   padding-top: 7px;
   color: var(--moss-color-neutral-600);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.5;
 }
 

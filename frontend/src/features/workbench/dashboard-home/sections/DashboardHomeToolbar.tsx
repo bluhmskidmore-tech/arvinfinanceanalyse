@@ -45,6 +45,7 @@ type DashboardHomeToolbarProps = {
   onRefresh: () => void;
   refreshLabel: string;
   refreshAriaLabel?: string;
+  onOpenAgentPanel?: () => void;
 };
 
 export function DashboardHomeToolbar({
@@ -63,6 +64,7 @@ export function DashboardHomeToolbar({
   onRefresh,
   refreshLabel,
   refreshAriaLabel = "刷新首页数据",
+  onOpenAgentPanel,
 }: DashboardHomeToolbarProps) {
   const showDateDivergence = hasReportDateDivergence(reportDateContext);
   return (
@@ -162,6 +164,18 @@ export function DashboardHomeToolbar({
           <LightIcon name="reload" />
           <span className={styles.dhRefreshLabel}>{refreshLabel}</span>
         </button>
+        {onOpenAgentPanel ? (
+          <button
+            type="button"
+            className={styles.dhAgentEntryBtn}
+            data-testid="dashboard-home-agent-open"
+            onClick={onOpenAgentPanel}
+            aria-label="打开复核助手"
+          >
+            <LightIcon name="file-search" />
+            <span className={styles.dhRefreshLabel}>复核助手</span>
+          </button>
+        ) : null}
       </div>
     </header>
   );

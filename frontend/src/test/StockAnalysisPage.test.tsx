@@ -3545,7 +3545,7 @@ describe("StockAnalysisPage", () => {
       /\[data-testid="stock-analysis-review-queue-table"\] tbody\s*\{[\s\S]*?max-height:\s*520px/,
     );
     expect(mobileCss).toMatch(
-      /\[data-testid="stock-analysis-review-queue-table"\] tbody tr,[\s\S]*?tbody tr:nth-child\(n \+ 3\)\s*\{[\s\S]*?background:\s*#ffffff\s*!important/,
+      /\[data-testid="stock-analysis-review-queue-table"\] tbody tr,[\s\S]*?tbody tr:nth-child\(n \+ 3\)\s*\{[\s\S]*?background:\s*var\(--sa-dh-card\)\s*!important/,
     );
     expect(mobileCss).toMatch(
       /\[data-testid="stock-analysis-review-queue-table"\] td:nth-child\(7\)\s*\{[\s\S]*?grid-area:\s*confidence\s*!important/,
@@ -4184,7 +4184,7 @@ describe("StockAnalysisPage", () => {
       /\[data-testid="stock-analysis-stock-selection"\]\.stock-analysis-page__deep-review-workspace\s*>\s*\[data-testid="stock-analysis-observation-preview"\]\s*\{[\s\S]*?min-height:\s*188px\s*!important/,
     );
     expect(disclosureCss).toMatch(
-      /\[data-testid="stock-analysis-stock-selection"\]\.stock-analysis-page__deep-review-workspace\s*>\s*\[data-testid="stock-analysis-observation-preview"\]\s*>\s*\.stock-analysis-page__dh-section-head h2\s*\{[\s\S]*?color:\s*#0f172a\s*!important/,
+      /\[data-testid="stock-analysis-stock-selection"\]\.stock-analysis-page__deep-review-workspace\s*>\s*\[data-testid="stock-analysis-observation-preview"\]\s*>\s*\.stock-analysis-page__dh-section-head h2\s*\{[\s\S]*?color:\s*var\(--sa-dh-ink\)\s*!important/,
     );
     expect(disclosureCss).toMatch(
       /\[data-testid="stock-analysis-stock-selection"\]\.stock-analysis-page__deep-review-workspace\s*>\s*\[data-testid="stock-analysis-observation-preview"\]\s*\.stock-analysis-page__observation-preview-panel\s*\{[\s\S]*?padding:\s*8px\s*!important/,
@@ -4281,7 +4281,7 @@ describe("StockAnalysisPage", () => {
       /\[data-testid="stock-analysis-theme-leaders-first-screen"\]:has\(\[data-testid="stock-analysis-theme-leader-empty"\]\)[\s\S]*?>\s*\.stock-analysis-page__dh-section-head\s*\{[\s\S]*?min-height:\s*24px\s*!important;[\s\S]*?border-bottom:\s*0\s*!important;/,
     );
     expect(compactCss).toMatch(
-      /\[data-testid="stock-analysis-theme-leaders-first-screen"\]:has\(\[data-testid="stock-analysis-theme-leader-empty"\]\)[\s\S]*?\.stock-analysis-page__dh-section-head h2\s*\{[\s\S]*?color:\s*#0f172a\s*!important;/,
+      /\[data-testid="stock-analysis-theme-leaders-first-screen"\]:has\(\[data-testid="stock-analysis-theme-leader-empty"\]\)[\s\S]*?\.stock-analysis-page__dh-section-head h2\s*\{[\s\S]*?color:\s*var\(--sa-dh-ink\)\s*!important;/,
     );
     expect(compactCss).toMatch(
       /\.stock-analysis-page__dh-section-eyebrow,[\s\S]*?\.stock-analysis-page__lower-signal-strip\s*\{[\s\S]*?display:\s*none\s*!important;/,
@@ -4307,7 +4307,7 @@ describe("StockAnalysisPage", () => {
       /\[data-testid="stock-analysis-stock-selection"\]\.stock-analysis-page__deep-review-workspace\s*>\s*\[data-testid="stock-analysis-sector-heavyweights-first-screen"\]\s*\.stock-analysis-page__lower-signal-strip,[\s\S]*?\.stock-analysis-page__dh-pill,[\s\S]*?\.stock-analysis-page__sector-heavyweight-list\s*\{[\s\S]*?display:\s*none\s*!important/,
     );
     expect(compactCss).toMatch(
-      /\.stock-analysis-page__dh-section-head h2\s*\{[\s\S]*?color:\s*#0f172a\s*!important/,
+      /\.stock-analysis-page__dh-section-head h2\s*\{[\s\S]*?color:\s*var\(--sa-dh-ink\)\s*!important/,
     );
     expect(compactCss).toMatch(
       /\.stock-analysis-page__sector-heavyweight-coverage\s*\{[\s\S]*?display:\s*inline-flex\s*!important/,
@@ -4346,7 +4346,7 @@ describe("StockAnalysisPage", () => {
       /\[data-testid="stock-analysis-stock-selection"\]\.stock-analysis-page__deep-review-workspace\s*>\s*\[data-testid="stock-analysis-sector-strength-panel"\]\s*\{[\s\S]*?gap:\s*6px\s*!important[\s\S]*?padding:\s*10px 12px\s*!important/,
     );
     expect(compactCss).toMatch(
-      /\.stock-analysis-page__dh-section-head h2\s*\{[\s\S]*?color:\s*#0f172a\s*!important/,
+      /\.stock-analysis-page__dh-section-head h2\s*\{[\s\S]*?color:\s*var\(--sa-dh-ink\)\s*!important/,
     );
     expect(compactCss).toMatch(
       /\.stock-analysis-page__sector-workbench-strip\s*>\s*div:nth-child\(4\)\s*\{[\s\S]*?display:\s*none\s*!important/,

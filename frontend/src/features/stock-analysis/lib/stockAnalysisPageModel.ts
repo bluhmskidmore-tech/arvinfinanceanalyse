@@ -66,7 +66,13 @@ export type StockMarketStateCard = {
   macroDisclosureDetail: string | null;
 };
 
-export type StockCandidatePattern = "突破" | "回踩" | "缩量盘整" | "接口未提供" | "待补";
+export type StockCandidatePattern =
+  | "突破"
+  | "突破（参考）"
+  | "回踩（参考）"
+  | "缩量盘整（参考）"
+  | "接口未提供"
+  | "待补";
 
 export type StockCandidateEvidenceBullet = {
   key: string;
@@ -1055,6 +1061,11 @@ function sortedThemeBreakoutItems(payload: LivermoreStrategyPayload): LivermoreT
   return [...(payload.theme_breakout?.items ?? [])].sort((left, right) => left.rank - right.rank);
 }
 
+/**
+ * 观察提示（前端启发式）：后端候选 payload 未提供形态字段，这里用展示层阈值
+ * 粗分归类，仅作 UI 复核辅助，非正式业务口径，不得作为结论或交易依据。
+ * 标签统一带「（参考）」后缀以在页面上显式降级。
+ */
 function deriveCandidatePattern(item: LivermoreStockCandidateItem): StockCandidatePattern {
   const close = item.close;
   const breakout = item.breakout_level;
@@ -1068,10 +1079,10 @@ function deriveCandidatePattern(item: LivermoreStockCandidateItem): StockCandida
     turnover != null && Number.isFinite(turnover) ? turnover < 1.08 : false;
   const tightGap =
     gap != null && Number.isFinite(gap) ? Math.abs(gap) < 0.055 : false;
-  if (ratio > 1.0025) return "突破";
-  if (ratio < 0.985) return "回踩";
-  if (lowTurn && tightGap) return "缩量盘整";
-  return "缩量盘整";
+  if (ratio > 1.0025) return "突破（参考）";
+  if (ratio < 0.985) return "回踩（参考）";
+  if (lowTurn && tightGap) return "缩量盘整（参考）";
+  return "缩量盘整（参考）";
 }
 
 function formatDistanceToBreakoutPct(item: LivermoreStockCandidateItem): string {
@@ -2267,6 +2278,18 @@ export function buildSectorHeavyweightPreview(
     };
   }
 
+  // Display-only fill order when backend leader_constituents is short.
+  // Uses discrete source priority + backend rank only — no invented composite score.
+  const SOURCE_FILL_PRIORITY: Record<string, number> = {
+    theme_breakout: 80,
+    review_queue: 70,
+    livermore: 50,
+    hybrid_fusion: 40,
+    fresh_trend_watchlist: 30,
+    factor_screen: 20,
+    mean_reversion: 10,
+  };
+
   type PoolEntry = {
     stockCode: string;
     stockName: string;
@@ -2276,7 +2299,8 @@ export function buildSectorHeavyweightPreview(
     turnValue: number | null;
     closeStrengthValue: number | null;
     factorScoreValue: number | null;
-    rankScore: number;
+    /** Higher = prefer when filling preview slots (source tier, then better backend rank). */
+    fillOrder: number;
     source: string;
   };
 
@@ -2285,9 +2309,15 @@ export function buildSectorHeavyweightPreview(
   function upsert(entry: PoolEntry) {
     const key = `${entry.sectorCode}:${entry.stockCode}`;
     const existing = pool.get(key);
-    if (!existing || entry.rankScore > existing.rankScore) {
+    if (!existing || entry.fillOrder > existing.fillOrder) {
       pool.set(key, entry);
     }
+  }
+
+  function fillOrderFor(source: string, rank: number | null | undefined): number {
+    const tier = SOURCE_FILL_PRIORITY[source] ?? 0;
+    const backendRank = rank != null && Number.isFinite(rank) ? rank : 9999;
+    return tier * 10_000 - backendRank;
   }
 
   for (const item of payload.theme_breakout?.items ?? []) {
@@ -2303,11 +2333,10 @@ export function buildSectorHeavyweightPreview(
         turnValue,
         closeStrengthValue: finiteNumber(stock.close_strength),
         factorScoreValue: null,
-        rankScore:
-          (stock.strong ? 1000 : 0) +
-          (stock.closed_up_limit ? 800 : 0) +
-          (pctChangeValue ?? 0) * 10 +
-          (turnValue ?? 0),
+        fillOrder: fillOrderFor(
+          "theme_breakout",
+          stock.strong || stock.closed_up_limit ? 1 : 50,
+        ),
         source: "theme_breakout",
       });
     }
@@ -2325,7 +2354,7 @@ export function buildSectorHeavyweightPreview(
       turnValue,
       closeStrengthValue,
       factorScoreValue: null,
-      rankScore: 500 - stock.rank + (closeStrengthValue ?? 0) * 20 + (turnValue ?? 0),
+      fillOrder: fillOrderFor("livermore", stock.rank),
       source: "livermore",
     });
   }
@@ -2344,7 +2373,7 @@ export function buildSectorHeavyweightPreview(
       turnValue,
       closeStrengthValue: closeToMa20Value,
       factorScoreValue: scoreValue,
-      rankScore: 360 - stock.rank + (scoreValue ?? 0) * 10 + (pctChangeValue ?? 0),
+      fillOrder: fillOrderFor("fresh_trend_watchlist", stock.rank),
       source: "fresh_trend_watchlist",
     });
   }
@@ -2359,7 +2388,7 @@ export function buildSectorHeavyweightPreview(
       turnValue: null,
       closeStrengthValue: null,
       factorScoreValue: null,
-      rankScore: 400 - stock.rank,
+      fillOrder: fillOrderFor("hybrid_fusion", stock.rank),
       source: "hybrid_fusion",
     });
   }
@@ -2375,7 +2404,7 @@ export function buildSectorHeavyweightPreview(
       turnValue: null,
       closeStrengthValue: null,
       factorScoreValue,
-      rankScore: 300 - stock.rank + (factorScoreValue ?? 0) * 10,
+      fillOrder: fillOrderFor("factor_screen", stock.rank),
       source: "factor_screen",
     });
   }
@@ -2390,7 +2419,7 @@ export function buildSectorHeavyweightPreview(
       turnValue: null,
       closeStrengthValue: null,
       factorScoreValue: finiteNumber(stock.score),
-      rankScore: 250 - stock.rank + (finiteNumber(stock.score) ?? 0),
+      fillOrder: fillOrderFor("mean_reversion", stock.rank),
       source: "mean_reversion",
     });
   }
@@ -2405,7 +2434,7 @@ export function buildSectorHeavyweightPreview(
       turnValue: null,
       closeStrengthValue: null,
       factorScoreValue: null,
-      rankScore: 600 - card.rank,
+      fillOrder: fillOrderFor("review_queue", card.rank),
       source: "review_queue",
     });
   }
@@ -2455,7 +2484,7 @@ export function buildSectorHeavyweightPreview(
     if (stocks.length < stocksPerSector) {
       const supplemental = [...pool.values()]
         .filter((entry) => entry.sectorCode === sector.sectorCode && !usedCodes.has(entry.stockCode))
-        .sort((left, right) => right.rankScore - left.rankScore)
+        .sort((left, right) => right.fillOrder - left.fillOrder)
         .slice(0, stocksPerSector - stocks.length)
         .map(mapPoolEntryToPreview);
       stocks.push(...supplemental);
@@ -3383,7 +3412,8 @@ function localizeThemeGateLabel(gate: string): string {
 }
 
 export function buildThemeBreakoutCards(payload: LivermoreStrategyPayload): StockThemeBreakoutCard[] {
-  const isProxy = payload.theme_breakout?.is_proxy ?? true;
+  // Missing is_proxy must not default to "proxy" (would mislabel real themes).
+  const isProxy = payload.theme_breakout?.is_proxy === true;
   return sortedThemeBreakoutItems(payload).map((item) => {
     const sourceKindLabel = localizeThemeSourceKind(item.source_kind, isProxy);
     const usesCurrentOverlay =
@@ -3558,7 +3588,7 @@ export function buildThemeBreakoutReviewItems(payload: LivermoreStrategyPayload)
         themeName: localizeThemeName(item.theme_name),
         sourceKindLabel: localizeThemeSourceKind(
           item.source_kind,
-          payload.theme_breakout?.is_proxy ?? true,
+          payload.theme_breakout?.is_proxy === true,
         ),
         parentSectorLabel: `${localizeThemeName(item.parent_sector_name)} #${item.parent_sector_rank}`,
         summary: `${item.member_count} 只复核样本，${item.strong_stock_count} 只强势，${
@@ -3976,7 +4006,7 @@ export function buildCandidateEvidenceCards(
     ? []
     : sortedCandidateItems(payload).map((item) => {
       const pattern = deriveCandidatePattern(item);
-      const patternNote = "UI 辅助归类标签，不构成正式结论";
+      const patternNote = "观察提示（前端启发式）：接口未提供形态字段，标签为展示辅助归类，非正式口径，不构成正式结论";
       const distanceToBreakoutPct = formatDistanceToBreakoutPct(item);
 
     const evidenceBullets: StockCandidateEvidenceBullet[] = [
@@ -5107,7 +5137,7 @@ export function buildThemeBreakoutPanelSummary(input: {
   unsupportedReason?: string;
 }): StockStrategyPanelResultSummary {
   const themePayload = input.payload.theme_breakout;
-  const isProxy = themePayload?.is_proxy ?? true;
+  const isProxy = themePayload?.is_proxy === true;
   const movementTotal = summarizeThemeMovementCount(input.payload);
   const topCard = input.cards[0];
   const coverageCount = themePayload?.items?.length ?? input.cards.length;

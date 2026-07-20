@@ -9,7 +9,7 @@
   --ops-green-soft: #ecf8f0;
   --ops-amber: #935a1c;
   --ops-amber-soft: #faf3e7;
-  --ops-display-font: "Alibaba PuHuiTi 3.0", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei UI", sans-serif;
+  --ops-display-font: var(--moss-font-sans);
   --ops-shell-border-soft: #e4e9f0;
   display: grid;
   gap: 24px;
@@ -236,7 +236,7 @@
   max-width: 820px;
   margin: 0;
   color: var(--ops-ink);
-  font-family: "Alibaba PuHuiTi 3.0", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei UI", sans-serif;
+  font-family: var(--moss-font-sans);
   font-size: 24px;
   font-weight: 800;
   letter-spacing: 0;
@@ -310,7 +310,7 @@
 .operations-analysis-page__entry-title {
   margin: 0;
   color: var(--ops-ink);
-  font-family: "Alibaba PuHuiTi 3.0", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei UI", sans-serif;
+  font-family: var(--moss-font-sans);
   font-size: 18px;
   font-weight: 750;
   letter-spacing: 0;

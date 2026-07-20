@@ -21,9 +21,7 @@
   --ro-glass-line: rgba(232, 238, 247, 0.09);
   --ro-glass-hi: rgba(232, 238, 247, 0.055);
   --ro-glass-hi-line: rgba(232, 238, 247, 0.1);
-  --ro-glass-shadow: 0 16px 34px rgba(0, 0, 0, 0.36);
   --ro-hero-grad: linear-gradient(92deg, var(--dh-api-ink) 25%, var(--ro-acc) 95%);
-  --ro-hero-glow: rgba(114, 167, 220, 0.32);
   --ro-num-grad: linear-gradient(92deg, var(--dh-api-ink) 20%, var(--ro-acc) 90%);
   --ro-num-err: linear-gradient(
     92deg,
@@ -149,9 +147,9 @@
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  filter: drop-shadow(0 0 22px var(--ro-hero-glow));
-  font-family: var(--dh-font-serif);
+  font-family: var(--dh-font-mono);
   font-size: clamp(40px, 4.2vw, 56px);
+  font-variant-numeric: tabular-nums;
   font-weight: 680;
   letter-spacing: 0.01em;
   line-height: 1.08;
@@ -170,7 +168,6 @@
 .roV6HeroNumVoid {
   background: none;
   color: var(--ro-mut);
-  filter: none;
 }
 
 .roV6HeroSub {
@@ -256,8 +253,9 @@
 }
 
 .roV6RateVal {
-  font-family: var(--dh-font-serif);
+  font-family: var(--dh-font-mono);
   font-size: 34px;
+  font-variant-numeric: tabular-nums;
   font-weight: 680;
   line-height: 1.1;
   margin-top: 6px;
@@ -336,10 +334,8 @@
   background:
     linear-gradient(165deg, var(--ro-glass-hi), rgba(232, 238, 247, 0.012) 58%),
     var(--ro-panel);
-  border-radius: 14px;
-  box-shadow:
-    inset 0 1px 0 var(--ro-glass-hi-line),
-    var(--ro-glass-shadow);
+  border-radius: var(--dh-api-radius, 6px);
+  box-shadow: inset 0 1px 0 var(--ro-glass-hi-line);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -361,7 +357,7 @@
     var(--ro-glass-line) 68%,
     var(--ro-acc-dim)
   );
-  border-radius: 14px;
+  border-radius: var(--dh-api-radius, 6px);
   content: "";
   inset: 0;
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
@@ -453,7 +449,6 @@
 
 .roV6SparkLine {
   fill: none;
-  filter: drop-shadow(0 0 5px var(--ro-acc-dim));
   stroke: var(--ro-acc);
   stroke-width: 1.5;
 }
@@ -471,7 +466,6 @@
 }
 
 .roV6KpiAlert .roV6SparkLine {
-  filter: drop-shadow(0 0 5px var(--ro-err));
   stroke: var(--ro-err);
 }
 
@@ -566,7 +560,6 @@
 
 .roV6BriefC {
   color: var(--ro-ink);
-  font-family: var(--dh-font-serif);
   font-size: 17px;
   font-weight: 650;
   line-height: 1.5;
@@ -594,10 +587,8 @@
     linear-gradient(180deg, var(--ro-glass-hi), rgba(232, 238, 247, 0.015) 34%, rgba(0, 0, 0, 0) 62%),
     var(--ro-panel);
   border: 1px solid var(--ro-glass-line);
-  border-radius: 16px;
-  box-shadow:
-    inset 0 1px 0 var(--ro-glass-hi-line),
-    var(--ro-glass-shadow);
+  border-radius: var(--dh-api-radius, 6px);
+  box-shadow: inset 0 1px 0 var(--ro-glass-hi-line);
   padding: 18px 20px;
 }
 
@@ -679,12 +670,10 @@
 
 .roV6KrdBar {
   fill: var(--ro-acc);
-  filter: drop-shadow(0 0 8px var(--ro-hero-glow));
 }
 
 .roV6KrdBarHot {
   fill: var(--ro-amber);
-  filter: drop-shadow(0 0 10px rgba(201, 165, 101, 0.45));
 }
 
 .roV6KrdBarTip {
@@ -778,18 +767,15 @@ path.roV6CurveLine {
 }
 
 path.roV6CurveLine.roV6CurveInk {
-  filter: drop-shadow(0 0 6px var(--ro-hero-glow));
   stroke: var(--ro-ink);
   stroke-width: 2;
 }
 
 path.roV6CurveLine.roV6CurveAmber {
-  filter: drop-shadow(0 0 5px rgba(201, 165, 101, 0.4));
   stroke: var(--ro-amber);
 }
 
 path.roV6CurveLine.roV6CurveAcc {
-  filter: drop-shadow(0 0 5px var(--ro-acc-dim));
   stroke: var(--ro-acc);
 }
 
@@ -878,12 +864,10 @@ text.roV6CurveEndText.roV6CurveAcc {
 
 .roV6CashBarA {
   fill: var(--ro-acc);
-  filter: drop-shadow(0 0 8px var(--ro-hero-glow));
 }
 
 .roV6CashBarL {
   fill: var(--ro-amber);
-  filter: drop-shadow(0 0 8px rgba(201, 165, 101, 0.3));
 }
 
 .roV6CashVal {
@@ -903,7 +887,7 @@ text.roV6CurveEndText.roV6CurveAcc {
 .roV6GapChip {
   align-items: baseline;
   border: 1px solid color-mix(in srgb, var(--dh-api-red) 40%, transparent);
-  border-radius: 10px;
+  border-radius: var(--dh-api-radius, 6px);
   display: inline-flex;
   font-family: var(--dh-font-mono);
   gap: 8px;
@@ -1070,6 +1054,402 @@ text.roV6CurveEndText.roV6CurveAcc {
   word-break: break-all;
 }
 
+/* ── 首屏债券辅助证据 ─────────────────────────────────────────── */
+.roBondEvidence {
+  background:
+    linear-gradient(135deg, rgba(114, 167, 220, 0.075), transparent 45%),
+    var(--ro-panel);
+  border: 1px solid var(--ro-line-2);
+  border-radius: var(--dh-api-radius, 6px);
+  box-shadow: inset 0 1px 0 var(--ro-glass-hi-line);
+  display: grid;
+  gap: 13px;
+  padding: 16px 18px 18px;
+}
+
+.roBondEvidenceHead {
+  align-items: center;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+}
+
+.roBondEvidenceHead > div {
+  min-width: 0;
+}
+
+.roBondEvidenceHead span {
+  color: var(--ro-acc);
+  font-family: var(--dh-font-mono);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
+
+.roBondEvidenceHead h2 {
+  color: var(--ro-ink);
+  font-size: 15px;
+  margin: 2px 0 0;
+}
+
+.roBondEvidenceHead p {
+  color: var(--ro-mut);
+  font-size: 11.5px;
+  line-height: 1.5;
+  margin: 4px 0 0;
+}
+
+.roBondEvidenceLink {
+  color: var(--ro-acc);
+  flex-shrink: 0;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.roBondEvidenceLink:hover {
+  text-decoration: underline;
+}
+
+.roBondBoundary {
+  align-items: center;
+  background: rgba(201, 165, 101, 0.07);
+  border-left: 2px solid var(--ro-amber);
+  color: var(--ro-ink-2);
+  display: grid;
+  font-size: 11px;
+  gap: 8px 12px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  line-height: 1.45;
+  padding: 8px 11px;
+}
+
+.roBondBoundary span {
+  color: var(--ro-amber);
+  font-family: var(--dh-font-mono);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+.roBondBoundary b {
+  font-weight: 650;
+}
+
+.roBondBoundary em {
+  color: var(--ro-mut);
+  font-style: normal;
+}
+
+.roBondPlanState {
+  align-items: baseline;
+  border-bottom: 1px solid var(--ro-line);
+  color: var(--ro-ink-2);
+  display: flex;
+  font-size: 10.5px;
+  gap: 12px;
+  padding: 0 2px 9px;
+}
+
+.roBondPlanState span {
+  color: var(--ro-acc);
+  flex-shrink: 0;
+  font-family: var(--dh-font-mono);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.roBondPlanState b {
+  font-weight: 600;
+}
+
+.roBondPlanState[data-state=loading],
+.roBondPlanState[data-state=unavailable] {
+  color: var(--ro-mut);
+}
+
+.roBondPlanState[data-state=review],
+.roBondPlanState[data-state=review] span {
+  color: var(--ro-amber);
+}
+
+.roBondGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.roBondCard {
+  background: var(--ro-panel-2);
+  border: 1px solid var(--ro-line);
+  border-radius: var(--dh-api-radius, 6px);
+  display: grid;
+  gap: 11px;
+  min-width: 0;
+  padding: 13px 14px;
+}
+
+.roBondCardreview {
+  border-color: color-mix(in srgb, var(--ro-amber) 52%, var(--ro-line));
+}
+
+.roBondCarderror,
+.roBondCardblocked {
+  border-color: color-mix(in srgb, var(--ro-err) 58%, var(--ro-line));
+}
+
+.roBondCardempty,
+.roBondCardloading {
+  border-style: dashed;
+}
+
+.roBondCardHead {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.roBondCardHead > div > span {
+  color: var(--ro-acc);
+  font-family: var(--dh-font-mono);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.roBondCardHead h3 {
+  color: var(--ro-ink);
+  font-size: 13px;
+  margin: 2px 0 0;
+}
+
+.roBondMetrics {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr;
+}
+
+.roBondMetric {
+  align-items: baseline;
+  border-bottom: 1px solid var(--ro-line);
+  display: grid;
+  gap: 6px 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+  padding: 0 0 8px;
+}
+
+.roBondMetric:last-child {
+  border-bottom: 0;
+}
+
+.roBondMetric > span {
+  color: var(--ro-mut);
+  font-size: 9.5px;
+}
+
+.roBondMetric strong {
+  color: var(--ro-ink);
+  font-size: 14px;
+  font-weight: 720;
+  overflow-wrap: anywhere;
+}
+
+.roBondMetric small {
+  color: var(--ro-mut);
+  font-size: 9px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.roBondComparisonGrid {
+  display: grid;
+  gap: 5px;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.roBondComparison {
+  align-items: center;
+  background: rgba(232, 238, 247, 0.025);
+  color: var(--ro-ink-2);
+  display: grid;
+  font-size: 9.5px;
+  gap: 4px 7px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-width: 0;
+  padding: 5px 7px;
+}
+
+.roBondComparison span {
+  color: var(--ro-mut);
+  font-size: 9px;
+}
+
+.roBondComparison strong {
+  font-size: 9.5px;
+  font-weight: 650;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.roBondComparison em {
+  color: var(--ro-acc);
+  font-size: 9px;
+  font-style: normal;
+  white-space: nowrap;
+}
+
+.roBondComparison[data-state=unavailable] strong,
+.roBondComparison[data-state=unavailable] em {
+  color: var(--ro-mut);
+}
+
+.roBondState {
+  color: var(--ro-mut);
+  font-size: 12px;
+  margin: 5px 0;
+  min-height: 26px;
+}
+
+.roBondMeta {
+  border-top: 1px solid var(--ro-line);
+  color: var(--ro-mut);
+  display: flex;
+  font-size: 10px;
+  justify-content: space-between;
+  padding-top: 8px;
+}
+
+.roBondMeta b {
+  color: var(--ro-ink-2);
+  font-weight: 650;
+}
+
+.roBondComparisonBasis {
+  color: var(--ro-mut);
+  display: grid;
+  font-size: 9.5px;
+  gap: 3px;
+}
+
+.roBondComparisonBasis span {
+  font-family: var(--dh-font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.08em;
+}
+
+.roBondComparisonBasis b {
+  color: var(--ro-ink-2);
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.roBondTrend {
+  background: rgba(114, 167, 220, 0.035);
+  border: 1px solid var(--ro-line);
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px 9px 7px;
+}
+
+.roBondTrendHead,
+.roBondTrendDates {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.roBondTrendValues {
+  align-items: baseline;
+  color: var(--ro-mut);
+  display: flex;
+  font-size: 8.5px;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.roBondTrendValues b {
+  color: var(--ro-ink-2);
+  font-size: 9.5px;
+  font-weight: 650;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.roBondTrendHead b {
+  color: var(--ro-ink-2);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.roBondTrendHead span,
+.roBondTrendDates {
+  color: var(--ro-mut);
+  font-family: var(--dh-font-mono);
+  font-size: 8.5px;
+}
+
+.roBondTrendSvg {
+  display: block;
+  height: 34px;
+  overflow: visible;
+  width: 100%;
+}
+
+.roBondTrendArea {
+  fill: var(--ro-spark-fill);
+  opacity: 0.45;
+}
+
+.roBondTrendLine {
+  fill: none;
+  stroke: var(--ro-acc);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+  vector-effect: non-scaling-stroke;
+}
+
+.roBondTrendDot {
+  fill: var(--ro-acc);
+}
+
+.roBondTrendEmpty,
+.roBondTrendNotice {
+  color: var(--ro-mut);
+  font-size: 9.5px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.roBondTrendEmpty {
+  border-bottom: 1px dashed var(--ro-line);
+  min-height: 32px;
+  padding: 7px 0;
+}
+
+.roBondTrendNotice {
+  color: var(--ro-amber);
+}
+
+.roBondNotices {
+  color: var(--ro-amber);
+  display: grid;
+  font-size: 10px;
+  gap: 4px;
+  line-height: 1.45;
+}
+
+.roBondNotices p {
+  margin: 0;
+}
+
 /* ── 空态 ─────────────────────────────────────────────────────── */
 .roV6EmptyText {
   color: var(--ro-mut);
@@ -1088,9 +1468,7 @@ text.roV6CurveEndText.roV6CurveAcc {
   backdrop-filter: blur(8px) saturate(1.15);
   border: 1px solid rgba(201, 165, 101, 0.42);
   border-radius: 6px;
-  box-shadow:
-    0 14px 34px rgba(0, 0, 0, 0.22),
-    inset 0 1px 0 rgba(232, 238, 247, 0.07);
+  box-shadow: inset 0 1px 0 rgba(232, 238, 247, 0.07);
   display: flex;
   gap: 14px;
   padding: 12px 16px;
@@ -1099,7 +1477,7 @@ text.roV6CurveEndText.roV6CurveAcc {
 .roBlockedBadge {
   background: rgba(201, 165, 101, 0.16);
   border: 1px solid rgba(201, 165, 101, 0.5);
-  border-radius: 4px;
+  border-radius: var(--dh-api-radius, 6px);
   color: var(--dh-api-amber);
   flex-shrink: 0;
   font-size: 11px;
@@ -1148,7 +1526,7 @@ text.roV6CurveEndText.roV6CurveAcc {
 
 .roStateDot {
   background: currentColor;
-  border-radius: 99px;
+  border-radius: 999px;
   display: inline-block;
   height: 6px;
   margin-right: 7px;
@@ -1193,7 +1571,7 @@ text.roV6CurveEndText.roV6CurveAcc {
 .roEmptyState {
   align-items: center;
   border: 1px dashed rgba(126, 157, 194, 0.3);
-  border-radius: 5px;
+  border-radius: var(--dh-api-radius, 6px);
   display: grid;
   gap: 10px;
   grid-column: 1 / -1;
@@ -1207,7 +1585,7 @@ text.roV6CurveEndText.roV6CurveAcc {
     radial-gradient(circle at center, rgba(114, 167, 220, 0.5) 0 3px, transparent 3px),
     conic-gradient(from 0deg, rgba(114, 167, 220, 0.4), transparent 26%);
   border: 1px solid rgba(114, 167, 220, 0.3);
-  border-radius: 99px;
+  border-radius: 999px;
   display: block;
   height: 30px;
   width: 30px;
@@ -1223,7 +1601,12 @@ text.roV6CurveEndText.roV6CurveAcc {
   .roV6BriefGrid,
   .roV6Duo,
   .roV6Tables,
-  .roV6Qual {
+  .roV6Qual,
+  .roBondGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .roBondBoundary {
     grid-template-columns: 1fr;
   }
 }
@@ -1233,6 +1616,19 @@ text.roV6CurveEndText.roV6CurveAcc {
     align-items: flex-start;
     flex-direction: column;
     gap: 10px;
+  }
+
+  .roBondEvidenceHead {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .roBondMetrics {
+    grid-template-columns: 1fr;
+  }
+
+  .roBondComparisonGrid {
+    grid-template-columns: 1fr;
   }
 }
 

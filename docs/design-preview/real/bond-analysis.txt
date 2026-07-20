@@ -1,0 +1,392 @@
+# 债券分析  /bond-analysis
+final_url: http://127.0.0.1:5888/bond-analysis
+title: MOSS Workbench
+
+## innerText (first ~3000 chars)
+Skip to main content
+M
+MOSS
+工作台
+经营日报
+首页
+组合工作台
+首页
+市场工作台
+首页
+风险工作台
+首页
+绩效工作台
+首页
+报表与数据
+首页
+对话
+MOSS Chat
+可用
+直接提问
+支持入口
+报表中心
+中台配置
+帮助文档
+债券分析
+报告日 2026-06-30
+管理视角
+报告日
+2026-06-30
+2026-05-31
+2026-05-30
+2026-05-29
+2026-05-28
+2026-05-27
+2026-05-26
+2026-05-25
+2026-05-24
+2026-05-23
+2026-05-22
+2026-05-21
+2026-05-20
+2026-05-19
+2026-05-18
+2026-05-17
+2026-05-16
+2026-05-15
+2026-05-14
+2026-05-13
+2026-05-12
+2026-05-11
+2026-05-10
+2026-05-09
+2026-05-08
+2026-05-07
+2026-05-06
+2026-05-05
+2026-05-04
+2026-05-03
+2026-05-02
+2026-05-01
+2026-04-30
+2026-04-29
+2026-04-28
+2026-04-27
+2026-04-26
+2026-04-25
+2026-04-24
+2026-04-23
+2026-04-22
+2026-04-21
+2026-04-20
+2026-04-19
+2026-04-18
+2026-04-17
+2026-04-16
+2026-04-15
+2026-04-14
+2026-04-13
+2026-04-12
+2026-04-11
+2026-04-10
+2026-04-09
+2026-04-08
+2026-04-07
+2026-04-06
+2026-04-05
+2026-04-04
+2026-04-03
+2026-04-02
+2026-04-01
+2026-03-31
+2026-03-30
+2026-03-29
+2026-03-28
+2026-03-27
+2026-03-26
+2026-03-25
+2026-03-24
+2026-03-23
+2026-03-22
+2026-03-21
+2026-03-20
+2026-03-19
+2026-03-18
+2026-03-17
+2026-03-16
+2026-03-15
+2026-03-14
+2026-03-13
+2026-03-12
+2026-03-11
+2026-03-10
+2026-03-09
+2026-03-08
+2026-03-07
+2026-03-06
+2026-03-05
+2026-03-04
+2026-03-03
+2026-03-02
+2026-03-01
+2026-02-28
+2026-02-27
+2026-02-26
+2026-02-25
+2026-02-24
+2026-02-23
+2026-02-22
+2026-02-21
+2026-02-20
+2026-02-19
+2026-02-18
+2026-02-17
+2026-02-16
+2026-02-15
+2026-02-14
+2026-02-13
+2026-02-12
+2026-02-11
+2026-02-10
+2026-02-09
+2026-02-08
+2026-02-07
+2026-02-06
+2026-02-05
+2026-02-04
+2026-02-03
+2026-02-02
+2026-02-01
+2026-01-31
+2026-01-30
+2026-01-29
+2026-01-28
+2026-01-27
+2026-01-26
+2026-01-25
+2026-01-24
+2026-01-23
+2026-01-22
+2026-01-21
+2026-01-20
+2026-01-19
+2026-01-18
+2026-01-17
+2026-01-16
+2026-01-15
+2026-01-14
+2026-01-13
+2026-01-12
+2026-01-11
+2026-01-10
+2026-01-09
+2026-01-08
+2026-01-07
+2026-01-06
+2026-01-05
+2026-01-04
+2026-01-03
+2026-01-02
+2026-01-01
+2025-12-31
+2025-12-30
+2025-12-29
+2025-12-28
+2025-12-27
+2025-12-26
+2025-12-25
+2025-12-24
+2025-12-23
+2025-12-22
+2025-12-21
+2025-12-20
+2025-12-19
+2025-12-18
+2025-12-17
+2025-12-16
+2025-12-15
+2025-12-14
+2025-12-13
+2025-12-12
+2025-12-11
+2025-12-10
+2025-12-09
+2025-12-08
+2025-12-07
+2025-12-06
+2025-12-05
+2025-12-04
+2025-12-03
+2025-12-02
+2025-12-01
+2025-11-30
+2025-11-29
+2025-11-28
+2025-11-27
+2025-11-26
+2025-11-25
+2025-11-24
+2025-11-23
+2025-11-22
+2025-11-21
+2025-11-20
+2025-11-19
+2025-11-18
+2025-11-17
+2025-11-16
+2025-11-15
+2025-11-14
+2025-11-13
+2025-11-12
+2025-11-11
+2025-11-10
+2025-11-09
+2025-11-08
+2025-11-07
+2025-11-06
+2025-11-05
+2025-11-04
+2025-11-03
+2025-11-02
+2025-11-01
+2025-10-31
+2025-10-30
+2025-10-29
+2025-10-28
+2025-10-27
+2025-10-26
+2025-10-25
+2025-10-24
+2025-10-23
+2025-10-22
+2025-10-21
+2025-10-20
+2025-10-19
+2025-10-18
+2025-10-17
+2025-10-16
+2025-10-15
+2025-10-14
+2025-10-13
+2025-10-12
+2025-10-11
+2025-10-10
+2025-10-09
+2025-10-08
+2025-10-07
+2025-10-06
+2025-10-05
+2025-10-04
+2025-10-03
+2025-10-02
+2025-10-01
+2025-09-30
+2025-09-29
+2025-09-28
+2025-09-27
+2025-09-26
+2025-09-25
+2025-09-24
+2025-09-23
+2025-09-22
+2025-09-21
+2025-09-20
+2025-09-19
+2025-09-18
+2025-09-17
+2025-09
+
+## computed styles
+{
+  "body_backgroundColor": "rgb(244, 243, 240)",
+  "body_color": "rgb(31, 41, 55)",
+  "body_fontFamily": "\"PingFang SC\", \"Microsoft YaHei UI\", \"Noto Sans SC\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", Arial, sans-serif",
+  "body_fontSize": "16px",
+  "root_backgroundColor": "rgb(245, 247, 249)",
+  "main_backgroundColor": "rgba(0, 0, 0, 0)",
+  "body_borderRadius_first": "0px",
+  "css_vars": {
+    "--background": "oklch(0.9702 0 0)",
+    "--foreground": "oklch(0.2103 0.0059 285.89)",
+    "--border": "oklch(90% 0.004 286.32)",
+    "--font-sans": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\",\n      \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+    "--radius": "0.5rem",
+    "--moss-color-primary-50": "#e8f1fb",
+    "--moss-color-primary-100": "#d0e3f6",
+    "--moss-color-primary-200": "#a8c9ec",
+    "--moss-color-primary-300": "#79a7de",
+    "--moss-color-primary-400": "#4d84cc",
+    "--moss-color-primary-500": "#2f68b8",
+    "--moss-color-primary-600": "#1850a1",
+    "--moss-color-primary-700": "#144287",
+    "--moss-color-primary-800": "#10356a",
+    "--moss-color-primary-900": "#0c2a54",
+    "--moss-color-info-50": "#eff6ff",
+    "--moss-color-info-100": "#dbeafe",
+    "--moss-color-info-200": "#bfdbfe",
+    "--moss-color-info-300": "#93c5fd",
+    "--moss-color-info-400": "#60a5fa",
+    "--moss-color-info-500": "#3b82f6",
+    "--moss-color-info-600": "#2563eb",
+    "--moss-color-info-700": "#1d4ed8",
+    "--moss-color-info-800": "#1e40af",
+    "--moss-color-info-900": "#1e3a8a",
+    "--moss-color-success-50": "#ecf8f2",
+    "--moss-color-success-100": "#d5efe0",
+    "--moss-color-success-200": "#aedfc8",
+    "--moss-color-success-300": "#7fc8a4",
+    "--moss-color-success-400": "#52ad84",
+    "--moss-color-success-500": "#2d8a5e",
+    "--moss-color-success-600": "#25714d",
+    "--moss-color-success-700": "#1d5c40",
+    "--moss-color-success-800": "#174833",
+    "--moss-color-success-900": "#123828",
+    "--moss-color-warning-50": "#fff9eb",
+    "--moss-color-warning-100": "#fef0d4",
+    "--moss-color-warning-200": "#fde0a8",
+    "--moss-color-warning-300": "#fbc874",
+    "--moss-color-warning-400": "#f8a93a",
+    "--moss-color-warning-500": "#d97706",
+    "--moss-color-warning-600": "#b35c05",
+    "--moss-color-warning-700": "#8f4708",
+    "--moss-color-warning-800": "#713a0c"
+  }
+}
+
+## api calls (39)
+200  /src/api/clientContext.ts
+200  /src/api/client.ts
+200  /src/api/balanceAnalysisClient.ts
+200  /src/api/bondAnalyticsClient.ts
+200  /src/api/cashflowClient.ts
+200  /src/api/executiveClient.ts
+200  /src/api/healthClient.ts
+200  /src/api/liabilityAdbClient.ts
+200  /src/api/pnlClient.ts
+200  /src/api/pnlAttributionClient.ts
+200  /src/api/productCategoryClient.ts
+200  /src/api/pnlCoreClient.ts
+200  /src/api/positionsClient.ts
+200  /src/api/qdbGlMonthlyAnalysisClient.ts
+200  /src/api/ledgerClient.ts
+200  /src/api/balanceMovementClient.ts
+200  /src/api/marketDataClient.ts
+200  /src/api/macroToolkitClient.ts
+200  /src/api/kpiClient.ts
+200  /src/api/cubeClient.ts
+200  /src/api/agentClient.ts
+200  /src/api/workbenchDashboardApi.ts
+200  /src/api/numeric.ts
+200  /src/api/bondDashboardBundleMock.ts
+200  /src/api/bondDashboardWorkbenchEndpoints.ts
+200  /src/api/bondAnalyticsYieldCurveTermStructureMock.ts
+200  /src/api/executiveHomeSnapshotFetch.ts
+200  /src/api/httpResponseError.ts
+200  /src/api/marketDataMocks.ts
+200  /src/api/queryKeys.ts
+200  /api/bond-analytics/dates
+200  /src/api/homeMarketTickerClient.ts
+200  /ui/macro/choice-series/latest
+200  /src/api/homeSupplementalClient.ts
+200  /api/bond-dashboard/dates
+200  /ui/calendar/supply-auctions?end_date=2026-06-30
+200  /api/bond-dashboard/bundle?sections=headline-kpis%2Cmaturity-structure%2Ctop-holdings%2Cportfolio-headlines%2Casset-structure%2Crisk-indicators%2Cindustry-distribution%2Cdv01-risk-ac%2Cdv01-risk-oci%2Cdv01-risk-tpl%2Cdv01-risk-all%2Cyield-curve-term-structure&report_date=2026-06-30&industry_top_n=10&analytics_top_n=10&dv01_top_n=1&dv01_shock_bps=1&curve_types=treasury%2Ccdb
+200  /api/bond-analytics/return-decomposition?report_date=2026-06-30&period_type=MoM&detail=summary
+200  /api/bond-analytics/action-attribution?report_date=2026-06-30&period_type=MoM
+
+## console errors (0)

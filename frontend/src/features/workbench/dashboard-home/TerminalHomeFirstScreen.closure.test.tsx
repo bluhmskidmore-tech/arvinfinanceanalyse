@@ -294,7 +294,7 @@ describe("dashboard home decision closure", () => {
     scrollWidthSpy.mockRestore();
   });
 
-  it("does not request a canvas context after the ambient visual is disabled", () => {
+  it("does not request a canvas context under jsdom (ambient visual only draws in real browsers)", () => {
     const getContext = vi
       .spyOn(HTMLCanvasElement.prototype, "getContext")
       .mockImplementation(() => null);

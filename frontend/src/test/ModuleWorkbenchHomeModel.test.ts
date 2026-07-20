@@ -1771,6 +1771,54 @@ describe("ModuleWorkbenchHome model", () => {
     },
   );
 
+  it("keeps missing sub-portfolio market values as null in the comparison chart", () => {
+    const queries = portfolioGovernanceQueries();
+    const view = buildModuleHomeView(
+      "portfolio",
+      { mode: "real" },
+      {
+        ...queries,
+        bondPortfolioComparison: query({
+          data: envelope(
+            {
+              report_date: "2026-05-31",
+              items: [
+                {
+                  portfolio_name: "FI",
+                  total_market_value: formatRawAsNumeric({ raw: 332_281_921_064.45, unit: "yuan", sign_aware: false }),
+                  bond_count: 1710,
+                  weighted_ytm: formatRawAsNumeric({ raw: 0.02561294, unit: "pct", sign_aware: false }),
+                  weighted_duration: formatRawAsNumeric({ raw: 3.45, unit: "ratio", sign_aware: false }),
+                  total_dv01: formatRawAsNumeric({ raw: 105_628_442.39, unit: "dv01", sign_aware: false }),
+                },
+                {
+                  portfolio_name: "MM",
+                  total_market_value: formatRawAsNumeric({ raw: null, unit: "yuan", sign_aware: false }),
+                  bond_count: 12,
+                  weighted_ytm: formatRawAsNumeric({ raw: null, unit: "pct", sign_aware: false }),
+                  weighted_duration: formatRawAsNumeric({ raw: null, unit: "ratio", sign_aware: false }),
+                  total_dv01: formatRawAsNumeric({ raw: null, unit: "dv01", sign_aware: false }),
+                },
+              ],
+            },
+            {
+              result_kind: "bond_dashboard.portfolio_comparison",
+              requested_report_date: "2026-05-31",
+              resolved_report_date: "2026-05-31",
+              as_of_date: "2026-05-31",
+              tables_used: ["fact_formal_bond_analytics_daily"],
+              evidence_rows: 1722,
+            },
+          ),
+        }),
+      },
+    );
+
+    const panel = view.detailPanels?.find((item) => item.key === "portfolio-comparison");
+    expect(panel?.chart?.values?.[0]).toBeCloseTo(3322.82, 1);
+    expect(panel?.chart?.values?.[1]).toBeNull();
+  });
+
   it("does not let portfolio comparison failure block decision evidence readiness", () => {
     const view = buildModuleHomeView(
       "portfolio",

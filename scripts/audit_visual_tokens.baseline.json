@@ -1,0 +1,926 @@
+{
+  "frontend/src/bond-analysis-foundation/react-components/advanced/PortfolioAnalyzer.tsx": {
+    "hex": 3,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/bond-analysis-foundation/react-components/advanced/ReportGenerator.tsx": {
+    "hex": 1,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/bond-analysis-foundation/react-components/advanced/RiskAnalysis.tsx": {
+    "hex": 3,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/bond-analysis-foundation/react-components/bonds/BondDetailModal.tsx": {
+    "hex": 2,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 1
+  },
+  "frontend/src/bond-analysis-foundation/react-components/bonds/BondTable.tsx": {
+    "hex": 3,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/bond-analysis-foundation/react-components/bonds/BondTableRow.tsx": {
+    "hex": 1,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/bond-analysis-foundation/react-components/bonds/BondWatchlist.tsx": {
+    "hex": 3,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/bond-analysis-foundation/react-components/charts/HistoricalPerformance.tsx": {
+    "hex": 3,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/bond-analysis-foundation/react-components/charts/PortfolioAllocationChart.tsx": {
+    "hex": 1,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/bond-analysis-foundation/react-components/charts/PriceChart.tsx": {
+    "hex": 1,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/bond-analysis-foundation/react-components/charts/RiskMatrix.tsx": {
+    "hex": 3,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/bond-analysis-foundation/react-components/charts/YieldCurveChart.tsx": {
+    "hex": 2,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/bond-analysis-foundation/react-components/common/EmptyState.tsx": {
+    "hex": 3,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/bond-analysis-foundation/react-components/common/ErrorBoundary.tsx": {
+    "hex": 3,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/bond-analysis-foundation/react-components/common/Loading.tsx": {
+    "hex": 3,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/bond-analysis-foundation/react-components/common/PriceChangeIndicator.tsx": {
+    "hex": 3,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/bond-analysis-foundation/react-components/common/RatingBadge.tsx": {
+    "hex": 12,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/bond-analysis-foundation/react-components/dashboard/Dashboard.tsx": {
+    "hex": 1,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/bond-analysis-foundation/react-components/dashboard/MetricCard.tsx": {
+    "hex": 2,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/bond-analysis-foundation/react-components/dashboard/PortfolioOverview.tsx": {
+    "hex": 8,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 1
+  },
+  "frontend/src/bond-analysis-foundation/react-components/dashboard/PortfolioStats.tsx": {
+    "hex": 3,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 4
+  },
+  "frontend/src/bond-analysis-foundation/react-components/layouts/Footer.tsx": {
+    "hex": 1,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/bond-analysis-foundation/react-components/layouts/Header.tsx": {
+    "hex": 3,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/bond-analysis-foundation/react-components/layouts/MainLayout.tsx": {
+    "hex": 6,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/bond-analysis-foundation/react-components/trading/ExecutionStatus.tsx": {
+    "hex": 4,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/bond-analysis-foundation/react-components/trading/OrderHistory.tsx": {
+    "hex": 3,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/bond-analysis-foundation/react-components/trading/TradePanel.tsx": {
+    "hex": 1,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/components/AlertList.css": {
+    "hex": 2,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/components/AsyncSection.css": {
+    "hex": 3,
+    "forbidden": 0,
+    "offRadius": 2,
+    "doubleDash": 0
+  },
+  "frontend/src/components/CalendarList.css": {
+    "hex": 2,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/components/charts/AccountingBasisStackedShareChart.tsx": {
+    "hex": 8,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/components/DataSection.css": {
+    "hex": 3,
+    "forbidden": 0,
+    "offRadius": 3,
+    "doubleDash": 0
+  },
+  "frontend/src/components/page/FormalResultMetaPanel.css": {
+    "hex": 1,
+    "forbidden": 0,
+    "offRadius": 2,
+    "doubleDash": 0
+  },
+  "frontend/src/components/SectionCard.css": {
+    "hex": 1,
+    "forbidden": 0,
+    "offRadius": 1,
+    "doubleDash": 0
+  },
+  "frontend/src/features/agent/AgentPanel.css": {
+    "hex": 0,
+    "forbidden": 0,
+    "offRadius": 1,
+    "doubleDash": 0
+  },
+  "frontend/src/features/agent/AgentWorkbenchPage.css": {
+    "hex": 105,
+    "forbidden": 0,
+    "offRadius": 25,
+    "doubleDash": 0
+  },
+  "frontend/src/features/agent/components/AgentGenericCardsGrid.tsx": {
+    "hex": 0,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 1
+  },
+  "frontend/src/features/balance-analysis/cockpit/balanceAnalysisCockpit.module.css": {
+    "hex": 14,
+    "forbidden": 0,
+    "offRadius": 1,
+    "doubleDash": 0
+  },
+  "frontend/src/features/balance-analysis/cockpit/BalanceAnalysisCockpit.tsx": {
+    "hex": 2,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/balance-analysis/cockpit/balanceAnalysisToolbar.module.css": {
+    "hex": 10,
+    "forbidden": 0,
+    "offRadius": 3,
+    "doubleDash": 0
+  },
+  "frontend/src/features/balance-analysis/components/AdbAnalyticalPreview.tsx": {
+    "hex": 7,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/balance-analysis/components/balanceAnalysisStageRow.module.css": {
+    "hex": 17,
+    "forbidden": 0,
+    "offRadius": 3,
+    "doubleDash": 0
+  },
+  "frontend/src/features/balance-analysis/components/BalanceBottomRow.tsx": {
+    "hex": 5,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/balance-analysis/components/BalanceContributionRow.tsx": {
+    "hex": 5,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/balance-analysis/components/BalanceSummaryRow.tsx": {
+    "hex": 2,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/balance-analysis/components/balanceWorkbench.css": {
+    "hex": 134,
+    "forbidden": 0,
+    "offRadius": 11,
+    "doubleDash": 0
+  },
+  "frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.css": {
+    "hex": 54,
+    "forbidden": 0,
+    "offRadius": 8,
+    "doubleDash": 0
+  },
+  "frontend/src/features/balance-analysis/pages/balanceAnalysisPageModel.ts": {
+    "hex": 6,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/balance-movement-analysis/pages/BalanceMovementAnalysisPage.css": {
+    "hex": 289,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/bond-analytics/components/AccountingClassAuditView.tsx": {
+    "hex": 8,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/bond-analytics/components/ActionAttributionView.tsx": {
+    "hex": 18,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/bond-analytics/components/BondAnalyticsFuturePanel.tsx": {
+    "hex": 7,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/bond-analytics/components/BondAnalyticsInstitutionalCockpit.module.css": {
+    "hex": 0,
+    "forbidden": 0,
+    "offRadius": 8,
+    "doubleDash": 0
+  },
+  "frontend/src/features/bond-analytics/components/BondAnalyticsOverviewWatchlistCard.tsx": {
+    "hex": 9,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/bond-analytics/components/BondAnalyticsViewContent.module.css": {
+    "hex": 41,
+    "forbidden": 0,
+    "offRadius": 8,
+    "doubleDash": 0
+  },
+  "frontend/src/features/bond-analytics/components/BondEventCalendar.tsx": {
+    "hex": 2,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/bond-analytics/components/DV01RiskView.module.css": {
+    "hex": 8,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/bond-analytics/components/KRDCurveRiskView.tsx": {
+    "hex": 3,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/bond-analytics/components/PortfolioSummaryNarrative.tsx": {
+    "hex": 1,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/bond-trading-desk/BondTradingDeskPage.module.css": {
+    "hex": 26,
+    "forbidden": 0,
+    "offRadius": 5,
+    "doubleDash": 0
+  },
+  "frontend/src/features/cashflow-projection/pages/CashflowProjectionPage.module.css": {
+    "hex": 17,
+    "forbidden": 0,
+    "offRadius": 11,
+    "doubleDash": 0
+  },
+  "frontend/src/features/cashflow-projection/pages/CashflowProjectionPage.tsx": {
+    "hex": 0,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 2
+  },
+  "frontend/src/features/cross-asset/components/ReferencePanels.tsx": {
+    "hex": 1,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/cross-asset/lib/crossAssetAnalytics.test.ts": {
+    "hex": 3,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/cross-asset/lib/crossAssetAnalytics.ts": {
+    "hex": 27,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/cross-asset/pages/CrossAssetDriversPage.css": {
+    "hex": 51,
+    "forbidden": 0,
+    "offRadius": 5,
+    "doubleDash": 0
+  },
+  "frontend/src/features/executive-dashboard/components/AlertsSection.tsx": {
+    "hex": 4,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/executive-dashboard/components/DashboardBondCounterpartySection.tsx": {
+    "hex": 3,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/executive-dashboard/components/DashboardCockpitSection.styles.ts": {
+    "hex": 2,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/executive-dashboard/components/DashboardCockpitSection.tsx": {
+    "hex": 3,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/executive-dashboard/components/DashboardLiabilityCounterpartySection.tsx": {
+    "hex": 4,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/executive-dashboard/components/DashboardNewsDigestSection.tsx": {
+    "hex": 4,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/executive-dashboard/components/PnlAttributionSection.tsx": {
+    "hex": 5,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/executive-dashboard/components/RiskOverviewSection.tsx": {
+    "hex": 1,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/executive-dashboard/components/SummarySection.tsx": {
+    "hex": 1,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/ledger-pnl/components/LedgerPnlAccountDetailDrawer.css": {
+    "hex": 2,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/ledger-pnl/components/LedgerPnlAccountDetailDrawer.tsx": {
+    "hex": 0,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 7
+  },
+  "frontend/src/features/ledger-pnl/components/LedgerPnlAnalysisWorkbench.css": {
+    "hex": 7,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/ledger-pnl/components/LedgerPnlAnalysisWorkbench.tsx": {
+    "hex": 0,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 6
+  },
+  "frontend/src/features/ledger-pnl/components/LedgerPnlCandidateFinancialIndicatorsPanel.css": {
+    "hex": 57,
+    "forbidden": 0,
+    "offRadius": 1,
+    "doubleDash": 0
+  },
+  "frontend/src/features/ledger-pnl/components/LedgerPnlCandidatePeriodComparison.css": {
+    "hex": 66,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/ledger-pnl/components/LedgerPnlNetInterestComponentDetailDrawer.css": {
+    "hex": 49,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/ledger-pnl/pages/LedgerPnlPage.css": {
+    "hex": 15,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/ledger-pnl/pages/LedgerPnlPage.tsx": {
+    "hex": 0,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 7
+  },
+  "frontend/src/features/macro-toolkit/pages/MacroToolkitPage.css": {
+    "hex": 21,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/market-data/components/LivermoreStrategyPanel.css": {
+    "hex": 21,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/market-data/lib/charts/ncdProxyHeatmapChartOption.ts": {
+    "hex": 7,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/market-data/pages/MarketDataPage.css": {
+    "hex": 476,
+    "forbidden": 0,
+    "offRadius": 26,
+    "doubleDash": 0
+  },
+  "frontend/src/features/market-data/pages/MarketDataPage.tsx": {
+    "hex": 0,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 2
+  },
+  "frontend/src/features/pnl-attribution/components/CampisiAttributionPanel.tsx": {
+    "hex": 7,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/pnl-attribution/components/CampisiDecisionGradePanel.tsx": {
+    "hex": 2,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/pnl-attribution/components/CampisiEnhancedPanel.tsx": {
+    "hex": 1,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/pnl-attribution/components/CampisiMaturityBucketPanel.tsx": {
+    "hex": 1,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/pnl-attribution/components/PnLCompositionChart.tsx": {
+    "hex": 2,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/pnl-attribution/components/TPLMarketChart.tsx": {
+    "hex": 1,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/pnl-attribution/components/VolumeRateAnalysisChart.tsx": {
+    "hex": 1,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/pnl-business-insights/UntracedReconciliationTrendPanel.test.tsx": {
+    "hex": 5,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/pnl/FormalPnlV1Page.css": {
+    "hex": 4,
+    "forbidden": 0,
+    "offRadius": 2,
+    "doubleDash": 0
+  },
+  "frontend/src/features/pnl/PnlBridgePage.css": {
+    "hex": 14,
+    "forbidden": 0,
+    "offRadius": 7,
+    "doubleDash": 0
+  },
+  "frontend/src/features/pnl/PnlByBusinessPage.css": {
+    "hex": 2,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/pnl/PnlRuntimePanels.css": {
+    "hex": 13,
+    "forbidden": 0,
+    "offRadius": 3,
+    "doubleDash": 0
+  },
+  "frontend/src/features/pnl/PnlRuntimeSupport.ts": {
+    "hex": 3,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/pnl/yieldAnalysis/yieldAnalysis.css": {
+    "hex": 8,
+    "forbidden": 0,
+    "offRadius": 9,
+    "doubleDash": 0
+  },
+  "frontend/src/features/positions/components/CustomerDetailModal.tsx": {
+    "hex": 11,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/positions/components/PositionsView.css": {
+    "hex": 4,
+    "forbidden": 0,
+    "offRadius": 2,
+    "doubleDash": 0
+  },
+  "frontend/src/features/positions/components/PositionsView.tsx": {
+    "hex": 2,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/prototype/EquityCockpitPrototypePage.tsx": {
+    "hex": 12,
+    "forbidden": 1,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/risk-tensor/RiskTensorPage.css": {
+    "hex": 0,
+    "forbidden": 0,
+    "offRadius": 26,
+    "doubleDash": 0
+  },
+  "frontend/src/features/risk-tensor/RiskTensorPage.tsx": {
+    "hex": 17,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 3
+  },
+  "frontend/src/features/source-preview/pages/SourcePreviewPage.tsx": {
+    "hex": 15,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/stock-analysis/components/StockAnalysisCandidateComparison.css": {
+    "hex": 70,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/stock-analysis/components/StockDetailDrawer.css": {
+    "hex": 114,
+    "forbidden": 0,
+    "offRadius": 6,
+    "doubleDash": 0
+  },
+  "frontend/src/features/stock-analysis/lib/stockAnalysisChartModel.ts": {
+    "hex": 11,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/stock-analysis/lib/stockAnalysisTokens.ts": {
+    "hex": 4,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/stock-analysis/pages/StockAnalysisDeepResearch.css": {
+    "hex": 23,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/stock-analysis/pages/StockAnalysisPage.css": {
+    "hex": 171,
+    "forbidden": 0,
+    "offRadius": 2,
+    "doubleDash": 0
+  },
+  "frontend/src/features/workbench/business-analysis/BusinessContributionTable.tsx": {
+    "hex": 23,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/workbench/business-analysis/ManagementOutput.tsx": {
+    "hex": 2,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/workbench/business-analysis/QualityObservation.tsx": {
+    "hex": 3,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/workbench/business-analysis/RevenueCostBridge.tsx": {
+    "hex": 9,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/workbench/business-analysis/TenorConcentrationPanel.tsx": {
+    "hex": 8,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/workbench/dashboard-home/dashboardHome.module.css": {
+    "hex": 87,
+    "forbidden": 0,
+    "offRadius": 65,
+    "doubleDash": 0
+  },
+  "frontend/src/features/workbench/dashboard-home/dashboardHomeShell.module.css": {
+    "hex": 84,
+    "forbidden": 0,
+    "offRadius": 36,
+    "doubleDash": 0
+  },
+  "frontend/src/features/workbench/dashboard-home/HomeSparkline.tsx": {
+    "hex": 1,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/workbench/dashboard-home/sections/DecisionRailSection.tsx": {
+    "hex": 0,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 1
+  },
+  "frontend/src/features/workbench/dashboard-home/TerminalHomeWorkGrid.tsx": {
+    "hex": 5,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/workbench/dashboard/dashboardCockpitVisualTokens.ts": {
+    "hex": 36,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/workbench/dashboard/dashboardMockData.ts": {
+    "hex": 4,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/workbench/dashboard/sections/AttributionWaterfallChart.tsx": {
+    "hex": 11,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/workbench/market-shell/MarketWorkbenchFrame.module.css": {
+    "hex": 61,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/workbench/module-home/MarketMacroTickerBar.tsx": {
+    "hex": 0,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 1
+  },
+  "frontend/src/features/workbench/module-home/moduleWorkbenchHome.module.css": {
+    "hex": 6,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/workbench/module-home/riskOverview.module.css": {
+    "hex": 2,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/workbench/pages/OperationsAnalysisPage.css": {
+    "hex": 13,
+    "forbidden": 0,
+    "offRadius": 8,
+    "doubleDash": 0
+  },
+  "frontend/src/lib/echarts.tsx": {
+    "hex": 7,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/router/WorkbenchRouteFallback.module.css": {
+    "hex": 3,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/router/WorkbenchRouteStatusPages.module.css": {
+    "hex": 8,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/styles/dashboardCockpit.css": {
+    "hex": 64,
+    "forbidden": 0,
+    "offRadius": 30,
+    "doubleDash": 0
+  },
+  "frontend/src/styles/tokens.css": {
+    "hex": 105,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/styles/workbenchDeferredChrome.css": {
+    "hex": 10,
+    "forbidden": 0,
+    "offRadius": 10,
+    "doubleDash": 0
+  },
+  "frontend/src/styles/workbenchInstitutionalConsole.css": {
+    "hex": 1,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/styles/workbenchShell.css": {
+    "hex": 0,
+    "forbidden": 0,
+    "offRadius": 2,
+    "doubleDash": 0
+  },
+  "frontend/src/test/bondAnalyticsCockpitTokens.test.ts": {
+    "hex": 1,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/test/crossAssetDriversPageModel.test.ts": {
+    "hex": 8,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/test/CrossAssetPage.test.tsx": {
+    "hex": 5,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/test/LedgerPnlAccountDetailDrawer.test.tsx": {
+    "hex": 0,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 1
+  },
+  "frontend/src/test/LedgerPnlCandidatePeriodComparison.test.tsx": {
+    "hex": 0,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 2
+  },
+  "frontend/src/test/LedgerPnlPage.test.tsx": {
+    "hex": 0,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 3
+  },
+  "frontend/src/test/PnlAttributionPage.test.tsx": {
+    "hex": 3,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/test/RiskTensorPage.test.tsx": {
+    "hex": 0,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 2
+  },
+  "frontend/src/test/theme.test.ts": {
+    "hex": 14,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/theme/designSystem.ts": {
+    "hex": 203,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/theme/displayTokens.ts": {
+    "hex": 3,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/theme/tokens.ts": {
+    "hex": 34,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  }
+}

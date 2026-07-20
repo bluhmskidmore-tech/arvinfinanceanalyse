@@ -21,6 +21,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useApiClient } from "../../../api/client";
 import type { CubeDrillPath, CubeQueryRequest, CubeQueryResult } from "../../../api/contracts";
+import { EM_DASH } from "../../../utils/format";
+
+import "./CubeQueryPage.css";
 
 const { Text } = Typography;
 
@@ -56,7 +59,7 @@ const numberFmt = new Intl.NumberFormat("zh-CN", {
 
 function formatCellValue(value: unknown): string {
   if (value === null || value === undefined) {
-    return "—";
+    return EM_DASH;
   }
   if (typeof value === "number" && Number.isFinite(value)) {
     return numberFmt.format(value);
@@ -296,7 +299,7 @@ export default function CubeQueryPage() {
             {p.available_values.slice(0, 80).map((v) => (
               <Tag
                 key={`${p.dimension}:${v}`}
-                style={{ cursor: "pointer" }}
+                className="cube-query-page__drill-tag"
                 onClick={() => onDrillValue(p.dimension, v)}
               >
                 {v}
@@ -325,24 +328,21 @@ export default function CubeQueryPage() {
   }, [selectedDimensions, measureRows]);
 
   return (
-    <div
-      data-testid="cube-query-page"
-      style={{ background: "#f5f7fa", minHeight: "100%", padding: 16 }}
-    >
-      <Typography.Title level={3} style={{ marginTop: 0 }}>
+    <div className="cube-query-page" data-testid="cube-query-page">
+      <Typography.Title level={3} className="cube-query-page__title">
         多维查询
       </Typography.Title>
       <Text type="secondary">对正式口径事实表进行维度聚合、筛选与钻取。</Text>
 
-      <Card title="查询配置" style={{ marginTop: 16 }} size="small">
-        <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+      <Card title="查询配置" className="cube-query-page__card" size="small">
+        <Space direction="vertical" size="middle" className="cube-query-page__stack">
           <Row gutter={[16, 8]}>
             <Col xs={24} md={8}>
               <Text strong>事实表</Text>
               <Select
                 aria-label="cube-fact-table"
                 data-testid="cube-fact-select"
-                style={{ width: "100%", marginTop: 8 }}
+                className="cube-query-page__field-control"
                 value={factTable}
                 options={FACT_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
                 onChange={(v) => {
@@ -355,7 +355,7 @@ export default function CubeQueryPage() {
               <Text strong>报告日期</Text>
               <DatePicker
                 aria-label="cube-report-date"
-                style={{ width: "100%", marginTop: 8 }}
+                className="cube-query-page__field-control"
                 value={reportDate}
                 onChange={(d) => d && setReportDate(d)}
               />
@@ -366,7 +366,7 @@ export default function CubeQueryPage() {
                 data-testid="cube-execute"
                 loading={executeMutation.isPending}
                 onClick={handleExecute}
-                style={{ marginTop: 28 }}
+                className="cube-query-page__execute"
               >
                 执行查询
               </Button>
@@ -375,7 +375,7 @@ export default function CubeQueryPage() {
 
           <div data-testid="cube-dimensions">
             <Text strong>维度（多选）</Text>
-            <div style={{ marginTop: 8 }}>
+            <div className="cube-query-page__section-body">
               {dimensionsQuery.isLoading ? (
                 <Text type="secondary">加载维度…</Text>
               ) : (
@@ -407,7 +407,7 @@ export default function CubeQueryPage() {
                 添加度量
               </Button>
             </Space>
-            <Space direction="vertical" style={{ width: "100%", marginTop: 8 }}>
+            <Space direction="vertical" className="cube-query-page__stack cube-query-page__section-body">
               {measureRows.map((row) => (
                 <Space key={row.key} wrap>
                   <Select
@@ -458,9 +458,9 @@ export default function CubeQueryPage() {
                 添加条件
               </Button>
             </Space>
-            <Space direction="vertical" style={{ width: "100%", marginTop: 8 }}>
+            <Space direction="vertical" className="cube-query-page__stack cube-query-page__section-body">
               {filterRows.map((row) => (
-                <Space key={row.key} wrap style={{ width: "100%" }}>
+                <Space key={row.key} wrap className="cube-query-page__stack">
                   <Select
                     style={{ width: 200 }}
                     placeholder="维度"
@@ -510,7 +510,7 @@ export default function CubeQueryPage() {
                 添加排序
               </Button>
             </Space>
-            <Space direction="vertical" style={{ width: "100%", marginTop: 8 }}>
+            <Space direction="vertical" className="cube-query-page__stack cube-query-page__section-body">
               {orderRows.map((row) => (
                 <Space key={row.key} wrap>
                   <Select
@@ -553,7 +553,7 @@ export default function CubeQueryPage() {
         </Space>
       </Card>
 
-      <Row gutter={16} style={{ marginTop: 16 }}>
+      <Row gutter={16} className="cube-query-page__results-row">
         <Col xs={24} lg={17}>
           <Card title="查询结果" size="small">
             <Table<Record<string, unknown>>
@@ -568,7 +568,7 @@ export default function CubeQueryPage() {
             />
             {lastResult ? (
               <Pagination
-                style={{ marginTop: 16 }}
+                className="cube-query-page__pagination"
                 current={page}
                 pageSize={pageSize}
                 total={lastResult.total_rows}
@@ -596,14 +596,13 @@ export default function CubeQueryPage() {
       </Row>
 
       {lastResult?.result_meta ? (
-        <Text
-          type="secondary"
-          style={{ display: "block", marginTop: 12 }}
-          data-testid="cube-result-meta"
-        >
-          追踪编号={lastResult.result_meta.trace_id} · 来源版本=
-          {lastResult.result_meta.source_version} · 质量标记={resultMetaQualityLabel(lastResult.result_meta.quality_flag)}
-        </Text>
+        <div className="cube-query-page__result-meta" data-testid="cube-result-meta">
+          <Text type="secondary">
+            追踪编号={lastResult.result_meta.trace_id} · 质量标记=
+            {resultMetaQualityLabel(lastResult.result_meta.quality_flag)}
+          </Text>
+          <Text type="secondary">来源版本={lastResult.result_meta.source_version}</Text>
+        </div>
       ) : null}
     </div>
   );

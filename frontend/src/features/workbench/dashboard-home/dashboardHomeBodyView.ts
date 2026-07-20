@@ -468,11 +468,16 @@ function stateWithSourceMeta(
   return state;
 }
 
-function percentageDisplayRaw(value: number | null | undefined): number | null {
+/**
+ * `HomeDistributionRowView.percentageRaw` 来自后端 `percentage`（unit="pct" 的 Numeric）。
+ * 后端 `common_numeric._normalize_numeric_raw` 保证 pct raw 恒为小数比率，因此固定 ×100，
+ * 不再使用 |x|<=1 的启发式判断。
+ */
+export function percentageDisplayRaw(value: number | null | undefined): number | null {
   if (value == null || !Number.isFinite(value)) {
     return null;
   }
-  return Math.abs(value) <= 1 ? value * 100 : value;
+  return value * 100;
 }
 
 function metricFromDistributionRow(

@@ -104,7 +104,7 @@
   --ib-rail-text-active: #f5f6f8;
   --ib-rail-active-bar: #c9a85c;
   --ib-rail-active-bg: #1a2230;
-  --ib-rail-section-label: #848d99;
+  --ib-rail-section-label: #6b7480;
   --ib-gold: #c9a85c;
   --ib-serif: Georgia, "Times New Roman", "Noto Serif SC", "Source Han Serif SC", "SimSun", serif;
   --ib-kicker-font-size: 11px;
@@ -162,7 +162,7 @@
 
   --moss-font-sans: "PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
   --moss-font-mono: ui-monospace, "Cascadia Mono", "Microsoft YaHei UI", Menlo, Monaco, Consolas, monospace;
-  --moss-font-serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", Georgia, serif;
+  --moss-font-serif: Georgia, "Times New Roman", "Noto Serif SC", "Source Han Serif SC", "SimSun", serif;
 
   /* Semantic aliases */
   --moss-color-surface-base: var(--moss-institutional-bg);
@@ -211,4 +211,37 @@
 
 * {
   box-sizing: border-box;
+}
+
+/*
+ * Dark terminal (Decision Desk) — canonical palette per DESIGN.md §2.2.
+ * Single source for all dark cockpit pages. Page roots opt in via the
+ * global `theme-dh-api` class; feature CSS must consume these variables
+ * instead of redeclaring literals.
+ */
+.theme-dh-api,
+.workbench-shell-grid--cockpit:has(.theme-dh-api) {
+  color-scheme: dark;
+  --dh-api-bg: #070a12;
+  --dh-api-rail: #0a1019;
+  --dh-api-panel: #0c1421;
+  --dh-api-panel-2: #101a2a;
+  --dh-api-panel-3: #132033;
+  --dh-api-line: rgba(103, 119, 142, 0.34);
+  --dh-api-line-soft: rgba(103, 119, 142, 0.22);
+  --dh-api-ink: #e8eef7;
+  --dh-api-soft: #a9b6c7;
+  --dh-api-muted: #8593a8;
+  --dh-api-ink-soft: var(--dh-api-soft);
+  --dh-api-ink-muted: var(--dh-api-muted);
+  --dh-api-blue: #72a7dc;
+  --dh-api-green: #66b98b;
+  --dh-api-amber: #c9a565;
+  --dh-api-gold: var(--dh-api-amber);
+  --dh-api-red: #d47a72;
+  --dh-api-blue-soft: rgba(114, 167, 220, 0.12);
+  --dh-api-green-soft: rgba(102, 185, 139, 0.12);
+  --dh-api-amber-soft: rgba(201, 165, 101, 0.13);
+  --dh-api-red-soft: rgba(212, 122, 114, 0.13);
+  --dh-api-radius: 6px;
 }

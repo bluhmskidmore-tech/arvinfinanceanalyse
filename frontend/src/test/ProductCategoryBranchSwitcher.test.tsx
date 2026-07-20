@@ -209,7 +209,7 @@ describe("ProductCategoryPnlPage branch switching", () => {
       expect(within(overviewSection).getByRole("table")).toBeInTheDocument();
       expect(within(overviewSection).getByText("loan_total")).toBeInTheDocument();
       expect(within(overviewSection).getByText("0")).toBeInTheDocument();
-      expect(within(overviewSection).getAllByText("--")).toHaveLength(2);
+      expect(within(overviewSection).getAllByText("—")).toHaveLength(2);
       expect(within(overviewSection).getByText("false")).toBeInTheDocument();
       expect(within(overviewSection).getByText("fee_income")).toBeInTheDocument();
       expect(within(overviewSection).getByText("1200.5")).toBeInTheDocument();

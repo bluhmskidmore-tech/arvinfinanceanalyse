@@ -220,9 +220,9 @@ describe("LedgerDashboardPage", () => {
     renderWorkbenchApp(["/bank-ledger-dashboard"], { client });
 
     expect(await screen.findByTestId("ledger-dashboard-page")).toBeInTheDocument();
-    expect(screen.getByTestId("ledger-dashboard-governance-boundary")).toHaveTextContent("imported position_snapshot");
-    expect(screen.getByTestId("ledger-dashboard-governance-boundary")).toHaveTextContent("Historical backfill completed");
-    expect(screen.getByTestId("ledger-dashboard-governance-boundary")).toHaveTextContent("golden sample captured-awaiting-approval");
+    expect(screen.getByTestId("ledger-dashboard-governance-boundary")).toHaveTextContent("position_snapshot");
+    expect(screen.getByTestId("ledger-dashboard-governance-boundary")).toHaveTextContent("历史回填已完成");
+    expect(screen.getByTestId("ledger-dashboard-governance-boundary")).toHaveTextContent("golden sample 待审批");
     expect(screen.getByTestId("ledger-dashboard-governance-boundary")).not.toHaveTextContent("golden/backfill work remains pending");
     await waitFor(() => expect(screen.getByLabelText("ledger-dashboard-currency")).toHaveValue("CNY"));
     expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("3289.07 CNY/1亿");
@@ -276,7 +276,7 @@ describe("LedgerDashboardPage", () => {
         ([options]) => options.direction === "UNCLASSIFIED",
       ),
     ).toBe(false);
-    expect(screen.getAllByText("--").length).toBeGreaterThanOrEqual(3);
+    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(3);
   });
   it("drills from the asset KPI into ASSET positions without changing date口径", async () => {
     const user = userEvent.setup();
@@ -455,7 +455,7 @@ describe("LedgerDashboardPage", () => {
       "明细已回退到 2026-03-17",
     );
     expect(screen.getByTestId("ledger-dashboard-evidence")).toHaveTextContent("req_positions_fallback");
-    expect(screen.getByTestId("ledger-dashboard-evidence")).toHaveTextContent("positions trace");
+    expect(screen.getByTestId("ledger-dashboard-evidence")).toHaveTextContent("持仓溯源");
   });
 
   it("surfaces positions no-data state from the positions endpoint", async () => {
@@ -526,7 +526,7 @@ describe("LedgerDashboardPage", () => {
     renderWorkbenchApp(["/bank-ledger-dashboard"], { client });
 
     expect(await screen.findByTestId("ledger-dashboard-status")).toHaveTextContent("暂无数据");
-    expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("--");
+    expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("—");
     const quality = screen.getByTestId("ledger-dashboard-classification-quality");
     expect(quality).toHaveTextContent("暂无可评估分类质量");
     expect(within(quality).queryByRole("button", { name: "查看未分类明细" })).not.toBeInTheDocument();

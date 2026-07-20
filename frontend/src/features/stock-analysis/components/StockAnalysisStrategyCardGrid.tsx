@@ -427,7 +427,7 @@ export function StockAnalysisStrategyCardGrid({
                 badgeLabel={
                   themeBreakoutPanelSummary?.badgeLabel ??
                   `${localizeThemeRadarBadge(
-                    strategyPayload?.theme_breakout?.is_proxy ?? true,
+                    strategyPayload?.theme_breakout?.is_proxy === true,
                     strategyPayload?.theme_breakout?.formula_version,
                   )}${themeBreakoutCards.length > 0 ? ` · ${themeBreakoutCards.length} 项` : ""}`
                 }
@@ -686,11 +686,29 @@ export function StockAnalysisStrategyCardGrid({
                                     </div>
                                     <div className="flex gap-4 text-xs text-default-500 font-mono ml-6">
                                       <span className="text-danger">
-                                        20日回撤 {(row.drawdown_20d * 100).toFixed(1)}%
+                                        20日回撤{" "}
+                                        {row.drawdown_20d != null && Number.isFinite(row.drawdown_20d)
+                                          ? `${(row.drawdown_20d * 100).toFixed(1)}%`
+                                          : "待补"}
                                       </span>
-                                      <span>收盘强度 {(row.close_strength * 100).toFixed(0)}%</span>
-                                      <span>量比 {row.vol_ratio.toFixed(1)}x</span>
-                                      <span>得分 {row.score.toFixed(2)}</span>
+                                      <span>
+                                        收盘强度{" "}
+                                        {row.close_strength != null && Number.isFinite(row.close_strength)
+                                          ? `${(row.close_strength * 100).toFixed(0)}%`
+                                          : "待补"}
+                                      </span>
+                                      <span>
+                                        量比{" "}
+                                        {row.vol_ratio != null && Number.isFinite(row.vol_ratio)
+                                          ? `${row.vol_ratio.toFixed(1)}x`
+                                          : "待补"}
+                                      </span>
+                                      <span>
+                                        得分{" "}
+                                        {row.score != null && Number.isFinite(row.score)
+                                          ? row.score.toFixed(2)
+                                          : "待补"}
+                                      </span>
                                     </div>
                                   </li>
                                 );

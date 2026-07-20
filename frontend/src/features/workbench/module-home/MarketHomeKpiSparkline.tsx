@@ -1,5 +1,6 @@
 import { useId } from "react";
 
+import { dhApiTokens } from "../../../theme/designSystem";
 import { buildSparkPath } from "../dashboard/sparklinePath";
 import type { MarketChangeDirection } from "./marketHomeChangeTone";
 import marketStyles from "./marketHome.module.css";
@@ -16,11 +17,11 @@ function sparkStroke(
   tone: MarketHomeKpiSparklineProps["tone"],
   changeDirection: MarketChangeDirection | undefined,
 ) {
-  if (changeDirection === "up") return "#ef4444";
-  if (changeDirection === "down") return "#2d8a5e";
-  if (tone === "error") return "#ef4444";
-  if (tone === "watch") return "#d97706";
-  return "#1850a1";
+  if (changeDirection === "up") return dhApiTokens.color.red;
+  if (changeDirection === "down") return dhApiTokens.color.green;
+  if (tone === "error") return dhApiTokens.color.red;
+  if (tone === "watch") return dhApiTokens.color.amber;
+  return dhApiTokens.color.blue;
 }
 
 export function MarketHomeKpiSparkline({

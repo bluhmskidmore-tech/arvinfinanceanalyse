@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
+import { EM_DASH } from "../../../utils/format";
 import {
   buildLedgerKpiCards,
   directionLabel,
@@ -31,6 +32,17 @@ function queryDate(value: string | null) {
 
 function queryCurrency(value: string | null) {
   return value?.trim().toUpperCase() ?? "";
+}
+
+function ledgerBoolLabel(value: boolean | undefined): string {
+  return value ? "是" : "否";
+}
+
+function ledgerMissingValue<T>(value: T | null | undefined): T | typeof EM_DASH {
+  if (value === null || value === undefined || value === "") {
+    return EM_DASH;
+  }
+  return value;
 }
 
 export default function LedgerDashboardPage() {
@@ -161,24 +173,26 @@ export default function LedgerDashboardPage() {
     <section className="ledger-dashboard" data-testid="ledger-dashboard-page">
       <header className="ledger-dashboard__header">
         <div>
-          <p className="ledger-dashboard__eyebrow">Bank Ledger</p>
+          <p className="ledger-dashboard__eyebrow">银行台账</p>
           <h1>银行台账驾驶舱</h1>
           <p className="ledger-dashboard__subtitle">
             {actualDate ? `数据日期 ${actualDate}` : "等待可用台账日期"}
           </p>
         </div>
         <div className="ledger-dashboard__mode">
-          {client.mode === "real" ? "真实传输 · 候选读模型" : "本地演示 · 候选读模型"}
+          {client.mode === "real" ? "真实传输（候选读模型）" : "本地演示（候选读模型）"}
         </div>
       </header>
 
       <section
         className="ledger-dashboard__governance-boundary"
         data-testid="ledger-dashboard-governance-boundary"
-        aria-label="Ledger governance boundary"
+        aria-label="台账治理边界"
       >
-        <strong>{"candidate · imported position_snapshot · not for formal use"}</strong>
-        <span>{"Currency buckets are independent native amounts / 100m with no FX conversion. Classification v2 is import-time only; unmatched pairs are UNCLASSIFIED and legacy batches fail closed. Historical backfill completed for live batches 1-8; golden sample captured-awaiting-approval. UNKNOWN remediation, owner approval, and authorized real-page UAT remain pending."}</span>
+        <strong>候选导入 position_snapshot（非正式口径）</strong>
+        <span>
+          各币种桶为独立原币金额（亿元），不做外汇折算。分类 v2 仅在导入时生效；未匹配项标记为 UNCLASSIFIED，旧规则批次 fail closed。线上批次 1-8 历史回填已完成；golden sample 待审批。UNKNOWN 修复、负责人审批与授权真页 UAT 仍待完成。
+        </span>
       </section>
       <div className="ledger-dashboard__toolbar">
         <label className="ledger-dashboard__field">
@@ -202,7 +216,7 @@ export default function LedgerDashboardPage() {
         </label>
 
         <label className="ledger-dashboard__field">
-          <span>Currency</span>
+          <span>币种</span>
           <select
             aria-label="ledger-dashboard-currency"
             value={selectedCurrency}
@@ -213,7 +227,7 @@ export default function LedgerDashboardPage() {
             }}
             disabled={currencies.length === 0}
           >
-            {currencies.length === 0 ? <option value="">--</option> : null}
+            {currencies.length === 0 ? <option value="">{EM_DASH}</option> : null}
             {currencies.map((currency) => <option key={currency} value={currency}>{currency}</option>)}
           </select>
         </label>
@@ -234,7 +248,7 @@ export default function LedgerDashboardPage() {
 
       <section className="ledger-dashboard__import" aria-labelledby="ledger-import-title">
         <div className="ledger-dashboard__import-copy">
-          <p className="ledger-dashboard__eyebrow">Operational workflow</p>
+          <p className="ledger-dashboard__eyebrow">导入流程</p>
           <h2 id="ledger-import-title">导入台账</h2>
           <p>候选台账导入证据，不构成正式余额或正式 PnL。支持 .csv、.xls、.xlsx，最大 16 MiB。</p>
         </div>
@@ -321,8 +335,8 @@ export default function LedgerDashboardPage() {
             : state === "no_data"
               ? "暂无数据"
               : state === "fallback"
-                ? `已回退到 ${actualDate ?? "--"}`
-                : `数据截至 ${actualDate ?? "--"}`}
+                ? `已回退到 ${actualDate ?? EM_DASH}`
+                : `数据截至 ${actualDate ?? EM_DASH}`}
           {requestedDate && actualDate && requestedDate !== actualDate ? (
             <span> 请求日期 {requestedDate}</span>
           ) : null}
@@ -355,14 +369,15 @@ export default function LedgerDashboardPage() {
             {!selectedBucket ? (
               <p>暂无可评估分类质量。</p>
             ) : classificationStatus === "legacy_unassessed" ? (
-              <p>旧规则批次不可评估；资产、负债和净敞口已 fail closed 显示为 --。</p>
+              <p>旧规则批次不可评估；资产、负债和净敞口已 fail closed 显示为 {EM_DASH}。</p>
             ) : classificationStatus === "invalid_materialization" ? (
               <p>物化方向非法；资产、负债、净敞口和分类质量已 fail closed。</p>
             ) : (
               <p>
-                覆盖率 {selectedBucket.classification_coverage_pct?.toFixed(2) ?? "--"}% ·
-                未分类 {selectedBucket.unclassified_row_count ?? "--"} 行 ·
+                覆盖率 {selectedBucket.classification_coverage_pct?.toFixed(2) ?? EM_DASH}%
+                ，未分类 {selectedBucket.unclassified_row_count ?? EM_DASH} 行（
                 {formatLedgerYiAmount(selectedBucket.unclassified_face_amount, selectedCurrency)}
+                ）
               </p>
             )}
           </div>
@@ -397,8 +412,8 @@ export default function LedgerDashboardPage() {
                 : positionsState === "no_data"
                   ? "明细暂无数据"
                   : positionsState === "fallback"
-                    ? `明细已回退到 ${positionsActualDate ?? "--"}`
-                    : `明细数据截至 ${positionsActualDate ?? "--"}`}
+                    ? `明细已回退到 ${positionsActualDate ?? EM_DASH}`
+                    : `明细数据截至 ${positionsActualDate ?? EM_DASH}`}
               {positionsRequestedDate && positionsActualDate && positionsRequestedDate !== positionsActualDate ? (
                 <span> 请求日期 {positionsRequestedDate}</span>
               ) : null}
@@ -425,10 +440,10 @@ export default function LedgerDashboardPage() {
                   <td>{item.position_key}</td>
                   <td>{item.direction}</td>
                   <td>{item.bond_code}</td>
-                  <td>{item.portfolio || "--"}</td>
-                  <td>{item.currency || "--"}</td>
-                  <td>{item.account_category_std || "--"}</td>
-                  <td>{item.asset_class_std || "--"}</td>
+                  <td>{item.portfolio || EM_DASH}</td>
+                  <td>{item.currency || EM_DASH}</td>
+                  <td>{item.account_category_std || EM_DASH}</td>
+                  <td>{item.asset_class_std || EM_DASH}</td>
                   <td className="ledger-dashboard__num">{formatLedgerYuanAmount(item.face_amount)}</td>
                   <td>{item.batch_id}</td>
                   <td>{item.row_no}</td>
@@ -448,50 +463,50 @@ export default function LedgerDashboardPage() {
 
       <section className="ledger-dashboard__evidence" data-testid="ledger-dashboard-evidence">
         <article>
-          <h2>metadata</h2>
+          <h2>元数据</h2>
           <dl>
             <dt>source_version</dt>
-            <dd>{dashboard?.metadata.source_version ?? datesQuery.data?.metadata.source_version ?? "--"}</dd>
+            <dd>{ledgerMissingValue(dashboard?.metadata.source_version ?? datesQuery.data?.metadata.source_version)}</dd>
             <dt>rule_version</dt>
-            <dd>{dashboard?.metadata.rule_version ?? datesQuery.data?.metadata.rule_version ?? "--"}</dd>
+            <dd>{ledgerMissingValue(dashboard?.metadata.rule_version ?? datesQuery.data?.metadata.rule_version)}</dd>
             <dt>batch_id</dt>
-            <dd>{dashboard?.metadata.batch_id ?? datesQuery.data?.metadata.batch_id ?? "--"}</dd>
-            <dt>stale</dt>
-            <dd>{String(dashboard?.metadata.stale ?? false)}</dd>
-            <dt>fallback</dt>
-            <dd>{String(dashboard?.metadata.fallback ?? false)}</dd>
-            <dt>no_data</dt>
-            <dd>{String(dashboard?.metadata.no_data ?? datesQuery.data?.metadata.no_data ?? false)}</dd>
+            <dd>{ledgerMissingValue(dashboard?.metadata.batch_id ?? datesQuery.data?.metadata.batch_id)}</dd>
+            <dt>数据延迟</dt>
+            <dd>{ledgerBoolLabel(dashboard?.metadata.stale)}</dd>
+            <dt>已回退</dt>
+            <dd>{ledgerBoolLabel(dashboard?.metadata.fallback)}</dd>
+            <dt>无数据</dt>
+            <dd>{ledgerBoolLabel(dashboard?.metadata.no_data ?? datesQuery.data?.metadata.no_data)}</dd>
           </dl>
         </article>
         <article>
-          <h2>trace</h2>
+          <h2>溯源</h2>
           <dl>
             <dt>request_id</dt>
-            <dd>{dashboard?.trace.request_id ?? "--"}</dd>
+            <dd>{ledgerMissingValue(dashboard?.trace.request_id)}</dd>
             <dt>requested_as_of_date</dt>
-            <dd>{requestedDate || "--"}</dd>
+            <dd>{ledgerMissingValue(requestedDate)}</dd>
             <dt>resolved_as_of_date</dt>
-            <dd>{actualDate ?? "--"}</dd>
+            <dd>{ledgerMissingValue(actualDate)}</dd>
             <dt>positions_filter</dt>
-            <dd>{`${selectedCurrency || "--"} / ${direction === "ALL" ? "ALL" : direction}`}</dd>
+            <dd>{`${ledgerMissingValue(selectedCurrency)} / ${direction === "ALL" ? "ALL" : direction}`}</dd>
           </dl>
         </article>
         <article>
-          <h2>positions trace</h2>
+          <h2>持仓溯源</h2>
           <dl>
             <dt>request_id</dt>
-            <dd>{positions?.trace.request_id ?? "--"}</dd>
+            <dd>{ledgerMissingValue(positions?.trace.request_id)}</dd>
             <dt>requested_as_of_date</dt>
-            <dd>{positionsRequestedDate || "--"}</dd>
+            <dd>{ledgerMissingValue(positionsRequestedDate)}</dd>
             <dt>resolved_as_of_date</dt>
-            <dd>{positionsActualDate ?? "--"}</dd>
-            <dt>stale</dt>
-            <dd>{String(positions?.metadata.stale ?? false)}</dd>
-            <dt>fallback</dt>
-            <dd>{String(positions?.metadata.fallback ?? false)}</dd>
-            <dt>no_data</dt>
-            <dd>{String(positions?.metadata.no_data ?? false)}</dd>
+            <dd>{ledgerMissingValue(positionsActualDate)}</dd>
+            <dt>数据延迟</dt>
+            <dd>{ledgerBoolLabel(positions?.metadata.stale)}</dd>
+            <dt>已回退</dt>
+            <dd>{ledgerBoolLabel(positions?.metadata.fallback)}</dd>
+            <dt>无数据</dt>
+            <dd>{ledgerBoolLabel(positions?.metadata.no_data)}</dd>
           </dl>
         </article>
       </section>

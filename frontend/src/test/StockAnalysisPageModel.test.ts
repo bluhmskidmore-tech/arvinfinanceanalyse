@@ -550,7 +550,8 @@ describe("stockAnalysisPageModel", () => {
 
     expect(cards[0].stockCode).toBe("000001.SZ");
     expect(cards[0].headline).toContain("观察候选");
-    expect(cards[0].pattern).toBe("突破");
+    expect(cards[0].pattern).toBe("突破（参考）");
+    expect(cards[0].patternNote).toContain("前端启发式");
     expect(cards[0].distanceToBreakoutPct).toMatch(/%/);
     expect(cards[0].evidence.join(" ")).toContain("行业排名第 1");
     expect(cards[0].evidence.join(" ")).toContain("收盘价 21.90");

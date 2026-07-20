@@ -1,4 +1,5 @@
 import type { LiabilityYieldKpi, ResultMeta } from "../../../api/contracts";
+import { EM_DASH } from "../../../utils/format";
 
 export type LiabilityAnalyticsTabKey = "daily" | "monthly";
 
@@ -78,11 +79,9 @@ export type LiabilityAnalyticsPageReadModel = {
   stateSurfaces: LiabilityPageStateSurface[];
 };
 
-const DASH = "—";
-
 function formatYi(value: number | null | undefined) {
   if (value === null || value === undefined || !Number.isFinite(value)) {
-    return DASH;
+    return EM_DASH;
   }
   return value.toFixed(2);
 }
@@ -90,7 +89,7 @@ function formatYi(value: number | null | undefined) {
 function formatBpFromPctNumeric(kpi: LiabilityYieldKpi | null) {
   const nim = kpi?.nim?.raw;
   if (nim === null || nim === undefined || !Number.isFinite(nim)) {
-    return DASH;
+    return EM_DASH;
   }
   return `${(nim * 10000).toFixed(1)}bp`;
 }
@@ -107,12 +106,18 @@ function toneForMeta(meta: ResultMeta): LiabilityPageBadgeTone {
 
 function basisLabel(meta: ResultMeta) {
   if (meta.basis === "formal" && meta.formal_use_allowed) {
-    return "formal 可用";
+    return "正式可用";
   }
   if (meta.basis === "formal") {
-    return "formal 不可直接使用";
+    return "正式口径不可直接使用";
   }
-  return `${meta.basis} 读面`;
+  if (meta.basis === "analytical") {
+    return "分析读面";
+  }
+  if (meta.basis === "scenario") {
+    return "情景读面";
+  }
+  return meta.basis ? `${meta.basis} 读面` : "读面未标注";
 }
 
 function buildEvidenceCard(source: LiabilityResultMetaInput): LiabilityPageEvidenceCard | null {
@@ -128,10 +133,10 @@ function buildEvidenceCard(source: LiabilityResultMetaInput): LiabilityPageEvide
     basisLabel: basisLabel(meta),
     qualityLabel: meta.quality_flag,
     fallbackLabel: meta.fallback_mode,
-    asOfDate: meta.as_of_date ?? DASH,
-    traceId: meta.trace_id || DASH,
-    sourceVersion: meta.source_version || DASH,
-    ruleVersion: meta.rule_version || DASH,
+    asOfDate: meta.as_of_date ?? EM_DASH,
+    traceId: meta.trace_id || EM_DASH,
+    sourceVersion: meta.source_version || EM_DASH,
+    ruleVersion: meta.rule_version || EM_DASH,
     tone: toneForMeta(meta),
   };
 }
@@ -140,14 +145,14 @@ function buildMissingEvidenceCard(key: string, title: string): LiabilityPageEvid
   return {
     key,
     title,
-    resultKind: "result_meta 未透出",
+    resultKind: "结果元数据未透出",
     basisLabel: "兼容端点",
     qualityLabel: "待补状态证据",
     fallbackLabel: "不可判定",
-    asOfDate: DASH,
-    traceId: DASH,
-    sourceVersion: DASH,
-    ruleVersion: DASH,
+    asOfDate: EM_DASH,
+    traceId: EM_DASH,
+    sourceVersion: EM_DASH,
+    ruleVersion: EM_DASH,
     tone: "warning",
   };
 }
@@ -155,8 +160,8 @@ function buildMissingEvidenceCard(key: string, title: string): LiabilityPageEvid
 export function buildLiabilityAnalyticsPageReadModel(
   input: BuildLiabilityAnalyticsPageReadModelInput,
 ): LiabilityAnalyticsPageReadModel {
-  const requested = input.requestedReportDate || input.resolvedReportDate || DASH;
-  const resolved = input.resolvedReportDate || DASH;
+  const requested = input.requestedReportDate || input.resolvedReportDate || EM_DASH;
+  const resolved = input.resolvedReportDate || EM_DASH;
   const isMock = input.mode !== "real";
   const hasDateMismatch =
     Boolean(input.requestedReportDate) &&
@@ -176,7 +181,7 @@ export function buildLiabilityAnalyticsPageReadModel(
   const statusBadges: LiabilityPageStatusBadge[] = [
     {
       key: "surface",
-      label: "兼容/分析读面",
+      label: "分析读面",
       tone: "info",
     },
     {
@@ -199,28 +204,28 @@ export function buildLiabilityAnalyticsPageReadModel(
   if (fallbackCards.length > 0) {
     statusBadges.push({
       key: "fallback",
-      label: `${fallbackCards.length} 个 fallback`,
+      label: `${fallbackCards.length} 个兜底结果`,
       tone: "warning",
     });
   }
   if (staleCards.length > 0) {
     statusBadges.push({
       key: "stale",
-      label: `${staleCards.length} 个 stale/vendor 异常`,
+      label: `${staleCards.length} 个供应商状态异常`,
       tone: "warning",
     });
   }
   if (qualityCards.length > 0) {
     statusBadges.push({
       key: "quality",
-      label: `${qualityCards.length} 个 quality 非 ok`,
+      label: `${qualityCards.length} 个质量未通过`,
       tone: "danger",
     });
   }
   if (missingEvidenceCards.length > 0) {
     statusBadges.push({
       key: "meta-gap",
-      label: `${missingEvidenceCards.length} 个兼容端点缺少可见 meta`,
+      label: `${missingEvidenceCards.length} 个兼容端点缺少可见元数据`,
       tone: "warning",
     });
   }
@@ -238,13 +243,13 @@ export function buildLiabilityAnalyticsPageReadModel(
           {
             key: "liability-cost",
             label: "负债成本",
-            value: input.yieldKpi?.liability_cost?.display ?? DASH,
+            value: input.yieldKpi?.liability_cost?.display ?? EM_DASH,
             detail: "后端收益指标",
           },
           {
             key: "nim",
             label: "NIM",
-            value: input.yieldKpi?.nim?.display ?? DASH,
+            value: input.yieldKpi?.nim?.display ?? EM_DASH,
             detail: formatBpFromPctNumeric(input.yieldKpi),
           },
           {
@@ -257,7 +262,7 @@ export function buildLiabilityAnalyticsPageReadModel(
           {
             key: "top-counterparty",
             label: "头部占比",
-            value: input.topCounterpartyShare || DASH,
+            value: input.topCounterpartyShare || EM_DASH,
             detail: "对手方集中度",
           },
           {
@@ -277,7 +282,7 @@ export function buildLiabilityAnalyticsPageReadModel(
           {
             key: "month",
             label: "当前月份",
-            value: input.selectedMonthLabel ?? DASH,
+            value: input.selectedMonthLabel ?? EM_DASH,
             detail: "按月选择",
           },
         ];
@@ -296,14 +301,14 @@ export function buildLiabilityAnalyticsPageReadModel(
       key: "date-mismatch",
       variant: "fallback-date",
       title: "请求报告日与返回报告日不一致",
-      description: `请求 ${requested}，当前返回 ${resolved}，需要在下钻前确认是否为 fallback/latest snapshot。`,
+      description: `请求 ${requested}，当前返回 ${resolved}，需要在下钻前确认是否为兜底或最新快照。`,
     });
   }
   if (fallbackCards.length > 0) {
     stateSurfaces.push({
       key: "fallback",
       variant: "fallback-date",
-      title: "存在 fallback 结果",
+      title: "存在兜底结果",
       description: fallbackCards.map((card) => `${card.title}: ${card.fallbackLabel}`).join("；"),
     });
   }
@@ -311,9 +316,9 @@ export function buildLiabilityAnalyticsPageReadModel(
     stateSurfaces.push({
       key: "stale",
       variant: "stale",
-      title: "存在 stale/vendor 异常",
+      title: "存在供应商状态异常",
       description: staleCards
-        .map((source) => `${source.title}: ${source.meta?.vendor_status ?? DASH}`)
+        .map((source) => `${source.title}: ${source.meta?.vendor_status ?? EM_DASH}`)
         .join("；"),
     });
   }
@@ -321,7 +326,7 @@ export function buildLiabilityAnalyticsPageReadModel(
     stateSurfaces.push({
       key: "missing-meta",
       variant: "definition-pending",
-      title: "兼容端点 result_meta 尚未透出",
+      title: "兼容端点结果元数据尚未透出",
       description: input.unwrappedEvidenceLabels.join("、"),
     });
   }
@@ -338,7 +343,7 @@ export function buildLiabilityAnalyticsPageReadModel(
       key: "ok",
       variant: "neutral",
       title: "状态证据已归集",
-      description: "当前可见 result_meta 未显示 fallback、stale 或质量异常。",
+      description: "当前可见结果元数据未显示兜底、过期或质量异常。",
     });
   }
 
@@ -347,7 +352,7 @@ export function buildLiabilityAnalyticsPageReadModel(
     reportLine:
       input.activeTab === "daily"
         ? `请求报告日 ${requested} · 当前报告日 ${resolved}`
-        : `${input.selectedYear} 年 · ${input.selectedMonthLabel ?? "未选择月份"} · 月度日均`,
+        : `${input.selectedYear} 年 · ${input.selectedMonthLabel ?? "未选择月份"}（月度日均）`,
     statusBadges,
     kpis,
     evidenceCards: allEvidenceCards,

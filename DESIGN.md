@@ -120,7 +120,7 @@
 ## 8. Motion
 
 - **Approach:** minimal-functional。仅状态切换、折叠、Tab、路由过渡、hover/active 反馈。
-- **禁止无限循环装饰动效**（扫光、呼吸、网格漂移一类）。已于 2026-07 全数移除，不得回加。
+- **无限循环装饰动效默认禁止**（扫光、网格漂移一类），**唯一豁免：经营日报首页 hero 的环境呼吸光**（`dhAmbientCanvasBreathe`，约 6.4s 缓慢透明度呼吸，无数据语义，业主 2026-07-19 拍板保留）。豁免仅限该处，不得扩散到其他页面或组件；`prefers-reduced-motion` 下必须完全静态或隐藏。
 - **时长/曲线：** 用 `designTokens.motion`（fast 150ms hover / base 200ms 展开 / easeOut）。
 - **必须尊重 `prefers-reduced-motion`：** 所有非 hover 动效在 reduce 下退化为静态。
 - **滚动监听：** 禁止裸 `window.addEventListener("scroll")` 驱动动画；用 IntersectionObserver 或 idle-callback 门控（现有分级加载门控即此模式）。
@@ -158,7 +158,7 @@
 1. 页内主题翻转（浅色页中插深色区块，反之亦然）
 2. 等高 stretch 造成的空卡大留白；左右栏裸空白断层
 3. 同一状态文案在页面 3 处以上重复；每行重复同一缺失原因
-4. 无限循环装饰动效；不尊重 reduced-motion
+4. 无限循环装饰动效（§8 已豁免的首页 hero 呼吸光除外）；不尊重 reduced-motion
 5. 中英混排技术微标签出现在业务叙述位
 6. 单行 2 个以上 `·`；区块标题旁的装饰性微元句
 7. 高饱和语义色直接用于深色终端页
@@ -179,3 +179,4 @@
 | 2026-06-12 | 引入 IB 浅色 restyle（ibTokens：纸底/深栏/衬线刊头/2px 锐角） | 机构感统一视觉语言 |
 | 2026-07-07 | 全文重写：正式承认「IB 浅色 + 深色终端」双主题体系并各自定 token 权威；新增状态呈现、文案语域、防重排、反模式清单 | 旧文档只覆盖浅色体系，与首页深色终端现状脱节；沉淀本轮首页整改（KPI 对齐、状态去重、动效移除、空态收缩、中文化）为可审查标准 |
 | 2026-07-07 | `cockpit`/`warm`/`institutional` 域内调色板继续保留使用，定位为 visual-only；新页面优先 IB / dh-api 取色 | 存量页面依赖广，强制冻结成本高；以"优先级引导"代替"禁令" |
+| 2026-07-19 | 经营日报首页 hero 呼吸光（`dhAmbientCanvasBreathe`）由"违规待删"改为**正式豁免保留** | 业主明确表态喜欢该动效；限定单点豁免 + reduced-motion 静态化，避免禁令被整体架空 |

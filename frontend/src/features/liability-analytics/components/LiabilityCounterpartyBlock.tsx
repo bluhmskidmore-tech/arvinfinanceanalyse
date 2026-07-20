@@ -2,16 +2,21 @@ import { Card, Col, Row, Spin, Typography } from "antd";
 import { useMemo } from "react";
 
 import type { Numeric } from "../../../api/contracts";
+import { ibChartTheme } from "../../../components/charts/chartTheme";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
+import { EM_DASH } from "../../../utils/format";
 import { concentrationMetrics } from "../utils/concentration";
 import { numericToYiNumeric, numericYuanRaw } from "../utils/money";
 
 const { Text } = Typography;
 
-const LIAB_RED = "#cf1322";
-const PIE_BANK = LIAB_RED;
-const PIE_NONBANK = "#10239e";
-const PIE_EXTRA = ["#13c2c2", "#fa8c16", "#52c41a", "#722ed1", "#eb2f96"];
+const CHART_PALETTE = ibChartTheme.palette;
+const CATEGORICAL = ibChartTheme.categoricalPalette;
+const BAR_COLOR = CHART_PALETTE[0];
+/** 银行扇区用分类色盘强调色，避免误用 palette 中的 --ib-down。 */
+const PIE_BANK = CATEGORICAL[0];
+const PIE_NONBANK = CATEGORICAL[1] ?? CHART_PALETTE[1];
+const PIE_EXTRA = CATEGORICAL;
 
 export type LiabilityCpRow = {
   name: string;
@@ -98,10 +103,10 @@ export function LiabilityCounterpartyBlock({
           const rows = params as { data: { row: LiabilityCpRow } }[];
           const row = rows?.[0]?.data?.row;
           if (!row) return "";
-          const balanceDisplay = numericToYiNumeric(row.value)?.display ?? "—";
-          const shareDisplay = row.share?.display ?? "—";
-          const weightedCostDisplay = row.weightedCost?.display ?? "—";
-          return `${row.name}<br/>余额：${balanceDisplay}<br/>占比：${shareDisplay}<br/>加权负债成本：${weightedCostDisplay}<br/>类型：${row.type || "—"}`;
+          const balanceDisplay = numericToYiNumeric(row.value)?.display ?? EM_DASH;
+          const shareDisplay = row.share?.display ?? EM_DASH;
+          const weightedCostDisplay = row.weightedCost?.display ?? EM_DASH;
+          return `${row.name}<br/>余额：${balanceDisplay}<br/>占比：${shareDisplay}<br/>加权负债成本：${weightedCostDisplay}<br/>类型：${row.type || EM_DASH}`;
         },
       },
       xAxis: { type: "value" },
@@ -117,7 +122,7 @@ export function LiabilityCounterpartyBlock({
             value: numericToYiNumeric(row.value)?.raw ?? 0,
             row,
           })),
-          itemStyle: { color: LIAB_RED, borderRadius: [0, 4, 4, 0] },
+          itemStyle: { color: BAR_COLOR, borderRadius: [0, 2, 2, 0] },
         },
       ],
     }),
@@ -134,7 +139,7 @@ export function LiabilityCounterpartyBlock({
           const pct =
             total !== null && Number.isFinite(total) && total > 0
               ? `${((point.value / total) * 100).toFixed(2)}%`
-              : "—";
+              : EM_DASH;
           return `${point.name}<br/>余额：${(point.value / 1e8).toFixed(2)} 亿<br/>占比：${pct}`;
         },
       },
@@ -166,14 +171,18 @@ export function LiabilityCounterpartyBlock({
           size="small"
           title={title}
           extra={
-            <Text type="secondary">
-              总规模：{numericToYiNumeric(totalValue)?.display ?? "—"} · Top10 占比：{(top10Share * 100).toFixed(2)}% · HHI：
-              {" "}
-              {hhiTimes10000.toFixed(0)}
-            </Text>
+            <div className="liability-cp-extra">
+              <span className="liability-cp-extra__line">
+                总规模：{numericToYiNumeric(totalValue)?.display ?? EM_DASH}
+              </span>
+              <span className="liability-cp-extra__line">
+                Top10 占比：{(top10Share * 100).toFixed(2)}%
+              </span>
+              <span className="liability-cp-extra__line">HHI：{hhiTimes10000.toFixed(0)}</span>
+            </div>
           }
         >
-          <Text type="secondary" style={{ fontSize: 12 }}>
+          <Text type="secondary" className="liability-panel-caption--tight">
             {subtitle}
           </Text>
           {errorText ? (
@@ -181,9 +190,9 @@ export function LiabilityCounterpartyBlock({
               {errorText}
             </Text>
           ) : null}
-          <div style={{ height: 320, marginTop: 8 }}>
+          <div className="liability-chart-frame liability-chart-frame--bar">
             {loading ? (
-              <div style={{ padding: 48, textAlign: "center" }}>
+              <div className="liability-chart-loading">
                 <Spin />
               </div>
             ) : (
@@ -194,19 +203,19 @@ export function LiabilityCounterpartyBlock({
       </Col>
       <Col xs={24} lg={8}>
         <Card size="small" title="机构类型结构">
-          <Text type="secondary" style={{ fontSize: 12 }}>
+          <Text type="secondary" className="liability-panel-caption--tight">
             银行 vs 非银行（稳定性视角）。
           </Text>
-          <div style={{ height: 280, marginTop: 8 }}>
+          <div className="liability-chart-frame liability-chart-frame--pie">
             {loading ? (
-              <div style={{ padding: 48, textAlign: "center" }}>
+              <div className="liability-chart-loading">
                 <Spin />
               </div>
             ) : (
               <ReactECharts option={pieOption} style={{ height: 280 }} notMerge lazyUpdate />
             )}
           </div>
-          <Text type="secondary" style={{ fontSize: 12 }}>
+          <Text type="secondary" className="liability-panel-caption--tight">
             银行占比越高，通常资金稳定性更强；非银行占比上升需关注期限错配与流动性压力。
           </Text>
         </Card>

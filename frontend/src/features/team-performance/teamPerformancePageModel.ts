@@ -4,6 +4,7 @@ import type {
   ProductCategoryPnlRow,
   ResultMeta,
 } from "../../api/contracts";
+import { EM_DASH } from "../../utils/format";
 
 const YUAN_PER_WAN = 10_000;
 const YUAN_PER_YI = 100_000_000;
@@ -157,21 +158,21 @@ function toNumber(value: string | number | null | undefined): number | null {
 
 function formatNumber(value: number | null, maximumFractionDigits = 2): string {
   if (value === null) {
-    return "-";
+    return EM_DASH;
   }
   return value.toLocaleString("zh-CN", { maximumFractionDigits });
 }
 
 export function formatWanFromYuan(value: number | null): string {
   if (value === null) {
-    return "-";
+    return EM_DASH;
   }
   return `${formatNumber(value / YUAN_PER_WAN)} 万元`;
 }
 
 export function formatYiFromYuan(value: number | null): string {
   if (value === null) {
-    return "-";
+    return EM_DASH;
   }
   return `${formatNumber(value / YUAN_PER_YI)} 亿元`;
 }
@@ -185,7 +186,7 @@ export function formatScore(value: number | null): string {
 
 export function formatRatePct(value: number | null): string {
   if (value === null) {
-    return "-";
+    return EM_DASH;
   }
   return `${formatNumber(value * 100)}%`;
 }

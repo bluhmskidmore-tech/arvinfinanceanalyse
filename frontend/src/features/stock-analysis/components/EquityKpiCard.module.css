@@ -7,7 +7,7 @@
   overflow: hidden;
   background: var(--sa-dh-card, var(--ib-surface));
   border: 1px solid var(--sa-dh-line-soft, var(--ib-hairline));
-  border-radius: var(--ib-radius, 2px);
+  border-radius: var(--dh-api-radius, 6px);
   box-shadow: none;
   transition:
     border-color 180ms ease;

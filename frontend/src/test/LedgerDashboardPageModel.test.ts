@@ -9,11 +9,12 @@ import {
   ledgerImportStatusIsTerminal,
   ledgerDataState,
 } from "../features/ledger-dashboard/pages/ledgerDashboardPageModel";
+import { EM_DASH } from "../utils/format";
 
 describe("ledgerDashboardPageModel", () => {
   it("keeps dashboard KPI values inside one currency bucket", () => {
     expect(formatLedgerYiAmount(3289.07, "CNY")).toBe("3289.07 CNY/1亿");
-    expect(formatLedgerYiAmount(null, "CNY")).toBe("--");
+    expect(formatLedgerYiAmount(null, "CNY")).toBe(EM_DASH);
     const cards = buildLedgerKpiCards({
       as_of_date: "2026-03-17",
       classification_status: "ready",
@@ -29,7 +30,7 @@ describe("ledgerDashboardPageModel", () => {
   });
   it("keeps position amounts as native-currency values for detail rows", () => {
     expect(formatLedgerYuanAmount(100000000)).toBe("100,000,000.00");
-    expect(formatLedgerYuanAmount(null)).toBe("--");
+    expect(formatLedgerYuanAmount(null)).toBe(EM_DASH);
   });
 
   it("prioritizes explicit loading, no-data, and fallback states", () => {
@@ -85,7 +86,7 @@ describe("ledgerDashboardPageModel", () => {
     expect(selectLedgerCurrency(data.currency_breakdown, null)).toBe("CNY");
     expect(buildLedgerKpiCards(data, "USD").map((card) => [card.key, card.value])).toEqual([
       ["asset", "2.00 USD/1亿"],
-      ["liability", "--"],
+      ["liability", EM_DASH],
       ["net", "2.00 USD/1亿"],
     ]);
   });
@@ -106,7 +107,7 @@ describe("ledgerDashboardPageModel", () => {
         classification_coverage_pct: null,
       }],
     }, "CNY");
-    expect(cards.map((card) => card.value)).toEqual(["--", "--", "--"]);
+    expect(cards.map((card) => card.value)).toEqual([EM_DASH, EM_DASH, EM_DASH]);
     expect(cards[2].detail).toContain("未分类不计入");
   });
 });

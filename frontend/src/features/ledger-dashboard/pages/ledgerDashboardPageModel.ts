@@ -7,6 +7,7 @@ import type {
   LedgerResponseMetadata,
   LedgerResponseTrace,
 } from "../../../api/ledgerClient";
+import { EM_DASH } from "../../../utils/format";
 
 export type LedgerDirectionFilter = "ALL" | LedgerDirection;
 
@@ -41,14 +42,14 @@ export function ledgerImportStatusIsTerminal(status: LedgerImportStatus): boolea
 
 export function formatLedgerYiAmount(value: number | null | undefined, currency: string): string {
   if (value === null || value === undefined || Number.isNaN(value)) {
-    return "--";
+    return EM_DASH;
   }
   return `${value.toFixed(2)} ${currency}/1亿`;
 }
 
 export function formatLedgerYuanAmount(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) {
-    return "--";
+    return EM_DASH;
   }
   return new Intl.NumberFormat("zh-CN", {
     maximumFractionDigits: 2,

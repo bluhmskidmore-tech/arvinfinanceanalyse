@@ -8,8 +8,10 @@ import type {
   ApiEnvelope,
   BalanceAnalysisBasisBreakdownPayload,
   BalanceAnalysisOverviewPayload,
+  BondAnalyticsDatesPayload,
   BondDashboardHomeSummaryPayload,
   ChoiceMacroLatestPayload,
+  DV01RiskPayload,
   MacroVendorPayload,
   PnlAttributionAnalysisSummary,
   ResultMeta,
@@ -655,6 +657,130 @@ function oneRateSeriesEnvelope(): ApiEnvelope<ChoiceMacroLatestPayload> {
   };
 }
 
+const BOND_EXACT_MONTH_ENDS = [
+  "2026-01-31",
+  "2026-02-28",
+  "2026-03-31",
+  "2026-04-30",
+  "2026-05-31",
+  "2026-06-30",
+  "2025-06-30",
+] as const;
+
+const BOND_DAILY_DATES = ["2026-06-29", "2026-05-30", "2026-04-29"] as const;
+
+type BondEvidenceSnapshot = {
+  faceYi: number;
+  marketYi: number;
+  duration: number;
+  dv01Wan: number;
+  positions: number;
+};
+
+const BOND_EVIDENCE_SNAPSHOTS: Record<
+  "OCI" | "TPL",
+  Record<string, BondEvidenceSnapshot>
+> = {
+  OCI: {
+    "2025-06-30": { faceYi: 900, marketYi: 920, duration: 3.1, dv01Wan: 3_000, positions: 500 },
+    "2026-01-31": { faceYi: 950, marketYi: 960, duration: 3, dv01Wan: 3_000, positions: 520 },
+    "2026-02-28": { faceYi: 960, marketYi: 970, duration: 3.1, dv01Wan: 3_100, positions: 530 },
+    "2026-03-31": { faceYi: 970, marketYi: 980, duration: 3.2, dv01Wan: 3_200, positions: 540 },
+    "2026-04-30": { faceYi: 980, marketYi: 995, duration: 3.3, dv01Wan: 3_300, positions: 550 },
+    "2026-05-31": { faceYi: 1_000, marketYi: 1_010, duration: 3.4, dv01Wan: 3_400, positions: 560 },
+    "2026-06-30": {
+      faceYi: 1_024.157080168109,
+      marketYi: 1_042.7175064967316,
+      duration: 3.4402454024836793,
+      dv01Wan: 3_523.351686667407,
+      positions: 570,
+    },
+  },
+  TPL: {
+    "2025-06-30": { faceYi: 800, marketYi: 805, duration: 0.65, dv01Wan: 550, positions: 280 },
+    "2026-01-31": { faceYi: 790, marketYi: 795, duration: 0.6, dv01Wan: 500, positions: 270 },
+    "2026-02-28": { faceYi: 800, marketYi: 805, duration: 0.62, dv01Wan: 520, positions: 275 },
+    "2026-03-31": { faceYi: 810, marketYi: 815, duration: 0.65, dv01Wan: 540, positions: 280 },
+    "2026-04-30": { faceYi: 830, marketYi: 835, duration: 0.68, dv01Wan: 570, positions: 290 },
+    "2026-05-31": { faceYi: 850, marketYi: 852, duration: 0.7, dv01Wan: 600, positions: 300 },
+    "2026-06-30": {
+      faceYi: 876.3657975151494,
+      marketYi: 878.1892778028958,
+      duration: 0.7429124269979362,
+      dv01Wan: 651.063041665647,
+      positions: 305,
+    },
+  },
+};
+
+function bondAnalyticsDatesEnvelope(): ApiEnvelope<BondAnalyticsDatesPayload> {
+  return envelopeWithMeta(
+    "bond_analytics.dates",
+    {
+      report_dates: [
+        "2026-06-30",
+        BOND_DAILY_DATES[0],
+        "2026-05-31",
+        BOND_DAILY_DATES[1],
+        "2026-04-30",
+        BOND_DAILY_DATES[2],
+        "2026-03-31",
+        "2026-02-28",
+        "2026-01-31",
+        "2025-06-30",
+      ],
+    },
+    {
+      basis: "formal",
+      formal_use_allowed: true,
+      quality_flag: "ok",
+      vendor_status: "ok",
+      fallback_mode: "none",
+    },
+  );
+}
+
+function bondDv01EvidenceEnvelope(
+  accountingClass: "OCI" | "TPL",
+  reportDate = "2026-06-30",
+): ApiEnvelope<DV01RiskPayload> {
+  const snapshot = BOND_EVIDENCE_SNAPSHOTS[accountingClass][reportDate];
+  if (!snapshot) {
+    throw new Error("unexpected bond snapshot " + accountingClass + " " + reportDate);
+  }
+  return envelopeWithMeta(
+    "bond_analytics.dv01_risk",
+    {
+      report_date: reportDate,
+      accounting_class: accountingClass,
+      total_face_value: n(snapshot.faceYi * 100_000_000, "yuan"),
+      total_market_value: n(snapshot.marketYi * 100_000_000, "yuan"),
+      face_weighted_modified_duration: n(snapshot.duration, "ratio"),
+      total_dv01: n(snapshot.dv01Wan * 10_000, "dv01"),
+      position_count: snapshot.positions,
+      shock_scenarios: [],
+      tenor_buckets: [],
+      top_bonds: [],
+      top_issuers: [],
+      warnings: [],
+      computed_at: "2026-07-01T00:00:00Z",
+    },
+    {
+      basis: "formal",
+      formal_use_allowed: true,
+      quality_flag: "ok",
+      vendor_status: "ok",
+      fallback_mode: "none",
+      requested_report_date: reportDate,
+      resolved_report_date: reportDate,
+      as_of_date: reportDate,
+      fallback_date: null,
+      source_version: "sv_a583ab603b92",
+      rule_version: "rv_bond_analytics_formal_materialize_v1",
+    },
+  );
+}
+
 function unsortedMarketSeriesEnvelope(
   resultKind: string,
   dates: readonly string[],
@@ -706,6 +832,422 @@ describe("ModuleWorkbenchHomePage", () => {
       expect(within(page).getByTestId("risk-overview-drilldowns")).toBeInTheDocument();
       expect(within(page).getByTestId("risk-overview-data-note")).toBeInTheDocument();
     });
+  });
+
+  it("renders OCI and TPL current values, exact-month comparisons, and six-month trends", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getBondAnalyticsDv01Risk = vi.fn(
+      async (
+        reportDate: string,
+        options?: { accountingClass?: string; topN?: number; shockBps?: string },
+      ) => {
+        const accountingClass = options?.accountingClass;
+        if (accountingClass !== "OCI" && accountingClass !== "TPL") {
+          throw new Error("unexpected accounting class");
+        }
+        return bondDv01EvidenceEnvelope(accountingClass, reportDate);
+      },
+    );
+    const client: ApiClient = {
+      ...base,
+      getRiskTensorDates: async () => {
+        const envelope = await base.getRiskTensorDates();
+        return {
+          ...envelope,
+          result: {
+            report_dates: ["2026-06-30"],
+            blocked_report_dates: [],
+          },
+        };
+      },
+      getBondAnalyticsDates: async () => bondAnalyticsDatesEnvelope(),
+      getBondAnalyticsDv01Risk,
+    };
+
+    renderAt("/risk-overview", client);
+
+    const page = await screen.findByTestId("risk-overview-page");
+    const evidence = await within(page).findByTestId("risk-overview-bond-evidence");
+    const ociCard = within(evidence).getByTestId("risk-overview-bond-oci");
+    const tplCard = within(evidence).getByTestId("risk-overview-bond-tpl");
+
+    expect(evidence).toHaveAttribute("data-manual-comparison", "blocked");
+    expect(evidence).toHaveTextContent("债券分析正式口径");
+    expect(evidence).toHaveTextContent(
+      "与上方 Risk Tensor 正式风险结论分开展示；本区只反映系统债券分析口径。",
+    );
+    expect(evidence).toHaveTextContent(
+      "不可直接比较：金额列定义不同，TPL 还缺分账簿与市值型基金正式源。",
+    );
+    expect(evidence).toHaveTextContent(
+      "以下数值、环比、同比和趋势仅代表系统正式债券分析口径，不替代 630 手工小计或监管 DV01。",
+    );
+    expect(within(evidence).getByRole("link", { name: /查看债券分析明细/ })).toHaveAttribute(
+      "href",
+      "/bond-analysis",
+    );
+    await waitFor(() => {
+      expect(ociCard).toHaveTextContent("OCI 债券（系统正式口径）");
+      expect(ociCard).toHaveTextContent("总面值（DV01 基数）");
+      expect(ociCard).toHaveTextContent("公允价值（不含应计）");
+      expect(ociCard).toHaveTextContent("正式 DV01（面值基数）");
+      expect(ociCard).toHaveTextContent("1,024.16 亿元");
+      expect(ociCard).toHaveTextContent("1,042.72 亿元");
+      expect(ociCard).toHaveTextContent("3.44 年");
+      expect(ociCard).toHaveTextContent("3,523.35 万元/bp");
+      expect(ociCard).toHaveTextContent("570 只");
+      expect(tplCard).toHaveTextContent("TPL 债券（系统全量口径）");
+      expect(tplCard).toHaveTextContent("876.37 亿元");
+      expect(tplCard).toHaveTextContent("878.19 亿元");
+      expect(tplCard).toHaveTextContent("0.74 年");
+      expect(tplCard).toHaveTextContent("651.06 万元/bp");
+      expect(tplCard).toHaveTextContent("305 只");
+      expect(ociCard).toHaveTextContent("不按手工同名列直接比较");
+      expect(tplCard).toHaveTextContent("不可用本卡替代 630 小计");
+    });
+
+    const basisText =
+      "系统口径快照比较：环比 2026-05-31；同比 2025-06-30；趋势为近 6 个精确自然月末。缺失日期不以邻近日期替代。";
+    expect(ociCard).toHaveTextContent(basisText);
+    expect(tplCard).toHaveTextContent(basisText);
+    const comparisonStatus = within(evidence).getByTestId(
+      "risk-overview-bond-comparison-status",
+    );
+    expect(comparisonStatus).toHaveAttribute("data-state", "review");
+    expect(comparisonStatus).toHaveTextContent(basisText);
+
+    const expectComparison = (
+      classKey: "oci" | "tpl",
+      metricKey: string,
+      period: "mom" | "yoy",
+      absoluteText: string,
+      percentText: string,
+    ) => {
+      const readout = within(evidence).getByTestId(
+        "risk-overview-bond-" + classKey + "-" + metricKey + "-" + period,
+      );
+      expect(readout).toHaveAttribute("data-state", "review");
+      expect(readout).toHaveTextContent(period === "mom" ? "系统环比" : "系统同比");
+      expect(readout).toHaveTextContent(absoluteText);
+      expect(readout).toHaveTextContent(percentText);
+    };
+
+    expectComparison("oci", "total-face-value", "mom", "+24.16 亿元", "+2.42%");
+    expectComparison("oci", "total-face-value", "yoy", "+124.16 亿元", "+13.80%");
+    expectComparison("oci", "total-market-value", "mom", "+32.72 亿元", "+3.24%");
+    expectComparison("oci", "total-market-value", "yoy", "+122.72 亿元", "+13.34%");
+    expectComparison("oci", "modified-duration", "mom", "+0.04 年", "—");
+    expectComparison("oci", "modified-duration", "yoy", "+0.34 年", "—");
+    expectComparison("oci", "total-dv01", "mom", "+123.35 万元/bp", "+3.63%");
+    expectComparison("oci", "total-dv01", "yoy", "+523.35 万元/bp", "+17.45%");
+    expectComparison("oci", "position-count", "mom", "+10 只", "+1.79%");
+    expectComparison("oci", "position-count", "yoy", "+70 只", "+14.00%");
+
+    expectComparison("tpl", "total-face-value", "mom", "+26.37 亿元", "+3.10%");
+    expectComparison("tpl", "total-face-value", "yoy", "+76.37 亿元", "+9.55%");
+    expectComparison("tpl", "total-market-value", "mom", "+26.19 亿元", "+3.07%");
+    expectComparison("tpl", "total-market-value", "yoy", "+73.19 亿元", "+9.09%");
+    expectComparison("tpl", "modified-duration", "mom", "+0.04 年", "—");
+    expectComparison("tpl", "modified-duration", "yoy", "+0.09 年", "—");
+    expectComparison("tpl", "total-dv01", "mom", "+51.06 万元/bp", "+8.51%");
+    expectComparison("tpl", "total-dv01", "yoy", "+101.06 万元/bp", "+18.38%");
+    expectComparison("tpl", "position-count", "mom", "+5 只", "+1.67%");
+    expectComparison("tpl", "position-count", "yoy", "+25 只", "+8.93%");
+
+    const ociTrend = within(evidence).getByTestId("risk-overview-bond-oci-dv01-trend");
+    const tplTrend = within(evidence).getByTestId("risk-overview-bond-tpl-dv01-trend");
+    for (const trend of [ociTrend, tplTrend]) {
+      expect(trend).toHaveAttribute("data-state", "review");
+      expect(trend).toHaveAttribute("data-point-count", "6");
+      expect(trend).toHaveAttribute("data-expected-points", "6");
+      expect(trend).toHaveAttribute("data-segment-count", "1");
+      expect(trend).toHaveTextContent("系统口径 · 近 6 个报告月 DV01 趋势");
+      expect(trend).toHaveTextContent("2026-01-31 → 2026-06-30");
+      expect(trend).toHaveTextContent("6/6 点");
+      expect(trend).toHaveTextContent("期初 → 本期");
+      expect(within(trend).getByRole("img")).toBeInTheDocument();
+    }
+    expect(
+      within(ociTrend).getByTestId("risk-overview-bond-oci-dv01-trend-plot"),
+    ).toBeInTheDocument();
+    expect(
+      within(tplTrend).getByTestId("risk-overview-bond-tpl-dv01-trend-plot"),
+    ).toBeInTheDocument();
+    expect(ociTrend).toHaveTextContent("3,000.00 → 3,523.35 万元/bp");
+    expect(tplTrend).toHaveTextContent("500.00 → 651.06 万元/bp");
+
+    await waitFor(() => {
+      expect(getBondAnalyticsDv01Risk).toHaveBeenCalledTimes(14);
+    });
+    const requestKeys = getBondAnalyticsDv01Risk.mock.calls.map(
+      ([reportDate, options]) => options?.accountingClass + ":" + reportDate,
+    );
+    const exactRequestKeys = BOND_EXACT_MONTH_ENDS.flatMap((reportDate) => [
+      "OCI:" + reportDate,
+      "TPL:" + reportDate,
+    ]);
+    expect(new Set(requestKeys)).toEqual(new Set(exactRequestKeys));
+    for (const dailyDate of BOND_DAILY_DATES) {
+      expect(getBondAnalyticsDv01Risk.mock.calls.some(([reportDate]) => reportDate === dailyDate))
+        .toBe(false);
+    }
+    expect(
+      getBondAnalyticsDv01Risk.mock.calls.every(
+        ([, options]) => options?.topN === 1 && options.shockBps === "1",
+      ),
+    ).toBe(true);
+    expect(getBondAnalyticsDv01Risk).toHaveBeenCalledWith("2026-06-30", {
+      accountingClass: "OCI",
+      topN: 1,
+      shockBps: "1",
+    });
+    expect(getBondAnalyticsDv01Risk).toHaveBeenCalledWith("2026-06-30", {
+      accountingClass: "TPL",
+      topN: 1,
+      shockBps: "1",
+    });
+  });
+
+  it("keeps an OCI current fallback visible while disabling only OCI comparisons and trend", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getBondAnalyticsDv01Risk = vi.fn(
+      async (
+        reportDate: string,
+        options?: { accountingClass?: string; topN?: number; shockBps?: string },
+      ): Promise<ApiEnvelope<DV01RiskPayload>> => {
+        const accountingClass = options?.accountingClass;
+        if (accountingClass !== "OCI" && accountingClass !== "TPL") {
+          throw new Error("unexpected accounting class");
+        }
+        const snapshot = bondDv01EvidenceEnvelope(accountingClass, reportDate);
+        if (accountingClass !== "OCI" || reportDate !== "2026-06-30") {
+          return snapshot;
+        }
+        return {
+          ...snapshot,
+          result_meta: {
+            ...snapshot.result_meta,
+            fallback_mode: "latest_snapshot",
+            fallback_date: "2026-06-29",
+            requested_report_date: "2026-06-30",
+            resolved_report_date: "2026-06-29",
+            as_of_date: "2026-06-29",
+          },
+          result: {
+            ...snapshot.result,
+            report_date: "2026-06-29",
+          },
+        };
+      },
+    );
+    const client: ApiClient = {
+      ...base,
+      getRiskTensorDates: async () => {
+        const envelope = await base.getRiskTensorDates();
+        return {
+          ...envelope,
+          result: {
+            report_dates: ["2026-06-30"],
+            blocked_report_dates: [],
+          },
+        };
+      },
+      getBondAnalyticsDates: async () => bondAnalyticsDatesEnvelope(),
+      getBondAnalyticsDv01Risk,
+    };
+
+    renderAt("/risk-overview", client);
+
+    const page = await screen.findByTestId("risk-overview-page");
+    const evidence = await within(page).findByTestId("risk-overview-bond-evidence");
+    const ociCard = within(evidence).getByTestId("risk-overview-bond-oci");
+    const tplCard = within(evidence).getByTestId("risk-overview-bond-tpl");
+    const comparisonStatus = within(evidence).getByTestId(
+      "risk-overview-bond-comparison-status",
+    );
+
+    await waitFor(() => {
+      expect(comparisonStatus).toHaveAttribute("data-state", "review");
+      expect(comparisonStatus).not.toHaveAttribute("data-state", "ready");
+      expect(comparisonStatus).toHaveTextContent(
+        /OCI 当前快照为回退或日期与请求月末不一致；OCI 系统环比、系统同比和趋势已禁用，TPL 仍可使用系统比较与趋势。/,
+      );
+      expect(
+        within(evidence).getByTestId("risk-overview-bond-tpl-total-dv01-mom"),
+      ).toHaveAttribute("data-state", "review");
+    });
+
+    expect(ociCard).toHaveTextContent("OCI 债券");
+    expect(ociCard).toHaveTextContent("1,024.16 亿元");
+    expect(ociCard).toHaveTextContent("1,042.72 亿元");
+    expect(ociCard).toHaveTextContent("3.44 年");
+    expect(ociCard).toHaveTextContent("3,523.35 万元/bp");
+    expect(ociCard).toHaveTextContent("570 只");
+    expect(ociCard).toHaveTextContent("待复核");
+    expect(ociCard).toHaveTextContent(/报告日\s*2026-06-29/);
+    expect(ociCard).toHaveTextContent(
+      "使用回退快照（2026-06-29），结论待复核。",
+    );
+    expect(ociCard).toHaveTextContent(
+      "解析报告日 2026-06-29 与请求报告日不一致，系统口径快照比较已禁用。",
+    );
+    expect(ociCard).toHaveTextContent(
+      "系统口径快照比较未启用：当前快照为回退或日期与请求月末不一致。",
+    );
+
+    const metricKeys = [
+      "total-face-value",
+      "total-market-value",
+      "modified-duration",
+      "total-dv01",
+      "position-count",
+    ];
+    for (const metricKey of metricKeys) {
+      for (const period of ["mom", "yoy"]) {
+        const ociReadout = within(evidence).getByTestId(
+          "risk-overview-bond-oci-" + metricKey + "-" + period,
+        );
+        expect(ociReadout).toHaveAttribute("data-state", "unavailable");
+        expect(ociReadout).toHaveTextContent("基期不可用");
+
+        const tplReadout = within(evidence).getByTestId(
+          "risk-overview-bond-tpl-" + metricKey + "-" + period,
+        );
+        expect(tplReadout).toHaveAttribute("data-state", "review");
+      }
+    }
+
+    const ociTrend = within(evidence).getByTestId("risk-overview-bond-oci-dv01-trend");
+    expect(ociTrend).toHaveAttribute("data-state", "unavailable");
+    expect(ociTrend).toHaveAttribute("data-point-count", "0");
+    expect(ociTrend).toHaveAttribute("data-expected-points", "6");
+    expect(ociTrend).toHaveAttribute("data-segment-count", "0");
+    expect(ociTrend).toHaveTextContent("系统口径近 6 个报告月趋势待接入。");
+    expect(
+      within(ociTrend).queryByTestId("risk-overview-bond-oci-dv01-trend-plot"),
+    ).not.toBeInTheDocument();
+
+    expect(tplCard).toHaveTextContent("TPL 债券（系统全量口径）");
+    expect(tplCard).toHaveTextContent("待复核");
+    expect(tplCard).toHaveTextContent("不可用本卡替代 630 小计");
+    expect(tplCard).toHaveTextContent(/报告日\s*2026-06-30/);
+    expect(
+      within(evidence).getByTestId("risk-overview-bond-tpl-total-dv01-mom"),
+    ).toHaveTextContent("+51.06 万元/bp");
+    expect(
+      within(evidence).getByTestId("risk-overview-bond-tpl-total-dv01-yoy"),
+    ).toHaveTextContent("+101.06 万元/bp");
+    const tplTrend = within(evidence).getByTestId("risk-overview-bond-tpl-dv01-trend");
+    expect(tplTrend).toHaveAttribute("data-state", "review");
+    expect(tplTrend).toHaveAttribute("data-point-count", "6");
+    expect(tplTrend).toHaveAttribute("data-segment-count", "1");
+    expect(
+      within(tplTrend).getByTestId("risk-overview-bond-tpl-dv01-trend-plot"),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps both current cards and the OCI trend when one TPL history point fails", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const client: ApiClient = {
+      ...base,
+      getRiskTensorDates: async () => {
+        const envelope = await base.getRiskTensorDates();
+        return {
+          ...envelope,
+          result: {
+            report_dates: ["2026-06-30"],
+            blocked_report_dates: [],
+          },
+        };
+      },
+      getBondAnalyticsDates: async () => bondAnalyticsDatesEnvelope(),
+      getBondAnalyticsDv01Risk: vi.fn(async (reportDate, options) => {
+        const accountingClass = options?.accountingClass;
+        if (accountingClass !== "OCI" && accountingClass !== "TPL") {
+          throw new Error("unexpected accounting class");
+        }
+        if (accountingClass === "TPL" && reportDate === "2026-03-31") {
+          throw new Error("tpl history unavailable");
+        }
+        return bondDv01EvidenceEnvelope(accountingClass, reportDate);
+      }),
+    };
+
+    renderAt("/risk-overview", client);
+
+    const page = await screen.findByTestId("risk-overview-page");
+    const evidence = await within(page).findByTestId("risk-overview-bond-evidence");
+    const ociCard = within(evidence).getByTestId("risk-overview-bond-oci");
+    const tplCard = within(evidence).getByTestId("risk-overview-bond-tpl");
+    await waitFor(() => {
+      expect(ociCard).toHaveTextContent("OCI 债券（系统正式口径）");
+      expect(ociCard).toHaveTextContent("3,523.35 万元/bp");
+      expect(ociCard).toHaveTextContent("待复核");
+      expect(tplCard).toHaveTextContent("TPL 债券（系统全量口径）");
+      expect(tplCard).toHaveTextContent("651.06 万元/bp");
+      expect(tplCard).toHaveTextContent("待复核");
+      expect(tplCard).toHaveTextContent(
+        "2026-03-31：历史月末快照读取失败：tpl history unavailable",
+      );
+    });
+    const ociTrend = within(evidence).getByTestId("risk-overview-bond-oci-dv01-trend");
+    expect(ociTrend).toHaveAttribute("data-state", "review");
+    expect(ociTrend).toHaveAttribute("data-point-count", "6");
+    expect(ociTrend).toHaveAttribute("data-expected-points", "6");
+    expect(ociTrend).toHaveAttribute("data-segment-count", "1");
+    expect(ociTrend).toHaveTextContent("6/6 点");
+    expect(within(ociTrend).getByRole("img")).toBeInTheDocument();
+
+    const tplTrend = within(evidence).getByTestId("risk-overview-bond-tpl-dv01-trend");
+    expect(tplTrend).toHaveAttribute("data-state", "review");
+    expect(tplTrend).toHaveAttribute("data-point-count", "5");
+    expect(tplTrend).toHaveAttribute("data-expected-points", "6");
+    expect(tplTrend).toHaveAttribute("data-segment-count", "2");
+    expect(tplTrend).toHaveTextContent("5/6 点");
+    expect(tplTrend).toHaveTextContent("首个有效点 → 最近有效点");
+    expect(tplTrend).toHaveTextContent("500.00 → 651.06 万元/bp");
+    expect(tplTrend).toHaveTextContent(
+      "2026-03-31：历史月末快照读取失败：tpl history unavailable",
+    );
+    expect(
+      within(tplTrend).getByTestId("risk-overview-bond-tpl-dv01-trend-plot"),
+    ).toBeInTheDocument();
+    const tplSegments = within(tplTrend).getAllByTestId(
+      /risk-overview-bond-tpl-dv01-trend-segment-/,
+    );
+    expect(tplSegments).toHaveLength(2);
+    expect(tplSegments[0]).toHaveAttribute("data-segment-index", "0");
+    expect(tplSegments[1]).toHaveAttribute("data-segment-index", "1");
+    const tplPoints = within(tplTrend).getAllByTestId(
+      /risk-overview-bond-tpl-dv01-trend-point-/,
+    );
+    expect(tplPoints).toHaveLength(5);
+    expect(tplPoints.map((point) => point.getAttribute("data-slot-index"))).toEqual([
+      "0",
+      "1",
+      "3",
+      "4",
+      "5",
+    ]);
+    expect(tplPoints.map((point) => point.getAttribute("data-report-date"))).toEqual([
+      "2026-01-31",
+      "2026-02-28",
+      "2026-04-30",
+      "2026-05-31",
+      "2026-06-30",
+    ]);
+    expect(
+      within(tplTrend).queryByTestId("risk-overview-bond-tpl-dv01-trend-point-2"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(tplTrend).queryByTestId("risk-overview-bond-tpl-dv01-trend-segment-2"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(evidence).getByTestId("risk-overview-bond-tpl-total-dv01-mom"),
+    ).toHaveTextContent("+51.06 万元/bp");
+    expect(
+      within(evidence).getByTestId("risk-overview-bond-oci-total-dv01-yoy"),
+    ).toHaveTextContent("+523.35 万元/bp");
   });
 
   it("shows explicit fallback states when a source query fails", async () => {

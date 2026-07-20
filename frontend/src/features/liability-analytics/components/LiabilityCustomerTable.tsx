@@ -1,13 +1,14 @@
 import { Card, Table, Typography } from "antd";
 
 import type { Numeric } from "../../../api/contracts";
+import { EM_DASH } from "../../../utils/format";
 import { numericToYiNumeric } from "../utils/money";
 import type { LiabilityCpRow } from "./LiabilityCounterpartyBlock";
 
 const { Text } = Typography;
 
 function numericDisplay(value: Numeric | null | undefined): string {
-  return value?.display ?? "—";
+  return value?.display ?? EM_DASH;
 }
 
 export function LiabilityCustomerTable({
@@ -22,11 +23,12 @@ export function LiabilityCustomerTable({
   return (
     <Card
       size="small"
+      className="liability-customer-table"
       title="客户维度明细表（业务规模与加权负债成本）"
-      extra={<Text type="secondary">客户数：{loading ? "—" : rows.length}</Text>}
+      extra={<Text type="secondary">客户数：{loading ? EM_DASH : rows.length}</Text>}
     >
       {subtitle ? (
-        <Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 8 }}>
+        <Text type="secondary" className="liability-table-caption">
           {subtitle}
         </Text>
       ) : null}
@@ -61,7 +63,7 @@ export function LiabilityCustomerTable({
             title: "类型",
             dataIndex: "type",
             ellipsis: true,
-            render: (value: string) => value || "—",
+            render: (value: string) => value || EM_DASH,
           },
         ]}
       />

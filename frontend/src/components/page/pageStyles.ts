@@ -17,7 +17,8 @@ export const controlBarStyle = {
 
 export const tableShellStyle = {
   overflowX: "auto",
-  borderRadius: dt.radius.lg,
+  /* IB light Shape Lock: page surfaces use the 2px sharp radius (DESIGN.md §5). */
+  borderRadius: 2,
   border: `1px solid ${dt.color.neutral[200]}`,
   background: t.colorBgSurface,
 } as const;

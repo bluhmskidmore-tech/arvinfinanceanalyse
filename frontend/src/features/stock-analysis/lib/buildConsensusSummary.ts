@@ -15,8 +15,6 @@ export type ConsensusCandidateItem = {
   meanReversionRank: number | null;
   factorScreenRank: number | null;
   hybridFusionRank: number | null;
-  /** 综合得分：排名越靠前得分越高 */
-  consensusScore: number;
 };
 
 export type ConsensusStrategyKind = "hybrid_fusion" | "livermore" | "mean_reversion" | "factor_screen";
@@ -35,7 +33,7 @@ export type ConsensusSummary = {
   doubleCount: number;
   /** 完整候选池（含单策略）规模 */
   totalUnion: number;
-  /** T+5 核心共振推荐列表，按 consensusScore 降序 */
+  /** T+5 核心共振推荐列表，按 consensusCount 降序 + 后端最小 rank 升序 + 股票代码字典序 */
   items: ConsensusCandidateItem[];
   /** 各策略的候选数（用于标题/空状态说明） */
   strategyCounts: Record<ConsensusStrategyKind, number>;
@@ -106,6 +104,32 @@ export function lookupStockStrategyRanks(
     (meanReversionRank != null ? 1 : 0) +
     (factorScreenRank != null ? 1 : 0);
   return { livermoreRank, meanReversionRank, factorScreenRank, hybridFusionRank, hitCount };
+}
+
+/**
+ * 参与共振计数的核心策略后端 rank 中的最小值（越小越靠前）。
+ * 仅使用后端已返回的 rank，不在前端发明评分。
+ */
+function bestBackendRank(item: {
+  hybridFusionRank: number | null;
+  livermoreRank: number | null;
+  factorScreenRank: number | null;
+}): number {
+  const ranks = [item.hybridFusionRank, item.livermoreRank, item.factorScreenRank].filter(
+    (rank): rank is number => rank != null,
+  );
+  return ranks.length > 0 ? Math.min(...ranks) : Number.POSITIVE_INFINITY;
+}
+
+/**
+ * 展示用确定性排序：命中策略数（计数）降序 -> 后端最小 rank 升序 -> 股票代码字典序。
+ * 只复用后端字段做字典序排序，前端不补算任何评分。
+ */
+function compareConsensusItems(a: ConsensusCandidateItem, b: ConsensusCandidateItem): number {
+  if (b.consensusCount !== a.consensusCount) return b.consensusCount - a.consensusCount;
+  const rankDiff = bestBackendRank(a) - bestBackendRank(b);
+  if (rankDiff !== 0) return rankDiff;
+  return a.stockCode.localeCompare(b.stockCode);
 }
 
 export function buildConsensusSummary(
@@ -209,13 +233,6 @@ export function buildConsensusSummary(
     if (consensusCount >= 2) doubleCount += 1;
     if (consensusCount < 2) continue;
 
-    // 共振得分：每套策略贡献 (1 / (rank + 1))；命中策略数量作为主权重
-    const rankScore =
-      (entry.hybridFusionRank != null ? 1 / (entry.hybridFusionRank + 1) : 0) +
-      (entry.livermoreRank != null ? 1 / (entry.livermoreRank + 1) : 0) +
-      (entry.factorScreenRank != null ? 1 / (entry.factorScreenRank + 1) : 0);
-    const consensusScore = consensusCount * 10 + rankScore;
-
     items.push({
       stockCode: entry.stockCode,
       stockName: entry.stockName || entry.stockCode,
@@ -226,11 +243,10 @@ export function buildConsensusSummary(
       meanReversionRank: entry.meanReversionRank,
       factorScreenRank: entry.factorScreenRank,
       hybridFusionRank: entry.hybridFusionRank,
-      consensusScore,
     });
   }
 
-  items.sort((a, b) => b.consensusScore - a.consensusScore);
+  items.sort(compareConsensusItems);
 
   const unionCodes = new Set<string>();
   for (const item of livermoreItems) if (item.stock_code) unionCodes.add(item.stock_code);
@@ -257,7 +273,7 @@ export function buildConsensusSummary(
 
 /**
  * 按板块分组共振推荐项。
- * 组内按 consensusScore 降序，组间按核心共振数与组内最高分排序。
+ * 组内与组间均复用确定性字典序排序（命中数 -> 后端最小 rank -> 股票代码）。
  */
 export type ConsensusSectorGroup = {
   sectorName: string;
@@ -265,8 +281,6 @@ export type ConsensusSectorGroup = {
   doubleCount: number;
   totalCount: number;
   items: ConsensusCandidateItem[];
-  /** 组内最高的 consensusScore，用于组间排序 */
-  topScore: number;
 };
 
 export function groupConsensusBySector(
@@ -283,7 +297,6 @@ export function groupConsensusBySector(
         doubleCount: 0,
         totalCount: 0,
         items: [],
-        topScore: 0,
       };
       byName.set(key, group);
     }
@@ -291,16 +304,16 @@ export function groupConsensusBySector(
     group.totalCount += 1;
     if (item.consensusCount >= 3) group.tripleCount += 1;
     if (item.consensusCount >= 2) group.doubleCount += 1;
-    if (item.consensusScore > group.topScore) group.topScore = item.consensusScore;
   }
 
   for (const group of byName.values()) {
-    group.items.sort((a, b) => b.consensusScore - a.consensusScore);
+    group.items.sort(compareConsensusItems);
   }
 
   return Array.from(byName.values()).sort((a, b) => {
     if (b.tripleCount !== a.tripleCount) return b.tripleCount - a.tripleCount;
     if (b.doubleCount !== a.doubleCount) return b.doubleCount - a.doubleCount;
-    return b.topScore - a.topScore;
+    // 组内已排序，用组内第一名（最佳项）做组间确定性排序
+    return compareConsensusItems(a.items[0], b.items[0]);
   });
 }

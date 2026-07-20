@@ -20,7 +20,7 @@ export default function PortfolioHomePage() {
   const bondReportDate = queries.bondDates?.data?.result.report_dates[0] ?? "";
 
   return (
-    <section data-testid="module-workbench-home" className={`${dhStyles.dhPage} ${styles.portfolioPage}`}>
+    <section data-testid="module-workbench-home" className={`theme-dh-api ${dhStyles.dhLightPage} ${styles.portfolioPage}`}>
       <PortfolioHomeLayout
         view={view}
         config={config}

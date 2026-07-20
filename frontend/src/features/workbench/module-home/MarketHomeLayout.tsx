@@ -736,7 +736,6 @@ export default function MarketHomeLayout({
             termSpreadRows={termSpreadRows}
           />
           <MarketDeskIntelStrip intel={view.marketDeskIntel} />
-          {marketModuleDrilldowns}
           <section className={marketStyles.marketThreeColDepth} data-testid="module-home-market-analysis-grid">
             {yieldCurvePanel ? (
               <MarketDepthPanel
@@ -805,6 +804,10 @@ export default function MarketHomeLayout({
               </section>
             ) : null}
             <section className={marketStyles.marketFocusTape} data-testid="module-home-market-focus">
+              <div className={marketStyles.marketFocusHeader}>
+                <span>焦点读数</span>
+                <em>利差 · 利率 · 跨资产</em>
+              </div>
               <div className={marketStyles.marketFocusGrid}>
                 {marketFocusReadings.map((item) => {
                   const changeDirection = resolveMarketChangeDirection(item.detail, item.sparkline);
@@ -820,6 +823,7 @@ export default function MarketHomeLayout({
             </section>
             <MarketActionQueue view={view} keyRatePanel={keyRatePanel} yieldCurvePanel={yieldCurvePanel} macroPanel={macroPanel} />
           </section>
+          {marketModuleDrilldowns}
           <Collapse bordered={false} className={marketStyles.marketAuditFooter} data-testid="module-home-market-audit-footer" items={auditFooterItems} />
         </section>
       </main>

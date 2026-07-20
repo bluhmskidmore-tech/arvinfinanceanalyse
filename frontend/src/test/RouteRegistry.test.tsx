@@ -563,7 +563,7 @@ describe("RouteRegistry", () => {
     await waitFor(() => {
       expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("3289.07 CNY/1亿");
       expect(screen.queryByTestId("ledger-dashboard-kpi-alerts")).not.toBeInTheDocument();
-      expect(screen.getByTestId("ledger-dashboard-governance-boundary")).toHaveTextContent("imported position_snapshot");
+      expect(screen.getByTestId("ledger-dashboard-governance-boundary")).toHaveTextContent("position_snapshot");
       expect(screen.getByTestId("ledger-dashboard-governance-boundary")).toHaveTextContent("UNCLASSIFIED");
       expect(screen.getByTestId("ledger-dashboard-classification-quality")).toHaveTextContent("100.00%");
     });

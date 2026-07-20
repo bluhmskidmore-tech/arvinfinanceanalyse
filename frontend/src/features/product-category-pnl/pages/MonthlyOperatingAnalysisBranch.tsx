@@ -6,6 +6,7 @@ import { useApiClient } from "../../../api/client";
 import { FilterBar } from "../../../components/FilterBar";
 import type { QdbGlMonthlyAnalysisSheet, ResultMeta } from "../../../api/contracts";
 import type { QdbGlMonthlyAnalysisRefreshPayload } from "../../../api/qdbGlMonthlyAnalysisClient";
+import { EM_DASH } from "../../../utils/format";
 import "./ProductCategoryAuditPages.css";
 import "./ProductCategoryPnlPage.css";
 
@@ -116,14 +117,14 @@ function errorReason(error: unknown) {
 
 function formatWorkbookCell(value: unknown) {
   if (value === null || value === undefined) {
-    return "--";
+    return EM_DASH;
   }
   if (typeof value === "number") {
-    return Number.isFinite(value) ? String(value) : "--";
+    return Number.isFinite(value) ? String(value) : EM_DASH;
   }
   if (typeof value === "string") {
     const trimmed = value.trim();
-    return trimmed || "--";
+    return trimmed || EM_DASH;
   }
   if (typeof value === "boolean") {
     return String(value);
@@ -131,7 +132,7 @@ function formatWorkbookCell(value: unknown) {
 
   try {
     const serialized = JSON.stringify(value);
-    return serialized || "--";
+    return serialized || EM_DASH;
   } catch {
     return String(value);
   }

@@ -916,3 +916,85 @@ select {
     font-size: 21px;
   }
 }
+
+/*
+ * Dark terminal (Decision Desk) shell variant — DESIGN.md §2.2.
+ * Activates when the routed page root carries the global `theme-dh-api`
+ * class (see src/styles/tokens.css). This is the single owner of the dark
+ * cockpit shell reflow; pages must NOT re-declare per-page :global shell
+ * overrides. Values mirror the --dh-api-* palette in rgba form because the
+ * shell wrapper sits above the page root that declares those variables.
+ * !important is needed to win over dashboardCockpit.css shell declarations.
+ */
+.workbench-shell-grid--cockpit:has(.theme-dh-api) {
+  background:
+    radial-gradient(circle at 18% 0%, rgba(114, 167, 220, 0.06), transparent 26%),
+    radial-gradient(circle at 90% 12%, rgba(201, 165, 101, 0.04), transparent 28%),
+    var(--dh-api-bg) !important;
+}
+
+.workbench-shell-grid--cockpit:has(.theme-dh-api) .workbench-main-surface {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.workbench-shell-grid--cockpit:has(.theme-dh-api) .workbench-shell-rail {
+  background:
+    linear-gradient(180deg, rgba(17, 27, 42, 0.98), rgba(8, 13, 22, 0.98)),
+    var(--dh-api-rail) !important;
+  border-right: 1px solid rgba(126, 157, 194, 0.18) !important;
+  box-shadow: none !important;
+}
+
+.workbench-shell-grid--cockpit:has(.theme-dh-api) .workbench-shell-rail-brand-wrap {
+  border-bottom: 1px solid rgba(126, 157, 194, 0.14);
+  margin-bottom: 12px;
+  padding-bottom: 16px;
+}
+
+.workbench-shell-grid--cockpit:has(.theme-dh-api) .workbench-shell-rail-mark {
+  background:
+    linear-gradient(145deg, rgba(232, 238, 247, 0.08), rgba(7, 12, 20, 0.9)),
+    var(--dh-api-panel-2) !important;
+  border: 1px solid rgba(126, 157, 194, 0.24) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(232, 238, 247, 0.08),
+    0 10px 24px rgba(0, 0, 0, 0.18);
+}
+
+.workbench-shell-grid--cockpit:has(.theme-dh-api) .workbench-shell-group-link,
+.workbench-shell-grid--cockpit:has(.theme-dh-api) .workbench-shell-agent-nav__link,
+.workbench-shell-grid--cockpit:has(.theme-dh-api) .workbench-shell-support-link {
+  border: 1px solid transparent !important;
+  border-radius: var(--dh-api-radius, 6px) !important;
+  position: relative;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.workbench-shell-grid--cockpit:has(.theme-dh-api) .workbench-shell-group-link:hover,
+.workbench-shell-grid--cockpit:has(.theme-dh-api) .workbench-shell-agent-nav__link:hover,
+.workbench-shell-grid--cockpit:has(.theme-dh-api) .workbench-shell-support-link:hover {
+  background: rgba(114, 167, 220, 0.08) !important;
+  border-color: rgba(114, 167, 220, 0.2) !important;
+}
+
+.workbench-shell-grid--cockpit:has(.theme-dh-api) .workbench-shell-group-link[data-active="true"] {
+  background:
+    linear-gradient(90deg, rgba(201, 165, 101, 0.16), rgba(114, 167, 220, 0.08)),
+    rgba(16, 26, 42, 0.88) !important;
+  border-color: rgba(201, 165, 101, 0.28) !important;
+  box-shadow: inset 3px 0 0 rgba(201, 165, 101, 0.84) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workbench-shell-grid--cockpit:has(.theme-dh-api) .workbench-shell-group-link,
+  .workbench-shell-grid--cockpit:has(.theme-dh-api) .workbench-shell-agent-nav__link,
+  .workbench-shell-grid--cockpit:has(.theme-dh-api) .workbench-shell-support-link {
+    transition: none;
+  }
+}

@@ -22,8 +22,12 @@ const GRID_LINE_COLOR = ibTokens.color.hairline;
 const AXIS_LABEL_COLOR = ibTokens.color.inkMuted;
 const AXIS_NAME_COLOR = ibTokens.color.inkMuted;
 
-function formatTooltipValue(value: number, unit: string) {
-  return `${value.toFixed(2)} ${unit}`;
+function formatTooltipValue(value: unknown, unit: string) {
+  if (value === null || value === undefined || value === "-") {
+    return "—";
+  }
+  const n = Number(value);
+  return Number.isFinite(n) ? `${n.toFixed(2)} ${unit}` : "—";
 }
 
 export function PortfolioStructureChart({ chart, height, hideTitle = false }: PortfolioStructureChartProps) {
@@ -38,14 +42,14 @@ export function PortfolioStructureChart({ chart, height, hideTitle = false }: Po
   }
 
   const horizontal = chart.orientation === "horizontal";
-  const maxValue = Math.max(...chart.values, 0);
+  const maxValue = Math.max(...chart.values.filter((value): value is number => value !== null), 0);
 
-  function barData(values: number[]) {
+  function barData(values: Array<number | null>) {
     return values.map((value, index) => ({
       value,
       itemStyle: {
         color: CHART_COLORS[index % CHART_COLORS.length],
-        opacity: maxValue > 0 ? 0.78 + (Math.max(value, 0) / maxValue) * 0.22 : 0.9,
+        opacity: maxValue > 0 ? 0.78 + (Math.max(value ?? 0, 0) / maxValue) * 0.22 : 0.9,
       },
     }));
   }
@@ -54,7 +58,7 @@ export function PortfolioStructureChart({ chart, height, hideTitle = false }: Po
     trigger: "axis" as const,
     axisPointer: {
       type: "shadow" as const,
-      shadowStyle: { color: "rgba(24, 80, 161, 0.08)" },
+      shadowStyle: { color: "rgba(114, 167, 220, 0.08)" },
     },
     backgroundColor: ibTokens.color.surface,
     borderColor: ibTokens.color.hairline,
@@ -65,7 +69,7 @@ export function PortfolioStructureChart({ chart, height, hideTitle = false }: Po
       fontSize: 11,
       fontWeight: 650,
     },
-    valueFormatter: (value: unknown) => formatTooltipValue(Number(value), chart.unit),
+    valueFormatter: (value: unknown) => formatTooltipValue(value, chart.unit),
   };
 
   const option: EChartsOption = horizontal

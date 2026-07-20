@@ -1,0 +1,464 @@
+# 市场数据  /market-data
+final_url: http://127.0.0.1:5888/market-data
+title: MOSS Workbench
+
+## innerText (first ~3000 chars)
+Skip to main content
+M
+MOSS
+工作台
+经营日报
+首页
+组合工作台
+首页
+市场工作台
+首页
+风险工作台
+首页
+绩效工作台
+首页
+报表与数据
+首页
+对话
+MOSS Chat
+可用
+直接提问
+支持入口
+报表中心
+中台配置
+帮助文档
+市场数据
+报告日 默认路由
+管理视角
+报表中心
+中台配置
+市场快讯
+10年国债
+1.74%
++0.2bp
+10年国开
+1.79%
+--
+10年美债
+4.56%
++2bp
+中美10年利差
+-282bp
+-2bp
+DR007
+1.38%
+0bp
+美元/人民币
+6.8CNY/USD
+-0CNY/USD
+市场数据终端
+市场数据
+
+当前市场利率、资金面、外汇状况如何？
+
+数据日期 2026-07-10
+数据正常
+·
+数据正常
+国债+国开
+全部来源
+刷新数据
+10年国债
+1.74%
++0.2bp
+10年国开
+1.79%
++1bp
+5年国债
+1.44%
++0.8bp
+5年国开
+1.54%
++0.3bp
+DR007
+1.38%
+0bp
+2026-07-10
+正式
+10年国债
+1.74%
++0.2bp · 2026-07-10 · E1000180
+10年国开
+1.79%
++1bp · 2026-07-07 · EMM00166502
+5年国债
+1.44%
++0.8bp · 2026-07-07 · EMM00166462
+5年国开
+1.54%
++0.3bp · 2026-07-07 · EMM00166498
+正式利率
+利率曲线与宏观深度
+查看完整曲线
+口径摘要 正式可用
+国债收益率曲线（中债）
+并列 / 表格 / 曲线
+期限	最新（%）	日变动 bp	周变动 bp
+1Y国债	1.12%	-0.4bp	-3bp
+2Y国债	1.25%	+4bp	—
+3Y国债	1.29%	-0.2bp	-1bp
+5Y国债	1.44%	+0.8bp	-4bp
+7Y国债	1.57%	+0.8bp	-7bp
+10Y国债	1.74%	+0.2bp	-1bp
+20Y国债	2.23	缺前值	—
+30Y国债	2.26%	+2bp	+2bp
+国债收益率曲线（中债）
+单位：%
+关键利率 / 资金指标
+最新
+10年国债
+1.74%
++0.2bp
+10年国开
+1.79%
++1bp
+5年国债
+1.44%
++0.8bp
+5年国开
+1.54%
++0.3bp
+DR007
+1.38%
+0bp
+分析深度
+宏观深度读面
+
+曲线走势、信用利差与压力背景均为分析口径观察，不替代正式指标。
+
+曲线（M8）
+信用利差
+压力与情景（M11/M15）
+宏观序列最新读面已返回数据。 外部数据水位读取失败，无法判断输入年龄。
+收益率曲线
+
+国债、国开与 SHIBOR 近期走势，来自 macro latest 的 recent_points。
+
+恢复默认
+铝主力期货收盘价
+Brent spot price
+铜主力期货收盘价
+沪深300指数收盘价
+沪深300指数涨跌幅
+沪深300市盈率
+CSI 500 index close
+存款类机构质押式回购加权利率:DR007
+环境综合分
+—
+流动性正值=宽松；综合分正值=对债偏紧，综合计算中流动性取反。
+看信用利差图 →
+看环境柱图 →
+资金读数
+资金市场与存单
+
+DR007、回购与 Shibor 代理矩阵；正式口径摘要见右侧源门禁。
+
+资金市场
+
+DR007、回购与 Shibor 等资金利率；下方 mini 图默认展示 DR007。
+
+1 条
+
+口径 正式 · 质量 正常 · 降级 无降级
+
+品种	指标	利率	变动	走势	交易日	抓取	序列
+
+品种
+	
+指标
+	
+利率
+	
+变动
+	
+走势
+	
+交易日
+	
+抓取
+	
+序列
+
+DR007	存款类机构质押式回购加权利率:DR007	1.38%	0bp	
+	2026-07-10	latest	CA.DR007
+同业存单
+
+Shibor 资金 proxy 矩阵；表格与热力并列（窄屏默认仅表）。
+
+1 条
+
+Tushare Shibor funding proxy · proxy 非正式发行矩阵 · 截至 2026-07-10
+
+并列
+表格
+热力
+仅代理口径；不是真实存单发行矩阵。 Using landed Tushare Shibor; quote medians unavailable.
+口径/期限	1M	3M	6M	9M	1Y	样本数
+
+口径/期限
+	
+1M
+	
+3M
+	
+6M
+	
+9M
+	
+1Y
+	
+样本数
+
+Shibor fixing	1.411	1.428	1.444	1.464	1.473	—
+矩阵热力
+正式外汇中间价 · 物化 5/5 · 沿用 0（点击展开）
+未接入数据源（期货·成交） · 2 项未接入 · 点击展开
+更多读数
+宏观与外汇序列
+
+稳定 77 · 降级 55 · 外汇 2 组 · 正式利率见上方核心观察
+
+稳定链路 · 77 条 · 4 组
+利率与流动性
+
+国债、回购、资金价格与市场利率曲线。
+
+65 条
+指标	最新	变动	交易日	近期
+
+指标
+	
+最新
+	
+变动
+	
+交易日
+	
+近期
+
+存款类机构质押式回购加权利率:DR007	
+1.38%
+	0 bp	2026-07-10	
+07-09 1.38
+走势
+
+中债国债到期收益率:10年	
+1.74%
+	+0.2 bp	2026-07-10	
+07-09 1.74
+走势
+
+美国国债收益率:10年	
+4.56%
+	+2 bp	2026-07-10	
+07-09 4.54
+走势
+
+中美国债利差(10Y)	
+-282 bp
+	-2 bp	2026-07-10	
+07-09 -280.24
+走势
+
+美国:国债收益率:1年	
+3.95%
+	—	2026-07-06	
+低频
+走势
+
+美国:国债收益率:2年	
+4.13%
+	—	2026-07-06	
+低频
+走势
+
+美国:国债收益率:3年	
+4.14%
+	—	2026-07-06	
+低频
+走势
+
+美国:国债收益率:5年	
+4.21%
+	—	2026-07-06	
+低频
+走势
+
+美国:国债收益率:7年	
+4.33%
+	—	2026-07-06	
+低频
+走势
+
+美国:国债收益率:10年	
+4.56%
+	+2 bp	2026-07-10	
+07-09 4.54
+走势
+
+美国:国债收益率:30年	
+4.99%
+	—	2026-07-06	
+低频
+走势
+
+中间价:美元兑人民币	
+6.8
+CNY/USD
+	-0 CNY/USD	2026-07-10	
+07-09 6.80
+走势
+
+中间价:欧元兑人民币	
+7.78
+CNY
+	—	2026-07-07	
+低频
+走势
+
+中间价:澳元兑人民币	
+4.73
+CNY
+	—	2026-07-07	
+低频
+走势
+
+中间价:加拿大元兑人民币	
+4.78
+CNY
+	—	2026-07-07	
+低频
+走势
+
+中债国债到期收益率:3个月	
+1.08%
+	—	2026-07-07	
+低频
+走势
+
+中债国债到期收益率:6个月	
+1.09%
+	—	2026-07-07	
+低频
+走势
+
+中债国债到期收益率:9个月	
+1.09%
+	—	2026-07-07	
+低频
+走势
+
+中债国债到期收益率:1年	
+1.12%
+	—	2026-0
+
+## computed styles
+{
+  "body_backgroundColor": "rgb(244, 243, 240)",
+  "body_color": "rgb(31, 41, 55)",
+  "body_fontFamily": "\"PingFang SC\", \"Microsoft YaHei UI\", \"Noto Sans SC\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", Arial, sans-serif",
+  "body_fontSize": "16px",
+  "root_backgroundColor": "rgb(245, 247, 249)",
+  "main_backgroundColor": "rgb(255, 255, 255)",
+  "body_borderRadius_first": "0px",
+  "css_vars": {
+    "--background": "oklch(0.9702 0 0)",
+    "--foreground": "oklch(0.2103 0.0059 285.89)",
+    "--border": "oklch(90% 0.004 286.32)",
+    "--font-sans": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\",\n      \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+    "--radius": "0.5rem",
+    "--moss-color-primary-50": "#e8f1fb",
+    "--moss-color-primary-100": "#d0e3f6",
+    "--moss-color-primary-200": "#a8c9ec",
+    "--moss-color-primary-300": "#79a7de",
+    "--moss-color-primary-400": "#4d84cc",
+    "--moss-color-primary-500": "#2f68b8",
+    "--moss-color-primary-600": "#1850a1",
+    "--moss-color-primary-700": "#144287",
+    "--moss-color-primary-800": "#10356a",
+    "--moss-color-primary-900": "#0c2a54",
+    "--moss-color-info-50": "#eff6ff",
+    "--moss-color-info-100": "#dbeafe",
+    "--moss-color-info-200": "#bfdbfe",
+    "--moss-color-info-300": "#93c5fd",
+    "--moss-color-info-400": "#60a5fa",
+    "--moss-color-info-500": "#3b82f6",
+    "--moss-color-info-600": "#2563eb",
+    "--moss-color-info-700": "#1d4ed8",
+    "--moss-color-info-800": "#1e40af",
+    "--moss-color-info-900": "#1e3a8a",
+    "--moss-color-success-50": "#ecf8f2",
+    "--moss-color-success-100": "#d5efe0",
+    "--moss-color-success-200": "#aedfc8",
+    "--moss-color-success-300": "#7fc8a4",
+    "--moss-color-success-400": "#52ad84",
+    "--moss-color-success-500": "#2d8a5e",
+    "--moss-color-success-600": "#25714d",
+    "--moss-color-success-700": "#1d5c40",
+    "--moss-color-success-800": "#174833",
+    "--moss-color-success-900": "#123828",
+    "--moss-color-warning-50": "#fff9eb",
+    "--moss-color-warning-100": "#fef0d4",
+    "--moss-color-warning-200": "#fde0a8",
+    "--moss-color-warning-300": "#fbc874",
+    "--moss-color-warning-400": "#f8a93a",
+    "--moss-color-warning-500": "#d97706"
+  }
+}
+
+## api calls (47)
+200  /src/api/clientContext.ts
+200  /src/api/homeMarketTickerClient.ts
+200  /src/api/httpResponseError.ts
+200  /ui/macro/choice-series/latest
+200  /src/api/client.ts
+200  /src/api/cashflowClient.ts
+200  /src/api/balanceAnalysisClient.ts
+200  /src/api/executiveClient.ts
+200  /src/api/healthClient.ts
+200  /src/api/bondAnalyticsClient.ts
+200  /src/api/pnlClient.ts
+200  /src/api/liabilityAdbClient.ts
+200  /src/api/pnlAttributionClient.ts
+200  /src/api/pnlCoreClient.ts
+200  /src/api/qdbGlMonthlyAnalysisClient.ts
+200  /src/api/productCategoryClient.ts
+200  /src/api/positionsClient.ts
+200  /src/api/balanceMovementClient.ts
+200  /src/api/ledgerClient.ts
+200  /src/api/marketDataClient.ts
+200  /src/api/cubeClient.ts
+200  /src/api/kpiClient.ts
+200  /src/api/macroToolkitClient.ts
+200  /src/api/agentClient.ts
+200  /src/api/workbenchDashboardApi.ts
+200  /src/api/bondDashboardWorkbenchEndpoints.ts
+200  /src/api/queryKeys.ts
+200  /src/api/executiveHomeSnapshotFetch.ts
+200  /src/api/numeric.ts
+200  /src/api/bondAnalyticsYieldCurveTermStructureMock.ts
+200  /src/api/bondDashboardBundleMock.ts
+200  /src/api/marketDataMocks.ts
+200  /ui/market-data/rates
+200  /ui/macro/choice-series/latest
+200  /ui/market-data/livermore/cycle-proxy-backtest
+200  /ui/market-data/livermore/candidate-history-portfolio-backtest
+200  /ui/macro/toolkit/analysis?detail=core
+403  /api/external-data/watermarks
+200  /ui/market-data/catalog
+200  /ui/market-data/fx/analytical
+200  /ui/market-data/fx/formal-status
+200  /ui/market-data/ncd-funding-proxy
+200  /ui/market-data/bond-futures/rankings?contract=T.CFE&limit=10
+200  /ui/market-data/livermore/sector-rank-series?as_of_date=2026-07-19&top_k=5
+200  /ui/market-data/coverage-summary
+200  /ui/market-data/tushare-supplement?money_supply_limit=12&eco_cal_limit=30
+200  /ui/market-data/livermore/signal-confluence?as_of_date=2026-07-19
+
+## console errors (1)
+Failed to load resource: the server responded with a status of 403 (Forbidden)

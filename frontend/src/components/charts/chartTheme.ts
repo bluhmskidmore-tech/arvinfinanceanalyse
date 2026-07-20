@@ -1,120 +1,244 @@
 import type { CSSProperties } from "react";
 
 import type { EChartsOption } from "../../lib/echarts";
-import { designTokens, ibTokens } from "../../theme/designSystem";
+import { designTokens, dhApiTokens, ibTokens } from "../../theme/designSystem";
 
 type PlainObject = Record<string, unknown>;
 
-export const mossChartPalette = [
-  ibTokens.color.accent,
-  designTokens.color.info[600],
-  ibTokens.color.gold,
-  ibTokens.color.up,
-  ibTokens.color.down,
-  designTokens.color.warm.slateBlue,
-  designTokens.color.primary[400],
-  designTokens.color.warning[500],
-] as const;
+/*
+ * Dual chart themes per DESIGN.md §2: IB light workbench (default) and
+ * dh-api dark terminal. Pages must use the variant matching their page
+ * theme instead of hard-coding chart colors.
+ */
 
-export const mossChartCategoricalPalette = [
-  ibTokens.color.accent,
-  designTokens.color.primary[700],
-  designTokens.color.warm.slateBlue,
-  designTokens.color.primary[200],
-  designTokens.color.neutral[300],
-  ibTokens.color.gold,
-] as const;
-
-export const mossChartAxisLabel = {
-  color: ibTokens.color.inkMuted,
-  fontSize: designTokens.fontSize[11],
-  fontFamily: designTokens.fontFamily.sans,
+type ChartThemeColors = {
+  palette: readonly string[];
+  categoricalPalette: readonly string[];
+  ink: string;
+  inkMuted: string;
+  hairline: string;
+  surface: string;
+  accentPointer: string;
+  emptyRadius: number;
+  loadingMaskBase: string;
 };
 
-export const mossChartAxisLine = {
-  lineStyle: {
-    color: ibTokens.color.hairline,
-  },
+const ibThemeColors: ChartThemeColors = {
+  palette: [
+    ibTokens.color.accent,
+    designTokens.color.info[600],
+    ibTokens.color.gold,
+    ibTokens.color.up,
+    ibTokens.color.down,
+    designTokens.color.warm.slateBlue,
+    designTokens.color.primary[400],
+    designTokens.color.warning[500],
+  ],
+  categoricalPalette: [
+    ibTokens.color.accent,
+    designTokens.color.primary[700],
+    designTokens.color.warm.slateBlue,
+    designTokens.color.primary[200],
+    designTokens.color.neutral[300],
+    ibTokens.color.gold,
+  ],
+  ink: ibTokens.color.ink,
+  inkMuted: ibTokens.color.inkMuted,
+  hairline: ibTokens.color.hairline,
+  surface: ibTokens.color.surface,
+  accentPointer: ibTokens.color.gold,
+  emptyRadius: ibTokens.radius,
+  loadingMaskBase: designTokens.color.institutional.surface,
 };
 
-export const mossChartSplitLine = {
-  lineStyle: {
-    color: ibTokens.color.hairline,
-  },
+const dhApiThemeColors: ChartThemeColors = {
+  palette: [
+    dhApiTokens.color.blue,
+    dhApiTokens.color.green,
+    dhApiTokens.color.amber,
+    dhApiTokens.color.red,
+    dhApiTokens.color.inkSoft,
+    dhApiTokens.color.inkMuted,
+  ],
+  categoricalPalette: [
+    dhApiTokens.color.blue,
+    dhApiTokens.color.inkSoft,
+    dhApiTokens.color.amber,
+    dhApiTokens.color.green,
+    dhApiTokens.color.inkMuted,
+    dhApiTokens.color.red,
+  ],
+  ink: dhApiTokens.color.ink,
+  inkMuted: dhApiTokens.color.inkMuted,
+  hairline: dhApiTokens.color.lineSoft,
+  surface: dhApiTokens.color.panel2,
+  accentPointer: dhApiTokens.color.amber,
+  emptyRadius: dhApiTokens.radius,
+  loadingMaskBase: dhApiTokens.color.panel,
 };
 
-export const mossChartLoadingMaskStyle: CSSProperties = {
-  position: "absolute",
-  inset: 0,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  background: `color-mix(in srgb, ${designTokens.color.institutional.surface} 72%, transparent)`,
-  zIndex: 1,
-};
-
-export const mossChartEmptyStateStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  color: ibTokens.color.inkMuted,
-  fontSize: designTokens.fontSize[13],
-  border: `1px dashed ${ibTokens.color.hairline}`,
-  borderRadius: designTokens.radius.md,
-  background: ibTokens.color.surface,
-  fontFamily: designTokens.fontFamily.sans,
-};
-
-const baseGrid = {
-  left: designTokens.space[7],
-  right: designTokens.space[5],
-  top: designTokens.space[6],
-  bottom: designTokens.space[6],
-  containLabel: true,
-};
-
-const baseTooltip = {
-  trigger: "axis",
-  confine: true,
-  backgroundColor: ibTokens.color.surface,
-  borderColor: ibTokens.color.hairline,
-  borderWidth: 1,
-  padding: [8, 10],
-  textStyle: {
-    color: ibTokens.color.ink,
-    fontSize: designTokens.fontSize[12],
+function buildChartTheme(colors: ChartThemeColors) {
+  const axisLabel = {
+    color: colors.inkMuted,
+    fontSize: designTokens.fontSize[11],
     fontFamily: designTokens.fontFamily.sans,
-  },
-  axisPointer: {
-    type: "line",
+  };
+
+  const axisLine = {
     lineStyle: {
-      color: ibTokens.color.gold,
-      width: 1,
-      type: "dashed",
+      color: colors.hairline,
     },
-  },
-};
+  };
 
-const baseLegend = {
-  type: "scroll",
-  bottom: 0,
-  itemWidth: 18,
-  itemHeight: 8,
-  textStyle: mossChartAxisLabel,
-};
+  const splitLine = {
+    lineStyle: {
+      color: colors.hairline,
+    },
+  };
 
-const categoryAxis = {
-  type: "category",
-  axisLabel: mossChartAxisLabel,
-  axisLine: mossChartAxisLine,
-};
+  const loadingMaskStyle: CSSProperties = {
+    position: "absolute",
+    inset: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: `color-mix(in srgb, ${colors.loadingMaskBase} 72%, transparent)`,
+    zIndex: 1,
+  };
 
-const valueAxis = {
-  type: "value",
-  axisLabel: mossChartAxisLabel,
-  axisLine: mossChartAxisLine,
-  splitLine: mossChartSplitLine,
-};
+  const emptyStateStyle: CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: colors.inkMuted,
+    fontSize: designTokens.fontSize[13],
+    border: `1px dashed ${colors.hairline}`,
+    borderRadius: colors.emptyRadius,
+    background: colors.surface,
+    fontFamily: designTokens.fontFamily.sans,
+  };
+
+  const baseGrid = {
+    left: designTokens.space[7],
+    right: designTokens.space[5],
+    top: designTokens.space[6],
+    bottom: designTokens.space[6],
+    containLabel: true,
+  };
+
+  const baseTooltip = {
+    trigger: "axis",
+    confine: true,
+    backgroundColor: colors.surface,
+    borderColor: colors.hairline,
+    borderWidth: 1,
+    padding: [8, 10],
+    textStyle: {
+      color: colors.ink,
+      fontSize: designTokens.fontSize[12],
+      fontFamily: designTokens.fontFamily.sans,
+    },
+    axisPointer: {
+      type: "line",
+      lineStyle: {
+        color: colors.accentPointer,
+        width: 1,
+        type: "dashed",
+      },
+    },
+  };
+
+  const baseLegend = {
+    type: "scroll",
+    bottom: 0,
+    itemWidth: 18,
+    itemHeight: 8,
+    textStyle: axisLabel,
+  };
+
+  const categoryAxis = {
+    type: "category",
+    axisLabel,
+    axisLine,
+  };
+
+  const valueAxis = {
+    type: "value",
+    axisLabel,
+    axisLine,
+    splitLine,
+  };
+
+  function createBaseChartOption(overrides: EChartsOption = {}): EChartsOption {
+    return mergePlainObjects(
+      {
+        color: [...colors.palette],
+        textStyle: {
+          color: colors.ink,
+          fontFamily: designTokens.fontFamily.sans,
+        },
+        tooltip: baseTooltip,
+        legend: baseLegend,
+        grid: baseGrid,
+      },
+      overrides,
+    ) as EChartsOption;
+  }
+
+  function createLineChartOption(overrides: EChartsOption = {}): EChartsOption {
+    const overrideRecord = overrides as PlainObject;
+    return createBaseChartOption({
+      ...withoutAxis(overrides),
+      xAxis: mergeAxis({ ...categoryAxis, boundaryGap: false }, overrideRecord.xAxis),
+      yAxis: mergeAxis(valueAxis, overrideRecord.yAxis),
+    } as EChartsOption);
+  }
+
+  function createBarChartOption(overrides: EChartsOption = {}): EChartsOption {
+    const overrideRecord = overrides as PlainObject;
+    const barTooltip = mergePlainObjects(
+      mergePlainObjects(baseTooltip, { axisPointer: { type: "shadow" } }),
+      overrideRecord.tooltip,
+    );
+    return createBaseChartOption({
+      ...withoutAxis(overrides),
+      tooltip: barTooltip,
+      xAxis: mergeAxis({ ...categoryAxis, boundaryGap: true }, overrideRecord.xAxis),
+      yAxis: mergeAxis(valueAxis, overrideRecord.yAxis),
+    } as EChartsOption);
+  }
+
+  function createEmptyChartOption(text = "暂无数据"): EChartsOption {
+    return createBaseChartOption({
+      graphic: {
+        type: "text",
+        left: "center",
+        top: "middle",
+        style: {
+          text,
+          fill: colors.inkMuted,
+          fontSize: designTokens.fontSize[13],
+          fontFamily: designTokens.fontFamily.sans,
+        },
+      },
+      series: [],
+    } as EChartsOption);
+  }
+
+  return {
+    palette: colors.palette,
+    categoricalPalette: colors.categoricalPalette,
+    axisLabel,
+    axisLine,
+    splitLine,
+    loadingMaskStyle,
+    emptyStateStyle,
+    createBaseChartOption,
+    createLineChartOption,
+    createBarChartOption,
+    createEmptyChartOption,
+  };
+}
 
 function isPlainObject(value: unknown): value is PlainObject {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -145,58 +269,22 @@ function withoutAxis(overrides: EChartsOption): PlainObject {
   return rest;
 }
 
-export function createBaseChartOption(overrides: EChartsOption = {}): EChartsOption {
-  return mergePlainObjects(
-    {
-      color: [...mossChartPalette],
-      textStyle: {
-        color: ibTokens.color.ink,
-        fontFamily: designTokens.fontFamily.sans,
-      },
-      tooltip: baseTooltip,
-      legend: baseLegend,
-      grid: baseGrid,
-    },
-    overrides,
-  ) as EChartsOption;
-}
+/** IB light workbench chart theme (default). */
+export const ibChartTheme = buildChartTheme(ibThemeColors);
 
-export function createLineChartOption(overrides: EChartsOption = {}): EChartsOption {
-  const overrideRecord = overrides as PlainObject;
-  return createBaseChartOption({
-    ...withoutAxis(overrides),
-    xAxis: mergeAxis({ ...categoryAxis, boundaryGap: false }, overrideRecord.xAxis),
-    yAxis: mergeAxis(valueAxis, overrideRecord.yAxis),
-  } as EChartsOption);
-}
+/** Dark terminal (Decision Desk) chart theme for `theme-dh-api` pages. */
+export const dhApiChartTheme = buildChartTheme(dhApiThemeColors);
 
-export function createBarChartOption(overrides: EChartsOption = {}): EChartsOption {
-  const overrideRecord = overrides as PlainObject;
-  const barTooltip = mergePlainObjects(
-    mergePlainObjects(baseTooltip, { axisPointer: { type: "shadow" } }),
-    overrideRecord.tooltip,
-  );
-  return createBaseChartOption({
-    ...withoutAxis(overrides),
-    tooltip: barTooltip,
-    xAxis: mergeAxis({ ...categoryAxis, boundaryGap: true }, overrideRecord.xAxis),
-    yAxis: mergeAxis(valueAxis, overrideRecord.yAxis),
-  } as EChartsOption);
-}
+// ---- Legacy named exports (IB light) — kept for existing consumers -------
 
-export function createEmptyChartOption(text = "暂无数据"): EChartsOption {
-  return createBaseChartOption({
-    graphic: {
-      type: "text",
-      left: "center",
-      top: "middle",
-      style: {
-        text,
-        fill: ibTokens.color.inkMuted,
-        fontSize: designTokens.fontSize[13],
-        fontFamily: designTokens.fontFamily.sans,
-      },
-    },
-    series: [],
-  } as EChartsOption);
-}
+export const mossChartPalette = ibChartTheme.palette;
+export const mossChartCategoricalPalette = ibChartTheme.categoricalPalette;
+export const mossChartAxisLabel = ibChartTheme.axisLabel;
+export const mossChartAxisLine = ibChartTheme.axisLine;
+export const mossChartSplitLine = ibChartTheme.splitLine;
+export const mossChartLoadingMaskStyle = ibChartTheme.loadingMaskStyle;
+export const mossChartEmptyStateStyle = ibChartTheme.emptyStateStyle;
+export const createBaseChartOption = ibChartTheme.createBaseChartOption;
+export const createLineChartOption = ibChartTheme.createLineChartOption;
+export const createBarChartOption = ibChartTheme.createBarChartOption;
+export const createEmptyChartOption = ibChartTheme.createEmptyChartOption;

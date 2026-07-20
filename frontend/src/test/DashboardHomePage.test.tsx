@@ -6,6 +6,39 @@ vi.mock("../lib/echarts", () => ({
   default: () => <div data-testid="dashboard-echarts-stub" />,
 }));
 
+vi.mock("../features/agent/AgentPanel", () => ({
+  AgentPanel: function MockAgentPanel({
+    pageId,
+    reportDate = null,
+    currentFilters = {},
+    defaultFilters = {},
+    selectedRows = [],
+    contextNote = null,
+  }: {
+    pageId: string;
+    reportDate?: string | null;
+    currentFilters?: Record<string, unknown>;
+    defaultFilters?: Record<string, unknown>;
+    selectedRows?: Array<Record<string, unknown>>;
+    contextNote?: string | null;
+  }) {
+    const pageContext = {
+      page_id: pageId,
+      current_filters:
+        reportDate != null
+          ? { ...defaultFilters, ...currentFilters, report_date: reportDate }
+          : { ...defaultFilters, ...currentFilters },
+      selected_rows: selectedRows,
+      context_note: contextNote,
+    };
+    return (
+      <div data-testid="agent-panel">
+        <code data-testid="agent-panel-page-context">{JSON.stringify(pageContext)}</code>
+      </div>
+    );
+  },
+}));
+
 import { createApiClient, type ApiClient } from "../api/client";
 import type { ApiEnvelope, ChoiceNewsEvent, ChoiceNewsEventsPayload } from "../api/contracts";
 import {
@@ -523,6 +556,35 @@ describe("DashboardHomePage", () => {
       "/pnl-attribution",
       "/decision-items",
     ]);
+  });
+
+  it("opens the review copilot drawer with the dashboard page context", { timeout: 45_000 }, async () => {
+    renderDashboardHome();
+
+    const hero = await screen.findByTestId("dashboard-home-hero");
+    expect(within(hero).getByTestId("dashboard-home-kpi-aum")).toBeInTheDocument();
+
+    fireEvent.click(await screen.findByTestId("dashboard-home-agent-open"));
+
+    // 抽屉整体懒加载（antd chunk 冷启动较慢），放宽等待时间避免抖动。
+    expect(
+      await screen.findByTestId("dashboard-home-agent-drawer", undefined, { timeout: 30_000 }),
+    ).toBeInTheDocument();
+    const contextCode = await screen.findByTestId("agent-panel-page-context", undefined, {
+      timeout: 10_000,
+    });
+    const pageContext = JSON.parse(contextCode.textContent ?? "{}") as {
+      page_id: string;
+      current_filters: Record<string, unknown>;
+      selected_rows: unknown[];
+      context_note: string | null;
+    };
+    expect(pageContext.page_id).toBe("dashboard");
+    expect(pageContext.current_filters.report_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(pageContext.current_filters.allow_partial).toBe(false);
+    expect(typeof pageContext.current_filters.data_status).toBe("string");
+    expect(pageContext.selected_rows).toEqual([]);
+    expect(pageContext.context_note).toContain("组合经营日报");
   });
 
   it("starts event feeds and income trend from the post-snapshot idle gate", async () => {

@@ -1,7 +1,19 @@
 import type { EChartsOption } from "../../../lib/echarts";
+import { dhApiTokens } from "../../../theme/designSystem";
 import type { ModuleHomeDistributionRow } from "./moduleHomeModel";
 
-export const PORTFOLIO_DIST_CHART_COLORS = ["#9fb4c7", "#688bb2", "#7d9a7f", "#b09261", "#aa7778"];
+/*
+ * Slice colors come from the official dh-api dark terminal tokens
+ * (DESIGN.md §2.2); order mirrors the CSS --portfolio-chart-* vars
+ * (blue / info / green / amber / red) used by the stacked bars.
+ */
+export const PORTFOLIO_DIST_CHART_COLORS = [
+  dhApiTokens.color.blue,
+  dhApiTokens.color.inkSoft,
+  dhApiTokens.color.green,
+  dhApiTokens.color.amber,
+  dhApiTokens.color.red,
+];
 
 export function buildPortfolioPieOption(rows: ModuleHomeDistributionRow[]): EChartsOption {
   return {
@@ -9,12 +21,12 @@ export function buildPortfolioPieOption(rows: ModuleHomeDistributionRow[]): ECha
     animationDuration: 180,
     tooltip: {
       trigger: "item",
-      backgroundColor: "rgba(8, 25, 47, 0.94)",
-      borderColor: "rgba(96, 165, 250, 0.42)",
+      backgroundColor: dhApiTokens.color.panel2,
+      borderColor: dhApiTokens.color.line,
       borderWidth: 1,
       padding: [8, 10],
       textStyle: {
-        color: "#f8fafc",
+        color: dhApiTokens.color.ink,
         fontSize: 11,
         fontWeight: 650,
       },
@@ -35,13 +47,13 @@ export function buildPortfolioPieOption(rows: ModuleHomeDistributionRow[]): ECha
         label: { show: false },
         labelLine: { show: false },
         itemStyle: {
-          borderColor: "#0b1728",
+          borderColor: dhApiTokens.color.panel,
           borderWidth: 2,
         },
         emphasis: {
           scale: false,
           itemStyle: {
-            borderColor: "#d7e3f5",
+            borderColor: dhApiTokens.color.ink,
           },
         },
         data: rows.map((row, index) => ({

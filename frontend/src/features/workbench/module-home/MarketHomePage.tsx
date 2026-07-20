@@ -136,7 +136,7 @@ export default function MarketHomePage() {
     latestTradeDate;
 
   return (
-    <section data-testid="module-workbench-home" className={dhStyles.dhPage}>
+    <section data-testid="module-workbench-home" className={`${dhStyles.dhLightPage} theme-dh-api`}>
       <MarketHomeLayout
         view={view}
         config={config}
