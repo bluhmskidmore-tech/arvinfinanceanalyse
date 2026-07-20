@@ -53,6 +53,9 @@ export function BalanceAnalysisToolbar({
   onExportCsv,
   onExportWorkbook,
 }: BalanceAnalysisToolbarProps) {
+  const hasUnavailableSelectedDate = Boolean(
+    selectedReportDate && !reportDates.includes(selectedReportDate),
+  );
   return (
     <header
       data-testid="balance-analysis-filter-tray"
@@ -77,6 +80,11 @@ export function BalanceAnalysisToolbar({
               value={selectedReportDate}
               onChange={(event) => onReportDateChange(event.target.value)}
             >
+              {hasUnavailableSelectedDate ? (
+                <option value={selectedReportDate} disabled>
+                  {`${selectedReportDate}（不可用）`}
+                </option>
+              ) : null}
               {reportDates.map((reportDate) => (
                 <option key={reportDate} value={reportDate}>
                   {reportDate}

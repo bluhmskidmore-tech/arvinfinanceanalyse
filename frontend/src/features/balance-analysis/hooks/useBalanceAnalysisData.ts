@@ -159,6 +159,8 @@ export function useBalanceAnalysisData({
   });
   const {
     selectedReportDate,
+    unavailableRequestedReportDate,
+    isSelectedReportDateAvailable,
     positionScope,
     currencyBasis,
     setSelectedReportDate,
@@ -180,7 +182,7 @@ export function useBalanceAnalysisData({
       positionScope,
       currencyBasis,
     ],
-    enabled: Boolean(selectedReportDate),
+    enabled: isSelectedReportDateAvailable,
     queryFn: () =>
       client.getBalanceAnalysisOverview({
         reportDate: selectedReportDate,
@@ -199,7 +201,7 @@ export function useBalanceAnalysisData({
       positionScope,
       currencyBasis,
     ],
-    enabled: Boolean(selectedReportDate),
+    enabled: isSelectedReportDateAvailable,
     queryFn: () =>
       client.getBalanceAnalysisWorkbook({
         reportDate: selectedReportDate,
@@ -222,7 +224,7 @@ export function useBalanceAnalysisData({
       positionScope,
       currencyBasis,
     ),
-    enabled: Boolean(selectedReportDate),
+    enabled: isSelectedReportDateAvailable,
     queryFn: () =>
       client.getBalanceAnalysisDecisionItems({
         reportDate: selectedReportDate,
@@ -233,25 +235,25 @@ export function useBalanceAnalysisData({
   });
 
   const firstScreenQueriesSettled =
-    Boolean(selectedReportDate) &&
+    isSelectedReportDateAvailable &&
     !overviewQuery.isLoading &&
     !workbookQuery.isLoading &&
     !decisionItemsQuery.isLoading;
 
   useEffect(() => {
-    if (!selectedReportDate || !firstScreenQueriesSettled) {
+    if (!isSelectedReportDateAvailable || !firstScreenQueriesSettled) {
       return;
     }
     const timeoutId = window.setTimeout(() => {
       setDeferredAnalysisQueryKey(activeAnalysisQueryKey);
     }, 0);
     return () => window.clearTimeout(timeoutId);
-  }, [activeAnalysisQueryKey, firstScreenQueriesSettled, selectedReportDate]);
+  }, [activeAnalysisQueryKey, firstScreenQueriesSettled, isSelectedReportDateAvailable]);
 
   const deferredAnalysisQueriesEnabled =
-    Boolean(selectedReportDate) && deferredAnalysisQueryKey === activeAnalysisQueryKey;
+    isSelectedReportDateAvailable && deferredAnalysisQueryKey === activeAnalysisQueryKey;
   const deferredAnalysisQueriesPending =
-    Boolean(selectedReportDate) && !deferredAnalysisQueriesEnabled;
+    isSelectedReportDateAvailable && !deferredAnalysisQueriesEnabled;
 
   const detailQuery = useQuery({
     queryKey: [
@@ -272,7 +274,7 @@ export function useBalanceAnalysisData({
     retry: false,
   });
 
-  const summaryQueryEnabled = Boolean(selectedReportDate) && overviewQuery.isSuccess;
+  const summaryQueryEnabled = isSelectedReportDateAvailable && overviewQuery.isSuccess;
 
   const summaryQuery = useQuery({
     queryKey: [
@@ -317,7 +319,7 @@ export function useBalanceAnalysisData({
 
   const movementDatesQuery = useQuery({
     queryKey: ["balance-analysis", "movement-dates", client.mode, "CNX"],
-    enabled: Boolean(selectedReportDate),
+    enabled: isSelectedReportDateAvailable,
     queryFn: () => client.getBalanceMovementDates("CNX"),
     retry: false,
   });
@@ -513,6 +515,8 @@ export function useBalanceAnalysisData({
   return {
     datesQuery,
     selectedReportDate,
+    unavailableRequestedReportDate,
+    isSelectedReportDateAvailable,
     positionScope,
     currencyBasis,
     setSelectedReportDate,

@@ -2,8 +2,20 @@
 
 import { createApiClient } from "../api/client";
 import { createDeferredApiClient } from "../api/clientContext";
+import { parseBalanceAmount } from "../api/balanceAnalysisClient";
 
 describe("createApiClient", () => {
+  it("rejects invalid mock balance amounts instead of coercing them to zero", () => {
+    expect(parseBalanceAmount("12.50")).toBe(12.5);
+    expect(parseBalanceAmount(-3.25)).toBe(-3.25);
+
+    for (const invalid of ["", "   ", "N/A", "12oops", Number.POSITIVE_INFINITY]) {
+      expect(() => parseBalanceAmount(invalid)).toThrow(
+        "Invalid mock balance amount",
+      );
+    }
+  });
+
   it("keeps mock health endpoints available", async () => {
     const client = createApiClient({ mode: "mock" });
 

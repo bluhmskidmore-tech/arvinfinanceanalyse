@@ -960,11 +960,11 @@ describe("BalanceAnalysisPage", () => {
       series: { name: string; label?: { formatter?: (params: { dataIndex: number }) => string } }[];
       tooltip: { formatter: (items: { dataIndex: number }[]) => string };
     };
-    const adbSeries = comparisonOption.series.find((series) => series.name.includes("ADB"));
+    const adbSeries = comparisonOption.series.find((series) => series.name.includes("区间日均"));
 
-    expect(comparisonOption.tooltip.formatter([{ dataIndex: 0 }])).toContain("ADB: —");
+    expect(comparisonOption.tooltip.formatter([{ dataIndex: 0 }])).toContain("区间日均：—");
     expect(adbSeries?.label?.formatter?.({ dataIndex: 0 })).toBe("—");
-    expect(comparisonOption.tooltip.formatter([{ dataIndex: 1 }])).toContain("ADB: 0.00");
+    expect(comparisonOption.tooltip.formatter([{ dataIndex: 1 }])).toContain("区间日均：0.00");
   });
 
   it("keeps the no-report-date state compact instead of rendering empty workbench placeholders", async () => {
@@ -1746,6 +1746,53 @@ describe("BalanceAnalysisPage", () => {
         currencyBasis: "native",
       });
     });
+  });
+
+  it("fails closed when an explicitly requested report date is unavailable", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const getDatesSpy = vi.fn(async () => ({
+      result_meta: buildMeta("balance-analysis.dates", "tr_balance_dates_unavailable"),
+      result: {
+        report_dates: ["2025-12-31"],
+      },
+    }));
+    const getOverviewSpy = vi.fn(baseClient.getBalanceAnalysisOverview);
+    const getWorkbookSpy = vi.fn(baseClient.getBalanceAnalysisWorkbook);
+    const getDecisionItemsSpy = vi.fn(baseClient.getBalanceAnalysisDecisionItems);
+
+    const { router } = renderBalanceAnalysisWithClient(
+      {
+        ...baseClient,
+        getBalanceAnalysisDates: getDatesSpy,
+        getBalanceAnalysisOverview: getOverviewSpy,
+        getBalanceAnalysisWorkbook: getWorkbookSpy,
+        getBalanceAnalysisDecisionItems: getDecisionItemsSpy,
+      },
+      ["/balance-analysis?report_date=2025-11-30"],
+    );
+
+    const unavailableState = await screen.findByTestId("balance-analysis-report-date-empty");
+    expect(unavailableState).toHaveTextContent("请求的报告日不可用");
+    expect(unavailableState).toHaveTextContent("2025-11-30");
+    expect(unavailableState).toHaveTextContent("未回退到 2025-12-31");
+    expect(getOverviewSpy).not.toHaveBeenCalled();
+    expect(getWorkbookSpy).not.toHaveBeenCalled();
+    expect(getDecisionItemsSpy).not.toHaveBeenCalled();
+
+    const reportDateSelect = screen.getByRole("combobox", { name: "balance-report-date" });
+    expect(reportDateSelect).toHaveValue("2025-11-30");
+
+    await user.selectOptions(reportDateSelect, "2025-12-31");
+
+    await waitFor(() => {
+      expect(getOverviewSpy).toHaveBeenCalledWith({
+        reportDate: "2025-12-31",
+        positionScope: "all",
+        currencyBasis: "CNY",
+      });
+    });
+    expect(router.state.location.search).toContain("report_date=2025-12-31");
   });
 
   it("reacts to query-string scope and currency updates while mounted", async () => {

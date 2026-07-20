@@ -48,7 +48,7 @@ Interpretation:
 | Bond analytics | `BondAnalytics.tsx` | `/bond-analysis` / `BondAnalyticsView` | `backend/app/api/routes/bond_analytics.py` | `landed` | Included in current formal read-surface boundary. |
 | Bond analytics advanced | `BondAnalyticsAdvanced.tsx` | `/bond-analysis` cockpit modules | `bond_analytics.py`, `campisi_attribution.py` | `partial` | Several advanced slices exist, but not as a V2-style separate full page. |
 | Bond dashboard | `BondBookAi.tsx` plus bond overview surfaces | `/bond-dashboard` / `BondDashboardPage.tsx` | `backend/app/api/routes/bond_dashboard.py` | `landed` | V3 has a dedicated bond dashboard landing page. |
-| Liability analytics | `LiabilityAnalytics.tsx` | `/liability-analytics` / `LiabilityAnalyticsPage.tsx` | `backend/app/api/routes/liability_analytics.py` | `excluded` | Compatibility implementation remains in repo, but the public HTTP routes are now reserved `503` and the workbench entry is placeholder/compat rather than live. |
+| Liability analytics | `LiabilityAnalytics.tsx` | `/liability-analytics` / `LiabilityAnalyticsPage.tsx` | `backend/app/api/routes/liability_analytics.py` | `analytical-only` | Live compatibility page and guarded read routes are available, but they are not promoted into the governed formal mainline. |
 | Average balance / ADB | `AverageBalance.tsx` | `/average-balance` / `AverageBalancePage.tsx` | `backend/app/api/routes/adb_analysis.py` | `analytical-only` | Present and routable, but explicitly framed as compatibility/analytical. |
 | PnL main page | `PnlAnalysis.tsx` | `/pnl` / `PnlPage.tsx` | `backend/app/api/routes/pnl.py` | `landed` | Formal PnL chain is included in the current cutover. |
 | PnL bridge | V2 had bridge-like decomposition across multiple pages | `/pnl-bridge` / `PnlBridgePage.tsx` | `backend/app/api/routes/pnl.py` | `landed` | V3 has a cleaner dedicated bridge surface. |
@@ -58,7 +58,7 @@ Interpretation:
 | PnL by business | `PnlByBusiness.tsx` | no dedicated V3 page | no dedicated route | `missing` | Candidate follow-up after main PnL parity. |
 | Balance analysis | `BalanceAnalysis.tsx` | `/balance-analysis` / `BalanceAnalysisPage.tsx` | `backend/app/api/routes/balance_analysis.py` | `landed` | One of the clearest governed formal chains in V3. |
 | Reconciliation | `Reconciliation.tsx` | no dedicated V3 page | no dedicated reconciliation route | `missing` | Important parity gap. |
-| Risk analysis | `RiskAnalysis.tsx` | `/risk-overview`, `/risk-tensor` | `backend/app/api/routes/risk_tensor.py`, `executive.py` | `partial` | `risk.tensor` formal route is landed; `/ui/risk/overview` remains excluded and fail-closed while the workbench keeps a placeholder entry. |
+| Risk analysis | `RiskAnalysis.tsx` | `/risk-overview`, `/risk-tensor` | `backend/app/api/routes/risk_tensor.py`, `executive.py` | `partial` | The live `/risk-overview` workbench uses risk tensor and cashflow projection data; the distinct executive endpoint `/ui/risk/overview` remains excluded and fail-closed. |
 | Risk alerts | `RiskAlerts.tsx` | executive alerts panel only | `backend/app/api/routes/executive.py` | `excluded` | Explicitly excluded from current executive cutover. |
 | Agent tools | `AgentTools.tsx` | `/agent` / `AgentWorkbenchPage.tsx` | `backend/app/api/routes/agent.py` | `partial` | Page exists, but Agent MVP and real `/api/agent/query` enablement remain excluded. |
 | Agent chat | `AgentChat.tsx` | no dedicated V3 chat page | `agent.py` stub path only | `missing` | Current V3 keeps Agent as foundation, not a fully landed consumer. |
@@ -66,7 +66,7 @@ Interpretation:
 | Scenario | `Scenario.tsx` | no dedicated V3 scenario page | no dedicated scenario route | `excluded` | Current boundary keeps scenario outside promoted consumer rollout. |
 | Import / task monitor | `DataImport.tsx`, `TaskMonitor.tsx` | no dedicated V3 import/task page | task-like refresh APIs exist, but no task center route | `missing` | V2 consumer coverage is broader here. |
 | Utils / diagnostics | `UtilsTest.tsx` | `/platform-config` and shell diagnostics | `health.py`, governance-backed status readers | `partial` | V3 has platform/config health, but not a direct V2-style utilities page. |
-| Cube query | V2 had no equivalent first-class page | `/cube-query` / `CubeQueryPage.tsx` | `backend/app/api/routes/cube_query.py` | `excluded` | Service/schema remain in repo, but the public HTTP routes are reserved `503` and the workbench entry is placeholder instead of live. |
+| Cube query | V2 had no equivalent first-class page | `/cube-query` / `CubeQueryPage.tsx` | `backend/app/api/routes/cube_query.py` | `analytical-only` | Live support page and guarded query/dimension routes are available, but the surface is not part of the governed formal mainline. |
 
 ## Main Gaps Relative to V2
 
@@ -84,5 +84,5 @@ Interpretation:
 
 1. Add a dedicated V3 management-report consumer page before widening executive rollout.
 2. Add a V3 reconciliation consumer page; this is the clearest missing parity item after management reporting.
-3. Decide whether `liability-analytics` compatibility routes, `market-data` analytical surfaces, and `cube-query` should stay reserved / analytical-only or move into a later named cutover.
+3. Decide whether the live `liability-analytics`, `market-data`, and `cube-query` analytical/support surfaces should remain outside the formal mainline or move into a later named cutover.
 4. Replace route-by-route ambiguity with a maintained parity table in the same style as V2 whenever a new consumer surface lands.

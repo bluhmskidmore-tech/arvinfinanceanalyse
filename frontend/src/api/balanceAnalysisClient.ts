@@ -198,9 +198,15 @@ type BalanceAnalysisAmountField =
   | "amortized_cost_amount"
   | "accrued_interest_amount";
 
-function parseBalanceAmount(raw: BalanceAnalysisTableRow[BalanceAnalysisAmountField]): number {
-  const parsed = Number.parseFloat(String(raw));
-  return Number.isFinite(parsed) ? parsed : 0;
+export function parseBalanceAmount(
+  raw: BalanceAnalysisTableRow[BalanceAnalysisAmountField],
+): number {
+  const normalized = String(raw).trim();
+  const parsed = Number(normalized);
+  if (normalized === "" || !Number.isFinite(parsed)) {
+    throw new Error(`Invalid mock balance amount: ${String(raw)}`);
+  }
+  return parsed;
 }
 
 function formatBalanceAmountDecimal(value: number): string {

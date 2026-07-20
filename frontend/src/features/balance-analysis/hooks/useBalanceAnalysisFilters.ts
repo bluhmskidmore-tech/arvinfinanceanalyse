@@ -12,6 +12,8 @@ function normalizeCurrencyBasisParam(value: string | null): BalanceCurrencyBasis
 
 export interface BalanceAnalysisFilters {
   selectedReportDate: string;
+  unavailableRequestedReportDate: string | null;
+  isSelectedReportDateAvailable: boolean;
   positionScope: BalancePositionScope;
   currencyBasis: BalanceCurrencyBasis;
   setSelectedReportDate: (date: string) => void;
@@ -22,7 +24,7 @@ export interface BalanceAnalysisFilters {
 export function useBalanceAnalysisFilters(
   availableDates: string[],
 ): BalanceAnalysisFilters {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryReportDate = searchParams.get("report_date")?.trim() || "";
   const queryPositionScope = searchParams.get("position_scope");
   const queryCurrencyBasis = searchParams.get("currency_basis");
@@ -35,13 +37,13 @@ export function useBalanceAnalysisFilters(
     normalizeCurrencyBasisParam(queryCurrencyBasis),
   );
 
-  // Sync report date from URL param and available dates
+  // Preserve an explicit URL date even when unavailable; only default when no date was requested.
   useEffect(() => {
     const firstDate = availableDates[0];
     if (!availableDates.length) {
       return;
     }
-    if (queryReportDate && availableDates.includes(queryReportDate)) {
+    if (queryReportDate) {
       if (selectedReportDate !== queryReportDate) {
         setSelectedReportDate(queryReportDate);
       }
@@ -52,7 +54,7 @@ export function useBalanceAnalysisFilters(
     }
   }, [availableDates, queryReportDate, selectedReportDate]);
 
-  // Sync scope/basis from URL params
+  // Sync scope/basis from URL params.
   useEffect(() => {
     if (queryPositionScope !== null) {
       const next = normalizePositionScopeParam(queryPositionScope);
@@ -64,11 +66,34 @@ export function useBalanceAnalysisFilters(
     }
   }, [queryPositionScope, queryCurrencyBasis, positionScope, currencyBasis]);
 
+  function handleReportDateChange(date: string) {
+    setSelectedReportDate(date);
+    const nextSearchParams = new URLSearchParams(searchParams);
+    if (date) {
+      nextSearchParams.set("report_date", date);
+    } else {
+      nextSearchParams.delete("report_date");
+    }
+    setSearchParams(nextSearchParams, { replace: true });
+  }
+
+  const isSelectedReportDateAvailable = Boolean(
+    selectedReportDate && availableDates.includes(selectedReportDate),
+  );
+  const unavailableRequestedReportDate =
+    queryReportDate &&
+    selectedReportDate === queryReportDate &&
+    !isSelectedReportDateAvailable
+      ? queryReportDate
+      : null;
+
   return {
     selectedReportDate,
+    unavailableRequestedReportDate,
+    isSelectedReportDateAvailable,
     positionScope,
     currencyBasis,
-    setSelectedReportDate,
+    setSelectedReportDate: handleReportDateChange,
     setPositionScope,
     setCurrencyBasis,
   };

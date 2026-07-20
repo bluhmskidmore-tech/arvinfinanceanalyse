@@ -13,6 +13,7 @@ vi.mock("../lib/echarts", () => ({
 }));
 
 import { ApiClientProvider, createApiClient } from "../api/client";
+import { createDeferredApiClient } from "../api/clientContext";
 import type { BondTopHoldingItem, DV01RiskPayload, Numeric, ResultMeta } from "../api/contracts";
 import { BondAnalyticsInstitutionalCockpit } from "../features/bond-analytics/components/BondAnalyticsInstitutionalCockpit";
 import { formatRawAsNumeric } from "../utils/format";
@@ -386,6 +387,28 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(row).not.toHaveTextContent("0.00%");
     expect(row).not.toHaveTextContent("0.00 亿");
     expect(within(holdings).queryByText("-", { exact: true })).not.toBeInTheDocument();
+  });
+
+  it("renders deferred trading-desk and yield-curve sections through the cockpit", async () => {
+    renderCockpit(createDeferredApiClient({ mode: "mock" }));
+
+    const evidenceStrip = await screen.findByTestId("bond-analysis-holdings-evidence-strip");
+    const grid = await screen.findByTestId("bond-analysis-holdings-raw-grid");
+    const yieldCurvePanel = await screen.findByTestId("bond-analysis-yield-curve-panel");
+
+    await waitFor(() => {
+      expect(evidenceStrip).toHaveTextContent("1 \u6761");
+    });
+    expect(
+      within(yieldCurvePanel).getByTestId("bond-analysis-yield-curve-empty"),
+    ).toBeInTheDocument();
+    expect(yieldCurvePanel).not.toHaveTextContent(/\u52a0\u8f7d\u5931\u8d25|\u4e0d\u53ef\u7528/);
+
+    const link = await within(grid).findByTestId("bond-trading-desk-link-230210.IB");
+    expect(link).toHaveAttribute(
+      "href",
+      expect.stringContaining("/bond-trading-desk?bond_code=230210.IB"),
+    );
   });
 
   it("opens portfolio headlines and top holdings drills from homepage cards", async () => {

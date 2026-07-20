@@ -7,6 +7,10 @@ import type { ApiEnvelope, YieldCurveTermStructurePayload } from "../../../api/c
 import { apiQueryKeys } from "../../../api/queryKeys";
 import ReactECharts from "../../../lib/echarts";
 import {
+  formatYieldCurveDateSummary,
+  summarizeYieldCurveDates,
+} from "../../../lib/yieldCurveDateSummary";
+import {
   BOND_ANALYTICS_COCKPIT_YIELD_CURVE_TYPES,
   type BundleSectionQuery,
 } from "../lib/bondAnalyticsCockpitBundleQuery";
@@ -45,13 +49,16 @@ export function BondAnalyticsYieldCurveTermStructureChart({
     [q.data?.result.curves],
   );
 
+  const dateSummary = useMemo(
+    () => summarizeYieldCurveDates(q.data?.result.curves ?? []),
+    [q.data?.result.curves],
+  );
+  const dateLabel = formatYieldCurveDateSummary(dateSummary);
   const meta = q.data?.result_meta;
   const warnings = q.data?.result.warnings ?? [];
   const stale =
     meta?.vendor_status === "vendor_stale" || meta?.fallback_mode === "latest_snapshot";
-  const firstCurve = q.data?.result.curves[0];
-  const resolved = firstCurve?.trade_date_resolved;
-  const requested = firstCurve?.trade_date_requested;
+
 
   return (
     <Card
@@ -60,13 +67,7 @@ export function BondAnalyticsYieldCurveTermStructureChart({
       data-testid="bond-analytics-yield-curve-term-structure"
     >
       <div className={styles.subtitle}>
-        {resolved && requested && resolved !== requested ? (
-          <span>曲线交易日已回退为 {resolved}（请求日 {requested}）。</span>
-        ) : resolved ? (
-          <span>曲线交易日：{resolved}。</span>
-        ) : (
-          <span>曲线交易日：未解析。</span>
-        )}
+        <span>{dateLabel}</span>
         {stale ? <span> 数据可能非当日。</span> : null}
       </div>
       {warnings.length > 0 ? (

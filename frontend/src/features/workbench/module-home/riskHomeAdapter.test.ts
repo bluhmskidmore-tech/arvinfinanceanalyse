@@ -314,6 +314,19 @@ describe("buildRiskV6YieldCurveChart", () => {
     expect(chart?.yTicks[chart.yTicks.length - 1].text).toBe("3.0");
     expect(chart?.xLabels).toHaveLength(8);
   });
+  it("does not choose the first curve date when dates are mixed or missing", () => {
+    const payload = curvePayload();
+    payload.curves[0]!.trade_date_resolved = "2026-06-30";
+    payload.curves[1]!.trade_date_resolved = "2026-06-29";
+    payload.curves[2]!.trade_date_resolved = null;
+
+    const chart = buildRiskV6YieldCurveChart(payload);
+
+    expect(chart?.resolvedDate).toBeNull();
+    expect(chart?.dateLabel).toContain("2026-06-30");
+    expect(chart?.dateLabel).toContain("2026-06-29");
+    expect(chart?.dateLabel).toContain("\u672a\u89e3\u6790");
+  });
 
   it("returns null when no governed curve is available", () => {
     expect(buildRiskV6YieldCurveChart(undefined)).toBeNull();

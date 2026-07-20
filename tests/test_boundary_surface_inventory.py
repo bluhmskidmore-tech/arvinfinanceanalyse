@@ -125,6 +125,12 @@ READ_LIKE_POST_SURFACES = {
     ("POST", "backend/app/api/routes/agent.py", "/query", "query_agent"),
     ("POST", "backend/app/api/routes/agent.py", "/runs", "create_agent_run_endpoint"),
     ("POST", "backend/app/api/routes/cube_query.py", "/query", "cube_query"),
+    (
+        "POST",
+        "backend/app/api/routes/ledger_pnl.py",
+        "/ledger-pnl/candidate-financial-indicators/revalidate",
+        "revalidate_candidate_financial_indicators",
+    ),
 }
 
 PUBLIC_OR_ECHO_READ_SURFACES = set(PUBLIC_OR_ECHO_READ_POLICIES)
@@ -592,6 +598,7 @@ def test_api_router_registry_classifies_every_included_router() -> None:
     assert missing_owner == []
     assert route_groups >= {
         "formal_mainline",
+        "analytical_compatibility",
         "preview",
         "macro_market",
         "agent_experimental",
@@ -602,6 +609,8 @@ def test_api_router_registry_classifies_every_included_router() -> None:
     assert entries_by_name["macro_etf_strategy"].group == "macro_market"
     assert entries_by_name["macro_toolkit"].group == "macro_market"
     assert entries_by_name["pnl"].group == "formal_mainline"
+    assert entries_by_name["liability_analytics"].group == "analytical_compatibility"
+    assert entries_by_name["cube_query"].group == "support"
 
 
 def test_api_router_registry_covers_every_route_module_file() -> None:

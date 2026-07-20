@@ -40,7 +40,7 @@
   - `/ui/risk/overview`、`/ui/home/alerts`、`/ui/home/contribution` 当前返回显式 `503`
   - `/api/cube/query` 与 `/api/cube/dimensions/*` 已开放为受控 query surface；当前只按已覆盖事实表与 `result_meta` 声明查询结果口径
   - `/api/risk/buckets`、`/api/analysis/yield_metrics`、`/api/analysis/liabilities/counterparty`、`/api/liabilities/monthly` 已开放为 analytical compatibility surface，不得误写为 formal balance/PnL truth
-  - 前端工作台当前仍将 `/risk-overview` 作为 placeholder；`/liability-analytics` 与 `/cube-query` 已按 live surface 暴露
+  - 前端 `/risk-overview` 当前是基于 risk tensor 与 cashflow projection 的 live 风险页面，但不等同于仍被排除的 executive endpoint `/ui/risk/overview`；`/liability-analytics` 与 `/cube-query` 已按 live surface 暴露
 
 ## 当前代码状态
 
@@ -72,7 +72,7 @@
 - 不自动等于 `Phase 4` 已开始
 - `executive-consumer cutover v1` 现已纳入当前边界
 - 其余 `executive.*` 路由仍不属于本次 repo-wide `Phase 2` cutover 范围
-- 当前工作台导航已把 `/risk-overview` 从 live 主导航降回 placeholder 语义，避免把 excluded executive surface 误读为已晋升 governed page
+- 当前工作台导航中的 `/risk-overview` 已接入 live risk tensor / cashflow 页面；这不表示 excluded executive surface `/ui/risk/overview` 已晋升为 governed page
 
 ### 3. Source Preview / Preview Closeout
 

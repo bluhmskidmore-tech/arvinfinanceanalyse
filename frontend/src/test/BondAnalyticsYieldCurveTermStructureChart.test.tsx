@@ -99,6 +99,65 @@ describe("BondAnalyticsYieldCurveTermStructureChart", () => {
     expect(getBondAnalyticsYieldCurveTermStructure).not.toHaveBeenCalled();
   });
 
+  it("shows every resolved curve date when the payload is mixed", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const bundledYieldCurve = await base.getBondAnalyticsYieldCurveTermStructure("2026-03-31", {
+      curveTypes: "treasury,cdb",
+    });
+    const mixedYieldCurve = {
+      ...bundledYieldCurve,
+      result: {
+        ...bundledYieldCurve.result,
+        curves: [
+          {
+            curve_type: "treasury",
+            trade_date_requested: "2026-03-31",
+            trade_date_resolved: "2026-03-31",
+            points: [],
+            source_version: "test",
+            rule_version: "test",
+            vendor_name: "test",
+            vendor_version: "test",
+          },
+          {
+            curve_type: "cdb",
+            trade_date_requested: "2026-03-31",
+            trade_date_resolved: "2026-03-28",
+            points: [],
+            source_version: "test",
+            rule_version: "test",
+            vendor_name: "test",
+            vendor_version: "test",
+          },
+        ],
+      },
+    };
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={base}>
+          <BondAnalyticsYieldCurveTermStructureChart
+            reportDate="2026-03-31"
+            bundledYieldCurveQuery={{
+              data: mixedYieldCurve,
+              error: null,
+              isError: false,
+              isPending: false,
+              isLoading: false,
+            }}
+          />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    const card = screen.getByTestId("bond-analytics-yield-curve-term-structure");
+    expect(card).toHaveTextContent("2026-03-31");
+    expect(card).toHaveTextContent("2026-03-28");
+  });
+
   it("uses the cockpit bundle in overview mid charts instead of the standalone yield-curve endpoint", async () => {
     const base = createApiClient({ mode: "mock" });
     const fetchBondDashboardBundle = vi.fn(
