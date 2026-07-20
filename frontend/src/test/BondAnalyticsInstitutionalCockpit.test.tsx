@@ -1194,7 +1194,7 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(heroDetailRule).toContain("font-size: 12px");
     expect(heroMetricsRule).toContain("grid-template-columns: repeat(4, minmax(84px, 1fr))");
     expect(heroMetricsRule).toContain("border-left: 1px solid var(--moss-color-neutral-100)");
-    expect(heroMetricValueRule).toContain("font-size: 25px");
+    expect(heroMetricValueRule).toContain("font-size: 24px");
     expect(heroMetricValueRule).toContain("white-space: nowrap");
     expect(heroGovernanceRule).not.toContain("border-left:");
     expect(heroVerdictRowRule).toContain("border-top: 1px solid var(--moss-color-neutral-100)");

@@ -283,12 +283,12 @@ export function buildBondTradingDeskMetricTiles(
 ): BondTradingDeskMetricTile[] {
   if (!snapshot) {
     return [
-      { key: "market_value", label: "市值", value: "—", caption: "待命中债券" },
-      { key: "weight", label: "组合权重", value: "—", caption: "待命中债券" },
-      { key: "ytm", label: "YTM", value: "—", caption: "待命中债券" },
-      { key: "duration", label: "修正久期", value: "—", caption: "待命中债券" },
-      { key: "credit_spread", label: "信用利差", value: "—", caption: "待命中债券" },
-      { key: "net_price", label: "估值净价", value: "—", caption: "待命中债券" },
+      { key: "market_value", label: "市值", value: "—", caption: "" },
+      { key: "weight", label: "组合权重", value: "—", caption: "" },
+      { key: "ytm", label: "YTM", value: "—", caption: "" },
+      { key: "duration", label: "修正久期", value: "—", caption: "" },
+      { key: "credit_spread", label: "信用利差", value: "—", caption: "" },
+      { key: "net_price", label: "估值净价", value: "—", caption: "" },
     ];
   }
 

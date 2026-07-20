@@ -891,7 +891,7 @@ export function CrossAssetReferenceTrendStrip({ kpis }: { kpis: ResolvedCrossAss
               <em className={`cross-asset-reference-tone--${kpi?.changeTone ?? "default"}`}>{kpi?.changeLabel ?? "—"}</em>
             </header>
             <div className="cross-asset-reference-trend-card__chart" aria-hidden="true">
-              <CrossAssetSparkline values={kpi?.sparkline.slice(-30) ?? []} stroke="#2f6fb3" height={68} />
+              <CrossAssetSparkline values={kpi?.sparkline.slice(-30) ?? []} stroke="var(--ib-accent)" height={68} />
               <div className="cross-asset-reference-trend-card__axis">
                 <span>05-14</span>
                 <span>05-22</span>

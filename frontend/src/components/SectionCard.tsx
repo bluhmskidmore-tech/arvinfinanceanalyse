@@ -13,6 +13,11 @@ export type SectionCardProps = {
   style?: CSSProperties;
 };
 
+/**
+ * @deprecated Prefer `components/page/PagePrimitives` (`PageSurfacePanel` /
+ * `PageInsetCard`). Kept for existing call sites while Phase 2 migrates
+ * consumers to the page-v2 contract.
+ */
 export function SectionCard({
   title,
   extra,

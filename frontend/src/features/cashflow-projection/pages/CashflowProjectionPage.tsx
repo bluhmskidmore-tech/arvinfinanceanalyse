@@ -11,10 +11,13 @@ import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { designTokens } from "../../../theme/designSystem";
 import { displayTokens } from "../../../theme/displayTokens";
 import { adaptCashflowProjection } from "../adapters/cashflowProjectionAdapter";
+import { EM_DASH } from "../../../utils/format";
 import {
+  selectCashflowDurationGapTone,
   selectCashflowMonthlyProjectionSeries,
   selectCashflowProjectionRiskReadout,
   selectCashflowRateSensitivitySemantic,
+  type CashflowDurationGapTone,
 } from "./cashflowProjectionPageModel";
 import styles from "./CashflowProjectionPage.module.css";
 
@@ -33,7 +36,7 @@ type KpiSpec = {
   value: Numeric;
   detail: string;
   priority: "primary" | "supporting" | "supplemental";
-  tone?: "default" | "positive" | "negative" | "warning";
+  tone?: "default" | "positive" | "negative" | "warning" | CashflowDurationGapTone;
 };
 
 type RailPoint = {
@@ -99,8 +102,8 @@ function tooltipYi(value: number): string {
 
 function formatRateSensitivityYi(value: Numeric | undefined): string {
   const raw = value?.raw;
-  if (raw === null || raw === undefined || !Number.isFinite(raw)) return value?.display ?? "--";
-  if (value?.unit !== "yuan") return value?.display ?? "--";
+  if (raw === null || raw === undefined || !Number.isFinite(raw)) return value?.display ?? EM_DASH;
+  if (value?.unit !== "yuan") return value?.display ?? EM_DASH;
 
   const yi = toYi(raw);
   const prefix = value.sign_aware && yi >= 0 ? "+" : "";
@@ -185,12 +188,7 @@ export default function CashflowProjectionPage() {
         value: vm.kpis.durationGap,
         detail: "资产久期 - 负债久期",
         priority: "primary",
-        tone:
-          vm.kpis.durationGap.raw === null || vm.kpis.durationGap.raw === undefined
-            ? "warning"
-            : vm.kpis.durationGap.raw < 0
-              ? "negative"
-              : "positive",
+        tone: selectCashflowDurationGapTone(vm.kpis.durationGap),
       },
       {
         key: "dv01",

@@ -1453,7 +1453,7 @@
 .kpiCard:nth-child(-n + 2) .kpiValue {
   color: var(--dh-ink);
   margin-top: 12px;
-  font-size: 26px;
+  font-size: 24px;
 }
 
 .kpiCard:nth-child(-n + 2) .kpiValue small {
@@ -4396,7 +4396,7 @@
   .kpiValue,
   .kpiCard:nth-child(-n + 2) .kpiValue {
     margin-top: 12px;
-    font-size: 25px;
+    font-size: 24px;
   }
 
   .kpiDetail {
@@ -5574,7 +5574,7 @@
 }
 
 .kpiCard.kpiCardPrimary .kpiValue {
-  font-size: 26px;
+  font-size: 24px;
 }
 
 .kpiCard.kpiCardSecondary {
@@ -5606,7 +5606,7 @@
   }
 
   .kpiCard.kpiCardPrimary .kpiValue {
-    font-size: 28px;
+    font-size: 24px;
   }
 
   .kpiCard.kpiCardSecondary {
@@ -5617,7 +5617,7 @@
 
 @media (min-width: 1101px) and (max-width: 1280px) {
   .kpiCard.kpiCardPrimary .kpiValue {
-    font-size: 26px;
+    font-size: 24px;
   }
 }
 

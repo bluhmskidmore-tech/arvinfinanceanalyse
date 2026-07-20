@@ -161,46 +161,22 @@
     "offRadius": 0,
     "doubleDash": 0
   },
-  "frontend/src/components/AlertList.css": {
-    "hex": 2,
-    "forbidden": 0,
-    "offRadius": 0,
-    "doubleDash": 0
-  },
-  "frontend/src/components/AsyncSection.css": {
-    "hex": 3,
-    "forbidden": 0,
-    "offRadius": 2,
-    "doubleDash": 0
-  },
-  "frontend/src/components/CalendarList.css": {
-    "hex": 2,
-    "forbidden": 0,
-    "offRadius": 0,
-    "doubleDash": 0
-  },
   "frontend/src/components/charts/AccountingBasisStackedShareChart.tsx": {
-    "hex": 8,
+    "hex": 0,
     "forbidden": 0,
     "offRadius": 0,
     "doubleDash": 0
   },
   "frontend/src/components/DataSection.css": {
-    "hex": 3,
-    "forbidden": 0,
-    "offRadius": 3,
-    "doubleDash": 0
-  },
-  "frontend/src/components/page/FormalResultMetaPanel.css": {
-    "hex": 1,
+    "hex": 0,
     "forbidden": 0,
     "offRadius": 2,
     "doubleDash": 0
   },
-  "frontend/src/components/SectionCard.css": {
-    "hex": 1,
+  "frontend/src/components/page/FormalResultMetaPanel.css": {
+    "hex": 0,
     "forbidden": 0,
-    "offRadius": 1,
+    "offRadius": 2,
     "doubleDash": 0
   },
   "frontend/src/features/agent/AgentPanel.css": {
@@ -318,15 +294,9 @@
     "doubleDash": 0
   },
   "frontend/src/features/bond-analytics/components/BondAnalyticsViewContent.module.css": {
-    "hex": 41,
+    "hex": 25,
     "forbidden": 0,
-    "offRadius": 8,
-    "doubleDash": 0
-  },
-  "frontend/src/features/bond-analytics/components/BondEventCalendar.tsx": {
-    "hex": 2,
-    "forbidden": 0,
-    "offRadius": 0,
+    "offRadius": 1,
     "doubleDash": 0
   },
   "frontend/src/features/bond-analytics/components/DV01RiskView.module.css": {
@@ -341,30 +311,6 @@
     "offRadius": 0,
     "doubleDash": 0
   },
-  "frontend/src/features/bond-analytics/components/PortfolioSummaryNarrative.tsx": {
-    "hex": 1,
-    "forbidden": 0,
-    "offRadius": 0,
-    "doubleDash": 0
-  },
-  "frontend/src/features/cashflow-projection/pages/CashflowProjectionPage.module.css": {
-    "hex": 17,
-    "forbidden": 0,
-    "offRadius": 11,
-    "doubleDash": 0
-  },
-  "frontend/src/features/cashflow-projection/pages/CashflowProjectionPage.tsx": {
-    "hex": 0,
-    "forbidden": 0,
-    "offRadius": 0,
-    "doubleDash": 2
-  },
-  "frontend/src/features/cross-asset/components/ReferencePanels.tsx": {
-    "hex": 1,
-    "forbidden": 0,
-    "offRadius": 0,
-    "doubleDash": 0
-  },
   "frontend/src/features/cross-asset/lib/crossAssetAnalytics.test.ts": {
     "hex": 3,
     "forbidden": 0,
@@ -375,12 +321,6 @@
     "hex": 27,
     "forbidden": 0,
     "offRadius": 0,
-    "doubleDash": 0
-  },
-  "frontend/src/features/cross-asset/pages/CrossAssetDriversPage.css": {
-    "hex": 51,
-    "forbidden": 0,
-    "offRadius": 5,
     "doubleDash": 0
   },
   "frontend/src/features/executive-dashboard/components/AlertsSection.tsx": {
@@ -456,7 +396,7 @@
     "doubleDash": 0
   },
   "frontend/src/features/market-data/pages/MarketDataPage.css": {
-    "hex": 476,
+    "hex": 451,
     "forbidden": 0,
     "offRadius": 26,
     "doubleDash": 0
@@ -505,12 +445,6 @@
   },
   "frontend/src/features/pnl-attribution/components/VolumeRateAnalysisChart.tsx": {
     "hex": 1,
-    "forbidden": 0,
-    "offRadius": 0,
-    "doubleDash": 0
-  },
-  "frontend/src/features/pnl-business-insights/UntracedReconciliationTrendPanel.test.tsx": {
-    "hex": 5,
     "forbidden": 0,
     "offRadius": 0,
     "doubleDash": 0
@@ -599,12 +533,6 @@
     "offRadius": 0,
     "doubleDash": 0
   },
-  "frontend/src/features/workbench/business-analysis/ManagementOutput.tsx": {
-    "hex": 2,
-    "forbidden": 0,
-    "offRadius": 0,
-    "doubleDash": 0
-  },
   "frontend/src/features/workbench/business-analysis/QualityObservation.tsx": {
     "hex": 3,
     "forbidden": 0,
@@ -612,7 +540,7 @@
     "doubleDash": 0
   },
   "frontend/src/features/workbench/business-analysis/RevenueCostBridge.tsx": {
-    "hex": 9,
+    "hex": 8,
     "forbidden": 0,
     "offRadius": 0,
     "doubleDash": 0
@@ -632,7 +560,7 @@
   "frontend/src/features/workbench/dashboard-home/dashboardHomeShell.module.css": {
     "hex": 84,
     "forbidden": 0,
-    "offRadius": 36,
+    "offRadius": 7,
     "doubleDash": 0
   },
   "frontend/src/features/workbench/dashboard-home/HomeSparkline.tsx": {
@@ -756,7 +684,7 @@
     "doubleDash": 0
   },
   "frontend/src/test/CrossAssetPage.test.tsx": {
-    "hex": 5,
+    "hex": 4,
     "forbidden": 0,
     "offRadius": 0,
     "doubleDash": 0

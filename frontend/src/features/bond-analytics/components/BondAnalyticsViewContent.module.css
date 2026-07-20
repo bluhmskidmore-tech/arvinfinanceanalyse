@@ -225,25 +225,25 @@
 }
 
 .bondWorkbenchPage {
-  --ib-paper: #07111f;
-  --ib-surface: #0b1728;
-  --ib-surface-muted: #101f33;
-  --ib-hairline: #203650;
-  --ib-rule-strong: #355a7c;
-  --ib-ink: #f3f8ff;
-  --ib-ink-secondary: #afc0d5;
-  --ib-ink-muted: #8493a7;
-  --ib-accent: #7dd3fc;
-  --ib-accent-hover: #a5e5ff;
-  --ib-accent-surface: rgba(125, 211, 252, 0.1);
-  --ib-up: #b7e08a;
-  --ib-down: #f2a0a0;
-  --ib-warn: #f6c56f;
-  --ib-gold: #f6c56f;
-  --dashboard-blue-25: rgba(125, 211, 252, 0.06);
-  --dashboard-blue-50: rgba(125, 211, 252, 0.1);
-  --dashboard-blue-100: rgba(125, 211, 252, 0.16);
-  --dashboard-blue-200: rgba(125, 211, 252, 0.28);
+  --ib-paper: var(--dh-api-bg);
+  --ib-surface: var(--dh-api-panel);
+  --ib-surface-muted: var(--dh-api-panel-2);
+  --ib-hairline: var(--dh-api-line-soft);
+  --ib-rule-strong: var(--dh-api-line);
+  --ib-ink: var(--dh-api-ink);
+  --ib-ink-secondary: var(--dh-api-soft);
+  --ib-ink-muted: var(--dh-api-muted);
+  --ib-accent: var(--dh-api-blue);
+  --ib-accent-hover: color-mix(in srgb, var(--dh-api-blue) 78%, white);
+  --ib-accent-surface: var(--dh-api-blue-soft);
+  --ib-up: var(--dh-api-green);
+  --ib-down: var(--dh-api-red);
+  --ib-warn: var(--dh-api-amber);
+  --ib-gold: var(--dh-api-amber);
+  --dashboard-blue-25: color-mix(in srgb, var(--dh-api-blue) 6%, transparent);
+  --dashboard-blue-50: color-mix(in srgb, var(--dh-api-blue) 10%, transparent);
+  --dashboard-blue-100: color-mix(in srgb, var(--dh-api-blue) 16%, transparent);
+  --dashboard-blue-200: color-mix(in srgb, var(--dh-api-blue) 28%, transparent);
   --dashboard-blue-600: var(--ib-accent);
   --dashboard-blue-700: #eaf6ff;
   --dashboard-red-25: rgba(242, 160, 160, 0.08);
@@ -265,16 +265,16 @@
   --moss-color-neutral-800: #e6eef9;
   --moss-color-neutral-900: var(--ib-ink);
   --moss-color-primary-50: var(--ib-accent-surface);
-  --moss-color-primary-100: rgba(125, 211, 252, 0.16);
-  --moss-color-primary-200: rgba(125, 211, 252, 0.28);
+  --moss-color-primary-100: color-mix(in srgb, var(--dh-api-blue) 16%, transparent);
+  --moss-color-primary-200: color-mix(in srgb, var(--dh-api-blue) 28%, transparent);
   --moss-color-primary-600: var(--ib-accent);
   --moss-color-primary-700: var(--ib-accent);
   --moss-color-primary-800: var(--ib-accent-hover);
   --moss-color-primary-900: #eaf6ff;
-  --moss-color-info-100: rgba(125, 211, 252, 0.14);
-  --moss-color-info-300: #8ed8ff;
-  --moss-color-info-400: var(--ib-accent);
-  --moss-color-info-500: #38bdf8;
+  --moss-color-info-100: color-mix(in srgb, var(--dh-api-blue) 14%, transparent);
+  --moss-color-info-300: var(--dh-api-blue);
+  --moss-color-info-400: var(--dh-api-blue);
+  --moss-color-info-500: var(--dh-api-blue);
   --moss-color-info-700: var(--ib-accent-hover);
   --moss-color-info-900: #eaf6ff;
   --moss-color-success-100: rgba(183, 224, 138, 0.18);
@@ -299,7 +299,7 @@
   --moss-color-text-muted: var(--ib-ink-muted);
   --moss-color-border-default: var(--ib-hairline);
   --moss-color-border-strong: var(--ib-rule-strong);
-  --moss-border-hover: rgba(125, 211, 252, 0.45);
+  --moss-border-hover: color-mix(in srgb, var(--dh-api-blue) 45%, transparent);
   --moss-shadow-card: none;
   display: grid;
   align-content: start;
@@ -310,7 +310,7 @@
   min-height: calc(100vh - 48px);
   padding: 16px;
   border: 1px solid #132a44;
-  border-radius: 8px;
+  border-radius: var(--dh-api-radius, 6px);
   background:
     linear-gradient(180deg, rgba(12, 23, 39, 0.98), var(--ib-paper) 360px),
     var(--ib-paper);
@@ -341,13 +341,15 @@
 .bondWorkbenchPage [data-testid="bond-analysis-reference-topbar"] {
   position: relative;
   overflow: hidden;
-  border: 1px solid rgba(125, 211, 252, 0.16);
+  border: 1px solid color-mix(in srgb, var(--dh-api-blue) 16%, transparent);
   background:
-    linear-gradient(112deg, rgba(125, 211, 252, 0.055), rgba(125, 211, 252, 0) 38%),
+    linear-gradient(
+      112deg,
+      color-mix(in srgb, var(--dh-api-blue) 6%, transparent),
+      transparent 38%
+    ),
     linear-gradient(180deg, rgba(15, 31, 52, 0.98), rgba(8, 18, 32, 0.96));
-  box-shadow:
-    0 18px 38px rgba(0, 0, 0, 0.13),
-    inset 0 1px 0 rgba(232, 238, 247, 0.06);
+  box-shadow: none;
 }
 
 .bondWorkbenchPage [data-testid="bond-analysis-reference-topbar"]::before {
@@ -364,9 +366,7 @@
 
 .bondWorkbenchPage [data-testid="bond-analysis-market-ticker"],
 .bondWorkbenchPage [data-testid="bond-analysis-kpi-ribbon"] {
-  box-shadow:
-    inset 0 1px 0 rgba(232, 238, 247, 0.045),
-    0 10px 24px rgba(0, 0, 0, 0.1);
+  box-shadow: none;
 }
 
 .toolbarSelect {
@@ -378,20 +378,20 @@
 }
 
 .toolbarSelect:focus {
-  border-color: rgba(125, 211, 252, 0.62);
-  outline: 2px solid rgba(125, 211, 252, 0.24);
+  border-color: color-mix(in srgb, var(--dh-api-blue) 62%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--dh-api-blue) 24%, transparent);
   outline-offset: 2px;
 }
 
 .refreshButton {
-  border-color: rgba(125, 211, 252, 0.44);
-  background: rgba(125, 211, 252, 0.14);
+  border-color: color-mix(in srgb, var(--dh-api-blue) 44%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 14%, transparent);
   color: var(--ib-ink);
 }
 
 .bondWorkbenchPage :global(.ant-alert) {
   border-color: rgba(246, 197, 111, 0.34) !important;
-  border-radius: 8px !important;
+  border-radius: var(--dh-api-radius, 6px) !important;
   background:
     linear-gradient(180deg, rgba(246, 197, 111, 0.1), rgba(246, 197, 111, 0.035)),
     var(--ib-surface) !important;
@@ -408,13 +408,11 @@
 
 .bondWorkbenchPage :global(.ant-card) {
   border-color: var(--ib-hairline) !important;
-  border-radius: 8px !important;
+  border-radius: var(--dh-api-radius, 6px) !important;
   background:
     linear-gradient(180deg, rgba(232, 238, 247, 0.024), rgba(232, 238, 247, 0.004)),
     var(--ib-surface) !important;
-  box-shadow:
-    0 16px 38px rgba(0, 0, 0, 0.16),
-    inset 0 1px 0 rgba(232, 238, 247, 0.055) !important;
+  box-shadow: none !important;
   color: var(--ib-ink);
 }
 
@@ -460,7 +458,11 @@
 .bondWorkbenchPage [data-testid="bond-analysis-currency-basis-banner"] {
   border-top-color: rgba(126, 157, 194, 0.18);
   background:
-    linear-gradient(180deg, rgba(125, 211, 252, 0.09), rgba(125, 211, 252, 0.035)),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--dh-api-blue) 9%, transparent),
+      color-mix(in srgb, var(--dh-api-blue) 4%, transparent)
+    ),
     var(--ib-surface);
   color: var(--ib-ink-secondary);
 }
@@ -490,12 +492,12 @@
   min-height: 74px;
   padding: 14px 16px;
   border-color: rgba(246, 197, 111, 0.38);
-  border-radius: 8px;
+  border-radius: var(--dh-api-radius, 6px);
 }
 
 .fallbackMarketStrip,
 .detailDrilldown {
-  border-radius: 8px;
+  border-radius: var(--dh-api-radius, 6px);
   background: var(--ib-hairline);
 }
 
@@ -507,12 +509,12 @@
 .fallbackJudgment {
   min-height: 72px;
   border-left-color: var(--ib-accent);
-  border-radius: 8px;
+  border-radius: var(--dh-api-radius, 6px);
 }
 
 .fallbackPanel {
   min-height: 116px;
-  border-radius: 8px;
+  border-radius: var(--dh-api-radius, 6px);
 }
 
 .stateTitle,

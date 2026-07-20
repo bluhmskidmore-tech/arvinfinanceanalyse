@@ -1,15 +1,11 @@
-import { SectionCard } from "../../../components/SectionCard";
+import { EvidencePanel } from "../../../components/page/PagePrimitives";
 import { SummaryBlock } from "../../../components/SummaryBlock";
-import { BORDER, panelStyle } from "./bondAnalyticsCockpitTokens";
 
 const SUMMARY_CONTENT = "当前组合呈现'久期偏高、信用以高等级为主、浮盈较厚'的特征...";
 
 export function PortfolioSummaryNarrative() {
   return (
-    <SectionCard
-      title="组合摘要"
-      style={{ ...panelStyle("#ffffff"), border: `1px solid ${BORDER}` }}
-    >
+    <EvidencePanel heading="组合摘要">
       <SummaryBlock
         title=""
         content={SUMMARY_CONTENT}
@@ -19,7 +15,7 @@ export function PortfolioSummaryNarrative() {
           { label: "策略:票息>波段", color: "geekblue" },
         ]}
       />
-    </SectionCard>
+    </EvidencePanel>
   );
 }
 

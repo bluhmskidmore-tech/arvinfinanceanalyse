@@ -218,10 +218,14 @@
  * Single source for all dark cockpit pages. Page roots opt in via the
  * global `theme-dh-api` class; feature CSS must consume these variables
  * instead of redeclaring literals.
+ *
+ * `/market-data` overview command sheet is a §2.4 dark island on an IB
+ * light page: bind tokens on the island selector only (no color-scheme
+ * flip, no cockpit :has() shell rewrite).
  */
 .theme-dh-api,
-.workbench-shell-grid--cockpit:has(.theme-dh-api) {
-  color-scheme: dark;
+.workbench-shell-grid--cockpit:has(.theme-dh-api),
+.market-data-overview-board[data-variant="data-overview"] {
   --dh-api-bg: #070a12;
   --dh-api-rail: #0a1019;
   --dh-api-panel: #0c1421;
@@ -244,4 +248,9 @@
   --dh-api-amber-soft: rgba(201, 165, 101, 0.13);
   --dh-api-red-soft: rgba(212, 122, 114, 0.13);
   --dh-api-radius: 6px;
+}
+
+.theme-dh-api,
+.workbench-shell-grid--cockpit:has(.theme-dh-api) {
+  color-scheme: dark;
 }

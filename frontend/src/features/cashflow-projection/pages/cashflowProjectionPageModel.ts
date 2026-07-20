@@ -24,6 +24,9 @@ export type CashflowRateSensitivitySemantic = {
   detail: string;
 };
 
+/** Display tone for duration gap — positive gap must never map to up/green. */
+export type CashflowDurationGapTone = "default" | "gapPositive" | "negative" | "warning";
+
 function numericRawOrZero(value: Numeric): number {
   return value.raw === null || !Number.isFinite(value.raw) ? 0 : value.raw;
 }
@@ -33,6 +36,23 @@ function numericRaw(value: Numeric | undefined): number | null {
     return null;
   }
   return value.raw;
+}
+
+/**
+ * Duration-gap color policy (DESIGN Decisions Log 2026-07-19):
+ * - positive gap → neutral secondary (`gapPositive`) or warn when material; never `--ib-up`
+ * - negative gap → `--ib-down` for direction only
+ * - missing → warn
+ */
+export function selectCashflowDurationGapTone(
+  value: Numeric | undefined,
+): CashflowDurationGapTone {
+  const raw = numericRaw(value);
+  if (raw === null) return "warning";
+  if (raw < 0) return "negative";
+  if (raw > 0.05) return "warning";
+  if (raw > 0) return "gapPositive";
+  return "default";
 }
 
 export function selectCashflowRateSensitivitySemantic(

@@ -13198,16 +13198,12 @@ section[data-page-key="market-data"] > details[data-testid="market-workbench-aud
   color: #6f7b8a;
 }
 
-/* Big-direction pass: turn the first screen into a command sheet, not a white-card report. */
+/*
+ * Command sheet dark island → --dh-api-* (DESIGN.md §2.4).
+ * Page body stays IB light; only head / stats / tape+api dark headers use dh-api.
+ * Tokens are bound on this board selector in tokens.css (island-scoped, no page flip).
+ */
 .market-data-overview-board[data-variant="data-overview"] {
-  --command-ink: #0d151f;
-  --command-ink-2: #121d29;
-  --command-line: #263442;
-  --command-muted: #a8b4c2;
-  --command-gold: #c18a38;
-  --command-green: #3c9c71;
-  --command-blue: #79a7d8;
-  --command-red: #d16a5f;
   border-color: #aeb9c6;
 }
 
@@ -13216,9 +13212,9 @@ section[data-page-key="market-data"] > details[data-testid="market-workbench-aud
   grid-template-columns: 150px minmax(0, 1fr);
   gap: 0;
   padding: 0;
-  border-bottom: 1px solid #141f2a;
-  background: var(--command-ink);
-  color: #f4f7fb;
+  border-bottom: 1px solid var(--dh-api-line);
+  background: var(--dh-api-panel);
+  color: var(--dh-api-ink);
 }
 
 .market-data-overview-board[data-variant="data-overview"] .market-data-overview-board__title {
@@ -13227,18 +13223,18 @@ section[data-page-key="market-data"] > details[data-testid="market-workbench-aud
   gap: 4px;
   min-height: 72px;
   padding: 14px 16px;
-  border-right: 1px solid var(--command-line);
-  background: #0a111a;
+  border-right: 1px solid var(--dh-api-line);
+  background: var(--dh-api-bg);
 }
 
 .market-data-overview-board[data-variant="data-overview"] .market-data-overview-board__title span {
-  color: var(--command-muted);
+  color: var(--dh-api-soft);
   font-size: 11px;
   font-weight: 600;
 }
 
 .market-data-overview-board[data-variant="data-overview"] .market-data-overview-board__title strong {
-  color: #ffffff;
+  color: var(--dh-api-ink);
   font-size: 15px;
   font-weight: 720;
 }
@@ -13257,53 +13253,53 @@ section[data-page-key="market-data"] > details[data-testid="market-workbench-aud
   min-height: 72px;
   padding: 10px 10px 9px;
   border: 0;
-  border-left: 1px solid var(--command-line);
+  border-left: 1px solid var(--dh-api-line);
   border-top: 2px solid transparent;
-  background: var(--command-ink);
+  background: var(--dh-api-panel);
   text-align: center;
 }
 
 .market-data-overview-board[data-variant="data-overview"] .market-data-overview-board__stats article[data-tone="formal"] {
-  border-top-color: var(--command-green);
+  border-top-color: var(--dh-api-green);
 }
 
 .market-data-overview-board[data-variant="data-overview"] .market-data-overview-board__stats article[data-tone="analytical"],
 .market-data-overview-board[data-variant="data-overview"] .market-data-overview-board__stats article[data-key="coverage"],
 .market-data-overview-board[data-variant="data-overview"] .market-data-overview-board__stats article[data-key="catalog"],
 .market-data-overview-board[data-variant="data-overview"] .market-data-overview-board__stats article[data-key="latest"] {
-  border-top-color: var(--command-blue);
+  border-top-color: var(--dh-api-blue);
 }
 
 .market-data-overview-board[data-variant="data-overview"] .market-data-overview-board__stats article[data-tone="proxy"] {
-  border-top-color: var(--command-gold);
+  border-top-color: var(--dh-api-amber);
 }
 
 .market-data-overview-board[data-variant="data-overview"] .market-data-overview-board__stats article[data-tone="gap"] {
-  border-top-color: var(--command-red);
+  border-top-color: var(--dh-api-red);
 }
 
 .market-data-overview-board[data-variant="data-overview"] .market-data-overview-board__stats span,
 .market-data-overview-board[data-variant="data-overview"] .market-data-overview-board__stats em,
 .market-data-overview-board[data-variant="data-overview"] .market-data-overview-board__stats small {
-  color: var(--command-muted);
+  color: var(--dh-api-soft);
 }
 
 .market-data-overview-board[data-variant="data-overview"] .market-data-overview-board__stats strong {
-  color: #f7fbff;
+  color: var(--dh-api-ink);
   font-size: 20px;
   font-weight: 720;
 }
 
 .market-data-overview-board[data-variant="data-overview"] .market-data-overview-board__stats article[data-tone="formal"] strong {
-  color: #6cc896;
+  color: var(--dh-api-green);
 }
 
 .market-data-overview-board[data-variant="data-overview"] .market-data-overview-board__stats article[data-tone="proxy"] strong {
-  color: #e1aa55;
+  color: var(--dh-api-amber);
 }
 
 .market-data-overview-board[data-variant="data-overview"] .market-data-overview-board__stats article[data-tone="gap"] strong {
-  color: #e58379;
+  color: var(--dh-api-red);
 }
 
 .market-data-overview-board[data-variant="data-overview"] .market-data-overview-card > header,
@@ -13311,22 +13307,22 @@ section[data-page-key="market-data"] > details[data-testid="market-workbench-aud
 .market-data-overview-board[data-variant="data-overview"] .market-data-overview-curve-card h3,
 .market-data-overview-board[data-variant="data-overview"] .market-data-overview-events header {
   min-height: 34px;
-  border-color: var(--command-line);
-  background: var(--command-ink-2);
+  border-color: var(--dh-api-line);
+  background: var(--dh-api-panel-2);
 }
 
 .market-data-overview-board[data-variant="data-overview"] .market-data-overview-card > header strong,
 .market-data-overview-board[data-variant="data-overview"] .market-data-overview-ledger > header strong,
 .market-data-overview-board[data-variant="data-overview"] .market-data-overview-curve-card h3,
 .market-data-overview-board[data-variant="data-overview"] .market-data-overview-events header strong {
-  color: #f3f7fb;
+  color: var(--dh-api-ink);
   font-size: 11.5px;
   font-weight: 680;
 }
 
 .market-data-overview-board[data-variant="data-overview"] .market-data-overview-card > header span,
 .market-data-overview-board[data-variant="data-overview"] .market-data-overview-events header span {
-  color: var(--command-muted);
+  color: var(--dh-api-soft);
 }
 
 .market-data-overview-board[data-variant="data-overview"] .market-data-overview-card--market {
@@ -13398,9 +13394,9 @@ section[data-page-key="market-data"] > details[data-testid="market-workbench-aud
   justify-content: space-between;
   min-height: 28px;
   padding: 6px 8px;
-  border-bottom: 1px solid #243240;
-  background: #121d29;
-  color: #f4f7fb;
+  border-bottom: 1px solid var(--dh-api-line);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-ink);
 }
 
 .market-data-overview-board[data-variant="data-overview"] .market-data-overview-tape-grid header strong,
@@ -13418,7 +13414,7 @@ section[data-page-key="market-data"] > details[data-testid="market-workbench-aud
 }
 
 .market-data-overview-board[data-variant="data-overview"] .market-data-overview-tape-grid header span {
-  color: #a8b4c2;
+  color: var(--dh-api-soft);
   font-weight: 560;
 }
 
@@ -13489,9 +13485,9 @@ section[data-page-key="market-data"] > details[data-testid="market-workbench-aud
   justify-content: space-between;
   min-height: 28px;
   padding: 6px 8px;
-  border-bottom: 1px solid #243240;
-  background: #121d29;
-  color: #f4f7fb;
+  border-bottom: 1px solid var(--dh-api-line);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-ink);
 }
 
 .market-data-overview-board[data-variant="data-overview"] .market-data-overview-api-surface > header strong,
@@ -13505,7 +13501,7 @@ section[data-page-key="market-data"] > details[data-testid="market-workbench-aud
 }
 
 .market-data-overview-board[data-variant="data-overview"] .market-data-overview-api-surface > header span {
-  color: #a8b4c2;
+  color: var(--dh-api-soft);
   font-weight: 560;
 }
 

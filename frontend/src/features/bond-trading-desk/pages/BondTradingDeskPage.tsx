@@ -273,7 +273,7 @@ export default function BondTradingDeskPage() {
                     <div key={tile.key} className={styles.metricTile} data-testid={`bond-trading-desk-metric-${tile.key}`}>
                       <div className={styles.metricLabel}>{tile.label}</div>
                       <div className={styles.metricValue}>{tile.value}</div>
-                      <div className={styles.metricCaption}>{tile.caption}</div>
+                      {tile.caption ? <div className={styles.metricCaption}>{tile.caption}</div> : null}
                     </div>
                   ))}
                 </div>
@@ -286,16 +286,6 @@ export default function BondTradingDeskPage() {
                   data-testid="bond-trading-desk-position-change"
                   message="持仓变动（top 列表命中）"
                   description={`方向 ${pageModel.positionChange.direction}；变动市值 ${pageModel.positionChange.change_market_value.display}；原因 ${pageModel.positionChange.reason_label}`}
-                />
-              ) : null}
-
-              {!pageModel.snapshot ? (
-                <Alert
-                  type="warning"
-                  showIcon
-                  data-testid="bond-trading-desk-empty"
-                  message="未命中拼装范围"
-                  description={pageModel.conclusion.body}
                 />
               ) : null}
 

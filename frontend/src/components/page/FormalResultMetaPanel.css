@@ -1,5 +1,5 @@
 .formal-result-meta-panel {
-  --formal-result-meta-border-soft: #e4e9f0;
+  --formal-result-meta-border-soft: var(--ib-hairline);
 
   margin-top: 24px;
   padding: 16px;

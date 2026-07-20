@@ -1,7 +1,8 @@
 import type { EChartsOption } from "echarts";
 
 import { BaseChart } from "../../../components/charts/BaseChart";
-import { SectionCard } from "../../../components/SectionCard";
+import { EvidencePanel } from "../../../components/page/PagePrimitives";
+import styles from "./RevenueCostBridge.module.css";
 
 const STEPS = [
   { name: "债券资产收益", value: 68.56 },
@@ -107,21 +108,13 @@ function buildOption(): EChartsOption {
 
 export function RevenueCostBridge() {
   return (
-    <SectionCard title="收益成本桥（示意）" noPadding>
-      <div style={{ padding: "0 16px 16px" }}>
-        <p
-          style={{
-            margin: "0 0 8px",
-            padding: "0 0 0 4px",
-            fontSize: 12,
-            color: "#64748b",
-            lineHeight: 1.55,
-          }}
-        >
+    <EvidencePanel heading="收益成本桥（示意）">
+      <div className={styles.body}>
+        <p className={styles.note}>
           债券与同业资产收益合计约 72.87 亿，抵减负债成本后得到净贡献（柱状为示意瀑布，单位亿元）。
         </p>
         <BaseChart option={buildOption()} height={300} />
       </div>
-    </SectionCard>
+    </EvidencePanel>
   );
 }

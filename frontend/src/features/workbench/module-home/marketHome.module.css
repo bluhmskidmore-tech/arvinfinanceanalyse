@@ -6562,7 +6562,7 @@
   margin: 0;
   max-width: 68ch;
   color: var(--ib-ink);
-  font-family: Georgia, "Times New Roman", "Noto Serif SC", "Source Han Serif SC", "SimSun", serif;
+  font-family: var(--moss-font-sans, "PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", sans-serif);
   font-size: 17px;
   font-weight: 600;
   line-height: 1.42;

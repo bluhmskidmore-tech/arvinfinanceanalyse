@@ -218,7 +218,9 @@ describe("BondTradingDeskPage", () => {
       </QueryClientProvider>,
     );
 
-    expect(await screen.findByTestId("bond-trading-desk-empty")).toBeInTheDocument();
+    expect(await screen.findByTestId("bond-trading-desk-conclusion")).toBeInTheDocument();
+    expect(screen.getByText("未在当前查找范围命中")).toBeInTheDocument();
+    expect(screen.queryByText("待命中债券")).not.toBeInTheDocument();
   });
 
   it("keeps partial compose when one source fails", async () => {

@@ -1,17 +1,18 @@
 .page {
-  --cf-paper: var(--moss-color-card-bg, #ffffff);
-  --cf-paper-muted: color-mix(in srgb, var(--moss-color-neutral-50, #f5f7f9) 74%, var(--moss-color-neutral-100, #eceff3));
-  --cf-canvas: var(--moss-color-surface-base, #f5f7f9);
-  --cf-border: var(--moss-color-border-default, #e2e6ec);
-  --cf-border-strong: color-mix(in srgb, var(--moss-color-neutral-300, #d1d5db) 70%, var(--moss-color-neutral-400, #9ca3af));
-  --cf-text: var(--moss-color-text-primary, #1f2937);
-  --cf-subtle: var(--moss-color-text-secondary, #6b7280);
-  --cf-muted: var(--moss-color-text-muted, #8b95a1);
-  --cf-primary: var(--moss-color-primary-600, #1850a1);
-  --cf-accent: var(--moss-color-warning-600, #b35c05);
-  --cf-positive: var(--moss-color-success-600, #25714d);
-  --cf-negative: var(--moss-color-danger-600, #dc2626);
-  --cf-info: var(--moss-color-info-600, #2563eb);
+  /* IB aliases — no moss/hex fallbacks (Phase 4d-1b) */
+  --cf-paper: var(--ib-surface);
+  --cf-paper-muted: var(--ib-surface-muted);
+  --cf-canvas: var(--ib-paper);
+  --cf-border: var(--ib-hairline);
+  --cf-border-strong: var(--ib-hairline);
+  --cf-text: var(--ib-ink);
+  --cf-subtle: var(--ib-ink-secondary);
+  --cf-muted: var(--ib-ink-muted);
+  --cf-primary: var(--ib-accent);
+  --cf-accent: var(--ib-warn);
+  --cf-positive: var(--ib-up);
+  --cf-negative: var(--ib-down);
+  --cf-info: var(--ib-accent);
   max-width: 1280px;
   margin: 0 auto;
   color: var(--cf-text);
@@ -26,11 +27,11 @@
   margin-bottom: 16px;
   padding: 18px 20px;
   border: 1px solid var(--cf-border);
-  border-radius: 12px;
+  border-radius: var(--ib-radius);
   background:
     linear-gradient(135deg, var(--cf-paper), var(--cf-paper-muted)),
     var(--cf-paper);
-  box-shadow: 0 8px 20px rgba(22, 35, 46, 0.05);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--cf-text) 5%, transparent);
 }
 
 .heroMain {
@@ -81,7 +82,7 @@
   min-width: 0;
   padding: 12px;
   border: 1px solid var(--cf-border);
-  border-radius: 8px;
+  border-radius: var(--ib-radius);
   background: var(--cf-paper);
 }
 
@@ -106,7 +107,7 @@
 .sidePanel,
 .tablePanel {
   border: 1px solid var(--cf-border);
-  border-radius: 12px;
+  border-radius: var(--ib-radius);
   background: var(--cf-paper);
 }
 
@@ -118,7 +119,7 @@
   position: relative;
   overflow: hidden;
   padding: 24px;
-  box-shadow: 0 10px 26px rgba(22, 35, 46, 0.06);
+  box-shadow: 0 10px 26px color-mix(in srgb, var(--cf-text) 6%, transparent);
 }
 
 .decisionDeck::before {
@@ -126,14 +127,20 @@
   inset: 0 auto 0 0;
   width: 6px;
   content: "";
-  background: var(--cf-positive);
+  /* Default rail: secondary ink — never --ib-up for positive duration gap */
+  background: var(--cf-subtle);
 }
 
+/* Positive duration gap = structural deviation: --ib-warn, NOT --ib-up/green */
 .decisionDeck_positive {
-  border-color: color-mix(in srgb, var(--cf-positive) 55%, var(--cf-border));
+  border-color: color-mix(in srgb, var(--cf-accent) 42%, var(--cf-border));
   background:
-    linear-gradient(90deg, color-mix(in srgb, var(--cf-positive) 16%, transparent), transparent 36%),
+    linear-gradient(90deg, color-mix(in srgb, var(--cf-accent) 15%, transparent), transparent 36%),
     linear-gradient(135deg, var(--cf-paper), var(--cf-paper-muted) 62%);
+}
+
+.decisionDeck_positive::before {
+  background: var(--cf-accent);
 }
 
 .decisionDeck_negative {
@@ -215,7 +222,7 @@
   gap: 10px;
   padding: 14px;
   border: 1px solid color-mix(in srgb, var(--cf-border) 82%, transparent);
-  border-radius: 8px;
+  border-radius: var(--ib-radius);
   background: var(--cf-paper);
 }
 
@@ -244,7 +251,7 @@
   gap: 10px;
   padding: 14px 16px;
   border: 1px solid color-mix(in srgb, var(--cf-accent) 36%, var(--cf-border));
-  border-radius: 10px;
+  border-radius: var(--ib-radius);
   background:
     linear-gradient(90deg, color-mix(in srgb, var(--cf-accent) 10%, transparent), transparent 40%),
     var(--cf-paper);
@@ -314,7 +321,7 @@
 .sidePanel,
 .tablePanel {
   padding: 16px;
-  box-shadow: 0 8px 18px rgba(22, 35, 46, 0.04);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--cf-text) 4%, transparent);
 }
 
 .sectionHeader {
@@ -353,7 +360,7 @@
   min-width: 0;
   padding: 14px 16px;
   border: 1px solid color-mix(in srgb, var(--cf-border) 82%, transparent);
-  border-radius: 8px;
+  border-radius: var(--ib-radius);
   background: linear-gradient(180deg, var(--cf-paper), var(--cf-paper-muted));
   transition:
     background 180ms ease,
@@ -411,7 +418,7 @@
 }
 
 .metricCell_positive strong {
-  color: color-mix(in srgb, var(--cf-positive) 82%, #1f2937);
+  color: color-mix(in srgb, var(--cf-positive) 82%, var(--cf-text));
 }
 
 .metricCell_negative strong {
@@ -420,6 +427,11 @@
 
 .metricCell_warning strong {
   color: var(--cf-accent);
+}
+
+/* Small positive duration gap: secondary ink — never --ib-up */
+.metricCell_gapPositive strong {
+  color: var(--cf-subtle);
 }
 
 .projectionGrid {
@@ -438,7 +450,7 @@
   display: grid;
   min-height: 260px;
   place-items: center;
-  border-radius: 8px;
+  border-radius: var(--ib-radius);
   background: var(--cf-paper-muted);
   color: var(--cf-muted);
 }
@@ -510,7 +522,7 @@
 }
 
 .sidePanel_positive .riskHeader strong {
-  color: color-mix(in srgb, var(--cf-positive) 82%, #1f2937);
+  color: color-mix(in srgb, var(--cf-positive) 82%, var(--cf-text));
 }
 
 .riskHeader p,
@@ -533,7 +545,7 @@
   align-items: baseline;
   padding: 10px;
   border: 1px solid color-mix(in srgb, var(--cf-border) 72%, transparent);
-  border-radius: 8px;
+  border-radius: var(--ib-radius);
   background: var(--cf-paper);
 }
 
@@ -560,7 +572,7 @@
 .sideNote {
   padding: 12px;
   border: 1px solid color-mix(in srgb, var(--cf-info) 32%, var(--cf-border));
-  border-radius: 8px;
+  border-radius: var(--ib-radius);
   background: color-mix(in srgb, var(--cf-info) 10%, var(--cf-paper));
   color: color-mix(in srgb, var(--cf-info) 82%, var(--cf-text));
 }
@@ -568,7 +580,7 @@
 .tablePanel :global(.ant-table-wrapper) {
   overflow: hidden;
   border: 1px solid var(--cf-border);
-  border-radius: 8px;
+  border-radius: var(--ib-radius);
 }
 
 .tablePanel :global(.ant-table-thead > tr > th) {
@@ -643,7 +655,7 @@
   .sidePanel,
   .tablePanel,
   .decisionDeck {
-    border-radius: 12px;
+    border-radius: var(--ib-radius);
     padding: 14px;
   }
 

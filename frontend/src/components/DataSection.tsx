@@ -11,6 +11,11 @@ type DataSectionProps = {
   children: ReactNode;
 };
 
+/**
+ * @deprecated Prefer `components/page/PagePrimitives` (`PageSurfacePanel` /
+ * `PageSectionLead` / `PageStateSurface`). Kept for existing call sites while
+ * Phase 2 migrates consumers to the page-v2 contract.
+ */
 export function DataSection({ title, extra, state, onRetry, children }: DataSectionProps) {
   const header = renderHeader(title, extra);
   const body = renderBody({ state, onRetry, children });

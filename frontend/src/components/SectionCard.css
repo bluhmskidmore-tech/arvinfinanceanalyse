@@ -1,8 +1,8 @@
 .section-card {
-  border: 1px solid var(--moss-color-neutral-100);
-  border-radius: 8px;
-  background: #ffffff;
-  box-shadow: var(--moss-shadow-card);
+  border: 1px solid var(--ib-hairline, var(--moss-color-neutral-100));
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
+  box-shadow: var(--ib-shadow, var(--moss-shadow-card));
 }
 
 .section-card__error {

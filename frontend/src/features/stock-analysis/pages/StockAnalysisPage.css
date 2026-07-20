@@ -42,6 +42,8 @@
   --ib-down: var(--dh-api-red);
   --ib-warn: var(--dh-api-amber);
   --ib-gold: var(--sa-dh-gold);
+  /* Dark terminal: no serif (DESIGN.md §3) */
+  --ib-serif: var(--moss-font-sans);
 
   position: relative;
   display: grid;
@@ -50,30 +52,6 @@
   font-family: var(--moss-font-sans), system-ui, sans-serif;
   color: var(--sa-dh-ink);
   background-color: var(--sa-dh-page-bg);
-}
-
-.stock-analysis-page::before {
-  content: "";
-  position: absolute;
-  top: 10%;
-  left: 5%;
-  width: 600px;
-  height: 600px;
-  background: radial-gradient(circle, rgba(59, 130, 246, 0.04) 0%, rgba(59, 130, 246, 0) 70%);
-  pointer-events: none;
-  z-index: 0;
-}
-
-.stock-analysis-page::after {
-  content: "";
-  position: absolute;
-  top: 40%;
-  right: 5%;
-  width: 650px;
-  height: 650px;
-  background: radial-gradient(circle, rgba(201, 168, 92, 0.03) 0%, rgba(201, 168, 92, 0) 70%);
-  pointer-events: none;
-  z-index: 0;
 }
 
 .stock-analysis-page .border-warning-200,
@@ -5571,7 +5549,8 @@
   min-height: 54px;
   color: var(--sa-dh-muted-2);
   font-family: var(--sa-font-tabular), var(--moss-font-mono), monospace;
-  font-size: 26px;
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
   font-weight: 700;
   line-height: 1;
 }
@@ -9675,9 +9654,9 @@
   display: block;
   margin: 0;
   color: var(--ib-ink);
-  font-family: var(--ib-serif);
-  font-size: 23px;
-  font-weight: 650;
+  font-family: var(--moss-font-sans);
+  font-size: 20px;
+  font-weight: 700;
   line-height: 1.18;
 }
 
@@ -11739,7 +11718,7 @@
 }
 
 .stock-analysis-page__decision-rail .stock-analysis-page__home-rail-list-primary dd {
-  font-family: var(--ib-serif);
+  font-family: var(--moss-font-sans);
   font-size: 13px;
   font-weight: 650;
 }
@@ -12630,8 +12609,9 @@
 [data-testid="stock-analysis-strategy-lens"] .stock-analysis-page__strategy-lens-value {
   color: var(--ib-ink);
   font-family: var(--sa-font-tabular), var(--moss-font-mono), monospace;
-  font-size: 30px;
+  font-size: 24px;
   font-weight: 880;
+  font-variant-numeric: tabular-nums;
   line-height: 0.95;
 }
 
@@ -13741,8 +13721,8 @@
 .stock-analysis-page__uses-home-shell[data-design-target="product-design-option-1"] .stock-analysis-page__queue-report-title {
   max-width: 860px;
   color: var(--ib-ink);
-  font-family: var(--ib-serif), var(--moss-font-serif, Georgia), serif;
-  font-size: 24px;
+  font-family: var(--moss-font-sans);
+  font-size: 20px;
   font-weight: 700;
   letter-spacing: 0;
   line-height: 1.24;
@@ -14267,8 +14247,8 @@
   max-width: 620px;
   margin: 0;
   color: var(--ib-ink);
-  font-family: Georgia, "Times New Roman", "Microsoft YaHei", serif;
-  font-size: 27px;
+  font-family: var(--moss-font-sans);
+  font-size: 20px;
   font-weight: 820;
   line-height: 1.18;
   letter-spacing: 0;
@@ -17021,7 +17001,8 @@ button.stock-analysis-page__workbench-fact {
 .stock-analysis-page__uses-home-shell[data-design-target="product-design-option-1"] [data-testid="stock-analysis-tailwind-cockpit"] [data-testid="stock-analysis-queue-report-head"] h1 {
   margin-top: 8px !important;
   color: #f8fbff !important;
-  font-size: 28px !important;
+  font-family: var(--moss-font-sans) !important;
+  font-size: 20px !important;
   line-height: 1.18 !important;
   white-space: normal !important;
 }
@@ -17296,7 +17277,8 @@ html body .stock-analysis-page.stock-analysis-page--market-shell
   max-width: 650px !important;
   margin-top: 10px !important;
   color: var(--dh-api-ink) !important;
-  font-size: 28px !important;
+  font-family: var(--moss-font-sans) !important;
+  font-size: 20px !important;
   line-height: 1.35 !important;
   letter-spacing: 0 !important;
 }

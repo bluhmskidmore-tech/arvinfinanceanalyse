@@ -1,4 +1,5 @@
 import ReactECharts, { type EChartsOption } from "../../lib/echarts";
+import { designTokens, ibTokens } from "../../theme/designSystem";
 
 export type AccountingBasisStackedSharePoint = {
   monthLabel: string;
@@ -12,9 +13,9 @@ export type AccountingBasisStackedSharePoint = {
 };
 
 const basisSeries = [
-  { key: "AC", name: "AC", color: "#10284a" },
-  { key: "OCI", name: "OCI", color: "#33689a" },
-  { key: "TPL", name: "TPL", color: "#d8d8d8" },
+  { key: "AC", name: "AC", color: ibTokens.color.accent },
+  { key: "OCI", name: "OCI", color: designTokens.color.primary[500] },
+  { key: "TPL", name: "TPL", color: designTokens.color.neutral[300] },
 ] as const;
 
 function formatPct(value: number) {
@@ -53,7 +54,7 @@ function buildOption(rows: AccountingBasisStackedSharePoint[], title: string): E
     label: {
       show: true,
       position: "inside" as const,
-      color: seriesItem.key === "TPL" ? "#334155" : "#ffffff",
+      color: seriesItem.key === "TPL" ? ibTokens.color.ink : ibTokens.color.surface,
       fontSize: 12,
       fontWeight: 600,
       formatter: (params: unknown) => {
@@ -68,7 +69,7 @@ function buildOption(rows: AccountingBasisStackedSharePoint[], title: string): E
       text: title,
       left: 0,
       top: 0,
-      textStyle: { fontSize: 16, fontWeight: 700, color: "#2f3744" },
+      textStyle: { fontSize: 16, fontWeight: 700, color: ibTokens.color.ink },
     },
     legend: {
       bottom: 0,
@@ -96,13 +97,13 @@ function buildOption(rows: AccountingBasisStackedSharePoint[], title: string): E
       type: "category",
       data: rows.map((row) => row.monthLabel),
       axisTick: { alignWithLabel: true },
-      axisLabel: { fontSize: 12, color: "#555", interval: 0 },
+      axisLabel: { fontSize: 12, color: ibTokens.color.inkSecondary, interval: 0 },
     },
     yAxis: {
       type: "value",
       max: 100,
       axisLabel: { formatter: (value: number) => `${value.toFixed(0)}%` },
-      splitLine: { lineStyle: { color: "#eceff3" } },
+      splitLine: { lineStyle: { color: ibTokens.color.hairline } },
     },
     series,
   };

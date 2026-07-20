@@ -13,6 +13,11 @@ type AsyncSectionProps = {
   children: ReactNode;
 };
 
+/**
+ * @deprecated Prefer `components/page/PagePrimitives` (`PageSurfacePanel` /
+ * `PageStateSurface`). Kept for existing call sites while Phase 2 migrates
+ * consumers to the page-v2 contract. Radius already locked to `--ib-radius`.
+ */
 export function AsyncSection({
   title,
   extra,

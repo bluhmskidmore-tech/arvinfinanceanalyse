@@ -464,7 +464,7 @@ describe("CrossAssetPage", () => {
     expect(firstEvidenceDesktopBlock).toContain("border-left-width: 4px;");
     expect(firstEvidenceDesktopBlock).toContain("background: var(--ca-card);");
     expect(firstEvidenceDesktopBlock).toContain("box-shadow: none;");
-    expect(nonFirstEvidenceDesktopBlock).toContain("border-left-color: color-mix(in srgb, var(--ca-accent) 48%, #ffffff);");
+    expect(nonFirstEvidenceDesktopBlock).toContain("border-left-color: color-mix(in srgb, var(--ca-accent) 48%, var(--ib-surface));");
     expect(nonFirstEvidenceDesktopBlock).toContain("background: rgba(255, 255, 255, 0.72);");
   });
 

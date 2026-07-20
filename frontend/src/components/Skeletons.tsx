@@ -1,5 +1,5 @@
 import { Skeleton } from "antd";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 type SkeletonContainerProps = {
   children: ReactNode;
@@ -9,18 +9,28 @@ type SkeletonContainerProps = {
 
 type SkeletonProps = Omit<SkeletonContainerProps, "children">;
 
+/** IB light surface chrome (DESIGN.md §5): 2px radius, hairline border. */
+const wrapperStyle: CSSProperties = {
+  width: "100%",
+  borderRadius: "var(--ib-radius)",
+  border: "1px solid var(--ib-hairline)",
+  background: "var(--ib-surface)",
+  padding: 16,
+};
+
 function SkeletonContainer({
   children,
   className,
   disableWrapperStyles = false,
 }: SkeletonContainerProps) {
-  const classes = disableWrapperStyles
-    ? className
-    : ["w-full rounded-lg border border-default-200/60 bg-white/80 p-4", className]
-        .filter(Boolean)
-        .join(" ");
-
-  return <div className={classes}>{children}</div>;
+  return (
+    <div
+      className={className}
+      style={disableWrapperStyles ? undefined : wrapperStyle}
+    >
+      {children}
+    </div>
+  );
 }
 
 export function CardSkeleton(props: SkeletonProps) {

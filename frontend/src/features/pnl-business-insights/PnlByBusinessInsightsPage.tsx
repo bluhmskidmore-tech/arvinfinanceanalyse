@@ -320,6 +320,7 @@ export default function PnlByBusinessInsightsPage() {
           isLoading={insightsQuery.isLoading}
           isError={insightsQuery.isError}
           isEmpty={isEmpty}
+          fillHeight={false}
           onRetry={() => void insightsQuery.refetch()}
         >
           {result && meta ? (

@@ -8607,3 +8607,70 @@
 .dhMacroReleaseDisclosure .dhMacroReleaseInsightHeader {
   display: none;
 }
+
+/* Phase 1.5: active dashboard-home deferred surfaces share the 6px terminal shape. */
+:global([data-testid="dashboard-home-page"]) .dhMacroBriefingCard,
+:global([data-testid="dashboard-home-page"]) .dhMacroBriefingPane,
+:global([data-testid="dashboard-home-page"]) .dhMacroDecisionStats span,
+:global([data-testid="dashboard-home-page"]) .dhMacroReleaseItem,
+:global([data-testid="dashboard-home-page"]) .dhMacroNewsItem,
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingHeadline,
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingDiagnostics,
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingDiagnosticMetrics span,
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingGroup,
+:global([data-testid="dashboard-home-page"]) .dhMacroReleaseDisclosure,
+:global([data-testid="dashboard-home-page"]) .dhBondNewsCard,
+:global([data-testid="dashboard-home-page"]) .dhBondNewsGroup,
+:global([data-testid="dashboard-home-page"]) .dhBondNewsItem,
+:global([data-testid="dashboard-home-page"]) .dhTerminalQuick,
+:global([data-testid="dashboard-home-page"]) .dhServiceStatusPanel,
+:global([data-testid="dashboard-home-page"]) .dhApiMobileFold,
+:global([data-testid="dashboard-home-page"]) .dhApiHomeBody .dhApiModule,
+:global([data-testid="dashboard-home-page"]) .dhApiHomeBody .dhTerminalPanel,
+:global([data-testid="dashboard-home-page"]) .dhApiMarketContext,
+:global([data-testid="dashboard-home-page"]) .dhTerminalStateSurface,
+:global([data-testid="dashboard-home-page"]) .dhTerminalStateIcon,
+:global([data-testid="dashboard-home-page"]) .dhApiStructureCard,
+:global([data-testid="dashboard-home-page"]) .dhApiCoverageMap,
+:global([data-testid="dashboard-home-page"]) .dhApiCoverageDomains span,
+:global([data-testid="dashboard-home-page"]) .dhApiCoverageGapBand,
+:global([data-testid="dashboard-home-page"]) .dhApiCoverageGapBand > span,
+:global([data-testid="dashboard-home-page"]) .dhApiCoverageGapBand em,
+:global([data-testid="dashboard-home-page"]) .dhApiMarketContext p:nth-of-type(2),
+:global([data-testid="dashboard-home-page"]) .dhApiMarketRows,
+:global([data-testid="dashboard-home-page"]) .dhApiEvidenceRows,
+:global([data-testid="dashboard-home-page"]) .dhTerminalReportFeatured,
+:global([data-testid="dashboard-home-page"]) .dhTerminalReportFeaturedDate,
+:global([data-testid="dashboard-home-page"]) .dhTerminalReportCompactList {
+  border-radius: var(--dh-api-radius, 6px);
+}
+
+/* Panel hierarchy is carried by backgrounds and hairlines, not elevation. */
+:global([data-testid="dashboard-home-page"]) .dhMacroBriefingCard,
+:global([data-testid="dashboard-home-page"]) .dhBondNewsCard,
+:global([data-testid="dashboard-home-page"]) .dhTerminalQuick,
+:global([data-testid="dashboard-home-page"]) .dhServiceStatusPanel,
+:global([data-testid="dashboard-home-page"]) .dhApiHomeBody .dhCard,
+:global([data-testid="dashboard-home-page"]) .dhApiHomeBody .dhTerminalPanel,
+:global([data-testid="dashboard-home-page"]) .dhApiHomeBody .dhApiModule,
+:global([data-testid="dashboard-home-page"]) .dhApiMarketContext,
+:global([data-testid="dashboard-home-page"]) .dhTerminalStateSurface,
+:global([data-testid="dashboard-home-page"]) .dhTerminalStateIcon,
+:global([data-testid="dashboard-home-page"]) .dhSourceGateTableWrap,
+:global([data-testid="dashboard-home-page"]) .dhApiDirectoryTableWrap,
+:global([data-testid="dashboard-home-page"]) .dhApiHomeBody .dhMetricTableWrap,
+:global([data-testid="dashboard-home-page"]) .dhApiHomeBody .dhTerminalHoldings .dhTerminalTable,
+:global([data-testid="dashboard-home-page"]) .dhApiStructureCard,
+:global([data-testid="dashboard-home-page"]) .dhApiCoverageMap,
+:global([data-testid="dashboard-home-page"]) .dhApiCoverageGapBand,
+:global([data-testid="dashboard-home-page"]) .dhApiMarketRows,
+:global([data-testid="dashboard-home-page"]) .dhApiEvidenceRows,
+:global([data-testid="dashboard-home-page"]) .dhBondNewsGroup,
+:global([data-testid="dashboard-home-page"]) .dhBondNewsItem,
+:global([data-testid="dashboard-home-page"]) .dhApiRiskPairGrid,
+:global([data-testid="dashboard-home-page"]) .dhApiRiskGapLedger,
+:global([data-testid="dashboard-home-page"]) .dhApiHomeBody .dhTerminalIncomeList,
+:global([data-testid="dashboard-home-page"]) .dhApiHomeBody .dhTerminalReportCompactList,
+:global([data-testid="dashboard-home-page"]) .dhTerminalReportFeatured {
+  box-shadow: none;
+}

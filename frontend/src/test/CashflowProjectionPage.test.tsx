@@ -22,19 +22,32 @@ vi.mock("../lib/echarts", () => ({
 }));
 
 describe("CashflowProjectionPage", () => {
-  it("keeps page-local decorative colors on the homepage blue-gray token family", () => {
-    const source = [
-      readFileSync(CASHFLOW_PAGE_CSS_PATH, "utf8"),
-      readFileSync(CASHFLOW_PAGE_TSX_PATH, "utf8"),
-    ].join("\n");
+  it("binds page tokens to IB aliases and keeps duration-gap off --ib-up", () => {
+    const css = readFileSync(CASHFLOW_PAGE_CSS_PATH, "utf8");
+    const tsx = readFileSync(CASHFLOW_PAGE_TSX_PATH, "utf8");
+    const source = `${css}\n${tsx}`;
 
     expect(source).not.toMatch(/moss-color-warm-|designTokens\.color\.warm/);
     expect(source).not.toMatch(/rgba\((255, 253, 248|240, 230, 216|52, 43, 39)/);
     expect(source).not.toMatch(/#(fffdf8|f0e6d8|e4d8c8|b8a38f|342b27|6f6258|8f7e70|b85c38|708c74|7c3e46|667a96)/i);
-    expect(source).toContain("var(--moss-color-primary-600");
-    expect(source).toContain("var(--moss-color-success-600");
-    expect(source).toContain("var(--moss-color-danger-600");
-    expect(source).toContain("var(--moss-color-info-600");
+
+    expect(css).toContain("--cf-paper: var(--ib-surface)");
+    expect(css).toContain("--cf-positive: var(--ib-up)");
+    expect(css).toContain("--cf-negative: var(--ib-down)");
+    expect(css).toContain("--cf-accent: var(--ib-warn)");
+    expect(css).toContain("--cf-subtle: var(--ib-ink-secondary)");
+    expect(css).toContain("border-radius: var(--ib-radius)");
+
+    // Positive duration gap chrome must use warn/secondary, never --ib-up / --cf-positive.
+    const positiveDeck = css.slice(css.indexOf(".decisionDeck_positive"));
+    expect(positiveDeck).toContain("var(--cf-accent)");
+    expect(positiveDeck.split(".decisionDeck_negative")[0]).not.toContain("var(--cf-positive)");
+    expect(css).toContain(".metricCell_gapPositive strong");
+    expect(css).toMatch(/\.metricCell_gapPositive strong\s*\{\s*color:\s*var\(--cf-subtle\)/);
+
+    expect(tsx).toContain("selectCashflowDurationGapTone");
+    expect(tsx).not.toMatch(/(["'`])--\1/);
+    expect(tsx).toContain("EM_DASH");
   });
 
   it("mounts KPI cards when projection loads", async () => {

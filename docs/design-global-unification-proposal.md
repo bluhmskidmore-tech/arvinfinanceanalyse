@@ -1,8 +1,20 @@
-# 全局统一美观度优化方案（提案 · 待拍板）
+# 全局统一美观度优化方案（提案 · 执行中）
 
-> 状态：**提案，未动工**。本文只做诊断、方向与分阶段计划；经确认后才进入实施。
+> 状态：**执行中**（2026-07-19 起按本方案 Phase 0→1→2→3→4 推进；会话内曾用 4a/4b/4c/4d 称呼浅色长尾批次，对应本方案 **Phase 3**，不是 Phase 4）。
 > 基准权威：`DESIGN.md`（双主题体系）+ `frontend/src/theme/designSystem.ts` + `frontend/src/styles/tokens.css`。
-> 审计依据：2026-07-19 四路只读审计（token 层 / 页面主题 / 共享组件 / 字体动效），关键证据带 file:line。
+> 审计依据：2026-07-19 四路只读审计（token 层 / 页面主题 / 共享组件 / 字体动效）；运行时红线：`scripts/audit_visual_tokens.mjs`（只降不升）。
+
+### 进度快照（相对本方案）
+
+| Phase | 状态 | 备注 |
+|---|---|---|
+| **0 地基** | ✅ 完成 | 0.1–0.6 已落地；呼吸光业主豁免保留 |
+| **1 深色并轨** | ✅ 主路径完成 | 1.1–1.6 主路径已落地；壳内非主路径阴影长尾可并入 Phase 4 / 截图复核批 |
+| **2 共享原语** | 🔄 推进中 | **2.2–2.3** ✅；**2.5** ✅（components 17 hex→0）；**2.1** 首批 5 点 ✅、余下消费点仍欠；**2.4** Tailwind 已修、skeleton 合一未做 |
+| **3 浅色长尾** | 🔄 部分完成 | 会话 4a–4d-1b 已清一批；MarketData/Balance/PnlByBusiness/Shell 等仍欠 |
+| **4 死代码** | ⏳ 未开始 | |
+
+视觉水位（约）：hex **2348** / offRadius **225** / `"--"` **13** / forbidden **1**（相对开局约 3800+ hex 已下降；经营日报壳 offRadius 36→7；Phase 2.5 components 17→0）。
 
 ---
 
@@ -94,27 +106,27 @@ DESIGN.md 的方向（冷静、可审计、双主题）不需要推翻；需要�
 
 ### Phase 1 · 深色终端并轨：一页一主题，一套 dh-api
 
-| 项 | 内容 |
-|---|---|
-| 1.1 | 组合 / 市场 / 债券分析三页从 `#7dd3fc` 系切换到 dh-api 去饱和色阶（删除逐行复制的 palette 块） |
-| 1.2 | 股票分析页自建 `--sa-dh-*` 高饱和色板 → dh-api；移除 600px 装饰光斑 |
-| 1.3 | 宏观工具箱主题拍板后归一（见 §4 决策点 D1） |
-| 1.4 | `/market-data` 首屏深色孤岛：或整页转深色终端，或 command sheet 改浅色 IB（见 §4 决策点 D2） |
-| 1.5 | 深色页衬线退出（刊头改 sans 字重/字阶建层级）；深色圆角统一 6px；深色阴影按 §2.2 退出 |
-| 1.6 | 深色页 KPI 主值接 tabular 栈，字阶收回 20–24px 区间 |
+| 项 | 内容 | 状态 |
+|---|---|---|
+| 1.1 | 组合 / 市场 / 债券分析三页从 `#7dd3fc` 系切换到 dh-api 去饱和色阶（删除逐行复制的 palette 块） | 大体完成；债券页主色、语义色与蓝色透明阶已改由 `--dh-api-*` 派生，局部历史中性色仍待后续审计 |
+| 1.2 | 股票分析页自建 `--sa-dh-*` 高饱和色板 → dh-api；移除 600px 装饰光斑 | ✅ 色板已桥接 dh-api；根节点 `::before/::after` 600px 装饰光斑已删 |
+| 1.3 | 宏观工具箱主题拍板后归一（见 §4 决策点 D1） | ✅ 已锁浅色；`DESIGN.md` §2.2 已剔除宏观 |
+| 1.4 | `/market-data` 首屏深色孤岛（见 §4 D2） | ✅ 拍板 c：岛保留；`--command-*` → `--dh-api-*` |
+| 1.5 | 深色页衬线退出；深色圆角统一 6px；深色阴影按 §2.2 退出 | ✅ 主路径：shell/stock `--ib-serif→sans`；stock 去 600px 装饰光斑；刊头/ledger/queue-title 改 sans；债券/壳圆角阴影最小包已做。余量：壳内非主路径 box-shadow 长尾另批截图清理 |
+| 1.6 | 深色页 KPI 主值接 tabular 栈，字阶收回 20–24px 区间 | ✅ 主路径：shell hero KPI / decision h3、risk/portfolio/bond metric、stock empty-signal 与刊头超大字已收回 ≤24（刊头 20）；余量逐页截图复核 |
 
 **验证**：七页深色页截图对比（改动页需人工确认视觉差异符合预期）；`debt:audit` 基线应**下降**（palette 复制块删除）。
 **风险**：中。1.1/1.2 是肉眼可见的色相变化（亮蓝 → 灰蓝），需产品确认；不改变任何数据。
 
 ### Phase 2 · 共享原语收口：一套卡片、一套 KPI、一套圆角
 
-| 项 | 内容 |
-|---|---|
-| 2.1 | 确立 page-v2 契约族（PagePrimitives）为唯一标准；DataSection / AsyncSection / SectionCard 标记弃用并迁移 48 个消费点（可分页面批次） |
-| 2.2 | KpiCard 重建：token 驱动、主题感知（浅/深皆可用）、消灭 13 个内联 style 对象 |
-| 2.3 | 圆角锁落地：token 层删除 20px 档（displayTokens.radius.section），浅色全站 2px、深色 6px；154 处浅色大圆角批量收敛 |
-| 2.4 | 修复 Skeletons.tsx 失效 Tailwind 类；skeleton 三份实现合一 |
-| 2.5 | 组件层 20 处硬编码 hex 全部改引用 token |
+| 项 | 内容 | 状态 |
+|---|---|---|
+| 2.1 | 确立 page-v2 契约族（PagePrimitives）为唯一标准；DataSection / AsyncSection / SectionCard 标记弃用并迁移 48 个消费点（可分页面批次） | 🔄 弃用标记 ✅；首批迁完：`ManagementOutput` / `RevenueCostBridge` / `PortfolioSummaryNarrative` / `BondEventCalendar` / `AssetStructurePie` → `EvidencePanel` |
+| 2.2 | KpiCard 重建：token 驱动、主题感知（浅/深皆可用）、消灭 13 个内联 style 对象 | ✅ 布局/色阶迁入 `KpiCard.css`（`data-tone`）；sparkline stroke 仍读 displayTokens |
+| 2.3 | 圆角锁落地：token 层删除 20px 档（displayTokens.radius.section），浅色全站 2px、深色 6px；154 处浅色大圆角批量收敛 | ✅ token+共享原语已锁；页面级 20px 长尾另批 |
+| 2.4 | 修复 Skeletons.tsx 失效 Tailwind 类；skeleton 三份实现合一 | 🔄 失效 Tailwind 已修；三份 skeleton 合一未做 |
+| 2.5 | 组件层 20 处硬编码 hex 全部改引用 token | ✅ `components/**` 17 hex→0（CSS 9 + AccountingBasis 图 8）；图表色走 ibTokens/designTokens |
 
 **验证**：每个迁移批次跑该域组件测试 + 页面截图；`debt:audit` 的 inline-style 基线应显著下降。
 **风险**：中。迁移消费点时会触碰多页面文件，严格分批、每批可独立回滚；业务逻辑零改动。

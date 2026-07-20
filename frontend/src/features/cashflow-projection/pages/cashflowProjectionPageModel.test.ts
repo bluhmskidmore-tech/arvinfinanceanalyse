@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Numeric } from "../../../api/contracts";
 import type { CashflowProjectionVM } from "../adapters/cashflowProjectionAdapter";
 import {
+  selectCashflowDurationGapTone,
   selectCashflowMonthlyProjectionSeries,
   selectCashflowProjectionRiskReadout,
   selectCashflowRateSensitivitySemantic,
@@ -174,5 +175,22 @@ describe("selectCashflowRateSensitivitySemantic", () => {
       tone: "positive",
       detail: "利率上行 1bp → 权益增加（原始单位：元）",
     });
+  });
+});
+
+describe("selectCashflowDurationGapTone", () => {
+  it("never maps a positive duration gap to up/green positive tone", () => {
+    expect(selectCashflowDurationGapTone(n({ raw: 1.25, unit: "years" }))).toBe("warning");
+    expect(selectCashflowDurationGapTone(n({ raw: 0.02, unit: "years" }))).toBe("gapPositive");
+    expect(selectCashflowDurationGapTone(n({ raw: 0, unit: "years" }))).toBe("default");
+  });
+
+  it("keeps negative duration gap as directional down tone", () => {
+    expect(selectCashflowDurationGapTone(n({ raw: -0.75, unit: "years" }))).toBe("negative");
+  });
+
+  it("marks missing duration gap as warning", () => {
+    expect(selectCashflowDurationGapTone(n({ raw: null, unit: "years" }))).toBe("warning");
+    expect(selectCashflowDurationGapTone(undefined)).toBe("warning");
   });
 });
