@@ -2327,6 +2327,7 @@ def _validate_pnl_attr_workbench(actual: dict[str, Any], expected: dict[str, Any
             ("result", "total_volume_effect"),
             ("result", "total_rate_effect"),
             ("result", "total_interaction_effect"),
+            ("result", "total_recon_error"),
             ("result", "items"),
             ("result", "has_previous_data"),
         ],

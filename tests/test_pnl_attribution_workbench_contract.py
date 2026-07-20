@@ -161,6 +161,41 @@ def test_build_volume_rate_attribution_from_grouped_rows_uses_aligned_business_s
     assert row["recon_error"] == pytest.approx(0.0)
 
 
+def test_build_volume_rate_attribution_exposes_total_reconciliation_gap() -> None:
+    payload = build_volume_rate_attribution_from_grouped_rows(
+        current_rows=[
+            {
+                "business_type_primary": "existing",
+                "total_pnl": 120.0,
+                "scale_amount": 1_000.0,
+            },
+            {
+                "business_type_primary": "new",
+                "total_pnl": 25.0,
+                "scale_amount": 500.0,
+            },
+        ],
+        prior_rows=[
+            {
+                "business_type_primary": "existing",
+                "total_pnl": 80.0,
+                "scale_amount": 800.0,
+            }
+        ],
+        current_period="2026-04",
+        previous_period="2026-03",
+        compare_type="mom",
+    )
+
+    assert payload["total_pnl_change"] == pytest.approx(65.0)
+    assert (
+        payload["total_volume_effect"]
+        + payload["total_rate_effect"]
+        + payload["total_interaction_effect"]
+    ) == pytest.approx(40.0)
+    assert payload["total_recon_error"] == pytest.approx(25.0)
+
+
 def test_build_tpl_market_correlation_exposes_total_change_in_bp() -> None:
     payload = build_tpl_market_correlation(
         monthly_points=[

@@ -2264,6 +2264,105 @@ def test_pnl_by_business_traces_formal_fi_to_zqtz_business_type_primary(tmp_path
     get_settings.cache_clear()
 
 
+def test_pnl_by_business_counts_position_scale_once_for_multiple_pnl_rows(
+    tmp_path,
+    monkeypatch,
+):
+    _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_pnl_by_business_rows(duckdb_path)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            insert into fact_formal_pnl_fi (
+              report_date, instrument_code, portfolio_name, cost_center,
+              invest_type_std, accounting_basis, currency_basis,
+              interest_income_514, fair_value_change_516, capital_gain_517,
+              manual_adjustment, total_pnl, source_version, rule_version,
+              ingest_batch_id, trace_id
+            ) values
+            (
+              '2025-12-31', '250002.IB', 'FI Desk', 'CC200', 'T', 'FVTPL', 'CNY',
+              5.00, 0.00, 0.00, 0.00, 5.00,
+              'fi-second-basis-v1', 'rv_pnl_phase2_materialize_v1',
+              'ib-second-basis', 'trace-fi-second-basis'
+            ),
+            (
+              '2025-12-31', 'BOND-250002.IB', 'FI Desk', 'CC200', 'A', 'FVOCI', 'CNY',
+              2.00, 0.00, 0.00, 0.00, 2.00,
+              'fi-prefixed-code-v1', 'rv_pnl_phase2_materialize_v1',
+              'ib-prefixed-code', 'trace-fi-prefixed-code'
+            )
+            """
+        )
+    finally:
+        conn.close()
+
+    repo_module = load_module(
+        "backend.app.repositories.pnl_repo_scale_dedup_contract",
+        "backend/app/repositories/pnl_repo.py",
+    )
+    rows = {
+        row["business_type_primary"]: row
+        for row in repo_module.PnlRepository(str(duckdb_path)).fetch_by_business_rows(
+            "2025-12-31"
+        )
+    }
+    allocation = rows["bond-allocation"]
+    assert allocation["total_pnl"] == Decimal("17.00000000")
+    assert allocation["scale_amount"] == Decimal("300.00000000")
+    assert allocation["yield_pct"] == pytest.approx(5.666666666666666)
+    assert allocation["pnl_row_count"] == 3
+    assert allocation["balance_row_count"] == 1
+
+
+def test_pnl_by_business_does_not_reuse_strict_balance_for_relaxed_nonstd_pnl(
+    tmp_path,
+    monkeypatch,
+):
+    _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_pnl_by_business_rows(duckdb_path)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            insert into fact_nonstd_pnl_bridge (
+              report_date, bond_code, portfolio_name, cost_center,
+              interest_income_514, fair_value_change_516, capital_gain_517,
+              manual_adjustment, total_pnl, source_version, rule_version,
+              ingest_batch_id, trace_id
+            ) values (
+              '2025-12-31', '250002.IB', 'FI Desk', 'CC-RELAX',
+              5.00, 0.00, 0.00, 0.00, 5.00,
+              'nonstd-relaxed-after-strict-v1', 'rv_pnl_phase2_materialize_v1',
+              'ib-nonstd-relaxed-after-strict', 'trace-nonstd-relaxed-after-strict'
+            )
+            """
+        )
+    finally:
+        conn.close()
+
+    repo_module = load_module(
+        "backend.app.repositories.pnl_repo_cross_scope_scale_contract",
+        "backend/app/repositories/pnl_repo.py",
+    )
+    rows = {
+        row["business_type_primary"]: row
+        for row in repo_module.PnlRepository(str(duckdb_path)).fetch_by_business_rows(
+            "2025-12-31"
+        )
+    }
+
+    allocation = rows["bond-allocation"]
+    assert allocation["total_pnl"] == Decimal("15.00000000")
+    assert allocation["scale_amount"] == Decimal("300.00000000")
+    assert allocation["yield_pct"] == pytest.approx(5.0)
+    assert allocation["pnl_row_count"] == 2
+    assert allocation["balance_row_count"] == 1
+
+
 def test_pnl_by_business_summary_column_totals_match_detail_rows(tmp_path, monkeypatch):
     """summary 的 514/516/517 分列合计必须与同一批明细行逐列求和一致（同源，无独立口径）。"""
     _materialize_three_pnl_dates(tmp_path, monkeypatch)

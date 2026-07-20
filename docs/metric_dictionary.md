@@ -329,6 +329,7 @@ MTR-RSK-001 fixed-income convention note:
 | `MTR-PAT-004` | 上期收益率（百分比） | business | `formal` | `VolumeRateAttributionItem.previous_yield_pct` | volume-rate 表格 | 百分比值；字段名已显式带 `_pct` | 同上 | `tests/test_pnl_attribution_workbench_contract.py` |
 | `MTR-PAT-005` | 规模效应 | business | `formal` | `total_volume_effect` / `row.volume_effect` | volume-rate 图表与表格 | 金额，亿元展示 | 与 `current_period / previous_period` 配套解释 | `tests/test_pnl_attribution_workbench_contract.py` |
 | `MTR-PAT-006` | 利率效应 | business | `formal` | `total_rate_effect` / `row.rate_effect` | volume-rate 图表与表格 | 金额，亿元展示 | 当前仍保持字段名 `rate_effect`，页面按金额解释 | `tests/test_pnl_attribution_workbench_contract.py` |
+| `MTR-PAT-007` | 总计归因残差 | quality | `formal` | `VolumeRateAttributionPayload.total_recon_error` | volume-rate 闭合桥 | 金额，亿元展示 | `损益变动 - 规模效应 - 利率效应 - 交叉效应`；缺上期或无法闭合时为 null | `tests/test_pnl_attribution_workbench_contract.py` |
 
 ### 11.2 TPL / Market
 

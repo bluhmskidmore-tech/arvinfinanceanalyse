@@ -194,6 +194,12 @@ def _build_volume_rate_from_group_aggregates(
             }
         )
 
+    total_attrib_sum = (total_vol + total_rate + total_ix) if has_prior else None
+    total_recon_error = (
+        total_pnl_change - total_attrib_sum
+        if total_pnl_change is not None and total_attrib_sum is not None
+        else None
+    )
     return {
         "current_period": current_period,
         "previous_period": previous_period,
@@ -204,6 +210,7 @@ def _build_volume_rate_from_group_aggregates(
         "total_volume_effect": total_vol if has_prior else None,
         "total_rate_effect": total_rate if has_prior else None,
         "total_interaction_effect": total_ix if has_prior else None,
+        "total_recon_error": total_recon_error,
         "items": items,
         "has_previous_data": has_prior,
     }

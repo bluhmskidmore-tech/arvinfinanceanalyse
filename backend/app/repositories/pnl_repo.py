@@ -1823,29 +1823,44 @@ class PnlRepository:
                   from balance_relaxed_by_business
                   group by 1, 2, 3, 4
                   having count(distinct business_type_primary) = 1
-                ), joined as (
+                ), pnl_aggregated as (
                   select
-                    cast(p.report_date as varchar) as report_date,
+                    report_date,
+                    instrument_code,
+                    portfolio_name,
+                    cost_center,
+                    currency_basis,
+                    fallback_business_type,
+                    coalesce(sum(interest_income_514), 0) as interest_income_514,
+                    coalesce(sum(fair_value_change_516), 0) as fair_value_change_516,
+                    coalesce(sum(capital_gain_517), 0) as capital_gain_517,
+                    coalesce(sum(manual_adjustment), 0) as manual_adjustment,
+                    coalesce(sum(total_pnl), 0) as total_pnl,
+                    count(*) as pnl_row_count
+                  from pnl_rows
+                  group by 1, 2, 3, 4, 5, 6
+                ), pnl_classified as (
+                  select
+                    p.report_date,
+                    p.instrument_code,
+                    p.portfolio_name,
+                    p.cost_center,
                     coalesce(bs.business_type_primary, br.business_type_primary, p.fallback_business_type, '未分类') as business_type_primary,
                     p.currency_basis,
+                    case
+                      when bs.business_type_primary is not null then 'strict'
+                      when br.business_type_primary is not null then 'relaxed'
+                      else 'unmatched'
+                    end as balance_match_scope,
                     p.interest_income_514,
                     p.fair_value_change_516,
                     p.capital_gain_517,
                     p.manual_adjustment,
                     p.total_pnl,
-                    case
-                      when bs.business_type_primary is not null then bs.scale_amount
-                      when br.business_type_primary is not null then br.scale_amount
-                      else 0
-                    end as scale_amount,
-                    case
-                      when bs.business_type_primary is not null then bs.balance_row_count
-                      when br.business_type_primary is not null then br.balance_row_count
-                      else 0
-                    end as balance_row_count
-                  from pnl_rows p
+                    p.pnl_row_count
+                  from pnl_aggregated p
                   left join balance_strict_choice bs
-                    on bs.report_date = cast(p.report_date as varchar)
+                    on bs.report_date = p.report_date
                    and (
                      trim(coalesce(bs.instrument_code, '')) = trim(coalesce(p.instrument_code, ''))
                      or trim(coalesce(bs.instrument_code, '')) = replace(trim(coalesce(p.instrument_code, '')), 'BOND-', '')
@@ -1856,7 +1871,7 @@ class PnlRepository:
                    and trim(coalesce(bs.currency_basis, '')) = trim(coalesce(p.currency_basis, ''))
                   left join balance_relaxed_choice br
                     on bs.business_type_primary is null
-                   and br.report_date = cast(p.report_date as varchar)
+                   and br.report_date = p.report_date
                    and (
                      trim(coalesce(br.instrument_code, '')) = trim(coalesce(p.instrument_code, ''))
                      or trim(coalesce(br.instrument_code, '')) = replace(trim(coalesce(p.instrument_code, '')), 'BOND-', '')
@@ -1864,7 +1879,38 @@ class PnlRepository:
                    )
                    and trim(coalesce(br.portfolio_name, '')) = trim(coalesce(p.portfolio_name, ''))
                    and trim(coalesce(br.currency_basis, '')) = trim(coalesce(p.currency_basis, ''))
-                ), grouped as (
+                ), consumed_balance_positions as (
+                  -- PnL is accounting-row grain; balance scale is position grain.
+                  -- Resolve PnL classification first, then consume each matched
+                  -- balance position once across both strict and relaxed matches.
+                  select distinct
+                    p.report_date,
+                    p.business_type_primary,
+                    p.currency_basis,
+                    b.instrument_code,
+                    b.portfolio_name,
+                    b.cost_center,
+                    b.scale_amount,
+                    b.balance_row_count
+                  from pnl_classified p
+                  join balance_strict_choice b
+                    on b.report_date = p.report_date
+                   and (
+                     trim(coalesce(b.instrument_code, '')) = trim(coalesce(p.instrument_code, ''))
+                     or trim(coalesce(b.instrument_code, '')) = replace(trim(coalesce(p.instrument_code, '')), 'BOND-', '')
+                     or ('BOND-' || trim(coalesce(b.instrument_code, ''))) = trim(coalesce(p.instrument_code, ''))
+                   )
+                   and trim(coalesce(b.portfolio_name, '')) = trim(coalesce(p.portfolio_name, ''))
+                   and trim(coalesce(b.currency_basis, '')) = trim(coalesce(p.currency_basis, ''))
+                   and trim(coalesce(b.business_type_primary, '')) = trim(coalesce(p.business_type_primary, ''))
+                   and (
+                     p.balance_match_scope = 'relaxed'
+                     or (
+                       p.balance_match_scope = 'strict'
+                       and trim(coalesce(b.cost_center, '')) = trim(coalesce(p.cost_center, ''))
+                     )
+                   )
+                ), pnl_grouped as (
                   select
                     report_date,
                     business_type_primary,
@@ -1875,11 +1921,37 @@ class PnlRepository:
                     coalesce(sum(capital_gain_517), 0) as capital_gain_517,
                     coalesce(sum(manual_adjustment), 0) as manual_adjustment,
                     coalesce(sum(total_pnl), 0) as total_pnl,
-                    coalesce(sum(scale_amount), 0) as scale_amount,
-                    count(*) as pnl_row_count,
-                    coalesce(sum(balance_row_count), 0) as balance_row_count
-                  from joined
+                    coalesce(sum(pnl_row_count), 0) as pnl_row_count
+                  from pnl_classified
                   group by 1, 2, 3, 4
+                ), balance_grouped as (
+                  select
+                    report_date,
+                    business_type_primary,
+                    currency_basis,
+                    coalesce(sum(scale_amount), 0) as scale_amount,
+                    coalesce(sum(balance_row_count), 0) as balance_row_count
+                  from consumed_balance_positions
+                  group by 1, 2, 3
+                ), grouped as (
+                  select
+                    p.report_date,
+                    p.business_type_primary,
+                    p.business_type,
+                    p.currency_basis,
+                    p.interest_income_514,
+                    p.fair_value_change_516,
+                    p.capital_gain_517,
+                    p.manual_adjustment,
+                    p.total_pnl,
+                    coalesce(b.scale_amount, 0) as scale_amount,
+                    p.pnl_row_count,
+                    coalesce(b.balance_row_count, 0) as balance_row_count
+                  from pnl_grouped p
+                  left join balance_grouped b
+                    on b.report_date = p.report_date
+                   and b.business_type_primary = p.business_type_primary
+                   and b.currency_basis = p.currency_basis
                 )
                 select
                   report_date,
