@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 
@@ -384,7 +384,13 @@ describe("PnlBridgePage", () => {
     await waitFor(() => {
       expect(screen.getByTestId("pnl-bridge-summary-section")).toHaveAttribute("data-state", "fallback");
     });
-    expect(screen.getAllByTestId("data-section-fallback-banner")).toHaveLength(2);
+    const summarySection = screen.getByTestId("pnl-bridge-summary-section");
+    const detailSection = screen.getByTestId("pnl-bridge-detail-section");
+    // 汇总区去重：首屏 Alert 已提示回退，DataSection 内部横幅只保留在明细区。
+    expect(within(summarySection).getByTestId("pnl-bridge-meta-banner")).toBeInTheDocument();
+    expect(within(summarySection).queryByTestId("data-section-fallback-banner")).toBeNull();
+    expect(within(detailSection).getByTestId("data-section-fallback-banner")).toBeInTheDocument();
+    expect(screen.getAllByTestId("data-section-fallback-banner")).toHaveLength(1);
     expect(screen.getByTestId("pnl-bridge-summary-cards")).toHaveTextContent("15.40");
   });
 
@@ -429,6 +435,12 @@ describe("PnlBridgePage", () => {
     expect(banner).not.toHaveTextContent("latest_snapshot");
     expect(banner).not.toHaveTextContent("quality_flag");
     expect(screen.getByTestId("pnl-bridge-summary-cards")).toHaveTextContent("正常");
+
+    // 去重：首屏 Alert 出现时，汇总区不再重复 DataSection 内部回退横幅；明细区保留自身唯一提示。
+    const summarySection = screen.getByTestId("pnl-bridge-summary-section");
+    const detailSection = screen.getByTestId("pnl-bridge-detail-section");
+    expect(within(summarySection).queryByTestId("data-section-fallback-banner")).toBeNull();
+    expect(within(detailSection).getByTestId("data-section-fallback-banner")).toBeInTheDocument();
   });
 
   it("shows a first-screen warning banner when adapter state is stale", async () => {
@@ -470,6 +482,12 @@ describe("PnlBridgePage", () => {
     expect(banner).not.toHaveTextContent("quality_flag");
     expect(banner).not.toHaveTextContent("summary.quality_flag");
     expect(screen.getByTestId("pnl-bridge-summary-cards")).toHaveTextContent("正常");
+
+    // 去重：首屏 Alert 出现时，汇总区不再重复 DataSection 内部偏旧横幅；明细区保留自身唯一提示。
+    const summarySection = screen.getByTestId("pnl-bridge-summary-section");
+    const detailSection = screen.getByTestId("pnl-bridge-detail-section");
+    expect(within(summarySection).queryByTestId("data-section-stale-banner")).toBeNull();
+    expect(within(detailSection).getByTestId("data-section-stale-banner")).toBeInTheDocument();
   });
 
   it("does not show the first-screen meta banner when result_meta is healthy", async () => {
@@ -493,6 +511,8 @@ describe("PnlBridgePage", () => {
 
     await screen.findByTestId("pnl-bridge-summary-cards");
     expect(screen.queryByTestId("pnl-bridge-meta-banner")).toBeNull();
+    expect(screen.queryByTestId("data-section-stale-banner")).toBeNull();
+    expect(screen.queryByTestId("data-section-fallback-banner")).toBeNull();
   });
 
   it("refreshes bridge data for the selected report date and shows polling status", async () => {

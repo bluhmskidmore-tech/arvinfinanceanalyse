@@ -2161,6 +2161,36 @@ def test_executive_risk_overview_repo_backed(monkeypatch, exec_mod):
         assert "最新日期" in sig["detail"]
 
 
+def test_executive_risk_overview_credit_signal_raw_is_decimal_ratio(monkeypatch, exec_mod):
+    """pct Numeric contract: raw must be the decimal ratio consistent with display.
+
+    bond_analytics_repo produces credit_market_value_ratio_pct in percent-points
+    (share * 100), so the credit signal must store raw = value / 100.
+    """
+    snap = {
+        "report_date": "2026-04-01",
+        "portfolio_modified_duration": 4.567,
+        "portfolio_dv01": 1234567.8,
+        "credit_market_value_ratio_pct": 12.34,
+        "weighted_years_to_maturity": 3.21,
+    }
+
+    class OkBond:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def fetch_latest_risk_overview_snapshot(self):
+            return snap
+
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", OkBond)
+    out = exec_mod.executive_risk_overview()
+    by_id = {s["id"]: s for s in out["result"]["signals"]}
+    cred = _assert_numeric_json_shape(by_id["credit"]["value"])
+    assert cred["unit"] == "pct"
+    assert cred["display"] == "12.3%"
+    assert cred["raw"] == pytest.approx(0.1234)
+
+
 def test_executive_risk_overview_uses_requested_report_date(monkeypatch, exec_mod):
     calls: list[str] = []
 

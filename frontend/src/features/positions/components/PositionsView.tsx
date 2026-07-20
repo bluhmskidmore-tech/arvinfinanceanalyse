@@ -159,6 +159,271 @@ function metaSummary(meta: ResultMeta | null | undefined): string {
   return `${meta.quality_flag} / ${compactVersion(meta.source_version)} / ${compactVersion(meta.rule_version)}`;
 }
 
+type PositionsFirstScreenStatus = {
+  type: "error" | "warning" | "info";
+  message: string;
+  description: string;
+};
+
+type PositionsPrimaryListTableState = "loading" | "error" | "blocked" | "empty" | "ready";
+
+type PositionsPrimaryListMeta = Pick<
+  ResultMeta,
+  | "quality_flag"
+  | "vendor_status"
+  | "fallback_mode"
+  | "requested_report_date"
+  | "resolved_report_date"
+  | "as_of_date"
+  | "fallback_date"
+>;
+
+type PositionsPrimaryListResult<T> = {
+  items: T[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
+type PositionsPrimaryListEnvelope<T> = {
+  result_meta: PositionsPrimaryListMeta;
+  result: PositionsPrimaryListResult<T>;
+};
+
+const POSITIONS_QUALITY_FLAGS: readonly ResultMeta["quality_flag"][] = [
+  "ok",
+  "warning",
+  "error",
+  "stale",
+  "missing",
+];
+const POSITIONS_VENDOR_STATUSES: readonly ResultMeta["vendor_status"][] = [
+  "ok",
+  "vendor_stale",
+  "vendor_unavailable",
+];
+const POSITIONS_FALLBACK_MODES: readonly ResultMeta["fallback_mode"][] = [
+  "none",
+  "latest_snapshot",
+];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isAllowedStatus<T extends string>(
+  value: unknown,
+  allowed: readonly T[],
+): value is T {
+  return typeof value === "string" && (allowed as readonly string[]).includes(value);
+}
+
+function isOptionalDate(value: unknown): value is string | null | undefined {
+  return value === undefined || value === null || typeof value === "string";
+}
+
+function normalizePositionsPrimaryListEnvelope<T>(
+  value: unknown,
+): PositionsPrimaryListEnvelope<T> | null {
+  if (!isRecord(value) || !isRecord(value.result_meta) || !isRecord(value.result)) {
+    return null;
+  }
+
+  const meta = value.result_meta;
+  const result = value.result;
+  const qualityFlag = meta.quality_flag;
+  const vendorStatus = meta.vendor_status;
+  const fallbackMode = meta.fallback_mode;
+  if (
+    !isAllowedStatus(qualityFlag, POSITIONS_QUALITY_FLAGS) ||
+    !isAllowedStatus(vendorStatus, POSITIONS_VENDOR_STATUSES) ||
+    !isAllowedStatus(fallbackMode, POSITIONS_FALLBACK_MODES) ||
+    !isOptionalDate(meta.requested_report_date) ||
+    !isOptionalDate(meta.resolved_report_date) ||
+    !isOptionalDate(meta.as_of_date) ||
+    !isOptionalDate(meta.fallback_date)
+  ) {
+    return null;
+  }
+
+  const { items, total, page, page_size: pageSize } = result;
+  if (
+    !Array.isArray(items) ||
+    typeof total !== "number" ||
+    !Number.isFinite(total) ||
+    !Number.isInteger(total) ||
+    total < 0 ||
+    typeof page !== "number" ||
+    !Number.isInteger(page) ||
+    page < 1 ||
+    typeof pageSize !== "number" ||
+    !Number.isInteger(pageSize) ||
+    pageSize < 1
+  ) {
+    return null;
+  }
+
+  return {
+    result_meta: {
+      quality_flag: qualityFlag,
+      vendor_status: vendorStatus,
+      fallback_mode: fallbackMode,
+      requested_report_date: meta.requested_report_date,
+      resolved_report_date: meta.resolved_report_date,
+      as_of_date: meta.as_of_date,
+      fallback_date: meta.fallback_date,
+    },
+    result: {
+      items: items as T[],
+      total,
+      page,
+      page_size: pageSize,
+    },
+  };
+}
+
+function buildPositionsPrimaryListTableState({
+  reportDate,
+  datesLoading,
+  datesError,
+  listLoading,
+  listSuccess,
+  listError,
+  envelope,
+}: {
+  reportDate: string;
+  datesLoading: boolean;
+  datesError: boolean;
+  listLoading: boolean;
+  listSuccess: boolean;
+  listError: boolean;
+  envelope: PositionsPrimaryListEnvelope<unknown> | null;
+}): PositionsPrimaryListTableState {
+  if (!reportDate) {
+    if (datesLoading) {
+      return "loading";
+    }
+    return datesError ? "error" : "blocked";
+  }
+
+  if (listError) {
+    return "error";
+  }
+  if (listLoading || !listSuccess) {
+    return "loading";
+  }
+
+  if (!envelope) {
+    return "error";
+  }
+  if (envelope.result.total === 0 && envelope.result.items.length === 0) {
+    return "empty";
+  }
+  if (envelope.result.items.length === 0) {
+    return "blocked";
+  }
+  return "ready";
+}
+
+function buildPositionsFirstScreenStatus({
+  tab,
+  datesError,
+  datesEmpty,
+  listError,
+  listTableState,
+  meta,
+}: {
+  tab: TabKey;
+  datesError: boolean;
+  datesEmpty: boolean;
+  listError: boolean;
+  listTableState: PositionsPrimaryListTableState;
+  meta: PositionsPrimaryListMeta | undefined;
+}): PositionsFirstScreenStatus | null {
+  const listLabel = tab === "bonds" ? "债券持仓" : "同业持仓";
+
+  if (datesError) {
+    return {
+      type: "error",
+      message: "可用报告日加载失败",
+      description: "当前无法确定持仓报告日，请稍后重试。",
+    };
+  }
+
+  if (listError) {
+    return {
+      type: "error",
+      message: `${listLabel}加载失败`,
+      description: "持仓请求未成功，请稍后重试。",
+    };
+  }
+
+  if (listTableState === "error") {
+    return {
+      type: "error",
+      message: `${listLabel}响应不完整`,
+      description: "当前返回内容缺少必要的数据或状态信息，请稍后重试。",
+    };
+  }
+
+  if (meta?.quality_flag === "error" || meta?.vendor_status === "vendor_unavailable") {
+    return {
+      type: "error",
+      message: `${listLabel}数据当前不可用`,
+      description: "当前返回结果未达到可用状态，请稍后重试。",
+    };
+  }
+
+  if (datesEmpty) {
+    return {
+      type: "info",
+      message: "暂无可用报告日",
+      description: "当前无法查询持仓数据。",
+    };
+  }
+
+  if (listTableState === "empty") {
+    return {
+      type: "info",
+      message: `当前报告日暂无${listLabel}数据`,
+      description: "可调整报告日或筛选条件后重试。",
+    };
+  }
+
+  const stale = meta?.quality_flag === "stale" || meta?.vendor_status === "vendor_stale";
+  if (meta?.fallback_mode === "latest_snapshot") {
+    const dateDetails = [
+      meta.requested_report_date ? `请求日期 ${meta.requested_report_date}` : null,
+      meta.resolved_report_date ? `解析日期 ${meta.resolved_report_date}` : null,
+      meta.as_of_date ? `有效日期 ${meta.as_of_date}` : null,
+      meta.fallback_date ? `回退日期 ${meta.fallback_date}` : null,
+    ].filter((item): item is string => Boolean(item));
+    return {
+      type: "warning",
+      message: stale
+        ? `${listLabel}已回退至最近可用快照，且该快照可能偏旧`
+        : `${listLabel}已回退到最近可用快照`,
+      description:
+        dateDetails.length > 0
+          ? `${dateDetails.join("，")}。`
+          : "当前使用最近可用快照，请确认数据日期后使用。",
+    };
+  }
+
+  if (stale) {
+    const effectiveDate = meta.as_of_date || meta.resolved_report_date || meta.fallback_date;
+    return {
+      type: "warning",
+      message: `${listLabel}数据可能偏旧`,
+      description: effectiveDate
+        ? `有效日期 ${effectiveDate}，请确认后使用。`
+        : "当前数据可能滞后，请确认日期后使用。",
+    };
+  }
+
+  return null;
+}
+
 function topRatingItem(items: RatingStatsResponse["items"] | undefined) {
   if (!items?.length) {
     return null;
@@ -381,20 +646,40 @@ export default function PositionsView() {
   const [customerModalOpen, setCustomerModalOpen] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<string | null>(null);
 
-  useEffect(() => {
+  const handleTabChange = (nextTab: TabKey) => {
     setPage(1);
     setSearchText("");
-    if (tab === "bonds") {
+    if (nextTab === "bonds") {
       setSelectedProductType("");
       setDirection("ALL");
     } else {
       setSelectedSubType("");
     }
-  }, [tab]);
+    setTab(nextTab);
+  };
 
-  useEffect(() => {
+  const handleReportDateChange = (nextReportDate: string) => {
     setPage(1);
-  }, [tab, selectedSubType, selectedProductType, direction, reportDate]);
+    setSelectedSubType("");
+    setSelectedProductType("");
+    setDirection("ALL");
+    setSelectedReportDate(nextReportDate);
+  };
+
+  const handleBondSubTypeChange = (nextSubType: string) => {
+    setPage(1);
+    setSelectedSubType(nextSubType === ALL_BOND_SUBTYPE ? "" : nextSubType);
+  };
+
+  const handleInterbankProductTypeChange = (nextProductType: string) => {
+    setPage(1);
+    setSelectedProductType(nextProductType === ALL_INTERBANK_PRODUCT ? "" : nextProductType);
+  };
+
+  const handleDirectionChange = (nextDirection: InterbankDirectionFilter) => {
+    setPage(1);
+    setDirection(nextDirection);
+  };
 
   const bondSubTypesQuery = useQuery({
     queryKey: ["positions", "bond-subtypes", client.mode, reportDate],
@@ -417,26 +702,22 @@ export default function PositionsView() {
   });
 
   useEffect(() => {
-    if (tab === "bonds") {
-      setSelectedSubType("");
-    } else {
-      setSelectedProductType("");
-      setDirection("ALL");
-    }
-  }, [reportDate, tab]);
+    setPage(1);
+    setSelectedSubType("");
+    setSelectedProductType("");
+    setDirection("ALL");
+  }, [reportDate]);
 
   const bondsListQuery = useQuery({
     queryKey: ["positions", "bonds-list", client.mode, reportDate, selectedSubType, page],
-    queryFn: async () => {
-      const envelope = await client.getPositionsBondsList({
+    queryFn: () =>
+      client.getPositionsBondsList({
         reportDate: reportDate || null,
         subType: selectedSubType || null,
         page,
         pageSize: PAGE_SIZE,
         includeIssued: false,
-      });
-      return envelope.result;
-    },
+      }),
     enabled: tab === "bonds" && Boolean(reportDate),
     retry: false,
   });
@@ -451,16 +732,14 @@ export default function PositionsView() {
       direction,
       page,
     ],
-    queryFn: async () => {
-      const envelope = await client.getPositionsInterbankList({
+    queryFn: () =>
+      client.getPositionsInterbankList({
         reportDate: reportDate || null,
         productType: selectedProductType || null,
         direction,
         page,
         pageSize: PAGE_SIZE,
-      });
-      return envelope.result;
-    },
+      }),
     enabled: tab === "interbank" && Boolean(reportDate),
     retry: false,
   });
@@ -499,6 +778,14 @@ export default function PositionsView() {
 
   const bondsCp = bondsCpQuery.data;
   const interbankCpSplit = interbankSplitQuery.data;
+  const bondsListEnvelope = normalizePositionsPrimaryListEnvelope<BondPositionItem>(
+    bondsListQuery.data,
+  );
+  const interbankListEnvelope = normalizePositionsPrimaryListEnvelope<InterbankPositionItem>(
+    interbankListQuery.data,
+  );
+  const bondsList = bondsListEnvelope?.result;
+  const interbankList = interbankListEnvelope?.result;
 
   const filteredBondsCpItems = useMemo(() => {
     const items = bondsCp?.items ?? [];
@@ -529,7 +816,7 @@ export default function PositionsView() {
 
   const bondsListDataSource = useMemo<BondListRow[]>(
     () =>
-      (bondsListQuery.data?.items ?? []).map((row, index) => ({
+      (bondsList?.items ?? []).map((row, index) => ({
         key: [
           page,
           index,
@@ -539,7 +826,7 @@ export default function PositionsView() {
         ].join(":"),
         ...row,
       })),
-    [bondsListQuery.data?.items, page],
+    [bondsList?.items, page],
   );
 
   const bondsListColumns = useMemo<TableColumnsType<BondListRow>>(
@@ -586,7 +873,7 @@ export default function PositionsView() {
 
   const interbankListDataSource = useMemo<InterbankListRow[]>(
     () =>
-      (interbankListQuery.data?.items ?? []).map((row, index) => ({
+      (interbankList?.items ?? []).map((row, index) => ({
         key: [
           page,
           index,
@@ -596,7 +883,7 @@ export default function PositionsView() {
         ].join(":"),
         ...row,
       })),
-    [interbankListQuery.data?.items, page],
+    [interbankList?.items, page],
   );
 
   const bondsCpDataSource = useMemo<CounterpartyRow[]>(
@@ -626,8 +913,35 @@ export default function PositionsView() {
     [filteredLiabilityItems],
   );
 
-  const currentList = tab === "bonds" ? bondsListQuery.data : interbankListQuery.data;
+  const currentListEnvelope = tab === "bonds" ? bondsListEnvelope : interbankListEnvelope;
+  const currentList = currentListEnvelope?.result;
   const listLoading = tab === "bonds" ? bondsListQuery.isLoading : interbankListQuery.isLoading;
+  const listSuccess = tab === "bonds" ? bondsListQuery.isSuccess : interbankListQuery.isSuccess;
+  const listError = tab === "bonds" ? bondsListQuery.isError : interbankListQuery.isError;
+  const listTableState = buildPositionsPrimaryListTableState({
+    reportDate,
+    datesLoading: datesQuery.isLoading,
+    datesError: datesQuery.isError,
+    listLoading,
+    listSuccess,
+    listError,
+    envelope: currentListEnvelope,
+  });
+  const currentListTotal = currentList?.total;
+  const currentListItemCount = currentList?.items.length;
+
+  useEffect(() => {
+    if (
+      page > 1 &&
+      listTableState === "blocked" &&
+      currentListTotal != null &&
+      currentListTotal > 0 &&
+      currentListItemCount === 0
+    ) {
+      setPage(1);
+    }
+  }, [currentListItemCount, currentListTotal, listTableState, page]);
+
   const totalPages = currentList ? Math.ceil(currentList.total / PAGE_SIZE) : 0;
   const canPrev = page > 1;
   const canNext = currentList ? page * PAGE_SIZE < currentList.total : false;
@@ -653,6 +967,14 @@ export default function PositionsView() {
     client.mode === "real"
       ? "positions-view__mode-pill positions-view__mode-pill--real"
       : "positions-view__mode-pill positions-view__mode-pill--mock";
+  const firstScreenStatus = buildPositionsFirstScreenStatus({
+    tab,
+    datesError: datesBlockingError,
+    datesEmpty,
+    listError,
+    listTableState,
+    meta: currentListEnvelope?.result_meta,
+  });
 
   return (
     <section className="positions-view" data-testid="positions-page">
@@ -673,6 +995,15 @@ export default function PositionsView() {
         }
         conclusion={
           <>
+            {firstScreenStatus ? (
+              <Alert
+                data-testid="positions-data-state-alert"
+                type={firstScreenStatus.type}
+                showIcon
+                message={firstScreenStatus.message}
+                description={firstScreenStatus.description}
+              />
+            ) : null}
             <Alert
               data-testid="positions-list-candidate-boundary"
               className="positions-view__candidate-boundary"
@@ -713,7 +1044,7 @@ export default function PositionsView() {
                 placeholder="选择报告日"
                 disabled={Boolean(explicitReportDate) || datesBlockingError}
                 options={dateOptions.map((d) => ({ value: d, label: d }))}
-                onChange={(v) => setSelectedReportDate(v)}
+                onChange={handleReportDateChange}
               />
             </div>
           </div>
@@ -755,13 +1086,6 @@ export default function PositionsView() {
         </FilterBar>
       </PageFilterTray>
 
-      {datesBlockingError ? (
-        <Typography.Text type="danger">无法加载资产负债可用日期，请稍后重试。</Typography.Text>
-      ) : null}
-      {datesEmpty ? (
-        <Typography.Text type="secondary">暂无可用报告日。</Typography.Text>
-      ) : null}
-
       <div className="positions-view__workspace-head">
         <div>
           <span className="positions-view__eyebrow">正式读面</span>
@@ -770,7 +1094,7 @@ export default function PositionsView() {
         <Tabs
           className="positions-view__tabs"
           activeKey={tab}
-          onChange={(k) => setTab(k as TabKey)}
+          onChange={(k) => handleTabChange(k as TabKey)}
           items={[
             { key: "bonds", label: "债券持仓" },
             { key: "interbank", label: "同业持仓" },
@@ -796,7 +1120,7 @@ export default function PositionsView() {
                       { value: ALL_BOND_SUBTYPE, label: "全部业务种类" },
                       ...(bondSubTypesQuery.data ?? []).map((s) => ({ value: s, label: s })),
                     ]}
-                    onChange={(v) => setSelectedSubType(v === ALL_BOND_SUBTYPE ? "" : v)}
+                    onChange={handleBondSubTypeChange}
                   />
                 </div>
                 <div className="positions-view__filter-field--wide">
@@ -816,18 +1140,25 @@ export default function PositionsView() {
               className="positions-view__table-card"
               title={selectedSubType || "全部债券持仓"}
               extra={
-                bondsListQuery.data ? (
+                bondsList ? (
                   <Typography.Text type="secondary">
-                    {bondsListQuery.data.total} 条 / 第 {page}/{Math.max(1, totalPages)} 页
+                    {bondsList.total} 条 / 第 {page}/{Math.max(1, totalPages)} 页
                   </Typography.Text>
                 ) : null
               }
             >
-              {listLoading ? (
-                <div className="positions-view__loading">
+              {listTableState === "loading" ? (
+                <div
+                  className="positions-view__loading"
+                  data-testid="positions-bonds-list-loading"
+                >
                   <Spin />
                 </div>
-              ) : bondsListQuery.data && bondsListQuery.data.items.length > 0 ? (
+              ) : listTableState === "error" ? (
+                <Typography.Text type="secondary" data-testid="positions-bonds-list-error">
+                  债券持仓暂不可用
+                </Typography.Text>
+              ) : listTableState === "ready" ? (
                 <>
                   <Table
                     size="small"
@@ -852,8 +1183,18 @@ export default function PositionsView() {
                     </Space>
                   ) : null}
                 </>
+              ) : listTableState === "empty" ? (
+                <Typography.Text type="secondary" data-testid="positions-bonds-list-empty">
+                  暂无数据
+                </Typography.Text>
               ) : (
-                <Typography.Text type="secondary">暂无数据</Typography.Text>
+                <Typography.Text type="secondary" data-testid="positions-bonds-list-blocked">
+                  {reportDate
+                    ? page > 1
+                      ? "当前页无明细，正在返回第一页"
+                      : "当前范围明细暂不可用"
+                    : "请先选择可用报告日"}
+                </Typography.Text>
               )}
             </Card>
           </Col>
@@ -928,7 +1269,7 @@ export default function PositionsView() {
                           label: s,
                         })),
                       ]}
-                      onChange={(v) => setSelectedProductType(v === ALL_INTERBANK_PRODUCT ? "" : v)}
+                      onChange={handleInterbankProductTypeChange}
                     />
                   </div>
                   <Button onClick={() => setInterbankFilterOpen(true)}>筛选</Button>
@@ -949,18 +1290,28 @@ export default function PositionsView() {
                 className="positions-view__table-card"
                 title={selectedProductType || "全部同业持仓"}
                 extra={
-                  interbankListQuery.data ? (
+                  interbankList ? (
                     <Typography.Text type="secondary">
-                      {interbankListQuery.data.total} 条 / 第 {page}/{Math.max(1, totalPages)} 页
+                      {interbankList.total} 条 / 第 {page}/{Math.max(1, totalPages)} 页
                     </Typography.Text>
                   ) : null
                 }
               >
-                {listLoading ? (
-                  <div className="positions-view__loading">
+                {listTableState === "loading" ? (
+                  <div
+                    className="positions-view__loading"
+                    data-testid="positions-interbank-list-loading"
+                  >
                     <Spin />
                   </div>
-                ) : interbankListQuery.data && interbankListQuery.data.items.length > 0 ? (
+                ) : listTableState === "error" ? (
+                  <Typography.Text
+                    type="secondary"
+                    data-testid="positions-interbank-list-error"
+                  >
+                    同业持仓暂不可用
+                  </Typography.Text>
+                ) : listTableState === "ready" ? (
                   <>
                     <Table
                       size="small"
@@ -985,8 +1336,21 @@ export default function PositionsView() {
                       </Space>
                     ) : null}
                   </>
+                ) : listTableState === "empty" ? (
+                  <Typography.Text type="secondary" data-testid="positions-interbank-list-empty">
+                    暂无数据
+                  </Typography.Text>
                 ) : (
-                  <Typography.Text type="secondary">暂无数据</Typography.Text>
+                  <Typography.Text
+                    type="secondary"
+                    data-testid="positions-interbank-list-blocked"
+                  >
+                    {reportDate
+                      ? page > 1
+                        ? "当前页无明细，正在返回第一页"
+                        : "当前范围明细暂不可用"
+                      : "请先选择可用报告日"}
+                  </Typography.Text>
                 )}
               </Card>
             </Col>
@@ -1102,7 +1466,7 @@ export default function PositionsView() {
               <Button
                 key="reset"
                 onClick={() => {
-                  setDirection("ALL");
+                  handleDirectionChange("ALL");
                 }}
               >
                 重置
@@ -1121,7 +1485,7 @@ export default function PositionsView() {
                 { value: "Asset", label: "资产" },
                 { value: "Liability", label: "负债" },
               ]}
-              onChange={(v) => setDirection(v as InterbankDirectionFilter)}
+              onChange={(v) => handleDirectionChange(v as InterbankDirectionFilter)}
             />
           </Modal>
         </>

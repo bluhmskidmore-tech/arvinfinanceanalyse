@@ -11,9 +11,9 @@ import ReactECharts, { type EChartsOption } from "../../lib/echarts";
 
 import { useApiClient } from "../../api/client";
 import { runPollingTask } from "../../app/jobs/polling";
-import { DataSection } from "../../components/DataSection";
 import type { DataSectionState } from "../../components/DataSection.types";
 import { FilterBar } from "../../components/FilterBar";
+import { PageDataSection } from "../../components/page/PageDataSection";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
 import { SectionLead } from "../../components/page/SectionLead";
 import type {
@@ -384,6 +384,16 @@ export default function PnlBridgePage() {
     [adapterOutput.meta, summaryState],
   );
 
+  // 去重：首屏 Alert 已给出 stale/fallback 决策级提示时，汇总区 DataSection 不再重复内部横幅
+  // （stale/fallback 分支与 ok 分支同样原样渲染 children，仅少一条横幅）；明细区不受影响，
+  // 其 DataSection 横幅仍是该区块唯一的状态信号。
+  const summaryBodyState = useMemo<DataSectionState>(() => {
+    if (firstScreenMetaNotice && (summaryState.kind === "stale" || summaryState.kind === "fallback")) {
+      return { kind: "ok" };
+    }
+    return summaryState;
+  }, [firstScreenMetaNotice, summaryState]);
+
   const reportDatePlaceholder = datesQuery.isLoading
     ? "正在载入报告日"
     : datesQuery.isError
@@ -507,9 +517,9 @@ export default function PnlBridgePage() {
             description={firstScreenMetaNotice}
           />
         ) : null}
-        <DataSection
+        <PageDataSection
           title="汇总"
-          state={summaryState}
+          state={summaryBodyState}
           onRetry={() => {
             void Promise.all([datesQuery.refetch(), bridgeQuery.refetch()]);
           }}
@@ -589,7 +599,7 @@ export default function PnlBridgePage() {
               ) : null}
             </>
           ) : null}
-        </DataSection>
+        </PageDataSection>
       </div>
 
       <div data-testid="pnl-bridge-detail-section" data-state={detailState.kind}>
@@ -598,7 +608,7 @@ export default function PnlBridgePage() {
           title="闭合明细与归因瀑布"
           description="逐行查看债券、组合、会计分类的可解释损益、实际损益和残差，用来定位没有闭合的来源。"
         />
-        <DataSection
+        <PageDataSection
           title="桥接明细"
           state={detailState}
           onRetry={() => {
@@ -618,7 +628,7 @@ export default function PnlBridgePage() {
               }
             />
           </div>
-        </DataSection>
+        </PageDataSection>
       </div>
 
       <FormalResultMetaPanel

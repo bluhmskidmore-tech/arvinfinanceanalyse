@@ -282,7 +282,10 @@ def test_executive_risk_overview_service_reads_duckdb_fact(
     signals = {item["id"]: item for item in out["result"]["signals"]}
     assert signals["duration"]["value"]["raw"] == pytest.approx(8.0)
     assert signals["leverage"]["value"]["raw"] == pytest.approx(800_000.0)
-    assert signals["credit"]["value"]["raw"] == pytest.approx(100.0)
+    # Seed data is 100% credit; pct contract stores raw as a decimal ratio (1.0),
+    # while display renders percent-points ("100.0%").
+    assert signals["credit"]["value"]["raw"] == pytest.approx(1.0)
+    assert signals["credit"]["value"]["display"] == "100.0%"
 
 
 def test_executive_contribution_service_reads_product_category_repo(

@@ -2483,7 +2483,9 @@ def executive_risk_overview(report_date: str | None = None) -> dict[str, object]
                         RiskSignal(
                             id="credit",
                             label="信用集中度",
-                            value=Numeric(raw=cred_f, unit="pct", display=f"{cred_f:.1f}%", precision=1, sign_aware=False),
+                            # cred_f is percent-points (repo SQL multiplies the share by 100);
+                            # the pct contract stores raw as a decimal ratio.
+                            value=Numeric(raw=cred_f / 100.0, unit="pct", display=f"{cred_f:.1f}%", precision=1, sign_aware=False),
                             status="warning",
                             detail=f"{asof_label}，信用类债券市值占组合市值比重。",
                         ),
