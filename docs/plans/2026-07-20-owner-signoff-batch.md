@@ -1,1 +1,288 @@
-# Owner 签核批次清单（2026-07-20）\n\n本清单只组织决策，不代替决策；任何“批准”均由 owner 在对应权威文件中落笔后生效。除非对应 `approval.md` 的边界另有明确授权，黄金样本批准不自动提升页面、指标、来源事实或 `formal_use_allowed` 状态。\n\n## 1. 临时豁免路由签核\n\n- [ ] **`/operations-analysis`** — owner：`Operations analysis owner`；exposure_class：`pending-confirmation`\n  - 签核范围原文：`Temporary mixed-source operations route remains visible only while PAGE-OPS-001 burn-down is active.`\n  - 批准即代表：接受该混合来源页面在 `PAGE-OPS-001` 收口期间继续可见，而非批准其成为正式指标事实。\n  - 批准后落笔：`docs/live_route_maturity.md` 的 Temporary Exception Signoff List 中本路由 `signoff_status` → `approved-…`。\n  - 拒绝/搁置后果：继续保持 `temporary-exception`，且不得移除混合来源边界；需推进静态/混合区块降级或移除。\n\n- [ ] **`/cross-asset`** — owner：`Market analytics owner`；exposure_class：`demo-visible`\n  - 签核范围原文：`Temporary analytical cross-asset route remains visible as non-formal linkage evidence.`\n  - 批准即代表：允许其作为非正式联动分析证据演示，不构成正式市场或债券指标认可。\n  - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。\n  - 拒绝/搁置后果：保持临时例外，并维持语义槽隔离和首屏 source-blocked 门槛。\n\n- [ ] **`/team-performance`** — owner：`Performance owner`；exposure_class：`pending-confirmation`\n  - 签核范围原文：`Temporary team contribution route remains visible as candidate performance evidence only.`\n  - 批准即代表：允许候选绩效证据继续展示，不认可为已批准 KPI 真值。\n  - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。\n  - 拒绝/搁置后果：保持临时例外；需补 PAGE 合同、指标状态和候选/正式展示规则。\n\n- [ ] **`/decision-items`** — owner：`Balance governance owner`；exposure_class：`pending-confirmation`\n  - 签核范围原文：`Temporary decision item route remains visible pending standalone read-write page contract.`\n  - 批准即代表：接受该读写路由在独立页面合同完成前临时可见。\n  - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。\n  - 拒绝/搁置后果：不得声称页面闭环；需优先补齐读/写边界、权限和状态语义合同。\n\n- [ ] **`/stock-analysis`** — owner：`Stock analysis owner`；exposure_class：`demo-visible`\n  - 签核范围原文：`Temporary stock observation route remains visible with no trading-instruction authority.`\n  - 批准即代表：允许观察页展示，但明确不授予交易指令权限。\n  - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。\n  - 拒绝/搁置后果：保持临时例外；观察页仍须维持无交易指令、无配置建议的边界。\n\n- [ ] **`/platform-config`** — owner：`Platform config owner`；exposure_class：`debug-only`\n  - 签核范围原文：`Temporary diagnostics route remains visible and must not imply data-quality approval.`\n  - 批准即代表：仅接受诊断页面可见，绝不等同数据质量批准。\n  - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。\n  - 拒绝/搁置后果：限制为调试用途；需补充将状态链接至来源的诊断合同。\n\n- [ ] **`/bond-dashboard`** — owner：`Bond dashboard owner`；exposure_class：`pending-confirmation`\n  - 签核范围原文：`Temporary candidate bond dashboard route remains visible without MTR dictionary promotion.`\n  - 批准即代表：允许候选债券看板继续展示，不批准 MTR 字典提升。\n  - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。\n  - 拒绝/搁置后果：保持候选标签；`GAP-BOND-DASH-HL` 和 `GAP-BOND-DASH-RISK` 仍须关闭。\n\n- [ ] **`/positions`** — owner：`Positions owner`；exposure_class：`pending-confirmation`\n  - 签核范围原文：`Temporary positions route remains visible with candidate list and total boundaries.`\n  - 批准即代表：允许候选持仓清单和总额继续展示，不提升为已批准真值。\n  - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。\n  - 拒绝/搁置后果：保持临时例外；需以指标/样本决策关闭 `GAP-POS-LIST`。\n\n- [ ] **`/average-balance`** — owner：`Average balance owner`；exposure_class：`pending-confirmation`\n  - 签核范围原文：`Temporary analytical balance route remains visible while formal truth stays on balance-analysis.`\n  - 批准即代表：允许分析型平均余额页面继续展示，正式余额真值仍仅归属 `/balance-analysis`。\n  - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。\n  - 拒绝/搁置后果：保持临时例外；需补 observed/LOCF/calendar-zero 口径合同。\n\n- [ ] **`/ledger-pnl`** — owner：`Ledger PnL owner`；exposure_class：`pending-confirmation`\n  - 签核范围原文：`Temporary candidate ledger PnL route remains visible without formal PnL promotion.`\n  - 批准即代表：允许候选总账 PnL 可见，不等同正式 PnL 提升。\n  - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。\n  - 拒绝/搁置后果：持续保留 candidate/pending 标签，并需补 capture-ready 样本和治理证据。\n\n- [ ] **`/bank-ledger-dashboard`** — owner：`Ledger dashboard owner`；exposure_class：`pending-confirmation`\n  - 签核范围原文：`PAGE-BANK-LEDGER-001 uses import-time rv_ledger_classification_v2, materialized UNCLASSIFIED evidence, imported currency buckets, and past-only fallback; historical backfill completed, GS-BANK-LEDGER-CLASSIFICATION-A is captured-awaiting-approval, and formal_use_allowed=false remains because owner approval, golden approval, authorized real-page UAT, and UNKNOWN remediation are pending.`\n  - 批准即代表：接受分类仪表盘的受限可见性；不批准 `formal_use_allowed`、UNKNOWN 处置或页面认证。\n  - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。\n  - 拒绝/搁置后果：保持临时例外和 `formal_use_allowed=false`；还需 owner/黄金样本批准、真实页面 UAT 与 UNKNOWN 整改。\n\n- [ ] **`/concentration-monitor`** — owner：`Risk analytics owner`；exposure_class：`pending-confirmation`\n  - 签核范围原文：`Temporary concentration route remains visible as candidate risk analytics evidence.`\n  - 批准即代表：允许候选集中度风险分析证据展示，不认可为风险真值或限额决定。\n  - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。\n  - 拒绝/搁置后果：保持临时例外；需补每区块来源、限额、单位和候选状态合同。\n\n- [ ] **`/cashflow-projection`** — owner：`Cashflow owner`；exposure_class：`pending-confirmation`\n  - 签核范围原文：`Temporary cashflow route remains visible pending liquidity PAGE contract semantics.`\n  - 批准即代表：允许流动性预测读模型暂时可见，不认可为正式流动性结论。\n  - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。\n  - 拒绝/搁置后果：保持临时例外；需补 horizon、fallback、日期基准和压力解释合同。\n\n- [ ] **`/kpi`** — owner：`KPI governance owner`；exposure_class：`pending-confirmation`\n  - 签核范围原文：`Temporary KPI route remains visible pending scoring ownership and audit-trail contract.`\n  - 批准即代表：接受 KPI 读写页面在评分归属和审计轨迹合同未完成时临时可见。\n  - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。\n  - 拒绝/搁置后果：保持临时例外；需明确 KPI 来源、写路径、评分所有权和审计轨迹。\n\n- [ ] **`/news-events`** — owner：`Market news owner`；exposure_class：`demo-visible`\n  - 签核范围原文：`Temporary news events route remains visible as analytical event context only.`\n  - 批准即代表：允许新闻事件作为分析上下文展示，不构成正式指标证据。\n  - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。\n  - 拒绝/搁置后果：保持临时例外；需补 Choice 新闻事件的分析/非正式 PAGE 合同。\n\n- [ ] **`/product-category-pnl`** — owner：`Product category PnL owner`；exposure_class：`pending-confirmation`\n  - 签核范围原文：`Temporary governed-mixed product-category route remains visible while detail gaps stay bounded.`\n  - 批准即代表：接受三项 active headline MTR 已受控、但详情扩展仍受限的页面状态。\n  - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。\n  - 拒绝/搁置后果：继续保持详情边界；不得隐式提升详情行。\n\n- [ ] **`/pnl-by-business`** — owner：`Business PnL owner`；exposure_class：`pending-confirmation`\n  - 签核范围原文：`Temporary business PnL route remains visible without product-category or ledger equivalence.`\n  - 批准即代表：允许业务 PnL 临时展示，但不认可其与产品分类或总账 PnL 等价。\n  - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。\n  - 拒绝/搁置后果：保留候选/正式调节说明，并需关闭 A/T/H 数据治理跟进项。\n\n## 2. 黄金样本审批\n\n> 每项均引用同目录 `assertions.md` 的关键断言；“批准后落笔”只指更新该样本的审批元数据，不改变其断言边界或其他治理状态。\n\n- [ ] **`GS-BAL-WORKBOOK-A`** — 保护 `balance-analysis.workbook` 工作簿结构与右侧治理区。\n  - 断言要点：HTTP 200、`basis=formal`、`result_kind=balance-analysis.workbook`、受控表键集合完整且不含 `advanced_attribution_bundle`，并含 `decision_items`/`event_calendar`/`risk_alerts`。\n  - 近期变化：2026-07-20 因余额 H-2 `currency_basis` 修复重采；USD 行按 7.2 中间价折算，`bond_assets_excluding_issue` `0.01000000 → 0.07200000`，58 个 H-2 叶子值变化。\n  - 批准后落笔：`tests/golden_samples/GS-BAL-WORKBOOK-A/approval.md` 的 `Status`、`Approver`、`Approved at`。\n\n- [ ] **`GS-LEDGER-PNL-NET-INTEREST-202606-A`** — 保护 202606 总账净利息桥及四个组件明细读取。\n  - 断言要点：三个主账文件均 `locked_match`；净利息变动 `-2.5631215418` 亿元；四项贡献精确轧平；11 位科目锚点、行集 SHA-256 与 CI 回放门槛固定。\n  - 近期变化：无单独重采记录；202605 `微贷` sheet 缺失，完整 186 项回放仍不可用。\n  - 批准后落笔：`tests/golden_samples/GS-LEDGER-PNL-NET-INTEREST-202606-A/approval.md` 的 `Status`、`Approver`，并新增 `Approved at`（当前缺失）。\n\n- [ ] **`GS-BANK-LEDGER-CLASSIFICATION-A`** — 保护 `/bank-ledger-dashboard` 与 `GET /api/ledger/dashboard?as_of_date=2026-03-17`。\n  - 断言要点：九行导入分类矩阵固定；5 个 ASSET 配对、1 个 LIABILITY 配对、3 个 UNCLASSIFIED；CNY 资产/负债/净额 `5/2/3` 亿元，覆盖率 `66.67%`，无 fallback/stale。\n  - 近期变化：无单独重采记录；`rv_ledger_classification_v2`、历史回填与 UNCLASSIFIED 证据已纳入当前样本。\n  - 批准后落笔：`tests/golden_samples/GS-BANK-LEDGER-CLASSIFICATION-A/approval.md` 的 `Status`、`Approver`、`Approval date`（该文件不用 `Approved at`）。\n\n- [ ] **`GS-STOCK-ANALYSIS-OBS-A`** — 保护 `/stock-analysis` 的 `GET /ui/market-data/livermore?as_of_date=2026-04-03`。\n  - 断言要点：分析型、`formal_use_allowed=false`；Livermore market gate 为 `PENDING_DATA`（0/4）；固定数据缺口和不支持输出清单。\n  - 近期变化：无单独重采记录；样本明确只覆盖观察 DTO，不覆盖交易或配置建议。\n  - 批准后落笔：`tests/golden_samples/GS-STOCK-ANALYSIS-OBS-A/approval.md` 的 `Status`、`Approver`、`Approved at`。\n\n- [ ] **`GS-MKT-RATES-FRAGMENT-A`** — 保护 `PAGE-MKT-001` 正式利率片段与 `GET /ui/market-data/rates`。\n  - 断言要点：正式 `market_data.rates`、`formal_use_allowed=true`；仅 stable 系列；固定 10Y/5Y 国债、10Y/5Y 国开、OMO、DR007 数值及前端无重算映射。\n  - 近期变化：无单独重采记录；边界仍为 fragment-only，不能关闭 `GAP-MKT-DATA`。\n  - 批准后落笔：`tests/golden_samples/GS-MKT-RATES-FRAGMENT-A/approval.md` 的 `Status`、`Approver`、`Approved at`。\n\n- [ ] **`GS-AVERAGE-BALANCE-MONTHLY-A`** — 保护 `/average-balance` 的 `GET /api/analysis/adb/monthly?year=2025`。\n  - 断言要点：分析型 monthly DTO、`formal_use_allowed=false`；固定 `MTR-ADB-003` YTD NIM、2025-12 月行、平均/期末余额、MoM null 语义、加权利率和单位。\n  - 近期变化：无单独重采记录；分类展示文字刻意不冻结。\n  - 批准后落笔：`tests/golden_samples/GS-AVERAGE-BALANCE-MONTHLY-A/approval.md` 的 `Status`、`Approver`、`Approved at`。\n\n- [ ] **`GS-AVERAGE-BALANCE-A`** — 保护 `/average-balance` 的 `GET /api/analysis/adb`。\n  - 断言要点：分析型 daily DTO、`formal_use_allowed=false`；固定 `MTR-ADB-001/002`、期末余额、趋势和拆分的日期/分类/方向/金额语义。\n  - 近期变化：无单独重采记录；不批准 ADB、月度 NIM 或正式余额真值。\n  - 批准后落笔：`tests/golden_samples/GS-AVERAGE-BALANCE-A/approval.md` 的 `Status`、`Approver`、`Approved at`。\n\n- [ ] **`GS-CONCENTRATION-MONITOR-A`** — 保护 `/concentration-monitor` 的 `GET /api/bond-analytics/credit-spread-migration`。\n  - 断言要点：分析型且 `formal_use_allowed=false`；固定 HHI、Top5、信用权重、AA 及以下权重、信用债计数/市值/Spread DV01；保留缺 AAA/国债曲线 warning。\n  - 近期变化：无单独重采记录；供应商不可用的 warning 样本仍是设计边界。\n  - 批准后落笔：`tests/golden_samples/GS-CONCENTRATION-MONITOR-A/approval.md` 的 `Status`、`Approver`、`Approved at`。\n\n- [ ] **`GS-CASHFLOW-PROJECTION-A`** — 保护 `/cashflow-projection` 的 `GET /api/cashflow-projection?report_date=2026-04-30`。\n  - 断言要点：分析型、warning、`formal_use_allowed=false`；固定期限缺口、资产/负债久期、1bp 敏感性、再投资风险、月度桶及到期资产，同时保持 Numeric 对象结构。\n  - 近期变化：无单独重采记录；负债剩余期限 proxy 披露必须保留。\n  - 批准后落笔：`tests/golden_samples/GS-CASHFLOW-PROJECTION-A/approval.md` 的 `Status`、`Approver`、`Approved at`。\n\n- [ ] **`GS-BOND-ANALYSIS-ACTION-ATTR-A`** — 保护 `/bond-analysis` 的 `GET /api/bond-analytics/action-attribution`。\n  - 断言要点：分析型、`formal_use_allowed=false`；固定 MoM 期间、行动数、行动 PnL、久期/DV01 变化及 `ACTION_ATTRIBUTION_HEURISTIC_NO_WIND` warning。\n  - 近期变化：无单独重采记录；不认证固定收益行动归因或其他债券面板真值。\n  - 批准后落笔：`tests/golden_samples/GS-BOND-ANALYSIS-ACTION-ATTR-A/approval.md` 的 `Status`、`Approver`、`Approved at`。\n\n- [ ] **`GS-LEDGER-PNL-SUMMARY-A`** — 保护 `/ledger-pnl` 的 `GET /api/ledger-pnl/summary?date=2026-04-30`。\n  - 断言要点：ledger basis、`formal_use_allowed=false`、CNX 默认基准；固定元级 `MTR-LPN-001~003`、资产/负债、币种及科目行，禁止叠加 CNX/CNY。\n  - 近期变化：无单独重采记录；仍是 candidate display metrics，非正式 PnL。\n  - 批准后落笔：`tests/golden_samples/GS-LEDGER-PNL-SUMMARY-A/approval.md` 的 `Status`、`Approver`，并新增 `Approved at`（当前缺失）。\n\n- [ ] **`GS-PORTFOLIO-HOME-A`** — 保护 `/portfolio` 的 `PAGE-PORTFOLIO-HOME-001` 治理边界。\n  - 断言要点：`supporting-only`，混合/观察来源、`formal_use_allowed=false`、不证明页面执行且不批准页面/指标；固定决策锚点和风险日期为 2026-05-31。\n  - 近期变化：无单独重采记录；该包刻意不属于 capture-ready。\n  - 批准后落笔：需先在 `tests/golden_samples/GS-PORTFOLIO-HOME-A/approval.md` 明确此 supporting-only 样本是否可转入审批状态；当前仅有 `Status=supporting-only`、`Approver=TBD`，且缺 `Approved at`，不应直接推断目标状态。\n\n- [ ] **`GS-PNL-ATTR-WB-A`** — 保护 `/pnl-attribution` 的 `GET /api/pnl-attribution/volume-rate`。\n  - 断言要点：正式 `pnl_attribution.volume_rate`、`formal_use_allowed=true`；固定当期/上期 PnL、收益率、量/价/交互效应和 Numeric 对象结构。\n  - 近期变化：无单独重采记录；不冻结 advanced、Campisi 或其他 attribution 页面。\n  - 批准后落笔：`tests/golden_samples/GS-PNL-ATTR-WB-A/approval.md` 的 `Status`、`Approver`，并新增 `Approved at`（当前缺失）。\n\n- [ ] **`GS-BOND-HEADLINE-A`** — 保护 `/bond-dashboard` 的 `GET /api/bond-dashboard/headline-kpis?report_date=2026-03-31`。\n  - 断言要点：分析型、`formal_use_allowed=false`；固定当前/前日 headline KPI 的 Numeric 单位、数值及空数据行为。\n  - 近期变化：无单独重采记录；不批准新的债券 headline/risk MTR 绑定。\n  - 批准后落笔：`tests/golden_samples/GS-BOND-HEADLINE-A/approval.md` 的 `Status`、`Approver`，并新增 `Approved at`（当前缺失）。\n\n- [ ] **`GS-PROD-CAT-PNL-A`** — 保护 `/product-category-pnl` 的受控月度页面结果。\n  - 断言要点：正式 `product_category_pnl.detail`；固定报告日/视图、FTP 基线、分类树、资产+负债=总额；覆盖 `MTR-PCP-001~012` 已列绑定及独立的情景探针边界。\n  - 近期变化：无单独重采记录；任何行权威、总额语义或分类树变动均须合同复审。\n  - 批准后落笔：`tests/golden_samples/GS-PROD-CAT-PNL-A/approval.md` 的 `Status`、`Approver`、`Approved at`。\n\n- [ ] **`GS-RISK-WARN-B`** — 保护 `/risk-tensor` 的降级快照 warning 语义。\n  - 断言要点：正式 risk tensor 但 `quality_flag=warning`；固定非标准期限重映射、缺到期日、排除久期口径及五个物化风险字段不得走读取时 fallback。\n  - 近期变化：无单独重采记录；该样本冻结 warning，不替代正常风险样本。\n  - 批准后落笔：`tests/golden_samples/GS-RISK-WARN-B/approval.md` 的 `Status`、`Approver`、`Approved at`。\n\n- [ ] **`GS-RISK-A`** — 保护 `/risk-tensor` 的正式风险张量。\n  - 断言要点：正式 `risk.tensor`、质量 `ok`；固定风险物化来源/版本、报告日、关键 `MTR-RSK` 值、DV01/市值/久期一致性及未批准派生字段排除。\n  - 近期变化：无单独重采记录；DV01/KRD/CS01/凸性/流动性变动属于高风险合同变更。\n  - 批准后落笔：`tests/golden_samples/GS-RISK-A/approval.md` 的 `Status`、`Approver`、`Approved at`。\n\n- [ ] **`GS-PNL-OVERVIEW-A`** — 保护 `/pnl` 的正式 PnL overview。\n  - 断言要点：正式 `pnl.overview`；固定来源/规则/缓存版本、报告日和 `MTR-PNL-001~005` 及状态指标，并与数据样本轧平。\n  - 近期变化：无单独重采记录；514/516/517、手工调整或总额变动须合同复审。\n  - 批准后落笔：`tests/golden_samples/GS-PNL-OVERVIEW-A/approval.md` 的 `Status`、`Approver`、`Approved at`。\n\n- [ ] **`GS-PNL-DATA-A`** — 保护 `/pnl` overview-to-data 对账载荷。\n  - 断言要点：正式基准、报告日 2025-12-31；一条 formal FI 与一条非标桥接行，保留 `MTR-PNL-001~005/103/104` 字段并与 overview 汇总轧平。\n  - 近期变化：无单独重采记录；审批不能扩大为对偶然返回排序的认可。\n  - 批准后落笔：`tests/golden_samples/GS-PNL-DATA-A/approval.md` 的 `Status`、`Approver`、`Approved at`。\n\n- [ ] **`GS-EXEC-SUMMARY-A`** — 保护 executive summary 的分析性管理摘要。\n  - 断言要点：分析型、`formal_use_allowed=false`、报告日 2026-02-28；固定标题“本周管理摘要”、三条要点及收益/风险/建议标签。\n  - 近期变化：无单独重采记录；属于 narrative-only，须与 executive overview 血缘保持一致。\n  - 批准后落笔：`tests/golden_samples/GS-EXEC-SUMMARY-A/approval.md` 的 `Status`、`Approver`、`Approved at`。\n\n- [ ] **`GS-EXEC-PNL-ATTR-A`** — 保护 executive PnL attribution overlay。\n  - 断言要点：分析型、`formal_use_allowed=false`；固定“经营贡献拆解”、`MTR-EXEC-101` 和 carry/roll/credit/trading/other 分段。\n  - 近期变化：无单独重采记录；仅与 PnL overview/bridge 做方向性对账，不构成正式 bridge 真值。\n  - 批准后落笔：`tests/golden_samples/GS-EXEC-PNL-ATTR-A/approval.md` 的 `Status`、`Approver`、`Approved at`。\n\n- [ ] **`GS-BAL-OVERVIEW-A`** — 保护 `/balance-analysis` 的正式余额总览。\n  - 断言要点：正式、`formal_use_allowed=true`、CNY basis；固定来源/规则/缓存版本、报告日、`MTR-BAL-001/002/003/101/102`，并与工作簿样本对账。\n  - 近期变化：无单独重采记录；值变动须同时复审指标字典、页面合同与余额 API 测试。\n  - 批准后落笔：`tests/golden_samples/GS-BAL-OVERVIEW-A/approval.md` 的 `Status`、`Approver`、`Approved at`。\n\n- [ ] **`GS-BRIDGE-WARN-B`** — 保护 `/pnl-bridge` 的 warning-profile bridge。\n  - 断言要点：正式 `pnl.bridge`；固定来源/规则版本、余额回溯 warning、期初/期末市值、已解释/实际 PnL 和零残差。\n  - 近期变化：无单独重采记录；该样本专门冻结 warning 语义，须与 `GS-BRIDGE-A` 对账。\n  - 批准后落笔：`tests/golden_samples/GS-BRIDGE-WARN-B/approval.md` 的 `Status`、`Approver`、`Approved at`。\n\n- [ ] **`GS-BRIDGE-A`** — 保护 `/pnl-bridge` 的当前正式 bridge 行为。\n  - 断言要点：正式 `pnl.bridge`、单工具行；固定 `MTR-BRG-003/008~013`、行数和 phase-3 partial-delivery warning。\n  - 近期变化：无单独重采记录；当前 warning-profile 是有效输出，不能重写成“全绿”样本。\n  - 批准后落笔：`tests/golden_samples/GS-BRIDGE-A/approval.md` 的 `Status`、`Approver`、`Approved at`。\n\n- [ ] **`GS-EXEC-OVERVIEW-A`** — 保护 executive overview 的分析性经营总览。\n  - 断言要点：分析型、`formal_use_allowed=false`；固定四项指标的标题、口径标签/说明和 `MTR-EXEC-001~004`，并与风险张量做方向性对账。\n  - 近期变化：无单独重采记录；不是正式来源真值样本。\n  - 批准后落笔：`tests/golden_samples/GS-EXEC-OVERVIEW-A/approval.md` 的 `Status`、`Approver`、`Approved at`。\n\n## 3. 过期 `review_date` 清单\n\n以下登记表日期均早于 2026-07-20；建议先复审临时例外与候选路由，其他 live 路由可按原治理边界顺延并记录新的复审日期。\n\n| 路由 | 原定日期 | 建议动作 |\n| --- | --- | --- |\n| `/` | 2026-06-15 | 复审 |\n| `/operations-analysis` | 2026-06-07 | 复审 |\n| `/bond-analysis` | 2026-06-15 | 复审 |\n| `/bond-trading-desk` | 2026-06-15 | 顺延/复审 |\n| `/cross-asset` | 2026-07-09 | 复审 |\n| `/team-performance` | 2026-06-14 | 复审 |\n| `/decision-items` | 2026-06-07 | 复审 |\n| `/portfolio` | 2026-06-15 | 顺延/复审 |\n| `/balance-analysis` | 2026-06-15 | 顺延/复审 |\n| `/balance-movement-analysis` | 2026-06-15 | 顺延/复审 |\n| `/liability-analytics` | 2026-06-15 | 顺延/复审 |\n| `/market-overview` | 2026-06-15 | 顺延/复审 |\n| `/market-data` | 2026-06-15 | 顺延/复审 |\n| `/macro-observation` | 2026-06-15 | 顺延/复审 |\n| `/macro-toolkit` | 2026-06-15 | 顺延/复审 |\n| `/cube-query` | 2026-06-15 | 顺延/复审 |\n| `/stock-analysis` | 2026-07-16 | 复审 |\n| `/platform-config` | 2026-06-14 | 复审 |\n| `/bond-dashboard` | 2026-06-07 | 复审 |\n| `/positions` | 2026-06-07 | 复审 |\n| `/average-balance` | 2026-06-14 | 复审 |\n| `/ledger-pnl` | 2026-06-14 | 复审 |\n| `/bank-ledger-dashboard` | 2026-07-12 | 复审 |\n| `/risk-overview` | 2026-06-15 | 顺延/复审 |\n| `/risk-tensor` | 2026-06-15 | 顺延/复审 |\n| `/concentration-monitor` | 2026-06-14 | 复审 |\n| `/cashflow-projection` | 2026-06-14 | 复审 |\n| `/performance` | 2026-06-15 | 顺延/复审 |\n| `/kpi` | 2026-06-14 | 复审 |\n| `/news-events` | 2026-06-14 | 复审 |\n| `/product-category-pnl` | 2026-06-07 | 复审 |\n| `/pnl` | 2026-06-15 | 顺延/复审 |\n| `/pnl-bridge` | 2026-06-15 | 顺延/复审 |\n| `/pnl-attribution` | 2026-06-15 | 顺延/复审 |\n| `/pnl-by-business` | 2026-06-15 | 复审 |\n| `/pnl-by-business-insights` | 2026-07-16 | 顺延/复审 |\n| `/reports` | 2026-06-15 | 顺延/复审 |\n| `/agent` | 2026-06-15 | 顺延/复审 |\n\n## 4. 记录口径与待决异常\n\n- Temporary Exception Signoff List 实际有 17 条待 owner 审核路由，非“约 10 条”；本批次未省略任何 `pending-owner-review` 条目。\n- 25 个样本满足“`Status: captured-awaiting-approval` 或 `Approver: TBD`”条件；`GS-PNL-BUSINESS-INSIGHTS-A` 已为 `approved`，不纳入本批次。\n- `GS-BANK-LEDGER-CLASSIFICATION-A` 使用字段名 `Approval date`，与多数样本的 `Approved at` 不一致；`GS-LEDGER-PNL-NET-INTEREST-202606-A`、`GS-LEDGER-PNL-SUMMARY-A`、`GS-PNL-ATTR-WB-A`、`GS-BOND-HEADLINE-A` 未提供批准时间字段。\n- `GS-PORTFOLIO-HOME-A` 是 `supporting-only` 而非 capture-ready，尽管 `Approver: TBD` 使其被纳入扫描结果；其 `approval.md` 没有定义可直接采用的批准目标状态，需先由 owner 明确是否进入审批流。\n
+# Owner 签核批次清单（2026-07-20）
+
+本清单只组织决策，不代替决策；任何“批准”均由 owner 在对应权威文件中落笔后生效。除非对应 `approval.md` 的边界另有明确授权，黄金样本批准不自动提升页面、指标、来源事实或 `formal_use_allowed` 状态。
+
+## 1. 临时豁免路由签核
+
+- [ ] **`/operations-analysis`** — owner：`Operations analysis owner`；exposure_class：`pending-confirmation`
+  - 签核范围原文：`Temporary mixed-source operations route remains visible only while PAGE-OPS-001 burn-down is active.`
+  - 批准即代表：接受该混合来源页面在 `PAGE-OPS-001` 收口期间继续可见，而非批准其成为正式指标事实。
+  - 批准后落笔：`docs/live_route_maturity.md` 的 Temporary Exception Signoff List 中本路由 `signoff_status` → `approved-…`。
+  - 拒绝/搁置后果：继续保持 `temporary-exception`，且不得移除混合来源边界；需推进静态/混合区块降级或移除。
+
+- [ ] **`/cross-asset`** — owner：`Market analytics owner`；exposure_class：`demo-visible`
+  - 签核范围原文：`Temporary analytical cross-asset route remains visible as non-formal linkage evidence.`
+  - 批准即代表：允许其作为非正式联动分析证据演示，不构成正式市场或债券指标认可。
+  - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。
+  - 拒绝/搁置后果：保持临时例外，并维持语义槽隔离和首屏 source-blocked 门槛。
+
+- [ ] **`/team-performance`** — owner：`Performance owner`；exposure_class：`pending-confirmation`
+  - 签核范围原文：`Temporary team contribution route remains visible as candidate performance evidence only.`
+  - 批准即代表：允许候选绩效证据继续展示，不认可为已批准 KPI 真值。
+  - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。
+  - 拒绝/搁置后果：保持临时例外；需补 PAGE 合同、指标状态和候选/正式展示规则。
+
+- [ ] **`/decision-items`** — owner：`Balance governance owner`；exposure_class：`pending-confirmation`
+  - 签核范围原文：`Temporary decision item route remains visible pending standalone read-write page contract.`
+  - 批准即代表：接受该读写路由在独立页面合同完成前临时可见。
+  - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。
+  - 拒绝/搁置后果：不得声称页面闭环；需优先补齐读/写边界、权限和状态语义合同。
+
+- [ ] **`/stock-analysis`** — owner：`Stock analysis owner`；exposure_class：`demo-visible`
+  - 签核范围原文：`Temporary stock observation route remains visible with no trading-instruction authority.`
+  - 批准即代表：允许观察页展示，但明确不授予交易指令权限。
+  - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。
+  - 拒绝/搁置后果：保持临时例外；观察页仍须维持无交易指令、无配置建议的边界。
+
+- [ ] **`/platform-config`** — owner：`Platform config owner`；exposure_class：`debug-only`
+  - 签核范围原文：`Temporary diagnostics route remains visible and must not imply data-quality approval.`
+  - 批准即代表：仅接受诊断页面可见，绝不等同数据质量批准。
+  - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。
+  - 拒绝/搁置后果：限制为调试用途；需补充将状态链接至来源的诊断合同。
+
+- [ ] **`/bond-dashboard`** — owner：`Bond dashboard owner`；exposure_class：`pending-confirmation`
+  - 签核范围原文：`Temporary candidate bond dashboard route remains visible without MTR dictionary promotion.`
+  - 批准即代表：允许候选债券看板继续展示，不批准 MTR 字典提升。
+  - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。
+  - 拒绝/搁置后果：保持候选标签；`GAP-BOND-DASH-HL` 和 `GAP-BOND-DASH-RISK` 仍须关闭。
+
+- [ ] **`/positions`** — owner：`Positions owner`；exposure_class：`pending-confirmation`
+  - 签核范围原文：`Temporary positions route remains visible with candidate list and total boundaries.`
+  - 批准即代表：允许候选持仓清单和总额继续展示，不提升为已批准真值。
+  - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。
+  - 拒绝/搁置后果：保持临时例外；需以指标/样本决策关闭 `GAP-POS-LIST`。
+
+- [ ] **`/average-balance`** — owner：`Average balance owner`；exposure_class：`pending-confirmation`
+  - 签核范围原文：`Temporary analytical balance route remains visible while formal truth stays on balance-analysis.`
+  - 批准即代表：允许分析型平均余额页面继续展示，正式余额真值仍仅归属 `/balance-analysis`。
+  - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。
+  - 拒绝/搁置后果：保持临时例外；需补 observed/LOCF/calendar-zero 口径合同。
+
+- [ ] **`/ledger-pnl`** — owner：`Ledger PnL owner`；exposure_class：`pending-confirmation`
+  - 签核范围原文：`Temporary candidate ledger PnL route remains visible without formal PnL promotion.`
+  - 批准即代表：允许候选总账 PnL 可见，不等同正式 PnL 提升。
+  - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。
+  - 拒绝/搁置后果：持续保留 candidate/pending 标签，并需补 capture-ready 样本和治理证据。
+
+- [ ] **`/bank-ledger-dashboard`** — owner：`Ledger dashboard owner`；exposure_class：`pending-confirmation`
+  - 签核范围原文：`PAGE-BANK-LEDGER-001 uses import-time rv_ledger_classification_v2, materialized UNCLASSIFIED evidence, imported currency buckets, and past-only fallback; historical backfill completed, GS-BANK-LEDGER-CLASSIFICATION-A is captured-awaiting-approval, and formal_use_allowed=false remains because owner approval, golden approval, authorized real-page UAT, and UNKNOWN remediation are pending.`
+  - 批准即代表：接受分类仪表盘的受限可见性；不批准 `formal_use_allowed`、UNKNOWN 处置或页面认证。
+  - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。
+  - 拒绝/搁置后果：保持临时例外和 `formal_use_allowed=false`；还需 owner/黄金样本批准、真实页面 UAT 与 UNKNOWN 整改。
+
+- [ ] **`/concentration-monitor`** — owner：`Risk analytics owner`；exposure_class：`pending-confirmation`
+  - 签核范围原文：`Temporary concentration route remains visible as candidate risk analytics evidence.`
+  - 批准即代表：允许候选集中度风险分析证据展示，不认可为风险真值或限额决定。
+  - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。
+  - 拒绝/搁置后果：保持临时例外；需补每区块来源、限额、单位和候选状态合同。
+
+- [ ] **`/cashflow-projection`** — owner：`Cashflow owner`；exposure_class：`pending-confirmation`
+  - 签核范围原文：`Temporary cashflow route remains visible pending liquidity PAGE contract semantics.`
+  - 批准即代表：允许流动性预测读模型暂时可见，不认可为正式流动性结论。
+  - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。
+  - 拒绝/搁置后果：保持临时例外；需补 horizon、fallback、日期基准和压力解释合同。
+
+- [ ] **`/kpi`** — owner：`KPI governance owner`；exposure_class：`pending-confirmation`
+  - 签核范围原文：`Temporary KPI route remains visible pending scoring ownership and audit-trail contract.`
+  - 批准即代表：接受 KPI 读写页面在评分归属和审计轨迹合同未完成时临时可见。
+  - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。
+  - 拒绝/搁置后果：保持临时例外；需明确 KPI 来源、写路径、评分所有权和审计轨迹。
+
+- [ ] **`/news-events`** — owner：`Market news owner`；exposure_class：`demo-visible`
+  - 签核范围原文：`Temporary news events route remains visible as analytical event context only.`
+  - 批准即代表：允许新闻事件作为分析上下文展示，不构成正式指标证据。
+  - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。
+  - 拒绝/搁置后果：保持临时例外；需补 Choice 新闻事件的分析/非正式 PAGE 合同。
+
+- [ ] **`/product-category-pnl`** — owner：`Product category PnL owner`；exposure_class：`pending-confirmation`
+  - 签核范围原文：`Temporary governed-mixed product-category route remains visible while detail gaps stay bounded.`
+  - 批准即代表：接受三项 active headline MTR 已受控、但详情扩展仍受限的页面状态。
+  - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。
+  - 拒绝/搁置后果：继续保持详情边界；不得隐式提升详情行。
+
+- [ ] **`/pnl-by-business`** — owner：`Business PnL owner`；exposure_class：`pending-confirmation`
+  - 签核范围原文：`Temporary business PnL route remains visible without product-category or ledger equivalence.`
+  - 批准即代表：允许业务 PnL 临时展示，但不认可其与产品分类或总账 PnL 等价。
+  - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。
+  - 拒绝/搁置后果：保留候选/正式调节说明，并需关闭 A/T/H 数据治理跟进项。
+
+## 2. 黄金样本审批
+
+> 每项均引用同目录 `assertions.md` 的关键断言；“批准后落笔”只指更新该样本的审批元数据，不改变其断言边界或其他治理状态。
+
+- [ ] **`GS-BAL-WORKBOOK-A`** — 保护 `balance-analysis.workbook` 工作簿结构与右侧治理区。
+  - 断言要点：HTTP 200、`basis=formal`、`result_kind=balance-analysis.workbook`、受控表键集合完整且不含 `advanced_attribution_bundle`，并含 `decision_items`/`event_calendar`/`risk_alerts`。
+  - 近期变化：2026-07-20 因余额 H-2 `currency_basis` 修复重采；USD 行按 7.2 中间价折算，`bond_assets_excluding_issue` `0.01000000 → 0.07200000`，58 个 H-2 叶子值变化。
+  - 批准后落笔：`tests/golden_samples/GS-BAL-WORKBOOK-A/approval.md` 的 `Status`、`Approver`、`Approved at`。
+
+- [ ] **`GS-LEDGER-PNL-NET-INTEREST-202606-A`** — 保护 202606 总账净利息桥及四个组件明细读取。
+  - 断言要点：三个主账文件均 `locked_match`；净利息变动 `-2.5631215418` 亿元；四项贡献精确轧平；11 位科目锚点、行集 SHA-256 与 CI 回放门槛固定。
+  - 近期变化：无单独重采记录；202605 `微贷` sheet 缺失，完整 186 项回放仍不可用。
+  - 批准后落笔：`tests/golden_samples/GS-LEDGER-PNL-NET-INTEREST-202606-A/approval.md` 的 `Status`、`Approver`，并新增 `Approved at`（当前缺失）。
+
+- [ ] **`GS-BANK-LEDGER-CLASSIFICATION-A`** — 保护 `/bank-ledger-dashboard` 与 `GET /api/ledger/dashboard?as_of_date=2026-03-17`。
+  - 断言要点：九行导入分类矩阵固定；5 个 ASSET 配对、1 个 LIABILITY 配对、3 个 UNCLASSIFIED；CNY 资产/负债/净额 `5/2/3` 亿元，覆盖率 `66.67%`，无 fallback/stale。
+  - 近期变化：无单独重采记录；`rv_ledger_classification_v2`、历史回填与 UNCLASSIFIED 证据已纳入当前样本。
+  - 批准后落笔：`tests/golden_samples/GS-BANK-LEDGER-CLASSIFICATION-A/approval.md` 的 `Status`、`Approver`、`Approval date`（该文件不用 `Approved at`）。
+
+- [ ] **`GS-STOCK-ANALYSIS-OBS-A`** — 保护 `/stock-analysis` 的 `GET /ui/market-data/livermore?as_of_date=2026-04-03`。
+  - 断言要点：分析型、`formal_use_allowed=false`；Livermore market gate 为 `PENDING_DATA`（0/4）；固定数据缺口和不支持输出清单。
+  - 近期变化：无单独重采记录；样本明确只覆盖观察 DTO，不覆盖交易或配置建议。
+  - 批准后落笔：`tests/golden_samples/GS-STOCK-ANALYSIS-OBS-A/approval.md` 的 `Status`、`Approver`、`Approved at`。
+
+- [ ] **`GS-MKT-RATES-FRAGMENT-A`** — 保护 `PAGE-MKT-001` 正式利率片段与 `GET /ui/market-data/rates`。
+  - 断言要点：正式 `market_data.rates`、`formal_use_allowed=true`；仅 stable 系列；固定 10Y/5Y 国债、10Y/5Y 国开、OMO、DR007 数值及前端无重算映射。
+  - 近期变化：无单独重采记录；边界仍为 fragment-only，不能关闭 `GAP-MKT-DATA`。
+  - 批准后落笔：`tests/golden_samples/GS-MKT-RATES-FRAGMENT-A/approval.md` 的 `Status`、`Approver`、`Approved at`。
+
+- [ ] **`GS-AVERAGE-BALANCE-MONTHLY-A`** — 保护 `/average-balance` 的 `GET /api/analysis/adb/monthly?year=2025`。
+  - 断言要点：分析型 monthly DTO、`formal_use_allowed=false`；固定 `MTR-ADB-003` YTD NIM、2025-12 月行、平均/期末余额、MoM null 语义、加权利率和单位。
+  - 近期变化：无单独重采记录；分类展示文字刻意不冻结。
+  - 批准后落笔：`tests/golden_samples/GS-AVERAGE-BALANCE-MONTHLY-A/approval.md` 的 `Status`、`Approver`、`Approved at`。
+
+- [ ] **`GS-AVERAGE-BALANCE-A`** — 保护 `/average-balance` 的 `GET /api/analysis/adb`。
+  - 断言要点：分析型 daily DTO、`formal_use_allowed=false`；固定 `MTR-ADB-001/002`、期末余额、趋势和拆分的日期/分类/方向/金额语义。
+  - 近期变化：无单独重采记录；不批准 ADB、月度 NIM 或正式余额真值。
+  - 批准后落笔：`tests/golden_samples/GS-AVERAGE-BALANCE-A/approval.md` 的 `Status`、`Approver`、`Approved at`。
+
+- [ ] **`GS-CONCENTRATION-MONITOR-A`** — 保护 `/concentration-monitor` 的 `GET /api/bond-analytics/credit-spread-migration`。
+  - 断言要点：分析型且 `formal_use_allowed=false`；固定 HHI、Top5、信用权重、AA 及以下权重、信用债计数/市值/Spread DV01；保留缺 AAA/国债曲线 warning。
+  - 近期变化：无单独重采记录；供应商不可用的 warning 样本仍是设计边界。
+  - 批准后落笔：`tests/golden_samples/GS-CONCENTRATION-MONITOR-A/approval.md` 的 `Status`、`Approver`、`Approved at`。
+
+- [ ] **`GS-CASHFLOW-PROJECTION-A`** — 保护 `/cashflow-projection` 的 `GET /api/cashflow-projection?report_date=2026-04-30`。
+  - 断言要点：分析型、warning、`formal_use_allowed=false`；固定期限缺口、资产/负债久期、1bp 敏感性、再投资风险、月度桶及到期资产，同时保持 Numeric 对象结构。
+  - 近期变化：无单独重采记录；负债剩余期限 proxy 披露必须保留。
+  - 批准后落笔：`tests/golden_samples/GS-CASHFLOW-PROJECTION-A/approval.md` 的 `Status`、`Approver`、`Approved at`。
+
+- [ ] **`GS-BOND-ANALYSIS-ACTION-ATTR-A`** — 保护 `/bond-analysis` 的 `GET /api/bond-analytics/action-attribution`。
+  - 断言要点：分析型、`formal_use_allowed=false`；固定 MoM 期间、行动数、行动 PnL、久期/DV01 变化及 `ACTION_ATTRIBUTION_HEURISTIC_NO_WIND` warning。
+  - 近期变化：无单独重采记录；不认证固定收益行动归因或其他债券面板真值。
+  - 批准后落笔：`tests/golden_samples/GS-BOND-ANALYSIS-ACTION-ATTR-A/approval.md` 的 `Status`、`Approver`、`Approved at`。
+
+- [ ] **`GS-LEDGER-PNL-SUMMARY-A`** — 保护 `/ledger-pnl` 的 `GET /api/ledger-pnl/summary?date=2026-04-30`。
+  - 断言要点：ledger basis、`formal_use_allowed=false`、CNX 默认基准；固定元级 `MTR-LPN-001~003`、资产/负债、币种及科目行，禁止叠加 CNX/CNY。
+  - 近期变化：无单独重采记录；仍是 candidate display metrics，非正式 PnL。
+  - 批准后落笔：`tests/golden_samples/GS-LEDGER-PNL-SUMMARY-A/approval.md` 的 `Status`、`Approver`，并新增 `Approved at`（当前缺失）。
+
+- [ ] **`GS-PORTFOLIO-HOME-A`** — 保护 `/portfolio` 的 `PAGE-PORTFOLIO-HOME-001` 治理边界。
+  - 断言要点：`supporting-only`，混合/观察来源、`formal_use_allowed=false`、不证明页面执行且不批准页面/指标；固定决策锚点和风险日期为 2026-05-31。
+  - 近期变化：无单独重采记录；该包刻意不属于 capture-ready。
+  - 批准后落笔：需先在 `tests/golden_samples/GS-PORTFOLIO-HOME-A/approval.md` 明确此 supporting-only 样本是否可转入审批状态；当前仅有 `Status=supporting-only`、`Approver=TBD`，且缺 `Approved at`，不应直接推断目标状态。
+
+- [ ] **`GS-PNL-ATTR-WB-A`** — 保护 `/pnl-attribution` 的 `GET /api/pnl-attribution/volume-rate`。
+  - 断言要点：正式 `pnl_attribution.volume_rate`、`formal_use_allowed=true`；固定当期/上期 PnL、收益率、量/价/交互效应和 Numeric 对象结构。
+  - 近期变化：无单独重采记录；不冻结 advanced、Campisi 或其他 attribution 页面。
+  - 批准后落笔：`tests/golden_samples/GS-PNL-ATTR-WB-A/approval.md` 的 `Status`、`Approver`，并新增 `Approved at`（当前缺失）。
+
+- [ ] **`GS-BOND-HEADLINE-A`** — 保护 `/bond-dashboard` 的 `GET /api/bond-dashboard/headline-kpis?report_date=2026-03-31`。
+  - 断言要点：分析型、`formal_use_allowed=false`；固定当前/前日 headline KPI 的 Numeric 单位、数值及空数据行为。
+  - 近期变化：无单独重采记录；不批准新的债券 headline/risk MTR 绑定。
+  - 批准后落笔：`tests/golden_samples/GS-BOND-HEADLINE-A/approval.md` 的 `Status`、`Approver`，并新增 `Approved at`（当前缺失）。
+
+- [ ] **`GS-PROD-CAT-PNL-A`** — 保护 `/product-category-pnl` 的受控月度页面结果。
+  - 断言要点：正式 `product_category_pnl.detail`；固定报告日/视图、FTP 基线、分类树、资产+负债=总额；覆盖 `MTR-PCP-001~012` 已列绑定及独立的情景探针边界。
+  - 近期变化：无单独重采记录；任何行权威、总额语义或分类树变动均须合同复审。
+  - 批准后落笔：`tests/golden_samples/GS-PROD-CAT-PNL-A/approval.md` 的 `Status`、`Approver`、`Approved at`。
+
+- [ ] **`GS-RISK-WARN-B`** — 保护 `/risk-tensor` 的降级快照 warning 语义。
+  - 断言要点：正式 risk tensor 但 `quality_flag=warning`；固定非标准期限重映射、缺到期日、排除久期口径及五个物化风险字段不得走读取时 fallback。
+  - 近期变化：无单独重采记录；该样本冻结 warning，不替代正常风险样本。
+  - 批准后落笔：`tests/golden_samples/GS-RISK-WARN-B/approval.md` 的 `Status`、`Approver`、`Approved at`。
+
+- [ ] **`GS-RISK-A`** — 保护 `/risk-tensor` 的正式风险张量。
+  - 断言要点：正式 `risk.tensor`、质量 `ok`；固定风险物化来源/版本、报告日、关键 `MTR-RSK` 值、DV01/市值/久期一致性及未批准派生字段排除。
+  - 近期变化：无单独重采记录；DV01/KRD/CS01/凸性/流动性变动属于高风险合同变更。
+  - 批准后落笔：`tests/golden_samples/GS-RISK-A/approval.md` 的 `Status`、`Approver`、`Approved at`。
+
+- [ ] **`GS-PNL-OVERVIEW-A`** — 保护 `/pnl` 的正式 PnL overview。
+  - 断言要点：正式 `pnl.overview`；固定来源/规则/缓存版本、报告日和 `MTR-PNL-001~005` 及状态指标，并与数据样本轧平。
+  - 近期变化：无单独重采记录；514/516/517、手工调整或总额变动须合同复审。
+  - 批准后落笔：`tests/golden_samples/GS-PNL-OVERVIEW-A/approval.md` 的 `Status`、`Approver`、`Approved at`。
+
+- [ ] **`GS-PNL-DATA-A`** — 保护 `/pnl` overview-to-data 对账载荷。
+  - 断言要点：正式基准、报告日 2025-12-31；一条 formal FI 与一条非标桥接行，保留 `MTR-PNL-001~005/103/104` 字段并与 overview 汇总轧平。
+  - 近期变化：无单独重采记录；审批不能扩大为对偶然返回排序的认可。
+  - 批准后落笔：`tests/golden_samples/GS-PNL-DATA-A/approval.md` 的 `Status`、`Approver`、`Approved at`。
+
+- [ ] **`GS-EXEC-SUMMARY-A`** — 保护 executive summary 的分析性管理摘要。
+  - 断言要点：分析型、`formal_use_allowed=false`、报告日 2026-02-28；固定标题“本周管理摘要”、三条要点及收益/风险/建议标签。
+  - 近期变化：无单独重采记录；属于 narrative-only，须与 executive overview 血缘保持一致。
+  - 批准后落笔：`tests/golden_samples/GS-EXEC-SUMMARY-A/approval.md` 的 `Status`、`Approver`、`Approved at`。
+
+- [ ] **`GS-EXEC-PNL-ATTR-A`** — 保护 executive PnL attribution overlay。
+  - 断言要点：分析型、`formal_use_allowed=false`；固定“经营贡献拆解”、`MTR-EXEC-101` 和 carry/roll/credit/trading/other 分段。
+  - 近期变化：无单独重采记录；仅与 PnL overview/bridge 做方向性对账，不构成正式 bridge 真值。
+  - 批准后落笔：`tests/golden_samples/GS-EXEC-PNL-ATTR-A/approval.md` 的 `Status`、`Approver`、`Approved at`。
+
+- [ ] **`GS-BAL-OVERVIEW-A`** — 保护 `/balance-analysis` 的正式余额总览。
+  - 断言要点：正式、`formal_use_allowed=true`、CNY basis；固定来源/规则/缓存版本、报告日、`MTR-BAL-001/002/003/101/102`，并与工作簿样本对账。
+  - 近期变化：无单独重采记录；值变动须同时复审指标字典、页面合同与余额 API 测试。
+  - 批准后落笔：`tests/golden_samples/GS-BAL-OVERVIEW-A/approval.md` 的 `Status`、`Approver`、`Approved at`。
+
+- [ ] **`GS-BRIDGE-WARN-B`** — 保护 `/pnl-bridge` 的 warning-profile bridge。
+  - 断言要点：正式 `pnl.bridge`；固定来源/规则版本、余额回溯 warning、期初/期末市值、已解释/实际 PnL 和零残差。
+  - 近期变化：无单独重采记录；该样本专门冻结 warning 语义，须与 `GS-BRIDGE-A` 对账。
+  - 批准后落笔：`tests/golden_samples/GS-BRIDGE-WARN-B/approval.md` 的 `Status`、`Approver`、`Approved at`。
+
+- [ ] **`GS-BRIDGE-A`** — 保护 `/pnl-bridge` 的当前正式 bridge 行为。
+  - 断言要点：正式 `pnl.bridge`、单工具行；固定 `MTR-BRG-003/008~013`、行数和 phase-3 partial-delivery warning。
+  - 近期变化：无单独重采记录；当前 warning-profile 是有效输出，不能重写成“全绿”样本。
+  - 批准后落笔：`tests/golden_samples/GS-BRIDGE-A/approval.md` 的 `Status`、`Approver`、`Approved at`。
+
+- [ ] **`GS-EXEC-OVERVIEW-A`** — 保护 executive overview 的分析性经营总览。
+  - 断言要点：分析型、`formal_use_allowed=false`；固定四项指标的标题、口径标签/说明和 `MTR-EXEC-001~004`，并与风险张量做方向性对账。
+  - 近期变化：无单独重采记录；不是正式来源真值样本。
+  - 批准后落笔：`tests/golden_samples/GS-EXEC-OVERVIEW-A/approval.md` 的 `Status`、`Approver`、`Approved at`。
+
+## 3. 过期 `review_date` 清单
+
+以下登记表日期均早于 2026-07-20；建议先复审临时例外与候选路由，其他 live 路由可按原治理边界顺延并记录新的复审日期。
+
+| 路由 | 原定日期 | 建议动作 |
+| --- | --- | --- |
+| `/` | 2026-06-15 | 复审 |
+| `/operations-analysis` | 2026-06-07 | 复审 |
+| `/bond-analysis` | 2026-06-15 | 复审 |
+| `/bond-trading-desk` | 2026-06-15 | 顺延/复审 |
+| `/cross-asset` | 2026-07-09 | 复审 |
+| `/team-performance` | 2026-06-14 | 复审 |
+| `/decision-items` | 2026-06-07 | 复审 |
+| `/portfolio` | 2026-06-15 | 顺延/复审 |
+| `/balance-analysis` | 2026-06-15 | 顺延/复审 |
+| `/balance-movement-analysis` | 2026-06-15 | 顺延/复审 |
+| `/liability-analytics` | 2026-06-15 | 顺延/复审 |
+| `/market-overview` | 2026-06-15 | 顺延/复审 |
+| `/market-data` | 2026-06-15 | 顺延/复审 |
+| `/macro-observation` | 2026-06-15 | 顺延/复审 |
+| `/macro-toolkit` | 2026-06-15 | 顺延/复审 |
+| `/cube-query` | 2026-06-15 | 顺延/复审 |
+| `/stock-analysis` | 2026-07-16 | 复审 |
+| `/platform-config` | 2026-06-14 | 复审 |
+| `/bond-dashboard` | 2026-06-07 | 复审 |
+| `/positions` | 2026-06-07 | 复审 |
+| `/average-balance` | 2026-06-14 | 复审 |
+| `/ledger-pnl` | 2026-06-14 | 复审 |
+| `/bank-ledger-dashboard` | 2026-07-12 | 复审 |
+| `/risk-overview` | 2026-06-15 | 顺延/复审 |
+| `/risk-tensor` | 2026-06-15 | 顺延/复审 |
+| `/concentration-monitor` | 2026-06-14 | 复审 |
+| `/cashflow-projection` | 2026-06-14 | 复审 |
+| `/performance` | 2026-06-15 | 顺延/复审 |
+| `/kpi` | 2026-06-14 | 复审 |
+| `/news-events` | 2026-06-14 | 复审 |
+| `/product-category-pnl` | 2026-06-07 | 复审 |
+| `/pnl` | 2026-06-15 | 顺延/复审 |
+| `/pnl-bridge` | 2026-06-15 | 顺延/复审 |
+| `/pnl-attribution` | 2026-06-15 | 顺延/复审 |
+| `/pnl-by-business` | 2026-06-15 | 复审 |
+| `/pnl-by-business-insights` | 2026-07-16 | 顺延/复审 |
+| `/reports` | 2026-06-15 | 顺延/复审 |
+| `/agent` | 2026-06-15 | 顺延/复审 |
+
+## 4. 记录口径与待决异常
+
+- Temporary Exception Signoff List 实际有 17 条待 owner 审核路由，非“约 10 条”；本批次未省略任何 `pending-owner-review` 条目。
+- 25 个样本满足“`Status: captured-awaiting-approval` 或 `Approver: TBD`”条件；`GS-PNL-BUSINESS-INSIGHTS-A` 已为 `approved`，不纳入本批次。
+- `GS-BANK-LEDGER-CLASSIFICATION-A` 使用字段名 `Approval date`，与多数样本的 `Approved at` 不一致；`GS-LEDGER-PNL-NET-INTEREST-202606-A`、`GS-LEDGER-PNL-SUMMARY-A`、`GS-PNL-ATTR-WB-A`、`GS-BOND-HEADLINE-A` 未提供批准时间字段。
+- `GS-PORTFOLIO-HOME-A` 是 `supporting-only` 而非 capture-ready，尽管 `Approver: TBD` 使其被纳入扫描结果；其 `approval.md` 没有定义可直接采用的批准目标状态，需先由 owner 明确是否进入审批流。

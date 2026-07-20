@@ -6,7 +6,7 @@ import type {
   KRDAttributionPayload,
   SpreadAttributionPayload,
 } from "../../../api/contracts";
-import { DataSection } from "../../../components/DataSection";
+import { PageDataSection } from "../../../components/page/PageDataSection";
 import type { DataSectionState } from "../../../components/DataSection.types";
 import { createBarChartOption, createBaseChartOption } from "../../../components/charts/chartTheme";
 import { designTokens, ibTokens } from "../../../theme/designSystem";
@@ -290,7 +290,7 @@ export function AdvancedAttributionChart({
   }, [krdData]);
 
   return (
-    <DataSection
+    <PageDataSection
       title="Carry / 利差 / KRD 高级归因"
       state={state}
       onRetry={onRetry}
@@ -657,6 +657,6 @@ export function AdvancedAttributionChart({
           </div>
         )}
       </div>
-    </DataSection>
+    </PageDataSection>
   );
 }

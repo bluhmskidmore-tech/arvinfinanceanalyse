@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { SkeletonBarStack } from "./SkeletonBars";
 import "./AsyncSection.css";
 
 type AsyncSectionProps = {
@@ -34,11 +35,7 @@ export function AsyncSection({
     content = (
       <>
         <span className="async-section__loading-text">正在载入{title}</span>
-        <div className="async-section__skeleton">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <div key={index} className="async-section__skeleton-bar" />
-          ))}
-        </div>
+        <SkeletonBarStack className="moss-skeleton-bar-stack--spaced" />
       </>
     );
   } else if (isError) {

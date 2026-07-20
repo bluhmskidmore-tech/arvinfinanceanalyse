@@ -28,7 +28,7 @@ export function BondAnalyticsOverviewWatchlistCard({ topAnomalies }: BondAnalyti
               <div
                 key={anomaly}
                 style={{
-                  borderRadius: 16,
+                  borderRadius: 6,
                   border: "1px solid #efd9b6",
                   background: "#fff8ef",
                   padding: "12px 14px",
@@ -44,7 +44,7 @@ export function BondAnalyticsOverviewWatchlistCard({ topAnomalies }: BondAnalyti
         ) : (
           <div
             style={{
-              borderRadius: 16,
+              borderRadius: 6,
               border: "1px solid #e2eaf2",
               background: "#f8fbfe",
               padding: "13px 14px",

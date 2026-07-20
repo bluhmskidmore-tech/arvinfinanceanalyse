@@ -7,11 +7,11 @@ import type { ApiEnvelope, BalanceAnalysisOverviewPayload, ResultMeta } from "..
 import { AlertList } from "../../../components/AlertList";
 import { CalendarList } from "../../../components/CalendarList";
 import { FilterBar } from "../../../components/FilterBar";
+import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
 import {
   PageFilterTray,
   PageHeader,
 } from "../../../components/page/PagePrimitives";
-import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import { BusinessConclusion } from "../business-analysis/BusinessConclusion";
 import { BusinessContributionTable } from "../business-analysis/BusinessContributionTable";
 import { ManagementOutput } from "../business-analysis/ManagementOutput";
@@ -697,7 +697,7 @@ export default function OperationsAnalysisPage() {
             className="operations-analysis-page__topic-entry"
             data-testid="operations-entry-balance-section"
           >
-        <AsyncSection
+        <PageAsyncSection
           title=""
           isLoading={balanceDatesQuery.isLoading || balanceOverviewQuery.isLoading}
           isError={balanceDatesQuery.isError || balanceOverviewQuery.isError}
@@ -793,7 +793,7 @@ export default function OperationsAnalysisPage() {
               </div>
             </div>
           ) : null}
-        </AsyncSection>
+        </PageAsyncSection>
       </div>
       </div>
       </div>

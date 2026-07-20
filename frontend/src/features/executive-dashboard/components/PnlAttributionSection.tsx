@@ -1,7 +1,7 @@
 import { useMemo, type CSSProperties } from "react";
 
 import ReactECharts from "../../../lib/echarts";
-import { DataSection } from "../../../components/DataSection";
+import { PageDataSection } from "../../../components/page/PageDataSection";
 import { TONE_COLOR } from "../../../utils/tone";
 import type { DashboardAdapterOutput } from "../adapters/executiveDashboardAdapter";
 import {
@@ -110,7 +110,7 @@ export default function PnlAttributionSection({
   const extra = total ? <span style={SECTION_EXTRA_STYLE}>{total.display}</span> : null;
 
   return (
-    <DataSection
+    <PageDataSection
       title={attribution.vm?.title ?? "收益贡献拆解"}
       extra={extra}
       state={attribution.state}
@@ -141,7 +141,7 @@ export default function PnlAttributionSection({
           ))}
         </div>
       </div>
-    </DataSection>
+    </PageDataSection>
   );
 }
 

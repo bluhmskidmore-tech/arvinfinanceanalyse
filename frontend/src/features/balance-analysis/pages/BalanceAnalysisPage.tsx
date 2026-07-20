@@ -25,9 +25,8 @@ import {
   PageSectionLead,
   PageStateSurface,
 } from "../../../components/page/PagePrimitives";
-import { SectionCard } from "../../../components/SectionCard";
+import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
 import { MossAgGrid } from "../../../components/grid";
-import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import AdbAnalyticalPreview from "../components/AdbAnalyticalPreview";
 import BalanceAnalysisCockpit from "../cockpit/BalanceAnalysisCockpit";
 import { BalanceAnalysisToolbar } from "../cockpit/BalanceAnalysisToolbar";
@@ -1778,7 +1777,7 @@ export default function BalanceAnalysisPage() {
           </span>
         </summary>
         <div className="balance-analysis-stage-details__content">
-        <AsyncSection
+        <PageAsyncSection
           title="资产负债汇总"
           isLoading={
             datesQuery.isLoading ||
@@ -1872,7 +1871,7 @@ export default function BalanceAnalysisPage() {
               />
             )}
           </div>
-        </AsyncSection>
+        </PageAsyncSection>
         </div>
       </details>
 
@@ -1888,20 +1887,21 @@ export default function BalanceAnalysisPage() {
           </span>
         </summary>
         <div className="balance-analysis-supplemental__grid">
-          <SectionCard
+          <PageAsyncSection
             title="日均分析预览"
-            loading={deferredAnalysisQueriesPending || adbComparisonQuery.isLoading}
-            error={adbComparisonQuery.isError}
+            isLoading={deferredAnalysisQueriesPending || adbComparisonQuery.isLoading}
+            isError={adbComparisonQuery.isError}
+            isEmpty={false}
             onRetry={() => void adbComparisonQuery.refetch()}
           >
             {adbComparisonQuery.data ? <AdbAnalyticalPreview comparison={adbComparisonQuery.data} href={adbHref} /> : null}
-          </SectionCard>
-          <SectionCard
+          </PageAsyncSection>
+          <PageAsyncSection
             title="按会计口径分解"
-            loading={deferredAnalysisQueriesPending || basisBreakdownQuery.isLoading}
-            error={basisBreakdownQuery.isError}
+            isLoading={deferredAnalysisQueriesPending || basisBreakdownQuery.isLoading}
+            isError={basisBreakdownQuery.isError}
+            isEmpty={false}
             onRetry={() => void basisBreakdownQuery.refetch()}
-            noPadding
           >
             <MossAgGrid<BalanceAnalysisBasisBreakdownRow>
               data-testid="balance-analysis-basis-breakdown-grid"
@@ -1912,11 +1912,12 @@ export default function BalanceAnalysisPage() {
                 `${p.data.source_family}-${p.data.invest_type_std}-${p.data.accounting_basis}-${p.data.position_scope}-${p.data.currency_basis}`
               }
             />
-          </SectionCard>
-          <SectionCard
+          </PageAsyncSection>
+          <PageAsyncSection
             title="高阶归因"
-            loading={deferredAnalysisQueriesPending || advancedAttributionQuery.isLoading}
-            error={advancedAttributionQuery.isError}
+            isLoading={deferredAnalysisQueriesPending || advancedAttributionQuery.isLoading}
+            isError={advancedAttributionQuery.isError}
+            isEmpty={false}
             onRetry={() => void advancedAttributionQuery.refetch()}
           >
             {advancedAttributionQuery.data?.result ? (
@@ -1964,7 +1965,7 @@ export default function BalanceAnalysisPage() {
                 );
               })()
             ) : null}
-          </SectionCard>
+          </PageAsyncSection>
         </div>
       </details>
 
@@ -1974,7 +1975,7 @@ export default function BalanceAnalysisPage() {
           title="治理闭环与工作簿底稿"
           description="先处理决策事项、事件日历和风险预警；工作簿结构默认收起，作为下方可展开底稿。"
         />
-        <AsyncSection
+        <PageAsyncSection
           title="治理闭环"
           isLoading={
             datesQuery.isLoading ||
@@ -2355,7 +2356,7 @@ export default function BalanceAnalysisPage() {
               ))}
             </div>
           </details>
-        </AsyncSection>
+        </PageAsyncSection>
       </div>
 
       <details data-testid="balance-analysis-stage-details" className="balance-analysis-stage-details">

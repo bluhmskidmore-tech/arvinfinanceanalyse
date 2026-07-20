@@ -22,7 +22,7 @@ export function BondAnalyticsFuturePanel({ futureVisibilityItems }: BondAnalytic
               key={item.key}
               style={{
                 border: "1px dashed #d5e0ee",
-                borderRadius: 16,
+                borderRadius: 6,
                 padding: "12px 13px",
                 background: "#ffffff",
                 display: "grid",

@@ -10,11 +10,11 @@
 |---|---|---|
 | **0 地基** | ✅ 完成 | 0.1–0.6 已落地；呼吸光业主豁免保留 |
 | **1 深色并轨** | ✅ 主路径完成 | 1.1–1.6 主路径已落地；壳内非主路径阴影长尾可并入 Phase 4 / 截图复核批 |
-| **2 共享原语** | 🔄 推进中 | **2.2–2.3** ✅；**2.5** ✅（components 17 hex→0）；**2.1** 首批 5 点 ✅、余下消费点仍欠；**2.4** Tailwind 已修、skeleton 合一未做 |
-| **3 浅色长尾** | 🔄 部分完成 | 会话 4a–4d-1b 已清一批；MarketData/Balance/PnlByBusiness/Shell 等仍欠 |
+| **2 共享原语** | ✅ 主路径完成 | **2.2–2.5** ✅；**2.1** 业务消费点已迁完（含经营分析三卡→`EvidencePanel`）；仅 `cashflow-projection` WIP 冻结保留旧 `DataSection`，旧组件本体+契约测试作兼容边界 |
+| **3 浅色长尾** | 🔄 接近完成 | **3.1–3.2 ✅**；**3.3** KPI 两行 clamp ✅；Stock/Market + 三 module-home（module/market/risk）9–10.5px ✅；CrossAsset / EquityKpi / DeepResearch / 壳层活页已收口；长尾：MacroToolkit(~81)、ledger-pnl、balanceWorkbench、`dashboardCockpit` 等；rem 字面量另批 |
 | **4 死代码** | ⏳ 未开始 | |
 
-视觉水位（约）：hex **2348** / offRadius **225** / `"--"` **13** / forbidden **1**（相对开局约 3800+ hex 已下降；经营日报壳 offRadius 36→7；Phase 2.5 components 17→0）。
+视觉水位（2026-07-20 3.3 收尾核对）：hex **1467** / offRadius **218** / `"--"` **13** / forbidden **1** / TSX style props **1056**/1541（相对开局约 3800+ hex 已下降；typecheck、debt:audit 通过；`style:audit` workspace-vs-HEAD 现被无关 WIP `bondAnalyticsCockpitTokens.ts` 1 处 private shadow 挡住，非本批 3.3 文件）。
 
 ---
 
@@ -122,10 +122,10 @@ DESIGN.md 的方向（冷静、可审计、双主题）不需要推翻；需要�
 
 | 项 | 内容 | 状态 |
 |---|---|---|
-| 2.1 | 确立 page-v2 契约族（PagePrimitives）为唯一标准；DataSection / AsyncSection / SectionCard 标记弃用并迁移 48 个消费点（可分页面批次） | 🔄 弃用标记 ✅；首批迁完：`ManagementOutput` / `RevenueCostBridge` / `PortfolioSummaryNarrative` / `BondEventCalendar` / `AssetStructurePie` → `EvidencePanel` |
+| 2.1 | 确立 page-v2 契约族（PagePrimitives）为唯一标准；DataSection / AsyncSection / SectionCard 标记弃用并迁移 48 个消费点（可分页面批次） | ✅ 主路径：`PageDataSection` / `PageAsyncSection` 桥保留 testid、文案与状态优先级；pnl-attribution、executive、Balance、FormalPnl、OperationsAnalysis 等安全消费点已迁。仅 `cashflow-projection` 因既有 WIP 冻结，旧组件本体/契约测试保留作兼容边界 |
 | 2.2 | KpiCard 重建：token 驱动、主题感知（浅/深皆可用）、消灭 13 个内联 style 对象 | ✅ 布局/色阶迁入 `KpiCard.css`（`data-tone`）；sparkline stroke 仍读 displayTokens |
 | 2.3 | 圆角锁落地：token 层删除 20px 档（displayTokens.radius.section），浅色全站 2px、深色 6px；154 处浅色大圆角批量收敛 | ✅ token+共享原语已锁；页面级 20px 长尾另批 |
-| 2.4 | 修复 Skeletons.tsx 失效 Tailwind 类；skeleton 三份实现合一 | 🔄 失效 Tailwind 已修；三份 skeleton 合一未做 |
+| 2.4 | 修复 Skeletons.tsx 失效 Tailwind 类；skeleton 三份实现合一 | ✅ `SkeletonBars` 共享原语；AsyncSection/DataSection/Skeletons/DeferredSkeleton 已迁 |
 | 2.5 | 组件层 20 处硬编码 hex 全部改引用 token | ✅ `components/**` 17 hex→0（CSS 9 + AccountingBasis 图 8）；图表色走 ibTokens/designTokens |
 
 **验证**：每个迁移批次跑该域组件测试 + 页面截图；`debt:audit` 的 inline-style 基线应显著下降。
@@ -133,14 +133,16 @@ DESIGN.md 的方向（冷静、可审计、双主题）不需要推翻；需要�
 
 ### Phase 3 · 浅色长尾与毛坯页
 
-| 项 | 内容 |
-|---|---|
-| 3.1 | 4 个 antd 毛坯页（bond-dashboard / cube-query / platform-config / concentration-monitor）接入 IB token + page-v2 原语，消灭 inline style |
-| 3.2 | 硬编码 hex 分区清扫（优先级：StockAnalysisPage.css 564 → MarketDataPage.css 476 → BalanceMovementAnalysisPage.css 289 → TeamPerformancePage.css 195） |
-| 3.3 | 538 处 10px 字体收敛到 §3 刻度（≥11px），KPI 标签两行 clamp 规则补齐 |
+| 项 | 内容 | 状态 |
+|---|---|---|
+| 3.1 | 4 个 antd 毛坯页（bond-dashboard / cube-query / platform-config / concentration-monitor）接入 IB token + page-v2 原语，消灭 inline style | ✅ 四页完成：PageHeader/EvidencePanel/PageStateSurface + 页面 module.css；bond-dashboard 19→4（余 ECharts 高度等功能性），concentration 19→0，cube/platform 旧 CSS 删除换 module.css；存量测试零弱化全绿 |
+| 3.2 | 硬编码 hex 分区清扫（优先级：StockAnalysisPage.css 564 → MarketDataPage.css 476 → BalanceMovementAnalysisPage.css 289 → TeamPerformancePage.css 195） | ✅ 四个优先 CSS 均清零；Stock/Market 的历史页内 palette 已桥接 `--dh-api-*` / `--ib-*` |
+| 3.3 | 538 处 10px 字体收敛到 §3 刻度（≥11px），KPI 标签两行 clamp 规则补齐 | 🔄 主路径已落地：① `KpiCard` 标签 `-webkit-line-clamp: 2` + native `title`（`KpiCard.css` / `KpiCard.tsx` + 契约测试）；② Stock/MarketData 与三 module-home CSS（`moduleWorkbenchHome` / `marketHome` / `riskOverview`）9–10.5px 已清零。仍待：MacroToolkit(~81)、ledger-pnl 簇、balanceWorkbench、BondAnalyticsInstitutionalCockpit、`dashboardCockpit` 死层等 |
 
 **验证**：逐页截图 diff + 该页测试。
-**风险**：低到中；StockAnalysisPage.css 2 万行单文件建议与 Phase 1.2 合并专项处理。
+**本批验证（2026-07-20 · Stock/Market + bridge）**：定向测试 233/233；typecheck、build:fast、debt:audit 通过；两页 1440×900 截图复核无横向溢出。
+**3.3 收尾核对（2026-07-20）**：`KpiCard` + `module-home` 定向 vitest **76/76**；`npm run typecheck` 通过；`debt:audit` + visual token audit 通过（hex 1467/2348）；`style:audit` 对 **本批 CSS/KpiCard** 无 workspace 门禁项——工作区整体 FAIL 来自无关未提交文件 `bondAnalyticsCockpitTokens.ts` 1 处 private shadow。人工截图（market/risk/module home）仍建议补一眼。
+**风险**：低；字阶与标签截断为纯视觉，业务数据与指标路径未改。长尾清扫仍可能挤布局，需按页截图。
 
 ### Phase 4 · 死代码与级联战争清理（收尾）
 

@@ -9,7 +9,7 @@ import type {
 } from "../../../api/contracts";
 import { nonCancellingRefetchOptions } from "../../../app/externalDataRefreshPolicy";
 import { KpiCard } from "../../../components/KpiCard";
-import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
+import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
 import { toneFromSignedNumber } from "../../workbench/components/kpiFormat";
 import { formatSignedNumber } from "../lib/marketDataFormat";
 import { formatCorrelation } from "../lib/marketDataLinkageFormat";
@@ -163,7 +163,7 @@ export function MarketDataLinkageSection({
             key: "macro-linkage",
             label: "宏观-债市联动（分析口径，点击展开）",
             children: expanded ? (
-              <AsyncSection
+              <PageAsyncSection
                 title="宏观-债市联动"
                 isLoading={macroBondLinkageQuery.isLoading}
                 isError={macroBondLinkageQuery.isError}
@@ -338,7 +338,7 @@ export function MarketDataLinkageSection({
                     )}
                   </section>
                 </div>
-              </AsyncSection>
+              </PageAsyncSection>
             ) : null,
           },
         ]}

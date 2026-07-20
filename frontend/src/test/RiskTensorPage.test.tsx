@@ -33,7 +33,6 @@ vi.mock("../lib/echarts", () => ({
 import { ApiClientProvider, createApiClient } from "../api/client";
 import type { ResultMeta, RiskScenarioStressPayload, RiskTensorPayload } from "../api/contracts";
 import { routerFuture } from "../router/routerFuture";
-import { displayTokens } from "../theme/displayTokens";
 import { preloadWorkbenchRouteModules } from "./preloadWorkbenchRouteModules";
 import { createWorkbenchMemoryRouter } from "./renderWorkbenchApp";
 
@@ -1741,7 +1740,8 @@ describe("RiskTensorPage", () => {
     expect(issuerDetail).toHaveTextContent("0.18");
     expect(issuerDetail).toHaveTextContent("issuer_top5_weight");
     expect(issuerDetail).toHaveTextContent("issuer_concentration_hhi");
-    expect(within(issuerHhi).getByText("0.18")).toHaveStyle({ color: displayTokens.kpi.valueDefault });
+    expect(issuerHhi).toHaveAttribute("data-tone", "default");
+    expect(within(issuerHhi).getByText("0.18")).toHaveClass("kpi-card__value");
   });
 
   it("lets users select a tenor from the KRD chart and lands on the tenor drilldown", async () => {

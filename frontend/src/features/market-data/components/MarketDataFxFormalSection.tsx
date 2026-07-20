@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Collapse, Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
-import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
+import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
 import type { FxFormalStatusPayload, FxFormalStatusRow, ResultMeta } from "../../../api/contracts";
 import { tabularNumsStyle } from "../../../theme/designSystem";
 import { buildFxFormalStatusCollapseLabel } from "../pages/marketDataPageModel";
@@ -78,7 +78,7 @@ export function MarketDataFxFormalSection({
             label: buildFxFormalStatusCollapseLabel({ payload, isLoading, isError }),
             children: expanded ? (
               <div data-testid="market-data-fx-formal-panel" className="market-data-fx-formal-panel">
-                <AsyncSection
+                <PageAsyncSection
                   title="正式外汇中间价"
                   isLoading={isLoading}
                   isError={isError}
@@ -94,7 +94,7 @@ export function MarketDataFxFormalSection({
                       dataSource={payload?.rows ?? []}
                     />
                   </div>
-                </AsyncSection>
+                </PageAsyncSection>
               </div>
             ) : null,
           },

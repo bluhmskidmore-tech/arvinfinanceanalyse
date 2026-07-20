@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 
 import type { ProductCategoryPnlRow } from "../../../api/contracts";
-import { SectionCard } from "../../../components/SectionCard";
+import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
 import {
   formatProductCategoryForeignDisplayValue,
   formatProductCategoryValue,
@@ -63,11 +63,14 @@ export function BusinessContributionTable({
   const totalIncomeTone = toneForProductCategoryValue(grandTotal?.business_net_income);
 
   return (
-    <SectionCard
+    <PageAsyncSection
       title="经营贡献（产品分类损益读面）"
-      loading={loading}
-      error={error}
-      onRetry={onRetry}
+      isLoading={loading}
+      isError={error}
+      isEmpty={false}
+      onRetry={() => {
+        onRetry?.();
+      }}
       extra={
         <Link to="/product-category-pnl" aria-label="进入产品分类损益">
           <strong>进入产品分类损益</strong>
@@ -247,6 +250,6 @@ export function BusinessContributionTable({
           全部市场科目 + 投资收益合计：{formatProductCategoryValue(grandTotal?.business_net_income)}
         </div>
       </div>
-    </SectionCard>
+    </PageAsyncSection>
   );
 }

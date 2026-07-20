@@ -4,10 +4,6 @@ import { useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
-import { modeBadgeStyle, summaryGridStyle, tableStyle } from "../../../components/page/pageStyles";
-import { designTokens } from "../../../theme/designSystem";
-import { displayTokens } from "../../../theme/displayTokens";
-import { shellTokens } from "../../../theme/tokens";
 import { EM_DASH } from "../../../utils/format";
 import { FilterBar } from "../../../components/FilterBar";
 import type {
@@ -33,25 +29,6 @@ import {
 } from "../components/LedgerPnlAnalysisWorkbench";
 import "./LedgerPnlPage.css";
 
-const pageHeaderStyle = {
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "space-between",
-  flexWrap: "wrap",
-  gap: 16,
-  marginBottom: 24,
-} as const;
-
-const pageSubtitleStyle = {
-  marginTop: 10,
-  marginBottom: 0,
-  maxWidth: 860,
-  color: designTokens.color.neutral[600],
-  fontSize: 15,
-  lineHeight: 1.75,
-} as const;
-
-const summaryGridStyleWithBottom = { ...summaryGridStyle, marginBottom: designTokens.space[5] } as const;
 const LEDGER_PNL_FORMAL_CONTRACT_PANEL_ID = "ledger-pnl-formal-indicator-source-contract-panel";
 const LEDGER_PNL_FORMAL_CONTRACT_RELEASE_GATE_ID =
   "ledger-pnl-formal-indicator-source-contract-release-gate";
@@ -69,13 +46,6 @@ type LedgerPnlCurrencyBasis = (typeof LEDGER_PNL_CURRENCY_BASIS_OPTIONS)[number]
 function normalizeLedgerPnlCurrencyBasis(value: string | null | undefined): LedgerPnlCurrencyBasis {
   return value?.trim() === "CNY" ? "CNY" : "CNX";
 }
-
-const summaryCardStyle = {
-  border: `1px solid ${designTokens.color.neutral[200]}`,
-  borderRadius: designTokens.radius.sm,
-  padding: designTokens.space[4],
-  background: shellTokens.colorBgSurface,
-} as const;
 
 const ledgerCandidateSummaryMetrics = {
   ledger_monthly_pnl_core: {
@@ -106,7 +76,7 @@ function LedgerSummaryCard({ card }: { card: LedgerSummaryCardModel }) {
     ? ledgerCandidateSummaryMetrics[card.candidateMetricKey]
     : null;
   return (
-    <div style={summaryCardStyle}>
+    <div className="ledger-pnl-summary-card-frame">
       <div className="ledger-pnl-summary-card__header">
         <div className="ledger-pnl-summary-card__title">{card.title}</div>
         {candidateMetric ? (
@@ -127,21 +97,7 @@ function LedgerSummaryCard({ card }: { card: LedgerSummaryCardModel }) {
   );
 }
 
-const tableWrapStyle = {
-  border: `1px solid ${designTokens.color.neutral[200]}`,
-  borderRadius: designTokens.radius.sm,
-  background: shellTokens.colorBgSurface,
-  overflow: "auto",
-} as const;
-
 const LEDGER_TABLE_ROW_LIMIT = 200;
-
-const ledgerTableStateCellStyle = {
-  padding: designTokens.space[4],
-  color: designTokens.color.neutral[500],
-  fontSize: designTokens.fontSize[13],
-  textAlign: "center",
-} as const;
 
 function formatMoney(value: LedgerMoneyValue | null | undefined) {
   const yi = String(value?.yi ?? "").trim();
@@ -190,7 +146,7 @@ function sortLedgerRowsByAbsYuan<T>(
 function LedgerTableStateRow(props: { colSpan: number; message: string }) {
   return (
     <tr>
-      <td colSpan={props.colSpan} style={ledgerTableStateCellStyle}>
+      <td colSpan={props.colSpan} className="ledger-pnl-table__state-cell">
         {props.message}
       </td>
     </tr>
@@ -1967,7 +1923,7 @@ function AnalysisTable(props: {
         {props.title}
       </div>
       {columns.length > 0 && rows.length > 0 ? (
-        <table style={tableStyle}>
+        <table className="ledger-pnl-table">
           <thead>
             <tr className="ledger-pnl-analysis__table-head-row">
               {columns.map((column) => (
@@ -2223,38 +2179,28 @@ export default function LedgerPnlPage() {
 
   return (
     <section data-testid="ledger-pnl-page">
-      <div style={pageHeaderStyle}>
+      <div className="ledger-pnl-header">
         <div>
-          <h1
-            data-testid="ledger-pnl-page-title"
-            style={{ margin: 0, fontSize: 32, fontWeight: 600, letterSpacing: 0 }}
-          >
+          <h1 data-testid="ledger-pnl-page-title" className="ledger-pnl-header__title">
             总账损益
           </h1>
-          <p data-testid="ledger-pnl-page-subtitle" style={pageSubtitleStyle}>
+          <p data-testid="ledger-pnl-page-subtitle" className="ledger-pnl-header__subtitle">
             科目口径损益总览、币种汇总与账户明细。页面直接消费后端总账口径读模型，
             不在前端补算会计科目聚合。
           </p>
         </div>
         <span
-          style={{
-            ...modeBadgeStyle,
-            background:
-              client.mode === "real" ? designTokens.color.success[50] : designTokens.color.primary[50],
-            color:
-              client.mode === "real"
-                ? displayTokens.apiMode.realForeground
-                : displayTokens.apiMode.mockForeground,
-            whiteSpace: "nowrap",
-          }}
+          className={`ledger-pnl-header__mode-badge ledger-pnl-header__mode-badge--${
+            client.mode === "real" ? "real" : "mock"
+          }`}
         >
           {client.mode === "real" ? "真实 API 只读链路 · 非正式口径" : "本地演示数据"}
         </span>
       </div>
 
-      <FilterBar style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
+      <FilterBar className="ledger-pnl-filters">
         <label>
-          <span style={{ display: "block", marginBottom: 6, color: designTokens.color.neutral[600] }}>报告日</span>
+          <span className="ledger-pnl-filters__label">报告日</span>
           <select
             id={LEDGER_PNL_REPORT_DATE_SELECT_ID}
             data-testid="ledger-pnl-report-date-control"
@@ -2270,12 +2216,7 @@ export default function LedgerPnlPage() {
               nextParams.set("currency", currency);
               setSearchParams(nextParams, { replace: true });
             }}
-            style={{
-              minWidth: 180,
-              padding: "10px 12px",
-              borderRadius: designTokens.radius.sm,
-              border: `1px solid ${designTokens.color.neutral[200]}`,
-            }}
+            className="ledger-pnl-filters__select"
           >
             {selectedReportDate && !reportDates.includes(selectedReportDate) ? (
               <option value={selectedReportDate}>{selectedReportDate}</option>
@@ -2288,13 +2229,13 @@ export default function LedgerPnlPage() {
             ))}
           </select>
           {selectedReportDateMissingFromDates ? (
-            <div className="ledger-pnl-analysis__empty" style={{ padding: "6px 0 0" }}>
+            <div className="ledger-pnl-analysis__empty ledger-pnl-analysis__empty--hint">
               当前报告日不在可选列表中，仍按查询日期读取总账数据
             </div>
           ) : null}
         </label>
         <label>
-          <span style={{ display: "block", marginBottom: 6, color: designTokens.color.neutral[600] }}>
+          <span className="ledger-pnl-filters__label">
             账务口径
           </span>
           <select
@@ -2306,12 +2247,7 @@ export default function LedgerPnlPage() {
               nextParams.set("currency", normalizeLedgerPnlCurrencyBasis(event.target.value));
               setSearchParams(nextParams, { replace: true });
             }}
-            style={{
-              minWidth: 140,
-              padding: "10px 12px",
-              borderRadius: designTokens.radius.sm,
-              border: `1px solid ${designTokens.color.neutral[200]}`,
-            }}
+            className="ledger-pnl-filters__select ledger-pnl-filters__select--currency"
           >
             {LEDGER_PNL_CURRENCY_BASIS_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -2366,7 +2302,7 @@ export default function LedgerPnlPage() {
         isAnalysisError={analysisQuery.isError}
       />
 
-      <div data-testid="ledger-pnl-summary-cards" style={summaryGridStyleWithBottom}>
+      <div data-testid="ledger-pnl-summary-cards" className="ledger-pnl-summary-grid">
         {summaryCards.map((card) => (
           <LedgerSummaryCard key={card.key} card={card} />
         ))}
@@ -2610,25 +2546,16 @@ export default function LedgerPnlPage() {
         </div>
       </section>
 
-      <div
-        className="ledger-pnl-summary-table-grid"
-        style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}
-      >
-        <div data-testid="ledger-pnl-currency-summary-table" style={tableWrapStyle}>
-          <div
-            style={{
-              padding: designTokens.space[4],
-              fontWeight: 600,
-              borderBottom: `1px solid ${designTokens.color.neutral[100]}`,
-            }}
-          >
+      <div className="ledger-pnl-summary-table-grid">
+        <div data-testid="ledger-pnl-currency-summary-table" className="ledger-pnl-table-shell">
+          <div className="ledger-pnl-table-shell__title">
             币种汇总
           </div>
-          <table style={tableStyle}>
+          <table className="ledger-pnl-table">
             <thead>
-              <tr style={{ background: designTokens.color.neutral[50] }}>
-                <th style={{ textAlign: "left", padding: designTokens.space[3] }}>币种</th>
-                <th style={{ textAlign: "right", padding: designTokens.space[3] }}>损益</th>
+              <tr className="ledger-pnl-table__head-row">
+                <th className="ledger-pnl-table__th">币种</th>
+                <th className="ledger-pnl-table__th ledger-pnl-table__th--num">损益</th>
               </tr>
             </thead>
             <tbody>
@@ -2638,9 +2565,9 @@ export default function LedgerPnlPage() {
                 <LedgerTableStateRow colSpan={2} message="币种汇总读取失败" />
               ) : (summary?.by_currency ?? []).length > 0 ? (
                 (summary?.by_currency ?? []).map((item) => (
-                  <tr key={item.currency} style={{ borderTop: `1px solid ${designTokens.color.neutral[100]}` }}>
-                    <td style={{ padding: designTokens.space[3] }}>{item.currency}</td>
-                    <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.total_pnl)}</td>
+                  <tr key={item.currency} className="ledger-pnl-table__row">
+                    <td className="ledger-pnl-table__td">{item.currency}</td>
+                    <td className="ledger-pnl-table__td ledger-pnl-table__td--num">{formatMoney(item.total_pnl)}</td>
                   </tr>
                 ))
               ) : (
@@ -2650,22 +2577,16 @@ export default function LedgerPnlPage() {
           </table>
         </div>
 
-        <div data-testid="ledger-pnl-account-summary-table" style={tableWrapStyle}>
-          <div
-            style={{
-              padding: designTokens.space[4],
-              fontWeight: 600,
-              borderBottom: `1px solid ${designTokens.color.neutral[100]}`,
-            }}
-          >
+        <div data-testid="ledger-pnl-account-summary-table" className="ledger-pnl-table-shell">
+          <div className="ledger-pnl-table-shell__title">
             科目汇总
           </div>
-          <table style={tableStyle}>
+          <table className="ledger-pnl-table">
             <thead>
-              <tr style={{ background: designTokens.color.neutral[50] }}>
-                <th style={{ textAlign: "left", padding: designTokens.space[3] }}>科目</th>
-                <th style={{ textAlign: "right", padding: designTokens.space[3] }}>损益</th>
-                <th style={{ textAlign: "right", padding: designTokens.space[3] }}>笔数</th>
+              <tr className="ledger-pnl-table__head-row">
+                <th className="ledger-pnl-table__th">科目</th>
+                <th className="ledger-pnl-table__th ledger-pnl-table__th--num">损益</th>
+                <th className="ledger-pnl-table__th ledger-pnl-table__th--num">笔数</th>
               </tr>
             </thead>
             <tbody>
@@ -2676,15 +2597,15 @@ export default function LedgerPnlPage() {
               ) : accountSummaryRows.length > 0 ? (
                 <>
                   {visibleAccountSummaryRows.map((item) => (
-                    <tr key={item.account_code} style={{ borderTop: `1px solid ${designTokens.color.neutral[100]}` }}>
-                      <td style={{ padding: designTokens.space[3] }}>
+                    <tr key={item.account_code} className="ledger-pnl-table__row">
+                      <td className="ledger-pnl-table__td">
                         <div>{item.account_code}</div>
-                        <div style={{ color: designTokens.color.neutral[600], fontSize: designTokens.fontSize[12] }}>
+                        <div className="ledger-pnl-table__td-sub">
                           {item.account_name}
                         </div>
                       </td>
-                      <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.total_pnl)}</td>
-                      <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{item.count}</td>
+                      <td className="ledger-pnl-table__td ledger-pnl-table__td--num">{formatMoney(item.total_pnl)}</td>
+                      <td className="ledger-pnl-table__td ledger-pnl-table__td--num">{item.count}</td>
                     </tr>
                   ))}
                   <LedgerTableTruncationRow
@@ -2705,15 +2626,9 @@ export default function LedgerPnlPage() {
         ref={detailTableRef}
         tabIndex={-1}
         data-testid="ledger-pnl-detail-table"
-        style={tableWrapStyle}
+        className="ledger-pnl-table-shell"
       >
-        <div
-          style={{
-            padding: designTokens.space[4],
-            fontWeight: 600,
-            borderBottom: `1px solid ${designTokens.color.neutral[100]}`,
-          }}
-        >
+        <div className="ledger-pnl-table-shell__title">
           科目明细
         </div>
         {detailAccountFilter ? (
@@ -2738,17 +2653,17 @@ export default function LedgerPnlPage() {
             </button>
           </div>
         ) : null}
-        <table style={tableStyle}>
+        <table className="ledger-pnl-table">
           <thead>
-            <tr style={{ background: designTokens.color.neutral[50] }}>
-              <th style={{ textAlign: "left", padding: designTokens.space[3] }}>科目代码</th>
-              <th style={{ textAlign: "left", padding: designTokens.space[3] }}>科目名称</th>
-              <th style={{ textAlign: "left", padding: designTokens.space[3] }}>币种</th>
-              <th style={{ textAlign: "right", padding: designTokens.space[3] }}>期初</th>
-              <th style={{ textAlign: "right", padding: designTokens.space[3] }}>期末</th>
-              <th style={{ textAlign: "right", padding: designTokens.space[3] }}>月损益</th>
-              <th style={{ textAlign: "right", padding: designTokens.space[3] }}>月日均</th>
-              <th style={{ textAlign: "right", padding: designTokens.space[3] }}>天数</th>
+            <tr className="ledger-pnl-table__head-row">
+              <th className="ledger-pnl-table__th">科目代码</th>
+              <th className="ledger-pnl-table__th">科目名称</th>
+              <th className="ledger-pnl-table__th">币种</th>
+              <th className="ledger-pnl-table__th ledger-pnl-table__th--num">期初</th>
+              <th className="ledger-pnl-table__th ledger-pnl-table__th--num">期末</th>
+              <th className="ledger-pnl-table__th ledger-pnl-table__th--num">月损益</th>
+              <th className="ledger-pnl-table__th ledger-pnl-table__th--num">月日均</th>
+              <th className="ledger-pnl-table__th ledger-pnl-table__th--num">天数</th>
             </tr>
           </thead>
           <tbody>
@@ -2759,15 +2674,15 @@ export default function LedgerPnlPage() {
             ) : filteredDetailRows.length > 0 ? (
               <>
                 {visibleDetailRows.map((item) => (
-                  <tr key={`${item.account_code}-${item.currency}`} style={{ borderTop: `1px solid ${designTokens.color.neutral[100]}` }}>
-                    <td style={{ padding: designTokens.space[3] }}>{item.account_code}</td>
-                    <td style={{ padding: designTokens.space[3] }}>{item.account_name}</td>
-                    <td style={{ padding: designTokens.space[3] }}>{item.currency}</td>
-                    <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.beginning_balance)}</td>
-                    <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.ending_balance)}</td>
-                    <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.monthly_pnl)}</td>
-                    <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.daily_avg_balance)}</td>
-                    <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{item.days_in_period}</td>
+                  <tr key={`${item.account_code}-${item.currency}`} className="ledger-pnl-table__row">
+                    <td className="ledger-pnl-table__td">{item.account_code}</td>
+                    <td className="ledger-pnl-table__td">{item.account_name}</td>
+                    <td className="ledger-pnl-table__td">{item.currency}</td>
+                    <td className="ledger-pnl-table__td ledger-pnl-table__td--num">{formatMoney(item.beginning_balance)}</td>
+                    <td className="ledger-pnl-table__td ledger-pnl-table__td--num">{formatMoney(item.ending_balance)}</td>
+                    <td className="ledger-pnl-table__td ledger-pnl-table__td--num">{formatMoney(item.monthly_pnl)}</td>
+                    <td className="ledger-pnl-table__td ledger-pnl-table__td--num">{formatMoney(item.daily_avg_balance)}</td>
+                    <td className="ledger-pnl-table__td ledger-pnl-table__td--num">{item.days_in_period}</td>
                   </tr>
                 ))}
                 <LedgerTableTruncationRow colSpan={8} label="科目明细" total={filteredDetailRows.length} />

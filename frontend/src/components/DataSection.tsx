@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import type { DataSectionState } from "./DataSection.types";
+import { SkeletonBarStack } from "./SkeletonBars";
 import "./DataSection.css";
 
 type DataSectionProps = {
@@ -47,11 +48,7 @@ function renderBody(opts: {
     return (
       <div data-testid="data-section-loading">
         <span className="data-section__loading-label">正在载入</span>
-        <div className="data-section__skeleton-stack">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <div key={index} className="data-section__skeleton-bar" />
-          ))}
-        </div>
+        <SkeletonBarStack className="moss-skeleton-bar-stack--spaced" />
       </div>
     );
   }

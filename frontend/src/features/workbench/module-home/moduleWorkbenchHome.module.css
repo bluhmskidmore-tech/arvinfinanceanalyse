@@ -141,7 +141,7 @@
 
 .decisionFact span {
   color: var(--mh-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 750;
 }
 
@@ -215,7 +215,7 @@
 
 .credibilityLabel {
   color: var(--mh-muted-2);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.02em;
   text-transform: none;
@@ -304,7 +304,7 @@
 }
 
 .kpiLabel {
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 800;
   color: var(--mh-ink-2);
 }
@@ -319,7 +319,7 @@
 
 .kpiDetail {
   color: var(--mh-muted);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
@@ -360,7 +360,7 @@
 }
 
 .statusDetail {
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
@@ -400,7 +400,7 @@
 
 .sectionMeta {
   color: var(--mh-muted);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
 }
 
@@ -469,13 +469,13 @@
 }
 
 .distributionState {
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 800;
 }
 
 .distributionMeta {
   color: var(--mh-muted-2);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.35;
 }
 
@@ -510,7 +510,7 @@
 .distributionValue,
 .distributionShare {
   color: var(--mh-ink);
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 800;
   white-space: nowrap;
 }
@@ -585,13 +585,13 @@
 }
 
 .detailState {
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 800;
 }
 
 .detailMeta {
   color: var(--mh-muted-2);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.35;
 }
 
@@ -625,7 +625,7 @@
 
 .detailValue {
   color: var(--mh-ink);
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 800;
   white-space: nowrap;
 }
@@ -634,14 +634,14 @@
   min-width: 72px;
   text-align: right;
   color: var(--mh-muted);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
 }
 
 .detailSource {
   color: var(--mh-muted-2);
-  font-size: 9.5px;
+  font-size: 11px;
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
@@ -708,7 +708,7 @@
   border: 1px solid var(--mh-line);
   background: var(--ib-surface);
   color: var(--mh-blue-deep);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   white-space: nowrap;
 }

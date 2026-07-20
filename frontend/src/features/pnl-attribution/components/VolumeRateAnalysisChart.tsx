@@ -1,41 +1,10 @@
 import { useMemo } from "react";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import type { VolumeRateAttributionPayload } from "../../../api/contracts";
-import { DataSection } from "../../../components/DataSection";
 import type { DataSectionState } from "../../../components/DataSection.types";
-import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
-
-const ledgerSurface = "#ffffff";
-const ledgerSubtleSurface = designTokens.color.neutral[50];
-const ledgerBorder = designTokens.color.neutral[200];
-const ledgerBorderSoft = designTokens.color.neutral[100];
-const ledgerText = designTokens.color.neutral[900];
-const ledgerMutedText = designTokens.color.neutral[600];
-
-const cardStyle = {
-  padding: designTokens.space[5],
-  borderRadius: designTokens.radius.sm,
-  border: `1px solid ${ledgerBorder}`,
-  background: ledgerSurface,
-  boxShadow: "0 1px 2px rgba(31, 41, 55, 0.04)",
-} as const;
-
-const tableShellStyle = {
-  overflowX: "auto" as const,
-  marginTop: designTokens.space[5],
-  borderRadius: designTokens.radius.sm,
-  border: `1px solid ${ledgerBorder}`,
-};
-
-const thStyle = {
-  textAlign: "right" as const,
-  padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
-  fontSize: designTokens.fontSize[11],
-  fontWeight: 700,
-  color: ledgerText,
-  background: ledgerSubtleSurface,
-  borderBottom: `1px solid ${ledgerText}`,
-};
+import { PageDataSection } from "../../../components/page/PageDataSection";
+import { designTokens } from "../../../theme/designSystem";
+import "./VolumeRateAnalysisChart.css";
 
 type Props = {
   data: VolumeRateAttributionPayload | null;
@@ -72,6 +41,10 @@ function reconErrorText(value: NumericLike): string {
   }
   const yi = raw / 100_000_000;
   return Math.abs(yi) < 0.0001 ? "\u2248 0" : yi.toFixed(4);
+}
+
+function signedDirection(value: NumericLike): "positive" | "negative" {
+  return (rawOrNull(value) ?? 0) >= 0 ? "positive" : "negative";
 }
 
 /** 量价归因：分类别当期/上期损益对比 + 明细表（规模、收益率、一阶效应与对账）。 */
@@ -155,367 +128,117 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
   }, [data]);
 
   return (
-    <DataSection title="量价归因明细" state={state} onRetry={onRetry}>
+    <PageDataSection title="量价归因明细" state={state} onRetry={onRetry}>
       {data ? (
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: designTokens.space[6],
-          }}
-        >
+        <div className="volume-rate-analysis-chart">
           {categoryOption && (
-            <div style={cardStyle}>
-              <h3
-                style={{
-                  margin: `0 0 ${designTokens.space[4]}px`,
-                  fontSize: designTokens.fontSize[16],
-                  fontWeight: 600,
-                  color: ledgerText,
-                }}
-              >
+            <div className="volume-rate-analysis-chart__card">
+              <h3 className="volume-rate-analysis-chart__section-title">
                 各产品类别损益对比（资产类顶层）
               </h3>
               <ReactECharts
                 option={categoryOption}
-                style={{ height: 300 }}
+                className="volume-rate-analysis-chart__chart"
                 notMerge
                 lazyUpdate
               />
             </div>
           )}
 
-          <div style={cardStyle}>
-            <h3
-              style={{
-                margin: `0 0 ${designTokens.space[3]}px`,
-                fontSize: designTokens.fontSize[14],
-                fontWeight: 700,
-                color: ledgerText,
-              }}
-            >
+          <div className="volume-rate-analysis-chart__card">
+            <h3 className="volume-rate-analysis-chart__section-title volume-rate-analysis-chart__section-title--table">
               归因分析明细表（亿元）
             </h3>
-            <p
-              style={{
-                margin: `0 0 ${designTokens.space[3]}px`,
-                fontSize: designTokens.fontSize[12],
-                color: ledgerMutedText,
-              }}
-            >
+            <p className="volume-rate-analysis-chart__note">
               损益变动 = 规模一阶效应 + 利率一阶效应 + 交叉效应
             </p>
-            <div style={tableShellStyle}>
-              <table
-                style={{
-                  width: "100%",
-                  minWidth: 1100,
-                  borderCollapse: "collapse",
-                  fontSize: designTokens.fontSize[12],
-                }}
-              >
+            <div className="volume-rate-analysis-chart__table-shell">
+              <table className="volume-rate-analysis-chart__table">
                 <thead>
                   <tr>
-                    <th
-                      style={{
-                        ...thStyle,
-                        textAlign: "left",
-                        position: "sticky",
-                        left: 0,
-                        zIndex: 1,
-                      }}
-                    >
-                      产品类别
-                    </th>
-                    <th style={thStyle}>规模日均·当期</th>
-                    <th style={thStyle}>规模日均·上期</th>
-                    <th style={thStyle}>收益率·当期</th>
-                    <th style={thStyle}>收益率·上期</th>
-                    <th style={thStyle}>当期损益</th>
-                    <th style={thStyle}>损益变动</th>
-                    <th style={thStyle}>规模一阶</th>
-                    <th style={thStyle}>利率一阶</th>
-                    <th style={thStyle}>交叉</th>
-                    <th style={thStyle}>归因合计</th>
-                    <th style={thStyle}>对账差异</th>
+                    <th data-align="left">产品类别</th>
+                    <th>规模日均·当期</th>
+                    <th>规模日均·上期</th>
+                    <th>收益率·当期</th>
+                    <th>收益率·上期</th>
+                    <th>当期损益</th>
+                    <th>损益变动</th>
+                    <th>规模一阶</th>
+                    <th>利率一阶</th>
+                    <th>交叉</th>
+                    <th>归因合计</th>
+                    <th>对账差异</th>
                   </tr>
                 </thead>
                 <tbody>
                   {data.items
                     .filter((item) => item.category_type === "asset")
                     .map((item, idx) => (
-                      <tr
-                        key={`asset-${idx}`}
-                        style={{
-                          borderBottom: `1px solid ${ledgerBorderSoft}`,
-                        }}
-                      >
+                      <tr key={`asset-${idx}`}>
                         <td
-                          style={{
-                            padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
-                            textAlign: "left",
-                            fontWeight: item.level === 0 ? 600 : 400,
-                            paddingLeft:
-                              item.level > 0
-                                ? designTokens.space[3] + designTokens.space[4]
-                                : designTokens.space[3],
-                            background:
-                              item.level === 0
-                                ? ledgerSubtleSurface
-                                : ledgerSurface,
-                            color: ledgerText,
-                          }}
+                          data-align="left"
+                          data-level={item.level === 0 ? "0" : "1"}
                         >
                           {item.category}
                         </td>
-                        <td
-                          style={{
-                            textAlign: "right",
-                            padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
-                            ...tabularNumsStyle,
-                          }}
-                        >
-                          {yiText(item.current_scale)}
-                        </td>
-                        <td
-                          style={{
-                            textAlign: "right",
-                            padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
-                            ...tabularNumsStyle,
-                          }}
-                        >
-                          {yiText(item.previous_scale)}
-                        </td>
-                        <td
-                          style={{
-                            textAlign: "right",
-                            padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
-                            ...tabularNumsStyle,
-                          }}
-                        >
+                        <td>{yiText(item.current_scale)}</td>
+                        <td>{yiText(item.previous_scale)}</td>
+                        <td>
                           {item.current_yield_pct != null
                             ? item.current_yield_pct.display
                             : "—"}
                         </td>
-                        <td
-                          style={{
-                            textAlign: "right",
-                            padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
-                            ...tabularNumsStyle,
-                          }}
-                        >
+                        <td>
                           {item.previous_yield_pct != null
                             ? item.previous_yield_pct.display
                             : "—"}
                         </td>
-                        <td
-                          style={{
-                            textAlign: "right",
-                            padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
-                            color:
-                              (item.current_pnl.raw ?? 0) >= 0
-                                ? designTokens.color.semantic.profit
-                                : designTokens.color.semantic.loss,
-                            ...tabularNumsStyle,
-                          }}
-                        >
+                        <td data-direction={signedDirection(item.current_pnl)}>
                           {yiText(item.current_pnl)}
                         </td>
-                        <td
-                          style={{
-                            textAlign: "right",
-                            padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
-                            color:
-                              (item.pnl_change?.raw ?? 0) >= 0
-                                ? designTokens.color.semantic.profit
-                                : designTokens.color.semantic.loss,
-                            ...tabularNumsStyle,
-                          }}
-                        >
+                        <td data-direction={signedDirection(item.pnl_change)}>
                           {signedYiText(item.pnl_change)}
                         </td>
-                        <td
-                          style={{
-                            textAlign: "right",
-                            padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
-                            ...tabularNumsStyle,
-                          }}
-                        >
-                          {yiText(item.volume_effect, 4)}
-                        </td>
-                        <td
-                          style={{
-                            textAlign: "right",
-                            padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
-                            ...tabularNumsStyle,
-                          }}
-                        >
-                          {yiText(item.rate_effect, 4)}
-                        </td>
-                        <td
-                          style={{
-                            textAlign: "right",
-                            padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
-                            ...tabularNumsStyle,
-                          }}
-                        >
-                          {yiText(item.interaction_effect, 4)}
-                        </td>
-                        <td
-                          style={{
-                            textAlign: "right",
-                            padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
-                            fontWeight: 600,
-                            ...tabularNumsStyle,
-                          }}
-                        >
-                          {yiText(item.attrib_sum, 4)}
-                        </td>
-                        <td
-                          style={{
-                            textAlign: "right",
-                            padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
-                            ...tabularNumsStyle,
-                          }}
-                        >
-                          {reconErrorText(item.recon_error)}
-                        </td>
+                        <td>{yiText(item.volume_effect, 4)}</td>
+                        <td>{yiText(item.rate_effect, 4)}</td>
+                        <td>{yiText(item.interaction_effect, 4)}</td>
+                        <td data-weight="600">{yiText(item.attrib_sum, 4)}</td>
+                        <td>{reconErrorText(item.recon_error)}</td>
                       </tr>
                     ))}
                   {data.items
                     .filter((item) => item.category_type === "liability")
                     .map((item, idx) => (
-                      <tr
-                        key={`l-${idx}`}
-                        style={{
-                          borderBottom: `1px solid ${ledgerBorderSoft}`,
-                        }}
-                      >
+                      <tr key={`l-${idx}`}>
                         <td
-                          style={{
-                            padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
-                            textAlign: "left",
-                            fontWeight: item.level === 0 ? 600 : 400,
-                            paddingLeft:
-                              item.level > 0
-                                ? designTokens.space[3] + designTokens.space[4]
-                                : designTokens.space[3],
-                          }}
+                          data-align="left"
+                          data-level={item.level === 0 ? "0" : "1"}
                         >
                           {item.category}
                         </td>
-                        <td
-                          style={{
-                            textAlign: "right",
-                            padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
-                            ...tabularNumsStyle,
-                          }}
-                        >
-                          {yiText(item.current_scale)}
-                        </td>
-                        <td
-                          style={{
-                            textAlign: "right",
-                            padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
-                            ...tabularNumsStyle,
-                          }}
-                        >
-                          {yiText(item.previous_scale)}
-                        </td>
-                        <td
-                          style={{
-                            textAlign: "right",
-                            padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
-                            ...tabularNumsStyle,
-                          }}
-                        >
+                        <td>{yiText(item.current_scale)}</td>
+                        <td>{yiText(item.previous_scale)}</td>
+                        <td>
                           {item.current_yield_pct != null
                             ? item.current_yield_pct.display
                             : "—"}
                         </td>
-                        <td
-                          style={{
-                            textAlign: "right",
-                            padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
-                            ...tabularNumsStyle,
-                          }}
-                        >
+                        <td>
                           {item.previous_yield_pct != null
                             ? item.previous_yield_pct.display
                             : "—"}
                         </td>
-                        <td
-                          style={{
-                            textAlign: "right",
-                            padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
-                            color:
-                              (item.current_pnl.raw ?? 0) >= 0
-                                ? designTokens.color.semantic.profit
-                                : designTokens.color.semantic.loss,
-                            ...tabularNumsStyle,
-                          }}
-                        >
+                        <td data-direction={signedDirection(item.current_pnl)}>
                           {yiText(item.current_pnl)}
                         </td>
-                        <td
-                          style={{
-                            textAlign: "right",
-                            padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
-                            color:
-                              (item.pnl_change?.raw ?? 0) >= 0
-                                ? designTokens.color.semantic.profit
-                                : designTokens.color.semantic.loss,
-                            ...tabularNumsStyle,
-                          }}
-                        >
+                        <td data-direction={signedDirection(item.pnl_change)}>
                           {signedYiText(item.pnl_change)}
                         </td>
-                        <td
-                          style={{
-                            textAlign: "right",
-                            padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
-                            ...tabularNumsStyle,
-                          }}
-                        >
-                          {yiText(item.volume_effect, 4)}
-                        </td>
-                        <td
-                          style={{
-                            textAlign: "right",
-                            padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
-                            ...tabularNumsStyle,
-                          }}
-                        >
-                          {yiText(item.rate_effect, 4)}
-                        </td>
-                        <td
-                          style={{
-                            textAlign: "right",
-                            padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
-                            ...tabularNumsStyle,
-                          }}
-                        >
-                          {yiText(item.interaction_effect, 4)}
-                        </td>
-                        <td
-                          style={{
-                            textAlign: "right",
-                            padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
-                            fontWeight: 600,
-                            ...tabularNumsStyle,
-                          }}
-                        >
-                          {yiText(item.attrib_sum, 4)}
-                        </td>
-                        <td
-                          style={{
-                            textAlign: "right",
-                            padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
-                            ...tabularNumsStyle,
-                          }}
-                        >
-                          {reconErrorText(item.recon_error)}
-                        </td>
+                        <td>{yiText(item.volume_effect, 4)}</td>
+                        <td>{yiText(item.rate_effect, 4)}</td>
+                        <td>{yiText(item.interaction_effect, 4)}</td>
+                        <td data-weight="600">{yiText(item.attrib_sum, 4)}</td>
+                        <td>{reconErrorText(item.recon_error)}</td>
                       </tr>
                     ))}
                 </tbody>
@@ -524,6 +247,6 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
           </div>
         </div>
       ) : null}
-    </DataSection>
+    </PageDataSection>
   );
 }

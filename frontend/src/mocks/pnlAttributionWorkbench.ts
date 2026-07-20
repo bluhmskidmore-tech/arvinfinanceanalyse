@@ -46,6 +46,7 @@ export const mockVolumeRateAttribution: VolumeRateAttributionPayload = {
   total_volume_effect: y(8_000_000),
   total_rate_effect: y(5_500_000),
   total_interaction_effect: y(1_500_000),
+  total_recon_error: y(0),
   has_previous_data: true,
   items: [
     {

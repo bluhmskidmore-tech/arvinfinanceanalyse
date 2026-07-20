@@ -1,4 +1,4 @@
-import { SectionCard } from "../../../components/SectionCard";
+import { EvidencePanel } from "../../../components/page/PagePrimitives";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import type { CrossAssetWatchRow } from "../lib/crossAssetDriversPageModel";
 
@@ -18,7 +18,7 @@ export type WatchListProps = {
 export function WatchList({ rows }: WatchListProps) {
   return (
     <div data-testid="cross-asset-watch-list">
-      <SectionCard title="观察名单">
+      <EvidencePanel heading="观察名单">
         {rows.length === 0 ? (
           <p style={{ margin: 0, color: t.color.neutral[600], fontSize: t.fontSize[13] }}>
             当前没有可用观察项。
@@ -85,7 +85,7 @@ export function WatchList({ rows }: WatchListProps) {
             </tbody>
           </table>
         )}
-      </SectionCard>
+      </EvidencePanel>
     </div>
   );
 }

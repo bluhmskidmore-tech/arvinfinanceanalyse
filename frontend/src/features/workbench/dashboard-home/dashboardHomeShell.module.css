@@ -1,28 +1,45 @@
 .dhPage {
+  /* consolidated bare hex — single definition each */
+  --dh-hex-94a3b8: #94a3b8;
+  --dh-hex-64748b: #64748b;
+  --dh-hex-eef6ff: #eef6ff;
+  --dh-hex-f3f8ff: #f3f8ff;
+  --dh-hex-000000: #000000;
+  --dh-hex-0d1a2c: #0d1a2c;
+  --dh-hex-12233a: #12233a;
+  --dh-hex-2e6fd8: #2e6fd8;
+  --dh-hex-46b37b: #46b37b;
+  --dh-hex-9cc4ec: #9cc4ec;
+  --dh-hex-d9a05b: #d9a05b;
+  --dh-hex-e06c5f: #e06c5f;
+  --dh-hex-e2e8f0: #e2e8f0;
+  --dh-hex-eef4ff: #eef4ff;
+  --dh-hex-ffffff: #ffffff;
+
   --dh-bg: #070b12;
   --dh-card: #111a28;
   --dh-card-soft: #16202e;
-  --dh-surface-muted: #0a1019;
+  --dh-surface-muted: var(--dh-api-rail);
   --dh-line: rgba(148, 163, 184, 0.16);
   --dh-line-soft: rgba(148, 163, 184, 0.1);
   --dh-line-strong: rgba(148, 163, 184, 0.28);
-  --dh-ink: #e8eef7;
+  --dh-ink: var(--dh-api-ink);
   --dh-ink-2: #9aa8bc;
-  --dh-muted: #64748b;
-  --dh-muted-2: #64748b;
-  --dh-blue: #2e6fd8;
+  --dh-muted: var(--dh-hex-64748b);
+  --dh-muted-2: var(--dh-hex-64748b);
+  --dh-blue: var(--dh-hex-2e6fd8);
   --dh-blue-2: #3b82f6;
-  --dh-blue-deep: #2e6fd8;
+  --dh-blue-deep: var(--dh-hex-2e6fd8);
   --dh-blue-soft: rgba(59, 130, 246, 0.12);
   --dh-navy: #030712;
-  --dh-steel: #64748b;
-  --dh-green: #46b37b;
+  --dh-steel: var(--dh-hex-64748b);
+  --dh-green: var(--dh-hex-46b37b);
   --dh-green-soft: rgba(70, 179, 123, 0.14);
-  --dh-red: #e06c5f;
+  --dh-red: var(--dh-hex-e06c5f);
   --dh-red-soft: rgba(224, 108, 95, 0.14);
-  --dh-amber: #d9a05b;
+  --dh-amber: var(--dh-hex-d9a05b);
   --dh-amber-soft: rgba(217, 160, 91, 0.14);
-  --dh-gold: #72a7dc;
+  --dh-gold: var(--dh-api-blue);
   --dh-space-1: 8px;
   --dh-space-2: 12px;
   --dh-space-3: 16px;
@@ -46,12 +63,12 @@
   --ib-ink: var(--dh-ink);
   --ib-ink-secondary: var(--dh-ink-2);
   --ib-ink-muted: var(--dh-muted);
-  --ib-accent: #72a7dc;
-  --ib-accent-hover: #9cc4ec;
+  --ib-accent: var(--dh-api-blue);
+  --ib-accent-hover: var(--dh-hex-9cc4ec);
   --ib-accent-surface: rgba(59, 130, 246, 0.12);
-  --ib-up: #46b37b;
-  --ib-down: #e06c5f;
-  --ib-warn: #d9a05b;
+  --ib-up: var(--dh-hex-46b37b);
+  --ib-down: var(--dh-hex-e06c5f);
+  --ib-warn: var(--dh-hex-d9a05b);
   --ib-gold: var(--dh-gold);
   /* Dark terminal: no serif (DESIGN.md §3) */
   --ib-serif: var(--dh-font-sans);
@@ -417,7 +434,7 @@
   border-radius: var(--dh-api-radius, 6px);
   color: var(--dh-muted);
   flex-shrink: 0;
-  font-size: 10px;
+  font-size: 11px;
   padding: 1px 6px;
 }
 
@@ -614,43 +631,21 @@
   padding-left: 20px;
 }
 
-.dhSkeletonBar {
-  background: var(--dh-api-line-soft);
-  border-radius: var(--dh-api-radius, 6px);
-  height: 10px;
-}
-
-.dhSkeletonColumn .dhSkeletonBar:first-child {
+.dhSkeletonColumn :global(.moss-skeleton-bar):first-child {
   height: 12px;
   width: 46%;
 }
 
-.dhSkeletonColumn .dhSkeletonBar:nth-child(2) {
+.dhSkeletonColumn :global(.moss-skeleton-bar):nth-child(2) {
   width: 92%;
 }
 
-.dhSkeletonColumn .dhSkeletonBar:nth-child(3) {
+.dhSkeletonColumn :global(.moss-skeleton-bar):nth-child(3) {
   width: 84%;
 }
 
-.dhSkeletonColumn .dhSkeletonBar:nth-child(4) {
+.dhSkeletonColumn :global(.moss-skeleton-bar):nth-child(4) {
   width: 68%;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .dhSkeletonBar {
-    animation: dhSkeletonPulse 1.6s ease-in-out infinite;
-  }
-}
-
-@keyframes dhSkeletonPulse {
-  0%, 100% {
-    opacity: 0.5;
-  }
-
-  50% {
-    opacity: 0.9;
-  }
 }
 
 .dhDeferredIndex {
@@ -719,7 +714,7 @@
 }
 
 .dhDeferredIndexItem strong {
-  color: #eef4ff;
+  color: var(--dh-hex-eef4ff);
   font-size: 12px;
   font-weight: 760;
   line-height: 1.25;
@@ -1818,7 +1813,7 @@
 }
 
 .dhHeroKpiTile {
-  background: #ffffff;
+  background: var(--dh-hex-ffffff);
   border: 1px solid var(--dh-line);
   border-radius: var(--dh-api-radius, 6px);
   box-shadow: none;
@@ -2940,7 +2935,7 @@ a.dhEvidenceRow:hover {
 /* Figma layout polish: conclusion-first dashboard home */
 .dhPage {
   --dh-card-polish: #0b1728;
-  --dh-card-polish-2: #0d1a2c;
+  --dh-card-polish-2: var(--dh-hex-0d1a2c);
   --dh-card-polish-3: #101f33;
   --dh-line-polish: #24425f;
   --dh-line-polish-soft: #1e3148;
@@ -3093,12 +3088,12 @@ a.dhEvidenceRow:hover {
 }
 
 .dhMetaItem span {
-  color: #94a3b8;
+  color: var(--dh-hex-94a3b8);
   font-size: 11px;
 }
 
 .dhMetaItem strong {
-  color: #e2e8f0;
+  color: var(--dh-hex-e2e8f0);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0;
@@ -3148,7 +3143,7 @@ a.dhEvidenceRow:hover {
 }
 
 .dhClosedLoopNode:hover {
-  background: #12233a;
+  background: var(--dh-hex-12233a);
   border-color: rgba(125, 211, 252, 0.28);
   box-shadow: none;
 }
@@ -3188,7 +3183,7 @@ a.dhEvidenceRow:hover {
 }
 
 .dhKpiLedgerCell:hover {
-  background: #12233a;
+  background: var(--dh-hex-12233a);
 }
 
 .dhKpiLedgerCellHeader {
@@ -3204,7 +3199,7 @@ a.dhEvidenceRow:hover {
 }
 
 .dhKpiLedgerCellValue {
-  color: #f3f8ff;
+  color: var(--dh-hex-f3f8ff);
   font-size: 24px;
   letter-spacing: 0;
   line-height: 1.18;
@@ -3212,7 +3207,7 @@ a.dhEvidenceRow:hover {
 
 .dhKpiLedgerCellFooter {
   align-items: center;
-  color: #94a3b8;
+  color: var(--dh-hex-94a3b8);
   opacity: 1;
 }
 
@@ -3233,7 +3228,7 @@ a.dhEvidenceRow:hover {
 }
 
 .dhDeskPanel:hover {
-  background: #0d1a2c;
+  background: var(--dh-hex-0d1a2c);
   border-color: rgba(125, 211, 252, 0.22);
 }
 
@@ -3243,7 +3238,7 @@ a.dhEvidenceRow:hover {
 }
 
 .dhDeskPanelHead h3 {
-  color: #f3f8ff;
+  color: var(--dh-hex-f3f8ff);
   font-size: 13px;
   letter-spacing: 0;
   line-height: 1.35;
@@ -3276,7 +3271,7 @@ a.dhEvidenceRow:hover {
 }
 
 .dhMetricSectionHead span {
-  color: #94a3b8;
+  color: var(--dh-hex-94a3b8);
 }
 
 .dhMorningMetricTable {
@@ -3324,7 +3319,7 @@ a.dhEvidenceRow:hover {
 }
 
 .dhTerminalRiskCell b {
-  color: #f3f8ff;
+  color: var(--dh-hex-f3f8ff);
   letter-spacing: 0;
 }
 
@@ -3382,12 +3377,12 @@ a.dhEvidenceRow:hover {
 }
 
 .dhSourceRow span {
-  color: #94a3b8;
+  color: var(--dh-hex-94a3b8);
   font-size: 11px;
 }
 
 .dhSourceRow strong {
-  color: #e2e8f0;
+  color: var(--dh-hex-e2e8f0);
   font-size: 11px;
   letter-spacing: 0;
   min-width: 0;
@@ -3493,21 +3488,9 @@ a.dhEvidenceRow:hover {
 
 /* API-backed Figma implementation: dense fixed-income decision desk */
 .dhApiBackedHome {
-  --dh-api-bg: #070a12;
-  --dh-api-rail: #0a1019;
-  --dh-api-panel: #0c1421;
-  --dh-api-panel-2: #101a2a;
-  --dh-api-panel-3: #132033;
   --dh-api-line: rgba(103, 119, 142, 0.34);
   --dh-api-line-soft: rgba(103, 119, 142, 0.22);
-  --dh-api-ink: #e8eef7;
-  --dh-api-soft: #a9b6c7;
-  --dh-api-muted: #8593a8;
-  --dh-api-blue: #72a7dc;
-  --dh-api-green: #66b98b;
-  --dh-api-amber: #c9a565;
   --dh-api-gold: var(--dh-api-amber);
-  --dh-api-red: #d47a72;
   --dh-api-blue-soft: rgba(114, 167, 220, 0.12);
   --dh-api-green-soft: rgba(102, 185, 139, 0.12);
   --dh-api-amber-soft: rgba(201, 165, 101, 0.13);
@@ -3931,7 +3914,7 @@ a.dhEvidenceRow:hover {
 }
 
 .dhApiTopRail strong {
-  color: #eef4ff;
+  color: var(--dh-hex-eef4ff);
   font-size: 12px;
   font-weight: 760;
 }
@@ -3971,7 +3954,7 @@ a.dhEvidenceRow:hover {
     repeating-linear-gradient(0deg, rgba(232, 238, 247, 0.034) 0 1px, transparent 1px 18px);
   content: "";
   inset: 0;
-  mask-image: linear-gradient(180deg, transparent, #000 14%, #000 86%, transparent);
+  mask-image: linear-gradient(180deg, transparent, var(--dh-hex-000000) 14%, var(--dh-hex-000000) 86%, transparent);
   opacity: 0.86;
   pointer-events: none;
   position: absolute;
@@ -4697,12 +4680,12 @@ i.dhApiStateMuted {
 }
 
 .dhApiBackedHome .dhRailActionRow a {
-  color: #eef6ff !important;
+  color: var(--dh-hex-eef6ff) !important;
   text-decoration: none;
 }
 
 .dhApiBackedHome .dhRailActionRow a:hover {
-  color: #9cc4ec !important;
+  color: var(--dh-hex-9cc4ec) !important;
 }
 
 .dhDeferredIndex {
@@ -4981,7 +4964,7 @@ i.dhApiStateMuted {
 
 .dhApiBackedHome .dhRailEvidenceRow > strong,
 .dhApiBackedHome .dhSourceRow strong {
-  color: #eef6ff;
+  color: var(--dh-hex-eef6ff);
 }
 
 .dhApiBackedHome .dhRailMutedNote {
@@ -5648,7 +5631,7 @@ i.dhApiStateMuted {
   background: rgba(114, 167, 220, 0.12);
   border: 1px solid rgba(114, 167, 220, 0.42);
   border-radius: var(--dh-api-radius, 6px);
-  color: #eef6ff;
+  color: var(--dh-hex-eef6ff);
   display: inline-flex;
   font-size: 12px;
   font-weight: 700;
@@ -5664,7 +5647,7 @@ i.dhApiStateMuted {
 .dhApiPrimaryAction:hover {
   background: rgba(114, 167, 220, 0.2);
   border-color: rgba(114, 167, 220, 0.62);
-  color: #ffffff;
+  color: var(--dh-hex-ffffff);
 }
 
 .dhApiDecisionBody h3 {
@@ -5964,7 +5947,7 @@ i.dhApiStateMuted {
 }
 
 .dhApiProductCategoryMetric > small {
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .dhApiProductCategoryEmpty {

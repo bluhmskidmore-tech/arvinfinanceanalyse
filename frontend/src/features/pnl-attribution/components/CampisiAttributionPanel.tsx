@@ -4,8 +4,8 @@ import type {
   CampisiAttributionPayload,
   CampisiFourEffectsPayload,
 } from "../../../api/contracts";
-import { DataSection } from "../../../components/DataSection";
 import type { DataSectionState } from "../../../components/DataSection.types";
+import { PageDataSection } from "../../../components/page/PageDataSection";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 
 const cardStyle = {
@@ -314,7 +314,7 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
   }, [effectRows, normalized]);
 
   return (
-    <DataSection
+    <PageDataSection
       title="Campisi 四效应归因（组合）"
       state={state}
       onRetry={onRetry}
@@ -574,6 +574,6 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
           )}
         </div>
       )}
-    </DataSection>
+    </PageDataSection>
   );
 }

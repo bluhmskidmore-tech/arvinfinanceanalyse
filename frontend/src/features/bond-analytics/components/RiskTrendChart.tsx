@@ -1,7 +1,6 @@
 import { Typography } from "antd";
-import { SectionCard } from "../../../components/SectionCard";
+import { EvidencePanel } from "../../../components/page/PagePrimitives";
 import { designTokens } from "../../../theme/designSystem";
-import { BORDER, panelStyle } from "./bondAnalyticsCockpitTokens";
 
 const { Paragraph } = Typography;
 
@@ -9,9 +8,14 @@ const dt = designTokens;
 
 export function RiskTrendChart() {
   return (
-    <SectionCard
-      title="风险趋势（近12周）"
-      style={{ ...panelStyle(dt.color.neutral[50]), border: `1px solid ${BORDER}` }}
+    <EvidencePanel
+      heading="风险趋势（近12周）"
+      style={{
+        border: "1px solid var(--ib-hairline)",
+        borderRadius: "var(--dh-api-radius, 6px)",
+        background: "var(--ib-surface)",
+        boxShadow: "none",
+      }}
     >
       <div
         role="status"
@@ -33,7 +37,7 @@ export function RiskTrendChart() {
       <Paragraph type="secondary" style={{ marginTop: dt.space[1], marginBottom: 0, fontSize: dt.fontSize[12] }}>
         接口就绪后可在此挂载 ECharts 序列，不再使用前端合成曲线。
       </Paragraph>
-    </SectionCard>
+    </EvidencePanel>
   );
 }
 

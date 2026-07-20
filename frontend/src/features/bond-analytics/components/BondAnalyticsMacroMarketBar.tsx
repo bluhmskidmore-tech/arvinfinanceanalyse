@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Spin } from "antd";
 
 import { useApiClient } from "../../../api/client";
-import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import { designTokens, dhApiTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../../../utils/choiceMacroFormat";
 import { bondAnalyticsQueryKeyRoot } from "../lib/bondAnalyticsQueryKeys";
 import {
@@ -16,7 +16,7 @@ const dt = designTokens;
 const c = dt.color;
 
 const wrapStyle: CSSProperties = {
-  borderRadius: dt.radius.md,
+  borderRadius: dhApiTokens.radius,
   border: `1px solid ${c.neutral[200]}`,
   background: c.neutral[50],
   padding: `${dt.space[2]}px ${dt.space[3]}px`,

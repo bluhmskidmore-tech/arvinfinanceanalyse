@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
+import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
 
 type MarketDataSupplementarySeriesSectionProps = {
   macroSeriesCount: number;
@@ -63,7 +63,7 @@ export function MarketDataSupplementarySeriesSection({
       </div>
 
       <div className="market-data-supplementary-panel" data-testid="market-data-supplementary-panel">
-        <AsyncSection
+        <PageAsyncSection
           title=""
           isLoading={macroLoading}
           isError={macroError}
@@ -87,14 +87,14 @@ export function MarketDataSupplementarySeriesSection({
             ) : null}
             {macroDeck}
           </div>
-        </AsyncSection>
+        </PageAsyncSection>
 
         {showFxSection ? (
           <>
             <div className="market-data-supplementary-tier-rail" data-testid="market-data-fx-tier-rail">
               外汇分析 · {fxGroupCount} 组
             </div>
-            <AsyncSection
+            <PageAsyncSection
               title=""
               isLoading={fxLoading}
               isError={fxError}
@@ -103,7 +103,7 @@ export function MarketDataSupplementarySeriesSection({
               onRetry={onFxRetry}
             >
               {fxDeck}
-            </AsyncSection>
+            </PageAsyncSection>
           </>
         ) : null}
       </div>

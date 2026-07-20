@@ -1,17 +1,10 @@
 import { useMemo } from "react";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import type { VolumeRateAttributionPayload } from "../../../api/contracts";
-import { DataSection } from "../../../components/DataSection";
+import { PageDataSection } from "../../../components/page/PageDataSection";
 import type { DataSectionState } from "../../../components/DataSection.types";
 import { designTokens, ibTokens } from "../../../theme/designSystem";
-
-const cardStyle = {
-  padding: designTokens.space[5],
-  borderRadius: ibTokens.radius,
-  border: `1px solid ${ibTokens.color.hairline}`,
-  background: ibTokens.color.surface,
-  boxShadow: ibTokens.shadow,
-} as const;
+import "./AttributionWaterfallChart.css";
 
 function formatYi(value: number | null | undefined): string {
   if (value === null || value === undefined) {
@@ -114,65 +107,34 @@ export function AttributionWaterfallChart({ data, state, onRetry }: Props) {
       ],
     };
   }, [data]);
-  const explainedEffect =
-    data?.has_previous_data &&
-    data.total_volume_effect?.raw != null &&
-    data.total_rate_effect?.raw != null &&
-    data.total_interaction_effect?.raw != null
-      ? data.total_volume_effect.raw +
-        data.total_rate_effect.raw +
-        data.total_interaction_effect.raw
-      : undefined;
   const unexplainedEffect =
-    explainedEffect !== undefined && data?.total_pnl_change?.raw != null
-      ? data.total_pnl_change.raw - explainedEffect
+    data?.has_previous_data && data.total_recon_error?.raw != null
+      ? data.total_recon_error.raw
       : undefined;
 
   return (
-    <DataSection title="损益变动归因分解" state={state} onRetry={onRetry}>
+    <PageDataSection title="损益变动归因分解" state={state} onRetry={onRetry}>
       {!data ? null : !data.has_previous_data || !option ? (
-        <div
-          style={{
-            ...cardStyle,
-            textAlign: "center",
-            color: designTokens.color.neutral[700],
-          }}
-        >
+        <div className="attribution-waterfall-chart__card attribution-waterfall-chart__empty">
           {!data.has_previous_data
             ? "无上期对比数据，无法展示归因瀑布图。"
             : "暂无数据"}
         </div>
       ) : (
-        <div style={cardStyle}>
-          <p
-            style={{
-              margin: `0 0 ${designTokens.space[3]}px`,
-              fontSize: designTokens.fontSize[13],
-              color: designTokens.color.neutral[700],
-              lineHeight: designTokens.lineHeight.normal,
-            }}
-          >
+        <div className="attribution-waterfall-chart__card">
+          <p className="attribution-waterfall-chart__copy">
             规模一阶效应近似为
-            Δ规模×上期收益率；利率一阶效应近似为上期规模×Δ收益率；交叉效应为残差项。与
-            Campisi 框架中的收入、国债、利差、选择等解释维度互补。
+            Δ规模×上期收益率；利率一阶效应近似为上期规模×Δ收益率；交叉效应为规模与收益率同时变化的二阶联动项；
+            未解释差额为损益变动扣除三项效应后的归因残差。与 Campisi
+            框架中的收入、国债、利差、选择等解释维度互补。
           </p>
           <ReactECharts
             option={option}
-            style={{ height: 300 }}
+            className="attribution-waterfall-chart__chart"
             notMerge
             lazyUpdate
           />
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: designTokens.space[4],
-              justifyContent: "center",
-              marginTop: designTokens.space[3],
-              fontSize: designTokens.fontSize[12],
-              color: designTokens.color.neutral[700],
-            }}
-          >
+          <div className="attribution-waterfall-chart__legend">
             <span>
               当期损益 {formatYi(data.total_current_pnl.raw ?? undefined)}
             </span>
@@ -186,10 +148,12 @@ export function AttributionWaterfallChart({ data, state, onRetry }: Props) {
               交叉效应{" "}
               {formatYi(data.total_interaction_effect?.raw ?? undefined)}
             </span>
-            <span>未解释 {formatYi(unexplainedEffect)}</span>
+            {unexplainedEffect != null ? (
+              <span>未解释差额 {formatYi(unexplainedEffect)}</span>
+            ) : null}
           </div>
         </div>
       )}
-    </DataSection>
+    </PageDataSection>
   );
 }

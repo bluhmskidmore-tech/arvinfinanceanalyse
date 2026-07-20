@@ -1,6 +1,6 @@
 import type { CampisiEnhancedPayload } from "../../../api/contracts";
-import { DataSection } from "../../../components/DataSection";
 import type { DataSectionState } from "../../../components/DataSection.types";
+import { PageDataSection } from "../../../components/page/PageDataSection";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 
 const cardStyle = {
@@ -25,7 +25,7 @@ export function CampisiEnhancedPanel({ data, state, onRetry }: Props) {
   const totals = data?.totals;
 
   return (
-    <DataSection
+    <PageDataSection
       title="Campisi 六效应归因（扩展）"
       state={state}
       onRetry={onRetry}
@@ -88,6 +88,6 @@ export function CampisiEnhancedPanel({ data, state, onRetry }: Props) {
           ))}
         </div>
       </div>
-    </DataSection>
+    </PageDataSection>
   );
 }

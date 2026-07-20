@@ -5,11 +5,11 @@ import { useSearchParams } from "react-router-dom";
 import { runPollingTask } from "../../../app/jobs/polling";
 import { useApiClient } from "../../../api/client";
 import { FilterBar } from "../../../components/FilterBar";
+import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
 import type {
   ProductCategoryManualAdjustmentQuery,
   ProductCategoryManualAdjustmentRequest,
 } from "../../../api/contracts";
-import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import MonthlyOperatingAnalysisAuditPage from "./MonthlyOperatingAnalysisAuditPage";
 import { nextDefaultReportDateIfUnset } from "./productCategoryPnlPageModel";
 import { buildProductCategoryAuditListExportQuery } from "./productCategoryAdjustmentAuditPageModel";
@@ -771,7 +771,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
         testId="product-category-audit-timeline-lead"
       />
       <div data-testid="product-category-audit-list-timeline-async">
-        <AsyncSection
+        <PageAsyncSection
           title="调整审计"
           isLoading={adjustmentsQuery.isLoading}
           isError={adjustmentsQuery.isError}
@@ -930,7 +930,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
             ))}
           </div>
         </div>
-        </AsyncSection>
+        </PageAsyncSection>
       </div>
     </section>
   );

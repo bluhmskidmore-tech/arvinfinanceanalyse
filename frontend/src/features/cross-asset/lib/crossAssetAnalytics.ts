@@ -13,6 +13,42 @@
 import { designTokens } from "../../../theme/designSystem";
 import { isAssetLevelKpiKey, type ResolvedCrossAssetKpi, type CrossAssetKpiFormat } from "./crossAssetKpiModel";
 
+/**
+ * Cross-asset analytics presentation palette.
+ * Token-equal colors resolve through designTokens; non-equal hex stay verbatim.
+ */
+const CA_PALETTE = {
+  riskOn: "#16a34a",
+  riskOnBg: "#f0fdf4",
+  riskOff: designTokens.color.danger[600],
+  riskOffBg: designTokens.color.danger[50],
+  stagflation: "#ea580c",
+  stagflationBg: "#fff7ed",
+  deflation: designTokens.color.info[600],
+  deflationBg: designTokens.color.info[50],
+  liquidity: designTokens.color.primary[600],
+  liquidityBg: designTokens.color.primary[50],
+  mixed: designTokens.color.cockpit.ink600,
+  mixedBg: designTokens.color.cockpit.surface20,
+  percentileExtremeLow: designTokens.color.info[600],
+  percentileLow: designTokens.color.info[400],
+  percentileMid: designTokens.color.cockpit.ink600,
+  percentileHigh: "#f59e0b",
+  percentileExtremeHigh: designTokens.color.danger[500],
+  erpCheap: "#16a34a",
+  erpCheapBg: "#f0fdf4",
+  erpExpensive: designTokens.color.danger[600],
+  erpExpensiveBg: designTokens.color.danger[50],
+  erpNeutral: designTokens.color.warning[500],
+  erpNeutralBg: "#fffbeb",
+  erpUnavailable: designTokens.color.cockpit.ink600,
+  erpUnavailableBg: designTokens.color.cockpit.surface20,
+  waterfallUp: designTokens.color.danger[600],
+  waterfallDown: "#16a34a",
+  waterfallTotalNeutral: designTokens.color.cockpit.ink600,
+  waterfallFactorNeutral: designTokens.color.cockpit.ink450,
+} as const;
+
 /* ================================================================
  *  1. Asset Correlation Matrix
  * ================================================================ */
@@ -137,43 +173,43 @@ const REGIME_META: Record<MarketRegime, Omit<MarketRegimeInfo, "regime">> = {
   risk_on: {
     label: "Risk-On",
     description: "风险偏好回暖：权益上行 + 利率上行/持平 + 流动性中性偏松",
-    color: "#16a34a",
-    bgColor: "#f0fdf4",
+    color: CA_PALETTE.riskOn,
+    bgColor: CA_PALETTE.riskOnBg,
     icon: "🟢",
   },
   risk_off: {
     label: "Risk-Off",
     description: "避险模式：权益走弱 + 利率下行 + 资金面宽松",
-    color: "#dc2626",
-    bgColor: "#fef2f2",
+    color: CA_PALETTE.riskOff,
+    bgColor: CA_PALETTE.riskOffBg,
     icon: "🔴",
   },
   stagflation: {
     label: "滞胀交易",
     description: "增长放缓叠加通胀压力：商品走强 + 权益走弱 + 利率上行",
-    color: "#ea580c",
-    bgColor: "#fff7ed",
+    color: CA_PALETTE.stagflation,
+    bgColor: CA_PALETTE.stagflationBg,
     icon: "🟠",
   },
   deflation_trade: {
     label: "通缩交易",
     description: "通缩预期主导：商品走弱 + 利率下行 + 权益承压",
-    color: "#2563eb",
-    bgColor: "#eff6ff",
+    color: CA_PALETTE.deflation,
+    bgColor: CA_PALETTE.deflationBg,
     icon: "🔵",
   },
   liquidity_driven: {
     label: "流动性驱动",
     description: "宽松流动性主导：资金面偏松 + 股债同涨 + 利率下行",
-    color: designTokens.color.primary[600],
-    bgColor: designTokens.color.primary[50],
+    color: CA_PALETTE.liquidity,
+    bgColor: CA_PALETTE.liquidityBg,
     icon: "🟣",
   },
   mixed: {
     label: "信号分化",
     description: "各资产信号冲突，无法归入单一体制",
-    color: "#64748b",
-    bgColor: "#f8fafc",
+    color: CA_PALETTE.mixed,
+    bgColor: CA_PALETTE.mixedBg,
     icon: "⚪",
   },
 };
@@ -295,15 +331,15 @@ export function computeSparklinePercentile(sparkline: number[]): PercentileInfo 
 export function percentileZoneColor(zone: PercentileInfo["zone"]): string {
   switch (zone) {
     case "extreme_low":
-      return "#2563eb"; // blue — extremely low
+      return CA_PALETTE.percentileExtremeLow;
     case "low":
-      return "#60a5fa"; // light blue
+      return CA_PALETTE.percentileLow;
     case "mid":
-      return "#64748b"; // slate
+      return CA_PALETTE.percentileMid;
     case "high":
-      return "#f59e0b"; // amber
+      return CA_PALETTE.percentileHigh;
     case "extreme_high":
-      return "#ef4444"; // red
+      return CA_PALETTE.percentileExtremeHigh;
   }
 }
 
@@ -545,8 +581,8 @@ export function computeEquityBondERP(kpis: ResolvedCrossAssetKpi[]): EquityBondE
     verdict: "unavailable",
     verdictLabel: "数据不足",
     verdictDescription: "缺少沪深300市盈率或10Y国债数据，无法计算股债性价比。",
-    verdictColor: "#64748b",
-    verdictBg: "#f8fafc",
+    verdictColor: CA_PALETTE.erpUnavailable,
+    verdictBg: CA_PALETTE.erpUnavailableBg,
   };
 
   if (!peKpi || !bondKpi) return unavailable;
@@ -569,20 +605,20 @@ export function computeEquityBondERP(kpis: ResolvedCrossAssetKpi[]): EquityBondE
     verdict = "equity_cheap";
     verdictLabel = "股票偏便宜";
     verdictDescription = `ERP ${erp.toFixed(2)}% > 3%：盈利收益率显著高于无风险利率，股票相对债券有吸引力。`;
-    verdictColor = "#16a34a";
-    verdictBg = "#f0fdf4";
+    verdictColor = CA_PALETTE.erpCheap;
+    verdictBg = CA_PALETTE.erpCheapBg;
   } else if (erp < 1) {
     verdict = "equity_expensive";
     verdictLabel = "股票偏贵";
     verdictDescription = `ERP ${erp.toFixed(2)}% < 1%：盈利收益率接近无风险利率，股票估值偏高。`;
-    verdictColor = "#dc2626";
-    verdictBg = "#fef2f2";
+    verdictColor = CA_PALETTE.erpExpensive;
+    verdictBg = CA_PALETTE.erpExpensiveBg;
   } else {
     verdict = "neutral";
     verdictLabel = "中性区间";
     verdictDescription = `ERP ${erp.toFixed(2)}%：盈利收益率适度高于无风险利率，股债性价比中性。`;
-    verdictColor = "#d97706";
-    verdictBg = "#fffbeb";
+    verdictColor = CA_PALETTE.erpNeutral;
+    verdictBg = CA_PALETTE.erpNeutralBg;
   }
 
   return {
@@ -626,9 +662,11 @@ const CONTRIBUTION_LABELS: Record<string, { key: string; label: string }> = {
 };
 
 function waterfallColor(value: number, kind: "factor" | "total") {
-  if (value > 0.05) return "#dc2626";
-  if (value < -0.05) return "#16a34a";
-  return kind === "total" ? "#64748b" : "#94a3b8";
+  if (value > 0.05) return CA_PALETTE.waterfallUp;
+  if (value < -0.05) return CA_PALETTE.waterfallDown;
+  return kind === "total"
+    ? CA_PALETTE.waterfallTotalNeutral
+    : CA_PALETTE.waterfallFactorNeutral;
 }
 
 /**

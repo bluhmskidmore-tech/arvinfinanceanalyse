@@ -2,7 +2,7 @@ import type {
   ContributionPayload,
 } from "../../../api/contracts";
 import { chipVariants, tableVariants } from "@heroui/styles";
-import { AsyncSection } from "./AsyncSection";
+import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
 
 type ContributionSectionProps = {
   data?: ContributionPayload;
@@ -20,7 +20,7 @@ export default function ContributionSection({
   onRetry,
 }: ContributionSectionProps) {
   return (
-    <AsyncSection
+    <PageAsyncSection
       title="团队 / 账户 / 策略贡献"
       isLoading={isLoading}
       isError={isError}
@@ -68,6 +68,6 @@ export default function ContributionSection({
           </tbody>
         </table>
       </div>
-    </AsyncSection>
+    </PageAsyncSection>
   );
 }

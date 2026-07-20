@@ -1,6 +1,6 @@
 import type { CampisiMaturityBucketsPayload } from "../../../api/contracts";
-import { DataSection } from "../../../components/DataSection";
 import type { DataSectionState } from "../../../components/DataSection.types";
+import { PageDataSection } from "../../../components/page/PageDataSection";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 
 const cardStyle = {
@@ -25,7 +25,7 @@ export function CampisiMaturityBucketPanel({ data, state, onRetry }: Props) {
   const rows = Object.entries(data?.buckets ?? {});
 
   return (
-    <DataSection title="Campisi 到期桶拆解" state={state} onRetry={onRetry}>
+    <PageDataSection title="Campisi 到期桶拆解" state={state} onRetry={onRetry}>
       <div style={cardStyle}>
         <p
           style={{
@@ -155,6 +155,6 @@ export function CampisiMaturityBucketPanel({ data, state, onRetry }: Props) {
           </tbody>
         </table>
       </div>
-    </DataSection>
+    </PageDataSection>
   );
 }

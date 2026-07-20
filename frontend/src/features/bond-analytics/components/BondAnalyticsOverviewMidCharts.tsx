@@ -8,7 +8,7 @@ import type {
   BondAnalyticsAssetClassFilter,
   PeriodType,
 } from "../types";
-import { designTokens } from "../../../theme/designSystem";
+import { designTokens, dhApiTokens } from "../../../theme/designSystem";
 import {
   bundleSectionQuery,
   useBondAnalyticsCockpitBundleQuery,
@@ -99,7 +99,7 @@ export function BondAnalyticsOverviewMidCharts({
               <div
                 style={{
                   border: `1px dashed ${dt.color.neutral[300]}`,
-                  borderRadius: dt.radius.md,
+                  borderRadius: dhApiTokens.radius,
                   padding: dt.space[4],
                   textAlign: "center",
                   color: dt.color.neutral[500],

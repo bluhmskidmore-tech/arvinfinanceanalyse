@@ -1,6 +1,6 @@
 import type { AlertsPayload } from "../../../api/contracts";
 import { designTokens } from "../../../theme/designSystem";
-import { AsyncSection } from "./AsyncSection";
+import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
 
 type AlertsSectionProps = {
   data?: AlertsPayload;
@@ -30,7 +30,7 @@ export function AlertsSection({
   sectionTitle = "预警与事件",
 }: AlertsSectionProps) {
   return (
-    <AsyncSection
+    <PageAsyncSection
       title={sectionTitle}
       isLoading={isLoading}
       isError={isError}
@@ -80,6 +80,6 @@ export function AlertsSection({
           </div>
         ))}
       </div>
-    </AsyncSection>
+    </PageAsyncSection>
   );
 }

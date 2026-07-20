@@ -10,6 +10,7 @@ import type {
 } from "../../api/contracts";
 import { FilterBar } from "../../components/FilterBar";
 import { KpiCard } from "../../components/KpiCard";
+import { PageAsyncSection } from "../../components/page/PageAsyncSection";
 import {
   DataStatusStrip,
   PageDecisionHero,
@@ -20,7 +21,6 @@ import {
 } from "../../components/page/PagePrimitives";
 import { tableShellStyle, tableStyle, tdStyle, thStyle } from "../../components/page/pageStyles";
 import { designTokens } from "../../theme/designSystem";
-import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { CapitalEfficiencyQuadrantPanel } from "./CapitalEfficiencyQuadrantPanel";
 import { UntracedReconciliationTrendPanel } from "./UntracedReconciliationTrendPanel";
 import { hasApprovedPnlByBusinessInsightsEvidence } from "../pnl/pnlByBusinessInsightsModel";
@@ -315,7 +315,7 @@ export default function PnlByBusinessInsightsPage() {
           </PageFilterTray>
         </PageDecisionHero>
 
-        <AsyncSection
+        <PageAsyncSection
           title="正式结构分析"
           isLoading={insightsQuery.isLoading}
           isError={insightsQuery.isError}
@@ -399,7 +399,7 @@ export default function PnlByBusinessInsightsPage() {
               )}
             </>
           ) : null}
-        </AsyncSection>
+        </PageAsyncSection>
 
         {contractReady && result?.reconciliation_diagnostics ? (
           <>

@@ -1,6 +1,6 @@
 import type { RiskOverviewPayload } from "../../../api/contracts";
 import { designTokens } from "../../../theme/designSystem";
-import { AsyncSection } from "./AsyncSection";
+import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
 
 type RiskOverviewSectionProps = {
   data?: RiskOverviewPayload;
@@ -22,7 +22,7 @@ export function RiskOverviewSection({
   onRetry,
 }: RiskOverviewSectionProps) {
   return (
-    <AsyncSection
+    <PageAsyncSection
       title="风险全景"
       isLoading={isLoading}
       isError={isError}
@@ -59,6 +59,6 @@ export function RiskOverviewSection({
           </div>
         ))}
       </div>
-    </AsyncSection>
+    </PageAsyncSection>
   );
 }

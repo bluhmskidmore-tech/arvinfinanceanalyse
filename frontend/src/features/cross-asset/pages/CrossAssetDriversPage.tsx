@@ -1,4 +1,4 @@
-import { AsyncSection } from "../../../components/AsyncSection";
+import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
 import ReactECharts from "../../../lib/echarts";
 import { KpiCard } from "../../../components/KpiCard";
 import { toneFromSignedNumber } from "../../workbench/components/kpiFormat";
@@ -362,7 +362,7 @@ export default function CrossAssetDriversPage() {
                   isError={livermoreSignalConfluenceQuery.isError}
                   asOfDate={livermoreStrategyResolvedAsOfDate}
                 />
-                <AsyncSection
+                <PageAsyncSection
                   title="宏观 - 债券联动（评分与组合影响）"
                   isLoading={macroBondLinkageQuery.isLoading || latestQuery.isLoading}
                   isError={macroBondLinkageQuery.isError || latestQuery.isError}
@@ -464,7 +464,7 @@ export default function CrossAssetDriversPage() {
                       </section>
                     </div>
                   )}
-                </AsyncSection>
+                </PageAsyncSection>
 
                 <details open className="cross-asset-structured-output">
                   <summary>结构化输出与联动摘要</summary>

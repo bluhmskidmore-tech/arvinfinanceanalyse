@@ -4,7 +4,7 @@ import { Card, Spin } from "antd";
 
 import { useApiClient } from "../../../api/client";
 import ReactECharts from "../../../lib/echarts";
-import { designTokens } from "../../../theme/designSystem";
+import { designTokens, dhApiTokens } from "../../../theme/designSystem";
 import { buildBondAnalyticsOverviewRateChartOption } from "../lib/bondAnalyticsRateChartOption";
 import { bondAnalyticsQueryKeyRoot } from "../lib/bondAnalyticsQueryKeys";
 
@@ -51,7 +51,7 @@ export function BondAnalyticsOverviewRateChart() {
         <div
           style={{
             border: `1px dashed ${dt.color.primary[200]}`,
-            borderRadius: dt.radius.md,
+            borderRadius: dhApiTokens.radius,
             padding: dt.space[5],
             textAlign: "center",
             color: dt.color.neutral[500],

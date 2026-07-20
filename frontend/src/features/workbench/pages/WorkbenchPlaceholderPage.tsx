@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
-import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
+import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
 import { PlaceholderCard } from "../components/PlaceholderCard";
 import { workbenchNavigation } from "../../../mocks/navigation";
 
@@ -42,7 +42,7 @@ export default function WorkbenchPlaceholderPage() {
         {snapshot?.title ?? section.label}
       </h1>
 
-      <AsyncSection
+      <PageAsyncSection
         title="模块说明"
         isLoading={isLoading}
         isError={isError}
@@ -77,7 +77,7 @@ export default function WorkbenchPlaceholderPage() {
             </div>
           </>
         ) : null}
-      </AsyncSection>
+      </PageAsyncSection>
     </section>
   );
 }

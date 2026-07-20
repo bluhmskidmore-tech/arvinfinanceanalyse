@@ -13,8 +13,8 @@ import { formatNumeric } from "../../utils/format";
 import { runPollingTask } from "../../app/jobs/polling";
 import { FilterBar } from "../../components/FilterBar";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
+import { PageAsyncSection } from "../../components/page/PageAsyncSection";
 import { SectionLead } from "../../components/page/SectionLead";
-import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../../components/KpiCard";
 import { toneFromSignedDisplayString } from "../workbench/components/kpiFormat";
 import { PnlRefreshStatus } from "./PnlRuntimePanels";
@@ -369,7 +369,7 @@ export default function FormalPnlV1Page() {
           title="正式损益汇总"
           description="先确认报告日与刷新状态，再阅读 514 / 516 / 517、手工调整和损益合计；所有数值均来自后端正式读模型。"
         />
-        <AsyncSection
+        <PageAsyncSection
           title="汇总概览"
           isLoading={overviewLoading}
           isError={overviewError}
@@ -420,7 +420,7 @@ export default function FormalPnlV1Page() {
               tone={toneFromSignedDisplayString(formatWan(overview?.total_pnl))}
             />
           </div>
-        </AsyncSection>
+        </PageAsyncSection>
       </div>
 
       <div data-testid="pnl-data-section" data-state={dataState} className="formal-pnl-v1-data-section">
@@ -433,7 +433,7 @@ export default function FormalPnlV1Page() {
               : "固收明细和非标桥接共用当前报告日，保留原有页签、明细表和分页行为，不改变正式损益契约。"
           }
         />
-        <AsyncSection
+        <PageAsyncSection
           title="明细数据"
           extra={dataTabExtra}
           isLoading={detailLoading}
@@ -503,7 +503,7 @@ export default function FormalPnlV1Page() {
               />
             </div>
           )}
-        </AsyncSection>
+        </PageAsyncSection>
       </div>
 
       <FormalResultMetaPanel

@@ -2260,7 +2260,6 @@ export type LivermoreCycleRotationFramework = {
   constraints: string[];
   boundary: string;
 };
-
 export type LivermoreCycleProxyBacktestInterval = {
   return: number;
   start_date?: string;
@@ -2268,7 +2267,6 @@ export type LivermoreCycleProxyBacktestInterval = {
   peak_date?: string;
   trough_date?: string;
 };
-
 export type LivermoreProxyCostBasis = {
   source: string;
   buy_cost_rate: number;
@@ -2276,7 +2274,6 @@ export type LivermoreProxyCostBasis = {
   slippage_rate: number;
   round_trip_cost_rate: number;
 };
-
 export type LivermoreCycleProxyBacktestSummary = {
   sample_days: number;
   candidate_rows: number;
@@ -2294,7 +2291,6 @@ export type LivermoreCycleProxyBacktestSummary = {
   max_gain: LivermoreCycleProxyBacktestInterval;
   max_drawdown: LivermoreCycleProxyBacktestInterval;
 };
-
 export type LivermoreCycleProxyBacktestNavPoint = {
   date: string;
   exit_date?: string;
@@ -2303,7 +2299,6 @@ export type LivermoreCycleProxyBacktestNavPoint = {
   nav: number;
   candidate_count: number;
 };
-
 export type LivermoreCycleProxyBacktestPayload = {
   status: "proxy" | "unsupported" | string;
   full_strategy_status: "blocked_missing_inputs" | string;
@@ -2319,7 +2314,6 @@ export type LivermoreCycleProxyBacktestPayload = {
   nav_series: LivermoreCycleProxyBacktestNavPoint[];
   workbench_summary?: Record<string, unknown>;
 };
-
 export type LivermoreCandidateHistoryPortfolioBacktestNavPoint = {
   date: string;
   nav: number;
@@ -4926,6 +4920,7 @@ export type AgentEvidence = {
   sql_executed: string[];
   evidence_rows: number;
   quality_flag: ApiQuality;
+  evidence_strength?: string;
 };
 
 export type AgentResultMeta = ResultMeta & {
@@ -4933,6 +4928,7 @@ export type AgentResultMeta = ResultMeta & {
   filters_applied: Record<string, unknown>;
   sql_executed: string[];
   evidence_rows: number;
+  evidence_strength?: string;
   next_drill: AgentDrill[];
 };
 
@@ -5403,6 +5399,7 @@ export type VolumeRateAttributionPayload = {
   total_volume_effect: Numeric | null;
   total_rate_effect: Numeric | null;
   total_interaction_effect: Numeric | null;
+  total_recon_error: Numeric | null;
   items: VolumeRateAttributionItem[];
   has_previous_data: boolean;
 };

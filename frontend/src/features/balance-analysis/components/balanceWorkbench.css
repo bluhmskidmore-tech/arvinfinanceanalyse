@@ -3650,16 +3650,17 @@
   --balance-home-ink: #0c1c33;
   --balance-home-ink-2: #2c3e5a;
   --balance-home-muted: #6b7d95;
-  --balance-home-blue: #1850a1;
-  --balance-home-blue-2: #2f68b8;
-  --balance-home-blue-deep: #10356a;
-  --balance-home-blue-soft: #e8f1fb;
-  --balance-home-green: #2d8a5e;
-  --balance-home-green-soft: #ecf8f2;
-  --balance-home-red: #c5162e;
-  --balance-home-red-soft: #fef2f2;
-  --balance-home-amber: #b35c05;
-  --balance-home-amber-soft: #fff9eb;
+  --balance-home-blue: var(--moss-color-primary-600);
+  --balance-home-blue-2: var(--moss-color-primary-500);
+  --balance-home-blue-deep: var(--moss-color-primary-800);
+  --balance-home-blue-soft: var(--moss-color-primary-50);
+  --balance-home-green: var(--moss-color-success-500);
+  --balance-home-green-soft: var(--moss-color-success-50);
+  /* DESIGN.md 2026-07-19: alert red converges to --ib-down (was #c5162e). */
+  --balance-home-red: var(--ib-down);
+  --balance-home-red-soft: var(--moss-color-danger-50);
+  --balance-home-amber: var(--moss-color-warning-600);
+  --balance-home-amber-soft: var(--moss-color-warning-50);
   --balance-home-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06);
 }
 
@@ -3763,7 +3764,7 @@
 .balance-workbench__endpoint-chip[data-status="error"] .balance-workbench__endpoint-state-icon,
 .balance-workbench__endpoint-chip[data-status="error"] .balance-workbench__endpoint-status,
 .balance-workbench__sentinel[data-active="true"] {
-  border-color: rgba(197, 22, 46, 0.22);
+  border-color: color-mix(in srgb, var(--ib-down) 22%, transparent);
   background: var(--balance-home-red-soft);
   color: var(--balance-home-red);
 }

@@ -74,15 +74,15 @@ export function buildVolumeRateBridgeSummary(data: VolumeRateAttributionPayload 
   const volumeEffect = numericRaw(data.total_volume_effect);
   const rateEffect = numericRaw(data.total_rate_effect);
   const interactionEffect = numericRaw(data.total_interaction_effect);
+  const unexplainedEffect = numericRaw(data.total_recon_error);
   const canCalculateClosure =
     data.has_previous_data &&
     pnlChange !== undefined &&
     volumeEffect !== undefined &&
     rateEffect !== undefined &&
-    interactionEffect !== undefined;
+    interactionEffect !== undefined &&
+    unexplainedEffect !== undefined;
   const explainedEffect = canCalculateClosure ? volumeEffect + rateEffect + interactionEffect : undefined;
-  const unexplainedEffect =
-    canCalculateClosure && explainedEffect !== undefined ? pnlChange - explainedEffect : undefined;
   const coveragePct =
     canCalculateClosure && explainedEffect !== undefined && pnlChange !== undefined
       ? Math.abs(pnlChange) <= VOLUME_RATE_CLOSURE_TOLERANCE_YUAN

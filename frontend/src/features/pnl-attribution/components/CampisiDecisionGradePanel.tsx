@@ -3,8 +3,8 @@ import type {
   CampisiDecisionEffectKey,
   CampisiDecisionGradePayload,
 } from "../../../api/contracts";
-import { DataSection } from "../../../components/DataSection";
 import type { DataSectionState } from "../../../components/DataSection.types";
+import { PageDataSection } from "../../../components/page/PageDataSection";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 
 const CARD_STYLE = {
@@ -159,7 +159,7 @@ function renderComponents(components: CampisiDecisionComponents) {
 
 export function CampisiDecisionGradePanel({ data, state, onRetry }: Props) {
   return (
-    <DataSection title="Campisi 决策级解释" state={state} onRetry={onRetry}>
+    <PageDataSection title="Campisi 决策级解释" state={state} onRetry={onRetry}>
       {data ? (
         <div>
           <div data-testid="campisi-decision-headline" style={CARD_STYLE}>
@@ -274,6 +274,6 @@ export function CampisiDecisionGradePanel({ data, state, onRetry }: Props) {
           ) : null}
         </div>
       ) : null}
-    </DataSection>
+    </PageDataSection>
   );
 }

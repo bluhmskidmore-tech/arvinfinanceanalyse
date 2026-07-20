@@ -1,4 +1,4 @@
-import { SectionCard } from "../../../components/SectionCard";
+import { EvidencePanel } from "../../../components/page/PagePrimitives";
 import { designTokens } from "../../../theme/designSystem";
 import type { EnvironmentTags } from "../lib/crossAssetDriversModel";
 
@@ -42,7 +42,7 @@ export function PageOutput({
   ];
 
   return (
-    <SectionCard title="页面输出">
+    <EvidencePanel heading="页面输出">
       <dl
         style={{
           margin: 0,
@@ -58,6 +58,6 @@ export function PageOutput({
           </div>
         ))}
       </dl>
-    </SectionCard>
+    </EvidencePanel>
   );
 }

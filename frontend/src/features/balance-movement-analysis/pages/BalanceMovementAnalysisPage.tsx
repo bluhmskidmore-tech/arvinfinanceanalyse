@@ -23,8 +23,8 @@ import AccountingBasisStackedShareChart, {
 } from "../../../components/charts/AccountingBasisStackedShareChart";
 import { CalibrationBadge } from "../../../components/CalibrationBadge";
 import { FilterBar } from "../../../components/FilterBar";
+import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
-import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import { formatBalanceAmountToYiFromYuan } from "../../balance-analysis/pages/balanceAnalysisPageModel";
 import {
   nullableNumber,
@@ -3401,7 +3401,7 @@ export default function BalanceMovementAnalysisPage() {
       ) : null}
 
       {businessTrendMonths.length > 0 ? (
-        <AsyncSection
+        <PageAsyncSection
           title="月度余额分析矩阵"
           extra={
             <span className="balance-movement-matrix-unit-hint">
@@ -3692,11 +3692,11 @@ export default function BalanceMovementAnalysisPage() {
               </div>
             ) : null}
           </div>
-        </AsyncSection>
+        </PageAsyncSection>
       ) : null}
 
       <div id="balance-movement-analysis-detail-anchor">
-        <AsyncSection
+        <PageAsyncSection
           title="明细 / 对账：AC / OCI / TPL 余额变动"
           isLoading={detailQuery.isLoading}
           isError={detailQuery.isError}
@@ -3760,7 +3760,7 @@ export default function BalanceMovementAnalysisPage() {
             </tbody>
           </table>
           </div>
-        </AsyncSection>
+        </PageAsyncSection>
       </div>
 
       {detailQuery.data?.result.accounting_controls ? (

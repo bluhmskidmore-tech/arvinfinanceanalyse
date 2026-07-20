@@ -1,7 +1,7 @@
 import { Card, Col, Row, Spin } from "antd";
 
 import type { BondDashboardHeadlinePayload, BondPortfolioHeadlinesPayload, Numeric } from "../../../api/contracts";
-import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import { designTokens, dhApiTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import { computeBpDelta, toBp } from "../lib/bondAnalyticsHomeCalculations";
 import { formatBp, formatPct, formatYi, toneColor } from "../utils/formatters";
@@ -45,7 +45,7 @@ function Tile({
     <Card
       size="small"
       style={{
-        borderRadius: designTokens.radius.lg,
+        borderRadius: dhApiTokens.radius,
         borderColor: designTokens.color.neutral[200],
         height: "100%",
       }}

@@ -5,8 +5,8 @@ import { useSearchParams } from "react-router-dom";
 import ReactECharts, { type EChartsOption } from "../../lib/echarts";
 import { useApiClient } from "../../api/client";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
+import { PageAsyncSection } from "../../components/page/PageAsyncSection";
 import { ibChartTheme } from "../../components/charts/chartTheme";
-import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../../components/KpiCard";
 import type {
   ResultMeta,
@@ -1829,7 +1829,7 @@ export default function RiskTensorPage() {
         </div>
       ) : null}
 
-      <AsyncSection
+      <PageAsyncSection
         title="组合风险张量"
         isLoading={datesQuery.isLoading || tensorQuery.isLoading}
         isError={datesBlockingError || tensorBlockedByReportDate || tensorQuery.isError}
@@ -2752,7 +2752,7 @@ export default function RiskTensorPage() {
             </div>
           </>
         ) : null}
-      </AsyncSection>
+      </PageAsyncSection>
 
       <FormalResultMetaPanel
         testId="risk-tensor-result-meta-panel"

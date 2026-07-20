@@ -1,4 +1,4 @@
-import { DataSection } from "../../../components/DataSection";
+import { PageDataSection } from "../../../components/page/PageDataSection";
 import { shellTokens } from "../../../theme/tokens";
 import { GridContainer, GridItem } from "../../../components/GridContainer";
 import { KpiCard, type KpiCardProps } from "../../../components/KpiCard";
@@ -39,7 +39,7 @@ export function OverviewSection({ overview, onRetry, domainsEffectiveDate }: Ove
   const cards = selectOverviewCards(overview.vm);
 
   return (
-    <DataSection
+    <PageDataSection
       title="经营总览"
       state={overview.state}
       onRetry={onRetry}
@@ -83,6 +83,6 @@ export function OverviewSection({ overview, onRetry, domainsEffectiveDate }: Ove
           );
         })}
       </GridContainer>
-    </DataSection>
+    </PageDataSection>
   );
 }

@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { useApiClient } from "../../api/client";
 import { FilterBar } from "../../components/FilterBar";
-import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
+import { PageAsyncSection } from "../../components/page/PageAsyncSection";
 import { listChoiceNewsTopicFilterOptions } from "../agent/lib/choiceNewsTopicDictionary";
 import { KpiCard } from "../../components/KpiCard";
 import type { ChoiceNewsComparePayload, ResultMeta } from "../../api/contracts";
@@ -318,7 +318,7 @@ export default function NewsEventsPage() {
           </div>
         </FilterBar>
 
-        <AsyncSection
+        <PageAsyncSection
           title="新闻事件"
           isLoading={eventsQuery.isLoading}
           isError={eventsQuery.isError}
@@ -416,7 +416,7 @@ export default function NewsEventsPage() {
             </span>
             <span data-testid="news-events-total">事件数 {totalRows}</span>
           </div>
-        </AsyncSection>
+        </PageAsyncSection>
       </section>
     </section>
   );

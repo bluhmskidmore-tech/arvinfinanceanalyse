@@ -162,12 +162,12 @@ describe("workbenchTheme", () => {
 });
 
 describe("stockAnalysisPageCssVars", () => {
-  it("keeps warning surfaces on the investment-bank light palette", () => {
+  it("maps warning surfaces to the Decision Desk amber palette", () => {
     const vars = stockAnalysisPageCssVars as Record<string, string | number | undefined>;
 
-    expect(vars["--sa-warning-fg"]).toBe(ibTokens.color.warn);
-    expect(vars["--sa-warning-soft-bg"]).toBe(ibTokens.color.paper);
-    expect(vars["--sa-warning-border"]).toBe(ibTokens.color.hairline);
+    expect(vars["--sa-warning-fg"]).toBe("var(--dh-api-amber)");
+    expect(vars["--sa-warning-soft-bg"]).toBe("var(--dh-api-amber-soft)");
+    expect(vars["--sa-warning-border"]).toBe("var(--dh-api-line)");
   });
 });
 

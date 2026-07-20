@@ -1,0 +1,109 @@
+.volume-rate-analysis-chart {
+  display: flex;
+  flex-direction: column;
+  gap: var(--moss-space-6);
+}
+
+.volume-rate-analysis-chart__card {
+  padding: var(--moss-space-5);
+  border-radius: var(--ib-radius);
+  border: 1px solid var(--moss-color-neutral-200);
+  background: var(--ib-surface);
+  /* Non-token-equal lift kept verbatim (≠ --ib-shadow). */
+  box-shadow: 0 1px 2px rgba(31, 41, 55, 0.04);
+}
+
+.volume-rate-analysis-chart__section-title {
+  margin: 0 0 var(--moss-space-4);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--moss-color-neutral-900);
+}
+
+.volume-rate-analysis-chart__section-title--table {
+  margin-bottom: var(--moss-space-3);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.volume-rate-analysis-chart__note {
+  margin: 0 0 var(--moss-space-3);
+  font-size: 12px;
+  color: var(--moss-color-neutral-600);
+}
+
+.volume-rate-analysis-chart__chart {
+  height: 300px;
+}
+
+.volume-rate-analysis-chart__table-shell {
+  overflow-x: auto;
+  margin-top: var(--moss-space-5);
+  border-radius: var(--ib-radius);
+  border: 1px solid var(--moss-color-neutral-200);
+}
+
+.volume-rate-analysis-chart__table {
+  width: 100%;
+  min-width: 1100px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.volume-rate-analysis-chart__table th {
+  text-align: right;
+  padding: var(--moss-space-2) var(--moss-space-3);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--moss-color-neutral-900);
+  background: var(--moss-color-neutral-50);
+  border-bottom: 1px solid var(--moss-color-neutral-900);
+}
+
+.volume-rate-analysis-chart__table th[data-align="left"] {
+  text-align: left;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
+
+.volume-rate-analysis-chart__table tbody tr {
+  border-bottom: 1px solid var(--moss-color-neutral-100);
+}
+
+.volume-rate-analysis-chart__table td {
+  text-align: right;
+  padding: var(--moss-space-2) var(--moss-space-3);
+  font-family: var(--moss-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.volume-rate-analysis-chart__table td[data-align="left"] {
+  text-align: left;
+  font-family: inherit;
+  font-variant-numeric: normal;
+  color: var(--moss-color-neutral-900);
+}
+
+.volume-rate-analysis-chart__table td[data-level="0"] {
+  font-weight: 600;
+  background: var(--moss-color-neutral-50);
+}
+
+.volume-rate-analysis-chart__table td[data-level="1"] {
+  font-weight: 400;
+  background: var(--ib-surface);
+  padding-left: calc(var(--moss-space-3) + var(--moss-space-4));
+}
+
+.volume-rate-analysis-chart__table td[data-weight="600"] {
+  font-weight: 600;
+}
+
+.volume-rate-analysis-chart__table td[data-direction="positive"] {
+  color: var(--moss-color-success-500);
+}
+
+.volume-rate-analysis-chart__table td[data-direction="negative"] {
+  color: var(--moss-color-danger-500);
+}

@@ -1402,3 +1402,160 @@
     width: fit-content;
   }
 }
+
+/*
+ * Migrated 1:1 from LedgerPnlPage.tsx inline styles (2026-07). Values are kept
+ * pixel-identical on purpose and differ from the older .ledger-pnl-page-* /
+ * .ledger-pnl-summary-card / .ledger-pnl-filter-* blocks above, which carry
+ * other values and responsive rules. Keep this section after the media
+ * queries: .ledger-pnl-table-shell relies on source order so its
+ * `overflow: auto` keeps winning the equal-specificity narrow-width rule.
+ */
+.ledger-pnl-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--moss-space-4);
+  margin-bottom: var(--moss-space-6);
+}
+
+.ledger-pnl-header__title {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.ledger-pnl-header__subtitle {
+  margin-top: 10px;
+  margin-bottom: 0;
+  max-width: 860px;
+  color: var(--moss-color-neutral-600);
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.ledger-pnl-header__mode-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.ledger-pnl-header__mode-badge--real {
+  background: var(--moss-color-success-50);
+  color: var(--moss-color-success-500);
+}
+
+.ledger-pnl-header__mode-badge--mock {
+  background: var(--moss-color-primary-50);
+  color: var(--moss-color-info-500);
+}
+
+.ledger-pnl-filters {
+  margin-bottom: var(--moss-space-5);
+}
+
+.ledger-pnl-filters__label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--moss-color-neutral-600);
+}
+
+.ledger-pnl-filters__select {
+  min-width: 180px;
+  padding: 10px 12px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-sm);
+}
+
+.ledger-pnl-filters__select--currency {
+  min-width: 140px;
+}
+
+.ledger-pnl-analysis__empty--hint {
+  padding: 6px 0 0;
+}
+
+.ledger-pnl-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--moss-space-4);
+  margin-bottom: var(--moss-space-5);
+}
+
+.ledger-pnl-summary-card-frame {
+  padding: var(--moss-space-4);
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-sm);
+  background: var(--ib-surface);
+}
+
+.ledger-pnl-summary-table-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--moss-space-4);
+  margin-bottom: var(--moss-space-5);
+}
+
+.ledger-pnl-table-shell {
+  overflow: auto;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-sm);
+  background: var(--ib-surface);
+}
+
+.ledger-pnl-table-shell__title {
+  padding: var(--moss-space-4);
+  border-bottom: 1px solid var(--moss-color-neutral-100);
+  font-weight: 600;
+}
+
+.ledger-pnl-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.ledger-pnl-table__head-row {
+  background: var(--moss-color-neutral-50);
+}
+
+.ledger-pnl-table__row {
+  border-top: 1px solid var(--moss-color-neutral-100);
+}
+
+.ledger-pnl-table__th {
+  padding: var(--moss-space-3);
+  text-align: left;
+}
+
+.ledger-pnl-table__th--num {
+  text-align: right;
+}
+
+.ledger-pnl-table__td {
+  padding: var(--moss-space-3);
+}
+
+.ledger-pnl-table__td--num {
+  text-align: right;
+}
+
+.ledger-pnl-table__td-sub {
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+}
+
+.ledger-pnl-table__state-cell {
+  padding: var(--moss-space-4);
+  color: var(--moss-color-neutral-500);
+  font-size: 13px;
+  text-align: center;
+}

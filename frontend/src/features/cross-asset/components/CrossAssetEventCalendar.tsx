@@ -1,6 +1,6 @@
 import type { CalendarItem } from "../../../components/CalendarList";
 import { CalendarList } from "../../../components/CalendarList";
-import { SectionCard } from "../../../components/SectionCard";
+import { EvidencePanel } from "../../../components/page/PagePrimitives";
 import { designTokens } from "../../../theme/designSystem";
 
 const t = designTokens;
@@ -12,7 +12,7 @@ export type CrossAssetEventCalendarProps = {
 export function CrossAssetEventCalendar({ items }: CrossAssetEventCalendarProps) {
   return (
     <div data-testid="cross-asset-event-calendar">
-      <SectionCard title="事件与风险线索">
+      <EvidencePanel heading="事件与风险线索">
         {items.length === 0 ? (
           <p
             style={{
@@ -27,7 +27,7 @@ export function CrossAssetEventCalendar({ items }: CrossAssetEventCalendarProps)
         ) : (
           <CalendarList items={items} />
         )}
-      </SectionCard>
+      </EvidencePanel>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { Button, Card, Tag } from "antd";
 
-import { designTokens } from "../../../theme/designSystem";
+import { designTokens, dhApiTokens } from "../../../theme/designSystem";
 import type { BondAnalyticsReadinessItem } from "../lib/bondAnalyticsOverviewModel";
 import type { BondAnalyticsModuleKey } from "../lib/bondAnalyticsModuleRegistry";
 import { EYEBROW, panelStyle, promotionLabel, readinessStatusLabel, readinessSurface, readinessTagColor } from "./bondAnalyticsCockpitTokens";
@@ -22,7 +22,7 @@ function ReadinessRow({
       style={{
         border: `1px solid ${surface.borderColor}`,
         background: surface.background,
-        borderRadius: dt.radius.lg,
+        borderRadius: dhApiTokens.radius,
         padding: dt.space[4],
         display: "grid",
         gap: dt.space[3],
@@ -55,7 +55,7 @@ function ReadinessRow({
       {warningText ? (
         <div
           style={{
-            borderRadius: dt.radius.md,
+            borderRadius: dhApiTokens.radius,
             padding: `${dt.space[2]}px ${dt.space[3]}px`,
             background: `${dt.color.neutral[50]}B8`,
             color: surface.text,

@@ -23,10 +23,10 @@ import type {
   ResultMeta,
 } from "../../../api/contracts";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
+import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
 import { DataStatusStrip, PageDecisionHero, PageStateSurface } from "../../../components/page/PagePrimitives";
 import { DataQualityBanner } from "../../../components/page/DataQualityBanner";
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
-import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import MonthlyOperatingAnalysisBranch from "./MonthlyOperatingAnalysisBranch";
 import "./ProductCategoryPnlPage.css";
 import { ProductCategoryGovernanceStrip } from "./ProductCategoryGovernanceStrip";
@@ -5572,7 +5572,7 @@ export default function ProductCategoryPnlPage() {
             description="手工调整仍走既有新增、更新、撤销、恢复接口，完整事件时间线保留在独立审计视图。仅当审批通过可撤销、仅当已拒绝可恢复；其余审批状态下对应按钮为禁用。撤销、恢复、保存后均触发与全页「刷新损益数据」一致的损益刷新工作流以更新本列表。"
             testId="product-category-adjustment-lead"
           />
-          <AsyncSection
+          <PageAsyncSection
             title="手工调整历史"
             isLoading={adjustmentsQuery.isLoading}
             isError={adjustmentsQuery.isError}
@@ -5662,7 +5662,7 @@ export default function ProductCategoryPnlPage() {
             </a>
           </div>
             </div>
-          </AsyncSection>
+          </PageAsyncSection>
         </div>
       </details>
 
@@ -5746,7 +5746,7 @@ export default function ProductCategoryPnlPage() {
         description="表格继续展示后端返回的产品类别读模型，资产/负债符号展示、情景行为和合计行保持原有逻辑。"
         testId="product-category-formal-table-lead"
       />
-      <AsyncSection
+      <PageAsyncSection
         title="产品类别损益分析表（单位：亿元）"
         isLoading={baselineQuery.isLoading}
         isError={baselineQuery.isError}
@@ -6032,7 +6032,7 @@ export default function ProductCategoryPnlPage() {
             </tbody>
           </table>
         </div>
-      </AsyncSection>
+      </PageAsyncSection>
 
       <details
         data-testid="product-category-result-meta-workspace"

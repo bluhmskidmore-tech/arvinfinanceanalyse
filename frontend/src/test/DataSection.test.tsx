@@ -43,17 +43,18 @@ describe("DataSection · loading", () => {
     expect(screen.getByTestId("data-section-loading")).toBeInTheDocument();
   });
 
-  it("uses extracted classes for loading label and skeleton stack", () => {
+  it("uses shared SkeletonBarStack classes for loading UI", () => {
     renderWith({ kind: "loading" }, <p data-testid="inner">should-hide</p>);
 
     const loadingBlock = screen.getByTestId("data-section-loading");
     const loadingLabel = loadingBlock.querySelector(".data-section__loading-label");
-    const skeletonStack = loadingBlock.querySelector(".data-section__skeleton-stack");
-    const skeletonBars = skeletonStack?.querySelectorAll(".data-section__skeleton-bar");
+    const skeletonStack = loadingBlock.querySelector(".moss-skeleton-bar-stack");
+    const skeletonBars = skeletonStack?.querySelectorAll(".moss-skeleton-bar");
 
     expect(loadingLabel).toBeInTheDocument();
     expect(loadingLabel).not.toHaveAttribute("style");
     expect(skeletonStack).toBeInTheDocument();
+    expect(skeletonStack).toHaveClass("moss-skeleton-bar-stack--spaced");
     expect(skeletonStack).not.toHaveAttribute("style");
     expect(skeletonBars).toHaveLength(4);
     skeletonBars?.forEach((bar) => {

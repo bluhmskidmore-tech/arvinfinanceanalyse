@@ -21,6 +21,7 @@ import type {
 } from "../../api/contracts";
 import { FilterBar } from "../../components/FilterBar";
 import { KpiCard } from "../../components/KpiCard";
+import { PageAsyncSection } from "../../components/page/PageAsyncSection";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
 import {
   AnalysisGrid,
@@ -34,7 +35,6 @@ import {
   PageStateSurface,
   PageV2Shell,
 } from "../../components/page/PagePrimitives";
-import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { formatAnnualizedYieldPctDisplay, inclusiveCalendarDays } from "./pnlByBusinessAnnualizedYield";
 import { buildAdbAvgByBusinessTypeMap, buildYtdAvgByBusinessTypeMap } from "./pnlByBusinessAdbMap";
 import { downloadPnlByBusinessExcel } from "./pnlByBusinessExport";
@@ -2898,7 +2898,7 @@ export default function PnlByBusinessPage() {
           </div>
         ) : null}
 
-        <AsyncSection
+        <PageAsyncSection
           title="业务种类损益"
           isLoading={loading}
           isError={error}
@@ -3210,7 +3210,7 @@ export default function PnlByBusinessPage() {
             </details>
           ) : null}
         </section>
-      </AsyncSection>
+      </PageAsyncSection>
       </PageV2Shell>
     </section>
   );

@@ -7,9 +7,9 @@ import { DataQualityBanner } from "../../components/page/DataQualityBanner";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
 import { FilterBar } from "../../components/FilterBar";
 import { KpiCard } from "../../components/KpiCard";
+import { PageAsyncSection } from "../../components/page/PageAsyncSection";
 import { SectionLead } from "../../components/page/SectionLead";
 import { EM_DASH } from "../../utils/format";
-import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import {
   ASSESSMENT_CENTERS_2025,
   buildTeamPerformanceQ1CaliberModel,
@@ -695,7 +695,7 @@ export default function TeamPerformancePage() {
         />
       ) : null}
 
-      <AsyncSection
+      <PageAsyncSection
         title="部室工作损益矩阵"
         isLoading={loading}
         isError={false}
@@ -1106,7 +1106,7 @@ export default function TeamPerformancePage() {
             </details>
           </section>
         ) : null}
-      </AsyncSection>
+      </PageAsyncSection>
     </section>
   );
 }

@@ -28,7 +28,6 @@ import type { BondAnalyticsModuleKey } from "../lib/bondAnalyticsModuleRegistry"
 import { BondAnalyticsDecisionRail } from "./BondAnalyticsDecisionRail";
 import type { ActionAttributionResponse } from "../types";
 import { designTokens, ibTokens } from "../../../theme/designSystem";
-import { displayTokens } from "../../../theme/displayTokens";
 import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../../../utils/choiceMacroFormat";
 import {
   BOND_ANALYTICS_MACRO_BAR_SERIES,
@@ -47,7 +46,6 @@ import {
   useBondAnalyticsCockpitBundleQuery,
 } from "../lib/bondAnalyticsCockpitBundleQuery";
 import { buildBondTradingDeskPath } from "../../bond-trading-desk/lib/bondTradingDeskPageModel";
-import { panelStyle } from "./bondAnalyticsCockpitTokens";
 import {
   InstitutionalKpiRail,
   InstitutionalKpiTile,
@@ -58,13 +56,6 @@ const dt = designTokens;
 const IB_ACCENT_BAR = "var(--ib-accent)";
 const DONUT_CHART_COLORS = mossChartCategoricalPalette.slice(0, 5);
 const DISTRIBUTION_CHART_COLORS = [...DONUT_CHART_COLORS, ibTokens.color.gold];
-const deskPanelShadow = "0 2px 6px rgba(22, 35, 46, 0.035)";
-const dashboardCardStyle: CSSProperties = {
-  ...panelStyle(displayTokens.surface.section),
-  border: `1px solid ${dt.color.neutral[200]}`,
-  borderRadius: dt.radius.sm,
-  boxShadow: deskPanelShadow,
-};
 const cardBodyStyle = { padding: 14 } as const;
 
 const PORTFOLIO_HEADLINES_STRUCTURE_NOTE = "组合信用摘要暂未返回，资产结构稍后补齐。";
@@ -609,8 +600,7 @@ function AccountingDv01SummaryPanel({
         </Button>
       }
       data-testid="bond-analysis-accounting-dv01-summary"
-      className={styles.accountingDv01Card}
-      style={dashboardCardStyle}
+      className={`${styles.dashboardCard} ${styles.accountingDv01Card}`}
       styles={{ body: { padding: 0 } }}
     >
       <AccountingDv01MobileReadout rows={rows} isLoading={isLoading} hasError={hasError} />
@@ -1866,8 +1856,7 @@ export function BondAnalyticsInstitutionalCockpit({
               size="small"
               title={<SectionCardTitle eyebrow="证据边界" title="利率 / 曲线 / 信用 / 资金" />}
               data-testid="bond-analysis-evidence-boundary-panel"
-              className={`${styles.referencePanelCard} ${styles.referenceEvidenceBoundaryCard}`}
-              style={dashboardCardStyle}
+              className={`${styles.dashboardCard} ${styles.referencePanelCard} ${styles.referenceEvidenceBoundaryCard}`}
               styles={{ body: cardBodyStyle }}
             >
               <ReferenceJudgmentMatrix
@@ -1916,8 +1905,7 @@ export function BondAnalyticsInstitutionalCockpit({
               </Button>
             }
             data-testid="bond-analysis-asset-structure"
-            style={dashboardCardStyle}
-            className={styles.referenceStructureLeadCard}
+            className={`${styles.dashboardCard} ${styles.referenceStructureLeadCard}`}
             styles={{ body: cardBodyStyle }}
           >
             <DistributionDonut items={dashboardAssetItems} center={marketValueDisplay} emptyText="暂无资产结构" />
@@ -1929,8 +1917,7 @@ export function BondAnalyticsInstitutionalCockpit({
             size="small"
             title={<SectionCardTitle eyebrow="风险切片" title="久期 / DV01 / 信用" />}
             data-testid="bond-analysis-risk-monitor"
-            style={dashboardCardStyle}
-            className={`${styles.referenceMaturityCard} ${styles.referenceDistributionSupportCard}`}
+            className={`${styles.dashboardCard} ${styles.referenceMaturityCard} ${styles.referenceDistributionSupportCard}`}
             styles={{ body: cardBodyStyle }}
           >
             <div className={styles.riskEvidenceList}>
@@ -1954,8 +1941,7 @@ export function BondAnalyticsInstitutionalCockpit({
             variant="borderless"
             size="small"
             title={<SectionCardTitle eyebrow="集中度证据" title="发行人/行业分布" />}
-            style={dashboardCardStyle}
-            className={styles.referenceDistributionSupportCard}
+            className={`${styles.dashboardCard} ${styles.referenceDistributionSupportCard}`}
             styles={{ body: cardBodyStyle }}
           >
             <RegionDistributionPanel items={industryItems} emptyText="暂无发行人/行业读面" />
@@ -1978,8 +1964,7 @@ export function BondAnalyticsInstitutionalCockpit({
               </Button>
             }
             data-testid="bond-analysis-holdings-table"
-            style={dashboardCardStyle}
-            className={styles.referenceHoldingsCard}
+            className={`${styles.dashboardCard} ${styles.referenceHoldingsCard}`}
             styles={{ body: { padding: 0 } }}
           >
             <HoldingsMobileReadout
@@ -2045,7 +2030,7 @@ export function BondAnalyticsInstitutionalCockpit({
               variant="borderless"
               size="small"
               title={<SectionCardTitle eyebrow="评级证据" title="按市值" />}
-              style={dashboardCardStyle}
+              className={styles.dashboardCard}
               styles={{ body: cardBodyStyle }}
             >
               <ProgressStack items={ratingRows} emptyText={topHoldingsUnavailable ? TOP_HOLDINGS_RATING_NOTE : "暂无评级分布"} />
@@ -2056,7 +2041,7 @@ export function BondAnalyticsInstitutionalCockpit({
               variant="borderless"
               size="small"
               title={<SectionCardTitle eyebrow="期限证据" title="按市值" />}
-              style={dashboardCardStyle}
+              className={styles.dashboardCard}
               styles={{ body: cardBodyStyle }}
             >
               <ProgressStack items={durationRows} emptyText="暂无久期分布" />
@@ -2066,7 +2051,7 @@ export function BondAnalyticsInstitutionalCockpit({
               variant="borderless"
               size="small"
               title={<SectionCardTitle eyebrow="流动性缺口" title="按读面状态" />}
-              style={dashboardCardStyle}
+              className={styles.dashboardCard}
               styles={{ body: cardBodyStyle }}
             >
               <PendingReadModelPanel
@@ -2082,8 +2067,7 @@ export function BondAnalyticsInstitutionalCockpit({
             size="small"
             title={<SectionCardTitle eyebrow="收益证据" title="本期估值收益" />}
             data-testid="bond-analysis-summary-card"
-            style={dashboardCardStyle}
-            className={styles.referenceFooterPrimaryCard}
+            className={`${styles.dashboardCard} ${styles.referenceFooterPrimaryCard}`}
             styles={{ body: cardBodyStyle }}
           >
             <div className={styles.footerMetricPanel}>
@@ -2127,7 +2111,7 @@ export function BondAnalyticsInstitutionalCockpit({
               size="small"
               title={<SectionCardTitle eyebrow="动作证据" title="动作归因" />}
               data-testid="bond-analysis-today-focus"
-              style={dashboardCardStyle}
+              className={styles.dashboardCard}
               styles={{ body: cardBodyStyle }}
             >
               <div className={styles.footerMetricPanel}>
@@ -2158,7 +2142,7 @@ export function BondAnalyticsInstitutionalCockpit({
               size="small"
               title={<SectionCardTitle eyebrow="风险读面" title="返回字段" />}
               data-testid="bond-analysis-risk-guardrails"
-              style={dashboardCardStyle}
+              className={styles.dashboardCard}
               styles={{ body: cardBodyStyle }}
             >
               <div className={styles.footerRiskList}>

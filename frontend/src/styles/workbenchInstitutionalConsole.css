@@ -340,7 +340,7 @@
   .workbench-shell-grid--institutional-console.workbench-shell-grid--ledger-pnl [data-testid="workbench-governance-banner"] .workbench-notice__hint,
   .workbench-shell-grid--institutional-console.workbench-shell-grid--product-category-pnl [data-testid="workbench-governance-banner"] .workbench-notice__hint,
   .workbench-shell-grid--institutional-console.workbench-shell-grid--pnl-attribution [data-testid="workbench-governance-banner"] .workbench-notice__hint {
-    font-size: 10.5px !important;
+    font-size: 11px !important;
     line-height: 1.32 !important;
   }
 
@@ -387,7 +387,7 @@
   .workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset .workbench-operator-pill-quiet {
     min-height: 24px;
     padding: 2px 7px !important;
-    font-size: 10.5px;
+    font-size: 11px;
   }
 
   .workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset .workbench-terminal-utility-navlink {
@@ -396,7 +396,7 @@
   }
 
   .workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset .workbench-terminal-utility-icon {
-    font-size: 10px;
+    font-size: 11px;
   }
 
   .workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset .workbench-market-ticker-shell {
@@ -451,7 +451,7 @@
   .workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset [data-testid="workbench-governance-banner"] .workbench-notice__hint {
     grid-column: auto;
     overflow: hidden;
-    font-size: 10.5px !important;
+    font-size: 11px !important;
     line-height: 1.32 !important;
     text-overflow: ellipsis;
     white-space: nowrap;

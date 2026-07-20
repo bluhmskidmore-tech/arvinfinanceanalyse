@@ -1,4 +1,4 @@
-import { SectionCard } from "../../../components/SectionCard";
+import { EvidencePanel } from "../../../components/page/PagePrimitives";
 import { SummaryBlock } from "../../../components/SummaryBlock";
 
 type BusinessConclusionProps = {
@@ -44,8 +44,8 @@ export function BusinessConclusion({
       ];
 
   return (
-    <SectionCard title="本期经营结论">
+    <EvidencePanel heading="本期经营结论">
       <SummaryBlock title="" content={content} tags={tags} />
-    </SectionCard>
+    </EvidencePanel>
   );
 }

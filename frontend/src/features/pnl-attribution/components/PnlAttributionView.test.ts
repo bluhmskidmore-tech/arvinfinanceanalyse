@@ -25,6 +25,10 @@ const pnlAttributionViewSourcePath = resolve(
   process.cwd(),
   "src/features/pnl-attribution/components/PnlAttributionView.tsx",
 );
+const attributionWaterfallSourcePath = resolve(
+  process.cwd(),
+  "src/features/pnl-attribution/components/AttributionWaterfallChart.tsx",
+);
 
 function numeric(overrides: Partial<Numeric>): Numeric {
   return {
@@ -95,6 +99,7 @@ describe("PnlAttributionView helpers", () => {
       total_volume_effect: numeric({ raw: 11_514_483.36 }),
       total_rate_effect: numeric({ raw: 28_641_449.42 }),
       total_interaction_effect: numeric({ raw: 22_637_086.67 }),
+      total_recon_error: numeric({ raw: 2_946_305.49 }),
       has_previous_data: true,
       items: [],
     });
@@ -108,6 +113,14 @@ describe("PnlAttributionView helpers", () => {
     expect(summary?.coveragePct).toBeCloseTo(95.52, 2);
   });
 
+  it("describes cross effect separately from the unexplained residual", () => {
+    const source = readFileSync(attributionWaterfallSourcePath, "utf8");
+
+    expect(source).toContain("交叉效应为规模与收益率同时变化的二阶联动项");
+    expect(source).toContain("未解释差额为损益变动扣除三项效应后的归因残差");
+    expect(source).not.toContain("交叉效应为残差项");
+  });
+
   it("treats fully explained volume-rate attribution as closed", () => {
     const summary = buildVolumeRateBridgeSummary({
       current_period: "2026-04",
@@ -119,6 +132,7 @@ describe("PnlAttributionView helpers", () => {
       total_volume_effect: numeric({ raw: 2_000 }),
       total_rate_effect: numeric({ raw: 3_000 }),
       total_interaction_effect: numeric({ raw: 5_000 }),
+      total_recon_error: numeric({ raw: 0 }),
       has_previous_data: true,
       items: [],
     });

@@ -135,7 +135,9 @@ export function KpiCard({
           </div>
         ) : null}
         <div className={cx("kpi-card__title", Boolean(icon) && "kpi-card__title--with-icon")}>
-          <span className="kpi-card__title-text">{heading}</span>
+          <span className="kpi-card__title-text" title={heading}>
+            {heading}
+          </span>
           {sparklineData && sparklineData.length > 0 ? (
             <MiniSparkline data={sparklineData} />
           ) : null}

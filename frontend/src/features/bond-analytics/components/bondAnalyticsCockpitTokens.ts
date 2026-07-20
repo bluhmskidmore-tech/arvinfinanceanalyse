@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 
-import { designTokens } from "../../../theme/designSystem";
+import { designTokens, dhApiTokens } from "../../../theme/designSystem";
 import { displayTokens } from "../../../theme/displayTokens";
 import type {
   BondAnalyticsPromotionDestination,
@@ -59,7 +59,8 @@ export const FIELD: CSSProperties = {
 };
 
 export function panelStyle(background?: string): CSSProperties {
-  return { borderRadius: 24, border: "none", boxShadow: SHADOW, background };
+  // Shape Lock: bond-analytics cockpit is dark-terminal (--dh-api-radius = 6px).
+  return { borderRadius: dhApiTokens.radius, border: "none", boxShadow: SHADOW, background };
 }
 
 export function toneColor(tone: BondAnalyticsTruthTone) {

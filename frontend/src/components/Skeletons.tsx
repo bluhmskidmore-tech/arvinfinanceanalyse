@@ -1,5 +1,7 @@
-import { Skeleton } from "antd";
 import type { CSSProperties, ReactNode } from "react";
+
+import { SkeletonBarStack } from "./SkeletonBars";
+import "./SkeletonBars.css";
 
 type SkeletonContainerProps = {
   children: ReactNode;
@@ -36,7 +38,7 @@ function SkeletonContainer({
 export function CardSkeleton(props: SkeletonProps) {
   return (
     <SkeletonContainer {...props}>
-      <Skeleton active paragraph={{ rows: 3 }} title={{ width: "40%" }} />
+      <SkeletonBarStack bars={4} />
     </SkeletonContainer>
   );
 }
@@ -44,8 +46,8 @@ export function CardSkeleton(props: SkeletonProps) {
 export function TableSkeleton(props: SkeletonProps) {
   return (
     <SkeletonContainer {...props}>
-      <Skeleton active paragraph={{ rows: 1, width: ["72%"] }} title={{ width: "28%" }} />
-      <Skeleton active paragraph={{ rows: 5 }} title={false} />
+      <div className="moss-skeleton-bar moss-skeleton-bar--title" />
+      <SkeletonBarStack bars={5} />
     </SkeletonContainer>
   );
 }
@@ -56,7 +58,7 @@ export function TextSkeleton({ className, disableWrapperStyles }: SkeletonProps)
       className={className}
       disableWrapperStyles={disableWrapperStyles ?? true}
     >
-      <Skeleton active paragraph={{ rows: 1, width: ["100%"] }} title={false} />
+      <div className="moss-skeleton-bar moss-skeleton-bar--block" />
     </SkeletonContainer>
   );
 }

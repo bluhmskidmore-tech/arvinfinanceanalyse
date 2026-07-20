@@ -1,3 +1,22 @@
+.dhLightPage,
+.dhApiHomeBody {
+  /* consolidated bare hex — single definition each */
+  --dh-hex-d4a85f: #d4a85f;
+  --dh-hex-eef4ff: #eef4ff;
+  --dh-hex-ffffff: #ffffff;
+  --dh-hex-0b1726: #0b1726;
+  --dh-hex-edf3fb: #edf3fb;
+  --dh-hex-091321: #091321;
+  --dh-hex-f3f7ff: #f3f7ff;
+  --dh-hex-57b77f: #57b77f;
+  --dh-hex-9aa8bb: #9aa8bb;
+  --dh-hex-bfccd9: #bfccd9;
+  --dh-hex-d3a45d: #d3a45d;
+  --dh-hex-d66b62: #d66b62;
+  --dh-hex-eef5ff: #eef5ff;
+  --dh-hex-f4f8ff: #f4f8ff;
+}
+
 .dhBadgePlaceholder {
   display: inline-flex;
   align-items: center;
@@ -362,7 +381,7 @@
   height: 24px;
   border-radius: 6px;
   background: linear-gradient(145deg, var(--dh-blue-2), var(--dh-blue-deep));
-  color: #fff;
+  color: var(--dh-hex-ffffff);
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.04em;
@@ -994,7 +1013,7 @@
   position: absolute;
   inset: 26px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--dh-hex-ffffff);
   box-shadow: inset 0 0 0 1px var(--dh-line);
 }
 
@@ -1066,7 +1085,7 @@
 .dhTabActive,
 .dhTabActive:hover {
   background: var(--dh-blue-deep);
-  color: #fff;
+  color: var(--dh-hex-ffffff);
 }
 
 .dhSummaryRow {
@@ -3227,7 +3246,7 @@
 
 .dhQuick:hover .dhQuickIcon {
   background: var(--dh-blue);
-  color: #fff;
+  color: var(--dh-hex-ffffff);
 }
 
 /* Terminal home */
@@ -3266,41 +3285,32 @@
   grid-template-columns: minmax(0, 1fr) 72px;
 }
 
-.dhSkeletonBar {
-  background: var(--dh-line-soft);
-  border-radius: 2px;
-  height: 9px;
-}
-
 .dhSkeletonBarShort {
-  background: var(--dh-line-soft);
-  border-radius: 2px;
-  height: 9px;
   justify-self: end;
   width: 60%;
 }
 
-.dhSkeletonTableRow:nth-child(1) .dhSkeletonBar {
+.dhSkeletonTableRow:nth-child(1) :global(.moss-skeleton-bar):first-child {
   width: 88%;
 }
 
-.dhSkeletonTableRow:nth-child(2) .dhSkeletonBar {
+.dhSkeletonTableRow:nth-child(2) :global(.moss-skeleton-bar):first-child {
   width: 72%;
 }
 
-.dhSkeletonTableRow:nth-child(3) .dhSkeletonBar {
+.dhSkeletonTableRow:nth-child(3) :global(.moss-skeleton-bar):first-child {
   width: 94%;
 }
 
-.dhSkeletonTableRow:nth-child(4) .dhSkeletonBar {
+.dhSkeletonTableRow:nth-child(4) :global(.moss-skeleton-bar):first-child {
   width: 66%;
 }
 
-.dhSkeletonTableRow:nth-child(5) .dhSkeletonBar {
+.dhSkeletonTableRow:nth-child(5) :global(.moss-skeleton-bar):first-child {
   width: 80%;
 }
 
-.dhSkeletonTableRow:nth-child(6) .dhSkeletonBar {
+.dhSkeletonTableRow:nth-child(6) :global(.moss-skeleton-bar):first-child {
   width: 58%;
 }
 
@@ -3320,33 +3330,16 @@
   padding: var(--dh-space-2) var(--dh-space-3);
 }
 
-.dhSkeletonSidePanel .dhSkeletonBar:nth-child(1) {
+.dhSkeletonSidePanel :global(.moss-skeleton-bar):nth-child(1) {
   width: 70%;
 }
 
-.dhSkeletonSidePanel .dhSkeletonBar:nth-child(2) {
+.dhSkeletonSidePanel :global(.moss-skeleton-bar):nth-child(2) {
   width: 90%;
 }
 
-.dhSkeletonSidePanel .dhSkeletonBar:nth-child(3) {
+.dhSkeletonSidePanel :global(.moss-skeleton-bar):nth-child(3) {
   width: 55%;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .dhSkeletonBar,
-  .dhSkeletonBarShort {
-    animation: dhSkeletonPulse 1.6s ease-in-out infinite;
-  }
-}
-
-@keyframes dhSkeletonPulse {
-  0%, 100% {
-    opacity: 0.5;
-  }
-
-  50% {
-    opacity: 0.9;
-  }
 }
 
 .dhTerminalJudgement,
@@ -4989,7 +4982,7 @@
   margin-top: 4px;
   border-radius: 8px;
   background: linear-gradient(180deg, var(--dh-red), var(--dh-red));
-  color: #fff;
+  color: var(--dh-hex-ffffff);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5340,18 +5333,9 @@
 
 /* API-backed Figma body: evidence-led homepage modules */
 .dhApiHomeBody {
-  --dh-api-panel: #0c1421;
-  --dh-api-panel-2: #101a2a;
-  --dh-api-panel-3: #132033;
   --dh-api-line: rgba(103, 119, 142, 0.34);
   --dh-api-line-soft: rgba(103, 119, 142, 0.22);
-  --dh-api-ink: #e8eef7;
-  --dh-api-soft: #a9b6c7;
-  --dh-api-muted: #9aa8bb;
-  --dh-api-blue: #72a7dc;
-  --dh-api-green: #66b98b;
-  --dh-api-amber: #c9a565;
-  --dh-api-red: #d47a72;
+  --dh-api-muted: var(--dh-hex-9aa8bb);
   --dh-api-blue-soft: rgba(114, 167, 220, 0.12);
   --dh-api-green-soft: rgba(102, 185, 139, 0.12);
   --dh-api-amber-soft: rgba(201, 165, 101, 0.13);
@@ -5409,7 +5393,7 @@
 }
 
 :global([data-testid="dashboard-home-page"]) .dhMacroDecisionStrip strong {
-  color: #eef4ff;
+  color: var(--dh-hex-eef4ff);
 }
 
 :global([data-testid="dashboard-home-page"]) .dhMacroDecisionStats span {
@@ -5489,7 +5473,7 @@
 :global([data-testid="dashboard-home-page"]) .dhMacroReleaseHistoryMetric b,
 :global([data-testid="dashboard-home-page"]) .dhPolicyFundingDiagnosticsHeader span,
 :global([data-testid="dashboard-home-page"]) .dhPolicyFundingDiagnosticMetrics b {
-  color: #eef4ff;
+  color: var(--dh-hex-eef4ff);
 }
 
 :global([data-testid="dashboard-home-page"]) .dhMacroReleaseInsightHeader small,
@@ -5526,7 +5510,7 @@
   background: rgba(7, 11, 21, 0.54);
   border: 1px solid rgba(36, 49, 73, 0.62);
   border-radius: 5px;
-  color: #eef4ff;
+  color: var(--dh-hex-eef4ff);
   padding: 10px 11px;
 }
 
@@ -5607,7 +5591,7 @@
 }
 
 :global([data-testid="dashboard-home-page"]) .dhPolicyFundingDiagnosticMetrics b {
-  color: #eef4ff;
+  color: var(--dh-hex-eef4ff);
   font-weight: 760;
 }
 
@@ -5622,7 +5606,7 @@
 }
 
 :global([data-testid="dashboard-home-page"]) .dhPolicyFundingGroupHeader span {
-  color: #eef4ff;
+  color: var(--dh-hex-eef4ff);
 }
 
 :global([data-testid="dashboard-home-page"]) .dhMacroSupplyStrip {
@@ -5986,7 +5970,7 @@
 }
 
 .dhApiDirectoryTable td {
-  color: #bfccd9;
+  color: var(--dh-hex-bfccd9);
 }
 
 .dhApiDirectoryTable tbody tr:hover td {
@@ -6236,7 +6220,7 @@
 }
 
 .dhApiRiskPairGrid b {
-  color: #f3f7ff;
+  color: var(--dh-hex-f3f7ff);
   font-size: 13px;
   font-weight: 720;
   line-height: 1.15;
@@ -6280,7 +6264,7 @@
 }
 
 .dhApiRiskGapPrimary b {
-  color: #f3f7ff;
+  color: var(--dh-hex-f3f7ff);
   font-size: 12px;
   font-weight: 780;
   line-height: 1.25;
@@ -6427,7 +6411,7 @@
 }
 
 .dhApiHomeBody .dhTerminalHoldings .dhTerminalTable tbody tr:nth-child(-n + 3) td:first-child b {
-  color: #f4f8ff;
+  color: var(--dh-hex-f4f8ff);
 }
 
 .dhApiHomeBody .dhTerminalTable tbody tr:nth-child(even) td {
@@ -6548,12 +6532,12 @@
 .dhApiHomeBody .dhTerminalIncomeRow[data-current="true"] b,
 .dhApiHomeBody .dhTerminalIncomeRow[data-current="true"] small,
 .dhApiHomeBody .dhTerminalIncomeRow[data-current="true"] strong {
-  color: #f4f8ff;
+  color: var(--dh-hex-f4f8ff);
 }
 
 .dhApiHomeBody .dhTerminalIncomeSummary b,
 .dhApiHomeBody .dhTerminalIncomeRow b {
-  color: #f3f7ff;
+  color: var(--dh-hex-f3f7ff);
 }
 
 .dhApiHomeBody .dhTerminalIncomeRow[data-tone="negative"] small {
@@ -6595,11 +6579,11 @@
 }
 
 .dhApiHomeBody .dhTerminalIncomeLedgerMetrics [data-series="excess"] strong {
-  color: #d4a85f;
+  color: var(--dh-hex-d4a85f);
 }
 
 .dhApiHomeBody .dhTerminalIncomeRow[data-tone="negative"] .dhTerminalIncomeLedgerMetrics [data-series="excess"] strong {
-  color: #d66b62;
+  color: var(--dh-hex-d66b62);
 }
 
 .dhApiHomeBody .dhTerminalIncomeLegend span::before {
@@ -6611,7 +6595,7 @@
 }
 
 .dhApiHomeBody .dhTerminalIncomeLegend span[data-series="excess"]::before {
-  background: #d4a85f;
+  background: var(--dh-hex-d4a85f);
 }
 
 .dhApiHomeBody .dhTerminalStateSurface {
@@ -6632,7 +6616,7 @@
 
 .dhApiCoverageMap {
   align-items: stretch;
-  background: #091321;
+  background: var(--dh-hex-091321);
   border: 1px solid rgba(46, 67, 98, 0.82);
   border-radius: 8px;
   display: grid;
@@ -6645,7 +6629,7 @@
 .dhApiCoverageScore {
   background:
     linear-gradient(180deg, rgba(105, 184, 230, 0.08), rgba(105, 184, 230, 0)),
-    #0b1726;
+    var(--dh-hex-0b1726);
   display: grid;
   gap: 5px;
   justify-items: start;
@@ -6671,7 +6655,7 @@
 
 .dhApiCoverageDomains {
   align-content: center;
-  background: #0b1726;
+  background: var(--dh-hex-0b1726);
   display: grid;
   gap: 8px;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -6700,19 +6684,19 @@
 }
 
 .dhApiCoverageDomains span[data-state="ready"]::before {
-  background: #57b77f;
+  background: var(--dh-hex-57b77f);
 }
 
 .dhApiCoverageDomains span[data-state="partial"]::before {
-  background: #d4a85f;
+  background: var(--dh-hex-d4a85f);
 }
 
 .dhApiCoverageDomains span[data-state="blocked"]::before {
-  background: #d4a85f;
+  background: var(--dh-hex-d4a85f);
 }
 
 .dhApiCoverageDomains b {
-  color: #edf3fb;
+  color: var(--dh-hex-edf3fb);
   font-size: 11px;
   font-weight: 790;
   line-height: 1.25;
@@ -6740,23 +6724,23 @@
 .dhApiCoverageDomains span[data-state="ready"] small {
   background: rgba(30, 76, 58, 0.36);
   border-color: rgba(82, 193, 132, 0.34);
-  color: #57b77f;
+  color: var(--dh-hex-57b77f);
 }
 
 .dhApiCoverageDomains span[data-state="partial"] small {
   background: rgba(73, 51, 20, 0.42);
   border-color: rgba(211, 164, 93, 0.34);
-  color: #d4a85f;
+  color: var(--dh-hex-d4a85f);
 }
 
 .dhApiCoverageDomains span[data-state="blocked"] small {
   background: rgba(73, 51, 20, 0.42);
   border-color: rgba(211, 164, 93, 0.34);
-  color: #d4a85f;
+  color: var(--dh-hex-d4a85f);
 }
 
 .dhApiCoverageStats {
-  background: #0b1726;
+  background: var(--dh-hex-0b1726);
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   margin: 0;
@@ -6781,7 +6765,7 @@
 }
 
 .dhApiCoverageStats dd {
-  color: #edf3fb;
+  color: var(--dh-hex-edf3fb);
   font-size: 19px;
   font-weight: 820;
   margin: 0;
@@ -6795,7 +6779,7 @@
 
 .dhApiStructureCard {
   --dh-structure-accent: #69b8e6;
-  background: #0b1726;
+  background: var(--dh-hex-0b1726);
   border: 1px solid #20324a;
   border-radius: 8px;
   box-shadow: 0 10px 24px -12px rgba(0, 0, 0, 0.18);
@@ -6829,7 +6813,7 @@
 }
 
 .dhApiStructureCard[data-domain="ytm"] {
-  --dh-structure-accent: #d3a45d;
+  --dh-structure-accent: var(--dh-hex-d3a45d);
 }
 
 .dhApiStructureCard[data-domain="portfolio"] {
@@ -6849,7 +6833,7 @@
 }
 
 .dhApiStructureHead h4 {
-  color: #eef5ff;
+  color: var(--dh-hex-eef5ff);
   font-size: 16px;
   font-weight: 820;
   line-height: 1.25;
@@ -6877,13 +6861,13 @@
 .dhApiStructureCard .dhInlineStatus[data-kind="backend-gap"] {
   background: rgba(50, 35, 17, 0.78);
   border-color: rgba(211, 164, 93, 0.62);
-  color: #d3a45d;
+  color: var(--dh-hex-d3a45d);
 }
 
 .dhApiStructureCard .dhInlineStatus[data-kind="error"] {
   background: rgba(55, 23, 27, 0.72);
   border-color: rgba(214, 107, 98, 0.58);
-  color: #d66b62;
+  color: var(--dh-hex-d66b62);
 }
 
 .dhApiStructureCard .dhInlineStatus[data-kind="empty"],
@@ -6923,7 +6907,7 @@
 }
 
 .dhApiStructureRow b {
-  color: #eef5ff;
+  color: var(--dh-hex-eef5ff);
   font-size: 13px;
   font-weight: 760;
   line-height: 1.3;
@@ -6980,7 +6964,7 @@
 
 .dhApiCoverageGapBand {
   align-items: start;
-  background: #091321;
+  background: var(--dh-hex-091321);
   border: 1px solid rgba(46, 67, 98, 0.78);
   border-radius: 8px;
   display: grid;
@@ -7003,7 +6987,7 @@
 }
 
 .dhApiCoverageGapBand > span b {
-  color: #e8eef7;
+  color: var(--dh-api-ink);
   font-size: 12px;
   font-weight: 820;
 }
@@ -7025,7 +7009,7 @@
 .dhApiCoverageGapBand em {
   background: rgba(12, 25, 42, 0.74);
   border: 1px solid rgba(45, 66, 96, 0.58);
-  border-left: 2px solid #d4a85f;
+  border-left: 2px solid var(--dh-hex-d4a85f);
   border-radius: 6px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -7036,7 +7020,7 @@
 }
 
 .dhApiCoverageGapBand strong {
-  color: #edf3fb;
+  color: var(--dh-hex-edf3fb);
   font-size: 11px;
   font-weight: 780;
   line-height: 1.25;
@@ -7047,7 +7031,7 @@
   background: rgba(73, 51, 20, 0.44);
   border: 1px solid rgba(211, 164, 93, 0.32);
   border-radius: 999px;
-  color: #d4a85f;
+  color: var(--dh-hex-d4a85f);
   display: inline-flex;
   font-family: var(--dh-font-mono);
   font-size: 11px;
@@ -7174,7 +7158,7 @@
 }
 
 .dhApiMarketContext p {
-  color: #bfccd9;
+  color: var(--dh-hex-bfccd9);
   font-size: 12px;
   line-height: 1.62;
   margin: 0;
@@ -7182,7 +7166,7 @@
 
 .dhApiMarketContext p:first-of-type {
   border-left: 2px solid var(--dh-api-blue);
-  color: #eef4ff;
+  color: var(--dh-hex-eef4ff);
   font-size: 13px;
   font-weight: 760;
   line-height: 1.4;
@@ -7318,7 +7302,7 @@
 }
 
 .dhApiEvidenceRow b {
-  color: #eef4ff;
+  color: var(--dh-hex-eef4ff);
   font-size: 13px;
   font-weight: 780;
   line-height: 1.3;
@@ -7661,7 +7645,7 @@
 }
 
 .dhApiHomeBody .dhTerminalStateSurface b {
-  color: #edf3fb;
+  color: var(--dh-hex-edf3fb);
   font-size: 12px;
   font-weight: 800;
   line-height: 1.25;
@@ -7827,7 +7811,7 @@
 .dhApiCoverageGapBand {
   background:
     linear-gradient(135deg, rgba(201, 165, 101, 0.045), transparent 42%),
-    #091321;
+    var(--dh-hex-091321);
 }
 
 .dhApiCoverageGapBand em,
@@ -7977,18 +7961,9 @@
 .dhApiHomeBody,
 .dhBondNewsSection,
 .dhTerminalBottom {
-  --dh-api-panel: #0c1421;
-  --dh-api-panel-2: #101a2a;
-  --dh-api-panel-3: #132033;
   --dh-api-line: rgba(103, 119, 142, 0.34);
   --dh-api-line-soft: rgba(103, 119, 142, 0.22);
-  --dh-api-ink: #e8eef7;
-  --dh-api-soft: #a9b6c7;
-  --dh-api-muted: #9aa8bb;
-  --dh-api-blue: #72a7dc;
-  --dh-api-green: #66b98b;
-  --dh-api-amber: #c9a565;
-  --dh-api-red: #d47a72;
+  --dh-api-muted: var(--dh-hex-9aa8bb);
   --dh-density-panel-bg:
     linear-gradient(145deg, rgba(232, 238, 247, 0.054), rgba(232, 238, 247, 0.01) 44%, rgba(7, 12, 20, 0.2)),
     linear-gradient(180deg, rgba(114, 167, 220, 0.032), rgba(255, 255, 255, 0)),

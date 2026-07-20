@@ -1,6 +1,6 @@
 import type { SummaryPayload } from "../../../api/contracts";
 import { cardVariants, chipVariants } from "@heroui/styles";
-import { AsyncSection } from "./AsyncSection";
+import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
 
 type SummarySectionProps = {
   data?: SummaryPayload;
@@ -26,7 +26,7 @@ export function SummarySection({
   sectionTitle = "本周管理摘要",
 }: SummarySectionProps) {
   return (
-    <AsyncSection
+    <PageAsyncSection
       title={sectionTitle}
       isLoading={isLoading}
       isError={isError}
@@ -67,6 +67,6 @@ export function SummarySection({
           </div>
         ))}
       </div>
-    </AsyncSection>
+    </PageAsyncSection>
   );
 }
