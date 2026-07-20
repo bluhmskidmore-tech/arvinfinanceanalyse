@@ -11,10 +11,16 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from scipy.optimize import minimize
 
 from app.core_finance.macro.helpers import dedupe_preserving_order as _dedupe
 from app.core_finance.macro.helpers import normalize_price_inputs as _normalize_price_inputs
+
+
+def _minimize(*args: Any, **kwargs: Any) -> Any:
+    # 延迟导入：scipy 冷导入约 300ms，不应挂在 API 路由导入链上。
+    from scipy.optimize import minimize
+
+    return minimize(*args, **kwargs)
 
 RISK_PARITY_RULE_VERSION = "rv_macro_risk_parity_cn_v1"
 ASSET_LABELS = {
@@ -60,7 +66,7 @@ def solve_risk_parity_with_status(cov: np.ndarray) -> tuple[np.ndarray, bool]:
         rc, sig = risk_contributions(w, cov)
         return float(np.sum((rc - sig / n) ** 2))
 
-    result = minimize(
+    result = _minimize(
         objective,
         w0,
         method="SLSQP",
@@ -90,7 +96,7 @@ def solve_risk_budget_with_status(
             return 1.0
         return float(np.sum((rc / sig - b) ** 2))
 
-    result = minimize(
+    result = _minimize(
         objective,
         b.copy(),
         method="SLSQP",
