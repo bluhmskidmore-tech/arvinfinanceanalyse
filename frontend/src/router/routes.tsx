@@ -30,6 +30,9 @@ const MarketHomePage = lazy(
 const OperationsAnalysisPage = lazy(
   () => import("../features/workbench/pages/OperationsAnalysisPage"),
 );
+const MarketFinanceWorkbenchPage = lazy(
+  () => import("../features/market-finance/pages/MarketFinanceWorkbenchPage"),
+);
 const PnlPage = lazy(() => import("../features/pnl/PnlPage"));
 const FormalPnlV1Page = lazy(() => import("../features/pnl/FormalPnlV1Page"));
 const PnlByBusinessPage = lazy(() => import("../features/pnl/PnlByBusinessPage"));
@@ -159,6 +162,13 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       return {
         path: section.path.slice(1),
         element: themedRouteElement(<OperationsAnalysisPage />),
+      };
+    }
+
+    if (section.path === "/market-finance") {
+      return {
+        path: section.path.slice(1),
+        element: themedRouteElement(<MarketFinanceWorkbenchPage />),
       };
     }
 

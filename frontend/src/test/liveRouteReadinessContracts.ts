@@ -111,6 +111,17 @@ export const liveRouteReadinessContracts = {
     sourceAnchors: ["market-data-page", "market-data-status-strip"],
     verificationFiles: ["src/test/MarketDataPage.test.tsx"],
   },
+  "/market-finance": {
+    sourceFiles: [
+      "src/features/market-finance/pages/MarketFinanceWorkbenchPage.tsx",
+    ],
+    sourceAnchors: [
+      "market-finance-workbench",
+      "market-finance-transmission-spine",
+      "market-finance-evidence-matrix",
+    ],
+    verificationFiles: ["src/test/MarketFinanceWorkbenchPage.test.tsx"],
+  },
   "/macro-observation": {
     sourceFiles: ["src/features/macro-toolkit/pages/MacroToolkitPage.tsx"],
     sourceAnchors: ["macro-observation-readonly-boundary", "macro-toolkit-page"],

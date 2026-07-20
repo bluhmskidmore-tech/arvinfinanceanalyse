@@ -79,6 +79,7 @@ const workbenchGroupDefinitions: Array<Omit<WorkbenchNavigationGroup, "sections"
 const workbenchSectionGroups: Record<string, WorkbenchGroupKey> = {
   dashboard: "overview",
   "operations-analysis": "overview",
+  "market-finance": "overview",
   "decision-items": "overview",
   "portfolio-home": "portfolio",
   "bond-analysis": "portfolio",
@@ -160,6 +161,18 @@ export const workbenchNavigation: WorkbenchSection[] = [
       "临时例外：该路由仅在第一阶段 PAGE-OPS-001 收口期间保持可见；如收口延期，下一轮 readiness 梳理需降级。",
     readinessNote:
       "已接 source preview、macro、news、formal FX 状态，以及资产负债 overview 速览与跳转。",
+  },
+  {
+    key: "market-finance",
+    label: "金市与计财",
+    path: "/market-finance",
+    icon: "analysis",
+    description: "金市投研与计划财务协同台：分列市场、FTP、经营与资产负债既有证据。",
+    readiness: "live",
+    readinessLabel: "临时开放",
+    governanceStatus: "temporary-exception",
+    readinessNote:
+      "复用市场利率、产品分类损益与资产负债 overview 既有只读链路；不补算跨域传导、OCI 与资本口径，缺证据统一显示待复核。",
   },
   {
     key: "portfolio-home",
