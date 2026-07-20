@@ -10,29 +10,28 @@ from backend.app.core_finance.hybrid_fusion_config import (
 )
 from backend.app.core_finance.strategy_policy import POLICY
 
-FORMULA_VERSION = "rv_hybrid_fusion_candidates_v3"
+FORMULA_VERSION = "rv_hybrid_fusion_candidates_v4"
 ACTIVE_MARKET_STATES = POLICY.hybrid_fusion_active_states
 MAX_CANDIDATES = 10
 MACRO_PENDING_BLOCK_REASON = "macro_score_missing"
 MACRO_PENDING_CYCLE_STATUS = "macro_pending"
 MACRO_LANDED_CYCLE_STATUS = "macro_landed"
-# life_long/stance thresholds are percentiles of the same-day candidate pool, so
-# strong/neutral/weak stances (and fusion_action labels) are relative conclusions
-# within that pool, never absolute market-level judgments.
-THRESHOLD_BASIS = "same_day_candidate_pool_percentile"
+# life_long/stance thresholds combine same-day pool percentiles with absolute
+# floors, so strong labels require both relative rank and a minimum score level.
+THRESHOLD_BASIS = "same_day_candidate_pool_percentile_plus_abs_floor"
 _THRESHOLD_BASIS_NOTE = (
-    "life_long/stance thresholds are same-day cross-sectional percentiles within the "
-    "candidate pool; strong/neutral/weak stances and fusion_action labels are relative "
-    "conclusions within this pool, not absolute market-level judgments."
+    "life_long/stance thresholds use same-day cross-sectional percentiles within the "
+    "candidate pool, then apply absolute score floors; strong/neutral/weak stances and "
+    "fusion_action labels require both relative rank and the absolute minimum."
 )
-# Positive weights of the lifecourt proxy formula sum to 0.84 (0.18+0.14+0.14+0.20
-# +0.10+0.08), so its theoretical max is 0.84 while cycle_score can reach 1.0. The
-# nominal fusion_weights therefore overstate the effective lifecourt contribution.
+# Positive weights of the lifecourt proxy formula sum to 0.84. v4 divides the raw
+# weighted sum by this constant (then clamps) so lifecourt shares a ~[0, 1] scale
+# with cycle_score and fusion_weights match effective contribution.
 LIFECOURT_POSITIVE_WEIGHT_SUM = round(0.18 + 0.14 + 0.14 + 0.20 + 0.10 + 0.08, 6)
 _LIFECOURT_SCALE_NOTE = (
-    "lifecourt_proxy_score positive weights sum to 0.84, so its theoretical max is 0.84 "
-    "while cycle_score can reach 1.0; fusion_weights are nominal weights and the effective "
-    "lifecourt contribution cap in fusion_score is fusion_life_weight * 0.84."
+    "lifecourt_proxy_score is the raw weighted sum divided by positive_weight_sum "
+    f"({LIFECOURT_POSITIVE_WEIGHT_SUM}) and clamped to [0, 1], so it shares cycle_score's "
+    "scale; fusion_weights therefore match effective contribution caps."
 )
 
 
@@ -189,12 +188,11 @@ def compute_hybrid_fusion_candidates(
                     },
                     "lifecourt_score_scale": {
                         "positive_weight_sum": LIFECOURT_POSITIVE_WEIGHT_SUM,
-                        "theoretical_max": LIFECOURT_POSITIVE_WEIGHT_SUM,
+                        "normalized": True,
+                        "theoretical_max": 1.0,
                         "effective_max_fusion_contribution": {
                             "cycle": round(resolved_thresholds.fusion_cycle_weight * 1.0, 6),
-                            "lifecourt": round(
-                                resolved_thresholds.fusion_life_weight * LIFECOURT_POSITIVE_WEIGHT_SUM, 6
-                            ),
+                            "lifecourt": round(resolved_thresholds.fusion_life_weight * 1.0, 6),
                         },
                         "note": _LIFECOURT_SCALE_NOTE,
                     },
@@ -524,7 +522,8 @@ def _lifecourt_proxy_score(
         + 0.10 * hygiene_score
         + 0.08 * regime_score
     )
-    return _clamp(raw)
+    # Normalize by positive-weight sum so lifecourt shares cycle_score's ~[0, 1] scale.
+    return _clamp(raw / LIFECOURT_POSITIVE_WEIGHT_SUM)
 
 
 def _percentile_threshold(values: list[float], quantile: float) -> float:
@@ -551,7 +550,10 @@ def _life_long_thresholds(
     pconf_values = [cast(float, row["price_confirm_score"]) for row in rows]
     crowd_values = [cast(float, row["crowding_score"]) for row in rows]
     return _LifeLongThresholds(
-        lifecourt_min=_percentile_threshold(lifecourt_values, thresholds.life_long_top_q),
+        lifecourt_min=max(
+            _percentile_threshold(lifecourt_values, thresholds.life_long_top_q),
+            thresholds.life_long_abs_min,
+        ),
         price_confirm_min=_percentile_threshold(pconf_values, thresholds.life_long_pconf_top_q),
         crowding_max=_percentile_threshold(crowd_values, thresholds.life_long_crowd_max_q),
     )
@@ -572,6 +574,8 @@ class _StanceThresholds:
     cycle_neutral_min: float
     life_strong_min: float
     life_neutral_min: float
+    cycle_strong_abs_min: float
+    life_strong_abs_min: float
 
 
 def _stance_thresholds(
@@ -586,11 +590,16 @@ def _stance_thresholds(
         cycle_neutral_min=_percentile_threshold(cycle_values, thresholds.stance_neutral_q),
         life_strong_min=_percentile_threshold(life_values, thresholds.stance_strong_q),
         life_neutral_min=_percentile_threshold(life_values, thresholds.stance_neutral_q),
+        cycle_strong_abs_min=thresholds.stance_cycle_strong_abs_min,
+        life_strong_abs_min=thresholds.stance_life_strong_abs_min,
     )
 
 
 def _cycle_stance(cycle_score: float, *, thresholds: _StanceThresholds) -> str:
-    if cycle_score >= thresholds.cycle_strong_min:
+    if (
+        cycle_score >= thresholds.cycle_strong_min
+        and cycle_score >= thresholds.cycle_strong_abs_min
+    ):
         return "strong"
     if cycle_score >= thresholds.cycle_neutral_min:
         return "neutral"
@@ -598,7 +607,10 @@ def _cycle_stance(cycle_score: float, *, thresholds: _StanceThresholds) -> str:
 
 
 def _life_stance(lifecourt_proxy_score: float, *, thresholds: _StanceThresholds) -> str:
-    if lifecourt_proxy_score >= thresholds.life_strong_min:
+    if (
+        lifecourt_proxy_score >= thresholds.life_strong_min
+        and lifecourt_proxy_score >= thresholds.life_strong_abs_min
+    ):
         return "strong"
     if lifecourt_proxy_score >= thresholds.life_neutral_min:
         return "neutral"

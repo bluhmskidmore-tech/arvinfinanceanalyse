@@ -917,7 +917,7 @@ describe("stockAnalysisPageModel", () => {
       ...strategyPayload,
       hybrid_fusion_candidates: {
         as_of_date: "2026-04-29",
-        formula_version: "rv_hybrid_fusion_candidates_v3",
+        formula_version: "rv_hybrid_fusion_candidates_v4",
         market_state: "WARM",
         observation_only: true,
         candidate_count: 0,
@@ -954,7 +954,7 @@ describe("stockAnalysisPageModel", () => {
 
     expect(landed?.statusLabel).toBe("已落地");
     expect(landed?.macroScoreLabel).toBe("0.7530");
-    expect(landed?.formulaVersionLabel).toBe("rv_hybrid_fusion_candidates_v3");
+    expect(landed?.formulaVersionLabel).toBe("rv_hybrid_fusion_candidates_v4");
     expect(landed?.macroGapLabels).toEqual([]);
 
     const missing = buildCycleMacroLayerSummary({
@@ -998,7 +998,7 @@ describe("stockAnalysisPageModel", () => {
     expect(missing?.detailLabel).toContain("缺失 PMI、信用脉冲、价差");
     expect(missing?.detailLabel).not.toContain("credit_impulse");
     expect(missing?.detailLabel).not.toContain("(missing)");
-    expect(missing?.formulaVersionLabel).toBe("rv_hybrid_fusion_candidates_v3");
+    expect(missing?.formulaVersionLabel).toBe("rv_hybrid_fusion_candidates_v4");
   });
 
   it("uses hybrid fusion candidates as the primary review queue when present", () => {
@@ -1120,7 +1120,7 @@ describe("stockAnalysisPageModel", () => {
         : [...strategyPayload.supported_outputs, "hybrid_fusion" as LivermoreOutputKey],
       hybrid_fusion_candidates: {
         as_of_date: "2026-06-26",
-        formula_version: "rv_hybrid_fusion_candidates_v3",
+        formula_version: "rv_hybrid_fusion_candidates_v4",
         market_state: "WARM",
         observation_only: true,
         candidate_count: 3,
@@ -2523,7 +2523,7 @@ describe("stockAnalysisPageModel", () => {
       },
       hybrid_fusion_candidates: {
         as_of_date: "2026-05-29",
-        formula_version: "rv_hybrid_fusion_candidates_v3",
+        formula_version: "rv_hybrid_fusion_candidates_v4",
         market_state: "WARM",
         observation_only: true,
         candidate_count: 1,
@@ -2603,7 +2603,7 @@ describe("stockAnalysisPageModel", () => {
       mean_reversion_candidates: undefined,
       hybrid_fusion_candidates: {
         as_of_date: "2026-06-18",
-        formula_version: "rv_hybrid_fusion_candidates_v3",
+        formula_version: "rv_hybrid_fusion_candidates_v4",
         market_state: "OVERHEAT",
         observation_only: true,
         candidate_count: 0,
@@ -2662,7 +2662,7 @@ describe("stockAnalysisPageModel", () => {
       },
       hybrid_fusion_candidates: {
         as_of_date: "2026-06-12",
-        formula_version: "rv_hybrid_fusion_candidates_v3",
+        formula_version: "rv_hybrid_fusion_candidates_v4",
         market_state: "WARM",
         observation_only: true,
         candidate_count: 1,
@@ -2782,7 +2782,7 @@ describe("stockAnalysisPageModel", () => {
       stock_candidates: undefined,
       hybrid_fusion_candidates: {
         as_of_date: "2026-06-12",
-        formula_version: "rv_hybrid_fusion_candidates_v3",
+        formula_version: "rv_hybrid_fusion_candidates_v4",
         market_state: "HOT",
         observation_only: true,
         candidate_count: 1,
@@ -4816,7 +4816,7 @@ describe("stockAnalysisPageModel", () => {
       },
       hybrid_fusion_candidates: {
         as_of_date: "2026-04-29",
-        formula_version: "rv_hybrid_fusion_candidates_v3",
+        formula_version: "rv_hybrid_fusion_candidates_v4",
         market_state: "WARM",
         observation_only: true,
         candidate_count: 1,

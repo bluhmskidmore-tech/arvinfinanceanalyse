@@ -1818,7 +1818,7 @@ describe("StockAnalysisPage", () => {
         {
           id: "hybrid-candidates",
           label: "融合候选",
-          value: "rv_hybrid_fusion_candidates_v3",
+          value: "rv_hybrid_fusion_candidates_v4",
           sourcePath: "strategy.result.hybrid_fusion_candidates.formula_version",
           tone: "read",
         },
@@ -2356,7 +2356,7 @@ describe("StockAnalysisPage", () => {
         },
         hybrid_fusion_candidates: {
           as_of_date: "2026-04-29",
-          formula_version: "rv_hybrid_fusion_candidates_v3",
+          formula_version: "rv_hybrid_fusion_candidates_v4",
           market_state: "WARM",
           observation_only: true,
           candidate_count: 1,
@@ -2401,7 +2401,7 @@ describe("StockAnalysisPage", () => {
       "strategy.result.factor_screen_candidates.items",
     );
     expect(within(digest).getByTestId("stock-analysis-workbench-fact-hybrid-candidates")).toHaveTextContent(
-      "rv_hybrid_fusion_candidates_v3",
+      "rv_hybrid_fusion_candidates_v4",
     );
     expect(digest).not.toHaveTextContent("来源待确认");
     expect(digest).not.toHaveTextContent("position_size_hint");

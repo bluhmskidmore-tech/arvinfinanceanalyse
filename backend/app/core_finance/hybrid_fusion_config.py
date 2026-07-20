@@ -14,6 +14,11 @@ class HybridFusionThresholds:
     life_long_crowd_max_q: float = 0.80
     stance_strong_q: float = 0.85
     stance_neutral_q: float = 0.50
+    # Absolute floors applied after same-day percentile thresholds so a tiny /
+    # weak candidate pool cannot label mediocre scores as "strong".
+    stance_cycle_strong_abs_min: float = 0.35
+    stance_life_strong_abs_min: float = 0.35
+    life_long_abs_min: float = 0.40
     fusion_cycle_weight: float = 0.65
     fusion_life_weight: float = 0.35
     cycle_macro_weight: float = 0.30
@@ -61,6 +66,15 @@ def validate_thresholds(thresholds: HybridFusionThresholds) -> None:
             value = getattr(thresholds, field.name)
             if not 0.0 < value < 1.0:
                 raise ValueError(f"{field.name} must be in (0, 1), got {value}")
+
+    for abs_field in (
+        "stance_cycle_strong_abs_min",
+        "stance_life_strong_abs_min",
+        "life_long_abs_min",
+    ):
+        value = getattr(thresholds, abs_field)
+        if not 0.0 <= value <= 1.0:
+            raise ValueError(f"{abs_field} must be in [0, 1], got {value}")
 
     if thresholds.stance_strong_q < thresholds.stance_neutral_q:
         raise ValueError(

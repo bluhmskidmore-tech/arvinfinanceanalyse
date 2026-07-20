@@ -1888,7 +1888,7 @@ export function buildCycleMacroLayerSummary(
 
   const hybridFormula = payload.hybrid_fusion_candidates?.formula_version?.trim() || "";
   const formulaVersionLabel =
-    hybridFormula || "rv_hybrid_fusion_candidates_v3";
+    hybridFormula || "rv_hybrid_fusion_candidates_v4";
   const macroScoreLabel =
     macroLayer.macro_score == null ? "待补" : formatNumber(macroLayer.macro_score, 4);
   const availableInputs = macroLayer.available_inputs ?? [];

@@ -212,19 +212,20 @@ def test_hybrid_fusion_discloses_pool_percentile_threshold_basis_and_lifecourt_s
     )
 
     payload = result.payload
-    assert payload["threshold_basis"] == "same_day_candidate_pool_percentile"
+    assert payload["threshold_basis"] == "same_day_candidate_pool_percentile_plus_abs_floor"
     items = cast(list[dict[str, Any]], payload["items"])
     for item in items:
         basis = item["evidence"]["threshold_basis"]
-        assert basis["kind"] == "same_day_candidate_pool_percentile"
+        assert basis["kind"] == "same_day_candidate_pool_percentile_plus_abs_floor"
         assert basis["candidate_pool_size"] == 2
-        assert "relative" in str(basis["note"])
+        assert "absolute" in str(basis["note"])
         scale = item["evidence"]["lifecourt_score_scale"]
         assert scale["positive_weight_sum"] == 0.84
-        assert scale["theoretical_max"] == 0.84
+        assert scale["normalized"] is True
+        assert scale["theoretical_max"] == 1.0
         contribution = scale["effective_max_fusion_contribution"]
         assert contribution["cycle"] == 0.65
-        assert math.isclose(contribution["lifecourt"], 0.35 * 0.84, rel_tol=1e-9)
+        assert contribution["lifecourt"] == 0.35
 
 
 def test_hybrid_fusion_threshold_basis_disclosed_on_empty_payloads_too() -> None:
@@ -236,7 +237,7 @@ def test_hybrid_fusion_threshold_basis_disclosed_on_empty_payloads_too() -> None
         factor_screen_payload=None,
         theme_breakout_payload=None,
     )
-    assert result.payload["threshold_basis"] == "same_day_candidate_pool_percentile"
+    assert result.payload["threshold_basis"] == "same_day_candidate_pool_percentile_plus_abs_floor"
 
 
 def test_safe_int_rejects_non_integer_values() -> None:
@@ -524,3 +525,65 @@ def test_hybrid_fusion_uses_name_from_factor_source_when_trend_source_lacks_it()
 
     item = cast(list[dict[str, Any]], result.payload["items"])[0]
     assert item["stock_name"] == "Alpha Semi"
+
+
+def test_hybrid_fusion_formula_version_is_v4_after_lifecourt_normalization() -> None:
+    assert FORMULA_VERSION == "rv_hybrid_fusion_candidates_v4"
+
+
+def test_hybrid_fusion_lifecourt_score_is_normalized_to_unit_scale() -> None:
+    from backend.app.core_finance.hybrid_fusion_candidates import _lifecourt_proxy_score
+
+    # All positive components at 1.0 and zero crowding -> raw sum 0.84 -> normalized 1.0.
+    assert math.isclose(
+        _lifecourt_proxy_score(
+            vcov_score=1.0,
+            consensus_score=1.0,
+            burst_score=1.0,
+            price_confirm_score=1.0,
+            crowding_score=0.0,
+            hygiene_score=1.0,
+            regime_score=1.0,
+        ),
+        1.0,
+        rel_tol=1e-9,
+    )
+
+
+def test_hybrid_fusion_absolute_floor_blocks_strong_action_in_weak_pool() -> None:
+    """A tiny weak pool must not mint core_plus_trading via percentile alone."""
+    from backend.app.core_finance.hybrid_fusion_config import HybridFusionThresholds
+
+    weak_items = [
+        {
+            "rank": idx,
+            "stock_code": f"00000{idx}.SZ",
+            "stock_name": f"Weak{idx}",
+            "sector_code": "801780",
+            "sector_name": "Bank",
+            "sector_rank": 8,
+            "close_strength": 0.15,
+            "abnormal_turnover": 1.05,
+            "breakout_extension_norm": 0.12,
+        }
+        for idx in range(1, 4)
+    ]
+    result = compute_hybrid_fusion_candidates(
+        as_of_date="2026-05-08",
+        market_state="HOT",
+        sector_rank_payload={"items": [{"sector_code": "801780", "rank": 8}]},
+        stock_candidates_payload={"items": weak_items},
+        factor_screen_payload=None,
+        theme_breakout_payload=None,
+        macro_score=0.2,
+        thresholds=HybridFusionThresholds(
+            stance_strong_q=0.50,  # make relative "strong" easy in a 3-name pool
+            stance_neutral_q=0.30,
+            stance_cycle_strong_abs_min=0.35,
+            stance_life_strong_abs_min=0.35,
+        ),
+    )
+    items = cast(list[dict[str, Any]], result.payload["items"])
+    assert items
+    assert all(item["fusion_action"] != "core_plus_trading" for item in items)
+    assert all(float(item["lifecourt_proxy_score"]) < 0.35 for item in items)

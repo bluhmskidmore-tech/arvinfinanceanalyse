@@ -241,7 +241,7 @@ describe("buildStockAnalysisKlineRadar", () => {
       buildPayload({
         hybrid_fusion_candidates: {
           as_of_date: "2026-04-29",
-          formula_version: "rv_hybrid_fusion_candidates_v3",
+          formula_version: "rv_hybrid_fusion_candidates_v4",
           market_state: "WARM",
           observation_only: true,
           candidate_count: 4,
@@ -331,7 +331,7 @@ describe("buildStockAnalysisKlineRadar", () => {
       buildPayload({
         hybrid_fusion_candidates: {
           as_of_date: "2026-04-29",
-          formula_version: "rv_hybrid_fusion_candidates_v3",
+          formula_version: "rv_hybrid_fusion_candidates_v4",
           market_state: "WARM",
           observation_only: true,
           candidate_count: 1,
