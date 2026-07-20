@@ -960,11 +960,11 @@ describe("BalanceAnalysisPage", () => {
       series: { name: string; label?: { formatter?: (params: { dataIndex: number }) => string } }[];
       tooltip: { formatter: (items: { dataIndex: number }[]) => string };
     };
-    const adbSeries = comparisonOption.series.find((series) => series.name.includes("ADB"));
+    const adbSeries = comparisonOption.series.find((series) => series.name.includes("区间日均"));
 
-    expect(comparisonOption.tooltip.formatter([{ dataIndex: 0 }])).toContain("ADB: —");
+    expect(comparisonOption.tooltip.formatter([{ dataIndex: 0 }])).toContain("区间日均：—");
     expect(adbSeries?.label?.formatter?.({ dataIndex: 0 })).toBe("—");
-    expect(comparisonOption.tooltip.formatter([{ dataIndex: 1 }])).toContain("ADB: 0.00");
+    expect(comparisonOption.tooltip.formatter([{ dataIndex: 1 }])).toContain("区间日均：0.00");
   });
 
   it("keeps the no-report-date state compact instead of rendering empty workbench placeholders", async () => {
