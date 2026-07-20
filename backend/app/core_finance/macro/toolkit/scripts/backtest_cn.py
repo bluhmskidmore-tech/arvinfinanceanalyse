@@ -216,7 +216,7 @@ def signal_donchian(price: pd.Series, window=20) -> pd.Series:
 
 
 def signal_atr_pos(price: pd.Series, window=14, target_vol=0.01) -> pd.Series:
-    ret_std = np.log(price / price.shift(1)).rolling(window).std()
+    ret_std = price.pct_change().rolling(window).std()
     pos = (target_vol / ret_std.replace(0, np.nan)).clip(0, 1.0)
     ma_sig = signal_ma_cross(price)
     return (pos * ma_sig.clip(0, 1)).fillna(0.0)
@@ -298,7 +298,9 @@ def run_backtest(prices: pd.DataFrame) -> dict:
     assets = list(prices.columns)
     n_assets = len(assets)
     n_days = len(prices)
-    log_ret = np.log(prices / prices.shift(1))
+    # 口径统一：全链路使用简单收益（与 calc_metrics 的 (1+r).cumprod() 简单收益
+    # 复利口径一致），避免对数收益与简单收益混用导致年化/夏普/回撤/净值失真
+    simple_ret = prices.pct_change()
 
     # 预计算 CTA 合成信号
     print("  预计算 CTA 信号...")
@@ -308,7 +310,7 @@ def run_backtest(prices: pd.DataFrame) -> dict:
 
     # 预计算市场状态
     print("  预计算市场状态...")
-    hs300_ret = log_ret["hs300"].fillna(0)
+    hs300_ret = simple_ret["hs300"].fillna(0)
     regimes = []
     for i in range(n_days):
         regimes.append(market_regime(hs300_ret, i))
@@ -350,11 +352,11 @@ def run_backtest(prices: pd.DataFrame) -> dict:
     print("  运行回测...")
     for i in range(1, n_days):
         date = prices.index[i]
-        daily_ret = log_ret.iloc[i].fillna(0).values
+        daily_ret = simple_ret.iloc[i].fillna(0).values
 
         # ── 风险平价：月末重新优化 ──
         if date.month != last_rp_month and i >= RP_WINDOW:
-            ret_win = log_ret.iloc[max(0, i - RP_WINDOW):i].dropna()
+            ret_win = simple_ret.iloc[max(0, i - RP_WINDOW):i].dropna()
             if len(ret_win) >= 20:
                 w_rp = calc_rp_weights(ret_win, assets)
             last_rp_month = date.month

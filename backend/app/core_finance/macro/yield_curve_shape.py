@@ -104,6 +104,12 @@ def _classify_shape(curve: Mapping[str, Decimal], spread_10y_1y_bp: Decimal) -> 
     return "NormalSteep", "收益率曲线偏陡，久期上需保持纪律。"
 
 
+_OBSERVATION_FLAGS = {
+    "observation_only": True,
+    "formal_use_allowed": False,
+}
+
+
 def compute_yield_curve_shape(
     curve_rows: Iterable[Any],
     *,
@@ -115,6 +121,8 @@ def compute_yield_curve_shape(
     if not available_dates:
         return {
             "report_date": report_date.isoformat(),
+            "data_status": "unavailable",
+            **_OBSERVATION_FLAGS,
             "shape": "Unavailable",
             "slope": 0.0,
             "butterfly_spread": None,
@@ -131,6 +139,8 @@ def compute_yield_curve_shape(
     if spread_10y_1y_bp is None:
         return {
             "report_date": report_date.isoformat(),
+            "data_status": "unavailable",
+            **_OBSERVATION_FLAGS,
             "shape": "Unavailable",
             "slope": float(_linear_slope(current_curve)),
             "butterfly_spread": None,
@@ -163,14 +173,23 @@ def compute_yield_curve_shape(
             curvature = "concave"
 
     shape, interpretation = _classify_shape(current_curve, spread_10y_1y_bp)
+    spread_10y_5y = _spread_bp(current_curve, "10Y", "5Y")
+    spread_30y_10y = _spread_bp(current_curve, "30Y", "10Y")
+    warnings: list[str] = []
+    if spread_10y_5y is None:
+        warnings.append("SPREAD_10Y_5Y_UNAVAILABLE")
+    if spread_30y_10y is None:
+        warnings.append("SPREAD_30Y_10Y_UNAVAILABLE")
     spreads = {
         "10Y-1Y": float(spread_10y_1y_bp),
-        "10Y-5Y": float(_spread_bp(current_curve, "10Y", "5Y") or Decimal("0")),
-        "30Y-10Y": float(_spread_bp(current_curve, "30Y", "10Y") or Decimal("0")),
+        "10Y-5Y": float(spread_10y_5y) if spread_10y_5y is not None else None,
+        "30Y-10Y": float(spread_30y_10y) if spread_30y_10y is not None else None,
     }
 
     return {
         "report_date": report_date.isoformat(),
+        "data_status": "degraded" if warnings else "complete",
+        **_OBSERVATION_FLAGS,
         "shape": shape,
         "slope": float(slope),
         "butterfly_spread": float(butterfly_spread) if butterfly_spread is not None else None,
@@ -179,5 +198,5 @@ def compute_yield_curve_shape(
         "percentile_1y": percentile_1y,
         "interpretation": interpretation,
         "curve": {tenor: float(rate) for tenor, rate in current_curve.items()},
-        "warnings": [],
+        "warnings": warnings,
     }

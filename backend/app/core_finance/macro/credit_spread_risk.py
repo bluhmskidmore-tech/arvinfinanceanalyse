@@ -12,6 +12,11 @@ from app.core_finance.safe_decimal import safe_decimal
 
 _PREFERRED_TENORS = ("3Y", "5Y", "1Y")
 
+_OBSERVATION_FLAGS = {
+    "observation_only": True,
+    "formal_use_allowed": False,
+}
+
 
 def _build_curves(
     curve_rows: Iterable[Any],
@@ -110,6 +115,8 @@ def compute_credit_spread_risk(
     if not available_dates:
         return {
             "report_date": report_date.isoformat(),
+            "data_status": "unavailable",
+            **_OBSERVATION_FLAGS,
             "credit_spread_tenor": None,
             "aaa_spread_bp": None,
             "aa_minus_aaa_bp": None,
@@ -134,6 +141,8 @@ def compute_credit_spread_risk(
     if tenor is None or aaa_spread_bp is None:
         return {
             "report_date": report_date.isoformat(),
+            "data_status": "unavailable",
+            **_OBSERVATION_FLAGS,
             "credit_spread_tenor": None,
             "aaa_spread_bp": None,
             "aa_minus_aaa_bp": None,
@@ -208,8 +217,18 @@ def compute_credit_spread_risk(
     elif aaa_spread_bp <= Decimal("45") and (aa_minus_aaa_bp is None or aa_minus_aaa_bp <= Decimal("15")):
         spread_regime = "tight"
 
+    warnings: list[str] = []
+    if aa_minus_aaa_bp is None:
+        warnings.append("AA_MINUS_AAA_UNAVAILABLE")
+    if weekly_change_bp is None:
+        warnings.append("WEEKLY_CHANGE_UNAVAILABLE")
+    if monthly_change_bp is None:
+        warnings.append("MONTHLY_CHANGE_UNAVAILABLE")
+
     return {
         "report_date": report_date.isoformat(),
+        "data_status": "degraded" if warnings else "complete",
+        **_OBSERVATION_FLAGS,
         "credit_spread_tenor": tenor,
         "aaa_spread_bp": float(aaa_spread_bp),
         "aa_minus_aaa_bp": float(aa_minus_aaa_bp) if aa_minus_aaa_bp is not None else None,
@@ -220,5 +239,5 @@ def compute_credit_spread_risk(
         "spread_regime": spread_regime,
         "alerts": alerts,
         "recommendation": recommendation,
-        "warnings": [],
+        "warnings": warnings,
     }

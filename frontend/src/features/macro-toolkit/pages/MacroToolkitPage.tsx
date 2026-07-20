@@ -18,6 +18,7 @@ import {
 } from "@ant-design/icons";
 import { Alert, Button, Checkbox, Select, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import { cardVariants } from "@heroui/styles";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { runPollingTask } from "../../../app/jobs/polling";
@@ -37,6 +38,7 @@ import type {
   MacroToolkitInputEvidence,
   MacroToolkitIndicator,
   MacroToolkitModelReadiness,
+  MacroToolkitReadinessSummary,
   MacroToolkitOutputFile,
   MacroToolkitRunResponse,
   MacroToolkitScriptRecord,
@@ -54,8 +56,72 @@ import {
   PageSectionLead,
   PageStateSurface,
 } from "../../../components/page/PagePrimitives";
+import {
+  MT_SHELL_MAIN,
+  MT_SHELL_NUM,
+  MT_SHELL_PAGE,
+  MT_SHELL_STATUS_PILL,
+  MT_SHELL_STATUS_ROW,
+  MT_SHELL_TITLE,
+  MT_SHELL_TITLE_BRAND,
+  MT_SHELL_TOPBAR,
+  MT_SHELL_TOPBAR_LEFT,
+  MT_SHELL_TOPBAR_RIGHT,
+} from "../lib/macroToolkitPageChrome";
+import { isEvidenceBookRowPending } from "../lib/macroToolkitCommitteeEvidence";
+
+import { formatCrisisTopContributorSummary } from "../lib/crisisScoreDisplay";
 
 import "./MacroToolkitPage.css";
+
+import {
+  MacroStatusIcon,
+  MetricTile,
+  compactText,
+  formatPercent,
+  observationStatusLabel,
+  statusColor,
+  statusLabel,
+} from "../lib/macroToolkitPanelShared";
+import {
+  buildCrisisGapRepairFeedback,
+  canRefreshMacroSourceBackfill,
+  commodityRefreshRunProducts,
+  commodityShadowRefreshProducts,
+  crisisCommodityShortItemsFromEnvelope,
+  crisisCommodityShortItemsFromResult,
+  crisisGapGroupFromEnvelope,
+  crisisGapGroupFromResult,
+  formatCommodityProducts,
+  formatCommodityRefreshActionLabel,
+  formatCommodityRefreshResult,
+  formatCommodityShortfallChangeList,
+  formatCommodityShortfallChanges,
+  formatCommodityShortfallEstimates,
+  formatCommodityShortfallEstimateList,
+  formatCommodityShadowRefreshHint,
+  formatNumberValue,
+  formatValue,
+  isCrisisComponent,
+  normalizeCommodityCoverage,
+  normalizeCommodityRefreshRows,
+  normalizeInputEvidence,
+  normalizeMacroSourceBackfillAlias,
+  suggestedCommodityRefreshStartDate,
+  uniqueDisplayParts,
+} from "../lib/macroToolkitCrisisSupport";
+import type {
+  CommodityRefreshEvidenceChain,
+  CommodityShortfallChange,
+  CommodityShortfallEstimate,
+  CrisisGapRepairFeedback,
+} from "../lib/macroToolkitCrisisSupport";
+import { CrisisScoreEvidencePanel, CommodityRefreshResultPanel } from "../panels/MacroToolkitCrisisPanels";
+import {
+  HasonMacroStrategyPanel,
+  ModelSignalMatrix,
+  deriveModelReadinessFromHasonStrategy,
+} from "../panels/MacroToolkitSignalPanels";
 
 const GROUP_LABELS: Record<string, string> = {
   allocation: "配置",
@@ -81,13 +147,20 @@ const MACRO_TOOLKIT_ANALYSIS_KIND = "macro_toolkit.analysis";
 const MACRO_TOOLKIT_UI_RULE_VERSION = "rv_macro_toolkit_ui_v1";
 const MACRO_TOOLKIT_READ_STALE_MS = 60_000;
 const MACRO_TOOLKIT_FULL_PREFETCH_DELAY_MS = 1_500;
-const MACRO_TOOLKIT_FULL_ANALYSIS_QUERY_KEY = ["macro-toolkit", "analysis", "full"] as const;
+const MACRO_TOOLKIT_CRISIS_SCORE_HISTORY_LIMIT = 430;
+const MACRO_TOOLKIT_FULL_ANALYSIS_QUERY_KEY = [
+  "macro-toolkit",
+  "analysis",
+  "full",
+  MACRO_TOOLKIT_CRISIS_SCORE_HISTORY_LIMIT,
+] as const;
 const MACRO_COMMODITY_SHADOW_RULE_VERSION = "shadow_rule_v1";
 const MACRO_COMMODITY_SHADOW_MIN_SAMPLES = 20;
 const MACRO_COMMODITY_SHADOW_MIN_CRISIS_SAMPLES = 5;
 const MACRO_COMMODITY_SHADOW_MIN_CORRELATION = 0.2;
 const MACRO_COMMODITY_SUGGESTED_REFRESH_LOOKBACK_DAYS = 45;
 const MACRO_TOOLKIT_ACTION_RECEIPT_LIMIT = 4;
+const MACRO_TOOLKIT_HERO_CARD_SLOTS = cardVariants({ variant: "default" });
 const BUSINESS_EVIDENCE_LABELS: Record<string, string> = {
   analytical: "证据口径已归档",
   choice: "宏观数据源",
@@ -136,30 +209,6 @@ type CommodityRefreshOptions = {
   products?: string[];
   suggestedSelection?: string[];
   startDate?: string;
-};
-type CommodityShortfallChange = {
-  field: string;
-  label: string;
-  before: string;
-  after: string;
-  remainingGap: number;
-  resolved: boolean;
-};
-type CommodityShortfallEstimate = CommodityShortfallChange & {
-  estimatedRows: number;
-  canFill: boolean;
-};
-type CommodityRefreshEvidenceChain = {
-  suggestedProducts: string[];
-  refreshedProducts: string[];
-  fullReloaded: boolean;
-};
-type CrisisGapRepairFeedback = {
-  groupKey: CrisisGapGroupKey;
-  groupLabel: string;
-  status: "pending" | "resolved" | "partial" | "failed";
-  message: string;
-  detail: string;
 };
 
 type MacroToolkitGovernanceFocusKey = "evidence" | "data-health" | "analysis-scope" | "execution" | "artifacts";
@@ -324,22 +373,9 @@ function actionReceiptDecisionFields(
   return fields[kind];
 }
 
-const MACRO_SOURCE_BACKFILL_ALIASES = new Set(["M0041813"]);
-
 type MacroToolkitPageProps = {
   mode?: MacroToolkitPageMode;
 };
-
-function normalizeMacroSourceBackfillAlias(alias: string | null | undefined) {
-  return alias?.trim().toUpperCase() ?? "";
-}
-
-function canRefreshMacroSourceBackfill(item: MacroToolkitRepairItem) {
-  return (
-    item.action?.kind === "source_backfill_required" &&
-    MACRO_SOURCE_BACKFILL_ALIASES.has(normalizeMacroSourceBackfillAlias(item.alias))
-  );
-}
 
 function needsManualReviewEscalation(item: MacroToolkitRepairItem) {
   return Boolean(item.action?.kind === "source_backfill_required" && !canRefreshMacroSourceBackfill(item));
@@ -452,61 +488,6 @@ function riskLevelTone(level: MacroToolkitAShareRiskPayload["risk_level"]): Macr
   if (level === "green") return "positive";
   if (level === "unknown") return "missing";
   return level === "yellow" ? "neutral" : "negative";
-}
-
-function statusLabel(status: string) {
-  const labels: Record<string, string> = {
-    current: "已对齐",
-    lagging: "轻微滞后",
-    stale: "陈旧",
-    missing: "缺失",
-    unknown: "待确认",
-    ready: "数据齐备",
-    partial: "部分就绪",
-    not_required: "无需数据",
-    complete: "已完成",
-    degraded: "部分降级",
-    unavailable: "不可用",
-    deferred: "已延后",
-    loading: "加载中",
-    failed: "失败",
-    idle: "空闲",
-    queued: "已排队",
-    running: "运行中",
-    completed: "已完成",
-    aligned: "已对齐",
-    fallback: "最近快照",
-    library_ready: "函数已迁入",
-    wired: "已接线",
-    visible: "已展示",
-    not_wired: "未接线",
-    planned: "待接入",
-    sample_only: "样例展示",
-    observation_ready: "观察就绪",
-  };
-  return labels[status] ?? status;
-}
-
-function statusColor(status: string) {
-  if (["current", "ready", "library_ready", "complete", "wired", "visible"].includes(status)) {
-    return "green";
-  }
-  if (
-    ["lagging", "partial", "planned", "degraded", "sample_only", "deferred", "loading", "observation_ready"].includes(
-      status,
-    )
-  ) {
-    return "gold";
-  }
-  if (["stale", "missing", "not_wired", "unavailable", "failed"].includes(status)) return "red";
-  return "default";
-}
-
-function compactText(text: string | null | undefined, maxLength = 34) {
-  if (!text) return "";
-  const normalized = text.replace(/\s+/g, " ").trim();
-  if (normalized.length <= maxLength) return normalized;
-  return `${normalized.slice(0, maxLength - 1)}…`;
 }
 
 function formatBusinessEvidenceLabel(value: string | null | undefined) {
@@ -764,26 +745,19 @@ function formatObservationSignalStance(card: MacroToolkitSignalCard) {
   return card.stance;
 }
 
-function macroStatusIconTone(tone: MacroToolkitSignalCard["tone"] | "positive" | "neutral" | "missing") {
-  if (tone === "positive") return "positive";
-  if (tone === "negative") return "negative";
-  if (tone === "missing") return "missing";
-  return "neutral";
+function formatSignalCardScore(card: MacroToolkitSignalCard): string | number {
+  if (card.score !== null && card.score !== undefined) {
+    return card.score;
+  }
+  if (card.stance === "完整结果待加载") {
+    return "待加载";
+  }
+  if (card.key === "a_share_stampede_risk" && card.stance === "数据不足" && card.tone === "missing") {
+    return "待加载";
+  }
+  return "缺失";
 }
 
-function MacroStatusIcon({
-  tone = "neutral",
-  children,
-}: {
-  tone?: MacroToolkitSignalCard["tone"] | "positive" | "neutral" | "missing";
-  children: ReactNode;
-}) {
-  return (
-    <span className={`macro-toolkit-status-icon macro-toolkit-status-icon--${macroStatusIconTone(tone)}`}>
-      {children}
-    </span>
-  );
-}
 
 function MacroToolkitContractBoundary({
   formalUseAllowed,
@@ -969,7 +943,7 @@ function ObservationSignalRiskComparison({
           </div>
           <strong>{signal ? formatObservationSignalTitle(signal) : isLoading ? "观察证据加载中" : "信号待确认"}</strong>
           <div className="macro-toolkit-observation-signal-risk__score">
-            <b>{signal?.score === null || signal?.score === undefined ? "缺失" : signal.score}</b>
+            <b>{signal ? formatSignalCardScore(signal) : isLoading ? "加载中" : "待确认"}</b>
             <ScoreTrack score={signal?.score} />
           </div>
           <small title={signalEvidence}>{compactText(signalEvidence, 58)}</small>
@@ -1112,14 +1086,6 @@ function InvestmentEvidenceSummary({
   );
 }
 
-function formatValue(value: number | null, unit = "") {
-  if (value === null) {
-    return "缺失";
-  }
-  const digits = Math.abs(value) >= 100 ? 2 : 4;
-  return `${value.toFixed(digits)}${unit}`;
-}
-
 function formatChange(change: number | null, changePct: number | null) {
   if (change === null && changePct === null) {
     return "无可比";
@@ -1130,12 +1096,6 @@ function formatChange(change: number | null, changePct: number | null) {
   return `${change! >= 0 ? "+" : ""}${change!.toFixed(4)}`;
 }
 
-function formatPercent(value: number | null | undefined) {
-  if (value == null) {
-    return "缺失";
-  }
-  return `${(value * 100).toFixed(1)}%`;
-}
 
 function clampScore(score: number | null | undefined) {
   if (score == null) {
@@ -1247,6 +1207,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   const [runError, setRunError] = useState<string | null>(null);
   const [chainRunResult, setChainRunResult] = useState<MacroToolkitScriptChainRun | null>(null);
   const [chainRunError, setChainRunError] = useState<string | null>(null);
+  const [chainRunModelId, setChainRunModelId] = useState<string | null>(null);
   const [isRunningChain, setIsRunningChain] = useState(false);
   const [refreshResult, setRefreshResult] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
@@ -1297,7 +1258,11 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   });
 
   const fetchFullAnalysis = useCallback(
-    () => client.getMacroToolkitAnalysis({ detail: "full" }),
+    () =>
+      client.getMacroToolkitAnalysis({
+        detail: "full",
+        historyLimit: MACRO_TOOLKIT_CRISIS_SCORE_HISTORY_LIMIT,
+      }),
     [client],
   );
 
@@ -1460,6 +1425,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     isReadyStatus(item.route_status) && isReadyStatus(item.frontend_status),
   ).length;
   const crisisScoreResult = capabilityResults.find((result) => result.key === "crisis_score_cn") ?? null;
+  const decisionSummaryResult = capabilityResults.find((result) => result.key === "decision_summary") ?? null;
   const degradedResultCount = capabilityResults.filter((result) => result.status !== "complete").length;
   const missingIndicatorCount = analysis?.indicators.filter((indicator) => indicator.quality === "missing").length ?? 0;
   const analysisSignalCards = analysis?.signal_cards ?? [];
@@ -1888,8 +1854,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     : [];
   const committeePackItems: MacroToolkitCommitteePackItem[] = evidenceBookRows.map((row) => {
     const isBlocking = row.key === "data-health" && hasDataHealthHardBlocker;
-    const isPending =
-      !isBlocking && /待|降级|失败|缺失|不可用|延后|等待/.test(`${row.support} ${row.gap}`);
+    const isPending = !isBlocking && isEvidenceBookRowPending(row.support, row.gap);
     const receipt =
       actionReceipts.find((item) =>
         receiptMatchesCommitteeEvidence(
@@ -2198,14 +2163,59 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       />
     </div>
   ) : null;
+  const observationDecisionSummary =
+    !showOperations && analysis ? (
+      <div
+        className="macro-toolkit-observation-decision"
+        data-testid="macro-observation-decision-summary"
+        aria-label="宏观决策摘要主结论"
+      >
+        {decisionSummaryResult ? (
+          <>
+            <CapabilityResultCard result={decisionSummaryResult} />
+            {decisionSummaryResult.warnings.length ? (
+              <Alert
+                type="warning"
+                showIcon
+                message="决策摘要限制"
+                description={decisionSummaryResult.warnings.join(" / ")}
+              />
+            ) : null}
+          </>
+        ) : (
+          <Alert
+            type="info"
+            showIcon
+            message="宏观决策摘要暂未返回"
+            description={
+              isCoreAnalysis
+                ? "核心分析已先返回；决策摘要需打开完整分析后确认。"
+                : "后端未返回决策摘要结果，本页不推导宏观结论。"
+            }
+          />
+        )}
+      </div>
+    ) : null;
   const observationFirstScreenLoop =
     !showOperations ? (
-      <div className="macro-toolkit-observation-loop" aria-label="宏观观察首屏闭环">
-        <div className="macro-toolkit-observation-loop__head">
+      <div
+        className={MACRO_TOOLKIT_HERO_CARD_SLOTS.base({
+          className: "macro-toolkit-observation-loop border border-default-200 bg-content1 text-foreground",
+        })}
+        aria-label="宏观观察首屏闭环"
+        data-slot="card"
+      >
+        <div
+          className={MACRO_TOOLKIT_HERO_CARD_SLOTS.header({ className: "macro-toolkit-observation-loop__head p-0" })}
+          data-slot="card-header"
+        >
           <span>观察闭环</span>
           <strong>{analysis?.as_of_date ?? "日期待确认"}</strong>
         </div>
-        <div className="macro-toolkit-observation-loop__grid">
+        <div
+          className={MACRO_TOOLKIT_HERO_CARD_SLOTS.content({ className: "macro-toolkit-observation-loop__grid p-0" })}
+          data-slot="card-content"
+        >
           <div>
             <span>当前判断</span>
             <strong>{analysis?.conclusion.stance ?? "读取中"}</strong>
@@ -2234,14 +2244,27 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     if (fullAnalysisEnvelope || analysisQuery.data?.result.runtime_status?.analysis_scope !== "core") {
       return;
     }
+    let cancelled = false;
     const timeoutId = window.setTimeout(() => {
-      void queryClient.prefetchQuery({
-        queryKey: MACRO_TOOLKIT_FULL_ANALYSIS_QUERY_KEY,
-        queryFn: fetchFullAnalysis,
-        staleTime: MACRO_TOOLKIT_READ_STALE_MS,
-      });
+      void (async () => {
+        try {
+          const response = await queryClient.fetchQuery({
+            queryKey: MACRO_TOOLKIT_FULL_ANALYSIS_QUERY_KEY,
+            queryFn: fetchFullAnalysis,
+            staleTime: MACRO_TOOLKIT_READ_STALE_MS,
+          });
+          if (!cancelled) {
+            setFullAnalysisEnvelope(response);
+          }
+        } catch {
+          // Keep the core screen until the user explicitly retries full analysis.
+        }
+      })();
     }, MACRO_TOOLKIT_FULL_PREFETCH_DELAY_MS);
-    return () => window.clearTimeout(timeoutId);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
   }, [analysisQuery.data?.result.runtime_status?.analysis_scope, fetchFullAnalysis, fullAnalysisEnvelope, queryClient]);
 
   const loadFullAnalysis = useCallback(async (options?: { force?: boolean }) => {
@@ -2465,9 +2488,10 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     strategyQuery,
   ]);
 
-  const runScriptChain = useCallback(async (dryRun: boolean) => {
+  const runScriptChain = useCallback(async (dryRun: boolean, modelId?: string) => {
     const receiptId = nextActionReceiptId(dryRun ? "script-chain-dry-run" : "script-chain");
     const receiptDecision = actionReceiptDecisionFields("script");
+    setChainRunModelId(modelId ?? null);
     setIsRunningChain(true);
     setChainRunError(null);
     setChainRunResult(null);
@@ -3240,8 +3264,21 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                 {showOperations ? card.stance : formatObservationSignalStance(card)}
               </Tag>
             </div>
-            <strong>{card.score === null ? "缺失" : card.score}</strong>
+            <strong>{formatSignalCardScore(card)}</strong>
             <ScoreTrack score={card.score} />
+            {card.key === "crisis_score_cn" && crisisScoreResult
+              ? (() => {
+                  const rawComponents = Array.isArray(crisisScoreResult.result?.components)
+                    ? crisisScoreResult.result.components.filter(isCrisisComponent)
+                    : [];
+                  const summary = formatCrisisTopContributorSummary(rawComponents);
+                  return summary ? (
+                    <small className="macro-toolkit-signal-component-summary" data-testid="macro-toolkit-crisis-signal-component-summary">
+                      {summary}
+                    </small>
+                  ) : null;
+                })()
+              : null}
             <small>{showOperations ? card.evidence.join(" / ") : formatObservationEvidence(card.evidence)}</small>
           </div>
         ))}
@@ -3566,6 +3603,23 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       strategy={hasonStrategy}
       modelReadiness={analysis?.model_readiness}
       variant={showOperations ? "detail" : "observation"}
+    />
+  ) : null;
+  const modelSignalReadiness = analysis?.model_readiness?.length
+    ? analysis.model_readiness
+    : hasonStrategySection && analysis?.hason_strategy
+      ? deriveModelReadinessFromHasonStrategy(analysis.hason_strategy)
+      : [];
+  const modelSignalMatrixSection = modelSignalReadiness.length ? (
+    <ModelSignalMatrix
+      modelReadiness={modelSignalReadiness}
+      readinessSummary={analysis?.readiness_summary}
+      chainRunResult={chainRunResult}
+      chainRunError={chainRunError}
+      chainRunModelId={chainRunModelId}
+      isRunningChain={isRunningChain}
+      showActions={showOperations}
+      onRunChain={runScriptChain}
     />
   ) : null;
   const observationEvidenceTraceSummary = analysis ? (
@@ -4549,56 +4603,89 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   }
 
   return (
-    <div
-      className={`macro-toolkit-page macro-toolkit-page--details-${detailDensity}`}
+    <section
+      className={`${MT_SHELL_PAGE} macro-toolkit-page macro-toolkit-page--details-${detailDensity}`}
       data-testid="macro-toolkit-page"
     >
-      <section
-        data-testid="macro-toolkit-tailwind-cockpit"
-        className={`macro-toolkit-cockpit macro-toolkit-cockpit--${showOperations ? "toolkit" : "observation"}`}
+      <header
+        className={`${MT_SHELL_TOPBAR} macro-toolkit-page__header`}
+        data-testid="macro-toolkit-toolbar"
       >
-        <div className="macro-toolkit-cockpit__header">
-          <div className="macro-toolkit-cockpit__title-block">
-            <div className="macro-toolkit-cockpit__meta">
-              <ClockCircleOutlined />
-              <span>{analysis?.as_of_date ?? "DATE_MISSING"}</span>
-              <Tag color={showOperations ? "blue" : "default"}>{showOperations ? "工具控制台" : "只读观察"}</Tag>
-            </div>
-            <h1>{showOperations ? "宏观工具" : "宏观分析结果"}</h1>
-            <p>
-              {showOperations
-                ? "把宏观分析、数据刷新、脚本运行和产物确认收在同一个首屏闭环里。"
-                : "只展示宏观分析证据；刷新、脚本和注册表保留在宏观工具页。"}
-            </p>
+        <div className={`${MT_SHELL_TOPBAR_LEFT} macro-toolkit-page__header-main`}>
+          <div className={MT_SHELL_TITLE_BRAND}>
+            <h1 className={MT_SHELL_TITLE}>{showOperations ? "宏观工具" : "宏观分析结果"}</h1>
           </div>
-          <div className="macro-toolkit-cockpit__header-actions">
-            {showOperations ? (
-              <>
-                <Button
-                  icon={<ReloadOutlined />}
-                  onClick={() => {
-                    void clearFullAnalysisCache();
-                    void analysisQuery.refetch();
-                    void scriptsQuery.refetch();
-                    void strategyQuery.refetch();
-                  }}
-                  loading={isMacroRefreshing}
-                >
-                  刷新结果
-                </Button>
-                <Button
-                  icon={<ReloadOutlined />}
-                  onClick={() => void scriptsQuery.refetch()}
-                  loading={scriptsQuery.isFetching}
-                >
-                  刷新注册表
-                </Button>
-              </>
-            ) : null}
+          <span className={`${MT_SHELL_STATUS_PILL} macro-toolkit-page__badge`}>
+            {showOperations ? "工具控制台" : "只读观察"}
+          </span>
+          <div className={`${MT_SHELL_STATUS_ROW} macro-toolkit-page__toolbar-info`} aria-label="宏观工具状态">
+            <span className={`${MT_SHELL_STATUS_PILL} macro-toolkit-page__toolbar-pill`}>
+              <ClockCircleOutlined aria-hidden="true" />
+              观察日{" "}
+              <span className={MT_SHELL_NUM}>{analysis?.as_of_date ?? "DATE_MISSING"}</span>
+            </span>
+            <span className={`${MT_SHELL_STATUS_PILL} macro-toolkit-page__toolbar-pill`}>
+              <SafetyCertificateOutlined aria-hidden="true" />
+              门禁 {committeeDecisionStatus}
+            </span>
+            <span className={`${MT_SHELL_STATUS_PILL} macro-toolkit-page__toolbar-pill`}>
+              <DatabaseOutlined aria-hidden="true" />
+              缺口 {repairItemCount}
+            </span>
+            <span className={`${MT_SHELL_STATUS_PILL} macro-toolkit-page__toolbar-pill`}>
+              <ThunderboltOutlined aria-hidden="true" />
+              能力 {readyCapabilityCount}/{capabilityItems.length || 0}
+            </span>
           </div>
         </div>
+        <div className={`${MT_SHELL_TOPBAR_RIGHT} macro-toolkit-page__header-controls`}>
+          {showOperations ? (
+            <>
+              <Button
+                className="macro-toolkit-page__dh-topbar-btn"
+                icon={<ReloadOutlined />}
+                onClick={() => {
+                  void clearFullAnalysisCache();
+                  void analysisQuery.refetch();
+                  void scriptsQuery.refetch();
+                  void strategyQuery.refetch();
+                }}
+                loading={isMacroRefreshing}
+              >
+                刷新结果
+              </Button>
+              <Button
+                className="macro-toolkit-page__dh-topbar-btn"
+                icon={<ReloadOutlined />}
+                onClick={() => void scriptsQuery.refetch()}
+                loading={scriptsQuery.isFetching}
+              >
+                刷新注册表
+              </Button>
+            </>
+          ) : null}
+        </div>
+        <p className="macro-toolkit-page__header-summary">
+          {showOperations
+            ? "把宏观分析、数据刷新、脚本运行和产物确认收在同一个首屏闭环里。"
+            : "只展示宏观分析证据；刷新、脚本和注册表保留在宏观工具页。"}
+        </p>
+      </header>
 
-        <div className="macro-toolkit-cockpit__body">
+      <main className={`${MT_SHELL_MAIN} macro-toolkit-page__main`}>
+      <section
+        data-testid="macro-toolkit-tailwind-cockpit"
+        className={MACRO_TOOLKIT_HERO_CARD_SLOTS.base({
+          className: `macro-toolkit-cockpit macro-toolkit-cockpit--${
+            showOperations ? "toolkit" : "observation"
+          } border border-default-200 bg-background/95 text-foreground shadow-sm`,
+        })}
+        data-slot="card"
+      >
+        <div
+          className={MACRO_TOOLKIT_HERO_CARD_SLOTS.content({ className: "macro-toolkit-cockpit__body p-0" })}
+          data-slot="card-content"
+        >
           <div
             className="macro-toolkit-cockpit__analysis macro-toolkit-house-view"
             data-testid="macro-toolkit-house-view"
@@ -4608,6 +4695,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
               <span>{showOperations ? "House View" : "观察结论"}</span>
               <strong>{showOperations ? "可执行宏观判断" : "只读宏观判断"}</strong>
             </div>
+            {observationDecisionSummary}
             <div className="macro-toolkit-cockpit__conclusion">
               <div className="macro-toolkit-cockpit__label">
                 <MacroStatusIcon tone={analysis?.conclusion.tone ?? "missing"}>
@@ -4808,6 +4896,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
         </section>
       ) : null}
 
+      <div className="macro-toolkit-page__content">
       {analysisQuery.isError ? (
         <Alert type="error" showIcon message="宏观分析结果加载失败" />
       ) : null}
@@ -5297,6 +5386,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
               {hasonStrategySection}
               {analysisWarningsAlert}
               {signalSection}
+              {modelSignalMatrixSection}
               {crisisEvidenceSection}
               {riskSection}
               {indicatorSection}
@@ -5308,6 +5398,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
               {analysisWarningsAlert}
               <div className="macro-toolkit-observation-flow" aria-label="宏观观察阅读顺序">
                 {observationSignalRiskComparisonSection}
+                {modelSignalMatrixSection}
                 {investmentEvidenceSection}
               </div>
               <div className="macro-toolkit-observation-evidence-flow" aria-label="宏观观察证据追踪">
@@ -5318,6 +5409,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
           )}
         </>
       ) : null}
+      </div>
 
       {showOperations ? (
         <section className="macro-toolkit-section">
@@ -5862,7 +5954,8 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
           </aside>
         </section>
       ) : null}
-    </div>
+      </main>
+    </section>
   );
 }
 
@@ -5870,6 +5963,13 @@ function CapabilityResultCard({ result }: { result: MacroToolkitCapabilityResult
   const metric = result.primary_metric;
   const evidence = result.evidence.length ? result.evidence : result.warnings;
   const inputEvidence = normalizeInputEvidence(result);
+  const rawResult = result.result;
+  const crisisComponents =
+    result.key === "crisis_score_cn" && Array.isArray(rawResult.components)
+      ? rawResult.components.filter(isCrisisComponent)
+      : [];
+  const componentSummary =
+    result.key === "crisis_score_cn" ? formatCrisisTopContributorSummary(crisisComponents) : null;
   return (
     <div
       className={`macro-toolkit-capability-result macro-toolkit-capability-result--${result.tone}`}
@@ -5883,6 +5983,11 @@ function CapabilityResultCard({ result }: { result: MacroToolkitCapabilityResult
       <strong>{metric ? formatMetricDisplay(metric) : result.score ?? statusLabel(result.status)}</strong>
       <ScoreTrack score={result.score} />
       <p>{result.headline}</p>
+      {componentSummary ? (
+        <small className="macro-toolkit-crisis-component-summary" data-testid="macro-toolkit-crisis-capability-component-summary">
+          {componentSummary}
+        </small>
+      ) : null}
       <small>{evidence.slice(0, 3).join(" / ") || "暂无证据"}</small>
       {inputEvidence ? (
         <div className="macro-toolkit-input-evidence">
@@ -5903,1384 +6008,6 @@ function CapabilityResultCard({ result }: { result: MacroToolkitCapabilityResult
       ) : null}
     </div>
   );
-}
-
-function CrisisGapAction({
-  group,
-  repairItems,
-  commodityRefreshProducts,
-  refreshingSourceAlias,
-  commodityRefreshResult,
-  commodityShortfallEstimates,
-  sourceBackfillResult,
-  sourceBackfillError,
-  onRefreshCommodityProducts,
-  onPreviewCommodityRefreshProducts,
-  onRepairSourceBackfill,
-}: {
-  group: CrisisGapGroup;
-  repairItems: MacroToolkitRepairItem[];
-  commodityRefreshProducts: string[];
-  refreshingSourceAlias: string | null;
-  commodityRefreshResult: string | null;
-  commodityShortfallEstimates: CommodityShortfallEstimate[];
-  sourceBackfillResult: string | null;
-  sourceBackfillError: string | null;
-  onRefreshCommodityProducts?: (products: string[]) => void;
-  onPreviewCommodityRefreshProducts?: (products: string[]) => void;
-  onRepairSourceBackfill?: (item: MacroToolkitRepairItem, group: CrisisGapGroup) => void;
-}) {
-  const canRefreshSuggestedCommodities =
-    group.key === "commodity" &&
-    commodityRefreshProducts.length > 0 &&
-    commodityShortfallEstimates.length > 0 &&
-    commodityShortfallEstimates.every((item) => item.canFill) &&
-    Boolean(onRefreshCommodityProducts);
-  if (group.key === "commodity" && commodityRefreshProducts.length && onPreviewCommodityRefreshProducts) {
-    return (
-      <div className="macro-toolkit-crisis-gap-action">
-        <Button
-          size="small"
-          type="primary"
-          icon={<InfoCircleOutlined />}
-          aria-label="按建议预估"
-          onClick={() => onPreviewCommodityRefreshProducts(commodityRefreshProducts)}
-        >
-          按建议预估
-        </Button>
-        {commodityRefreshResult ? <small>{commodityRefreshResult}</small> : null}
-        {commodityShortfallEstimates.length ? (
-          <small>{formatCommodityShortfallEstimateList(commodityShortfallEstimates)}</small>
-        ) : null}
-        {canRefreshSuggestedCommodities ? (
-          <Button
-            size="small"
-            icon={<ReloadOutlined />}
-            aria-label="按建议刷新并重读"
-            onClick={() => onRefreshCommodityProducts?.(commodityRefreshProducts)}
-          >
-            按建议刷新并重读
-          </Button>
-        ) : null}
-      </div>
-    );
-  }
-
-  const repairItem = findCrisisGapRepairItem(group, repairItems);
-  if (!repairItem || !onRepairSourceBackfill) {
-    return null;
-  }
-  const alias = normalizeMacroSourceBackfillAlias(repairItem.alias);
-  return (
-    <div className="macro-toolkit-crisis-gap-action">
-      <Button
-        size="small"
-        icon={<ReloadOutlined />}
-        loading={refreshingSourceAlias === alias}
-        aria-label={repairItem.action?.label ?? "需要补齐来源数据"}
-        onClick={() => onRepairSourceBackfill(repairItem, group)}
-      >
-        {repairItem.action?.label ?? "需要补齐来源数据"}
-      </Button>
-      {sourceBackfillResult ? <small>{sourceBackfillResult}</small> : null}
-      {sourceBackfillError ? <small>{sourceBackfillError}</small> : null}
-    </div>
-  );
-}
-
-function CrisisGapRepairFeedback({ feedback }: { feedback: CrisisGapRepairFeedback }) {
-  return (
-    <div
-      className={`macro-toolkit-crisis-gap-feedback macro-toolkit-crisis-gap-feedback--${feedback.status}`}
-      data-testid="crisis-gap-repair-feedback"
-    >
-      <span>{feedback.groupLabel}</span>
-      <strong>{feedback.message}</strong>
-      <small>{feedback.detail}</small>
-    </div>
-  );
-}
-
-function CrisisCommodityClosurePanel({
-  changes,
-  evidenceChain,
-}: {
-  changes: CommodityShortfallChange[];
-  evidenceChain: CommodityRefreshEvidenceChain | null;
-}) {
-  const resolvedCount = changes.filter((item) => item.resolved).length;
-  return (
-    <div className="macro-toolkit-crisis-commodity-closure" aria-label="Crisis Score 样本刷新闭环">
-      <div>
-        <span>样本缺口刷新闭环</span>
-        <strong>
-          已补齐 {resolvedCount}/{changes.length}
-        </strong>
-      </div>
-      {evidenceChain ? (
-        <div className="macro-toolkit-crisis-commodity-closure__chain">
-          <small>建议品种 {formatCommodityProductsInline(evidenceChain.suggestedProducts)}</small>
-          <small>实际刷新 {formatCommodityProductsInline(evidenceChain.refreshedProducts)}</small>
-          <small>{evidenceChain.fullReloaded ? "完整分析已重读" : "完整分析重读待确认"}</small>
-        </div>
-      ) : null}
-      <div className="macro-toolkit-crisis-commodity-closure__grid">
-        {changes.map((item) => (
-          <small key={item.field}>
-            {item.label} · 刷新前 {item.before} · 刷新后 {item.after} · 剩余缺口 {item.remainingGap}
-          </small>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function CrisisCommodityShadowDecisionPanel({
-  coverage,
-  admission,
-  approvalPack,
-  commodityInput = null,
-  analysisMeta,
-  analysisAsOfDate = null,
-}: {
-  coverage: CrisisCommodityCoverage;
-  admission: CrisisCommodityAdmission | null;
-  approvalPack: CrisisCommodityApprovalPack | null;
-  commodityInput?: MacroToolkitInputEvidenceItem | null;
-  analysisMeta?: ResultMeta | null;
-  analysisAsOfDate?: string | null;
-}) {
-  const promotionItems = coverage.items.map(commodityPromotionRuleItem);
-  const manualCount = promotionItems.filter((item) => item.status === "manual_review").length;
-  const rejectedCount = promotionItems.filter((item) => item.status === "not_recommended").length;
-  const reviewQueueItems = coverage.items.filter(isCommodityShadowReviewReady);
-  const shortQueueItems = coverage.items.filter(isCommodityShadowHistoryShort);
-  const auditPackCopyText = buildCommodityPromotionAuditPackCopyText(promotionItems, {
-    manualCount,
-    rejectedCount,
-    analysisMeta,
-    analysisAsOfDate,
-    reviewQueueItems,
-    shortQueueItems,
-    coverageItems: coverage.items,
-    commodityInput,
-    summary: coverage.candidate_summary,
-  });
-  const [auditPackCopyStatus, setAuditPackCopyStatus] = useState<"idle" | "success" | "error">("idle");
-  const handleCopyAuditPack = useCallback(async () => {
-    const clipboard =
-      (typeof navigator === "undefined" ? undefined : navigator.clipboard) ??
-      (typeof window === "undefined" ? undefined : window.navigator.clipboard);
-    const writeText = clipboard?.writeText;
-    if (typeof writeText !== "function") {
-      setAuditPackCopyStatus("error");
-      return;
-    }
-    try {
-      await writeText(auditPackCopyText);
-      setAuditPackCopyStatus("success");
-    } catch {
-      setAuditPackCopyStatus("error");
-    }
-  }, [auditPackCopyText]);
-  const summary = coverage.candidate_summary;
-  if (!summary) {
-    return null;
-  }
-  const reviewableCount = summary.shadow_evaluation_ready_count;
-  const shortCount = summary.shadow_evaluation_short_count;
-  const totalCount = coverage.tracked_count || coverage.items.length;
-  const formalCommodityInputText = commodityInput
-    ? `${commodityInput.label || commodityInput.field} · ${formatCrisisInputIdentifiers(commodityInput)}`
-    : "南华商品输入缺失";
-  const shadowCandidateText = formatCommodityActionQueueLabels(reviewQueueItems);
-  return (
-    <div className="macro-toolkit-crisis-shadow-decision" aria-label="候选商品影子评估决策面板">
-      <div className="macro-toolkit-crisis-shadow-decision__head">
-        <div>
-          <span>候选商品影子评估</span>
-          <strong>
-            可复核 {reviewableCount}/{totalCount}
-          </strong>
-        </div>
-        <div className="macro-toolkit-tag-row">
-          <Tag color="default">当前未计入 Crisis Score</Tag>
-          <Tag color={summary.approval_required ? "gold" : "green"}>
-            {summary.approval_required ? "转正前需审批" : "暂无审批要求"}
-          </Tag>
-          <Tag color={shortCount ? "orange" : "green"}>样本不足 {shortCount}</Tag>
-        </div>
-      </div>
-      <CommodityShadowActionQueue
-        reviewItems={reviewQueueItems}
-        shortItems={shortQueueItems}
-        summary={summary}
-      />
-      <CommodityCandidateReviewConclusion
-        admission={admission}
-        items={coverage.items}
-        promotionItems={promotionItems}
-      />
-      <CommodityCandidateApprovalPackPanel approvalPack={approvalPack} />
-      <div className="macro-toolkit-crisis-shadow-decision__grid">
-        {coverage.items.map((item) => (
-          <div className="macro-toolkit-crisis-shadow-decision__item" key={item.field}>
-            <div className="macro-toolkit-capability-result-head">
-              <span>{item.label || item.field}</span>
-              <Tag color={commodityShadowStatusColor(item.shadow_evaluation?.status)}>
-                {item.shadow_evaluation?.label ?? "影子评估待确认"}
-              </Tag>
-            </div>
-            <strong>{formatCommodityCoverageIdentifiers(item)}</strong>
-            <small>
-              {item.source ?? "source missing"} · {item.series_id ?? "series missing"} ·{" "}
-              {item.used_in_formula ? "已纳入公式" : "当前未计入 Crisis Score"}
-            </small>
-            {item.shadow_evaluation ? (
-              <>
-                <small>{formatCommodityShadowDecisionMetrics(item.shadow_evaluation)}</small>
-                <small>{item.shadow_evaluation.next_step}</small>
-              </>
-            ) : item.candidate_decision ? (
-              <small>{item.candidate_decision.next_step}</small>
-            ) : null}
-          </div>
-        ))}
-      </div>
-      <div className="macro-toolkit-crisis-promotion-rule-pack" aria-label="候选商品转正规则包">
-        <div className="macro-toolkit-crisis-promotion-rule-pack__head">
-          <div>
-            <span>候选商品转正规则包</span>
-            <strong>
-              待人工判断 {manualCount} · 不建议进入公式 {rejectedCount}
-            </strong>
-          </div>
-          <small>规则只用于审批前复核，不改变 Crisis Score 公式</small>
-          <small>规则版本 {MACRO_COMMODITY_SHADOW_RULE_VERSION}</small>
-          <small>
-            准入检查：样本&gt;={MACRO_COMMODITY_SHADOW_MIN_SAMPLES} / 危机样本&gt;=
-            {MACRO_COMMODITY_SHADOW_MIN_CRISIS_SAMPLES} / 相关性可读 / 命中率可读
-          </small>
-          <small>样本阈值 &gt;={MACRO_COMMODITY_SHADOW_MIN_SAMPLES} 个重叠样本</small>
-          <small>
-            危机样本阈值 &gt;={MACRO_COMMODITY_SHADOW_MIN_CRISIS_SAMPLES} 个高 Crisis Score 样本
-          </small>
-          <small>
-            相关性阈值 |corr|&gt;={MACRO_COMMODITY_SHADOW_MIN_CORRELATION.toFixed(2)} 才可直接通过
-          </small>
-          <div className="macro-toolkit-crisis-promotion-rule-pack__actions">
-            <Button
-              aria-label="复制审计包"
-              icon={<CopyOutlined aria-hidden="true" />}
-              size="small"
-              type="default"
-              onClick={() => void handleCopyAuditPack()}
-            >
-              {auditPackCopyStatus === "success"
-                ? "已复制"
-                : auditPackCopyStatus === "error"
-                  ? "复制失败"
-                  : "复制审计包"}
-            </Button>
-            {auditPackCopyStatus !== "idle" ? (
-              <span
-                aria-atomic="true"
-                aria-label="审计包复制状态"
-                aria-live="polite"
-                className={`macro-toolkit-crisis-promotion-rule-pack__copy-status macro-toolkit-crisis-promotion-rule-pack__copy-status--${auditPackCopyStatus}`}
-                role="status"
-              >
-                {auditPackCopyStatus === "success" ? "审计包已复制" : "复制失败，请手动选择审计包文本"}
-              </span>
-            ) : null}
-          </div>
-        </div>
-        <div className="macro-toolkit-crisis-promotion-rule-pack__audit" aria-label="shadow_rule_v1 审计注记">
-          <strong>{MACRO_COMMODITY_SHADOW_RULE_VERSION} 审计注记</strong>
-          <small>用途：商品候选进入公式前的影子复核</small>
-          <small>边界：不写入 Crisis Score，不改变权重</small>
-          <small>审批：历史回测、相关性检验、权重审批、版本记录齐备后再提交</small>
-        </div>
-        <div
-          className="macro-toolkit-crisis-promotion-rule-pack__formula-boundary"
-          aria-label="Crisis Score 商品公式输入边界"
-        >
-          <div className="macro-toolkit-crisis-promotion-rule-pack__formula-boundary-item">
-            <span>正式输入</span>
-            <strong>{formalCommodityInputText}</strong>
-            <small>
-              {commodityInput ? "已纳入 Crisis Score 公式" : "已纳入 Crisis Score 公式的南华输入未命中"}
-            </small>
-          </div>
-          <div className="macro-toolkit-crisis-promotion-rule-pack__formula-boundary-item">
-            <span>影子候选</span>
-            <strong>{shadowCandidateText}</strong>
-            <small>当前未计入 Crisis Score</small>
-          </div>
-        </div>
-        <div className="macro-toolkit-crisis-promotion-rule-pack__grid">
-          {promotionItems.map((item) => (
-            <div className="macro-toolkit-crisis-promotion-rule-pack__item" key={item.field}>
-              <small>
-                {item.label} · {commodityPromotionRuleStatusLabel(item.status)} · {item.reason}
-              </small>
-              {item.checks.map((check) => (
-                <small key={`${item.field}-${check.name}`}>
-                  {item.label} · {check.name} {commodityPromotionRuleCheckStatusLabel(check.status)} {check.value}
-                </small>
-              ))}
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function CrisisCommodityShadowImpactPanel({
-  currentScore,
-  coverage,
-  shadowImpact,
-}: {
-  currentScore: number | null;
-  coverage: CrisisCommodityCoverage;
-  shadowImpact: CrisisCommodityShadowImpact | null;
-}) {
-  const promotionItems = coverage.items.map(commodityPromotionRuleItem);
-  const driverItems = promotionItems.filter((item) => item.status !== "not_recommended");
-  const driverFields = new Set(driverItems.map((item) => item.field));
-  const driverCoverageItems = coverage.items.filter((item) => driverFields.has(item.field));
-  const readyCount = promotionItems.filter((item) => item.status === "ready_for_review").length;
-  const manualCount = promotionItems.filter((item) => item.status === "manual_review").length;
-  const hasShadowScore = shadowImpact?.shadow_score != null;
-  const impactDrivers = shadowImpact?.candidate_contributions.length
-    ? shadowImpact.candidate_contributions
-    : null;
-  return (
-    <div className="macro-toolkit-crisis-shadow-impact" aria-label="Crisis Score v2 影子影响评估">
-      <div className="macro-toolkit-crisis-shadow-impact__head">
-        <div>
-          <span>Crisis Score v2 影子影响评估</span>
-          <strong>{hasShadowScore ? "shadow score 只读试算" : "影子分数待公式确认"}</strong>
-        </div>
-        <small>
-          {shadowImpact?.formula_version ?? "商品候选当前只做影子影响判断"}；不改变正式 Crisis Score。
-        </small>
-      </div>
-      <div className="macro-toolkit-crisis-shadow-impact__metrics">
-        <MetricTile
-          icon={<SafetyCertificateOutlined />}
-          label="正式 Crisis Score"
-          value={shadowImpact?.current_score ?? currentScore ?? "缺失"}
-          detail="不改变正式 Crisis Score"
-          tone={(shadowImpact?.current_score ?? currentScore) == null ? "missing" : "neutral"}
-        />
-        <MetricTile
-          icon={<LineChartOutlined />}
-          label="v2 shadow score"
-          value={shadowImpact?.shadow_score ?? "影子分数待公式确认"}
-          detail={
-            shadowImpact
-              ? `delta ${formatSignedDelta(shadowImpact.delta)} · ${shadowImpact.formula_version}`
-              : "不能直接换算为分数"
-          }
-          tone="neutral"
-        />
-        <MetricTile
-          icon={<ArrowUpOutlined />}
-          label="影响方向"
-          value={shadowImpact ? commodityShadowImpactDirectionLabel(shadowImpact.direction) : "待公式/权重确认"}
-          detail={
-            shadowImpact
-              ? `${shadowImpact.scope} · ${formatCommodityShadowImpactWarnings(shadowImpact)}`
-              : formatCommodityShadowImpactDirectionDetail(driverCoverageItems)
-          }
-          tone="neutral"
-        />
-        <MetricTile
-          icon={<ToolOutlined />}
-          label="候选驱动"
-          value={`${shadowImpact?.candidate_count ?? driverItems.length} 个待复核`}
-          detail={
-            shadowImpact
-              ? `可进入公式前审批 ${shadowImpact.approval_required ? "是" : "否"}`
-              : `可进入人工复核 ${readyCount} / 继续观察 ${manualCount}`
-          }
-          tone="neutral"
-        />
-      </div>
-      {shadowImpact?.warnings.length ? (
-        <div className="macro-toolkit-tag-row" aria-label="影子影响警示">
-          {shadowImpact.warnings.map((warning) => (
-            <Tag color="gold" key={warning}>
-              {warning}
-            </Tag>
-          ))}
-        </div>
-      ) : null}
-      <div className="macro-toolkit-crisis-shadow-impact__grid">
-        {impactDrivers
-          ? impactDrivers.map((item) => (
-              <div className="macro-toolkit-crisis-shadow-impact__item" key={item.field}>
-                <div className="macro-toolkit-capability-result-head">
-                  <span>{item.label || item.field}</span>
-                  <Tag color="blue">{item.status}</Tag>
-                </div>
-                <small>{formatCommodityShadowContributionDetail(item)}</small>
-                <small>{item.used_in_official_score ? "已纳入正式分数" : "不改变正式 Crisis Score"}</small>
-              </div>
-            ))
-          : driverCoverageItems.map((item) => {
-          const promotionItem = promotionItems.find((candidate) => candidate.field === item.field);
-          return (
-            <div className="macro-toolkit-crisis-shadow-impact__item" key={item.field}>
-              <div className="macro-toolkit-capability-result-head">
-                <span>{item.label || item.field}</span>
-                <Tag color={commodityReviewConclusionColor(promotionItem?.status ?? "not_recommended")}>
-                  {commodityReviewConclusionLabel(promotionItem?.status ?? "not_recommended")}
-                </Tag>
-              </div>
-              <small>{formatCommodityShadowImpactDriverDetail(item)}</small>
-              <small>不能直接换算为分数</small>
-            </div>
-          );
-        })}
-      </div>
-      {shadowImpact?.warnings.length ? (
-        <small className="macro-toolkit-crisis-shadow-impact__note">
-          {shadowImpact.warnings.join(" / ")}
-        </small>
-      ) : null}
-      <small className="macro-toolkit-crisis-shadow-impact__note">
-        {shadowImpact?.next_step ?? "审批建议：先复核候选相关性，再确认 v2 权重"}
-      </small>
-    </div>
-  );
-}
-
-function CommodityCandidateReviewConclusion({
-  admission,
-  items,
-  promotionItems,
-}: {
-  admission: CrisisCommodityAdmission | null;
-  items: CrisisCommodityCoverageItem[];
-  promotionItems: CommodityPromotionRuleItem[];
-}) {
-  if (admission) {
-    return (
-      <div className="macro-toolkit-crisis-review-conclusion" aria-label="商品候选复核结论">
-        <div className="macro-toolkit-crisis-review-conclusion__head">
-          <div>
-            <span>商品候选复核结论</span>
-            <strong>
-              商品候选准入评估：建议纳入 {admission.decision_counts.recommend_include} · 继续观察{" "}
-              {admission.decision_counts.watch} · 暂不纳入 {admission.decision_counts.do_not_include}
-            </strong>
-          </div>
-          <small>{admission.rule_version} · {admission.scope}</small>
-          <small>审批前不改变正式 Crisis Score</small>
-        </div>
-        {admission.warnings.length ? (
-          <div className="macro-toolkit-tag-row" aria-label="商品候选准入警告">
-            {admission.warnings.map((warning) => (
-              <Tag color="gold" key={warning}>
-                {warning}
-              </Tag>
-            ))}
-          </div>
-        ) : null}
-        <div className="macro-toolkit-crisis-review-conclusion__grid">
-          {admission.items.map((item) => (
-            <div className="macro-toolkit-crisis-review-conclusion__item" key={item.field}>
-              <div className="macro-toolkit-capability-result-head">
-                <span>{item.label || item.field}</span>
-                <Tag color={commodityAdmissionDecisionColor(item.decision)}>{item.decision_label}</Tag>
-              </div>
-              <strong>{item.reason}</strong>
-              <small>{formatCommodityAdmissionMetrics(item)}</small>
-              <small>下一步：{formatCommodityAdmissionNextStep(item)}</small>
-            </div>
-          ))}
-        </div>
-        <small className="macro-toolkit-crisis-shadow-impact__note">{admission.next_step}</small>
-      </div>
-    );
-  }
-  const promotionByField = new Map(promotionItems.map((item) => [item.field, item]));
-  const readyCount = promotionItems.filter((item) => item.status === "ready_for_review").length;
-  const manualCount = promotionItems.filter((item) => item.status === "manual_review").length;
-  const rejectedCount = promotionItems.filter((item) => item.status === "not_recommended").length;
-  return (
-    <div className="macro-toolkit-crisis-review-conclusion" aria-label="商品候选复核结论">
-      <div className="macro-toolkit-crisis-review-conclusion__head">
-        <div>
-          <span>商品候选复核结论</span>
-          <strong>
-            可进入人工复核 {readyCount} · 继续观察 {manualCount} · 不建议纳入 {rejectedCount}
-          </strong>
-        </div>
-        <small>复用 shadow_rule_v1 判断，只做展示，不改变 Crisis Score 公式或权重</small>
-      </div>
-      <div className="macro-toolkit-crisis-review-conclusion__grid">
-        {items.map((item) => {
-          const promotionItem = promotionByField.get(item.field) ?? commodityPromotionRuleItem(item);
-          return (
-            <div className="macro-toolkit-crisis-review-conclusion__item" key={item.field}>
-              <div className="macro-toolkit-capability-result-head">
-                <span>{item.label || item.field}</span>
-                <Tag color={commodityReviewConclusionColor(promotionItem.status)}>
-                  {commodityReviewConclusionLabel(promotionItem.status)}
-                </Tag>
-              </div>
-              <strong>{promotionItem.reason}</strong>
-              <small>{formatCommodityReviewConclusionMetrics(item)}</small>
-              <small>{formatCommodityReviewConclusionNextStep(promotionItem.status, item)}</small>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function CommodityCandidateApprovalPackPanel({
-  approvalPack,
-}: {
-  approvalPack: CrisisCommodityApprovalPack | null;
-}) {
-  const [copyStatus, setCopyStatus] = useState<"idle" | "success" | "error">("idle");
-  const handleCopyApprovalPack = useCallback(async () => {
-    const clipboard =
-      (typeof navigator === "undefined" ? undefined : navigator.clipboard) ??
-      (typeof window === "undefined" ? undefined : window.navigator.clipboard);
-    const writeText = clipboard?.writeText;
-    if (!approvalPack || typeof writeText !== "function") {
-      setCopyStatus("error");
-      return;
-    }
-    try {
-      await writeText(approvalPack.copy_text);
-      setCopyStatus("success");
-    } catch {
-      setCopyStatus("error");
-    }
-  }, [approvalPack]);
-
-  if (!approvalPack) {
-    return null;
-  }
-
-  return (
-    <div className="macro-toolkit-crisis-review-conclusion" aria-label="商品候选审批材料">
-      <div className="macro-toolkit-crisis-review-conclusion__head">
-        <div>
-          <span>商品候选审批材料</span>
-          <strong>{approvalPack.summary}</strong>
-        </div>
-        <small>{approvalPack.pack_version} · {approvalPack.scope}</small>
-        <small>shadow delta {formatSignedDeltaFromPack(approvalPack.copy_text)}</small>
-      </div>
-      <div className="macro-toolkit-tag-row" aria-label="商品候选审批材料警告">
-        {approvalPack.warnings.map((warning) => (
-          <Tag color="gold" key={warning}>
-            {warning}
-          </Tag>
-        ))}
-      </div>
-      <div className="macro-toolkit-crisis-review-conclusion__grid">
-        <div className="macro-toolkit-crisis-review-conclusion__item">
-          <span>建议纳入</span>
-          <strong>{approvalPack.decision_counts.recommend_include}</strong>
-          <small>{formatCommodityApprovalPackFields(approvalPack.recommended_fields)}</small>
-        </div>
-        <div className="macro-toolkit-crisis-review-conclusion__item">
-          <span>继续观察</span>
-          <strong>{approvalPack.decision_counts.watch}</strong>
-          <small>{formatCommodityApprovalPackFields(approvalPack.watch_fields)}</small>
-        </div>
-        <div className="macro-toolkit-crisis-review-conclusion__item">
-          <span>暂不纳入</span>
-          <strong>{approvalPack.decision_counts.do_not_include}</strong>
-          <small>{formatCommodityApprovalPackFields(approvalPack.rejected_fields)}</small>
-        </div>
-      </div>
-      <div className="macro-toolkit-crisis-promotion-rule-pack__actions">
-        <Button
-          aria-label="复制审批材料"
-          icon={<CopyOutlined aria-hidden="true" />}
-          size="small"
-          type="default"
-          onClick={() => void handleCopyApprovalPack()}
-        >
-          {copyStatus === "success" ? "已复制" : copyStatus === "error" ? "复制失败" : "复制审批材料"}
-        </Button>
-        {copyStatus !== "idle" ? (
-          <small
-            aria-label="审批材料复制状态"
-            className={`macro-toolkit-crisis-promotion-rule-pack__copy-status macro-toolkit-crisis-promotion-rule-pack__copy-status--${copyStatus}`}
-          >
-            {copyStatus === "success" ? "审批材料已复制" : "复制失败，请手动选择审批材料文本"}
-          </small>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function CommodityShadowActionQueue({
-  reviewItems,
-  shortItems,
-  summary,
-}: {
-  reviewItems: CrisisCommodityCoverageItem[];
-  shortItems: CrisisCommodityCoverageItem[];
-  summary: CrisisCommodityCandidateSummary;
-}) {
-  return (
-    <div className="macro-toolkit-crisis-shadow-action-queue" aria-label="商品候选下一动作队列">
-      <div className="macro-toolkit-crisis-shadow-action-queue__item">
-        <span>人工复核队列</span>
-        <strong>{formatCommodityActionQueueLabels(reviewItems)}</strong>
-        <small>相关性与命中率可读，但进入公式前仍需审批确认</small>
-      </div>
-      <div className="macro-toolkit-crisis-shadow-action-queue__item">
-        <span>补历史样本队列</span>
-        <strong>{formatCommodityActionQueueLabels(shortItems)}</strong>
-        <small>当前未计入 Crisis Score；先补齐重叠样本和危机期样本</small>
-      </div>
-      <div className="macro-toolkit-crisis-shadow-action-queue__next">
-        <span>处理顺序</span>
-        <strong>{formatCommodityActionQueueNextStep(reviewItems, shortItems, summary)}</strong>
-      </div>
-    </div>
-  );
-}
-
-type CommodityRefreshProductRow = {
-  key: string;
-  productCode: string;
-  productName: string;
-  seriesId: string;
-  status: "estimated" | "written" | "missing";
-  estimatedRows: number | null;
-  rowCount: number | null;
-  rowCountLabel: string;
-  latestDate: string;
-  latestValue: number | null;
-  vendor: string;
-  table: string;
-  isNanhua: boolean;
-};
-
-function CommodityRefreshResultPanel({ refresh }: { refresh: MacroToolkitCommodityFuturesRefreshRun }) {
-  const rows = normalizeCommodityRefreshRows(refresh);
-  const isDryRun = refresh.status === "dry_run" || refresh.dry_run === true;
-  const nanhuaRow = rows.find((row) => row.isNanhua);
-  const summary = refresh.summary;
-  const nanhuaMessage =
-    nanhuaRow && !isDryRun && nanhuaRow.status === "written"
-      ? "Crisis Score 南华输入已更新"
-      : nanhuaRow
-        ? "NHCI / NH0100.NHF 已纳入本次检查"
-        : "NHCI / NH0100.NHF 未选择";
-  const columns: ColumnsType<CommodityRefreshProductRow> = [
-    {
-      title: "品种",
-      dataIndex: "productName",
-      key: "productName",
-      render: (_, row) => (
-        <div className="macro-toolkit-commodity-refresh-product">
-          <span>{row.productName}</span>
-          <small>{commodityRefreshIdentifierText(row)}</small>
-        </div>
-      ),
-    },
-    {
-      title: "状态",
-      dataIndex: "status",
-      key: "status",
-      width: 110,
-      render: (_, row) => <Tag color={commodityRefreshStatusColor(row.status)}>{commodityRefreshStatusText(row.status)}</Tag>,
-    },
-    {
-      title: "行数",
-      dataIndex: "rowCountLabel",
-      key: "rowCountLabel",
-      width: 110,
-    },
-    {
-      title: "最新日期 / 值",
-      dataIndex: "latestDate",
-      key: "latestDate",
-      render: (_, row) => (
-        <span>
-          {row.latestDate}
-          {row.latestValue == null ? "" : ` / ${formatNumberValue(row.latestValue, 2)}`}
-        </span>
-      ),
-    },
-    {
-      title: "来源",
-      dataIndex: "vendor",
-      key: "vendor",
-      width: 120,
-    },
-    {
-      title: "写入表",
-      dataIndex: "table",
-      key: "table",
-      render: (table: string) => <span className="macro-toolkit-nowrap-soft">{table}</span>,
-    },
-  ];
-
-  return (
-    <div className="macro-toolkit-commodity-refresh-result" aria-label="商品期货刷新结果">
-      <div className="macro-toolkit-commodity-refresh-summary">
-        <span>{isDryRun ? "预估结果" : "刷新结果"}</span>
-        <strong>{formatCommodityRefreshResult(refresh)}</strong>
-        <Tag color={nanhuaRow && !isDryRun && nanhuaRow.status === "written" ? "green" : "blue"}>{nanhuaMessage}</Tag>
-      </div>
-      {summary ? <CommodityRefreshSummaryStrip summary={summary} isDryRun={isDryRun} /> : null}
-      <Table
-        className="macro-toolkit-table--wide"
-        rowKey="key"
-        size="small"
-        columns={columns}
-        dataSource={rows}
-        pagination={false}
-        scroll={{ x: 760 }}
-      />
-    </div>
-  );
-}
-
-function CommodityRefreshSummaryStrip({
-  summary,
-  isDryRun,
-}: {
-  summary: NonNullable<MacroToolkitCommodityFuturesRefreshRun["summary"]>;
-  isDryRun: boolean;
-}) {
-  return (
-    <div className="macro-toolkit-commodity-refresh-closure" aria-label="商品期货刷新后闭环">
-      <span>{isDryRun ? "预估基线" : "刷新后闭环"}</span>
-      <strong>{commodityRefreshRowDeltaText(summary)}</strong>
-      <strong>{commodityRefreshLatestDateText(summary)}</strong>
-      <strong>{commodityRefreshCoverageText(summary)}</strong>
-      <strong>{commodityRefreshNanhuaText(summary)}</strong>
-      <strong>{commodityRefreshSourceText(summary)}</strong>
-    </div>
-  );
-}
-
-function CrisisScoreEvidencePanel({
-  result,
-  analysisMeta = null,
-  analysisAsOfDate = null,
-  repairItems = [],
-  refreshingSourceAlias = null,
-  commodityRefreshResult = null,
-  commodityRefreshEvidenceChain = null,
-  commodityShortfallChanges = [],
-  commodityShortfallEstimates = [],
-  repairFeedback = null,
-  sourceBackfillResult = null,
-  sourceBackfillError = null,
-  onRepairSourceBackfill,
-  onApplyCommodityRefreshProducts,
-  onPreviewCommodityRefreshProducts,
-  onRefreshCommodityProducts,
-}: {
-  result: MacroToolkitCapabilityResult;
-  analysisMeta?: ResultMeta | null;
-  analysisAsOfDate?: string | null;
-  repairItems?: MacroToolkitRepairItem[];
-  refreshingSourceAlias?: string | null;
-  commodityRefreshResult?: string | null;
-  commodityRefreshEvidenceChain?: CommodityRefreshEvidenceChain | null;
-  commodityShortfallChanges?: CommodityShortfallChange[];
-  commodityShortfallEstimates?: CommodityShortfallEstimate[];
-  repairFeedback?: CrisisGapRepairFeedback | null;
-  sourceBackfillResult?: string | null;
-  sourceBackfillError?: string | null;
-  onRepairSourceBackfill?: (item: MacroToolkitRepairItem, group: CrisisGapGroup) => void;
-  onApplyCommodityRefreshProducts?: (products: string[]) => void;
-  onPreviewCommodityRefreshProducts?: (products: string[]) => void;
-  onRefreshCommodityProducts?: (products: string[]) => void;
-}) {
-  const normalizedEvidence = normalizeInputEvidence(result);
-  const inputEvidence = normalizedEvidence?.inputs ?? [];
-  const rawResult = result.result;
-  const availableComponentCount = toDisplayNumber(rawResult.available_component_count);
-  const componentCount = toDisplayNumber(rawResult.component_count);
-  const components = Array.isArray(rawResult.components)
-    ? rawResult.components.filter(isCrisisComponent)
-    : [];
-  const weights = isRecord(rawResult.weights) ? rawResult.weights : {};
-  const commodityInput = inputEvidence.find(isNanhuaCrisisInput);
-  const commodityCoverage = normalizeCommodityCoverage(rawResult.commodity_coverage);
-  const commodityShadowImpact = normalizeCommodityShadowImpact(rawResult.shadow_impact);
-  const commodityAdmission = normalizeCommodityAdmission(rawResult.commodity_candidate_admission);
-  const commodityApprovalPack = normalizeCommodityApprovalPack(rawResult.commodity_candidate_approval_pack);
-  const commodityShortRefreshProducts = commodityCoverage?.candidate_summary
-    ? commodityShadowRefreshProducts(commodityCoverage.candidate_summary)
-    : [];
-  const commodityShortRefreshHint = formatCommodityShadowRefreshHint(commodityShortRefreshProducts);
-  const warnings = uniqueDisplayParts([...result.warnings, ...(normalizedEvidence?.missingInputs ?? [])]);
-  const crisisGapGroups = buildCrisisGapGroups(inputEvidence, warnings, commodityCoverage);
-  const crisisGapCount = crisisGapGroups.reduce((total, group) => total + group.items.length, 0);
-  const crisisGapDetail = formatCrisisGapSummaryDetail(crisisGapGroups);
-
-  return (
-    <section
-      className="macro-toolkit-section macro-toolkit-crisis-evidence"
-      aria-label="Crisis Score 数据来源"
-    >
-      <PageSectionLead
-        eyebrow="crisis evidence"
-        title="Crisis Score 数据来源"
-        description="完整分析返回后展示每个输入、组件权重和缺口；缺失输入保持缺失，不折算为 0。"
-      />
-
-      <div className="macro-toolkit-crisis-evidence__summary">
-        <MetricTile
-          icon={<SafetyCertificateOutlined />}
-          label="分数组件覆盖"
-          value={`${availableComponentCount}/${componentCount}`}
-          detail={components.map((component) => component.key).join(" / ") || "components missing"}
-          tone={result.status === "complete" ? "positive" : "neutral"}
-        />
-        <MetricTile
-          icon={<DatabaseOutlined />}
-          label="商品期货输入"
-          value={commodityInput?.available ? "已命中" : "缺失"}
-          detail={formatCrisisInputDetail(commodityInput)}
-          tone={commodityInput?.available ? "positive" : "missing"}
-          detailMaxLength={72}
-        />
-        <MetricTile
-          icon={<WarningOutlined />}
-          label="缺口提示"
-          value={crisisGapCount}
-          detail={crisisGapDetail}
-          tone={crisisGapCount ? "neutral" : "positive"}
-        />
-      </div>
-
-      {commodityShortfallChanges.length ? (
-        <CrisisCommodityClosurePanel
-          changes={commodityShortfallChanges}
-          evidenceChain={commodityRefreshEvidenceChain}
-        />
-      ) : null}
-
-      {crisisGapGroups.length ? (
-        <div className="macro-toolkit-crisis-gap-list" aria-label="Crisis Score 缺口清单">
-          <div className="macro-toolkit-crisis-gap-list__head">
-            <strong>Crisis Score 缺口清单</strong>
-            <small>缺失不按 0 处理；补齐后重新运行完整分析确认分数。</small>
-          </div>
-          {repairFeedback ? <CrisisGapRepairFeedback feedback={repairFeedback} /> : null}
-          <div className="macro-toolkit-crisis-gap-list__grid">
-            {crisisGapGroups.map((group) => (
-              <div className="macro-toolkit-crisis-gap-group" key={group.key}>
-                <span>{group.label}</span>
-                {group.items.map((item) => (
-                  <small key={`${item.label}-${item.warning}`}>
-                    {item.label} · {item.warning} · {item.detail}
-                  </small>
-                ))}
-                <CrisisGapAction
-                  group={group}
-                  repairItems={repairItems}
-                  commodityRefreshProducts={commodityShortRefreshProducts}
-                  refreshingSourceAlias={refreshingSourceAlias}
-                  commodityRefreshResult={commodityRefreshResult}
-                  commodityShortfallEstimates={commodityShortfallEstimates}
-                  sourceBackfillResult={sourceBackfillResult}
-                  sourceBackfillError={sourceBackfillError}
-                  onRefreshCommodityProducts={onRefreshCommodityProducts}
-                  onPreviewCommodityRefreshProducts={onPreviewCommodityRefreshProducts}
-                  onRepairSourceBackfill={onRepairSourceBackfill}
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      <div className="macro-toolkit-crisis-evidence__components">
-        {components.map((component) => (
-          <div className="macro-toolkit-crisis-component" key={component.key}>
-            <span>{component.label}</span>
-            <strong>{formatValue(component.z_score, "")}</strong>
-            <small>
-              {component.key} · weight {formatCrisisWeight(component.key, weights)} · raw{" "}
-              {formatValue(component.raw_value, "")}
-            </small>
-          </div>
-        ))}
-      </div>
-
-      {commodityCoverage ? (
-        <div className="macro-toolkit-crisis-commodity-coverage">
-          <MetricTile
-            icon={<DatabaseOutlined />}
-            label="商品旁证覆盖"
-            value={`${commodityCoverage.available_count}/${commodityCoverage.tracked_count}`}
-            detail={`${commodityCoverage.role} · 非公式输入`}
-            tone="neutral"
-          />
-          <small className="macro-toolkit-crisis-coverage-note">
-            Crisis Score 公式仍仅使用 {commodityCoverage.used_in_crisis_score.join(" / ") || "nanhua"}；本区块为{" "}
-            {commodityCoverage.role}
-          </small>
-          <small className="macro-toolkit-crisis-coverage-note">
-            候选商品仅做影子评估，当前未计入 Crisis Score 分数。
-          </small>
-          {commodityCoverage.candidate_summary ? (
-            <>
-              <div className="macro-toolkit-crisis-evidence__summary">
-                <MetricTile
-                  icon={<SafetyCertificateOutlined />}
-                  label="商品扩展候选"
-                  value={`${commodityCoverage.candidate_summary.shadow_review_ready_count} 个就绪`}
-                  detail={formatCommodityCandidateSummaryDetail(commodityCoverage.candidate_summary)}
-                  tone="neutral"
-                />
-                <MetricTile
-                  icon={<WarningOutlined />}
-                  label="公式变更需审批"
-                  value={commodityCoverage.candidate_summary.approval_required ? "是" : "否"}
-                  detail={
-                    commodityCoverage.candidate_summary.formula_change_required
-                      ? "从旁证进入 Crisis Score 公式需要版本化审批"
-                      : "当前无公式变更"
-                  }
-                  tone="neutral"
-                />
-                <MetricTile
-                  icon={<ToolOutlined />}
-                  label="下一步"
-                  value="影子评估"
-                  detail={commodityCoverage.candidate_summary.next_step || "下一步待确认"}
-                  tone="neutral"
-                />
-                <MetricTile
-                  icon={<LineChartOutlined />}
-                  label="影子评估结果"
-                  value={`${commodityCoverage.candidate_summary.shadow_evaluation_ready_count} 个可读`}
-                  detail={formatCommodityShadowSummary(commodityCoverage)}
-                  tone="neutral"
-                />
-              </div>
-              <CrisisCommodityShadowImpactPanel
-                currentScore={result.score}
-                coverage={commodityCoverage}
-                shadowImpact={commodityShadowImpact}
-              />
-              <CrisisCommodityShadowDecisionPanel
-                admission={commodityAdmission}
-                approvalPack={commodityApprovalPack}
-                coverage={commodityCoverage}
-                commodityInput={commodityInput ?? null}
-                analysisMeta={analysisMeta}
-                analysisAsOfDate={analysisAsOfDate}
-              />
-              <small className="macro-toolkit-crisis-coverage-note">
-                {commodityCoverage.candidate_summary.next_step || "商品扩展候选下一步待确认"}
-              </small>
-              {commodityCoverage.candidate_summary.shadow_evaluation_next_step ? (
-                <small className="macro-toolkit-crisis-coverage-note">
-                  {commodityCoverage.candidate_summary.shadow_evaluation_next_step}
-                </small>
-              ) : null}
-              {commodityCoverage.candidate_summary.shadow_evaluation_short_items.length ? (
-                <small className="macro-toolkit-crisis-coverage-note">
-                  {formatCommodityShadowShortfallList(commodityCoverage.candidate_summary)}
-                </small>
-              ) : null}
-              {commodityShortRefreshHint ? (
-                <div className="macro-toolkit-crisis-coverage-action">
-                  <small className="macro-toolkit-crisis-coverage-note">{commodityShortRefreshHint}</small>
-                  {onApplyCommodityRefreshProducts ? (
-                    <Button
-                      size="small"
-                      icon={<ToolOutlined />}
-                      aria-label="按建议选择"
-                      onClick={() => onApplyCommodityRefreshProducts(commodityShortRefreshProducts)}
-                    >
-                      按建议选择
-                    </Button>
-                  ) : null}
-                </div>
-              ) : null}
-            </>
-          ) : null}
-          <div className="macro-toolkit-crisis-input-grid">
-            {commodityCoverage.items.map((item) => (
-              <div
-                className={[
-                  "macro-toolkit-crisis-input",
-                  item.available ? "macro-toolkit-crisis-input--available" : "macro-toolkit-crisis-input--missing",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-                key={item.field}
-              >
-                <div className="macro-toolkit-capability-result-head">
-                  <span>{item.label || item.field}</span>
-                  <Tag color={item.available ? "green" : "red"}>{item.available ? "命中" : "缺失"}</Tag>
-                </div>
-                <strong>{formatCommodityCoverageIdentifiers(item)}</strong>
-                <small>
-                  {item.field} · {formatCrisisRowCount(item.row_count)} · {item.latest_date ?? "日期缺失"} ·{" "}
-                  {formatCommodityCoverageDateStatus(item.date_alignment_status)}
-                </small>
-                <small>
-                  {item.source ?? "source missing"} · {item.series_id ?? "series missing"} · matched{" "}
-                  {item.matched_alias ?? "alias missing"} · {item.used_in_formula ? "纳入公式" : "未纳入公式"}
-                </small>
-                {item.candidate_decision ? (
-                  <small>
-                    {item.candidate_decision.label} · {item.candidate_decision.reason} ·{" "}
-                    {item.candidate_decision.next_step}
-                  </small>
-                ) : null}
-                {item.shadow_evaluation ? (
-                  <small>
-                    {item.shadow_evaluation.label} · {item.shadow_evaluation.summary} ·{" "}
-                    {formatCommodityShadowDetail(item.shadow_evaluation)}
-                  </small>
-                ) : null}
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      <div className="macro-toolkit-crisis-input-grid">
-        {inputEvidence.map((item) => (
-          <div
-            className={[
-              "macro-toolkit-crisis-input",
-              item.available ? "macro-toolkit-crisis-input--available" : "macro-toolkit-crisis-input--missing",
-              item.field === "nanhua" ? "macro-toolkit-crisis-input--commodity" : "",
-            ]
-              .filter(Boolean)
-              .join(" ")}
-            key={`${item.field}-${item.aliases?.join("-") ?? item.label}`}
-          >
-            <div className="macro-toolkit-capability-result-head">
-              <span>{item.label || item.field}</span>
-              <Tag color={item.available ? "green" : "red"}>{item.available ? "命中" : "缺失"}</Tag>
-            </div>
-            <strong>{item.aliases?.join(" / ") || item.series_id || "alias missing"}</strong>
-            <small>
-              {item.field} · {formatCrisisRowCount(item.row_count)} · {item.latest_date ?? "日期缺失"}
-            </small>
-            <small>
-              {item.source ?? "source missing"} · {item.series_id ?? "series missing"} · value{" "}
-              {item.value == null ? "缺失" : formatValue(item.value, "")}
-            </small>
-            {item.warning ? <Tag color={item.available ? "default" : "red"}>{item.warning}</Tag> : null}
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function HasonMacroStrategyPanel({
-  strategy,
-  modelReadiness = [],
-  variant = "detail",
-}: {
-  strategy: MacroToolkitHasonStrategy;
-  modelReadiness?: MacroToolkitModelReadiness[];
-  variant?: "detail" | "observation";
-}) {
-  const readiness = strategy.readiness;
-  const readinessText = `${readiness.ready_modules}/${readiness.total_modules}`;
-  const runtimeOutputsCurrent = strategy.runtime_output_status === "current";
-  const runtimeOutputGaps = strategy.runtime_output_gaps;
-  const runtimeOutputValue = runtimeOutputsCurrent
-    ? "current"
-    : `${strategy.runtime_output_status} · ${runtimeOutputGaps.length}`;
-  const runtimeOutputDetail = runtimeOutputGaps.length
-    ? runtimeOutputGaps.join(" / ")
-    : strategy.required_runtime_outputs.join(" / ");
-  const runtimeGapText = runtimeOutputGaps.length
-    ? runtimeOutputGaps.join(" / ")
-    : runtimeOutputsCurrent
-      ? "none"
-      : "freshness not confirmed";
-  const readinessEntries = modelReadiness.length ? modelReadiness : deriveModelReadinessFromHasonStrategy(strategy);
-  const blockedReadinessEntries = readinessEntries.filter((item) => !isArtifactBackedModelReadiness(item.readiness));
-  const readinessHeadline = blockedReadinessEntries.length
-    ? blockedReadinessEntries.map((item) => `${item.label} ${modelReadinessStatusLabel(item.readiness)}`).join(" / ")
-    : "all observed models remain observation-only";
-  const readinessDetail = blockedReadinessEntries.length
-    ? blockedReadinessEntries.map(formatModelReadinessDetail).join(" / ")
-    : readinessEntries.map((item) => `${item.label} ${modelReadinessStatusLabel(item.readiness)}`).join(" / ");
-  const tracedScripts = strategy.source_trace;
-  const tracedScriptPreview = tracedScripts.slice(0, 5);
-  if (variant === "observation") {
-    return (
-      <section
-        className="macro-toolkit-section macro-toolkit-hason-strategy macro-toolkit-hason-strategy--observation"
-        data-testid="macro-toolkit-hason-strategy"
-      >
-        <div className="macro-toolkit-hason-strategy__head">
-          <div>
-            <span>Hason 观察框架</span>
-            <strong>宏观对冲观察框架</strong>
-            <small>只展示投研观察边界，完整模块和脚本审计留在工具页。</small>
-          </div>
-          <div className="macro-toolkit-tag-row">
-            <Tag color={statusColor(strategy.status)}>{observationStatusLabel(strategy.status)}</Tag>
-            <Tag color="gold">仅作观察</Tag>
-            <Tag color={strategy.formal_use_allowed ? "green" : "default"}>
-              {strategy.formal_use_allowed ? "正式可用" : "非正式信号"}
-            </Tag>
-          </div>
-        </div>
-
-        <div className="macro-toolkit-hason-strategy__metrics">
-          <MetricTile
-            icon={<SafetyCertificateOutlined />}
-            label="观察覆盖"
-            value={readinessText}
-            detail={`${formatPercent(readiness.ratio)} 覆盖，缺口需人工复核。`}
-            tone="neutral"
-            detailMaxLength={40}
-          />
-          <MetricTile
-            icon={<ToolOutlined />}
-            label="缺口复核"
-            value={readiness.missing_script_count + readiness.missing_modules}
-            detail={`${readiness.partial_modules} 个部分就绪，${readiness.missing_modules} 个模块待补齐。`}
-            tone={readiness.missing_script_count || readiness.missing_modules ? "missing" : "neutral"}
-            detailMaxLength={40}
-          />
-          <MetricTile
-            icon={<DatabaseOutlined />}
-            label="运行证据"
-            value={runtimeOutputsCurrent ? "已对齐" : observationStatusLabel(strategy.runtime_output_status)}
-            detail={runtimeOutputGaps.length ? `${runtimeOutputGaps.length} 项输出待复核。` : "运行输出未发现待复核项。"}
-            tone={runtimeOutputsCurrent ? "neutral" : "missing"}
-            detailMaxLength={40}
-          />
-        </div>
-        {readinessEntries.length ? (
-          <div className="macro-toolkit-hason-runtime" data-testid="macro-toolkit-model-readiness-detail">
-            <span>model readiness / observation-only</span>
-            <strong>{readinessHeadline}</strong>
-            <small>{readinessDetail}</small>
-          </div>
-        ) : null}
-      </section>
-    );
-  }
-  return (
-    <section className="macro-toolkit-section macro-toolkit-hason-strategy" data-testid="macro-toolkit-hason-strategy">
-      <div className="macro-toolkit-hason-strategy__head">
-        <div>
-          <span>Hason macro strategy</span>
-          <strong>{strategy.framework_name}</strong>
-          <small>{strategy.boundary}</small>
-        </div>
-        <div className="macro-toolkit-tag-row">
-          <Tag color={statusColor(strategy.status)}>{statusLabel(strategy.status)}</Tag>
-          <Tag color="blue">{strategy.basis}</Tag>
-          <Tag color={strategy.observation_only ? "gold" : "green"}>
-            {strategy.observation_only ? "observation-only" : "actionable"}
-          </Tag>
-          <Tag color={strategy.formal_use_allowed ? "green" : "default"}>
-            {strategy.formal_metric_id ?? "no formal MTR"}
-          </Tag>
-        </div>
-      </div>
-
-      <div className="macro-toolkit-hason-strategy__metrics">
-        <MetricTile
-          icon={<SafetyCertificateOutlined />}
-          label="Readiness"
-          value={readinessText}
-          detail={`${formatPercent(readiness.ratio)} module coverage`}
-          tone="neutral"
-        />
-        <MetricTile
-          icon={<ToolOutlined />}
-          label="Module gaps"
-          value={`${readiness.missing_script_count} missing script`}
-          detail={`${readiness.partial_modules} partial / ${readiness.missing_modules} missing module`}
-          tone="neutral"
-        />
-        <MetricTile
-          icon={<DatabaseOutlined />}
-          label="Runtime outputs"
-          value={runtimeOutputValue}
-          detail={runtimeOutputDetail}
-          tone="neutral"
-        />
-        <MetricTile
-          icon={<ToolOutlined />}
-          label="Script trace"
-          value={tracedScripts.length}
-          detail={tracedScriptPreview.map(formatHasonTraceScript).join(" / ") || "no script available"}
-          tone="neutral"
-          testId="macro-toolkit-hason-script-trace"
-        />
-      </div>
-
-      <div className="macro-toolkit-hason-module-grid">
-        {strategy.modules.map((module) => (
-          <div
-            className="macro-toolkit-hason-module"
-            data-testid={`macro-toolkit-hason-module-${module.key}`}
-            key={module.key}
-          >
-            <div className="macro-toolkit-capability-result-head">
-              <span>{module.key}</span>
-              <Tag color={hasonModuleStatusColor(module.status)}>{hasonModuleStatusLabel(module.status)}</Tag>
-            </div>
-            <strong>{module.label}</strong>
-            <small>可用脚本：{module.available_scripts.join(" / ") || "无"}</small>
-            {module.missing_scripts.length ? (
-              <small className="macro-toolkit-hason-module__missing">
-                缺失脚本：{module.missing_scripts.join(" / ")}
-              </small>
-            ) : null}
-            <div className="macro-toolkit-tag-row">
-              {module.evidence.map((item) => (
-                <Tag color="blue" key={`${module.key}-${item}`}>
-                  {item}
-                </Tag>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="macro-toolkit-hason-runtime" data-testid="macro-toolkit-hason-runtime-gaps">
-        <span>runtime outputs · {strategy.runtime_output_status}</span>
-        <strong>{runtimeGapText}</strong>
-        {strategy.runtime_outputs.length ? (
-          <small>
-            {strategy.runtime_outputs.map(formatHasonRuntimeOutput).join(" / ")}
-          </small>
-        ) : null}
-      </div>
-      {readinessEntries.length ? (
-        <div className="macro-toolkit-hason-runtime" data-testid="macro-toolkit-model-readiness-detail">
-          <span>model readiness / observation-only</span>
-          <strong>{readinessHeadline}</strong>
-          <small>{readinessDetail}</small>
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
-function formatHasonRuntimeOutput(item: MacroToolkitHasonStrategy["runtime_outputs"][number]) {
-  return (
-    `${item.name}: ${item.freshness_status} ${hasonFreshnessBasisLabel(item.freshness_basis)}` +
-    `${hasonContentDateText(item)}` +
-    `${hasonInvalidDateText(item)}` +
-    `${item.modified_date ? ` file ${item.modified_date}` : ""}`
-  );
-}
-
-function deriveModelReadinessFromHasonStrategy(strategy: MacroToolkitHasonStrategy): MacroToolkitModelReadiness[] {
-  return strategy.source_trace.map((item) => ({
-    id: item.script,
-    label: item.script,
-    script_name: item.script,
-    expected_outputs: strategy.required_runtime_outputs,
-    readiness: !item.available
-      ? "registered_only"
-      : strategy.missing_runtime_outputs.length
-        ? "missing_output"
-        : strategy.stale_runtime_outputs.length
-          ? "stale"
-          : "unknown",
-    observation_only: strategy.observation_only,
-    formal_use_allowed: strategy.formal_use_allowed,
-    latest_modified_at: null,
-    latest_content_date: null,
-    missing_outputs: strategy.missing_runtime_outputs,
-    stale_outputs: strategy.stale_runtime_outputs,
-    notes: [],
-  }));
-}
-
-function isArtifactBackedModelReadiness(readiness: MacroToolkitModelReadiness["readiness"]) {
-  return readiness === "artifact_backed";
-}
-
-function modelReadinessStatusLabel(readiness: MacroToolkitModelReadiness["readiness"]) {
-  const labels: Record<MacroToolkitModelReadiness["readiness"], string> = {
-    artifact_backed: "artifact-backed",
-    missing_output: "missing output",
-    stale: "stale",
-    registered_only: "registered only",
-    degraded: "degraded",
-    unknown: "unknown",
-  };
-  return labels[readiness];
-}
-
-function formatModelReadinessDetail(item: MacroToolkitModelReadiness) {
-  const gaps = [
-    item.missing_outputs.length ? `missing ${item.missing_outputs.join(" / ")}` : "",
-    item.stale_outputs.length ? `stale ${item.stale_outputs.join(" / ")}` : "",
-    item.latest_content_date ? `content ${item.latest_content_date}` : "",
-  ].filter(Boolean);
-  return `${item.label} (${item.script_name}) ${modelReadinessStatusLabel(item.readiness)}${
-    item.observation_only ? " · observation-only" : ""
-  }${gaps.length ? ` · ${gaps.join(" · ")}` : ""}`;
-}
-
-function hasonContentDateText(item: MacroToolkitHasonStrategy["runtime_outputs"][number]) {
-  if (item.content_date_min && item.content_date_max && item.content_date_min !== item.content_date_max) {
-    return ` content ${item.content_date_min}..${item.content_date_max}`;
-  }
-  return item.content_date ? ` content ${item.content_date}` : "";
-}
-
-function hasonInvalidDateText(item: MacroToolkitHasonStrategy["runtime_outputs"][number]) {
-  return item.content_date_invalid_count > 0 ? ` ${item.content_date_invalid_count} invalid date` : "";
-}
-
-function hasonFreshnessBasisLabel(basis: string) {
-  const labels: Record<string, string> = {
-    csv_content: "CSV content date",
-    file_modified_date: "file modified date",
-    missing: "file missing",
-  };
-  return labels[basis] ?? basis;
-}
-
-function hasonModuleStatusLabel(status: string) {
-  const labels: Record<string, string> = {
-    integrated: "script-chain complete",
-    partial: "script-chain partial",
-    missing: "script-chain missing",
-  };
-  return labels[status] ?? status;
-}
-
-function hasonModuleStatusColor(status: string) {
-  if (status === "integrated") return "default";
-  return statusColor(status);
-}
-
-function formatHasonTraceScript(item: MacroToolkitHasonStrategy["source_trace"][number]) {
-  const modules = Array.isArray(item.modules) ? item.modules : [];
-  const moduleText = modules.length ? `[${modules.join("+")}]` : "";
-  return `${item.script}${moduleText}${item.available ? "" : ":missing"}`;
 }
 
 function ReadinessTile({
@@ -8277,10 +7004,6 @@ function formatObservationRepairSummary(items: MacroToolkitRepairItem[]) {
   return "待处理项已归纳，完整明细保留在宏观工具页。";
 }
 
-function observationStatusLabel(status: string | null | undefined) {
-  if (status === "observation_ready" || status === "degraded" || status === "partial") return "观察就绪";
-  return statusLabel(status ?? "unknown");
-}
 
 function repairPriorityColor(priority: string | null | undefined) {
   if (priority === "high") return "red";
@@ -8383,1407 +7106,7 @@ function CapabilityDataCell({
   );
 }
 
-function normalizeInputEvidence(result: MacroToolkitCapabilityResult) {
-  const raw = result.input_evidence ?? result.result.input_evidence;
-  if (!raw) {
-    return null;
-  }
-  const inputs = raw.inputs ?? [];
-  const missingInputs = raw.missing_inputs ?? [];
-  const sources = raw.sources ?? [];
-  const latestDates = raw.latest_dates ?? [];
-  if (!inputs.length && !missingInputs.length && !sources.length && !latestDates.length) {
-    return null;
-  }
-  return { inputs, missingInputs, sources, latestDates };
-}
 
-type CrisisComponent = {
-  key: string;
-  label: string;
-  raw_value: number | null;
-  z_score: number | null;
-  weight: number | null;
-};
-
-type CrisisCommodityCoverageItem = {
-  field: string;
-  label: string;
-  aliases: string[];
-  matched_alias: string | null;
-  role: string;
-  used_in_formula: boolean;
-  available: boolean;
-  row_count: number | null;
-  latest_date: string | null;
-  report_date: string | null;
-  date_alignment_status: string | null;
-  series_id: string | null;
-  source: string | null;
-  value: number | null;
-  candidate_decision: CrisisCommodityCandidateDecision | null;
-  shadow_evaluation: CrisisCommodityShadowEvaluation | null;
-};
-
-type CrisisCommodityCandidateDecision = {
-  status: string;
-  label: string;
-  reason: string;
-  next_step: string;
-};
-
-type CrisisCommodityCandidateSummary = {
-  shadow_review_ready_count: number;
-  needs_current_data_count: number;
-  missing_data_count: number;
-  shadow_evaluation_ready_count: number;
-  shadow_evaluation_short_count: number;
-  shadow_evaluation_status_counts: Record<string, number>;
-  shadow_evaluation_short_items: CrisisCommodityShadowShortItem[];
-  suggested_refresh_products: string[];
-  shadow_evaluation_next_step: string;
-  formula_change_required: boolean;
-  approval_required: boolean;
-  next_step: string;
-};
-
-type CrisisCommodityShadowShortItem = {
-  field: string;
-  label: string;
-  sample_count: number | null;
-  minimum_sample_count: number | null;
-  sample_gap: number | null;
-  latest_date: string | null;
-};
-
-type CrisisCommodityShadowEvaluation = {
-  status: string;
-  label: string;
-  sample_count: number | null;
-  minimum_sample_count: number | null;
-  sample_gap: number | null;
-  window_start: string | null;
-  window_end: string | null;
-  target: string;
-  candidate_metric: string;
-  same_day_correlation: number | null;
-  lead_1d_correlation: number | null;
-  lag_1d_correlation: number | null;
-  crisis_hit_rate: number | null;
-  crisis_sample_count: number | null;
-  summary: string;
-  next_step: string;
-};
-
-type CrisisCommodityCoverage = {
-  role: string;
-  tracked_count: number;
-  available_count: number;
-  used_in_crisis_score: string[];
-  candidate_summary: CrisisCommodityCandidateSummary | null;
-  items: CrisisCommodityCoverageItem[];
-};
-
-type CrisisCommodityShadowContribution = {
-  field: string;
-  label: string;
-  series_id: string | null;
-  source: string | null;
-  latest_date: string | null;
-  sample_count: number | null;
-  candidate_metric: string;
-  candidate_value: number | null;
-  weight: number | null;
-  contribution: number | null;
-  used_in_official_score: boolean;
-  status: string;
-};
-
-type CrisisCommodityShadowImpact = {
-  formula_version: string;
-  scope: string;
-  current_score: number | null;
-  shadow_score: number | null;
-  delta: number | null;
-  direction: string;
-  included_candidates: string[];
-  candidate_count: number;
-  candidate_contributions: CrisisCommodityShadowContribution[];
-  weights: Record<string, number>;
-  warnings: string[];
-  approval_required: boolean;
-  official_score_unchanged: boolean;
-  next_step: string;
-};
-
-type CrisisCommodityAdmissionDecision = "recommend_include" | "watch" | "do_not_include";
-
-type CrisisCommodityAdmissionItem = {
-  field: string;
-  label: string;
-  decision: CrisisCommodityAdmissionDecision;
-  decision_label: string;
-  reason: string;
-  next_step: string;
-  sample_count: number | null;
-  minimum_sample_count: number | null;
-  crisis_sample_count: number | null;
-  minimum_crisis_sample_count: number | null;
-  crisis_hit_rate: number | null;
-  max_abs_correlation: number | null;
-  correlation_threshold: number | null;
-  latest_date: string | null;
-  series_id: string | null;
-  source: string | null;
-  used_in_official_score: boolean;
-};
-
-type CrisisCommodityAdmission = {
-  rule_version: string;
-  scope: string;
-  decision_counts: Record<CrisisCommodityAdmissionDecision, number>;
-  items: CrisisCommodityAdmissionItem[];
-  warnings: string[];
-  approval_required: boolean;
-  official_score_unchanged: boolean;
-  next_step: string;
-};
-
-type CrisisCommodityApprovalPack = {
-  pack_version: string;
-  scope: string;
-  source_rule_version: string;
-  shadow_formula_version: string;
-  decision_counts: Record<CrisisCommodityAdmissionDecision, number>;
-  recommended_fields: string[];
-  watch_fields: string[];
-  rejected_fields: string[];
-  summary: string;
-  copy_text: string;
-  warnings: string[];
-  approval_required: boolean;
-  official_score_unchanged: boolean;
-};
-
-type MacroToolkitInputEvidenceItem = NonNullable<MacroToolkitInputEvidence["inputs"]>[number];
-type CrisisGapGroupKey = "equity" | "liquidity" | "commodity" | "curve_credit" | "fx" | "other";
-type CrisisGapItem = {
-  label: string;
-  warning: string;
-  detail: string;
-  identifiers: string[];
-};
-type CrisisGapGroup = {
-  key: CrisisGapGroupKey;
-  label: string;
-  items: CrisisGapItem[];
-};
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isCrisisComponent(value: unknown): value is CrisisComponent {
-  if (!isRecord(value)) {
-    return false;
-  }
-  return typeof value.key === "string" && typeof value.label === "string";
-}
-
-function normalizeCommodityCoverage(value: unknown): CrisisCommodityCoverage | null {
-  if (!isRecord(value) || !Array.isArray(value.items)) {
-    return null;
-  }
-  const items = value.items.map(normalizeCommodityCoverageItem).filter((item) => item !== null);
-  if (!items.length) {
-    return null;
-  }
-  return {
-    role: typeof value.role === "string" ? value.role : "supplemental_observation",
-    tracked_count: typeof value.tracked_count === "number" ? value.tracked_count : items.length,
-    available_count:
-      typeof value.available_count === "number" ? value.available_count : items.filter((item) => item.available).length,
-    used_in_crisis_score: Array.isArray(value.used_in_crisis_score)
-      ? value.used_in_crisis_score.map((item) => String(item)).filter(Boolean)
-      : [],
-    candidate_summary: normalizeCommodityCandidateSummary(value.candidate_summary),
-    items,
-  };
-}
-
-function normalizeCommodityCandidateSummary(value: unknown): CrisisCommodityCandidateSummary | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-  return {
-    shadow_review_ready_count:
-      typeof value.shadow_review_ready_count === "number" ? value.shadow_review_ready_count : 0,
-    needs_current_data_count:
-      typeof value.needs_current_data_count === "number" ? value.needs_current_data_count : 0,
-    missing_data_count: typeof value.missing_data_count === "number" ? value.missing_data_count : 0,
-    shadow_evaluation_ready_count:
-      typeof value.shadow_evaluation_ready_count === "number" ? value.shadow_evaluation_ready_count : 0,
-    shadow_evaluation_short_count:
-      typeof value.shadow_evaluation_short_count === "number" ? value.shadow_evaluation_short_count : 0,
-    shadow_evaluation_status_counts: normalizeNumberRecord(value.shadow_evaluation_status_counts),
-    shadow_evaluation_short_items: Array.isArray(value.shadow_evaluation_short_items)
-      ? value.shadow_evaluation_short_items.map(normalizeCommodityShadowShortItem).filter((item) => item !== null)
-      : [],
-    suggested_refresh_products: Array.isArray(value.suggested_refresh_products)
-      ? value.suggested_refresh_products.map((item) => String(item).trim()).filter(Boolean)
-      : [],
-    shadow_evaluation_next_step:
-      typeof value.shadow_evaluation_next_step === "string" ? value.shadow_evaluation_next_step : "",
-    formula_change_required: value.formula_change_required === true,
-    approval_required: value.approval_required === true,
-    next_step: typeof value.next_step === "string" ? value.next_step : "",
-  };
-}
-
-function normalizeCommodityShadowShortItem(value: unknown): CrisisCommodityShadowShortItem | null {
-  if (!isRecord(value) || typeof value.field !== "string") {
-    return null;
-  }
-  return {
-    field: value.field,
-    label: typeof value.label === "string" ? value.label : value.field,
-    sample_count: typeof value.sample_count === "number" ? value.sample_count : null,
-    minimum_sample_count: typeof value.minimum_sample_count === "number" ? value.minimum_sample_count : null,
-    sample_gap: typeof value.sample_gap === "number" ? value.sample_gap : null,
-    latest_date: typeof value.latest_date === "string" ? value.latest_date : null,
-  };
-}
-
-function normalizeNumberRecord(value: unknown) {
-  if (!isRecord(value)) {
-    return {};
-  }
-  return Object.fromEntries(
-    Object.entries(value)
-      .filter((entry): entry is [string, number] => typeof entry[1] === "number")
-      .map(([key, count]) => [key, count]),
-  );
-}
-
-function normalizeCommodityCoverageItem(value: unknown): CrisisCommodityCoverageItem | null {
-  if (!isRecord(value) || typeof value.field !== "string" || typeof value.label !== "string") {
-    return null;
-  }
-  return {
-    field: value.field,
-    label: value.label,
-    aliases: Array.isArray(value.aliases) ? value.aliases.map((item) => String(item)).filter(Boolean) : [],
-    matched_alias: typeof value.matched_alias === "string" ? value.matched_alias : null,
-    role: typeof value.role === "string" ? value.role : "supplemental_observation",
-    used_in_formula: value.used_in_formula === true,
-    available: value.available === true,
-    row_count: typeof value.row_count === "number" ? value.row_count : null,
-    latest_date: typeof value.latest_date === "string" ? value.latest_date : null,
-    report_date: typeof value.report_date === "string" ? value.report_date : null,
-    date_alignment_status: typeof value.date_alignment_status === "string" ? value.date_alignment_status : null,
-    series_id: typeof value.series_id === "string" ? value.series_id : null,
-    source: typeof value.source === "string" ? value.source : null,
-    value: typeof value.value === "number" ? value.value : null,
-    candidate_decision: normalizeCommodityCandidateDecision(value.candidate_decision),
-    shadow_evaluation: normalizeCommodityShadowEvaluation(value.shadow_evaluation),
-  };
-}
-
-function normalizeCommodityCandidateDecision(value: unknown): CrisisCommodityCandidateDecision | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-  return {
-    status: typeof value.status === "string" ? value.status : "unknown",
-    label: typeof value.label === "string" ? value.label : "候选状态待确认",
-    reason: typeof value.reason === "string" ? value.reason : "候选原因待确认",
-    next_step: typeof value.next_step === "string" ? value.next_step : "下一步待确认",
-  };
-}
-
-function normalizeCommodityShadowEvaluation(value: unknown): CrisisCommodityShadowEvaluation | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-  return {
-    status: typeof value.status === "string" ? value.status : "unknown",
-    label: typeof value.label === "string" ? value.label : "影子评估待确认",
-    sample_count: typeof value.sample_count === "number" ? value.sample_count : null,
-    minimum_sample_count: typeof value.minimum_sample_count === "number" ? value.minimum_sample_count : null,
-    sample_gap: typeof value.sample_gap === "number" ? value.sample_gap : null,
-    window_start: typeof value.window_start === "string" ? value.window_start : null,
-    window_end: typeof value.window_end === "string" ? value.window_end : null,
-    target: typeof value.target === "string" ? value.target : "crisis_score",
-    candidate_metric: typeof value.candidate_metric === "string" ? value.candidate_metric : "daily_return",
-    same_day_correlation: typeof value.same_day_correlation === "number" ? value.same_day_correlation : null,
-    lead_1d_correlation: typeof value.lead_1d_correlation === "number" ? value.lead_1d_correlation : null,
-    lag_1d_correlation: typeof value.lag_1d_correlation === "number" ? value.lag_1d_correlation : null,
-    crisis_hit_rate: typeof value.crisis_hit_rate === "number" ? value.crisis_hit_rate : null,
-    crisis_sample_count: typeof value.crisis_sample_count === "number" ? value.crisis_sample_count : null,
-    summary: typeof value.summary === "string" ? value.summary : "影子评估摘要待确认",
-    next_step: typeof value.next_step === "string" ? value.next_step : "下一步待确认",
-  };
-}
-
-function normalizeCommodityShadowImpact(value: unknown): CrisisCommodityShadowImpact | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-  return {
-    formula_version: typeof value.formula_version === "string" ? value.formula_version : "formula missing",
-    scope: typeof value.scope === "string" ? value.scope : "scope missing",
-    current_score: typeof value.current_score === "number" ? value.current_score : null,
-    shadow_score: typeof value.shadow_score === "number" ? value.shadow_score : null,
-    delta: typeof value.delta === "number" ? value.delta : null,
-    direction: typeof value.direction === "string" ? value.direction : "unknown",
-    included_candidates: Array.isArray(value.included_candidates)
-      ? value.included_candidates.map((item) => String(item)).filter(Boolean)
-      : [],
-    candidate_count: typeof value.candidate_count === "number" ? value.candidate_count : 0,
-    candidate_contributions: Array.isArray(value.candidate_contributions)
-      ? value.candidate_contributions.map(normalizeCommodityShadowContribution).filter((item) => item !== null)
-      : [],
-    weights: normalizeNumberRecord(value.weights),
-    warnings: Array.isArray(value.warnings) ? value.warnings.map((item) => String(item)).filter(Boolean) : [],
-    approval_required: value.approval_required === true,
-    official_score_unchanged: value.official_score_unchanged === true,
-    next_step: typeof value.next_step === "string" ? value.next_step : "下一步待确认",
-  };
-}
-
-function normalizeCommodityShadowContribution(value: unknown): CrisisCommodityShadowContribution | null {
-  if (!isRecord(value) || typeof value.field !== "string") {
-    return null;
-  }
-  return {
-    field: value.field,
-    label: typeof value.label === "string" ? value.label : value.field,
-    series_id: typeof value.series_id === "string" ? value.series_id : null,
-    source: typeof value.source === "string" ? value.source : null,
-    latest_date: typeof value.latest_date === "string" ? value.latest_date : null,
-    sample_count: typeof value.sample_count === "number" ? value.sample_count : null,
-    candidate_metric: typeof value.candidate_metric === "string" ? value.candidate_metric : "metric missing",
-    candidate_value: typeof value.candidate_value === "number" ? value.candidate_value : null,
-    weight: typeof value.weight === "number" ? value.weight : null,
-    contribution: typeof value.contribution === "number" ? value.contribution : null,
-    used_in_official_score: value.used_in_official_score === true,
-    status: typeof value.status === "string" ? value.status : "status missing",
-  };
-}
-
-function normalizeCommodityAdmission(value: unknown): CrisisCommodityAdmission | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-  return {
-    rule_version: typeof value.rule_version === "string" ? value.rule_version : "rule missing",
-    scope: typeof value.scope === "string" ? value.scope : "scope missing",
-    decision_counts: normalizeCommodityAdmissionDecisionCounts(value.decision_counts),
-    items: Array.isArray(value.items)
-      ? value.items.map(normalizeCommodityAdmissionItem).filter((item) => item !== null)
-      : [],
-    warnings: Array.isArray(value.warnings) ? value.warnings.map((item) => String(item)).filter(Boolean) : [],
-    approval_required: value.approval_required === true,
-    official_score_unchanged: value.official_score_unchanged === true,
-    next_step: typeof value.next_step === "string" ? value.next_step : "下一步待确认",
-  };
-}
-
-function normalizeCommodityAdmissionDecisionCounts(value: unknown): Record<CrisisCommodityAdmissionDecision, number> {
-  const record = isRecord(value) ? value : {};
-  return {
-    recommend_include: typeof record.recommend_include === "number" ? record.recommend_include : 0,
-    watch: typeof record.watch === "number" ? record.watch : 0,
-    do_not_include: typeof record.do_not_include === "number" ? record.do_not_include : 0,
-  };
-}
-
-function normalizeCommodityAdmissionItem(value: unknown): CrisisCommodityAdmissionItem | null {
-  if (!isRecord(value) || typeof value.field !== "string") {
-    return null;
-  }
-  return {
-    field: value.field,
-    label: typeof value.label === "string" ? value.label : value.field,
-    decision: normalizeCommodityAdmissionDecision(value.decision),
-    decision_label: typeof value.decision_label === "string" ? value.decision_label : "准入结论待确认",
-    reason: typeof value.reason === "string" ? value.reason : "准入原因待确认",
-    next_step: typeof value.next_step === "string" ? value.next_step : "下一步待确认",
-    sample_count: typeof value.sample_count === "number" ? value.sample_count : null,
-    minimum_sample_count: typeof value.minimum_sample_count === "number" ? value.minimum_sample_count : null,
-    crisis_sample_count: typeof value.crisis_sample_count === "number" ? value.crisis_sample_count : null,
-    minimum_crisis_sample_count:
-      typeof value.minimum_crisis_sample_count === "number" ? value.minimum_crisis_sample_count : null,
-    crisis_hit_rate: typeof value.crisis_hit_rate === "number" ? value.crisis_hit_rate : null,
-    max_abs_correlation: typeof value.max_abs_correlation === "number" ? value.max_abs_correlation : null,
-    correlation_threshold: typeof value.correlation_threshold === "number" ? value.correlation_threshold : null,
-    latest_date: typeof value.latest_date === "string" ? value.latest_date : null,
-    series_id: typeof value.series_id === "string" ? value.series_id : null,
-    source: typeof value.source === "string" ? value.source : null,
-    used_in_official_score: value.used_in_official_score === true,
-  };
-}
-
-function normalizeCommodityAdmissionDecision(value: unknown): CrisisCommodityAdmissionDecision {
-  if (value === "recommend_include" || value === "watch" || value === "do_not_include") {
-    return value;
-  }
-  return "do_not_include";
-}
-
-function normalizeCommodityApprovalPack(value: unknown): CrisisCommodityApprovalPack | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-  return {
-    pack_version: typeof value.pack_version === "string" ? value.pack_version : "pack missing",
-    scope: typeof value.scope === "string" ? value.scope : "scope missing",
-    source_rule_version:
-      typeof value.source_rule_version === "string" ? value.source_rule_version : "source rule missing",
-    shadow_formula_version:
-      typeof value.shadow_formula_version === "string" ? value.shadow_formula_version : "shadow formula missing",
-    decision_counts: normalizeCommodityAdmissionDecisionCounts(value.decision_counts),
-    recommended_fields: normalizeStringList(value.recommended_fields),
-    watch_fields: normalizeStringList(value.watch_fields),
-    rejected_fields: normalizeStringList(value.rejected_fields),
-    summary: typeof value.summary === "string" ? value.summary : "审批材料摘要待确认",
-    copy_text: typeof value.copy_text === "string" ? value.copy_text : "",
-    warnings: normalizeStringList(value.warnings),
-    approval_required: value.approval_required === true,
-    official_score_unchanged: value.official_score_unchanged === true,
-  };
-}
-
-function normalizeStringList(value: unknown): string[] {
-  return Array.isArray(value) ? value.map((item) => String(item)).filter(Boolean) : [];
-}
-
-function toDisplayNumber(value: unknown) {
-  return typeof value === "number" || typeof value === "string" ? value : "缺失";
-}
-
-function formatCrisisWeight(key: string, weights: Record<string, unknown>) {
-  const weight = weights[key];
-  return typeof weight === "number" ? formatPercent(weight) : "缺失";
-}
-
-function formatCrisisRowCount(rowCount: number | null | undefined) {
-  return typeof rowCount === "number" ? `${rowCount} rows` : "行数缺失";
-}
-
-function formatCommodityCoverageDateStatus(status: string | null | undefined) {
-  if (status === "aligned") {
-    return "同日";
-  }
-  if (status === "lagging") {
-    return "滞后";
-  }
-  if (status === "missing") {
-    return "日期缺失";
-  }
-  return "对齐状态缺失";
-}
-
-function formatCommodityCandidateSummaryDetail(summary: CrisisCommodityCandidateSummary) {
-  return `影子评估就绪 ${summary.shadow_review_ready_count}，待补当日 ${summary.needs_current_data_count}，缺失 ${summary.missing_data_count}`;
-}
-
-function formatCommodityShadowSummary(coverage: CrisisCommodityCoverage) {
-  const firstReady = coverage.items.find((item) => item.shadow_evaluation?.status === "review_ready")?.shadow_evaluation;
-  const summary = coverage.candidate_summary;
-  if (!firstReady) {
-    return summary?.shadow_evaluation_next_step || "影子评估样本不足";
-  }
-  const shortText = summary?.shadow_evaluation_short_count
-    ? `${summary.shadow_evaluation_short_count} 个样本不足`
-    : "样本不足 0";
-  return [
-    `${summary?.shadow_evaluation_ready_count ?? 0} 个可读`,
-    shortText,
-    formatCommodityShadowDetail(firstReady),
-    summary?.shadow_evaluation_next_step,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-}
-
-function formatCommodityShadowDetail(evaluation: CrisisCommodityShadowEvaluation) {
-  const parts = [
-    `样本 ${evaluation.sample_count ?? "缺失"}`,
-    `同日相关 ${formatSignedDecimal(evaluation.same_day_correlation)}`,
-    `危机期命中率 ${formatPercent(evaluation.crisis_hit_rate)}`,
-  ];
-  if (evaluation.status === "history_short" && typeof evaluation.minimum_sample_count === "number") {
-    parts.push(`最低样本 ${evaluation.minimum_sample_count}`);
-  }
-  if (evaluation.status === "history_short" && typeof evaluation.sample_gap === "number") {
-    parts.push(`还差 ${evaluation.sample_gap}`);
-  }
-  return parts.join(" · ");
-}
-
-function formatCommodityShadowDecisionMetrics(evaluation: CrisisCommodityShadowEvaluation) {
-  const parts = [
-    `样本 ${evaluation.sample_count ?? "缺失"}`,
-    `同日相关 ${formatSignedDecimal(evaluation.same_day_correlation)}`,
-    `领先相关 ${formatSignedDecimal(evaluation.lead_1d_correlation)}`,
-    `滞后相关 ${formatSignedDecimal(evaluation.lag_1d_correlation)}`,
-    `危机期命中率 ${formatPercent(evaluation.crisis_hit_rate)}`,
-    `危机样本 ${evaluation.crisis_sample_count ?? "缺失"}`,
-  ];
-  if (evaluation.window_start || evaluation.window_end) {
-    parts.push(`窗口 ${evaluation.window_start ?? "缺失"} -> ${evaluation.window_end ?? "缺失"}`);
-  }
-  if (evaluation.status === "history_short" && typeof evaluation.minimum_sample_count === "number") {
-    parts.push(`最低样本 ${evaluation.minimum_sample_count}`);
-  }
-  if (evaluation.status === "history_short" && typeof evaluation.sample_gap === "number") {
-    parts.push(`还差 ${evaluation.sample_gap}`);
-  }
-  return parts.join(" · ");
-}
-
-type CommodityPromotionRuleStatus = "ready_for_review" | "manual_review" | "not_recommended";
-type CommodityPromotionRuleCheck = {
-  name: string;
-  status: CommodityPromotionRuleStatus;
-  value: string;
-};
-type CommodityPromotionRuleItem = {
-  field: string;
-  label: string;
-  status: CommodityPromotionRuleStatus;
-  reason: string;
-  checks: CommodityPromotionRuleCheck[];
-};
-
-function commodityPromotionRuleItem(item: CrisisCommodityCoverageItem): CommodityPromotionRuleItem {
-  const evaluation = item.shadow_evaluation;
-  if (!evaluation || evaluation.status !== "review_ready") {
-    return {
-      field: item.field,
-      label: item.label || item.field,
-      status: "not_recommended",
-      reason: "样本不足，先补齐历史数据",
-      checks: commodityPromotionRuleChecks(evaluation),
-    };
-  }
-  const hasEnoughSamples =
-    (evaluation.sample_count ?? 0) >= (evaluation.minimum_sample_count ?? MACRO_COMMODITY_SHADOW_MIN_SAMPLES);
-  const hasCrisisSamples = (evaluation.crisis_sample_count ?? 0) >= MACRO_COMMODITY_SHADOW_MIN_CRISIS_SAMPLES;
-  const correlation = Math.max(
-    Math.abs(evaluation.same_day_correlation ?? 0),
-    Math.abs(evaluation.lead_1d_correlation ?? 0),
-    Math.abs(evaluation.lag_1d_correlation ?? 0),
-  );
-  const hasReadableMetrics = evaluation.crisis_hit_rate != null && correlation > 0;
-  if (!hasEnoughSamples || !hasCrisisSamples || evaluation.crisis_hit_rate == null) {
-    return {
-      field: item.field,
-      label: item.label || item.field,
-      status: "not_recommended",
-      reason: "准入样本或危机期指标不足",
-      checks: commodityPromotionRuleChecks(evaluation),
-    };
-  }
-  if (!hasReadableMetrics || correlation < MACRO_COMMODITY_SHADOW_MIN_CORRELATION) {
-    return {
-      field: item.field,
-      label: item.label || item.field,
-      status: "manual_review",
-      reason: "相关性偏弱，需人工复核",
-      checks: commodityPromotionRuleChecks(evaluation),
-    };
-  }
-  return {
-    field: item.field,
-    label: item.label || item.field,
-    status: "ready_for_review",
-    reason: "影子指标满足准入检查，仍需审批确认",
-    checks: commodityPromotionRuleChecks(evaluation),
-  };
-}
-
-function commodityPromotionRuleChecks(
-  evaluation: CrisisCommodityShadowEvaluation | null,
-): CommodityPromotionRuleCheck[] {
-  const isReviewReady = evaluation?.status === "review_ready";
-  const sampleCount = evaluation?.sample_count ?? null;
-  const minimumSampleCount = evaluation?.minimum_sample_count ?? MACRO_COMMODITY_SHADOW_MIN_SAMPLES;
-  const crisisSampleCount = isReviewReady ? (evaluation.crisis_sample_count ?? null) : null;
-  const correlation = isReviewReady
-    ? Math.max(
-        Math.abs(evaluation.same_day_correlation ?? 0),
-        Math.abs(evaluation.lead_1d_correlation ?? 0),
-        Math.abs(evaluation.lag_1d_correlation ?? 0),
-      )
-    : null;
-  return [
-    {
-      name: "样本检查",
-      status:
-        typeof sampleCount === "number" && sampleCount >= minimumSampleCount
-          ? "ready_for_review"
-          : "not_recommended",
-      value: `${sampleCount ?? "缺失"}/${minimumSampleCount}`,
-    },
-    {
-      name: "危机样本检查",
-      status:
-        typeof crisisSampleCount === "number" && crisisSampleCount >= MACRO_COMMODITY_SHADOW_MIN_CRISIS_SAMPLES
-          ? "ready_for_review"
-          : "not_recommended",
-      value: `${crisisSampleCount ?? "缺失"}/${MACRO_COMMODITY_SHADOW_MIN_CRISIS_SAMPLES}`,
-    },
-    {
-      name: "相关性检查",
-      status:
-        correlation == null
-          ? "not_recommended"
-          : correlation >= MACRO_COMMODITY_SHADOW_MIN_CORRELATION
-            ? "ready_for_review"
-            : "manual_review",
-      value: typeof correlation === "number" ? formatSignedDecimal(correlation) : "缺失",
-    },
-    {
-      name: "命中率检查",
-      status: evaluation?.crisis_hit_rate == null ? "not_recommended" : "ready_for_review",
-      value: formatPercent(evaluation?.crisis_hit_rate),
-    },
-  ];
-}
-
-function commodityPromotionRuleStatusLabel(status: CommodityPromotionRuleStatus) {
-  if (status === "ready_for_review") {
-    return "通过";
-  }
-  if (status === "manual_review") {
-    return "待人工判断";
-  }
-  return "不建议进入公式";
-}
-
-function commodityPromotionRuleCheckStatusLabel(status: CommodityPromotionRuleStatus) {
-  if (status === "ready_for_review") {
-    return "通过";
-  }
-  if (status === "manual_review") {
-    return "待人工判断";
-  }
-  return "未通过";
-}
-
-function commodityReviewConclusionLabel(status: CommodityPromotionRuleStatus) {
-  if (status === "ready_for_review") {
-    return "可进入人工复核";
-  }
-  if (status === "manual_review") {
-    return "继续观察";
-  }
-  return "不建议纳入";
-}
-
-function commodityReviewConclusionColor(status: CommodityPromotionRuleStatus) {
-  if (status === "ready_for_review") {
-    return "green";
-  }
-  if (status === "manual_review") {
-    return "gold";
-  }
-  return "red";
-}
-
-function commodityAdmissionDecisionColor(decision: CrisisCommodityAdmissionDecision) {
-  if (decision === "recommend_include") {
-    return "green";
-  }
-  if (decision === "watch") {
-    return "gold";
-  }
-  return "red";
-}
-
-function formatCommodityAdmissionMetrics(item: CrisisCommodityAdmissionItem) {
-  const sampleText =
-    item.decision === "do_not_include" || item.sample_count == null
-      ? `样本 ${item.sample_count ?? "缺失"}/${item.minimum_sample_count ?? MACRO_COMMODITY_SHADOW_MIN_SAMPLES}`
-      : `样本 ${item.sample_count}`;
-  return [
-    sampleText,
-    `危机样本 ${item.crisis_sample_count ?? "缺失"}`,
-    `命中率 ${formatPercent(item.crisis_hit_rate)}`,
-    `最大相关 ${formatSignedDecimal(item.max_abs_correlation)}`,
-    item.latest_date ? `最新 ${item.latest_date}` : null,
-    item.source ? `来源 ${item.source}` : null,
-    item.series_id ? `series ${item.series_id}` : null,
-    item.used_in_official_score ? "已纳入正式 Crisis Score" : "审批前不改变正式 Crisis Score",
-  ]
-    .filter((part): part is string => Boolean(part))
-    .join(" · ");
-}
-
-function formatCommodityAdmissionNextStep(item: CrisisCommodityAdmissionItem) {
-  if (item.decision === "recommend_include") {
-    return "提交人工复核与权重审批";
-  }
-  if (item.decision === "watch") {
-    return "复核相关性与危机期命中率";
-  }
-  return item.next_step;
-}
-
-function formatCommodityApprovalPackFields(fields: string[]) {
-  return fields.length ? fields.join(" / ") : "无";
-}
-
-function formatSignedDeltaFromPack(copyText: string) {
-  const match = copyText.match(/shadow delta\s+([+-]?\d+(?:\.\d+)?)/);
-  return match?.[1] ?? "缺失";
-}
-
-function formatCommodityReviewConclusionMetrics(item: CrisisCommodityCoverageItem) {
-  const evaluation = item.shadow_evaluation;
-  if (!evaluation) {
-    return "影子评估缺失";
-  }
-  const minimumSampleCount = evaluation.minimum_sample_count ?? MACRO_COMMODITY_SHADOW_MIN_SAMPLES;
-  const sampleText =
-    evaluation.status === "history_short" || evaluation.sample_count == null
-      ? `样本 ${evaluation.sample_count ?? "缺失"}/${minimumSampleCount}`
-      : `样本 ${evaluation.sample_count}`;
-  return [
-    sampleText,
-    `危机样本 ${evaluation.crisis_sample_count ?? "缺失"}`,
-    `命中率 ${formatPercent(evaluation.crisis_hit_rate)}`,
-    `同日相关 ${formatSignedDecimal(evaluation.same_day_correlation)}`,
-    item.latest_date ? `最新 ${item.latest_date}` : null,
-  ]
-    .filter((part): part is string => Boolean(part))
-    .join(" · ");
-}
-
-function formatCommodityReviewConclusionNextStep(
-  status: CommodityPromotionRuleStatus,
-  item: CrisisCommodityCoverageItem,
-) {
-  if (status === "ready_for_review") {
-    return "下一步：提交人工复核与权重审批";
-  }
-  if (status === "manual_review") {
-    return "下一步：复核相关性与危机期命中率";
-  }
-  const sampleGap = item.shadow_evaluation?.sample_gap;
-  return typeof sampleGap === "number"
-    ? `下一步：先补齐历史数据，还差 ${sampleGap} 个样本`
-    : "下一步：先补齐历史数据";
-}
-
-function formatCommodityShadowImpactDirectionDetail(items: CrisisCommodityCoverageItem[]) {
-  if (!items.length) {
-    return "暂无可复核商品候选";
-  }
-  return `${formatCommodityActionQueueLabels(items)} 需要 v2 权重后确认方向`;
-}
-
-function formatCommodityShadowImpactDriverDetail(item: CrisisCommodityCoverageItem) {
-  const evaluation = item.shadow_evaluation;
-  if (!evaluation) {
-    return "影子评估缺失";
-  }
-  return [
-    `命中率 ${formatPercent(evaluation.crisis_hit_rate)}`,
-    `同日相关 ${formatSignedDecimal(evaluation.same_day_correlation)}`,
-    `样本 ${evaluation.sample_count ?? "缺失"}`,
-    item.latest_date ? `最新 ${item.latest_date}` : null,
-  ]
-    .filter((part): part is string => Boolean(part))
-    .join(" · ");
-}
-
-function commodityShadowImpactDirectionLabel(direction: string) {
-  if (direction === "higher_stress") {
-    return "压力上行";
-  }
-  if (direction === "lower_stress") {
-    return "压力下行";
-  }
-  if (direction === "unchanged") {
-    return "基本不变";
-  }
-  return "待确认";
-}
-
-function formatSignedDelta(value: number | null | undefined, digits = 2) {
-  if (value == null) {
-    return "缺失";
-  }
-  return `${value >= 0 ? "+" : ""}${value.toFixed(digits)}`;
-}
-
-function formatCommodityShadowImpactWarnings(shadowImpact: CrisisCommodityShadowImpact) {
-  return shadowImpact.warnings.length ? shadowImpact.warnings.join(" / ") : "warnings missing";
-}
-
-function formatCommodityShadowContributionDetail(item: CrisisCommodityShadowContribution) {
-  return [
-    `${item.candidate_metric} ${formatSignedDelta(item.candidate_value, 2)}`,
-    `贡献 ${formatSignedDelta(item.contribution, 4)}`,
-    `权重 ${formatPercent(item.weight)}`,
-    `样本 ${item.sample_count ?? "缺失"}`,
-    item.latest_date ? `最新 ${item.latest_date}` : null,
-  ]
-    .filter((part): part is string => Boolean(part))
-    .join(" · ");
-}
-
-function buildCommodityPromotionAuditPackCopyText(
-  promotionItems: CommodityPromotionRuleItem[],
-  counts: {
-    manualCount: number;
-    rejectedCount: number;
-    analysisMeta?: ResultMeta | null;
-    analysisAsOfDate?: string | null;
-    reviewQueueItems: CrisisCommodityCoverageItem[];
-    shortQueueItems: CrisisCommodityCoverageItem[];
-    coverageItems: CrisisCommodityCoverageItem[];
-    commodityInput: MacroToolkitInputEvidenceItem | null;
-    summary: CrisisCommodityCandidateSummary | null;
-  },
-) {
-  const reviewQueueText = formatCommodityActionQueueLabels(counts.reviewQueueItems);
-  const shortQueueText = formatCommodityActionQueueLabels(counts.shortQueueItems);
-  const nextStepText = counts.summary
-    ? formatCommodityActionQueueNextStep(counts.reviewQueueItems, counts.shortQueueItems, counts.summary)
-    : "下一步待确认";
-  return [
-    "Crisis Score 商品候选审计包",
-    `分析日期 ${counts.analysisMeta?.as_of_date ?? counts.analysisAsOfDate ?? "缺失"}`,
-    `source_version ${counts.analysisMeta?.source_version ?? "缺失"}`,
-    `vendor_version ${counts.analysisMeta?.vendor_version ?? "缺失"}`,
-    `rule_version ${counts.analysisMeta?.rule_version ?? "缺失"}`,
-    `cache_version ${counts.analysisMeta?.cache_version ?? "缺失"}`,
-    `规则版本 ${MACRO_COMMODITY_SHADOW_RULE_VERSION}`,
-    "用途：商品候选进入公式前的影子复核",
-    "边界：不写入 Crisis Score，不改变权重",
-    "审批：历史回测、相关性检验、权重审批、版本记录齐备后再提交",
-    `准入检查：样本>=${MACRO_COMMODITY_SHADOW_MIN_SAMPLES} / 危机样本>=${MACRO_COMMODITY_SHADOW_MIN_CRISIS_SAMPLES} / 相关性可读 / 命中率可读`,
-    `样本阈值 >=${MACRO_COMMODITY_SHADOW_MIN_SAMPLES} 个重叠样本`,
-    `危机样本阈值 >=${MACRO_COMMODITY_SHADOW_MIN_CRISIS_SAMPLES} 个高 Crisis Score 样本`,
-    `相关性阈值 |corr|>=${MACRO_COMMODITY_SHADOW_MIN_CORRELATION.toFixed(2)} 才可直接通过`,
-    `人工复核队列 ${reviewQueueText}`,
-    `补历史样本队列 ${shortQueueText}`,
-    `处理顺序 ${nextStepText}`,
-    formatOfficialCommodityInputAuditLine(counts.commodityInput),
-    `待人工判断 ${counts.manualCount}`,
-    `不建议进入公式 ${counts.rejectedCount}`,
-    ...counts.coverageItems.map(formatCommodityAuditSourceLine),
-    ...promotionItems.flatMap((item) => [
-      `${item.label} · ${commodityPromotionRuleStatusLabel(item.status)} · ${item.reason}`,
-      ...item.checks.map(
-        (check) =>
-          `${item.label} · ${check.name} ${commodityPromotionRuleCheckStatusLabel(check.status)} ${check.value}`,
-      ),
-    ]),
-  ].join("\n");
-}
-
-function commodityShadowStatusColor(status: string | null | undefined) {
-  if (status === "review_ready") {
-    return "green";
-  }
-  if (status === "history_short") {
-    return "orange";
-  }
-  return "default";
-}
-
-function formatCommodityAuditSourceLine(item: CrisisCommodityCoverageItem) {
-  const formulaText = item.used_in_formula ? "已纳入公式" : "当前未计入 Crisis Score";
-  return [
-    `候选来源 ${item.label || item.field}`,
-    item.series_id ?? "series 缺失",
-    `aliases ${item.aliases.length ? item.aliases.join(" / ") : "缺失"}`,
-    `matched ${item.matched_alias ?? "缺失"}`,
-    item.source ?? "source 缺失",
-    `latest ${item.latest_date ?? "缺失"}`,
-    `report ${item.report_date ?? "缺失"}`,
-    formatCommodityCoverageDateStatus(item.date_alignment_status),
-    `rows ${item.row_count ?? "缺失"}`,
-    formulaText,
-  ].join(" · ");
-}
-
-function formatOfficialCommodityInputAuditLine(input: MacroToolkitInputEvidenceItem | null) {
-  if (!input) {
-    return "正式商品输入 缺失 · 已纳入 Crisis Score 公式的南华输入未命中";
-  }
-  return [
-    `正式商品输入 ${input.label || input.field}`,
-    formatCrisisInputIdentifiers(input),
-    `source ${input.source ?? "缺失"}`,
-    `latest ${input.latest_date ?? "缺失"}`,
-    `rows ${input.row_count ?? "缺失"}`,
-    `value ${formatValue(input.value ?? null, "")}`,
-    "已纳入 Crisis Score 公式",
-  ].join(" · ");
-}
-
-function isCommodityShadowReviewReady(item: CrisisCommodityCoverageItem) {
-  return item.shadow_evaluation?.status === "review_ready";
-}
-
-function isCommodityShadowHistoryShort(item: CrisisCommodityCoverageItem) {
-  return item.shadow_evaluation?.status === "history_short";
-}
-
-function formatCommodityActionQueueLabels(items: CrisisCommodityCoverageItem[]) {
-  if (!items.length) {
-    return "无";
-  }
-  return items.map((item) => item.label || item.field).join(" / ");
-}
-
-function formatCommodityActionQueueNextStep(
-  reviewItems: CrisisCommodityCoverageItem[],
-  shortItems: CrisisCommodityCoverageItem[],
-  summary: CrisisCommodityCandidateSummary,
-) {
-  if (shortItems.length && reviewItems.length) {
-    return `下一步：先补齐样本不足品种，再复核${formatCommodityActionQueueShortNames(reviewItems)}的相关性与命中率`;
-  }
-  if (shortItems.length) {
-    return "下一步：先补齐样本不足品种，再重新运行完整分析";
-  }
-  if (reviewItems.length) {
-    return `下一步：复核${formatCommodityActionQueueShortNames(reviewItems)}的相关性与命中率`;
-  }
-  return summary.shadow_evaluation_next_step || "下一步待确认";
-}
-
-function formatCommodityActionQueueShortNames(items: CrisisCommodityCoverageItem[]) {
-  return items.map((item) => commodityChineseShortName(item.label || item.field)).join("、");
-}
-
-function commodityChineseShortName(label: string) {
-  const normalized = label.toLowerCase();
-  if (normalized.includes("copper")) {
-    return "铜";
-  }
-  if (normalized.includes("crude")) {
-    return "原油";
-  }
-  if (normalized.includes("aluminum")) {
-    return "铝";
-  }
-  if (normalized.includes("gold")) {
-    return "黄金";
-  }
-  if (normalized.includes("rebar")) {
-    return "螺纹钢";
-  }
-  if (normalized.includes("iron")) {
-    return "铁矿石";
-  }
-  return label;
-}
-
-function formatCommodityShadowShortfallList(summary: CrisisCommodityCandidateSummary) {
-  const items = summary.shadow_evaluation_short_items.map((item) => {
-    const sampleText =
-      typeof item.sample_count === "number" && typeof item.minimum_sample_count === "number"
-        ? `${item.sample_count}/${item.minimum_sample_count}`
-        : "样本缺失";
-    const gapText = typeof item.sample_gap === "number" ? `还差 ${item.sample_gap}` : "缺口待确认";
-    const dateText = item.latest_date ? `，最新 ${item.latest_date}` : "";
-    return `${item.label || item.field} ${sampleText}，${gapText}${dateText}`;
-  });
-  return `样本不足：${items.join("；")}`;
-}
-
-function crisisCommodityShortItemsFromResult(
-  result: MacroToolkitCapabilityResult | null | undefined,
-): CrisisCommodityShadowShortItem[] {
-  if (!result) {
-    return [];
-  }
-  const coverage = normalizeCommodityCoverage(
-    (result as { commodity_coverage?: unknown }).commodity_coverage ?? result.result.commodity_coverage,
-  );
-  return coverage?.candidate_summary?.shadow_evaluation_short_items ?? [];
-}
-
-function suggestedCommodityRefreshStartDate(result: MacroToolkitCapabilityResult | null | undefined) {
-  const latestDates = crisisCommodityShortItemsFromResult(result)
-    .map((item) => item.latest_date)
-    .filter((date): date is string => Boolean(date));
-  if (!latestDates.length) {
-    return undefined;
-  }
-  const earliestLatestDate = latestDates.sort()[0];
-  const parsed = new Date(`${earliestLatestDate}T00:00:00Z`);
-  if (Number.isNaN(parsed.getTime())) {
-    return undefined;
-  }
-  parsed.setUTCDate(parsed.getUTCDate() - MACRO_COMMODITY_SUGGESTED_REFRESH_LOOKBACK_DAYS);
-  return parsed.toISOString().slice(0, 10);
-}
-
-function crisisCommodityShortItemsFromEnvelope(
-  envelope: ApiEnvelope<MacroToolkitAnalysisPayload> | null | undefined,
-): CrisisCommodityShadowShortItem[] {
-  const result = envelope?.result.capability_results.find((item) => item.key === "crisis_score_cn") ?? null;
-  return crisisCommodityShortItemsFromResult(result);
-}
-
-function formatCommodityShortfallChanges(
-  beforeItems: CrisisCommodityShadowShortItem[],
-  afterItems: CrisisCommodityShadowShortItem[],
-): CommodityShortfallChange[] {
-  const afterByField = new Map(afterItems.map((item) => [item.field, item]));
-  return beforeItems
-    .map((before) => {
-      if (before.sample_count == null || before.minimum_sample_count == null) {
-        return null;
-      }
-      const after = afterByField.get(before.field);
-      const afterSample = after?.sample_count ?? before.minimum_sample_count;
-      const afterMinimum = after?.minimum_sample_count ?? before.minimum_sample_count;
-      const remainingGap = Math.max(0, afterMinimum - afterSample);
-      return {
-        field: before.field,
-        label: before.label || before.field,
-        before: `${before.sample_count}/${before.minimum_sample_count}`,
-        after: `${afterSample}/${afterMinimum}`,
-        remainingGap,
-        resolved: remainingGap === 0,
-      };
-    })
-    .filter((item): item is CommodityShortfallChange => item !== null);
-}
-
-function formatCommodityShortfallChangeList(changes: CommodityShortfallChange[]) {
-  return changes.map((item) => `${item.label} ${item.before} -> ${item.after}`).join("；");
-}
-
-function formatCommodityShortfallEstimates(
-  beforeItems: CrisisCommodityShadowShortItem[],
-  refresh: MacroToolkitCommodityFuturesRefreshRun,
-): CommodityShortfallEstimate[] {
-  const rowsByProduct = new Map(
-    normalizeCommodityRefreshRows(refresh).map((row) => [row.productCode, row.estimatedRows ?? row.rowCount ?? 0]),
-  );
-  return beforeItems
-    .map((item) => {
-      if (item.sample_count == null || item.minimum_sample_count == null) {
-        return null;
-      }
-      const product = MACRO_COMMODITY_FIELD_TO_PRODUCT[item.field];
-      const estimatedRows = product ? rowsByProduct.get(product) ?? 0 : 0;
-      const afterSample = Math.min(item.minimum_sample_count, item.sample_count + estimatedRows);
-      return {
-        field: item.field,
-        label: item.label || item.field,
-        before: `${item.sample_count}/${item.minimum_sample_count}`,
-        after: `${afterSample}/${item.minimum_sample_count}`,
-        estimatedRows,
-        canFill: afterSample >= item.minimum_sample_count,
-      };
-    })
-    .filter((item): item is CommodityShortfallEstimate => item !== null && item.estimatedRows > 0);
-}
-
-function formatCommodityShortfallEstimateList(estimates: CommodityShortfallEstimate[]) {
-  const canFillAll = estimates.every((item) => item.canFill);
-  const prefix = canFillAll
-    ? "预计可补齐最低样本，建议刷新商品期货"
-    : "预计仍有样本缺口，刷新后仍不会闭环";
-  const items = estimates.map((item) => {
-    const remainingGap = item.canFill ? 0 : commodityShortfallRemainingGap(item.after);
-    const conclusion = item.canFill
-      ? `可补齐至 ${item.after}`
-      : `预计到 ${item.after}${remainingGap == null ? "" : `，还差 ${remainingGap}`}`;
-    return `${item.label} ${item.before}，预计 +${item.estimatedRows}，${conclusion}`;
-  });
-  return `${prefix}：${items.join("；")}`;
-}
-
-function formatCommodityRefreshActionLabel(estimates: CommodityShortfallEstimate[]) {
-  if (!estimates.length) {
-    return "刷新商品期货";
-  }
-  return estimates.every((item) => item.canFill)
-    ? "刷新商品期货：刷新并重算证据"
-    : "刷新商品期货：仍有缺口，谨慎刷新";
-}
-
-function commodityShortfallRemainingGap(sampleText: string) {
-  const match = /^(\d+)\/(\d+)$/.exec(sampleText);
-  if (!match) {
-    return null;
-  }
-  return Math.max(0, Number(match[2]) - Number(match[1]));
-}
-
-function commodityShadowRefreshProducts(summary: CrisisCommodityCandidateSummary) {
-  const backendSuggestions = summary.suggested_refresh_products.filter(
-    (item, index, array) => array.indexOf(item) === index,
-  );
-  if (backendSuggestions.length) {
-    return backendSuggestions;
-  }
-  return summary.shadow_evaluation_short_items
-    .map((item) => MACRO_COMMODITY_FIELD_TO_PRODUCT[item.field])
-    .filter((item, index, array): item is string => Boolean(item) && array.indexOf(item) === index);
-}
-
-function formatCommodityShadowRefreshHint(products: string[]) {
-  return products.length ? `建议刷新品种：${products.join(" / ")}` : "";
-}
-
-function formatCommodityProducts(products: string[]) {
-  return products.length ? `品种 ${products.join(" / ")}` : "品种待选择";
-}
-
-function formatCommodityProductsInline(products: string[]) {
-  return products.length ? products.join(" / ") : "待确认";
-}
-
-function commodityRefreshRunProducts(refresh: MacroToolkitCommodityFuturesRefreshRun) {
-  return normalizeCommodityRefreshRows(refresh)
-    .map((row) => row.productCode)
-    .filter((item, index, array) => Boolean(item) && array.indexOf(item) === index);
-}
-
-function formatSignedDecimal(value: number | null | undefined) {
-  return typeof value === "number" ? value.toFixed(2) : "缺失";
-}
-
-const CRISIS_GAP_GROUP_LABELS: Record<CrisisGapGroupKey, string> = {
-  equity: "股票风险输入",
-  liquidity: "利率与流动性输入",
-  commodity: "商品期货输入",
-  curve_credit: "曲线与信用输入",
-  fx: "汇率输入",
-  other: "其他输入",
-};
-
-function uniqueDisplayParts(values: Array<string | null | undefined>) {
-  return Array.from(new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value))));
-}
-
-function buildCrisisGapGroups(
-  inputEvidence: MacroToolkitInputEvidenceItem[],
-  warnings: string[],
-  commodityCoverage?: CrisisCommodityCoverage | null,
-): CrisisGapGroup[] {
-  const warningSet = new Set(warnings);
-  const itemsByGroup = new Map<CrisisGapGroupKey, CrisisGapItem[]>();
-  const pushItem = (groupKey: CrisisGapGroupKey, item: CrisisGapItem) => {
-    const items = itemsByGroup.get(groupKey) ?? [];
-    if (!items.some((candidate) => candidate.warning === item.warning && candidate.label === item.label)) {
-      items.push(item);
-    }
-    itemsByGroup.set(groupKey, items);
-  };
-
-  for (const input of inputEvidence) {
-    const warning = input.warning;
-    const isMissing = input.available === false || (warning ? warningSet.has(warning) : false);
-    if (!isMissing || !warning) {
-      continue;
-    }
-    pushItem(crisisGapGroupKey(input.field, warning), {
-      label: input.label || input.field,
-      warning,
-      detail: crisisGapInputDetail(input),
-      identifiers: crisisGapInputIdentifiers(input),
-    });
-    warningSet.delete(warning);
-  }
-
-  for (const warning of warningSet) {
-    pushItem(crisisGapGroupKey("", warning), {
-      label: warning.replace(/_MISSING$/, "").toLowerCase(),
-      warning,
-      detail: "输入证据缺失，缺失不按 0 处理",
-      identifiers: [warning],
-    });
-  }
-
-  for (const item of commodityCoverage?.candidate_summary?.shadow_evaluation_short_items ?? []) {
-    pushItem("commodity", {
-      label: item.label || item.field,
-      warning: "COMMODITY_SAMPLE_SHORT",
-      detail: formatCommodityShortfallGapDetail(item),
-      identifiers: uniqueDisplayParts([item.field, item.label, "COMMODITY_SAMPLE_SHORT"]),
-    });
-  }
-
-  return (["equity", "liquidity", "commodity", "curve_credit", "fx", "other"] as CrisisGapGroupKey[])
-    .map((key) => ({ key, label: CRISIS_GAP_GROUP_LABELS[key], items: itemsByGroup.get(key) ?? [] }))
-    .filter((group) => group.items.length);
-}
-
-function formatCrisisGapSummaryDetail(groups: CrisisGapGroup[]) {
-  if (!groups.length) {
-    return "无缺失输入";
-  }
-  return groups
-    .map((group) => `${group.label}: ${uniqueDisplayParts(group.items.map((item) => item.warning)).join(" / ")}`)
-    .join("；");
-}
-
-function buildCrisisGapRepairFeedback(
-  previousGroup: CrisisGapGroup,
-  envelope: ApiEnvelope<MacroToolkitAnalysisPayload> | null,
-  actionMessage: string,
-): CrisisGapRepairFeedback {
-  if (!envelope) {
-    return {
-      groupKey: previousGroup.key,
-      groupLabel: previousGroup.label,
-      status: "failed",
-      message: "完整分析重读失败",
-      detail: actionMessage,
-    };
-  }
-  const currentGroup = crisisGapGroupFromEnvelope(envelope, previousGroup.key);
-  if (!currentGroup) {
-    return {
-      groupKey: previousGroup.key,
-      groupLabel: previousGroup.label,
-      status: "resolved",
-      message: "已补齐，完整分析已重读",
-      detail: actionMessage,
-    };
-  }
-  return {
-    groupKey: previousGroup.key,
-    groupLabel: previousGroup.label,
-    status: "partial",
-    message: "完整分析已重读，仍有缺口",
-    detail: currentGroup.items.map((item) => item.warning).join(" / ") || actionMessage,
-  };
-}
-
-function crisisGapGroupFromEnvelope(
-  envelope: ApiEnvelope<MacroToolkitAnalysisPayload>,
-  groupKey: CrisisGapGroupKey,
-) {
-  const result = envelope.result.capability_results.find((item) => item.key === "crisis_score_cn");
-  return crisisGapGroupFromResult(result, groupKey);
-}
-
-function crisisGapGroupFromResult(
-  result: MacroToolkitCapabilityResult | null | undefined,
-  groupKey: CrisisGapGroupKey,
-) {
-  if (!result) {
-    return null;
-  }
-  const normalizedEvidence = normalizeInputEvidence(result);
-  const inputEvidence = normalizedEvidence?.inputs ?? [];
-  const warnings = uniqueDisplayParts([...(result.warnings ?? []), ...(normalizedEvidence?.missingInputs ?? [])]);
-  const commodityCoverage = normalizeCommodityCoverage(
-    (result as { commodity_coverage?: unknown }).commodity_coverage ?? result.result.commodity_coverage,
-  );
-  return buildCrisisGapGroups(inputEvidence, warnings, commodityCoverage).find((group) => group.key === groupKey) ?? null;
-}
-
-function crisisGapGroupKey(field: string, warning: string): CrisisGapGroupKey {
-  const token = `${field} ${warning}`.toUpperCase();
-  if (token.includes("HS300") || token.includes("EQUITY") || token.includes("STOCK")) {
-    return "equity";
-  }
-  if (token.includes("DR007") || token.includes("REVERSE_REPO") || token.includes("LIQUIDITY")) {
-    return "liquidity";
-  }
-  if (token.includes("NANHUA") || token.includes("COMMODITY")) {
-    return "commodity";
-  }
-  if (token.includes("AA_") || token.includes("GOV_") || token.includes("CREDIT") || token.includes("CURVE")) {
-    return "curve_credit";
-  }
-  if (token.includes("USDCNY") || token.includes("FX")) {
-    return "fx";
-  }
-  return "other";
-}
-
-function crisisGapInputDetail(input: MacroToolkitInputEvidenceItem) {
-  const rowText = formatCrisisRowCount(input.row_count);
-  const dateText = input.latest_date ?? "日期缺失";
-  const sourceText = input.source ?? "source missing";
-  return `${rowText} · ${dateText} · ${sourceText} · 缺失不按 0 处理`;
-}
-
-function crisisGapInputIdentifiers(input: MacroToolkitInputEvidenceItem) {
-  return uniqueDisplayParts([input.field, input.warning, ...(input.aliases ?? []), input.series_id]);
-}
-
-function formatCommodityShortfallGapDetail(item: CrisisCommodityShadowShortItem) {
-  const sampleText =
-    item.sample_count == null || item.minimum_sample_count == null
-      ? "样本缺失"
-      : `${item.sample_count}/${item.minimum_sample_count}`;
-  const gapText = item.sample_gap == null ? "缺口待确认" : `还差 ${item.sample_gap}`;
-  const dateText = item.latest_date ? `最新 ${item.latest_date}` : "日期缺失";
-  return `${sampleText} · ${gapText} · ${dateText} · 缺失不按 0 处理`;
-}
-
-function findCrisisGapRepairItem(group: CrisisGapGroup, repairItems: MacroToolkitRepairItem[]) {
-  const groupIdentifiers = new Set(
-    group.items.flatMap((item) => item.identifiers).map((identifier) => identifier.toUpperCase()),
-  );
-  return repairItems.find((item) => {
-    if (!canRefreshMacroSourceBackfill(item)) {
-      return false;
-    }
-    const itemIdentifiers = uniqueDisplayParts([item.alias, item.key, item.label]).map((identifier) =>
-      identifier.toUpperCase(),
-    );
-    return itemIdentifiers.some((identifier) => groupIdentifiers.has(identifier));
-  });
-}
-
-function isNanhuaCrisisInput(input: MacroToolkitInputEvidenceItem) {
-  const identifiers = uniqueDisplayParts([input.field, ...(input.aliases ?? []), input.series_id]).map((item) =>
-    item.toUpperCase(),
-  );
-  return (
-    identifiers.includes("NANHUA") ||
-    identifiers.includes(NANHUA_CRISIS_ALIAS) ||
-    identifiers.includes(NANHUA_SYSTEM_SERIES_ID)
-  );
-}
-
-function formatCrisisInputIdentifiers(input: MacroToolkitInputEvidenceItem) {
-  const identifiers = uniqueDisplayParts([
-    ...(input.aliases ?? []),
-    ...(isNanhuaCrisisInput(input) ? [NANHUA_CRISIS_ALIAS, NANHUA_SYSTEM_SERIES_ID] : []),
-    input.series_id,
-  ]);
-  return identifiers.join(" / ") || "alias missing";
-}
-
-function formatCommodityCoverageIdentifiers(item: CrisisCommodityCoverageItem) {
-  const identifiers = uniqueDisplayParts([
-    ...item.aliases,
-    item.matched_alias,
-    ...(item.field === "nanhua" || item.used_in_formula ? [NANHUA_CRISIS_ALIAS, NANHUA_SYSTEM_SERIES_ID] : []),
-    item.series_id,
-  ]);
-  return identifiers.join(" / ") || "alias missing";
-}
-
-function formatCrisisInputDetail(input: MacroToolkitInputEvidenceItem | undefined) {
-  if (!input) {
-    return "Nanhua commodity index / NH0100.NHF 未命中";
-  }
-  return `${input.label || input.field} · ${formatCrisisInputIdentifiers(input)} · ${
-    input.latest_date ?? "日期缺失"
-  }`;
-}
 
 function hasRealStrategySource(strategy: MacroToolkitStrategySummary) {
   return (
@@ -9828,211 +7151,6 @@ function choiceStockTableSummary(
   const statusText = statusLabel(table?.freshness_status ?? "unknown");
   const fallbackText = choiceStockFallbackText(table);
   return [dateText, statusText, fallbackText].filter(Boolean).join(" · ");
-}
-
-function normalizeCommodityRefreshRows(refresh: MacroToolkitCommodityFuturesRefreshRun): CommodityRefreshProductRow[] {
-  const isDryRun = refresh.status === "dry_run" || refresh.dry_run === true;
-  const table = refresh.table ?? "fact_commodity_futures_daily";
-  return (refresh.products ?? []).map((rawItem, index) => {
-    const item = isRecord(rawItem) ? rawItem : { product_code: rawItem };
-    const rawProductCode = commodityRefreshProductCode(item.product_code, index);
-    const rawSeriesId = commodityRefreshString(item.series_id);
-    const productCode = normalizeCommodityRefreshProductCode(rawProductCode, rawSeriesId);
-    const option = MACRO_COMMODITY_PRODUCT_OPTIONS.find((candidate) => candidate.value === productCode);
-    const productName = commodityRefreshString(item.name_zh) || option?.label || productCode;
-    const estimatedRows = commodityRefreshNumber(item.estimated_rows);
-    const writtenRows = commodityRefreshNumber(item.row_count);
-    const rowCount = isDryRun ? estimatedRows ?? writtenRows : writtenRows ?? estimatedRows;
-    const seriesId = rawSeriesId || commodityRefreshSeriesId(productCode);
-    const latestDate = commodityRefreshString(item.latest_date) || (isDryRun ? refresh.end_date ?? "待刷新" : refresh.end_date ?? "缺失");
-    const latestValue = commodityRefreshNumber(item.latest_value);
-    const status = commodityRefreshProductStatus({ isDryRun, rowCount });
-    return {
-      key: `${productCode}-${index}`,
-      productCode,
-      productName,
-      seriesId,
-      status,
-      estimatedRows,
-      rowCount,
-      rowCountLabel: rowCount == null ? "缺失" : `${isDryRun ? "预计 " : ""}${rowCount} 行`,
-      latestDate,
-      latestValue,
-      vendor: commodityRefreshString(item.vendor) || (isDryRun ? "estimate_only" : "缺失"),
-      table,
-      isNanhua: isNanhuaCommodityRefreshRow(productCode, seriesId),
-    };
-  });
-}
-
-function commodityRefreshProductCode(value: unknown, index: number) {
-  const code = commodityRefreshString(value);
-  if (!code) {
-    return `#${index + 1}`;
-  }
-  const normalized = code.toUpperCase();
-  return normalized === NANHUA_CRISIS_ALIAS ? NANHUA_COMMODITY_PRODUCT_CODE : normalized;
-}
-
-function normalizeCommodityRefreshProductCode(productCode: string, seriesId: string | null) {
-  const candidates = [productCode, seriesId ?? ""].map((item) => item.trim().toUpperCase()).filter(Boolean);
-  for (const candidate of candidates) {
-    if (candidate === NANHUA_CRISIS_ALIAS || candidate === NANHUA_SYSTEM_SERIES_ID) {
-      return NANHUA_COMMODITY_PRODUCT_CODE;
-    }
-    if (candidate === "CA.COPPER") {
-      return "CU";
-    }
-    if (candidate === "CA.ALUMINUM") {
-      return "AL";
-    }
-    if (candidate.startsWith("COMMODITY.")) {
-      const code = candidate.slice("COMMODITY.".length);
-      if (MACRO_COMMODITY_PRODUCT_OPTIONS.some((option) => option.value === code)) {
-        return code;
-      }
-    }
-    if (MACRO_COMMODITY_PRODUCT_OPTIONS.some((option) => option.value === candidate)) {
-      return candidate;
-    }
-  }
-  return productCode;
-}
-
-function commodityRefreshString(value: unknown) {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function commodityRefreshNumber(value: unknown) {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-  if (typeof value === "string" && value.trim() && Number.isFinite(Number(value))) {
-    return Number(value);
-  }
-  return null;
-}
-
-function commodityRefreshSeriesId(productCode: string) {
-  const normalized = productCode.trim().toUpperCase();
-  if (normalized === NANHUA_COMMODITY_PRODUCT_CODE || normalized === NANHUA_CRISIS_ALIAS) {
-    return NANHUA_SYSTEM_SERIES_ID;
-  }
-  if (normalized === "NHII") {
-    return "NHII.NH";
-  }
-  if (normalized === "CU") {
-    return "CA.COPPER";
-  }
-  if (normalized === "AL") {
-    return "CA.ALUMINUM";
-  }
-  return normalized.startsWith("#") ? "缺失" : `COMMODITY.${normalized}`;
-}
-
-function isNanhuaCommodityRefreshRow(productCode: string, seriesId: string) {
-  const normalizedProductCode = productCode.trim().toUpperCase();
-  const normalizedSeriesId = seriesId.trim().toUpperCase();
-  return (
-    normalizedProductCode === NANHUA_COMMODITY_PRODUCT_CODE ||
-    normalizedProductCode === NANHUA_CRISIS_ALIAS ||
-    normalizedSeriesId === NANHUA_SYSTEM_SERIES_ID ||
-    normalizedSeriesId === NANHUA_CRISIS_ALIAS
-  );
-}
-
-function commodityRefreshIdentifierText(row: CommodityRefreshProductRow) {
-  const identifiers = row.isNanhua
-    ? [row.productCode, NANHUA_CRISIS_ALIAS, row.seriesId]
-    : [row.productCode, row.seriesId];
-  return Array.from(new Set(identifiers.filter(Boolean))).join(" / ");
-}
-
-function commodityRefreshProductStatus({
-  isDryRun,
-  rowCount,
-}: {
-  isDryRun: boolean;
-  rowCount: number | null;
-}): CommodityRefreshProductRow["status"] {
-  if (rowCount == null || rowCount <= 0) {
-    return "missing";
-  }
-  return isDryRun ? "estimated" : "written";
-}
-
-function commodityRefreshStatusText(status: CommodityRefreshProductRow["status"]) {
-  if (status === "estimated") {
-    return "预计可写";
-  }
-  if (status === "written") {
-    return "已写入";
-  }
-  return "未命中";
-}
-
-function commodityRefreshStatusColor(status: CommodityRefreshProductRow["status"]) {
-  if (status === "missing") {
-    return "red";
-  }
-  return status === "written" ? "green" : "blue";
-}
-
-function formatCommodityRefreshResult(refresh: MacroToolkitCommodityFuturesRefreshRun) {
-  const productCount = refresh.product_count ?? refresh.products?.length ?? 0;
-  const isDryRun = refresh.status === "dry_run" || refresh.dry_run === true;
-  if (refresh.status === "queued") {
-    return `商品期货刷新已排队，${productCount} 个品种，等待后台任务完成`;
-  }
-  const rowCount = isDryRun
-    ? refresh.estimated_total_rows ?? refresh.row_count ?? 0
-    : refresh.row_count ?? refresh.estimated_total_rows ?? 0;
-  const action = isDryRun ? "预估完成" : "刷新完成";
-  const tradingDays = isDryRun && refresh.estimated_trading_days ? `，约 ${refresh.estimated_trading_days} 个交易日` : "";
-  return `商品期货${action}：${productCount} 个品种，${rowCount} 行${tradingDays}`;
-}
-
-function commodityRefreshRowDeltaText(summary: NonNullable<MacroToolkitCommodityFuturesRefreshRun["summary"]>) {
-  const before = commodityRefreshNullableNumberText(summary.row_count_before);
-  const after = commodityRefreshNullableNumberText(summary.row_count_after);
-  const delta = summary.row_count_delta == null ? "变化缺失" : `${summary.row_count_delta >= 0 ? "+" : ""}${summary.row_count_delta}`;
-  return `行数 ${before} → ${after}（${delta}）`;
-}
-
-function commodityRefreshLatestDateText(summary: NonNullable<MacroToolkitCommodityFuturesRefreshRun["summary"]>) {
-  const before = summary.latest_trade_date_before ?? "缺失";
-  const after = summary.latest_trade_date_after ?? "缺失";
-  return `最新日期 ${before} → ${after}`;
-}
-
-function commodityRefreshCoverageText(summary: NonNullable<MacroToolkitCommodityFuturesRefreshRun["summary"]>) {
-  const before = commodityRefreshCountPair(summary.available_product_count_before, summary.target_product_count);
-  const after = commodityRefreshCountPair(summary.available_product_count_after, summary.target_product_count);
-  const newlyAvailable = summary.newly_available_products.length
-    ? `新增 ${summary.newly_available_products.join(" / ")}`
-    : "新增 无";
-  const missing = summary.missing_products_after.length ? `缺失 ${summary.missing_products_after.join(" / ")}` : "缺失 无";
-  return `覆盖 ${before} → ${after}，${newlyAvailable}，${missing}`;
-}
-
-function commodityRefreshNanhuaText(summary: NonNullable<MacroToolkitCommodityFuturesRefreshRun["summary"]>) {
-  const before = summary.nanhua_latest_date_before ?? "缺失";
-  const after = summary.nanhua_latest_date_after ?? "缺失";
-  const value = formatNumberValue(summary.nanhua_latest_value_after, 2);
-  return `南华 ${before} → ${after}，${value}`;
-}
-
-function commodityRefreshSourceText(summary: NonNullable<MacroToolkitCommodityFuturesRefreshRun["summary"]>) {
-  const source = summary.source_vendors_after.length ? summary.source_vendors_after.join(" / ") : "缺失";
-  return `来源 ${source}`;
-}
-
-function commodityRefreshNullableNumberText(value: number | null) {
-  return value == null ? "缺失" : String(value);
-}
-
-function commodityRefreshCountPair(value: number | null, total: number | null) {
-  return value == null || total == null ? "缺失" : `${value}/${total}`;
 }
 
 type CommodityHealthStatus = NonNullable<NonNullable<MacroToolkitCommodityFuturesRefreshStatus>["status"]>;
@@ -10281,12 +7399,6 @@ function formatPlainRatio(value: number | null | undefined) {
   return `${(value * 100).toFixed(1)}%`;
 }
 
-function formatNumberValue(value: number | null | undefined, digits = 1) {
-  if (value == null || !Number.isFinite(value)) {
-    return "缺失";
-  }
-  return value.toFixed(digits);
-}
 
 function portfolioConstraintText(portfolio: MacroToolkitShadowPortfolio) {
   const constraints = portfolio.constraints;
@@ -11051,33 +8163,3 @@ function formatMetricDisplay(metric: NonNullable<MacroToolkitCapabilityResult["p
   return `${metric.label} ${metric.value}${metric.unit}`;
 }
 
-function MetricTile({
-  icon,
-  label,
-  value,
-  detail,
-  detailTitle,
-  tone = "neutral",
-  testId,
-  detailMaxLength = 26,
-}: {
-  icon?: ReactNode;
-  label: string;
-  value: string | number;
-  detail: string;
-  detailTitle?: string;
-  tone?: "neutral" | "positive" | "missing";
-  testId?: string;
-  detailMaxLength?: number;
-}) {
-  return (
-    <div className={`macro-toolkit-metric macro-toolkit-metric--${tone}`} data-testid={testId}>
-      <span>
-        <MacroStatusIcon tone={tone}>{icon ?? <InfoCircleOutlined />}</MacroStatusIcon>
-        {label}
-      </span>
-      <strong>{value}</strong>
-      <small title={detailTitle ?? detail}>{compactText(detail, detailMaxLength)}</small>
-    </div>
-  );
-}

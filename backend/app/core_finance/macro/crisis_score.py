@@ -8,6 +8,8 @@ from typing import Any
 import pandas as pd
 
 CRISIS_SCORE_RULE_VERSION = "rv_macro_crisis_score_cn_v1"
+DEFAULT_CRISIS_SCORE_HISTORY_LIMIT = 430
+CRISIS_SCORE_FFILL_LIMIT = 5
 CRISIS_SCORE_WEIGHTS: dict[str, float] = {
     "equity_vol": 0.25,
     "credit_spread": 0.25,
@@ -55,7 +57,12 @@ def compute_crisis_score_payload(
     score = float(latest["crisis_score"])
     regime, recommendation = classify_crisis_score(score)
     component_details = _component_details(latest, indicators, latest_index, resolved_weights)
-    warnings = _component_warnings(series_data, component_details)
+    warnings = _component_warnings(
+        series_data,
+        component_details,
+        indicators=indicators,
+        latest_index=latest_index,
+    )
     data_status = "complete" if len(component_details) == len(resolved_weights) and not warnings else "degraded"
     scores = score_frame["crisis_score"].dropna()
     percentile = float((scores <= score).mean() * 100) if len(scores) else None
@@ -94,7 +101,9 @@ def compute_crisis_indicators(
         aa_5y = _to_series(series_data.get("aa_5y"))
         gov_5y = _to_series(series_data.get("gov_5y"))
         if not aa_5y.empty and not gov_5y.empty:
-            aligned = pd.concat({"aa_5y": aa_5y, "gov_5y": gov_5y}, axis=1).sort_index().ffill()
+            aligned = pd.concat({"aa_5y": aa_5y, "gov_5y": gov_5y}, axis=1).sort_index().ffill(
+                limit=CRISIS_SCORE_FFILL_LIMIT
+            )
             credit_spread = aligned["aa_5y"] - aligned["gov_5y"]
     if not credit_spread.empty:
         indicators["credit_spread"] = credit_spread
@@ -110,7 +119,9 @@ def compute_crisis_indicators(
     dr007 = _to_series(series_data.get("dr007"))
     reverse_repo = _to_series(series_data.get("reverse_repo_7d"))
     if not dr007.empty and not reverse_repo.empty:
-        aligned = pd.concat({"dr007": dr007, "reverse_repo": reverse_repo}, axis=1).sort_index().ffill()
+        aligned = pd.concat({"dr007": dr007, "reverse_repo": reverse_repo}, axis=1).sort_index().ffill(
+            limit=CRISIS_SCORE_FFILL_LIMIT
+        )
         indicators["liquidity_stress"] = aligned["dr007"] - aligned["reverse_repo"]
 
     if indicators.empty:
@@ -140,17 +151,18 @@ def compute_crisis_score(
     if z_scores.empty:
         return pd.DataFrame(columns=["crisis_score"], index=z_scores.index)
 
-    score = pd.Series(0.0, index=z_scores.index)
-    total_weight = 0.0
+    weighted_score = pd.Series(0.0, index=z_scores.index)
+    available_weight = pd.Series(0.0, index=z_scores.index)
     for column in indicators.columns:
         z_column = f"{column}_z"
         if z_column not in z_scores.columns or column not in resolved_weights:
             continue
-        score += resolved_weights[column] * z_scores[z_column].fillna(0.0)
-        total_weight += resolved_weights[column]
+        weight = resolved_weights[column]
+        valid = z_scores[z_column].notna()
+        weighted_score += weight * z_scores[z_column].fillna(0.0)
+        available_weight += valid.astype("float64") * weight
 
-    if total_weight > 0:
-        score = score / total_weight
+    score = weighted_score.div(available_weight.where(available_weight > 0))
     return pd.DataFrame({"crisis_score": score}, index=z_scores.index).join(z_scores)
 
 
@@ -200,6 +212,16 @@ def _component_details(
             continue
         raw_value = indicators.get(indicator)
         latest_raw = raw_value.loc[latest_index] if raw_value is not None and latest_index in raw_value.index else None
+        latest_valid_index = None
+        if raw_value is not None:
+            valid_raw = raw_value.loc[:latest_index].dropna()
+            if not valid_raw.empty:
+                latest_valid_index = valid_raw.index[-1]
+        stale_days = (
+            int((raw_value.loc[:latest_index].index > latest_valid_index).sum())
+            if raw_value is not None and latest_valid_index is not None
+            else None
+        )
         details.append(
             {
                 "key": indicator,
@@ -207,6 +229,8 @@ def _component_details(
                 "raw_value": round(float(latest_raw), 4) if latest_raw is not None and pd.notna(latest_raw) else None,
                 "z_score": round(float(z_value), 4),
                 "weight": weight,
+                "latest_date": latest_valid_index.date().isoformat() if latest_valid_index is not None else None,
+                "stale_days": stale_days,
             }
         )
     return details
@@ -215,6 +239,9 @@ def _component_details(
 def _component_warnings(
     series_data: dict[str, Sequence[tuple[date, float]]],
     component_details: list[dict[str, Any]],
+    *,
+    indicators: pd.DataFrame | None = None,
+    latest_index: pd.Timestamp | None = None,
 ) -> list[str]:
     available_components = {str(item["key"]) for item in component_details}
     warnings: list[str] = []
@@ -226,6 +253,12 @@ def _component_warnings(
         "liquidity_stress": ("dr007", "reverse_repo_7d"),
     }
     for component, inputs in required_inputs.items():
+        if indicators is not None and latest_index is not None and component in indicators:
+            latest_valid = indicators[component].loc[:latest_index].dropna()
+            if not latest_valid.empty:
+                stale_days = int((indicators.loc[:latest_index].index > latest_valid.index[-1]).sum())
+                if stale_days > CRISIS_SCORE_FFILL_LIMIT:
+                    warnings.append(f"{component.upper()}_STALE")
         if component not in available_components:
             warnings.append(f"{component.upper()}_UNAVAILABLE")
         for input_key in inputs:
@@ -262,3 +295,29 @@ def _dedupe(values: Sequence[str]) -> list[str]:
         seen.add(value)
         out.append(value)
     return out
+
+
+def build_crisis_score_history_payload(
+    score_frame: pd.DataFrame,
+    *,
+    limit: int = DEFAULT_CRISIS_SCORE_HISTORY_LIMIT,
+) -> list[dict[str, Any]]:
+    if score_frame.empty or "crisis_score" not in score_frame.columns:
+        return []
+    scores = score_frame["crisis_score"].dropna()
+    if scores.empty:
+        return []
+    tail = scores.tail(max(1, int(limit)))
+    history: list[dict[str, Any]] = []
+    for index, value in tail.items():
+        prefix = scores.loc[:index]
+        percentile = float((prefix <= value).mean() * 100) if len(prefix) else None
+        point_date = index.date() if hasattr(index, "date") else index
+        history.append(
+            {
+                "date": point_date.isoformat() if hasattr(point_date, "isoformat") else str(point_date)[:10],
+                "crisis_score": round(float(value), 4),
+                "percentile": round(percentile, 2) if percentile is not None else None,
+            }
+        )
+    return history
