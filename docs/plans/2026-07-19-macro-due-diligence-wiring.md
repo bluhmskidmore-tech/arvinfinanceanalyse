@@ -43,7 +43,17 @@
 | `9b4854871` | 锁定 yield_curve_shape 诚实降级测试契约 |
 | `70b17badb` | mock decision_summary 对齐 observation 投票 |
 
-SDD 复审：Spec ✅ / Quality ✅（Minor：LEI 缺专项单测；mock 排除集与后端未共享常量）。
+SDD 复审：Spec ✅ / Quality ✅（Minor 已在下一波收口）。
+
+### 波次 W（2026-07-19）：LEI 单测 + 共享排除常量 + 价格腿可读
+
+| Task | Commit | 状态 |
+| --- | --- | --- |
+| W1 LEI 缺失月专项单测 | `b95f3a8d8` | ✅ |
+| W2 mock/后端共享 observation 排除 JSON | `f4459d7f9` | ✅ |
+| W3 CTA/DCC/RP 价格腿可读诊断+种子测试 | `1e811b4c4` | ✅ |
+
+SDD 复审：Spec ✅ / Quality ✅（Important 残留：mock `missing_count` 语义与后端不完全一致；配置 import-time 加载需随包分发）。
 
 ### Task W3：CTA / DCC / Risk Parity 多资产价格腿可读性（2026-07-19）
 
