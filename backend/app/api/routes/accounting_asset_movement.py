@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from typing import Annotated
 
-import duckdb
 from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.accounting_asset_movement_service import (
     AccountingAssetMovementReadModelNotFoundError,
+    AccountingAssetMovementUnavailableError,
     accounting_asset_movement_dates_envelope,
     accounting_asset_movement_envelope,
     refresh_accounting_asset_movement,
@@ -42,11 +42,8 @@ def dates(
             settings.duckdb_path,
             currency_basis=currency_basis,
         )
-    except duckdb.Error as exc:
-        raise HTTPException(
-            status_code=503,
-            detail="Balance movement data is temporarily unavailable.",
-        ) from exc
+    except AccountingAssetMovementUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("")
@@ -65,11 +62,8 @@ def detail(
         )
     except AccountingAssetMovementReadModelNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except duckdb.Error as exc:
-        raise HTTPException(
-            status_code=503,
-            detail="Balance movement data is temporarily unavailable.",
-        ) from exc
+    except AccountingAssetMovementUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.post("/refresh")

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import duckdb
-
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -218,7 +216,9 @@ def test_balance_movement_read_routes_surface_duckdb_failures_as_unavailable(
     _seed_balance_movement_read_scope(tmp_path, monkeypatch)
 
     def fail_read(*_args, **_kwargs):
-        raise duckdb.IOException("simulated storage failure")
+        raise route_mod.AccountingAssetMovementUnavailableError(
+            "Balance movement data is temporarily unavailable."
+        )
 
     monkeypatch.setattr(route_mod, "accounting_asset_movement_dates_envelope", fail_read)
     monkeypatch.setattr(route_mod, "accounting_asset_movement_envelope", fail_read)

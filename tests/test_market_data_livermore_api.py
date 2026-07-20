@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 import duckdb
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
@@ -4228,6 +4229,98 @@ def test_theme_overlay_fingerprint_breaks_all_strategy_outer_cache_keys() -> Non
         first = builder(**common, **extra, theme_overlay_fingerprint="overlay-a")
         second = builder(**common, **extra, theme_overlay_fingerprint="overlay-b")
         assert first != second
+
+
+def test_theme_overlay_private_hooks_drive_all_route_read_paths(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from backend.app.api.routes import market_data_livermore as route
+
+    sentinel_reader = object()
+    reader_settings: list[object] = []
+    fingerprint_readers: list[object] = []
+    service_readers: dict[str, object] = {}
+    cache_keys: list[str] = []
+
+    def reader_hook(settings: object) -> object:
+        reader_settings.append(settings)
+        return sentinel_reader
+
+    def fingerprint_hook(reader: object) -> str:
+        fingerprint_readers.append(reader)
+        return "hook-fingerprint"
+
+    def envelope(kind: str) -> dict[str, object]:
+        return {"result_meta": {"result_kind": kind}, "result": {}}
+
+    def strategy_envelope(**kwargs: object) -> dict[str, object]:
+        service_readers["strategy"] = kwargs["theme_overlay_reader"]
+        return envelope("market_data.livermore")
+
+    def workbench_envelope(**kwargs: object) -> dict[str, object]:
+        service_readers["workbench"] = kwargs["theme_overlay_reader"]
+        return envelope("market_data.stock_analysis.workbench")
+
+    def signal_envelope(**kwargs: object) -> dict[str, object]:
+        service_readers["signal_confluence"] = kwargs["theme_overlay_reader"]
+        return envelope("market_data.livermore.signal_confluence")
+
+    def get_or_build(key: str, builder):
+        cache_keys.append(key)
+        return builder()
+
+    def get_or_build_with_status(key: str, builder, *, ttl_seconds: float):
+        cache_keys.append(key)
+        return builder(), "produce"
+
+    monkeypatch.setattr(route, "_theme_overlay_reader_from_settings", reader_hook)
+    monkeypatch.setattr(route, "_theme_overlay_fingerprint", fingerprint_hook)
+    monkeypatch.setattr(
+        route,
+        "get_settings",
+        lambda: SimpleNamespace(
+            duckdb_path=tmp_path / "moss.duckdb",
+            choice_stock_catalog_file=tmp_path / "choice-stock-catalog.json",
+        ),
+    )
+    monkeypatch.setattr(route, "_ensure_livermore_read_allowed", lambda **_kwargs: None)
+    monkeypatch.setattr(route, "livermore_data_version", lambda _path: "data-v1")
+    monkeypatch.setattr(route, "livermore_business_inputs_version", lambda: "inputs-v1")
+    monkeypatch.setattr(route, "livermore_strategy_envelope_from_catalog", strategy_envelope)
+    monkeypatch.setattr(route, "stock_analysis_workbench_envelope", workbench_envelope)
+    monkeypatch.setattr(route, "livermore_signal_confluence_envelope", signal_envelope)
+    monkeypatch.setattr(route.market_home_response_cache, "get_or_build", get_or_build)
+    monkeypatch.setattr(
+        route.market_home_response_cache,
+        "get_or_build_with_status",
+        get_or_build_with_status,
+    )
+
+    app = FastAPI()
+    app.include_router(route.router)
+    app.dependency_overrides[route.get_auth_context] = lambda: route.AuthContext(
+        user_id="route-test",
+        role="viewer",
+        identity_source="test",
+    )
+    client = TestClient(app)
+    responses = [
+        client.get("/ui/market-data/livermore"),
+        client.get("/ui/market-data/stock-analysis/workbench"),
+        client.get("/ui/market-data/livermore/signal-confluence"),
+    ]
+
+    assert [response.status_code for response in responses] == [200, 200, 200]
+    assert len(reader_settings) == 3
+    assert fingerprint_readers == [sentinel_reader] * 3
+    assert service_readers == {
+        "strategy": sentinel_reader,
+        "workbench": sentinel_reader,
+        "signal_confluence": sentinel_reader,
+    }
+    assert len(cache_keys) == 3
+    assert all("::theme_overlay=hook-fingerprint" in key for key in cache_keys)
 
 
 def test_theme_overlay_reader_construction_does_not_create_missing_jsonl_paths(

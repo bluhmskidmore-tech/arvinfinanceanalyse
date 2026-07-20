@@ -123,43 +123,52 @@ class AccountingAssetMovementReadModelNotFoundError(LookupError):
     pass
 
 
+class AccountingAssetMovementUnavailableError(RuntimeError):
+    """Raised when DuckDB storage is temporarily unreadable for balance movement."""
+
+
 def accounting_asset_movement_dates_envelope(
     duckdb_path: str,
     *,
     currency_basis: str = "CNX",
 ) -> dict[str, object]:
-    repo = AccountingAssetMovementRepository(duckdb_path)
-    report_dates = repo.list_report_dates(currency_basis=currency_basis)
-    latest_read_model_report_date = report_dates[0] if report_dates else None
-    latest_upstream_control_report_date = repo.latest_control_report_date(
-        currency_basis=currency_basis
-    )
-    payload = AccountingAssetMovementDatesPayload(
-        report_dates=report_dates,
-        currency_basis=currency_basis,
-        latest_read_model_report_date=latest_read_model_report_date,
-        latest_upstream_control_report_date=latest_upstream_control_report_date,
-        freshness_status=_movement_dates_freshness_status(
-            latest_read_model_report_date,
-            latest_upstream_control_report_date,
-        ),
-    )
-    meta = build_formal_result_meta(
-        trace_id="tr_balance_movement_dates",
-        result_kind="balance-analysis.movement.dates",
-        source_version=repo.latest_source_version(currency_basis=currency_basis),
-        rule_version=RULE_VERSION,
-        cache_version=CACHE_VERSION,
-        filters_applied={"currency_basis": currency_basis},
-        tables_used=[
-            "fact_accounting_asset_movement_monthly",
-            "product_category_pnl_canonical_fact",
-        ],
-    )
-    return build_formal_result_envelope(
-        result_meta=meta,
-        result_payload=payload.model_dump(mode="json"),
-    )
+    try:
+        repo = AccountingAssetMovementRepository(duckdb_path)
+        report_dates = repo.list_report_dates(currency_basis=currency_basis)
+        latest_read_model_report_date = report_dates[0] if report_dates else None
+        latest_upstream_control_report_date = repo.latest_control_report_date(
+            currency_basis=currency_basis
+        )
+        payload = AccountingAssetMovementDatesPayload(
+            report_dates=report_dates,
+            currency_basis=currency_basis,
+            latest_read_model_report_date=latest_read_model_report_date,
+            latest_upstream_control_report_date=latest_upstream_control_report_date,
+            freshness_status=_movement_dates_freshness_status(
+                latest_read_model_report_date,
+                latest_upstream_control_report_date,
+            ),
+        )
+        meta = build_formal_result_meta(
+            trace_id="tr_balance_movement_dates",
+            result_kind="balance-analysis.movement.dates",
+            source_version=repo.latest_source_version(currency_basis=currency_basis),
+            rule_version=RULE_VERSION,
+            cache_version=CACHE_VERSION,
+            filters_applied={"currency_basis": currency_basis},
+            tables_used=[
+                "fact_accounting_asset_movement_monthly",
+                "product_category_pnl_canonical_fact",
+            ],
+        )
+        return build_formal_result_envelope(
+            result_meta=meta,
+            result_payload=payload.model_dump(mode="json"),
+        )
+    except duckdb.Error as exc:
+        raise AccountingAssetMovementUnavailableError(
+            "Balance movement data is temporarily unavailable."
+        ) from exc
 
 
 def _movement_dates_freshness_status(
@@ -178,6 +187,24 @@ def _movement_dates_freshness_status(
 
 
 def accounting_asset_movement_envelope(
+    duckdb_path: str,
+    *,
+    report_date: str,
+    currency_basis: str = "CNX",
+) -> dict[str, object]:
+    try:
+        return _accounting_asset_movement_envelope_unlocked(
+            duckdb_path,
+            report_date=report_date,
+            currency_basis=currency_basis,
+        )
+    except duckdb.Error as exc:
+        raise AccountingAssetMovementUnavailableError(
+            "Balance movement data is temporarily unavailable."
+        ) from exc
+
+
+def _accounting_asset_movement_envelope_unlocked(
     duckdb_path: str,
     *,
     report_date: str,

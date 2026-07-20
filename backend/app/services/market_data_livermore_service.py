@@ -95,6 +95,7 @@ from backend.app.repositories.choice_stock_adapter import (
 from backend.app.repositories.livermore_gate_supplement_repo import fetch_market_gate_supplement
 from backend.app.repositories.stock_analysis_theme_overlay_reader import (
     StockAnalysisThemeOverlayReader,
+    ThemeOverlayManifestAccessor,
     ThemeOverlayReadResult,
 )
 from backend.app.services.formal_result_runtime import (
@@ -120,6 +121,31 @@ def load_choice_stock_materialization_coverage(**kwargs: Any) -> ChoiceStockMate
     )
 
     return _load_coverage(**kwargs)
+
+
+def theme_overlay_reader_from_settings(settings: object) -> StockAnalysisThemeOverlayReader | None:
+    """Build a theme-overlay reader from settings without leaking repo types to routes."""
+    governance_path = getattr(settings, "governance_path", None)
+    archive_root = getattr(settings, "local_archive_path", None)
+    if governance_path is None or archive_root is None:
+        return None
+    try:
+        governance_repo = ThemeOverlayManifestAccessor(
+            base_dir=governance_path,
+            sql_dsn=str(getattr(settings, "governance_sql_dsn", "") or ""),
+            backend_mode=str(getattr(settings, "governance_backend", "jsonl") or "jsonl"),
+        )
+    except Exception:
+        return None
+    return StockAnalysisThemeOverlayReader(
+        archive_root=archive_root,
+        governance_repo=governance_repo,
+    )
+
+
+def theme_overlay_fingerprint(reader: StockAnalysisThemeOverlayReader | None) -> str:
+    return reader.fingerprint() if reader is not None else "theme-overlay-reader:not-configured"
+
 
 RULE_VERSION = "rv_livermore_strategy_v1"
 CACHE_VERSION = "cv_livermore_strategy_v1"
@@ -248,7 +274,7 @@ def load_livermore_strategy_payload(
     theme_overlay_reader: StockAnalysisThemeOverlayReader | None = None,
 ) -> tuple[dict[str, object], dict[str, object]]:
     resolved_stock_readiness = stock_readiness or choice_stock_readiness_missing("")
-    theme_overlay_fingerprint = (
+    overlay_fingerprint = (
         theme_overlay_reader.fingerprint(backfill_mode=backfill_mode)
         if theme_overlay_reader is not None
         else "theme-overlay-reader:not-configured"
@@ -259,7 +285,7 @@ def load_livermore_strategy_payload(
         stock_readiness=resolved_stock_readiness,
         backfill_mode=backfill_mode,
         stock_candidate_policy=stock_candidate_policy,
-        theme_overlay_fingerprint=theme_overlay_fingerprint,
+        theme_overlay_fingerprint=overlay_fingerprint,
     )
     if cache_key is not None:
         cache = get_runtime_cache(
@@ -273,7 +299,7 @@ def load_livermore_strategy_payload(
                 stock_readiness=resolved_stock_readiness,
                 backfill_mode=backfill_mode,
                 stock_candidate_policy=stock_candidate_policy,
-                theme_overlay_fingerprint=theme_overlay_fingerprint,
+                theme_overlay_fingerprint=overlay_fingerprint,
             )
             if default_cache_key is not None:
                 default_hit, default_cached_value = cache.get(default_cache_key)

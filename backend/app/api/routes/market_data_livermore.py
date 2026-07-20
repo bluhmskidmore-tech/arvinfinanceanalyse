@@ -10,10 +10,6 @@ from typing import Annotated
 from backend.app.api.perf_logging import timed_api_call
 from backend.app.api.response_cache import market_home_response_cache
 from backend.app.governance.settings import get_settings
-from backend.app.repositories.stock_analysis_theme_overlay_reader import (
-    StockAnalysisThemeOverlayReader,
-    ThemeOverlayManifestAccessor,
-)
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.livermore_candidate_history_service import (
     livermore_candidate_history_cycle_proxy_backtest_envelope,
@@ -33,6 +29,8 @@ from backend.app.services.market_data_livermore_service import (
     livermore_business_inputs_version,
     livermore_data_version,
     livermore_strategy_envelope_from_catalog,
+    theme_overlay_fingerprint,
+    theme_overlay_reader_from_settings,
 )
 from backend.app.services.stock_analysis_workbench_service import (
     DEFAULT_INCLUDE_KEYS,
@@ -41,6 +39,10 @@ from backend.app.services.stock_analysis_workbench_service import (
 from backend.app.services.stock_kline_analysis_service import stock_kline_analysis_envelope
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from pydantic import BaseModel
+
+# Keep existing module hooks while the implementations remain service-owned.
+_theme_overlay_reader_from_settings = theme_overlay_reader_from_settings
+_theme_overlay_fingerprint = theme_overlay_fingerprint
 
 router = APIRouter(prefix="/ui/market-data", tags=["market-data"])
 _STOCK_CODE_LIVERMORE_PATTERN = re.compile(r"^[0-9A-Za-z.\-]{1,16}$")
@@ -186,29 +188,6 @@ def _livermore_signal_confluence_cache_key(
     )
 
 
-def _theme_overlay_reader_from_settings(settings: object) -> StockAnalysisThemeOverlayReader | None:
-    governance_path = getattr(settings, "governance_path", None)
-    archive_root = getattr(settings, "local_archive_path", None)
-    if governance_path is None or archive_root is None:
-        return None
-    try:
-        governance_repo = ThemeOverlayManifestAccessor(
-            base_dir=governance_path,
-            sql_dsn=str(getattr(settings, "governance_sql_dsn", "") or ""),
-            backend_mode=str(getattr(settings, "governance_backend", "jsonl") or "jsonl"),
-        )
-    except Exception:
-        return None
-    return StockAnalysisThemeOverlayReader(
-        archive_root=archive_root,
-        governance_repo=governance_repo,
-    )
-
-
-def _theme_overlay_fingerprint(reader: StockAnalysisThemeOverlayReader | None) -> str:
-    return reader.fingerprint() if reader is not None else "theme-overlay-reader:not-configured"
-
-
 def _choice_stock_catalog_fingerprint(catalog_file: object) -> str:
     try:
         stat = Path(str(catalog_file)).stat()
@@ -229,7 +208,7 @@ def _cached_stock_analysis_workbench(
     catalog_file = settings.choice_stock_catalog_file  # type: ignore[attr-defined]
     overlay_started = time.perf_counter()
     theme_overlay_reader = _theme_overlay_reader_from_settings(settings)
-    theme_overlay_fingerprint = _theme_overlay_fingerprint(theme_overlay_reader)
+    overlay_fingerprint = _theme_overlay_fingerprint(theme_overlay_reader)
     overlay_ms = (time.perf_counter() - overlay_started) * 1000
     compute_ms = 0.0
 
@@ -261,7 +240,7 @@ def _cached_stock_analysis_workbench(
             include=include,
             sector_window_days=sector_window_days,
             top_k=top_k,
-            theme_overlay_fingerprint=theme_overlay_fingerprint,
+            theme_overlay_fingerprint=overlay_fingerprint,
         ),
         build,
         ttl_seconds=STOCK_ANALYSIS_WORKBENCH_CACHE_TTL_SECONDS,
@@ -377,13 +356,13 @@ def livermore_strategy(
     duckdb_path = str(settings.duckdb_path)
     catalog_file = settings.choice_stock_catalog_file
     theme_overlay_reader = _theme_overlay_reader_from_settings(settings)
-    theme_overlay_fingerprint = _theme_overlay_fingerprint(theme_overlay_reader)
+    overlay_fingerprint = _theme_overlay_fingerprint(theme_overlay_reader)
     return market_home_response_cache.get_or_build(
         _livermore_strategy_cache_key(
             duckdb_path=duckdb_path,
             catalog_file=catalog_file,
             as_of_date=as_of_date,
-            theme_overlay_fingerprint=theme_overlay_fingerprint,
+            theme_overlay_fingerprint=overlay_fingerprint,
         ),
         lambda: _with_livermore_workbench_summary(
             livermore_strategy_envelope_from_catalog(
@@ -447,13 +426,13 @@ def livermore_signal_confluence(
     duckdb_path = str(settings.duckdb_path)
     catalog_file = settings.choice_stock_catalog_file
     theme_overlay_reader = _theme_overlay_reader_from_settings(settings)
-    theme_overlay_fingerprint = _theme_overlay_fingerprint(theme_overlay_reader)
+    overlay_fingerprint = _theme_overlay_fingerprint(theme_overlay_reader)
     return market_home_response_cache.get_or_build(
         _livermore_signal_confluence_cache_key(
             duckdb_path=duckdb_path,
             catalog_file=catalog_file,
             as_of_date=as_of_date,
-            theme_overlay_fingerprint=theme_overlay_fingerprint,
+            theme_overlay_fingerprint=overlay_fingerprint,
         ),
         lambda: _with_livermore_workbench_summary(
             livermore_signal_confluence_envelope(

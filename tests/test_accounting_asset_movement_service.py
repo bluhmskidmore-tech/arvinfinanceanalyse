@@ -80,6 +80,89 @@ def test_repository_does_not_disguise_operational_failure_as_empty(monkeypatch):
         repo.list_report_dates()
 
 
+@pytest.mark.parametrize("surface", ["dates", "detail"])
+def test_read_envelopes_translate_duckdb_errors_to_unavailable(
+    monkeypatch,
+    surface: str,
+) -> None:
+    storage_error = duckdb.IOException("simulated storage failure")
+
+    def fail_repository(_duckdb_path: str):
+        raise storage_error
+
+    monkeypatch.setattr(
+        movement_service,
+        "AccountingAssetMovementRepository",
+        fail_repository,
+    )
+
+    with pytest.raises(
+        movement_service.AccountingAssetMovementUnavailableError,
+        match="Balance movement data is temporarily unavailable.",
+    ) as caught:
+        if surface == "dates":
+            movement_service.accounting_asset_movement_dates_envelope("movement.duckdb")
+        else:
+            movement_service.accounting_asset_movement_envelope(
+                "movement.duckdb",
+                report_date="2026-02-28",
+            )
+
+    assert caught.value.__cause__ is storage_error
+
+
+def test_detail_envelope_preserves_read_model_not_found(monkeypatch) -> None:
+    class EmptyRepository:
+        def __init__(self, _duckdb_path: str) -> None:
+            pass
+
+        def fetch_rows(self, **_kwargs: object) -> list[dict[str, object]]:
+            return []
+
+    monkeypatch.setattr(
+        movement_service,
+        "AccountingAssetMovementRepository",
+        EmptyRepository,
+    )
+
+    with pytest.raises(
+        movement_service.AccountingAssetMovementReadModelNotFoundError,
+        match="No balance movement rows",
+    ):
+        movement_service.accounting_asset_movement_envelope(
+            "movement.duckdb",
+            report_date="2026-02-28",
+        )
+
+
+@pytest.mark.parametrize("surface", ["dates", "detail"])
+def test_read_envelopes_do_not_translate_programming_errors(
+    monkeypatch,
+    surface: str,
+) -> None:
+    programming_error = TypeError("simulated programming error")
+
+    def fail_repository(_duckdb_path: str):
+        raise programming_error
+
+    monkeypatch.setattr(
+        movement_service,
+        "AccountingAssetMovementRepository",
+        fail_repository,
+    )
+
+    with pytest.raises(TypeError, match="simulated programming error") as caught:
+        if surface == "dates":
+            movement_service.accounting_asset_movement_dates_envelope("movement.duckdb")
+        else:
+            movement_service.accounting_asset_movement_envelope(
+                "movement.duckdb",
+                report_date="2026-02-28",
+            )
+
+    assert caught.value is programming_error
+
+
 def test_repository_keeps_missing_table_as_empty_state(tmp_path):
     duckdb_path = tmp_path / "empty.duckdb"
     duckdb.connect(str(duckdb_path), read_only=False).close()
