@@ -67,6 +67,12 @@ See: .planning/PROJECT.md (updated 2026-07-15 for v1.1)
 
 - Decide whether the business adopts the Phase 03/04 side-branch capability; until then keep INC-01/INC-02/REC-01/PAR-01/PAR-02 unchecked.
 - Retire `codex/V1-merge-dateclosure` branch + worktree at the next inventory (fully merged as `5a3878beb`; discard its uncommitted redundant `macro_toolkit.py` change).
+- Retire `codex/gs-bal-workbook-a-recapture` (merged as `5f7396fa0`) and `codex/fix-lazy-dispatch-proxy-fn` (merged as the lazy-proxy delegation merge on 2026-07-20) at the same inventory.
+
+### Landed 2026-07-20 (subagent fixes, reviewed and merged)
+
+- **GS-BAL-WORKBOOK-A recapture** (`e7f163896`, merged `5f7396fa0`): 58 leaf values updated for the balance H-2 `currency_basis` remediation (USD rows now converted at 7.2 CNY mid; e.g. `bond_assets_excluding_issue` 0.01000000 -> 0.07200000); owner recapture record added to approval.md/assertions.md; full golden suite 33/33 green.
+- **Lazy dispatch proxy attribute delegation** (`67c7ca151`): 9 actor proxies across pnl/balance/bond/accounting/macro/product-category/source-preview now delegate `__getattr__` to the lazily imported actor, restoring `.fn` access and monkeypatch compatibility; fixes the two pre-existing refresh-503 contract failures; 40 tests green pre-merge, 12 re-verified post-merge on codex/V1.
 
 ### Blockers/Concerns
 
