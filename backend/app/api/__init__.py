@@ -41,6 +41,7 @@ router = APIRouter()
 
 RouteGroup = Literal[
     "formal_mainline",
+    "analytical_compatibility",
     "preview",
     "macro_market",
     "agent_experimental",
@@ -71,6 +72,12 @@ ROUTE_GROUP_METADATA: dict[RouteGroup, RouteGroupMetadata] = {
         claim_boundary="Governed business workflow surfaces that may carry formal page-level claims only after route-specific evidence and owner approval.",
         risk_boundary="Do not infer certification from registration; metric definitions, dates, units, and golden approvals remain page-scoped gates.",
         owner="Business metric governance owner",
+    ),
+    "analytical_compatibility": RouteGroupMetadata(
+        label="Analytical compatibility",
+        claim_boundary="Compatibility analysis surfaces that preserve mixed-source and analytical-only status without claiming formal business truth.",
+        risk_boundary="Live availability does not promote these routes to formal balance or PnL truth; source and compatibility limits remain explicit.",
+        owner="Business analytics compatibility owner",
     ),
     "preview": RouteGroupMetadata(
         label="Preview",
@@ -113,7 +120,7 @@ ROUTE_REGISTRY: tuple[RouteRegistryEntry, ...] = (
     RouteRegistryEntry("cube_query", cube_query_router, "support", ("cube",), "Query surface owner"),
     RouteRegistryEntry("dashboard", dashboard_router, "support", ("dashboard",), "Executive cockpit owner"),
     RouteRegistryEntry("health", health_router, "support", ("health",), "Platform health owner"),
-    RouteRegistryEntry("liability_analytics", liability_analytics_router, "formal_mainline", ("liability-analytics",), "Liability analytics owner"),
+    RouteRegistryEntry("liability_analytics", liability_analytics_router, "analytical_compatibility", ("liability-analytics",), "Liability analytics owner"),
     RouteRegistryEntry("macro_vendor", macro_vendor_router, "macro_market", ("macro-preview",), "Macro observation owner"),
     RouteRegistryEntry("macro_bond_linkage", macro_bond_linkage_router, "macro_market", ("macro-analysis",), "Market analytics owner"),
     RouteRegistryEntry("macro_etf_strategy", macro_etf_strategy_router, "macro_market", ("market-data",), "Market data owner"),

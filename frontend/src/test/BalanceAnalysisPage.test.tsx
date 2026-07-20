@@ -1748,6 +1748,53 @@ describe("BalanceAnalysisPage", () => {
     });
   });
 
+  it("fails closed when an explicitly requested report date is unavailable", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const getDatesSpy = vi.fn(async () => ({
+      result_meta: buildMeta("balance-analysis.dates", "tr_balance_dates_unavailable"),
+      result: {
+        report_dates: ["2025-12-31"],
+      },
+    }));
+    const getOverviewSpy = vi.fn(baseClient.getBalanceAnalysisOverview);
+    const getWorkbookSpy = vi.fn(baseClient.getBalanceAnalysisWorkbook);
+    const getDecisionItemsSpy = vi.fn(baseClient.getBalanceAnalysisDecisionItems);
+
+    const { router } = renderBalanceAnalysisWithClient(
+      {
+        ...baseClient,
+        getBalanceAnalysisDates: getDatesSpy,
+        getBalanceAnalysisOverview: getOverviewSpy,
+        getBalanceAnalysisWorkbook: getWorkbookSpy,
+        getBalanceAnalysisDecisionItems: getDecisionItemsSpy,
+      },
+      ["/balance-analysis?report_date=2025-11-30"],
+    );
+
+    const unavailableState = await screen.findByTestId("balance-analysis-report-date-empty");
+    expect(unavailableState).toHaveTextContent("请求的报告日不可用");
+    expect(unavailableState).toHaveTextContent("2025-11-30");
+    expect(unavailableState).toHaveTextContent("未回退到 2025-12-31");
+    expect(getOverviewSpy).not.toHaveBeenCalled();
+    expect(getWorkbookSpy).not.toHaveBeenCalled();
+    expect(getDecisionItemsSpy).not.toHaveBeenCalled();
+
+    const reportDateSelect = screen.getByRole("combobox", { name: "balance-report-date" });
+    expect(reportDateSelect).toHaveValue("2025-11-30");
+
+    await user.selectOptions(reportDateSelect, "2025-12-31");
+
+    await waitFor(() => {
+      expect(getOverviewSpy).toHaveBeenCalledWith({
+        reportDate: "2025-12-31",
+        positionScope: "all",
+        currencyBasis: "CNY",
+      });
+    });
+    expect(router.state.location.search).toContain("report_date=2025-12-31");
+  });
+
   it("reacts to query-string scope and currency updates while mounted", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const getDatesSpy = vi.fn(async () => ({

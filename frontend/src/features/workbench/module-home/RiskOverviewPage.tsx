@@ -5,6 +5,10 @@ import { Link } from "react-router-dom";
 import { useApiClient } from "../../../api/client";
 import { apiQueryKeys } from "../../../api/queryKeys";
 import {
+  formatYieldCurveDateSummary,
+  summarizeYieldCurveDates,
+} from "../../../lib/yieldCurveDateSummary";
+import {
   buildModuleHomeView,
   type ModuleHomeTone,
 } from "./moduleHomeModel";
@@ -681,6 +685,13 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
     [yieldCurveQuery.data],
   );
   const cashTrack = useMemo(() => buildRiskV6CashflowTrack(tensor), [tensor]);
+  const curveDateLabel = useMemo(
+    () =>
+      formatYieldCurveDateSummary(
+        summarizeYieldCurveDates(yieldCurveQuery.data?.result.curves ?? []),
+      ),
+    [yieldCurveQuery.data?.result.curves],
+  );
   const detailTables = useMemo(() => buildRiskV6DetailTables(tensor, cashflow), [tensor, cashflow]);
   const lineageRows = useMemo(
     () => buildRiskV6LineageRows(riskTensorQuery.data?.result_meta),
@@ -1054,7 +1065,8 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
                 <div className={styles.roV6PanelHead}>
                   <b>收益率曲线水平</b>
                   <span>
-                    {curveChart?.resolvedDate ?? reportDate} · %{curveChart?.ruleVersion ? ` · ${curveChart.ruleVersion}` : ""}
+                    {curveChart?.dateLabel ?? curveDateLabel}
+                    {curveChart?.ruleVersion ? ` · ${curveChart.ruleVersion}` : ""}
                   </span>
                 </div>
                 {curveChart ? (

@@ -46,7 +46,7 @@ function qdbMeta(resultKind) {
 test.describe("monthly operating analysis audit browser smoke", () => {
   test("renders the empty audit state as an operable real interface page", async ({ page }) => {
     const serverCheck = await probeServer(REAL_STATE_BASE_URL);
-    test.skip(!serverCheck.ok, serverCheck.reason);
+    expect(serverCheck.ok, serverCheck.reason).toBe(true);
 
     const requests = {
       dates: 0,

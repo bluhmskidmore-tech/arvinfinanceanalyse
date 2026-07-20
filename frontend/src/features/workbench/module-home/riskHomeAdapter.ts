@@ -8,6 +8,11 @@ import type {
   RiskTensorScalar,
   YieldCurveTermStructurePayload,
 } from "../../../api/contracts";
+import {
+  formatYieldCurveDateSummary,
+  summarizeYieldCurveDates,
+} from "../../../lib/yieldCurveDateSummary";
+
 import { bondNumericDisplay, bondNumericRawOrNull } from "../../bond-analytics/adapters/bondAnalyticsAdapter";
 import type {
   ModuleHomeDetailChart,
@@ -527,6 +532,7 @@ export type RiskV6CurveSeries = {
 };
 
 export type RiskV6YieldCurveChart = {
+  dateLabel: string;
   series: RiskV6CurveSeries[];
   yTicks: Array<{ text: string; y: number }>;
   xLabels: Array<{ tenor: string; x: number }>;
@@ -566,6 +572,7 @@ export function buildRiskV6YieldCurveChart(
   if (ordered.length === 0) {
     return null;
   }
+  const dateSummary = summarizeYieldCurveDates(payload.curves);
 
   const tenorSet = new Set<string>();
   for (const entry of ordered) {
@@ -673,7 +680,8 @@ export function buildRiskV6YieldCurveChart(
     series,
     yTicks,
     xLabels: tenors.map((tenor) => ({ tenor, x: round1(tenorX.get(tenor) ?? 0) })),
-    resolvedDate: ordered.map((entry) => byType.get(entry.type)?.trade_date_resolved).find((date) => Boolean(date)) ?? payload.report_date ?? null,
+    resolvedDate: dateSummary.sharedResolvedDate,
+    dateLabel: formatYieldCurveDateSummary(dateSummary),
     ruleVersion: ordered.map((entry) => byType.get(entry.type)?.rule_version).find((version) => Boolean(version)) ?? null,
   };
 }

@@ -1186,6 +1186,7 @@ export default function BalanceAnalysisPage() {
   const [decisionStatusComment, setDecisionStatusComment] = useState("");
   const {
     selectedReportDate,
+    unavailableRequestedReportDate,
     positionScope,
     currencyBasis,
     setSelectedReportDate,
@@ -1432,13 +1433,21 @@ export default function BalanceAnalysisPage() {
     ["danger", "warning"].includes(badge.tone) &&
     (badge.key !== "date" || pageReadModel.dateStatus === "mismatch"),
   );
-  const reportDateUnavailable = !selectedReportDate && !datesQuery.isLoading;
-  const reportDateUnavailableTitle = datesQuery.isError
-    ? "报告日暂未接入"
-    : "当前没有可用报告日";
-  const reportDateUnavailableDescription = datesQuery.isError
-    ? "页面暂时拿不到报告日，先收起空指标和底稿区；重新读取后会展示缺口、规模和治理动作。"
-    : "等报告日返回后，会自动展示缺口、规模和治理动作；当前先保留筛选和读取入口。";
+  const availableReportDates = datesQuery.data?.result.report_dates ?? [];
+  const latestAvailableReportDate = availableReportDates[0] ?? "";
+  const hasUnavailableRequestedReportDate = Boolean(unavailableRequestedReportDate);
+  const reportDateUnavailable =
+    hasUnavailableRequestedReportDate || (!selectedReportDate && !datesQuery.isLoading);
+  const reportDateUnavailableTitle = hasUnavailableRequestedReportDate
+    ? "请求的报告日不可用"
+    : datesQuery.isError
+      ? "报告日暂未接入"
+      : "当前没有可用报告日";
+  const reportDateUnavailableDescription = hasUnavailableRequestedReportDate
+    ? `请求 ${unavailableRequestedReportDate} 不在当前正式报告日列表中，未回退到 ${latestAvailableReportDate}。请重新选择报告日。`
+    : datesQuery.isError
+      ? "页面暂时拿不到报告日，先收起空指标和底稿区；重新读取后会展示缺口、规模和治理动作。"
+      : "等报告日返回后，会自动展示缺口、规模和治理动作；当前先保留筛选和读取入口。";
   const reconciliationLinkModel = buildBalanceReconciliationLinkModel({
     reportDate: selectedReportDate,
     workbook,
@@ -1591,7 +1600,7 @@ export default function BalanceAnalysisPage() {
       className={`${dhStyles.dhLightPage} balance-analysis-page`}
     >
       <BalanceAnalysisToolbar
-        reportDates={datesQuery.data?.result.report_dates ?? []}
+        reportDates={availableReportDates}
         selectedReportDate={selectedReportDate}
         positionScope={positionScope}
         currencyBasis={currencyBasis}
