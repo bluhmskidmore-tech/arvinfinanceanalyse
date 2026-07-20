@@ -614,9 +614,13 @@ def _ratio_pct_numeric(ratio: float, *, sign_aware: bool = True) -> dict[str, An
 
 
 def _promote_flat(payload: dict[str, Any], NumericClass: type) -> dict[str, Any]:
-    field_map: dict[str, tuple[NumericUnit, bool]] = getattr(NumericClass, "_NUMERIC_FIELDS", {}) or {}
+    # _NUMERIC_FIELDS entry: (unit, sign_aware) or (unit, sign_aware, raw_scale).
+    # Legacy 2-tuples keep this service's percent-point semantics for pct fields
+    # (_numeric_dict divides by 100); a 3-tuple "ratio" declaration routes through
+    # _ratio_pct_numeric so decimal-ratio producers are never re-divided.
+    field_map: dict[str, tuple[Any, ...]] = getattr(NumericClass, "_NUMERIC_FIELDS", {}) or {}
     out = dict(payload)
-    for name, (unit, sign_aware) in field_map.items():
+    for name, spec in field_map.items():
         if name not in out:
             continue
         v = out[name]
@@ -625,7 +629,12 @@ def _promote_flat(payload: dict[str, Any], NumericClass: type) -> dict[str, Any]
         if isinstance(v, dict) and _NUMERIC_JSON_KEYS <= set(v.keys()):
             continue
         if isinstance(v, (int, float)):
-            out[name] = _numeric_dict(float(v), unit, sign_aware)
+            unit, sign_aware = spec[0], spec[1]
+            raw_scale = spec[2] if len(spec) == 3 else "auto"
+            if unit == "pct" and raw_scale == "ratio":
+                out[name] = _ratio_pct_numeric(float(v), sign_aware=sign_aware)
+            else:
+                out[name] = _numeric_dict(float(v), unit, sign_aware)
     return out
 
 

@@ -109,6 +109,7 @@ class VolumeRateAttributionPayload(BaseModel):
     total_volume_effect: Numeric | None = None
     total_rate_effect: Numeric | None = None
     total_interaction_effect: Numeric | None = None
+    total_recon_error: Numeric | None = None
     items: list[VolumeRateAttributionItem]
     has_previous_data: bool
 
@@ -119,6 +120,7 @@ class VolumeRateAttributionPayload(BaseModel):
         "total_volume_effect": ("yuan", True),
         "total_rate_effect": ("yuan", True),
         "total_interaction_effect": ("yuan", True),
+        "total_recon_error": ("yuan", True),
     }
 
     @model_validator(mode="before")

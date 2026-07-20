@@ -401,6 +401,7 @@ def test_volume_rate_envelope_uses_business_balance_rows(monkeypatch: pytest.Mon
     assert result["total_volume_effect"]["raw"] == pytest.approx(20.0)
     assert result["total_rate_effect"]["raw"] == pytest.approx(16.0)
     assert result["total_interaction_effect"]["raw"] == pytest.approx(4.0)
+    assert result["total_recon_error"]["raw"] == pytest.approx(0.0)
     assert result["items"][0]["category"] == "business_cd"
     assert meta["source_version"] == "sv_pnl_by_business_test"
     assert meta["as_of_date"] == "2026-04-30"

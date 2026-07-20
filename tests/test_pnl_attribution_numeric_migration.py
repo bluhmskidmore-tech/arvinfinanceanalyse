@@ -112,11 +112,13 @@ class TestVolumeRateLegacyFloat:
             total_volume_effect=1.0,
             total_rate_effect=1.1,
             total_interaction_effect=0.0,
+            total_recon_error=0.0,
             items=[],
             has_previous_data=True,
         )
         assert isinstance(payload.total_current_pnl, Numeric)
         assert payload.total_current_pnl.raw == 32.1
+        assert isinstance(payload.total_recon_error, Numeric)
 
 
 class TestTPLMarket:

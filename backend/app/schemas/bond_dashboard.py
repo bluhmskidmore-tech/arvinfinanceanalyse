@@ -3,11 +3,20 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from typing import Any, ClassVar, Literal
 
-from backend.app.schemas.common_numeric import Numeric, NumericUnit, numeric_from_raw
+from backend.app.schemas.common_numeric import Numeric, NumericRawScale, NumericUnit, numeric_from_raw
 from pydantic import BaseModel, Field, model_validator
 
+# (unit, sign_aware) keeps the legacy "auto" pct heuristic;
+# (unit, sign_aware, raw_scale) declares the producing raw scale explicitly.
+_NumericFieldSpec = tuple[NumericUnit, bool] | tuple[NumericUnit, bool, NumericRawScale]
 
-def _coerce_value_to_numeric(value: Any, unit: NumericUnit, sign_aware: bool) -> Any:
+
+def _coerce_value_to_numeric(
+    value: Any,
+    unit: NumericUnit,
+    sign_aware: bool,
+    raw_scale: NumericRawScale = "auto",
+) -> Any:
     if value is None:
         return None
     if isinstance(value, Numeric):
@@ -15,7 +24,9 @@ def _coerce_value_to_numeric(value: Any, unit: NumericUnit, sign_aware: bool) ->
     if isinstance(value, dict) and {"raw", "unit", "display", "precision", "sign_aware"} <= set(value.keys()):
         return value
     if isinstance(value, Decimal):
-        return numeric_from_raw(raw=float(value), unit=unit, sign_aware=sign_aware).model_dump(mode="json")
+        return numeric_from_raw(
+            raw=float(value), unit=unit, sign_aware=sign_aware, raw_scale=raw_scale
+        ).model_dump(mode="json")
     if isinstance(value, str):
         normalized = value.strip().replace(",", "")
         if not normalized:
@@ -24,22 +35,28 @@ def _coerce_value_to_numeric(value: Any, unit: NumericUnit, sign_aware: bool) ->
             raw = float(Decimal(normalized))
         except InvalidOperation:
             return value
-        return numeric_from_raw(raw=raw, unit=unit, sign_aware=sign_aware).model_dump(mode="json")
+        return numeric_from_raw(
+            raw=raw, unit=unit, sign_aware=sign_aware, raw_scale=raw_scale
+        ).model_dump(mode="json")
     if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return numeric_from_raw(raw=float(value), unit=unit, sign_aware=sign_aware).model_dump(mode="json")
+        return numeric_from_raw(
+            raw=float(value), unit=unit, sign_aware=sign_aware, raw_scale=raw_scale
+        ).model_dump(mode="json")
     return value
 
 
 def _apply_numeric_coercion(
-    field_map: dict[str, tuple[NumericUnit, bool]],
+    field_map: dict[str, _NumericFieldSpec],
     data: Any,
 ) -> Any:
     if not isinstance(data, dict):
         return data
     out = dict(data)
-    for field_name, (unit, sign_aware) in field_map.items():
+    for field_name, spec in field_map.items():
         if field_name in out:
-            out[field_name] = _coerce_value_to_numeric(out[field_name], unit, sign_aware)
+            unit, sign_aware = spec[0], spec[1]
+            raw_scale: NumericRawScale = spec[2] if len(spec) == 3 else "auto"
+            out[field_name] = _coerce_value_to_numeric(out[field_name], unit, sign_aware, raw_scale)
     return out
 
 
@@ -53,13 +70,15 @@ class BondDashboardHeadlineKpiBlock(BaseModel):
     total_dv01: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="dv01", sign_aware=False))
     bond_count: int = 0
 
-    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+    # Rates are normalized to decimal ratios in bond_analytics.engine L304-321,
+    # then passed through unchanged by bond_dashboard_service L419-430.
+    _NUMERIC_FIELDS: ClassVar[dict[str, _NumericFieldSpec]] = {
         "total_market_value": ("yuan", False),
         "unrealized_pnl": ("yuan", True),
-        "weighted_ytm": ("pct", True),
+        "weighted_ytm": ("pct", True, "ratio"),
         "weighted_duration": ("ratio", False),
-        "weighted_coupon": ("pct", True),
-        "credit_spread_median": ("pct", True),
+        "weighted_coupon": ("pct", True, "ratio"),
+        "credit_spread_median": ("pct", True, "ratio"),
         "total_dv01": ("dv01", False),
     }
 
@@ -82,9 +101,10 @@ class BondDashboardAssetStructureItem(BaseModel):
     bond_count: int = 0
     percentage: Numeric | None = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="pct", sign_aware=False))
 
-    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+    # bond_dashboard_service L413-416 calculates percentage as part / whole.
+    _NUMERIC_FIELDS: ClassVar[dict[str, _NumericFieldSpec]] = {
         "total_market_value": ("yuan", False),
-        "percentage": ("pct", False),
+        "percentage": ("pct", False, "ratio"),
     }
 
     @model_validator(mode="before")
@@ -129,8 +149,10 @@ class BondDashboardYieldDistributionPayload(BaseModel):
     items: list[BondDashboardYieldDistributionItem] = Field(default_factory=list)
     weighted_ytm: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="pct", sign_aware=True))
 
-    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
-        "weighted_ytm": ("pct", True),
+    # weighted_ytm is the normalized fact value passed through at
+    # bond_dashboard_service L700-718.
+    _NUMERIC_FIELDS: ClassVar[dict[str, _NumericFieldSpec]] = {
+        "weighted_ytm": ("pct", True, "ratio"),
     }
 
     @model_validator(mode="before")
@@ -147,9 +169,10 @@ class BondDashboardPortfolioComparisonItem(BaseModel):
     total_dv01: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="dv01", sign_aware=False))
     bond_count: int = 0
 
-    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+    # bond_analytics_repo L815-821 computes weighted_ytm from fact ytm ratios.
+    _NUMERIC_FIELDS: ClassVar[dict[str, _NumericFieldSpec]] = {
         "total_market_value": ("yuan", False),
-        "weighted_ytm": ("pct", True),
+        "weighted_ytm": ("pct", True, "ratio"),
         "weighted_duration": ("ratio", False),
         "total_dv01": ("dv01", False),
     }
@@ -171,8 +194,10 @@ class BondDashboardSpreadAnalysisItem(BaseModel):
     bond_count: int = 0
     total_market_value: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="yuan", sign_aware=False))
 
-    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
-        "median_yield": ("pct", True),
+    # bond_analytics_repo L861-864 takes median(ytm), whose snapshot source is
+    # normalized to a decimal ratio in bond_analytics.engine L304-321.
+    _NUMERIC_FIELDS: ClassVar[dict[str, _NumericFieldSpec]] = {
+        "median_yield": ("pct", True, "ratio"),
         "total_market_value": ("yuan", False),
     }
 
@@ -193,9 +218,10 @@ class BondDashboardMaturityStructureItem(BaseModel):
     bond_count: int = 0
     percentage: Numeric | None = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="pct", sign_aware=False))
 
-    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+    # bond_dashboard_service L793-809 calculates percentage as part / whole.
+    _NUMERIC_FIELDS: ClassVar[dict[str, _NumericFieldSpec]] = {
         "total_market_value": ("yuan", False),
-        "percentage": ("pct", False),
+        "percentage": ("pct", False, "ratio"),
     }
 
     @model_validator(mode="before")
@@ -225,9 +251,10 @@ class BondDashboardIndustryDistributionItem(BaseModel):
     bond_count: int = 0
     percentage: Numeric | None = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="pct", sign_aware=False))
 
-    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+    # bond_dashboard_service L825-841 calculates percentage as part / whole.
+    _NUMERIC_FIELDS: ClassVar[dict[str, _NumericFieldSpec]] = {
         "total_market_value": ("yuan", False),
-        "percentage": ("pct", False),
+        "percentage": ("pct", False, "ratio"),
     }
 
     @model_validator(mode="before")
