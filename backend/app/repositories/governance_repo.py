@@ -416,7 +416,9 @@ def _read_jsonl_rows_and_index_cached(
     with _JSONL_READ_CACHE_LOCK:
         cached_rows = _JSONL_READ_CACHE.get(cache_key)
         if cached_rows is not None:
-            return cached_rows, _JSONL_CACHE_KEY_INDEX.get(cache_key, {})
+            # A missing index (None) tells callers to fall back to a full scan
+            # instead of trusting an empty bucket.
+            return cached_rows, _JSONL_CACHE_KEY_INDEX.get(cache_key)
 
     parsed_rows = tuple(
         json.loads(line)
@@ -431,7 +433,7 @@ def _read_jsonl_rows_and_index_cached(
         if current_key != cache_key:
             cached_rows = _JSONL_READ_CACHE.get(current_key)
             if cached_rows is not None:
-                return cached_rows, _JSONL_CACHE_KEY_INDEX.get(current_key, {})
+                return cached_rows, _JSONL_CACHE_KEY_INDEX.get(current_key)
             parsed_rows = tuple(
                 json.loads(line)
                 for line in path.read_text(encoding="utf-8").splitlines()
@@ -439,7 +441,7 @@ def _read_jsonl_rows_and_index_cached(
             )
             cache_key = current_key
         stored = _store_jsonl_cache_entry(cache_key, parsed_rows)
-        return stored, _JSONL_CACHE_KEY_INDEX.get(cache_key, {})
+        return stored, _JSONL_CACHE_KEY_INDEX.get(cache_key)
 
 
 def _read_jsonl_rows_cached(path: Path) -> tuple[dict[str, object], ...]:

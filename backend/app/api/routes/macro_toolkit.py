@@ -135,6 +135,13 @@ def _macro_commodity_product_codes() -> frozenset[str]:
 
     return frozenset(spec.product_code.upper() for spec in COMMODITY_PRODUCTS)
 
+
+def backfill_macro_series(*args: object, **kwargs: object) -> dict[str, object]:
+    """延迟导入 macro_backfill，同时保留模块级可打桩缝隙。"""
+    from backend.app.tasks.macro_backfill import backfill_macro_series as _fn
+
+    return _fn(*args, **kwargs)
+
 _ANALYSIS_INDICATORS = (
     {"key": "hs300", "alias": "sh000300", "label": "沪深300", "unit": "点", "group": "风险资产"},
     {"key": "copper", "alias": "CU0", "label": "铜主力", "unit": "元/吨", "group": "工业需求"},
@@ -1054,8 +1061,6 @@ def _execute_source_backfill(
             "results": {backfill_alias: total_added},
             "errors": payload.get("errors") or {},
         }
-    from backend.app.tasks.macro_backfill import backfill_macro_series
-
     return backfill_macro_series(
         duckdb_path=duckdb_path,
         series_names=[str(target["series_name"])],

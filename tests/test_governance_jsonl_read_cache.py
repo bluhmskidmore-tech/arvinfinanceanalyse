@@ -233,3 +233,33 @@ def test_latest_jsonl_lookup_uses_cache_key_index_instead_of_full_scan(tmp_path,
     assert latest is not None
     assert latest["source_version"] == "sv_target"
     assert inspected_keys == ["demo:key"]
+
+
+def test_latest_jsonl_lookup_falls_back_to_full_scan_when_index_missing(tmp_path, monkeypatch):
+    module = _load_governance_repo_module()
+    repo = module.GovernanceRepository(base_dir=tmp_path)
+    repo.append(
+        module.CACHE_MANIFEST_STREAM,
+        {"cache_key": "noise:0", "report_date": "2026-01-31", "source_version": "sv_noise"},
+    )
+    repo.append(
+        module.CACHE_MANIFEST_STREAM,
+        {"cache_key": "demo:key", "report_date": "2026-01-31", "source_version": "sv_target"},
+    )
+
+    original_reader = module._read_jsonl_rows_and_index_cached
+
+    def reader_without_index(path):
+        rows, _index = original_reader(path)
+        return rows, None
+
+    monkeypatch.setattr(
+        module,
+        "_read_jsonl_rows_and_index_cached",
+        reader_without_index,
+    )
+
+    latest = repo.read_latest_manifest("demo:key", report_date="2026-01-31")
+
+    assert latest is not None
+    assert latest["source_version"] == "sv_target"
