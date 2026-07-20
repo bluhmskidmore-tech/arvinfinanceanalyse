@@ -106,3 +106,21 @@ The repository does not install or enable the timer. Operations must name the
 owner, host, single-writer window, log path, and rollback procedure, then attach
 approved run-once and first-scheduled-run evidence. Until then the preflight
 returns a nonzero, `blocked` result by design.
+
+### Macro toolkit freshness refresh
+
+Keeps macro-toolkit observation inputs current (commodity bars, CSI/public
+cross-asset headlines, CFFEX member rank). Sequential single-writer pipeline;
+CFFEX soft-fails on weekend/vendor gaps.
+
+- Safe plan: `python scripts/macro_toolkit_freshness_refresh.py --dry-run`
+- Approved synchronous validation: `python scripts/macro_toolkit_freshness_refresh.py --run-once`
+- External timer target: `python scripts/macro_toolkit_freshness_refresh.py --enqueue`
+- Fail-closed gate: `python scripts/macro_toolkit_freshness_refresh_timer_preflight.py`
+- Scheduler handoff: `docs/templates/macro_toolkit_freshness_refresh_scheduler_handoff.md`
+- Go-live checklist: `docs/templates/macro_toolkit_freshness_refresh_go_live_checklist.md`
+- Enablement packet: `docs/templates/macro_toolkit_freshness_refresh_timer_enablement_packet.md`
+- Optional local Windows installer: `scripts/install_macro_toolkit_freshness_timer.ps1`
+
+Recommended window: daily `18:30` `Asia/Shanghai`. Do not overlap other DuckDB
+writers. The enablement packet does not embed scheduler create commands.

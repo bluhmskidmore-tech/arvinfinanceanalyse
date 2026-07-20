@@ -48,6 +48,7 @@ def test_worker_bootstrap_declares_canonical_dramatiq_task_modules():
         "backend.app.tasks.stock_factor_refresh",
         "backend.app.tasks.research_calendar_upstream_fetch",
         "backend.app.tasks.macro_toolkit_refresh",
+        "backend.app.tasks.macro_toolkit_freshness_refresh",
         "backend.app.tasks.livermore_position_snapshot_materialize",
         "backend.app.tasks.ledger_import",
     )
