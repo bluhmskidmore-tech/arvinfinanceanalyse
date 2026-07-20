@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+from pathlib import Path
 
+import duckdb
 import numpy as np
 import pandas as pd
 
@@ -20,9 +22,12 @@ from backend.app.core_finance.macro.risk_parity import (
     solve_risk_budget,
     solve_risk_parity,
 )
+from backend.app.core_finance.macro.toolkit import system_sources
 from backend.app.core_finance.macro.toolkit.scripts import cta_trend_cn as cta_script
 from backend.app.core_finance.macro.toolkit.scripts import dcc_garch_cn as dcc_script
 from backend.app.core_finance.macro.toolkit.scripts import risk_parity_cn as rp_script
+from backend.app.governance.settings import get_settings
+from tests.test_macro_toolkit_scripts import _seed_choice_tushare_macro_db
 
 
 def _correlated_prices(n: int = 260, seed: int = 7) -> pd.DataFrame:
@@ -37,6 +42,152 @@ def _correlated_prices(n: int = 260, seed: int = 7) -> pd.DataFrame:
         index=idx,
         columns=["hs300", "csi500", "copper", "nanhua"],
     )
+
+
+def _seed_multi_asset_price_history(
+    path: Path,
+    *,
+    n: int = 260,
+    end: date = date(2026, 4, 10),
+) -> date:
+    """Seed HS300/CSI500 (choice) + CU/NHCI (commodity) history for observation cards.
+
+    Mirrors production alias wiring:
+    - sh000300 / sh000905 -> fact_choice_macro_daily CA.CSI300 / CA.CSI500
+    - CU0 / NH0100.NHF -> fact_commodity_futures_daily CU / NHCI
+    """
+    idx = pd.bdate_range(end=pd.Timestamp(end), periods=n)
+    frame = _correlated_prices(n=n)
+    frame.index = idx
+    # Scale to realistic levels so card headlines stay readable.
+    levels = {
+        "hs300": 4000.0,
+        "csi500": 6000.0,
+        "copper": 80000.0,
+        "nanhua": 2800.0,
+    }
+    for column, base in levels.items():
+        frame[column] = frame[column] / float(frame[column].iloc[0]) * base
+
+    choice_rows: list[tuple[object, ...]] = []
+    commodity_rows: list[tuple[object, ...]] = []
+    for ts, row in frame.iterrows():
+        trade_date = ts.date().isoformat()
+        choice_rows.append(
+            (
+                "CA.CSI300",
+                "CSI 300 close",
+                trade_date,
+                float(row["hs300"]),
+                "daily",
+                "index",
+                "sv_multi_asset_seed",
+                "vv_multi_asset_seed",
+                "rv_public_cross_asset_headline_v1",
+                "ok",
+                "multi-asset-seed",
+            )
+        )
+        choice_rows.append(
+            (
+                "CA.CSI500",
+                "CSI 500 close",
+                trade_date,
+                float(row["csi500"]),
+                "daily",
+                "index",
+                "sv_multi_asset_seed",
+                "vv_multi_asset_seed",
+                "rv_public_cross_asset_headline_v1",
+                "ok",
+                "multi-asset-seed",
+            )
+        )
+        commodity_rows.append(
+            (
+                trade_date,
+                "CU",
+                "CU2606.SHF",
+                "SHF",
+                float(row["copper"]),
+                "sv_tushare_fut_daily_cu",
+                "vv_tushare_fut_daily_CU_seed",
+            )
+        )
+        commodity_rows.append(
+            (
+                trade_date,
+                "NHCI",
+                "NHCI.NH",
+                "NH",
+                float(row["nanhua"]),
+                "sv_tushare_index_daily_nhci",
+                "vv_tushare_index_daily_NHCI_seed",
+            )
+        )
+
+    conn = duckdb.connect(str(path), read_only=False)
+    try:
+        # Avoid colliding with the single-day fixture points on the same series_id/date.
+        conn.execute(
+            """
+            delete from fact_choice_macro_daily
+            where series_id in ('CA.CSI300', 'CA.CSI500')
+            """
+        )
+        conn.executemany(
+            """
+            insert into fact_choice_macro_daily values (
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+            """,
+            choice_rows,
+        )
+        conn.execute(
+            """
+            create table if not exists fact_commodity_futures_daily (
+              trade_date varchar not null,
+              product_code varchar not null,
+              contract_code varchar,
+              exchange varchar,
+              open_value double,
+              high_value double,
+              low_value double,
+              close_value double,
+              settle_value double,
+              volume double,
+              open_interest double,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar default 'rv_commodity_daily_v1',
+              created_at timestamp default current_timestamp,
+              primary key (trade_date, product_code)
+            )
+            """
+        )
+        conn.execute(
+            """
+            delete from fact_commodity_futures_daily
+            where upper(product_code) in ('CU', 'NHCI')
+            """
+        )
+        conn.executemany(
+            """
+            insert into fact_commodity_futures_daily (
+              trade_date, product_code, contract_code, exchange,
+              open_value, high_value, low_value, close_value, settle_value,
+              volume, open_interest, source_version, vendor_version, rule_version
+            ) values (
+              ?, ?, ?, ?,
+              null, null, null, ?, null,
+              null, null, ?, ?, 'rv_commodity_daily_v1'
+            )
+            """,
+            commodity_rows,
+        )
+    finally:
+        conn.close()
+    return end
 
 
 def test_cta_composite_matches_script_helper() -> None:
@@ -310,3 +461,87 @@ def test_macro_capability_results_wires_multi_asset_observation_cards(monkeypatc
         assert card["status"] in {"complete", "degraded"}
         assert card["result"]["formal_use_allowed"] is False
     assert by_key["risk_parity_cn"]["result"]["shadow"] is True
+
+
+def test_multi_asset_observation_cards_readable_when_price_history_seeded(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """End-to-end: seeded DuckDB price legs → loader aliases → readable cards.
+
+    The thin analysis fixture only has 1-day CSI/CU snapshots and no NHCI, so
+    CTA/DCC/RP honestly land unavailable there. This test proves that when the
+    four system aliases have enough history, wiring produces complete/degraded
+    cards with non-null primary metrics and headlines — not silent unavailable.
+    """
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_tushare_macro_db(duckdb_path)
+    report_date = _seed_multi_asset_price_history(duckdb_path, n=260, end=date(2026, 4, 10))
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    system_sources.clear_system_macro_source_cache()
+
+    # Keep unrelated capability inputs empty so this test stays focused on the
+    # multi-asset price path; do NOT stub _load_multi_asset_price_series.
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "_load_macro_capability_context",
+        lambda *_args, **_kwargs: ([], None, []),
+    )
+    monkeypatch.setattr(macro_toolkit_route, "_load_macro_wide_rows", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "_risk_tensor_to_liquidity_inputs",
+        lambda *_args, **_kwargs: ([], [], None),
+    )
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "build_bond_portfolio_profile",
+        lambda *_args, **_kwargs: {"total_mv": 0.0, "weighted_duration": 0.0, "positions": []},
+    )
+    monkeypatch.setattr(macro_toolkit_route, "_current_gov_curve", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "_with_capability_input_evidence",
+        lambda key, result, **_kwargs: result,
+    )
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "_source_checks_for_aliases",
+        lambda *_args, **_kwargs: {},
+    )
+
+    observation_keys = ("cta_trend_cn", "dcc_garch_cn", "risk_parity_cn")
+    try:
+        series = macro_toolkit_route._load_multi_asset_price_series(duckdb_path, report_date)
+        assert set(series) == {"hs300", "csi500", "copper", "nanhua"}
+        for field, points in series.items():
+            assert len(points) >= 200, f"{field} history too short: {len(points)}"
+
+        cards = macro_toolkit_route._macro_capability_results(
+            duckdb_path,
+            report_date=report_date.isoformat(),
+        )
+    finally:
+        get_settings.cache_clear()
+        system_sources.clear_system_macro_source_cache()
+
+    by_key = {item["key"]: item for item in cards}
+    for key in observation_keys:
+        assert key in by_key
+        card = by_key[key]
+        assert card["status"] in {"complete", "degraded"}, (key, card["status"], card.get("warnings"))
+        assert card["headline"]
+        assert "数据不足" not in str(card["headline"])
+        assert "缺少可用分析日期" not in str(card["headline"])
+        primary = card["primary_metric"]
+        assert primary is not None
+        assert primary.get("value") is not None
+        assert card["result"]["formal_use_allowed"] is False
+        assert card["result"]["data_status"] in {"complete", "degraded"}
+
+    assert by_key["cta_trend_cn"]["result"]["avg_composite"] is not None
+    assert by_key["dcc_garch_cn"]["result"]["avg_correlation"] is not None
+    assert by_key["risk_parity_cn"]["result"]["shadow"] is True
+    assert by_key["risk_parity_cn"]["result"]["portfolio_vol_rp_pct"] is not None

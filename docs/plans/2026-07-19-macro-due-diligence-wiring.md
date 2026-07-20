@@ -45,6 +45,28 @@
 
 SDD 复审：Spec ✅ / Quality ✅（Minor：LEI 缺专项单测；mock 排除集与后端未共享常量）。
 
+### Task W3：CTA / DCC / Risk Parity 多资产价格腿可读性（2026-07-19）
+
+**诊断（wiring vs 缺数 vs 历史过短）**
+
+| 环境 | 根因 | 证据 |
+| --- | --- | --- |
+| 分析 API 薄种子（`_seed_choice_tushare_macro_db`） | **历史过短 + 缺腿** | CSI300/CSI500/CU 仅 1 日快照；无 `fact_commodity_futures_daily` → `NH0100.NHF` 空；CTA/DCC/RP 诚实 `unavailable`（`*_HISTORY_SHORT` / `NANHUA_MISSING`） |
+| 真实 `data/moss.duckdb`（含 2026-07-19 commodity ingest 后） | **非 wiring 故障** | `sh000300`/`sh000905` ≈732 行（至 2026-07-10）；`CU0`/`NH0100.NHF` ≈614 行（至 2026-07-17）；`_macro_capability_results` 三卡均为 `complete` + 可读 headline |
+| 别名解析 | 无错位 | `sh000300`→`CA.CSI300`；`sh000905`→`CA.CSI500`；`CU0`→`CA.COPPER`；`NH0100.NHF`→`NHCI.NH`（commodity SQL） |
+
+**工程动作**
+
+- 未改生产接线（真实库路径已可读）；未跑 commodity 再刷新（CU/NHCI max=`2026-07-17` 已足够）。
+- 新增 `test_multi_asset_observation_cards_readable_when_price_history_seeded`：temp DuckDB 注入 ≥260 日四腿历史，断言三卡 `complete`/`degraded` 且 primary metric / headline 非空。
+- 薄种子 unavailable 契约保持（`test_macro_toolkit_api_exposes_analysis_payload`）。
+
+**残留**
+
+- 观察卡四腿不含黄金/原油（`AU0`/`SC0`）；脚本侧可有金油，capability 卡仍只消费 HS300/CSI500/铜/南华。
+- 指数收盘相对商品略滞后（指数 max 2026-07-10 vs 商品 2026-07-17）；交集仍远超 DCC/RP 最小历史。
+- 全站调度器仍不存在；商品/指数新鲜度仍依赖手动 ingest。
+
 ## 约束
 
 - 禁止扩大到 PIT schema、调度器、跨页 formal 指标
