@@ -146,7 +146,7 @@ Research Result 的 `status` 只允许以下值，且不得统一折叠为 `--`�
 
 - 每条策略的正式 `owner` 与审批责任人。→ **已冻结（家族级）**：均为 arvin（见签核包第 2 节 Owner 栏）。
 - 每条策略的 `required_inputs` 表/字段/单位/精度/币种、source/vendor version 与 fallback 规则。→ **部分冻结**：签核包第 2 节已确认证据表内清单；逐策略字段级矩阵与单位逐序列核对仍开放/挂起。
-- 每条策略的 `minimum_history`；不同资产和策略不得共用未经证明的统一门槛。→ **部分冻结（宣称上限）**：签核包第 2 节已按输入族代录（均 ≤ 证据上限）；标注「挂起」的腿（NCD、因子连续窗、Choice 信用等）仍开放。**语义澄清（2026-07-20）**：该值是 catalog/`catalog_history_ceiling`，不是运行时 bar 门禁；代码仍用 CTA80/DCC120/RP100 等 `runtime_min_bars`（见签核包 §1.2.1）。未另冻 runtime 门槛前，不得把年限直接实现为合同 §5 `insufficient_history` 统一闸门。
+- 每条策略的 `minimum_history`；不同资产和策略不得共用未经证明的统一门槛。→ **部分冻结（宣称上限）**：签核包第 2 节已按输入族代录（均 ≤ 证据上限）；标注「挂起」的腿（NCD、因子连续窗、Choice 信用等）仍开放。NCD 与主要 Choice 信用历史已于 2026-07-20 回补，但数据行数增加不自动冻结 minimum_history 或 proxy/单位口径（见签核包 §5.4）。**语义澄清（2026-07-20）**：该值是 catalog/`catalog_history_ceiling`，不是运行时 bar 门禁；代码仍用 CTA80/DCC120/RP100 等 `runtime_min_bars`（见签核包 §1.2.1）。未另冻 runtime 门槛前，不得把年限直接实现为合同 §5 `insufficient_history` 统一闸门。
 - 股票、宏观、债券/期货各自的 stale SLA 与 `update_frequency`。→ **部分冻结**：见签核包第 2 节 stale SLA 栏（保守 T+5/T+10/T+35/T+45）。
 - 交易日/自然日、复权、股票池、退市、停牌、涨跌停、期货换月和价格调整规则。→ **挂起**（签核包 §4.4）。
 - 回测基准、样本区间、执行延迟、成本/滑点、压力窗口和 admission 阈值。→ **部分**：A 股影子组合成本情景确认 0/10/20/50bp 为 V1 基线；其余（基准、admission 等）**挂起**（签核包 §4.1—§4.3）。
@@ -165,10 +165,15 @@ Research Result 的 `status` 只允许以下值，且不得统一折叠为 `--`�
 `docs/strategy_contracts/macro_strategy_p0_evidence_2026-07-19.md` 完成了首轮只读数据面审计（MCP 不可用，采用等价本地只读 DuckDB 查询）：
 
 - **已证据冻结**：全部 8 张系统源表无 `release_at/available_at/vintage/revision` 列，PIT 完整率为 0；依赖历史时点复现的结果必须按 §8 fail closed。
-- **部分证据化**：各输入族可用历史深度、当前新鲜度滞后基线、源表 schema 已量化（约 80 个 `EMM*` 序列仅 1 行快照，无法支撑历史窗口信号）。
-- **仍开放 / 挂起**：回测基准、admission 阈值、交易日历/复权/换月细则、逐策略字段级输入矩阵，以及签核包中标注「挂起」的历史腿（NCD、因子连续窗、Choice 信用等）；详见签核包 §4。
+- **部分证据化**：各输入族可用历史深度、当前新鲜度滞后基线、源表 schema 已量化；首轮发现的 NCD 与主要 `EMM*` 历史缺口已于 2026-07-20 回补，当前明细见签核包 §5.4。
+- **仍开放 / 挂起**：回测基准、admission 阈值、交易日历/复权/换月细则、逐策略字段级输入矩阵、因子连续窗，以及 NCD proxy 语义、Choice 单位/catalog 准入等；历史行数增加不自动冻结这些业务口径，详见签核包 §4 / §5.4。
 - **owner 签核代录（同日晚）**：`macro_strategy_p0_owner_signoff_packet_2026-07-19.md` 已写入家族级 owner、`minimum_history`、stale SLA 与可代录项；数值均 ≤ 证据上限，不改变 observation-only 边界。
 - **minimum_history 语义复核（2026-07-20）**：代码映射确认第 2 节年限为宣称上限，非 runtime 门禁；详见签核包 §1.2.1。
-- **输入契约诚实化（同日续）**：`M0041653` 运行时首选 `legacy.wind_market_db.reverse_repo_7d`（`EMM00088132` 仍为空 Choice 目标）；`M0017126` PMI 别名已登记并落在 `fact_choice_macro_daily`（约 13 个月频点）。详见签核包 §2.5 / §4.6 第 1、7 项。
+- **输入契约诚实化（同日续）**：`M0041653` 运行时优先 Choice `EMM00088132`（616 行，2024-01-02～2026-07-20），legacy 仅保留历史观测且 Choice 失败不再静默 carry-forward；`M0017126` PMI 别名已登记并落在 `fact_choice_macro_daily`（约 13 个月频点）。详见签核包 §2.5 / §4.6 第 1、7 项。
 - **观察能力接线（同日续）**：M13 利率拐点、M12 跨市场联动均已 `wired/visible`；无可算相关腿时 M12 输出 `unavailable/UNKNOWN`，不再伪装「常态」。Merrill Clock 审计 C-1/H-1/M-2/M-4 已修（见 `docs/audits/2026-07-19-merrill-clock-calc-audit.md`）。
 - **M12 美债腿（2026-07-20）**：`CA.US_GOV_10Y` → 首选 `E1003238`（次选 `EMG00001310`）已登记并写入宽表/曲线 enrich；实测约 125 日点。VIX 无 catalog/落库序列，股债(VIX)相关腿继续 `unavailable`，待数据准入后再登记。
+- **M7 政策利率 freshness（2026-07-20）**：`EMM00088132` 已进入 Choice `stable_daily` catalog 与 `macro_toolkit_freshness_refresh_v3` required step；45 日窗口刷新后最新为 1.40% / 2026-07-20，`POLICY_RATE_7D_STALE` 消失。刷新拒答会 fail closed，不用旧值续写新日期。
+- **M7 共同可算日对齐（同日续）**：估值日优先「能算 10Y−1Y 国债斜率」的最新日（否则资金锚点日），输出顶层 `as_of_date`；AA−AAA 仅同期限。只读实库复核 `as_of=2026-07-17`，`GOVERNMENT_SLOPE_MISSING` / `AAA_SPREAD_MISSING` 消失，能力 `complete`。
+- **M10 缺月诚实性（同日续）**：生产宽表为前向填充值保留逐字段 `*_source_date`；M10 不再把跨月 carry 当成新观测，并为整月无真实观测的日历空洞保留 `None`。均值仅用有效月，`history_samples.used/total` 与 `*_HISTORY_MISSING_MONTHS` 披露真实缺口；合法 0 按公式评分，当前缺失分项从加权中剔除，空输入不再伪装为中性 50，结果固定 `observation_only=true / formal_use_allowed=false`。
+- **M10 共同月 / 窗口 / provenance（2026-07-20 收口）**：对齐策略为严格 6/6 最新共同可算经济月（`alignment_policy=latest_common_computable_month`）；主窗 12 个完整日历月、challenger `shadow_24m` 24 月；日频腿取月内末日真实观测，跨月 forward-fill 不计分。派生利差 `input_evidence` 须 value/date/unit/legs 同源（`curve_derived`），禁止 July 值配 April alias 日。只读实库 `report_date=2026-07-20`：`as_of_month=2026-06`、`available_component_count=component_count=6`、`lei_index≈50.29`、`lookback_months=12` / `shadow_24m.lookback_months=24`、`observation_only=true` / `formal_use_allowed=false`；warnings 含 `LEI_UNIT_CONTRACT_UNFROZEN`、`PIT_METADATA_UNAVAILABLE`、`LEI_AS_OF_MONTH_LAGGED`、`LEI_NEWER_COMPONENT_DATA_EXCLUDED`；July 市腿仅出现在 `latest_available_component_evidence`（`used=false`），不再出现 1/6 单腿主结论。单位与 PIT 仍未冻结，不改变 formal 边界。残余：无 provenance 时 alias `series_id`/`source` 回填身份（Quality Important #2）本轮未硬修。
+- **回补后能力复核（2026-07-20）**：NCD.SHIBOR 五期限各 632 行，主要国债/信用 `EMM*` 节点各 632 行；daily freshness 已接入 NCD 刷新。M9/M7 均改为按国债可算日对齐并输出 `as_of_date`，AA-AAA 只做同期限比较；M7/M9 只读实库均为 `complete`（`as_of=2026-07-17`）。能力健康度现为 11 `complete` / 4 `degraded` / 0 `unavailable`。Choice 回补行 unit 元数据仍待逐序列冻结，因此继续维持 observation-only / non-formal。

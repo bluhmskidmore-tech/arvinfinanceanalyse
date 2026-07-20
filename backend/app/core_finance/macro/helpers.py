@@ -145,20 +145,70 @@ def sort_wide_rows_for_macro(
 def enrich_wide_with_curve_market_fields(
     wide_by_date: dict[date, dict[str, float]],
     curves_by_date: Mapping[date, Mapping[str, Mapping[str, Decimal]]],
+    *,
+    provenance_by_date: MutableMapping[date, dict[str, dict[str, Any]]] | None = None,
 ) -> None:
     """
     用收益率曲线推导 V1 MarketDataDaily 风格字段（利差单位为 BP，与 M9/M16 一致）。
     原地写入 wide_by_date。
+
+    若提供 provenance_by_date，则为 term/credit 派生字段写入同源观测元数据
+    （source_date / unit / transform / legs）；调用方可据此原子替换宽表 provenance。
     """
     for d, target in wide_by_date.items():
+        day_provenance = provenance_by_date.setdefault(d, {}) if provenance_by_date is not None else None
         gov = curves_by_date.get(d, {}).get("CN_GOVT", {})
         y1, y5, y10 = gov.get("1Y"), gov.get("5Y"), gov.get("10Y")
         if y1 is not None and y10 is not None:
             target["term_spread_10y_1y"] = float((y10 - y1) * Decimal("100"))
+            if day_provenance is not None:
+                day_provenance["term_spread_10y_1y"] = {
+                    "source_date": d,
+                    "unit": "bp",
+                    "unit_status": "provisional",
+                    "transform": "CN_GOVT.10Y - CN_GOVT.1Y",
+                    "legs": {
+                        "gov_1y": {
+                            "curve_id": "CN_GOVT",
+                            "tenor": "1Y",
+                            "value": float(y1),
+                            "source_date": d,
+                        },
+                        "gov_10y": {
+                            "curve_id": "CN_GOVT",
+                            "tenor": "10Y",
+                            "value": float(y10),
+                            "source_date": d,
+                        },
+                    },
+                }
         y3 = gov.get("3Y")
         aaa3 = curves_by_date.get(d, {}).get("CN_CREDIT_AAA", {}).get("3Y")
         if y3 is not None and aaa3 is not None:
             target["credit_spread_aaa_3y"] = float((aaa3 - y3) * Decimal("100"))
+            if day_provenance is not None:
+                day_provenance["credit_spread_aaa_3y"] = {
+                    "source_date": d,
+                    "unit": "bp",
+                    # AAA 腿单位合同未冻结：仅 observation provisional/unfrozen，不解除 formal。
+                    "unit_status": "unfrozen",
+                    "transform": "CN_CREDIT_AAA.3Y - CN_GOVT.3Y",
+                    "legs": {
+                        "aaa_3y": {
+                            "curve_id": "CN_CREDIT_AAA",
+                            "tenor": "3Y",
+                            "value": float(aaa3),
+                            "source_date": d,
+                            "unit_status": "provisional",
+                        },
+                        "gov_3y": {
+                            "curve_id": "CN_GOVT",
+                            "tenor": "3Y",
+                            "value": float(y3),
+                            "source_date": d,
+                        },
+                    },
+                }
         aa3 = curves_by_date.get(d, {}).get("CN_CREDIT_AA", {}).get("3Y")
         aap3 = curves_by_date.get(d, {}).get("CN_CREDIT_AA_PLUS", {}).get("3Y")
         if y3 is not None and aa3 is not None:

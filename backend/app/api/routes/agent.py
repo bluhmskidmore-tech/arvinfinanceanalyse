@@ -153,10 +153,15 @@ def _apply_auth_context(
     request: AgentQueryRequest,
     auth: AuthContext,
 ) -> AgentQueryRequest:
+    client_context = {
+        key: value
+        for key, value in request.context.items()
+        if key.strip().lower() != "run_id"
+    }
     return request.model_copy(
         update={
             "context": {
-                **request.context,
+                **client_context,
                 "user_id": auth.user_id,
                 "user_role": auth.role,
                 "identity_source": auth.identity_source,

@@ -14,13 +14,21 @@ from backend.app.agent.schemas.agent_run import (
     AgentRunRecord,
     AgentRunStatusResponse,
 )
+from backend.app.governance.agent_audit import AGENT_AUDIT_STREAM, AgentAuditPayload
+from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.repositories.governance_repo import GovernanceRepository
 
 AGENT_RUN_STREAM = "agent_run"
 AGENT_RUN_JOB_NAME = "agent_run"
 AGENT_RUN_LOCK = threading.Lock()
 AGENT_RUN_STATE_LOCK = threading.Lock()
+AGENT_RUN_TRANSITION_LOCK = threading.RLock()
+AGENT_RUN_TRANSITION_FILE_LOCK = LockDefinition(
+    key="lock:agent-run:transition",
+    ttl_seconds=300,
+)
 MAX_AGENT_RUN_CACHE_SIZE = 200
+AGENT_RUN_STALE_GRACE_SECONDS = 30.0
 _AGENT_RUN_LATEST_RECORDS: dict[str, dict[str, object]] = {}
 
 AgentExecutor = Callable[[AgentQueryRequest, str, Any], AgentEnvelope]
@@ -59,12 +67,20 @@ def create_agent_run(
 ) -> AgentRunCreateResponse:
     run_id = _build_run_id()
     queued_at = _utc_now()
+    run_request = request.model_copy(
+        update={
+            "context": {
+                **request.context,
+                "run_id": run_id,
+            }
+        }
+    )
     provider, model, transport, toolsets = _provider_runtime_fields(settings, provider)
     record = AgentRunRecord(
         run_id=run_id,
         status="queued",
-        question=request.question,
-        request=request.model_dump(mode="json"),
+        question=run_request.question,
+        request=run_request.model_dump(mode="json"),
         provider=provider,
         model=model,
         transport=transport,
@@ -77,7 +93,7 @@ def create_agent_run(
         target=_execute_agent_run,
         kwargs={
             "run_id": run_id,
-            "request": request,
+            "request": run_request,
             "settings": settings,
             "executor": executor,
         },
@@ -119,7 +135,101 @@ def _status_from_run_record(*, run_id: str, settings: Any) -> AgentRunStatusResp
     record = _latest_run_record(run_id=run_id, settings=settings)
     if record is None:
         raise ValueError(f"Unknown agent run_id={run_id}")
+    record = _reconcile_stale_run_record(record=record, settings=settings)
     return _status_from_record(record)
+
+
+def _reconcile_stale_run_record(
+    *,
+    record: dict[str, object],
+    settings: Any,
+) -> dict[str, object]:
+    if str(record.get("status") or "") not in {"starting", "running"}:
+        return record
+
+    started_at = _parse_utc_datetime(record.get("started_at"))
+    finished_at_text = _utc_now()
+    finished_at = _parse_utc_datetime(finished_at_text)
+    if started_at is None or finished_at is None:
+        return record
+
+    elapsed_seconds = max((finished_at - started_at).total_seconds(), 0.0)
+    stale_after_seconds = _agent_run_stale_after_seconds(record=record, settings=settings)
+    if elapsed_seconds <= stale_after_seconds:
+        return record
+
+    request = record.get("request")
+    failed_record = AgentRunRecord(
+        run_id=str(record.get("run_id") or ""),
+        status="failed",
+        question=str(record.get("question") or ""),
+        request=dict(request) if isinstance(request, dict) else {},
+        provider=str(record.get("provider") or "hermes"),
+        model=str(record.get("model") or "default"),
+        transport=str(record.get("transport") or "bridge"),
+        toolsets=str(record.get("toolsets") or "default"),
+        queued_at=_optional_text(record.get("queued_at")),
+        started_at=_optional_text(record.get("started_at")),
+        finished_at=finished_at_text,
+        elapsed_seconds=round(elapsed_seconds, 3),
+        error_message=(
+            "Agent run 未在运行超时后进入终态"
+            f"（{stale_after_seconds:g}s），可能因进程重启或运行中断。"
+        ),
+    )
+    try:
+        audit_request = AgentQueryRequest.model_validate(
+            request if isinstance(request, dict) else {"question": failed_record.question}
+        )
+    except (TypeError, ValueError):
+        audit_request = AgentQueryRequest(question=failed_record.question)
+    appended = _append_record_if_latest_status(
+        settings=settings,
+        record=failed_record,
+        allowed_statuses={"starting", "running"},
+        audit_payload=_build_failed_run_audit_payload(
+            run_id=failed_record.run_id,
+            request=audit_request,
+            provider=failed_record.provider,
+            error_type="StaleAgentRun",
+        ),
+    )
+    if not appended:
+        return _latest_run_record(run_id=failed_record.run_id, settings=settings) or record
+    return failed_record.model_dump(mode="json", exclude_none=True)
+
+
+def _agent_run_stale_after_seconds(
+    *,
+    record: dict[str, object],
+    settings: Any,
+) -> float:
+    provider = str(record.get("provider") or "hermes").strip().lower()
+    if provider == "local":
+        return float("inf")
+    setting_name = (
+        "agent_dexter_timeout_seconds"
+        if provider == "dexter"
+        else "agent_hermes_timeout_seconds"
+    )
+    try:
+        provider_timeout = float(getattr(settings, setting_name, 180.0) or 180.0)
+    except (TypeError, ValueError):
+        provider_timeout = 180.0
+    return max(provider_timeout, 1.0) + AGENT_RUN_STALE_GRACE_SECONDS
+
+
+def _parse_utc_datetime(value: object) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def _latest_run_record(*, run_id: str, settings: Any) -> dict[str, object] | None:
@@ -144,26 +254,32 @@ def _execute_agent_run(
 ) -> None:
     with AGENT_RUN_LOCK:
         started_at = _utc_now()
-        _append_record(
-            settings,
-            _transition_record(
-                settings=settings,
-                run_id=run_id,
-                request=request,
-                status="starting",
-                started_at=started_at,
-            ),
+        starting_record = _transition_record(
+            settings=settings,
+            run_id=run_id,
+            request=request,
+            status="starting",
+            started_at=started_at,
         )
-        _append_record(
-            settings,
-            _transition_record(
-                settings=settings,
-                run_id=run_id,
-                request=request,
-                status="running",
-                started_at=started_at,
-            ),
+        if not _append_record_if_latest_status(
+            settings=settings,
+            record=starting_record,
+            allowed_statuses={"queued"},
+        ):
+            return
+        running_record = _transition_record(
+            settings=settings,
+            run_id=run_id,
+            request=request,
+            status="running",
+            started_at=started_at,
         )
+        if not _append_record_if_latest_status(
+            settings=settings,
+            record=running_record,
+            allowed_statuses={"starting"},
+        ):
+            return
         started = datetime.now(UTC)
         try:
             envelope = executor(
@@ -173,35 +289,79 @@ def _execute_agent_run(
             )
         except Exception as exc:
             finished_at = _utc_now()
-            _append_record(
-                settings,
-                _transition_record(
-                    settings=settings,
+            error_message = str(exc) or exc.__class__.__name__
+            failed_record = _transition_record(
+                settings=settings,
+                run_id=run_id,
+                request=request,
+                status="failed",
+                started_at=started_at,
+                finished_at=finished_at,
+                elapsed_seconds=_elapsed_seconds(started),
+                error_message=error_message,
+            )
+            _append_record_if_latest_status(
+                settings=settings,
+                record=failed_record,
+                allowed_statuses={"starting", "running"},
+                audit_payload=_build_failed_run_audit_payload(
                     run_id=run_id,
                     request=request,
-                    status="failed",
-                    started_at=started_at,
-                    finished_at=finished_at,
-                    elapsed_seconds=_elapsed_seconds(started),
-                    error_message=str(exc) or exc.__class__.__name__,
+                    provider=failed_record.provider,
+                    error_type=exc.__class__.__name__,
                 ),
             )
             return
 
         finished_at = _utc_now()
-        _append_record(
-            settings,
-            _transition_record(
-                settings=settings,
-                run_id=run_id,
-                request=request,
-                status="completed",
-                started_at=started_at,
-                finished_at=finished_at,
-                elapsed_seconds=_elapsed_seconds(started),
-                result=envelope.model_dump(mode="json"),
-            ),
+        completed_record = _transition_record(
+            settings=settings,
+            run_id=run_id,
+            request=request,
+            status="completed",
+            started_at=started_at,
+            finished_at=finished_at,
+            elapsed_seconds=_elapsed_seconds(started),
+            result=envelope.model_dump(mode="json"),
         )
+        _append_record_if_latest_status(
+            settings=settings,
+            record=completed_record,
+            allowed_statuses={"starting", "running"},
+        )
+
+
+def _build_failed_run_audit_payload(
+    *,
+    run_id: str,
+    request: AgentQueryRequest,
+    provider: str,
+    error_type: str,
+) -> AgentAuditPayload:
+    trace_id = f"tr_agent_run_failed_{uuid4().hex[:12]}"
+    return AgentAuditPayload(
+        user_id=str(request.context.get("user_id") or "agent_user"),
+        query_text=request.question,
+        tools_used=["agent_run", f"provider:{provider}", "status:failed"],
+        tables_used=[],
+        filters_applied={
+            key: value
+            for key, value in request.filters.items()
+            if value not in (None, "", False)
+        },
+        trace_id=trace_id,
+        run_id=run_id,
+        result_meta={
+            "trace_id": trace_id,
+            "basis": request.basis,
+            "result_kind": "agent.run_failed",
+            "formal_use_allowed": False,
+            "quality_flag": "error",
+            "scenario_flag": request.basis == "scenario",
+            "provider": provider,
+            "error_type": error_type,
+        },
+    )
 
 
 def _transition_record(
@@ -237,6 +397,49 @@ def _transition_record(
         error_message=error_message,
         result=result,
     )
+
+
+def _append_record_if_latest_status(
+    *,
+    settings: Any,
+    record: AgentRunRecord,
+    allowed_statuses: set[str],
+    audit_payload: AgentAuditPayload | None = None,
+) -> bool:
+    repo = GovernanceRepository(base_dir=settings.governance_path)
+    with AGENT_RUN_TRANSITION_LOCK:
+        with acquire_lock(
+            AGENT_RUN_TRANSITION_FILE_LOCK,
+            base_dir=repo.base_dir,
+            timeout_seconds=5.0,
+        ):
+            matching = [
+                item
+                for item in repo.read_all(AGENT_RUN_STREAM)
+                if str(item.get("run_id") or "") == record.run_id
+            ]
+            if not matching:
+                return False
+            latest = matching[-1]
+            if str(latest.get("status") or "") not in allowed_statuses:
+                _remember_run_record(latest)
+                return False
+
+            record_payload: dict[str, object] = {
+                "job_name": AGENT_RUN_JOB_NAME,
+                **record.model_dump(mode="json", exclude_none=True),
+            }
+            entries = [(AGENT_RUN_STREAM, record_payload)]
+            if audit_payload is not None:
+                entries.append(
+                    (
+                        AGENT_AUDIT_STREAM,
+                        audit_payload.model_dump(mode="json", exclude_none=True),
+                    )
+                )
+            repo.append_many_atomic(entries)
+            _remember_run_record(record.model_dump(mode="json", exclude_none=True))
+            return True
 
 
 def _append_record(settings: Any, record: AgentRunRecord) -> None:
@@ -290,7 +493,7 @@ def _status_from_record(record: dict[str, object]) -> AgentRunStatusResponse:
         finished_at=_optional_text(record.get("finished_at")),
         elapsed_seconds=_optional_float(record.get("elapsed_seconds")),
         error_message=_optional_text(record.get("error_message")),
-        result=AgentEnvelope.model_validate(result) if isinstance(result, dict) else None,
+        result=result if isinstance(result, dict) else None,
     )
 
 

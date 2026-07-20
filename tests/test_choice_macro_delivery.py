@@ -2839,6 +2839,30 @@ def test_default_choice_macro_catalog_promotes_confirmed_shibor_funding_batch(mo
     get_settings.cache_clear()
 
 
+def test_default_choice_macro_catalog_admits_seven_day_policy_rate(monkeypatch):
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_CATALOG_FILE", "config/choice_macro_catalog.json")
+    get_settings.cache_clear()
+
+    task_module = sys.modules.get("backend.app.tasks.choice_macro")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_macro",
+            "backend/app/tasks/choice_macro.py",
+        )
+    monkeypatch.setattr(task_module, "_choice_macro_run_date", lambda: "2026-07-20")
+
+    batches = task_module.load_choice_macro_batches(get_settings())
+    stable_batch = next(batch for batch in batches if batch.batch_id == "stable_daily")
+    policy_rate = next(item for item in stable_batch.series if item.series_id == "EMM00088132")
+
+    assert policy_rate.series_name == "公开市场操作:逆回购:7天:中标利率"
+    assert policy_rate.frequency == "daily"
+    assert policy_rate.unit == "%"
+    assert policy_rate.theme == "money_liquidity"
+    assert "policy_rate" in policy_rate.tags
+    get_settings.cache_clear()
+
+
 def test_choice_macro_scoped_batch_refresh_preserves_non_target_choice_rows(tmp_path, monkeypatch):
     duckdb_path = tmp_path / "moss.duckdb"
     catalog_path = tmp_path / "choice_macro_catalog.json"

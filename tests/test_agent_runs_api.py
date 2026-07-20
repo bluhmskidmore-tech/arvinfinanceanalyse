@@ -1,19 +1,24 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.agent.schemas.agent_response import (
     AgentEnvelope,
     AgentEvidence,
     AgentResultMeta,
 )
+from backend.app.agent.schemas.agent_run import AgentRunRecord, AgentRunStatusResponse
 from tests.helpers import load_module
 from tests.test_agent_api_contract import _agent_auth_fields, _seed_agent_read_scope
 
@@ -131,13 +136,14 @@ def _client(monkeypatch, tmp_path: Path, execute):
 
 
 def _wait_for_terminal(client: TestClient, run_id: str, headers: dict[str, str] | None = None) -> dict[str, object]:
+    payload: dict[str, object] = {}
     for _ in range(200):
         payload = client.get(f"/api/agent/runs/{run_id}", headers=headers).json()
         status = payload.get("status")
         if status in {"completed", "failed"}:
             return payload
         time.sleep(0.05)
-    raise AssertionError(f"agent run did not finish: {run_id}")
+    raise AssertionError(f"agent run did not finish: {run_id}; last_payload={payload}")
 
 
 def _wait_for_terminal_record(settings, run_id: str) -> None:
@@ -154,6 +160,107 @@ def _wait_for_terminal_record(settings, run_id: str) -> None:
             return
         time.sleep(0.05)
     raise AssertionError(f"agent run did not finish: {run_id}")
+
+
+def test_agent_run_events_sends_terminal_snapshot_and_closes(monkeypatch, tmp_path):
+    client, _ = _client(monkeypatch, tmp_path, lambda *_args, **_kwargs: _sample_envelope())
+    created = client.post("/api/agent/runs", json={"question": "ping"}).json()
+    completed = _wait_for_terminal(client, created["run_id"])
+
+    response = client.get(f"/api/agent/runs/{created['run_id']}/events")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert response.headers["cache-control"] == "no-cache"
+    assert response.headers["x-accel-buffering"] == "no"
+    assert response.text.startswith("event: run_update\n")
+    assert response.text.endswith("\n\n")
+    assert response.text.count("event: run_update\n") == 1
+    data_line = response.text.splitlines()[1]
+    assert data_line.startswith("data: ")
+    assert json.loads(data_line.removeprefix("data: ")) == completed
+
+
+def test_agent_run_event_iterator_orders_updates_and_suppresses_duplicates(monkeypatch, tmp_path):
+    service_module = load_module(
+        "backend.app.services.agent_run_service",
+        "backend/app/services/agent_run_service.py",
+    )
+    initial = AgentRunStatusResponse(
+        run_id="agent_run:sse-sequence",
+        status="running",
+        provider="hermes",
+    )
+    completed = initial.model_copy(
+        update={
+            "status": "completed",
+            "finished_at": "2026-07-20T12:00:00+00:00",
+        }
+    )
+    status_updates = iter([initial, completed])
+    sleep_calls = []
+
+    def fake_get_agent_run_status(*, run_id, settings):
+        assert run_id == initial.run_id
+        return next(status_updates)
+
+    async def fake_sleep(delay):
+        sleep_calls.append(delay)
+
+    monkeypatch.setattr(service_module, "get_agent_run_status", fake_get_agent_run_status)
+    monkeypatch.setattr(service_module.asyncio, "sleep", fake_sleep)
+
+    async def collect_events():
+        return [
+            event
+            async for event in service_module.iter_agent_run_events(
+                run_id=initial.run_id,
+                settings=_settings(tmp_path),
+                initial_status=initial,
+                poll_interval_seconds=0.5,
+            )
+        ]
+
+    events = asyncio.run(collect_events())
+
+    assert [json.loads(event.split("data: ", 1)[1])["status"] for event in events] == [
+        "running",
+        "completed",
+    ]
+    assert all(event.startswith("event: run_update\n") and event.endswith("\n\n") for event in events)
+    assert sleep_calls == [0.5, 0.5]
+
+
+def test_agent_run_events_rejects_different_header_user(monkeypatch, tmp_path):
+    monkeypatch.setenv("MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST", "1")
+    client, settings = _client(
+        monkeypatch,
+        tmp_path,
+        lambda *_args, **_kwargs: _sample_envelope(),
+    )
+    created = client.post(
+        "/api/agent/runs",
+        json={"question": "ping"},
+        headers={"X-User-Id": "run-owner", "X-User-Role": "reviewer"},
+    ).json()
+    _wait_for_terminal_record(settings, created["run_id"])
+
+    response = client.get(
+        f"/api/agent/runs/{created['run_id']}/events",
+        headers={"X-User-Id": "other-user", "X-User-Role": "reviewer"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Agent run belongs to a different user."
+
+
+def test_agent_run_events_returns_404_for_unknown_run(monkeypatch, tmp_path):
+    client, _ = _client(monkeypatch, tmp_path, lambda *_args, **_kwargs: _sample_envelope())
+
+    response = client.get("/api/agent/runs/agent_run:nope/events")
+
+    assert response.status_code == 404
+    assert "Unknown agent run_id=agent_run:nope" in response.json()["detail"]
 
 
 def test_agent_run_create_returns_queued_and_status_completes(monkeypatch, tmp_path):
@@ -190,6 +297,46 @@ def test_agent_run_create_returns_queued_and_status_completes(monkeypatch, tmp_p
         "running",
         "completed",
     ]
+
+
+def test_agent_run_injects_run_id_into_executor_context(monkeypatch, tmp_path):
+    requests = []
+
+    def fake_execute(request, governance_dir, settings):
+        requests.append(request)
+        return _sample_envelope()
+
+    client, _ = _client(monkeypatch, tmp_path, fake_execute)
+
+    created = client.post("/api/agent/runs", json={"question": "ping"}).json()
+    completed = _wait_for_terminal(client, created["run_id"])
+
+    assert completed["status"] == "completed"
+    assert len(requests) == 1
+    assert requests[0].context["run_id"] == created["run_id"]
+
+
+def test_auth_context_strips_client_supplied_run_id():
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+
+    request = route_module._apply_auth_context(
+        AgentQueryRequest(
+            question="ping",
+            context={"run_id": "agent_run:spoofed", "page": "agent-workbench"},
+        ),
+        SimpleNamespace(
+            user_id="u_trusted",
+            role="reader",
+            identity_source="trusted_headers",
+        ),
+    )
+
+    assert "run_id" not in request.context
+    assert request.context["page"] == "agent-workbench"
+    assert request.context["user_id"] == "u_trusted"
 
 
 def test_agent_run_create_queues_cli_transport_without_blocking(monkeypatch, tmp_path):
@@ -378,6 +525,277 @@ def test_agent_run_status_prefers_jsonl_terminal_state_over_in_memory_running_ca
     assert status.model == "gpt-test"
 
 
+def test_agent_run_status_reconciles_stale_running_record_to_failed(monkeypatch, tmp_path):
+    service_module = load_module(
+        "backend.app.services.agent_run_service",
+        "backend/app/services/agent_run_service.py",
+    )
+    service_module._AGENT_RUN_LATEST_RECORDS.clear()
+    settings = _settings(tmp_path)
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir(parents=True)
+    run_id = "agent_run:stale"
+    (governance_dir / "agent_run.jsonl").write_text(
+        json.dumps(
+            {
+                "job_name": "agent_run",
+                "run_id": run_id,
+                "status": "running",
+                "question": "ping",
+                "request": {"question": "ping"},
+                "provider": "hermes",
+                "model": "gpt-test",
+                "transport": "bridge",
+                "toolsets": "evidence,query,research",
+                "queued_at": "2026-07-20T08:00:00+00:00",
+                "started_at": "2026-07-20T08:00:01+00:00",
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(service_module, "_utc_now", lambda: "2026-07-20T08:00:41+00:00")
+
+    status = service_module.get_agent_run_status(run_id=run_id, settings=settings)
+
+    assert status.status == "failed"
+    assert status.finished_at == "2026-07-20T08:00:41+00:00"
+    assert status.elapsed_seconds == 40.0
+    assert status.error_message is not None
+    assert "未在运行超时后进入终态" in status.error_message
+    repeated = service_module.get_agent_run_status(run_id=run_id, settings=settings)
+    assert repeated.status == "failed"
+    records = [
+        json.loads(line)
+        for line in (governance_dir / "agent_run.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert [record["status"] for record in records] == ["running", "failed"]
+    audit = json.loads(
+        (governance_dir / "agent_audit.jsonl").read_text(encoding="utf-8").splitlines()[-1]
+    )
+    assert audit["run_id"] == run_id
+    assert audit["result_meta"]["error_type"] == "StaleAgentRun"
+
+
+def test_stale_run_reconciliation_is_atomic_for_concurrent_readers(monkeypatch, tmp_path):
+    service_module = load_module(
+        "backend.app.services.agent_run_service",
+        "backend/app/services/agent_run_service.py",
+    )
+    service_module._AGENT_RUN_LATEST_RECORDS.clear()
+    settings = _settings(tmp_path)
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir(parents=True)
+    run_id = "agent_run:stale-concurrent"
+    (governance_dir / "agent_run.jsonl").write_text(
+        json.dumps(
+            {
+                "job_name": "agent_run",
+                "run_id": run_id,
+                "status": "running",
+                "question": "ping",
+                "request": {"question": "ping"},
+                "provider": "hermes",
+                "model": "gpt-test",
+                "transport": "bridge",
+                "toolsets": "evidence,query,research",
+                "queued_at": "2026-07-20T08:00:00+00:00",
+                "started_at": "2026-07-20T08:00:01+00:00",
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(service_module, "_utc_now", lambda: "2026-07-20T08:00:41+00:00")
+    original_append = service_module._append_record
+    barrier = threading.Barrier(4)
+
+    def delayed_append(settings_arg, record):
+        if record.status == "failed":
+            barrier.wait(timeout=5)
+        original_append(settings_arg, record)
+
+    monkeypatch.setattr(service_module, "_append_record", delayed_append)
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        statuses = list(
+            pool.map(
+                lambda _: service_module.get_agent_run_status(
+                    run_id=run_id,
+                    settings=settings,
+                ).status,
+                range(4),
+            )
+        )
+
+    assert statuses == ["failed"] * 4
+    records = [
+        json.loads(line)
+        for line in (governance_dir / "agent_run.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert [record["status"] for record in records] == ["running", "failed"]
+    audits = [
+        json.loads(line)
+        for line in (governance_dir / "agent_audit.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(audits) == 1
+    assert audits[0]["run_id"] == run_id
+
+
+def test_reconciled_failure_is_not_overwritten_by_late_completion(monkeypatch, tmp_path):
+    service_module = load_module(
+        "backend.app.services.agent_run_service",
+        "backend/app/services/agent_run_service.py",
+    )
+    service_module._AGENT_RUN_LATEST_RECORDS.clear()
+    settings = _settings(tmp_path)
+    run_id = "agent_run:late-completion"
+    request = AgentQueryRequest(
+        question="ping",
+        context={"run_id": run_id, "user_id": "u_test"},
+    )
+    service_module._append_record(
+        settings,
+        AgentRunRecord(
+            run_id=run_id,
+            status="queued",
+            question=request.question,
+            request=request.model_dump(mode="json"),
+            provider="hermes",
+            model="gpt-test",
+            transport="bridge",
+            toolsets="evidence,query,research",
+            queued_at=datetime.now(UTC).isoformat(),
+        ),
+    )
+    executor_started = threading.Event()
+    release_executor = threading.Event()
+
+    def delayed_executor(_request, _governance_dir, _settings):
+        executor_started.set()
+        assert release_executor.wait(5)
+        return _sample_envelope()
+
+    worker = threading.Thread(
+        target=service_module._execute_agent_run,
+        kwargs={
+            "run_id": run_id,
+            "request": request,
+            "settings": settings,
+            "executor": delayed_executor,
+        },
+    )
+    worker.start()
+    assert executor_started.wait(2)
+    running_records = [
+        json.loads(line)
+        for line in (tmp_path / "governance" / "agent_run.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    started_at = datetime.fromisoformat(str(running_records[-1]["started_at"]))
+    stale_now = (started_at + timedelta(seconds=40)).isoformat()
+    monkeypatch.setattr(service_module, "_utc_now", lambda: stale_now)
+
+    stale_status = service_module.get_agent_run_status(run_id=run_id, settings=settings)
+    assert stale_status.status == "failed"
+
+    release_executor.set()
+    worker.join(timeout=5)
+    assert not worker.is_alive()
+    final_status = service_module.get_agent_run_status(run_id=run_id, settings=settings)
+    assert final_status.status == "failed"
+    records = [
+        json.loads(line)
+        for line in (tmp_path / "governance" / "agent_run.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert "completed" not in [record["status"] for record in records]
+
+
+def test_local_running_record_is_not_reconciled_by_external_provider_timeout(monkeypatch, tmp_path):
+    service_module = load_module(
+        "backend.app.services.agent_run_service",
+        "backend/app/services/agent_run_service.py",
+    )
+    service_module._AGENT_RUN_LATEST_RECORDS.clear()
+    settings = _local_settings(tmp_path)
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir(parents=True)
+    run_id = "agent_run:local-running"
+    (governance_dir / "agent_run.jsonl").write_text(
+        json.dumps(
+            {
+                "job_name": "agent_run",
+                "run_id": run_id,
+                "status": "running",
+                "question": "ping",
+                "request": {"question": "ping"},
+                "provider": "local",
+                "model": "default",
+                "transport": "inline",
+                "toolsets": "evidence,query,research",
+                "queued_at": "2026-07-19T08:00:00+00:00",
+                "started_at": "2026-07-19T08:00:01+00:00",
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(service_module, "_utc_now", lambda: "2026-07-20T08:00:41+00:00")
+
+    status = service_module.get_agent_run_status(run_id=run_id, settings=settings)
+
+    assert status.status == "running"
+    records = [
+        json.loads(line)
+        for line in (governance_dir / "agent_run.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert [record["status"] for record in records] == ["running"]
+
+
+def test_agent_run_status_keeps_recent_running_record_active(monkeypatch, tmp_path):
+    service_module = load_module(
+        "backend.app.services.agent_run_service",
+        "backend/app/services/agent_run_service.py",
+    )
+    service_module._AGENT_RUN_LATEST_RECORDS.clear()
+    settings = _settings(tmp_path)
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir(parents=True)
+    run_id = "agent_run:recent"
+    (governance_dir / "agent_run.jsonl").write_text(
+        json.dumps(
+            {
+                "job_name": "agent_run",
+                "run_id": run_id,
+                "status": "running",
+                "question": "ping",
+                "request": {"question": "ping"},
+                "provider": "hermes",
+                "model": "gpt-test",
+                "transport": "bridge",
+                "toolsets": "evidence,query,research",
+                "queued_at": "2026-07-20T08:00:00+00:00",
+                "started_at": "2026-07-20T08:00:01+00:00",
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(service_module, "_utc_now", lambda: "2026-07-20T08:00:39+00:00")
+
+    status = service_module.get_agent_run_status(run_id=run_id, settings=settings)
+
+    assert status.status == "running"
+    records = [
+        json.loads(line)
+        for line in (governance_dir / "agent_run.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert [record["status"] for record in records] == ["running"]
+
+
 def test_agent_run_failure_records_error_message(monkeypatch, tmp_path):
     def fake_execute(request, governance_dir, settings):
         raise RuntimeError("Hermes bridge unavailable")
@@ -398,6 +816,15 @@ def test_agent_run_failure_records_error_message(monkeypatch, tmp_path):
     latest = [record for record in records if record["run_id"] == created["run_id"]][-1]
     assert latest["status"] == "failed"
     assert latest["error_message"] == "Hermes bridge unavailable"
+    audit_rows = [
+        json.loads(line)
+        for line in (tmp_path / "governance" / "agent_audit.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    audit = audit_rows[-1]
+    assert audit["run_id"] == created["run_id"]
+    assert audit["tools_used"] == ["agent_run", "provider:hermes", "status:failed"]
+    assert audit["result_meta"]["result_kind"] == "agent.run_failed"
+    assert audit["result_meta"]["error_type"] == "RuntimeError"
 
 
 def test_agent_run_accepts_local_provider_and_completes_lifecycle(monkeypatch, tmp_path):

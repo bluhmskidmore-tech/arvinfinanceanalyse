@@ -30,14 +30,16 @@ Hermes 模式（`MOSS_AGENT_PROVIDER=hermes`）走 **`backend/app/services/herme
 - 支持 `MOSS_AGENT_PROVIDER=local`（含默认）、`hermes`、`dexter`。executor 分流与 `/query` 完全一致：governed intent / research workflow / 分析闲聊类请求强制走 local 工具链（`execute_agent_query`），否则按 provider 分发。
 - 成功：**HTTP 200**，正文 **`AgentRunCreateResponse`**（含 `run_id`、`status=queued`）。
 - 执行记录追加写入治理 JSONL 流 `agent_run`；local 托管运行的 `provider` 字段如实记为 `local`。
+- 同一 `run_id` 会写入成功或失败的 `agent_audit` 记录，可与 `agent_run` 直接关联；失败终态与失败审计原子追加，且只记录异常类型，不复制可能含敏感信息的原始错误正文。
 - 前端兼容性：此前 `local` 返回 400，前端 Workbench 以该 400 作为回退 `/query` 的信号；local 放行后前端不再收到 400，回退逻辑自然不再触发，属兼容变化（前端代码无需改动）。
 
 `GET /api/agent/runs/{run_id}`
 
 - 返回 **`AgentRunStatusResponse`**：`queued / starting / running / completed / failed` 与最终 `AgentEnvelope`（completed 时）。
 - 仅 run 的发起用户可查询（owner 校验）。
+- `starting / running` 超过对应 Hermes/Dexter 运行超时再加 30 秒宽限期仍未进入终态时，读取状态会以条件追加方式写入 `failed` 终态与关联审计；跨线程/进程使用同一治理目录锁，`completed / failed` 均为不可逆终态。`local` 没有外部 provider 超时，不套用该阈值；`queued` 可能正等待进程内串行执行，也不按该阈值误判。
 
-认证与安全上下文：后端会通过 **`AuthContext`** 合并 **`context`**（如 `user_id`、`user_role`）；不要把 Agent 当作绕过权限的渠道。
+认证与安全上下文：后端会通过 **`AuthContext`** 合并 **`context`**（如 `user_id`、`user_role`）；`run_id` 是服务端保留字段，客户端提交的同名值会在 API 边界移除，再由 `/runs` 托管链路注入。不要把 Agent 当作绕过权限或伪造审计关联的渠道。
 
 ---
 
@@ -71,7 +73,11 @@ Hermes 模式（`MOSS_AGENT_PROVIDER=hermes`）走 **`backend/app/services/herme
 
 ### 证据披露（`sql_executed`）
 
-`portfolio_overview`、`pnl_summary`、`duration_risk`、`credit_exposure`、`research_radar_brief` 等 intent 的 `evidence.sql_executed` 披露该次查询实际执行/等价的只读 SELECT 模板（`?` 为参数占位符，绑定值见 `filters_applied`）。该字段**仅用于披露**：服务端从不执行客户端传入的 SQL。其余经嵌套服务 envelope 取数的 intent（如 `pnl_bridge`、`risk_tensor`、`market_data`、`news`、`product_pnl`）暂保持 `[]`，原因见 `agent_service.py` 内注释。
+`evidence.sql_executed` 是历史契约名，前端按“只读 SQL 披露”展示。Dexter 研究上下文、新闻和产品损益等同源路径披露实际送入只读执行层的参数化模板；部分 local intent（如组合概览、PnL 汇总、风险摘要、桥接和市场数据）披露与业务结果对齐的主干/等价模板，不应把它当作完整查询日志或可重放审计。`?` 只表示绑定参数位置，不披露参数值；业务过滤摘要见 `filters_applied`。
+
+所有披露均由服务端生成并只保留 `SELECT / WITH`；服务端从不执行客户端传入的 SQL。结构防漂移测试会校验只读性、来源表和关键过滤字段，真实执行同源路径另由执行测试覆盖。
+
+`evidence_strength` 区分 `governed_moss`（受治理本地证据）、`provider_runtime`（仅外部模型运行证据）、`local_fallback`（未运行受治理查询）和 `mixed`（外部模型基于 MOSS 只读上下文生成）。`mixed` 仍不可视为正式受治理结论。
 
 ---
 

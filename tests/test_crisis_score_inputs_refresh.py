@@ -32,6 +32,27 @@ def test_run_crisis_score_inputs_refresh_uses_rolling_window() -> None:
     assert payload["backfill"] == {"dry_run": True, "input_count": 7}
 
 
+def test_run_crisis_score_inputs_refresh_reports_partial_input_results() -> None:
+    backfill_payload = {
+        "dry_run": False,
+        "input_count": 2,
+        "results": {
+            "DR007.IB": {"status": "completed"},
+            "M0041653": {"status": "no_rows"},
+        },
+        "errors": {},
+    }
+
+    with patch(
+        "backend.app.tasks.crisis_score_inputs_refresh.backfill_crisis_score_inputs",
+        return_value=backfill_payload,
+    ):
+        payload = run_crisis_score_inputs_refresh(dry_run=False)
+
+    assert payload["status"] == "partial"
+    assert payload["backfill"] == backfill_payload
+
+
 def test_run_crisis_score_inputs_refresh_task_is_registered() -> None:
     from backend.app.tasks import crisis_score_inputs_refresh as module
 

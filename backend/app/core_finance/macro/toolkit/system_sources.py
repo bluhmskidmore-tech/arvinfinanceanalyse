@@ -53,37 +53,35 @@ _LEGACY_ALIAS_CANDIDATES: dict[str, tuple[str, ...]] = {
     "usdcny": ("EMM00058124", "legacy.fx.choice.USD.CNY", "fx_daily_mid:USD/CNY", "USD/CNY"),
     "nh0100.nhf": ("NHCI.NH", "tushare.index_daily.NHCI.NH.close"),
     "nhci.nh": ("NH0100.NHF", "tushare.index_daily.NHCI.NH.close"),
-    # 7D OMO reverse-repo: Choice EDB target remains EMM00088132 (crisis backfill vendor
-    # code), but the only currently populated runtime series is the legacy external carry
-    # source. Prefer the populated series first so alias resolution / source_check evidence
-    # does not present an empty Choice code as the primary hit.
+    # 7D OMO reverse-repo: prefer the refreshed Choice EDB series. Keep the stale
+    # legacy external series only as an explicit historical fallback.
     "m0041653": (
+        "EMM00088132",
         "legacy.wind_market_db.reverse_repo_7d",
         "cn_repo_7d",
         "M001",
         "公开市场7天逆回购利率",
-        "EMM00088132",
     ),
     "cn-repo-7d": (
+        "EMM00088132",
         "legacy.wind_market_db.reverse_repo_7d",
         "M001",
         "m0041653",
         "公开市场7天逆回购利率",
-        "EMM00088132",
     ),
     "m001": (
+        "EMM00088132",
         "legacy.wind_market_db.reverse_repo_7d",
         "cn_repo_7d",
         "m0041653",
         "公开市场7天逆回购利率",
-        "EMM00088132",
     ),
     "公开市场7天逆回购利率": (
+        "EMM00088132",
         "legacy.wind_market_db.reverse_repo_7d",
         "M001",
         "cn_repo_7d",
         "m0041653",
-        "EMM00088132",
     ),
     # Manufacturing PMI is not in choice_macro_catalog; it lands in fact_choice_macro_daily
     # via cycle_rotation / NBS PMI release / tushare cn_pmi (see config/cycle_rotation_macro_series.json).

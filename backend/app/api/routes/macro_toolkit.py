@@ -163,8 +163,8 @@ _CAPABILITY_DEFINITIONS = (
         "route_status": "wired",
         "frontend_status": "visible",
         "data_aliases": ("M0041653", "DR007.IB", "S0059743", "S0059749", "S0059760"),
-        "data_tables": ("fact_formal_yield_curve_daily", "std_external_macro_daily"),
-        "next_step": "7D 逆回购当前经 legacy.wind_market_db.reverse_repo_7d 解析；Choice EMM00088132 仍为 vendor 目标但账号侧无数据。",
+        "data_tables": ("fact_formal_yield_curve_daily", "fact_choice_macro_daily", "std_external_macro_daily"),
+        "next_step": "7D 逆回购优先解析 Choice EMM00088132；legacy 仅保留历史观测，不做静默 carry-forward。",
     },
     {
         "key": "yield_curve_shape",
@@ -187,8 +187,8 @@ _CAPABILITY_DEFINITIONS = (
         "route_status": "wired",
         "frontend_status": "visible",
         "data_aliases": ("S0059652", "S0059747", "S0059760"),
-        "data_tables": ("fact_formal_yield_curve_daily",),
-        "next_step": "观察口径信用利差风险已上分析卡；缺 AA 腿或变动窗口时 degraded。",
+        "data_tables": ("fact_formal_yield_curve_daily", "fact_choice_macro_daily"),
+        "next_step": "观察口径信用利差风险已上分析卡；缺同期限 AA 腿或变动窗口时 degraded。",
     },
     {
         "key": "leading_indicator",
@@ -1054,9 +1054,11 @@ def _execute_source_backfill(
         )
         result = (payload.get("results") or {}).get(backfill_alias) or {}
         total_added = int(result.get("written_rows") or result.get("row_count") or 0)
+        result_status = str(result.get("status") or ("error" if payload.get("errors") else "completed"))
         return {
+            "status": result_status,
             "dry_run": False,
-            "processed_count": 0 if payload.get("errors") else 1,
+            "processed_count": 1 if result_status == "completed" else 0,
             "total_added": total_added,
             "results": {backfill_alias: total_added},
             "errors": payload.get("errors") or {},
@@ -1643,7 +1645,7 @@ _CAPABILITY_INPUT_REQUIREMENTS = {
         {
             "field": "credit_spread_aaa_3y",
             "label": "AAA credit spread",
-            "aliases": ("S0059670",),
+            "aliases": ("S0059651", "S0059746"),
             "warning": "CREDIT_SPREAD_AAA_MISSING",
             "required": True,
             "derived": True,
@@ -3337,18 +3339,47 @@ def _capability_input_evidence_item(
     latest = check.get("latest") if isinstance(check.get("latest"), dict) else None
     field = str(requirement["field"])
     derived = bool(requirement.get("derived", False))
-    value = _latest_wide_field_value(field, wide_rows) if derived else None
-    if value is None and isinstance(latest, dict):
-        value = latest.get("value")
-    available = value is not None if derived else latest is not None
-    latest_date = latest.get("date") if isinstance(latest, dict) else None
+    derived_observation = _latest_wide_field_observation(field, wide_rows) if derived else None
+    if derived:
+        # 派生字段只消费宽表同源观测；禁止回退到腿 alias 的原始收益率冒充利差。
+        value = derived_observation["value"] if derived_observation is not None else None
+        available = value is not None
+        if derived_observation is not None and derived_observation.get("source_date") is not None:
+            latest_date = derived_observation["source_date"]
+        else:
+            latest_date = None
+    else:
+        value = latest.get("value") if isinstance(latest, dict) else None
+        available = latest is not None
+        latest_date = latest.get("date") if isinstance(latest, dict) else None
     cadence = str(requirement.get("cadence") or _input_cadence_for_field(field))
     freshness = assess_freshness(latest_date, report_date, cadence=cadence)
     stale = bool(
         available
         and freshness.tier in {FRESHNESS_TIER_STALE, FRESHNESS_TIER_EXPIRED}
     )
-    return {
+    provenance = (
+        derived_observation.get("provenance")
+        if derived_observation is not None
+        else None
+    )
+    if not isinstance(provenance, dict):
+        provenance = {}
+    series_id = provenance.get("series_id")
+    source = provenance.get("source") or provenance.get("vendor_name")
+    # 派生字段已有宽表 provenance 时，禁止用 alias 腿 latest 回填 series_id/source
+    #（value/date 已来自曲线派生观测，回填会造成身份错配）。
+    if not (derived and provenance):
+        if series_id is None and isinstance(latest, dict):
+            series_id = latest.get("series_id")
+        if source is None and isinstance(latest, dict):
+            source = latest.get("vendor_name")
+    elif series_id is None and provenance.get("transform") is not None:
+        # 曲线/transform 派生观测：无独立 series_id 时用明确身份，避免空串歧义。
+        series_id = "curve_derived"
+        if source is None:
+            source = "curve_derived"
+    item: dict[str, object] = {
         "field": field,
         "label": str(requirement["label"]),
         "aliases": list(aliases),
@@ -3361,10 +3392,27 @@ def _capability_input_evidence_item(
         "cadence": cadence,
         "row_count": int(check.get("row_count") or 0),
         "latest_date": latest_date,
-        "series_id": latest.get("series_id") if isinstance(latest, dict) else None,
-        "source": latest.get("vendor_name") if isinstance(latest, dict) else None,
+        "series_id": series_id,
+        "source": source,
         "value": value,
     }
+    if derived and provenance:
+        if provenance.get("unit") is not None:
+            item["unit"] = provenance["unit"]
+        if provenance.get("unit_status") is not None:
+            item["unit_status"] = provenance["unit_status"]
+        if provenance.get("transform") is not None:
+            item["transform"] = provenance["transform"]
+        legs = provenance.get("legs")
+        if isinstance(legs, dict):
+            item["legs"] = {
+                leg_name: _serialize_provenance_leg(leg_meta)
+                for leg_name, leg_meta in legs.items()
+            }
+        # 未冻结单位仅作 observation 披露，绝不解除 formal。
+        item["formal_use_allowed"] = False
+        item["observation_only"] = True
+    return item
 
 
 def _input_cadence_for_field(field: str) -> str:
@@ -3393,11 +3441,62 @@ def _first_available_source_check(
 
 
 def _latest_wide_field_value(field: str, wide_rows: list[dict[str, object]]) -> float | None:
+    observation = _latest_wide_field_observation(field, wide_rows)
+    if observation is None:
+        return None
+    value = observation.get("value")
+    return float(value) if value is not None else None
+
+
+def _latest_wide_field_observation(
+    field: str,
+    wide_rows: list[dict[str, object]],
+) -> dict[str, object] | None:
+    """取宽表中该字段最新非空观测，并附带同源 source_date / provenance。"""
     for row in wide_rows:
         value = _float_or_none(row.get(field))
-        if value is not None:
-            return value
+        if value is None:
+            continue
+        source_date = row.get(f"{field}_source_date")
+        if isinstance(source_date, date):
+            source_date_text = source_date.isoformat()
+        elif source_date is not None:
+            source_date_text = str(source_date)[:10]
+        else:
+            trade = row.get("trade_date") or row.get("biz_date")
+            source_date_text = trade.isoformat() if isinstance(trade, date) else (
+                str(trade)[:10] if trade is not None else None
+            )
+        row_provenance = row.get("_provenance")
+        field_provenance = None
+        if isinstance(row_provenance, dict):
+            candidate = row_provenance.get(field)
+            if isinstance(candidate, dict):
+                field_provenance = dict(candidate)
+                prov_date = field_provenance.get("source_date")
+                if isinstance(prov_date, date):
+                    field_provenance["source_date"] = prov_date
+                    source_date_text = prov_date.isoformat()
+                elif prov_date is not None:
+                    source_date_text = str(prov_date)[:10]
+        return {
+            "value": value,
+            "source_date": source_date_text,
+            "provenance": field_provenance or {},
+        }
     return None
+
+
+def _serialize_provenance_leg(leg_meta: object) -> dict[str, object]:
+    if not isinstance(leg_meta, dict):
+        return {}
+    serialized = dict(leg_meta)
+    leg_date = serialized.get("source_date")
+    if isinstance(leg_date, date):
+        serialized["source_date"] = leg_date.isoformat()
+    elif leg_date is not None:
+        serialized["source_date"] = str(leg_date)[:10]
+    return serialized
 
 
 def _unique_sorted_texts(values: Iterable[object]) -> list[str]:
@@ -3440,6 +3539,7 @@ def _load_macro_wide_rows(
     frames_by_alias: dict[str, pd.DataFrame] | None = None,
 ) -> list[dict[str, object]]:
     wide_by_date: dict[date, dict[str, float]] = {report_date: {}}
+    source_dates_by_date: dict[date, dict[str, date]] = {}
     fields = [field for field, _ in _WIDE_SERIES_ALIASES]
     resolved_frames_by_alias = frames_by_alias or {}
     missing_aliases = tuple(
@@ -3464,6 +3564,7 @@ def _load_macro_wide_rows(
             if sample_date is None or sample_date > report_date or value is None:
                 continue
             wide_by_date.setdefault(sample_date, {})[field] = value
+            source_dates_by_date.setdefault(sample_date, {})[field] = sample_date
 
     for row in curve_rows:
         row_date = _parse_report_date(str(row.get("biz_date") or ""))
@@ -3483,6 +3584,7 @@ def _load_macro_wide_rows(
                 max_stale = _WIDE_FFILL_MAX_STALE_DAYS[cadence]
                 if (sample_date - last_seen_date[field]).days <= max_stale:
                     current[field] = last_seen[field]
+                    source_dates_by_date.setdefault(sample_date, {})[field] = last_seen_date[field]
         for field in fresh_fields:
             value = current.get(field)
             if value is not None:
@@ -3490,8 +3592,28 @@ def _load_macro_wide_rows(
                 last_seen_date[field] = sample_date
 
     curves_by_date = build_curve_history(curve_rows, report_date=report_date)
-    enrich_wide_with_curve_market_fields(wide_by_date, curves_by_date)
-    return sort_wide_rows_for_macro(wide_by_date, report_date=report_date)
+    curve_provenance_by_date: dict[date, dict[str, dict[str, object]]] = {}
+    enrich_wide_with_curve_market_fields(
+        wide_by_date,
+        curves_by_date,
+        provenance_by_date=curve_provenance_by_date,
+    )
+    wide_rows = sort_wide_rows_for_macro(wide_by_date, report_date=report_date)
+    for row in wide_rows:
+        row_date = row["trade_date"]
+        for field, source_date in source_dates_by_date.get(row_date, {}).items():
+            row[f"{field}_source_date"] = source_date
+        # 曲线 enrich 覆盖派生值时，原子替换 *_source_date 与 page-local _provenance。
+        derived_provenance = curve_provenance_by_date.get(row_date)
+        if derived_provenance:
+            row_provenance = dict(row.get("_provenance") or {})
+            for field, meta in derived_provenance.items():
+                source_date = meta.get("source_date")
+                if isinstance(source_date, date):
+                    row[f"{field}_source_date"] = source_date
+                row_provenance[field] = dict(meta)
+            row["_provenance"] = row_provenance
+    return wide_rows
 
 
 def _load_latest_risk_tensor_row(
@@ -3811,6 +3933,7 @@ def _capability_result_evidence(key: str, result: dict[str, object]) -> list[str
                 _format_evidence("DR007", metrics.get("dr007"), "%") if isinstance(metrics, dict) else None,
                 _format_evidence("10Y-1Y", metrics.get("gov_slope_10y_1y_bp"), "bp") if isinstance(metrics, dict) else None,
                 _format_evidence("AAA spread", metrics.get("aaa_spread_bp"), "bp") if isinstance(metrics, dict) else None,
+                f"as_of={result.get('as_of_date')}",
             ]
         )
     if key == "yield_curve_shape":
@@ -3828,6 +3951,7 @@ def _capability_result_evidence(key: str, result: dict[str, object]) -> list[str
                 f"risk={result.get('risk_level')}",
                 _format_evidence("AAA", result.get("aaa_spread_bp"), "bp"),
                 _format_evidence("AA-AAA", result.get("aa_minus_aaa_bp"), "bp"),
+                f"as_of={result.get('as_of_date')}",
             ]
         )
     if key == "leading_indicator":

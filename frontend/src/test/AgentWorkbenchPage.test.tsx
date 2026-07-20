@@ -1324,7 +1324,7 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.queryByRole("status", { name: "数据可信状态提示" })).not.toBeInTheDocument();
   });
 
-  it("reveals executed SQL from evidence as a read-only disclosure", async () => {
+  it("reveals server SQL evidence as a read-only disclosure", async () => {
     const user = userEvent.setup();
     const baseResult = buildLocalAnalysisChatResult();
     fetchMock.mockResolvedValueOnce(
@@ -1345,8 +1345,8 @@ describe("AgentWorkbenchPage", () => {
 
     fireEvent.click(screen.getByText("查看依据 · 2 项"));
     const sqlDisclosure = screen.getByTestId("agent-evidence-sql");
-    expect(sqlDisclosure).toHaveTextContent("查看执行 SQL · 1 条");
-    fireEvent.click(within(sqlDisclosure).getByText("查看执行 SQL · 1 条"));
+    expect(sqlDisclosure).toHaveTextContent("查看只读 SQL 披露 · 1 条");
+    fireEvent.click(within(sqlDisclosure).getByText("查看只读 SQL 披露 · 1 条"));
     expect(sqlDisclosure).toHaveTextContent(
       "SELECT report_date, market_value FROM fact_formal_zqtz_balance_daily LIMIT 10",
     );
@@ -5687,8 +5687,8 @@ describe("AgentWorkbenchPage", () => {
     await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "draft after stop");
 
     const composerAction = screen.getByTestId("agent-panel-submit");
-    expect(composerAction).toHaveTextContent("停止");
-    expect(composerAction).toHaveAccessibleName(/composer stop this answer/);
+    expect(composerAction).toHaveTextContent("停止等待");
+    expect(composerAction).toHaveAccessibleName(/停止等待当前回答：composer stop this answer/);
     expect(composerAction).not.toBeDisabled();
     await user.click(composerAction);
 
@@ -5696,7 +5696,7 @@ describe("AgentWorkbenchPage", () => {
     const input = screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL);
     expect(input).toHaveValue("draft after stop");
     expect(input).toHaveFocus();
-    expect(screen.getByText("已停止回答 · 可继续发送当前输入")).toBeInTheDocument();
+    expect(screen.getByText("已停止等待 · 可继续发送当前输入")).toBeInTheDocument();
 
     await act(async () => {
       resolveCreateRun(
@@ -5847,7 +5847,9 @@ describe("AgentWorkbenchPage", () => {
     expect(stoppedRerunAction).toHaveAccessibleName(/rerun this stopped answer/);
     await user.click(stoppedRerunAction);
 
-    expect(await screen.findByText("正在重新发送已停止回答 · 可继续输入下一句")).toBeInTheDocument();
+    expect(
+      await screen.findByText("正在重新发送已停止等待的回答 · 可继续输入下一句"),
+    ).toBeInTheDocument();
     expect(screen.queryByText("已停止等待这次回答。")).not.toBeInTheDocument();
     const input = screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL);
     expect(input).toHaveValue("");
@@ -6240,9 +6242,11 @@ describe("AgentWorkbenchPage", () => {
     });
 
     expect(waitStatus).toHaveTextContent("还在连接");
-    expect(waitStatus).toHaveTextContent("还没拿到运行状态，可以停止，或继续输入下一句。");
+    expect(waitStatus).toHaveTextContent("还没拿到运行状态，可以停止等待，或继续输入下一句。");
     expect(runtimeDetails).toHaveTextContent("已等待 12 秒");
-    expect(runtimeDetails).toHaveTextContent("还没拿到运行状态，可以停止后重试，或继续输入下一句。");
+    expect(runtimeDetails).toHaveTextContent(
+      "还没拿到运行状态，可以停止等待后重试，或继续输入下一句。",
+    );
   });
 
   it("renders answer, cards, evidence, next_drill, and result_meta on success", async () => {

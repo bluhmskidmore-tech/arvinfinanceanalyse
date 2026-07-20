@@ -205,7 +205,7 @@ def test_fetch_reverse_repo_7d_carry_forward_rows(tmp_path: Path) -> None:
     assert all(row.series_id == "cn_repo_7d" for row in rows)
 
 
-def test_backfill_reverse_repo_falls_back_to_carry_forward(tmp_path: Path) -> None:
+def test_backfill_reverse_repo_does_not_silently_carry_forward(tmp_path: Path) -> None:
     db_path = tmp_path / "macro.duckdb"
     conn = duckdb.connect(str(db_path))
     try:
@@ -243,8 +243,42 @@ def test_backfill_reverse_repo_falls_back_to_carry_forward(tmp_path: Path) -> No
         "backend.scripts.backfill_crisis_score_inputs._fetch_choice_edb_rows",
         side_effect=RuntimeError("no data"),
     ), patch(
+        "backend.scripts.backfill_crisis_score_inputs.fetch_reverse_repo_7d_carry_forward_rows",
+    ) as carry_mock, patch(
         "backend.scripts.backfill_crisis_score_inputs.persist_macro_environment_rows",
-        return_value=3,
+    ) as persist_mock:
+        payload = backfill_crisis_score_inputs(
+            duckdb_path=str(db_path),
+            start_date="2026-05-01",
+            end_date="2026-05-03",
+            aliases=["M0041653"],
+        )
+
+    assert payload["errors"] == {"M0041653": "no data"}
+    assert payload["results"]["M0041653"]["status"] == "error"
+    carry_mock.assert_not_called()
+    persist_mock.assert_not_called()
+
+
+def test_backfill_reverse_repo_persists_real_choice_rows(tmp_path: Path) -> None:
+    db_path = tmp_path / "macro.duckdb"
+    choice_rows = [
+        BackfillRow(
+            series_id="EMM00088132",
+            series_name="公开市场操作:逆回购:7天:中标利率",
+            trade_date="2026-05-02",
+            value_numeric=1.4,
+            frequency="daily",
+            unit="%",
+        )
+    ]
+
+    with patch(
+        "backend.scripts.backfill_crisis_score_inputs._fetch_choice_edb_rows",
+        return_value=choice_rows,
+    ), patch(
+        "backend.scripts.backfill_crisis_score_inputs.persist_macro_environment_rows",
+        return_value=1,
     ) as persist_mock:
         payload = backfill_crisis_score_inputs(
             duckdb_path=str(db_path),
@@ -255,7 +289,7 @@ def test_backfill_reverse_repo_falls_back_to_carry_forward(tmp_path: Path) -> No
 
     assert payload["errors"] == {}
     assert payload["results"]["M0041653"]["status"] == "completed"
-    assert payload["results"]["M0041653"]["written_rows"] == 3
+    assert payload["results"]["M0041653"]["written_rows"] == 1
     assert persist_mock.call_count == 1
 
 

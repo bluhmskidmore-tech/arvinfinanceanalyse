@@ -111,10 +111,11 @@ def compute_credit_spread_risk(
     report_date: date,
 ) -> dict[str, Any]:
     curves_by_date = _build_curves(curve_rows, report_date=report_date)
-    available_dates = sorted(curves_by_date.keys(), reverse=True)
-    if not available_dates:
+    all_dates = sorted(curves_by_date.keys(), reverse=True)
+    if not all_dates:
         return {
             "report_date": report_date.isoformat(),
+            "as_of_date": None,
             "data_status": "unavailable",
             **_OBSERVATION_FLAGS,
             "credit_spread_tenor": None,
@@ -130,17 +131,22 @@ def compute_credit_spread_risk(
             "warnings": ["NO_CREDIT_CURVES"],
         }
 
-    current_date = available_dates[0]
-    tenor, aaa_spread_bp = _resolve_spread(
-        curves_by_date,
-        current_date,
-        credit_curve_id="CN_CREDIT_AAA",
-        base_curve_id="CN_GOVT",
-        tenors=_PREFERRED_TENORS,
-    )
-    if tenor is None or aaa_spread_bp is None:
+    spread_dates: list[date] = []
+    for sample_date in all_dates:
+        _, sample_spread = _resolve_spread(
+            curves_by_date,
+            sample_date,
+            credit_curve_id="CN_CREDIT_AAA",
+            base_curve_id="CN_GOVT",
+            tenors=_PREFERRED_TENORS,
+        )
+        if sample_spread is not None:
+            spread_dates.append(sample_date)
+
+    if not spread_dates:
         return {
             "report_date": report_date.isoformat(),
+            "as_of_date": None,
             "data_status": "unavailable",
             **_OBSERVATION_FLAGS,
             "credit_spread_tenor": None,
@@ -156,19 +162,42 @@ def compute_credit_spread_risk(
             "warnings": ["AAA_SPREAD_MISSING"],
         }
 
+    current_date = spread_dates[0]
+    tenor, aaa_spread_bp = _resolve_spread(
+        curves_by_date,
+        current_date,
+        credit_curve_id="CN_CREDIT_AAA",
+        base_curve_id="CN_GOVT",
+        tenors=_PREFERRED_TENORS,
+    )
+    assert tenor is not None and aaa_spread_bp is not None
+
+    tenor_dates = [
+        sample_date
+        for sample_date in spread_dates
+        if _resolve_spread(
+            curves_by_date,
+            sample_date,
+            credit_curve_id="CN_CREDIT_AAA",
+            base_curve_id="CN_GOVT",
+            tenors=(tenor,),
+        )[1]
+        is not None
+    ]
+
     _, aa_minus_aaa_bp = _resolve_aa_minus_aaa(
         curves_by_date,
         current_date,
-        tenors=(tenor, *tuple(item for item in _PREFERRED_TENORS if item != tenor)),
+        tenors=(tenor,),
     )
     weekly_change_bp = _change_vs_prior(
-        available_dates,
+        tenor_dates,
         curves_by_date,
         lookback_index=5,
         tenor=tenor,
     )
     monthly_change_bp = _change_vs_prior(
-        available_dates,
+        tenor_dates,
         curves_by_date,
         lookback_index=21,
         tenor=tenor,
@@ -227,6 +256,7 @@ def compute_credit_spread_risk(
 
     return {
         "report_date": report_date.isoformat(),
+        "as_of_date": current_date.isoformat(),
         "data_status": "degraded" if warnings else "complete",
         **_OBSERVATION_FLAGS,
         "credit_spread_tenor": tenor,

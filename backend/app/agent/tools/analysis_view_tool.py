@@ -1258,6 +1258,12 @@ class AnalysisViewTool:
         next_drill: list[AgentDrill],
         suggested_actions: list[AgentSuggestedAction] | None = None,
     ) -> dict[str, Any]:
+        result_meta = result_meta.model_copy(
+            update={
+                "evidence_strength": evidence.evidence_strength,
+                "quality_flag": evidence.quality_flag,
+            }
+        )
         return {
             "answer": answer,
             "cards": [card.model_dump(mode="python") for card in cards],

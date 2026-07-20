@@ -678,6 +678,45 @@ def test_system_source_layer_reads_crisis_external_backfill_aliases(tmp_path, mo
     get_settings.cache_clear()
 
 
+def test_m0041653_prefers_choice_over_legacy_on_overlapping_dates(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_tushare_macro_db(duckdb_path)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            insert into fact_choice_macro_daily values
+              ('EMM00088132', 'Open market reverse repo 7D', '2026-04-11',
+               1.40, 'daily', '%', 'sv_choice_repo', 'vv_choice_repo',
+               'rv_crisis_score_inputs_backfill_v1', 'ok', 'run-choice-repo')
+            """
+        )
+        conn.execute(
+            """
+            insert into std_external_macro_daily values
+              ('legacy.wind_market_db.reverse_repo_7d', 'moss_derived', 'macro', '2026-04-10',
+               1.72, 'daily', '%', 'sv_legacy_repo', 'vv_legacy_repo',
+               'rv_macro_crisis_external_backfill_v1', 'run-legacy-repo',
+               'legacy-market.db', current_timestamp),
+              ('legacy.wind_market_db.reverse_repo_7d', 'moss_derived', 'macro', '2026-04-11',
+               1.72, 'daily', '%', 'sv_legacy_repo', 'vv_legacy_repo',
+               'rv_macro_crisis_external_backfill_v1', 'run-legacy-repo',
+               'legacy-market.db', current_timestamp)
+            """
+        )
+    finally:
+        conn.close()
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    reverse_repo = load_series_by_alias("M0041653", start="2026-04-11")
+
+    assert reverse_repo["series_id"].tolist() == ["EMM00088132"]
+    assert reverse_repo["vendor_name"].tolist() == ["choice"]
+    assert reverse_repo["value"].tolist() == [1.4]
+    get_settings.cache_clear()
+
+
 def test_system_source_layer_reads_nanhua_from_commodity_daily_table(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_tushare_macro_db(duckdb_path)
@@ -1514,10 +1553,11 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
     # 可读路径见 test_multi_asset_observation_cards_readable_when_price_history_seeded
     # 与 docs/plans/2026-07-19-macro-due-diligence-wiring.md（W3）。
     # M12 无可算对照相关腿时诚实计 unavailable（不再 degraded +「常态」）。
+    # M10 共同月对齐后：薄种子缺 PMI/M2/社融/信用利差/Brent → 无 6/6 共同月，诚实 unavailable。
     assert data_health["capability_results"] == {
         "complete": 1,
-        "degraded": 4,
-        "unavailable": 10,
+        "degraded": 3,
+        "unavailable": 11,
         "total_count": 15,
         "deferred": False,
     }
@@ -1565,12 +1605,12 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
         "tags": ["indicator"],
     }
     leading_repair = next(item for item in repair_items if item["key"] == "capability:leading_indicator")
-    assert leading_repair["type"] == "degraded"
+    assert leading_repair["type"] == "missing"
     assert leading_repair["scope"] == "full"
-    assert leading_repair["priority"] == "medium"
+    assert leading_repair["priority"] == "high"
     assert leading_repair["label"] == "宏观领先指标"
-    assert "宏观领先指标 当前 degraded" in leading_repair["suggested_action"]
-    assert "PMI_MISSING" in leading_repair["suggested_action"]
+    assert "宏观领先指标 当前 unavailable" in leading_repair["suggested_action"]
+    assert "LEI_NO_COMMON_COMPUTABLE_MONTH" in leading_repair["suggested_action"]
     assert leading_repair["action"] == {
         "kind": "load_full_analysis",
         "label": "重新完整分析",
@@ -1640,9 +1680,12 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
 
     leading_indicator = capability_results["leading_indicator"]
     leading_missing = set(leading_indicator["result"]["input_evidence"]["missing_inputs"])
-    assert leading_indicator["status"] == "degraded"
+    assert leading_indicator["status"] == "unavailable"
+    assert leading_indicator["result"]["data_status"] == "unavailable"
+    assert leading_indicator["result"]["lei_index"] is None
     assert {"PMI_MISSING", "SOCIAL_FINANCING_YOY_MISSING", "CREDIT_SPREAD_AAA_MISSING"}.issubset(leading_missing)
     assert "M2_YOY_MISSING" in leading_missing
+    assert "LEI_NO_COMMON_COMPUTABLE_MONTH" in (leading_indicator.get("warnings") or [])
 
     economic_cycle = capability_results["economic_cycle"]
     cycle_missing = set(economic_cycle["result"]["input_evidence"]["missing_inputs"])
@@ -3257,6 +3300,45 @@ def test_macro_curve_rows_include_reverse_repo_legacy_alias(tmp_path, monkeypatc
     ]
 
 
+def test_choice_curve_aliases_feed_credit_spread_risk(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_tushare_macro_db(duckdb_path)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            insert into fact_choice_macro_daily values
+              ('EMM00166460', 'China treasury yield 3Y', '2026-04-10', 1.8,
+               'daily', 'pct', 'sv_choice_curve', 'vv_choice_curve',
+               'rv_choice_macro', 'ok', 'choice-curve-run'),
+              ('EMM00166657', 'China AAA credit yield 3Y', '2026-04-10', 2.3,
+               'daily', 'pct', 'sv_choice_curve', 'vv_choice_curve',
+               'rv_choice_macro', 'ok', 'choice-curve-run'),
+              ('EMM00166681', 'China AA credit yield 3Y', '2026-04-10', 2.6,
+               'daily', 'pct', 'sv_choice_curve', 'vv_choice_curve',
+               'rv_choice_macro', 'ok', 'choice-curve-run')
+            """
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    system_sources.clear_system_macro_source_cache()
+    try:
+        report_date = date(2026, 4, 10)
+        rows = macro_toolkit_service.load_macro_curve_rows(duckdb_path, report_date)
+        payload = macro_toolkit_route.compute_credit_spread_risk(rows, report_date=report_date)
+    finally:
+        system_sources.clear_system_macro_source_cache()
+        get_settings.cache_clear()
+
+    assert payload["as_of_date"] == "2026-04-10"
+    assert payload["credit_spread_tenor"] == "3Y"
+    assert payload["aaa_spread_bp"] == pytest.approx(50.0)
+    assert payload["aa_minus_aaa_bp"] == pytest.approx(30.0)
+
+
 def test_crisis_score_capability_batches_formula_and_commodity_aliases(tmp_path, monkeypatch) -> None:
     calls: list[dict[str, object]] = []
     empty_frame = pd.DataFrame(columns=["date", "value", "series_id", "vendor_name"])
@@ -4542,6 +4624,35 @@ def test_macro_toolkit_choice_stock_refresh_requires_explicit_refresh_scope_gran
     get_settings.cache_clear()
 
 
+def test_source_backfill_preserves_crisis_no_rows_status(monkeypatch) -> None:
+    from backend.scripts import backfill_crisis_score_inputs as crisis_backfill
+
+    monkeypatch.setattr(
+        crisis_backfill,
+        "backfill_crisis_score_inputs",
+        lambda **_kwargs: {
+            "results": {"M0041653": {"status": "no_rows", "written_rows": 0}},
+            "errors": {},
+        },
+    )
+
+    payload = macro_toolkit_route._execute_source_backfill(
+        target={
+            "alias": "M0041653",
+            "backfill_mode": "crisis_score_inputs",
+        },
+        alias="M0041653",
+        duckdb_path="unused.duckdb",
+        start_date="2026-07-01",
+        end_date="2026-07-20",
+        sources_filter=["choice_edb"],
+    )
+
+    assert payload["status"] == "no_rows"
+    assert payload["processed_count"] == 0
+    assert payload["total_added"] == 0
+
+
 def test_macro_toolkit_source_backfill_refresh_maps_alias_and_requires_scope(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     sqlite_path = tmp_path / "auth-scope.db"
@@ -5371,6 +5482,8 @@ def test_capability_definitions_declare_actual_curve_inputs_via_data_tables() ->
     # M8/M9/M13/M15 的实际计算经 load_macro_capability_context 走正式曲线表。
     for key in ("yield_curve_shape", "credit_spread_risk", "rate_turning_point", "macro_portfolio_impact"):
         assert "fact_formal_yield_curve_daily" in definitions[key]["data_tables"], key
+    # M9 同时消费 alias 回退点；回补后的 Choice 信用/国债历史必须进入血缘声明。
+    assert "fact_choice_macro_daily" in definitions["credit_spread_risk"]["data_tables"]
 
     # M15 组合概况来自正式债券持仓表。
     assert "fact_formal_bond_analytics_daily" in definitions["macro_portfolio_impact"]["data_tables"]
@@ -5379,6 +5492,7 @@ def test_capability_definitions_declare_actual_curve_inputs_via_data_tables() ->
     assert definitions["monetary_policy_stance"]["route_status"] == "wired"
     assert definitions["monetary_policy_stance"]["frontend_status"] == "visible"
     assert "std_external_macro_daily" in definitions["monetary_policy_stance"]["data_tables"]
+    assert "fact_choice_macro_daily" in definitions["monetary_policy_stance"]["data_tables"]
     assert definitions["leading_indicator"]["route_status"] == "wired"
     assert definitions["leading_indicator"]["frontend_status"] == "visible"
     assert "fact_choice_macro_daily" in definitions["leading_indicator"]["data_tables"]
@@ -6574,3 +6688,300 @@ def _seed_choice_stock_factor_snapshot(path) -> None:
         )
     finally:
         conn.close()
+
+
+def _empty_wide_frames() -> dict[str, pd.DataFrame]:
+    return {
+        alias: pd.DataFrame(columns=["date", "value", "series_id", "vendor_name"])
+        for _, alias in macro_toolkit_route._WIDE_SERIES_ALIASES
+    }
+
+
+def test_leading_indicator_curve_derived_spreads_attach_same_day_provenance() -> None:
+    """Term/credit 派生值与 source_date / transform / legs 必须同一观测日。"""
+    report_date = date(2026, 7, 20)
+    frames = _empty_wide_frames()
+    curve_rows = [
+        {"biz_date": "2026-07-20", "curve_id": "CN_GOVT", "tenor": "1Y", "rate_value": 1.5},
+        {"biz_date": "2026-07-20", "curve_id": "CN_GOVT", "tenor": "10Y", "rate_value": 2.1},
+        {"biz_date": "2026-07-20", "curve_id": "CN_GOVT", "tenor": "3Y", "rate_value": 1.8},
+        {"biz_date": "2026-07-20", "curve_id": "CN_CREDIT_AAA", "tenor": "3Y", "rate_value": 2.2},
+    ]
+
+    wide_rows = macro_toolkit_route._load_macro_wide_rows(
+        "unused.duckdb",
+        report_date,
+        curve_rows,
+        frames_by_alias=frames,
+    )
+    july = next(row for row in wide_rows if row["trade_date"] == report_date)
+
+    assert july["term_spread_10y_1y"] == pytest.approx(60.0)
+    assert july["term_spread_10y_1y_source_date"] == report_date
+    term_prov = july["_provenance"]["term_spread_10y_1y"]
+    assert term_prov["source_date"] == report_date
+    assert term_prov["unit"] == "bp"
+    assert term_prov["unit_status"] == "provisional"
+    assert "10Y" in term_prov["transform"] and "1Y" in term_prov["transform"]
+    assert term_prov["legs"]["gov_1y"]["source_date"] == report_date
+    assert term_prov["legs"]["gov_10y"]["source_date"] == report_date
+    assert term_prov["legs"]["gov_1y"]["value"] == pytest.approx(1.5)
+    assert term_prov["legs"]["gov_10y"]["value"] == pytest.approx(2.1)
+
+    assert july["credit_spread_aaa_3y"] == pytest.approx(40.0)
+    assert july["credit_spread_aaa_3y_source_date"] == report_date
+    credit_prov = july["_provenance"]["credit_spread_aaa_3y"]
+    assert credit_prov["source_date"] == report_date
+    assert credit_prov["unit"] == "bp"
+    assert credit_prov["unit_status"] in {"provisional", "unfrozen"}
+    assert "AAA" in credit_prov["transform"] or "3Y" in credit_prov["transform"]
+    assert credit_prov["legs"]["aaa_3y"]["source_date"] == report_date
+    assert credit_prov["legs"]["gov_3y"]["source_date"] == report_date
+    assert credit_prov["legs"]["aaa_3y"]["value"] == pytest.approx(2.2)
+    assert credit_prov["legs"]["gov_3y"]["value"] == pytest.approx(1.8)
+
+
+def test_leading_indicator_enrich_atomically_replaces_alias_credit_spread_provenance() -> None:
+    """ffill 的 alias 利差被曲线 enrich 覆盖时，value 与 source_date 必须原子替换。"""
+    report_date = date(2026, 4, 20)
+    frames = _empty_wide_frames()
+    frames["S0059670"] = pd.DataFrame(
+        [
+            {
+                "date": date(2026, 4, 15),
+                "value": 99.0,
+                "series_id": "legacy.yield.moss_derived.credit_spread_aaa.3Y",
+                "vendor_name": "moss_derived",
+            }
+        ]
+    )
+    curve_rows = [
+        {"biz_date": "2026-04-15"},
+        {"biz_date": "2026-04-20"},
+        {"biz_date": "2026-04-20", "curve_id": "CN_GOVT", "tenor": "1Y", "rate_value": 1.5},
+        {"biz_date": "2026-04-20", "curve_id": "CN_GOVT", "tenor": "10Y", "rate_value": 2.1},
+        {"biz_date": "2026-04-20", "curve_id": "CN_GOVT", "tenor": "3Y", "rate_value": 1.8},
+        {"biz_date": "2026-04-20", "curve_id": "CN_CREDIT_AAA", "tenor": "3Y", "rate_value": 2.2},
+    ]
+
+    wide_rows = macro_toolkit_route._load_macro_wide_rows(
+        "unused.duckdb",
+        report_date,
+        curve_rows,
+        frames_by_alias=frames,
+    )
+    april_15 = next(row for row in wide_rows if row["trade_date"] == date(2026, 4, 15))
+    april_20 = next(row for row in wide_rows if row["trade_date"] == date(2026, 4, 20))
+
+    assert april_15["credit_spread_aaa_3y"] == pytest.approx(99.0)
+    assert april_15["credit_spread_aaa_3y_source_date"] == date(2026, 4, 15)
+
+    assert april_20["credit_spread_aaa_3y"] == pytest.approx(40.0)
+    assert april_20["credit_spread_aaa_3y_source_date"] == date(2026, 4, 20)
+    assert april_20["_provenance"]["credit_spread_aaa_3y"]["source_date"] == date(2026, 4, 20)
+    assert "S0059670" not in str(april_20["_provenance"]["credit_spread_aaa_3y"].get("transform", ""))
+
+
+def test_capability_input_evidence_pairs_derived_value_with_matching_date() -> None:
+    """禁止 July 派生值 + April alias 日的错配；value/date/series/vendor 同源。"""
+    report_date = date(2026, 7, 20)
+    frames = _empty_wide_frames()
+    frames["S0059670"] = pd.DataFrame(
+        [
+            {
+                "date": date(2026, 4, 15),
+                "value": 99.0,
+                "series_id": "legacy.yield.moss_derived.credit_spread_aaa.3Y",
+                "vendor_name": "moss_derived",
+            }
+        ]
+    )
+    frames["S0059743"] = pd.DataFrame(
+        [
+            {
+                "date": date(2026, 4, 10),
+                "value": 1.4,
+                "series_id": "legacy.yield.choice.treasury.1Y",
+                "vendor_name": "choice",
+            }
+        ]
+    )
+    frames["S0059749"] = pd.DataFrame(
+        [
+            {
+                "date": date(2026, 4, 10),
+                "value": 2.0,
+                "series_id": "legacy.yield.choice.treasury.10Y",
+                "vendor_name": "choice",
+            }
+        ]
+    )
+    frames["S0059651"] = pd.DataFrame(
+        [
+            {
+                "date": date(2026, 4, 10),
+                "value": 2.3,
+                "series_id": "legacy.yield.choice.aaa.3Y",
+                "vendor_name": "choice",
+            }
+        ]
+    )
+    frames["S0059746"] = pd.DataFrame(
+        [
+            {
+                "date": date(2026, 4, 10),
+                "value": 1.9,
+                "series_id": "legacy.yield.choice.treasury.3Y",
+                "vendor_name": "choice",
+            }
+        ]
+    )
+    curve_rows = [
+        {"biz_date": "2026-07-20", "curve_id": "CN_GOVT", "tenor": "1Y", "rate_value": 1.5},
+        {"biz_date": "2026-07-20", "curve_id": "CN_GOVT", "tenor": "10Y", "rate_value": 2.1},
+        {"biz_date": "2026-07-20", "curve_id": "CN_GOVT", "tenor": "3Y", "rate_value": 1.8},
+        {"biz_date": "2026-07-20", "curve_id": "CN_CREDIT_AAA", "tenor": "3Y", "rate_value": 2.2},
+    ]
+    wide_rows = macro_toolkit_route._load_macro_wide_rows(
+        "unused.duckdb",
+        report_date,
+        curve_rows,
+        frames_by_alias=frames,
+    )
+
+    source_check_cache: dict[str, dict[str, object]] = {}
+    for alias, frame in frames.items():
+        source_check_cache[alias] = macro_toolkit_route._source_check_payload(alias, frame)
+
+    term_req = next(
+        item
+        for item in macro_toolkit_route._CAPABILITY_INPUT_REQUIREMENTS["leading_indicator"]
+        if item["field"] == "term_spread_10y_1y"
+    )
+    credit_req = next(
+        item
+        for item in macro_toolkit_route._CAPABILITY_INPUT_REQUIREMENTS["leading_indicator"]
+        if item["field"] == "credit_spread_aaa_3y"
+    )
+
+    term_item = macro_toolkit_route._capability_input_evidence_item(
+        term_req,
+        duckdb_path="unused.duckdb",
+        report_date=report_date,
+        wide_rows=wide_rows,
+        source_check_cache=source_check_cache,
+    )
+    credit_item = macro_toolkit_route._capability_input_evidence_item(
+        credit_req,
+        duckdb_path="unused.duckdb",
+        report_date=report_date,
+        wide_rows=wide_rows,
+        source_check_cache=source_check_cache,
+    )
+
+    # 有曲线 provenance 时：value/date 来自 July 曲线派生，series_id/source 不得回退 April alias 腿身份。
+    assert term_item["available"] is True
+    assert term_item["value"] == pytest.approx(60.0)
+    assert term_item["latest_date"] == "2026-07-20"
+    assert term_item["latest_date"] != "2026-04-10"
+    assert term_item.get("unit") == "bp"
+    assert term_item.get("transform")
+    assert set(term_item.get("legs", {})).issuperset({"gov_1y", "gov_10y"})
+    assert term_item.get("series_id") in {None, "curve_derived"}
+    assert term_item.get("source") in {None, "curve_derived"}
+    assert term_item.get("series_id") != "legacy.yield.choice.treasury.1Y"
+    assert term_item.get("source") != "choice"
+    assert term_item.get("unit_status") in {"provisional", "unfrozen"}
+    assert term_item.get("formal_use_allowed") is not True
+
+    assert credit_item["available"] is True
+    assert credit_item["value"] == pytest.approx(40.0)
+    assert credit_item["latest_date"] == "2026-07-20"
+    assert credit_item["latest_date"] != "2026-04-15"
+    assert credit_item.get("unit") == "bp"
+    assert credit_item.get("transform")
+    assert set(credit_item.get("legs", {})).issuperset({"aaa_3y", "gov_3y"})
+    assert credit_item.get("series_id") in {None, "curve_derived"}
+    assert credit_item.get("source") in {None, "curve_derived"}
+    assert credit_item.get("series_id") != "legacy.yield.choice.aaa.3Y"
+    assert credit_item.get("source") != "choice"
+    # 未冻结单位不得解除 formal
+    assert credit_item.get("unit_status") in {"provisional", "unfrozen"}
+    assert credit_item.get("formal_use_allowed") is not True
+
+
+def test_leading_indicator_merrill_cycle_cross_market_ignore_provenance_sidecar() -> None:
+    """Merrill / economic_cycle / cross_market 忽略 _provenance，数值行为不变。"""
+    from backend.app.core_finance.macro.cross_market_linkage import analyze_cross_market_linkage
+    from backend.app.core_finance.macro.economic_cycle import compute_economic_cycle
+    from backend.app.core_finance.macro.merrill_clock import compute_merrill_clock_payload
+
+    report_date = date(2026, 4, 30)
+    base_rows = [
+        {
+            "trade_date": date(2026, 4, 30),
+            "biz_date": date(2026, 4, 30),
+            "pmi": 51.0,
+            "cpi_yoy": 0.5,
+            "ppi_yoy": -1.0,
+            "m2_yoy": 8.0,
+            "social_financing_yoy": 9.0,
+            "industrial_yoy": 6.0,
+            "term_spread_10y_1y": 60.0,
+            "treasury_10y": 2.2,
+            "hs300": 4000.0,
+            "usdcny": 7.2,
+            "brent_oil": 80.0,
+            "us_treasury_10y": 4.0,
+            "copper": 70000.0,
+        },
+        {
+            "trade_date": date(2026, 3, 31),
+            "biz_date": date(2026, 3, 31),
+            "pmi": 50.0,
+            "cpi_yoy": 0.4,
+            "ppi_yoy": -0.8,
+            "m2_yoy": 7.5,
+            "social_financing_yoy": 8.5,
+            "industrial_yoy": 5.5,
+            "term_spread_10y_1y": 55.0,
+            "treasury_10y": 2.1,
+            "hs300": 3900.0,
+            "usdcny": 7.1,
+            "brent_oil": 78.0,
+            "us_treasury_10y": 3.9,
+            "copper": 69000.0,
+        },
+    ]
+    sidecar_rows = [
+        {
+            **row,
+            "_provenance": {
+                "term_spread_10y_1y": {
+                    "source_date": row["trade_date"],
+                    "unit": "bp",
+                    "transform": "noise",
+                    "legs": {},
+                }
+            },
+        }
+        for row in base_rows
+    ]
+
+    merrill_base = compute_merrill_clock_payload(base_rows, report_date=report_date)
+    merrill_side = compute_merrill_clock_payload(sidecar_rows, report_date=report_date)
+    assert merrill_base.get("data_status") == merrill_side.get("data_status")
+    assert merrill_base.get("regime") == merrill_side.get("regime")
+    assert merrill_base.get("headline") == merrill_side.get("headline")
+
+    cycle_base = compute_economic_cycle(base_rows, report_date)
+    cycle_side = compute_economic_cycle(sidecar_rows, report_date)
+    assert cycle_base.get("cycle_phase") == cycle_side.get("cycle_phase")
+    assert cycle_base.get("growth_score") == cycle_side.get("growth_score")
+    assert cycle_base.get("inflation_score") == cycle_side.get("inflation_score")
+
+    cross_base = analyze_cross_market_linkage(base_rows, report_date)
+    cross_side = analyze_cross_market_linkage(sidecar_rows, report_date)
+    assert cross_base.get("data_status") == cross_side.get("data_status")
+    assert cross_base.get("overall_risk") == cross_side.get("overall_risk")
+    assert cross_base.get("bond_equity_corr") == cross_side.get("bond_equity_corr")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -171,6 +172,30 @@ def test_build_hermes_envelope_exposes_hermes_runtime_evidence():
     assert envelope.evidence.quality_flag == "warning"
     assert envelope.result_meta.quality_flag == "warning"
     assert envelope.evidence.evidence_rows == 0
+
+
+def test_hermes_audit_carries_managed_run_id(tmp_path):
+    request = AgentQueryRequest(
+        question="ping",
+        context={"user_id": "u_hermes", "run_id": "agent_run:hermes-audit"},
+    )
+    result = {
+        "answer": "pong",
+        "stdout": "pong",
+        "stderr": "",
+        "command": "hermes_bridge",
+        "model": "default",
+        "toolsets": "evidence,query,research",
+        "transport": "bridge",
+    }
+    envelope = service.build_hermes_envelope(request=request, result=result)
+
+    service._append_hermes_audit(request, str(tmp_path / "governance"), envelope, result)
+
+    payload = json.loads(
+        (tmp_path / "governance" / "agent_audit.jsonl").read_text(encoding="utf-8").splitlines()[-1]
+    )
+    assert payload["run_id"] == "agent_run:hermes-audit"
 
 
 def test_execute_hermes_agent_query_answers_short_open_chat_locally(monkeypatch, tmp_path):

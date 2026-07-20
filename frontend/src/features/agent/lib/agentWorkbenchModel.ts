@@ -21,6 +21,7 @@ export type AgentEvidence = {
   sql_executed?: string[];
   evidence_rows: number;
   quality_flag: string;
+  evidence_strength?: string;
 };
 
 export type AgentNextDrill = {
@@ -340,7 +341,8 @@ export function isAgentEvidence(value: unknown): value is AgentEvidence {
       (Array.isArray(value.sql_executed) &&
         value.sql_executed.every((item) => typeof item === "string"))) &&
     typeof value.evidence_rows === "number" &&
-    typeof value.quality_flag === "string"
+    typeof value.quality_flag === "string" &&
+    (value.evidence_strength === undefined || typeof value.evidence_strength === "string")
   );
 }
 
@@ -664,8 +666,22 @@ export const GOVERNANCE_QUALITY_FLAG_NOTICES: Record<string, string> = {
 
 export function buildGovernanceNotices(result: AgentQueryResult) {
   const notices: string[] = [];
+  const evidenceStrength = String(
+    result.evidence.evidence_strength ?? result.result_meta.evidence_strength ?? "",
+  ).trim();
+  const hasSpecificEvidenceWarning =
+    evidenceStrength === "provider_runtime" ||
+    evidenceStrength === "local_fallback" ||
+    evidenceStrength === "mixed";
+  if (evidenceStrength === "provider_runtime") {
+    notices.push("当前仅有外部模型与工具运行证据，未证明 MOSS 指标口径");
+  } else if (evidenceStrength === "local_fallback") {
+    notices.push("当前为本地降级回答，未运行受治理指标查询");
+  } else if (evidenceStrength === "mixed") {
+    notices.push("当前回答由外部模型基于 MOSS 只读上下文生成，不等同受治理指标结论");
+  }
   const qualityNotice = GOVERNANCE_QUALITY_FLAG_NOTICES[result.evidence.quality_flag.trim()];
-  if (qualityNotice) {
+  if (qualityNotice && !(result.evidence.quality_flag.trim() === "warning" && hasSpecificEvidenceWarning)) {
     notices.push(qualityNotice);
   }
   const fallbackMode = result.result_meta.fallback_mode;
@@ -952,7 +968,7 @@ export function formatAgentWaitHint(agentRun: AgentRunPayload | null, waitSecond
   const status = agentRun?.status;
   if (!status) {
     if (waitSeconds >= 12) {
-      return "还没拿到运行状态，可以停止后重试，或继续输入下一句。";
+      return "还没拿到运行状态，可以停止等待后重试，或继续输入下一句。";
     }
     if (waitSeconds >= 6) {
       return "还在连接回答通道；拿到状态后会继续更新。";
@@ -1002,7 +1018,7 @@ export function formatAgentThinkingLabel(agentRun: AgentRunPayload | null, waitS
 export function formatAgentThinkingText(agentRun: AgentRunPayload | null, waitSeconds: number) {
   if (!agentRun?.status) {
     if (waitSeconds >= 12) {
-      return "还没拿到运行状态，可以停止，或继续输入下一句。";
+      return "还没拿到运行状态，可以停止等待，或继续输入下一句。";
     }
     if (waitSeconds >= 6) {
       return "还在连接回答通道，页面会继续自动更新。";

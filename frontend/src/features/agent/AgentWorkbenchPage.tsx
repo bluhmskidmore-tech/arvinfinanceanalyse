@@ -903,7 +903,7 @@ export function EmbeddedAgentCopilot({
     if (restoredQueryToComposer) {
       setComposerAssistHint("已恢复到输入框 · 可编辑后重新发送");
     } else if (query.trim()) {
-      setComposerAssistHint("已停止回答 · 可继续发送当前输入");
+      setComposerAssistHint("已停止等待 · 可继续发送当前输入");
     }
     if (shouldPersistConversation) {
       clearPersistedLatestRunId();
@@ -1770,10 +1770,10 @@ export function EmbeddedAgentCopilot({
                             <button
                               type="button"
                               className="agent-wait-status__stop"
-                              aria-label={`停止当前回答：${turn.question}`}
+                              aria-label={`停止等待当前回答：${turn.question}`}
                               onClick={stopActiveAgentTurn}
                             >
-                              停止
+                              停止等待
                             </button>
                           ) : null}
                         </div>
@@ -1781,7 +1781,7 @@ export function EmbeddedAgentCopilot({
                     ) : null}
                     {turn.stopped ? (
                       <div className="agent-callout agent-callout--stopped" role="status">
-                        <strong>已停止</strong>
+                        <strong>已停止等待</strong>
                         <span>已停止等待这次回答。</span>
                         {turn.retryMode === "ordinary" && turn.question.trim() ? (
                           <div className="agent-callout__actions">
@@ -1799,7 +1799,10 @@ export function EmbeddedAgentCopilot({
                               className="agent-callout__action"
                               aria-label={`重新发送：${turn.question}`}
                               onClick={() =>
-                                void rerunOrdinaryTurn(turn, "正在重新发送已停止回答 · 可继续输入下一句")
+                                void rerunOrdinaryTurn(
+                                  turn,
+                                  "正在重新发送已停止等待的回答 · 可继续输入下一句",
+                                )
                               }
                               disabled={loading}
                             >

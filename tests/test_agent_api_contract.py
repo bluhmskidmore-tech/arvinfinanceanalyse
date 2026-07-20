@@ -301,6 +301,31 @@ def test_agent_provider_runtime_schema_downgrades_ok_quality_flag():
     assert meta.quality_flag == "warning"
 
 
+def test_agent_schema_defaults_missing_evidence_strength_to_non_governed():
+    module = load_module(
+        "backend.app.agent.schemas.agent_response",
+        "backend/app/agent/schemas/agent_response.py",
+    )
+
+    evidence = module.AgentEvidence(quality_flag="ok")
+    meta = module.AgentResultMeta(
+        trace_id="tr_missing_strength",
+        basis="analytical",
+        result_kind="agent.unknown",
+        formal_use_allowed=False,
+        source_version="sv_agent_unknown",
+        vendor_version="vv_none",
+        rule_version="rv_agent_unknown",
+        cache_version="cv_agent_unknown",
+        quality_flag="ok",
+    )
+
+    assert evidence.evidence_strength == "local_fallback"
+    assert meta.evidence_strength == "local_fallback"
+    assert evidence.quality_flag == "warning"
+    assert meta.quality_flag == "warning"
+
+
 def test_agent_query_executes_when_agent_setting_is_on(monkeypatch, tmp_path):
     route_module = load_module(
         "backend.app.api.routes.agent",

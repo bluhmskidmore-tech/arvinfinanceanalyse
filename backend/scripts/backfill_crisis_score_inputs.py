@@ -266,19 +266,7 @@ def _backfill_input(
     elif spec.kind == BackfillKind.PUBLIC_DR007:
         rows = fetch_public_dr007_rows(start_date=start_date, end_date=end_date)
     elif spec.kind == BackfillKind.CHOICE_EDB:
-        if spec.field == "reverse_repo_7d":
-            try:
-                rows = _fetch_choice_edb_rows(spec, start_date=start_date, end_date=end_date)
-            except RuntimeError:
-                rows = []
-            if not rows:
-                rows = fetch_reverse_repo_7d_carry_forward_rows(
-                    duckdb_path=duckdb_path,
-                    start_date=start_date,
-                    end_date=end_date,
-                )
-        else:
-            rows = _fetch_choice_edb_rows(spec, start_date=start_date, end_date=end_date)
+        rows = _fetch_choice_edb_rows(spec, start_date=start_date, end_date=end_date)
     else:
         raise ValueError(f"Unsupported crisis score backfill kind: {spec.kind}")
 
@@ -418,7 +406,7 @@ def _to_macro_rows(
 def _series_meta(spec: CrisisInputSpec) -> SeriesMeta:
     if spec.series_id in CHOICE_SERIES:
         return CHOICE_SERIES[spec.series_id]
-    request_options = f"IsLatest=0,StartDate=__START_DATE__,EndDate=__END_DATE__,Ispandas=1,RECVtimeout=20"
+    request_options = "IsLatest=0,StartDate=__START_DATE__,EndDate=__END_DATE__,Ispandas=1,RECVtimeout=20"
     return SeriesMeta(
         series_id=spec.series_id,
         series_name=spec.series_name,

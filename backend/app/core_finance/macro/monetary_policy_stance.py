@@ -18,10 +18,47 @@ from .helpers import (
 _TWENTY_ONE = 21
 _TEN = 10
 _ONE_HUNDRED = Decimal("100")
+_CREDIT_TENORS = ("3Y", "5Y", "1Y")
+_POLICY_RATE_CANDIDATES = [("CN_RRP", "7D"), ("CN_REPO", "7D"), ("CN_GC", "7D")]
 
 
 def _round(value: Decimal) -> float:
     return float(value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
+def _has_government_slope(
+    curves_by_date: dict[date, dict[str, dict[str, Decimal]]],
+    target_date: date,
+) -> bool:
+    return (
+        get_curve_rate(curves_by_date, target_date, "CN_GOVT", "1Y") is not None
+        and get_curve_rate(curves_by_date, target_date, "CN_GOVT", "10Y") is not None
+    )
+
+
+def _has_funding_anchor(
+    curves_by_date: dict[date, dict[str, dict[str, Decimal]]],
+    target_date: date,
+) -> bool:
+    if get_curve_rate(curves_by_date, target_date, "CN_DR", "7D") is not None:
+        return True
+    return any(
+        get_curve_rate(curves_by_date, target_date, curve_id, tenor) is not None
+        for curve_id, tenor in _POLICY_RATE_CANDIDATES
+    )
+
+
+def _resolve_valuation_date(
+    curves_by_date: dict[date, dict[str, dict[str, Decimal]]],
+    dates: list[date],
+) -> date:
+    for sample_date in dates:
+        if _has_government_slope(curves_by_date, sample_date):
+            return sample_date
+    for sample_date in dates:
+        if _has_funding_anchor(curves_by_date, sample_date):
+            return sample_date
+    return dates[0]
 
 
 def _avg(values: list[Decimal]) -> Decimal | None:
@@ -99,10 +136,11 @@ def compute_monetary_policy_stance(
     report_date: date,
 ) -> dict[str, Any]:
     curves_by_date = build_curve_history(curve_rows, report_date=report_date)
-    dates = available_dates(curves_by_date)
-    if not dates:
+    all_dates = available_dates(curves_by_date)
+    if not all_dates:
         return {
             "report_date": report_date.isoformat(),
+            "as_of_date": None,
             "data_status": "unavailable",
             "stance_score": 0.0,
             "stance_label": "unavailable",
@@ -112,14 +150,15 @@ def compute_monetary_policy_stance(
             "warnings": ["NO_MARKET_CURVES"],
         }
 
-    current_date = dates[0]
+    current_date = _resolve_valuation_date(curves_by_date, all_dates)
+    dates = [sample_date for sample_date in all_dates if sample_date <= current_date]
     warnings: list[str] = []
     _ = curves_by_date[current_date]
 
     policy_curve_id, policy_tenor, policy_rate, policy_rate_date = latest_available_rate_on_or_before(
         curves_by_date,
         current_date,
-        [("CN_RRP", "7D"), ("CN_REPO", "7D"), ("CN_GC", "7D")],
+        _POLICY_RATE_CANDIDATES,
     )
     if policy_rate is None:
         warnings.append("POLICY_RATE_7D_MISSING")
@@ -146,21 +185,22 @@ def compute_monetary_policy_stance(
 
     aaa_spread_bp = None
     aa_minus_aaa_bp = None
-    for tenor in ("3Y", "5Y", "1Y"):
+    aaa_tenor: str | None = None
+    for tenor in _CREDIT_TENORS:
         aaa_curve = get_curve_rate(curves_by_date, current_date, "CN_CREDIT_AAA", tenor)
         gov_curve = get_curve_rate(curves_by_date, current_date, "CN_GOVT", tenor)
         if aaa_curve is not None and gov_curve is not None:
             aaa_spread_bp = (aaa_curve - gov_curve) * _ONE_HUNDRED
+            aaa_tenor = tenor
             break
     if aaa_spread_bp is None:
         warnings.append("AAA_SPREAD_MISSING")
 
-    for tenor in ("3Y", "5Y", "1Y"):
-        aa_curve = get_curve_rate(curves_by_date, current_date, "CN_CREDIT_AA", tenor)
-        aaa_curve = get_curve_rate(curves_by_date, current_date, "CN_CREDIT_AAA", tenor)
+    if aaa_tenor is not None:
+        aa_curve = get_curve_rate(curves_by_date, current_date, "CN_CREDIT_AA", aaa_tenor)
+        aaa_curve = get_curve_rate(curves_by_date, current_date, "CN_CREDIT_AAA", aaa_tenor)
         if aa_curve is not None and aaa_curve is not None:
             aa_minus_aaa_bp = (aa_curve - aaa_curve) * _ONE_HUNDRED
-            break
 
     policy_change_bp = _rate_change_bp(
         curves_by_date,
@@ -208,6 +248,7 @@ def compute_monetary_policy_stance(
     if not available_components:
         return {
             "report_date": report_date.isoformat(),
+            "as_of_date": current_date.isoformat(),
             "data_status": "unavailable",
             "stance_score": 0.0,
             "stance_label": "unavailable",
@@ -296,6 +337,7 @@ def compute_monetary_policy_stance(
 
     return {
         "report_date": report_date.isoformat(),
+        "as_of_date": current_date.isoformat(),
         "data_status": data_status,
         "stance_score": _round(stance_score),
         "stance_label": stance_label,

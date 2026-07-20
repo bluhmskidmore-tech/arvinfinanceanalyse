@@ -1,8 +1,8 @@
 {
-  "catalog_version": "2026-04-11.choice-macro.v2",
+  "catalog_version": "2026-07-20.choice-macro.v3",
   "vendor_name": "choice",
-  "generated_at": "2026-04-11T14:07:47.199208+08:00",
-  "generated_from": "config/choice_macro_commands_2026-04-09.txt + data/choice_refresh_strategy_2026-04-11.json",
+  "generated_at": "2026-07-20T16:45:00+08:00",
+  "generated_from": "config/choice_macro_commands_2026-04-09.txt + data/choice_refresh_strategy_2026-04-11.json + live Choice policy-rate evidence 2026-07-20",
   "batches": [
     {
       "batch_id": "stable_daily",
@@ -1006,6 +1006,24 @@
             "market",
             "rates",
             "us_treasury",
+            "edb"
+          ]
+        },
+        {
+          "series_id": "EMM00088132",
+          "series_name": "公开市场操作:逆回购:7天:中标利率",
+          "vendor_series_code": "EMM00088132",
+          "frequency": "daily",
+          "unit": "%",
+          "theme": "money_liquidity",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "rates",
+            "liquidity",
+            "policy_rate",
+            "omo",
             "edb"
           ]
         }

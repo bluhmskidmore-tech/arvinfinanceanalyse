@@ -16,6 +16,7 @@ class AgentAuditPayload(BaseModel):
     tables_used: list[str] = Field(default_factory=list)
     filters_applied: dict[str, Any] = Field(default_factory=dict)
     trace_id: str
+    run_id: str | None = None
     result_meta: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
@@ -23,4 +24,9 @@ class AgentAuditPayload(BaseModel):
 def append_agent_audit(
     repo: GovernanceRepository, payload: AgentAuditPayload
 ) -> str:
-    return str(repo.append(AGENT_AUDIT_STREAM, payload.model_dump(mode="json")))
+    return str(
+        repo.append(
+            AGENT_AUDIT_STREAM,
+            payload.model_dump(mode="json", exclude_none=True),
+        )
+    )

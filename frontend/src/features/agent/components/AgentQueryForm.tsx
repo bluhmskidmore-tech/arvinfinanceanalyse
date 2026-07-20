@@ -271,10 +271,14 @@ export function AgentQueryForm({
                 type="button"
                 data-testid="agent-panel-submit"
                 className="agent-chat-composer__send agent-chat-composer__send--stop"
-                aria-label={activeQuestion.trim() ? `停止当前回答：${activeQuestion.trim()}` : "停止"}
+                aria-label={
+                  activeQuestion.trim()
+                    ? `停止等待当前回答：${activeQuestion.trim()}`
+                    : "停止等待"
+                }
                 onClick={onStop}
               >
-                停止
+                停止等待
               </button>
             </>
           ) : (

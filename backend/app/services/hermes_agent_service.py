@@ -929,6 +929,7 @@ def _append_hermes_audit(
             tables_used=envelope.evidence.tables_used,
             filters_applied=envelope.evidence.filters_applied,
             trace_id=envelope.result_meta.trace_id,
+            run_id=str(request.context.get("run_id") or "").strip() or None,
             result_meta={
                 **envelope.result_meta.model_dump(mode="json"),
                 "stdout_excerpt": _truncate(result.get("stdout", ""), 1000),

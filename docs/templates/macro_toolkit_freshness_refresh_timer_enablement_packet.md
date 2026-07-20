@@ -20,7 +20,8 @@ The scheduler must run from the repository environment with the configured
 Dramatiq broker and worker when using `--enqueue`. Keep this job outside other
 DuckDB write windows. Capture exit status, message ID (enqueue) or `run_id`
 (run-once), step statuses, and latest observation dates for commodity / CSI /
-NHCI / CFFEX tables.
+NHCI / Choice `EMM00088132` policy rate / all five `NCD.SHIBOR.*` tenors /
+CFFEX tables.
 
 This packet deliberately does not install or enable a scheduler. Operations must
 use the approved host-specific mechanism after the preflight reports `ready`.

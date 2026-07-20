@@ -70,7 +70,7 @@ where trade_date >= '2026-06-26' group by 1 order by 1;
 
 ### 待办（负责人待定）
 
-- [ ] Scheduler checkbox in `docs/plans/2026-07-19-macro-data-freshness-remediation.md` §1 待办: use `refresh_macro_toolkit_freshness` actor / CLI (`scripts/macro_toolkit_freshness_refresh.py`) as the daily entry; owner enables external timer via handoff packet.
+- [x] Scheduler entry: `refresh_macro_toolkit_freshness` actor / CLI (`scripts/macro_toolkit_freshness_refresh.py`); local Windows timer `MOSS-MacroToolkitFreshness` (host-local 06:30 ≈ Asia/Shanghai 18:30)。v3 顺序编排已包含商品、public headlines、Choice 7 天逆回购政策利率、NCD.SHIBOR 五期限与 CFFEX；NCD 窗口刷新保留已回补历史，政策利率拒答时 fail closed。
 - [ ] CFFEX 席位当前仅 tushare 源回补；Choice 源（`fut_transaction_rankings`）需要 Choice 终端在线，是否双源并存由 owner 决定。
 - [ ] 注意 DuckDB 单写者约束：调度时段避开 dev worker / 其他写任务（本轮出现两次瞬时写锁冲突，重试即过）。
 
@@ -80,11 +80,12 @@ where trade_date >= '2026-06-26' group by 1 order by 1;
 
 ### 根因（设计使然 + 部分 vendor 权限缺失）
 
-- 目录 `config/choice_macro_catalog.json`（2026-04-11.choice-macro.v2）分层：
-  - `stable_daily`（61 序列，`refresh_tier=stable`，`fetch_mode=date_slice`）：正常逐日累积。
+- 目录 `config/choice_macro_catalog.json`（2026-07-20.choice-macro.v3）分层：
+  - `stable_daily`（62 序列，`refresh_tier=stable`，`fetch_mode=date_slice`）：正常逐日累积；新增已验证可读的 `EMM00088132` 7 天逆回购中标利率。
   - `fallback_latest_single`（48 序列）与 `choice_funding_shibor_latest`（7 序列）：`refresh_tier=fallback`，`fetch_mode=latest`——**设计上就是单点快照**，每次刷新只拿最新值；历史只有靠每天刷新自然累积（而刷新又没有调度）。policy_note 明示原因：这些序列在本地 Choice 账号上 same-day date_slice 返回 no data。
   - `isolated_vendor_pending`（12 序列）：默认刷新完全跳过。
-- NCD.SHIBOR.* 仅 9 行的直接原因：`refresh_tushare_ncd_shibor_proxy`（`backend/app/tasks/choice_macro.py`）的 `NCD_SHIBOR_LOOKBACK_DAYS=10`，且每次运行**先 delete 全部行再插入 10 天窗口**——该链路在设计上永远不会超过 ~10 行。
+- NCD.SHIBOR.* 曾仅 9 行的直接原因：`refresh_tushare_ncd_shibor_proxy`（`backend/app/tasks/choice_macro.py`）的 `NCD_SHIBOR_LOOKBACK_DAYS=10`，且当时每次运行**先 delete 全部行再插入 10 天窗口**。该删除语义已修为仅覆盖本次抓取窗口，632 行/期限的回补历史会保留；2026-07-20 起 daily freshness 编排也会顺序调用该刷新，避免历史再次停滞。
+- `M0041653` 曾只命中截至 2026-04-30 的 legacy 快照；2026-07-20 复测 Choice `EMM00088132` date-slice 已可返回真实历史。旧 crisis 回补在 vendor 拒答时自动 carry-forward 的路径已移除，避免把旧政策利率伪装为新日期。
 - 历史回补的既有链路是 `backend/app/tasks/macro_backfill.py`（`backfill_macro_series`，目标=行数 < 10 的稀疏序列，源优先级 choice_edb / tushare_macro，逐行去重插入、幂等，锁 `lock:duckdb:macro-series-backfill`）。
 
 ### 本轮已执行（2026-07-19）
@@ -104,6 +105,12 @@ python -m backend.app.tasks.macro_backfill --dry-run
 python -m backend.app.tasks.macro_backfill --series-names EMM00072301 EMM01474570 ... --sources choice_edb --start-date 2024-01-01 --end-date 2026-07-19
 ```
 
+7 天逆回购政策利率补记（2026-07-20，真实 Choice EDB 行，不使用 carry-forward）：
+
+```powershell
+python backend/scripts/backfill_crisis_score_inputs.py --duckdb-path data/moss.duckdb --start-date 2024-01-01 --end-date 2026-07-20 --aliases M0041653
+```
+
 ### 前后对比证据
 
 | 指标 | 执行前 | 执行后 |
@@ -111,7 +118,8 @@ python -m backend.app.tasks.macro_backfill --series-names EMM00072301 EMM0147457
 | EMM* 仅 1 行的序列 | 104 / 106 | **14 / 111** |
 | EMM* 行数 <10 的序列 | 104 | 19 |
 | NCD.SHIBOR.* 每序列行数 | 9（2026-06-30 起） | **632（2024-01-02 至 2026-07-17）** |
-| `fact_choice_macro_daily` 总行数 | 4628 | 47039（max=2026-07-18） |
+| `EMM00088132` 7 天逆回购 | 0（运行时仅 legacy 至 2026-04-30） | **616（2024-01-02 至 2026-07-20，1.40%～1.80%）** |
+| `fact_choice_macro_daily` 总行数 | 4628 | ≥47655（含后续政策利率 616 行；并发刷新后继续增长，max=2026-07-20） |
 
 本轮共回补 EMM 序列 39296 行（95 个序列成功）+ SHIBOR 3115 行。
 

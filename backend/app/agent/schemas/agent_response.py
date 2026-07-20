@@ -33,11 +33,14 @@ class AgentEvidence(BaseModel):
     sql_executed: list[str] = Field(default_factory=list)
     evidence_rows: int = 0
     quality_flag: str = "warning"
-    evidence_strength: str = "governed_moss"
+    evidence_strength: str = "local_fallback"
 
     @model_validator(mode="after")
-    def _downgrade_provider_runtime_quality(self) -> AgentEvidence:
-        if self.evidence_strength == "provider_runtime" and self.quality_flag == "ok":
+    def _downgrade_non_governed_quality(self) -> AgentEvidence:
+        if (
+            self.evidence_strength in {"provider_runtime", "local_fallback", "mixed"}
+            and self.quality_flag == "ok"
+        ):
             self.quality_flag = "warning"
         return self
 
@@ -47,12 +50,15 @@ class AgentResultMeta(ResultMeta):
     filters_applied: dict[str, Any] = Field(default_factory=dict)
     sql_executed: list[str] = Field(default_factory=list)
     evidence_rows: int = 0
-    evidence_strength: str = "governed_moss"
+    evidence_strength: str = "local_fallback"
     next_drill: list[AgentDrill] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _downgrade_provider_runtime_quality(self) -> AgentResultMeta:
-        if self.evidence_strength == "provider_runtime" and self.quality_flag == "ok":
+    def _downgrade_non_governed_quality(self) -> AgentResultMeta:
+        if (
+            self.evidence_strength in {"provider_runtime", "local_fallback", "mixed"}
+            and self.quality_flag == "ok"
+        ):
             self.quality_flag = "warning"
         return self
 

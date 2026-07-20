@@ -1,8 +1,8 @@
-"""M8/M9/M11/M15：观察标记 + 禁止静默默认填洞。"""
+"""M7/M8/M9/M11/M15：观察标记 + 禁止静默默认填洞。"""
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -11,6 +11,7 @@ from backend.app.core_finance.macro import (
     compute_credit_spread_risk,
     compute_liquidity_stress_test,
     compute_macro_portfolio_impact,
+    compute_monetary_policy_stance,
     compute_yield_curve_shape,
 )
 from backend.app.core_finance.macro.macro_portfolio_impact import build_bond_portfolio_profile
@@ -75,6 +76,53 @@ def test_m8_secondary_spreads_not_zero_filled() -> None:
     assert "SPREAD_30Y_10Y_UNAVAILABLE" in payload["warnings"]
 
 
+def test_m7_uses_latest_common_government_curve_date() -> None:
+    common_date = _REPORT - timedelta(days=1)
+    rows = [
+        # Newer funding-only point must not become M7's valuation date.
+        {"biz_date": _REPORT, "curve_id": "CN_DR", "tenor": "7D", "rate_value": 1.7},
+        {"biz_date": _REPORT, "curve_id": "CN_RRP", "tenor": "7D", "rate_value": 1.4},
+        {"biz_date": common_date, "curve_id": "CN_DR", "tenor": "7D", "rate_value": 1.65},
+        {"biz_date": common_date, "curve_id": "CN_RRP", "tenor": "7D", "rate_value": 1.4},
+        {"biz_date": common_date, "curve_id": "CN_GOVT", "tenor": "1Y", "rate_value": 1.5},
+        {"biz_date": common_date, "curve_id": "CN_GOVT", "tenor": "10Y", "rate_value": 2.0},
+        {"biz_date": common_date, "curve_id": "CN_GOVT", "tenor": "3Y", "rate_value": 1.8},
+        {"biz_date": common_date, "curve_id": "CN_CREDIT_AAA", "tenor": "3Y", "rate_value": 2.3},
+        {"biz_date": common_date, "curve_id": "CN_CREDIT_AA", "tenor": "3Y", "rate_value": 2.6},
+    ]
+
+    payload = compute_monetary_policy_stance(rows, report_date=_REPORT)
+
+    assert payload["as_of_date"] == common_date.isoformat()
+    assert payload["key_metrics"]["gov_slope_10y_1y_bp"] == pytest.approx(50.0)
+    assert payload["key_metrics"]["aaa_spread_bp"] == pytest.approx(50.0)
+    assert payload["key_metrics"]["aa_minus_aaa_bp"] == pytest.approx(30.0)
+    assert "GOVERNMENT_SLOPE_MISSING" not in payload["warnings"]
+    assert "AAA_SPREAD_MISSING" not in payload["warnings"]
+    assert f"as_of={common_date.isoformat()}" in macro_toolkit_route._capability_result_evidence(
+        "monetary_policy_stance",
+        payload,
+    )
+
+
+def test_m7_does_not_mix_aa_and_aaa_tenors() -> None:
+    rows = [
+        {"biz_date": _REPORT, "curve_id": "CN_DR", "tenor": "7D", "rate_value": 1.65},
+        {"biz_date": _REPORT, "curve_id": "CN_RRP", "tenor": "7D", "rate_value": 1.4},
+        {"biz_date": _REPORT, "curve_id": "CN_GOVT", "tenor": "1Y", "rate_value": 1.5},
+        {"biz_date": _REPORT, "curve_id": "CN_GOVT", "tenor": "10Y", "rate_value": 2.0},
+        {"biz_date": _REPORT, "curve_id": "CN_GOVT", "tenor": "3Y", "rate_value": 1.8},
+        {"biz_date": _REPORT, "curve_id": "CN_CREDIT_AAA", "tenor": "3Y", "rate_value": 2.3},
+        {"biz_date": _REPORT, "curve_id": "CN_CREDIT_AAA", "tenor": "5Y", "rate_value": 2.5},
+        {"biz_date": _REPORT, "curve_id": "CN_CREDIT_AA", "tenor": "5Y", "rate_value": 3.1},
+    ]
+
+    payload = compute_monetary_policy_stance(rows, report_date=_REPORT)
+
+    assert payload["key_metrics"]["aaa_spread_bp"] == pytest.approx(50.0)
+    assert payload["key_metrics"]["aa_minus_aaa_bp"] is None
+
+
 def test_m9_marks_missing_aa_and_change_windows() -> None:
     rows = [
         {"biz_date": _REPORT, "curve_id": "CN_GOVT", "tenor": "3Y", "rate_value": 1.8},
@@ -86,6 +134,44 @@ def test_m9_marks_missing_aa_and_change_windows() -> None:
     assert payload["aaa_spread_bp"] == pytest.approx(50.0)
     assert "AA_MINUS_AAA_UNAVAILABLE" in payload["warnings"]
     assert "WEEKLY_CHANGE_UNAVAILABLE" in payload["warnings"]
+
+
+def test_m9_uses_latest_common_credit_and_government_curve_date() -> None:
+    common_date = _REPORT - timedelta(days=1)
+    rows = [
+        # A newer unrelated funding point must not become M9's valuation date.
+        {"biz_date": _REPORT, "curve_id": "CN_DR", "tenor": "7D", "rate_value": 1.7},
+        {"biz_date": common_date, "curve_id": "CN_GOVT", "tenor": "3Y", "rate_value": 1.8},
+        {"biz_date": common_date, "curve_id": "CN_CREDIT_AAA", "tenor": "3Y", "rate_value": 2.3},
+        {"biz_date": common_date, "curve_id": "CN_CREDIT_AA", "tenor": "3Y", "rate_value": 2.6},
+    ]
+
+    payload = compute_credit_spread_risk(rows, report_date=_REPORT)
+
+    assert payload["data_status"] == "degraded"
+    assert payload["as_of_date"] == common_date.isoformat()
+    assert payload["aaa_spread_bp"] == pytest.approx(50.0)
+    assert payload["aa_minus_aaa_bp"] == pytest.approx(30.0)
+    assert "AAA_SPREAD_MISSING" not in payload["warnings"]
+    assert f"as_of={common_date.isoformat()}" in macro_toolkit_route._capability_result_evidence(
+        "credit_spread_risk",
+        payload,
+    )
+
+
+def test_m9_does_not_mix_aa_and_aaa_tenors() -> None:
+    rows = [
+        {"biz_date": _REPORT, "curve_id": "CN_GOVT", "tenor": "3Y", "rate_value": 1.8},
+        {"biz_date": _REPORT, "curve_id": "CN_CREDIT_AAA", "tenor": "3Y", "rate_value": 2.3},
+        {"biz_date": _REPORT, "curve_id": "CN_CREDIT_AAA", "tenor": "5Y", "rate_value": 2.5},
+        {"biz_date": _REPORT, "curve_id": "CN_CREDIT_AA", "tenor": "5Y", "rate_value": 3.1},
+    ]
+
+    payload = compute_credit_spread_risk(rows, report_date=_REPORT)
+
+    assert payload["credit_spread_tenor"] == "3Y"
+    assert payload["aa_minus_aaa_bp"] is None
+    assert "AA_MINUS_AAA_UNAVAILABLE" in payload["warnings"]
 
 
 def test_m11_skips_buckets_without_net_gap() -> None:

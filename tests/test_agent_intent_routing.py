@@ -1337,6 +1337,8 @@ def test_ordinary_analysis_question_returns_local_conversation_envelope(tmp_path
     assert envelope.result_meta.quality_flag == "warning"
     assert envelope.evidence.tables_used == []
     assert envelope.evidence.evidence_rows == 0
+    assert envelope.evidence.evidence_strength == "local_fallback"
+    assert envelope.result_meta.evidence_strength == "local_fallback"
     assert envelope.evidence.filters_applied == {
         "page_id": "dashboard",
         "report_date": "2026-03-31",

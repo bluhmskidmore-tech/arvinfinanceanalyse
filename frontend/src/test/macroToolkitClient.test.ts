@@ -1,8 +1,46 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createRealMacroToolkitClient } from "../api/macroToolkitClient";
+import { createMockMacroToolkitClient } from "../api/macroToolkitMockClient";
 
 describe("macroToolkitClient", () => {
+  it("keeps the M9 mock capability aligned with Choice credit history", async () => {
+    const envelope = await createMockMacroToolkitClient().getMacroToolkitScripts();
+    const capability = envelope.result.capabilities.find((item) => item.key === "credit_spread_risk");
+
+    expect(capability).toMatchObject({
+      data_status: "ready",
+      data_hit_count: 3,
+      data_required_count: 3,
+    });
+    expect(capability?.evidence.map((item) => item.series_id)).toEqual([
+      "EMM00166659",
+      "EMM00166462",
+      "EMM00166683",
+    ]);
+  });
+
+  it("keeps the M7 mock policy rate aligned with fresh Choice history", async () => {
+    const envelope = await createMockMacroToolkitClient().getMacroToolkitAnalysis();
+    const capability = envelope.result.capability_results.find(
+      (item) => item.key === "monetary_policy_stance",
+    );
+    const policyRate = capability?.input_evidence?.inputs.find(
+      (item) => item.field === "policy_rate_7d",
+    );
+
+    expect(policyRate).toMatchObject({
+      available: true,
+      stale: false,
+      row_count: 706,
+      latest_date: "2026-07-20",
+      series_id: "EMM00088132",
+      source: "choice",
+      value: 1.4,
+    });
+    expect(capability?.warnings).not.toContain("POLICY_RATE_7D_STALE");
+  });
+
   it("surfaces a timeout when toolkit read endpoints do not answer", async () => {
     vi.useFakeTimers();
     try {

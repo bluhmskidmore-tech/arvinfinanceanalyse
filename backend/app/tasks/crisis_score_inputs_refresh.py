@@ -28,8 +28,11 @@ def run_crisis_score_inputs_refresh(
         end_date=end_date,
         dry_run=dry_run,
     )
+    result_items = [item for item in (payload.get("results") or {}).values() if isinstance(item, dict)]
+    has_incomplete_input = any(str(item.get("status") or "") != "completed" for item in result_items)
+    status = "dry_run" if dry_run else "partial" if payload.get("errors") or has_incomplete_input else "completed"
     return {
-        "status": "completed" if not dry_run else "dry_run",
+        "status": status,
         "rule_version": RULE_VERSION,
         "window_days": window_days,
         "start_date": start_date,
