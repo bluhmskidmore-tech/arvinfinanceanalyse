@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: PnL Historical Cutoff Precompute Coverage
 status: paused-pending-adoption-decision
-stopped_at: Round-3 Task 3 — bridge quality-merge tests hardened; planning next-actions retargeted away from completed bridge/yield-curve meta work
-last_updated: "2026-07-19T20:05:00.000Z"
-last_activity: 2026-07-19
+stopped_at: Candidate audit line merged into integration branch codex/V1-merge-dateclosure; final merge-back to codex/V1 pending clean window
+last_updated: "2026-07-20T09:00:00.000Z"
+last_activity: 2026-07-20
 progress:
   total_phases: 3
   completed_phases: 1
@@ -38,12 +38,13 @@ See: .planning/PROJECT.md (updated 2026-07-15 for v1.1)
 - **PnL Bridge first-screen meta banner** — complete (Round-3 Task 2).
 - **PnL bridge quality-merge test harden + STATE sync** — complete (Round-3 Task 3).
 
-### Next actions (from forensic report, in order)
+### Next actions (updated 2026-07-20 after isolated-worktree merge)
 
-1. Treat `codex/balance-analysis-date-closure` as the candidate integration line for the current dev-audit fixes (10 commits, not yet in `codex/V1`).
-2. After the root worktree's market/risk home changes are committed or moved aside, perform one controlled merge of `codex/V1` and the candidate line with full regression.
-3. Worktree/branch cleanup only after an inventory; no bulk deletion.
-4. Phase 03/04 adoption remains a business decision — not current code work. Live cockpit restore stays out of scope unless explicitly re-queued.
+1. **DONE (staging):** candidate line `codex/balance-analysis-date-closure` merged --no-ff into integration branch `codex/V1-merge-dateclosure` (HEAD `feadfc932`, based on V1 tip `9f80fb999`; worktree `F:/MOSS-V3-worktrees/v1-merge-dateclosure`). 10 conflicts resolved: mainline naming/contract precedence, candidate semantic fixes preserved; one latent auto-merge double-division (sub-1% yield /100 twice) corrected to mainline `raw_scale="percent"` form.
+2. **SUPERSEDED:** side branch `codex/pnl-bridge-date-closure` (`f70a536c1`) is NOT to be merged — mainline `5a25a4531` already landed equivalent bridge date metadata with the opposite PAGE-BRIDGE-001 ruling (curve trade dates are never promoted to `fallback_date`; `date_basis` stays empty). Keep the branch as reference only.
+3. **PENDING:** merge-back `codex/V1-merge-dateclosure` into `codex/V1` at the next clean-worktree window; V1 has advanced past `9f80fb999`, so re-run merge-tree preflight for the delta before merging.
+4. Worktree/branch cleanup only after an inventory; no bulk deletion.
+5. Phase 03/04 adoption remains a business decision — not current code work.
 
 ## Performance Metrics
 
@@ -64,7 +65,8 @@ See: .planning/PROJECT.md (updated 2026-07-15 for v1.1)
 ### Pending Todos
 
 - Decide whether the business adopts the Phase 03/04 side-branch capability; until then keep INC-01/INC-02/REC-01/PAR-01/PAR-02 unchecked.
-- Controlled merge of `codex/balance-analysis-date-closure` into the mainline after root worktree changes are settled.
+- Merge-back `codex/V1-merge-dateclosure` (`feadfc932`) into `codex/V1` after re-preflighting the post-`9f80fb999` delta.
+- Operational note for the merge-back: monthly OA playwright smoke now hard-fails without a state server (candidate-line intent); curve partial-missing now reports `vendor_status=vendor_unavailable` (fail-visible).
 
 ### Blockers/Concerns
 
@@ -75,6 +77,6 @@ See: .planning/PROJECT.md (updated 2026-07-15 for v1.1)
 
 ## Session Continuity
 
-**Last session:** 2026-07-19T20:05:00.000Z
-**Stopped at:** Round-3 Task 3 complete — bridge quality-merge tests hardened; next focus is side-branch merge / Phase 03 adoption decision (not bridge or yield-curve meta)
+**Last session:** 2026-07-20T09:00:00.000Z
+**Stopped at:** Candidate audit line staged on `codex/V1-merge-dateclosure` (`feadfc932`); post-merge regression running; merge-back to `codex/V1` pending clean window + delta preflight
 **Resume file:** .planning/forensics/report-20260719-055254.md
