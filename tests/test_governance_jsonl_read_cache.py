@@ -188,3 +188,48 @@ def test_latest_jsonl_cache_invalidates_after_append_and_skips_newer_decoys(tmp_
     latest = repo.read_latest_manifest("demo:key", report_date="2026-01-31")
     assert latest is not None
     assert latest["source_version"] == "sv_new"
+
+
+def test_latest_jsonl_lookup_uses_cache_key_index_instead_of_full_scan(tmp_path, monkeypatch):
+    module = _load_governance_repo_module()
+    repo = module.GovernanceRepository(base_dir=tmp_path)
+
+    for index in range(200):
+        repo.append(
+            module.CACHE_MANIFEST_STREAM,
+            {
+                "cache_key": f"noise:{index}",
+                "report_date": "2026-01-31",
+                "source_version": f"sv_noise_{index}",
+            },
+        )
+    repo.append(
+        module.CACHE_MANIFEST_STREAM,
+        {
+            "cache_key": "demo:key",
+            "report_date": "2026-01-31",
+            "source_version": "sv_target",
+        },
+    )
+
+    inspected_keys: list[str] = []
+    original_read_latest_row = module.GovernanceRepository._read_latest_row
+
+    def wrapping_read_latest_row(self, stream, matches, cache_key=None):
+        def tracked(row: dict[str, object]) -> bool:
+            inspected_keys.append(str(row.get("cache_key") or ""))
+            return matches(row)
+
+        return original_read_latest_row(self, stream, tracked, cache_key=cache_key)
+
+    monkeypatch.setattr(
+        module.GovernanceRepository,
+        "_read_latest_row",
+        wrapping_read_latest_row,
+    )
+
+    latest = repo.read_latest_manifest("demo:key", report_date="2026-01-31")
+
+    assert latest is not None
+    assert latest["source_version"] == "sv_target"
+    assert inspected_keys == ["demo:key"]

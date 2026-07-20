@@ -28,6 +28,7 @@ from sqlalchemy.schema import Table
 logger = logging.getLogger(__name__)
 
 _JSONL_READ_CACHE: dict[tuple[str, int, int], tuple[dict[str, object], ...]] = {}
+_JSONL_CACHE_KEY_INDEX: dict[tuple[str, int, int], dict[str, tuple[int, ...]]] = {}
 _JSONL_READ_CACHE_LOCK = threading.Lock()
 
 CACHE_BUILD_RUN_STREAM = "cache_build_run"
@@ -236,12 +237,22 @@ class GovernanceRepository:
         self,
         stream: str,
         matches: Callable[[dict[str, object]], bool],
+        *,
+        cache_key: str | None = None,
     ) -> dict[str, object] | None:
         if self._reads_sql(stream):
             return self._read_latest_sql(stream, matches)
         with acquire_lock(self._batch_lock(), base_dir=self.base_dir, timeout_seconds=5.0):
             target = Path(self.base_dir) / f"{stream}.jsonl"
-            rows = _read_jsonl_rows_cached(target)
+            rows, cache_key_index = _read_jsonl_rows_and_index_cached(target)
+            cache_key_text = str(cache_key or "").strip()
+            if cache_key_text and cache_key_index is not None:
+                candidate_indices = cache_key_index.get(cache_key_text, ())
+                for index in reversed(candidate_indices):
+                    row = rows[index]
+                    if matches(row):
+                        return deepcopy(row)
+                return None
             for row in reversed(rows):
                 if matches(row):
                     return deepcopy(row)
@@ -284,7 +295,11 @@ class GovernanceRepository:
                 return False
             return True
 
-        return self._read_latest_row(CACHE_MANIFEST_STREAM, matches)
+        return self._read_latest_row(
+            CACHE_MANIFEST_STREAM,
+            matches,
+            cache_key=cache_key_text,
+        )
 
     def read_latest_completed_run(
         self,
@@ -312,7 +327,11 @@ class GovernanceRepository:
                 return False
             return True
 
-        return self._read_latest_row(CACHE_BUILD_RUN_STREAM, matches)
+        return self._read_latest_row(
+            CACHE_BUILD_RUN_STREAM,
+            matches,
+            cache_key=cache_key_text,
+        )
 
     def _normalize_payload_for_stream(
         self,
@@ -355,19 +374,49 @@ def _copy_jsonl_rows(rows: tuple[dict[str, object], ...]) -> list[dict[str, obje
     return [dict(row) for row in rows]
 
 
+def _build_jsonl_cache_key_index(
+    rows: tuple[dict[str, object], ...],
+) -> dict[str, tuple[int, ...]]:
+    buckets: dict[str, list[int]] = {}
+    for index, row in enumerate(rows):
+        cache_key = str(row.get("cache_key") or "").strip()
+        if not cache_key:
+            continue
+        buckets.setdefault(cache_key, []).append(index)
+    return {cache_key: tuple(indices) for cache_key, indices in buckets.items()}
+
+
 def _read_jsonl_file_cached(path: Path) -> list[dict[str, object]]:
     return _copy_jsonl_rows(_read_jsonl_rows_cached(path))
 
 
-def _read_jsonl_rows_cached(path: Path) -> tuple[dict[str, object], ...]:
+def _store_jsonl_cache_entry(
+    cache_key: tuple[str, int, int],
+    parsed_rows: tuple[dict[str, object], ...],
+) -> tuple[dict[str, object], ...]:
+    resolved_path = cache_key[0]
+    stale_keys = [
+        key for key in _JSONL_READ_CACHE if key[0] == resolved_path and key != cache_key
+    ]
+    for stale_key in stale_keys:
+        del _JSONL_READ_CACHE[stale_key]
+        _JSONL_CACHE_KEY_INDEX.pop(stale_key, None)
+    _JSONL_READ_CACHE[cache_key] = parsed_rows
+    _JSONL_CACHE_KEY_INDEX[cache_key] = _build_jsonl_cache_key_index(parsed_rows)
+    return parsed_rows
+
+
+def _read_jsonl_rows_and_index_cached(
+    path: Path,
+) -> tuple[tuple[dict[str, object], ...], dict[str, tuple[int, ...]] | None]:
     cache_key = _jsonl_file_cache_key(path)
     if cache_key is None:
-        return ()
+        return (), {}
 
     with _JSONL_READ_CACHE_LOCK:
         cached_rows = _JSONL_READ_CACHE.get(cache_key)
         if cached_rows is not None:
-            return cached_rows
+            return cached_rows, _JSONL_CACHE_KEY_INDEX.get(cache_key, {})
 
     parsed_rows = tuple(
         json.loads(line)
@@ -378,23 +427,24 @@ def _read_jsonl_rows_cached(path: Path) -> tuple[dict[str, object], ...]:
     with _JSONL_READ_CACHE_LOCK:
         current_key = _jsonl_file_cache_key(path)
         if current_key is None:
-            return ()
+            return (), {}
         if current_key != cache_key:
             cached_rows = _JSONL_READ_CACHE.get(current_key)
             if cached_rows is not None:
-                return cached_rows
+                return cached_rows, _JSONL_CACHE_KEY_INDEX.get(current_key, {})
             parsed_rows = tuple(
                 json.loads(line)
                 for line in path.read_text(encoding="utf-8").splitlines()
                 if line.strip()
             )
             cache_key = current_key
-        resolved_path = cache_key[0]
-        stale_keys = [key for key in _JSONL_READ_CACHE if key[0] == resolved_path and key != cache_key]
-        for stale_key in stale_keys:
-            del _JSONL_READ_CACHE[stale_key]
-        _JSONL_READ_CACHE[cache_key] = parsed_rows
-        return parsed_rows
+        stored = _store_jsonl_cache_entry(cache_key, parsed_rows)
+        return stored, _JSONL_CACHE_KEY_INDEX.get(cache_key, {})
+
+
+def _read_jsonl_rows_cached(path: Path) -> tuple[dict[str, object], ...]:
+    rows, _index = _read_jsonl_rows_and_index_cached(path)
+    return rows
 
 
 def _sql_record_for_stream(stream: str, payload: dict[str, object]) -> dict[str, object]:
