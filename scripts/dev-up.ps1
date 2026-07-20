@@ -86,6 +86,32 @@ function Get-NativeScriptProcess {
   }
 }
 
+function Test-NativeWorkerProcess {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$Process
+  )
+
+  return (
+    $Process.Name -eq "python.exe" -and (
+      $Process.CommandLine -like "*backend.app.tasks.dev_worker_runner*" -or
+      $Process.CommandLine -like "*backend.app.tasks.worker_bootstrap*"
+    )
+  )
+}
+
+function Get-NativeWorkerProcess {
+  try {
+    return Get-CimInstance Win32_Process |
+      Where-Object { Test-NativeWorkerProcess -Process $_ } |
+      Select-Object -First 1
+  } catch {
+    $script:ProcessInspectionAvailable = $false
+    Write-Warning "process lookup failed for native worker: $($_.Exception.Message)"
+    return $null
+  }
+}
+
 function Get-DevListeningPortOwner {
   param(
     [Parameter(Mandatory = $true)]
@@ -403,6 +429,12 @@ function Start-DevScriptDetached {
   $stdoutPath = Join-Path $logRoot "$logName.out.log"
   $stderrPath = Join-Path $logRoot "$logName.err.log"
   $alreadyRunning = Get-NativeScriptProcess -ScriptName $ScriptName
+  if (-not $alreadyRunning -and $ScriptName -eq "dev-worker.ps1" -and $script:ProcessInspectionAvailable) {
+    $alreadyRunning = Get-NativeWorkerProcess
+  }
+  if (-not $script:ProcessInspectionAvailable -and $ScriptName -eq "dev-worker.ps1") {
+    throw "Worker process inspection unavailable; refusing to launch dev-worker.ps1 because doing so can create a duplicate worker."
+  }
 
   if ($alreadyRunning) {
     Write-Host "$ScriptName already running (PID=$($alreadyRunning.ProcessId))" -ForegroundColor Yellow
@@ -536,7 +568,7 @@ $apiProcess = Assert-NativeProcessRunning -Description "API" -Predicate {
   $_.Name -eq "python.exe" -and $_.CommandLine -like "*backend.app.main:app*"
 }
 $workerProcess = Assert-NativeProcessRunning -Description "worker" -Predicate {
-  $_.Name -eq "python.exe" -and $_.CommandLine -like "*backend.app.tasks.worker_bootstrap*"
+  Test-NativeWorkerProcess -Process $_
 }
 $frontendProcess = Assert-NativeProcessRunning -Description "frontend" -Predicate {
   $_.Name -eq "node.exe" -and

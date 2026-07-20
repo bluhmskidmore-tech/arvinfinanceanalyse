@@ -452,7 +452,7 @@ def test_wait_for_postgres_ready_can_target_application_database(monkeypatch):
     assert seen == ["moss"]
 
 
-def test_command_up_starts_postgres_with_synchronous_nowait_pg_ctl(tmp_path, monkeypatch):
+def test_command_up_starts_postgres_without_inheritable_capture_pipe(tmp_path, monkeypatch):
     module = load_module(
         "scripts.dev_postgres_cluster",
         "scripts/dev_postgres_cluster.py",
@@ -501,8 +501,9 @@ def test_command_up_starts_postgres_with_synchronous_nowait_pg_ctl(tmp_path, mon
     assert "-w" not in pg_ctl_start
     assert "start" in pg_ctl_start
     assert run_kwargs["check"] is True
-    assert run_kwargs["stdout"] is subprocess.PIPE
-    assert run_kwargs["stderr"] is subprocess.STDOUT
+    assert run_kwargs["stdin"] is subprocess.DEVNULL
+    assert run_kwargs["stdout"] is subprocess.DEVNULL
+    assert run_kwargs["stderr"] is subprocess.DEVNULL
     assert payload["running"] is True
     assert payload["action"] == "up"
 
@@ -618,3 +619,4 @@ def test_resolve_python_executable_prefers_path_python(monkeypatch):
     monkeypatch.setattr(module.sys, "executable", r"C:\Fallback\python.exe")
 
     assert module._resolve_python_executable() == r"C:\Python\python.exe"
+

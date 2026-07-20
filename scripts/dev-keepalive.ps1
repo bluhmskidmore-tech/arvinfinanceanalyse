@@ -108,6 +108,32 @@ function Get-NativeScriptProcess {
   }
 }
 
+function Test-NativeWorkerProcess {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$Process
+  )
+
+  return (
+    $Process.Name -eq "python.exe" -and (
+      $Process.CommandLine -like "*backend.app.tasks.dev_worker_runner*" -or
+      $Process.CommandLine -like "*backend.app.tasks.worker_bootstrap*"
+    )
+  )
+}
+
+function Get-NativeWorkerProcess {
+  try {
+    return Get-CimInstance Win32_Process |
+      Where-Object { Test-NativeWorkerProcess -Process $_ } |
+      Select-Object -First 1
+  } catch {
+    $script:ProcessInspectionAvailable = $false
+    Write-KeepaliveLog "process lookup failed for native worker: $($_.Exception.Message)"
+    return $null
+  }
+}
+
 function Get-DevListeningPortOwner {
   param(
     [Parameter(Mandatory = $true)]
@@ -175,7 +201,7 @@ function Stop-KnownServiceProcesses {
     "worker" {
       Stop-MatchingProcesses -Description "worker" -Predicate {
         ($_.Name -eq "powershell.exe" -and $_.CommandLine -like "*scripts\dev-worker.ps1*") -or
-        ($_.Name -eq "python.exe" -and $_.CommandLine -like "*backend.app.tasks.worker_bootstrap*")
+        (Test-NativeWorkerProcess -Process $_)
       }
     }
     "frontend" {
@@ -201,6 +227,12 @@ function Start-DevScriptDetached {
   }
 
   $alreadyRunning = Get-NativeScriptProcess -ScriptName $ScriptName
+  if (-not $alreadyRunning -and $ScriptName -eq "dev-worker.ps1" -and $script:ProcessInspectionAvailable) {
+    $alreadyRunning = Get-NativeWorkerProcess
+  }
+  if (-not $script:ProcessInspectionAvailable -and $ScriptName -eq "dev-worker.ps1") {
+    throw "Worker process inspection unavailable; refusing to launch dev-worker.ps1 because doing so can create a duplicate worker."
+  }
   if ($alreadyRunning) {
     Write-KeepaliveLog "$ScriptName already running (PID=$($alreadyRunning.ProcessId))"
     return
@@ -310,12 +342,16 @@ function Restart-HttpService {
 
 function Ensure-WorkerRunning {
   $workerScript = Get-NativeScriptProcess -ScriptName "dev-worker.ps1"
+  $workerProcess = $null
+  if (-not $workerScript -and $script:ProcessInspectionAvailable) {
+    $workerProcess = Get-NativeWorkerProcess
+  }
   if (-not $script:ProcessInspectionAvailable) {
     Write-KeepaliveLog "worker process verification unavailable; skipping worker keepalive"
     return
   }
 
-  if ($workerScript) {
+  if ($workerScript -or $workerProcess) {
     return
   }
 

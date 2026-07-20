@@ -3,6 +3,20 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
+function Test-NativeWorkerProcess {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$Process
+  )
+
+  return (
+    $Process.Name -eq "python.exe" -and (
+      $Process.CommandLine -like "*backend.app.tasks.dev_worker_runner*" -or
+      $Process.CommandLine -like "*backend.app.tasks.worker_bootstrap*"
+    )
+  )
+}
+
 function Wait-ProcessStopped {
   param(
     [Parameter(Mandatory = $true)]
@@ -56,10 +70,8 @@ function Stop-NativeProcesses {
       $_.CommandLine -like "*scripts\dev-frontend.ps1*" -or
       $_.CommandLine -like "*scripts\dev-keepalive.ps1*"
     )) -or
-    ($_.Name -eq "python.exe" -and (
-      $_.CommandLine -like "*backend.app.main:app*" -or
-      $_.CommandLine -like "*backend.app.tasks.worker_bootstrap*"
-    )) -or
+    ($_.Name -eq "python.exe" -and $_.CommandLine -like "*backend.app.main:app*") -or
+    (Test-NativeWorkerProcess -Process $_) -or
     ($_.Name -eq "node.exe" -and (
       $_.CommandLine -like ("*" + (Join-Path $root "frontend") + "*") -and
       $_.CommandLine -like "*vite*"
@@ -98,7 +110,7 @@ Wait-ProcessStopped -Description "API" -Predicate {
   $_.Name -eq "python.exe" -and $_.CommandLine -like "*backend.app.main:app*"
 }
 Wait-ProcessStopped -Description "worker" -Predicate {
-  $_.Name -eq "python.exe" -and $_.CommandLine -like "*backend.app.tasks.worker_bootstrap*"
+  Test-NativeWorkerProcess -Process $_
 }
 Wait-ProcessStopped -Description "frontend" -Predicate {
   $_.Name -eq "node.exe" -and

@@ -626,8 +626,9 @@ def _spawn_postgres_start(config: DevPostgresClusterConfig) -> None:
         ],
         check=True,
         text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
 
 
