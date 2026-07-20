@@ -14,7 +14,6 @@ from backend.app.core_finance.pnl import FI_CUMULATIVE_REALIZED_517_EVENT_TYPE
 from backend.app.core_finance.source_rules import describe_source_file
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import SOURCE_MANIFEST_STREAM, GovernanceRepository
-from openpyxl import load_workbook
 
 SUPPORTED_PNL_SOURCE_FAMILIES = ("pnl", "pnl_514", "pnl_516", "pnl_517")
 MANIFEST_ELIGIBLE_STATUSES = {"completed", "rerun"}
@@ -391,6 +390,8 @@ def _parse_fi_rows(snapshot: PnlSourceSnapshot) -> list[dict[str, object]]:
 
 
 def _parse_nonstd_rows(snapshot: PnlSourceSnapshot, *, bucket: str) -> list[dict[str, object]]:
+    from openpyxl import load_workbook
+
     workbook = load_workbook(snapshot.path, read_only=True, data_only=True)
     rows: list[dict[str, object]] = []
 

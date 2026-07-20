@@ -13,8 +13,6 @@ from backend.app.schemas.qdb_gl_contract import (
     QdbGlContractFinding,
     QdbGlLineage,
 )
-from openpyxl import load_workbook
-from openpyxl.utils import get_column_letter
 
 RULE_VERSION = "rv_qdb_gl_input_contract_v1"
 
@@ -125,6 +123,8 @@ def validate_qdb_gl_baseline_source(path: str | Path) -> QdbGlBaselineValidation
     sheet_names: list[str] = []
     bound_currency_groups: set[str] = set()
 
+    from openpyxl import load_workbook
+
     try:
         workbook = load_workbook(binding.path, read_only=True, data_only=True)
         checks["source_binding"].status_label = "pass"
@@ -192,6 +192,8 @@ def _validate_ledger_workbook(workbook, checks: dict[str, QdbGlContractCheck]) -
 
 
 def _validate_ledger_header(worksheet, checks: dict[str, QdbGlContractCheck]) -> None:
+    from openpyxl.utils import get_column_letter
+
     header_row = next(worksheet.iter_rows(min_row=6, max_row=6, values_only=True), tuple())
     for column_index, expected_header in enumerate(LEDGER_HEADERS, start=1):
         actual = _normalize_text(header_row[column_index - 1] if len(header_row) >= column_index else None)
@@ -349,6 +351,8 @@ def _validate_average_rows(
     checks: dict[str, QdbGlContractCheck],
     bound_currency_groups: set[str],
 ) -> None:
+    from openpyxl.utils import get_column_letter
+
     for row_index, row in enumerate(worksheet.iter_rows(min_row=4, values_only=True), start=4):
         row_values = list(row)
         if all(_is_blank(value) for value in row_values):
@@ -447,6 +451,8 @@ def _parse_average_block_specs(
     checks: dict[str, QdbGlContractCheck],
     sheet_name: str,
 ) -> list[tuple[int, int]]:
+    from openpyxl.utils import get_column_letter
+
     block_specs: list[tuple[int, int]] = []
     column_index = 0
     row_length = len(header_row)

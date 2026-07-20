@@ -11,9 +11,6 @@ from backend.app.core_finance.balance_analysis import (
     FormalZqtzBalanceFactRow,
 )
 from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
-from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font
-from openpyxl.worksheet.worksheet import Worksheet
 
 EXPORT_WORKBOOK_TABLES = (
     ("\u503a\u5238\u6301\u4ed3", ("zqtz_balance", "bond_business_types")),
@@ -21,11 +18,30 @@ EXPORT_WORKBOOK_TABLES = (
     ("\u671f\u9650\u5206\u5e03", ("maturity_distribution", "maturity_gap")),
     ("\u5229\u7387\u5206\u5e03", ("rate_distribution",)),
 )
-EXCEL_HEADER_FONT = Font(bold=True)
-EXCEL_RIGHT_ALIGNMENT = Alignment(horizontal="right")
 EXCEL_AMOUNT_FORMAT = "#,##0.00000000"
 EXCEL_NUMBER_FORMAT = "0.00000000"
 EXCEL_INTEGER_FORMAT = "0"
+
+_excel_header_font: Any | None = None
+_excel_right_alignment: Any | None = None
+
+
+def _excel_header_font_style() -> Any:
+    global _excel_header_font
+    if _excel_header_font is None:
+        from openpyxl.styles import Font
+
+        _excel_header_font = Font(bold=True)
+    return _excel_header_font
+
+
+def _excel_right_alignment_style() -> Any:
+    global _excel_right_alignment
+    if _excel_right_alignment is None:
+        from openpyxl.styles import Alignment
+
+        _excel_right_alignment = Alignment(horizontal="right")
+    return _excel_right_alignment
 
 
 def _build_balance_workbook_payload(
@@ -202,6 +218,8 @@ def _to_formal_tyw_fact_row(row: dict[str, object]) -> FormalTywBalanceFactRow:
 
 
 def _build_balance_analysis_workbook_xlsx_bytes(payload: dict[str, Any]) -> bytes:
+    from openpyxl import Workbook
+
     workbook = Workbook()
     overview_sheet = workbook.active
     overview_sheet.title = "\u6982\u89c8"
@@ -233,7 +251,7 @@ def _pick_workbook_export_table(payload: dict[str, Any], *candidate_keys: str) -
     )
 
 
-def _write_workbook_cards_sheet(sheet: Worksheet, cards: list[dict[str, Any]]) -> None:
+def _write_workbook_cards_sheet(sheet: Any, cards: list[dict[str, Any]]) -> None:
     sheet.append(["label", "value"])
     _style_header_row(sheet, column_count=2)
     for card in cards:
@@ -243,7 +261,7 @@ def _write_workbook_cards_sheet(sheet: Worksheet, cards: list[dict[str, Any]]) -
     _autosize_sheet_columns(sheet)
 
 
-def _write_workbook_table_sheet(sheet: Worksheet, table: dict[str, Any]) -> None:
+def _write_workbook_table_sheet(sheet: Any, table: dict[str, Any]) -> None:
     columns = list(table.get("columns") or [])
     rows = list(table.get("rows") or [])
     headers = [str(column.get("label") or "") for column in columns]
@@ -266,15 +284,16 @@ def _write_workbook_table_sheet(sheet: Worksheet, table: dict[str, Any]) -> None
     _autosize_sheet_columns(sheet)
 
 
-def _style_header_row(sheet: Worksheet, *, column_count: int) -> None:
+def _style_header_row(sheet: Any, *, column_count: int) -> None:
+    header_font = _excel_header_font_style()
     for column_index in range(1, column_count + 1):
-        sheet.cell(row=1, column=column_index).font = EXCEL_HEADER_FONT
+        sheet.cell(row=1, column=column_index).font = header_font
 
 
 def _style_numeric_cell(cell: Any, value: object, *, column_key: str) -> None:
     if isinstance(value, bool) or not isinstance(value, (int, float, Decimal)):
         return
-    cell.alignment = EXCEL_RIGHT_ALIGNMENT
+    cell.alignment = _excel_right_alignment_style()
     if _is_amount_column(column_key):
         cell.number_format = EXCEL_AMOUNT_FORMAT
         return
@@ -310,7 +329,7 @@ def _coerce_excel_value(value: object) -> object:
     return value
 
 
-def _autosize_sheet_columns(sheet: Worksheet) -> None:
+def _autosize_sheet_columns(sheet: Any) -> None:
     for column_cells in sheet.columns:
         values = ["" if cell.value is None else str(cell.value) for cell in column_cells]
         max_length = max(len(value) for value in values) if values else 0

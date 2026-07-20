@@ -11,7 +11,6 @@ from backend.app.repositories.ledger_analytics_repo import (
     LedgerAnalyticsRepository,
 )
 from backend.app.schemas.ledger import LedgerDashboardData, LedgerPositionItem
-from openpyxl import Workbook
 
 XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -269,7 +268,9 @@ def _positions_workbook(
     *,
     metadata: dict[str, object],
     filters: dict[str, str | None],
-) -> Workbook:
+):
+    from openpyxl import Workbook
+
     workbook = Workbook()
     worksheet = workbook.active
     worksheet.title = "positions"
@@ -295,7 +296,7 @@ def _positions_workbook(
     return workbook
 
 
-def _workbook_bytes(workbook: Workbook) -> bytes:
+def _workbook_bytes(workbook) -> bytes:
     output = io.BytesIO()
     workbook.save(output)
     return output.getvalue()

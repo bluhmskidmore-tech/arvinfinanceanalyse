@@ -13,7 +13,6 @@ from backend.app.core_finance.product_category_pnl import (
     CanonicalFactRow,
     derive_monthly_pnl,
 )
-from openpyxl import load_workbook
 
 LEDGER_PREFIX = "\u603b\u8d26\u5bf9\u8d26"
 AVG_PREFIX = "\u65e5\u5747"
@@ -91,6 +90,8 @@ def build_canonical_facts(pair: SourcePair) -> list[CanonicalFactRow]:
 
 
 def _parse_ledger_workbook(path: Path) -> dict[tuple[str, str], dict[str, object]]:
+    from openpyxl import load_workbook
+
     workbook = load_workbook(path, read_only=True, data_only=True)
     rows: dict[tuple[str, str], dict[str, object]] = {}
     try:
@@ -139,6 +140,8 @@ def _looks_like_currency(value: object) -> bool:
 
 
 def _parse_average_workbook(path: Path) -> tuple[dict[tuple[str, str], Decimal], dict[tuple[str, str], Decimal]]:
+    from openpyxl import load_workbook
+
     workbook = load_workbook(path, read_only=True, data_only=True)
     annual_rows: dict[tuple[str, str], Decimal] = {}
     monthly_rows: dict[tuple[str, str], Decimal] = {}

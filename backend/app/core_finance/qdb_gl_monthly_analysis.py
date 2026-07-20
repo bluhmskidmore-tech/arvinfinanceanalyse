@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any
 
 from backend.app.core_finance.reconciliation_checks import position_vs_ledger_diff
-from openpyxl import Workbook, load_workbook
 
 ZERO = Decimal("0")
 ONE_HUNDRED_MILLION = Decimal("100000000")
@@ -202,6 +201,8 @@ def _validate_daily_avg_header(worksheet: Any, sheet_name: str) -> None:
 
 
 def parse_daily_avg(filepath: str | Path) -> dict[str, list[dict[str, Any]]]:
+    from openpyxl import load_workbook
+
     workbook = load_workbook(filename=str(filepath), read_only=True, data_only=True)
     try:
         result: dict[str, list[dict[str, Any]]] = {}
@@ -229,6 +230,8 @@ def parse_daily_avg(filepath: str | Path) -> dict[str, list[dict[str, Any]]]:
 
 
 def parse_general_ledger(filepath: str | Path) -> dict[str, list[dict[str, Any]]]:
+    from openpyxl import load_workbook
+
     workbook = load_workbook(filename=str(filepath), read_only=True, data_only=True)
     try:
         result: dict[str, list[dict[str, Any]]] = {}
@@ -468,6 +471,8 @@ def build_qdb_gl_monthly_analysis_workbook(
 
 
 def export_qdb_gl_monthly_analysis_workbook_xlsx_bytes(workbook_payload: dict[str, Any]) -> bytes:
+    from openpyxl import Workbook
+
     workbook = Workbook()
     active = workbook.active
     for index, sheet_payload in enumerate(workbook_payload.get("sheets", [])):

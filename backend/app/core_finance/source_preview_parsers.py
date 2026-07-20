@@ -17,7 +17,6 @@ from backend.app.schemas.source_preview import (
     TywPreviewRow,
     ZqtzPreviewRow,
 )
-from openpyxl import load_workbook
 
 RULE_VERSION = "rv_phase1_source_preview_v1"
 
@@ -182,47 +181,52 @@ def _parse_nonstd_pnl_source_file(
     source_version: str,
     metadata,
 ) -> tuple[str, str | None, list[dict[str, object]], list[dict[str, object]]]:
+    from openpyxl import load_workbook
+
     workbook = load_workbook(path, read_only=True, data_only=True)
-    worksheet = workbook.worksheets[0]
-    headers = [
-        "" if value is None else str(value).strip()
-        for value in next(worksheet.iter_rows(min_row=2, max_row=2, values_only=True))
-    ]
-    rows: list[dict[str, object]] = []
-    traces: list[dict[str, object]] = []
-    row_locator = 0
-    bucket = metadata.source_family.removeprefix("pnl_")
+    try:
+        worksheet = workbook.worksheets[0]
+        headers = [
+            "" if value is None else str(value).strip()
+            for value in next(worksheet.iter_rows(min_row=2, max_row=2, values_only=True))
+        ]
+        rows: list[dict[str, object]] = []
+        traces: list[dict[str, object]] = []
+        row_locator = 0
+        bucket = metadata.source_family.removeprefix("pnl_")
 
-    for values in worksheet.iter_rows(min_row=3, values_only=True):
-        raw_row = {
-            headers[index]: values[index]
-            for index in range(min(len(headers), len(values)))
-            if headers[index]
-        }
-        if not _text(raw_row, "\u8d44\u4ea7\u4ee3\u7801"):
-            continue
+        for values in worksheet.iter_rows(min_row=3, values_only=True):
+            raw_row = {
+                headers[index]: values[index]
+                for index in range(min(len(headers), len(values)))
+                if headers[index]
+            }
+            if not _text(raw_row, "\u8d44\u4ea7\u4ee3\u7801"):
+                continue
 
-        row_locator += 1
-        preview = classify_nonstd_pnl_preview(raw_row, bucket=bucket)
-        row_record = NonstdPnlPreviewRow(
-            ingest_batch_id=ingest_batch_id,
-            row_locator=row_locator,
-            report_date=metadata.report_date,
-            journal_type=str(preview["journal_type"]),
-            product_type=str(preview["product_type"]),
-            asset_code=str(preview["asset_code"]),
-            account_code=str(preview["account_code"]),
-            dc_flag_raw=str(preview["dc_flag_raw"]),
-            raw_amount=str(preview["raw_amount"]),
-            manual_review_needed=bool(preview["manual_review_needed"]),
-        ).model_dump(mode="json")
-        row_record["source_family"] = metadata.source_family
-        row_record["source_version"] = source_version
-        row_record["rule_version"] = RULE_VERSION
-        rows.append(row_record)
-        traces.extend(_nonstd_pnl_trace_rows(raw_row, row_record))
+            row_locator += 1
+            preview = classify_nonstd_pnl_preview(raw_row, bucket=bucket)
+            row_record = NonstdPnlPreviewRow(
+                ingest_batch_id=ingest_batch_id,
+                row_locator=row_locator,
+                report_date=metadata.report_date,
+                journal_type=str(preview["journal_type"]),
+                product_type=str(preview["product_type"]),
+                asset_code=str(preview["asset_code"]),
+                account_code=str(preview["account_code"]),
+                dc_flag_raw=str(preview["dc_flag_raw"]),
+                raw_amount=str(preview["raw_amount"]),
+                manual_review_needed=bool(preview["manual_review_needed"]),
+            ).model_dump(mode="json")
+            row_record["source_family"] = metadata.source_family
+            row_record["source_version"] = source_version
+            row_record["rule_version"] = RULE_VERSION
+            rows.append(row_record)
+            traces.extend(_nonstd_pnl_trace_rows(raw_row, row_record))
 
-    return metadata.source_family, metadata.report_date, rows, traces
+        return metadata.source_family, metadata.report_date, rows, traces
+    finally:
+        workbook.close()
 
 
 def _zqtz_trace_rows(raw_row: dict[str, object], row_record: dict[str, object]) -> list[dict[str, object]]:

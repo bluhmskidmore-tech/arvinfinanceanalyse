@@ -21,7 +21,6 @@ from backend.app.schemas.ledger_import import (
     LedgerImportBatchSummary,
     LedgerImportListItem,
 )
-from openpyxl import load_workbook
 from xlrd import xldate_as_datetime
 
 RULE_VERSION = LEDGER_CLASSIFICATION_RULE_VERSION
@@ -249,6 +248,8 @@ def _read_xls_rows(content: bytes) -> list[dict[str, object]]:
 
 
 def _read_xlsx_rows(content: bytes) -> list[dict[str, object]]:
+    from openpyxl import load_workbook
+
     workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
     try:
         if LEDGER_SHEET_NAME not in workbook.sheetnames:
