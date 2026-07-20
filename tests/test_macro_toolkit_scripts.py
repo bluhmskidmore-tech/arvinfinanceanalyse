@@ -2921,6 +2921,246 @@ def test_latest_risk_tensor_row_uses_pushdown_safe_projected_query(tmp_path, mon
     assert set(row) == expected_columns
 
 
+def test_macro_curve_rows_use_type_aligned_trade_date_predicate(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    duckdb_path.write_bytes(b"placeholder")
+    captured: dict[str, object] = {}
+
+    class FakeResult:
+        def fetchall(self) -> list[tuple[object, ...]]:
+            return [("2026-04-30", "treasury", "10Y", 2.35)]
+
+    class FakeConnection:
+        def execute(self, query: str, parameters: object | None = None) -> FakeResult:
+            normalized = " ".join(query.casefold().split())
+            if "from fact_formal_yield_curve_daily" in normalized:
+                captured["query"] = normalized
+                captured["parameters"] = parameters
+                assert "try_cast(trade_date as date)" not in normalized
+                assert "where trade_date <= ?" in normalized
+                assert parameters == ["2026-04-30"]
+                return FakeResult()
+            raise AssertionError(f"unexpected query: {query}")
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(
+        macro_toolkit_service.duckdb,
+        "connect",
+        lambda *_args, **_kwargs: FakeConnection(),
+    )
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "_duckdb_date_column_is_canonical_iso",
+        lambda *_args, **_kwargs: True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "_duckdb_table_exists",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "load_series_by_aliases",
+        lambda *_args, **_kwargs: {
+            alias: pd.DataFrame()
+            for alias, _, _ in macro_toolkit_service._CURVE_ALIAS_POINTS
+        },
+    )
+
+    rows = macro_toolkit_service.load_macro_curve_rows(duckdb_path, date(2026, 4, 30))
+
+    assert captured["query"]
+    assert rows == [
+        {
+            "biz_date": "2026-04-30",
+            "curve_id": "CN_GOVT",
+            "tenor": "10Y",
+            "rate_value": 2.35,
+        }
+    ]
+
+
+def test_latest_bond_positions_use_type_aligned_report_date_predicate(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    duckdb_path.write_bytes(b"placeholder")
+    captured: dict[str, object] = {}
+
+    class FakeResult:
+        def fetchdf(self) -> pd.DataFrame:
+            return pd.DataFrame(
+                [
+                    {
+                        "market_value": 100.0,
+                        "maturity_date": date(2027, 4, 30),
+                        "coupon_rate": 2.5,
+                    }
+                ]
+            )
+
+    class FakeConnection:
+        def execute(self, query: str, parameters: object | None = None) -> FakeResult:
+            normalized = " ".join(query.casefold().split())
+            captured["query"] = normalized
+            captured["parameters"] = parameters
+            assert "try_cast(report_date as date)" not in normalized
+            assert "where report_date <= ?" in normalized
+            assert (
+                "fact_formal_bond_analytics_daily.report_date = latest.report_date"
+                in normalized
+            )
+            assert parameters == ["2026-04-30"]
+            return FakeResult()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(
+        macro_toolkit_service.duckdb,
+        "connect",
+        lambda *_args, **_kwargs: FakeConnection(),
+    )
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "_duckdb_date_column_is_canonical_iso",
+        lambda *_args, **_kwargs: True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "_duckdb_table_exists",
+        lambda *_args, **_kwargs: True,
+    )
+
+    positions = macro_toolkit_service.load_latest_bond_positions(
+        duckdb_path,
+        date(2026, 4, 30),
+    )
+
+    assert captured["query"]
+    assert positions == [
+        {
+            "market_value": 100.0,
+            "maturity_date": date(2027, 4, 30),
+            "coupon_rate": 2.5,
+        }
+    ]
+
+
+def test_macro_curve_and_bond_date_predicates_keep_canonical_semantics(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_formal_yield_curve_daily (
+              trade_date varchar,
+              curve_type varchar,
+              tenor varchar,
+              rate_pct double
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_yield_curve_daily values
+              ('2026-04-29', 'treasury', '10Y', 2.30),
+              ('2026-04-30', 'treasury', '10Y', 2.35),
+              ('2026-05-01', 'treasury', '10Y', 2.40)
+            """
+        )
+        conn.execute(
+            """
+            create table fact_formal_bond_analytics_daily (
+              report_date varchar,
+              market_value double,
+              maturity_date date,
+              coupon_rate double
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_bond_analytics_daily values
+              ('2026-04-29', 50.0, date '2027-01-01', 2.0),
+              ('2026-04-30', 100.0, date '2027-04-30', 2.5),
+              ('2026-05-01', 200.0, date '2028-01-01', 3.0)
+            """
+        )
+        curve_plan = conn.execute(
+            """
+            explain analyze
+            select trade_date
+            from fact_formal_yield_curve_daily
+            where trade_date <= '2026-04-30'
+            """
+        ).fetchall()
+        bond_plan = conn.execute(
+            """
+            explain analyze
+            select report_date
+            from fact_formal_bond_analytics_daily
+            where report_date <= '2026-04-30'
+            """
+        ).fetchall()
+
+        monkeypatch.setattr(
+            macro_toolkit_service,
+            "load_series_by_aliases",
+            lambda *_args, **_kwargs: {
+                alias: pd.DataFrame()
+                for alias, _, _ in macro_toolkit_service._CURVE_ALIAS_POINTS
+            },
+        )
+        rows = macro_toolkit_service._load_macro_curve_rows_from_conn(
+            conn,
+            duckdb_path,
+            date(2026, 4, 30),
+        )
+        positions = macro_toolkit_service._load_latest_bond_positions_from_conn(
+            conn,
+            date(2026, 4, 30),
+            duckdb_path,
+        )
+    finally:
+        conn.close()
+
+    plan_text = "\n".join(
+        str(row[1] if len(row) > 1 else row[0]) for row in curve_plan + bond_plan
+    ).upper()
+    assert "FILTER" in plan_text or "SEQ_SCAN" in plan_text or "SCAN" in plan_text
+
+    assert rows == [
+        {
+            "biz_date": "2026-04-29",
+            "curve_id": "CN_GOVT",
+            "tenor": "10Y",
+            "rate_value": 2.3,
+        },
+        {
+            "biz_date": "2026-04-30",
+            "curve_id": "CN_GOVT",
+            "tenor": "10Y",
+            "rate_value": 2.35,
+        },
+    ]
+    assert positions == [
+        {
+            "market_value": 100.0,
+            "maturity_date": date(2027, 4, 30),
+            "coupon_rate": 2.5,
+        }
+    ]
+
+
 def test_a_share_stampede_risk_context_delegates_to_service(tmp_path, monkeypatch) -> None:
     expected_context = {
         "observations": pd.DataFrame({"stock_code": ["000001.SZ"]}),
@@ -3181,8 +3421,13 @@ def test_macro_capability_context_reuses_one_connection_for_curve_risk_and_bonds
         assert duckdb_path_arg == duckdb_path
         return {"report_date": report_date.isoformat(), "total_market_value": 100.0}
 
-    def fake_bonds(conn: object, report_date: date) -> list[dict[str, object]]:
+    def fake_bonds(
+        conn: object,
+        report_date: date,
+        duckdb_path_arg: object,
+    ) -> list[dict[str, object]]:
         connection_ids["bond"] = id(conn)
+        assert duckdb_path_arg == duckdb_path
         return [{"market_value": 50.0, "maturity_date": report_date, "coupon_rate": 2.4}]
 
     monkeypatch.setattr(macro_toolkit_service.duckdb, "connect", fake_connect)

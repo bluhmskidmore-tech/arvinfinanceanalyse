@@ -128,6 +128,8 @@ A_SHARE_RISK_MAX_STOCKS = 8000
 _CANONICAL_ISO_DATE_COLUMNS = {
     ("choice_stock_daily_observation", "trade_date"),
     ("fact_formal_risk_tensor_daily", "report_date"),
+    ("fact_formal_yield_curve_daily", "trade_date"),
+    ("fact_formal_bond_analytics_daily", "report_date"),
 }
 _DateColumnCacheKey = tuple[str, int, int, str, str]
 _CANONICAL_ISO_DATE_CACHE: dict[_DateColumnCacheKey, bool] = {}
@@ -1415,17 +1417,26 @@ def _load_macro_curve_rows_from_conn(
 ) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     if conn is not None and _duckdb_table_exists(conn, "fact_formal_yield_curve_daily"):
+        canonical_dates = _duckdb_date_column_is_canonical_iso(
+            conn,
+            "fact_formal_yield_curve_daily",
+            "trade_date",
+            database_path=duckdb_path,
+        )
+        trade_date_expression = (
+            "trade_date" if canonical_dates else "try_cast(trade_date as date)"
+        )
         formal_rows = conn.execute(
-            """
+            f"""
             select
               cast(trade_date as varchar) as biz_date,
               lower(curve_type) as curve_type,
               tenor,
               cast(rate_pct as double) as rate_value
             from fact_formal_yield_curve_daily
-            where try_cast(trade_date as date) <= ?
+            where {trade_date_expression} <= ?
             """,
-            [report_date],
+            [report_date.isoformat() if canonical_dates else report_date],
         ).fetchall()
         for biz_date, curve_type, tenor, rate_value in formal_rows:
             curve_id = _CURVE_TYPE_TO_ID.get(str(curve_type))
@@ -1539,7 +1550,7 @@ def load_latest_bond_positions(
     except duckdb.Error:
         return []
     try:
-        return _load_latest_bond_positions_from_conn(conn, report_date)
+        return _load_latest_bond_positions_from_conn(conn, report_date, path)
     finally:
         conn.close()
 
@@ -1547,26 +1558,45 @@ def load_latest_bond_positions(
 def _load_latest_bond_positions_from_conn(
     conn: duckdb.DuckDBPyConnection | None,
     report_date: date,
+    duckdb_path: str | Path,
 ) -> list[dict[str, object]]:
     if conn is None or not _duckdb_table_exists(conn, "fact_formal_bond_analytics_daily"):
         return []
+    canonical_dates = _duckdb_date_column_is_canonical_iso(
+        conn,
+        "fact_formal_bond_analytics_daily",
+        "report_date",
+        database_path=duckdb_path,
+    )
+    if canonical_dates:
+        report_date_expression = "report_date"
+        latest_max_expression = "max(report_date)"
+        join_date_expression = "fact_formal_bond_analytics_daily.report_date"
+        date_parameter: object = report_date.isoformat()
+    else:
+        report_date_expression = "try_cast(report_date as date)"
+        latest_max_expression = "max(try_cast(report_date as date))"
+        join_date_expression = (
+            "try_cast(fact_formal_bond_analytics_daily.report_date as date)"
+        )
+        date_parameter = report_date
     frame = conn.execute(
-        """
+        f"""
         with latest as (
-          select max(try_cast(report_date as date)) as report_date
+          select {latest_max_expression} as report_date
           from fact_formal_bond_analytics_daily
-          where try_cast(report_date as date) <= ?
+          where {report_date_expression} <= ?
         )
         select
           cast(market_value as double) as market_value,
           maturity_date,
           cast(coupon_rate as double) as coupon_rate
         from fact_formal_bond_analytics_daily, latest
-        where try_cast(fact_formal_bond_analytics_daily.report_date as date) = latest.report_date
+        where {join_date_expression} = latest.report_date
           and coalesce(cast(market_value as double), 0) > 0
         limit 5000
         """,
-        [report_date],
+        [date_parameter],
     ).fetchdf()
     if frame.empty:
         return []
@@ -1599,7 +1629,7 @@ def load_macro_capability_context(
     try:
         curve_rows = _load_macro_curve_rows_from_conn(conn, duckdb_path, report_date)
         risk_tensor = _load_latest_risk_tensor_row_from_conn(conn, report_date, path)
-        positions = _load_latest_bond_positions_from_conn(conn, report_date)
+        positions = _load_latest_bond_positions_from_conn(conn, report_date, path)
         return curve_rows, risk_tensor, positions
     finally:
         if conn is not None:
