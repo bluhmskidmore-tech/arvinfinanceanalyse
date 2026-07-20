@@ -2,7 +2,7 @@
 
 ## Source
 
-- `docs/live_route_maturity.md` -> `GAP-AVERAGE-BALANCE-PAGE`
+- `docs/live_route_maturity.md` -> `PAGE-ADB-001`
 - `docs/metric_dictionary.md` -> `MTR-ADB-001` and `MTR-ADB-002` daily sample binding; `MTR-ADB-003` has separate candidate monthly DTO evidence through `GS-AVERAGE-BALANCE-MONTHLY-A`
 - `backend/app/api/routes/adb_analysis.py`
 - `backend/app/services/adb_analysis_service.py`
@@ -31,6 +31,6 @@
 
 ## Boundary
 
-- This sample freezes the `GET /api/analysis/adb` candidate page DTO for `GAP-AVERAGE-BALANCE-PAGE`.
+- This sample freezes the `GET /api/analysis/adb` candidate page DTO for `PAGE-ADB-001`.
 - It preserves `formal_use_allowed=false`; `MTR-ADB-001` through `MTR-ADB-003` remain candidate display metrics with pending confirmation.
 - It does not replace `PAGE-BALANCE-001` formal balance truth, approve ADB metrics, approve monthly NIM, approve manual audit closure, or capture business-owner approval.

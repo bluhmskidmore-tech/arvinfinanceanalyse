@@ -28,20 +28,20 @@ DEFAULT_EVIDENCE_READINESS_PAGES = [
     "PAGE-OPS-001",
 ]
 DEFAULT_CATALOG_DATE_EXCLUDED_PAGE_IDS = {
-    "GAP-AVERAGE-BALANCE-PAGE",
+    "PAGE-ADB-001",
     "PAGE-BANK-LEDGER-001",
-    "GAP-CASHFLOW-PROJECTION-PAGE",
+    "PAGE-CFP-001",
     "GAP-DECISION-ITEMS-PAGE",
 }
 EVIDENCE_READINESS_STATUS_BY_PAGE_ID = {
     "PAGE-BANK-LEDGER-001": "candidate_or_pending",
-    "GAP-CASHFLOW-PROJECTION-PAGE": "candidate_or_pending",
-    "GAP-CONCENTRATION-MONITOR-PAGE": "candidate_or_pending",
+    "PAGE-CFP-001": "candidate_or_pending",
+    "PAGE-CONC-001": "candidate_or_pending",
     "GAP-CROSS-ASSET-PAGE": "mixed_source_or_observational",
     "GAP-DECISION-ITEMS-PAGE": "candidate_or_pending",
     "GAP-KPI-PERFORMANCE-PAGE": "candidate_or_pending",
     "GAP-NEWS-EVENTS-PAGE": "candidate_or_pending",
-    "GAP-AVERAGE-BALANCE-PAGE": "candidate_or_pending",
+    "PAGE-ADB-001": "candidate_or_pending",
     "GAP-TEAM-PERFORMANCE-PAGE": "candidate_or_pending",
     "GAP-PLATFORM-CONFIG-PAGE": "candidate_or_pending",
     "PAGE-BOND-ANALYSIS-001": "candidate_or_pending",
@@ -134,7 +134,7 @@ PAGE_CATALOG_DATE_TABLES = {
         "position_snapshot",
         "position_snapshot_agg",
     ],
-    "GAP-CASHFLOW-PROJECTION-PAGE": [
+    "PAGE-CFP-001": [
         "fact_formal_zqtz_balance_daily",
         "fact_formal_tyw_balance_daily",
     ],
@@ -142,7 +142,7 @@ PAGE_CATALOG_DATE_TABLES = {
         "fact_formal_zqtz_balance_daily",
         "fact_formal_tyw_balance_daily",
     ],
-    "GAP-CONCENTRATION-MONITOR-PAGE": [
+    "PAGE-CONC-001": [
         "fact_formal_bond_analytics_daily",
     ],
     "PAGE-BRIDGE-001": [
@@ -234,7 +234,7 @@ PAGE_CATALOG_DATE_TABLES = {
         "choice_stock_daily_observation",
         "fact_livermore_gate_supplement_daily",
     ],
-    "GAP-AVERAGE-BALANCE-PAGE": [
+    "PAGE-ADB-001": [
         "fact_formal_zqtz_balance_daily",
         "fact_formal_tyw_balance_daily",
         "zqtz_bond_daily_snapshot",
@@ -300,7 +300,7 @@ PAGE_CATALOG_DATE_DEFERRED_REASONS = {
         "Read/write KPI scoring workbench; direct page closure depends on governance SQL source, score-rule, "
         "permission, and audit-trail evidence rather than DuckDB table/date sampling."
     ),
-    "GAP-AVERAGE-BALANCE-PAGE": (
+    "PAGE-ADB-001": (
         "ADB analytical route; direct page closure depends on PAGE contract approval, ADB denominator semantics, "
         "bound golden sample, lineage records, and owner review before any formal-use claim."
     ),
@@ -679,11 +679,11 @@ class LineageEvidenceProvider(McpProvider):
             "kpi.value",
             "temporary-exception read/write KPI scoring boundary",
         ],
-        "gap-average-balance-page": [
+        "page-adb-001": [
             "/average-balance",
             "average-balance",
             "average_balance",
-            "GAP-AVERAGE-BALANCE-PAGE",
+            "PAGE-ADB-001",
             "/api/analysis/adb",
             "/api/analysis/adb/comparison",
             "/api/analysis/adb/monthly",
@@ -697,7 +697,7 @@ class LineageEvidenceProvider(McpProvider):
             "MTR-ADB-001",
             "MTR-ADB-002",
             "MTR-ADB-003",
-            "PAGE-CONTRACT-PENDING:/average-balance",
+            "PAGE-ADB-001",
             "temporary-exception ADB analytical balance boundary",
         ],
         "page-bank-ledger-001": [
@@ -724,11 +724,11 @@ class LineageEvidenceProvider(McpProvider):
             "position_key_contract_v1",
             "temporary-exception bank ledger read-model boundary",
         ],
-        "gap-cashflow-projection-page": [
+        "page-cfp-001": [
             "/cashflow-projection",
             "cashflow-projection",
             "cashflow_projection",
-            "GAP-CASHFLOW-PROJECTION-PAGE",
+            "PAGE-CFP-001",
             "/api/cashflow-projection",
             "/ui/balance-analysis/dates",
             "cashflow_projection.overview",
@@ -739,7 +739,7 @@ class LineageEvidenceProvider(McpProvider):
             "MTR-CFP-002",
             "MTR-CFP-003",
             "MTR-CFP-004",
-            "PAGE-CONTRACT-PENDING:/cashflow-projection",
+            "PAGE-CFP-001",
             "fact_formal_zqtz_balance_daily",
             "fact_formal_tyw_balance_daily",
             "duration_gap",
@@ -748,11 +748,11 @@ class LineageEvidenceProvider(McpProvider):
             "rate_sensitivity_1bp",
             "temporary-exception cashflow projection liquidity boundary",
         ],
-        "gap-concentration-monitor-page": [
+        "page-conc-001": [
             "/concentration-monitor",
             "concentration-monitor",
             "concentration_monitor",
-            "GAP-CONCENTRATION-MONITOR-PAGE",
+            "PAGE-CONC-001",
             "/api/bond-analytics/dates",
             "/api/bond-analytics/credit-spread-migration",
             "bond_analytics.dates",
@@ -764,7 +764,7 @@ class LineageEvidenceProvider(McpProvider):
             "MTR-CON-002",
             "MTR-CON-003",
             "MTR-CON-004",
-            "PAGE-CONTRACT-PENDING:/concentration-monitor",
+            "PAGE-CONC-001",
             "fact_formal_bond_analytics_daily",
             "concentration_by_issuer",
             "concentration_by_industry",
@@ -2986,13 +2986,13 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
     }
     average_balance_bundle = {
         "page_slug": "average-balance",
-        "page_id": "GAP-AVERAGE-BALANCE-PAGE",
+        "page_id": "PAGE-ADB-001",
         "page_name": "Average Balance",
         "aliases": [
             "average-balance",
             "average_balance",
             "/average-balance",
-            "GAP-AVERAGE-BALANCE-PAGE",
+            "PAGE-ADB-001",
             "/api/analysis/adb",
             "/api/analysis/adb/comparison",
             "/api/analysis/adb/monthly",
@@ -3018,9 +3018,9 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
         ],
         "truth_chain": [
             "docs/pnl/average-balance-page-contract.md defines /average-balance as a candidate ADB analytical page and points formal balance truth back to PAGE-BALANCE-001.",
-            "docs/live_route_maturity.md marks /average-balance as temporary-exception with page id GAP-AVERAGE-BALANCE-PAGE.",
+            "docs/live_route_maturity.md marks /average-balance as temporary-exception with page id PAGE-ADB-001.",
             "docs/metric_dictionary.md registers MTR-ADB-001 through MTR-ADB-003 as candidate metrics only.",
-            "docs/metric_dictionary.md keeps bound_page_id=PAGE-CONTRACT-PENDING:/average-balance; MTR-ADB-001 and MTR-ADB-002 are bound to GS-AVERAGE-BALANCE-A, and MTR-ADB-003 is bound to GS-AVERAGE-BALANCE-MONTHLY-A as candidate DTO sample evidence.",
+            "docs/metric_dictionary.md keeps bound_page_id=PAGE-ADB-001; MTR-ADB-001 and MTR-ADB-002 are bound to GS-AVERAGE-BALANCE-A, and MTR-ADB-003 is bound to GS-AVERAGE-BALANCE-MONTHLY-A as candidate DTO sample evidence.",
             "docs/pnl/average-balance-owner-evidence-packet.md packages owner-review evidence without approving page closure.",
             "docs/pnl/average-balance-business-owner-approval-template.md captures pending owner fields and preserves formal_use_allowed=false.",
             "docs/pnl/average-balance-owner-signoff-runbook.md lists the human review, fill, and post-signing verification commands without approving formal use.",
@@ -3062,7 +3062,7 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "Check observed, LOCF, and calendar-zero denominator semantics, selected date range, monthly/YTD basis, amount unit conversion, percent precision, null-vs-zero behavior, and fallback/no-data states.",
         ],
         "guardrails": [
-            "GAP-AVERAGE-BALANCE-PAGE is candidate ADB analysis, not formal balance truth.",
+            "PAGE-ADB-001 is candidate ADB analysis, not formal balance truth.",
             "Do not replace formal balance truth from PAGE-BALANCE-001 or /balance-analysis with ADB interval, comparison, monthly, or coverage output.",
             "Do not promote MTR-ADB-001 through MTR-ADB-003 to formal use until a dedicated PAGE contract, golden approval, lineage records, manual audit, and owner approval exist.",
             "Do not hide candidate, stale, fallback, no-data, denominator, date-range, or result_meta boundaries behind a successful /average-balance shell.",
@@ -3154,13 +3154,13 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
     }
     cashflow_projection_bundle = {
         "page_slug": "cashflow-projection",
-        "page_id": "GAP-CASHFLOW-PROJECTION-PAGE",
+        "page_id": "PAGE-CFP-001",
         "page_name": "Cashflow Projection",
         "aliases": [
             "cashflow-projection",
             "cashflow_projection",
             "/cashflow-projection",
-            "GAP-CASHFLOW-PROJECTION-PAGE",
+            "PAGE-CFP-001",
             "/api/cashflow-projection",
             "cashflow_projection.overview",
         ],
@@ -3175,15 +3175,15 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "docs/metric_dictionary.md",
         ],
         "truth_chain": [
-            "docs/live_route_maturity.md marks /cashflow-projection as temporary-exception with page id GAP-CASHFLOW-PROJECTION-PAGE.",
+            "docs/live_route_maturity.md marks /cashflow-projection as temporary-exception with page id PAGE-CFP-001.",
             "docs/metric_dictionary.md registers MTR-CFP-001 through MTR-CFP-004 as candidate metrics only.",
-            "docs/metric_dictionary.md keeps bound_page_id=PAGE-CONTRACT-PENDING:/cashflow-projection and bound_sample_id=GS-CASHFLOW-PROJECTION-A for the cashflow candidate metrics.",
+            "docs/metric_dictionary.md keeps bound_page_id=PAGE-CFP-001 and bound_sample_id=GS-CASHFLOW-PROJECTION-A for the cashflow candidate metrics.",
             "tests/golden_samples/GS-CASHFLOW-PROJECTION-A freezes the capture-ready candidate DTO for GET /api/cashflow-projection and remains captured-awaiting-approval.",
             "GET /api/cashflow-projection returns cashflow_projection.overview with cashflow_projection_report_date result_meta.",
             "backend/app/services/cashflow_projection_service.py computes duration_gap, asset_duration, liability_duration, rate_sensitivity_1bp, monthly_buckets, top_maturing_assets_12m, warnings, and result_meta.",
             "backend/app/repositories/cashflow_projection_repo.py reads fact_formal_zqtz_balance_daily and fact_formal_tyw_balance_daily for the requested report_date and CNY currency basis.",
-            "frontend/src/features/cashflow-projection/pages/CashflowProjectionPage.tsx surfaces PAGE-CONTRACT-PENDING:/cashflow-projection, analytical basis, quality, result kind, date basis, tables_used, and evidence_rows.",
-            "GAP-CASHFLOW-PROJECTION-PAGE is candidate liquidity projection evidence; it has no standalone PAGE contract approval or MTR dictionary approval in this pass.",
+            "frontend/src/features/cashflow-projection/pages/CashflowProjectionPage.tsx surfaces PAGE-CFP-001, analytical basis, quality, result kind, date basis, tables_used, and evidence_rows.",
+            "PAGE-CFP-001 is candidate liquidity projection evidence with a documented page contract; MTR dictionary rows remain candidate/pending_confirmation and are not formally approved.",
         ],
         "backend_touchpoints": [
             "backend/app/api/routes/cashflow_projection.py",
@@ -3216,7 +3216,7 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "Check report_date selection, requested/resolved/as_of dates, CNY basis, yuan-to-yi display conversion, ratio/year/pct precision, null-vs-zero behavior, no-data 404, fallback/stale banners, tables_used, evidence_rows, and warnings.",
         ],
         "guardrails": [
-            "GAP-CASHFLOW-PROJECTION-PAGE is candidate liquidity projection evidence, not formal liquidity truth and not a certified risk or balance page.",
+            "PAGE-CFP-001 is candidate liquidity projection evidence, not formal liquidity truth and not a certified risk or balance page.",
             "Do not replace PAGE-RISK-001 formal risk truth, PAGE-BALANCE-001 balance truth, or formal PnL truth with cashflow duration-gap or monthly projection output.",
             "Do not promote MTR-CFP-001 through MTR-CFP-004 to formal use until a dedicated PAGE contract, golden sample, lineage records, manual audit, and owner approval exist.",
             "Do not hide stale, fallback, no-data, requested/resolved date, source_version, rule_version, cache_version, tables_used, evidence_rows, or warning boundaries behind a successful page shell.",
@@ -3225,13 +3225,13 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
     }
     concentration_monitor_bundle = {
         "page_slug": "concentration-monitor",
-        "page_id": "GAP-CONCENTRATION-MONITOR-PAGE",
+        "page_id": "PAGE-CONC-001",
         "page_name": "Concentration Monitor",
         "aliases": [
             "concentration-monitor",
             "concentration_monitor",
             "/concentration-monitor",
-            "GAP-CONCENTRATION-MONITOR-PAGE",
+            "PAGE-CONC-001",
             "/api/bond-analytics/credit-spread-migration",
             "bond_analytics.credit_spread_migration",
         ],
@@ -3247,13 +3247,13 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
         ],
         "truth_chain": [
             "docs/metric_dictionary.md registers MTR-CON-001 through MTR-CON-004 as candidate metrics only.",
-            "docs/metric_dictionary.md keeps bound_page_id=PAGE-CONTRACT-PENDING:/concentration-monitor and bound_sample_id=GS-CONCENTRATION-MONITOR-A for the concentration candidate metrics.",
+            "docs/metric_dictionary.md keeps bound_page_id=PAGE-CONC-001 and bound_sample_id=GS-CONCENTRATION-MONITOR-A for the concentration candidate metrics.",
             "tests/golden_samples/GS-CONCENTRATION-MONITOR-A freezes the capture-ready candidate DTO for GET /api/bond-analytics/credit-spread-migration and remains captured-awaiting-approval.",
             "GET /api/bond-analytics/credit-spread-migration returns bond_analytics.credit_spread_migration with issuer, industry, rating, and tenor concentration breakdowns.",
             "CreditSpreadMigrationResponse exposes concentration_by_issuer.hhi, concentration_by_issuer.top5_concentration, concentration_by_industry, concentration_by_rating, concentration_by_tenor, credit_weight, and rating_aa_and_below_weight.",
             "backend/app/services/bond_analytics_service.py reads fact_formal_bond_analytics_daily and returns analytical/candidate result_meta for credit-spread migration.",
-            "frontend/src/features/concentration-monitor/ConcentrationMonitorPage.tsx surfaces PAGE-CONTRACT-PENDING:/concentration-monitor, analytical basis, quality, result kind, date basis, tables_used, and evidence_rows.",
-            "GAP-CONCENTRATION-MONITOR-PAGE is candidate concentration-monitor evidence; it has no standalone PAGE contract approval or MTR dictionary approval in this pass.",
+            "frontend/src/features/concentration-monitor/ConcentrationMonitorPage.tsx surfaces PAGE-CONC-001, analytical basis, quality, result kind, date basis, tables_used, and evidence_rows.",
+            "PAGE-CONC-001 is candidate concentration-monitor evidence with a documented page contract; MTR dictionary rows remain candidate/pending_confirmation and are not formally approved.",
         ],
         "backend_touchpoints": [
             "backend/app/api/routes/bond_analytics.py",
@@ -3287,7 +3287,7 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "Verify issuer HHI, top5_concentration, credit_weight, AA-and-below ratio, and dimension top_items are displayed from the API payload without frontend portfolio-level recalculation.",
         ],
         "guardrails": [
-            "GAP-CONCENTRATION-MONITOR-PAGE is candidate concentration-monitor evidence, not formal risk truth and not certified concentration-limit approval.",
+            "PAGE-CONC-001 is candidate concentration-monitor evidence, not formal risk truth and not certified concentration-limit approval.",
             "Do not replace PAGE-RISK-001 formal risk truth, /bond-analysis action-attribution evidence, or formal fixed-income metric truth with concentration-monitor output.",
             "Do not promote MTR-CON-001 through MTR-CON-004 to formal use until a dedicated PAGE contract, golden sample, lineage records, manual audit, and owner approval exist.",
             "Do not treat front-end limit comparisons, issuer HHI, top5 concentration, credit weight, or rating AA-and-below ratio as approved risk-limit breaches without owner/golden/manual audit closure.",

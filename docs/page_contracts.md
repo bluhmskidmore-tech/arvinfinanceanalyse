@@ -2545,6 +2545,191 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 - Frontend: `frontend/src/test/ModuleWorkbenchHomeModel.test.ts`, `frontend/src/test/RouteRegistry.test.tsx`.
 - Contract gate: `tests/test_live_route_page_contract_completeness.py`.
 
+
+## 14.10 PAGE-ADB-001 日均资产负债（平均余额）
+
+### A. 页面身份
+
+- 页面 ID：`PAGE-ADB-001`
+- 页面名称：`日均资产负债` / Average Balance
+- 路由：
+  - 前端：`/average-balance`
+  - 后端：
+    - `GET /api/analysis/adb`
+    - `GET /api/analysis/adb/comparison`
+    - `GET /api/analysis/adb/monthly`
+    - `GET /api/analysis/adb/coverage`
+    - 日期初始化复用 `GET /ui/balance-analysis/dates`（同 `PAGE-BALANCE-001` 日期源，不构成 formal balance 提升）
+- 页面状态：`candidate` / `temporary-exception`（live 可见，但非 formal）
+- 前身占位：`GAP-AVERAGE-BALANCE-PAGE`；侧翼草稿：`docs/pnl/average-balance-page-contract.md`
+- `formal_use_allowed`：响应必须保持 `false`
+
+### B. 页面目标
+
+- 主要使用者：资产负债分析、经营分析复核
+- 页面要回答的业务问题：
+  1. 选定区间内，资产/负债日均余额相对期末时点如何；
+  2. 分类拆分、趋势与覆盖诊断能否解释偏离；
+  3. 分母口径（observed / LOCF / calendar 相关）当前是什么。
+- 页面不负责回答的问题：
+  - 不替代 `PAGE-BALANCE-001` 正式余额真值；
+  - 不批准 `MTR-ADB-*` 正式使用；
+  - 不在前端补算日均或 NIM。
+
+### C. 信息架构
+
+#### 必有 section
+
+| section_key | 名称 | 目的 | 数据来源 |
+| --- | --- | --- | --- |
+| `filter_bar` | 日期区间 / 年份 | 确定分析窗口 | page state + balance dates |
+| `summary_kpi` | 日均与期末 KPI | 展示 `MTR-ADB-001/002` 等候选摘要 | `/api/analysis/adb` |
+| `comparison` | 分类对比 | 资产/负债分类日均 vs 时点 | `/api/analysis/adb/comparison` |
+| `trend` | 趋势 | 区间趋势 | `/api/analysis/adb` trend |
+| `monthly` | 月度 / YTD NIM | `MTR-ADB-003` 候选读面 | `/api/analysis/adb/monthly` |
+| `coverage` | 覆盖诊断 | 快照 vs formal 覆盖与分母证据 | `/api/analysis/adb/coverage` |
+| `result_meta` | 口径 / lineage | `basis=analytical`、`formal_use_allowed=false` | envelope |
+
+#### 禁止 section
+
+- 把 ADB 区间结果写成 formal balance truth
+- 静默改写或推断分母模式
+- 用静态 demo 填补空数据
+
+### D. 分母与填充语义（exit condition）
+
+页面必须按后端证据原样披露，不得前端重贴标签：
+
+| 语义 | 含义 | 当前实现线索 |
+| --- | --- | --- |
+| `observed` | 仅对有观测行的日期累计 | 覆盖天数 / 观测日集合 |
+| `LOCF` | 某分类在 `end_date` 无行时，取窗口内不晚于 `end_date` 的最近观测合计做期末时点 | `adb_analysis_service` 模块说明与 end-spot LOCF |
+| `calendar-zero` | 日历分母下缺失日贡献为 0；**仅当**后端明确给出该模式时展示 | 侧翼合同定义；不得默认推断 |
+| `observed_days_scaled_to_calendar` | 稀疏观测时将观测日合计按日历天数比例放大（`sample_fill_method`） | coverage/comparison 诊断字段；属 sample completion，非正式真值 |
+
+### E. Endpoint / DTO
+
+| 用途 | Endpoint | basis | 备注 |
+| --- | --- | --- | --- |
+| 日均主读 | `GET /api/analysis/adb` | `analytical` | `result_kind=adb.daily`；`GS-AVERAGE-BALANCE-A` |
+| 分类对比 | `GET /api/analysis/adb/comparison` | `analytical` | 含 `sample_fill_method` |
+| 月度 | `GET /api/analysis/adb/monthly` | `analytical` | `GS-AVERAGE-BALANCE-MONTHLY-A` |
+| 覆盖 | `GET /api/analysis/adb/coverage` | `analytical` | 诊断，不批准 formal |
+
+### F. 指标映射
+
+| 展示项 | metric_id | 状态 |
+| --- | --- | --- |
+| 区间日均总资产 | `MTR-ADB-001` | candidate / pending_confirmation |
+| 区间日均总负债 | `MTR-ADB-002` | candidate / pending_confirmation |
+| YTD/月度 NIM | `MTR-ADB-003` | candidate / pending_confirmation |
+
+### G. 正式真值边界
+
+- 正式余额真值仅归属 `PAGE-BALANCE-001` / `/balance-analysis`。
+- 本页可读 formal 日表作为源锚，但不提升为 formal balance。
+- 离开 `temporary-exception` 仍需 owner 签核与黄金样本批准；本 PAGE 合同本身不构成提升。
+
+### H. 测试锚点
+
+- `tests/test_adb_analysis_api.py`
+- `tests/test_golden_samples_capture_ready.py`
+- `frontend/src/test/AverageBalanceView.test.tsx`
+- `tests/test_live_route_page_contract_completeness.py`
+
+## 14.11 PAGE-CONC-001 集中度监控
+
+### A. 页面身份
+
+- 页面 ID：`PAGE-CONC-001`
+- 页面名称：`集中度监控`
+- 路由：
+  - 前端：`/concentration-monitor`
+  - 后端：`GET /api/bond-analytics/credit-spread-migration`
+- 页面状态：`candidate` / `temporary-exception`
+- 前身占位：`GAP-CONCENTRATION-MONITOR-PAGE`
+- `formal_use_allowed`：必须为 `false`
+
+### B. 页面目标
+
+- 回答：在选定报告日，发行人/行业/评级/期限集中度与信用权重是否接近或突破展示限额。
+- 不回答：不构成正式风险张量真值（`PAGE-RISK-001`）；不批准集中度限额政策；不替代债券分析行动归因。
+
+### C. 信息架构（每节必须标明 source / limit / unit / candidate）
+
+| section_key | source | limit（前端展示常量，非后端批准） | unit | candidate status |
+| --- | --- | --- | --- | --- |
+| `kpi_hhi` | `result.concentration_by_issuer.hhi` (`MTR-CON-001`) | `hhi_warning=0.15` | 比率→页面百分数格式化 | candidate |
+| `kpi_top5` | `result.concentration_by_issuer.top5_concentration` (`MTR-CON-002`) | `issuer_top5_max=0.4` | 比率→百分数 | candidate |
+| `kpi_credit_weight` | `result.credit_weight` (`MTR-CON-003`) | 无硬限额卡片；语义为占比 | 比率→百分数 | candidate |
+| `kpi_aa_below` | `result.rating_aa_and_below_weight` (`MTR-CON-004`) | `below_aa_max=0.2` | 比率→百分数 | candidate |
+| `tables_*` | `concentration_by_issuer/industry/rating/tenor` | `issuer_single_max=0.1` 用于行级 tone | 名称 + 权重 | candidate |
+| `spread_scenarios` | `result.spread_scenarios` | 无批准限额 | 情景位移 | analytical/candidate；曲线缺失时可为 warning |
+| `result_meta` | envelope | n/a | n/a | `basis=analytical`；样本常含 `vendor_unavailable` |
+
+前端限额常量定义于 `ConcentrationMonitorPage.tsx` 的 `LIMITS`；**与后端口径无关，不构成治理批准的限额制度**。
+
+### D. 时间语义
+
+- `requested_report_date` / `resolved_report_date` / `as_of_date`：来自 `result_meta`（样本冻结 `date_basis=bond_analytics_report_date`）
+- latest fallback：黄金样本要求 `fallback_mode=none`；若未来出现 fallback，必须可见，不得静默
+
+### E. 指标映射
+
+- `MTR-CON-001`~`MTR-CON-004`：candidate / pending_confirmation；绑定 `GS-CONCENTRATION-MONITOR-A`
+
+### F. 测试锚点
+
+- `frontend/src/test/ConcentrationMonitorPage.test.tsx`
+- `tests/test_bond_analytics_service.py`
+- `tests/test_golden_samples_capture_ready.py`
+- `tests/test_live_route_page_contract_completeness.py`
+
+## 14.12 PAGE-CFP-001 现金流预测
+
+### A. 页面身份
+
+- 页面 ID：`PAGE-CFP-001`
+- 页面名称：`现金流预测`
+- 路由：
+  - 前端：`/cashflow-projection`
+  - 后端：`GET /api/cashflow-projection?report_date=YYYY-MM-DD`
+- 页面状态：`candidate` / `temporary-exception`
+- 前身占位：`GAP-CASHFLOW-PROJECTION-PAGE`
+- `formal_use_allowed`：必须为 `false`
+
+### B. 页面目标
+
+- 回答：在报告日与默认预测地平线下，久期缺口、月度净现金流与再投资风险如何。
+- 不回答：不构成正式流动性监管结论；不替代 `PAGE-RISK-001` / `PAGE-BALANCE-001` / formal PnL。
+
+### C. Horizon / fallback / date basis / stress（exit condition）
+
+| 语义 | 合同要求 |
+| --- | --- |
+| `horizon` | 核心引擎默认 `horizon_months=24` 生成月度桶；再投资风险单独使用 12 个月到期窗口（`reinvestment_risk_12m`） |
+| `fallback` | 读面合同要求显式 `result_meta.fallback_mode`；当前 capture-ready 样本为 `none`。若非 `none`，页面必须可见披露，禁止静默改日 |
+| `date_basis` | `result_meta.date_basis=cashflow_projection_report_date`；`requested/resolved/as_of` 对齐报告日 |
+| `stress / sensitivity` | `rate_sensitivity_1bp` 为 +1bp 利率冲击下的权益价值敏感度（候选展示）；负债久期使用剩余期限 proxy，必须保留 warning 披露。页面结论文案只解释久期缺口方向，不宣称压力测试监管合规 |
+
+### D. 必有 / 禁止
+
+- 必有：报告日选择、久期缺口 KPI（`MTR-CFP-001`~`003`）、1bp 敏感度（`MTR-CFP-004`）、月度投影、到期资产表、warnings、`result_meta`
+- 禁止：前端重算久期/缺口；把 liability remaining-term proxy 写成现金流加权久期；隐藏 warning
+
+### E. 指标映射
+
+- `MTR-CFP-001`~`MTR-CFP-004`：candidate / pending_confirmation；绑定 `GS-CASHFLOW-PROJECTION-A`
+
+### F. 测试锚点
+
+- `tests/test_cashflow_projection.py`
+- `tests/test_golden_samples_capture_ready.py`
+- `frontend/src/test/CashflowProjectionPage.test.tsx`
+- `frontend/src/features/cashflow-projection/pages/cashflowProjectionPageModel.test.ts`
+- `tests/test_live_route_page_contract_completeness.py`
+
+
 ## 15. 当前缺口
 
 ### 15.1 `as_of_date` 未统一

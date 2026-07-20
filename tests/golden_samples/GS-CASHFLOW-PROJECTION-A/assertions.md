@@ -2,7 +2,7 @@
 
 ## Source
 
-- `docs/live_route_maturity.md` -> `GAP-CASHFLOW-PROJECTION-PAGE`
+- `docs/live_route_maturity.md` -> `PAGE-CFP-001`
 - `docs/metric_dictionary.md` -> `MTR-CFP-001` through `MTR-CFP-004`
 - `backend/app/api/routes/cashflow_projection.py`
 - `backend/app/services/cashflow_projection_service.py`
@@ -45,7 +45,7 @@
 
 ## Boundary
 
-- This sample freezes the `GET /api/cashflow-projection` candidate page DTO for `GAP-CASHFLOW-PROJECTION-PAGE`.
+- This sample freezes the `GET /api/cashflow-projection` candidate page DTO for `PAGE-CFP-001`.
 - It preserves `formal_use_allowed=false`; `MTR-CFP-001` through `MTR-CFP-004` remain candidate display metrics with pending confirmation.
 - It does not replace formal liquidity, PAGE-RISK-001 formal risk truth, PAGE-BALANCE-001 balance truth, or formal PnL truth.
 - Direct governance review, catalog/date evidence, manual audit closure, and business-owner approval remain separate.

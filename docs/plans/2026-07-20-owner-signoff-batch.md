@@ -10,6 +10,12 @@
   - 批准后落笔：`docs/live_route_maturity.md` 的 Temporary Exception Signoff List 中本路由 `signoff_status` → `approved-…`。
   - 拒绝/搁置后果：继续保持 `temporary-exception`，且不得移除混合来源边界；需推进静态/混合区块降级或移除。
 
+- [ ] **`/market-finance`** — owner：`Market finance collaboration owner`；exposure_class：`pending-confirmation`；page_contract：`GAP-MARKET-FINANCE-PAGE`
+  - 签核范围原文：`Temporary collaboration workbench remains visible while reused market/PnL/balance reads stay bounded and non-formal.`
+  - 批准即代表：允许金市与计财协同台临时可见，不批准跨域传导/OCI/资本口径或新 formal 真值。
+  - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。
+  - 拒绝/搁置后果：保持临时例外；需补独立 PAGE 合同或降级可见性。
+
 - [ ] **`/cross-asset`** — owner：`Market analytics owner`；exposure_class：`demo-visible`
   - 签核范围原文：`Temporary analytical cross-asset route remains visible as non-formal linkage evidence.`
   - 批准即代表：允许其作为非正式联动分析证据演示，不构成正式市场或债券指标认可。
@@ -52,11 +58,11 @@
   - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。
   - 拒绝/搁置后果：保持临时例外；需以指标/样本决策关闭 `GAP-POS-LIST`。
 
-- [ ] **`/average-balance`** — owner：`Average balance owner`；exposure_class：`pending-confirmation`
+- [ ] **`/average-balance`** — owner：`Average balance owner`；exposure_class：`pending-confirmation`；page_contract：`PAGE-ADB-001`
   - 签核范围原文：`Temporary analytical balance route remains visible while formal truth stays on balance-analysis.`
-  - 批准即代表：允许分析型平均余额页面继续展示，正式余额真值仍仅归属 `/balance-analysis`。
+  - 批准即代表：允许分析型平均余额页面继续展示，正式余额真值仍仅归属 `/balance-analysis`；不批准 `MTR-ADB-*` formal 提升。
   - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。
-  - 拒绝/搁置后果：保持临时例外；需补 observed/LOCF/calendar-zero 口径合同。
+  - 拒绝/搁置后果：保持临时例外；继续维持 `PAGE-ADB-001` 的 observed/LOCF/calendar-fill 边界可见。
 
 - [ ] **`/ledger-pnl`** — owner：`Ledger PnL owner`；exposure_class：`pending-confirmation`
   - 签核范围原文：`Temporary candidate ledger PnL route remains visible without formal PnL promotion.`
@@ -70,17 +76,17 @@
   - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。
   - 拒绝/搁置后果：保持临时例外和 `formal_use_allowed=false`；还需 owner/黄金样本批准、真实页面 UAT 与 UNKNOWN 整改。
 
-- [ ] **`/concentration-monitor`** — owner：`Risk analytics owner`；exposure_class：`pending-confirmation`
+- [ ] **`/concentration-monitor`** — owner：`Risk analytics owner`；exposure_class：`pending-confirmation`；page_contract：`PAGE-CONC-001`
   - 签核范围原文：`Temporary concentration route remains visible as candidate risk analytics evidence.`
-  - 批准即代表：允许候选集中度风险分析证据展示，不认可为风险真值或限额决定。
+  - 批准即代表：允许候选集中度风险分析证据展示，不认可为风险真值或限额决定；前端 LIMITS 非常规批准。
   - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。
-  - 拒绝/搁置后果：保持临时例外；需补每区块来源、限额、单位和候选状态合同。
+  - 拒绝/搁置后果：保持临时例外；继续维持 `PAGE-CONC-001` 每节 source/limit/unit/candidate 边界。
 
-- [ ] **`/cashflow-projection`** — owner：`Cashflow owner`；exposure_class：`pending-confirmation`
+- [ ] **`/cashflow-projection`** — owner：`Cashflow owner`；exposure_class：`pending-confirmation`；page_contract：`PAGE-CFP-001`
   - 签核范围原文：`Temporary cashflow route remains visible pending liquidity PAGE contract semantics.`
   - 批准即代表：允许流动性预测读模型暂时可见，不认可为正式流动性结论。
   - 批准后落笔：`docs/live_route_maturity.md` 的本路由 `signoff_status` → `approved-…`。
-  - 拒绝/搁置后果：保持临时例外；需补 horizon、fallback、日期基准和压力解释合同。
+  - 拒绝/搁置后果：保持临时例外；继续维持 `PAGE-CFP-001` 的 horizon/fallback/date-basis/stress 边界。
 
 - [ ] **`/kpi`** — owner：`KPI governance owner`；exposure_class：`pending-confirmation`
   - 签核范围原文：`Temporary KPI route remains visible pending scoring ownership and audit-trail contract.`
@@ -243,6 +249,7 @@
 | --- | --- | --- |
 | `/` | 2026-06-15 | 复审 |
 | `/operations-analysis` | 2026-06-07 | 复审 |
+| `/market-finance` | 2026-07-20 | 复审 |
 | `/bond-analysis` | 2026-06-15 | 复审 |
 | `/bond-trading-desk` | 2026-06-15 | 顺延/复审 |
 | `/cross-asset` | 2026-07-09 | 复审 |
@@ -282,7 +289,8 @@
 
 ## 4. 记录口径与待决异常
 
-- Temporary Exception Signoff List 实际有 17 条待 owner 审核路由，非“约 10 条”；本批次未省略任何 `pending-owner-review` 条目。
+- Temporary Exception Signoff List 实际有 18 条待 owner 审核路由（含 `/market-finance`），非“约 10 条”；本批次未省略任何 `pending-owner-review` 条目。
+- `/average-balance` / `/concentration-monitor` / `/cashflow-projection` 已分别绑定 `PAGE-ADB-001` / `PAGE-CONC-001` / `PAGE-CFP-001`；签核只批准临时可见，不批准 formal 提升。
 - 25 个样本满足“`Status: captured-awaiting-approval` 或 `Approver: TBD`”条件；`GS-PNL-BUSINESS-INSIGHTS-A` 已为 `approved`，不纳入本批次。
 - `GS-BANK-LEDGER-CLASSIFICATION-A` 使用字段名 `Approval date`，与多数样本的 `Approved at` 不一致；`GS-LEDGER-PNL-NET-INTEREST-202606-A`、`GS-LEDGER-PNL-SUMMARY-A`、`GS-PNL-ATTR-WB-A`、`GS-BOND-HEADLINE-A` 未提供批准时间字段。
 - `GS-PORTFOLIO-HOME-A` 是 `supporting-only` 而非 capture-ready，尽管 `Approver: TBD` 使其被纳入扫描结果；其 `approval.md` 没有定义可直接采用的批准目标状态，需先由 owner 明确是否进入审批流。

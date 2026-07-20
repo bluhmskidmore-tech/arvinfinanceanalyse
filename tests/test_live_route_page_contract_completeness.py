@@ -31,6 +31,9 @@ PAGE_CONTRACTS_PATH = ROOT / "docs" / "page_contracts.md"
 ROUTE_MATURITY_PATH = ROOT / "docs" / "live_route_maturity.md"
 
 TEMP_EXCEPTION_ROUTE_PAGE_CONTRACT_WHITELIST = {
+    "/market-finance": (
+        "temporary-exception collaboration workbench; reuses market/PnL/balance reads without a dedicated PAGE yet."
+    ),
     "/team-performance": (
         "temporary-exception route; no dedicated PAGE contract has been frozen yet."
     ),
@@ -44,16 +47,7 @@ TEMP_EXCEPTION_ROUTE_PAGE_CONTRACT_WHITELIST = {
     "/platform-config": (
         "temporary-exception diagnostics/config route; outside the current page-contract pack."
     ),
-    "/average-balance": (
-        "temporary-exception analytical/compat route; formal truth remains on balance analysis."
-    ),
 
-    "/concentration-monitor": (
-        "temporary-exception satellite risk route; no standalone `PAGE-*` contract yet."
-    ),
-    "/cashflow-projection": (
-        "temporary-exception liquidity route; no standalone `PAGE-*` contract yet."
-    ),
     "/kpi": (
         "temporary-exception KPI route; no standalone `PAGE-*` contract yet."
     ),

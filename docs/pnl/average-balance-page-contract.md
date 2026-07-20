@@ -6,8 +6,8 @@ This document defines the current review contract for `/average-balance` as a ca
 
 ## Page Identity
 
-- Page ID: `GAP-AVERAGE-BALANCE-PAGE`
-- Contract binding: `PAGE-CONTRACT-PENDING:/average-balance`
+- Page ID: `PAGE-ADB-001`
+- Contract binding: `PAGE-ADB-001`
 - Page slug: `average-balance`
 - Frontend route: `/average-balance`
 - Primary API: `GET /api/analysis/adb`
@@ -57,7 +57,7 @@ Frontend code must not infer, swap, or silently relabel these denominator modes.
 
 ## Required Evidence Before Closure
 
-- Direct page/API governance record for `GAP-AVERAGE-BALANCE-PAGE` and `/api/analysis/adb`.
+- Direct page/API governance record for `PAGE-ADB-001` and `/api/analysis/adb`.
 - Catalog/date evidence for:
   - `fact_formal_zqtz_balance_daily`
   - `fact_formal_tyw_balance_daily`

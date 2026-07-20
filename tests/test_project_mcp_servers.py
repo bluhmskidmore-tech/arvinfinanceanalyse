@@ -23,7 +23,7 @@ ALL_SEEDED_RECORD_GAP_PAGE_IDS = [
     "PAGE-EXEC-OVERVIEW-001",
     "PAGE-EXEC-SUMMARY-001",
     "PAGE-BANK-LEDGER-001",
-    "GAP-CONCENTRATION-MONITOR-PAGE",
+    "PAGE-CONC-001",
     "GAP-TEAM-PERFORMANCE-PAGE",
     "GAP-PLATFORM-CONFIG-PAGE",
     "GAP-DECISION-ITEMS-PAGE",
@@ -92,7 +92,7 @@ ALL_SEEDED_CATALOG_DATE_LINEAGE_PAGE_IDS = [
     "PAGE-RISK-001",
     "PAGE-DASH-001",
     "PAGE-EXEC-OVERVIEW-001",
-    "GAP-CONCENTRATION-MONITOR-PAGE",
+    "PAGE-CONC-001",
     "PAGE-BAL-MOVE-001",
     "PAGE-PNL-BY-BUSINESS-001",
     "PAGE-PNL-ATTR-WB-001",
@@ -214,7 +214,7 @@ CATALOG_DATE_RECORD_GAP_PAGE_SLUGS = [
 READY_FOR_AUDIT_PAGE_IDS = [
     "PAGE-PROD-CAT-001",
     "PAGE-BALANCE-001",
-    "GAP-CONCENTRATION-MONITOR-PAGE",
+    "PAGE-CONC-001",
     "PAGE-BAL-MOVE-001",
     "PAGE-PNL-ATTR-WB-001",
     "PAGE-RISK-001",
@@ -246,9 +246,9 @@ READY_FOR_AUDIT_PAGE_SLUGS = [
 GOVERNANCE_READY_FOR_AUDIT_PAGE_IDS = [
     "PAGE-PROD-CAT-001",
     "PAGE-BALANCE-001",
-    "GAP-AVERAGE-BALANCE-PAGE",
-    "GAP-CASHFLOW-PROJECTION-PAGE",
-    "GAP-CONCENTRATION-MONITOR-PAGE",
+    "PAGE-ADB-001",
+    "PAGE-CFP-001",
+    "PAGE-CONC-001",
     "GAP-DECISION-ITEMS-PAGE",
     "PAGE-BAL-MOVE-001",
     "PAGE-PNL-ATTR-WB-001",
@@ -2473,8 +2473,8 @@ def test_metric_contracts_evidence_readiness_has_explicit_status_for_every_seede
 
         assert set(rows) == {
             "PAGE-BANK-LEDGER-001",
-            "GAP-CASHFLOW-PROJECTION-PAGE",
-            "GAP-CONCENTRATION-MONITOR-PAGE",
+            "PAGE-CFP-001",
+            "PAGE-CONC-001",
             "GAP-NEWS-EVENTS-PAGE",
             "GAP-STOCK-ANALYSIS-PAGE",
             "PAGE-AGENT-001",
@@ -2513,8 +2513,8 @@ def test_metric_contracts_evidence_readiness_has_explicit_status_for_every_seede
         assert rows["PAGE-PNL-BY-BUSINESS-001"]["approval_status"] == "formal_or_governed"
         assert rows["PAGE-PNL-BY-BUSINESS-001"]["formal_use_allowed"] is True
         assert rows["PAGE-BANK-LEDGER-001"]["approval_status"] == "candidate_or_pending"
-        assert rows["GAP-CASHFLOW-PROJECTION-PAGE"]["approval_status"] == "candidate_or_pending"
-        assert rows["GAP-CONCENTRATION-MONITOR-PAGE"]["approval_status"] == "candidate_or_pending"
+        assert rows["PAGE-CFP-001"]["approval_status"] == "candidate_or_pending"
+        assert rows["PAGE-CONC-001"]["approval_status"] == "candidate_or_pending"
         assert rows["PAGE-BAL-MOVE-001"]["approval_status"] == "candidate_or_pending"
         assert rows["PAGE-PNL-ATTR-WB-001"]["approval_status"] == "candidate_or_pending"
         portfolio = rows["PAGE-PORTFOLIO-HOME-001"]
@@ -3407,7 +3407,7 @@ def test_average_balance_trace_bundle_preserves_adb_candidate_boundary() -> None
         for alias in (
             "average-balance",
             "/average-balance",
-            "GAP-AVERAGE-BALANCE-PAGE",
+            "PAGE-ADB-001",
             "/api/analysis/adb",
             "/api/analysis/adb/monthly",
         ):
@@ -3418,7 +3418,7 @@ def test_average_balance_trace_bundle_preserves_adb_candidate_boundary() -> None
             payload = json.loads(result["content"][0]["text"])
             assert payload["page_slug"] == "average-balance"
 
-        assert payload["page_id"] == "GAP-AVERAGE-BALANCE-PAGE"
+        assert payload["page_id"] == "PAGE-ADB-001"
         assert payload["frontend_route"] == "/average-balance"
         assert payload["primary_api"] == "/api/analysis/adb"
         assert "/api/analysis/adb/comparison" in payload["supporting_apis"]
@@ -3429,7 +3429,7 @@ def test_average_balance_trace_bundle_preserves_adb_candidate_boundary() -> None
             "tests/golden_samples/GS-AVERAGE-BALANCE-MONTHLY-A",
         ]
         assert any("MTR-ADB-001" in item for item in payload["truth_chain"])
-        assert any("PAGE-CONTRACT-PENDING:/average-balance" in item for item in payload["truth_chain"])
+        assert any("PAGE-ADB-001" in item for item in payload["truth_chain"])
         assert any("GS-AVERAGE-BALANCE-A" in item for item in payload["truth_chain"])
         assert any("GS-AVERAGE-BALANCE-MONTHLY-A" in item for item in payload["truth_chain"])
         assert any("live-smoke reference evidence only" in item for item in payload["truth_chain"])
@@ -3506,7 +3506,7 @@ def test_cashflow_projection_trace_bundle_preserves_candidate_liquidity_boundary
         for alias in (
             "cashflow-projection",
             "/cashflow-projection",
-            "GAP-CASHFLOW-PROJECTION-PAGE",
+            "PAGE-CFP-001",
             "/api/cashflow-projection",
             "cashflow_projection.overview",
         ):
@@ -3517,13 +3517,13 @@ def test_cashflow_projection_trace_bundle_preserves_candidate_liquidity_boundary
             payload = json.loads(result["content"][0]["text"])
             assert payload["page_slug"] == "cashflow-projection"
 
-        assert payload["page_id"] == "GAP-CASHFLOW-PROJECTION-PAGE"
+        assert payload["page_id"] == "PAGE-CFP-001"
         assert payload["frontend_route"] == "/cashflow-projection"
         assert payload["primary_api"] == "/api/cashflow-projection"
         assert payload["supporting_apis"] == ["/ui/balance-analysis/dates"]
         assert payload["golden_samples"] == ["tests/golden_samples/GS-CASHFLOW-PROJECTION-A"]
         assert any("MTR-CFP-001" in item for item in payload["truth_chain"])
-        assert any("PAGE-CONTRACT-PENDING:/cashflow-projection" in item for item in payload["truth_chain"])
+        assert any("PAGE-CFP-001" in item for item in payload["truth_chain"])
         assert any("GS-CASHFLOW-PROJECTION-A" in item for item in payload["truth_chain"])
         assert any("fact_formal_zqtz_balance_daily" in item for item in payload["truth_chain"])
         assert any("fact_formal_tyw_balance_daily" in item for item in payload["truth_chain"])
@@ -3543,7 +3543,7 @@ def test_concentration_monitor_trace_bundle_preserves_candidate_concentration_bo
         for alias in (
             "concentration-monitor",
             "/concentration-monitor",
-            "GAP-CONCENTRATION-MONITOR-PAGE",
+            "PAGE-CONC-001",
             "/api/bond-analytics/credit-spread-migration",
             "bond_analytics.credit_spread_migration",
         ):
@@ -3554,13 +3554,13 @@ def test_concentration_monitor_trace_bundle_preserves_candidate_concentration_bo
             payload = json.loads(result["content"][0]["text"])
             assert payload["page_slug"] == "concentration-monitor"
 
-        assert payload["page_id"] == "GAP-CONCENTRATION-MONITOR-PAGE"
+        assert payload["page_id"] == "PAGE-CONC-001"
         assert payload["frontend_route"] == "/concentration-monitor"
         assert payload["primary_api"] == "/api/bond-analytics/credit-spread-migration"
         assert payload["supporting_apis"] == ["/api/bond-analytics/dates"]
         assert payload["golden_samples"] == ["tests/golden_samples/GS-CONCENTRATION-MONITOR-A"]
         assert any("MTR-CON-001" in item for item in payload["truth_chain"])
-        assert any("PAGE-CONTRACT-PENDING:/concentration-monitor" in item for item in payload["truth_chain"])
+        assert any("PAGE-CONC-001" in item for item in payload["truth_chain"])
         assert any("GS-CONCENTRATION-MONITOR-A" in item for item in payload["truth_chain"])
         assert any("concentration_by_issuer" in item for item in payload["truth_chain"])
         assert any("top5_concentration" in item for item in payload["truth_chain"])
@@ -8258,8 +8258,8 @@ def test_lineage_evidence_governance_record_blueprint_queue_can_cover_all_seeded
             "PAGE-EXEC-SUMMARY-001",
             "PAGE-AGENT-001",
             "PAGE-BANK-LEDGER-001",
-            "GAP-CASHFLOW-PROJECTION-PAGE",
-            "GAP-CONCENTRATION-MONITOR-PAGE",
+            "PAGE-CFP-001",
+            "PAGE-CONC-001",
             "GAP-PLATFORM-CONFIG-PAGE",
             "GAP-NEWS-EVENTS-PAGE",
             "GAP-DECISION-ITEMS-PAGE",
@@ -8579,8 +8579,8 @@ def test_lineage_evidence_governance_gap_queue_can_cover_all_seeded_pages(tmp_pa
             "PAGE-EXEC-SUMMARY-001",
             "PAGE-AGENT-001",
             "PAGE-BANK-LEDGER-001",
-            "GAP-CASHFLOW-PROJECTION-PAGE",
-            "GAP-CONCENTRATION-MONITOR-PAGE",
+            "PAGE-CFP-001",
+            "PAGE-CONC-001",
             "GAP-PLATFORM-CONFIG-PAGE",
             "GAP-NEWS-EVENTS-PAGE",
             "GAP-DECISION-ITEMS-PAGE",
@@ -10485,9 +10485,9 @@ def test_data_catalog_page_catalog_date_coverage_prioritizes_missing_seeded_page
         assert "does not sample DuckDB tables" in payload["disclaimer"]
         assert "does not approve metric/page formal use" in payload["disclaimer"]
         pages = {page["page_id"]: page for page in payload["pages"]}
-        assert "GAP-AVERAGE-BALANCE-PAGE" not in pages
+        assert "PAGE-ADB-001" not in pages
         assert "PAGE-BANK-LEDGER-001" not in pages
-        assert "GAP-CASHFLOW-PROJECTION-PAGE" not in pages
+        assert "PAGE-CFP-001" not in pages
         assert "GAP-DECISION-ITEMS-PAGE" not in pages
         missing_pages = [
             page for page in payload["pages"] if page["coverage_status"] == "missing_explicit_table_config"
@@ -10538,7 +10538,7 @@ def test_data_catalog_page_catalog_date_coverage_prioritizes_missing_seeded_page
         ]
         assert cross_asset["evidence_scope"]["approves_metric_or_page"] is False
 
-        concentration_monitor = pages["GAP-CONCENTRATION-MONITOR-PAGE"]
+        concentration_monitor = pages["PAGE-CONC-001"]
         assert concentration_monitor["coverage_status"] == "configured_direct_tables"
         assert concentration_monitor["approval_status"] == "candidate_or_pending"
         assert concentration_monitor["configured_table_names"] == [
@@ -10547,8 +10547,8 @@ def test_data_catalog_page_catalog_date_coverage_prioritizes_missing_seeded_page
         assert concentration_monitor["evidence_scope"]["samples_duckdb_tables"] is False
         assert concentration_monitor["evidence_scope"]["approves_metric_or_page"] is False
 
-        if "GAP-AVERAGE-BALANCE-PAGE" in pages:
-            average_balance = pages["GAP-AVERAGE-BALANCE-PAGE"]
+        if "PAGE-ADB-001" in pages:
+            average_balance = pages["PAGE-ADB-001"]
             assert average_balance["coverage_status"] == "configured_direct_tables"
             assert average_balance["approval_status"] == "candidate_or_pending"
             assert average_balance["evidence_scope"]["samples_duckdb_tables"] is False
@@ -10634,7 +10634,7 @@ def test_data_catalog_page_catalog_date_coverage_keeps_average_balance_excluded_
 
         assert payload["scope"] == "page-catalog-date-coverage"
         page = payload["pages"][0]
-        assert page["page_id"] == "GAP-AVERAGE-BALANCE-PAGE"
+        assert page["page_id"] == "PAGE-ADB-001"
         assert page["page_slug"] == "average-balance"
         assert page["approval_status"] == "candidate_or_pending"
         assert page["coverage_status"] == "configured_direct_tables"
@@ -10650,7 +10650,7 @@ def test_data_catalog_page_catalog_date_coverage_keeps_average_balance_excluded_
         assert "owner review" in page["deferred_no_direct_table_config_reason"]
         assert page["candidate_table_names"] == []
         assert page["next_actions"] == [
-            "Run page catalog/date evidence for GAP-AVERAGE-BALANCE-PAGE and review sampled table/date results before closure.",
+            "Run page catalog/date evidence for PAGE-ADB-001 and review sampled table/date results before closure.",
         ]
         assert page["evidence_scope"]["samples_duckdb_tables"] is False
         assert page["evidence_scope"]["approves_metric_or_page"] is False
@@ -10684,7 +10684,7 @@ def test_data_catalog_page_catalog_date_coverage_keeps_cashflow_projection_candi
 
         assert payload["scope"] == "page-catalog-date-coverage"
         page = payload["pages"][0]
-        assert page["page_id"] == "GAP-CASHFLOW-PROJECTION-PAGE"
+        assert page["page_id"] == "PAGE-CFP-001"
         assert page["page_slug"] == "cashflow-projection"
         assert page["approval_status"] == "candidate_or_pending"
         assert page["coverage_status"] == "configured_direct_tables"
@@ -10749,7 +10749,7 @@ def test_data_catalog_page_catalog_date_coverage_configures_formal_seeded_pages(
                 "PAGE-RISK-001",
             )
         )
-        assert "GAP-CASHFLOW-PROJECTION-PAGE" not in pages
+        assert "PAGE-CFP-001" not in pages
         assert "GAP-DECISION-ITEMS-PAGE" not in pages
         assert payload["summary"]["configured_page_count"] == 29
         assert payload["summary"]["deferred_no_direct_table_config_count"] == 6
@@ -10880,7 +10880,7 @@ def test_data_catalog_page_catalog_date_coverage_configures_seeded_pages_with_cl
         assert "fact_table" not in pages["PAGE-CUBE-QUERY-001"]["candidate_table_names"]
         assert "fact_table" not in pages["PAGE-CUBE-QUERY-001"]["configured_table_names"]
 
-        assert "GAP-CASHFLOW-PROJECTION-PAGE" not in pages
+        assert "PAGE-CFP-001" not in pages
         assert "GAP-DECISION-ITEMS-PAGE" not in pages
         assert payload["summary"]["configured_page_count"] == 29
         assert payload["summary"]["deferred_no_direct_table_config_count"] == 6
