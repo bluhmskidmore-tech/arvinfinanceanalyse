@@ -8,6 +8,7 @@ vi.mock("../../lib/echarts", () => ({
 }));
 
 import type { PnlByBusinessUntracedTrendRow } from "../../api/contracts";
+import { ibTokens } from "../../theme/designSystem";
 import {
   buildUntracedReconciliationTrendOption,
   UntracedReconciliationTrendPanel,
@@ -54,7 +55,7 @@ describe("buildUntracedReconciliationTrendOption", () => {
     expect(series[0].connectNulls).toBe(false);
   });
 
-  it("only uses neutral gray tones for the series styling (no warning/danger/KPI accent colors)", () => {
+  it("only uses neutral IB ink/surface tones for the series styling (no warning/danger/KPI accent colors)", () => {
     const rows = [buildRow({})];
     const option = buildUntracedReconciliationTrendOption(rows);
     const series = option.series as Array<{
@@ -64,11 +65,19 @@ describe("buildUntracedReconciliationTrendOption", () => {
     }>;
 
     const colors = [series[0].lineStyle?.color, series[0].itemStyle?.color, series[0].areaStyle?.color];
+    const allowed = new Set([
+      ibTokens.color.inkSecondary,
+      ibTokens.color.surfaceMuted,
+      ibTokens.color.inkMuted,
+      ibTokens.color.hairline,
+    ]);
     for (const color of colors) {
-      expect(color).toMatch(/^#[0-9a-f]{6}$/i);
+      expect(allowed.has(color as (typeof ibTokens.color)[keyof typeof ibTokens.color])).toBe(true);
     }
-    // Neutral scale hex values only; explicitly reject common warning/danger red/amber tones.
-    expect(JSON.stringify(colors)).not.toMatch(/#f3|#f5a5|#e5484d|#dc2626|#ef4444|#facc15/i);
+    expect(colors).not.toContain(ibTokens.color.down);
+    expect(colors).not.toContain(ibTokens.color.warn);
+    expect(colors).not.toContain(ibTokens.color.accent);
+    expect(colors).not.toContain(ibTokens.color.up);
   });
 });
 

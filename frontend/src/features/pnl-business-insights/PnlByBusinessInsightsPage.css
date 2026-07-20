@@ -5,17 +5,17 @@
 .pnl-by-business-insights-filter-label {
   display: grid;
   gap: 6px;
-  color: var(--moss-color-neutral-700);
+  color: var(--ib-ink-secondary);
   font-size: 13px;
 }
 
 .pnl-by-business-insights-control {
   min-width: 140px;
   padding: 10px 12px;
-  border: 1px solid var(--moss-color-neutral-100);
-  border-radius: var(--moss-radius-md);
-  background: var(--moss-color-card-bg);
-  color: var(--moss-color-neutral-900);
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface);
+  color: var(--ib-ink);
 }
 
 .pnl-by-business-insights-data-status-strip {
@@ -31,7 +31,7 @@
   gap: 10px;
   font-size: 13px;
   font-weight: 700;
-  color: var(--moss-color-neutral-900);
+  color: var(--ib-ink);
 }
 
 .pnl-by-business-insights-unapproved-badge {
@@ -39,8 +39,8 @@
   align-items: center;
   padding: 4px 10px;
   border-radius: 999px;
-  background: var(--moss-color-danger-100);
-  color: var(--moss-color-danger-700);
+  background: color-mix(in srgb, var(--ib-down) 10%, var(--ib-surface));
+  color: var(--ib-down);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -54,7 +54,7 @@
 
 .pnl-by-business-insights-data-status-strip__grid span {
   overflow: hidden;
-  color: var(--moss-color-neutral-600);
+  color: var(--ib-ink-muted);
   font-size: 12px;
   line-height: 1.6;
   text-overflow: ellipsis;
@@ -64,7 +64,7 @@
 .pnl-by-business-insights-summary-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: var(--moss-space-4);
+  gap: 16px;
 }
 
 /* 对账健康度诊断区块：与上方业务分析区块刻意用中性灰调隔离，禁止使用 warning/danger/info 等强调色，
@@ -72,9 +72,9 @@
 .pnl-by-business-insights-quadrant-card {
   min-height: 148px;
   padding: 14px;
-  border: 1px solid var(--moss-color-neutral-200);
-  border-radius: var(--moss-radius-md);
-  background: var(--moss-color-neutral-50);
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface-muted);
 }
 
 .pnl-by-business-insights-quadrant-card__header {
@@ -84,28 +84,71 @@
   margin-bottom: 10px;
 }
 
+.pnl-by-business-insights-quadrant-note {
+  margin: 0 0 16px;
+  padding: 14px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface-muted);
+  color: var(--ib-ink-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.pnl-by-business-insights-quadrant-empty {
+  padding: 16px;
+  border: 1px dashed var(--ib-hairline);
+  border-radius: var(--ib-radius);
+  color: var(--ib-ink-muted);
+  font-size: 13px;
+}
+
+.pnl-by-business-insights-quadrant-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.pnl-by-business-insights-quadrant-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--ib-hairline);
+  font-size: 13px;
+  color: var(--ib-ink);
+}
+
+.pnl-by-business-insights-trend-empty {
+  padding: 16px;
+  border: 1px dashed var(--ib-hairline);
+  border-radius: var(--ib-radius);
+  color: var(--ib-ink-muted);
+  font-size: 13px;
+}
+
 .pnl-by-business-insights-reconciliation-divider {
   margin: 40px 0 0;
   border: none;
-  border-top: 1px solid var(--moss-color-neutral-300);
+  border-top: 1px solid var(--ib-hairline);
 }
 
 .pnl-by-business-insights-reconciliation-section {
   margin: 24px 0 0;
   padding: 20px;
-  border: 1px solid var(--moss-color-neutral-200);
-  border-radius: var(--moss-radius-md);
-  background: var(--moss-color-neutral-50);
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface-muted);
 }
 
 .pnl-by-business-insights-reconciliation-eyebrow {
   display: inline-block;
   margin: 0 0 8px;
   padding: 2px 8px;
-  border: 1px solid var(--moss-color-neutral-200);
+  border: 1px solid var(--ib-hairline);
   border-radius: 999px;
-  background: var(--moss-color-neutral-100);
-  color: var(--moss-color-neutral-600);
+  background: var(--ib-surface);
+  color: var(--ib-ink-muted);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -113,20 +156,24 @@
 
 .pnl-by-business-insights-reconciliation-title {
   margin: 0 0 4px;
-  color: var(--moss-color-neutral-700);
+  color: var(--ib-ink-secondary);
   font-size: 15px;
   font-weight: 600;
 }
 
 .pnl-by-business-insights-reconciliation-note {
   margin: 0 0 16px;
-  color: var(--moss-color-neutral-600);
+  color: var(--ib-ink-muted);
   font-size: 13px;
   line-height: 1.6;
 }
 
 @media (max-width: 1080px) {
   .pnl-by-business-insights-data-status-strip__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pnl-by-business-insights-quadrant-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }

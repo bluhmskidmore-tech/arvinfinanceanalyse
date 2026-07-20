@@ -1,14 +1,6 @@
 import ReactECharts, { type EChartsOption } from "../../lib/echarts";
 import type { PnlByBusinessUntracedTrendRow } from "../../api/contracts";
-import { designTokens } from "../../theme/designSystem";
-
-const emptyStateStyle = {
-  padding: 16,
-  borderRadius: designTokens.radius.md,
-  border: `1px dashed ${designTokens.color.neutral[200]}`,
-  color: designTokens.color.neutral[600],
-  fontSize: 13,
-} as const;
+import { ibTokens } from "../../theme/designSystem";
 
 function toNullableNumber(value: string | null | undefined): number | null {
   if (value === null || value === undefined || value === "") {
@@ -56,16 +48,16 @@ export function buildUntracedReconciliationTrendOption(
     xAxis: {
       type: "category" as const,
       data: dates,
-      axisLine: { lineStyle: { color: designTokens.color.neutral[300] } },
-      axisLabel: { fontSize: 11, color: designTokens.color.neutral[600] },
+      axisLine: { lineStyle: { color: ibTokens.color.hairline } },
+      axisLabel: { fontSize: 11, color: ibTokens.color.inkMuted },
     },
     yAxis: {
       type: "value" as const,
       axisLabel: {
         formatter: (value: number) => `${value}%`,
-        color: designTokens.color.neutral[600],
+        color: ibTokens.color.inkMuted,
       },
-      splitLine: { lineStyle: { color: designTokens.color.neutral[200] } },
+      splitLine: { lineStyle: { color: ibTokens.color.hairline } },
     },
     series: [
       {
@@ -75,9 +67,9 @@ export function buildUntracedReconciliationTrendOption(
         connectNulls: false,
         symbol: "circle",
         symbolSize: 6,
-        lineStyle: { width: 2, color: designTokens.color.neutral[500] },
-        itemStyle: { color: designTokens.color.neutral[600] },
-        areaStyle: { color: designTokens.color.neutral[100] },
+        lineStyle: { width: 2, color: ibTokens.color.inkSecondary },
+        itemStyle: { color: ibTokens.color.inkSecondary },
+        areaStyle: { color: ibTokens.color.surfaceMuted },
       },
     ],
   };
@@ -91,7 +83,7 @@ export type UntracedReconciliationTrendPanelProps = {
 export function UntracedReconciliationTrendPanel({ rows, height = 260 }: UntracedReconciliationTrendPanelProps) {
   if (rows.length === 0) {
     return (
-      <div style={emptyStateStyle} data-testid="untraced-reconciliation-trend-empty">
+      <div className="pnl-by-business-insights-trend-empty" data-testid="untraced-reconciliation-trend-empty">
         暂无可用的历史对账诊断数据
       </div>
     );
