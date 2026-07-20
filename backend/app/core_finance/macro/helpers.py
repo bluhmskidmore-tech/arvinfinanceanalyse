@@ -3,10 +3,12 @@ from __future__ import annotations
 import logging
 import math
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, MutableMapping
+from collections.abc import Iterable, Mapping, MutableMapping, Sequence
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
+
+import pandas as pd
 
 from app.core_finance.safe_decimal import safe_decimal
 
@@ -87,6 +89,18 @@ def first_available_rate(
         if rate is not None:
             return curve_id, tenor, rate
     return None, None, None
+
+
+def latest_available_rate_on_or_before(
+    curves_by_date: Mapping[date, Mapping[str, Mapping[str, Decimal]]],
+    target_date: date,
+    candidates: Iterable[tuple[str, str]],
+) -> tuple[str | None, str | None, Decimal | None, date | None]:
+    for sample_date in sorted((sample for sample in curves_by_date if sample <= target_date), reverse=True):
+        curve_id, tenor, rate = first_available_rate(curves_by_date, sample_date, candidates)
+        if rate is not None:
+            return curve_id, tenor, rate, sample_date
+    return None, None, None, None
 
 
 def clamp(value: Decimal, minimum: Decimal, maximum: Decimal) -> Decimal:
@@ -184,6 +198,22 @@ def to_decimal_safe(v: Any) -> Decimal:
         return Decimal("0")
 
 
+def to_decimal_or_none(v: Any) -> Decimal | None:
+    """与 to_decimal_safe 不同：缺失/无法解析时返回 None 而非静默的 Decimal("0")。
+
+    用于评分公式中"缺失分项不应等价于取值 0"的场景（例如 credit_spread、
+    term_spread），调用方需据此把该分项从加权计算中剔除，而不是让 0 参与计算。
+    """
+    if v is None:
+        return None
+    if isinstance(v, Decimal):
+        return v
+    try:
+        return Decimal(str(v))
+    except (TypeError, ValueError, ArithmeticError):
+        return None
+
+
 def to_rounded_float(d: Decimal) -> float:
     return float(d.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
@@ -212,3 +242,63 @@ def pearson_corr(x: list[float], y: list[float], min_samples: int = 5) -> float 
         return None
     r = num / math.sqrt(den)
     return max(-1.0, min(1.0, r))
+
+
+# ---------------------------------------------------------------------------
+# 观察模型共享输入归一化（消除 merrill_clock / cta_trend / dcc_garch /
+# risk_parity 各自散落的 _to_series / _dedupe / _normalize_prices 重复）
+# ---------------------------------------------------------------------------
+
+def series_from_points(points: Sequence[tuple[date, float]] | None) -> pd.Series:
+    if not points:
+        return pd.Series(dtype="float64")
+    rows = [
+        (pd.Timestamp(point_date), float(value))
+        for point_date, value in points
+        if point_date is not None and value is not None and math.isfinite(float(value))
+    ]
+    if not rows:
+        return pd.Series(dtype="float64")
+    return pd.Series({ts: value for ts, value in rows}, dtype="float64").sort_index()
+
+
+def dedupe_preserving_order(values: Sequence[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        out.append(value)
+    return out
+
+
+def normalize_price_inputs(
+    prices: Mapping[str, Sequence[tuple[date, float]]] | pd.DataFrame | None,
+    *,
+    report_date: date,
+    missing_token: str,
+) -> tuple[pd.DataFrame, list[str]]:
+    warnings: list[str] = []
+    if prices is None:
+        return pd.DataFrame(), [missing_token]
+    if isinstance(prices, pd.DataFrame):
+        frame = prices.copy()
+    else:
+        columns: dict[str, pd.Series] = {}
+        for key, points in prices.items():
+            series = series_from_points(points)
+            if series.empty:
+                warnings.append(f"{str(key).upper()}_MISSING")
+                continue
+            columns[str(key)] = series
+        frame = pd.DataFrame(columns) if columns else pd.DataFrame()
+    if frame.empty:
+        return frame, warnings or [missing_token]
+    if not isinstance(frame.index, pd.DatetimeIndex):
+        frame.index = pd.to_datetime(frame.index)
+    frame = frame.sort_index()
+    frame = frame[frame.index.date <= report_date]
+    for column in frame.columns:
+        frame[column] = pd.to_numeric(frame[column], errors="coerce")
+    return frame.dropna(how="all"), warnings

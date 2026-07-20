@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 import pandas as pd
 from backend.app.api.response_cache import (
@@ -12,19 +13,30 @@ from backend.app.api.response_cache import (
     market_home_response_cache,
     market_home_strategy_summaries_cache_key,
 )
+from backend.app.core_finance.data_freshness import (
+    FRESHNESS_TIER_EXPIRED,
+    FRESHNESS_TIER_STALE,
+    assess_freshness,
+)
 from backend.app.core_finance.macro import (
+    DEFAULT_CRISIS_SCORE_HISTORY_LIMIT,
     analyze_cross_market_linkage,
+    build_crisis_score_history_payload,
     classify_low_crowding_market_regime,
     clean_low_crowding_observations,
     compute_credit_spread_risk,
     compute_crisis_score_payload,
+    compute_cta_trend_payload,
+    compute_dcc_garch_payload,
     compute_economic_cycle,
     compute_leading_indicator,
     compute_liquidity_stress_test,
     compute_low_crowding_scores,
     compute_macro_portfolio_impact,
+    compute_merrill_clock_payload,
     compute_monetary_policy_stance,
     compute_rate_turning_point,
+    compute_risk_parity_payload,
     compute_yield_curve_shape,
     generate_random_prices,
     low_crowding_multifactor_selection,
@@ -52,14 +64,16 @@ from backend.app.core_finance.macro.toolkit.runner import (
     MacroToolkitScript,
     iter_toolkit_scripts,
 )
-from backend.app.core_finance.macro.toolkit.system_sources import clear_system_macro_source_cache, load_series_by_alias
+from backend.app.core_finance.macro.toolkit.system_sources import (
+    clear_system_macro_source_cache,
+    load_series_by_alias,
+    load_series_by_aliases,
+)
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.cffex_member_rank_repo import DEFAULT_CFFEX_CONTRACTS, table_stats
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services import macro_adversarial_signal_service, macro_toolkit_service
 from backend.app.services.formal_result_runtime import build_result_envelope
-from backend.app.tasks.commodity_daily_ingest import COMMODITY_PRODUCTS
-from backend.app.tasks.macro_backfill import backfill_macro_series
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
@@ -93,11 +107,31 @@ _SOURCE_BACKFILL_TARGETS = {
         "series_id": "NCD.SHIBOR.3M",
         "series_name": "SHIBOR:3M",
         "default_sources": ["tushare_macro"],
+        "backfill_mode": "macro_series",
+    },
+    "m0041653": {
+        "alias": "M0041653",
+        "series_id": "EMM00088132",
+        "series_name": "公开市场操作:逆回购:7天:中标利率",
+        "default_sources": ["choice_edb"],
+        "backfill_mode": "crisis_score_inputs",
+    },
+    "m0017126": {
+        "series_id": "M0017126",
+        "series_name": "制造业PMI",
+        "default_sources": ["tushare_macro"],
+        "backfill_mode": "macro_series",
     },
 }
 
 _DEFAULT_MACRO_COMMODITY_REFRESH_PRODUCTS = macro_toolkit_service.DEFAULT_MACRO_COMMODITY_REFRESH_PRODUCTS
-_MACRO_COMMODITY_PRODUCT_CODES = frozenset(spec.product_code.upper() for spec in COMMODITY_PRODUCTS)
+
+
+def _macro_commodity_product_codes() -> frozenset[str]:
+    # 延迟导入：commodity_daily_ingest 模块级 register_actor，冷启动不得触达。
+    from backend.app.tasks.commodity_daily_ingest import COMMODITY_PRODUCTS
+
+    return frozenset(spec.product_code.upper() for spec in COMMODITY_PRODUCTS)
 
 _ANALYSIS_INDICATORS = (
     {"key": "hs300", "alias": "sh000300", "label": "沪深300", "unit": "点", "group": "风险资产"},
@@ -117,32 +151,35 @@ _CAPABILITY_DEFINITIONS = (
         "label": "货币政策立场",
         "group": "政策与资金面",
         "implementation_status": "library_ready",
-        "route_status": "not_wired",
-        "frontend_status": "planned",
+        "route_status": "wired",
+        "frontend_status": "visible",
         "data_aliases": ("M0041653", "DR007.IB", "S0059743", "S0059749", "S0059760"),
-        "next_step": "封装 /api/macro/monetary-policy-stance，并在本页接入政策立场卡。",
+        "data_tables": ("fact_formal_yield_curve_daily", "std_external_macro_daily"),
+        "next_step": "7D 逆回购当前经 legacy.wind_market_db.reverse_repo_7d 解析；Choice EMM00088132 仍为 vendor 目标但账号侧无数据。",
     },
     {
         "key": "yield_curve_shape",
         "legacy_module": "M8",
         "label": "收益率曲线形态",
         "group": "曲线",
-        "implementation_status": "partial",
-        "route_status": "partial",
-        "frontend_status": "partial",
+        "implementation_status": "library_ready",
+        "route_status": "wired",
+        "frontend_status": "visible",
         "data_aliases": ("S0059743", "S0059747", "S0059749"),
-        "next_step": "复用正式曲线表，把曲线形态纯函数输出接到宏观工具箱。",
+        "data_tables": ("fact_formal_yield_curve_daily",),
+        "next_step": "观察口径曲线形态已上分析卡；缺 5Y/30Y 节点时次级利差诚实标 unavailable。",
     },
     {
         "key": "credit_spread_risk",
         "legacy_module": "M9",
         "label": "信用利差预警",
         "group": "信用",
-        "implementation_status": "partial",
-        "route_status": "partial",
-        "frontend_status": "partial",
-        "data_aliases": ("S0059652", "S0059670", "S0059760"),
-        "next_step": "把信用利差风险/分位结果合并到本页信用信号区。",
+        "implementation_status": "library_ready",
+        "route_status": "wired",
+        "frontend_status": "visible",
+        "data_aliases": ("S0059652", "S0059747", "S0059760"),
+        "data_tables": ("fact_formal_yield_curve_daily",),
+        "next_step": "观察口径信用利差风险已上分析卡；缺 AA 腿或变动窗口时 degraded。",
     },
     {
         "key": "leading_indicator",
@@ -150,10 +187,11 @@ _CAPABILITY_DEFINITIONS = (
         "label": "宏观领先指标",
         "group": "增长与通胀",
         "implementation_status": "library_ready",
-        "route_status": "not_wired",
-        "frontend_status": "planned",
+        "route_status": "wired",
+        "frontend_status": "visible",
         "data_aliases": ("M0017126", "M0001385", "M5525763", "S0059743", "S0059749", "S0059670", "CA.BRENT"),
-        "next_step": "补 PMI/M2/社融映射后输出领先指标指数。",
+        "data_tables": ("fact_choice_macro_daily", "fact_formal_yield_curve_daily"),
+        "next_step": "PMI(M0017126) 经 cycle_rotation/NBS/tushare 落库，不在 choice_macro_catalog；补齐历史窗口后提升 LEI 稳定度。",
     },
     {
         "key": "liquidity_stress",
@@ -161,10 +199,11 @@ _CAPABILITY_DEFINITIONS = (
         "label": "流动性压力测试",
         "group": "压力测试",
         "implementation_status": "library_ready",
-        "route_status": "partial",
-        "frontend_status": "partial",
+        "route_status": "wired",
+        "frontend_status": "visible",
         "data_aliases": ("DR007.IB", "M0041813"),
-        "next_step": "接入资产/负债期限桶，避免只用市场代理指标。",
+        "data_tables": ("fact_formal_risk_tensor_daily",),
+        "next_step": "观察口径流动性压力已上分析卡；桶字段缺失不计为 0 缺口。",
     },
     {
         "key": "crisis_score_cn",
@@ -183,10 +222,12 @@ _CAPABILITY_DEFINITIONS = (
         "label": "跨市场联动",
         "group": "联动",
         "implementation_status": "library_ready",
-        "route_status": "not_wired",
-        "frontend_status": "planned",
-        "data_aliases": ("sh000300", "CU0", "M0067855"),
-        "next_step": "把跨资产纯函数输出为联动矩阵和主导变量。",
+        "route_status": "wired",
+        "frontend_status": "visible",
+        # 实际消费：treasury_10y（曲线 enrich）、brent_oil、usdcny；VIX/美债 10Y 系统源未登记时诚实降级。
+        "data_aliases": ("CA.BRENT", "M0067855", "S0059749"),
+        "data_tables": ("fact_formal_yield_curve_daily", "std_external_macro_daily"),
+        "next_step": "观察口径联动风险已上分析卡；接入 VIX/美债 10Y 系统别名后可补齐股债与中美相关腿。",
     },
     {
         "key": "rate_turning_point",
@@ -194,10 +235,11 @@ _CAPABILITY_DEFINITIONS = (
         "label": "利率拐点判断",
         "group": "曲线",
         "implementation_status": "library_ready",
-        "route_status": "not_wired",
-        "frontend_status": "planned",
-        "data_aliases": ("DR007.IB", "S0059747", "S0059749"),
-        "next_step": "用正式曲线和资金利率输出拐点概率。",
+        "route_status": "wired",
+        "frontend_status": "visible",
+        "data_aliases": ("S0059743", "S0059749"),
+        "data_tables": ("fact_formal_yield_curve_daily",),
+        "next_step": "观察口径拐点信号已上分析卡；后续接入资金利率并沉淀拐点概率口径。",
     },
     {
         "key": "economic_cycle",
@@ -205,10 +247,59 @@ _CAPABILITY_DEFINITIONS = (
         "label": "经济周期定位",
         "group": "增长与通胀",
         "implementation_status": "library_ready",
-        "route_status": "not_wired",
-        "frontend_status": "planned",
+        "route_status": "wired",
+        "frontend_status": "visible",
         "data_aliases": ("M0017126", "M0000612", "M0001227", "M0001385", "M5525763"),
-        "next_step": "补齐增长/通胀宽表后输出周期象限。",
+        "data_tables": ("fact_choice_macro_daily", "std_external_macro_daily"),
+        "next_step": "增长/通胀宽表已接 PMI/CPI/PPI/M2/社融别名；补齐 vintage 前周期象限仅作 observation。",
+    },
+    {
+        "key": "merrill_clock_cn",
+        "legacy_module": "Merrill",
+        "label": "美林时钟（中国版）",
+        "group": "增长与通胀",
+        "implementation_status": "library_ready",
+        "route_status": "wired",
+        "frontend_status": "visible",
+        "data_aliases": ("M0017126", "M0000545", "M0000612", "M0001227", "M0001385", "M5525763"),
+        "data_tables": ("fact_choice_macro_daily", "std_external_macro_daily"),
+        "next_step": "观察口径美林时钟象限；补齐 PMI 新订单/发电量等增长代理历史后提升象限置信度。",
+    },
+    {
+        "key": "cta_trend_cn",
+        "legacy_module": "CTA",
+        "label": "CTA 趋势跟踪",
+        "group": "策略选择",
+        "implementation_status": "library_ready",
+        "route_status": "wired",
+        "frontend_status": "visible",
+        "data_aliases": ("sh000300", "sh000905", "CU0", "NH0100.NHF"),
+        "data_tables": ("fact_choice_macro_daily", "fact_commodity_futures_daily"),
+        "next_step": "观察口径 CTA 合成信号；黄金/原油腿缺系统别名时自动降级。",
+    },
+    {
+        "key": "dcc_garch_cn",
+        "legacy_module": "DCC",
+        "label": "DCC-GARCH 相关",
+        "group": "波动与相关",
+        "implementation_status": "library_ready",
+        "route_status": "wired",
+        "frontend_status": "visible",
+        "data_aliases": ("sh000300", "sh000905", "CU0", "NH0100.NHF"),
+        "data_tables": ("fact_choice_macro_daily", "fact_commodity_futures_daily"),
+        "next_step": "观察口径滚动相关预警；商品腿历史不足时标 insufficient_history。",
+    },
+    {
+        "key": "risk_parity_cn",
+        "legacy_module": "RP",
+        "label": "风险平价影子",
+        "group": "配置",
+        "implementation_status": "library_ready",
+        "route_status": "wired",
+        "frontend_status": "visible",
+        "data_aliases": ("sh000300", "sh000905", "CU0", "NH0100.NHF"),
+        "data_tables": ("fact_choice_macro_daily", "fact_commodity_futures_daily"),
+        "next_step": "影子权重仅观察；不执行再平衡，formal_use_allowed=false。",
     },
     {
         "key": "macro_portfolio_impact",
@@ -216,21 +307,22 @@ _CAPABILITY_DEFINITIONS = (
         "label": "宏观情景组合影响",
         "group": "组合影响",
         "implementation_status": "library_ready",
-        "route_status": "partial",
-        "frontend_status": "partial",
-        "data_aliases": ("S0059749", "S0059760", "M0067855"),
-        "next_step": "把组合暴露输入与宏观情景结果合并展示。",
+        "route_status": "wired",
+        "frontend_status": "visible",
+        "data_aliases": ("S0059743", "S0059746", "S0059747", "S0059748", "S0059749"),
+        "data_tables": ("fact_formal_yield_curve_daily", "fact_formal_bond_analytics_daily"),
+        "next_step": "观察口径情景冲击已上分析卡；缺曲线节点时禁止默认收益率填洞。",
     },
     {
         "key": "decision_summary",
         "legacy_module": "M16",
         "label": "宏观决策摘要",
         "group": "决策摘要",
-        "implementation_status": "not_wired",
-        "route_status": "not_wired",
-        "frontend_status": "planned",
+        "implementation_status": "library_ready",
+        "route_status": "wired",
+        "frontend_status": "visible",
         "data_aliases": ("DR007.IB", "S0059749", "sh000300", "M0067855"),
-        "next_step": "聚合 M7-M15 后生成一屏决策摘要，而不是前端拼文案。",
+        "next_step": "细化聚合权重与证据引用，并沉淀为独立宏观决策端点。",
     },
 )
 
@@ -256,6 +348,7 @@ class ChoiceStockRefreshRequest(BaseModel):
     refresh_history: bool = True
     refresh_factors: bool = True
     factor_max_stock_count: int | None = Field(default=None, ge=1)
+    theme_overlay_mode: Literal["off", "dry_run", "archive"] = "off"
 
 
 class SourceBackfillRefreshRequest(BaseModel):
@@ -327,16 +420,22 @@ def macro_toolkit_scripts(
 def macro_toolkit_analysis(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     detail: Annotated[str, Query(pattern="^(full|core)$")] = "full",
+    history_limit: Annotated[int | None, Query(ge=1, le=1000)] = None,
 ) -> dict[str, object]:
     settings = get_settings()
     _ensure_macro_toolkit_read_allowed(auth, settings)
+    resolved_history_limit = history_limit or DEFAULT_CRISIS_SCORE_HISTORY_LIMIT
     return market_home_response_cache.get_or_build(
-        market_home_macro_analysis_cache_key(settings.duckdb_path, detail),
-        lambda: _build_macro_toolkit_analysis(detail),
+        market_home_macro_analysis_cache_key(
+            settings.duckdb_path,
+            detail,
+            history_limit=resolved_history_limit if detail == "full" else None,
+        ),
+        lambda: _build_macro_toolkit_analysis(detail, history_limit=resolved_history_limit),
     )
 
 
-def _build_macro_toolkit_analysis(detail: str) -> dict[str, object]:
+def _build_macro_toolkit_analysis(detail: str, *, history_limit: int = DEFAULT_CRISIS_SCORE_HISTORY_LIMIT) -> dict[str, object]:
     settings = get_settings()
     indicators = _analysis_indicators(settings.duckdb_path)
     indicator_by_key = {str(item["key"]): item for item in indicators}
@@ -354,14 +453,30 @@ def _build_macro_toolkit_analysis(detail: str) -> dict[str, object]:
         capabilities: list[dict[str, object]] = []
         runtime_status = _analysis_runtime_status("core")
     else:
-        a_share_risk = _a_share_stampede_risk(settings.duckdb_path)
-        capability_results = _macro_capability_results(
+        a_share_risk, capability_results, strategy_summaries = _build_macro_toolkit_full_analysis_blocks(
             settings.duckdb_path,
-            report_date=analysis_date,
+            analysis_date,
+            history_limit=history_limit,
         )
-        strategy_summaries = _equity_strategy_summaries(settings.duckdb_path)
-        source_checks = _source_checks(settings.duckdb_path)
-        capabilities = _capability_plan(settings.duckdb_path)
+        source_check_cache: dict[str, dict[str, object]] = {}
+        _source_checks_for_aliases(
+            (
+                str(alias)
+                for aliases in (
+                    _SOURCE_CHECK_ALIASES,
+                    tuple(
+                        str(alias)
+                        for definition in _CAPABILITY_DEFINITIONS
+                        for alias in definition["data_aliases"]
+                    ),
+                )
+                for alias in aliases
+            ),
+            settings.duckdb_path,
+            source_check_cache=source_check_cache,
+        )
+        source_checks = _source_checks(settings.duckdb_path, source_check_cache=source_check_cache)
+        capabilities = _capability_plan(settings.duckdb_path, source_check_cache=source_check_cache)
         runtime_status = _analysis_runtime_status("full")
     signal_cards = _analysis_signal_cards(
         indicator_by_key,
@@ -422,6 +537,29 @@ def _build_macro_toolkit_analysis(detail: str) -> dict[str, object]:
             "warnings": warnings,
         },
     )
+
+
+def _build_macro_toolkit_full_analysis_blocks(
+    duckdb_path: str | Path,
+    analysis_date: date,
+    *,
+    history_limit: int,
+) -> tuple[dict[str, object], list[dict[str, object]], list[dict[str, object]]]:
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        a_share_risk_future = executor.submit(_a_share_stampede_risk, duckdb_path)
+        capability_results_future = executor.submit(
+            lambda: _macro_capability_results(
+                duckdb_path,
+                report_date=analysis_date,
+                history_limit=history_limit,
+            )
+        )
+        strategy_summaries_future = executor.submit(_equity_strategy_summaries, duckdb_path)
+        return (
+            a_share_risk_future.result(),
+            capability_results_future.result(),
+            strategy_summaries_future.result(),
+        )
 
 
 @router.get("/analysis/strategy-summaries")
@@ -517,10 +655,14 @@ def macro_toolkit_refresh_choice_stock(
     request: ChoiceStockRefreshRequest | None = None,
 ) -> dict[str, object]:
     refresh_request = request or ChoiceStockRefreshRequest()
-    if not refresh_request.refresh_history and not refresh_request.refresh_factors:
+    if (
+        not refresh_request.refresh_history
+        and not refresh_request.refresh_factors
+        and refresh_request.theme_overlay_mode == "off"
+    ):
         raise HTTPException(
             status_code=400,
-            detail="At least one of refresh_history or refresh_factors must be true.",
+            detail=("At least one of refresh_history, refresh_factors, or theme_overlay_mode must request work."),
         )
 
     settings = get_settings()
@@ -533,10 +675,12 @@ def macro_toolkit_refresh_choice_stock(
             duckdb_path=str(settings.duckdb_path),
             catalog_path=str(settings.choice_stock_catalog_file),
             governance_path=str(settings.governance_path),
+            archive_root=str(settings.local_archive_path),
             as_of_date=as_of_date,
             refresh_history=refresh_request.refresh_history,
             refresh_factors=refresh_request.refresh_factors,
             factor_max_stock_count=refresh_request.factor_max_stock_count,
+            theme_overlay_mode=refresh_request.theme_overlay_mode,
             permission=permission,
             idempotency_key=idempotency_key,
         )
@@ -597,36 +741,44 @@ def macro_toolkit_refresh_source_backfill(
     start_date = request.start_date or _default_source_backfill_start_date(request.end_date)
     end_date = request.end_date or date.today().isoformat()
     try:
-        payload = backfill_macro_series(
+        payload = _execute_source_backfill(
+            target=target,
+            alias=request.alias,
             duckdb_path=str(settings.duckdb_path),
-            series_names=[str(target["series_name"])],
             start_date=start_date,
             end_date=end_date,
-            dry_run=False,
             sources_filter=request.sources or list(target["default_sources"]),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    payload_status = str(payload.get("status") or "").strip()
+    refresh_status = payload_status or ("completed" if not payload.get("errors") else "partial")
+    total_added = int(payload.get("total_added") or 0)
     refresh = {
-        "status": "completed" if not payload.get("errors") else "partial",
+        "status": refresh_status,
         "alias": request.alias,
         "series_ids": [str(target["series_id"])],
         "series_names": [str(target["series_name"])],
         "start_date": start_date,
         "end_date": end_date,
-        "total_added": int(payload.get("total_added") or 0),
+        "total_added": total_added,
+        "total_fetched": int(payload.get("total_fetched") or 0),
         "processed_count": int(payload.get("processed_count") or 0),
         "results": payload.get("results") or {},
         "errors": payload.get("errors") or {},
+        "run_id": payload.get("run_id"),
+        "source_by_series": payload.get("source_by_series") or {},
+        "vendor_versions": payload.get("vendor_versions") or {},
     }
-    market_home_response_cache.invalidate()
-    clear_system_macro_source_cache()
+    if total_added > 0:
+        market_home_response_cache.invalidate()
+        clear_system_macro_source_cache()
     return _envelope(
         "macro_toolkit.source_backfill_refresh",
         {"refresh": refresh},
-        quality_flag="ok" if refresh["status"] == "completed" else "warning",
+        quality_flag="ok" if refresh_status == "completed" else "warning",
         fallback_mode="none",
         as_of_date=end_date,
     )
@@ -671,6 +823,9 @@ def macro_toolkit_refresh_commodity_futures(
         "after_status": after_status,
         "summary": summary,
     }
+    if not refresh_request.dry_run and status == "completed":
+        market_home_response_cache.invalidate()
+        clear_system_macro_source_cache()
     return _envelope(
         "macro_toolkit.commodity_futures_refresh",
         {
@@ -695,7 +850,7 @@ def _macro_commodity_refresh_products(products: list[str] | None) -> tuple[str, 
             status_code=400,
             detail="At least one commodity futures product is required.",
         )
-    unknown = tuple(product for product in normalized if product not in _MACRO_COMMODITY_PRODUCT_CODES)
+    unknown = tuple(product for product in normalized if product not in _macro_commodity_product_codes())
     if unknown:
         unknown_labels = ", ".join(product or "<blank>" for product in unknown)
         raise HTTPException(
@@ -866,6 +1021,48 @@ def _source_backfill_target(alias: str) -> dict[str, object]:
     return target
 
 
+def _execute_source_backfill(
+    *,
+    target: dict[str, object],
+    alias: str,
+    duckdb_path: str,
+    start_date: str,
+    end_date: str,
+    sources_filter: list[str] | None,
+) -> dict[str, object]:
+    mode = str(target.get("backfill_mode") or "macro_series")
+    if mode == "crisis_score_inputs":
+        from backend.scripts.backfill_crisis_score_inputs import backfill_crisis_score_inputs
+
+        backfill_alias = str(target.get("alias") or alias)
+        payload = backfill_crisis_score_inputs(
+            duckdb_path=duckdb_path,
+            start_date=start_date,
+            end_date=end_date,
+            dry_run=False,
+            aliases=[backfill_alias],
+        )
+        result = (payload.get("results") or {}).get(backfill_alias) or {}
+        total_added = int(result.get("written_rows") or result.get("row_count") or 0)
+        return {
+            "dry_run": False,
+            "processed_count": 0 if payload.get("errors") else 1,
+            "total_added": total_added,
+            "results": {backfill_alias: total_added},
+            "errors": payload.get("errors") or {},
+        }
+    from backend.app.tasks.macro_backfill import backfill_macro_series
+
+    return backfill_macro_series(
+        duckdb_path=duckdb_path,
+        series_names=[str(target["series_name"])],
+        start_date=start_date,
+        end_date=end_date,
+        dry_run=False,
+        sources_filter=sources_filter,
+    )
+
+
 def _default_source_backfill_start_date(end_date: str | None) -> str:
     try:
         end = date.fromisoformat(str(end_date)[:10]) if end_date else date.today()
@@ -891,12 +1088,48 @@ def _output_files() -> list[dict[str, object]]:
     return macro_toolkit_service.output_files(OUTPUT_DIR)
 
 
-def _source_checks(duckdb_path: str | Path) -> list[dict[str, object]]:
-    return [_source_check(alias, duckdb_path) for alias in _SOURCE_CHECK_ALIASES]
+def _source_checks(
+    duckdb_path: str | Path,
+    *,
+    source_check_cache: dict[str, dict[str, object]] | None = None,
+) -> list[dict[str, object]]:
+    return _source_checks_for_aliases(
+        _SOURCE_CHECK_ALIASES,
+        duckdb_path,
+        source_check_cache=source_check_cache,
+    )
+
+
+def _source_checks_for_aliases(
+    aliases: Iterable[str],
+    duckdb_path: str | Path,
+    *,
+    source_check_cache: dict[str, dict[str, object]] | None = None,
+    end: str | None = None,
+    frames_by_alias: dict[str, pd.DataFrame] | None = None,
+) -> list[dict[str, object]]:
+    cache = source_check_cache if source_check_cache is not None else {}
+    requested_aliases = tuple(dict.fromkeys(str(alias) for alias in aliases))
+    missing_aliases = tuple(alias for alias in requested_aliases if alias not in cache)
+    if missing_aliases:
+        loaded_frames_by_alias = frames_by_alias or {}
+        aliases_to_load = tuple(alias for alias in missing_aliases if alias not in loaded_frames_by_alias)
+        if aliases_to_load:
+            loaded_frames_by_alias = {
+                **loaded_frames_by_alias,
+                **load_series_by_aliases(aliases_to_load, end=end, duckdb_path=duckdb_path),
+            }
+        for alias in missing_aliases:
+            cache[alias] = _source_check_payload(alias, loaded_frames_by_alias[alias])
+    return [cache[alias] for alias in requested_aliases]
 
 
 def _source_check(alias: str, duckdb_path: str | Path, *, end: str | None = None) -> dict[str, object]:
     frame = load_series_by_alias(alias, end=end, duckdb_path=duckdb_path)
+    return _source_check_payload(alias, frame)
+
+
+def _source_check_payload(alias: str, frame: pd.DataFrame) -> dict[str, object]:
     latest = None
     if not frame.empty:
         latest_row = frame.sort_values("date").iloc[-1]
@@ -998,6 +1231,11 @@ def _choice_stock_refresh_run_payload(
     refresh_history: bool = True,
     refresh_factors: bool = True,
     factor_max_stock_count: int | None = None,
+    theme_overlay_mode: Literal["off", "dry_run", "archive"] = "off",
+    theme_overlay_status: str | None = None,
+    theme_overlay_message: str | None = None,
+    theme_overlay_member_count: int | None = None,
+    theme_overlay_run_id: str | None = None,
     history_row_count: int | None = None,
     factor_row_count: int | None = None,
     source_version: object | None = None,
@@ -1018,6 +1256,11 @@ def _choice_stock_refresh_run_payload(
         refresh_history=refresh_history,
         refresh_factors=refresh_factors,
         factor_max_stock_count=factor_max_stock_count,
+        theme_overlay_mode=theme_overlay_mode,
+        theme_overlay_status=theme_overlay_status,
+        theme_overlay_message=theme_overlay_message,
+        theme_overlay_member_count=theme_overlay_member_count,
+        theme_overlay_run_id=theme_overlay_run_id,
         history_row_count=history_row_count,
         factor_row_count=factor_row_count,
         source_version=source_version,
@@ -1173,6 +1416,15 @@ def _capability_plan(
     source_check_cache: dict[str, dict[str, object]] | None = None,
 ) -> list[dict[str, object]]:
     cache = source_check_cache if source_check_cache is not None else {}
+    _source_checks_for_aliases(
+        (
+            str(alias)
+            for definition in _CAPABILITY_DEFINITIONS
+            for alias in definition["data_aliases"]
+        ),
+        duckdb_path,
+        source_check_cache=cache,
+    )
     return [_capability_payload(item, duckdb_path, source_check_cache=cache) for item in _CAPABILITY_DEFINITIONS]
 
 
@@ -1209,6 +1461,7 @@ def _capability_payload(
         "data_status": data_status,
         "data_hit_count": hit_count,
         "data_required_count": required_count,
+        "data_tables": [str(table) for table in definition.get("data_tables", ())],
         "evidence": [
             {
                 "alias": check["alias"],
@@ -1266,6 +1519,23 @@ _WIDE_SERIES_ALIASES = (
     ("credit_spread_aaa_3y", "S0059670"),
     ("dr007", "DR007.IB"),
 )
+
+# 宽表 ffill 停止 carry 的最大陈旧天数（日历日）。月频用宽于 STALE_AFTER_DAYS
+# 的窗口，避免把「自然发布滞后」误判为停更；日频允许跨周末。
+_MONTHLY_WIDE_FIELDS = frozenset(
+    {
+        "pmi",
+        "cpi_yoy",
+        "ppi_yoy",
+        "m2_yoy",
+        "social_financing_yoy",
+        "industrial_yoy",
+    }
+)
+_WIDE_FFILL_MAX_STALE_DAYS = {
+    "monthly": 65,
+    "daily": 10,
+}
 
 _CRISIS_SCORE_INPUTS = (
     {"field": "hs300", "label": "HS300 close", "alias": "sh000300", "warning": "HS300_MISSING"},
@@ -1413,6 +1683,50 @@ _CAPABILITY_INPUT_REQUIREMENTS = {
             "required": True,
         },
     ),
+    "merrill_clock_cn": (
+        {
+            "field": "pmi",
+            "label": "PMI",
+            "aliases": ("M0017126",),
+            "warning": "PMI_MISSING",
+            "required": True,
+        },
+        {
+            "field": "industrial_yoy",
+            "label": "Industrial VA YoY",
+            "aliases": ("M0000545",),
+            "warning": "INDUSTRIAL_YOY_MISSING",
+            "required": False,
+        },
+        {
+            "field": "cpi_yoy",
+            "label": "CPI YoY",
+            "aliases": ("M0000612",),
+            "warning": "CPI_YOY_MISSING",
+            "required": True,
+        },
+        {
+            "field": "ppi_yoy",
+            "label": "PPI YoY",
+            "aliases": ("M0001227",),
+            "warning": "PPI_YOY_MISSING",
+            "required": True,
+        },
+        {
+            "field": "m2_yoy",
+            "label": "M2 YoY",
+            "aliases": ("M0001385",),
+            "warning": "M2_YOY_MISSING",
+            "required": True,
+        },
+        {
+            "field": "social_financing_yoy",
+            "label": "Social financing YoY",
+            "aliases": ("M5525763",),
+            "warning": "SOCIAL_FINANCING_YOY_MISSING",
+            "required": True,
+        },
+    ),
 }
 
 
@@ -1420,6 +1734,7 @@ def _macro_capability_results(
     duckdb_path: str | Path,
     *,
     report_date: str | None,
+    history_limit: int = DEFAULT_CRISIS_SCORE_HISTORY_LIMIT,
 ) -> list[dict[str, object]]:
     parsed_report_date = _parse_report_date(report_date)
     if parsed_report_date is None:
@@ -1431,13 +1746,52 @@ def _macro_capability_results(
             for item in _CAPABILITY_DEFINITIONS
         ]
 
-    curve_rows = _load_macro_curve_rows(duckdb_path, parsed_report_date)
-    wide_rows = _load_macro_wide_rows(duckdb_path, parsed_report_date, curve_rows)
-    risk_tensor = _load_latest_risk_tensor_row(duckdb_path, parsed_report_date)
+    curve_rows, risk_tensor, positions = _load_macro_capability_context(
+        duckdb_path,
+        parsed_report_date,
+    )
+    report_date_frames_by_alias = load_series_by_aliases(
+        tuple(
+            dict.fromkeys(
+                [
+                    *(alias for _, alias in _WIDE_SERIES_ALIASES),
+                    *(
+                        str(alias)
+                        for requirements in _CAPABILITY_INPUT_REQUIREMENTS.values()
+                        for requirement in requirements
+                        for alias in requirement.get("aliases", ())
+                    ),
+                ]
+            )
+        ),
+        end=parsed_report_date.isoformat(),
+        duckdb_path=duckdb_path,
+    )
+    wide_rows = _load_macro_wide_rows(
+        duckdb_path,
+        parsed_report_date,
+        curve_rows,
+        frames_by_alias=report_date_frames_by_alias,
+    )
     proxy_rows, bucket_rows, total_assets = _risk_tensor_to_liquidity_inputs(risk_tensor)
-    positions = _load_latest_bond_positions(duckdb_path, parsed_report_date)
     portfolio_profile = build_bond_portfolio_profile(positions, parsed_report_date)
     current_curve = _current_gov_curve(curve_rows, parsed_report_date)
+
+    merrill_raw = _run_capability(
+        "merrill_clock_cn",
+        lambda: compute_merrill_clock_payload(wide_rows, report_date=parsed_report_date),
+    )
+    risk_parity_clock_phase = _merrill_regime_from_payload(merrill_raw)
+    multi_asset_series_cache: dict[str, list[tuple[date, float]]] | None = None
+
+    def _shared_multi_asset_series() -> dict[str, list[tuple[date, float]]]:
+        nonlocal multi_asset_series_cache
+        if multi_asset_series_cache is None:
+            multi_asset_series_cache = _load_multi_asset_price_series(
+                duckdb_path,
+                parsed_report_date,
+            )
+        return multi_asset_series_cache
 
     raw_results: dict[str, dict[str, object]] = {
         "monetary_policy_stance": _run_capability(
@@ -1467,7 +1821,11 @@ def _macro_capability_results(
         ),
         "crisis_score_cn": _run_capability(
             "crisis_score_cn",
-            lambda: _compute_crisis_score_capability(duckdb_path, parsed_report_date),
+            lambda: _compute_crisis_score_capability(
+                duckdb_path,
+                parsed_report_date,
+                history_limit=history_limit,
+            ),
         ),
         "cross_market_linkage": _run_capability(
             "cross_market_linkage",
@@ -1481,6 +1839,35 @@ def _macro_capability_results(
             "economic_cycle",
             lambda: compute_economic_cycle(wide_rows, parsed_report_date),
         ),
+        "merrill_clock_cn": merrill_raw,
+        "cta_trend_cn": _run_capability(
+            "cta_trend_cn",
+            lambda: _compute_multi_asset_observation_capability(
+                "cta_trend_cn",
+                duckdb_path,
+                parsed_report_date,
+                series_data=_shared_multi_asset_series(),
+            ),
+        ),
+        "dcc_garch_cn": _run_capability(
+            "dcc_garch_cn",
+            lambda: _compute_multi_asset_observation_capability(
+                "dcc_garch_cn",
+                duckdb_path,
+                parsed_report_date,
+                series_data=_shared_multi_asset_series(),
+            ),
+        ),
+        "risk_parity_cn": _run_capability(
+            "risk_parity_cn",
+            lambda: _compute_multi_asset_observation_capability(
+                "risk_parity_cn",
+                duckdb_path,
+                parsed_report_date,
+                clock_phase=risk_parity_clock_phase,
+                series_data=_shared_multi_asset_series(),
+            ),
+        ),
         "macro_portfolio_impact": _run_capability(
             "macro_portfolio_impact",
             lambda: compute_macro_portfolio_impact(
@@ -1490,22 +1877,52 @@ def _macro_capability_results(
             ),
         ),
     }
-    for key in ("monetary_policy_stance", "leading_indicator", "economic_cycle"):
+    input_evidence_source_check_cache: dict[str, dict[str, object]] = {}
+    _source_checks_for_aliases(
+        (
+            str(alias)
+            for requirements in _CAPABILITY_INPUT_REQUIREMENTS.values()
+            for requirement in requirements
+            for alias in requirement.get("aliases", ())
+        ),
+        duckdb_path,
+        source_check_cache=input_evidence_source_check_cache,
+        end=parsed_report_date.isoformat(),
+        frames_by_alias=report_date_frames_by_alias,
+    )
+    for key in ("monetary_policy_stance", "leading_indicator", "economic_cycle", "merrill_clock_cn"):
         raw_results[key] = _with_capability_input_evidence(
             key,
             raw_results[key],
             duckdb_path=duckdb_path,
             report_date=parsed_report_date,
             wide_rows=wide_rows,
+            source_check_cache=input_evidence_source_check_cache,
+            source_frames_by_alias=report_date_frames_by_alias,
         )
 
+    return _assemble_capability_cards(raw_results, parsed_report_date)
+
+
+def _assemble_capability_cards(
+    raw_results: dict[str, dict[str, object]],
+    report_date: date,
+) -> list[dict[str, object]]:
+    """Build capability cards; the decision summary always aggregates every
+    non-decision card regardless of its position in the definition tuple."""
+    non_decision_cards = {
+        str(definition["key"]): _capability_result_card(definition, raw_results.get(str(definition["key"])))
+        for definition in _CAPABILITY_DEFINITIONS
+        if definition["key"] != "decision_summary"
+    }
     cards: list[dict[str, object]] = []
     for definition in _CAPABILITY_DEFINITIONS:
         if definition["key"] == "decision_summary":
-            cards.append(_decision_summary_card(definition, cards, parsed_report_date))
+            cards.append(
+                _decision_summary_card(definition, list(non_decision_cards.values()), report_date)
+            )
             continue
-        raw_result = raw_results.get(str(definition["key"]))
-        cards.append(_capability_result_card(definition, raw_result))
+        cards.append(non_decision_cards[str(definition["key"])])
     return cards
 
 
@@ -1993,18 +2410,95 @@ def _strategy_summary(
     }
 
 
-def _compute_crisis_score_capability(duckdb_path: str | Path, report_date: date) -> dict[str, object]:
+_MULTI_ASSET_PRICE_INPUTS = (
+    {"field": "hs300", "alias": "sh000300", "label": "沪深300"},
+    {"field": "csi500", "alias": "sh000905", "label": "中证500"},
+    {"field": "copper", "alias": "CU0", "label": "铜"},
+    {"field": "nanhua", "alias": "NH0100.NHF", "label": "南华商品"},
+)
+
+
+def _load_multi_asset_price_series(
+    duckdb_path: str | Path,
+    report_date: date,
+    *,
+    lookback_days: int = 800,
+) -> dict[str, list[tuple[date, float]]]:
+    start = report_date - timedelta(days=lookback_days)
+    aliases = tuple(str(item["alias"]) for item in _MULTI_ASSET_PRICE_INPUTS)
+    frames_by_alias = load_series_by_aliases(
+        aliases,
+        start=start.isoformat(),
+        end=report_date.isoformat(),
+        duckdb_path=duckdb_path,
+    )
+    # 缺数据的腿保留为空列表：库层 _normalize_prices 会据此产出
+    # {FIELD}_MISSING 警告并把状态降级，而不是静默丢腿。
+    return {
+        str(item["field"]): _frame_to_crisis_points(frames_by_alias[str(item["alias"])])
+        for item in _MULTI_ASSET_PRICE_INPUTS
+    }
+
+
+def _merrill_regime_from_payload(payload: Mapping[str, object] | None) -> str | None:
+    if not payload:
+        return None
+    regime = payload.get("regime_label")
+    if regime in {"复苏", "过热", "滞胀", "衰退"}:
+        return str(regime)
+    return None
+
+
+def _compute_multi_asset_observation_capability(
+    key: str,
+    duckdb_path: str | Path,
+    report_date: date,
+    *,
+    clock_phase: str | None = None,
+    series_data: dict[str, list[tuple[date, float]]] | None = None,
+) -> dict[str, object]:
+    resolved_series = (
+        series_data
+        if series_data is not None
+        else _load_multi_asset_price_series(duckdb_path, report_date)
+    )
+    if key == "cta_trend_cn":
+        return compute_cta_trend_payload(resolved_series, report_date=report_date)
+    if key == "dcc_garch_cn":
+        return compute_dcc_garch_payload(resolved_series, report_date=report_date)
+    if key == "risk_parity_cn":
+        return compute_risk_parity_payload(
+            resolved_series,
+            report_date=report_date,
+            clock_phase=clock_phase,
+        )
+    raise ValueError(f"unsupported multi-asset observation capability: {key}")
+
+
+def _compute_crisis_score_capability(
+    duckdb_path: str | Path,
+    report_date: date,
+    *,
+    history_limit: int = DEFAULT_CRISIS_SCORE_HISTORY_LIMIT,
+) -> dict[str, object]:
     start = report_date - timedelta(days=420)
+    crisis_aliases = tuple(str(config["alias"]) for config in _CRISIS_SCORE_INPUTS)
+    commodity_aliases = tuple(
+        str(alias)
+        for config in _CRISIS_COMMODITY_COVERAGE_INPUTS
+        for alias in config["aliases"]
+    )
+    frames_by_alias = load_series_by_aliases(
+        (*crisis_aliases, *commodity_aliases),
+        start=start.isoformat(),
+        end=report_date.isoformat(),
+        duckdb_path=duckdb_path,
+    )
     series_data: dict[str, list[tuple[date, float]]] = {}
     inputs: list[dict[str, object]] = []
     for config in _CRISIS_SCORE_INPUTS:
         alias = str(config["alias"])
-        frame = load_series_by_alias(
-            alias,
-            start=start.isoformat(),
-            end=report_date.isoformat(),
-            duckdb_path=duckdb_path,
-        )
+        frame = frames_by_alias[alias]
         points = _frame_to_crisis_points(frame)
         field = str(config["field"])
         series_data[field] = points
@@ -2053,6 +2547,7 @@ def _compute_crisis_score_capability(duckdb_path: str | Path, report_date: date)
         report_date=report_date,
         start=start,
         crisis_history=crisis_history,
+        frames_by_alias=frames_by_alias,
     )
     enriched["commodity_coverage"] = commodity_coverage
     enriched["shadow_impact"] = _crisis_commodity_shadow_impact(
@@ -2067,6 +2562,7 @@ def _compute_crisis_score_capability(duckdb_path: str | Path, report_date: date)
         admission=commodity_admission,
         shadow_impact=enriched["shadow_impact"],
     )
+    enriched["score_history"] = build_crisis_score_history_payload(crisis_history, limit=history_limit)
     return enriched
 
 
@@ -2076,7 +2572,16 @@ def _crisis_commodity_coverage(
     report_date: date,
     start: date,
     crisis_history: pd.DataFrame,
+    frames_by_alias: dict[str, pd.DataFrame] | None = None,
 ) -> dict[str, object]:
+    resolved_frames_by_alias = frames_by_alias
+    if resolved_frames_by_alias is None:
+        resolved_frames_by_alias = load_series_by_aliases(
+            tuple(str(alias) for config in _CRISIS_COMMODITY_COVERAGE_INPUTS for alias in config["aliases"]),
+            start=start.isoformat(),
+            end=report_date.isoformat(),
+            duckdb_path=duckdb_path,
+        )
     items = [
         _crisis_commodity_coverage_item(
             config,
@@ -2084,6 +2589,7 @@ def _crisis_commodity_coverage(
             report_date=report_date,
             start=start,
             crisis_history=crisis_history,
+            frames_by_alias=resolved_frames_by_alias,
         )
         for config in _CRISIS_COMMODITY_COVERAGE_INPUTS
     ]
@@ -2109,16 +2615,21 @@ def _crisis_commodity_coverage_item(
     report_date: date,
     start: date,
     crisis_history: pd.DataFrame,
+    frames_by_alias: dict[str, pd.DataFrame] | None = None,
 ) -> dict[str, object]:
     aliases = tuple(str(alias) for alias in config["aliases"])
     matched_alias = None
     frame = pd.DataFrame()
     for alias in aliases:
-        candidate = load_series_by_alias(
-            alias,
-            start=start.isoformat(),
-            end=report_date.isoformat(),
-            duckdb_path=duckdb_path,
+        candidate = (
+            frames_by_alias[alias]
+            if frames_by_alias is not None
+            else load_series_by_alias(
+                alias,
+                start=start.isoformat(),
+                end=report_date.isoformat(),
+                duckdb_path=duckdb_path,
+            )
         )
         if not candidate.empty:
             matched_alias = alias
@@ -2734,13 +3245,33 @@ def _with_capability_input_evidence(
     duckdb_path: str | Path,
     report_date: date,
     wide_rows: list[dict[str, object]],
+    source_check_cache: dict[str, dict[str, object]] | None = None,
+    source_frames_by_alias: dict[str, pd.DataFrame] | None = None,
 ) -> dict[str, object]:
     requirements = _CAPABILITY_INPUT_REQUIREMENTS.get(key)
     if not requirements:
         return result
 
+    resolved_source_check_cache = source_check_cache if source_check_cache is not None else {}
+    _source_checks_for_aliases(
+        (
+            str(alias)
+            for requirement in requirements
+            for alias in requirement.get("aliases", ())
+        ),
+        duckdb_path,
+        source_check_cache=resolved_source_check_cache,
+        end=report_date.isoformat(),
+        frames_by_alias=source_frames_by_alias,
+    )
     inputs = [
-        _capability_input_evidence_item(requirement, duckdb_path=duckdb_path, report_date=report_date, wide_rows=wide_rows)
+        _capability_input_evidence_item(
+            requirement,
+            duckdb_path=duckdb_path,
+            report_date=report_date,
+            wide_rows=wide_rows,
+            source_check_cache=resolved_source_check_cache,
+        )
         for requirement in requirements
     ]
     missing_inputs = [
@@ -2748,22 +3279,34 @@ def _with_capability_input_evidence(
         for item in inputs
         if item["required"] and not item["available"]
     ]
+    stale_inputs = [
+        _stale_warning_from_missing(str(item["warning"]))
+        for item in inputs
+        if item["required"] and item["available"] and item.get("stale")
+    ]
     warnings = [str(item) for item in result.get("warnings", []) if item]
-    for warning in missing_inputs:
+    for warning in [*missing_inputs, *stale_inputs]:
         if warning not in warnings:
             warnings.append(warning)
 
     enriched = dict(result)
-    if missing_inputs and str(enriched.get("data_status") or "").lower() == "complete":
+    if (missing_inputs or stale_inputs) and str(enriched.get("data_status") or "").lower() == "complete":
         enriched["data_status"] = "degraded"
     enriched["warnings"] = warnings
     enriched["input_evidence"] = {
         "inputs": inputs,
         "missing_inputs": missing_inputs,
+        "stale_inputs": stale_inputs,
         "sources": _unique_sorted_texts(item.get("source") for item in inputs),
         "latest_dates": _unique_sorted_texts(item.get("latest_date") for item in inputs),
     }
     return enriched
+
+
+def _stale_warning_from_missing(missing_warning: str) -> str:
+    if missing_warning.endswith("_MISSING"):
+        return f"{missing_warning[: -len('_MISSING')]}_STALE"
+    return f"{missing_warning}_STALE"
 
 
 def _capability_input_evidence_item(
@@ -2772,9 +3315,15 @@ def _capability_input_evidence_item(
     duckdb_path: str | Path,
     report_date: date,
     wide_rows: list[dict[str, object]],
+    source_check_cache: dict[str, dict[str, object]] | None = None,
 ) -> dict[str, object]:
     aliases = tuple(str(alias) for alias in requirement.get("aliases", ()))
-    check = _first_available_source_check(aliases, duckdb_path, report_date)
+    check = _first_available_source_check(
+        aliases,
+        duckdb_path,
+        report_date,
+        source_check_cache=source_check_cache,
+    )
     latest = check.get("latest") if isinstance(check.get("latest"), dict) else None
     field = str(requirement["field"])
     derived = bool(requirement.get("derived", False))
@@ -2782,6 +3331,13 @@ def _capability_input_evidence_item(
     if value is None and isinstance(latest, dict):
         value = latest.get("value")
     available = value is not None if derived else latest is not None
+    latest_date = latest.get("date") if isinstance(latest, dict) else None
+    cadence = str(requirement.get("cadence") or _input_cadence_for_field(field))
+    freshness = assess_freshness(latest_date, report_date, cadence=cadence)
+    stale = bool(
+        available
+        and freshness.tier in {FRESHNESS_TIER_STALE, FRESHNESS_TIER_EXPIRED}
+    )
     return {
         "field": field,
         "label": str(requirement["label"]),
@@ -2789,21 +3345,35 @@ def _capability_input_evidence_item(
         "warning": str(requirement["warning"]),
         "required": bool(requirement.get("required", True)),
         "available": available,
+        "stale": stale,
+        "stale_days": freshness.age_days if stale else None,
+        "freshness_tier": freshness.tier if available else None,
+        "cadence": cadence,
         "row_count": int(check.get("row_count") or 0),
-        "latest_date": latest.get("date") if isinstance(latest, dict) else None,
+        "latest_date": latest_date,
         "series_id": latest.get("series_id") if isinstance(latest, dict) else None,
         "source": latest.get("vendor_name") if isinstance(latest, dict) else None,
         "value": value,
     }
 
 
+def _input_cadence_for_field(field: str) -> str:
+    if field in _MONTHLY_WIDE_FIELDS or field.endswith("_yoy") or field == "pmi":
+        return "monthly"
+    return "daily"
+
+
 def _first_available_source_check(
     aliases: tuple[str, ...],
     duckdb_path: str | Path,
     report_date: date,
+    *,
+    source_check_cache: dict[str, dict[str, object]] | None = None,
 ) -> dict[str, object]:
     checks = [
-        _source_check(alias, duckdb_path, end=report_date.isoformat())
+        source_check_cache[alias]
+        if source_check_cache is not None and alias in source_check_cache
+        else _source_check(alias, duckdb_path, end=report_date.isoformat())
         for alias in aliases
     ]
     for check in checks:
@@ -2845,15 +3415,37 @@ def _load_macro_curve_rows(duckdb_path: str | Path, report_date: date) -> list[d
     return macro_toolkit_service.load_macro_curve_rows(duckdb_path, report_date)
 
 
+def _load_macro_capability_context(
+    duckdb_path: str | Path,
+    report_date: date,
+) -> tuple[list[dict[str, object]], dict[str, object] | None, list[dict[str, object]]]:
+    return macro_toolkit_service.load_macro_capability_context(duckdb_path, report_date)
+
+
 def _load_macro_wide_rows(
     duckdb_path: str | Path,
     report_date: date,
     curve_rows: list[dict[str, object]],
+    *,
+    frames_by_alias: dict[str, pd.DataFrame] | None = None,
 ) -> list[dict[str, object]]:
     wide_by_date: dict[date, dict[str, float]] = {report_date: {}}
     fields = [field for field, _ in _WIDE_SERIES_ALIASES]
+    resolved_frames_by_alias = frames_by_alias or {}
+    missing_aliases = tuple(
+        dict.fromkeys(alias for _, alias in _WIDE_SERIES_ALIASES if alias not in resolved_frames_by_alias)
+    )
+    if missing_aliases:
+        resolved_frames_by_alias = {
+            **resolved_frames_by_alias,
+            **load_series_by_aliases(
+                missing_aliases,
+                end=report_date.isoformat(),
+                duckdb_path=duckdb_path,
+            ),
+        }
     for field, alias in _WIDE_SERIES_ALIASES:
-        frame = load_series_by_alias(alias, end=report_date.isoformat(), duckdb_path=duckdb_path)
+        frame = resolved_frames_by_alias[alias]
         if frame.empty:
             continue
         for _, sample in frame.iterrows():
@@ -2868,16 +3460,24 @@ def _load_macro_wide_rows(
         if row_date is not None and row_date <= report_date:
             wide_by_date.setdefault(row_date, {})
 
+    # ffill with per-field stale cap: stop carrying once the gap from the
+    # original observation exceeds the cadence limit (monthly ~65d / daily ~10d).
     last_seen: dict[str, float] = {}
+    last_seen_date: dict[str, date] = {}
     for sample_date in sorted(wide_by_date):
         current = wide_by_date[sample_date]
+        fresh_fields = {field for field in fields if field in current}
         for field in fields:
             if field not in current and field in last_seen:
-                current[field] = last_seen[field]
-        for field in fields:
+                cadence = "monthly" if field in _MONTHLY_WIDE_FIELDS else "daily"
+                max_stale = _WIDE_FFILL_MAX_STALE_DAYS[cadence]
+                if (sample_date - last_seen_date[field]).days <= max_stale:
+                    current[field] = last_seen[field]
+        for field in fresh_fields:
             value = current.get(field)
             if value is not None:
                 last_seen[field] = value
+                last_seen_date[field] = sample_date
 
     curves_by_date = build_curve_history(curve_rows, report_date=report_date)
     enrich_wide_with_curve_market_fields(wide_by_date, curves_by_date)
@@ -3066,12 +3666,34 @@ def _capability_result_tone(key: str, result: dict[str, object], status: str) ->
             return "negative"
         if risk == "LOW":
             return "positive"
+        # UNKNOWN / MEDIUM：不给出方向性 tone，避免无相关腿时伪装成积极信号
+        return "neutral"
     if key == "economic_cycle":
         phase = str(result.get("cycle_phase") or "")
         if phase == "recovery":
             return "positive"
         if phase in {"stagflation", "recession"}:
             return "negative"
+    if key == "merrill_clock_cn":
+        regime = str(result.get("regime_label") or "")
+        if regime == "复苏":
+            return "positive"
+        if regime in {"滞胀", "衰退"}:
+            return "negative"
+    if key == "cta_trend_cn":
+        avg = _float_or_none(result.get("avg_composite"))
+        if avg is not None and avg > 0.2:
+            return "positive"
+        if avg is not None and avg < -0.2:
+            return "negative"
+    if key == "dcc_garch_cn":
+        warning = str(result.get("warning_level") or "")
+        if warning == "红色预警":
+            return "negative"
+        if warning == "正常":
+            return "positive"
+    if key == "risk_parity_cn":
+        return "neutral"
     if key == "macro_portfolio_impact":
         worst = _worst_portfolio_scenario(result)
         pnl_pct = _float_or_none(worst.get("pnl_pct")) if worst else None
@@ -3091,6 +3713,10 @@ def _capability_result_score(key: str, result: dict[str, object]) -> float | Non
         "liquidity_stress": "stress_score",
         "rate_turning_point": "percentile_1y",
         "economic_cycle": "growth_score",
+        "merrill_clock_cn": "top_asset_score",
+        "cta_trend_cn": "avg_composite",
+        "dcc_garch_cn": "avg_correlation",
+        "risk_parity_cn": "portfolio_vol_rp_pct",
     }
     if key in score_fields:
         return _round_float(_float_or_none(result.get(score_fields[key])))
@@ -3115,6 +3741,12 @@ def _capability_result_headline(key: str, result: dict[str, object]) -> str:
         return f"LEI {result.get('lei_index', 'n/a')} · {result.get('economic_state', 'unknown')} · {result.get('trend', 'flat')}"
     if key == "economic_cycle":
         return f"周期位置：{result.get('cycle_phase_cn', 'unknown')}"
+    if key == "merrill_clock_cn":
+        regime = result.get("regime_label") or "unknown"
+        top_asset = result.get("top_asset")
+        if top_asset:
+            return f"美林时钟：{regime} · 偏好{top_asset}"
+        return f"美林时钟：{regime}"
     if key == "macro_portfolio_impact":
         worst = _worst_portfolio_scenario(result)
         if worst:
@@ -3145,6 +3777,14 @@ def _capability_primary_metric(
         return _metric("10Y国债", result.get("current_10y"), "%")
     if key == "economic_cycle":
         return _metric("周期", result.get("cycle_phase_cn"), "")
+    if key == "merrill_clock_cn":
+        return _metric("象限", result.get("regime_label"), "")
+    if key == "cta_trend_cn":
+        return _metric("合成信号", result.get("avg_composite"), "")
+    if key == "dcc_garch_cn":
+        return _metric("平均相关", result.get("avg_correlation"), "")
+    if key == "risk_parity_cn":
+        return _metric("组合波动", result.get("portfolio_vol_rp_pct"), "%")
     if key == "macro_portfolio_impact":
         worst = _worst_portfolio_scenario(result)
         return _metric("最差PnL", worst.get("pnl_pct") if worst else None, "%")
@@ -3228,6 +3868,42 @@ def _capability_result_evidence(key: str, result: dict[str, object]) -> list[str
                 _format_evidence("inflation", result.get("inflation_score"), ""),
             ]
         )
+    if key == "merrill_clock_cn":
+        return _compact_evidence(
+            [
+                f"regime={result.get('regime_label')}",
+                _format_evidence("growth", result.get("growth_momentum"), ""),
+                _format_evidence("inflation", result.get("inflation_momentum"), ""),
+                _format_evidence("liquidity", result.get("liquidity_momentum"), ""),
+                f"top={result.get('top_asset')}",
+            ]
+        )
+    if key == "cta_trend_cn":
+        return _compact_evidence(
+            [
+                f"trend={result.get('trend_label')}",
+                _format_evidence("avg", result.get("avg_composite"), ""),
+                f"bullish={result.get('bullish_count')}",
+                f"bearish={result.get('bearish_count')}",
+            ]
+        )
+    if key == "dcc_garch_cn":
+        return _compact_evidence(
+            [
+                f"warning={result.get('warning_level')}",
+                _format_evidence("avg_corr", result.get("avg_correlation"), ""),
+                _format_evidence("assets", result.get("asset_count"), ""),
+            ]
+        )
+    if key == "risk_parity_cn":
+        return _compact_evidence(
+            [
+                f"phase={result.get('clock_phase')}",
+                f"shadow={result.get('shadow')}",
+                _format_evidence("vol", result.get("portfolio_vol_rp_pct"), "%"),
+                f"top={result.get('top_asset')}",
+            ]
+        )
     if key == "macro_portfolio_impact":
         portfolio = result.get("portfolio") if isinstance(result.get("portfolio"), dict) else {}
         worst = _worst_portfolio_scenario(result)
@@ -3241,16 +3917,41 @@ def _capability_result_evidence(key: str, result: dict[str, object]) -> list[str
     return []
 
 
+_DECISION_SUMMARY_OBSERVATION_KEYS = frozenset(
+    {
+        "merrill_clock_cn",
+        "cta_trend_cn",
+        "dcc_garch_cn",
+        "risk_parity_cn",
+        "cross_market_linkage",
+        "rate_turning_point",
+        "yield_curve_shape",
+        "credit_spread_risk",
+        "liquidity_stress",
+        "macro_portfolio_impact",
+    }
+)
+
+
 def _decision_summary_card(
     definition: dict[str, object],
     cards: list[dict[str, object]],
     report_date: date,
 ) -> dict[str, object]:
     usable_cards = [card for card in cards if card["status"] in {"complete", "degraded"}]
-    positive_count = sum(1 for card in usable_cards if card["tone"] == "positive")
-    negative_count = sum(1 for card in usable_cards if card["tone"] == "negative")
+    # observation_only 卡（美林时钟/CTA/DCC/风险平价）计入可用分母，
+    # 但不参与驱动久期/信用行动建议的方向投票。
+    voting_cards = [
+        card for card in usable_cards if str(card["key"]) not in _DECISION_SUMMARY_OBSERVATION_KEYS
+    ]
+    positive_count = sum(1 for card in voting_cards if card["tone"] == "positive")
+    negative_count = sum(1 for card in voting_cards if card["tone"] == "negative")
     missing_count = sum(1 for card in cards if card["status"] == "unavailable")
-    if negative_count > positive_count:
+    total_count = len(cards)
+    if not usable_cards:
+        tone = "missing"
+        headline = "宏观模块均不可用，无法给出方向性判断。"
+    elif negative_count > positive_count:
         tone = "negative"
         headline = "宏观信号偏谨慎，优先控制久期和信用敞口。"
     elif positive_count > negative_count:
@@ -3259,7 +3960,12 @@ def _decision_summary_card(
     else:
         tone = "neutral"
         headline = "宏观信号分化，维持中性观察。"
-    status = "complete" if len(usable_cards) >= 7 and missing_count == 0 else "degraded"
+    if not usable_cards:
+        status = "unavailable"
+    elif len(usable_cards) == total_count and missing_count == 0:
+        status = "complete"
+    else:
+        status = "degraded"
     score = round(50 + (positive_count - negative_count) * 8 - missing_count * 3, 2)
     evidence = [
         f"{card['legacy_module']} {card['headline']}"
@@ -3273,16 +3979,22 @@ def _decision_summary_card(
         "group": definition["group"],
         "status": status,
         "tone": tone,
-        "score": max(0.0, min(100.0, score)),
+        "score": max(0.0, min(100.0, score)) if usable_cards else None,
         "headline": headline,
-        "primary_metric": _metric("可用模块", len(usable_cards), "/9"),
+        "primary_metric": _metric("可用模块", len(usable_cards), f"/{total_count}"),
         "evidence": evidence,
-        "warnings": ["部分模块数据降级或不可用"] if status == "degraded" else [],
+        "warnings": ["宏观模块结果全部不可用"]
+        if status == "unavailable"
+        else ["部分模块数据降级或不可用"]
+        if status == "degraded"
+        else [],
         "result": {
             "report_date": report_date.isoformat(),
             "data_status": status,
+            "formal_use_allowed": False,
             "positive_count": positive_count,
             "negative_count": negative_count,
+            "observation_excluded_count": len(usable_cards) - len(voting_cards),
             "missing_count": missing_count,
             "usable_count": len(usable_cards),
             "headline": headline,
@@ -3367,9 +4079,13 @@ def _coerce_frame_date(value: object) -> date | None:
 
 
 def _analysis_indicators(duckdb_path: str | Path) -> list[dict[str, object]]:
+    frames_by_alias = load_series_by_aliases(
+        tuple(str(config["alias"]) for config in _ANALYSIS_INDICATORS),
+        duckdb_path=duckdb_path,
+    )
     indicators: list[dict[str, object]] = []
     for config in _ANALYSIS_INDICATORS:
-        frame = load_series_by_alias(str(config["alias"]), duckdb_path=duckdb_path)
+        frame = frames_by_alias[str(config["alias"])]
         indicators.append(_indicator_payload(config, frame))
     return indicators
 

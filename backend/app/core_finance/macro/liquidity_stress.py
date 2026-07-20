@@ -8,6 +8,11 @@ from typing import Any
 from app.core_finance.macro.helpers import get_value as _get_value
 from app.core_finance.safe_decimal import safe_decimal
 
+_OBSERVATION_FLAGS = {
+    "observation_only": True,
+    "formal_use_allowed": False,
+}
+
 
 def _round(value: Decimal | None) -> float | None:
     if value is None:
@@ -28,6 +33,7 @@ def compute_liquidity_stress_test(
         return {
             "report_date": report_date.isoformat(),
             "data_status": "unavailable",
+            **_OBSERVATION_FLAGS,
             "stress_score": 0,
             "stress_level": "UNAVAILABLE",
             "headline": "暂无流动性代理或期限阶梯数据。",
@@ -53,23 +59,30 @@ def compute_liquidity_stress_test(
     cumulative_gap_3m = None
     negative_bucket_count = 0
     bucket_payload: list[dict[str, Any]] = []
+    bucket_field_warnings: list[str] = []
     for bucket in buckets:
         bucket_name = str(_get_value(bucket, "bucket_name", default=""))
-        net_gap = safe_decimal(_get_value(bucket, "net_gap", default=0))
-        cumulative_gap = safe_decimal(_get_value(bucket, "cumulative_gap", default=0))
+        net_gap_raw = _get_value(bucket, "net_gap")
+        cumulative_gap_raw = _get_value(bucket, "cumulative_gap")
+        if net_gap_raw is None:
+            bucket_field_warnings.append(f"BUCKET_NET_GAP_MISSING:{bucket_name or '?'}")
+            continue
+        net_gap = safe_decimal(net_gap_raw)
+        cumulative_gap = safe_decimal(cumulative_gap_raw) if cumulative_gap_raw is not None else None
         gap_ratio_raw = _get_value(bucket, "gap_ratio")
         if net_gap < 0:
             negative_bucket_count += 1
         if bucket_name in {"<=1M", "1-3M"}:
             short_term_gap += net_gap
-            cumulative_gap_3m = cumulative_gap
+            if cumulative_gap is not None:
+                cumulative_gap_3m = cumulative_gap
         bucket_payload.append(
             {
                 "bucket_name": bucket_name,
                 "asset_amount": float(safe_decimal(_get_value(bucket, "asset_amount", default=0))),
                 "liability_amount": float(safe_decimal(_get_value(bucket, "liability_amount", default=0))),
                 "net_gap": float(net_gap),
-                "cumulative_gap": float(cumulative_gap),
+                "cumulative_gap": float(cumulative_gap) if cumulative_gap is not None else None,
                 "gap_ratio": float(safe_decimal(gap_ratio_raw)) if gap_ratio_raw is not None else None,
                 "asset_row_count": int(_get_value(bucket, "asset_row_count", default=0) or 0),
                 "liability_row_count": int(_get_value(bucket, "liability_row_count", default=0) or 0),
@@ -125,11 +138,13 @@ def compute_liquidity_stress_test(
         stress_level = "LOW"
         recommendation = "流动性代理信号整体可控。"
 
-    warnings: list[str] = []
+    warnings: list[str] = list(dict.fromkeys(bucket_field_warnings))
     if not proxy_items:
         warnings.append("DV01_PROXY_MISSING")
     if not buckets:
         warnings.append("MATURITY_BUCKETS_MISSING")
+    if buckets and not bucket_payload:
+        warnings.append("MATURITY_BUCKETS_UNUSABLE")
     if total_assets_decimal is None or total_assets_decimal <= 0:
         warnings.append("TOTAL_ASSETS_UNAVAILABLE")
 
@@ -156,6 +171,7 @@ def compute_liquidity_stress_test(
     return {
         "report_date": report_date.isoformat(),
         "data_status": data_status,
+        **_OBSERVATION_FLAGS,
         "stress_score": stress_score,
         "stress_level": stress_level,
         "headline": "流动性压力测试基于 V2 期限阶梯与 DV01 集中度代理构建。",

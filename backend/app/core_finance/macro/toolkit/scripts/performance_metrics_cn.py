@@ -26,7 +26,7 @@ TRADING_DAYS = 252
 LOOKBACK_YEARS = 3
 ASSETS = {
     "沪深300": {"type": "index",   "symbol": "sh000300"},
-    "中诅500": {"type": "index",   "symbol": "sh000905"},
+    "中证500": {"type": "index",   "symbol": "sh000905"},
     "黄金期货": {"type": "futures", "symbol": "AU0"},
     "铜期货":  {"type": "futures", "symbol": "CU0"},
     "原油期货": {"type": "futures", "symbol": "SC0"},
@@ -143,6 +143,30 @@ def plot_performance(df, path):
     print(f"  图表已保存 → {path}")
 
 
+def load_risk_parity_weights(rp_csv_path, asset_names, eq_w):
+    """从 risk_parity_cn.py 的长表输出（每资产一行，「资产」+「风险平价权重%」列）
+    读取风险平价权重；CSV 缺失、列缺失或任一资产无权重行时回落等权并显式警告。"""
+    if not os.path.exists(rp_csv_path):
+        print(f"  警告：未找到 {rp_csv_path}，风险平价组合使用等权替代")
+        return eq_w.copy(), "风险平价(等权替代)"
+    try:
+        rp_df = pd.read_csv(rp_csv_path)
+        if "资产" not in rp_df.columns or "风险平价权重%" not in rp_df.columns:
+            print("  警告：risk_parity_results.csv 缺少「资产」或「风险平价权重%」列，使用等权替代")
+            return eq_w.copy(), "风险平价(等权替代)"
+        w_series = rp_df.set_index("资产")["风险平价权重%"]
+        missing = [a for a in asset_names if a not in w_series.index]
+        if missing:
+            print(f"  警告：risk_parity_results.csv 缺少资产 {missing} 的权重行，使用等权替代")
+            return eq_w.copy(), "风险平价(等权替代)"
+        rp_w = np.array([float(w_series[a]) for a in asset_names]) / 100.0
+        print(f"  已读取风险平价权重：{dict(zip(asset_names, rp_w.round(4), strict=False))}")
+        return rp_w, "风险平价组合"
+    except Exception as e:
+        print(f"  警告：读取 risk_parity_results.csv 失败（{e}），使用等权替代")
+        return eq_w.copy(), "风险平价(等权替代)"
+
+
 def main():
     print("=" * 60)
     print("  模型五：夏普比率与索提诺比率绩效评估")
@@ -199,25 +223,7 @@ def main():
             f"年化收益={m_eq['年化收益%']:6.2f}%  评级={m_eq['评级']}"
         )
 
-    rp_label = "风险平价组合"
-    rp_w = None
-    if os.path.exists(RP_CSV):
-        try:
-            rp_df = pd.read_csv(RP_CSV)
-            w_map = {}
-            for col in rp_df.columns:
-                for aname in asset_names:
-                    if aname in col or col in aname:
-                        w_map[aname] = float(rp_df[col].iloc[-1])
-            if len(w_map) == n:
-                rp_w = np.array([w_map[a] for a in asset_names])
-                print(f"  已读取风险平价权重：{dict(zip(asset_names, rp_w.round(4), strict=False))}")
-        except Exception as e:
-            print(f"  读取 risk_parity_results.csv 失败（{e}），使用等权替代")
-    if rp_w is None:
-        rp_w = eq_w.copy()
-        rp_label = "风险平价(等权替代)"
-        print("未找到风险平价权重，使用等权替代")
+    rp_w, rp_label = load_risk_parity_weights(RP_CSV, asset_names, eq_w)
     rp_ret = portfolio_returns(returns_df, rp_w)
     m_rp = calc_metrics(rp_ret, rp_label)
     if m_rp:

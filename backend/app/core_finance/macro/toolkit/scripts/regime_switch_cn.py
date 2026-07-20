@@ -263,16 +263,22 @@ def compute_regime(price: pd.Series, vol_window=20, autocorr_window=20, hurst_wi
     hurst = rolling_hurst(ret, hurst_window)
     adx = adx_approx(price)
 
-    # 历史分位数（用于波动率阈值）
-    vol_low_thresh  = vol.quantile(VOL_LOW_PCTILE / 100)
-    vol_high_thresh = vol.quantile(VOL_HIGH_PCTILE / 100)
+    # 历史分位数（用于波动率阈值）：改为扩展窗口（仅用截至当日的历史数据），
+    # 避免用全样本（含未来数据）分位数对历史时点做前视分类。
+    # min_periods 之前样本不足，标记为「未知」而非套用不可靠的分位数硬分类。
+    vol_quantile_min_periods = max(60, vol_window * 3)
+    vol_low_thresh  = vol.expanding(min_periods=vol_quantile_min_periods).quantile(VOL_LOW_PCTILE / 100)
+    vol_high_thresh = vol.expanding(min_periods=vol_quantile_min_periods).quantile(VOL_HIGH_PCTILE / 100)
 
     regime = pd.Series(index=price.index, dtype=str)
     for i in range(len(price)):
+        if np.isnan(vol_low_thresh.iloc[i]) or np.isnan(vol_high_thresh.iloc[i]):
+            regime.iloc[i] = "未知"
+            continue
         regime.iloc[i] = classify_regime(
             vol.iloc[i] if not np.isnan(vol.iloc[i]) else np.nan,
-            vol_low_thresh,
-            vol_high_thresh,
+            float(vol_low_thresh.iloc[i]),
+            float(vol_high_thresh.iloc[i]),
             autocorr.iloc[i] if not np.isnan(autocorr.iloc[i]) else np.nan,
             hurst.iloc[i] if not np.isnan(hurst.iloc[i]) else np.nan,
         )

@@ -145,6 +145,14 @@ def build_bond_portfolio_profile(
     }
 
 
+_OBSERVATION_FLAGS = {
+    "observation_only": True,
+    "formal_use_allowed": False,
+}
+
+_REQUIRED_SCENARIO_TENORS = ("1Y", "3Y", "5Y", "7Y", "10Y")
+
+
 def compute_macro_portfolio_impact(
     portfolio_profile: dict[str, Any],
     current_curve: dict[str, float],
@@ -154,6 +162,7 @@ def compute_macro_portfolio_impact(
 ) -> dict[str, Any]:
     """
     current_curve: 百分数收益率，键为 1Y/3Y/5Y/7Y/10Y。
+    缺必要期限节点时不得用默认收益率（如 2.5%）填洞。
     """
     scenarios_cfg = scenarios if scenarios is not None else _M15_SCENARIOS
     total_mv = portfolio_profile.get("total_mv") or 0
@@ -161,11 +170,32 @@ def compute_macro_portfolio_impact(
         return {
             "report_date": report_date.isoformat(),
             "data_status": "unavailable",
+            **_OBSERVATION_FLAGS,
             "scenarios": [],
             "portfolio": portfolio_profile,
             "current_curve": current_curve,
             "warnings": ["NO_PORTFOLIO"],
         }
+
+    missing_tenors = [
+        tenor
+        for tenor in _REQUIRED_SCENARIO_TENORS
+        if current_curve.get(tenor) is None
+    ]
+    if len(missing_tenors) == len(_REQUIRED_SCENARIO_TENORS):
+        return {
+            "report_date": report_date.isoformat(),
+            "data_status": "unavailable",
+            **_OBSERVATION_FLAGS,
+            "scenarios": [],
+            "portfolio": portfolio_profile,
+            "current_curve": current_curve,
+            "warnings": ["NO_GOVERNMENT_CURVE_TENORS"],
+        }
+
+    warnings: list[str] = []
+    if missing_tenors:
+        warnings.append("CURVE_TENORS_MISSING:" + ",".join(missing_tenors))
 
     scenarios_out: list[dict[str, Any]] = []
     tenor_to_bucket = {"1Y": "0-1Y", "3Y": "1-3Y", "5Y": "3-5Y", "7Y": "5-7Y", "10Y": "7-10Y"}
@@ -176,14 +206,18 @@ def compute_macro_portfolio_impact(
         credit_shift_bp = sc.get("credit_spread_shift_bp", 0)
 
         new_curve: dict[str, float] = {}
+        usable_shifts: dict[str, float] = {}
         for tenor, shift in curve_shifts.items():
-            base = float(current_curve.get(tenor, 2.5))
-            new_curve[tenor] = round(base + shift / 100.0, 4)
+            base = current_curve.get(tenor)
+            if base is None:
+                continue
+            new_curve[tenor] = round(float(base) + shift / 100.0, 4)
+            usable_shifts[tenor] = shift
 
         total_delta = 0.0
         bucket_impacts: dict[str, Any] = {}
 
-        for tenor, shift_bp in curve_shifts.items():
+        for tenor, shift_bp in usable_shifts.items():
             bucket_label = tenor_to_bucket.get(tenor)
             if not bucket_label or bucket_label not in profile_buckets:
                 continue
@@ -202,8 +236,8 @@ def compute_macro_portfolio_impact(
         remaining_mv = sum(
             profile_buckets[bl]["market_value"] for bl in profile_buckets if bl not in bucket_impacts
         )
-        if remaining_mv > 0:
-            avg_shift = sum(curve_shifts.values()) / len(curve_shifts) if curve_shifts else 0
+        if remaining_mv > 0 and usable_shifts:
+            avg_shift = sum(usable_shifts.values()) / len(usable_shifts)
             remaining_dur = portfolio_profile.get("weighted_duration") or 0.0
             delta_remaining = -remaining_mv * remaining_dur * (avg_shift + credit_shift_bp) / 10000.0
             total_delta += delta_remaining
@@ -229,9 +263,10 @@ def compute_macro_portfolio_impact(
 
     return {
         "report_date": report_date.isoformat(),
-        "data_status": "complete",
+        "data_status": "degraded" if warnings else "complete",
+        **_OBSERVATION_FLAGS,
         "current_curve": current_curve,
         "scenarios": scenarios_out,
         "portfolio": portfolio_profile,
-        "warnings": [],
+        "warnings": warnings,
     }
