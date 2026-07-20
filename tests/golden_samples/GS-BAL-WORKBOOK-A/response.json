@@ -22,7 +22,7 @@
       {
         "key": "bond_assets_excluding_issue",
         "label": "债券资产(剔除发行类)",
-        "value": "0.01000000",
+        "value": "0.07200000",
         "note": "ZQTZ 资产端剔除发行类后余额(万元)"
       },
       {
@@ -34,7 +34,7 @@
       {
         "key": "interbank_liabilities",
         "label": "同业负债",
-        "value": "0.00100000",
+        "value": "0.00720000",
         "note": "TYW 负债端余额(万元)"
       },
       {
@@ -46,7 +46,7 @@
       {
         "key": "net_position",
         "label": "净头寸",
-        "value": "0.00900000",
+        "value": "0.06480000",
         "note": "资产端合计 - 同业负债(万元)"
       }
     ],
@@ -97,13 +97,13 @@
           {
             "bond_type": "国债",
             "count": 1,
-            "balance_amount": "0.01000000",
+            "balance_amount": "0.07200000",
             "share": "1",
             "weighted_rate_pct": "0.02500000",
             "weighted_term_years": "1.998631074606433949349760438",
-            "amortized_cost_amount": "0.00900000",
-            "market_value_amount": "0.01000000",
-            "floating_pnl_amount": "0.00100000"
+            "amortized_cost_amount": "0.06480000",
+            "market_value_amount": "0.07200000",
+            "floating_pnl_amount": "0.00720000"
           }
         ]
       },
@@ -214,11 +214,11 @@
             "interbank_assets_amount": "0",
             "asset_total_amount": "0",
             "issuance_amount": "0",
-            "interbank_liabilities_amount": "0.00100000",
-            "full_scope_liability_amount": "0.00100000",
-            "gap_amount": "-0.00100000",
-            "full_scope_gap_amount": "-0.00100000",
-            "cumulative_gap_amount": "-0.00100000",
+            "interbank_liabilities_amount": "0.00720000",
+            "full_scope_liability_amount": "0.00720000",
+            "gap_amount": "-0.00720000",
+            "full_scope_gap_amount": "-0.00720000",
+            "cumulative_gap_amount": "-0.00720000",
             "asset_share": "0E+8",
             "liability_share": "1",
             "asset_weighted_rate_pct": null,
@@ -235,7 +235,7 @@
             "full_scope_liability_amount": "0",
             "gap_amount": "0",
             "full_scope_gap_amount": "0",
-            "cumulative_gap_amount": "-0.00100000",
+            "cumulative_gap_amount": "-0.00720000",
             "asset_share": "0E+8",
             "liability_share": "0E+8",
             "asset_weighted_rate_pct": null,
@@ -244,15 +244,15 @@
           },
           {
             "bucket": "1-2年",
-            "bond_assets_amount": "0.01000000",
+            "bond_assets_amount": "0.07200000",
             "interbank_assets_amount": "0",
-            "asset_total_amount": "0.01000000",
+            "asset_total_amount": "0.07200000",
             "issuance_amount": "0",
             "interbank_liabilities_amount": "0",
             "full_scope_liability_amount": "0",
-            "gap_amount": "0.01000000",
-            "full_scope_gap_amount": "0.01000000",
-            "cumulative_gap_amount": "0.00900000",
+            "gap_amount": "0.07200000",
+            "full_scope_gap_amount": "0.07200000",
+            "cumulative_gap_amount": "0.06480000",
             "asset_share": "1",
             "liability_share": "0E+8",
             "asset_weighted_rate_pct": "0.02500000",
@@ -269,7 +269,7 @@
             "full_scope_liability_amount": "0",
             "gap_amount": "0",
             "full_scope_gap_amount": "0",
-            "cumulative_gap_amount": "0.00900000",
+            "cumulative_gap_amount": "0.06480000",
             "asset_share": "0E+8",
             "liability_share": "0E+8",
             "asset_weighted_rate_pct": null,
@@ -286,7 +286,7 @@
             "full_scope_liability_amount": "0",
             "gap_amount": "0",
             "full_scope_gap_amount": "0",
-            "cumulative_gap_amount": "0.00900000",
+            "cumulative_gap_amount": "0.06480000",
             "asset_share": "0E+8",
             "liability_share": "0E+8",
             "asset_weighted_rate_pct": null,
@@ -303,7 +303,7 @@
             "full_scope_liability_amount": "0",
             "gap_amount": "0",
             "full_scope_gap_amount": "0",
-            "cumulative_gap_amount": "0.00900000",
+            "cumulative_gap_amount": "0.06480000",
             "asset_share": "0E+8",
             "liability_share": "0E+8",
             "asset_weighted_rate_pct": null,
@@ -320,7 +320,7 @@
             "full_scope_liability_amount": "0",
             "gap_amount": "0",
             "full_scope_gap_amount": "0",
-            "cumulative_gap_amount": "0.00900000",
+            "cumulative_gap_amount": "0.06480000",
             "asset_share": "0E+8",
             "liability_share": "0E+8",
             "asset_weighted_rate_pct": null,
@@ -464,12 +464,12 @@
             "bond_maturity_count": 0,
             "interbank_asset_maturity_amount": "0",
             "interbank_asset_maturity_count": 0,
-            "interbank_liability_maturity_amount": "0.00100000",
+            "interbank_liability_maturity_amount": "0.00720000",
             "interbank_liability_maturity_count": 1,
             "issuance_maturity_amount": "0",
             "issuance_maturity_count": 0,
-            "net_cashflow_amount": "-0.00100000",
-            "cumulative_net_cashflow_amount": "-0.00100000"
+            "net_cashflow_amount": "-0.00720000",
+            "cumulative_net_cashflow_amount": "-0.00720000"
           },
           {
             "month": "2026-07",
@@ -482,7 +482,7 @@
             "issuance_maturity_amount": "0",
             "issuance_maturity_count": 0,
             "net_cashflow_amount": "0",
-            "cumulative_net_cashflow_amount": "-0.00100000"
+            "cumulative_net_cashflow_amount": "-0.00720000"
           },
           {
             "month": "2026-08",
@@ -495,7 +495,7 @@
             "issuance_maturity_amount": "0",
             "issuance_maturity_count": 0,
             "net_cashflow_amount": "0",
-            "cumulative_net_cashflow_amount": "-0.00100000"
+            "cumulative_net_cashflow_amount": "-0.00720000"
           },
           {
             "month": "2026-09",
@@ -508,7 +508,7 @@
             "issuance_maturity_amount": "0",
             "issuance_maturity_count": 0,
             "net_cashflow_amount": "0",
-            "cumulative_net_cashflow_amount": "-0.00100000"
+            "cumulative_net_cashflow_amount": "-0.00720000"
           },
           {
             "month": "2026-10",
@@ -521,7 +521,7 @@
             "issuance_maturity_amount": "0",
             "issuance_maturity_count": 0,
             "net_cashflow_amount": "0",
-            "cumulative_net_cashflow_amount": "-0.00100000"
+            "cumulative_net_cashflow_amount": "-0.00720000"
           },
           {
             "month": "2026-11",
@@ -534,7 +534,7 @@
             "issuance_maturity_amount": "0",
             "issuance_maturity_count": 0,
             "net_cashflow_amount": "0",
-            "cumulative_net_cashflow_amount": "-0.00100000"
+            "cumulative_net_cashflow_amount": "-0.00720000"
           }
         ]
       },
@@ -568,7 +568,7 @@
           {
             "issuer_name": "发行人A",
             "count": 1,
-            "balance_amount": "0.01000000",
+            "balance_amount": "0.07200000",
             "share_of_bond_assets": "1",
             "weighted_rate_pct": "0.02500000"
           }
@@ -612,11 +612,11 @@
           {
             "liquidity_layer": "Level 1",
             "row_count": 1,
-            "balance_amount": "0.01000000",
+            "balance_amount": "0.07200000",
             "share_of_bond_assets": "1",
             "weighted_rate_pct": "0.02500000",
             "hqla_haircut": "1.00",
-            "hqla_amount": "0.0100000000"
+            "hqla_amount": "0.0720000000"
           },
           {
             "liquidity_layer": "Level 2A",
@@ -830,7 +830,7 @@
           {
             "customer_attribute": "未标注",
             "row_count": 1,
-            "balance_amount": "0.01000000",
+            "balance_amount": "0.07200000",
             "weighted_rate_pct": "0.02500000",
             "weighted_term_years": "1.998631074606433949349760438"
           }
@@ -870,10 +870,10 @@
           {
             "portfolio_name": "组合A",
             "row_count": 1,
-            "balance_amount": "0.01000000",
+            "balance_amount": "0.07200000",
             "weighted_rate_pct": "0.02500000",
             "weighted_term_years": "1.998631074606433949349760438",
-            "floating_pnl_amount": "0.00100000"
+            "floating_pnl_amount": "0.00720000"
           }
         ]
       },
@@ -907,7 +907,7 @@
           {
             "account_category": "可供出售债券",
             "row_count": 1,
-            "balance_amount": "0.01000000",
+            "balance_amount": "0.07200000",
             "share_of_bond_assets": "1",
             "weighted_rate_pct": "0.02500000"
           }
@@ -954,7 +954,7 @@
             "invest_type_std": "H",
             "accounting_basis": "AC",
             "row_count": 1,
-            "balance_amount": "0.00100000",
+            "balance_amount": "0.00720000",
             "share_of_total": "0.09090909090909090909090909091"
           },
           {
@@ -963,7 +963,7 @@
             "invest_type_std": "A",
             "accounting_basis": "FVOCI",
             "row_count": 1,
-            "balance_amount": "0.01000000",
+            "balance_amount": "0.07200000",
             "share_of_total": "0.9090909090909090909090909091"
           }
         ]
@@ -994,13 +994,13 @@
           {
             "position_scope": "asset",
             "row_count": 1,
-            "balance_amount": "0.01000000",
+            "balance_amount": "0.07200000",
             "share_of_total": "0.9090909090909090909090909091"
           },
           {
             "position_scope": "liability",
             "row_count": 1,
-            "balance_amount": "0.00100000",
+            "balance_amount": "0.00720000",
             "share_of_total": "0.09090909090909090909090909091"
           }
         ]
@@ -1031,13 +1031,13 @@
           {
             "source_family": "zqtz",
             "row_count": 1,
-            "balance_amount": "0.01000000",
+            "balance_amount": "0.07200000",
             "share_of_total": "0.9090909090909090909090909091"
           },
           {
             "source_family": "tyw",
             "row_count": 1,
-            "balance_amount": "0.00100000",
+            "balance_amount": "0.00720000",
             "share_of_total": "0.09090909090909090909090909091"
           }
         ]
@@ -1234,7 +1234,7 @@
           {
             "rating": "AAA",
             "count": 1,
-            "balance_amount": "0.01000000",
+            "balance_amount": "0.07200000",
             "share": "1",
             "weighted_rate_pct": "0.02500000",
             "weighted_term_years": "1.998631074606433949349760438"
@@ -1288,11 +1288,11 @@
           {
             "bucket": "1.5%以下",
             "bond_count": 1,
-            "bond_amount": "0.01000000",
+            "bond_amount": "0.07200000",
             "interbank_asset_count": 0,
             "interbank_asset_amount": "0",
             "interbank_liability_count": 1,
-            "interbank_liability_amount": "0.00100000"
+            "interbank_liability_amount": "0.00720000"
           },
           {
             "bucket": "1.5%-2.0%",
@@ -1380,7 +1380,7 @@
           {
             "industry_name": "主权",
             "count": 1,
-            "balance_amount": "0.01000000",
+            "balance_amount": "0.07200000",
             "share": "1",
             "weighted_rate_pct": "0.02500000"
           }
@@ -1431,9 +1431,9 @@
             "asset_amount": "0",
             "asset_weighted_rate_pct": null,
             "liability_count": 1,
-            "liability_amount": "0.00100000",
+            "liability_amount": "0.00720000",
             "liability_weighted_rate_pct": "0.01500000",
-            "net_position_amount": "-0.00100000"
+            "net_position_amount": "-0.00720000"
           }
         ]
       },
@@ -1482,14 +1482,14 @@
         "rows": [
           {
             "bond_type": "国债",
-            "balance_amount": "0.01000000",
+            "balance_amount": "0.07200000",
             "weighted_rate_pct": "0.02500000",
-            "coupon_income_amount": "0.0000025000000000",
+            "coupon_income_amount": "0.0000180000000000",
             "duration_years": "1.998631074606433949349760438",
             "spread_bp": "2.50000000",
-            "spread_income_amount": "0.0000025000000000",
+            "spread_income_amount": "0.0000180000000000",
             "share_of_income": "1",
-            "price_return_amount": "0.00100000"
+            "price_return_amount": "0.00720000"
           }
         ]
       },
@@ -1506,8 +1506,8 @@
         "rows": [
           {
             "bond_type": "国债",
-            "债券类": "0.01000000",
-            "All": "0.01000000"
+            "债券类": "0.07200000",
+            "All": "0.07200000"
           }
         ]
       },
@@ -1541,7 +1541,7 @@
           {
             "interest_mode": "固定",
             "count": 1,
-            "balance_amount": "0.01000000",
+            "balance_amount": "0.07200000",
             "share": "1",
             "weighted_rate_pct": "0.02500000"
           }
@@ -1588,7 +1588,7 @@
             "title": "复核1-2年期限缺口配置",
             "action_label": "复核缺口",
             "severity": "low",
-            "reason": "全口径期限桶缺口为 0.01000000 万元。",
+            "reason": "全口径期限桶缺口为 0.07200000 万元。",
             "source_section": "maturity_gap",
             "rule_id": "bal_wb_decision_gap_001",
             "rule_version": "v1"
@@ -1687,7 +1687,7 @@
           {
             "title": "Negative gap in 3-6个月",
             "severity": "high",
-            "reason": "Full-scope gap dropped to -0.00100000 wan yuan.",
+            "reason": "Full-scope gap dropped to -0.00720000 wan yuan.",
             "source_section": "maturity_gap",
             "rule_id": "bal_wb_risk_gap_001",
             "rule_version": "v1"
