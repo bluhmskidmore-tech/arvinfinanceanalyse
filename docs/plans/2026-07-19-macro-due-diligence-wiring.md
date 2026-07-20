@@ -53,7 +53,17 @@ SDD 复审：Spec ✅ / Quality ✅（Minor 已在下一波收口）。
 | W2 mock/后端共享 observation 排除 JSON | `f4459d7f9` | ✅ |
 | W3 CTA/DCC/RP 价格腿可读诊断+种子测试 | `1e811b4c4` | ✅ |
 
-SDD 复审：Spec ✅ / Quality ✅（Important 残留：mock `missing_count` 语义与后端不完全一致；配置 import-time 加载需随包分发）。
+SDD 复审：Spec ✅ / Quality ✅；Important 残留已由波次 R 收口。
+
+### 波次 R（2026-07-20）：评审残留收口
+
+| Task | Commit | 状态 |
+| --- | --- | --- |
+| R1 mock `missing_count` 对齐后端 unavailable 语义 | `60c802e50` | ✅ |
+| R2 observation keys 懒加载 + 发布清单 | `fad72e5e5` | ✅ |
+| R3 薄种子 CTA/DCC/RP unavailable by design 契约 | `b98b371fd` | ✅ |
+
+SDD 复审：Spec ✅ / Quality ✅（本 residual wave 可关闭）。
 
 **发布清单（R2）**：`config/macro_decision_observation_keys.json` 必须随部署包分发；路由改为懒加载后，缺文件不再在 import 时拖垮整个 macro_toolkit，但首次构建 `decision_summary` 会明确失败。
 
