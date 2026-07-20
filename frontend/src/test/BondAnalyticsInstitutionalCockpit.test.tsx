@@ -1189,7 +1189,7 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(heroAsideRule).toContain("grid-area: governance");
     expect(heroGovernanceRule).toContain("border: 1px solid var(--moss-color-neutral-200)");
     expect(heroMainRule).toContain("grid-template-columns: minmax(360px, 1fr) minmax(520px, 0.62fr)");
-    expect(heroHeadlineRule).toContain("font-size: 26px");
+    expect(heroHeadlineRule).toContain("font-size: 20px");
     expect(heroHeadlineRule).toContain("-webkit-line-clamp: 2");
     expect(heroDetailRule).toContain("font-size: 12px");
     expect(heroMetricsRule).toContain("grid-template-columns: repeat(4, minmax(84px, 1fr))");
