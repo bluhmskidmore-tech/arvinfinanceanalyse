@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [master, "codex/**"]
+    branches: [main, master, "codex/**", "macro/**"]
   pull_request:
-    branches: [master]
+    branches: [main, master]
   schedule:
     - cron: "0 18 * * *"
 
@@ -45,7 +45,7 @@ jobs:
     name: Backend Full Pytest
     runs-on: ubuntu-latest
     timeout-minutes: 40
-    if: github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/master')
+    if: github.event_name == 'schedule' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'))
 
     steps:
       - uses: actions/checkout@v4
@@ -300,7 +300,7 @@ jobs:
       contents: read
       actions: read
     with:
-      upload-sarif: ${{ github.event_name == 'schedule' || github.ref == 'refs/heads/master' }}
+      upload-sarif: ${{ github.event_name == 'schedule' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
       scan-args: |-
         --lockfile=backend/uv.lock
         --lockfile=frontend/package-lock.json
