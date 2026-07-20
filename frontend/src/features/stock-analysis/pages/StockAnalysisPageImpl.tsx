@@ -4306,6 +4306,14 @@ export default function StockAnalysisPage() {
                             missingInputs={cycleProxyBacktestPayload.missing_full_strategy_inputs}
                             testId="stock-analysis-cycle-proxy-boundary"
                           />
+                          {cycleRotationPanelSummary?.proxyBacktestBasisDisclosure ? (
+                            <p
+                              className="stock-analysis-page__footnote"
+                              data-testid="stock-analysis-cycle-proxy-basis-disclosure"
+                            >
+                              {cycleRotationPanelSummary.proxyBacktestBasisDisclosure}
+                            </p>
+                          ) : null}
                           <div className="stock-analysis-page__cycle-proxy-grid">
                             <div>
                               <span>累计收益</span>

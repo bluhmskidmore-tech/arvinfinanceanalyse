@@ -2280,6 +2280,14 @@ export type LivermoreProxyCostBasis = {
 export type LivermoreCycleProxyBacktestSummary = {
   sample_days: number;
   candidate_rows: number;
+  return_field_used?: string;
+  return_field_fallback?: string;
+  return_field_second_fallback?: string;
+  execution_return_costs_already_applied?: boolean;
+  return_rows_execution_net_adjusted?: number;
+  return_rows_adjusted?: number;
+  return_rows_adjusted_fallback?: number;
+  return_rows_gross_fallback?: number;
   cost_basis?: LivermoreProxyCostBasis;
   cumulative_return: number;
   annualized_return: number | null;
@@ -2291,6 +2299,7 @@ export type LivermoreCycleProxyBacktestNavPoint = {
   date: string;
   exit_date?: string;
   period_return: number;
+  period_return_gross?: number;
   nav: number;
   candidate_count: number;
 };
@@ -2298,8 +2307,10 @@ export type LivermoreCycleProxyBacktestNavPoint = {
 export type LivermoreCycleProxyBacktestPayload = {
   status: "proxy" | "unsupported" | string;
   full_strategy_status: "blocked_missing_inputs" | string;
+  formula_version?: string;
   proxy_signal_kind: string;
   proxy_rule: string;
+  execution_blocked_rows_in_window?: number;
   snapshot_from: string | null;
   snapshot_to: string | null;
   missing_full_strategy_inputs: string[];

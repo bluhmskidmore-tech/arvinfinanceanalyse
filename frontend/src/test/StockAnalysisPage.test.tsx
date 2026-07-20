@@ -1687,15 +1687,25 @@ function stockClient(options?: {
         options?.cycleProxyBacktest ?? {
           status: "proxy",
           full_strategy_status: "blocked_missing_inputs",
+          formula_version: "fv_livermore_cycle_proxy_backtest_execution_first_v4",
           proxy_signal_kind: "stock_candidate",
           proxy_rule: "Equal-weight non-overlapping T+5 baskets of completed stock_candidate rows.",
+          execution_blocked_rows_in_window: 40,
           snapshot_from: "2024-09-24",
           snapshot_to: "2026-03-02",
           missing_full_strategy_inputs: ["PMI", "credit_impulse"],
-          warnings: ["Proxy only."],
+          warnings: ["Executable next-open return_5d_net_adj is preferred; close-return fallbacks remain disclosed."],
           summary: {
             sample_days: 225,
-            candidate_rows: 755,
+            candidate_rows: 546,
+            return_field_used: "return_5d_net_adj",
+            return_field_fallback: "return_5d_adj",
+            return_field_second_fallback: "return_5d",
+            execution_return_costs_already_applied: true,
+            return_rows_execution_net_adjusted: 433,
+            return_rows_adjusted: 23,
+            return_rows_adjusted_fallback: 23,
+            return_rows_gross_fallback: 90,
             cumulative_return: -0.297,
             annualized_return: -0.4801,
             max_gain: {
@@ -5556,7 +5566,8 @@ describe("StockAnalysisPage", () => {
     expect(framework).not.toHaveTextContent("Market gate is available");
     expect(framework).not.toHaveTextContent("sector_rank is available");
     expect(within(framework).getByTestId("stock-analysis-candidate-history-portfolio-backtest")).toHaveTextContent("组合回测");
-    expect(within(framework).getByTestId("stock-analysis-cycle-proxy-backtest")).toHaveTextContent("代理回测");
+    const cycleProxyBacktest = within(framework).getByTestId("stock-analysis-cycle-proxy-backtest");
+    expect(cycleProxyBacktest).toBeInTheDocument();
     await waitFor(() =>
       expect(within(framework).getByTestId("stock-analysis-portfolio-backtest-boundary")).toHaveTextContent("代理口径"),
     );
@@ -5573,6 +5584,11 @@ describe("StockAnalysisPage", () => {
     expect(cycleBoundary).toHaveTextContent("缺口 2");
     expect(cycleBoundary).toHaveTextContent("PMI");
     expect(cycleBoundary).toHaveTextContent("信用脉冲");
+    await waitFor(() =>
+      expect(cycleProxyBacktest).toHaveTextContent(
+        "入场口径：优先字段 return_5d_net_adj（次日开盘净收益）；可执行入场覆盖 433/546（79%）。回退构成：return_5d_adj 23 行；return_5d 90 行。阻断剔除 40 行；公式版本 fv_livermore_cycle_proxy_backtest_execution_first_v4。",
+      ),
+    );
     expect(framework).not.toHaveTextContent("missing_full_strategy_inputs");
     expect(framework).not.toHaveTextContent("credit_impulse");
     await waitFor(() => expect(framework).toHaveTextContent("-18.42%"));

@@ -4759,6 +4759,8 @@ export type StockStrategyPanelMiniStat = {
 export type StockStrategyPanelResultSummary = {
   headline: string;
   detail?: string;
+  /** 周期代理回测的 execution-first 构成披露。 */
+  proxyBacktestBasisDisclosure?: string;
   /** 英文合规/边界原文，默认折叠在展开区 */
   complianceDetail?: string;
   badgeLabel?: string;
@@ -5050,6 +5052,42 @@ export function buildCycleRotationPanelSummary(input: {
   const backtestPartiallyTriggered =
     !backtestIdle &&
     (input.portfolioQueryState === "idle" || input.proxyQueryState === "idle");
+  const proxySummary = input.proxyBacktest?.summary;
+  const validRowCount = (value: number | undefined): number | null =>
+    typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+  const executionRows = validRowCount(proxySummary?.return_rows_execution_net_adjusted);
+  const adjustedFallbackRows = validRowCount(proxySummary?.return_rows_adjusted_fallback);
+  const grossFallbackRows = validRowCount(proxySummary?.return_rows_gross_fallback);
+  const blockedRows = validRowCount(input.proxyBacktest?.execution_blocked_rows_in_window);
+  const includedRows =
+    executionRows != null && adjustedFallbackRows != null && grossFallbackRows != null
+      ? executionRows + adjustedFallbackRows + grossFallbackRows
+      : null;
+  const coverageLabel =
+    executionRows != null && includedRows != null && includedRows > 0
+      ? `${executionRows}/${includedRows}（${Math.round((executionRows / includedRows) * 100)}%）`
+      : "待补";
+  const preferredField = proxySummary?.return_field_used?.trim();
+  const adjustedFallbackField = proxySummary?.return_field_fallback?.trim();
+  const grossFallbackField = proxySummary?.return_field_second_fallback?.trim();
+  const preferredFieldLabel = preferredField
+    ? ` ${preferredField}${preferredField === "return_5d_net_adj" ? "（次日开盘净收益）" : ""}`
+    : "待补";
+  const adjustedFallbackLabel =
+    adjustedFallbackField && adjustedFallbackRows != null
+      ? `${adjustedFallbackField} ${adjustedFallbackRows} 行`
+      : adjustedFallbackField
+        ? `${adjustedFallbackField} 行数待补`
+        : "第一档待补";
+  const grossFallbackLabel =
+    grossFallbackField && grossFallbackRows != null
+      ? `${grossFallbackField} ${grossFallbackRows} 行`
+      : grossFallbackField
+        ? `${grossFallbackField} 行数待补`
+        : "第二档待补";
+  const proxyBacktestBasisDisclosure = input.proxyBacktest
+    ? `入场口径：优先字段${preferredFieldLabel}；可执行入场覆盖${coverageLabel === "待补" ? coverageLabel : ` ${coverageLabel}`}。回退构成：${adjustedFallbackLabel}；${grossFallbackLabel}。阻断剔除${blockedRows == null ? "待补" : ` ${blockedRows} 行`}；公式版本${input.proxyBacktest.formula_version?.trim() ? ` ${input.proxyBacktest.formula_version.trim()}` : "待补"}。`
+    : undefined;
 
   const stats: StockStrategyPanelMiniStat[] = [
     {
@@ -5118,6 +5156,7 @@ export function buildCycleRotationPanelSummary(input: {
   return {
     headline,
     detail,
+    proxyBacktestBasisDisclosure,
     complianceDetail: input.framework.observation_only
       ? "研究观察口径：只读证据已接入；缺失输入补齐前，不生成收益、仓位或执行结论。"
       : "策略口径已接入；仍需结合回测和风险边界复核。",

@@ -6,11 +6,11 @@ import random
 import statistics
 import uuid
 from collections import defaultdict
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import duckdb
-
 from backend.app.core_finance.adjusted_returns import (
     STOCK_ADJUSTMENT_FACTOR_TABLE,
     adjusted_return,
@@ -98,46 +98,59 @@ def generate_matched_baseline_rows(
 ) -> list[dict[str, Any]]:
     resolved_run_id = run_id or f"run_matched_baseline_{uuid.uuid4().hex[:12]}"
     candidates = _load_candidate_execution_rows(conn, start_date=start_date, end_date=end_date)
-    rows: list[dict[str, Any]] = []
-    universe_by_date: dict[str, list[dict[str, Any]]] = {}
+    candidates_by_date: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for candidate in candidates:
         signal_date = str(candidate.get("signal_date") or "")[:10]
         if not signal_date:
             continue
-        candidate = {
-            **candidate,
-            "run_id": candidate.get("run_id") or resolved_run_id,
-            "seed": stable_control_seed(
-                run_id=str(candidate.get("run_id") or resolved_run_id),
-                signal_date=signal_date,
-                candidate_stock_code=str(candidate.get("stock_code") or ""),
-            ),
-        }
-        universe_rows = universe_by_date.setdefault(signal_date, _load_control_universe_for_date(conn, signal_date))
-        controls = select_matched_controls(candidate, universe_rows, sample_size=sample_size)
-        for control in controls:
-            returns = _control_execution_returns(
-                conn,
-                stock_code=_stock_code(control),
-                signal_date=signal_date,
-            )
-            rows.append(
-                {
-                    "signal_date": signal_date,
-                    "candidate_stock_code": _stock_code(candidate),
-                    "signal_kind": str(candidate.get("signal_kind") or "stock_candidate").strip() or "stock_candidate",
-                    "control_stock_code": _stock_code(control),
-                    "control_group": control.get("control_group"),
-                    "control_return_1d_net_adj": returns.get("return_1d_net_adj"),
-                    "control_return_5d_net_adj": returns.get("return_5d_net_adj"),
-                    "control_return_10d_net_adj": returns.get("return_10d_net_adj"),
-                    "control_return_20d_net_adj": returns.get("return_20d_net_adj"),
-                    "control_entry_executable": returns.get("entry_executable"),
-                    "seed": candidate["seed"],
-                    "formula_version": FORMULA_VERSION,
-                    "run_id": resolved_run_id,
-                }
-            )
+        candidates_by_date[signal_date].append(
+            {
+                **candidate,
+                "run_id": candidate.get("run_id") or resolved_run_id,
+                "seed": stable_control_seed(
+                    run_id=str(candidate.get("run_id") or resolved_run_id),
+                    signal_date=signal_date,
+                    candidate_stock_code=str(candidate.get("stock_code") or ""),
+                ),
+            }
+        )
+
+    universe_by_date = _load_control_universes_for_dates(conn, list(candidates_by_date))
+    rows: list[dict[str, Any]] = []
+    for signal_date, date_candidates in candidates_by_date.items():
+        universe_rows = universe_by_date.get(signal_date, [])
+        planned_controls: list[tuple[dict[str, Any], list[dict[str, Any]]]] = []
+        control_codes: set[str] = set()
+        for candidate in date_candidates:
+            controls = select_matched_controls(candidate, universe_rows, sample_size=sample_size)
+            planned_controls.append((candidate, controls))
+            control_codes.update(_stock_code(control) for control in controls)
+        returns_by_code = _load_control_execution_returns_for_date(
+            conn,
+            stock_codes=sorted(control_codes),
+            signal_date=signal_date,
+        )
+        for candidate, controls in planned_controls:
+            for control in controls:
+                returns = returns_by_code.get(_stock_code(control), {"entry_executable": False})
+                rows.append(
+                    {
+                        "signal_date": signal_date,
+                        "candidate_stock_code": _stock_code(candidate),
+                        "signal_kind": str(candidate.get("signal_kind") or "stock_candidate").strip()
+                        or "stock_candidate",
+                        "control_stock_code": _stock_code(control),
+                        "control_group": control.get("control_group"),
+                        "control_return_1d_net_adj": returns.get("return_1d_net_adj"),
+                        "control_return_5d_net_adj": returns.get("return_5d_net_adj"),
+                        "control_return_10d_net_adj": returns.get("return_10d_net_adj"),
+                        "control_return_20d_net_adj": returns.get("return_20d_net_adj"),
+                        "control_entry_executable": returns.get("entry_executable"),
+                        "seed": candidate["seed"],
+                        "formula_version": FORMULA_VERSION,
+                        "run_id": resolved_run_id,
+                    }
+                )
     return rows
 
 
@@ -427,7 +440,133 @@ def _load_candidate_execution_rows(
         "stock_name",
         "amount",
     )
-    return [dict(zip(keys, row, strict=True)) for row in rows]
+    # The execution/history sources may contain replay duplicates. Preserve one
+    # deterministic row per baseline candidate grain before sampling controls;
+    # otherwise a duplicated candidate multiplies every selected control row.
+    deduplicated: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for raw_row in rows:
+        item = dict(zip(keys, raw_row, strict=True))
+        key = (
+            str(item.get("signal_date") or "")[:10],
+            _stock_code(item),
+            str(item.get("signal_kind") or "stock_candidate").strip() or "stock_candidate",
+        )
+        current = deduplicated.get(key)
+        if current is None or _candidate_execution_priority(item) > _candidate_execution_priority(current):
+            deduplicated[key] = item
+    return list(deduplicated.values())
+
+
+def _candidate_execution_priority(row: dict[str, Any]) -> tuple[int, int, str]:
+    populated_returns = sum(
+        row.get(field) is not None
+        for field in (
+            "return_1d_net_adj",
+            "return_5d_net_adj",
+            "return_10d_net_adj",
+            "return_20d_net_adj",
+        )
+    )
+    try:
+        rank_priority = -int(row.get("candidate_rank") or 999_999)
+    except (TypeError, ValueError):
+        rank_priority = -999_999
+    return populated_returns, rank_priority, str(row.get("run_id") or "")
+
+
+def _load_control_universes_for_dates(
+    conn: duckdb.DuckDBPyConnection,
+    signal_dates: list[str],
+) -> dict[str, list[dict[str, Any]]]:
+    resolved_dates = sorted({str(value or "")[:10] for value in signal_dates if str(value or "")[:10]})
+    tables = _table_names(conn)
+    if not resolved_dates or TABLE_OBS not in tables:
+        return {}
+    universe_join = ""
+    stock_name_column = "'' as stock_name"
+    if TABLE_UNIVERSE in tables:
+        universe_join = f"""
+        left join {TABLE_UNIVERSE} u
+          on u.as_of_date = o.trade_date
+         and u.stock_code = o.stock_code
+        """
+        stock_name_column = "coalesce(u.stock_name, '') as stock_name"
+    sector_join = ""
+    sector_columns = "'' as sector_code, '' as sector_name"
+    if TABLE_SECTOR in tables:
+        sector_join = f"""
+        left join {TABLE_SECTOR} s
+          on s.as_of_date = o.trade_date
+         and s.stock_code = o.stock_code
+        """
+        sector_columns = "coalesce(s.sw2021code, '') as sector_code, coalesce(s.sw2021, '') as sector_name"
+    rows = conn.execute(
+        f"""
+        with observation_with_entry as (
+          select raw.trade_date, raw.stock_code, raw.amount,
+                 lead(raw.trade_date) over observation_order as entry_trade_date,
+                 lead(raw.open_value) over observation_order as entry_open_value,
+                 lead(raw.close_value) over observation_order as entry_close_value,
+                 lead(raw.highlimit) over observation_order as entry_highlimit,
+                 lead(raw.lowlimit) over observation_order as entry_lowlimit,
+                 lead(raw.tradestatus) over observation_order as entry_tradestatus
+          from {TABLE_OBS} raw
+          window observation_order as (partition by raw.stock_code order by raw.trade_date asc)
+        )
+        select o.trade_date, o.stock_code, {stock_name_column}, {sector_columns}, o.amount,
+               o.entry_trade_date, o.entry_open_value, o.entry_close_value,
+               o.entry_highlimit, o.entry_lowlimit, o.entry_tradestatus
+        from observation_with_entry o
+        {universe_join}
+        {sector_join}
+        where cast(o.trade_date as date) in (select cast(unnest(?) as date))
+        order by o.trade_date asc, o.stock_code asc
+        """,
+        [resolved_dates],
+    ).fetchall()
+    out: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for (
+        signal_date_raw,
+        stock_code,
+        stock_name,
+        sector_code,
+        sector_name,
+        amount,
+        entry_trade_date,
+        entry_open_value,
+        entry_close_value,
+        entry_highlimit,
+        entry_lowlimit,
+        entry_tradestatus,
+    ) in rows:
+        if entry_trade_date is None:
+            entry = {"entry_executable": False, "entry_block_reason": "missing_entry_bar"}
+        else:
+            entry_bar = {
+                "trade_date": entry_trade_date,
+                "open_value": entry_open_value,
+                "close_value": entry_close_value,
+                "highlimit": entry_highlimit,
+                "lowlimit": entry_lowlimit,
+                "tradestatus": entry_tradestatus,
+            }
+            entry_price = _entry_price(entry_bar)
+            reason = _entry_block_reason(entry_bar, entry_price=entry_price)
+            entry = {"entry_executable": not bool(reason), "entry_block_reason": reason}
+        signal_date = str(signal_date_raw)[:10]
+        out[signal_date].append(
+            {
+                "signal_date": signal_date,
+                "stock_code": str(stock_code or "").upper(),
+                "stock_name": stock_name,
+                "sector_code": sector_code,
+                "sector_name": sector_name,
+                "amount": amount,
+                "entry_executable": entry["entry_executable"],
+                "entry_block_reason": entry["entry_block_reason"],
+            }
+        )
+    return dict(out)
 
 
 def _load_control_universe_for_date(conn: duckdb.DuckDBPyConnection, signal_date: str) -> list[dict[str, Any]]:
@@ -491,8 +630,102 @@ def _control_entry_state(conn: duckdb.DuckDBPyConnection, *, stock_code: str, si
     return {"entry_executable": not bool(reason), "entry_block_reason": reason}
 
 
+def _load_control_execution_returns_for_date(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    stock_codes: list[str],
+    signal_date: str,
+) -> dict[str, dict[str, Any]]:
+    resolved_codes = sorted({str(value or "").strip().upper() for value in stock_codes if str(value or "").strip()})
+    tables = _table_names(conn)
+    if not resolved_codes or TABLE_OBS not in tables:
+        return {}
+    factor_cte = ""
+    factor_join = ""
+    factor_column = "null as adj_factor"
+    if STOCK_ADJUSTMENT_FACTOR_TABLE in tables:
+        factor_cte = f""",
+        latest_factors as (
+          select af.stock_code, af.trade_date, af.adj_factor,
+                 row_number() over (
+                   partition by af.stock_code, af.trade_date
+                   order by af.run_id desc, af.source_version desc
+                 ) as factor_number
+          from {STOCK_ADJUSTMENT_FACTOR_TABLE} af
+          inner join requested_codes c on c.stock_code = af.stock_code
+          where af.adj_factor is not null
+          qualify factor_number = 1
+        )
+        """
+        factor_join = """
+        left join latest_factors f
+          on f.stock_code = b.stock_code
+         and f.trade_date = b.trade_date
+        """
+        factor_column = "f.adj_factor"
+    rows = conn.execute(
+        f"""
+        with requested_codes(stock_code) as (select unnest(?)),
+        ranked_bars as (
+          select o.stock_code, o.trade_date, o.open_value, o.close_value,
+                 o.highlimit, o.lowlimit, o.tradestatus,
+                 row_number() over (partition by o.stock_code order by o.trade_date asc) as bar_number
+          from {TABLE_OBS} o
+          inner join requested_codes c on c.stock_code = o.stock_code
+          where o.trade_date > ?
+          qualify bar_number <= 30
+        )
+        {factor_cte}
+        select b.stock_code, b.trade_date, b.open_value, b.close_value,
+               b.highlimit, b.lowlimit, b.tradestatus, {factor_column}
+        from ranked_bars b
+        {factor_join}
+        order by b.stock_code asc, b.trade_date asc
+        """,
+        [resolved_codes, signal_date],
+    ).fetchall()
+    bars_by_code: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    factors_by_code: dict[str, dict[str, float | None]] = defaultdict(dict)
+    for stock_code, trade_date, open_value, close_value, highlimit, lowlimit, tradestatus, adj_factor in rows:
+        code = str(stock_code or "").strip().upper()
+        date = str(trade_date or "")[:10]
+        bars_by_code[code].append(
+            {
+                "trade_date": trade_date,
+                "open_value": open_value,
+                "close_value": close_value,
+                "highlimit": highlimit,
+                "lowlimit": lowlimit,
+                "tradestatus": tradestatus,
+            }
+        )
+        factors_by_code[code][date] = _positive_float(adj_factor)
+    return {
+        code: _control_execution_returns_from_bars(
+            bars_by_code.get(code, []),
+            adjustment_factor_for_date=factors_by_code.get(code, {}).get,
+        )
+        for code in resolved_codes
+    }
+
+
 def _control_execution_returns(conn: duckdb.DuckDBPyConnection, *, stock_code: str, signal_date: str) -> dict[str, Any]:
     bars = _bars_after_signal(conn, stock_code=stock_code, signal_date=signal_date, limit=30)
+    return _control_execution_returns_from_bars(
+        bars,
+        adjustment_factor_for_date=lambda trade_date: _adjustment_factor(
+            conn,
+            stock_code=stock_code,
+            trade_date=trade_date,
+        ),
+    )
+
+
+def _control_execution_returns_from_bars(
+    bars: list[dict[str, Any]],
+    *,
+    adjustment_factor_for_date: Callable[[str], float | None],
+) -> dict[str, Any]:
     if not bars:
         return {"entry_executable": False}
     entry_bar = bars[0]
@@ -500,16 +733,12 @@ def _control_execution_returns(conn: duckdb.DuckDBPyConnection, *, stock_code: s
     reason = _entry_block_reason(entry_bar, entry_price=entry_price)
     if reason:
         return {"entry_executable": False}
-    entry_factor = _adjustment_factor(conn, stock_code=stock_code, trade_date=str(entry_bar["trade_date"])[:10])
+    entry_factor = adjustment_factor_for_date(str(entry_bar["trade_date"])[:10])
     out: dict[str, Any] = {"entry_executable": True}
     for horizon, index in (("1d", 0), ("5d", 4), ("10d", 9), ("20d", 19)):
         exit_bar = _first_sellable_bar_at_or_after(bars, index)
         exit_price = _positive_float(exit_bar.get("close_value") if exit_bar else None)
-        exit_factor = _adjustment_factor(
-            conn,
-            stock_code=stock_code,
-            trade_date=str(exit_bar.get("trade_date") if exit_bar else "")[:10],
-        )
+        exit_factor = adjustment_factor_for_date(str(exit_bar.get("trade_date") if exit_bar else "")[:10])
         gross_adj = adjusted_return(
             start_price=entry_price,
             start_adj_factor=entry_factor,

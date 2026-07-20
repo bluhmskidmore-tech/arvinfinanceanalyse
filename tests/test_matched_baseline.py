@@ -3,6 +3,7 @@ from __future__ import annotations
 import duckdb
 import pytest
 
+import backend.app.core_finance.matched_baseline as matched_baseline_module
 from backend.app.core_finance.matched_baseline import (
     LIQUIDITY_FALLBACK_CONTROL_GROUP,
     SAME_SECTOR_CONTROL_GROUP,
@@ -148,7 +149,7 @@ def test_matched_baseline_bootstrap_ci_returns_expected_shape() -> None:
     assert ci["low"] <= ci["high"]
 
 
-def test_matched_baseline_generates_control_returns_and_writes_rows(tmp_path) -> None:
+def test_matched_baseline_generates_control_returns_and_writes_rows(tmp_path, monkeypatch) -> None:
     db_path = tmp_path / "matched.duckdb"
     conn = duckdb.connect(str(db_path), read_only=False)
     try:
@@ -275,6 +276,33 @@ def test_matched_baseline_generates_control_returns_and_writes_rows(tmp_path) ->
             sample_size=2,
             run_id="run-test",
         )
+        monkeypatch.setattr(
+            matched_baseline_module,
+            "_load_control_universes_for_dates",
+            lambda connection, signal_dates: {
+                signal_date: matched_baseline_module._load_control_universe_for_date(connection, signal_date)
+                for signal_date in signal_dates
+            },
+        )
+        monkeypatch.setattr(
+            matched_baseline_module,
+            "_load_control_execution_returns_for_date",
+            lambda connection, *, stock_codes, signal_date: {
+                stock_code: matched_baseline_module._control_execution_returns(
+                    connection,
+                    stock_code=stock_code,
+                    signal_date=signal_date,
+                )
+                for stock_code in stock_codes
+            },
+        )
+        legacy_rows = generate_matched_baseline_rows(
+            conn,
+            start_date="2026-06-12",
+            end_date="2026-06-12",
+            sample_size=2,
+            run_id="run-test",
+        )
         inserted = write_matched_baseline_rows(
             conn,
             rows,
@@ -287,7 +315,68 @@ def test_matched_baseline_generates_control_returns_and_writes_rows(tmp_path) ->
 
     assert inserted == 2
     assert count == 2
+    assert rows == legacy_rows
     assert {row["control_stock_code"] for row in rows} == {"000002.SZ", "000003.SZ"}
     assert {row["control_group"] for row in rows} == {LIQUIDITY_FALLBACK_CONTROL_GROUP}
     # gross 0.50 netted multiplicatively: (1 + 0.5) * (1 - 0.0041) - 1 = 0.49385
     assert rows[0]["control_return_5d_net_adj"] == pytest.approx(0.49385)
+
+
+def test_candidate_execution_loader_deduplicates_logical_key(tmp_path) -> None:
+    db_path = tmp_path / "matched-dedup.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table livermore_candidate_execution_history (
+              signal_date varchar,
+              stock_code varchar,
+              signal_kind varchar,
+              market_state varchar,
+              candidate_rank integer,
+              entry_executable boolean,
+              return_1d_net_adj double,
+              return_5d_net_adj double,
+              return_10d_net_adj double,
+              return_20d_net_adj double,
+              run_id varchar
+            )
+            """
+        )
+        conn.executemany(
+            """
+            insert into livermore_candidate_execution_history values
+            ('2026-06-12', '000001.SZ', 'stock_candidate', 'HOT', 1, true, 0.01, 0.10, null, null, 'run-cand')
+            """,
+            [(), ()],
+        )
+        conn.execute(
+            """
+            create table livermore_candidate_history (
+              snapshot_as_of_date varchar,
+              stock_code varchar,
+              signal_kind varchar,
+              sector_code varchar,
+              sector_name varchar
+            )
+            """
+        )
+        conn.executemany(
+            """
+            insert into livermore_candidate_history values
+            ('2026-06-12', '000001.SZ', 'stock_candidate', 'S1', 'Sector 1')
+            """,
+            [(), ()],
+        )
+
+        rows = matched_baseline_module._load_candidate_execution_rows(
+            conn,
+            start_date="2026-06-12",
+            end_date="2026-06-12",
+        )
+    finally:
+        conn.close()
+
+    assert len(rows) == 1
+    assert rows[0]["stock_code"] == "000001.SZ"
+    assert rows[0]["sector_code"] == "S1"

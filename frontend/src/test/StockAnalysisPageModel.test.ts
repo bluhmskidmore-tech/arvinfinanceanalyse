@@ -4,6 +4,7 @@ import type {
   BacktestWindowSummary,
   ConfluenceReplayStatus,
   LivermoreCandidateHistoryPayload,
+  LivermoreCycleProxyBacktestPayload,
   LivermoreModuleState,
   LivermoreOutputKey,
   LivermoreSectorRankSeriesPayload,
@@ -92,6 +93,18 @@ function readyModuleStates(keys: LivermoreOutputKey[] = LIVERMORE_OUTPUT_KEYS): 
     excludes_from_primary: false,
   }));
 }
+
+const cycleRotationFrameworkFixture: NonNullable<LivermoreStrategyPayload["cycle_rotation_framework"]> = {
+  strategy_name: "A-share cycle rotation research framework",
+  display_name: "A股景气周期选股与行业轮动",
+  observation_only: true,
+  implementation_stage: "verification_pending",
+  score_formula: "CycleScore = weighted evidence",
+  rebalance_cadence: "Monthly review",
+  layers: [],
+  constraints: [],
+  boundary: "observation-only",
+};
 
 const strategyPayload: LivermoreStrategyPayload = {
   as_of_date: "2026-04-29",
@@ -4180,6 +4193,87 @@ describe("stockAnalysisPageModel", () => {
     expect(cycle.stats).toContainEqual(
       expect.objectContaining({ key: "backtest", label: "回测", value: "待触发" }),
     );
+  });
+
+  it("discloses the execution-first cycle proxy return composition", () => {
+    const proxyBacktest: LivermoreCycleProxyBacktestPayload = {
+      status: "proxy",
+      full_strategy_status: "blocked_missing_inputs",
+      formula_version: "fv_livermore_cycle_proxy_backtest_execution_first_v4",
+      proxy_signal_kind: "stock_candidate",
+      proxy_rule: "execution-first",
+      execution_blocked_rows_in_window: 40,
+      snapshot_from: "2024-09-24",
+      snapshot_to: "2026-03-02",
+      missing_full_strategy_inputs: [],
+      warnings: [],
+      summary: {
+        sample_days: 225,
+        candidate_rows: 546,
+        return_field_used: "return_5d_net_adj",
+        return_field_fallback: "return_5d_adj",
+        return_field_second_fallback: "return_5d",
+        execution_return_costs_already_applied: true,
+        return_rows_execution_net_adjusted: 433,
+        return_rows_adjusted: 23,
+        return_rows_adjusted_fallback: 23,
+        return_rows_gross_fallback: 90,
+        cumulative_return: -0.297,
+        annualized_return: -0.4801,
+        max_gain: { return: 0.9185 },
+        max_drawdown: { return: -0.6342 },
+      },
+      nav_series: [],
+    };
+
+    const cycle = buildCycleRotationPanelSummary({
+      framework: cycleRotationFrameworkFixture,
+      macroLayer: null,
+      portfolioBacktest: null,
+      proxyBacktest,
+      portfolioQueryState: "ready",
+      proxyQueryState: "ready",
+    });
+
+    expect(cycle.proxyBacktestBasisDisclosure).toBe(
+      "入场口径：优先字段 return_5d_net_adj（次日开盘净收益）；可执行入场覆盖 433/546（79%）。回退构成：return_5d_adj 23 行；return_5d 90 行。阻断剔除 40 行；公式版本 fv_livermore_cycle_proxy_backtest_execution_first_v4。",
+    );
+  });
+
+  it("uses pending placeholders for legacy cycle proxy payloads", () => {
+    const legacyProxyBacktest: LivermoreCycleProxyBacktestPayload = {
+      status: "proxy",
+      full_strategy_status: "blocked_missing_inputs",
+      proxy_signal_kind: "stock_candidate",
+      proxy_rule: "legacy",
+      snapshot_from: "2024-09-24",
+      snapshot_to: "2026-03-02",
+      missing_full_strategy_inputs: [],
+      warnings: [],
+      summary: {
+        sample_days: 225,
+        candidate_rows: 546,
+        cumulative_return: -0.297,
+        annualized_return: -0.4801,
+        max_gain: { return: 0.9185 },
+        max_drawdown: { return: -0.6342 },
+      },
+      nav_series: [],
+    };
+
+    const cycle = buildCycleRotationPanelSummary({
+      framework: cycleRotationFrameworkFixture,
+      macroLayer: null,
+      portfolioBacktest: null,
+      proxyBacktest: legacyProxyBacktest,
+      portfolioQueryState: "ready",
+      proxyQueryState: "ready",
+    });
+
+    expect(cycle.proxyBacktestBasisDisclosure).toBe(
+      "入场口径：优先字段待补；可执行入场覆盖待补。回退构成：第一档待补；第二档待补。阻断剔除待补；公式版本待补。",
+    );
+    expect(cycle.proxyBacktestBasisDisclosure).not.toMatch(/NaN|undefined/);
   });
 
   it("keeps cycle backtest request failures distinct from business no-sample states", () => {
