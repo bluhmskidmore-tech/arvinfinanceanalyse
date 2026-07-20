@@ -142,17 +142,17 @@ Research Result 的 `status` 只允许以下值，且不得统一折叠为 `--`�
 
 ## 9. P0 待证据冻结项
 
-以下业务值仍未冻结，必须由 `moss-metric-contracts`、`moss-lineage-evidence`、`moss-data-catalog` 证据和业务 owner 确认，禁止从页面文案、样例、脚本默认值或当前最新日期猜测：
+以下业务值须由证据与业务 owner 确认，禁止从页面文案、样例、脚本默认值或当前最新日期猜测。签核记录见 `docs/strategy_contracts/macro_strategy_p0_owner_signoff_packet_2026-07-19.md`（2026-07-19 晚 owner 拍板，工程按证据上限代录；挂起项仍开放）：
 
-- 每条策略的正式 `owner` 与审批责任人。
-- 每条策略的 `required_inputs` 表/字段/单位/精度/币种、source/vendor version 与 fallback 规则。
-- 每条策略的 `minimum_history`；不同资产和策略不得共用未经证明的统一门槛。
-- 股票、宏观、债券/期货各自的 stale SLA 与 `update_frequency`。
-- 交易日/自然日、复权、股票池、退市、停牌、涨跌停、期货换月和价格调整规则。
-- 回测基准、样本区间、执行延迟、成本/滑点、压力窗口和 admission 阈值。
-- 宏观 `release_at/available_at/vintage/revision` 完整率及可支持的 PIT 模型范围。
+- 每条策略的正式 `owner` 与审批责任人。→ **已冻结（家族级）**：均为 arvin（见签核包第 2 节 Owner 栏）。
+- 每条策略的 `required_inputs` 表/字段/单位/精度/币种、source/vendor version 与 fallback 规则。→ **部分冻结**：签核包第 2 节已确认证据表内清单；逐策略字段级矩阵与单位逐序列核对仍开放/挂起。
+- 每条策略的 `minimum_history`；不同资产和策略不得共用未经证明的统一门槛。→ **部分冻结**：签核包第 2 节已按输入族代录（均 ≤ 证据上限）；标注「挂起」的腿（NCD、因子连续窗、Choice 信用等）仍开放。
+- 股票、宏观、债券/期货各自的 stale SLA 与 `update_frequency`。→ **部分冻结**：见签核包第 2 节 stale SLA 栏（保守 T+5/T+10/T+35/T+45）。
+- 交易日/自然日、复权、股票池、退市、停牌、涨跌停、期货换月和价格调整规则。→ **挂起**（签核包 §4.4）。
+- 回测基准、样本区间、执行延迟、成本/滑点、压力窗口和 admission 阈值。→ **部分**：A 股影子组合成本情景确认 0/10/20/50bp 为 V1 基线；其余（基准、admission 等）**挂起**（签核包 §4.1—§4.3）。
+- 宏观 `release_at/available_at/vintage/revision` 完整率及可支持的 PIT 模型范围。→ **已证据冻结**：完整率 0%；历史时点复现 fail-closed（见证据审计 §1 / 签核包 §3）。
 
-在上述值未确认前：不得把占位值写成已冻结事实；受影响策略不得标记 `ready` 或 `admitted`，并应使用最贴近原因的显式状态与 warning。
+凡仍开放或挂起的项：不得把占位值写成已冻结事实；受影响策略不得标记 `ready` 或 `admitted`，并应使用最贴近原因的显式状态与 warning。`observation_only=true` / `formal_use_allowed=false` 不被本次签核覆盖。
 
 ## 10. 证据范围与残余风险
 
@@ -166,6 +166,7 @@ Research Result 的 `status` 只允许以下值，且不得统一折叠为 `--`�
 
 - **已证据冻结**：全部 8 张系统源表无 `release_at/available_at/vintage/revision` 列，PIT 完整率为 0；依赖历史时点复现的结果必须按 §8 fail closed。
 - **部分证据化**：各输入族可用历史深度、当前新鲜度滞后基线、源表 schema 已量化（约 80 个 `EMM*` 序列仅 1 行快照，无法支撑历史窗口信号）。
-- **仍开放**：owner、`minimum_history` 具体门槛、stale SLA 数值、回测/admission 阈值，需业务 owner 确认。
+- **仍开放 / 挂起**：回测基准、admission 阈值、交易日历/复权/换月细则、逐策略字段级输入矩阵，以及签核包中标注「挂起」的历史腿（NCD、因子连续窗、Choice 信用等）；详见签核包 §4。
+- **owner 签核代录（同日晚）**：`macro_strategy_p0_owner_signoff_packet_2026-07-19.md` 已写入家族级 owner、`minimum_history`、stale SLA 与可代录项；数值均 ≤ 证据上限，不改变 observation-only 边界。
 - **输入契约诚实化（同日续）**：`M0041653` 运行时首选 `legacy.wind_market_db.reverse_repo_7d`（`EMM00088132` 仍为空 Choice 目标）；`M0017126` PMI 别名已登记并落在 `fact_choice_macro_daily`（约 13 个月频点）。详见签核包 §2.5 / §4.6 第 1、7 项。
 - **观察能力接线（同日续）**：M13 利率拐点、M12 跨市场联动均已 `wired/visible`；无可算相关腿时 M12 输出 `unavailable/UNKNOWN`，不再伪装「常态」。Merrill Clock 审计 C-1/H-1/M-2/M-4 已修（见 `docs/audits/2026-07-19-merrill-clock-calc-audit.md`）。
