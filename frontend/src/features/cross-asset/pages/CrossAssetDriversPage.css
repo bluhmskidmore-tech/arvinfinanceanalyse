@@ -8374,3 +8374,11 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* DESIGN.md �8: infinite status/loading motion must fully static under reduce. */
+@media (prefers-reduced-motion: reduce) {
+  .cross-asset-trend-panel__summary-dot,
+  .cross-asset-trend-panel__spinner {
+    animation: none;
+  }
+}

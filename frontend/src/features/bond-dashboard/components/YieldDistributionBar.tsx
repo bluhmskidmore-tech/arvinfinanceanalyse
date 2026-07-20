@@ -3,6 +3,8 @@ import { Button, Card, Tabs } from "antd";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 
 import type { AssetStructurePayload, YieldDistributionPayload } from "../../../api/contracts";
+import { ibChartTheme } from "../../../components/charts/chartTheme";
+import styles from "../bondDashboard.module.css";
 import { nativeToNumber } from "../utils/format";
 
 export function YieldDistributionBar({
@@ -37,13 +39,8 @@ export function YieldDistributionBar({
           return raw === null ? null : raw / 1e8;
         });
 
-  const option: EChartsOption = {
-    color: ["#1677ff"],
+  const option: EChartsOption = ibChartTheme.createBarChartOption({
     grid: { left: 48, right: 24, top: 48, bottom: 32 },
-    tooltip: {
-      trigger: "axis",
-      axisPointer: { type: "shadow" },
-    },
     xAxis: {
       type: "category",
       data: categories,
@@ -54,16 +51,23 @@ export function YieldDistributionBar({
       name: "亿元",
       splitLine: { lineStyle: { type: "dashed" } },
     },
-    series: [{ type: "bar", data: valuesYi, barMaxWidth: 48 }],
-  };
+    series: [
+      {
+        type: "bar",
+        data: valuesYi,
+        barMaxWidth: 48,
+        itemStyle: { color: ibChartTheme.palette[0] },
+      },
+    ],
+  });
 
   return (
     <Card
       loading={loading}
       title={mode === "yield" ? "收益率分布" : "剩余期限分布（规模）"}
       extra={<Button type="link">更多</Button>}
-      styles={{ body: { minHeight: 320 } }}
-      style={{ borderRadius: 8 }}
+      classNames={{ body: styles.cardBodyTall }}
+      rootClassName={styles.card}
     >
       <Tabs
         size="small"
@@ -75,13 +79,9 @@ export function YieldDistributionBar({
         ]}
       />
       {mode === "yield" ? (
-        <div style={{ textAlign: "center", marginBottom: 8, fontSize: 13, color: "#1677ff" }}>
-          加权收益率 {weightedLabel}
-        </div>
+        <div className={styles.yieldWeightedLabel}>加权收益率 {weightedLabel}</div>
       ) : (
-        <div style={{ textAlign: "center", marginBottom: 8, fontSize: 13, color: "rgba(0,0,0,0.45)" }}>
-          按期限桶汇总市值（亿元）
-        </div>
+        <div className={styles.yieldTenorHint}>按期限桶汇总市值（亿元）</div>
       )}
       <ReactECharts option={option} style={{ height: 260 }} notMerge lazyUpdate />
     </Card>

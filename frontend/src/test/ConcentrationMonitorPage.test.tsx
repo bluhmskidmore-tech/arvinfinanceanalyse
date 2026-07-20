@@ -184,13 +184,13 @@ describe("ConcentrationMonitorPage", () => {
 
     expect(contractPanel).toHaveTextContent("候选指标");
     expect(contractPanel).toHaveTextContent("PAGE-CONTRACT-PENDING:/concentration-monitor");
-    expect(contractPanel).toHaveTextContent("正式可用: 否");
-    expect(contractPanel).toHaveTextContent("口径 analytical");
-    expect(contractPanel).toHaveTextContent("质量 warning");
+    expect(contractPanel).toHaveTextContent("正式可用：否");
+    expect(contractPanel).toHaveTextContent("口径：分析口径");
+    expect(contractPanel).toHaveTextContent("质量：预警");
     expect(contractPanel).toHaveTextContent("bond_analytics.credit_spread_migration");
     expect(contractPanel).toHaveTextContent("bond_analytics_report_date");
     expect(contractPanel).toHaveTextContent("fact_formal_bond_analytics_daily");
-    expect(contractPanel).toHaveTextContent("证据行 10");
+    expect(contractPanel).toHaveTextContent("证据行：10");
   });
 
   it("renders candidate concentration KPI ratios as two-decimal percentages", async () => {

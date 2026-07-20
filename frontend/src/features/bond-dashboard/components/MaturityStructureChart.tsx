@@ -2,6 +2,8 @@ import { Button, Card } from "antd";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 
 import type { MaturityStructurePayload } from "../../../api/contracts";
+import { ibChartTheme } from "../../../components/charts/chartTheme";
+import styles from "../bondDashboard.module.css";
 import { nativeToNumber } from "../utils/format";
 
 export function MaturityStructureChart({
@@ -22,9 +24,7 @@ export function MaturityStructureChart({
     return raw === null ? null : raw * 100;
   });
 
-  const option: EChartsOption = {
-    color: ["#1677ff", "#ff7a45"],
-    tooltip: { trigger: "axis" },
+  const option: EChartsOption = ibChartTheme.createBarChartOption({
     legend: { data: ["规模(亿)", "占比(%)"], bottom: 4 },
     grid: { left: 48, right: 56, top: 40, bottom: 68 },
     xAxis: { type: "category", data: categories, axisLabel: { rotate: 25, fontSize: 11 } },
@@ -33,10 +33,25 @@ export function MaturityStructureChart({
       { type: "value", name: "%", splitLine: { show: false } },
     ],
     series: [
-      { name: "规模(亿)", type: "bar", data: barYi, yAxisIndex: 0, barMaxWidth: 40 },
-      { name: "占比(%)", type: "line", smooth: true, data: linePct, yAxisIndex: 1 },
+      {
+        name: "规模(亿)",
+        type: "bar",
+        data: barYi,
+        yAxisIndex: 0,
+        barMaxWidth: 40,
+        itemStyle: { color: ibChartTheme.palette[0] },
+      },
+      {
+        name: "占比(%)",
+        type: "line",
+        smooth: true,
+        data: linePct,
+        yAxisIndex: 1,
+        itemStyle: { color: ibChartTheme.palette[3] },
+        lineStyle: { color: ibChartTheme.palette[3] },
+      },
     ],
-  };
+  });
 
   return (
     <Card
@@ -44,7 +59,7 @@ export function MaturityStructureChart({
       loading={loading}
       title="期限结构"
       extra={<Button type="link">更多</Button>}
-      style={{ borderRadius: 8 }}
+      rootClassName={styles.card}
     >
       <ReactECharts option={option} style={{ height: 300 }} notMerge lazyUpdate />
     </Card>

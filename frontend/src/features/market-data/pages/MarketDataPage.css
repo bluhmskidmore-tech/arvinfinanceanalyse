@@ -6405,7 +6405,7 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   --imd-shadow-soft: 0 6px 18px rgba(15, 35, 56, 0.06);
   --imd-radius: 12px;
   --imd-radius-sm: 8px;
-  --imd-mono: "IBM Plex Mono", "Cascadia Mono", "SF Mono", Consolas, monospace;
+  --imd-mono: var(--moss-font-mono);
   gap: 18px;
   padding: 4px;
   background: var(--imd-bg) !important;

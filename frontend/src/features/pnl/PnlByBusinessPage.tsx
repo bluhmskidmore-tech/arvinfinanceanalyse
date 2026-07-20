@@ -11,6 +11,7 @@ import type {
   PnlByBusinessManualAdjustmentRequest,
   PnlByBusinessMonthlyBucket,
   PnlByBusinessMonthlyItem,
+  PnlByBusinessPayload,
   PnlByBusinessPrecomputeStatus,
   PnlByBusinessRow,
   PnlByBusinessYtdItem,
@@ -1322,27 +1323,13 @@ const MAIN_BREAKDOWN_DIMENSION_LABELS = {
 
 type MainBreakdownDimension = keyof typeof MAIN_BREAKDOWN_DIMENSION_LABELS;
 
-function FormalBusinessRowsTable({ rows }: { rows: PnlByBusinessRow[] }) {
-  const footer = useMemo(() => {
-    let interest = 0;
-    let fairValue = 0;
-    let capital = 0;
-    let manual = 0;
-    let totalPnl = 0;
-    let scale = 0;
-    let pnlRows = 0;
-    for (const row of rows) {
-      interest += numeric(row.interest_income_514) ?? 0;
-      fairValue += numeric(row.fair_value_change_516) ?? 0;
-      capital += numeric(row.capital_gain_517) ?? 0;
-      manual += numeric(row.manual_adjustment) ?? 0;
-      totalPnl += numeric(row.total_pnl) ?? 0;
-      scale += numeric(row.scale_amount) ?? 0;
-      pnlRows += row.pnl_row_count;
-    }
-    return { interest, fairValue, capital, manual, totalPnl, scale, pnlRows };
-  }, [rows]);
-
+function FormalBusinessRowsTable({
+  rows,
+  summary,
+}: {
+  rows: PnlByBusinessRow[];
+  summary?: PnlByBusinessPayload["summary"];
+}) {
   return (
     <div className="pnl-by-business-table-shell" data-testid="pnl-by-business-formal-table">
       <table className="pnl-by-business-table">
@@ -1376,19 +1363,22 @@ function FormalBusinessRowsTable({ rows }: { rows: PnlByBusinessRow[] }) {
             </tr>
           ))}
         </tbody>
-        {rows.length > 0 ? (
+        {rows.length > 0 && summary ? (
           <tfoot>
+            {/* 全表合计直读后端 summary（与明细行同一批正式数值），前端不再本地累加。 */}
             <tr data-testid="pnl-by-business-formal-table-footer">
               <td className="pnl-by-business-table-footer-cell">全表合计</td>
               <td className="pnl-by-business-table-footer-cell">—</td>
-              <td className="pnl-by-business-table-footer-cell">{formatAdbAvgYiCell(footer.scale)}</td>
-              <td className="pnl-by-business-table-footer-cell">{formatPnlWan(footer.interest)}</td>
-              <td className="pnl-by-business-table-footer-cell">{formatPnlWan(footer.fairValue)}</td>
-              <td className="pnl-by-business-table-footer-cell">{formatPnlWan(footer.capital)}</td>
-              <td className="pnl-by-business-table-footer-cell">{formatPnlWan(footer.manual)}</td>
-              <td className="pnl-by-business-table-footer-cell">{formatPnlWan(footer.totalPnl)}</td>
+              <td className="pnl-by-business-table-footer-cell">
+                {formatAdbAvgYiCell(numeric(summary.total_scale_amount) ?? 0)}
+              </td>
+              <td className="pnl-by-business-table-footer-cell">{formatPnlWan(summary.interest_income_514)}</td>
+              <td className="pnl-by-business-table-footer-cell">{formatPnlWan(summary.fair_value_change_516)}</td>
+              <td className="pnl-by-business-table-footer-cell">{formatPnlWan(summary.capital_gain_517)}</td>
+              <td className="pnl-by-business-table-footer-cell">{formatPnlWan(summary.manual_adjustment)}</td>
+              <td className="pnl-by-business-table-footer-cell">{formatPnlWan(summary.total_pnl)}</td>
               <td className="pnl-by-business-table-footer-cell">—</td>
-              <td className="pnl-by-business-table-footer-cell">{footer.pnlRows}</td>
+              <td className="pnl-by-business-table-footer-cell">{summary.pnl_row_count}</td>
             </tr>
           </tfoot>
         ) : null}
@@ -3188,7 +3178,7 @@ export default function PnlByBusinessPage() {
                 title={`${selectedReportDate} primary 对账明细`}
                 description="这是对账证据，不是业务贡献主分析；与 GET /api/pnl/by-business 一致，来自 fact_formal_pnl_fi / fact_nonstd_pnl_bridge 与 fact_formal_zqtz_balance_daily 的 join 聚合。这里按 primary 分类展示，用于源数据追溯；月报和累计按 ZQTZ 管理披露分类展示，二者不要混加。"
               />
-              <FormalBusinessRowsTable rows={formalRows} />
+              <FormalBusinessRowsTable rows={formalRows} summary={formalResult?.summary} />
             </>
           )}
           </AnalysisGrid>

@@ -138,24 +138,30 @@ export function createDeferredApiClient(options: ApiClientOptions = {}): ApiClie
 
   const loadMacroToolkitClient = () => {
     if (!macroToolkitClientPromise) {
-      macroToolkitClientPromise = import("./macroToolkitClient").then(
-        ({ createMockMacroToolkitClient, createRealMacroToolkitClient }) =>
-          mode === "mock"
-            ? createMockMacroToolkitClient()
-            : createRealMacroToolkitClient({ fetchImpl, baseUrl }),
-      );
+      macroToolkitClientPromise =
+        mode === "mock"
+          ? import("./macroToolkitMockClient").then(
+              ({ createMockMacroToolkitClient }) => createMockMacroToolkitClient(),
+            )
+          : import("./macroToolkitClient").then(
+              ({ createRealMacroToolkitClient }) =>
+                createRealMacroToolkitClient({ fetchImpl, baseUrl }),
+            );
     }
     return macroToolkitClientPromise;
   };
 
   const loadMarketDataClient = () => {
     if (!marketDataClientPromise) {
-      marketDataClientPromise = import("./marketDataClient").then(
-        ({ createMockMarketDataClient, createRealMarketDataClient }) =>
-          mode === "mock"
-            ? createMockMarketDataClient()
-            : createRealMarketDataClient({ fetchImpl, baseUrl }),
-      );
+      marketDataClientPromise =
+        mode === "mock"
+          ? import("./marketDataMockClient").then(
+              ({ createMockMarketDataClient }) => createMockMarketDataClient(),
+            )
+          : import("./marketDataClient").then(
+              ({ createRealMarketDataClient }) =>
+                createRealMarketDataClient({ fetchImpl, baseUrl }),
+            );
     }
     return marketDataClientPromise;
   };

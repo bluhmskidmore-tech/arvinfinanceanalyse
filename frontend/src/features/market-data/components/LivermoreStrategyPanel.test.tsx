@@ -13,7 +13,7 @@ function makeModel(): LivermoreStrategyModel {
     marketGate: {
       state: "HOT",
       exposure: 0.75,
-      exposureDisplay: "0.8",
+      exposureDisplay: "80%",
       passedConditions: 3,
       availableConditions: 4,
       requiredConditions: 4,

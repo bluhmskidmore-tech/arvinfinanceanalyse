@@ -413,7 +413,7 @@ describe("AverageBalanceView", () => {
     expect(screen.getByText("偏离度（负债）")).toBeInTheDocument();
     expect(screen.getByText("同业日均资产")).toBeInTheDocument();
     expect(screen.getByText("同业日均负债")).toBeInTheDocument();
-    expect(screen.getAllByText("TYW 正式余额·区间日均").length).toBe(2);
+    expect(screen.getAllByText("TYW 正式余额（区间日均）").length).toBe(2);
     expect(screen.getByText("资产加权平均YTM")).toBeInTheDocument();
     expect(screen.getByText("负债加权平均票息")).toBeInTheDocument();
     expect(screen.getByText("利差（YTM−票息）")).toBeInTheDocument();

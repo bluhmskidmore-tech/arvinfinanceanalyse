@@ -9,14 +9,18 @@ const CURVE_LABEL: Record<string, string> = {
 
 type MarketDataTermStructureChartVariant = "default" | "sheet";
 
-function pctNumericToAxisPercent(value: YieldCurveTermStructureCurvePayload["points"][number]["yield_pct"]) {
+/**
+ * 后端契约（common_numeric._normalize_numeric_raw）保证 unit="pct" 时 raw 为小数比率
+ * （如 0.0175 → 1.75%），坐标轴按百分点展示，固定 ×100，不再使用 |x|<1 启发式。
+ */
+export function pctNumericToAxisPercent(value: YieldCurveTermStructureCurvePayload["points"][number]["yield_pct"]) {
   if (!value || value.raw == null) {
     return null;
   }
   if (value.unit !== "pct") {
     return value.raw;
   }
-  return Math.abs(value.raw) < 1 ? value.raw * 100 : value.raw;
+  return value.raw * 100;
 }
 
 function bpNumericToAxis(value: YieldCurveTermStructureCurvePayload["points"][number]["delta_bp_prev"]) {

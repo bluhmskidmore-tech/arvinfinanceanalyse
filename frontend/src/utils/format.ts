@@ -33,7 +33,14 @@ export function fmtCount(v: number, unit = "项"): string {
 
 import type { Numeric, NumericUnit } from "../api/contracts";
 
-const NULL_DISPLAY = "—";
+/**
+ * Canonical missing-value placeholder (DESIGN.md §6).
+ * All tables/metrics must render missing values as this em dash;
+ * do not use "-" or "--" variants.
+ */
+export const EM_DASH = "—";
+
+const NULL_DISPLAY = EM_DASH;
 
 function signPrefix(raw: number, signed: boolean): string {
   if (!signed) return "";

@@ -36,7 +36,8 @@ function pctPoints(
   n: { raw: number | null; unit?: string } | null | undefined,
 ): number {
   const raw = rawOr(n);
-  return n?.unit === "pct" && Math.abs(raw) <= 1 ? raw * 100 : raw;
+  // Contract: pct Numeric raw is always a decimal ratio; convert unconditionally.
+  return n?.unit === "pct" ? raw * 100 : raw;
 }
 
 function pctDisplay(

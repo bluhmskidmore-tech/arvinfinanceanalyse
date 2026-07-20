@@ -414,7 +414,7 @@ describe("BondDashboardPage", () => {
     );
 
     const conclusion = await screen.findByTestId("bond-dashboard-conclusion");
-    expect(conclusion).toHaveTextContent("暂无数据");
+    expect(conclusion).toHaveTextContent("—");
     expect(conclusion).toHaveTextContent("不形成投放状态结论");
     expect(conclusion).not.toHaveTextContent("尚未形成有效持仓");
     expect(conclusion).not.toHaveTextContent("信用占比 0.0%");
@@ -485,6 +485,122 @@ describe("BondDashboardPage", () => {
     expect(metaPanel).toHaveTextContent("供应商陈旧");
     expect(metaPanel).toHaveTextContent("最新快照降级");
     expect(metaPanel).toHaveTextContent("2026-04-29");
+  });
+
+  it("shows a first-screen stale banner when result_meta reports fallback data", async () => {
+    const client = createApiClient({ mode: "mock" });
+    client.getBondDashboardDates = async () => ({
+      result_meta: resultMeta("bond_dashboard.dates"),
+      result: { report_dates: ["2026-04-30"] },
+    });
+    client.getBondDashboardHeadlineKpis = async () => ({
+      result_meta: resultMeta("bond_dashboard.headline_kpis", {
+        quality_flag: "stale",
+        fallback_mode: "latest_snapshot",
+        requested_report_date: "2026-04-30",
+        resolved_report_date: "2026-04-29",
+        fallback_date: "2026-04-29",
+        as_of_date: "2026-04-29",
+      }),
+      result: {
+        report_date: "2026-04-30",
+        prev_report_date: null,
+        kpis: {
+          total_market_value: yuan(100_000_000),
+          unrealized_pnl: yuan(0),
+          weighted_ytm: pct(0.025),
+          weighted_duration: ratio(4.1),
+          weighted_coupon: pct(0.02),
+          credit_spread_median: pct(0.01),
+          total_dv01: dv01(100),
+          bond_count: 1,
+        },
+        prev_kpis: null,
+      },
+    });
+    mockBondDashboardBundleFromClient(client);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <BondDashboardPage />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    const banner = await screen.findByTestId("bond-dashboard-stale-banner");
+    expect(banner).toHaveTextContent("回退/降级口径");
+    expect(banner).toHaveTextContent("请求日 2026-04-30 回退至 2026-04-29");
+    expect(banner).toHaveTextContent("回退日期 2026-04-29");
+  });
+
+  it("does not show the first-screen stale banner when result_meta is healthy", async () => {
+    const client = createApiClient({ mode: "mock" });
+    client.getBondDashboardDates = async () => ({
+      result_meta: resultMeta("bond_dashboard.dates"),
+      result: { report_dates: ["2026-04-30"] },
+    });
+    client.getBondDashboardHeadlineKpis = async () => ({
+      result_meta: resultMeta("bond_dashboard.headline_kpis", {
+        quality_flag: "ok",
+        requested_report_date: "2026-04-30",
+        resolved_report_date: "2026-04-30",
+        as_of_date: "2026-04-30",
+        fallback_date: null,
+      }),
+      result: {
+        report_date: "2026-04-30",
+        prev_report_date: null,
+        kpis: {
+          total_market_value: yuan(100_000_000),
+          unrealized_pnl: yuan(0),
+          weighted_ytm: pct(0.025),
+          weighted_duration: ratio(4.1),
+          weighted_coupon: pct(0.02),
+          credit_spread_median: pct(0.01),
+          total_dv01: dv01(100),
+          bond_count: 1,
+        },
+        prev_kpis: null,
+      },
+    });
+    client.getBondDashboardRiskIndicators = async () => ({
+      result_meta: resultMeta("bond_dashboard.risk_indicators", {
+        quality_flag: "ok",
+        requested_report_date: "2026-04-30",
+        resolved_report_date: "2026-04-30",
+        as_of_date: "2026-04-30",
+        fallback_date: null,
+      }),
+      result: {
+        report_date: "2026-04-30",
+        total_market_value: yuan(100_000_000),
+        total_dv01: dv01(100),
+        weighted_duration: ratio(4.1),
+        credit_ratio: ratio(0.4),
+        weighted_convexity: ratio(0.03),
+        total_spread_dv01: dv01(40),
+        reinvestment_ratio_1y: ratio(0.12),
+      },
+    });
+    mockBondDashboardBundleFromClient(client);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <BondDashboardPage />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    await screen.findByTestId("bond-dashboard-conclusion");
+    expect(screen.queryByTestId("bond-dashboard-stale-banner")).toBeNull();
   });
 
   it("renders the shared portfolio golden sample on the bond dashboard source page", async () => {

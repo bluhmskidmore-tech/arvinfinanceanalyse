@@ -1,5 +1,7 @@
 import type {
+  ApiEnvelope,
   CashflowProjectionPayload,
+  DV01RiskPayload,
   ResultMeta,
   RiskTensorHistoryPayload,
   RiskTensorPayload,
@@ -756,6 +758,908 @@ export function buildRiskV6CashflowTrack(tensor: RiskTensorPayload | undefined):
     });
   }
   return { rows, chips };
+}
+
+/* OCI / TPL bond-analysis evidence stays page-local and independently stateful. */
+export type RiskBondEvidenceAccountingClass = "OCI" | "TPL";
+export type RiskBondEvidenceState =
+  | "loading"
+  | "ready"
+  | "review"
+  | "empty"
+  | "error"
+  | "blocked";
+export type RiskBondMetricKey =
+  | "total-face-value"
+  | "total-market-value"
+  | "modified-duration"
+  | "total-dv01"
+  | "position-count";
+export type RiskBondEvidenceMetric = {
+  key: RiskBondMetricKey;
+  label: string;
+  value: string;
+  unit: "亿元" | "年" | "万元/bp" | "只";
+};
+export type RiskBondComparisonReadout = {
+  state: "ready" | "review" | "unavailable";
+  absoluteText: string;
+  percentText: string;
+  basisDate: string | null;
+};
+export type RiskBondMetricComparison = {
+  mom: RiskBondComparisonReadout;
+  yoy: RiskBondComparisonReadout;
+};
+export type RiskBondComparisons = Record<
+  RiskBondMetricKey,
+  RiskBondMetricComparison
+>;
+export type RiskBondTrendPoint = {
+  reportDate: string;
+  slotIndex: number;
+  value: number;
+  x: number;
+  y: number;
+};
+export type RiskBondTrend = {
+  state: "ready" | "review" | "unavailable";
+  dates: string[];
+  values: Array<number | null>;
+  unit: "万元/bp";
+  linePaths: string[];
+  points: RiskBondTrendPoint[];
+  sparkline: RiskV6Sparkline | null;
+  notices: string[];
+};
+export type RiskBondComparisonDateSlot = {
+  reportDate: string;
+  available: boolean;
+};
+export type RiskBondComparisonPlan = {
+  enabled: boolean;
+  currentDate: string;
+  momDate: string | null;
+  yoyDate: string | null;
+  momAvailable: boolean;
+  yoyAvailable: boolean;
+  trendDates: RiskBondComparisonDateSlot[];
+  requestDates: string[];
+  missingDates: string[];
+  basisText: string;
+  disabledReason: string | null;
+};
+export type RiskBondHistoryObservation = {
+  reportDate: string;
+  envelope?: ApiEnvelope<DV01RiskPayload>;
+  error?: unknown;
+  isLoading?: boolean;
+};
+export type RiskBondEvidenceCard = {
+  key: "bond-oci" | "bond-tpl";
+  accountingClass: RiskBondEvidenceAccountingClass;
+  title: string;
+  state: RiskBondEvidenceState;
+  statusLabel: string;
+  reportDate: string | null;
+  metrics: RiskBondEvidenceMetric[];
+  notices: string[];
+  comparisons: RiskBondComparisons;
+  comparisonBasisText: string;
+  trend: RiskBondTrend | null;
+};
+export type RiskBondEvidenceInput = {
+  accountingClass: RiskBondEvidenceAccountingClass;
+  reportDate: string;
+  envelope?: ApiEnvelope<DV01RiskPayload>;
+  isLoading?: boolean;
+  error?: unknown;
+  comparisonPlan?: RiskBondComparisonPlan;
+  history?: readonly RiskBondHistoryObservation[];
+};
+
+function unavailableRiskBondReadout(): RiskBondComparisonReadout {
+  return {
+    state: "unavailable",
+    absoluteText: "—",
+    percentText: "—",
+    basisDate: null,
+  };
+}
+
+function emptyRiskBondComparisons(): RiskBondComparisons {
+  const empty = (): RiskBondMetricComparison => ({
+    mom: unavailableRiskBondReadout(),
+    yoy: unavailableRiskBondReadout(),
+  });
+  return {
+    "total-face-value": empty(),
+    "total-market-value": empty(),
+    "modified-duration": empty(),
+    "total-dv01": empty(),
+    "position-count": empty(),
+  };
+}
+
+type RiskBondCalendarDate = {
+  year: number;
+  month: number;
+  day: number;
+};
+
+function riskBondDaysInMonth(year: number, month: number): number {
+  if (month === 2) {
+    const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+    return leap ? 29 : 28;
+  }
+  return [4, 6, 9, 11].includes(month) ? 30 : 31;
+}
+
+function parseRiskBondCalendarDate(value: string): RiskBondCalendarDate | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (
+    year < 1900 ||
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > riskBondDaysInMonth(year, month)
+  ) {
+    return null;
+  }
+  return { year, month, day };
+}
+
+function riskBondMonthEnd(
+  date: Pick<RiskBondCalendarDate, "year" | "month">,
+  offsetMonths: number,
+): string {
+  const monthIndex = date.year * 12 + date.month - 1 + offsetMonths;
+  const year = Math.floor(monthIndex / 12);
+  const month = ((monthIndex % 12) + 12) % 12 + 1;
+  const day = riskBondDaysInMonth(year, month);
+  return [
+    String(year).padStart(4, "0"),
+    String(month).padStart(2, "0"),
+    String(day).padStart(2, "0"),
+  ].join("-");
+}
+
+export function buildRiskBondComparisonPlan(
+  reportDate: string,
+  availableDates: readonly string[],
+  trendMonths = 6,
+): RiskBondComparisonPlan {
+  const currentDate = reportDate.trim();
+  const current = parseRiskBondCalendarDate(currentDate);
+  const available = new Set(availableDates.map((date) => date.trim()));
+  const exactMonthEnd =
+    current !== null &&
+    current.day === riskBondDaysInMonth(current.year, current.month);
+  const disabledReason = !exactMonthEnd
+    ? "当前报告日不是精确自然月末。"
+    : !available.has(currentDate)
+      ? "可用日期未包含当前报告日。"
+      : null;
+  if (!current || disabledReason) {
+    return {
+      enabled: false,
+      currentDate,
+      momDate: null,
+      yoyDate: null,
+      momAvailable: false,
+      yoyAvailable: false,
+      trendDates: [],
+      requestDates: [],
+      missingDates: [],
+      basisText:
+        "系统口径快照比较未启用：" +
+        (disabledReason ?? "当前报告日无效。"),
+      disabledReason: disabledReason ?? "当前报告日无效。",
+    };
+  }
+
+  const months =
+    Number.isInteger(trendMonths) && trendMonths > 0 ? trendMonths : 6;
+  const momDate = riskBondMonthEnd(current, -1);
+  const yoyDate = riskBondMonthEnd(current, -12);
+  const trendDates = Array.from({ length: months }, (_, index) => {
+    const slotDate = riskBondMonthEnd(current, index - months + 1);
+    return { reportDate: slotDate, available: available.has(slotDate) };
+  });
+  const momAvailable = available.has(momDate);
+  const yoyAvailable = available.has(yoyDate);
+  const requestDates = Array.from(
+    new Set([
+      ...trendDates
+        .filter((slot) => slot.available && slot.reportDate !== currentDate)
+        .map((slot) => slot.reportDate),
+      ...(momAvailable ? [momDate] : []),
+      ...(yoyAvailable ? [yoyDate] : []),
+    ]),
+  ).sort((left, right) => left.localeCompare(right));
+  const missingDates = Array.from(
+    new Set([
+      ...trendDates
+        .filter((slot) => !slot.available)
+        .map((slot) => slot.reportDate),
+      ...(!momAvailable ? [momDate] : []),
+      ...(!yoyAvailable ? [yoyDate] : []),
+    ]),
+  ).sort((left, right) => left.localeCompare(right));
+
+  return {
+    enabled: true,
+    currentDate,
+    momDate,
+    yoyDate,
+    momAvailable,
+    yoyAvailable,
+    trendDates,
+    requestDates,
+    missingDates,
+    basisText:
+      "系统口径快照比较：环比 " +
+      momDate +
+      "；同比 " +
+      yoyDate +
+      "；趋势为近 " +
+      months +
+      " 个精确自然月末。缺失日期不以邻近日期替代。",
+    disabledReason: null,
+  };
+}
+
+function riskBondSummary(
+  accountingClass: RiskBondEvidenceAccountingClass,
+  state: RiskBondEvidenceState,
+  statusLabel: string,
+  reportDate: string | null,
+  notices: string[],
+  metrics: RiskBondEvidenceMetric[] = [],
+  derived?: {
+    comparisons: RiskBondComparisons;
+    comparisonBasisText: string;
+    trend: RiskBondTrend | null;
+  },
+): RiskBondEvidenceCard {
+  return {
+    key: accountingClass === "OCI" ? "bond-oci" : "bond-tpl",
+    accountingClass,
+    title:
+      accountingClass === "OCI"
+        ? "OCI 债券（系统正式口径）"
+        : "TPL 债券（系统全量口径）",
+    state,
+    statusLabel,
+    reportDate,
+    metrics,
+    notices,
+    comparisons: derived?.comparisons ?? emptyRiskBondComparisons(),
+    comparisonBasisText:
+      derived?.comparisonBasisText ?? "系统口径快照比较未启用。",
+    trend: derived?.trend ?? null,
+  };
+}
+
+function riskBondUnitsValid(payload: DV01RiskPayload): boolean {
+  return (
+    payload.total_face_value.unit === "yuan" &&
+    payload.total_market_value.unit === "yuan" &&
+    payload.face_weighted_modified_duration.unit === "ratio" &&
+    payload.total_dv01.unit === "dv01"
+  );
+}
+
+function riskBondDecimal(raw: number): string {
+  return raw.toLocaleString("zh-CN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+type RiskBondSnapshot = {
+  reportDate: string;
+  values: Record<RiskBondMetricKey, number>;
+  review: boolean;
+  notices: string[];
+};
+
+function validateRiskBondHistoryObservation(
+  observation: RiskBondHistoryObservation | undefined,
+  accountingClass: RiskBondEvidenceAccountingClass,
+): { snapshot: RiskBondSnapshot | null; notices: string[] } {
+  if (!observation) {
+    return { snapshot: null, notices: ["历史月末快照未返回。"] };
+  }
+  const prefix = observation.reportDate + "：";
+  if (!observation.envelope) {
+    const detail = observation.isLoading
+      ? "历史月末快照读取中。"
+      : observation.error instanceof Error && observation.error.message.trim()
+        ? "历史月末快照读取失败：" + observation.error.message.trim()
+        : "历史月末快照未返回。";
+    return { snapshot: null, notices: [prefix + detail] };
+  }
+
+  const { result_meta: meta, result: payload } = observation.envelope;
+  const blocked: string[] = [];
+  if (meta.basis !== "formal" || !meta.formal_use_allowed) {
+    blocked.push("未通过 formal / formal_use_allowed 门禁");
+  }
+  if (meta.quality_flag === "error" || meta.quality_flag === "missing") {
+    blocked.push("质量标记为 " + meta.quality_flag);
+  }
+  if (payload.report_date !== observation.reportDate) {
+    blocked.push("载荷日期为 " + payload.report_date + "，不是精确目标日");
+  }
+  if (
+    meta.resolved_report_date &&
+    meta.resolved_report_date !== observation.reportDate
+  ) {
+    blocked.push("解析日期为 " + meta.resolved_report_date);
+  }
+  if (meta.fallback_mode !== "none") {
+    blocked.push(
+      "使用回退快照" +
+        (meta.fallback_date ? "（" + meta.fallback_date + "）" : ""),
+    );
+  }
+  if (payload.accounting_class.trim().toUpperCase() !== accountingClass) {
+    blocked.push("会计分类为 " + payload.accounting_class);
+  }
+  if (!riskBondUnitsValid(payload)) {
+    blocked.push("单位口径不一致");
+  }
+  if (!Number.isInteger(payload.position_count) || payload.position_count < 0) {
+    blocked.push("持仓数无效");
+  }
+
+  const face = bondNumericRawOrNull(payload.total_face_value);
+  const market = bondNumericRawOrNull(payload.total_market_value);
+  const duration = bondNumericRawOrNull(
+    payload.face_weighted_modified_duration,
+  );
+  const dv01 = bondNumericRawOrNull(payload.total_dv01);
+  if ([face, market, duration, dv01].some((value) => value === null)) {
+    blocked.push("存在空数值");
+  }
+  if (blocked.length > 0 || face === null || market === null || duration === null || dv01 === null) {
+    return {
+      snapshot: null,
+      notices: [prefix + blocked.join("；") + "，该点已排除。"],
+    };
+  }
+
+  const reviewNotices: string[] = [];
+  if (observation.error !== undefined && observation.error !== null) {
+    reviewNotices.push(prefix + "最新刷新失败，沿用缓存快照，比较待复核。");
+  }
+  if (meta.quality_flag === "warning" || meta.quality_flag === "stale") {
+    reviewNotices.push(
+      prefix + "质量标记为 " + meta.quality_flag + "，比较待复核。",
+    );
+  }
+  if (meta.vendor_status !== "ok") {
+    reviewNotices.push(
+      prefix + "供应方状态为 " + meta.vendor_status + "，比较待复核。",
+    );
+  }
+  reviewNotices.push(
+    ...payload.warnings.map(
+      (warning) => prefix + "警告：" + warning + "，比较待复核。",
+    ),
+  );
+  return {
+    snapshot: {
+      reportDate: observation.reportDate,
+      values: {
+        "total-face-value": face,
+        "total-market-value": market,
+        "modified-duration": duration,
+        "total-dv01": dv01,
+        "position-count": payload.position_count,
+      },
+      review: reviewNotices.length > 0,
+      notices: reviewNotices,
+    },
+    notices: reviewNotices,
+  };
+}
+
+function riskBondSigned(raw: number, digits: number): string {
+  const scale = 10 ** digits;
+  const rounded = Math.round(raw * scale) / scale;
+  const sign = rounded > 0 ? "+" : rounded < 0 ? "-" : "";
+  return (
+    sign +
+    Math.abs(rounded).toLocaleString("zh-CN", {
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+    })
+  );
+}
+
+function riskBondDeltaReadout(
+  key: RiskBondMetricKey,
+  current: number | null,
+  previous: RiskBondSnapshot | null,
+  review: boolean,
+  basisDate: string | null,
+): RiskBondComparisonReadout {
+  if (current === null || !previous || !basisDate) {
+    return {
+      ...unavailableRiskBondReadout(),
+      basisDate,
+    };
+  }
+  const prior = previous.values[key];
+  const delta = current - prior;
+  let absoluteText: string;
+  if (key === "total-face-value" || key === "total-market-value") {
+    absoluteText = riskBondSigned(delta / RISK_YUAN_PER_YI, 2) + " 亿元";
+  } else if (key === "modified-duration") {
+    absoluteText = riskBondSigned(delta, 2) + " 年";
+  } else if (key === "total-dv01") {
+    absoluteText = riskBondSigned(delta / RISK_YUAN_PER_WAN, 2) + " 万元/bp";
+  } else {
+    absoluteText = riskBondSigned(delta, 0) + " 只";
+  }
+  const percentText =
+    key === "modified-duration" || prior === 0
+      ? "—"
+      : riskBondSigned((delta / Math.abs(prior)) * 100, 2) + "%";
+  return {
+    state: review || previous.review ? "review" : "ready",
+    absoluteText,
+    percentText,
+    basisDate,
+  };
+}
+
+function uniqueRiskBondNotices(notices: readonly string[]): string[] {
+  return Array.from(new Set(notices.filter((notice) => notice.trim())));
+}
+
+function buildRiskBondGapTrendGeometry(
+  dates: readonly string[],
+  values: readonly (number | null)[],
+): { linePaths: string[]; points: RiskBondTrendPoint[] } {
+  const finiteValues = values.filter(
+    (value): value is number => value !== null && Number.isFinite(value),
+  );
+  if (finiteValues.length === 0) {
+    return { linePaths: [], points: [] };
+  }
+  const min = Math.min(...finiteValues);
+  const max = Math.max(...finiteValues);
+  const span = max - min;
+  const usableWidth = SPARK_WIDTH - SPARK_PAD_X * 2;
+  const usableHeight = SPARK_HEIGHT - SPARK_PAD_TOP - SPARK_PAD_BOTTOM;
+  const pointAt = (value: number, slotIndex: number): RiskBondTrendPoint => ({
+    reportDate: dates[slotIndex] ?? "",
+    slotIndex,
+    value,
+    x: round1(
+      values.length <= 1
+        ? SPARK_WIDTH / 2
+        : SPARK_PAD_X + (slotIndex / (values.length - 1)) * usableWidth,
+    ),
+    y: round1(
+      span === 0
+        ? SPARK_HEIGHT / 2
+        : SPARK_PAD_TOP + ((max - value) / span) * usableHeight,
+    ),
+  });
+  const points: RiskBondTrendPoint[] = [];
+  const segments: RiskBondTrendPoint[][] = [];
+  let activeSegment: RiskBondTrendPoint[] = [];
+  values.forEach((value, slotIndex) => {
+    if (value === null || !Number.isFinite(value)) {
+      if (activeSegment.length > 0) segments.push(activeSegment);
+      activeSegment = [];
+      return;
+    }
+    const point = pointAt(value, slotIndex);
+    points.push(point);
+    activeSegment.push(point);
+  });
+  if (activeSegment.length > 0) segments.push(activeSegment);
+  return {
+    linePaths: segments
+      .filter((segment) => segment.length >= 2)
+      .map((segment) => smoothClosedPath(segment))
+      .filter((path): path is string => path !== null),
+    points,
+  };
+}
+
+function summarizeRiskBondHistoryNotices(
+  notices: readonly string[],
+): string[] {
+  const undated: string[] = [];
+  const dated = new Map<string, string[]>();
+  uniqueRiskBondNotices(notices).forEach((notice) => {
+    const match = /^(\d{4}-\d{2}-\d{2})：(.*)$/.exec(notice);
+    if (!match) {
+      undated.push(notice);
+      return;
+    }
+    const dates = dated.get(match[2]) ?? [];
+    dates.push(match[1]);
+    dated.set(match[2], dates);
+  });
+  const summarized = Array.from(dated.entries()).map(([detail, dates]) =>
+    dates.length > 1
+      ? dates.length + " 个历史月末均有同类提示：" + detail
+      : dates[0] + "：" + detail,
+  );
+  return [...undated, ...summarized];
+}
+
+function buildRiskBondDerivedEvidence(
+  plan: RiskBondComparisonPlan | undefined,
+  history: readonly RiskBondHistoryObservation[],
+  accountingClass: RiskBondEvidenceAccountingClass,
+  currentValues: Record<RiskBondMetricKey, number | null>,
+  currentReview: boolean,
+): {
+  comparisons: RiskBondComparisons;
+  comparisonBasisText: string;
+  trend: RiskBondTrend | null;
+  notices: string[];
+} {
+  if (!plan?.enabled) {
+    return {
+      comparisons: emptyRiskBondComparisons(),
+      comparisonBasisText:
+        plan?.basisText ?? "系统口径快照比较未启用。",
+      trend: null,
+      notices: [],
+    };
+  }
+
+  const observations = new Map(
+    history.map((observation) => [observation.reportDate, observation]),
+  );
+  const validated = new Map<
+    string,
+    ReturnType<typeof validateRiskBondHistoryObservation>
+  >();
+  const getValidated = (reportDate: string) => {
+    const cached = validated.get(reportDate);
+    if (cached) return cached;
+    const result = validateRiskBondHistoryObservation(
+      observations.get(reportDate) ?? { reportDate },
+      accountingClass,
+    );
+    validated.set(reportDate, result);
+    return result;
+  };
+
+  const comparisonNotices: string[] = [];
+  const periodSnapshot = (
+    reportDate: string | null,
+    available: boolean,
+    label: string,
+  ): RiskBondSnapshot | null => {
+    if (!reportDate || !available) {
+      if (reportDate) {
+        comparisonNotices.push(
+          label + "缺少精确月末 " + reportDate + "，不使用邻近日期。",
+        );
+      }
+      return null;
+    }
+    const result = getValidated(reportDate);
+    comparisonNotices.push(...result.notices);
+    return result.snapshot;
+  };
+  const mom = periodSnapshot(plan.momDate, plan.momAvailable, "环比");
+  const yoy = periodSnapshot(plan.yoyDate, plan.yoyAvailable, "同比");
+  const comparisons = emptyRiskBondComparisons();
+  (Object.keys(comparisons) as RiskBondMetricKey[]).forEach((key) => {
+    comparisons[key] = {
+      mom: riskBondDeltaReadout(
+        key,
+        currentValues[key],
+        mom,
+        currentReview,
+        plan.momDate,
+      ),
+      yoy: riskBondDeltaReadout(
+        key,
+        currentValues[key],
+        yoy,
+        currentReview,
+        plan.yoyDate,
+      ),
+    };
+  });
+
+  const trendNotices: string[] = [];
+  let trendReview = currentReview;
+  const trendValues = plan.trendDates.map((slot): number | null => {
+    if (slot.reportDate === plan.currentDate) {
+      const currentDv01 = currentValues["total-dv01"];
+      return currentDv01 === null
+        ? null
+        : currentDv01 / RISK_YUAN_PER_WAN;
+    }
+    if (!slot.available) {
+      trendNotices.push(
+        "趋势缺少精确月末 " + slot.reportDate + "，不跨缺口连线。",
+      );
+      return null;
+    }
+    const result = getValidated(slot.reportDate);
+    trendNotices.push(...result.notices);
+    if (!result.snapshot) return null;
+    trendReview = trendReview || result.snapshot.review;
+    return result.snapshot.values["total-dv01"] / RISK_YUAN_PER_WAN;
+  });
+  const hasCompleteSixPoints =
+    plan.trendDates.length === 6 &&
+    trendValues.every((value) => value !== null);
+  const numericTrendValues = hasCompleteSixPoints
+    ? (trendValues as number[])
+    : [];
+  const trendDates = plan.trendDates.map((slot) => slot.reportDate);
+  const geometry = buildRiskBondGapTrendGeometry(trendDates, trendValues);
+  const canDisplayTrend = geometry.points.length >= 2;
+  const trend: RiskBondTrend = {
+    state: !canDisplayTrend
+      ? "unavailable"
+      : trendReview || !hasCompleteSixPoints
+        ? "review"
+        : "ready",
+    dates: trendDates,
+    values: trendValues,
+    unit: "万元/bp",
+    linePaths: geometry.linePaths,
+    points: geometry.points,
+    sparkline: hasCompleteSixPoints
+      ? buildRiskV6Sparkline(numericTrendValues)
+      : null,
+    notices: uniqueRiskBondNotices(trendNotices),
+  };
+
+  return {
+    comparisons,
+    comparisonBasisText: plan.basisText,
+    trend,
+    notices: summarizeRiskBondHistoryNotices([
+      ...comparisonNotices,
+      ...trendNotices,
+    ]),
+  };
+}
+
+/**
+ * Maps one accounting-class response without combining OCI and TPL state.
+ * Values are display conversions only; no duration or DV01 formula is recalculated here.
+ */
+export function buildRiskBondDv01Summary(
+  input: RiskBondEvidenceInput,
+): RiskBondEvidenceCard {
+  const {
+    accountingClass,
+    reportDate,
+    envelope,
+    isLoading = false,
+    error,
+    comparisonPlan,
+    history = [],
+  } = input;
+  const errorMessage =
+    error instanceof Error && error.message.trim()
+      ? error.message.trim()
+      : null;
+  if (!reportDate.trim()) {
+    return riskBondSummary(accountingClass, "blocked", "报告日待接入", null, [
+      "风险报告日未返回，债券分析辅助证据未发起读取。",
+    ]);
+  }
+  if (error !== undefined && error !== null && !envelope) {
+    const detail = errorMessage
+      ? "读取失败：" + errorMessage
+      : "读取失败，请单独复核该会计分类。";
+    return riskBondSummary(
+      accountingClass,
+      "error",
+      "读取失败",
+      reportDate,
+      [detail],
+    );
+  }
+  if (!envelope) {
+    return riskBondSummary(
+      accountingClass,
+      isLoading ? "loading" : "error",
+      isLoading ? "读取中" : "未返回",
+      reportDate,
+      [isLoading ? "正在读取债券分析辅助证据。" : "接口未返回该分类证据。"],
+    );
+  }
+
+  const { result_meta: meta, result: payload } = envelope;
+  const blocked: string[] = [];
+  const fallbackDateMatches =
+    meta.fallback_mode !== "none" &&
+    meta.fallback_date === payload.report_date;
+  if (meta.basis !== "formal" || !meta.formal_use_allowed) {
+    blocked.push("结果未通过 formal / formal_use_allowed 门禁，不展示数值。");
+  }
+  if (meta.quality_flag === "error" || meta.quality_flag === "missing") {
+    blocked.push("质量标记为 " + meta.quality_flag + "，不展示数值。");
+  }
+  if (payload.accounting_class.trim().toUpperCase() !== accountingClass) {
+    blocked.push(
+      "返回分类为 " +
+        (payload.accounting_class || "空") +
+        "，与请求分类 " +
+        accountingClass +
+        " 不一致。",
+    );
+  }
+  if (payload.report_date !== reportDate && !fallbackDateMatches) {
+    blocked.push(
+      "返回报告日 " +
+        (payload.report_date || "空") +
+        " 与请求报告日 " +
+        reportDate +
+        " 不一致。",
+    );
+  }
+  if (!riskBondUnitsValid(payload)) {
+    blocked.push("返回单位与亿元、年、万元/bp 展示口径不一致。");
+  }
+  if (!Number.isInteger(payload.position_count) || payload.position_count < 0) {
+    blocked.push("持仓数无效，不展示数值。");
+  }
+  if (blocked.length > 0) {
+    return riskBondSummary(
+      accountingClass,
+      "blocked",
+      "口径校验未通过",
+      payload.report_date || null,
+      blocked,
+    );
+  }
+
+  const review: string[] = [];
+  review.push(
+    accountingClass === "OCI"
+      ? "630 手工表的同名金额列与系统字段定义不一致：本次手工“账面金额”数值对应含息公允价值，“市值”数值对应系统面值。本卡展示系统正式的面值、不含应计的公允价值和面值基数 DV01，不按手工同名列直接比较。"
+      : "630 手工表的 TPL 范围为交易账簿债券、银行账簿债券和市值型基金；当前接口仅返回全量 TPL 会计分类，缺少市值型基金正式清单及穿透久期/DV01，因此不可用本卡替代 630 小计。",
+  );
+  if (error !== undefined && error !== null) {
+    review.push(
+      errorMessage
+        ? "最新刷新失败：" + errorMessage + "；当前展示上次成功结果。"
+        : "最新刷新失败，当前展示上次成功结果。",
+    );
+  }
+  if (meta.quality_flag === "warning" || meta.quality_flag === "stale") {
+    review.push("质量标记为 " + meta.quality_flag + "，结论待复核。");
+  }
+  if (meta.vendor_status !== "ok") {
+    review.push("供应方状态为 " + meta.vendor_status + "，结论待复核。");
+  }
+  if (meta.fallback_mode !== "none") {
+    review.push(
+      "使用回退快照" +
+        (meta.fallback_date ? "（" + meta.fallback_date + "）" : "") +
+        "，结论待复核。",
+    );
+  }
+  if (
+    meta.resolved_report_date &&
+    meta.resolved_report_date !== reportDate
+  ) {
+    review.push(
+      "解析报告日 " +
+        meta.resolved_report_date +
+        " 与请求报告日不一致，系统口径快照比较已禁用。",
+    );
+  }
+  review.push(...payload.warnings.map((warning) => "警告：" + warning));
+
+  if (payload.position_count === 0) {
+    return riskBondSummary(
+      accountingClass,
+      "empty",
+      "暂无数据",
+      payload.report_date,
+      [
+        "该报告日无持仓，不将空载荷中的零值展示为真实风险数值。",
+        ...review,
+      ],
+    );
+  }
+
+  const face = bondNumericRawOrNull(payload.total_face_value);
+  const market = bondNumericRawOrNull(payload.total_market_value);
+  const duration = bondNumericRawOrNull(
+    payload.face_weighted_modified_duration,
+  );
+  const dv01 = bondNumericRawOrNull(payload.total_dv01);
+  if ([face, market, duration, dv01].some((value) => value === null)) {
+    review.push("部分数值为空，缺失项以 — 展示，结论待复核。");
+  }
+  const metrics: RiskBondEvidenceMetric[] = [
+    {
+      key: "total-face-value",
+      label: "总面值（DV01 基数）",
+      value: face === null ? "—" : formatYuanAs(face, RISK_YUAN_PER_YI),
+      unit: "亿元",
+    },
+    {
+      key: "total-market-value",
+      label: "公允价值（不含应计）",
+      value: market === null ? "—" : formatYuanAs(market, RISK_YUAN_PER_YI),
+      unit: "亿元",
+    },
+    {
+      key: "modified-duration",
+      label: "面值加权修正久期",
+      value: duration === null ? "—" : riskBondDecimal(duration),
+      unit: "年",
+    },
+    {
+      key: "total-dv01",
+      label: "正式 DV01（面值基数）",
+      value: dv01 === null ? "—" : formatYuanAs(dv01, RISK_YUAN_PER_WAN),
+      unit: "万元/bp",
+    },
+    {
+      key: "position-count",
+      label: "持仓数",
+      value: payload.position_count.toLocaleString("zh-CN"),
+      unit: "只",
+    },
+  ];
+  const currentComparisonDisabled =
+    comparisonPlan !== undefined &&
+    (comparisonPlan.currentDate !== reportDate ||
+      payload.report_date !== reportDate ||
+      meta.fallback_mode !== "none" ||
+      (meta.resolved_report_date !== undefined &&
+        meta.resolved_report_date !== null &&
+        meta.resolved_report_date !== reportDate));
+  const derived = currentComparisonDisabled
+    ? {
+        comparisons: emptyRiskBondComparisons(),
+        comparisonBasisText:
+          "系统口径快照比较未启用：当前快照为回退或日期与请求月末不一致。",
+        trend: null,
+        notices: [],
+      }
+    : buildRiskBondDerivedEvidence(
+        comparisonPlan,
+        history,
+        accountingClass,
+        {
+          "total-face-value": face,
+          "total-market-value": market,
+          "modified-duration": duration,
+          "total-dv01": dv01,
+          "position-count": payload.position_count,
+        },
+        review.length > 0,
+      );
+  return riskBondSummary(
+    accountingClass,
+    review.length > 0 ? "review" : "ready",
+    review.length > 0 ? "待复核" : "可读取",
+    payload.report_date,
+    uniqueRiskBondNotices([...review, ...derived.notices]),
+    metrics,
+    derived,
+  );
 }
 
 /* ── 03 字段级明细表 ───────────────────────────────────────────── */

@@ -6,6 +6,7 @@ import { FormalResultMetaPanel } from "../../../components/page/FormalResultMeta
 import { bondNumericDisplay, bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import type { PeriodType, ActionAttributionResponse } from "../types";
 import { ACTION_TYPE_NAMES } from "../types";
+import { designTokens } from "../../../theme/designSystem";
 import { formatWan } from "../utils/formatters";
 import { bondAnalyticsQueryKeyRoot } from "../lib/bondAnalyticsQueryKeys";
 import { SectionLead } from "./SectionLead";
@@ -18,8 +19,8 @@ interface Props {
 const ACTION_COLORS: Record<string, string> = {
   ADD_DURATION: "#1890ff",
   REDUCE_DURATION: "#faad14",
-  SWITCH: "#722ed1",
-  CREDIT_DOWN: "#eb2f96",
+  SWITCH: designTokens.color.primary[800],
+  CREDIT_DOWN: designTokens.color.warm.burgundy,
   CREDIT_UP: "#52c41a",
   TIMING_BUY: "#13c2c2",
   TIMING_SELL: "#fa541c",

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ChoiceMacroLatestPoint } from "../../../api/contracts";
 import { createMockHomeMarketTickerClient } from "../../../api/homeMarketTickerMockClient";
-import { createMockMarketDataClient } from "../../../api/marketDataClient";
+import { createMockMarketDataClient } from "../../../api/marketDataMockClient";
 
 import { crossAssetTrendLines, maxCrossAssetHeadlineTradeDate, resolveCrossAssetKpis } from "./crossAssetKpiModel";
 

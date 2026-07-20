@@ -2,16 +2,9 @@ import { Button, Card, Segmented } from "antd";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 
 import type { AssetStructurePayload } from "../../../api/contracts";
+import { ibChartTheme } from "../../../components/charts/chartTheme";
+import styles from "../bondDashboard.module.css";
 import { formatYi, nativeToNumber } from "../utils/format";
-
-const PIE_COLORS = [
-  "#1d39c4",
-  "#13c2c2",
-  "#fa8c16",
-  "#69c0ff",
-  "#52c41a",
-  "#8c8c8c",
-];
 
 export type AssetGroupBy = "bond_type" | "rating" | "portfolio_name" | "tenor_bucket";
 
@@ -36,20 +29,19 @@ export function AssetStructurePie({
   const items = data?.items ?? [];
   const totalYi = data ? formatYi(data.total_market_value) : "—";
 
-  const option: EChartsOption = {
-    color: PIE_COLORS,
+  const option: EChartsOption = ibChartTheme.createBaseChartOption({
+    legend: {
+      orient: "vertical",
+      right: "4%",
+      top: "middle",
+      textStyle: ibChartTheme.axisLabel,
+    },
     tooltip: {
       trigger: "item",
       formatter: (p: unknown) => {
         const x = p as { name: string; value: number | null; percent: number };
         return `${x.name}<br/>${x.percent.toFixed(2)}%<br/>${formatYi(x.value)} 亿`;
       },
-    },
-    legend: {
-      orient: "vertical",
-      right: "4%",
-      top: "middle",
-      textStyle: { fontSize: 11 },
     },
     series: [
       {
@@ -58,13 +50,16 @@ export function AssetStructurePie({
         center: ["36%", "50%"],
         avoidLabelOverlap: true,
         label: { show: false },
-        data: items.map((it) => ({
+        data: items.map((it, index) => ({
           name: it.category || "—",
           value: nativeToNumber(it.total_market_value) ?? undefined,
+          itemStyle: {
+            color: ibChartTheme.categoricalPalette[index % ibChartTheme.categoricalPalette.length],
+          },
         })),
       },
     ],
-  };
+  });
 
   return (
     <Card
@@ -72,8 +67,8 @@ export function AssetStructurePie({
       loading={loading}
       title="债券资产结构"
       extra={<Button type="link">更多</Button>}
-      styles={{ body: { minHeight: 320 } }}
-      style={{ borderRadius: 8 }}
+      classNames={{ body: styles.cardBodyTall }}
+      rootClassName={styles.card}
     >
       <Segmented
         size="small"
@@ -84,21 +79,12 @@ export function AssetStructurePie({
         options={TAB_ITEMS.map((t) => ({ value: t.key, label: t.label }))}
         style={{ marginBottom: 12 }}
       />
-      <div style={{ position: "relative", height: 280 }}>
+      <div className={styles.pieChartWrap}>
         <ReactECharts option={option} style={{ height: 280 }} notMerge lazyUpdate />
-        <div
-          style={{
-            position: "absolute",
-            left: "28%",
-            top: "50%",
-            transform: "translate(-50%, -50%)",
-            textAlign: "center",
-            pointerEvents: "none",
-          }}
-        >
-          <div style={{ fontSize: 12, color: "rgba(0,0,0,0.45)" }}>合计</div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: "#1677ff" }}>{totalYi}</div>
-          <div style={{ fontSize: 12, color: "rgba(0,0,0,0.45)" }}>亿元</div>
+        <div className={styles.pieOverlay}>
+          <div className={styles.pieOverlayLabel}>合计</div>
+          <div className={styles.pieOverlayValue}>{totalYi}</div>
+          <div className={styles.pieOverlayLabel}>亿元</div>
         </div>
       </div>
     </Card>

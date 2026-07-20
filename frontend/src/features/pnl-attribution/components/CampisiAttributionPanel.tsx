@@ -47,7 +47,10 @@ const capabilityBoundaryStyle = {
   lineHeight: designTokens.lineHeight.normal,
 } as const;
 
-function formatYi(value: number): string {
+function formatYi(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) {
+    return "—";
+  }
   const yi = value / 100_000_000;
   return `${yi >= 0 ? "+" : ""}${yi.toFixed(2)} 亿`;
 }
@@ -58,11 +61,19 @@ function formatOptionalYi(value: number | null | undefined): string {
     : "不可用";
 }
 
+function finiteOrNull(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/** 契约：`pct` 字段 raw 恒为小数比率，×100 转百分点；缺失（raw=null）返回 null，不补 0。 */
 function pctPoints(
   value: { raw: number | null; unit?: string } | null | undefined,
-): number {
-  const raw = value?.raw ?? 0;
-  return value?.unit === "pct" && Math.abs(raw) <= 1 ? raw * 100 : raw;
+): number | null {
+  const raw = value?.raw ?? null;
+  if (raw === null || !Number.isFinite(raw)) {
+    return null;
+  }
+  return value?.unit === "pct" ? raw * 100 : raw;
 }
 
 type CampisiEffectKey = "income" | "treasury" | "spread" | "selection";
@@ -70,29 +81,29 @@ type CampisiEffectKey = "income" | "treasury" | "spread" | "selection";
 type CampisiEffect = {
   key: CampisiEffectKey;
   label: string;
-  amount: number;
-  share: number;
+  amount: number | null;
+  share: number | null;
   role: string;
 };
 
 type NormalizedCampisiData = {
-  total_return: number;
-  total_income: number;
-  total_treasury_effect: number;
-  total_spread_effect: number;
-  total_selection_effect: number;
-  income_contribution_pct: number;
-  treasury_contribution_pct: number;
-  spread_contribution_pct: number;
-  selection_contribution_pct: number;
+  total_return: number | null;
+  total_income: number | null;
+  total_treasury_effect: number | null;
+  total_spread_effect: number | null;
+  total_selection_effect: number | null;
+  income_contribution_pct: number | null;
+  treasury_contribution_pct: number | null;
+  spread_contribution_pct: number | null;
+  selection_contribution_pct: number | null;
   interpretation: string;
   formal_closure?: CampisiFourEffectsPayload["formal_closure"];
   items: Array<{
     category: string;
-    income_return: number;
-    treasury_effect: number;
-    spread_effect: number;
-    selection_effect: number;
+    income_return: number | null;
+    treasury_effect: number | null;
+    spread_effect: number | null;
+    selection_effect: number | null;
   }>;
 };
 
@@ -110,37 +121,43 @@ function normalizeCampisiData(
   }
 
   if ("totals" in data) {
-    const totalReturn = data.totals.total_return || 0;
-    const pct = (value: number) =>
-      totalReturn !== 0 ? (value / totalReturn) * 100 : 0;
+    const totalReturn = finiteOrNull(data.totals.total_return);
+    const pct = (value: number | null) =>
+      totalReturn !== null && totalReturn !== 0 && value !== null
+        ? (value / totalReturn) * 100
+        : null;
+    const income = finiteOrNull(data.totals.income_return);
+    const treasury = finiteOrNull(data.totals.treasury_effect);
+    const spread = finiteOrNull(data.totals.spread_effect);
+    const selection = finiteOrNull(data.totals.selection_effect);
     return {
       total_return: totalReturn,
-      total_income: data.totals.income_return,
-      total_treasury_effect: data.totals.treasury_effect,
-      total_spread_effect: data.totals.spread_effect,
-      total_selection_effect: data.totals.selection_effect,
-      income_contribution_pct: pct(data.totals.income_return),
-      treasury_contribution_pct: pct(data.totals.treasury_effect),
-      spread_contribution_pct: pct(data.totals.spread_effect),
-      selection_contribution_pct: pct(data.totals.selection_effect),
+      total_income: income,
+      total_treasury_effect: treasury,
+      total_spread_effect: spread,
+      total_selection_effect: selection,
+      income_contribution_pct: pct(income),
+      treasury_contribution_pct: pct(treasury),
+      spread_contribution_pct: pct(spread),
+      selection_contribution_pct: pct(selection),
       interpretation: `期间 ${data.period_start} 至 ${data.period_end} 的四效应归因拆解。`,
       formal_closure: data.formal_closure,
       items: data.by_asset_class.map((row) => ({
         category: row.asset_class,
-        income_return: row.income_return,
-        treasury_effect: row.treasury_effect,
-        spread_effect: row.spread_effect,
-        selection_effect: row.selection_effect,
+        income_return: finiteOrNull(row.income_return),
+        treasury_effect: finiteOrNull(row.treasury_effect),
+        spread_effect: finiteOrNull(row.spread_effect),
+        selection_effect: finiteOrNull(row.selection_effect),
       })),
     };
   }
 
   return {
-    total_return: data.total_return.raw ?? 0,
-    total_income: data.total_income.raw ?? 0,
-    total_treasury_effect: data.total_treasury_effect.raw ?? 0,
-    total_spread_effect: data.total_spread_effect.raw ?? 0,
-    total_selection_effect: data.total_selection_effect.raw ?? 0,
+    total_return: finiteOrNull(data.total_return.raw),
+    total_income: finiteOrNull(data.total_income.raw),
+    total_treasury_effect: finiteOrNull(data.total_treasury_effect.raw),
+    total_spread_effect: finiteOrNull(data.total_spread_effect.raw),
+    total_selection_effect: finiteOrNull(data.total_selection_effect.raw),
     income_contribution_pct: pctPoints(data.income_contribution_pct),
     treasury_contribution_pct: pctPoints(data.treasury_contribution_pct),
     spread_contribution_pct: pctPoints(data.spread_contribution_pct),
@@ -149,10 +166,10 @@ function normalizeCampisiData(
     formal_closure: undefined,
     items: data.items.map((row) => ({
       category: row.category,
-      income_return: row.income_return.raw ?? 0,
-      treasury_effect: row.treasury_effect.raw ?? 0,
-      spread_effect: row.spread_effect.raw ?? 0,
-      selection_effect: row.selection_effect.raw ?? 0,
+      income_return: finiteOrNull(row.income_return.raw),
+      treasury_effect: finiteOrNull(row.treasury_effect.raw),
+      spread_effect: finiteOrNull(row.spread_effect.raw),
+      selection_effect: finiteOrNull(row.selection_effect.raw),
     })),
   };
 }
@@ -190,11 +207,11 @@ function buildEffectRows(normalized: NormalizedCampisiData): CampisiEffect[] {
   ];
 }
 
-function effectColor(amount: number): string {
-  if (amount > 0) {
+function effectColor(amount: number | null): string {
+  if (amount !== null && amount > 0) {
     return designTokens.color.semantic.profit;
   }
-  if (amount < 0) {
+  if (amount !== null && amount < 0) {
     return designTokens.color.semantic.loss;
   }
   return designTokens.color.neutral[500];
@@ -204,10 +221,10 @@ function displayEffectLabel(effect: CampisiEffect): string {
   return effect.key === "selection" ? "剩余/选券" : effect.label;
 }
 
-function quietEffectLabels(effects: CampisiEffect[], totalReturn: number): string {
-  const threshold = Math.max(Math.abs(totalReturn) * 0.005, 1_000_000);
+function quietEffectLabels(effects: CampisiEffect[], totalReturn: number | null): string {
+  const threshold = Math.max(Math.abs(totalReturn ?? 0) * 0.005, 1_000_000);
   const labels = effects
-    .filter((effect) => Math.abs(effect.amount) <= threshold)
+    .filter((effect) => effect.amount !== null && Math.abs(effect.amount) <= threshold)
     .map((effect) => displayEffectLabel(effect));
   return labels.length ? labels.join("、") : "无";
 }
@@ -220,26 +237,35 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
   );
   const primaryEffect = useMemo(
     () =>
-      [...effectRows].sort(
-        (left, right) => Math.abs(right.amount) - Math.abs(left.amount),
-      )[0],
+      effectRows
+        .filter((effect) => effect.amount !== null)
+        .sort(
+          (left, right) => Math.abs(right.amount ?? 0) - Math.abs(left.amount ?? 0),
+        )[0],
     [effectRows],
   );
   const maxEffectAbs = Math.max(
     1,
-    ...effectRows.map((effect) => Math.abs(effect.amount)),
+    ...effectRows.map((effect) => Math.abs(effect.amount ?? 0)),
   );
 
   const barOption = useMemo<EChartsOption | null>(() => {
     if (!normalized) {
       return null;
     }
-    const values = effectRows.map((effect) => effect.amount / 100_000_000);
+    // 缺失效应传 null，ECharts 留空不画 0 值柱。
+    const values = effectRows.map((effect) =>
+      effect.amount === null ? null : effect.amount / 100_000_000,
+    );
     return {
       tooltip: {
         trigger: "axis",
         valueFormatter: (value) => {
-          const n = Array.isArray(value) ? Number(value[0]) : Number(value);
+          const item = Array.isArray(value) ? value[0] : value;
+          if (item === null || item === undefined || item === "-") {
+            return "—";
+          }
+          const n = Number(item);
           return `${Number.isFinite(n) ? n.toFixed(2) : "—"} 亿`;
         },
       },
@@ -273,7 +299,7 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
           data: values.map((value, index) => ({
             value,
             itemStyle: {
-              color: effectColor(effectRows[index]?.amount ?? 0),
+              color: effectColor(effectRows[index]?.amount ?? null),
               borderRadius: [
                 0,
                 designTokens.radius.sm,
@@ -370,8 +396,10 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
                   }}
                 >
                   {formatYi(primaryEffect.amount)}，约{" "}
-                  {Math.abs(primaryEffect.share).toFixed(1)}% 的本期 Campisi
-                  PnL 来自这里。{primaryEffect.role}
+                  {primaryEffect.share === null
+                    ? "—"
+                    : Math.abs(primaryEffect.share).toFixed(1)}
+                  % 的本期 Campisi PnL 来自这里。{primaryEffect.role}
                 </div>
               </div>
               <div
@@ -433,7 +461,7 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
                     {displayEffectLabel(effect)}
                   </span>
                   <span style={tabularNumsStyle}>
-                    {effect.share.toFixed(1)}%
+                    {effect.share === null ? "—" : `${effect.share.toFixed(1)}%`}
                   </span>
                 </div>
                 <div
@@ -458,7 +486,7 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
                     style={{
                       width: `${Math.min(
                         100,
-                        (Math.abs(effect.amount) / maxEffectAbs) * 100,
+                        (Math.abs(effect.amount ?? 0) / maxEffectAbs) * 100,
                       )}%`,
                       height: "100%",
                       borderRadius: 999,
@@ -535,7 +563,7 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
                             ...tabularNumsStyle,
                           }}
                         >
-                          {(value / 100_000_000).toFixed(2)}
+                          {value === null ? "—" : (value / 100_000_000).toFixed(2)}
                         </td>
                       ))}
                     </tr>

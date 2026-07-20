@@ -1,6 +1,9 @@
 import { Button, Card } from "antd";
 
 import type { AssetStructurePayload } from "../../../api/contracts";
+import { ibChartTheme } from "../../../components/charts/chartTheme";
+import { ibTokens } from "../../../theme/designSystem";
+import styles from "../bondDashboard.module.css";
 import { formatRatePercent, formatYi, nativeToNumber } from "../utils/format";
 
 const RATING_ORDER = [
@@ -21,16 +24,33 @@ const RATING_ORDER = [
   "D",
 ];
 
+const IB_CHART_PALETTE = ibChartTheme.categoricalPalette;
+const IB_CHART_NEGATIVE = ibTokens.color.down;
+
 const RATING_COLORS: Record<string, string> = {
-  AAA: "#1677ff",
-  "AA+": "#52c41a",
-  AA: "#fa8c16",
-  "AA-": "#ff7a45",
+  AAA: IB_CHART_PALETTE[0],
+  "AA+": IB_CHART_PALETTE[1],
+  AA: IB_CHART_PALETTE[2],
+  "AA-": IB_CHART_PALETTE[3],
+  "A+": IB_CHART_PALETTE[4],
+  A: IB_CHART_PALETTE[5],
+  "A-": IB_CHART_PALETTE[5],
 };
 
 function ratingRank(name: string): number {
   const i = RATING_ORDER.indexOf(name.trim().toUpperCase());
   return i >= 0 ? i : 500;
+}
+
+function ratingColor(category: string, index: number): string {
+  const key = category.trim().toUpperCase();
+  if (RATING_COLORS[key]) {
+    return RATING_COLORS[key];
+  }
+  if (category.includes("A")) {
+    return IB_CHART_NEGATIVE;
+  }
+  return IB_CHART_PALETTE[index % IB_CHART_PALETTE.length];
 }
 
 export function CreditRatingBlocks({
@@ -54,39 +74,30 @@ export function CreditRatingBlocks({
       loading={loading}
       title="信用等级分布"
       extra={<Button type="link">更多</Button>}
-      style={{ borderRadius: 8 }}
+      rootClassName={styles.card}
       styles={{ body: { padding: 16 } }}
     >
-      <div style={{ display: "flex", width: "100%", gap: 4, minHeight: 120, alignItems: "stretch" }}>
+      <div className={styles.ratingStrip}>
         {items.length === 0 ? (
-          <div style={{ color: "rgba(0,0,0,0.35)", padding: 16 }}>暂无数据</div>
+          <div className={styles.ratingEmpty}>—</div>
         ) : (
-          items.map((it) => {
+          items.map((it, index) => {
             const rawMarketValue = nativeToNumber(it.total_market_value);
             const w = rawMarketValue === null ? 6 : (rawMarketValue / total) * 100;
             const percentage = formatRatePercent(it.percentage);
-            const bg =
-              RATING_COLORS[it.category.trim().toUpperCase()] ??
-              (it.category.includes("A") ? "#ff4d4f" : "#8c8c8c");
+            const bg = ratingColor(it.category, index);
             return (
               <div
                 key={it.category}
+                className={styles.ratingBlock}
                 style={{
                   flex: `${Math.max(w, 6)} 1 0`,
-                  minWidth: 72,
                   background: bg,
-                  borderRadius: 6,
-                  padding: "12px 8px",
-                  color: "#fff",
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "center",
-                  boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.15)",
                 }}
               >
-                <div style={{ fontWeight: 700, fontSize: 14 }}>{it.category || "—"}</div>
-                <div style={{ fontSize: 13, marginTop: 6 }}>{formatYi(it.total_market_value)} 亿</div>
-                <div style={{ fontSize: 12, opacity: 0.9, marginTop: 4 }}>
+                <div className={styles.ratingBlockCategory}>{it.category || "—"}</div>
+                <div className={styles.ratingBlockAmount}>{formatYi(it.total_market_value)} 亿</div>
+                <div className={styles.ratingBlockPct}>
                   {percentage === "—" ? "—" : `${percentage}%`}
                 </div>
               </div>

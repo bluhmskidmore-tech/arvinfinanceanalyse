@@ -44,12 +44,11 @@ function dv01GradientColor(dv01: number, min: number, max: number): string {
 
 export function buildKrdDv01BarOption(buckets: KRDBucket[]): EChartsOption | null {
   if (!buckets.length) return null;
-  const dv01Values = buckets.map((b) => {
-    const n = bondNumericRaw(b.dv01);
-    return n ?? 0;
-  });
-  const min = Math.min(...dv01Values);
-  const max = Math.max(...dv01Values);
+  // 缺失 DV01 保留 null，序列画断点；渐变色仅按可用值计算。
+  const dv01Values = buckets.map((b) => bondNumericRaw(b.dv01));
+  const finiteValues = dv01Values.filter((v): v is number => v !== null);
+  const min = finiteValues.length > 0 ? Math.min(...finiteValues) : 0;
+  const max = finiteValues.length > 0 ? Math.max(...finiteValues) : 0;
   return {
     backgroundColor: "transparent",
     textStyle: { color: ECHARTS_RISK_TEXT },
@@ -85,10 +84,11 @@ export function buildKrdDv01BarOption(buckets: KRDBucket[]): EChartsOption | nul
         type: "bar",
         barMaxWidth: 48,
         data: buckets.map((b, i) => {
-          const v = dv01Values[i];
+          const v = dv01Values[i] ?? null;
           return {
             value: v,
-            itemStyle: { color: dv01GradientColor(v, min, max) },
+            itemStyle:
+              v === null ? undefined : { color: dv01GradientColor(v, min, max) },
           };
         }),
       },

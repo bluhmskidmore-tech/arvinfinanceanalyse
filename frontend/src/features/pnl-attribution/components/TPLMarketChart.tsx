@@ -156,9 +156,11 @@ export function TPLMarketChart({
     const periods = data.data_points.map((p) =>
       p.period_label.replace("年", "-").replace("月", ""),
     );
-    const tpl = data.data_points.map(
-      (p) => (p.tpl_fair_value_change.raw ?? 0) / 100_000_000,
-    );
+    // 缺失公允价值变动传 null，ECharts 留空不画 0 值柱。
+    const tpl = data.data_points.map((p) => {
+      const raw = numericRaw(p.tpl_fair_value_change);
+      return raw === null ? null : raw / 100_000_000;
+    });
     const bp = data.data_points.map((p) => p.treasury_10y_change?.raw ?? null);
     return {
       tooltip: { trigger: "axis" },
@@ -242,9 +244,9 @@ export function TPLMarketChart({
   const hasMissingMarketData =
     data?.data_points?.some(
       (point) =>
-        point.treasury_10y === null ||
-        point.treasury_10y_change === null ||
-        point.dr007 === null,
+        point.treasury_10y?.raw == null ||
+        point.treasury_10y_change?.raw == null ||
+        point.dr007?.raw == null,
     ) ?? false;
 
   return (
@@ -288,8 +290,8 @@ export function TPLMarketChart({
                   ...tabularNumsStyle,
                 }}
               >
-                {data.correlation_coefficient !== null
-                  ? (data.correlation_coefficient.raw ?? 0).toFixed(3)
+                {data.correlation_coefficient?.raw != null
+                  ? data.correlation_coefficient.raw.toFixed(3)
                   : "—"}
               </div>
               <div
@@ -656,8 +658,8 @@ export function TPLMarketChart({
                             ...tabularNumsStyle,
                           }}
                         >
-                          {point.treasury_10y_change !== null
-                            ? `${(point.treasury_10y_change.raw ?? 0) >= 0 ? "+" : ""}${(point.treasury_10y_change.raw ?? 0).toFixed(1)}`
+                          {point.treasury_10y_change?.raw != null
+                            ? `${point.treasury_10y_change.raw >= 0 ? "+" : ""}${point.treasury_10y_change.raw.toFixed(1)}`
                             : "—"}
                         </td>
                         <td

@@ -17,10 +17,14 @@ const YIELD_CURVE_PALETTE = [
 const IB_GRID = ibTokens.color.hairline;
 const IB_AXIS = ibTokens.color.inkMuted;
 
-function pctNumericToAxisPercent(n: Numeric | null | undefined): number | null {
+/**
+ * 后端契约（common_numeric._normalize_numeric_raw）保证 unit="pct" 时 raw 为小数比率
+ * （如 0.0175 → 1.75%），坐标轴按百分点展示，固定 ×100，不再使用 |x|<1 启发式。
+ */
+export function pctNumericToAxisPercent(n: Numeric | null | undefined): number | null {
   if (!n || n.raw == null) return null;
   if (n.unit !== "pct") return n.raw;
-  return Math.abs(n.raw) < 1 ? n.raw * 100 : n.raw;
+  return n.raw * 100;
 }
 
 function bpNumericToAxis(n: Numeric | null | undefined): number | null {

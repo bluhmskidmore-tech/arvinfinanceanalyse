@@ -2,7 +2,9 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../lib/echarts", () => ({
-  default: () => <div data-testid="campisi-echarts-stub" />,
+  default: ({ option }: { option: unknown }) => (
+    <pre data-testid="campisi-echarts-stub">{JSON.stringify(option)}</pre>
+  ),
 }));
 
 import type {
@@ -127,5 +129,48 @@ describe("CampisiAttributionPanel", () => {
 
     expect(screen.getByTestId("campisi-driver-summary")).toHaveTextContent("75.0%");
     expect(screen.queryByText(/0\.8%/)).not.toBeInTheDocument();
+  });
+
+  it("keeps missing governed effects as null gaps and em-dash instead of zero", () => {
+    const data: CampisiAttributionPayload = {
+      report_date: "2026-04-30",
+      period_start: "2026-03-31",
+      period_end: "2026-04-30",
+      num_days: 30,
+      total_market_value: numeric(12_000_000_000, "yuan", "+120.00 亿"),
+      total_return: numeric(800_000_000, "yuan", "+8.00 亿"),
+      total_return_pct: numeric(0.066667, "pct", "+6.67%"),
+      total_income: numeric(600_000_000, "yuan", "+6.00 亿"),
+      total_treasury_effect: numeric(null, "yuan", "—"),
+      total_spread_effect: numeric(-100_000_000, "yuan", "-1.00 亿"),
+      total_selection_effect: numeric(100_000_000, "yuan", "+1.00 亿"),
+      income_contribution_pct: numeric(0.75, "pct", "+75.00%"),
+      treasury_contribution_pct: numeric(null, "pct", "—"),
+      spread_contribution_pct: numeric(-0.125, "pct", "-12.50%"),
+      selection_contribution_pct: numeric(0.125, "pct", "+12.50%"),
+      primary_driver: "income",
+      interpretation: "missing treasury effect",
+      items: [
+        {
+          category: "利率债",
+          income_return: numeric(300_000_000, "yuan", "+3.00 亿"),
+          treasury_effect: numeric(null, "yuan", "—"),
+          spread_effect: numeric(-50_000_000, "yuan", "-0.50 亿"),
+          selection_effect: numeric(50_000_000, "yuan", "+0.50 亿"),
+        },
+      ],
+    } as unknown as CampisiAttributionPayload;
+
+    render(<CampisiAttributionPanel data={data} state={{ kind: "ok" }} onRetry={() => {}} />);
+
+    // 缺失效应卡片显示 —，不显示 "+0.00 亿" / "0.0%"。
+    expect(screen.queryByText("+0.00 亿")).not.toBeInTheDocument();
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+
+    // 条形图缺失效应传 null（国债曲线是第二根柱）。
+    const option = JSON.parse(screen.getByTestId("campisi-echarts-stub").textContent ?? "{}");
+    const barValues = option.series[0].data.map((item: { value: number | null }) => item.value);
+    expect(barValues[1]).toBeNull();
+    expect(barValues[0]).toBeCloseTo(6);
   });
 });

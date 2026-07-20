@@ -1,7 +1,8 @@
-import { createLineChartOption, mossChartPalette } from "../../../components/charts/chartTheme";
+import { ibChartTheme } from "../../../components/charts/chartTheme";
 import ReactECharts from "../../../lib/echarts";
 import type { AdbMonthlyDataItem } from "../../../api/contracts";
 import { ibTokens } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
 
 export type AdbNimTrendChartProps = {
   months: AdbMonthlyDataItem[];
@@ -9,7 +10,7 @@ export type AdbNimTrendChartProps = {
 };
 
 function formatPct(value: number | null | undefined): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  if (value === null || value === undefined || Number.isNaN(value)) return EM_DASH;
   return `${value.toFixed(2)}%`;
 }
 
@@ -18,11 +19,11 @@ function buildNimTrendOption(months: AdbMonthlyDataItem[]) {
   const yieldValues = months.map((m) => m.asset_yield);
   const costValues = months.map((m) => m.liability_cost);
   const nimValues = months.map((m) => m.net_interest_margin);
-  const assetYieldColor = mossChartPalette[0];
+  const assetYieldColor = ibChartTheme.palette[0];
   const liabilityCostColor = ibTokens.color.down;
   const nimColor = ibTokens.color.up;
 
-  return createLineChartOption({
+  return ibChartTheme.createLineChartOption({
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "cross" },
@@ -34,21 +35,19 @@ function buildNimTrendOption(months: AdbMonthlyDataItem[]) {
         const idx = items[0].dataIndex;
         const month = months[idx];
         const header = `<strong>${month.month_label}</strong>`;
-        const lines = items.map(
-          (item) => `${item.seriesName}：${formatPct(item.value)}`,
-        );
+        const lines = items.map((item) => `${item.seriesName}：${formatPct(item.value)}`);
         return [header, ...lines].join("<br/>");
       },
     },
     legend: {
       data: ["资产收益率", "负债成本率", "NIM利差"],
       top: 0,
+      bottom: "auto",
     },
     grid: { left: 52, right: 24, top: 48, bottom: 36 },
     xAxis: {
       type: "category",
       data: labels,
-      axisLabel: { fontSize: 11 },
       boundaryGap: false,
     },
     yAxis: {

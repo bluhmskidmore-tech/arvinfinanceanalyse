@@ -41,8 +41,10 @@ import AdbMonthlyHorizontalChart, {
 import AdbMonthlyBreakdownTable from "./AdbMonthlyBreakdownTable";
 import AdbNimTrendChart from "./AdbNimTrendChart";
 import { shiftIsoDateByYears } from "./averageBalanceDateUtils";
-import { designTokens } from "../../../theme/designSystem";
-import { displayTokens } from "../../../theme/displayTokens";
+import { ibTokens } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
+
+import "./AverageBalanceView.css";
 
 const { Title, Paragraph, Text } = Typography;
 const YI = 100_000_000;
@@ -59,40 +61,18 @@ type MonthlyMatrixRow = {
   values: Record<string, number | null | undefined>;
 };
 
-const pageHeaderStyle = {
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "space-between",
-  gap: 16,
-  marginBottom: 24,
-} as const;
-
-const pageSubtitleStyle = {
-  marginTop: 8,
-  marginBottom: 0,
-  maxWidth: 920,
-  color: designTokens.color.neutral[600],
-  fontSize: 14,
-  lineHeight: 1.7,
-} as const;
-
-const analysisBriefStyle = {
-  marginTop: 14,
-  maxWidth: 920,
-} as const;
-
 function formatYi(value: number | null | undefined): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  if (value === null || value === undefined || Number.isNaN(value)) return EM_DASH;
   return `${(value / YI).toFixed(2)} 亿元`;
 }
 
 function formatPct(value: number | null | undefined): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  if (value === null || value === undefined || Number.isNaN(value)) return EM_DASH;
   return `${value.toFixed(2)}%`;
 }
 
 function formatRatioPercent(value: number | null | undefined): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  if (value === null || value === undefined || Number.isNaN(value)) return EM_DASH;
   return `${(value * 100).toFixed(1)}%`;
 }
 
@@ -115,7 +95,7 @@ function buildRateCoverageWarning(data: AdbComparisonResponse | null | undefined
 }
 
 function formatSignedPct(value: number | null | undefined): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  if (value === null || value === undefined || Number.isNaN(value)) return EM_DASH;
   return `${value > 0 ? "+" : ""}${value.toFixed(2)}%`;
 }
 
@@ -191,7 +171,7 @@ function buildAdbYoYAdbScaleRows(
 }
 
 function formatSignedYiBillions(deltaYuan: number): string {
-  if (!Number.isFinite(deltaYuan)) return "—";
+  if (!Number.isFinite(deltaYuan)) return EM_DASH;
   const yi = deltaYuan / YI;
   const sign = yi > 0 ? "+" : "";
   return `${sign}${yi.toFixed(2)}`;
@@ -202,7 +182,7 @@ function formatYoyPriorYi(value: number | null): string {
 }
 
 function formatYoyDeltaYi(current: number | null, prior: number | null): string {
-  return current === null || prior === null ? "—" : formatSignedYiBillions(current - prior);
+  return current === null || prior === null ? EM_DASH : formatSignedYiBillions(current - prior);
 }
 
 function buildYoYAmountColumns(): ColumnsType<AdbYoYAmountRow> {
@@ -213,7 +193,7 @@ function buildYoYAmountColumns(): ColumnsType<AdbYoYAmountRow> {
       key: "cur",
       align: "right",
       render: (_: unknown, row: AdbYoYAmountRow) =>
-        row.current === null ? "—" : (row.current / YI).toFixed(2),
+        row.current === null ? EM_DASH : (row.current / YI).toFixed(2),
     },
     {
       title: "去年同期（亿元）",
@@ -240,7 +220,7 @@ function buildDetailColumns(kind: BreakdownKind): ColumnsType<AdbCategoryItem> {
   return [
     { title: "分类", dataIndex: "category", key: "category" },
     { title: "期末时点（亿元）", dataIndex: "spot_balance", key: "spot_balance", align: "right", render: (value: number) => (value / YI).toFixed(2) },
-    { title: "日均(亿元)", dataIndex: "avg_balance", key: "avg_balance", align: "right", render: (value: number | null) => (value === null ? "—" : (value / YI).toFixed(2)) },
+    { title: "日均(亿元)", dataIndex: "avg_balance", key: "avg_balance", align: "right", render: (value: number | null) => (value === null ? EM_DASH : (value / YI).toFixed(2)) },
     { title: "占比(%)", dataIndex: "proportion", key: "proportion", align: "right", render: (value: number) => value.toFixed(2) },
     { title: kind === "asset" ? "收益率(%)" : "付息率(%)", dataIndex: "weighted_rate", key: "weighted_rate", align: "right", render: (value: number | null | undefined) => formatPct(value) },
     { title: "利率覆盖(%)", dataIndex: "rate_coverage_ratio", key: "rate_coverage_ratio", align: "right", render: (value: number | null | undefined) => formatRatioPercent(value) },
@@ -251,7 +231,7 @@ function buildMonthlyBreakdownColumns(kind: BreakdownKind): ColumnsType<AdbMonth
   return [
     { title: "分类", dataIndex: "category", key: "category" },
     { title: "日均(亿元)", dataIndex: "avg_balance", key: "avg_balance", align: "right", render: (value: number | null) => formatMatrixValue(value, "amount") },
-    { title: "占比(%)", dataIndex: "proportion", key: "proportion", align: "right", render: (value: number | null | undefined) => (value === null || value === undefined ? "—" : value.toFixed(2)) },
+    { title: "占比(%)", dataIndex: "proportion", key: "proportion", align: "right", render: (value: number | null | undefined) => (value === null || value === undefined ? EM_DASH : value.toFixed(2)) },
     { title: kind === "asset" ? "收益率(%)" : "付息率(%)", dataIndex: "weighted_rate", key: "weighted_rate", align: "right", render: (value: number | null | undefined) => formatPct(value) },
     { title: "利率覆盖(%)", dataIndex: "rate_coverage_ratio", key: "rate_coverage_ratio", align: "right", render: (value: number | null | undefined) => formatRatioPercent(value) },
   ];
@@ -279,7 +259,7 @@ function formatMatrixValue(
   valueKind: MonthlyMatrixValueKind,
   signed = false,
 ): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  if (value === null || value === undefined || Number.isNaN(value)) return EM_DASH;
   const sign = signed && value > 0 ? "+" : "";
   if (valueKind === "pct") {
     return `${sign}${value.toFixed(2)}${signed ? "pp" : "%"}`;
@@ -418,20 +398,23 @@ function ResultMetaNotice(props: {
       data-testid={props.testId}
       type={hasQualityIssue ? "warning" : "info"}
       showIcon
-      message={[
-        "候选指标",
-        "PAGE-CONTRACT-PENDING:/average-balance",
-        `正式可用: ${props.meta.formal_use_allowed ? "是" : "否"}`,
-        `日均余额后端链路：${props.meta.result_kind}`,
-        `口径 ${props.meta.basis}`,
-        `来源=${props.meta.source_version}`,
-        `规则=${props.meta.rule_version}`,
-        `质量=${qualityLabel}`,
-        `降级=${fallbackLabel}`,
-        `日期基准 ${props.meta.date_basis ?? "—"}`,
-        `使用表 ${props.meta.tables_used?.join(", ") || "—"}`,
-        `证据行 ${props.meta.evidence_rows ?? "—"}`,
-      ].join(" · ")}
+      message={`候选指标 · 正式可用: ${props.meta.formal_use_allowed ? "是" : "否"}`}
+      description={
+        <div className="adb-result-meta">
+          <span className="adb-meta-line">PAGE-CONTRACT-PENDING:/average-balance</span>
+          <span className="adb-meta-line">日均余额后端链路：{props.meta.result_kind}</span>
+          <span className="adb-meta-line">口径 {props.meta.basis}</span>
+          <span className="adb-meta-line">来源={props.meta.source_version}</span>
+          <span className="adb-meta-line">规则={props.meta.rule_version}</span>
+          <span className="adb-meta-line">质量={qualityLabel}</span>
+          <span className="adb-meta-line">降级={fallbackLabel}</span>
+          <span className="adb-meta-line">日期基准 {props.meta.date_basis ?? EM_DASH}</span>
+          <span className="adb-meta-line">
+            使用表 {props.meta.tables_used?.join(", ") || EM_DASH}
+          </span>
+          <span className="adb-meta-line">证据行 {props.meta.evidence_rows ?? EM_DASH}</span>
+        </div>
+      }
     />
   );
 }
@@ -662,7 +645,9 @@ export default function AverageBalanceView() {
         dataIndex: "net_interest_margin",
         key: "net_interest_margin",
         align: "right",
-        render: (value: number | null) => <Text type={value !== null && value < 0 ? "danger" : undefined}>{formatPct(value)}</Text>,
+        render: (value: number | null) => (
+          <Text className={value !== null && value < 0 ? "adb-tone--down" : undefined}>{formatPct(value)}</Text>
+        ),
       },
       {
         title: "资产环比",
@@ -673,7 +658,7 @@ export default function AverageBalanceView() {
           <Space direction="vertical" size={0}>
             <Text>{formatSignedPct(row.mom_change_pct_assets ?? row.mom_change_assets)}</Text>
             {row.mom_change_assets != null ? (
-              <Text type="secondary" style={{ fontSize: 11 }}>
+              <Text type="secondary" className="adb-data-subline">
                 额 {formatSignedYiBillions(row.mom_change_assets)} 亿元
               </Text>
             ) : null}
@@ -689,7 +674,7 @@ export default function AverageBalanceView() {
           <Space direction="vertical" size={0}>
             <Text>{formatSignedPct(row.mom_change_pct_liabilities ?? row.mom_change_liabilities)}</Text>
             {row.mom_change_liabilities != null ? (
-              <Text type="secondary" style={{ fontSize: 11 }}>
+              <Text type="secondary" className="adb-data-subline">
                 额 {formatSignedYiBillions(row.mom_change_liabilities)} 亿元
               </Text>
             ) : null}
@@ -738,16 +723,16 @@ export default function AverageBalanceView() {
         : null;
 
   return (
-    <section data-testid="average-balance-page">
-      <div style={pageHeaderStyle}>
+    <section data-testid="average-balance-page" className="average-balance-page">
+      <div className="adb-page-header">
         <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <Title level={2} data-testid="average-balance-page-title" style={{ margin: 0 }}>
+          <div className="adb-page-title-row">
+            <Title level={2} data-testid="average-balance-page-title" className="adb-page-title">
               日均分析
             </Title>
             <CalibrationBadge calibration={comparisonQuery.data?.calibration} />
           </div>
-          <Paragraph data-testid="average-balance-page-subtitle" style={pageSubtitleStyle}>
+          <Paragraph data-testid="average-balance-page-subtitle" className="adb-page-subtitle">
             围绕期末是否偏离日均、偏离主因、区间日均结构与月度 NIM 变化展开。页面只消费后端返回结果，
             不在前端补算正式金融口径，正式资产负债分析仍从专用正式页面进入。
           </Paragraph>
@@ -755,33 +740,16 @@ export default function AverageBalanceView() {
             data-testid="average-balance-analysis-brief"
             type="info"
             showIcon
-            style={analysisBriefStyle}
+            className="adb-analysis-brief"
             message="日均分析回答什么"
             description="期末是否偏离日均，偏离由资产/负债哪类驱动，以及月度日均结构和 NIM 是否变化。"
           />
-          <Space size="small" style={{ marginTop: 10, flexWrap: "wrap" }}>
+          <Space size="small" className="adb-formal-link-row">
             <Text type="secondary">当前页面为资产负债分析的分析口径子视图。</Text>
             <Link to={formalAnalysisHref}>打开正式资产负债分析</Link>
           </Space>
         </div>
-        <span
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            padding: "8px 12px",
-            borderRadius: 999,
-            background:
-              client.mode === "real" ? designTokens.color.success[50] : designTokens.color.primary[50],
-            color:
-              client.mode === "real"
-                ? displayTokens.apiMode.realForeground
-                : displayTokens.apiMode.mockForeground,
-            fontSize: 12,
-            fontWeight: 600,
-            letterSpacing: "0.04em",
-            textTransform: "uppercase",
-          }}
-        >
+        <span className="adb-mode-badge" data-mode={client.mode === "real" ? "real" : "mock"}>
           {client.mode === "real" ? "正式只读链路" : "本地演示数据"}
         </span>
       </div>
@@ -795,7 +763,7 @@ export default function AverageBalanceView() {
             key: "daily",
             label: "日均分析",
             children: (
-              <Space direction="vertical" size="large" style={{ width: "100%" }}>
+              <Space direction="vertical" size="large" className="adb-stack">
                 <SectionLead
                   eyebrow="日度"
                   title="区间日均分析"
@@ -808,7 +776,7 @@ export default function AverageBalanceView() {
                         <Text type="secondary">报告日</Text>
                         <Select
                           aria-label="adb-report-date"
-                          style={{ minWidth: 160 }}
+                          className="adb-filter-date"
                           value={reportDate || undefined}
                           options={dateOptions.map((item) => ({ label: item, value: item }))}
                           onChange={setSelectedReportDate}
@@ -818,13 +786,13 @@ export default function AverageBalanceView() {
                         <Button type={rangeKey === "7d" ? "primary" : "default"} onClick={() => applyPreset("7d")}>7日</Button>
                         <Button type={rangeKey === "30d" ? "primary" : "default"} onClick={() => applyPreset("30d")}>30日</Button>
                         <Button type={rangeKey === "ytd" ? "primary" : "default"} onClick={() => applyPreset("ytd")}>年初至今</Button>
-                        <Input aria-label="adb-start-date" type="date" value={startDate} onChange={(event) => onCustomRangeChange("start", event.target.value)} style={{ width: 160 }} />
-                        <Input aria-label="adb-end-date" type="date" value={endDate} onChange={(event) => onCustomRangeChange("end", event.target.value)} style={{ width: 160 }} />
+                        <Input aria-label="adb-start-date" type="date" value={startDate} onChange={(event) => onCustomRangeChange("start", event.target.value)} className="adb-filter-input" />
+                        <Input aria-label="adb-end-date" type="date" value={endDate} onChange={(event) => onCustomRangeChange("end", event.target.value)} className="adb-filter-input" />
                         <Text type="secondary">明细条数</Text>
                         <Select
                           aria-label="adb-top-n"
                           data-testid="adb-top-n-select"
-                          style={{ width: 100 }}
+                          className="adb-filter-top-n"
                           value={adbTopN}
                           options={[20, 50, 100, 200].map((n) => ({ label: String(n), value: n }))}
                           onChange={(v) => setAdbTopN(v)}
@@ -832,23 +800,23 @@ export default function AverageBalanceView() {
                       </FilterBar>
                     </Col>
                     <Col>
-                      <Text strong>区间天数：{dailyData?.num_days ?? "—"} 天</Text>
+                      <Text strong>区间天数：{dailyData?.num_days ?? EM_DASH} 天</Text>
                       {dailyData?.coverage_days != null && dailyData.coverage_days !== dailyData.num_days ? (
-                        <Text type="secondary" style={{ marginLeft: 8 }}>
+                        <Text type="secondary" className="adb-inline-note">
                           （实际有数据 {dailyData.coverage_days} 天）
                         </Text>
                       ) : null}
                     </Col>
                   </Row>
                   {dailyData?.simulated ? (
-                    <Alert style={{ marginTop: 16 }} type="info" showIcon message="当前区间仅 1 天时，日均为稳态模拟，便于演示图表逻辑" />
+                    <Alert className="adb-block-gap" type="info" showIcon message="当前区间仅 1 天时，日均为稳态模拟，便于演示图表逻辑" />
                   ) : null}
                   {dailyData != null &&
                    dailyData.coverage_days != null &&
                    dailyData.num_days > 1 &&
                    dailyData.coverage_days < dailyData.num_days * 0.5 ? (
                     <Alert
-                      style={{ marginTop: 16 }}
+                      className="adb-block-gap"
                       type="warning"
                       showIcon
                       message={`数据覆盖不足：区间 ${dailyData.num_days} 天中仅 ${dailyData.coverage_days} 天有正式表数据`}
@@ -856,7 +824,7 @@ export default function AverageBalanceView() {
                     />
                   ) : null}
                   {(lowCoverageWarning || rateCoverageWarning) && startDate && endDate ? (
-                    <div style={{ marginTop: 16 }}>
+                    <div className="adb-block-gap">
                       <AdbCoverageDiagnostics
                         loading={coverageQuery.isLoading}
                         isError={coverageQuery.isError}
@@ -909,10 +877,10 @@ export default function AverageBalanceView() {
                     ) : null}
                     {priorYearRange ? (
                       <Card data-testid="adb-daily-yoy-summary" title="区间同比（去年同期对齐）" size="small">
-                        <Space direction="vertical" size="small" style={{ width: "100%" }}>
+                        <Space direction="vertical" size="small" className="adb-stack">
                           <Text type="secondary">
                             本期 {startDate}～{endDate} 与去年同期 {priorYearRange.startDate}～{priorYearRange.endDate}{" "}
-                            日历对齐。同比% =（本期−去年）/ 去年（分母为 0 时显示为「—」）。
+                            日历对齐。同比% =（本期−去年）/ 去年（分母为 0 时显示为「{EM_DASH}」）。
                           </Text>
                           <Alert
                             type="info"
@@ -931,7 +899,7 @@ export default function AverageBalanceView() {
                             <div>
                               <Text strong>债券与同业 · 区间日均总规模</Text>
                               <Table<AdbYoYAmountRow>
-                                style={{ marginTop: 8 }}
+                                className="adb-table-gap"
                                 size="small"
                                 pagination={false}
                                 rowKey={(row) => row.key}
@@ -947,7 +915,7 @@ export default function AverageBalanceView() {
                                 <div>
                                   <Text strong>资产端分类 · 区间日均同比</Text>
                                   <Table<AdbYoYAmountRow>
-                                    style={{ marginTop: 8 }}
+                                    className="adb-table-gap"
                                     size="small"
                                     pagination={false}
                                     rowKey={(row) => row.key}
@@ -957,10 +925,10 @@ export default function AverageBalanceView() {
                                 </div>
                               ) : null}
                               {yoyLiabilityCategoryRows.length > 0 ? (
-                                <div style={{ marginTop: 16 }}>
+                                <div className="adb-block-gap">
                                   <Text strong>负债端分类 · 区间日均同比</Text>
                                   <Table<AdbYoYAmountRow>
-                                    style={{ marginTop: 8 }}
+                                    className="adb-table-gap"
                                     size="small"
                                     pagination={false}
                                     rowKey={(row) => row.key}
@@ -987,11 +955,14 @@ export default function AverageBalanceView() {
                         <Col xs={24} sm={12} xl={8} key={item.title}>
                           <Card size="small">
                             <Text type="secondary">{item.title}</Text>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
-                              <Title level={4} style={{ margin: 0 }} type={item.danger ? "danger" : undefined}>
+                            <div className="adb-kpi-value-row">
+                              <Title
+                                level={4}
+                                className={item.danger ? "adb-kpi-value adb-tone--down" : "adb-kpi-value"}
+                              >
                                 {item.value}
                               </Title>
-                              {item.danger ? <WarningFilled style={{ color: "#cf1322", fontSize: 16 }} /> : null}
+                              {item.danger ? <WarningFilled className="adb-danger-icon" /> : null}
                             </div>
                           </Card>
                         </Col>
@@ -1002,12 +973,12 @@ export default function AverageBalanceView() {
                       {[
                         {
                           title: "同业日均资产",
-                          subtitle: "TYW 正式余额·区间日均",
+                          subtitle: "TYW 正式余额（区间日均）",
                           value: formatYi(dailyData.total_avg_interbank_assets),
                         },
                         {
                           title: "同业日均负债",
-                          subtitle: "TYW 正式余额·区间日均",
+                          subtitle: "TYW 正式余额（区间日均）",
                           value: formatYi(dailyData.total_avg_interbank_liabilities),
                         },
                       ].map((item) => (
@@ -1015,13 +986,13 @@ export default function AverageBalanceView() {
                           <Card size="small">
                             <Text type="secondary">{item.title}</Text>
                             {item.subtitle ? (
-                              <div style={{ marginTop: 4 }}>
-                                <Text type="secondary" style={{ fontSize: 12 }}>
+                              <div className="adb-kpi-subtitle">
+                                <Text type="secondary" className="adb-kpi-subtitle-text">
                                   {item.subtitle}
                                 </Text>
                               </div>
                             ) : null}
-                            <Title level={4} style={{ marginTop: 10, marginBottom: 0 }}>
+                            <Title level={4} className="adb-kpi-value--spaced">
                               {item.value}
                             </Title>
                           </Card>
@@ -1038,7 +1009,12 @@ export default function AverageBalanceView() {
                         <Col xs={24} md={8} key={item.title}>
                           <Card size="small">
                             <Text type="secondary">{item.title}</Text>
-                            <Title level={4} style={{ marginTop: 10, marginBottom: 0 }} type={item.danger ? "danger" : undefined}>
+                            <Title
+                              level={4}
+                              className={
+                                item.danger ? "adb-kpi-value--spaced adb-tone--down" : "adb-kpi-value--spaced"
+                              }
+                            >
                               {item.value}
                             </Title>
                           </Card>
@@ -1059,8 +1035,8 @@ export default function AverageBalanceView() {
                         title="区间日均余额走势"
                         size="small"
                         extra={
-                          <Text type="secondary" style={{ fontSize: 12 }}>
-                            蓝色区域为日余额，深蓝线为 30 日移动均线；用于识别区间内规模异常波动
+                          <Text type="secondary" className="adb-card-extra">
+                            浅色线为日余额，深蓝线为 30 日移动均线；用于识别区间内规模异常波动
                           </Text>
                         }
                       >
@@ -1074,7 +1050,7 @@ export default function AverageBalanceView() {
                           title="资产端分类明细"
                           size="small"
                           extra={
-                            <Text type="secondary" style={{ fontSize: 12 }}>
+                            <Text type="secondary" className="adb-card-extra">
                               债券投资（ZQTZ）与同业资产（TYW）；按日均规模降序；占比为占上方「日均总资产」比例；默认至多 20 类
                             </Text>
                           }
@@ -1087,7 +1063,7 @@ export default function AverageBalanceView() {
                           title="负债端分类明细"
                           size="small"
                           extra={
-                            <Text type="secondary" style={{ fontSize: 12 }}>
+                            <Text type="secondary" className="adb-card-extra">
                               发行类债券与同业负债（ZQTZ/TYW）；按日均规模降序；占比为占上方「日均总负债」比例；默认至多 20 类
                             </Text>
                           }
@@ -1105,7 +1081,7 @@ export default function AverageBalanceView() {
             key: "monthly",
             label: "月度统计",
             children: (
-              <Space direction="vertical" size="large" style={{ width: "100%" }}>
+              <Space direction="vertical" size="large" className="adb-stack">
                 <SectionLead
                   eyebrow="月度"
                   title="月度日均统计"
@@ -1114,7 +1090,7 @@ export default function AverageBalanceView() {
                 <Card size="small">
                   <FilterBar>
                     <Text type="secondary">年份</Text>
-                    <Select aria-label="adb-year" style={{ width: 140 }} value={selectedYear} options={yearOptions} onChange={setSelectedYear} />
+                    <Select aria-label="adb-year" className="adb-filter-year" value={selectedYear} options={yearOptions} onChange={setSelectedYear} />
                   </FilterBar>
                 </Card>
 
@@ -1142,7 +1118,7 @@ export default function AverageBalanceView() {
                         <Col xs={24} sm={12} xl={4} key={item.title}>
                           <Card size="small">
                             <Text type="secondary">{item.title}</Text>
-                            <Title level={4} style={{ marginTop: 10, marginBottom: 0 }}>{item.value}</Title>
+                            <Title level={4} className="adb-kpi-value--spaced">{item.value}</Title>
                           </Card>
                         </Col>
                       ))}
@@ -1154,7 +1130,7 @@ export default function AverageBalanceView() {
                         title="月度利差走势"
                         size="small"
                         extra={
-                          <Text type="secondary" style={{ fontSize: 12 }}>
+                          <Text type="secondary" className="adb-card-extra">
                             加权YTM vs 加权票息 vs NIM利差；用于跟踪利差边际变化方向
                           </Text>
                         }
@@ -1221,18 +1197,28 @@ export default function AverageBalanceView() {
                       <Card
                         title="按月度日均分析 - 深度分析"
                         size="small"
-                        extra={<Select aria-label="adb-month" style={{ width: 160 }} value={selectedMonth} options={monthlyData.months.map((item) => ({ label: item.month_label, value: item.month }))} onChange={setSelectedMonth} />}
+                        extra={<Select aria-label="adb-month" className="adb-filter-month" value={selectedMonth} options={monthlyData.months.map((item) => ({ label: item.month_label, value: item.month }))} onChange={setSelectedMonth} />}
                       >
                         <Row gutter={[16, 16]}>
                           <Col xs={24} xl={12}>
                             <Card size="small" title="资产端分类明细">
-                              <AdbMonthlyHorizontalChart rows={monthlyAssetRows} title={`${selectedMonthData.month_label} 资产端`} color="#2563EB" style={{ marginBottom: 16 }} />
+                              <AdbMonthlyHorizontalChart
+                                className="adb-chart-block"
+                                rows={monthlyAssetRows}
+                                title={`${selectedMonthData.month_label} 资产端`}
+                                color={ibTokens.color.accent}
+                              />
                               <AdbMonthlyBreakdownTable rows={selectedMonthData.breakdown_assets} columns={monthlyAssetColumns} rowKeyPrefix="asset-deep" />
                             </Card>
                           </Col>
                           <Col xs={24} xl={12}>
                             <Card size="small" title="负债端分类明细">
-                              <AdbMonthlyHorizontalChart rows={monthlyLiabilityRows} title={`${selectedMonthData.month_label} 负债端`} color="#DC2626" style={{ marginBottom: 16 }} />
+                              <AdbMonthlyHorizontalChart
+                                className="adb-chart-block"
+                                rows={monthlyLiabilityRows}
+                                title={`${selectedMonthData.month_label} 负债端`}
+                                color={ibTokens.color.down}
+                              />
                               <AdbMonthlyBreakdownTable rows={selectedMonthData.breakdown_liabilities} columns={monthlyLiabilityColumns} rowKeyPrefix="liability-deep" />
                             </Card>
                           </Col>

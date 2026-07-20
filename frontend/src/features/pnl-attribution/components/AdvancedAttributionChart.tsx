@@ -54,15 +54,26 @@ function formatYi(value: number | null | undefined): string {
   return `${yi >= 0 ? "+" : ""}${yi.toFixed(2)} 亿`;
 }
 
-function numericRaw(value: { raw: number | null } | null | undefined): number {
-  return value?.raw ?? 0;
+function numericRaw(value: { raw: number | null } | null | undefined): number | null {
+  const raw = value?.raw;
+  return typeof raw === "number" && Number.isFinite(raw) ? raw : null;
 }
 
+/** 契约：`pct` 字段 raw 恒为小数比率，×100 转百分点；缺失（raw=null）返回 null，不补 0。 */
 function pctPoints(
   value: { raw: number | null; unit?: string } | null | undefined,
-): number {
+): number | null {
   const raw = numericRaw(value);
-  return value?.unit === "pct" && Math.abs(raw) <= 1 ? raw * 100 : raw;
+  if (raw === null) {
+    return null;
+  }
+  return value?.unit === "pct" ? raw * 100 : raw;
+}
+
+/** 图表/表格中以「亿」为单位的数值；缺失返回 null。 */
+function yiOrNull(value: { raw: number | null } | null | undefined): number | null {
+  const raw = numericRaw(value);
+  return raw === null ? null : raw / 100_000_000;
 }
 
 function numericDisplay(
@@ -79,7 +90,8 @@ function pctDisplay(
 ): string {
   const display = value?.display?.trim();
   if (display) return display;
-  return `${pctPoints(value).toFixed(2)}%`;
+  const points = pctPoints(value);
+  return points === null ? "—" : `${points.toFixed(2)}%`;
 }
 
 type Props = {
@@ -163,9 +175,8 @@ export function AdvancedAttributionChart({
       return null;
     }
     const tenors = krdData.buckets.map((b) => b.tenor);
-    const contrib = krdData.buckets.map(
-      (b) => (b.duration_contribution.raw ?? 0) / 100_000_000,
-    );
+    // 缺失贡献/收益率变动传 null，ECharts 留空不画 0 值柱/点。
+    const contrib = krdData.buckets.map((b) => yiOrNull(b.duration_contribution));
     const ychg = krdData.buckets.map((b) => pctPoints(b.yield_change));
     return createBaseChartOption({
       tooltip: { trigger: "axis" },
@@ -207,9 +218,9 @@ export function AdvancedAttributionChart({
             value: v,
             itemStyle: {
               color:
-                v >= 0
-                  ? ibTokens.color.up
-                  : ibTokens.color.down,
+                v !== null && v < 0
+                  ? ibTokens.color.down
+                  : ibTokens.color.up,
               borderRadius: BAR_RADIUS,
             },
           })),
@@ -268,7 +279,7 @@ export function AdvancedAttributionChart({
         {
           name: "市值占比",
           type: "bar",
-          data: krdData.buckets.map((b) => b.weight.raw ?? 0),
+          data: krdData.buckets.map((b) => numericRaw(b.weight)),
           itemStyle: {
             color: ibTokens.color.up,
             borderRadius: BAR_RADIUS,
@@ -386,8 +397,8 @@ export function AdvancedAttributionChart({
                   data-size="medium"
                   data-direction={rateMoveDirection(spreadData.treasury_10y_change?.raw)}
                 >
-                  {spreadData.treasury_10y_change !== null
-                    ? `${(spreadData.treasury_10y_change.raw ?? 0) >= 0 ? "+" : ""}${(spreadData.treasury_10y_change.raw ?? 0).toFixed(0)} BP`
+                  {spreadData.treasury_10y_change?.raw != null
+                    ? `${spreadData.treasury_10y_change.raw >= 0 ? "+" : ""}${spreadData.treasury_10y_change.raw.toFixed(0)} BP`
                     : "—"}
                 </div>
               </div>
@@ -399,7 +410,9 @@ export function AdvancedAttributionChart({
                 组合 DV01
               </div>
               <div className="advanced-attribution-chart__metric-value" data-direction="info">
-                {((krdData.portfolio_dv01.raw ?? 0) / 10_000).toFixed(0)} 万
+                {krdData.portfolio_dv01.raw != null
+                  ? `${(krdData.portfolio_dv01.raw / 10_000).toFixed(0)} 万`
+                  : "—"}
               </div>
               <div className="advanced-attribution-chart__metric-note">
                 每 BP 价值变动
@@ -462,7 +475,7 @@ export function AdvancedAttributionChart({
                         {item.category}
                       </td>
                       <td className="advanced-attribution-chart__table-num">
-                        {((item.market_value.raw ?? 0) / 1e8).toFixed(1)}
+                        {yiOrNull(item.market_value)?.toFixed(1) ?? "—"}
                       </td>
                       <td className="advanced-attribution-chart__table-num">
                         {pctDisplay(item.coupon_rate)}
@@ -477,7 +490,7 @@ export function AdvancedAttributionChart({
                         {formatYi(item.carry_pnl.raw ?? undefined)}
                       </td>
                       <td className="advanced-attribution-chart__table-num">
-                        {(item.duration.raw ?? 0).toFixed(2)}
+                        {item.duration.raw != null ? item.duration.raw.toFixed(2) : "—"}
                       </td>
                       <td className="advanced-attribution-chart__table-num" data-direction={toneDirection(item.rolldown.raw)}>
                         {pctDisplay(item.rolldown)}
@@ -618,21 +631,19 @@ export function AdvancedAttributionChart({
                         {b.bond_count}
                       </td>
                       <td className="advanced-attribution-chart__table-num">
-                        {((b.market_value.raw ?? 0) / 1e8).toFixed(1)}
+                        {yiOrNull(b.market_value)?.toFixed(1) ?? "—"}
                       </td>
                       <td className="advanced-attribution-chart__table-num">
-                        {(b.weight.raw ?? 0).toFixed(1)}
+                        {b.weight.raw != null ? b.weight.raw.toFixed(1) : "—"}
                       </td>
                       <td className="advanced-attribution-chart__table-num">
                         {numericDisplay(b.bucket_duration)}
                       </td>
                       <td className="advanced-attribution-chart__table-num" data-direction={rateMoveDirection(b.yield_change?.raw)}>
-                        {b.yield_change !== null
-                          ? pctPoints(b.yield_change).toFixed(1)
-                          : "—"}
+                        {pctPoints(b.yield_change)?.toFixed(1) ?? "—"}
                       </td>
                       <td className="advanced-attribution-chart__table-num" data-direction={valueDirection(b.duration_contribution.raw)}>
-                        {((b.duration_contribution.raw ?? 0) / 1e8).toFixed(2)}
+                        {yiOrNull(b.duration_contribution)?.toFixed(2) ?? "—"}
                       </td>
                       <td className="advanced-attribution-chart__table-num advanced-attribution-chart__table-num--strong">
                         {pctDisplay(b.contribution_pct)}

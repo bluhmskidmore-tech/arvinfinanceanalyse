@@ -154,6 +154,12 @@ function buildPnlClient(): ApiClient {
       business_count: 3,
       total_pnl: "13.00",
       total_scale_amount: "100000000.00",
+      // 与 rows 本地求和刻意不同（rows 514 合计为 15.00 元），用于证明表脚直读 summary。
+      interest_income_514: "150000.00",
+      fair_value_change_516: "10000.00",
+      capital_gain_517: "20000.00",
+      manual_adjustment: "0.00",
+      pnl_row_count: 6,
       traced_pnl_row_count: 1,
       untraced_pnl_row_count: 5,
       untraced_breakdown: [
@@ -1570,6 +1576,15 @@ describe("pnl routed pages smoke", () => {
     expect(await screen.findByTestId("pnl-by-business-formal-table")).toHaveTextContent("政策性金融债");
     expect(screen.getByTestId("pnl-by-business-formal-table")).toHaveTextContent("表内收益率");
     expect(screen.getByTestId("pnl-by-business-formal-table-footer")).toHaveTextContent("全表合计");
+    // 表脚直读后端 summary 分列合计：514 合计 150000 元 => 15（万元）；行数取 summary.pnl_row_count。
+    // rows 本地求和是 15.00 元（会显示 0），若前端复算则以下断言会失败。
+    const formalFooterCells = screen
+      .getByTestId("pnl-by-business-formal-table-footer")
+      .querySelectorAll("td");
+    expect(formalFooterCells[3]).toHaveTextContent("15");
+    expect(formalFooterCells[4]).toHaveTextContent("1");
+    expect(formalFooterCells[5]).toHaveTextContent("2");
+    expect(formalFooterCells[9]).toHaveTextContent("6");
   });
 
   it("surfaces failed precompute fallback and allows a controlled rebuild", async () => {

@@ -387,9 +387,12 @@ export type BenchmarkExcessPayload = {
 
 export type KRDBucket = {
   tenor: string;
-  krd: Numeric;
+  /** MV-weighted average modified duration in the tenor bucket (not true KRD). */
+  avg_modified_duration: Numeric;
   dv01: Numeric;
   market_value_weight: Numeric;
+  /** @deprecated Alias of avg_modified_duration; remove after consumers migrate. */
+  krd?: Numeric;
 };
 
 export type KRDScenarioResult = {
@@ -3414,14 +3417,7 @@ export type PnlByBusinessUntracedBreakdownRow = {
 export type PnlByBusinessPayload = {
   report_date: string;
   source_tables: string[];
-  summary: {
-    business_count: number;
-    total_pnl: string;
-    total_scale_amount: string;
-    traced_pnl_row_count: number;
-    untraced_pnl_row_count: number;
-    untraced_breakdown?: PnlByBusinessUntracedBreakdownRow[];
-  };
+  summary: import("./pnlByBusinessContracts").PnlByBusinessSummary;
   rows: PnlByBusinessRow[];
 };
 
@@ -3730,6 +3726,8 @@ export type PnlByBusinessAnalysisPayload = {
   sample_fill_method?: string | null;
   source_tables: string[];
   rows: PnlByBusinessAnalysisRow[];
+  /** bond_bucket 专用：后端合并展示桶（金融债+其它债券 -> "other_merged" 其他）；加权年化收益为后端正式口径，前端直读不得复算。 */
+  merged_bucket_rows?: PnlByBusinessAnalysisRow[];
 };
 
 /**
@@ -5545,6 +5543,9 @@ export type KRDAttributionBucket = {
   weight: Numeric;
   bond_count: number;
   bucket_duration: Numeric;
+  /** Same semantics as bucket_duration / avg_modified_duration. */
+  avg_modified_duration?: Numeric;
+  /** @deprecated Alias of avg_modified_duration. */
   krd: Numeric;
   yield_change: Numeric | null;
   duration_contribution: Numeric;

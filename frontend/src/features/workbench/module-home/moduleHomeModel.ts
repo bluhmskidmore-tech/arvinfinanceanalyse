@@ -193,7 +193,8 @@ export type ModuleHomeDetailChart = {
   unit: string;
   orientation: "horizontal" | "vertical";
   categories: string[];
-  values: number[];
+  /** 缺失值保留 null（图表画断点、tooltip 显示 —），不得补 0。 */
+  values: Array<number | null>;
 };
 
 export type ModuleHomeDetailSection = {
@@ -2120,7 +2121,10 @@ function buildPortfolioComparisonChart(
     unit: "亿元",
     orientation: "horizontal",
     categories: items.map((item, index) => item.portfolio_name.trim() || `未命名组合 ${index + 1}`),
-    values: items.map((item) => (nativeToNumber(item.total_market_value) ?? 0) / 1e8),
+    values: items.map((item) => {
+      const raw = nativeToNumber(item.total_market_value);
+      return raw === null ? null : raw / 1e8;
+    }),
   };
 }
 
@@ -2131,7 +2135,10 @@ function buildYieldDistributionChart(payload: YieldDistributionPayload): ModuleH
     unit: "亿元",
     orientation: "vertical",
     categories: items.map((item) => item.yield_bucket),
-    values: items.map((item) => (nativeToNumber(item.total_market_value) ?? 0) / 1e8),
+    values: items.map((item) => {
+      const raw = nativeToNumber(item.total_market_value);
+      return raw === null ? null : raw / 1e8;
+    }),
   };
 }
 
@@ -2142,7 +2149,10 @@ function buildSpreadAnalysisChart(payload: SpreadAnalysisPayload): ModuleHomeDet
     unit: "亿元",
     orientation: "horizontal",
     categories: items.map((item) => item.bond_type),
-    values: items.map((item) => (nativeToNumber(item.total_market_value) ?? 0) / 1e8),
+    values: items.map((item) => {
+      const raw = nativeToNumber(item.total_market_value);
+      return raw === null ? null : raw / 1e8;
+    }),
   };
 }
 

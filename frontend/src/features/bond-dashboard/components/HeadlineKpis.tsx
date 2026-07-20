@@ -2,7 +2,7 @@ import { ArrowDownOutlined, ArrowUpOutlined } from "@ant-design/icons";
 import { Card, Col, Row, Spin } from "antd";
 
 import type { BondDashboardHeadlinePayload, Numeric } from "../../../api/contracts";
-import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import { designTokens, ibTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import {
   formatDv01Wan,
   formatMomRatio,
@@ -36,7 +36,6 @@ const KPI_DEFS: {
 ];
 
 const dt = designTokens;
-const c = dt.color;
 
 export function HeadlineKpis({
   data,
@@ -65,8 +64,11 @@ export function HeadlineKpis({
         const mom = formatMomRatio(raw, prevRaw);
         const up = mom !== null && mom.startsWith("+");
         const down = mom !== null && mom.startsWith("-");
-        const changeColor = up ? c.danger[500] : down ? c.success[600] : c.neutral[500];
-        const muted = c.neutral[600];
+        const changeColor = up
+          ? ibTokens.color.up
+          : down
+            ? ibTokens.color.down
+            : ibTokens.color.inkMuted;
 
         return (
           <Col
@@ -82,25 +84,40 @@ export function HeadlineKpis({
               size="small"
               styles={{ body: { padding: `${dt.space[3]}px ${dt.space[3] - 2}px` } }}
               style={{
-                borderRadius: dt.radius.md,
-                boxShadow: dt.shadow.card,
+                borderRadius: ibTokens.radius,
+                boxShadow: ibTokens.shadow,
                 height: "100%",
-                borderColor: c.neutral[200],
+                borderColor: ibTokens.color.hairline,
               }}
             >
-              <div style={{ fontSize: dt.fontSize[13], color: muted, marginBottom: dt.space[2] }}>{def.label}</div>
+              <div
+                style={{
+                  fontSize: dt.fontSize[13],
+                  color: ibTokens.color.inkSecondary,
+                  marginBottom: dt.space[2],
+                }}
+              >
+                {def.label}
+              </div>
               <div
                 style={{
                   fontSize: dt.fontSize[24],
                   fontWeight: 700,
                   lineHeight: 1.15,
-                  color: c.primary[600],
+                  color: ibTokens.color.accent,
                   ...tabularNumsStyle,
                 }}
               >
                 {display}
                 {display === "—" ? null : (
-                  <span style={{ fontSize: dt.fontSize[13], fontWeight: 500, marginLeft: 4, color: c.neutral[500] }}>
+                  <span
+                    style={{
+                      fontSize: dt.fontSize[13],
+                      fontWeight: 500,
+                      marginLeft: 4,
+                      color: ibTokens.color.inkMuted,
+                    }}
+                  >
                     {def.unit}
                   </span>
                 )}
@@ -109,7 +126,7 @@ export function HeadlineKpis({
                 style={{
                   fontSize: dt.fontSize[12],
                   marginTop: dt.space[2],
-                  color: mom ? changeColor : c.neutral[400],
+                  color: mom ? changeColor : ibTokens.color.inkMuted,
                   display: "flex",
                   alignItems: "center",
                   gap: 4,

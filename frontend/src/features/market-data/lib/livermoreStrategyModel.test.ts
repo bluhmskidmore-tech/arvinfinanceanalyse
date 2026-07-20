@@ -231,7 +231,7 @@ describe("livermoreStrategyModel", () => {
     expect(model.asOfDate).toBe("2026-04-29");
     expect(model.requestedAsOfDate).toBe("2026-04-29");
     expect(model.marketGate.state).toBe("WARM");
-    expect(model.marketGate.exposureDisplay).toBe("0.4");
+    expect(model.marketGate.exposureDisplay).toBe("40%");
     expect(model.marketGate.passedConditions).toBe(2);
     expect(model.marketGate.availableConditions).toBe(2);
     expect(model.marketGate.conditions.map((condition) => condition.status)).toEqual([

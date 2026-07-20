@@ -1,10 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { InfoCircleOutlined } from "@ant-design/icons";
 import { Alert, Card, Col, Row, Select, Space, Tooltip, Typography, Table } from "antd";
+import type { TableColumnsType } from "antd";
 
 import { useApiClient } from "../../../api/client";
-import type { BondDashboardHeadlinePayload, Numeric, RiskIndicatorsPayload } from "../../../api/contracts";
+import type {
+  BondBusinessTypeMetricItem,
+  BondDashboardHeadlinePayload,
+  Numeric,
+  ResultMeta,
+  RiskIndicatorsPayload,
+} from "../../../api/contracts";
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
 import {
   BOND_DASHBOARD_PAGE_BUNDLE_SECTIONS,
@@ -22,6 +29,31 @@ import { SpreadTable } from "../components/SpreadTable";
 import { YieldDistributionBar } from "../components/YieldDistributionBar";
 import { useBondDashboardBundleQuery } from "../hooks/useBondDashboardBundleQuery";
 import { formatRatePercent, formatYi, formatYears } from "../utils/format";
+import "./BondDashboardPage.css";
+
+type BusinessTypeMetricRow = BondBusinessTypeMetricItem & { key: string };
+
+const BUSINESS_TYPE_METRIC_COLUMNS: TableColumnsType<BusinessTypeMetricRow> = [
+  { title: "业务类型", dataIndex: "name", ellipsis: true },
+  {
+    title: "市值（亿）",
+    dataIndex: "market_value",
+    align: "right",
+    render: (v: string) => formatYi(Number(v)),
+  },
+  {
+    title: "加权 YTM",
+    dataIndex: "weighted_avg_ytm_pct",
+    align: "right",
+    render: (v: string) => `${formatRatePercent(Number(v) / 100)}%`,
+  },
+  {
+    title: "加权久期",
+    dataIndex: "weighted_avg_duration",
+    align: "right",
+    render: (v: string) => formatYears(Number(v)),
+  },
+];
 
 function numericRawOrNull(value: Numeric | null | undefined): number | null {
   return value?.raw === null || value?.raw === undefined || !Number.isFinite(value.raw)
@@ -30,17 +62,43 @@ function numericRawOrNull(value: Numeric | null | undefined): number | null {
 }
 
 function formatYiOrNoData(value: Numeric | null | undefined): string {
-  return numericRawOrNull(value) === null ? "暂无数据" : formatYi(value);
+  return numericRawOrNull(value) === null ? "—" : formatYi(value);
 }
 
 function formatYearsOrNoData(value: Numeric | null | undefined): string {
-  return numericRawOrNull(value) === null ? "暂无数据" : formatYears(value);
+  return numericRawOrNull(value) === null ? "—" : formatYears(value);
 }
 
 function formatCreditRatioDetail(value: Numeric | null | undefined): string {
   return numericRawOrNull(value) === null
-    ? "当前信用占比暂无数据"
+    ? "当前信用占比 —"
     : `当前信用占比 ${formatRatePercent(value, 1)}%`;
+}
+
+/**
+ * 首屏 stale/fallback 警示：quality_flag 非 ok、fallback_date 非空、
+ * 或 resolved_report_date 与请求日不一致时，返回该信封的降级说明；否则返回 null。
+ */
+function describeFirstScreenMetaFallback(
+  label: string,
+  meta: ResultMeta | undefined,
+  pageRequestedReportDate: string | null,
+): string | null {
+  if (!meta) return null;
+  const requestedDate = meta.requested_report_date?.trim() || pageRequestedReportDate?.trim() || "";
+  const resolvedDate = meta.resolved_report_date?.trim() ?? "";
+  const fallbackDate = meta.fallback_date?.trim() ?? "";
+  const qualityDegraded = meta.quality_flag !== "ok";
+  const dateFallback = Boolean(requestedDate && resolvedDate && resolvedDate !== requestedDate);
+  if (!qualityDegraded && !fallbackDate && !dateFallback) return null;
+
+  const parts: string[] = [];
+  if (qualityDegraded) parts.push(`供数质量 ${meta.quality_flag}`);
+  if (dateFallback) parts.push(`请求日 ${requestedDate} 回退至 ${resolvedDate}`);
+  if (fallbackDate) parts.push(`回退日期 ${fallbackDate}`);
+  const actualDate = resolvedDate || meta.as_of_date?.trim() || "";
+  if (actualDate && !dateFallback) parts.push(`实际数据日期 ${actualDate}`);
+  return `${label}：${parts.join("；")}`;
 }
 
 function buildDashboardConclusion(
@@ -59,7 +117,7 @@ function buildDashboardConclusion(
   const creditRatio = numericRawOrNull(risk.credit_ratio);
   const creditTone =
     creditRatio === null
-      ? "信用仓位暂无数据"
+      ? "信用仓位 —"
       : creditRatio >= 0.5
         ? "信用仓位偏高"
         : creditRatio >= 0.3
@@ -153,8 +211,22 @@ export default function BondDashboardPage() {
     isError: bundleError,
   };
 
+  const businessTypeMetricItems = businessTypeMetricsQuery.data?.result.items;
+  const businessTypeMetricRows = useMemo<BusinessTypeMetricRow[]>(
+    () =>
+      (businessTypeMetricItems ?? []).map((row) => ({
+        key: row.name,
+        ...row,
+      })),
+    [businessTypeMetricItems],
+  );
+
   const dateOptions = datesQuery.data?.result.report_dates ?? [];
   const hasFirstScreenMeta = Boolean(headlineQuery.data?.result_meta || riskQuery.data?.result_meta);
+  const firstScreenFallbackNotices = [
+    describeFirstScreenMetaFallback("首屏指标", headlineQuery.data?.result_meta, rd || null),
+    describeFirstScreenMetaFallback("风险指标", riskQuery.data?.result_meta, rd || null),
+  ].filter((notice): notice is string => notice !== null);
   const conclusion =
     headlineQuery.data?.result && riskQuery.data?.result
       ? buildDashboardConclusion(headlineQuery.data.result, riskQuery.data.result)
@@ -162,10 +234,10 @@ export default function BondDashboardPage() {
   const datesEmpty = !datesQuery.isLoading && !datesQuery.isError && dateOptions.length === 0;
 
   return (
-    <div data-testid="bond-dashboard-page" style={{ background: "#f5f7fa", minHeight: "100%", padding: 16 }}>
+    <div data-testid="bond-dashboard-page" className="bond-dashboard-page">
       <Space direction="vertical" size={16} style={{ width: "100%" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-          <Space align="center" size={8}>
+        <div className="bond-dashboard-page__toolbar">
+          <div className="bond-dashboard-page__title-row">
             <Typography.Title level={3} style={{ margin: 0 }}>
               债券总览
             </Typography.Title>
@@ -173,13 +245,13 @@ export default function BondDashboardPage() {
               <Tooltip title="数据来源：债券分析事实表（与余额分析页可能存在口径差异）">
                 <InfoCircleOutlined
                   aria-label="债券驾驶舱数据来源说明"
-                  style={{ color: "rgba(0,0,0,0.45)", fontSize: 16, cursor: "help" }}
+                  className="bond-dashboard-page__title-icon"
                 />
               </Tooltip>
             ) : null}
-          </Space>
+          </div>
           <Space>
-            <span style={{ color: "rgba(0,0,0,0.55)" }}>报告日</span>
+            <span className="bond-dashboard-page__report-label">报告日</span>
             <Select
               aria-label="bond-dashboard-report-date"
               style={{ minWidth: 160 }}
@@ -223,40 +295,23 @@ export default function BondDashboardPage() {
           />
         ) : null}
 
-        {!datesEmpty ? (
+        {firstScreenFallbackNotices.length > 0 ? (
           <Alert
-            data-testid="bond-dashboard-headline-candidate-boundary"
+            data-testid="bond-dashboard-stale-banner"
+            role="status"
             type="warning"
             showIcon
-            message="候选指标边界"
-            description="MTR-BOND-001~004 仍为 candidate，pending_confirmation=true；GS-BOND-HEADLINE-A 是页面样本，非字典级批准。"
+            message="首屏数据为回退/降级口径"
+            description={`${firstScreenFallbackNotices.join("。")}。下方 KPI 与结论基于上述回退数据，请以实际数据日期为准。`}
           />
         ) : null}
 
         {!datesEmpty && conclusion ? (
-          <Card
-            data-testid="bond-dashboard-conclusion"
-            style={{
-              borderRadius: 16,
-              border: "1px solid #dbe7f5",
-              background: "#f7fbff",
-              boxShadow: "0 10px 24px rgba(31, 94, 255, 0.06)",
-            }}
-          >
+          <Card data-testid="bond-dashboard-conclusion" className="bond-dashboard-page__conclusion">
             <Space direction="vertical" size={6} style={{ width: "100%" }}>
-              <span
-                style={{
-                  fontSize: 12,
-                  fontWeight: 700,
-                  letterSpacing: "0.06em",
-                  textTransform: "uppercase",
-                  color: "#6b7f99",
-                }}
-              >
-                {conclusion.title}
-              </span>
-              <div style={{ fontSize: 20, fontWeight: 600, color: "#162033", lineHeight: 1.4 }}>{conclusion.body}</div>
-              <div style={{ color: "#5c6b82", fontSize: 13, lineHeight: 1.7 }}>{conclusion.detail}</div>
+              <span className="bond-dashboard-page__conclusion-kicker">{conclusion.title}</span>
+              <div className="bond-dashboard-page__conclusion-body">{conclusion.body}</div>
+              <div className="bond-dashboard-page__conclusion-detail">{conclusion.detail}</div>
             </Space>
           </Card>
         ) : null}
@@ -282,6 +337,18 @@ export default function BondDashboardPage() {
           />
         ) : null}
 
+        {!datesEmpty ? (
+          <details className="bond-dashboard-page__governance-notes">
+            <summary>口径与指标边界（证据层）</summary>
+            <p data-testid="bond-dashboard-headline-candidate-boundary">
+              MTR-BOND-001~004 仍为 candidate，pending_confirmation=true；GS-BOND-HEADLINE-A 是页面样本，非字典级批准。
+            </p>
+            <p data-testid="bond-dashboard-risk-source-boundary">
+              GAP-BOND-DASH-RISK 尚未冻结 MTR-RSK-* 同源关系；风险指标面板不自动继承 GS-RISK-A。
+            </p>
+          </details>
+        ) : null}
+
         <Card
           data-testid="bond-dashboard-business-type-metrics"
           size="small"
@@ -298,31 +365,8 @@ export default function BondDashboardPage() {
               size="small"
               pagination={false}
               scroll={{ x: "max-content" }}
-              dataSource={businessTypeMetricsQuery.data!.result.items.map((row) => ({
-                key: row.name,
-                ...row,
-              }))}
-              columns={[
-                { title: "业务类型", dataIndex: "name", ellipsis: true },
-                {
-                  title: "市值（亿）",
-                  dataIndex: "market_value",
-                  align: "right",
-                  render: (v: string) => formatYi(Number(v)),
-                },
-                {
-                  title: "加权 YTM",
-                  dataIndex: "weighted_avg_ytm_pct",
-                  align: "right",
-                  render: (v: string) => `${formatRatePercent(Number(v) / 100)}%`,
-                },
-                {
-                  title: "加权久期",
-                  dataIndex: "weighted_avg_duration",
-                  align: "right",
-                  render: (v: string) => formatYears(Number(v)),
-                },
-              ]}
+              dataSource={businessTypeMetricRows}
+              columns={BUSINESS_TYPE_METRIC_COLUMNS}
             />
           )}
         </Card>

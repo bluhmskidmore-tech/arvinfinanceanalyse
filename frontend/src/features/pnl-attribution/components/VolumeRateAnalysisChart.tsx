@@ -43,6 +43,37 @@ type Props = {
   onRetry: () => void;
 };
 
+type NumericLike = { raw: number | null } | null | undefined;
+
+function rawOrNull(value: NumericLike): number | null {
+  const raw = value?.raw;
+  return typeof raw === "number" && Number.isFinite(raw) ? raw : null;
+}
+
+/** 缺失（对象为 null 或 raw 为 null）显示 "—"，不显示 0。 */
+function yiText(value: NumericLike, digits = 2): string {
+  const raw = rawOrNull(value);
+  return raw === null ? "—" : (raw / 100_000_000).toFixed(digits);
+}
+
+function signedYiText(value: NumericLike, digits = 2): string {
+  const raw = rawOrNull(value);
+  if (raw === null) {
+    return "—";
+  }
+  const yi = raw / 100_000_000;
+  return `${yi >= 0 ? "+" : ""}${yi.toFixed(digits)}`;
+}
+
+function reconErrorText(value: NumericLike): string {
+  const raw = rawOrNull(value);
+  if (raw === null) {
+    return "—";
+  }
+  const yi = raw / 100_000_000;
+  return Math.abs(yi) < 0.0001 ? "\u2248 0" : yi.toFixed(4);
+}
+
 /** 量价归因：分类别当期/上期损益对比 + 明细表（规模、收益率、一阶效应与对账）。 */
 export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
   const categoryOption = useMemo<EChartsOption | null>(() => {
@@ -87,7 +118,11 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
         {
           name: "当期损益",
           type: "bar",
-          data: rows.map((r) => (r.current_pnl.raw ?? 0) / 100_000_000),
+          // 缺失损益传 null，ECharts 留空不画 0 值柱。
+          data: rows.map((r) => {
+            const raw = rawOrNull(r.current_pnl);
+            return raw === null ? null : raw / 100_000_000;
+          }),
           itemStyle: {
             color: designTokens.color.primary[600],
             borderRadius: [
@@ -101,7 +136,10 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
         {
           name: "上期损益",
           type: "bar",
-          data: rows.map((r) => (r.previous_pnl?.raw ?? 0) / 100_000_000),
+          data: rows.map((r) => {
+            const raw = rawOrNull(r.previous_pnl);
+            return raw === null ? null : raw / 100_000_000;
+          }),
           itemStyle: {
             color: designTokens.color.neutral[500],
             borderRadius: [
@@ -237,9 +275,7 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
                             ...tabularNumsStyle,
                           }}
                         >
-                          {(
-                            (item.current_scale.raw ?? 0) / 100_000_000
-                          ).toFixed(2)}
+                          {yiText(item.current_scale)}
                         </td>
                         <td
                           style={{
@@ -248,11 +284,7 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
                             ...tabularNumsStyle,
                           }}
                         >
-                          {item.previous_scale != null
-                            ? (
-                                (item.previous_scale.raw ?? 0) / 100_000_000
-                              ).toFixed(2)
-                            : "—"}
+                          {yiText(item.previous_scale)}
                         </td>
                         <td
                           style={{
@@ -287,9 +319,7 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
                             ...tabularNumsStyle,
                           }}
                         >
-                          {((item.current_pnl.raw ?? 0) / 100_000_000).toFixed(
-                            2,
-                          )}
+                          {yiText(item.current_pnl)}
                         </td>
                         <td
                           style={{
@@ -302,9 +332,7 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
                             ...tabularNumsStyle,
                           }}
                         >
-                          {item.pnl_change != null
-                            ? `${(item.pnl_change.raw ?? 0) / 100_000_000 >= 0 ? "+" : ""}${((item.pnl_change.raw ?? 0) / 100_000_000).toFixed(2)}`
-                            : "—"}
+                          {signedYiText(item.pnl_change)}
                         </td>
                         <td
                           style={{
@@ -313,11 +341,7 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
                             ...tabularNumsStyle,
                           }}
                         >
-                          {item.volume_effect != null
-                            ? (
-                                (item.volume_effect.raw ?? 0) / 100_000_000
-                              ).toFixed(4)
-                            : "—"}
+                          {yiText(item.volume_effect, 4)}
                         </td>
                         <td
                           style={{
@@ -326,11 +350,7 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
                             ...tabularNumsStyle,
                           }}
                         >
-                          {item.rate_effect != null
-                            ? (
-                                (item.rate_effect.raw ?? 0) / 100_000_000
-                              ).toFixed(4)
-                            : "—"}
+                          {yiText(item.rate_effect, 4)}
                         </td>
                         <td
                           style={{
@@ -339,11 +359,7 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
                             ...tabularNumsStyle,
                           }}
                         >
-                          {item.interaction_effect != null
-                            ? (
-                                (item.interaction_effect.raw ?? 0) / 100_000_000
-                              ).toFixed(4)
-                            : "—"}
+                          {yiText(item.interaction_effect, 4)}
                         </td>
                         <td
                           style={{
@@ -353,11 +369,7 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
                             ...tabularNumsStyle,
                           }}
                         >
-                          {item.attrib_sum != null
-                            ? (
-                                (item.attrib_sum.raw ?? 0) / 100_000_000
-                              ).toFixed(4)
-                            : "0.0000"}
+                          {yiText(item.attrib_sum, 4)}
                         </td>
                         <td
                           style={{
@@ -366,15 +378,7 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
                             ...tabularNumsStyle,
                           }}
                         >
-                          {item.recon_error != null
-                            ? Math.abs(
-                                (item.recon_error.raw ?? 0) / 100_000_000,
-                              ) < 0.0001
-                              ? "\u2248 0"
-                              : (
-                                  (item.recon_error.raw ?? 0) / 100_000_000
-                                ).toFixed(4)
-                            : "—"}
+                          {reconErrorText(item.recon_error)}
                         </td>
                       </tr>
                     ))}
@@ -407,9 +411,7 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
                             ...tabularNumsStyle,
                           }}
                         >
-                          {(
-                            (item.current_scale.raw ?? 0) / 100_000_000
-                          ).toFixed(2)}
+                          {yiText(item.current_scale)}
                         </td>
                         <td
                           style={{
@@ -418,11 +420,7 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
                             ...tabularNumsStyle,
                           }}
                         >
-                          {item.previous_scale != null
-                            ? (
-                                (item.previous_scale.raw ?? 0) / 100_000_000
-                              ).toFixed(2)
-                            : "—"}
+                          {yiText(item.previous_scale)}
                         </td>
                         <td
                           style={{
@@ -457,11 +455,7 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
                             ...tabularNumsStyle,
                           }}
                         >
-                          {item.current_pnl != null
-                            ? (
-                                (item.current_pnl.raw ?? 0) / 100_000_000
-                              ).toFixed(2)
-                            : "—"}
+                          {yiText(item.current_pnl)}
                         </td>
                         <td
                           style={{
@@ -474,9 +468,7 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
                             ...tabularNumsStyle,
                           }}
                         >
-                          {item.pnl_change != null
-                            ? `${(item.pnl_change.raw ?? 0) / 100_000_000 >= 0 ? "+" : ""}${((item.pnl_change.raw ?? 0) / 100_000_000).toFixed(2)}`
-                            : "—"}
+                          {signedYiText(item.pnl_change)}
                         </td>
                         <td
                           style={{
@@ -485,11 +477,7 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
                             ...tabularNumsStyle,
                           }}
                         >
-                          {item.volume_effect != null
-                            ? (
-                                (item.volume_effect.raw ?? 0) / 100_000_000
-                              ).toFixed(4)
-                            : "—"}
+                          {yiText(item.volume_effect, 4)}
                         </td>
                         <td
                           style={{
@@ -498,11 +486,7 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
                             ...tabularNumsStyle,
                           }}
                         >
-                          {item.rate_effect != null
-                            ? (
-                                (item.rate_effect.raw ?? 0) / 100_000_000
-                              ).toFixed(4)
-                            : "—"}
+                          {yiText(item.rate_effect, 4)}
                         </td>
                         <td
                           style={{
@@ -511,11 +495,7 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
                             ...tabularNumsStyle,
                           }}
                         >
-                          {item.interaction_effect != null
-                            ? (
-                                (item.interaction_effect.raw ?? 0) / 100_000_000
-                              ).toFixed(4)
-                            : "—"}
+                          {yiText(item.interaction_effect, 4)}
                         </td>
                         <td
                           style={{
@@ -525,11 +505,7 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
                             ...tabularNumsStyle,
                           }}
                         >
-                          {item.attrib_sum != null
-                            ? (
-                                (item.attrib_sum.raw ?? 0) / 100_000_000
-                              ).toFixed(4)
-                            : "0.0000"}
+                          {yiText(item.attrib_sum, 4)}
                         </td>
                         <td
                           style={{
@@ -538,15 +514,7 @@ export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
                             ...tabularNumsStyle,
                           }}
                         >
-                          {item.recon_error != null
-                            ? Math.abs(
-                                (item.recon_error.raw ?? 0) / 100_000_000,
-                              ) < 0.0001
-                              ? "\u2248 0"
-                              : (
-                                  (item.recon_error.raw ?? 0) / 100_000_000
-                                ).toFixed(4)
-                            : "—"}
+                          {reconErrorText(item.recon_error)}
                         </td>
                       </tr>
                     ))}

@@ -1,5 +1,7 @@
+import { ibChartTheme } from "../../../components/charts/chartTheme";
 import ReactECharts from "../../../lib/echarts";
 import type { AdbAccountingBasisDailyAvgTrendItem } from "../../../api/contracts";
+import { EM_DASH } from "../../../utils/format";
 
 const YI = 100_000_000;
 
@@ -12,7 +14,7 @@ function collectBuckets(trend: AdbAccountingBasisDailyAvgTrendItem[]): string[] 
   const set = new Set<string>();
   for (const item of trend) {
     for (const row of item.rows) {
-      const b = (row.basis_bucket || "").trim() || "—";
+      const b = (row.basis_bucket || "").trim() || EM_DASH;
       set.add(b);
     }
   }
@@ -20,26 +22,30 @@ function collectBuckets(trend: AdbAccountingBasisDailyAvgTrendItem[]): string[] 
 }
 
 function buildOption(trend: AdbAccountingBasisDailyAvgTrendItem[]) {
-  const labels = trend.map((t) => t.report_month || t.report_date?.slice(0, 7) || "—");
+  const labels = trend.map((t) => t.report_month || t.report_date?.slice(0, 7) || EM_DASH);
   const buckets = collectBuckets(trend);
-  const series = buckets.map((bucket) => ({
+  const series = buckets.map((bucket, index) => ({
     name: bucket,
     type: "line" as const,
     symbol: "circle",
     symbolSize: 4,
+    itemStyle: { color: ibChartTheme.palette[index % ibChartTheme.palette.length] },
+    lineStyle: { color: ibChartTheme.palette[index % ibChartTheme.palette.length] },
     data: trend.map((t) => {
-      const row = t.rows.find((r) => (r.basis_bucket || "").trim() === bucket);
+      const row = t.rows.find((r) => ((r.basis_bucket || "").trim() || EM_DASH) === bucket);
       if (!row) return null;
       if (
         row.daily_avg_balance === null ||
         row.daily_avg_balance === undefined ||
         Number.isNaN(row.daily_avg_balance)
-      ) return null;
+      ) {
+        return null;
+      }
       return row.daily_avg_balance / YI;
     }),
   }));
 
-  return {
+  return ibChartTheme.createLineChartOption({
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "cross" },
@@ -53,21 +59,20 @@ function buildOption(trend: AdbAccountingBasisDailyAvgTrendItem[]) {
         return [header, ...lines].join("<br/>");
       },
     },
-    legend: { data: buckets, top: 0, type: "scroll" },
+    legend: { data: buckets, top: 0, bottom: "auto", type: "scroll" },
     grid: { left: 56, right: 24, top: 48, bottom: 36 },
     xAxis: {
       type: "category",
       data: labels,
-      axisLabel: { fontSize: 11 },
       boundaryGap: false,
     },
     yAxis: {
       type: "value",
       axisLabel: { formatter: (v: number) => `${v.toFixed(0)}亿` },
-      splitLine: { lineStyle: { type: "dashed", color: "#e5e7eb" } },
+      splitLine: { lineStyle: { type: "dashed", color: ibChartTheme.splitLine.lineStyle.color } },
     },
     series,
-  };
+  });
 }
 
 /** 会计分桶日均余额按月的走势；数据来自后端 trend。 */

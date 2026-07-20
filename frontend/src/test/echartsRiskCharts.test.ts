@@ -44,13 +44,13 @@ describe("echartsRiskCharts", () => {
       const buckets: KRDBucket[] = [
         {
           tenor: "1Y",
-          krd: ratio(0),
+          avg_modified_duration: ratio(0),
           dv01: dv01(123_456),
           market_value_weight: ratio(0),
         },
         {
           tenor: "5Y",
-          krd: ratio(0),
+          avg_modified_duration: ratio(0),
           dv01: dv01(240_000),
           market_value_weight: ratio(0),
         },
@@ -71,6 +71,36 @@ describe("echartsRiskCharts", () => {
       expect(line).toContain("1Y");
       expect(line).toContain("DV01");
       expect(line).toMatch(/万/);
+    });
+
+    it("keeps missing dv01 buckets as null gaps instead of zero bars", () => {
+      const buckets: KRDBucket[] = [
+        {
+          tenor: "1Y",
+          avg_modified_duration: ratio(0),
+          dv01: dv01(null),
+          market_value_weight: ratio(0),
+        },
+        {
+          tenor: "5Y",
+          avg_modified_duration: ratio(0),
+          dv01: dv01(240_000),
+          market_value_weight: ratio(0),
+        },
+      ];
+      const option = buildKrdDv01BarOption(buckets);
+      const series = firstSeriesEntry(option?.series) as
+        | { data: Array<{ value: number | null }> }
+        | undefined;
+      expect(series?.data?.[0]?.value).toBeNull();
+      expect(series?.data?.[1]?.value).toBe(240_000);
+
+      const tooltip = option?.tooltip as {
+        formatter?: (p: unknown) => string;
+      };
+      const line = tooltip?.formatter?.([{ dataIndex: 0 }]);
+      expect(line).toContain("1Y");
+      expect(line).not.toMatch(/0 万/);
     });
   });
 

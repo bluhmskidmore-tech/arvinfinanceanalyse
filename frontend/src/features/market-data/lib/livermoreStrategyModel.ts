@@ -384,7 +384,8 @@ export function buildLivermoreStrategyModel(input: {
     marketGate: {
       state: payload.market_gate.state,
       exposure: payload.market_gate.exposure,
-      exposureDisplay: payload.market_gate.exposure.toFixed(1),
+      // Align with stock-analysis: exposure is a 0–1 ratio (passed/4).
+      exposureDisplay: formatMarketGateExposureRatio(payload.market_gate.exposure, "percent"),
       passedConditions: payload.market_gate.passed_conditions,
       availableConditions: payload.market_gate.available_conditions,
       requiredConditions: payload.market_gate.required_conditions,
@@ -396,7 +397,9 @@ export function buildLivermoreStrategyModel(input: {
         evidence: condition.evidence,
         sourceSeriesId: condition.source_series_id ?? null,
       })),
-      macroDisclosure: buildMarketGateMacroDisclosure(payload.market_gate),
+      macroDisclosure: buildMarketGateMacroDisclosure(payload.market_gate, {
+        exposureFormat: "percent",
+      }),
     },
     ruleBlocks: payload.rule_readiness.map((block) => ({
       key: block.key,

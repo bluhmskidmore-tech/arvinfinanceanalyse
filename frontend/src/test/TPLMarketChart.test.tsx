@@ -137,6 +137,54 @@ describe("TPLMarketChart", () => {
     expect(screen.getByTestId("tpl-market-data-missing")).toHaveTextContent("不补 0");
   });
 
+  it("keeps missing tpl fair value changes as null gaps instead of zero bars", () => {
+    const data = {
+      start_period: "2026-02",
+      end_period: "2026-03",
+      num_periods: 2,
+      correlation_coefficient: num(null, "ratio"),
+      correlation_interpretation: "test",
+      total_tpl_fv_change: num(32_000_000),
+      avg_treasury_10y_change: num(-15.0, "bp"),
+      treasury_10y_total_change_bp: num(-15.0, "bp"),
+      analysis_summary: "summary",
+      data_points: [
+        {
+          period: "2026-02",
+          period_label: "2026年2月",
+          tpl_fair_value_change: num(null),
+          tpl_total_pnl: num(null),
+          tpl_scale: num(null),
+          treasury_10y: num(0.0235, "pct", "+2.35%"),
+          treasury_10y_change: num(null, "bp"),
+          dr007: num(0.018, "pct", "+1.80%"),
+        },
+        {
+          period: "2026-03",
+          period_label: "2026年3月",
+          tpl_fair_value_change: num(32_000_000),
+          tpl_total_pnl: num(32_000_000),
+          tpl_scale: num(1_100_000_000),
+          treasury_10y: num(0.022, "pct", "+2.20%"),
+          treasury_10y_change: num(-15.0, "bp"),
+          dr007: num(0.017, "pct", "+1.70%"),
+        },
+      ],
+    } as unknown as TPLMarketCorrelationPayload;
+
+    render(<TPLMarketChart data={data} state={{ kind: "ok" }} onRetry={() => {}} />);
+
+    const option = JSON.parse(screen.getByTestId("tpl-market-echarts-stub").textContent ?? "{}");
+    const tplSeries = option.series.find((series: { name: string }) => series.name === "FVTPL公允价值变动");
+    expect(tplSeries.data).toEqual([null, 0.32]);
+
+    // 相关系数 raw 缺失显示 —，不显示 0.000。
+    expect(screen.queryByText("0.000")).not.toBeInTheDocument();
+    // 利率变动 raw 缺失显示 —，不显示 +0.0。
+    const row = screen.getByTestId("tpl-market-monthly-row-2026-02");
+    expect(row).not.toHaveTextContent("+0.0");
+  });
+
   it("uses product-category bond_tpl cnx_scale and cnx_cash for the monthly detail", () => {
     const data = {
       start_period: "2026-03",

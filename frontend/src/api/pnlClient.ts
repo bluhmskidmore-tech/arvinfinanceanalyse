@@ -3,7 +3,6 @@
  * Imported and re-exported by client.ts for backward compatibility.
  */
 import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
-import { mockCampisiDecisionGrade } from "../mocks/campisiMocks";
 import { readHttpJsonDetail } from "./httpResponseError";
 import type {
   ApiEnvelope,
@@ -215,6 +214,11 @@ export function createMockPnlBusinessClient(): PnlBusinessClientMethods {
             business_count: 0,
             total_pnl: "0.00",
             total_scale_amount: "0.00",
+            interest_income_514: "0.00",
+            fair_value_change_516: "0.00",
+            capital_gain_517: "0.00",
+            manual_adjustment: "0.00",
+            pnl_row_count: 0,
             traced_pnl_row_count: 0,
             untraced_pnl_row_count: 0,
             untraced_breakdown: [],
@@ -426,6 +430,7 @@ export function createMockPnlBusinessClient(): PnlBusinessClientMethods {
       endDate?: string;
       lookbackDays?: number;
     }) {
+      const { mockCampisiDecisionGrade } = await import("../mocks/campisiMocks");
       await delay();
       return buildMockApiEnvelope("campisi.decision_grade", mockCampisiDecisionGrade, {
         basis: "formal",

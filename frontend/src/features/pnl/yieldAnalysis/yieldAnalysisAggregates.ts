@@ -1,3 +1,8 @@
+// 状态标注（2026-07-19 审计）：本模块由 YieldAnalysisPage 使用，该页面当前未挂路由
+// （见 frontend/src/router/routes.tsx，无对应 route）。此处对正式 PnL 明细行做
+// sum/占比/分组排名，属于前端聚合口径，待下沉后端（审计记录 P1-10，
+// docs/audits/2026-06-10-calculation-p1-owner-decision-matrix.md）。
+// 在 owner 决策落地前：不要将本模块接入新页面，也不要以其结果为正式口径。
 import type { PnlV1DetailRow } from "../../../api/contracts";
 import type { RankingBarRow } from "./RankingBarsCard";
 

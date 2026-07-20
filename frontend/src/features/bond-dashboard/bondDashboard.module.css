@@ -1,0 +1,103 @@
+.card {
+  border-radius: var(--ib-radius, 2px);
+}
+
+.cardBodyTall {
+  min-height: 320px;
+}
+
+.pieOverlay {
+  position: absolute;
+  left: 28%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
+}
+
+.pieOverlayLabel {
+  font-size: 12px;
+  color: var(--ib-ink-muted);
+}
+
+.pieOverlayValue {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ib-accent);
+}
+
+.yieldWeightedLabel {
+  text-align: center;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--ib-accent);
+}
+
+.yieldTenorHint {
+  text-align: center;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--ib-ink-muted);
+}
+
+.riskRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--ib-hairline);
+  padding-bottom: 8px;
+}
+
+.riskRowLabel {
+  color: var(--ib-ink-secondary);
+}
+
+.riskRowValue {
+  font-weight: 600;
+  color: var(--ib-accent);
+}
+
+.ratingStrip {
+  display: flex;
+  width: 100%;
+  gap: 4px;
+  min-height: 120px;
+  align-items: stretch;
+}
+
+.ratingBlock {
+  min-width: 72px;
+  border-radius: var(--ib-radius, 2px);
+  padding: 12px 8px;
+  color: var(--ib-surface);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ib-surface) 15%, transparent);
+}
+
+.ratingBlockCategory {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.ratingBlockAmount {
+  font-size: 13px;
+  margin-top: 6px;
+}
+
+.ratingBlockPct {
+  font-size: 12px;
+  opacity: 0.9;
+  margin-top: 4px;
+}
+
+.ratingEmpty {
+  color: var(--ib-ink-muted);
+  padding: 16px;
+}
+
+.pieChartWrap {
+  position: relative;
+  height: 280px;
+}

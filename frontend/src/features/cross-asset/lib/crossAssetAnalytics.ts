@@ -10,6 +10,7 @@
  * All functions are pure and stateless; no side effects.
  */
 
+import { designTokens } from "../../../theme/designSystem";
 import { isAssetLevelKpiKey, type ResolvedCrossAssetKpi, type CrossAssetKpiFormat } from "./crossAssetKpiModel";
 
 /* ================================================================
@@ -164,8 +165,8 @@ const REGIME_META: Record<MarketRegime, Omit<MarketRegimeInfo, "regime">> = {
   liquidity_driven: {
     label: "流动性驱动",
     description: "宽松流动性主导：资金面偏松 + 股债同涨 + 利率下行",
-    color: "#7c3aed",
-    bgColor: "#f5f3ff",
+    color: designTokens.color.primary[600],
+    bgColor: designTokens.color.primary[50],
     icon: "🟣",
   },
   mixed: {

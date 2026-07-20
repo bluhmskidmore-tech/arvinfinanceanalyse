@@ -1,6 +1,7 @@
-import { Alert, Button, Card } from "antd";
+import { Button, Card } from "antd";
 
 import type { Numeric, RiskIndicatorsPayload } from "../../../api/contracts";
+import styles from "../bondDashboard.module.css";
 import { formatDv01Wan, formatRatePercent, formatYears, formatYi, nativeToNumber } from "../utils/format";
 
 function withUnit(value: string, unit: string): string {
@@ -40,30 +41,17 @@ export function RiskIndicatorsPanel({
       loading={loading}
       title="风险指标"
       extra={<Button type="link">更多</Button>}
-      style={{ borderRadius: 8 }}
+      rootClassName={styles.card}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <Alert
-          data-testid="bond-dashboard-risk-source-boundary"
-          type="warning"
-          showIcon
-          message="风险卡边界"
-          description="GAP-BOND-DASH-RISK 尚未冻结 MTR-RSK-* 同源关系；本面板不自动继承 GS-RISK-A。"
-        />
         {ROWS.map((r) => (
           <div
             key={r.key}
             data-testid={`bond-dashboard-risk-row-${String(r.key)}`}
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              borderBottom: "1px solid #f0f0f0",
-              paddingBottom: 8,
-            }}
+            className={styles.riskRow}
           >
-            <span style={{ color: "rgba(0,0,0,0.65)" }}>{r.label}</span>
-            <span style={{ fontWeight: 600, color: "#1677ff" }}>
+            <span className={styles.riskRowLabel}>{r.label}</span>
+            <span className={styles.riskRowValue}>
               {data ? r.format(data[r.key] as Numeric | null | undefined) : "—"}
             </span>
           </div>

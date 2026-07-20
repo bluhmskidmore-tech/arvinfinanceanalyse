@@ -4,7 +4,10 @@ import type {
   AdbAccountingBasisDailyAvg,
   AdbAccountingBasisDailyAvgTrendItem,
 } from "../../../api/contracts";
+import { EM_DASH } from "../../../utils/format";
 import AdbAccountingBasisTrendChart from "./AdbAccountingBasisTrendChart";
+
+import "./AverageBalanceView.css";
 
 const YI = 100_000_000;
 const { Text, Paragraph } = Typography;
@@ -19,7 +22,7 @@ type Row = {
 function buildSnapshotRows(snapshot: AdbAccountingBasisDailyAvg): Row[] {
   return snapshot.rows.map((r, i) => ({
     key: `${r.basis_bucket}-${i}`,
-    basis_bucket: r.basis_bucket || "—",
+    basis_bucket: r.basis_bucket || EM_DASH,
     daily_avg_yi:
       r.daily_avg_balance === null || r.daily_avg_balance === undefined
         ? null
@@ -36,14 +39,14 @@ const snapshotColumns: ColumnsType<Row> = [
     key: "daily_avg_yi",
     align: "right",
     render: (v: number | null) =>
-      v === null || v === undefined || Number.isNaN(v) ? "—" : v.toFixed(2),
+      v === null || v === undefined || Number.isNaN(v) ? EM_DASH : v.toFixed(2),
   },
   {
     title: "占比（%）",
     dataIndex: "daily_avg_pct",
     key: "daily_avg_pct",
     align: "right",
-    render: (v: number | null) => (v === null || v === undefined ? "—" : `${v.toFixed(2)}%`),
+    render: (v: number | null) => (v === null || v === undefined ? EM_DASH : `${v.toFixed(2)}%`),
   },
 ];
 
@@ -65,26 +68,24 @@ export default function AdbAccountingBasisSection({
 }: AdbAccountingBasisSectionProps) {
   if (!snapshot && !(trend && trend.length)) return null;
 
-  const suffix = titleSuffix ? ` — ${titleSuffix}` : "";
+  const title = titleSuffix
+    ? `会计计量分桶 · 日均结构（${titleSuffix}）`
+    : "会计计量分桶 · 日均结构";
 
   return (
-    <Card
-      size="small"
-      data-testid="adb-accounting-basis-section"
-      title={`会计计量分桶 · 日均结构${suffix}`}
-    >
-      <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+    <Card size="small" data-testid="adb-accounting-basis-section" title={title}>
+      <Space direction="vertical" size="middle" className="adb-stack">
         <Text type="secondary">
           与「债券+同业」大类日均并列阅读；分桶口径以后端 rule_version / source_version 为准。
         </Text>
         {snapshot && snapshot.rows.length > 0 ? (
           <div>
             <Text strong>
-              参考日 {snapshot.report_date || "—"}
+              参考日 {snapshot.report_date || EM_DASH}
               {snapshot.currency_basis ? ` · ${snapshot.currency_basis}` : ""}
             </Text>
             {snapshot.accounting_controls.length > 0 ? (
-              <Paragraph type="secondary" style={{ marginBottom: 8, fontSize: 12 }}>
+              <Paragraph type="secondary" className="adb-basis-controls">
                 控制项：{snapshot.accounting_controls.join("；")}
               </Paragraph>
             ) : null}
@@ -99,7 +100,7 @@ export default function AdbAccountingBasisSection({
         ) : null}
         {trend && trend.length > 1 ? (
           <div data-testid="adb-accounting-basis-trend-chart">
-            <Text strong style={{ display: "block", marginBottom: 8 }}>
+            <Text strong className="adb-basis-trend-title">
               分桶日均走势（亿元）
             </Text>
             <AdbAccountingBasisTrendChart trend={trend} />

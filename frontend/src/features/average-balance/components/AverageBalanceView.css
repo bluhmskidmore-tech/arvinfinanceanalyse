@@ -1,0 +1,212 @@
+/* AverageBalance — IB light workbench layout (DESIGN.md §2.1 / §5) */
+
+.average-balance-page {
+  color: var(--ib-ink);
+}
+
+.adb-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.adb-page-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.adb-page-title.ant-typography {
+  margin: 0 !important;
+}
+
+.adb-page-subtitle {
+  margin-top: 8px;
+  margin-bottom: 0;
+  max-width: 920px;
+  color: var(--ib-ink-secondary);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.adb-analysis-brief {
+  margin-top: 14px;
+  max-width: 920px;
+}
+
+.adb-formal-link-row {
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.adb-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 12px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: 999px;
+  background: var(--ib-surface-muted);
+  color: var(--ib-ink-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.adb-mode-badge[data-mode="real"] {
+  background: color-mix(in srgb, var(--ib-up) 10%, var(--ib-surface));
+  color: var(--ib-up);
+}
+
+.adb-mode-badge[data-mode="mock"] {
+  background: var(--ib-accent-surface);
+  color: var(--ib-accent);
+}
+
+.adb-stack {
+  width: 100%;
+}
+
+.adb-filter-date.ant-select {
+  min-width: 160px;
+}
+
+.adb-filter-input.ant-input,
+.adb-filter-input {
+  width: 160px;
+}
+
+.adb-filter-top-n.ant-select {
+  width: 100px;
+}
+
+.adb-filter-year.ant-select {
+  width: 140px;
+}
+
+.adb-filter-month.ant-select {
+  width: 160px;
+}
+
+.adb-inline-note {
+  margin-left: 8px;
+}
+
+.adb-block-gap {
+  margin-top: 16px;
+}
+
+.adb-table-gap {
+  margin-top: 8px;
+}
+
+.adb-kpi-value-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.adb-kpi-value.ant-typography {
+  margin: 0 !important;
+}
+
+.adb-kpi-value--spaced.ant-typography {
+  margin-top: 10px !important;
+  margin-bottom: 0 !important;
+}
+
+.adb-kpi-subtitle {
+  margin-top: 4px;
+}
+
+.adb-kpi-subtitle-text,
+.adb-card-extra,
+.adb-aux-label {
+  font-size: 12px;
+}
+
+.adb-copy-hint {
+  margin-bottom: 0;
+  font-size: 12px;
+}
+
+.adb-data-subline {
+  font-size: 12px;
+}
+
+.adb-danger-icon {
+  color: var(--ib-down);
+  font-size: 16px;
+}
+
+.adb-chart-block {
+  margin-bottom: 16px;
+}
+
+.adb-result-meta {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.adb-meta-line {
+  display: block;
+}
+
+.adb-denominator-summary__lines {
+  display: grid;
+  gap: 2px;
+}
+
+.adb-coverage-lines {
+  display: grid;
+  gap: 2px;
+}
+
+.adb-coverage-list {
+  margin-top: 8px;
+  max-height: 280px;
+  overflow: auto;
+}
+
+.adb-coverage-list-item {
+  padding: 4px 8px;
+}
+
+.adb-basis-trend-title {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.adb-basis-controls {
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.adb-tabular,
+.average-balance-page .ant-table-cell-fix-right,
+.average-balance-page .adb-kpi-value,
+.average-balance-page .adb-kpi-value--spaced {
+  font-family: var(--moss-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-variant-numeric: tabular-nums;
+}
+
+.adb-tone--down,
+.adb-tone--down.ant-typography {
+  color: var(--ib-down) !important;
+}
+
+.adb-tone--up,
+.adb-tone--up.ant-typography {
+  color: var(--ib-up) !important;
+}
+
+.adb-tone--ok,
+.adb-tone--ok.ant-typography {
+  color: var(--ib-up) !important;
+}

@@ -4,7 +4,7 @@
   padding: var(--moss-space-6);
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: var(--moss-radius-lg);
-  background: #ffffff;
+  background: var(--moss-color-card-bg);
   box-shadow: var(--moss-shadow-card);
 }
 
@@ -25,7 +25,7 @@
   padding: 10px;
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: 8px;
-  background: #f6f8fb;
+  background: var(--moss-color-neutral-50);
 }
 
 .fallbackNotice {
@@ -554,4 +554,9 @@
   .detailDrilldownSummary {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* Suspense 整页占位：复用页面深色背板，锁高避免内容到达时重排（DESIGN.md §6）。 */
+.pageSkeleton {
+  min-height: max(60vh, calc(100vh - 48px));
 }

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import type {
+  ApiEnvelope,
   CashflowProjectionPayload,
+  DV01RiskPayload,
   Numeric,
   ResultMeta,
   RiskTensorHistoryPayload,
@@ -9,6 +11,8 @@ import type {
   YieldCurveTermStructurePayload,
 } from "../../../api/contracts";
 import {
+  buildRiskBondComparisonPlan,
+  buildRiskBondDv01Summary,
   buildRiskV6Briefs,
   buildRiskV6CashflowTrack,
   buildRiskV6DeltaChip,
@@ -427,5 +431,718 @@ describe("buildRiskV6LineageRows", () => {
 
   it("returns nothing without meta", () => {
     expect(buildRiskV6LineageRows(undefined)).toEqual([]);
+  });
+});
+
+describe("buildRiskBondComparisonPlan", () => {
+  it("plans exact month-end comparisons and six ascending trend slots", () => {
+    const available = [
+      "2026-06-30",
+      "2026-05-31",
+      "2026-04-30",
+      "2026-03-31",
+      "2026-02-28",
+      "2026-01-31",
+      "2025-06-30",
+    ];
+    const plan = buildRiskBondComparisonPlan("2026-06-30", available);
+
+    expect(plan.enabled).toBe(true);
+    expect(plan.momDate).toBe("2026-05-31");
+    expect(plan.yoyDate).toBe("2025-06-30");
+    expect(plan.trendDates.map((slot) => slot.reportDate)).toEqual([
+      "2026-01-31",
+      "2026-02-28",
+      "2026-03-31",
+      "2026-04-30",
+      "2026-05-31",
+      "2026-06-30",
+    ]);
+    expect(plan.requestDates).toEqual([
+      "2025-06-30",
+      "2026-01-31",
+      "2026-02-28",
+      "2026-03-31",
+      "2026-04-30",
+      "2026-05-31",
+    ]);
+    expect(plan.requestDates).not.toContain("2026-06-30");
+  });
+
+  it("disables comparison unless current is an available exact month-end", () => {
+    expect(
+      buildRiskBondComparisonPlan("2026-06-29", ["2026-06-29"]).enabled,
+    ).toBe(false);
+    expect(
+      buildRiskBondComparisonPlan("2026-06-30", ["2026-06-29"]).enabled,
+    ).toBe(false);
+  });
+
+  it("retains exact missing dates without substituting nearby snapshots", () => {
+    const plan = buildRiskBondComparisonPlan("2026-06-30", [
+      "2026-06-30",
+      "2026-05-30",
+      "2025-06-29",
+    ]);
+
+    expect(plan.momDate).toBe("2026-05-31");
+    expect(plan.yoyDate).toBe("2025-06-30");
+    expect(plan.momAvailable).toBe(false);
+    expect(plan.yoyAvailable).toBe(false);
+    expect(plan.requestDates).not.toContain("2026-05-30");
+    expect(plan.requestDates).not.toContain("2025-06-29");
+    expect(plan.missingDates).toEqual(
+      expect.arrayContaining(["2026-05-31", "2025-06-30"]),
+    );
+    expect(plan.trendDates.find((slot) => slot.reportDate === "2026-05-31"))
+      .toMatchObject({ available: false });
+  });
+
+  it("uses the exact leap-year February month-end", () => {
+    const plan = buildRiskBondComparisonPlan("2024-03-31", [
+      "2024-03-31",
+      "2024-02-29",
+      "2023-03-31",
+    ]);
+
+    expect(plan.enabled).toBe(true);
+    expect(plan.momDate).toBe("2024-02-29");
+    expect(plan.yoyDate).toBe("2023-03-31");
+    expect(plan.requestDates).toContain("2024-02-29");
+
+    const leapDayPlan = buildRiskBondComparisonPlan("2024-02-29", [
+      "2024-02-29",
+      "2024-01-31",
+      "2023-02-28",
+    ]);
+    expect(leapDayPlan.momDate).toBe("2024-01-31");
+    expect(leapDayPlan.yoyDate).toBe("2023-02-28");
+  });
+});
+
+describe("buildRiskBondDv01Summary", () => {
+  function bondEnvelope(
+    accountingClass: "OCI" | "TPL",
+    overrides: {
+      payload?: Partial<DV01RiskPayload>;
+      meta?: Partial<ResultMeta>;
+    } = {},
+  ): ApiEnvelope<DV01RiskPayload> {
+    const payload: DV01RiskPayload = {
+      report_date: "2026-06-30",
+      accounting_class: accountingClass,
+      total_face_value: num(1_250_000_000, { unit: "yuan" }),
+      total_market_value: num(1_200_000_000, { unit: "yuan" }),
+      face_weighted_modified_duration: num(3.45, {
+        unit: "ratio",
+        display: "3.45",
+      }),
+      total_dv01: num(125_000, { unit: "dv01" }),
+      position_count: 12,
+      shock_scenarios: [],
+      tenor_buckets: [],
+      top_bonds: [],
+      top_issuers: [],
+      warnings: [],
+      computed_at: "2026-07-19T00:00:00Z",
+      ...overrides.payload,
+    };
+    return {
+      result_meta: {
+        trace_id: "tr_bond_risk_home",
+        basis: "formal",
+        result_kind: "bond_analytics.dv01_risk",
+        formal_use_allowed: true,
+        source_version: "sv_bond_analytics",
+        vendor_version: "vv_none",
+        rule_version: "rv_bond_analytics",
+        cache_version: "cv_bond_analytics",
+        quality_flag: "ok",
+        vendor_status: "ok",
+        fallback_mode: "none",
+        scenario_flag: false,
+        generated_at: "2026-07-19T00:00:00Z",
+        ...overrides.meta,
+      },
+      result: payload,
+    };
+  }
+
+  function historyObservation(
+    reportDate: string,
+    accountingClass: "OCI" | "TPL",
+    overrides: {
+      payload?: Partial<DV01RiskPayload>;
+      meta?: Partial<ResultMeta>;
+      error?: unknown;
+    } = {},
+  ) {
+    return {
+      reportDate,
+      envelope: bondEnvelope(accountingClass, {
+        payload: { report_date: reportDate, ...overrides.payload },
+        meta: {
+          resolved_report_date: reportDate,
+          ...overrides.meta,
+        },
+      }),
+      error: overrides.error,
+    };
+  }
+
+  it("formats governed payload fields without recalculating DV01 or duration", () => {
+    const summary = buildRiskBondDv01Summary({
+      accountingClass: "OCI",
+      reportDate: "2026-06-30",
+      envelope: bondEnvelope("OCI"),
+    });
+
+    expect(summary).toMatchObject({
+      key: "bond-oci",
+      title: "OCI 债券（系统正式口径）",
+      state: "review",
+      statusLabel: "待复核",
+      reportDate: "2026-06-30",
+    });
+    expect(summary.metrics).toEqual([
+      {
+        key: "total-face-value",
+        label: "总面值（DV01 基数）",
+        value: "12.50",
+        unit: "亿元",
+      },
+      {
+        key: "total-market-value",
+        label: "公允价值（不含应计）",
+        value: "12.00",
+        unit: "亿元",
+      },
+      {
+        key: "modified-duration",
+        label: "面值加权修正久期",
+        value: "3.45",
+        unit: "年",
+      },
+      {
+        key: "total-dv01",
+        label: "正式 DV01（面值基数）",
+        value: "12.50",
+        unit: "万元/bp",
+      },
+      { key: "position-count", label: "持仓数", value: "12", unit: "只" },
+    ]);
+    expect(summary.notices.join(" ")).toContain("不按手工同名列直接比较");
+  });
+
+  it("builds signed MoM changes for all five metric display rules", () => {
+    const plan = buildRiskBondComparisonPlan("2026-06-30", [
+      "2026-06-30",
+      "2026-05-31",
+      "2025-06-30",
+    ]);
+    const summary = buildRiskBondDv01Summary({
+      accountingClass: "OCI",
+      reportDate: "2026-06-30",
+      envelope: bondEnvelope("OCI"),
+      comparisonPlan: plan,
+      history: [
+        historyObservation("2026-05-31", "OCI", {
+          payload: {
+            total_face_value: num(1_000_000_000, { unit: "yuan" }),
+            total_market_value: num(1_300_000_000, { unit: "yuan" }),
+            face_weighted_modified_duration: num(3.25, { unit: "ratio" }),
+            total_dv01: num(100_000, { unit: "dv01" }),
+            position_count: 10,
+          },
+        }),
+        historyObservation("2025-06-30", "OCI"),
+      ],
+    });
+
+    expect(summary.comparisons["total-face-value"].mom).toMatchObject({
+      state: "review",
+      absoluteText: "+2.50 亿元",
+      percentText: "+25.00%",
+      basisDate: "2026-05-31",
+    });
+    expect(summary.comparisons["total-market-value"].mom).toMatchObject({
+      absoluteText: "-1.00 亿元",
+      percentText: "-7.69%",
+    });
+    expect(summary.comparisons["modified-duration"].mom).toMatchObject({
+      absoluteText: "+0.20 年",
+      percentText: "—",
+    });
+    expect(summary.comparisons["total-dv01"].mom).toMatchObject({
+      absoluteText: "+2.50 万元/bp",
+      percentText: "+25.00%",
+    });
+    expect(summary.comparisons["position-count"].mom).toMatchObject({
+      absoluteText: "+2 只",
+      percentText: "+20.00%",
+    });
+  });
+
+  it("shows only absolute changes when the comparison denominator is zero", () => {
+    const plan = buildRiskBondComparisonPlan("2026-06-30", [
+      "2026-06-30",
+      "2026-05-31",
+    ]);
+    const zeroBaseline = historyObservation("2026-05-31", "OCI", {
+      payload: {
+        total_face_value: num(0, { unit: "yuan" }),
+        total_market_value: num(0, { unit: "yuan" }),
+        face_weighted_modified_duration: num(0, { unit: "ratio" }),
+        total_dv01: num(0, { unit: "dv01" }),
+        position_count: 0,
+      },
+    });
+    const summary = buildRiskBondDv01Summary({
+      accountingClass: "OCI",
+      reportDate: "2026-06-30",
+      envelope: bondEnvelope("OCI"),
+      comparisonPlan: plan,
+      history: [zeroBaseline],
+    });
+
+    expect(summary.comparisons["total-face-value"].mom).toMatchObject({
+      absoluteText: "+12.50 亿元",
+      percentText: "—",
+    });
+    expect(summary.comparisons["total-market-value"].mom.percentText).toBe("—");
+    expect(summary.comparisons["total-dv01"].mom.percentText).toBe("—");
+    expect(summary.comparisons["position-count"].mom).toMatchObject({
+      absoluteText: "+12 只",
+      percentText: "—",
+    });
+  });
+
+  it("treats zero positions as explicit empty data and hides zero metrics", () => {
+    const summary = buildRiskBondDv01Summary({
+      accountingClass: "OCI",
+      reportDate: "2026-06-30",
+      envelope: bondEnvelope("OCI", {
+        payload: {
+          total_face_value: num(0, { unit: "yuan" }),
+          total_market_value: num(0, { unit: "yuan" }),
+          face_weighted_modified_duration: num(0, { unit: "ratio" }),
+          total_dv01: num(0, { unit: "dv01" }),
+          position_count: 0,
+        },
+      }),
+    });
+
+    expect(summary.state).toBe("empty");
+    expect(summary.statusLabel).toBe("暂无数据");
+    expect(summary.metrics).toEqual([]);
+    expect(summary.notices.join(" ")).toContain("不将空载荷中的零值");
+  });
+
+  it("blocks non-formal envelopes and error-quality payloads", () => {
+    const nonFormal = buildRiskBondDv01Summary({
+      accountingClass: "OCI",
+      reportDate: "2026-06-30",
+      envelope: bondEnvelope("OCI", {
+        meta: { basis: "analytical", formal_use_allowed: false },
+      }),
+    });
+    const badQuality = buildRiskBondDv01Summary({
+      accountingClass: "TPL",
+      reportDate: "2026-06-30",
+      envelope: bondEnvelope("TPL", { meta: { quality_flag: "error" } }),
+    });
+
+    expect(nonFormal.state).toBe("blocked");
+    expect(nonFormal.metrics).toEqual([]);
+    expect(nonFormal.notices.join(" ")).toContain("formal_use_allowed");
+    expect(badQuality.state).toBe("blocked");
+    expect(badQuality.notices.join(" ")).toContain("质量标记为 error");
+  });
+
+  it("blocks undeclared report-date and accounting-class mismatches", () => {
+    const wrongDate = buildRiskBondDv01Summary({
+      accountingClass: "OCI",
+      reportDate: "2026-06-30",
+      envelope: bondEnvelope("OCI", {
+        payload: { report_date: "2026-06-29" },
+      }),
+    });
+    const wrongClass = buildRiskBondDv01Summary({
+      accountingClass: "TPL",
+      reportDate: "2026-06-30",
+      envelope: bondEnvelope("OCI"),
+    });
+
+    expect(wrongDate.state).toBe("blocked");
+    expect(wrongDate.notices.join(" ")).toContain("报告日");
+    expect(wrongClass.state).toBe("blocked");
+    expect(wrongClass.notices.join(" ")).toContain("请求分类 TPL 不一致");
+  });
+
+  it("keeps declared fallback, stale quality, and warnings visible as review state", () => {
+    const summary = buildRiskBondDv01Summary({
+      accountingClass: "TPL",
+      reportDate: "2026-06-30",
+      envelope: bondEnvelope("TPL", {
+        payload: {
+          report_date: "2026-06-29",
+          warnings: ["久期覆盖存在缺口"],
+        },
+        meta: {
+          quality_flag: "stale",
+          fallback_mode: "latest_snapshot",
+          fallback_date: "2026-06-29",
+        },
+      }),
+    });
+
+    expect(summary.state).toBe("review");
+    expect(summary.reportDate).toBe("2026-06-29");
+    expect(summary.metrics).toHaveLength(5);
+    expect(summary.notices.join(" ")).toContain("stale");
+    expect(summary.notices.join(" ")).toContain("回退快照（2026-06-29）");
+    expect(summary.notices.join(" ")).toContain("警告：久期覆盖存在缺口");
+  });
+
+  it("keeps current fallback values but disables exact-month derived evidence", () => {
+    const plan = buildRiskBondComparisonPlan("2026-06-30", [
+      "2026-06-30",
+      "2026-05-31",
+      "2025-06-30",
+    ]);
+    const summary = buildRiskBondDv01Summary({
+      accountingClass: "OCI",
+      reportDate: "2026-06-30",
+      envelope: bondEnvelope("OCI", {
+        payload: {
+          report_date: "2026-06-29",
+          warnings: ["当前回退快照警告"],
+        },
+        meta: {
+          quality_flag: "stale",
+          fallback_mode: "latest_snapshot",
+          fallback_date: "2026-06-29",
+          resolved_report_date: "2026-06-29",
+        },
+      }),
+      comparisonPlan: plan,
+      history: [
+        historyObservation("2026-05-31", "OCI"),
+        historyObservation("2025-06-30", "OCI"),
+      ],
+    });
+
+    expect(summary.state).toBe("review");
+    expect(summary.metrics).toHaveLength(5);
+    expect(summary.reportDate).toBe("2026-06-29");
+    expect(summary.notices.join(" ")).toContain("当前回退快照警告");
+    Object.values(summary.comparisons).forEach((comparison) => {
+      expect(comparison.mom.state).toBe("unavailable");
+      expect(comparison.yoy.state).toBe("unavailable");
+    });
+    expect(summary.trend).toBeNull();
+    expect(summary.comparisonBasisText).toContain(
+      "当前快照为回退或日期与请求月末不一致",
+    );
+  });
+
+  it("excludes even exact-date fallback history from strict comparisons", () => {
+    const plan = buildRiskBondComparisonPlan("2026-06-30", [
+      "2026-06-30",
+      "2026-05-31",
+    ]);
+    const summary = buildRiskBondDv01Summary({
+      accountingClass: "OCI",
+      reportDate: "2026-06-30",
+      envelope: bondEnvelope("OCI"),
+      comparisonPlan: plan,
+      history: [
+        historyObservation("2026-05-31", "OCI", {
+          meta: {
+            fallback_mode: "latest_snapshot",
+            fallback_date: "2026-05-31",
+          },
+        }),
+      ],
+    });
+
+    expect(summary.comparisons["total-dv01"].mom.state).toBe("unavailable");
+    expect(summary.notices.join(" ")).toContain(
+      "使用回退快照（2026-05-31）",
+    );
+    expect(summary.notices.join(" ")).toContain("该点已排除");
+  });
+
+  it("keeps one accounting-class failure independent from the other summary", () => {
+    const oci = buildRiskBondDv01Summary({
+      accountingClass: "OCI",
+      reportDate: "2026-06-30",
+      error: new Error("OCI unavailable"),
+    });
+    const tpl = buildRiskBondDv01Summary({
+      accountingClass: "TPL",
+      reportDate: "2026-06-30",
+      envelope: bondEnvelope("TPL"),
+    });
+
+    expect(oci.state).toBe("error");
+    expect(oci.notices.join(" ")).toContain("OCI unavailable");
+    expect(tpl.state).toBe("review");
+    expect(tpl.metrics).toHaveLength(5);
+    expect(tpl.notices.join(" ")).toContain("不可用本卡替代 630 小计");
+  });
+
+  it("sorts six complete DV01 month-end points before building the trend", () => {
+    const dates = [
+      "2026-01-31",
+      "2026-02-28",
+      "2026-03-31",
+      "2026-04-30",
+      "2026-05-31",
+      "2026-06-30",
+    ];
+    const plan = buildRiskBondComparisonPlan("2026-06-30", dates);
+    const history = [
+      ["2026-04-30", 40_000],
+      ["2026-01-31", 10_000],
+      ["2026-05-31", 50_000],
+      ["2026-02-28", 20_000],
+      ["2026-03-31", 30_000],
+    ].map(([date, dv01]) =>
+      historyObservation(String(date), "OCI", {
+        payload: { total_dv01: num(Number(dv01), { unit: "dv01" }) },
+      }),
+    );
+    const summary = buildRiskBondDv01Summary({
+      accountingClass: "OCI",
+      reportDate: "2026-06-30",
+      envelope: bondEnvelope("OCI"),
+      comparisonPlan: plan,
+      history,
+    });
+
+    expect(summary.trend).toMatchObject({
+      state: "review",
+      dates,
+      values: [1, 2, 3, 4, 5, 12.5],
+      unit: "万元/bp",
+    });
+    expect(summary.trend?.linePaths).toHaveLength(1);
+    expect(summary.trend?.points).toHaveLength(6);
+    expect(summary.trend?.sparkline).not.toBeNull();
+  });
+
+  it("keeps valid points and splits line segments around a middle gap", () => {
+    const dates = [
+      "2026-01-31",
+      "2026-02-28",
+      "2026-03-31",
+      "2026-04-30",
+      "2026-05-31",
+      "2026-06-30",
+    ];
+    const plan = buildRiskBondComparisonPlan("2026-06-30", dates);
+    const history = [
+      ["2026-01-31", 10_000],
+      ["2026-02-28", 20_000],
+      ["2026-04-30", 40_000],
+      ["2026-05-31", 50_000],
+    ].map(([date, dv01]) =>
+      historyObservation(String(date), "OCI", {
+        payload: { total_dv01: num(Number(dv01), { unit: "dv01" }) },
+      }),
+    );
+    const summary = buildRiskBondDv01Summary({
+      accountingClass: "OCI",
+      reportDate: "2026-06-30",
+      envelope: bondEnvelope("OCI"),
+      comparisonPlan: plan,
+      history,
+    });
+
+    expect(summary.trend?.state).toBe("review");
+    expect(summary.trend?.values).toEqual([1, 2, null, 4, 5, 12.5]);
+    expect(summary.trend?.sparkline).toBeNull();
+    expect(summary.trend?.linePaths).toHaveLength(2);
+    expect(summary.trend?.points.map((point) => point.reportDate)).toEqual([
+      "2026-01-31",
+      "2026-02-28",
+      "2026-04-30",
+      "2026-05-31",
+      "2026-06-30",
+    ]);
+    expect(summary.trend?.points.map((point) => point.x)).toEqual([
+      3,
+      21,
+      57,
+      75,
+      93,
+    ]);
+  });
+
+  it("does not draw a trend with fewer than six points or across a gap", () => {
+    const plan = buildRiskBondComparisonPlan("2026-06-30", [
+      "2026-06-30",
+    ]);
+    const summary = buildRiskBondDv01Summary({
+      accountingClass: "OCI",
+      reportDate: "2026-06-30",
+      envelope: bondEnvelope("OCI"),
+      comparisonPlan: plan,
+      history: [],
+    });
+
+    expect(summary.trend?.values).toEqual([
+      null,
+      null,
+      null,
+      null,
+      null,
+      12.5,
+    ]);
+    expect(summary.trend?.state).toBe("unavailable");
+    expect(summary.trend?.sparkline).toBeNull();
+    expect(summary.trend?.points).toHaveLength(1);
+    expect(summary.trend?.linePaths).toEqual([]);
+    expect(summary.trend?.notices.join(" ")).toContain("不跨缺口连线");
+  });
+
+  it("excludes blocked, wrong-date, wrong-class, invalid-count, and null history points", () => {
+    const dates = [
+      "2026-01-31",
+      "2026-02-28",
+      "2026-03-31",
+      "2026-04-30",
+      "2026-05-31",
+      "2026-06-30",
+    ];
+    const plan = buildRiskBondComparisonPlan("2026-06-30", dates);
+    const nullDv01: Numeric = {
+      raw: null,
+      unit: "dv01",
+      display: "—",
+      precision: 2,
+      sign_aware: false,
+    };
+    const summary = buildRiskBondDv01Summary({
+      accountingClass: "OCI",
+      reportDate: "2026-06-30",
+      envelope: bondEnvelope("OCI"),
+      comparisonPlan: plan,
+      history: [
+        historyObservation("2026-01-31", "OCI", {
+          meta: { basis: "analytical", formal_use_allowed: false },
+        }),
+        historyObservation("2026-02-28", "OCI", {
+          payload: { report_date: "2026-02-27" },
+          meta: {
+            fallback_mode: "latest_snapshot",
+            fallback_date: "2026-02-27",
+            resolved_report_date: "2026-02-27",
+          },
+        }),
+        historyObservation("2026-03-31", "TPL"),
+        historyObservation("2026-04-30", "OCI", {
+          payload: { position_count: -1 },
+        }),
+        historyObservation("2026-05-31", "OCI", {
+          payload: { total_dv01: nullDv01 },
+        }),
+      ],
+    });
+
+    expect(summary.trend?.values).toEqual([
+      null,
+      null,
+      null,
+      null,
+      null,
+      12.5,
+    ]);
+    expect(summary.trend?.sparkline).toBeNull();
+    expect(summary.comparisons["total-dv01"].mom.state).toBe("unavailable");
+    expect(summary.notices.join(" ")).toContain("该点已排除");
+  });
+
+  it("marks warning history as review and aggregates repeated notices", () => {
+    const dates = [
+      "2026-01-31",
+      "2026-02-28",
+      "2026-03-31",
+      "2026-04-30",
+      "2026-05-31",
+      "2026-06-30",
+    ];
+    const plan = buildRiskBondComparisonPlan("2026-06-30", dates);
+    const history = dates.slice(0, 5).map((date, index) =>
+      historyObservation(date, "OCI", {
+        payload: {
+          total_dv01: num((index + 1) * 10_000, { unit: "dv01" }),
+          warnings: ["USD 口径待复核"],
+        },
+        meta: index === 4 ? { quality_flag: "stale" } : {},
+      }),
+    );
+    const summary = buildRiskBondDv01Summary({
+      accountingClass: "OCI",
+      reportDate: "2026-06-30",
+      envelope: bondEnvelope("OCI", {
+        payload: { warnings: ["当前报告警告"] },
+      }),
+      comparisonPlan: plan,
+      history,
+    });
+
+    expect(summary.comparisons["total-dv01"].mom.state).toBe("review");
+    expect(summary.trend?.state).toBe("review");
+    expect(summary.trend?.sparkline).not.toBeNull();
+    expect(summary.notices).toContain("警告：当前报告警告");
+    expect(
+      summary.notices.filter((notice) => notice.includes("USD 口径待复核")),
+    ).toEqual([
+      "5 个历史月末均有同类提示：警告：USD 口径待复核，比较待复核。",
+    ]);
+  });
+
+  it("keeps OCI and TPL comparison histories independent", () => {
+    const plan = buildRiskBondComparisonPlan("2026-06-30", [
+      "2026-06-30",
+      "2026-05-31",
+    ]);
+    const ociHistory = [historyObservation("2026-05-31", "OCI")];
+    const oci = buildRiskBondDv01Summary({
+      accountingClass: "OCI",
+      reportDate: "2026-06-30",
+      envelope: bondEnvelope("OCI"),
+      comparisonPlan: plan,
+      history: ociHistory,
+    });
+    const tpl = buildRiskBondDv01Summary({
+      accountingClass: "TPL",
+      reportDate: "2026-06-30",
+      envelope: bondEnvelope("TPL"),
+      comparisonPlan: plan,
+      history: ociHistory,
+    });
+
+    expect(oci.comparisons["total-dv01"].mom.state).toBe("review");
+    expect(tpl.comparisons["total-dv01"].mom.state).toBe("unavailable");
+    expect(tpl.state).toBe("review");
+    expect(tpl.metrics).toHaveLength(5);
+  });
+
+  it("keeps cached governed values visible when the latest refresh fails", () => {
+    const summary = buildRiskBondDv01Summary({
+      accountingClass: "OCI",
+      reportDate: "2026-06-30",
+      envelope: bondEnvelope("OCI"),
+      error: new Error("temporary refresh failure"),
+    });
+
+    expect(summary.state).toBe("review");
+    expect(summary.statusLabel).toBe("待复核");
+    expect(summary.metrics).toHaveLength(5);
+    expect(summary.notices.join(" ")).toContain("最新刷新失败");
+    expect(summary.notices.join(" ")).toContain("当前展示上次成功结果");
   });
 });

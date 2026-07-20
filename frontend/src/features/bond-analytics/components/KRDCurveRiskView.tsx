@@ -256,6 +256,8 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
   const krdChartOption = useMemo((): EChartsOption | null => {
     if (!data?.krd_buckets?.length) return null;
     const buckets = data.krd_buckets;
+    const bucketAvgMd = (b: (typeof buckets)[number]) =>
+      b.avg_modified_duration ?? b.krd;
     return {
       grid: { left: 52, right: 16, top: 36, bottom: 28, containLabel: false },
       tooltip: {
@@ -266,12 +268,14 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
           const p = arr[0];
           if (!p || typeof p.dataIndex !== "number") return "";
           const b = buckets[p.dataIndex];
-          const krd = bondNumericRaw(b.krd);
+          const mdField = bucketAvgMd(b);
+          if (!mdField) return "";
+          const md = bondNumericRaw(mdField);
           const dv01 = bondNumericRaw(b.dv01);
           const w = bondNumericRaw(b.market_value_weight);
           return [
             `<div style="font-weight:600;margin-bottom:4px">${b.tenor}</div>`,
-            `KRD：${krd === null ? b.krd.display : krd.toFixed(3)}`,
+            `桶内平均修正久期：${md === null ? mdField.display : md.toFixed(3)}`,
             `DV01：${dv01 === null ? b.dv01.display : dv01.toFixed(6)}`,
             `market_value_weight：${w === null ? b.market_value_weight.display : w.toFixed(6)}`,
           ].join("<br/>");
@@ -285,6 +289,7 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
       },
       yAxis: {
         type: "value",
+        name: "平均修正久期",
         axisLabel: {
           color: designTokens.color.neutral[600],
           fontSize: 11,
@@ -297,20 +302,21 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
           type: "bar",
           barMaxWidth: 48,
           data: buckets.map((b) => {
-            const krd = bondNumericRaw(b.krd);
+            const mdField = bucketAvgMd(b);
+            const md = mdField ? bondNumericRaw(mdField) : null;
             const color =
-              krd === null
+              md === null
                 ? designTokens.color.neutral[400]
-                : krd >= 0
+                : md >= 0
                   ? designTokens.color.primary[600]
                   : designTokens.color.semantic.loss;
             return {
-              value: krd,
+              value: md,
               itemStyle: { color },
               label: {
                 show: true,
-                position: krd === null || krd >= 0 ? "top" : "bottom",
-                formatter: krd === null ? b.krd.display : krd.toFixed(3),
+                position: md === null || md >= 0 ? "top" : "bottom",
+                formatter: md === null ? (mdField?.display ?? "—") : md.toFixed(3),
                 color: designTokens.color.neutral[800],
                 fontSize: 11,
                 fontVariantNumeric: "tabular-nums",
@@ -336,7 +342,7 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
       <SectionLead
         eyebrow="KRD 曲线风险"
         title="曲线风险概览"
-        description="按报告日读取后端 KRD 曲线风险读模型；页面只展示久期、修正久期、DV01 和凸性，不在前端补算正式风险指标。"
+        description="按报告日读取后端曲线风险读模型；页面只展示久期、修正久期、DV01 和凸性，不在前端补算正式风险指标。期限桶柱状图为桶内平均修正久期，不是 key-rate duration 贡献。"
         testId="krd-curve-risk-shell-lead"
       />
       {data.computed_at ? (
@@ -369,12 +375,12 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
 
       <SectionLead
         eyebrow="分桶"
-        title="KRD 桶位与情景冲击"
-        description="KRD 分布和情景冲击沿用后端返回的桶位与情景数据，前端仅做图表和表格展示。"
+        title="期限桶久期与情景冲击"
+        description="期限桶展示桶内平均修正久期与 DV01；情景冲击沿用后端返回数据，前端仅做图表和表格展示。"
         testId="krd-curve-risk-buckets-lead"
       />
       {data.krd_buckets.length > 0 && krdChartOption && (
-        <Card title="KRD 分布" size="small">
+        <Card title="期限桶平均修正久期" size="small" data-testid="krd-avg-md-distribution">
           <ReactECharts
             option={krdChartOption}
             style={{ width: "100%", height: 240 }}
