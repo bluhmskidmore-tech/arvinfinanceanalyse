@@ -24,7 +24,7 @@ export function buildMockDecisionSummaryCard(
   );
   const positiveCount = votingCards.filter((card) => card.tone === "positive").length;
   const negativeCount = votingCards.filter((card) => card.tone === "negative").length;
-  const missingCount = Math.max(0, totalCount - cards.length);
+  const missingCount = cards.filter((card) => card.status === "unavailable").length;
 
   let tone: MacroToolkitCapabilityResult["tone"] = "neutral";
   let headline = "宏观信号分化，维持中性观察。";

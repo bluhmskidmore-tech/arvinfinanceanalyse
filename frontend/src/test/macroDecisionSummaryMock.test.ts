@@ -55,9 +55,38 @@ describe("macroDecisionSummaryMock", () => {
     expect(summary.result.negative_count).toBe(0);
     expect(summary.result.observation_excluded_count).toBe(3);
     expect(summary.result.usable_count).toBe(5);
-    expect(summary.result.missing_count).toBe(9);
-    expect(summary.score).toBe(31);
+    expect(summary.result.missing_count).toBe(0);
+    expect(summary.score).toBe(58);
     expect(summary.result.formal_use_allowed).toBe(false);
+  });
+
+  it("does not penalize cards absent from a partial mock array", () => {
+    const summary = buildMockDecisionSummaryCard(
+      [card("crisis_score_cn", "complete", "positive")],
+      14,
+    );
+
+    expect(summary.result.missing_count).toBe(0);
+    expect(summary.score).toBe(58);
+    expect(summary.primary_metric).toEqual({
+      label: "可用模块",
+      value: 1,
+      unit: "/14",
+    });
+  });
+
+  it("counts present unavailable cards and applies their score penalty", () => {
+    const summary = buildMockDecisionSummaryCard(
+      [
+        card("crisis_score_cn", "complete", "positive"),
+        card("leading_indicator", "unavailable", "missing"),
+      ],
+      14,
+    );
+
+    expect(summary.result.missing_count).toBe(1);
+    expect(summary.score).toBe(55);
+    expect(summary.primary_metric?.unit).toBe("/14");
   });
 
   it("keeps mock analysis decision_summary aligned with shared observation exclusion", async () => {
@@ -79,8 +108,10 @@ describe("macroDecisionSummaryMock", () => {
     expect(decision).toBeDefined();
     expect(decision?.result.observation_excluded_count).toBe(expectedExcluded);
     expect(decision?.result.observation_excluded_count).toBe(5);
+    expect(decision?.result.missing_count).toBe(0);
     expect(decision?.tone).toBe("positive");
-    expect(decision?.score).toBe(43);
+    expect(decision?.score).toBe(58);
+    expect(decision?.primary_metric?.unit).toBe("/14");
     expect(decision?.result.positive_count).toBe(1);
     expect(decision?.result.negative_count).toBe(0);
   });
