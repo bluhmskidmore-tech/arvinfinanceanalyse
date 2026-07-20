@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import subprocess
 import sys
 from pathlib import Path
@@ -112,3 +113,75 @@ def test_macro_toolkit_service_import_does_not_load_tasks_modules() -> None:
         stdin=subprocess.DEVNULL,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_lazy_actor_proxies_delegate_fn_and_allow_instance_override() -> None:
+    proxy_specs = (
+        (
+            "backend.app.services.pnl_task_dispatch",
+            "materialize_pnl_facts",
+            "backend.app.tasks.pnl_materialize",
+            "materialize_pnl_facts",
+        ),
+        (
+            "backend.app.services.pnl_task_dispatch",
+            "rebuild_pnl_by_business_precompute",
+            "backend.app.tasks.pnl_materialize",
+            "rebuild_pnl_by_business_precompute",
+        ),
+        (
+            "backend.app.services.balance_analysis_service",
+            "materialize_balance_analysis_facts",
+            "backend.app.tasks.balance_analysis_materialize",
+            "materialize_balance_analysis_facts",
+        ),
+        (
+            "backend.app.api.routes.adb_analysis",
+            "materialize_balance_analysis_facts",
+            "backend.app.tasks.balance_analysis_materialize",
+            "materialize_balance_analysis_facts",
+        ),
+        (
+            "backend.app.services.bond_analytics_service",
+            "materialize_bond_analytics_facts",
+            "backend.app.tasks.bond_analytics_materialize",
+            "materialize_bond_analytics_facts",
+        ),
+        (
+            "backend.app.services.accounting_asset_movement_service",
+            "refresh_accounting_asset_movement_window",
+            "backend.app.tasks.accounting_asset_movement",
+            "refresh_accounting_asset_movement_window",
+        ),
+        (
+            "backend.app.services.macro_toolkit_service",
+            "run_commodity_daily_ingest_task",
+            "backend.app.tasks.commodity_daily_ingest",
+            "run_commodity_daily_ingest_task",
+        ),
+        (
+            "backend.app.services.product_category_pnl_service",
+            "materialize_product_category_pnl",
+            "backend.app.tasks.product_category_pnl",
+            "materialize_product_category_pnl",
+        ),
+        (
+            "backend.app.services.source_preview_refresh_service",
+            "refresh_source_preview_cache",
+            "backend.app.tasks.source_preview_refresh",
+            "refresh_source_preview_cache",
+        ),
+    )
+    replacement = object()
+
+    for proxy_module_name, proxy_name, actor_module_name, actor_name in proxy_specs:
+        proxy = getattr(importlib.import_module(proxy_module_name), proxy_name)
+        actor = getattr(importlib.import_module(actor_module_name), actor_name)
+
+        assert proxy.fn is actor.fn
+        setattr(proxy, "fn", replacement)
+        try:
+            assert proxy.fn is replacement
+        finally:
+            delattr(proxy, "fn")
+        assert proxy.fn is actor.fn

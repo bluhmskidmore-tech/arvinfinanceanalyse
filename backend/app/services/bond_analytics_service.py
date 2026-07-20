@@ -170,6 +170,13 @@ class _MaterializeBondAnalyticsFactsProxy:
 
         return _actor.send(**kwargs)
 
+    def __getattr__(self, name: str) -> object:
+        from backend.app.tasks.bond_analytics_materialize import (
+            materialize_bond_analytics_facts as _actor,
+        )
+
+        return getattr(_actor, name)
+
 
 materialize_bond_analytics_facts = _MaterializeBondAnalyticsFactsProxy()
 

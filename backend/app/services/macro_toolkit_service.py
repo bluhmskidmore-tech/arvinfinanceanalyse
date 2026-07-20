@@ -103,6 +103,13 @@ class _RunCommodityDailyIngestTaskProxy:
 
         return _actor.send(**kwargs)
 
+    def __getattr__(self, name: str) -> object:
+        from backend.app.tasks.commodity_daily_ingest import (
+            run_commodity_daily_ingest_task as _actor,
+        )
+
+        return getattr(_actor, name)
+
 
 run_commodity_daily_ingest_task = _RunCommodityDailyIngestTaskProxy()
 

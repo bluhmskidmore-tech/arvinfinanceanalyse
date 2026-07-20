@@ -61,12 +61,12 @@ class _MaterializeProductCategoryPnlProxy:
 
         return _actor.send(**kwargs)
 
-    def fn(self, *args: object, **kwargs: object) -> object:
+    def __getattr__(self, name: str) -> object:
         from backend.app.tasks.product_category_pnl import (
             materialize_product_category_pnl as _actor,
         )
 
-        return _actor.fn(*args, **kwargs)
+        return getattr(_actor, name)
 
 
 materialize_product_category_pnl = _MaterializeProductCategoryPnlProxy()

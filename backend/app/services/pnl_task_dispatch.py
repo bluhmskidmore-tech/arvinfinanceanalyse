@@ -29,12 +29,22 @@ class _MaterializePnlFactsProxy:
 
         return _actor.send(**kwargs)
 
+    def __getattr__(self, name: str) -> object:
+        from backend.app.tasks.pnl_materialize import materialize_pnl_facts as _actor
+
+        return getattr(_actor, name)
+
 
 class _RebuildPnlByBusinessPrecomputeProxy:
     def send(self, **kwargs: object) -> object:
         from backend.app.tasks.pnl_materialize import rebuild_pnl_by_business_precompute as _actor
 
         return _actor.send(**kwargs)
+
+    def __getattr__(self, name: str) -> object:
+        from backend.app.tasks.pnl_materialize import rebuild_pnl_by_business_precompute as _actor
+
+        return getattr(_actor, name)
 
     @property
     def options(self) -> dict[str, object]:
