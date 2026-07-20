@@ -34,6 +34,10 @@ test.describe("bond trading desk drill paths", () => {
   }) => {
     await openBondAnalysis(page);
 
+    const evidenceStrip = page.getByTestId("bond-analysis-holdings-evidence-strip");
+    await expect(evidenceStrip).toBeVisible({ timeout: 60_000 });
+    await expect(evidenceStrip).toContainText("1 条");
+
     const link = page
       .getByTestId("bond-analysis-holdings-raw-grid")
       .getByTestId(`bond-trading-desk-link-${MOCK_BOND_TRADING_DESK_INSTRUMENT_CODE}`);

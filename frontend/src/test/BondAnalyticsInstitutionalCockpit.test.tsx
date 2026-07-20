@@ -405,6 +405,23 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(onOpenModuleDetail).toHaveBeenCalledWith("top-holdings");
   });
 
+  it("renders the mock trading-desk link inside the raw holdings grid", async () => {
+    renderCockpit(createApiClient({ mode: "mock" }));
+
+    const evidenceStrip = await screen.findByTestId("bond-analysis-holdings-evidence-strip");
+    await waitFor(() => {
+      expect(evidenceStrip).toHaveTextContent("1 条");
+    });
+
+    const grid = await screen.findByTestId("bond-analysis-holdings-raw-grid");
+    const link = await within(grid).findByTestId("bond-trading-desk-link-230210.IB");
+
+    expect(link).toHaveAttribute(
+      "href",
+      expect.stringContaining("/bond-trading-desk?bond_code=230210.IB"),
+    );
+  });
+
   it("renders the decision rail inside the hero aside when decision rail props are supplied", async () => {
     const onOpenModuleDetail = vi.fn();
 
