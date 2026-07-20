@@ -722,6 +722,7 @@ def _append_audit(
             tables_used=tables_used,
             filters_applied=filters_applied,
             trace_id=trace_id,
+            run_id=str(request.context.get("run_id") or "").strip() or None,
             result_meta=result_meta,
         ),
     )

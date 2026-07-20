@@ -110,6 +110,22 @@ def test_build_stock_research_context_reads_choice_stock_tables_and_news(tmp_pat
     assert context["stock"]["sector_membership"]["sw2021code"] == "801001"
     assert context["stock"]["news_events"][0]["payload_text"] == "Alpha earnings beat"
     assert context["limitations"] == []
+    assert all(
+        sql.lower().startswith(("select", "with"))
+        for sql in context["sql_executed"]
+    )
+    assert {
+        "choice_stock_daily_observation",
+        "choice_stock_factor_snapshot",
+        "choice_stock_sector_membership",
+        "choice_news_event",
+    } == {
+        table
+        for table in context["tables_used"]
+        if any(f"from {table}" in sql.lower() for sql in context["sql_executed"])
+    }
+    assert all("000001.SZ" not in sql for sql in context["sql_executed"])
+    assert all("2026-04-29" not in sql for sql in context["sql_executed"])
 
 
 def test_research_context_builder_class_matches_function_wrapper(tmp_path):
@@ -254,6 +270,22 @@ def test_build_macro_research_context_reads_choice_and_tushare_series(tmp_path):
     assert context["macro"]["choice_series"][0]["unit"] == "pct"
     assert context["macro"]["tushare_series"][0]["series_id"] == "tushare.macro.cn_cpi.monthly"
     assert context["macro"]["tushare_series"][0]["source_version"] == "sv_tushare"
+    assert all(
+        sql.lower().startswith(("select", "with"))
+        for sql in context["sql_executed"]
+    )
+    assert all(
+        any(f"from {table}" in sql.lower() for sql in context["sql_executed"])
+        for table in context["tables_used"]
+    )
+    assert all(
+        "legacy.yield.choice.treasury.10Y" not in sql
+        for sql in context["sql_executed"]
+    )
+    assert all(
+        "tushare.macro.cn_cpi.monthly" not in sql
+        for sql in context["sql_executed"]
+    )
 
 
 def test_macro_research_context_respects_as_of_date(tmp_path):
@@ -355,4 +387,5 @@ def test_missing_research_context_records_limitations_without_tables(tmp_path):
     assert context["domain"] == "stock"
     assert context["quality_flag"] == "missing"
     assert context["tables_used"] == []
+    assert context["sql_executed"] == []
     assert "DuckDB database is not available" in context["limitations"][0]

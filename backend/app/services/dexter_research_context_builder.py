@@ -80,6 +80,7 @@ def _base_context(*, request: AgentQueryRequest, domain: str | None) -> dict[str
         "as_of_date": as_of_date,
         "tables_used": [],
         "filters_applied": filters_applied,
+        "sql_executed": [],
         "evidence_rows": 0,
         "quality_flag": "ok",
         "limitations": [],
@@ -116,6 +117,7 @@ def _build_stock_context(
             limit 1
             """,
             [stock_code, as_of_date, as_of_date],
+            sql_executed=context["sql_executed"],
         )
         if row:
             stock["daily_observation"] = row
@@ -140,6 +142,7 @@ def _build_stock_context(
             limit 1
             """,
             [stock_code, as_of_date, as_of_date],
+            sql_executed=context["sql_executed"],
         )
         if row:
             stock["factor_snapshot"] = row
@@ -163,6 +166,7 @@ def _build_stock_context(
             limit 1
             """,
             [stock_code, as_of_date, as_of_date],
+            sql_executed=context["sql_executed"],
         )
         if row:
             stock["sector_membership"] = row
@@ -186,6 +190,7 @@ def _build_stock_context(
             limit 5
             """,
             [stock_code, f"%{stock_code}%"],
+            sql_executed=context["sql_executed"],
         )
         stock["news_events"] = rows
         context["evidence_rows"] += len(rows)
@@ -227,6 +232,7 @@ def _build_macro_context(
             ),
             series_ids=series_ids,
             as_of_date=as_of_date,
+            sql_executed=context["sql_executed"],
         )
         macro["choice_series"] = rows
         context["evidence_rows"] += len(rows)
@@ -252,6 +258,7 @@ def _build_macro_context(
             ),
             series_ids=series_ids,
             as_of_date=as_of_date,
+            sql_executed=context["sql_executed"],
         )
         macro["choice_snapshots"] = rows
         context["evidence_rows"] += len(rows)
@@ -260,7 +267,11 @@ def _build_macro_context(
 
     if "phase1_macro_vendor_catalog" in tables:
         context["tables_used"].append("phase1_macro_vendor_catalog")
-        macro["catalog"] = _fetch_macro_catalog(conn=conn, series_ids=series_ids)
+        macro["catalog"] = _fetch_macro_catalog(
+            conn=conn,
+            series_ids=series_ids,
+            sql_executed=context["sql_executed"],
+        )
         context["evidence_rows"] += len(macro["catalog"])
     else:
         context["limitations"].append("phase1_macro_vendor_catalog is not landed.")
@@ -286,6 +297,7 @@ def _build_macro_context(
             ),
             series_ids=series_ids,
             as_of_date=as_of_date,
+            sql_executed=context["sql_executed"],
         )
         context["evidence_rows"] += len(macro["tushare_series"])
     else:
@@ -298,6 +310,7 @@ def _fetch_macro_catalog(
     *,
     conn: duckdb.DuckDBPyConnection,
     series_ids: list[str],
+    sql_executed: list[str],
 ) -> list[dict[str, Any]]:
     where_sql, params = _series_filter_sql(series_ids)
     return _fetch_all(
@@ -312,6 +325,7 @@ def _fetch_macro_catalog(
         limit 20
         """,
         params,
+        sql_executed=sql_executed,
     )
 
 
@@ -322,6 +336,7 @@ def _latest_rows_by_series(
     select_columns: tuple[str, ...],
     series_ids: list[str],
     as_of_date: str,
+    sql_executed: list[str],
 ) -> list[dict[str, Any]]:
     where_sql, params = _series_filter_sql(series_ids, as_of_date=as_of_date)
     columns = ", ".join(select_columns)
@@ -340,6 +355,7 @@ def _latest_rows_by_series(
         limit 20
         """,
         params,
+        sql_executed=sql_executed,
     )
 
 
@@ -422,7 +438,10 @@ def _fetch_one(
     conn: duckdb.DuckDBPyConnection,
     sql: str,
     params: list[Any],
+    *,
+    sql_executed: list[str] | None = None,
 ) -> dict[str, Any] | None:
+    _record_sql_disclosure(sql, sql_executed)
     cursor = conn.execute(sql, params)
     row = cursor.fetchone()
     if row is None:
@@ -435,7 +454,18 @@ def _fetch_all(
     conn: duckdb.DuckDBPyConnection,
     sql: str,
     params: list[Any],
+    *,
+    sql_executed: list[str] | None = None,
 ) -> list[dict[str, Any]]:
+    _record_sql_disclosure(sql, sql_executed)
     cursor = conn.execute(sql, params)
     columns = [desc[0] for desc in cursor.description]
     return [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
+
+
+def _record_sql_disclosure(sql: str, target: list[str] | None) -> None:
+    if target is None:
+        return
+    statement = " ".join(str(sql or "").split())
+    if statement.lower().startswith(("select", "with")):
+        target.append(statement)

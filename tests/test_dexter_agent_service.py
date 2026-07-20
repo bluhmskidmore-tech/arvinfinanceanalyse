@@ -41,9 +41,11 @@ def test_build_dexter_envelope_exposes_sidecar_runtime_evidence():
     assert envelope.evidence.evidence_rows == 0
     assert envelope.evidence.evidence_strength == "provider_runtime"
     assert envelope.result_meta.evidence_strength == "provider_runtime"
+    assert envelope.evidence.sql_executed == []
+    assert envelope.result_meta.sql_executed == []
 
 
-def test_build_dexter_envelope_downgrades_ok_research_context_for_provider_runtime():
+def test_build_dexter_envelope_marks_provider_answer_with_governed_context_as_mixed():
     envelope = service.build_dexter_envelope(
         request=AgentQueryRequest(question="stock research"),
         result={
@@ -61,18 +63,33 @@ def test_build_dexter_envelope_downgrades_ok_research_context_for_provider_runti
             "domain": "stock",
             "tables_used": ["choice_stock_daily_observation"],
             "filters_applied": {"research_domain": "stock", "stock_code": "000001.SZ"},
+            "sql_executed": [
+                (
+                    "select trade_date, stock_code, close_value "
+                    "from choice_stock_daily_observation "
+                    "where stock_code = ? and (? = '' or trade_date <= ?) "
+                    "order by trade_date desc limit 1"
+                )
+            ],
             "evidence_rows": 1,
             "quality_flag": "ok",
             "limitations": [],
         },
     )
 
-    assert envelope.evidence.evidence_strength == "provider_runtime"
-    assert envelope.result_meta.evidence_strength == "provider_runtime"
+    assert envelope.evidence.evidence_strength == "mixed"
+    assert envelope.result_meta.evidence_strength == "mixed"
     assert envelope.evidence.evidence_rows == 1
     assert envelope.evidence.quality_flag == "warning"
     assert envelope.result_meta.quality_flag == "warning"
     assert envelope.result_meta.formal_use_allowed is False
+    assert envelope.evidence.sql_executed
+    assert envelope.result_meta.sql_executed == envelope.evidence.sql_executed
+    assert all(
+        sql.lower().startswith(("select", "with"))
+        for sql in envelope.evidence.sql_executed
+    )
+    assert "000001.SZ" not in envelope.evidence.sql_executed[0]
 
 
 def test_run_dexter_agent_invokes_subprocess_and_parses_json_payload(monkeypatch):
@@ -327,7 +344,10 @@ def test_execute_dexter_agent_query_appends_dexter_audit(tmp_path: Path, monkeyp
     )
 
     envelope = service.execute_dexter_agent_query(
-        request=AgentQueryRequest(question="ping", context={"user_id": "u_dexter"}),
+        request=AgentQueryRequest(
+            question="ping",
+            context={"user_id": "u_dexter", "run_id": "agent_run:dexter-audit"},
+        ),
         governance_dir=str(tmp_path / "governance"),
         settings=type(
             "SettingsStub",
@@ -349,6 +369,7 @@ def test_execute_dexter_agent_query_appends_dexter_audit(tmp_path: Path, monkeyp
     audit_path = tmp_path / "governance" / "agent_audit.jsonl"
     rows = audit_path.read_text(encoding="utf-8").splitlines()
     payload = json.loads(rows[-1])
+    assert payload["run_id"] == "agent_run:dexter-audit"
     assert payload["tools_used"] == ["portfolio.scan"]
     assert payload["tables_used"] == ["dexter_sidecar"]
     assert payload["filters_applied"]["provider"] == "dexter"
@@ -372,6 +393,14 @@ def test_execute_dexter_agent_query_injects_research_context_into_prompt(tmp_pat
                 "stock_code": "000001.SZ",
                 "as_of_date": "2026-04-29",
             },
+            "sql_executed": [
+                (
+                    "select trade_date, stock_code, close_value "
+                    "from choice_stock_daily_observation "
+                    "where stock_code = ? and (? = '' or trade_date <= ?) "
+                    "order by trade_date desc limit 1"
+                )
+            ],
             "evidence_rows": 2,
             "quality_flag": "warning",
             "limitations": ["choice_news_event is not landed."],
@@ -445,8 +474,16 @@ def test_execute_dexter_agent_query_injects_research_context_into_prompt(tmp_pat
     assert envelope.evidence.filters_applied["research_domain"] == "stock"
     assert envelope.evidence.filters_applied["stock_code"] == "000001.SZ"
     assert envelope.evidence.evidence_rows == 2
+    assert envelope.evidence.evidence_strength == "mixed"
     assert envelope.evidence.quality_flag == "warning"
     assert envelope.result_meta.formal_use_allowed is False
     assert envelope.result_meta.result_kind == "agent.dexter"
+    assert envelope.evidence.sql_executed
+    assert envelope.result_meta.sql_executed == envelope.evidence.sql_executed
+    assert all(
+        sql.lower().startswith(("select", "with"))
+        for sql in envelope.evidence.sql_executed
+    )
+    assert "000001.SZ" not in envelope.evidence.sql_executed[0]
     assert any(card.title == "Research Summary" for card in envelope.cards)
     assert any(card.title == "Research Limitations" for card in envelope.cards)

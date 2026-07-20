@@ -149,17 +149,23 @@ def build_dexter_envelope(
     )
     if has_research_context:
         tables_used = _dedupe([*tables_used, *list(research_context.get("tables_used") or [])])
+    sql_executed = _research_sql_disclosure(research_context if has_research_context else None)
     evidence_rows = int(research_context.get("evidence_rows") or 0) if has_research_context else 0
+    evidence_strength = (
+        "mixed"
+        if has_research_context and (sql_executed or evidence_rows > 0)
+        else "provider_runtime"
+    )
     quality_flag = _provider_runtime_quality_flag(
         str(research_context.get("quality_flag") or "warning") if has_research_context else "warning"
     )
     evidence = AgentEvidence(
         tables_used=tables_used,
         filters_applied=filters_applied,
-        sql_executed=[],
+        sql_executed=sql_executed,
         evidence_rows=evidence_rows,
         quality_flag=quality_flag,
-        evidence_strength="provider_runtime",
+        evidence_strength=evidence_strength,
     )
     source_suffix = "sidecar" if "dexter_sidecar" in tables_used else "cli"
     result_meta = AgentResultMeta(
@@ -178,7 +184,7 @@ def build_dexter_envelope(
         generated_at=generated_at,
         tables_used=evidence.tables_used,
         filters_applied=evidence.filters_applied,
-        sql_executed=[],
+        sql_executed=evidence.sql_executed,
         evidence_rows=evidence.evidence_rows,
         evidence_strength=evidence.evidence_strength,
     )
@@ -190,6 +196,15 @@ def build_dexter_envelope(
         next_drill=_build_next_drill(result.get("next_drill")),
         suggested_actions=[],
     )
+
+
+def _research_sql_disclosure(research_context: dict[str, Any] | None) -> list[str]:
+    disclosed: list[str] = []
+    for statement in (research_context or {}).get("sql_executed") or []:
+        text = " ".join(str(statement or "").split())
+        if text.lower().startswith(("select", "with")):
+            disclosed.append(text)
+    return disclosed
 
 
 def _build_dexter_command(
@@ -312,6 +327,7 @@ def _append_dexter_audit(
             tables_used=envelope.evidence.tables_used,
             filters_applied=envelope.evidence.filters_applied,
             trace_id=envelope.result_meta.trace_id,
+            run_id=str(request.context.get("run_id") or "").strip() or None,
             result_meta={
                 **envelope.result_meta.model_dump(mode="json"),
                 "dexter_tool_name": str(result.get("tool_name") or "dexter_cli"),
