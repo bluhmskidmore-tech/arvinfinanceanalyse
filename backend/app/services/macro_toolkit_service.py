@@ -244,6 +244,7 @@ _CURVE_ALIAS_POINTS = (
     ("DR007.IB", "CN_DR", "7D"),
     ("M0041653", "CN_RRP", "7D"),
     ("M0041813", "CN_NCD", "3M"),
+    ("CA.US_GOV_10Y", "US_GOVT", "10Y"),
 )
 
 

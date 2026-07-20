@@ -70,7 +70,7 @@ where trade_date >= '2026-06-26' group by 1 order by 1;
 
 ### 待办（负责人待定）
 
-- [ ] 为 `run_commodity_daily_ingest_task` 与 CFFEX 席位刷新建立日频调度（交易日收盘后），owner 待定。
+- [ ] Scheduler checkbox in `docs/plans/2026-07-19-macro-data-freshness-remediation.md` §1 待办: use `refresh_macro_toolkit_freshness` actor / CLI (`scripts/macro_toolkit_freshness_refresh.py`) as the daily entry; owner enables external timer via handoff packet.
 - [ ] CFFEX 席位当前仅 tushare 源回补；Choice 源（`fut_transaction_rankings`）需要 Choice 终端在线，是否双源并存由 owner 决定。
 - [ ] 注意 DuckDB 单写者约束：调度时段避开 dev worker / 其他写任务（本轮出现两次瞬时写锁冲突，重试即过）。
 

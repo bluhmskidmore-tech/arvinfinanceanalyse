@@ -226,10 +226,11 @@ _CAPABILITY_DEFINITIONS = (
         "implementation_status": "library_ready",
         "route_status": "wired",
         "frontend_status": "visible",
-        # 实际消费：treasury_10y（曲线 enrich）、brent_oil、usdcny；VIX/美债 10Y 系统源未登记时诚实降级。
-        "data_aliases": ("CA.BRENT", "M0067855", "S0059749"),
-        "data_tables": ("fact_formal_yield_curve_daily", "std_external_macro_daily"),
-        "next_step": "观察口径联动风险已上分析卡；接入 VIX/美债 10Y 系统别名后可补齐股债与中美相关腿。",
+        # 实际消费：treasury_10y（曲线 enrich）、brent_oil、usdcny、us_treasury_10y（E1003238）。
+        # VIX 无 catalog/落库序列；股债(VIX)相关腿继续诚实 unavailable。
+        "data_aliases": ("CA.BRENT", "M0067855", "S0059749", "CA.US_GOV_10Y"),
+        "data_tables": ("fact_formal_yield_curve_daily", "std_external_macro_daily", "fact_choice_macro_daily"),
+        "next_step": "观察口径联动风险已上分析卡；美债 10Y 经 CA.US_GOV_10Y→E1003238 解析。VIX 系统源准入后可补齐股债相关腿。",
     },
     {
         "key": "rate_turning_point",
@@ -1504,6 +1505,7 @@ _CURVE_ALIAS_POINTS = (
     ("DR007.IB", "CN_DR", "7D"),
     ("M0041653", "CN_RRP", "7D"),
     ("M0041813", "CN_SHIBOR", "3M"),
+    ("CA.US_GOV_10Y", "US_GOVT", "10Y"),
 )
 
 _WIDE_SERIES_ALIASES = (
@@ -1512,6 +1514,7 @@ _WIDE_SERIES_ALIASES = (
     ("usdcny", "M0067855"),
     ("fx_usdcny", "M0067855"),
     ("brent_oil", "CA.BRENT"),
+    ("us_treasury_10y", "CA.US_GOV_10Y"),
     ("pmi", "M0017126"),
     ("cpi_yoy", "M0000612"),
     ("ppi_yoy", "M0001227"),

@@ -26,3 +26,13 @@ def test_pmi_aliases_resolve_through_legacy_candidate_table() -> None:
     }
     for alias in ("M0017126", "制造业PMI", "cn_pmi"):
         assert expected <= _candidate_aliases(alias)
+
+
+def test_us_gov_10y_alias_prefers_populated_e1003238() -> None:
+    ordered = list(system_sources._LEGACY_ALIAS_CANDIDATES["ca.us-gov-10y"])
+    candidates = _candidate_aliases("CA.US_GOV_10Y")
+
+    assert ordered[0] == "E1003238"
+    assert ordered.index("E1003238") < ordered.index("EMG00001310")
+    assert "e1003238" in candidates
+    assert "emg00001310" in candidates

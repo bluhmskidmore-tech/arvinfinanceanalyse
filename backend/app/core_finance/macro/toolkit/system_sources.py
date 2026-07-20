@@ -119,6 +119,11 @@ _LEGACY_ALIAS_CANDIDATES: dict[str, tuple[str, ...]] = {
     "s0059671": ("legacy.yield.moss_derived.credit_spread_aa_plus.3Y",),
     "s0059672": ("legacy.yield.moss_derived.credit_spread_aa.3Y",),
     "s0059760": ("legacy.yield.choice.aa_credit.5Y", "EMM00166683", "legacy.yield.wind_legacy_market_db.aa_credit.5Y"),
+    # US 10Y: homepage/cross-asset prefer E1003238 over EMG00001310; CA.US_GOV_10Y is the
+    # stable toolkit alias. Prefer populated Choice/public series before the empty CA id.
+    "ca.us-gov-10y": ("E1003238", "EMG00001310", "CA.US_GOV_10Y"),
+    "e1003238": ("EMG00001310", "CA.US_GOV_10Y"),
+    "emg00001310": ("E1003238", "CA.US_GOV_10Y"),
 }
 
 _SOURCE_PRIORITY = {

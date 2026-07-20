@@ -37,7 +37,10 @@ def test_cross_market_capability_definition_is_wired_visible() -> None:
     assert definition["route_status"] == "wired"
     assert definition["frontend_status"] == "visible"
     assert "fact_formal_yield_curve_daily" in definition["data_tables"]
-    assert set(definition["data_aliases"]) == {"CA.BRENT", "M0067855", "S0059749"}
+    assert "fact_choice_macro_daily" in definition["data_tables"]
+    assert set(definition["data_aliases"]) == {"CA.BRENT", "M0067855", "S0059749", "CA.US_GOV_10Y"}
+    assert ("us_treasury_10y", "CA.US_GOV_10Y") in macro_toolkit_route._WIDE_SERIES_ALIASES
+    assert ("CA.US_GOV_10Y", "US_GOVT", "10Y") in macro_toolkit_route._CURVE_ALIAS_POINTS
     assert "cross_market_linkage" in macro_toolkit_route._DECISION_SUMMARY_OBSERVATION_KEYS
 
 
@@ -50,9 +53,20 @@ def test_cross_market_linkage_complete_with_fx_and_oil() -> None:
     assert payload["overall_risk"] in {"LOW", "MEDIUM", "HIGH"}
     assert payload["bond_fx_corr"] is not None
     assert payload["bond_commodity_corr"] is not None
-    # VIX / 美债腿系统源未接时诚实提示
+    # VIX 系统源仍未准入；美债腿由宽表/曲线 enrich 注入后才有相关
     assert "BOND_EQUITY_CORR_UNAVAILABLE" in payload["warnings"]
     assert "BOND_US_CORR_UNAVAILABLE" in payload["warnings"]
+
+
+def test_cross_market_linkage_us_leg_available_when_wide_has_us10y() -> None:
+    rows = _wide_rows()
+    for i, row in enumerate(rows):
+        row["us_treasury_10y"] = 4.2 + i * 0.01
+    payload = analyze_cross_market_linkage(rows, _REPORT_DATE)
+    assert payload["bond_us_corr"] is not None
+    assert "BOND_US_CORR_UNAVAILABLE" not in payload["warnings"]
+    assert "BOND_EQUITY_CORR_UNAVAILABLE" in payload["warnings"]
+    assert payload["formal_use_allowed"] is False
 
 
 def test_cross_market_linkage_unavailable_without_counterpart_series() -> None:

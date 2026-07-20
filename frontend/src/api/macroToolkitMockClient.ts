@@ -1902,10 +1902,13 @@ const MOCK_CAPABILITIES: MacroToolkitCapability[] = [
     route_status: "wired",
     frontend_status: "visible",
     data_status: "partial",
-    data_hit_count: 2,
-    data_required_count: 3,
-    evidence: [{ alias: "M0067855", row_count: 912, latest_date: "2026-06-30", series_id: "USD/CNY" }],
-    next_step: "观察口径联动风险已上分析卡。",
+    data_hit_count: 3,
+    data_required_count: 4,
+    evidence: [
+      { alias: "M0067855", row_count: 912, latest_date: "2026-06-30", series_id: "USD/CNY" },
+      { alias: "CA.US_GOV_10Y", row_count: 125, latest_date: "2026-07-10", series_id: "E1003238" },
+    ],
+    next_step: "观察口径联动风险已上分析卡；美债 10Y 已接。VIX 系统源准入后可补齐股债相关腿。",
   },
   {
     key: "rate_turning_point",
