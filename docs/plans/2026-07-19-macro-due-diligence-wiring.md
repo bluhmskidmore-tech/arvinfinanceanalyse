@@ -72,6 +72,7 @@ SDD 复审：Spec ✅ / Quality ✅（Important 残留：mock `missing_count` �
 - 未改生产接线（真实库路径已可读）；未跑 commodity 再刷新（CU/NHCI max=`2026-07-17` 已足够）。
 - 新增 `test_multi_asset_observation_cards_readable_when_price_history_seeded`：temp DuckDB 注入 ≥260 日四腿历史，断言三卡 `complete`/`degraded` 且 primary metric / headline 非空。
 - 薄种子 unavailable 契约保持（`test_macro_toolkit_api_exposes_analysis_payload`）。
+- 薄分析种子 CTA/DCC/RP = unavailable by design（历史过短）；可读路径见 e2e 种子测试 / 真实 moss.duckdb。
 
 **残留**
 

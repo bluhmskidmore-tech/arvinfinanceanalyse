@@ -1510,7 +1510,9 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
     }
     # M8 诚实降级：缺 30Y-10Y 时发 SPREAD_30Y_10Y_UNAVAILABLE 且 degraded（不再静默填 0）。
     # 本种子补齐 1Y/3Y/5Y/7Y/10Y/30Y 后 M8 可 complete；其余可算模块多为 degraded。
-    # 美林/CTA/DCC/风险平价在种子库无足够价格腿时计 unavailable；
+    # 薄种子 CTA/DCC/RP unavailable by design（1 日 CSI/CU、缺 NHCI），不膨胀为 260 日历史；
+    # 可读路径见 test_multi_asset_observation_cards_readable_when_price_history_seeded
+    # 与 docs/plans/2026-07-19-macro-due-diligence-wiring.md（W3）。
     # M12 无可算对照相关腿时诚实计 unavailable（不再 degraded +「常态」）。
     assert data_health["capability_results"] == {
         "complete": 1,
@@ -1608,6 +1610,16 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
         "macro_portfolio_impact",
         "decision_summary",
     }
+    # Thin analysis seed keeps CTA/DCC/RP unavailable by design (short history / missing
+    # NHCI) — not a wiring bug. Readable path:
+    # test_multi_asset_observation_cards_readable_when_price_history_seeded
+    # Plan note: docs/plans/2026-07-19-macro-due-diligence-wiring.md (W3).
+    for key in ("cta_trend_cn", "dcc_garch_cn", "risk_parity_cn"):
+        assert capability_results[key]["status"] == "unavailable", (
+            key,
+            capability_results[key]["status"],
+            capability_results[key].get("warnings"),
+        )
     assert capability_results["decision_summary"]["headline"]
     assert capability_results["decision_summary"]["status"] in {"complete", "degraded"}
     yield_curve_shape = capability_results["yield_curve_shape"]
