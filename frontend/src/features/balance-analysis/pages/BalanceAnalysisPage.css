@@ -6,9 +6,6 @@
 
 .balance-analysis-page {
   padding: 0;
-}
-
-.balance-analysis-page.dhPage {
   gap: var(--dh-space-2, 12px);
 }
 
@@ -1772,7 +1769,7 @@
   --balance-surface-soft: rgba(247, 250, 254, 0.94);
   --balance-shadow-elevated: 0 18px 44px rgba(8, 33, 63, 0.075);
   --balance-shadow-soft: 0 8px 20px rgba(8, 33, 63, 0.045);
-  font-family: "IBM Plex Sans", var(--moss-font-family);
+  font-family: var(--moss-font-sans);
 }
 
 .balance-analysis-hero {

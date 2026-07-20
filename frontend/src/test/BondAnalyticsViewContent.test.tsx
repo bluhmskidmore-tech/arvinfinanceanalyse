@@ -96,6 +96,39 @@ vi.mock("../features/bond-analytics/components/BondEventCalendar", () => ({
   },
 }));
 
+vi.mock("../features/agent/AgentPanel", () => ({
+  AgentPanel: function MockAgentPanel({
+    pageId,
+    reportDate = null,
+    currentFilters = {},
+    defaultFilters = {},
+    selectedRows = [],
+    contextNote = null,
+  }: {
+    pageId: string;
+    reportDate?: string | null;
+    currentFilters?: Record<string, unknown>;
+    defaultFilters?: Record<string, unknown>;
+    selectedRows?: Array<Record<string, unknown>>;
+    contextNote?: string | null;
+  }) {
+    const pageContext = {
+      page_id: pageId,
+      current_filters:
+        reportDate != null
+          ? { ...defaultFilters, ...currentFilters, report_date: reportDate }
+          : { ...defaultFilters, ...currentFilters },
+      selected_rows: selectedRows,
+      context_note: contextNote,
+    };
+    return (
+      <div data-testid="agent-panel">
+        <code data-testid="agent-panel-page-context">{JSON.stringify(pageContext)}</code>
+      </div>
+    );
+  },
+}));
+
 import { BondAnalyticsViewContent } from "../features/bond-analytics/components/BondAnalyticsViewContent";
 
 const runPollingTaskMock = vi.mocked(runPollingTask);
@@ -567,5 +600,48 @@ describe("BondAnalyticsViewContent", () => {
     await waitFor(() => {
       expect(screen.getByTestId("overview-refresh-error")).toHaveTextContent("network down");
     });
+  });
+
+  it("opens the review copilot drawer with the bond-analysis page context", { timeout: 45_000 }, async () => {
+    const user = userEvent.setup();
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsDates: vi.fn(async () => ({
+        result_meta: createResultMeta({ result_kind: "bond_analytics.dates" }),
+        result: { report_dates: ["2026-03-31"] },
+      })),
+      getBondAnalyticsActionAttribution: vi.fn(async () => createActionAttributionEnvelope()),
+    };
+
+    renderViewContent(client);
+
+    await screen.findByTestId("mock-bond-analytics-overview-panels");
+    await waitFor(() => {
+      expect(latestOverviewProps?.reportDate).toBe("2026-03-31");
+    });
+
+    await user.click(screen.getByTestId("bond-analysis-agent-open"));
+
+    expect(
+      await screen.findByTestId("bond-analysis-agent-drawer", undefined, { timeout: 30_000 }),
+    ).toBeInTheDocument();
+
+    const contextCode = await screen.findByTestId("agent-panel-page-context", undefined, {
+      timeout: 10_000,
+    });
+    const pageContext = JSON.parse(contextCode.textContent ?? "{}") as {
+      page_id: string;
+      current_filters: Record<string, unknown>;
+      selected_rows: unknown[];
+      context_note: string | null;
+    };
+
+    expect(pageContext.page_id).toBe("bond-analysis");
+    expect(pageContext.current_filters.report_date).toBe("2026-03-31");
+    expect(pageContext.current_filters.period_type).toBe("MoM");
+    expect(pageContext.current_filters.asset_class).toBe("all");
+    expect(pageContext.current_filters.accounting_class).toBe("all");
+    expect(pageContext.selected_rows).toEqual([]);
+    expect(pageContext.context_note).toContain("债券分析");
   });
 });

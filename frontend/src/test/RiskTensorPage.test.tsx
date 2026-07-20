@@ -3652,7 +3652,7 @@ describe("RiskTensorPage", () => {
         getRiskTensor,
       });
 
-      expect(await screen.findByTestId("risk-tensor-brief")).toHaveTextContent("主风险桶 --");
+      expect(await screen.findByTestId("risk-tensor-brief")).toHaveTextContent("主风险桶 —");
       expect(screen.queryByTestId("risk-tensor-tenor-drill")).not.toBeInTheDocument();
 
       const qualityNote = await screen.findByTestId("risk-tensor-krd-quality-note");

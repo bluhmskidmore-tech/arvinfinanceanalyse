@@ -6,7 +6,7 @@ import styles from "../BondTradingDeskPage.module.css";
 export function BondTradingDeskDecisionRail({ items }: { items: BondTradingDeskDecisionItem[] }) {
   return (
     <aside data-testid="bond-trading-desk-decision-rail" className={styles.railCard}>
-      <div className={styles.railBody} style={{ padding: 14 }}>
+      <div className={styles.railBody}>
         <div className={styles.railTitle}>下一步核查</div>
         {items.map((item) => (
           <div key={item.key} className={styles.railItem}>

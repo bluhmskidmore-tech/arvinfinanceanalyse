@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Button, Card, DatePicker, Input, Space, Spin, Tag } from "antd";
+import { Alert, Button, DatePicker, Input, Space, Spin, Tag } from "antd";
 import dayjs from "dayjs";
 import { useSearchParams } from "react-router-dom";
 
@@ -263,12 +263,11 @@ export default function BondTradingDeskPage() {
                 <div className={styles.conclusionDetail}>{pageModel.conclusion.detail}</div>
               </section>
 
-              <Card
-                size="small"
-                title="单券读数"
+              <section
                 data-testid="bond-trading-desk-metrics"
-                variant="borderless"
+                className={styles.sectionBlock}
               >
+                <div className={styles.sectionTitle}>单券读数</div>
                 <div className={styles.metricGrid}>
                   {pageModel.metricTiles.map((tile) => (
                     <div key={tile.key} className={styles.metricTile} data-testid={`bond-trading-desk-metric-${tile.key}`}>
@@ -278,7 +277,7 @@ export default function BondTradingDeskPage() {
                     </div>
                   ))}
                 </div>
-              </Card>
+              </section>
 
               {pageModel.positionChange ? (
                 <Alert
@@ -300,7 +299,11 @@ export default function BondTradingDeskPage() {
                 />
               ) : null}
 
-              <Card size="small" title="待返回模块" data-testid="bond-trading-desk-gaps" variant="borderless">
+              <section
+                data-testid="bond-trading-desk-gaps"
+                className={styles.sectionBlock}
+              >
+                <div className={styles.sectionTitle}>待返回模块</div>
                 <div className={styles.gapList}>
                   {pageModel.gapSections.map((gap) => (
                     <div key={gap.key} className={styles.gapItem}>
@@ -314,7 +317,7 @@ export default function BondTradingDeskPage() {
                     </div>
                   ))}
                 </div>
-              </Card>
+              </section>
             </div>
 
             <BondTradingDeskDecisionRail items={pageModel.decisionItems} />

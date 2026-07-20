@@ -6,8 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build && npm run guard:candidate-financial-indicators",
+    "build:fast": "vite build && npm run guard:candidate-financial-indicators",
     "preview": "vite preview",
-    "debt:audit": "node ../scripts/audit_frontend_debt.mjs",
+    "debt:audit": "node ../scripts/audit_frontend_debt.mjs && node ../scripts/audit_visual_tokens.mjs",
     "guard:home-startup": "node scripts/verifyHomeStartupBundle.mjs",
     "guard:candidate-financial-indicators": "node scripts/verifyCandidateFinancialIndicatorBundle.mjs",
     "guard:home-startup:runtime": "npm run build && node scripts/verifyHomeStartupRuntime.mjs",
@@ -25,7 +26,6 @@
   },
   "dependencies": {
     "@ant-design/icons": "^5.0.0",
-    "@heroui/react": "^3.2.1",
     "@heroui/styles": "^3.2.1",
     "@nextui-org/react": "^2.6.11",
     "@tanstack/react-query": "^5.0.0",

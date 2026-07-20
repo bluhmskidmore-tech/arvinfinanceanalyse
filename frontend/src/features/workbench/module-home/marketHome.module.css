@@ -2112,12 +2112,12 @@
 }
 
 .macroSignalChange[data-change="up"]::before {
-  content: "�?";
+  content: "↑ ";
   font-weight: 800;
 }
 
 .macroSignalChange[data-change="down"]::before {
-  content: "�?";
+  content: "↓ ";
   font-weight: 800;
 }
 
@@ -2712,7 +2712,7 @@
 }
 
 .evidenceRailLink::after {
-  content: "�?;
+  content: "→";
   color: var(--dh-api-blue);
   font-size: 18px;
   font-weight: 700;

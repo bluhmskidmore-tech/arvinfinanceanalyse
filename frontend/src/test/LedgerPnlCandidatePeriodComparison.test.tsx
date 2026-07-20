@@ -205,7 +205,7 @@ describe("LedgerPnlCandidatePeriodComparison", () => {
     expect(within(interestRow).getByText("+25.00%")).toBeInTheDocument();
 
     const unavailableRow = within(region).getByRole("row", { name: /非息净收入合计/ });
-    expect(within(unavailableRow).getAllByText("--")).toHaveLength(4);
+    expect(within(unavailableRow).getAllByText("—")).toHaveLength(4);
     expect(within(unavailableRow).getByText(
       "指标依赖包含待补手工项和缺失总账科目，跨期结果暂不可比。",
     )).toBeInTheDocument();
@@ -373,7 +373,7 @@ describe("LedgerPnlCandidatePeriodComparison", () => {
     const dataRows = within(metricsTable).getAllByRole("row").slice(1);
     expect(dataRows).toHaveLength(7);
     for (const row of dataRows) {
-      expect(within(row).getAllByText("--")).toHaveLength(4);
+      expect(within(row).getAllByText("—")).toHaveLength(4);
     }
     expect(within(region).getByText("不绘制伪趋势，也不把缺失值解释为零。", { exact: false })).toBeInTheDocument();
     expect(within(region).queryByRole("img")).not.toBeInTheDocument();

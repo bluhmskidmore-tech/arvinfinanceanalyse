@@ -31,6 +31,7 @@ import {
   resolveBucketSharePct,
 } from "../lib/balanceMovementShareModel";
 import { designTokens, ibTokens } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
 import "./BalanceMovementAnalysisPage.css";
 
 const bucketLabels: Record<string, string> = {
@@ -51,7 +52,7 @@ function normalizeMovementCurrencyBasis(value: string | null): string {
 
 function formatPct(value: string | number | null | undefined) {
   if (value === null || value === undefined || value === "") {
-    return "-";
+    return EM_DASH;
   }
   const n = Number(value);
   if (!Number.isFinite(n)) {
@@ -62,7 +63,7 @@ function formatPct(value: string | number | null | undefined) {
 
 function formatYiFixed(value: string | number | null | undefined, digits = 2) {
   if (value === null || value === undefined || value === "") {
-    return "-";
+    return EM_DASH;
   }
   const n = Number(value) / 100000000;
   if (!Number.isFinite(n)) {
@@ -76,7 +77,7 @@ function formatYiFixed(value: string | number | null | undefined, digits = 2) {
 
 function formatSignedYi(value: string | number | null | undefined, digits = 2) {
   if (value === null || value === undefined || value === "") {
-    return "-";
+    return EM_DASH;
   }
   const n = Number(value) / 100000000;
   if (!Number.isFinite(n)) {
@@ -91,7 +92,7 @@ function formatSignedYi(value: string | number | null | undefined, digits = 2) {
 
 function formatPlainNumber(value: string | number | null | undefined, digits = 2) {
   if (value === null || value === undefined || value === "") {
-    return "-";
+    return EM_DASH;
   }
   const n = Number(value);
   if (!Number.isFinite(n)) {
@@ -168,7 +169,7 @@ function formatYiCell(value: string | number | null | undefined) {
 
 function formatSignedYiCell(value: string | number | null | undefined) {
   if (value === null || value === undefined || value === "") {
-    return "-";
+    return EM_DASH;
   }
   const n = Number(value) / 100000000;
   if (!Number.isFinite(n)) {
@@ -192,7 +193,7 @@ function formatMatrixValue(
     return formatPct(value);
   }
   const formatted = formatYiCell(value);
-  if (formatted === "-") {
+  if (formatted === EM_DASH) {
     return formatted;
   }
   return omitUnit ? formatted : `${formatted} 亿`;
@@ -205,10 +206,10 @@ function formatMatrixCellWithMissing(
   hasMissingInputs?: boolean,
 ) {
   if (value === null || value === undefined || value === "") {
-    return "—";
+    return EM_DASH;
   }
   const formatted = formatMatrixValue(value, valueKind, omitUnit);
-  if (hasMissingInputs && formatted !== "-") {
+  if (hasMissingInputs && formatted !== EM_DASH) {
     return `${formatted}*`;
   }
   return formatted;
@@ -216,7 +217,7 @@ function formatMatrixCellWithMissing(
 
 function formatSignedPercentPoint(value: string | number | null | undefined) {
   if (value === null || value === undefined || value === "") {
-    return "-";
+    return EM_DASH;
   }
   const n = Number(value);
   if (!Number.isFinite(n)) {
@@ -266,7 +267,7 @@ function formatSignedMatrixValue(
     return formatSignedPercentPoint(value);
   }
   const formatted = formatSignedYiCell(value);
-  if (formatted === "-") {
+  if (formatted === EM_DASH) {
     return formatted;
   }
   return omitUnit ? formatted : `${formatted} 亿`;
@@ -353,7 +354,7 @@ function compareBusinessMatrixCell(
   const currentMonth = months[months.length - 1];
   const baselineMonth = months[months.length - 1 - baselineOffset];
   if (!currentMonth || !baselineMonth) {
-    return "-";
+    return EM_DASH;
   }
   return formatSignedMatrixValue(
     trendDelta(row.getValue(currentMonth), row.getValue(baselineMonth)),
@@ -369,7 +370,7 @@ function compareBusinessMatrixCellToFirst(
   const currentMonth = months[months.length - 1];
   const firstMonth = months[0];
   if (!currentMonth || !firstMonth || currentMonth.report_date === firstMonth.report_date) {
-    return "-";
+    return EM_DASH;
   }
   return formatSignedMatrixValue(
     trendDelta(row.getValue(currentMonth), row.getValue(firstMonth)),
@@ -578,7 +579,7 @@ function uniqueNonEmptyStrings(values: string[]): string[] {
 
 function matrixDeltaTone(formatted: string): string {
   const t = formatted.trim();
-  if (t === "" || t === "-") {
+  if (t === "" || t === EM_DASH || t === "-") {
     return "balance-movement-matrix__delta balance-movement-matrix__delta--neutral";
   }
   if (t.startsWith("+") || t.startsWith("＋")) {
@@ -854,7 +855,7 @@ function formatSignedYiNumber(value: number) {
 }
 
 function sourceKindLabel(sourceKind: BusinessMomMove["sourceKind"]) {
-  return sourceKind === "zqtz" ? "ZQTZ" : "Ledger";
+  return sourceKind === "zqtz" ? "证券投资辅助" : "总账";
 }
 
 function moveDeltaToneClass(value: number) {
@@ -1109,7 +1110,7 @@ function buildDriverChartOption(drivers: BalanceMovementDriver[]): EChartsOption
         itemStyle: {
           color: (params: { dataIndex: number }) =>
             bucketColors[drivers[params.dataIndex]?.bucket ?? "AC"],
-          borderRadius: [0, 4, 4, 0],
+          borderRadius: [0, ibTokens.radius, ibTokens.radius, 0],
         },
         label: {
           show: true,
@@ -1390,28 +1391,28 @@ function EvidenceStrip({ meta }: { meta: ResultMeta }) {
       aria-label="余额变动分析证据条"
     >
       <div>
-        <span>quality_flag</span>
+        <span title="quality_flag">质量标记</span>
         <strong>{meta.quality_flag}</strong>
       </div>
       <div>
-        <span>trace_id</span>
+        <span title="trace_id">追踪标识</span>
         <strong>{meta.trace_id}</strong>
       </div>
       <div>
-        <span>tables_used</span>
+        <span title="tables_used">使用表</span>
         <strong>{formatMetaList(meta.tables_used)}</strong>
       </div>
       <div>
-        <span>evidence_rows</span>
-        <strong>{meta.evidence_rows ?? "—"}</strong>
+        <span title="evidence_rows">证据行数</span>
+        <strong>{meta.evidence_rows ?? EM_DASH}</strong>
       </div>
       <div>
-        <span>rule_version</span>
-        <strong>{meta.rule_version || "—"}</strong>
+        <span title="rule_version">规则版本</span>
+        <strong>{meta.rule_version || EM_DASH}</strong>
       </div>
       <div>
-        <span>source_version</span>
-        <strong>{meta.source_version || "—"}</strong>
+        <span title="source_version">源版本</span>
+        <strong>{meta.source_version || EM_DASH}</strong>
       </div>
     </section>
   );
@@ -2047,7 +2048,7 @@ function ZqtzConcentrationAnalysisPanel({
               <span>{drilldownStatusLabel(dimension.status)}</span>
             </div>
             <p>
-              覆盖 {formatPct(dimension.coverage_pct)} · Top5 {formatPct(dimension.top5_share_pct)} ·
+              覆盖 {formatPct(dimension.coverage_pct)}，Top5 {formatPct(dimension.top5_share_pct)}；
               HHI {formatPlainNumber(dimension.hhi)}
             </p>
             <table className="balance-movement-derived-table">
@@ -2503,18 +2504,22 @@ export default function BalanceMovementAnalysisPage() {
           ? [{ label: "主导变动", tone: "info" }]
           : [{ label: "样本不足", tone: "unknown" }],
         evidence: [
-          { label: "维度字段", value: "business_trend_months / product category derived rows" },
+          {
+            label: "维度字段",
+            value: "业务趋势月 / 品类衍生行",
+            note: "business_trend_months / product category derived rows",
+          },
           {
             label: "Top 变动",
             value: businessTopMove
               ? `${businessTopMove.label} ${formatSignedYiCell(businessTopMove.deltaYuan)} 亿`
-              : "—",
+              : EM_DASH,
           },
           {
             label: "来源说明",
             value: businessTopMove ? sourceNotePreview(businessTopMove.sourceNote) : "样本不足",
           },
-          { label: "trace_id", value: resultMeta?.trace_id ?? "—" },
+          { label: "追踪标识", value: resultMeta?.trace_id ?? EM_DASH },
         ],
       },
       {
@@ -2534,10 +2539,14 @@ export default function BalanceMovementAnalysisPage() {
             : []),
         ],
         evidence: [
-          { label: "维度字段", value: "rows[].basis_bucket / balance_change / contribution_pct" },
-          { label: "主导分桶", value: topMovementDriver?.bucket ?? "—" },
-          { label: "rule_version", value: resultMeta?.rule_version ?? "—" },
-          { label: "source_version", value: resultMeta?.source_version ?? "—" },
+          {
+            label: "维度字段",
+            value: "分桶 / 余额变动 / 贡献占比",
+            note: "rows[].basis_bucket / balance_change / contribution_pct",
+          },
+          { label: "主导分桶", value: topMovementDriver?.bucket ?? EM_DASH },
+          { label: "规则版本", value: resultMeta?.rule_version ?? EM_DASH },
+          { label: "源版本", value: resultMeta?.source_version ?? EM_DASH },
         ],
       },
       {
@@ -2558,27 +2567,31 @@ export default function BalanceMovementAnalysisPage() {
           },
         ],
         evidence: [
-          { label: "维度字段", value: "difference_attribution_waterfall.components" },
+          {
+            label: "维度字段",
+            value: "差异归因瀑布组件",
+            note: "difference_attribution_waterfall.components",
+          },
           {
             label: "残差",
             value: residualWaterfallComponent
               ? `${formatSignedYiCell(residualWaterfallComponent.amount)} 亿`
-              : "—",
+              : EM_DASH,
           },
           {
             label: "未支持项",
             value: unsupportedLabels.join("、") || "无",
             note: "未支持，不反推",
           },
-          { label: "trace_id", value: resultMeta?.trace_id ?? "—" },
-          { label: "rule_version", value: resultMeta?.rule_version ?? "—" },
-          { label: "source_version", value: resultMeta?.source_version ?? "—" },
-          { label: "tables_used", value: formatMetaList(resultMeta?.tables_used) },
+          { label: "追踪标识", value: resultMeta?.trace_id ?? EM_DASH },
+          { label: "规则版本", value: resultMeta?.rule_version ?? EM_DASH },
+          { label: "源版本", value: resultMeta?.source_version ?? EM_DASH },
+          { label: "使用表", value: formatMetaList(resultMeta?.tables_used) },
           {
-            label: "evidence_rows",
+            label: "证据行数",
             value:
               resultMeta?.evidence_rows === null || resultMeta?.evidence_rows === undefined
-                ? "—"
+                ? EM_DASH
                 : String(resultMeta.evidence_rows),
           },
           { label: "限制", value: "估值差和外币折算差没有可闭合字段，不在前端反算。" },
@@ -2611,7 +2624,7 @@ export default function BalanceMovementAnalysisPage() {
             label: "集中度状态",
             value: drilldownStatusLabel(zqtzConcentrationAnalysis?.meta.status),
           },
-          { label: "trace_id", value: resultMeta?.trace_id ?? "—" },
+          { label: "追踪标识", value: resultMeta?.trace_id ?? EM_DASH },
         ],
       },
     ];
@@ -3762,12 +3775,13 @@ export default function BalanceMovementAnalysisPage() {
 
       {detailQuery.data?.result ? (
         <div data-testid="balance-movement-analysis-governance" className="balance-movement-governance-line">
-          读模型报告日：{governanceMeta.reportDate || "—"}
+          读模型报告日：{governanceMeta.reportDate || EM_DASH}
           {" · "}
-          rule_version：{governanceMeta.ruleVersions.length ? governanceMeta.ruleVersions.join("、") : "—"}
-          {" · "}
-          source_version：
-          {governanceMeta.sourceVersions.length ? governanceMeta.sourceVersions.join("、") : "—"}
+          规则版本：
+          {governanceMeta.ruleVersions.length ? governanceMeta.ruleVersions.join("、") : EM_DASH}
+          <br />
+          源版本：
+          {governanceMeta.sourceVersions.length ? governanceMeta.sourceVersions.join("、") : EM_DASH}
         </div>
       ) : null}
     </section>

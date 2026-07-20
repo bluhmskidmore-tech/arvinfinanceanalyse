@@ -31,6 +31,12 @@ const BondAnalyticsDetailSection = lazy(() =>
   })),
 );
 
+const LazyBondAnalyticsAgentDrawer = lazy(() =>
+  import("./BondAnalyticsAgentDrawer").then((module) => ({
+    default: module.BondAnalyticsAgentDrawer,
+  })),
+);
+
 type BondAnalyticsDateFallbackKind = "error" | "empty";
 
 function BondAnalyticsDateFallbackWorkbench({
@@ -146,6 +152,8 @@ export function BondAnalyticsViewContent() {
     useState<string | null>(null);
   const [detailRemountKey, setDetailRemountKey] = useState(0);
   const [isDetailDrilldownOpen, setIsDetailDrilldownOpen] = useState(false);
+  const [agentPanelOpen, setAgentPanelOpen] = useState(false);
+  const [agentPanelMounted, setAgentPanelMounted] = useState(false);
 
   const resolvedReportDate = useMemo(() => {
     if (explicitReportDate) {
@@ -237,6 +245,22 @@ export function BondAnalyticsViewContent() {
       actionAttributionQuery.isPending && !actionAttributionQuery.isError,
     actionAttributionError: actionAttributionErrorMessage,
   });
+
+  const agentPanelFilters = useMemo(
+    () => ({
+      period_type: periodType,
+      asset_class: assetClass,
+      accounting_class: accountingClass,
+      scenario_set: scenarioSet,
+      spread_scenarios: spreadScenarios,
+    }),
+    [periodType, assetClass, accountingClass, scenarioSet, spreadScenarios],
+  );
+
+  function openAgentPanel() {
+    setAgentPanelMounted(true);
+    setAgentPanelOpen(true);
+  }
 
   const calendarItems = useMemo(
     () =>
@@ -330,6 +354,15 @@ export function BondAnalyticsViewContent() {
           >
             中台配置
           </Link>
+          <button
+            type="button"
+            data-testid="bond-analysis-agent-open"
+            onClick={openAgentPanel}
+            aria-label="打开复核助手"
+            className="dashboard-home-action-button dashboard-home-action-button--secondary"
+          >
+            复核助手
+          </button>
           <button
             type="button"
             onClick={() => void handleBondAnalyticsRefresh()}
@@ -430,6 +463,17 @@ export function BondAnalyticsViewContent() {
           </div>
         ) : null}
       </details>
+
+      {agentPanelMounted ? (
+        <Suspense fallback={null}>
+          <LazyBondAnalyticsAgentDrawer
+            open={agentPanelOpen}
+            reportDate={effectiveReportDate}
+            currentFilters={agentPanelFilters}
+            onClose={() => setAgentPanelOpen(false)}
+          />
+        </Suspense>
+      ) : null}
     </section>
   );
 

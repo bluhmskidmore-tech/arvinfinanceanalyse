@@ -17,7 +17,7 @@
 
 .ledger-pnl-page-title {
   margin: 0;
-  color: var(--moss-color-neutral-900);
+  color: var(--ib-ink);
   font-size: 30px;
   font-weight: 760;
   line-height: 1.08;
@@ -27,7 +27,7 @@
 .ledger-pnl-page-subtitle {
   max-width: 860px;
   margin: var(--moss-space-2) 0 0;
-  color: var(--moss-color-neutral-600);
+  color: var(--ib-ink-secondary);
   font-size: 14px;
   line-height: 1.55;
 }
@@ -38,7 +38,7 @@
   flex: 0 0 auto;
   min-height: 30px;
   padding: 5px 10px;
-  border-radius: var(--moss-radius-sm);
+  border-radius: var(--ib-radius, 2px);
   font-size: 12px;
   font-weight: 700;
   line-height: 1.35;
@@ -48,12 +48,12 @@
 
 .ledger-pnl-mode-badge--real {
   background: var(--moss-color-success-50);
-  color: var(--moss-color-success-700);
+  color: var(--ib-up);
 }
 
 .ledger-pnl-mode-badge--mock {
-  background: var(--moss-color-primary-50);
-  color: var(--moss-color-primary-700);
+  background: var(--ib-accent-surface);
+  color: var(--ib-accent-hover);
 }
 
 .ledger-pnl-filter-bar.moss-filter-bar {
@@ -71,7 +71,7 @@
 
 .ledger-pnl-filter-field__label {
   display: block;
-  color: var(--moss-color-neutral-600);
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   font-weight: 650;
   line-height: 1.35;
@@ -81,10 +81,10 @@
   min-width: 180px;
   min-height: 38px;
   padding: 8px 11px;
-  border: 1px solid var(--moss-color-neutral-200);
-  border-radius: var(--moss-radius-sm);
-  background: var(--moss-color-bg-surface, #ffffff);
-  color: var(--moss-color-neutral-900);
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
+  color: var(--ib-ink);
   font: inherit;
 }
 
@@ -104,9 +104,9 @@
   margin-bottom: var(--moss-space-5);
   padding: var(--moss-space-4);
   overflow: hidden;
-  border: 1px solid var(--moss-color-neutral-200);
-  border-radius: var(--moss-radius-lg);
-  background: var(--moss-color-bg-surface, #ffffff);
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
 }
 
 .ledger-pnl-analysis__header {
@@ -119,7 +119,7 @@
 
 .ledger-pnl-analysis__title {
   margin: 0;
-  color: var(--moss-color-neutral-900);
+  color: var(--ib-ink);
   font-size: 20px;
   font-weight: 700;
   letter-spacing: 0;
@@ -127,7 +127,7 @@
 
 .ledger-pnl-analysis__subtitle {
   margin-top: var(--moss-space-2);
-  color: var(--moss-color-neutral-600);
+  color: var(--ib-ink-secondary);
   font-size: 13px;
   line-height: 1.6;
 }
@@ -139,7 +139,7 @@
   padding: 8px 12px;
   border-radius: 999px;
   background: var(--moss-color-neutral-100);
-  color: var(--moss-color-neutral-700);
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0;
@@ -156,30 +156,31 @@
   min-width: 0;
   padding: var(--moss-space-3);
   border: 1px solid var(--moss-color-neutral-100);
-  border-radius: var(--moss-radius-md);
-  background: var(--moss-color-neutral-50);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface-muted);
 }
 
 .ledger-pnl-analysis__kpi-label {
-  color: var(--moss-color-neutral-600);
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   line-height: 1.4;
 }
 
 .ledger-pnl-analysis__kpi-value {
   margin-top: var(--moss-space-2);
-  color: var(--moss-color-neutral-900);
+  color: var(--ib-ink);
   font-size: 18px;
   font-weight: 700;
   line-height: 1.35;
+  font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
 
 .ledger-pnl-analysis__status-panel {
   margin-bottom: var(--moss-space-4);
   padding: var(--moss-space-4);
-  border-radius: var(--moss-radius-md);
-  background: var(--moss-color-neutral-50);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface-muted);
 }
 
 .ledger-pnl-analysis__status-header {
@@ -192,7 +193,7 @@
 
 .ledger-pnl-analysis__status-title {
   margin: 0;
-  color: var(--moss-color-neutral-900);
+  color: var(--ib-ink);
   font-size: 16px;
   font-weight: 700;
   letter-spacing: 0;
@@ -200,7 +201,7 @@
 
 .ledger-pnl-analysis__status-subtitle {
   margin-top: var(--moss-space-1);
-  color: var(--moss-color-neutral-600);
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   line-height: 1.6;
 }
@@ -218,10 +219,10 @@
   align-items: center;
   min-height: 28px;
   padding: 0 10px;
-  border: 1px solid var(--moss-color-neutral-200);
+  border: 1px solid var(--ib-hairline);
   border-radius: 999px;
-  background: var(--moss-color-bg-surface, #ffffff);
-  color: var(--moss-color-neutral-700);
+  background: var(--ib-surface);
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0;
@@ -237,20 +238,20 @@
   min-width: 0;
   padding: var(--moss-space-3);
   border-left: 3px solid var(--moss-color-neutral-300);
-  border-radius: var(--moss-radius-md);
-  background: var(--moss-color-bg-surface, #ffffff);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
 }
 
 .ledger-pnl-analysis__status-row--analytical {
-  border-left-color: var(--moss-color-primary-500);
+  border-left-color: var(--ib-accent-surface0);
 }
 
 .ledger-pnl-analysis__status-row--pending {
-  border-left-color: var(--moss-color-warning-500);
+  border-left-color: var(--ib-warn);
 }
 
 .ledger-pnl-analysis__status-row--warning {
-  border-left-color: var(--moss-color-danger-500);
+  border-left-color: var(--ib-down);
 }
 
 .ledger-pnl-analysis__status-main {
@@ -262,7 +263,7 @@
 
 .ledger-pnl-analysis__status-name {
   min-width: 0;
-  color: var(--moss-color-neutral-900);
+  color: var(--ib-ink);
   font-size: 13px;
   font-weight: 700;
   line-height: 1.45;
@@ -275,7 +276,7 @@
   padding: 3px 8px;
   border-radius: 999px;
   background: var(--moss-color-neutral-100);
-  color: var(--moss-color-neutral-700);
+  color: var(--ib-ink-secondary);
   font-size: 11px;
   font-weight: 600;
   line-height: 1.35;
@@ -285,22 +286,22 @@
 
 .ledger-pnl-analysis__status-badge--ok {
   background: var(--moss-color-success-50);
-  color: var(--moss-color-success-700);
+  color: var(--ib-up);
 }
 
 .ledger-pnl-analysis__status-badge--danger {
   background: var(--moss-color-danger-50);
-  color: var(--moss-color-danger-700);
+  color: var(--ib-down);
 }
 
 .ledger-pnl-analysis__status-badge--neutral {
   background: var(--moss-color-neutral-100);
-  color: var(--moss-color-neutral-700);
+  color: var(--ib-ink-secondary);
 }
 
 .ledger-pnl-analysis__status-value {
   margin-top: var(--moss-space-2);
-  color: var(--moss-color-neutral-900);
+  color: var(--ib-ink);
   font-size: 18px;
   font-weight: 700;
   line-height: 1.35;
@@ -309,7 +310,7 @@
 
 .ledger-pnl-analysis__status-source {
   margin-top: var(--moss-space-2);
-  color: var(--moss-color-neutral-600);
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   line-height: 1.55;
   overflow-wrap: anywhere;
@@ -326,14 +327,14 @@
   gap: 4px;
   margin-bottom: var(--moss-space-3);
   padding: var(--moss-space-3);
-  border: 1px solid var(--moss-color-neutral-200);
+  border: 1px solid var(--ib-hairline);
   border-left: 3px solid var(--moss-color-neutral-400);
-  border-radius: var(--moss-radius-md);
-  background: var(--moss-color-bg-surface, #ffffff);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
 }
 
 .ledger-pnl-analysis__source-contract-decision--warning {
-  border-left-color: var(--moss-color-warning-500);
+  border-left-color: var(--ib-warn);
   background: var(--moss-color-warning-50);
 }
 
@@ -346,20 +347,20 @@
 }
 
 .ledger-pnl-analysis__source-contract-decision strong {
-  color: var(--moss-color-neutral-900);
+  color: var(--ib-ink);
   font-size: 13px;
   line-height: 1.45;
 }
 
 .ledger-pnl-analysis__source-contract-decision span {
-  color: var(--moss-color-neutral-700);
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   line-height: 1.55;
 }
 
 .ledger-pnl-analysis__source-contract-status {
   margin-top: var(--moss-space-2);
-  color: var(--moss-color-neutral-700);
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   font-weight: 600;
   line-height: 1.45;
@@ -367,7 +368,7 @@
 
 .ledger-pnl-analysis__source-contract-note {
   margin-bottom: var(--moss-space-3);
-  color: var(--moss-color-neutral-600);
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   font-weight: 600;
   line-height: 1.55;
@@ -380,19 +381,19 @@
   margin-bottom: var(--moss-space-3);
   padding: var(--moss-space-3);
   border: 1px solid var(--moss-color-warning-200);
-  border-radius: var(--moss-radius-sm);
+  border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-warning-50);
 }
 
 .ledger-pnl-analysis__source-contract-release-gate strong {
-  color: var(--moss-color-neutral-900);
+  color: var(--ib-ink);
   font-size: 12px;
   line-height: 1.45;
 }
 
 .ledger-pnl-analysis__source-contract-release-gate span,
 .ledger-pnl-analysis__source-contract-release-gate small {
-  color: var(--moss-color-neutral-700);
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   line-height: 1.55;
   overflow-wrap: anywhere;
@@ -408,9 +409,9 @@
   gap: var(--moss-space-3);
   margin-bottom: var(--moss-space-3);
   padding: var(--moss-space-3);
-  border: 1px solid var(--moss-color-neutral-200);
-  border-radius: var(--moss-radius-md);
-  background: var(--moss-color-neutral-50);
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface-muted);
 }
 
 .ledger-pnl-analysis__source-contract-actions-header {
@@ -419,13 +420,13 @@
 }
 
 .ledger-pnl-analysis__source-contract-actions-header strong {
-  color: var(--moss-color-neutral-900);
+  color: var(--ib-ink);
   font-size: 13px;
   line-height: 1.45;
 }
 
 .ledger-pnl-analysis__source-contract-actions-header span {
-  color: var(--moss-color-neutral-600);
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   line-height: 1.55;
 }
@@ -442,8 +443,8 @@
   align-items: start;
   padding: var(--moss-space-2);
   border: 1px solid var(--moss-color-neutral-100);
-  border-radius: var(--moss-radius-sm);
-  background: var(--moss-color-bg-surface, #ffffff);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
 }
 
 .ledger-pnl-analysis__source-contract-action-item > strong {
@@ -466,7 +467,7 @@
 }
 
 .ledger-pnl-analysis__source-contract-action-item span {
-  color: var(--moss-color-neutral-900);
+  color: var(--ib-ink);
   font-size: 13px;
   font-weight: 600;
   line-height: 1.45;
@@ -474,7 +475,7 @@
 
 .ledger-pnl-analysis__source-contract-action-item em,
 .ledger-pnl-analysis__source-contract-action-item small {
-  color: var(--moss-color-neutral-600);
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   font-style: normal;
   line-height: 1.5;
@@ -487,8 +488,8 @@
   margin: 4px 0;
   padding: 7px 9px;
   border: 1px solid var(--moss-color-neutral-100);
-  border-radius: var(--moss-radius-sm);
-  background: var(--moss-color-neutral-50);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface-muted);
 }
 
 .ledger-pnl-analysis__source-contract-material-checklist strong {
@@ -504,7 +505,7 @@
 }
 
 .ledger-pnl-analysis__source-contract-material-checklist small span {
-  color: var(--moss-color-neutral-500);
+  color: var(--ib-surface-muted0);
 }
 
 .ledger-pnl-analysis__source-contract-values {
@@ -518,13 +519,13 @@
   min-width: 0;
   padding: var(--moss-space-2);
   border: 1px solid var(--moss-color-neutral-100);
-  border-radius: var(--moss-radius-sm);
-  background: var(--moss-color-neutral-50);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface-muted);
 }
 
 .ledger-pnl-analysis__source-contract-values span {
   display: block;
-  color: var(--moss-color-neutral-500);
+  color: var(--ib-surface-muted0);
   font-size: 11px;
   line-height: 1.35;
 }
@@ -532,7 +533,7 @@
 .ledger-pnl-analysis__source-contract-values strong {
   display: block;
   margin-top: 4px;
-  color: var(--moss-color-neutral-900);
+  color: var(--ib-ink);
   font-size: 13px;
   line-height: 1.4;
   overflow-wrap: anywhere;
@@ -548,7 +549,7 @@
 
 .ledger-pnl-analysis__source-contract-ref {
   margin-top: var(--moss-space-2);
-  color: var(--moss-color-neutral-500);
+  color: var(--ib-surface-muted0);
   font-size: 11px;
   line-height: 1.45;
   overflow-wrap: anywhere;
@@ -563,15 +564,15 @@
 .ledger-pnl-analysis__table {
   min-width: 0;
   overflow: auto;
-  border: 1px solid var(--moss-color-neutral-200);
-  border-radius: var(--moss-radius-lg);
-  background: var(--moss-color-bg-surface, #ffffff);
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
 }
 
 .ledger-pnl-analysis__table-title {
   padding: var(--moss-space-4);
   border-bottom: 1px solid var(--moss-color-neutral-100);
-  color: var(--moss-color-neutral-900);
+  color: var(--ib-ink);
   font-weight: 600;
 }
 
@@ -599,8 +600,8 @@
 
 .ledger-pnl-analysis__residual-table th {
   border-top: 0;
-  background: var(--moss-color-neutral-50);
-  color: var(--moss-color-neutral-600);
+  background: var(--ib-surface-muted);
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   font-weight: 700;
 }
@@ -627,7 +628,7 @@
   margin-bottom: 3px;
   padding: 3px 7px;
   border: 1px solid var(--moss-color-warning-200);
-  border-radius: var(--moss-radius-sm);
+  border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-warning-50);
   color: var(--moss-color-warning-700);
   font-size: 11px;
@@ -637,7 +638,7 @@
 }
 
 .ledger-pnl-analysis__table-head-row {
-  background: var(--moss-color-neutral-50);
+  background: var(--ib-surface-muted);
 }
 
 .ledger-pnl-analysis__tr {
@@ -657,7 +658,7 @@
 
 .ledger-pnl-analysis__empty {
   padding: var(--moss-space-4);
-  color: var(--moss-color-neutral-500);
+  color: var(--ib-surface-muted0);
   font-size: 13px;
 }
 
@@ -668,10 +669,10 @@
   align-items: stretch;
   margin-bottom: 0;
   padding: 12px;
-  border: 1px solid var(--moss-color-neutral-200);
+  border: 1px solid var(--ib-hairline);
   border-left: 4px solid var(--moss-color-neutral-400);
-  border-radius: var(--moss-radius-md);
-  background: var(--moss-color-bg-surface, #ffffff);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
 }
 
 .ledger-pnl-functional-strip--ok {
@@ -679,7 +680,7 @@
 }
 
 .ledger-pnl-functional-strip--warning {
-  border-left-color: var(--moss-color-warning-500);
+  border-left-color: var(--ib-warn);
   background: var(--moss-color-warning-50);
 }
 
@@ -692,7 +693,7 @@
 }
 
 .ledger-pnl-functional-strip__eyebrow {
-  color: var(--moss-color-neutral-500);
+  color: var(--ib-surface-muted0);
   font-size: 10px;
   font-weight: 700;
   line-height: 1.25;
@@ -700,7 +701,7 @@
 
 .ledger-pnl-functional-strip__title {
   margin: var(--moss-space-1) 0 0;
-  color: var(--moss-color-neutral-900);
+  color: var(--ib-ink);
   font-size: 17px;
   font-weight: 700;
   line-height: 1.26;
@@ -709,7 +710,7 @@
 
 .ledger-pnl-functional-strip__detail {
   margin-top: 6px;
-  color: var(--moss-color-neutral-700);
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   line-height: 1.38;
 }
@@ -725,13 +726,13 @@
   min-width: 0;
   padding: 6px 7px;
   border: 1px solid var(--moss-color-neutral-100);
-  border-radius: var(--moss-radius-sm);
-  background: var(--moss-color-bg-surface, #ffffff);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
 }
 
 .ledger-pnl-functional-strip__facts span {
   display: block;
-  color: var(--moss-color-neutral-500);
+  color: var(--ib-surface-muted0);
   font-size: 10px;
   line-height: 1.22;
 }
@@ -739,7 +740,7 @@
 .ledger-pnl-functional-strip__facts strong {
   display: block;
   margin-top: 2px;
-  color: var(--moss-color-neutral-900);
+  color: var(--ib-ink);
   font-size: 11px;
   line-height: 1.26;
   overflow-wrap: anywhere;
@@ -756,7 +757,7 @@
 }
 
 .ledger-pnl-functional-strip__explainability > span {
-  color: var(--moss-color-neutral-500);
+  color: var(--ib-surface-muted0);
   font-size: 10px;
   font-weight: 700;
   line-height: 1.25;
@@ -775,9 +776,9 @@
   min-width: 0;
   padding: 4px 6px;
   border: 1px solid var(--moss-color-neutral-100);
-  border-radius: var(--moss-radius-sm);
-  background: var(--moss-color-bg-surface, #ffffff);
-  color: var(--moss-color-neutral-700);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
+  color: var(--ib-ink-secondary);
   font-size: 10px;
   font-style: normal;
   font-weight: 700;
@@ -792,7 +793,7 @@
 .ledger-pnl-functional-strip__evidence-button:hover,
 .ledger-pnl-functional-strip__evidence-button:focus-visible {
   border-color: var(--moss-color-primary-300);
-  color: var(--moss-color-primary-700);
+  color: var(--ib-accent-hover);
   outline: none;
 }
 
@@ -817,7 +818,7 @@
 }
 
 .ledger-pnl-functional-strip__decision-path > span {
-  color: var(--moss-color-neutral-500);
+  color: var(--ib-surface-muted0);
   font-size: 10px;
   font-weight: 700;
   line-height: 1.25;
@@ -833,14 +834,14 @@
   min-width: 0;
   padding: 6px 7px;
   border: 1px solid var(--moss-color-neutral-100);
-  border-radius: var(--moss-radius-sm);
-  background: var(--moss-color-bg-surface, #ffffff);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
 }
 
 .ledger-pnl-functional-strip__decision-list span {
   display: block;
   margin-bottom: 2px;
-  color: var(--moss-color-neutral-500);
+  color: var(--ib-surface-muted0);
   font-size: 10px;
   font-weight: 700;
   line-height: 1.22;
@@ -872,7 +873,7 @@
 }
 
 .ledger-pnl-functional-strip__drill > span {
-  color: var(--moss-color-neutral-500);
+  color: var(--ib-surface-muted0);
   font-size: 10px;
   font-weight: 700;
   line-height: 1.25;
@@ -886,19 +887,19 @@
 
 .ledger-pnl-functional-strip__drill-item {
   min-width: 0;
-  color: var(--moss-color-neutral-700);
+  color: var(--ib-ink-secondary);
   font-size: 10px;
   line-height: 1.3;
 }
 
 .ledger-pnl-functional-strip__drill-item strong {
   margin-right: var(--moss-space-2);
-  color: var(--moss-color-neutral-900);
+  color: var(--ib-ink);
   font-weight: 700;
 }
 
 .ledger-pnl-functional-strip__drill-item em {
-  color: var(--moss-color-neutral-600);
+  color: var(--ib-ink-secondary);
   font-style: normal;
   overflow-wrap: anywhere;
 }
@@ -912,9 +913,9 @@
 .ledger-pnl-summary-card {
   min-width: 0;
   padding: var(--moss-space-3);
-  border: 1px solid var(--moss-color-neutral-200);
-  border-radius: var(--moss-radius-md);
-  background: var(--moss-color-bg-surface, #ffffff);
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
 }
 
 .ledger-pnl-summary-card__header {
@@ -926,7 +927,7 @@
 
 .ledger-pnl-summary-card__title {
   min-width: 0;
-  color: var(--moss-color-neutral-600);
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   line-height: 1.4;
 }
@@ -946,16 +947,17 @@
 
 .ledger-pnl-summary-card__value {
   margin-top: 10px;
-  color: var(--moss-color-neutral-900);
+  color: var(--ib-ink);
   font-size: 22px;
   font-weight: 700;
   line-height: 1.3;
+  font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
 
 .ledger-pnl-summary-card__note {
   margin-top: var(--moss-space-2);
-  color: var(--moss-color-neutral-600);
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   font-weight: 600;
   line-height: 1.5;
@@ -1039,7 +1041,7 @@
   .ledger-pnl-functional-strip {
     gap: 8px;
     padding: 10px;
-    border-radius: var(--moss-radius-md);
+    border-radius: var(--ib-radius, 2px);
   }
 
   .ledger-pnl-functional-strip__eyebrow {
@@ -1246,8 +1248,8 @@
     gap: 6px;
     padding: 8px !important;
     border: 1px solid var(--moss-color-neutral-100) !important;
-    border-radius: var(--moss-radius-sm);
-    background: var(--moss-color-bg-surface, #ffffff);
+    border-radius: var(--ib-radius, 2px);
+    background: var(--ib-surface);
     width: 100%;
   }
 
@@ -1274,7 +1276,7 @@
     align-content: start;
     padding: 0 !important;
     border: 0 !important;
-    color: var(--moss-color-neutral-900);
+    color: var(--ib-ink);
     font-size: 11px;
     line-height: 1.35;
     text-align: left !important;
@@ -1284,7 +1286,7 @@
   [data-testid="ledger-pnl-account-summary-table"] td::before,
   [data-testid="ledger-pnl-detail-table"] td::before {
     display: block;
-    color: var(--moss-color-neutral-500);
+    color: var(--ib-surface-muted0);
     font-size: 10px;
     font-weight: 700;
     line-height: 1.2;
@@ -1367,7 +1369,7 @@
   padding: 10px 12px;
   border-bottom: 1px solid var(--moss-color-warning-200);
   background: var(--moss-color-warning-50);
-  color: var(--moss-color-warning-800, #854d0e);
+  color: var(--ib-warn);
 }
 
 .ledger-pnl-detail-account-filter > div {
@@ -1385,8 +1387,8 @@
   min-height: 32px;
   padding: 5px 9px;
   border: 1px solid var(--moss-color-warning-300);
-  border-radius: var(--moss-radius-sm);
-  background: var(--moss-color-bg-surface, #fff);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
   color: inherit;
   cursor: pointer;
 }

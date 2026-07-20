@@ -95,7 +95,7 @@ export default function IndustryDistributionCard({ startDate, endDate, subType }
       title="行业分布"
       extra={
         <Typography.Text type="secondary">
-          {data?.num_days != null ? `${data.num_days} 天` : "—"} · 前十
+          {data?.num_days != null ? `${data.num_days} 天` : "—"} / 前十
         </Typography.Text>
       }
     >

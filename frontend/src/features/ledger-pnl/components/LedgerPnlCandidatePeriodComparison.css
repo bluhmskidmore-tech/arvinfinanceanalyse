@@ -1,13 +1,19 @@
 .candidate-period-comparison {
+  --candidate-navy: var(--ib-accent);
+  --candidate-blue: var(--ib-accent-hover);
+  --candidate-ink: var(--ib-ink);
+  --candidate-muted: var(--ib-ink-secondary);
+  --candidate-line: var(--ib-hairline);
+  --candidate-soft: var(--ib-surface-muted);
   display: grid;
   gap: 12px;
   margin: 14px 0;
   padding: 14px;
-  border: 1px solid var(--candidate-line, var(--moss-color-neutral-200, #dce2e8));
-  border-left: 3px solid var(--candidate-blue, var(--moss-color-primary-700, #22577a));
-  border-radius: 2px;
-  background: var(--candidate-soft, var(--moss-color-neutral-50, #f7f9fb));
-  color: var(--candidate-ink, var(--moss-color-neutral-900, #17212b));
+  border: 1px solid var(--candidate-line, var(--ib-hairline));
+  border-left: 3px solid var(--candidate-blue, var(--ib-accent-hover));
+  border-radius: var(--ib-radius, 2px);
+  background: var(--candidate-soft, var(--ib-surface-muted));
+  color: var(--candidate-ink, var(--ib-ink));
 }
 
 .candidate-period-comparison__header {
@@ -22,7 +28,7 @@
 }
 
 .candidate-period-comparison__header > div:first-child > span {
-  color: var(--candidate-blue, var(--moss-color-primary-700, #22577a));
+  color: var(--candidate-blue, var(--ib-accent-hover));
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.12em;
@@ -30,7 +36,7 @@
 
 .candidate-period-comparison__header h3 {
   margin: 4px 0 0;
-  color: var(--candidate-navy, var(--moss-color-primary-900, #102a43));
+  color: var(--candidate-navy, var(--ib-accent));
   font-size: 18px;
   line-height: 1.25;
 }
@@ -38,7 +44,7 @@
 .candidate-period-comparison__header p,
 .candidate-period-comparison__scope-gap p {
   margin: 5px 0 0;
-  color: var(--candidate-muted, var(--moss-color-neutral-600, #5b6875));
+  color: var(--candidate-muted, var(--ib-ink-secondary));
   font-size: 12px;
   line-height: 1.5;
 }
@@ -53,17 +59,17 @@
 
 .candidate-period-comparison__boundary strong {
   padding: 5px 8px;
-  border: 1px solid var(--moss-color-warning-300, #f0c36a);
-  border-radius: 2px;
-  background: var(--moss-color-warning-50, #fff9e8);
-  color: var(--moss-color-warning-800, #7a4b00);
+  border: 1px solid var(--moss-color-warning-300);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--moss-color-warning-50);
+  color: var(--ib-warn);
   font-size: 11px;
 }
 
 .candidate-period-comparison__boundary small,
 .candidate-period-comparison__scope-gap small,
 .candidate-period-comparison__footer {
-  color: var(--candidate-muted, var(--moss-color-neutral-600, #5b6875));
+  color: var(--candidate-muted, var(--ib-ink-secondary));
   font-size: 11px;
 }
 
@@ -74,10 +80,10 @@
   justify-content: space-between;
   gap: 12px;
   padding: 9px 10px;
-  border: 1px solid var(--moss-color-warning-300, #f0c36a);
-  border-radius: 2px;
-  background: var(--moss-color-warning-50, #fff9e8);
-  color: var(--moss-color-warning-900, #603b00);
+  border: 1px solid var(--moss-color-warning-300);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--moss-color-warning-50);
+  color: var(--ib-warn);
   font-size: 11px;
   line-height: 1.45;
 }
@@ -88,13 +94,13 @@
 
 .candidate-period-comparison__scope-ready {
   display: grid;
-  border-color: var(--moss-color-info-200, #b8d8ea);
-  background: var(--moss-color-info-50, #f2f8fc);
-  color: var(--moss-color-info-800, #194e70);
+  border-color: var(--moss-color-info-200);
+  background: var(--moss-color-info-50);
+  color: var(--ib-accent);
 }
 
 .candidate-period-comparison__scope-ready small {
-  color: var(--candidate-muted, var(--moss-color-neutral-600, #5b6875));
+  color: var(--candidate-muted, var(--ib-ink-secondary));
 }
 
 .candidate-period-comparison__scope-gap {
@@ -102,13 +108,13 @@
   grid-template-columns: minmax(0, 1fr) minmax(220px, 0.55fr);
   gap: 12px 18px;
   padding: 11px 12px;
-  border: 1px solid var(--moss-color-warning-300, #f0c36a);
-  border-radius: 2px;
-  background: var(--candidate-paper, var(--moss-color-bg-surface, #fff));
+  border: 1px solid var(--moss-color-warning-300);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--candidate-paper, var(--ib-surface));
 }
 
 .candidate-period-comparison__scope-gap > div > strong {
-  color: var(--candidate-navy, var(--moss-color-primary-900, #102a43));
+  color: var(--candidate-navy, var(--ib-accent));
   font-size: 13px;
 }
 
@@ -126,9 +132,9 @@
   justify-content: space-between;
   gap: 10px;
   padding: 6px 8px;
-  border-left: 2px solid var(--moss-color-warning-500, #b7791f);
-  background: var(--moss-color-warning-50, #fff9e8);
-  color: var(--moss-color-warning-900, #603b00);
+  border-left: 2px solid var(--ib-warn);
+  background: var(--moss-color-warning-50);
+  color: var(--ib-warn);
   font-size: 11px;
 }
 
@@ -140,9 +146,9 @@
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
-  border: 1px solid var(--moss-color-info-200, #b8d8ea);
-  border-radius: 2px;
-  background: var(--candidate-paper, var(--moss-color-bg-surface, #fff));
+  border: 1px solid var(--moss-color-info-200);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--candidate-paper, var(--ib-surface));
 }
 
 .candidate-period-comparison__interest-bridge-header {
@@ -151,13 +157,13 @@
   justify-content: space-between;
   gap: 14px;
   padding: 10px 12px;
-  border-bottom: 1px solid var(--moss-color-info-200, #b8d8ea);
-  background: var(--moss-color-info-50, #f2f8fc);
+  border-bottom: 1px solid var(--moss-color-info-200);
+  background: var(--moss-color-info-50);
 }
 
 .candidate-period-comparison__interest-bridge h4 {
   margin: 0;
-  color: var(--candidate-navy, var(--moss-color-primary-900, #102a43));
+  color: var(--candidate-navy, var(--ib-accent));
   font-size: 13px;
   line-height: 1.35;
 }
@@ -167,7 +173,7 @@
 .candidate-period-comparison__interest-bridge--quiet p,
 .candidate-period-comparison__interest-bridge--failed p {
   margin: 3px 0 0;
-  color: var(--candidate-muted, var(--moss-color-neutral-600, #5b6875));
+  color: var(--candidate-muted, var(--ib-ink-secondary));
   font-size: 10px;
   line-height: 1.45;
 }
@@ -181,15 +187,15 @@
 }
 
 .candidate-period-comparison__interest-bridge-result strong {
-  color: var(--candidate-blue, var(--moss-color-primary-700, #22577a));
+  color: var(--candidate-blue, var(--ib-accent-hover));
   font-size: 12px;
 }
 
 .candidate-period-comparison__interest-bridge-result span {
   padding: 3px 6px;
-  border: 1px solid var(--moss-color-info-200, #b8d8ea);
-  border-radius: 2px;
-  color: var(--moss-color-info-800, #194e70);
+  border: 1px solid var(--moss-color-info-200);
+  border-radius: var(--ib-radius, 2px);
+  color: var(--ib-accent);
   font-size: 10px;
   font-weight: 800;
 }
@@ -208,7 +214,7 @@
 }
 
 .candidate-period-comparison__interest-bridge tbody td {
-  color: var(--candidate-ink, var(--moss-color-neutral-900, #17212b));
+  color: var(--candidate-ink, var(--ib-ink));
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   white-space: nowrap;
@@ -223,7 +229,7 @@
   border-bottom: 1px solid currentColor;
   border-radius: 0;
   background: transparent;
-  color: var(--candidate-blue, var(--moss-color-primary-700, #22577a));
+  color: var(--candidate-blue, var(--ib-accent-hover));
   font: inherit;
   text-align: left;
   cursor: pointer;
@@ -232,19 +238,19 @@
 .candidate-period-comparison__interest-bridge-trigger:hover,
 .candidate-period-comparison__interest-bridge-trigger:focus-visible,
 .candidate-period-comparison__interest-bridge-trigger[aria-expanded="true"] {
-  color: var(--candidate-navy, var(--moss-color-primary-900, #102a43));
-  outline: 2px solid var(--moss-color-info-200, #b8d8ea);
+  color: var(--candidate-navy, var(--ib-accent));
+  outline: 2px solid var(--moss-color-info-200);
   outline-offset: 2px;
 }
 
 .candidate-period-comparison .candidate-period-comparison__interest-bridge tbody td:last-child {
   display: table-cell;
-  color: var(--candidate-blue, var(--moss-color-primary-700, #22577a));
+  color: var(--candidate-blue, var(--ib-accent-hover));
 }
 
 .candidate-period-comparison__interest-bridge-note {
   padding: 7px 12px;
-  border-top: 1px solid var(--candidate-line, var(--moss-color-neutral-200, #dce2e8));
+  border-top: 1px solid var(--candidate-line, var(--ib-hairline));
 }
 
 .candidate-period-comparison__interest-bridge--quiet,
@@ -252,25 +258,25 @@
   display: grid;
   gap: 3px;
   padding: 10px 12px;
-  border-color: var(--candidate-line, var(--moss-color-neutral-200, #dce2e8));
-  background: var(--candidate-soft, var(--moss-color-neutral-50, #f7f9fb));
+  border-color: var(--candidate-line, var(--ib-hairline));
+  background: var(--candidate-soft, var(--ib-surface-muted));
 }
 
 .candidate-period-comparison__interest-bridge--failed {
-  border-color: var(--moss-color-danger-300, #e5a2a2);
-  background: var(--moss-color-danger-50, #fff5f5);
+  border-color: var(--moss-color-danger-300);
+  background: var(--moss-color-danger-50);
 }
 
 .candidate-period-comparison__interest-bridge--failed p strong {
-  color: var(--moss-color-danger-800, #8c2f2f);
+  color: var(--ib-down);
   font-variant-numeric: tabular-nums;
 }
 
 .candidate-period-comparison__table-wrap {
   overflow-x: auto;
-  border: 1px solid var(--candidate-line, var(--moss-color-neutral-200, #dce2e8));
-  border-radius: 2px;
-  background: var(--candidate-paper, var(--moss-color-bg-surface, #fff));
+  border: 1px solid var(--candidate-line, var(--ib-hairline));
+  border-radius: var(--ib-radius, 2px);
+  background: var(--candidate-paper, var(--ib-surface));
 }
 
 .candidate-period-comparison table {
@@ -284,14 +290,14 @@
 .candidate-period-comparison th,
 .candidate-period-comparison td {
   padding: 9px 10px;
-  border-bottom: 1px solid var(--candidate-line, var(--moss-color-neutral-200, #dce2e8));
+  border-bottom: 1px solid var(--candidate-line, var(--ib-hairline));
   vertical-align: top;
   text-align: left;
 }
 
 .candidate-period-comparison thead th {
-  background: var(--candidate-soft, var(--moss-color-neutral-50, #f7f9fb));
-  color: var(--candidate-muted, var(--moss-color-neutral-600, #5b6875));
+  background: var(--candidate-soft, var(--ib-surface-muted));
+  color: var(--candidate-muted, var(--ib-ink-secondary));
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.04em;
@@ -310,39 +316,39 @@
 }
 
 .candidate-period-comparison tbody tr[data-comparison-status="not_comparable"] {
-  background: var(--moss-color-warning-50, #fff9e8);
+  background: var(--moss-color-warning-50);
 }
 
 .candidate-period-comparison tbody th {
   display: grid;
   gap: 3px;
-  color: var(--candidate-navy, var(--moss-color-primary-900, #102a43));
+  color: var(--candidate-navy, var(--ib-accent));
 }
 
 .candidate-period-comparison tbody th code {
   overflow: hidden;
-  color: var(--candidate-muted, var(--moss-color-neutral-600, #5b6875));
+  color: var(--candidate-muted, var(--ib-ink-secondary));
   font-size: 9px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .candidate-period-comparison tbody th small {
-  color: var(--moss-color-warning-900, #603b00);
+  color: var(--ib-warn);
   font-size: 10px;
   font-weight: 500;
   line-height: 1.4;
 }
 
 .candidate-period-comparison__number {
-  color: var(--candidate-ink, var(--moss-color-neutral-900, #17212b));
+  color: var(--candidate-ink, var(--ib-ink));
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   white-space: nowrap;
 }
 
 .candidate-period-comparison__delta {
-  color: var(--candidate-blue, var(--moss-color-primary-700, #22577a));
+  color: var(--candidate-blue, var(--ib-accent-hover));
 }
 
 .candidate-period-comparison tbody td:last-child {
@@ -351,11 +357,11 @@
 }
 
 .candidate-period-comparison tbody td:last-child strong {
-  color: var(--candidate-navy, var(--moss-color-primary-900, #102a43));
+  color: var(--candidate-navy, var(--ib-accent));
 }
 
 .candidate-period-comparison tbody td:last-child small {
-  color: var(--candidate-muted, var(--moss-color-neutral-600, #5b6875));
+  color: var(--candidate-muted, var(--ib-ink-secondary));
 }
 
 .candidate-period-comparison__footer {
@@ -371,25 +377,25 @@
   place-content: center;
   gap: 6px;
   padding: 20px;
-  border: 1px dashed var(--candidate-line, var(--moss-color-neutral-200, #dce2e8));
-  border-radius: 2px;
-  background: var(--candidate-paper, var(--moss-color-bg-surface, #fff));
+  border: 1px dashed var(--candidate-line, var(--ib-hairline));
+  border-radius: var(--ib-radius, 2px);
+  background: var(--candidate-paper, var(--ib-surface));
   text-align: center;
 }
 
 .candidate-period-comparison__state strong {
-  color: var(--candidate-navy, var(--moss-color-primary-900, #102a43));
+  color: var(--candidate-navy, var(--ib-accent));
   font-size: 14px;
 }
 
 .candidate-period-comparison__state span {
-  color: var(--candidate-muted, var(--moss-color-neutral-600, #5b6875));
+  color: var(--candidate-muted, var(--ib-ink-secondary));
   font-size: 12px;
 }
 
 .candidate-period-comparison__state--error {
-  border-color: var(--moss-color-danger-300, #e5a2a2);
-  background: var(--moss-color-danger-50, #fff5f5);
+  border-color: var(--moss-color-danger-300);
+  background: var(--moss-color-danger-50);
 }
 
 .candidate-period-comparison__state button {
@@ -397,10 +403,10 @@
   justify-self: center;
   margin-top: 3px;
   padding: 6px 11px;
-  border: 1px solid var(--candidate-blue, var(--moss-color-primary-700, #22577a));
-  border-radius: 2px;
-  background: var(--candidate-paper, var(--moss-color-bg-surface, #fff));
-  color: var(--candidate-blue, var(--moss-color-primary-700, #22577a));
+  border: 1px solid var(--candidate-blue, var(--ib-accent-hover));
+  border-radius: var(--ib-radius, 2px);
+  background: var(--candidate-paper, var(--ib-surface));
+  color: var(--candidate-blue, var(--ib-accent-hover));
   cursor: pointer;
   font: inherit;
   font-size: 11px;

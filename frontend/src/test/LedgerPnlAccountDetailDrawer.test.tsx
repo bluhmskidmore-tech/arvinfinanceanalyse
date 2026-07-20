@@ -432,7 +432,7 @@ describe("LedgerPnlAccountDetailDrawer", () => {
     expect(warning).toHaveTextContent("当前选择口径 CNX 暂无总账证据");
     expect(warning).toHaveTextContent("无数据不等于 0");
     const period = screen.getByTestId("ledger-pnl-account-detail-period");
-    expect(within(period).getByText("本期").closest("article")).toHaveTextContent("--");
+    expect(within(period).getByText("本期").closest("article")).toHaveTextContent("—");
     expect(within(period).getByText("本期").closest("article")).not.toHaveTextContent("0.00 亿元");
     expect(within(period).getByText("上期").closest("article")).toHaveTextContent("0.00 亿元");
     const basis = screen.getByTestId("ledger-pnl-account-detail-basis");

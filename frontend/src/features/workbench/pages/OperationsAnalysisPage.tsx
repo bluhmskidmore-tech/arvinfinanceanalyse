@@ -32,17 +32,14 @@ import "./OperationsAnalysisPage.css";
 const OPERATIONS_PRODUCT_CATEGORY_VIEW = "monthly";
 
 function OperationsSectionLead({
-  eyebrow,
   title,
   description,
 }: {
-  eyebrow: string;
   title: string;
   description: string;
 }) {
   return (
     <div className="operations-analysis-page__section-lead">
-      <span className="operations-analysis-page__section-eyebrow">{eyebrow}</span>
       <h2 className="operations-analysis-page__section-title">{title}</h2>
       <p className="operations-analysis-page__section-description">{description}</p>
     </div>
@@ -157,8 +154,8 @@ function formatResultMetaProvenance(meta: ResultMeta | undefined): string {
     meta.fallback_mode === "latest_snapshot"
       ? "最新快照降级"
       : meta.fallback_mode;
-  const fb = meta.fallback_mode !== "none" ? ` · 回退 ${fallback}` : "";
-  return `口径 ${basis} · 质量 ${quality} · 供应 ${vendor}${fb}`;
+  const fb = meta.fallback_mode !== "none" ? `，回退 ${fallback}` : "";
+  return `口径 ${basis}，质量 ${quality}，供应 ${vendor}${fb}`;
 }
 
 export default function OperationsAnalysisPage() {
@@ -300,23 +297,23 @@ export default function OperationsAnalysisPage() {
     value: `${fxFormalStatus?.materialized_count ?? 0} / ${fxFormalStatus?.candidate_count ?? 0}`,
     detail: `物化/候选（对账）${fxFormalStatus?.materialized_count ?? 0} / ${
       fxFormalStatus?.candidate_count ?? 0
-    } · 最新交易日 ${fxFormalStatus?.latest_trade_date ?? "待定"} · 沿用前值 ${
+    }，最新交易日 ${fxFormalStatus?.latest_trade_date ?? "待定"}，沿用前值 ${
       fxFormalStatus?.carry_forward_count ?? 0
     }`,
   });
   const sourceHeadlineDetail = sourceQuery.isError
     ? sourceStatusCard.detail
-    : `${sourceStatusCard.detail} · ${formatResultMetaProvenance(sourceQuery.data?.result_meta)}`;
+    : `${sourceStatusCard.detail}；${formatResultMetaProvenance(sourceQuery.data?.result_meta)}`;
   const macroQueriesFailed = macroCatalogQuery.isError || macroLatestQuery.isError;
   const macroHeadlineDetail = macroQueriesFailed
     ? macroStatusCard.detail
-    : `${macroStatusCard.detail} · ${formatResultMetaProvenance(macroLatestQuery.data?.result_meta)}`;
+    : `${macroStatusCard.detail}；${formatResultMetaProvenance(macroLatestQuery.data?.result_meta)}`;
   const newsHeadlineDetail = newsQuery.isError
     ? newsStatusCard.detail
-    : `${newsStatusCard.detail} · ${formatResultMetaProvenance(newsQuery.data?.result_meta)}`;
+    : `${newsStatusCard.detail}；${formatResultMetaProvenance(newsQuery.data?.result_meta)}`;
   const formalFxHeadlineDetail = fxFormalStatusQuery.isError
     ? formalFxStatusCard.detail
-    : `${formalFxStatusCard.detail} · ${formatResultMetaProvenance(fxFormalStatusQuery.data?.result_meta)}`;
+    : `${formalFxStatusCard.detail}；${formatResultMetaProvenance(fxFormalStatusQuery.data?.result_meta)}`;
 
   const recommendation = useMemo(() => {
     const hasCriticalError =
@@ -344,7 +341,7 @@ export default function OperationsAnalysisPage() {
         title: "等待产品分类损益证据",
         detail:
           "当前尚未解析到 product-category report date。经营页不再用资产负债余额读面替代经营口径。",
-        actionLabel: "Open product-category PnL",
+        actionLabel: "打开产品分类损益",
         actionTo: "/product-category-pnl",
       };
     }
@@ -353,7 +350,7 @@ export default function OperationsAnalysisPage() {
       return {
         title: "经营判断可用但需关注 FX 覆盖",
         detail: `产品分类损益已解析到 ${productCategoryPnl.report_date} / ${productCategoryPnl.view}，但正式 FX 状态仍缺 ${missingFxRows.length} 对。先用产品分类 formal 结果作经营判断，再核验外币覆盖。`,
-        actionLabel: "Open market data",
+        actionLabel: "打开市场数据",
         actionTo: "/market-data",
       };
     }
@@ -361,7 +358,7 @@ export default function OperationsAnalysisPage() {
     return {
       title: "产品分类经营口径可用于本期判断",
       detail: `当前证据解析到 ${productCategoryPnl.report_date} / ${productCategoryPnl.view}，首屏以 /ui/pnl/product-category 的资产、负债、合计经营净收入为准。`,
-      actionLabel: "Open product-category PnL",
+      actionLabel: "打开产品分类损益",
       actionTo: "/product-category-pnl",
     };
   }, [
@@ -383,12 +380,12 @@ export default function OperationsAnalysisPage() {
       const productProv = formatResultMetaProvenance(productCategoryPnlQuery.data?.result_meta);
       const productDetail = productErr
         ? "产品分类损益：查询失败"
-        : `正式经营口径 /ui/pnl/product-category · view ${
+        : `正式经营口径 /ui/pnl/product-category，视图 ${
             productCategoryPnl?.view ?? OPERATIONS_PRODUCT_CATEGORY_VIEW
-          } · ${productProv}`;
+          }；${productProv}`;
       const productDateDetail = productErr
         ? "产品分类损益报告月：查询失败"
-        : `总账对账 + 日均配对链路 · ${productProv}`;
+        : `总账对账 + 日均配对链路；${productProv}`;
       return [
       {
         title: "资产净收入",
@@ -416,7 +413,7 @@ export default function OperationsAnalysisPage() {
       {
         title: "产品行数",
         value: String(productCategoryRows.length),
-        detail: `正式产品分类行（不含 grand_total）· ${productProv}`,
+        detail: `正式产品分类行（不含合计行）；${productProv}`,
       },
       {
         title: "源批次",
@@ -605,7 +602,6 @@ export default function OperationsAnalysisPage() {
       <div className="operations-analysis-page__decision-layout">
         <div className="operations-analysis-page__section-block">
           <OperationsSectionLead
-            eyebrow="核心视图"
             title="结论、桥接与质量观察"
             description="先阅读已被正式读链路支撑的判断，再看质量观察提示哪些口径仍待补齐。收益成本桥明确保留为示意。"
           />
@@ -652,7 +648,6 @@ export default function OperationsAnalysisPage() {
 
       <div className="operations-analysis-page__section-block">
         <OperationsSectionLead
-          eyebrow="贡献"
           title="经营贡献与行动项"
           description="产品分类损益行、管理动作和近期日历放在同一层，方便从经营判断进入执行。"
         />
@@ -692,7 +687,6 @@ export default function OperationsAnalysisPage() {
 
       <div className="operations-analysis-page__section-block">
         <OperationsSectionLead
-          eyebrow="结构"
           title="期限与集中度 / 专题入口"
           description="期限缺口只保留结构解读；正式工作簿与细项下钻仍进入对应专题页。"
         />

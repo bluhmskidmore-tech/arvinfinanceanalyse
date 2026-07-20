@@ -1,0 +1,60 @@
+/*
+ * CN equity convention (A-share 红涨绿跌): intentional page-local exception.
+ * Do NOT map these to --ib-up/--ib-down (IB is 绿涨红跌).
+ * Used only for customer balance trend up/down stroke in this modal.
+ */
+.positions-customer-detail {
+  --cn-equity-up: #cf1322;
+  --cn-equity-down: #389e0d;
+}
+
+.positions-customer-detail__title {
+  margin: 0;
+}
+
+.positions-customer-detail__kpi-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  margin-bottom: 16px;
+}
+
+.positions-customer-detail__kpi-value {
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.positions-customer-detail__loading {
+  padding: 32px;
+  text-align: center;
+}
+
+.positions-customer-detail__chart {
+  height: 280px;
+}
+
+.positions-customer-detail__rating {
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.positions-customer-detail__rating--aaa {
+  background: var(--moss-color-success-50);
+  color: var(--moss-color-success-700);
+}
+
+.positions-customer-detail__rating--aa {
+  background: var(--moss-color-warning-50);
+  color: var(--moss-color-warning-700);
+}
+
+.positions-customer-detail__rating--unrated {
+  background: var(--moss-color-neutral-50);
+  color: var(--moss-color-neutral-600);
+}
+
+.positions-customer-detail__rating--other {
+  background: var(--moss-color-warning-100);
+  color: var(--moss-color-warning-800);
+}

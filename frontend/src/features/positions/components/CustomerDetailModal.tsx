@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Modal, Spin, Table, Tabs, Typography } from "antd";
 import type { TableColumnsType } from "antd";
@@ -8,11 +8,9 @@ import { useApiClient } from "../../../api/client";
 import type { CustomerBondDetailItem } from "../../../api/contracts";
 import { buildBondTradingDeskPath } from "../../bond-trading-desk/lib/bondTradingDeskPageModel";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
+import { ibTokens } from "../../../theme/designSystem";
 import { formatAmountYi, formatRatePercent } from "../utils/format";
-
-/** A股配色：红涨绿跌 — 余额上行红色，下行绿色 */
-const UP_COLOR = "#cf1322";
-const DOWN_COLOR = "#389e0d";
+import "./CustomerDetailModal.css";
 
 type CustomerBondDetailRow = CustomerBondDetailItem & { key: string };
 
@@ -23,8 +21,32 @@ type Props = {
   reportDate?: string | null;
 };
 
+type CnEquityColors = { up: string; down: string };
+
+function ratingToneClass(rating: string): string {
+  if (rating === "AAA") {
+    return "positions-customer-detail__rating--aaa";
+  }
+  if (rating.startsWith("AA")) {
+    return "positions-customer-detail__rating--aa";
+  }
+  if (rating === "未评级") {
+    return "positions-customer-detail__rating--unrated";
+  }
+  return "positions-customer-detail__rating--other";
+}
+
+function readCssVar(host: Element | null, name: string): string {
+  if (!host) {
+    return "";
+  }
+  return getComputedStyle(host).getPropertyValue(name).trim();
+}
+
 export default function CustomerDetailModal({ open, onClose, customerName, reportDate }: Props) {
   const client = useApiClient();
+  const hostRef = useRef<HTMLDivElement>(null);
+  const [cnEquityColors, setCnEquityColors] = useState<CnEquityColors>({ up: "", down: "" });
 
   const detailsQuery = useQuery({
     queryKey: ["positions", "customer-details", client.mode, customerName, reportDate ?? ""],
@@ -62,6 +84,17 @@ export default function CustomerDetailModal({ open, onClose, customerName, repor
   const details = detailsQuery.data;
   const trend = trendQuery.data;
 
+  useLayoutEffect(() => {
+    if (!open) {
+      return;
+    }
+    const host = hostRef.current;
+    setCnEquityColors({
+      up: readCssVar(host, "--cn-equity-up"),
+      down: readCssVar(host, "--cn-equity-down"),
+    });
+  }, [open, trend?.items]);
+
   const detailRows = useMemo<CustomerBondDetailRow[]>(
     () => (details?.items ?? []).map((row) => ({ key: row.bond_code, ...row })),
     [details?.items],
@@ -90,28 +123,7 @@ export default function CustomerDetailModal({ open, onClose, customerName, repor
         title: "评级",
         dataIndex: "rating",
         render: (r: string) => (
-          <Typography.Text
-            style={{
-              padding: "2px 8px",
-              borderRadius: 6,
-              background:
-                r === "AAA"
-                  ? "#f6ffed"
-                  : r.startsWith("AA")
-                    ? "#fffbe6"
-                    : r === "未评级"
-                      ? "#fafafa"
-                      : "#fff2e8",
-              color:
-                r === "AAA"
-                  ? "#237804"
-                  : r.startsWith("AA")
-                    ? "#ad6800"
-                    : r === "未评级"
-                      ? "#595959"
-                      : "#ad4e00",
-            }}
-          >
+          <Typography.Text className={`positions-customer-detail__rating ${ratingToneClass(r)}`}>
             {r}
           </Typography.Text>
         ),
@@ -151,8 +163,8 @@ export default function CustomerDetailModal({ open, onClose, customerName, repor
     const balances = items.map((it) => parseFloat(it.balance));
     const first = balances[0] ?? 0;
     const last = balances[balances.length - 1] ?? 0;
-    const stroke = last >= first ? UP_COLOR : DOWN_COLOR;
-    const fill = last >= first ? "rgba(207, 19, 34, 0.12)" : "rgba(56, 158, 13, 0.12)";
+    // Page-local --cn-equity-* (A-share 红涨绿跌). Do NOT use --ib-up/--ib-down.
+    const stroke = last >= first ? cnEquityColors.up : cnEquityColors.down;
 
     const dates = items.map((it) => it.date.slice(5));
     const yi = items.map((it) => parseFloat(it.balance) / 1e8);
@@ -178,7 +190,7 @@ export default function CustomerDetailModal({ open, onClose, customerName, repor
       yAxis: {
         type: "value",
         axisLabel: { formatter: (v: number) => `${v.toFixed(1)}亿` },
-        splitLine: { lineStyle: { color: "#eef2f7" } },
+        splitLine: { lineStyle: { color: ibTokens.color.hairline } },
       },
       series: [
         {
@@ -188,18 +200,19 @@ export default function CustomerDetailModal({ open, onClose, customerName, repor
           symbol: "circle",
           symbolSize: 6,
           lineStyle: { width: 2, color: stroke },
-          areaStyle: { color: fill },
+          areaStyle: { color: stroke, opacity: 0.12 },
           itemStyle: { color: stroke },
         },
       ],
     };
-  }, [trend?.items]);
+  }, [trend?.items, cnEquityColors.up, cnEquityColors.down]);
 
   return (
     <Modal
+      rootClassName="positions-customer-detail"
       title={
         <div>
-          <Typography.Title level={4} style={{ margin: 0 }}>
+          <Typography.Title level={4} className="positions-customer-detail__title">
             {customerName ?? "客户明细"}
           </Typography.Title>
           <Typography.Text type="secondary">
@@ -213,59 +226,68 @@ export default function CustomerDetailModal({ open, onClose, customerName, repor
       width={920}
       destroyOnHidden
     >
-      {details ? (
-        <div style={{ marginBottom: 16, display: "flex", gap: 24, flexWrap: "wrap" }}>
-          <div>
-            <Typography.Text type="secondary">总市值</Typography.Text>
-            <div style={{ fontSize: 20, fontWeight: 600 }}>{formatAmountYi(details.total_market_value)}</div>
+      <div ref={hostRef} className="positions-customer-detail">
+        {details ? (
+          <div className="positions-customer-detail__kpi-row">
+            <div>
+              <Typography.Text type="secondary">总市值</Typography.Text>
+              <div className="positions-customer-detail__kpi-value">
+                {formatAmountYi(details.total_market_value)}
+              </div>
+            </div>
+            <div>
+              <Typography.Text type="secondary">债券数量</Typography.Text>
+              <div className="positions-customer-detail__kpi-value">{details.bond_count} 只</div>
+            </div>
+            <div>
+              <Typography.Text type="secondary">趋势周期</Typography.Text>
+              <div className="positions-customer-detail__kpi-value">{trend?.days ?? 30} 天</div>
+            </div>
           </div>
-          <div>
-            <Typography.Text type="secondary">债券数量</Typography.Text>
-            <div style={{ fontSize: 20, fontWeight: 600 }}>{details.bond_count} 只</div>
-          </div>
-          <div>
-            <Typography.Text type="secondary">趋势周期</Typography.Text>
-            <div style={{ fontSize: 20, fontWeight: 600 }}>{trend?.days ?? 30} 天</div>
-          </div>
-        </div>
-      ) : null}
+        ) : null}
 
-      <Tabs
-        items={[
-          {
-            key: "details",
-            label: "持仓明细",
-            children: detailsQuery.isLoading ? (
-              <div style={{ textAlign: "center", padding: 32 }}>
-                <Spin />
-              </div>
-            ) : details && details.items.length > 0 ? (
-              <Table
-                size="small"
-                pagination={false}
-                scroll={{ y: 320 }}
-                dataSource={detailRows}
-                columns={detailColumns}
-              />
-            ) : (
-              <Typography.Text type="secondary">暂无持仓数据</Typography.Text>
-            ),
-          },
-          {
-            key: "trend",
-            label: "余额趋势",
-            children: trendQuery.isLoading ? (
-              <div style={{ textAlign: "center", padding: 32 }}>
-                <Spin />
-              </div>
-            ) : chartOption ? (
-              <ReactECharts option={chartOption} style={{ height: 280 }} notMerge lazyUpdate />
-            ) : (
-              <Typography.Text type="secondary">暂无趋势数据</Typography.Text>
-            ),
-          },
-        ]}
-      />
+        <Tabs
+          items={[
+            {
+              key: "details",
+              label: "持仓明细",
+              children: detailsQuery.isLoading ? (
+                <div className="positions-customer-detail__loading">
+                  <Spin />
+                </div>
+              ) : details && details.items.length > 0 ? (
+                <Table
+                  size="small"
+                  pagination={false}
+                  scroll={{ y: 320 }}
+                  dataSource={detailRows}
+                  columns={detailColumns}
+                />
+              ) : (
+                <Typography.Text type="secondary">暂无持仓数据</Typography.Text>
+              ),
+            },
+            {
+              key: "trend",
+              label: "余额趋势",
+              children: trendQuery.isLoading ? (
+                <div className="positions-customer-detail__loading">
+                  <Spin />
+                </div>
+              ) : chartOption ? (
+                <ReactECharts
+                  option={chartOption}
+                  className="positions-customer-detail__chart"
+                  notMerge
+                  lazyUpdate
+                />
+              ) : (
+                <Typography.Text type="secondary">暂无趋势数据</Typography.Text>
+              ),
+            },
+          ]}
+        />
+      </div>
     </Modal>
   );
 }

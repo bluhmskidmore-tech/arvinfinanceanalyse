@@ -8,6 +8,7 @@ import { modeBadgeStyle, summaryGridStyle, tableStyle } from "../../../component
 import { designTokens } from "../../../theme/designSystem";
 import { displayTokens } from "../../../theme/displayTokens";
 import { shellTokens } from "../../../theme/tokens";
+import { EM_DASH } from "../../../utils/format";
 import { FilterBar } from "../../../components/FilterBar";
 import type {
   ApiEnvelope,
@@ -71,7 +72,7 @@ function normalizeLedgerPnlCurrencyBasis(value: string | null | undefined): Ledg
 
 const summaryCardStyle = {
   border: `1px solid ${designTokens.color.neutral[200]}`,
-  borderRadius: designTokens.radius.lg,
+  borderRadius: designTokens.radius.sm,
   padding: designTokens.space[4],
   background: shellTokens.colorBgSurface,
 } as const;
@@ -128,7 +129,7 @@ function LedgerSummaryCard({ card }: { card: LedgerSummaryCardModel }) {
 
 const tableWrapStyle = {
   border: `1px solid ${designTokens.color.neutral[200]}`,
-  borderRadius: designTokens.radius.lg,
+  borderRadius: designTokens.radius.sm,
   background: shellTokens.colorBgSurface,
   overflow: "auto",
 } as const;
@@ -149,10 +150,10 @@ function formatMoney(value: LedgerMoneyValue | null | undefined) {
   }
   const yuanRaw = String(value?.yuan ?? "").trim();
   if (!yuanRaw) {
-    return "--";
+    return EM_DASH;
   }
   const yuan = Number(yuanRaw);
-  return Number.isFinite(yuan) ? `${(yuan / 100_000_000).toFixed(2)} 亿元` : "--";
+  return Number.isFinite(yuan) ? `${(yuan / 100_000_000).toFixed(2)} 亿元` : EM_DASH;
 }
 
 function ledgerMoneyYuan(value: LedgerMoneyValue | null | undefined) {
@@ -2178,29 +2179,29 @@ export default function LedgerPnlPage() {
     {
       key: "ledger_monthly_pnl_core",
       title: "核心损益",
-      value: summary?.data_status === "no_data" ? "--" : formatMoney(summary?.ledger_monthly_pnl_core),
+      value: summary?.data_status === "no_data" ? EM_DASH : formatMoney(summary?.ledger_monthly_pnl_core),
       candidateMetricKey: "ledger_monthly_pnl_core",
     },
     {
       key: "ledger_monthly_pnl_all",
       title: "全量损益",
-      value: summary?.data_status === "no_data" ? "--" : formatMoney(summary?.ledger_monthly_pnl_all),
+      value: summary?.data_status === "no_data" ? EM_DASH : formatMoney(summary?.ledger_monthly_pnl_all),
       candidateMetricKey: "ledger_monthly_pnl_all",
     },
     {
       key: "ledger_total_assets",
       title: "总资产",
-      value: summary?.data_status === "no_data" ? "--" : formatMoney(summary?.ledger_total_assets),
+      value: summary?.data_status === "no_data" ? EM_DASH : formatMoney(summary?.ledger_total_assets),
     },
     {
       key: "ledger_total_liabilities",
       title: "总负债",
-      value: summary?.data_status === "no_data" ? "--" : formatMoney(summary?.ledger_total_liabilities),
+      value: summary?.data_status === "no_data" ? EM_DASH : formatMoney(summary?.ledger_total_liabilities),
     },
     {
       key: "ledger_net_assets",
       title: "净资产",
-      value: summary?.data_status === "no_data" ? "--" : formatMoney(summary?.ledger_net_assets),
+      value: summary?.data_status === "no_data" ? EM_DASH : formatMoney(summary?.ledger_net_assets),
       candidateMetricKey: "ledger_net_assets",
     },
   ];
@@ -2272,7 +2273,7 @@ export default function LedgerPnlPage() {
             style={{
               minWidth: 180,
               padding: "10px 12px",
-              borderRadius: designTokens.radius.md,
+              borderRadius: designTokens.radius.sm,
               border: `1px solid ${designTokens.color.neutral[200]}`,
             }}
           >
@@ -2308,7 +2309,7 @@ export default function LedgerPnlPage() {
             style={{
               minWidth: 140,
               padding: "10px 12px",
-              borderRadius: designTokens.radius.md,
+              borderRadius: designTokens.radius.sm,
               border: `1px solid ${designTokens.color.neutral[200]}`,
             }}
           >

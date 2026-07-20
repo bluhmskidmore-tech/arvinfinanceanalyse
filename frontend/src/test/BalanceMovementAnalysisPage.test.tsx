@@ -70,9 +70,9 @@ describe("BalanceMovementAnalysisPage", () => {
       "TPL +51.63 亿、OCI +44.87 亿、AC +33.29 亿",
     );
     const evidenceStrip = await screen.findByTestId("balance-movement-analysis-evidence-strip");
-    expect(evidenceStrip).toHaveTextContent("quality_flag");
+    expect(evidenceStrip).toHaveTextContent("质量标记");
     expect(evidenceStrip).toHaveTextContent("ok");
-    expect(evidenceStrip).toHaveTextContent("trace_id");
+    expect(evidenceStrip).toHaveTextContent("追踪标识");
     expect(evidenceStrip).toHaveTextContent("mock_balance-analysis.movement.detail");
     const dimensionOverview = await screen.findByTestId(
       "balance-movement-analysis-dimension-overview",
@@ -156,7 +156,7 @@ describe("BalanceMovementAnalysisPage", () => {
     const interbankLendingTopMove = within(topMovesMom)
       .getByText("资产端-拆放同业")
       .closest("tr");
-    expect(interbankLendingTopMove).toHaveTextContent("Ledger");
+    expect(interbankLendingTopMove).toHaveTextContent("总账");
     expect(interbankLendingTopMove).toHaveTextContent("总账对账科目余额");
     const topMovesSix = screen.getByTestId("balance-movement-analysis-business-top-moves-sixmonth");
     expect(topMovesSix).toBeInTheDocument();
@@ -170,7 +170,7 @@ describe("BalanceMovementAnalysisPage", () => {
       "两个月度",
     );
     expect(screen.getByTestId("balance-movement-analysis-governance")).toHaveTextContent(
-      "rule_version",
+      "规则版本",
     );
     expect(screen.getByTestId("balance-movement-analysis-governance")).toHaveTextContent(
       "rv_accounting_asset_movement_v2",
@@ -374,13 +374,13 @@ describe("BalanceMovementAnalysisPage", () => {
       "balance-movement-analysis-business-summary",
     );
     expect(businessSummary).toHaveTextContent("AC 压舱石占比 0.00%，较期初 0.00pp");
-    expect(businessSummary).toHaveTextContent("OCI 配置占比 -，较期初 —");
+    expect(businessSummary).toHaveTextContent("OCI 配置占比 —，较期初 —");
 
     const structureShift = screen.getByTestId("balance-movement-analysis-structure-shift");
     expect(structureShift).toHaveTextContent("AC");
     expect(structureShift).toHaveTextContent("期初 0.00% 期末 0.00%");
-    expect(structureShift).toHaveTextContent("期初 31.37% 期末 -");
-    expect(structureShift).toHaveTextContent("期初 - 期末 26.07%");
+    expect(structureShift).toHaveTextContent("期初 31.37% 期末 —");
+    expect(structureShift).toHaveTextContent("期初 — 期末 26.07%");
     expect(structureShift).not.toHaveTextContent("期初 0.00% 期末 26.07%");
     expect(structureShift).not.toHaveTextContent("+0.00pp");
 
@@ -463,7 +463,7 @@ describe("BalanceMovementAnalysisPage", () => {
     });
 
     const evidenceStrip = await screen.findByTestId("balance-movement-analysis-evidence-strip");
-    expect(evidenceStrip).toHaveTextContent("quality_flag");
+    expect(evidenceStrip).toHaveTextContent("质量标记");
     expect(evidenceStrip).toHaveTextContent("ok");
     expect(evidenceStrip).toHaveTextContent("tr_balance_movement_evidence_test");
     expect(evidenceStrip).toHaveTextContent("fact_accounting_asset_movement_monthly");
@@ -765,9 +765,9 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(evidenceDialog).toHaveTextContent("估值差");
     expect(evidenceDialog).toHaveTextContent("外币折算差");
     expect(evidenceDialog).toHaveTextContent("未支持，不反推");
-    expect(evidenceDialog).toHaveTextContent("trace_id");
-    expect(evidenceDialog).toHaveTextContent("rule_version");
-    expect(evidenceDialog).toHaveTextContent("source_version");
+    expect(evidenceDialog).toHaveTextContent("追踪标识");
+    expect(evidenceDialog).toHaveTextContent("规则版本");
+    expect(evidenceDialog).toHaveTextContent("源版本");
 
     await user.click(within(evidenceDialog).getByRole("button", { name: "关闭证据" }));
 

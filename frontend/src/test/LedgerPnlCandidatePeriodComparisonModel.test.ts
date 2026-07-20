@@ -305,7 +305,7 @@ describe("candidate period comparison view model", () => {
   it("keeps real zero distinct from null and rejects undefined or NaN-like decimal fields", () => {
     expect(formatCandidateComparisonAmount("0", { signed: true })).toBe("0.0000");
     expect(formatCandidateComparisonRate("0")).toBe("0.00%");
-    expect(formatCandidateComparisonAmount(null)).toBe("--");
+    expect(formatCandidateComparisonAmount(null)).toBe("—");
     expect(formatCandidateComparisonAmount(undefined as never)).toBe("契约错误");
     expect(formatCandidateComparisonAmount("NaN" as never)).toBe("契约错误");
 
@@ -374,10 +374,10 @@ describe("candidate period comparison view model", () => {
     expect(model.rows[1]).toMatchObject({
       metricId: "income.noninterest.total",
       comparisonStatus: "not_comparable",
-      currentDisplay: "--",
-      previousDisplay: "--",
-      deltaDisplay: "--",
-      rateDisplay: "--",
+      currentDisplay: "—",
+      previousDisplay: "—",
+      deltaDisplay: "—",
+      rateDisplay: "—",
     });
     expect(model.rows[1].reason).toBe(
       "指标依赖包含待补手工项和缺失总账科目，跨期结果暂不可比。",
@@ -426,7 +426,7 @@ describe("candidate period comparison view model", () => {
     expect(model.status).toBe("ready");
     if (model.status !== "ready") throw new Error("expected a ready view model");
     expect(model.rows[0]).toMatchObject({
-      rateDisplay: "--",
+      rateDisplay: "—",
       reason: "上期值为零，环比率不适用。",
     });
   });

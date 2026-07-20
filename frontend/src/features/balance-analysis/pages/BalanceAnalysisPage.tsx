@@ -1588,7 +1588,7 @@ export default function BalanceAnalysisPage() {
   return (
     <section
       data-testid="balance-analysis-page"
-      className={`${dhStyles.dhPage} balance-analysis-page`}
+      className={`${dhStyles.dhLightPage} balance-analysis-page`}
     >
       <BalanceAnalysisToolbar
         reportDates={datesQuery.data?.result.report_dates ?? []}

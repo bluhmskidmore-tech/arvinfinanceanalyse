@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Card, Tooltip } from "antd";
+import { Alert, Tooltip } from "antd";
 import "../../lib/agGridSetup";
 import { AgGridReact } from "ag-grid-react";
 import type { CellClassParams, ColDef, IHeaderParams } from "ag-grid-community";
@@ -406,7 +406,7 @@ export default function PnlBridgePage() {
           setRefreshStatus(
             [nextPayload.status, nextPayload.run_id, nextPayload.report_date, nextPayload.source_version]
               .filter(Boolean)
-              .join(" · "),
+              .join(" / "),
           );
         },
       });
@@ -516,17 +516,13 @@ export default function PnlBridgePage() {
         >
           {summary ? (
             <>
-              <Card
-                data-testid="pnl-bridge-conclusion"
-                size="small"
-                className="pnl-bridge-conclusion-card"
-              >
+              <div data-testid="pnl-bridge-conclusion" className="pnl-bridge-conclusion-card">
                 <div className="pnl-bridge-conclusion-grid">
                   <span className="pnl-bridge-conclusion-eyebrow">{conclusion.title}</span>
                   <div className="pnl-bridge-conclusion-body">{conclusion.body}</div>
                   <div className="pnl-bridge-conclusion-detail">{conclusion.detail}</div>
                 </div>
-              </Card>
+              </div>
 
               <div data-testid="pnl-bridge-summary-cards" className="pnl-bridge-summary-cards">
                 <KpiCard title="行数" value={cellText(summary.row_count)} detail="汇总行数" unit="行" />
@@ -565,21 +561,18 @@ export default function PnlBridgePage() {
               </div>
 
               {chartOption ? (
-                <Card
-                  data-testid="pnl-bridge-waterfall-card"
-                  title="解释因子拆解（用于校验闭合）"
-                  size="small"
-                  className="pnl-bridge-waterfall-card"
-                  styles={{ body: { padding: "12px 16px 16px" } }}
-                >
-                  <div className="pnl-bridge-waterfall-chart">
-                    <ReactECharts
-                      option={chartOption}
-                      className="pnl-bridge-waterfall-chart__canvas"
-                      opts={{ renderer: "canvas" }}
-                    />
+                <div data-testid="pnl-bridge-waterfall-card" className="pnl-bridge-waterfall-card">
+                  <div className="pnl-bridge-waterfall-card__title">解释因子拆解（用于校验闭合）</div>
+                  <div className="pnl-bridge-waterfall-card__body">
+                    <div className="pnl-bridge-waterfall-chart">
+                      <ReactECharts
+                        option={chartOption}
+                        className="pnl-bridge-waterfall-chart__canvas"
+                        opts={{ renderer: "canvas" }}
+                      />
+                    </div>
                   </div>
-                </Card>
+                </div>
               ) : null}
 
               {warnings.length > 0 ? (

@@ -159,6 +159,10 @@
   font-size: 13px;
 }
 
+.agentDrawerBody {
+  min-height: 200px;
+}
+
 .detailDrilldown {
   overflow: hidden;
   border: 1px solid var(--moss-color-neutral-200);

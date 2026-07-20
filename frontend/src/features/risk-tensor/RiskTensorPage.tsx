@@ -5,8 +5,7 @@ import { useSearchParams } from "react-router-dom";
 import ReactECharts, { type EChartsOption } from "../../lib/echarts";
 import { useApiClient } from "../../api/client";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
-import { designTokens } from "../../theme/designSystem";
-import { shellTokens as t } from "../../theme/tokens";
+import { ibChartTheme } from "../../components/charts/chartTheme";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../../components/KpiCard";
 import type {
@@ -22,6 +21,7 @@ import {
   bondNumericDisplay,
   bondNumericRawOrNull,
 } from "../bond-analytics/adapters/bondAnalyticsAdapter";
+import { EM_DASH } from "../../utils/format";
 import "./RiskTensorPage.css";
 
 /** 雷达轴顺序与后端字段一一对应；max 仅用于可视化比例，不做前端金融重算。 */
@@ -46,72 +46,6 @@ const RADAR_NAVIGATION_TARGETS: Record<RadarKey, string> = {
 };
 
 const KPI_RADAR_ISSUE_KEYS = new Set(["portfolio_modified_duration", "portfolio_dv01", "portfolio_convexity", "cs01"]);
-
-const chartRowStyle = {
-  display: "flex",
-  flexWrap: "wrap" as const,
-  gap: 16,
-  marginTop: 24,
-  alignItems: "stretch" as const,
-} as const;
-
-const chartColumnStyle = {
-  flex: "1 1 calc(50% - 8px)",
-  minWidth: 280,
-  maxWidth: "100%",
-} as const;
-
-const radarCardStyle = {
-  height: "100%",
-  minHeight: 400,
-  padding: 20,
-  borderRadius: 18,
-  background: t.colorBgCanvas,
-  border: `1px solid ${t.colorBorderSoft}`,
-  boxShadow: t.shadowPanel,
-} as const;
-
-const summaryGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 16,
-} as const;
-
-const controlBarStyle = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 12,
-  alignItems: "center",
-  marginBottom: 20,
-} as const;
-
-const drillPanelStyle = {
-  marginTop: 24,
-  padding: 16,
-  borderRadius: 16,
-  border: `1px solid ${t.colorBorderSoft}`,
-  background: t.colorBgCanvas,
-} as const;
-
-const chipRowStyle = {
-  display: "flex",
-  flexWrap: "wrap" as const,
-  gap: 8,
-  marginTop: 12,
-} as const;
-
-function chipButtonStyle(active: boolean) {
-  return {
-    padding: "8px 12px",
-    borderRadius: 999,
-    border: active ? `1px solid ${designTokens.color.primary[600]}` : `1px solid ${t.colorBorderSoft}`,
-    background: active ? designTokens.color.primary[50] : "#ffffff",
-    color: active ? designTokens.color.primary[600] : t.colorTextPrimary,
-    fontSize: 12,
-    fontWeight: 600,
-    cursor: "pointer",
-  } as const;
-}
 
 function displayStr(value: Parameters<typeof bondNumericDisplay>[0]) {
   return bondNumericDisplay(value);
@@ -304,7 +238,7 @@ function hasRiskTensorValue(value: RiskTensorDisplayValue | null | undefined) {
 
 function countDisplay(value: number | null | undefined) {
   if (value === null || value === undefined || !Number.isFinite(value)) {
-    return "--";
+    return EM_DASH;
   }
   return value.toLocaleString("zh-CN");
 }
@@ -755,30 +689,24 @@ export default function RiskTensorPage() {
     }
     const labels = KRD_FIELDS.map((item) => item.tenor);
     const data = KRD_FIELDS.map((item) => yuanAsWanMagnitudeOrNull(result[item.key]));
-    return {
+    return ibChartTheme.createBarChartOption({
       grid: { left: 52, right: 16, top: 36, bottom: 28 },
-      tooltip: {
-        trigger: "axis",
-        axisPointer: { type: "shadow" },
-      },
+      legend: { show: false },
       xAxis: {
         type: "category",
         data: labels,
-        axisLabel: { color: "#5c6b82" },
       },
       yAxis: {
         type: "value",
-        axisLabel: { color: "#5c6b82" },
-        splitLine: { lineStyle: { color: "#eef2f7" } },
       },
       series: [
         {
           type: "bar",
           data,
-          itemStyle: { color: designTokens.color.primary[600], borderRadius: [6, 6, 0, 0] },
+          itemStyle: { color: ibChartTheme.palette[0], borderRadius: [2, 2, 0, 0] },
         },
       ],
-    };
+    });
   }, [result]);
 
   const tenorRows = useMemo(() => {
@@ -843,8 +771,8 @@ export default function RiskTensorPage() {
   const blockedReportDateSummary = `${blockedReportDates.length} 个陈旧日期已拦截`;
   const metadataTablesUsed = tensorMeta?.tables_used?.filter(Boolean).join(" / ") ?? "";
   const metadataFiltersApplied = filtersAppliedLabel(tensorMeta?.filters_applied);
-  const primaryTenor = dominantTenorRow?.tenor ?? "--";
-  const primaryTenorValue = dominantTenorRow ? yuanAsWanWithUnit(dominantTenorRow.value) : "--";
+  const primaryTenor = dominantTenorRow?.tenor ?? EM_DASH;
+  const primaryTenorValue = dominantTenorRow ? yuanAsWanWithUnit(dominantTenorRow.value) : EM_DASH;
   const liquidity30dRaw = result ? bondNumericRawOrNull(result.liquidity_gap_30d) : null;
   const actionTileDetail =
     result?.warnings[0] ??
@@ -1643,38 +1571,40 @@ export default function RiskTensorPage() {
 
     const radarValues = [duration, dv01, convexity, cs01, hhi, liqRatio];
 
-    return {
-      color: [designTokens.color.primary[600]],
+    return ibChartTheme.createBaseChartOption({
+      legend: { show: false },
+      grid: undefined,
       tooltip: {
         trigger: "item",
-        borderColor: t.colorBorderSoft,
-        textStyle: { color: t.colorTextPrimary, fontSize: 13 },
+        borderColor: ibChartTheme.axisLine.lineStyle.color,
+        textStyle: { color: ibChartTheme.axisLabel.color, fontSize: 13 },
       },
       radar: {
         indicator,
         radius: "66%",
         center: ["50%", "54%"],
         axisName: {
-          color: t.colorTextSecondary,
+          color: ibChartTheme.axisLabel.color,
           fontSize: 12,
         },
         splitLine: {
-          lineStyle: { color: t.colorBorderSoft },
+          lineStyle: { color: ibChartTheme.splitLine.lineStyle.color },
         },
         splitArea: { show: false },
-        axisLine: { lineStyle: { color: t.colorBorderSoft } },
+        axisLine: { lineStyle: { color: ibChartTheme.axisLine.lineStyle.color } },
       },
       series: [
         {
           type: "radar",
           symbolSize: 5,
-          lineStyle: { width: 1.5, color: designTokens.color.primary[600] },
+          lineStyle: { width: 1.5, color: ibChartTheme.palette[0] },
           areaStyle: {
-            color: "rgba(31, 94, 255, 0.15)",
+            color: ibChartTheme.palette[0],
+            opacity: 0.15,
           },
           itemStyle: {
-            color: designTokens.color.primary[600],
-            borderColor: designTokens.color.primary[600],
+            color: ibChartTheme.palette[0],
+            borderColor: ibChartTheme.palette[0],
           },
           data: [
             {
@@ -1684,7 +1614,7 @@ export default function RiskTensorPage() {
           ],
         },
       ],
-    };
+    });
   }, [result]);
 
   const krdQualityNote =
@@ -1704,31 +1634,13 @@ export default function RiskTensorPage() {
   return (
     <section>
       <div className="risk-tensor-page__hero">
-        <h1
-          style={{
-            margin: 0,
-            fontSize: 32,
-            fontWeight: 600,
-            letterSpacing: "-0.03em",
-          }}
-        >
-          风险张量
-        </h1>
-        <p
-          style={{
-            marginTop: 10,
-            marginBottom: 0,
-            maxWidth: 860,
-            color: "#5c6b82",
-            fontSize: 15,
-            lineHeight: 1.75,
-          }}
-        >
+        <h1>风险张量</h1>
+        <p>
           第一屏先回答风险集中在哪个期限桶、30 日流动性是否有缺口、DV01 控制是否可判定，以及当前数据是否可用。
         </p>
       </div>
 
-      <div style={controlBarStyle}>
+      <div className="risk-tensor-control-bar">
         {reportDateOptions.length > 0 ? (
           <label className="risk-tensor-report-date-select">
             <span>风险报告日</span>
@@ -1751,16 +1663,7 @@ export default function RiskTensorPage() {
             </select>
           </label>
         ) : null}
-        <div
-          style={{
-            padding: "10px 12px",
-            borderRadius: 12,
-            border: "1px solid #d7dfea",
-            background: "#ffffff",
-            color: "#162033",
-            fontSize: 14,
-          }}
-        >
+        <div className="risk-tensor-report-date-status">
           {datesEmpty ? (
             <span>后端未返回可用风险报告日。</span>
           ) : datesBlockingError ? (
@@ -1768,7 +1671,7 @@ export default function RiskTensorPage() {
           ) : (
             <>
               报告日：<strong>{reportDate}</strong>
-              <span style={{ marginLeft: 8, color: "#8090a8", fontSize: 13 }}>
+              <span className="risk-tensor-report-date-status__hint">
                 （可通过地址栏报告日参数覆盖）
               </span>
             </>
@@ -2263,7 +2166,7 @@ export default function RiskTensorPage() {
               </div>
             ) : null}
 
-            <div data-testid="risk-tensor-kpi-grid" style={summaryGridStyle}>
+            <div data-testid="risk-tensor-kpi-grid" className="risk-tensor-summary-grid">
               <KpiCard
                 title="估值口径 DV01"
                 value={yuanAsWanDisplay(result.portfolio_dv01)}
@@ -2408,23 +2311,16 @@ export default function RiskTensorPage() {
               />
             ) : null}
 
-            <div style={chartRowStyle}>
-              <div style={chartColumnStyle}>
-                <div data-testid="risk-tensor-radar-card" style={radarCardStyle}>
-                  <div
-                    style={{
-                      marginBottom: 8,
-                      fontSize: 15,
-                      fontWeight: 600,
-                      color: t.colorTextPrimary,
-                    }}
-                  >
+            <div className="risk-tensor-chart-row">
+              <div className="risk-tensor-chart-column">
+                <div data-testid="risk-tensor-radar-card" className="risk-tensor-radar-card">
+                  <div className="risk-tensor-radar-card__title">
                     风险张量雷达
                   </div>
                   {radarChartOption ? (
                     <ReactECharts
                       option={radarChartOption}
-                      style={{ height: 400, width: "100%" }}
+                      className="risk-tensor-chart risk-tensor-chart--radar"
                     />
                   ) : null}
                   {invalidRadarRows.length > 0 ? (
@@ -2463,52 +2359,45 @@ export default function RiskTensorPage() {
                   ) : null}
                 </div>
               </div>
-              <div style={chartColumnStyle}>
-                <h2
-                  style={{
-                    margin: "0 0 12px",
-                    fontSize: 16,
-                    fontWeight: 600,
-                    color: "#162033",
-                  }}
-                >
+              <div className="risk-tensor-chart-column">
+                <h2 className="risk-tensor-section-heading risk-tensor-section-heading--flush">
                   KRD 分档（估值 DV01）
                 </h2>
               {krdChartOption ? (
                 <ReactECharts
                   option={krdChartOption}
                   onEvents={{ click: handleKrdChartClick }}
-                  style={{ height: 320, width: "100%" }}
+                  className="risk-tensor-chart risk-tensor-chart--krd"
                 />
               ) : null}
               {!selectedTenorRow ? krdQualityNote : null}
 
               {selectedTenorRow ? (
-                <div data-testid="risk-tensor-tenor-drill" style={drillPanelStyle}>
-                  <div style={{ color: t.colorTextPrimary, fontSize: 15, fontWeight: 600 }}>
+                <div data-testid="risk-tensor-tenor-drill" className="risk-tensor-tenor-drill">
+                  <div className="risk-tensor-tenor-drill__title">
                     期限桶下钻
                   </div>
-                  <div style={{ color: t.colorTextSecondary, fontSize: 13, marginTop: 6 }}>
+                  <div className="risk-tensor-tenor-drill__desc">
                     先用现有风险张量 payload 中可解析的 KRD 字段选择最强期限桶，再查看该桶的敏感度读数。
                   </div>
                   {krdQualityNote}
-                  <div style={chipRowStyle}>
+                  <div className="risk-tensor-chip-row">
                     {tenorRows.map((row) => (
                       <button
                         key={row.tenor}
                         aria-pressed={row.tenor === selectedTenor}
                         type="button"
-                        style={chipButtonStyle(row.tenor === selectedTenor)}
+                        className="risk-tensor-chip-button"
                         onClick={() => handleKrdTenorSelect(row)}
                       >
                         {row.tenor}
                       </button>
                     ))}
                   </div>
-                  <div style={{ marginTop: 14, color: t.colorTextPrimary, fontSize: 14 }}>
+                  <div className="risk-tensor-tenor-drill__current">
                     当前桶：<strong>{selectedTenorRow.tenor}</strong>
                   </div>
-                  <div style={{ marginTop: 8, color: t.colorTextSecondary, fontSize: 13 }}>
+                  <div className="risk-tensor-tenor-drill__value">
                     KRD：{yuanAsWanWithUnit(selectedTenorRow.value)}
                   </div>
                 </div>
@@ -2586,17 +2475,10 @@ export default function RiskTensorPage() {
               ) : null}
             </section>
 
-            <h2
-              style={{
-                margin: "24px 0 12px",
-                fontSize: 16,
-                fontWeight: 600,
-                color: "#162033",
-              }}
-            >
+            <h2 className="risk-tensor-section-heading">
               现金流构成
             </h2>
-            <div data-testid="risk-tensor-cashflow-grid" style={summaryGridStyle}>
+            <div data-testid="risk-tensor-cashflow-grid" className="risk-tensor-summary-grid">
               <KpiCard
                 title="30 日资产现金流"
                 value={yuanAsYiDisplay(result.asset_cashflow_30d)}
@@ -2625,20 +2507,10 @@ export default function RiskTensorPage() {
 
             <div
               data-testid="risk-tensor-quality-detail"
-              style={{
-                marginTop: 20,
-                padding: 12,
-                borderRadius: 12,
-                border:
-                  result.quality_flag === "ok"
-                    ? "1px solid #d7dfea"
-                    : "1px solid #e8d9a8",
-                background: result.quality_flag === "ok" ? "#f6f9fc" : "#fffbeb",
-                color: "#162033",
-                fontSize: 14,
-              }}
+              className="risk-tensor-quality-detail"
+              data-tone={result.quality_flag === "ok" ? "ok" : result.quality_flag}
             >
-              <div style={{ fontWeight: 600, marginBottom: 8 }}>
+              <div className="risk-tensor-quality-detail__title">
                 质量标记：
                 {result.quality_flag === "ok"
                   ? "正常"
@@ -2870,7 +2742,7 @@ export default function RiskTensorPage() {
                       {qualityWarningsCopyText}
                     </pre>
                   ) : null}
-                  <ul style={{ margin: 0, paddingLeft: 20, color: "#5c6b82" }}>
+                  <ul className="risk-tensor-quality-detail__warnings">
                     {result.warnings.map((warning, index) => (
                       <li key={index}>{warning}</li>
                     ))}

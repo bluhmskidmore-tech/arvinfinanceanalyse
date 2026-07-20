@@ -5873,7 +5873,7 @@
 }
 
 .exposureLedgerTable {
-  border-radius: 8px;
+  border-radius: var(--dh-api-radius, 6px);
 }
 
 .decisionActionDot {

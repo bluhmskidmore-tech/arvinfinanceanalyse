@@ -2287,7 +2287,7 @@ describe("LedgerPnlPage", () => {
     await waitFor(() => {
       expect(cards).toHaveTextContent("5.00 亿元");
     });
-    expect(within(cards).getAllByText("--")).toHaveLength(4);
+    expect(within(cards).getAllByText("—")).toHaveLength(4);
     expect(within(cards).queryByText("0.00 亿元")).not.toBeInTheDocument();
 
     expect(screen.queryByTestId("ledger-pnl-explainability-panel")).not.toBeInTheDocument();
@@ -2297,7 +2297,7 @@ describe("LedgerPnlPage", () => {
     );
 
     const detailTable = await screen.findByTestId("ledger-pnl-detail-table");
-    expect(within(detailTable).getAllByText("--")).toHaveLength(3);
+    expect(within(detailTable).getAllByText("—")).toHaveLength(3);
     expect(detailTable).toHaveTextContent("1.00 亿元");
   });
 
@@ -2358,7 +2358,7 @@ describe("LedgerPnlPage", () => {
       expect(screen.getByTestId("ledger-pnl-currency-summary-table")).toHaveTextContent("暂无币种汇总数据");
     });
     const summaryCards = screen.getByTestId("ledger-pnl-summary-cards");
-    expect(within(summaryCards).getAllByText("--")).toHaveLength(5);
+    expect(within(summaryCards).getAllByText("—")).toHaveLength(5);
     expect(summaryCards).not.toHaveTextContent("0.00 亿元");
     expect(screen.getByText("真实 API 只读链路 · 非正式口径")).toBeInTheDocument();
 

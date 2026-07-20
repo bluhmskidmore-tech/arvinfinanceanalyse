@@ -5,6 +5,7 @@ import type {
   LedgerPnlCandidateFinancialIndicatorPeriodComparison,
   LedgerPnlCandidateFinancialIndicatorPeriodComparisonMetric,
 } from "../../../api/contracts";
+import { EM_DASH } from "../../../utils/format";
 
 const DECIMAL_PATTERN = /^-?\d+(?:\.\d+)?$/;
 const REPORT_MONTH_PATTERN = /^\d{4}(?:0[1-9]|1[0-2])$/;
@@ -198,13 +199,13 @@ export function formatCandidateComparisonAmount(
   value: string | null,
   options: FormatAmountOptions = {},
 ): string {
-  if (value === null) return "--";
+  if (value === null) return EM_DASH;
   if (!isDecimal(value)) return "契约错误";
   return fixedDecimal(value, 4, options.signed === true);
 }
 
 export function formatCandidateComparisonRate(value: string | null): string {
-  if (value === null) return "--";
+  if (value === null) return EM_DASH;
   if (!isDecimal(value)) return "契约错误";
   return `${fixedDecimal(shiftDecimalRight(value, 2), 2, true)}%`;
 }

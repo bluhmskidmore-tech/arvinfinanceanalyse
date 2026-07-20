@@ -20,8 +20,6 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
 import { buildBondTradingDeskPath } from "../../bond-trading-desk/lib/bondTradingDeskPageModel";
-import { designTokens } from "../../../theme/designSystem";
-import { displayTokens } from "../../../theme/displayTokens";
 import { FilterBar } from "../../../components/FilterBar";
 import type {
   BondPositionItem,
@@ -158,7 +156,7 @@ function metaSummary(meta: ResultMeta | null | undefined): string {
   if (!meta) {
     return "—";
   }
-  return `${meta.quality_flag} · ${compactVersion(meta.source_version)} · ${compactVersion(meta.rule_version)}`;
+  return `${meta.quality_flag} / ${compactVersion(meta.source_version)} / ${compactVersion(meta.rule_version)}`;
 }
 
 function topRatingItem(items: RatingStatsResponse["items"] | undefined) {
@@ -306,13 +304,13 @@ function PositionsQualityPanel({
         <div className="positions-view__quality-item">
           <span className="positions-view__quality-label">最高评级集中</span>
           <span className="positions-view__quality-value">
-            {topRating ? `${topRating.rating} · ${topRating.percentage}%` : "—"}
+            {topRating ? `${topRating.rating} / ${topRating.percentage}%` : "—"}
           </span>
         </div>
         <div className="positions-view__quality-item">
           <span className="positions-view__quality-label">最高行业集中</span>
           <span className="positions-view__quality-value">
-            {topIndustry ? `${topIndustry.industry} · ${topIndustry.percentage}%` : "—"}
+            {topIndustry ? `${topIndustry.industry} / ${topIndustry.percentage}%` : "—"}
           </span>
         </div>
       </div>
@@ -647,37 +645,29 @@ export default function PositionsView() {
   const activePeerFilterLabel =
     tab === "bonds"
       ? searchText || "未输入客户"
-      : `${direction === "ALL" ? "全部方向" : direction === "Asset" ? "资产端" : "负债端"} · ${
+      : `${direction === "ALL" ? "全部方向" : direction === "Asset" ? "资产端" : "负债端"} / ${
           searchText || "未输入对手方"
         }`;
   const dataModeLabel = client.mode === "real" ? "真实只读链路" : "本地演示数据";
-  const dataModeStyle = {
-    display: "inline-flex",
-    alignItems: "center",
-    padding: "7px 12px",
-    borderRadius: 999,
-    background: client.mode === "real" ? designTokens.color.success[50] : designTokens.color.primary[50],
-    color:
-      client.mode === "real"
-        ? displayTokens.apiMode.realForeground
-        : displayTokens.apiMode.mockForeground,
-    fontSize: 12,
-    fontWeight: 700,
-    letterSpacing: 0,
-  } as const;
+  const dataModeClass =
+    client.mode === "real"
+      ? "positions-view__mode-pill positions-view__mode-pill--real"
+      : "positions-view__mode-pill positions-view__mode-pill--mock";
 
   return (
-    <section data-testid="positions-page">
+    <section className="positions-view" data-testid="positions-page">
       <PageDecisionHero
         testId="positions-decision-hero"
         title="持仓透视"
         titleTestId="positions-page-title"
         eyebrow="组合工作台"
         businessQuestion="先锁定报告日和观察区间，再判断债券评级收益率、行业分布和客户集中度是否需要下钻。"
-        actions={<span style={dataModeStyle}>{dataModeLabel}</span>}
+        actions={<span className={dataModeClass}>{dataModeLabel}</span>}
         reportDateSlot={
           <span>
-            报表日：{reportDate || "—"} · 区间：{startDate || "—"} ~ {endDate || "—"} ·
+            {/* DESIGN.md §7: meta line · quota ≤ 1 */}
+            报表日：{reportDate || "—"} · 区间：{startDate || "—"} ~ {endDate || "—"}
+            {" | "}
             数据来源：ZQTZ + TYWL
           </span>
         }
@@ -758,7 +748,7 @@ export default function PositionsView() {
             </div>
           </div>
           {explicitReportDate ? (
-            <Typography.Text type="secondary" style={{ alignSelf: "flex-end" }}>
+            <Typography.Text type="secondary" className="positions-view__filter-self-end">
               已由地址栏报告日参数固定
             </Typography.Text>
           ) : null}
@@ -793,13 +783,13 @@ export default function PositionsView() {
           <Row gutter={[16, 16]} className="positions-view__analysis-row">
           <Col xs={24} xl={16}>
             <Card size="small" className="positions-view__control-card">
-              <Space wrap style={{ width: "100%" }} align="end">
-                <div style={{ flex: "1 1 200px" }}>
+              <Space wrap className="positions-view__full-width" align="end">
+                <div className="positions-view__filter-field">
                   <Typography.Text type="secondary">业务种类</Typography.Text>
                   <Select
                     aria-label="positions-bond-subtype"
                     data-testid="positions-bond-subtype-select"
-                    style={{ width: "100%", marginTop: 4 }}
+                    className="positions-view__control-gap"
                     value={selectedSubType || ALL_BOND_SUBTYPE}
                     loading={bondSubTypesQuery.isLoading}
                     options={[
@@ -809,10 +799,10 @@ export default function PositionsView() {
                     onChange={(v) => setSelectedSubType(v === ALL_BOND_SUBTYPE ? "" : v)}
                   />
                 </div>
-                <div style={{ flex: "1 1 220px" }}>
+                <div className="positions-view__filter-field--wide">
                   <Typography.Text type="secondary">授信主体搜索（右侧客户表）</Typography.Text>
                   <Input
-                    style={{ marginTop: 4 }}
+                    className="positions-view__control-gap"
                     placeholder="输入客户名称…"
                     value={searchText}
                     onChange={(e) => setSearchText(e.target.value)}
@@ -828,7 +818,7 @@ export default function PositionsView() {
               extra={
                 bondsListQuery.data ? (
                   <Typography.Text type="secondary">
-                    {bondsListQuery.data.total} 条 · 第 {page}/{Math.max(1, totalPages)} 页
+                    {bondsListQuery.data.total} 条 / 第 {page}/{Math.max(1, totalPages)} 页
                   </Typography.Text>
                 ) : null
               }
@@ -874,7 +864,7 @@ export default function PositionsView() {
               <Card
                 size="small"
                 title="授信主体"
-                extra={<Typography.Text type="secondary">Top 50 · 点击下钻</Typography.Text>}
+                extra={<Typography.Text type="secondary">Top 50 / 点击下钻</Typography.Text>}
               >
                 {bondsCpQuery.isLoading ? (
                   <div className="positions-view__loading">
@@ -924,11 +914,11 @@ export default function PositionsView() {
           <Row gutter={[16, 16]} className="positions-view__analysis-row">
             <Col xs={24} xl={16}>
               <Card size="small" className="positions-view__control-card">
-                <Space wrap style={{ width: "100%" }} align="end">
-                  <div style={{ flex: "1 1 200px" }}>
+                <Space wrap className="positions-view__full-width" align="end">
+                  <div className="positions-view__filter-field">
                     <Typography.Text type="secondary">产品类型</Typography.Text>
                     <Select
-                      style={{ width: "100%", marginTop: 4 }}
+                      className="positions-view__control-gap"
                       value={selectedProductType || ALL_INTERBANK_PRODUCT}
                       loading={interbankProductTypesQuery.isLoading}
                       options={[
@@ -942,10 +932,10 @@ export default function PositionsView() {
                     />
                   </div>
                   <Button onClick={() => setInterbankFilterOpen(true)}>筛选</Button>
-                  <div style={{ flex: "1 1 220px" }}>
+                  <div className="positions-view__filter-field--wide">
                     <Typography.Text type="secondary">对手方搜索（右侧客户表）</Typography.Text>
                     <Input
-                      style={{ marginTop: 4 }}
+                      className="positions-view__control-gap"
                       placeholder="输入对手方名称…"
                       value={searchText}
                       onChange={(e) => setSearchText(e.target.value)}
@@ -961,7 +951,7 @@ export default function PositionsView() {
                 extra={
                   interbankListQuery.data ? (
                     <Typography.Text type="secondary">
-                      {interbankListQuery.data.total} 条 · 第 {page}/{Math.max(1, totalPages)} 页
+                      {interbankListQuery.data.total} 条 / 第 {page}/{Math.max(1, totalPages)} 页
                     </Typography.Text>
                   ) : null
                 }
@@ -1007,23 +997,14 @@ export default function PositionsView() {
                   size="small"
                   title={
                     <span>
-                      <span
-                        style={{
-                          display: "inline-block",
-                          width: 8,
-                          height: 8,
-                          borderRadius: 999,
-                          background: "#389e0d",
-                          marginRight: 8,
-                        }}
-                      />
+                      <span className="positions-view__side-dot positions-view__side-dot--asset" />
                       资产端（拆出/存放）
                     </span>
                   }
                   extra={<Typography.Text type="secondary">Top 50，我行收取利息</Typography.Text>}
                 >
                   <Typography.Text type="secondary">分母：{interbankCpSplit?.num_days ?? "—"} 天</Typography.Text>
-                  <Row gutter={16} style={{ marginTop: 8 }}>
+                  <Row gutter={16} className="positions-view__metric-row">
                     <Col span={12}>
                       <Typography.Text type="secondary">日均余额</Typography.Text>
                       <div className="positions-view__side-value positions-view__side-value--asset">
@@ -1065,23 +1046,14 @@ export default function PositionsView() {
                   size="small"
                   title={
                     <span>
-                      <span
-                        style={{
-                          display: "inline-block",
-                          width: 8,
-                          height: 8,
-                          borderRadius: 999,
-                          background: "#cf1322",
-                          marginRight: 8,
-                        }}
-                      />
+                      <span className="positions-view__side-dot positions-view__side-dot--liability" />
                       负债端（拆入/存入）
                     </span>
                   }
                   extra={<Typography.Text type="secondary">Top 50，我行支付利息</Typography.Text>}
                 >
                   <Typography.Text type="secondary">分母：{interbankCpSplit?.num_days ?? "—"} 天</Typography.Text>
-                  <Row gutter={16} style={{ marginTop: 8 }}>
+                  <Row gutter={16} className="positions-view__metric-row">
                     <Col span={12}>
                       <Typography.Text type="secondary">日均余额</Typography.Text>
                       <div className="positions-view__side-value positions-view__side-value--liability">
@@ -1142,7 +1114,7 @@ export default function PositionsView() {
           >
             <Typography.Text type="secondary">方向</Typography.Text>
             <Select
-              style={{ width: "100%", marginTop: 8 }}
+              className="positions-view__modal-select"
               value={direction}
               options={[
                 { value: "ALL", label: "全部" },

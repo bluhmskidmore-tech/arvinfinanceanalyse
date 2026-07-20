@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 import { shellTokens } from "../../../theme/tokens";
 
 const DISPLAY_FONT =
-  '"Alibaba PuHuiTi 3.0", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei UI", sans-serif';
+  '"PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif';
 
 export const cockpitSectionShellStyle: CSSProperties = {
   height: "100%",

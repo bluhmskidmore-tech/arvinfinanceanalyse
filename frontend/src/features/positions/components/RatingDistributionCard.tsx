@@ -89,7 +89,7 @@ export default function RatingDistributionCard({ startDate, endDate, subType }: 
       title="评级收益率"
       extra={
         <Typography.Text type="secondary">
-          {data?.num_days != null ? `${data.num_days} 天` : "—"} · 利率债默认 AAA
+          {data?.num_days != null ? `${data.num_days} 天` : "—"} / 利率债默认 AAA
         </Typography.Text>
       }
     >

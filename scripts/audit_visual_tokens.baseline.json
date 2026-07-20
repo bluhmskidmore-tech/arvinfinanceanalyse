@@ -287,12 +287,6 @@
     "offRadius": 0,
     "doubleDash": 0
   },
-  "frontend/src/features/balance-movement-analysis/pages/BalanceMovementAnalysisPage.css": {
-    "hex": 289,
-    "forbidden": 0,
-    "offRadius": 0,
-    "doubleDash": 0
-  },
   "frontend/src/features/bond-analytics/components/AccountingClassAuditView.tsx": {
     "hex": 8,
     "forbidden": 0,
@@ -351,12 +345,6 @@
     "hex": 1,
     "forbidden": 0,
     "offRadius": 0,
-    "doubleDash": 0
-  },
-  "frontend/src/features/bond-trading-desk/BondTradingDeskPage.module.css": {
-    "hex": 26,
-    "forbidden": 0,
-    "offRadius": 5,
     "doubleDash": 0
   },
   "frontend/src/features/cashflow-projection/pages/CashflowProjectionPage.module.css": {
@@ -449,60 +437,6 @@
     "offRadius": 0,
     "doubleDash": 0
   },
-  "frontend/src/features/ledger-pnl/components/LedgerPnlAccountDetailDrawer.css": {
-    "hex": 2,
-    "forbidden": 0,
-    "offRadius": 0,
-    "doubleDash": 0
-  },
-  "frontend/src/features/ledger-pnl/components/LedgerPnlAccountDetailDrawer.tsx": {
-    "hex": 0,
-    "forbidden": 0,
-    "offRadius": 0,
-    "doubleDash": 7
-  },
-  "frontend/src/features/ledger-pnl/components/LedgerPnlAnalysisWorkbench.css": {
-    "hex": 7,
-    "forbidden": 0,
-    "offRadius": 0,
-    "doubleDash": 0
-  },
-  "frontend/src/features/ledger-pnl/components/LedgerPnlAnalysisWorkbench.tsx": {
-    "hex": 0,
-    "forbidden": 0,
-    "offRadius": 0,
-    "doubleDash": 6
-  },
-  "frontend/src/features/ledger-pnl/components/LedgerPnlCandidateFinancialIndicatorsPanel.css": {
-    "hex": 57,
-    "forbidden": 0,
-    "offRadius": 1,
-    "doubleDash": 0
-  },
-  "frontend/src/features/ledger-pnl/components/LedgerPnlCandidatePeriodComparison.css": {
-    "hex": 66,
-    "forbidden": 0,
-    "offRadius": 0,
-    "doubleDash": 0
-  },
-  "frontend/src/features/ledger-pnl/components/LedgerPnlNetInterestComponentDetailDrawer.css": {
-    "hex": 49,
-    "forbidden": 0,
-    "offRadius": 0,
-    "doubleDash": 0
-  },
-  "frontend/src/features/ledger-pnl/pages/LedgerPnlPage.css": {
-    "hex": 15,
-    "forbidden": 0,
-    "offRadius": 0,
-    "doubleDash": 0
-  },
-  "frontend/src/features/ledger-pnl/pages/LedgerPnlPage.tsx": {
-    "hex": 0,
-    "forbidden": 0,
-    "offRadius": 0,
-    "doubleDash": 7
-  },
   "frontend/src/features/macro-toolkit/pages/MacroToolkitPage.css": {
     "hex": 21,
     "forbidden": 0,
@@ -581,18 +515,6 @@
     "offRadius": 0,
     "doubleDash": 0
   },
-  "frontend/src/features/pnl/FormalPnlV1Page.css": {
-    "hex": 4,
-    "forbidden": 0,
-    "offRadius": 2,
-    "doubleDash": 0
-  },
-  "frontend/src/features/pnl/PnlBridgePage.css": {
-    "hex": 14,
-    "forbidden": 0,
-    "offRadius": 7,
-    "doubleDash": 0
-  },
   "frontend/src/features/pnl/PnlByBusinessPage.css": {
     "hex": 2,
     "forbidden": 0,
@@ -617,19 +539,7 @@
     "offRadius": 9,
     "doubleDash": 0
   },
-  "frontend/src/features/positions/components/CustomerDetailModal.tsx": {
-    "hex": 11,
-    "forbidden": 0,
-    "offRadius": 0,
-    "doubleDash": 0
-  },
-  "frontend/src/features/positions/components/PositionsView.css": {
-    "hex": 4,
-    "forbidden": 0,
-    "offRadius": 2,
-    "doubleDash": 0
-  },
-  "frontend/src/features/positions/components/PositionsView.tsx": {
+  "frontend/src/features/positions/components/CustomerDetailModal.css": {
     "hex": 2,
     "forbidden": 0,
     "offRadius": 0,
@@ -640,18 +550,6 @@
     "forbidden": 1,
     "offRadius": 0,
     "doubleDash": 0
-  },
-  "frontend/src/features/risk-tensor/RiskTensorPage.css": {
-    "hex": 0,
-    "forbidden": 0,
-    "offRadius": 26,
-    "doubleDash": 0
-  },
-  "frontend/src/features/risk-tensor/RiskTensorPage.tsx": {
-    "hex": 17,
-    "forbidden": 0,
-    "offRadius": 0,
-    "doubleDash": 3
   },
   "frontend/src/features/source-preview/pages/SourcePreviewPage.tsx": {
     "hex": 15,
@@ -797,12 +695,6 @@
     "offRadius": 0,
     "doubleDash": 0
   },
-  "frontend/src/features/workbench/pages/OperationsAnalysisPage.css": {
-    "hex": 13,
-    "forbidden": 0,
-    "offRadius": 8,
-    "doubleDash": 0
-  },
   "frontend/src/lib/echarts.tsx": {
     "hex": 7,
     "forbidden": 0,
@@ -868,24 +760,6 @@
     "forbidden": 0,
     "offRadius": 0,
     "doubleDash": 0
-  },
-  "frontend/src/test/LedgerPnlAccountDetailDrawer.test.tsx": {
-    "hex": 0,
-    "forbidden": 0,
-    "offRadius": 0,
-    "doubleDash": 1
-  },
-  "frontend/src/test/LedgerPnlCandidatePeriodComparison.test.tsx": {
-    "hex": 0,
-    "forbidden": 0,
-    "offRadius": 0,
-    "doubleDash": 2
-  },
-  "frontend/src/test/LedgerPnlPage.test.tsx": {
-    "hex": 0,
-    "forbidden": 0,
-    "offRadius": 0,
-    "doubleDash": 3
   },
   "frontend/src/test/PnlAttributionPage.test.tsx": {
     "hex": 3,

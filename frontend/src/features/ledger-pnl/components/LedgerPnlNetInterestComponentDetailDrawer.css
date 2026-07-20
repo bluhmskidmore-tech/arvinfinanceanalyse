@@ -11,21 +11,21 @@
 }
 
 .ledger-net-interest-detail .ant-drawer-header {
-  border-bottom: 1px solid var(--moss-color-neutral-200, #dce2e8);
+  border-bottom: 1px solid var(--ib-hairline);
   border-radius: 0;
 }
 
 .ledger-net-interest-detail .ant-drawer-body {
   overflow-x: hidden;
   padding: 16px;
-  background: var(--moss-color-neutral-50, #f7f9fb);
+  background: var(--ib-surface-muted);
 }
 
 .ledger-net-interest-detail__body {
   display: grid;
   min-width: 0;
   gap: 12px;
-  color: var(--moss-color-neutral-900, #17212b);
+  color: var(--ib-ink);
 }
 
 .ledger-net-interest-detail__header,
@@ -38,7 +38,7 @@
 
 .ledger-net-interest-detail__header h2 {
   margin: 3px 0;
-  color: var(--moss-color-primary-900, #102a43);
+  color: var(--ib-accent);
   font-size: 18px;
 }
 
@@ -49,7 +49,7 @@
 .ledger-net-interest-detail__boundary,
 .ledger-net-interest-detail__state span,
 .ledger-net-interest-detail__state small {
-  color: var(--moss-color-neutral-600, #5b6875);
+  color: var(--ib-ink-secondary);
   font-size: 11px;
   overflow-wrap: anywhere;
 }
@@ -59,9 +59,9 @@
 .ledger-net-interest-detail__accounts,
 .ledger-net-interest-detail__state,
 .ledger-net-interest-detail__boundary {
-  border: 1px solid var(--moss-color-neutral-200, #dce2e8);
-  border-radius: 2px;
-  background: var(--moss-color-bg-surface, #fff);
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
 }
 
 .ledger-net-interest-detail__summary > header,
@@ -71,8 +71,8 @@
 }
 
 .ledger-net-interest-detail__summary > header {
-  border-bottom: 1px solid var(--moss-color-info-200, #b8d8ea);
-  background: var(--moss-color-info-50, #f2f8fc);
+  border-bottom: 1px solid var(--moss-color-info-200);
+  background: var(--moss-color-info-50);
 }
 
 .ledger-net-interest-detail__summary > header > div:first-child {
@@ -89,9 +89,9 @@
 
 .ledger-net-interest-detail__badges span {
   padding: 2px 5px;
-  border: 1px solid var(--moss-color-info-200, #b8d8ea);
-  border-radius: 2px;
-  color: var(--moss-color-info-800, #194e70);
+  border: 1px solid var(--moss-color-info-200);
+  border-radius: var(--ib-radius, 2px);
+  color: var(--ib-accent);
   font-size: 10px;
   font-weight: 800;
 }
@@ -105,7 +105,7 @@
   display: grid;
   gap: 3px;
   padding: 11px 12px;
-  border-right: 1px solid var(--moss-color-neutral-200, #dce2e8);
+  border-right: 1px solid var(--ib-hairline);
 }
 
 .ledger-net-interest-detail__metric-grid article:last-child {
@@ -113,7 +113,7 @@
 }
 
 .ledger-net-interest-detail__metric-grid span {
-  color: var(--moss-color-neutral-600, #5b6875);
+  color: var(--ib-ink-secondary);
   font-size: 10px;
 }
 
@@ -148,13 +148,13 @@
 }
 
 .ledger-net-interest-detail__analysis h3 {
-  color: var(--moss-color-primary-900, #102a43);
+  color: var(--ib-accent);
   font-size: 13px;
 }
 
 .ledger-net-interest-detail__analysis p,
 .ledger-net-interest-detail__narrow-hint {
-  color: var(--moss-color-neutral-600, #5b6875);
+  color: var(--ib-ink-secondary);
   font-size: 10px;
   line-height: 1.5;
 }
@@ -162,10 +162,10 @@
 .ledger-net-interest-detail__candidate-warning {
   flex: 0 0 auto;
   padding: 3px 6px;
-  border: 1px solid var(--moss-color-warning-300, #f0c36a);
-  border-radius: 2px;
-  background: var(--moss-color-warning-50, #fff9e8);
-  color: var(--moss-color-warning-900, #694d00);
+  border: 1px solid var(--moss-color-warning-300);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--moss-color-warning-50);
+  color: var(--ib-warn);
   font-size: 10px;
 }
 
@@ -179,7 +179,7 @@
 .ledger-net-interest-detail__toolbar label {
   display: grid;
   gap: 3px;
-  color: var(--moss-color-neutral-600, #5b6875);
+  color: var(--ib-ink-secondary);
   font-size: 10px;
 }
 
@@ -188,24 +188,24 @@
   width: 100%;
   height: 32px;
   padding: 5px 8px;
-  border: 1px solid var(--moss-color-neutral-300, #c5ced6);
-  border-radius: 2px;
-  background: var(--moss-color-bg-surface, #fff);
-  color: var(--moss-color-neutral-900, #17212b);
+  border: 1px solid var(--moss-color-neutral-300);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
+  color: var(--ib-ink);
   font: inherit;
   font-size: 11px;
 }
 
 .ledger-net-interest-detail__toolbar input:focus,
 .ledger-net-interest-detail__toolbar select:focus {
-  border-color: var(--moss-color-primary-600, #2f6f91);
-  outline: 2px solid var(--moss-color-info-100, #dceef8);
+  border-color: var(--ib-accent);
+  outline: 2px solid var(--moss-color-info-100);
   outline-offset: 1px;
 }
 
 .ledger-net-interest-detail__count {
   align-self: center;
-  color: var(--moss-color-neutral-700, #3f4d5a);
+  color: var(--ib-ink-secondary);
   font-size: 10px;
   font-weight: 800;
   white-space: nowrap;
@@ -236,14 +236,14 @@
 .ledger-net-interest-detail__accounts th,
 .ledger-net-interest-detail__accounts td {
   padding: 9px 10px;
-  border-bottom: 1px solid var(--moss-color-neutral-200, #dce2e8);
+  border-bottom: 1px solid var(--ib-hairline);
   vertical-align: top;
   text-align: left;
 }
 
 .ledger-net-interest-detail__accounts thead th {
-  background: var(--moss-color-neutral-50, #f7f9fb);
-  color: var(--moss-color-neutral-600, #5b6875);
+  background: var(--ib-surface-muted);
+  color: var(--ib-ink-secondary);
   font-size: 12px;
 }
 
@@ -263,9 +263,9 @@
 .ledger-net-interest-detail__position {
   width: max-content;
   padding: 1px 4px;
-  border: 1px solid var(--moss-color-neutral-200, #dce2e8);
-  border-radius: 2px;
-  color: var(--moss-color-neutral-600, #5b6875);
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   font-weight: 800;
 }
@@ -274,14 +274,14 @@
 .ledger-net-interest-detail__accounts details,
 .ledger-net-interest-detail__accounts li span,
 .ledger-net-interest-detail__accounts li code {
-  color: var(--moss-color-neutral-600, #5b6875);
+  color: var(--ib-ink-secondary);
   font-size: 12px;
   overflow-wrap: anywhere;
 }
 
 .ledger-net-interest-detail__accounts details summary {
   cursor: pointer;
-  color: var(--moss-color-primary-700, #22577a);
+  color: var(--ib-accent-hover);
   font-weight: 700;
 }
 
@@ -297,7 +297,7 @@
   display: grid;
   gap: 2px;
   padding-left: 7px;
-  border-left: 2px solid var(--moss-color-info-200, #b8d8ea);
+  border-left: 2px solid var(--moss-color-info-200);
 }
 
 .ledger-net-interest-detail__accounts li .ant-btn {
@@ -308,7 +308,7 @@
 }
 
 .ledger-net-interest-detail__accounts tr[data-row-status="excluded_offset"] {
-  background: var(--moss-color-warning-50, #fff9e8);
+  background: var(--moss-color-warning-50);
 }
 
 .ledger-net-interest-detail__empty {
@@ -316,24 +316,24 @@
   justify-items: start;
   gap: 6px;
   padding: 18px 12px;
-  color: var(--moss-color-neutral-600, #5b6875);
+  color: var(--ib-ink-secondary);
   font-size: 11px;
 }
 
 .ledger-net-interest-detail__empty strong {
-  color: var(--moss-color-primary-900, #102a43);
+  color: var(--ib-accent);
 }
 
 .ledger-net-interest-detail__copy-feedback:not(:empty),
 .ledger-net-interest-detail__manual-copy {
-  border: 1px solid var(--moss-color-info-200, #b8d8ea);
-  border-radius: 2px;
-  background: var(--moss-color-info-50, #f2f8fc);
+  border: 1px solid var(--moss-color-info-200);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--moss-color-info-50);
 }
 
 .ledger-net-interest-detail__copy-feedback:not(:empty) {
   padding: 8px 10px;
-  color: var(--moss-color-info-800, #194e70);
+  color: var(--ib-accent);
   font-size: 12px;
   font-weight: 800;
 }
@@ -342,7 +342,7 @@
   display: grid;
   gap: 5px;
   padding: 9px 10px;
-  color: var(--moss-color-neutral-700, #3f4d5a);
+  color: var(--ib-ink-secondary);
   font-size: 12px;
 }
 
@@ -351,10 +351,10 @@
   min-height: 72px;
   resize: vertical;
   padding: 7px;
-  border: 1px solid var(--moss-color-neutral-300, #c5ced6);
-  border-radius: 2px;
-  background: var(--moss-color-bg-surface, #fff);
-  color: var(--moss-color-neutral-900, #17212b);
+  border: 1px solid var(--moss-color-neutral-300);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
+  color: var(--ib-ink);
   font: 12px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 
@@ -364,13 +364,13 @@
 }
 
 .ledger-net-interest-detail__state--error {
-  border-color: var(--moss-color-danger-300, #e5a2a2);
-  background: var(--moss-color-danger-50, #fff5f5);
+  border-color: var(--moss-color-danger-300);
+  background: var(--moss-color-danger-50);
 }
 
 .ledger-net-interest-detail__state--warning {
-  border-color: var(--moss-color-warning-300, #f0c36a);
-  background: var(--moss-color-warning-50, #fff9e8);
+  border-color: var(--moss-color-warning-300);
+  background: var(--moss-color-warning-50);
 }
 
 .ledger-net-interest-detail__boundary {
@@ -380,7 +380,7 @@
 }
 
 .ledger-net-interest-detail__boundary strong {
-  color: var(--moss-color-primary-900, #102a43);
+  color: var(--ib-accent);
 }
 
 @media (max-width: 520px) {
@@ -416,6 +416,6 @@
   }
 
   .ledger-net-interest-detail__metric-grid article:nth-child(-n + 2) {
-    border-bottom: 1px solid var(--moss-color-neutral-200, #dce2e8);
+    border-bottom: 1px solid var(--ib-hairline);
   }
 }

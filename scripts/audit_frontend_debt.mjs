@@ -6,9 +6,14 @@ import path from "node:path";
 const repoRoot = path.resolve(import.meta.dirname, "..");
 
 const baseline = {
-  apiClientLines: 580,
+  // 2026-07-19: market-data/macro-toolkit mock factories extracted into
+  // marketDataMockClient.ts / macroToolkitMockClient.ts shrank client.ts imports.
+  apiClientLines: 576,
   // Phase 4H moves PnL attribution endpoint implementations into pnlAttributionClient.ts.
-  apiClientMockOccurrences: 54,
+  // 2026-07-19: 54 -> 56. The two extra occurrences are the import paths of the
+  // extracted mock modules ("./marketDataMockClient", "./macroToolkitMockClient"),
+  // not new mock payloads inside client.ts.
+  apiClientMockOccurrences: 56,
   dashboardStyleFiles: {},
   // 2026-07-07: PnlByBusinessInsightsPage migrated to shared PagePrimitives, removing
   // one-off page-chrome style={{}} blocks (title/disclaimer/contract-status/section leads).
@@ -16,8 +21,10 @@ const baseline = {
   // repeated layout style={{}} blocks into page-local CSS modules (PnlRuntimePanels.css,
   // PnlBridgePage.css, ProductCategoryAuditPages.css); dynamic chart widths and mode chips
   // remain as allowed single-use inline styles.
-  totalTsxStyleProps: 1622,
-  totalStaticTsxStyleProps: 654,
+  // 2026-07-19: agent 子组件（AgentRepoMemoryPanel / AgentGenericCardsGrid /
+  // GitNexusResultView）的重复 inline style 迁移到组件同名 CSS，基线随之下调。
+  totalTsxStyleProps: 1541,
+  totalStaticTsxStyleProps: 629,
   maxPageStyleProps: {
     "frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx": 8,
     "frontend/src/features/market-data/pages/MarketDataPage.tsx": 1,
@@ -40,8 +47,15 @@ const baseline = {
     },
     "frontend/src/api/contracts.ts": {
       // Post LedgerPnl v1-type cleanup actual; 7429 targets a later domain-module split.
-      maxLines: 7510,
+      // 2026-07-19: +9 backend-mirror contract fields only (PnlByBusinessPayload summary
+      // 514/516/517 totals + PnlByBusinessAnalysisPayload.merged_bucket_rows for the
+      // backend-merged "其他" bond bucket); no new endpoints, mocks, or client logic.
+      maxLines: 7519,
       routeHint: "Put new contracts in the owning domain contract or client module.",
+    },
+    "frontend/src/features/macro-toolkit/pages/MacroToolkitPage.tsx": {
+      maxLines: 11588,
+      routeHint: "Add new logic in a colocated macro-toolkit component or model module and keep the page compositional.",
     },
     "frontend/src/features/product-category-pnl/pages/ProductCategoryPnlPage.tsx": {
       maxLines: 6687,

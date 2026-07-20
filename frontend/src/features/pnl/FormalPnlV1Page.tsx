@@ -246,16 +246,10 @@ export default function FormalPnlV1Page() {
         start: () => client.refreshFormalPnl(selectedReportDate),
         getStatus: (runId) => client.getFormalPnlImportStatus(runId),
         onUpdate: (nextPayload) => {
-          setRefreshStatus(
-            [
-              nextPayload.status,
-              nextPayload.run_id,
-              nextPayload.report_date,
-              nextPayload.source_version,
-            ]
-              .filter(Boolean)
-              .join(" · "),
-          );
+          const secondary = [nextPayload.run_id, nextPayload.report_date, nextPayload.source_version]
+            .filter(Boolean)
+            .join(" ");
+          setRefreshStatus([nextPayload.status, secondary].filter(Boolean).join(" · "));
         },
       });
       if (payload.status !== "completed") {

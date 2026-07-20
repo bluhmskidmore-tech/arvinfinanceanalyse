@@ -18,7 +18,7 @@
 
 .ledger-account-detail__header span,
 .ledger-account-detail__section-head span {
-  color: var(--moss-color-primary-600);
+  color: var(--ib-accent);
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.1em;
@@ -27,7 +27,7 @@
 .ledger-account-detail__header h2,
 .ledger-account-detail__section-head h3 {
   margin: 4px 0 0;
-  color: var(--moss-color-neutral-900);
+  color: var(--ib-ink);
 }
 
 .ledger-account-detail__header h2 {
@@ -38,7 +38,7 @@
 .ledger-account-detail__header p,
 .ledger-account-detail__section-head small {
   margin: 5px 0 0;
-  color: var(--moss-color-neutral-500);
+  color: var(--ib-surface-muted0);
   font-size: 11px;
 }
 
@@ -56,9 +56,9 @@
 .ledger-account-detail__section {
   min-width: 0;
   padding: 12px;
-  border: 1px solid var(--moss-color-neutral-200);
-  border-radius: var(--moss-radius-md);
-  background: var(--moss-color-bg-surface, #fff);
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
 }
 
 .ledger-account-detail__section-head {
@@ -80,13 +80,13 @@
   gap: 4px;
   min-width: 0;
   padding: 10px;
-  border-radius: var(--moss-radius-sm);
-  background: var(--moss-color-neutral-50);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface-muted);
 }
 
 .ledger-account-detail__metric-grid article > span,
 .ledger-account-detail__metric-grid article > small {
-  color: var(--moss-color-neutral-500);
+  color: var(--ib-surface-muted0);
   font-size: 10px;
 }
 
@@ -94,13 +94,13 @@
   display: grid;
   gap: 4px;
   margin-top: 9px;
-  color: var(--moss-color-neutral-500);
+  color: var(--ib-surface-muted0);
   font-size: 10px;
   overflow-wrap: anywhere;
 }
 
 .ledger-account-detail__metric-grid strong {
-  color: var(--moss-color-neutral-900);
+  color: var(--ib-ink);
   font-size: 18px;
   font-variant-numeric: tabular-nums;
 }
@@ -138,15 +138,15 @@
 }
 
 .ledger-account-detail__exact-money small {
-  color: var(--moss-color-neutral-500);
+  color: var(--ib-surface-muted0);
   font-size: 9px;
 }
 
 .ledger-account-detail__state {
   padding: 28px 16px;
   border: 1px dashed var(--moss-color-neutral-300);
-  border-radius: var(--moss-radius-md);
-  color: var(--moss-color-neutral-600);
+  border-radius: var(--ib-radius, 2px);
+  color: var(--ib-ink-secondary);
   text-align: center;
 }
 
@@ -170,7 +170,7 @@
   border-style: solid;
   border-color: var(--moss-color-danger-200);
   background: var(--moss-color-danger-50);
-  color: var(--moss-color-danger-800);
+  color: var(--ib-down);
 }
 
 .ledger-account-detail__state--warning,
@@ -178,7 +178,7 @@
   border-style: solid;
   border-color: var(--moss-color-warning-200);
   background: var(--moss-color-warning-50);
-  color: var(--moss-color-warning-800, #854d0e);
+  color: var(--ib-warn);
 }
 
 .ledger-account-detail__source-status {
@@ -186,7 +186,7 @@
   gap: 6px;
   padding: 10px 12px;
   border: 1px solid var(--moss-color-warning-200);
-  border-radius: var(--moss-radius-sm);
+  border-radius: var(--ib-radius, 2px);
   font-size: 11px;
 }
 
@@ -198,9 +198,9 @@
 .ledger-account-detail__empty {
   margin: 0;
   padding: 14px;
-  border-radius: var(--moss-radius-sm);
-  background: var(--moss-color-neutral-50);
-  color: var(--moss-color-neutral-500);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface-muted);
+  color: var(--ib-surface-muted0);
   font-size: 11px;
   text-align: center;
 }
@@ -209,7 +209,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 5px 12px;
-  color: var(--moss-color-neutral-500);
+  color: var(--ib-surface-muted0);
   font-size: 10px;
 }
 

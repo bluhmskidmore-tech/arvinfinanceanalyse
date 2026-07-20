@@ -1,4 +1,5 @@
 import type { ApiEnvelope, LedgerMoneyValue, LedgerPnlAnalysisPayload } from "../../../api/contracts";
+import { EM_DASH } from "../../../utils/format";
 
 import "./LedgerPnlAnalysisWorkbench.css";
 
@@ -19,7 +20,7 @@ export type LedgerPnlContributorSelection = {
 
 function formatMoney(value: LedgerMoneyValue | null | undefined) {
   const yi = String(value?.yi ?? "").trim();
-  return yi ? `${yi} 亿元` : "--";
+  return yi ? `${yi} 亿元` : EM_DASH;
 }
 
 function formatBasisMoney(
@@ -71,14 +72,14 @@ function SourceStatus({ envelope }: { envelope: ApiEnvelope<LedgerPnlAnalysisPay
         <div>
           <strong>已回退至最近可用报告日</strong>
           <span>
-            请求日 {meta.requested_report_date || "--"} · 解析日 {meta.resolved_report_date || meta.fallback_date || "--"}
+            请求日 {meta.requested_report_date || EM_DASH} · 解析日 {meta.resolved_report_date || meta.fallback_date || EM_DASH}
           </span>
         </div>
       ) : null}
       {stale ? (
         <div>
           <strong>数据可能已过期</strong>
-          <span>截至日 {meta.as_of_date || "--"} · vendor {meta.vendor_status}</span>
+          <span>截至日 {meta.as_of_date || EM_DASH} · vendor {meta.vendor_status}</span>
         </div>
       ) : null}
     </div>
@@ -367,8 +368,8 @@ function CalculationBasis({ payload }: { payload: LedgerPnlAnalysisPayload }) {
   return (
     <footer className="ledger-analysis-calculation-basis">
       <strong>计算口径</strong>
-      <span>核心前缀 {basis.core_pnl_prefixes.join(" / ") || "--"}</span>
-      <span>全量前缀 {basis.all_pnl_prefixes.join(" / ") || "--"}</span>
+      <span>核心前缀 {basis.core_pnl_prefixes.join(" / ") || EM_DASH}</span>
+      <span>全量前缀 {basis.all_pnl_prefixes.join(" / ") || EM_DASH}</span>
       <span title={`${basis.other_5_pnl_formula} · ${basis.other_5_pnl_boundary}`}>其他 5* = 全量 - 核心（算术残差）</span>
       <span title={basis.basis_difference_formula}>差额 = CNX - CNY</span>
       <span title={basis.previous_period_rule}>上一期 = 最近可用报告日</span>

@@ -9,6 +9,7 @@ import type {
   LedgerPnlAccountDetailBasisSnapshot,
   LedgerPnlAccountDetailPayload,
 } from "../../../api/contracts";
+import { EM_DASH } from "../../../utils/format";
 import type { LedgerPnlContributorSelection } from "./LedgerPnlAnalysisWorkbench";
 import "./LedgerPnlAccountDetailDrawer.css";
 
@@ -22,12 +23,12 @@ type Props = {
 
 function formatMoney(value: LedgerMoneyValue | null | undefined) {
   const yi = String(value?.yi ?? "").trim();
-  return yi ? `${yi} 亿元` : "--";
+  return yi ? `${yi} 亿元` : EM_DASH;
 }
 
 function formatYuan(value: LedgerMoneyValue | null | undefined) {
   const yuan = String(value?.yuan ?? "").trim();
-  return yuan ? `${yuan} 元` : "--";
+  return yuan ? `${yuan} 元` : EM_DASH;
 }
 
 function errorMessage(error: unknown) {
@@ -129,7 +130,7 @@ function BasisComparison({ payload }: { payload: LedgerPnlAccountDetailPayload }
             {snapshots.map(({ label, snapshot }) => (
               <tr key={label}>
                 <td>{label}</td>
-                <td>{snapshot?.report_date ?? "--"}</td>
+                <td>{snapshot?.report_date ?? EM_DASH}</td>
                 <td>{snapshot ? formatBasisMoney(snapshot, "CNX") : "无数据"}</td>
                 <td>{snapshot ? formatBasisMoney(snapshot, "CNY") : "无数据"}</td>
                 <td>{snapshot ? formatBasisDifference(snapshot) : "不可比"}</td>
@@ -209,14 +210,14 @@ function SourceStatus({ envelope }: {
         <div>
           <strong>已回退至最近可用报告日</strong>
           <span>
-            请求日 {meta.requested_report_date || "--"} · 解析日 {meta.resolved_report_date || meta.fallback_date || "--"}
+            请求日 {meta.requested_report_date || EM_DASH} · 解析日 {meta.resolved_report_date || meta.fallback_date || EM_DASH}
           </span>
         </div>
       ) : null}
       {stale ? (
         <div>
           <strong>数据可能已过期</strong>
-          <span>截至日 {meta.as_of_date || "--"} · vendor {meta.vendor_status || "--"}</span>
+          <span>截至日 {meta.as_of_date || EM_DASH} · vendor {meta.vendor_status || EM_DASH}</span>
         </div>
       ) : null}
     </div>
