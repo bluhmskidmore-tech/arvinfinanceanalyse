@@ -98,6 +98,7 @@ python scripts/backend_release_suite.py
 1. 必要的本地或 CI 验证
 2. `python scripts/backend_release_suite.py`
 3. 对当前边界文档的核对，而不是只看服务是否能启动
+4. 确认 `config/macro_decision_observation_keys.json` 随包分发（macro toolkit `decision_summary` 懒加载依赖）
 
 ## Docker Compose 的 DuckDB 进程契约
 

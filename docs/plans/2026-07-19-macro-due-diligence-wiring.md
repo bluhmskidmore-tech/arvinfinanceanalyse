@@ -55,6 +55,8 @@ SDD 复审：Spec ✅ / Quality ✅（Minor 已在下一波收口）。
 
 SDD 复审：Spec ✅ / Quality ✅（Important 残留：mock `missing_count` 语义与后端不完全一致；配置 import-time 加载需随包分发）。
 
+**发布清单（R2）**：`config/macro_decision_observation_keys.json` 必须随部署包分发；路由改为懒加载后，缺文件不再在 import 时拖垮整个 macro_toolkit，但首次构建 `decision_summary` 会明确失败。
+
 ### Task W3：CTA / DCC / Risk Parity 多资产价格腿可读性（2026-07-19）
 
 **诊断（wiring vs 缺数 vs 历史过短）**

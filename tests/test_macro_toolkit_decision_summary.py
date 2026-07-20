@@ -142,3 +142,11 @@ def test_decision_summary_observation_keys_match_shared_json_config() -> None:
     assert json_keys == sorted(json_keys)
     assert macro_toolkit_route._DECISION_SUMMARY_OBSERVATION_KEYS == set(json_keys)
     assert macro_toolkit_route._load_decision_summary_observation_keys() == set(json_keys)
+
+
+def test_decision_summary_observation_keys_are_not_eager_module_globals() -> None:
+    # Lazy via __getattr__ / lru_cache: import must not materialize the frozenset into __dict__.
+    assert "_DECISION_SUMMARY_OBSERVATION_KEYS" not in vars(macro_toolkit_route)
+    assert macro_toolkit_route._decision_summary_observation_keys() == (
+        macro_toolkit_route._DECISION_SUMMARY_OBSERVATION_KEYS
+    )

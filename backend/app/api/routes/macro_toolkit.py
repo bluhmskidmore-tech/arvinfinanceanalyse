@@ -5,6 +5,7 @@ import uuid
 from collections.abc import Callable, Iterable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime, timedelta, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -70,7 +71,7 @@ from backend.app.core_finance.macro.toolkit.system_sources import (
     load_series_by_alias,
     load_series_by_aliases,
 )
-from backend.app.governance.settings import get_settings
+from backend.app.governance.settings import _REPO_ROOT, get_settings
 from backend.app.repositories.cffex_member_rank_repo import DEFAULT_CFFEX_CONTRACTS, table_stats
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services import macro_adversarial_signal_service, macro_toolkit_service
@@ -3918,21 +3919,39 @@ def _capability_result_evidence(key: str, result: dict[str, object]) -> list[str
     return []
 
 
-_OBSERVATION_KEYS_CONFIG_PATH = (
-    Path(__file__).resolve().parents[4] / "config" / "macro_decision_observation_keys.json"
-)
+_OBSERVATION_KEYS_CONFIG_PATH = _REPO_ROOT / "config" / "macro_decision_observation_keys.json"
 
 
 def _load_decision_summary_observation_keys(path: Path | None = None) -> frozenset[str]:
     config_path = path or _OBSERVATION_KEYS_CONFIG_PATH
-    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    if not config_path.is_file():
+        raise FileNotFoundError(
+            "Decision summary observation keys config missing: "
+            f"{config_path}. Ship config/macro_decision_observation_keys.json with deploy packages."
+        )
+    try:
+        payload = json.loads(config_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"Invalid JSON in decision summary observation keys config: {config_path}"
+        ) from exc
     keys = payload.get("observation_keys")
     if not isinstance(keys, list) or not keys or not all(isinstance(key, str) and key for key in keys):
         raise ValueError(f"Invalid observation_keys in {config_path}")
     return frozenset(keys)
 
 
-_DECISION_SUMMARY_OBSERVATION_KEYS = _load_decision_summary_observation_keys()
+@lru_cache(maxsize=1)
+def _decision_summary_observation_keys() -> frozenset[str]:
+    """Lazy-load observation keys; import must not require the config file."""
+    return _load_decision_summary_observation_keys()
+
+
+def __getattr__(name: str) -> object:
+    # Keep `_DECISION_SUMMARY_OBSERVATION_KEYS` as a compatible lazy attribute for tests.
+    if name == "_DECISION_SUMMARY_OBSERVATION_KEYS":
+        return _decision_summary_observation_keys()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def _decision_summary_card(
@@ -3943,8 +3962,9 @@ def _decision_summary_card(
     usable_cards = [card for card in cards if card["status"] in {"complete", "degraded"}]
     # observation_only 卡（美林时钟/CTA/DCC/风险平价）计入可用分母，
     # 但不参与驱动久期/信用行动建议的方向投票。
+    observation_keys = _decision_summary_observation_keys()
     voting_cards = [
-        card for card in usable_cards if str(card["key"]) not in _DECISION_SUMMARY_OBSERVATION_KEYS
+        card for card in usable_cards if str(card["key"]) not in observation_keys
     ]
     positive_count = sum(1 for card in voting_cards if card["tone"] == "positive")
     negative_count = sum(1 for card in voting_cards if card["tone"] == "negative")
