@@ -8,9 +8,14 @@ definition metadata must not claim the aggregation is still unwired.
 
 from __future__ import annotations
 
+import json
 from datetime import date
+from pathlib import Path
 
 import backend.app.api.routes.macro_toolkit as macro_toolkit_route
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_OBSERVATION_KEYS_JSON = _REPO_ROOT / "config" / "macro_decision_observation_keys.json"
 
 
 def _make_card(key: str, status: str, tone: str) -> dict[str, object]:
@@ -128,3 +133,12 @@ def test_decision_summary_definition_metadata_reflects_wired_aggregation() -> No
     assert definition["route_status"] == "wired"
     assert definition["frontend_status"] == "visible"
     assert "而不是前端拼文案" not in str(definition["next_step"])
+
+
+def test_decision_summary_observation_keys_match_shared_json_config() -> None:
+    payload = json.loads(_OBSERVATION_KEYS_JSON.read_text(encoding="utf-8"))
+    json_keys = payload["observation_keys"]
+
+    assert json_keys == sorted(json_keys)
+    assert macro_toolkit_route._DECISION_SUMMARY_OBSERVATION_KEYS == set(json_keys)
+    assert macro_toolkit_route._load_decision_summary_observation_keys() == set(json_keys)

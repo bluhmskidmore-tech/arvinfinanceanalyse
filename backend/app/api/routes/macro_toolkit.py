@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 from collections.abc import Callable, Iterable, Mapping
 from concurrent.futures import ThreadPoolExecutor
@@ -3917,20 +3918,21 @@ def _capability_result_evidence(key: str, result: dict[str, object]) -> list[str
     return []
 
 
-_DECISION_SUMMARY_OBSERVATION_KEYS = frozenset(
-    {
-        "merrill_clock_cn",
-        "cta_trend_cn",
-        "dcc_garch_cn",
-        "risk_parity_cn",
-        "cross_market_linkage",
-        "rate_turning_point",
-        "yield_curve_shape",
-        "credit_spread_risk",
-        "liquidity_stress",
-        "macro_portfolio_impact",
-    }
+_OBSERVATION_KEYS_CONFIG_PATH = (
+    Path(__file__).resolve().parents[4] / "config" / "macro_decision_observation_keys.json"
 )
+
+
+def _load_decision_summary_observation_keys(path: Path | None = None) -> frozenset[str]:
+    config_path = path or _OBSERVATION_KEYS_CONFIG_PATH
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    keys = payload.get("observation_keys")
+    if not isinstance(keys, list) or not keys or not all(isinstance(key, str) and key for key in keys):
+        raise ValueError(f"Invalid observation_keys in {config_path}")
+    return frozenset(keys)
+
+
+_DECISION_SUMMARY_OBSERVATION_KEYS = _load_decision_summary_observation_keys()
 
 
 def _decision_summary_card(

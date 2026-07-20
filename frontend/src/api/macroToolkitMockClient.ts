@@ -1,4 +1,5 @@
 import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
+import { buildMockDecisionSummaryCard } from "./macroDecisionSummaryMock";
 import type {
   MacroToolkitAnalysisPayload,
   MacroToolkitAnalysisRequest,
@@ -19,6 +20,9 @@ import type {
   MacroToolkitShadowPortfolioReport,
   MacroToolkitStrategySummary,
 } from "./macroToolkitClient";
+
+/** Must match non-decision entries in MOCK_CAPABILITIES (asserted below). */
+const MOCK_NON_DECISION_CAPABILITY_COUNT = 14;
 
 const MOCK_CRISIS_COMMODITY_CANDIDATE_DECISION = {
   status: "shadow_review_ready",
@@ -56,7 +60,7 @@ const MOCK_CRISIS_COMMODITY_SHORT_SHADOW_EVALUATION = {
   next_step: "先补齐商品期货历史数据，再做历史回测、相关性检验和权重审批。",
 };
 
-const MOCK_CAPABILITY_RESULTS: MacroToolkitCapabilityResult[] = [
+const MOCK_PARTIAL_CAPABILITY_RESULTS: MacroToolkitCapabilityResult[] = [
   {
     key: "monetary_policy_stance",
     legacy_module: "M7",
@@ -942,33 +946,17 @@ const MOCK_CAPABILITY_RESULTS: MacroToolkitCapabilityResult[] = [
       warnings: ["NANHUA_MISSING"],
     },
   },
-  {
-    key: "decision_summary",
-    legacy_module: "M16",
-    label: "宏观决策摘要",
-    group: "决策摘要",
-    status: "degraded",
-    // 投票仅计非 observation 卡：usable 中 crisis_score_cn=positive；
-    // yield_curve/merrill/cta/dcc/rp 计入分母但不投票。
-    // 公式：50 + (1-0)*8 - 5*3 = 43；分母对齐 15 个定义中的 14 张非 decision 卡。
-    tone: "positive",
-    score: 43,
-    headline: "宏观信号偏支持，组合可保留适度久期与高等级信用。",
-    primary_metric: { label: "可用模块", value: 9, unit: "/14" },
-    evidence: ["M7 资金面偏平衡", "M10 LEI 处于中性区间", "美林时钟观察可用", "CTA趋势：震荡观望"],
-    warnings: ["部分模块数据降级或不可用"],
-    result: {
-      report_date: "2026-04-30",
-      data_status: "degraded",
-      formal_use_allowed: false,
-      positive_count: 1,
-      negative_count: 0,
-      observation_excluded_count: 5,
-      missing_count: 5,
-      usable_count: 9,
-      headline: "宏观信号偏支持，组合可保留适度久期与高等级信用。",
-    },
-  },
+];
+
+// decision_summary：观察卡排除列表与 backend 共用 config/macro_decision_observation_keys.json。
+// 投票仅计非 observation 卡（本 mock 中 crisis_score_cn=positive）；
+// yield_curve/merrill/cta/dcc/rp 等在 observation 集且可用的卡计入分母但不投票。
+const MOCK_CAPABILITY_RESULTS: MacroToolkitCapabilityResult[] = [
+  ...MOCK_PARTIAL_CAPABILITY_RESULTS,
+  buildMockDecisionSummaryCard(
+    MOCK_PARTIAL_CAPABILITY_RESULTS,
+    MOCK_NON_DECISION_CAPABILITY_COUNT,
+  ),
 ];
 
 const MOCK_STRATEGY_SUMMARIES: MacroToolkitStrategySummary[] = [
@@ -2044,6 +2032,15 @@ const MOCK_CAPABILITIES: MacroToolkitCapability[] = [
     next_step: "聚合观察卡摘要；observation 卡不计方向票。",
   },
 ];
+
+if (
+  MOCK_CAPABILITIES.filter((item) => item.key !== "decision_summary").length !==
+  MOCK_NON_DECISION_CAPABILITY_COUNT
+) {
+  throw new Error(
+    "MOCK_NON_DECISION_CAPABILITY_COUNT must match non-decision MOCK_CAPABILITIES length",
+  );
+}
 
 const MOCK_PAYLOAD: MacroToolkitPayload = {
   default_data_sources: ["choice", "tushare"],
