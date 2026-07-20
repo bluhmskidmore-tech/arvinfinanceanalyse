@@ -162,6 +162,10 @@ PnL Bridge 结构：
 = 期末变化解释值
 ```
 
+FX translation base (2026-07-19)：
+- `fx_translation = exposure_native * (fx_mid_current - fx_mid_prior)`。
+- `exposure_native` 优先用期末脏市值原币（`market_value + accrued_interest`），与桥接期初/期末脏市值及 `read_models.fx_effect` 的市值基数对齐；仅在无市值字段时回退 `face_value_native`。
+
 Sign convention:
 - `roll_down = ((current_curve_rate - rolled_curve_rate) / 100) * modified_duration * market_value`.
 - Upward-sloping curves (`current_curve_rate > rolled_curve_rate`) produce positive roll-down return.

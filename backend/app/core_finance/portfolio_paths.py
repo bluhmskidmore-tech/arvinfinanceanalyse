@@ -169,6 +169,7 @@ def _normalize_path_rows(rows: Sequence[tuple[Any, ...]]) -> list[dict[str, obje
     out: list[dict[str, object]] = []
     previous_close: float | None = None
     previous_adj_close: float | None = None
+    previous_adj_factor: float | None = None
     for row in rows:
         (
             trade_date,
@@ -186,8 +187,10 @@ def _normalize_path_rows(rows: Sequence[tuple[Any, ...]]) -> list[dict[str, obje
         raw_close = _float_or_none(close_value)
         halted = _is_halted(tradestatus)
         close_for_mark = previous_close if halted and previous_close is not None else raw_close
-        factor = _positive_float(adj_factor)
-        adj_factor_missing = factor is None
+        source_factor = _positive_float(adj_factor)
+        adj_factor_missing = source_factor is None
+        factor = source_factor if source_factor is not None else previous_adj_factor
+        adj_factor_forward_filled = adj_factor_missing and factor is not None
         adjusted = {
             "adj_open": _adjust_price(open_value, factor),
             "adj_high": _adjust_price(high_value, factor),
@@ -210,11 +213,14 @@ def _normalize_path_rows(rows: Sequence[tuple[Any, ...]]) -> list[dict[str, obje
                 "lowlimit": _float_or_none(lowlimit),
                 "adj_factor": factor,
                 "adj_factor_missing": adj_factor_missing,
+                "adj_factor_forward_filled": adj_factor_forward_filled,
                 "halted": halted,
                 "limit_down": _is_limit_down(close_for_mark, lowlimit),
                 **adjusted,
             }
         )
+        if source_factor is not None:
+            previous_adj_factor = source_factor
         if close_for_mark is not None:
             previous_close = close_for_mark
         if out[-1]["adj_close"] is not None:
@@ -223,7 +229,12 @@ def _normalize_path_rows(rows: Sequence[tuple[Any, ...]]) -> list[dict[str, obje
 
 
 def _apply_path_price_basis(rows: list[dict[str, object]]) -> list[dict[str, object]]:
-    basis = PATH_BASIS_RAW_FALLBACK if any(bool(row.get("adj_factor_missing")) for row in rows) else PATH_BASIS_ADJUSTED
+    has_unfilled_factor = any(
+        bool(row.get("adj_factor_missing"))
+        and not bool(row.get("adj_factor_forward_filled"))
+        for row in rows
+    )
+    basis = PATH_BASIS_RAW_FALLBACK if has_unfilled_factor else PATH_BASIS_ADJUSTED
     return [dict(row, path_price_basis=basis) for row in rows]
 
 

@@ -7001,8 +7001,9 @@ def test_pnl_bridge_reads_fx_rates_from_duckdb_and_populates_fx_translation(tmp_
     assert response.status_code == 200
     payload = response.json()
     row = payload["result"]["rows"][0]
-    assert row["fx_translation"]["raw"] == 41.35
-    assert payload["result"]["summary"]["total_fx_translation"]["raw"] == 41.35
+    # dirty exposure = market 100 + accrued 2 = 102; 102 * (7.0827 - 7.04135) = 4.2177
+    assert row["fx_translation"]["raw"] == 4.2177
+    assert payload["result"]["summary"]["total_fx_translation"]["raw"] == 4.2177
     assert any("currency_basis mismatch" in warning for warning in payload["result"]["warnings"])
     assert any("currency_basis mismatch" in message for message in row["balance_diagnostics"])
     get_settings.cache_clear()

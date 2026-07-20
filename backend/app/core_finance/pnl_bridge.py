@@ -211,11 +211,7 @@ def build_pnl_bridge_rows(
         )
         fx_translation = _calculate_fx_translation(
             currency_basis=currency_basis,
-            face_value_native=_coerce_decimal(
-                current_balance.get("face_value_native", ZERO)
-            )
-            if current_balance
-            else ZERO,
+            exposure_native=_fx_exposure_native(current_balance),
             fx_rate_current=fx_rates_current,
             fx_rate_prior=fx_rates_prior,
         )
@@ -448,15 +444,33 @@ def _calculate_credit_spread_shift(
     return -(spread_delta * modified_duration * market_value)
 
 
+def _fx_exposure_native(row: Mapping[str, object] | None) -> Decimal:
+    """Native FX base for bridge translation.
+
+    Prefer dirty market value (aligned with beginning/ending dirty MV framing and with
+    ``read_models._fx_effect``'s market-value base). Fall back to face only when no
+    market-value fields are present so legacy fixtures still exercise the FX path.
+    """
+    if row is None:
+        return ZERO
+    dirty = _dirty_market_value(row)
+    if dirty != ZERO:
+        return dirty
+    return _coerce_decimal(row.get("face_value_native", ZERO))
+
+
 def _calculate_fx_translation(
     *,
     currency_basis: str,
-    face_value_native: Decimal,
+    exposure_native: Decimal,
     fx_rate_current: dict[str, Decimal] | None,
     fx_rate_prior: dict[str, Decimal] | None,
 ) -> Decimal:
     """
-    FX translation = face_value_native * (current_rate - prior_rate).
+    FX translation = exposure_native * (current_rate - prior_rate).
+
+    ``exposure_native`` is dirty / market value in native currency (not face), matching
+    the dirty-MV bridge framing and return-decomposition ``fx_effect``.
 
     - CNY/CNX/RMB rows have no FX translation.
     - Missing FX dictionaries or missing base-currency rates default to 0 so the bridge
@@ -472,7 +486,7 @@ def _calculate_fx_translation(
     prior_rate = fx_rate_prior.get(base)
     if current_rate is None or prior_rate is None:
         return ZERO
-    return (face_value_native * (current_rate - prior_rate)).quantize(AMOUNT_SCALE)
+    return (exposure_native * (current_rate - prior_rate)).quantize(AMOUNT_SCALE)
 
 
 def _fx_rate_missing_diagnostic(

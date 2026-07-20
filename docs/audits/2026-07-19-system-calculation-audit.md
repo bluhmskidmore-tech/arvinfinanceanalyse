@@ -99,6 +99,9 @@
 | 12 | 宏观 M-1 / M-3 | 领先指标缺失月跳过均值并披露样本数；信贷脉冲整序列拒绝打 warning | ✅ 已核实 + 补测 |
 | 13 | PnL/固收 M-5 carry 天数 | `read_models.summarize_return_decomposition` carry 改为 exclusive `(end-start).days`（下限 1），与 campisi/attribution_daily 对齐 | ✅ 已修，测试通过 |
 | 14 | 共享 M-3 workbook Decimal | `balance_analysis_workbook._decimal_value` 与 `balance_workbook._utils` 对 NaN/非有限值回退 0 | ✅ 已修，测试通过 |
+| 15 | PnL M-1 FX 基数 | `pnl_bridge` FX 改优先脏市值原币（无市值才回退面值），与脏市值桥 / `read_models.fx_effect` 对齐；写入 `calc_rules.md` | ✅ 已修，测试通过 |
+| 16 | PnL M-6 配置效应 | 板块收益补入 `fx_effect`；**故意不含 spread**（超额分解已有独立 `spread_effect`，计入会双重计数） | ✅ 已核实并收口 |
+| 17 | 余额 M-4 reconciliation | `reconciliation_checks` 已用 Decimal + 缺键显式处理（非 float 静默 0） | ✅ 已核实通过 |
 
 ### 重要发现补充：engine 灰区回归属"潜伏 Critical"
 
@@ -133,4 +136,4 @@
 - 固收 M-7：`coupon_frequency` 默认值双路径（`bond_four_effects` 默认 2 vs `bond_duration`/`common` 默认 1）；正式物化走 `interest_mode→coupon_frequency_per_year`，改默认会影响次要调用方，暂不统一。
 - 固收 M-4：闭式久期碎期分叉——若在正式物化路径则勿改数值（需重物化裁决）。
 - PnL M-7 rolldown：`calc_rules.md` 与 `attribution_daily` 已同号（上行曲线为正）；若仍有旧注释漂移，按实现为准逐点清。
-- 其它 Medium（PnL M-1/M-4/M-6、固收 M-1/M-2/M-5 等）未本轮处理。
+- 其它 Medium（PnL M-4、固收 M-1/M-2/M-5 等）未本轮处理；PnL M-1/M-6 与余额 M-4 见修复表 15–17。

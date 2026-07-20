@@ -472,6 +472,26 @@ def test_spread_effect_moves_excess_return_without_selection_residual() -> None:
     assert summary["allocation_effect"] == Decimal("0")
 
 
+def test_allocation_sector_return_includes_fx_but_excludes_spread() -> None:
+    """配置效应含 FX（无独立 fx 项）；故意不含 spread（已有独立 spread_effect，避免双重计数）。"""
+    read_models = _read_models_module()
+    sector_summary = {
+        "carry": Decimal("1"),
+        "roll_down": Decimal("2"),
+        "rate_effect": Decimal("3"),
+        "spread_effect": Decimal("4"),
+        "convexity_effect": Decimal("5"),
+        "fx_effect": Decimal("6"),
+        "market_value": Decimal("100"),
+    }
+    sector_return = read_models._allocation_sector_return(
+        sector_summary=sector_summary,
+        sector_market_value=Decimal("100"),
+    )
+    # (1+2+3+5+6) / 100 * 100 = 17；spread 4 不计入
+    assert sector_return == Decimal("17")
+
+
 def test_allocation_effect_uses_non_carry_sector_returns() -> None:
     summary = _read_models_module().compute_benchmark_excess(
         [

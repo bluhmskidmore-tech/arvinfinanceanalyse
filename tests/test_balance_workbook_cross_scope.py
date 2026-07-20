@@ -13,6 +13,9 @@ from backend.app.core_finance.balance_analysis import (
 from backend.app.core_finance.balance_analysis_workbook import (
     build_balance_analysis_workbook_payload,
 )
+from backend.app.core_finance.balance_workbook import (
+    build_balance_analysis_workbook_payload as build_modular_balance_workbook_payload,
+)
 
 RD = date(2026, 3, 31)
 MAT = date(2027, 3, 31)
@@ -186,6 +189,22 @@ def test_asset_scope_cross_scope_tables_match_all_scope():
             ref_section = next(t for t in reference["tables"] if t["key"] == section["key"])
             assert section["rows"] == ref_section["rows"], section["key"]
     assert scoped["cards"] == reference["cards"]
+
+
+def test_public_modular_entrypoint_delegates_to_authoritative_full_scope_builder():
+    kwargs = {
+        "report_date": RD,
+        "position_scope": "asset",
+        "currency_basis": "native",
+        "zqtz_rows": [_zqtz_asset()],
+        "tyw_rows": [_tyw_asset()],
+        "zqtz_full_rows": _all_zqtz(),
+        "tyw_full_rows": _all_tyw(),
+    }
+
+    assert build_modular_balance_workbook_payload(**kwargs) == (
+        build_balance_analysis_workbook_payload(**kwargs)
+    )
 
 
 def test_asset_scope_maturity_gap_exposes_liability_columns_not_zero():

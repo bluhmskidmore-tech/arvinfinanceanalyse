@@ -6,7 +6,7 @@ from backend.app.core_finance.pnl_bridge import build_pnl_bridge_rows
 
 
 def test_fx_translation_usd_bond_uses_rate_diff():
-    """USD 债券的 fx_translation = face_value * (current_rate - prior_rate)"""
+    """无市值字段时回退面值：fx_translation = face * (current_rate - prior_rate)。"""
     rows = build_pnl_bridge_rows(
         pnl_fi_rows=[
             {
@@ -39,6 +39,45 @@ def test_fx_translation_usd_bond_uses_rate_diff():
     )
 
     assert rows[0].fx_translation == Decimal("41.35")
+
+
+def test_fx_translation_prefers_dirty_market_value_over_face():
+    """有市值时用脏市值原币，不用面值（与 read_models.fx_effect / 脏市值桥一致）。"""
+    rows = build_pnl_bridge_rows(
+        pnl_fi_rows=[
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "USD-BOND-DIRTY",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "accounting_basis": "FVTPL",
+                "interest_income_514": "0",
+                "fair_value_change_516": "0",
+                "capital_gain_517": "0",
+                "manual_adjustment": "0",
+                "total_pnl": "0",
+                "currency_basis": "USD",
+            }
+        ],
+        balance_rows_current=[
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "USD-BOND-DIRTY",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "currency_basis": "USD",
+                "face_value_native": "1000",
+                "market_value_amount": "1100",
+                "accrued_interest_amount": "25",
+            }
+        ],
+        balance_rows_prior=[],
+        fx_rates_current={"USD": Decimal("7.0827")},
+        fx_rates_prior={"USD": Decimal("7.04135")},
+    )
+
+    # dirty = 1125; 1125 * (7.0827 - 7.04135) = 46.51875
+    assert rows[0].fx_translation == Decimal("46.51875000")
 
 
 def test_fx_translation_cny_bond_is_zero():
@@ -282,6 +321,7 @@ def test_fx_translation_integration_with_pnl_bridge():
     )
 
     row = rows[0]
-    assert row.fx_translation == Decimal("41.35")
-    assert row.explained_pnl == Decimal("61.35")
+    # dirty exposure = 100 + 2 = 102; 102 * (7.0827 - 7.04135) = 4.2177
+    assert row.fx_translation == Decimal("4.21770000")
+    assert row.explained_pnl == Decimal("24.21770000")
 

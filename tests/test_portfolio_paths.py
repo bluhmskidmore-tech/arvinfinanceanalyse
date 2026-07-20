@@ -12,7 +12,7 @@ from backend.app.core_finance.portfolio_paths import (
 )
 
 
-def test_load_position_price_paths_applies_adjustment_factors_and_marks_missing() -> None:
+def test_load_position_price_paths_forward_fills_missing_adjustment_factor() -> None:
     conn = duckdb.connect(":memory:")
     try:
         conn.execute(
@@ -69,10 +69,13 @@ def test_load_position_price_paths_applies_adjustment_factors_and_marks_missing(
 
     rows = paths[position_path_key("000001.SZ", "2026-06-01")]
     assert [row["trade_date"] for row in rows] == ["2026-06-01", "2026-06-02", "2026-06-03"]
-    assert {row["path_price_basis"] for row in rows} == {"raw_fallback_missing_adj_factor"}
+    assert {row["path_price_basis"] for row in rows} == {"adjusted"}
     assert rows[0]["adj_open"] == 10.0
     assert rows[1]["adj_close"] == 11.55
     assert rows[2]["adj_factor_missing"] is True
+    assert rows[2]["adj_factor_forward_filled"] is True
+    assert rows[2]["adj_factor"] == 1.1
+    assert rows[2]["adj_close"] == pytest.approx(11.44)
     assert calculate_path_horizon_exit(
         rows,
         horizon_days=2,
@@ -80,7 +83,49 @@ def test_load_position_price_paths_applies_adjustment_factors_and_marks_missing(
         buy_cost_rate=0.0,
         sell_cost_rate=0.0,
         slippage_rate=0.0,
-    )["return_net"] == pytest.approx(0.05)
+    )["return_net"] == pytest.approx(0.155)
+
+
+def test_load_position_price_paths_uses_raw_only_when_factor_cannot_be_filled() -> None:
+    conn = duckdb.connect(":memory:")
+    try:
+        conn.execute(
+            """
+            create table choice_stock_daily_observation (
+              trade_date varchar,
+              stock_code varchar,
+              open_value double,
+              high_value double,
+              low_value double,
+              close_value double,
+              volume double,
+              amount double,
+              tradestatus varchar,
+              highlimit double,
+              lowlimit double
+            )
+            """
+        )
+        conn.executemany(
+            "insert into choice_stock_daily_observation values (?, '000001.SZ', 10, 10.5, 9.8, ?, 1000, 10000, 'Trading', 11, 9)",
+            [
+                ("2026-06-01", 10.2),
+                ("2026-06-02", 10.5),
+            ],
+        )
+
+        paths = load_position_price_paths(
+            conn,
+            [{"stock_code": "000001.SZ", "entry_date": "2026-06-01"}],
+            max_horizon_days=2,
+        )
+    finally:
+        conn.close()
+
+    rows = paths[position_path_key("000001.SZ", "2026-06-01")]
+    assert {row["path_price_basis"] for row in rows} == {"raw_fallback_missing_adj_factor"}
+    assert all(row["adj_factor_missing"] is True for row in rows)
+    assert all(row["adj_factor_forward_filled"] is False for row in rows)
 
 
 def test_load_position_price_paths_keeps_delay_buffer_for_blocked_exits() -> None:

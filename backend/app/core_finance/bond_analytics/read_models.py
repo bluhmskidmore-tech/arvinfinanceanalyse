@@ -933,6 +933,13 @@ def _summary_total_for_excess_return(summary: dict[str, Any]) -> Decimal:
 
 
 def _allocation_sector_return(*, sector_summary: dict[str, Any], sector_market_value: Decimal) -> Decimal:
+    """Sector return (%) for Brinson allocation.
+
+    Includes carry / roll-down / rate / convexity / FX. Deliberately excludes
+    ``spread_effect`` because ``compute_benchmark_excess`` already extracts a
+    portfolio-level ``spread_effect`` term; putting spread into sector return
+    would double-count into allocation and force a cancelling selection plug.
+    """
     if sector_market_value == ZERO:
         return ZERO
     total_effect = (
@@ -940,6 +947,7 @@ def _allocation_sector_return(*, sector_summary: dict[str, Any], sector_market_v
         + safe_decimal(sector_summary.get("roll_down_total", sector_summary.get("roll_down")))
         + safe_decimal(sector_summary.get("rate_effect_total", sector_summary.get("rate_effect")))
         + safe_decimal(sector_summary.get("convexity_effect_total", sector_summary.get("convexity_effect")))
+        + safe_decimal(sector_summary.get("fx_effect_total", sector_summary.get("fx_effect")))
     )
     return (total_effect / sector_market_value) * Decimal("100")
 
