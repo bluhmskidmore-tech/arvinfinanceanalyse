@@ -1452,6 +1452,19 @@ def _build_risk_alerts_table(
     tyw_rows: list[FormalTywBalanceFactRow],
 ) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
+    valid_scopes = {"asset", "liability"}
+    missing_zqtz = [
+        row
+        for row in zqtz_rows
+        if row.position_scope in valid_scopes and row.maturity_date is None
+    ]
+    missing_tyw = [
+        row
+        for row in tyw_rows
+        if row.position_scope in valid_scopes and row.maturity_date is None
+    ]
+    missing_maturity_count = len(missing_zqtz) + len(missing_tyw)
+
     maturity_gap = _build_maturity_gap_table(report_date, zqtz_rows, tyw_rows)
     negative_gap_rows = [row for row in maturity_gap["rows"] if _maturity_full_scope_gap_value(row) < _ZERO]
     if negative_gap_rows:
@@ -1499,6 +1512,34 @@ def _build_risk_alerts_table(
                     "rule_version": "v1",
                 }
             )
+
+    if missing_maturity_count:
+        bond_asset_count = sum(row.position_scope == "asset" for row in missing_zqtz)
+        issuance_liability_count = sum(
+            row.position_scope == "liability" for row in missing_zqtz
+        )
+        interbank_asset_count = sum(row.position_scope == "asset" for row in missing_tyw)
+        interbank_liability_count = sum(
+            row.position_scope == "liability" for row in missing_tyw
+        )
+        rows.append(
+            {
+                "title": "到期日缺失口径披露",
+                "severity": "medium",
+                "reason": (
+                    f"截至 {report_date.isoformat()}，共有 {missing_maturity_count} 条正式事实行"
+                    "缺失 maturity_date："
+                    f"债券投资资产 {bond_asset_count}、发行类负债 {issuance_liability_count}、"
+                    f"同业资产 {interbank_asset_count}、同业负债 {interbank_liability_count}。"
+                    "现有数值口径保持不变：四类行在期限缺口中按 0 年处理；"
+                    "债券投资资产和同业资产同时按 0 年进入组合剩余期限 proxy；"
+                    "债券投资资产与发行类负债的加权期限及现金流、事件日历剔除缺失值。"
+                ),
+                "source_section": "maturity_gap",
+                "rule_id": "bal_wb_risk_maturity_missing_001",
+                "rule_version": "v1",
+            }
+        )
 
     return _section(
         "risk_alerts",

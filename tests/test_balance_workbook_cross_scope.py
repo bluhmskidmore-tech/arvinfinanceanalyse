@@ -3,6 +3,7 @@
 # 不得把负债/缺口/利差静默降级为 0。单口径表仍按用户 scope 过滤。
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 
@@ -16,6 +17,7 @@ from backend.app.core_finance.balance_analysis_workbook import (
 from backend.app.core_finance.balance_workbook import (
     build_balance_analysis_workbook_payload as build_modular_balance_workbook_payload,
 )
+from backend.app.schemas.balance_analysis import BalanceAnalysisRiskAlertRow
 
 RD = date(2026, 3, 31)
 MAT = date(2027, 3, 31)
@@ -220,6 +222,93 @@ def test_asset_scope_maturity_gap_exposes_liability_columns_not_zero():
     issuance_total = sum(Decimal(str(r["issuance_amount"])) for r in gap["rows"])
     assert liability_total == Decimal("5000")  # 50,000,000 元 -> 万元
     assert issuance_total == Decimal("4000")  # 40,000,000 元 -> 万元
+
+
+def test_missing_maturity_is_disclosed_without_changing_existing_table_semantics():
+    missing_zqtz = [
+        replace(_zqtz_asset(), maturity_date=None),
+        replace(_zqtz_issuance(), maturity_date=None),
+    ]
+    missing_tyw = [
+        replace(_tyw_asset(), maturity_date=None),
+        replace(_tyw_liability(), maturity_date=None),
+        replace(
+            _tyw_asset(),
+            position_id="T-UNMAPPED",
+            position_scope="all",
+            maturity_date=None,
+        ),
+    ]
+    payload = build_balance_analysis_workbook_payload(
+        report_date=RD,
+        position_scope="all",
+        currency_basis="native",
+        zqtz_rows=missing_zqtz,
+        tyw_rows=missing_tyw,
+    )
+
+    maturity_gap = _table(payload, "maturity_gap")
+    expired = next(row for row in maturity_gap["rows"] if row["bucket"] == "已到期/逾期")
+    assert expired["bond_assets_amount"] == Decimal("10000")
+    assert expired["issuance_amount"] == Decimal("4000")
+    assert expired["interbank_assets_amount"] == Decimal("3000")
+    assert expired["interbank_liabilities_amount"] == Decimal("5000")
+
+    duration_proxy = next(
+        row
+        for row in _table(payload, "regulatory_limits")["rows"]
+        if row["metric_key"] == "portfolio_modified_duration"
+    )
+    assert duration_proxy["current_value"] == Decimal("0")
+
+    bond_business_types = _table(payload, "bond_business_types")["rows"]
+    assert bond_business_types[0]["weighted_term_years"] is None
+    issuance_business_types = _table(payload, "issuance_business_types")["rows"]
+    assert issuance_business_types[0]["weighted_term_years"] is None
+
+    cashflow_calendar = _table(payload, "cashflow_calendar")
+    count_fields = (
+        "bond_maturity_count",
+        "interbank_asset_maturity_count",
+        "interbank_liability_maturity_count",
+        "issuance_maturity_count",
+    )
+    assert all(
+        sum(row[field] for row in cashflow_calendar["rows"]) == 0
+        for field in count_fields
+    )
+    assert _table(payload, "event_calendar")["rows"] == []
+
+    alerts = _table(payload, "risk_alerts")["rows"]
+    alert = alerts[-1]
+    BalanceAnalysisRiskAlertRow.model_validate(alert)
+    assert alert["rule_id"] == "bal_wb_risk_maturity_missing_001"
+    assert alert["severity"] == "medium"
+    assert alert["title"] == "到期日缺失口径披露"
+    assert "共有 4 条正式事实行缺失 maturity_date" in alert["reason"]
+    assert "债券投资资产 1" in alert["reason"]
+    assert "发行类负债 1" in alert["reason"]
+    assert "同业资产 1" in alert["reason"]
+    assert "同业负债 1" in alert["reason"]
+    assert "四类行在期限缺口中按 0 年处理" in alert["reason"]
+    assert "债券投资资产和同业资产同时按 0 年进入组合剩余期限 proxy" in alert["reason"]
+    assert "加权期限及现金流、事件日历剔除缺失值" in alert["reason"]
+
+
+def test_complete_maturity_dates_do_not_emit_missing_maturity_alert():
+    payload = build_balance_analysis_workbook_payload(
+        report_date=RD,
+        position_scope="all",
+        currency_basis="native",
+        zqtz_rows=_all_zqtz(),
+        tyw_rows=_all_tyw(),
+    )
+
+    alerts = _table(payload, "risk_alerts")["rows"]
+    assert all(
+        row["rule_id"] != "bal_wb_risk_maturity_missing_001"
+        for row in alerts
+    )
 
 
 def test_asset_scope_single_scope_liability_table_stays_scoped_empty():
