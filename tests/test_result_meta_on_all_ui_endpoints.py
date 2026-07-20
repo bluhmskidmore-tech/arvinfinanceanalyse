@@ -198,6 +198,17 @@ def _seed_balance_analysis_dates_contract_surface(tmp_path: Path) -> None:
     )
 
 
+def _seed_balance_movement_dates_contract_surface(tmp_path: Path) -> None:
+    """Create an empty DuckDB file so dates can open read-only without 503.
+
+    Production still fails closed when the database file is missing; this seed
+    only satisfies the contract surface's existence check.
+    """
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    conn.close()
+
+
 def _grant_balance_analysis_read_scope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     sqlite_path = tmp_path / "balance-analysis-read-scope.db"
     monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
@@ -341,6 +352,7 @@ def test_ui_get_json_envelopes_include_result_meta_and_result(path, params, tmp_
     if path == "/ui/pnl/product-category/dates":
         _grant_product_category_read_scope(tmp_path, monkeypatch)
     if path == "/ui/balance-movement-analysis/dates":
+        _seed_balance_movement_dates_contract_surface(tmp_path)
         _grant_balance_movement_read_scope(tmp_path, monkeypatch)
     if path == "/ui/market-data/livermore":
         _grant_livermore_read_scope(tmp_path, monkeypatch)
