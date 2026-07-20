@@ -322,18 +322,21 @@ def test_bond_analytics_krd_curve_risk_with_real_facts_formats_exact_risk_output
     assert result["krd_buckets"] == [
         {
             "tenor": "10Y",
+            "avg_modified_duration": "8.03613072",
             "krd": "8.03613072",
             "dv01": "0.12054196",
             "market_value_weight": "0.32634033",
         },
         {
             "tenor": "1Y",
+            "avg_modified_duration": "0.98231827",
             "krd": "0.98231827",
             "dv01": "0.00982318",
             "market_value_weight": "0.23076923",
         },
         {
             "tenor": "5Y",
+            "avg_modified_duration": "4.56936732",
             "krd": "4.56936732",
             "dv01": "0.09138735",
             "market_value_weight": "0.44289044",

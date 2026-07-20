@@ -15,6 +15,18 @@ from backend.app.core_finance.livermore_stock_candidates import (
 )
 
 
+def test_stock_candidate_valid_int_rejects_non_integral_values() -> None:
+    # sector_rank is an ordinal rank: integral values pass through, but a
+    # fractional value is invalid data and must not be silently truncated.
+    assert stock_module._valid_int(2) == 2
+    assert stock_module._valid_int(2.0) == 2
+    assert stock_module._valid_int("3") == 3
+    assert stock_module._valid_int(2.9) is None
+    assert stock_module._valid_int("2.9") is None
+    assert stock_module._valid_int(None) is None
+    assert stock_module._valid_int(float("nan")) is None
+
+
 def test_stock_candidate_float_series_reuses_finite_float_history() -> None:
     history = [10.0, 10.5, 11.0]
 

@@ -40,13 +40,31 @@ from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope,
     build_formal_result_meta,
 )
-from backend.app.tasks.accounting_asset_movement import (
-    JOB_NAME,
-    PENDING_SOURCE_VERSION,
-    RULE_VERSION,
-    CACHE_KEY,
-    refresh_accounting_asset_movement_window,
-)
+
+# 与 backend/app/tasks/accounting_asset_movement.py 保持一致的任务身份常量。
+# 只读导入路径不得触发 backend.app.tasks（dramatiq broker/actor 注册），
+# 因此不在模块级 import tasks；一致性由
+# tests/test_accounting_asset_movement_service.py 的常量对齐测试保障。
+RULE_VERSION = "rv_accounting_asset_movement_v2"
+CACHE_KEY = "accounting_asset_movement.monthly"
+JOB_NAME = "accounting_asset_movement_refresh"
+PENDING_SOURCE_VERSION = "sv_accounting_asset_movement_pending"
+
+
+class _RefreshAccountingAssetMovementWindowProxy:
+    """延迟代理 tasks actor：只读路径导入本模块时不得触发
+    backend.app.tasks（dramatiq broker/actor 注册）初始化。保留模块级
+    同名符号与 .send 接口，测试仍可 monkeypatch 本模块属性。"""
+
+    def send(self, **kwargs: object) -> object:
+        from backend.app.tasks.accounting_asset_movement import (
+            refresh_accounting_asset_movement_window as _actor,
+        )
+
+        return _actor.send(**kwargs)
+
+
+refresh_accounting_asset_movement_window = _RefreshAccountingAssetMovementWindowProxy()
 
 CACHE_VERSION = "cv_accounting_asset_movement_v1"
 CONTROL_ACCOUNTS = ["141%", "142%", "143%", "1440101%"]

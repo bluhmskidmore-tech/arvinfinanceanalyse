@@ -49,6 +49,9 @@ def to_decimal(x: Any) -> Decimal:
         _warn_to_decimal_zero_fallback("missing", x)
         return Decimal("0")
     if isinstance(x, Decimal):
+        if not x.is_finite():
+            _warn_to_decimal_zero_fallback("non_finite", x)
+            return Decimal("0")
         return x
     try:
         if isinstance(x, float) and (math.isnan(x) or math.isinf(x)):
@@ -57,10 +60,15 @@ def to_decimal(x: Any) -> Decimal:
     except (TypeError, ValueError, OverflowError):
         pass
     try:
-        return Decimal(str(x))
+        result = Decimal(str(x))
     except (TypeError, ValueError, ArithmeticError):
         _warn_to_decimal_zero_fallback("invalid", x)
         return Decimal("0")
+    if not result.is_finite():
+        # 例如字符串 "nan"/"inf" 能被 Decimal 构造成功但会静默传播。
+        _warn_to_decimal_zero_fallback("non_finite", x)
+        return Decimal("0")
+    return result
 
 
 def to_decimal_strict(x: Any) -> Decimal:
@@ -68,11 +76,16 @@ def to_decimal_strict(x: Any) -> Decimal:
     if x is None:
         raise TypeError("Cannot convert None to Decimal — use explicit default at call site")
     if isinstance(x, Decimal):
+        if not x.is_finite():
+            raise ValueError(f"Cannot convert non-finite Decimal {x} to Decimal")
         return x
     if isinstance(x, float):
         if math.isnan(x) or math.isinf(x):
             raise ValueError(f"Cannot convert {x} to Decimal")
-    return Decimal(str(x))
+    result = Decimal(str(x))
+    if not result.is_finite():
+        raise ValueError(f"Cannot convert {x!r} to a finite Decimal")
+    return result
 
 
 def fmt_yuan(amount_yuan: Decimal) -> str:

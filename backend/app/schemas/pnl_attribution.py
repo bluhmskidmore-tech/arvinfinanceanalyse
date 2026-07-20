@@ -464,7 +464,8 @@ class KRDAttributionBucket(BaseModel):
     weight: Numeric
     bond_count: int
     bucket_duration: Numeric
-    krd: Numeric
+    avg_modified_duration: Numeric | None = None
+    krd: Numeric  # deprecated alias of avg_modified_duration / bucket_duration
     yield_change: Numeric | None = None
     duration_contribution: Numeric
     contribution_pct: Numeric
@@ -474,6 +475,7 @@ class KRDAttributionBucket(BaseModel):
         "market_value": ("yuan", False),
         "weight": ("ratio", False),
         "bucket_duration": ("ratio", False),
+        "avg_modified_duration": ("ratio", True),
         "krd": ("ratio", True),
         "yield_change": ("pct", True),
         "duration_contribution": ("yuan", True),
@@ -483,6 +485,19 @@ class KRDAttributionBucket(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _coerce(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            data = dict(data)
+            avg_md = data.get("avg_modified_duration")
+            bucket_dur = data.get("bucket_duration")
+            legacy_krd = data.get("krd")
+            if avg_md is None and bucket_dur is not None:
+                data["avg_modified_duration"] = bucket_dur
+            elif avg_md is None and legacy_krd is not None:
+                data["avg_modified_duration"] = legacy_krd
+            if legacy_krd is None and data.get("avg_modified_duration") is not None:
+                data["krd"] = data["avg_modified_duration"]
+            if bucket_dur is None and data.get("avg_modified_duration") is not None:
+                data["bucket_duration"] = data["avg_modified_duration"]
         return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
 
 

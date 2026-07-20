@@ -231,6 +231,7 @@ def test_qdb_gl_ledger_self_check_placeholder_uses_reconciliation_helper():
             "ledger_value": 100.0,
             "diff": 0.0,
             "breached": False,
+            "missing_keys": [],
         },
         {
             "dimension": "total_liabilities",
@@ -238,6 +239,7 @@ def test_qdb_gl_ledger_self_check_placeholder_uses_reconciliation_helper():
             "ledger_value": 40.0,
             "diff": 0.0,
             "breached": False,
+            "missing_keys": [],
         },
         {
             "dimension": "net_assets",
@@ -245,6 +247,7 @@ def test_qdb_gl_ledger_self_check_placeholder_uses_reconciliation_helper():
             "ledger_value": 60.0,
             "diff": 0.0,
             "breached": False,
+            "missing_keys": [],
         },
     ]
 
@@ -1371,3 +1374,22 @@ def _balanced_ledger_row(
     debit = delta if delta >= 0 else 0
     credit = abs(delta) if delta < 0 else 0
     return (account_code, account_name, currency, opening_balance, debit, credit, ending_balance)
+
+
+def test_segment_sheets_supported_uses_open_ended_lower_bound():
+    """分部/收益类 sheet 的年份门槛是"2026-01 起"的下界，不是 startswith("2026")。
+
+    2026-07-19 审计 余额 M-8：原实现在 2027-01 起会让 7 张 sheet 静默消失。
+    """
+    module = load_module(
+        "backend.app.core_finance.qdb_gl_monthly_analysis",
+        "backend/app/core_finance/qdb_gl_monthly_analysis.py",
+    )
+
+    assert not module._segment_sheets_supported("202512")
+    assert module._segment_sheets_supported("202601")
+    assert module._segment_sheets_supported("202612")
+    # 关键回归：2027 及以后必须继续输出分部 sheet
+    assert module._segment_sheets_supported("202701")
+    assert module._segment_sheets_supported("203001")
+    assert not module._segment_sheets_supported("")

@@ -27,10 +27,30 @@ from backend.app.core_finance.strategy_policy import POLICY
 
 # v2: basket returns now prefer return_5d_adj over gross return_5d, matching
 # the formal engine's return priority (return_*_net_adj > return_*_adj > ...).
-CYCLE_PROXY_FORMULA_VERSION = "fv_livermore_cycle_proxy_backtest_adj_first_v2"
+# v3: per-basket net returns now use multiplicative cost netting
+# ((1+r)*(1-c)-1) via adjusted_returns.net_return_after_costs.
+CYCLE_PROXY_FORMULA_VERSION = "fv_livermore_cycle_proxy_backtest_adj_first_v3"
 # v2: portfolio proxy marks to market on adjustment-factor adjusted closes,
 # falling back to raw closes only when the adjusted price is missing.
 PORTFOLIO_PROXY_FORMULA_VERSION = "fv_livermore_candidate_history_portfolio_adj_mtm_v2"
+
+# MEDIUM-1 disclosure: both proxies fill entries at the same close that dates
+# the signal/snapshot, which is not replicable live. The executable convention
+# (next-open entry, limit-up open blocking) lives in
+# livermore_candidate_execution_history and is not used by these proxies yet.
+CYCLE_PROXY_ENTRY_PRICE_WARNING = (
+    "Basket entries are priced at the signal-day close (return_5d is measured from selection_close), "
+    "embedding a same-day execution assumption that is not replicable live, so returns may be "
+    "systematically optimistic; the executable convention is tracked in "
+    "livermore_candidate_execution_history (next-open entry with limit-up open blocking), "
+    "which this proxy does not yet use."
+)
+PORTFOLIO_PROXY_ENTRY_PRICE_WARNING = (
+    "Rebalance entries are priced at the snapshot-day close, embedding a same-day execution "
+    "assumption that is not replicable live, so returns may be systematically optimistic; the "
+    "executable convention is tracked in livermore_candidate_execution_history "
+    "(next-open entry with limit-up open blocking), which this proxy does not yet use."
+)
 
 CYCLE_PROXY_RETURN_FIELD = "return_5d_adj"
 CYCLE_PROXY_RETURN_FALLBACK_FIELD = "return_5d"

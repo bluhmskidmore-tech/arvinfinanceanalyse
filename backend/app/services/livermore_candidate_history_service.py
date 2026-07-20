@@ -7,11 +7,13 @@ from bisect import bisect_right
 from collections.abc import Callable
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import duckdb
 from backend.app.core_finance.candidate_history_proxy_backtest import (
+    CYCLE_PROXY_ENTRY_PRICE_WARNING,
     CYCLE_PROXY_FORMULA_VERSION,
+    PORTFOLIO_PROXY_ENTRY_PRICE_WARNING,
     PORTFOLIO_PROXY_FORMULA_VERSION,
     build_candidate_history_portfolio_series,
     build_candidate_history_portfolio_summary,
@@ -24,6 +26,10 @@ from backend.app.core_finance.matched_baseline import (
     MATCHED_BASELINE_TABLE,
     matched_baseline_stats_from_rows,
 )
+from backend.app.core_finance.field_normalization import (
+    TRADING_STATUS_SQL_IN_LIST,
+    is_trading_status,
+)
 from backend.app.core_finance.strategy_policy import POLICY
 from backend.app.services.formal_result_runtime import (
     FallbackMode,
@@ -31,7 +37,21 @@ from backend.app.services.formal_result_runtime import (
     VendorStatus,
     build_result_envelope,
 )
-from backend.app.tasks.choice_stock_materialize import load_choice_stock_materialization_coverage
+
+if TYPE_CHECKING:
+    from backend.app.tasks.choice_stock_materialize import ChoiceStockMaterializationCoverage
+
+
+def load_choice_stock_materialization_coverage(**kwargs: Any) -> ChoiceStockMaterializationCoverage:
+    """延迟导入 tasks 层的覆盖度读取：只读路径导入本模块时不得触发
+    backend.app.tasks（dramatiq broker/actor 注册）初始化。保留模块级
+    同名符号，测试仍可 monkeypatch 本模块属性。"""
+    from backend.app.tasks.choice_stock_materialize import (
+        load_choice_stock_materialization_coverage as _load_coverage,
+    )
+
+    return _load_coverage(**kwargs)
+
 
 EMPTY_SOURCE_VERSION = "sv_livermore_candidate_history_empty"
 EMPTY_VENDOR_VERSION = "vv_none"
@@ -1409,7 +1429,7 @@ def _load_forward_maturity_observations(
     has_trade_status = "tradestatus" in columns
     status_select = "tradestatus" if has_trade_status else "null as tradestatus"
     valid_status_sql = (
-        "and lower(trim(cast(tradestatus as varchar))) in ('trading', '交易', '正常交易')"
+        f"and lower(trim(cast(tradestatus as varchar))) in {TRADING_STATUS_SQL_IN_LIST}"
         if has_trade_status
         else ""
     )
@@ -1706,18 +1726,18 @@ def _all_filtered_forward_maturity_summary(
         else "cast(null as varchar)"
     )
     scoped_valid_status_sql = (
-        "lower(trim(coalesce(o.trade_status, ''))) in ('trading', '交易', '正常交易')"
+        f"lower(trim(coalesce(o.trade_status, ''))) in {TRADING_STATUS_SQL_IN_LIST}"
         if has_trade_status
         else "true"
     )
     market_status_sql = (
-        "and lower(trim(coalesce(trade_status, ''))) in ('trading', '交易', '正常交易')"
+        f"and lower(trim(coalesce(trade_status, ''))) in {TRADING_STATUS_SQL_IN_LIST}"
         if has_trade_status
         else ""
     )
     explicit_halt_sql = (
         "trim(coalesce(o.trade_status, '')) <> '' "
-        "and lower(trim(o.trade_status)) not in ('trading', '交易', '正常交易')"
+        f"and lower(trim(o.trade_status)) not in {TRADING_STATUS_SQL_IN_LIST}"
         if has_trade_status
         else "false"
     )
@@ -2014,7 +2034,7 @@ def _maturity_positive_float(value: Any) -> float | None:
 
 
 def _maturity_is_trading_status(value: str) -> bool:
-    return value.strip().casefold() in {"trading", "交易", "正常交易"}
+    return is_trading_status(value)
 
 
 def _resolve_replay_trade_dates(
@@ -2730,6 +2750,7 @@ def _build_cycle_proxy_backtest_payload(
             "This is a reduced proxy backtest, not the full A-share cycle-rotation strategy.",
             "It uses daily candidate rows already persisted by the existing Livermore replay pipeline.",
             "Basket returns are net of the formal transaction-cost constants (buy/sell fees plus two-way slippage) applied to the dividend-adjusted return_5d_adj (gross return_5d fallback) on the read side.",
+            CYCLE_PROXY_ENTRY_PRICE_WARNING,
             "Proxy evidence only: cost and return conventions are aligned with the formal engine constants, but results are not produced by the formal path backtest engine.",
             "Full benchmark attribution and the report's monthly core cadence are still not modeled here.",
         ],
@@ -2772,6 +2793,7 @@ def _build_candidate_history_portfolio_backtest_payload(
         "warnings": [
             "This is a candidate-history portfolio proxy, not the full A-share cycle-rotation strategy.",
             "It uses first-available monthly stock_candidate snapshots, equal-weight top-6 replay rows, daily adjusted-close mark-to-market with raw-close fallback, and fixed transaction-cost assumptions.",
+            PORTFOLIO_PROXY_ENTRY_PRICE_WARNING,
             "Proxy evidence only: transaction costs (buy/sell fees plus per-side slippage) are aligned with the formal engine constants, but results are not produced by the formal path backtest engine.",
             "It still lacks the report's macro, industry-cycle, fund-flow, valuation-history, and earnings-revision inputs.",
             *[

@@ -227,6 +227,24 @@ def test_report_date_threads_through_num_days():
     assert abs(result_5d["carry_return"]) > abs(result_1d["carry_return"])
 
 
+def test_carry_day_count_is_exclusive_of_start_date():
+    """M-5 冻结：carry 天数口径为 (report_date - prev_date).days，不含头含尾。
+
+    2026-03-01 -> 2026-03-31 为 30 天（不是 31 天）。
+    """
+    result = compute_daily_attribution_row(
+        POSITION_FVTPL,
+        MARKET_START,
+        MARKET_END,
+        date(2026, 3, 1),
+        date(2026, 3, 31),
+        total_pnl=0.0,
+    )
+
+    expected = POSITION_FVTPL["coupon_rate_start"] * POSITION_FVTPL["face_value_start"] * 30 / 365
+    assert result["carry_return"] == pytest.approx(expected, rel=1e-9)
+
+
 def test_same_prev_and_report_date_uses_one_day():
     """Verify same-day window defaults to 1 day (no division by zero)."""
     result = compute_daily_attribution_row(

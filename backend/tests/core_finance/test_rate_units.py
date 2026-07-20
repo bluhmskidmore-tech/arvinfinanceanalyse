@@ -1,8 +1,61 @@
-"""Tests for rate_units.normalize_annual_rate_to_decimal."""
+"""Tests for rate_units.normalize_annual_rate_to_decimal / normalize_percent_rate_to_decimal."""
 import pytest
-from backend.app.core_finance.rate_units import normalize_annual_rate_to_decimal
+from backend.app.core_finance.rate_units import (
+    normalize_annual_rate_to_decimal,
+    normalize_percent_rate_to_decimal,
+)
 
 pytestmark = pytest.mark.unit
+
+
+class TestNormalizePercentRateToDecimal:
+    """百分数口径字段（zqtz 快照/余额事实的 coupon_rate、ytm_value）的显式归一。
+
+    2026-07-19 取证（docs/audits/2026-07-19-system-calculation-audit.md）：
+    落库单位为百分数（1.82 = 1.82%），[0.2, 2) 灰区约 39 万行不允许用
+    >2 启发式静默放行。
+    """
+
+    def test_gray_zone_low_coupon_divided(self):
+        """灰区核心回归：1.82（=1.82%）必须除以 100，不得当作小数 182%"""
+        assert normalize_percent_rate_to_decimal(1.82) == pytest.approx(0.0182)
+
+    def test_typical_percent_divided(self):
+        assert normalize_percent_rate_to_decimal(2.38) == pytest.approx(0.0238)
+        assert normalize_percent_rate_to_decimal(3.5) == pytest.approx(0.035)
+
+    def test_sub_gray_zone_low_yield_divided(self):
+        """百分数口径下 0.09 = 0.09%，同样除以 100"""
+        assert normalize_percent_rate_to_decimal(0.09) == pytest.approx(0.0009)
+
+    def test_dirty_data_above_20_percent_returns_none(self):
+        """债券年利率超过 20% 视为脏数据（取证发现 ytm 最大值 20720.93）"""
+        assert normalize_percent_rate_to_decimal(20.01) is None
+        assert normalize_percent_rate_to_decimal(20720.9302) is None
+
+    def test_boundary_exactly_20_percent_kept(self):
+        assert normalize_percent_rate_to_decimal(20.0) == pytest.approx(0.20)
+
+    def test_negative_returns_none(self):
+        assert normalize_percent_rate_to_decimal(-0.75) is None
+
+    def test_none_and_invalid_return_none(self):
+        assert normalize_percent_rate_to_decimal(None) is None
+        assert normalize_percent_rate_to_decimal("abc") is None
+        assert normalize_percent_rate_to_decimal(float("nan")) is None
+        assert normalize_percent_rate_to_decimal(float("inf")) is None
+
+    def test_zero_returns_zero(self):
+        assert normalize_percent_rate_to_decimal(0) == pytest.approx(0.0)
+
+    def test_string_percent_input(self):
+        assert normalize_percent_rate_to_decimal("1.61") == pytest.approx(0.0161)
+
+    def test_dirty_data_warning_logged(self, caplog):
+        import logging
+        with caplog.at_level(logging.WARNING):
+            normalize_percent_rate_to_decimal(25.0)
+        assert "25.0" in caplog.text
 
 
 class TestNormalizeAnnualRateToDecimal:

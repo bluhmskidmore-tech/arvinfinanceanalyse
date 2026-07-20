@@ -11,7 +11,9 @@ from backend.app.repositories.duckdb_migrations import (
 )
 from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
 from backend.app.repositories.task_write_guard import require_repository_task_write_scope
-from backend.app.tasks.bond_analytics_materialize import CACHE_KEY as BOND_ANALYTICS_CACHE_KEY
+
+# 与 bond_analytics_materialize.CACHE_KEY 对齐；只读路径不得 import tasks。
+BOND_ANALYTICS_CACHE_KEY = "bond_analytics:materialize:formal"
 
 FACT_TABLE = "fact_formal_risk_tensor_daily"
 

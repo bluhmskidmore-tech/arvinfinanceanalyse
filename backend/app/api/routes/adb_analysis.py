@@ -8,12 +8,25 @@ from typing import Annotated
 
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services import adb_analysis_service
-from backend.app.tasks.balance_analysis_materialize import materialize_balance_analysis_facts
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/analysis", tags=["analysis-adb"])
+
+
+class _MaterializeBalanceAnalysisFactsProxy:
+    """延迟代理：路由包冷启动不得触发 tasks broker/actor 注册。"""
+
+    def send(self, **kwargs: object) -> object:
+        from backend.app.tasks.balance_analysis_materialize import (
+            materialize_balance_analysis_facts as _actor,
+        )
+
+        return _actor.send(**kwargs)
+
+
+materialize_balance_analysis_facts = _MaterializeBalanceAnalysisFactsProxy()
 
 
 def _parse_opt_date(s: str | None) -> date | None:

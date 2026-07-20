@@ -308,6 +308,43 @@ class TestFourEffectsSumToTotal:
         )
         self._assert_sum(result, 10_000_000.0)
 
+    def test_cross_coupon_window_includes_coupon_cash_in_total_return(self):
+        """跨付息日：全价变动须加回期内实付票息，否则选券效应被系统性打负。"""
+        face = 10_000_000.0
+        num_days = 30
+        bond = _make_bond(
+            coupon_rate=0.03,
+            face_value=face,
+            market_value_start=face,
+            market_value_end=face,
+            ytm=0.03,
+            maturity_date=date(2031, 1, 1),
+            # 付息前应计接近票息，付息后重置为小额 → 全价变动 alone 少计票息现金
+            accrued_interest_start=140_000.0,
+            accrued_interest_end=10_000.0,
+        )
+        result = compute_bond_four_effects(
+            bond,
+            num_days,
+            Decimal("0"),
+            Decimal("0"),
+            date(2026, 1, 15),
+        )
+        income = float(result["income_return"])
+        dirty_only = (face + 10_000.0) - (face + 140_000.0)
+        assert dirty_only < 0
+        # total_return ≈ 净价变动(0) + 票息收入估算
+        assert float(result["total_return"]) == pytest.approx(income, rel=1e-6)
+        # 旧口径只用全价变动时，选券 ≈ dirty_only - income ≪ 0
+        assert float(result["selection_effect"]) == pytest.approx(
+            float(result["total_return"])
+            - income
+            - float(result["treasury_effect"])
+            - float(result["spread_effect"]),
+            abs=1e-6,
+        )
+        assert float(result["selection_effect"]) > dirty_only - income + 1.0
+
     def test_yield_rise_scenario(self):
         """Rising yield environment."""
         bond = _make_bond(

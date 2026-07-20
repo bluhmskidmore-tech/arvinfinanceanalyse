@@ -695,6 +695,50 @@ class TestFullCampisiAttribution:
         assert abs(sum_effects - result.totals["total_return"]) < 1.0
 
 
+class TestCarryDayCountConvention:
+    """M-5 冻结：carry 天数口径为 (end_date - start_date).days，不含头含尾。
+
+    2026-01-01 -> 2026-01-31 为 30 天（不是 31 天）；income_return 按 30/365 计提。
+    """
+
+    _POSITION = {
+        "bond_code": "DAYCOUNT.IB",
+        "instrument_id": "DAYCOUNT.IB",
+        "market_value_start": 10_000_000.0,
+        "market_value_end": 10_000_000.0,
+        "face_value_start": 10_000_000.0,
+        "coupon_rate_start": 0.03,
+        "yield_to_maturity_start": 0.03,
+        "asset_class_start": "AAA企业债",
+        "maturity_date_start": date(2028, 12, 31),
+    }
+
+    def test_num_days_is_exclusive_of_start_date(self):
+        result = campisi_attribution(
+            [self._POSITION], None, None, date(2026, 1, 1), date(2026, 1, 31)
+        )
+        assert result.num_days == 30
+
+    def test_income_return_uses_exclusive_day_count(self):
+        result = campisi_attribution(
+            [self._POSITION], None, None, date(2026, 1, 1), date(2026, 1, 31)
+        )
+        expected = 0.03 * 10_000_000.0 * 30 / 365
+        assert result.totals["income_return"] == pytest.approx(expected, rel=1e-9)
+
+    def test_enhanced_uses_same_day_count(self):
+        result = campisi_enhanced(
+            [self._POSITION], None, None, date(2026, 1, 1), date(2026, 1, 31)
+        )
+        assert result["num_days"] == 30
+
+    def test_same_day_window_floors_to_one_day(self):
+        result = campisi_attribution(
+            [self._POSITION], None, None, date(2026, 1, 31), date(2026, 1, 31)
+        )
+        assert result.num_days == 1
+
+
 class TestLargePortfolioAggregationPrecision:
     """Regression guard for the by_bond -> totals aggregation precision fix.
 

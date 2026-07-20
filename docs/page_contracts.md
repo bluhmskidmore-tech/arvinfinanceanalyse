@@ -2198,41 +2198,65 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 - Primary front-end route: `/risk-overview`
 - Status: `active module home`
 - Primary frontend files:
-  - `frontend/src/features/workbench/module-home/ModuleWorkbenchHomePage.tsx`
-  - `frontend/src/features/workbench/module-home/moduleHomeModel.ts`
+  - `frontend/src/features/workbench/module-home/RiskOverviewPage.tsx`
+  - `frontend/src/features/workbench/module-home/riskHomeAdapter.ts`
+  - `frontend/src/features/workbench/module-home/riskOverview.module.css`
 - Primary downstream pages:
   - `/risk-tensor`
   - `/concentration-monitor`
   - `/cashflow-projection`
+  - `/bond-analysis`
 
 ### B. Primary business question
 
 - The page answers: which risk-tensor, concentration, or cashflow area needs the next review?
 - It is a risk module home and must not replace `PAGE-RISK-001` formal risk tensor truth.
 - It must not estimate regulatory DV01, liquidity pressure, or concentration limits in the frontend.
+- OCI/TPL bond analytics are system bond-analysis evidence only. They must not be labelled as Risk Tensor formal metrics or used to fill a missing regulatory DV01.
+- The OCI/TPL block must not imply that its fields or TPL scope are equivalent to the supplied 2026-06-30 manual market-risk report.
 
 ### C. Data chain
 
-- The module home loads risk tensor dates, selected risk tensor payload, and cashflow projection payload through the shared API client.
+- The page loads risk tensor dates, selected risk tensor payload, risk history, cashflow projection, and yield-curve payloads through the shared API client.
 - `buildModuleHomeView(... kind="risk")` maps returned tensor and cashflow fields into KPI cards, detail panels, and drilldown status.
 - Concentration remains a downstream drilldown status unless its route supplies explicit data to this module home.
+- `riskHomeAdapter.ts` maps returned payloads into the decision, KPI, evidence, and drilldown views without recomputing business metrics.
+- The bond evidence chain is `/api/bond-analytics/dates` -> exact month-end selection -> current and historical `/api/bond-analytics/dv01-risk` snapshots -> `riskHomeAdapter.ts` -> OCI/TPL cards.
+- The current bond evidence reads `/api/bond-analytics/dv01-risk` twice with `accounting_class="OCI"|"TPL"`, `top_n=1`, and `shock_bps=1`. Each direct response retains its own `result_meta`, `report_date`, `accounting_class`, `position_count`, values, and warnings.
+- Historical reads use the same direct endpoint and the exact month-end dates returned by the dates endpoint. They provide prior-month, prior-year, and six-month DV01 snapshot comparisons without replacing the current response.
+- OCI and TPL requests are independent: failure or invalid governance metadata on one side must not suppress a valid result on the other side.
+- A failed historical point or one failed accounting class must not suppress the current values, the remaining valid points, or the other accounting class.
+- TPL is the endpoint's complete TPL accounting-class scope. This block does not split it into trading-book bonds, banking-book bonds, funds, or other sub-portfolios.
+- The supplied 2026-06-30 manual report uses a different TPL scope: trading-book bonds, banking-book bonds, and market-value funds. The current formal source has no governed market-value-fund list or fund look-through duration/DV01, so the page must block direct comparison rather than substitute the complete TPL total.
 
 ### D. Units, dates, and status
 
 - DV01/CS01 values must preserve the backend risk tensor field semantics and visible units.
-- Report date comes from risk tensor date/result payload; cashflow may carry its own report date.
-- Empty state: no tensor date, no tensor payload, or no cashflow payload must remain visible.
-- Failure state: risk query failures must show warning/error status and must not be replaced with frontend estimates.
-- Stale/fallback state: degraded tensor inputs, maturity gaps, fallback dates, and quality flags must remain visible.
+- Bond face value and fair value excluding accrued interest are displayed in `亿元`; bond DV01 is displayed in `万元/bp`; face-weighted modified duration is displayed in `年`. These are presentation-unit conversions of returned values, not finance recalculation.
+- The card labels must identify face value as the DV01 base, market value as fair value excluding accrued interest, and DV01 as the formal face-value-basis measure. The current payload does not expose carrying amount, accrued interest, or dirty fair value.
+- For the supplied 2026-06-30 reference only, the manual values numerically reconcile as “账面金额” = fair value excluding accrued interest + accrued interest and “市值” = formal face value. This numerical reconciliation is not permission to rename formal API fields or treat the manual column names as a governed definition.
+- Both OCI and TPL cards remain in review state for the manual-report comparison boundary. OCI must disclose the column-definition mismatch; TPL must disclose the missing book split and market-value-fund source.
+- The current date admitted to the comparison set must be an exact month-end present in `/api/bond-analytics/dates`. Daily dates and non-month-end dates must not enter the comparison set.
+- Month-on-month means the exact previous natural month-end; year-on-year means the exact same-month month-end one calendar year earlier. If either exact base date is absent, that comparison is unavailable; the frontend must not substitute a nearby date.
+- The DV01 trend uses at most the latest six exact month-ends ending at the current date. A missing or failed point remains a visible gap while the other valid points remain visible; contiguous valid points may form separate segments, but no path may cross the gap and the entire trend must not be suppressed.
+- For total face value, fair value excluding accrued interest, face-weighted modified duration, total DV01, and position count, displayed differences and applicable percentages are system-scope snapshot comparisons only. They are not a manual-report comparison, formal roll-forward, PnL attribution, or risk movement attribution.
+- Each displayed difference is current snapshot minus the exact base snapshot. Where a percentage is defined, it is the signed difference `(current - base) / |base|`; a zero base leaves the percentage unavailable. Modified duration keeps the signed year difference and does not manufacture a percentage interpretation.
+- The risk-tensor report date comes from its date/result payload. Cashflow and each OCI/TPL bond payload retain independent report dates; a date mismatch must be visible and must not be silently aligned in the frontend.
+- Empty state: no tensor date, no tensor/cashflow payload, or `position_count=0` for a bond accounting class must remain visible as no data rather than zero exposure.
+- Failure state: risk query failures and each OCI/TPL request failure must show their own warning/error status and must not be replaced with frontend estimates.
+- Stale/fallback state: degraded tensor inputs, maturity gaps, fallback dates, bond warnings, `quality_flag`, `fallback_mode`, and formal-use restrictions must remain visible. Bond values are blocked when their returned governance metadata does not permit use.
+- An explicitly declared current-card fallback may remain visible only in `review` state, with the actual `fallback_date` and fallback notice shown. The requested current month-end is never silently relabelled or substituted.
+- A fallback current or historical snapshot must not participate in exact-month month-on-month, year-on-year, or trend comparisons. The affected base or trend slot remains unavailable even when the fallback value is visible on the current card.
 
 ### E. Metric bindings
 
 - None. This module home has no standalone `MTR-*` binding.
 - Formal risk metrics remain bound to `PAGE-RISK-001`.
+- System-scope bond month-on-month, year-on-year, and trend comparisons do not create a new `MTR-*` binding.
 
 ### F. Tests
 
-- Frontend: `frontend/src/test/ModuleWorkbenchHomeModel.test.ts`, `frontend/src/test/RouteRegistry.test.tsx`.
+- Frontend: `frontend/src/features/workbench/module-home/riskHomeAdapter.test.ts`, `frontend/src/test/ModuleWorkbenchHomePage.test.tsx`, `frontend/src/test/RouteRegistry.test.tsx`.
 - Contract gate: `tests/test_live_route_page_contract_completeness.py`.
 
 ## 14.8 PAGE-PERFORMANCE-HOME-001 Performance Workbench Home

@@ -18,7 +18,8 @@ from backend.app.core_finance.balance_calibration import (
     balance_calibration_meta_to_dict,
     build_calibration_meta,
 )
-from backend.app.core_finance.module_registry import get_formal_module_by_fact_table
+from backend.app.core_finance.module_contracts import FormalComputeModuleDescriptor
+from backend.app.core_finance.module_registry import ensure_formal_module
 from backend.app.governance.formal_compute_lineage import (
     resolve_completed_formal_build_lineage,
     resolve_formal_manifest_lineage,
@@ -62,13 +63,43 @@ from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope_from_lineage,
 )
 from backend.app.services.runtime_cache import get_runtime_cache
-from backend.app.tasks.balance_analysis_materialize import (
-    materialize_balance_analysis_facts,
-)
+
+
+class _MaterializeBalanceAnalysisFactsProxy:
+    """延迟代理 tasks actor：只读导入本模块时不得触发 broker/actor 注册。"""
+
+    def send(self, **kwargs: object) -> object:
+        from backend.app.tasks.balance_analysis_materialize import (
+            materialize_balance_analysis_facts as _actor,
+        )
+
+        return _actor.send(**kwargs)
+
+
+materialize_balance_analysis_facts = _MaterializeBalanceAnalysisFactsProxy()
 
 BALANCE_ANALYSIS_PRIMARY_FACT_TABLE = "fact_formal_zqtz_balance_daily"
-BALANCE_ANALYSIS_MODULE = get_formal_module_by_fact_table(BALANCE_ANALYSIS_PRIMARY_FACT_TABLE)
 BALANCE_ANALYSIS_SECONDARY_FACT_TABLE = "fact_formal_tyw_balance_daily"
+# Align with tasks/balance_analysis_materialize without importing tasks at module level.
+BALANCE_ANALYSIS_MODULE = ensure_formal_module(
+    FormalComputeModuleDescriptor(
+        module_name="balance_analysis",
+        basis="formal",
+        input_sources=(
+            "zqtz_bond_daily_snapshot",
+            "tyw_interbank_daily_snapshot",
+            "fx_daily_mid",
+        ),
+        fact_tables=(
+            BALANCE_ANALYSIS_PRIMARY_FACT_TABLE,
+            BALANCE_ANALYSIS_SECONDARY_FACT_TABLE,
+        ),
+        rule_version="rv_balance_analysis_formal_materialize_v1",
+        result_kind_family="balance-analysis",
+        supports_standard_queries=True,
+        supports_custom_queries=True,
+    )
+)
 if BALANCE_ANALYSIS_SECONDARY_FACT_TABLE not in BALANCE_ANALYSIS_MODULE.fact_tables:
     raise RuntimeError(
         "Balance-analysis module registration mismatch: expected secondary fact table "

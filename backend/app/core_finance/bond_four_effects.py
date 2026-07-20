@@ -66,7 +66,9 @@ def compute_bond_four_effects(
 
     total_return 计算口径（标准 Campisi 全价基准）：
       若 bond 提供 accrued_interest_start / accrued_interest_end（应计利息），
-      则 total_return = (mv_end + ai_end) - (mv_start + ai_start)，即全价变动。
+      则 total_return = 全价变动 + 期内实付票息估算。
+      实付票息 ≈ income_return - (ai_end - ai_start)，以覆盖跨付息日 AI 重置；
+      无付息窗口时该项≈0，退化为全价变动。
       否则退化为 total_price_change + income_return（净价变动 + 票息估算），
       此时 selection_effect 会系统性吸收面值/市值差异（折溢价债券误差约 5-10%）。
     """
@@ -140,9 +142,12 @@ def compute_bond_four_effects(
     spread_effect = -mod_dur * spread_change * mv_start
 
     total_price_change = mv_end - mv_start
-    # 全价基准（标准 Campisi）：若有应计利息则用全价变动，否则退化为净价+票息估算
+    # 全价基准（标准 Campisi）：全价变动不含期内实付票息，跨付息日必须加回。
+    # coupon_cash ≈ income_return - ΔAI；无付息时 ΔAI≈income，coupon_cash≈0。
     if has_accrued:
-        total_return = (mv_end + ai_end) - (mv_start + ai_start)
+        dirty_change = (mv_end + ai_end) - (mv_start + ai_start)
+        coupon_cash = income_return - (ai_end - ai_start)
+        total_return = dirty_change + coupon_cash
     else:
         total_return = total_price_change + income_return
     selection_effect = total_return - income_return - treasury_effect - spread_effect

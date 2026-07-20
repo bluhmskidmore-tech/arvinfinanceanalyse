@@ -674,7 +674,7 @@ def test_pnl_by_business_analysis_prefers_precomputed_payload(monkeypatch, tmp_p
     )
 
     assert payload["result_meta"]["result_kind"] == "pnl.by_business_analysis"
-    assert payload["result"] == cached_payload
+    assert payload["result"] == {**cached_payload, "merged_bucket_rows": []}
 
 
 def test_pnl_by_business_ytd_prefers_precomputed_payload(monkeypatch, tmp_path):
@@ -2209,6 +2209,7 @@ def test_pnl_overview_service_consumes_pnl_vs_ledger_reconciliation_check():
         "ledger_pnl_total": 12.0,
         "diff": 0.0,
         "breached": False,
+        "missing_keys": [],
     }
 
 
@@ -2260,6 +2261,66 @@ def test_pnl_by_business_traces_formal_fi_to_zqtz_business_type_primary(tmp_path
     assert result["summary"]["total_pnl"] == "125.50"
     assert result["summary"]["traced_pnl_row_count"] == 3
     assert result["summary"]["untraced_pnl_row_count"] == 1
+    get_settings.cache_clear()
+
+
+def test_pnl_by_business_summary_column_totals_match_detail_rows(tmp_path, monkeypatch):
+    """summary 的 514/516/517 分列合计必须与同一批明细行逐列求和一致（同源，无独立口径）。"""
+    _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_pnl_by_business_rows(duckdb_path)
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        # 514/516/517 归并边界样例：负的 516、非零手工调整，且该行未被余额追溯。
+        conn.execute(
+            """
+            insert into fact_formal_pnl_fi (
+              report_date, instrument_code, portfolio_name, cost_center,
+              invest_type_std, accounting_basis, currency_basis,
+              interest_income_514, fair_value_change_516, capital_gain_517,
+              manual_adjustment, total_pnl, source_version, rule_version,
+              ingest_batch_id, trace_id
+            ) values (
+              '2025-12-31', 'MERGE-EDGE.IB', 'FI Desk', 'CC998', 'A', 'FVTPL', 'CNY',
+              6.00, -9.25, 0.50, 1.75, -1.00,
+              'fi-merge-edge-v1', 'rv_pnl_phase2_materialize_v1', 'ib-merge-edge', 'trace-fi-merge-edge'
+            )
+            """
+        )
+    finally:
+        conn.close()
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/by-business", params={"report_date": "2025-12-31"})
+
+    assert response.status_code == 200
+    result = response.json()["result"]
+    rows = result["rows"]
+    summary = result["summary"]
+    assert len(rows) >= 2
+    for summary_field, row_field in [
+        ("interest_income_514", "interest_income_514"),
+        ("fair_value_change_516", "fair_value_change_516"),
+        ("capital_gain_517", "capital_gain_517"),
+        ("manual_adjustment", "manual_adjustment"),
+        ("total_pnl", "total_pnl"),
+        ("total_scale_amount", "scale_amount"),
+    ]:
+        assert Decimal(summary[summary_field]) == sum(
+            (Decimal(row[row_field]) for row in rows), Decimal("0")
+        ), summary_field
+    assert summary["pnl_row_count"] == sum(row["pnl_row_count"] for row in rows)
+    # 分列合计求和后应回收敛到 total_pnl（514 + 516 + 517 + 手工调整 = 合计损益）。
+    assert Decimal(summary["total_pnl"]) == (
+        Decimal(summary["interest_income_514"])
+        + Decimal(summary["fair_value_change_516"])
+        + Decimal(summary["capital_gain_517"])
+        + Decimal(summary["manual_adjustment"])
+    )
+    # 边界样例行确实进入了明细与合计（负 516 / 非零手工调整未被吞掉）。
+    assert any(Decimal(row["fair_value_change_516"]) < 0 for row in rows)
+    assert any(Decimal(row["manual_adjustment"]) != 0 for row in rows)
     get_settings.cache_clear()
 
 
@@ -5266,6 +5327,17 @@ def test_pnl_by_business_analysis_bond_bucket_and_ftp_contract(tmp_path, monkeyp
     assert by_label["利率债"]["ftp_cost"] == "1.49"
     assert by_label["利率债"]["ftp_net_pnl"] == "98.51"
     assert by_label["利率债"]["ftp_net_annualized_yield_pct"] == "115.991935"
+
+    merged_rows = result["merged_bucket_rows"]
+    assert [(row["dimension_key"], row["dimension_label"]) for row in merged_rows] == [("other_merged", "其他")]
+    merged = merged_rows[0]
+    assert merged["total_pnl"] == "180.00"
+    assert merged["avg_balance"] == "15000.00"
+    # Backend口径: (180 / 15000) * 365/31 * 100, not a per-row yield weighting.
+    assert merged["annualized_yield_pct"] == "14.129032"
+    assert merged["ftp_cost"] == "22.29"
+    assert merged["ftp_net_pnl"] == "157.71"
+    assert merged["ftp_net_annualized_yield_pct"] == "12.379032"
 
     trend_response = client.get(
         "/api/pnl/by-business-analysis",

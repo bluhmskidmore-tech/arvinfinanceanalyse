@@ -5,11 +5,23 @@ from typing import Any
 
 import duckdb
 
+from backend.app.agent.runtime.research_workflow_catalog import get_research_workflow
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.services.research_radar_compare import build_choice_news_compare_payload
 
-RULE_VERSION = "rv_research_radar_v1"
-CACHE_VERSION = "cv_research_radar_v1"
+# rule/cache 版本以 research_workflow_catalog 为单一事实来源，避免 handler 与 catalog 漂移。
+_CATALOG_WORKFLOW = get_research_workflow("research_radar_brief")
+RULE_VERSION = _CATALOG_WORKFLOW.rule_version if _CATALOG_WORKFLOW else "rv_research_radar_v1"
+CACHE_VERSION = _CATALOG_WORKFLOW.cache_version if _CATALOG_WORKFLOW else "cv_research_radar_v1"
+
+_CHOICE_NEWS_EVENTS_SQL = """
+            select event_key, received_at, group_id, content_type, serial_id, request_id, error_code,
+                   error_msg, topic_code, item_index, payload_text, payload_json
+            from choice_news_event
+            where coalesce(error_code, 0) = 0
+            order by received_at desc, topic_code asc, item_index asc
+            limit ?
+            """
 
 
 def research_radar_brief_payload(
@@ -34,6 +46,7 @@ def research_radar_brief_payload(
         "tables_used": ["choice_news_event"],
         "filters_applied": {"limit": limit},
         "row_count": len(events),
+        "sql_executed": [_CHOICE_NEWS_EVENTS_SQL],
         "quality_flag": "warning",
         "basis": "analytical",
         "formal_use_allowed": False,
@@ -76,14 +89,7 @@ def _load_choice_news_events(duckdb_path: str, *, limit: int) -> list[dict[str, 
         if "choice_news_event" not in tables:
             return []
         rows = conn.execute(
-            """
-            select event_key, received_at, group_id, content_type, serial_id, request_id, error_code,
-                   error_msg, topic_code, item_index, payload_text, payload_json
-            from choice_news_event
-            where coalesce(error_code, 0) = 0
-            order by received_at desc, topic_code asc, item_index asc
-            limit ?
-            """,
+            _CHOICE_NEWS_EVENTS_SQL,
             [limit],
         ).fetchall()
     finally:

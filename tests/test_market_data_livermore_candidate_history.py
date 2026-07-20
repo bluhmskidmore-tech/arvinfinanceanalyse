@@ -731,11 +731,15 @@ def test_task_writes_execution_history_with_next_open_and_net_returns(monkeypatc
         assert entry_kind == "next_open"
         assert exit_1d == 102.0
         expected_gross = 102.0 / 101.0 - 1.0
-        expected_net = expected_gross - 0.0008 - 0.0013 - 2 * 0.0010
+        # return_1d_net and return_1d_net_adj both use multiplicative cost
+        # netting ((1+r)*(1-c)-1); v4 aligned the unadjusted net column.
+        round_trip_cost = 0.0008 + 0.0013 + 2 * 0.0010
+        expected_net = (1.0 + expected_gross) * (1.0 - round_trip_cost) - 1.0
+        expected_net_adj = expected_net
         assert abs(float(gross_1d) - expected_gross) < 1e-9
         assert abs(float(net_1d) - expected_net) < 1e-9
         assert abs(float(gross_1d_adj) - expected_gross) < 1e-9
-        assert abs(float(net_1d_adj) - expected_net) < 1e-9
+        assert abs(float(net_1d_adj) - expected_net_adj) < 1e-9
         assert entry_ex_div is False
         assert price_adjustment_mode == "adj_factor_ratio"
         assert status == "pending"
@@ -973,7 +977,7 @@ def test_execution_only_backfill_rebuilds_execution_history_from_existing_candid
     assert first["execution_row_count"] == 1
     assert first["skipped_count"] == 1
     assert first["partial_date_count"] == 1
-    assert first["formula_version"] == "fv_livermore_candidate_execution_dual_adjust_v2"
+    assert first["formula_version"] == "fv_livermore_candidate_execution_dual_adjust_v4"
     assert isinstance(first["run_id"], str) and first["run_id"]
     assert first["dates"] == [
         {
@@ -1013,7 +1017,7 @@ def test_execution_only_backfill_rebuilds_execution_history_from_existing_candid
 
     assert candidate_count_after == candidate_count_before
     assert execution_rows == [
-        (snap.isoformat(), valid_stock, "fv_livermore_candidate_execution_dual_adjust_v2"),
+        (snap.isoformat(), valid_stock, "fv_livermore_candidate_execution_dual_adjust_v4"),
     ]
 
 
@@ -1320,7 +1324,7 @@ def test_execution_only_backfill_sparse_range_rebuilds_only_source_dates_and_pre
     assert execution_rows[0][0] == source_date.isoformat()
     assert execution_rows[0][1] == "000001.SZ"
     assert execution_rows[0][2] != "stale-source"
-    assert execution_rows[0][3] == "fv_livermore_candidate_execution_dual_adjust_v2"
+    assert execution_rows[0][3] == "fv_livermore_candidate_execution_dual_adjust_v4"
     assert execution_rows[1] == (
         missing_source_date.isoformat(),
         "000009.SZ",
@@ -5917,8 +5921,8 @@ def test_cycle_proxy_backtest_reports_nav_gain_and_drawdown_intervals(tmp_path) 
     assert body["full_strategy_status"] == "blocked_missing_inputs"
     assert body["proxy_signal_kind"] == "stock_candidate"
     assert body["summary"]["sample_days"] == 1
-    # net of formal round-trip cost: 0.12 - (0.0008 + 0.0013 + 2 * 0.0010) = 0.1159
-    assert body["summary"]["cumulative_return"] == 0.1159
+    # net of formal round-trip cost (multiplicative): (1 + 0.12) * (1 - 0.0041) - 1 = 0.115408
+    assert body["summary"]["cumulative_return"] == 0.115408
     # v2 basket returns prefer return_5d_adj; these fixtures only land gross return_5d
     assert body["summary"]["return_field_used"] == "return_5d_adj"
     assert body["summary"]["return_field_fallback"] == "return_5d"
@@ -5928,7 +5932,7 @@ def test_cycle_proxy_backtest_reports_nav_gain_and_drawdown_intervals(tmp_path) 
     # single basket: annualization would explode, must be suppressed
     assert body["summary"]["annualized_return"] is None
     assert body["summary"]["annualization_status"] == "insufficient_sample"
-    assert body["summary"]["max_gain"]["return"] == 0.1159
+    assert body["summary"]["max_gain"]["return"] == 0.115408
     assert body["summary"]["max_gain"]["start_date"] == "2026-05-01"
     assert body["summary"]["max_gain"]["end_date"] == "2026-05-08"
     assert body["summary"]["max_drawdown"]["return"] == 0.0
@@ -5937,7 +5941,7 @@ def test_cycle_proxy_backtest_reports_nav_gain_and_drawdown_intervals(tmp_path) 
     assert [row["date"] for row in body["nav_series"]] == [
         "2026-05-01",
     ]
-    assert body["nav_series"][-1]["nav"] == 1.1159
+    assert body["nav_series"][-1]["nav"] == 1.115408
     assert "PMI" in body["missing_full_strategy_inputs"]
 
 
@@ -5975,11 +5979,11 @@ def test_cycle_proxy_backtest_nets_formal_costs_and_annualizes_with_actual_span(
     )
 
     body = envelope["result"]
-    # net basket return: 0.12 - (0.0008 + 0.0013 + 2 * 0.0010) = 0.1159 per basket
-    assert body["nav_series"][0]["period_return"] == 0.1159
+    # net basket return (multiplicative): (1 + 0.12) * (1 - 0.0041) - 1 = 0.115408 per basket
+    assert body["nav_series"][0]["period_return"] == 0.115408
     assert body["nav_series"][0]["period_return_gross"] == 0.12
-    # terminal nav 1.1159 ** 2 = 1.245233 (rounded)
-    assert body["nav_series"][-1]["nav"] == 1.245233
+    # terminal nav 1.115408 ** 2 = 1.244135 (rounded)
+    assert body["nav_series"][-1]["nav"] == 1.244135
     summary = body["summary"]
     assert summary["return_field_used"] == "return_5d_adj"
     assert summary["return_field_fallback"] == "return_5d"
@@ -5990,14 +5994,21 @@ def test_cycle_proxy_backtest_nets_formal_costs_and_annualizes_with_actual_span(
         "slippage_rate": 0.001,
         "round_trip_cost_rate": 0.0041,
     }
-    assert summary["cumulative_return"] == 0.245233
+    assert summary["cumulative_return"] == 0.244135
     # actual span 2026-01-05 -> 2026-12-28 = 357 calendar days,
-    # annualized = 1.245233 ** (365 / 357) - 1 = 0.251368
+    # annualized = 1.244135 ** (365 / 357) - 1 = 0.25024
     assert summary["annualization_span_calendar_days"] == 357
     assert summary["annualization_status"] == "ok"
-    assert summary["annualized_return"] == 0.251368
+    assert summary["annualized_return"] == 0.25024
     assert any("net of the formal transaction-cost constants" in warning for warning in body["warnings"])
     assert any("not produced by the formal path backtest engine" in warning for warning in body["warnings"])
+    # MEDIUM-1: same-day close entry assumption must be disclosed
+    assert any(
+        "signal-day close" in warning
+        and "same-day execution" in warning
+        and "livermore_candidate_execution_history" in warning
+        for warning in body["warnings"]
+    )
 
 
 def test_cycle_proxy_backtest_prefers_adjusted_returns_and_reports_formula_version(tmp_path) -> None:
@@ -6031,12 +6042,12 @@ def test_cycle_proxy_backtest_prefers_adjusted_returns_and_reports_formula_versi
     )
 
     body = envelope["result"]
-    assert body["formula_version"] == "fv_livermore_cycle_proxy_backtest_adj_first_v2"
-    # old (v1, gross return_5d) 口径: 0.12 - 0.0041 = 0.1159
-    # new (v2, return_5d_adj first) 口径: 0.10 - 0.0041 = 0.0959
-    assert body["nav_series"][0]["period_return"] == 0.0959
+    assert body["formula_version"] == "fv_livermore_cycle_proxy_backtest_adj_first_v3"
+    # v2 (return_5d_adj first) 口径: 0.10 - 0.0041 = 0.0959
+    # v3 (multiplicative cost netting) 口径: (1 + 0.10) * (1 - 0.0041) - 1 = 0.09549
+    assert body["nav_series"][0]["period_return"] == 0.09549
     assert body["nav_series"][0]["period_return_gross"] == 0.1
-    assert body["summary"]["cumulative_return"] == 0.0959
+    assert body["summary"]["cumulative_return"] == 0.09549
     assert body["summary"]["return_rows_adjusted"] == 1
     assert body["summary"]["return_rows_gross_fallback"] == 0
 
@@ -6165,8 +6176,8 @@ def test_cycle_proxy_backtest_compares_proxy_nav_to_csi300_benchmark(tmp_path) -
     assert summary["benchmark"]["start_date"] == "2026-05-01"
     assert summary["benchmark"]["end_date"] == "2026-05-08"
     assert summary["benchmark"]["cumulative_return"] == 0.05
-    # strategy net return 0.1159 minus benchmark 0.05
-    assert summary["benchmark"]["relative_cumulative_return"] == 0.0659
+    # strategy net return 0.115408 minus benchmark 0.05
+    assert summary["benchmark"]["relative_cumulative_return"] == 0.065408
 
 
 def test_cycle_proxy_backtest_unions_csi300_benchmark_sources_for_coverage(tmp_path) -> None:
@@ -6268,7 +6279,7 @@ def test_cycle_proxy_backtest_api_happy_path_and_query_validation(monkeypatch, t
     body = response.json()
     assert body["result_meta"]["rule_version"] == "rv_livermore_cycle_proxy_backtest_v1"
     assert body["result"]["status"] == "proxy"
-    assert body["result"]["summary"]["cumulative_return"] == 0.1159
+    assert body["result"]["summary"]["cumulative_return"] == 0.115408
     assert (
         client.get(
             "/ui/market-data/livermore/cycle-proxy-backtest",
@@ -6347,6 +6358,13 @@ def test_candidate_history_portfolio_backtest_marks_to_market_with_monthly_cash_
     assert body["rebalance_log"][1]["target_count"] == 0
     assert body["rebalance_log"][1]["sell_turnover"] == 1.0
     assert "equal-weight top-6 replay rows" in body["warnings"][1]
+    # MEDIUM-1: same-day close entry assumption must be disclosed
+    assert any(
+        "snapshot-day close" in warning
+        and "same-day execution" in warning
+        and "livermore_candidate_execution_history" in warning
+        for warning in body["warnings"]
+    )
 
 
 def test_candidate_history_portfolio_backtest_forward_fills_missing_closes(tmp_path) -> None:

@@ -37,8 +37,8 @@ def test_compute_bond_analytics_rows_filters_issuance_like_and_derives_credit_me
             "market_value_native": Decimal("95"),
             "amortized_cost_native": Decimal("93"),
             "accrued_interest_native": Decimal("1.2"),
-            "coupon_rate": Decimal("0.03"),
-            "ytm_value": Decimal("0.035"),
+            "coupon_rate": Decimal("3.0"),
+            "ytm_value": Decimal("3.5"),
             "maturity_date": date(2031, 3, 31),
             "interest_mode": "半年付息",
             "is_issuance_like": False,
@@ -64,8 +64,8 @@ def test_compute_bond_analytics_rows_filters_issuance_like_and_derives_credit_me
             "market_value_native": Decimal("200"),
             "amortized_cost_native": Decimal("200"),
             "accrued_interest_native": Decimal("0"),
-            "coupon_rate": Decimal("0.02"),
-            "ytm_value": Decimal("0.021"),
+            "coupon_rate": Decimal("2.0"),
+            "ytm_value": Decimal("2.1"),
             "maturity_date": date(2027, 3, 31),
             "is_issuance_like": True,
             "source_version": "sv_snapshot_1",
@@ -144,8 +144,8 @@ def test_compute_bond_analytics_rows_uses_formal_cny_values_and_accounting_basis
             "market_value_cny": Decimal("720"),
             "amortized_cost_native": Decimal("98"),
             "accrued_interest_native": Decimal("1"),
-            "coupon_rate": Decimal("0.03"),
-            "ytm_value": Decimal("0.04"),
+            "coupon_rate": Decimal("3.0"),
+            "ytm_value": Decimal("4.0"),
             "maturity_date": date(2031, 3, 31),
             "interest_mode": "annual",
             "is_issuance_like": False,
@@ -193,8 +193,8 @@ def test_compute_bond_analytics_rows_falls_back_to_native_face_value_when_cny_fa
             "amortized_cost_cny": Decimal("679"),
             "accrued_interest_native": Decimal("1"),
             "accrued_interest_cny": Decimal("7"),
-            "coupon_rate": Decimal("0.03"),
-            "ytm_value": Decimal("0.04"),
+            "coupon_rate": Decimal("3.0"),
+            "ytm_value": Decimal("4.0"),
             "maturity_date": date(2031, 3, 31),
             "interest_mode": "annual",
             "is_issuance_like": False,
@@ -240,8 +240,8 @@ def test_compute_bond_analytics_rows_uses_formal_cny_cost_and_accrued_for_foreig
             "amortized_cost_cny": Decimal("686"),
             "accrued_interest_native": Decimal("1"),
             "accrued_interest_cny": Decimal("7"),
-            "coupon_rate": Decimal("0.03"),
-            "ytm_value": Decimal("0.04"),
+            "coupon_rate": Decimal("3.0"),
+            "ytm_value": Decimal("4.0"),
             "maturity_date": date(2031, 3, 31),
             "interest_mode": "annual",
             "is_issuance_like": False,
@@ -284,8 +284,8 @@ def test_compute_bond_analytics_rows_uses_payment_frequency_for_duration_and_con
             "market_value_native": Decimal("100"),
             "amortized_cost_native": Decimal("98"),
             "accrued_interest_native": Decimal("1"),
-            "coupon_rate": Decimal("0.03"),
-            "ytm_value": Decimal("0.04"),
+            "coupon_rate": Decimal("3.0"),
+            "ytm_value": Decimal("4.0"),
             "maturity_date": maturity_date,
             "interest_mode": "semi-annual",
             "is_issuance_like": False,
@@ -357,8 +357,8 @@ def test_compute_bond_analytics_rows_uses_annual_frequency_for_unknown_and_bulle
             "market_value_native": Decimal("100"),
             "amortized_cost_native": Decimal("98"),
             "accrued_interest_native": Decimal("1"),
-            "coupon_rate": Decimal("0.03"),
-            "ytm_value": Decimal("0.04"),
+            "coupon_rate": Decimal("3.0"),
+            "ytm_value": Decimal("4.0"),
             "maturity_date": maturity_date,
             "interest_mode": interest_mode,
             "is_issuance_like": False,
@@ -404,8 +404,8 @@ def test_compute_bond_analytics_rows_uses_face_value_basis_for_dv01() -> None:
             "market_value_native": Decimal("500"),
             "amortized_cost_native": Decimal("98"),
             "accrued_interest_native": Decimal("1"),
-            "coupon_rate": Decimal("0.0147"),
-            "ytm_value": Decimal("0.016359"),
+            "coupon_rate": Decimal("1.47"),
+            "ytm_value": Decimal("1.6359"),
             "maturity_date": date(2028, 2, 14),
             "interest_mode": "annual",
             "is_issuance_like": False,
@@ -447,8 +447,8 @@ def test_compute_bond_analytics_rows_keeps_cny_market_value_native_when_cny_back
             "market_value_cny": Decimal("-100"),
             "amortized_cost_native": Decimal("98"),
             "accrued_interest_native": Decimal("1"),
-            "coupon_rate": Decimal("0.03"),
-            "ytm_value": Decimal("0.04"),
+            "coupon_rate": Decimal("3.0"),
+            "ytm_value": Decimal("4.0"),
             "maturity_date": date(2031, 3, 31),
             "interest_mode": "annual",
             "is_issuance_like": False,
@@ -506,8 +506,8 @@ def test_compute_bond_analytics_rows_uses_rate_classification_and_zero_spread_dv
             "market_value_native": Decimal("998"),
             "amortized_cost_native": Decimal("997"),
             "accrued_interest_native": Decimal("3"),
-            "coupon_rate": Decimal("0.02"),
-            "ytm_value": Decimal("0.018"),
+            "coupon_rate": Decimal("2.0"),
+            "ytm_value": Decimal("1.8"),
             "maturity_date": date(2027, 1, 15),
             "is_issuance_like": False,
             "source_version": "sv_snapshot_2",
@@ -528,6 +528,62 @@ def test_compute_bond_analytics_rows_uses_rate_classification_and_zero_spread_dv
     assert row.interest_payment_frequency == "annual"
     assert row.interest_rate_style == "unknown"
     assert row.spread_dv01 == Decimal("0")
+
+
+def test_compute_bond_analytics_rows_normalizes_gray_zone_percent_rates() -> None:
+    """灰区回归锁定：票息 1.82（=1.82%）必须 ÷100，不得当作小数 182%。
+
+    2026-07-19 取证：zqtz 快照利率为百分数口径，[0.2, 2) 灰区每天约 550 只券。
+    旧的 >2 启发式会放行 1.82 → 久期被 182% 的 ytm 压扁、DV01 全错。
+    """
+    module = _module()
+    report_date = date(2026, 6, 30)
+    snapshot_rows = [
+        {
+            "report_date": report_date,
+            "instrument_code": "SCP-GRAY-001",
+            "instrument_name": "低票息超短融",
+            "portfolio_name": "组合灰区",
+            "cost_center": "CC-GRAY",
+            "account_category": "交易性金融资产",
+            "asset_class": "债券资产",
+            "bond_type": "短期融资券",
+            "issuer_name": "发行人G",
+            "industry_name": "城投",
+            "rating": "AAA",
+            "currency_code": "CNY",
+            "face_value_native": Decimal("1000000"),
+            "market_value_native": Decimal("1000000"),
+            "amortized_cost_native": Decimal("1000000"),
+            "accrued_interest_native": Decimal("0"),
+            "coupon_rate": Decimal("1.82"),
+            "ytm_value": Decimal("1.82"),
+            "maturity_date": date(2027, 6, 30),
+            "interest_mode": "年付",
+            "is_issuance_like": False,
+            "source_version": "sv_snapshot_gray",
+            "rule_version": "rv_snapshot_gray",
+            "ingest_batch_id": "ib_gray",
+            "trace_id": "trace_gray",
+        }
+    ]
+
+    row = module.compute_bond_analytics_rows(snapshot_rows, report_date)[0]
+
+    assert row.coupon_rate == Decimal("0.0182")
+    assert row.ytm == Decimal("0.0182")
+    expected_macaulay = common.estimate_duration(
+        date(2027, 6, 30),
+        report_date,
+        coupon_rate=Decimal("0.0182"),
+        ytm=Decimal("0.0182"),
+        bond_code="SCP-GRAY-001",
+    )
+    expected_modified = common.estimate_modified_duration(expected_macaulay, Decimal("0.0182"))
+    assert row.macaulay_duration == expected_macaulay
+    assert row.modified_duration == expected_modified
+    # 1 年期券修正久期应接近 1，远不是被 182% ytm 压扁的 ~0.35
+    assert row.modified_duration > Decimal("0.9")
 
 
 def test_compute_bond_analytics_rows_normalizes_percent_rates_before_duration_math() -> None:
@@ -653,8 +709,8 @@ def test_compute_bond_analytics_rows_rejects_report_date_mismatch() -> None:
             "market_value_native": Decimal("100"),
             "amortized_cost_native": Decimal("100"),
             "accrued_interest_native": Decimal("0"),
-            "coupon_rate": Decimal("0.02"),
-            "ytm_value": Decimal("0.02"),
+            "coupon_rate": Decimal("2.0"),
+            "ytm_value": Decimal("2.0"),
             "maturity_date": date(2027, 3, 31),
             "is_issuance_like": False,
             "source_version": "sv_snapshot_4",
@@ -668,25 +724,25 @@ def test_compute_bond_analytics_rows_rejects_report_date_mismatch() -> None:
         module.compute_bond_analytics_rows(snapshot_rows, requested_report_date)
 
 
-def test_normalize_rate_decimal_matches_rate_units_semantics() -> None:
-    """Engine rate normalization must follow rate_units.normalize_annual_rate_to_decimal.
+def test_normalize_rate_decimal_uses_percent_caliber() -> None:
+    """Engine rate normalization must follow rate_units.normalize_percent_rate_to_decimal.
 
-    Snapshot rates are stored in decimal form (0.035 = 3.5%); the >2 threshold only
-    rescues obvious percent-format strays, and >20 is rejected as dirty data.
+    Snapshot rates are stored in percent form (1.82 = 1.82%; evidenced
+    2026-07-19), so every value is divided by 100 and > 20 (rates above 20%)
+    is rejected as dirty data. No gray-zone heuristic is allowed.
     """
     module = _module()
 
-    # Decimal-form values stay unchanged.
-    assert module._normalize_rate_decimal(Decimal("0.035")) == Decimal("0.035")
-    # 0.85 <= 2 is treated as an already-decimal value (0.85 = 85%), same as rate_units.
-    assert module._normalize_rate_decimal(Decimal("0.85")) == Decimal("0.85")
-    # Values in (1, 2] are decimals under rate_units (old engine threshold 1 wrongly divided).
-    assert module._normalize_rate_decimal(Decimal("1.5")) == Decimal("1.5")
-    # Percent-format strays (> 2) are divided by 100.
+    # Percent-form values are always divided by 100.
     assert module._normalize_rate_decimal(Decimal("3.5")) == Decimal("0.035")
-    # > 20 is dirty data -> None (old engine turned 25 into 0.25).
+    # Gray-zone low coupons (the old > 2 heuristic wrongly kept these as decimals).
+    assert module._normalize_rate_decimal(Decimal("1.82")) == Decimal("0.0182")
+    assert module._normalize_rate_decimal(Decimal("0.85")) == Decimal("0.0085")
+    # Sub-percent yields are still percent-form (0.09 = 0.09%).
+    assert module._normalize_rate_decimal(Decimal("0.09")) == Decimal("0.0009")
+    # > 20 is dirty data -> None.
     assert module._normalize_rate_decimal(Decimal("25")) is None
-    # Negative rates are rejected as dirty data, consistent with rate_units.
+    # Negative rates are rejected as dirty data.
     assert module._normalize_rate_decimal(Decimal("-0.5")) is None
     assert module._normalize_rate_decimal(None) is None
     assert module._normalize_rate_decimal("") is None

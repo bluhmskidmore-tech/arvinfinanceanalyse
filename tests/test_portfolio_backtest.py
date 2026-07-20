@@ -899,7 +899,8 @@ def test_portfolio_hold_progress_matrix_groups_k_day_progress_by_t20_return() ->
     assert payload["status"] == "ready"
     rows = {(row["day"], row["progress_bucket"]): row for row in payload["rows"]}
     assert rows[(1, "lt_-3pct")]["sample_count"] == 1
-    assert rows[(1, "lt_-3pct")]["avg_t20_net_return"] == pytest.approx(0.2059)
+    # gross 0.21 netted multiplicatively: (1 + 0.21) * (1 - 0.0041) - 1 = 0.205039
+    assert rows[(1, "lt_-3pct")]["avg_t20_net_return"] == pytest.approx(0.205039)
     assert rows[(8, "gt_+5pct")]["win_rate"] == pytest.approx(1.0)
 
 
@@ -986,8 +987,11 @@ def test_portfolio_benchmark_comparison_quantifies_gate_timing_increment() -> No
     assert comparison["status"] == "ready"
     metrics = comparison["metrics"]
     assert metrics["csi300_buy_hold"]["cumulative_return"] == pytest.approx(0.089)
-    assert metrics["gate_timing_csi300"]["cumulative_return"] == pytest.approx(0.0395)
-    assert metrics["stock_selection_increment"]["cumulative_return"] == pytest.approx(0.033)
+    # 敞口 T+1 生效（前视偏差修复，2026-07-19 审计 宏观 H-1）：
+    # 6/2 收益按 6/1 决策 WARM(0.5)，6/3 按 6/2 决策 WARM(0.5)，6/4 按 6/3 决策 HOT(1.0)
+    # -> 1.05 * 0.95 * 1.10 - 1 = 0.09725
+    assert metrics["gate_timing_csi300"]["cumulative_return"] == pytest.approx(0.09725)
+    assert metrics["stock_selection_increment"]["cumulative_return"] == pytest.approx(-0.02475)
 
 
 def test_benchmark_comparison_prefers_daily_exposure() -> None:
@@ -1000,14 +1004,42 @@ def test_benchmark_comparison_prefers_daily_exposure() -> None:
             {"trade_date": "2026-06-01", "value": 100.0},
             {"trade_date": "2026-06-02", "value": 110.0},
         ],
-        [{"trade_date": "2026-06-02", "market_state": "WARM"}],
-        exposure_rows=[{"trade_date": "2026-06-02", "exposure": 0.25}],
+        # 敞口 T+1 生效：6/2 的收益使用 6/1 收盘的决策。
+        [{"trade_date": "2026-06-01", "market_state": "WARM"}],
+        exposure_rows=[{"trade_date": "2026-06-01", "exposure": 0.25}],
         exposure_by_market_state={"WARM": (0.25, 0.5, 0.75)},
         initial_capital=100.0,
     )
 
     metrics = comparison["metrics"]
     assert metrics["gate_timing_csi300"]["cumulative_return"] == pytest.approx(0.025)
+
+
+def test_benchmark_comparison_gate_exposure_applies_with_one_day_lag() -> None:
+    """T 日收盘决定的敞口不得吃 T 日收益（2026-07-19 审计 宏观 H-1 回归锁定）。"""
+    comparison = build_benchmark_comparison(
+        [
+            {"date": "2026-06-01", "net_value": 100.0},
+            {"date": "2026-06-03", "net_value": 100.0},
+        ],
+        [
+            {"trade_date": "2026-06-01", "return": 0.0},
+            {"trade_date": "2026-06-02", "return": 0.10},
+            {"trade_date": "2026-06-03", "return": 0.10},
+        ],
+        [],
+        # 6/2 收盘才决定满仓：6/2 的 10% 不得吃到，6/3 的 10% 才吃到。
+        exposure_rows=[
+            {"trade_date": "2026-06-01", "exposure": 0.0},
+            {"trade_date": "2026-06-02", "exposure": 1.0},
+            {"trade_date": "2026-06-03", "exposure": 1.0},
+        ],
+        exposure_by_market_state=EXPOSURE,
+        initial_capital=100.0,
+    )
+
+    metrics = comparison["metrics"]
+    assert metrics["gate_timing_csi300"]["cumulative_return"] == pytest.approx(0.10)
 
 
 def test_benchmark_comparison_compounds_intermediate_days_for_sparse_strategy_curve() -> None:

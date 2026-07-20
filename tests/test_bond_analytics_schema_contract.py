@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import date
 
+import pytest
+
 from backend.app.schemas.bond_analytics import (
     ACTION_TYPE_NAMES,
     AccountingClassAuditItem,
@@ -120,7 +122,7 @@ def test_benchmark_excess_response_defaults_and_nested():
 
 def test_krd_curve_risk_nested_defaults():
     d0 = date(2026, 3, 31)
-    krd = KRDBucket(tenor="1Y", krd="0.1", dv01="100", market_value_weight="0.2")
+    krd = KRDBucket(tenor="1Y", avg_modified_duration="0.1", dv01="100", market_value_weight="0.2")
     scen = ScenarioResult(
         scenario_name="s",
         scenario_description="d",
@@ -149,8 +151,18 @@ def test_krd_curve_risk_nested_defaults():
         by_asset_class=[ac],
     )
     assert resp.krd_buckets[0].tenor == "1Y"
+    assert resp.krd_buckets[0].avg_modified_duration.raw == pytest.approx(0.1)
+    assert resp.krd_buckets[0].krd is not None
+    assert resp.krd_buckets[0].krd.raw == pytest.approx(0.1)
     assert resp.scenarios[0].by_asset_class == {}
     assert resp.warnings == []
+
+
+def test_krd_bucket_accepts_legacy_krd_alias_as_avg_modified_duration():
+    bucket = KRDBucket(tenor="5Y", krd="0.8", dv01="12.5", market_value_weight="0.4")
+    assert bucket.avg_modified_duration.raw == pytest.approx(0.8)
+    assert bucket.krd is not None
+    assert bucket.krd.raw == pytest.approx(0.8)
 
 
 def test_credit_spread_migration_defaults_and_nested():

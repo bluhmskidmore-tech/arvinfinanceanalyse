@@ -124,6 +124,56 @@ def test_build_livermore_signal_confluence_allows_observation_entries_when_gate_
     )
 
 
+@pytest.mark.parametrize("composite_score", [-0.45, 0.0, 0.4])
+def test_build_livermore_signal_confluence_discloses_cross_asset_macro_score_reuse(
+    composite_score: float,
+) -> None:
+    result = _build_livermore_signal_confluence(
+        as_of_date="2026-05-02",
+        livermore_payload={
+            "market_gate": {
+                "state": "WARM",
+                "exposure": 0.5,
+            },
+            "stock_candidates": {"items": []},
+            "risk_exit": {"watch_items": []},
+        },
+        macro_payload={
+            "environment_score": {
+                "composite_score": composite_score,
+            }
+        },
+    )
+
+    diagnostics = cast(list[str], result["diagnostics"])
+    assert (
+        "Macro gate reuses the bond-side macro_bond_linkage composite score, where positive values mean "
+        "bond-unfavorable macro pressure; negative values are mapped to supportive for equities."
+    ) in diagnostics
+    assert (
+        "Macro gate thresholds of +/-0.3 are empirical and have no independent equity-side contract source."
+    ) in diagnostics
+    assert (
+        "Cross-asset caveat: weakening growth lowers the bond composite score and can be classified as "
+        "supportive for equities; interpret the macro gate with caution on the equity side."
+    ) in diagnostics
+    assert diagnostics[-1] == (
+        "Observation-only output. This service does not generate trading instructions."
+    )
+
+
+def test_build_livermore_signal_confluence_omits_cross_asset_reuse_disclosure_when_macro_score_is_missing() -> None:
+    result = _build_livermore_signal_confluence(
+        as_of_date="2026-05-02",
+        livermore_payload={},
+        macro_payload={},
+    )
+
+    diagnostics = cast(list[str], result["diagnostics"])
+    assert "Missing macro composite score; macro context is unknown." in diagnostics
+    assert not any("macro_bond_linkage" in item for item in diagnostics)
+
+
 def test_build_livermore_signal_confluence_keeps_candidate_price_facts_visible_but_observe_only_when_macro_is_restrictive() -> None:
     result = _build_livermore_signal_confluence(
         as_of_date="2026-05-02",

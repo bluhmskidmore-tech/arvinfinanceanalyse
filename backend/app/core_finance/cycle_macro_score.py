@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date
+
+logger = logging.getLogger(__name__)
 
 PMI_SERIES_ID = "M0017126"
 SOCIAL_FINANCING_YOY_SERIES_ID = "M5525763"
@@ -38,8 +41,11 @@ def compute_pmi_signal(pmi: float) -> float:
     return _clamp((pmi - 47.0) / 6.0)
 
 
-def compute_credit_impulse_signal(*, current_yoy: float, prior_yoy: float) -> float:
-    """Credit impulse proxy: month-over-month change in social-financing YoY (ppt); pending product sign-off."""
+def compute_credit_impulse_signal(*, current_yoy: float, prior_yoy: float) -> tuple[float, float]:
+    """Credit impulse proxy: month-over-month change in social-financing YoY (ppt); pending product sign-off.
+
+    Returns ``(signal in [0, 1], impulse_ppt)``.
+    """
     impulse_ppt = current_yoy - prior_yoy
     return _clamp((impulse_ppt + 2.0) / 4.0), impulse_ppt
 
@@ -222,6 +228,14 @@ def _latest_adjacent_month_pair(
     *,
     as_of_date: str,
 ) -> tuple[str, float, str, float] | None:
+    # Fail-closed by design: ANY malformed value, future-dated point, or
+    # duplicated month in the input series returns None, which disables the
+    # credit-impulse component entirely. compute_macro_score then silently
+    # re-normalizes the remaining component weights, so one bad upstream row
+    # degrades the macro score composition without an explicit warning.
+    # This is intentionally conservative (never compute an impulse from
+    # suspect data) but brittle; revisit if upstream data quality allows
+    # per-point filtering instead of whole-series rejection.
     if not points:
         return None
     try:

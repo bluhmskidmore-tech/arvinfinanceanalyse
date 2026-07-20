@@ -164,6 +164,13 @@ class PnlByBusinessSummary(BaseModel):
     business_count: int
     total_pnl: Decimal
     total_scale_amount: Decimal
+    # 514/516/517 分列合计与 rows 逐列同源求和（同一批正式数值），供页面表脚直读，
+    # 避免前端复算形成双源。pnl_row_count 为全部 rows 的损益行数合计（含未追溯行）。
+    interest_income_514: Decimal
+    fair_value_change_516: Decimal
+    capital_gain_517: Decimal
+    manual_adjustment: Decimal
+    pnl_row_count: int
     traced_pnl_row_count: int
     untraced_pnl_row_count: int
     untraced_breakdown: list[PnlByBusinessUntracedBreakdownRow] = Field(default_factory=list)
@@ -526,6 +533,9 @@ class PnlByBusinessAnalysisPayload(BaseModel):
     sample_fill_method: str | None = None
     source_tables: list[str]
     rows: list[PnlByBusinessAnalysisRow]
+    # bond_bucket only: backend-merged display buckets (e.g. 金融债+其它债券 -> 其他),
+    # so consumers never re-weight annualized yields on the frontend.
+    merged_bucket_rows: list[PnlByBusinessAnalysisRow] = Field(default_factory=list)
 
 
 class PnlYearlyBusinessSummaryRow(BaseModel):

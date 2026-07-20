@@ -56,7 +56,6 @@ from backend.app.schemas.pnl import (
     PnlByBusinessMonthlySummary,
     PnlByBusinessPayload,
     PnlByBusinessRow,
-    PnlByBusinessSummary,
     PnlByBusinessUntracedBreakdownRow,
     PnlByBusinessYtdItem,
     PnlByBusinessYtdPayload,
@@ -77,6 +76,7 @@ from backend.app.schemas.pnl import (
 from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope_from_lineage as build_formal_result_envelope_from_lineage_runtime,
 )
+from backend.app.services.pnl_bond_bucket_merge import attach_bond_bucket_merged_rows
 from backend.app.services.pnl_by_business_adjustments import (
     PNL_BY_BUSINESS_ADJUSTMENT_STREAM,
     active_pnl_by_business_manual_adjustments_for_period,
@@ -85,6 +85,7 @@ from backend.app.services.pnl_by_business_adjustments import (
     pnl_by_business_manual_adjustment_source_version,
     reduce_latest_pnl_by_business_manual_adjustments,
 )
+from backend.app.services.pnl_by_business_summary import build_pnl_by_business_summary
 from backend.app.services.pnl_by_business_unallocated import (
     normalize_pnl_by_business_unallocated_item,
     pnl_by_business_unallocated_breakdown,
@@ -96,7 +97,7 @@ from backend.app.services.pnl_source_service import (
     load_latest_pnl_refresh_input,
     resolve_pnl_data_input_root,
 )
-from backend.app.tasks.pnl_materialize import (
+from backend.app.services.pnl_task_dispatch import (
     CACHE_KEY,
     PNL_BY_BUSINESS_PRECOMPUTE_CACHE_KEY,
     PNL_BY_BUSINESS_PRECOMPUTE_CACHE_VERSION,
@@ -525,11 +526,8 @@ def pnl_by_business_envelope(*, duckdb_path: str, governance_dir: str, report_da
     payload = PnlByBusinessPayload(
         report_date=report_date,
         source_tables=["fact_formal_pnl_fi", "fact_nonstd_pnl_bridge", "fact_formal_zqtz_balance_daily"],
-        summary=PnlByBusinessSummary(
-            business_count=len(rows),
-            total_pnl=_quantize_decimal(sum((row.total_pnl for row in rows), Decimal("0"))),
-            total_scale_amount=_quantize_decimal(sum((row.scale_amount for row in rows), Decimal("0"))),
-            traced_pnl_row_count=sum(row.pnl_row_count for row in rows if row.balance_row_count > 0),
+        summary=build_pnl_by_business_summary(
+            rows=rows,
             untraced_pnl_row_count=untraced_count,
             untraced_breakdown=untraced_breakdown,
         ),
@@ -1746,7 +1744,7 @@ def pnl_by_business_analysis_envelope(
         precomputed is not None
         and _pnl_by_business_precompute_has_required_diagnostics(precomputed, result_kind="analysis")
     ):
-        payload = PnlByBusinessAnalysisPayload.model_validate(precomputed)
+        payload = attach_bond_bucket_merged_rows(PnlByBusinessAnalysisPayload.model_validate(precomputed))
         return _build_pnl_by_business_analytical_result_envelope(
             governance_dir=governance_dir,
             requested_report_date=as_of_date,
@@ -1824,6 +1822,7 @@ def pnl_by_business_analysis_envelope(
             ftp_rate_pct=ftp_rate_pct,
         ),
     )
+    payload = attach_bond_bucket_merged_rows(payload)
     return _build_pnl_by_business_analytical_result_envelope(
         governance_dir=governance_dir,
         requested_report_date=as_of_date,
@@ -4045,9 +4044,9 @@ def _pnl_overview_reconciliation_check(totals: dict[str, Decimal]) -> dict[str, 
         + totals["manual_adjustment"]
     )
     return pnl_vs_ledger_diff(
-        pnl_total=float(totals["total_pnl"]),
-        ledger_pnl_total=float(component_total),
-        threshold_yuan=0.01,
+        pnl_total=totals["total_pnl"],
+        ledger_pnl_total=component_total,
+        threshold_yuan=Decimal("0.01"),
     )
 
 

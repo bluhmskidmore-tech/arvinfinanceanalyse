@@ -155,6 +155,40 @@ def test_guarded_missing_path_scope_yields_none_and_empty(tmp_path):
         assert repo._table_exists("t") is False
 
 
+def test_table_exists_presence_cache_skips_repeat_probes(monkeypatch, tmp_path):
+    duck_module = _load_duck("duck_presence_cache")
+    db_path = tmp_path / "moss.duckdb"
+    _seed(db_path, [("a", 1)])
+
+    counter = _install_connect_counter(monkeypatch, duck_module)
+    repo = duck_module.DuckDBRepository(str(db_path))
+
+    assert repo._table_exists("t") is True
+    assert repo._table_exists("t") is True
+    assert repo._table_exists("missing") is False
+    assert repo._table_exists("missing") is False
+
+    # One open per distinct probe; repeats are served from the presence cache.
+    assert counter["opens"] == 2
+
+
+def test_table_exists_presence_cache_invalidates_after_write(tmp_path):
+    duck_module = _load_duck("duck_presence_invalidate")
+    db_path = tmp_path / "moss.duckdb"
+    _seed(db_path, [("a", 1)])
+    repo = duck_module.DuckDBRepository(str(db_path))
+
+    assert repo._table_exists("t2") is False
+
+    conn = real_duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute("create table t2 (v integer)")
+    finally:
+        conn.close()
+
+    assert repo._table_exists("t2") is True
+
+
 def test_read_only_connection_helper_opens_and_closes(tmp_path):
     duck_module = _load_duck("duck_helper")
     db_path = tmp_path / "moss.duckdb"

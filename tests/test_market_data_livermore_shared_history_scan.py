@@ -186,6 +186,58 @@ class _HistoryResultRowsConnection:
         return SimpleNamespace(fetchall=lambda: rows)
 
 
+def test_safe_float_treats_zero_as_value() -> None:
+    assert service._safe_float(0) == 0.0
+    assert service._safe_float(0.0) == 0.0
+    assert service._safe_float("0") == 0.0
+    assert service._safe_float(None) is None
+    assert service._safe_float("") is None
+    assert service._safe_float("   ") is None
+    assert service._safe_float("abc") is None
+
+
+def test_candidate_history_keeps_zero_turnover_suspension_day_alignment() -> None:
+    """零换手的停牌日必须保留整行，closes[-2] 才是真实的上一交易日。"""
+    conn = duckdb.connect(":memory:")
+    try:
+        conn.execute(
+            """
+            create table choice_stock_daily_observation (
+              trade_date varchar,
+              stock_code varchar,
+              close_value double,
+              turn double,
+              amount double,
+              volume double,
+              tradestatus varchar
+            )
+            """
+        )
+        conn.executemany(
+            "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?, ?, ?)",
+            [
+                ("2026-06-26", "ZERO.SZ", 9.0, 1.1, 900.0, 9000.0, "Trading"),
+                # 停牌日：换手为 0，收盘沿用，整行应保留
+                ("2026-06-29", "ZERO.SZ", 10.0, 0.0, 0.0, 0.0, "Suspended"),
+                ("2026-06-30", "ZERO.SZ", 11.0, 1.2, 1100.0, 11000.0, "Trading"),
+            ],
+        )
+
+        actual = service._load_dual_stock_history_inputs(
+            conn=conn,
+            as_of_date=AS_OF_DATE,
+            candidate_stock_codes=["ZERO.SZ"],
+            trading_stock_codes=[],
+        )
+    finally:
+        conn.close()
+
+    history = actual.candidate_history_by_code["ZERO.SZ"]
+    assert history["close"] == [9.0, 10.0, 11.0]
+    assert history["turn"] == [1.1, 0.0, 1.2]
+    assert history["close"][-2] == 10.0
+
+
 def test_dual_stock_history_scan_matches_both_legacy_windows() -> None:
     conn = duckdb.connect(":memory:")
     counting_conn = _HistoryResultRowsConnection(conn)
@@ -212,7 +264,8 @@ def test_dual_stock_history_scan_matches_both_legacy_windows() -> None:
 
     candidate_both = actual.candidate_history_by_code["BOTH"]
     trading_both = actual.trading_history_by_code["BOTH"]
-    assert len(candidate_both["close"]) == 126
+    # 130 天窗口内仅剔除 close/turn 为 None 的 2 行；0 值行保留
+    assert len(candidate_both["close"]) == 128
     assert candidate_both["close"][0] == 1129.0
     assert candidate_both["close"][-1] == 1000.0
     assert len(trading_both["close"]) == 130
@@ -298,7 +351,7 @@ def test_dual_stock_history_conversion_reuses_native_duckdb_values(
     )
 
     assert actual.candidate_history_by_code == {
-        "600000.SH": {"close": [1.0, 2.5], "turn": [3.0, 6.5]}
+        "600000.SH": {"close": [1.0, 0.0, 2.5], "turn": [3.0, 4.0, 6.5]}
     }
     assert safe_float_calls == [None, 5.0, "2.5", "6.5"]
     trading_history = actual.trading_history_by_code["600000.SH"]

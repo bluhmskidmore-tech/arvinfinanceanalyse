@@ -39,6 +39,10 @@ def safe_decimal(
         else:
             result = Decimal(str(value))
 
+        # Decimal("NaN") / Decimal("Infinity") 输入（或字符串等转换产物）不得静默传播。
+        if not result.is_finite():
+            return default
+
         if precision:
             result = result.quantize(Decimal(precision), rounding=ROUND_HALF_UP)
 

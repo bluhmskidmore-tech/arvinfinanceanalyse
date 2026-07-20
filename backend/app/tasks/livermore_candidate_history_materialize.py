@@ -32,7 +32,9 @@ LIVERMORE_CANDIDATE_HISTORY_LOCK = LockDefinition(
 )
 RULE_VERSION = "rv_livermore_candidate_history_v1"
 FORMULA_VERSION = "fv_livermore_candidate_forward_close_dual_adjust_v2"
-EXECUTION_FORMULA_VERSION = "fv_livermore_candidate_execution_dual_adjust_v2"
+# v3: return_*_net_adj uses multiplicative cost netting ((1+r)*(1-c)-1).
+# v4: return_*_net uses the same multiplicative helper (no longer additive r-c).
+EXECUTION_FORMULA_VERSION = "fv_livermore_candidate_execution_dual_adjust_v4"
 TABLE_HIST = "livermore_candidate_history"
 TABLE_EXECUTION_HIST = "livermore_candidate_execution_history"
 TABLE_STOCK_UNIVERSE = "livermore_stock_candidate_universe_history"
@@ -1890,7 +1892,14 @@ def _is_limit_down(bar: dict[str, object]) -> bool:
 
 def _net_return(*, exit_price: float, entry_price: float) -> float:
     gross = exit_price / entry_price - 1.0
-    return gross - BUY_COST_RATE - SELL_COST_RATE - 2 * SLIPPAGE_RATE
+    netted = net_return_after_costs(
+        gross,
+        buy_cost_rate=BUY_COST_RATE,
+        sell_cost_rate=SELL_COST_RATE,
+        slippage_rate=SLIPPAGE_RATE,
+    )
+    assert netted is not None
+    return netted
 
 
 def _safe_positive_float(value: object) -> float | None:

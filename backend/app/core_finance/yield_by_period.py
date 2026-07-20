@@ -58,6 +58,19 @@ def _annualized_pct(total_pnl: Decimal, scale: Decimal, num_days: int) -> float 
     return float(daily * (Decimal("365") / Decimal(num_days)) * Decimal("100"))
 
 
+def _avg_scale_across_report_dates(rows: list[dict[str, object]]) -> Decimal:
+    """Period scale = mean of per-report_date portfolio scales (not sum of snapshots)."""
+    by_date: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+    for row in rows:
+        report_date = str(row.get("report_date") or "")[:10]
+        if len(report_date) < 10:
+            continue
+        by_date[report_date] += _dec(row["scale_amount"])
+    if not by_date:
+        return Decimal("0")
+    return sum(by_date.values(), Decimal("0")) / Decimal(len(by_date))
+
+
 def _items_for_rows(group_rows: list[dict[str, object]]) -> list[dict[str, Any]]:
     by_bt: dict[str, list[dict[str, object]]] = defaultdict(list)
     for r in group_rows:
@@ -66,7 +79,7 @@ def _items_for_rows(group_rows: list[dict[str, object]]) -> list[dict[str, Any]]
     out: list[dict[str, Any]] = []
     for bt, rlist in sorted(by_bt.items(), key=lambda x: x[0]):
         tp = sum(_dec(x["total_pnl"]) for x in rlist)
-        sc = sum(_dec(x["scale_amount"]) for x in rlist)
+        sc = _avg_scale_across_report_dates(rlist)
         out.append(
             {
                 "business_type_primary": bt,
@@ -106,7 +119,7 @@ def rollup_yield_periods(
 
     if norm == "yearly":
         tp = sum(_dec(r["total_pnl"]) for r in year_rows)
-        sc = sum(_dec(r["scale_amount"]) for r in year_rows)
+        sc = _avg_scale_across_report_dates(year_rows)
         start, end, nd = _year_bounds(year)
         oy = _pct_yield(tp, sc)
         ann = _annualized_pct(tp, sc, nd)
@@ -149,7 +162,9 @@ def rollup_yield_periods(
     for key in ordered:
         group = buckets[key]
         tp = sum(_dec(r["total_pnl"]) for r in group)
-        sc = sum(_dec(r["scale_amount"]) for r in group)
+        # Same-date business types still sum inside the helper; multi-month
+        # buckets average those per-date totals (period-average scale).
+        sc = _avg_scale_across_report_dates(group)
 
         if norm == "monthly":
             ym = key.split("-")

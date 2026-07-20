@@ -30,6 +30,10 @@ UNSUPPORTED_NOTES = (
     "sector_money_flow: needs vendor approval & new schema (P1)",
 )
 
+METRIC_NOTES = (
+    "cum_pctchange_window: arithmetic sum of daily avg_pctchange over the window (not compounded)",
+)
+
 TABLE_MEMBERSHIP = "choice_stock_sector_membership"
 TABLE_OBS = "choice_stock_daily_observation"
 
@@ -146,6 +150,10 @@ def livermore_sector_rank_series_envelope(
                 name = str(it.get("sector_name") or "").strip()
                 by_date_item[(day_td.isoformat(), code)] = it
 
+        # cum_pctchange_window is an arithmetic (additive) accumulation of the
+        # daily avg_pctchange values, NOT a compounded product. Switching to
+        # compounding would be a metric-definition change; the additive basis
+        # is disclosed via METRIC_NOTES in the payload.
         cum_by_date_sector: dict[tuple[str, str], float] = {}
         running_cum: dict[str, float] = {c: 0.0 for c in selected_codes}
         for td, payload, _, _ in daily_results:
@@ -189,6 +197,16 @@ def livermore_sector_rank_series_envelope(
         lineage_src = _aggregate_lineage(source_versions, empty_value=EMPTY_SOURCE_VERSION)
         lineage_vend = _aggregate_lineage(vendor_versions, empty_value=EMPTY_VENDOR_VERSION)
 
+        # The 1.5x calendar-day buffer may not contain window_days trade dates
+        # around long holidays; surface the silent shrink instead of hiding it.
+        warnings: list[str] = []
+        if len(trade_dates) < window_days:
+            warnings.append(
+                f"window_shortfall: only {len(trade_dates)} trade dates available "
+                f"within the {cal_span}-calendar-day lookback buffer; "
+                f"requested window_days={window_days}"
+            )
+
         result_payload: dict[str, object] = {
             "basis": "analytical",
             "state": "ok",
@@ -199,6 +217,8 @@ def livermore_sector_rank_series_envelope(
             "formula_version": FORMULA_VERSION,
             "series": series,
             "unsupported_notes": list(UNSUPPORTED_NOTES),
+            "metric_notes": list(METRIC_NOTES),
+            "warnings": warnings,
         }
 
         return build_result_envelope(
@@ -244,6 +264,8 @@ def _missing_envelope(
         "formula_version": FORMULA_VERSION,
         "series": [],
         "unsupported_notes": list(UNSUPPORTED_NOTES),
+        "metric_notes": list(METRIC_NOTES),
+        "warnings": [],
     }
     return build_result_envelope(
         basis="analytical",

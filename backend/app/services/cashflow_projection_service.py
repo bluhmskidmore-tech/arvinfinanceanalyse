@@ -11,6 +11,7 @@ from backend.app.governance.settings import get_settings
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
 from backend.app.repositories.cashflow_projection_repo import CashflowProjectionRepository
 from backend.app.schemas.cashflow_projection import CashflowProjectionResponse
+from backend.app.schemas.common_numeric import numeric_from_raw
 from backend.app.services.explicit_numeric import numeric_json
 from backend.app.services.formal_result_runtime import (
     build_analytical_result_meta,
@@ -88,7 +89,7 @@ def get_cashflow_projection(report_date: date) -> dict[str, object]:
         liability_duration=numeric_json(result.liability_weighted_duration, "years", False),
         equity_duration=numeric_json(result.equity_duration, "years", True),
         rate_sensitivity_1bp=numeric_json(result.rate_sensitivity_1bp, "yuan", True),
-        reinvestment_risk_12m=numeric_json(result.reinvestment_risk_12m, "pct", False),
+        reinvestment_risk_12m=_ratio_pct_numeric_json(result.reinvestment_risk_12m),
         monthly_buckets=[_serialize_monthly_bucket(bucket) for bucket in result.monthly_buckets],
         top_maturing_assets_12m=_build_top_maturing_assets_12m(zqtz_rows, tyw_rows, report_date),
         warnings=list(result.warnings),
@@ -98,6 +99,23 @@ def get_cashflow_projection(report_date: date) -> dict[str, object]:
         result_meta=meta,
         result_payload=response.model_dump(mode="json"),
     )
+
+
+def _ratio_pct_numeric_json(raw: Decimal | None) -> dict[str, object]:
+    """Build a pct Numeric JSON from a verified decimal-ratio input.
+
+    ``reinvestment_risk_12m`` is maturing face value / total asset market value
+    (see ``core_finance.cashflow_projection``) — a decimal ratio that can
+    legitimately reach or exceed 1, so it must bypass the legacy "auto" rescale
+    heuristic via ``raw_scale="ratio"``.
+    """
+    value = None if raw is None else float(raw)
+    return numeric_from_raw(
+        raw=value,
+        unit="pct",
+        sign_aware=False,
+        raw_scale="ratio",
+    ).model_dump(mode="json")
 
 
 def _serialize_monthly_bucket(bucket: MonthlyBucket) -> dict[str, object]:

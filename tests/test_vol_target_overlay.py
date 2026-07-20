@@ -117,6 +117,41 @@ def test_vol_target_index_comparison_reports_avg_exposure_and_multiplier() -> No
     assert metrics["gate_voltarget_index"]["insufficient_history_days"] == 20
 
 
+def test_gate_exposure_applies_with_one_day_lag() -> None:
+    """T 日收盘决定的 gate 敞口只能吃 T+1 日收益（2026-07-19 审计 宏观 H-1）。
+
+    第 3 日敞口从 1.0 切到 0.0：第 3 日收益仍按前一日敞口 1.0 结算，
+    第 4 日收益才按 0.0 结算。
+    """
+    returns = [0.0, 0.10, 0.10, 0.10]
+    rows = _return_rows(returns)
+    exposure_rows = [
+        {"date": rows[0]["date"], "exposure": 1.0},
+        {"date": rows[1]["date"], "exposure": 1.0},
+        {"date": rows[2]["date"], "exposure": 0.0},
+        {"date": rows[3]["date"], "exposure": 0.0},
+    ]
+
+    payload = build_vol_target_index_comparison(
+        rows,
+        exposure_rows=exposure_rows,
+        exposure_by_market_state={"OFF": (0.0,)},
+        target_vol=0.15,
+        window=3,
+        initial_capital=100.0,
+    )
+
+    curves = payload["curves"]
+    # 第 2 日（敞口 1.0，前日决策 1.0）吃到 10%
+    assert curves[1]["gate_index"] == pytest.approx(110.0)
+    # 第 3 日：当日决策已切 0，但收益仍按前一日（1.0）结算 -> 继续涨 10%
+    assert curves[2]["gate_exposure"] == pytest.approx(1.0)
+    assert curves[2]["gate_index"] == pytest.approx(121.0)
+    # 第 4 日：前一日决策 0.0 生效 -> 不再吃收益
+    assert curves[3]["gate_exposure"] == pytest.approx(0.0)
+    assert curves[3]["gate_index"] == pytest.approx(121.0)
+
+
 def test_vol_target_index_comparison_blocks_without_benchmark_rows() -> None:
     payload = build_vol_target_index_comparison(
         [],

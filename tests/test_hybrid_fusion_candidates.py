@@ -180,6 +180,81 @@ def test_hybrid_fusion_applies_report_lifecourt_formula_and_life_long_gates() ->
     assert "0.18*VCOV" in str(items[0]["evidence"]["lifecourt_formula"])
 
 
+def test_hybrid_fusion_discloses_pool_percentile_threshold_basis_and_lifecourt_scale() -> None:
+    result = compute_hybrid_fusion_candidates(
+        as_of_date="2026-05-08",
+        market_state="HOT",
+        sector_rank_payload={"items": [{"sector_code": "801080", "rank": 1}]},
+        stock_candidates_payload={
+            "items": [
+                {
+                    "rank": 1,
+                    "stock_code": "688001.SH",
+                    "stock_name": "A",
+                    "sector_code": "801080",
+                    "close_strength": 0.95,
+                    "abnormal_turnover": 1.5,
+                    "breakout_extension_norm": 0.12,
+                },
+                {
+                    "rank": 2,
+                    "stock_code": "000001.SZ",
+                    "stock_name": "B",
+                    "sector_code": "801080",
+                    "close_strength": 0.55,
+                    "abnormal_turnover": 1.2,
+                    "breakout_extension_norm": 0.12,
+                },
+            ]
+        },
+        factor_screen_payload=None,
+        theme_breakout_payload=None,
+    )
+
+    payload = result.payload
+    assert payload["threshold_basis"] == "same_day_candidate_pool_percentile"
+    items = cast(list[dict[str, Any]], payload["items"])
+    for item in items:
+        basis = item["evidence"]["threshold_basis"]
+        assert basis["kind"] == "same_day_candidate_pool_percentile"
+        assert basis["candidate_pool_size"] == 2
+        assert "relative" in str(basis["note"])
+        scale = item["evidence"]["lifecourt_score_scale"]
+        assert scale["positive_weight_sum"] == 0.84
+        assert scale["theoretical_max"] == 0.84
+        contribution = scale["effective_max_fusion_contribution"]
+        assert contribution["cycle"] == 0.65
+        assert math.isclose(contribution["lifecourt"], 0.35 * 0.84, rel_tol=1e-9)
+
+
+def test_hybrid_fusion_threshold_basis_disclosed_on_empty_payloads_too() -> None:
+    result = compute_hybrid_fusion_candidates(
+        as_of_date="2026-05-08",
+        market_state="OVERHEAT",
+        sector_rank_payload=None,
+        stock_candidates_payload=None,
+        factor_screen_payload=None,
+        theme_breakout_payload=None,
+    )
+    assert result.payload["threshold_basis"] == "same_day_candidate_pool_percentile"
+
+
+def test_safe_int_rejects_non_integer_values() -> None:
+    from backend.app.core_finance.hybrid_fusion_candidates import _safe_int
+
+    assert _safe_int(3) == 3
+    assert _safe_int(3.0) == 3
+    assert _safe_int("3") == 3
+    assert _safe_int(" 3 ") == 3
+    # Rank/event-count fields are integer-semantic: a fractional value signals an
+    # upstream data anomaly and must be rejected instead of silently truncated.
+    assert _safe_int(2.9) is None
+    assert _safe_int("2.9") is None
+    assert _safe_int(-1.5) is None
+    assert _safe_int(None) is None
+    assert _safe_int("abc") is None
+
+
 def test_hybrid_fusion_uses_macro_score_when_landed() -> None:
     common_kwargs = {
         "as_of_date": "2026-05-08",

@@ -21,12 +21,14 @@ def safe_decimal(value) -> Decimal:
     if value is None:
         return Decimal("0")
     if isinstance(value, Decimal):
-        return value
+        # Decimal("NaN") / Decimal("Infinity") 会静默污染所有下游算术，按缺省语义归 0。
+        return value if value.is_finite() else Decimal("0")
     try:
-        return Decimal(str(value))
+        result = Decimal(str(value))
     except (TypeError, ValueError, ArithmeticError):
         logger.exception("safe_decimal: failed to convert %r", type(value).__name__)
         return Decimal("0")
+    return result if result.is_finite() else Decimal("0")
 
 
 def decimal_to_str(value: Decimal) -> str:

@@ -759,12 +759,13 @@ def build_krd_attribution(
         tenor = str(b["tenor_bucket"])
         mv = float(b["market_value"])
         w = (mv / total_mv * 100.0) if total_mv > 0 else 0.0
-        krd = float(b["krd"])
+        # Bucket metric is avg modified duration (not true KRD contribution).
+        avg_md = float(b.get("avg_modified_duration", b["krd"]))
         rows_s = by_bucket_start.get(tenor, [])
         ye = _weighted_ytm_float(_rows_for_bucket(bond_rows_end, tenor))
         ys = _weighted_ytm_float(rows_s)
         ychg = ((ye - ys) * 10000.0) if ye is not None and ys is not None else None
-        contrib = -mv * krd * (shift_bp / 10000.0)
+        contrib = -mv * avg_md * (shift_bp / 10000.0)
         total_dur_eff += contrib
         bond_count = len(_rows_for_bucket(bond_rows_end, tenor))
         buckets_out.append(
@@ -774,8 +775,9 @@ def build_krd_attribution(
                 "market_value": mv,
                 "weight": round(w, 4),
                 "bond_count": bond_count,
-                "bucket_duration": krd,
-                "krd": round(krd, 4),
+                "bucket_duration": avg_md,
+                "avg_modified_duration": round(avg_md, 4),
+                "krd": round(avg_md, 4),  # deprecated alias of avg_modified_duration
                 "yield_change": ychg,
                 "duration_contribution": round(contrib, 4),
                 "contribution_pct": 0.0,

@@ -3,10 +3,15 @@
 
 与区间 Campisi 共用 bond_four_effects + 市场插值/利差变动逻辑（见 campisi.py）。
 映射约定：
-- carry_return ← income_return
+- carry_return ← income_return；天数口径 num_days = (report_date - prev_date).days
+  （不含头含尾；同日窗口下限 1 天），与区间 Campisi 一致
 - curve_return ← treasury_effect：固定剩余期限 T(prev) 上，期初→期末国债曲线的平移（benchmark_yield_change）
 - spread_return ← spread_effect
-- rolldown_return ← 在**期末**国债曲线上，因剩余期限从 T(prev) 滑向 T(report) 带来的基准收益率差 × (-MD×MV)；
+- rolldown_return ← 在**期末**国债曲线上取两点：锚点为报告日剩余期限 T(report)，
+  滚动点为 T(report) − Δ（Δ = (report_date - prev_date).days / 365；
+  Gate 1 Option A 时间锚，与 docs/calc_rules.md 桥接归因口径一致）；
+  rolldown = +MD × (y(T(report)) − y(T(report)−Δ)) / 100 × MV_end，
+  向上倾斜的曲线产生正的 rolldown 收益；
   与 curve_return 相加近似于债券沿曲线的总基准价格效应（AC 类为 0，与四效应一致）
 - fx_return ← 来自 fact_pnl_daily.fx_pnl（若有）
 - total_return ← fact_pnl_daily.total_pnl（正式闭合）

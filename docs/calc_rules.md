@@ -321,6 +321,24 @@ for `PAGE-BOND-ANALYSIS-001`. They do not replace business-owner sign-off.
 - `dv01_base=CNY_face_value`.
 - `market_value/dirty_value DV01 is not the current formal DV01 convention`.
 
+## Period Yield Denominator（P1-05，2026-07-19）
+
+`yield_by_period` / `liability_analytics.yield_by_period` 的期间收益率分母：
+
+- 输入 `scale_amount` 为各 `report_date`（月末）市值快照。
+- **同日**多业务种类：先按日求和得到当日组合规模。
+- **跨日**季/年桶：分母 = 各日组合规模的算术平均（期间平均规模），不得对月末快照直接求和。
+- 分子 = 桶内 `total_pnl` 之和；年化 = `(pnl / avg_scale) * (365 / num_days) * 100`。
+- 单月桶仅一日快照时，平均退化为其本身，与历史月度行为一致。
+
+## Curve-risk bucket field naming（2026-07-19）
+
+`/api/bond-analytics/krd-curve-risk` 的 `krd_buckets[]`：
+
+- 权威字段：`avg_modified_duration` = 桶内市值加权平均修正久期。
+- `krd` 为同值弃用别名（过渡期保留）。
+- 该字段**不是** `core_finance/krd.py` 的 key-rate duration 贡献，也**不是** `risk_tensor` 的桶内 ΣDV01。
+
 ## 15. Business Type Insights（批准口径，2026-07-15）
 
 本节定义 `MTR-PNLBIZ-001`~`MTR-PNLBIZ-007` 的正式口径。Owner 为`组合管理/固收业务分析`，Approver 为`财务管理/资产负债管理`。定义自 `2026-07-15` 起生效，并由 `GET /api/pnl/by-business-insights` 的后端正式计算、DTO 与 `result_meta` 实现；`PAGE-PNL-BY-BUSINESS-001` 消费该结果。绑定 golden sample 证明公式和 DTO 一致性，不证明底层源 PnL、余额或汇率事实已经独立审计无误。

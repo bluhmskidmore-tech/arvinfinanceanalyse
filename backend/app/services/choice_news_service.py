@@ -10,6 +10,37 @@ from backend.app.services.research_radar_compare import build_choice_news_compar
 RULE_VERSION = "rv_choice_news_v1"
 CACHE_VERSION = "cv_choice_news_v1"
 
+# 主干事件查询模板：执行与披露共用同一份（`?` 为绑定占位符，最后两个为 limit / offset）。
+_CHOICE_NEWS_LATEST_EVENTS_SQL_TEMPLATE = (
+    "select event_key, received_at, group_id, content_type, serial_id, request_id, "
+    "error_code, error_msg, topic_code, item_index, payload_text, payload_json "
+    "from choice_news_event {where_clause} "
+    "order by received_at desc, topic_code asc, item_index asc "
+    "limit ? offset ?"
+)
+
+
+def choice_news_latest_sql_disclosure(
+    *,
+    group_id: str | None = None,
+    topic_code: str | None = None,
+    stock_code: str | None = None,
+    error_only: bool = False,
+    received_from: str | None = None,
+    received_to: str | None = None,
+) -> list[str]:
+    """仅用于证据披露：返回 choice_news_latest_envelope 实际执行的主干只读语句（同一模板），不执行 SQL。"""
+    normalized_stock_code = stock_code.strip().upper() if stock_code and stock_code.strip() else None
+    where_clause, _params = _choice_news_filters(
+        group_id=group_id,
+        topic_code=topic_code,
+        stock_filter_tokens=_choice_news_stock_filter_tokens(normalized_stock_code),
+        error_only=error_only,
+        received_from=received_from,
+        received_to=received_to or date.today().isoformat(),
+    )
+    return [" ".join(_CHOICE_NEWS_LATEST_EVENTS_SQL_TEMPLATE.format(where_clause=where_clause).split())]
+
 
 def choice_news_latest_envelope(
     duckdb_path: str,
@@ -73,15 +104,7 @@ def choice_news_latest_envelope(
                 ).fetchone()
                 total_rows = int(total_row[0]) if total_row is not None else 0
                 rows = conn.execute(
-                    """
-                    select event_key, received_at, group_id, content_type, serial_id, request_id, error_code, error_msg, topic_code, item_index, payload_text, payload_json
-                    from choice_news_event
-                    """
-                    + where_clause
-                    + """
-                    order by received_at desc, topic_code asc, item_index asc
-                    limit ? offset ?
-                    """,
+                    _CHOICE_NEWS_LATEST_EVENTS_SQL_TEMPLATE.format(where_clause=where_clause),
                     [*params, limit, offset],
                 ).fetchall()
         except duckdb.Error:

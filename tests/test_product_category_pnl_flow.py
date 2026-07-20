@@ -90,6 +90,7 @@ def test_product_category_service_consumes_reconciliation_completeness_check() -
         "pnl_total": 7.0,
         "diff": 0.0,
         "breached": False,
+        "missing_keys": [],
     }
 
 

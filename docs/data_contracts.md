@@ -133,7 +133,11 @@ formal-only derived later：
 
 单位约定：
 - 金额字段为原币金额
-- `ytm_value`、`coupon_rate` 统一为小数口径
+- `ytm_value`、`coupon_rate` 统一为**百分数口径**（1.82 表示 1.82%）。
+  2026-07-19 数据取证裁决（docs/audits/2026-07-19-system-calculation-audit.md 取证 1）：
+  实际落库中位数 2.38、P95 4.17，样例 SCP 券票息 1.82；此前本行误写为"小数口径"。
+  消费方必须用 `rate_units.normalize_percent_rate_to_decimal` 显式 ÷100，
+  禁止使用 >2 阈值启发式（会把 [0.2, 2) 灰区低票息当作小数放行）。
 
 ### 4.2 tyw_interbank_daily_snapshot
 

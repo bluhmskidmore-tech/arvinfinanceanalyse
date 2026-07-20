@@ -159,7 +159,9 @@ def compute_decision_grade_row(
     modified_duration = decimal_value(row.get("modified_duration"))
     convexity = decimal_value(row.get("convexity"))
     spread_dv01 = decimal_value(row.get("spread_dv01"))
-    years = decimal_value(row.get("years_to_maturity")) or Decimal("3")
+    # 0 是有效剩余期限（当日到期，取曲线短端）；仅在缺失时才回退 3Y 代理。
+    years_raw = row.get("years_to_maturity")
+    years = Decimal("3") if years_raw is None else decimal_value(years_raw)
     include_market_effects_in_formal_pnl = bool(row.get("include_market_effects_in_formal_pnl", True))
 
     diagnostics: list[str] = []

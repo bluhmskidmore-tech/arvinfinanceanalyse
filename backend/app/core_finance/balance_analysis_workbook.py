@@ -1220,17 +1220,19 @@ def _build_campisi_table(zqtz_rows: list[FormalZqtzBalanceFactRow]) -> dict[str,
     asset_rows = [row for row in zqtz_rows if row.position_scope == "asset"]
     benchmark_rows = [row for row in asset_rows if row.bond_type == _CAMPISI_POLICY_BOND]
     benchmark_rate = _weighted_average(benchmark_rows, lambda row: row.face_value_amount, lambda row: row.coupon_rate) or _ZERO
-    total_income = _sum_decimal(asset_rows, lambda row: row.face_value_amount * _rate_value(row.coupon_rate))
+    # coupon_rate 落库为百分数（2.85 = 2.85%，见 docs/audits/2026-07-19-system-calculation-audit.md
+    # 取证 1），收入类金额必须显式 ÷100，与包版 balance_workbook/_analysis_tables.py 保持一致。
+    total_income = _sum_decimal(asset_rows, lambda row: row.face_value_amount * _rate_value(row.coupon_rate) / Decimal("100"))
     grouped = _group_rows(asset_rows, lambda row: row.bond_type or "未分类")
     rows = []
     for bond_type, entries in sorted(grouped.items()):
         balance_amount = _sum_decimal(entries, lambda row: row.face_value_amount)
-        coupon_income = _sum_decimal(entries, lambda row: row.face_value_amount * _rate_value(row.coupon_rate))
+        coupon_income = _sum_decimal(entries, lambda row: row.face_value_amount * _rate_value(row.coupon_rate) / Decimal("100"))
         spread_bp = _weighted_average(entries, lambda row: row.face_value_amount, lambda row: row.coupon_rate)
         spread_value = ((spread_bp or _ZERO) - benchmark_rate) * Decimal("100")
         spread_income = _sum_decimal(
             entries,
-            lambda row: row.face_value_amount * (_rate_value(row.coupon_rate) - benchmark_rate),
+            lambda row: row.face_value_amount * ((_rate_value(row.coupon_rate) - benchmark_rate) / Decimal("100")),
         )
         rows.append(
             {

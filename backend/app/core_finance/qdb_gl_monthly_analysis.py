@@ -40,6 +40,15 @@ DEMAND_DEPOSIT_CODES_3D = {"201", "211"}
 INVESTMENT_BALANCE_CODES_3D = {"141", "142", "143", "144", "145"}
 LIQUID_ASSET_CODES_3D = {"101", "110", "114", "116"}
 
+# 分部/收益类 sheet 依赖 2026-01 起才提供的总账分部数据源（report_month 为 YYYYMM）。
+# 使用"下界比较"而不是 startswith("2026")：早于该月份的总账没有这些科目，
+# 2027 年及以后不得静默消失（2026-07-19 审计 余额 M-8）。
+SEGMENT_SHEETS_MIN_REPORT_MONTH = "202601"
+
+
+def _segment_sheets_supported(report_month: str) -> bool:
+    return str(report_month or "") >= SEGMENT_SHEETS_MIN_REPORT_MONTH
+
 
 def _effective_analysis_config(overrides: dict[str, Any] | None) -> dict[str, Decimal]:
     merged = {key: CONFIG[key] for key in CONFIG}
@@ -603,16 +612,16 @@ def _qdb_gl_ledger_self_check_placeholder(
     total_liabilities = _as_decimal(position_totals.get("总负债")) or ZERO
     return position_vs_ledger_diff(
         {
-            "total_assets": float(total_assets),
-            "total_liabilities": float(total_liabilities),
-            "net_assets": float(total_assets - total_liabilities),
+            "total_assets": total_assets,
+            "total_liabilities": total_liabilities,
+            "net_assets": total_assets - total_liabilities,
         },
         ledger_totals,
-        threshold_yuan=0.01,
+        threshold_yuan=Decimal("0.01"),
     )
 
 
-def _qdb_gl_ledger_totals(rows_3d: list[dict[str, Any]]) -> dict[str, float]:
+def _qdb_gl_ledger_totals(rows_3d: list[dict[str, Any]]) -> dict[str, Decimal]:
     total_assets = sum(
         (_as_decimal(row.get("期末余额")) or ZERO)
         for row in rows_3d
@@ -626,9 +635,9 @@ def _qdb_gl_ledger_totals(rows_3d: list[dict[str, Any]]) -> dict[str, float]:
         )
     )
     return {
-        "total_assets": float(total_assets),
-        "total_liabilities": float(total_liabilities),
-        "net_assets": float(total_assets - total_liabilities),
+        "total_assets": total_assets,
+        "total_liabilities": total_liabilities,
+        "net_assets": total_assets - total_liabilities,
     }
 
 
@@ -730,7 +739,7 @@ def _build_segment_base_scale_sheet(
     report_month: str,
     merged_data: dict[str, Any],
 ) -> dict[str, Any] | None:
-    if not report_month.startswith("2026"):
+    if not _segment_sheets_supported(report_month):
         return None
 
     rows = _segment_base_scale_raw_rows(merged_data)
@@ -940,7 +949,7 @@ def _build_company_scale_sheet(
     report_month: str,
     merged_data: dict[str, Any],
 ) -> dict[str, Any] | None:
-    if not report_month.startswith("2026"):
+    if not _segment_sheets_supported(report_month):
         return None
 
     rows = _company_scale_raw_rows(merged_data)
@@ -1127,7 +1136,7 @@ def _build_retail_scale_sheet(
     report_month: str,
     merged_data: dict[str, Any],
 ) -> dict[str, Any] | None:
-    if not report_month.startswith("2026"):
+    if not _segment_sheets_supported(report_month):
         return None
 
     rows = _retail_scale_raw_rows(merged_data)
@@ -1294,7 +1303,7 @@ def _build_financial_market_scale_sheet(
     report_month: str,
     merged_data: dict[str, Any],
 ) -> dict[str, Any] | None:
-    if not report_month.startswith("2026"):
+    if not _segment_sheets_supported(report_month):
         return None
 
     rows = _financial_market_scale_raw_rows(merged_data)
@@ -1451,7 +1460,7 @@ def _build_income_rate_analysis_sheet(
     report_month: str,
     merged_data: dict[str, Any],
 ) -> dict[str, Any] | None:
-    if not report_month.startswith("2026"):
+    if not _segment_sheets_supported(report_month):
         return None
 
     rows = _income_rate_raw_rows(report_month=report_month, merged_data=merged_data)
@@ -1691,7 +1700,7 @@ def _build_deposit_interest_split_sheet(
     merged_data: dict[str, Any],
     comparison_data: dict[str, dict[str, Any]] | None,
 ) -> dict[str, Any] | None:
-    if not report_month.startswith("2026"):
+    if not _segment_sheets_supported(report_month):
         return None
 
     current_rows = _deposit_interest_split_raw_rows(merged_data)
@@ -1869,7 +1878,7 @@ def _build_parent_company_revenue_components_sheet(
     merged_data: dict[str, Any],
     comparison_data: dict[str, dict[str, Any]] | None,
 ) -> dict[str, Any] | None:
-    if not report_month.startswith("2026"):
+    if not _segment_sheets_supported(report_month):
         return None
 
     current_rows = _parent_company_revenue_raw_rows(merged_data)
@@ -2164,16 +2173,18 @@ def _to_decimal(value: object) -> Decimal | None:
     if value in (None, ""):
         return None
     try:
-        return Decimal(str(value))
+        result = Decimal(str(value))
     except (InvalidOperation, ValueError):
         return None
+    # Excel 单元格可能带出 float("nan")，Decimal("nan") 构造会成功并静默传播；按缺省语义视为缺失。
+    return result if result.is_finite() else None
 
 
 def _as_decimal(value: object) -> Decimal | None:
     if value is None or value == "":
         return None
     if isinstance(value, Decimal):
-        return value
+        return value if value.is_finite() else None
     return _to_decimal(value)
 
 

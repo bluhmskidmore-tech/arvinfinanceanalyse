@@ -12,6 +12,7 @@ from backend.app.core_finance.bond_analytics.read_models import (
     summarize_portfolio_risk,
 )
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
+from backend.app.repositories.duckdb_repo import catalog_presence_cached
 from backend.app.repositories.task_write_guard import require_repository_task_write_scope
 
 FACT_TABLE = "fact_formal_bond_analytics_daily"
@@ -150,7 +151,7 @@ class BondAnalyticsRepository:
         if conn is None:
             return []
         try:
-            if not _table_exists(conn, FACT_TABLE):
+            if not _table_exists(conn, self.path, FACT_TABLE):
                 return []
             rows = conn.execute(
                 f"""
@@ -168,11 +169,11 @@ class BondAnalyticsRepository:
         if conn is None:
             return []
         try:
-            if not _table_exists(conn, SNAPSHOT_TABLE):
+            if not _table_exists(conn, self.path, SNAPSHOT_TABLE):
                 return []
             snapshot_market_value_cny_expr = (
                 "s.market_value_cny"
-                if _column_exists(conn, SNAPSHOT_TABLE, "market_value_cny")
+                if _column_exists(conn, self.path, SNAPSHOT_TABLE, "market_value_cny")
                 else "null"
             )
             balance_join = ""
@@ -181,7 +182,7 @@ class BondAnalyticsRepository:
             market_value_cny_expr = snapshot_market_value_cny_expr
             amortized_cost_cny_expr = "s.amortized_cost_native"
             accrued_interest_cny_expr = "s.accrued_interest_native"
-            if _table_exists(conn, BALANCE_ZQTZ_FACT_TABLE):
+            if _table_exists(conn, self.path, BALANCE_ZQTZ_FACT_TABLE):
                 balance_join = f"""
                 left join (
                   select
@@ -380,31 +381,31 @@ class BondAnalyticsRepository:
         if conn is None:
             return []
         try:
-            if not _table_exists(conn, FACT_TABLE):
+            if not _table_exists(conn, self.path, FACT_TABLE):
                 return []
             interest_mode_expr = (
                 "interest_mode"
-                if _column_exists(conn, FACT_TABLE, "interest_mode")
+                if _column_exists(conn, self.path, FACT_TABLE, "interest_mode")
                 else "'' as interest_mode"
             )
             interest_payment_frequency_expr = (
                 "interest_payment_frequency"
-                if _column_exists(conn, FACT_TABLE, "interest_payment_frequency")
+                if _column_exists(conn, self.path, FACT_TABLE, "interest_payment_frequency")
                 else "'annual' as interest_payment_frequency"
             )
             interest_rate_style_expr = (
                 "interest_rate_style"
-                if _column_exists(conn, FACT_TABLE, "interest_rate_style")
+                if _column_exists(conn, self.path, FACT_TABLE, "interest_rate_style")
                 else "'unknown' as interest_rate_style"
             )
             next_call_date_expr = (
                 "next_call_date"
-                if _column_exists(conn, FACT_TABLE, "next_call_date")
+                if _column_exists(conn, self.path, FACT_TABLE, "next_call_date")
                 else "null as next_call_date"
             )
             market_value_native_expr = (
                 "market_value_native"
-                if _column_exists(conn, FACT_TABLE, "market_value_native")
+                if _column_exists(conn, self.path, FACT_TABLE, "market_value_native")
                 else "null as market_value_native"
             )
             where_parts = ["report_date = ?"]
@@ -446,31 +447,31 @@ class BondAnalyticsRepository:
         if conn is None:
             return {value: [] for value in requested}
         try:
-            if not _table_exists(conn, FACT_TABLE):
+            if not _table_exists(conn, self.path, FACT_TABLE):
                 return {value: [] for value in requested}
             interest_mode_expr = (
                 "interest_mode"
-                if _column_exists(conn, FACT_TABLE, "interest_mode")
+                if _column_exists(conn, self.path, FACT_TABLE, "interest_mode")
                 else "'' as interest_mode"
             )
             interest_payment_frequency_expr = (
                 "interest_payment_frequency"
-                if _column_exists(conn, FACT_TABLE, "interest_payment_frequency")
+                if _column_exists(conn, self.path, FACT_TABLE, "interest_payment_frequency")
                 else "'annual' as interest_payment_frequency"
             )
             interest_rate_style_expr = (
                 "interest_rate_style"
-                if _column_exists(conn, FACT_TABLE, "interest_rate_style")
+                if _column_exists(conn, self.path, FACT_TABLE, "interest_rate_style")
                 else "'unknown' as interest_rate_style"
             )
             next_call_date_expr = (
                 "next_call_date"
-                if _column_exists(conn, FACT_TABLE, "next_call_date")
+                if _column_exists(conn, self.path, FACT_TABLE, "next_call_date")
                 else "null as next_call_date"
             )
             market_value_native_expr = (
                 "market_value_native"
-                if _column_exists(conn, FACT_TABLE, "market_value_native")
+                if _column_exists(conn, self.path, FACT_TABLE, "market_value_native")
                 else "null as market_value_native"
             )
             placeholders = ",".join(["?"] * len(requested))
@@ -535,7 +536,7 @@ class BondAnalyticsRepository:
         if conn is None:
             return None
         try:
-            if not _table_exists(conn, FACT_TABLE):
+            if not _table_exists(conn, self.path, FACT_TABLE):
                 return None
             row = conn.execute(
                 f"""
@@ -583,7 +584,7 @@ class BondAnalyticsRepository:
         if conn is None:
             return {}
         try:
-            if not _table_exists(conn, FACT_TABLE):
+            if not _table_exists(conn, self.path, FACT_TABLE):
                 return {}
             placeholders = ", ".join(["?"] * len(dates))
             rows = conn.execute(
@@ -633,7 +634,7 @@ class BondAnalyticsRepository:
         if conn is None:
             return None
         try:
-            if not _table_exists(conn, BALANCE_ZQTZ_FACT_TABLE):
+            if not _table_exists(conn, self.path, BALANCE_ZQTZ_FACT_TABLE):
                 return None
             row = conn.execute(
                 f"""
@@ -661,7 +662,7 @@ class BondAnalyticsRepository:
             empty = _empty_dashboard_headline_kpis_row()
             return {"current": empty, "previous": empty if prev_report_date else None}
         try:
-            if not _table_exists(conn, FACT_TABLE):
+            if not _table_exists(conn, self.path, FACT_TABLE):
                 empty = _empty_dashboard_headline_kpis_row()
                 return {"current": empty, "previous": empty if prev_report_date else None}
             current = _fetch_one_period_headline_kpis(conn, report_date)
@@ -683,7 +684,7 @@ class BondAnalyticsRepository:
         if conn is None:
             return []
         try:
-            if not _table_exists(conn, FACT_TABLE):
+            if not _table_exists(conn, self.path, FACT_TABLE):
                 return []
             rows = conn.execute(
                 f"""
@@ -719,7 +720,7 @@ class BondAnalyticsRepository:
         if conn is None:
             return []
         try:
-            if not _table_exists(conn, FACT_TABLE):
+            if not _table_exists(conn, self.path, FACT_TABLE):
                 return []
             rows = conn.execute(
                 f"""
@@ -755,7 +756,7 @@ class BondAnalyticsRepository:
         if conn is None:
             return []
         try:
-            if not _table_exists(conn, FACT_TABLE):
+            if not _table_exists(conn, self.path, FACT_TABLE):
                 return []
             rows = conn.execute(
                 f"""
@@ -804,7 +805,7 @@ class BondAnalyticsRepository:
         if conn is None:
             return []
         try:
-            if not _table_exists(conn, FACT_TABLE):
+            if not _table_exists(conn, self.path, FACT_TABLE):
                 return []
             rows = conn.execute(
                 f"""
@@ -853,7 +854,7 @@ class BondAnalyticsRepository:
         if conn is None:
             return []
         try:
-            if not _table_exists(conn, FACT_TABLE):
+            if not _table_exists(conn, self.path, FACT_TABLE):
                 return []
             rows = conn.execute(
                 f"""
@@ -886,7 +887,7 @@ class BondAnalyticsRepository:
         if conn is None:
             return []
         try:
-            if not _table_exists(conn, FACT_TABLE):
+            if not _table_exists(conn, self.path, FACT_TABLE):
                 return []
             rows = conn.execute(
                 f"""
@@ -933,7 +934,7 @@ class BondAnalyticsRepository:
         if conn is None:
             return []
         try:
-            if not _table_exists(conn, FACT_TABLE):
+            if not _table_exists(conn, self.path, FACT_TABLE):
                 return []
             rows = conn.execute(
                 f"""
@@ -967,7 +968,7 @@ class BondAnalyticsRepository:
         if conn is None:
             return _empty_dashboard_risk_indicators_row()
         try:
-            if not _table_exists(conn, FACT_TABLE):
+            if not _table_exists(conn, self.path, FACT_TABLE):
                 return _empty_dashboard_risk_indicators_row()
             row = conn.execute(
                 f"""
@@ -1129,31 +1130,37 @@ def ensure_bond_analytics_tables(conn: duckdb.DuckDBPyConnection) -> None:
     apply_pending_migrations_on_connection(conn)
 
 
-def _table_exists(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
-    row = conn.execute(
-        """
-        select 1
-        from information_schema.tables
-        where table_name = ?
-        limit 1
-        """,
-        [table_name],
-    ).fetchone()
-    return row is not None
+def _table_exists(conn: duckdb.DuckDBPyConnection, path: str, table_name: str) -> bool:
+    def _probe() -> bool:
+        row = conn.execute(
+            """
+            select 1
+            from information_schema.tables
+            where table_name = ?
+            limit 1
+            """,
+            [table_name],
+        ).fetchone()
+        return row is not None
+
+    return catalog_presence_cached(path, "table", table_name, _probe)
 
 
-def _column_exists(conn: duckdb.DuckDBPyConnection, table_name: str, column_name: str) -> bool:
-    row = conn.execute(
-        """
-        select 1
-        from information_schema.columns
-        where table_name = ?
-          and column_name = ?
-        limit 1
-        """,
-        [table_name, column_name],
-    ).fetchone()
-    return row is not None
+def _column_exists(conn: duckdb.DuckDBPyConnection, path: str, table_name: str, column_name: str) -> bool:
+    def _probe() -> bool:
+        row = conn.execute(
+            """
+            select 1
+            from information_schema.columns
+            where table_name = ?
+              and column_name = ?
+            limit 1
+            """,
+            [table_name, column_name],
+        ).fetchone()
+        return row is not None
+
+    return catalog_presence_cached(path, "column", f"{table_name}.{column_name}", _probe)
 
 
 def _connect_read_only(path: str) -> duckdb.DuckDBPyConnection | None:

@@ -6,13 +6,46 @@ from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import Settings
 from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
 from backend.app.repositories.job_state_repo import JobStateRepository
-from backend.app.tasks.source_preview_refresh import (
-    SOURCE_PREVIEW_REFRESH_CACHE_KEY,
-    SOURCE_PREVIEW_REFRESH_JOB_NAME,
-    SOURCE_PREVIEW_REFRESH_SOURCE_FAMILIES,
-    build_source_preview_refresh_lock_key,
-    refresh_source_preview_cache,
+
+# 与 source_preview_refresh task 对齐；只读路径不得 import tasks（broker/actor 注册）。
+SOURCE_PREVIEW_REFRESH_JOB_NAME = "source_preview_refresh"
+SOURCE_PREVIEW_REFRESH_CACHE_KEY = "source_preview.foundation"
+SOURCE_PREVIEW_REFRESH_SOURCE_FAMILIES = (
+    "zqtz",
+    "tyw",
+    "pnl",
+    "pnl_514",
+    "pnl_516",
+    "pnl_517",
 )
+
+
+class _RefreshSourcePreviewCacheProxy:
+    def send(self, **kwargs: object) -> object:
+        from backend.app.tasks.source_preview_refresh import (
+            refresh_source_preview_cache as _actor,
+        )
+
+        return _actor.send(**kwargs)
+
+    def fn(self, *args: object, **kwargs: object) -> object:
+        from backend.app.tasks.source_preview_refresh import (
+            refresh_source_preview_cache as _actor,
+        )
+
+        return _actor.fn(*args, **kwargs)
+
+
+refresh_source_preview_cache = _RefreshSourcePreviewCacheProxy()
+
+
+def build_source_preview_refresh_lock_key(duckdb_path: str) -> str:
+    from backend.app.tasks.source_preview_refresh import (
+        build_source_preview_refresh_lock_key as _build,
+    )
+
+    return _build(duckdb_path)
+
 
 IN_FLIGHT_STATUSES = {"queued", "running"}
 TERMINAL_STATUSES = {"completed", "failed"}

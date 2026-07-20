@@ -172,7 +172,7 @@ class TestKRDNumericMigration:
             portfolio_modified_duration=Numeric(raw=3.1, unit="ratio", display="3.10", precision=2, sign_aware=False),
             portfolio_dv01=Numeric(raw=18.5, unit="dv01", display="18.50", precision=2, sign_aware=False),
             portfolio_convexity=Numeric(raw=0.22, unit="ratio", display="0.22", precision=2, sign_aware=False),
-            krd_buckets=[KRDBucket(tenor="5Y", krd="0.80", dv01="12.50", market_value_weight="0.40")],
+            krd_buckets=[KRDBucket(tenor="5Y", avg_modified_duration="0.80", dv01="12.50", market_value_weight="0.40")],
             scenarios=[
                 ScenarioResult(
                     scenario_name="parallel_up",

@@ -170,7 +170,9 @@ def _liquidity_scenario(tensor_result: dict[str, Any]) -> dict[str, Any]:
         "scenario_key": "liquidity_30d_cashflow_10pct",
         "label": "30 天现金流压力 10%",
         "source_field": "asset_cashflow_30d/liability_cashflow_30d/liquidity_gap_30d",
-        "shock": numeric_from_raw(raw=shock_pct, unit="pct", precision=1, sign_aware=True).model_dump(mode="json"),
+        # shock_pct / gap ratios are decimal ratios (0.10 == 10%); ratios can
+        # legitimately exceed 1, so bypass the legacy "auto" rescale heuristic.
+        "shock": numeric_from_raw(raw=shock_pct, unit="pct", precision=1, sign_aware=True, raw_scale="ratio").model_dump(mode="json"),
         "estimated_impact": numeric_from_raw(raw=impact, unit="yuan", precision=2, sign_aware=True).model_dump(mode="json"),
         "measure": "stressed_30d_liquidity_gap_delta",
         "calculation": (
@@ -182,8 +184,8 @@ def _liquidity_scenario(tensor_result: dict[str, Any]) -> dict[str, Any]:
         "human_review_required": True,
         "baseline_value": numeric_from_raw(raw=baseline_gap, unit="yuan", precision=2, sign_aware=True).model_dump(mode="json"),
         "stressed_value": numeric_from_raw(raw=stressed_gap, unit="yuan", precision=2, sign_aware=True).model_dump(mode="json"),
-        "baseline_ratio": numeric_from_raw(raw=baseline_ratio, unit="pct", precision=1, sign_aware=True).model_dump(mode="json"),
-        "stressed_ratio": numeric_from_raw(raw=stressed_ratio, unit="pct", precision=1, sign_aware=True).model_dump(mode="json"),
+        "baseline_ratio": numeric_from_raw(raw=baseline_ratio, unit="pct", precision=1, sign_aware=True, raw_scale="ratio").model_dump(mode="json"),
+        "stressed_ratio": numeric_from_raw(raw=stressed_ratio, unit="pct", precision=1, sign_aware=True, raw_scale="ratio").model_dump(mode="json"),
     }
 
 
@@ -193,7 +195,7 @@ def _fx_scenario() -> dict[str, Any]:
         "scenario_key": "fx_parallel_move_review",
         "label": "汇率波动情景",
         "source_field": "fx_exposure",
-        "shock": numeric_from_raw(raw=None, unit="pct", precision=1, sign_aware=True).model_dump(mode="json"),
+        "shock": numeric_from_raw(raw=None, unit="pct", precision=1, sign_aware=True, raw_scale="ratio").model_dump(mode="json"),
         "estimated_impact": numeric_from_raw(raw=None, unit="yuan", precision=2, sign_aware=True).model_dump(mode="json"),
         "measure": "estimated_pnl_impact",
         "calculation": "fx_exposure * fx_shock",

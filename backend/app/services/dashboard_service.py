@@ -104,12 +104,14 @@ def _pct_change_numeric(chg_amt: Decimal, prev: Decimal) -> Numeric:
     if prev <= 0:
         return null_numeric(unit="pct", precision=2, sign_aware=True)
     pct = (chg_amt / prev) * Decimal("100")
+    # raw_scale="percent": pct is percent-points; a <1% change must not be kept as a ratio.
     return numeric_from_raw(
         raw=float(pct),
         unit="pct",
         precision=2,
         sign_aware=True,
         signed_format=True,
+        raw_scale="percent",
     )
 
 

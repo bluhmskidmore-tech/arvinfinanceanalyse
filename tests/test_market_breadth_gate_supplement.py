@@ -772,6 +772,78 @@ def test_service_does_not_proxy_fallback_when_limit_prices_are_incomplete(
     assert payload["computed_rows"] == 0
 
 
+def _proxy_daily_returns(start: date, pct_changes: list[float | None]) -> list[dict]:
+    return [
+        {
+            "trade_date": (start + timedelta(days=offset)).isoformat(),
+            "close": 3000.0,
+            "pct_chg": pct,
+        }
+        for offset, pct in enumerate(pct_changes)
+    ]
+
+
+def test_proxy_breadth_one_up_day_in_window_fails_gate_condition() -> None:
+    """Golden sample: with only 1 up-day in the 5-day window ending at as_of,
+    the proxy breadth must be negative (net up-days) and the gate breadth
+    condition must fail — not pass as it did under the old ratio basis
+    (1/5 = 0.2 > 0)."""
+    from backend.app.core_finance.livermore_strategy import (
+        BroadIndexObservation,
+        MarketGateSupplement,
+        evaluate_market_gate,
+    )
+    from backend.app.services.livermore_gate_supplement_compute_service import (
+        _compute_supplement_rows,
+    )
+
+    start = date(2026, 6, 1)
+    # Window ending at day6 (inclusive): day2..day6 = [-1, -1, -1, +2, -1]
+    # -> up_days=1, down_days=4 -> net = -3.
+    rows = _compute_supplement_rows(
+        _proxy_daily_returns(start, [1.0, -1.0, -1.0, -1.0, 2.0, -1.0])
+    )
+    last = rows[-1]
+    assert last["trade_date"] == "2026-06-06"
+    assert last["breadth_5d"] == -3.0
+
+    history = [
+        BroadIndexObservation(trade_date=start + timedelta(days=offset), close=3000.0 + offset * 10)
+        for offset in range(65)
+    ]
+    gate = evaluate_market_gate(
+        history,
+        supplement=MarketGateSupplement(
+            trade_date=history[-1].trade_date,
+            breadth_5d=float(last["breadth_5d"]),
+            limit_up_quality_ok=True,
+        ),
+    )
+    condition_by_key = {row["key"]: row for row in gate["conditions"]}
+    assert condition_by_key["breadth_5d_positive"]["status"] == "fail"
+    assert gate["passed_conditions"] == 3
+    assert gate["exposure"] == 0.75
+
+
+def test_proxy_breadth_window_includes_as_of_day() -> None:
+    """Off-by-one: the trailing window must end at (and include) the current
+    trade date, matching the formal basis which requires the window to end
+    exactly at as_of."""
+    from backend.app.services.livermore_gate_supplement_compute_service import (
+        _compute_supplement_rows,
+    )
+
+    start = date(2026, 6, 1)
+    # Window ending at day6 (inclusive): day2..day6 = [-1, +1, +1, -1, +9]
+    # -> up=3, down=2 -> net = +1. The as_of day's +9 return must be counted;
+    # the old t-5..t-1 window would only see 2 up-days out of day1..day5.
+    rows = _compute_supplement_rows(
+        _proxy_daily_returns(start, [-1.0, -1.0, 1.0, 1.0, -1.0, 9.0])
+    )
+    by_date = {row["trade_date"]: row for row in rows}
+    assert by_date["2026-06-06"]["breadth_5d"] == 1.0
+
+
 def test_service_falls_back_to_csi300_proxy_when_breadth_source_missing(
     tmp_path: Path,
     _isolated_settings,

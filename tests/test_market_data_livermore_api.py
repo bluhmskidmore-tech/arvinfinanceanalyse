@@ -1216,8 +1216,8 @@ def test_cycle_proxy_backtest_api_happy_path(tmp_path) -> None:
     assert body["result_meta"]["rule_version"] == "rv_livermore_cycle_proxy_backtest_v1"
     assert body["result"]["status"] == "proxy"
     assert body["result"]["summary"]["sample_days"] == 1
-    # net of formal round-trip cost: 0.12 - (0.0008 + 0.0013 + 2 * 0.0010) = 0.1159
-    assert body["result"]["summary"]["cumulative_return"] == 0.1159
+    # net of formal round-trip cost (multiplicative): (1 + 0.12) * (1 - 0.0041) - 1 = 0.115408
+    assert body["result"]["summary"]["cumulative_return"] == 0.115408
 
 
 def test_candidate_history_portfolio_backtest_api_happy_path(tmp_path) -> None:

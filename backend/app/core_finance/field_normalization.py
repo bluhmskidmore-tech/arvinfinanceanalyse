@@ -25,12 +25,27 @@ __all__ = [
     "NormalizedCurrencyBasis",
     "NormalizedInvestTypeStd",
     "OriginalAssetCurrency",
+    "TRADING_STATUS_SQL_IN_LIST",
+    "TRADING_STATUS_VALUES",
     "derive_accounting_basis_value",
     "is_approved_status",
+    "is_trading_status",
     "normalize_currency_basis_value",
     "original_asset_currency_from_instrument_code",
     "resolve_pnl_source_currency",
 ]
+
+# 供应商 tradestatus 字段的"可交易"取值词表（英文大小写不敏感，已折叠为小写）。
+# 这是 Livermore 相关服务判定个股当日是否处于正常交易状态的唯一口径。
+TRADING_STATUS_VALUES: tuple[str, ...] = ("trading", "交易", "正常交易")
+
+# 供 SQL 使用的 IN 列表片段，须配合 lower(trim(...)) 归一化后的列表达式使用，
+# 例如: f"lower(trim(coalesce(tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}"
+TRADING_STATUS_SQL_IN_LIST: str = "(" + ", ".join(f"'{value}'" for value in TRADING_STATUS_VALUES) + ")"
+
+
+def is_trading_status(value: object | None) -> bool:
+    return str(value or "").strip().casefold() in TRADING_STATUS_VALUES
 
 
 def is_approved_status(value: str | None) -> bool:

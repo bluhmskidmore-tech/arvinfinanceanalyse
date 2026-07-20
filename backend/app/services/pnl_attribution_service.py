@@ -594,6 +594,25 @@ def _numeric_dict(raw: float | None, unit: NumericUnit, sign_aware: bool) -> dic
     ).model_dump(mode="json")
 
 
+def _ratio_pct_numeric(ratio: float, *, sign_aware: bool = True) -> dict[str, Any]:
+    """Numeric dict for a share already expressed as a decimal ratio (0.4 == 40%).
+
+    Unlike ``_numeric_dict`` (which expects percent points), the input here is
+    the ratio itself; raw stays a ratio and never passes through the
+    ``_normalize_numeric_raw`` abs>1 percent-point heuristic. Rounding happens
+    at percent-point granularity (4 decimals) to keep raw/display bit-identical
+    with the legacy percent-point pipeline.
+    """
+    percent_points = round(ratio * 100.0, 4)
+    return Numeric(
+        raw=percent_points / 100.0,
+        unit="pct",
+        display=_signed_number(percent_points, precision=2, sign_aware=sign_aware, suffix="%"),
+        precision=2,
+        sign_aware=sign_aware,
+    ).model_dump(mode="json")
+
+
 def _promote_flat(payload: dict[str, Any], NumericClass: type) -> dict[str, Any]:
     field_map: dict[str, tuple[NumericUnit, bool]] = getattr(NumericClass, "_NUMERIC_FIELDS", {}) or {}
     out = dict(payload)
@@ -1654,9 +1673,10 @@ def _core_campisi_result_to_path_a_payload(
     _share_eps = max(abs(total_mv), abs(tot_inc), abs(tot_t), abs(tot_s), abs(tot_sel)) * 1e-6
 
     def _share(part: float) -> float:
+        """Share of total_return as a decimal ratio (0.4 == 40%), never percent points."""
         if abs(total_return) <= _share_eps:
             return 0.0
-        return part / total_return * 100.0
+        return part / total_return
 
     items: list[dict[str, Any]] = []
     for b in result.by_asset_class or []:
@@ -1700,10 +1720,10 @@ def _core_campisi_result_to_path_a_payload(
         "total_treasury_effect": round(tot_t, 4),
         "total_spread_effect": round(tot_s, 4),
         "total_selection_effect": round(tot_sel, 4),
-        "income_contribution_pct": round(_share(tot_inc), 4),
-        "treasury_contribution_pct": round(_share(tot_t), 4),
-        "spread_contribution_pct": round(_share(tot_s), 4),
-        "selection_contribution_pct": round(_share(tot_sel), 4),
+        "income_contribution_pct": _ratio_pct_numeric(_share(tot_inc)),
+        "treasury_contribution_pct": _ratio_pct_numeric(_share(tot_t)),
+        "spread_contribution_pct": _ratio_pct_numeric(_share(tot_s)),
+        "selection_contribution_pct": _ratio_pct_numeric(_share(tot_sel)),
         "primary_driver": classify_primary_driver(tot_inc, tot_t, tot_s, tot_sel),
         "interpretation": "Campisi 四效应（单券级，AC 类仅票息）：收入、国债平移、信用利差、选券残差。",
         "items": items,

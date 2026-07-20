@@ -132,6 +132,7 @@ from backend.app.schemas.bond_analytics import (
     ScenarioResult,
     SpreadScenarioResult,
 )
+from backend.app.schemas.common_numeric import numeric_from_raw
 from backend.app.schemas.materialize import CacheBuildRunRecord
 from backend.app.services.analysis_adapters import build_bond_action_attribution_placeholder_envelope
 from backend.app.services.explicit_numeric import (
@@ -148,15 +149,38 @@ from backend.app.services.formal_result_runtime import (
     build_formal_result_meta_from_lineage,
     build_result_envelope,
 )
-from backend.app.tasks.bond_analytics_materialize import (
-    BOND_ANALYTICS_LOCK,
-    CACHE_KEY,
-    CACHE_VERSION,
-    RULE_VERSION,
-    materialize_bond_analytics_facts,
+# 与 tasks 模块对齐的身份常量；只读路径不得 import tasks（broker/actor 注册）。
+CACHE_KEY = "bond_analytics:materialize:formal"
+CACHE_VERSION = "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v1"
+RULE_VERSION = "rv_bond_analytics_formal_materialize_v1"
+BOND_ANALYTICS_LOCK = LockDefinition(
+    key="lock:duckdb:formal:bond-analytics:materialize",
+    ttl_seconds=900,
 )
-from backend.app.tasks.yield_curve_materialize import CACHE_VERSION as YIELD_CURVE_CACHE_VERSION
-from backend.app.tasks.yield_curve_materialize import ensure_yield_curve_inputs_on_or_before
+YIELD_CURVE_CACHE_VERSION = "cv_yield_curve_formal__rv_yield_curve_formal_materialize_v1"
+
+
+class _MaterializeBondAnalyticsFactsProxy:
+    """延迟代理 tasks actor：保留模块级符号与 .send，便于 monkeypatch。"""
+
+    def send(self, **kwargs: object) -> object:
+        from backend.app.tasks.bond_analytics_materialize import (
+            materialize_bond_analytics_facts as _actor,
+        )
+
+        return _actor.send(**kwargs)
+
+
+materialize_bond_analytics_facts = _MaterializeBondAnalyticsFactsProxy()
+
+
+def ensure_yield_curve_inputs_on_or_before(*args: object, **kwargs: object) -> object:
+    from backend.app.tasks.yield_curve_materialize import (
+        ensure_yield_curve_inputs_on_or_before as _ensure,
+    )
+
+    return _ensure(*args, **kwargs)
+
 
 logger = logging.getLogger(__name__)
 
@@ -398,6 +422,19 @@ def _bond_analytics_api_payload(payload: dict[str, object]) -> dict[str, object]
             if preserved is not None:
                 row["spread_change_bp"] = preserved
     return out
+
+
+def _pct_points_numeric_json(value: object, *, sign_aware: bool = True) -> dict[str, object]:
+    """Build pct Numeric JSON from a percent-point input (2.38 == 2.38%).
+
+    Declares ``raw_scale="percent"`` explicitly so sub-1% values (yields or
+    period returns in (0, 1]) are still divided by 100 instead of being
+    misread as decimal ratios by the legacy heuristic.
+    """
+    raw = None if value is None else float(value)
+    return numeric_from_raw(
+        raw=raw, unit="pct", sign_aware=sign_aware, raw_scale="percent"
+    ).model_dump(mode="json")
 
 
 def _model_payloads(rows: list[dict[str, object]], model_cls: type) -> list:
@@ -1943,8 +1980,8 @@ def _build_benchmark_excess_payload(
                 "period_end": period_end,
                 "benchmark_id": benchmark_id,
                 "benchmark_name": BENCHMARK_NAMES.get(benchmark_id, benchmark_id),
-                "portfolio_return": summary["portfolio_return"],
-                "benchmark_return": summary["benchmark_return"],
+                "portfolio_return": _pct_points_numeric_json(summary["portfolio_return"]),
+                "benchmark_return": _pct_points_numeric_json(summary["benchmark_return"]),
                 "excess_return": summary["excess_return"],
                 "duration_effect": summary["duration_effect"],
                 "curve_effect": summary["curve_effect"],
@@ -2308,7 +2345,8 @@ def get_krd_curve_risk(report_date: date, scenario_set: str = "standard") -> dic
                         promote_flat_payload(
                             {
                                 "tenor": row["tenor_bucket"],
-                                "krd": row["krd"],
+                                "avg_modified_duration": row["avg_modified_duration"],
+                                "krd": row["avg_modified_duration"],
                                 "dv01": row["dv01"],
                                 "market_value_weight": row["market_value"] / risk["total_market_value"] if risk["total_market_value"] else ZERO,
                             },
@@ -2628,9 +2666,9 @@ def get_portfolio_headlines(report_date: date) -> dict:
             {
                 "report_date": report_date,
                 "total_market_value": metrics["risk"]["total_market_value"],
-                "weighted_ytm": metrics["ytm_dec"] * pct,
+                "weighted_ytm": _pct_points_numeric_json(metrics["ytm_dec"] * pct),
                 "weighted_duration": metrics["rate_duration_risk"]["portfolio_modified_duration"],
-                "weighted_coupon": metrics["cpn_dec"] * pct,
+                "weighted_coupon": _pct_points_numeric_json(metrics["cpn_dec"] * pct),
                 "total_dv01": metrics["risk"]["portfolio_dv01"],
                 "bond_count": int(metrics["risk"]["bond_count"]),
                 "credit_weight": metrics["credit_summary"]["credit_weight"],

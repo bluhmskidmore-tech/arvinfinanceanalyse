@@ -14,6 +14,15 @@ from pydantic import BaseModel, Field
 
 NumericUnit = Literal["yuan", "pct", "bp", "ratio", "years", "count", "dv01", "yi"]
 
+# How the caller declares the scale of a raw ``pct`` input:
+# - "auto":    legacy heuristic — abs(raw) > 1 is treated as percent-points and
+#              divided by 100; abs(raw) <= 1 is treated as an already-normalized
+#              decimal ratio. Ambiguous for true percent-point values in (0, 1]
+#              (e.g. a 0.85% yield passed as 0.85 stays 0.85 → renders "85.00%").
+# - "percent": raw is percent-points (0.85 == 0.85%); always divided by 100.
+# - "ratio":   raw is a decimal ratio (0.0085 == 0.85%); never rescaled.
+NumericRawScale = Literal["auto", "percent", "ratio"]
+
 
 class Numeric(BaseModel):
     """Canonical typed numeric value exposed across governed contracts.
@@ -64,6 +73,7 @@ def numeric_from_raw(
     precision: int = 2,
     sign_aware: bool = True,
     signed_format: bool = True,
+    raw_scale: NumericRawScale = "auto",
 ) -> Numeric:
     """Build a ``Numeric`` from a raw value, generating a default ``display``.
 
@@ -79,12 +89,19 @@ def numeric_from_raw(
         sign_aware:    Whether callers should render signed.
         signed_format: When ``True`` and ``sign_aware`` and ``raw >= 0``, the
                        default display includes a leading ``+``.
+        raw_scale:     Declares the scale of a ``pct`` raw input (see
+                       ``NumericRawScale``). Only meaningful for ``unit="pct"``;
+                       the default ``"auto"`` keeps the legacy abs(raw) > 1
+                       heuristic for backward compatibility. Callers whose
+                       percent-point values can legitimately fall in (0, 1]
+                       (yields, spreads, period returns) must pass
+                       ``raw_scale="percent"`` explicitly.
     """
     if raw is None:
         return null_numeric(unit=unit, precision=precision, sign_aware=sign_aware)
 
     raw_value = float(raw)
-    normalized_raw = _normalize_numeric_raw(raw_value, unit)
+    normalized_raw = _normalize_numeric_raw(raw_value, unit, raw_scale)
     display = _format_numeric_display(
         raw=normalized_raw,
         unit=unit,
@@ -102,8 +119,15 @@ def numeric_from_raw(
     )
 
 
-def _normalize_numeric_raw(raw: float, unit: NumericUnit) -> float:
-    if unit == "pct" and abs(raw) > 1.0:
+def _normalize_numeric_raw(raw: float, unit: NumericUnit, raw_scale: NumericRawScale = "auto") -> float:
+    if unit != "pct":
+        return raw
+    if raw_scale == "percent":
+        return raw / 100.0
+    if raw_scale == "ratio":
+        return raw
+    # Legacy heuristic ("auto"): treat abs(raw) > 1 as percent-points.
+    if abs(raw) > 1.0:
         return raw / 100.0
     return raw
 

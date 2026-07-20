@@ -54,7 +54,7 @@ def _configure_upstream_with_semiannual_coupon(tmp_path):
             where report_date = ?
               and instrument_code = 'CB-001'
             """,
-            ["2028-12-15", "0.08", "semi-annual", "2026-05-15", REPORT_DATE],
+            ["2028-12-15", "8.0", "semi-annual", "2026-05-15", REPORT_DATE],
         )
     finally:
         conn.close()

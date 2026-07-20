@@ -10,8 +10,9 @@ Fallback basis — **csi300_proxy** (legacy behavior, unchanged): when the
 all-market source table is not landed, derive proxy inputs from CSI300 daily
 returns (fact_choice_macro_daily / choice_market_snapshot):
 
-- Breadth proxy: ratio of up-days to total days in a trailing 5-day window of
-  CSI300 daily returns.
+- Breadth proxy: net up-days (up_days - down_days) over the 5-day window of
+  CSI300 daily returns ending at the current trade date, so the gate's
+  ``breadth_5d > 0`` check keeps the same sign semantics as the formal basis.
 - Limit-up quality proxy: a simplified signal based on CSI300 return
   characteristics.
 """
@@ -623,8 +624,11 @@ def _compute_supplement_rows(
     """Compute breadth_5d and limit_up_quality_ok for each trade date.
 
     breadth_5d:
-      Ratio of up-days (pct_chg > 0) in the trailing BREADTH_WINDOW days.
-      Range [0.0, 1.0].  A value > 0.5 means more up-days than down-days.
+      Net up-days (up_days - down_days) over the BREADTH_WINDOW days ending
+      at (and including) the current trade date. Range [-BREADTH_WINDOW,
+      +BREADTH_WINDOW]. A value > 0 means more up-days than down-days, which
+      matches the formal basis semantics (net advancers, gate passes on > 0)
+      in :mod:`backend.app.core_finance.market_breadth`.
 
     limit_up_quality_ok:
       True when the market shows healthy momentum characteristics:
@@ -634,7 +638,9 @@ def _compute_supplement_rows(
     """
     rows: list[dict[str, Any]] = []
     for i in range(BREADTH_WINDOW, len(daily_returns)):
-        window = daily_returns[i - BREADTH_WINDOW : i]
+        # Window ends at the current trade date, matching the formal basis
+        # (5 most recent trade dates ending exactly at as_of).
+        window = daily_returns[i - BREADTH_WINDOW + 1 : i + 1]
         current = daily_returns[i]
         td = current["trade_date"]
 
@@ -643,9 +649,10 @@ def _compute_supplement_rows(
         if any(v is None for v in pct_values):
             continue
 
-        # Breadth: ratio of positive return days
+        # Breadth: net up-days, same sign semantics as the formal basis.
         up_days = sum(1 for v in pct_values if v > 0)
-        breadth_5d = round(up_days / BREADTH_WINDOW, 4)
+        down_days = sum(1 for v in pct_values if v < 0)
+        breadth_5d = float(up_days - down_days)
 
         # Limit-up quality proxy
         avg_return = sum(pct_values) / len(pct_values)
@@ -664,7 +671,9 @@ def _compute_supplement_rows(
             "breadth_5d": breadth_5d,
             "limit_up_quality_ok": limit_up_quality_ok,
             "source_version": f"sv_gate_supplement_compute_{source_digest}",
-            "vendor_version": f"vv_gate_supplement_proxy_{td.replace('-', '')}",
+            # "netdays" marks the net-up-days basis; older proxy rows without
+            # this marker carry the legacy up-day-ratio values in [0, 1].
+            "vendor_version": f"vv_gate_supplement_proxy_netdays_{td.replace('-', '')}",
         })
 
     return rows

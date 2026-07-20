@@ -1,7 +1,10 @@
 import asyncio
 import logging
+import os
 import threading
 from contextlib import asynccontextmanager
+
+from anyio import to_thread
 
 from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import validate_auth_startup_guardrails
@@ -53,8 +56,20 @@ def _warm_home_background_caches_quietly(settings: object) -> None:
     warm_market_home_cache_in_current_thread_if_configured(settings)
 
 
+def _configured_api_threadpool_tokens(default: int = 80) -> int:
+    raw = os.environ.get("MOSS_API_THREADPOOL_TOKENS", "").strip()
+    try:
+        value = int(raw) if raw else default
+    except ValueError:
+        return default
+    return max(value, 1)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    # Nearly all routes are sync `def` and run on the AnyIO worker-thread pool
+    # (40 tokens by default); raise the cap so slow endpoints don't starve fast ones.
+    to_thread.current_default_thread_limiter().total_tokens = _configured_api_threadpool_tokens()
     # Blocking Postgres/DuckDB bootstrap off the event loop (Windows uvicorn + sync
     # drivers can otherwise stall startup indefinitely).
     await asyncio.to_thread(run_startup_storage_migrations)

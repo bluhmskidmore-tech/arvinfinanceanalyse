@@ -39,9 +39,16 @@ def net_return_after_costs(
     sell_cost_rate: float,
     slippage_rate: float,
 ) -> float | None:
+    """Round-trip net return with costs charged multiplicatively on notional.
+
+    ``(1 + r) * (1 - c) - 1`` with ``c = buy + sell + 2 * slippage``; the
+    previous additive approximation ``r - c`` overstated net returns by the
+    second-order term ``r * c``.
+    """
     if gross_return is None:
         return None
-    return gross_return - buy_cost_rate - sell_cost_rate - 2 * slippage_rate
+    round_trip_cost_rate = buy_cost_rate + sell_cost_rate + 2 * slippage_rate
+    return (1.0 + gross_return) * (1.0 - round_trip_cost_rate) - 1.0
 
 
 def factors_changed(values: list[float | None], *, tolerance: float = 1e-12) -> bool:

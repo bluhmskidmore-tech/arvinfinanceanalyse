@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import subprocess
+import sys
 from decimal import Decimal
 from pathlib import Path
 from uuid import uuid4
@@ -19,6 +21,35 @@ from backend.app.services.accounting_asset_movement_service import (
 from backend.app.tasks.accounting_asset_movement import (
     materialize_accounting_asset_movement_on_connection,
 )
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_movement_service_import_does_not_load_tasks_modules() -> None:
+    """只读导入路径不得触达 backend.app.tasks（dramatiq broker/actor 注册）。"""
+    code = (
+        "import sys; "
+        "import backend.app.services.accounting_asset_movement_service; "
+        "loaded = sorted(m for m in sys.modules if m.startswith('backend.app.tasks')); "
+        "assert not loaded, loaded"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_movement_service_task_identity_constants_match_task_module() -> None:
+    import backend.app.tasks.accounting_asset_movement as movement_task
+
+    assert movement_service.JOB_NAME == movement_task.JOB_NAME
+    assert movement_service.RULE_VERSION == movement_task.RULE_VERSION
+    assert movement_service.CACHE_KEY == movement_task.CACHE_KEY
+    assert movement_service.PENDING_SOURCE_VERSION == movement_task.PENDING_SOURCE_VERSION
 
 
 def test_repository_never_reopens_duckdb_in_write_mode(monkeypatch):

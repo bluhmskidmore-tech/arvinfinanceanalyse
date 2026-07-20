@@ -289,4 +289,5 @@ def test_matched_baseline_generates_control_returns_and_writes_rows(tmp_path) ->
     assert count == 2
     assert {row["control_stock_code"] for row in rows} == {"000002.SZ", "000003.SZ"}
     assert {row["control_group"] for row in rows} == {LIQUIDITY_FALLBACK_CONTROL_GROUP}
-    assert rows[0]["control_return_5d_net_adj"] == pytest.approx(0.4959)
+    # gross 0.50 netted multiplicatively: (1 + 0.5) * (1 - 0.0041) - 1 = 0.49385
+    assert rows[0]["control_return_5d_net_adj"] == pytest.approx(0.49385)

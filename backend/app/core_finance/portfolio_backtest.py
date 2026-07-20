@@ -765,12 +765,22 @@ def build_benchmark_comparison(
     gate_timing_by_date: dict[str, float] = {}
     buy_hold = float(initial_capital)
     gate_timing = float(initial_capital)
+    # 敞口由 T 日收盘决定、T+1 日生效（与 equity_strategies 口径一致），
+    # 避免"当日收盘决定的敞口吃当日收益"美化 gate 择时基准
+    # （2026-07-19 审计 宏观 H-1）。首个复利日使用 start_date 收盘的决策。
+    prev_exposure = _exposure_for_date(
+        start_date,
+        state=state_by_date.get(start_date, "OFF"),
+        exposure_by_date=exposure_by_date,
+        exposure_by_market_state=exposure_by_market_state,
+    )
     for date_key in sorted(benchmark_returns):
         if date_key <= start_date:
             continue
         daily_return = benchmark_returns[date_key]
         buy_hold *= 1.0 + daily_return
-        gate_timing *= 1.0 + daily_return * _exposure_for_date(
+        gate_timing *= 1.0 + daily_return * prev_exposure
+        prev_exposure = _exposure_for_date(
             date_key,
             state=state_by_date.get(date_key, "OFF"),
             exposure_by_date=exposure_by_date,

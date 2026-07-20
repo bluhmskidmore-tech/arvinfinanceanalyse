@@ -53,12 +53,13 @@ def _safe_decimal(value: object) -> Decimal:
     if value is None:
         return ZERO
     if isinstance(value, Decimal):
-        return value
+        return value if value.is_finite() else ZERO
     try:
-        return Decimal(str(value))
+        result = Decimal(str(value))
     except (TypeError, ValueError, ArithmeticError):
         logger.exception("_safe_decimal: failed to convert %r", type(value).__name__)
         return ZERO
+    return result if result.is_finite() else ZERO
 
 
 def _ratio(numerator: Decimal, denominator: Decimal) -> Decimal:
@@ -365,6 +366,8 @@ def _compute_liquidity_gaps(
         projection_rows,
         projection_report_date,
         horizon_months=4,
+        # rows 来自 fact_formal_bond_analytics_daily（engine 归一后的小数口径）。
+        coupon_rate_unit="decimal",
     )
     asset_gap_30d = _sum_window_cashflows(
         projected_events,

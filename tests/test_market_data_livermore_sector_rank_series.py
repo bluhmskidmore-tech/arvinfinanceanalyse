@@ -221,6 +221,8 @@ def test_sector_rank_series_happy_path_window_5(tmp_path, monkeypatch) -> None:
     notes = result["unsupported_notes"]
     assert "momentum_persistence: needs metric definition review (P1)" in notes
     assert "sector_money_flow: needs vendor approval & new schema (P1)" in notes
+    assert any("cum_pctchange_window" in note for note in result["metric_notes"])
+    assert result["warnings"] == []
     get_settings.cache_clear()
 
 
@@ -246,6 +248,8 @@ def test_sector_rank_series_window_20(tmp_path, monkeypatch) -> None:
     result = response.json()["result"]
     assert result["window_days"] == 20
     assert len({row["trade_date"] for row in result["series"]}) == 5
+    # only 5 trade dates exist inside the calendar buffer -> shortfall warning
+    assert any(warning.startswith("window_shortfall:") for warning in result["warnings"])
     get_settings.cache_clear()
 
 

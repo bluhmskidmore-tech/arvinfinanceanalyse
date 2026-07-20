@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import cast
 
 EPS = 1e-12
-FORMULA_VERSION = "rv_livermore_theme_breakout_real_concept_v4"
+FORMULA_VERSION = "rv_livermore_theme_breakout_real_concept_v5"
 STRONG_PCTCHANGE_THRESHOLD = 5.0
 MIN_STRONG_STOCK_COUNT = 3
 MIN_LIMIT_STOCK_COUNT = 2
@@ -180,9 +180,6 @@ def _stock_row(
         return None
 
     strong = pctchange >= STRONG_PCTCHANGE_THRESHOLD
-    if not strong and not snapshot.closed_up_limit:
-        return None
-
     close_strength = _close_strength(close=close_value, low=low_value, high=high_value)
     return {
         "stock_code": snapshot.stock_code,
@@ -218,18 +215,24 @@ def _evaluate_theme_row(
     source_kind: str,
     stock_rows: list[dict[str, object]],
 ) -> _EvaluatedThemeRow | None:
+    # Cluster strength, leaders, and displayed items stay on the strong/limit-up
+    # subset; breadth statistics must cover the full concept membership so a
+    # narrow rally inside a large concept cannot fake full-breadth advance.
+    breakout_rows = [row for row in stock_rows if cast(bool, row["strong"]) or cast(bool, row["closed_up_limit"])]
+    if not breakout_rows:
+        return None
     member_count = len(stock_rows)
     advance_count = sum(1 for row in stock_rows if cast(float, row["pctchange"]) > 0)
     strong_stock_count = sum(1 for row in stock_rows if cast(bool, row["strong"]))
     limit_stock_count = sum(1 for row in stock_rows if cast(bool, row["closed_up_limit"]))
     advance_ratio = advance_count / member_count if member_count else 0.0
     avg_pctchange = _average(row["pctchange"] for row in stock_rows)
-    avg_turn = _average(row["turn"] for row in stock_rows)
-    avg_amplitude = _average(row["amplitude"] for row in stock_rows)
-    parent_sector_rank = min(_sector_rank_sort_value(row["sector_rank"]) for row in stock_rows)
-    movement_event_count = sum(cast(int, row["movement_event_count"]) for row in stock_rows)
+    avg_turn = _average(row["turn"] for row in breakout_rows)
+    avg_amplitude = _average(row["amplitude"] for row in breakout_rows)
+    parent_sector_rank = min(_sector_rank_sort_value(row["sector_rank"]) for row in breakout_rows)
+    movement_event_count = sum(cast(int, row["movement_event_count"]) for row in breakout_rows)
     movement_rows = [
-        row for row in stock_rows if cast(int, row["movement_event_count"]) > 0 and str(row["latest_event_time"])
+        row for row in breakout_rows if cast(int, row["movement_event_count"]) > 0 and str(row["latest_event_time"])
     ]
     latest_event = max(movement_rows, key=lambda row: str(row["latest_event_time"])) if movement_rows else None
 
@@ -239,7 +242,7 @@ def _evaluate_theme_row(
         or (movement_event_count > 0 and strong_stock_count >= 2)
     )
     has_breadth = advance_ratio >= MIN_ADVANCE_RATIO or avg_pctchange >= MIN_AVG_PCTCHANGE
-    ordered_items = sorted(stock_rows, key=_stock_sort_key)[:MAX_ITEMS_PER_THEME]
+    ordered_items = sorted(breakout_rows, key=_stock_sort_key)[:MAX_ITEMS_PER_THEME]
     leader_codes = ", ".join(str(row["stock_code"]) for row in ordered_items[:3])
     failed_gate_codes: list[str] = []
     if not has_cluster_strength:

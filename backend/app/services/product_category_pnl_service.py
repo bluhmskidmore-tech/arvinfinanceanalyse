@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from calendar import monthrange
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 from uuid import uuid4
 
@@ -43,12 +44,43 @@ from backend.app.services.formal_result_runtime import (
     build_formal_result_meta,
 )
 from backend.app.services.product_category_source_service import discover_source_pairs
-from backend.app.tasks.product_category_pnl import (
-    PRODUCT_CATEGORY_ADJUSTMENT_STREAM,
-    PRODUCT_CATEGORY_PNL_LOCK,
-    materialize_product_category_pnl,
-    product_category_pnl_payload_from_canonical_ytd_anchor,
+
+# 与 product_category_pnl task 对齐；只读路径不得 import tasks（broker/actor 注册）。
+PRODUCT_CATEGORY_ADJUSTMENT_STREAM = "product_category_pnl_adjustments"
+PRODUCT_CATEGORY_PNL_LOCK = LockDefinition(
+    key="lock:duckdb:product-category-pnl",
+    ttl_seconds=900,
 )
+
+
+class _MaterializeProductCategoryPnlProxy:
+    def send(self, **kwargs: object) -> object:
+        from backend.app.tasks.product_category_pnl import (
+            materialize_product_category_pnl as _actor,
+        )
+
+        return _actor.send(**kwargs)
+
+    def fn(self, *args: object, **kwargs: object) -> object:
+        from backend.app.tasks.product_category_pnl import (
+            materialize_product_category_pnl as _actor,
+        )
+
+        return _actor.fn(*args, **kwargs)
+
+
+materialize_product_category_pnl = _MaterializeProductCategoryPnlProxy()
+
+
+def product_category_pnl_payload_from_canonical_ytd_anchor(
+    *args: object, **kwargs: object
+) -> object:
+    from backend.app.tasks.product_category_pnl import (
+        product_category_pnl_payload_from_canonical_ytd_anchor as _payload,
+    )
+
+    return _payload(*args, **kwargs)
+
 
 logger = logging.getLogger(__name__)
 
@@ -695,9 +727,9 @@ def _product_category_completeness_check(
 ) -> dict[str, object]:
     expected_total = asset_total.business_net_income + liability_total.business_net_income
     return completeness_check(
-        product_category_total=float(grand_total.business_net_income),
-        pnl_total=float(expected_total),
-        threshold_yuan=0.01,
+        product_category_total=grand_total.business_net_income,
+        pnl_total=expected_total,
+        threshold_yuan=Decimal("0.01"),
     )
 
 

@@ -189,7 +189,7 @@ def test_current_overlay_source_is_visible_on_theme_and_nested_stock_rows() -> N
     )
 
     payload = cast(dict[str, Any], result.payload)
-    assert payload["formula_version"] == "rv_livermore_theme_breakout_real_concept_v4"
+    assert payload["formula_version"] == "rv_livermore_theme_breakout_real_concept_v5"
     assert payload["is_proxy"] is False
     theme = cast(list[dict[str, Any]], payload["items"])[0]
     assert theme["source_kind"] == "tushare_current_overlay"
@@ -334,6 +334,57 @@ def test_theme_breakout_review_items_are_additive_capped_and_carry_failed_gate_c
     assert "buy" not in serialized
     assert "sell" not in serialized
     assert "order" not in serialized
+
+
+def test_theme_breakout_breadth_gate_uses_full_concept_membership() -> None:
+    strong_members = [
+        _snapshot(
+            stock_code=f"6881{index:02d}.SH",
+            stock_name=f"Narrow Rally Leader {index}",
+            pctchange=7.2,
+            concept_code="C300",
+            concept_name="Narrow Rally",
+        )
+        for index in range(3)
+    ]
+    lagging_members = [
+        _snapshot(
+            stock_code=f"6882{index:02d}.SH",
+            stock_name=f"Narrow Rally Laggard {index}",
+            pctchange=-0.5,
+            concept_code="C300",
+            concept_name="Narrow Rally",
+        )
+        for index in range(97)
+    ]
+
+    result = compute_theme_breakout(
+        as_of_date="2026-05-08",
+        snapshots=[*strong_members, *lagging_members],
+    )
+
+    payload = cast(dict[str, Any], result.payload)
+    selected_keys = [item["theme_key"] for item in cast(list[dict[str, Any]], payload["items"])]
+    assert "concept:C300" not in selected_keys
+
+    review_by_key = {
+        str(item["theme_key"]): item
+        for item in cast(list[dict[str, Any]], payload["review_items"])
+    }
+    theme = review_by_key["concept:C300"]
+    assert theme["failed_gate_codes"] == ["insufficient_breadth"]
+    assert theme["member_count"] == 100
+    assert theme["advance_count"] == 3
+    assert theme["advance_ratio"] == 0.03
+    assert theme["strong_stock_count"] == 3
+    assert theme["limit_stock_count"] == 0
+    assert theme["avg_pctchange"] == round((3 * 7.2 + 97 * -0.5) / 100, 6)
+    stock_items = cast(list[dict[str, Any]], theme["items"])
+    assert {item["stock_code"] for item in stock_items} == {
+        "688100.SH",
+        "688101.SH",
+        "688102.SH",
+    }
 
 
 def test_theme_breakout_caps_selected_real_concepts_to_ranked_top_themes() -> None:

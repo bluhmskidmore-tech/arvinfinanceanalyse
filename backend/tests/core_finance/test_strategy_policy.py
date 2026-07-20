@@ -160,7 +160,7 @@ def test_strategy_formula_versions_match_current_contracts() -> None:
     )
     assert (
         livermore_candidate_history_materialize.EXECUTION_FORMULA_VERSION
-        == "fv_livermore_candidate_execution_dual_adjust_v2"
+        == "fv_livermore_candidate_execution_dual_adjust_v4"
     )
 
 

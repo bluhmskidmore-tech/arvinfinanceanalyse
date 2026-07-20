@@ -58,10 +58,25 @@ def project_bond_cashflows(
     bond_rows: list[dict[str, Any]],
     report_date: date,
     horizon_months: int = 24,
+    *,
+    coupon_rate_unit: str = "percent",
 ) -> list[CashflowEvent]:
     """
     Project bond coupon and principal cashflows within the horizon.
+
+    ``coupon_rate_unit`` 声明输入行 ``coupon_rate`` 的单位：
+    - ``"percent"``（默认）：来自 `fact_formal_zqtz_balance_daily` 的百分数口径
+      （1.82 = 1.82%），显式 ÷100。
+    - ``"decimal"``：来自 `fact_formal_bond_analytics_daily` 的小数口径
+      （engine 归一后 0.0182 = 1.82%，如 risk_tensor 流动性缺口路径）。
     """
+
+    if coupon_rate_unit == "percent":
+        coerce_rate = _coerce_rate_decimal
+    elif coupon_rate_unit == "decimal":
+        coerce_rate = _coerce_decimal_caliber_rate
+    else:
+        raise ValueError(f"Unsupported coupon_rate_unit={coupon_rate_unit!r}")
 
     horizon_end = _add_months(report_date, horizon_months)
     events: list[CashflowEvent] = []
@@ -71,7 +86,7 @@ def project_bond_cashflows(
             continue
 
         face_value = _coerce_decimal(_get_value(row, "face_value", "face_value_amount", "face_value_native"))
-        coupon_rate = _coerce_rate_decimal(_get_value(row, "coupon_rate"))
+        coupon_rate = coerce_rate(_get_value(row, "coupon_rate"))
         interest_mode = _get_text(row, "interest_mode")
         interval_months = _coupon_interval_months(interest_mode)
 
@@ -624,6 +639,20 @@ def _coerce_decimal(value: Any) -> Decimal:
 
 
 def _coerce_rate_decimal(value: Any) -> Decimal:
+    # fact_formal_zqtz_balance_daily.coupon_rate 为百分数口径（1.82 = 1.82%），
+    # 必须显式除以 100；>2 启发式会把 [0.2, 2) 灰区低票息当作小数 182% 计息。
+    # 取证：docs/audits/2026-07-19-system-calculation-audit.md 取证 1。
+    from backend.app.core_finance.rate_units import normalize_percent_rate_to_decimal
+
+    normalized = normalize_percent_rate_to_decimal(value)
+    if normalized is None:
+        return ZERO
+    return Decimal(str(normalized))
+
+
+def _coerce_decimal_caliber_rate(value: Any) -> Decimal:
+    # 小数口径来源（fact_formal_bond_analytics_daily，engine 已归一），
+    # 仅做防御性处理。
     from backend.app.core_finance.rate_units import normalize_annual_rate_to_decimal
 
     normalized = normalize_annual_rate_to_decimal(value)

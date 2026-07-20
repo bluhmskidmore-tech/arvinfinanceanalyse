@@ -421,18 +421,30 @@ def _duration_denominator_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any
 
 
 def build_krd_distribution(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Bucket-level duration summary for the curve-risk page.
+
+    ``avg_modified_duration`` is MV-weighted average modified duration in the
+    tenor bucket. It is **not** key-rate duration contribution (``krd.py``) and
+    **not** bucket ΣDV01 (``risk_tensor``). ``krd`` is retained as a deprecated
+    alias of the same value for one release of API/clients.
+    """
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
         grouped[str(row["tenor_bucket"])].append(row)
-    return [
-        {
-            "tenor_bucket": tenor_bucket,
-            "market_value": _sum(bucket_rows, "market_value"),
-            "dv01": _sum(bucket_rows, "dv01"),
-            "krd": _weighted(bucket_rows, "modified_duration"),
-        }
-        for tenor_bucket, bucket_rows in sorted(grouped.items())
-    ]
+    out: list[dict[str, Any]] = []
+    for tenor_bucket, bucket_rows in sorted(grouped.items()):
+        avg_modified_duration = _weighted(bucket_rows, "modified_duration")
+        out.append(
+            {
+                "tenor_bucket": tenor_bucket,
+                "market_value": _sum(bucket_rows, "market_value"),
+                "dv01": _sum(bucket_rows, "dv01"),
+                "avg_modified_duration": avg_modified_duration,
+                # Deprecated alias — same value as avg_modified_duration.
+                "krd": avg_modified_duration,
+            }
+        )
+    return out
 
 
 def build_curve_scenarios(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:

@@ -25,7 +25,10 @@ from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope_from_lineage,
 )
 from backend.app.services.runtime_cache import get_runtime_cache
-from backend.app.tasks.risk_tensor_materialize import CACHE_KEY, CACHE_VERSION, RULE_VERSION
+# 与 risk_tensor_materialize 对齐；只读路径不得 import tasks（broker/actor 注册）。
+CACHE_KEY = "risk_tensor:materialize:formal"
+CACHE_VERSION = "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v3"
+RULE_VERSION = "rv_risk_tensor_formal_materialize_v3"
 
 _RISK_TENSOR_CACHE_TTL_SECONDS = 300.0
 _RISK_TENSOR_CACHE = get_runtime_cache(

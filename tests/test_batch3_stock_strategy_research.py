@@ -154,7 +154,8 @@ def test_hold_exit_rule_uses_day_k_close_and_next_tradable_open() -> None:
     assert row["overlay_applied"] is True
     assert row["exit_date"] == "2026-06-05"
     assert row["exit_price"] == pytest.approx(9.0)
-    assert row["rule_return_net"] == pytest.approx(-0.1041)
+    # gross -0.10 netted multiplicatively: (1 - 0.10) * (1 - 0.0041) - 1 = -0.10369
+    assert row["rule_return_net"] == pytest.approx(-0.10369)
 
 
 def test_hold_exit_rule_records_missing_next_open_without_skipping_forward() -> None:
@@ -213,7 +214,7 @@ def test_hold_exit_rule_keeps_raw_fallback_basis_consistent() -> None:
 
     assert row["triggered"] is True
     assert row["exit_price"] == pytest.approx(9.0)
-    assert row["rule_return_net"] == pytest.approx(-0.1041)
+    assert row["rule_return_net"] == pytest.approx(-0.10369)
 
 
 def test_winner_diagnostic_does_not_require_open_or_enter_portfolio_comparison() -> None:
@@ -762,7 +763,7 @@ def test_path_mode_exit_uses_trigger_next_open_without_future_rebound() -> None:
 
     assert result["position_rows"][0]["date"] == "2026-06-05"
     assert result["position_rows"][0]["exit_price"] == pytest.approx(9.0)
-    assert result["position_rows"][0]["return_net"] == pytest.approx(-0.1041)
+    assert result["position_rows"][0]["return_net"] == pytest.approx(-0.10369)
 
 
 def test_path_mode_report_baselines_tie_out_to_portfolio_engine() -> None:

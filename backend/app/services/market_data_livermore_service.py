@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, Any, cast
 
 import duckdb
 from backend.app.core_finance.cycle_macro_score import (
@@ -34,6 +34,7 @@ from backend.app.core_finance.data_freshness import (
 from backend.app.core_finance.factor_screen_candidates import (
     compute_factor_screen_candidates,
 )
+from backend.app.core_finance.field_normalization import TRADING_STATUS_SQL_IN_LIST
 from backend.app.core_finance.fresh_trend_watchlist_candidates import (
     FreshTrendWatchlistSnapshot,
     compute_fresh_trend_watchlist_candidates,
@@ -103,12 +104,22 @@ from backend.app.services.formal_result_runtime import (
     build_result_envelope,
 )
 from backend.app.services.runtime_cache import get_runtime_cache
-from backend.app.tasks.choice_stock_materialize import (
-    ChoiceStockMaterializationCoverage,
-    load_choice_stock_materialization_coverage,
-)
+
+if TYPE_CHECKING:
+    from backend.app.tasks.choice_stock_materialize import ChoiceStockMaterializationCoverage
 
 logger = logging.getLogger(__name__)
+
+
+def load_choice_stock_materialization_coverage(**kwargs: Any) -> ChoiceStockMaterializationCoverage:
+    """延迟导入 tasks 层的覆盖度读取：只读路径导入本模块时不得触发
+    backend.app.tasks（dramatiq broker/actor 注册）初始化。保留模块级
+    同名符号，测试仍可 monkeypatch 本模块属性。"""
+    from backend.app.tasks.choice_stock_materialize import (
+        load_choice_stock_materialization_coverage as _load_coverage,
+    )
+
+    return _load_coverage(**kwargs)
 
 RULE_VERSION = "rv_livermore_strategy_v1"
 CACHE_VERSION = "cv_livermore_strategy_v1"
@@ -1514,6 +1525,8 @@ def _choice_stock_missing_inputs(*, stock_readiness: ChoiceStockReadiness, famil
 def _project_sector_materialization_coverage(
     stock_coverage: ChoiceStockMaterializationCoverage,
 ) -> ChoiceStockMaterializationCoverage | None:
+    from backend.app.tasks.choice_stock_materialize import ChoiceStockMaterializationCoverage
+
     if stock_coverage.status == "ready":
         if not stock_coverage.full_coverage or stock_coverage.missing_request_items:
             return None
@@ -1592,6 +1605,8 @@ def _load_choice_stock_outputs(
         )
 
     if backfill_mode:
+        from backend.app.tasks.choice_stock_materialize import ChoiceStockMaterializationCoverage
+
         # 回填模式：跳过 audit 表的精确日期检查，直接用最近可用快照
         sector_coverage = ChoiceStockMaterializationCoverage(
             as_of_date=as_of_date,
@@ -2099,7 +2114,7 @@ def _load_dual_stock_history_inputs(
         CHOICE_STOCK_HISTORY_WINDOW,
     ]
     rows = conn.execute(
-        """
+        f"""
         with targets as (
           select
             unnest(?::varchar[]) as stock_code,
@@ -2116,7 +2131,7 @@ def _load_dual_stock_history_inputs(
             targets.want_candidate,
             targets.want_trading,
             cast(daily.trade_date as date) as trade_day,
-            trim(coalesce(daily.tradestatus, '')) = 'Trading' as is_trading
+            lower(trim(coalesce(daily.tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST} as is_trading
           from choice_stock_daily_observation daily
           join targets on targets.stock_code = daily.stock_code
           where cast(daily.trade_date as date) <= cast(? as date)
@@ -2183,9 +2198,9 @@ def _load_dual_stock_history_inputs(
             closes: list[float] = []
             turns: list[float] = []
             for close_raw, turn_raw in zip(candidate_closes, candidate_turns, strict=True):
+                # 快路径与 _safe_float 口径一致：0 值行（如停牌日换手为 0）
+                # 保留，只有 None 行被剔除，避免候选历史日历错位。
                 if isinstance(close_raw, float) and isinstance(turn_raw, float):
-                    if close_raw == 0.0 or turn_raw == 0.0:
-                        continue
                     closes.append(close_raw)
                     turns.append(turn_raw)
                     continue
@@ -2575,7 +2590,7 @@ def _load_trading_stock_snapshot_inputs(
         if universe_snapshot_date is None or membership_snapshot_date is None:
             return empty
         current_raw_rows = conn.execute(
-            """
+            f"""
             select
               daily.stock_code,
               coalesce(nullif(trim(universe.stock_name), ''), daily.stock_code) as stock_name,
@@ -2596,7 +2611,7 @@ def _load_trading_stock_snapshot_inputs(
               on membership.stock_code = daily.stock_code
              and membership.as_of_date = ?
             where cast(daily.trade_date as date) = cast(? as date)
-              and trim(coalesce(daily.tradestatus, '')) = 'Trading'
+              and lower(trim(coalesce(daily.tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
             """,
             [universe_snapshot_date, membership_snapshot_date, as_of_date],
         ).fetchall()
@@ -2627,7 +2642,7 @@ def _load_trading_stock_snapshot_inputs(
                   from choice_stock_daily_observation
                   where stock_code in ({placeholders})
                     and cast(trade_date as date) <= cast(? as date)
-                    and trim(coalesce(tradestatus, '')) = 'Trading'
+                    and lower(trim(coalesce(tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
                 )
                 select stock_code, close_value, amount, volume
                 from ranked_history
@@ -2847,7 +2862,7 @@ def _load_mean_reversion_snapshots(
         if universe_snapshot_date is None or membership_snapshot_date is None:
             return []
         current_rows = conn.execute(
-            """
+            f"""
             select
               daily.stock_code,
               coalesce(nullif(trim(universe.stock_name), ''), daily.stock_code) as stock_name,
@@ -2865,7 +2880,7 @@ def _load_mean_reversion_snapshots(
               on membership.stock_code = daily.stock_code
              and membership.as_of_date = ?
             where cast(daily.trade_date as date) = cast(? as date)
-              and trim(coalesce(daily.tradestatus, '')) = 'Trading'
+              and lower(trim(coalesce(daily.tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
             """,
             [universe_snapshot_date, membership_snapshot_date, as_of_date],
         ).fetchall()
@@ -2879,7 +2894,7 @@ def _load_mean_reversion_snapshots(
             from choice_stock_daily_observation
             where stock_code in ({placeholders})
               and cast(trade_date as date) <= cast(? as date)
-              and trim(coalesce(tradestatus, '')) = 'Trading'
+              and lower(trim(coalesce(tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
             order by stock_code asc, cast(trade_date as date) asc
             """,
             [*stock_codes, as_of_date],
@@ -2964,7 +2979,7 @@ def _load_uptrend_momentum_snapshots(
         if universe_snapshot_date is None or membership_snapshot_date is None:
             return []
         current_rows = conn.execute(
-            """
+            f"""
             select
               daily.stock_code,
               coalesce(nullif(trim(universe.stock_name), ''), daily.stock_code) as stock_name,
@@ -2982,7 +2997,7 @@ def _load_uptrend_momentum_snapshots(
               on membership.stock_code = daily.stock_code
              and membership.as_of_date = ?
             where cast(daily.trade_date as date) = cast(? as date)
-              and trim(coalesce(daily.tradestatus, '')) = 'Trading'
+              and lower(trim(coalesce(daily.tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
             """,
             [universe_snapshot_date, membership_snapshot_date, as_of_date],
         ).fetchall()
@@ -2996,7 +3011,7 @@ def _load_uptrend_momentum_snapshots(
             from choice_stock_daily_observation
             where stock_code in ({placeholders})
               and cast(trade_date as date) <= cast(? as date)
-              and trim(coalesce(tradestatus, '')) = 'Trading'
+              and lower(trim(coalesce(tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
             order by stock_code asc, cast(trade_date as date) asc
             """,
             [*stock_codes, as_of_date],
@@ -3086,7 +3101,7 @@ def _load_fresh_trend_watchlist_snapshots(
         if universe_snapshot_date is None or membership_snapshot_date is None:
             return _FreshTrendWatchlistLoadResult(snapshots=[], tables_used=[])
         current_rows = conn.execute(
-            """
+            f"""
             select
               daily.stock_code,
               coalesce(nullif(trim(universe.stock_name), ''), daily.stock_code) as stock_name,
@@ -3104,7 +3119,7 @@ def _load_fresh_trend_watchlist_snapshots(
               on membership.stock_code = daily.stock_code
              and membership.as_of_date = ?
             where cast(daily.trade_date as date) = cast(? as date)
-              and trim(coalesce(daily.tradestatus, '')) = 'Trading'
+              and lower(trim(coalesce(daily.tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
             """,
             [universe_snapshot_date, membership_snapshot_date, as_of_date],
         ).fetchall()
@@ -3118,7 +3133,7 @@ def _load_fresh_trend_watchlist_snapshots(
             from choice_stock_daily_observation
             where stock_code in ({placeholders})
               and cast(trade_date as date) <= cast(? as date)
-              and trim(coalesce(tradestatus, '')) = 'Trading'
+              and lower(trim(coalesce(tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
             order by stock_code asc, cast(trade_date as date) asc
             """,
             [*stock_codes, as_of_date],
@@ -5862,7 +5877,12 @@ def _date_before(value: str, threshold: date) -> bool:
 
 
 def _safe_float(value: object) -> float | None:
-    text = str(value or "").strip()
+    # 口径：0 / 0.0 是有效数值（例如停牌日换手率为 0）；仅 None、空白串和
+    # 不可解析文本视为缺失。不得用真值判断把 0 静默当缺失，否则历史序列
+    # 会整天丢行导致 prior_close / 均线窗口日历错位。
+    if value is None:
+        return None
+    text = str(value).strip()
     if not text:
         return None
     try:

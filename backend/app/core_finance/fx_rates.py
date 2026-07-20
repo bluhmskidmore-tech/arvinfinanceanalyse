@@ -17,6 +17,10 @@ class FxRateUnavailableError(RuntimeError):
     """Raised when formal USD/CNY middle-rate input is insufficient."""
 
 
+# 春节最长 9 天假期 + 相邻周末/调休的安全上限。
+_FORMAL_CARRY_FORWARD_MAX_LOOKBACK_DAYS = 14
+
+
 def is_weekend_non_business_day(target_date: date | str) -> bool:
     if isinstance(target_date, str):
         target_date = date.fromisoformat(target_date)
@@ -59,14 +63,25 @@ def get_usd_cny_rate(
             )
         )
         if is_non_business_day:
-            start = target_date - timedelta(days=3)
-            before = [(d, r) for d, r in valid if start <= d < target_date]
-            if before:
-                d, r = before[-1]
-                warnings.append(
-                    f"USD/CNY formal non-business-day carry-forward: target_date={target_date}, observed_date={d}"
-                )
-                return r, d, warnings
+            # 按"上一营业日"语义回看（calc_rules §7.1）：只允许跳过连续非营业日，
+            # 覆盖春节等长假（2026 春节 2/15-2/23 共 9 天，原固定 3 天窗口会误失败）；
+            # 一旦回看到营业日仍缺中间价则 fail-closed。
+            by_date = dict(valid)
+            probe = target_date - timedelta(days=1)
+            for _ in range(_FORMAL_CARRY_FORWARD_MAX_LOOKBACK_DAYS):
+                rate = by_date.get(probe)
+                if rate is not None:
+                    warnings.append(
+                        f"USD/CNY formal non-business-day carry-forward: target_date={target_date}, observed_date={probe}"
+                    )
+                    return rate, probe, warnings
+                if not is_cfets_fx_non_business_day(
+                    probe,
+                    base_currency="USD",
+                    quote_currency="CNY",
+                ):
+                    break
+                probe -= timedelta(days=1)
         raise FxRateUnavailableError(
             f"USD/CNY formal middle-rate unavailable for target_date={target_date}: missing official input row."
         )
@@ -80,7 +95,15 @@ def get_usd_cny_rate(
         )
         return r, d, warnings
 
-    d, r = valid[-1]
+    # 兜底也只允许取 target_date 之前的行：历史回放时输入集可能包含晚于
+    # target_date 的行，取 valid[-1] 会引入未来汇率（前视偏差，2026-07-19 审计 共享 H-2）。
+    older = [(d, r) for d, r in valid if d < target_date]
+    if not older:
+        raise FxRateUnavailableError(
+            f"USD/CNY analytical fallback unavailable for target_date={target_date}: "
+            "all valid input rows are on or after target_date."
+        )
+    d, r = older[-1]
     warnings.append(
         f"USD/CNY analytical stale fallback beyond 30 days: target_date={target_date}, observed_date={d}"
     )

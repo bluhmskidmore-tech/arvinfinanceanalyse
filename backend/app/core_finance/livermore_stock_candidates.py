@@ -236,6 +236,8 @@ def _candidate_row(
     if snapshot.one_word_board or snapshot.closed_up_limit:
         return None, False
 
+    # Max of the prior 55 closes (signal bar excluded): closes[-56:-1] spans
+    # 55 elements. Diagnostic label: breakout_above_55d_close_high.
     breakout_level = max(closes[-56:-1])
     ema10 = _ema_latest(closes, EMA_WINDOW)
     ma20 = _moving_average(closes, 20)
@@ -388,7 +390,7 @@ def _snapshot_filter_diagnostic(
         if sector_rank == 1 and abnormal_turnover >= CROWDED_LEADER_TURNOVER_BLOCK:
             failures.append("not_crowded_leader_turnover")
         if close_value <= breakout_level:
-            failures.append("breakout_above_56d_high")
+            failures.append("breakout_above_55d_close_high")
         if not (ma20 > ma60 > ma120):
             failures.append("ma20>ma60>ma120")
         if close_strength < policy.close_strength_min:
@@ -487,7 +489,7 @@ def _diagnostic_step_order(policy: _StockCandidatePolicy) -> list[str]:
         "not_one_word_board",
         "not_closed_up_limit",
         "not_crowded_leader_turnover",
-        "breakout_above_56d_high",
+        "breakout_above_55d_close_high",
         "ma20>ma60>ma120",
         _close_strength_step(policy),
         _gap_norm_step(policy),
@@ -809,5 +811,9 @@ def _round_optional(value: object, ndigits: int = 6) -> float | None:
 
 
 def _valid_int(value: object) -> int | None:
+    # Used for ordinal fields (sector_rank): a fractional value is invalid
+    # data, so reject it instead of silently truncating (e.g. 2.9 -> 2).
     number = _valid_float(value)
-    return None if number is None else int(number)
+    if number is None or not number.is_integer():
+        return None
+    return int(number)

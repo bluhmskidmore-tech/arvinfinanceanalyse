@@ -53,8 +53,9 @@ def _zqtz_asset() -> FormalZqtzBalanceFactRow:
         market_value_amount=Decimal("101000000"),
         amortized_cost_amount=Decimal("100000000"),
         accrued_interest_amount=Decimal("0"),
-        coupon_rate=Decimal("0.0320"),
-        ytm_value=Decimal("0.0320"),
+        # 百分数口径：3.20 = 3.20%（2026-07-19 审计取证 1 裁决）
+        coupon_rate=Decimal("3.20"),
+        ytm_value=Decimal("3.20"),
         maturity_date=MAT,
         interest_mode="固定",
         is_issuance_like=False,
@@ -83,8 +84,8 @@ def _zqtz_issuance() -> FormalZqtzBalanceFactRow:
         market_value_amount=Decimal("40000000"),
         amortized_cost_amount=Decimal("40000000"),
         accrued_interest_amount=Decimal("0"),
-        coupon_rate=Decimal("0.0250"),
-        ytm_value=Decimal("0.0250"),
+        coupon_rate=Decimal("2.50"),
+        ytm_value=Decimal("2.50"),
         maturity_date=MAT,
         interest_mode="固定",
         is_issuance_like=True,
@@ -108,7 +109,7 @@ def _tyw_asset() -> FormalTywBalanceFactRow:
         currency_code="CNY",
         principal_amount=Decimal("30000000"),
         accrued_interest_amount=Decimal("0"),
-        funding_cost_rate=Decimal("0.0210"),
+        funding_cost_rate=Decimal("2.10"),
         maturity_date=MAT,
     )
 
@@ -130,7 +131,7 @@ def _tyw_liability() -> FormalTywBalanceFactRow:
         currency_code="CNY",
         principal_amount=Decimal("50000000"),
         accrued_interest_amount=Decimal("0"),
-        funding_cost_rate=Decimal("0.0180"),
+        funding_cost_rate=Decimal("1.80"),
         maturity_date=MAT,
     )
 
@@ -245,8 +246,8 @@ def test_service_fetches_full_scope_rows_and_wires_them_under_asset_scope():
             "market_value_amount": "100.00000000",
             "amortized_cost_amount": "90.00000000",
             "accrued_interest_amount": "0.00000000",
-            "coupon_rate": "0.03000000",
-            "ytm_value": "0.03100000",
+            "coupon_rate": "3.00000000",
+            "ytm_value": "3.10000000",
             "maturity_date": "2027-03-31",
             "interest_mode": "固定",
             "is_issuance_like": scope == "liability",

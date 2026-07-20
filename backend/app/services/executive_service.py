@@ -74,8 +74,9 @@ from backend.app.services.product_category_pnl_service import (
     resolve_product_category_ytd_payload_for_home_snapshot,
 )
 from backend.app.services.runtime_cache import InMemoryTTLCache, get_runtime_cache
-from backend.app.tasks.bond_analytics_materialize import CACHE_KEY as BOND_ANALYTICS_CACHE_KEY
-from backend.app.tasks.pnl_materialize import CACHE_KEY as PNL_CACHE_KEY
+# 与 tasks 模块常量对齐；只读路径不得 import tasks（broker/actor 注册）。
+BOND_ANALYTICS_CACHE_KEY = "bond_analytics:materialize:formal"
+PNL_CACHE_KEY = "pnl:phase2:materialize:formal"
 
 PNL_JOB_NAME = "pnl_materialize"
 

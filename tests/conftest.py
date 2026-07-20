@@ -91,6 +91,16 @@ def seed_wildcard_scope(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def reset_auth_scope_decision_cache():
+    """Keep permission decisions isolated between tests despite the TTL cache."""
+    from backend.app.security.auth_context import reset_scope_decision_cache
+
+    reset_scope_decision_cache()
+    yield
+    reset_scope_decision_cache()
+
+
+@pytest.fixture(autouse=True)
 def reset_choice_runtime_cache():
     yield
 

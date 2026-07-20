@@ -26,7 +26,9 @@ TABLE_HIST = "livermore_candidate_history"
 TABLE_OBS = "choice_stock_daily_observation"
 TABLE_SECTOR = "choice_stock_sector_membership"
 TABLE_UNIVERSE = "choice_stock_universe"
-FORMULA_VERSION = "fv_livermore_matched_baseline_v1"
+# v2: control_return_*_net_adj now uses multiplicative cost netting
+# ((1+r)*(1-c)-1) via adjusted_returns.net_return_after_costs.
+FORMULA_VERSION = "fv_livermore_matched_baseline_v2"
 CONTROL_SAMPLE_SIZE = 20
 SAME_SECTOR_CONTROL_GROUP = "same_sector"
 LIQUIDITY_FALLBACK_CONTROL_GROUP = "liquidity_quintile_fallback"

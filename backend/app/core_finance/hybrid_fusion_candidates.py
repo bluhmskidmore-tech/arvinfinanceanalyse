@@ -16,6 +16,24 @@ MAX_CANDIDATES = 10
 MACRO_PENDING_BLOCK_REASON = "macro_score_missing"
 MACRO_PENDING_CYCLE_STATUS = "macro_pending"
 MACRO_LANDED_CYCLE_STATUS = "macro_landed"
+# life_long/stance thresholds are percentiles of the same-day candidate pool, so
+# strong/neutral/weak stances (and fusion_action labels) are relative conclusions
+# within that pool, never absolute market-level judgments.
+THRESHOLD_BASIS = "same_day_candidate_pool_percentile"
+_THRESHOLD_BASIS_NOTE = (
+    "life_long/stance thresholds are same-day cross-sectional percentiles within the "
+    "candidate pool; strong/neutral/weak stances and fusion_action labels are relative "
+    "conclusions within this pool, not absolute market-level judgments."
+)
+# Positive weights of the lifecourt proxy formula sum to 0.84 (0.18+0.14+0.14+0.20
+# +0.10+0.08), so its theoretical max is 0.84 while cycle_score can reach 1.0. The
+# nominal fusion_weights therefore overstate the effective lifecourt contribution.
+LIFECOURT_POSITIVE_WEIGHT_SUM = round(0.18 + 0.14 + 0.14 + 0.20 + 0.10 + 0.08, 6)
+_LIFECOURT_SCALE_NOTE = (
+    "lifecourt_proxy_score positive weights sum to 0.84, so its theoretical max is 0.84 "
+    "while cycle_score can reach 1.0; fusion_weights are nominal weights and the effective "
+    "lifecourt contribution cap in fusion_score is fusion_life_weight * 0.84."
+)
 
 
 @dataclass(frozen=True)
@@ -164,6 +182,22 @@ def compute_hybrid_fusion_candidates(
                         "cycle": resolved_thresholds.fusion_cycle_weight,
                         "lifecourt": resolved_thresholds.fusion_life_weight,
                     },
+                    "threshold_basis": {
+                        "kind": THRESHOLD_BASIS,
+                        "candidate_pool_size": len(stock_codes),
+                        "note": _THRESHOLD_BASIS_NOTE,
+                    },
+                    "lifecourt_score_scale": {
+                        "positive_weight_sum": LIFECOURT_POSITIVE_WEIGHT_SUM,
+                        "theoretical_max": LIFECOURT_POSITIVE_WEIGHT_SUM,
+                        "effective_max_fusion_contribution": {
+                            "cycle": round(resolved_thresholds.fusion_cycle_weight * 1.0, 6),
+                            "lifecourt": round(
+                                resolved_thresholds.fusion_life_weight * LIFECOURT_POSITIVE_WEIGHT_SUM, 6
+                            ),
+                        },
+                        "note": _LIFECOURT_SCALE_NOTE,
+                    },
                     "macro_score": macro_score,
                     "cycle_score_status": MACRO_PENDING_CYCLE_STATUS if macro_pending else MACRO_LANDED_CYCLE_STATUS,
                     "block_reason": MACRO_PENDING_BLOCK_REASON if macro_pending else None,
@@ -281,6 +315,7 @@ def _build_payload(
         "formula_version": FORMULA_VERSION,
         "market_state": market_state,
         "observation_only": True,
+        "threshold_basis": THRESHOLD_BASIS,
         "macro_score": macro_score,
         "candidate_count": len(items),
         "coverage_note": coverage_note,
@@ -674,8 +709,12 @@ def _first_text(*values: object) -> str:
 
 
 def _safe_int(value: object) -> int | None:
+    # Consumers are rank / event-count fields with integer semantics: a fractional
+    # value signals an upstream data anomaly, so reject it instead of truncating.
     number = _safe_float(value)
-    return None if number is None else int(number)
+    if number is None or not number.is_integer():
+        return None
+    return int(number)
 
 
 def _safe_float(value: object) -> float | None:

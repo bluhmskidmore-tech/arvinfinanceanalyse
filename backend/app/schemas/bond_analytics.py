@@ -287,22 +287,37 @@ class BenchmarkExcessResponse(BaseModel):
 
 
 class KRDBucket(BaseModel):
-    """Key-rate duration for a single tenor bucket."""
+    """Tenor-bucket duration summary on the KRD curve-risk page.
+
+    ``avg_modified_duration`` is the MV-weighted average modified duration in the
+    bucket — not key-rate duration contribution and not bucket ΣDV01.
+    ``krd`` is a deprecated alias of the same value (kept for one release).
+    """
 
     tenor: str
-    krd: Numeric
+    avg_modified_duration: Numeric
     dv01: Numeric
     market_value_weight: Numeric
+    krd: Numeric | None = None
 
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
-        "krd": ("ratio", True),
+        "avg_modified_duration": ("ratio", True),
         "dv01": ("dv01", False),
         "market_value_weight": ("ratio", False),
+        "krd": ("ratio", True),
     }
 
     @model_validator(mode="before")
     @classmethod
     def _coerce(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            data = dict(data)
+            avg_md = data.get("avg_modified_duration")
+            legacy_krd = data.get("krd")
+            if avg_md is None and legacy_krd is not None:
+                data["avg_modified_duration"] = legacy_krd
+            elif legacy_krd is None and avg_md is not None:
+                data["krd"] = avg_md
         return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
 
 

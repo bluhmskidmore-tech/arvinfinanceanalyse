@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from backend.app.core_finance.candidate_history_proxy_backtest import (
+    CYCLE_PROXY_ENTRY_PRICE_WARNING,
     CYCLE_PROXY_FORMULA_VERSION,
+    PORTFOLIO_PROXY_ENTRY_PRICE_WARNING,
     PORTFOLIO_PROXY_FORMULA_VERSION,
     build_candidate_history_portfolio_series,
     build_candidate_history_portfolio_summary,
@@ -16,8 +18,20 @@ from backend.app.core_finance.candidate_history_proxy_backtest import (
 
 
 def test_formula_versions_are_stable_identifiers() -> None:
-    assert CYCLE_PROXY_FORMULA_VERSION == "fv_livermore_cycle_proxy_backtest_adj_first_v2"
+    assert CYCLE_PROXY_FORMULA_VERSION == "fv_livermore_cycle_proxy_backtest_adj_first_v3"
     assert PORTFOLIO_PROXY_FORMULA_VERSION == "fv_livermore_candidate_history_portfolio_adj_mtm_v2"
+
+
+def test_entry_price_disclosures_flag_same_day_close_assumption() -> None:
+    # MEDIUM-1: both proxies fill at the signal/snapshot-day close, which embeds
+    # a same-day execution assumption that is not replicable live.
+    assert "signal-day close" in CYCLE_PROXY_ENTRY_PRICE_WARNING
+    assert "snapshot-day close" in PORTFOLIO_PROXY_ENTRY_PRICE_WARNING
+    for disclosure in (CYCLE_PROXY_ENTRY_PRICE_WARNING, PORTFOLIO_PROXY_ENTRY_PRICE_WARNING):
+        assert "same-day execution" in disclosure
+        assert "optimistic" in disclosure
+        assert "livermore_candidate_execution_history" in disclosure
+        assert "next-open" in disclosure
 
 
 def test_cycle_proxy_row_return_prefers_adjusted_over_gross() -> None:
@@ -55,10 +69,10 @@ def test_cycle_proxy_nav_series_nets_policy_costs_and_skips_overlapping_baskets(
         ]
     )
     assert len(series) == 1
-    # 0.10 - (0.0008 + 0.0013 + 2 * 0.0010) = 0.0959
-    assert series[0]["period_return"] == 0.0959
+    # (1 + 0.10) * (1 - (0.0008 + 0.0013 + 2 * 0.0010)) - 1 = 0.09549
+    assert series[0]["period_return"] == 0.09549
     assert series[0]["period_return_gross"] == 0.1
-    assert series[0]["nav"] == 1.0959
+    assert series[0]["nav"] == 1.09549
 
 
 def test_portfolio_series_marks_to_market_with_forward_fill_and_costs() -> None:

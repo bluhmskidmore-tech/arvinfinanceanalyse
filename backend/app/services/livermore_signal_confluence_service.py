@@ -28,6 +28,13 @@ REPLAY_PARTIAL_COMPLETED_DATES = 5
 REPLAY_PARTIAL_MATCHED_ENTRIES = 30
 REPLAY_REQUIRED_HORIZONS = ("return_5d", "return_20d")
 MACRO_MULTIPLIERS = POLICY.macro_multipliers
+MACRO_CROSS_ASSET_REUSE_DISCLOSURES = (
+    "Macro gate reuses the bond-side macro_bond_linkage composite score, where positive values mean "
+    "bond-unfavorable macro pressure; negative values are mapped to supportive for equities.",
+    "Macro gate thresholds of +/-0.3 are empirical and have no independent equity-side contract source.",
+    "Cross-asset caveat: weakening growth lowers the bond composite score and can be classified as "
+    "supportive for equities; interpret the macro gate with caution on the equity side.",
+)
 
 
 def load_macro_adversarial_signal_payload(
@@ -171,6 +178,8 @@ def build_livermore_signal_confluence(
     macro_status = _macro_status(composite_score)
     if composite_score is None:
         diagnostics.append("Missing macro composite score; macro context is unknown.")
+    else:
+        diagnostics.extend(MACRO_CROSS_ASSET_REUSE_DISCLOSURES)
 
     market_gate = _mapping(livermore_payload.get("market_gate"))
     if market_gate is None:

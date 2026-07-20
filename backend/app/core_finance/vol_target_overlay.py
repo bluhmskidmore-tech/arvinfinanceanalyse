@@ -98,13 +98,19 @@ def build_vol_target_index_comparison(
     vol_target_exposures: list[float] = []
     multiplier_values: list[float] = []
     insufficient_days = 0
+    prev_exposure: float | None = None
     for row in return_rows:
         date_key = str(row["date"])
         daily_return = float(row["daily_return"])
-        exposure = exposure_by_date.get(
+        decided_exposure = exposure_by_date.get(
             date_key,
             _exposure_for_state(state_by_date.get(date_key, "OFF"), exposure_by_market_state),
         )
+        # 敞口由 T 日收盘决定、T+1 日生效（与 equity_strategies 口径一致），
+        # 避免"当日收盘决定的敞口吃当日收益"的前视偏差（2026-07-19 审计 宏观 H-1）。
+        # 序列首日没有 T-1 决策可用，退回当日决策（仅首日）。
+        exposure = prev_exposure if prev_exposure is not None else decided_exposure
+        prev_exposure = decided_exposure
         multiplier_row = multipliers[date_key]
         multiplier = float(multiplier_row["multiplier"])
         if bool(multiplier_row["insufficient_history"]):
