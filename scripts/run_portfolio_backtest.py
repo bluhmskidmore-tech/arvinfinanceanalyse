@@ -26,6 +26,7 @@ from backend.app.core_finance.portfolio_backtest import (  # noqa: E402
 )
 from backend.app.core_finance.gate_exposure_series import load_gate_exposure_by_date  # noqa: E402
 from backend.app.core_finance.portfolio_paths import (  # noqa: E402
+    PATH_BASIS_RAW_FALLBACK,
     calculate_path_horizon_exit,
     load_position_price_paths,
     path_entry_price,
@@ -203,6 +204,10 @@ def run_portfolio_backtest_from_duckdb(
         "daily_exposure_rows": len(exposure_rows),
         "price_path_count": len(price_paths),
         "price_path_adj_factor_missing_rows": _price_path_missing_adj_factor_rows(price_paths),
+        "price_path_adj_factor_forward_filled_rows": (
+            _price_path_forward_filled_adj_factor_rows(price_paths)
+        ),
+        "price_path_raw_fallback_paths": _price_path_raw_fallback_paths(price_paths),
         "results": {
             variant: {
                 "metrics": result.metrics,
@@ -539,6 +544,30 @@ def _price_path_missing_adj_factor_rows(
     )
 
 
+def _price_path_forward_filled_adj_factor_rows(
+    price_paths: Mapping[str, Sequence[Mapping[str, object]]],
+) -> int:
+    return sum(
+        1
+        for rows in price_paths.values()
+        for row in rows
+        if bool(row.get("adj_factor_forward_filled"))
+    )
+
+
+def _price_path_raw_fallback_paths(
+    price_paths: Mapping[str, Sequence[Mapping[str, object]]],
+) -> int:
+    return sum(
+        1
+        for rows in price_paths.values()
+        if any(
+            str(row.get("path_price_basis") or "") == PATH_BASIS_RAW_FALLBACK
+            for row in rows
+        )
+    )
+
+
 def _run_portfolio_result_set(
     execution_rows: Sequence[Mapping[str, object]],
     market_state_rows: Sequence[Mapping[str, object]],
@@ -832,6 +861,8 @@ def _write_ready_report(path: Path, payload: dict[str, Any]) -> None:
         f"- daily_exposure_rows: {payload['daily_exposure_rows']}",
         f"- price_path_count: {payload['price_path_count']}",
         f"- price_path_adj_factor_missing_rows: {payload['price_path_adj_factor_missing_rows']}",
+        f"- price_path_adj_factor_forward_filled_rows: {payload['price_path_adj_factor_forward_filled_rows']}",
+        f"- price_path_raw_fallback_paths: {payload['price_path_raw_fallback_paths']}",
         f"- benchmark_tables: {payload['benchmark_tables'] or 'unavailable'}",
         f"- issues: {payload['issues'] or []}",
         "",

@@ -4476,7 +4476,7 @@ describe("StockAnalysisPage", () => {
       /\.stock-analysis-page__dh-section-eyebrow,[\s\S]*?\.stock-analysis-page__dh-pill\s*\{[\s\S]*?display:\s*none\s*!important/,
     );
     expect(compactCss).toMatch(
-      /\.stock-analysis-page__signal-pill\s*\{[\s\S]*?min-height:\s*20px\s*!important[\s\S]*?font-size:\s*10\.5px\s*!important/,
+      /\.stock-analysis-page__signal-pill\s*\{[\s\S]*?min-height:\s*20px\s*!important[\s\S]*?font-size:\s*11px\s*!important/,
     );
     expect(compactCss).toMatch(
       /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*?\[data-testid="stock-analysis-first-screen-analytics"\]:not\(:has\(\.ant-tabs-tab\[data-node-key="priority"\]\.ant-tabs-tab-active\)\):not\([\s\S]*?data-node-key="optimization"[\s\S]*?\)\s*\{[\s\S]*?min-height:\s*76px\s*!important[\s\S]*?max-height:\s*86px\s*!important/,

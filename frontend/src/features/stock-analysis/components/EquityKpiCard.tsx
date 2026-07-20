@@ -96,7 +96,7 @@ export function EquityKpiCard({
             {kpiIcons[kpiKey] ?? <StockOutlined />}
           </span>
         ) : null}
-        <span>{label}</span>
+        <span title={label}>{label}</span>
       </div>
       <div className={styles.value}>{value}</div>
       {deltaText ? (

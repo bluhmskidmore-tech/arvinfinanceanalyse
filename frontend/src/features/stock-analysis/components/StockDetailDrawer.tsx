@@ -11,7 +11,7 @@ import type {
   StockKlineAnalysisPayload,
 } from "../../../api/contracts";
 import { BaseChart } from "../../../components/charts/BaseChart";
-import { designTokens } from "../../../theme/designSystem";
+import { dhApiTokens } from "../../../theme/designSystem";
 import { localizeStrategyPanelErrorDetail } from "../lib/stockAnalysisPageModel";
 import { normalizeIsoCalendarDate } from "../lib/stockAnalysisDate";
 import type { StockDetailReviewThesis } from "../lib/stockAnalysisDetailSelection";
@@ -57,10 +57,10 @@ function buildCandleVolumeOption(
   const dates = chartCandles.map((candle) => candle.tradeDate);
   const ohlc = chartCandles.map((candle) => candle.ohlc);
   const volumes = chartCandles.map((candle) => candle.volume);
-  const up = designTokens.color.semantic.up;
-  const down = designTokens.color.semantic.down;
-  const muted = designTokens.color.neutral[600];
-  const gridLine = designTokens.color.neutral[200];
+  const up = dhApiTokens.color.green;
+  const down = dhApiTokens.color.red;
+  const muted = dhApiTokens.color.inkMuted;
+  const gridLine = dhApiTokens.color.lineSoft;
 
   return {
     backgroundColor: "transparent",
@@ -113,7 +113,7 @@ function buildCandleVolumeOption(
         xAxisIndex: 1,
         yAxisIndex: 1,
         data: volumes,
-        itemStyle: { color: designTokens.color.neutral[400] },
+        itemStyle: { color: dhApiTokens.color.blue },
       },
     ],
   };
@@ -736,6 +736,8 @@ export function StockDetailDrawer({
       open={open}
       onClose={handleDrawerClose}
       afterOpenChange={(isOpen) => setDrawerLayoutReady(isOpen)}
+      rootClassName="theme-dh-api stock-detail-drawer"
+      rootStyle={stockAnalysisPageCssVars}
       className="stock-detail-drawer"
       data-testid="stock-detail-drawer"
       title="个股复核"
@@ -746,10 +748,7 @@ export function StockDetailDrawer({
       }
     >
       {open ? (
-        <div
-          className="theme-dh-api stock-detail-drawer__body"
-          style={stockAnalysisPageCssVars}
-        >
+        <div className="stock-detail-drawer__body">
           <header className="stock-detail-drawer__header">
             <div>
               <span className="font-semibold stock-detail-drawer__tabular">
@@ -1090,16 +1089,16 @@ export function StockDetailDrawer({
 
           {detailQuery.isError ? (
             <div
-              className="p-4 mb-4 text-sm text-danger-800 rounded-lg bg-danger-50 flex items-start gap-3 border border-danger-200"
+              className="stock-detail-drawer__alert stock-detail-drawer__alert--danger"
               role="alert"
               data-testid="stock-detail-error"
             >
-              <div className="flex flex-col gap-1">
-                <span className="font-semibold text-danger-900">个股复核数据暂不可用</span>
+              <div className="stock-detail-drawer__alert-content">
+                <span className="stock-detail-drawer__alert-title">个股复核数据暂不可用</span>
                 <span>请稍后重试，或切换到其他标的复核。</span>
                 <AntButton
                   type="link"
-                  className="w-fit p-0"
+                  className="stock-detail-drawer__alert-action"
                   loading={detailQuery.isFetching}
                   onClick={() => {
                     void detailQuery.refetch();
@@ -1239,19 +1238,19 @@ export function StockDetailDrawer({
                   ) : null}
                   {candidateHistoryIsError ? (
                     <div
-                      className="p-4 mb-4 text-sm text-warning-800 rounded-lg bg-warning-50 flex items-start gap-3 border border-warning-200"
+                      className="stock-detail-drawer__alert stock-detail-drawer__alert--warning"
                       role="alert"
                       data-testid="stock-detail-candidate-history-error"
                     >
-                      <div className="flex flex-col gap-1">
-                        <span className="font-semibold text-warning-900">入选历史暂不可用</span>
+                      <div className="stock-detail-drawer__alert-content">
+                        <span className="stock-detail-drawer__alert-title">入选历史暂不可用</span>
                         <span>{stockDetailSubqueryErrorDescription(
                           candidateHistoryQuery.error,
                           "图表与因子仍可继续查看。",
                         )}</span>
                         <AntButton
                           type="link"
-                          className="w-fit p-0"
+                          className="stock-detail-drawer__alert-action"
                           loading={candidateHistoryQuery.isFetching}
                           onClick={() => {
                             void candidateHistoryQuery.refetch();
@@ -1356,19 +1355,19 @@ export function StockDetailDrawer({
                     ) : null}
                     {choiceNewsIsError ? (
                       <div
-                        className="p-4 mb-4 text-sm text-warning-800 rounded-lg bg-warning-50 flex items-start gap-3 border border-warning-200"
+                        className="stock-detail-drawer__alert stock-detail-drawer__alert--warning"
                         role="alert"
                         data-testid="stock-detail-market-events-error"
                       >
-                        <div className="flex flex-col gap-1">
-                          <span className="font-semibold text-warning-900">市场事件暂不可用</span>
+                        <div className="stock-detail-drawer__alert-content">
+                          <span className="stock-detail-drawer__alert-title">市场事件暂不可用</span>
                           <span>{stockDetailSubqueryErrorDescription(
                             choiceNewsQuery.error,
                             "个股复核数据不受影响，可稍后刷新市场事件。",
                           )}</span>
                           <AntButton
                             type="link"
-                            className="w-fit p-0"
+                            className="stock-detail-drawer__alert-action"
                             loading={choiceNewsQuery.isFetching}
                             onClick={() => {
                               void choiceNewsQuery.refetch();

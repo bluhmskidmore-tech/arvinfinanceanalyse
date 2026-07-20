@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { StockSectorViewRow } from "../features/stock-analysis/lib/stockAnalysisPageModel";
+import { dhApiTokens } from "../theme/designSystem";
 import {
   buildCompactBarOption,
   buildEventSummaryOption,
@@ -55,6 +56,22 @@ const sectorRow: StockSectorViewRow = {
 };
 
 describe("stockAnalysisChartModel", () => {
+  it("sources the chart palette from canonical Decision Desk tokens", () => {
+    expect(stockChartPalette).toEqual({
+      ink: dhApiTokens.color.ink,
+      muted: dhApiTokens.color.inkMuted,
+      grid: dhApiTokens.color.lineSoft,
+      track: dhApiTokens.color.line,
+      primary: dhApiTokens.color.blue,
+      primaryLight: dhApiTokens.color.inkMuted,
+      accent: dhApiTokens.color.inkSoft,
+      success: dhApiTokens.color.green,
+      successLight: dhApiTokens.color.greenSoft,
+      danger: dhApiTokens.color.red,
+      gold: dhApiTokens.color.amber,
+    });
+  });
+
   it("exposes stable sector view labels and metric selectors", () => {
     expect(sectorViewTabs).toEqual([
       { key: "score", label: "综合得分" },

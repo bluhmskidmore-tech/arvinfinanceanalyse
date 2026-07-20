@@ -958,6 +958,35 @@ def test_portfolio_hold_progress_matrix_uses_raw_fallback_price_basis() -> None:
     assert (1, "lt_-3pct") not in rows
 
 
+def test_portfolio_script_reports_adjustment_factor_fill_and_raw_fallback_counts() -> None:
+    from scripts.run_portfolio_backtest import (
+        _price_path_forward_filled_adj_factor_rows,
+        _price_path_missing_adj_factor_rows,
+        _price_path_raw_fallback_paths,
+    )
+
+    paths = {
+        "filled": [
+            {
+                "adj_factor_missing": True,
+                "adj_factor_forward_filled": True,
+                "path_price_basis": "adjusted",
+            }
+        ],
+        "raw": [
+            {
+                "adj_factor_missing": True,
+                "adj_factor_forward_filled": False,
+                "path_price_basis": "raw_fallback_missing_adj_factor",
+            }
+        ],
+    }
+
+    assert _price_path_missing_adj_factor_rows(paths) == 2
+    assert _price_path_forward_filled_adj_factor_rows(paths) == 1
+    assert _price_path_raw_fallback_paths(paths) == 1
+
+
 def test_portfolio_benchmark_comparison_quantifies_gate_timing_increment() -> None:
     market_states = [
         {"trade_date": "2026-06-01", "market_state": "WARM"},

@@ -1,4 +1,5 @@
 import type { EChartsOption } from "../../../lib/echarts";
+import { dhApiTokens } from "../../../theme/designSystem";
 import type {
   StockSectorRow,
   StockSectorViewKind,
@@ -45,17 +46,17 @@ export type SectorSortKey =
   | "constituentCount";
 
 export const stockChartPalette = {
-  ink: "#16191d",
-  muted: "#8a8f98",
-  grid: "#e2e0da",
-  track: "#e2e0da",
-  primary: "#14366b",
-  primaryLight: "#3a5e96",
-  accent: "#6f8ab8",
-  success: "#1f7a4d",
-  successLight: "#a9bcd6",
-  danger: "#b42318",
-  gold: "#c9a85c",
+  ink: dhApiTokens.color.ink,
+  muted: dhApiTokens.color.inkMuted,
+  grid: dhApiTokens.color.lineSoft,
+  track: dhApiTokens.color.line,
+  primary: dhApiTokens.color.blue,
+  primaryLight: dhApiTokens.color.inkMuted,
+  accent: dhApiTokens.color.inkSoft,
+  success: dhApiTokens.color.green,
+  successLight: dhApiTokens.color.greenSoft,
+  danger: dhApiTokens.color.red,
+  gold: dhApiTokens.color.amber,
 } as const;
 
 export const sectorViewTabs: { key: StockSectorViewKind; label: string }[] = [

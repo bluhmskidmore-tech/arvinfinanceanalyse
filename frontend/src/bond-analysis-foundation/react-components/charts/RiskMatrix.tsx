@@ -1,4 +1,5 @@
 import { EmptyState } from "../common/EmptyState";
+import { designTokens } from "../../../theme/designSystem";
 
 export interface RiskMatrixBubble {
   id: string;
@@ -41,7 +42,7 @@ export function RiskMatrix({ items, onSelect }: RiskMatrixProps) {
             type="button"
             onClick={() => onSelect?.(item)}
             style={{
-              borderRadius: 20,
+              borderRadius: designTokens.radius.sm,
               border: "1px solid #d0d5dd",
               background: "#fff",
               padding: 18,

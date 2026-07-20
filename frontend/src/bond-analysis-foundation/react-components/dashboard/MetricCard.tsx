@@ -1,4 +1,5 @@
 import { PriceChangeIndicator, type PriceChangeDirection } from "../common/PriceChangeIndicator";
+import { designTokens } from "../../../theme/designSystem";
 
 export interface MetricTrend {
   direction: PriceChangeDirection;
@@ -16,7 +17,7 @@ export function MetricCard({ label, value, helperText, trend }: MetricCardProps)
   return (
     <article
       style={{
-        borderRadius: 20,
+        borderRadius: designTokens.radius.sm,
         border: "1px solid rgba(148, 163, 184, 0.24)",
         padding: 18,
         background: "rgba(255, 255, 255, 0.86)",

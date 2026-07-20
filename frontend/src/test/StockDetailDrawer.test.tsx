@@ -18,6 +18,7 @@ import type {
 } from "../api/contracts";
 import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
 import { StockDetailDrawer } from "../features/stock-analysis/components/StockDetailDrawer";
+import { dhApiTokens } from "../theme/designSystem";
 
 vi.mock("../components/charts/BaseChart", () => ({
   BaseChart: function MockBaseChart({
@@ -40,6 +41,10 @@ vi.mock("../components/charts/BaseChart", () => ({
 const STOCK_DETAIL_DRAWER_CSS_PATH = resolve(
   process.cwd(),
   "src/features/stock-analysis/components/StockDetailDrawer.css",
+);
+const STOCK_DETAIL_DRAWER_SOURCE_PATH = resolve(
+  process.cwd(),
+  "src/features/stock-analysis/components/StockDetailDrawer.tsx",
 );
 
 function buildStockDetailEnvelope(
@@ -227,6 +232,56 @@ function buildEmptyChoiceNewsEnvelope() {
 }
 
 describe("StockDetailDrawer", () => {
+  it("locks the portal and drawer surfaces to the dark terminal theme", () => {
+    const source = readFileSync(STOCK_DETAIL_DRAWER_SOURCE_PATH, "utf8");
+    const css = readFileSync(STOCK_DETAIL_DRAWER_CSS_PATH, "utf8");
+
+    expect(source).toContain(
+      'rootClassName="theme-dh-api stock-detail-drawer"',
+    );
+    expect(source).toContain("rootStyle={stockAnalysisPageCssVars}");
+
+    [
+      "--dh-api-bg",
+      "--dh-api-panel",
+      "--dh-api-panel-2",
+      "--dh-api-panel-3",
+      "--dh-api-line",
+      "--dh-api-ink",
+      "--dh-api-blue",
+      "--dh-api-green",
+      "--dh-api-amber",
+      "--dh-api-red",
+    ].forEach((token) => expect(css).toContain(`var(${token}`));
+
+    expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+    expect(css).not.toMatch(/\brgba?\(/);
+    expect(css).not.toContain("var(--ib-");
+    expect(css).not.toContain("linear-gradient");
+
+    const shadowValues = [...css.matchAll(/box-shadow:\s*([^;]+);/g)].map(
+      ([, value]) => value.trim(),
+    );
+    expect(shadowValues.length).toBeGreaterThan(0);
+    expect(
+      shadowValues.every((value) => /^none(?:\s*!important)?$/.test(value)),
+    ).toBe(true);
+
+    const fontSizes = [...css.matchAll(/font-size:\s*([\d.]+)px/g)].map(
+      ([, value]) => Number(value),
+    );
+    expect(fontSizes.length).toBeGreaterThan(0);
+    expect(fontSizes.every((value) => value >= 12 && value <= 15)).toBe(true);
+
+    const radiusValues = [...css.matchAll(/border-radius:\s*([^;]+);/g)].map(
+      ([, value]) => value.trim(),
+    );
+    expect(radiusValues.length).toBeGreaterThan(0);
+    expect(
+      radiusValues.every((value) => value === "var(--dh-api-radius, 6px)"),
+    ).toBe(true);
+  });
+
   it("keeps the stock detail drawer header compact before the decision summary", () => {
     const css = readFileSync(STOCK_DETAIL_DRAWER_CSS_PATH, "utf8");
     const compactStart = css.indexOf("Detail drawer compact header pass");
@@ -370,13 +425,38 @@ describe("StockDetailDrawer", () => {
     const chart = await screen.findByTestId("stock-detail-chart-canvas-stub");
     await waitFor(() => {
       const option = JSON.parse(chart.getAttribute("data-option") ?? "{}") as {
+        textStyle?: { color?: string };
         xAxis?: Array<{ data: string[] }>;
-        series?: Array<{ data: unknown[] }>;
+        yAxis?: Array<{
+          splitLine?: { lineStyle?: { color?: string } };
+        }>;
+        series?: Array<{
+          data: unknown[];
+          itemStyle?: {
+            color?: string;
+            color0?: string;
+            borderColor?: string;
+            borderColor0?: string;
+          };
+        }>;
       };
 
       expect(option.xAxis?.[0]?.data).toEqual(["2026-04-26"]);
       expect(option.series?.[0]?.data).toEqual([[10.2, 10.6, 10, 10.8]]);
       expect(option.series?.[1]?.data).toEqual([null]);
+      expect(option.textStyle?.color).toBe(dhApiTokens.color.inkMuted);
+      expect(option.yAxis?.[0]?.splitLine?.lineStyle?.color).toBe(
+        dhApiTokens.color.lineSoft,
+      );
+      expect(option.series?.[0]?.itemStyle).toMatchObject({
+        color: dhApiTokens.color.red,
+        color0: dhApiTokens.color.green,
+        borderColor: dhApiTokens.color.red,
+        borderColor0: dhApiTokens.color.green,
+      });
+      expect(option.series?.[1]?.itemStyle?.color).toBe(
+        dhApiTokens.color.blue,
+      );
     });
   });
 
