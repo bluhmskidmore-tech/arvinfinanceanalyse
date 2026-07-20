@@ -25,6 +25,13 @@ class _MaterializeBalanceAnalysisFactsProxy:
 
         return _actor.send(**kwargs)
 
+    def __getattr__(self, name: str) -> object:
+        from backend.app.tasks.balance_analysis_materialize import (
+            materialize_balance_analysis_facts as _actor,
+        )
+
+        return getattr(_actor, name)
+
 
 materialize_balance_analysis_facts = _MaterializeBalanceAnalysisFactsProxy()
 

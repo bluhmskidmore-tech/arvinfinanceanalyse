@@ -63,6 +63,13 @@ class _RefreshAccountingAssetMovementWindowProxy:
 
         return _actor.send(**kwargs)
 
+    def __getattr__(self, name: str) -> object:
+        from backend.app.tasks.accounting_asset_movement import (
+            refresh_accounting_asset_movement_window as _actor,
+        )
+
+        return getattr(_actor, name)
+
 
 refresh_accounting_asset_movement_window = _RefreshAccountingAssetMovementWindowProxy()
 

@@ -28,12 +28,12 @@ class _RefreshSourcePreviewCacheProxy:
 
         return _actor.send(**kwargs)
 
-    def fn(self, *args: object, **kwargs: object) -> object:
+    def __getattr__(self, name: str) -> object:
         from backend.app.tasks.source_preview_refresh import (
             refresh_source_preview_cache as _actor,
         )
 
-        return _actor.fn(*args, **kwargs)
+        return getattr(_actor, name)
 
 
 refresh_source_preview_cache = _RefreshSourcePreviewCacheProxy()
