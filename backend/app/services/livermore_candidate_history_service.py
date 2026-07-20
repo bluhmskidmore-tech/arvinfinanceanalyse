@@ -22,13 +22,13 @@ from backend.app.core_finance.candidate_history_proxy_backtest import (
     candidate_history_portfolio_price_field_stats,
     cycle_proxy_return_field_stats,
 )
-from backend.app.core_finance.matched_baseline import (
-    MATCHED_BASELINE_TABLE,
-    matched_baseline_stats_from_rows,
-)
 from backend.app.core_finance.field_normalization import (
     TRADING_STATUS_SQL_IN_LIST,
     is_trading_status,
+)
+from backend.app.core_finance.matched_baseline import (
+    MATCHED_BASELINE_TABLE,
+    matched_baseline_stats_from_rows,
 )
 from backend.app.core_finance.strategy_policy import POLICY
 from backend.app.services.formal_result_runtime import (
@@ -240,7 +240,10 @@ _EXECUTION_SELECT_COLUMNS = (
     "market_state",
     "entry_executable",
     "entry_block_reason",
+    "entry_date",
+    "exit_date_5d",
     "return_1d_net_adj",
+    "return_5d_gross_adj",
     "return_5d_net_adj",
     "return_10d_net_adj",
     "return_20d_net_adj",
@@ -755,6 +758,17 @@ def livermore_candidate_history_cycle_proxy_backtest_envelope(
             snapshot_from=resolved_from,
             snapshot_to=resolved_to,
         )
+        execution_rows = (
+            _load_execution_window_rows(
+                conn,
+                stock_code=None,
+                snapshot_from=resolved_from,
+                snapshot_to=resolved_to,
+            )
+            if TABLE_EXECUTION_HIST in tables
+            else []
+        )
+        rows = _enrich_cycle_proxy_execution_returns(rows, execution_rows=execution_rows)
         proxy_nav = build_cycle_proxy_nav_series(_cycle_proxy_items(rows))
         benchmark_rows, benchmark_table = _load_benchmark_rows_for_nav_series(
             conn,
@@ -777,7 +791,13 @@ def livermore_candidate_history_cycle_proxy_backtest_envelope(
         vendor_version=_first_nonempty_vendor_version(proxy_items or rows) or EMPTY_VENDOR_VERSION,
         evidence_rows=len(proxy_items),
         quality_flag="ok" if proxy_items else "warning",
-        tables_used=_append_optional_table([TABLE_HIST], benchmark_table),
+        tables_used=_append_optional_table(
+            _append_optional_table(
+                [TABLE_HIST],
+                TABLE_EXECUTION_HIST if execution_rows else None,
+            ),
+            benchmark_table,
+        ),
     )
 
 
@@ -2741,7 +2761,11 @@ def _build_cycle_proxy_backtest_payload(
         "proxy_signal_kind": _CYCLE_PROXY_SIGNAL_KIND,
         "proxy_rule": (
             "Equal-weight non-overlapping T+5 baskets of completed rank<=6 stock_candidate rows in WARM/HOT states, "
-            "re-entering only after the previous basket's latest realized T+5 exit date."
+            "excluding execution-blocked entries and re-entering only after the previous basket's latest realized "
+            "T+5 exit date."
+        ),
+        "execution_blocked_rows_in_window": sum(
+            1 for item in items if item.get("execution_entry_blocked") is True
         ),
         "snapshot_from": snapshot_from,
         "snapshot_to": snapshot_to,
@@ -2749,7 +2773,7 @@ def _build_cycle_proxy_backtest_payload(
         "warnings": [
             "This is a reduced proxy backtest, not the full A-share cycle-rotation strategy.",
             "It uses daily candidate rows already persisted by the existing Livermore replay pipeline.",
-            "Basket returns are net of the formal transaction-cost constants (buy/sell fees plus two-way slippage) applied to the dividend-adjusted return_5d_adj (gross return_5d fallback) on the read side.",
+            "Executable next-open return_5d_net_adj is preferred and already includes formal transaction costs; when unavailable, the read side applies those costs to return_5d_adj (gross return_5d second fallback).",
             CYCLE_PROXY_ENTRY_PRICE_WARNING,
             "Proxy evidence only: cost and return conventions are aligned with the formal engine constants, but results are not produced by the formal path backtest engine.",
             "Full benchmark attribution and the report's monthly core cadence are still not modeled here.",
@@ -2818,10 +2842,55 @@ def _cycle_proxy_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
             continue
         if _market_state_from_signal_evidence(item) not in _CYCLE_PROXY_ALLOWED_MARKET_STATES:
             continue
+        if item.get("execution_entry_blocked") is True:
+            continue
         if item.get("return_1d") is None:
             continue
         proxy_items.append(item)
     return proxy_items
+
+
+def _enrich_cycle_proxy_execution_returns(
+    items: list[dict[str, Any]],
+    *,
+    execution_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Attach point-in-time next-open returns by signal date and stock code."""
+    execution_by_key = {
+        (
+            str(row.get("signal_date") or "")[:10],
+            str(row.get("stock_code") or "").strip(),
+        ): row
+        for row in execution_rows
+        if str(row.get("signal_date") or "").strip()
+        and str(row.get("stock_code") or "").strip()
+        and _normalized_signal_kind(row) == _CYCLE_PROXY_SIGNAL_KIND
+    }
+    enriched: list[dict[str, Any]] = []
+    for item in items:
+        key = (
+            str(item.get("snapshot_as_of_date") or "")[:10],
+            str(item.get("stock_code") or "").strip(),
+        )
+        if _normalized_signal_kind(item) != _CYCLE_PROXY_SIGNAL_KIND:
+            enriched.append(item)
+            continue
+        execution = execution_by_key.get(key)
+        if execution is None:
+            enriched.append(item)
+            continue
+        enriched_item = dict(item)
+        if execution.get("entry_executable") is False:
+            enriched_item["execution_entry_blocked"] = True
+            enriched.append(enriched_item)
+            continue
+        if execution.get("entry_executable") is True:
+            enriched_item["execution_entry_date"] = execution.get("entry_date")
+            enriched_item["execution_exit_date_5d"] = execution.get("exit_date_5d")
+            enriched_item["return_5d_gross_adj"] = execution.get("return_5d_gross_adj")
+            enriched_item["return_5d_net_adj"] = execution.get("return_5d_net_adj")
+        enriched.append(enriched_item)
+    return enriched
 
 
 def _candidate_history_portfolio_rebalance_rows(items: list[dict[str, Any]]) -> list[dict[str, Any]]:

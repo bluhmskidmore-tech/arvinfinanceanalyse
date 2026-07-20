@@ -18,23 +18,33 @@ from backend.app.core_finance.candidate_history_proxy_backtest import (
 
 
 def test_formula_versions_are_stable_identifiers() -> None:
-    assert CYCLE_PROXY_FORMULA_VERSION == "fv_livermore_cycle_proxy_backtest_adj_first_v3"
+    assert CYCLE_PROXY_FORMULA_VERSION == "fv_livermore_cycle_proxy_backtest_execution_first_v4"
     assert PORTFOLIO_PROXY_FORMULA_VERSION == "fv_livermore_candidate_history_portfolio_adj_mtm_v2"
 
 
 def test_entry_price_disclosures_flag_same_day_close_assumption() -> None:
-    # MEDIUM-1: both proxies fill at the signal/snapshot-day close, which embeds
-    # a same-day execution assumption that is not replicable live.
+    # Cycle prefers executable next-open rows but must disclose its legacy fallback.
+    assert "next-open" in CYCLE_PROXY_ENTRY_PRICE_WARNING
+    assert "fallback" in CYCLE_PROXY_ENTRY_PRICE_WARNING
     assert "signal-day close" in CYCLE_PROXY_ENTRY_PRICE_WARNING
     assert "snapshot-day close" in PORTFOLIO_PROXY_ENTRY_PRICE_WARNING
-    for disclosure in (CYCLE_PROXY_ENTRY_PRICE_WARNING, PORTFOLIO_PROXY_ENTRY_PRICE_WARNING):
-        assert "same-day execution" in disclosure
-        assert "optimistic" in disclosure
-        assert "livermore_candidate_execution_history" in disclosure
-        assert "next-open" in disclosure
+    assert "same-day execution" in CYCLE_PROXY_ENTRY_PRICE_WARNING
+    assert "optimistic" in CYCLE_PROXY_ENTRY_PRICE_WARNING
+    assert "livermore_candidate_execution_history" in CYCLE_PROXY_ENTRY_PRICE_WARNING
+    assert "same-day execution" in PORTFOLIO_PROXY_ENTRY_PRICE_WARNING
+    assert "optimistic" in PORTFOLIO_PROXY_ENTRY_PRICE_WARNING
+    assert "livermore_candidate_execution_history" in PORTFOLIO_PROXY_ENTRY_PRICE_WARNING
+    assert "next-open" in PORTFOLIO_PROXY_ENTRY_PRICE_WARNING
 
 
-def test_cycle_proxy_row_return_prefers_adjusted_over_gross() -> None:
+def test_cycle_proxy_row_return_prefers_execution_net_then_adjusted_then_gross() -> None:
+    assert cycle_proxy_row_return(
+        {
+            "return_5d_net_adj": 0.08,
+            "return_5d_adj": 0.10,
+            "return_5d": 0.12,
+        }
+    ) == (0.08, "return_5d_net_adj")
     assert cycle_proxy_row_return({"return_5d_adj": 0.10, "return_5d": 0.12}) == (0.10, "return_5d_adj")
     assert cycle_proxy_row_return({"return_5d_adj": None, "return_5d": 0.12}) == (0.12, "return_5d")
     assert cycle_proxy_row_return({"return_5d_adj": None, "return_5d": None}) is None
@@ -44,12 +54,40 @@ def test_cycle_proxy_row_return_prefers_adjusted_over_gross() -> None:
 def test_cycle_proxy_return_field_stats_counts_fallback_rows() -> None:
     stats = cycle_proxy_return_field_stats(
         [
+            {"return_5d_net_adj": 0.08, "return_5d_adj": 0.10, "return_5d": 0.12},
             {"return_5d_adj": 0.10, "return_5d": 0.12},
             {"return_5d_adj": None, "return_5d": 0.12},
             {"return_5d_adj": None, "return_5d": None},
         ]
     )
-    assert stats == {"return_rows_adjusted": 1, "return_rows_gross_fallback": 1}
+    assert stats == {
+        "return_rows_execution_net_adjusted": 1,
+        "return_rows_adjusted": 1,
+        "return_rows_adjusted_fallback": 1,
+        "return_rows_gross_fallback": 1,
+    }
+
+
+def test_cycle_proxy_nav_series_does_not_double_charge_execution_net_returns() -> None:
+    series = build_cycle_proxy_nav_series(
+        [
+            {
+                "snapshot_as_of_date": "2026-05-01",
+                "execution_entry_date": "2026-05-04",
+                "execution_exit_date_5d": "2026-05-11",
+                "return_5d_net_adj": 0.08,
+                "return_5d_gross_adj": 0.085,
+                "return_5d_adj": 0.10,
+                "forward_trade_date_5d": "2026-05-08",
+            }
+        ]
+    )
+
+    assert series[0]["period_return"] == 0.08
+    assert series[0]["period_return_gross"] == 0.085
+    assert series[0]["nav"] == 1.08
+    assert series[0]["date"] == "2026-05-04"
+    assert series[0]["exit_date"] == "2026-05-11"
 
 
 def test_cycle_proxy_nav_series_nets_policy_costs_and_skips_overlapping_baskets() -> None:

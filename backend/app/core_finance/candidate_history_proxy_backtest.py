@@ -9,10 +9,10 @@ expressible in the signal-driven slot model — but all return, cost, and
 risk conventions are aligned with the formal engine constants:
 
 - transaction costs and slippage come from ``strategy_policy.POLICY``
-- per-trade net returns use ``adjusted_returns.net_return_after_costs``
-- basket returns prefer the dividend/split-adjusted ``return_5d_adj`` column
-  (same priority order as ``portfolio_backtest._candidate_from_row``) and
-  fall back to gross ``return_5d`` only when the adjusted value is missing.
+- basket returns prefer execution-history ``return_5d_net_adj`` (next-open,
+  already net of policy costs); when unavailable they use
+  ``adjusted_returns.net_return_after_costs`` on dividend/split-adjusted
+  ``return_5d_adj`` and finally gross ``return_5d``.
 """
 
 from __future__ import annotations
@@ -25,33 +25,32 @@ from typing import Any
 from backend.app.core_finance.adjusted_returns import net_return_after_costs
 from backend.app.core_finance.strategy_policy import POLICY
 
-# v2: basket returns now prefer return_5d_adj over gross return_5d, matching
-# the formal engine's return priority (return_*_net_adj > return_*_adj > ...).
+# v2: basket returns prefer return_5d_adj over gross return_5d.
 # v3: per-basket net returns now use multiplicative cost netting
 # ((1+r)*(1-c)-1) via adjusted_returns.net_return_after_costs.
-CYCLE_PROXY_FORMULA_VERSION = "fv_livermore_cycle_proxy_backtest_adj_first_v3"
+# v4: service-enriched next-open return_5d_net_adj is preferred and is not
+# charged again; candidate-history close-based returns remain explicit fallbacks.
+CYCLE_PROXY_FORMULA_VERSION = "fv_livermore_cycle_proxy_backtest_execution_first_v4"
 # v2: portfolio proxy marks to market on adjustment-factor adjusted closes,
 # falling back to raw closes only when the adjusted price is missing.
 PORTFOLIO_PROXY_FORMULA_VERSION = "fv_livermore_candidate_history_portfolio_adj_mtm_v2"
 
-# MEDIUM-1 disclosure: both proxies fill entries at the same close that dates
-# the signal/snapshot, which is not replicable live. The executable convention
-# (next-open entry, limit-up open blocking) lives in
-# livermore_candidate_execution_history and is not used by these proxies yet.
 CYCLE_PROXY_ENTRY_PRICE_WARNING = (
-    "Basket entries are priced at the signal-day close (return_5d is measured from selection_close), "
-    "embedding a same-day execution assumption that is not replicable live, so returns may be "
-    "systematically optimistic; the executable convention is tracked in "
-    "livermore_candidate_execution_history (next-open entry with limit-up open blocking), "
-    "which this proxy does not yet use."
+    "Executable next-open return_5d_net_adj from livermore_candidate_execution_history is preferred. "
+    "When that row is unavailable, the fallback uses signal-day close returns, embedding a "
+    "same-day execution assumption that is not replicable live and may be systematically optimistic."
 )
 PORTFOLIO_PROXY_ENTRY_PRICE_WARNING = (
-    "Rebalance entries are priced at the snapshot-day close, embedding a same-day execution "
-    "assumption that is not replicable live, so returns may be systematically optimistic; the "
-    "executable convention is tracked in livermore_candidate_execution_history "
-    "(next-open entry with limit-up open blocking), which this proxy does not yet use."
+    "The monthly portfolio proxy remains priced at the snapshot-day close, embedding a same-day "
+    "execution assumption that is not replicable live, so returns may be systematically optimistic. "
+    "livermore_candidate_execution_history tracks next-open entries and limit-up blocking, but its "
+    "fixed-horizon rows cannot directly replace this proxy's monthly daily-mark-to-market path."
 )
 
+CYCLE_PROXY_EXECUTION_RETURN_FIELD = "return_5d_net_adj"
+CYCLE_PROXY_EXECUTION_GROSS_FIELD = "return_5d_gross_adj"
+CYCLE_PROXY_EXECUTION_ENTRY_DATE_FIELD = "execution_entry_date"
+CYCLE_PROXY_EXECUTION_EXIT_DATE_FIELD = "execution_exit_date_5d"
 CYCLE_PROXY_RETURN_FIELD = "return_5d_adj"
 CYCLE_PROXY_RETURN_FALLBACK_FIELD = "return_5d"
 PORTFOLIO_PROXY_PRICE_FIELD = "adj_close_value"
@@ -75,7 +74,10 @@ def proxy_cost_basis() -> dict[str, Any]:
 
 
 def cycle_proxy_row_return(row: Mapping[str, Any]) -> tuple[float, str] | None:
-    """Return the basket-eligible gross return and the field it came from."""
+    """Return the preferred basket return and the field it came from."""
+    execution_net = _safe_float(row.get(CYCLE_PROXY_EXECUTION_RETURN_FIELD))
+    if execution_net is not None:
+        return execution_net, CYCLE_PROXY_EXECUTION_RETURN_FIELD
     adjusted = _safe_float(row.get(CYCLE_PROXY_RETURN_FIELD))
     if adjusted is not None:
         return adjusted, CYCLE_PROXY_RETURN_FIELD
@@ -86,18 +88,24 @@ def cycle_proxy_row_return(row: Mapping[str, Any]) -> tuple[float, str] | None:
 
 
 def cycle_proxy_return_field_stats(items: Sequence[Mapping[str, Any]]) -> dict[str, int]:
+    execution_rows = 0
     adjusted_rows = 0
     fallback_rows = 0
     for row in items:
         selected = cycle_proxy_row_return(row)
         if selected is None:
             continue
-        if selected[1] == CYCLE_PROXY_RETURN_FIELD:
+        if selected[1] == CYCLE_PROXY_EXECUTION_RETURN_FIELD:
+            execution_rows += 1
+        elif selected[1] == CYCLE_PROXY_RETURN_FIELD:
             adjusted_rows += 1
         else:
             fallback_rows += 1
     return {
+        "return_rows_execution_net_adjusted": execution_rows,
+        # Keep the legacy key while exposing that it is now a fallback.
         "return_rows_adjusted": adjusted_rows,
+        "return_rows_adjusted_fallback": adjusted_rows,
         "return_rows_gross_fallback": fallback_rows,
     }
 
@@ -143,43 +151,61 @@ def build_cycle_proxy_nav_series(items: Sequence[Mapping[str, Any]]) -> list[dic
     next_entry_after: str | None = None
     series: list[dict[str, Any]] = []
     for snapshot_date, rows in sorted(rows_by_date.items()):
-        if next_entry_after is not None and snapshot_date <= next_entry_after:
-            continue
-        gross_values = [
-            selected[0]
+        selected_rows = [
+            (row, selected)
             for row in rows
             if (selected := cycle_proxy_row_return(row)) is not None
         ]
-        if not gross_values:
+        if not selected_rows:
             continue
-        values = [
-            net_value
-            for value in gross_values
-            if (
-                net_value := net_return_after_costs(
-                    value,
-                    buy_cost_rate=POLICY.buy_cost_rate,
-                    sell_cost_rate=POLICY.sell_cost_rate,
-                    slippage_rate=POLICY.slippage_rate,
-                )
+        values: list[float] = []
+        gross_values: list[float] = []
+        entry_dates: list[str] = []
+        exit_dates: list[str] = []
+        for row, (value, field_name) in selected_rows:
+            if field_name == CYCLE_PROXY_EXECUTION_RETURN_FIELD:
+                entry_date = str(
+                    row.get(CYCLE_PROXY_EXECUTION_ENTRY_DATE_FIELD) or snapshot_date
+                ).strip()[:10]
+                exit_date = str(
+                    row.get(CYCLE_PROXY_EXECUTION_EXIT_DATE_FIELD)
+                    or row.get("forward_trade_date_5d")
+                    or ""
+                ).strip()[:10]
+                if not exit_date:
+                    continue
+                # Execution history is already net of the formal round-trip costs.
+                values.append(value)
+                execution_gross = _safe_float(row.get(CYCLE_PROXY_EXECUTION_GROSS_FIELD))
+                gross_values.append(value if execution_gross is None else execution_gross)
+                entry_dates.append(entry_date)
+                exit_dates.append(exit_date)
+                continue
+            exit_date = str(row.get("forward_trade_date_5d") or "").strip()[:10]
+            if not exit_date:
+                continue
+            net_value = net_return_after_costs(
+                value,
+                buy_cost_rate=POLICY.buy_cost_rate,
+                sell_cost_rate=POLICY.sell_cost_rate,
+                slippage_rate=POLICY.slippage_rate,
             )
-            is not None
-        ]
+            if net_value is not None:
+                values.append(net_value)
+                gross_values.append(value)
+                entry_dates.append(snapshot_date)
+                exit_dates.append(exit_date)
         if not values:
             continue
-        period_return = sum(values) / len(values)
-        exit_dates = [
-            str(row.get("forward_trade_date_5d") or "").strip()[:10]
-            for row in rows
-            if str(row.get("forward_trade_date_5d") or "").strip()
-        ]
-        if not exit_dates:
+        entry_date = max(entry_dates)
+        if next_entry_after is not None and entry_date <= next_entry_after:
             continue
+        period_return = sum(values) / len(values)
         exit_date = max(exit_dates)
         nav *= 1 + period_return
         series.append(
             {
-                "date": snapshot_date,
+                "date": entry_date,
                 "exit_date": exit_date,
                 "period_return": round(period_return, 6),
                 "period_return_gross": round(sum(gross_values) / len(gross_values), 6),
@@ -220,8 +246,10 @@ def build_cycle_proxy_summary(
     summary = {
         "sample_days": sample_days,
         "candidate_rows": candidate_rows,
-        "return_field_used": CYCLE_PROXY_RETURN_FIELD,
-        "return_field_fallback": CYCLE_PROXY_RETURN_FALLBACK_FIELD,
+        "return_field_used": CYCLE_PROXY_EXECUTION_RETURN_FIELD,
+        "return_field_fallback": CYCLE_PROXY_RETURN_FIELD,
+        "return_field_second_fallback": CYCLE_PROXY_RETURN_FALLBACK_FIELD,
+        "execution_return_costs_already_applied": True,
         **dict(return_field_stats or {}),
         "cost_basis": proxy_cost_basis(),
         "cumulative_return": round(cumulative_return, 6),

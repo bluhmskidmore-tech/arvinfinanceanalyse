@@ -5923,10 +5923,14 @@ def test_cycle_proxy_backtest_reports_nav_gain_and_drawdown_intervals(tmp_path) 
     assert body["summary"]["sample_days"] == 1
     # net of formal round-trip cost (multiplicative): (1 + 0.12) * (1 - 0.0041) - 1 = 0.115408
     assert body["summary"]["cumulative_return"] == 0.115408
-    # v2 basket returns prefer return_5d_adj; these fixtures only land gross return_5d
-    assert body["summary"]["return_field_used"] == "return_5d_adj"
-    assert body["summary"]["return_field_fallback"] == "return_5d"
+    # v4 prefers executable next-open net returns; these fixtures exercise the
+    # second fallback because neither execution nor adjusted returns are landed.
+    assert body["summary"]["return_field_used"] == "return_5d_net_adj"
+    assert body["summary"]["return_field_fallback"] == "return_5d_adj"
+    assert body["summary"]["return_field_second_fallback"] == "return_5d"
+    assert body["summary"]["return_rows_execution_net_adjusted"] == 0
     assert body["summary"]["return_rows_adjusted"] == 0
+    assert body["summary"]["return_rows_adjusted_fallback"] == 0
     assert body["summary"]["return_rows_gross_fallback"] == 4
     assert body["summary"]["cost_basis"]["round_trip_cost_rate"] == 0.0041
     # single basket: annualization would explode, must be suppressed
@@ -5985,8 +5989,9 @@ def test_cycle_proxy_backtest_nets_formal_costs_and_annualizes_with_actual_span(
     # terminal nav 1.115408 ** 2 = 1.244135 (rounded)
     assert body["nav_series"][-1]["nav"] == 1.244135
     summary = body["summary"]
-    assert summary["return_field_used"] == "return_5d_adj"
-    assert summary["return_field_fallback"] == "return_5d"
+    assert summary["return_field_used"] == "return_5d_net_adj"
+    assert summary["return_field_fallback"] == "return_5d_adj"
+    assert summary["return_field_second_fallback"] == "return_5d"
     assert summary["cost_basis"] == {
         "source": "core_finance.strategy_policy.POLICY",
         "buy_cost_rate": 0.0008,
@@ -6000,11 +6005,12 @@ def test_cycle_proxy_backtest_nets_formal_costs_and_annualizes_with_actual_span(
     assert summary["annualization_span_calendar_days"] == 357
     assert summary["annualization_status"] == "ok"
     assert summary["annualized_return"] == 0.25024
-    assert any("net of the formal transaction-cost constants" in warning for warning in body["warnings"])
+    assert any("already includes formal transaction costs" in warning for warning in body["warnings"])
     assert any("not produced by the formal path backtest engine" in warning for warning in body["warnings"])
     # MEDIUM-1: same-day close entry assumption must be disclosed
     assert any(
         "signal-day close" in warning
+        and "fallback" in warning
         and "same-day execution" in warning
         and "livermore_candidate_execution_history" in warning
         for warning in body["warnings"]
@@ -6042,14 +6048,165 @@ def test_cycle_proxy_backtest_prefers_adjusted_returns_and_reports_formula_versi
     )
 
     body = envelope["result"]
-    assert body["formula_version"] == "fv_livermore_cycle_proxy_backtest_adj_first_v3"
+    assert body["formula_version"] == "fv_livermore_cycle_proxy_backtest_execution_first_v4"
     # v2 (return_5d_adj first) 口径: 0.10 - 0.0041 = 0.0959
     # v3 (multiplicative cost netting) 口径: (1 + 0.10) * (1 - 0.0041) - 1 = 0.09549
     assert body["nav_series"][0]["period_return"] == 0.09549
     assert body["nav_series"][0]["period_return_gross"] == 0.1
     assert body["summary"]["cumulative_return"] == 0.09549
+    assert body["summary"]["return_rows_execution_net_adjusted"] == 0
     assert body["summary"]["return_rows_adjusted"] == 1
+    assert body["summary"]["return_rows_adjusted_fallback"] == 1
     assert body["summary"]["return_rows_gross_fallback"] == 0
+
+
+def test_cycle_proxy_backtest_prefers_next_open_execution_net_return(tmp_path) -> None:
+    db_path = tmp_path / "cycle-proxy-execution-first.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        _insert_strategy_score_rows(
+            conn,
+            [
+                (
+                    "2026-05-01",
+                    "000001.SZ",
+                    "Execution A",
+                    "stock_candidate",
+                    0.10,
+                    0.12,
+                    0.20,
+                    '{"market_state":"WARM"}',
+                ),
+            ],
+        )
+        conn.execute(
+            """
+            update livermore_candidate_history
+            set forward_trade_date_5d = '2026-05-08',
+                return_5d_adj = 0.10
+            where snapshot_as_of_date = '2026-05-01'
+            """
+        )
+        conn.execute(
+            """
+            insert into livermore_candidate_execution_history (
+              signal_date,
+              stock_code,
+              signal_kind,
+              market_state,
+              entry_executable,
+              entry_block_reason,
+              entry_date,
+              exit_date_5d,
+              return_5d_gross_adj,
+              return_5d_net_adj
+            ) values (
+              '2026-05-01',
+              '000001.SZ',
+              'stock_candidate',
+              'WARM',
+              true,
+              '',
+              '2026-05-04',
+              '2026-05-11',
+              0.085,
+              0.08
+            )
+            """
+        )
+        _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-01")
+    finally:
+        conn.close()
+
+    envelope = livermore_candidate_history_cycle_proxy_backtest_envelope(
+        duckdb_path=str(db_path),
+        snapshot_from="2026-05-01",
+        snapshot_to="2026-05-01",
+    )
+
+    body = envelope["result"]
+    assert body["formula_version"] == "fv_livermore_cycle_proxy_backtest_execution_first_v4"
+    assert body["nav_series"][0]["period_return"] == 0.08
+    assert body["nav_series"][0]["period_return_gross"] == 0.085
+    assert body["nav_series"][0]["date"] == "2026-05-04"
+    assert body["nav_series"][0]["exit_date"] == "2026-05-11"
+    assert body["summary"]["return_field_used"] == "return_5d_net_adj"
+    assert body["summary"]["return_rows_execution_net_adjusted"] == 1
+    assert body["summary"]["return_rows_adjusted_fallback"] == 0
+    assert body["summary"]["return_rows_gross_fallback"] == 0
+    assert body["execution_blocked_rows_in_window"] == 0
+    assert envelope["result_meta"]["tables_used"] == [
+        "livermore_candidate_history",
+        "livermore_candidate_execution_history",
+    ]
+    assert any("next-open" in warning and "preferred" in warning for warning in body["warnings"])
+
+
+def test_cycle_proxy_backtest_excludes_execution_blocked_entries(tmp_path) -> None:
+    db_path = tmp_path / "cycle-proxy-execution-blocked.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        _insert_strategy_score_rows(
+            conn,
+            [
+                (
+                    "2026-05-01",
+                    "000001.SZ",
+                    "Blocked A",
+                    "stock_candidate",
+                    0.10,
+                    0.12,
+                    0.20,
+                    '{"market_state":"WARM"}',
+                ),
+            ],
+        )
+        conn.execute(
+            """
+            update livermore_candidate_history
+            set forward_trade_date_5d = '2026-05-08',
+                return_5d_adj = 0.10
+            where snapshot_as_of_date = '2026-05-01'
+            """
+        )
+        conn.execute(
+            """
+            insert into livermore_candidate_execution_history (
+              signal_date,
+              stock_code,
+              signal_kind,
+              market_state,
+              entry_executable,
+              entry_block_reason
+            ) values (
+              '2026-05-01',
+              '000001.SZ',
+              'stock_candidate',
+              'WARM',
+              false,
+              'limit_up_open'
+            )
+            """
+        )
+        _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-01")
+    finally:
+        conn.close()
+
+    envelope = livermore_candidate_history_cycle_proxy_backtest_envelope(
+        duckdb_path=str(db_path),
+        snapshot_from="2026-05-01",
+        snapshot_to="2026-05-01",
+    )
+
+    body = envelope["result"]
+    assert body["status"] == "unsupported"
+    assert body["summary"] is None
+    assert body["nav_series"] == []
+    assert body["execution_blocked_rows_in_window"] == 1
+    assert envelope["result_meta"]["tables_used"] == [
+        "livermore_candidate_history",
+        "livermore_candidate_execution_history",
+    ]
 
 
 def test_candidate_history_portfolio_backtest_reports_formula_version(tmp_path) -> None:
