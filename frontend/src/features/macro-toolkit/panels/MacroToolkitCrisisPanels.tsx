@@ -29,6 +29,14 @@ type CommodityRefreshEvidenceChain = crisisSupport.CommodityRefreshEvidenceChain
 type CrisisGapRepairFeedback = crisisSupport.CrisisGapRepairFeedback;
 type CrisisGapGroup = crisisSupport.CrisisGapGroup;
 type CommodityRefreshProductRow = crisisSupport.CommodityRefreshProductRow;
+type CrisisCommodityCoverage = crisisSupport.CrisisCommodityCoverage;
+type CrisisCommodityAdmission = crisisSupport.CrisisCommodityAdmission;
+type CrisisCommodityApprovalPack = crisisSupport.CrisisCommodityApprovalPack;
+type MacroToolkitInputEvidenceItem = crisisSupport.MacroToolkitInputEvidenceItem;
+type CrisisCommodityShadowImpact = crisisSupport.CrisisCommodityShadowImpact;
+type CrisisCommodityCoverageItem = crisisSupport.CrisisCommodityCoverageItem;
+type CommodityPromotionRuleItem = crisisSupport.CommodityPromotionRuleItem;
+type CrisisCommodityCandidateSummary = crisisSupport.CrisisCommodityCandidateSummary;
 
 const {
   buildCommodityPromotionAuditPackCopyText,

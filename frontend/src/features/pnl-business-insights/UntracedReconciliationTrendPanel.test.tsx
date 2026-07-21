@@ -65,14 +65,14 @@ describe("buildUntracedReconciliationTrendOption", () => {
     }>;
 
     const colors = [series[0].lineStyle?.color, series[0].itemStyle?.color, series[0].areaStyle?.color];
-    const allowed = new Set([
+    const allowed = new Set<string>([
       ibTokens.color.inkSecondary,
       ibTokens.color.surfaceMuted,
       ibTokens.color.inkMuted,
       ibTokens.color.hairline,
     ]);
     for (const color of colors) {
-      expect(allowed.has(color as (typeof ibTokens.color)[keyof typeof ibTokens.color])).toBe(true);
+      expect(allowed.has(color ?? "")).toBe(true);
     }
     expect(colors).not.toContain(ibTokens.color.down);
     expect(colors).not.toContain(ibTokens.color.warn);

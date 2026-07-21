@@ -6,10 +6,9 @@ import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
 import type { MockLedgerPnlCurrencyBasis } from "../mocks/ledgerPnlMocks";
 import { formatRawAsNumeric } from "../utils/format";
 import type {
-  ApiEnvelope,
-  LedgerPnlCandidateFinancialIndicatorComponentMetricId,
-  LedgerPnlCandidateFinancialIndicatorRevalidationRequest,
-  PnlBasis,
+  LedgerPnlCandidateFinancialIndicatorsEnvelope,
+  LedgerPnlCandidateFinancialIndicatorsPayload,
+  NumericUnit,
 } from "./contracts";
 import type { PnlCoreClientMethods } from "./pnlCoreClient";
 

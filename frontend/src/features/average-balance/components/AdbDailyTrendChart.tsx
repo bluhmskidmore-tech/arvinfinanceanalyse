@@ -20,7 +20,8 @@ function buildTrendOption(trend: AdbTrendItem[]) {
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "cross" },
-      formatter: (items: { seriesName: string; value: number; dataIndex: number }[]) => {
+      formatter: (params: unknown) => {
+        const items = Array.isArray(params) ? params as Array<{ seriesName: string; value: number; dataIndex: number }> : [];
         if (!items.length) return "";
         const idx = items[0].dataIndex;
         const row = trend[idx];

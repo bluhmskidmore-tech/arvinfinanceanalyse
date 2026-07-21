@@ -28,7 +28,8 @@ function buildComparisonOption(rows: AdbComparisonChartRow[]) {
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "shadow" },
-      formatter: (items: { dataIndex: number }[]) => {
+      formatter: (params: unknown) => {
+        const items = Array.isArray(params) ? params as Array<{ dataIndex: number }> : [];
         if (!items.length) return "";
         const row = rows[items[0].dataIndex];
         return [

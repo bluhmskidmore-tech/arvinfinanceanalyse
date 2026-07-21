@@ -6,7 +6,7 @@ import type {
   MacroToolkitDataHealth,
   MacroToolkitInputEvidence,
 } from "../../../api/macroToolkitClient";
-import { formatPercent, statusLabel } from "./macroToolkitPanelShared";
+import { formatPercent } from "./macroToolkitPanelShared";
 
 type MacroToolkitRepairItem = NonNullable<MacroToolkitDataHealth["repair_items"]>[number];
 
@@ -24,7 +24,6 @@ export const MACRO_COMMODITY_PRODUCT_OPTIONS = [
   { value: "AU", label: "黄金", description: "避险资产" },
   { value: "NHCI", label: "南华指数", description: "Crisis Score 输入" },
 ] as const;
-const DEFAULT_MACRO_COMMODITY_PRODUCTS = MACRO_COMMODITY_PRODUCT_OPTIONS.map((option) => option.value);
 export const MACRO_COMMODITY_FIELD_TO_PRODUCT: Record<string, string> = {
   rebar: "RB",
   iron_ore: "I",

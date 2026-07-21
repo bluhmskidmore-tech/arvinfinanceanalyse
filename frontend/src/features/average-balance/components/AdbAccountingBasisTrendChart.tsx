@@ -49,7 +49,8 @@ function buildOption(trend: AdbAccountingBasisDailyAvgTrendItem[]) {
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "cross" },
-      formatter: (items: { seriesName: string; value: number | null; dataIndex: number }[]) => {
+      formatter: (params: unknown) => {
+        const items = Array.isArray(params) ? params as Array<{ seriesName: string; value: number | null; dataIndex: number }> : [];
         if (!items.length) return "";
         const idx = items[0].dataIndex;
         const header = `<strong>${labels[idx]}</strong>`;

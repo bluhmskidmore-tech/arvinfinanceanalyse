@@ -10,7 +10,7 @@ import {
   readinessTagColor,
   toneColor,
 } from "../features/bond-analytics/components/bondAnalyticsCockpitTokens";
-import { designTokens } from "../theme/designSystem";
+import { designTokens, dhApiTokens } from "../theme/designSystem";
 import { displayTokens } from "../theme/displayTokens";
 
 describe("bondAnalyticsCockpitTokens", () => {
@@ -21,7 +21,7 @@ describe("bondAnalyticsCockpitTokens", () => {
   it("panelStyle passes background, no border stroke, radius, shadow", () => {
     const bg = "#fafafa";
     const style = panelStyle(bg);
-    expect(style.borderRadius).toBe(24);
+    expect(style.borderRadius).toBe(dhApiTokens.radius);
     expect(style.border).toBe("none");
     expect(style.boxShadow).toBe(SHADOW);
     expect(style.background).toBe(bg);

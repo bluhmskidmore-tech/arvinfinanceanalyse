@@ -1228,7 +1228,7 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(heroTitleRule).toContain("font-size: 15px");
     expect(heroRule).not.toMatch(/display:\s*none/);
     expect(marketRule).not.toMatch(/box-shadow:/);
-    expect(kpiRailRule).toContain("border-radius: 6px");
+    expect(kpiRailRule).toContain("border-radius: var(--dh-api-radius, 6px)");
     expect(kpiRailRule).not.toContain("background: var(--moss-color-primary-900)");
     expect(kpiGridRule).toContain("grid-template-columns: repeat(7, minmax(108px, 1fr))");
     expect(kpiGridRule).toContain("background: var(--moss-color-neutral-200)");
@@ -1248,7 +1248,7 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     const accountingDv01LabelRule = cssRuleBody(".accountingDv01Row strong");
     const accountingDv01NumberRule = cssRuleBody(".accountingDv01Number");
     const analysisRule = cssRuleBody(".referenceAnalysisGrid");
-    const panelRule = cssRuleBody(".referencePanelCard");
+    const panelRule = cssRuleBody(".dashboardCard");
     const analysisPanelRule = cssRuleBody(".referenceAnalysisGrid .referencePanelCard");
     const curveBannerRule = cssRuleBody(".referenceCurveBanner");
     const curveBannerTextStrongRule = cssRuleBody(".referenceCurveBannerText strong");
@@ -1287,7 +1287,7 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(attributionCardRule).toContain("grid-area: attribution");
     expect(attributionPanelRule).toContain("grid-template-columns: minmax(210px, 0.75fr) minmax(180px, 0.62fr) minmax(280px, 1fr) minmax(180px, 0.65fr)");
     expect(panelRule).toContain("border: 1px solid var(--moss-color-neutral-200)");
-    expect(panelRule).toContain("border-radius: 6px");
+    expect(panelRule).toContain("border-radius: var(--dh-api-radius, 6px)");
     expect(panelRule).toContain("box-shadow: 0 2px 6px rgba(22, 35, 46, 0.035)");
     expect(analysisPanelRule).toContain("box-shadow: 0 2px 6px rgba(22, 35, 46, 0.035)");
     expect(curveBannerRule).toContain("border-left: 4px solid var(--moss-color-primary-700)");
@@ -1304,7 +1304,7 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(evidenceNoticeRule).toContain("border-left: 3px solid var(--moss-color-primary-600)");
     expect(judgmentMatrixRule).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))");
     expect(judgmentCardRule).toContain("border: 1px solid var(--moss-color-neutral-200)");
-    expect(judgmentCardRule).toContain("border-radius: 6px");
+    expect(judgmentCardRule).toContain("border-radius: var(--dh-api-radius, 6px)");
     expect(judgmentCardRule).toContain("box-shadow: 0 2px 6px rgba(22, 35, 46, 0.035)");
     expect(judgmentCardRule).toContain("min-height: 72px");
     expect(judgmentCardSmallRule).toContain("white-space: normal");
@@ -1344,7 +1344,7 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     const pendingLedgerRule = cssRuleBody(".curvePendingLedger");
     const pendingRowRule = cssRuleBody(".curvePendingRow");
 
-    expect(readoutBlockRule).toContain("border-radius: 6px");
+    expect(readoutBlockRule).toContain("border-radius: var(--dh-api-radius, 6px)");
     expect(readoutBlockRule).toContain("background: var(--moss-color-card-bg)");
     expect(readoutBlockRule).toContain("gap: 4px");
     expect(readoutBlockRule).toContain("padding: 8px 8px");
@@ -1352,7 +1352,7 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(readoutBlockRule).not.toContain("linear-gradient");
     expect(readoutBlockRule).not.toMatch(/box-shadow:/);
     expect(matrixRule).toContain("border: 1px solid var(--moss-color-neutral-200)");
-    expect(matrixRule).toContain("border-radius: 4px");
+    expect(matrixRule).toContain("border-radius: var(--dh-api-radius, 6px)");
     expect(rowRule).toContain("grid-template-columns: 88px repeat(8, minmax(0, 1fr))");
     expect(rowRule).toContain("min-height: 24px");
     expect(pointCountRule).toContain("display: flex");
@@ -1363,7 +1363,7 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(curveLayoutRule).toContain("grid-template-columns: minmax(0, 1fr)");
     expect(pendingPanelRule).toContain("min-height: 96px");
     expect(pendingPanelRule).toContain("border: 1px dashed var(--moss-color-neutral-200)");
-    expect(pendingPanelRule).toContain("border-radius: 6px");
+    expect(pendingPanelRule).toContain("border-radius: var(--dh-api-radius, 6px)");
     expect(pendingPanelRule).not.toContain("linear-gradient");
     expect(pendingLedgerRule).toContain("grid-template-columns: repeat(4, minmax(0, 1fr))");
     expect(pendingRowRule).toContain("padding: 6px 8px");
@@ -1565,10 +1565,11 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
       "utf8",
     );
 
-    expect(source).toContain("const deskPanelShadow = \"0 2px 6px rgba(22, 35, 46, 0.035)\"");
-    expect(source).toContain("border: `1px solid ${dt.color.neutral[200]}`");
-    expect(source).toContain("borderRadius: dt.radius.sm");
-    expect(source).not.toContain("borderRadius: dt.radius.lg");
+    expect(source).toContain("className={styles.dashboardCard}");
+    expect(source).not.toContain("style={dashboardCardStyle}");
+    expect(cssRuleBody(".dashboardCard")).toContain("border: 1px solid var(--moss-color-neutral-200)");
+    expect(cssRuleBody(".dashboardCard")).toContain("border-radius: var(--dh-api-radius, 6px)");
     expect(source).not.toContain("const restrainedShadow =");
+    expect(cssRuleBody(".dashboardCard")).toContain("box-shadow: 0 2px 6px rgba(22, 35, 46, 0.035)");
   });
 });

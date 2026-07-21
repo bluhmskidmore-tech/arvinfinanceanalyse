@@ -2,7 +2,6 @@
  * Formal, Ledger, and Bridge P&L client slice.
  * Imported by client.ts for ApiClient composition.
  */
-import { formatRawAsNumeric } from "../utils/format";
 import type {
   ApiEnvelope,
   FormalPnlRefreshPayload,
@@ -20,7 +19,6 @@ import type {
   LedgerPnlFormalFinancialIndicatorContractPayload,
   LedgerPnlFormalIndicatorRuleChecksPayload,
   LedgerPnlSummaryPayload,
-  NumericUnit,
   PnlBasis,
   PnlBridgePayload,
   PnlDataPayload,
@@ -89,7 +87,6 @@ export type PnlCoreClientMethods = {
 };
 
 type FetchLike = typeof fetch;
-type Delay = () => Promise<void>;
 
 type RequestJson = <T>(
   fetchImpl: FetchLike,

@@ -22,7 +22,7 @@
     "test:a11y-smoke": "playwright test -c playwright.config.mjs",
     "test:a11y-smoke:headed": "playwright test -c playwright.config.mjs --headed",
     "test:watch": "node scripts/vitest-safe.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json"
   },
   "dependencies": {
     "@ant-design/icons": "^5.0.0",

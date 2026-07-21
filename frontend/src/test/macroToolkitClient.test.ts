@@ -25,7 +25,7 @@ describe("macroToolkitClient", () => {
     const capability = envelope.result.capability_results.find(
       (item) => item.key === "monetary_policy_stance",
     );
-    const policyRate = capability?.input_evidence?.inputs.find(
+    const policyRate = capability?.input_evidence?.inputs?.find(
       (item) => item.field === "policy_rate_7d",
     );
 

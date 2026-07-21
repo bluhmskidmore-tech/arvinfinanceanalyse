@@ -65,7 +65,7 @@ describe("RatingDistributionCard", () => {
     renderCard("0.0325");
 
     expect(await screen.findByText("评级收益率")).toBeInTheDocument();
-    expect(await screen.findByText("2 天 · 利率债默认 AAA")).toBeInTheDocument();
+    expect(await screen.findByText("2 天 / 利率债默认 AAA")).toBeInTheDocument();
     expect(await screen.findByText("3.25%")).toBeInTheDocument();
   });
 
@@ -73,7 +73,7 @@ describe("RatingDistributionCard", () => {
     renderCard(null);
 
     expect(await screen.findByText("评级收益率")).toBeInTheDocument();
-    expect(await screen.findByText("2 天 · 利率债默认 AAA")).toBeInTheDocument();
+    expect(await screen.findByText("2 天 / 利率债默认 AAA")).toBeInTheDocument();
     expect(screen.getByText("-")).toBeInTheDocument();
   });
 });
