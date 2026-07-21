@@ -1,6 +1,7 @@
 .market-finance-workbench {
+  --ib-ink-muted: var(--ib-ink-secondary);
   display: grid;
-  gap: var(--moss-space-4);
+  gap: var(--moss-space-3);
   min-width: 0;
   padding: var(--moss-space-4);
   background: var(--ib-paper);
@@ -27,12 +28,17 @@
   font-size: 20px;
 }
 
+.market-finance-workbench__hero .moss-page-v2-decision-hero__titles {
+  gap: var(--moss-space-1);
+}
+
 .market-finance-workbench__hero .moss-page-v2-decision-hero__question {
   color: var(--ib-ink-secondary);
   font-size: 14px;
 }
 
 .market-finance-workbench__hero .moss-page-v2-decision-hero__conclusion {
+  padding: 6px 10px;
   border-left: 2px solid var(--ib-accent);
   border-radius: var(--ib-radius);
   background: var(--ib-accent-surface);
@@ -101,7 +107,7 @@
 }
 
 .market-finance-workbench__filter-tray > div {
-  padding: var(--moss-space-2) var(--moss-space-3);
+  padding: var(--moss-space-1) var(--moss-space-3);
   border-color: var(--ib-hairline);
   border-radius: var(--ib-radius);
   background: var(--ib-surface-muted);
@@ -146,10 +152,10 @@
 .market-finance-workbench__status-item {
   display: grid;
   align-content: center;
-  gap: 3px;
+  gap: 2px;
   min-width: 0;
-  min-height: 52px;
-  padding: var(--moss-space-2) var(--moss-space-3);
+  min-height: 48px;
+  padding: var(--moss-space-1) var(--moss-space-3);
   border-right: 1px solid var(--ib-hairline);
 }
 
@@ -211,9 +217,9 @@
 
 .market-finance-workbench__spine {
   display: grid;
-  gap: var(--moss-space-3);
+  gap: var(--moss-space-2);
   min-width: 0;
-  padding: var(--moss-space-3);
+  padding: var(--moss-space-2);
   border: 1px solid var(--ib-hairline);
   border-radius: var(--ib-radius);
   background: var(--ib-surface);
@@ -273,10 +279,10 @@
   position: relative;
   display: grid;
   grid-template-rows: auto auto 1fr auto;
-  gap: var(--moss-space-2);
+  gap: var(--moss-space-1);
   min-width: 0;
-  min-height: 166px;
-  padding: var(--moss-space-3);
+  min-height: 150px;
+  padding: var(--moss-space-2);
   border: 1px solid var(--ib-hairline);
   border-top: 2px solid var(--ib-accent);
   border-radius: var(--ib-radius);
@@ -346,7 +352,10 @@
 
 .market-finance-workbench__spine-node a,
 .market-finance-workbench__matrix-panel a {
+  display: inline-flex;
+  align-items: center;
   width: fit-content;
+  min-height: 24px;
   color: var(--ib-accent);
   font-size: 12px;
   font-weight: 700;
@@ -564,7 +573,10 @@
 }
 
 .market-finance-workbench__coordination-list a {
+  display: inline-flex;
+  align-items: center;
   width: fit-content;
+  min-height: 24px;
   color: var(--ib-accent);
   font-size: 11px;
   font-weight: 700;
@@ -580,6 +592,10 @@
   border-color: var(--ib-hairline);
   border-radius: var(--ib-radius);
   background: var(--ib-surface-muted);
+}
+
+.market-finance-workbench .moss-page-v2-state-surface__description {
+  color: var(--ib-ink-secondary);
 }
 
 .market-finance-workbench__retry-button {
@@ -697,6 +713,12 @@
   color: var(--ib-ink-muted);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 1180px) and (min-width: 721px) {
+  .workbench-shell-grid--desktop-aligned:has(.market-finance-workbench) .workbench-shell-aside {
+    display: none !important;
+  }
 }
 
 @media (max-width: 1100px) {

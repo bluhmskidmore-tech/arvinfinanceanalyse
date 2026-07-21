@@ -454,7 +454,7 @@ describe("MarketFinanceWorkbenchPage", () => {
       for (const titledElement of root.querySelectorAll(
         `[title="${endpoint}"]`,
       )) {
-        expect(evidence).toContainElement(titledElement);
+        expect(evidence).toContainElement(titledElement as HTMLElement);
       }
     }
   });

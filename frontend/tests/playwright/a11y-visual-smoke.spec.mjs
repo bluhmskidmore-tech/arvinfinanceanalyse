@@ -107,6 +107,14 @@ const smokePages = [
     screenshotFullPage: false,
   },
   {
+    slug: "market-finance",
+    path: "/market-finance",
+    readySelector: '[data-testid="market-finance-workbench"]',
+    blockedAxeImpacts: ["critical", "serious"],
+    minimumControlTargetSize: 24,
+    screenshotFullPage: false,
+  },
+  {
     slug: "macro-toolkit",
     path: "/macro-toolkit",
     readySelector: '[data-testid="macro-toolkit-tailwind-cockpit"]',
