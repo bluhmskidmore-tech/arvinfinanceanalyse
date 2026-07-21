@@ -43,15 +43,38 @@ function gitRevExists(ref) {
   return r.ok;
 }
 
+function resolveUpstreamRef() {
+  const r = git([
+    "rev-parse",
+    "--abbrev-ref",
+    "--symbolic-full-name",
+    "@{upstream}",
+  ]);
+  const ref = r.ok ? r.out.trim() : "";
+  return ref && gitRevExists(ref) ? ref : null;
+}
+
+function resolveMergeBase(left, right) {
+  const r = git(["merge-base", left, right]);
+  const ref = r.ok ? r.out.trim() : "";
+  return ref && gitRevExists(ref) ? ref : null;
+}
+
 function resolveBaseRef() {
   const fromEnv = (process.env.BASE_REF ?? "").trim();
-  const candidates = fromEnv.length
-    ? [fromEnv]
-    : ["origin/codex/choice-stock-field-catalog", "origin/main"];
-  for (const c of candidates) {
-    if (gitRevExists(c)) return c;
+  if (fromEnv && gitRevExists(fromEnv)) {
+    return fromEnv;
   }
-  if (gitRevExists("HEAD")) return "HEAD";
+
+  const upstream = resolveUpstreamRef();
+  if (upstream) {
+    return resolveMergeBase("HEAD", upstream) ?? upstream;
+  }
+
+  if (gitRevExists("origin/main")) {
+    return resolveMergeBase("HEAD", "origin/main") ?? "origin/main";
+  }
+
   return "HEAD";
 }
 

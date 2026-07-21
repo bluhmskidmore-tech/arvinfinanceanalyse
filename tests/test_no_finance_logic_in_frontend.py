@@ -198,8 +198,14 @@ DISPLAY_ONLY_FILE_LINE_PREFIXES = {
         "const convexity = ",
         "dv01 !== null",
         "? `",
+        '? "',
         "| ",
         "/*",
+        "* ",
+        "DV01RiskPayload,",
+        "envelope?: ",
+        "function riskBondUnitsValid",
+        ": ",
         "peakKrdBucket = ",
         "rows.push(",
         "push(portfolioRows, ",
@@ -212,6 +218,8 @@ DISPLAY_ONLY_FILE_LINE_PREFIXES = {
         "<span",
         "<b>",
         "<p ",
+        "aria-label",
+        "<em>",
     ),
 }
 
