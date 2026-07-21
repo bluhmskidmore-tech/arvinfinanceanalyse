@@ -20,6 +20,7 @@ from backend.app.services.agent_run_service import (
     create_agent_run,
     get_agent_run_owner,
     get_agent_run_status,
+    iter_agent_run_events,
 )
 from backend.app.services.agent_service import (
     audit_disabled_agent_query,
@@ -29,7 +30,7 @@ from backend.app.services.agent_service import (
 from backend.app.services.dexter_agent_service import execute_dexter_agent_query
 from backend.app.services.hermes_agent_service import execute_hermes_agent_query
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 router = APIRouter(prefix="/api/agent")
 
@@ -256,3 +257,32 @@ def get_agent_run_endpoint(
         return get_agent_run_status(run_id=run_id, settings=settings)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/runs/{run_id}/events")
+def get_agent_run_events_endpoint(
+    run_id: str,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> StreamingResponse:
+    settings = get_settings()
+    _ensure_agent_read_allowed(auth, settings)
+    try:
+        owner = get_agent_run_owner(run_id=run_id, settings=settings)
+        if owner is not None and owner != auth.user_id:
+            raise HTTPException(status_code=403, detail="Agent run belongs to a different user.")
+        initial_status = get_agent_run_status(run_id=run_id, settings=settings)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    return StreamingResponse(
+        iter_agent_run_events(
+            run_id=run_id,
+            settings=settings,
+            initial_status=initial_status,
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )

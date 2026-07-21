@@ -1,20 +1,18 @@
 import type { AgentQueryRequest } from "../../../api/contracts";
-import { runPollingTask } from "../../../app/jobs/polling";
 import {
-  AGENT_RUN_POLL_MAX_ATTEMPTS,
   formatManagedRunFailureMessage,
   getAgentRequestClockMs,
-  getAgentRunPollIntervalMs,
   normalizeAgentRunRequestLatencyMs,
 } from "../lib/agentWorkbenchModel";
-import type { AgentRunPayload } from "../lib/agentWorkbenchModel";
+import type { AgentQueryResult, AgentRunPayload } from "../lib/agentWorkbenchModel";
+import { waitForAgentRunTerminal } from "./agentRunStatusOrchestrator";
 
 type RunManagedAgentPollingOptions = {
   requestBody: AgentQueryRequest;
   createAgentRun: (requestBody: AgentQueryRequest) => Promise<AgentRunPayload>;
   fetchAgentRunStatus: (runId: string) => Promise<AgentRunPayload>;
   canCommit: () => boolean;
-  onRunAccepted: (payload: AgentRunPayload, requestLatencyMs: number) => void;
+  onRunAccepted: (payload: AgentRunPayload, requestLatencyMs: number | undefined) => void;
   onRunUpdate: (payload: AgentRunPayload) => void;
 };
 
@@ -30,27 +28,22 @@ export async function runManagedAgentPolling({
   canCommit,
   onRunAccepted,
   onRunUpdate,
-}: RunManagedAgentPollingOptions): Promise<AgentRunPayload> {
-  const finalPayload = await runPollingTask<AgentRunPayload>({
-    start: async () => {
-      const runRequestStartedAtMs = getAgentRequestClockMs();
-      const payload = await createAgentRun(requestBody);
-      const runRequestLatencyMs = normalizeAgentRunRequestLatencyMs(
-        getAgentRequestClockMs() - runRequestStartedAtMs,
-      );
-      if (canCommit()) {
-        onRunAccepted(payload, runRequestLatencyMs);
-      }
-      return payload;
-    },
-    getStatus: fetchAgentRunStatus,
-    getIntervalMs: getAgentRunPollIntervalMs,
-    maxAttempts: AGENT_RUN_POLL_MAX_ATTEMPTS,
-    onUpdate: (payload) => {
-      if (canCommit()) {
-        onRunUpdate(payload);
-      }
-    },
+}: RunManagedAgentPollingOptions): Promise<AgentRunPayload & { result: AgentQueryResult }> {
+  const runRequestStartedAtMs = getAgentRequestClockMs();
+  const initialPayload = await createAgentRun(requestBody);
+  const runRequestLatencyMs = normalizeAgentRunRequestLatencyMs(
+    getAgentRequestClockMs() - runRequestStartedAtMs,
+  );
+  if (canCommit()) {
+    onRunAccepted(initialPayload, runRequestLatencyMs);
+  }
+
+  const finalPayload = await waitForAgentRunTerminal({
+    runId: initialPayload.run_id,
+    initialPayload,
+    fetchAgentRunStatus,
+    canCommit,
+    onRunUpdate,
   });
 
   if (finalPayload.status === "failed") {
@@ -61,5 +54,5 @@ export async function runManagedAgentPolling({
   if (!finalPayload.result) {
     throw new Error("智能体任务完成但未返回结果。");
   }
-  return finalPayload;
+  return { ...finalPayload, result: finalPayload.result };
 }

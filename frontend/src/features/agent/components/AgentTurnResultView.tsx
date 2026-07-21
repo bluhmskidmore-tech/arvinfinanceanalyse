@@ -71,7 +71,10 @@ function AgentResultSideDrawer({
           filtersApplied={turnResult.evidence.filters_applied}
           sqlExecuted={turnResult.evidence.sql_executed ?? []}
           evidenceStrength={
-            turnResult.evidence.evidence_strength ?? turnResult.result_meta.evidence_strength
+            turnResult.evidence.evidence_strength ??
+            (typeof turnResult.result_meta.evidence_strength === "string"
+              ? turnResult.result_meta.evidence_strength
+              : undefined)
           }
           evidenceRows={turnResult.evidence.evidence_rows}
           qualityFlag={turnResult.evidence.quality_flag}

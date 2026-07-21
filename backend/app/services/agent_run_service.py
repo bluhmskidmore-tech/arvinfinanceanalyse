@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import threading
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -32,6 +33,36 @@ AGENT_RUN_STALE_GRACE_SECONDS = 30.0
 _AGENT_RUN_LATEST_RECORDS: dict[str, dict[str, object]] = {}
 
 AgentExecutor = Callable[[AgentQueryRequest, str, Any], AgentEnvelope]
+
+
+async def iter_agent_run_events(
+    *,
+    run_id: str,
+    settings: Any,
+    initial_status: AgentRunStatusResponse | None = None,
+    poll_interval_seconds: float = 0.5,
+):
+    """Yield distinct run snapshots as SSE frames until the run is terminal."""
+    current_status = initial_status or get_agent_run_status(run_id=run_id, settings=settings)
+    last_frame: str | None = None
+
+    while True:
+        frame = (
+            "event: run_update\n"
+            f"data: {current_status.model_dump_json(exclude_none=True)}\n\n"
+        )
+        if frame != last_frame:
+            yield frame
+            last_frame = frame
+        if current_status.status in {"completed", "failed"}:
+            return
+
+        await asyncio.sleep(max(0.0, poll_interval_seconds))
+        current_status = await asyncio.to_thread(
+            get_agent_run_status,
+            run_id=run_id,
+            settings=settings,
+        )
 
 
 def _provider_runtime_fields(settings: Any, provider: str | None = None) -> tuple[str, str, str, str]:

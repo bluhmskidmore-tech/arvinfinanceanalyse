@@ -20,7 +20,7 @@ function buildEventStreamResponse(chunks: string[]) {
 
 describe("streamAgentRunEvents", () => {
   it("parses split CRLF frames, ignores heartbeat comments, and keeps fetch auth-neutral", async () => {
-    const fetchImpl = vi.fn(async () =>
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       buildEventStreamResponse([
         ": keepalive\r",
         "\n\r\n",
