@@ -8,6 +8,7 @@ from datetime import UTC, date, datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
+from urllib.parse import quote
 
 import pandas as pd
 from backend.app.api.response_cache import (
@@ -74,9 +75,13 @@ from backend.app.core_finance.macro.toolkit.system_sources import (
 from backend.app.governance.settings import _REPO_ROOT, get_settings
 from backend.app.repositories.cffex_member_rank_repo import DEFAULT_CFFEX_CONTRACTS, table_stats
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
-from backend.app.services import macro_adversarial_signal_service, macro_toolkit_service
+from backend.app.services import (
+    macro_adversarial_signal_service,
+    macro_report_asset_service,
+    macro_toolkit_service,
+)
 from backend.app.services.formal_result_runtime import build_result_envelope
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/ui/macro/toolkit", tags=["macro-toolkit"])
@@ -450,6 +455,9 @@ def _build_macro_toolkit_analysis(detail: str, *, history_limit: int = DEFAULT_C
     indicators = _analysis_indicators(settings.duckdb_path)
     indicator_by_key = {str(item["key"]): item for item in indicators}
     output_files = _output_files()
+    report_bundle = macro_report_asset_service.load_report_bundle(
+        OUTPUT_DIR / macro_report_asset_service.BUNDLE_DIRNAME
+    )
     analysis_date = _latest_indicator_date(indicators)
     readiness = macro_toolkit_service.macro_model_readiness(
         output_dir=OUTPUT_DIR,
@@ -529,6 +537,7 @@ def _build_macro_toolkit_analysis(detail: str, *, history_limit: int = DEFAULT_C
             "capability_results": capability_results,
             "strategy_summaries": strategy_summaries,
             "output_files": output_files,
+            "report_bundle": report_bundle,
             "source_checks": source_checks,
             "capabilities": capabilities,
             "cffex_member_rank": _cffex_member_rank_status(
@@ -545,6 +554,35 @@ def _build_macro_toolkit_analysis(detail: str, *, history_limit: int = DEFAULT_C
             "model_readiness": readiness["model_readiness"],
             "readiness_summary": readiness["readiness_summary"],
             "warnings": warnings,
+        },
+    )
+
+
+@router.get("/report-bundle/{artifact_id}")
+def macro_toolkit_report_bundle_artifact(
+    artifact_id: str,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> Response:
+    settings = get_settings()
+    _ensure_macro_toolkit_read_allowed(auth, settings)
+    bundle_dir = OUTPUT_DIR / macro_report_asset_service.BUNDLE_DIRNAME
+    try:
+        artifact = macro_report_asset_service.read_report_artifact(bundle_dir, artifact_id)
+    except (
+        macro_report_asset_service.ReportBundleNotFoundError,
+        macro_report_asset_service.ReportArtifactNotFoundError,
+    ) as exc:
+        raise HTTPException(status_code=404, detail=exc.reason) from exc
+    except macro_report_asset_service.ReportBundleInvalidError as exc:
+        raise HTTPException(status_code=409, detail=exc.reason) from exc
+    encoded_filename = quote(artifact.filename, safe="")
+    return Response(
+        content=artifact.content,
+        media_type=artifact.media_type,
+        headers={
+            "Cache-Control": "private, no-store",
+            "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}",
+            "X-Content-Type-Options": "nosniff",
         },
     )
 

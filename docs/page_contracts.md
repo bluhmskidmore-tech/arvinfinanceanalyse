@@ -1479,6 +1479,7 @@
 | 核心信号 / 市场踩踏风险 | live | 只展示后端宏观模块返回的分析结果；缺失时须显示空/失败态 |
 | 指标矩阵 / 功能结果 | live | M7-M16 的输入证据、缺失输入和降级状态须可见 |
 | 策略展示 / 策略供数闭环 | live | 显示真实链路、降级、样例数量、股票历史日期、因子快照日期与 source/version/run_id |
+| `MacroToolkitReportBundlePanel` | live / read-only | 仅展示清单与 SHA-256 校验通过的 PDF/PNG/Markdown 白名单资产；始终 `formal_use_allowed=false` |
 | CFFEX 席位状态 / 股票数据刷新 | operational | 显式触发的刷新动作；须由后端权限与审计测试约束 |
 | 脚本注册表 / 脚本产物 / 运行结果 | operational | 只作为工具运行证据；不得作为正式指标或自动交易建议 |
 
@@ -1488,12 +1489,14 @@
 - `resolved_report_date`：以各返回 payload 内的 `as_of_date`、`latest_trade_date`、`reference_date`、`factor_snapshot.as_of_date` 为准；不同区块不得被合并成一个全页日期。
 - `generated_at`：来自各 `ApiEnvelope.result_meta.generated_at`。
 - 刷新动作产生的 `run_id`、`started_at`、`finished_at` 仅用于运维追踪，不构成页面主读数日期。
+- 报告资产包分别展示 `as_of_date`（材料日）、`curve_date`（曲线日）与 `account_report_date`（账户报告日）；三者不得合并成单一全页日期。
 
 ### E. Endpoint / DTO 表
 
 | Client 方法 / Endpoint | 用途 | DTO/Schema | 口径 |
 | --- | --- | --- | --- |
 | `getMacroToolkitAnalysis({ detail: "core" })` -> `GET /ui/macro/toolkit/analysis?detail=core` | 首屏核心分析、风险、指标、能力结果、runtime 状态 | `MacroToolkitAnalysisPayload` | analytical / tooling |
+| 报告资产只读链接 -> `GET /ui/macro/toolkit/report-bundle/{artifact_id}` | 下载分析 payload 清单中已列出且下载时再次通过大小、SHA-256、路径与权限校验的资产 | binary response；元数据见 `MacroToolkitReportBundle` | analytical / read-only |
 | `getMacroToolkitAnalysis({ detail })` -> `GET /ui/macro/toolkit/analysis?detail=core\|full` | 核心/完整分析、风险、指标、能力结果、runtime 状态 | `MacroToolkitAnalysisPayload` | analytical / tooling |
 | `getMacroToolkitAnalysis({ detail: "full", historyLimit })` -> `GET /ui/macro/toolkit/analysis?detail=full&history_limit=430` | 完整分析下的 Crisis Score 历史序列（`score_history`） | `MacroToolkitAnalysisPayload.capability_results[crisis_score_cn].result.score_history` | analytical / tooling |
 | `getMacroToolkitStrategySummaries()` -> `GET /ui/macro/toolkit/analysis/strategy-summaries` | 策略摘要、真实/降级/样例供数状态 | `MacroToolkitStrategySummariesPayload` | analytical / candidate |
@@ -1521,6 +1524,7 @@
 
 - **Loading**：核心分析可以先返回；`runtime_status.deferred_sections` 须让策略展示等延后区块可见。
 - **Empty**：无脚本、无策略、无指标时必须显示空态，不得补静态假数据。
+- **Report bundle**：清单缺失时显示“尚未发布”；清单、策略标志、路径、媒体类型、大小或哈希任一校验失败时显示失败态并关闭全部下载入口。
 - **Stale / fallback**：遵循 `result_meta.quality_flag`、`fallback_mode`、各源最新日期与 warnings；供数闭环必须保留样例/降级/真实链路区分。
 - **Error**：分析、脚本或策略读取失败时，错误页或区块必须同时显示合同边界和失败来源。
 - **Permission**：刷新和运行入口必须依赖后端权限/授权测试；前端不单独声明授权成功。
@@ -1528,6 +1532,7 @@
 ### H. 测试与验证锚点
 
 - 前端页面：`frontend/src/test/MacroToolkitPage.test.tsx`
+- 报告资产：`frontend/src/test/MacroToolkitReportBundlePanel.test.tsx`、`frontend/src/test/MacroToolkitReportBundleIntegration.test.tsx`、`tests/test_macro_report_asset_service.py`、`tests/test_macro_report_asset_api.py`
 - 导航成熟度：`frontend/src/test/navigation.test.ts`、`tests/test_live_route_page_contract_completeness.py`
 - 后端/API/权限：`tests/test_macro_toolkit_scripts.py`
 - 债务基线：`npm run debt:audit`
@@ -1537,7 +1542,7 @@
 
 - 是否未来拆分为「只读宏观观察页」与「运维脚本工具页」两个路由。
 - 是否将某些宏观序列或策略状态按 candidate metric 登记；当前合同明确不登记。
-- 是否允许脚本运行输出进入可下载报告或审计归档；当前仅作为页面运行证据显示。
+- **已确认（2026-07-20）**：仅允许经独立 manifest 白名单、大小与 SHA-256 校验的只读研究报告资产下载；一般脚本运行输出仍只作为页面运行证据，不自动获得下载或正式使用资格。
 
 ## 13.10 PAGE-MACRO-OBS-001 宏观观察
 
@@ -1566,17 +1571,20 @@
 | 核心信号 / 市场踩踏风险 | live | 只读分析证据，不暴露运维操作 |
 | 指标矩阵 / 功能结果 | live | 保留分析结果，但不引出脚本工具尾段 |
 | 策略展示 / 策略供数闭环 | live | 保留策略证据与供数状态，不展示股票刷新控件 |
+| `MacroToolkitReportBundlePanel` | live / read-only | 与工具页共享同一校验后报告资产包；不提供发布、刷新或脚本执行动作 |
 
 ### D. 时间语义
 
 - 与 `PAGE-MACRO-TOOLKIT-001` 相同，核心分析和策略供数日期仍以返回 payload 内字段为准。
 - 本页不引入独立操作日期或运行日期。
+- 报告资产仍分别展示材料日、曲线日和账户报告日，不把不同日期拼成单一观察日。
 
 ### E. Endpoint / DTO 表
 
 | Client 方法 / Endpoint | 用途 | DTO/Schema | 口径 |
 | --- | --- | --- | --- |
 | `getMacroToolkitAnalysis()` -> `GET /ui/macro/toolkit/analysis?detail=core` | 核心分析、风险、指标、能力结果、runtime 状态 | `MacroToolkitAnalysisPayload` | analytical / tooling |
+| 报告资产只读链接 -> `GET /ui/macro/toolkit/report-bundle/{artifact_id}` | 只下载 analysis 清单中已验证的研究资产 | binary response；元数据见 `MacroToolkitReportBundle` | analytical / read-only |
 | `getMacroToolkitStrategySummaries()` -> `GET /ui/macro/toolkit/analysis/strategy-summaries` | 策略摘要、真实/降级/样例供数状态 | `MacroToolkitStrategySummariesPayload` | analytical / candidate |
 
 ### F. 指标映射
@@ -1589,10 +1597,12 @@
 - **Loading**：核心分析和策略供数可先返回，脚本/运维段不渲染。
 - **Empty**：无分析时仍保留只读边界。
 - **Error**：分析失败时展示合同边界和只读边界。
+- **Report bundle**：缺失或校验失败必须显式显示且不渲染下载入口；不得回退到桌面路径或一般脚本产物。
 
 ### H. 测试与验证锚点
 
 - 前端页面：`frontend/src/test/MacroToolkitPage.test.tsx`
+- 报告资产：`frontend/src/test/MacroToolkitReportBundleIntegration.test.tsx`
 - 路由：`frontend/src/test/RouteRegistry.test.tsx`
 - 导航成熟度：`frontend/src/test/navigation.test.ts`、`tests/test_live_route_page_contract_completeness.py`
 - 债务基线：`npm run debt:audit`

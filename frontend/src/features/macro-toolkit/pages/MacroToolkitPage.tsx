@@ -23,7 +23,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { runPollingTask } from "../../../app/jobs/polling";
 import { useApiClient } from "../../../api/clientContext";
-import type { ApiEnvelope, ResultMeta } from "../../../api/contracts";
+import type { ApiEnvelope } from "../../../api/contracts";
 import type {
   MacroToolkitCapability,
   MacroToolkitCapabilityResult,
@@ -35,10 +35,7 @@ import type {
   MacroToolkitAnalysisPayload,
   MacroToolkitDataHealth,
   MacroToolkitHasonStrategy,
-  MacroToolkitInputEvidence,
   MacroToolkitIndicator,
-  MacroToolkitModelReadiness,
-  MacroToolkitReadinessSummary,
   MacroToolkitOutputFile,
   MacroToolkitRunResponse,
   MacroToolkitScriptRecord,
@@ -87,10 +84,8 @@ import {
   buildCrisisGapRepairFeedback,
   canRefreshMacroSourceBackfill,
   commodityRefreshRunProducts,
-  commodityShadowRefreshProducts,
   crisisCommodityShortItemsFromEnvelope,
   crisisCommodityShortItemsFromResult,
-  crisisGapGroupFromEnvelope,
   crisisGapGroupFromResult,
   formatCommodityProducts,
   formatCommodityRefreshActionLabel,
@@ -99,24 +94,22 @@ import {
   formatCommodityShortfallChanges,
   formatCommodityShortfallEstimates,
   formatCommodityShortfallEstimateList,
-  formatCommodityShadowRefreshHint,
   formatNumberValue,
   formatValue,
   isCrisisComponent,
-  normalizeCommodityCoverage,
-  normalizeCommodityRefreshRows,
   normalizeInputEvidence,
   normalizeMacroSourceBackfillAlias,
   suggestedCommodityRefreshStartDate,
-  uniqueDisplayParts,
 } from "../lib/macroToolkitCrisisSupport";
 import type {
   CommodityRefreshEvidenceChain,
   CommodityShortfallChange,
   CommodityShortfallEstimate,
   CrisisGapRepairFeedback,
+  CrisisGapGroup,
 } from "../lib/macroToolkitCrisisSupport";
 import { CrisisScoreEvidencePanel, CommodityRefreshResultPanel } from "../panels/MacroToolkitCrisisPanels";
+import { MacroToolkitReportBundlePanel } from "../panels/MacroToolkitReportBundlePanel";
 import {
   HasonMacroStrategyPanel,
   ModelSignalMatrix,
@@ -154,11 +147,6 @@ const MACRO_TOOLKIT_FULL_ANALYSIS_QUERY_KEY = [
   "full",
   MACRO_TOOLKIT_CRISIS_SCORE_HISTORY_LIMIT,
 ] as const;
-const MACRO_COMMODITY_SHADOW_RULE_VERSION = "shadow_rule_v1";
-const MACRO_COMMODITY_SHADOW_MIN_SAMPLES = 20;
-const MACRO_COMMODITY_SHADOW_MIN_CRISIS_SAMPLES = 5;
-const MACRO_COMMODITY_SHADOW_MIN_CORRELATION = 0.2;
-const MACRO_COMMODITY_SUGGESTED_REFRESH_LOOKBACK_DAYS = 45;
 const MACRO_TOOLKIT_ACTION_RECEIPT_LIMIT = 4;
 const MACRO_TOOLKIT_HERO_CARD_SLOTS = cardVariants({ variant: "default" });
 const BUSINESS_EVIDENCE_LABELS: Record<string, string> = {
@@ -190,17 +178,6 @@ const MACRO_COMMODITY_PRODUCT_OPTIONS = [
   { value: "NHCI", label: "南华指数", description: "Crisis Score 输入" },
 ] as const;
 const DEFAULT_MACRO_COMMODITY_PRODUCTS = MACRO_COMMODITY_PRODUCT_OPTIONS.map((option) => option.value);
-const MACRO_COMMODITY_FIELD_TO_PRODUCT: Record<string, string> = {
-  rebar: "RB",
-  iron_ore: "I",
-  copper: "CU",
-  aluminum: "AL",
-  crude_oil: "SC",
-  gold: "AU",
-};
-const NANHUA_COMMODITY_PRODUCT_CODE = "NHCI";
-const NANHUA_CRISIS_ALIAS = "NH0100.NHF";
-const NANHUA_SYSTEM_SERIES_ID = "NHCI.NH";
 
 type MacroToolkitPageMode = "toolkit" | "observation";
 type MacroToolkitRepairItem = NonNullable<MacroToolkitDataHealth["repair_items"]>[number];
@@ -4895,6 +4872,8 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
           </nav>
         </section>
       ) : null}
+
+      {analysis ? <MacroToolkitReportBundlePanel bundle={analysis.report_bundle} /> : null}
 
       <div className="macro-toolkit-page__content">
       {analysisQuery.isError ? (

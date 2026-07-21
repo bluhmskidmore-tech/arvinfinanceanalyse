@@ -241,6 +241,10 @@ export type MacroToolkitInputEvidence = {
     warning?: string;
     required?: boolean;
     available?: boolean;
+    stale?: boolean;
+    stale_days?: number | null;
+    freshness_tier?: string;
+    cadence?: string;
     row_count?: number;
     latest_date?: string | null;
     series_id?: string | null;
@@ -248,6 +252,7 @@ export type MacroToolkitInputEvidence = {
     value?: number | null;
   }>;
   missing_inputs?: string[];
+  stale_inputs?: string[];
   sources?: string[];
   latest_dates?: string[];
 };
@@ -590,6 +595,37 @@ export type MacroToolkitHasonStrategy = {
   }>;
 };
 
+export type MacroToolkitReportBundleArtifact = {
+  id: string;
+  filename: string;
+  label: string;
+  kind: string;
+  media_type: "application/pdf" | "image/png" | "text/markdown";
+  size_bytes: number;
+  sha256: string;
+};
+
+export type MacroToolkitReportBundle = {
+  status: "ready" | "missing" | "invalid";
+  reason: string | null;
+  schema_version?: string;
+  bundle_id?: string;
+  title?: string;
+  basis: "analytical";
+  as_of_date?: string;
+  curve_date?: string;
+  account_report_date?: string;
+  observation_only: true;
+  formal_use_allowed: false;
+  validation?: {
+    passed: number;
+    failed: number;
+    scope: string;
+  };
+  warnings: string[];
+  artifacts: MacroToolkitReportBundleArtifact[];
+};
+
 export type MacroToolkitAnalysisPayload = {
   default_data_sources: string[];
   as_of_date: string | null;
@@ -616,6 +652,7 @@ export type MacroToolkitAnalysisPayload = {
   strategy_summaries: MacroToolkitStrategySummary[];
   shadow_portfolio_report?: MacroToolkitShadowPortfolioReport;
   output_files: MacroToolkitOutputFile[];
+  report_bundle?: MacroToolkitReportBundle;
   source_checks: MacroToolkitSourceCheck[];
   capabilities: MacroToolkitCapability[];
   cffex_member_rank?: MacroToolkitPayload["cffex_member_rank"];
