@@ -110,17 +110,23 @@ returns a nonzero, `blocked` result by design.
 ### Macro toolkit freshness refresh
 
 Keeps macro-toolkit observation inputs current (commodity bars, CSI/public
-cross-asset headlines, CFFEX member rank). Sequential single-writer pipeline;
-CFFEX soft-fails on weekend/vendor gaps.
+cross-asset headlines, Choice EMM00088132 policy rate, NCD.SHIBOR proxy, and
+CFFEX member rank). Sequential single-writer pipeline (`macro_toolkit_freshness_refresh_v3`); CFFEX soft-fails
+on weekend/vendor gaps.
 
 - Safe plan: `python scripts/macro_toolkit_freshness_refresh.py --dry-run`
-- Approved synchronous validation: `python scripts/macro_toolkit_freshness_refresh.py --run-once`
-- External timer target: `python scripts/macro_toolkit_freshness_refresh.py --enqueue`
-- Fail-closed gate: `python scripts/macro_toolkit_freshness_refresh_timer_preflight.py`
+- Shadow validation: `python scripts/macro_toolkit_freshness_refresh.py --run-once --run-kind shadow --receipt-path data/logs/macro_toolkit_freshness_refresh_receipt.shadow.json`
+- Local timer target (no worker): `python scripts/macro_toolkit_freshness_refresh.py --run-once --run-kind scheduled --receipt-path data/logs/macro_toolkit_freshness_refresh_receipt.json`
+- Production timer target (with worker): `python scripts/macro_toolkit_freshness_refresh.py --enqueue --run-kind scheduled --receipt-path data/logs/macro_toolkit_freshness_refresh_receipt.json`
+- Pre-enable gate: `python scripts/macro_toolkit_freshness_refresh_timer_preflight.py --stage pre-enable`
+- Post-enable gate: `python scripts/macro_toolkit_freshness_refresh_timer_preflight.py --stage post-enable --receipt-path data/logs/macro_toolkit_freshness_refresh_receipt.json`
 - Scheduler handoff: `docs/templates/macro_toolkit_freshness_refresh_scheduler_handoff.md`
 - Go-live checklist: `docs/templates/macro_toolkit_freshness_refresh_go_live_checklist.md`
 - Enablement packet: `docs/templates/macro_toolkit_freshness_refresh_timer_enablement_packet.md`
 - Optional local Windows installer: `scripts/install_macro_toolkit_freshness_timer.ps1`
 
-Recommended window: daily `18:30` `Asia/Shanghai`. Do not overlap other DuckDB
-writers. The enablement packet does not embed scheduler create commands.
+Recommended window: daily `18:30` `Asia/Shanghai` (UTC-4 host-local `06:30`).
+Do not overlap other DuckDB writers. Post-enable requires a completed
+`--run-once --run-kind scheduled` receipt; enqueue acknowledgements and shadow
+receipts are not valid first-run proof (the Dramatiq actor does not yet persist a
+completed receipt). The enablement packet does not embed scheduler create commands.

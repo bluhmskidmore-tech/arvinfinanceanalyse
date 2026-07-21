@@ -3574,7 +3574,7 @@ def test_macro_toolkit_analysis_surfaces_m2_and_ppi_missing_inputs(tmp_path, mon
 
     leading_missing = set(leading["input_evidence"]["missing_inputs"])
     cycle_missing = set(cycle["input_evidence"]["missing_inputs"])
-    assert leading["status"] == "degraded"
+    assert leading["status"] == "unavailable"
     assert cycle["status"] == "degraded"
     assert "M2_YOY_MISSING" in leading_missing
     assert "M2_YOY_MISSING" in cycle_missing
@@ -5558,6 +5558,7 @@ def test_capability_payload_passes_through_data_tables() -> None:
     )
     assert monetary_payload["data_tables"] == [
         "fact_formal_yield_curve_daily",
+        "fact_choice_macro_daily",
         "std_external_macro_daily",
     ]
     assert monetary_payload["data_status"] == "missing"

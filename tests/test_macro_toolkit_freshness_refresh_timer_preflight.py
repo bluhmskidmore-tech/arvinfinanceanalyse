@@ -384,3 +384,175 @@ def test_post_enable_requires_task1_policy_rate_step_and_date(tmp_path) -> None:
         "receipt.result.latest_observation_dates.EMM00088132"
         in result["missing_fields"]
     )
+
+def test_pre_enable_blocks_on_missing_packet_file(tmp_path) -> None:
+    paths = _write_repo_documents(tmp_path)
+    paths["packet_path"].unlink()
+
+    result = run_preflight(**paths)
+
+    assert result["repo_status"] == "repo-incomplete"
+    assert result["ops_status"] == "blocked"
+    assert result["missing_files"] == ["packet"]
+
+
+def test_pre_enable_blocks_on_unsafe_scheduler_command(tmp_path) -> None:
+    paths = _write_repo_documents(tmp_path)
+    paths["packet_path"].write_text(
+        paths["packet_path"].read_text(encoding="utf-8")
+        + "\nschtasks /Create /TN unsafe-example\n",
+        encoding="utf-8",
+    )
+
+    result = run_preflight(**paths)
+
+    assert result["packet_safe"] is False
+    assert result["repo_status"] == "repo-incomplete"
+    assert result["ops_status"] == "blocked"
+
+
+def test_post_enable_rejects_bad_receipt_header_fields(tmp_path) -> None:
+    paths = _write_repo_documents(tmp_path)
+    receipt_path = tmp_path / "receipt.json"
+    receipt = _scheduled_receipt(status="failed")
+    receipt.update(
+        {
+            "schema_version": 2,
+            "generated_at": "not-a-timestamp",
+            "task_name": "wrong-task",
+            "source_version": "macro_toolkit_freshness_refresh_v2",
+            "exit_code": 1,
+        }
+    )
+    _write_receipt(receipt_path, receipt)
+
+    result = run_preflight(
+        **paths,
+        stage="post-enable",
+        receipt_path=receipt_path,
+        task_name=SCHEDULER_TASK_NAME,
+        scheduler_probe=_ready_scheduler,
+    )
+
+    assert result["ops_status"] == "blocked"
+    assert {
+        "receipt.schema_version",
+        "receipt.generated_at",
+        "receipt.task_name",
+        "receipt.source_version",
+        "receipt.status",
+        "receipt.exit_code",
+    }.issubset(result["missing_fields"])
+
+
+def test_post_enable_rejects_disabled_mismatched_failed_scheduler(tmp_path) -> None:
+    paths = _write_repo_documents(tmp_path)
+    receipt_path = tmp_path / "receipt.json"
+    _write_receipt(receipt_path, _scheduled_receipt())
+
+    def invalid_scheduler(_task_name: str) -> dict[str, object]:
+        return {
+            "TaskName": "DifferentTask",
+            "Enabled": False,
+            "State": "Disabled",
+            "LastRunTime": "2026-07-20T06:30:00-04:00",
+            "LastTaskResult": 1,
+        }
+
+    result = run_preflight(
+        **paths,
+        stage="post-enable",
+        receipt_path=receipt_path,
+        task_name=SCHEDULER_TASK_NAME,
+        scheduler_probe=invalid_scheduler,
+    )
+
+    assert result["ops_status"] == "blocked"
+    assert result["scheduler_status"] == "blocked"
+    assert {
+        "scheduler.task_name",
+        "scheduler.enabled",
+        "scheduler.last_task_result",
+    }.issubset(result["missing_fields"])
+
+
+def test_post_enable_blocks_when_scheduler_probe_raises(tmp_path) -> None:
+    paths = _write_repo_documents(tmp_path)
+    receipt_path = tmp_path / "receipt.json"
+    _write_receipt(receipt_path, _scheduled_receipt())
+
+    def broken_probe(_task_name: str) -> dict[str, object]:
+        raise RuntimeError("scheduler unavailable")
+
+    result = run_preflight(
+        **paths,
+        stage="post-enable",
+        receipt_path=receipt_path,
+        task_name=SCHEDULER_TASK_NAME,
+        scheduler_probe=broken_probe,
+    )
+
+    assert result["ops_status"] == "blocked"
+    assert result["scheduler_status"] == "blocked"
+    assert "scheduler.probe" in result["missing_fields"]
+    assert any("scheduler unavailable" in warning for warning in result["warnings"])
+
+
+def test_post_enable_blocks_on_scheduler_probe_error_payload(tmp_path) -> None:
+    paths = _write_repo_documents(tmp_path)
+    receipt_path = tmp_path / "receipt.json"
+    _write_receipt(receipt_path, _scheduled_receipt())
+
+    result = run_preflight(
+        **paths,
+        stage="post-enable",
+        receipt_path=receipt_path,
+        task_name=SCHEDULER_TASK_NAME,
+        scheduler_probe=lambda _task_name: {
+            "probe_error": "Windows Task Scheduler is unavailable on this platform"
+        },
+    )
+
+    assert result["ops_status"] == "blocked"
+    assert result["scheduler_status"] == "blocked"
+    assert "scheduler.probe" in result["missing_fields"]
+
+
+def test_stage_all_runs_receipt_and_scheduler_checks(tmp_path) -> None:
+    paths = _write_repo_documents(tmp_path)
+    receipt_path = tmp_path / "receipt.json"
+    _write_receipt(receipt_path, _scheduled_receipt())
+
+    result = run_preflight(
+        **paths,
+        stage="all",
+        receipt_path=receipt_path,
+        task_name=SCHEDULER_TASK_NAME,
+        scheduler_probe=_ready_scheduler,
+    )
+
+    assert result["stage"] == "all"
+    assert result["ops_status"] == "ready"
+    assert result["receipt_status"] == "ready"
+    assert result["scheduler_status"] == "ready"
+
+
+def test_post_enable_accepts_skipped_cffex_with_warning(tmp_path) -> None:
+    paths = _write_repo_documents(tmp_path)
+    receipt_path = tmp_path / "receipt.json"
+    _write_receipt(
+        receipt_path,
+        _scheduled_receipt(status="success", cffex_status="skipped"),
+    )
+
+    result = run_preflight(
+        **paths,
+        stage="post-enable",
+        receipt_path=receipt_path,
+        task_name=SCHEDULER_TASK_NAME,
+        scheduler_probe=_ready_scheduler,
+    )
+
+    assert result["ops_status"] == "ready_with_warning"
+    assert result["receipt_status"] == "ready_with_warning"
+    assert any("skipped" in warning.lower() for warning in result["warnings"])

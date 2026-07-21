@@ -3794,10 +3794,10 @@ describe("MacroToolkitPage", () => {
     expect(m10Card).not.toBeNull();
     expect(m14Card).not.toBeNull();
 
-    expect(m7Card).toHaveTextContent("Policy rate 7D: M001 2026-04-10");
+    expect(m7Card).toHaveTextContent("Policy rate 7D: EMM00088132 2026-07-20");
     expect(m7Card).not.toHaveTextContent("POLICY_RATE_7D_MISSING");
     expect(m7Card).toHaveTextContent("choice");
-    expect(m7Card).toHaveTextContent("2026-04-10");
+    expect(m7Card).toHaveTextContent("2026-07-20");
 
     expect(m10Card).toHaveTextContent("PMI_MISSING");
     expect(m10Card).toHaveTextContent("M2_YOY_MISSING");
