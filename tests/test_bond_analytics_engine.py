@@ -39,6 +39,7 @@ def test_compute_bond_analytics_rows_filters_issuance_like_and_derives_credit_me
             "accrued_interest_native": Decimal("1.2"),
             "coupon_rate": Decimal("3.0"),
             "ytm_value": Decimal("3.5"),
+            "value_date": date(2024, 3, 31),
             "maturity_date": date(2031, 3, 31),
             "interest_mode": "半年付息",
             "is_issuance_like": False,
@@ -106,6 +107,7 @@ def test_compute_bond_analytics_rows_filters_issuance_like_and_derives_credit_me
     assert row.interest_mode == "半年付息"
     assert row.interest_payment_frequency == "semi-annual"
     assert row.interest_rate_style == "unknown"
+    assert row.value_date == date(2024, 3, 31)
     assert row.years_to_maturity == expected_years
     assert row.tenor_bucket == "5Y"
     assert row.macaulay_duration == expected_macaulay

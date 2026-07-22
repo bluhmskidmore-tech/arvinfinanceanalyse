@@ -13,7 +13,7 @@ from backend.app.repositories.duckdb_migrations import (
 )
 from backend.app.repositories.duckdb_schema_registry import DuckDBSchemaRegistry
 
-_BASELINE_VERSION_COUNT = 34
+_BASELINE_VERSION_COUNT = 35
 
 
 def test_apply_pending_on_fresh_db(tmp_path) -> None:
@@ -191,7 +191,7 @@ def test_migration_tracking(tmp_path) -> None:
     assert versions == list(range(1, _BASELINE_VERSION_COUNT + 1))
     assert len(rows) == _BASELINE_VERSION_COUNT
     assert any("snapshot" in str(row[1]).lower() for row in rows)
-    assert rows[-1] == (34, "Preserve formal FI source classification metadata")
+    assert rows[-1] == (35, "Preserve bond analytics value date")
 
 
 def test_legacy_missing_zqtz_tables_can_still_recover_current_schema(tmp_path) -> None:

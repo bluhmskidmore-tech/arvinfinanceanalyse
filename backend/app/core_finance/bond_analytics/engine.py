@@ -71,6 +71,7 @@ class BondAnalyticsRow:
     rule_version: str
     ingest_batch_id: str
     trace_id: str
+    value_date: date | None = None
 
 
 def compute_bond_analytics_rows(
@@ -239,6 +240,7 @@ def compute_bond_analytics_rows(
                     snapshot_row.get("trace_id"),
                     f"trace_bond_analytics_{instrument_code or 'row'}_{index}",
                 ),
+                value_date=_coerce_date(snapshot_row.get("value_date")),
             )
         )
 

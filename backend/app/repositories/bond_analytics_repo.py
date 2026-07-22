@@ -63,6 +63,7 @@ _SNAPSHOT_COLUMNS = (
     "accrued_interest_cny",
     "coupon_rate",
     "ytm_value",
+    "value_date",
     "maturity_date",
     "next_call_date",
     "overdue_days",
@@ -101,6 +102,7 @@ _ANALYTICS_COLUMNS = (
     "interest_payment_frequency",
     "interest_rate_style",
     "ytm",
+    "value_date",
     "maturity_date",
     "next_call_date",
     "years_to_maturity",
@@ -174,6 +176,11 @@ class BondAnalyticsRepository:
             snapshot_market_value_cny_expr = (
                 "s.market_value_cny"
                 if _column_exists(conn, self.path, SNAPSHOT_TABLE, "market_value_cny")
+                else "null"
+            )
+            value_date_expr = (
+                "s.value_date"
+                if _column_exists(conn, self.path, SNAPSHOT_TABLE, "value_date")
                 else "null"
             )
             balance_join = ""
@@ -275,7 +282,7 @@ class BondAnalyticsRepository:
                        {market_value_cny_expr} as market_value_cny, s.amortized_cost_native,
                        {amortized_cost_cny_expr} as amortized_cost_cny, s.accrued_interest_native,
                        {accrued_interest_cny_expr} as accrued_interest_cny,
-                       s.coupon_rate, s.ytm_value, s.maturity_date, s.next_call_date,
+                       s.coupon_rate, s.ytm_value, {value_date_expr} as value_date, s.maturity_date, s.next_call_date,
                        s.overdue_days, s.is_issuance_like, s.interest_mode, s.source_version, s.rule_version,
                        s.ingest_batch_id, s.trace_id, s.sub_type, {accounting_basis_expr} as accounting_basis
                 from {SNAPSHOT_TABLE} s
@@ -311,12 +318,12 @@ class BondAnalyticsRepository:
                       report_date, instrument_code, instrument_name, portfolio_name, cost_center,
                       asset_class_raw, asset_class_std, bond_type, issuer_name, industry_name, rating,
                       accounting_class, accounting_rule_id, currency_code, face_value, market_value_native, market_value,
-                      amortized_cost, accrued_interest, coupon_rate, interest_mode, interest_payment_frequency, interest_rate_style, ytm, maturity_date, next_call_date,
+                      amortized_cost, accrued_interest, coupon_rate, interest_mode, interest_payment_frequency, interest_rate_style, ytm, value_date, maturity_date, next_call_date,
                       years_to_maturity, tenor_bucket, macaulay_duration, modified_duration,
                       convexity, dv01, is_credit, spread_dv01, source_version, rule_version,
                       ingest_batch_id, trace_id
                     ) values (
-                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                     )
                     """,
                     [
@@ -345,6 +352,7 @@ class BondAnalyticsRepository:
                             row.interest_payment_frequency,
                             row.interest_rate_style,
                             row.ytm,
+                            row.value_date.isoformat() if row.value_date else None,
                             row.maturity_date.isoformat() if row.maturity_date else None,
                             row.next_call_date.isoformat() if row.next_call_date else None,
                             row.years_to_maturity,
@@ -403,6 +411,11 @@ class BondAnalyticsRepository:
                 if _column_exists(conn, self.path, FACT_TABLE, "next_call_date")
                 else "null as next_call_date"
             )
+            value_date_expr = (
+                "value_date"
+                if _column_exists(conn, self.path, FACT_TABLE, "value_date")
+                else "null as value_date"
+            )
             market_value_native_expr = (
                 "market_value_native"
                 if _column_exists(conn, self.path, FACT_TABLE, "market_value_native")
@@ -421,7 +434,7 @@ class BondAnalyticsRepository:
                 select report_date, instrument_code, instrument_name, portfolio_name, cost_center,
                        asset_class_raw, asset_class_std, bond_type, issuer_name, industry_name, rating,
                        accounting_class, accounting_rule_id, currency_code, face_value, {market_value_native_expr}, market_value,
-                       amortized_cost, accrued_interest, coupon_rate, {interest_mode_expr}, {interest_payment_frequency_expr}, {interest_rate_style_expr}, ytm, maturity_date, {next_call_date_expr},
+                       amortized_cost, accrued_interest, coupon_rate, {interest_mode_expr}, {interest_payment_frequency_expr}, {interest_rate_style_expr}, ytm, {value_date_expr}, maturity_date, {next_call_date_expr},
                        years_to_maturity, tenor_bucket, macaulay_duration, modified_duration,
                        convexity, dv01, is_credit, spread_dv01, source_version, rule_version,
                        ingest_batch_id, trace_id
@@ -469,6 +482,11 @@ class BondAnalyticsRepository:
                 if _column_exists(conn, self.path, FACT_TABLE, "next_call_date")
                 else "null as next_call_date"
             )
+            value_date_expr = (
+                "value_date"
+                if _column_exists(conn, self.path, FACT_TABLE, "value_date")
+                else "null as value_date"
+            )
             market_value_native_expr = (
                 "market_value_native"
                 if _column_exists(conn, self.path, FACT_TABLE, "market_value_native")
@@ -480,7 +498,7 @@ class BondAnalyticsRepository:
                 select report_date, instrument_code, instrument_name, portfolio_name, cost_center,
                        asset_class_raw, asset_class_std, bond_type, issuer_name, industry_name, rating,
                        accounting_class, accounting_rule_id, currency_code, face_value, {market_value_native_expr}, market_value,
-                       amortized_cost, accrued_interest, coupon_rate, {interest_mode_expr}, {interest_payment_frequency_expr}, {interest_rate_style_expr}, ytm, maturity_date, {next_call_date_expr},
+                       amortized_cost, accrued_interest, coupon_rate, {interest_mode_expr}, {interest_payment_frequency_expr}, {interest_rate_style_expr}, ytm, {value_date_expr}, maturity_date, {next_call_date_expr},
                        years_to_maturity, tenor_bucket, macaulay_duration, modified_duration,
                        convexity, dv01, is_credit, spread_dv01, source_version, rule_version,
                        ingest_batch_id, trace_id

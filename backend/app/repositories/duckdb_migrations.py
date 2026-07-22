@@ -318,6 +318,16 @@ def _v34_pnl_source_classification_metadata(conn: duckdb.DuckDBPyConnection) -> 
     _run_sql_slice(conn, "36_pnl_source_classification_metadata.sql")
 
 
+def _v35_bond_analytics_value_date(conn: duckdb.DuckDBPyConnection) -> None:
+    if not _main_table_exists(conn, "fact_formal_bond_analytics_daily"):
+        _run_sql_slice(conn, "02_bond_analytics.sql")
+        return
+    conn.execute(
+        "alter table fact_formal_bond_analytics_daily "
+        "add column if not exists value_date date"
+    )
+
+
 def _v30_fact_snapshot_indexes(conn: duckdb.DuckDBPyConnection) -> None:
     text = (REGISTRY_DIR / "32_fact_snapshot_indexes.sql").read_text(encoding="utf-8")
     for statement in parse_registry_sql_text(text):
@@ -431,6 +441,7 @@ def register_all(registry: DuckDBSchemaRegistry) -> None:
     registry.register(32, "Recover read indexes and constrain governed PnL/FX grains", _v32_add_table_constraints)
     registry.register(33, "Materialize governed Risk Tensor read metrics and upstream lineage", _v33_risk_tensor_materialized_metrics)
     registry.register(34, "Preserve formal FI source classification metadata", _v34_pnl_source_classification_metadata)
+    registry.register(35, "Preserve bond analytics value date", _v35_bond_analytics_value_date)
 
 
 def apply_pending_migrations_on_connection(conn: duckdb.DuckDBPyConnection) -> None:
