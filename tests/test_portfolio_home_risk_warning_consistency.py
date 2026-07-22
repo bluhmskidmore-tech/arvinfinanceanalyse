@@ -56,7 +56,9 @@ def _create_schema(path: Path) -> None:
         connection.close()
 
 
-def _insert_consistent_warning_data(path: Path, *, duration_rows: int = 3) -> None:
+def _insert_consistent_warning_data(
+    path: Path, *, duration_rows: int = 3, include_zero_dv01_fallback_row: bool = False
+) -> None:
     warnings = [
         "Non-standard tenor buckets remapped to nearest KRD bucket: 2Y, 6M",
         (
@@ -84,6 +86,11 @@ def _insert_consistent_warning_data(path: Path, *, duration_rows: int = 3) -> No
                 [REPORT_DATE, "1Y", Decimal("0"), Decimal("30"), None, None],
                 [REPORT_DATE, "3Y", Decimal("0"), Decimal("10"), None, None],
                 [REPORT_DATE, "5Y", Decimal("0"), Decimal("20"), "2031-05-31", Decimal("0")],
+                *(
+                    [[REPORT_DATE, "20Y", Decimal("0E-8"), Decimal("0"), "2046-05-31", Decimal("1")]]
+                    if include_zero_dv01_fallback_row
+                    else []
+                ),
             ],
         )
         connection.executemany(
@@ -239,6 +246,25 @@ def test_portfolio_home_risk_warning_consistency_allows_consistent_warning_but_b
     )
     assert returncode == 1
     assert payload["decision_status"] == "blocked"
+
+
+def test_portfolio_home_risk_warning_consistency_ignores_zero_dv01_fallback_rows(
+    tmp_path: Path,
+) -> None:
+    duckdb_path = tmp_path / "warning-zero-fallback.duckdb"
+    _create_schema(duckdb_path)
+    _insert_consistent_warning_data(duckdb_path, include_zero_dv01_fallback_row=True)
+
+    evidence = build_evidence(duckdb_path=duckdb_path, report_date=REPORT_DATE)
+
+    assert evidence["warning_consistency_status"] == "consistent"
+    assert evidence["consistency_blockers"] == []
+    assert evidence["parsed_warnings"]["krd_buckets"] == ["2Y", "6M"]
+    assert evidence["recomputed_warnings"]["krd_buckets"] == ["2Y", "6M"]
+    assert evidence["risk_tensor_rematerialization_preview"]["current_consistency_blockers"] == []
+    assert evidence["risk_tensor_rematerialization_preview"]["preview_consistency_status"] == "consistent"
+
+
 
 
 def test_portfolio_home_risk_warning_consistency_blocks_mismatched_warning_numbers(

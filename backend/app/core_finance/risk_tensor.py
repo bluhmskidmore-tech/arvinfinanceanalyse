@@ -217,7 +217,8 @@ def _aggregate_krd_values(
             # Try fallback mapping before discarding.
             field_name = KRD_BUCKET_FALLBACK.get(tenor_bucket)
             if field_name is not None:
-                remapped_buckets.add(tenor_bucket)
+                if dv01 != ZERO:
+                    remapped_buckets.add(tenor_bucket)
             elif tenor_bucket and dv01 != ZERO:
                 unsupported_buckets.add(tenor_bucket)
                 continue

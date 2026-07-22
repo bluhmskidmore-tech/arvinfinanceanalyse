@@ -17,6 +17,7 @@ from tests.helpers import load_module
 from tests.test_bond_analytics_materialize_flow import (
     REPORT_DATE,
     _seed_bond_snapshot_rows,
+    seed_yield_curves_for_bond_analytics_tests,
 )
 from tests.test_bond_analytics_service import _configure_and_materialize
 
@@ -47,6 +48,7 @@ def _configure_and_materialize_degraded_snapshot(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     get_settings.cache_clear()
     _seed_bond_snapshot_rows(str(duckdb_path))
+    seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
 
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:

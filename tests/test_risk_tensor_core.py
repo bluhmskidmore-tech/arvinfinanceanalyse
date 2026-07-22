@@ -172,6 +172,41 @@ def test_six_month_tenor_maps_to_nearest_one_year_krd_bucket():
     assert not any("Unsupported tenor buckets excluded" in warning for warning in tensor.warnings)
 
 
+def test_zero_dv01_fallback_buckets_do_not_appear_in_remap_warning():
+    mod = _risk_tensor_module()
+
+    tensor = mod.compute_portfolio_risk_tensor(
+        [
+            _row(dv01="-0E-8", tenor_bucket="6M"),
+            _row(dv01="0.00000000", tenor_bucket="20Y"),
+            _row(dv01="1.00", tenor_bucket="1Y"),
+        ],
+        report_date=date(2026, 3, 31),
+    )
+
+    assert tensor.krd_1y == Decimal("1.00")
+    assert tensor.krd_30y == Decimal("0")
+    assert not any("Non-standard tenor buckets remapped" in warning for warning in tensor.warnings)
+
+
+def test_nonzero_fallback_rows_still_warn_when_bucket_nets_to_zero():
+    mod = _risk_tensor_module()
+
+    tensor = mod.compute_portfolio_risk_tensor(
+        [
+            _row(dv01="0.00000001", tenor_bucket="20Y"),
+            _row(dv01="-0.00000001", tenor_bucket="20Y"),
+        ],
+        report_date=date(2026, 3, 31),
+    )
+
+    assert tensor.krd_30y == Decimal("0")
+    assert any(
+        warning == "Non-standard tenor buckets remapped to nearest KRD bucket: 20Y"
+        for warning in tensor.warnings
+    )
+
+
 def test_cs01_only_includes_credit_bonds():
     mod = _risk_tensor_module()
 
