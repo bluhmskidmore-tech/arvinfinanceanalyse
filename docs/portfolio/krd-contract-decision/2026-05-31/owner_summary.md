@@ -12,7 +12,7 @@ This summary is not an approval.
 - Mapped tenor count: `3`
 - Unsupported tenor count: `0`
 - Non-zero DV01 rows: `500`
-- DV01 sum: `33365026.29770696`
+- DV01 sum: `33365026.29780176`
 - Decision queue: `krd_remap_summary.csv`, `krd_remap_detail.csv`
 - Generated owner fields must be blank: `true`
 - Boundary: generated CSV fields are blank and do not approve nearest-bucket mapping.

@@ -37,7 +37,7 @@
     "mapped_tenor_count": 3,
     "unsupported_tenor_count": 0,
     "nonzero_dv01_rows": 500,
-    "dv01_sum": "33365026.29770696"
+    "dv01_sum": "33365026.29780176"
   },
   "acceptance_criteria": {
     "strict_gate_command": "python scripts/portfolio_home_krd_remap_review_queue.py --require-clean",
