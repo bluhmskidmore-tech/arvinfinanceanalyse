@@ -753,7 +753,11 @@ def test_portfolio_home_maturity_remediation_export_writes_data_owner_package(
     assert "This summary is not an approval." in owner_summary
     assert "- Export status: `blocked`" in owner_summary
     assert "- Report date: `2026-05-31`" in owner_summary
-    assert "- Required TYW fields: `proposed_maturity_date`, `owner_decision`, `owner_comment`" in owner_summary
+    assert "- Required TYW fields on every row: `owner_decision`, `owner_comment`" in owner_summary
+    assert (
+        "- Conditionally required TYW field: `proposed_maturity_date` only when "
+        "`owner_decision=remediate_source`"
+    ) in owner_summary
     assert "- Allowed decisions: `remediate_source`, `approve_scoped_exclusion`, `reject`" in owner_summary
     assert (
         "- Strict gate: `python scripts/portfolio_home_maturity_remediation_queue.py "
@@ -771,6 +775,10 @@ def test_portfolio_home_maturity_remediation_export_writes_data_owner_package(
     assert "## Owner Instructions" in owner_summary
     assert "- Fill `owner_decision` on every TYW liability row." in owner_summary
     assert "- Fill `owner_comment` on every TYW liability row for every decision value." in owner_summary
+    assert (
+        "- Fill `proposed_maturity_date` only when `owner_decision` is "
+        "`remediate_source`; leave it blank for `approve_scoped_exclusion` and `reject`."
+    ) in owner_summary
     assert "- Use `remediate_source` only when the TYW source maturity date will be fixed and rematerialized." in owner_summary
     assert "- Use `approve_scoped_exclusion` only with a signed TYW exclusion rationale in `owner_comment`." in owner_summary
     assert "- Do not use frontend-inferred dates or synthetic TYW maturity dates as remediation evidence." in owner_summary

@@ -208,7 +208,11 @@ def _owner_summary_markdown(packet: dict[str, object]) -> str:
             f"- Page: `{packet.get('page_slug')}` (`{packet.get('page_id')}`)",
             f"- Report date: `{packet.get('report_date')}`",
             f"- Export status: `{packet.get('export_status')}`",
-            "- Required TYW fields: `proposed_maturity_date`, `owner_decision`, `owner_comment`",
+            "- Required TYW fields on every row: `owner_decision`, `owner_comment`",
+            (
+                "- Conditionally required TYW field: `proposed_maturity_date` only when "
+                "`owner_decision=remediate_source`"
+            ),
             "- Allowed decisions: `remediate_source`, `approve_scoped_exclusion`, `reject`",
             f"- Strict gate: `{criteria.get('strict_gate_command')}`",
             f"- Bond no-maturity rows: `{summary.get('bond_no_maturity_rows')}`",
@@ -238,6 +242,10 @@ def _owner_summary_markdown(packet: dict[str, object]) -> str:
             "",
             "- Fill `owner_decision` on every TYW liability row.",
             "- Fill `owner_comment` on every TYW liability row for every decision value.",
+            (
+                "- Fill `proposed_maturity_date` only when `owner_decision` is "
+                "`remediate_source`; leave it blank for `approve_scoped_exclusion` and `reject`."
+            ),
             "- Use `remediate_source` only when the TYW source maturity date will be fixed and rematerialized.",
             "- Use `approve_scoped_exclusion` only with a signed TYW exclusion rationale in `owner_comment`.",
             "- Do not use frontend-inferred dates or synthetic TYW maturity dates as remediation evidence.",
