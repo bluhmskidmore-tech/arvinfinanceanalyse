@@ -9,11 +9,23 @@ import duckdb
 import pytest
 from backend.app.repositories.duckdb_migrations import (
     _v32_add_table_constraints,
+    _v36_risk_tensor_projection_quality,
+    _v37_bond_payment_frequency_fallback_provenance,
     register_all,
 )
 from backend.app.repositories.duckdb_schema_registry import DuckDBSchemaRegistry
 
-_BASELINE_VERSION_COUNT = 35
+_BASELINE_VERSION_COUNT = 37
+_RISK_PROJECTION_QUALITY_COLUMNS = {
+    "missing_maturity_market_value",
+    "missing_maturity_count",
+    "floating_rate_proxy_market_value",
+    "floating_rate_proxy_count",
+    "payment_frequency_fallback_market_value",
+    "payment_frequency_fallback_count",
+    "bullet_value_date_fallback_market_value",
+    "bullet_value_date_fallback_count",
+}
 
 
 def test_apply_pending_on_fresh_db(tmp_path) -> None:
@@ -191,7 +203,63 @@ def test_migration_tracking(tmp_path) -> None:
     assert versions == list(range(1, _BASELINE_VERSION_COUNT + 1))
     assert len(rows) == _BASELINE_VERSION_COUNT
     assert any("snapshot" in str(row[1]).lower() for row in rows)
-    assert rows[-1] == (35, "Preserve bond analytics value date")
+    assert rows[-1] == (37, "Preserve bond payment-frequency fallback provenance")
+
+
+def test_v36_adds_projection_quality_columns_without_backfilling_legacy_rows() -> None:
+    conn = duckdb.connect(":memory:")
+    try:
+        conn.execute("create table fact_formal_risk_tensor_daily (report_date varchar)")
+        conn.execute("insert into fact_formal_risk_tensor_daily values ('2026-03-31')")
+
+        _v36_risk_tensor_projection_quality(conn)
+
+        columns = {
+            str(row[1])
+            for row in conn.execute(
+                "pragma table_info('fact_formal_risk_tensor_daily')"
+            ).fetchall()
+        }
+        legacy_values = conn.execute(
+            "select "
+            + ", ".join(sorted(_RISK_PROJECTION_QUALITY_COLUMNS))
+            + " from fact_formal_risk_tensor_daily"
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert _RISK_PROJECTION_QUALITY_COLUMNS <= columns
+    assert legacy_values == (None,) * len(_RISK_PROJECTION_QUALITY_COLUMNS)
+
+
+def test_v37_adds_frequency_provenance_without_backfilling_legacy_rows() -> None:
+    conn = duckdb.connect(":memory:")
+    try:
+        conn.execute(
+            "create table fact_formal_bond_analytics_daily "
+            "(report_date varchar, instrument_code varchar)"
+        )
+        conn.execute(
+            "insert into fact_formal_bond_analytics_daily values ('2026-03-31', 'BOND-1')"
+        )
+
+        _v37_bond_payment_frequency_fallback_provenance(conn)
+
+        columns = {
+            str(row[1])
+            for row in conn.execute(
+                "pragma table_info('fact_formal_bond_analytics_daily')"
+            ).fetchall()
+        }
+        legacy_value = conn.execute(
+            "select interest_payment_frequency_fallback_used "
+            "from fact_formal_bond_analytics_daily"
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert "interest_payment_frequency_fallback_used" in columns
+    assert legacy_value == (None,)
 
 
 def test_legacy_missing_zqtz_tables_can_still_recover_current_schema(tmp_path) -> None:

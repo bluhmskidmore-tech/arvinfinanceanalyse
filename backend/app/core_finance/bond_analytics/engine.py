@@ -72,6 +72,7 @@ class BondAnalyticsRow:
     ingest_batch_id: str
     trace_id: str
     value_date: date | None = None
+    interest_payment_frequency_fallback_used: bool | None = None
 
 
 def compute_bond_analytics_rows(
@@ -115,7 +116,7 @@ def compute_bond_analytics_rows(
 
         coupon_rate = _normalize_rate_decimal(snapshot_row.get("coupon_rate"))
         interest_mode = _as_text(snapshot_row.get("interest_mode"))
-        interest_payment_frequency, _used_fallback = resolve_interest_payment_frequency(interest_mode)
+        interest_payment_frequency, interest_payment_frequency_fallback_used = resolve_interest_payment_frequency(interest_mode)
         coupon_frequency = coupon_frequency_per_year(interest_mode)
         interest_rate_style = classify_interest_rate_style(interest_mode)
         ytm = _normalize_rate_decimal(snapshot_row.get("ytm_value"))
@@ -212,6 +213,7 @@ def compute_bond_analytics_rows(
                 coupon_rate=coupon_rate,
                 interest_mode=interest_mode,
                 interest_payment_frequency=interest_payment_frequency,
+                interest_payment_frequency_fallback_used=interest_payment_frequency_fallback_used,
                 interest_rate_style=interest_rate_style,
                 ytm=ytm,
                 maturity_date=maturity_date,

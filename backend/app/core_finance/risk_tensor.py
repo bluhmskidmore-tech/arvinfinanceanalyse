@@ -98,6 +98,14 @@ class PortfolioRiskTensor:
     rate_risk_modified_duration: Decimal = ZERO
     duration_excluded_market_value: Decimal = ZERO
     duration_excluded_count: int = 0
+    missing_maturity_market_value: Decimal = ZERO
+    missing_maturity_count: int = 0
+    floating_rate_proxy_market_value: Decimal = ZERO
+    floating_rate_proxy_count: int = 0
+    payment_frequency_fallback_market_value: Decimal = ZERO
+    payment_frequency_fallback_count: int = 0
+    bullet_value_date_fallback_market_value: Decimal = ZERO
+    bullet_value_date_fallback_count: int = 0
 
 
 def compute_portfolio_risk_tensor(
@@ -129,6 +137,7 @@ def compute_portfolio_risk_tensor(
     _warn_duration_exclusion_inputs(rows, warnings)
     duration_rows = _duration_denominator_rows(rows)
     duration_excluded_rows = _duration_excluded_rows(rows)
+    missing_maturity_rows = [row for row in rows if _coerce_date(row.get("maturity_date")) is None]
     duration_market_value = _sum_field(duration_rows, "market_value")
     rate_risk_dv01 = _sum_field(duration_rows, "dv01")
     duration_excluded_market_value = _sum_field(duration_excluded_rows, "market_value")
@@ -147,6 +156,7 @@ def compute_portfolio_risk_tensor(
         liability_cashflow_30d,
         liability_cashflow_90d,
         maturity_warnings,
+        projection_quality,
     ) = _compute_liquidity_gaps(
         rows,
         report_date,
@@ -192,6 +202,14 @@ def compute_portfolio_risk_tensor(
         rate_risk_modified_duration=portfolio_modified_duration,
         duration_excluded_market_value=duration_excluded_market_value,
         duration_excluded_count=len(duration_excluded_rows),
+        missing_maturity_market_value=_sum_field(missing_maturity_rows, "market_value"),
+        missing_maturity_count=len(missing_maturity_rows),
+        floating_rate_proxy_market_value=projection_quality["floating_rate_proxy_market_value"],
+        floating_rate_proxy_count=int(projection_quality["floating_rate_proxy_count"]),
+        payment_frequency_fallback_market_value=projection_quality["payment_frequency_fallback_market_value"],
+        payment_frequency_fallback_count=int(projection_quality["payment_frequency_fallback_count"]),
+        bullet_value_date_fallback_market_value=projection_quality["bullet_value_date_fallback_market_value"],
+        bullet_value_date_fallback_count=int(projection_quality["bullet_value_date_fallback_count"]),
     )
 
 
@@ -326,11 +344,17 @@ def _compute_liquidity_gaps(
     rows: list[dict[str, Any]],
     report_date: date,
     liability_rows: list[dict[str, Any]] | None = None,
-) -> tuple[Decimal, Decimal, Decimal, Decimal, Decimal, Decimal, list[str]]:
+) -> tuple[Decimal, Decimal, Decimal, Decimal, Decimal, Decimal, list[str], dict[str, Decimal | int]]:
     missing_maturity_dates = 0
     missing_liability_maturity_dates = 0
     unsupported_interest_modes: set[str] = set()
     optionality_warning_needed = False
+    floating_rate_proxy_count = 0
+    floating_rate_proxy_market_value = ZERO
+    payment_frequency_fallback_count = 0
+    payment_frequency_fallback_market_value = ZERO
+    bullet_value_date_fallback_count = 0
+    bullet_value_date_fallback_market_value = ZERO
     projection_rows: list[dict[str, Any]] = []
     liability_projection_rows: list[dict[str, Any]] = []
 
@@ -343,10 +367,39 @@ def _compute_liquidity_gaps(
             continue
 
         raw_interest_mode = row.get("interest_mode")
-        _normalize_interest_mode(
-            row.get("interest_mode"),
-            unsupported_interest_modes=unsupported_interest_modes,
+        payment_frequency, raw_frequency_fallback = resolve_interest_payment_frequency(raw_interest_mode)
+        explicit_frequency = row.get("interest_payment_frequency")
+        fallback_provenance = row.get("interest_payment_frequency_fallback_used")
+        used_frequency_fallback = (
+            fallback_provenance
+            if isinstance(fallback_provenance, bool)
+            else raw_frequency_fallback
         )
+        if raw_frequency_fallback and explicit_frequency not in (None, ""):
+            payment_frequency, explicit_frequency_fallback = resolve_interest_payment_frequency(
+                explicit_frequency
+            )
+            if not isinstance(fallback_provenance, bool):
+                used_frequency_fallback = explicit_frequency_fallback
+        if used_frequency_fallback:
+            payment_frequency_fallback_count += 1
+            payment_frequency_fallback_market_value += _safe_decimal(row.get("market_value"))
+            _normalize_interest_mode(
+                raw_interest_mode,
+                unsupported_interest_modes=unsupported_interest_modes,
+            )
+        rate_style = classify_interest_rate_style(
+            row.get("interest_rate_style") or raw_interest_mode
+        )
+        if rate_style == "floating":
+            floating_rate_proxy_count += 1
+            floating_rate_proxy_market_value += _safe_decimal(row.get("market_value"))
+        value_date = _coerce_date(row.get("value_date"))
+        if payment_frequency == "bullet" and (
+            value_date is None or value_date >= maturity_date
+        ):
+            bullet_value_date_fallback_count += 1
+            bullet_value_date_fallback_market_value += _safe_decimal(row.get("market_value"))
         if _has_optionality_inputs(row):
             optionality_warning_needed = True
 
@@ -354,10 +407,11 @@ def _compute_liquidity_gaps(
             {
                 "instrument_code": str(row.get("instrument_code") or f"risk-row-{index}"),
                 "instrument_name": str(row.get("instrument_name") or row.get("issuer_name") or ""),
+                "value_date": value_date,
                 "maturity_date": maturity_date,
                 "face_value": _resolve_face_value(row),
                 "coupon_rate": _safe_decimal(row.get("coupon_rate")),
-                "interest_mode": raw_interest_mode,
+                "interest_mode": payment_frequency,
                 "currency_code": str(row.get("currency_code") or "CNY"),
             }
         )
@@ -439,6 +493,24 @@ def _compute_liquidity_gaps(
         warnings.append(
             "Embedded optionality is excluded from liquidity gaps; put/call/prepayment cash flows are not modeled."
         )
+    if floating_rate_proxy_count:
+        warnings.append(
+            f"{floating_rate_proxy_count} floating-rate rows with market_value="
+            f"{floating_rate_proxy_market_value} use the current coupon rate as a frozen proxy "
+            "for the full projection horizon; reset rates are not modeled."
+        )
+    if payment_frequency_fallback_count:
+        warnings.append(
+            f"{payment_frequency_fallback_count} rows with market_value="
+            f"{payment_frequency_fallback_market_value} lack an explicit payment frequency; "
+            "annual coupon frequency is used as a proxy."
+        )
+    if bullet_value_date_fallback_count:
+        warnings.append(
+            f"{bullet_value_date_fallback_count} explicit bullet rows with market_value="
+            f"{bullet_value_date_fallback_market_value} lack a valid value_date; "
+            "a one-year interest proxy is used."
+        )
 
     return (
         gap_30d,
@@ -448,6 +520,14 @@ def _compute_liquidity_gaps(
         liability_cashflow_30d,
         liability_cashflow_90d,
         warnings,
+        {
+            "floating_rate_proxy_count": floating_rate_proxy_count,
+            "floating_rate_proxy_market_value": floating_rate_proxy_market_value,
+            "payment_frequency_fallback_count": payment_frequency_fallback_count,
+            "payment_frequency_fallback_market_value": payment_frequency_fallback_market_value,
+            "bullet_value_date_fallback_count": bullet_value_date_fallback_count,
+            "bullet_value_date_fallback_market_value": bullet_value_date_fallback_market_value,
+        },
     )
 
 

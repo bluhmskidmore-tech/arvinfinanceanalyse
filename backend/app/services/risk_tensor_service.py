@@ -25,10 +25,11 @@ from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope_from_lineage,
 )
 from backend.app.services.runtime_cache import get_runtime_cache
+
 # 与 risk_tensor_materialize 对齐；只读路径不得 import tasks（broker/actor 注册）。
 CACHE_KEY = "risk_tensor:materialize:formal"
-CACHE_VERSION = "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v3"
-RULE_VERSION = "rv_risk_tensor_formal_materialize_v3"
+CACHE_VERSION = "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v5"
+RULE_VERSION = "rv_risk_tensor_formal_materialize_v5"
 
 _RISK_TENSOR_CACHE_TTL_SECONDS = 300.0
 _RISK_TENSOR_CACHE = get_runtime_cache(
@@ -272,6 +273,27 @@ def _risk_tensor_envelope_uncached(
     if stale_reason is not None:
         raise RuntimeError(stale_reason)
 
+    projection_quality_fields = (
+        "missing_maturity_market_value",
+        "missing_maturity_count",
+        "floating_rate_proxy_market_value",
+        "floating_rate_proxy_count",
+        "payment_frequency_fallback_market_value",
+        "payment_frequency_fallback_count",
+        "bullet_value_date_fallback_market_value",
+        "bullet_value_date_fallback_count",
+    )
+    projection_quality_available = all(row.get(field) is not None for field in projection_quality_fields)
+    row_warnings = list(row["warnings"])
+    if not projection_quality_available:
+        row_warnings.append(
+            "Projection-quality proxy metrics are unavailable for this legacy risk tensor row; "
+            "zero must not be inferred."
+        )
+    payload_quality_flag = str(row["quality_flag"])
+    if not projection_quality_available:
+        payload_quality_flag = "warning"
+
     payload = RiskTensorPayload.model_validate(
         promote_flat_payload(
             {
@@ -302,9 +324,24 @@ def _risk_tensor_envelope_uncached(
                 "rate_risk_modified_duration": row["rate_risk_modified_duration"],
                 "duration_excluded_market_value": row["duration_excluded_market_value"],
                 "duration_excluded_count": row["duration_excluded_count"],
+                "missing_maturity_market_value": row.get("missing_maturity_market_value"),
+                "missing_maturity_count": row.get("missing_maturity_count"),
+                "floating_rate_proxy_market_value": row.get("floating_rate_proxy_market_value"),
+                "floating_rate_proxy_count": row.get("floating_rate_proxy_count"),
+                "payment_frequency_fallback_market_value": row.get(
+                    "payment_frequency_fallback_market_value"
+                ),
+                "payment_frequency_fallback_count": row.get("payment_frequency_fallback_count"),
+                "bullet_value_date_fallback_market_value": row.get(
+                    "bullet_value_date_fallback_market_value"
+                ),
+                "bullet_value_date_fallback_count": row.get("bullet_value_date_fallback_count"),
+                "projection_quality_status": (
+                    "available" if projection_quality_available else "unavailable_legacy"
+                ),
                 "bond_count": int(row["bond_count"]),
-                "quality_flag": str(row["quality_flag"]),
-                "warnings": list(row["warnings"]),
+                "quality_flag": payload_quality_flag,
+                "warnings": row_warnings,
             },
             RiskTensorPayload,
         )

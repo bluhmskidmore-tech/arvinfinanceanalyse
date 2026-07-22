@@ -106,6 +106,7 @@ def test_compute_bond_analytics_rows_filters_issuance_like_and_derives_credit_me
     assert row.accounting_rule_id == "R010"
     assert row.interest_mode == "半年付息"
     assert row.interest_payment_frequency == "semi-annual"
+    assert row.interest_payment_frequency_fallback_used is False
     assert row.interest_rate_style == "unknown"
     assert row.value_date == date(2024, 3, 31)
     assert row.years_to_maturity == expected_years
@@ -120,6 +121,32 @@ def test_compute_bond_analytics_rows_filters_issuance_like_and_derives_credit_me
     assert row.rule_version == "rv_snapshot_1"
     assert row.ingest_batch_id == "ib_1"
     assert row.trace_id == "trace_1"
+
+
+def test_compute_bond_analytics_rows_preserves_annual_frequency_fallback_provenance() -> None:
+    module = _module()
+    report_date = date(2026, 3, 31)
+
+    rows = module.compute_bond_analytics_rows(
+        [
+            {
+                "report_date": report_date,
+                "instrument_code": "BOND-FIXED-FALLBACK",
+                "currency_code": "CNY",
+                "face_value_native": Decimal("100"),
+                "market_value_native": Decimal("90"),
+                "coupon_rate": Decimal("3"),
+                "ytm_value": Decimal("3.5"),
+                "maturity_date": date(2027, 3, 31),
+                "interest_mode": "fixed",
+                "is_issuance_like": False,
+            }
+        ],
+        report_date,
+    )
+
+    assert rows[0].interest_payment_frequency == "annual"
+    assert rows[0].interest_payment_frequency_fallback_used is True
 
 
 def test_compute_bond_analytics_rows_uses_formal_cny_values_and_accounting_basis() -> None:

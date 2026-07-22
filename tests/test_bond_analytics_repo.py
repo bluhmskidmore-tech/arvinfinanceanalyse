@@ -4,6 +4,7 @@ from decimal import Decimal
 import duckdb
 
 from backend.app.core_finance.bond_analytics.engine import compute_bond_analytics_rows
+from backend.app.core_finance.risk_tensor import compute_portfolio_risk_tensor
 from backend.app.repositories.bond_analytics_repo import (
     _ANALYTICS_COLUMNS,
     BondAnalyticsRepository,
@@ -50,7 +51,9 @@ def test_replace_and_fetch_bond_analytics_preserves_value_date(tmp_path):
     rows_for_dates = repo.fetch_bond_analytics_rows_for_dates(report_dates=[REPORT_DATE])
 
     assert rows[0]["value_date"] == date(2023, 4, 20)
+    assert rows[0]["interest_payment_frequency_fallback_used"] is False
     assert rows_for_dates[REPORT_DATE][0]["value_date"] == date(2023, 4, 20)
+    assert rows_for_dates[REPORT_DATE][0]["interest_payment_frequency_fallback_used"] is False
 
 
 def test_load_snapshot_rows_reads_value_date(tmp_path):
@@ -78,7 +81,11 @@ def test_fetch_bond_analytics_treats_missing_legacy_value_date_column_as_null(tm
     path = str(tmp_path / "legacy.duckdb")
     conn = duckdb.connect(path, read_only=False)
     try:
-        legacy_columns = [column for column in _ANALYTICS_COLUMNS if column != "value_date"]
+        legacy_columns = [
+            column
+            for column in _ANALYTICS_COLUMNS
+            if column not in {"value_date", "interest_payment_frequency_fallback_used"}
+        ]
         empty_projection = ", ".join(
             f'cast(null as varchar) as "{column}"' for column in legacy_columns
         )
@@ -107,12 +114,30 @@ def test_fetch_bond_analytics_treats_missing_legacy_value_date_column_as_null(tm
         is None
     )
 
+    assert (
+        repo.fetch_bond_analytics_rows(report_date=REPORT_DATE)[0][
+            "interest_payment_frequency_fallback_used"
+        ]
+        is None
+    )
+    assert (
+        repo.fetch_bond_analytics_rows_for_dates(report_dates=[REPORT_DATE])[REPORT_DATE][0][
+            "interest_payment_frequency_fallback_used"
+        ]
+        is None
+    )
+
+
 
 def test_v35_upgrades_pre_value_date_fact_before_replace_and_reads_date(tmp_path):
     path = str(tmp_path / "pre-v35.duckdb")
     conn = duckdb.connect(path, read_only=False)
     try:
-        legacy_columns = [column for column in _ANALYTICS_COLUMNS if column != "value_date"]
+        legacy_columns = [
+            column
+            for column in _ANALYTICS_COLUMNS
+            if column not in {"value_date", "interest_payment_frequency_fallback_used"}
+        ]
         empty_projection = ", ".join(
             f'cast(null as varchar) as "{column}"' for column in legacy_columns
         )
@@ -166,3 +191,102 @@ def test_v35_upgrades_pre_value_date_fact_before_replace_and_reads_date(tmp_path
     assert repo.fetch_bond_analytics_rows_for_dates(report_dates=[REPORT_DATE])[REPORT_DATE][0][
         "value_date"
     ] == date(2023, 4, 20)
+
+
+def test_v37_adds_payment_frequency_fallback_provenance_without_backfilling_unknown(tmp_path):
+    path = str(tmp_path / "pre-v37.duckdb")
+    conn = duckdb.connect(path, read_only=False)
+    try:
+        legacy_columns = [
+            column
+            for column in _ANALYTICS_COLUMNS
+            if column != "interest_payment_frequency_fallback_used"
+        ]
+        empty_projection = ", ".join(
+            f'cast(null as varchar) as "{column}"' for column in legacy_columns
+        )
+        conn.execute(
+            f"""
+            create table fact_formal_bond_analytics_daily as
+            select {empty_projection}
+            where false
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_bond_analytics_daily (report_date, instrument_code)
+            values (?, ?)
+            """,
+            [REPORT_DATE, "LEGACY-PROVENANCE"],
+        )
+        conn.execute(
+            """
+            create table _schema_migrations (
+              version integer primary key,
+              description text not null,
+              applied_at timestamp default current_timestamp
+            )
+            """
+        )
+        conn.executemany(
+            "insert into _schema_migrations (version, description) values (?, ?)",
+            [(version, "already applied") for version in range(1, 37)],
+        )
+
+        apply_pending_migrations_on_connection(conn)
+        migration_row = conn.execute(
+            "select description from _schema_migrations where version = 37"
+        ).fetchone()
+        column = conn.execute(
+            """
+            select data_type
+            from information_schema.columns
+            where table_schema = 'main'
+              and table_name = 'fact_formal_bond_analytics_daily'
+              and column_name = 'interest_payment_frequency_fallback_used'
+            """
+        ).fetchone()
+        legacy_value = conn.execute(
+            """
+            select interest_payment_frequency_fallback_used
+            from fact_formal_bond_analytics_daily
+            where instrument_code = 'LEGACY-PROVENANCE'
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert migration_row == ("Preserve bond payment-frequency fallback provenance",)
+    assert column == ("BOOLEAN",)
+    assert legacy_value == (None,)
+
+
+def test_engine_repo_risk_chain_preserves_frequency_fallback_scale(tmp_path):
+    report_day = date.fromisoformat(REPORT_DATE)
+    analytics_row = compute_bond_analytics_rows(
+        [
+            {
+                "report_date": report_day,
+                "instrument_code": "BOND-FIXED-FALLBACK",
+                "currency_code": "CNY",
+                "face_value_native": Decimal("100"),
+                "market_value_native": Decimal("90"),
+                "coupon_rate": Decimal("3"),
+                "ytm_value": Decimal("3.5"),
+                "maturity_date": date(2027, 3, 31),
+                "interest_mode": "fixed",
+                "is_issuance_like": False,
+            }
+        ],
+        report_day,
+    )[0]
+    repo = BondAnalyticsRepository(str(tmp_path / "provenance.duckdb"))
+    with repository_task_write_scope("backend.app.tasks.bond_analytics_repo_test"):
+        repo.replace_bond_analytics_rows(report_date=REPORT_DATE, rows=[analytics_row])
+
+    formal_rows = repo.fetch_bond_analytics_rows(report_date=REPORT_DATE)
+    tensor = compute_portfolio_risk_tensor(formal_rows, report_day)
+
+    assert formal_rows[0]["interest_payment_frequency_fallback_used"] is True
+    assert tensor.payment_frequency_fallback_count == 1
+    assert tensor.payment_frequency_fallback_market_value == Decimal("90")

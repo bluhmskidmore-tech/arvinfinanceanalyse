@@ -99,7 +99,11 @@ def test_risk_tensor_api_returns_formal_envelope(tmp_path, monkeypatch):
     assert payload["result_meta"]["basis"] == "formal"
     assert payload["result_meta"]["result_kind"] == "risk.tensor"
     assert payload["result_meta"]["formal_use_allowed"] is True
-    assert payload["result_meta"]["quality_flag"] == "ok"
+    assert payload["result_meta"]["quality_flag"] == "warning"
+    assert payload["result_meta"]["rule_version"] == "rv_risk_tensor_formal_materialize_v5"
+    assert (
+        payload["result_meta"]["cache_version"] == "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v5"
+    )
     assert payload["result"]["report_date"] == REPORT_DATE
     assert payload["result"]["bond_count"] == 3
     assert isinstance(payload["result"]["portfolio_dv01"], dict)
@@ -116,6 +120,21 @@ def test_risk_tensor_api_returns_formal_envelope(tmp_path, monkeypatch):
         == Decimal(str(payload["result"]["asset_cashflow_30d"]["raw"]))
         - Decimal(str(payload["result"]["liability_cashflow_30d"]["raw"]))
     )
+    projection_quality_fields = (
+        "missing_maturity_market_value",
+        "missing_maturity_count",
+        "floating_rate_proxy_market_value",
+        "floating_rate_proxy_count",
+        "payment_frequency_fallback_market_value",
+        "payment_frequency_fallback_count",
+        "bullet_value_date_fallback_market_value",
+        "bullet_value_date_fallback_count",
+    )
+    assert all(
+        payload["result"][field_name] is not None
+        for field_name in projection_quality_fields
+    )
+    assert payload["result"]["projection_quality_status"] == "available"
 
     get_settings.cache_clear()
 
@@ -148,6 +167,34 @@ def test_risk_tensor_api_503_preserves_structured_result_meta(tmp_path, monkeypa
     assert payload["result"]["readiness"] == "unavailable"
 
 
+def test_risk_tensor_api_rejects_stale_v4_materialization(tmp_path, monkeypatch):
+    duckdb_path, _governance_dir, _task_mod = _configure_and_materialize_risk_tensor(
+        tmp_path,
+        monkeypatch,
+    )
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            "update fact_formal_risk_tensor_daily "
+            "set rule_version = ?, cache_version = ? where report_date = ?",
+            [
+                "rv_risk_tensor_formal_materialize_v4",
+                "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v4",
+                REPORT_DATE,
+            ],
+        )
+    finally:
+        conn.close()
+
+    client = _risk_tensor_client(tmp_path, monkeypatch, raise_server_exceptions=False)
+    response = client.get("/api/risk/tensor", params={"report_date": REPORT_DATE})
+
+    assert response.status_code == 503
+    payload = response.json()
+    assert payload["result_meta"]["quality_flag"] == "error"
+    assert payload["result"]["readiness"] == "unavailable"
+
+
 def test_risk_scenario_stress_api_returns_scenario_envelope(tmp_path, monkeypatch):
     _configure_and_materialize_risk_tensor(tmp_path, monkeypatch)
 
@@ -167,12 +214,19 @@ def test_risk_scenario_stress_api_returns_scenario_envelope(tmp_path, monkeypatc
     assert payload["result"]["scenario_set_id"] == "standard_risk_tensor_scenario_v1"
     assert payload["result"]["rule_version"] == "rv_risk_tensor_scenario_stress_v1"
     assert payload["result"]["source"]["result_kind"] == "risk.tensor"
-    assert payload["result"]["source"]["rule_version"] == "rv_risk_tensor_formal_materialize_v3"
+    assert payload["result"]["source"]["rule_version"] == "rv_risk_tensor_formal_materialize_v5"
+    assert (
+        payload["result"]["source"]["cache_version"] == "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v5"
+    )
     assert payload["result"]["summary"]["scenario_count"] == 4
     assert payload["result"]["summary"]["available_count"] == 3
     assert payload["result"]["summary"]["review_required_count"] == 4
     assert payload["result"]["warnings"]
-    assert payload["result"]["source_warnings"] == []
+    assert any(
+        "3 rows with market_value=429.00000000 lack an explicit payment frequency"
+        in warning
+        for warning in payload["result"]["source_warnings"]
+    )
     assert {row["category"] for row in payload["result"]["scenarios"]} == {
         "rate",
         "credit",

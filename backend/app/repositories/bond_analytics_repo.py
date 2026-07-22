@@ -100,6 +100,7 @@ _ANALYTICS_COLUMNS = (
     "coupon_rate",
     "interest_mode",
     "interest_payment_frequency",
+    "interest_payment_frequency_fallback_used",
     "interest_rate_style",
     "ytm",
     "value_date",
@@ -318,12 +319,13 @@ class BondAnalyticsRepository:
                       report_date, instrument_code, instrument_name, portfolio_name, cost_center,
                       asset_class_raw, asset_class_std, bond_type, issuer_name, industry_name, rating,
                       accounting_class, accounting_rule_id, currency_code, face_value, market_value_native, market_value,
-                      amortized_cost, accrued_interest, coupon_rate, interest_mode, interest_payment_frequency, interest_rate_style, ytm, value_date, maturity_date, next_call_date,
+                      amortized_cost, accrued_interest, coupon_rate, interest_mode, interest_payment_frequency,
+                      interest_payment_frequency_fallback_used, interest_rate_style, ytm, value_date, maturity_date, next_call_date,
                       years_to_maturity, tenor_bucket, macaulay_duration, modified_duration,
                       convexity, dv01, is_credit, spread_dv01, source_version, rule_version,
                       ingest_batch_id, trace_id
                     ) values (
-                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                     )
                     """,
                     [
@@ -350,6 +352,7 @@ class BondAnalyticsRepository:
                             row.coupon_rate,
                             row.interest_mode,
                             row.interest_payment_frequency,
+                            row.interest_payment_frequency_fallback_used,
                             row.interest_rate_style,
                             row.ytm,
                             row.value_date.isoformat() if row.value_date else None,
@@ -401,6 +404,11 @@ class BondAnalyticsRepository:
                 if _column_exists(conn, self.path, FACT_TABLE, "interest_payment_frequency")
                 else "'annual' as interest_payment_frequency"
             )
+            interest_payment_frequency_fallback_expr = (
+                "interest_payment_frequency_fallback_used"
+                if _column_exists(conn, self.path, FACT_TABLE, "interest_payment_frequency_fallback_used")
+                else "cast(null as boolean) as interest_payment_frequency_fallback_used"
+            )
             interest_rate_style_expr = (
                 "interest_rate_style"
                 if _column_exists(conn, self.path, FACT_TABLE, "interest_rate_style")
@@ -434,7 +442,8 @@ class BondAnalyticsRepository:
                 select report_date, instrument_code, instrument_name, portfolio_name, cost_center,
                        asset_class_raw, asset_class_std, bond_type, issuer_name, industry_name, rating,
                        accounting_class, accounting_rule_id, currency_code, face_value, {market_value_native_expr}, market_value,
-                       amortized_cost, accrued_interest, coupon_rate, {interest_mode_expr}, {interest_payment_frequency_expr}, {interest_rate_style_expr}, ytm, {value_date_expr}, maturity_date, {next_call_date_expr},
+                       amortized_cost, accrued_interest, coupon_rate, {interest_mode_expr}, {interest_payment_frequency_expr},
+                       {interest_payment_frequency_fallback_expr}, {interest_rate_style_expr}, ytm, {value_date_expr}, maturity_date, {next_call_date_expr},
                        years_to_maturity, tenor_bucket, macaulay_duration, modified_duration,
                        convexity, dv01, is_credit, spread_dv01, source_version, rule_version,
                        ingest_batch_id, trace_id
@@ -472,6 +481,11 @@ class BondAnalyticsRepository:
                 if _column_exists(conn, self.path, FACT_TABLE, "interest_payment_frequency")
                 else "'annual' as interest_payment_frequency"
             )
+            interest_payment_frequency_fallback_expr = (
+                "interest_payment_frequency_fallback_used"
+                if _column_exists(conn, self.path, FACT_TABLE, "interest_payment_frequency_fallback_used")
+                else "cast(null as boolean) as interest_payment_frequency_fallback_used"
+            )
             interest_rate_style_expr = (
                 "interest_rate_style"
                 if _column_exists(conn, self.path, FACT_TABLE, "interest_rate_style")
@@ -498,7 +512,8 @@ class BondAnalyticsRepository:
                 select report_date, instrument_code, instrument_name, portfolio_name, cost_center,
                        asset_class_raw, asset_class_std, bond_type, issuer_name, industry_name, rating,
                        accounting_class, accounting_rule_id, currency_code, face_value, {market_value_native_expr}, market_value,
-                       amortized_cost, accrued_interest, coupon_rate, {interest_mode_expr}, {interest_payment_frequency_expr}, {interest_rate_style_expr}, ytm, {value_date_expr}, maturity_date, {next_call_date_expr},
+                       amortized_cost, accrued_interest, coupon_rate, {interest_mode_expr}, {interest_payment_frequency_expr},
+                       {interest_payment_frequency_fallback_expr}, {interest_rate_style_expr}, ytm, {value_date_expr}, maturity_date, {next_call_date_expr},
                        years_to_maturity, tenor_bucket, macaulay_duration, modified_duration,
                        convexity, dv01, is_credit, spread_dv01, source_version, rule_version,
                        ingest_batch_id, trace_id

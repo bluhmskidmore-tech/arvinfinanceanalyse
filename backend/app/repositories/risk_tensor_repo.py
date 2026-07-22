@@ -181,6 +181,14 @@ class RiskTensorRepository:
                     rate_risk_modified_duration,
                     duration_excluded_market_value,
                     duration_excluded_count,
+                    missing_maturity_market_value,
+                    missing_maturity_count,
+                    floating_rate_proxy_market_value,
+                    floating_rate_proxy_count,
+                    payment_frequency_fallback_market_value,
+                    payment_frequency_fallback_count,
+                    bullet_value_date_fallback_market_value,
+                    bullet_value_date_fallback_count,
                     issuer_concentration_hhi,
                     issuer_top5_weight,
                     asset_cashflow_30d,
@@ -204,7 +212,7 @@ class RiskTensorRepository:
                     cache_version,
                     trace_id
                 ) values (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
                 """,
                 [
@@ -225,6 +233,14 @@ class RiskTensorRepository:
                     tensor.rate_risk_modified_duration,
                     tensor.duration_excluded_market_value,
                     tensor.duration_excluded_count,
+                    tensor.missing_maturity_market_value,
+                    tensor.missing_maturity_count,
+                    tensor.floating_rate_proxy_market_value,
+                    tensor.floating_rate_proxy_count,
+                    tensor.payment_frequency_fallback_market_value,
+                    tensor.payment_frequency_fallback_count,
+                    tensor.bullet_value_date_fallback_market_value,
+                    tensor.bullet_value_date_fallback_count,
                     tensor.issuer_concentration_hhi,
                     tensor.issuer_top5_weight,
                     tensor.asset_cashflow_30d,
@@ -383,6 +399,25 @@ class RiskTensorRepository:
                     "duration_excluded_count",
                 )
             }
+            projection_quality_columns = {
+                field_name: _column_or_default(
+                    table_columns,
+                    field_name,
+                    "cast(null as integer)"
+                    if field_name.endswith("_count")
+                    else "cast(null as decimal(24, 8))",
+                )
+                for field_name in (
+                    "missing_maturity_market_value",
+                    "missing_maturity_count",
+                    "floating_rate_proxy_market_value",
+                    "floating_rate_proxy_count",
+                    "payment_frequency_fallback_market_value",
+                    "payment_frequency_fallback_count",
+                    "bullet_value_date_fallback_market_value",
+                    "bullet_value_date_fallback_count",
+                )
+            }
             row = conn.execute(
                 f"""
                 select report_date,
@@ -402,6 +437,14 @@ class RiskTensorRepository:
                        {duration_scope_columns['rate_risk_modified_duration']},
                        {duration_scope_columns['duration_excluded_market_value']},
                        {duration_scope_columns['duration_excluded_count']},
+                       {projection_quality_columns['missing_maturity_market_value']},
+                       {projection_quality_columns['missing_maturity_count']},
+                       {projection_quality_columns['floating_rate_proxy_market_value']},
+                       {projection_quality_columns['floating_rate_proxy_count']},
+                       {projection_quality_columns['payment_frequency_fallback_market_value']},
+                       {projection_quality_columns['payment_frequency_fallback_count']},
+                       {projection_quality_columns['bullet_value_date_fallback_market_value']},
+                       {projection_quality_columns['bullet_value_date_fallback_count']},
                        issuer_concentration_hhi,
                        issuer_top5_weight,
                        {asset_cashflow_30d},
@@ -450,6 +493,14 @@ class RiskTensorRepository:
                 "rate_risk_modified_duration",
                 "duration_excluded_market_value",
                 "duration_excluded_count",
+                "missing_maturity_market_value",
+                "missing_maturity_count",
+                "floating_rate_proxy_market_value",
+                "floating_rate_proxy_count",
+                "payment_frequency_fallback_market_value",
+                "payment_frequency_fallback_count",
+                "bullet_value_date_fallback_market_value",
+                "bullet_value_date_fallback_count",
                 "issuer_concentration_hhi",
                 "issuer_top5_weight",
                 "asset_cashflow_30d",

@@ -74,6 +74,15 @@ class RiskTensorPayload(BaseModel):
     rate_risk_modified_duration: Numeric
     duration_excluded_market_value: Numeric
     duration_excluded_count: int
+    missing_maturity_market_value: Numeric | None = None
+    missing_maturity_count: int | None = None
+    floating_rate_proxy_market_value: Numeric | None = None
+    floating_rate_proxy_count: int | None = None
+    payment_frequency_fallback_market_value: Numeric | None = None
+    payment_frequency_fallback_count: int | None = None
+    bullet_value_date_fallback_market_value: Numeric | None = None
+    bullet_value_date_fallback_count: int | None = None
+    projection_quality_status: str = "available"
     bond_count: int = 0
     quality_flag: str = "ok"
     warnings: list[str] = Field(default_factory=list)
@@ -104,6 +113,10 @@ class RiskTensorPayload(BaseModel):
         "rate_risk_dv01": ("dv01", False),
         "rate_risk_modified_duration": ("ratio", False),
         "duration_excluded_market_value": ("yuan", False),
+        "missing_maturity_market_value": ("yuan", False),
+        "floating_rate_proxy_market_value": ("yuan", False),
+        "payment_frequency_fallback_market_value": ("yuan", False),
+        "bullet_value_date_fallback_market_value": ("yuan", False),
     }
 
     @model_validator(mode="before")

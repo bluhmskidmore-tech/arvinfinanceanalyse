@@ -30,7 +30,7 @@ RISK_TENSOR_MODULE = ensure_formal_module(
         # Governed downstream derivative of bond_analytics formal facts.
         input_sources=("fact_formal_bond_analytics_daily", "fact_formal_tyw_balance_daily"),
         fact_tables=("fact_formal_risk_tensor_daily",),
-        rule_version="rv_risk_tensor_formal_materialize_v3",
+        rule_version="rv_risk_tensor_formal_materialize_v5",
         result_kind_family="risk-tensor",
         supports_standard_queries=True,
         supports_custom_queries=False,
@@ -138,6 +138,19 @@ def _numeric_input_violations(
             if violation is not None:
                 violations.append(violation)
     return violations
+
+
+def _payment_frequency_provenance_violations(
+    rows: list[dict[str, object]],
+) -> list[str]:
+    violations: list[str] = []
+    for index, row in enumerate(rows, start=1):
+        value = row.get("interest_payment_frequency_fallback_used")
+        if not isinstance(value, bool):
+            row_label = str(row.get("instrument_code") or "").strip() or f"row-{index}"
+            violations.append(f"{row_label}={value!r}")
+    return violations
+
 
 
 def _finite_decimal_or_none(value: object) -> Decimal | None:
@@ -248,6 +261,19 @@ def _execute_risk_tensor_materialization(
             str(row.get("source_version") or "").strip() for row in liability_rows
         ],
     )
+    provenance_violations = _payment_frequency_provenance_violations(rows)
+    if provenance_violations:
+        raise FormalComputeMaterializeFailure(
+            source_version=source_version,
+            vendor_version="vv_none",
+            message=(
+                "risk_tensor requires bond_analytics payment-frequency fallback provenance; "
+                "rebuild bond_analytics before materializing risk_tensor. "
+                f"report_date={report_date}; violations="
+                + ", ".join(provenance_violations[:5])
+            ),
+        )
+
     numeric_violations = _numeric_input_violations(
         rows,
         required_fields=_REQUIRED_BOND_NUMERIC_FIELDS,

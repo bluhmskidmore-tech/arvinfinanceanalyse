@@ -218,8 +218,8 @@ def _replace_test_risk_tensor_row(
             upstream_cache_version="cv_bond_snap_test",
             liability_source_version="",
             liability_rule_version="",
-            rule_version="rv_risk_tensor_formal_materialize_v3",
-            cache_version="cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v3",
+            rule_version="rv_risk_tensor_formal_materialize_v5",
+            cache_version="cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v5",
             trace_id=f"trace_risk_tensor_{report_date.replace('-', '')}",
         )
 
@@ -242,11 +242,11 @@ def test_risk_tensor_service_returns_formal_envelope_with_lineage(tmp_path, monk
     assert payload["result_meta"]["scenario_flag"] is False
     assert payload["result_meta"]["result_kind"] == "risk.tensor"
     assert payload["result_meta"]["source_version"] == "sv_risk_tensor__sv_bond_snap_1"
-    assert payload["result_meta"]["rule_version"] == "rv_risk_tensor_formal_materialize_v3"
-    assert payload["result_meta"]["cache_version"] == "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v3"
+    assert payload["result_meta"]["rule_version"] == "rv_risk_tensor_formal_materialize_v5"
+    assert payload["result_meta"]["cache_version"] == "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v5"
     assert payload["result_meta"]["tables_used"] == ["fact_formal_risk_tensor_daily"]
     assert payload["result_meta"]["evidence_rows"] == 1
-    assert payload["result_meta"]["quality_flag"] == "ok"
+    assert payload["result_meta"]["quality_flag"] == "warning"
     assert payload["result_meta"]["requested_report_date"] == REPORT_DATE
     assert payload["result_meta"]["resolved_report_date"] == REPORT_DATE
     assert payload["result_meta"]["as_of_date"] == REPORT_DATE
@@ -264,10 +264,27 @@ def test_risk_tensor_service_returns_formal_envelope_with_lineage(tmp_path, monk
     ):
         assert Decimal(str(result[field_name]["raw"])) == materialized_row[field_name]
     assert result["duration_excluded_count"] == materialized_row["duration_excluded_count"]
+    for field_name in (
+        "missing_maturity_market_value",
+        "floating_rate_proxy_market_value",
+        "payment_frequency_fallback_market_value",
+        "bullet_value_date_fallback_market_value",
+    ):
+        assert result[field_name] is not None
+        assert Decimal(str(result[field_name]["raw"])) == materialized_row[field_name]
+        assert result[field_name]["unit"] == "yuan"
+    for field_name in (
+        "missing_maturity_count",
+        "floating_rate_proxy_count",
+        "payment_frequency_fallback_count",
+        "bullet_value_date_fallback_count",
+    ):
+        assert result[field_name] == materialized_row[field_name]
+    assert result["projection_quality_status"] == "available"
     assert result["report_date"] == REPORT_DATE
     assert result["bond_count"] == 3
-    assert result["quality_flag"] == "ok"
-    assert result["warnings"] == []
+    assert result["quality_flag"] == "warning"
+    assert result["warnings"]
     assert result["total_market_value"]["raw"] == 429.0
     assert result["asset_cashflow_30d"]["raw"] == 14.0
     assert result["asset_cashflow_90d"]["raw"] == 14.0
@@ -300,6 +317,54 @@ def test_risk_tensor_service_returns_formal_envelope_with_lineage(tmp_path, monk
     assert Decimal(str(result["cs01"]["raw"])) > Decimal("0")
     assert Decimal(str(result["portfolio_convexity"]["raw"])) > Decimal("0")
 
+    get_settings.cache_clear()
+
+
+def test_risk_tensor_service_preserves_null_projection_quality_for_current_v5_row(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path, governance_dir, _task_mod = _configure_and_materialize_risk_tensor(
+        tmp_path,
+        monkeypatch,
+    )
+    projection_quality_fields = (
+        "missing_maturity_market_value",
+        "missing_maturity_count",
+        "floating_rate_proxy_market_value",
+        "floating_rate_proxy_count",
+        "payment_frequency_fallback_market_value",
+        "payment_frequency_fallback_count",
+        "bullet_value_date_fallback_market_value",
+        "bullet_value_date_fallback_count",
+    )
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            "update fact_formal_risk_tensor_daily set "
+            + ", ".join(f"{field_name} = null" for field_name in projection_quality_fields)
+            + " where report_date = ?",
+            [REPORT_DATE],
+        )
+    finally:
+        conn.close()
+
+    service_mod = load_module(
+        "backend.app.services.risk_tensor_service",
+        "backend/app/services/risk_tensor_service.py",
+    )
+    payload = service_mod.risk_tensor_envelope(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        report_date=REPORT_DATE,
+    )
+
+    result = payload["result"]
+    assert payload["result_meta"]["quality_flag"] == "warning"
+    assert result["quality_flag"] == "warning"
+    assert result["projection_quality_status"] == "unavailable_legacy"
+    assert all(result[field_name] is None for field_name in projection_quality_fields)
+    assert any("zero must not be inferred" in warning for warning in result["warnings"])
     get_settings.cache_clear()
 
 
@@ -498,7 +563,7 @@ def test_formal_risk_tensor_service_has_no_live_bond_analytics_or_read_time_deri
     assert "fetch_rate_risk_duration_scope" not in repo_src
 
 
-def test_risk_tensor_freshness_requires_v3_materialized_duration_scope():
+def test_risk_tensor_freshness_requires_v5_materialized_projection_contract():
     service_mod = load_module(
         "backend.app.services.risk_tensor_service",
         "backend/app/services/risk_tensor_service.py",
@@ -507,8 +572,8 @@ def test_risk_tensor_freshness_requires_v3_materialized_duration_scope():
         "upstream_source_version": "sv_bond_snap_1",
         "upstream_rule_version": "rv_bond_snap_1",
         "upstream_cache_version": "cv_bond_snap_1",
-        "rule_version": "rv_risk_tensor_formal_materialize_v2",
-        "cache_version": "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v2",
+        "rule_version": "rv_risk_tensor_formal_materialize_v4",
+        "cache_version": "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v4",
     }
 
     stale_rule = service_mod._risk_tensor_freshness_error_from_values(
@@ -522,6 +587,22 @@ def test_risk_tensor_freshness_requires_v3_materialized_duration_scope():
     )
     assert stale_rule is not None
     assert "rule version" in stale_rule.lower()
+
+    stale_v3 = service_mod._risk_tensor_freshness_error_from_values(
+        report_date_text=REPORT_DATE,
+        row=base_row
+        | {
+            "rule_version": "rv_risk_tensor_formal_materialize_v3",
+            "cache_version": "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v3",
+        },
+        upstream_source_version="sv_bond_snap_1",
+        upstream_rule_version="rv_bond_snap_1",
+        upstream_cache_version="cv_bond_snap_1",
+        current_tyw_liability_source_version="",
+        current_tyw_liability_rule_version="",
+    )
+    assert stale_v3 is not None
+    assert "rule version" in stale_v3.lower()
 
     materialized_row = base_row | {
         "rule_version": service_mod.RULE_VERSION,
@@ -583,6 +664,17 @@ def test_risk_tensor_freshness_requires_v3_materialized_duration_scope():
     )
     assert stale_upstream_cache is not None
     assert "bond analytics cache lineage" in stale_upstream_cache.lower()
+
+    current_v5_without_projection_values = service_mod._risk_tensor_freshness_error_from_values(
+        report_date_text=REPORT_DATE,
+        row=materialized_row,
+        upstream_source_version="sv_bond_snap_1",
+        upstream_rule_version="rv_bond_snap_1",
+        upstream_cache_version="cv_bond_snap_1",
+        current_tyw_liability_source_version="",
+        current_tyw_liability_rule_version="",
+    )
+    assert current_v5_without_projection_values is None
 
 
 def test_risk_tensor_repository_does_not_backfill_missing_regulatory_dv01_from_portfolio(tmp_path):

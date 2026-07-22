@@ -92,6 +92,7 @@ def _base_discount_ncd_row() -> dict[str, object]:
         "convexity": Decimal("0.01"),
         "dv01": Decimal("0.02"),
         "spread_dv01": Decimal("0.01"),
+        "interest_payment_frequency_fallback_used": False,
     }
 
 
@@ -190,6 +191,17 @@ def test_risk_tensor_materialize_writes_fact_and_governance_records(tmp_path):
     assert row["liability_cashflow_30d"] == 0
     assert row["liability_cashflow_90d"] == 0
     assert row["liquidity_gap_30d"] == row["asset_cashflow_30d"] - row["liability_cashflow_30d"]
+    projection_quality_fields = (
+        "missing_maturity_market_value",
+        "missing_maturity_count",
+        "floating_rate_proxy_market_value",
+        "floating_rate_proxy_count",
+        "payment_frequency_fallback_market_value",
+        "payment_frequency_fallback_count",
+        "bullet_value_date_fallback_market_value",
+        "bullet_value_date_fallback_count",
+    )
+    assert all(row[field_name] is not None for field_name in projection_quality_fields)
     assert any(record["cache_key"] == bond_task_mod.CACHE_KEY for record in build_runs)
     assert any(record["cache_key"] == risk_task_mod.CACHE_KEY and record["status"] == "completed" for record in build_runs)
     assert any(record["cache_key"] == risk_task_mod.CACHE_KEY and record["cache_version"] == risk_task_mod.CACHE_VERSION for record in manifests)
@@ -314,6 +326,7 @@ def test_risk_tensor_materialize_fails_closed_on_malformed_numeric_inputs(tmp_pa
                 "maturity_date": "2030-01-01",
                 "interest_mode": "annual",
                 "issuer_name": "Issuer Bad",
+                "interest_payment_frequency_fallback_used": False,
             }
         ]
 
@@ -351,6 +364,37 @@ def test_risk_tensor_materialize_normalizes_eligible_discount_ncd_coupon_locally
     assert result.payload["coupon_normalized_row_count"] == 1
     assert result.payload["coupon_normalized_market_value"] == "98.5"
 
+
+
+def test_risk_tensor_materialize_fails_closed_on_unknown_payment_frequency_provenance(monkeypatch):
+    source_row = _base_discount_ncd_row()
+    source_row["interest_payment_frequency_fallback_used"] = None
+    task_mod = load_module(
+        "backend.app.tasks.risk_tensor_materialize",
+        "backend/app/tasks/risk_tensor_materialize.py",
+    )
+    monkeypatch.setattr(
+        task_mod,
+        "load_latest_bond_analytics_lineage",
+        lambda **_kwargs: {
+            "source_version": "sv_bond_snap_1",
+            "rule_version": "rv_bond_analytics_formal_materialize_v1",
+            "cache_version": "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v1",
+        },
+    )
+    monkeypatch.setattr(
+        task_mod.BondAnalyticsRepository,
+        "fetch_bond_analytics_rows",
+        lambda self, *, report_date: [source_row],
+    )
+    monkeypatch.setattr(task_mod, "_load_liability_rows", lambda **_kwargs: [])
+
+    with pytest.raises(RuntimeError, match="payment-frequency fallback provenance"):
+        task_mod._execute_risk_tensor_materialization(
+            report_date=REPORT_DATE,
+            duckdb_file=Path("ignored.duckdb"),
+            governance_dir="ignored-governance",
+        )
 
 def test_risk_tensor_materialize_leaves_non_null_coupon_unchanged(monkeypatch):
     source_row = _base_discount_ncd_row()
@@ -485,6 +529,10 @@ def test_risk_tensor_module_descriptor_registers_without_collision():
     assert descriptor.cache_key == risk_task_mod.CACHE_KEY
     assert descriptor.cache_key != bond_task_mod.CACHE_KEY
     assert descriptor.lock_key != bond_task_mod.BOND_ANALYTICS_LOCK.key
+    assert descriptor.rule_version == "rv_risk_tensor_formal_materialize_v5"
+    assert (
+        descriptor.cache_version == "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v5"
+    )
 
 
 def test_risk_tensor_materialize_uses_materialized_interest_mode_for_coupon_windows(tmp_path):

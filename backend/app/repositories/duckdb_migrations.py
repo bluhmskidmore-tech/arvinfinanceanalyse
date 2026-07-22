@@ -89,6 +89,14 @@ def ensure_risk_tensor_legacy_columns(conn: duckdb.DuckDBPyConnection) -> None:
         "alter table fact_formal_risk_tensor_daily add column if not exists duration_excluded_count integer",
         "alter table fact_formal_risk_tensor_daily add column if not exists upstream_rule_version varchar",
         "alter table fact_formal_risk_tensor_daily add column if not exists upstream_cache_version varchar",
+        "alter table fact_formal_risk_tensor_daily add column if not exists missing_maturity_market_value decimal(24, 8)",
+        "alter table fact_formal_risk_tensor_daily add column if not exists missing_maturity_count integer",
+        "alter table fact_formal_risk_tensor_daily add column if not exists floating_rate_proxy_market_value decimal(24, 8)",
+        "alter table fact_formal_risk_tensor_daily add column if not exists floating_rate_proxy_count integer",
+        "alter table fact_formal_risk_tensor_daily add column if not exists payment_frequency_fallback_market_value decimal(24, 8)",
+        "alter table fact_formal_risk_tensor_daily add column if not exists payment_frequency_fallback_count integer",
+        "alter table fact_formal_risk_tensor_daily add column if not exists bullet_value_date_fallback_market_value decimal(24, 8)",
+        "alter table fact_formal_risk_tensor_daily add column if not exists bullet_value_date_fallback_count integer",
     ):
         conn.execute(statement)
 
@@ -328,6 +336,21 @@ def _v35_bond_analytics_value_date(conn: duckdb.DuckDBPyConnection) -> None:
     )
 
 
+def _v36_risk_tensor_projection_quality(conn: duckdb.DuckDBPyConnection) -> None:
+    if not _main_table_exists(conn, "fact_formal_risk_tensor_daily"):
+        _run_sql_slice(conn, "04_risk_tensor.sql")
+        return
+    _run_sql_slice(conn, "37_risk_tensor_projection_quality.sql")
+
+
+
+def _v37_bond_payment_frequency_fallback_provenance(conn: duckdb.DuckDBPyConnection) -> None:
+    if not _main_table_exists(conn, "fact_formal_bond_analytics_daily"):
+        _run_sql_slice(conn, "02_bond_analytics.sql")
+        return
+    _run_sql_slice(conn, "38_bond_analytics_payment_frequency_provenance.sql")
+
+
 def _v30_fact_snapshot_indexes(conn: duckdb.DuckDBPyConnection) -> None:
     text = (REGISTRY_DIR / "32_fact_snapshot_indexes.sql").read_text(encoding="utf-8")
     for statement in parse_registry_sql_text(text):
@@ -442,6 +465,8 @@ def register_all(registry: DuckDBSchemaRegistry) -> None:
     registry.register(33, "Materialize governed Risk Tensor read metrics and upstream lineage", _v33_risk_tensor_materialized_metrics)
     registry.register(34, "Preserve formal FI source classification metadata", _v34_pnl_source_classification_metadata)
     registry.register(35, "Preserve bond analytics value date", _v35_bond_analytics_value_date)
+    registry.register(36, "Disclose risk tensor projection quality proxies", _v36_risk_tensor_projection_quality)
+    registry.register(37, "Preserve bond payment-frequency fallback provenance", _v37_bond_payment_frequency_fallback_provenance)
 
 
 def apply_pending_migrations_on_connection(conn: duckdb.DuckDBPyConnection) -> None:
