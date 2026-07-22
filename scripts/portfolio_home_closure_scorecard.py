@@ -79,6 +79,7 @@ REQUIRED_VERIFICATION_COMMANDS = [
     "risk_warning_clean",
     "krd_review_strict",
     "maturity_remediation_strict",
+    "matured_outstanding_strict",
     "business_owner_approval_strict",
     "owner_decision_intake_check_strict",
     "owner_action_packet_current",
@@ -104,6 +105,7 @@ BLOCKED_STATE_NONZERO_VERIFICATION_COMMANDS = [
     "risk_warning_clean",
     "krd_review_strict",
     "maturity_remediation_strict",
+    "matured_outstanding_strict",
     "business_owner_approval_strict",
     "owner_decision_intake_check_strict",
     "owner_action_packet_strict",
@@ -185,6 +187,20 @@ VERIFICATION_COMMANDS: list[dict[str, str]] = [
         "name": "maturity_remediation_strict",
         "kind": "strict_gate",
         "command": "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
+        "expected_when_blocked": "exit_nonzero",
+        "expected_when_full_score": "exit_0",
+    },
+    {
+        "name": "matured_outstanding_queue",
+        "kind": "evidence",
+        "command": "python scripts/portfolio_home_matured_outstanding_queue.py",
+        "expected_when_blocked": "exit_0",
+        "expected_when_full_score": "exit_0",
+    },
+    {
+        "name": "matured_outstanding_strict",
+        "kind": "strict_gate",
+        "command": "python scripts/portfolio_home_matured_outstanding_queue.py --require-empty",
         "expected_when_blocked": "exit_nonzero",
         "expected_when_full_score": "exit_0",
     },
@@ -400,6 +416,25 @@ VERIFICATION_COMMANDS: list[dict[str, str]] = [
     },
 ]
 
+_DATE_INDEPENDENT_VERIFICATION_COMMANDS = {
+    "supporting_sample_guard",
+    "verification_command_runner",
+}
+
+
+def _render_verification_commands(report_date: str) -> list[dict[str, str]]:
+    rendered: list[dict[str, str]] = []
+    for command_spec in VERIFICATION_COMMANDS:
+        command_for_report = dict(command_spec)
+        if command_spec["name"] not in _DATE_INDEPENDENT_VERIFICATION_COMMANDS:
+            command_head, separator, command_tail = command_spec["command"].partition(".py")
+            command_for_report["command"] = (
+                f"{command_head}{separator} --report-date {report_date}{command_tail}"
+            )
+        rendered.append(command_for_report)
+    return rendered
+
+
 BLOCKER_ACTIONS: dict[str, dict[str, str]] = {
     "risk_tensor_quality_warning": {
         "owner": "risk_owner",
@@ -413,6 +448,12 @@ BLOCKER_ACTIONS: dict[str, dict[str, str]] = {
         "evidence_command": "python scripts/portfolio_home_risk_warning_consistency.py --require-consistent",
         "exit_criteria": "Risk warning consistency reports matching parsed and recomputed duration-exclusion evidence.",
     },
+    "krd_bucket_warning_mismatch": {
+        "owner": "risk_owner",
+        "next_action": "Review the KRD bucket warning evidence, then rematerialize the risk tensor if the parsed warning is stale or keep /portfolio candidate-only until the warning matches current formal bonds.",
+        "evidence_command": "python scripts/portfolio_home_risk_warning_consistency.py --require-consistent",
+        "exit_criteria": "Risk warning consistency confirms the KRD bucket warning matches current formal bonds, and rematerialization is completed or /portfolio remains candidate-only when the warning cannot yet be cleared.",
+    },
     "risk_tensor_warning_mismatch": {
         "owner": "risk_owner",
         "next_action": "Reconcile risk tensor warning evidence and rematerialize the risk tensor or keep /portfolio candidate-only.",
@@ -425,17 +466,17 @@ BLOCKER_ACTIONS: dict[str, dict[str, str]] = {
         "evidence_command": "python scripts/portfolio_home_krd_remap_review_queue.py --require-clean",
         "exit_criteria": "KRD review queue exits 0 under the approved contract and the metric contract records the decision.",
     },
-    "bond_maturity_date_remediation_required": {
-        "owner": "data_owner",
-        "next_action": "Remediate missing bond maturity_date values or capture a signed scoped exclusion before rematerialization.",
-        "evidence_command": "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
-        "exit_criteria": "Bond maturity remediation queue is empty or signed exclusion evidence is captured and surfaced as a boundary.",
-    },
     "tyw_liability_maturity_date_remediation_required": {
         "owner": "data_owner",
         "next_action": "Remediate missing TYW liability maturity_date values or capture a signed scoped exclusion before rematerialization.",
         "evidence_command": "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
         "exit_criteria": "TYW liability maturity remediation queue is empty or signed exclusion evidence is captured and surfaced as a boundary.",
+    },
+    "bond_matured_outstanding_reconciliation_required": {
+        "owner": "data_owner",
+        "next_action": "Reconcile matured or unparseable non-zero bond positions at source; this read-only gate does not accept an exception as closure evidence.",
+        "evidence_command": "python scripts/portfolio_home_matured_outstanding_queue.py --require-empty",
+        "exit_criteria": "Matured outstanding strict queue exits 0 with no matured or unparseable non-zero bond positions.",
     },
     "business_owner_approval": {
         "owner": "business_owner",
@@ -760,7 +801,10 @@ def _score_blockers(
     return blockers
 
 
-def _score_blocker_actions(blockers: list[str]) -> list[dict[str, str]]:
+def _score_blocker_actions(
+    blockers: list[str],
+    report_date: str = DEFAULT_REPORT_DATE,
+) -> list[dict[str, str]]:
     actions: list[dict[str, str]] = []
     for blocker in blockers:
         action = BLOCKER_ACTIONS.get(
@@ -772,7 +816,22 @@ def _score_blocker_actions(blockers: list[str]) -> list[dict[str, str]]:
                 "exit_criteria": "Blocker is removed from score_blockers with auditable evidence.",
             },
         )
-        actions.append({"blocker": blocker, **action})
+        action_for_report = dict(action)
+        evidence_command = action_for_report.get("evidence_command", "")
+        if (
+            "--report-date" not in evidence_command
+            and evidence_command.startswith(
+                (
+                    "python scripts/portfolio_home_",
+                    "python scripts/check_portfolio_home_business_owner_approval.py",
+                )
+            )
+        ):
+            command_head, separator, command_tail = evidence_command.partition(".py")
+            action_for_report["evidence_command"] = (
+                f"{command_head}{separator} --report-date {report_date}{command_tail}"
+            )
+        actions.append({"blocker": blocker, **action_for_report})
     return actions
 
 
@@ -908,6 +967,10 @@ def build_scorecard(
             },
             "maturity_remediation": {
                 "status": maturity_queue.get("remediation_status"),
+                "bond_no_maturity_summary": maturity_queue.get(
+                    "bond_no_maturity_summary",
+                    {},
+                ),
                 "bond_missing_maturity_summary": maturity_queue.get(
                     "bond_missing_maturity_summary",
                     {},
@@ -1026,6 +1089,7 @@ def build_scorecard(
         owner_intake_gate,
     )
     verification_command_coverage = _verification_command_coverage(VERIFICATION_COMMANDS)
+    rendered_verification_commands = _render_verification_commands(report_date)
     owner_handoff_completeness = _owner_handoff_completeness_gate(
         Path(docs_root),
         report_date=report_date,
@@ -1043,7 +1107,7 @@ def build_scorecard(
         verification_command_coverage=verification_command_coverage,
         owner_handoff_completeness=owner_handoff_completeness,
     )
-    score_blocker_actions = _score_blocker_actions(blockers)
+    score_blocker_actions = _score_blocker_actions(blockers, report_date)
     score_blocker_action_coverage = _score_blocker_action_coverage(
         blockers,
         score_blocker_actions,
@@ -1068,7 +1132,7 @@ def build_scorecard(
         "full_score_ready": full_score_ready,
         "score_blockers": blockers,
         "score_blocker_actions": score_blocker_actions,
-        "verification_commands": VERIFICATION_COMMANDS,
+        "verification_commands": rendered_verification_commands,
         "gates": {
             "score_blocker_action_coverage": score_blocker_action_coverage,
             "verification_command_coverage": verification_command_coverage,
@@ -1077,6 +1141,10 @@ def build_scorecard(
                 "blockers": full_closure.get("closure_blockers", []),
                 "risk_tensor": full_closure.get("risk_tensor", {}),
                 "bond_maturity_gap": full_closure.get("bond_maturity_gap", {}),
+                "bond_matured_outstanding": full_closure.get(
+                    "bond_matured_outstanding",
+                    {},
+                ),
                 "tyw_liability_maturity_gap_risk_scope": full_closure.get(
                     "tyw_liability_maturity_gap_risk_scope",
                     {},
@@ -1111,6 +1179,10 @@ def build_scorecard(
                 "status": maturity_queue.get("remediation_status"),
                 "blockers": maturity_queue.get("remediation_blockers", []),
                 "remediation_scope": maturity_queue.get("remediation_scope", {}),
+                "bond_no_maturity_summary": maturity_queue.get(
+                    "bond_no_maturity_summary",
+                    {},
+                ),
                 "bond_missing_maturity_summary": maturity_queue.get(
                     "bond_missing_maturity_summary",
                     {},

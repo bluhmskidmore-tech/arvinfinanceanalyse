@@ -57,8 +57,9 @@ def _run_check(*args: str) -> tuple[int, dict[str, object]]:
 
 def _rewrite_csv(path: Path, transform) -> None:
     with path.open("r", encoding="utf-8-sig", newline="") as handle:
-        rows = list(csv.DictReader(handle))
-        fieldnames = list(rows[0].keys()) if rows else []
+        reader = csv.DictReader(handle)
+        rows = list(reader)
+        fieldnames = list(reader.fieldnames or [])
     with path.open("w", encoding="utf-8-sig", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
@@ -168,7 +169,7 @@ def _write_nearest_bucket_approval_evidence(docs_root: Path) -> None:
                 "decision": "approve_nearest_bucket",
                 "mapped_tenor_buckets": ["20Y", "2Y", "6M"],
                 "nonzero_dv01_rows": 500,
-                "dv01_sum": "33365026.29770696",
+                "dv01_sum": "33365026.29780176",
                 "risk_owner_name": "Risk Owner",
                 "risk_owner_approval_date": REPORT_DATE,
                 "risk_owner_approved": True,
@@ -201,7 +202,7 @@ def _write_maturity_scoped_exclusion_evidence(docs_root: Path) -> None:
                 "page_slug": "portfolio",
                 "report_date": REPORT_DATE,
                 "decision": "approve_scoped_exclusion",
-                "bond_missing_maturity_rows": 114,
+                "bond_missing_maturity_rows": 0,
                 "tyw_liability_missing_maturity_rows": 1455,
                 "data_owner_name": "Data Owner",
                 "data_owner_approval_date": REPORT_DATE,
@@ -238,7 +239,7 @@ def test_portfolio_home_owner_decision_intake_check_reports_current_pending_stat
         "krd_summary_row_count": 3,
         "krd_detail_row_count": 500,
         "krd_owner_decision_fields_blank": True,
-        "bond_missing_maturity_row_count": 114,
+        "bond_missing_maturity_row_count": 0,
         "tyw_liability_missing_maturity_row_count": 1455,
         "maturity_owner_fields_blank": True,
     }
@@ -276,8 +277,8 @@ def test_portfolio_home_owner_decision_intake_check_reports_current_pending_stat
     }
     assert payload["owner_decision_summary"]["maturity"]["decision_counts"] == {}
     assert payload["owner_decision_summary"]["maturity"]["decision_gap_counts"] == {
-        "missing_decision_rows": 1569,
-        "bond_missing_decision_rows": 114,
+        "missing_decision_rows": 1455,
+        "bond_missing_decision_rows": 0,
         "tyw_liability_missing_decision_rows": 1455,
     }
     assert payload["owner_decision_summary"]["business_owner"]["approval_status"] == "pending"
@@ -411,7 +412,7 @@ def test_portfolio_home_owner_decision_intake_check_accepts_complete_candidate_d
         "approve_nearest_bucket": 503,
     }
     assert payload["owner_decision_summary"]["maturity"]["decision_counts"] == {
-        "approve_scoped_exclusion": 1569,
+        "approve_scoped_exclusion": 1455,
     }
     assert payload["owner_decision_summary"]["business_owner"]["approval_status"] == "approved"
 
@@ -601,7 +602,7 @@ def test_portfolio_home_owner_decision_intake_check_blocks_rejected_owner_decisi
         "reject": 503,
     }
     assert payload["owner_decision_summary"]["maturity"]["decision_counts"] == {
-        "reject": 1569,
+        "reject": 1455,
     }
 
 
@@ -826,7 +827,7 @@ def test_portfolio_home_owner_decision_intake_check_requires_named_nearest_bucke
                 "decision": "approve_nearest_bucket",
                 "mapped_tenor_buckets": ["20Y", "2Y", "6M"],
                 "nonzero_dv01_rows": 500,
-                "dv01_sum": "33365026.29770696",
+                "dv01_sum": "33365026.29780176",
                 "risk_owner_approved": True,
                 "business_owner_acknowledged": True,
                 "metric_contract_decision_recorded": True,
@@ -891,7 +892,7 @@ def test_portfolio_home_owner_decision_intake_check_reports_maturity_comment_gap
     assert payload["owner_decision_blockers"] == ["maturity_owner_comment_missing"]
     assert payload["owner_decision_summary"]["maturity"]["comment_gap_counts"] == {
         "owner_decision": "approve_scoped_exclusion",
-        "missing_comment_rows": 1569,
+        "missing_comment_rows": 1455,
     }
 
 
@@ -979,7 +980,7 @@ def test_portfolio_home_owner_decision_intake_check_requires_comment_for_source_
     assert payload["owner_decision_blockers"] == ["maturity_owner_comment_missing"]
     assert payload["owner_decision_summary"]["maturity"]["comment_gap_counts"] == {
         "owner_decision": "remediate_source",
-        "missing_comment_rows": 1569,
+        "missing_comment_rows": 1455,
     }
 
 
@@ -1238,7 +1239,7 @@ def test_portfolio_home_owner_decision_intake_check_requires_named_scoped_exclus
                 "page_slug": "portfolio",
                 "report_date": REPORT_DATE,
                 "decision": "approve_scoped_exclusion",
-                "bond_missing_maturity_rows": 114,
+                "bond_missing_maturity_rows": 0,
                 "tyw_liability_missing_maturity_rows": 1455,
                 "data_owner_approved": True,
                 "risk_owner_countersigned": True,

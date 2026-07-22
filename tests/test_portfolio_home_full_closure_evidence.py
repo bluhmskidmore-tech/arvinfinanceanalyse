@@ -80,6 +80,7 @@ def _insert_blocked_data(path: Path) -> None:
             "insert into fact_formal_bond_analytics_daily values (?, ?, ?, ?, ?)",
             [
                 [REPORT_DATE, Decimal("100"), None, "2Y", Decimal("2")],
+                [REPORT_DATE, Decimal("50"), REPORT_DATE, "1Y", Decimal("0")],
                 [REPORT_DATE, Decimal("200"), "2028-05-31", "6M", Decimal("3")],
                 [REPORT_DATE, Decimal("300"), "2030-05-31", "1Y", Decimal("1")],
             ],
@@ -132,14 +133,26 @@ def test_portfolio_home_full_closure_evidence_reports_blocked_real_data_shape(tm
     assert evidence["closure_blockers"] == [
         "risk_tensor_quality_warning",
         "krd_contract_decision_required",
-        "bond_maturity_date_remediation_required",
+        "bond_matured_outstanding_reconciliation_required",
         "tyw_liability_maturity_date_remediation_required",
     ]
     assert evidence["risk_tensor"]["quality_flag"] == "warning"
     assert evidence["risk_tensor"]["portfolio_dv01"] == "6.00000000"
     assert evidence["risk_tensor"]["krd_sum"] == "6.00000000"
-    assert evidence["bond_maturity_gap"]["missing_maturity_rows"] == 1
-    assert evidence["bond_maturity_gap"]["missing_maturity_market_value"] == "100.00000000"
+    assert evidence["bond_maturity_gap"]["no_maturity_rows"] == 1
+    assert evidence["bond_maturity_gap"]["no_maturity_market_value"] == "100.00000000"
+    assert evidence["bond_maturity_gap"]["missing_maturity_rows"] == 0
+    assert evidence["bond_maturity_gap"]["missing_maturity_market_value"] == "0E-8"
+    assert evidence["bond_matured_outstanding"] == {
+        "row_count": 1,
+        "net_market_value": "50.00000000",
+        "absolute_market_value": "50.00000000",
+        "dv01_sum": "0E-8",
+        "earliest_maturity_date": REPORT_DATE,
+        "latest_maturity_date": REPORT_DATE,
+        "unparseable_maturity_date_rows": 0,
+        "unparseable_maturity_date_market_value": "0E-8",
+    }
     assert evidence["tyw_liability_maturity_gap_risk_scope"]["row_count"] == 2
     assert evidence["tyw_liability_maturity_gap_risk_scope"]["missing_maturity_rows"] == 1
     assert evidence["tyw_liability_maturity_gap_full_formal"]["row_count"] == 4
@@ -173,8 +186,47 @@ def test_portfolio_home_full_closure_evidence_reports_clean_data_shape(tmp_path:
     assert evidence["closure_blockers"] == []
     assert evidence["risk_tensor"]["quality_flag"] == "ok"
     assert evidence["bond_maturity_gap"]["missing_maturity_rows"] == 0
+    assert evidence["bond_matured_outstanding"]["row_count"] == 0
+    assert evidence["bond_matured_outstanding"]["unparseable_maturity_date_rows"] == 0
+    assert (
+        evidence["bond_matured_outstanding"]["unparseable_maturity_date_market_value"]
+        == "0E-8"
+    )
     assert evidence["tyw_liability_maturity_gap_risk_scope"]["missing_maturity_rows"] == 0
     assert evidence["krd_remap_scope"] == []
+
+
+def test_portfolio_home_full_closure_blocks_non_null_unparseable_bond_maturity(
+    tmp_path: Path,
+) -> None:
+    duckdb_path = tmp_path / "unparseable.duckdb"
+    _create_schema(duckdb_path)
+    _insert_clean_data(duckdb_path)
+    connection = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        connection.execute(
+            "insert into fact_formal_bond_analytics_daily values (?, ?, ?, ?, ?)",
+            [REPORT_DATE, Decimal("75"), "not-a-date", "1Y", Decimal("0.3")],
+        )
+    finally:
+        connection.close()
+
+    evidence = build_evidence(duckdb_path=duckdb_path, report_date=REPORT_DATE)
+
+    assert evidence["data_quality_status"] == "blocked"
+    assert evidence["closure_blockers"] == [
+        "bond_matured_outstanding_reconciliation_required"
+    ]
+    assert evidence["bond_matured_outstanding"] == {
+        "row_count": 0,
+        "net_market_value": "0E-8",
+        "absolute_market_value": "0E-8",
+        "dv01_sum": "0E-8",
+        "earliest_maturity_date": None,
+        "latest_maturity_date": None,
+        "unparseable_maturity_date_rows": 1,
+        "unparseable_maturity_date_market_value": "75.00000000",
+    }
 
 
 def test_portfolio_home_full_closure_evidence_cli_require_clean_blocks_warning(

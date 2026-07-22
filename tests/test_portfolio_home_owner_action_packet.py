@@ -25,6 +25,11 @@ from tests.test_portfolio_home_owner_decision_intake_check import (
 from scripts.portfolio_home_owner_action_packet import (
     _assignment_coverage,
     _business_owner_blockers,
+    _closure_artifacts_for_blocker,
+    _closure_evidence_sources_for_blocker,
+    _closure_exit_signal,
+    _closure_recheck_commands,
+    _data_owner_decision_artifacts,
     _strict_gate_clean,
     build_packet,
 )
@@ -51,13 +56,103 @@ TEMPLATE = ROOT / "docs" / "portfolio" / "portfolio-home-business-owner-approval
 CURRENT_SCORE_BLOCKERS = [
     "risk_tensor_quality_warning",
     "krd_contract_decision_required",
-    "bond_maturity_date_remediation_required",
+    "bond_matured_outstanding_reconciliation_required",
     "tyw_liability_maturity_date_remediation_required",
+    "krd_bucket_warning_mismatch",
     "duration_exclusion_warning_mismatch",
     "risk_tensor_warning_mismatch",
     "business_owner_approval",
     "owner_decision_intake_blocked",
 ]
+
+
+def test_bond_no_maturity_is_not_a_data_owner_decision_artifact() -> None:
+    artifacts = _data_owner_decision_artifacts(REPORT_DATE)
+    paths = [str(item["artifact"]) for item in artifacts]
+
+    assert paths == [
+        f"docs/portfolio/maturity-remediation/{REPORT_DATE}/tyw_liability_missing_maturity.csv",
+        f"docs/portfolio/maturity-remediation/{REPORT_DATE}/maturity_scoped_exclusion_evidence.json",
+    ]
+    assert _closure_artifacts_for_blocker(
+        "bond_maturity_date_remediation_required",
+        REPORT_DATE,
+    ) == []
+    assert _closure_recheck_commands(
+        "bond_maturity_date_remediation_required",
+        REPORT_DATE,
+    ) == []
+def test_matured_outstanding_does_not_advertise_unimplemented_exception_closure() -> None:
+    blocker = "bond_matured_outstanding_reconciliation_required"
+
+    assert _closure_artifacts_for_blocker(blocker, REPORT_DATE) == []
+    exit_signal = _closure_exit_signal(blocker, REPORT_DATE)
+    assert "exception" not in exit_signal.lower()
+    assert "strict queue exits 0" in exit_signal
+
+
+
+
+def test_closure_recheck_commands_are_report_date_scoped() -> None:
+    report_date = "2026-06-30"
+    blockers = [
+        "risk_tensor_quality_warning",
+        "krd_bucket_warning_mismatch",
+        "risk_tensor_warning_mismatch",
+        "duration_exclusion_warning_mismatch",
+        "krd_contract_decision_required",
+        "bond_matured_outstanding_reconciliation_required",
+        "tyw_liability_maturity_date_remediation_required",
+        "business_owner_approval",
+        "owner_decision_intake_blocked",
+    ]
+
+    for blocker in blockers:
+        commands = _closure_recheck_commands(blocker, report_date)
+        assert commands
+        assert all(f"--report-date {report_date}" in command for command in commands)
+
+
+
+
+def _collect_packet_command_strings(
+    value: object,
+    field_name: str = "",
+    path: str = "packet",
+) -> list[tuple[str, str]]:
+    if isinstance(value, str):
+        return (
+            [(path, value)]
+            if "command" in field_name and value.startswith(("python ", "pytest "))
+            else []
+        )
+    if isinstance(value, dict):
+        commands: list[tuple[str, str]] = []
+        for key, child in value.items():
+            commands.extend(
+                _collect_packet_command_strings(
+                    child,
+                    str(key),
+                    f"{path}.{key}",
+                )
+            )
+        return commands
+    if isinstance(value, list):
+        commands: list[tuple[str, str]] = []
+        for index, child in enumerate(value):
+            commands.extend(
+                _collect_packet_command_strings(
+                    child,
+                    field_name,
+                    f"{path}[{index}]",
+                )
+            )
+        return commands
+    return []
+
+
+def _is_date_independent_meta_command(command: str) -> bool:
+    return command.startswith("pytest ")
 
 
 def _expected_export_current_summary() -> dict[str, object]:
@@ -278,6 +373,67 @@ def test_portfolio_home_owner_action_packet_blocks_unexpected_owner_assigned_blo
     )
 
 
+def test_portfolio_home_owner_action_packet_assigns_krd_bucket_warning_mismatch_to_risk_owner() -> None:
+    packet = build_packet(
+        duckdb_path=DUCKDB,
+        report_date="2026-05-31",
+        template_path=TEMPLATE,
+        limit=1,
+    )
+
+    risk_blockers = packet["owner_packets"]["risk_owner"]["blockers"]
+    assert "krd_bucket_warning_mismatch" in risk_blockers
+    assert "krd_bucket_warning_mismatch" not in packet["assignment_coverage"]["unassigned_blockers"]
+
+
+def test_portfolio_home_owner_action_packet_krd_bucket_warning_mismatch_reuses_warning_consistency_evidence_chain() -> None:
+    report_date = "2026-06-30"
+
+    assert _closure_evidence_sources_for_blocker(
+        "krd_bucket_warning_mismatch",
+        report_date,
+    ) == [
+        {
+            "name": "risk_warning_consistency",
+            "command": (
+                "python scripts/portfolio_home_risk_warning_consistency.py "
+                f"--report-date {report_date} --require-consistent"
+            ),
+            "fields": [
+                "parsed_warnings",
+                "recomputed_warnings",
+                "duration_exclusion_delta_detail",
+                "warning_resolution_matrix",
+                "decision_blockers",
+            ],
+            "boundary": (
+                "Evidence-only warning consistency check; does not approve "
+                "the metric, clean the risk tensor, or close the page."
+            ),
+        }
+    ]
+    assert _closure_recheck_commands(
+        "krd_bucket_warning_mismatch",
+        report_date,
+    ) == [
+        (
+            "python scripts/portfolio_home_risk_warning_consistency.py "
+            f"--report-date {report_date} --require-consistent"
+        ),
+        (
+            "python scripts/portfolio_home_full_closure_evidence.py "
+            f"--report-date {report_date} --require-clean"
+        ),
+    ]
+    assert _closure_exit_signal(
+        "krd_bucket_warning_mismatch",
+        report_date,
+    ) == (
+        "KRD bucket warning evidence matches current formal bonds, and the risk tensor "
+        "is rematerialized or /portfolio remains candidate-only until the warning can "
+        "be cleared."
+    )
+
 def test_portfolio_home_owner_action_packet_assigns_warning_mismatch_blockers() -> None:
     coverage = _assignment_coverage(
         [
@@ -388,7 +544,7 @@ def test_portfolio_home_owner_action_packet_groups_current_blockers_by_owner() -
         "krd_summary_row_count": 3,
         "krd_detail_row_count": 500,
         "krd_owner_decision_fields_blank": True,
-        "bond_missing_maturity_row_count": 114,
+        "bond_missing_maturity_row_count": 0,
         "tyw_liability_missing_maturity_row_count": 1455,
         "maturity_owner_fields_blank": True,
     }
@@ -437,7 +593,7 @@ def test_portfolio_home_owner_action_packet_groups_current_blockers_by_owner() -
                     "name": "risk_warning_consistency",
                     "command": (
                         "python scripts/portfolio_home_risk_warning_consistency.py "
-                        "--require-consistent"
+                        "--report-date 2026-05-31 --require-consistent"
                     ),
                     "fields": [
                         "parsed_warnings",
@@ -454,8 +610,8 @@ def test_portfolio_home_owner_action_packet_groups_current_blockers_by_owner() -
             ],
             "required_fields": [],
             "recheck_commands": [
-                "python scripts/portfolio_home_risk_warning_consistency.py --require-clean",
-                "python scripts/portfolio_home_full_closure_evidence.py --require-clean",
+                "python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-clean",
+                "python scripts/portfolio_home_full_closure_evidence.py --report-date 2026-05-31 --require-clean",
             ],
             "exit_criteria": (
                 "Risk warning clean gate exits 0 and full-closure evidence no longer "
@@ -505,8 +661,8 @@ def test_portfolio_home_owner_action_packet_groups_current_blockers_by_owner() -
                 "verification_rerun_date",
             ],
             "recheck_commands": [
-                "python scripts/portfolio_home_krd_remap_review_queue.py --require-clean",
-                "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready",
+                "python scripts/portfolio_home_krd_remap_review_queue.py --report-date 2026-05-31 --require-clean",
+                "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready --report-date 2026-05-31",
             ],
             "exit_criteria": (
                 "KRD review queue exits 0 under the approved contract and the metric "
@@ -519,45 +675,42 @@ def test_portfolio_home_owner_action_packet_groups_current_blockers_by_owner() -
             ),
         },
         {
-            "blocker": "bond_maturity_date_remediation_required",
+            "blocker": "bond_matured_outstanding_reconciliation_required",
             "owner": "data_owner",
             "current_blocker_present": True,
             "status": "blocked",
             "next_action": (
-                "Remediate missing bond maturity_date values or capture a signed scoped "
-                "exclusion before rematerialization."
+                "Reconcile matured or unparseable non-zero bond positions at source; "
+                "this read-only gate does not accept an exception as closure evidence."
             ),
-            "decision_artifacts": [
-                "docs/portfolio/maturity-remediation/2026-05-31/bond_missing_maturity.csv",
-                "docs/portfolio/maturity-remediation/2026-05-31/maturity_scoped_exclusion_evidence.json",
-            ],
-            "required_fields": [
-                "proposed_maturity_date",
-                "owner_decision",
-                "owner_comment",
-                "data_owner_name",
-                "data_owner_approval_date",
-                "data_owner_approved",
-                "risk_owner_name",
-                "risk_owner_countersign_date",
-                "risk_owner_countersigned",
-                "business_owner_name",
-                "business_owner_acknowledgement_date",
-                "business_owner_acknowledged",
-                "verification_rerun_matched",
-            ],
+            "decision_artifacts": [],
+            "required_fields": [],
             "recheck_commands": [
-                "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
-                "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready",
+                "python scripts/portfolio_home_matured_outstanding_queue.py --report-date 2026-05-31 --require-empty",
+                "python scripts/portfolio_home_full_closure_evidence.py --report-date 2026-05-31 --require-clean",
             ],
             "exit_criteria": (
-                "Bond maturity remediation queue is empty or signed exclusion evidence "
-                "is captured and surfaced as a boundary."
+                "Matured outstanding strict queue exits 0 with no matured or "
+                "unparseable non-zero bond positions."
             ),
             "removes_blocker_when": (
-                "Bond missing-maturity rows are remediated at source or covered by a "
-                "signed scoped exclusion evidence file, and the maturity strict gate exits 0."
+                "Matured or unparseable non-zero bond positions are reconciled at source, "
+                "and the matured-outstanding strict queue exits 0."
             ),
+            "evidence_sources": [
+                {
+                    "name": "matured_outstanding_queue",
+                    "command": (
+                        "python scripts/portfolio_home_matured_outstanding_queue.py "
+                        "--report-date 2026-05-31 --require-empty"
+                    ),
+                    "fields": ["summary", "rows"],
+                    "boundary": (
+                        "Read-only reconciliation evidence; does not change source positions, "
+                        "approve an exception, or close the page."
+                    ),
+                }
+            ],
         },
         {
             "blocker": "tyw_liability_maturity_date_remediation_required",
@@ -588,8 +741,8 @@ def test_portfolio_home_owner_action_packet_groups_current_blockers_by_owner() -
                 "verification_rerun_matched",
             ],
             "recheck_commands": [
-                "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
-                "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready",
+                "python scripts/portfolio_home_maturity_remediation_queue.py --report-date 2026-05-31 --require-empty",
+                "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready --report-date 2026-05-31",
             ],
             "exit_criteria": (
                 "TYW liability maturity remediation queue is empty or signed exclusion "
@@ -599,6 +752,53 @@ def test_portfolio_home_owner_action_packet_groups_current_blockers_by_owner() -
                 "TYW liability missing-maturity rows are remediated at source or covered "
                 "by a signed scoped exclusion evidence file, and the maturity strict gate exits 0."
             ),
+        },
+        {
+            "blocker": "krd_bucket_warning_mismatch",
+            "owner": "risk_owner",
+            "current_blocker_present": True,
+            "status": "blocked",
+            "next_action": (
+                "Review the KRD bucket warning evidence, then rematerialize the risk tensor "
+                "if the parsed warning is stale or keep /portfolio candidate-only until the "
+                "warning matches current formal bonds."
+            ),
+            "decision_artifacts": [],
+            "required_fields": [],
+            "recheck_commands": [
+                "python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-consistent",
+                "python scripts/portfolio_home_full_closure_evidence.py --report-date 2026-05-31 --require-clean",
+            ],
+            "exit_criteria": (
+                "Risk warning consistency confirms the KRD bucket warning matches current "
+                "formal bonds, and rematerialization is completed or /portfolio remains "
+                "candidate-only when the warning cannot yet be cleared."
+            ),
+            "removes_blocker_when": (
+                "KRD bucket warning evidence matches current formal bonds, and the risk tensor "
+                "is rematerialized or /portfolio remains candidate-only until the warning can "
+                "be cleared."
+            ),
+            "evidence_sources": [
+                {
+                    "name": "risk_warning_consistency",
+                    "command": (
+                        "python scripts/portfolio_home_risk_warning_consistency.py "
+                        "--report-date 2026-05-31 --require-consistent"
+                    ),
+                    "fields": [
+                        "parsed_warnings",
+                        "recomputed_warnings",
+                        "duration_exclusion_delta_detail",
+                        "warning_resolution_matrix",
+                        "decision_blockers",
+                    ],
+                    "boundary": (
+                        "Evidence-only warning consistency check; does not approve "
+                        "the metric, clean the risk tensor, or close the page."
+                    ),
+                },
+            ],
         },
         {
             "blocker": "duration_exclusion_warning_mismatch",
@@ -612,8 +812,8 @@ def test_portfolio_home_owner_action_packet_groups_current_blockers_by_owner() -
             "decision_artifacts": [],
             "required_fields": [],
             "recheck_commands": [
-                "python scripts/portfolio_home_risk_warning_consistency.py --require-consistent",
-                "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
+                "python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-consistent",
+                "python scripts/portfolio_home_maturity_remediation_queue.py --report-date 2026-05-31 --require-empty",
             ],
             "exit_criteria": (
                 "Risk warning consistency reports matching parsed and recomputed "
@@ -628,7 +828,7 @@ def test_portfolio_home_owner_action_packet_groups_current_blockers_by_owner() -
                     "name": "risk_warning_consistency",
                     "command": (
                         "python scripts/portfolio_home_risk_warning_consistency.py "
-                        "--require-consistent"
+                        "--report-date 2026-05-31 --require-consistent"
                     ),
                     "fields": [
                         "parsed_warnings",
@@ -656,8 +856,8 @@ def test_portfolio_home_owner_action_packet_groups_current_blockers_by_owner() -
             "decision_artifacts": [],
             "required_fields": [],
             "recheck_commands": [
-                "python scripts/portfolio_home_risk_warning_consistency.py --require-clean",
-                "python scripts/portfolio_home_full_closure_evidence.py --require-clean",
+                "python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-clean",
+                "python scripts/portfolio_home_full_closure_evidence.py --report-date 2026-05-31 --require-clean",
             ],
             "exit_criteria": (
                 "Risk warning clean gate exits 0 with no risk tensor warning mismatch."
@@ -671,7 +871,7 @@ def test_portfolio_home_owner_action_packet_groups_current_blockers_by_owner() -
                     "name": "risk_warning_consistency",
                     "command": (
                         "python scripts/portfolio_home_risk_warning_consistency.py "
-                        "--require-consistent"
+                        "--report-date 2026-05-31 --require-consistent"
                     ),
                     "fields": [
                         "parsed_warnings",
@@ -713,9 +913,9 @@ def test_portfolio_home_owner_action_packet_groups_current_blockers_by_owner() -
                 "evidence_scope",
             ],
             "recheck_commands": [
-                "python scripts/check_portfolio_home_business_owner_approval.py --require-captured",
-                "python scripts/portfolio_home_business_owner_approval_packet.py --limit 3 --require-ready",
-                "python scripts/portfolio_home_closure_scorecard.py --limit 3 --require-full-score",
+                "python scripts/check_portfolio_home_business_owner_approval.py --report-date 2026-05-31 --require-captured",
+                "python scripts/portfolio_home_business_owner_approval_packet.py --report-date 2026-05-31 --limit 3 --require-ready",
+                "python scripts/portfolio_home_closure_scorecard.py --report-date 2026-05-31 --limit 3 --require-full-score",
             ],
             "exit_criteria": (
                 "Approval checker exits 0 and evidence_scope.approves_metric_or_page is true."
@@ -740,7 +940,6 @@ def test_portfolio_home_owner_action_packet_groups_current_blockers_by_owner() -
                 "docs/portfolio/krd-contract-decision/2026-05-31/krd_remap_detail.csv",
                 "docs/portfolio/krd-contract-decision/2026-05-31/nearest_bucket_approval_evidence.json",
                 "docs/portfolio/krd-contract-decision/2026-05-31/exact_bucket_schema_evidence.json",
-                "docs/portfolio/maturity-remediation/2026-05-31/bond_missing_maturity.csv",
                 "docs/portfolio/maturity-remediation/2026-05-31/tyw_liability_missing_maturity.csv",
                 "docs/portfolio/maturity-remediation/2026-05-31/maturity_scoped_exclusion_evidence.json",
                 "docs/portfolio/portfolio-home-business-owner-approval-template.md",
@@ -786,7 +985,7 @@ def test_portfolio_home_owner_action_packet_groups_current_blockers_by_owner() -
                 "evidence_scope",
             ],
             "recheck_commands": [
-                "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready",
+                "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready --report-date 2026-05-31",
             ],
             "exit_criteria": "Owner decision intake strict gate exits 0 and reports intake_ready=true.",
             "removes_blocker_when": (
@@ -804,6 +1003,7 @@ def test_portfolio_home_owner_action_packet_groups_current_blockers_by_owner() -
     assert risk_owner["status"] == "blocked"
     assert risk_owner["blockers"] == [
         "risk_tensor_quality_warning",
+        "krd_bucket_warning_mismatch",
         "risk_tensor_warning_mismatch",
         "krd_contract_decision_required",
     ]
@@ -820,7 +1020,7 @@ def test_portfolio_home_owner_action_packet_groups_current_blockers_by_owner() -
         for key in _expected_current_duration_exclusion_delta_detail()
     } == _expected_current_duration_exclusion_delta_detail()
     assert risk_owner_delta["top_recomputed_rows_by_market_value"][0] == {
-        "exclusion_reason": "missing_maturity",
+        "exclusion_reason": "no_maturity",
         "instrument_code": "SA0106070101",
         "instrument_name": "010607",
         "portfolio_name": "FIOA",
@@ -836,6 +1036,7 @@ def test_portfolio_home_owner_action_packet_groups_current_blockers_by_owner() -
     assert risk_owner_preview["preview_basis"] == "current_formal_facts_read_only"
     assert risk_owner_preview["writes_database"] is False
     assert risk_owner_preview["would_clear_consistency_blockers"] == [
+        "krd_bucket_warning_mismatch",
         "duration_exclusion_warning_mismatch",
     ]
     assert risk_owner_preview["preview_decision_status"] == "blocked"
@@ -926,11 +1127,11 @@ def test_portfolio_home_owner_action_packet_groups_current_blockers_by_owner() -
     data_owner = owner_packets["data_owner"]
     assert data_owner["status"] == "blocked"
     assert data_owner["blockers"] == [
-        "bond_maturity_date_remediation_required",
         "tyw_liability_maturity_date_remediation_required",
+        "bond_matured_outstanding_reconciliation_required",
         "duration_exclusion_warning_mismatch",
     ]
-    assert data_owner["bond_missing_maturity_summary"]["missing_maturity_rows"] == 114
+    assert data_owner["bond_missing_maturity_summary"]["missing_maturity_rows"] == 0
     data_owner_delta = data_owner["duration_exclusion_delta_detail"]
     assert {
         key: data_owner_delta[key]
@@ -940,7 +1141,7 @@ def test_portfolio_home_owner_action_packet_groups_current_blockers_by_owner() -
     assert data_owner_preview == risk_owner_preview
     assert data_owner["tyw_liability_missing_maturity_summary"]["missing_maturity_rows"] == 1455
     assert data_owner["dependency_consistency_status"] == "consistent"
-    assert data_owner["csv_check_summary"]["bond_missing_maturity_row_count"] == 114
+    assert data_owner["csv_check_summary"]["bond_missing_maturity_row_count"] == 0
     assert data_owner["csv_check_summary"]["tyw_liability_missing_maturity_row_count"] == 1455
     assert data_owner["csv_check_summary"]["maturity_owner_fields_blank"] is True
     assert data_owner["generated_owner_fields_boundaries"] == {
@@ -948,20 +1149,6 @@ def test_portfolio_home_owner_action_packet_groups_current_blockers_by_owner() -
         "maturity_remediation_manifest": True,
     }
     assert data_owner["decision_intake_artifacts"] == [
-        {
-            "artifact": "docs/portfolio/maturity-remediation/2026-05-31/bond_missing_maturity.csv",
-            "required_fields": ["proposed_maturity_date", "owner_decision", "owner_comment"],
-            "allowed_decisions": [
-                "remediate_source",
-                "approve_scoped_exclusion",
-                "reject",
-            ],
-            "note_required_for": [
-                "remediate_source",
-                "approve_scoped_exclusion",
-                "reject",
-            ],
-        },
         {
             "artifact": "docs/portfolio/maturity-remediation/2026-05-31/tyw_liability_missing_maturity.csv",
             "required_fields": ["proposed_maturity_date", "owner_decision", "owner_comment"],
@@ -1006,7 +1193,7 @@ def test_portfolio_home_owner_action_packet_groups_current_blockers_by_owner() -
         "valid": True,
         "blockers": [],
     }
-    assert data_owner["bond_missing_maturity_rows"][0]["instrument_code"] == "SA0106070101"
+    assert data_owner["bond_missing_maturity_rows"] == []
 
     business_owner = owner_packets["business_owner"]
     assert business_owner["status"] == "blocked"
@@ -1060,7 +1247,7 @@ def test_portfolio_home_owner_action_packet_groups_current_blockers_by_owner() -
             "krd_summary_row_count": 3,
             "krd_detail_row_count": 500,
             "krd_owner_decision_fields_blank": True,
-            "bond_missing_maturity_row_count": 114,
+            "bond_missing_maturity_row_count": 0,
             "tyw_liability_missing_maturity_row_count": 1455,
             "maturity_owner_fields_blank": True,
         },
@@ -1102,8 +1289,8 @@ def test_portfolio_home_owner_action_packet_groups_current_blockers_by_owner() -
                 "detail_missing_decision_rows": 500,
             },
             "maturity": {
-                "missing_decision_rows": 1569,
-                "bond_missing_decision_rows": 114,
+                "missing_decision_rows": 1455,
+                "bond_missing_decision_rows": 0,
                 "tyw_liability_missing_decision_rows": 1455,
             },
         },
@@ -1185,8 +1372,8 @@ def test_portfolio_home_owner_action_packet_groups_current_blockers_by_owner() -
                 "detail_missing_decision_rows": 500,
             },
             "maturity": {
-                "missing_decision_rows": 1569,
-                "bond_missing_decision_rows": 114,
+                "missing_decision_rows": 1455,
+                "bond_missing_decision_rows": 0,
                 "tyw_liability_missing_decision_rows": 1455,
             },
         },
@@ -1222,7 +1409,8 @@ def test_portfolio_home_owner_action_packet_groups_current_blockers_by_owner() -
     assert data_owner["owner_decision_intake_alignment_status"] == "consistent"
     assert business_owner["owner_decision_intake_alignment_status"] == "consistent"
     assert packet["owner_decision_intake_command"] == (
-        "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready"
+        "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready "
+        "--report-date 2026-05-31"
     )
     assert packet["strict_gate_expectations"] == {
         "current_state": "blocked",
@@ -1238,21 +1426,21 @@ def test_portfolio_home_owner_action_packet_groups_current_blockers_by_owner() -
         "commands": [
             {
                 "name": "owner_decision_intake_check_strict",
-                "command": "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready",
+                "command": "python scripts/portfolio_home_owner_decision_intake_check.py --report-date 2026-05-31 --limit 3 --require-ready",
                 "current_expected_exit": "exit_nonzero",
                 "expected_when_blocked": "exit_nonzero",
                 "expected_when_full_score": "exit_0",
             },
             {
                 "name": "business_owner_approval_packet_strict",
-                "command": "python scripts/portfolio_home_business_owner_approval_packet.py --limit 3 --require-ready",
+                "command": "python scripts/portfolio_home_business_owner_approval_packet.py --report-date 2026-05-31 --limit 3 --require-ready",
                 "current_expected_exit": "exit_nonzero",
                 "expected_when_blocked": "exit_nonzero",
                 "expected_when_full_score": "exit_0",
             },
             {
                 "name": "scorecard_strict",
-                "command": "python scripts/portfolio_home_closure_scorecard.py --limit 3 --require-full-score",
+                "command": "python scripts/portfolio_home_closure_scorecard.py --report-date 2026-05-31 --limit 3 --require-full-score",
                 "current_expected_exit": "exit_nonzero",
                 "expected_when_blocked": "exit_nonzero",
                 "expected_when_full_score": "exit_0",
@@ -1301,6 +1489,7 @@ def test_portfolio_home_owner_action_packet_groups_current_blockers_by_owner() -
             "scorecard_full_score_not_ready",
             "scorecard_score_status_not_ready",
             "owner_decision_intake_not_ready",
+            "rerun_evidence_not_valid",
             "risk_warning_not_clean",
         ],
     }
@@ -1633,7 +1822,7 @@ def test_portfolio_home_owner_action_packet_uses_supplied_docs_root_for_intake(
             "krd_summary_row_count": 3,
             "krd_detail_row_count": 500,
             "krd_owner_decision_fields_blank": False,
-            "bond_missing_maturity_row_count": 114,
+            "bond_missing_maturity_row_count": 0,
             "tyw_liability_missing_maturity_row_count": 1455,
             "maturity_owner_fields_blank": False,
         },
@@ -1665,7 +1854,7 @@ def test_portfolio_home_owner_action_packet_uses_supplied_docs_root_for_intake(
         "owner_decision_blockers": [],
         "decision_counts": {
             "krd": {"approve_nearest_bucket": 503},
-            "maturity": {"approve_scoped_exclusion": 1569},
+            "maturity": {"approve_scoped_exclusion": 1455},
         },
         "decision_gap_counts": {
             "krd": {
@@ -1784,13 +1973,14 @@ def test_portfolio_home_owner_action_packet_assigns_rejected_owner_decisions(
     ]
     assert packet["owner_packets"]["risk_owner"]["blockers"] == [
         "risk_tensor_quality_warning",
+        "krd_bucket_warning_mismatch",
         "risk_tensor_warning_mismatch",
         "krd_contract_decision_required",
         "krd_owner_decision_rejected",
     ]
     assert packet["owner_packets"]["data_owner"]["blockers"] == [
-        "bond_maturity_date_remediation_required",
         "tyw_liability_maturity_date_remediation_required",
+        "bond_matured_outstanding_reconciliation_required",
         "duration_exclusion_warning_mismatch",
         "maturity_owner_decision_rejected",
     ]
@@ -1940,7 +2130,7 @@ def test_portfolio_home_owner_action_packet_surfaces_maturity_comment_gap_counts
         "krd": {},
         "maturity": {
             "owner_decision": "approve_scoped_exclusion",
-            "missing_comment_rows": 1569,
+            "missing_comment_rows": 1455,
         },
     }
 
@@ -2069,21 +2259,21 @@ def test_portfolio_home_owner_action_packet_strict_gate_expectations_follow_acti
     assert expectations["commands"] == [
         {
             "name": "owner_decision_intake_check_strict",
-            "command": "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready",
+            "command": "python scripts/portfolio_home_owner_decision_intake_check.py --report-date 2026-05-31 --limit 3 --require-ready",
             "current_expected_exit": "exit_0",
             "expected_when_blocked": "exit_nonzero",
             "expected_when_full_score": "exit_0",
         },
         {
             "name": "business_owner_approval_packet_strict",
-            "command": "python scripts/portfolio_home_business_owner_approval_packet.py --limit 3 --require-ready",
+            "command": "python scripts/portfolio_home_business_owner_approval_packet.py --report-date 2026-05-31 --limit 3 --require-ready",
             "current_expected_exit": "exit_nonzero",
             "expected_when_blocked": "exit_nonzero",
             "expected_when_full_score": "exit_0",
         },
         {
             "name": "scorecard_strict",
-            "command": "python scripts/portfolio_home_closure_scorecard.py --limit 3 --require-full-score",
+            "command": "python scripts/portfolio_home_closure_scorecard.py --report-date 2026-05-31 --limit 3 --require-full-score",
             "current_expected_exit": "exit_0",
             "expected_when_blocked": "exit_nonzero",
             "expected_when_full_score": "exit_0",
@@ -2117,3 +2307,24 @@ def test_portfolio_home_owner_action_packet_uses_report_date_for_approval_status
     business_owner_packet = packet["owner_packets"]["business_owner"]
     assert business_owner_packet["business_owner_approval_boundary"] == approval_boundary
     assert business_owner_packet["approval_action_items"][0]["blocker"] == "approval_date"
+    packet_commands = _collect_packet_command_strings(packet)
+    assert packet_commands
+    unscoped_commands = [
+        (path, command)
+        for path, command in packet_commands
+        if "--report-date 2026-06-06" not in command
+        and not _is_date_independent_meta_command(command)
+    ]
+    assert unscoped_commands == []
+    dependency_commands = [
+        item["command"] for item in packet["evidence_dependencies"] if "command" in item
+    ]
+    assert len(dependency_commands) == 8
+    assert all("--report-date 2026-06-06" in command for command in dependency_commands)
+    activation_commands = business_owner_packet["activation_guard"]["required_commands"]
+    assert len(activation_commands) == 10
+    assert all("--report-date 2026-06-06" in command for command in activation_commands)
+    assert packet["owner_packets"]["risk_owner"]["risk_warning_evidence_command"] == (
+        "python scripts/portfolio_home_risk_warning_consistency.py "
+        "--report-date 2026-06-06 --require-clean"
+    )

@@ -66,11 +66,21 @@ def _str_value(payload: dict[str, object], key: str) -> str:
 
 
 def _export_summary(queue: dict[str, object]) -> dict[str, object]:
+    bond_no_maturity_summary = queue["bond_no_maturity_summary"]
     bond_summary = queue["bond_missing_maturity_summary"]
     tyw_summary = queue["tyw_liability_missing_maturity_summary"]
+    assert isinstance(bond_no_maturity_summary, dict)
     assert isinstance(bond_summary, dict)
     assert isinstance(tyw_summary, dict)
     return {
+        "bond_no_maturity_rows": _int_value(
+            bond_no_maturity_summary,
+            "no_maturity_rows",
+        ),
+        "bond_no_maturity_market_value": _str_value(
+            bond_no_maturity_summary,
+            "no_maturity_market_value",
+        ),
         "bond_missing_maturity_rows": _int_value(bond_summary, "missing_maturity_rows"),
         "tyw_liability_missing_maturity_rows": _int_value(tyw_summary, "missing_maturity_rows"),
         "bond_missing_maturity_market_value": _str_value(
@@ -84,16 +94,19 @@ def _export_summary(queue: dict[str, object]) -> dict[str, object]:
     }
 
 
-def _acceptance_criteria() -> dict[str, object]:
+def _acceptance_criteria(report_date: str) -> dict[str, object]:
     return {
-        "strict_gate_command": "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
+        "strict_gate_command": (
+            "python scripts/portfolio_home_maturity_remediation_queue.py "
+            f"--report-date {report_date} --require-empty"
+        ),
         "requires_source_remediation_or_signed_exclusion": True,
+        "owner_decision_scope": "TYW liability missing-maturity rows only",
+        "bond_no_maturity_requires_owner_decision": False,
         "no_frontend_or_inferred_fill": True,
         "generated_owner_fields_must_be_blank": True,
         "rerun_required": [
-            "formal bond analytics materialization",
             "formal TYW balance materialization",
-            "risk tensor materialization",
             "portfolio full-closure evidence",
         ],
     }
@@ -127,6 +140,21 @@ def _read_csv_rows(path: Path) -> tuple[list[str] | None, list[dict[str, str]] |
     with path.open("r", encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
         return reader.fieldnames, list(reader)
+
+
+def _nonblank_owner_input_paths(paths: list[Path]) -> list[Path]:
+    owner_fields = ("proposed_maturity_date", "owner_decision", "owner_comment")
+    populated_paths: list[Path] = []
+    for path in paths:
+        _, rows = _read_csv_rows(path)
+        if rows is None:
+            continue
+        if any(
+            any((row.get(field) or "").strip() for field in owner_fields)
+            for row in rows
+        ):
+            populated_paths.append(path)
+    return populated_paths
 
 
 def _generated_rows(
@@ -180,20 +208,26 @@ def _owner_summary_markdown(packet: dict[str, object]) -> str:
             f"- Page: `{packet.get('page_slug')}` (`{packet.get('page_id')}`)",
             f"- Report date: `{packet.get('report_date')}`",
             f"- Export status: `{packet.get('export_status')}`",
-            "- Required fields: `proposed_maturity_date`, `owner_decision`, `owner_comment`",
+            "- Required TYW fields: `proposed_maturity_date`, `owner_decision`, `owner_comment`",
             "- Allowed decisions: `remediate_source`, `approve_scoped_exclusion`, `reject`",
             f"- Strict gate: `{criteria.get('strict_gate_command')}`",
-            f"- Bond missing maturity rows: `{summary.get('bond_missing_maturity_rows')}`",
+            f"- Bond no-maturity rows: `{summary.get('bond_no_maturity_rows')}`",
             (
-                "- Bond missing maturity market value: "
-                f"`{summary.get('bond_missing_maturity_market_value')}`"
+                "- Bond no-maturity market value: "
+                f"`{summary.get('bond_no_maturity_market_value')}`"
+            ),
+            (
+                "- Bond remediation rows (compatibility): "
+                f"`{summary.get('bond_missing_maturity_rows')}`"
             ),
             f"- TYW liability missing maturity rows: `{summary.get('tyw_liability_missing_maturity_rows')}`",
             (
                 "- TYW liability missing maturity principal: "
                 f"`{summary.get('tyw_liability_missing_maturity_principal')}`"
             ),
-            "- Decision queue: `bond_missing_maturity.csv`, `tyw_liability_missing_maturity.csv`",
+            "- Decision queue: `tyw_liability_missing_maturity.csv` only",
+            "- Compatibility file: `bond_missing_maturity.csv` is header-only; no bond owner decision is required.",
+            "- Bond ledger boundary: null `maturity_date` means no maturity date and requires no owner-supplied date.",
             (
                 "- Generated owner fields must be blank: "
                 f"`{str(criteria.get('generated_owner_fields_must_be_blank')).lower()}`"
@@ -202,22 +236,35 @@ def _owner_summary_markdown(packet: dict[str, object]) -> str:
             "",
             "## Owner Instructions",
             "",
-            "- Fill `owner_decision` on every bond and TYW liability row.",
-            "- Fill `owner_comment` on every bond and TYW liability row for every decision value.",
-            "- Use `remediate_source` only when the source maturity date will be fixed and rematerialized.",
-            "- Use `approve_scoped_exclusion` only with a signed exclusion rationale in `owner_comment`.",
-            "- Do not use frontend-inferred dates or synthetic maturity dates as remediation evidence.",
-            "- Do not edit `manifest.json`; rerun the export after owner decisions are captured.",
+            "- Fill `owner_decision` on every TYW liability row.",
+            "- Fill `owner_comment` on every TYW liability row for every decision value.",
+            "- Use `remediate_source` only when the TYW source maturity date will be fixed and rematerialized.",
+            "- Use `approve_scoped_exclusion` only with a signed TYW exclusion rationale in `owner_comment`.",
+            "- Do not use frontend-inferred dates or synthetic TYW maturity dates as remediation evidence.",
+            "- After owner decisions are captured, do not rerun the normal export; use `--check-current` before owner-decision intake.",
             "",
             "## Post-Decision Verification",
             "",
-            "- `python scripts/portfolio_home_maturity_remediation_queue.py --require-empty`",
-            "- `python scripts/portfolio_home_dependency_consistency_check.py --limit 3 --require-consistent`",
-            "- `python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready`",
-            "- `python scripts/portfolio_home_closure_scorecard.py --limit 3 --require-full-score`",
+            (
+                "- `python scripts/portfolio_home_maturity_remediation_export.py "
+                f"--report-date {packet.get('report_date')} --output-dir docs/portfolio/maturity-remediation --check-current`"
+            ),
+            f"- `{criteria.get('strict_gate_command')}`",
+            (
+                "- `python scripts/portfolio_home_dependency_consistency_check.py "
+                f"--report-date {packet.get('report_date')} --limit 3 --require-consistent`"
+            ),
+            (
+                "- `python scripts/portfolio_home_owner_decision_intake_check.py "
+                f"--report-date {packet.get('report_date')} --limit 3 --require-ready`"
+            ),
+            (
+                "- `python scripts/portfolio_home_closure_scorecard.py "
+                f"--report-date {packet.get('report_date')} --limit 3 --require-full-score`"
+            ),
             "",
             (
-                "A filled CSV is still not approval until source remediation or signed exclusion "
+                "A filled TYW CSV is still not approval until source remediation or signed exclusion "
                 "evidence is captured and the business-owner approval template is completed."
             ),
             "",
@@ -244,7 +291,7 @@ def build_export_packet(
     summary = _export_summary(queue)
     blockers = queue.get("remediation_blockers", [])
     assert isinstance(blockers, list)
-    acceptance = _acceptance_criteria()
+    acceptance = _acceptance_criteria(report_date)
     packet: dict[str, object] = {
         "packet_kind": "portfolio_home_maturity_remediation_export",
         "page_id": queue["page_id"],
@@ -273,6 +320,14 @@ def build_export_packet(
         "owner_summary_md": str(owner_summary_md),
     }
     if write_files:
+        owner_input_paths = _nonblank_owner_input_paths([bond_csv, tyw_csv])
+        if owner_input_paths:
+            paths = ", ".join(str(path) for path in owner_input_paths)
+            raise ValueError(
+                "Refusing to overwrite maturity remediation owner input: "
+                f"{paths}. Use --check-current or choose a new output directory."
+            )
+
         _write_csv(
             bond_csv,
             BOND_FIELDS,

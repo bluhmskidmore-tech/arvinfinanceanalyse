@@ -74,7 +74,10 @@ def test_portfolio_home_blocker_closure_matrix_check_reports_current_matrix() ->
     assert risk_warning_row["evidence_sources"] == [
         {
             "name": "risk_warning_consistency",
-            "command": "python scripts/portfolio_home_risk_warning_consistency.py --require-consistent",
+            "command": (
+                "python scripts/portfolio_home_risk_warning_consistency.py "
+                "--report-date 2026-05-31 --require-consistent"
+            ),
             "fields": [
                     "parsed_warnings",
                     "recomputed_warnings",
@@ -92,6 +95,8 @@ def test_portfolio_home_blocker_closure_matrix_check_reports_current_matrix() ->
 
     warning_evidence_blockers = {
         "risk_tensor_quality_warning",
+        "bond_matured_outstanding_reconciliation_required",
+        "krd_bucket_warning_mismatch",
         "duration_exclusion_warning_mismatch",
         "risk_tensor_warning_mismatch",
     }

@@ -43,7 +43,7 @@ def test_portfolio_home_dependency_consistency_reports_current_clean_export_pack
         "krd_summary_row_count": 3,
         "krd_detail_row_count": 500,
         "krd_owner_decision_fields_blank": True,
-        "bond_missing_maturity_row_count": 114,
+        "bond_missing_maturity_row_count": 0,
         "tyw_liability_missing_maturity_row_count": 1455,
         "maturity_owner_fields_blank": True,
     }
