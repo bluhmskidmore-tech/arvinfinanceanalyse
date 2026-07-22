@@ -53,6 +53,11 @@ _REQUIRED_BOND_NUMERIC_FIELDS = (
 _OPTIONAL_BOND_NUMERIC_FIELDS = ("face_value",)
 _REQUIRED_LIABILITY_NUMERIC_FIELDS = ("principal_amount", "funding_cost_rate")
 
+_DISCOUNT_NCD_BOND_TYPE = "\u540c\u4e1a\u5b58\u5355"
+_NCD_ZERO_COUPON_RULE_ID = "ncd_zero_coupon_coupon_rate_v1"
+_ZERO = Decimal("0")
+_ONE = Decimal("1")
+
 
 def _build_source_version(
     upstream_source_version: str,
@@ -135,6 +140,65 @@ def _numeric_input_violations(
     return violations
 
 
+def _finite_decimal_or_none(value: object) -> Decimal | None:
+    try:
+        parsed = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+    return parsed if parsed.is_finite() else None
+
+
+def _normalized_discount_ncd_coupon_market_value(
+    row: dict[str, object],
+    *,
+    report_day: date,
+) -> Decimal | None:
+    coupon_rate = row.get("coupon_rate")
+    if coupon_rate is not None and str(coupon_rate).strip() != "":
+        return None
+    if str(row.get("bond_type") or "").strip() != _DISCOUNT_NCD_BOND_TYPE:
+        return None
+    maturity_text = str(row.get("maturity_date") or "").strip()
+    try:
+        maturity_day = date.fromisoformat(maturity_text)
+    except ValueError:
+        return None
+    if maturity_day <= report_day:
+        return None
+    ytm = _finite_decimal_or_none(row.get("ytm"))
+    accrued_interest = _finite_decimal_or_none(row.get("accrued_interest"))
+    face_value = _finite_decimal_or_none(row.get("face_value"))
+    market_value = _finite_decimal_or_none(row.get("market_value"))
+    if ytm is None or ytm <= _ZERO or ytm > _ONE:
+        return None
+    if accrued_interest != _ZERO:
+        return None
+    if face_value is None or face_value <= _ZERO:
+        return None
+    if market_value is None or market_value <= _ZERO or market_value >= face_value:
+        return None
+    return market_value
+
+
+def _normalize_discount_ncd_coupon_rows(
+    rows: list[dict[str, object]],
+    *,
+    report_day: date,
+) -> tuple[list[dict[str, object]], int, Decimal]:
+    normalized_rows: list[dict[str, object]] = []
+    normalized_market_value = _ZERO
+    normalized_count = 0
+    for row in rows:
+        normalized_row = dict(row)
+        coupon_market_value = _normalized_discount_ncd_coupon_market_value(row, report_day=report_day)
+        if coupon_market_value is not None:
+            normalized_row["coupon_rate"] = _ZERO
+            normalized_count += 1
+            normalized_market_value += coupon_market_value
+        normalized_rows.append(normalized_row)
+    return normalized_rows, normalized_count, normalized_market_value
+
+
 def _execute_risk_tensor_materialization(
     *,
     report_date: str,
@@ -168,7 +232,12 @@ def _execute_risk_tensor_materialization(
     upstream_lineage = normalized_upstream_lineage
 
     bond_repo = BondAnalyticsRepository(str(duckdb_file))
-    rows = bond_repo.fetch_bond_analytics_rows(report_date=report_date)
+    report_day = date.fromisoformat(report_date)
+    raw_rows = bond_repo.fetch_bond_analytics_rows(report_date=report_date)
+    rows, coupon_normalized_row_count, coupon_normalized_market_value = _normalize_discount_ncd_coupon_rows(
+        raw_rows,
+        report_day=report_day,
+    )
     liability_rows = _load_liability_rows(
         duckdb_file=duckdb_file,
         report_date=report_date,
@@ -217,7 +286,7 @@ def _execute_risk_tensor_materialization(
 
     tensor = compute_portfolio_risk_tensor(
         rows,
-        date.fromisoformat(report_date),
+        report_day,
         liability_rows=liability_rows,
     )
     liability_source_version = "__".join(
@@ -268,6 +337,9 @@ def _execute_risk_tensor_materialization(
             "bond_count": tensor.bond_count,
             "quality_flag": tensor.quality_flag,
             "upstream_cache_key": BOND_ANALYTICS_CACHE_KEY,
+            "coupon_normalization_rule_id": _NCD_ZERO_COUPON_RULE_ID,
+            "coupon_normalized_row_count": coupon_normalized_row_count,
+            "coupon_normalized_market_value": str(coupon_normalized_market_value),
         },
     )
 

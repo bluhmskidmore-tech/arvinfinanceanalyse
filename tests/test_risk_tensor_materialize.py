@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 import json
 from decimal import Decimal
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -9,6 +12,7 @@ from tests.helpers import load_module
 from tests.test_bond_analytics_materialize_flow import (
     REPORT_DATE,
     _seed_bond_snapshot_rows,
+    seed_yield_curves_for_bond_analytics_tests,
 )
 
 
@@ -26,6 +30,7 @@ def _configure_upstream(tmp_path):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     _seed_bond_snapshot_rows(str(duckdb_path))
+    seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
     bond_task_mod = load_module(
         "backend.app.tasks.bond_analytics_materialize",
         "backend/app/tasks/bond_analytics_materialize.py",
@@ -42,6 +47,7 @@ def _configure_upstream_with_semiannual_coupon(tmp_path):
     duckdb_path = tmp_path / "moss.semiannual.duckdb"
     governance_dir = tmp_path / "governance.semiannual"
     _seed_bond_snapshot_rows(str(duckdb_path))
+    seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
 
     import duckdb
 
@@ -66,9 +72,77 @@ def _configure_upstream_with_semiannual_coupon(tmp_path):
     bond_task_mod.materialize_bond_analytics_facts.fn(
         report_date=REPORT_DATE,
         duckdb_path=str(duckdb_path),
+
         governance_dir=str(governance_dir),
     )
     return duckdb_path, governance_dir, bond_task_mod
+
+
+def _base_discount_ncd_row() -> dict[str, object]:
+    return {
+        "instrument_code": "NCD-001",
+        "bond_type": "同业存单",
+        "maturity_date": "2026-06-30",
+        "market_value": Decimal("98.5"),
+        "face_value": Decimal("100"),
+        "coupon_rate": None,
+        "ytm": Decimal("0.018"),
+        "accrued_interest": Decimal("0"),
+        "modified_duration": Decimal("0.25"),
+        "convexity": Decimal("0.01"),
+        "dv01": Decimal("0.02"),
+        "spread_dv01": Decimal("0.01"),
+    }
+
+
+def _execute_risk_tensor_with_rows(monkeypatch, rows):
+    task_mod = load_module(
+        "backend.app.tasks.risk_tensor_materialize",
+        "backend/app/tasks/risk_tensor_materialize.py",
+    )
+    captured = {
+        "compute_rows": None,
+        "replace_calls": [],
+    }
+
+    monkeypatch.setattr(
+        task_mod,
+        "load_latest_bond_analytics_lineage",
+        lambda **_kwargs: {
+            "source_version": "sv_bond_snap_1",
+            "rule_version": "rv_bond_analytics_formal_materialize_v1",
+            "cache_version": "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v1",
+        },
+    )
+    monkeypatch.setattr(
+        task_mod.BondAnalyticsRepository,
+        "fetch_bond_analytics_rows",
+        lambda self, *, report_date: rows,
+    )
+    monkeypatch.setattr(task_mod, "_load_liability_rows", lambda **_kwargs: [])
+    monkeypatch.setattr(task_mod, "repository_task_write_scope", lambda *_args, **_kwargs: nullcontext())
+
+    def _capture_compute(rows_arg, report_date_arg, *, liability_rows):
+        captured["compute_rows"] = rows_arg
+        assert report_date_arg.isoformat() == REPORT_DATE
+        assert liability_rows == []
+        return SimpleNamespace(
+            bond_count=len(rows_arg),
+            quality_flag="ok",
+        )
+
+    def _capture_replace(self, **kwargs):
+        captured["replace_calls"].append(kwargs)
+
+    monkeypatch.setattr(task_mod, "compute_portfolio_risk_tensor", _capture_compute)
+    monkeypatch.setattr(task_mod.RiskTensorRepository, "replace_risk_tensor_row", _capture_replace)
+
+    result = task_mod._execute_risk_tensor_materialization(
+        report_date=REPORT_DATE,
+        duckdb_file=Path("ignored.duckdb"),
+        governance_dir="ignored-governance",
+    )
+    return task_mod, result, captured
 
 
 def test_risk_tensor_materialize_writes_fact_and_governance_records(tmp_path):
@@ -254,7 +328,112 @@ def test_risk_tensor_materialize_fails_closed_on_malformed_numeric_inputs(tmp_pa
             report_date=REPORT_DATE,
             duckdb_path=str(duckdb_path),
             governance_dir=str(governance_dir),
+
         )
+
+
+def test_risk_tensor_materialize_normalizes_eligible_discount_ncd_coupon_locally(monkeypatch):
+    source_row = _base_discount_ncd_row()
+
+    task_mod, result, captured = _execute_risk_tensor_with_rows(monkeypatch, [source_row])
+
+    assert source_row["coupon_rate"] is None
+    assert captured["compute_rows"] is not None
+    assert captured["compute_rows"] != [source_row]
+    assert captured["compute_rows"][0] is not source_row
+    assert captured["compute_rows"][0]["coupon_rate"] == Decimal("0")
+    assert captured["replace_calls"]
+    assert result.source_version == "sv_risk_tensor__sv_bond_snap_1"
+    assert result.payload["bond_count"] == 1
+    assert result.payload["quality_flag"] == "ok"
+    assert result.payload["upstream_cache_key"] == task_mod.BOND_ANALYTICS_CACHE_KEY
+    assert result.payload["coupon_normalization_rule_id"] == "ncd_zero_coupon_coupon_rate_v1"
+    assert result.payload["coupon_normalized_row_count"] == 1
+    assert result.payload["coupon_normalized_market_value"] == "98.5"
+
+
+def test_risk_tensor_materialize_leaves_non_null_coupon_unchanged(monkeypatch):
+    source_row = _base_discount_ncd_row()
+    source_row["coupon_rate"] = Decimal("0.021")
+
+    _task_mod, result, captured = _execute_risk_tensor_with_rows(monkeypatch, [source_row])
+
+    assert source_row["coupon_rate"] == Decimal("0.021")
+    assert captured["compute_rows"] is not None
+    assert captured["compute_rows"][0]["coupon_rate"] == Decimal("0.021")
+    assert result.payload["coupon_normalized_row_count"] == 0
+    assert result.payload["coupon_normalized_market_value"] == "0"
+
+
+@pytest.mark.parametrize(
+    ("case_name", "mutate_row"),
+    [
+        ("wrong_bond_type", lambda row: row.update({"bond_type": "政策性金融债"})),
+        ("nonfuture_maturity", lambda row: row.update({"maturity_date": REPORT_DATE})),
+        ("bad_maturity", lambda row: row.update({"maturity_date": "not-a-date"})),
+        ("missing_ytm", lambda row: row.update({"ytm": None})),
+        ("nonpositive_ytm", lambda row: row.update({"ytm": Decimal("0")})),
+        ("nonfinite_ytm", lambda row: row.update({"ytm": Decimal("NaN")})),
+        ("out_of_bound_ytm", lambda row: row.update({"ytm": Decimal("1.2")})),
+        ("nonzero_accrued_interest", lambda row: row.update({"accrued_interest": Decimal("0.01")})),
+        ("invalid_accrued_interest", lambda row: row.update({"accrued_interest": "bad"})),
+        ("nonpositive_face_value", lambda row: row.update({"face_value": Decimal("0")})),
+        ("nonpositive_market_value", lambda row: row.update({"market_value": Decimal("0")})),
+        ("market_value_not_below_face", lambda row: row.update({"market_value": Decimal("100")})),
+    ],
+    ids=lambda value: value if isinstance(value, str) else None,
+)
+def test_risk_tensor_materialize_fails_closed_when_discount_ncd_predicate_not_fully_met(
+    monkeypatch,
+    case_name,
+    mutate_row,
+):
+    task_mod = load_module(
+        "backend.app.tasks.risk_tensor_materialize",
+        "backend/app/tasks/risk_tensor_materialize.py",
+    )
+    source_row = _base_discount_ncd_row()
+    mutate_row(source_row)
+    compute_calls = []
+    replace_calls = []
+
+    monkeypatch.setattr(
+        task_mod,
+        "load_latest_bond_analytics_lineage",
+        lambda **_kwargs: {
+            "source_version": "sv_bond_snap_1",
+            "rule_version": "rv_bond_analytics_formal_materialize_v1",
+            "cache_version": "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v1",
+        },
+    )
+    monkeypatch.setattr(
+        task_mod.BondAnalyticsRepository,
+        "fetch_bond_analytics_rows",
+        lambda self, *, report_date: [source_row],
+    )
+    monkeypatch.setattr(task_mod, "_load_liability_rows", lambda **_kwargs: [])
+    monkeypatch.setattr(task_mod, "repository_task_write_scope", lambda *_args, **_kwargs: nullcontext())
+
+    def _unexpected_compute(*_args, **_kwargs):
+        compute_calls.append(case_name)
+        raise AssertionError("compute should not be called")
+
+    def _unexpected_replace(self, **_kwargs):
+        replace_calls.append(case_name)
+        raise AssertionError("write should not be called")
+
+    monkeypatch.setattr(task_mod, "compute_portfolio_risk_tensor", _unexpected_compute)
+    monkeypatch.setattr(task_mod.RiskTensorRepository, "replace_risk_tensor_row", _unexpected_replace)
+
+    with pytest.raises(RuntimeError, match="parseable numeric formal inputs"):
+        task_mod._execute_risk_tensor_materialization(
+            report_date=REPORT_DATE,
+            duckdb_file=Path("ignored.duckdb"),
+            governance_dir="ignored-governance",
+        )
+
+    assert compute_calls == []
+    assert replace_calls == []
 
 
 def test_risk_tensor_materialize_preserves_computed_source_version_when_write_fails(tmp_path, monkeypatch):
