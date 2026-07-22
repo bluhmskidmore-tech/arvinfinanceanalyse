@@ -145,6 +145,74 @@ class AccountingAssetMovementRepository:
                 conn.close()
         return [str(row[0]) for row in rows]
 
+    def list_control_report_dates(self, *, currency_basis: str = "CNX") -> list[str]:
+        try:
+            conn = self._connect()
+            rows = conn.execute(
+                """
+                select distinct cast(report_date as varchar)
+                from product_category_pnl_canonical_fact
+                where currency = ?
+                  and (
+                    account_code like '141%'
+                    or account_code like '142%'
+                    or account_code like '143%'
+                    or account_code like '1440101%'
+                  )
+                order by cast(report_date as varchar) desc
+                """,
+                [currency_basis],
+            ).fetchall()
+        except duckdb.Error as exc:
+            if not _is_missing_table_error(exc):
+                raise
+            return []
+        finally:
+            if "conn" in locals():
+                conn.close()
+        return [str(row[0]) for row in rows]
+
+    def control_source_versions(
+        self,
+        *,
+        currency_basis: str = "CNX",
+    ) -> dict[str, str]:
+        try:
+            conn = self._connect()
+            rows = conn.execute(
+                """
+                select
+                  cast(report_date as varchar),
+                  coalesce(
+                    string_agg(
+                      distinct nullif(source_version, ''),
+                      '__' order by nullif(source_version, '')
+                    ),
+                    ''
+                  )
+                from product_category_pnl_canonical_fact
+                where currency = ?
+                  and (
+                    account_code like '141%'
+                    or account_code like '142%'
+                    or account_code like '143%'
+                    or account_code like '1440101%'
+                  )
+                group by 1
+                order by 1 desc
+                """,
+                [currency_basis],
+            ).fetchall()
+        except duckdb.Error as exc:
+            message = str(exc).lower()
+            if _is_missing_table_error(exc) or "source_version" in message:
+                return {}
+            raise
+        finally:
+            if "conn" in locals():
+                conn.close()
+        return {str(row[0]): str(row[1] or "") for row in rows}
+
     def latest_control_report_date(self, *, currency_basis: str = "CNX") -> str | None:
         try:
             conn = self._connect()

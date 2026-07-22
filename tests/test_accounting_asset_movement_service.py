@@ -821,6 +821,11 @@ def test_balance_movement_analysis_service_exposes_gl_control_rows():
     ) == Decimal("54.216867")
     assert envelope["result_meta"]["quality_flag"] == "ok"
     assert envelope["result_meta"]["result_kind"] == "balance-analysis.movement.detail"
+    assert envelope["result_meta"]["cache_key"] == "accounting_asset_movement.monthly"
+    assert envelope["result_meta"]["requested_report_date"] == "2026-02-28"
+    assert envelope["result_meta"]["resolved_report_date"] == "2026-02-28"
+    assert envelope["result_meta"]["as_of_date"] == "2026-02-28"
+    assert envelope["result_meta"]["date_basis"] == "month_end_report_date"
     assert set(envelope["result_meta"]["source_version"].split("__")) == {
         "sv-gl",
         "sv-gl-prior",
@@ -828,6 +833,7 @@ def test_balance_movement_analysis_service_exposes_gl_control_rows():
         "sv-zqtz-prior",
     }
     assert set(envelope["result_meta"]["rule_version"].split("__")) == {
+        "rv_accounting_asset_movement_v2",
         "rv-gl",
         "rv-gl-prior",
         "rv-zqtz",
@@ -858,6 +864,41 @@ def test_balance_movement_analysis_service_uses_cnx_diagnostic_and_ignores_cny_n
     assert Decimal(by_bucket["TPL"]["reconciliation_diff"]) == Decimal("0E-8")
     assert by_bucket["TPL"]["reconciliation_status"] == "matched"
     assert envelope["result_meta"]["quality_flag"] == "ok"
+
+
+def test_balance_movement_analysis_marks_reconciliation_mismatch_as_warning():
+    duckdb_path = (
+        Path("test_output")
+        / "accounting_asset_movement"
+        / f"{uuid4().hex}.duckdb"
+    )
+    duckdb_path.parent.mkdir(parents=True, exist_ok=True)
+    _seed_source_tables_and_materialize(duckdb_path)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            update fact_accounting_asset_movement_monthly
+            set reconciliation_status = 'mismatch',
+                reconciliation_diff = 1
+            where report_date = '2026-02-28'
+              and currency_basis = 'CNX'
+              and basis_bucket = 'AC'
+            """
+        )
+    finally:
+        conn.close()
+
+    envelope = accounting_asset_movement_envelope(
+        str(duckdb_path),
+        report_date="2026-02-28",
+        currency_basis="CNX",
+    )
+
+    assert envelope["result"]["summary"]["matched_bucket_count"] == 2
+    assert envelope["result_meta"]["quality_flag"] == "warning"
+    assert envelope["result_meta"]["requested_report_date"] == "2026-02-28"
+    assert "rv_accounting_asset_movement_v2" in envelope["result_meta"]["rule_version"]
 
 
 def test_balance_movement_analysis_service_exposes_zqtz_asset_product_rows():
@@ -1738,6 +1779,90 @@ def test_balance_movement_dates_only_advertise_materialized_read_model_dates():
         "fact_accounting_asset_movement_monthly",
         "product_category_pnl_canonical_fact",
     ]
+
+
+def test_balance_movement_dates_detect_an_interior_control_date_gap():
+    duckdb_path = (
+        Path("test_output")
+        / "accounting_asset_movement"
+        / f"{uuid4().hex}.duckdb"
+    )
+    duckdb_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_accounting_asset_movement_monthly (
+              report_date varchar,
+              currency_basis varchar,
+              sort_order integer,
+              source_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table product_category_pnl_canonical_fact (
+              report_date varchar,
+              account_code varchar,
+              currency varchar
+            )
+            """
+        )
+        conn.executemany(
+            "insert into fact_accounting_asset_movement_monthly values (?, 'CNX', 1, 'sv-read')",
+            [("2026-01-31",), ("2026-03-31",)],
+        )
+        conn.executemany(
+            "insert into product_category_pnl_canonical_fact values (?, '1410001', 'CNX')",
+            [("2026-01-31",), ("2026-02-28",), ("2026-03-31",)],
+        )
+    finally:
+        conn.close()
+
+    envelope = accounting_asset_movement_dates_envelope(
+        str(duckdb_path),
+        currency_basis="CNX",
+    )
+
+    assert envelope["result"]["latest_read_model_report_date"] == "2026-03-31"
+    assert envelope["result"]["latest_upstream_control_report_date"] == "2026-03-31"
+    assert envelope["result"]["freshness_status"] == "read_model_lagging"
+    assert envelope["result_meta"]["quality_flag"] == "stale"
+    assert envelope["result_meta"]["cache_key"] == "accounting_asset_movement.monthly"
+
+
+def test_refresh_window_includes_missing_interior_upstream_dates(tmp_path):
+    duckdb_path = tmp_path / "refresh-interior-gap.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            "create table fact_accounting_asset_movement_monthly "
+            "(report_date varchar, currency_basis varchar)"
+        )
+        conn.execute(
+            "create table product_category_pnl_canonical_fact "
+            "(report_date varchar, account_code varchar, currency varchar)"
+        )
+        conn.executemany(
+            "insert into fact_accounting_asset_movement_monthly values (?, 'CNX')",
+            [("2026-01-31",), ("2026-03-31",)],
+        )
+        conn.executemany(
+            "insert into product_category_pnl_canonical_fact values (?, '1410001', 'CNX')",
+            [("2026-01-31",), ("2026-02-28",), ("2026-03-31",)],
+        )
+    finally:
+        conn.close()
+
+    report_dates = movement_service._recent_report_dates_for_refresh(
+        str(duckdb_path),
+        report_date="2026-03-31",
+        currency_basis="CNX",
+        month_count=2,
+    )
+
+    assert report_dates == ["2026-01-31", "2026-02-28", "2026-03-31"]
 
 
 def test_balance_movement_dates_source_version_is_currency_scoped():

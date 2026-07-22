@@ -135,19 +135,23 @@ def accounting_asset_movement_dates_envelope(
     try:
         repo = AccountingAssetMovementRepository(duckdb_path)
         report_dates = repo.list_report_dates(currency_basis=currency_basis)
-        latest_read_model_report_date = report_dates[0] if report_dates else None
-        latest_upstream_control_report_date = repo.latest_control_report_date(
+        control_report_dates = repo.list_control_report_dates(
             currency_basis=currency_basis
+        )
+        latest_read_model_report_date = report_dates[0] if report_dates else None
+        latest_upstream_control_report_date = (
+            control_report_dates[0] if control_report_dates else None
+        )
+        freshness_status = _movement_dates_freshness_status(
+            report_dates,
+            control_report_dates,
         )
         payload = AccountingAssetMovementDatesPayload(
             report_dates=report_dates,
             currency_basis=currency_basis,
             latest_read_model_report_date=latest_read_model_report_date,
             latest_upstream_control_report_date=latest_upstream_control_report_date,
-            freshness_status=_movement_dates_freshness_status(
-                latest_read_model_report_date,
-                latest_upstream_control_report_date,
-            ),
+            freshness_status=freshness_status,
         )
         meta = build_formal_result_meta(
             trace_id="tr_balance_movement_dates",
@@ -155,6 +159,14 @@ def accounting_asset_movement_dates_envelope(
             source_version=repo.latest_source_version(currency_basis=currency_basis),
             rule_version=RULE_VERSION,
             cache_version=CACHE_VERSION,
+            cache_key=CACHE_KEY,
+            quality_flag=(
+                "ok"
+                if freshness_status == "fresh"
+                else "stale"
+                if freshness_status == "read_model_lagging"
+                else "warning"
+            ),
             filters_applied={"currency_basis": currency_basis},
             tables_used=[
                 "fact_accounting_asset_movement_monthly",
@@ -172,16 +184,20 @@ def accounting_asset_movement_dates_envelope(
 
 
 def _movement_dates_freshness_status(
-    latest_read_model_report_date: str | None,
-    latest_upstream_control_report_date: str | None,
+    report_dates: list[str],
+    upstream_control_report_dates: list[str],
 ) -> str:
+    latest_read_model_report_date = report_dates[0] if report_dates else None
+    latest_upstream_control_report_date = (
+        upstream_control_report_dates[0] if upstream_control_report_dates else None
+    )
     if latest_upstream_control_report_date and not latest_read_model_report_date:
         return "read_model_lagging"
     if latest_read_model_report_date and not latest_upstream_control_report_date:
         return "upstream_empty"
     if not latest_read_model_report_date and not latest_upstream_control_report_date:
         return "read_model_empty"
-    if latest_read_model_report_date < latest_upstream_control_report_date:
+    if not set(upstream_control_report_dates).issubset(report_dates):
         return "read_model_lagging"
     return "fresh"
 
@@ -307,11 +323,25 @@ def _accounting_asset_movement_envelope_unlocked(
             row.source_version for row in [*evidence_rows, *business_evidence_rows]
         ),
         rule_version=_joined_latest(
-            row.rule_version for row in [*evidence_rows, *business_evidence_rows]
-        )
-        or RULE_VERSION,
+            [
+                RULE_VERSION,
+                *(
+                    row.rule_version
+                    for row in [*evidence_rows, *business_evidence_rows]
+                ),
+            ]
+        ),
         cache_version=CACHE_VERSION,
-        quality_flag="ok",
+        cache_key=CACHE_KEY,
+        quality_flag=(
+            "ok"
+            if summary.matched_bucket_count == summary.bucket_count
+            else "warning"
+        ),
+        requested_report_date=report_date,
+        resolved_report_date=report_date,
+        as_of_date=report_date,
+        date_basis="month_end_report_date",
         filters_applied={"report_date": report_date, "currency_basis": currency_basis},
         tables_used=[
             "fact_accounting_asset_movement_monthly",
@@ -382,14 +412,21 @@ def _recent_report_dates_for_refresh(
     month_count: int,
 ) -> list[str]:
     repo = AccountingAssetMovementRepository(duckdb_path)
+    materialized_dates = repo.list_report_dates(currency_basis=currency_basis)
     report_dates = [
         current_report_date
-        for current_report_date in repo.list_report_dates(currency_basis=currency_basis)
+        for current_report_date in materialized_dates
         if current_report_date <= report_date
     ][:month_count]
-    if report_date not in report_dates:
-        report_dates.append(report_date)
-    return sorted(set(report_dates))
+    missing_upstream_dates = [
+        current_report_date
+        for current_report_date in repo.list_control_report_dates(
+            currency_basis=currency_basis
+        )
+        if current_report_date <= report_date
+        and current_report_date not in materialized_dates
+    ]
+    return sorted({report_date, *report_dates, *missing_upstream_dates})
 
 
 def _connect_for_read_after_refresh(duckdb_path: str) -> duckdb.DuckDBPyConnection:

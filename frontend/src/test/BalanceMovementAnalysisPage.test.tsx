@@ -435,6 +435,188 @@ describe("BalanceMovementAnalysisPage", () => {
     );
   });
 
+  it("locks unsupported currency URLs to the governed CNX basis", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const datesSpy = vi.fn(baseClient.getBalanceMovementDates);
+    const movementSpy = vi.fn(baseClient.getBalanceMovementAnalysis);
+
+    renderWorkbenchApp(["/balance-movement-analysis?currency_basis=CNY"], {
+      client: {
+        ...baseClient,
+        getBalanceMovementDates: datesSpy,
+        getBalanceMovementAnalysis: movementSpy,
+      },
+    });
+
+    await screen.findByTestId("balance-movement-analysis-table");
+
+    expect(datesSpy).toHaveBeenCalledWith("CNX");
+    expect(movementSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ currencyBasis: "CNX" }),
+    );
+    const currencySelector = screen.getAllByRole("combobox")[1] as HTMLSelectElement;
+    expect(currencySelector).toBeDisabled();
+    expect(currencySelector.value).toBe("CNX");
+    expect(currencySelector.options).toHaveLength(1);
+  });
+
+  it("targets the latest upstream report date when the read model is lagging", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const refreshSpy = vi.fn(async ({
+      reportDate,
+      currencyBasis = "CNX",
+    }: {
+      reportDate: string;
+      currencyBasis?: string;
+    }) => ({
+      status: "completed",
+      cache_key: "accounting_asset_movement.monthly",
+      report_date: reportDate,
+      currency_basis: currencyBasis,
+      rule_version: "rv_accounting_asset_movement_v2",
+      movement_refreshed_dates: [reportDate],
+    }));
+
+    renderWorkbenchApp(["/balance-movement-analysis"], {
+      client: {
+        ...baseClient,
+        getBalanceMovementDates: vi.fn(async (currencyBasis = "CNX") =>
+          buildMockApiEnvelope("balance-analysis.movement.dates", {
+            report_dates: ["2026-04-30"],
+            currency_basis: currencyBasis,
+            latest_read_model_report_date: "2026-04-30",
+            latest_upstream_control_report_date: "2026-05-31",
+            freshness_status: "read_model_lagging" as const,
+          }),
+        ),
+        refreshBalanceMovementAnalysis: refreshSpy,
+      },
+    });
+
+    await screen.findByTestId("balance-movement-analysis-table");
+    await user.click(screen.getByTestId("balance-movement-analysis-refresh"));
+
+    expect(refreshSpy).toHaveBeenCalledWith({
+      reportDate: "2026-05-31",
+      currencyBasis: "CNX",
+    });
+  });
+
+  it("polls queued refreshes and selects the newly materialized report date", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    let dateLoadCount = 0;
+    const datesSpy = vi.fn(async (currencyBasis = "CNX") => {
+      dateLoadCount += 1;
+      const readModelCaughtUp = dateLoadCount >= 2;
+      return buildMockApiEnvelope("balance-analysis.movement.dates", {
+        report_dates: readModelCaughtUp
+          ? ["2026-05-31", "2026-04-30"]
+          : ["2026-04-30"],
+        currency_basis: currencyBasis,
+        latest_read_model_report_date: readModelCaughtUp ? "2026-05-31" : "2026-04-30",
+        latest_upstream_control_report_date: "2026-05-31",
+        freshness_status: readModelCaughtUp ? ("fresh" as const) : ("read_model_lagging" as const),
+      });
+    });
+    const movementSpy = vi.fn(baseClient.getBalanceMovementAnalysis);
+    const refreshSpy = vi.fn(async ({
+      reportDate,
+      currencyBasis = "CNX",
+    }: {
+      reportDate: string;
+      currencyBasis?: string;
+    }) => ({
+      status: "queued",
+      cache_key: "accounting_asset_movement.monthly",
+      report_date: reportDate,
+      currency_basis: currencyBasis,
+      run_id: "accounting_asset_movement_refresh:2026-05-31",
+      trigger_mode: "async",
+      rule_version: "rv_accounting_asset_movement_v2",
+      movement_refreshed_dates: [reportDate],
+    }));
+
+    renderWorkbenchApp(["/balance-movement-analysis?report_date=2026-04-30&currency_basis=CNX"], {
+      client: {
+        ...baseClient,
+        getBalanceMovementDates: datesSpy,
+        getBalanceMovementAnalysis: movementSpy,
+        refreshBalanceMovementAnalysis: refreshSpy,
+      },
+    });
+
+    await waitFor(() => {
+      expect(movementSpy).toHaveBeenCalledWith({
+        reportDate: "2026-04-30",
+        currencyBasis: "CNX",
+      });
+    });
+    await user.click(screen.getByTestId("balance-movement-analysis-refresh"));
+
+    await waitFor(() => {
+      expect(datesSpy).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(movementSpy).toHaveBeenCalledWith({
+        reportDate: "2026-05-31",
+        currencyBasis: "CNX",
+      });
+    });
+    await waitFor(() => {
+      expect((screen.getAllByRole("combobox")[0] as HTMLSelectElement).value).toBe(
+        "2026-05-31",
+      );
+    });
+  });
+
+  it("keeps an existing-date queued refresh pending instead of reporting completion", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const datesSpy = vi.fn(async (currencyBasis = "CNX") =>
+      buildMockApiEnvelope("balance-analysis.movement.dates", {
+        report_dates: ["2026-04-30"],
+        currency_basis: currencyBasis,
+        latest_read_model_report_date: "2026-04-30",
+        latest_upstream_control_report_date: "2026-04-30",
+        freshness_status: "fresh" as const,
+      }),
+    );
+    const refreshSpy = vi.fn(async ({
+      reportDate,
+      currencyBasis = "CNX",
+    }: {
+      reportDate: string;
+      currencyBasis?: string;
+    }) => ({
+      status: "queued",
+      cache_key: "accounting_asset_movement.monthly",
+      report_date: reportDate,
+      currency_basis: currencyBasis,
+      run_id: "accounting_asset_movement_refresh:2026-04-30",
+      trigger_mode: "async",
+      rule_version: "rv_accounting_asset_movement_v2",
+      movement_refreshed_dates: [reportDate],
+    }));
+
+    renderWorkbenchApp(["/balance-movement-analysis"], {
+      client: {
+        ...baseClient,
+        getBalanceMovementDates: datesSpy,
+        refreshBalanceMovementAnalysis: refreshSpy,
+      },
+    });
+
+    await screen.findByTestId("balance-movement-analysis-table");
+    await user.click(screen.getByTestId("balance-movement-analysis-refresh"));
+
+    const message = await screen.findByTestId("balance-movement-analysis-refresh-message");
+    expect(message).toHaveTextContent("queued: 2026-04-30");
+    expect(message).not.toHaveTextContent("completed");
+    expect(datesSpy).toHaveBeenCalledTimes(1);
+  });
+
   it("surfaces governed result_meta in the first-screen evidence strip", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const evidenceClient: typeof baseClient = {

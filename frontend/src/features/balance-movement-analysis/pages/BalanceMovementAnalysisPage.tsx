@@ -46,8 +46,8 @@ const bucketColors: Record<BalanceMovementRow["basis_bucket"], string> = {
 };
 const balanceMovementBuckets: BalanceMovementRow["basis_bucket"][] = ["AC", "OCI", "TPL"];
 
-function normalizeMovementCurrencyBasis(value: string | null): string {
-  return value === "CNY" || value === "CNX" ? value : "CNX";
+function normalizeMovementCurrencyBasis(_value: string | null): "CNX" {
+  return "CNX";
 }
 
 function formatPct(value: string | number | null | undefined) {
@@ -2084,9 +2084,10 @@ function ZqtzConcentrationAnalysisPanel({
 
 export default function BalanceMovementAnalysisPage() {
   const client = useApiClient();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryReportDate = searchParams.get("report_date")?.trim() || "";
-  const queryCurrencyBasis = normalizeMovementCurrencyBasis(searchParams.get("currency_basis"));
+  const rawQueryCurrencyBasis = searchParams.get("currency_basis")?.trim().toUpperCase() || "";
+  const queryCurrencyBasis = normalizeMovementCurrencyBasis(rawQueryCurrencyBasis);
   const [selectedDate, setSelectedDate] = useState("");
   const [currencyBasis, setCurrencyBasis] = useState(queryCurrencyBasis);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -2115,6 +2116,14 @@ export default function BalanceMovementAnalysisPage() {
           detail: `${currencyBasis} 口径下没有可选日期；请先物化余额变动读模型。`,
         }
       : null;
+
+  useEffect(() => {
+    if (rawQueryCurrencyBasis && rawQueryCurrencyBasis !== "CNX") {
+      const canonicalParams = new URLSearchParams(searchParams);
+      canonicalParams.set("currency_basis", "CNX");
+      setSearchParams(canonicalParams, { replace: true });
+    }
+  }, [rawQueryCurrencyBasis, searchParams, setSearchParams]);
 
   useEffect(() => {
     if (currencyBasis !== queryCurrencyBasis) {
@@ -2667,15 +2676,29 @@ export default function BalanceMovementAnalysisPage() {
     return { reportDate, ruleVersions, sourceVersions };
   }, [detailQuery.data?.result.report_date, rows]);
 
+  function updateReportDateSelection(reportDate: string) {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set("report_date", reportDate);
+    nextParams.set("currency_basis", "CNX");
+    setSearchParams(nextParams, { replace: true });
+    setSelectedDate(reportDate);
+  }
+
   async function handleRefresh() {
     if (!selectedDate) {
       return;
     }
+    const refreshReportDate =
+      datesQuery.data?.result.freshness_status === "read_model_lagging"
+        ? datesQuery.data.result.latest_upstream_control_report_date ?? selectedDate
+        : selectedDate;
+    const refreshTargetWasMaterialized =
+      datesQuery.data?.result.report_dates.includes(refreshReportDate) ?? false;
     setIsRefreshing(true);
     setRefreshMessage(null);
     try {
       const payload = await client.refreshBalanceMovementAnalysis({
-        reportDate: selectedDate,
+        reportDate: refreshReportDate,
         currencyBasis,
       });
       const upstreamRefreshCount =
@@ -2691,10 +2714,44 @@ export default function BalanceMovementAnalysisPage() {
       const rowCountText =
         typeof payload.row_count === "number" ? `${payload.row_count} 行` : "已排队";
       setRefreshMessage(`${payload.status}: ${rowCountText}${refreshDetail}`);
-      if (payload.status !== "queued") {
-        await detailQuery.refetch();
-        await datesQuery.refetch();
+      const applyRefreshedDate = async () => {
+        const refreshedDates = await datesQuery.refetch();
+        if (!refreshedDates.data?.result.report_dates.includes(refreshReportDate)) {
+          return false;
+        }
+        if (refreshReportDate === selectedDate) {
+          await detailQuery.refetch();
+        } else {
+          updateReportDateSelection(refreshReportDate);
+        }
+        return true;
+      };
+
+      if (payload.status === "queued") {
+        if (refreshTargetWasMaterialized) {
+          setRefreshMessage(
+            `queued: ${refreshReportDate} \u540e\u53f0\u5904\u7406\u4e2d\uff0c\u8bf7\u7a0d\u540e\u5237\u65b0`,
+          );
+          return;
+        }
+        const maxPollAttempts = 30;
+        for (let attempt = 0; attempt < maxPollAttempts; attempt += 1) {
+          if (await applyRefreshedDate()) {
+            setRefreshMessage(`completed: ${refreshReportDate} \u5df2\u66f4\u65b0`);
+            return;
+          }
+          if (attempt < maxPollAttempts - 1) {
+            await new Promise<void>((resolve) => {
+              window.setTimeout(resolve, 1_000);
+            });
+          }
+        }
+        setRefreshMessage(
+          `queued: ${refreshReportDate} \u540e\u53f0\u5904\u7406\u4e2d\uff0c\u8bf7\u7a0d\u540e\u5237\u65b0`,
+        );
+        return;
       }
+      await applyRefreshedDate();
     } finally {
       setIsRefreshing(false);
     }
@@ -2755,7 +2812,7 @@ export default function BalanceMovementAnalysisPage() {
           <select
             aria-label="余额变动分析-报告日期"
             value={selectedDate}
-            onChange={(event) => setSelectedDate(event.target.value)}
+            onChange={(event) => updateReportDateSelection(event.target.value)}
           >
             {reportDates.map((reportDate) => (
               <option key={reportDate} value={reportDate}>
@@ -2769,13 +2826,12 @@ export default function BalanceMovementAnalysisPage() {
           <select
             aria-label="余额变动分析-控制币种"
             value={currencyBasis}
-            onChange={(event) => {
-              setCurrencyBasis(event.target.value);
-              setSelectedDate("");
-            }}
+            disabled
+            title={"\u5f53\u524d\u9875\u9762\u4ec5\u5f00\u653e CNX \u6b63\u5f0f\u53e3\u5f84"}
           >
-            <option value="CNX">CNX</option>
-            <option value="CNY">CNY</option>
+            <option value="CNX">
+              CNX{"\uff08\u6b63\u5f0f\u53e3\u5f84\uff09"}
+            </option>
           </select>
         </label>
         <button
