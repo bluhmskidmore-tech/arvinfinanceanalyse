@@ -1,4 +1,5 @@
 ﻿import importlib
+import os
 import sys
 from datetime import datetime, timezone
 
@@ -34,6 +35,31 @@ def _source_preview_client(app) -> TestClient:
 
 def _grant_source_preview_read_scope(*, settings, user_id: str = "*") -> None:
     _grant_source_preview_scope(settings=settings, user_id=user_id, action="read")
+
+
+def test_source_version_changes_when_content_changes_with_same_file_metadata(tmp_path):
+    parser_module = load_module(
+        "backend.app.core_finance.source_preview_parsers",
+        "backend/app/core_finance/source_preview_parsers.py",
+    )
+    source_path = tmp_path / "source.xls"
+    source_path.write_bytes(b"first-content")
+    original_stat = source_path.stat()
+
+    first_version = parser_module.build_source_version(source_path)
+    stable_version = parser_module.build_source_version(source_path)
+
+    source_path.write_bytes(b"other-content")
+    os.utime(source_path, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
+    changed_version = parser_module.build_source_version(source_path)
+
+    assert stable_version == first_version
+    assert first_version.startswith("sv_")
+    assert len(first_version) == 15
+    int(first_version.removeprefix("sv_"), 16)
+    assert source_path.stat().st_size == original_stat.st_size
+    assert source_path.stat().st_mtime_ns == original_stat.st_mtime_ns
+    assert changed_version != first_version
 
 
 @pytest.mark.parametrize(

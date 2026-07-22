@@ -19,6 +19,7 @@ from backend.app.schemas.source_preview import (
 )
 
 RULE_VERSION = "rv_phase1_source_preview_v1"
+_SOURCE_HASH_CHUNK_SIZE = 1024 * 1024
 
 ZQTZ_BOND_CODE = "\u503a\u5238\u4ee3\u53f7"
 ZQTZ_BOND_NAME = "\u503a\u5238\u540d\u79f0"
@@ -49,8 +50,17 @@ TYW_TRACE_FIELDS = {
 
 def build_source_version(path: Path) -> str:
     stat = path.stat()
-    seed = f"{path.name}:{stat.st_size}:{stat.st_mtime_ns}"
+    content_sha256 = _sha256_file(path)
+    seed = f"{path.name}:{stat.st_size}:{stat.st_mtime_ns}:{content_sha256}"
     return f"sv_{hashlib.sha256(seed.encode('utf-8')).hexdigest()[:12]}"
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source_file:
+        while chunk := source_file.read(_SOURCE_HASH_CHUNK_SIZE):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def parse_source_file(
