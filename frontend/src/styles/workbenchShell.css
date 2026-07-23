@@ -998,3 +998,130 @@ select {
     transition: none;
   }
 }
+
+/* Balance movement keeps its page-owned chrome while sharing the Portfolio Workbench rail. */
+.workbench-shell-grid--balance-movement {
+  --balance-movement-font-ui:
+    "Noto Sans SC",
+    "Microsoft YaHei UI",
+    "Microsoft YaHei",
+    "PingFang SC",
+    "Segoe UI",
+    sans-serif;
+  --moss-font-sans: var(--balance-movement-font-ui);
+  grid-template-columns: 208px minmax(0, 1fr) !important;
+  gap: 0 !important;
+  align-items: stretch;
+  min-height: 100vh;
+  padding: 0 !important;
+  background: var(--dh-api-bg) !important;
+  font-family: var(--balance-movement-font-ui);
+}
+
+.workbench-shell-grid--balance-movement .workbench-shell-aside {
+  position: sticky !important;
+  top: 0 !important;
+  width: 208px;
+  height: 100vh;
+  min-height: 100vh;
+  overflow-y: auto;
+  gap: 18px !important;
+  padding: 16px !important;
+  border: 0 !important;
+  border-right: 1px solid var(--dh-api-line-soft) !important;
+  border-radius: 0 !important;
+  background: var(--dh-api-rail) !important;
+  box-shadow: none !important;
+}
+
+.workbench-shell-grid--balance-movement .workbench-main-column {
+  align-self: stretch;
+  gap: 0;
+  padding: 0;
+}
+
+.workbench-shell-grid--balance-movement .workbench-main-surface,
+.workbench-shell-grid--balance-movement .workbench-main-surface.workbench-main-surface--minimal {
+  min-height: 100vh;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.workbench-shell-grid--balance-movement .workbench-shell-rail-brand-wrap {
+  height: 56px;
+  margin: 0;
+  padding: 0 0 16px;
+}
+
+.workbench-shell-grid--balance-movement .workbench-shell-rail-mark {
+  border-radius: 6px;
+}
+
+.workbench-shell-grid--balance-movement .workbench-shell-nav-section {
+  gap: 6px;
+}
+
+.workbench-shell-grid--balance-movement .workbench-shell-group-link {
+  width: 176px;
+  height: 40px;
+  padding: 0 10px;
+}
+
+.workbench-shell-grid--balance-movement .workbench-shell-agent-nav__link {
+  width: 176px;
+  height: 56px;
+}
+
+.workbench-shell-grid--balance-movement .workbench-shell-support-link {
+  width: 176px;
+  min-height: 36px;
+}
+
+/* Dashboard cockpit styles are loaded after this file in some entry points;
+ * the compound route selector keeps the Figma shell authoritative. */
+.workbench-shell-grid.workbench-shell-grid--cockpit.workbench-shell-grid--balance-movement {
+  grid-template-columns: 208px minmax(0, 1fr) !important;
+  gap: 0 !important;
+  padding: 0 !important;
+}
+
+.workbench-shell-grid.workbench-shell-grid--cockpit.workbench-shell-grid--balance-movement
+  > .workbench-shell-aside {
+  top: 0 !important;
+  height: 100vh !important;
+  gap: 18px !important;
+  padding: 16px !important;
+  border-radius: 0 !important;
+  background: var(--dh-api-rail) !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  overflow-x: hidden !important;
+}
+
+.workbench-shell-grid.workbench-shell-grid--cockpit.workbench-shell-grid--balance-movement
+  > .workbench-main-column {
+  gap: 0 !important;
+  padding: 0 !important;
+}
+
+.workbench-shell-grid.workbench-shell-grid--cockpit.workbench-shell-grid--balance-movement
+  .workbench-main-surface.workbench-main-surface--minimal {
+  gap: 0 !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+}
+
+@media (max-width: 1180px) {
+  .workbench-shell-grid.workbench-shell-grid--cockpit.workbench-shell-grid--balance-movement {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .workbench-shell-grid.workbench-shell-grid--cockpit.workbench-shell-grid--balance-movement
+    > .workbench-main-column {
+    grid-column: 1;
+    width: 100%;
+    min-width: 0;
+  }
+}

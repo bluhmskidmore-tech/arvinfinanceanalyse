@@ -208,6 +208,7 @@ export function WorkbenchShell() {
     isBondAnalysisMinimalShell ||
     isStockAnalysisMinimalShell ||
     isBalanceAnalysisCompactChrome ||
+    currentSection.key === "balance-movement-analysis" ||
     isProductCategoryPnlShell ||
     isModuleHomePage;
   const showShellTerminalBar =
@@ -215,6 +216,7 @@ export function WorkbenchShell() {
     !isBondAnalysisMinimalShell &&
     !isStockAnalysisMinimalShell &&
     !isBalanceAnalysisCompactChrome &&
+    currentSection.key !== "balance-movement-analysis" &&
     !isModuleHomePage;
   const showShellMarketTicker = showShellTerminalBar && !isDashboardCockpitShell;
   const isBalanceMovementAnalysisCompactChrome =
@@ -291,7 +293,9 @@ export function WorkbenchShell() {
 
   return (
     <>
-    <DataModeRibbon variant={isDashboardCockpitShell ? "cockpit" : "default"} />
+    {!isBalanceMovementAnalysisCompactChrome ? (
+      <DataModeRibbon variant={isDashboardCockpitShell ? "cockpit" : "default"} />
+    ) : null}
     <a
       className="workbench-skip-link"
       href="#workbench-main-content"
@@ -310,6 +314,7 @@ export function WorkbenchShell() {
       }${isProductCategoryPnlShell ? " workbench-shell-grid--product-category-pnl" : ""
       }${isPnlAttributionShell ? " workbench-shell-grid--pnl-attribution" : ""
       }${isCrossAssetImmersiveMain ? " workbench-shell-grid--cross-asset" : ""
+      }${isBalanceMovementAnalysisCompactChrome ? " workbench-shell-grid--balance-movement" : ""
       }`}
     >
       <aside
@@ -399,7 +404,9 @@ export function WorkbenchShell() {
           </section>
         ) : null}
 
-        {!isBondAnalysisMinimalShell && secondaryWorkbenchNavigation.length > 0 ? (
+        {!isBondAnalysisMinimalShell &&
+        !isBalanceMovementAnalysisCompactChrome &&
+        secondaryWorkbenchNavigation.length > 0 ? (
           <section
             className="workbench-shell-rail-section workbench-shell-rail-section--gap-6"
           >
@@ -751,6 +758,7 @@ export function WorkbenchShell() {
           !isBondAnalysisMinimalShell &&
           !isStockAnalysisMinimalShell &&
           !isBalanceAnalysisCompactChrome &&
+          !isBalanceMovementAnalysisCompactChrome &&
           !isMarketDataTerminalMain &&
           !isModuleHomePage &&
           currentGroup ? (

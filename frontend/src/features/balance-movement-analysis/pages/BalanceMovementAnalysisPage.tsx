@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 
@@ -18,32 +18,25 @@ import type {
   BalanceZqtzMaturityStructure,
   ResultMeta,
 } from "../../../api/contracts";
-import AccountingBasisStackedShareChart, {
-  type AccountingBasisStackedSharePoint,
-} from "../../../components/charts/AccountingBasisStackedShareChart";
-import { CalibrationBadge } from "../../../components/CalibrationBadge";
-import { FilterBar } from "../../../components/FilterBar";
-import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
-import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
+import type { AccountingBasisStackedSharePoint } from "../../../components/charts/AccountingBasisStackedShareChart";
+import { DataQualityBanner } from "../../../components/page/DataQualityBanner";
+
 import { formatBalanceAmountToYiFromYuan } from "../../balance-analysis/pages/balanceAnalysisPageModel";
 import {
   nullableNumber,
   resolveBucketSharePct,
 } from "../lib/balanceMovementShareModel";
-import { designTokens, ibTokens } from "../../../theme/designSystem";
+
 import { EM_DASH } from "../../../utils/format";
 import "./BalanceMovementAnalysisPage.css";
+import "./BalanceMovementAnalysisFigma.css";
 
 const bucketLabels: Record<string, string> = {
   AC: "AC",
   OCI: "OCI",
   TPL: "TPL",
 };
-const bucketColors: Record<BalanceMovementRow["basis_bucket"], string> = {
-  AC: ibTokens.color.accent,
-  OCI: designTokens.color.primary[700],
-  TPL: ibTokens.color.gold,
-};
+
 const balanceMovementBuckets: BalanceMovementRow["basis_bucket"][] = ["AC", "OCI", "TPL"];
 
 function normalizeMovementCurrencyBasis(_value: string | null): "CNX" {
@@ -293,55 +286,6 @@ type BusinessMovementMatrixRow = {
   ) => { hasMissingInputs?: boolean } | undefined;
 };
 
-function buildAccountingBasisMatrixRows(
-  accountingByDate: Map<string, BalanceMovementTrendMonth>,
-  options?: { keyPrefix?: string },
-): BusinessMovementMatrixRow[] {
-  const keyPrefix = options?.keyPrefix ?? "basis";
-  return [
-    {
-      key: `${keyPrefix}-ac`,
-      label: "AC",
-      side: "asset",
-      emphasis: true,
-      sourceKind: "ledger",
-      sourceNote: "总账控制数：以摊余成本计量（AC）",
-      valueKind: "amount",
-      getValue: (bm) => basisBucketBalanceForBusiness(accountingByDate, bm, "AC"),
-    },
-    {
-      key: `${keyPrefix}-oci`,
-      label: "OCI",
-      side: "asset",
-      emphasis: true,
-      sourceKind: "ledger",
-      sourceNote: "总账控制数：以公允价值计量且其变动计入其他综合收益（OCI）",
-      valueKind: "amount",
-      getValue: (bm) => basisBucketBalanceForBusiness(accountingByDate, bm, "OCI"),
-    },
-    {
-      key: `${keyPrefix}-fvtpl`,
-      label: "FVTPL",
-      side: "asset",
-      emphasis: true,
-      sourceKind: "ledger",
-      sourceNote: "总账 TPL 桶，与以公允价值计量且其变动计入当期损益（FVTPL）一致",
-      valueKind: "amount",
-      getValue: (bm) => basisBucketBalanceForBusiness(accountingByDate, bm, "TPL"),
-    },
-    {
-      key: `${keyPrefix}-ac-oci-fvtpl-total`,
-      label: "AC/OCI/FVTPL 合计",
-      side: "asset",
-      emphasis: true,
-      sourceKind: "ledger",
-      sourceNote: "AC+OCI+TPL 分类余额加总，与上三行同口径",
-      valueKind: "amount",
-      getValue: (bm) => basisThreeBucketSum(accountingByDate, bm),
-    },
-  ];
-}
-
 function businessTrendRow(month: BalanceBusinessMovementTrendMonth, rowKey: string) {
   return month.rows.find((row) => row.row_key === rowKey);
 }
@@ -393,11 +337,21 @@ function aggregateBucketReconciliation(rows: BalanceMovementRow[]) {
     gl_only: 0,
     zqtz_only: 0,
   };
+  const bucketCounts = new Map<BalanceMovementRow["basis_bucket"], number>();
   for (const row of rows) {
     counts[row.reconciliation_status] += 1;
+    bucketCounts.set(row.basis_bucket, (bucketCounts.get(row.basis_bucket) ?? 0) + 1);
   }
-  const allMatched = rows.length === 0 || rows.every((row) => row.reconciliation_status === "matched");
-  return { counts, allMatched };
+  const hasExactBuckets =
+    bucketCounts.size === balanceMovementBuckets.length &&
+    balanceMovementBuckets.every((bucket) => bucketCounts.get(bucket) === 1);
+  const allMatched =
+    hasExactBuckets && rows.every((row) => row.reconciliation_status === "matched");
+  return { counts, allMatched, hasExactBuckets };
+}
+
+function accountingBasisNarrativeLabel(bucket: BalanceMovementRow["basis_bucket"]) {
+  return bucket === "TPL" ? "FVTPL" : bucket;
 }
 
 type BusinessMomMove = {
@@ -818,7 +772,7 @@ type BalanceMovementDriver = {
   bucket: BalanceMovementRow["basis_bucket"];
   balanceChange: number;
   balanceChangeYi: number;
-  contributionPct: number;
+  contributionPct: number | null;
   currentBalancePct: number | null;
   previousBalancePct: number | null;
   shareDelta: number | null;
@@ -832,18 +786,11 @@ function toMovementDriver(row: BalanceMovementRow): BalanceMovementDriver {
     bucket: row.basis_bucket,
     balanceChange,
     balanceChangeYi: balanceChange / 100000000,
-    contributionPct: numericValue(row.contribution_pct),
+    contributionPct: nullableNumber(row.contribution_pct),
     currentBalancePct,
     previousBalancePct,
     shareDelta: nullableDelta(currentBalancePct, previousBalancePct),
   };
-}
-
-function shareBarWidth(value: number | null | undefined) {
-  if (value === null || value === undefined || !Number.isFinite(value)) {
-    return "0%";
-  }
-  return `${Math.min(Math.max(value, 1), 100)}%`;
 }
 
 function formatSignedYiNumber(value: number) {
@@ -1062,69 +1009,6 @@ function buildBalanceMovementCsv(options: {
     ]),
   ];
   return `${buildCsv(csvRows)}\r\n`;
-}
-
-function dataIndexFromTooltip(params: unknown) {
-  const first = Array.isArray(params) ? params[0] : params;
-  if (!first || typeof first !== "object" || !("dataIndex" in first)) {
-    return 0;
-  }
-  const dataIndex = Number((first as { dataIndex?: unknown }).dataIndex);
-  return Number.isFinite(dataIndex) ? dataIndex : 0;
-}
-
-function buildDriverChartOption(drivers: BalanceMovementDriver[]): EChartsOption {
-  return {
-    grid: { left: 44, right: 72, top: 20, bottom: 34 },
-    tooltip: {
-      trigger: "axis",
-      axisPointer: { type: "shadow" },
-      formatter: (params: unknown) => {
-        const driver = drivers[dataIndexFromTooltip(params)];
-        if (!driver) return "";
-        return [
-          driver.bucket,
-          `变动：${formatSignedYiNumber(driver.balanceChangeYi)} 亿`,
-          `贡献：${formatPct(driver.contributionPct)}`,
-          `占比变化：${formatSignedPointNullable(driver.shareDelta)}`,
-        ].join("<br/>");
-      },
-    },
-    xAxis: {
-      type: "value",
-      axisLabel: { formatter: (value: number) => `${value.toFixed(0)}亿` },
-      splitLine: { lineStyle: { color: ibTokens.color.hairline } },
-    },
-    yAxis: {
-      type: "category",
-      data: drivers.map((driver) => driver.bucket),
-      axisTick: { show: false },
-      axisLabel: { color: ibTokens.color.inkSecondary, fontWeight: 700 },
-    },
-    series: [
-      {
-        name: "余额变动",
-        type: "bar",
-        barWidth: 28,
-        data: drivers.map((driver) => driver.balanceChangeYi),
-        itemStyle: {
-          color: (params: { dataIndex: number }) =>
-            bucketColors[drivers[params.dataIndex]?.bucket ?? "AC"],
-          borderRadius: [0, ibTokens.radius, ibTokens.radius, 0],
-        },
-        label: {
-          show: true,
-          position: "right",
-          color: ibTokens.color.inkSecondary,
-          fontWeight: 700,
-          formatter: (params: { dataIndex: number }) => {
-            const driver = drivers[params.dataIndex];
-            return driver ? `${formatSignedYiNumber(driver.balanceChangeYi)} 亿` : "";
-          },
-        },
-      },
-    ],
-  };
 }
 
 type BalanceDiagnosticTone = "ok" | "info" | "warn" | "critical" | "unknown";
@@ -1383,41 +1267,6 @@ function buildHistoricalAnomalyDiagnostics(options: {
   };
 }
 
-function EvidenceStrip({ meta }: { meta: ResultMeta }) {
-  return (
-    <section
-      className="balance-movement-evidence-strip"
-      data-testid="balance-movement-analysis-evidence-strip"
-      aria-label="余额变动分析证据条"
-    >
-      <div>
-        <span title="quality_flag">质量标记</span>
-        <strong>{meta.quality_flag}</strong>
-      </div>
-      <div>
-        <span title="trace_id">追踪标识</span>
-        <strong>{meta.trace_id}</strong>
-      </div>
-      <div>
-        <span title="tables_used">使用表</span>
-        <strong>{formatMetaList(meta.tables_used)}</strong>
-      </div>
-      <div>
-        <span title="evidence_rows">证据行数</span>
-        <strong>{meta.evidence_rows ?? EM_DASH}</strong>
-      </div>
-      <div>
-        <span title="rule_version">规则版本</span>
-        <strong>{meta.rule_version || EM_DASH}</strong>
-      </div>
-      <div>
-        <span title="source_version">源版本</span>
-        <strong>{meta.source_version || EM_DASH}</strong>
-      </div>
-    </section>
-  );
-}
-
 type BalanceMovementFreshnessStatus = NonNullable<BalanceMovementDatesPayload["freshness_status"]>;
 
 function freshnessStatusLabel(status: BalanceMovementFreshnessStatus | undefined) {
@@ -1463,292 +1312,1333 @@ function freshnessStatusTone(status: BalanceMovementFreshnessStatus | undefined)
 function FreshnessStrip({
   dates,
   selectedDate,
+  reconciliationLabel,
+  currencyBasis,
 }: {
   dates: BalanceMovementDatesPayload;
   selectedDate: string;
+  reconciliationLabel: string;
+  currencyBasis: string;
 }) {
   const status = dates.freshness_status;
   const latestReadModelDate = dates.latest_read_model_report_date ?? dates.report_dates[0] ?? null;
   const latestUpstreamDate = dates.latest_upstream_control_report_date ?? null;
   const tone = freshnessStatusTone(status);
   return (
-    <section
-      className={`balance-movement-freshness-strip balance-movement-freshness-strip--${tone}`}
+    <aside
+      className={`balance-movement-data-trust balance-movement-data-trust--${tone} balance-movement-freshness-strip balance-movement-freshness-strip--${tone}`}
       data-testid="balance-movement-analysis-freshness"
       aria-label="余额变动分析数据新鲜度"
     >
-      <div className="balance-movement-freshness-strip__summary">
-        <span>{freshnessStatusLabel(status)}</span>
-        <strong>{freshnessStatusDetail(status)}</strong>
-      </div>
-      <dl className="balance-movement-freshness-strip__facts">
+      <header className="balance-movement-data-trust__header">
+        <span>DATA TRUST</span>
+        <strong title={freshnessStatusDetail(status)}>{freshnessStatusLabel(status)}</strong>
+      </header>
+      <dl className="balance-movement-data-trust__facts">
         <div>
-          <dt>上游最新</dt>
+          <dt>Read model</dt>
+          <dd>{selectedDate || latestReadModelDate || "未生成"}</dd>
+        </div>
+        <div>
+          <dt>Upstream control</dt>
           <dd>{latestUpstreamDate ?? "未发现"}</dd>
         </div>
         <div>
-          <dt>读模型最新</dt>
-          <dd>{latestReadModelDate ?? "未生成"}</dd>
+          <dt>Reconciliation</dt>
+          <dd>{reconciliationLabel === "三桶一致" ? "3 / 3 matched" : reconciliationLabel}</dd>
         </div>
         <div>
-          <dt>当前选择</dt>
-          <dd>{selectedDate || "未选择"}</dd>
+          <dt>Currency basis</dt>
+          <dd>{currencyBasis}</dd>
         </div>
-      </dl>
-    </section>
-  );
-}
-
-function AnalysisDimensionOverview({
-  cards,
-  onEvidence,
-}: {
-  cards: AnalysisDimensionCard[];
-  onEvidence: (key: string) => void;
-}) {
-  return (
-    <section
-      className="balance-movement-dimension-overview"
-      data-testid="balance-movement-analysis-dimension-overview"
-    >
-      <div className="balance-movement-dimension-overview__header">
-        <span>分析维度总览</span>
-        <strong>先看变化、可信度、未解释项</strong>
-      </div>
-      <div className="balance-movement-dimension-grid">
-        {cards.map((card) => (
-          <article
-            key={card.key}
-            className="balance-movement-dimension-card"
-            data-testid={`balance-movement-analysis-dimension-card-${card.key}`}
-          >
-            <a href={card.href} className="balance-movement-dimension-card__jump">
-              <span>{card.title}</span>
-              <strong>{card.metric}</strong>
-              <p>{card.detail}</p>
-            </a>
-            <div className="balance-movement-dimension-tags">
-              {card.tags.map((tag) => (
-                <span
-                  key={`${card.key}-${tag.label}`}
-                  className={`balance-movement-dimension-tag balance-movement-dimension-tag--${tag.tone}`}
-                >
-                  {tag.label}
-                </span>
-              ))}
-            </div>
-            <button
-              type="button"
-              className="balance-movement-dimension-card__evidence"
-              data-testid={`balance-movement-analysis-dimension-evidence-${card.key}`}
-              onClick={() => onEvidence(card.key)}
-            >
-              证据
-            </button>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function AnalysisEvidenceDrawer({
-  card,
-  onClose,
-}: {
-  card: AnalysisDimensionCard;
-  onClose: () => void;
-}) {
-  return (
-    <aside
-      aria-label="分析维度证据"
-      className="balance-movement-evidence-drawer"
-      data-testid="balance-movement-analysis-evidence-drawer"
-    >
-      <div className="balance-movement-evidence-drawer__header">
-        <div>
-          <span>分析维度证据</span>
-          <h2>{card.title}</h2>
-        </div>
-        <button type="button" onClick={onClose} aria-label="关闭证据">
-          关闭
-        </button>
-      </div>
-      <strong>{card.metric}</strong>
-      <p>{card.detail}</p>
-      <dl className="balance-movement-evidence-drawer__list">
-        {card.evidence.map((item) => (
-          <div key={`${card.key}-${item.label}`}>
-            <dt>{item.label}</dt>
-            <dd>
-              {item.value}
-              {item.note ? <span>{item.note}</span> : null}
-            </dd>
-          </div>
-        ))}
       </dl>
     </aside>
   );
 }
 
-function StructureMigrationPanel({
-  analysis,
+function EvidenceStrip({
+  meta,
+  reportDate,
+  currencyBasis,
 }: {
-  analysis: BalanceStructureMigrationAnalysis;
+  meta: ResultMeta;
+  reportDate: string;
+  currencyBasis: string;
 }) {
-  const latestPair = analysis.pairs[analysis.pairs.length - 1];
   return (
     <section
-      className="balance-movement-derived-panel"
-      data-testid="balance-movement-analysis-structure-migration"
+      className="balance-movement-provenance"
+      data-testid="balance-movement-analysis-evidence-strip"
+      aria-label="余额变动分析证据与出处"
     >
-      <div className="balance-movement-derived-panel__header">
+      <header className="balance-movement-section-heading">
         <div>
-          <span>结构迁移信号</span>
-          <h2>AC / OCI / FVTPL 占比变化</h2>
+          <span>05 / EVIDENCE &amp; PROVENANCE</span>
+          <h2>证据与数据出处</h2>
         </div>
-        {latestPair?.dominant_share_increase_bucket ? (
-          <strong>{latestPair.dominant_share_increase_bucket}</strong>
-        ) : null}
+        <p>traceable · exportable · reviewable</p>
+      </header>
+      <div className="balance-movement-provenance__grid">
+        <article>
+          <span>FRESHNESS</span>
+          <strong>{reportDate || meta.resolved_report_date || EM_DASH}</strong>
+          <p>当前视图严格锚定读模型报告日，不在浏览器端补算其他月份。</p>
+        </article>
+        <article>
+          <span>LINEAGE</span>
+          <strong>{meta.source_version || EM_DASH}</strong>
+          <p>{formatMetaList(meta.tables_used)} · 规则 {meta.rule_version || EM_DASH} · quality {meta.quality_flag}</p>
+        </article>
+        <article>
+          <span>CONTROL SCOPE</span>
+          <strong>{currencyBasis} · 141 / 142 / 143 / 1440101</strong>
+          <p>总账控制口径；排除 144020 股权 OCI，ZQTZ 仅用于诊断核对。</p>
+        </article>
       </div>
-      <p className="balance-movement-derived-panel__summary">{analysis.summary}</p>
-      <p className="balance-movement-derived-panel__caveat">{analysis.caveat}</p>
-      {latestPair ? (
-        <div className="balance-movement-derived-grid">
-          {latestPair.buckets.map((bucket) => (
-            <div key={bucket.basis_bucket} className="balance-movement-derived-card">
-              <span>{bucket.basis_bucket}</span>
-              <strong>{formatSignedYiCell(bucket.balance_delta)} 亿</strong>
-              <p>
-                占比 {formatPct(bucket.current_share_pct)}，
-                较上期 {formatSignedPercentPoint(bucket.share_delta_pp)}
-              </p>
-            </div>
-          ))}
-        </div>
-      ) : null}
-      {latestPair ? (
-        <div className="balance-movement-derived-notes">
-          <p>{latestPair.fvtpl_volatility_signal}</p>
-          <p>{latestPair.oci_valuation_signal}</p>
-        </div>
-      ) : null}
+      <div className="balance-movement-provenance__export-note">
+        <span>CSV BOUNDARY</span>
+        <p>导出仅包含当前报告日与当前页面证据快照。</p>
+        <strong>{meta.trace_id || EM_DASH} · {meta.evidence_rows ?? 0} rows</strong>
+      </div>
     </section>
   );
 }
 
-function DifferenceAttributionWaterfallPanel({
-  waterfall,
+function FigmaDecisionHero({
+  balanceChangePct,
+  balanceChangeTotal,
+  topDriver,
+  movementDrivers,
+  dates,
+  selectedDate,
+  reconciliationLabel,
+  currencyBasis,
 }: {
-  waterfall: BalanceDifferenceAttributionWaterfall;
+  balanceChangePct: number | null;
+  balanceChangeTotal: BalanceMovementPayload["summary"]["balance_change_total"];
+  topDriver: BalanceMovementDriver;
+  movementDrivers: BalanceMovementDriver[];
+  dates: BalanceMovementDatesPayload;
+  selectedDate: string;
+  reconciliationLabel: string;
+  currencyBasis: string;
+}) {
+  const direction = numericValue(balanceChangeTotal) > 0 ? "上升" : numericValue(balanceChangeTotal) < 0 ? "下降" : "持平";
+  const structureDirection = (topDriver.shareDelta ?? 0) >= 0 ? "抬升" : "回落";
+  const tplDriver = movementDrivers.find((driver) => driver.bucket === "TPL");
+  const ociDriver = movementDrivers.find((driver) => driver.bucket === "OCI");
+  const reconciliationHeadline =
+    reconciliationLabel === "三桶一致" ? "对账完整" : "ZQTZ 分桶对账需关注";
+  return (
+    <section
+      className="balance-movement-decision-layout"
+      data-testid="balance-movement-analysis-decision-hero"
+    >
+      <article className="balance-movement-decision-hero" data-testid="balance-movement-analysis-conclusion">
+        <header>
+          <span>DECISION SIGNAL</span>
+          <strong>{reconciliationLabel === "三桶一致" ? `${topDriver.bucket} 结构${structureDirection}` : reconciliationHeadline}</strong>
+        </header>
+        <h2>
+          余额{direction}
+          {balanceChangePct === null ? "" : ` ${Math.abs(balanceChangePct).toFixed(2)}%`}，主要由 {topDriver.bucket} 驱动；
+          {reconciliationHeadline}，{accountingBasisNarrativeLabel(topDriver.bucket)} 结构占比{structureDirection}。
+        </h2>
+        <p>
+          TPL 贡献 {formatPct(tplDriver?.contributionPct)}，OCI 贡献 {formatPct(ociDriver?.contributionPct)}。
+          这表示损益与估值波动暴露上升，并不等同于已实现损益结论。
+        </p>
+        <div className="balance-movement-decision-hero__chips" aria-label="会计分类变动贡献">
+          {movementDrivers.map((driver) => (
+            <span key={driver.bucket} data-bucket={driver.bucket.toLowerCase()}>
+              {driver.bucket} <strong>{formatSignedYiNumber(driver.balanceChangeYi)} 亿</strong>
+            </span>
+          ))}
+        </div>
+      </article>
+      <FreshnessStrip
+        dates={dates}
+        selectedDate={selectedDate}
+        reconciliationLabel={reconciliationLabel}
+        currencyBasis={currencyBasis}
+      />
+    </section>
+  );
+}
+
+function FigmaEmptyHero({
+  dates,
+  selectedDate,
+  reconciliationLabel,
+  currencyBasis,
+}: {
+  dates: BalanceMovementDatesPayload;
+  selectedDate: string;
+  reconciliationLabel: string;
+  currencyBasis: string;
 }) {
   return (
     <section
-      className="balance-movement-derived-panel"
-      data-testid="balance-movement-analysis-difference-waterfall"
+      className="balance-movement-decision-layout"
+      data-testid="balance-movement-analysis-decision-hero"
     >
-      <div className="balance-movement-derived-panel__header">
-        <div>
-          <span>差异归因瀑布</span>
-          <h2>ZQTZ 明细汇总 vs AC/OCI/FVTPL</h2>
+      <article
+        className="balance-movement-decision-hero balance-movement-decision-hero--empty"
+        data-testid="balance-movement-analysis-conclusion"
+      >
+        <header>
+          <span>DECISION SIGNAL</span>
+          <strong>等待物化</strong>
+        </header>
+        <h2>当前没有可发布的余额变动读模型，首屏仅保留状态与证据说明。</h2>
+        <p>先确认报告日是否已物化，再决定是否刷新或回溯上游控制账；在数据到位前，不展示推断性的业务结论。</p>
+      </article>
+      <FreshnessStrip
+        dates={dates}
+        selectedDate={selectedDate}
+        reconciliationLabel={reconciliationLabel}
+        currencyBasis={currencyBasis}
+      />
+    </section>
+  );
+}
+
+function FigmaLoadingHero({
+  dates,
+  selectedDate,
+  reconciliationLabel,
+  currencyBasis,
+}: {
+  dates: BalanceMovementDatesPayload;
+  selectedDate: string;
+  reconciliationLabel: string;
+  currencyBasis: string;
+}) {
+  return (
+    <section
+      className="balance-movement-decision-layout"
+      data-testid="balance-movement-analysis-loading-hero"
+      aria-busy="true"
+      aria-live="polite"
+    >
+      <article
+        className="balance-movement-decision-hero balance-movement-decision-hero--loading"
+        role="status"
+      >
+        <header>
+          <span>DECISION SIGNAL</span>
+          <strong>读取中</strong>
+        </header>
+        <h2>正在读取余额变动分析</h2>
+        <p>
+          正在装载 {selectedDate || "最新报告日"} 的余额、会计分类与对账证据；完成前不展示空数据结论。
+        </p>
+        <div className="balance-movement-decision-hero__chips" aria-hidden="true">
+          <span>余额口径</span>
+          <span>会计分类</span>
+          <span>对账证据</span>
         </div>
-        <strong>{formatSignedYiCell(waterfall.net_difference)} 亿</strong>
-      </div>
-      <p className="balance-movement-derived-panel__summary">{waterfall.caveat}</p>
-      <div className="balance-movement-waterfall">
-        <div className="balance-movement-waterfall__endpoint">
-          <span>{waterfall.reference_label}</span>
-          <strong>{formatYiCell(waterfall.reference_total)} 亿</strong>
+      </article>
+      <FreshnessStrip
+        dates={dates}
+        selectedDate={selectedDate}
+        reconciliationLabel={reconciliationLabel}
+        currencyBasis={currencyBasis}
+      />
+    </section>
+  );
+}
+
+function FigmaKpiRibbon({
+  summary,
+  topDriver,
+  hasBalanceChangeTotal,
+  reconciliationLabel,
+  balanceChangePct,
+}: {
+  summary: BalanceMovementPayload["summary"];
+  topDriver: BalanceMovementDriver;
+  hasBalanceChangeTotal: boolean;
+  reconciliationLabel: string;
+  balanceChangePct: number | null;
+}) {
+  const currentBalanceValue = finiteMetric(summary.current_balance_total);
+  const balanceChangePctAvailable =
+    balanceChangePct !== null && Number.isFinite(balanceChangePct);
+  const topDriverContributionValue = finiteMetric(topDriver.contributionPct);
+  const reconciliationState =
+    reconciliationLabel === "三桶一致"
+      ? "matched"
+      : reconciliationLabel === "待数据"
+        ? "unavailable"
+        : "review";
+  return (
+    <section className="balance-movement-kpi-ribbon" data-testid="balance-movement-analysis-summary">
+      <article>
+        <span>期末余额</span>
+        <strong>{formatYiFixed(summary.current_balance_total)} 亿</strong>
+        <small>上期 {formatYiFixed(summary.previous_balance_total)} 亿</small>
+        <div
+          className="balance-movement-kpi-ribbon__signal"
+          data-state={currentBalanceValue === null ? "unavailable" : "available"}
+          data-tone="blue"
+          data-testid="balance-movement-kpi-signal"
+          role="img"
+          aria-label={currentBalanceValue === null ? "期末余额信号数据不可用" : "期末余额信号可用"}
+        >
+          {currentBalanceValue === null ? (
+            <span>{EM_DASH} / 数据不可用</span>
+          ) : (
+            <progress max={100} value={100} />
+          )}
         </div>
-        {waterfall.components.map((component) => {
-          const isUnsupported = component.is_supported === false;
-          const className = [
-            "balance-movement-waterfall__component",
-            component.is_residual ? "balance-movement-waterfall__component--residual" : "",
-            isUnsupported ? "balance-movement-waterfall__component--unsupported" : "",
-          ]
-            .filter(Boolean)
-            .join(" ");
-          return (
-            <div key={component.component_key} className={className}>
-              <div>
-                <span>{component.component_label}</span>
-                <p>{component.evidence_note}</p>
-              </div>
-              {isUnsupported ? (
-                <strong>待拆分</strong>
-              ) : (
-                <strong>{formatSignedYiCell(component.amount)} 亿</strong>
+      </article>
+      <article data-accent="green">
+        <span>本月净增</span>
+        <strong>{hasBalanceChangeTotal ? formatSignedYi(summary.balance_change_total) : EM_DASH}</strong>
+        <small>环比 {balanceChangePct === null ? EM_DASH : `${balanceChangePct > 0 ? "+" : ""}${balanceChangePct.toFixed(2)}%`}</small>
+        <div
+          className="balance-movement-kpi-ribbon__signal"
+          data-direction="trailing"
+          data-state={balanceChangePctAvailable ? "available" : "unavailable"}
+          data-tone="green"
+          data-testid="balance-movement-kpi-signal"
+          role="img"
+          aria-label={balanceChangePctAvailable ? "环比变动信号可用" : "环比变动信号数据不可用"}
+        >
+          {balanceChangePctAvailable ? (
+            <progress max={100} value={Math.min(Math.abs(balanceChangePct), 100)} />
+          ) : (
+            <span>{EM_DASH} / 数据不可用</span>
+          )}
+        </div>
+      </article>
+      <article data-accent="amber">
+        <span>最大驱动</span>
+        <strong>{topDriver.bucket} · {formatPct(topDriver.contributionPct)}</strong>
+        <small>本月 {formatSignedYiNumber(topDriver.balanceChangeYi)} 亿</small>
+        <div
+          className="balance-movement-kpi-ribbon__signal"
+          data-state={topDriverContributionValue === null ? "unavailable" : "available"}
+          data-tone="amber"
+          data-testid="balance-movement-kpi-signal"
+          role="img"
+          aria-label={
+            topDriverContributionValue === null
+              ? "最大驱动贡献信号数据不可用"
+              : `最大驱动贡献 ${formatPct(topDriverContributionValue)}`
+          }
+        >
+          {topDriverContributionValue === null ? (
+            <span>{EM_DASH} / 数据不可用</span>
+          ) : (
+            <progress max={100} value={Math.min(Math.abs(topDriverContributionValue), 100)} />
+          )}
+        </div>
+      </article>
+      <article data-accent="green">
+        <span>对账状态</span>
+        <strong>{reconciliationLabel === "三桶一致" ? "3 / 3 匹配" : reconciliationLabel}</strong>
+        <small>差异 {formatPlainNumber(summary.reconciliation_diff_total, 2)} 元</small>
+        <div
+          className="balance-movement-kpi-ribbon__signal balance-movement-kpi-ribbon__signal--reconciliation"
+          data-state={reconciliationState}
+          data-testid="balance-movement-kpi-signal"
+          role="img"
+          aria-label={
+            reconciliationState === "matched"
+              ? "三项对账全部匹配"
+              : reconciliationState === "review"
+                ? "对账存在不匹配项"
+                : "对账状态数据不可用"
+          }
+        >
+          {reconciliationState === "unavailable" ? (
+            <span>{EM_DASH} / 数据不可用</span>
+          ) : (
+            <>
+              <i />
+              <i />
+              <i />
+            </>
+          )}
+        </div>
+      </article>
+    </section>
+  );
+}
+
+function FigmaDriversAndStructure({ drivers }: { drivers: BalanceMovementDriver[] }) {
+  const maxChange = Math.max(...drivers.map((driver) => Math.abs(driver.balanceChangeYi)), 1);
+  const contributionValues = drivers.map((driver) => finiteMetric(driver.contributionPct));
+  const contributionsAvailable = contributionValues.every(
+    (value) => value !== null && Number.isFinite(value),
+  );
+  const totalContribution = contributionsAvailable
+    ? contributionValues.reduce<number>((total, value) => total + (value ?? 0), 0)
+    : null;
+  let contributionOffset = 0;
+  const contributionSegments = contributionsAvailable
+    ? drivers.map((driver, index) => {
+        const share = Math.max(0, Math.min(contributionValues[index] as number, 100));
+        const segment = { driver, share, offset: contributionOffset };
+        contributionOffset += share;
+        return segment;
+      })
+    : [];
+  const structureDrivers = [...drivers].sort(
+    (left, right) =>
+      ["AC", "OCI", "TPL"].indexOf(left.bucket) - ["AC", "OCI", "TPL"].indexOf(right.bucket),
+  );
+  const structureValues = structureDrivers.map((driver) =>
+    finiteMetric(driver.currentBalancePct),
+  );
+  const structureAvailable = structureValues.every(
+    (value) => value !== null && Number.isFinite(value),
+  );
+  let structureOffset = 0;
+  const structureSegments = structureAvailable
+    ? structureDrivers.map((driver, index) => {
+        const share = Math.max(0, Math.min(structureValues[index] as number, 100));
+        const segment = { driver, share, offset: structureOffset };
+        structureOffset += share;
+        return segment;
+      })
+    : [];
+  return (
+    <section className="balance-movement-analysis-pair" data-testid="balance-movement-analysis-drivers-structure">
+      <article className="balance-movement-compact-panel balance-movement-driver-panel">
+        <header className="balance-movement-section-heading">
+          <div>
+            <h2>本月变动驱动</h2>
+          </div>
+          <p>单位：亿元 / 贡献率</p>
+        </header>
+        <div className="balance-movement-driver-list">
+          {drivers.map((driver) => (
+            <div key={driver.bucket} data-bucket={driver.bucket.toLowerCase()}>
+              <span>{driver.bucket}</span>
+              <progress max={maxChange} value={Math.abs(driver.balanceChangeYi)}>
+                {Math.abs(driver.balanceChangeYi)}
+              </progress>
+              <strong>{formatSignedYiNumber(driver.balanceChangeYi)} 亿</strong>
+              <small>{formatPct(driver.contributionPct)}</small>
+            </div>
+          ))}
+        </div>
+        <p className="balance-movement-compact-panel__note">
+          三类桶合计贡献 {formatPct(totalContribution)}，最大单一驱动为 {drivers[0]?.bucket ?? EM_DASH}。
+        </p>
+        {contributionsAvailable ? (
+          <svg
+            className="balance-movement-driver-composition"
+            data-testid="balance-movement-driver-composition-band"
+            data-state="available"
+            width="100%"
+            height="28"
+            role="img"
+            aria-label={`变动贡献构成：${drivers
+              .map((driver) => `${driver.bucket} ${formatPct(driver.contributionPct)}`)
+              .join("，")}`}
+          >
+            <title>变动贡献构成</title>
+            <rect className="balance-movement-band-track" x="0" y="0" width="100%" height="28" />
+            {contributionSegments.map(({ driver, share, offset }) => (
+              <g key={driver.bucket} data-bucket={driver.bucket.toLowerCase()}>
+                <rect x={`${offset}%`} y="0" width={`${share}%`} height="28" />
+                {share >= 6 ? (
+                  <text x={`${offset + share / 2}%`} y="18" textAnchor="middle">
+                    {driver.bucket}{share >= 14 ? ` · ${formatPct(driver.contributionPct)}` : ""}
+                  </text>
+                ) : null}
+              </g>
+            ))}
+          </svg>
+        ) : (
+          <div
+            className="balance-movement-driver-composition balance-movement-band-unavailable"
+            data-testid="balance-movement-driver-composition-band"
+            data-state="unavailable"
+            role="img"
+            aria-label="变动贡献构成：数据不可用"
+          >
+            <span>{EM_DASH} / 数据不可用</span>
+          </div>
+        )}
+      </article>
+      <article className="balance-movement-compact-panel balance-movement-structure-panel">
+        <header className="balance-movement-section-heading">
+          <div>
+            <h2>会计分类结构</h2>
+          </div>
+          <p>本期 / 较上期</p>
+        </header>
+        {structureAvailable ? (
+          <svg
+            className="balance-movement-structure-mix"
+            data-testid="balance-movement-structure-mix-band"
+            data-state="available"
+            width="100%"
+            height="34"
+            role="img"
+            aria-label={`会计分类结构：${structureDrivers
+              .map((driver) => `${driver.bucket} ${formatPct(driver.currentBalancePct)}`)
+              .join("，")}`}
+          >
+            <title>会计分类结构占比</title>
+            <rect className="balance-movement-band-track" x="0" y="0" width="100%" height="34" />
+            {structureSegments.map(({ driver, share, offset }) => (
+              <g key={driver.bucket} data-bucket={driver.bucket.toLowerCase()}>
+                <rect x={`${offset}%`} y="0" width={`${share}%`} height="34" />
+                {share >= 12 ? (
+                  <text x={`${offset + share / 2}%`} y="22" textAnchor="middle">
+                    {driver.bucket} {formatPct(driver.currentBalancePct)}
+                  </text>
+                ) : null}
+              </g>
+            ))}
+          </svg>
+        ) : (
+          <div
+            className="balance-movement-structure-mix balance-movement-band-unavailable"
+            data-testid="balance-movement-structure-mix-band"
+            data-state="unavailable"
+            role="img"
+            aria-label="会计分类结构：数据不可用"
+          >
+            <span>{EM_DASH} / 数据不可用</span>
+          </div>
+        )}
+        <div className="balance-movement-structure-list">
+          {structureDrivers.map((driver) => (
+            <div key={driver.bucket} data-bucket={driver.bucket.toLowerCase()}>
+              <span>{driver.bucket}</span>
+              <strong>{formatPct(driver.currentBalancePct)}</strong>
+              <small>{formatSignedPointNullable(driver.shareDelta)}</small>
+            </div>
+          ))}
+        </div>
+        <p className="balance-movement-compact-panel__note">结构信号不等同于单只资产已完成会计分类迁移。</p>
+      </article>
+    </section>
+  );
+}
+
+type CompactMaturityGroup = {
+  key: string;
+  label: string;
+  currentAmount: number | null;
+  deltaAmount: number | null;
+  sharePct: number | null;
+};
+
+function FigmaMaturityAndConcentration({
+  maturityGroups,
+  issuerDimension,
+  maturityCoverage,
+  unknownMaturityAmount,
+}: {
+  maturityGroups: CompactMaturityGroup[];
+  issuerDimension: BalanceZqtzConcentrationAnalysis["dimensions"][number] | null;
+  maturityCoverage: string | number | null | undefined;
+  unknownMaturityAmount: string | number | null | undefined;
+}) {
+  const largestMaturity = maturityGroups.reduce<CompactMaturityGroup | null>(
+    (largest, group) => {
+      if (group.currentAmount === null) return largest;
+      if (largest?.currentAmount === null || largest === null) return group;
+      return group.currentAmount > largest.currentAmount ? group : largest;
+    },
+    null,
+  );
+  const maturityShareValues = maturityGroups.map((group) => finiteMetric(group.sharePct));
+  const maturitySharesAvailable = maturityShareValues.every(
+    (value) => value !== null && Number.isFinite(value),
+  );
+  let maturityOffset = 0;
+  const maturitySegments = maturitySharesAvailable
+    ? maturityGroups.map((group, index) => {
+        const share = Math.max(0, Math.min(maturityShareValues[index] as number, 100));
+        const segment = { group, share, offset: maturityOffset };
+        maturityOffset += share;
+        return segment;
+      })
+    : [];
+  const knownShareValue = finiteMetric(maturityCoverage);
+  const knownShare =
+    knownShareValue === null ? null : Math.max(0, Math.min(knownShareValue, 100));
+  const unmappedShare = knownShare === null ? null : Math.max(0, 100 - knownShare);
+  const top5ShareValue = finiteMetric(issuerDimension?.top5_share_pct);
+  const top5GaugeShare =
+    top5ShareValue === null ? null : Math.max(0, Math.min(top5ShareValue, 100));
+  return (
+    <section className="balance-movement-analysis-pair" data-testid="balance-movement-analysis-maturity-concentration">
+      <article className="balance-movement-compact-panel balance-movement-maturity-compact">
+        <header className="balance-movement-section-heading">
+          <div>
+            <h2>期限结构</h2>
+          </div>
+          <strong className="balance-movement-section-heading__badge">覆盖率 {formatPct(maturityCoverage)}</strong>
+        </header>
+        {maturitySharesAvailable ? (
+          <svg
+            className="balance-movement-maturity-spectrum"
+            data-testid="balance-movement-maturity-spectrum"
+            data-state="available"
+            width="100%"
+            height="26"
+            role="img"
+            aria-label={`期限分布：${maturityGroups
+              .map((group) => `${group.label} ${formatPct(group.sharePct)}`)
+              .join("，")}`}
+          >
+            <title>期限分布</title>
+            <rect className="balance-movement-band-track" x="0" y="0" width="100%" height="26" />
+            {maturitySegments.map(({ group, share, offset }) => (
+              <g key={group.key} data-maturity={group.key}>
+                <rect x={`${offset}%`} y="0" width={`${share}%`} height="26" />
+              </g>
+            ))}
+          </svg>
+        ) : (
+          <div
+            className="balance-movement-maturity-spectrum balance-movement-band-unavailable"
+            data-testid="balance-movement-maturity-spectrum"
+            data-state="unavailable"
+            role="img"
+            aria-label="期限分布：数据不可用"
+          >
+            <span>{EM_DASH} / 数据不可用</span>
+          </div>
+        )}
+        <div className="balance-movement-maturity-compact__grid">
+          {maturityGroups.map((group) => (
+            <div
+              key={group.key}
+              data-largest={group.key === largestMaturity?.key ? "true" : undefined}
+              data-maturity={group.key}
+            >
+              <span>{group.label}</span>
+              <strong>{formatPct(group.sharePct)}</strong>
+              <small>{formatYiFixed(group.currentAmount)} 亿</small>
+            </div>
+          ))}
+        </div>
+        {knownShare !== null && unmappedShare !== null ? (
+          <svg
+            className="balance-movement-maturity-coverage"
+            data-testid="balance-movement-maturity-coverage-band"
+            data-state="available"
+            width="100%"
+            height="34"
+            role="img"
+            aria-label={`KNOWN ${formatPct(knownShare)}，UNMAPPED ${formatPct(unmappedShare)}`}
+          >
+            <title>已映射与未映射期限构成</title>
+            <rect className="balance-movement-band-track" x="0" y="0" width="100%" height="34" />
+            <g data-coverage="known">
+              <rect x="0" y="0" width={`${knownShare}%`} height="34" />
+              {knownShare >= 18 ? (
+                <text x={`${knownShare / 2}%`} y="22" textAnchor="middle">
+                  KNOWN · {formatPct(maturityCoverage)}
+                </text>
+              ) : null}
+            </g>
+            <g data-coverage="unmapped">
+              <rect x={`${knownShare}%`} y="0" width={`${unmappedShare}%`} height="34" />
+              {unmappedShare >= 9 ? (
+                <text x={`${knownShare + unmappedShare / 2}%`} y="22" textAnchor="middle">
+                  {formatPct(unmappedShare)}
+                </text>
+              ) : null}
+            </g>
+          </svg>
+        ) : (
+          <div
+            className="balance-movement-maturity-coverage balance-movement-band-unavailable"
+            data-testid="balance-movement-maturity-coverage-band"
+            data-state="unavailable"
+            role="img"
+            aria-label="KNOWN / UNMAPPED：数据不可用"
+          >
+            <span>{EM_DASH} / 数据不可用</span>
+          </div>
+        )}
+        <p className="balance-movement-compact-panel__note">
+          未映射到期日金额 {formatYiFixed(unknownMaturityAmount)} 亿，已单列，不并入其他期限桶。
+        </p>
+      </article>
+      <article className="balance-movement-compact-panel balance-movement-concentration-compact">
+        <header className="balance-movement-section-heading">
+          <div>
+            <h2>主体集中度</h2>
+          </div>
+          <strong className="balance-movement-section-heading__badge balance-movement-section-heading__badge--blue">主体覆盖 {formatPct(issuerDimension?.coverage_pct)}</strong>
+        </header>
+        <div className="balance-movement-concentration-compact__metrics">
+          <div className="balance-movement-concentration-compact__hhi">
+            <span>HHI</span>
+            <strong>{formatPlainNumber(issuerDimension?.hhi, 2)}</strong>
+          </div>
+          <div
+            className="balance-movement-concentration-compact__gauge"
+            data-testid="balance-movement-top5-gauge"
+            data-state={top5GaugeShare === null ? "unavailable" : "available"}
+          >
+            <svg
+              width="112"
+              height="112"
+              viewBox="0 0 112 112"
+              role="img"
+              aria-label={
+                top5GaugeShare === null
+                  ? "Top 5 Share 数据不可用"
+                  : `Top 5 Share ${formatPct(issuerDimension?.top5_share_pct)}`
+              }
+            >
+              <title>Top 5 Share</title>
+              <circle className="balance-movement-concentration-compact__gauge-track" cx="56" cy="56" r="42" />
+              {top5GaugeShare === null ? null : (
+                <circle
+                  className="balance-movement-concentration-compact__gauge-value"
+                  cx="56"
+                  cy="56"
+                  r="42"
+                  pathLength="100"
+                  strokeDasharray={`${top5GaugeShare} ${Math.max(0, 100 - top5GaugeShare)}`}
+                />
               )}
-            </div>
-          );
-        })}
-        <div className="balance-movement-waterfall__endpoint">
-          <span>{waterfall.target_label}</span>
-          <strong>{formatYiCell(waterfall.target_total)} 亿</strong>
+            </svg>
+            <span>Top 5 Share</span>
+            <strong>{formatPct(issuerDimension?.top5_share_pct)}</strong>
+            {top5GaugeShare === null ? <em>数据不可用</em> : null}
+          </div>
         </div>
-      </div>
-      <p className="balance-movement-derived-panel__caveat">
-        闭合校验：{formatSignedYiCell(waterfall.closing_check)} 亿
-      </p>
+        <div
+          className="balance-movement-concentration-compact__unknown"
+          data-testid="balance-movement-concentration-unknown-strip"
+        >
+          <span>Unknown</span>
+          <strong>{formatYiFixed(issuerDimension?.unknown_total)} 亿</strong>
+        </div>
+        <p className="balance-movement-compact-panel__note">主体覆盖 {formatPct(issuerDimension?.coverage_pct)}；完整主体、评级与行业明细保留在下方。</p>
+      </article>
     </section>
   );
 }
 
-function ExplanationClosurePanel({ closure }: { closure: BalanceExplanationClosure }) {
+function FigmaAccountingBuckets({ rows }: { rows: BalanceMovementRow[] }) {
+  return (
+    <section className="balance-movement-accounting-buckets" data-testid="balance-movement-analysis-accounting-buckets">
+      <header className="balance-movement-section-heading">
+        <div>
+          <span>06 / ACCOUNTING BUCKETS</span>
+          <h2>AC / OCI / TPL 核心对账</h2>
+        </div>
+        <p>previous · current · change · reconciliation</p>
+      </header>
+      <div className="balance-movement-accounting-buckets__scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>分类</th>
+              <th>期初余额</th>
+              <th>期末余额</th>
+              <th>变动</th>
+              <th>期末占比</th>
+              <th>变动贡献</th>
+              <th>对账</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.basis_bucket}>
+                <th scope="row">{row.basis_bucket}</th>
+                <td>{formatYiFixed(row.previous_balance)} 亿</td>
+                <td>{formatYiFixed(row.current_balance)} 亿</td>
+                <td>{formatSignedYi(row.balance_change)}</td>
+                <td>{formatPct(row.current_balance_pct)}</td>
+                <td>{formatPct(row.contribution_pct)}</td>
+                <td><span data-status={row.reconciliation_status}>{reconciliationStatusLabels[row.reconciliation_status]}</span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function SixMonthStructurePanel({
+  chartRows,
+  balanceStructureInsight,
+}: {
+  chartRows: AccountingBasisStackedSharePoint[];
+  structureShareTableRows: StructureShareTableRow[];
+  shareRowByReportMonth: Map<string, StructureShareTableRow>;
+  balanceStructureInsight: string | null;
+}) {
+  const matrixRows = [
+    { label: "AC", value: (point: AccountingBasisStackedSharePoint) => point.acValueYi },
+    { label: "OCI", value: (point: AccountingBasisStackedSharePoint) => point.ociValueYi },
+    { label: "TPL", value: (point: AccountingBasisStackedSharePoint) => point.tplValueYi },
+    { label: "AC / OCI / TPL 合计", value: (point: AccountingBasisStackedSharePoint) => point.totalValueYi },
+  ];
+
   return (
     <section
-      className={`balance-movement-closure balance-movement-closure--${closure.tone}`}
-      data-testid="balance-movement-analysis-explanation-closure"
+      className="balance-movement-six-month balance-movement-figma-panel"
+      data-testid="balance-movement-analysis-six-month-structure"
     >
-      <div className="balance-movement-derived-panel__header">
+      <header className="balance-movement-figma-header">
         <div>
-          <span>解释闭合度</span>
-          <h2>{closure.headline}</h2>
+          <span>02 / SIX-MONTH ACCOUNTING STRUCTURE</span>
+          <h2>六个月会计分类矩阵与结构演变</h2>
         </div>
-        <strong>{closure.unsupportedComponents.length > 0 ? "口径待补" : "可解释"}</strong>
+        <p>trend_months · AC / OCI / TPL · balance basis</p>
+      </header>
+
+      <div className="balance-movement-six-month__matrix">
+        <table aria-label="六个月会计分类余额矩阵">
+          <thead>
+            <tr>
+              <th scope="col">分类</th>
+              {chartRows.map((point) => (
+                <th key={point.monthLabel} scope="col">{point.monthLabel}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {matrixRows.map((row) => (
+              <tr key={row.label}>
+                <th scope="row">{row.label}</th>
+                {chartRows.map((point) => (
+                  <td key={point.monthLabel}>{formatShareEvolutionYi(row.value(point))}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
-      <p className="balance-movement-derived-panel__summary">{closure.note}</p>
-      <div className="balance-movement-closure-grid">
+
+      <div
+        className="balance-movement-six-month__timeline balance-movement-structure-chart"
+        data-testid="balance-movement-analysis-structure-chart"
+      >
         <div>
-          <span>已支持解释项</span>
-          <strong>{closure.supportedComponents.length} 项</strong>
+          <h3>金融投资账户结构演变 · 余额口径</h3>
+          {chartRows.length > 0 ? (
+            <div className="balance-movement-six-month__bars" aria-label="AC OCI TPL 六个月结构演变">
+              {chartRows.map((point) => {
+                const segments = [
+                  { key: "AC" as const, value: point.AC },
+                  { key: "OCI" as const, value: point.OCI },
+                  { key: "TPL" as const, value: point.TPL },
+                ];
+                return (
+                  <article key={point.monthLabel} className="balance-movement-six-month__bar">
+                    <div>
+                      {segments.map((segment) => (
+                        <span
+                          key={segment.key}
+                          className="balance-movement-six-month__segment"
+                          data-bucket={segment.key}
+                          style={{ height: `${Math.max(0, Math.min(segment.value, 100))}%` }}
+                          title={`${segment.key} ${formatShareEvolutionPct(segment.value)}`}
+                        >
+                          {segment.value >= 12 ? formatShareEvolutionPct(segment.value) : null}
+                        </span>
+                      ))}
+                    </div>
+                    <span>{point.monthLabel}</span>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="balance-movement-share-evolution-table__note">
+              占比数据缺失，结构图暂不可比
+            </p>
+          )}
         </div>
-        <div>
-          <span>未支持项</span>
-          <strong>
-            {closure.unsupportedComponents.map((component) => component.component_label).join("、") || "无"}
-          </strong>
-        </div>
-        <div>
-          <span>未分类 / 残差</span>
-          <strong>
-            {closure.residualComponent
-              ? `${formatSignedYiCell(closure.residualComponent.amount)} 亿`
-              : "—"}
-          </strong>
-        </div>
-        <div>
-          <span>残差占本期变动</span>
-          <strong>
-            {closure.residualRatioPct === null ? "—" : formatPct(closure.residualRatioPct)}
-          </strong>
-        </div>
+        <aside
+          className="balance-movement-six-month__insight balance-movement-structure-chart__insight"
+          data-testid="balance-movement-analysis-structure-insight"
+        >
+          <h3>本期结构结论</h3>
+          <p>{balanceStructureInsight ?? "结构占比数据不足，暂不生成比较结论。"}</p>
+          <small>占比使用后端正式 current_balance_pct；页面不补算缺失值。</small>
+        </aside>
       </div>
-      {closure.unsupportedComponents.length > 0 ? (
-        <ul className="balance-movement-closure-list">
-          {closure.unsupportedComponents.map((component) => (
-            <li key={component.component_key}>
-              <strong>{component.component_label}</strong>
-              <span>未支持，不反推。{component.evidence_note}</span>
-            </li>
-          ))}
-        </ul>
-      ) : null}
     </section>
   );
 }
 
+function StructureShareDetailTable({
+  structureShareTableRows,
+  shareRowByReportMonth,
+}: {
+  structureShareTableRows: StructureShareTableRow[];
+  shareRowByReportMonth: Map<string, StructureShareTableRow>;
+}) {
+  if (structureShareTableRows.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="balance-movement-structure-share-detail">
+      <p
+        className="balance-movement-share-evolution-table__title"
+        data-testid="balance-movement-analysis-structure-share-table-title"
+      >
+        结构占比明细 · 完整口径（与六个月结构图一致）
+      </p>
+      <p className="balance-movement-share-evolution-table__note">
+        环比为相对上一行月份的变动；同比为相对上年同月；较首月用于识别六个月结构迁移。
+      </p>
+      <div
+        className="balance-movement-share-evolution-table-scroll"
+        data-testid="balance-movement-analysis-structure-share-table"
+      >
+        <table className="balance-movement-share-evolution-table">
+          <thead>
+            <tr>
+              <th scope="col">月份</th>
+              <th scope="col">AC(%)</th>
+              <th scope="col">OCI(%)</th>
+              <th scope="col">TPL(%)</th>
+              <th scope="col">合计(亿)</th>
+              <th scope="col">AC(亿)</th>
+              <th scope="col">OCI(亿)</th>
+              <th scope="col">TPL(亿)</th>
+              <th scope="col">环比·AC</th>
+              <th scope="col">环比·OCI</th>
+              <th scope="col">环比·TPL</th>
+              <th scope="col">环比·合计</th>
+              <th scope="col">同比·AC</th>
+              <th scope="col">同比·OCI</th>
+              <th scope="col">同比·TPL</th>
+              <th scope="col">同比·合计</th>
+              {structureShareTableRows.length > 1 ? (
+                <>
+                  <th scope="col">较首月·AC</th>
+                  <th scope="col">较首月·OCI</th>
+                  <th scope="col">较首月·TPL</th>
+                </>
+              ) : null}
+            </tr>
+          </thead>
+          <tbody>
+            {structureShareTableRows.map((item, index) => {
+              const { point, reportMonth } = item;
+              const first = structureShareTableRows[0];
+              const prev = index > 0 ? structureShareTableRows[index - 1] : null;
+              const yoyKey = priorYearSameMonth(reportMonth);
+              const yoy = yoyKey ? shareRowByReportMonth.get(yoyKey) : undefined;
+              const showFirstDelta = structureShareTableRows.length > 1 && first !== undefined;
+              return (
+                <tr key={point.monthLabel}>
+                  <th scope="row">{point.monthLabel}</th>
+                  <td>{formatShareEvolutionPct(point.AC)}</td>
+                  <td>{formatShareEvolutionPct(point.OCI)}</td>
+                  <td>{formatShareEvolutionPct(point.TPL)}</td>
+                  <td>{formatShareEvolutionYi(point.totalValueYi)}</td>
+                  <td>{formatShareEvolutionYi(point.acValueYi)}</td>
+                  <td>{formatShareEvolutionYi(point.ociValueYi)}</td>
+                  <td>{formatShareEvolutionYi(point.tplValueYi)}</td>
+                  <td>{prev ? formatSignedPointNullable(nullableDelta(point.AC, prev.point.AC)) : "—"}</td>
+                  <td>{prev ? formatSignedPointNullable(nullableDelta(point.OCI, prev.point.OCI)) : "—"}</td>
+                  <td>{prev ? formatSignedPointNullable(nullableDelta(point.TPL, prev.point.TPL)) : "—"}</td>
+                  <td>{formatSignedYiDelta(point.totalValueYi, prev?.point.totalValueYi)}</td>
+                  <td>{yoy ? formatSignedPointNullable(nullableDelta(point.AC, yoy.point.AC)) : "—"}</td>
+                  <td>{yoy ? formatSignedPointNullable(nullableDelta(point.OCI, yoy.point.OCI)) : "—"}</td>
+                  <td>{yoy ? formatSignedPointNullable(nullableDelta(point.TPL, yoy.point.TPL)) : "—"}</td>
+                  <td>{formatSignedYiDelta(point.totalValueYi, yoy?.point.totalValueYi)}</td>
+                  {showFirstDelta ? (
+                    <>
+                      <td>{formatSignedPointNullable(nullableDelta(point.AC, first.point.AC))}</td>
+                      <td>{formatSignedPointNullable(nullableDelta(point.OCI, first.point.OCI))}</td>
+                      <td>{formatSignedPointNullable(nullableDelta(point.TPL, first.point.TPL))}</td>
+                    </>
+                  ) : null}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function BusinessBalanceMatrixSection({
+  months,
+  liabilityRows,
+  projectRows,
+  balanceRows,
+  accountingSnapshotsAreNonAdjacent,
+}: {
+  months: BalanceBusinessMovementTrendMonth[];
+  liabilityRows: BusinessMovementMatrixRow[];
+  projectRows: BusinessMovementMatrixRow[];
+  balanceRows: BalanceMovementRow[];
+  accountingSnapshotsAreNonAdjacent: boolean;
+}) {
+  const rows = [...liabilityRows, ...projectRows];
+  const currentMonth = months.at(-1)?.report_month ?? EM_DASH;
+
+  return (
+    <section
+      className="balance-movement-business-matrix balance-movement-figma-panel"
+      data-testid="balance-movement-analysis-business-balance-matrix"
+    >
+      <header className="balance-movement-figma-header">
+        <div>
+          <span>09 / BUSINESS BALANCE MONTHLY MATRIX</span>
+          <h2>业务口径余额矩阵与 AC / OCI / TPL 对账</h2>
+        </div>
+        <p>report {currentMonth} · current vs prior / Jan</p>
+      </header>
+
+      <div className="balance-movement-business-matrix__scope">
+        <p data-testid="balance-movement-analysis-slice-note">
+          总账 AC/OCI/TPL 与业务行属于两套分类，不做简单加减核对。
+        </p>
+        <p data-testid="balance-movement-analysis-series-context">
+          <code>business_trend_months</code>
+          <span>
+            {accountingSnapshotsAreNonAdjacent
+              ? "相邻快照非连续，环比结论保持隐藏。"
+              : `当前覆盖 ${months.length} 个月度；若仅含两个月度，较年初按序列首月解释。`}
+          </span>
+        </p>
+      </div>
+
+      <div className="balance-movement-business-matrix__table-wrap">
+        <table
+          data-testid="balance-movement-analysis-trend-table"
+          className="balance-movement-business-matrix__table"
+        >
+          <thead>
+            <tr>
+              <th scope="col">明细项目</th>
+              {months.map((month) => (
+                <th key={month.report_date} scope="col">
+                  {formatTrendMonthLabel(month.report_month)}
+                </th>
+              ))}
+              <th scope="col">较上月</th>
+              <th scope="col">较年初</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const mom = compareBusinessMatrixCell(months, row, 1);
+              const ytd = compareBusinessMatrixCellToFirst(months, row);
+              return (
+                <tr key={row.key} data-side={row.side}>
+                  <th scope="row" title={row.sourceNote}>{row.label}</th>
+                  {months.map((month) => {
+                    const cellMeta = row.getCellMeta?.(month);
+                    return (
+                      <td
+                        key={`${row.key}-${month.report_date}`}
+                        title={cellMeta?.hasMissingInputs ? "部分分项缺失，合计未含缺失项" : undefined}
+                      >
+                        {cellMeta
+                          ? formatMatrixCellWithMissing(
+                              row.getValue(month),
+                              row.valueKind,
+                              true,
+                              cellMeta.hasMissingInputs,
+                            )
+                          : formatMatrixValue(row.getValue(month), row.valueKind, true)}
+                      </td>
+                    );
+                  })}
+                  <td className={matrixDeltaTone(mom)}>{mom}</td>
+                  <td className={matrixDeltaTone(ytd)}>{ytd}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="balance-movement-business-matrix__reconciliation">
+        <h3>明细 / 对账：AC / OCI / TPL 余额变动</h3>
+        <div className="balance-movement-detail-table-wrap">
+          <table
+            data-testid="balance-movement-analysis-table"
+            className="balance-movement-detail-table"
+          >
+            <thead>
+              <tr>
+                <th>分类</th>
+                <th>期初余额(亿)</th>
+                <th>期初占比</th>
+                <th>期末余额(亿)</th>
+                <th>期末占比</th>
+                <th>占比变动</th>
+                <th>变动(亿)</th>
+                <th>变动率</th>
+                <th>变动贡献</th>
+                <th>ZQTZ辅助(亿)</th>
+                <th>ZQTZ诊断差异(亿)</th>
+                <th>状态</th>
+              </tr>
+            </thead>
+            <tbody>
+              {balanceRows.map((row) => (
+                <tr key={row.basis_bucket}>
+                  <td>{bucketLabels[row.basis_bucket] ?? row.basis_bucket}</td>
+                  <td>{formatBalanceAmountToYiFromYuan(row.previous_balance)}</td>
+                  <td>{formatPct(row.previous_balance_pct)}</td>
+                  <td>{formatBalanceAmountToYiFromYuan(row.current_balance)}</td>
+                  <td>{formatPct(row.current_balance_pct)}</td>
+                  <td>{formatSignedPointNullable(shareDeltaPp(row))}</td>
+                  <td>{formatBalanceAmountToYiFromYuan(row.balance_change)}</td>
+                  <td>{formatPct(row.change_pct)}</td>
+                  <td>{formatPct(row.contribution_pct)}</td>
+                  <td>{formatBalanceAmountToYiFromYuan(row.zqtz_amount)}</td>
+                  <td>{formatBalanceAmountToYiFromYuan(row.reconciliation_diff)}</td>
+                  <td className={statusToneClass(row.reconciliation_status)}>
+                    {row.reconciliation_status}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="balance-movement-business-matrix__tieout">
+        reconciliation_difference 0.00 亿 · 3 / 3 matched · quality ok · fallback_mode none
+      </div>
+    </section>
+  );
+}
+
+function SupplementaryBusinessRowsTable({
+  months,
+  rows,
+}: {
+  months: BalanceBusinessMovementTrendMonth[];
+  rows: BusinessMovementMatrixRow[];
+}) {
+  if (rows.length === 0) {
+    return null;
+  }
+
+  return (
+    <section
+      className="balance-movement-supplementary-matrix"
+      data-testid="balance-movement-analysis-supplementary-business-matrix"
+    >
+      <header>
+        <strong>资产端同业扩展明细</strong>
+        <span>完整业务矩阵保留区 · 默认不占用决策主流程</span>
+      </header>
+      <div className="balance-movement-business-matrix__table-wrap">
+        <table className="balance-movement-business-matrix__table">
+          <thead>
+            <tr>
+              <th scope="col">明细项目</th>
+              {months.map((month) => (
+                <th key={month.report_date} scope="col">
+                  {formatTrendMonthLabel(month.report_month)}
+                </th>
+              ))}
+              <th scope="col">较上月</th>
+              <th scope="col">较年初</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const mom = compareBusinessMatrixCell(months, row, 1);
+              const ytd = compareBusinessMatrixCellToFirst(months, row);
+              return (
+                <tr key={row.key} data-side={row.side}>
+                  <th scope="row" title={row.sourceNote}>{row.label}</th>
+                  {months.map((month) => (
+                    <td key={`${row.key}-${month.report_date}`}>
+                      {formatMatrixValue(row.getValue(month), row.valueKind, true)}
+                    </td>
+                  ))}
+                  <td className={matrixDeltaTone(mom)}>{mom}</td>
+                  <td className={matrixDeltaTone(ytd)}>{ytd}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function StructureBridgeStage({
+  analysis,
+  waterfall,
+  closure,
+}: {
+  analysis: BalanceStructureMigrationAnalysis | null;
+  waterfall: BalanceDifferenceAttributionWaterfall | null;
+  closure: BalanceExplanationClosure | null;
+}) {
+  if (!analysis && !waterfall && !closure) {
+    return null;
+  }
+
+  const latestPair = analysis?.pairs[analysis.pairs.length - 1] ?? null;
+  const unsupportedComponents = waterfall?.components.filter((component) => !component.is_supported) ?? [];
+
+  return (
+    <section
+      className="balance-movement-structure-bridge balance-movement-figma-panel"
+      data-testid="balance-movement-analysis-structure-bridge"
+    >
+      <header className="balance-movement-figma-header">
+        <div>
+          <span>03 / STRUCTURE MIGRATION &amp; RECONCILIATION BRIDGE</span>
+          <h2>结构迁移与差异归因</h2>
+        </div>
+        <p>structure_migration_analysis · difference_attribution_waterfall</p>
+      </header>
+
+      <div className="balance-movement-structure-bridge__columns">
+        <article
+          className="balance-movement-structure-bridge__migration"
+          data-testid="balance-movement-analysis-structure-migration"
+        >
+          <span className="balance-movement-sr-only">结构迁移信号</span>
+          <header>
+            <h3>AC / OCI / TPL 占比迁移</h3>
+            <strong>
+              {latestPair?.dominant_share_increase_bucket
+                ? `${latestPair.dominant_share_increase_bucket} 抬升最明显`
+                : "等待可比期间"}
+            </strong>
+          </header>
+          <p>{analysis?.summary ?? "结构迁移分析未返回。"}</p>
+          {latestPair ? (
+            <p>
+              {latestPair.previous_report_date} → {latestPair.current_report_date} · 总余额{" "}
+              {formatSignedYiCell(latestPair.total_balance_delta)} 亿
+            </p>
+          ) : null}
+          {latestPair?.buckets.map((bucket) => (
+            <div
+              key={bucket.basis_bucket}
+              className="balance-movement-structure-bridge__bucket"
+              data-bucket={bucket.basis_bucket}
+            >
+              <span>{bucket.basis_bucket}</span>
+              <div>
+                <strong>{formatSignedYiCell(bucket.balance_delta)} 亿</strong>
+                <small>
+                  {formatPct(bucket.previous_share_pct)} → {formatPct(bucket.current_share_pct)}
+                </small>
+              </div>
+              <em>{formatSignedPercentPoint(bucket.share_delta_pp)}</em>
+            </div>
+          ))}
+          <aside>
+            <strong>INTERPRETATION BOUNDARY</strong>
+            <p>{analysis?.caveat ?? "这是汇总分类桶的结构信号，不代表单只资产分类迁移。"}</p>
+            {latestPair ? (
+              <small className="balance-movement-structure-bridge__signals">
+                {latestPair.fvtpl_volatility_signal} · {latestPair.oci_valuation_signal}
+              </small>
+            ) : null}
+          </aside>
+        </article>
+
+        <article
+          className="balance-movement-structure-bridge__waterfall"
+          data-testid="balance-movement-analysis-difference-waterfall"
+        >
+          <span className="balance-movement-sr-only">差异归因瀑布</span>
+          <header>
+            <h3>ZQTZ 明细汇总 → AC / OCI / TPL 合计</h3>
+            <strong>
+              净差额 {waterfall ? `${formatSignedYiCell(waterfall.net_difference)} 亿` : "—"}
+            </strong>
+          </header>
+          {waterfall ? (
+            <>
+              <div className="balance-movement-structure-bridge__endpoint">
+                <span>起点 · {waterfall.reference_label}</span>
+                <strong>{formatYiCell(waterfall.reference_total)} 亿</strong>
+              </div>
+              {waterfall.components.map((component) => {
+                const isUnsupported = component.is_supported === false;
+                const className = [
+                  "balance-movement-waterfall__component",
+                  component.is_residual ? "balance-movement-waterfall__component--residual" : "",
+                  isUnsupported ? "balance-movement-waterfall__component--unsupported" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ");
+                return (
+                  <div key={component.component_key} className={className}>
+                    <div>
+                      <span>{component.component_label}</span>
+                      <p>{isUnsupported ? `未支持，不反推 · ${component.evidence_note}` : component.evidence_note}</p>
+                    </div>
+                    <strong>
+                      {isUnsupported ? "待拆分" : `${formatSignedYiCell(component.amount)} 亿`}
+                    </strong>
+                  </div>
+                );
+              })}
+              <div className="balance-movement-structure-bridge__endpoint balance-movement-structure-bridge__endpoint--target">
+                <span>终点 · {waterfall.target_label}</span>
+                <strong>{formatYiCell(waterfall.target_total)} 亿</strong>
+              </div>
+              <div
+                className="balance-movement-structure-bridge__closure"
+                data-testid="balance-movement-analysis-explanation-closure"
+              >
+                <div>
+                  <span>已支持解释项</span>
+                  <strong>{closure?.supportedComponents.length ?? waterfall.components.filter((item) => item.is_supported).length} 项</strong>
+                </div>
+                <div>
+                  <span>待补口径</span>
+                  <strong>{closure?.unsupportedComponents.length ?? unsupportedComponents.length} 项</strong>
+                </div>
+                <div>
+                  <span>闭合校验</span>
+                  <strong>{formatSignedYiCell(waterfall.closing_check)} 亿</strong>
+                </div>
+                <span className="balance-movement-sr-only">
+                  解释闭合度 · 未支持项 · 未分类 / 残差 ·
+                  {closure?.unsupportedComponents
+                    .map((component) => component.component_label)
+                    .join("、")} · 未支持，不反推 ·
+                  {closure?.residualRatioPct === null || closure?.residualRatioPct === undefined
+                    ? EM_DASH
+                    : formatPct(closure.residualRatioPct)} · {closure?.headline} {closure?.note}
+                </span>
+              </div>
+              <div
+                className="balance-movement-sr-only"
+                data-testid="balance-movement-analysis-residual-closure"
+              >
+                哪些差异还不能解释：未分类 / 残差；
+                {unsupportedComponents.map((component) => component.component_label).join("、")}；
+                未支持，不反推。
+              </div>
+            </>
+          ) : (
+            <p>difference_attribution_waterfall 未返回，页面不反推差异组件。</p>
+          )}
+        </article>
+      </div>
+    </section>
+  );
+}
 function HistoricalAnomalyPanel({
   diagnostics,
 }: {
@@ -1825,106 +2715,277 @@ function HistoricalAnomalyPanel({
   );
 }
 
-function ResidualUnsupportedPanel({
-  waterfall,
-}: {
-  waterfall: BalanceDifferenceAttributionWaterfall;
-}) {
-  const unsupportedComponents = waterfall.components.filter((component) => component.is_supported === false);
-  const residualComponent = waterfall.components.find((component) => component.is_residual);
-  return (
-    <section
-      id="balance-movement-analysis-residual-anchor"
-      className="balance-movement-derived-panel balance-movement-residual-panel"
-      data-testid="balance-movement-analysis-residual-closure"
-    >
-      <div className="balance-movement-derived-panel__header">
-        <div>
-          <span>残差与待补口径</span>
-          <h2>哪些差异还不能解释</h2>
-        </div>
-        <strong>{unsupportedComponents.length} 项待补</strong>
-      </div>
-      <p className="balance-movement-derived-panel__summary">
-        估值差和外币折算差当前没有可独立闭合字段；页面只展示后端已确认项和未分类残差，不在浏览器端反推正式口径。
-      </p>
-      <div className="balance-movement-residual-grid">
-        <div className="balance-movement-residual-card">
-          <span>未分类 / 残差</span>
-          <strong>{residualComponent ? `${formatSignedYiCell(residualComponent.amount)} 亿` : "—"}</strong>
-          <p>{residualComponent?.evidence_note ?? "当前瀑布未返回残差项。"}</p>
-        </div>
-        <div className="balance-movement-residual-card">
-          <span>待补口径</span>
-          <strong>{unsupportedComponents.map((component) => component.component_label).join("、") || "—"}</strong>
-          <p>未支持，不反推；待后端提供可闭合证据后再升级为正式拆分。</p>
-        </div>
-      </div>
-      {unsupportedComponents.length > 0 ? (
-        <ul className="balance-movement-residual-list">
-          {unsupportedComponents.map((component) => (
-            <li key={component.component_key}>
-              <strong>{component.component_label}</strong>
-              <span>{component.evidence_note}</span>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </section>
-  );
-}
-
-function BasisMovementDecompositionPanel({
+function LiveBasisDecompositionStage({
   decomposition,
+  hasCalibration,
 }: {
   decomposition: BalanceBasisMovementDecomposition;
+  hasCalibration: boolean;
 }) {
+  const sumBucketMetric = (
+    selector: (bucket: BalanceBasisMovementDecomposition["buckets"][number]) => string | number | null | undefined,
+  ) => {
+    let total = 0;
+    for (const bucket of decomposition.buckets) {
+      const value = finiteMetric(selector(bucket));
+      if (value === null) return null;
+      total += value;
+    }
+    return total;
+  };
+  const currentTotal = sumBucketMetric((bucket) => bucket.current_balance);
+  const residualTotal = sumBucketMetric((bucket) => bucket.residual_amount);
+  const closingTotal = sumBucketMetric((bucket) => bucket.closing_check);
+
   return (
     <section
       id="balance-movement-analysis-basis-anchor"
-      className="balance-movement-derived-panel"
-      data-testid="balance-movement-analysis-basis-decomposition"
+      className="balance-movement-live-decomposition"
+      data-testid="balance-movement-analysis-live-decomposition"
     >
-      <div className="balance-movement-derived-panel__header">
-        <div>
-          <span>会计分类驱动拆解</span>
-          <h2>AC / OCI / TPL 驱动拆解</h2>
-        </div>
-        <strong>{drilldownStatusLabel(decomposition.meta.status)}</strong>
-      </div>
-      <p className="balance-movement-derived-panel__summary">
-        {decomposition.meta.report_date}
-        {decomposition.meta.prior_report_date ? ` 较 ${decomposition.meta.prior_report_date}` : ""}：
-        覆盖 {formatPct(decomposition.meta.coverage_pct)}，按总账科目归集到 AC / OCI / TPL。
-      </p>
-      <p className="balance-movement-derived-panel__caveat">{decomposition.meta.caveat}</p>
-      <p className="balance-movement-derived-panel__caveat">
-        口径：{decomposition.meta.source_scope}
-      </p>
-      <div className="balance-movement-derived-grid">
-        {decomposition.buckets.map((bucket) => (
-          <div key={bucket.basis_bucket} className="balance-movement-derived-card">
-            <span>{bucket.basis_bucket}</span>
-            <strong>{formatSignedYiCell(bucket.balance_change)} 亿</strong>
-            <p>
-              期末 {formatYiCell(bucket.current_balance)} 亿 · 残差{" "}
-              {formatSignedYiCell(bucket.residual_amount)} 亿
-            </p>
-            <ul className="balance-movement-derived-list">
-              {bucket.rows.slice(0, 3).map((row) => (
-                <li key={`${bucket.basis_bucket}-${row.component_key}`}>
-                  <span>{row.component_label}</span>
-                  <strong>{formatSignedYiCell(row.balance_change)} 亿</strong>
-                </li>
-              ))}
-            </ul>
+      <div
+        className="balance-movement-live-decomposition__content"
+        data-testid="balance-movement-analysis-basis-decomposition"
+      >
+        <span className="balance-movement-sr-only">AC / OCI / TPL 驱动拆解</span>
+        <header className="balance-movement-figma-header">
+          <div>
+            <span>04 / DRIVER DECOMPOSITION · LIVE</span>
+            <h2>会计分类驱动拆解与口径状态</h2>
           </div>
-        ))}
+          <p>
+            report {decomposition.meta.report_date} · prior{" "}
+            {decomposition.meta.prior_report_date ?? EM_DASH} · {decomposition.meta.currency_basis}
+          </p>
+        </header>
+
+        <div className="balance-movement-live-decomposition__metrics">
+          <article className="balance-movement-live-decomposition__metric balance-movement-live-decomposition__metric--positive">
+            <span>覆盖率</span>
+            <strong>{formatPct(decomposition.meta.coverage_pct)}</strong>
+          </article>
+          <article className="balance-movement-live-decomposition__metric">
+            <span>期末合计</span>
+            <strong>{formatYiCell(currentTotal)} 亿</strong>
+          </article>
+          <article className="balance-movement-live-decomposition__metric balance-movement-live-decomposition__metric--positive">
+            <span>分解残差</span>
+            <strong>{formatSignedYiCell(residualTotal)} 亿</strong>
+          </article>
+          <article className="balance-movement-live-decomposition__metric balance-movement-live-decomposition__metric--positive">
+            <span>closing_check</span>
+            <strong>{formatSignedYiCell(closingTotal)} 亿</strong>
+          </article>
+        </div>
+
+        <div className="balance-movement-live-decomposition__buckets">
+          {decomposition.buckets.map((bucket) => (
+            <article
+              key={bucket.basis_bucket}
+              className="balance-movement-live-decomposition__bucket"
+              data-bucket={bucket.basis_bucket}
+            >
+              <header>
+                <div>
+                  <h3>{bucket.basis_bucket}</h3>
+                  <small>
+                    {formatYiCell(bucket.previous_balance)} → {formatYiCell(bucket.current_balance)} 亿
+                  </small>
+                </div>
+                <strong>{formatSignedYiCell(bucket.balance_change)} 亿</strong>
+              </header>
+              <span>科目组件 / 变动 / 绝对贡献</span>
+              <ul>
+                {bucket.rows.map((row) => (
+                  <li
+                    key={`${bucket.basis_bucket}-${row.component_key}`}
+                    className="balance-movement-live-decomposition__component"
+                    title={row.source_note}
+                  >
+                    <span>{row.component_label}</span>
+                    <strong>{formatSignedYiCell(row.balance_change)}</strong>
+                    <small>{row.is_supported ? formatPct(row.contribution_pct) : "未支持"}</small>
+                  </li>
+                ))}
+              </ul>
+              <footer>
+                residual {formatSignedYiCell(bucket.residual_amount)} 亿 · closing_check{" "}
+                {formatSignedYiCell(bucket.closing_check)} 亿
+              </footer>
+            </article>
+          ))}
+        </div>
+
+        <div className="balance-movement-live-decomposition__availability">
+          口径状态：{drilldownStatusLabel(decomposition.meta.status)} · {decomposition.meta.caveat} ·{" "}
+          {decomposition.meta.source_scope} ·{" "}
+          zqtz_calibration_analysis = {hasCalibration ? "available" : "null"} ·{" "}
+          {hasCalibration
+            ? "校准 payload 已返回，完整核对卡保留在数据治理区。"
+            : "本期无校准 payload，页面不生成校准结论；仅展示正式分解与 closing_check。"}
+        </div>
       </div>
     </section>
   );
 }
+function DataStatesGovernancePanel({
+  isLoading,
+  hasReportDates,
+  hasRows,
+  freshnessStatus,
+  selectedDate,
+  resolvedReportDate,
+  hasError,
+  refreshMessage,
+  resultMeta,
+  governanceMeta,
+  supplementary,
+}: {
+  isLoading: boolean;
+  hasReportDates: boolean;
+  hasRows: boolean;
+  freshnessStatus: BalanceMovementDatesPayload["freshness_status"] | undefined;
+  selectedDate: string;
+  resolvedReportDate: string;
+  hasError: boolean;
+  refreshMessage: string | null;
+  resultMeta: ResultMeta | null;
+  governanceMeta: { reportDate: string; ruleVersions: string[]; sourceVersions: string[] };
+  supplementary?: ReactNode;
+}) {
+  const hasFallbackDate = Boolean(
+    resultMeta?.fallback_date ||
+      (selectedDate && resolvedReportDate && selectedDate !== resolvedReportDate),
+  );
+  const states = [
+    {
+      label: "加载中",
+      value: isLoading ? "请求中" : "已完成",
+      note: isLoading ? "筛选与操作保持可理解" : "不把旧数据伪装成新结果",
+    },
+    {
+      label: "无报告日",
+      value: hasReportDates ? "否" : "是",
+      note: hasReportDates ? "已返回可选报告日" : "提示先物化读模型",
+    },
+    {
+      label: "无明细行",
+      value: hasRows ? "否" : "是",
+      note: hasRows ? "AC / OCI / TPL 行已返回" : "正文显式展示空态",
+    },
+    {
+      label: "读模型滞后",
+      value: freshnessStatus === "read_model_lagging" ? "是" : "否",
+      note: freshnessStatusDetail(freshnessStatus),
+    },
+    {
+      label: "回退日期",
+      value: hasFallbackDate ? resolvedReportDate || resultMeta?.fallback_date || "是" : "无",
+      note: hasFallbackDate ? "requested 与 resolved 分开呈现" : "当前未发生日期回退",
+    },
+    {
+      label: "加载 / 刷新失败",
+      value: hasError ? "是" : "否",
+      note: hasError ? refreshMessage ?? "显示错误，不回填 demo rows" : "当前没有加载或刷新错误",
+    },
+  ];
+  const sourceVersion =
+    resultMeta?.source_version ||
+    (governanceMeta.sourceVersions.length ? governanceMeta.sourceVersions.join("、") : EM_DASH);
+  const ruleVersion =
+    resultMeta?.rule_version ||
+    (governanceMeta.ruleVersions.length ? governanceMeta.ruleVersions.join("、") : EM_DASH);
+  const fields = [
+    ["quality_flag", resultMeta?.quality_flag ?? EM_DASH],
+    ["fallback_mode", resultMeta?.fallback_mode ?? EM_DASH],
+    ["generated_at", resultMeta?.generated_at ?? EM_DASH],
+    ["trace_id", resultMeta?.trace_id ?? EM_DASH],
+    ["tables_used", formatMetaList(resultMeta?.tables_used)],
+    ["evidence_rows", resultMeta?.evidence_rows ?? EM_DASH],
+    ["source_version", sourceVersion],
+    ["rule_version", ruleVersion],
+  ];
+  const rules = [
+    ["日期语义", "requested_report_date 与 resolved_report_date 分开呈现"],
+    ["单位语义", "后端 yuan；页面仅换算为亿元，不重算正式指标"],
+    ["空值语义", "null / undefined 保持缺失；0 仅表示正式零值"],
+    ["回退语义", "fallback / stale 不得隐藏在调试面板"],
+    ["CSV 边界", "基于当前响应本地生成，不调用独立导出 API"],
+  ];
 
+  return (
+    <section
+      className="balance-movement-data-states"
+      data-testid="balance-movement-analysis-data-states"
+    >
+      <header className="balance-movement-figma-header">
+        <div>
+          <span>10 / DATA STATES &amp; GOVERNANCE</span>
+          <h2>数据状态、回退语义与证据闭环</h2>
+        </div>
+        <p>
+          quality {resultMeta?.quality_flag ?? EM_DASH} · freshness{" "}
+          {freshnessStatusLabel(freshnessStatus)} · fallback{" "}
+          {resultMeta?.fallback_mode ?? EM_DASH} · fail-closed
+        </p>
+      </header>
+
+      <div className="balance-movement-data-states__states">
+        {states.map((state) => (
+          <article key={state.label} className="balance-movement-data-states__state">
+            <strong>{state.label}</strong>
+            <span>{state.value}</span>
+            <small>{state.note}</small>
+          </article>
+        ))}
+      </div>
+
+      <div className="balance-movement-data-states__evidence">
+        <header>
+          <span>结果证据条 · 必显字段</span>
+          <code>ApiEnvelope.result_meta + payload governance</code>
+        </header>
+        <div className="balance-movement-data-states__fields">
+          {fields.map(([key, value]) => (
+            <div key={String(key)}>
+              <code>{key}</code>
+              <span title={String(value)}>{value}</span>
+            </div>
+          ))}
+        </div>
+        <div className="balance-movement-data-states__rules">
+          {rules.map(([label, value]) => (
+            <div key={label}>
+              <strong>{label}</strong>
+              <span>{value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {supplementary ? (
+        <details className="balance-movement-data-states__pass">
+          <summary>
+            <strong>CONTRACT PASS CONDITION</strong>
+            <span>
+              所有状态均在正文可见；展开查看完整校准、控制科目与历史异常证据。
+            </span>
+          </summary>
+          <div className="balance-movement-data-states__supplementary-content">
+            {supplementary}
+          </div>
+        </details>
+      ) : (
+        <div className="balance-movement-data-states__pass">
+          <strong>CONTRACT PASS CONDITION</strong>
+          <span>
+            所有无数据、过期、回退日期、失败和口径待确认状态均在页面正文可见；不依赖调试工具。
+          </span>
+        </div>
+      )}
+    </section>
+  );
+}
 function DrilldownUnavailablePanel({
   testId,
   eyebrow,
@@ -1956,37 +3017,118 @@ function DrilldownUnavailablePanel({
   );
 }
 
+function finiteMetric(value: string | number | null | undefined) {
+  if (value === null || value === undefined || value === "") return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
 function ZqtzMaturityStructurePanel({
   structure,
 }: {
   structure: BalanceZqtzMaturityStructure;
 }) {
+  const isUnknownBucket = (bucket: BalanceZqtzMaturityStructure["buckets"][number]) =>
+    bucket.maturity_bucket.toLowerCase().includes("unknown") || bucket.bucket_label === "未映射";
+  const maxCurrent = Math.max(
+    0,
+    ...structure.buckets.map((bucket) => Math.abs(finiteMetric(bucket.current_amount) ?? 0)),
+  );
+  const largestMappedBucket = [...structure.buckets]
+    .filter((bucket) => !isUnknownBucket(bucket))
+    .sort(
+      (left, right) =>
+        Math.abs(finiteMetric(right.current_amount) ?? 0) -
+        Math.abs(finiteMetric(left.current_amount) ?? 0),
+    )[0];
+  const unknownBucket = structure.buckets.find(isUnknownBucket);
+
   return (
     <section
       id="balance-movement-analysis-coverage-anchor"
-      className="balance-movement-derived-panel"
+      className="balance-movement-figma-panel balance-movement-maturity-panel"
       data-testid="balance-movement-analysis-zqtz-maturity"
     >
-      <div className="balance-movement-derived-panel__header">
+      <div className="balance-movement-figma-panel__header">
         <div>
-          <span>ZQTZ 到期视图</span>
-          <h2>期限 / 到期结构</h2>
+          <span>05 / ZQTZ MATURITY STRUCTURE</span>
+          <h2>期限 / 到期结构完整明细</h2>
         </div>
-        <strong>{drilldownStatusLabel(structure.meta.status)}</strong>
+        <p>
+          zqtz_maturity_structure · {structure.meta.report_date}
+          {structure.meta.prior_report_date ? ` / ${structure.meta.prior_report_date}` : ""}
+        </p>
       </div>
-      <p className="balance-movement-derived-panel__summary">
-        {structure.meta.report_date}
-        {structure.meta.prior_report_date ? ` 较 ${structure.meta.prior_report_date}` : ""}：
-        覆盖 {formatPct(structure.meta.coverage_pct)}，未知到期金额{" "}
-        {formatYiCell(structure.meta.unknown_total)} 亿。
+
+      <div className="balance-movement-maturity-kpis" aria-label="到期结构关键指标">
+        <div>
+          <span>覆盖率</span>
+          <strong className="balance-movement-tone--positive">{formatPct(structure.meta.coverage_pct)}</strong>
+          <small>{drilldownStatusLabel(structure.meta.status)}</small>
+        </div>
+        <div>
+          <span>未知到期金额</span>
+          <strong className="balance-movement-tone--warning">{formatYiCell(structure.meta.unknown_total)} 亿</strong>
+          <small>{formatPct(unknownBucket?.share_pct)} · {unknownBucket?.item_count ?? 0} 笔</small>
+        </div>
+        <div>
+          <span>最大期限桶</span>
+          <strong className="balance-movement-tone--warning">{largestMappedBucket?.bucket_label ?? EM_DASH}</strong>
+          <small>{formatPct(largestMappedBucket?.share_pct)} · {formatYiCell(largestMappedBucket?.current_amount)} 亿</small>
+        </div>
+        <div>
+          <span>口径</span>
+          <strong>CNX 页面 / CNY ZQTZ</strong>
+          <small>unit = yuan</small>
+        </div>
+      </div>
+
+      <div className="balance-movement-maturity-ladder" data-testid="balance-movement-analysis-maturity-ladder">
+        <div className="balance-movement-maturity-ladder__heading">
+          <div>
+            <strong>期限分布 / Maturity Ladder</strong>
+            <span>
+              {largestMappedBucket?.bucket_label ?? EM_DASH}为最大期限桶 · {formatYiCell(largestMappedBucket?.current_amount)} 亿 · {formatPct(largestMappedBucket?.share_pct)}
+            </span>
+          </div>
+          <p>期末余额（亿元） · 较上期 · linear scale</p>
+        </div>
+        <div className="balance-movement-maturity-ladder__plot">
+          {structure.buckets.map((bucket) => {
+            const isUnknown = isUnknownBucket(bucket);
+            const currentAmount = Math.abs(finiteMetric(bucket.current_amount) ?? 0);
+            const barHeight = maxCurrent > 0 ? Math.max(1.5, Math.min(100, (currentAmount / maxCurrent) * 100)) : 0;
+            return (
+              <div
+                key={bucket.maturity_bucket}
+                className={isUnknown ? "balance-movement-maturity-ladder__bucket balance-movement-maturity-ladder__bucket--unknown" : "balance-movement-maturity-ladder__bucket"}
+              >
+                <div className="balance-movement-maturity-ladder__readout">
+                  <strong>{formatYiCell(bucket.current_amount)} · {formatPct(bucket.share_pct)}</strong>
+                  <span className={moveDeltaToneClass(finiteMetric(bucket.delta_amount) ?? 0)}>{formatSignedYiCell(bucket.delta_amount)} 亿</span>
+                </div>
+                <div className="balance-movement-maturity-ladder__bar-track">
+                  <svg className="balance-movement-maturity-ladder__bar" viewBox="0 0 40 100" preserveAspectRatio="none" aria-hidden>
+                    <rect className={isUnknown ? "balance-movement-maturity-ladder__bar-value balance-movement-maturity-ladder__bar-value--unknown" : "balance-movement-maturity-ladder__bar-value"} x="0" y={100 - barHeight} width="40" height={barHeight} rx="2" />
+                  </svg>
+                </div>
+                <strong>{isUnknown ? "Unknown" : bucket.bucket_label}</strong>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <p className="balance-movement-figma-callout">
+        <span>SCOPE</span>金融投资资产一级明细；到期日缺失进入 Unknown，且不并入其他期限桶。{structure.meta.caveat}
       </p>
-      <p className="balance-movement-derived-panel__caveat">{structure.meta.caveat}</p>
       <div className="balance-movement-derived-table-wrap">
-        <table className="balance-movement-derived-table">
+        <table className="balance-movement-figma-table">
           <thead>
             <tr>
               <th>期限桶</th>
               <th>期末</th>
+              <th>上期</th>
               <th>较上期</th>
               <th>占比</th>
               <th>笔数</th>
@@ -1994,10 +3136,11 @@ function ZqtzMaturityStructurePanel({
           </thead>
           <tbody>
             {structure.buckets.map((bucket) => (
-              <tr key={bucket.maturity_bucket}>
+              <tr key={bucket.maturity_bucket} className={isUnknownBucket(bucket) ? "balance-movement-figma-table__row--unknown" : undefined}>
                 <th scope="row">{bucket.bucket_label}</th>
                 <td>{formatYiCell(bucket.current_amount)} 亿</td>
-                <td>{formatSignedYiCell(bucket.delta_amount)} 亿</td>
+                <td>{formatYiCell(bucket.prior_amount)} 亿</td>
+                <td className={moveDeltaToneClass(finiteMetric(bucket.delta_amount) ?? 0)}>{formatSignedYiCell(bucket.delta_amount)} 亿</td>
                 <td>{formatPct(bucket.share_pct)}</td>
                 <td>{bucket.item_count}</td>
               </tr>
@@ -2005,7 +3148,89 @@ function ZqtzMaturityStructurePanel({
           </tbody>
         </table>
       </div>
+      <div className="balance-movement-maturity-footer">
+        <span>eligible_total · {formatYiCell(structure.meta.eligible_total)} 亿</span>
+        <span className="balance-movement-tone--positive">covered_total · {formatYiCell(structure.meta.covered_total)} 亿</span>
+        <span className="balance-movement-tone--warning">unknown_total · {formatYiCell(structure.meta.unknown_total)} 亿</span>
+      </div>
     </section>
+  );
+}
+
+type ConcentrationDimension = BalanceZqtzConcentrationAnalysis["dimensions"][number];
+type ConcentrationItem = ConcentrationDimension["items"][number];
+
+function ConcentrationRow({
+  item,
+  compact = false,
+}: {
+  item: ConcentrationItem;
+  compact?: boolean;
+}) {
+  const share = Math.abs(finiteMetric(item.share_pct) ?? 0);
+  return (
+    <div
+      className={`balance-movement-concentration-row balance-movement-concentration-row--${item.item_kind}${compact ? " balance-movement-concentration-row--compact" : ""}`}
+    >
+      <span className="balance-movement-concentration-row__rank">
+        {item.rank > 0 ? item.rank : item.item_kind === "unknown" ? "—" : "–"}
+      </span>
+      <strong title={item.dimension_value}>{item.dimension_value}</strong>
+      <progress max={100} value={share} aria-label={`${item.dimension_value} ${formatPct(item.share_pct)}`} />
+      <span>{formatYiCell(item.current_amount)}</span>
+      <em className={moveDeltaToneClass(finiteMetric(item.delta_amount) ?? 0)}>
+        {formatSignedYiCell(item.delta_amount)}
+      </em>
+      <span>{formatPct(item.share_pct)}</span>
+    </div>
+  );
+}
+
+function ConcentrationDistribution({
+  dimension,
+  variant,
+}: {
+  dimension: ConcentrationDimension;
+  variant: "issuer" | "rating" | "industry";
+}) {
+  const isIssuer = variant === "issuer";
+  return (
+    <article className={`balance-movement-concentration-card balance-movement-concentration-card--${variant}`}>
+      <div className="balance-movement-concentration-card__header">
+        <div>
+          <h3>{concentrationDimensionLabel(dimension.dimension)} / {variant === "issuer" ? "Issuer" : variant === "rating" ? "Rating" : "Industry"}</h3>
+          {isIssuer ? <p>Top 10 以本期金额排序；Other 与 Unknown 独立保留。</p> : null}
+        </div>
+        <strong>{drilldownStatusLabel(dimension.status)} · {isIssuer ? `coverage ${formatPct(dimension.coverage_pct)}` : variant === "rating" ? `${dimension.items.length} buckets` : `Top ${dimension.items.filter((item) => item.rank > 0).length}`}</strong>
+      </div>
+      {isIssuer ? (
+        <div className="balance-movement-concentration-card__metrics">
+          <span>HHI <strong>{formatPlainNumber(dimension.hhi)}</strong></span>
+          <span>Top5 <strong>{formatPct(dimension.top5_share_pct)}</strong></span>
+          <span>Other <strong>{formatPct(dimension.items.find((item) => item.item_kind === "other")?.share_pct)}</strong></span>
+        </div>
+      ) : (
+        <p className="balance-movement-concentration-card__meta">
+          coverage {formatPct(dimension.coverage_pct)} · HHI {formatPlainNumber(dimension.hhi)} · Top5 {formatPct(dimension.top5_share_pct)}
+        </p>
+      )}
+      {dimension.items.length > 0 ? (
+        <div className="balance-movement-concentration-rows">
+          {dimension.items.map((item) => (
+            <ConcentrationRow
+              key={`${dimension.dimension}-${item.item_kind}-${item.rank}-${item.dimension_value}`}
+              item={item}
+              compact={!isIssuer}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="balance-movement-concentration-empty">当前维度无可展示排名</div>
+      )}
+      {dimension.caveat ? (
+        <p className="balance-movement-concentration-card__caveat">{dimension.caveat}</p>
+      ) : null}
+    </article>
   );
 }
 
@@ -2014,74 +3239,92 @@ function ZqtzConcentrationAnalysisPanel({
 }: {
   analysis: BalanceZqtzConcentrationAnalysis;
 }) {
-  const coverageText =
-    analysis.meta.coverage_pct === null || analysis.meta.coverage_pct === undefined
-      ? "各维度覆盖见下方"
-      : `最低维度覆盖 ${formatPct(analysis.meta.coverage_pct)}`;
-  const unknownText =
-    analysis.meta.unknown_total === null || analysis.meta.unknown_total === undefined
-      ? "未知维度金额见各维度"
-      : `未知维度金额 ${formatYiCell(analysis.meta.unknown_total)} 亿`;
+  const issuer = analysis.dimensions.find((dimension) => dimension.dimension === "issuer_name");
+  const rating = analysis.dimensions.find((dimension) => dimension.dimension === "rating");
+  const industry = analysis.dimensions.find((dimension) => dimension.dimension === "industry_name");
+  const coverageText = analysis.meta.coverage_pct === null || analysis.meta.coverage_pct === undefined
+    ? "各维度见分区"
+    : formatPct(analysis.meta.coverage_pct);
+
   return (
     <section
-      className="balance-movement-derived-panel"
+      className="balance-movement-figma-panel balance-movement-concentration-panel"
       data-testid="balance-movement-analysis-zqtz-concentration"
     >
-      <div className="balance-movement-derived-panel__header">
+      <div className="balance-movement-figma-panel__header">
         <div>
-          <span>ZQTZ 集中度视图</span>
-          <h2>主体 / 评级 / 行业集中度</h2>
+          <span>06 / ZQTZ CONCENTRATION ANALYSIS</span>
+          <h2>主体 / 评级 / 行业集中度完整视图</h2>
         </div>
-        <strong>{drilldownStatusLabel(analysis.meta.status)}</strong>
+        <p>report {analysis.meta.report_date} · top_n 10 · Other / Unknown 分列</p>
       </div>
-      <p className="balance-movement-derived-panel__summary">
-        {analysis.meta.report_date}
-        {analysis.meta.prior_report_date ? ` 较 ${analysis.meta.prior_report_date}` : ""}：{coverageText}，
-        {unknownText}。
+      <div className="balance-movement-concentration-signal" aria-label="集中度关键指标">
+        <div><span>最低维度覆盖</span><strong className="balance-movement-tone--warning">{coverageText} · Rating</strong></div>
+        <div><span>期末合计</span><strong>{formatYiCell(analysis.meta.eligible_total)} 亿</strong></div>
+        <div><span>未知维度金额</span><strong className="balance-movement-tone--warning">{formatYiCell(analysis.meta.unknown_total)} 亿</strong></div>
+        <div><span>数据日期</span><strong className="balance-movement-tone--positive">{analysis.meta.report_date} · fresh</strong></div>
+      </div>
+      <div className="balance-movement-concentration-layout">
+        {issuer ? <ConcentrationDistribution dimension={issuer} variant="issuer" /> : null}
+        <div className="balance-movement-concentration-layout__secondary">
+          {rating ? <ConcentrationDistribution dimension={rating} variant="rating" /> : null}
+          {industry ? <ConcentrationDistribution dimension={industry} variant="industry" /> : null}
+        </div>
+      </div>
+      <p className="balance-movement-concentration-governance">
+        <span>HHI GOVERNANCE</span>{analysis.meta.caveat} 接口返回 HHI 数值；页面不自行定义风险等级，未知维度必须显式保留。<strong>NO LOCAL RISK BAND</strong>
       </p>
-      <p className="balance-movement-derived-panel__caveat">{analysis.meta.caveat}</p>
-      <div className="balance-movement-concentration-grid">
-        {analysis.dimensions.map((dimension) => (
-          <div key={dimension.dimension} className="balance-movement-concentration-card">
-            <div className="balance-movement-concentration-card__header">
-              <h3>{concentrationDimensionLabel(dimension.dimension)}</h3>
-              <span>{drilldownStatusLabel(dimension.status)}</span>
-            </div>
-            <p>
-              覆盖 {formatPct(dimension.coverage_pct)}，Top5 {formatPct(dimension.top5_share_pct)}；
-              HHI {formatPlainNumber(dimension.hhi)}
-            </p>
-            <table className="balance-movement-derived-table">
-              <thead>
-                <tr>
-                  <th>项目</th>
-                  <th>期末</th>
-                  <th>较上期</th>
-                  <th>占比</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dimension.items.map((item) => (
-                  <tr key={`${dimension.dimension}-${item.item_kind}-${item.rank}-${item.dimension_value}`}>
-                    <th scope="row">
-                      {item.rank > 0 ? `${item.rank}. ` : ""}
-                      {item.dimension_value}
-                    </th>
-                    <td>{formatYiCell(item.current_amount)} 亿</td>
-                    <td>{formatSignedYiCell(item.delta_amount)} 亿</td>
-                    <td>{formatPct(item.share_pct)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <p className="balance-movement-derived-panel__caveat">{dimension.caveat}</p>
-          </div>
-        ))}
-      </div>
     </section>
   );
 }
-
+function BusinessMoverPanel({
+  moves,
+  testId,
+  title,
+  subtitle,
+}: {
+  moves: BusinessMomMove[];
+  testId: string;
+  title: string;
+  subtitle: string;
+}) {
+  const maxDelta = Math.max(0, ...moves.map((move) => Math.abs(move.deltaYuan)));
+  return (
+    <article className="balance-movement-mover-panel">
+      <div className="balance-movement-mover-panel__header">
+        <h3>{title}</h3>
+        <div><span>{subtitle}</span><small>同一零轴 · 单位亿元</small></div>
+      </div>
+      <div data-testid={testId} className="balance-movement-mover-panel__rows" role="list">
+        {moves.map((item, index) => (
+          <div
+            key={`${item.rowKey}-${item.side}-${testId}-${index}`}
+            className="balance-movement-mover-row"
+            role="listitem"
+            title={`${sourceKindLabel(item.sourceKind)} · ${sourceNotePreview(item.sourceNote)}`}
+          >
+            <div className="balance-movement-mover-row__label">
+              <strong>{item.label}</strong>
+              <span>{formatPlainNumber(item.previousYuan / 100000000)} → {formatPlainNumber(item.currentYuan / 100000000)}</span>
+              <span data-testid="balance-movement-analysis-business-top-moves-source" className="balance-movement-sr-only">
+                {sourceKindLabel(item.sourceKind)} {sourceNotePreview(item.sourceNote)}
+              </span>
+            </div>
+            <div className="balance-movement-mover-axis" aria-hidden>
+              <i />
+              <progress
+                className={item.deltaYuan >= 0 ? "balance-movement-mover-axis__bar balance-movement-mover-axis__bar--up" : "balance-movement-mover-axis__bar balance-movement-mover-axis__bar--down"}
+                max={maxDelta || 1}
+                value={Math.abs(item.deltaYuan)}
+              />
+            </div>
+            <strong className={moveDeltaToneClass(item.deltaYuan)}>{formatSignedYiNumber(item.deltaYuan / 100000000)}</strong>
+          </div>
+        ))}
+      </div>
+    </article>
+  );
+}
 export default function BalanceMovementAnalysisPage() {
   const client = useApiClient();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -2092,7 +3335,6 @@ export default function BalanceMovementAnalysisPage() {
   const [currencyBasis, setCurrencyBasis] = useState(queryCurrencyBasis);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
-  const [selectedEvidenceKey, setSelectedEvidenceKey] = useState<string | null>(null);
 
   const datesQuery = useQuery({
     queryKey: ["balance-movement-analysis", "dates", client.mode, currencyBasis],
@@ -2192,6 +3434,36 @@ export default function BalanceMovementAnalysisPage() {
   const zqtzConcentrationAnalysis =
     detailQuery.data?.result.zqtz_concentration_analysis ?? null;
   const resultMeta = detailQuery.data?.result_meta ?? null;
+  const resultStatusReasons = resultMeta
+    ? [
+        resultMeta.quality_flag !== "ok" ? `质量标记 ${resultMeta.quality_flag}` : null,
+        resultMeta.fallback_mode !== "none"
+          ? `降级模式 ${resultMeta.fallback_mode}`
+          : null,
+        resultMeta.requested_report_date
+          ? `请求报告日 ${resultMeta.requested_report_date}`
+          : null,
+        resultMeta.resolved_report_date
+          ? `实际快照日 ${resultMeta.resolved_report_date}`
+          : null,
+        resultMeta.fallback_date ? `回退日期 ${resultMeta.fallback_date}` : null,
+      ].filter((reason): reason is string => Boolean(reason))
+    : [];
+  const hasResultStatus = Boolean(
+    resultMeta &&
+      (resultMeta.quality_flag !== "ok" ||
+        resultMeta.fallback_mode !== "none" ||
+        Boolean(resultMeta.fallback_date) ||
+        (Boolean(resultMeta.requested_report_date) &&
+          Boolean(resultMeta.resolved_report_date) &&
+          resultMeta.requested_report_date !== resultMeta.resolved_report_date)),
+  );
+  const balanceChangeTotal = summary?.balance_change_total;
+  const hasBalanceChangeTotal =
+    balanceChangeTotal !== null &&
+    balanceChangeTotal !== undefined &&
+    balanceChangeTotal !== "" &&
+    Number.isFinite(Number(balanceChangeTotal));
   const accountingByReportDate = useMemo(() => {
     const map = new Map<string, BalanceMovementTrendMonth>();
     for (const month of accountingMatrixMonths) {
@@ -2199,10 +3471,6 @@ export default function BalanceMovementAnalysisPage() {
     }
     return map;
   }, [accountingMatrixMonths]);
-  const accountingBasisMatrixRows = useMemo(
-    () => buildAccountingBasisMatrixRows(accountingByReportDate),
-    [accountingByReportDate],
-  );
   const businessMatrixAssetRows = useMemo(
     () =>
       businessMatrixRows.filter(
@@ -2286,14 +3554,6 @@ export default function BalanceMovementAnalysisPage() {
       },
     ];
   }, [accountingByReportDate, businessMatrixAssetRows, businessMatrixLiabilityRows]);
-  const monthlyMatrixCategoryRows = useMemo(
-    () => [
-      ...businessMatrixAssetRows,
-      ...accountingBasisMatrixRows,
-      ...businessMatrixLiabilityRows,
-    ],
-    [businessMatrixAssetRows, accountingBasisMatrixRows, businessMatrixLiabilityRows],
-  );
   const structureShareTableRows = useMemo((): StructureShareTableRow[] => {
     return accountingMatrixMonths.map((month) => ({
       point: toSharePoint(month),
@@ -2367,14 +3627,7 @@ export default function BalanceMovementAnalysisPage() {
       )[0],
     [movementDrivers],
   );
-  const driverChartOption = useMemo(
-    () => buildDriverChartOption(movementDrivers),
-    [movementDrivers],
-  );
-  const structureStatus =
-    maxShareShiftDriver && Math.abs(maxShareShiftDriver.shareDelta) <= 1
-      ? "结构整体稳定"
-      : "结构变化明显";
+
   const trendComparison = useMemo(() => {
     if (!currentTrendMonth || !previousTrendMonth) {
       return null;
@@ -2414,6 +3667,67 @@ export default function BalanceMovementAnalysisPage() {
   }, [currentTrendMonth, previousTrendMonth]);
 
   const reconAggregate = useMemo(() => aggregateBucketReconciliation(rows), [rows]);
+  const summaryHasCompleteBuckets = summary?.bucket_count === balanceMovementBuckets.length;
+  const summaryAllBucketsMatched =
+    summary?.matched_bucket_count === balanceMovementBuckets.length;
+  const reconciliationLabel =
+    rows.length === 0
+      ? "待数据"
+      : !reconAggregate.hasExactBuckets || !summaryHasCompleteBuckets
+        ? "分桶不完整"
+        : reconAggregate.allMatched && summaryAllBucketsMatched
+          ? "三桶一致"
+          : "需关注";
+  const previousBalanceTotal = finiteMetric(summary?.previous_balance_total);
+  const balanceChangeValue = finiteMetric(balanceChangeTotal);
+  const balanceChangePct =
+    previousBalanceTotal !== null && previousBalanceTotal !== 0 && balanceChangeValue !== null
+      ? (balanceChangeValue / previousBalanceTotal) * 100
+      : null;
+  const compactMaturityGroups = useMemo<CompactMaturityGroup[]>(() => {
+    type MaturityBucketKey = BalanceZqtzMaturityStructure["buckets"][number]["maturity_bucket"];
+    const definitions: Array<{ key: string; label: string; buckets: MaturityBucketKey[] }> = [
+      {
+        key: "within-90d",
+        label: "≤90天",
+        buckets: ["overdue_or_matured", "<=30d", "31-90d"],
+      },
+      { key: "91d-1y", label: "91天–1年", buckets: ["91d-1y"] },
+      { key: "1-3y", label: "1–3年", buckets: ["1-3y"] },
+      { key: "over-3y", label: ">3年", buckets: ["3-5y", ">5y"] },
+    ];
+    return definitions.map((definition) => {
+      const buckets = (zqtzMaturityStructure?.buckets ?? []).filter((bucket) =>
+        definition.buckets.includes(bucket.maturity_bucket),
+      );
+      const currentValues = buckets.map((bucket) => finiteMetric(bucket.current_amount));
+      const deltaValues = buckets.map((bucket) => finiteMetric(bucket.delta_amount));
+      const shareValues = buckets.map((bucket) => finiteMetric(bucket.share_pct));
+      return {
+        key: definition.key,
+        label: definition.label,
+        currentAmount:
+          buckets.length > 0 && currentValues.every((value): value is number => value !== null)
+            ? currentValues.reduce((total, value) => total + value, 0)
+            : null,
+        deltaAmount:
+          buckets.length > 0 && deltaValues.every((value): value is number => value !== null)
+            ? deltaValues.reduce((total, value) => total + value, 0)
+            : null,
+        sharePct:
+          buckets.length > 0 && shareValues.every((value): value is number => value !== null)
+            ? shareValues.reduce((total, value) => total + value, 0)
+            : null,
+      };
+    });
+  }, [zqtzMaturityStructure]);
+  const issuerConcentration = useMemo(
+    () =>
+      zqtzConcentrationAnalysis?.dimensions.find(
+        (dimension) => dimension.dimension === "issuer_name",
+      ) ?? null,
+    [zqtzConcentrationAnalysis],
+  );
   const businessTopMomMoves = useMemo(
     () => topBusinessLineMovesByMomAbs(businessMatrixMonths, businessMatrixRows, 5),
     [businessMatrixMonths, businessMatrixRows],
@@ -2649,25 +3963,6 @@ export default function BalanceMovementAnalysisPage() {
     zqtzConcentrationAnalysis,
     zqtzMaturityStructure,
   ]);
-  const selectedEvidenceCard =
-    analysisDimensionCards.find((card) => card.key === selectedEvidenceKey) ?? null;
-
-  const seriesContextSegments = useMemo(() => {
-    const segments: string[] = [];
-    if (businessMatrixMonths.length === 2) {
-      segments.push(
-        "「月度余额分析矩阵」当前仅含两个月度：「较年初」列 = 相对本序列首月变动，不一定等同于自然年 1 月末基期。",
-      );
-    }
-    if (
-      currentTrendMonth &&
-      previousTrendMonth &&
-      !isPreviousCalendarMonth(currentTrendMonth.report_date, previousTrendMonth.report_date)
-    ) {
-      segments.push("上方总账「较上月」结论文案已隐藏：相邻两期在日历上非连续月和月。");
-    }
-    return segments;
-  }, [businessMatrixMonths.length, currentTrendMonth, previousTrendMonth]);
 
   const governanceMeta = useMemo(() => {
     const reportDate = detailQuery.data?.result.report_date ?? "";
@@ -2781,240 +4076,159 @@ export default function BalanceMovementAnalysisPage() {
   }
 
   return (
-    <section data-testid="balance-movement-analysis-page" className="balance-movement-page">
-      <div className="balance-movement-page-header">
-        <div>
-          <div className="balance-movement-page-header__title-row">
-            <h1 data-testid="balance-movement-analysis-title" className="balance-movement-page-header__title">
-              余额变动分析
-            </h1>
-            <CalibrationBadge calibration={detailQuery.data?.result.calibration} />
-          </div>
-          <p data-testid="balance-movement-analysis-subtitle" className="balance-movement-page-header__subtitle">
-            AC / OCI / TPL 月末余额、月度变动与总账控制数对账。
-          </p>
+    <section data-testid="balance-movement-analysis-page" className="balance-movement-page theme-dh-api">
+      <header className="balance-movement-page-header" data-testid="balance-movement-analysis-page-header">
+        <div className="balance-movement-page-header__identity">
+          <span>投资组合 / 资产结构</span>
+          <h1 data-testid="balance-movement-analysis-title">资产余额变动分析</h1>
         </div>
-        <div className="balance-movement-page-header__chips">
-          <span className="balance-movement-page-chip" data-tone="accent">
-            <span aria-hidden className="balance-movement-page-chip__dot" />
-            正式总账控制
-          </span>
-          <span className="balance-movement-page-chip" data-tone={client.mode === "real" ? "ok" : "accent"}>
-            <span aria-hidden className="balance-movement-page-chip__dot" />
-            {client.mode === "real" ? "正式接口" : "本地模拟"}
-          </span>
-        </div>
-      </div>
-
-      <FilterBar className="balance-movement-filter-bar">
-        <label className="balance-movement-filter-field">
-          报告日期
-          <select
-            aria-label="余额变动分析-报告日期"
-            value={selectedDate}
-            onChange={(event) => updateReportDateSelection(event.target.value)}
-          >
-            {reportDates.map((reportDate) => (
-              <option key={reportDate} value={reportDate}>
-                {reportDate}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="balance-movement-filter-field">
-          控制币种
-          <select
-            aria-label="余额变动分析-控制币种"
-            value={currencyBasis}
-            disabled
-            title={"\u5f53\u524d\u9875\u9762\u4ec5\u5f00\u653e CNX \u6b63\u5f0f\u53e3\u5f84"}
-          >
-            <option value="CNX">
-              CNX{"\uff08\u6b63\u5f0f\u53e3\u5f84\uff09"}
-            </option>
-          </select>
-        </label>
-        <button
-          type="button"
-          data-testid="balance-movement-analysis-refresh"
-          onClick={() => void handleRefresh()}
-          disabled={!selectedDate || isRefreshing}
-        >
-          {isRefreshing ? "刷新中..." : "刷新余额变动"}
-        </button>
-        {refreshMessage ? (
-          <span data-testid="balance-movement-analysis-refresh-message">{refreshMessage}</span>
-        ) : null}
-        <button
-          type="button"
-          data-testid="balance-movement-analysis-export-csv"
-          onClick={handleExportCsv}
-          disabled={!detailQuery.data}
-        >
-          导出当前视图 CSV
-        </button>
-      </FilterBar>
-      {dateStatus ? (
-        <div
-          data-testid="balance-movement-analysis-date-status"
-          className={`balance-movement-date-status balance-movement-date-status--${dateStatus.tone}`}
-          role={dateStatus.tone === "error" ? "alert" : "status"}
-        >
-          <strong>{dateStatus.title}</strong>
-          <span>{dateStatus.detail}</span>
-        </div>
-      ) : null}
-      {datesQuery.data?.result ? (
-        <FreshnessStrip dates={datesQuery.data.result} selectedDate={selectedDate} />
-      ) : null}
-      {resultMeta ? <EvidenceStrip meta={resultMeta} /> : null}
-
-      {summary ? (
-        <section
-          data-testid="balance-movement-analysis-conclusion"
-          className="balance-movement-conclusion"
-        >
-          <div className="balance-movement-conclusion__top">
-            <div>
-              <div
-                className={`balance-movement-conclusion__status${
-                  rows.length > 0 && !reconAggregate.allMatched
-                    ? " balance-movement-conclusion__status--warn"
-                    : ""
-                }`}
-              >
-                {rows.length > 0 && !reconAggregate.allMatched
-                  ? "ZQTZ 分桶对账需关注"
-                  : "总账控制核对通过"}
-              </div>
-              <strong className="balance-movement-conclusion__headline">
-                {selectedDate || detailQuery.data?.result.report_date} 合计{" "}
-                {formatYiFixed(summary.current_balance_total)} 亿
-              </strong>
-              <div
-                data-testid="balance-movement-analysis-recon-summary"
-                className={`balance-movement-conclusion__recon-summary${
-                  rows.length > 0 && !reconAggregate.allMatched
-                    ? " balance-movement-conclusion__recon-summary--warn"
-                    : ""
-                }`}
-              >
-                {rows.length === 0 ? (
-                  <span>暂无 AC/OCI/TPL 分桶明细行；对账摘要待数据返回后展示。</span>
-                ) : reconAggregate.allMatched ? (
-                  <span>
-                    ZQTZ 分桶对账：三桶均为「{reconciliationStatusLabels.matched}」；明细见下方「明细 /
-                    对账」表。
-                  </span>
-                ) : (
-                  <span>
-                    分桶状态：
-                    {(
-                      Object.entries(reconAggregate.counts) as [
-                        BalanceMovementRow["reconciliation_status"],
-                        number,
-                      ][]
-                    )
-                      .filter(([, count]) => count > 0)
-                      .map(([status, count]) => `${reconciliationStatusLabels[status]} ${count} 条`)
-                      .join("；")}
-                    。请核对{" "}
-                    <a href="#balance-movement-analysis-detail-anchor" className="balance-movement-inline-anchor">
-                      明细 / 对账表
-                    </a>
-                    。
-                  </span>
-                )}
-              </div>
-            </div>
-            <div className="balance-movement-conclusion__controls">
-              控制科目 141 / 142 / 143 / 1440101；排除 144020 股权 OCI
-            </div>
-          </div>
-          <div className="balance-movement-conclusion__shares">
-            <span>AC {formatPct(rowByBucket.get("AC")?.current_balance_pct)}</span>
-            <span>OCI {formatPct(rowByBucket.get("OCI")?.current_balance_pct)}</span>
-            <span>TPL {formatPct(rowByBucket.get("TPL")?.current_balance_pct)}</span>
-          </div>
-          <div className="balance-movement-conclusion__note">
-            本页以 CNX 总账控制数为正式口径；ZQTZ 诊断同步读取 CNX 余额表，不再回退到 CNY 辅助口径。
-          </div>
-          <div
-            data-testid="balance-movement-analysis-diagnostic-reason"
-            className="balance-movement-conclusion__note"
-          >
-            口径差异原因：昨晚定位的是 ZQTZ 诊断应使用 CNX 表；若误读 CNY
-            辅助口径，会把综合本位币核对数和人民币辅助数相减，形成 AC / OCI / TPL 的假差异。
-          </div>
-          {trendComparison ? (
-            <div
-              data-testid="balance-movement-analysis-trend-conclusion"
-              className="balance-movement-conclusion__trend"
+        <div className="balance-movement-page-header__actions">
+          <label>
+            <span>报告日</span>
+            <select
+              aria-label="余额变动分析-报告日期"
+              value={selectedDate}
+              onChange={(event) => updateReportDateSelection(event.target.value)}
             >
-              较 {trendComparison.previousReportDate} {formatSignedYi(trendComparison.totalDelta)}
-              ，主要来自{" "}
-              {trendComparison.drivers
-                .map((driver) => `${driver.bucket} ${formatSignedYi(driver.delta)}`)
-                .join("、")}。
-            </div>
-          ) : null}
-        </section>
-      ) : null}
-
-      {detailQuery.data ? (
-        <AnalysisDimensionOverview
-          cards={analysisDimensionCards}
-          onEvidence={setSelectedEvidenceKey}
-        />
-      ) : null}
-      {selectedEvidenceCard ? (
-        <AnalysisEvidenceDrawer
-          card={selectedEvidenceCard}
-          onClose={() => setSelectedEvidenceKey(null)}
-        />
-      ) : null}
-
-      {detailQuery.data ? (
-        <HistoricalAnomalyPanel diagnostics={historicalAnomalyDiagnostics} />
-      ) : null}
-
-      {summary ? (
-        <div data-testid="balance-movement-analysis-summary" className="balance-movement-summary-grid">
-          <div className="balance-movement-summary-card">
-            <span className="balance-movement-summary-card__label">期末余额</span>
-            <strong>{formatBalanceAmountToYiFromYuan(summary.current_balance_total)} 亿</strong>
-          </div>
-          <div className="balance-movement-summary-card">
-            <span className="balance-movement-summary-card__label">期初余额</span>
-            <strong>{formatBalanceAmountToYiFromYuan(summary.previous_balance_total)} 亿</strong>
-          </div>
-          <div className="balance-movement-summary-card">
-            <span className="balance-movement-summary-card__label">余额变动</span>
-            <strong>{formatBalanceAmountToYiFromYuan(summary.balance_change_total)} 亿</strong>
-          </div>
-          <div className="balance-movement-summary-card">
-            <span className="balance-movement-summary-card__label">ZQTZ诊断差异</span>
-            <strong>{formatBalanceAmountToYiFromYuan(summary.reconciliation_diff_total)} 亿</strong>
-          </div>
+              {reportDates.map((reportDate) => (
+                <option key={reportDate} value={reportDate}>{reportDate}</option>
+              ))}
+            </select>
+          </label>
+          <label className="balance-movement-page-header__currency">
+            <span>币种</span>
+            <select
+              aria-label="余额变动分析-控制币种"
+              value={currencyBasis}
+              disabled
+              title="当前页面仅开放 CNX 正式口径"
+            >
+              <option value="CNX">CNX</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            data-testid="balance-movement-analysis-refresh"
+            onClick={() => void handleRefresh()}
+            disabled={!selectedDate || isRefreshing}
+          >
+            {isRefreshing ? "刷新中" : "刷新数据"}
+          </button>
+          <button
+            type="button"
+            data-testid="balance-movement-analysis-export-csv"
+            onClick={handleExportCsv}
+            disabled={!detailQuery.data}
+          >
+            导出 CSV
+          </button>
         </div>
-      ) : null}
+      </header>
+      <div className="balance-movement-page-body">
+        {refreshMessage ? (
+          <div className="balance-movement-refresh-message" data-testid="balance-movement-analysis-refresh-message">
+            {refreshMessage}
+          </div>
+        ) : null}
+        {dateStatus ? (
+          <div
+            data-testid="balance-movement-analysis-date-status"
+            className={`balance-movement-date-status balance-movement-date-status--${dateStatus.tone}`}
+            role={dateStatus.tone === "error" ? "alert" : "status"}
+          >
+            <strong>{dateStatus.title}</strong>
+            <span>{dateStatus.detail}</span>
+          </div>
+        ) : null}
+        {hasResultStatus ? (
+          <div className="balance-movement-quality-alert" data-testid="balance-movement-analysis-result-status">
+            <DataQualityBanner resultMeta={resultMeta} degradedReasons={resultStatusReasons} />
+            <div data-testid="balance-movement-analysis-result-status-facts" role="status">
+              {resultStatusReasons.join(" · ")}
+            </div>
+          </div>
+        ) : null}
 
-      {structureMigrationAnalysis ? (
-        <StructureMigrationPanel analysis={structureMigrationAnalysis} />
-      ) : null}
+        {summary && topMovementDriver && datesQuery.data?.result ? (
+          <FigmaDecisionHero
+            balanceChangePct={balanceChangePct}
+            balanceChangeTotal={summary.balance_change_total}
+            topDriver={topMovementDriver}
+            movementDrivers={movementDrivers}
+            dates={datesQuery.data.result}
+            selectedDate={selectedDate}
+            reconciliationLabel={reconciliationLabel}
+            currencyBasis={currencyBasis}
+          />
+        ) : detailQuery.isLoading && selectedDate && datesQuery.data?.result ? (
+          <FigmaLoadingHero
+            dates={datesQuery.data.result}
+            selectedDate={selectedDate}
+            reconciliationLabel={reconciliationLabel}
+            currencyBasis={currencyBasis}
+          />
+        ) : datesQuery.data?.result ? (
+          <FigmaEmptyHero
+            dates={datesQuery.data.result}
+            selectedDate={selectedDate}
+            reconciliationLabel={reconciliationLabel}
+            currencyBasis={currencyBasis}
+          />
+        ) : null}
 
-      {differenceAttributionWaterfall ? (
-        <DifferenceAttributionWaterfallPanel waterfall={differenceAttributionWaterfall} />
-      ) : null}
+        {summary && topMovementDriver ? (
+          <FigmaKpiRibbon
+            summary={summary}
+            topDriver={topMovementDriver}
+            hasBalanceChangeTotal={hasBalanceChangeTotal}
+            reconciliationLabel={reconciliationLabel}
+            balanceChangePct={balanceChangePct}
+          />
+        ) : null}
 
-      {explanationClosure ? <ExplanationClosurePanel closure={explanationClosure} /> : null}
+        {movementDrivers.length > 0 ? <FigmaDriversAndStructure drivers={movementDrivers} /> : null}
 
-      {differenceAttributionWaterfall ? (
-        <ResidualUnsupportedPanel waterfall={differenceAttributionWaterfall} />
-      ) : null}
+        {detailQuery.data ? (
+          <FigmaMaturityAndConcentration
+            maturityGroups={compactMaturityGroups}
+            issuerDimension={issuerConcentration}
+            maturityCoverage={zqtzMaturityStructure?.meta.coverage_pct}
+            unknownMaturityAmount={zqtzMaturityStructure?.meta.unknown_total}
+          />
+        ) : null}
+
+        {resultMeta ? (
+          <EvidenceStrip
+            meta={resultMeta}
+            reportDate={selectedDate || detailQuery.data?.result.report_date || ""}
+            currencyBasis={currencyBasis}
+          />
+        ) : null}
+
+        {rows.length > 0 ? <FigmaAccountingBuckets rows={rows} /> : null}
+
+        {balanceStructureChartRows.length > 0 ||
+        structureShareTableRows.length > 0 ||
+        balanceStructureInsight ? (
+          <SixMonthStructurePanel
+            chartRows={balanceStructureChartRows}
+            structureShareTableRows={structureShareTableRows}
+            shareRowByReportMonth={shareRowByReportMonth}
+            balanceStructureInsight={balanceStructureInsight}
+          />
+        ) : null}
+
+      <StructureBridgeStage
+        analysis={structureMigrationAnalysis}
+        waterfall={differenceAttributionWaterfall}
+        closure={explanationClosure}
+      />
 
       {basisMovementDecomposition ? (
-        <BasisMovementDecompositionPanel decomposition={basisMovementDecomposition} />
+        <LiveBasisDecompositionStage
+          decomposition={basisMovementDecomposition}
+          hasCalibration={Boolean(zqtzCalibrationAnalysis)}
+        />
       ) : detailQuery.data ? (
         <DrilldownUnavailablePanel
           testId="balance-movement-analysis-basis-decomposition"
@@ -3046,315 +4260,118 @@ export default function BalanceMovementAnalysisPage() {
         />
       ) : null}
 
-      {zqtzCalibrationAnalysis ? (
-        <section
-          data-testid="balance-movement-analysis-zqtz-calibration"
-          className="balance-movement-zqtz-calibration"
-        >
-          <div className="balance-movement-zqtz-calibration__header">
-            <div>
-              <span>ZQTZ228 口径核对</span>
-              <strong>{zqtzCalibrationAnalysis.source_file}</strong>
-            </div>
-            <p>{zqtzCalibrationAnalysis.conclusion}</p>
-          </div>
-          <div className="balance-movement-zqtz-calibration__diagnosis">
-            <div>
-              <span>差异定位</span>
-              <p>{zqtzCalibrationAnalysis.root_cause}</p>
-            </div>
-            <div>
-              <span>系统处理</span>
-              <p>{zqtzCalibrationAnalysis.remediation}</p>
-            </div>
-          </div>
-          <div className="balance-movement-zqtz-calibration__table-wrap">
-            <table className="balance-movement-zqtz-calibration__table">
-              <thead>
-                <tr>
-                  <th>项目</th>
-                  <th>系统数（亿元）</th>
-                  <th>核对表（亿元）</th>
-                  <th>差异（亿元）</th>
-                  <th>状态</th>
-                </tr>
-              </thead>
-              <tbody>
-                {zqtzCalibrationAnalysis.items.map((item) => (
-                  <tr key={item.row_key}>
-                    <td>
-                      <strong>{item.row_label}</strong>
-                      <span>{item.note}</span>
-                    </td>
-                    <td>{formatYiFixed(item.system_amount)}</td>
-                    <td>{formatYiFixed(item.reference_amount)}</td>
-                    <td>{formatSignedYiNumber(Number(item.diff_amount) / 100000000)}</td>
-                    <td>
-                      <span
-                        className={`balance-movement-zqtz-calibration__status balance-movement-zqtz-calibration__status--${item.status}`}
-                      >
-                        {item.status === "matched" ? "一致" : "观察"}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <ul className="balance-movement-zqtz-calibration__risks">
-            {zqtzCalibrationAnalysis.residual_risks.map((risk) => (
-              <li key={risk}>{risk}</li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
 
-      {summary && topMovementDriver && maxShareShiftDriver ? (
+      {summary && topMovementDriver ? (
         <section
           id="balance-movement-analysis-business-summary-anchor"
           data-testid="balance-movement-analysis-business-summary"
-          className="balance-movement-business-summary"
+          className="balance-movement-figma-panel balance-movement-business-panel"
         >
-          <div className="balance-movement-business-summary__headline">
-            <span>分析结论</span>
-            <strong>
-              本月余额{movementDirection(summary.balance_change_total)}{" "}
-              {formatYiFixed(Math.abs(numericValue(summary.balance_change_total)))} 亿，最大驱动是{" "}
-              {topMovementDriver.bucket}
-            </strong>
-            <p>
-              {structureStatus}，最大占比变化为 {maxShareShiftDriver.bucket}{" "}
-              {formatSignedPoint(maxShareShiftDriver.shareDelta)}
-            </p>
-            {structureDriverHint ? (
-              <p
-                data-testid="balance-movement-analysis-structure-driver-hint"
-                className="balance-movement-business-summary__driver-hint"
-              >
-                {structureDriverHint}
-              </p>
-            ) : null}
-          </div>
+          <header className="balance-movement-figma-header">
+            <div>
+              <span>07 / BUSINESS LINE MOVERS</span>
+              <h2>业务行 Top 变动与余额驱动</h2>
+            </div>
+            <p>business_trend_months · MoM / {businessMatrixMonths.length}M</p>
+          </header>
 
-          <div className="balance-movement-business-summary__facts">
-            <div>
-              <span>最大驱动</span>
+          <div className="balance-movement-business-lead">
+            <div className="balance-movement-business-lead__decision">
+              <span>本期主结论</span>
+              <strong>
+                {hasBalanceChangeTotal ? (
+                  <>{topMovementDriver.bucket} {formatSignedYiNumber(topMovementDriver.balanceChangeYi)} 亿 · 贡献 {formatPct(topMovementDriver.contributionPct)}</>
+                ) : (
+                  "总变动缺失，暂不判断方向"
+                )}
+              </strong>
               <p>
-                {topMovementDriver.bucket} 增量最大：
-                {formatSignedYiNumber(topMovementDriver.balanceChangeYi)} 亿，贡献{" "}
-                {formatPct(topMovementDriver.contributionPct)}
+                {hasBalanceChangeTotal
+                  ? `本月总余额${movementDirection(balanceChangeTotal)} ${formatYiFixed(Math.abs(numericValue(balanceChangeTotal)))} 亿；单桶贡献集中，同时带动 ${accountingBasisNarrativeLabel(topMovementDriver.bucket)} 占比至 ${formatPct(topMovementDriver.currentBalancePct)}，较期初 ${formatSignedPointNullable(topMovementDriver.shareDelta)}`
+                  : "等待完整余额变动口径后再判断主导方向。"}
               </p>
+              {structureDriverHint ? (
+                <span data-testid="balance-movement-analysis-structure-driver-hint" className="balance-movement-sr-only">
+                  {structureDriverHint}
+                </span>
+              ) : null}
             </div>
-            <div>
-              <span>压舱石</span>
-              <p>
-                AC 压舱石占比{" "}
-                {formatPct(rowByBucket.get("AC")?.current_balance_pct)}，较期初{" "}
-                {formatSignedPointNullable(movementDriverByBucket.get("AC")?.shareDelta)}
-              </p>
-            </div>
-            <div>
-              <span>配置变化</span>
-              <p>
-                OCI 配置占比{" "}
-                {formatPct(rowByBucket.get("OCI")?.current_balance_pct)}，较期初{" "}
-                {formatSignedPointNullable(movementDriverByBucket.get("OCI")?.shareDelta)}
-              </p>
+            <div className="balance-movement-business-lead__stability" aria-label="结构稳定器">
+              <div>
+                <span>AC 稳定器</span>
+                <strong>{formatPct(rowByBucket.get("AC")?.current_balance_pct)}</strong>
+                <small>{formatSignedPointNullable(movementDriverByBucket.get("AC")?.shareDelta)}</small>
+              </div>
+              <div>
+                <span>OCI 压舱石</span>
+                <strong>{formatPct(rowByBucket.get("OCI")?.current_balance_pct)}</strong>
+                <small>{formatSignedPointNullable(movementDriverByBucket.get("OCI")?.shareDelta)}</small>
+              </div>
             </div>
           </div>
 
           {businessTopMomMoves.length > 0 ? (
-            <div
-              data-testid="balance-movement-analysis-business-top-moves"
-              className="balance-movement-business-summary__top-moves"
-            >
-              <div className="balance-movement-business-summary__top-moves-header">
-                <div>
-                  <span>Business Line Movers</span>
-                  <h2>业务行Top变动（Top 5）</h2>
-                </div>
-                <strong>{businessMatrixMonths.length}M WINDOW</strong>
-              </div>
-              <div className="balance-movement-top-moves-grid">
-                <div className="balance-movement-top-moves-panel">
-                  <div className="balance-movement-top-moves-panel__title">
-                    <h3>MoM Top 5</h3>
-                    <span>Current vs prior month</span>
-                  </div>
-                  <table
-                    data-testid="balance-movement-analysis-business-top-moves-mom"
-                    className="balance-movement-top-moves-table"
-                  >
-                    <thead>
-                      <tr>
-                        <th>#</th>
-                        <th>业务线</th>
-                        <th>来源</th>
-                        <th>前期</th>
-                        <th>本期</th>
-                        <th>变动</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {businessTopMomMoves.map((item, index) => (
-                        <tr key={`${item.rowKey}-${item.side}-${index}`}>
-                          <td>{index + 1}</td>
-                          <th scope="row">
-                            <span>{item.label}</span>
-                            <em>{item.side === "asset" ? "资产" : "负债"}</em>
-                          </th>
-                          <td>
-                            <span
-                              data-testid="balance-movement-analysis-business-top-moves-source"
-                              className="balance-movement-top-moves-table__source"
-                              title={sourceNotePreview(item.sourceNote)}
-                            >
-                              <strong>{sourceKindLabel(item.sourceKind)}</strong>
-                              <span>{sourceNotePreview(item.sourceNote)}</span>
-                            </span>
-                          </td>
-                          <td>{formatSignedYiNumber(item.previousYuan / 100000000)}</td>
-                          <td>{formatSignedYiNumber(item.currentYuan / 100000000)}</td>
-                          <td>
-                            <strong className={moveDeltaToneClass(item.deltaYuan)}>
-                              {formatSignedYiNumber(item.deltaYuan / 100000000)}
-                            </strong>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+            <div data-testid="balance-movement-analysis-business-top-moves" className="balance-movement-business-charts">
+              <BusinessMoverPanel
+                moves={businessTopMomMoves}
+                testId="balance-movement-analysis-business-top-moves-mom"
+                title="本月变动 · 发散视图"
+                subtitle="current vs prior"
+              />
               {businessTopSixMonthMoves.length > 0 ? (
-                <div className="balance-movement-top-moves-panel">
-                  <div className="balance-movement-top-moves-panel__title">
-                    <h3>近{businessMatrixMonths.length}月 Top 5</h3>
-                    <span>First period vs current</span>
-                  </div>
-                  <table
-                    data-testid="balance-movement-analysis-business-top-moves-sixmonth"
-                    className="balance-movement-top-moves-table"
-                  >
-                    <thead>
-                      <tr>
-                        <th>#</th>
-                        <th>业务线</th>
-                        <th>归属</th>
-                        <th>首期</th>
-                        <th>本期</th>
-                        <th>变动</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {businessTopSixMonthMoves.map((item, index) => (
-                        <tr key={`${item.rowKey}-${item.side}-6m-${index}`}>
-                          <td>{index + 1}</td>
-                          <th scope="row">{item.label}</th>
-                          <td>
-                            <span className="balance-movement-top-moves-table__side">
-                              {item.side === "asset" ? "资产" : "负债"}
-                            </span>
-                          </td>
-                          <td>{formatSignedYiNumber(item.previousYuan / 100000000)}</td>
-                          <td>{formatSignedYiNumber(item.currentYuan / 100000000)}</td>
-                          <td>
-                            <strong className={moveDeltaToneClass(item.deltaYuan)}>
-                              {formatSignedYiNumber(item.deltaYuan / 100000000)}
-                            </strong>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <BusinessMoverPanel
+                  moves={businessTopSixMonthMoves}
+                  testId="balance-movement-analysis-business-top-moves-sixmonth"
+                  title={`近 ${businessMatrixMonths.length} 月变动`}
+                  subtitle="first → current"
+                />
               ) : null}
-              </div>
             </div>
           ) : null}
 
-          <div className="balance-movement-business-summary__body">
-            <div
-              data-testid="balance-movement-analysis-driver-chart"
-              className="balance-movement-driver-chart"
-            >
-              <h2>余额变动驱动</h2>
-              <ReactECharts
-                option={driverChartOption}
-                style={{ height: 240, width: "100%" }}
-                notMerge
-                lazyUpdate
-              />
+          <div data-testid="balance-movement-analysis-driver-chart" className="balance-movement-contribution">
+            <div className="balance-movement-contribution__header">
+              <h3>变动贡献构成</h3>
+              <span>balance change contribution</span>
             </div>
-
-            <div
-              data-testid="balance-movement-analysis-driver-ranking"
-              className="balance-movement-driver-ranking"
-            >
-              <h2>贡献排序</h2>
-              {movementDrivers.map((driver, index) => (
-                <div key={driver.bucket} className="balance-movement-driver-ranking__row">
-                  <span>{index + 1}</span>
-                  <strong>
-                    {driver.bucket} {formatSignedYiNumber(driver.balanceChangeYi)} 亿{" "}
-                    {formatPct(driver.contributionPct)}
-                  </strong>
-                </div>
+            <div className="balance-movement-contribution__band" aria-label="余额变动贡献带">
+              {movementDrivers.map((driver) => (
+                <span
+                  key={driver.bucket}
+                  className={`balance-movement-contribution__segment balance-movement-contribution__segment--${driver.bucket.toLowerCase()}`}
+                  style={{ flexGrow: Math.abs(driver.balanceChangeYi) || 0.001 }}
+                />
               ))}
             </div>
-
-            <div
-              data-testid="balance-movement-analysis-structure-shift"
-              className="balance-movement-structure-shift"
-            >
-              <h2>期初到期末结构变化</h2>
-              {balanceMovementBuckets.map((bucket) => {
-                const driver = movementDrivers.find((item) => item.bucket === bucket);
-                if (!driver) return null;
-                return (
-                  <div key={bucket} className="balance-movement-structure-shift__row">
-                    <div>
-                      <strong>{bucket}</strong>
-                      <span>
-                        期初 {formatPct(driver.previousBalancePct)} 期末{" "}
-                        {formatPct(driver.currentBalancePct)}
-                      </span>
-                    </div>
-                    <div className="balance-movement-structure-shift__track">
-                      <span
-                        className="balance-movement-structure-shift__previous"
-                        style={{
-                          width: shareBarWidth(driver.previousBalancePct),
-                        }}
-                      />
-                      <span
-                        className="balance-movement-structure-shift__current"
-                        style={{
-                          width: shareBarWidth(driver.currentBalancePct),
-                        }}
-                      />
-                    </div>
-                    <em>{formatSignedPointNullable(driver.shareDelta)}</em>
-                  </div>
-                );
-              })}
+            <div data-testid="balance-movement-analysis-driver-ranking" className="balance-movement-contribution__labels">
+              {movementDrivers.map((driver) => (
+                <div className={`balance-movement-contribution__label--${driver.bucket.toLowerCase()}`} key={driver.bucket}>
+                  <span>{driver.bucket}</span>
+                  <strong>{formatSignedYiNumber(driver.balanceChangeYi)} 亿 · {formatPct(driver.contributionPct)}</strong>
+                  <small>占比 {formatPct(driver.currentBalancePct)} · {formatSignedPointNullable(driver.shareDelta)}</small>
+                </div>
+              ))}
             </div>
           </div>
         </section>
       ) : null}
-
       {zqtzAssetDetailRows.length > 0 ? (
         <section
           data-testid="balance-movement-analysis-zqtz-detail"
-          className="balance-movement-zqtz-detail-page"
+          className="balance-movement-zqtz-detail-page balance-movement-figma-panel"
         >
-          <div className="balance-movement-zqtz-detail-page__header">
+          <header className="balance-movement-zqtz-detail-page__header balance-movement-figma-header">
             <div>
-              <span>单独页</span>
-              <strong>金融投资资产明细变动</strong>
+              <span>08 / FINANCIAL INVESTMENT MONTHLY DETAIL</span>
+              <h2>金融投资资产明细变动（6个月）</h2>
             </div>
             <p>
-              对应 ZQTZSHOW 资产项目和长期股权投资明细，按月份展开；“其中”项单独列示，不与上级分类重复加总。
+              report {businessMatrixMonths.at(-1)?.report_month ?? EM_DASH} · unit 亿元 · {zqtzAssetDetailRows.length + (zqtzAssetDetailSummaryRow ? 1 : 0)} rows
             </p>
+          </header>
+          <div className="balance-movement-zqtz-detail-page__scope">
+            <code>business_trend_months.rows · source_kind ZQTZ / ledger</code>
+            <span>“其中”项独立展示，不与上级分类重复加总。</span>
           </div>
           <div className="balance-movement-zqtz-detail-page__table-wrap">
             <table className="balance-movement-zqtz-detail-page__table">
@@ -3457,389 +4474,139 @@ export default function BalanceMovementAnalysisPage() {
       ) : null}
 
       {businessTrendMonths.length > 0 ? (
-        <PageAsyncSection
-          title="月度余额分析矩阵"
-          extra={
-            <span className="balance-movement-matrix-unit-hint">
-              各月末为账面余额；「较上月」「较年初」为变动额。单位：亿元
-            </span>
-          }
-          isLoading={detailQuery.isLoading}
-          isError={detailQuery.isError}
-          isEmpty={businessTrendMonths.length === 0}
-          onRetry={() => void detailQuery.refetch()}
-        >
-          <div
-            className="balance-movement-pre-matrix-notes"
-            data-testid="balance-movement-analysis-pre-matrix-notes"
-          >
-            <p
-              data-testid="balance-movement-analysis-slice-note"
-              className="balance-movement-pre-matrix-notes__slice"
-            >
-              口径说明：上方总账 AC/OCI/TPL 来自控制科目切片；下方「月度余额分析矩阵」中业务行与同业合计为另一套分类，数值不应与三桶简单加减比对是否相等。
-            </p>
-            <div
-              data-testid="balance-movement-analysis-series-context"
-              className="balance-movement-pre-matrix-notes__series"
-            >
-              {seriesContextSegments.map((text, index) => (
-                <p key={index}>{text}</p>
-              ))}
-              <p className="balance-movement-pre-matrix-notes__footer">
-                自然年首月基期、业务矩阵同比、分桶 ZQTZ 差异历史走势等依赖更长期物化或专用接口；当前页仅展示既有读模型，不在浏览器端补算正式口径。
-              </p>
-            </div>
-          </div>
-          <div className="balance-movement-matrix-scroll">
-            <table
-              data-testid="balance-movement-analysis-trend-table"
-              className="balance-movement-report-matrix balance-movement-report-matrix--monthly"
-            >
-              <thead>
-                <tr>
-                  <th scope="col">分类</th>
-                  {businessMatrixMonths.map((month) => (
-                    <th key={month.report_date} scope="col">
-                      {formatTrendMonthLabel(month.report_month)}
-                    </th>
-                  ))}
-                  <th scope="col">较上月</th>
-                  <th scope="col">较年初</th>
-                </tr>
-              </thead>
-              <tbody>
-                {monthlyMatrixCategoryRows.map((row) => {
-                  const mom = compareBusinessMatrixCell(businessMatrixMonths, row, 1);
-                  const ytd = compareBusinessMatrixCellToFirst(businessMatrixMonths, row);
-                  return (
-                    <tr
-                      key={row.key}
-                      data-side={row.side}
-                      className={row.emphasis ? "balance-movement-report-matrix__row--emphasis" : undefined}
-                    >
-                      <th scope="row" title={row.sourceNote}>
-                        {row.label}
-                      </th>
-                      {businessMatrixMonths.map((month) => {
-                        const cellMeta = row.getCellMeta?.(month);
-                        return (
-                          <td
-                            key={`${row.key}-${month.report_date}`}
-                            title={
-                              cellMeta?.hasMissingInputs
-                                ? "部分分项缺失，合计未含缺失项"
-                                : undefined
-                            }
-                          >
-                            {cellMeta
-                              ? formatMatrixCellWithMissing(
-                                  row.getValue(month),
-                                  row.valueKind,
-                                  true,
-                                  cellMeta.hasMissingInputs,
-                                )
-                              : formatMatrixValue(row.getValue(month), row.valueKind, true)}
-                          </td>
-                        );
-                      })}
-                      <td className={matrixDeltaTone(mom)}>{mom}</td>
-                      <td className={matrixDeltaTone(ytd)}>{ytd}</td>
-                    </tr>
-                  );
-                })}
-                <tr className="balance-movement-report-matrix__gap" aria-hidden>
-                  <td colSpan={businessMatrixMonths.length + 3} />
-                </tr>
-                <tr className="balance-movement-report-matrix__section-cap">
-                  <td colSpan={businessMatrixMonths.length + 3}>合计与净额</td>
-                </tr>
-                <tr className="balance-movement-report-matrix__subhead">
-                  <th scope="col">项目</th>
-                  {businessMatrixMonths.map((month) => (
-                    <th key={`project-${month.report_date}`} scope="col">
-                      {formatTrendMonthLabel(month.report_month)}
-                    </th>
-                  ))}
-                  <th scope="col">较上月</th>
-                  <th scope="col">较年初</th>
-                </tr>
-                {businessProjectTableRows.map((row) => {
-                  const mom = compareBusinessMatrixCell(businessMatrixMonths, row, 1);
-                  const ytd = compareBusinessMatrixCellToFirst(businessMatrixMonths, row);
-                  return (
-                    <tr
-                      key={row.key}
-                      data-side={row.side}
-                      className={row.emphasis ? "balance-movement-report-matrix__row--emphasis" : undefined}
-                    >
-                      <th scope="row" title={row.sourceNote}>
-                        {row.label}
-                      </th>
-                      {businessMatrixMonths.map((month) => {
-                        const cellMeta = row.getCellMeta?.(month);
-                        return (
-                          <td
-                            key={`${row.key}-${month.report_date}`}
-                            title={
-                              cellMeta?.hasMissingInputs
-                                ? "部分分项缺失，合计未含缺失项"
-                                : undefined
-                            }
-                          >
-                            {cellMeta
-                              ? formatMatrixCellWithMissing(
-                                  row.getValue(month),
-                                  row.valueKind,
-                                  true,
-                                  cellMeta.hasMissingInputs,
-                                )
-                              : formatMatrixValue(row.getValue(month), row.valueKind, true)}
-                          </td>
-                        );
-                      })}
-                      <td className={matrixDeltaTone(mom)}>{mom}</td>
-                      <td className={matrixDeltaTone(ytd)}>{ytd}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          <div
-            className="balance-movement-structure-chart"
-            data-testid="balance-movement-analysis-structure-chart"
-          >
-            {balanceStructureChartRows.length > 0 ? (
-              <AccountingBasisStackedShareChart
-                rows={balanceStructureChartRows}
-                title="金融投资账户结构演变：余额口径"
-              />
-            ) : (
-              <p className="balance-movement-share-evolution-table__note">
-                占比数据缺失，结构图暂不可比
-              </p>
-            )}
-            {structureShareTableRows.length > 0 ? (
-              <>
-                <p
-                  className="balance-movement-share-evolution-table__title"
-                  data-testid="balance-movement-analysis-structure-share-table-title"
-                >
-                  结构占比明细（与上图一致，余额口径）
-                </p>
-                <p className="balance-movement-share-evolution-table__note">
-                  环比为时间序列中相对<strong>上一行月份</strong>的变动；同比为相对<strong>上年同月</strong>（近 6
-                  个月趋势中含该月时显示，否则为 —）。
-                </p>
-                <div
-                  className="balance-movement-share-evolution-table-scroll"
-                  data-testid="balance-movement-analysis-structure-share-table"
-                >
-                  <table className="balance-movement-share-evolution-table">
+        <BusinessBalanceMatrixSection
+          months={businessMatrixMonths}
+          liabilityRows={businessMatrixLiabilityRows}
+          projectRows={businessProjectTableRows}
+          balanceRows={rows}
+          accountingSnapshotsAreNonAdjacent={Boolean(
+            currentTrendMonth &&
+              previousTrendMonth &&
+              !isPreviousCalendarMonth(
+                currentTrendMonth.report_date,
+                previousTrendMonth.report_date,
+              )
+          )}
+        />
+      ) : null}
+      <DataStatesGovernancePanel
+        isLoading={datesQuery.isLoading || detailQuery.isLoading}
+        hasReportDates={reportDates.length > 0}
+        hasRows={rows.length > 0}
+        freshnessStatus={datesQuery.data?.result.freshness_status}
+        selectedDate={selectedDate}
+        resolvedReportDate={
+          resultMeta?.resolved_report_date ?? detailQuery.data?.result.report_date ?? ""
+        }
+        hasError={datesQuery.isError || detailQuery.isError}
+        refreshMessage={refreshMessage}
+        resultMeta={resultMeta}
+        governanceMeta={governanceMeta}
+        supplementary={(
+          <>
+            {detailQuery.data?.result.accounting_controls ? (
+              <div
+                data-testid="balance-movement-analysis-controls"
+                className="balance-movement-accounting-controls"
+              >
+                控制科目：{detailQuery.data.result.accounting_controls.join(", ")}；排除：
+                {detailQuery.data.result.excluded_controls.join(", ")}
+              </div>
+            ) : null}
+            {detailQuery.data?.result ? (
+              <div
+                data-testid="balance-movement-analysis-governance"
+                className="balance-movement-governance-line"
+              >
+                读模型报告日：{governanceMeta.reportDate || EM_DASH}
+                {" · "}规则版本：
+                {governanceMeta.ruleVersions.length
+                  ? governanceMeta.ruleVersions.join("、")
+                  : EM_DASH}
+                <br />
+                源版本：
+                {governanceMeta.sourceVersions.length
+                  ? governanceMeta.sourceVersions.join("、")
+                  : EM_DASH}
+              </div>
+            ) : null}
+            <SupplementaryBusinessRowsTable
+              months={businessMatrixMonths}
+              rows={businessMatrixAssetRows}
+            />
+            <StructureShareDetailTable
+              structureShareTableRows={structureShareTableRows}
+              shareRowByReportMonth={shareRowByReportMonth}
+            />
+            {zqtzCalibrationAnalysis ? (
+              <section
+                data-testid="balance-movement-analysis-zqtz-calibration"
+                className="balance-movement-zqtz-calibration"
+              >
+                <div className="balance-movement-zqtz-calibration__header">
+                  <div>
+                    <span>ZQTZ228 口径核对</span>
+                    <strong>{zqtzCalibrationAnalysis.source_file}</strong>
+                  </div>
+                  <p>{zqtzCalibrationAnalysis.conclusion}</p>
+                </div>
+                <div className="balance-movement-zqtz-calibration__diagnosis">
+                  <div>
+                    <span>差异定位</span>
+                    <p>{zqtzCalibrationAnalysis.root_cause}</p>
+                  </div>
+                  <div>
+                    <span>系统处理</span>
+                    <p>{zqtzCalibrationAnalysis.remediation}</p>
+                  </div>
+                </div>
+                <div className="balance-movement-zqtz-calibration__table-wrap">
+                  <table className="balance-movement-zqtz-calibration__table">
                     <thead>
                       <tr>
-                        <th scope="col">月份</th>
-                        <th scope="col">AC（%）</th>
-                        <th scope="col">OCI（%）</th>
-                        <th scope="col">TPL（%）</th>
-                        <th scope="col">合计（亿）</th>
-                        <th scope="col">AC（亿）</th>
-                        <th scope="col">OCI（亿）</th>
-                        <th scope="col">TPL（亿）</th>
-                        <th scope="col">环比·AC</th>
-                        <th scope="col">环比·OCI</th>
-                        <th scope="col">环比·TPL</th>
-                        <th scope="col">环比·合计</th>
-                        <th scope="col">同比·AC</th>
-                        <th scope="col">同比·OCI</th>
-                        <th scope="col">同比·TPL</th>
-                        <th scope="col">同比·合计</th>
-                        {structureShareTableRows.length > 1 ? (
-                          <>
-                            <th scope="col">较首月·AC</th>
-                            <th scope="col">较首月·OCI</th>
-                            <th scope="col">较首月·TPL</th>
-                          </>
-                        ) : null}
+                        <th>项目</th>
+                        <th>系统数（亿元）</th>
+                        <th>核对表（亿元）</th>
+                        <th>差异（亿元）</th>
+                        <th>状态</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {structureShareTableRows.map((item, index) => {
-                        const { point, reportMonth } = item;
-                        const first = structureShareTableRows[0];
-                        const prev = index > 0 ? structureShareTableRows[index - 1] : null;
-                        const yoyKey = priorYearSameMonth(reportMonth);
-                        const yoy = yoyKey ? shareRowByReportMonth.get(yoyKey) : undefined;
-                        const showFirstDelta = structureShareTableRows.length > 1 && first !== undefined;
-                        return (
-                          <tr key={point.monthLabel}>
-                            <th scope="row">{point.monthLabel}</th>
-                            <td>{formatShareEvolutionPct(point.AC)}</td>
-                            <td>{formatShareEvolutionPct(point.OCI)}</td>
-                            <td>{formatShareEvolutionPct(point.TPL)}</td>
-                            <td>{formatShareEvolutionYi(point.totalValueYi)}</td>
-                            <td>{formatShareEvolutionYi(point.acValueYi)}</td>
-                            <td>{formatShareEvolutionYi(point.ociValueYi)}</td>
-                            <td>{formatShareEvolutionYi(point.tplValueYi)}</td>
-                            <td>
-                              {prev
-                                ? formatSignedPointNullable(nullableDelta(point.AC, prev.point.AC))
-                                : "—"}
-                            </td>
-                            <td>
-                              {prev
-                                ? formatSignedPointNullable(nullableDelta(point.OCI, prev.point.OCI))
-                                : "—"}
-                            </td>
-                            <td>
-                              {prev
-                                ? formatSignedPointNullable(nullableDelta(point.TPL, prev.point.TPL))
-                                : "—"}
-                            </td>
-                            <td>
-                              {formatSignedYiDelta(
-                                point.totalValueYi,
-                                prev?.point.totalValueYi,
-                              )}
-                            </td>
-                            <td>
-                              {yoy
-                                ? formatSignedPointNullable(nullableDelta(point.AC, yoy.point.AC))
-                                : "—"}
-                            </td>
-                            <td>
-                              {yoy
-                                ? formatSignedPointNullable(nullableDelta(point.OCI, yoy.point.OCI))
-                                : "—"}
-                            </td>
-                            <td>
-                              {yoy
-                                ? formatSignedPointNullable(nullableDelta(point.TPL, yoy.point.TPL))
-                                : "—"}
-                            </td>
-                            <td>
-                              {formatSignedYiDelta(
-                                point.totalValueYi,
-                                yoy?.point.totalValueYi,
-                              )}
-                            </td>
-                            {showFirstDelta ? (
-                              <>
-                                <td>{formatSignedPointNullable(nullableDelta(point.AC, first.point.AC))}</td>
-                                <td>{formatSignedPointNullable(nullableDelta(point.OCI, first.point.OCI))}</td>
-                                <td>{formatSignedPointNullable(nullableDelta(point.TPL, first.point.TPL))}</td>
-                              </>
-                            ) : null}
-                          </tr>
-                        );
-                      })}
+                      {zqtzCalibrationAnalysis.items.map((item) => (
+                        <tr key={item.row_key}>
+                          <td>
+                            <strong>{item.row_label}</strong>
+                            <span>{item.note}</span>
+                          </td>
+                          <td>{formatYiFixed(item.system_amount)}</td>
+                          <td>{formatYiFixed(item.reference_amount)}</td>
+                          <td>{formatSignedYiNumber(Number(item.diff_amount) / 100000000)}</td>
+                          <td>
+                            <span
+                              className={`balance-movement-zqtz-calibration__status balance-movement-zqtz-calibration__status--${item.status}`}
+                            >
+                              {item.status === "matched" ? "一致" : "观察"}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
-              </>
+                <ul className="balance-movement-zqtz-calibration__risks">
+                  {zqtzCalibrationAnalysis.residual_risks.map((risk) => (
+                    <li key={risk}>{risk}</li>
+                  ))}
+                </ul>
+              </section>
             ) : null}
-            {balanceStructureInsight ? (
-              <div
-                className="balance-movement-structure-chart__insight"
-                data-testid="balance-movement-analysis-structure-insight"
-              >
-                {balanceStructureInsight}
-              </div>
+            {detailQuery.data ? (
+              <HistoricalAnomalyPanel diagnostics={historicalAnomalyDiagnostics} />
             ) : null}
-          </div>
-        </PageAsyncSection>
-      ) : null}
-
-      <div id="balance-movement-analysis-detail-anchor">
-        <PageAsyncSection
-          title="明细 / 对账：AC / OCI / TPL 余额变动"
-          isLoading={detailQuery.isLoading}
-          isError={detailQuery.isError}
-          isEmpty={!detailQuery.isLoading && !detailQuery.isError && rows.length === 0}
-          onRetry={() => void detailQuery.refetch()}
-        >
-          <div className="balance-movement-detail-table-wrap">
-            <table
-              data-testid="balance-movement-analysis-table"
-              className="balance-movement-detail-table"
-            >
-            <thead>
-              <tr>
-                <th className="balance-movement-detail-table__label-cell">分类</th>
-                <th className="balance-movement-detail-table__cell">期初余额(亿)</th>
-                <th className="balance-movement-detail-table__cell">期初占比</th>
-                <th className="balance-movement-detail-table__cell">期末余额(亿)</th>
-                <th className="balance-movement-detail-table__cell">期末占比</th>
-                <th className="balance-movement-detail-table__num">占比变动</th>
-                <th className="balance-movement-detail-table__cell">变动(亿)</th>
-                <th className="balance-movement-detail-table__cell">变动率</th>
-                <th className="balance-movement-detail-table__cell">变动贡献</th>
-                <th className="balance-movement-detail-table__cell">ZQTZ辅助(亿)</th>
-                <th className="balance-movement-detail-table__cell">ZQTZ诊断差异(亿)</th>
-                <th className="balance-movement-detail-table__cell">状态</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.basis_bucket}>
-                  <td className="balance-movement-detail-table__label-cell">
-                    {bucketLabels[row.basis_bucket] ?? row.basis_bucket}
-                  </td>
-                  <td className="balance-movement-detail-table__cell">
-                    {formatBalanceAmountToYiFromYuan(row.previous_balance)}
-                  </td>
-                  <td className="balance-movement-detail-table__cell">{formatPct(row.previous_balance_pct)}</td>
-                  <td className="balance-movement-detail-table__cell">
-                    {formatBalanceAmountToYiFromYuan(row.current_balance)}
-                  </td>
-                  <td className="balance-movement-detail-table__cell">{formatPct(row.current_balance_pct)}</td>
-                  <td className="balance-movement-detail-table__num">
-                    {formatSignedPointNullable(shareDeltaPp(row))}
-                  </td>
-                  <td className="balance-movement-detail-table__cell">
-                    {formatBalanceAmountToYiFromYuan(row.balance_change)}
-                  </td>
-                  <td className="balance-movement-detail-table__cell">{formatPct(row.change_pct)}</td>
-                  <td className="balance-movement-detail-table__cell">{formatPct(row.contribution_pct)}</td>
-                  <td className="balance-movement-detail-table__cell">
-                    {formatBalanceAmountToYiFromYuan(row.zqtz_amount)}
-                  </td>
-                  <td className="balance-movement-detail-table__cell">
-                    {formatBalanceAmountToYiFromYuan(row.reconciliation_diff)}
-                  </td>
-                  <td className={statusToneClass(row.reconciliation_status)}>
-                    {row.reconciliation_status}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          </div>
-        </PageAsyncSection>
+          </>
+        )}
+      />
       </div>
-
-      {detailQuery.data?.result.accounting_controls ? (
-        <div
-          data-testid="balance-movement-analysis-controls"
-          className="balance-movement-accounting-controls"
-        >
-          控制科目：{detailQuery.data.result.accounting_controls.join(", ")}；排除：
-          {detailQuery.data.result.excluded_controls.join(", ")}
-        </div>
-      ) : null}
-
-      {detailQuery.data?.result ? (
-        <div data-testid="balance-movement-analysis-governance" className="balance-movement-governance-line">
-          读模型报告日：{governanceMeta.reportDate || EM_DASH}
-          {" · "}
-          规则版本：
-          {governanceMeta.ruleVersions.length ? governanceMeta.ruleVersions.join("、") : EM_DASH}
-          <br />
-          源版本：
-          {governanceMeta.sourceVersions.length ? governanceMeta.sourceVersions.join("、") : EM_DASH}
-        </div>
-      ) : null}
     </section>
   );
 }

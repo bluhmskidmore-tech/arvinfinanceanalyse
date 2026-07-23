@@ -29,6 +29,22 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(source).not.toMatch(/rgba\(/);
     expect(source).not.toMatch(/\bboxShadow\s*:|box-shadow\s*:/);
     expect(styleCount).toBeLessThanOrEqual(3);
+    expect(source).not.toContain("PageAsyncSection");
+    expect(source).toContain("BusinessBalanceMatrixSection");
+  });
+
+  it("lets provenance content expand when the compact layout stacks", () => {
+    const css = readFileSync(
+      resolve(
+        process.cwd(),
+        "src/features/balance-movement-analysis/pages/BalanceMovementAnalysisFigma.css",
+      ),
+      "utf8",
+    );
+
+    expect(css).toMatch(
+      /\.balance-movement-provenance\s*\{\s*height:\s*auto;\s*min-height:\s*0;\s*grid-template-rows:\s*auto;\s*overflow:\s*visible;/,
+    );
   });
 
   it("renders AC OCI TPL balance movement from the governed read model", async () => {
@@ -36,73 +52,121 @@ describe("BalanceMovementAnalysisPage", () => {
       client: createApiClient({ mode: "mock" }),
     });
 
-    expect(await screen.findByTestId("balance-movement-analysis-title")).toHaveTextContent(
-      "余额变动分析",
+    const pageHeader = await screen.findByTestId("balance-movement-analysis-page-header");
+    expect(within(pageHeader).getByTestId("balance-movement-analysis-title")).toHaveTextContent(
+      "资产余额变动分析",
     );
-    expect(await screen.findByTestId("balance-movement-analysis-summary")).toHaveTextContent(
-      "3,358.73",
+    expect(pageHeader).toHaveTextContent("投资组合 / 资产结构");
+    expect(within(pageHeader).getAllByRole("combobox")).toHaveLength(2);
+    const kpiRibbon = await screen.findByTestId("balance-movement-analysis-summary");
+    await waitFor(() => {
+      expect(within(pageHeader).getByRole("button", { name: "刷新数据" })).toBeEnabled();
+      expect(within(pageHeader).getByRole("button", { name: "导出 CSV" })).toBeEnabled();
+    });
+
+    const decisionHero = await screen.findByTestId("balance-movement-analysis-decision-hero");
+    expect(decisionHero).toHaveTextContent("DECISION SIGNAL");
+    expect(decisionHero).toHaveTextContent("主要由 TPL 驱动");
+    expect(decisionHero).toHaveTextContent("对账完整");
+    expect(decisionHero).toHaveTextContent("FVTPL 结构占比");
+    expect(decisionHero).toHaveTextContent("TPL +51.63 亿");
+    expect(decisionHero).toHaveTextContent("OCI +44.87 亿");
+    expect(decisionHero).toHaveTextContent("AC +33.29 亿");
+
+    const dataTrust = screen.getByTestId("balance-movement-analysis-freshness");
+    expect(dataTrust).toHaveTextContent("DATA TRUST");
+    expect(dataTrust).toHaveTextContent("Read model");
+    expect(dataTrust).toHaveTextContent("Upstream control");
+    expect(dataTrust).toHaveTextContent("3 / 3 matched");
+    expect(dataTrust).toHaveTextContent("Currency basisCNX");
+
+    expect(kpiRibbon.querySelectorAll(":scope > article")).toHaveLength(4);
+    expect(kpiRibbon).toHaveTextContent("期末余额3,358.73 亿");
+    expect(kpiRibbon).toHaveTextContent("本月净增+129.80 亿");
+    expect(kpiRibbon).toHaveTextContent("最大驱动TPL · 39.78%");
+    expect(kpiRibbon).toHaveTextContent("对账状态3 / 3 匹配");
+    expect(within(kpiRibbon).getAllByTestId("balance-movement-kpi-signal")).toHaveLength(4);
+
+    const driversAndStructure = screen.getByTestId("balance-movement-analysis-drivers-structure");
+    expect(driversAndStructure).toHaveTextContent("本月变动驱动");
+    expect(driversAndStructure).toHaveTextContent("会计分类结构");
+    expect(driversAndStructure).toHaveTextContent("TPL");
+    expect(driversAndStructure).toHaveTextContent("+51.63 亿");
+    expect(driversAndStructure).toHaveTextContent("39.78%");
+    expect(driversAndStructure).toHaveTextContent("AC");
+    expect(driversAndStructure).toHaveTextContent("42.44%");
+    expect(driversAndStructure).toHaveTextContent("-0.67pp");
+    expect(
+      within(driversAndStructure).getByTestId("balance-movement-driver-composition-band"),
+    ).toHaveAccessibleName(/TPL 39.78%/);
+    expect(
+      within(driversAndStructure).getByTestId("balance-movement-structure-mix-band"),
+    ).toHaveAccessibleName(/AC 42.44%/);
+
+    const maturityAndConcentration = screen.getByTestId(
+      "balance-movement-analysis-maturity-concentration",
     );
-    const conclusion = await screen.findByTestId("balance-movement-analysis-conclusion");
-    expect(conclusion).toHaveTextContent("总账控制核对通过");
-    expect(screen.getByTestId("balance-movement-analysis-recon-summary")).toHaveTextContent(
-      "ZQTZ 分桶对账",
+    expect(maturityAndConcentration).toHaveTextContent("期限结构");
+    expect(maturityAndConcentration).toHaveTextContent("主体集中度");
+    expect(maturityAndConcentration).toHaveTextContent("≤90天");
+    expect(maturityAndConcentration).toHaveTextContent("HHI");
+    expect(maturityAndConcentration).toHaveTextContent("Top 5 Share");
+    expect(
+      within(maturityAndConcentration).getByTestId("balance-movement-maturity-spectrum"),
+    ).toHaveAccessibleName(/≤90天/);
+    const overThreeYearsBucket = maturityAndConcentration.querySelector(
+      '.balance-movement-maturity-compact__grid [data-maturity="over-3y"]',
     );
-    expect(screen.getByTestId("balance-movement-analysis-recon-summary")).toHaveTextContent("一致");
-    expect(conclusion).toHaveTextContent("3,358.73 亿");
-    expect(conclusion).toHaveTextContent("AC 42.44%");
-    expect(conclusion).toHaveTextContent("OCI 31.49%");
-    expect(conclusion).toHaveTextContent("TPL 26.07%");
-    expect(conclusion).toHaveTextContent("排除 144020 股权 OCI");
-    expect(conclusion).toHaveTextContent("ZQTZ 诊断同步读取 CNX 余额表");
-    expect(screen.getByTestId("balance-movement-analysis-diagnostic-reason")).toHaveTextContent(
-      "口径差异原因",
-    );
-    expect(screen.getByTestId("balance-movement-analysis-diagnostic-reason")).toHaveTextContent(
-      "ZQTZ 诊断应使用 CNX 表",
-    );
-    expect(screen.getByTestId("balance-movement-analysis-diagnostic-reason")).toHaveTextContent(
-      "误读 CNY",
-    );
-    expect(await screen.findByTestId("balance-movement-analysis-trend-conclusion")).toHaveTextContent(
-      "较 2026-01-31 +129.80 亿",
-    );
-    expect(screen.getByTestId("balance-movement-analysis-trend-conclusion")).toHaveTextContent(
-      "TPL +51.63 亿、OCI +44.87 亿、AC +33.29 亿",
-    );
+    expect(overThreeYearsBucket).toHaveTextContent(">3年");
+    expect(overThreeYearsBucket).not.toHaveTextContent("未映射");
+    expect(
+      within(maturityAndConcentration).getByTestId("balance-movement-maturity-coverage-band"),
+    ).toHaveAccessibleName(/KNOWN.*UNMAPPED/);
+    expect(
+      within(maturityAndConcentration).getByTestId("balance-movement-top5-gauge"),
+    ).toHaveTextContent("Top 5 Share");
+    expect(
+      within(maturityAndConcentration).getByTestId(
+        "balance-movement-concentration-unknown-strip",
+      ),
+    ).toHaveTextContent("Unknown");
+
     const evidenceStrip = await screen.findByTestId("balance-movement-analysis-evidence-strip");
-    expect(evidenceStrip).toHaveTextContent("质量标记");
-    expect(evidenceStrip).toHaveTextContent("ok");
-    expect(evidenceStrip).toHaveTextContent("追踪标识");
+    expect(evidenceStrip).toHaveTextContent("05 / EVIDENCE & PROVENANCE");
+    expect(evidenceStrip).toHaveTextContent("FRESHNESS");
+    expect(evidenceStrip).toHaveTextContent("LINEAGE");
+    expect(evidenceStrip).toHaveTextContent("CONTROL SCOPE");
     expect(evidenceStrip).toHaveTextContent("mock_balance-analysis.movement.detail");
-    const dimensionOverview = await screen.findByTestId(
-      "balance-movement-analysis-dimension-overview",
+    expect(evidenceStrip).toHaveTextContent("rv_dashboard_mock_v2");
+
+    const accountingBuckets = screen.getByTestId("balance-movement-analysis-accounting-buckets");
+    expect(accountingBuckets).toHaveTextContent("06 / ACCOUNTING BUCKETS");
+    expect(within(accountingBuckets).getByRole("row", { name: /AC/ })).toHaveTextContent("一致");
+    expect(within(accountingBuckets).getByRole("row", { name: /OCI/ })).toHaveTextContent("一致");
+    expect(within(accountingBuckets).getByRole("row", { name: /TPL/ })).toHaveTextContent("一致");
+
+    const sixMonthStructure = screen.getByTestId(
+      "balance-movement-analysis-six-month-structure",
     );
-    expect(dimensionOverview).toHaveTextContent("分析维度总览");
-    expect(dimensionOverview.querySelectorAll(".balance-movement-dimension-card")).toHaveLength(4);
-    expect(screen.getByTestId("balance-movement-analysis-dimension-card-business")).toHaveTextContent(
-      "业务品类 Top 变动",
+    const structureBridge = screen.getByTestId("balance-movement-analysis-structure-bridge");
+    const liveDecomposition = screen.getByTestId(
+      "balance-movement-analysis-live-decomposition",
     );
-    expect(screen.getByTestId("balance-movement-analysis-dimension-card-business")).toHaveTextContent(
-      "资产端-拆放同业 +30.00 亿",
-    );
-    expect(screen.getByTestId("balance-movement-analysis-dimension-card-basis")).toHaveTextContent(
-      "AC / OCI / FVTPL",
-    );
-    expect(screen.getByTestId("balance-movement-analysis-dimension-card-basis")).toHaveTextContent(
-      "TPL +51.63 亿",
-    );
-    expect(screen.getByTestId("balance-movement-analysis-dimension-card-residual")).toHaveTextContent(
-      "对账残差",
-    );
-    expect(screen.getByTestId("balance-movement-analysis-dimension-card-residual")).toHaveTextContent(
-      "估值差、外币折算差 未支持，不反推",
-    );
-    expect(screen.getByTestId("balance-movement-analysis-dimension-card-coverage")).toHaveTextContent(
-      "期限 / 集中度覆盖",
-    );
-    expect(screen.getByTestId("balance-movement-analysis-dimension-card-coverage")).toHaveTextContent(
-      "期限 99.15% / 集中度 97.68%",
-    );
+    expect(sixMonthStructure).toHaveTextContent("02 / SIX-MONTH ACCOUNTING STRUCTURE");
+    expect(structureBridge).toHaveTextContent("03 / STRUCTURE MIGRATION");
+    expect(liveDecomposition).toHaveTextContent("04 / DRIVER DECOMPOSITION");
+    expect(
+      accountingBuckets.compareDocumentPosition(sixMonthStructure) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      sixMonthStructure.compareDocumentPosition(structureBridge) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      structureBridge.compareDocumentPosition(liveDecomposition) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     const anomalyDiagnostics = await screen.findByTestId(
       "balance-movement-analysis-anomaly-diagnostics",
     );
@@ -112,55 +176,43 @@ describe("BalanceMovementAnalysisPage", () => {
     const businessSummary = await screen.findByTestId(
       "balance-movement-analysis-business-summary",
     );
-    expect(businessSummary).toHaveTextContent(
-      "本月余额增加 129.80 亿，最大驱动是 TPL",
-    );
-    expect(businessSummary).toHaveTextContent(
-      "结构整体稳定，最大占比变化为 AC -0.67pp",
-    );
-    expect(businessSummary).toHaveTextContent(
-      "AC 压舱石占比 42.44%，较期初 -0.67pp",
-    );
-    expect(businessSummary).toHaveTextContent(
-      "OCI 配置占比 31.49%，较期初 +0.12pp",
-    );
-    expect(businessSummary).toHaveTextContent(
-      "TPL 增量最大：+51.63 亿，贡献 39.78%",
-    );
+    expect(businessSummary).toHaveTextContent("07 / BUSINESS LINE MOVERS");
+    expect(businessSummary).toHaveTextContent("TPL +51.63 亿 · 贡献 39.78%");
+    expect(businessSummary).toHaveTextContent("本月总余额增加 129.80 亿");
+    expect(businessSummary).toHaveTextContent("FVTPL 占比至");
+    expect(screen.getByText("AC 稳定器").parentElement).toHaveTextContent("42.44%-0.67pp");
+    expect(screen.getByText("OCI 压舱石").parentElement).toHaveTextContent("31.49%+0.12pp");
     expect(screen.getByTestId("balance-movement-analysis-driver-chart")).toBeInTheDocument();
     expect(screen.getByTestId("balance-movement-analysis-driver-ranking")).toHaveTextContent(
-      "TPL +51.63 亿 39.78%",
+      "TPL+51.63 亿 · 39.78%占比 26.07% · +0.55pp",
     );
     expect(screen.getByTestId("balance-movement-analysis-driver-ranking")).toHaveTextContent(
-      "OCI +44.87 亿 34.57%",
+      "OCI+44.87 亿 · 34.57%占比 31.49% · +0.12pp",
     );
     expect(screen.getByTestId("balance-movement-analysis-driver-ranking")).toHaveTextContent(
-      "AC +33.29 亿 25.65%",
-    );
-    expect(screen.getByTestId("balance-movement-analysis-structure-shift")).toHaveTextContent(
-      "期初 43.11% 期末 42.44%",
+      "AC+33.29 亿 · 25.65%占比 42.44% · -0.67pp",
     );
     expect(screen.getByTestId("balance-movement-analysis-structure-driver-hint")).toHaveTextContent(
       "变动额",
     );
     expect(screen.getByTestId("balance-movement-analysis-business-top-moves")).toHaveTextContent(
-      "业务行Top变动",
+      "本月变动 · 发散视图",
     );
     expect(screen.getByTestId("balance-movement-analysis-business-top-moves")).toHaveTextContent(
       "资产端-拆放同业",
     );
     const topMovesMom = screen.getByTestId("balance-movement-analysis-business-top-moves-mom");
     expect(topMovesMom).toBeInTheDocument();
-    expect(screen.getByTestId("balance-movement-analysis-business-top-moves")).toHaveTextContent("MoM Top 5");
-    expect(within(topMovesMom).queryAllByRole("row").length).toBeGreaterThan(1);
+    expect(within(topMovesMom).queryAllByRole("listitem").length).toBeGreaterThan(1);
     const interbankLendingTopMove = within(topMovesMom)
       .getByText("资产端-拆放同业")
-      .closest("tr");
+      .closest('[role="listitem"]');
     expect(interbankLendingTopMove).toHaveTextContent("总账");
     expect(interbankLendingTopMove).toHaveTextContent("总账对账科目余额");
+    expect(interbankLendingTopMove).toHaveTextContent("50.00 → 80.00");
     const topMovesSix = screen.getByTestId("balance-movement-analysis-business-top-moves-sixmonth");
     expect(topMovesSix).toBeInTheDocument();
-    expect(screen.getByTestId("balance-movement-analysis-business-top-moves")).toHaveTextContent("Top 5");
+    expect(screen.getByTestId("balance-movement-analysis-business-top-moves")).toHaveTextContent("近 2 月变动");
     const topMoveSources = screen.getAllByTestId("balance-movement-analysis-business-top-moves-source");
     expect(topMoveSources.length).toBeGreaterThan(0);
     expect(screen.getByTestId("balance-movement-analysis-slice-note")).toHaveTextContent(
@@ -182,7 +234,7 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(zqtzCalibration).toHaveTextContent("58.12");
     expect(zqtzCalibration).toHaveTextContent("2026-03");
     const zqtzDetail = screen.getByTestId("balance-movement-analysis-zqtz-detail");
-    expect(zqtzDetail).toHaveTextContent("单独页");
+    expect(zqtzDetail).toHaveTextContent("08 / FINANCIAL INVESTMENT MONTHLY DETAIL");
     expect(zqtzDetail).toHaveTextContent("金融投资资产明细变动");
     expect(zqtzDetail).toHaveTextContent("政策性金融债");
     expect(zqtzDetail).toHaveTextContent("地方政府债");
@@ -251,7 +303,7 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(concentrationAnalysis).toHaveTextContent("Unknown");
     expect(concentrationAnalysis).toHaveTextContent("HHI 1,620.35");
 
-    const matrixTitle = screen.getByText("月度余额分析矩阵");
+    const matrixTitle = screen.getByText("业务口径余额矩阵与 AC / OCI / TPL 对账");
     const detailTitle = screen.getByText("明细 / 对账：AC / OCI / TPL 余额变动");
     expect(
       matrixTitle.compareDocumentPosition(detailTitle) & Node.DOCUMENT_POSITION_FOLLOWING,
@@ -275,7 +327,8 @@ describe("BalanceMovementAnalysisPage", () => {
     const trendTable = screen.getByTestId("balance-movement-analysis-trend-table");
     expect(matrixTitle).toBeInTheDocument();
     expect(screen.getByTestId("balance-movement-analysis-structure-chart")).toBeInTheDocument();
-    expect(screen.getAllByTestId("balance-movement-echarts-stub").length).toBeGreaterThanOrEqual(2);
+    expect(document.querySelectorAll(".balance-movement-six-month__bar").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("balance-movement-analysis-maturity-ladder")).toBeInTheDocument();
     expect(screen.getByTestId("balance-movement-analysis-structure-share-table-title")).toHaveTextContent(
       "结构占比明细",
     );
@@ -288,28 +341,16 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(screen.getByTestId("balance-movement-analysis-structure-insight")).toHaveTextContent(
       "AC占比",
     );
-    expect(within(trendTable).getByText("分类")).toBeInTheDocument();
-    expect(within(trendTable).getByText("项目")).toBeInTheDocument();
+    expect(within(trendTable).getByText("明细项目")).toBeInTheDocument();
     expect(within(trendTable).getAllByText("2026年2月").length).toBeGreaterThan(0);
     expect(within(trendTable).getAllByText("2026年1月").length).toBeGreaterThan(0);
     expect(within(trendTable).getAllByText("较上月").length).toBeGreaterThan(0);
     expect(within(trendTable).getAllByText("较年初").length).toBeGreaterThan(0);
-    expect(within(trendTable).getByText("资产端-拆放同业")).toBeInTheDocument();
-    expect(within(trendTable).getByText("资产端-买入返售")).toBeInTheDocument();
-    expect(within(trendTable).getByText("资产端-同业存放-活期")).toBeInTheDocument();
-    expect(within(trendTable).getByText("资产端-存放同业境内-定期")).toBeInTheDocument();
-    expect(within(trendTable).getByText("资产端-存放同业境外-定期")).toBeInTheDocument();
     expect(within(trendTable).queryByText("央行票据")).not.toBeInTheDocument();
     expect(within(trendTable).queryByText("地方政府债")).not.toBeInTheDocument();
     expect(within(trendTable).queryByText("政策性金融债")).not.toBeInTheDocument();
     expect(within(trendTable).queryByText("外国债券")).not.toBeInTheDocument();
     expect(within(trendTable).queryByText("长期股权投资（亿元）")).not.toBeInTheDocument();
-    expect(within(trendTable).getByText("FVTPL")).toBeInTheDocument();
-    expect(within(trendTable).getByText("AC/OCI/FVTPL 合计")).toBeInTheDocument();
-    const basisEmphasisRows = trendTable.querySelectorAll(
-      ".balance-movement-report-matrix__row--emphasis",
-    );
-    expect(basisEmphasisRows.length).toBe(4);
     expect(within(trendTable).getByText("负债端-同业存放")).toBeInTheDocument();
     expect(within(trendTable).getByText("负债端-同业拆入")).toBeInTheDocument();
     expect(within(trendTable).getByText("负债端-卖出回购")).toBeInTheDocument();
@@ -321,6 +362,9 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(within(trendTable).getAllByText("+194.80").length).toBe(2);
     expect(within(trendTable).getAllByText("-85.00").length).toBe(2);
     expect(within(trendTable).getAllByText("+109.80").length).toBe(2);
+    expect(screen.getByTestId("balance-movement-analysis-data-states")).toHaveTextContent(
+      "10 / DATA STATES & GOVERNANCE",
+    );
   });
 
   it("uses only backend share pct and keeps missing shares visible", async () => {
@@ -370,23 +414,21 @@ describe("BalanceMovementAnalysisPage", () => {
       client: nullShareClient,
     });
 
-    const businessSummary = await screen.findByTestId(
-      "balance-movement-analysis-business-summary",
-    );
-    expect(businessSummary).toHaveTextContent("AC 压舱石占比 0.00%，较期初 0.00pp");
-    expect(businessSummary).toHaveTextContent("OCI 配置占比 —，较期初 —");
-
-    const structureShift = screen.getByTestId("balance-movement-analysis-structure-shift");
-    expect(structureShift).toHaveTextContent("AC");
-    expect(structureShift).toHaveTextContent("期初 0.00% 期末 0.00%");
-    expect(structureShift).toHaveTextContent("期初 31.37% 期末 —");
-    expect(structureShift).toHaveTextContent("期初 — 期末 26.07%");
-    expect(structureShift).not.toHaveTextContent("期初 0.00% 期末 26.07%");
-    expect(structureShift).not.toHaveTextContent("+0.00pp");
+    await screen.findByTestId("balance-movement-analysis-business-summary");
+    expect(screen.getByText("AC 稳定器").parentElement).toHaveTextContent("0.00%0.00pp");
+    expect(screen.getByText("OCI 压舱石").parentElement).toHaveTextContent("——");
+    const driverLabels = screen.getByTestId("balance-movement-analysis-driver-ranking");
+    expect(driverLabels).toHaveTextContent("AC+33.29 亿 · 25.65%占比 0.00% · 0.00pp");
+    expect(driverLabels).toHaveTextContent("OCI+44.87 亿 · 34.57%占比 — · —");
+    expect(driverLabels).toHaveTextContent("TPL+51.63 亿 · 39.78%占比 26.07% · —");
+    expect(driverLabels).not.toHaveTextContent("TPL+51.63 亿 · 39.78%占比 0.00%");
 
     const structureChart = screen.getByTestId("balance-movement-analysis-structure-chart");
     expect(within(structureChart).queryByTestId("balance-movement-echarts-stub")).not.toBeInTheDocument();
     expect(structureChart).toHaveTextContent("占比数据缺失，结构图暂不可比");
+    const compactMixBand = screen.getByTestId("balance-movement-structure-mix-band");
+    expect(compactMixBand).toHaveAttribute("data-state", "unavailable");
+    expect(compactMixBand).toHaveAccessibleName("会计分类结构：数据不可用");
 
     const shareEvolutionTable = screen.getByTestId("balance-movement-analysis-structure-share-table");
     expect(within(shareEvolutionTable).getAllByText("0.00%").length).toBeGreaterThan(0);
@@ -617,7 +659,7 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(datesSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("surfaces governed result_meta in the first-screen evidence strip", async () => {
+  it("surfaces governed result_meta in the Figma provenance section", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const evidenceClient: typeof baseClient = {
       ...baseClient,
@@ -645,14 +687,196 @@ describe("BalanceMovementAnalysisPage", () => {
     });
 
     const evidenceStrip = await screen.findByTestId("balance-movement-analysis-evidence-strip");
-    expect(evidenceStrip).toHaveTextContent("质量标记");
-    expect(evidenceStrip).toHaveTextContent("ok");
+    expect(evidenceStrip).toHaveTextContent("EVIDENCE & PROVENANCE");
     expect(evidenceStrip).toHaveTextContent("tr_balance_movement_evidence_test");
     expect(evidenceStrip).toHaveTextContent("fact_accounting_asset_movement_monthly");
     expect(evidenceStrip).toHaveTextContent("product_category_pnl_canonical_fact");
-    expect(evidenceStrip).toHaveTextContent("192");
+    expect(evidenceStrip).toHaveTextContent("192 rows");
     expect(evidenceStrip).toHaveTextContent("rv_balance_movement_evidence_test");
     expect(evidenceStrip).toHaveTextContent("sv_balance_movement_evidence_test");
+  });
+
+  it.each([
+    { label: "null", value: null },
+    { label: "undefined", value: undefined },
+  ])("does not present a $label total balance change as a flat zero", async ({ value }) => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const missingChangeClient: typeof baseClient = {
+      ...baseClient,
+      async getBalanceMovementAnalysis(options) {
+        const envelope = await baseClient.getBalanceMovementAnalysis(options);
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            summary: {
+              ...envelope.result.summary,
+              balance_change_total: value as unknown as string,
+            },
+          },
+        };
+      },
+    };
+
+    renderWorkbenchApp(["/balance-movement-analysis"], { client: missingChangeClient });
+
+    const summary = await screen.findByTestId("balance-movement-analysis-summary");
+    const changeCard = within(summary).getByText("本月净增").parentElement;
+    expect(changeCard).toHaveTextContent("—");
+    expect(changeCard).not.toHaveTextContent("0.00");
+    expect(screen.getByTestId("balance-movement-analysis-business-summary")).toHaveTextContent(
+      "总变动缺失，暂不判断方向",
+    );
+    expect(screen.getByTestId("balance-movement-analysis-business-summary")).not.toHaveTextContent(
+      "持平 0.00 亿",
+    );
+  });
+
+  it("keeps a real zero total balance change as flat zero", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const zeroChangeClient: typeof baseClient = {
+      ...baseClient,
+      async getBalanceMovementAnalysis(options) {
+        const envelope = await baseClient.getBalanceMovementAnalysis(options);
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            summary: { ...envelope.result.summary, balance_change_total: "0" },
+          },
+        };
+      },
+    };
+
+    renderWorkbenchApp(["/balance-movement-analysis"], { client: zeroChangeClient });
+
+    const summary = await screen.findByTestId("balance-movement-analysis-summary");
+    expect(within(summary).getByText("本月净增").parentElement).toHaveTextContent("0.00 亿");
+    expect(screen.getByTestId("balance-movement-analysis-business-summary")).toHaveTextContent(
+      "本月总余额持平 0.00 亿",
+    );
+  });
+
+  it.each([
+    { label: "null", value: null },
+    { label: "undefined", value: undefined },
+    { label: "NaN", value: "NaN" },
+  ])("keeps a $label driver contribution missing instead of coercing it to zero", async ({ value }) => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const missingContributionClient: typeof baseClient = {
+      ...baseClient,
+      async getBalanceMovementAnalysis(options) {
+        const envelope = await baseClient.getBalanceMovementAnalysis(options);
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            rows: envelope.result.rows.map((row) =>
+              row.basis_bucket === "TPL"
+                ? {
+                    ...row,
+                    contribution_pct: value as unknown as string,
+                  }
+                : row,
+            ),
+          },
+        };
+      },
+    };
+
+    renderWorkbenchApp(["/balance-movement-analysis"], { client: missingContributionClient });
+
+    const businessSummary = await screen.findByTestId("balance-movement-analysis-business-summary");
+    expect(businessSummary).toHaveTextContent("TPL +51.63 亿 · 贡献 —");
+    expect(businessSummary).not.toHaveTextContent("TPL +51.63 亿 · 贡献 0.00%");
+    const ranking = screen.getByTestId("balance-movement-analysis-driver-ranking");
+    expect(ranking).toHaveTextContent("TPL+51.63 亿 · —");
+    const compactBand = screen.getByTestId("balance-movement-driver-composition-band");
+    expect(compactBand).toHaveAttribute("data-state", "unavailable");
+    expect(compactBand).toHaveAccessibleName("变动贡献构成：数据不可用");
+    expect(compactBand).not.toHaveAccessibleName(/0\.00%/);
+  });
+
+  it("keeps a real zero driver contribution as 0.00%", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const zeroContributionClient: typeof baseClient = {
+      ...baseClient,
+      async getBalanceMovementAnalysis(options) {
+        const envelope = await baseClient.getBalanceMovementAnalysis(options);
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            rows: envelope.result.rows.map((row) =>
+              row.basis_bucket === "TPL" ? { ...row, contribution_pct: "0" } : row,
+            ),
+          },
+        };
+      },
+    };
+
+    renderWorkbenchApp(["/balance-movement-analysis"], { client: zeroContributionClient });
+
+    const businessSummary = await screen.findByTestId("balance-movement-analysis-business-summary");
+    expect(businessSummary).toHaveTextContent("TPL +51.63 亿 · 贡献 0.00%");
+    expect(screen.getByTestId("balance-movement-analysis-driver-ranking")).toHaveTextContent(
+      "TPL+51.63 亿 · 0.00%",
+    );
+    expect(screen.getByTestId("balance-movement-driver-composition-band")).toHaveAttribute(
+      "data-state",
+      "available",
+    );
+  });
+
+  it("surfaces stale fallback dates on the first screen", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const staleFallbackClient: typeof baseClient = {
+      ...baseClient,
+      async getBalanceMovementAnalysis(options) {
+        const envelope = await baseClient.getBalanceMovementAnalysis(options);
+        return {
+          ...envelope,
+          result_meta: {
+            ...envelope.result_meta,
+            quality_flag: "stale",
+            fallback_mode: "latest_snapshot",
+            requested_report_date: "2026-04-30",
+            resolved_report_date: "2026-03-31",
+            fallback_date: "2026-03-31",
+          },
+        };
+      },
+    };
+
+    renderWorkbenchApp(["/balance-movement-analysis"], { client: staleFallbackClient });
+
+    const status = await screen.findByTestId("balance-movement-analysis-result-status");
+    expect(status).toHaveTextContent("数据质量异常，仅供参考");
+    const visibleFacts = within(status).getByTestId("balance-movement-analysis-result-status-facts");
+    expect(visibleFacts.closest("details")).toBeNull();
+    expect(visibleFacts).toHaveTextContent("请求报告日 2026-04-30");
+    expect(visibleFacts).toHaveTextContent("实际快照日 2026-03-31");
+    expect(visibleFacts).toHaveTextContent("回退日期 2026-03-31");
+  });
+
+  it("keeps legacy result metadata without optional dates renderable", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const legacyMetaClient: typeof baseClient = {
+      ...baseClient,
+      async getBalanceMovementAnalysis(options) {
+        const envelope = await baseClient.getBalanceMovementAnalysis(options);
+        const resultMeta = { ...envelope.result_meta };
+        delete resultMeta.requested_report_date;
+        delete resultMeta.resolved_report_date;
+        delete resultMeta.fallback_date;
+        return { ...envelope, result_meta: resultMeta };
+      },
+    };
+
+    renderWorkbenchApp(["/balance-movement-analysis"], { client: legacyMetaClient });
+
+    expect(await screen.findByTestId("balance-movement-analysis-evidence-strip")).toBeInTheDocument();
+    expect(screen.queryByTestId("balance-movement-analysis-result-status")).not.toBeInTheDocument();
   });
 
   it("exports the current evidence view as a local csv without adding an API call", async () => {
@@ -744,26 +968,39 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(explanationClosure).not.toHaveTextContent("外币折算差+0.00 亿");
   });
 
-  it("renders diagnostic tags on the analysis dimension cards", async () => {
+  it("renders the Figma-first compact sequence before the retained detail modules", async () => {
     renderWorkbenchApp(["/balance-movement-analysis"], {
       client: createApiClient({ mode: "mock" }),
     });
 
-    expect(await screen.findByTestId("balance-movement-analysis-dimension-card-business")).toHaveTextContent(
-      "主导变动",
+    const kpiRibbon = await screen.findByTestId("balance-movement-analysis-summary");
+    const decisionHero = screen.getByTestId("balance-movement-analysis-decision-hero");
+    const driversAndStructure = screen.getByTestId("balance-movement-analysis-drivers-structure");
+    const maturityAndConcentration = screen.getByTestId(
+      "balance-movement-analysis-maturity-concentration",
     );
-    expect(screen.getByTestId("balance-movement-analysis-dimension-card-basis")).toHaveTextContent(
-      "主导分桶",
-    );
-    expect(screen.getByTestId("balance-movement-analysis-dimension-card-residual")).toHaveTextContent(
-      "口径待补",
-    );
-    expect(screen.getByTestId("balance-movement-analysis-dimension-card-coverage")).toHaveTextContent(
-      "覆盖",
-    );
+    const evidence = screen.getByTestId("balance-movement-analysis-evidence-strip");
+    const accountingBuckets = screen.getByTestId("balance-movement-analysis-accounting-buckets");
+    const detailedBusiness = screen.getByTestId("balance-movement-analysis-business-summary");
+
+    const orderedSections = [
+      decisionHero,
+      kpiRibbon,
+      driversAndStructure,
+      maturityAndConcentration,
+      evidence,
+      accountingBuckets,
+      detailedBusiness,
+    ];
+    for (let index = 0; index < orderedSections.length - 1; index += 1) {
+      expect(
+        orderedSections[index]!.compareDocumentPosition(orderedSections[index + 1]!)
+        & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
   });
 
-  it("marks low coverage diagnostics with warning and critical tones", async () => {
+  it("preserves backend coverage values in the compact maturity and concentration panel", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const lowCoverageClient: typeof baseClient = {
       ...baseClient,
@@ -789,6 +1026,10 @@ describe("BalanceMovementAnalysisPage", () => {
                     ...envelope.result.zqtz_concentration_analysis.meta,
                     coverage_pct: "94.00",
                   },
+                  dimensions: envelope.result.zqtz_concentration_analysis.dimensions.map(
+                    (dimension, index) =>
+                      index === 0 ? { ...dimension, coverage_pct: "94.00" } : dimension,
+                  ),
                 }
               : envelope.result.zqtz_concentration_analysis,
           },
@@ -800,15 +1041,11 @@ describe("BalanceMovementAnalysisPage", () => {
       client: lowCoverageClient,
     });
 
-    const coverageCard = await screen.findByTestId(
-      "balance-movement-analysis-dimension-card-coverage",
+    const compactPanel = await screen.findByTestId(
+      "balance-movement-analysis-maturity-concentration",
     );
-    expect(within(coverageCard).getByText("期限覆盖")).toHaveClass(
-      "balance-movement-dimension-tag--critical",
-    );
-    expect(within(coverageCard).getByText("集中度覆盖")).toHaveClass(
-      "balance-movement-dimension-tag--warn",
-    );
+    expect(compactPanel).toHaveTextContent("覆盖率 79.00%");
+    expect(compactPanel).toHaveTextContent("主体覆盖 94.00%");
   });
 
   it("renders backend-provided unsupported and no-data drilldown states", async () => {
@@ -853,6 +1090,10 @@ describe("BalanceMovementAnalysisPage", () => {
                     coverage_pct: null,
                     caveat: "maturity_date source column is absent.",
                   },
+                  buckets: maturity.buckets.map((bucket) => ({
+                    ...bucket,
+                    share_pct: null,
+                  })),
                 }
               : maturity,
             zqtz_concentration_analysis: concentration
@@ -930,32 +1171,37 @@ describe("BalanceMovementAnalysisPage", () => {
       "rating coverage is below 80%; rankings are not rendered.",
     );
     expect(concentrationPanel).toHaveTextContent("No eligible ZQTZ asset population.");
+    expect(screen.getByTestId("balance-movement-maturity-spectrum")).toHaveAttribute(
+      "data-state",
+      "unavailable",
+    );
+    expect(screen.getByTestId("balance-movement-maturity-coverage-band")).toHaveAttribute(
+      "data-state",
+      "unavailable",
+    );
+    expect(screen.getByTestId("balance-movement-top5-gauge")).toHaveAttribute(
+      "data-state",
+      "unavailable",
+    );
+    expect(screen.getByTestId("balance-movement-top5-gauge")).toHaveTextContent(
+      "—数据不可用",
+    );
   });
 
-  it("opens and closes the residual evidence drawer with diagnostics evidence", async () => {
-    const user = userEvent.setup();
-
+  it("keeps the compact accounting buckets reviewable without a separate evidence drawer", async () => {
     renderWorkbenchApp(["/balance-movement-analysis"], {
       client: createApiClient({ mode: "mock" }),
     });
 
-    await screen.findByTestId("balance-movement-analysis-dimension-card-residual");
-    await user.click(screen.getByTestId("balance-movement-analysis-dimension-evidence-residual"));
-
-    const evidenceDialog = await screen.findByRole("complementary", { name: "分析维度证据" });
-    expect(evidenceDialog).toHaveTextContent("对账残差");
-    expect(evidenceDialog).toHaveTextContent("估值差");
-    expect(evidenceDialog).toHaveTextContent("外币折算差");
-    expect(evidenceDialog).toHaveTextContent("未支持，不反推");
-    expect(evidenceDialog).toHaveTextContent("追踪标识");
-    expect(evidenceDialog).toHaveTextContent("规则版本");
-    expect(evidenceDialog).toHaveTextContent("源版本");
-
-    await user.click(within(evidenceDialog).getByRole("button", { name: "关闭证据" }));
-
-    await waitFor(() => {
-      expect(screen.queryByRole("complementary", { name: "分析维度证据" })).not.toBeInTheDocument();
-    });
+    const compactBuckets = await screen.findByTestId("balance-movement-analysis-accounting-buckets");
+    expect(within(compactBuckets).getAllByRole("row")).toHaveLength(4);
+    expect(compactBuckets).toHaveTextContent("期初余额");
+    expect(compactBuckets).toHaveTextContent("期末余额");
+    expect(compactBuckets).toHaveTextContent("变动贡献");
+    expect(within(compactBuckets).getByRole("row", { name: /AC/ })).toHaveTextContent("一致");
+    expect(within(compactBuckets).getByRole("row", { name: /OCI/ })).toHaveTextContent("一致");
+    expect(within(compactBuckets).getByRole("row", { name: /TPL/ })).toHaveTextContent("一致");
+    expect(screen.queryByRole("complementary", { name: "分析维度证据" })).not.toBeInTheDocument();
   });
 
   it("flags accounting and business moves that exceed recent historical baseline", async () => {
@@ -1104,6 +1350,10 @@ describe("BalanceMovementAnalysisPage", () => {
           ...envelope,
           result: {
             ...envelope.result,
+            summary: {
+              ...envelope.result.summary,
+              matched_bucket_count: 2,
+            },
             rows: [
               {
                 ...firstRow,
@@ -1121,11 +1371,201 @@ describe("BalanceMovementAnalysisPage", () => {
       client: mismatchClient,
     });
 
-    const conclusion = await screen.findByTestId("balance-movement-analysis-conclusion");
-    expect(conclusion).toHaveTextContent("ZQTZ 分桶对账需关注");
-    const recon = screen.getByTestId("balance-movement-analysis-recon-summary");
-    expect(recon).toHaveTextContent("不一致");
-    expect(recon.querySelector("a")).toHaveAttribute("href", "#balance-movement-analysis-detail-anchor");
+    const compactBuckets = await screen.findByTestId("balance-movement-analysis-accounting-buckets");
+    const conclusion = screen.getByTestId("balance-movement-analysis-conclusion");
+    expect(conclusion).toHaveTextContent("对账需关注");
+    expect(screen.getByTestId("balance-movement-analysis-freshness")).toHaveTextContent(
+      "Reconciliation需关注",
+    );
+    expect(screen.getByTestId("balance-movement-analysis-summary")).toHaveTextContent(
+      "对账状态需关注",
+    );
+    const reconciliationSignal = within(
+      screen.getByTestId("balance-movement-analysis-summary"),
+    ).getAllByTestId("balance-movement-kpi-signal")[3];
+    expect(reconciliationSignal).toHaveAttribute("data-state", "review");
+    expect(reconciliationSignal).not.toHaveAttribute("data-state", "matched");
+    expect(within(compactBuckets).getByRole("row", { name: /AC/ })).toHaveTextContent("不一致");
+  });
+
+  it("flags incomplete bucket payloads instead of presenting 3 / 3 matched", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const getBalanceMovementAnalysis = baseClient.getBalanceMovementAnalysis;
+    const incompleteBucketClient: typeof baseClient = {
+      ...baseClient,
+      async getBalanceMovementAnalysis(options) {
+        const envelope = await getBalanceMovementAnalysis(options);
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            rows: envelope.result.rows.map((row) =>
+              row.basis_bucket === "TPL" ? { ...row, basis_bucket: "AC" } : row,
+            ),
+          },
+        };
+      },
+    };
+
+    renderWorkbenchApp(["/balance-movement-analysis"], {
+      client: incompleteBucketClient,
+    });
+
+    const freshness = await screen.findByTestId("balance-movement-analysis-freshness");
+    const summary = await screen.findByTestId("balance-movement-analysis-summary");
+    expect(summary).toHaveTextContent("分桶不完整");
+    expect(freshness).not.toHaveTextContent("3 / 3 matched");
+    expect(summary).not.toHaveTextContent("3 / 3 匹配");
+  });
+
+  it("requires the summary matched count before presenting 3 / 3 matched", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const getBalanceMovementAnalysis = baseClient.getBalanceMovementAnalysis;
+    const unmatchedSummaryClient: typeof baseClient = {
+      ...baseClient,
+      async getBalanceMovementAnalysis(options) {
+        const envelope = await getBalanceMovementAnalysis(options);
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            summary: {
+              ...envelope.result.summary,
+              matched_bucket_count: 2,
+            },
+          },
+        };
+      },
+    };
+
+    renderWorkbenchApp(["/balance-movement-analysis"], {
+      client: unmatchedSummaryClient,
+    });
+
+    const freshness = await screen.findByTestId("balance-movement-analysis-freshness");
+    const summary = await screen.findByTestId("balance-movement-analysis-summary");
+    expect(summary).toHaveTextContent("需关注");
+    expect(freshness).not.toHaveTextContent("3 / 3 matched");
+    expect(summary).not.toHaveTextContent("3 / 3 匹配");
+  });
+
+  it("requires the summary bucket count before treating the bucket set as complete", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const getBalanceMovementAnalysis = baseClient.getBalanceMovementAnalysis;
+    const incompleteSummaryClient: typeof baseClient = {
+      ...baseClient,
+      async getBalanceMovementAnalysis(options) {
+        const envelope = await getBalanceMovementAnalysis(options);
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            summary: {
+              ...envelope.result.summary,
+              bucket_count: 2,
+            },
+          },
+        };
+      },
+    };
+
+    renderWorkbenchApp(["/balance-movement-analysis"], {
+      client: incompleteSummaryClient,
+    });
+
+    const freshness = await screen.findByTestId("balance-movement-analysis-freshness");
+    const summary = await screen.findByTestId("balance-movement-analysis-summary");
+    expect(summary).toHaveTextContent("分桶不完整");
+    expect(freshness).not.toHaveTextContent("3 / 3 matched");
+    expect(summary).not.toHaveTextContent("3 / 3 匹配");
+  });
+
+  it("uses accounting basis labels in the business summary without FVAC or FVOCI", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const getBalanceMovementAnalysis = baseClient.getBalanceMovementAnalysis;
+    const acDriverClient: typeof baseClient = {
+      ...baseClient,
+      async getBalanceMovementAnalysis(options) {
+        const envelope = await getBalanceMovementAnalysis(options);
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            rows: envelope.result.rows.map((row) => {
+              if (row.basis_bucket === "AC") {
+                return {
+                  ...row,
+                  balance_change: "9900000000",
+                  contribution_pct: "80.00",
+                };
+              }
+              if (row.basis_bucket === "TPL") {
+                return {
+                  ...row,
+                  balance_change: "100000000",
+                  contribution_pct: "1.00",
+                };
+              }
+              return row;
+            }),
+          },
+        };
+      },
+    };
+
+    renderWorkbenchApp(["/balance-movement-analysis"], {
+      client: acDriverClient,
+    });
+
+    const businessSummary = await screen.findByTestId(
+      "balance-movement-analysis-business-summary",
+    );
+    const decisionHero = screen.getByTestId("balance-movement-analysis-decision-hero");
+    expect(businessSummary).toHaveTextContent("AC 占比至");
+    expect(businessSummary).not.toHaveTextContent("FVAC");
+    expect(businessSummary).not.toHaveTextContent("FVOCI");
+    expect(decisionHero).toHaveTextContent("AC 结构占比");
+    expect(decisionHero).not.toHaveTextContent("FVAC");
+    expect(decisionHero).not.toHaveTextContent("FVOCI");
+  });
+
+  it("keeps compact maturity unknown amount driven by meta unknown_total", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const getBalanceMovementAnalysis = baseClient.getBalanceMovementAnalysis;
+    const maturityMetaClient: typeof baseClient = {
+      ...baseClient,
+      async getBalanceMovementAnalysis(options) {
+        const envelope = await getBalanceMovementAnalysis(options);
+        const structure = envelope.result.zqtz_maturity_structure;
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            zqtz_maturity_structure: structure
+              ? {
+                  ...structure,
+                  meta: {
+                    ...structure.meta,
+                    unknown_total: "12300000000",
+                  },
+                  buckets: structure.buckets.filter(
+                    (bucket) => bucket.maturity_bucket !== "unknown",
+                  ),
+                }
+              : structure,
+          },
+        };
+      },
+    };
+
+    renderWorkbenchApp(["/balance-movement-analysis"], {
+      client: maturityMetaClient,
+    });
+
+    const compactPanel = await screen.findByTestId(
+      "balance-movement-analysis-maturity-concentration",
+    );
+    expect(compactPanel).toHaveTextContent("未映射到期日金额 123.00 亿");
   });
 
   it("keeps optional drilldown modules visible when the backend omits them", async () => {
@@ -1183,6 +1623,25 @@ describe("BalanceMovementAnalysisPage", () => {
     );
   });
 
+  it("keeps an in-flight detail request distinct from an empty read model", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const loadingDetailClient: typeof baseClient = {
+      ...baseClient,
+      getBalanceMovementAnalysis: () => new Promise<never>(() => undefined),
+    };
+
+    renderWorkbenchApp(["/balance-movement-analysis"], {
+      client: loadingDetailClient,
+    });
+
+    const loadingHero = await screen.findByTestId(
+      "balance-movement-analysis-loading-hero",
+    );
+    expect(loadingHero).toHaveAttribute("aria-busy", "true");
+    expect(loadingHero).toHaveTextContent("正在读取余额变动分析");
+    expect(loadingHero).not.toHaveTextContent("等待物化");
+  });
+
   it("surfaces an empty materialized date set instead of only showing an empty table", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const emptyDatesClient: typeof baseClient = {
@@ -1206,7 +1665,7 @@ describe("BalanceMovementAnalysisPage", () => {
       "CNX",
     );
     const freshness = await screen.findByTestId("balance-movement-analysis-freshness");
-    expect(freshness).toHaveClass("balance-movement-freshness-strip--info");
+    expect(freshness).toHaveClass("balance-movement-data-trust--info");
     expect(freshness).toHaveTextContent("新鲜度待确认");
   });
 
@@ -1230,7 +1689,7 @@ describe("BalanceMovementAnalysisPage", () => {
     });
 
     const freshness = await screen.findByTestId("balance-movement-analysis-freshness");
-    expect(freshness).toHaveClass("balance-movement-freshness-strip--warn");
+    expect(freshness).toHaveClass("balance-movement-data-trust--warn");
     expect(freshness).toHaveTextContent("读模型落后上游");
     expect(freshness).toHaveTextContent("2026-05-31");
     expect(freshness).toHaveTextContent("2026-04-30");

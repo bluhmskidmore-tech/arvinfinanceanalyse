@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 
 import duckdb
@@ -120,6 +120,16 @@ _ZQTZ_NCD_ROW = {
 @dataclass
 class AccountingAssetMovementRepository:
     path: str
+    _table_exists_cache: dict[str, bool] = field(
+        default_factory=dict,
+        init=False,
+        repr=False,
+    )
+    _column_exists_cache: dict[tuple[str, str], bool] = field(
+        default_factory=dict,
+        init=False,
+        repr=False,
+    )
 
     def _connect(self) -> duckdb.DuckDBPyConnection:
         return duckdb.connect(self.path, read_only=True)
@@ -337,13 +347,13 @@ class AccountingAssetMovementRepository:
                         currency_basis=currency_basis,
                     )
                 )
-                rows.extend(
-                    self._fetch_zqtz_asset_rows(
-                        conn,
-                        report_date=date_value,
-                        currency_basis=currency_basis,
-                    )
+            rows.extend(
+                self._fetch_zqtz_asset_rows_for_dates(
+                    conn,
+                    report_dates=report_dates,
+                    currency_basis=currency_basis,
                 )
+            )
         except duckdb.Error as exc:
             if not _is_missing_table_error(exc):
                 raise
@@ -838,6 +848,73 @@ class AccountingAssetMovementRepository:
                 row_def=row_def,
             )
             for row_def in _ZQTZ_ASSET_ROWS
+        ]
+
+    def _fetch_zqtz_asset_rows_for_dates(
+        self,
+        conn: duckdb.DuckDBPyConnection,
+        *,
+        report_dates: list[str],
+        currency_basis: str,
+    ) -> list[dict[str, object]]:
+        if not report_dates:
+            return []
+
+        table = "fact_formal_zqtz_balance_daily"
+        table_exists = self._table_exists(conn, table)
+        zqtz_currency_basis = "CNY" if currency_basis.upper() == "CNX" else currency_basis
+        amount_expr = self._zqtz_amount_expression(conn) if table_exists else "0"
+        rows_by_date: dict[str, list[dict[str, object]]] = {
+            report_date: [] for report_date in report_dates
+        }
+
+        for row_def in _ZQTZ_ASSET_ROWS:
+            full_row_def = {**row_def, "side": "asset"}
+            source_note = str(row_def.get("source_note", "ZQTZSHOW asset classification"))
+            fetched_by_date: dict[str, tuple[object, object, object]] = {}
+            if table_exists:
+                filter_sql, params = self._zqtz_asset_predicate(conn, row_def)
+                if filter_sql != "false":
+                    fetched_rows = conn.execute(
+                        f"""
+                        select
+                          cast(report_date as varchar) as report_date,
+                          coalesce(sum({amount_expr}), 0) as current_balance,
+                          coalesce(string_agg(distinct nullif(source_version, ''), '__' order by nullif(source_version, '')), '') as source_version,
+                          coalesce(string_agg(distinct nullif(rule_version, ''), '__' order by nullif(rule_version, '')), '') as rule_version
+                        from {table}
+                        where cast(report_date as varchar) in (select unnest(?))
+                          and currency_basis = ?
+                          and position_scope = 'asset'
+                          and ({filter_sql})
+                        group by 1
+                        """,
+                        [report_dates, zqtz_currency_basis, *params],
+                    ).fetchall()
+                    fetched_by_date = {
+                        str(report_date): (current_balance, source_version, rule_version)
+                        for report_date, current_balance, source_version, rule_version in fetched_rows
+                    }
+
+            for report_date in report_dates:
+                fetched = fetched_by_date.get(report_date)
+                rows_by_date[report_date].append(
+                    self._business_row(
+                        report_date=report_date,
+                        currency_basis=currency_basis,
+                        row_def=full_row_def,
+                        current_balance=Decimal(str(fetched[0] if fetched else "0")),
+                        source_kind="zqtz",
+                        source_note=source_note,
+                        source_version=str(fetched[1] if fetched else ""),
+                        rule_version=str(fetched[2] if fetched else ""),
+                    )
+                )
+
+        return [
+            row
+            for report_date in report_dates
+            for row in rows_by_date[report_date]
         ]
 
     def _fetch_zqtz_asset_row(
@@ -1384,6 +1461,8 @@ class AccountingAssetMovementRepository:
         }
 
     def _table_exists(self, conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
+        if table_name in self._table_exists_cache:
+            return self._table_exists_cache[table_name]
         row = conn.execute(
             """
             select count(*)
@@ -1392,7 +1471,9 @@ class AccountingAssetMovementRepository:
             """,
             [table_name],
         ).fetchone()
-        return bool(row and row[0])
+        exists = bool(row and row[0])
+        self._table_exists_cache[table_name] = exists
+        return exists
 
     def _column_exists(
         self,
@@ -1400,6 +1481,9 @@ class AccountingAssetMovementRepository:
         table_name: str,
         column_name: str,
     ) -> bool:
+        cache_key = (table_name, column_name)
+        if cache_key in self._column_exists_cache:
+            return self._column_exists_cache[cache_key]
         row = conn.execute(
             """
             select count(*)
@@ -1409,4 +1493,6 @@ class AccountingAssetMovementRepository:
             """,
             [table_name, column_name],
         ).fetchone()
-        return bool(row and row[0])
+        exists = bool(row and row[0])
+        self._column_exists_cache[cache_key] = exists
+        return exists

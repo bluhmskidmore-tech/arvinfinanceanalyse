@@ -17,6 +17,7 @@ const WORKBENCH_INSTITUTIONAL_CONSOLE_CSS_PATH = resolve(
   process.cwd(),
   "src/styles/workbenchInstitutionalConsole.css",
 );
+const WORKBENCH_SHELL_CSS_PATH = resolve(process.cwd(), "src/styles/workbenchShell.css");
 
 function createResultMeta(overrides: Partial<ResultMeta> = {}): ResultMeta {
   return {
@@ -386,7 +387,7 @@ describe("WorkbenchShell", () => {
     expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
   });
 
-  it("keeps portfolio page selection while hiding helper chrome on balance-movement-analysis", async () => {
+  it("uses the Figma portfolio rail and hides global shell chrome on balance-movement-analysis", async () => {
     renderShellAt("/balance-movement-analysis");
 
     expect(await screen.findByText("balance-movement body")).toBeInTheDocument();
@@ -394,11 +395,65 @@ describe("WorkbenchShell", () => {
     expect(screen.queryByTestId("portfolio-workbench-lead")).not.toBeInTheDocument();
     expect(screen.queryByTestId("portfolio-workbench-flow")).not.toBeInTheDocument();
     expect(screen.queryByTestId("portfolio-workbench-board")).not.toBeInTheDocument();
-    const subnav = screen.getByTestId("workbench-section-subnav");
-    const hrefs = within(subnav)
-      .getAllByRole("link")
-      .map((link) => link.getAttribute("href"));
-    expect(hrefs).toContain("/balance-movement-analysis");
+    const navigation = screen.getByTestId("workbench-group-nav");
+    const rail = navigation.closest("aside");
+    const layoutRoot = navigation.closest(".workbench-shell-root");
+    const links = within(navigation).getAllByRole("link");
+
+    expect(rail).not.toBeNull();
+    expect(layoutRoot).toHaveClass(
+      "workbench-shell-grid--cockpit",
+      "workbench-shell-grid--balance-movement",
+    );
+    expect(within(rail as HTMLElement).getByText("MOSS")).toBeInTheDocument();
+    expect(links.map((link) => link.querySelector(".workbench-shell-group-label")?.textContent)).toEqual([
+      "经营日报",
+      "组合工作台",
+      "市场工作台",
+      "风险工作台",
+      "绩效工作台",
+      "报表与数据",
+    ]);
+    expect(links.map((link) => link.getAttribute("href"))).toEqual([
+      "/",
+      "/portfolio",
+      "/market-overview",
+      "/risk-overview",
+      "/performance",
+      "/reports",
+    ]);
+    expect(within(navigation).getByRole("link", { name: /组合工作台/ })).toHaveAttribute(
+      "data-active",
+      "true",
+    );
+    expect(links.every((link) => link.textContent?.includes("首页"))).toBe(true);
+    expect(within(screen.getByTestId("workbench-agent-nav")).getByRole("link", { name: /MOSS Chat/ }))
+      .toHaveTextContent("可用");
+    expect(within(screen.getByTestId("workbench-support-nav")).getAllByRole("link").map(
+      (link) => link.textContent,
+    )).toEqual(["报表中心", "中台配置", "帮助文档"]);
+    expect(screen.queryByTestId("balance-movement-portfolio-rail")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("balance-movement-portfolio-nav")).not.toBeInTheDocument();
+    expect(within(rail as HTMLElement).queryByText("PORTFOLIO CONSOLE")).not.toBeInTheDocument();
+    expect(within(rail as HTMLElement).queryByText("组合总览")).not.toBeInTheDocument();
+    expect(document.getElementById("data-mode-ribbon")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-terminal-bar")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-section-subnav")).not.toBeInTheDocument();
+  });
+
+  it("collapses the balance movement shell to one column when the shared rail is hidden", () => {
+    const css = readFileSync(WORKBENCH_SHELL_CSS_PATH, "utf8");
+    const responsiveCss = css.slice(css.lastIndexOf("@media (max-width: 1180px)"));
+
+    expect(responsiveCss).toContain(
+      ".workbench-shell-grid.workbench-shell-grid--cockpit.workbench-shell-grid--balance-movement {\n    grid-template-columns: minmax(0, 1fr) !important;",
+    );
+    expect(responsiveCss).toContain(
+      ".workbench-shell-grid.workbench-shell-grid--cockpit.workbench-shell-grid--balance-movement\n    > .workbench-main-column {",
+    );
+    expect(responsiveCss).toContain("grid-column: 1;");
+    expect(responsiveCss).toContain("width: 100%;");
+    expect(responsiveCss).toContain("min-width: 0;");
   });
 
   it("keeps portfolio page selection while hiding helper chrome on liability-analytics", async () => {

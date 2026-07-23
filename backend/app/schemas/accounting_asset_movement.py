@@ -292,6 +292,14 @@ class AccountingAssetMovementPayload(BaseModel):
 
     report_date: str
     currency_basis: str
+    available_report_dates: list[str]
+    upstream_control_report_dates: list[str]
+    freshness_status: Literal[
+        "fresh",
+        "read_model_lagging",
+        "read_model_empty",
+        "upstream_empty",
+    ]
     rows: list[AccountingAssetMovementRowPayload]
     summary: AccountingAssetMovementSummaryPayload
     trend_months: list[AccountingAssetMovementTrendMonthPayload]
@@ -310,6 +318,7 @@ class AccountingAssetMovementDatesPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     report_dates: list[str]
+    upstream_control_report_dates: list[str]
     currency_basis: str
     latest_read_model_report_date: str | None = None
     latest_upstream_control_report_date: str | None = None

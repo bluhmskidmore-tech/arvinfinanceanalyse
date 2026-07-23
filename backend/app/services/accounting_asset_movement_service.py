@@ -148,6 +148,7 @@ def accounting_asset_movement_dates_envelope(
         )
         payload = AccountingAssetMovementDatesPayload(
             report_dates=report_dates,
+            upstream_control_report_dates=control_report_dates,
             currency_basis=currency_basis,
             latest_read_model_report_date=latest_read_model_report_date,
             latest_upstream_control_report_date=latest_upstream_control_report_date,
@@ -227,22 +228,30 @@ def _accounting_asset_movement_envelope_unlocked(
     currency_basis: str = "CNX",
 ) -> dict[str, object]:
     repo = AccountingAssetMovementRepository(duckdb_path)
+    recent_rows = repo.fetch_recent_rows(
+        report_date=report_date,
+        currency_basis=currency_basis,
+        month_count=6,
+    )
     rows_without_pct = [
         AccountingAssetMovementRowPayload.model_validate(row)
-        for row in repo.fetch_rows(report_date=report_date, currency_basis=currency_basis)
+        for row in recent_rows
+        if str(row.get("report_date", "")) == report_date
     ]
     if not rows_without_pct:
         raise AccountingAssetMovementReadModelNotFoundError(
             f"No balance movement rows for report_date={report_date}, currency_basis={currency_basis}."
         )
-    rows = _with_balance_percentages(rows_without_pct)
-    trend_months = _build_trend_months(
-        repo.fetch_recent_rows(
-            report_date=report_date,
-            currency_basis=currency_basis,
-            month_count=6,
-        )
+    available_report_dates = repo.list_report_dates(currency_basis=currency_basis)
+    upstream_control_report_dates = repo.list_control_report_dates(
+        currency_basis=currency_basis
     )
+    freshness_status = _movement_dates_freshness_status(
+        available_report_dates,
+        upstream_control_report_dates,
+    )
+    rows = _with_balance_percentages(rows_without_pct)
+    trend_months = _build_trend_months(recent_rows)
     business_trend_months = _build_business_trend_months(
         repo.fetch_recent_business_rows(
             report_date=report_date,
@@ -276,6 +285,9 @@ def _accounting_asset_movement_envelope_unlocked(
     payload = AccountingAssetMovementPayload(
         report_date=report_date,
         currency_basis=currency_basis,
+        available_report_dates=available_report_dates,
+        upstream_control_report_dates=upstream_control_report_dates,
+        freshness_status=freshness_status,
         rows=rows,
         summary=summary,
         trend_months=trend_months,
@@ -334,8 +346,14 @@ def _accounting_asset_movement_envelope_unlocked(
         cache_version=CACHE_VERSION,
         cache_key=CACHE_KEY,
         quality_flag=(
-            "ok"
-            if summary.matched_bucket_count == summary.bucket_count
+            "stale"
+            if freshness_status == "read_model_lagging"
+            else "ok"
+            if (
+                freshness_status == "fresh"
+                and report_date in upstream_control_report_dates
+                and summary.matched_bucket_count == summary.bucket_count
+            )
             else "warning"
         ),
         requested_report_date=report_date,
