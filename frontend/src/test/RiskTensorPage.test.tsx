@@ -102,6 +102,15 @@ function tensorResult(reportDate: string): RiskTensorPayload {
     rate_risk_modified_duration: "4.20",
     duration_excluded_market_value: "99.99",
     duration_excluded_count: 2,
+    missing_maturity_market_value: "0",
+    missing_maturity_count: 0,
+    floating_rate_proxy_market_value: "0",
+    floating_rate_proxy_count: 0,
+    payment_frequency_fallback_market_value: "0",
+    payment_frequency_fallback_count: 0,
+    bullet_value_date_fallback_market_value: "0",
+    bullet_value_date_fallback_count: 0,
+    projection_quality_status: "available",
     bond_count: 12,
     quality_flag: "warning",
     warnings: ["Issuer concentration above desk threshold"],
@@ -365,6 +374,127 @@ describe("RiskTensorPage", () => {
     expect(durationScope).toHaveTextContent("排除行数 2");
   });
 
+  it("renders projection quality disclosures separately from duration exclusions", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_projection_quality_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_projection_quality_${reportDate}`),
+      result: {
+        ...tensorResult(reportDate),
+        duration_excluded_market_value: "100000000",
+        duration_excluded_count: 2,
+        missing_maturity_market_value: "30000000",
+        missing_maturity_count: 3,
+        floating_rate_proxy_market_value: "50000000",
+        floating_rate_proxy_count: 5,
+        payment_frequency_fallback_market_value: "70000000",
+        payment_frequency_fallback_count: 7,
+        bullet_value_date_fallback_market_value: "90000000",
+        bullet_value_date_fallback_count: 9,
+        projection_quality_status: "available",
+      },
+    }));
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const projectionQuality = await screen.findByTestId("risk-tensor-projection-quality");
+    const durationScope = await screen.findByTestId("risk-tensor-duration-scope");
+
+    expect(projectionQuality).toHaveTextContent("可用");
+    expect(projectionQuality).toHaveTextContent(new RegExp(`0\\.30\\s*${YI_YUAN_UNIT}`));
+    expect(projectionQuality).toHaveTextContent("3 笔");
+    expect(projectionQuality).toHaveTextContent(new RegExp(`0\\.50\\s*${YI_YUAN_UNIT}`));
+    expect(projectionQuality).toHaveTextContent("5 笔");
+    expect(projectionQuality).toHaveTextContent(new RegExp(`0\\.70\\s*${YI_YUAN_UNIT}`));
+    expect(projectionQuality).toHaveTextContent("7 笔");
+    expect(projectionQuality).toHaveTextContent(new RegExp(`0\\.90\\s*${YI_YUAN_UNIT}`));
+    expect(projectionQuality).toHaveTextContent("9 笔");
+    expect(projectionQuality).not.toHaveTextContent("1.00");
+    expect(durationScope).toHaveTextContent(new RegExp(`1\\.00\\s*${YI_YUAN_UNIT}`));
+    expect(durationScope).toHaveTextContent("排除行数 2");
+  });
+
+  it("shows unavailable projection quality placeholders for legacy payloads without optional fields", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_projection_quality_legacy_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => {
+      const {
+        missing_maturity_market_value: _missingMaturityMarketValue,
+        missing_maturity_count: _missingMaturityCount,
+        floating_rate_proxy_market_value: _floatingRateProxyMarketValue,
+        floating_rate_proxy_count: _floatingRateProxyCount,
+        payment_frequency_fallback_market_value: _paymentFrequencyFallbackMarketValue,
+        payment_frequency_fallback_count: _paymentFrequencyFallbackCount,
+        bullet_value_date_fallback_market_value: _bulletValueDateFallbackMarketValue,
+        bullet_value_date_fallback_count: _bulletValueDateFallbackCount,
+        projection_quality_status: _projectionQualityStatus,
+        ...legacyPayload
+      } = tensorResult(reportDate);
+      return {
+        result_meta: buildMeta("risk.tensor", `tr_tensor_projection_quality_legacy_${reportDate}`),
+        result: legacyPayload,
+      };
+    });
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const projectionQuality = await screen.findByTestId("risk-tensor-projection-quality");
+    expect(projectionQuality).toHaveTextContent("不可用/待重算");
+    expect(projectionQuality).toHaveTextContent("笔数不可用");
+    expect(projectionQuality).not.toHaveTextContent(new RegExp(`0\\.00\\s*${YI_YUAN_UNIT}`));
+    expect(projectionQuality).not.toHaveTextContent("0 笔");
+  });
+
+  it("surfaces explicit unavailable_legacy projection status from the payload", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_projection_quality_unavailable_legacy_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_projection_quality_unavailable_legacy_${reportDate}`),
+      result: {
+        ...tensorResult(reportDate),
+        missing_maturity_market_value: null,
+        missing_maturity_count: null,
+        floating_rate_proxy_market_value: null,
+        floating_rate_proxy_count: null,
+        payment_frequency_fallback_market_value: null,
+        payment_frequency_fallback_count: null,
+        bullet_value_date_fallback_market_value: null,
+        bullet_value_date_fallback_count: null,
+        projection_quality_status: "unavailable_legacy",
+      },
+    }));
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const projectionQuality = await screen.findByTestId("risk-tensor-projection-quality");
+    expect(projectionQuality).toHaveTextContent("历史版本未提供投影质量字段/待重算");
+    expect(projectionQuality).toHaveTextContent("不可用/待重算");
+    expect(projectionQuality).toHaveTextContent("笔数不可用");
+    expect(projectionQuality).not.toHaveTextContent(new RegExp(`0\\.00\\s*${YI_YUAN_UNIT}`));
+    expect(projectionQuality).not.toHaveTextContent("0 笔");
+  });
+
   it("uses latest available report date when querystring is absent", async () => {
     const base = createApiClient({ mode: "mock" });
     const getRiskTensorDates = vi.fn(async () => ({
@@ -374,8 +504,8 @@ describe("RiskTensorPage", () => {
     const getRiskTensor = vi.fn(async (reportDate: string) => ({
       result_meta: {
         ...buildMeta("risk.tensor", `tr_tensor_${reportDate}`),
-        rule_version: "rv_risk_tensor_formal_materialize_v3",
-        cache_version: "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v3",
+        rule_version: "rv_risk_tensor_formal_materialize_v5",
+        cache_version: "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v5",
       },
       result: tensorResult(reportDate),
     }));

@@ -58,9 +58,9 @@ type FetchLike = typeof fetch;
 type Delay = () => Promise<void>;
 
 const RISK_TENSOR_FORMAL_SOURCE_VERSION = "sv_risk_tensor_fact_mock_v3";
-const RISK_TENSOR_FORMAL_RULE_VERSION = "rv_risk_tensor_formal_materialize_v3";
+const RISK_TENSOR_FORMAL_RULE_VERSION = "rv_risk_tensor_formal_materialize_v5";
 const RISK_TENSOR_FORMAL_CACHE_VERSION =
-  "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v3";
+  "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v5";
 
 type ExecutiveThinClientMethods = Pick<
   ExecutiveClientMethods,
@@ -271,6 +271,15 @@ export function createDemoExecutiveClient(
           rate_risk_modified_duration: "4.20000000",
           duration_excluded_market_value: "100000000.00000000",
           duration_excluded_count: 2,
+          missing_maturity_market_value: zero,
+          missing_maturity_count: 0,
+          floating_rate_proxy_market_value: zero,
+          floating_rate_proxy_count: 0,
+          payment_frequency_fallback_market_value: zero,
+          payment_frequency_fallback_count: 0,
+          bullet_value_date_fallback_market_value: zero,
+          bullet_value_date_fallback_count: 0,
+          projection_quality_status: "available",
           bond_count: 8,
           quality_flag: "warning",
           warnings: [

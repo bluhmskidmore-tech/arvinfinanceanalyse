@@ -66,6 +66,15 @@ function tensorFixture(): RiskTensorPayload {
     rate_risk_modified_duration: num(3.77704871, { unit: "ratio" }),
     duration_excluded_market_value: num(46117705535.340004),
     duration_excluded_count: 131,
+    missing_maturity_market_value: num(0),
+    missing_maturity_count: 0,
+    floating_rate_proxy_market_value: num(0),
+    floating_rate_proxy_count: 0,
+    payment_frequency_fallback_market_value: num(0),
+    payment_frequency_fallback_count: 0,
+    bullet_value_date_fallback_market_value: num(0),
+    bullet_value_date_fallback_count: 0,
+    projection_quality_status: "available",
     bond_count: 1767,
     quality_flag: "warning",
     warnings: ["w1"],
@@ -413,8 +422,8 @@ describe("buildRiskV6LineageRows", () => {
     formal_use_allowed: true,
     source_version: "sv_risk_tensor__sv_a583ab603b92__sv_fa8f64e200b6",
     vendor_version: "vv_none",
-    rule_version: "rv_risk_tensor_formal_materialize_v3",
-    cache_version: "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v3",
+    rule_version: "rv_risk_tensor_formal_materialize_v5",
+    cache_version: "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v5",
     quality_flag: "warning",
     vendor_status: "ok",
     fallback_mode: "none",
@@ -431,8 +440,8 @@ describe("buildRiskV6LineageRows", () => {
     const rows = buildRiskV6LineageRows(meta);
     const byKey = new Map(rows.map((row) => [row.key, row.value]));
     expect(byKey.get("source")).toBe("sv_risk_tensor__sv_a583ab603b92__sv_fa8f64e200b6");
-    expect(byKey.get("rule")).toBe("rv_risk_tensor_formal_materialize_v3");
-    expect(byKey.get("cache")).toBe("cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v3");
+    expect(byKey.get("rule")).toBe("rv_risk_tensor_formal_materialize_v5");
+    expect(byKey.get("cache")).toBe("cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v5");
     expect(byKey.get("trace")).toBe("tr_9f65d8ba5e40");
     expect(byKey.has("fallback")).toBe(false);
   });

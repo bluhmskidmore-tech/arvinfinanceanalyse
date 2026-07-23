@@ -1378,7 +1378,7 @@ describe("ModuleWorkbenchHomePage", () => {
       "sv_risk_tensor_fact_mock_v3",
     );
     expect(within(page).getByTestId("risk-overview-lineage")).toHaveTextContent(
-      "rv_risk_tensor_formal_materialize_v3",
+      "rv_risk_tensor_formal_materialize_v5",
     );
   });
 

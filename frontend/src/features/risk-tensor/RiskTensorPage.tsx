@@ -87,6 +87,32 @@ const REQUIRED_DURATION_SCOPE_FIELDS = [
   { key: "rate_risk_modified_duration", label: "rate_risk_modified_duration" },
   { key: "duration_excluded_market_value", label: "duration_excluded_market_value" },
 ] as const;
+const PROJECTION_QUALITY_FIELDS = [
+  {
+    title: "缺少到期日（专属排除）",
+    marketValueKey: "missing_maturity_market_value",
+    countKey: "missing_maturity_count",
+    detail: "缺少到期日的债券单列披露，不并入期限桶。",
+  },
+  {
+    title: "浮息债代理",
+    marketValueKey: "floating_rate_proxy_market_value",
+    countKey: "floating_rate_proxy_count",
+    detail: "浮息票息按代理口径冻结展示，未模拟后续 reset。",
+  },
+  {
+    title: "付息频率代理",
+    marketValueKey: "payment_frequency_fallback_market_value",
+    countKey: "payment_frequency_fallback_count",
+    detail: "年付息频率为代理口径，不代表合同字段已确认。",
+  },
+  {
+    title: "起息日缺失代理",
+    marketValueKey: "bullet_value_date_fallback_market_value",
+    countKey: "bullet_value_date_fallback_count",
+    detail: "起息日缺失时按一年利息代理估算，仅用于投影质量披露。",
+  },
+] as const;
 const KRD_FIELDS = [
   { key: "krd_1y", tenor: "1Y" },
   { key: "krd_3y", tenor: "3Y" },
@@ -241,6 +267,46 @@ function countDisplay(value: number | null | undefined) {
     return EM_DASH;
   }
   return value.toLocaleString("zh-CN");
+}
+
+function projectionQualityStatusLabel(status: RiskTensorPayload["projection_quality_status"]) {
+  if (status === "available") {
+    return "可用";
+  }
+  if (status === "unavailable_legacy") {
+    return "历史版本未提供投影质量字段/待重算";
+  }
+  return "不可用/待重算";
+}
+
+function projectionQualityAmountDisplay(value: RiskTensorDisplayValue | null | undefined) {
+  return riskTensorRawOrNull(value) === null ? "不可用/待重算" : yuanAsYiDisplay(value);
+}
+
+function projectionQualityAmountUnit(value: RiskTensorDisplayValue | null | undefined) {
+  return riskTensorRawOrNull(value) === null ? undefined : YI_YUAN_UNIT;
+}
+
+function projectionQualityCountDisplay(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value) || value < 0 || !Number.isInteger(value)) {
+    return "笔数不可用";
+  }
+  return `${value.toLocaleString("zh-CN")} 笔`;
+}
+
+function projectionQualityTone(
+  value: RiskTensorDisplayValue | null | undefined,
+  count: number | null | undefined,
+  status: RiskTensorPayload["projection_quality_status"],
+) {
+  if (status !== "available") {
+    return "default";
+  }
+  const amountRaw = riskTensorRawOrNull(value) ?? 0;
+  if (amountRaw > 0 || (typeof count === "number" && Number.isFinite(count) && count > 0)) {
+    return "warning";
+  }
+  return "default";
 }
 
 function hasDurationScopeDisclosure(result: RiskTensorPayload) {
@@ -2296,6 +2362,35 @@ export default function RiskTensorPage() {
                     </button>
                   </div>
                 ) : null}
+              </section>
+            ) : null}
+
+            {result ? (
+              <section className="risk-tensor-duration-scope" data-testid="risk-tensor-projection-quality">
+                <div className="risk-tensor-duration-scope__header">
+                  <span>现金流投影质量</span>
+                  <h2>投影质量披露</h2>
+                  <p>
+                    状态：{projectionQualityStatusLabel(result.projection_quality_status)}；缺少到期日单列展示，不并入期限桶；
+                    浮息债按冻结票息代理，未模拟 reset；付息频率采用年付代理，非合同确认；起息日缺失时使用一年利息代理。
+                  </p>
+                </div>
+                <div className="risk-tensor-duration-scope__grid">
+                  {PROJECTION_QUALITY_FIELDS.map((item) => (
+                    <KpiCard
+                      key={item.marketValueKey}
+                      title={item.title}
+                      value={projectionQualityAmountDisplay(result[item.marketValueKey])}
+                      detail={`${projectionQualityCountDisplay(result[item.countKey])}；${item.detail}`}
+                      unit={projectionQualityAmountUnit(result[item.marketValueKey])}
+                      tone={projectionQualityTone(
+                        result[item.marketValueKey],
+                        result[item.countKey],
+                        result.projection_quality_status,
+                      )}
+                    />
+                  ))}
+                </div>
               </section>
             ) : null}
 

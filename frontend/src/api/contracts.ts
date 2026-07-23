@@ -1022,6 +1022,15 @@ export type RiskTensorPayload = {
   rate_risk_modified_duration: RiskTensorScalar;
   duration_excluded_market_value: RiskTensorScalar;
   duration_excluded_count: number;
+  missing_maturity_market_value?: RiskTensorScalar | null;
+  missing_maturity_count?: number | null;
+  floating_rate_proxy_market_value?: RiskTensorScalar | null;
+  floating_rate_proxy_count?: number | null;
+  payment_frequency_fallback_market_value?: RiskTensorScalar | null;
+  payment_frequency_fallback_count?: number | null;
+  bullet_value_date_fallback_market_value?: RiskTensorScalar | null;
+  bullet_value_date_fallback_count?: number | null;
+  projection_quality_status?: string | null;
   bond_count: number;
   quality_flag: string;
   warnings: string[];
