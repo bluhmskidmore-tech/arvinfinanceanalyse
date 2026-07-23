@@ -72,14 +72,21 @@ _CREDIT_EXPOSURE_SQL_DISCLOSURE = [
 ]
 # product_pnl 披露与 ProductCategoryPnlRepository.fetch_rows 执行的是同一份常量。
 _PRODUCT_PNL_SQL_DISCLOSURE = [PRODUCT_CATEGORY_PNL_ROWS_SQL]
-# risk_tensor 披露：与 RiskTensorRepository.fetch_risk_tensor_row 对已完整物化（v3 schema）事实表
-# 实际执行语句等价的只读模板；历史缺列时 repository 会以 null/coalesce 兜底，此处披露规范列清单。
+# risk_tensor disclosure for the fully materialized v5 fact schema used by
+# RiskTensorRepository.fetch_risk_tensor_row. Historical missing columns still
+# fall back via repository null/coalesce handling; this list declares the
+# canonical read-only projection.
 _RISK_TENSOR_SQL_DISCLOSURE = [
     (
         "select report_date, portfolio_dv01, regulatory_dv01, krd_1y, krd_3y, krd_5y, krd_7y, "
         "krd_10y, krd_30y, cs01, portfolio_convexity, portfolio_modified_duration, "
         "rate_risk_market_value, rate_risk_dv01, rate_risk_modified_duration, "
-        "duration_excluded_market_value, duration_excluded_count, issuer_concentration_hhi, "
+        "duration_excluded_market_value, duration_excluded_count, "
+        "missing_maturity_market_value, missing_maturity_count, "
+        "floating_rate_proxy_market_value, floating_rate_proxy_count, "
+        "payment_frequency_fallback_market_value, payment_frequency_fallback_count, "
+        "bullet_value_date_fallback_market_value, bullet_value_date_fallback_count, "
+        "issuer_concentration_hhi, "
         "issuer_top5_weight, asset_cashflow_30d, asset_cashflow_90d, liability_cashflow_30d, "
         "liability_cashflow_90d, liquidity_gap_30d, liquidity_gap_90d, liquidity_gap_30d_ratio, "
         "total_market_value, bond_count, quality_flag, warnings_json, source_version, "

@@ -14,6 +14,16 @@ from backend.app.repositories.user_scope_repo import UserScopeRepository
 from tests.helpers import load_module
 
 REPORT_DATE = "2026-03-31"
+RISK_TENSOR_PROJECTION_QUALITY_FIELDS = (
+    "missing_maturity_market_value",
+    "missing_maturity_count",
+    "floating_rate_proxy_market_value",
+    "floating_rate_proxy_count",
+    "payment_frequency_fallback_market_value",
+    "payment_frequency_fallback_count",
+    "bullet_value_date_fallback_market_value",
+    "bullet_value_date_fallback_count",
+)
 
 
 @pytest.fixture(autouse=True)
@@ -196,6 +206,14 @@ def _seed_agent_risk_tensor_tables(duckdb_path: Path, governance_dir: Path) -> N
               rate_risk_modified_duration double,
               duration_excluded_market_value double,
               duration_excluded_count integer,
+              missing_maturity_market_value double,
+              missing_maturity_count integer,
+              floating_rate_proxy_market_value double,
+              floating_rate_proxy_count integer,
+              payment_frequency_fallback_market_value double,
+              payment_frequency_fallback_count integer,
+              bullet_value_date_fallback_market_value double,
+              bullet_value_date_fallback_count integer,
               bond_count integer,
               quality_flag varchar,
               warnings_json varchar,
@@ -218,7 +236,7 @@ def _seed_agent_risk_tensor_tables(duckdb_path: Path, governance_dir: Path) -> N
         conn.execute(
             """
             insert into fact_formal_risk_tensor_daily values
-            (?, 12.34, 1.00, 2.00, 3.00, 2.50, 2.10, 1.10, 0.88, 0.45, 4.20, 0.12, 0.34, 100, 0, 0, 0, 0, 250, 0.40, 1500, 1500, 12.34, 4.20, 0, 0, 3, 'ok', '[]', 'sv_risk_tensor_1', 'sv_bond_analytics_1', 'rv_bond_analytics_1', 'cv_bond_analytics_1', ?, ?, 'tr-risk-1')
+            (?, 12.34, 1.00, 2.00, 3.00, 2.50, 2.10, 1.10, 0.88, 0.45, 4.20, 0.12, 0.34, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 250, 0.40, 1500, 1500, 12.34, 4.20, 0, 0, 3, 'ok', '[]', 'sv_risk_tensor_1', 'sv_bond_analytics_1', 'rv_bond_analytics_1', 'cv_bond_analytics_1', ?, ?, 'tr-risk-1')
             """,
             [REPORT_DATE, risk_task_module.RULE_VERSION, risk_task_module.CACHE_VERSION],
         )
@@ -649,10 +667,14 @@ def test_agent_query_enabled_path_returns_real_risk_tensor_and_audit(tmp_path, m
     assert payload["result_meta"]["basis"] == "formal"
     assert payload["result_meta"]["result_kind"] == "agent.risk_tensor"
     assert payload["result_meta"]["formal_use_allowed"] is True
+    assert payload["result_meta"]["rule_version"] == "rv_risk_tensor_formal_materialize_v5"
     assert payload["evidence"]["tables_used"] == ["fact_formal_risk_tensor_daily"]
     assert payload["evidence"]["sql_executed"]
     assert all(sql.lower().startswith(("select", "with")) for sql in payload["evidence"]["sql_executed"])
     assert any("from fact_formal_risk_tensor_daily" in sql for sql in payload["evidence"]["sql_executed"])
+    disclosed = " ".join(payload["evidence"]["sql_executed"]).lower()
+    for field_name in RISK_TENSOR_PROJECTION_QUALITY_FIELDS:
+        assert field_name in disclosed
     assert payload["evidence"]["filters_applied"] == {
         "report_date": REPORT_DATE,
         "report_date_resolution": "explicit",

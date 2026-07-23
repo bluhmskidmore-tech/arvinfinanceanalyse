@@ -28,6 +28,16 @@ _WRITE_SQL = re.compile(
     re.IGNORECASE,
 )
 _ISO_DATE_LITERAL = re.compile(r"\b20\d{2}-\d{2}-\d{2}\b")
+RISK_TENSOR_PROJECTION_QUALITY_FIELDS = (
+    "missing_maturity_market_value",
+    "missing_maturity_count",
+    "floating_rate_proxy_market_value",
+    "floating_rate_proxy_count",
+    "payment_frequency_fallback_market_value",
+    "payment_frequency_fallback_count",
+    "bullet_value_date_fallback_market_value",
+    "bullet_value_date_fallback_count",
+)
 
 
 def _source(*symbols: Callable[..., object]) -> str:
@@ -125,6 +135,9 @@ def test_risk_tensor_disclosure_tracks_repository_table_and_report_date():
     assert RISK_TENSOR_FACT_TABLE in disclosed
     assert "report_date" in source
     assert "report_date" in disclosed
+    for field_name in RISK_TENSOR_PROJECTION_QUALITY_FIELDS:
+        assert field_name in source
+        assert field_name in disclosed
 
 
 def test_pnl_bridge_disclosure_tracks_input_tables_and_scope_filters():
