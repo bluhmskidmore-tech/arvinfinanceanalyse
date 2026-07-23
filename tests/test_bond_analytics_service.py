@@ -20,13 +20,27 @@ from tests.test_bond_analytics_materialize_flow import (
 )
 
 
-def _configure_and_materialize(tmp_path, monkeypatch):
+def _configure_and_materialize(tmp_path, monkeypatch, *, interest_mode_override: str | None = None):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     get_settings.cache_clear()
     _seed_bond_snapshot_rows(str(duckdb_path))
+    if interest_mode_override is not None:
+        conn = duckdb.connect(str(duckdb_path), read_only=False)
+        try:
+            conn.execute(
+                """
+                update zqtz_bond_daily_snapshot
+                set interest_mode = ?
+                where report_date = ?
+                  and is_issuance_like = false
+                """,
+                [interest_mode_override, REPORT_DATE],
+            )
+        finally:
+            conn.close()
     task_mod = load_module(
         "backend.app.tasks.bond_analytics_materialize",
         "backend/app/tasks/bond_analytics_materialize.py",

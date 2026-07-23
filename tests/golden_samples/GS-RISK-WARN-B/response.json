@@ -1,13 +1,16 @@
 {
   "result_meta": {
-    "trace_id": "tr_43c200d579a2",
+    "trace_id": "tr_db27d6ddfaf1",
     "basis": "formal",
     "result_kind": "risk.tensor",
     "formal_use_allowed": true,
+    "amount_currency_basis": null,
+    "amount_currency_basis_note": null,
     "source_version": "sv_risk_tensor__sv_bond_snap_1",
     "vendor_version": "vv_none",
-    "rule_version": "rv_risk_tensor_formal_materialize_v3",
-    "cache_version": "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v3",
+    "rule_version": "rv_risk_tensor_formal_materialize_v5",
+    "cache_version": "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v5",
+    "cache_key": null,
     "quality_flag": "warning",
     "vendor_status": "ok",
     "fallback_mode": "none",
@@ -17,7 +20,7 @@
     "as_of_date": "2026-03-31",
     "date_basis": "formal_snapshot",
     "fallback_date": null,
-    "generated_at": "2026-05-31T07:44:21.980839Z",
+    "generated_at": "2026-07-23T01:21:55.150681Z",
     "filters_applied": {},
     "tables_used": [
       "fact_formal_risk_tensor_daily"
@@ -204,12 +207,46 @@
       "sign_aware": false
     },
     "duration_excluded_count": 1,
+    "missing_maturity_market_value": {
+      "raw": 99.0,
+      "unit": "yuan",
+      "display": "99.00",
+      "precision": 2,
+      "sign_aware": false
+    },
+    "missing_maturity_count": 1,
+    "floating_rate_proxy_market_value": {
+      "raw": 0.0,
+      "unit": "yuan",
+      "display": "0.00",
+      "precision": 2,
+      "sign_aware": false
+    },
+    "floating_rate_proxy_count": 0,
+    "payment_frequency_fallback_market_value": {
+      "raw": 330.0,
+      "unit": "yuan",
+      "display": "330.00",
+      "precision": 2,
+      "sign_aware": false
+    },
+    "payment_frequency_fallback_count": 2,
+    "bullet_value_date_fallback_market_value": {
+      "raw": 0.0,
+      "unit": "yuan",
+      "display": "0.00",
+      "precision": 2,
+      "sign_aware": false
+    },
+    "bullet_value_date_fallback_count": 0,
+    "projection_quality_status": "available",
     "bond_count": 3,
     "quality_flag": "warning",
     "warnings": [
       "Non-standard tenor buckets remapped to nearest KRD bucket: 20Y",
       "1 rows carry market_value=99.00000000 and are excluded from portfolio duration denominator: 1 without maturity_date; 0 with non-positive modified_duration. DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated.",
-      "Excluded 1 rows without maturity_date from liquidity gap calculation."
+      "Excluded 1 rows without maturity_date from liquidity gap calculation.",
+      "2 rows with market_value=330.00000000 lack an explicit payment frequency; annual coupon frequency is used as a proxy."
     ]
   }
 }

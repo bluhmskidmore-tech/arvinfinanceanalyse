@@ -320,7 +320,7 @@ def _setup_risk(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         "tests._golden_risk_service",
         "tests/test_risk_tensor_service.py",
     )
-    module._configure_and_materialize_risk_tensor(tmp_path, monkeypatch)
+    module._configure_and_materialize_clean_risk_tensor(tmp_path, monkeypatch)
 
 
 def _setup_bridge_warn(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -1,13 +1,16 @@
 {
   "result_meta": {
-    "trace_id": "tr_91936984d8be",
+    "trace_id": "tr_2834b690c111",
     "basis": "formal",
     "result_kind": "risk.tensor",
     "formal_use_allowed": true,
+    "amount_currency_basis": null,
+    "amount_currency_basis_note": null,
     "source_version": "sv_risk_tensor__sv_bond_snap_1",
     "vendor_version": "vv_none",
-    "rule_version": "rv_risk_tensor_formal_materialize_v3",
-    "cache_version": "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v3",
+    "rule_version": "rv_risk_tensor_formal_materialize_v5",
+    "cache_version": "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v5",
+    "cache_key": null,
     "quality_flag": "ok",
     "vendor_status": "ok",
     "fallback_mode": "none",
@@ -17,7 +20,7 @@
     "as_of_date": "2026-03-31",
     "date_basis": "formal_snapshot",
     "fallback_date": null,
-    "generated_at": "2026-05-31T07:44:20.654820Z",
+    "generated_at": "2026-07-23T02:20:09.885300Z",
     "filters_applied": {},
     "tables_used": [
       "fact_formal_risk_tensor_daily"
@@ -204,6 +207,39 @@
       "sign_aware": false
     },
     "duration_excluded_count": 0,
+    "missing_maturity_market_value": {
+      "raw": 0.0,
+      "unit": "yuan",
+      "display": "0.00",
+      "precision": 2,
+      "sign_aware": false
+    },
+    "missing_maturity_count": 0,
+    "floating_rate_proxy_market_value": {
+      "raw": 0.0,
+      "unit": "yuan",
+      "display": "0.00",
+      "precision": 2,
+      "sign_aware": false
+    },
+    "floating_rate_proxy_count": 0,
+    "payment_frequency_fallback_market_value": {
+      "raw": 0.0,
+      "unit": "yuan",
+      "display": "0.00",
+      "precision": 2,
+      "sign_aware": false
+    },
+    "payment_frequency_fallback_count": 0,
+    "bullet_value_date_fallback_market_value": {
+      "raw": 0.0,
+      "unit": "yuan",
+      "display": "0.00",
+      "precision": 2,
+      "sign_aware": false
+    },
+    "bullet_value_date_fallback_count": 0,
+    "projection_quality_status": "available",
     "bond_count": 3,
     "quality_flag": "ok",
     "warnings": []

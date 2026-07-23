@@ -41,6 +41,16 @@ def _configure_and_materialize_risk_tensor(tmp_path, monkeypatch):
     return duckdb_path, governance_dir, risk_task_mod
 
 
+def _configure_and_materialize_clean_risk_tensor(tmp_path, monkeypatch):
+    duckdb_path, governance_dir, _task_mod = _configure_and_materialize(
+        tmp_path,
+        monkeypatch,
+        interest_mode_override="固定年付息",
+    )
+    risk_task_mod = _materialize_risk_tensor(duckdb_path, governance_dir)
+    return duckdb_path, governance_dir, risk_task_mod
+
+
 def _configure_and_materialize_degraded_snapshot(tmp_path, monkeypatch):
     duckdb_path = tmp_path / "moss.degraded.duckdb"
     governance_dir = tmp_path / "governance.degraded"
@@ -225,7 +235,7 @@ def _replace_test_risk_tensor_row(
 
 
 def test_risk_tensor_service_returns_formal_envelope_with_lineage(tmp_path, monkeypatch):
-    duckdb_path, governance_dir, _task_mod = _configure_and_materialize_risk_tensor(tmp_path, monkeypatch)
+    duckdb_path, governance_dir, _task_mod = _configure_and_materialize_clean_risk_tensor(tmp_path, monkeypatch)
     service_mod = load_module(
         "backend.app.services.risk_tensor_service",
         "backend/app/services/risk_tensor_service.py",
@@ -246,7 +256,7 @@ def test_risk_tensor_service_returns_formal_envelope_with_lineage(tmp_path, monk
     assert payload["result_meta"]["cache_version"] == "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v5"
     assert payload["result_meta"]["tables_used"] == ["fact_formal_risk_tensor_daily"]
     assert payload["result_meta"]["evidence_rows"] == 1
-    assert payload["result_meta"]["quality_flag"] == "warning"
+    assert payload["result_meta"]["quality_flag"] == "ok"
     assert payload["result_meta"]["requested_report_date"] == REPORT_DATE
     assert payload["result_meta"]["resolved_report_date"] == REPORT_DATE
     assert payload["result_meta"]["as_of_date"] == REPORT_DATE
@@ -281,10 +291,12 @@ def test_risk_tensor_service_returns_formal_envelope_with_lineage(tmp_path, monk
     ):
         assert result[field_name] == materialized_row[field_name]
     assert result["projection_quality_status"] == "available"
+    assert result["payment_frequency_fallback_market_value"]["raw"] == 0.0
+    assert result["payment_frequency_fallback_count"] == 0
     assert result["report_date"] == REPORT_DATE
     assert result["bond_count"] == 3
-    assert result["quality_flag"] == "warning"
-    assert result["warnings"]
+    assert result["quality_flag"] == "ok"
+    assert result["warnings"] == []
     assert result["total_market_value"]["raw"] == 429.0
     assert result["asset_cashflow_30d"]["raw"] == 14.0
     assert result["asset_cashflow_90d"]["raw"] == 14.0

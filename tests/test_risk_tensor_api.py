@@ -14,6 +14,7 @@ from tests.helpers import load_module
 from tests.test_bond_analytics_materialize_flow import REPORT_DATE
 from tests.test_bond_analytics_service import _configure_and_materialize
 from tests.test_risk_tensor_service import (
+    _configure_and_materialize_clean_risk_tensor,
     _configure_and_materialize_degraded_snapshot,
     _configure_and_materialize_risk_tensor,
     _configure_and_materialize_risk_tensor_with_tyw_liability,
@@ -86,7 +87,7 @@ def test_risk_tensor_read_surfaces_require_explicit_read_scope(tmp_path: Path, m
 
 
 def test_risk_tensor_api_returns_formal_envelope(tmp_path, monkeypatch):
-    _configure_and_materialize_risk_tensor(tmp_path, monkeypatch)
+    _configure_and_materialize_clean_risk_tensor(tmp_path, monkeypatch)
 
     client = _risk_tensor_client(tmp_path, monkeypatch)
     response = client.get(
@@ -99,7 +100,7 @@ def test_risk_tensor_api_returns_formal_envelope(tmp_path, monkeypatch):
     assert payload["result_meta"]["basis"] == "formal"
     assert payload["result_meta"]["result_kind"] == "risk.tensor"
     assert payload["result_meta"]["formal_use_allowed"] is True
-    assert payload["result_meta"]["quality_flag"] == "warning"
+    assert payload["result_meta"]["quality_flag"] == "ok"
     assert payload["result_meta"]["rule_version"] == "rv_risk_tensor_formal_materialize_v5"
     assert (
         payload["result_meta"]["cache_version"] == "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v5"
@@ -135,6 +136,10 @@ def test_risk_tensor_api_returns_formal_envelope(tmp_path, monkeypatch):
         for field_name in projection_quality_fields
     )
     assert payload["result"]["projection_quality_status"] == "available"
+    assert payload["result"]["payment_frequency_fallback_market_value"]["raw"] == 0.0
+    assert payload["result"]["payment_frequency_fallback_count"] == 0
+    assert payload["result"]["quality_flag"] == "ok"
+    assert payload["result"]["warnings"] == []
 
     get_settings.cache_clear()
 

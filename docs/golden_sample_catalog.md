@@ -367,8 +367,8 @@ tests/golden_samples/
   - `result_meta.basis == "formal"`
   - `result_meta.result_kind == "risk.tensor"`
   - `result_meta.source_version == "sv_risk_tensor__sv_bond_snap_1"`
-  - `result_meta.rule_version == "rv_risk_tensor_formal_materialize_v3"`
-  - `result_meta.cache_version == "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v3"`
+  - `result_meta.rule_version == "rv_risk_tensor_formal_materialize_v5"`
+  - `result_meta.cache_version == "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v5"`
   - `result_meta.tables_used == ["fact_formal_risk_tensor_daily"]`
   - `result_meta.evidence_rows == 1`
   - `result_meta.quality_flag == "ok"`
