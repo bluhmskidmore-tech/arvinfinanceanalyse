@@ -1,17 +1,6 @@
 import type { ReactNode } from "react";
-import {
-  BarChartOutlined,
-  CalendarOutlined,
-  DollarCircleOutlined,
-  DownloadOutlined,
-  ExclamationCircleFilled,
-  FundProjectionScreenOutlined,
-  GlobalOutlined,
-  LineChartOutlined,
-  ReloadOutlined,
-  StarOutlined,
-} from "@ant-design/icons";
 
+import { LightIcon } from "../../../components/LightIcon";
 import { DataStatusStrip } from "../../../components/page/PagePrimitives";
 import { StatusPill } from "../../../components/StatusPill";
 import type { ResultMeta } from "../../../api/contracts";
@@ -103,10 +92,10 @@ const referenceTrendCardSpecs = [
 ] as const;
 
 function ReferenceEvidenceCategoryIcon({ icon }: { icon: ReferenceEvidenceIcon }) {
-  if (icon === "rates") return <LineChartOutlined aria-hidden />;
-  if (icon === "equity") return <BarChartOutlined aria-hidden />;
-  if (icon === "commodity") return <GlobalOutlined aria-hidden />;
-  return <DollarCircleOutlined aria-hidden />;
+  if (icon === "rates") return <LightIcon name="line-chart" />;
+  if (icon === "equity") return <LightIcon name="bar-chart" />;
+  if (icon === "commodity") return <LightIcon name="fund" />;
+  return <LightIcon name="bank" />;
 }
 
 export function CrossAssetReferenceToolbar({
@@ -121,22 +110,22 @@ export function CrossAssetReferenceToolbar({
       <div className="cross-asset-reference-toolbar__title">
         <h1>跨资产驱动</h1>
         <button type="button" className="cross-asset-reference-toolbar__follow">
-          <StarOutlined aria-hidden />
+          <LightIcon name="star" />
           加入关注
         </button>
       </div>
       <div className="cross-asset-reference-toolbar__actions" aria-label="跨资产页面操作">
         <button type="button" className="cross-asset-reference-toolbar__date">
-          <CalendarOutlined aria-hidden />
+          <LightIcon name="calendar" />
           <span>报告日</span>
           <strong>{reportDate || "待定"}</strong>
         </button>
         <button type="button" onClick={onRefresh}>
-          <ReloadOutlined aria-hidden />
+          <LightIcon name="reload" />
           刷新
         </button>
         <button type="button" className="cross-asset-reference-toolbar__export">
-          <DownloadOutlined aria-hidden />
+          <LightIcon name="arrow-down" />
           导出报告
         </button>
       </div>
@@ -160,7 +149,7 @@ export function CrossAssetReferenceSummary({
     <section className="cross-asset-reference-summary" data-testid="cross-asset-reference-summary">
       <section className="cross-asset-decision-header cross-asset-reference-summary__conclusion" data-testid="cross-asset-decision-header">
         <div className="cross-asset-reference-summary__icon" aria-hidden>
-          <FundProjectionScreenOutlined />
+          <LightIcon name="fund-projection" />
         </div>
         <section
           className="cross-asset-decision-hero cross-asset-decision-header__decision"
@@ -229,14 +218,14 @@ export function CrossAssetReferenceSummary({
       <div className="cross-asset-reference-summary__quality">
         <span>宏观质量</span>
         <strong>
-          <ExclamationCircleFilled aria-hidden />
+          <LightIcon name="warning" />
           {resultMetaQualityLabel(latestMeta?.quality_flag)}
         </strong>
       </div>
       <div className="cross-asset-reference-summary__quality">
         <span>联动质量</span>
         <strong>
-          <ExclamationCircleFilled aria-hidden />
+          <LightIcon name="warning" />
           {resultMetaQualityLabel(linkageMeta?.quality_flag)}
         </strong>
       </div>
@@ -631,7 +620,7 @@ export function CrossAssetReferenceSourceAudit({
           <dt>宏观质量</dt>
           <dd>
             <strong className="cross-asset-reference-audit-warning">
-              <ExclamationCircleFilled aria-hidden />
+              <LightIcon name="warning" />
               {resultMetaQualityLabel(latestMeta?.quality_flag)}
             </strong>
             <span>{compactGeneratedAt(latestMeta?.generated_at)}</span>
@@ -642,7 +631,7 @@ export function CrossAssetReferenceSourceAudit({
           <dt>联动质量</dt>
           <dd>
             <strong className="cross-asset-reference-audit-warning">
-              <ExclamationCircleFilled aria-hidden />
+              <LightIcon name="warning" />
               {resultMetaQualityLabel(linkageMeta?.quality_flag)}
             </strong>
             <span>{compactGeneratedAt(linkageMeta?.generated_at)}</span>
