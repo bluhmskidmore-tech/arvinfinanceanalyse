@@ -126,10 +126,27 @@ export default function CrossAssetDriversPage() {
     waterfallBars,
     watchRows,
     yieldCurves,
-  } = useCrossAssetViewModel();
+  } = useCrossAssetViewModel({
+    researchCalendarEnabled: deferredContentStage >= 1,
+    livermoreEnabled: deferredContentStage >= 2,
+  });
   const statusStripFlags = buildStatusStripFlags(statusFlags);
   const kpiBandItems = buildKpiBandItems(kpis);
   const reportDate = crossAssetDataDate || linkageReportDate;
+  const revealAllDeferredContent = useCallback(() => {
+    flushSync(() => setDeferredContentStage(CROSS_ASSET_FINAL_DEFERRED_CONTENT_STAGE));
+    if (linkageReportDate) {
+      void researchCalendarQuery.refetch();
+    }
+    if (livermoreAsOfDate) {
+      void livermoreStrategyQuery.refetch();
+    }
+  }, [
+    linkageReportDate,
+    livermoreAsOfDate,
+    livermoreStrategyQuery,
+    researchCalendarQuery,
+  ]);
 
   useEffect(() => {
     if (deferredContentStage >= CROSS_ASSET_FINAL_DEFERRED_CONTENT_STAGE) {
@@ -163,9 +180,6 @@ export default function CrossAssetDriversPage() {
   }, [deferredContentStage]);
 
   useEffect(() => {
-    const revealAllDeferredContent = () => {
-      flushSync(() => setDeferredContentStage(CROSS_ASSET_FINAL_DEFERRED_CONTENT_STAGE));
-    };
     const handleNativeFind = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
         revealAllDeferredContent();
@@ -178,7 +192,7 @@ export default function CrossAssetDriversPage() {
       window.removeEventListener("beforeprint", revealAllDeferredContent);
       window.removeEventListener("keydown", handleNativeFind);
     };
-  }, []);
+  }, [revealAllDeferredContent]);
 
   return (
       <section
@@ -230,7 +244,9 @@ export default function CrossAssetDriversPage() {
                 onRetry={() => {
                   void latestQuery.refetch();
                   void macroBondLinkageQuery.refetch();
-                  void researchCalendarQuery.refetch();
+                  if (deferredContentStage >= 1) {
+                    void researchCalendarQuery.refetch();
+                  }
                 }}
               >
                 {!linkageReportDate ? (

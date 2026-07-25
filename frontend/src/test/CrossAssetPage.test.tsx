@@ -178,6 +178,49 @@ describe("CrossAssetPage", () => {
     }
   });
 
+  it("starts below-fold queries one stage before their panels mount", async () => {
+    const observer = stubIntersectionObserver();
+    const client = createApiClient({ mode: "mock" });
+    const latestSpy = vi.spyOn(client, "getChoiceMacroLatest");
+    const linkageSpy = vi.spyOn(client, "getMacroBondLinkageAnalysis");
+    const ncdSpy = vi.spyOn(client, "getNcdFundingProxy");
+    const calendarSpy = vi.spyOn(client, "getResearchCalendarEvents");
+    const livermoreSpy = vi.spyOn(client, "getLivermoreStrategy");
+    const confluenceSpy = vi.spyOn(client, "getLivermoreSignalConfluence");
+
+    try {
+      renderPage(client);
+
+      await waitFor(() => {
+        expect(latestSpy).toHaveBeenCalledTimes(1);
+        expect(linkageSpy).toHaveBeenCalledTimes(1);
+        expect(ncdSpy).toHaveBeenCalledTimes(1);
+      });
+      expect(calendarSpy).not.toHaveBeenCalled();
+      expect(livermoreSpy).not.toHaveBeenCalled();
+      expect(confluenceSpy).not.toHaveBeenCalled();
+
+      await act(async () => {
+        observer.triggerAll({ isIntersecting: true });
+      });
+
+      await waitFor(() => expect(calendarSpy).toHaveBeenCalledTimes(1));
+      expect(livermoreSpy).not.toHaveBeenCalled();
+      expect(confluenceSpy).not.toHaveBeenCalled();
+
+      await act(async () => {
+        observer.triggerAll({ isIntersecting: true });
+      });
+
+      await waitFor(() => {
+        expect(livermoreSpy).toHaveBeenCalledTimes(1);
+        expect(confluenceSpy).toHaveBeenCalledTimes(1);
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("materializes the full document when IntersectionObserver is unavailable", async () => {
     vi.stubGlobal("IntersectionObserver", undefined);
 
@@ -210,18 +253,27 @@ describe("CrossAssetPage", () => {
     ],
   ])("materializes the full cross-asset document before %s", async (_label, revealDocument) => {
     stubIntersectionObserver();
+    const client = createApiClient({ mode: "mock" });
+    const linkageSpy = vi.spyOn(client, "getMacroBondLinkageAnalysis");
+    const calendarSpy = vi.spyOn(client, "getResearchCalendarEvents");
+    const livermoreSpy = vi.spyOn(client, "getLivermoreStrategy");
 
     try {
-      renderPage(createApiClient({ mode: "mock" }));
+      renderPage(client);
 
       await screen.findByTestId("cross-asset-evidence-tape");
+      await waitFor(() => expect(linkageSpy).toHaveBeenCalledTimes(1));
       expect(screen.queryByTestId("cross-asset-evidence-groups")).not.toBeInTheDocument();
       expect(screen.queryByTestId("cross-asset-livermore-status")).not.toBeInTheDocument();
+      expect(calendarSpy).not.toHaveBeenCalled();
+      expect(livermoreSpy).not.toHaveBeenCalled();
 
       act(() => {
         revealDocument();
       });
 
+      expect(calendarSpy).toHaveBeenCalledTimes(1);
+      expect(livermoreSpy).toHaveBeenCalledTimes(1);
       expect(await screen.findByTestId("cross-asset-evidence-groups")).toBeInTheDocument();
       expect(screen.getByTestId("cross-asset-trend-panel")).toBeInTheDocument();
       expect(screen.getByTestId("cross-asset-livermore-status")).toBeInTheDocument();

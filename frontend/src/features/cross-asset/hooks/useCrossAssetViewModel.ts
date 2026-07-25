@@ -97,7 +97,15 @@ function visibleTrendOptionFor(
   };
 }
 
-export function useCrossAssetViewModel() {
+type CrossAssetViewModelOptions = {
+  researchCalendarEnabled: boolean;
+  livermoreEnabled: boolean;
+};
+
+export function useCrossAssetViewModel({
+  researchCalendarEnabled,
+  livermoreEnabled,
+}: CrossAssetViewModelOptions) {
   const client = useApiClient();
   const queryClient = useQueryClient();
   const [trendGroup, setTrendGroup] = useState<TrendGroupKey>("all");
@@ -120,7 +128,7 @@ export function useCrossAssetViewModel() {
   const researchCalendarQuery = useQuery({
     queryKey: ["cross-asset", "research-calendar", client.mode, linkageReportDate],
     queryFn: () => client.getResearchCalendarEvents({ reportDate: linkageReportDate }),
-    enabled: Boolean(linkageReportDate),
+    enabled: researchCalendarEnabled && Boolean(linkageReportDate),
     retry: false,
   });
   const macroBondLinkageQuery = useQuery({
@@ -139,7 +147,7 @@ export function useCrossAssetViewModel() {
   const livermoreStrategyQuery = useQuery({
     queryKey: ["cross-asset", "livermore-strategy", client.mode, livermoreAsOfDate],
     queryFn: () => client.getLivermoreStrategy({ asOfDate: livermoreAsOfDate }),
-    enabled: Boolean(livermoreAsOfDate),
+    enabled: livermoreEnabled && Boolean(livermoreAsOfDate),
     retry: false,
   });
   const livermoreStrategyResolvedAsOfDate = livermoreStrategyQuery.data?.result?.as_of_date || livermoreAsOfDate;
@@ -152,7 +160,9 @@ export function useCrossAssetViewModel() {
   const livermoreSignalConfluenceQuery = useQuery({
     queryKey: livermoreSignalConfluenceQueryKey,
     queryFn: () => client.getLivermoreSignalConfluence({ asOfDate: livermoreStrategyResolvedAsOfDate }),
-    enabled: Boolean(livermoreStrategyResolvedAsOfDate && !livermoreStrategyQuery.isLoading),
+    enabled:
+      livermoreEnabled &&
+      Boolean(livermoreStrategyResolvedAsOfDate && !livermoreStrategyQuery.isLoading),
     retry: false,
   });
   const livermoreManualPositionMutation = useMutation({
