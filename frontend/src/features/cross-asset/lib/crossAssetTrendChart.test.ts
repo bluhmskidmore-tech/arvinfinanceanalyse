@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ChoiceMacroLatestPoint } from "../../../api/contracts";
+import { dhApiTokens, ibTokens } from "../../../theme/designSystem";
 
 import {
   CROSS_ASSET_TREND_WINDOW_DAYS,
@@ -84,5 +85,38 @@ describe("buildCrossAssetTrendOption", () => {
       position: (point: [number, number], params: unknown, dom: unknown, rect: unknown, size: { viewSize: [number, number] }) => [number, number];
     }).position;
     expect(position([20, 30], null, null, null, { viewSize: [240, 180] })).toEqual([8, 8]);
+  });
+
+  it("defaults to the light IB surface for the tooltip", () => {
+    const opt = buildCrossAssetTrendOption([
+      point("E1000180", [
+        ["2026-01-01", 1],
+        ["2026-01-02", 2],
+      ]),
+    ]);
+    expect((opt!.tooltip as { backgroundColor: string }).backgroundColor).toBe(ibTokens.color.surface);
+  });
+
+  it("resolves text/axis/tooltip colors from the terminal palette on the dark page", () => {
+    const opt = buildCrossAssetTrendOption(
+      [
+        point("E1000180", [
+          ["2026-01-01", 1],
+          ["2026-01-02", 2],
+        ]),
+      ],
+      "terminal",
+    );
+    const tooltip = opt!.tooltip as { backgroundColor: string; borderColor: string; textStyle: { color: string } };
+    expect(tooltip.backgroundColor).toBe(dhApiTokens.color.panel2);
+    expect(tooltip.borderColor).toBe(dhApiTokens.color.line);
+    expect(tooltip.textStyle.color).toBe(dhApiTokens.color.ink);
+    const xAxis = opt!.xAxis as { axisLabel: { color: string }; axisLine: { lineStyle: { color: string } } };
+    expect(xAxis.axisLabel.color).toBe(dhApiTokens.color.inkMuted);
+    expect(xAxis.axisLine.lineStyle.color).toBe(dhApiTokens.color.line);
+    const yAxis = opt!.yAxis as { splitLine: { lineStyle: { color: string } } };
+    expect(yAxis.splitLine.lineStyle.color).toBe(dhApiTokens.color.lineSoft);
+    const s = (opt!.series as { lineStyle: { color: string } }[])[0]!;
+    expect(s.lineStyle.color).toBe(dhApiTokens.color.blue);
   });
 });

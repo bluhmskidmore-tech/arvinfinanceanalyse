@@ -691,7 +691,7 @@ export function CrossAssetReferenceSourceAudit({
   );
 }
 
-function CrossAssetReferenceTransmission({ rows }: { rows: CrossAssetTransmissionAxisRow[] }) {
+export function CrossAssetReferenceTransmission({ rows }: { rows: CrossAssetTransmissionAxisRow[] }) {
   const referenceSteps = [
     { label: "利率", row: rows[0], fallback: "全球利率下行，期限溢价回落，是久期判断的主线。" },
     { label: "信用/NCD", row: rows[1], fallback: "资金环境偏松，票息资产承接能力仍需复核。" },
@@ -732,7 +732,7 @@ function CrossAssetReferenceTransmission({ rows }: { rows: CrossAssetTransmissio
   );
 }
 
-function CrossAssetReferenceCorrelation({ matrix }: { matrix: CorrelationMatrix | null }) {
+export function CrossAssetReferenceCorrelation({ matrix }: { matrix: CorrelationMatrix | null }) {
   const preferredLabels = ["10Y国债", "沪深300", "布油", "USD/CNY", "中美10Y利差"];
   const availableLabels = matrix?.labels ?? [];
   const labelEntries = preferredLabels.map((label) => {
@@ -792,7 +792,7 @@ function CrossAssetReferenceCorrelation({ matrix }: { matrix: CorrelationMatrix 
   );
 }
 
-function CrossAssetReferenceJudgments({ cards }: { cards: CrossAssetResearchViewCard[] }) {
+export function CrossAssetReferenceJudgments({ cards }: { cards: CrossAssetResearchViewCard[] }) {
   const visibleCards = cards.slice(0, 4);
   return (
     <section className="cross-asset-reference-card cross-asset-reference-judgments" data-testid="cross-asset-research-views">

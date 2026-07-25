@@ -11,6 +11,7 @@ import {
   formatLinkageRateDirection,
 } from "../lib/crossAssetLinkageLabels";
 import "./CrossAssetDriversPage.css";
+import "./crossAssetTerminalTheme.css";
 import { useCrossAssetViewModel } from "../hooks/useCrossAssetViewModel";
 
 import { CrossAssetDecisionZone } from "../components/CrossAssetDecisionZone";
@@ -22,6 +23,15 @@ import {
   LivermoreStrategyStatusPanel,
   LivermoreSignalConfluencePanel,
 } from "../components/LivermorePanels";
+import { LivermoreFactorCandidatesPanel, LivermoreSectorRankPanel } from "../components/LivermoreRankPanels";
+import { YieldCurvePanel } from "../components/YieldCurvePanel";
+import { EnvScoreFactorDetailPanel } from "../components/EnvScoreFactorDetailPanel";
+import { TransmissionChainGraph } from "../components/TransmissionChainGraph";
+import { CrossAssetHeroPanel } from "../components/CrossAssetHeroPanel";
+import { CrossAssetStatusStrip } from "../components/CrossAssetStatusStrip";
+import { CrossAssetKpiBand } from "../components/CrossAssetKpiBand";
+import { buildStatusStripFlags } from "../lib/crossAssetStatusStrip";
+import { buildKpiBandItems } from "../lib/crossAssetKpiBand";
 import { crossAssetPanelClass } from "../components/shared";
 
 import {
@@ -42,17 +52,13 @@ import { CorrelationHeatmapPanel } from "../components/CorrelationAndRegimePanel
 import { MomentumScoreboardPanel, TrendGroupToggle, VolatilityClusteringPanel, EquityBondERPPanel } from "../components/MomentumAndVolatilityPanels";
 import {
   CrossAssetReferenceToolbar,
-  CrossAssetReferenceSummary,
-  CrossAssetReferenceMarketTape,
   CrossAssetReferenceEvidenceMatrix,
+  CrossAssetReferenceJudgments,
   CrossAssetReferenceSourceAudit,
-  CrossAssetReferenceLowerGrid,
-  CrossAssetReferenceTrendStrip,
-  CrossAssetReferenceDepthSummary,
+  CrossAssetReferenceTransmission,
 } from "../components/ReferencePanels";
 import {
   NcdProxyEvidencePanel,
-  TransmissionAxesPanel,
 } from "../components/LegacyPanels";
 
 
@@ -64,10 +70,13 @@ export default function CrossAssetDriversPage() {
     crossAssetDataDate,
     drivers,
     env,
+    envFactorDetailRows,
+    envFactorScoringMethod,
     envTags,
     equityEvidenceItems,
     erpData,
     eventItems,
+    firstScreenConclusion,
     firstScreenDisplay,
     hasPortfolioImpact,
     heatmapRows,
@@ -88,6 +97,7 @@ export default function CrossAssetDriversPage() {
     macroBondLinkage,
     macroBondLinkageQuery,
     macroBondLinkageWarnings,
+    marketRegime,
     momentumRows,
     ncdFundingProxyQuery,
     ncdProxyEvidence,
@@ -97,45 +107,215 @@ export default function CrossAssetDriversPage() {
     setTrendGroup,
     topCorrelationSummary,
     transmissionAxisRows,
+    transmissionChainGraph,
     trendGroup,
     trendSummary,
     visibleTrendOption,
     volAlert,
     waterfallBars,
     watchRows,
+    yieldCurves,
   } = useCrossAssetViewModel();
+  const statusStripFlags = buildStatusStripFlags(statusFlags);
+  const kpiBandItems = buildKpiBandItems(kpis);
+  const reportDate = crossAssetDataDate || linkageReportDate;
+
   return (
       <section
-        className="cross-asset-drivers-page"
+        className="cross-asset-drivers-page cross-asset-drivers-page--terminal theme-dh-api"
         data-testid="cross-asset-drivers-page"
       >
         <div data-testid="cross-asset-page" className="cross-asset-drivers-page__shell">
+
+        {/* S0 决策首屏：工具条 + 结论 Hero */}
         <section className="cross-asset-first-screen cross-asset-reference-screen" data-testid="cross-asset-first-screen">
           <CrossAssetReferenceToolbar
-            reportDate={crossAssetDataDate || linkageReportDate}
+            reportDate={reportDate}
             onRefresh={() => {
               void latestQuery.refetch();
               void macroBondLinkageQuery.refetch();
             }}
           />
-          <CrossAssetReferenceSummary
-            display={firstScreenDisplay}
-            latestMeta={latestMeta}
-            linkageMeta={linkageMeta}
+          <CrossAssetHeroPanel
+            conclusion={firstScreenConclusion}
+            regimeLabel={marketRegime.label}
+            regimeDescription={marketRegime.description}
+            rateDirectionLabel={formatLinkageRateDirection(env.rate_direction)}
+            reportDate={reportDate}
+            compositeScore={env.composite_score != null ? env.composite_score : null}
+            loading={latestQuery.isLoading || macroBondLinkageQuery.isLoading}
           />
-          <CrossAssetReferenceMarketTape kpis={kpis} />
-          <section
-            className="cross-asset-command-center cross-asset-first-screen-grid cross-asset-reference-evidence-grid"
-            data-testid="cross-asset-first-screen-grid"
-          >
-            <div className="cross-asset-fusion-layout cross-asset-reference-fusion-layout" data-testid="cross-asset-fusion-layout">
+        </section>
+
+        {/* S1 数据状态带 */}
+        <CrossAssetStatusStrip flags={statusStripFlags} />
+
+        {/* S2 KPI 横带 */}
+        <CrossAssetKpiBand items={kpiBandItems} />
+
+        <div className="cross-asset-drivers-page__flow">
+          <div className="cross-asset-decision-board cross-asset-reference-depth" data-testid="cross-asset-decision-display">
+
+            {/* S2b 宏观-债券联动（评分与组合影响），自附录上移 */}
+            <CrossAssetDecisionZone testId="cross-asset-zone-linkage" title="宏观 - 债券联动">
+              <PageAsyncSection
+                title="宏观 - 债券联动（评分与组合影响）"
+                isLoading={macroBondLinkageQuery.isLoading || latestQuery.isLoading}
+                isError={macroBondLinkageQuery.isError || latestQuery.isError}
+                isEmpty={linkageBodyEmpty}
+                onRetry={() => {
+                  void latestQuery.refetch();
+                  void macroBondLinkageQuery.refetch();
+                  void researchCalendarQuery.refetch();
+                }}
+              >
+                {!linkageReportDate ? (
+                  <p className="cross-asset-linkage__missing-date">
+                    缺少可用交易日，当前无法计算宏观-债券联动分析。
+                  </p>
+                ) : (
+                  <div className="cross-asset-linkage__body">
+                    {macroBondLinkageWarnings.length > 0 ? (
+                      <ul
+                        data-testid="cross-asset-linkage-warning-list"
+                        className="cross-asset-linkage__warnings"
+                      >
+                        {macroBondLinkageWarnings.map((warning) => (
+                          <li key={warning}>{warning}</li>
+                        ))}
+                      </ul>
+                    ) : null}
+
+                    <div className="cross-asset-linkage__kpi-grid">
+                      <div data-testid="cross-asset-linkage-composite-score">
+                        <KpiCard
+                          title="综合评分"
+                          value={env.composite_score != null ? String(env.composite_score.toFixed(2)) : "不可用"}
+                          detail={env.signal_description ?? "缺少环境评分数据。"}
+                          valueVariant="text"
+                          tone={toneFromSignedNumber(env.composite_score != null ? env.composite_score : null)}
+                        />
+                      </div>
+                      <div data-testid="cross-asset-linkage-rate-direction">
+                        <KpiCard
+                          title="利率方向"
+                          value={formatLinkageRateDirection(env.rate_direction)}
+                          detail={formatLinkageEnvironmentScoreDetail(
+                            "方向分值",
+                            env.rate_direction_score,
+                            "缺少方向评分。",
+                          )}
+                          valueVariant="text"
+                          tone={toneFromSignedNumber(env.rate_direction_score != null ? env.rate_direction_score : null)}
+                        />
+                      </div>
+                      <div data-testid="cross-asset-linkage-liquidity-score">
+                        <KpiCard
+                          title="流动性评分"
+                          value={env.liquidity_score != null ? env.liquidity_score.toFixed(2) : "不可用"}
+                          detail="正值偏松，负值偏紧。"
+                          valueVariant="text"
+                          tone={toneFromSignedNumber(env.liquidity_score != null ? env.liquidity_score : null)}
+                        />
+                      </div>
+                      <div data-testid="cross-asset-linkage-growth-score">
+                        <KpiCard
+                          title="增长评分"
+                          value={env.growth_score != null ? env.growth_score.toFixed(2) : "不可用"}
+                          detail="宏观增长方向的简化分值。"
+                          valueVariant="text"
+                          tone={toneFromSignedNumber(env.growth_score != null ? env.growth_score : null)}
+                        />
+                      </div>
+                    </div>
+
+                    <EnvScoreFactorDetailPanel
+                      rows={envFactorDetailRows}
+                      scoringMethod={envFactorScoringMethod ?? undefined}
+                      loading={macroBondLinkageQuery.isLoading}
+                    />
+
+                    <section
+                      data-testid="cross-asset-linkage-portfolio-impact"
+                      className={`${crossAssetPanelClass} cross-asset-linkage-portfolio-impact`}
+                    >
+                      <h2 className="cross-asset-linkage-portfolio-impact__title">
+                        组合影响估算
+                      </h2>
+                      <p className="cross-asset-linkage-portfolio-impact__description">
+                        以下数值属于分析口径估算，只作为环境敏感度提示，不代表正式损益。
+                      </p>
+                      {hasPortfolioImpact ? (
+                        <div className="cross-asset-linkage-portfolio-impact__grid">
+                          <div>
+                            <div className="cross-asset-linkage-portfolio-impact__label">利率变动</div>
+                            <div className="cross-asset-linkage-portfolio-impact__value">{formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_rate_change_bps, " bp")}</div>
+                          </div>
+                          <div>
+                            <div className="cross-asset-linkage-portfolio-impact__label">利差走阔</div>
+                            <div className="cross-asset-linkage-portfolio-impact__value">{formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_spread_widening_bps, " bp")}</div>
+                          </div>
+                          <div>
+                            <div className="cross-asset-linkage-portfolio-impact__label">合计估算</div>
+                            <div className="cross-asset-linkage-portfolio-impact__value">{formatSignedNumber(macroBondLinkage.portfolio_impact?.total_estimated_impact)}</div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="cross-asset-linkage-portfolio-impact__empty">当前没有可用组合影响估算。</div>
+                      )}
+                    </section>
+                  </div>
+                )}
+              </PageAsyncSection>
+            </CrossAssetDecisionZone>
+
+            {/* S3 宏观传导链路（主角） */}
+            <CrossAssetDecisionZone testId="cross-asset-zone-chain" title="宏观传导链路">
+              <div data-testid="cross-asset-transmission-chain-graph">
+                <TransmissionChainGraph
+                  graph={transmissionChainGraph}
+                  loading={macroBondLinkageQuery.isLoading || latestQuery.isLoading}
+                />
+              </div>
+            </CrossAssetDecisionZone>
+
+            {/* S4 传导与行动 */}
+            <CrossAssetDecisionZone testId="cross-asset-zone-transmission" title="传导与行动">
+              <CrossAssetReferenceTransmission rows={transmissionAxisRows} />
+              <CrossAssetReferenceJudgments cards={researchViewCards} />
+              <AssetClassAnalysisPanel
+                rows={assetClassAnalysisRows}
+                equityEvidenceItems={equityEvidenceItems}
+                bondJudgment={firstScreenDisplay.judgments.bond}
+              />
+              <div className="cross-asset-drivers-page__drivers-grid cross-asset-drivers-page__drivers-grid--flat">
+                {drivers.map((col) => (
+                  <div key={col.title} className="cross-asset-drivers-page__driver-cell">
+                    <div className="cross-asset-drivers-page__driver-title">{col.title}</div>
+                    <div className={`cross-asset-drivers-page__driver-stance cross-asset-drivers-page__driver-stance--${col.tone}`}>
+                      {col.stance}
+                    </div>
+                    <ul className="cross-asset-drivers-page__driver-list">
+                      {col.bullets.map((bullet) => (
+                        <li key={bullet}>{bullet}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+              <DriverWaterfallPanel bars={waterfallBars} env={env} theme="terminal" />
+              <MarketCandidateActions rows={candidateActions} />
+            </CrossAssetDecisionZone>
+
+            {/* S5 证据与指标 */}
+            <CrossAssetDecisionZone testId="cross-asset-zone-evidence" title="证据与指标">
               <CrossAssetReferenceEvidenceMatrix
                 kpis={kpis}
                 sourceBlockedFlag={firstScreenDisplay.status.sourceBlockedFlag}
               />
               <div className="cross-asset-fusion-side-panel cross-asset-reference-fusion-side-panel" data-testid="cross-asset-fusion-side-panel">
                 <CrossAssetReferenceSourceAudit
-                  reportDate={crossAssetDataDate || linkageReportDate}
+                  reportDate={reportDate}
                   latestMeta={latestMeta}
                   linkageMeta={linkageMeta}
                   statusFlags={statusFlags}
@@ -150,32 +330,6 @@ export default function CrossAssetDriversPage() {
                   isLoading={macroBondLinkageQuery.isLoading || latestQuery.isLoading}
                 />
               </div>
-            </div>
-          </section>
-          <CrossAssetReferenceLowerGrid
-            matrix={correlationMatrix}
-            rows={transmissionAxisRows}
-            cards={researchViewCards}
-            sourceBlockedFlag={firstScreenDisplay.status.sourceBlockedFlag}
-          />
-          <CrossAssetReferenceTrendStrip kpis={kpis} />
-        </section>
-
-        <div className="cross-asset-drivers-page__flow">
-          <CrossAssetReferenceDepthSummary
-            kpis={kpis}
-            heatmapCount={heatmapRows.length}
-            transmissionRows={transmissionAxisRows}
-            assetRows={assetClassAnalysisRows}
-            momentumRows={momentumRows}
-            correlationMatrix={correlationMatrix}
-            candidateActions={candidateActions}
-            eventCount={eventItems.length}
-            watchCount={watchRows.length}
-            statusFlags={statusFlags}
-          />
-          <div className="cross-asset-decision-board cross-asset-reference-depth" data-testid="cross-asset-decision-display">
-            <CrossAssetDecisionZone testId="cross-asset-zone-evidence" title="证据与指标">
               <CrossAssetEvidenceTape kpis={kpis} />
               <details
                 open
@@ -232,39 +386,7 @@ export default function CrossAssetDriversPage() {
               </details>
             </CrossAssetDecisionZone>
 
-            <CrossAssetDecisionZone testId="cross-asset-zone-transmission" title="传导与行动">
-              <TransmissionAxesPanel rows={transmissionAxisRows} />
-              <AssetClassAnalysisPanel
-                rows={assetClassAnalysisRows}
-                equityEvidenceItems={equityEvidenceItems}
-                bondJudgment={firstScreenDisplay.judgments.bond}
-              />
-              <div className="cross-asset-drivers-page__drivers-grid cross-asset-drivers-page__drivers-grid--flat">
-                {drivers.map((col) => (
-                  <div key={col.title} className="cross-asset-drivers-page__driver-cell">
-                    <div className="cross-asset-drivers-page__driver-title">{col.title}</div>
-                    <div className={`cross-asset-drivers-page__driver-stance cross-asset-drivers-page__driver-stance--${col.tone}`}>
-                      {col.stance}
-                    </div>
-                    <ul className="cross-asset-drivers-page__driver-list">
-                      {col.bullets.map((bullet) => (
-                        <li key={bullet}>{bullet}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
-              <div className="cross-asset-zone-analytics-grid" data-testid="cross-asset-zone-analytics-grid">
-                <DriverWaterfallPanel bars={waterfallBars} env={env} />
-                <div className="cross-asset-risk-snapshot-grid" data-testid="cross-asset-risk-snapshot-grid">
-                  <VolatilityClusteringPanel alert={volAlert} />
-                  <EquityBondERPPanel erp={erpData} />
-                </div>
-              </div>
-              <MarketCandidateActions rows={candidateActions} />
-              <NcdProxyEvidencePanel evidence={ncdProxyEvidence} isLoading={ncdFundingProxyQuery.isLoading} />
-            </CrossAssetDecisionZone>
-
+            {/* S5b 走势与观察 */}
             <CrossAssetDecisionZone
               testId="cross-asset-zone-observation"
               title="走势与观察"
@@ -318,9 +440,18 @@ export default function CrossAssetDriversPage() {
               </div>
             </div>
 
+            <div data-testid="cross-asset-yield-curve-slot" className="cross-asset-yield-curve-slot">
+              <YieldCurvePanel curves={yieldCurves} loading={latestQuery.isLoading} />
+            </div>
+
             <div className="cross-asset-observation-support-grid" data-testid="cross-asset-observation-support-grid">
               <MomentumScoreboardPanel rows={momentumRows} />
-              <CorrelationHeatmapPanel matrix={correlationMatrix} />
+              <CorrelationHeatmapPanel matrix={correlationMatrix} theme="terminal" />
+            </div>
+
+            <div className="cross-asset-risk-snapshot-grid" data-testid="cross-asset-risk-snapshot-grid">
+              <VolatilityClusteringPanel alert={volAlert} />
+              <EquityBondERPPanel erp={erpData} />
             </div>
 
             <details
@@ -338,10 +469,11 @@ export default function CrossAssetDriversPage() {
               </div>
             </details>
 
+            {/* 附录：A股策略 · NCD 代理 · 结构化输出 */}
             <details open className="cross-asset-decision-appendix" data-testid="cross-asset-decision-appendix">
               <summary>
                 <span>补充复核</span>
-                <strong>A股策略 · 宏观联动 · 结构化输出</strong>
+                <strong>A股策略 · NCD 代理 · 结构化输出</strong>
               </summary>
               <div className="cross-asset-decision-appendix__body">
                 <LivermoreStrategyStatusPanel
@@ -362,110 +494,17 @@ export default function CrossAssetDriversPage() {
                   isError={livermoreSignalConfluenceQuery.isError}
                   asOfDate={livermoreStrategyResolvedAsOfDate}
                 />
-                <PageAsyncSection
-                  title="宏观 - 债券联动（评分与组合影响）"
-                  isLoading={macroBondLinkageQuery.isLoading || latestQuery.isLoading}
-                  isError={macroBondLinkageQuery.isError || latestQuery.isError}
-                  isEmpty={linkageBodyEmpty}
-                  onRetry={() => {
-                    void latestQuery.refetch();
-                    void macroBondLinkageQuery.refetch();
-                    void researchCalendarQuery.refetch();
-                  }}
-                >
-                  {!linkageReportDate ? (
-                    <p className="cross-asset-linkage__missing-date">
-                      缺少可用交易日，当前无法计算宏观-债券联动分析。
-                    </p>
-                  ) : (
-                    <div className="cross-asset-linkage__body">
-                      {macroBondLinkageWarnings.length > 0 ? (
-                        <ul
-                          data-testid="cross-asset-linkage-warning-list"
-                          className="cross-asset-linkage__warnings"
-                        >
-                          {macroBondLinkageWarnings.map((warning) => (
-                            <li key={warning}>{warning}</li>
-                          ))}
-                        </ul>
-                      ) : null}
-
-                      <div className="cross-asset-linkage__kpi-grid">
-                        <div data-testid="cross-asset-linkage-composite-score">
-                          <KpiCard
-                            title="综合评分"
-                            value={env.composite_score != null ? String(env.composite_score.toFixed(2)) : "不可用"}
-                            detail={env.signal_description ?? "缺少环境评分数据。"}
-                            valueVariant="text"
-                            tone={toneFromSignedNumber(env.composite_score != null ? env.composite_score : null)}
-                          />
-                        </div>
-                        <div data-testid="cross-asset-linkage-rate-direction">
-                          <KpiCard
-                            title="利率方向"
-                            value={formatLinkageRateDirection(env.rate_direction)}
-                            detail={formatLinkageEnvironmentScoreDetail(
-                              "方向分值",
-                              env.rate_direction_score,
-                              "缺少方向评分。",
-                            )}
-                            valueVariant="text"
-                            tone={toneFromSignedNumber(env.rate_direction_score != null ? env.rate_direction_score : null)}
-                          />
-                        </div>
-                        <div data-testid="cross-asset-linkage-liquidity-score">
-                          <KpiCard
-                            title="流动性评分"
-                            value={env.liquidity_score != null ? env.liquidity_score.toFixed(2) : "不可用"}
-                            detail="正值偏松，负值偏紧。"
-                            valueVariant="text"
-                            tone={toneFromSignedNumber(env.liquidity_score != null ? env.liquidity_score : null)}
-                          />
-                        </div>
-                        <div data-testid="cross-asset-linkage-growth-score">
-                          <KpiCard
-                            title="增长评分"
-                            value={env.growth_score != null ? env.growth_score.toFixed(2) : "不可用"}
-                            detail="宏观增长方向的简化分值。"
-                            valueVariant="text"
-                            tone={toneFromSignedNumber(env.growth_score != null ? env.growth_score : null)}
-                          />
-                        </div>
-                      </div>
-
-                      <section
-                        data-testid="cross-asset-linkage-portfolio-impact"
-                        className={`${crossAssetPanelClass} cross-asset-linkage-portfolio-impact`}
-                      >
-                        <h2 className="cross-asset-linkage-portfolio-impact__title">
-                          组合影响估算
-                        </h2>
-                        <p className="cross-asset-linkage-portfolio-impact__description">
-                          以下数值属于分析口径估算，只作为环境敏感度提示，不代表正式损益。
-                        </p>
-                        {hasPortfolioImpact ? (
-                          <div className="cross-asset-linkage-portfolio-impact__grid">
-                            <div>
-                              <div className="cross-asset-linkage-portfolio-impact__label">利率变动</div>
-                              <div className="cross-asset-linkage-portfolio-impact__value">{formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_rate_change_bps, " bp")}</div>
-                            </div>
-                            <div>
-                              <div className="cross-asset-linkage-portfolio-impact__label">利差走阔</div>
-                              <div className="cross-asset-linkage-portfolio-impact__value">{formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_spread_widening_bps, " bp")}</div>
-                            </div>
-                            <div>
-                              <div className="cross-asset-linkage-portfolio-impact__label">合计估算</div>
-                              <div className="cross-asset-linkage-portfolio-impact__value">{formatSignedNumber(macroBondLinkage.portfolio_impact?.total_estimated_impact)}</div>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="cross-asset-linkage-portfolio-impact__empty">当前没有可用组合影响估算。</div>
-                        )}
-                      </section>
-                    </div>
-                  )}
-                </PageAsyncSection>
-
+                <LivermoreSectorRankPanel
+                  payload={livermoreStrategyPayload?.sector_rank ?? null}
+                  isLoading={livermoreStrategyQuery.isLoading}
+                  isError={livermoreStrategyQuery.isError}
+                />
+                <LivermoreFactorCandidatesPanel
+                  payload={livermoreStrategyPayload?.factor_screen_candidates ?? null}
+                  isLoading={livermoreStrategyQuery.isLoading}
+                  isError={livermoreStrategyQuery.isError}
+                />
+                <NcdProxyEvidencePanel evidence={ncdProxyEvidence} isLoading={ncdFundingProxyQuery.isLoading} />
                 <details open className="cross-asset-structured-output">
                   <summary>结构化输出与联动摘要</summary>
                   <div data-testid="cross-asset-page-output">

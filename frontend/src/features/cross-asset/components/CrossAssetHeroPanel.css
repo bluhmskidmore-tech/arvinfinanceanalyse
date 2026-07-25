@@ -1,0 +1,130 @@
+/*
+ * CrossAssetHeroPanel — S0 决策首屏 Hero（组件级样式）。
+ * 深色终端主题：仅消费 --dh-api-* token（页面根挂 theme-dh-api）。
+ */
+
+.cross-asset-hero-panel {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 20px 24px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.cross-asset-hero-panel__main {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  align-content: start;
+}
+
+.cross-asset-hero-panel__eyebrow {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.cross-asset-hero-panel__title {
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.cross-asset-hero-panel__question {
+  margin: 0;
+  color: var(--dh-api-soft);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.cross-asset-hero-panel__conclusion {
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.55;
+}
+
+.cross-asset-hero-panel__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.cross-asset-hero-panel__meta-item {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cross-asset-hero-panel__chip {
+  padding: 2px 8px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-blue);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.cross-asset-hero-panel__score {
+  flex: 0 0 auto;
+  display: grid;
+  justify-items: end;
+  align-content: center;
+  gap: 4px;
+  padding-left: 24px;
+  border-left: 1px solid var(--dh-api-line-soft);
+  text-align: right;
+}
+
+.cross-asset-hero-panel__score-label {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.cross-asset-hero-panel__score-value {
+  color: var(--dh-api-ink);
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.cross-asset-hero-panel__score-value--positive {
+  color: var(--dh-api-green);
+}
+
+.cross-asset-hero-panel__score-value--negative {
+  color: var(--dh-api-red);
+}
+
+.cross-asset-hero-panel__score-hint {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+}
+
+@media (max-width: 900px) {
+  .cross-asset-hero-panel {
+    flex-direction: column;
+  }
+
+  .cross-asset-hero-panel__score {
+    justify-items: start;
+    padding-left: 0;
+    padding-top: 12px;
+    border-left: none;
+    border-top: 1px solid var(--dh-api-line-soft);
+    text-align: left;
+  }
+}

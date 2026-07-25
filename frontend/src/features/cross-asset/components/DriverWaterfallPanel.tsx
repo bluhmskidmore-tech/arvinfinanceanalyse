@@ -1,6 +1,11 @@
 import type { MacroBondLinkageEnvironmentScore } from "../../../api/contracts";
 import type { WaterfallBar } from "../lib/crossAssetAnalytics";
 import {
+  resolveCrossAssetChartPalette,
+  waterfallBarColorFor,
+  type CrossAssetChartTheme,
+} from "../lib/crossAssetChartTheme";
+import {
   formatWaterfallContributingFactorName,
   formatWaterfallContributingFactorSummary,
 } from "../lib/crossAssetLinkageLabels";
@@ -79,11 +84,15 @@ function waterfallFactorEvidence(
 export function DriverWaterfallPanel({
   bars,
   env,
+  theme = "light",
 }: {
   bars: WaterfallBar[];
   env: Partial<MacroBondLinkageEnvironmentScore>;
+  theme?: CrossAssetChartTheme;
 }) {
   if (bars.length === 0) return null;
+
+  const palette = resolveCrossAssetChartPalette(theme);
 
   const maxAbs = Math.max(...bars.map((b) => Math.abs(b.value)), 0.01);
   const evidenceRows = bars.map((bar) => ({ bar, evidence: waterfallFactorEvidence(bar, env) }));
@@ -138,6 +147,8 @@ export function DriverWaterfallPanel({
         <div className="ca-waterfall__zero-line" />
         {evidenceRows.map(({ bar, evidence }) => {
           const barHeight = Math.max(4, (Math.abs(bar.value) / maxAbs) * (chartHeight / 2));
+          const barColor =
+            theme === "terminal" ? waterfallBarColorFor(bar.value, bar.kind, palette) : bar.color;
           const isNeg = bar.value < 0;
           const isTotal = bar.kind === "total";
           const sign = bar.value > 0 ? "+" : "";
@@ -151,7 +162,7 @@ export function DriverWaterfallPanel({
                 className={`ca-waterfall__bar${isNeg ? " ca-waterfall__bar--negative" : ""}${isTotal ? " ca-waterfall__bar--total" : ""}`}
                 style={{
                   height: `${barHeight}px`,
-                  background: bar.color,
+                  background: barColor,
                   marginBottom: isNeg ? "auto" : undefined,
                   marginTop: isNeg ? undefined : "auto",
                 }}

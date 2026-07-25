@@ -1,4 +1,9 @@
 import { correlationColor, formatCorrelation, type CorrelationMatrix } from "../lib/crossAssetAnalytics";
+import {
+  heatmapColorFor,
+  resolveCrossAssetChartPalette,
+  type CrossAssetChartTheme,
+} from "../lib/crossAssetChartTheme";
 
 type CorrelationSummaryCard = {
   id: string;
@@ -70,8 +75,19 @@ function buildCorrelationSummaryCards(matrix: CorrelationMatrix): CorrelationSum
   ];
 }
 
-export function CorrelationHeatmapPanel({ matrix }: { matrix: CorrelationMatrix }) {
+export function CorrelationHeatmapPanel({
+  matrix,
+  theme = "light",
+}: {
+  matrix: CorrelationMatrix;
+  theme?: CrossAssetChartTheme;
+}) {
   if (matrix.keys.length < 2) return null;
+  const palette = resolveCrossAssetChartPalette(theme);
+  const cellColor =
+    theme === "terminal"
+      ? (value: number | null) => heatmapColorFor(value, palette)
+      : correlationColor;
   const n = matrix.keys.length;
   const summaryCards = buildCorrelationSummaryCards(matrix);
   return (
@@ -118,7 +134,7 @@ export function CorrelationHeatmapPanel({ matrix }: { matrix: CorrelationMatrix 
                       key={`${cell.rowKey}-${cell.colKey}`}
                       className={`ca-correlation__cell${isDiag ? " ca-correlation__cell--diagonal" : ""}`}
                       style={{
-                        background: isDiag ? undefined : correlationColor(cell.value),
+                        background: isDiag ? undefined : cellColor(cell.value),
                         color: cell.value != null && Math.abs(cell.value) > 0.5 ? "var(--ca-on-dark)" : undefined,
                       }}
                       title={`${matrix.labels[ri]} × ${matrix.labels[ci]}: ${formatCorrelation(cell.value)}`}

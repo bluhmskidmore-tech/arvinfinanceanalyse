@@ -1,0 +1,123 @@
+/*
+ * CrossAssetKpiBand — S2 KPI 横带（组件级样式）。
+ * 深色终端主题：仅消费 --dh-api-* token；6 卡横排，右下 sparkline。
+ */
+
+.cross-asset-kpi-band {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.cross-asset-kpi-band__card {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+  align-content: start;
+}
+
+.cross-asset-kpi-band__card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cross-asset-kpi-band__name {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cross-asset-kpi-band__badge {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: var(--dh-api-radius);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.cross-asset-kpi-band__badge--bullish {
+  color: var(--dh-api-green);
+  background: var(--dh-api-green-soft);
+}
+
+.cross-asset-kpi-band__badge--bearish {
+  color: var(--dh-api-red);
+  background: var(--dh-api-red-soft);
+}
+
+.cross-asset-kpi-band__badge--neutral {
+  color: var(--dh-api-muted);
+  background: var(--dh-api-panel-2);
+}
+
+.cross-asset-kpi-band__value-row {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.cross-asset-kpi-band__value {
+  color: var(--dh-api-ink);
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+.cross-asset-kpi-band__unit {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.cross-asset-kpi-band__change {
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cross-asset-kpi-band__foot {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cross-asset-kpi-band__source {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cross-asset-kpi-band__spark {
+  flex: 0 0 auto;
+  width: 72px;
+  height: 24px;
+  display: block;
+  color: var(--dh-api-muted);
+}
+
+@media (max-width: 1200px) {
+  .cross-asset-kpi-band {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .cross-asset-kpi-band {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

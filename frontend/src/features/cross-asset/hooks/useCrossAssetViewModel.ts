@@ -37,6 +37,9 @@ import { formatLinkageCorrelationTarget } from "../lib/crossAssetLinkageLabels";
 import { formatCrossAssetLinkageWarnings } from "../lib/crossAssetLinkageWarnings";
 import { classifyCrossAssetQueryFailure, type CrossAssetModuleFailure } from "../lib/crossAssetQueryFailure";
 import { buildCrossAssetTrendOption, buildCrossAssetTrendSummary } from "../lib/crossAssetTrendChart";
+import { buildTransmissionChainGraph } from "../lib/crossAssetTransmissionGraph";
+import { buildYieldCurveSeries } from "../lib/crossAssetYieldCurve";
+import { buildEnvFactorDetailRows } from "../lib/envScoreFactorDetail";
 
 function linkageHeatmapRows(correlations: MacroBondLinkageTopCorrelation[]) {
   if (correlations.length === 0) {
@@ -100,7 +103,7 @@ export function useCrossAssetViewModel() {
   const [trendGroup, setTrendGroup] = useState<TrendGroupKey>("all");
 
   const latestQuery = useQuery({
-    queryKey: ["cross-asset", "choice-macro-latest", client.mode],
+    queryKey: ["workbench-shell", "choice-macro-latest", client.mode],
     queryFn: () => client.getChoiceMacroLatest(),
     retry: false,
   });
@@ -200,7 +203,8 @@ export function useCrossAssetViewModel() {
 
   const env = useMemo(() => macroBondLinkage.environment_score ?? {}, [macroBondLinkage.environment_score]);
   const kpis = useMemo(() => resolveCrossAssetKpis(latestSeries), [latestSeries]);
-  const trendOption = useMemo(() => buildCrossAssetTrendOption(latestSeries), [latestSeries]);
+  // The drivers page is pinned to the dh-api terminal theme; charts get concrete dark colors.
+  const trendOption = useMemo(() => buildCrossAssetTrendOption(latestSeries, "terminal"), [latestSeries]);
   const visibleTrendOption = useMemo(
     () => visibleTrendOptionFor(trendOption, trendGroup, kpis),
     [kpis, trendGroup, trendOption],
@@ -208,6 +212,21 @@ export function useCrossAssetViewModel() {
   const trendSummary = useMemo(() => buildCrossAssetTrendSummary(kpis), [kpis]);
   const correlationMatrix = useMemo(() => buildCorrelationMatrix(kpis), [kpis]);
   const momentumRows = useMemo(() => buildMomentumScoreboard(kpis), [kpis]);
+  const yieldCurves = useMemo(() => buildYieldCurveSeries(latestSeries), [latestSeries]);
+  const envFactorDetailRows = useMemo(
+    () => buildEnvFactorDetailRows(macroBondLinkage.environment_score),
+    [macroBondLinkage.environment_score],
+  );
+  const envFactorScoringMethod = useMemo((): string | null => {
+    const factors = macroBondLinkage.environment_score?.contributing_factors ?? [];
+    for (const factor of factors) {
+      const method = factor?.scoring_method;
+      if (typeof method === "string" && method.trim()) {
+        return method;
+      }
+    }
+    return null;
+  }, [macroBondLinkage.environment_score]);
   const volAlert = useMemo(() => detectVolatilityClustering(kpis), [kpis]);
   const marketRegime = useMemo(() => identifyMarketRegime(kpis), [kpis]);
   const firstScreenConclusion = useMemo(() => {
@@ -245,6 +264,10 @@ export function useCrossAssetViewModel() {
         linkageUnavailableReason,
       }),
     [env, linkageUnavailableReason, macroBondLinkage.transmission_axes, macroBondLinkageQuery.isError],
+  );
+  const transmissionChainGraph = useMemo(
+    () => buildTransmissionChainGraph({ transmissionAxisRows, kpis, researchViewCards }),
+    [transmissionAxisRows, kpis, researchViewCards],
   );
   const assetClassAnalysisRows = useMemo(
     () => buildCrossAssetClassAnalysisRows({ kpis, transmissionAxes: transmissionAxisRows, latestMeta, linkageMeta }),
@@ -354,6 +377,8 @@ export function useCrossAssetViewModel() {
     crossAssetDataDate,
     drivers,
     env,
+    envFactorDetailRows,
+    envFactorScoringMethod,
     envTags,
     equityEvidenceItems,
     erpData,
@@ -389,11 +414,13 @@ export function useCrossAssetViewModel() {
     setTrendGroup,
     topCorrelationSummary,
     transmissionAxisRows,
+    transmissionChainGraph,
     trendGroup,
     trendSummary,
     visibleTrendOption,
     volAlert,
     waterfallBars,
     watchRows,
+    yieldCurves,
   };
 }

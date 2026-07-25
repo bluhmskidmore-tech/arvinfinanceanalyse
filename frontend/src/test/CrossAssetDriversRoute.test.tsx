@@ -17,8 +17,11 @@ describe("CrossAssetDriversRoute", () => {
     renderWorkbenchApp(["/cross-asset-drivers"], { client: createApiClient({ mode: "mock" }) });
 
     expect(await screen.findByTestId("cross-asset-drivers-page")).toBeInTheDocument();
+    expect(screen.getByTestId("cross-asset-first-screen")).toBeInTheDocument();
+    expect(screen.getByTestId("cross-asset-hero-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("cross-asset-zone-linkage")).toBeInTheDocument();
+    expect(screen.getByTestId("cross-asset-zone-transmission")).toBeInTheDocument();
     expect(screen.getByTestId("cross-asset-research-views")).toBeInTheDocument();
-    expect(screen.getByTestId("cross-asset-transmission-axes")).toBeInTheDocument();
     expect(screen.getByTestId("cross-asset-ncd-proxy")).toBeInTheDocument();
   });
 
@@ -26,7 +29,17 @@ describe("CrossAssetDriversRoute", () => {
     renderWorkbenchApp(["/cross-asset"], { client: createApiClient({ mode: "mock" }) });
 
     expect(await screen.findByTestId("cross-asset-drivers-page")).toBeInTheDocument();
+    expect(screen.getByTestId("cross-asset-hero-panel")).toBeInTheDocument();
     expect(screen.getByTestId("cross-asset-research-views")).toBeInTheDocument();
     expect(screen.queryByText("页面加载中")).not.toBeInTheDocument();
+  });
+  it("shares the choice macro latest request with the shell ticker", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const getChoiceMacroLatest = vi.spyOn(client, "getChoiceMacroLatest");
+
+    renderWorkbenchApp(["/cross-asset"], { client });
+
+    expect(await screen.findByTestId("cross-asset-drivers-page")).toBeInTheDocument();
+    expect(getChoiceMacroLatest).toHaveBeenCalledTimes(1);
   });
 });

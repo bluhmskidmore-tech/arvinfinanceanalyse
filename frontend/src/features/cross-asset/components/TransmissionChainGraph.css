@@ -1,0 +1,357 @@
+/*
+ * TransmissionChainGraph — 深色终端风组件级样式。
+ * 颜色仅使用 var(--dh-api-*) / var(--ca-*) token，零裸 hex。
+ * 动效（豁免批准）：节点 stagger 淡入、边 draw-on 描绘、hover 聚焦、抽屉滑出；
+ * prefers-reduced-motion 下全部静态呈现。
+ */
+
+.tcg {
+  position: relative;
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--dh-api-line-soft, var(--ca-border-soft));
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-api-panel, var(--ca-card));
+  color: var(--dh-api-ink, var(--ca-text));
+  overflow: hidden;
+}
+
+.tcg__header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.tcg__eyebrow {
+  color: var(--dh-api-muted, var(--ca-muted));
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.tcg__title {
+  margin: 2px 0 0;
+  color: var(--dh-api-ink, var(--ca-text));
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.tcg__legend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--dh-api-soft, var(--ca-sub));
+}
+
+.tcg__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.tcg__legend-swatch {
+  width: 16px;
+  height: 0;
+  border-top: 2px solid var(--dh-api-muted, var(--ca-muted));
+}
+
+.tcg__legend-item--supportive .tcg__legend-swatch {
+  border-top-color: var(--dh-api-green);
+}
+.tcg__legend-item--restrictive .tcg__legend-swatch {
+  border-top-color: var(--dh-api-red);
+}
+.tcg__legend-item--conflicted .tcg__legend-swatch {
+  border-top-color: var(--dh-api-amber);
+}
+.tcg__legend-item--neutral .tcg__legend-swatch {
+  border-top-color: var(--dh-api-muted);
+}
+.tcg__legend-item--pending .tcg__legend-swatch {
+  border-top-color: var(--dh-api-muted);
+  border-top-style: dashed;
+}
+.tcg__legend-item--weight {
+  color: var(--dh-api-muted, var(--ca-muted));
+}
+
+.tcg__state {
+  min-height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dh-api-muted, var(--ca-muted));
+  font-size: 13px;
+  border: 1px dashed var(--dh-api-line-soft, var(--ca-border-soft));
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-api-panel-2, var(--ca-card));
+}
+
+.tcg__body {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+}
+
+.tcg__svg {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.tcg__layer-title {
+  fill: var(--dh-api-muted, var(--ca-muted));
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* ---- 边 ---- */
+.tcg-edge {
+  fill: none;
+  stroke: var(--dh-api-muted);
+  stroke-linecap: round;
+  opacity: 0.85;
+  transition: opacity 150ms ease-out;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+  animation: tcg-edge-draw 280ms ease-out var(--tcg-draw-delay, 0ms) backwards;
+}
+
+.tcg-edge--supportive {
+  stroke: var(--dh-api-green);
+}
+.tcg-edge--restrictive {
+  stroke: var(--dh-api-red);
+}
+.tcg-edge--conflicted {
+  stroke: var(--dh-api-amber);
+}
+.tcg-edge--neutral {
+  stroke: var(--dh-api-muted);
+}
+.tcg-edge--pending {
+  stroke-dasharray: 0.04 0.03;
+  opacity: 0.6;
+  animation: none;
+}
+.tcg-edge--dim {
+  opacity: 0.25;
+}
+
+@keyframes tcg-edge-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* ---- 节点 ---- */
+.tcg-node {
+  cursor: pointer;
+  outline: none;
+  transition: opacity 150ms ease-out;
+  animation: tcg-node-enter 200ms ease-out var(--tcg-enter-delay, 0ms) backwards;
+}
+
+.tcg-node__rect {
+  fill: var(--dh-api-panel-3, var(--ca-card));
+  stroke: var(--dh-api-line, var(--ca-border-soft));
+  stroke-width: 1;
+  transition: stroke 150ms ease-out;
+}
+
+.tcg-node:hover .tcg-node__rect,
+.tcg-node:focus-visible .tcg-node__rect,
+.tcg-node--active .tcg-node__rect {
+  stroke: var(--dh-api-blue);
+}
+
+.tcg-node__dot {
+  fill: var(--dh-api-muted);
+}
+.tcg-node--supportive .tcg-node__dot {
+  fill: var(--dh-api-green);
+}
+.tcg-node--restrictive .tcg-node__dot {
+  fill: var(--dh-api-red);
+}
+.tcg-node--conflicted .tcg-node__dot {
+  fill: var(--dh-api-amber);
+}
+
+.tcg-node__label {
+  fill: var(--dh-api-ink, var(--ca-text));
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.tcg-node__sub {
+  fill: var(--dh-api-soft, var(--ca-sub));
+  font-size: 10px;
+}
+
+.tcg-node--dim {
+  opacity: 0.25;
+}
+
+@keyframes tcg-node-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ---- 证据抽屉 ---- */
+.tcg__drawer {
+  flex: 0 0 0;
+  width: 0;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateX(12px);
+  transition:
+    flex-basis 200ms ease-out,
+    width 200ms ease-out,
+    opacity 200ms ease-out,
+    transform 200ms ease-out;
+}
+
+.tcg__drawer--open {
+  flex-basis: 280px;
+  width: 280px;
+  opacity: 1;
+  transform: translateX(0);
+  margin-left: 12px;
+  padding: 14px;
+  border: 1px solid var(--dh-api-line-soft, var(--ca-border-soft));
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-api-panel-2, var(--ca-card));
+  overflow-y: auto;
+  max-height: 420px;
+}
+
+.tcg__drawer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tcg__drawer-kicker {
+  color: var(--dh-api-muted, var(--ca-muted));
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.tcg__drawer-title {
+  margin: 2px 0 0;
+  color: var(--dh-api-ink, var(--ca-text));
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.tcg__drawer-stance {
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--dh-api-muted);
+}
+.tcg__drawer-stance--supportive {
+  color: var(--dh-api-green);
+}
+.tcg__drawer-stance--restrictive {
+  color: var(--dh-api-red);
+}
+.tcg__drawer-stance--conflicted {
+  color: var(--dh-api-amber);
+}
+
+.tcg__drawer-close {
+  flex: 0 0 auto;
+  border: 1px solid var(--dh-api-line-soft, var(--ca-border-soft));
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-api-panel-3, var(--ca-card));
+  color: var(--dh-api-soft, var(--ca-sub));
+  width: 24px;
+  height: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tcg__drawer-close:hover {
+  color: var(--dh-api-ink, var(--ca-text));
+  border-color: var(--dh-api-line, var(--ca-border-soft));
+}
+
+.tcg__drawer-summary {
+  margin: 10px 0 0;
+  color: var(--dh-api-soft, var(--ca-sub));
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.tcg__drawer-meta {
+  margin-top: 10px;
+  color: var(--dh-api-muted, var(--ca-muted));
+  font-size: 11px;
+}
+
+.tcg__drawer-block {
+  margin-top: 12px;
+}
+
+.tcg__drawer-block-title {
+  color: var(--dh-api-muted, var(--ca-muted));
+  font-size: 11px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.tcg__drawer-list {
+  margin: 0;
+  padding-left: 16px;
+  color: var(--dh-api-soft, var(--ca-sub));
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.tcg__drawer-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tcg__drawer-tag {
+  padding: 2px 8px;
+  border: 1px solid var(--dh-api-line-soft, var(--ca-border-soft));
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-api-panel-3, var(--ca-card));
+  color: var(--dh-api-soft, var(--ca-sub));
+  font-size: 11px;
+}
+
+/* ---- 动效豁免的反向兜底：reduced-motion 全部静态 ---- */
+@media (prefers-reduced-motion: reduce) {
+  .tcg-node,
+  .tcg-edge {
+    animation: none;
+    transition: none;
+  }
+  .tcg-edge {
+    stroke-dashoffset: 0;
+  }
+  .tcg__drawer,
+  .tcg__drawer--open {
+    transition: none;
+  }
+}
