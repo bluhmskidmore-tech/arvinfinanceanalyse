@@ -45,6 +45,7 @@
 
 .cross-asset-hero-panel__conclusion {
   margin: 0;
+  min-height: 3.1em;
   color: var(--dh-api-ink);
   font-size: 16px;
   font-weight: 650;
@@ -114,6 +115,12 @@
   font-size: 12px;
 }
 
+@media (max-width: 1200px) {
+  .cross-asset-hero-panel__conclusion {
+    min-height: 4.65em;
+  }
+}
+
 @media (max-width: 900px) {
   .cross-asset-hero-panel {
     flex-direction: column;
@@ -126,5 +133,17 @@
     border-left: none;
     border-top: 1px solid var(--dh-api-line-soft);
     text-align: left;
+  }
+}
+
+@media (max-width: 520px) {
+  .cross-asset-hero-panel__conclusion {
+    min-height: 6.2em;
+  }
+}
+
+@media (max-width: 400px) {
+  .cross-asset-hero-panel__conclusion {
+    min-height: 12.4em;
   }
 }

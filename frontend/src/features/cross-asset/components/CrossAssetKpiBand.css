@@ -91,6 +91,7 @@
   align-items: flex-end;
   justify-content: space-between;
   gap: 8px;
+  min-height: 24px;
 }
 
 .cross-asset-kpi-band__source {

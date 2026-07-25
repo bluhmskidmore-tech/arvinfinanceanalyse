@@ -7,6 +7,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  min-height: 42px;
   padding: 8px 12px;
   border: 1px solid var(--dh-api-line-soft);
   border-radius: var(--dh-api-radius);
@@ -74,4 +75,10 @@
 .cross-asset-status-strip__empty {
   color: var(--dh-api-muted);
   font-size: 12px;
+}
+
+@media (max-width: 400px) {
+  .cross-asset-status-strip {
+    min-height: 72px;
+  }
 }

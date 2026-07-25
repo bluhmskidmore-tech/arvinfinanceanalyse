@@ -6168,6 +6168,17 @@
     padding: 8px;
   }
 
+  .cross-asset-reference-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .cross-asset-reference-toolbar__title,
+  .cross-asset-reference-toolbar__actions {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
   .cross-asset-drivers-page__panel,
   .cross-asset-decision-hero.moss-page-v2-decision-hero {
     padding: 12px;
@@ -8380,5 +8391,40 @@
   .cross-asset-trend-panel__summary-dot,
   .cross-asset-trend-panel__spinner {
     animation: none;
+  }
+}
+
+/*
+ * Keep the two async data waves from moving already-visible decision content.
+ * Values mirror the settled mock-data geometry at the governed breakpoints.
+ */
+.cross-asset-zone-linkage
+  .moss-page-v2-state-surface[data-state-variant="loading"] {
+  min-height: 520px;
+}
+
+.cross-asset-reference-depth .cross-asset-trend-panel__loading,
+.cross-asset-reference-depth .cross-asset-trend-chart__canvas {
+  height: 300px;
+}
+
+@media (max-width: 1200px) {
+  .cross-asset-zone-linkage
+    .moss-page-v2-state-surface[data-state-variant="loading"] {
+    min-height: 605px;
+  }
+}
+
+@media (max-width: 900px) {
+  .cross-asset-zone-linkage
+    .moss-page-v2-state-surface[data-state-variant="loading"] {
+    min-height: 960px;
+  }
+}
+
+@media (max-width: 400px) {
+  .cross-asset-zone-linkage
+    .moss-page-v2-state-surface[data-state-variant="loading"] {
+    min-height: 1065px;
   }
 }

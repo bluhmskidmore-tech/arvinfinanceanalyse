@@ -157,7 +157,11 @@ export default function CrossAssetDriversPage() {
           <div className="cross-asset-decision-board cross-asset-reference-depth" data-testid="cross-asset-decision-display">
 
             {/* S2b 宏观-债券联动（评分与组合影响），自附录上移 */}
-            <CrossAssetDecisionZone testId="cross-asset-zone-linkage" title="宏观 - 债券联动">
+            <CrossAssetDecisionZone
+              testId="cross-asset-zone-linkage"
+              title="宏观 - 债券联动"
+              className="cross-asset-zone-linkage"
+            >
               <PageAsyncSection
                 title="宏观 - 债券联动（评分与组合影响）"
                 isLoading={macroBondLinkageQuery.isLoading || latestQuery.isLoading}

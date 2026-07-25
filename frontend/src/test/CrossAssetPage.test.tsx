@@ -628,6 +628,7 @@ describe("CrossAssetPage", () => {
     });
     const decisionDisplay = await screen.findByTestId("cross-asset-decision-display");
     const linkageZone = await screen.findByTestId("cross-asset-zone-linkage");
+    expect(linkageZone).toHaveClass("cross-asset-zone-linkage");
     const chainZone = await screen.findByTestId("cross-asset-zone-chain");
     const transmissionZone = await screen.findByTestId("cross-asset-zone-transmission");
     const evidenceZone = await screen.findByTestId("cross-asset-zone-evidence");

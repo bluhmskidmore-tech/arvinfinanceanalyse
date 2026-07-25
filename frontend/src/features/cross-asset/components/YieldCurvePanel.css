@@ -60,6 +60,7 @@
 .yield-curve-panel__chart {
   min-width: 0;
   width: 100%;
+  min-height: 360px;
   position: relative;
   overflow: hidden;
   border-radius: var(--ca-radius, 2px);
@@ -71,9 +72,16 @@
   height: 360px;
 }
 
-.yield-curve-panel__loading,
+.yield-curve-panel__loading {
+  min-height: 360px;
+}
+
 .yield-curve-panel__empty {
   min-height: 120px;
+}
+
+.yield-curve-panel__loading,
+.yield-curve-panel__empty {
   display: flex;
   align-items: center;
   justify-content: center;
