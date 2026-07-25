@@ -3,6 +3,7 @@ import { flushSync } from "react-dom";
 import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
 import { KpiCard } from "../../../components/KpiCard";
 import { toneFromSignedNumber } from "../../workbench/components/kpiFormat";
+import { CrossAssetDecisionAppendix } from "../components/CrossAssetDecisionAppendix";
 import { CrossAssetEventCalendar } from "../components/CrossAssetEventCalendar";
 import { MarketCandidateActions } from "../components/MarketCandidateActions";
 import { PageOutput } from "../components/PageOutput";
@@ -77,6 +78,8 @@ export default function CrossAssetDriversPage() {
     useState<CrossAssetDeferredContentStage>(0);
   const [deferredChartStage, setDeferredChartStage] =
     useState<CrossAssetDeferredChartStage>(0);
+  const [forceAllDeferredContent, setForceAllDeferredContent] =
+    useState(false);
   const deferredContentSentinelRef = useRef<HTMLElement | null>(null);
   const setDeferredContentSentinel = useCallback((node: HTMLElement | null) => {
     deferredContentSentinelRef.current = node;
@@ -143,6 +146,7 @@ export default function CrossAssetDriversPage() {
   const revealAllDeferredContent = useCallback(() => {
     preloadCrossAssetECharts();
     flushSync(() => {
+      setForceAllDeferredContent(true);
       setDeferredContentStage(CROSS_ASSET_FINAL_DEFERRED_CONTENT_STAGE);
       setDeferredChartStage(CROSS_ASSET_FINAL_DEFERRED_CHART_STAGE);
     });
@@ -207,6 +211,7 @@ export default function CrossAssetDriversPage() {
 
     const sentinel = deferredContentSentinelRef.current;
     if (typeof window.IntersectionObserver === "undefined" || !sentinel) {
+      setForceAllDeferredContent(true);
       setDeferredContentStage(CROSS_ASSET_FINAL_DEFERRED_CONTENT_STAGE);
       return undefined;
     }
@@ -654,50 +659,63 @@ export default function CrossAssetDriversPage() {
                 <span>补充复核</span>
                 <strong>A股策略 · NCD 代理 · 结构化输出</strong>
               </summary>
-              {deferredContentStage >= 3 ? (
-              <div className="cross-asset-decision-appendix__body">
-                <LivermoreStrategyStatusPanel
-                  payload={livermoreStrategyPayload}
-                  isLoading={livermoreStrategyQuery.isLoading}
-                  isError={livermoreStrategyQuery.isError}
-                  asOfDate={livermoreAsOfDate}
-                  onManualSubmit={(positions, asOfDate) =>
-                    livermoreManualPositionMutation.mutateAsync({ asOfDate, positions })
-                  }
-                  manualSubmitPending={livermoreManualPositionMutation.isPending}
-                  manualSubmitError={livermoreManualSubmitError}
-                  manualResultRowCount={livermoreManualPositionMutation.data?.row_count ?? null}
-                />
-                <LivermoreSignalConfluencePanel
-                  payload={livermoreSignalConfluencePayload}
-                  isLoading={livermoreSignalConfluenceQuery.isLoading}
-                  isError={livermoreSignalConfluenceQuery.isError}
-                  asOfDate={livermoreStrategyResolvedAsOfDate}
-                />
-                <LivermoreSectorRankPanel
-                  payload={livermoreStrategyPayload?.sector_rank ?? null}
-                  isLoading={livermoreStrategyQuery.isLoading}
-                  isError={livermoreStrategyQuery.isError}
-                />
-                <LivermoreFactorCandidatesPanel
-                  payload={livermoreStrategyPayload?.factor_screen_candidates ?? null}
-                  isLoading={livermoreStrategyQuery.isLoading}
-                  isError={livermoreStrategyQuery.isError}
-                />
-                <NcdProxyEvidencePanel evidence={ncdProxyEvidence} isLoading={ncdFundingProxyQuery.isLoading} />
-                <details open className="cross-asset-structured-output">
-                  <summary>结构化输出与联动摘要</summary>
-                  <div data-testid="cross-asset-page-output">
-                    <PageOutput
-                      envTags={envTags}
-                      signalPreview={env.signal_description ?? null}
-                      linkageWarnings={macroBondLinkageWarnings}
-                      topCorrelationSummary={topCorrelationSummary}
+              <CrossAssetDecisionAppendix
+                enabled={deferredContentStage >= 3}
+                forceMaterialize={forceAllDeferredContent}
+                statusGroup={
+                  <LivermoreStrategyStatusPanel
+                    payload={livermoreStrategyPayload}
+                    isLoading={livermoreStrategyQuery.isLoading}
+                    isError={livermoreStrategyQuery.isError}
+                    asOfDate={livermoreAsOfDate}
+                    onManualSubmit={(positions, asOfDate) =>
+                      livermoreManualPositionMutation.mutateAsync({ asOfDate, positions })
+                    }
+                    manualSubmitPending={livermoreManualPositionMutation.isPending}
+                    manualSubmitError={livermoreManualSubmitError}
+                    manualResultRowCount={livermoreManualPositionMutation.data?.row_count ?? null}
+                  />
+                }
+                confluenceGroup={
+                  <LivermoreSignalConfluencePanel
+                    payload={livermoreSignalConfluencePayload}
+                    isLoading={livermoreSignalConfluenceQuery.isLoading}
+                    isError={livermoreSignalConfluenceQuery.isError}
+                    asOfDate={livermoreStrategyResolvedAsOfDate}
+                  />
+                }
+                sectorRankGroup={
+                  <LivermoreSectorRankPanel
+                    payload={livermoreStrategyPayload?.sector_rank ?? null}
+                    isLoading={livermoreStrategyQuery.isLoading}
+                    isError={livermoreStrategyQuery.isError}
+                  />
+                }
+                finalGroup={
+                  <>
+                    <LivermoreFactorCandidatesPanel
+                      payload={livermoreStrategyPayload?.factor_screen_candidates ?? null}
+                      isLoading={livermoreStrategyQuery.isLoading}
+                      isError={livermoreStrategyQuery.isError}
                     />
-                  </div>
-                </details>
-              </div>
-              ) : null}
+                    <NcdProxyEvidencePanel
+                      evidence={ncdProxyEvidence}
+                      isLoading={ncdFundingProxyQuery.isLoading}
+                    />
+                    <details open className="cross-asset-structured-output">
+                      <summary>结构化输出与联动摘要</summary>
+                      <div data-testid="cross-asset-page-output">
+                        <PageOutput
+                          envTags={envTags}
+                          signalPreview={env.signal_description ?? null}
+                          linkageWarnings={macroBondLinkageWarnings}
+                          topCorrelationSummary={topCorrelationSummary}
+                        />
+                      </div>
+                    </details>
+                  </>
+                }
+              />
             </details>
             </CrossAssetDecisionZone>
           </div>

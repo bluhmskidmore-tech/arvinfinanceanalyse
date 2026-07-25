@@ -206,7 +206,7 @@ describe("CrossAssetPage", () => {
       });
 
       expect(await screen.findByTestId("cross-asset-livermore-status")).toBeInTheDocument();
-      expect(screen.getByTestId("cross-asset-page-output")).toBeInTheDocument();
+      expect(await screen.findByTestId("cross-asset-page-output")).toBeInTheDocument();
     } finally {
       vi.unstubAllGlobals();
     }
@@ -302,8 +302,98 @@ describe("CrossAssetPage", () => {
     }
   });
 
+  it("mounts appendix panels across separate animation frames without resetting the manual draft", async () => {
+    const observer = stubIntersectionObserver();
+    const animationFrames = stubAnimationFrames();
+
+    try {
+      renderPage(createApiClient({ mode: "mock" }));
+
+      await screen.findByTestId("cross-asset-evidence-tape");
+      await act(async () => {
+        observer.triggerAll({ isIntersecting: true });
+      });
+      await screen.findByTestId("cross-asset-evidence-groups");
+      await waitFor(() => expect(observer.observe).toHaveBeenCalledTimes(2));
+
+      await act(async () => {
+        observer.triggerAll({ isIntersecting: true });
+      });
+      await screen.findByTestId("cross-asset-trend-panel");
+      await waitFor(() => expect(animationFrames.pendingCount()).toBeGreaterThan(0));
+      await act(async () => {
+        animationFrames.flushNext();
+      });
+      await waitFor(() => expect(animationFrames.pendingCount()).toBeGreaterThan(0));
+      await act(async () => {
+        animationFrames.flushNext();
+      });
+      await waitFor(() =>
+        expect(screen.queryAllByTestId("cross-asset-echarts-stub")).toHaveLength(2),
+      );
+      await waitFor(() => expect(observer.observe).toHaveBeenCalledTimes(3));
+
+      await act(async () => {
+        observer.triggerAll({ isIntersecting: true });
+      });
+
+      expect(screen.queryByTestId("cross-asset-livermore-status")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("cross-asset-livermore-confluence")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("cross-asset-livermore-sector-rank")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("cross-asset-livermore-factor-candidates")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("cross-asset-ncd-proxy")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("cross-asset-page-output")).not.toBeInTheDocument();
+      await waitFor(() => expect(animationFrames.pendingCount()).toBe(1));
+
+      await act(async () => {
+        animationFrames.flushNext();
+      });
+
+      const statusPanel = await screen.findByTestId("cross-asset-livermore-status");
+      const stockCodeInput = within(statusPanel).getByLabelText("股票代码");
+      fireEvent.change(stockCodeInput, { target: { value: "000001.SZ" } });
+      expect(stockCodeInput).toHaveValue("000001.SZ");
+      expect(screen.queryByTestId("cross-asset-livermore-confluence")).not.toBeInTheDocument();
+      await waitFor(() => expect(animationFrames.pendingCount()).toBe(1));
+
+      await act(async () => {
+        animationFrames.flushNext();
+      });
+
+      expect(await screen.findByTestId("cross-asset-livermore-confluence")).toBeInTheDocument();
+      expect(stockCodeInput).toBeInTheDocument();
+      expect(stockCodeInput).toHaveValue("000001.SZ");
+      expect(screen.queryByTestId("cross-asset-livermore-sector-rank")).not.toBeInTheDocument();
+      await waitFor(() => expect(animationFrames.pendingCount()).toBe(1));
+
+      await act(async () => {
+        animationFrames.flushNext();
+      });
+
+      expect(await screen.findByTestId("cross-asset-livermore-sector-rank")).toBeInTheDocument();
+      expect(stockCodeInput).toBeInTheDocument();
+      expect(stockCodeInput).toHaveValue("000001.SZ");
+      expect(screen.queryByTestId("cross-asset-livermore-factor-candidates")).not.toBeInTheDocument();
+      await waitFor(() => expect(animationFrames.pendingCount()).toBe(1));
+
+      await act(async () => {
+        animationFrames.flushNext();
+      });
+
+      expect(await screen.findByTestId("cross-asset-livermore-factor-candidates")).toBeInTheDocument();
+      expect(screen.getByTestId("cross-asset-ncd-proxy")).toBeInTheDocument();
+      expect(screen.getByTestId("cross-asset-page-output")).toBeInTheDocument();
+      expect(stockCodeInput).toBeInTheDocument();
+      expect(stockCodeInput).toHaveValue("000001.SZ");
+      expect(animationFrames.pendingCount()).toBe(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("materializes the full document when IntersectionObserver is unavailable", async () => {
     vi.stubGlobal("IntersectionObserver", undefined);
+    vi.stubGlobal("requestAnimationFrame", undefined);
 
     try {
       renderPage(createApiClient({ mode: "mock" }));
@@ -311,6 +401,12 @@ describe("CrossAssetPage", () => {
       expect(await screen.findByTestId("cross-asset-evidence-groups")).toBeInTheDocument();
       expect(screen.getByTestId("cross-asset-trend-panel")).toBeInTheDocument();
       expect(screen.getByTestId("cross-asset-livermore-status")).toBeInTheDocument();
+      expect(screen.getByTestId("cross-asset-livermore-confluence")).toBeInTheDocument();
+      expect(screen.getByTestId("cross-asset-livermore-sector-rank")).toBeInTheDocument();
+      expect(screen.getByTestId("cross-asset-livermore-factor-candidates")).toBeInTheDocument();
+      expect(screen.getByTestId("cross-asset-ncd-proxy")).toBeInTheDocument();
+      expect(screen.getByTestId("cross-asset-page-output")).toBeInTheDocument();
+      expect(await screen.findAllByTestId("cross-asset-echarts-stub")).toHaveLength(2);
     } finally {
       vi.unstubAllGlobals();
     }
@@ -359,6 +455,11 @@ describe("CrossAssetPage", () => {
       expect(await screen.findByTestId("cross-asset-evidence-groups")).toBeInTheDocument();
       expect(screen.getByTestId("cross-asset-trend-panel")).toBeInTheDocument();
       expect(screen.getByTestId("cross-asset-livermore-status")).toBeInTheDocument();
+      expect(screen.getByTestId("cross-asset-livermore-confluence")).toBeInTheDocument();
+      expect(screen.getByTestId("cross-asset-livermore-sector-rank")).toBeInTheDocument();
+      expect(screen.getByTestId("cross-asset-livermore-factor-candidates")).toBeInTheDocument();
+      expect(screen.getByTestId("cross-asset-ncd-proxy")).toBeInTheDocument();
+      expect(screen.getByTestId("cross-asset-page-output")).toBeInTheDocument();
       expect(await screen.findAllByTestId("cross-asset-echarts-stub")).toHaveLength(2);
       expect(animationFrames.pendingCount()).toBe(0);
     } finally {
