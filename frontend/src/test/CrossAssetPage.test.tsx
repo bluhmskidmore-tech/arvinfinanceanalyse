@@ -286,7 +286,16 @@ describe("CrossAssetPage", () => {
       await waitFor(() =>
         expect(screen.queryAllByTestId("cross-asset-echarts-stub")).toHaveLength(1),
       );
-      expect(screen.getByTestId("yield-curve-panel-chart-deferred")).toBeInTheDocument();
+      expect(screen.getByTestId("cross-asset-trend-chart-deferred")).toBeInTheDocument();
+      expect(screen.queryByTestId("yield-curve-panel-chart-deferred")).not.toBeInTheDocument();
+      await waitFor(() => expect(animationFrames.pendingCount()).toBeGreaterThan(0));
+
+      await act(async () => {
+        animationFrames.flushNext();
+      });
+
+      expect(screen.queryAllByTestId("cross-asset-echarts-stub")).toHaveLength(1);
+      expect(screen.getByTestId("cross-asset-trend-chart-deferred")).toBeInTheDocument();
       await waitFor(() => expect(animationFrames.pendingCount()).toBeGreaterThan(0));
 
       await act(async () => {
@@ -296,7 +305,55 @@ describe("CrossAssetPage", () => {
       await waitFor(() =>
         expect(screen.queryAllByTestId("cross-asset-echarts-stub")).toHaveLength(2),
       );
-      expect(screen.queryByTestId("yield-curve-panel-chart-deferred")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("cross-asset-trend-chart-deferred")).not.toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("keeps fast stage-three scrolling from co-mounting both ECharts instances", async () => {
+    const observer = stubIntersectionObserver();
+    const animationFrames = stubAnimationFrames();
+
+    try {
+      renderPage(createApiClient({ mode: "mock" }));
+
+      await screen.findByTestId("cross-asset-evidence-tape");
+      await act(async () => {
+        observer.triggerAll({ isIntersecting: true });
+      });
+      await screen.findByTestId("cross-asset-evidence-groups");
+      await waitFor(() => expect(observer.observe).toHaveBeenCalledTimes(2));
+
+      await act(async () => {
+        observer.triggerAll({ isIntersecting: true });
+      });
+      await screen.findByTestId("cross-asset-trend-panel");
+      await waitFor(() => expect(observer.observe).toHaveBeenCalledTimes(3));
+
+      await act(async () => {
+        observer.triggerAll({ isIntersecting: true });
+      });
+
+      let sawSingleChartStage = false;
+      for (let frame = 0; frame < 12; frame += 1) {
+        await waitFor(() => expect(animationFrames.pendingCount()).toBeGreaterThan(0));
+        await act(async () => {
+          animationFrames.flushNext();
+          await Promise.resolve();
+        });
+
+        const chartCount = screen.queryAllByTestId("cross-asset-echarts-stub").length;
+        if (chartCount === 1) {
+          sawSingleChartStage = true;
+        }
+        if (chartCount === 2) {
+          break;
+        }
+      }
+
+      expect(sawSingleChartStage).toBe(true);
+      expect(screen.queryAllByTestId("cross-asset-echarts-stub")).toHaveLength(2);
     } finally {
       vi.unstubAllGlobals();
     }
@@ -320,6 +377,10 @@ describe("CrossAssetPage", () => {
         observer.triggerAll({ isIntersecting: true });
       });
       await screen.findByTestId("cross-asset-trend-panel");
+      await waitFor(() => expect(animationFrames.pendingCount()).toBeGreaterThan(0));
+      await act(async () => {
+        animationFrames.flushNext();
+      });
       await waitFor(() => expect(animationFrames.pendingCount()).toBeGreaterThan(0));
       await act(async () => {
         animationFrames.flushNext();

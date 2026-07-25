@@ -187,19 +187,38 @@ export default function CrossAssetDriversPage() {
     }
 
     const nextChartStage =
-      deferredContentStage >= CROSS_ASSET_FINAL_DEFERRED_CONTENT_STAGE
+      forceAllDeferredContent
         ? CROSS_ASSET_FINAL_DEFERRED_CHART_STAGE
         : ((deferredChartStage + 1) as CrossAssetDeferredChartStage);
+    let finalStageAnimationFrame: number | undefined;
     const animationFrame = window.requestAnimationFrame(() => {
+      if (
+        deferredChartStage === 1 &&
+        nextChartStage === CROSS_ASSET_FINAL_DEFERRED_CHART_STAGE
+      ) {
+        // lazyUpdate paints one frame after mount; leave that frame free before mounting the trend chart.
+        finalStageAnimationFrame = window.requestAnimationFrame(() => {
+          setDeferredChartStage((currentStage) =>
+            Math.max(currentStage, nextChartStage) as CrossAssetDeferredChartStage,
+          );
+        });
+        return;
+      }
       setDeferredChartStage((currentStage) =>
         Math.max(currentStage, nextChartStage) as CrossAssetDeferredChartStage,
       );
     });
 
-    return () => window.cancelAnimationFrame(animationFrame);
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      if (finalStageAnimationFrame !== undefined) {
+        window.cancelAnimationFrame(finalStageAnimationFrame);
+      }
+    };
   }, [
     deferredChartStage,
     deferredContentStage,
+    forceAllDeferredContent,
     visibleTrendOption,
     yieldCurves.families,
   ]);
@@ -569,7 +588,7 @@ export default function CrossAssetDriversPage() {
                   </div>
                 ) : visibleTrendOption ? (
                   <div className="cross-asset-trend-chart">
-                    {deferredChartStage >= 1 ? (
+                    {deferredChartStage >= CROSS_ASSET_FINAL_DEFERRED_CHART_STAGE ? (
                       <Suspense
                         fallback={
                           <div
@@ -610,7 +629,7 @@ export default function CrossAssetDriversPage() {
               <YieldCurvePanel
                 curves={yieldCurves}
                 loading={latestQuery.isLoading}
-                chartEnabled={deferredChartStage >= CROSS_ASSET_FINAL_DEFERRED_CHART_STAGE}
+                chartEnabled={deferredChartStage >= 1}
               />
             </div>
 
