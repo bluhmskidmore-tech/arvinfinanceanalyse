@@ -124,6 +124,40 @@ function stubIntersectionObserver(): MockIntersectionObserver {
   return observer;
 }
 
+function stubAnimationFrames() {
+  let nextHandle = 1;
+  const callbacks = new Map<number, FrameRequestCallback>();
+  const requestAnimationFrame = vi.fn((callback: FrameRequestCallback) => {
+    const handle = nextHandle;
+    nextHandle += 1;
+    callbacks.set(handle, callback);
+    return handle;
+  });
+  const cancelAnimationFrame = vi.fn((handle: number) => {
+    callbacks.delete(handle);
+  });
+
+  vi.stubGlobal("requestAnimationFrame", requestAnimationFrame);
+  vi.stubGlobal("cancelAnimationFrame", cancelAnimationFrame);
+
+  return {
+    flushNext() {
+      const next = callbacks.entries().next().value as
+        | [number, FrameRequestCallback]
+        | undefined;
+      if (!next) {
+        throw new Error("No animation frame is pending.");
+      }
+      const [handle, callback] = next;
+      callbacks.delete(handle);
+      callback(performance.now());
+    },
+    pendingCount() {
+      return callbacks.size;
+    },
+  };
+}
+
 describe("CrossAssetPage", () => {
   it("mounts below-fold evidence, observation, and appendix bodies one stage at a time", async () => {
     const observer = stubIntersectionObserver();
@@ -221,6 +255,53 @@ describe("CrossAssetPage", () => {
     }
   });
 
+  it("mounts the two ECharts instances across separate animation frames", async () => {
+    const observer = stubIntersectionObserver();
+    const animationFrames = stubAnimationFrames();
+
+    try {
+      renderPage(createApiClient({ mode: "mock" }));
+
+      await screen.findByTestId("cross-asset-evidence-tape");
+      await act(async () => {
+        observer.triggerAll({ isIntersecting: true });
+      });
+      await screen.findByTestId("cross-asset-evidence-groups");
+      await waitFor(() => expect(observer.observe).toHaveBeenCalledTimes(2));
+
+      await act(async () => {
+        observer.triggerAll({ isIntersecting: true });
+      });
+
+      expect(await screen.findByTestId("cross-asset-trend-panel")).toBeInTheDocument();
+      expect(await screen.findByTestId("cross-asset-trend-chart-deferred")).toBeInTheDocument();
+      expect(await screen.findByTestId("yield-curve-panel-chart-deferred")).toBeInTheDocument();
+      expect(screen.queryAllByTestId("cross-asset-echarts-stub")).toHaveLength(0);
+      await waitFor(() => expect(animationFrames.pendingCount()).toBeGreaterThan(0));
+
+      await act(async () => {
+        animationFrames.flushNext();
+      });
+
+      await waitFor(() =>
+        expect(screen.queryAllByTestId("cross-asset-echarts-stub")).toHaveLength(1),
+      );
+      expect(screen.getByTestId("yield-curve-panel-chart-deferred")).toBeInTheDocument();
+      await waitFor(() => expect(animationFrames.pendingCount()).toBeGreaterThan(0));
+
+      await act(async () => {
+        animationFrames.flushNext();
+      });
+
+      await waitFor(() =>
+        expect(screen.queryAllByTestId("cross-asset-echarts-stub")).toHaveLength(2),
+      );
+      expect(screen.queryByTestId("yield-curve-panel-chart-deferred")).not.toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("materializes the full document when IntersectionObserver is unavailable", async () => {
     vi.stubGlobal("IntersectionObserver", undefined);
 
@@ -253,6 +334,7 @@ describe("CrossAssetPage", () => {
     ],
   ])("materializes the full cross-asset document before %s", async (_label, revealDocument) => {
     stubIntersectionObserver();
+    const animationFrames = stubAnimationFrames();
     const client = createApiClient({ mode: "mock" });
     const linkageSpy = vi.spyOn(client, "getMacroBondLinkageAnalysis");
     const calendarSpy = vi.spyOn(client, "getResearchCalendarEvents");
@@ -277,6 +359,8 @@ describe("CrossAssetPage", () => {
       expect(await screen.findByTestId("cross-asset-evidence-groups")).toBeInTheDocument();
       expect(screen.getByTestId("cross-asset-trend-panel")).toBeInTheDocument();
       expect(screen.getByTestId("cross-asset-livermore-status")).toBeInTheDocument();
+      expect(await screen.findAllByTestId("cross-asset-echarts-stub")).toHaveLength(2);
+      expect(animationFrames.pendingCount()).toBe(0);
     } finally {
       vi.unstubAllGlobals();
     }

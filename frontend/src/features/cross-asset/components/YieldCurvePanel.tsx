@@ -20,9 +20,11 @@ function compactDate(value: string): string {
 export function YieldCurvePanel({
   curves,
   loading = false,
+  chartEnabled = true,
 }: {
   curves: YieldCurveSeriesResult;
   loading?: boolean;
+  chartEnabled?: boolean;
 }) {
   // Only consumed by the cross-asset drivers page, which is pinned to the terminal theme.
   const option = useMemo(() => buildYieldCurveOption(curves, "terminal"), [curves]);
@@ -56,24 +58,34 @@ export function YieldCurvePanel({
         </div>
       ) : option ? (
         <div className="yield-curve-panel__chart" data-testid="yield-curve-panel-chart">
-          <Suspense
-            fallback={
-              <div
-                className="yield-curve-panel__loading"
-                data-testid="yield-curve-panel-chart-loading"
-              >
-                <div className="yield-curve-panel__spinner" />
-                正在加载图表资源…
-              </div>
-            }
-          >
-            <LazyCrossAssetECharts
-              option={option}
-              className="yield-curve-panel__canvas"
-              notMerge
-              lazyUpdate
-            />
-          </Suspense>
+          {chartEnabled ? (
+            <Suspense
+              fallback={
+                <div
+                  className="yield-curve-panel__loading"
+                  data-testid="yield-curve-panel-chart-loading"
+                >
+                  <div className="yield-curve-panel__spinner" />
+                  正在加载图表资源…
+                </div>
+              }
+            >
+              <LazyCrossAssetECharts
+                option={option}
+                className="yield-curve-panel__canvas"
+                notMerge
+                lazyUpdate
+              />
+            </Suspense>
+          ) : (
+            <div
+              className="yield-curve-panel__loading"
+              data-testid="yield-curve-panel-chart-deferred"
+            >
+              <div className="yield-curve-panel__spinner" />
+              正在准备图表…
+            </div>
+          )}
         </div>
       ) : (
         <div className="yield-curve-panel__empty" data-testid="yield-curve-panel-empty">

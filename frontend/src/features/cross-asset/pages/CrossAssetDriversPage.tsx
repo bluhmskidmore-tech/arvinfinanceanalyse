@@ -68,11 +68,15 @@ import {
 
 const CROSS_ASSET_DEFERRED_CONTENT_ROOT_MARGIN = "800px 0px";
 const CROSS_ASSET_FINAL_DEFERRED_CONTENT_STAGE = 3;
+const CROSS_ASSET_FINAL_DEFERRED_CHART_STAGE = 2;
 type CrossAssetDeferredContentStage = 0 | 1 | 2 | 3;
+type CrossAssetDeferredChartStage = 0 | 1 | 2;
 
 export default function CrossAssetDriversPage() {
   const [deferredContentStage, setDeferredContentStage] =
     useState<CrossAssetDeferredContentStage>(0);
+  const [deferredChartStage, setDeferredChartStage] =
+    useState<CrossAssetDeferredChartStage>(0);
   const deferredContentSentinelRef = useRef<HTMLElement | null>(null);
   const setDeferredContentSentinel = useCallback((node: HTMLElement | null) => {
     deferredContentSentinelRef.current = node;
@@ -138,7 +142,10 @@ export default function CrossAssetDriversPage() {
   const reportDate = crossAssetDataDate || linkageReportDate;
   const revealAllDeferredContent = useCallback(() => {
     preloadCrossAssetECharts();
-    flushSync(() => setDeferredContentStage(CROSS_ASSET_FINAL_DEFERRED_CONTENT_STAGE));
+    flushSync(() => {
+      setDeferredContentStage(CROSS_ASSET_FINAL_DEFERRED_CONTENT_STAGE);
+      setDeferredChartStage(CROSS_ASSET_FINAL_DEFERRED_CHART_STAGE);
+    });
     if (linkageReportDate) {
       void researchCalendarQuery.refetch();
     }
@@ -157,6 +164,41 @@ export default function CrossAssetDriversPage() {
       preloadCrossAssetECharts();
     }
   }, [deferredContentStage]);
+
+  useEffect(() => {
+    const hasRenderableChart =
+      Boolean(visibleTrendOption) ||
+      yieldCurves.families.some((family) => family.pointCount > 0);
+    if (
+      deferredContentStage < 2 ||
+      deferredChartStage >= CROSS_ASSET_FINAL_DEFERRED_CHART_STAGE ||
+      !hasRenderableChart
+    ) {
+      return undefined;
+    }
+
+    if (typeof window.requestAnimationFrame !== "function") {
+      setDeferredChartStage(CROSS_ASSET_FINAL_DEFERRED_CHART_STAGE);
+      return undefined;
+    }
+
+    const nextChartStage =
+      deferredContentStage >= CROSS_ASSET_FINAL_DEFERRED_CONTENT_STAGE
+        ? CROSS_ASSET_FINAL_DEFERRED_CHART_STAGE
+        : ((deferredChartStage + 1) as CrossAssetDeferredChartStage);
+    const animationFrame = window.requestAnimationFrame(() => {
+      setDeferredChartStage((currentStage) =>
+        Math.max(currentStage, nextChartStage) as CrossAssetDeferredChartStage,
+      );
+    });
+
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [
+    deferredChartStage,
+    deferredContentStage,
+    visibleTrendOption,
+    yieldCurves.families,
+  ]);
 
   useEffect(() => {
     if (deferredContentStage >= CROSS_ASSET_FINAL_DEFERRED_CONTENT_STAGE) {
@@ -522,24 +564,34 @@ export default function CrossAssetDriversPage() {
                   </div>
                 ) : visibleTrendOption ? (
                   <div className="cross-asset-trend-chart">
-                    <Suspense
-                      fallback={
-                        <div
-                          className="cross-asset-trend-panel__loading"
-                          data-testid="cross-asset-trend-chart-loading"
-                        >
-                          <div className="cross-asset-trend-panel__spinner" />
-                          正在加载图表资源…
-                        </div>
-                      }
-                    >
-                      <LazyCrossAssetECharts
-                        option={visibleTrendOption}
-                        className="cross-asset-trend-chart__canvas"
-                        notMerge
-                        lazyUpdate
-                      />
-                    </Suspense>
+                    {deferredChartStage >= 1 ? (
+                      <Suspense
+                        fallback={
+                          <div
+                            className="cross-asset-trend-panel__loading"
+                            data-testid="cross-asset-trend-chart-loading"
+                          >
+                            <div className="cross-asset-trend-panel__spinner" />
+                            正在加载图表资源…
+                          </div>
+                        }
+                      >
+                        <LazyCrossAssetECharts
+                          option={visibleTrendOption}
+                          className="cross-asset-trend-chart__canvas"
+                          notMerge
+                          lazyUpdate
+                        />
+                      </Suspense>
+                    ) : (
+                      <div
+                        className="cross-asset-trend-panel__loading"
+                        data-testid="cross-asset-trend-chart-deferred"
+                      >
+                        <div className="cross-asset-trend-panel__spinner" />
+                        正在准备图表…
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="cross-asset-trend-panel__empty">
@@ -550,7 +602,11 @@ export default function CrossAssetDriversPage() {
             </div>
 
             <div data-testid="cross-asset-yield-curve-slot" className="cross-asset-yield-curve-slot">
-              <YieldCurvePanel curves={yieldCurves} loading={latestQuery.isLoading} />
+              <YieldCurvePanel
+                curves={yieldCurves}
+                loading={latestQuery.isLoading}
+                chartEnabled={deferredChartStage >= CROSS_ASSET_FINAL_DEFERRED_CHART_STAGE}
+              />
             </div>
 
             <div className="cross-asset-observation-support-grid" data-testid="cross-asset-observation-support-grid">
