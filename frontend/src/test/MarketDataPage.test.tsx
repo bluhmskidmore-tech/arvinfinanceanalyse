@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 
@@ -105,6 +105,30 @@ function renderPageWithQueryClient(client: ApiClient) {
   return { ...result, queryClient };
 }
 
+function stubIntersectionObserver() {
+  const callbacks: IntersectionObserverCallback[] = [];
+  const observe = vi.fn();
+  const disconnect = vi.fn();
+  const MockObserver = vi.fn(function MockIntersectionObserver(callback: IntersectionObserverCallback) {
+    callbacks.push(callback);
+    return { observe, disconnect };
+  });
+  vi.stubGlobal("IntersectionObserver", MockObserver);
+
+  return {
+    observe,
+    disconnect,
+    triggerAll(isIntersecting: boolean) {
+      for (const callback of callbacks) {
+        callback(
+          [{ isIntersecting } as IntersectionObserverEntry],
+          {} as IntersectionObserver,
+        );
+      }
+    },
+  };
+}
+
 async function expandMarketDataLivermoreCollapse() {
   const collapse = await screen.findByTestId("market-data-livermore-collapse");
   const header = collapse.querySelector(".ant-collapse-header");
@@ -165,6 +189,8 @@ function buildMacroPoint(
 describe("MarketDataPage", () => {
   afterEach(() => {
     vi.mocked(runPollingTask).mockReset();
+    vi.unstubAllGlobals();
+    window.history.replaceState(null, "", window.location.pathname);
   });
 
   it("keeps the page stylesheet on tokens instead of raw color or shadow debt", () => {
@@ -709,6 +735,119 @@ describe("MarketDataPage", () => {
     expect(hero).toContainElement(kpiBand);
   });
 
+  it("keeps below-fold workspaces unmounted until their observer activates", async () => {
+    const observer = stubIntersectionObserver();
+
+    const base = createApiClient({ mode: "mock" });
+    const getLivermoreStrategy = vi.fn((options?: { asOfDate?: string }) =>
+      base.getLivermoreStrategy(options),
+    );
+
+    renderPage({ ...base, getLivermoreStrategy });
+
+    expect(await screen.findByTestId("market-data-hero")).toBeInTheDocument();
+    await waitFor(() => expect(observer.observe).toHaveBeenCalledTimes(3));
+    expect(screen.queryByTestId("market-data-source-pending-deck")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("market-data-supplementary-series-section")).not.toBeInTheDocument();
+    expect(getLivermoreStrategy).not.toHaveBeenCalled();
+
+    act(() => {
+      observer.triggerAll(true);
+    });
+
+    expect(await screen.findByTestId("market-data-source-pending-deck")).toBeInTheDocument();
+    expect(await screen.findByTestId("market-data-supplementary-series-section")).toBeInTheDocument();
+    await waitFor(() => expect(getLivermoreStrategy).toHaveBeenCalledTimes(1));
+  });
+
+  it.each([
+    {
+      label: "printing",
+      reveal: () => window.dispatchEvent(new Event("beforeprint")),
+    },
+    {
+      label: "native page search",
+      reveal: () =>
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: "f", ctrlKey: true })),
+    },
+  ])("materializes below-fold workspaces for $label", async ({ reveal }) => {
+    stubIntersectionObserver();
+    renderPage(createApiClient({ mode: "mock" }));
+
+    expect(await screen.findByTestId("market-data-hero")).toBeInTheDocument();
+    expect(screen.queryByTestId("market-data-source-pending-deck")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("market-data-supplementary-series-section")).not.toBeInTheDocument();
+
+    act(() => {
+      reveal();
+    });
+
+    expect(await screen.findByTestId("market-data-source-pending-deck")).toBeInTheDocument();
+    expect(await screen.findByTestId("market-data-supplementary-series-section")).toBeInTheDocument();
+  });
+
+  it("materializes the supplementary section for a direct macro-series deep link", async () => {
+    stubIntersectionObserver();
+    window.location.hash = "#market-data-macro-series";
+
+    const originalScrollIntoView = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+
+    try {
+      renderPage(createApiClient({ mode: "mock" }));
+
+      expect(await screen.findByTestId("market-data-supplementary-macro-body")).toBeInTheDocument();
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    } finally {
+      if (originalScrollIntoView) {
+        Object.defineProperty(HTMLElement.prototype, "scrollIntoView", originalScrollIntoView);
+      } else {
+        delete (HTMLElement.prototype as { scrollIntoView?: typeof HTMLElement.prototype.scrollIntoView })
+          .scrollIntoView;
+      }
+    }
+  });
+
+  it("materializes the supplementary section after a post-mount macro-series hashchange", async () => {
+    stubIntersectionObserver();
+    const originalScrollIntoView = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+
+    try {
+      renderPage(createApiClient({ mode: "mock" }));
+
+      expect(await screen.findByTestId("market-data-hero")).toBeInTheDocument();
+      expect(screen.queryByTestId("market-data-supplementary-series-section")).not.toBeInTheDocument();
+
+      act(() => {
+        window.history.replaceState(
+          null,
+          "",
+          `${window.location.pathname}#market-data-macro-series`,
+        );
+        window.dispatchEvent(new HashChangeEvent("hashchange"));
+      });
+
+      expect(await screen.findByTestId("market-data-supplementary-series-section")).toBeInTheDocument();
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    } finally {
+      if (originalScrollIntoView) {
+        Object.defineProperty(HTMLElement.prototype, "scrollIntoView", originalScrollIntoView);
+      } else {
+        delete (HTMLElement.prototype as { scrollIntoView?: typeof HTMLElement.prototype.scrollIntoView })
+          .scrollIntoView;
+      }
+    }
+  });
+
   it("keeps FX formal status collapsed by default and renders rows after expand", async () => {
     renderPage(createApiClient({ mode: "mock" }));
 
@@ -757,7 +896,8 @@ describe("MarketDataPage", () => {
     expect(screen.getByTestId("market-data-linkage-liquidity-score")).toHaveTextContent("进入综合分时取反");
   });
 
-  it("keeps Livermore deferred until the collapse is expanded", async () => {
+  it("loads Livermore when explicitly expanded before its viewport observer activates", async () => {
+    stubIntersectionObserver();
     const base = createApiClient({ mode: "mock" });
     const getLivermoreStrategy = vi.fn(() => base.getLivermoreStrategy());
 

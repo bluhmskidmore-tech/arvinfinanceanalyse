@@ -20,6 +20,7 @@ import { Alert, Button, Checkbox, Select, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { cardVariants } from "@heroui/styles";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { flushSync } from "react-dom";
 
 import { runPollingTask } from "../../../app/jobs/polling";
 import { useApiClient } from "../../../api/clientContext";
@@ -138,9 +139,36 @@ const COMMITTEE_EVIDENCE_SCRIPT_PRIORITY = [
 ] as const;
 const MACRO_TOOLKIT_ANALYSIS_KIND = "macro_toolkit.analysis";
 const MACRO_TOOLKIT_UI_RULE_VERSION = "rv_macro_toolkit_ui_v1";
+const MACRO_TOOLKIT_DEFERRED_CONTENT_ROOT_MARGIN = "800px 0px";
 const MACRO_TOOLKIT_READ_STALE_MS = 60_000;
 const MACRO_TOOLKIT_FULL_PREFETCH_DELAY_MS = 1_500;
 const MACRO_TOOLKIT_CRISIS_SCORE_HISTORY_LIMIT = 430;
+const MACRO_TOOLKIT_FINAL_DEFERRED_CONTENT_STAGE = 8;
+type MacroToolkitDeferredContentStage = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+
+const MACRO_TOOLKIT_DEFERRED_TARGET_STAGES: Record<
+  string,
+  MacroToolkitDeferredContentStage
+> = {
+  "#macro-toolkit-operations-actions": 1,
+  "#macro-toolkit-operations-console": 1,
+  "#macro-toolkit-analysis-detail": 2,
+  "#macro-toolkit-data-health-detail": 2,
+  "#macro-toolkit-evidence-book": 2,
+  "#macro-toolkit-model-readiness-detail": 3,
+  "#macro-toolkit-crisis-detail": 4,
+  "#macro-toolkit-strategy-detail": 6,
+  "#macro-toolkit-tool-execution-detail": 8,
+  "#macro-toolkit-cffex-detail": 8,
+  "#macro-toolkit-commodity-detail": 8,
+  "#macro-toolkit-script-artifact-detail": 8,
+};
+
+function macroToolkitDeferredContentStageForHref(
+  href: string,
+): MacroToolkitDeferredContentStage | null {
+  return MACRO_TOOLKIT_DEFERRED_TARGET_STAGES[href] ?? null;
+}
 const MACRO_TOOLKIT_FULL_ANALYSIS_QUERY_KEY = [
   "macro-toolkit",
   "analysis",
@@ -517,9 +545,17 @@ function formatQualityFlagLabel(flag: string | null | undefined) {
 
 function governanceFocusFromEvidenceHref(href: string): MacroToolkitGovernanceFocusKey {
   if (href === "#macro-toolkit-data-health-detail") return "data-health";
-  if (href === "#macro-toolkit-tool-execution-detail") return "execution";
-  if (href === "#macro-toolkit-strategy-detail") return "execution";
-  if (href === "#macro-toolkit-operations-actions") return "execution";
+  if (
+    href === "#macro-toolkit-tool-execution-detail" ||
+    href === "#macro-toolkit-cffex-detail" ||
+    href === "#macro-toolkit-commodity-detail" ||
+    href === "#macro-toolkit-script-artifact-detail" ||
+    href === "#macro-toolkit-strategy-detail" ||
+    href === "#macro-toolkit-operations-actions" ||
+    href === "#macro-toolkit-operations-console"
+  ) {
+    return "execution";
+  }
   return "evidence";
 }
 
@@ -1165,6 +1201,24 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   const client = useApiClient();
   const queryClient = useQueryClient();
   const showOperations = mode === "toolkit";
+  const deferredContentSentinelRef = useRef<HTMLDivElement | null>(null);
+  const [deferredContentStage, setDeferredContentStage] =
+    useState<MacroToolkitDeferredContentStage>(() =>
+      !showOperations
+        ? MACRO_TOOLKIT_FINAL_DEFERRED_CONTENT_STAGE
+        : typeof window !== "undefined"
+          ? (macroToolkitDeferredContentStageForHref(window.location.hash) ?? 0)
+          : 0,
+  );
+  const [pendingDeferredHashTarget, setPendingDeferredHashTarget] = useState<
+    string | null
+  >(() =>
+    showOperations &&
+    typeof window !== "undefined" &&
+    macroToolkitDeferredContentStageForHref(window.location.hash) !== null
+      ? window.location.hash
+      : null,
+  );
   const [selectedGroup, setSelectedGroup] = useState("all");
   const [selectedName, setSelectedName] = useState<string | null>(null);
   const [selectedGovernanceFocus, setSelectedGovernanceFocus] =
@@ -1175,7 +1229,12 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   const [confirmedReceiptIds, setConfirmedReceiptIds] = useState<Set<string>>(() => new Set());
   const [selectedEvidenceHref, setSelectedEvidenceHref] = useState<string | null>(null);
   const [selectedExecutionHref, setSelectedExecutionHref] = useState<string | null>(null);
-  const [receiptTechnicalDetailsExpanded, setReceiptTechnicalDetailsExpanded] = useState(false);
+  const [receiptTechnicalDetailsExpanded, setReceiptTechnicalDetailsExpanded] = useState(
+    () =>
+      showOperations &&
+      typeof window !== "undefined" &&
+      window.location.hash === "#macro-toolkit-script-artifact-detail",
+  );
   const [focusedRepairKey, setFocusedRepairKey] = useState<string | null>(null);
   const [committeeActionLocatorKey, setCommitteeActionLocatorKey] = useState<string | null>(null);
   const [committeePackReceiptCopyStatus, setCommitteePackReceiptCopyStatus] = useState<"idle" | "success" | "error">("idle");
@@ -1214,6 +1273,226 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     useState<ApiEnvelope<MacroToolkitAnalysisPayload> | null>(null);
   const [fullAnalysisError, setFullAnalysisError] = useState<string | null>(null);
   const [isLoadingFullAnalysis, setIsLoadingFullAnalysis] = useState(false);
+
+  const revealAllDeferredContent = useCallback(() => {
+    if (!showOperations) {
+      return;
+    }
+    setDeferredContentStage(MACRO_TOOLKIT_FINAL_DEFERRED_CONTENT_STAGE);
+    setReceiptTechnicalDetailsExpanded(true);
+  }, [showOperations]);
+
+  useEffect(() => {
+    if (!showOperations) {
+      return undefined;
+    }
+    const handleBeforePrint = () => {
+      flushSync(revealAllDeferredContent);
+    };
+    window.addEventListener("beforeprint", handleBeforePrint);
+    return () => window.removeEventListener("beforeprint", handleBeforePrint);
+  }, [revealAllDeferredContent, showOperations]);
+
+  useEffect(() => {
+    if (
+      !showOperations ||
+      deferredContentStage >= MACRO_TOOLKIT_FINAL_DEFERRED_CONTENT_STAGE
+    ) {
+      return undefined;
+    }
+
+    const sentinel = deferredContentSentinelRef.current;
+    if (typeof window.IntersectionObserver === "undefined" || !sentinel) {
+      setDeferredContentStage(MACRO_TOOLKIT_FINAL_DEFERRED_CONTENT_STAGE);
+      return undefined;
+    }
+
+    const nextStage = (deferredContentStage + 1) as MacroToolkitDeferredContentStage;
+    const observer = new window.IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting || entry.intersectionRatio > 0)) {
+          setDeferredContentStage((currentStage) =>
+            Math.max(currentStage, nextStage) as MacroToolkitDeferredContentStage,
+          );
+          observer.disconnect();
+        }
+      },
+      {
+        rootMargin:
+          deferredContentStage === MACRO_TOOLKIT_FINAL_DEFERRED_CONTENT_STAGE - 1
+            ? "0px"
+            : MACRO_TOOLKIT_DEFERRED_CONTENT_ROOT_MARGIN,
+        threshold: 0.01,
+      },
+    );
+    observer.observe(sentinel);
+
+    return () => observer.disconnect();
+  }, [deferredContentStage, showOperations]);
+
+  const revealDeferredContentForHref = useCallback(
+    (href: string | null) => {
+      if (!showOperations || !href) {
+        return;
+      }
+      const requestedStage = macroToolkitDeferredContentStageForHref(href);
+      if (requestedStage === null) {
+        return;
+      }
+      if (href === "#macro-toolkit-script-artifact-detail") {
+        setReceiptTechnicalDetailsExpanded(true);
+      }
+      setDeferredContentStage((currentStage) =>
+        Math.max(currentStage, requestedStage) as MacroToolkitDeferredContentStage,
+      );
+    },
+    [showOperations],
+  );
+
+  const syncDeferredContentSelectionForHref = useCallback((href: string) => {
+    if (macroToolkitDeferredContentStageForHref(href) === null) {
+      return;
+    }
+    if (
+      href === "#macro-toolkit-operations-actions" ||
+      href === "#macro-toolkit-operations-console"
+    ) {
+      setSelectedExecutionHref(href);
+    } else {
+      setSelectedEvidenceHref(href);
+    }
+    setSelectedGovernanceFocus(governanceFocusFromEvidenceHref(href));
+  }, []);
+
+  useEffect(() => {
+    revealDeferredContentForHref(selectedExecutionHref);
+    revealDeferredContentForHref(selectedEvidenceHref);
+  }, [
+    revealDeferredContentForHref,
+    selectedEvidenceHref,
+    selectedExecutionHref,
+  ]);
+
+  useEffect(() => {
+    if (!showOperations) {
+      return undefined;
+    }
+    const revealHashTarget = () => {
+      const href = window.location.hash;
+      setPendingDeferredHashTarget(
+        macroToolkitDeferredContentStageForHref(href) !== null ? href : null,
+      );
+      syncDeferredContentSelectionForHref(href);
+      revealDeferredContentForHref(href);
+    };
+    revealHashTarget();
+    window.addEventListener("hashchange", revealHashTarget);
+    return () => window.removeEventListener("hashchange", revealHashTarget);
+  }, [
+    revealDeferredContentForHref,
+    showOperations,
+    syncDeferredContentSelectionForHref,
+  ]);
+
+  useEffect(() => {
+    if (
+      !showOperations ||
+      !pendingDeferredHashTarget?.startsWith("#macro-toolkit-")
+    ) {
+      return undefined;
+    }
+    const requestedStage = macroToolkitDeferredContentStageForHref(
+      pendingDeferredHashTarget,
+    );
+    if (
+      requestedStage === null ||
+      deferredContentStage < requestedStage ||
+      (pendingDeferredHashTarget === "#macro-toolkit-script-artifact-detail" &&
+        !receiptTechnicalDetailsExpanded)
+    ) {
+      return undefined;
+    }
+
+    let frame: number | null = null;
+    const scrollToHashTarget = () => {
+      const target = document.getElementById(pendingDeferredHashTarget.slice(1));
+      if (typeof target?.scrollIntoView !== "function") {
+        return false;
+      }
+      target.scrollIntoView({ block: "start", inline: "nearest" });
+      setPendingDeferredHashTarget((currentTarget) =>
+        currentTarget === pendingDeferredHashTarget ? null : currentTarget,
+      );
+      return true;
+    };
+    const scheduleScroll = () => {
+      if (typeof window.requestAnimationFrame === "function") {
+        frame = window.requestAnimationFrame(() => {
+          scrollToHashTarget();
+        });
+        return;
+      }
+      scrollToHashTarget();
+    };
+    if (document.getElementById(pendingDeferredHashTarget.slice(1))) {
+      scheduleScroll();
+      return () => {
+        if (frame !== null) {
+          window.cancelAnimationFrame(frame);
+        }
+      };
+    }
+    if (typeof window.MutationObserver === "undefined") {
+      scheduleScroll();
+      return undefined;
+    }
+    const observer = new window.MutationObserver(() => {
+      if (!document.getElementById(pendingDeferredHashTarget.slice(1))) {
+        return;
+      }
+      observer.disconnect();
+      scheduleScroll();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => {
+      observer.disconnect();
+      if (frame !== null) {
+        window.cancelAnimationFrame(frame);
+      }
+    };
+  }, [
+    deferredContentStage,
+    pendingDeferredHashTarget,
+    receiptTechnicalDetailsExpanded,
+    showOperations,
+  ]);
+
+  const handleDeferredContentLinkClick = useCallback(
+    (event: ReactMouseEvent<HTMLElement>) => {
+      if (!showOperations) {
+        return;
+      }
+      const target = event.target;
+      const anchor =
+        target instanceof Element
+          ? target.closest<HTMLAnchorElement>('a[href^="#macro-toolkit-"]')
+          : null;
+      if (anchor) {
+        const href = anchor.getAttribute("href");
+        if (!href || macroToolkitDeferredContentStageForHref(href) === null) {
+          return;
+        }
+        setPendingDeferredHashTarget(href);
+        syncDeferredContentSelectionForHref(href);
+        revealDeferredContentForHref(href);
+      }
+    },
+    [
+      revealDeferredContentForHref,
+      showOperations,
+      syncDeferredContentSelectionForHref,
+    ],
+  );
 
   const analysisQuery = useQuery({
     queryKey: ["macro-toolkit", "analysis"],
@@ -4639,6 +4918,22 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
               >
                 刷新注册表
               </Button>
+              <Button
+                className="macro-toolkit-page__dh-topbar-btn"
+                data-testid="macro-toolkit-expand-all-content"
+                icon={<ArrowDownOutlined />}
+                aria-label="展开全部内容以便页内搜索或打印"
+                disabled={
+                  deferredContentStage >= MACRO_TOOLKIT_FINAL_DEFERRED_CONTENT_STAGE &&
+                  receiptTechnicalDetailsExpanded
+                }
+                onClick={revealAllDeferredContent}
+              >
+                {deferredContentStage >= MACRO_TOOLKIT_FINAL_DEFERRED_CONTENT_STAGE &&
+                receiptTechnicalDetailsExpanded
+                  ? "已展开全部"
+                  : "展开全部"}
+              </Button>
             </>
           ) : null}
         </div>
@@ -4649,7 +4944,10 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
         </p>
       </header>
 
-      <main className={`${MT_SHELL_MAIN} macro-toolkit-page__main`}>
+      <main
+        className={`${MT_SHELL_MAIN} macro-toolkit-page__main`}
+        onClickCapture={handleDeferredContentLinkClick}
+      >
       <section
         data-testid="macro-toolkit-tailwind-cockpit"
         className={MACRO_TOOLKIT_HERO_CARD_SLOTS.base({
@@ -4764,6 +5062,17 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
         </div>
       </section>
 
+      {showOperations && deferredContentStage === 0 ? (
+        <div
+          ref={deferredContentSentinelRef}
+          className="macro-toolkit-deferred-content-sentinel"
+          data-testid="macro-toolkit-deferred-content-sentinel"
+          aria-hidden="true"
+        />
+      ) : null}
+
+      {!showOperations || deferredContentStage >= 1 ? (
+        <>
       {showOperations ? (
         <section className="macro-toolkit-operations-band" aria-label="宏观工具操作与治理区">
           <div className="macro-toolkit-committee-workspace" aria-label="投委会提交作业区">
@@ -4874,7 +5183,19 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       ) : null}
 
       {analysis ? <MacroToolkitReportBundlePanel bundle={analysis.report_bundle} /> : null}
+        </>
+      ) : null}
 
+      {showOperations && deferredContentStage === 1 ? (
+        <div
+          ref={deferredContentSentinelRef}
+          className="macro-toolkit-deferred-content-sentinel"
+          data-testid="macro-toolkit-evidence-deferred-content-sentinel"
+          aria-hidden="true"
+        />
+      ) : null}
+
+      {!showOperations || deferredContentStage >= 2 ? (
       <div className="macro-toolkit-page__content">
       {analysisQuery.isError ? (
         <Alert type="error" showIcon message="宏观分析结果加载失败" />
@@ -4999,6 +5320,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
             >
           {showOperations ? (
             <section
+              id="macro-toolkit-evidence-book"
               className="macro-toolkit-evidence-book"
               data-testid="macro-toolkit-evidence-book"
               aria-label="宏观工具证据复核总账"
@@ -5362,15 +5684,27 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
 
           {showOperations ? (
             <>
-              {hasonStrategySection}
-              {analysisWarningsAlert}
-              {signalSection}
-              {modelSignalMatrixSection}
-              {crisisEvidenceSection}
-              {riskSection}
-              {indicatorSection}
-              {capabilityResultsSection}
-              {strategySection}
+              {deferredContentStage >= 3 ? (
+                <>
+                  {hasonStrategySection}
+                  {analysisWarningsAlert}
+                  {signalSection}
+                  {modelSignalMatrixSection}
+                </>
+              ) : null}
+              {deferredContentStage >= 4 ? crisisEvidenceSection : null}
+              {deferredContentStage >= 5 ? (
+                <>
+                  {riskSection}
+                  {indicatorSection}
+                </>
+              ) : null}
+              {deferredContentStage >= 6 ? (
+                <>
+                  {capabilityResultsSection}
+                  {strategySection}
+                </>
+              ) : null}
             </>
           ) : (
             <>
@@ -5389,8 +5723,21 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
         </>
       ) : null}
       </div>
+      ) : null}
 
-      {showOperations ? (
+      {showOperations &&
+      deferredContentStage >= 2 &&
+      deferredContentStage < 7 ? (
+        <div
+          ref={deferredContentSentinelRef}
+          className="macro-toolkit-deferred-content-sentinel"
+          data-testid="macro-toolkit-progressive-deferred-content-sentinel"
+          data-deferred-stage={deferredContentStage}
+          aria-hidden="true"
+        />
+      ) : null}
+
+      {showOperations && deferredContentStage >= 7 ? (
         <section className="macro-toolkit-section">
           <PageSectionLead
             eyebrow="closure"
@@ -5421,7 +5768,17 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
         </section>
       ) : null}
 
-      {showOperations ? (
+      {showOperations && deferredContentStage === 7 ? (
+        <div
+          ref={deferredContentSentinelRef}
+          className="macro-toolkit-deferred-content-sentinel"
+          data-testid="macro-toolkit-execution-deferred-content-sentinel"
+          aria-hidden="true"
+        />
+      ) : null}
+
+      {showOperations &&
+      deferredContentStage >= MACRO_TOOLKIT_FINAL_DEFERRED_CONTENT_STAGE ? (
         <section className="macro-toolkit-execution-receipt-workspace" aria-label="执行证据与产物回执区">
           <div className="macro-toolkit-execution-receipt-workspace__head">
             <div>
@@ -5774,12 +6131,17 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                   icon={receiptTechnicalDetailsExpanded ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
                   aria-label={receiptTechnicalDetailsExpanded ? "收起明细" : "展开明细"}
                   aria-expanded={receiptTechnicalDetailsExpanded}
+                  aria-controls="macro-toolkit-receipt-technical-details-body"
                   onClick={() => setReceiptTechnicalDetailsExpanded((expanded) => !expanded)}
                 >
                   {receiptTechnicalDetailsExpanded ? "收起明细" : "展开明细"}
                 </Button>
               </div>
-              <div className="macro-toolkit-receipt-technical-details__body">
+              {receiptTechnicalDetailsExpanded ? (
+                <div
+                  id="macro-toolkit-receipt-technical-details-body"
+                  className="macro-toolkit-receipt-technical-details__body"
+                >
                 <section
                   id="macro-toolkit-script-artifact-detail"
                   data-testid="macro-toolkit-script-artifact-detail"
@@ -5928,7 +6290,8 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                     </pre>
                   </div>
                 </section>
-              </div>
+                </div>
+              ) : null}
             </section>
           </aside>
         </section>
@@ -8141,4 +8504,3 @@ function formatRiskMetric(value: number | null | undefined, format?: "percent" |
 function formatMetricDisplay(metric: NonNullable<MacroToolkitCapabilityResult["primary_metric"]>) {
   return `${metric.label} ${metric.value}${metric.unit}`;
 }
-

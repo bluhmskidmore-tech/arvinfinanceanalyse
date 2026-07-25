@@ -103,7 +103,11 @@ export function HasonMacroStrategyPanel({
           />
         </div>
         {readinessEntries.length ? (
-          <div className="macro-toolkit-hason-runtime" data-testid="macro-toolkit-model-readiness-detail">
+          <div
+            id="macro-toolkit-model-readiness-detail"
+            className="macro-toolkit-hason-runtime"
+            data-testid="macro-toolkit-model-readiness-detail"
+          >
             <span>model readiness / observation-only</span>
             <strong>{readinessHeadline}</strong>
             <small>{readinessDetail}</small>
@@ -203,7 +207,11 @@ export function HasonMacroStrategyPanel({
         ) : null}
       </div>
       {readinessEntries.length ? (
-        <div className="macro-toolkit-hason-runtime" data-testid="macro-toolkit-model-readiness-detail">
+        <div
+          id="macro-toolkit-model-readiness-detail"
+          className="macro-toolkit-hason-runtime"
+          data-testid="macro-toolkit-model-readiness-detail"
+        >
           <span>model readiness / observation-only</span>
           <strong>{readinessHeadline}</strong>
           <small>{readinessDetail}</small>

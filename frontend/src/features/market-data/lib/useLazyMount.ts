@@ -4,6 +4,7 @@ import type React from "react";
 type UseLazyMountOptions = {
   rootMargin?: string;
   threshold?: number;
+  /** Used only when IntersectionObserver is unavailable or the target node cannot be observed. */
   fallbackDelayMs?: number;
 };
 
@@ -72,8 +73,6 @@ export function useLazyMount(options?: UseLazyMountOptions): UseLazyMountResult 
       { rootMargin, threshold },
     );
     observerRef.current.observe(node);
-
-    timeoutRef.current = window.setTimeout(activate, fallbackDelayMs);
 
     return () => {
       if (observerRef.current) observerRef.current.disconnect();

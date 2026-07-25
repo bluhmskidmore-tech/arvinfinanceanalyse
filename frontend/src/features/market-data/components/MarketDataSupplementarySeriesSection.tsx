@@ -50,7 +50,11 @@ export function MarketDataSupplementarySeriesSection({
     .join(" · ");
 
   return (
-    <section className="market-data-section-block" data-testid="market-data-supplementary-series-section">
+    <section
+      id="market-data-macro-series"
+      className="market-data-section-block"
+      data-testid="market-data-supplementary-series-section"
+    >
       <div className="market-data-supplementary-head">
         <div>
           <span className="market-data-supplementary-kicker">更多读数</span>
@@ -72,7 +76,6 @@ export function MarketDataSupplementarySeriesSection({
           onRetry={onMacroRetry}
         >
           <div
-            id="market-data-macro-series"
             className="market-data-supplementary-macro-body"
             data-testid="market-data-supplementary-macro-body"
           >

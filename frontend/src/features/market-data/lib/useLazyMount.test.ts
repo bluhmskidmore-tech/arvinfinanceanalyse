@@ -81,6 +81,13 @@ describe("useLazyMount", () => {
     expect(observer.observe).toHaveBeenCalledTimes(1);
 
     act(() => {
+      vi.advanceTimersByTime(60);
+    });
+
+    expect(state.shouldMount).toBe(false);
+    expect(observer.disconnect).not.toHaveBeenCalled();
+
+    act(() => {
       observer.trigger(true);
     });
 

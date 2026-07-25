@@ -1,6 +1,7 @@
 ﻿import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Collapse, Select } from "antd";
+import { flushSync } from "react-dom";
 import { useApiClient } from "../../../api/client";
 import {
   DataQualityPill,
@@ -406,10 +407,15 @@ function MarketDataFormalRatesBoard({
 
 export default function MarketDataPage() {
   const client = useApiClient();
-  const [, setLivermoreExpanded] = useState(false);
+  const [livermoreExpanded, setLivermoreExpanded] = useState(false);
   const [linkageCollapseExpanded, setLinkageCollapseExpanded] = useState(false);
+  const [deferredWorkspacesRequested, setDeferredWorkspacesRequested] = useState(false);
+  const [supplementarySectionRequested, setSupplementarySectionRequested] = useState(
+    () => typeof window !== "undefined" && window.location.hash === "#market-data-macro-series",
+  );
   const lazyExtended = useLazyMount({ rootMargin: "300px", fallbackDelayMs: 0 });
   const lazySupplementary = useLazyMount({ rootMargin: "300px", fallbackDelayMs: 0 });
+  // The delay only protects no-IntersectionObserver environments; normal browsers wait for viewport proximity.
   const lazyLivermore = useLazyMount({ rootMargin: "400px", fallbackDelayMs: 2000 });
   const [macroDepthTab, setMacroDepthTab] = useState<"curve" | "spreads" | "linkage">("curve");
   const [viewMode] = useState<"default" | "compact">("default");
@@ -440,7 +446,7 @@ export default function MarketDataPage() {
     refreshGateSupplement,
   } = useMarketDataPageData({
     // Defer the heavy Livermore strategy payload until the section approaches the viewport.
-    livermoreEnabled: lazyLivermore.shouldMount,
+    livermoreEnabled: lazyLivermore.shouldMount || livermoreExpanded,
     linkageEnabled: linkageFetchEnabled,
   });
   // Warm-only queries: refresh still refetches them, but they must not fire on first paint.
@@ -787,6 +793,24 @@ export default function MarketDataPage() {
   ]);
 
   useEffect(() => {
+    const revealDeferredWorkspaces = () => {
+      flushSync(() => setDeferredWorkspacesRequested(true));
+    };
+    const handleNativeFind = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
+        revealDeferredWorkspaces();
+      }
+    };
+
+    window.addEventListener("beforeprint", revealDeferredWorkspaces);
+    window.addEventListener("keydown", handleNativeFind);
+    return () => {
+      window.removeEventListener("beforeprint", revealDeferredWorkspaces);
+      window.removeEventListener("keydown", handleNativeFind);
+    };
+  }, []);
+
+  useEffect(() => {
     const applyHash = () => {
       const hash = window.location.hash.replace(/^#/, "");
       if (hash === "market-data-linkage-correlation") {
@@ -800,6 +824,7 @@ export default function MarketDataPage() {
         return;
       }
       if (hash === "market-data-macro-series") {
+        setSupplementarySectionRequested(true);
         requestAnimationFrame(() => {
           document.getElementById("market-data-macro-series")?.scrollIntoView({
             behavior: "smooth",
@@ -1047,7 +1072,7 @@ export default function MarketDataPage() {
             />
 
             <div ref={lazyExtended.ref} data-lazy-mount="extended-terminal">
-              {lazyExtended.shouldMount ? (
+              {lazyExtended.shouldMount || deferredWorkspacesRequested ? (
                 <MarketDataExtendedTerminalSection sourcePendingCount={sourcePendingCount}>
                   <div className="market-data-observation-grid" data-testid="market-data-source-pending-deck">
                     <BondFuturesTable model={terminalModel.bondFutures} />
@@ -1067,7 +1092,8 @@ export default function MarketDataPage() {
             </div>
 
             <div ref={lazySupplementary.ref} data-lazy-mount="supplementary-series">
-              {lazySupplementary.shouldMount && (MARKET_DATA_SHOW_MACRO_SERIES_DECK || MARKET_DATA_SHOW_FX_ANALYSIS_SECTION) ? (
+              {(lazySupplementary.shouldMount || supplementarySectionRequested || deferredWorkspacesRequested) &&
+              (MARKET_DATA_SHOW_MACRO_SERIES_DECK || MARKET_DATA_SHOW_FX_ANALYSIS_SECTION) ? (
                 <MarketDataSupplementarySeriesSection
                   macroSeriesCount={stableSeries.length + fallbackSeries.length}
                   stableSeriesCount={stableSeries.length}

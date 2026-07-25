@@ -1,9 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createApiClient, type ApiClient } from "../api/client";
 import { ApiClientProvider } from "../api/clientContext";
@@ -24,6 +24,23 @@ const MACRO_TOOLKIT_PAGE_PATH = resolve(
 beforeAll(async () => {
   await preloadWorkbenchRouteModules("macro-toolkit");
 }, 20_000);
+
+type MockIntersectionObserver = {
+  observe: ReturnType<typeof vi.fn>;
+  disconnect: ReturnType<typeof vi.fn>;
+  triggerAll: (entry?: Partial<IntersectionObserverEntry>) => void;
+};
+
+beforeEach(() => {
+  vi.stubGlobal("IntersectionObserver", undefined);
+  if (window.location.hash) {
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+  }
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 type MacroToolkitAnalysisEnvelope = Awaited<ReturnType<ApiClient["getMacroToolkitAnalysis"]>>;
 type MacroToolkitCapabilityResultFixture =
@@ -165,6 +182,37 @@ function extractCssBlock(css: string, selector: string): string {
   throw new Error(`Unclosed CSS block: ${selector}`);
 }
 
+function stubIntersectionObserver(): MockIntersectionObserver {
+  const callbacks: IntersectionObserverCallback[] = [];
+  const observer: MockIntersectionObserver = {
+    observe: vi.fn(),
+    disconnect: vi.fn(),
+    triggerAll: (entry = {}) => {
+      const target = (entry.target ?? document.createElement("div")) as Element;
+      for (const callback of callbacks) {
+        callback(
+          [
+            {
+              isIntersecting: false,
+              intersectionRatio: 0,
+              target,
+              ...entry,
+            } as IntersectionObserverEntry,
+          ],
+          {} as IntersectionObserver,
+        );
+      }
+    },
+  };
+  const MockObserver = vi.fn(function MockIntersectionObserver(callback: IntersectionObserverCallback) {
+    callbacks.push(callback);
+    return observer;
+  });
+
+  vi.stubGlobal("IntersectionObserver", MockObserver);
+  return observer;
+}
+
 function withCrisisScoreInputEvidence(
   envelope: MacroToolkitAnalysisEnvelope,
   inputs: MacroToolkitInputEvidenceFixture[],
@@ -258,6 +306,187 @@ describe("MacroToolkitPage", () => {
     expect(source).toContain("historyLimit: MACRO_TOOLKIT_CRISIS_SCORE_HISTORY_LIMIT");
     expect(source).toContain("formatCrisisTopContributorSummary");
     expect(source).toContain('data-testid="macro-toolkit-crisis-capability-component-summary"');
+  });
+
+it("keeps the toolkit execution workspace unmounted until the below-fold sentinel intersects", async () => {
+    const observer = stubIntersectionObserver();
+    let observeCallCount = 1;
+
+    renderWorkbenchApp(["/macro-toolkit"]);
+
+    await screen.findByTestId("macro-toolkit-tailwind-cockpit");
+    await screen.findByTestId("macro-toolkit-house-view");
+
+    expect(observer.observe).toHaveBeenCalledTimes(observeCallCount);
+    expect(screen.queryByTestId("macro-toolkit-operations-console")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("macro-toolkit-analysis-detail")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("macro-toolkit-strategy-detail")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("macro-toolkit-execution-deferred-content-sentinel")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("macro-toolkit-tool-execution-detail")).not.toBeInTheDocument();
+
+    for (let stage = 1; stage <= 8; stage += 1) {
+      await act(async () => {
+        observer.triggerAll({ isIntersecting: true });
+      });
+
+      if (stage < 8) {
+        observeCallCount += 1;
+        await waitFor(() => expect(observer.observe).toHaveBeenCalledTimes(observeCallCount));
+      }
+
+      if (stage === 1) {
+        expect(await screen.findByTestId("macro-toolkit-operations-console")).toBeInTheDocument();
+        expect(screen.queryByTestId("macro-toolkit-analysis-detail")).not.toBeInTheDocument();
+        expect(screen.queryByTestId("macro-toolkit-strategy-detail")).not.toBeInTheDocument();
+        expect(screen.queryByTestId("macro-toolkit-execution-deferred-content-sentinel")).not.toBeInTheDocument();
+        expect(screen.queryByTestId("macro-toolkit-tool-execution-detail")).not.toBeInTheDocument();
+      }
+
+      if (stage === 2) {
+        expect(await screen.findByTestId("macro-toolkit-analysis-detail")).toBeInTheDocument();
+        expect(screen.queryByTestId("macro-toolkit-model-readiness-detail")).not.toBeInTheDocument();
+        expect(screen.queryByTestId("macro-toolkit-strategy-detail")).not.toBeInTheDocument();
+        expect(screen.queryByTestId("macro-toolkit-execution-deferred-content-sentinel")).not.toBeInTheDocument();
+        expect(screen.queryByTestId("macro-toolkit-tool-execution-detail")).not.toBeInTheDocument();
+      }
+
+      if (stage === 3) {
+        expect(await screen.findByTestId("macro-toolkit-model-readiness-detail")).toHaveAttribute(
+          "id",
+          "macro-toolkit-model-readiness-detail",
+        );
+      }
+
+      if (stage < 6) {
+        expect(screen.queryByTestId("macro-toolkit-strategy-detail")).not.toBeInTheDocument();
+      }
+
+      if (stage === 6) {
+        expect(await screen.findByText("策略展示")).toBeInTheDocument();
+        expect(await screen.findByTestId("macro-toolkit-strategy-detail")).toBeInTheDocument();
+        expect(screen.queryByTestId("macro-toolkit-execution-deferred-content-sentinel")).not.toBeInTheDocument();
+        expect(screen.queryByTestId("macro-toolkit-tool-execution-detail")).not.toBeInTheDocument();
+      }
+
+      if (stage === 7) {
+        expect(await screen.findByTestId("macro-toolkit-execution-deferred-content-sentinel")).toBeInTheDocument();
+        expect(screen.queryByTestId("macro-toolkit-tool-execution-detail")).not.toBeInTheDocument();
+      }
+    }
+
+    expect(await screen.findByTestId("macro-toolkit-tool-execution-detail")).toBeInTheDocument();
+  });
+
+  it("renders the analysis target for an initial macro toolkit hash deep link", async () => {
+    window.location.hash = "#macro-toolkit-analysis-detail";
+
+    renderWorkbenchApp(["/macro-toolkit#macro-toolkit-analysis-detail"]);
+
+    expect(await screen.findByTestId("macro-toolkit-analysis-detail")).toBeInTheDocument();
+  });
+
+  it("renders the model readiness target for an initial macro toolkit hash deep link", async () => {
+    stubIntersectionObserver();
+    window.location.hash = "#macro-toolkit-model-readiness-detail";
+
+    renderWorkbenchApp(["/macro-toolkit#macro-toolkit-model-readiness-detail"]);
+
+    expect(await screen.findByTestId("macro-toolkit-model-readiness-detail")).toHaveAttribute(
+      "id",
+      "macro-toolkit-model-readiness-detail",
+    );
+    expect(screen.queryByTestId("macro-toolkit-strategy-detail")).not.toBeInTheDocument();
+  });
+
+  it("renders script artifact details expanded for an initial macro toolkit artifact deep link", async () => {
+    window.location.hash = "#macro-toolkit-script-artifact-detail";
+
+    renderWorkbenchApp(["/macro-toolkit#macro-toolkit-script-artifact-detail"]);
+
+    const technicalDetails = await screen.findByLabelText("底稿技术明细");
+    expect(technicalDetails).toHaveClass("macro-toolkit-receipt-technical-details--expanded");
+    expect(within(technicalDetails).getByTestId("macro-toolkit-script-artifact-detail")).toBeInTheDocument();
+    expect(within(technicalDetails).getByRole("button", { name: "收起明细" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    const governanceGate = await screen.findByTestId("macro-toolkit-governance-gate");
+    expect(screen.getByTestId("macro-toolkit-governance-focus")).toHaveTextContent("能力闭环");
+    expect(within(governanceGate).getByRole("link", { name: /能力闭环/ })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+  });
+
+  it("unlocks the requested deferred target after a post-mount macro toolkit hashchange", async () => {
+    const observer = stubIntersectionObserver();
+    const originalScrollIntoView = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+
+    try {
+      renderWorkbenchApp(["/macro-toolkit"]);
+
+      await screen.findByTestId("macro-toolkit-tailwind-cockpit");
+      expect(observer.observe).toHaveBeenCalled();
+      expect(screen.queryByTestId("macro-toolkit-analysis-detail")).not.toBeInTheDocument();
+
+      await act(async () => {
+        window.location.hash = "#macro-toolkit-analysis-detail";
+        window.dispatchEvent(new Event("hashchange"));
+      });
+
+      expect(await screen.findByTestId("macro-toolkit-analysis-detail")).toHaveClass(
+        "macro-toolkit-anchor-target--active",
+      );
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    } finally {
+      if (originalScrollIntoView) {
+        Object.defineProperty(HTMLElement.prototype, "scrollIntoView", originalScrollIntoView);
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+      }
+    }
+  });
+
+  it("provides an explicit full-document mode for page search", async () => {
+    const observer = stubIntersectionObserver();
+    const user = userEvent.setup();
+
+    renderWorkbenchApp(["/macro-toolkit"]);
+
+    await screen.findByTestId("macro-toolkit-tailwind-cockpit");
+    expect(observer.observe).toHaveBeenCalled();
+    expect(screen.queryByTestId("macro-toolkit-tool-execution-detail")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("macro-toolkit-script-artifact-detail")).not.toBeInTheDocument();
+
+    const expandAll = screen.getByTestId("macro-toolkit-expand-all-content");
+    await user.click(expandAll);
+
+    expect(await screen.findByTestId("macro-toolkit-tool-execution-detail")).toBeInTheDocument();
+    expect(await screen.findByTestId("macro-toolkit-script-artifact-detail")).toBeInTheDocument();
+    expect(expandAll).toBeDisabled();
+    expect(expandAll).toHaveTextContent("已展开全部");
+  });
+
+  it("materializes the full document before printing", async () => {
+    const observer = stubIntersectionObserver();
+
+    renderWorkbenchApp(["/macro-toolkit"]);
+
+    await screen.findByTestId("macro-toolkit-tailwind-cockpit");
+    expect(observer.observe).toHaveBeenCalled();
+    expect(screen.queryByTestId("macro-toolkit-tool-execution-detail")).not.toBeInTheDocument();
+
+    act(() => {
+      window.dispatchEvent(new Event("beforeprint"));
+    });
+
+    expect(await screen.findByTestId("macro-toolkit-tool-execution-detail")).toBeInTheDocument();
+    expect(await screen.findByTestId("macro-toolkit-script-artifact-detail")).toBeInTheDocument();
   });
 
   it("keeps page-local decorative colors on the IB light institutional token family", () => {
@@ -736,6 +965,7 @@ describe("MacroToolkitPage", () => {
 
   it("frames execution evidence and artifacts as a receipt workspace", async () => {
     const css = readFileSync(MACRO_TOOLKIT_CSS_PATH, "utf8");
+    const user = userEvent.setup();
 
     renderWorkbenchApp(["/macro-toolkit"]);
 
@@ -764,9 +994,12 @@ describe("MacroToolkitPage", () => {
     expect(within(executionLane).getByTestId("macro-toolkit-commodity-detail")).toBeInTheDocument();
 
     const receiptLane = within(workspace).getByLabelText("产物回执详情");
-    expect(within(receiptLane).getByTestId("macro-toolkit-script-artifact-detail")).toBeInTheDocument();
-    expect(receiptLane).toHaveTextContent("脚本产物");
-    expect(receiptLane).toHaveTextContent("系统数据源命中");
+    const technicalDetails = within(receiptLane).getByLabelText("底稿技术明细");
+    expect(within(technicalDetails).queryByTestId("macro-toolkit-script-artifact-detail")).not.toBeInTheDocument();
+    await user.click(within(technicalDetails).getByRole("button", { name: "展开明细" }));
+    expect(within(technicalDetails).getByTestId("macro-toolkit-script-artifact-detail")).toBeInTheDocument();
+    expect(technicalDetails).toHaveTextContent("脚本产物");
+    expect(technicalDetails).toHaveTextContent("系统数据源命中");
   });
 
   it("keeps execution evidence summaries in committee language", async () => {
@@ -873,6 +1106,7 @@ describe("MacroToolkitPage", () => {
 
   it("anchors the receipt lane with an investment committee delivery chain", async () => {
     const css = readFileSync(MACRO_TOOLKIT_CSS_PATH, "utf8");
+    const user = userEvent.setup();
 
     renderWorkbenchApp(["/macro-toolkit"]);
 
@@ -895,7 +1129,9 @@ describe("MacroToolkitPage", () => {
     expect(deliveryChain).toHaveTextContent(/下一步/);
     expect(deliveryChain).toHaveTextContent(/签核\s*\d+\/\d+/);
 
-    const artifactDetail = within(receiptLane).getByTestId("macro-toolkit-script-artifact-detail");
+    const technicalDetails = within(receiptLane).getByLabelText("底稿技术明细");
+    await user.click(within(technicalDetails).getByRole("button", { name: "展开明细" }));
+    const artifactDetail = within(technicalDetails).getByTestId("macro-toolkit-script-artifact-detail");
     expectElementBefore(deliveryChain, artifactDetail);
   });
 
@@ -1190,10 +1426,13 @@ describe("MacroToolkitPage", () => {
   });
 
   it("opens the receipt lane with an audit workpaper before technical details", async () => {
+    const user = userEvent.setup();
+
     renderWorkbenchApp(["/macro-toolkit"]);
 
     const receiptLane = await screen.findByLabelText("产物回执详情");
     const auditWorkpaper = within(receiptLane).getByLabelText("产物审计底稿");
+    const technicalDetails = within(receiptLane).getByLabelText("底稿技术明细");
 
     expect(auditWorkpaper).toHaveTextContent("产物审计底稿");
     expect(auditWorkpaper).toHaveTextContent("产物归档");
@@ -1205,7 +1444,11 @@ describe("MacroToolkitPage", () => {
     expect(auditWorkpaper).not.toHaveTextContent("signal_aggregator");
     expect(auditWorkpaper).not.toHaveTextContent("macro_toolkit");
 
-    const artifactDetail = within(receiptLane).getByTestId("macro-toolkit-script-artifact-detail");
+    expect(within(technicalDetails).queryByTestId("macro-toolkit-script-artifact-detail")).not.toBeInTheDocument();
+
+    await user.click(within(technicalDetails).getByRole("button", { name: "展开明细" }));
+
+    const artifactDetail = within(technicalDetails).getByTestId("macro-toolkit-script-artifact-detail");
     const registryHeading = await screen.findByRole("heading", { level: 2, name: "脚本注册表" });
     const registrySection = requireClosestElement(
       registryHeading.closest(".macro-toolkit-section"),
@@ -1220,6 +1463,8 @@ describe("MacroToolkitPage", () => {
     expectElementBefore(auditWorkpaper, artifactDetail);
     expectElementBefore(auditWorkpaper, registrySection);
     expectElementBefore(auditWorkpaper, runSection);
+    expectElementBefore(artifactDetail, registrySection);
+    expectElementBefore(registrySection, runSection);
   });
 
   it("keeps receipt technical details collapsed behind the audit workpaper by default", async () => {
@@ -1230,16 +1475,15 @@ describe("MacroToolkitPage", () => {
     const receiptLane = await screen.findByLabelText("产物回执详情");
     const auditWorkpaper = within(receiptLane).getByLabelText("产物审计底稿");
     const technicalDetails = within(receiptLane).getByLabelText("底稿技术明细");
-    const artifactDetail = within(technicalDetails).getByTestId("macro-toolkit-script-artifact-detail");
 
     expect(technicalDetails).toHaveClass("macro-toolkit-receipt-technical-details--collapsed");
     expect(technicalDetails).toHaveTextContent("默认收起");
     expect(technicalDetails).toHaveTextContent("展开明细");
-    expect(technicalDetails).toHaveTextContent("脚本产物");
-    expect(technicalDetails).toHaveTextContent("系统数据源命中");
-    expect(technicalDetails).toHaveTextContent("脚本注册表");
-    expect(technicalDetails).toHaveTextContent("运行结果");
-    expect(technicalDetails.contains(artifactDetail)).toBe(true);
+    expect(within(technicalDetails).queryByTestId("macro-toolkit-script-artifact-detail")).not.toBeInTheDocument();
+    expect(technicalDetails).not.toHaveTextContent("脚本产物");
+    expect(technicalDetails).not.toHaveTextContent("系统数据源命中");
+    expect(technicalDetails).not.toHaveTextContent("脚本注册表");
+    expect(technicalDetails).not.toHaveTextContent("运行结果");
 
     const receiptChildren = Array.from(receiptLane.children);
     const workpaperIndex = receiptChildren.indexOf(auditWorkpaper);
@@ -1254,6 +1498,7 @@ describe("MacroToolkitPage", () => {
       "aria-expanded",
       "true",
     );
+    expect(within(technicalDetails).getByTestId("macro-toolkit-script-artifact-detail")).toBeInTheDocument();
   });
 
   it("frames the first screen as a conclusion blocker next-step committee pipeline", async () => {
@@ -2307,6 +2552,17 @@ describe("MacroToolkitPage", () => {
       "macro toolkit cffex section",
     );
     expect(within(cffexSection).getByRole("button", { name: /刷新席位明细/ })).toBeInTheDocument();
+    const receiptTechnicalDetails = await screen.findByLabelText("底稿技术明细");
+    expect(
+      within(receiptTechnicalDetails).queryByRole("heading", { level: 2, name: "脚本产物" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(receiptTechnicalDetails).queryByRole("heading", { level: 2, name: "脚本注册表" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(receiptTechnicalDetails).queryByRole("heading", { level: 2, name: "运行结果" }),
+    ).not.toBeInTheDocument();
+    await user.click(within(receiptTechnicalDetails).getByRole("button", { name: "展开明细" }));
     expect(
       await screen.findByRole("heading", { level: 2, name: "脚本产物" }),
     ).toBeInTheDocument();
@@ -3310,6 +3566,8 @@ describe("MacroToolkitPage", () => {
     await user.click(scriptEvidenceLink);
 
     expect(within(queue).getByRole("link", { name: /脚本产物/ })).toHaveAttribute("aria-current", "true");
+    const technicalDetails = screen.getByLabelText("底稿技术明细");
+    expect(technicalDetails).toHaveClass("macro-toolkit-receipt-technical-details--expanded");
     expect(screen.getByTestId("macro-toolkit-script-artifact-detail")).toHaveClass(
       "macro-toolkit-section--audit-focus",
     );
@@ -6707,6 +6965,7 @@ describe("MacroToolkitPage", () => {
     const baseClient = createApiClient({ mode: "mock" });
     const analysisEnvelope = await baseClient.getMacroToolkitAnalysis();
     const modelReadiness = macroCoreModelReadinessFixtures();
+    const user = userEvent.setup();
     const client = {
       ...baseClient,
       getMacroToolkitAnalysis: async () => ({
@@ -6729,7 +6988,9 @@ describe("MacroToolkitPage", () => {
     renderWorkbenchApp(["/macro-toolkit"], { client });
 
     const signalMatrix = await screen.findByTestId("macro-toolkit-model-signal-matrix");
-    const artifactDetail = await screen.findByTestId("macro-toolkit-script-artifact-detail");
+    const technicalDetails = await screen.findByLabelText("底稿技术明细");
+    await user.click(within(technicalDetails).getByRole("button", { name: "展开明细" }));
+    const artifactDetail = within(technicalDetails).getByTestId("macro-toolkit-script-artifact-detail");
 
     expectElementBefore(signalMatrix, artifactDetail);
     expect(signalMatrix).toHaveTextContent("model signals");

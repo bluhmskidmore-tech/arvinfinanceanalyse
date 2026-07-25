@@ -3637,6 +3637,11 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
   min-width: 0;
 }
 
+.macro-toolkit-deferred-content-sentinel {
+  width: 100%;
+  height: 1px;
+}
+
 .macro-toolkit-page--details-compact .macro-toolkit-section,
 .macro-toolkit-page--details-compact .macro-toolkit-hason-strategy,
 .macro-toolkit-page--details-compact .macro-toolkit-crisis-evidence {
@@ -7366,6 +7371,7 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
 .macro-toolkit-receipt-technical-details--expanded .macro-toolkit-receipt-technical-details__body {
   max-height: none;
   opacity: 1;
+  overflow: visible;
 }
 
 .macro-toolkit-operations-section {
