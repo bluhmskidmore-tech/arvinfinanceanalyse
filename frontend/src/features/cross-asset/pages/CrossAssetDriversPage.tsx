@@ -1,3 +1,5 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
 import ReactECharts from "../../../lib/echarts";
 import { KpiCard } from "../../../components/KpiCard";
@@ -61,8 +63,17 @@ import {
   NcdProxyEvidencePanel,
 } from "../components/LegacyPanels";
 
+const CROSS_ASSET_DEFERRED_CONTENT_ROOT_MARGIN = "800px 0px";
+const CROSS_ASSET_FINAL_DEFERRED_CONTENT_STAGE = 3;
+type CrossAssetDeferredContentStage = 0 | 1 | 2 | 3;
 
 export default function CrossAssetDriversPage() {
+  const [deferredContentStage, setDeferredContentStage] =
+    useState<CrossAssetDeferredContentStage>(0);
+  const deferredContentSentinelRef = useRef<HTMLElement | null>(null);
+  const setDeferredContentSentinel = useCallback((node: HTMLElement | null) => {
+    deferredContentSentinelRef.current = node;
+  }, []);
   const {
     assetClassAnalysisRows,
     candidateActions,
@@ -119,6 +130,55 @@ export default function CrossAssetDriversPage() {
   const statusStripFlags = buildStatusStripFlags(statusFlags);
   const kpiBandItems = buildKpiBandItems(kpis);
   const reportDate = crossAssetDataDate || linkageReportDate;
+
+  useEffect(() => {
+    if (deferredContentStage >= CROSS_ASSET_FINAL_DEFERRED_CONTENT_STAGE) {
+      return undefined;
+    }
+
+    const sentinel = deferredContentSentinelRef.current;
+    if (typeof window.IntersectionObserver === "undefined" || !sentinel) {
+      setDeferredContentStage(CROSS_ASSET_FINAL_DEFERRED_CONTENT_STAGE);
+      return undefined;
+    }
+
+    const nextStage = (deferredContentStage + 1) as CrossAssetDeferredContentStage;
+    const observer = new window.IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting || entry.intersectionRatio > 0)) {
+          setDeferredContentStage((currentStage) =>
+            Math.max(currentStage, nextStage) as CrossAssetDeferredContentStage,
+          );
+          observer.disconnect();
+        }
+      },
+      {
+        rootMargin: CROSS_ASSET_DEFERRED_CONTENT_ROOT_MARGIN,
+        threshold: 0.01,
+      },
+    );
+    observer.observe(sentinel);
+
+    return () => observer.disconnect();
+  }, [deferredContentStage]);
+
+  useEffect(() => {
+    const revealAllDeferredContent = () => {
+      flushSync(() => setDeferredContentStage(CROSS_ASSET_FINAL_DEFERRED_CONTENT_STAGE));
+    };
+    const handleNativeFind = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
+        revealAllDeferredContent();
+      }
+    };
+
+    window.addEventListener("beforeprint", revealAllDeferredContent);
+    window.addEventListener("keydown", handleNativeFind);
+    return () => {
+      window.removeEventListener("beforeprint", revealAllDeferredContent);
+      window.removeEventListener("keydown", handleNativeFind);
+    };
+  }, []);
 
   return (
       <section
@@ -336,6 +396,7 @@ export default function CrossAssetDriversPage() {
               </div>
               <CrossAssetEvidenceTape kpis={kpis} />
               <details
+                ref={deferredContentStage === 0 ? setDeferredContentSentinel : undefined}
                 open
                 className="cross-asset-evidence-details"
                 data-testid="cross-asset-evidence-details"
@@ -345,48 +406,52 @@ export default function CrossAssetDriversPage() {
                   <span>指标明细与相关性热力</span>
                   <strong>{kpis.length} 项指标</strong>
                 </summary>
-                <CrossAssetEvidenceGroups kpis={kpis} />
-                <section className="cross-asset-linkage-heatmap-ledger" data-testid="cross-asset-linkage-heatmap-ledger">
-                  <header className="cross-asset-linkage-heatmap-ledger__head">
-                    <div className="cross-asset-linkage-heatmap-ledger__title">
-                      <span>相关性热力</span>
-                      <strong>{heatmapRows.length} 条联动链路</strong>
-                    </div>
-                    <div className="cross-asset-linkage-heatmap-ledger__legend" aria-label="相关性颜色图例">
-                      <span className="cross-asset-linkage-heatmap-ledger__legend-item cross-asset-linkage-heatmap-ledger__legend-item--negative">负相关</span>
-                      <span className="cross-asset-linkage-heatmap-ledger__legend-item cross-asset-linkage-heatmap-ledger__legend-item--missing">不可用</span>
-                      <span className="cross-asset-linkage-heatmap-ledger__legend-item cross-asset-linkage-heatmap-ledger__legend-item--positive">正相关</span>
-                    </div>
-                  </header>
-                  <table className="cross-asset-drivers-page__heatmap cross-asset-drivers-page__heatmap--flat">
-                    <thead>
-                      <tr>
-                        <th>指标</th>
-                        <th>3月相关</th>
-                        <th>6月相关</th>
-                        <th>方向</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {heatmapRows.map((row) => {
-                        const indicator = splitLinkageIndicator(row.indicator);
-                        return (
-                          <tr key={row.id}>
-                            <td className="cross-asset-linkage-heatmap-ledger__pair">
-                              <strong>{indicator.source}</strong>
-                              {indicator.target ? <span>→ {indicator.target}</span> : null}
-                            </td>
-                            <td className={correlationLedgerCellClassName(row.current)}>{row.current}</td>
-                            <td className={correlationLedgerCellClassName(row.mid)}>{row.mid}</td>
-                            <td className={`cross-asset-drivers-page__eval-tone cross-asset-drivers-page__eval-tone--${row.evalTone}`}>
-                              {row.eval}
-                            </td>
+                {deferredContentStage >= 1 ? (
+                  <>
+                    <CrossAssetEvidenceGroups kpis={kpis} />
+                    <section className="cross-asset-linkage-heatmap-ledger" data-testid="cross-asset-linkage-heatmap-ledger">
+                      <header className="cross-asset-linkage-heatmap-ledger__head">
+                        <div className="cross-asset-linkage-heatmap-ledger__title">
+                          <span>相关性热力</span>
+                          <strong>{heatmapRows.length} 条联动链路</strong>
+                        </div>
+                        <div className="cross-asset-linkage-heatmap-ledger__legend" aria-label="相关性颜色图例">
+                          <span className="cross-asset-linkage-heatmap-ledger__legend-item cross-asset-linkage-heatmap-ledger__legend-item--negative">负相关</span>
+                          <span className="cross-asset-linkage-heatmap-ledger__legend-item cross-asset-linkage-heatmap-ledger__legend-item--missing">不可用</span>
+                          <span className="cross-asset-linkage-heatmap-ledger__legend-item cross-asset-linkage-heatmap-ledger__legend-item--positive">正相关</span>
+                        </div>
+                      </header>
+                      <table className="cross-asset-drivers-page__heatmap cross-asset-drivers-page__heatmap--flat">
+                        <thead>
+                          <tr>
+                            <th>指标</th>
+                            <th>3月相关</th>
+                            <th>6月相关</th>
+                            <th>方向</th>
                           </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </section>
+                        </thead>
+                        <tbody>
+                          {heatmapRows.map((row) => {
+                            const indicator = splitLinkageIndicator(row.indicator);
+                            return (
+                              <tr key={row.id}>
+                                <td className="cross-asset-linkage-heatmap-ledger__pair">
+                                  <strong>{indicator.source}</strong>
+                                  {indicator.target ? <span>→ {indicator.target}</span> : null}
+                                </td>
+                                <td className={correlationLedgerCellClassName(row.current)}>{row.current}</td>
+                                <td className={correlationLedgerCellClassName(row.mid)}>{row.mid}</td>
+                                <td className={`cross-asset-drivers-page__eval-tone cross-asset-drivers-page__eval-tone--${row.evalTone}`}>
+                                  {row.eval}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </section>
+                  </>
+                ) : null}
               </details>
             </CrossAssetDecisionZone>
 
@@ -396,6 +461,8 @@ export default function CrossAssetDriversPage() {
               title="走势与观察"
               className="cross-asset-zone-observation"
             >
+            {deferredContentStage >= 2 ? (
+              <>
             <div data-testid="cross-asset-trend-panel" className="cross-asset-trend-panel">
               <h3 className="cross-asset-decision-zone__block-title">跨资产走势（近 20 日，基准 = 100）</h3>
               <div className="cross-asset-trend-panel__body">
@@ -472,13 +539,28 @@ export default function CrossAssetDriversPage() {
                 <WatchList rows={watchRows} />
               </div>
             </details>
+              </>
+            ) : deferredContentStage === 1 ? (
+              <div
+                ref={setDeferredContentSentinel}
+                className="cross-asset-deferred-content-sentinel"
+                data-testid="cross-asset-observation-deferred-content-sentinel"
+                aria-hidden="true"
+              />
+            ) : null}
 
             {/* 附录：A股策略 · NCD 代理 · 结构化输出 */}
-            <details open className="cross-asset-decision-appendix" data-testid="cross-asset-decision-appendix">
+            <details
+              ref={deferredContentStage === 2 ? setDeferredContentSentinel : undefined}
+              open
+              className="cross-asset-decision-appendix"
+              data-testid="cross-asset-decision-appendix"
+            >
               <summary>
                 <span>补充复核</span>
                 <strong>A股策略 · NCD 代理 · 结构化输出</strong>
               </summary>
+              {deferredContentStage >= 3 ? (
               <div className="cross-asset-decision-appendix__body">
                 <LivermoreStrategyStatusPanel
                   payload={livermoreStrategyPayload}
@@ -521,6 +603,7 @@ export default function CrossAssetDriversPage() {
                   </div>
                 </details>
               </div>
+              ) : null}
             </details>
             </CrossAssetDecisionZone>
           </div>

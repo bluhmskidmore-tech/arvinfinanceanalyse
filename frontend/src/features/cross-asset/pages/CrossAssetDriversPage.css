@@ -2712,6 +2712,11 @@
   box-shadow: none;
 }
 
+.cross-asset-deferred-content-sentinel {
+  width: 100%;
+  min-height: 1px;
+}
+
 .cross-asset-reference-depth-summary {
   display: grid;
   grid-template-columns: minmax(0, 170px) minmax(0, 1fr);

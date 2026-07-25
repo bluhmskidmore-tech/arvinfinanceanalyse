@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 
@@ -58,7 +58,178 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+type MockIntersectionObserver = {
+  observe: ReturnType<typeof vi.fn>;
+  disconnect: ReturnType<typeof vi.fn>;
+  triggerAll: (entry?: Partial<IntersectionObserverEntry>) => void;
+};
+
+function stubIntersectionObserver(): MockIntersectionObserver {
+  const observe = vi.fn();
+  const disconnect = vi.fn();
+  const activeObservers = new Set<{
+    callback: IntersectionObserverCallback;
+    instance: IntersectionObserver;
+    target: Element | null;
+  }>();
+  const observer: MockIntersectionObserver = {
+    observe,
+    disconnect,
+    triggerAll: (entry = {}) => {
+      for (const activeObserver of [...activeObservers]) {
+        const target = (entry.target ??
+          activeObserver.target ??
+          document.createElement("div")) as Element;
+        activeObserver.callback(
+          [
+            {
+              isIntersecting: false,
+              intersectionRatio: 0,
+              target,
+              ...entry,
+            } as IntersectionObserverEntry,
+          ],
+          activeObserver.instance,
+        );
+      }
+    },
+  };
+  const MockObserver = vi.fn(function MockIntersectionObserver(callback: IntersectionObserverCallback) {
+    const activeObserver = {
+      callback,
+      instance: null as unknown as IntersectionObserver,
+      target: null as Element | null,
+    };
+    const instance = {
+      disconnect: () => {
+        disconnect();
+        activeObservers.delete(activeObserver);
+      },
+      observe: (target: Element) => {
+        observe(target);
+        activeObserver.target = target;
+      },
+      root: null,
+      rootMargin: "0px",
+      thresholds: [0],
+      takeRecords: () => [],
+      unobserve: vi.fn(),
+    } as IntersectionObserver;
+    activeObserver.instance = instance;
+    activeObservers.add(activeObserver);
+    return instance;
+  });
+
+  vi.stubGlobal("IntersectionObserver", MockObserver);
+  return observer;
+}
+
 describe("CrossAssetPage", () => {
+  it("mounts below-fold evidence, observation, and appendix bodies one stage at a time", async () => {
+    const observer = stubIntersectionObserver();
+
+    try {
+      renderPage(createApiClient({ mode: "mock" }));
+
+      await screen.findByTestId("cross-asset-evidence-tape");
+      expect(observer.observe).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId("cross-asset-evidence-details")).toHaveAttribute("open");
+      expect(observer.observe).toHaveBeenLastCalledWith(
+        screen.getByTestId("cross-asset-evidence-details"),
+      );
+      expect(screen.getByTestId("cross-asset-decision-appendix")).toHaveAttribute("open");
+      expect(screen.queryByTestId("cross-asset-evidence-groups")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("cross-asset-trend-panel")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("cross-asset-livermore-status")).not.toBeInTheDocument();
+
+      await act(async () => {
+        observer.triggerAll({ isIntersecting: true });
+      });
+
+      expect(await screen.findByTestId("cross-asset-evidence-groups")).toBeInTheDocument();
+      expect(screen.getByTestId("cross-asset-linkage-heatmap-ledger")).toBeInTheDocument();
+      expect(screen.queryByTestId("cross-asset-trend-panel")).not.toBeInTheDocument();
+      await waitFor(() => expect(observer.observe).toHaveBeenCalledTimes(2));
+      expect(observer.observe).toHaveBeenLastCalledWith(
+        screen.getByTestId("cross-asset-observation-deferred-content-sentinel"),
+      );
+
+      await act(async () => {
+        observer.triggerAll({ isIntersecting: true });
+      });
+
+      expect(await screen.findByTestId("cross-asset-trend-panel")).toBeInTheDocument();
+      expect(screen.getByTestId("cross-asset-yield-curve-slot")).toBeInTheDocument();
+      expect(screen.getByTestId("cross-asset-observation-secondary-grid")).toBeInTheDocument();
+      expect(screen.queryByTestId("cross-asset-livermore-status")).not.toBeInTheDocument();
+      await waitFor(() => expect(observer.observe).toHaveBeenCalledTimes(3));
+      expect(observer.observe).toHaveBeenLastCalledWith(
+        screen.getByTestId("cross-asset-decision-appendix"),
+      );
+
+      await act(async () => {
+        observer.triggerAll({ isIntersecting: true });
+      });
+
+      expect(await screen.findByTestId("cross-asset-livermore-status")).toBeInTheDocument();
+      expect(screen.getByTestId("cross-asset-page-output")).toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("materializes the full document when IntersectionObserver is unavailable", async () => {
+    vi.stubGlobal("IntersectionObserver", undefined);
+
+    try {
+      renderPage(createApiClient({ mode: "mock" }));
+
+      expect(await screen.findByTestId("cross-asset-evidence-groups")).toBeInTheDocument();
+      expect(screen.getByTestId("cross-asset-trend-panel")).toBeInTheDocument();
+      expect(screen.getByTestId("cross-asset-livermore-status")).toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each([
+    ["printing", () => window.dispatchEvent(new Event("beforeprint"))],
+    [
+      "native page search on Windows",
+      () =>
+        window.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "f", ctrlKey: true }),
+        ),
+    ],
+    [
+      "native page search on macOS",
+      () =>
+        window.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "f", metaKey: true }),
+        ),
+    ],
+  ])("materializes the full cross-asset document before %s", async (_label, revealDocument) => {
+    stubIntersectionObserver();
+
+    try {
+      renderPage(createApiClient({ mode: "mock" }));
+
+      await screen.findByTestId("cross-asset-evidence-tape");
+      expect(screen.queryByTestId("cross-asset-evidence-groups")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("cross-asset-livermore-status")).not.toBeInTheDocument();
+
+      act(() => {
+        revealDocument();
+      });
+
+      expect(await screen.findByTestId("cross-asset-evidence-groups")).toBeInTheDocument();
+      expect(screen.getByTestId("cross-asset-trend-panel")).toBeInTheDocument();
+      expect(screen.getByTestId("cross-asset-livermore-status")).toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("keeps page-local decorative colors on the IB light institutional token family", () => {
     const css = readFileSync(CROSS_ASSET_DRIVERS_CSS_PATH, "utf8");
 
