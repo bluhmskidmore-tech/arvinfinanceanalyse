@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
-import ReactECharts from "../../../lib/echarts";
 import { KpiCard } from "../../../components/KpiCard";
 import { toneFromSignedNumber } from "../../workbench/components/kpiFormat";
 import { CrossAssetEventCalendar } from "../components/CrossAssetEventCalendar";
@@ -62,6 +61,10 @@ import {
 import {
   NcdProxyEvidencePanel,
 } from "../components/LegacyPanels";
+import {
+  LazyCrossAssetECharts,
+  preloadCrossAssetECharts,
+} from "../components/CrossAssetECharts";
 
 const CROSS_ASSET_DEFERRED_CONTENT_ROOT_MARGIN = "800px 0px";
 const CROSS_ASSET_FINAL_DEFERRED_CONTENT_STAGE = 3;
@@ -134,6 +137,7 @@ export default function CrossAssetDriversPage() {
   const kpiBandItems = buildKpiBandItems(kpis);
   const reportDate = crossAssetDataDate || linkageReportDate;
   const revealAllDeferredContent = useCallback(() => {
+    preloadCrossAssetECharts();
     flushSync(() => setDeferredContentStage(CROSS_ASSET_FINAL_DEFERRED_CONTENT_STAGE));
     if (linkageReportDate) {
       void researchCalendarQuery.refetch();
@@ -147,6 +151,12 @@ export default function CrossAssetDriversPage() {
     livermoreStrategyQuery,
     researchCalendarQuery,
   ]);
+
+  useEffect(() => {
+    if (deferredContentStage >= 1) {
+      preloadCrossAssetECharts();
+    }
+  }, [deferredContentStage]);
 
   useEffect(() => {
     if (deferredContentStage >= CROSS_ASSET_FINAL_DEFERRED_CONTENT_STAGE) {
@@ -512,12 +522,24 @@ export default function CrossAssetDriversPage() {
                   </div>
                 ) : visibleTrendOption ? (
                   <div className="cross-asset-trend-chart">
-                    <ReactECharts
-                      option={visibleTrendOption}
-                      className="cross-asset-trend-chart__canvas"
-                      notMerge
-                      lazyUpdate
-                    />
+                    <Suspense
+                      fallback={
+                        <div
+                          className="cross-asset-trend-panel__loading"
+                          data-testid="cross-asset-trend-chart-loading"
+                        >
+                          <div className="cross-asset-trend-panel__spinner" />
+                          正在加载图表资源…
+                        </div>
+                      }
+                    >
+                      <LazyCrossAssetECharts
+                        option={visibleTrendOption}
+                        className="cross-asset-trend-chart__canvas"
+                        notMerge
+                        lazyUpdate
+                      />
+                    </Suspense>
                   </div>
                 ) : (
                   <div className="cross-asset-trend-panel__empty">

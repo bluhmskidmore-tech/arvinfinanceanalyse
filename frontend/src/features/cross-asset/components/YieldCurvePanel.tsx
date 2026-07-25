@@ -1,7 +1,7 @@
-import { useMemo } from "react";
+import { Suspense, useMemo } from "react";
 
-import ReactECharts from "../../../lib/echarts";
 import { buildYieldCurveOption, type YieldCurveSeriesResult } from "../lib/crossAssetYieldCurve";
+import { LazyCrossAssetECharts } from "./CrossAssetECharts";
 
 import "./YieldCurvePanel.css";
 
@@ -56,7 +56,24 @@ export function YieldCurvePanel({
         </div>
       ) : option ? (
         <div className="yield-curve-panel__chart" data-testid="yield-curve-panel-chart">
-          <ReactECharts option={option} className="yield-curve-panel__canvas" notMerge lazyUpdate />
+          <Suspense
+            fallback={
+              <div
+                className="yield-curve-panel__loading"
+                data-testid="yield-curve-panel-chart-loading"
+              >
+                <div className="yield-curve-panel__spinner" />
+                正在加载图表资源…
+              </div>
+            }
+          >
+            <LazyCrossAssetECharts
+              option={option}
+              className="yield-curve-panel__canvas"
+              notMerge
+              lazyUpdate
+            />
+          </Suspense>
         </div>
       ) : (
         <div className="yield-curve-panel__empty" data-testid="yield-curve-panel-empty">
