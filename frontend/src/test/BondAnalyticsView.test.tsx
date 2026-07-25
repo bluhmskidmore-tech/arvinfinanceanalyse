@@ -573,7 +573,9 @@ describe("BondAnalyticsView", () => {
 
     await waitFor(
       () => {
-        expect(screen.getByLabelText("报告日")).toHaveValue("2026-02-28");
+        expect(
+          screen.getByRole("combobox", { name: "报告日" }).closest("label"),
+        ).toHaveTextContent("2026-02-28");
         expect(fetchSequence.some((url) => url.includes("/api/bond-analytics/dates"))).toBe(true);
         expect(
           fetchSequence.some((url) =>

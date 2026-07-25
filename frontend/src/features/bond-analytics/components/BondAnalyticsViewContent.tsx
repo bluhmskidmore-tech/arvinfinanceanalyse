@@ -1,5 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Select } from "antd";
 import { Link, useSearchParams } from "react-router-dom";
 
 import type { ApiEnvelope } from "../../../api/contracts";
@@ -113,7 +114,6 @@ export function BondAnalyticsViewContent() {
 
   useEffect(() => {
     void import("./BondAnalyticsOverviewPanels");
-    void import("./BondAnalyticsDetailSection");
   }, []);
 
   const [searchParams] = useSearchParams();
@@ -308,23 +308,20 @@ export function BondAnalyticsViewContent() {
           </span>
           <label className="dashboard-home-control">
             <span>报告日</span>
-            <select
+            <Select<string>
               aria-label="报告日"
-              className={`${styles.toolbarSelect} ${styles.toolbarSelectWide}`}
-              value={effectiveReportDate}
-              onChange={(event) => setReportDate(event.target.value)}
+              className={`${styles.toolbarDateSelect} ${styles.toolbarSelectWide}`}
+              classNames={{ popup: { root: styles.toolbarDateDropdown } }}
+              value={effectiveReportDate || undefined}
+              onChange={setReportDate}
               disabled={dateOptions.length === 0}
-            >
-              {dateOptions.length > 0 ? (
-                dateOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))
-              ) : (
-                <option value="">待确认</option>
-              )}
-            </select>
+              loading={datesQuery.isLoading}
+              options={dateOptions}
+              placeholder="待确认"
+              showSearch
+              optionFilterProp="label"
+              virtual
+            />
           </label>
           <label className="dashboard-home-control">
             <span>期间</span>

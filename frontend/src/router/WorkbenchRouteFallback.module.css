@@ -1,17 +1,97 @@
 .routeFallback {
-  display: inline-flex;
-  align-items: center;
+  --route-fallback-line: color-mix(
+    in srgb,
+    var(--moss-color-border-default) 72%,
+    transparent
+  );
+  --route-fallback-fill: color-mix(
+    in srgb,
+    var(--moss-color-text-muted) 8%,
+    transparent
+  );
+
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
   gap: 10px;
+  width: 100%;
+  min-width: 0;
+  min-height: clamp(420px, calc(100dvh - 220px), 720px);
+  box-sizing: border-box;
   padding: 20px 24px;
-  color: var(--moss-color-text-muted, #5c6b82);
+  overflow: hidden;
+  border: 1px solid var(--moss-color-border-default);
+  border-radius: var(--moss-radius-sm);
+  color: var(--moss-color-text-muted);
   font-size: 13px;
   line-height: 1.4;
+  background: var(--moss-shell-paper-bg);
+}
+
+.routeFallback::before,
+.routeFallback::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+}
+
+.routeFallback::before {
+  z-index: -1;
+  inset: 62px 24px auto;
+  height: 1px;
+  background: var(--route-fallback-line);
+}
+
+.routeFallback::after {
+  z-index: -1;
+  inset: 86px 24px 24px;
+  border: 1px solid var(--route-fallback-line);
+  border-radius: var(--moss-radius-sm);
+  background:
+    linear-gradient(
+        90deg,
+        var(--route-fallback-fill) 0 calc(52% - 6px),
+        transparent calc(52% - 6px) calc(52% + 6px),
+        var(--route-fallback-fill) calc(52% + 6px) 100%
+      )
+      16px 16px / calc(100% - 32px) 92px no-repeat,
+    linear-gradient(var(--route-fallback-line) 0 0) 16px 132px / 34% 10px no-repeat,
+    linear-gradient(var(--route-fallback-line) 0 0) 16px 158px / 68% 8px no-repeat,
+    linear-gradient(var(--route-fallback-fill) 0 0) 16px 196px / calc(100% - 32px) 92px
+      no-repeat;
 }
 
 .routeFallbackMark {
   width: 8px;
   height: 8px;
+  margin-top: 5px;
   border-radius: 999px;
-  background: var(--moss-color-accent, #2f6fed);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--moss-color-accent, #2f6fed) 12%, transparent);
+  background: var(--moss-institutional-accent-cyan);
+  box-shadow: 0 0 0 4px
+    color-mix(in srgb, var(--moss-institutional-accent-cyan) 12%, transparent);
+}
+
+@media (max-width: 700px) {
+  .routeFallback {
+    min-height: clamp(360px, calc(100dvh - 168px), 560px);
+    padding: 18px;
+  }
+
+  .routeFallback::before {
+    inset-inline: 18px;
+  }
+
+  .routeFallback::after {
+    inset: 82px 18px 18px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .routeFallback,
+  .routeFallbackMark {
+    animation: none;
+    transition: none;
+  }
 }

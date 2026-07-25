@@ -147,6 +147,86 @@
   min-width: 136px;
 }
 
+.toolbarDateSelect {
+  height: 28px;
+  font: inherit;
+  font-family: var(--moss-font-mono);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.toolbarDateSelect :global(.ant-select-selector) {
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 var(--moss-space-2) !important;
+  border: 1px solid var(--moss-color-neutral-400) !important;
+  border-radius: 6px !important;
+  background: rgba(7, 17, 31, 0.78) !important;
+  color: var(--dashboard-blue-700) !important;
+  box-shadow: none !important;
+}
+
+.toolbarDateSelect :global(.ant-select-selection-item),
+.toolbarDateSelect :global(.ant-select-selection-placeholder),
+.toolbarDateSelect :global(.ant-select-selection-search-input) {
+  color: var(--dashboard-blue-700) !important;
+  font-family: var(--moss-font-mono);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.toolbarDateSelect :global(.ant-select-selection-item) {
+  line-height: 26px !important;
+}
+
+.toolbarDateSelect :global(.ant-select-arrow) {
+  color: var(--moss-color-neutral-400);
+}
+
+.toolbarDateSelect:global(.ant-select-focused) :global(.ant-select-selector) {
+  border-color: color-mix(
+    in srgb,
+    var(--dashboard-blue-700) 62%,
+    transparent
+  ) !important;
+  box-shadow: 0 0 0 2px
+    color-mix(
+      in srgb,
+      var(--dashboard-blue-700) 24%,
+      transparent
+    ) !important;
+}
+
+.toolbarDateDropdown {
+  border: 1px solid var(--moss-color-neutral-700);
+  border-radius: 6px;
+  background: var(--moss-color-primary-900) !important;
+  box-shadow: none !important;
+}
+
+.toolbarDateDropdown :global(.ant-select-item) {
+  color: var(--moss-color-neutral-100);
+  font-family: var(--moss-font-mono);
+  font-size: 12px;
+}
+
+.toolbarDateDropdown :global(.ant-select-item-option-active:not(.ant-select-item-option-disabled)) {
+  background: color-mix(
+    in srgb,
+    var(--moss-color-info-500) 12%,
+    transparent
+  );
+}
+
+.toolbarDateDropdown :global(.ant-select-item-option-selected:not(.ant-select-item-option-disabled)) {
+  background: color-mix(
+    in srgb,
+    var(--moss-color-info-500) 20%,
+    transparent
+  );
+  color: var(--moss-color-neutral-50);
+}
+
 .refreshButton {
   min-width: 48px;
   color: #ffffff;

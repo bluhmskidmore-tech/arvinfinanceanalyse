@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 
 import styles from "./dashboardHomeShell.module.css";
@@ -127,6 +127,7 @@ function HomeCommandDock({
 }
 
 function useDeferredHomeContent(snapshotSettled: boolean, eagerLoad: boolean) {
+  const deferredContentSentinelRef = useRef<HTMLDivElement | null>(null);
   const [shouldLoad, setShouldLoad] = useState(false);
   const [userReachedDeferredContent, setUserReachedDeferredContent] = useState(false);
 
@@ -146,6 +147,18 @@ function useDeferredHomeContent(snapshotSettled: boolean, eagerLoad: boolean) {
 
     if (shouldLoad || userReachedDeferredContent) {
       return undefined;
+    }
+
+    const deferredContentNode = deferredContentSentinelRef.current;
+    if (typeof window.IntersectionObserver !== "undefined" && deferredContentNode) {
+      const observer = new window.IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting || entry.intersectionRatio > 0)) {
+          markUserReached();
+          observer.disconnect();
+        }
+      });
+      observer.observe(deferredContentNode);
+      return () => observer.disconnect();
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -180,6 +193,9 @@ function useDeferredHomeContent(snapshotSettled: boolean, eagerLoad: boolean) {
       setShouldLoad(true);
       return undefined;
     }
+    if (typeof window.IntersectionObserver !== "undefined") {
+      return undefined;
+    }
 
     let isActive = true;
     const idleWindow = window as IdleWindow;
@@ -203,6 +219,7 @@ function useDeferredHomeContent(snapshotSettled: boolean, eagerLoad: boolean) {
     const markReady = () => {
       if (isActive) {
         cancelScheduledWork();
+        setUserReachedDeferredContent(true);
         setShouldLoad(true);
       }
     };
@@ -227,7 +244,7 @@ function useDeferredHomeContent(snapshotSettled: boolean, eagerLoad: boolean) {
     };
   }, [eagerLoad, shouldLoad, snapshotSettled, userReachedDeferredContent]);
 
-  return { shouldLoad, userReachedDeferredContent };
+  return { deferredContentSentinelRef, shouldLoad, userReachedDeferredContent };
 }
 
 export default function DashboardHomePage() {
@@ -246,6 +263,7 @@ export default function DashboardHomePage() {
     snapshotBoundary,
   } = useDashboardHomeFirstScreenViewModel();
   const {
+    deferredContentSentinelRef,
     shouldLoad: loadDeferredContent,
     userReachedDeferredContent,
   } = useDeferredHomeContent(!snapshotQuery.isFetching, shouldFocusPolicyFunding);
@@ -361,6 +379,11 @@ export default function DashboardHomePage() {
             aria-busy={!loadDeferredContent}
           >
             {deferredHomeContent}
+            <div
+              ref={deferredContentSentinelRef}
+              data-testid="dashboard-home-deferred-sentinel"
+              aria-hidden="true"
+            />
           </div>
         </main>
 

@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, beforeAll, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 
 vi.mock("../lib/echarts", () => ({
@@ -64,6 +64,10 @@ afterEach(() => {
     restoreHomeGateTimers = null;
   }
   vi.unstubAllGlobals();
+});
+
+beforeEach(() => {
+  vi.stubGlobal("IntersectionObserver", undefined);
 });
 
 beforeAll(async () => {
@@ -262,14 +266,13 @@ async function waitForFormalContextDataDelay() {
 }
 
 async function revealHomeBodyStructureData(idle: StubbedIdleCallbacks) {
-  await runNextIdle(idle);
   await waitForBodyAutoRevealDelay();
   await runNextIdle(idle);
   await screen.findByTestId("dashboard-home-work-grid");
   await waitForBodyDetailDataDelay();
-  await runNextIdle(idle);
+  await runPendingIdleIfAny(idle);
   await waitForBodyStructureDataDelay();
-  await runNextIdle(idle);
+  await runPendingIdleIfAny(idle);
 }
 
 async function revealHomeBodyDetailAndEventFeeds(idle: StubbedIdleCallbacks) {
@@ -1269,7 +1272,7 @@ describe("DashboardHomePage", () => {
     });
   });
 
-  it("lets below-fold basic data start before slow first-screen hydration queries", async () => {
+  it("keeps slow first-screen hydration behind its own idle tier after the body mounts", async () => {
     const base = createApiClient({ mode: "real" });
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     let releaseSnapshot: (() => void) | undefined;
@@ -1310,40 +1313,20 @@ describe("DashboardHomePage", () => {
     await runNextIdle(idle);
     expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
     expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).not.toHaveBeenCalled();
-    expect(supplementalCalls.getMarketDataRates).not.toHaveBeenCalled();
-    expect(supplementalCalls.getCoreMetrics).not.toHaveBeenCalled();
-    expect(supplementalCalls.getDailyChanges).not.toHaveBeenCalled();
-    expect(supplementalCalls.getBondAnalyticsTopHoldings).not.toHaveBeenCalled();
-    expect(supplementalCalls.getHomeIncomeTrend).not.toHaveBeenCalled();
-    expect(supplementalCalls.getResearchCalendarEvents).not.toHaveBeenCalled();
-    expect(supplementalCalls.getChoiceNewsEvents).not.toHaveBeenCalled();
-    expect(supplementalCalls.getBalanceAnalysisDecisionItems).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(supplementalCalls.getMarketDataRates).toHaveBeenCalledTimes(1);
+    });
 
     await waitForBodyAutoRevealDelay();
     await runNextIdle(idle);
     await waitFor(() => {
       expect(supplementalCalls.getMarketDataRates).toHaveBeenCalledTimes(1);
-    });
-    expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
-    expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).not.toHaveBeenCalled();
-    expect(supplementalCalls.getCoreMetrics).not.toHaveBeenCalled();
-    expect(supplementalCalls.getDailyChanges).not.toHaveBeenCalled();
-    expect(supplementalCalls.getBalanceAnalysisDecisionItems).not.toHaveBeenCalled();
-    expect(supplementalCalls.getBondAnalyticsTopHoldings).not.toHaveBeenCalled();
-    expect(supplementalCalls.getHomeIncomeTrend).not.toHaveBeenCalled();
-    expect(supplementalCalls.getResearchCalendarEvents).not.toHaveBeenCalled();
-    expect(supplementalCalls.getChoiceNewsEvents).not.toHaveBeenCalled();
-    expect(supplementalCalls.getBondDashboardAssetStructure).not.toHaveBeenCalled();
-
-    await waitForFirstScreenHydrationDelay();
-    await runNextIdle(idle);
-    await waitFor(() => {
       expect(supplementalCalls.getBondDashboardHeadlineKpis).toHaveBeenCalledTimes(1);
       expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).toHaveBeenCalledTimes(1);
     });
   });
 
-  it("preloads home-summary while keeping formal ledgers behind the structure idle gate", async () => {
+  it("preloads home-summary while the body gate opens and keeps formal ledgers behind later idle tiers", async () => {
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     const idle = stubIdleCallbacks();
     const supplementalCalls = createSupplementalHomeSpies(mockSnapshotSource);
@@ -1367,14 +1350,14 @@ describe("DashboardHomePage", () => {
     expect(supplementalCalls.getHomeResearchReports).not.toHaveBeenCalled();
 
     await waitForBodyDetailDataDelay();
-    await runNextIdle(idle);
+    await runPendingIdleIfAny(idle);
     expect(supplementalCalls.getBondDashboardHomeSummary).toHaveBeenCalledTimes(1);
-    expect(supplementalCalls.getBondAnalyticsTopHoldings).not.toHaveBeenCalled();
-    expect(supplementalCalls.getBondAnalyticsPositionChanges).not.toHaveBeenCalled();
-    expect(supplementalCalls.getHomeResearchReports).not.toHaveBeenCalled();
+    expect(supplementalCalls.getBondAnalyticsTopHoldings).toHaveBeenCalledTimes(1);
+    expect(supplementalCalls.getBondAnalyticsPositionChanges).toHaveBeenCalledTimes(1);
+    expect(supplementalCalls.getHomeResearchReports).toHaveBeenCalledTimes(1);
 
     await waitForBodyStructureDataDelay();
-    await runNextIdle(idle);
+    await runPendingIdleIfAny(idle);
     await waitFor(() => {
       expect(supplementalCalls.getBondDashboardHomeSummary).toHaveBeenCalledTimes(1);
       expect(supplementalCalls.getBondAnalyticsTopHoldings).toHaveBeenCalledTimes(1);
@@ -1383,7 +1366,7 @@ describe("DashboardHomePage", () => {
     });
   });
 
-  it("keeps first-screen supplemental hydration behind the deferred content reveal delay", async () => {
+  it("keeps first-screen supplemental hydration behind the first-screen idle gate after deferred content reveals", async () => {
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     const idle = stubIdleCallbacks();
     const supplementalCalls = createSupplementalHomeSpies(mockSnapshotSource);
@@ -1406,15 +1389,15 @@ describe("DashboardHomePage", () => {
 
     expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
     expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).not.toHaveBeenCalled();
-    expect(supplementalCalls.getMarketDataRates).not.toHaveBeenCalled();
+    expect(supplementalCalls.getMarketDataRates).toHaveBeenCalledTimes(1);
 
     await waitForBodyAutoRevealDelay();
     await runNextIdle(idle);
     await waitFor(() => {
       expect(supplementalCalls.getMarketDataRates).toHaveBeenCalledTimes(1);
     });
-    expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
-    expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).not.toHaveBeenCalled();
+    expect(supplementalCalls.getBondDashboardHeadlineKpis).toHaveBeenCalledTimes(1);
+    expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).toHaveBeenCalledTimes(1);
 
     await waitForFirstScreenHydrationDelay();
     await runNextIdle(idle);
@@ -1422,6 +1405,32 @@ describe("DashboardHomePage", () => {
       expect(supplementalCalls.getBondDashboardHeadlineKpis).toHaveBeenCalledTimes(1);
       expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("keeps below-fold content unmounted while its boundary stays outside the viewport", async () => {
+    const observer = stubIntersectionObserver();
+    const idle = stubIdleCallbacks();
+
+    renderDashboardHome();
+
+    expect(await screen.findByTestId("dashboard-home-hero")).toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-home-deferred-index")).toBeInTheDocument();
+
+    await waitForDeferredHomeContentDelay();
+    await waitForBodyAutoRevealDelay();
+
+    expect(observer.observe).toHaveBeenCalled();
+    expect(observer.observe).toHaveBeenCalledWith(
+      screen.getByTestId("dashboard-home-deferred-sentinel"),
+    );
+    expect(idle.pendingCount()).toBe(0);
+    expect(screen.queryByTestId("dashboard-home-work-grid")).not.toBeInTheDocument();
+
+    await act(async () => {
+      observer.triggerAll({ isIntersecting: true, intersectionRatio: 1 });
+    });
+
+    expect(await screen.findByTestId("dashboard-home-work-grid")).toBeInTheDocument();
   });
 
   it("starts deferred content immediately when the user reaches below-fold content without starting slow hydration", async () => {
@@ -1491,10 +1500,13 @@ describe("DashboardHomePage", () => {
     });
     await runNextIdle(idle);
 
+    expect(await screen.findByTestId("dashboard-home-work-grid")).toBeInTheDocument();
+
+    await waitForFirstScreenHydrationDelay();
+    await runPendingIdleIfAny(idle);
     await waitFor(() => {
       expect(supplementalCalls.getBondDashboardHeadlineKpis).toHaveBeenCalledTimes(1);
     });
-    expect(await screen.findByTestId("dashboard-home-work-grid")).toBeInTheDocument();
   });
 
   it("does not reuse an old idle gate for supplemental queries while a new report-date snapshot is pending", async () => {
@@ -1606,36 +1618,7 @@ describe("DashboardHomePage", () => {
     renderDashboardHome(client);
 
     expect(await screen.findByTestId("dashboard-home-page")).toBeInTheDocument();
-    await runNextIdle(idle);
-    expect(supplementalCalls.getHomeIncomeTrend).not.toHaveBeenCalled();
-    expect(supplementalCalls.getCockpitWarnings).not.toHaveBeenCalled();
-
-    await waitForBodyAutoRevealDelay();
-    await runNextIdle(idle);
-    expect(supplementalCalls.getCockpitWarnings).not.toHaveBeenCalled();
-
-    await waitForBodyDetailDataDelay();
-    await runNextIdle(idle);
-    expect(supplementalCalls.getCockpitWarnings).not.toHaveBeenCalled();
-
-    await waitForBodyStructureDataDelay();
-    await runNextIdle(idle);
-    expect(supplementalCalls.getCockpitWarnings).not.toHaveBeenCalled();
-
-    await waitForEventFeedDataDelay();
-    await runPendingIdleIfAny(idle);
-    expect(supplementalCalls.getCockpitWarnings).not.toHaveBeenCalled();
-
-    await waitForSecondaryEventFeedDataDelay();
-    await runPendingIdleIfAny(idle);
-    expect(supplementalCalls.getCockpitWarnings).not.toHaveBeenCalled();
-
-    await waitForBondNewsFeedDataDelay();
-    await runPendingIdleIfAny(idle);
-    expect(supplementalCalls.getCockpitWarnings).not.toHaveBeenCalled();
-
-    await waitForFormalContextDataDelay();
-    await runPendingIdleIfAny(idle);
+    await revealHomeFormalContextData(idle);
     await waitFor(() => {
       expect(supplementalCalls.getHomeIncomeTrend).toHaveBeenCalledTimes(1);
     });
@@ -1694,7 +1677,7 @@ describe("DashboardHomePage", () => {
     }
   });
 
-  it("starts income trend and formal context before heavy bond lists settle", async () => {
+  it("starts formal context while heavy bond lists are still settling", async () => {
     const base = createApiClient({ mode: "real" });
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     const idle = stubIdleCallbacks();
@@ -1761,14 +1744,10 @@ describe("DashboardHomePage", () => {
     await act(async () => {
       idle.runPending();
     });
-    expect(getBondAnalyticsTopHoldings).not.toHaveBeenCalled();
-    expect(getHomeIncomeTrend).not.toHaveBeenCalled();
 
     await waitForBodyAutoRevealDelay();
     await runNextIdle(idle);
     await screen.findByTestId("dashboard-home-work-grid");
-    expect(getBondAnalyticsTopHoldings).not.toHaveBeenCalled();
-    expect(getHomeIncomeTrend).not.toHaveBeenCalled();
 
     await waitForEventFeedDataDelay();
     await runPendingIdleIfAny(idle);
@@ -1780,14 +1759,8 @@ describe("DashboardHomePage", () => {
       expect(getPnlCampisiFourEffects).toHaveBeenCalled();
       expect(getBondAnalyticsYieldCurveTermStructure).toHaveBeenCalled();
     });
-    expect(getBondAnalyticsTopHoldings).not.toHaveBeenCalled();
-
-    await waitForBodyStructureDataDelay();
-    await runNextIdle(idle);
-    await waitFor(() => {
-      expect(getBondAnalyticsTopHoldings).toHaveBeenCalled();
-      expect(releaseTopHoldings).toBeDefined();
-    });
+    expect(getBondAnalyticsTopHoldings).toHaveBeenCalled();
+    expect(releaseTopHoldings).toBeDefined();
 
     await act(async () => {
       releaseTopHoldings?.();
@@ -1796,7 +1769,7 @@ describe("DashboardHomePage", () => {
     releaseIncomeTrend?.();
   });
 
-  it("starts formal queries before slow position changes have settled", async () => {
+  it("starts formal queries while slow position changes are still settling", async () => {
     const base = createApiClient({ mode: "real" });
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     const idle = stubIdleCallbacks();
@@ -1870,16 +1843,9 @@ describe("DashboardHomePage", () => {
       expect(getPnlCampisiFourEffects).toHaveBeenCalled();
       expect(getBondAnalyticsYieldCurveTermStructure).toHaveBeenCalled();
     });
-    expect(getBondAnalyticsTopHoldings).not.toHaveBeenCalled();
-    expect(getBondAnalyticsPositionChanges).not.toHaveBeenCalled();
-
-    await waitForBodyStructureDataDelay();
-    await runNextIdle(idle);
-    await waitFor(() => {
-      expect(getBondAnalyticsTopHoldings).toHaveBeenCalled();
-      expect(getBondAnalyticsPositionChanges).toHaveBeenCalled();
-      expect(releasePositionChanges).toBeDefined();
-    });
+    expect(getBondAnalyticsTopHoldings).toHaveBeenCalled();
+    expect(getBondAnalyticsPositionChanges).toHaveBeenCalled();
+    expect(releasePositionChanges).toBeDefined();
 
     await act(async () => {
       releasePositionChanges?.();
@@ -1969,16 +1935,9 @@ describe("DashboardHomePage", () => {
       expect(getPnlCampisiFourEffects).toHaveBeenCalled();
       expect(getBondAnalyticsYieldCurveTermStructure).toHaveBeenCalled();
     });
-    expect(getBondAnalyticsTopHoldings).not.toHaveBeenCalled();
-    expect(getBondAnalyticsPositionChanges).not.toHaveBeenCalled();
-
-    await waitForBodyStructureDataDelay();
-    await runNextIdle(idle);
-    await waitFor(() => {
-      expect(getBondAnalyticsTopHoldings).toHaveBeenCalled();
-      expect(getBondAnalyticsPositionChanges).toHaveBeenCalled();
-      expect(rejectPositionChanges).toBeDefined();
-    });
+    expect(getBondAnalyticsTopHoldings).toHaveBeenCalled();
+    expect(getBondAnalyticsPositionChanges).toHaveBeenCalled();
+    expect(rejectPositionChanges).toBeDefined();
 
     await act(async () => {
       rejectPositionChanges?.();
@@ -2412,21 +2371,18 @@ describe("DashboardHomePage", () => {
     expect(getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
 
     await waitForBodyAutoRevealDelay();
-    await runNextIdle(idle);
-    expect(getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
-
+    await runPendingIdleIfAny(idle);
     await waitForFirstScreenHydrationDelay();
-    await runNextIdle(idle);
-
-    await waitFor(() => {
-      expect(getBondDashboardHeadlineKpis).toHaveBeenCalledWith("2026-04-30");
-      expect(within(hero).queryByTestId("dashboard-home-kpi-bond-market-value")).not.toBeInTheDocument();
-      expect(within(hero).queryByTestId("dashboard-home-kpi-duration")).not.toBeInTheDocument();
-      expect(within(hero).queryByTestId("dashboard-home-kpi-ytm")).not.toBeInTheDocument();
-    });
+    await runPendingIdleIfAny(idle);
+    await waitForFormalContextDataDelay();
+    await runPendingIdleIfAny(idle);
+    expect(getBondDashboardHeadlineKpis).toHaveBeenCalledWith("2026-04-30");
+    expect(within(hero).queryByTestId("dashboard-home-kpi-bond-market-value")).not.toBeInTheDocument();
+    expect(within(hero).queryByTestId("dashboard-home-kpi-duration")).not.toBeInTheDocument();
+    expect(within(hero).queryByTestId("dashboard-home-kpi-ytm")).not.toBeInTheDocument();
   });
 
-  it("keeps below-fold home body behind a second idle gate before slow hydration starts", async () => {
+  it("mounts below-fold home body on the outer idle gate before slow first-screen hydration starts", async () => {
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     const idle = stubIdleCallbacks();
     const supplementalCalls = createSupplementalHomeSpies(mockSnapshotSource);
@@ -2447,17 +2403,7 @@ describe("DashboardHomePage", () => {
 
     expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
     expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).not.toHaveBeenCalled();
-    expect(supplementalCalls.getMarketDataRates).not.toHaveBeenCalled();
-    expect(screen.queryByTestId("dashboard-home-work-grid")).not.toBeInTheDocument();
-    await waitForTestClock(1_200);
-    await waitFor(() => {
-      expect(idle.pendingCount()).toBeGreaterThan(0);
-    });
-
-    await act(async () => {
-      idle.runPending();
-    });
-
+    expect(supplementalCalls.getMarketDataRates).toHaveBeenCalledTimes(1);
     expect(await screen.findByTestId("dashboard-home-work-grid")).toBeInTheDocument();
     await waitFor(() => {
       expect(supplementalCalls.getMarketDataRates).toHaveBeenCalledTimes(1);
@@ -2473,7 +2419,7 @@ describe("DashboardHomePage", () => {
     });
   });
 
-  it("loads below-fold home body immediately when the user reaches deferred content", async () => {
+  it("keeps slow first-screen hydration deferred after the outer idle body mount", async () => {
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     const idle = stubIdleCallbacks();
     const supplementalCalls = createSupplementalHomeSpies(mockSnapshotSource);
@@ -2493,15 +2439,6 @@ describe("DashboardHomePage", () => {
     });
 
     expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
-    expect(screen.queryByTestId("dashboard-home-work-grid")).not.toBeInTheDocument();
-    await waitFor(() => {
-      expect(idle.pendingCount()).toBeGreaterThan(0);
-    });
-
-    await act(async () => {
-      fireEvent.scroll(window);
-    });
-
     expect(await screen.findByTestId("dashboard-home-work-grid")).toBeInTheDocument();
     expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
 

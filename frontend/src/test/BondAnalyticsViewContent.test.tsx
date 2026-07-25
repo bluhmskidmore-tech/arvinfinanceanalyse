@@ -14,6 +14,7 @@ import { formatRawAsNumeric } from "../utils/format";
 let latestOverviewProps: Record<string, unknown> | null = null;
 let latestDetailProps: Record<string, unknown> | null = null;
 let detailMountSeq = 0;
+const lazyModuleLoads = vi.hoisted(() => ({ detail: 0 }));
 
 vi.mock("../app/jobs/polling", () => ({
   runPollingTask: vi.fn(),
@@ -64,6 +65,7 @@ vi.mock("../features/bond-analytics/components/BondAnalyticsOverviewPanels", () 
 }));
 
 vi.mock("../features/bond-analytics/components/BondAnalyticsDetailSection", () => {
+  lazyModuleLoads.detail += 1;
   return {
     BondAnalyticsDetailSection: function MockBondAnalyticsDetailSection(
       props: Record<string, unknown>,
@@ -232,6 +234,31 @@ describe("BondAnalyticsViewContent", () => {
     vi.unstubAllGlobals();
   });
 
+  it("does not preload the detail module before the drilldown is opened", async () => {
+    const user = userEvent.setup();
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsDates: vi.fn(async () => ({
+        result_meta: createResultMeta({ result_kind: "bond_analytics.dates" }),
+        result: { report_dates: ["2026-03-31"] },
+      })),
+      getBondAnalyticsActionAttribution: vi.fn(async () => createActionAttributionEnvelope()),
+    };
+
+    renderViewContent(client);
+
+    await screen.findByTestId("mock-bond-analytics-overview-panels");
+    await vi.dynamicImportSettled();
+
+    expect(screen.getByTestId("bond-analysis-detail-drilldown")).not.toHaveAttribute("open");
+    expect(lazyModuleLoads.detail).toBe(0);
+
+    await user.click(screen.getByTestId("trigger-open-credit-spread"));
+
+    expect(await screen.findByTestId("mock-bond-analytics-detail-section")).toBeInTheDocument();
+    expect(lazyModuleLoads.detail).toBe(1);
+  });
+
   it("defers detail wiring until a drilldown is opened", async () => {
     const user = userEvent.setup();
     const client = {
@@ -268,6 +295,57 @@ describe("BondAnalyticsViewContent", () => {
     expect(latestDetailProps?.periodType).toBe("MoM");
     expect(latestDetailProps?.activeTab).toBe("credit-spread");
     expect(client.getBondAnalyticsActionAttribution).toHaveBeenCalled();
+  });
+
+  it("keeps a large report-date list out of the closed DOM and selects an exact searched date", async () => {
+    const user = userEvent.setup();
+    const reportDates = Array.from({ length: 521 }, (_, index) =>
+      new Date(Date.UTC(2026, 11, 31 - index)).toISOString().slice(0, 10),
+    );
+    const targetReportDate = reportDates[400]!;
+    const getBondAnalyticsActionAttribution = vi.fn(async () =>
+      createActionAttributionEnvelope(),
+    );
+    const getResearchCalendarEvents = vi.fn(async () => []);
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsDates: vi.fn(async () => ({
+        result_meta: createResultMeta({ result_kind: "bond_analytics.dates" }),
+        result: { report_dates: reportDates },
+      })),
+      getBondAnalyticsActionAttribution,
+      getResearchCalendarEvents,
+    };
+
+    renderViewContent(client);
+
+    await screen.findByTestId("mock-bond-analytics-overview-panels");
+    await waitFor(() => {
+      expect(latestOverviewProps?.reportDate).toBe(reportDates[0]);
+    });
+
+    expect(document.querySelectorAll("option").length).toBeLessThan(50);
+
+    const reportDateInput = screen.getByRole("combobox", { name: "报告日" });
+    await user.click(reportDateInput);
+    const listbox = await screen.findByRole("listbox");
+    expect(listbox.querySelectorAll('[role="option"]').length).toBeLessThan(50);
+    expect(document.querySelector(".ant-select-dropdown")?.className).toContain(
+      "toolbarDateDropdown",
+    );
+    await user.type(reportDateInput, targetReportDate);
+    await user.click(await screen.findByTitle(targetReportDate));
+
+    await waitFor(() => {
+      expect(latestOverviewProps?.reportDate).toBe(targetReportDate);
+      expect(getBondAnalyticsActionAttribution).toHaveBeenLastCalledWith(
+        targetReportDate,
+        "MoM",
+      );
+      expect(getResearchCalendarEvents).toHaveBeenLastCalledWith({
+        reportDate: targetReportDate,
+      });
+    });
   });
 
   it("puts the workstation overview directly after the toolbar", async () => {
