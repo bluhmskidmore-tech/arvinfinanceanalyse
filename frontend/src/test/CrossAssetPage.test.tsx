@@ -166,7 +166,7 @@ describe("CrossAssetPage", () => {
       renderPage(createApiClient({ mode: "mock" }));
 
       await screen.findByTestId("cross-asset-evidence-tape");
-      expect(observer.observe).toHaveBeenCalledTimes(1);
+      await waitFor(() => expect(observer.observe).toHaveBeenCalledTimes(1));
       expect(screen.getByTestId("cross-asset-evidence-details")).toHaveAttribute("open");
       expect(observer.observe).toHaveBeenLastCalledWith(
         screen.getByTestId("cross-asset-evidence-details"),
