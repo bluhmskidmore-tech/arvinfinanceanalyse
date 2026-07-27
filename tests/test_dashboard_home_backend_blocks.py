@@ -702,8 +702,8 @@ def test_home_income_trend_endpoint_accepts_flat_numeric_benchmark_returns(tmp_p
             "result": {
                 "report_date": report_date.isoformat(),
                 "benchmark_id": benchmark_id,
-                "portfolio_return": "1.2",
-                "benchmark_return": "0.8",
+                "portfolio_return": "0.012",
+                "benchmark_return": "0.008",
                 "excess_return": "40",
                 "warnings": [],
             },
@@ -733,6 +733,79 @@ def test_home_income_trend_endpoint_accepts_flat_numeric_benchmark_returns(tmp_p
         assert result["source_status"] == "ready"
         assert result["missing_components"] == []
         assert result["warnings"] == []
+        assert Decimal(str(result["points"][0]["benchmark_pnl"]["raw"])) == Decimal("80000000.0")
+        assert Decimal(str(result["points"][0]["excess_pnl"]["raw"])) == Decimal("40000000.0")
+    finally:
+        get_settings.cache_clear()
+
+
+def test_home_income_trend_keeps_returns_when_only_reconciliation_warning_is_material(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    duckdb_path = tmp_path / "income-trend-reconciliation-warning.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
+    get_settings.cache_clear()
+    _seed_product_category_income_trend(duckdb_path)
+
+    def numeric(raw: Decimal, unit: str = "pct") -> dict[str, object]:
+        return {
+            "raw": float(raw),
+            "unit": unit,
+            "display": str(raw),
+            "precision": 8,
+            "sign_aware": True,
+        }
+
+    def fake_benchmark_excess(
+        report_date: date,
+        period_type: str = "MoM",
+        benchmark_id: str = "CDB_INDEX",
+    ) -> dict[str, Any]:
+        return {
+            "result": {
+                "report_date": report_date.isoformat(),
+                "benchmark_id": benchmark_id,
+                "portfolio_return": numeric(Decimal("0.012")),
+                "benchmark_return": numeric(Decimal("0.008")),
+                "excess_return": numeric(Decimal("40"), "bp"),
+                "warnings": [
+                    "Benchmark excess reconciliation gap (recon_error) is material; "
+                    "verify curve inputs and portfolio snapshot.",
+                    "YIELD_CURVE_LATEST_FALLBACK: Using latest available aaa_credit curve "
+                    f"from trade_date={report_date.replace(day=1).isoformat()} "
+                    f"for requested_trade_date={report_date.replace(day=2).isoformat()}.",
+                ],
+            },
+            "result_meta": {
+                "source_version": "sv_cdb_curve_test",
+                "rule_version": "rv_benchmark_excess_test",
+                "vendor_status": "vendor_stale",
+                "fallback_mode": "latest_snapshot",
+            },
+        }
+
+    service_mod = load_module(
+        "backend.app.services.executive_service",
+        "backend/app/services/executive_service.py",
+    )
+    _patch_home_income_batch_from_single(service_mod, monkeypatch, fake_benchmark_excess)
+
+    try:
+        _grant_read_scope(tmp_path, monkeypatch, resource="executive")
+        client = _authorized_client()
+        response = client.get(
+            "/ui/home/income-trend",
+            params={"report_date": REPORT_DATE, "window": 2},
+        )
+
+        assert response.status_code == 200, response.text
+        result = response.json()["result"]
+        assert result["source_status"] == "ready"
+        assert result["missing_components"] == []
+        assert result["warnings"] == []
+        assert [point["source_status"] for point in result["points"]] == ["ready", "ready"]
         assert Decimal(str(result["points"][0]["benchmark_pnl"]["raw"])) == Decimal("80000000.0")
         assert Decimal(str(result["points"][0]["excess_pnl"]["raw"])) == Decimal("40000000.0")
     finally:

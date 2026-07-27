@@ -60,6 +60,7 @@ from backend.app.schemas.executive_dashboard import (
     VerdictTone,
 )
 from backend.app.services.bond_analytics_service import (
+    BENCHMARK_EXCESS_RECON_GAP,
     BOND_ANALYTICS_FOREIGN_CURRENCY_FALLBACK_WARNING,
     get_benchmark_excess,
     get_benchmark_excess_many,
@@ -74,6 +75,7 @@ from backend.app.services.product_category_pnl_service import (
     resolve_product_category_ytd_payload_for_home_snapshot,
 )
 from backend.app.services.runtime_cache import InMemoryTTLCache, get_runtime_cache
+
 # 与 tasks 模块常量对齐；只读路径不得 import tasks（broker/actor 注册）。
 BOND_ANALYTICS_CACHE_KEY = "bond_analytics:materialize:formal"
 PNL_CACHE_KEY = "pnl:phase2:materialize:formal"
@@ -3309,7 +3311,9 @@ def _home_income_pct_points_from_payload(value: object) -> float | None:
         return raw * _BASIS_POINTS_PER_PERCENT
     if unit == "bp":
         return raw / _BASIS_POINTS_PER_PERCENT
-    return raw
+    # Bond analytics collapses governed pct Numerics to flat Q8 strings while
+    # preserving their canonical decimal-ratio raw value.
+    return raw * _BASIS_POINTS_PER_PERCENT
 
 
 def _home_income_bp_points_from_payload(value: object) -> float | None:
@@ -3354,6 +3358,10 @@ def _is_home_income_amount_disclosure_warning(reason: object) -> bool:
     return BOND_ANALYTICS_FOREIGN_CURRENCY_FALLBACK_WARNING in str(reason or "")
 
 
+def _is_home_income_reconciliation_warning(reason: object) -> bool:
+    return BENCHMARK_EXCESS_RECON_GAP in str(reason or "")
+
+
 def _home_income_blocking_benchmark_reasons(
     benchmark_warnings: list[object],
     *,
@@ -3369,6 +3377,7 @@ def _home_income_blocking_benchmark_reasons(
         if not (
             _is_bounded_home_income_curve_fallback(warning)
             or _is_home_income_amount_disclosure_warning(warning)
+            or _is_home_income_reconciliation_warning(warning)
         )
     ]
     if vendor_status != "ok" and not (
