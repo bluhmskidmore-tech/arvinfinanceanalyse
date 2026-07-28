@@ -28,14 +28,21 @@ from backend.app.core_finance.macro.toolkit.runner import (
     iter_toolkit_scripts,
     run_toolkit_script,
 )
-from backend.app.core_finance.macro.toolkit.system_sources import load_series_by_aliases
+from backend.app.core_finance.macro.toolkit.system_sources import (
+    load_series_by_aliases,
+    normalize_macro_alias,
+    normalize_macro_source_names,
+)
 from backend.app.governance.locks import LockDefinition, acquire_lock
+from backend.app.repositories.cffex_member_rank_repo import (
+    normalize_cffex_contract,
+    normalize_cffex_sources,
+)
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
     GovernanceRepository,
 )
 from backend.app.security.auth_context import AuthContext
-from fastapi import BackgroundTasks
 
 # 本地副本，避免模块级 import tasks（commodity_daily_ingest 会 register_actor）。
 ThemeOverlayRefreshMode = Literal["off", "dry_run", "archive"]
@@ -113,6 +120,61 @@ class _RunCommodityDailyIngestTaskProxy:
 
 run_commodity_daily_ingest_task = _RunCommodityDailyIngestTaskProxy()
 
+class _RunCffexMemberRankRefreshTaskProxy:
+    def send(self, **kwargs: object) -> object:
+        from backend.app.tasks.macro_toolkit_write_refresh import (
+            run_cffex_member_rank_refresh_task as _actor,
+        )
+
+        return _actor.send(**kwargs)
+
+    def __getattr__(self, name: str) -> object:
+        from backend.app.tasks.macro_toolkit_write_refresh import (
+            run_cffex_member_rank_refresh_task as _actor,
+        )
+
+        return getattr(_actor, name)
+
+
+run_cffex_member_rank_refresh_task = _RunCffexMemberRankRefreshTaskProxy()
+
+class _RunMacroSourceBackfillRefreshTaskProxy:
+    def send(self, **kwargs: object) -> object:
+        from backend.app.tasks.macro_toolkit_write_refresh import (
+            run_macro_source_backfill_refresh_task as _actor,
+        )
+
+        return _actor.send(**kwargs)
+
+    def __getattr__(self, name: str) -> object:
+        from backend.app.tasks.macro_toolkit_write_refresh import (
+            run_macro_source_backfill_refresh_task as _actor,
+        )
+
+        return getattr(_actor, name)
+
+
+run_macro_source_backfill_refresh_task = _RunMacroSourceBackfillRefreshTaskProxy()
+
+
+class _RunChoiceStockRefreshTaskProxy:
+    def send(self, **kwargs: object) -> object:
+        from backend.app.tasks.choice_stock_refresh import (
+            run_choice_stock_refresh_task as _actor,
+        )
+
+        return _actor.send(**kwargs)
+
+    def __getattr__(self, name: str) -> object:
+        from backend.app.tasks.choice_stock_refresh import (
+            run_choice_stock_refresh_task as _actor,
+        )
+
+        return getattr(_actor, name)
+
+
+run_choice_stock_refresh_task = _RunChoiceStockRefreshTaskProxy()
+
 logger = logging.getLogger(__name__)
 
 CHOICE_STOCK_REFRESH_JOB_NAME = "choice_stock_refresh"
@@ -121,12 +183,40 @@ CHOICE_STOCK_REFRESH_CACHE_VERSION = "choice_stock_refresh_v1"
 CHOICE_STOCK_REFRESH_LOCK = "lock:choice_stock_refresh"
 CHOICE_STOCK_REFRESH_RULE_VERSION = "rv_choice_stock_materialization_front_layer_v1"
 CHOICE_STOCK_THEME_OVERLAY_VENDOR_VERSION = "vv_tushare_ths_current_overlay_v1"
-_CHOICE_STOCK_REFRESH_IN_FLIGHT_STATUSES = {"queued", "running"}
+_CHOICE_STOCK_REFRESH_IN_FLIGHT_STATUSES = {"queued", "running", "retrying"}
 DEFAULT_MACRO_COMMODITY_REFRESH_PRODUCTS = ("RB", "I", "CU", "AL", "SC", "AU", "NHCI")
 COMMODITY_FUTURES_REFRESH_JOB_NAME = "commodity_futures_daily_ingest"
 COMMODITY_FUTURES_REFRESH_CACHE_KEY = "commodity_futures.daily"
 COMMODITY_FUTURES_REFRESH_CACHE_VERSION = "commodity_futures_daily_v1"
 COMMODITY_FUTURES_REFRESH_RULE_VERSION = "rv_commodity_daily_v1"
+CFFEX_MEMBER_RANK_REFRESH_JOB_NAME = "cffex_member_rank_refresh"
+CFFEX_MEMBER_RANK_REFRESH_CACHE_KEY = "macro_toolkit.cffex_member_rank"
+CFFEX_MEMBER_RANK_REFRESH_CACHE_VERSION = "cffex_member_rank_refresh_v1"
+CFFEX_MEMBER_RANK_REFRESH_RULE_VERSION = "rv_cffex_member_rank_async_v1"
+_CFFEX_REFRESH_IN_FLIGHT_STATUSES = {"queued", "running", "retrying"}
+MACRO_SOURCE_BACKFILL_JOB_NAME = "macro_source_backfill_refresh"
+MACRO_SOURCE_BACKFILL_CACHE_KEY = "macro_toolkit.source_backfill"
+MACRO_SOURCE_BACKFILL_CACHE_VERSION = "macro_source_backfill_v1"
+MACRO_SOURCE_BACKFILL_RULE_VERSION = "rv_macro_source_backfill_async_v1"
+_MACRO_SOURCE_REFRESH_IN_FLIGHT_STATUSES = {"queued", "running", "retrying"}
+_WRITE_REFRESH_RETRY_PENDING_AFTER = timedelta(hours=1)
+_WRITE_REFRESH_PUBLIC_STATUSES = {
+    "queued",
+    "running",
+    "retrying",
+    "completed",
+    "partial",
+    "no_rows",
+    "blocked",
+    "failed",
+}
+_WRITE_REFRESH_PUBLIC_FAILURE_CATEGORIES = {
+    "backfill_failure",
+    "cache_invalidation",
+    "queue_dispatch_failure",
+    "vendor_failure",
+}
+_WRITE_REFRESH_MAX_RETRIES = 3
 EQUITY_PRICE_LOOKBACK_DAYS = 260
 EQUITY_PRICE_MIN_OBSERVATIONS = 80
 EQUITY_PRICE_MAX_STOCKS = 500
@@ -465,34 +555,526 @@ def _run_macro_toolkit_chain_unlocked(
     }
 
 
-def materialize_cffex_member_rank(*args: object, **kwargs: object) -> object:
-    """延迟导入：避免冷导入本模块时经 cffex_member_rank_service 触达 tasks。"""
-    from backend.app.services.cffex_member_rank_service import (
-        materialize_cffex_member_rank as _materialize,
+def queue_macro_source_backfill(
+    *,
+    duckdb_path: str,
+    governance_path: str,
+    alias: str,
+    series_id: str,
+    series_name: str,
+    backfill_mode: str,
+    start_date: str,
+    end_date: str,
+    sources: tuple[str, ...],
+    idempotency_key: str | None = None,
+) -> MacroToolkitActionResult:
+    try:
+        start = date.fromisoformat(start_date)
+        end = date.fromisoformat(end_date)
+    except ValueError as exc:
+        raise ValueError("start_date and end_date must be ISO dates (YYYY-MM-DD).") from exc
+    if end < start:
+        raise ValueError("end_date must be on or after start_date.")
+    normalized_alias = normalize_macro_alias(alias)
+    normalized_sources = normalize_macro_source_names(sources)
+    if not normalized_sources:
+        raise ValueError("sources must contain at least one value.")
+    normalized_mode = str(backfill_mode or "").strip()
+    if normalized_mode not in {"macro_series", "crisis_score_inputs"}:
+        raise ValueError(f"Unsupported macro source backfill mode: {backfill_mode}")
+    normalized_idempotency_key = _normalize_idempotency_key(idempotency_key)
+    request_fingerprint = hashlib.sha256(
+        repr(
+            (
+                str(Path(duckdb_path).resolve()),
+                normalized_alias,
+                str(series_id).strip(),
+                str(series_name).strip(),
+                normalized_mode,
+                start_date,
+                end_date,
+                normalized_sources,
+            )
+        ).encode("utf-8")
+    ).hexdigest()
+    trigger_lock = LockDefinition(
+        key=f"lock:{MACRO_SOURCE_BACKFILL_JOB_NAME}:trigger:{request_fingerprint[:12]}",
+        ttl_seconds=30,
+    )
+    repo = GovernanceRepository(base_dir=governance_path)
+    try:
+        with acquire_lock(trigger_lock, base_dir=governance_path, timeout_seconds=0.1):
+            records = _macro_source_backfill_refresh_records(repo)
+            if normalized_idempotency_key is not None:
+                for record in reversed(records):
+                    if str(record.get("request_fingerprint") or "") != request_fingerprint:
+                        continue
+                    if str(record.get("idempotency_key") or "").strip() == normalized_idempotency_key:
+                        status = str(record.get("status") or "queued")
+                        return MacroToolkitActionResult(
+                            payload=_normalize_macro_source_backfill_refresh_record(
+                                record,
+                                idempotency_replay=True,
+                            ),
+                            quality_flag=_write_refresh_quality_flag(status),
+                            fallback_mode="none",
+                            as_of_date=end_date,
+                        )
+
+            latest_by_run_id: dict[str, dict[str, object]] = {}
+            for record in records:
+                if str(record.get("request_fingerprint") or "") == request_fingerprint:
+                    latest_by_run_id[str(record.get("run_id") or "")] = record
+            if any(
+                _write_refresh_record_blocks_dispatch(
+                    record,
+                    in_flight_statuses=_MACRO_SOURCE_REFRESH_IN_FLIGHT_STATUSES,
+                )
+                for record in latest_by_run_id.values()
+            ):
+                raise MacroToolkitConflictError("Macro source backfill is already in progress.")
+
+            queued_at = datetime.now(UTC).isoformat()
+            run_id = f"{MACRO_SOURCE_BACKFILL_JOB_NAME}:{end_date}:{uuid.uuid4().hex[:12]}"
+            queued_payload = {
+                "run_id": run_id,
+                "job_name": MACRO_SOURCE_BACKFILL_JOB_NAME,
+                "status": "queued",
+                "trigger_mode": "async",
+                "cache_key": MACRO_SOURCE_BACKFILL_CACHE_KEY,
+                "cache_version": MACRO_SOURCE_BACKFILL_CACHE_VERSION,
+                "lock": trigger_lock.key,
+                "source_version": "sv_pending",
+                "vendor_version": "vv_pending",
+                "rule_version": MACRO_SOURCE_BACKFILL_RULE_VERSION,
+                "report_date": end_date,
+                "alias": normalized_alias,
+                "series_ids": [str(series_id).strip()],
+                "series_names": [str(series_name).strip()],
+                "backfill_mode": normalized_mode,
+                "start_date": start_date,
+                "end_date": end_date,
+                "sources": list(normalized_sources),
+                "duckdb_path": str(duckdb_path),
+                "total_added": None,
+                "total_fetched": None,
+                "processed_count": None,
+                "queued_at": queued_at,
+                "request_fingerprint": request_fingerprint,
+                "idempotency_key": normalized_idempotency_key,
+            }
+            repo.append(CACHE_BUILD_RUN_STREAM, queued_payload)
+            try:
+                run_macro_source_backfill_refresh_task.send(
+                    duckdb_path=str(duckdb_path),
+                    governance_dir=str(governance_path),
+                    run_id=run_id,
+                    alias=normalized_alias,
+                    series_id=str(series_id).strip(),
+                    series_name=str(series_name).strip(),
+                    backfill_mode=normalized_mode,
+                    start_date=start_date,
+                    end_date=end_date,
+                    sources=normalized_sources,
+                    request_fingerprint=request_fingerprint,
+                    idempotency_key=normalized_idempotency_key,
+                )
+            except Exception as exc:
+                repo.append(
+                    CACHE_BUILD_RUN_STREAM,
+                    {
+                        **queued_payload,
+                        "status": "failed",
+                        "trigger_mode": "terminal",
+                        "finished_at": datetime.now(UTC).isoformat(),
+                        "error_message": str(exc),
+                        "failure_category": "queue_dispatch_failure",
+                        "failure_reason": "queue_dispatch_failed",
+                    },
+                )
+                raise MacroToolkitQueueError("Macro source backfill queue dispatch failed.") from exc
+    except TimeoutError as exc:
+        raise MacroToolkitConflictError("Macro source backfill is already in progress.") from exc
+
+    return MacroToolkitActionResult(
+        payload=_normalize_macro_source_backfill_refresh_record(
+            queued_payload,
+            idempotency_replay=False,
+        ),
+        quality_flag="warning",
+        fallback_mode="none",
+        as_of_date=end_date,
     )
 
-    return _materialize(*args, **kwargs)
+
+def _macro_source_backfill_refresh_records(repo: GovernanceRepository) -> list[dict[str, object]]:
+    return [
+        record
+        for record in repo.read_all(CACHE_BUILD_RUN_STREAM)
+        if str(record.get("job_name") or "") == MACRO_SOURCE_BACKFILL_JOB_NAME
+        and str(record.get("cache_key") or "") == MACRO_SOURCE_BACKFILL_CACHE_KEY
+    ]
+
+
+def macro_source_backfill_refresh_status(
+    governance_path: str | Path,
+    *,
+    run_id: str,
+) -> dict[str, object]:
+    run_id_text = str(run_id or "").strip()
+    if not run_id_text:
+        raise ValueError("Macro source backfill refresh run_id is required.")
+    records = _macro_source_backfill_refresh_records(
+        GovernanceRepository(base_dir=governance_path)
+    )
+    latest = next(
+        (
+            record
+            for record in reversed(records)
+            if str(record.get("run_id") or "") == run_id_text
+        ),
+        None,
+    )
+    if latest is None:
+        raise ValueError(
+            f"Macro source backfill refresh run not found: {run_id_text}"
+        )
+    return _normalize_macro_source_backfill_refresh_record(latest)
 
 
 def refresh_cffex_member_rank(
     *,
     duckdb_path: str | Path,
+    governance_path: str | Path,
     trade_date: str | None,
     contracts: tuple[str, ...],
     sources: tuple[str, ...],
+    idempotency_key: str | None = None,
 ) -> MacroToolkitActionResult:
-    payload = materialize_cffex_member_rank(
-        duckdb_path=duckdb_path,
-        trade_date=trade_date,
-        contracts=contracts,
-        sources=sources,
+    normalized_idempotency_key = _normalize_idempotency_key(idempotency_key)
+    normalized_contracts = tuple(
+        dict.fromkeys(
+            normalize_cffex_contract(item) for item in contracts if str(item).strip()
+        )
     )
+    normalized_sources = normalize_cffex_sources(sources)
+    if not normalized_contracts or not normalized_sources:
+        raise ValueError("contracts and sources must contain at least one value.")
+    normalized_trade_date = str(trade_date or "").strip() or None
+    if normalized_trade_date is not None:
+        try:
+            date.fromisoformat(normalized_trade_date)
+        except ValueError as exc:
+            raise ValueError("trade_date must be an ISO date (YYYY-MM-DD).") from exc
+    request_fingerprint = hashlib.sha256(
+        repr(
+            (
+                str(Path(duckdb_path).resolve()),
+                normalized_trade_date,
+                normalized_contracts,
+                normalized_sources,
+            )
+        ).encode("utf-8")
+    ).hexdigest()
+    trigger_lock = LockDefinition(
+        key=f"lock:{CFFEX_MEMBER_RANK_REFRESH_JOB_NAME}:trigger:{request_fingerprint[:12]}",
+        ttl_seconds=30,
+    )
+    repo = GovernanceRepository(base_dir=governance_path)
+    try:
+        with acquire_lock(trigger_lock, base_dir=governance_path, timeout_seconds=0.1):
+            records = _cffex_member_rank_refresh_records(repo)
+            if normalized_idempotency_key is not None:
+                for record in reversed(records):
+                    if str(record.get("request_fingerprint") or "") != request_fingerprint:
+                        continue
+                    if str(record.get("idempotency_key") or "").strip() == normalized_idempotency_key:
+                        status = str(record.get("status") or "queued")
+                        return MacroToolkitActionResult(
+                            payload=_normalize_cffex_member_rank_refresh_record(
+                                record,
+                                idempotency_replay=True,
+                            ),
+                            quality_flag=_write_refresh_quality_flag(status),
+                            fallback_mode="none",
+                            as_of_date=normalized_trade_date,
+                        )
+
+            latest_by_run_id: dict[str, dict[str, object]] = {}
+            for record in records:
+                if str(record.get("request_fingerprint") or "") == request_fingerprint:
+                    latest_by_run_id[str(record.get("run_id") or "")] = record
+            if any(
+                _write_refresh_record_blocks_dispatch(
+                    record,
+                    in_flight_statuses=_CFFEX_REFRESH_IN_FLIGHT_STATUSES,
+                )
+                for record in latest_by_run_id.values()
+            ):
+                raise MacroToolkitConflictError("CFFEX member-rank refresh is already in progress.")
+
+            queued_at = datetime.now(UTC).isoformat()
+            run_id = f"{CFFEX_MEMBER_RANK_REFRESH_JOB_NAME}:{normalized_trade_date or 'latest'}:{uuid.uuid4().hex[:12]}"
+            queued_payload = {
+                "run_id": run_id,
+                "job_name": CFFEX_MEMBER_RANK_REFRESH_JOB_NAME,
+                "status": "queued",
+                "trigger_mode": "async",
+                "cache_key": CFFEX_MEMBER_RANK_REFRESH_CACHE_KEY,
+                "cache_version": CFFEX_MEMBER_RANK_REFRESH_CACHE_VERSION,
+                "lock": trigger_lock.key,
+                "source_version": "sv_pending",
+                "vendor_version": "vv_pending",
+                "rule_version": CFFEX_MEMBER_RANK_REFRESH_RULE_VERSION,
+                "report_date": normalized_trade_date,
+                "trade_date": normalized_trade_date,
+                "contracts": list(normalized_contracts),
+                "sources": list(normalized_sources),
+                "duckdb_path": str(duckdb_path),
+                "row_count": None,
+                "queued_at": queued_at,
+                "request_fingerprint": request_fingerprint,
+                "idempotency_key": normalized_idempotency_key,
+            }
+            repo.append(CACHE_BUILD_RUN_STREAM, queued_payload)
+            try:
+                run_cffex_member_rank_refresh_task.send(
+                    duckdb_path=str(duckdb_path),
+                    governance_dir=str(governance_path),
+                    run_id=run_id,
+                    trade_date=normalized_trade_date,
+                    contracts=normalized_contracts,
+                    sources=normalized_sources,
+                    request_fingerprint=request_fingerprint,
+                    idempotency_key=normalized_idempotency_key,
+                )
+            except Exception as exc:
+                repo.append(
+                    CACHE_BUILD_RUN_STREAM,
+                    {
+                        **queued_payload,
+                        "status": "failed",
+                        "trigger_mode": "terminal",
+                        "finished_at": datetime.now(UTC).isoformat(),
+                        "error_message": str(exc),
+                        "failure_category": "queue_dispatch_failure",
+                        "failure_reason": "queue_dispatch_failed",
+                    },
+                )
+                raise MacroToolkitQueueError("CFFEX member-rank refresh queue dispatch failed.") from exc
+    except TimeoutError as exc:
+        raise MacroToolkitConflictError("CFFEX member-rank refresh is already in progress.") from exc
+
     return MacroToolkitActionResult(
-        payload=payload,
-        quality_flag="ok" if int(payload.get("row_count") or 0) > 0 else "warning",
+        payload=_normalize_cffex_member_rank_refresh_record(
+            queued_payload,
+            idempotency_replay=False,
+        ),
+        quality_flag="warning",
         fallback_mode="none",
-        as_of_date=_optional_text(payload.get("trade_date")),
+        as_of_date=normalized_trade_date,
     )
+
+
+def _cffex_member_rank_refresh_records(repo: GovernanceRepository) -> list[dict[str, object]]:
+    return [
+        record
+        for record in repo.read_all(CACHE_BUILD_RUN_STREAM)
+        if str(record.get("job_name") or "") == CFFEX_MEMBER_RANK_REFRESH_JOB_NAME
+        and str(record.get("cache_key") or "") == CFFEX_MEMBER_RANK_REFRESH_CACHE_KEY
+    ]
+
+
+def cffex_member_rank_refresh_status(
+    governance_path: str | Path,
+    *,
+    run_id: str,
+) -> dict[str, object]:
+    run_id_text = str(run_id or "").strip()
+    if not run_id_text:
+        raise ValueError("CFFEX member-rank refresh run_id is required.")
+    records = _cffex_member_rank_refresh_records(
+        GovernanceRepository(base_dir=governance_path)
+    )
+    latest = next(
+        (
+            record
+            for record in reversed(records)
+            if str(record.get("run_id") or "") == run_id_text
+        ),
+        None,
+    )
+    if latest is None:
+        raise ValueError(
+            f"CFFEX member-rank refresh run not found: {run_id_text}"
+        )
+    return _normalize_cffex_member_rank_refresh_record(latest)
+
+
+def _write_refresh_record_blocks_dispatch(
+    record: dict[str, object],
+    *,
+    in_flight_statuses: set[str],
+) -> bool:
+    status = str(record.get("status") or "")
+    if status in in_flight_statuses:
+        return (
+            True
+            if status != "retrying"
+            else _write_refresh_record_is_within_retry_window(record)
+        )
+    if status != "failed" or record.get("retryable") is not True:
+        return False
+    return _write_refresh_record_is_within_retry_window(record)
+
+
+def _write_refresh_record_is_within_retry_window(
+    record: dict[str, object],
+) -> bool:
+    raw_finished_at = str(record.get("finished_at") or "").strip()
+    if not raw_finished_at:
+        return False
+    try:
+        finished_at = datetime.fromisoformat(raw_finished_at.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if finished_at.tzinfo is None:
+        finished_at = finished_at.replace(tzinfo=UTC)
+    else:
+        finished_at = finished_at.astimezone(UTC)
+    return datetime.now(UTC) - finished_at <= _WRITE_REFRESH_RETRY_PENDING_AFTER
+
+
+def _write_refresh_quality_flag(status: str) -> str:
+    return "ok" if str(status or "").strip() == "completed" else "warning"
+
+
+def _normalize_cffex_member_rank_refresh_record(
+    record: dict[str, object],
+    *,
+    idempotency_replay: bool | None = None,
+) -> dict[str, object]:
+    normalized = _normalize_write_refresh_public_record(
+        record,
+        job_name=CFFEX_MEMBER_RANK_REFRESH_JOB_NAME,
+        cache_key=CFFEX_MEMBER_RANK_REFRESH_CACHE_KEY,
+        cache_version=CFFEX_MEMBER_RANK_REFRESH_CACHE_VERSION,
+        rule_version=CFFEX_MEMBER_RANK_REFRESH_RULE_VERSION,
+        idempotency_replay=idempotency_replay,
+    )
+    normalized.update(
+        {
+            "trade_date": _optional_text(
+                record.get("trade_date") or record.get("report_date")
+            ),
+            "contracts": _public_text_list(record.get("contracts")),
+            "sources": _public_text_list(record.get("sources")),
+            "row_count": _optional_int(record.get("row_count")),
+        }
+    )
+    return normalized
+
+
+def _normalize_macro_source_backfill_refresh_record(
+    record: dict[str, object],
+    *,
+    idempotency_replay: bool | None = None,
+) -> dict[str, object]:
+    normalized = _normalize_write_refresh_public_record(
+        record,
+        job_name=MACRO_SOURCE_BACKFILL_JOB_NAME,
+        cache_key=MACRO_SOURCE_BACKFILL_CACHE_KEY,
+        cache_version=MACRO_SOURCE_BACKFILL_CACHE_VERSION,
+        rule_version=MACRO_SOURCE_BACKFILL_RULE_VERSION,
+        idempotency_replay=idempotency_replay,
+    )
+    normalized.update(
+        {
+            "alias": _optional_text(record.get("alias")),
+            "series_ids": _public_text_list(record.get("series_ids")),
+            "series_names": _public_text_list(record.get("series_names")),
+            "backfill_mode": _optional_text(record.get("backfill_mode")),
+            "start_date": _optional_text(record.get("start_date")),
+            "end_date": _optional_text(record.get("end_date")),
+            "sources": _public_text_list(record.get("sources")),
+            "total_added": _optional_int(record.get("total_added")),
+            "total_fetched": _optional_int(record.get("total_fetched")),
+            "processed_count": _optional_int(record.get("processed_count")),
+            "source_by_series": _public_text_mapping(
+                record.get("source_by_series")
+            ),
+            "vendor_versions": _public_text_mapping(record.get("vendor_versions")),
+        }
+    )
+    return normalized
+
+
+def _normalize_write_refresh_public_record(
+    record: dict[str, object],
+    *,
+    job_name: str,
+    cache_key: str,
+    cache_version: str,
+    rule_version: str,
+    idempotency_replay: bool | None,
+) -> dict[str, object]:
+    raw_status = str(record.get("status") or "").strip()
+    status = (
+        raw_status if raw_status in _WRITE_REFRESH_PUBLIC_STATUSES else "failed"
+    )
+    failure_category = _optional_text(record.get("failure_category"))
+    if failure_category not in _WRITE_REFRESH_PUBLIC_FAILURE_CATEGORIES:
+        failure_category = "worker_failure" if failure_category else None
+    normalized: dict[str, object] = {
+        "run_id": _optional_text(record.get("run_id")),
+        "job_name": job_name,
+        "status": status,
+        "trigger_mode": (
+            "async"
+            if status in {"queued", "running", "retrying"}
+            else "terminal"
+        ),
+        "cache_key": cache_key,
+        "cache_version": _optional_text(record.get("cache_version"))
+        or cache_version,
+        "rule_version": _optional_text(record.get("rule_version"))
+        or rule_version,
+        "report_date": _optional_text(record.get("report_date")),
+        "queued_at": _optional_text(record.get("queued_at")),
+        "started_at": _optional_text(record.get("started_at")),
+        "finished_at": _optional_text(record.get("finished_at")),
+        "attempt_count": _optional_int(record.get("attempt_count")),
+        "max_attempts": _optional_int(record.get("max_attempts")),
+        "retryable": record.get("retryable") is True,
+        "failure_category": failure_category,
+        "source_version": _optional_text(record.get("source_version")),
+        "vendor_version": _optional_text(record.get("vendor_version")),
+    }
+    if idempotency_replay is not None:
+        normalized["idempotency_replay"] = idempotency_replay
+    return normalized
+
+
+def _public_text_list(value: object) -> list[str]:
+    if not isinstance(value, (list, tuple)):
+        return []
+    return [
+        text
+        for item in value
+        if (text := str(item or "").strip())
+    ]
+
+
+def _public_text_mapping(value: object) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+    normalized: dict[str, str] = {}
+    for key, item in value.items():
+        key_text = str(key or "").strip()
+        if not key_text or not isinstance(item, (str, int, float, bool)):
+            continue
+        normalized[key_text] = str(item)
+    return normalized
 
 
 def refresh_commodity_futures(
@@ -558,7 +1140,6 @@ def refresh_commodity_futures(
 
 def queue_choice_stock_refresh(
     *,
-    background_tasks: BackgroundTasks,
     duckdb_path: str,
     catalog_path: str,
     governance_path: str,
@@ -590,12 +1171,15 @@ def queue_choice_stock_refresh(
                     idempotency_key=normalized_idempotency_key,
                 )
                 if existing_idempotent_run is not None:
+                    normalized_existing = _normalize_choice_stock_refresh_record(
+                        existing_idempotent_run,
+                        idempotency_replay=True,
+                    )
                     return MacroToolkitActionResult(
-                        payload={
-                            **_normalize_choice_stock_refresh_record(existing_idempotent_run),
-                            "idempotency_replay": True,
-                        },
-                        quality_flag="ok",
+                        payload=normalized_existing,
+                        quality_flag=_write_refresh_quality_flag(
+                            str(normalized_existing.get("status") or "")
+                        ),
                         fallback_mode="none",
                         as_of_date=as_of_date,
                     )
@@ -621,30 +1205,59 @@ def queue_choice_stock_refresh(
                 idempotency_key=normalized_idempotency_key,
             )
             append_choice_stock_refresh_run(governance_path, queued_payload)
-            background_tasks.add_task(
-                _run_choice_stock_refresh_job,
-                duckdb_path=duckdb_path,
-                catalog_path=catalog_path,
-                governance_path=governance_path,
-                archive_root=archive_root,
-                run_id=run_id,
-                as_of_date=as_of_date,
-                queued_at=queued_at,
-                refresh_history=refresh_history,
-                refresh_factors=refresh_factors,
-                factor_max_stock_count=factor_max_stock_count,
-                theme_overlay_mode=normalized_theme_overlay_mode,
-                permission=permission,
-                idempotency_key=normalized_idempotency_key,
-            )
+            try:
+                run_choice_stock_refresh_task.send(
+                    duckdb_path=duckdb_path,
+                    catalog_path=catalog_path,
+                    governance_path=governance_path,
+                    archive_root=archive_root,
+                    run_id=run_id,
+                    as_of_date=as_of_date,
+                    queued_at=queued_at,
+                    refresh_history=refresh_history,
+                    refresh_factors=refresh_factors,
+                    factor_max_stock_count=factor_max_stock_count,
+                    theme_overlay_mode=normalized_theme_overlay_mode,
+                    permission=permission,
+                    idempotency_key=normalized_idempotency_key,
+                )
+            except Exception as exc:
+                append_choice_stock_refresh_run(
+                    governance_path,
+                    build_choice_stock_refresh_run_payload(
+                        run_id=run_id,
+                        status="failed",
+                        as_of_date=as_of_date,
+                        queued_at=queued_at,
+                        finished_at=datetime.now(UTC).isoformat(),
+                        refresh_history=refresh_history,
+                        refresh_factors=refresh_factors,
+                        factor_max_stock_count=factor_max_stock_count,
+                        theme_overlay_mode=normalized_theme_overlay_mode,
+                        theme_overlay_status=(
+                            "not_run" if normalized_theme_overlay_mode != "off" else None
+                        ),
+                        error_message=str(exc),
+                        failure_category="queue_dispatch_failure",
+                        failure_reason=type(exc).__name__,
+                        permission=permission,
+                        idempotency_key=normalized_idempotency_key,
+                    ),
+                )
+                raise MacroToolkitQueueError(
+                    "Choice stock refresh queue dispatch failed."
+                ) from exc
     except TimeoutError as exc:
         raise MacroToolkitConflictError(
             f"Choice stock refresh already in progress for as_of_date={as_of_date}."
         ) from exc
 
     return MacroToolkitActionResult(
-        payload={**queued_payload, "idempotency_replay": False},
-        quality_flag="ok",
+        payload=_normalize_choice_stock_refresh_record(
+            queued_payload,
+            idempotency_replay=False,
+        ),
+        quality_flag="warning",
         fallback_mode="none",
         as_of_date=as_of_date,
     )
@@ -679,6 +1292,8 @@ def build_choice_stock_refresh_run_payload(
     failure_reason: str | None = None,
     permission: dict[str, object] | None = None,
     idempotency_key: str | None = None,
+    attempt_count: int | None = None,
+    retryable: bool = False,
 ) -> dict[str, object]:
     normalized_theme_overlay_mode = _normalize_theme_overlay_mode(theme_overlay_mode)
     normalized_theme_overlay_status = _optional_text(theme_overlay_status) or (
@@ -701,6 +1316,8 @@ def build_choice_stock_refresh_run_payload(
         "error_message": error_message,
         "failure_category": failure_category,
         "failure_reason": failure_reason,
+        "attempt_count": attempt_count,
+        "retryable": retryable,
         "created_at": datetime.now(UTC).isoformat(),
         "refresh_history": refresh_history,
         "refresh_factors": refresh_factors,
@@ -778,7 +1395,10 @@ def latest_choice_stock_inflight_refresh(
         by_run_id[str(record.get("run_id") or "")] = record
     for record in reversed(list(by_run_id.values())):
         if (
-            str(record.get("status") or "") in _CHOICE_STOCK_REFRESH_IN_FLIGHT_STATUSES
+            _write_refresh_record_blocks_dispatch(
+                record,
+                in_flight_statuses=_CHOICE_STOCK_REFRESH_IN_FLIGHT_STATUSES,
+            )
             or _choice_stock_refresh_overlay_pending(record)
         ):
             return record
@@ -1773,6 +2393,15 @@ def _run_choice_stock_refresh_job(
 ) -> None:
     normalized_theme_overlay_mode = _normalize_theme_overlay_mode(theme_overlay_mode)
     normalized_idempotency_key = _normalize_idempotency_key(idempotency_key)
+    attempt_count = (
+        sum(
+            1
+            for record in _choice_stock_refresh_records(governance_path)
+            if str(record.get("run_id") or "") == run_id
+            and str(record.get("status") or "") == "running"
+        )
+        + 1
+    )
     theme_overlay_run_id = f"{run_id}:theme-overlay" if normalized_theme_overlay_mode != "off" else None
     started_at = datetime.now(UTC).isoformat()
     append_choice_stock_refresh_run(
@@ -1790,6 +2419,7 @@ def _run_choice_stock_refresh_job(
             theme_overlay_run_id=theme_overlay_run_id,
             permission=permission,
             idempotency_key=normalized_idempotency_key,
+            attempt_count=attempt_count,
         ),
     )
     history_result: dict[str, object] | None = None
@@ -1826,6 +2456,7 @@ def _run_choice_stock_refresh_job(
             vendor_version=_latest_result_field("vendor_version", factor_result, history_result),
             permission=permission,
             idempotency_key=normalized_idempotency_key,
+            attempt_count=attempt_count,
         )
         observation_manifest = None
         if refresh_history:
@@ -1849,11 +2480,12 @@ def _run_choice_stock_refresh_job(
             observation_manifest=observation_manifest,
         )
     except Exception as exc:
+        retry_pending = attempt_count <= _WRITE_REFRESH_MAX_RETRIES
         append_choice_stock_refresh_run(
             governance_path,
             build_choice_stock_refresh_run_payload(
                 run_id=run_id,
-                status="failed",
+                status="retrying" if retry_pending else "failed",
                 as_of_date=as_of_date,
                 queued_at=queued_at,
                 started_at=started_at,
@@ -1873,9 +2505,11 @@ def _run_choice_stock_refresh_job(
                 failure_reason=str(exc),
                 permission=permission,
                 idempotency_key=normalized_idempotency_key,
+                attempt_count=attempt_count,
+                retryable=retry_pending,
             ),
         )
-        return
+        raise
 
     if normalized_theme_overlay_mode == "off":
         return
@@ -1941,6 +2575,7 @@ def _run_choice_stock_refresh_job(
             vendor_version=_latest_result_field("vendor_version", factor_result, history_result),
             permission=permission,
             idempotency_key=normalized_idempotency_key,
+            attempt_count=attempt_count,
         ),
     )
 
@@ -2511,13 +3146,60 @@ def _choice_stock_refresh_trigger_lock(*, as_of_date: str) -> LockDefinition:
     )
 
 
-def _normalize_choice_stock_refresh_record(record: dict[str, object]) -> dict[str, object]:
-    normalized = dict(record)
-    if _choice_stock_refresh_overlay_pending(normalized):
+def _normalize_choice_stock_refresh_record(
+    record: dict[str, object],
+    *,
+    idempotency_replay: bool | None = None,
+) -> dict[str, object]:
+    public_record = dict(record)
+    overlay_pending = _choice_stock_refresh_overlay_pending(public_record)
+    if overlay_pending:
+        public_record["status"] = "running"
+    normalized = _normalize_write_refresh_public_record(
+        public_record,
+        job_name=CHOICE_STOCK_REFRESH_JOB_NAME,
+        cache_key=CHOICE_STOCK_REFRESH_CACHE_KEY,
+        cache_version=CHOICE_STOCK_REFRESH_CACHE_VERSION,
+        rule_version=CHOICE_STOCK_REFRESH_RULE_VERSION,
+        idempotency_replay=idempotency_replay,
+    )
+    normalized.update(
+        {
+            "refresh_history": public_record.get("refresh_history") is True,
+            "refresh_factors": public_record.get("refresh_factors") is True,
+            "factor_max_stock_count": _optional_int(
+                public_record.get("factor_max_stock_count")
+            ),
+            "history_row_count": _optional_int(
+                public_record.get("history_row_count")
+            ),
+            "factor_row_count": _optional_int(
+                public_record.get("factor_row_count")
+            ),
+            "theme_overlay_mode": _normalize_theme_overlay_mode(
+                public_record.get("theme_overlay_mode")
+            ),
+            "theme_overlay_status": _optional_text(
+                public_record.get("theme_overlay_status")
+            ),
+            "theme_overlay_message": _optional_text(
+                public_record.get("theme_overlay_message")
+            ),
+            "theme_overlay_member_count": _optional_int(
+                public_record.get("theme_overlay_member_count")
+            ),
+            "theme_overlay_run_id": _optional_text(
+                public_record.get("theme_overlay_run_id")
+            ),
+            "permission": (
+                public_record.get("permission")
+                if isinstance(public_record.get("permission"), dict)
+                else build_choice_stock_refresh_permission_payload()
+            ),
+        }
+    )
+    if overlay_pending:
         normalized["choice_completion_status"] = "completed"
-        normalized["status"] = "running"
-    normalized["trigger_mode"] = _choice_stock_refresh_trigger_mode(str(normalized.get("status") or ""))
-    normalized.setdefault("permission", build_choice_stock_refresh_permission_payload())
     return normalized
 
 

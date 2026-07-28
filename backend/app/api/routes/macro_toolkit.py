@@ -51,6 +51,12 @@ from backend.app.core_finance.macro.a_share_stampede_risk import (
     compute_a_share_stampede_risk,
     load_a_share_stampede_risk_config,
 )
+from backend.app.core_finance.macro.crisis_commodity_shadow import (
+    CRISIS_COMMODITY_SHADOW_MIN_SAMPLES as _CRISIS_COMMODITY_SHADOW_MIN_SAMPLES,
+)
+from backend.app.core_finance.macro.crisis_commodity_shadow import (
+    evaluate_crisis_commodity_shadow,
+)
 from backend.app.core_finance.macro.equity_shadow_portfolio import compute_equity_shadow_portfolio_report
 from backend.app.core_finance.macro.equity_strategies import REQUIRED_FACTOR_INPUTS
 from backend.app.core_finance.macro.helpers import (
@@ -82,7 +88,7 @@ from backend.app.services import (
     macro_toolkit_service,
 )
 from backend.app.services.formal_result_runtime import build_result_envelope
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/ui/macro/toolkit", tags=["macro-toolkit"])
@@ -141,12 +147,6 @@ def _macro_commodity_product_codes() -> frozenset[str]:
 
     return frozenset(spec.product_code.upper() for spec in COMMODITY_PRODUCTS)
 
-
-def backfill_macro_series(*args: object, **kwargs: object) -> dict[str, object]:
-    """延迟导入 macro_backfill，同时保留模块级可打桩缝隙。"""
-    from backend.app.tasks.macro_backfill import backfill_macro_series as _fn
-
-    return _fn(*args, **kwargs)
 
 _ANALYSIS_INDICATORS = (
     {"key": "hs300", "alias": "sh000300", "label": "沪深300", "unit": "点", "group": "风险资产"},
@@ -738,20 +738,30 @@ def macro_toolkit_adversarial_signal(
     )
 
 
-@router.post("/cffex-member-rank/refresh")
+@router.post("/cffex-member-rank/refresh", status_code=202)
 def macro_toolkit_refresh_cffex_member_rank(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     request: CffexMemberRankRefreshRequest | None = None,
 ) -> dict[str, object]:
     refresh_request = request or CffexMemberRankRefreshRequest()
     settings = get_settings()
     _ensure_cffex_member_rank_refresh_allowed(auth, settings)
-    refresh = macro_toolkit_service.refresh_cffex_member_rank(
-        duckdb_path=settings.duckdb_path,
-        trade_date=refresh_request.trade_date,
-        contracts=tuple(refresh_request.contracts or DEFAULT_CFFEX_CONTRACTS),
-        sources=tuple(refresh_request.sources or ["choice", "tushare"]),
-    )
+    try:
+        refresh = macro_toolkit_service.refresh_cffex_member_rank(
+            duckdb_path=settings.duckdb_path,
+            governance_path=settings.governance_path,
+            trade_date=refresh_request.trade_date,
+            contracts=tuple(refresh_request.contracts or DEFAULT_CFFEX_CONTRACTS),
+            sources=tuple(refresh_request.sources or ["choice", "tushare"]),
+            idempotency_key=idempotency_key,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except macro_toolkit_service.MacroToolkitConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except macro_toolkit_service.MacroToolkitQueueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     return _envelope(
         "macro_toolkit.cffex_member_rank_refresh",
         {
@@ -764,9 +774,41 @@ def macro_toolkit_refresh_cffex_member_rank(
     )
 
 
-@router.post("/choice-stock/refresh")
+@router.get("/cffex-member-rank/refresh-status")
+def macro_toolkit_cffex_member_rank_refresh_status(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    run_id: str = Query(...),
+) -> dict[str, object]:
+    settings = get_settings()
+    _ensure_macro_toolkit_read_allowed(auth, settings)
+    try:
+        refresh = macro_toolkit_service.cffex_member_rank_refresh_status(
+            settings.governance_path,
+            run_id=run_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    report_date = str(
+        refresh.get("trade_date") or refresh.get("report_date") or ""
+    )[:10] or None
+    return _envelope(
+        "macro_toolkit.cffex_member_rank_refresh_status",
+        {
+            "refresh": refresh,
+            "cffex_member_rank": _cffex_member_rank_status(
+                settings.duckdb_path,
+                reference_date=report_date,
+            ),
+        },
+        quality_flag=(
+            "ok" if str(refresh.get("status") or "") == "completed" else "warning"
+        ),
+        as_of_date=report_date,
+    )
+
+
+@router.post("/choice-stock/refresh", status_code=202)
 def macro_toolkit_refresh_choice_stock(
-    background_tasks: BackgroundTasks,
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     request: ChoiceStockRefreshRequest | None = None,
@@ -788,7 +830,6 @@ def macro_toolkit_refresh_choice_stock(
     permission = _choice_stock_refresh_permission_payload(auth)
     try:
         refresh = macro_toolkit_service.queue_choice_stock_refresh(
-            background_tasks=background_tasks,
             duckdb_path=str(settings.duckdb_path),
             catalog_path=str(settings.choice_stock_catalog_file),
             governance_path=str(settings.governance_path),
@@ -806,6 +847,8 @@ def macro_toolkit_refresh_choice_stock(
             status_code=409,
             detail=f"Choice stock refresh already in progress for as_of_date={as_of_date}.",
         ) from None
+    except macro_toolkit_service.MacroToolkitQueueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     return _envelope(
         "macro_toolkit.choice_stock_refresh",
         {
@@ -844,13 +887,17 @@ def macro_toolkit_choice_stock_refresh_status(
                 reference_date=str(status.get("report_date") or "")[:10] or None,
             ),
         },
+        quality_flag=(
+            "ok" if str(status.get("status") or "") == "completed" else "warning"
+        ),
     )
 
 
-@router.post("/source-backfill/refresh")
+@router.post("/source-backfill/refresh", status_code=202)
 def macro_toolkit_refresh_source_backfill(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     request: SourceBackfillRefreshRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> dict[str, object]:
     settings = get_settings()
     _ensure_source_backfill_refresh_allowed(auth, settings)
@@ -858,46 +905,57 @@ def macro_toolkit_refresh_source_backfill(
     start_date = request.start_date or _default_source_backfill_start_date(request.end_date)
     end_date = request.end_date or date.today().isoformat()
     try:
-        payload = _execute_source_backfill(
-            target=target,
-            alias=request.alias,
+        refresh = macro_toolkit_service.queue_macro_source_backfill(
             duckdb_path=str(settings.duckdb_path),
+            governance_path=str(settings.governance_path),
+            alias=request.alias,
+            series_id=str(target["series_id"]),
+            series_name=str(target["series_name"]),
+            backfill_mode=str(target.get("backfill_mode") or "macro_series"),
             start_date=start_date,
             end_date=end_date,
-            sources_filter=request.sources or list(target["default_sources"]),
+            sources=tuple(request.sources or list(target["default_sources"])),
+            idempotency_key=idempotency_key,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    payload_status = str(payload.get("status") or "").strip()
-    refresh_status = payload_status or ("completed" if not payload.get("errors") else "partial")
-    total_added = int(payload.get("total_added") or 0)
-    refresh = {
-        "status": refresh_status,
-        "alias": request.alias,
-        "series_ids": [str(target["series_id"])],
-        "series_names": [str(target["series_name"])],
-        "start_date": start_date,
-        "end_date": end_date,
-        "total_added": total_added,
-        "total_fetched": int(payload.get("total_fetched") or 0),
-        "processed_count": int(payload.get("processed_count") or 0),
-        "results": payload.get("results") or {},
-        "errors": payload.get("errors") or {},
-        "run_id": payload.get("run_id"),
-        "source_by_series": payload.get("source_by_series") or {},
-        "vendor_versions": payload.get("vendor_versions") or {},
-    }
-    if total_added > 0:
-        market_home_response_cache.invalidate()
-        clear_system_macro_source_cache()
+    except macro_toolkit_service.MacroToolkitConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except macro_toolkit_service.MacroToolkitQueueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     return _envelope(
         "macro_toolkit.source_backfill_refresh",
+        {"refresh": refresh.payload},
+        quality_flag=refresh.quality_flag,
+        fallback_mode=refresh.fallback_mode,
+        as_of_date=refresh.as_of_date,
+    )
+
+
+@router.get("/source-backfill/refresh-status")
+def macro_toolkit_source_backfill_refresh_status(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    run_id: str = Query(...),
+) -> dict[str, object]:
+    settings = get_settings()
+    _ensure_macro_toolkit_read_allowed(auth, settings)
+    try:
+        refresh = macro_toolkit_service.macro_source_backfill_refresh_status(
+            settings.governance_path,
+            run_id=run_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    report_date = str(
+        refresh.get("end_date") or refresh.get("report_date") or ""
+    )[:10] or None
+    return _envelope(
+        "macro_toolkit.source_backfill_refresh_status",
         {"refresh": refresh},
-        quality_flag="ok" if refresh_status == "completed" else "warning",
-        fallback_mode="none",
-        as_of_date=end_date,
+        quality_flag=(
+            "ok" if str(refresh.get("status") or "") == "completed" else "warning"
+        ),
+        as_of_date=report_date,
     )
 
 
@@ -1136,48 +1194,6 @@ def _source_backfill_target(alias: str) -> dict[str, object]:
     if target is None:
         raise HTTPException(status_code=400, detail=f"Unsupported macro source backfill alias: {alias}")
     return target
-
-
-def _execute_source_backfill(
-    *,
-    target: dict[str, object],
-    alias: str,
-    duckdb_path: str,
-    start_date: str,
-    end_date: str,
-    sources_filter: list[str] | None,
-) -> dict[str, object]:
-    mode = str(target.get("backfill_mode") or "macro_series")
-    if mode == "crisis_score_inputs":
-        from backend.scripts.backfill_crisis_score_inputs import backfill_crisis_score_inputs
-
-        backfill_alias = str(target.get("alias") or alias)
-        payload = backfill_crisis_score_inputs(
-            duckdb_path=duckdb_path,
-            start_date=start_date,
-            end_date=end_date,
-            dry_run=False,
-            aliases=[backfill_alias],
-        )
-        result = (payload.get("results") or {}).get(backfill_alias) or {}
-        total_added = int(result.get("written_rows") or result.get("row_count") or 0)
-        result_status = str(result.get("status") or ("error" if payload.get("errors") else "completed"))
-        return {
-            "status": result_status,
-            "dry_run": False,
-            "processed_count": 1 if result_status == "completed" else 0,
-            "total_added": total_added,
-            "results": {backfill_alias: total_added},
-            "errors": payload.get("errors") or {},
-        }
-    return backfill_macro_series(
-        duckdb_path=duckdb_path,
-        series_names=[str(target["series_name"])],
-        start_date=start_date,
-        end_date=end_date,
-        dry_run=False,
-        sources_filter=sources_filter,
-    )
 
 
 def _default_source_backfill_start_date(end_date: str | None) -> str:
@@ -1687,7 +1703,6 @@ _CRISIS_COMMODITY_FIELD_TO_PRODUCT = {
     "crude_oil": "SC",
     "gold": "AU",
 }
-_CRISIS_COMMODITY_SHADOW_MIN_SAMPLES = 20
 _CRISIS_COMMODITY_SHADOW_FORMULA_VERSION = "rv_macro_crisis_score_shadow_commodity_v1"
 _CRISIS_COMMODITY_SHADOW_WEIGHT = 0.05
 _CRISIS_COMMODITY_ADMISSION_RULE_VERSION = "rv_macro_crisis_commodity_admission_v1"
@@ -2778,7 +2793,7 @@ def _crisis_commodity_coverage_item(
             available=latest is not None,
             date_alignment_status=date_alignment_status,
         ),
-        "shadow_evaluation": _crisis_commodity_shadow_evaluation(frame, crisis_history),
+        "shadow_evaluation": evaluate_crisis_commodity_shadow(frame, crisis_history),
     }
 
 
@@ -2865,115 +2880,6 @@ def _crisis_score_history(series_data: dict[str, list[tuple[date, float]]], repo
     if score_frame.empty:
         return pd.DataFrame(columns=["crisis_score"])
     return score_frame[["crisis_score"]].dropna()
-
-
-def _crisis_commodity_shadow_evaluation(frame: pd.DataFrame, crisis_history: pd.DataFrame) -> dict[str, object]:
-    if frame.empty or crisis_history.empty or "crisis_score" not in crisis_history.columns:
-        sample_count = 0
-        return {
-            "status": "history_short",
-            "label": "影子评估样本不足",
-            "sample_count": sample_count,
-            "minimum_sample_count": _CRISIS_COMMODITY_SHADOW_MIN_SAMPLES,
-            "sample_gap": _CRISIS_COMMODITY_SHADOW_MIN_SAMPLES - sample_count,
-            "target": "crisis_score",
-            "candidate_metric": "daily_return",
-            "summary": "商品候选缺少足够历史样本，暂不能评估相关性。",
-            "next_step": "先补齐商品期货历史数据，再做历史回测、相关性检验和权重审批。",
-        }
-
-    points = _frame_to_crisis_points(frame)
-    if len(points) < 3:
-        sample_count = len(points)
-        return {
-            "status": "history_short",
-            "label": "影子评估样本不足",
-            "sample_count": sample_count,
-            "minimum_sample_count": _CRISIS_COMMODITY_SHADOW_MIN_SAMPLES,
-            "sample_gap": max(0, _CRISIS_COMMODITY_SHADOW_MIN_SAMPLES - sample_count),
-            "target": "crisis_score",
-            "candidate_metric": "daily_return",
-            "summary": f"商品候选仅 {sample_count} 个历史点，暂不能评估相关性。",
-            "next_step": "先补齐商品期货历史数据，再做历史回测、相关性检验和权重审批。",
-        }
-
-    price_series = pd.Series({pd.Timestamp(point_date): value for point_date, value in points}, dtype="float64").sort_index()
-    candidate_returns = price_series.pct_change().replace([float("inf"), float("-inf")], pd.NA).dropna()
-    aligned = pd.concat(
-        {
-            "candidate_return": candidate_returns,
-            "crisis_score": crisis_history["crisis_score"],
-        },
-        axis=1,
-    ).dropna()
-    if len(aligned) < _CRISIS_COMMODITY_SHADOW_MIN_SAMPLES:
-        sample_count = int(len(aligned))
-        return {
-            "status": "history_short",
-            "label": "影子评估样本不足",
-            "sample_count": sample_count,
-            "minimum_sample_count": _CRISIS_COMMODITY_SHADOW_MIN_SAMPLES,
-            "sample_gap": _CRISIS_COMMODITY_SHADOW_MIN_SAMPLES - sample_count,
-            "target": "crisis_score",
-            "candidate_metric": "daily_return",
-            "summary": f"商品候选与 Crisis Score 仅 {sample_count} 个重叠样本，暂不能评估相关性。",
-            "next_step": "先补齐商品期货历史数据，再做历史回测、相关性检验和权重审批。",
-        }
-
-    same_day = _series_corr(aligned["candidate_return"], aligned["crisis_score"])
-    lead_1d = _series_corr(aligned["candidate_return"].shift(1), aligned["crisis_score"])
-    lag_1d = _series_corr(aligned["candidate_return"].shift(-1), aligned["crisis_score"])
-    candidate_return_z = _latest_standard_score(aligned["candidate_return"])
-    crisis_threshold = aligned["crisis_score"].quantile(0.75)
-    crisis_rows = aligned[aligned["crisis_score"] >= crisis_threshold]
-    hit_rate = None
-    if not crisis_rows.empty:
-        expected_sign = 1 if (same_day or 0) >= 0 else -1
-        hit_rate = float((crisis_rows["candidate_return"] * expected_sign > 0).mean())
-
-    return {
-        "status": "review_ready",
-        "label": "影子评估可读",
-        "sample_count": int(len(aligned)),
-        "window_start": aligned.index.min().date().isoformat(),
-        "window_end": aligned.index.max().date().isoformat(),
-        "target": "crisis_score",
-        "candidate_metric": "daily_return",
-        "same_day_correlation": same_day,
-        "lead_1d_correlation": lead_1d,
-        "lag_1d_correlation": lag_1d,
-        "latest_return_z": candidate_return_z,
-        "crisis_hit_rate": round(hit_rate, 2) if hit_rate is not None else None,
-        "crisis_sample_count": int(len(crisis_rows)),
-        "summary": (
-            f"影子评估：样本 {len(aligned)}，同日相关 {_format_shadow_metric(same_day)}，"
-            f"危机期命中率 {_format_shadow_metric(hit_rate)}。"
-        ),
-        "next_step": "进入公式前仍需历史回测、相关性检验、权重审批和版本记录。",
-    }
-
-
-def _series_corr(left: pd.Series, right: pd.Series) -> float | None:
-    aligned = pd.concat({"left": left, "right": right}, axis=1).dropna()
-    if len(aligned) < 3 or aligned["left"].nunique() < 2 or aligned["right"].nunique() < 2:
-        return None
-    value = aligned["left"].corr(aligned["right"])
-    return round(float(value), 2) if pd.notna(value) else None
-
-
-def _latest_standard_score(series: pd.Series) -> float | None:
-    clean = series.dropna()
-    if len(clean) < _CRISIS_COMMODITY_SHADOW_MIN_SAMPLES or clean.nunique() < 2:
-        return None
-    std = clean.std()
-    if pd.isna(std) or float(std) == 0.0:
-        return None
-    value = (clean.iloc[-1] - clean.mean()) / std
-    return round(float(value), 4) if pd.notna(value) else None
-
-
-def _format_shadow_metric(value: float | None) -> str:
-    return "缺失" if value is None else f"{value:.2f}"
 
 
 def _crisis_commodity_shadow_impact(

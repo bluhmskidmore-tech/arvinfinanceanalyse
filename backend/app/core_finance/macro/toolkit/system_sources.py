@@ -15,6 +15,18 @@ DEFAULT_DATA_SOURCES = ("choice", "tushare")
 _WARNED_SOURCE_GAPS: set[str] = set()
 
 
+def normalize_macro_alias(value: object) -> str:
+    return _normalize_alias(value)
+
+
+def normalize_macro_source_names(sources: Iterable[object] | None) -> tuple[str, ...]:
+    if sources is None:
+        return ()
+    return tuple(
+        dict.fromkeys(str(source).strip().lower() for source in sources if str(source).strip())
+    )
+
+
 def _warn_source_gap_once(gap_key: str, message: str, *args: object) -> None:
     if gap_key in _WARNED_SOURCE_GAPS:
         return

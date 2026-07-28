@@ -11,7 +11,7 @@ from backend.app.repositories.governance_repo import (
     GovernanceRepository,
 )
 from backend.app.services import macro_toolkit_service
-from fastapi import BackgroundTasks, HTTPException
+from fastapi import HTTPException
 
 
 def _permission() -> dict[str, object]:
@@ -82,7 +82,6 @@ def test_choice_stock_refresh_route_allows_overlay_only_and_passes_archive_root(
     )
 
     result = macro_toolkit_route.macro_toolkit_refresh_choice_stock(
-        background_tasks=BackgroundTasks(),
         auth=auth,
         idempotency_key="overlay-only",
         request=macro_toolkit_route.ChoiceStockRefreshRequest(
@@ -103,7 +102,6 @@ def test_choice_stock_refresh_route_allows_overlay_only_and_passes_archive_root(
 def test_choice_stock_refresh_route_rejects_when_every_action_is_off() -> None:
     with pytest.raises(HTTPException) as exc_info:
         macro_toolkit_route.macro_toolkit_refresh_choice_stock(
-            background_tasks=BackgroundTasks(),
             auth=SimpleNamespace(
                 user_id="fixture-user", role="viewer", identity_source="test"
             ),
@@ -119,13 +117,18 @@ def test_choice_stock_refresh_route_rejects_when_every_action_is_off() -> None:
 
 def test_queue_choice_stock_refresh_records_mode_in_queue_status_and_task(
     tmp_path: Path,
+    monkeypatch,
 ) -> None:
     governance_path = tmp_path / "governance"
     archive_root = tmp_path / "archive"
-    background_tasks = BackgroundTasks()
+    sent: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "run_choice_stock_refresh_task",
+        SimpleNamespace(send=lambda **kwargs: sent.append(dict(kwargs))),
+    )
 
     queued = macro_toolkit_service.queue_choice_stock_refresh(
-        background_tasks=background_tasks,
         duckdb_path=str(tmp_path / "moss.duckdb"),
         catalog_path=str(tmp_path / "choice_stock_catalog.json"),
         governance_path=str(governance_path),
@@ -141,8 +144,8 @@ def test_queue_choice_stock_refresh_records_mode_in_queue_status_and_task(
 
     assert queued.payload["theme_overlay_mode"] == "archive"
     assert queued.payload["theme_overlay_status"] == "pending"
-    assert background_tasks.tasks[0].kwargs["theme_overlay_mode"] == "archive"
-    assert background_tasks.tasks[0].kwargs["archive_root"] == str(archive_root)
+    assert sent[0]["theme_overlay_mode"] == "archive"
+    assert sent[0]["archive_root"] == str(archive_root)
     status = macro_toolkit_service.choice_stock_refresh_status(
         governance_path,
         run_id=str(queued.payload["run_id"]),
@@ -229,7 +232,6 @@ def test_choice_stock_refresh_worker_publishes_completion_before_overlay_and_the
         assert in_flight["run_id"] == run_id
         with pytest.raises(macro_toolkit_service.MacroToolkitConflictError):
             macro_toolkit_service.queue_choice_stock_refresh(
-                background_tasks=BackgroundTasks(),
                 duckdb_path=str(tmp_path / "moss.duckdb"),
                 catalog_path=str(tmp_path / "choice_stock_catalog.json"),
                 governance_path=str(governance_path),

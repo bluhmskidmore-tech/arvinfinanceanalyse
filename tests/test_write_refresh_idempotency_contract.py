@@ -45,6 +45,8 @@ class RefreshEndpointAdapter:
     setup: Callable[[Path, Any], tuple[TestClient, list[object]]]
     refresh_payload: Callable[[dict[str, Any]], dict[str, Any]]
     side_effect_count: Callable[[list[object]], int] = len
+    expected_status: int = 200
+    exposes_idempotency_key: bool = True
 
 
 def _post(client: TestClient, adapter: RefreshEndpointAdapter, request: Request, *, key: str | None):
@@ -273,6 +275,11 @@ def _setup_macro_choice_stock(tmp_path: Path, monkeypatch: Any) -> tuple[TestCli
         "materialize_choice_stock_factor_snapshot",
         lambda **kwargs: calls.append(("factor", kwargs))
         or {"status": "completed", "row_count": 222, "source_version": "sv_factor"},
+    )
+    monkeypatch.setattr(
+        service_mod.run_choice_stock_refresh_task,
+        "send",
+        lambda **kwargs: calls.append(("dispatch", kwargs)),
     )
 
     app = FastAPI()
@@ -764,7 +771,8 @@ ENDPOINTS = (
         },
         setup=_setup_macro_choice_stock,
         refresh_payload=_macro_choice_stock_payload,
-        side_effect_count=lambda calls: len(calls) // 2,
+        expected_status=202,
+        exposes_idempotency_key=False,
     ),
     RefreshEndpointAdapter(
         family="key-date-window",
@@ -792,7 +800,7 @@ def test_refresh_idempotency_key_is_optional(adapter: RefreshEndpointAdapter, tm
     finally:
         get_settings.cache_clear()
 
-    assert response.status_code == 200, response.text
+    assert response.status_code == adapter.expected_status, response.text
     refresh = adapter.refresh_payload(response.json())
     assert refresh.get("idempotency_replay") in (None, False)
     assert adapter.side_effect_count(calls) == 1
@@ -812,12 +820,15 @@ def test_refresh_replays_same_normalized_idempotency_key(
     finally:
         get_settings.cache_clear()
 
-    assert first_response.status_code == 200, first_response.text
-    assert second_response.status_code == 200, second_response.text
+    assert first_response.status_code == adapter.expected_status, first_response.text
+    assert second_response.status_code == adapter.expected_status, second_response.text
     first_refresh = adapter.refresh_payload(first_response.json())
     second_refresh = adapter.refresh_payload(second_response.json())
     assert _refresh_run_id(second_refresh) == _refresh_run_id(first_refresh)
-    assert second_refresh["idempotency_key"] == adapter.idempotency_key.strip()
+    if adapter.exposes_idempotency_key:
+        assert second_refresh["idempotency_key"] == adapter.idempotency_key.strip()
+    else:
+        assert "idempotency_key" not in second_refresh
     assert second_refresh["idempotency_replay"] is True
     assert adapter.side_effect_count(calls) == 1
 
@@ -840,8 +851,8 @@ def test_refresh_does_not_replay_same_key_for_different_target(
     finally:
         get_settings.cache_clear()
 
-    assert first_response.status_code == 200, first_response.text
-    assert second_response.status_code == 200, second_response.text
+    assert first_response.status_code == adapter.expected_status, first_response.text
+    assert second_response.status_code == adapter.expected_status, second_response.text
     first_refresh = adapter.refresh_payload(first_response.json())
     second_refresh = adapter.refresh_payload(second_response.json())
     assert _refresh_run_id(second_refresh) != _refresh_run_id(first_refresh)

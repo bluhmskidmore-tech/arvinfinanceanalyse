@@ -2038,6 +2038,11 @@ describe("ApiClient composition boundary", () => {
     expect(clientContextSource).toContain("STOCK_ANALYSIS_MARKET_DATA_METHODS");
     expect(clientContextSource).toContain("createRealMacroToolkitClient");
     expect(clientContextSource).toContain("createMockMacroToolkitClient");
+    const macroToolkitMethodSet = clientContextSource.match(
+      /const MACRO_TOOLKIT_METHODS[\s\S]*?\]\);/,
+    )?.[0];
+    expect(macroToolkitMethodSet).toContain("getCffexMemberRankRefreshStatus");
+    expect(macroToolkitMethodSet).toContain("getMacroSourceBackfillRefreshStatus");
     expect(clientContextSource).toContain("createRealHomeMarketTickerClient");
     expect(clientContextSource).toContain("createMockHomeMarketTickerClient");
     expect(clientContextSource).toMatch(/import\(["']\.\/marketDataClient["']\)/);

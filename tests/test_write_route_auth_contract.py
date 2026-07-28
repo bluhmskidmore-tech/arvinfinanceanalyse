@@ -194,20 +194,22 @@ def _patch_choice_stock_refresh(monkeypatch, calls: list[str]) -> str:
 
 
 def _patch_source_backfill_refresh(monkeypatch, calls: list[str]) -> str:
-    import backend.app.api.routes.macro_toolkit as route_module
+    from backend.app.services import macro_toolkit_service
 
-    def fake_backfill_macro_series(**_kwargs):
+    def fake_queue_macro_source_backfill(**_kwargs):
         calls.append("called")
-        return {
-            "dry_run": False,
-            "processed_count": 1,
-            "total_added": 42,
-            "results": {"SHIBOR:3M": 42},
-            "errors": {},
-        }
+        return macro_toolkit_service.MacroToolkitActionResult(
+            payload={
+                "status": "queued",
+                "run_id": "macro-source-refresh-test",
+                "series_ids": ["NCD.SHIBOR.3M"],
+            },
+            quality_flag="warning",
+            as_of_date="2026-04-30",
+        )
 
-    monkeypatch.setattr(route_module, "backfill_macro_series", fake_backfill_macro_series)
-    return "NCD.SHIBOR.3M"
+    monkeypatch.setattr(macro_toolkit_service, "queue_macro_source_backfill", fake_queue_macro_source_backfill)
+    return "macro-source-refresh-test"
 
 
 def _patch_commodity_futures_refresh(monkeypatch, calls: list[str]) -> str:
@@ -327,7 +329,11 @@ def test_refresh_route_requires_explicit_scope_grant(path, body, resource, patch
         json=body,
         headers={"X-User-Id": "refresh-user"},
     )
-    assert allowed.status_code == 200, allowed.text
+    expected_status = 202 if path.split("?", 1)[0] in (
+        "/ui/macro/toolkit/choice-stock/refresh",
+        "/ui/macro/toolkit/source-backfill/refresh",
+    ) else 200
+    assert allowed.status_code == expected_status, allowed.text
     assert expected_run_id in allowed.text
     assert calls == ["called"]
 
@@ -611,4 +617,4 @@ def test_macro_toolkit_cffex_refresh_accepts_explicit_refresh_grant(tmp_path, mo
         headers={"X-User-Id": "cffex-user"},
     )
 
-    assert response.status_code == 200, response.text
+    assert response.status_code == 202, response.text

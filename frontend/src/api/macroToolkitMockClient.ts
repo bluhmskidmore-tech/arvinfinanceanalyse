@@ -6,6 +6,7 @@ import type {
   MacroToolkitAShareRiskPayload,
   MacroToolkitCapability,
   MacroToolkitCapabilityResult,
+  MacroToolkitCffexRefreshRun,
   MacroToolkitChoiceStockRefreshStatus,
   MacroToolkitClientMethods,
   MacroToolkitCommodityFuturesHealthStatus,
@@ -20,6 +21,7 @@ import type {
   MacroToolkitScriptChainRun,
   MacroToolkitScriptRecord,
   MacroToolkitShadowPortfolioReport,
+  MacroToolkitSourceBackfillRefreshRun,
   MacroToolkitStrategySummary,
 } from "./macroToolkitClient";
 
@@ -2265,6 +2267,9 @@ const MOCK_PAYLOAD: MacroToolkitPayload = {
 };
 
 export function createMockMacroToolkitClient(): MacroToolkitClientMethods {
+  let pendingCffexRefresh: MacroToolkitCffexRefreshRun | null = null;
+  let pendingSourceBackfillRefresh: MacroToolkitSourceBackfillRefreshRun | null = null;
+
   return {
     async getMacroToolkitAnalysis(_options?: MacroToolkitAnalysisRequest) {
       return buildMockApiEnvelope("macro_toolkit.analysis", MOCK_ANALYSIS, {
@@ -2398,11 +2403,63 @@ export function createMockMacroToolkitClient(): MacroToolkitClientMethods {
         },
       );
     },
-    async refreshCffexMemberRank() {
+    async refreshCffexMemberRank(options) {
+      const refresh: MacroToolkitCffexRefreshRun = {
+        run_id: "cffex_member_rank_refresh:mock",
+        job_name: "cffex_member_rank_refresh",
+        status: "queued",
+        trigger_mode: "async",
+        cache_key: "macro_toolkit.cffex_member_rank",
+        cache_version: "cffex_member_rank_refresh_v1",
+        rule_version: "rv_cffex_member_rank_async_v1",
+        report_date: options?.tradeDate ?? "2026-04-30",
+        trade_date: options?.tradeDate ?? "2026-04-30",
+        contracts: options?.contracts ?? ["TS.CFE", "TF.CFE", "T.CFE", "TL.CFE"],
+        sources: options?.sources ?? ["choice", "tushare"],
+        row_count: null,
+        source_version: "sv_pending",
+        vendor_version: "vv_pending",
+      };
+      pendingCffexRefresh = refresh;
       return buildMockApiEnvelope(
         "macro_toolkit.cffex_member_rank_refresh",
         {
-          refresh: { row_count: 80 },
+          refresh,
+          cffex_member_rank: MOCK_PAYLOAD.cffex_member_rank!,
+        },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "macro_toolkit_mock",
+          vendor_version: "choice+tushare",
+          rule_version: "rv_macro_toolkit_ui_v1",
+          cache_version: "none",
+        },
+      );
+    },
+    async getCffexMemberRankRefreshStatus() {
+      const refresh: MacroToolkitCffexRefreshRun = {
+        ...(pendingCffexRefresh ?? {
+          run_id: "cffex_member_rank_refresh:mock",
+          job_name: "cffex_member_rank_refresh",
+          cache_key: "macro_toolkit.cffex_member_rank",
+          cache_version: "cffex_member_rank_refresh_v1",
+          rule_version: "rv_cffex_member_rank_async_v1",
+          report_date: "2026-04-30",
+          trade_date: "2026-04-30",
+          contracts: ["TS.CFE", "TF.CFE", "T.CFE", "TL.CFE"],
+          sources: ["choice", "tushare"],
+        }),
+        status: "completed",
+        trigger_mode: "terminal",
+        row_count: 80,
+        source_version: "macro_toolkit_mock",
+        vendor_version: "choice+tushare",
+      };
+      return buildMockApiEnvelope(
+        "macro_toolkit.cffex_member_rank_refresh_status",
+        {
+          refresh,
           cffex_member_rank: MOCK_PAYLOAD.cffex_member_rank!,
         },
         {
@@ -2416,27 +2473,77 @@ export function createMockMacroToolkitClient(): MacroToolkitClientMethods {
       );
     },
     async refreshMacroSourceBackfill(options) {
+      const refresh: MacroToolkitSourceBackfillRefreshRun = {
+        run_id: "macro_source_backfill_refresh:mock",
+        job_name: "macro_source_backfill_refresh",
+        status: "queued",
+        trigger_mode: "async",
+        cache_key: "macro_toolkit.source_backfill",
+        cache_version: "macro_source_backfill_v1",
+        rule_version: "rv_macro_source_backfill_async_v1",
+        report_date: options.endDate ?? "2026-04-30",
+        alias: options.alias,
+        series_ids: options.alias === "M0041813" ? ["NCD.SHIBOR.3M"] : [options.alias],
+        series_names: options.alias === "M0041813" ? ["SHIBOR:3M"] : [options.alias],
+        backfill_mode: "macro_series",
+        start_date: options.startDate ?? null,
+        end_date: options.endDate ?? "2026-04-30",
+        sources: options.sources ?? ["tushare_macro"],
+        total_added: null,
+        total_fetched: null,
+        processed_count: null,
+        source_version: "sv_pending",
+        vendor_version: "vv_pending",
+      };
+      pendingSourceBackfillRefresh = refresh;
       return buildMockApiEnvelope(
         "macro_toolkit.source_backfill_refresh",
         {
-          refresh: {
-            status: "completed",
-            alias: options.alias,
-            series_ids: options.alias === "M0041813" ? ["NCD.SHIBOR.3M"] : [options.alias],
-            series_names: options.alias === "M0041813" ? ["SHIBOR:3M"] : [options.alias],
-            start_date: options.startDate ?? null,
-            end_date: options.endDate ?? null,
-            total_added: 0,
-            processed_count: 1,
-            results: {},
-            errors: {},
-          },
+          refresh,
         },
         {
           basis: "analytical",
           formal_use_allowed: false,
           source_version: "macro_toolkit_mock",
           vendor_version: "choice+tushare",
+          rule_version: "rv_macro_toolkit_ui_v1",
+          cache_version: "none",
+        },
+      );
+    },
+    async getMacroSourceBackfillRefreshStatus() {
+      const refresh: MacroToolkitSourceBackfillRefreshRun = {
+        ...(pendingSourceBackfillRefresh ?? {
+          run_id: "macro_source_backfill_refresh:mock",
+          job_name: "macro_source_backfill_refresh",
+          cache_key: "macro_toolkit.source_backfill",
+          cache_version: "macro_source_backfill_v1",
+          rule_version: "rv_macro_source_backfill_async_v1",
+          report_date: "2026-04-30",
+          alias: "M0041813",
+          series_ids: ["NCD.SHIBOR.3M"],
+          series_names: ["SHIBOR:3M"],
+          backfill_mode: "macro_series",
+          start_date: null,
+          end_date: "2026-04-30",
+          sources: ["tushare_macro"],
+        }),
+        status: "completed",
+        trigger_mode: "terminal",
+        total_added: 0,
+        total_fetched: 0,
+        processed_count: 1,
+        source_version: "macro_toolkit_mock",
+        vendor_version: "tushare_macro",
+      };
+      return buildMockApiEnvelope(
+        "macro_toolkit.source_backfill_refresh_status",
+        { refresh },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "macro_toolkit_mock",
+          vendor_version: "tushare_macro",
           rule_version: "rv_macro_toolkit_ui_v1",
           cache_version: "none",
         },

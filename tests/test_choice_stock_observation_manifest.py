@@ -289,18 +289,19 @@ def test_choice_stock_refresh_does_not_record_completed_when_manifest_append_fai
         GovernanceRepository, "append_many_atomic", fail_completion_batch
     )
 
-    macro_toolkit_service._run_choice_stock_refresh_job(
-        duckdb_path=str(tmp_path / "moss.duckdb"),
-        catalog_path=str(tmp_path / "catalog.json"),
-        governance_path=str(governance_path),
-        run_id="choice_stock_refresh:2026-07-08:failure-fixture",
-        as_of_date="2026-07-08",
-        queued_at="2026-07-08T22:59:00Z",
-        refresh_history=True,
-        refresh_factors=False,
-        factor_max_stock_count=None,
-        permission={"mode": "fixture"},
-    )
+    with pytest.raises(OSError, match="fixture manifest append failed"):
+        macro_toolkit_service._run_choice_stock_refresh_job(
+            duckdb_path=str(tmp_path / "moss.duckdb"),
+            catalog_path=str(tmp_path / "catalog.json"),
+            governance_path=str(governance_path),
+            run_id="choice_stock_refresh:2026-07-08:failure-fixture",
+            as_of_date="2026-07-08",
+            queued_at="2026-07-08T22:59:00Z",
+            refresh_history=True,
+            refresh_factors=False,
+            factor_max_stock_count=None,
+            permission={"mode": "fixture"},
+        )
 
     repo = GovernanceRepository(base_dir=governance_path)
     runs = [
@@ -308,7 +309,8 @@ def test_choice_stock_refresh_does_not_record_completed_when_manifest_append_fai
         for row in repo.read_all(CACHE_BUILD_RUN_STREAM)
         if row.get("run_id") == "choice_stock_refresh:2026-07-08:failure-fixture"
     ]
-    assert [row["status"] for row in runs] == ["running", "failed"]
+    assert [row["status"] for row in runs] == ["running", "retrying"]
+    assert runs[-1]["retryable"] is True
     assert repo.read_latest_manifest(CHOICE_STOCK_OBSERVATION_CACHE_KEY) is None
 
 

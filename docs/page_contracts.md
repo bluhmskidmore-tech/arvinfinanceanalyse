@@ -1503,7 +1503,9 @@
 | `getMacroToolkitScripts()` -> `GET /ui/macro/toolkit/scripts` | 脚本注册表、源命中、产物列表 | `MacroToolkitPayload` | tooling |
 | `runMacroToolkitScript()` -> `POST /ui/macro/toolkit/scripts/{name}/run` | 显式运行选中脚本 | `MacroToolkitRunResponse` | operational |
 | `refreshMacroSourceBackfill()` -> `POST /ui/macro/toolkit/source-backfill/refresh` | Crisis Score / 宏观来源缺口补齐（按 alias 滚动回填） | `MacroToolkitSourceBackfillRefreshResponse` | operational / permission-gated |
+| `getMacroSourceBackfillRefreshStatus()` -> `GET /ui/macro/toolkit/source-backfill/refresh-status` | 宏观来源补齐异步任务状态 | `MacroToolkitSourceBackfillRefreshResponse` | operational |
 | `refreshCffexMemberRank()` -> `POST /ui/macro/toolkit/cffex-member-rank/refresh` | 中金所席位数据刷新 | `MacroToolkitCffexRefreshResponse` | operational / permission-gated |
+| `getCffexMemberRankRefreshStatus()` -> `GET /ui/macro/toolkit/cffex-member-rank/refresh-status` | 中金所席位异步刷新任务状态 | `MacroToolkitCffexRefreshResponse` | operational |
 | `refreshChoiceStock()` -> `POST /ui/macro/toolkit/choice-stock/refresh` | 股票历史与因子快照刷新 | `MacroToolkitChoiceStockRefreshResponse` | operational / permission-gated |
 | `getChoiceStockRefreshStatus()` -> `GET /ui/macro/toolkit/choice-stock/refresh-status` | 刷新任务状态 | `MacroToolkitChoiceStockRefreshResponse` | operational |
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -55,6 +56,12 @@ def normalize_cffex_contract(contract: str) -> str:
     elif "." not in raw:
         raw = f"{raw}.CFE"
     return raw
+
+
+def normalize_cffex_sources(sources: Iterable[object]) -> tuple[str, ...]:
+    return tuple(
+        dict.fromkeys(str(source).strip().lower() for source in sources if str(source).strip())
+    )
 
 
 def product_code_from_contract(contract: str) -> str:

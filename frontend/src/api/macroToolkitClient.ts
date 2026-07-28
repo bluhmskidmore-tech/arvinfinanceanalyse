@@ -88,9 +88,7 @@ export type MacroToolkitChoiceStockRefreshRun = {
   cache_key?: string;
   trigger_mode?: "idle" | "async" | "terminal" | string;
   report_date?: string;
-  error_message?: string | null;
   failure_category?: string | null;
-  failure_reason?: string | null;
   history_row_count?: number | null;
   factor_row_count?: number | null;
   source_version?: string;
@@ -888,24 +886,60 @@ export type MacroToolkitScriptChainRunResponse = ApiEnvelope<{
   model_readiness: MacroToolkitModelReadiness[];
 }>;
 
+export type MacroToolkitAsyncRefreshRun<TStatus extends string> = {
+  run_id?: string;
+  job_name?: string;
+  status: TStatus;
+  trigger_mode?: "async" | "terminal" | string;
+  cache_key?: string;
+  cache_version?: string;
+  rule_version?: string;
+  report_date?: string | null;
+  queued_at?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  attempt_count?: number | null;
+  max_attempts?: number | null;
+  retryable?: boolean | null;
+  failure_category?: string | null;
+  source_version?: string | null;
+  vendor_version?: string | null;
+  idempotency_replay?: boolean;
+};
+
+export type MacroToolkitCffexRefreshRun = MacroToolkitAsyncRefreshRun<
+  "queued" | "running" | "retrying" | "completed" | "partial" | "failed" | string
+> & {
+  trade_date?: string | null;
+  contracts?: string[];
+  sources?: string[];
+  row_count: number | null;
+};
+
 export type MacroToolkitCffexRefreshResponse = ApiEnvelope<{
-  refresh: Record<string, unknown>;
+  refresh: MacroToolkitCffexRefreshRun;
   cffex_member_rank: MacroToolkitCffexMemberRankStatus;
 }>;
 
+export type MacroToolkitSourceBackfillRefreshRun = MacroToolkitAsyncRefreshRun<
+  "queued" | "running" | "retrying" | "completed" | "partial" | "no_rows" | "blocked" | "failed" | string
+> & {
+  alias: string;
+  series_ids: string[];
+  series_names?: string[];
+  backfill_mode?: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  sources?: string[];
+  total_added: number | null;
+  total_fetched?: number | null;
+  processed_count?: number | null;
+  source_by_series?: Record<string, string>;
+  vendor_versions?: Record<string, string>;
+};
+
 export type MacroToolkitSourceBackfillRefreshResponse = ApiEnvelope<{
-  refresh: {
-    status: string;
-    alias: string;
-    series_ids: string[];
-    series_names?: string[];
-    start_date?: string | null;
-    end_date?: string | null;
-    total_added: number;
-    processed_count?: number;
-    results?: Record<string, number>;
-    errors?: Record<string, string>;
-  };
+  refresh: MacroToolkitSourceBackfillRefreshRun;
 }>;
 
 export type MacroToolkitCommodityFuturesRefreshRun = {
@@ -961,12 +995,16 @@ export type MacroToolkitClientMethods = {
     contracts?: string[];
     sources?: string[];
   }) => Promise<MacroToolkitCffexRefreshResponse>;
+  getCffexMemberRankRefreshStatus: (runId: string) => Promise<MacroToolkitCffexRefreshResponse>;
   refreshMacroSourceBackfill: (options: {
     alias: string;
     startDate?: string | null;
     endDate?: string | null;
     sources?: string[];
   }) => Promise<MacroToolkitSourceBackfillRefreshResponse>;
+  getMacroSourceBackfillRefreshStatus: (
+    runId: string,
+  ) => Promise<MacroToolkitSourceBackfillRefreshResponse>;
   refreshCommodityFutures: (options?: {
     startDate?: string | null;
     endDate?: string | null;
@@ -1051,6 +1089,12 @@ export function createRealMacroToolkitClient({
           }),
         },
       ),
+    getCffexMemberRankRefreshStatus: (runId) =>
+      requestJson<MacroToolkitCffexRefreshResponse["result"]>(
+        fetchImpl,
+        baseUrl,
+        `/ui/macro/toolkit/cffex-member-rank/refresh-status?run_id=${encodeURIComponent(runId)}`,
+      ),
     refreshMacroSourceBackfill: (options) =>
       requestActionJson<MacroToolkitSourceBackfillRefreshResponse>(
         fetchImpl,
@@ -1066,6 +1110,12 @@ export function createRealMacroToolkitClient({
             sources: options.sources ?? null,
           }),
         },
+      ),
+    getMacroSourceBackfillRefreshStatus: (runId) =>
+      requestJson<MacroToolkitSourceBackfillRefreshResponse["result"]>(
+        fetchImpl,
+        baseUrl,
+        `/ui/macro/toolkit/source-backfill/refresh-status?run_id=${encodeURIComponent(runId)}`,
       ),
     refreshCommodityFutures: (options) =>
       requestActionJson<MacroToolkitCommodityFuturesRefreshResponse>(

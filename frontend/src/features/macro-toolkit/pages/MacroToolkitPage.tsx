@@ -28,6 +28,7 @@ import type { ApiEnvelope } from "../../../api/contracts";
 import type {
   MacroToolkitCapability,
   MacroToolkitCapabilityResult,
+  MacroToolkitCffexRefreshRun,
   MacroToolkitCommodityFuturesRefreshRun,
   MacroToolkitCommodityFuturesRefreshStatus,
   MacroToolkitChoiceStockRefreshRun,
@@ -48,6 +49,7 @@ import type {
   MacroToolkitShadowPortfolioHolding,
   MacroToolkitShadowPortfolioPeriodReturn,
   MacroToolkitShadowPortfolioReport,
+  MacroToolkitSourceBackfillRefreshRun,
   MacroToolkitSourceCheck,
   MacroToolkitStrategySummary,
 } from "../../../api/macroToolkitClient";
@@ -474,6 +476,64 @@ function chainRunAlertType(status: string): "success" | "warning" | "error" | "i
   if (status === "degraded") return "warning";
   if (status === "completed" || status === "dry_run") return "success";
   return "info";
+}
+
+type RefreshFeedbackTone = "success" | "warning" | "info";
+
+const CFFEX_REFRESH_TERMINAL_STATUSES = new Set(["completed", "partial", "failed"]);
+const SOURCE_BACKFILL_TERMINAL_STATUSES = new Set([
+  "completed",
+  "partial",
+  "no_rows",
+  "blocked",
+  "failed",
+]);
+
+function isCffexRefreshTerminal(status: string) {
+  return CFFEX_REFRESH_TERMINAL_STATUSES.has(status);
+}
+
+function isSourceBackfillTerminal(status: string) {
+  return SOURCE_BACKFILL_TERMINAL_STATUSES.has(status);
+}
+
+function asyncRefreshPendingMessage(subject: string, status: string) {
+  const statusLabel =
+    status === "queued"
+      ? "已排队"
+      : status === "running"
+        ? "执行中"
+        : status === "retrying"
+          ? "重试中"
+          : status;
+  return `${subject}${statusLabel}，等待后台任务完成`;
+}
+
+function refreshFailureMessage(subject: string, failureCategory: string | null | undefined) {
+  return failureCategory ? `${subject}失败（类别：${failureCategory}）` : `${subject}失败`;
+}
+
+function cffexRefreshTerminalMessage(refresh: MacroToolkitCffexRefreshRun) {
+  const rowCount = refresh.row_count == null ? "行数待确认" : `${refresh.row_count} 行`;
+  const tradeDate = refresh.trade_date ?? refresh.report_date ?? "日期缺失";
+  return refresh.status === "partial"
+    ? `席位刷新部分完成：${rowCount}，交易日 ${tradeDate}；部分来源未完成，请复核`
+    : `刷新完成：${rowCount}，交易日 ${tradeDate}`;
+}
+
+function sourceBackfillTerminalMessage(refresh: MacroToolkitSourceBackfillRefreshRun) {
+  if (refresh.status === "partial") {
+    const added = refresh.total_added == null ? "新增行数待确认" : `新增 ${refresh.total_added} 行`;
+    return `来源补齐部分完成：${refresh.alias} ${added}，请复核未完成来源`;
+  }
+  if (refresh.status === "no_rows") {
+    return `来源补齐未新增数据：${refresh.alias}，请复核日期范围和数据源`;
+  }
+  if (refresh.status === "blocked") {
+    return `来源补齐受阻：${refresh.alias}，请复核权限、来源和任务状态`;
+  }
+  const added = refresh.total_added == null ? "新增行数待确认" : `新增 ${refresh.total_added} 行`;
+  return `来源补齐完成：${refresh.alias} ${added}`;
 }
 
 function toneTagColor(tone: MacroToolkitSignalCard["tone"]) {
@@ -1249,12 +1309,15 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   const [isRunningChain, setIsRunningChain] = useState(false);
   const [refreshResult, setRefreshResult] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [refreshFeedbackTone, setRefreshFeedbackTone] = useState<RefreshFeedbackTone>("success");
   const [isRefreshingCffex, setIsRefreshingCffex] = useState(false);
   const [stockRefreshResult, setStockRefreshResult] = useState<string | null>(null);
   const [stockRefreshError, setStockRefreshError] = useState<string | null>(null);
   const [isRefreshingChoiceStock, setIsRefreshingChoiceStock] = useState(false);
   const [sourceBackfillResult, setSourceBackfillResult] = useState<string | null>(null);
   const [sourceBackfillError, setSourceBackfillError] = useState<string | null>(null);
+  const [sourceBackfillFeedbackTone, setSourceBackfillFeedbackTone] =
+    useState<RefreshFeedbackTone>("success");
   const [crisisGapRepairFeedback, setCrisisGapRepairFeedback] = useState<CrisisGapRepairFeedback | null>(null);
   const [refreshingSourceAlias, setRefreshingSourceAlias] = useState<string | null>(null);
   const [commodityRefreshResult, setCommodityRefreshResult] = useState<string | null>(null);
@@ -2612,6 +2675,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       setRefreshingSourceAlias(alias);
       setSourceBackfillError(null);
       setSourceBackfillResult(null);
+      setSourceBackfillFeedbackTone("info");
       recordActionReceipt({
         id: receiptId,
         ...receiptDecision,
@@ -2632,32 +2696,82 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
         });
       }
       try {
-        const response = await client.refreshMacroSourceBackfill({
-          alias,
-          endDate: item.reference_date ?? analysis?.as_of_date ?? undefined,
-          sources: undefined,
+        const refresh = await runPollingTask({
+          start: async () => {
+            const response = await client.refreshMacroSourceBackfill({
+              alias,
+              endDate: item.reference_date ?? analysis?.as_of_date ?? undefined,
+              sources: undefined,
+            });
+            return {
+              ...response.result.refresh,
+              report_date: response.result.refresh.report_date ?? undefined,
+              source_version: response.result.refresh.source_version ?? undefined,
+            };
+          },
+          getStatus: async (runId) => {
+            const response = await client.getMacroSourceBackfillRefreshStatus(runId);
+            return {
+              ...response.result.refresh,
+              report_date: response.result.refresh.report_date ?? undefined,
+              source_version: response.result.refresh.source_version ?? undefined,
+            };
+          },
+          intervalMs: 5_000,
+          maxAttempts: 240,
+          isTerminal: isSourceBackfillTerminal,
+          onUpdate: (payload) => {
+            if (isSourceBackfillTerminal(payload.status)) return;
+            setSourceBackfillFeedbackTone("info");
+            setSourceBackfillResult(asyncRefreshPendingMessage("来源补齐", payload.status));
+          },
         });
-        const refresh = response.result.refresh;
-        const resultMessage = `来源补齐完成：${refresh.alias} 新增 ${refresh.total_added} 行`;
+        if (refresh.status === "failed") {
+          throw new Error(refreshFailureMessage("来源补齐", refresh.failure_category));
+        }
+        const isCompleted = refresh.status === "completed";
+        const isPartial = refresh.status === "partial";
+        const resultMessage = sourceBackfillTerminalMessage(refresh);
+        setSourceBackfillFeedbackTone(isCompleted ? "success" : "warning");
         setSourceBackfillResult(resultMessage);
         recordActionReceipt({
           id: receiptId,
           ...receiptDecision,
           action: "来源补齐",
-          status: "completed",
+          status: isCompleted ? "completed" : "warning",
           time: "刚刚",
           target: alias,
-          artifact: `新增 ${refresh.total_added} 行`,
-          nextStep: "重读完整分析并复核数据健康",
+          artifact: resultMessage,
+          nextStep: isCompleted ? "重读完整分析并复核数据健康" : "复核未完成来源，数据健康保持阻断",
         });
-        await clearFullAnalysisCache({ preserveCrisisGapRepairFeedback: Boolean(gapGroup) });
-        const reloaded = await loadFullAnalysis();
-        if (gapGroup) {
-          setCrisisGapRepairFeedback(buildCrisisGapRepairFeedback(gapGroup, reloaded, resultMessage));
+        if (isCompleted || isPartial) {
+          await clearFullAnalysisCache({ preserveCrisisGapRepairFeedback: Boolean(gapGroup) });
+          const reloaded = await loadFullAnalysis();
+          if (gapGroup) {
+            const reloadedFeedback = buildCrisisGapRepairFeedback(gapGroup, reloaded, resultMessage);
+            setCrisisGapRepairFeedback(
+              isPartial
+                ? {
+                    ...reloadedFeedback,
+                    status: "partial",
+                    message: "来源补齐部分完成，完整分析已重读",
+                  }
+                : reloadedFeedback,
+            );
+          }
+        } else if (gapGroup) {
+          setCrisisGapRepairFeedback({
+            groupKey: gapGroup.key,
+            groupLabel: gapGroup.label,
+            status: "partial",
+            message: refresh.status === "blocked" ? "来源补齐受阻，缺口仍需处理" : "来源未返回可补齐数据",
+            detail: resultMessage,
+          });
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : "来源补齐失败";
         setSourceBackfillError(errorMessage);
+        setSourceBackfillResult(null);
         recordActionReceipt({
           id: receiptId,
           ...receiptDecision,
@@ -2814,6 +2928,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     setIsRefreshingCffex(true);
     setRefreshError(null);
     setRefreshResult(null);
+    setRefreshFeedbackTone("info");
     recordActionReceipt({
       id: receiptId,
       ...receiptDecision,
@@ -2825,20 +2940,50 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       nextStep: "等待刷新完成后核对席位状态",
     });
     try {
-      const response = await client.refreshCffexMemberRank({
-        tradeDate: analysis?.as_of_date ?? undefined,
+      const refresh = await runPollingTask({
+        start: async () => {
+          const response = await client.refreshCffexMemberRank({
+            tradeDate: analysis?.as_of_date ?? undefined,
+          });
+          return {
+            ...response.result.refresh,
+            report_date: response.result.refresh.report_date ?? undefined,
+            source_version: response.result.refresh.source_version ?? undefined,
+          };
+        },
+        getStatus: async (runId) => {
+          const response = await client.getCffexMemberRankRefreshStatus(runId);
+          return {
+            ...response.result.refresh,
+            report_date: response.result.refresh.report_date ?? undefined,
+            source_version: response.result.refresh.source_version ?? undefined,
+          };
+        },
+        intervalMs: 5_000,
+        maxAttempts: 240,
+        isTerminal: isCffexRefreshTerminal,
+        onUpdate: (payload) => {
+          if (isCffexRefreshTerminal(payload.status)) return;
+          setRefreshFeedbackTone("info");
+          setRefreshResult(asyncRefreshPendingMessage("CFFEX席位刷新", payload.status));
+        },
       });
-      const rank = response.result.cffex_member_rank;
-      setRefreshResult(`刷新完成：${rank.row_count} 行，最新交易日 ${rank.latest_trade_date ?? "缺失"}`);
+      if (refresh.status === "failed") {
+        throw new Error(refreshFailureMessage("CFFEX席位刷新", refresh.failure_category));
+      }
+      const isCompleted = refresh.status === "completed";
+      const resultMessage = cffexRefreshTerminalMessage(refresh);
+      setRefreshFeedbackTone(isCompleted ? "success" : "warning");
+      setRefreshResult(resultMessage);
       recordActionReceipt({
         id: receiptId,
         ...receiptDecision,
         action: "刷新 CFFEX 席位",
-        status: "completed",
+        status: isCompleted ? "completed" : "warning",
         time: "刚刚",
         target: "CFFEX 席位",
-        artifact: `中金所席位 ${rank.row_count} 行 · ${rank.latest_trade_date ?? "日期缺失"}`,
-        nextStep: "核对 CFFEX席位状态",
+        artifact: resultMessage,
+        nextStep: isCompleted ? "核对 CFFEX席位状态" : "复核未完成来源，席位状态保持待确认",
       });
       await clearFullAnalysisCache();
       await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch(), strategyQuery.refetch()]);
@@ -2846,6 +2991,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "刷新席位失败";
       setRefreshError(errorMessage);
+      setRefreshResult(null);
       recordActionReceipt({
         id: receiptId,
         ...receiptDecision,
@@ -4784,7 +4930,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       {scriptsQuery.isError ? <Alert type="error" showIcon message="脚本注册表加载失败" /> : null}
       {stockRefreshResult ? <Alert type="success" showIcon message={stockRefreshResult} /> : null}
       {stockRefreshError ? <Alert type="error" showIcon message={stockRefreshError} /> : null}
-      {refreshResult ? <Alert type="success" showIcon message={refreshResult} /> : null}
+      {refreshResult ? <Alert type={refreshFeedbackTone} showIcon message={refreshResult} /> : null}
       {refreshError ? <Alert type="error" showIcon message={refreshError} /> : null}
       {commodityRefreshResult ? <Alert type="success" showIcon message={commodityRefreshResult} /> : null}
       {commodityRefreshError ? <Alert type="error" showIcon message={commodityRefreshError} /> : null}
@@ -5645,7 +5791,9 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
               )}
             </div>
           ) : null}
-          {sourceBackfillResult ? <Alert type="success" showIcon message={sourceBackfillResult} /> : null}
+          {sourceBackfillResult ? (
+            <Alert type={sourceBackfillFeedbackTone} showIcon message={sourceBackfillResult} />
+          ) : null}
           {sourceBackfillError ? <Alert type="error" showIcon message={sourceBackfillError} /> : null}
 
           <div className="macro-toolkit-readiness-strip" aria-label="宏观工具投研总览">
@@ -5930,7 +6078,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                 >
                   刷新席位明细
                 </Button>
-                {refreshResult ? <Alert type="success" showIcon message={refreshResult} /> : null}
+                {refreshResult ? <Alert type={refreshFeedbackTone} showIcon message={refreshResult} /> : null}
                 {refreshError ? <Alert type="error" showIcon message={refreshError} /> : null}
               </div>
             </div>
@@ -7708,12 +7856,7 @@ function choiceStockHasRunEvidence(refresh: MacroToolkitChoiceStockRefreshRun | 
 }
 
 function choiceStockRefreshFailureText(refresh: MacroToolkitChoiceStockRefreshRun) {
-  const category = refresh.failure_category?.trim();
-  const reason = refresh.failure_reason?.trim();
-  if (category && reason) {
-    return `${category}: ${reason}`;
-  }
-  return reason || refresh.error_message?.trim() || category || "";
+  return refresh.failure_category?.trim() || "";
 }
 
 function choiceStockPermissionDetail(

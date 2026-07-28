@@ -4423,6 +4423,11 @@ def test_macro_toolkit_choice_stock_refresh_runs_history_and_full_factor_snapsho
         "verify_choice_stock_daily_observation_landing",
         lambda **_kwargs: 5,
     )
+    monkeypatch.setattr(
+        macro_toolkit_service.run_choice_stock_refresh_task,
+        "send",
+        lambda **kwargs: macro_toolkit_service._run_choice_stock_refresh_job(**kwargs),
+    )
     app = FastAPI()
     app.include_router(macro_toolkit_router)
     client = TestClient(app)
@@ -4448,7 +4453,8 @@ def test_macro_toolkit_choice_stock_refresh_runs_history_and_full_factor_snapsho
     finally:
         get_settings.cache_clear()
 
-    assert response.status_code == 200
+    assert response.status_code == 202
+    assert payload["result_meta"]["quality_flag"] == "warning"
     refresh = payload["result"]["refresh"]
     assert refresh["status"] == "queued"
     assert refresh["trigger_mode"] == "async"
@@ -4474,6 +4480,7 @@ def test_macro_toolkit_choice_stock_refresh_runs_history_and_full_factor_snapsho
     ]
     assert status_response.status_code == 200
     status_payload = status_response.json()
+    assert status_payload["result_meta"]["quality_flag"] == "ok"
     assert status_payload["result"]["refresh"]["status"] == "completed"
     assert status_payload["result"]["refresh"]["history_row_count"] == 111
     assert status_payload["result"]["refresh"]["factor_row_count"] == 222
@@ -4543,6 +4550,11 @@ def test_macro_toolkit_choice_stock_refresh_reuses_run_for_same_idempotency_key(
         "verify_choice_stock_daily_observation_landing",
         lambda **_kwargs: 5,
     )
+    monkeypatch.setattr(
+        macro_toolkit_service.run_choice_stock_refresh_task,
+        "send",
+        lambda **kwargs: macro_toolkit_service._run_choice_stock_refresh_job(**kwargs),
+    )
 
     app = FastAPI()
     app.include_router(macro_toolkit_router)
@@ -4573,12 +4585,12 @@ def test_macro_toolkit_choice_stock_refresh_reuses_run_for_same_idempotency_key(
     finally:
         get_settings.cache_clear()
 
-    assert first_response.status_code == 200
-    assert second_response.status_code == 200
+    assert first_response.status_code == 202
+    assert second_response.status_code == 202
     first_refresh = first_response.json()["result"]["refresh"]
     second_refresh = second_response.json()["result"]["refresh"]
     assert second_refresh["run_id"] == first_refresh["run_id"]
-    assert second_refresh["idempotency_key"] == "choice-stock-refresh-2026-04-30"
+    assert "idempotency_key" not in second_refresh
     assert second_refresh["idempotency_replay"] is True
     assert [name for name, _kwargs in calls] == ["history", "factor"]
 
@@ -4648,7 +4660,7 @@ def test_macro_toolkit_choice_stock_refresh_requires_explicit_refresh_scope_gran
         json=payload,
         headers={"X-User-Id": "choice-stock-refresh-user", "X-User-Role": "viewer"},
     )
-    assert allowed.status_code == 200, allowed.text
+    assert allowed.status_code == 202, allowed.text
     assert allowed.json()["result"]["refresh"]["run_id"] == "choice-stock-refresh-auth-test"
     assert len(calls) == 1
     assert calls[0]["permission"]["resource"] == "macro_toolkit.choice_stock"
@@ -4656,33 +4668,30 @@ def test_macro_toolkit_choice_stock_refresh_requires_explicit_refresh_scope_gran
 
 
 def test_source_backfill_preserves_crisis_no_rows_status(monkeypatch) -> None:
-    from backend.scripts import backfill_crisis_score_inputs as crisis_backfill
+    from backend.app.tasks import macro_toolkit_write_refresh as task
 
     monkeypatch.setattr(
-        crisis_backfill,
-        "backfill_crisis_score_inputs",
+        task,
+        "_backfill_crisis_score_inputs",
         lambda **_kwargs: {
             "results": {"M0041653": {"status": "no_rows", "written_rows": 0}},
             "errors": {},
         },
     )
 
-    payload = macro_toolkit_route._execute_source_backfill(
-        target={
-            "alias": "M0041653",
-            "backfill_mode": "crisis_score_inputs",
-        },
-        alias="M0041653",
+    payload = task._execute_macro_source_backfill(
         duckdb_path="unused.duckdb",
+        alias="M0041653",
+        series_name="7D reverse repo",
+        backfill_mode="crisis_score_inputs",
         start_date="2026-07-01",
         end_date="2026-07-20",
-        sources_filter=["choice_edb"],
+        sources=("choice_edb",),
     )
 
     assert payload["status"] == "no_rows"
     assert payload["processed_count"] == 0
     assert payload["total_added"] == 0
-
 
 def test_macro_toolkit_source_backfill_refresh_maps_alias_and_requires_scope(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
@@ -4694,22 +4703,24 @@ def test_macro_toolkit_source_backfill_refresh_maps_alias_and_requires_scope(tmp
     calls: list[dict[str, object]] = []
     source_cache_clears: list[str] = []
 
-    def fake_backfill_macro_series(**kwargs: object) -> dict[str, object]:
+    def fake_queue_macro_source_backfill(**kwargs: object) -> macro_toolkit_service.MacroToolkitActionResult:
         calls.append(dict(kwargs))
-        return {
-            "dry_run": False,
-            "processed_count": 1,
-            "total_added": 42,
-            "results": {"SHIBOR:3M": 42},
-            "errors": {},
-            "run_id": "backfill_macro_v1:20260712T120000Z",
-            "source_by_series": {"NCD.SHIBOR.3M": "tushare_macro"},
-            "vendor_versions": {
-                "NCD.SHIBOR.3M": "vv_backfill_macro_tushare_macro_20260430_deadbeefdeadbeef",
+        return macro_toolkit_service.MacroToolkitActionResult(
+            payload={
+                "status": "queued",
+                "alias": "M0041813",
+                "series_ids": ["NCD.SHIBOR.3M"],
+                "series_names": ["SHIBOR:3M"],
+                "start_date": "2026-04-01",
+                "end_date": "2026-04-30",
+                "run_id": "macro_source_backfill_refresh:2026-04-30:test",
+                "idempotency_replay": False,
             },
-        }
+            quality_flag="warning",
+            as_of_date="2026-04-30",
+        )
 
-    monkeypatch.setattr(macro_toolkit_route, "backfill_macro_series", fake_backfill_macro_series)
+    monkeypatch.setattr(macro_toolkit_service, "queue_macro_source_backfill", fake_queue_macro_source_backfill)
     monkeypatch.setattr(
         macro_toolkit_route,
         "clear_system_macro_source_cache",
@@ -4749,47 +4760,44 @@ def test_macro_toolkit_source_backfill_refresh_maps_alias_and_requires_scope(tmp
     assert unsupported.status_code == 400, unsupported.text
     assert "Unsupported macro source backfill alias" in unsupported.text
     assert calls == []
-    assert source_cache_clears == []
 
     allowed = client.post(
         "/ui/macro/toolkit/source-backfill/refresh",
         json=request,
-        headers={"X-User-Id": "macro-source-user", "X-User-Role": "viewer"},
+        headers={
+            "X-User-Id": "macro-source-user",
+            "X-User-Role": "viewer",
+            "Idempotency-Key": "source-http-key",
+        },
     )
 
-    assert allowed.status_code == 200, allowed.text
-    payload = allowed.json()
-    refresh = payload["result"]["refresh"]
-    assert refresh["status"] == "completed"
-    assert refresh["alias"] == "M0041813"
+    assert allowed.status_code == 202, allowed.text
+    refresh = allowed.json()["result"]["refresh"]
+    assert refresh["status"] == "queued"
     assert refresh["series_ids"] == ["NCD.SHIBOR.3M"]
-    assert refresh["total_added"] == 42
-    assert refresh["run_id"] == "backfill_macro_v1:20260712T120000Z"
-    assert refresh["source_by_series"] == {"NCD.SHIBOR.3M": "tushare_macro"}
-    assert refresh["vendor_versions"] == {
-        "NCD.SHIBOR.3M": "vv_backfill_macro_tushare_macro_20260430_deadbeefdeadbeef",
-    }
+    assert refresh["run_id"] == "macro_source_backfill_refresh:2026-04-30:test"
     assert calls == [
         {
             "duckdb_path": str(duckdb_path),
-            "series_names": ["SHIBOR:3M"],
+            "governance_path": str(get_settings().governance_path),
+            "alias": "M0041813",
+            "series_id": "NCD.SHIBOR.3M",
+            "series_name": "SHIBOR:3M",
+            "backfill_mode": "macro_series",
             "start_date": "2026-04-01",
             "end_date": "2026-04-30",
-            "dry_run": False,
-            "sources_filter": ["tushare_macro"],
+            "sources": ("tushare_macro",),
+            "idempotency_key": "source-http-key",
         }
     ]
-    assert source_cache_clears == ["cleared"]
+    assert source_cache_clears == []
     get_settings.cache_clear()
-
 
 def test_macro_toolkit_source_backfill_preserves_blocked_status_without_cache_clear(
     tmp_path,
     monkeypatch,
 ) -> None:
-    duckdb_path = tmp_path / "moss.duckdb"
     sqlite_path = tmp_path / "auth-scope.db"
-    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
     monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
     get_settings.cache_clear()
@@ -4797,20 +4805,19 @@ def test_macro_toolkit_source_backfill_preserves_blocked_status_without_cache_cl
     response_cache_invalidations: list[str] = []
 
     monkeypatch.setattr(
-        macro_toolkit_route,
-        "backfill_macro_series",
-        lambda **_kwargs: {
-            "status": "blocked",
-            "dry_run": False,
-            "fetch_preview": False,
-            "processed_count": 1,
-            "total_fetched": 0,
-            "total_added": 0,
-            "results": {"制造业PMI": 0},
-            "errors": {"制造业PMI": "no rows fetched for series_id=M0017126"},
-            "source_by_series": {},
-            "vendor_versions": {},
-        },
+        macro_toolkit_service,
+        "queue_macro_source_backfill",
+        lambda **_kwargs: macro_toolkit_service.MacroToolkitActionResult(
+            payload={
+                "status": "blocked",
+                "run_id": "macro-source-blocked-replay",
+                "total_added": 0,
+                "errors": {"PMI": "no rows fetched"},
+                "idempotency_replay": True,
+            },
+            quality_flag="warning",
+            as_of_date="2026-04-30",
+        ),
     )
     monkeypatch.setattr(
         macro_toolkit_route,
@@ -4831,9 +4838,7 @@ def test_macro_toolkit_source_backfill_preserves_blocked_status_without_cache_cl
     )
     app = FastAPI()
     app.include_router(macro_toolkit_router)
-    client = TestClient(app, raise_server_exceptions=False)
-
-    response = client.post(
+    response = TestClient(app, raise_server_exceptions=False).post(
         "/ui/macro/toolkit/source-backfill/refresh",
         json={
             "alias": "M0017126",
@@ -4844,15 +4849,13 @@ def test_macro_toolkit_source_backfill_preserves_blocked_status_without_cache_cl
         headers={"X-User-Id": "macro-source-user", "X-User-Role": "viewer"},
     )
 
-    assert response.status_code == 200, response.text
+    assert response.status_code == 202, response.text
     refresh = response.json()["result"]["refresh"]
     assert refresh["status"] == "blocked"
-    assert refresh["total_added"] == 0
-    assert refresh["errors"] == {"制造业PMI": "no rows fetched for series_id=M0017126"}
+    assert refresh["idempotency_replay"] is True
     assert source_cache_clears == []
     assert response_cache_invalidations == []
     get_settings.cache_clear()
-
 
 def test_macro_toolkit_commodity_futures_refresh_requires_scope_and_queues_ingest(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
@@ -5393,7 +5396,7 @@ def test_macro_toolkit_cffex_refresh_uses_service_meta_overrides(monkeypatch) ->
         headers={"X-User-Id": "macro-refresh-user"},
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 202
     payload = response.json()
     assert payload["result_meta"]["quality_flag"] == "warning"
     assert payload["result_meta"]["fallback_mode"] == "latest_snapshot"

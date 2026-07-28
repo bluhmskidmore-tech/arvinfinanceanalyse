@@ -1425,6 +1425,57 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     );
   });
 
+  it("keeps partial source backfill visible as a warning instead of a completed receipt", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const terminalResponse = await baseClient.getMacroSourceBackfillRefreshStatus(
+      "macro_source_backfill_refresh:test",
+    );
+    const statusCalls: string[] = [];
+    const client = {
+      ...baseClient,
+      getMacroSourceBackfillRefreshStatus: async (runId) => {
+        statusCalls.push(runId);
+        return {
+          ...terminalResponse,
+          result: {
+            refresh: {
+              ...terminalResponse.result.refresh,
+              status: "partial",
+              total_added: 3,
+            },
+          },
+        };
+      },
+    } as ApiClient;
+    const user = userEvent.setup();
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const evidenceBook = await screen.findByTestId("macro-toolkit-evidence-book");
+    const dataHealthRow = within(evidenceBook).getByRole("group", {
+      name: "数据健康证据处理闭环",
+    });
+    await user.click(within(dataHealthRow).getByRole("button", { name: "处理数据缺口" }));
+
+    await waitFor(() =>
+      expect(statusCalls).toEqual(["macro_source_backfill_refresh:mock"]),
+    );
+    await waitFor(() =>
+      expect(screen.getAllByText(/来源补齐部分完成：M0041813 新增 3 行/).length).toBeGreaterThan(0),
+    );
+    const warningMessage = screen
+      .getAllByText(/来源补齐部分完成：M0041813 新增 3 行/)
+      .find((element) => element.closest(".ant-alert"));
+    expect(warningMessage).toBeDefined();
+    expect(
+      requireClosestElement(warningMessage?.closest(".ant-alert") ?? null, "source backfill warning alert"),
+    ).toHaveClass("ant-alert-warning");
+    const operationsConsole = await screen.findByTestId("macro-toolkit-operations-console");
+    const receipt = within(operationsConsole).getByTestId("macro-toolkit-action-receipt");
+    expect(receipt).toHaveTextContent("需复核");
+    expect(receipt).not.toHaveTextContent("已完成");
+  });
+
   it("opens the receipt lane with an audit workpaper before technical details", async () => {
     const user = userEvent.setup();
 
@@ -3453,7 +3504,7 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     });
     const updatedReceipt = within(operationsConsole).getByTestId("macro-toolkit-action-receipt");
     expect(updatedReceipt).toHaveTextContent("CFFEX 席位");
-    expect(updatedReceipt).toHaveTextContent("中金所席位 80 行");
+    expect(updatedReceipt).toHaveTextContent("刷新完成：80 行");
     expect(updatedReceipt).toHaveTextContent("核对 CFFEX席位状态");
     const committeeWorkQueueAfterCffex = within(operationsConsole).getByTestId("macro-toolkit-committee-work-queue");
     const signoffAfterCffex = within(committeeWorkQueueAfterCffex).getByLabelText("投委会签核轨道");
@@ -3584,6 +3635,62 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     );
     expect(screen.getByTestId("macro-toolkit-script-artifact-detail")).not.toHaveClass(
       "macro-toolkit-section--audit-focus",
+    );
+  });
+
+  it("keeps queued CFFEX output pending until polling returns a terminal row count", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const terminalResponse = await baseClient.getCffexMemberRankRefreshStatus(
+      "cffex_member_rank_refresh:test",
+    );
+    type CffexStatusResponse = Awaited<
+      ReturnType<ApiClient["getCffexMemberRankRefreshStatus"]>
+    >;
+    let resolveStatus: ((value: CffexStatusResponse) => void) | undefined;
+    const statusPromise = new Promise<CffexStatusResponse>((resolveStatusPromise) => {
+      resolveStatus = resolveStatusPromise;
+    });
+    const statusCalls: string[] = [];
+    const client = {
+      ...baseClient,
+      getCffexMemberRankRefreshStatus: async (runId) => {
+        statusCalls.push(runId);
+        return statusPromise;
+      },
+    } as ApiClient;
+    const user = userEvent.setup();
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const operationsConsole = await screen.findByTestId("macro-toolkit-operations-console");
+    await user.click(within(operationsConsole).getByRole("button", { name: /刷新席位明细/ }));
+    await waitFor(() => expect(statusCalls).toEqual(["cffex_member_rank_refresh:mock"]));
+
+    const pendingMessage = within(operationsConsole).getByText(
+      "CFFEX席位刷新已排队，等待后台任务完成",
+    );
+    const pendingAlert = requireClosestElement(pendingMessage.closest(".ant-alert"), "CFFEX pending alert");
+    expect(pendingAlert).toHaveClass("ant-alert-info");
+    expect(pendingAlert).not.toHaveTextContent("刷新完成：");
+    expect(pendingAlert).not.toHaveTextContent("0 行");
+    expect(within(operationsConsole).getByTestId("macro-toolkit-action-receipt")).not.toHaveTextContent(
+      "已完成",
+    );
+
+    await act(async () => {
+      resolveStatus?.(terminalResponse);
+      await statusPromise;
+    });
+
+    await waitFor(() => expect(operationsConsole).toHaveTextContent("刷新完成：80 行"));
+    const completedMessage = within(operationsConsole)
+      .getAllByText(/刷新完成：80 行/)
+      .find((element) => element.closest(".ant-alert"));
+    expect(
+      requireClosestElement(completedMessage?.closest(".ant-alert") ?? null, "CFFEX completed alert"),
+    ).toHaveClass("ant-alert-success");
+    expect(within(operationsConsole).getByTestId("macro-toolkit-action-receipt")).toHaveTextContent(
+      "已完成",
     );
   });
 
@@ -7489,7 +7596,7 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     );
   });
 
-  it("shows Choice refresh failure category and reason in run evidence", async () => {
+  it("shows the generic Choice refresh failure category in run evidence", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const analysisEnvelope = await baseClient.getMacroToolkitAnalysis();
     const strategyEnvelope = await baseClient.getMacroToolkitStrategySummaries();
@@ -7516,9 +7623,7 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
               trigger_mode: "terminal",
               history_row_count: 111,
               factor_row_count: null,
-              failure_category: "ChoiceVendorError",
-              failure_reason: "factor snapshot vendor unavailable",
-              error_message: "ChoiceVendorError: factor snapshot vendor unavailable",
+              failure_category: "worker_failure",
               permission: choiceStockRefresh.permission,
             },
           },
@@ -7534,7 +7639,7 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     expect(permissionTile).toHaveTextContent("失败");
     expect(permissionTile?.querySelector("small")).toHaveAttribute(
       "title",
-      "run choice_stock_refresh:2026-04-30:failed · report 2026-04-30 · trigger terminal · rows history 111 / factor - · failure ChoiceVendorError: factor snapshot vendor unavailable · resource macro_toolkit.choice_stock · mode scoped_refresh · actions history / factor_snapshot · user anonymous",
+      "run choice_stock_refresh:2026-04-30:failed · report 2026-04-30 · trigger terminal · rows history 111 / factor - · failure worker_failure · resource macro_toolkit.choice_stock · mode scoped_refresh · actions history / factor_snapshot · user anonymous",
     );
   });
 
