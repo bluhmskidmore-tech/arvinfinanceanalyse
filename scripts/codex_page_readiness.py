@@ -783,9 +783,14 @@ def build_page_readiness_report(
     bundle = page_trace_bundle(bundles, page_slug)
     readiness_page = _first_readiness_page(page_slug)
     checks = readiness_page["checks"]
-    golden_status = str(checks["golden_sample"]["status"])
     approval_status = str(readiness_page["approval_status"])
     formal_use_allowed = bool(readiness_page["formal_use_allowed"])
+    golden_scope_status = str(checks["golden_sample"]["status"])
+    golden_status = (
+        "approved"
+        if formal_use_allowed and golden_scope_status == "formal_sample"
+        else golden_scope_status
+    )
     direct_evidence = (
         direct_evidence_reports.get(page_slug)
         if direct_evidence_reports is not None

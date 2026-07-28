@@ -23,6 +23,16 @@ Print the Schemathesis smoke command:
 python scripts/api_contract_check.py schemathesis-command
 ```
 
+Generate the endpoint-level backend inventory:
+
+```powershell
+python scripts/backend_api_inventory.py --surface default --format json --output .codex-tmp/backend-api-inventory.default.json
+python scripts/backend_api_inventory.py --surface full --format markdown --output .codex-tmp/backend-api-inventory.full.md
+```
+
+See `docs/BACKEND_API_INVENTORY.md` for the surface definitions, field
+interpretation, and domain-enrichment boundary.
+
 ## Boundary
 
 Spectral is wired into the frontend toolchain and CI because it does not conflict

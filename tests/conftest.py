@@ -15,21 +15,24 @@ import pytest
 
 
 def _install_windows_readable_pytest_basetemp() -> None:
-    """Keep pytest temp roots readable in this Windows sandbox.
+    """Keep pytest temp roots process-scoped and readable in this Windows sandbox.
 
     Pytest creates tmp_path basetemp with mode=0o700. Here that can translate to
-    a directory the same process cannot enumerate, so use default mkdir ACLs.
+    a directory the same process cannot enumerate, so use default mkdir ACLs on
+    Windows. All platforms keep the default basetemp inside the repo and isolate
+    it by process so concurrent pytest commands cannot share tmp_path state.
     """
 
-    if os.name != "nt":
-        return
-
     from _pytest.tmpdir import TempPathFactory
+
+    original_getbasetemp = TempPathFactory.getbasetemp
 
     def _getbasetemp_windows_readable(self: TempPathFactory) -> Path:
         if self._basetemp is not None:
             return self._basetemp
         if self._given_basetemp is not None:
+            if os.name != "nt":
+                return original_getbasetemp(self)
             basetemp = Path(self._given_basetemp)
             if basetemp.exists():
                 shutil.rmtree(basetemp, ignore_errors=True)
@@ -37,8 +40,11 @@ def _install_windows_readable_pytest_basetemp() -> None:
                     basetemp = basetemp.with_name(f"{basetemp.name}-readable")
             basetemp.mkdir(parents=True, exist_ok=True)
         else:
-            basetemp = Path.cwd() / ".codex-tmp" / "pytest-basetemp"
-            basetemp.mkdir(parents=True, exist_ok=True)
+            basetemp = Path.cwd() / ".codex-tmp" / f"pytest-basetemp-{os.getpid()}"
+            if os.name == "nt":
+                basetemp.mkdir(parents=True, exist_ok=True)
+            else:
+                basetemp.mkdir(mode=0o700, parents=True, exist_ok=True)
         self._basetemp = basetemp.resolve()
         return self._basetemp
 
@@ -63,7 +69,8 @@ def _install_windows_readable_pytest_basetemp() -> None:
                 index += 1
 
     TempPathFactory.getbasetemp = _getbasetemp_windows_readable
-    TempPathFactory.mktemp = _mktemp_windows_readable
+    if os.name == "nt":
+        TempPathFactory.mktemp = _mktemp_windows_readable
 
 
 _install_windows_readable_pytest_basetemp()
