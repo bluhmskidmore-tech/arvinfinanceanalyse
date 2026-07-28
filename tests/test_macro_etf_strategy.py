@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -15,6 +15,7 @@ from backend.app.core_finance.macro.macro_etf_strategy import (
     compute_macro_score,
 )
 from backend.app.governance.settings import get_settings
+from backend.app.services import macro_etf_strategy_service
 from backend.app.services.macro_etf_strategy_service import macro_etf_strategy_envelope
 
 
@@ -84,6 +85,221 @@ def test_service_envelope_marks_missing_quotes_without_generating_orders(tmp_pat
     assert envelope["result"]["data_status"]["quote_status"] == "quotes_missing"
 
 
+def test_service_embeds_read_only_dual_frequency_without_changing_orders(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    cfg_path = tmp_path / "macro_etf_strategy.json"
+    macro_path = tmp_path / "macro_etf_macro_state.json"
+    state_path = tmp_path / "portfolio_state.json"
+    cfg_path.write_text(json.dumps(DEFAULT_CONFIG), encoding="utf-8")
+    macro_path.write_text(json.dumps(DEFAULT_MACRO_STATE), encoding="utf-8")
+    first_date = date(2026, 4, 15)
+    rows = [
+        {
+            "trade_date": (first_date + timedelta(days=index)).isoformat(),
+            "close": 100.0 + index * 0.2,
+            "amount": 1_000_000.0,
+        }
+        for index in range(80)
+    ]
+    state_path.write_text(
+        json.dumps(
+            {
+                "cash": 200000.0,
+                "holdings": {},
+                "nav_history": [
+                    {
+                        "trade_date": (date(2026, 6, 28) + timedelta(days=index)).isoformat(),
+                        "nav": 100.0 + index,
+                    }
+                    for index in range(6)
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def fake_history(**kwargs: object) -> dict[str, object]:
+        assert kwargs["duckdb_path"] == tmp_path / "moss.duckdb"
+        assert kwargs["as_of_date"] == date(2026, 7, 3)
+        return {
+            "status": "partial",
+            "quality": "degraded",
+            "series_id": "CA.CSI300",
+            "date_basis": "CA.CSI300_trade_date_lte_requested_as_of_date",
+            "requested_as_of_date": "2026-07-03",
+            "effective_as_of_date": rows[-1]["trade_date"],
+            "earliest_trade_date": rows[0]["trade_date"],
+            "latest_trade_date": rows[-1]["trade_date"],
+            "lookback_rows": 260,
+            "row_count": len(rows),
+            "rows": rows,
+            "tables_used": [
+                "fact_choice_macro_daily",
+                "choice_stock_daily_observation",
+            ],
+            "sources": {
+                "market_amount": {
+                    "quality": "degraded",
+                    "valid_amount_observation_count": 1000,
+                    "null_amount_observation_count": 2,
+                }
+            },
+            "warnings": ["market_amount_null_values_ignored"],
+        }
+
+    monkeypatch.setattr(
+        macro_etf_strategy_service,
+        "load_dual_frequency_equity_history",
+        fake_history,
+    )
+    envelope = macro_etf_strategy_envelope(
+        as_of_date="2026-07-03",
+        config_path=cfg_path,
+        macro_state_path=macro_path,
+        portfolio_state_path=state_path,
+        duckdb_path=tmp_path / "moss.duckdb",
+    )
+
+    result = envelope["result"]
+    dual = result["dual_frequency"]
+    assert dual["boundary"] == "observation_only"
+    assert dual["execution_enabled"] is False
+    assert dual["slow"]["cap"] == result["position"]["target_total_weight"]
+    assert dual["fast"]["status"] == "ready"
+    assert dual["survival"]["status"] == "not_evaluated"
+    assert dual["survival"]["source"] == "not_supplied"
+    assert dual["pre_survival_target_total_weight"] is not None
+    assert dual["final_target_total_weight"] is None
+    assert dual["data_status"]["status"] == "degraded"
+    assert dual["data_status"]["history"]["sources"]["market_amount"][
+        "null_amount_observation_count"
+    ] == 2
+    assert dual["provenance"]["amount_methodology"]["is_csi300_constituent_turnover"] is False
+    assert "market-wide proxy" in dual["warnings"][-1]
+    assert result["position"]["target_weights"] == {
+        "512480": 0.156938,
+        "159819": 0.156938,
+        "512400": 0.174375,
+        "512000": 0.104625,
+        "510880": 0.104625,
+    }
+    assert result["order_draft"]["draft_status"] == "blocked"
+    assert result["order_draft"]["orders"] == []
+    assert result["data_status"]["dual_frequency_status"] == "degraded"
+    assert result["data_status"]["status"] != "ready"
+    assert envelope["result_meta"]["quality_flag"] == "warning"
+    assert envelope["result_meta"]["rule_version"] == "rv_macro_etf_strategy_observation_v2"
+    assert envelope["result_meta"]["cache_version"] == "cv_macro_etf_strategy_observation_v2"
+    assert (
+        envelope["result_meta"]["source_version"]
+        == "sv_macro_etf_strategy_config_choice_history_v2"
+    )
+    assert envelope["result_meta"]["tables_used"] == [
+        "fact_choice_macro_daily",
+        "choice_stock_daily_observation",
+    ]
+    assert envelope["result_meta"]["evidence_rows"] == 85
+
+
+def test_partial_history_cannot_leave_dual_frequency_ready() -> None:
+    attached = macro_etf_strategy_service._attach_dual_frequency_history(
+        snapshot={
+            "boundary": "observation_only",
+            "execution_enabled": False,
+            "warnings": [],
+            "data_status": {"status": "ready"},
+            "provenance": {},
+        },
+        history={
+            "status": "partial",
+            "quality": "degraded",
+            "rows": [],
+            "tables_used": ["choice_stock_daily_observation"],
+            "sources": {
+                "market_amount": {
+                    "valid_amount_observation_count": 100,
+                    "null_amount_observation_count": 1,
+                }
+            },
+            "warnings": ["market_amount_null_values_ignored"],
+        },
+    )
+
+    assert attached["data_status"]["status"] == "degraded"
+    assert attached["data_status"]["history"]["quality"] == "degraded"
+    assert attached["provenance"]["history"]["sources"]["market_amount"][
+        "null_amount_observation_count"
+    ] == 1
+
+
+def test_service_requires_complete_authoritative_flag_for_dual_frequency_nav(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    first_date = date(2026, 4, 15)
+    market_rows = [
+        {
+            "trade_date": (first_date + timedelta(days=index)).isoformat(),
+            "close": 100.0 + index * 0.2,
+            "amount": 1_000_000.0,
+        }
+        for index in range(80)
+    ]
+    nav_rows = [
+        {
+            "trade_date": (date(2026, 6, 28) + timedelta(days=index)).isoformat(),
+            "nav": 100.0 + index,
+        }
+        for index in range(6)
+    ]
+    monkeypatch.setattr(
+        macro_etf_strategy_service,
+        "load_dual_frequency_equity_history",
+        lambda **_kwargs: {
+            "status": "ready",
+            "quality": "ok",
+            "series_id": "CA.CSI300",
+            "rows": market_rows,
+            "row_count": len(market_rows),
+            "tables_used": [
+                "fact_choice_macro_daily",
+                "choice_stock_daily_observation",
+            ],
+            "sources": {},
+            "warnings": [],
+        },
+    )
+
+    unconfirmed = macro_etf_strategy_service._build_dual_frequency_candidate(
+        duckdb_path=tmp_path / "moss.duckdb",
+        as_of_date=date(2026, 7, 3),
+        slow_cap=0.7,
+        config=DEFAULT_CONFIG,
+        portfolio_state={"dual_frequency_nav_history": nav_rows},
+    )
+    confirmed = macro_etf_strategy_service._build_dual_frequency_candidate(
+        duckdb_path=tmp_path / "moss.duckdb",
+        as_of_date=date(2026, 7, 3),
+        slow_cap=0.7,
+        config=DEFAULT_CONFIG,
+        portfolio_state={
+            "dual_frequency_nav_history": nav_rows,
+            "dual_frequency_nav_history_authoritative_complete": True,
+        },
+    )
+
+    assert unconfirmed["survival"]["status"] == "insufficient"
+    assert (
+        unconfirmed["survival"]["reason"]
+        == "nav_history_not_confirmed_authoritative_complete"
+    )
+    assert unconfirmed["final_target_total_weight"] is None
+    assert confirmed["survival"]["status"] == "ready"
+    assert confirmed["final_target_total_weight"] is not None
+
+
 def test_service_envelope_flags_builtin_default_fallback_when_config_files_missing(tmp_path: Path) -> None:
     quotes_path = tmp_path / "quotes.json"
     quotes_path.write_text(
@@ -149,9 +365,9 @@ def test_service_envelope_lists_config_keys_backfilled_by_defaults(tmp_path: Pat
     assert any(
         "config" in warning and "built-in defaults" in warning for warning in envelope["result"]["warnings"]
     )
-    # 口径锁定：文件存在且缺失键已显式列出时，不因部分键补齐而降级 quality_flag。
-    assert data_status["status"] == "ready"
-    assert envelope["result_meta"]["quality_flag"] == "ok"
+    assert data_status["dual_frequency_status"] == "insufficient"
+    assert data_status["status"] == "warning"
+    assert envelope["result_meta"]["quality_flag"] == "warning"
 
 
 def test_service_envelope_distinguishes_which_config_file_fell_back(tmp_path: Path) -> None:
@@ -190,6 +406,7 @@ def test_service_envelope_marks_loaded_config_files_explicitly(tmp_path: Path) -
 def test_macro_etf_strategy_endpoint_returns_standard_envelope(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(tmp_path / "data_input"))
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     get_settings.cache_clear()
     app = FastAPI()
     app.include_router(macro_etf_strategy_router)
@@ -203,4 +420,6 @@ def test_macro_etf_strategy_endpoint_returns_standard_envelope(monkeypatch, tmp_
     assert payload["result_meta"]["result_kind"] == "market_data.macro_etf_strategy"
     assert payload["result"]["boundary"] == "observation_only"
     assert payload["result"]["order_draft"]["execution_policy"] == "manual_review_only"
+    assert payload["result"]["input_files"]["duckdb_path"] == str(tmp_path / "moss.duckdb")
+    assert payload["result"]["dual_frequency"]["data_status"]["status"] == "insufficient"
     get_settings.cache_clear()

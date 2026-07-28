@@ -41,6 +41,34 @@ describe("macroToolkitClient", () => {
     expect(capability?.warnings).not.toContain("POLICY_RATE_7D_STALE");
   });
 
+  it("keeps the dual-frequency mock candidate read-only and leaves final target unevaluated", async () => {
+    const envelope = await createMockMacroToolkitClient().getMacroToolkitStrategySummaries();
+    const snapshot = envelope.result.macro_etf_strategy;
+    const candidate = snapshot?.dual_frequency;
+
+    expect(snapshot).toMatchObject({
+      boundary: "observation_only",
+      execution_enabled: false,
+    });
+    expect(candidate).toMatchObject({
+      data_status: {
+        status: "degraded",
+      },
+      fast: {
+        state: "defense",
+        multiplier: 0.4,
+      },
+      slow: {
+        cap: 0.62775,
+      },
+      survival: {
+        status: "not_evaluated",
+      },
+      pre_survival_target_total_weight: 0.2511,
+      final_target_total_weight: null,
+    });
+  });
+
   it("surfaces a timeout when toolkit read endpoints do not answer", async () => {
     vi.useFakeTimers();
     try {

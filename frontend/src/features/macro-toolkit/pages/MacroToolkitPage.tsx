@@ -37,6 +37,8 @@ import type {
   MacroToolkitDataHealth,
   MacroToolkitHasonStrategy,
   MacroToolkitIndicator,
+  MacroToolkitMacroEtfStrategySnapshot,
+  MacroToolkitDualFrequencyCandidate,
   MacroToolkitOutputFile,
   MacroToolkitRunResponse,
   MacroToolkitScriptRecord,
@@ -1563,6 +1565,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   const strategySummaries = strategyPayload?.strategy_summaries ?? analysis?.strategy_summaries ?? [];
   const shadowPortfolioReport =
     strategyPayload?.shadow_portfolio_report ?? analysis?.shadow_portfolio_report ?? null;
+  const macroEtfStrategy = strategyPayload?.macro_etf_strategy ?? null;
   const fullRealStrategyCount = strategySummaries.filter((strategy) => hasCompleteRealStrategyChain(strategy)).length;
   const partialRealStrategyCount = strategySummaries.filter(
     (strategy) => hasRealStrategySource(strategy) && !hasCompleteRealStrategyChain(strategy),
@@ -3737,6 +3740,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
           )}
         </>
       )}
+      {macroEtfStrategy ? <DualFrequencyRiskBudgetPanel snapshot={macroEtfStrategy} /> : null}
       {!showOperations && strategyQuery.isFetching && !strategySummaries.length ? (
         <Alert
           type="info"
@@ -8109,6 +8113,298 @@ function strategyObservationNote(strategy: MacroToolkitStrategySummary | null, s
     return `${statusLabel(dataStatus)} · 部分真实供数，缺口需在完整分析中复核。`;
   }
   return `${statusLabel(dataStatus)} · 当前仅展示策略可用性，不作为正式投资信号。`;
+}
+
+function dualFrequencyStatus(candidate: MacroToolkitDualFrequencyCandidate) {
+  return candidate.data_status?.status ?? candidate.status ?? "unknown";
+}
+
+function dualFrequencyStatusText(status: string) {
+  const labels: Record<string, string> = {
+    warning: "存在缺口",
+    not_evaluated: "未评估",
+    attack: "进攻",
+    defense: "防守",
+    cooldown: "冷却",
+    ramp: "恢复",
+  };
+  return labels[status] ?? statusLabel(status);
+}
+
+function dualFrequencyRatio(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value) ? `${(value * 100).toFixed(1)}%` : "—";
+}
+
+function dualFrequencyMultiplier(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value) ? `×${value.toFixed(2)}` : "—";
+}
+
+function dualFrequencyCount(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value)
+    : "—";
+}
+
+function dualFrequencyHistory(candidate: MacroToolkitDualFrequencyCandidate) {
+  return candidate.provenance?.history ?? candidate.data_status?.history ?? null;
+}
+
+function dualFrequencyUniqueTexts(values: Array<string | null | undefined>) {
+  return [...new Set(values.filter((value): value is string => Boolean(value)))];
+}
+
+function dualFrequencySourceText(candidate: MacroToolkitDualFrequencyCandidate) {
+  const history = dualFrequencyHistory(candidate);
+  return dualFrequencyUniqueTexts(history?.tables_used ?? []).join(" / ") || "来源未返回";
+}
+
+function dualFrequencyVersionText(candidate: MacroToolkitDualFrequencyCandidate) {
+  const history = dualFrequencyHistory(candidate);
+  const sources = Object.values(history?.sources ?? {});
+  const sourceVersions = dualFrequencyUniqueTexts(sources.flatMap((source) => source.source_versions ?? []));
+  const vendorVersions = dualFrequencyUniqueTexts(sources.flatMap((source) => source.vendor_versions ?? []));
+  const ruleVersions = dualFrequencyUniqueTexts(sources.flatMap((source) => source.rule_versions ?? []));
+  const summarize = (label: string, values: string[]) => {
+    if (!values.length) return "";
+    return `${label} ${values[0]}${values.length > 1 ? ` 等${values.length}项` : ""}`;
+  };
+  const parts = [
+    candidate.formula_version ? `公式 ${candidate.formula_version}` : "",
+    candidate.rule_version ? `规则 ${candidate.rule_version}` : "",
+    summarize("源版本", sourceVersions),
+    summarize("供应商版本", vendorVersions),
+    summarize("数据规则", ruleVersions),
+  ].filter(Boolean);
+  return parts.join(" · ") || "版本未返回";
+}
+
+function dualFrequencyAlignmentText(alignment: string | undefined) {
+  const labels: Record<string, string> = {
+    exact: "同日对齐",
+    prior_observation: "前一交易日",
+    no_observation: "无可用观察",
+  };
+  return alignment ? labels[alignment] ?? alignment : "对齐状态未返回";
+}
+
+function DualFrequencyRiskBudgetPanel({
+  snapshot,
+}: {
+  snapshot: MacroToolkitMacroEtfStrategySnapshot;
+}) {
+  const candidate = snapshot.dual_frequency;
+  if (!candidate) {
+    return (
+      <div
+        className="macro-toolkit-strategy-observation macro-toolkit-dual-frequency"
+        aria-label="双频风险预算候选"
+      >
+        <div className="macro-toolkit-strategy-observation__head">
+          <div>
+            <span>双频风险预算（候选）</span>
+            <strong>候选快照未返回</strong>
+          </div>
+          <Tag color="gold">不进入下单</Tag>
+        </div>
+        <Alert
+          type="warning"
+          showIcon
+          message="双频候选暂不可用"
+          description="策略摘要未返回双频状态，页面不会用零值或演示值补位。"
+        />
+        <div className="macro-toolkit-strategy-observation__note">
+          <span>观察用途</span>
+          <small>非正式投资信号，不替换正式策略，不进入下单。</small>
+        </div>
+      </div>
+    );
+  }
+
+  const boundaryConfirmed =
+    snapshot.boundary === "observation_only" &&
+    snapshot.execution_enabled === false &&
+    candidate.boundary === "observation_only" &&
+    candidate.execution_enabled === false;
+  const slowCap = boundaryConfirmed ? candidate.slow?.cap : null;
+  const fastState = candidate.fast?.state ?? null;
+  const fastMultiplier = boundaryConfirmed ? candidate.fast?.multiplier : null;
+  const preSurvivalTarget = boundaryConfirmed ? candidate.pre_survival_target_total_weight : null;
+  const finalTarget = boundaryConfirmed ? candidate.final_target_total_weight : null;
+  const survivalStatus = candidate.survival?.status ?? candidate.survival?.state ?? "not_evaluated";
+  const status = dualFrequencyStatus(candidate);
+  const dataStatus = candidate.data_status;
+  const history = dualFrequencyHistory(candidate);
+  const asOfDate =
+    history?.effective_as_of_date ??
+    history?.latest_trade_date ??
+    dataStatus?.latest_trade_date ??
+    candidate.fast?.signal_date ??
+    candidate.as_of_date ??
+    snapshot.as_of_date ??
+    null;
+  const sourceText = dualFrequencySourceText(candidate);
+  const versionText = dualFrequencyVersionText(candidate);
+  const warnings = dualFrequencyUniqueTexts(candidate.warnings ?? []);
+  const amountSource = history?.sources?.market_amount;
+  const amountSampleText =
+    amountSource?.valid_amount_observation_count != null ||
+    amountSource?.null_amount_observation_count != null
+      ? `有效 ${dualFrequencyCount(amountSource?.valid_amount_observation_count)} · 空值 ${dualFrequencyCount(amountSource?.null_amount_observation_count)}`
+      : "成交额样本计数未返回";
+  const statusText = boundaryConfirmed ? dualFrequencyStatusText(status) : "边界待确认";
+  const fastStateText = fastState ? dualFrequencyStatusText(fastState) : "待确认";
+  const survivalText = dualFrequencyStatusText(survivalStatus);
+  const survivalDate = candidate.survival?.signal_date ?? null;
+  const survivalDetail =
+    survivalStatus === "not_evaluated"
+      ? "缺少权威组合净值或状态，生存层暂未评估。"
+      : survivalDate
+        ? `生存层数据日 ${survivalDate}`
+        : "生存层状态由后端只读候选返回。";
+  const headline =
+    fastState && slowCap != null
+      ? `快频${fastStateText}，慢频上限 ${dualFrequencyRatio(slowCap)}`
+      : "快频状态或慢频上限待确认";
+  const qualityDetail = [
+    statusText,
+    history?.status ? `历史 ${dualFrequencyStatusText(history.status)}` : "",
+    dataStatus?.usable_row_count != null ? `可用 ${dataStatus.usable_row_count} 行` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <div
+      className="macro-toolkit-strategy-observation macro-toolkit-dual-frequency"
+      aria-label="双频风险预算候选"
+    >
+      <div className="macro-toolkit-strategy-observation__head">
+        <div>
+          <span>双频风险预算（候选）</span>
+          <strong>{headline}</strong>
+        </div>
+        <div className="macro-toolkit-tag-row">
+          <Tag color={boundaryConfirmed ? statusColor(status) : "red"}>{statusText}</Tag>
+          <Tag color="gold">不进入下单</Tag>
+        </div>
+      </div>
+      {!boundaryConfirmed ? (
+        <Alert
+          type="error"
+          showIcon
+          message="只读边界未确认"
+          description="候选目标值已隐藏；确认 observation_only 且执行关闭后才展示。"
+        />
+      ) : null}
+      <div className="macro-toolkit-strategy-observation__grid">
+        <MetricTile
+          icon={<ThunderboltOutlined />}
+          label="快频状态"
+          value={fastStateText}
+          detail={
+            candidate.fast?.signal_date
+              ? `信号数据日 ${candidate.fast.signal_date}`
+              : "快频信号日期未返回。"
+          }
+          tone={fastState ? "neutral" : "missing"}
+          testId="macro-toolkit-dual-fast-state"
+          detailMaxLength={44}
+        />
+        <MetricTile
+          icon={<SafetyCertificateOutlined />}
+          label="慢频上限"
+          value={dualFrequencyRatio(slowCap)}
+          detail="沿用宏观 ETF 慢频仓位上限。"
+          tone={slowCap == null ? "missing" : "neutral"}
+          testId="macro-toolkit-dual-slow-cap"
+          detailMaxLength={44}
+        />
+        <MetricTile
+          icon={<LineChartOutlined />}
+          label="快频乘数"
+          value={dualFrequencyMultiplier(fastMultiplier)}
+          detail="进攻为 1.00，防守保护按后端候选规则返回。"
+          tone={fastMultiplier == null ? "missing" : "neutral"}
+          testId="macro-toolkit-dual-fast-multiplier"
+          detailMaxLength={44}
+        />
+        <MetricTile
+          icon={<InfoCircleOutlined />}
+          label="生存层前目标"
+          value={dualFrequencyRatio(preSurvivalTarget)}
+          detail="生存层应用前的只读候选预算。"
+          tone={preSurvivalTarget == null ? "missing" : "neutral"}
+          testId="macro-toolkit-dual-pre-survival"
+          detailMaxLength={44}
+        />
+        <MetricTile
+          icon={<WarningOutlined />}
+          label="生存层"
+          value={survivalText}
+          detail={survivalDetail}
+          tone={survivalStatus === "not_evaluated" ? "missing" : "neutral"}
+          testId="macro-toolkit-dual-survival"
+          detailMaxLength={44}
+        />
+        <MetricTile
+          icon={<SafetyCertificateOutlined />}
+          label="最终目标"
+          value={dualFrequencyRatio(finalTarget)}
+          detail={
+            finalTarget == null
+              ? "生存层未完成，最终目标保持为空。"
+              : "完整候选目标，仍不进入下单。"
+          }
+          tone={finalTarget == null ? "missing" : "neutral"}
+          testId="macro-toolkit-dual-final-target"
+          detailMaxLength={44}
+        />
+      </div>
+      <div className="macro-toolkit-strategy-trace" aria-label="双频风险预算证据">
+        <span>
+          <b>观察日</b>
+          {candidate.as_of_date ?? snapshot.as_of_date ?? "日期未返回"}
+        </span>
+        <span>
+          <b>数据日</b>
+          {asOfDate ? `${asOfDate} · ${dualFrequencyAlignmentText(dataStatus?.as_of_alignment)}` : "日期未返回"}
+        </span>
+        <span title={sourceText}>
+          <b>来源</b>
+          {sourceText}
+        </span>
+        <span>
+          <b>质量</b>
+          {qualityDetail || "质量未返回"}
+        </span>
+        <span title={versionText}>
+          <b>版本</b>
+          {compactText(versionText, 140)}
+        </span>
+      </div>
+      <div className="macro-toolkit-strategy-observation__note">
+        <span>成交额口径</span>
+        <small>成交额采用全 A 股日汇总代理，非沪深300成分成交额；源单位未确认，仅使用无量纲量比。</small>
+        <small>{amountSampleText}</small>
+      </div>
+      {warnings.length ? (
+        <div className="macro-toolkit-strategy-warnings" aria-label="双频风险预算告警">
+          <Alert
+            type="warning"
+            showIcon
+            message={`候选告警 ${warnings.length} 项`}
+            description={
+              <span title={warnings.join(" | ")}>{compactText(warnings.join("；"), 180)}</span>
+            }
+          />
+        </div>
+      ) : null}
+      <div className="macro-toolkit-strategy-observation__note">
+        <span>观察用途</span>
+        <small>非正式投资信号，不替换正式策略，不进入下单。</small>
+      </div>
+    </div>
+  );
 }
 
 function StrategyObservationSummary({

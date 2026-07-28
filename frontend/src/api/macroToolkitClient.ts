@@ -662,10 +662,173 @@ export type MacroToolkitAnalysisPayload = {
   warnings: string[];
 };
 
+export type MacroToolkitDualFrequencyHistorySource = {
+  status?: string;
+  quality?: string;
+  table?: string;
+  series_id?: string;
+  field?: string;
+  unit?: string;
+  aggregation?: string;
+  source_versions?: string[];
+  vendor_versions?: string[];
+  rule_versions?: string[];
+  quality_flags?: string[];
+  run_ids?: string[];
+  date_count?: number;
+  canonical_row_count?: number;
+  amount_value_row_count?: number;
+  null_amount_row_count?: number;
+  valid_amount_observation_count?: number;
+  null_amount_observation_count?: number;
+  missing_trade_date_count?: number;
+};
+
+export type MacroToolkitDualFrequencyHistoryEvidence = {
+  status?: string;
+  quality?: string;
+  series_id?: string;
+  date_basis?: string;
+  requested_as_of_date?: string | null;
+  effective_as_of_date?: string | null;
+  earliest_trade_date?: string | null;
+  latest_trade_date?: string | null;
+  lookback_rows?: number;
+  row_count?: number;
+  tables_used?: string[];
+  sources?: Record<string, MacroToolkitDualFrequencyHistorySource>;
+  warnings?: string[];
+};
+
+export type MacroToolkitDualFrequencyCandidate = {
+  status?: string;
+  strategy_name?: string;
+  boundary?: string;
+  execution_enabled?: boolean;
+  formula_version?: string;
+  rule_version?: string;
+  as_of_date?: string | null;
+  slow?: {
+    status?: string;
+    source?: string;
+    reason?: string | null;
+    cap?: number | null;
+  } | null;
+  fast?: {
+    status?: string;
+    state?: string | null;
+    multiplier?: number | null;
+    signal_date?: string | null;
+    minimum_required_rows?: number | null;
+    available_rows?: number | null;
+    last_transition?: {
+      layer?: string;
+      date?: string;
+      event?: string;
+      state?: string;
+      reason?: string;
+      close?: number;
+      amount_ratio_20?: number;
+      return_5?: number;
+    } | null;
+    latest_metrics?: {
+      close?: number | null;
+      high_20?: number | null;
+      amount_ratio_20?: number | null;
+      return_5?: number | null;
+      atr_proxy_20?: number | null;
+      ma_60?: number | null;
+      highest_close_since_attack?: number | null;
+      consecutive_closes_below_ma60?: number | null;
+    } | null;
+  } | null;
+  survival?: {
+    status?: string;
+    source?: string;
+    state?: string | null;
+    multiplier?: number | null;
+    signal_date?: string | null;
+    current_drawdown?: number | null;
+    five_day_drawdown?: number | null;
+    halved?: boolean | null;
+    killed?: boolean | null;
+    cooldown_remaining?: number | null;
+    ramp_remaining?: number | null;
+    reason?: string | null;
+  } | null;
+  pre_survival_target_total_weight?: number | null;
+  final_target_total_weight?: number | null;
+  events?: Array<Record<string, unknown>>;
+  data_status?: {
+    status?: string;
+    market_history_status?: string;
+    slow_cap_status?: string;
+    fast_status?: string;
+    survival_status?: string;
+    input_row_count?: number | null;
+    usable_row_count?: number | null;
+    invalid_row_count?: number | null;
+    duplicate_date_count?: number | null;
+    latest_trade_date?: string | null;
+    as_of_alignment?: string;
+    history?: MacroToolkitDualFrequencyHistoryEvidence;
+  };
+  methodology?: {
+    slow_layer?: string;
+    fast_entry?: string;
+    fast_exit?: string;
+    atr_proxy?: string;
+    amount_ratio?: string;
+    survival_layer?: string;
+    execution_timing?: string;
+  };
+  provenance?: {
+    calculation_module?: string;
+    source_strategy?: string;
+    integration_mode?: string;
+    slow_cap_source?: string;
+    fast_input_fields?: string[];
+    survival_input_source?: string;
+    nav_history_authoritative_complete?: boolean;
+    signal_date?: string | null;
+    latest_trade_date?: string | null;
+    history?: MacroToolkitDualFrequencyHistoryEvidence;
+    amount_methodology?: {
+      source_table?: string;
+      field?: string;
+      aggregation?: string;
+      scope?: string;
+      is_csi300_constituent_turnover?: boolean;
+      unit?: string;
+    };
+  };
+  warnings?: string[];
+};
+
+export type MacroToolkitMacroEtfStrategySnapshot = {
+  strategy_name?: string;
+  boundary?: string;
+  execution_enabled?: boolean;
+  as_of_date?: string | null;
+  dual_frequency?: MacroToolkitDualFrequencyCandidate | null;
+  data_status?: {
+    status?: string;
+    dual_frequency_status?: string;
+  };
+  provenance?: {
+    source_script?: string;
+    integration_mode?: string;
+    tables_used?: string[];
+    deferred_controls?: string[];
+  };
+  warnings?: string[];
+};
+
 export type MacroToolkitStrategySummariesPayload = {
   strategy_summaries: MacroToolkitStrategySummary[];
   shadow_portfolio_report?: MacroToolkitShadowPortfolioReport;
   choice_stock_refresh?: MacroToolkitChoiceStockRefreshStatus;
+  macro_etf_strategy?: MacroToolkitMacroEtfStrategySnapshot;
 };
 
 export type MacroToolkitRunResponse = {

@@ -7608,6 +7608,102 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     );
   });
 
+  it("shows the read-only dual-frequency risk budget candidate with its evidence boundary", async () => {
+    const client = createApiClient({ mode: "mock" });
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const panel = await screen.findByLabelText("双频风险预算候选");
+    expect(panel).toHaveTextContent("双频风险预算（候选）");
+    expect(panel).toHaveTextContent("快频防守，慢频上限 62.8%");
+    expect(panel).toHaveTextContent("不进入下单");
+    expect(panel).toHaveTextContent("非正式投资信号");
+    expect(screen.getByTestId("macro-toolkit-dual-fast-state")).toHaveTextContent("防守");
+    expect(screen.getByTestId("macro-toolkit-dual-slow-cap")).toHaveTextContent("62.8%");
+    expect(screen.getByTestId("macro-toolkit-dual-fast-multiplier")).toHaveTextContent("×0.40");
+    expect(screen.getByTestId("macro-toolkit-dual-pre-survival")).toHaveTextContent("25.1%");
+    expect(screen.getByTestId("macro-toolkit-dual-survival")).toHaveTextContent("未评估");
+    expect(screen.getByTestId("macro-toolkit-dual-final-target")).toHaveTextContent("—");
+    expect(panel).toHaveTextContent("2026-07-24");
+    expect(panel).toHaveTextContent("fact_choice_macro_daily / choice_stock_daily_observation");
+    expect(panel).toHaveTextContent("a_share_dual_frequency_v6_moss_v1");
+    expect(panel).toHaveTextContent("sv_tushare_index_daily_791c9edfd87f");
+    expect(panel).toHaveTextContent("候选告警 3 项");
+    expect(panel).toHaveTextContent("market_amount_null_values_ignored");
+    expect(panel).toHaveTextContent(
+      "成交额采用全 A 股日汇总代理，非沪深300成分成交额；源单位未确认，仅使用无量纲量比。",
+    );
+    expect(panel).toHaveTextContent("有效 1,387,978 · 空值 2,754");
+  });
+
+  it("keeps missing dual-frequency fields explicit instead of substituting zero targets", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const strategyEnvelope = await baseClient.getMacroToolkitStrategySummaries();
+    const snapshot = strategyEnvelope.result.macro_etf_strategy!;
+    const client = {
+      ...baseClient,
+      getMacroToolkitStrategySummaries: async () => ({
+        ...strategyEnvelope,
+        result: {
+          ...strategyEnvelope.result,
+          macro_etf_strategy: {
+            ...snapshot,
+            warnings: [],
+            dual_frequency: {
+              boundary: "observation_only",
+              execution_enabled: false,
+              as_of_date: "2026-07-24",
+              slow: {
+                status: "missing",
+                source: "not_supplied",
+                cap: null,
+              },
+              fast: {
+                status: "missing",
+                state: null,
+                multiplier: null,
+                signal_date: null,
+              },
+              survival: {
+                status: "not_evaluated",
+                source: "not_supplied",
+                state: null,
+                multiplier: null,
+                reason: "authoritative portfolio NAV history is not available",
+              },
+              pre_survival_target_total_weight: null,
+              final_target_total_weight: null,
+              data_status: {
+                status: "degraded",
+                market_history_status: "missing",
+                slow_cap_status: "missing",
+                fast_status: "missing",
+                survival_status: "not_evaluated",
+                latest_trade_date: null,
+              },
+              provenance: undefined,
+              warnings: [],
+            },
+          },
+        } as never,
+      }),
+    } as ApiClient;
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const panel = await screen.findByLabelText("双频风险预算候选");
+    expect(panel).toHaveTextContent("快频状态或慢频上限待确认");
+    expect(screen.getByTestId("macro-toolkit-dual-fast-state")).toHaveTextContent("待确认");
+    expect(screen.getByTestId("macro-toolkit-dual-slow-cap")).toHaveTextContent("—");
+    expect(screen.getByTestId("macro-toolkit-dual-fast-multiplier")).toHaveTextContent("—");
+    expect(screen.getByTestId("macro-toolkit-dual-pre-survival")).toHaveTextContent("—");
+    expect(screen.getByTestId("macro-toolkit-dual-survival")).toHaveTextContent("未评估");
+    expect(screen.getByTestId("macro-toolkit-dual-final-target")).toHaveTextContent("—");
+    expect(panel).toHaveTextContent("来源未返回");
+    expect(panel).toHaveTextContent("版本未返回");
+    expect(within(panel).queryByText("0.0%")).not.toBeInTheDocument();
+  });
+
   it("shows the read-only shadow portfolio report beside the current rule", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const analysisEnvelope = await baseClient.getMacroToolkitAnalysis();

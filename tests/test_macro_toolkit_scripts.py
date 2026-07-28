@@ -2388,6 +2388,37 @@ def test_macro_toolkit_strategy_summaries_reuses_loaded_factor_snapshot_for_shad
     assert shadow_calls[0] is financials
     assert payload["result"]["strategy_summaries"][0]["status"] == "complete"
     assert payload["result"]["shadow_portfolio_report"]["status"] == "complete"
+    macro_etf_strategy = payload["result"]["macro_etf_strategy"]
+    assert macro_etf_strategy["boundary"] == "observation_only"
+    assert macro_etf_strategy["execution_enabled"] is False
+    assert macro_etf_strategy["dual_frequency"]["boundary"] == "observation_only"
+    assert macro_etf_strategy["dual_frequency"]["execution_enabled"] is False
+    assert macro_etf_strategy["data_status"]["dual_frequency_status"] != "ready"
+    assert payload["result_meta"]["quality_flag"] == "warning"
+
+
+def test_macro_toolkit_dual_frequency_failure_is_isolated(monkeypatch, tmp_path) -> None:
+    def fail_candidate(**_kwargs: object) -> dict[str, object]:
+        raise RuntimeError("candidate unavailable")
+
+    monkeypatch.setattr(
+        macro_toolkit_route.macro_etf_strategy_service,
+        "macro_etf_strategy_envelope",
+        fail_candidate,
+    )
+
+    payload = macro_toolkit_route._macro_etf_strategy_snapshot_for_toolkit(
+        duckdb_path=tmp_path / "missing.duckdb",
+        as_of_date="2026-07-03",
+    )
+
+    assert payload["boundary"] == "observation_only"
+    assert payload["execution_enabled"] is False
+    assert payload["data_status"]["status"] == "degraded"
+    assert payload["data_status"]["dual_frequency_status"] == "degraded"
+    assert payload["dual_frequency"]["data_status"]["status"] == "degraded"
+    assert payload["dual_frequency"]["fast"]["status"] == "not_evaluated"
+    assert "RuntimeError" in payload["warnings"][0]
 
 
 class _TrackedMacroToolkitConnection:

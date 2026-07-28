@@ -77,6 +77,7 @@ from backend.app.repositories.cffex_member_rank_repo import DEFAULT_CFFEX_CONTRA
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services import (
     macro_adversarial_signal_service,
+    macro_etf_strategy_service,
     macro_report_asset_service,
     macro_toolkit_service,
 )
@@ -625,22 +626,90 @@ def macro_toolkit_strategy_summaries(
 def _build_macro_toolkit_strategy_summaries() -> dict[str, object]:
     settings = get_settings()
     strategies, price_context = _equity_strategy_summaries_with_context(settings.duckdb_path)
+    strategy_as_of_date = _latest_strategy_as_of_date(strategies)
     shadow_portfolio_report = compute_equity_shadow_portfolio_report(
         settings.duckdb_path,
         latest_factor_snapshot=_latest_factor_snapshot_from_price_context(price_context),
+    )
+    macro_etf_strategy = _macro_etf_strategy_snapshot_for_toolkit(
+        duckdb_path=settings.duckdb_path,
+        as_of_date=strategy_as_of_date,
+    )
+    macro_etf_data_status = macro_etf_strategy.get("data_status")
+    macro_etf_ready = (
+        isinstance(macro_etf_data_status, Mapping)
+        and macro_etf_data_status.get("status") == "ready"
+        and macro_etf_data_status.get("dual_frequency_status") == "ready"
     )
     return _envelope(
         "macro_toolkit.analysis.strategy_summaries",
         {
             "strategy_summaries": strategies,
             "shadow_portfolio_report": shadow_portfolio_report,
+            "macro_etf_strategy": macro_etf_strategy,
             "choice_stock_refresh": _choice_stock_refresh_overview(
                 settings.duckdb_path,
                 settings.governance_path,
-                reference_date=_latest_strategy_as_of_date(strategies),
+                reference_date=strategy_as_of_date,
             ),
         },
+        quality_flag="ok" if macro_etf_ready else "warning",
     )
+
+
+def _macro_etf_strategy_snapshot_for_toolkit(
+    *,
+    duckdb_path: str | Path,
+    as_of_date: str | None,
+) -> dict[str, object]:
+    try:
+        envelope = macro_etf_strategy_service.macro_etf_strategy_envelope(
+            as_of_date=as_of_date,
+            duckdb_path=duckdb_path,
+        )
+        result = envelope.get("result")
+        if isinstance(result, Mapping):
+            return dict(result)
+    except Exception as exc:  # pragma: no cover - defensive isolation for optional warmup surface
+        failure_reason = exc.__class__.__name__
+    else:
+        failure_reason = "invalid_result_payload"
+    return {
+        "strategy_name": "macro_etf_rotation_observation",
+        "boundary": "observation_only",
+        "execution_enabled": False,
+        "as_of_date": as_of_date,
+        "dual_frequency": {
+            "strategy_name": "a_share_dual_frequency_equity_observation",
+            "boundary": "observation_only",
+            "execution_enabled": False,
+            "status": "degraded",
+            "slow": {"status": "not_evaluated"},
+            "fast": {"status": "not_evaluated"},
+            "survival": {"status": "not_evaluated"},
+            "pre_survival_target_total_weight": None,
+            "final_target_total_weight": None,
+            "warnings": [
+                f"dual-frequency candidate unavailable in macro toolkit: {failure_reason}"
+            ],
+            "data_status": {
+                "status": "degraded",
+                "market_history_status": "not_evaluated",
+                "slow_cap_status": "not_evaluated",
+                "fast_status": "not_evaluated",
+                "survival_status": "not_evaluated",
+            },
+        },
+        "data_status": {
+            "status": "degraded",
+            "dual_frequency_status": "degraded",
+        },
+        "warnings": [f"macro ETF candidate unavailable in macro toolkit: {failure_reason}"],
+        "provenance": {
+            "integration_mode": "optional_read_only_candidate",
+            "tables_used": [],
+        },
+    }
 
 
 @router.get("/adversarial-signal")
