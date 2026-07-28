@@ -167,12 +167,17 @@ def test_service_embeds_read_only_dual_frequency_without_changing_orders(
     assert dual["boundary"] == "observation_only"
     assert dual["execution_enabled"] is False
     assert dual["slow"]["cap"] == result["position"]["target_total_weight"]
-    assert dual["fast"]["status"] == "ready"
+    assert dual["fast"]["status"] == "insufficient"
+    assert dual["fast"]["source"] == "bounded_market_history"
+    assert (
+        dual["fast"]["reason"]
+        == "bounded_history_without_authoritative_fast_state"
+    )
     assert dual["survival"]["status"] == "not_evaluated"
     assert dual["survival"]["source"] == "not_supplied"
-    assert dual["pre_survival_target_total_weight"] is not None
+    assert dual["pre_survival_target_total_weight"] is None
     assert dual["final_target_total_weight"] is None
-    assert dual["data_status"]["status"] == "degraded"
+    assert dual["data_status"]["status"] == "insufficient"
     assert dual["data_status"]["history"]["sources"]["market_amount"][
         "null_amount_observation_count"
     ] == 2
@@ -187,7 +192,7 @@ def test_service_embeds_read_only_dual_frequency_without_changing_orders(
     }
     assert result["order_draft"]["draft_status"] == "blocked"
     assert result["order_draft"]["orders"] == []
-    assert result["data_status"]["dual_frequency_status"] == "degraded"
+    assert result["data_status"]["dual_frequency_status"] == "insufficient"
     assert result["data_status"]["status"] != "ready"
     assert envelope["result_meta"]["quality_flag"] == "warning"
     assert envelope["result_meta"]["rule_version"] == "rv_macro_etf_strategy_observation_v2"
@@ -254,6 +259,11 @@ def test_service_requires_complete_authoritative_flag_for_dual_frequency_nav(
         }
         for index in range(6)
     ]
+    fast_state = {
+        "authoritative": True,
+        "signal_date": "2026-07-03",
+        "state": "defense",
+    }
     monkeypatch.setattr(
         macro_etf_strategy_service,
         "load_dual_frequency_equity_history",
@@ -277,7 +287,10 @@ def test_service_requires_complete_authoritative_flag_for_dual_frequency_nav(
         as_of_date=date(2026, 7, 3),
         slow_cap=0.7,
         config=DEFAULT_CONFIG,
-        portfolio_state={"dual_frequency_nav_history": nav_rows},
+        portfolio_state={
+            "dual_frequency_fast_state": fast_state,
+            "dual_frequency_nav_history": nav_rows,
+        },
     )
     confirmed = macro_etf_strategy_service._build_dual_frequency_candidate(
         duckdb_path=tmp_path / "moss.duckdb",
@@ -285,6 +298,7 @@ def test_service_requires_complete_authoritative_flag_for_dual_frequency_nav(
         slow_cap=0.7,
         config=DEFAULT_CONFIG,
         portfolio_state={
+            "dual_frequency_fast_state": fast_state,
             "dual_frequency_nav_history": nav_rows,
             "dual_frequency_nav_history_authoritative_complete": True,
         },
@@ -298,6 +312,58 @@ def test_service_requires_complete_authoritative_flag_for_dual_frequency_nav(
     assert unconfirmed["final_target_total_weight"] is None
     assert confirmed["survival"]["status"] == "ready"
     assert confirmed["final_target_total_weight"] is not None
+
+
+def test_service_passes_date_aligned_authoritative_fast_state(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    first_date = date(2026, 4, 15)
+    market_rows = [
+        {
+            "trade_date": (first_date + timedelta(days=index)).isoformat(),
+            "close": 100.0,
+            "amount": 1_000_000.0,
+        }
+        for index in range(80)
+    ]
+    monkeypatch.setattr(
+        macro_etf_strategy_service,
+        "load_dual_frequency_equity_history",
+        lambda **_kwargs: {
+            "status": "ready",
+            "quality": "ok",
+            "series_id": "CA.CSI300",
+            "rows": market_rows,
+            "row_count": len(market_rows),
+            "tables_used": [
+                "fact_choice_macro_daily",
+                "choice_stock_daily_observation",
+            ],
+            "sources": {},
+            "warnings": [],
+        },
+    )
+
+    candidate = macro_etf_strategy_service._build_dual_frequency_candidate(
+        duckdb_path=tmp_path / "moss.duckdb",
+        as_of_date=date(2026, 7, 3),
+        slow_cap=0.7,
+        config=DEFAULT_CONFIG,
+        portfolio_state={
+            "dual_frequency_fast_state": {
+                "authoritative": True,
+                "signal_date": "2026-07-03",
+                "state": "attack",
+                "highest_close_since_attack": 100.0,
+            }
+        },
+    )
+
+    assert candidate["fast"]["status"] == "ready"
+    assert candidate["fast"]["source"] == "portfolio_fast_state"
+    assert candidate["fast"]["state"] == "attack"
+    assert candidate["pre_survival_target_total_weight"] == 0.7
 
 
 def test_service_envelope_flags_builtin_default_fallback_when_config_files_missing(tmp_path: Path) -> None:
