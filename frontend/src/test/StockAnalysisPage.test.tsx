@@ -6885,7 +6885,6 @@ describe("StockAnalysisPage", () => {
           status: "failed",
           run_id: "choice_stock_refresh:failed",
           trigger_mode: "terminal",
-          error_message: "vendor snapshot unavailable",
           failure_category: "source_unavailable",
         },
         choice_stock_refresh: {
@@ -6906,7 +6905,7 @@ describe("StockAnalysisPage", () => {
 
     const feedback = await screen.findByTestId("stock-analysis-refresh-feedback");
     await waitFor(() => expect(feedback).toHaveTextContent("选股刷新失败"));
-    expect(feedback).toHaveTextContent("vendor snapshot unavailable");
+    expect(feedback).toHaveTextContent("source_unavailable");
     expect(feedback).toHaveTextContent("choice_stock_refresh:failed");
     expect(feedback).toHaveAttribute("data-tone", "negative");
     expect(screen.getByTestId("stock-analysis-refresh")).not.toBeDisabled();

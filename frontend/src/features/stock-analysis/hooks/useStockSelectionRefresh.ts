@@ -27,7 +27,7 @@ function refreshStatusLabel(payload: MacroToolkitChoiceStockRefreshRun): string 
     return `选股已重新计算：${runId} · ${refreshRowsLabel(payload)}`;
   }
   if (payload.status === "failed") {
-    const reason = payload.error_message ?? payload.failure_reason ?? payload.failure_category ?? "原因待返回";
+    const reason = payload.failure_category?.trim() || "原因待返回";
     return `选股刷新失败：${reason} · ${runId}`;
   }
   return `选股刷新状态：${payload.status} · ${runId}`;

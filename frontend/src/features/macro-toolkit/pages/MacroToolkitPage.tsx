@@ -3058,7 +3058,9 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
         },
       });
       if (refresh.status !== "completed") {
-        throw new Error(refresh.error_message ?? `股票刷新未完成：${refresh.status}`);
+        throw new Error(
+          refreshFailureMessage("股票刷新", refresh.failure_category),
+        );
       }
       setStockRefreshResult(
         `刷新完成：历史 ${refresh.history_row_count ?? "-"} 行，因子 ${refresh.factor_row_count ?? "-"} 行`,

@@ -3462,6 +3462,39 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     expect(redline).not.toHaveTextContent("延后证据");
   });
 
+  it("shows only the public failure category when a Choice stock refresh fails", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const failedResponse = await baseClient.refreshChoiceStock();
+    const client = {
+      ...baseClient,
+      refreshChoiceStock: async () => ({
+        ...failedResponse,
+        result: {
+          ...failedResponse.result,
+          refresh: {
+            ...failedResponse.result.refresh,
+            status: "failed",
+            run_id: "choice_stock_refresh:failed",
+            trigger_mode: "terminal",
+            failure_category: "worker_failure",
+          },
+        },
+      }),
+    } as ApiClient;
+    const user = userEvent.setup();
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const operationsConsole = await screen.findByTestId("macro-toolkit-operations-console");
+    await user.click(
+      within(operationsConsole).getByRole("button", { name: /刷新股票策略明细/ }),
+    );
+
+    const receipt = within(operationsConsole).getByTestId("macro-toolkit-action-receipt");
+    await waitFor(() => expect(receipt).toHaveTextContent("失败"));
+    expect(receipt).toHaveTextContent("股票刷新失败（类别：worker_failure）");
+  });
+
   it("shows an Action Console receipt and updates it after a CFFEX refresh", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const cffexCalls: Array<Parameters<ApiClient["refreshCffexMemberRank"]>[0]> = [];
