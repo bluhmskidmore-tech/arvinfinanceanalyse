@@ -10,6 +10,8 @@
     "preview": "vite preview",
     "debt:audit": "node ../scripts/audit_frontend_debt.mjs && node ../scripts/audit_visual_tokens.mjs",
     "guard:home-startup": "node scripts/verifyHomeStartupBundle.mjs",
+    "guard:balance-startup": "node scripts/verifyBalanceAnalysisStartupRuntime.mjs",
+    "guard:balance-startup:runtime": "node scripts/verifyBalanceAnalysisStartupRuntime.mjs --build",
     "guard:candidate-financial-indicators": "node scripts/verifyCandidateFinancialIndicatorBundle.mjs",
     "guard:home-startup:runtime": "npm run build && node scripts/verifyHomeStartupRuntime.mjs",
     "guard:home-startup:live": "node scripts/sampleHomeStartupLive.mjs",

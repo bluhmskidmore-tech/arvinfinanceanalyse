@@ -4,6 +4,35 @@ import { createDeferredApiClient } from "../api/clientContext";
 import { formatRawAsNumeric } from "../utils/format";
 
 describe("home startup deferred client", () => {
+  it("preserves balance-analysis automatic hydration reads in lightweight mock mode", async () => {
+    const client = createDeferredApiClient({ mode: "mock" });
+
+    const movementDates = await client.getBalanceMovementDates("CNX");
+    const movement = await client.getBalanceMovementAnalysis({
+      reportDate: "2026-02-28",
+      currencyBasis: "CNX",
+    });
+    const adbComparison = await client.getAdbComparison(
+      "2026-01-01",
+      "2026-02-28",
+    );
+
+    expect(movementDates.result).toMatchObject({
+      currency_basis: "CNX",
+      report_dates: ["2026-02-28"],
+    });
+    expect(movement.result).toMatchObject({
+      currency_basis: "CNX",
+      report_date: "2026-02-28",
+    });
+    expect(adbComparison).toMatchObject({
+      adb_denominator_basis: "snapshot_calendar",
+      assets_breakdown: [],
+      liabilities_breakdown: [],
+      simulated: false,
+    });
+  });
+
   it("routes home supplemental reads through the lightweight home supplemental client", async () => {
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);

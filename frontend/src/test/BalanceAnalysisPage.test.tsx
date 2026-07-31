@@ -87,6 +87,19 @@ function renderBalanceAnalysisWithClient(
   return { router, queryClient, ...renderResult };
 }
 
+async function expandDetails(testId: string) {
+  const details = screen.getByTestId(testId) as HTMLDetailsElement;
+  if (!details.open) {
+    const summary = details.querySelector(":scope > summary");
+    if (!(summary instanceof HTMLElement)) {
+      throw new Error(`Missing summary for details ${testId}`);
+    }
+    await userEvent.click(summary);
+  }
+  await waitFor(() => expect(details).toHaveAttribute("open"));
+  return details;
+}
+
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
@@ -1067,6 +1080,7 @@ describe("BalanceAnalysisPage", () => {
       getBalanceAnalysisDecisionItems: vi.fn(async () => buildDecisionItemsResponse()),
     });
 
+    await expandDetails("balance-analysis-formal-summary-details");
     const summaryTable = await screen.findByTestId("balance-analysis-summary-table");
     await waitFor(() => {
       expect(getSummarySpy).toHaveBeenCalledWith({
@@ -1321,6 +1335,7 @@ describe("BalanceAnalysisPage", () => {
       "1-2年期限桶负缺口",
     );
 
+    await expandDetails("balance-analysis-formal-summary-details");
     const summaryTable = await screen.findByTestId("balance-analysis-summary-table");
     expect(summaryTable).toHaveTextContent("利率债组合");
     expect(summaryTable).toHaveTextContent("同业负债池");
@@ -1342,6 +1357,10 @@ describe("BalanceAnalysisPage", () => {
       expect(screen.getByTestId("balance-analysis-table")).toHaveTextContent("3,339.26");
       expect(screen.getByTestId("balance-analysis-table")).not.toHaveTextContent("333,925,726,735.544");
     });
+    expect(screen.getByTestId("balance-analysis-workbook-full-details")).not.toHaveAttribute(
+      "open",
+    );
+    await expandDetails("balance-analysis-workbook-full-details");
     await waitFor(() => {
       expect(screen.queryByTestId("balance-analysis-workbook-cards")).not.toBeInTheDocument();
       expect(screen.getByTestId("balance-analysis-workbook-cockpit")).toHaveClass(
@@ -1434,9 +1453,7 @@ describe("BalanceAnalysisPage", () => {
       expect(
         screen.getByTestId("balance-analysis-workbook-panel-counterparty_types"),
       ).toHaveTextContent("净头寸 3.39 亿元");
-      expect(screen.getByTestId("balance-analysis-workbook-full-details")).not.toHaveAttribute(
-        "open",
-      );
+      expect(screen.getByTestId("balance-analysis-workbook-full-details")).toHaveAttribute("open");
       expect(screen.getByTestId("balance-analysis-workbook-secondary-grid")).toHaveTextContent(
         "计息方式",
       );
@@ -2011,6 +2028,7 @@ describe("BalanceAnalysisPage", () => {
 
     expect(await screen.findByRole("heading", { name: "资产负债分析" })).toBeInTheDocument();
 
+    await expandDetails("balance-analysis-formal-summary-details");
     const summaryTable = await screen.findByTestId(
       "balance-analysis-summary-table",
       {},

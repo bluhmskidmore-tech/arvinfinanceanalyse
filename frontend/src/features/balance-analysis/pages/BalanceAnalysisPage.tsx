@@ -4,7 +4,7 @@ import { ReloadOutlined } from "@ant-design/icons";
 import type { ColDef, ValueFormatterParams } from "ag-grid-community";
 import "./BalanceAnalysisPage.css";
 
-import { useApiClient } from "../../../api/client";
+import { useApiClient } from "../../../api/clientContext";
 import type {
   BalanceAnalysisBasisBreakdownRow,
   BalanceAnalysisDecisionItemStatusRow,
@@ -26,11 +26,11 @@ import {
   PageStateSurface,
 } from "../../../components/page/PagePrimitives";
 import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
-import { MossAgGrid } from "../../../components/grid";
 import AdbAnalyticalPreview from "../components/AdbAnalyticalPreview";
 import BalanceAnalysisCockpit from "../cockpit/BalanceAnalysisCockpit";
 import { BalanceAnalysisToolbar } from "../cockpit/BalanceAnalysisToolbar";
 import dhStyles from "../../workbench/dashboard-home/dashboardHome.module.css";
+import { DeferredBalanceAnalysisGrid } from "../components/DeferredBalanceAnalysisGrid";
 import type { BalanceStateSentinel } from "../components/BalanceAnalysisWorkbenchLayout";
 import { useBalanceAnalysisData } from "../hooks/useBalanceAnalysisData";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
@@ -1436,7 +1436,8 @@ export default function BalanceAnalysisPage() {
   const latestAvailableReportDate = availableReportDates[0] ?? "";
   const hasUnavailableRequestedReportDate = Boolean(unavailableRequestedReportDate);
   const reportDateUnavailable =
-    hasUnavailableRequestedReportDate || (!selectedReportDate && !datesQuery.isLoading);
+    hasUnavailableRequestedReportDate ||
+    (!selectedReportDate && !datesQuery.isLoading && availableReportDates.length === 0);
   const reportDateUnavailableTitle = hasUnavailableRequestedReportDate
     ? "请求的报告日不可用"
     : datesQuery.isError
@@ -1800,7 +1801,7 @@ export default function BalanceAnalysisPage() {
             ]);
           }}
         >
-          <MossAgGrid<BalanceAnalysisTableRow>
+          <DeferredBalanceAnalysisGrid<BalanceAnalysisTableRow>
             data-testid="balance-analysis-summary-table"
             height={360}
             rowData={summaryTable?.rows ?? []}
@@ -1845,7 +1846,7 @@ export default function BalanceAnalysisPage() {
                 <div className="balance-analysis-detail-drilldown__eyebrow">
                   明细底稿返回的汇总切片
                 </div>
-                <MossAgGrid<BalanceAnalysisSummaryGridRow>
+                <DeferredBalanceAnalysisGrid<BalanceAnalysisSummaryGridRow>
                   data-testid="balance-analysis-detail-summary-grid"
                   height={200}
                   rowData={detailSummaryGridRows}
@@ -1861,7 +1862,7 @@ export default function BalanceAnalysisPage() {
             ) : detailQuery.isLoading ? (
               <div className="balance-analysis-detail-drilldown__loading">明细下钻加载中…</div>
             ) : (
-              <MossAgGrid<BalanceAnalysisDetailGridRow>
+              <DeferredBalanceAnalysisGrid<BalanceAnalysisDetailGridRow>
                 data-testid="balance-analysis-table"
                 className="balance-analysis-detail-grid"
                 height={320}
@@ -1903,7 +1904,7 @@ export default function BalanceAnalysisPage() {
             isEmpty={false}
             onRetry={() => void basisBreakdownQuery.refetch()}
           >
-            <MossAgGrid<BalanceAnalysisBasisBreakdownRow>
+            <DeferredBalanceAnalysisGrid<BalanceAnalysisBasisBreakdownRow>
               data-testid="balance-analysis-basis-breakdown-grid"
               height={240}
               rowData={basisBreakdownQuery.data?.result.rows ?? []}
@@ -2344,7 +2345,7 @@ export default function BalanceAnalysisPage() {
                   <div className="balance-analysis-workbook-secondary-grid__title">
                     {formatBalanceBusinessTextDisplay(table.title)}
                   </div>
-                  <MossAgGrid
+                  <DeferredBalanceAnalysisGrid
                     height={280}
                     rowData={table.rows.map((row, index) =>
                       Object.assign({}, row as object, { __gridId: `${table.key}-${index}` }),

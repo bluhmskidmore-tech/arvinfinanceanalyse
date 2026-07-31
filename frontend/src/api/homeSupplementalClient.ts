@@ -1,8 +1,17 @@
 import type { ApiClient } from "./client";
+import type { BalanceMovementClientMethods } from "./balanceMovementClient";
 import type {
   ApiEnvelope,
   AssetStructurePayload,
+  BalanceAnalysisBasisBreakdownPayload,
   BalanceAnalysisDecisionItemsPayload,
+  BalanceAnalysisDatesPayload,
+  BalanceAnalysisOverviewPayload,
+  BalanceAnalysisPayload,
+  BalanceAnalysisSummaryTablePayload,
+  BalanceAnalysisWorkbookPayload,
+  BalanceAnalysisAdvancedAttributionBundlePayload,
+  BalanceAnalysisCurrentUserPayload,
   BondDashboardHeadlinePayload,
   BondDashboardHomeSummaryPayload,
   BondPositionChangesPayload,
@@ -22,6 +31,7 @@ import type {
   RiskIndicatorsPayload,
   YieldCurveTermStructurePayload,
 } from "./contracts";
+import type { LiabilityAdbClientMethods } from "./liabilityAdbClient";
 import { readHttpJsonDetail } from "./httpResponseError";
 import { parseNumericOrNull } from "./numeric";
 import { formatRawAsNumeric } from "../utils/format";
@@ -40,7 +50,18 @@ export type HomeSupplementalClientMethods = Pick<
   | "getBondAnalyticsReturnDecomposition"
   | "getPnlCampisiFourEffects"
   | "getBondAnalyticsYieldCurveTermStructure"
+  | "getBalanceAnalysisDates"
+  | "getBalanceAnalysisOverview"
+  | "getBalanceAnalysisSummaryByBasis"
+  | "getBalanceAnalysisSummary"
+  | "getBalanceAnalysisWorkbook"
+  | "getBalanceAnalysisCurrentUser"
+  | "getBalanceAnalysisDetail"
+  | "getBalanceAnalysisAdvancedAttribution"
   | "getBalanceAnalysisDecisionItems"
+  | "getBalanceMovementDates"
+  | "getBalanceMovementAnalysis"
+  | "getAdbComparison"
   | "getBondDashboardAssetStructure"
   | "getBondDashboardMaturityStructure"
   | "getBondDashboardIndustryDistribution"
@@ -87,6 +108,21 @@ async function requestJson<TData>(
     throw new Error(detail ?? `Request failed: ${path} (${response.status})`);
   }
   return (await response.json()) as ApiEnvelope<TData>;
+}
+
+async function requestActionJson<TData>(
+  fetchImpl: FetchLike,
+  baseUrl: string,
+  path: string,
+): Promise<TData> {
+  const response = await fetchImpl(`${baseUrl}${path}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) {
+    const detail = await readHttpJsonDetail(response);
+    throw new Error(detail ?? `Request failed: ${path} (${response.status})`);
+  }
+  return (await response.json()) as TData;
 }
 
 function reportDateSuffix(reportDate?: string) {
@@ -265,6 +301,7 @@ async function loadMockClient(): Promise<HomeSupplementalClientMethods> {
       import("./workbenchDashboardApi"),
       import("./bondAnalyticsClient"),
       import("./balanceAnalysisClient"),
+      import("./balanceMovementClient"),
       import("./pnlAttributionMockClient"),
       import("./liabilityAdbClient"),
     ]).then(
@@ -272,6 +309,7 @@ async function loadMockClient(): Promise<HomeSupplementalClientMethods> {
         dashboardModule,
         bondModule,
         balanceModule,
+        balanceMovementModule,
         pnlAttributionModule,
         liabilityModule,
       ]) =>
@@ -280,6 +318,7 @@ async function loadMockClient(): Promise<HomeSupplementalClientMethods> {
           ...bondModule.createDemoBondDashboardClient(delay, ensureMockBundle),
           ...bondModule.createDemoBondAnalyticsClient(delay, ensureMockBundle),
           ...balanceModule.createDemoBalanceAnalysisClient(delay, ensureMockBundle),
+          ...balanceMovementModule.createMockBalanceMovementClient(),
           ...pnlAttributionModule.createDemoPnlAttributionClient(delay),
           ...liabilityModule.createDemoLiabilityAdbClient(delay, ensureMockBundle),
         }) as HomeSupplementalClientMethods,
@@ -292,6 +331,29 @@ export function createRealHomeSupplementalClient({
   fetchImpl,
   baseUrl,
 }: HomeSupplementalClientFactoryOptions): HomeSupplementalClientMethods {
+  let balanceMovementClientPromise: Promise<BalanceMovementClientMethods> | null = null;
+  let liabilityAdbClientPromise: Promise<LiabilityAdbClientMethods> | null = null;
+
+  const loadBalanceMovementClient = () => {
+    if (!balanceMovementClientPromise) {
+      balanceMovementClientPromise = import("./balanceMovementClient").then(
+        ({ createRealBalanceMovementClient }) =>
+          createRealBalanceMovementClient({ fetchImpl, baseUrl }),
+      );
+    }
+    return balanceMovementClientPromise;
+  };
+
+  const loadLiabilityAdbClient = () => {
+    if (!liabilityAdbClientPromise) {
+      liabilityAdbClientPromise = import("./liabilityAdbClient").then(
+        ({ createRealLiabilityAdbClient }) =>
+          createRealLiabilityAdbClient({ fetchImpl, baseUrl, requestJson }),
+      );
+    }
+    return liabilityAdbClientPromise;
+  };
+
   return {
     getCoreMetrics: ({ reportDate } = {}) =>
       requestJson<CoreMetricsResult>(
@@ -387,6 +449,68 @@ export function createRealHomeSupplementalClient({
         `/api/bond-analytics/yield-curve-term-structure?${params.toString()}`,
       );
     },
+    getBalanceAnalysisDates: () =>
+      requestJson<BalanceAnalysisDatesPayload>(
+        fetchImpl,
+        baseUrl,
+        "/ui/balance-analysis/dates",
+      ),
+    getBalanceAnalysisOverview: ({ reportDate, positionScope, currencyBasis }) => {
+      const params = new URLSearchParams({
+        report_date: reportDate,
+        position_scope: positionScope,
+        currency_basis: currencyBasis,
+      });
+      return requestJson<BalanceAnalysisOverviewPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/balance-analysis/overview?${params.toString()}`,
+      );
+    },
+    getBalanceAnalysisSummaryByBasis: ({ reportDate, positionScope, currencyBasis }) => {
+      const params = new URLSearchParams({
+        report_date: reportDate,
+        position_scope: positionScope,
+        currency_basis: currencyBasis,
+      });
+      return requestJson<BalanceAnalysisBasisBreakdownPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/balance-analysis/summary-by-basis?${params.toString()}`,
+      );
+    },
+    getBalanceAnalysisSummary: ({ reportDate, positionScope, currencyBasis, limit, offset }) => {
+      const params = new URLSearchParams({
+        report_date: reportDate,
+        position_scope: positionScope,
+        currency_basis: currencyBasis,
+        limit: String(limit),
+        offset: String(offset),
+      });
+      return requestJson<BalanceAnalysisSummaryTablePayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/balance-analysis/summary?${params.toString()}`,
+      );
+    },
+    getBalanceAnalysisWorkbook: ({ reportDate, positionScope, currencyBasis }) => {
+      const params = new URLSearchParams({
+        report_date: reportDate,
+        position_scope: positionScope,
+        currency_basis: currencyBasis,
+      });
+      return requestJson<BalanceAnalysisWorkbookPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/balance-analysis/workbook?${params.toString()}`,
+      );
+    },
+    getBalanceAnalysisCurrentUser: () =>
+      requestActionJson<BalanceAnalysisCurrentUserPayload>(
+        fetchImpl,
+        baseUrl,
+        "/ui/balance-analysis/current-user",
+      ),
     getBalanceAnalysisDecisionItems: ({ reportDate, positionScope, currencyBasis }) => {
       const params = new URLSearchParams({
         report_date: reportDate,
@@ -399,6 +523,52 @@ export function createRealHomeSupplementalClient({
         `/ui/balance-analysis/decision-items?${params.toString()}`,
       );
     },
+    getBalanceAnalysisDetail: ({ reportDate, positionScope, currencyBasis }) => {
+      const params = new URLSearchParams({
+        report_date: reportDate,
+        position_scope: positionScope,
+        currency_basis: currencyBasis,
+      });
+      return requestJson<BalanceAnalysisPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/balance-analysis?${params.toString()}`,
+      );
+    },
+    getBalanceAnalysisAdvancedAttribution: ({
+      reportDate,
+      scenarioName,
+      treasuryShiftBp,
+      spreadShiftBp,
+    }) => {
+      const params = new URLSearchParams({ report_date: reportDate });
+      if (scenarioName) {
+        params.set("scenario_name", scenarioName);
+      }
+      if (treasuryShiftBp !== undefined) {
+        params.set("treasury_shift_bp", String(treasuryShiftBp));
+      }
+      if (spreadShiftBp !== undefined) {
+        params.set("spread_shift_bp", String(spreadShiftBp));
+      }
+      return requestJson<BalanceAnalysisAdvancedAttributionBundlePayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/balance-analysis/advanced-attribution?${params.toString()}`,
+      );
+    },
+    getBalanceMovementDates: (currencyBasis) =>
+      loadBalanceMovementClient().then((client) =>
+        client.getBalanceMovementDates(currencyBasis),
+      ),
+    getBalanceMovementAnalysis: (options) =>
+      loadBalanceMovementClient().then((client) =>
+        client.getBalanceMovementAnalysis(options),
+      ),
+    getAdbComparison: (startDate, endDate, options) =>
+      loadLiabilityAdbClient().then((client) =>
+        client.getAdbComparison(startDate, endDate, options),
+      ),
     getBondDashboardAssetStructure: (reportDate: string, groupBy: string) =>
       requestJson<AssetStructurePayload>(
         fetchImpl,

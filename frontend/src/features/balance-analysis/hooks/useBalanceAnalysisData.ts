@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { useApiClient } from "../../../api/client";
+import { useApiClient } from "../../../api/clientContext";
 import { apiQueryKeys } from "../../../api/queryKeys";
 import type {
   BalanceAnalysisSeverity,
