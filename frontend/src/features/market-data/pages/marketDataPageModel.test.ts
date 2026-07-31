@@ -695,6 +695,14 @@ describe("bridge helpers", () => {
         watchDate: "2026-06-11",
       }),
     ).toBe("formal · 正式使用 是 · 观察日 2026-06-11");
+    expect(
+      buildMarketDataBasisChipLabel({
+        basisLabel: "formal",
+        formalUseAllowedLabel: "否",
+        formalUseBlocked: true,
+        watchDate: "2026-06-11",
+      }),
+    ).toBe("formal · blocked · 禁止作为正式口径 · 观察日 2026-06-11");
   });
 });
 

@@ -1405,6 +1405,26 @@ export type MacroBondLinkageTopCorrelation = {
   correlation_1y: number | null;
   lead_lag_days: number;
   direction: "positive" | "negative" | "neutral";
+  alignment_mode?: "conservative" | "market_timing" | null;
+  sample_size?: number | null;
+  winsorized?: boolean;
+  zscore_applied?: boolean;
+  lead_lag_confidence?: number | null;
+  effective_observation_span_days?: number | null;
+};
+
+export type MacroBondLinkageMethodVariant = {
+  method_meta: {
+    variant: "conservative" | "market_timing";
+    description?: string | null;
+    warnings?: string[];
+  };
+  top_correlations: MacroBondLinkageTopCorrelation[];
+};
+
+export type MacroBondLinkageMethodVariants = {
+  conservative: MacroBondLinkageMethodVariant;
+  market_timing: MacroBondLinkageMethodVariant;
 };
 
 export type MacroBondResearchView = {
@@ -1432,6 +1452,7 @@ export type MacroBondLinkagePayload = {
   environment_score: Partial<MacroBondLinkageEnvironmentScore>;
   portfolio_impact: Partial<MacroBondLinkagePortfolioImpact>;
   top_correlations: MacroBondLinkageTopCorrelation[];
+  method_variants?: MacroBondLinkageMethodVariants;
   spread_tenor_correlations?: MacroBondLinkageTopCorrelation[];
   research_views?: MacroBondResearchView[];
   transmission_axes?: MacroBondTransmissionAxis[];
@@ -1530,6 +1551,7 @@ export type ChoiceNewsEvent = {
   topic_code: string;
   item_index: number;
   payload_text: string | null;
+  display_text?: string | null;
   payload_json: string | null;
 };
 
@@ -1575,6 +1597,7 @@ export type ChoiceNewsEventsPayload = {
   stock_filter_mode?: string | null;
   stock_filter_tokens?: string[];
   compare?: ChoiceNewsComparePayload;
+  payload_json_included?: boolean;
   events: ChoiceNewsEvent[];
 };
 
@@ -1641,6 +1664,10 @@ export type TushareEcoCalEventRow = {
 export type TushareSupplementPayload = {
   money_supply_rows: TushareMoneySupplyRow[];
   eco_cal_rows: TushareEcoCalEventRow[];
+  money_supply_total_count?: number;
+  money_supply_truncated?: boolean;
+  eco_cal_total_count?: number;
+  eco_cal_truncated?: boolean;
   warnings: string[];
 };
 

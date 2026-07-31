@@ -112,6 +112,11 @@ describe("buildMarketDataTerminalModel", () => {
       rateText: "1.94%",
       deltaText: "-1bp",
       tradeDate: "2026-04-30",
+      origin: "rates_bundle",
+      basis: "formal",
+      formalUseAllowed: true,
+      fallbackMode: "none",
+      vendorStatus: "ok",
       sourceVersion: "sv_market_rates",
       qualityFlag: "ok",
     });
@@ -121,7 +126,78 @@ describe("buildMarketDataTerminalModel", () => {
       name: "DR007",
       rateText: "1.82%",
       deltaText: "-0.6bp",
+      origin: "rates_bundle",
+      basis: "formal",
+      formalUseAllowed: true,
       sourceMode: "latest",
+    });
+  });
+
+  it("prefers every formal alias before analytical substitutes and preserves row governance", () => {
+    const model = buildMarketDataTerminalModel({
+      ratesEnvelope: {
+        result_meta: meta(),
+        result: {
+          read_target: "duckdb",
+          series: [
+            point({
+              series_id: "M003",
+              series_name: "1年期国债到期收益率",
+              value_numeric: 1.55,
+            }),
+          ],
+        },
+      },
+      latestEnvelope: {
+        result_meta: meta({
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "sv_macro_latest",
+          vendor_version: "vv_macro_latest",
+          quality_flag: "warning",
+          vendor_status: "vendor_stale",
+          fallback_mode: "latest_snapshot",
+        }),
+        result: {
+          read_target: "duckdb",
+          series: [
+            point({
+              series_id: "EMM00166458",
+              series_name: "中债国债到期收益率:1年",
+              value_numeric: 1.61,
+              source_version: "sv_macro_latest",
+              vendor_version: "vv_macro_latest",
+            }),
+            point({
+              series_id: "M002",
+              series_name: "DR007",
+              value_numeric: 1.88,
+              source_version: "sv_macro_latest",
+              vendor_version: "vv_macro_latest",
+              quality_flag: "warning",
+            }),
+          ],
+        },
+      },
+    });
+
+    expect(model.rateQuotes.rows[0]).toMatchObject({
+      seriesId: "M003",
+      rateText: "1.55%",
+      origin: "rates_bundle",
+      basis: "formal",
+      formalUseAllowed: true,
+      fallbackMode: "none",
+      vendorStatus: "ok",
+    });
+    expect(model.moneyMarket.rows[0]).toMatchObject({
+      seriesId: "M002",
+      origin: "macro_latest",
+      basis: "analytical",
+      formalUseAllowed: false,
+      fallbackMode: "latest_snapshot",
+      vendorStatus: "vendor_stale",
+      qualityFlag: "warning",
     });
   });
 

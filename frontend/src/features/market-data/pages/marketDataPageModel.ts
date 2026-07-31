@@ -296,8 +296,10 @@ export function buildMarketDataBasisChipLabel(input: {
   formalUseBlocked: boolean;
   watchDate: string;
 }): string {
-  const allowed = input.formalUseBlocked ? "暂不可正式使用" : input.formalUseAllowedLabel;
-  return `${input.basisLabel} · 正式使用 ${allowed} · 观察日 ${input.watchDate}`;
+  if (input.formalUseBlocked) {
+    return `formal · blocked · 禁止作为正式口径 · 观察日 ${input.watchDate}`;
+  }
+  return `${input.basisLabel} · 正式使用 ${input.formalUseAllowedLabel} · 观察日 ${input.watchDate}`;
 }
 
 function buildTerminalKpiMetrics(terminalModel: MarketDataTerminalModel): MarketOverviewMetric[] {

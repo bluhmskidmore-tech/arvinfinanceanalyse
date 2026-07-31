@@ -165,6 +165,7 @@ export type MarketDataClientMethods = {
     topicCode?: string;
     stockCode?: string;
     errorOnly?: boolean;
+    includePayloadJson?: boolean;
     receivedFrom?: string;
     receivedTo?: string;
   }) => Promise<ApiEnvelope<ChoiceNewsEventsPayload>>;
@@ -739,6 +740,7 @@ export function createRealMarketDataClient({
       stockCode,
       errorOnly,
       receivedFrom,
+      includePayloadJson,
       receivedTo,
     }) => {
       const params = new URLSearchParams();
@@ -755,6 +757,9 @@ export function createRealMarketDataClient({
       }
       if (errorOnly) {
         params.set("error_only", "true");
+      }
+      if (includePayloadJson !== undefined) {
+        params.set("include_payload_json", String(includePayloadJson));
       }
       if (receivedFrom?.trim()) {
         params.set("received_from", receivedFrom.trim());

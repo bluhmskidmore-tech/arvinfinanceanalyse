@@ -120,6 +120,7 @@ const MOCK_CHOICE_NEWS_EVENTS: ChoiceNewsEventsPayload["events"] = [
     topic_code: "C000003006",
     item_index: 0,
     payload_text: null,
+    display_text: "Policy follow-up - PBOC open-market operation commentary stream.",
     payload_json:
       "{\"headline\":\"Policy follow-up\",\"summary\":\"PBOC open-market operation commentary stream.\"}",
   },
@@ -291,8 +292,10 @@ function buildMockChoiceNewsEnvelope(options: {
   stockCode?: string;
   errorOnly?: boolean;
   receivedFrom?: string;
+  includePayloadJson?: boolean;
   receivedTo?: string;
 }): ApiEnvelope<ChoiceNewsEventsPayload> {
+  const includePayloadJson = options.includePayloadJson !== false;
   const stockCode = options.stockCode?.trim().toUpperCase() || null;
   const stockFilterTokens = buildChoiceNewsStockFilterTokens(stockCode);
   const filtered = MOCK_CHOICE_NEWS_EVENTS.filter((event) => {
@@ -316,6 +319,13 @@ function buildMockChoiceNewsEnvelope(options: {
     }
     return true;
   });
+  const events = filtered
+    .slice(options.offset, options.offset + options.limit)
+    .map((event) => ({
+      ...event,
+      display_text: event.display_text ?? event.payload_text,
+      payload_json: includePayloadJson ? event.payload_json : null,
+    }));
 
   const result: ChoiceNewsEventsPayload = {
     total_rows: filtered.length,
@@ -323,8 +333,9 @@ function buildMockChoiceNewsEnvelope(options: {
     offset: options.offset,
     as_of_date: "2026-04-23",
     excluded_future_rows: 0,
+    payload_json_included: includePayloadJson,
     compare: buildMockChoiceNewsCompare(filtered),
-    events: filtered.slice(options.offset, options.offset + options.limit),
+    events,
   };
   if (stockCode) {
     result.stock_code = stockCode;
