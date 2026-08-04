@@ -1621,30 +1621,56 @@ def test_nbs_pmi_preview_includes_governed_artifact_lineage() -> None:
     assert preview["artifact_sha256"] == manifest["artifact_sha256"]
 
 
-def _pbc_financial_statistics_html() -> str:
-    return """
+def _pbc_financial_statistics_html(
+    *,
+    report_month: str = "2026-05",
+    release_title: str | None = None,
+    social_financing_yoy: str = "7.7",
+    social_financing_balance: str = "458.81",
+    cumulative_social_financing: str = "17.48",
+    m2_yoy: str = "8.6",
+    m2_balance: str = "353.67",
+    m1_yoy: str = "5.5",
+) -> str:
+    year, month_text = report_month.split("-")
+    month = int(month_text)
+    if release_title is None:
+        release_title = f"{year}年{month}月金融统计数据报告"
+    cumulative_label = f"前{month}个月" if month < 6 else "上半年"
+    return f"""
     <html>
-      <head><title>2026年5月金融统计数据报告</title></head>
+      <head><title>{release_title}</title></head>
       <body>
         <div id="zoom">
-          <p>一、社会融资规模存量同比增长7.7%</p>
-          <p>初步统计，2026年5月末社会融资规模存量为458.81万亿元，同比增长7.7%。</p>
-          <p>二、前五个月社会融资规模增量累计为17.48万亿元</p>
-          <p>三、广义货币增长8.6%</p>
-          <p>5月末，广义货币(M2)余额353.67万亿元,同比增长8.6%。狭义货币(M1)余额114.89万亿元,同比增长5.5%。</p>
+          <p>一、社会融资规模存量同比增长{social_financing_yoy}%</p>
+          <p>初步统计，{year}年{month}月末社会融资规模存量为{social_financing_balance}万亿元，同比增长{social_financing_yoy}%。</p>
+          <p>二、{cumulative_label}社会融资规模增量累计为{cumulative_social_financing}万亿元</p>
+          <p>三、广义货币增长{m2_yoy}%</p>
+          <p>{month}月末，广义货币(M2)余额{m2_balance}万亿元,同比增长{m2_yoy}%。狭义货币(M1)余额114.89万亿元,同比增长{m1_yoy}%。</p>
         </div>
       </body>
     </html>
     """
 
 
-def _pbc_financial_statistics_manifest(artifact_bytes: bytes) -> dict[str, object]:
+def _pbc_financial_statistics_manifest(
+    artifact_bytes: bytes,
+    *,
+    report_month: str = "2026-05",
+    release_title: str | None = None,
+    release_url: str = "https://www.pbc.gov.cn/goutongjiaoliu/113456/113469/202606/t20260613_123456.html",
+    published_at: str = "2026-06-13T17:00:00+08:00",
+) -> dict[str, object]:
+    year, month_text = report_month.split("-")
+    month = int(month_text)
+    if release_title is None:
+        release_title = f"{year}年{month}月金融统计数据报告"
     return {
-        "release_url": "https://www.pbc.gov.cn/goutongjiaoliu/113456/113469/202606/t20260613_123456.html",
-        "published_at": "2026-06-13T17:00:00+08:00",
+        "release_url": release_url,
+        "published_at": published_at,
         "artifact_sha256": hashlib.sha256(artifact_bytes).hexdigest(),
-        "release_title": "2026年5月金融统计数据报告",
-        "report_month": "2026-05",
+        "release_title": release_title,
+        "report_month": report_month,
         "source_unit": "%",
         "target_unit": "%",
         "value_transform": "identity_percentage_points",
@@ -1720,6 +1746,120 @@ def test_pbc_m2_mapper_accepts_official_fullwidth_parentheses() -> None:
     )
 
     assert [row.value_numeric for row in rows] == [8.6]
+
+
+@pytest.mark.parametrize(
+    ("series_id", "series_name", "expected_value"),
+    [
+        ("M5525763", "社会融资规模存量:同比", 7.4),
+        ("M0001385", "M2:同比", 8.0),
+    ],
+    ids=["half-year-social-financing-stock-yoy", "half-year-m2-yoy"],
+)
+def test_pbc_financial_statistics_release_accepts_half_year_title_for_june_only(
+    series_id: str,
+    series_name: str,
+    expected_value: float,
+) -> None:
+    release_title = "2026年上半年金融统计数据报告"
+    artifact_bytes = _pbc_financial_statistics_html(
+        report_month="2026-06",
+        release_title=release_title,
+        social_financing_yoy="7.4",
+        social_financing_balance="462.06",
+        cumulative_social_financing="20.84",
+        m2_yoy="8",
+        m2_balance="356.71",
+        m1_yoy="4",
+    ).encode("utf-8")
+
+    rows = _map_pbc_financial_statistics_release_html(
+        artifact_bytes,
+        manifest=_pbc_financial_statistics_manifest(
+            artifact_bytes,
+            report_month="2026-06",
+            release_title=release_title,
+            release_url="https://www.pbc.gov.cn/diaochatongjisi/116219/116225/2026071515025183948/index.html",
+            published_at="2026-07-15T15:00:09+08:00",
+        ),
+        series_id=series_id,
+        series_name=series_name,
+        start_date="2026-06-01",
+        end_date="2026-07-23",
+        frequency="monthly",
+        unit="%",
+    )
+
+    assert rows == [
+        BackfillRow(
+            series_id=series_id,
+            series_name=series_name,
+            trade_date="2026-06-01",
+            value_numeric=expected_value,
+            frequency="monthly",
+            unit="%",
+        )
+    ]
+
+
+def test_pbc_financial_statistics_release_accepts_monthly_title_for_june() -> None:
+    release_title = "2026年6月金融统计数据报告"
+    artifact_bytes = _pbc_financial_statistics_html(
+        report_month="2026-06",
+        release_title=release_title,
+        m2_yoy="8",
+    ).encode("utf-8")
+
+    rows = _map_pbc_financial_statistics_release_html(
+        artifact_bytes,
+        manifest=_pbc_financial_statistics_manifest(
+            artifact_bytes,
+            report_month="2026-06",
+            release_title=release_title,
+        ),
+        series_id="M0001385",
+        series_name="M2:同比",
+        start_date="2026-06-01",
+        end_date="2026-07-23",
+        frequency="monthly",
+        unit="%",
+    )
+
+    assert rows == [
+        BackfillRow(
+            series_id="M0001385",
+            series_name="M2:同比",
+            trade_date="2026-06-01",
+            value_numeric=8.0,
+            frequency="monthly",
+            unit="%",
+        )
+    ]
+
+
+def test_pbc_financial_statistics_release_rejects_half_year_title_for_non_june_month() -> None:
+    release_title = "2026年上半年金融统计数据报告"
+    artifact_bytes = _pbc_financial_statistics_html(
+        report_month="2026-05",
+        release_title=release_title,
+    ).encode("utf-8")
+
+    rows = _map_pbc_financial_statistics_release_html(
+        artifact_bytes,
+        manifest=_pbc_financial_statistics_manifest(
+            artifact_bytes,
+            report_month="2026-05",
+            release_title=release_title,
+        ),
+        series_id="M5525763",
+        series_name="社会融资规模存量:同比",
+        start_date="2026-05-01",
+        end_date="2026-07-23",
+        frequency="monthly",
+        unit="%",
+    )
+
+    assert rows == []
 
 
 @pytest.mark.parametrize(

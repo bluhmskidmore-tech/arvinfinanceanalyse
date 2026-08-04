@@ -745,3 +745,41 @@ def test_production_official_availability_exact_pins_are_golden(
     )
 
     assert issue is None
+
+
+@pytest.mark.parametrize(
+    ("series_id", "vendor_version"),
+    [
+        (
+            "M0001385",
+            "vv_backfill_macro_pbc_financial_statistics_release_20260722_"
+            "dfe636f3083ab76e_6a071d961fab615c",
+        ),
+        (
+            "M5525763",
+            "vv_backfill_macro_pbc_financial_statistics_release_20260722_"
+            "dfe636f3083ab76e_0ebbce6d30220d11",
+        ),
+    ],
+    ids=["pbc-june-m2", "pbc-june-social-financing"],
+)
+def test_production_june_official_availability_matches_stock_analysis_target(
+    series_id: str,
+    vendor_version: str,
+) -> None:
+    issue = _cycle_input_row_issue(
+        series_id=series_id,
+        trade_date="2026-06-01",
+        frequency="monthly",
+        unit="%",
+        quality_flag="ok",
+        source_version="backfill_macro_v1",
+        vendor_version=vendor_version,
+        rule_version="rv_backfill_macro_v1",
+        run_id="backfill_macro_v1:20260723T120000Z",
+        as_of_date=date(2026, 7, 22),
+        availability_manifest_path=_PRODUCTION_AVAILABILITY_MANIFEST_PATH,
+        official_releases_manifest_path=_PRODUCTION_RELEASES_MANIFEST_PATH,
+    )
+
+    assert issue is None

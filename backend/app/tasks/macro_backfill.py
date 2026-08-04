@@ -1158,15 +1158,18 @@ def _map_pbc_financial_statistics_release_html(
         return []
     if not start_date <= trade_date <= end_date:
         return []
-    expected_title = f"{year}年{month}月金融统计数据报告"
-    if manifest.get("release_title") != expected_title:
+    allowed_titles = {f"{year}年{month}月金融统计数据报告"}
+    if month == 6:
+        allowed_titles.add(f"{year}年上半年金融统计数据报告")
+    release_title = manifest.get("release_title")
+    if not isinstance(release_title, str) or release_title not in allowed_titles:
         return []
     try:
         html = artifact_bytes.decode("utf-8", errors="strict")
     except UnicodeDecodeError:
         return []
     soup = BeautifulSoup(html, "html.parser")
-    if soup.title is None or soup.title.get_text(strip=True) != expected_title:
+    if soup.title is None or soup.title.get_text(strip=True) != release_title:
         return []
     zooms = soup.select("div#zoom")
     if len(zooms) != 1:
