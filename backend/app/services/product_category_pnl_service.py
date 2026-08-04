@@ -93,6 +93,12 @@ PRODUCT_CATEGORY_JOB_NAME = "product_category_pnl"
 PRODUCT_CATEGORY_CACHE_KEY = "product_category_pnl.formal"
 IN_FLIGHT_STATUSES = {"queued", "running"}
 STALE_IN_FLIGHT_AFTER = timedelta(hours=1)
+SAFE_SYNC_FALLBACK_MESSAGES = ("queue disabled", "broker unavailable")
+SAFE_SYNC_FALLBACK_EXCEPTIONS = (ConnectionError,)
+QUEUE_DISPATCH_FAILURE_MESSAGE = "Product-category refresh queue dispatch failed."
+QUEUE_DISPATCH_FAILURE_REASON = "queue_dispatch_failed"
+SYNC_FALLBACK_FAILURE_MESSAGE = "Product-category refresh failed during sync fallback."
+SYNC_FALLBACK_FAILURE_REASON = "sync_fallback_failed"
 
 
 class ProductCategoryRefreshServiceError(RuntimeError):
@@ -165,34 +171,52 @@ def queue_product_category_pnl_refresh(
                     governance_dir=str(settings.governance_path),
                     run_id=run_id,
                 )
-            except Exception:
-                logger.warning(
-                    "Async dispatch for product-category refresh failed, falling back to sync",
-                    exc_info=True,
+            except Exception as exc:
+                if _should_use_sync_fallback(settings, exc):
+                    logger.warning(
+                        "Async dispatch for product-category refresh failed, falling back to sync",
+                        exc_info=True,
+                    )
+                    try:
+                        payload = materialize_product_category_pnl.fn(
+                            duckdb_path=str(settings.duckdb_path),
+                            source_dir=str(source_dir),
+                            governance_dir=str(settings.governance_path),
+                            run_id=run_id,
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Sync fallback for product-category refresh failed"
+                        )
+                        _record_dispatch_failure(
+                            settings=settings,
+                            run_id=run_id,
+                            error_message=SYNC_FALLBACK_FAILURE_MESSAGE,
+                            failure_reason=SYNC_FALLBACK_FAILURE_REASON,
+                        )
+                        raise ProductCategoryRefreshServiceError(
+                            SYNC_FALLBACK_FAILURE_MESSAGE
+                        ) from None
+                    return {
+                        **payload,
+                        "job_name": PRODUCT_CATEGORY_JOB_NAME,
+                        "trigger_mode": "sync-fallback",
+                        "idempotency_key": normalized_idempotency_key,
+                        "idempotency_replay": False,
+                    }
+
+                logger.exception(
+                    "Async dispatch for product-category refresh failed"
                 )
-                try:
-                    payload = materialize_product_category_pnl.fn(
-                        duckdb_path=str(settings.duckdb_path),
-                        source_dir=str(source_dir),
-                        governance_dir=str(settings.governance_path),
-                        run_id=run_id,
-                    )
-                except Exception as fallback_exc:
-                    _record_dispatch_failure(
-                        settings=settings,
-                        run_id=run_id,
-                        error_message="Product-category refresh failed during sync fallback.",
-                    )
-                    raise ProductCategoryRefreshServiceError(
-                        "Product-category refresh failed during sync fallback."
-                    ) from fallback_exc
-                return {
-                    **payload,
-                    "job_name": PRODUCT_CATEGORY_JOB_NAME,
-                    "trigger_mode": "sync-fallback",
-                    "idempotency_key": normalized_idempotency_key,
-                    "idempotency_replay": False,
-                }
+                _record_dispatch_failure(
+                    settings=settings,
+                    run_id=run_id,
+                    error_message=QUEUE_DISPATCH_FAILURE_MESSAGE,
+                    failure_reason=QUEUE_DISPATCH_FAILURE_REASON,
+                )
+                raise ProductCategoryRefreshServiceError(
+                    QUEUE_DISPATCH_FAILURE_MESSAGE
+                ) from None
 
             return {
                 "status": "queued",
@@ -897,11 +921,21 @@ def _parse_timestamp(raw_value: str) -> datetime:
     return parsed.astimezone(UTC)
 
 
+def _should_use_sync_fallback(settings: Settings, exc: Exception) -> bool:
+    if str(settings.environment or "").strip().casefold() != "development":
+        return False
+    if isinstance(exc, SAFE_SYNC_FALLBACK_EXCEPTIONS):
+        return True
+    message = str(exc).lower()
+    return any(marker in message for marker in SAFE_SYNC_FALLBACK_MESSAGES)
+
+
 def _record_dispatch_failure(
     *,
     settings: Settings,
     run_id: str,
     error_message: str,
+    failure_reason: str,
 ) -> None:
     GovernanceRepository(base_dir=settings.governance_path).append(
         CACHE_BUILD_RUN_STREAM,
@@ -914,6 +948,7 @@ def _record_dispatch_failure(
             "source_version": "sv_product_category_failed",
             "vendor_version": "vv_none",
             "error_message": error_message,
+            "failure_reason": failure_reason,
         },
     )
 

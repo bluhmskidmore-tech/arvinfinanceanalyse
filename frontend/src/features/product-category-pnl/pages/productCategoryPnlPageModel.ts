@@ -5494,13 +5494,13 @@ export function buildProductCategoryDataHealth(input: {
       retryTarget: null,
     };
   }
-
-  const degraded = Boolean(
-    input.meta &&
-      (input.meta.quality_flag !== "ok" ||
-        input.meta.vendor_status !== "ok" ||
-        input.meta.fallback_mode !== "none"),
-  );
+  const degraded =
+    input.meta?.basis !== "formal" ||
+    input.meta.formal_use_allowed !== true ||
+    input.meta.scenario_flag !== false ||
+    input.meta.quality_flag !== "ok" ||
+    input.meta.vendor_status !== "ok" ||
+    input.meta.fallback_mode !== "none";
   return {
     state: degraded ? "degraded" : "ready",
     judgementState: degraded ? "blocked" : "allowed",

@@ -1245,6 +1245,7 @@ def test_product_category_refresh_sync_fallback_succeeds_when_queue_dispatch_fai
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    monkeypatch.setenv("MOSS_ENVIRONMENT", "development")
     _grant_product_category_read(tmp_path, monkeypatch)
     _grant_product_category_adjustment_write(tmp_path, monkeypatch)
     get_settings.cache_clear()
@@ -1268,10 +1269,206 @@ def test_product_category_refresh_sync_fallback_succeeds_when_queue_dispatch_fai
     get_settings.cache_clear()
 
 
+@pytest.mark.parametrize(
+    "environment",
+    [" production ", "Production", "PRODUCTION", "staging", "unknown"],
+)
+def test_product_category_refresh_fails_closed_outside_normalized_development(
+    tmp_path,
+    monkeypatch,
+    environment,
+):
+    source_dir = tmp_path / "data_input" / f"pnl_{LEDGER_PREFIX}-{AVG_PREFIX}"
+    source_dir.mkdir(parents=True)
+    governance_dir = tmp_path / "governance"
+    settings = Settings(
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_path=governance_dir,
+        product_category_source_dir=source_dir,
+        environment=environment,
+    )
+
+    service_mod = _load_product_category_pnl_service_module()
+    fallback_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        service_mod.materialize_product_category_pnl,
+        "send",
+        lambda **_: (_ for _ in ()).throw(RuntimeError("broker unavailable")),
+    )
+    monkeypatch.setattr(
+        service_mod.materialize_product_category_pnl,
+        "fn",
+        lambda **kwargs: fallback_calls.append(kwargs)
+        or {"status": "completed", "run_id": kwargs["run_id"]},
+    )
+
+    with pytest.raises(
+        service_mod.ProductCategoryRefreshServiceError,
+        match=r"^Product-category refresh queue dispatch failed\.$",
+    ):
+        service_mod.queue_product_category_pnl_refresh(settings)
+
+    assert fallback_calls == []
+    records = GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
+    latest = [record for record in records if record.get("job_name") == "product_category_pnl"][-1]
+    assert latest["status"] == "failed"
+    assert latest["error_message"] == "Product-category refresh queue dispatch failed."
+    assert latest["failure_reason"] == "queue_dispatch_failed"
+    assert latest["failure_category"] is None
+
+
+@pytest.mark.parametrize(
+    "exception_type",
+    [PermissionError, FileNotFoundError, TimeoutError],
+)
+def test_product_category_refresh_development_rejects_non_connection_os_errors(
+    tmp_path,
+    monkeypatch,
+    caplog,
+    exception_type,
+):
+    source_dir = tmp_path / "data_input" / f"pnl_{LEDGER_PREFIX}-{AVG_PREFIX}"
+    source_dir.mkdir(parents=True)
+    governance_dir = tmp_path / "governance"
+    settings = Settings(
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_path=governance_dir,
+        product_category_source_dir=source_dir,
+        environment="development",
+    )
+
+    sensitive_uri = "redis://user:secret@host:6379/0"
+    service_mod = _load_product_category_pnl_service_module()
+    fallback_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        service_mod.materialize_product_category_pnl,
+        "send",
+        lambda **_: (_ for _ in ()).throw(
+            exception_type(f"unsafe dispatch failure at {sensitive_uri}")
+        ),
+    )
+    monkeypatch.setattr(
+        service_mod.materialize_product_category_pnl,
+        "fn",
+        lambda **kwargs: fallback_calls.append(kwargs)
+        or {"status": "completed", "run_id": kwargs["run_id"]},
+    )
+
+    with caplog.at_level("ERROR", logger=service_mod.__name__):
+        with pytest.raises(
+            service_mod.ProductCategoryRefreshServiceError,
+            match=r"^Product-category refresh queue dispatch failed\.$",
+        ) as exc_info:
+            service_mod.queue_product_category_pnl_refresh(settings)
+
+    assert fallback_calls == []
+    assert exc_info.value.__cause__ is None
+    assert sensitive_uri not in str(exc_info.value)
+    records = GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
+    latest = [record for record in records if record.get("job_name") == "product_category_pnl"][-1]
+    assert latest["error_message"] == "Product-category refresh queue dispatch failed."
+    assert latest["failure_reason"] == "queue_dispatch_failed"
+    assert sensitive_uri not in repr(latest)
+    assert sensitive_uri in caplog.text
+
+
+def test_product_category_refresh_fails_closed_for_unexpected_development_dispatch_error(
+    tmp_path,
+    monkeypatch,
+    caplog,
+):
+    source_dir = tmp_path / "data_input" / f"pnl_{LEDGER_PREFIX}-{AVG_PREFIX}"
+    source_dir.mkdir(parents=True)
+    settings = Settings(
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_path=tmp_path / "governance",
+        product_category_source_dir=source_dir,
+        environment="development",
+    )
+
+    service_mod = _load_product_category_pnl_service_module()
+    sensitive_uri = "redis://user:secret@host:6379/0"
+    fallback_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        service_mod.materialize_product_category_pnl,
+        "send",
+        lambda **_: (_ for _ in ()).throw(
+            RuntimeError(f"unexpected broker failure at {sensitive_uri}")
+        ),
+    )
+    monkeypatch.setattr(
+        service_mod.materialize_product_category_pnl,
+        "fn",
+        lambda **kwargs: fallback_calls.append(kwargs)
+        or {"status": "completed", "run_id": kwargs["run_id"]},
+    )
+
+    with caplog.at_level("ERROR", logger=service_mod.__name__):
+        with pytest.raises(
+            service_mod.ProductCategoryRefreshServiceError,
+            match=r"^Product-category refresh queue dispatch failed\.$",
+        ) as exc_info:
+            service_mod.queue_product_category_pnl_refresh(settings)
+
+    assert fallback_calls == []
+    assert exc_info.value.__cause__ is None
+    assert sensitive_uri not in str(exc_info.value)
+    assert sensitive_uri in caplog.text
+
+
+def test_product_category_refresh_redacts_sensitive_dispatch_error_from_http_and_governance(
+    tmp_path,
+    monkeypatch,
+    seed_wildcard_scope,
+    caplog,
+):
+    source_dir = tmp_path / "data_input" / f"pnl_{LEDGER_PREFIX}-{AVG_PREFIX}"
+    source_dir.mkdir(parents=True)
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    monkeypatch.setenv("MOSS_ENVIRONMENT", "development")
+    _grant_product_category_read(tmp_path, monkeypatch)
+    _grant_product_category_adjustment_write(tmp_path, monkeypatch)
+    get_settings.cache_clear()
+
+    sensitive_uri = "redis://user:secret@host:6379/0"
+    service_mod = _load_product_category_pnl_service_module()
+    monkeypatch.setattr(
+        service_mod.materialize_product_category_pnl,
+        "send",
+        lambda **_: (_ for _ in ()).throw(
+            RuntimeError(f"unexpected transport target {sensitive_uri}")
+        ),
+    )
+
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        raise_server_exceptions=False,
+    )
+    with caplog.at_level("ERROR", logger=service_mod.__name__):
+        response = client.post("/ui/pnl/product-category/refresh")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Product-category refresh queue dispatch failed."
+    records = GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
+    latest = [record for record in records if record.get("job_name") == "product_category_pnl"][-1]
+    assert latest["status"] == "failed"
+    assert latest["error_message"] == "Product-category refresh queue dispatch failed."
+    assert latest["failure_reason"] == "queue_dispatch_failed"
+    assert latest["failure_category"] is None
+    assert sensitive_uri not in response.text
+    assert sensitive_uri not in repr(latest)
+    assert sensitive_uri in caplog.text
+    get_settings.cache_clear()
+
+
 def test_product_category_refresh_returns_503_when_sync_fallback_fails(
     tmp_path,
     monkeypatch,
     seed_wildcard_scope,
+    caplog,
 ):
     data_root = tmp_path / "data_input"
     source_dir = data_root / f"pnl_{LEDGER_PREFIX}-{AVG_PREFIX}"
@@ -1284,6 +1481,7 @@ def test_product_category_refresh_returns_503_when_sync_fallback_fails(
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    monkeypatch.setenv("MOSS_ENVIRONMENT", "development")
     _grant_product_category_read(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
@@ -1296,14 +1494,17 @@ def test_product_category_refresh_returns_503_when_sync_fallback_fails(
     monkeypatch.setattr(
         service_mod.materialize_product_category_pnl,
         "fn",
-        lambda **_: (_ for _ in ()).throw(RuntimeError("sync fallback failed")),
+        lambda **_: (_ for _ in ()).throw(
+            RuntimeError("sync fallback failed via redis://user:secret@host:6379/0")
+        ),
     )
 
     client = TestClient(
         load_module("backend.app.main", "backend/app/main.py").app,
         raise_server_exceptions=False,
     )
-    response = client.post("/ui/pnl/product-category/refresh")
+    with caplog.at_level("ERROR", logger=service_mod.__name__):
+        response = client.post("/ui/pnl/product-category/refresh")
 
     assert response.status_code == 503
     assert response.json()["detail"] == "Product-category refresh failed during sync fallback."
@@ -1312,7 +1513,59 @@ def test_product_category_refresh_returns_503_when_sync_fallback_fails(
     latest = [record for record in records if record.get("job_name") == "product_category_pnl"][-1]
     assert latest["status"] == "failed"
     assert latest["error_message"] == "Product-category refresh failed during sync fallback."
+    assert latest["failure_reason"] == "sync_fallback_failed"
+    assert latest["failure_category"] is None
+    assert "redis://user:secret@host:6379/0" not in response.text
+    assert "redis://user:secret@host:6379/0" not in repr(latest)
+    assert "redis://user:secret@host:6379/0" in caplog.text
     get_settings.cache_clear()
+
+
+def test_product_category_refresh_sync_fallback_service_error_suppresses_sensitive_cause(
+    tmp_path,
+    monkeypatch,
+    caplog,
+):
+    source_dir = tmp_path / "data_input" / f"pnl_{LEDGER_PREFIX}-{AVG_PREFIX}"
+    source_dir.mkdir(parents=True)
+    governance_dir = tmp_path / "governance"
+    settings = Settings(
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_path=governance_dir,
+        product_category_source_dir=source_dir,
+        environment="development",
+    )
+
+    sensitive_uri = "redis://user:secret@host:6379/0"
+    service_mod = _load_product_category_pnl_service_module()
+    monkeypatch.setattr(
+        service_mod.materialize_product_category_pnl,
+        "send",
+        lambda **_: (_ for _ in ()).throw(RuntimeError("broker unavailable")),
+    )
+    monkeypatch.setattr(
+        service_mod.materialize_product_category_pnl,
+        "fn",
+        lambda **_: (_ for _ in ()).throw(
+            RuntimeError(f"sync fallback failed via {sensitive_uri}")
+        ),
+    )
+
+    with caplog.at_level("ERROR", logger=service_mod.__name__):
+        with pytest.raises(
+            service_mod.ProductCategoryRefreshServiceError,
+            match=r"^Product-category refresh failed during sync fallback\.$",
+        ) as exc_info:
+            service_mod.queue_product_category_pnl_refresh(settings)
+
+    assert exc_info.value.__cause__ is None
+    assert sensitive_uri not in str(exc_info.value)
+    records = GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
+    latest = [record for record in records if record.get("job_name") == "product_category_pnl"][-1]
+    assert latest["error_message"] == "Product-category refresh failed during sync fallback."
+    assert latest["failure_reason"] == "sync_fallback_failed"
+    assert sensitive_uri not in repr(latest)
+    assert sensitive_uri in caplog.text
 
 
 def test_product_category_refresh_reconciles_stale_inflight_run_and_requeues(
