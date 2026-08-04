@@ -1,191 +1,76 @@
 # AGENTS.md
 
-## Current mission
-This repository is a business system.
-Current priority:
+## Mission and scope
+
+Priority order:
 1. business metric correctness
-2. page-level closure
+2. page/workflow closure
 3. traceability and validation
 4. minimal, reviewable changes
 
-Not current priority:
-- backend platform refactor
-- generic infrastructure abstraction
-- framework beautification
-- base-layer rebuild
-- unrelated performance tuning
+- Fix one page or workflow at a time and prefer the smallest effective change.
+- Do not refactor unrelated modules or add speculative abstractions.
+- Never guess an ambiguous metric definition, unit, date, or lineage; report the ambiguity with evidence.
+- Business correctness outranks architectural elegance.
+- Platform refactors, generic infrastructure, base-layer rebuilds, framework beautification, and unrelated performance work are out of scope unless the current task proves they are the root cause.
 
-## Scope discipline
-- Fix one page or one workflow at a time.
-- Prefer the smallest effective change.
-- Do not refactor unrelated modules.
-- Do not introduce new abstractions unless they are required by the current task and reused immediately.
-- If a metric definition is ambiguous, do not guess. Report the ambiguity with evidence.
-- Business correctness is more important than architectural elegance.
+## Navigation and local instructions
 
-## Frontend change tiers
-Classify the task before exploring or editing, and use the lightest tier that safely covers it. If evidence shows the change crosses a tier boundary, state why and escalate only then.
+- Before broad exploration, scan `docs/agent_codebase_map.md`, then work from the relevant subtree.
+- Read the closest applicable `AGENTS.md` / `CLAUDE.md`; path-specific rules override general workflow guidance.
+- Frontend work must follow `frontend/AGENTS.md`.
+- Backend application work must follow `backend/app/AGENTS.md` and `backend/CLAUDE.md`.
+- Test work must follow `tests/AGENTS.md` and `tests/CLAUDE.md`.
+- Avoid broad searches through generated data, dependencies, caches, logs, build outputs, and temporary directories.
+- Prefer targeted MCP/GitNexus evidence over loading whole governance documents, raw datasets, or logs into context.
 
-### Tier 1: visual-only
-Use for copy, spacing, color, typography, responsive layout, and presentation changes that do not alter data access, business meaning, calculations, filters, dates, units, or displayed values.
+## Business evidence
 
-- Inspect the page/component and its local styles or design tokens.
-- Do not perform metric-contract, lineage, catalog, or full data-flow tracing unless the visual change exposes a data correctness concern.
-- Validate with the narrowest relevant lint/typecheck and browser or component check.
-- Do not require business-logic tests when no business logic changed.
+- Inspect only the business paths affected by the current change.
+- For an affected displayed metric, verify the relevant path from API response through transformation/state to the rendered value or visualization.
+- Check units, precision, null semantics, date basis, stale/fallback state, mocks, and filters only where material to the affected path.
+- Use project metric-contract, lineage, catalog, and quality evidence according to the nearest path rules and demonstrated risk.
+- If required evidence tooling is unavailable, identify the unavailable source, the local substitute, and the residual risk. Do not invent business meaning.
 
-### Tier 2: page-local business display
-Use when a single page changes an adapter, formatter, selector/computed value, filter, metric presentation, date handling, unit, fallback, or state behavior.
+## Protected boundaries
 
-- Trace only the affected metric path from API response through the rendered component.
-- Use the relevant metric-contract and lineage evidence; query the data catalog only when source columns, availability, or report dates are material.
-- Add or update the smallest useful adapter, formatter, selector, or component-path test.
-- Run page/workflow-scoped checks first. Widen validation only if a shared boundary is crossed.
+Do not proactively modify these without explicit instruction or direct root-cause evidence:
 
-### Tier 3: shared or cross-page business logic
-Use when changing shared clients, shared selectors/formatters, formal calculations, cross-page state, or code used by multiple workflows.
-
-- Use GitNexus context and impact evidence before editing shared symbols.
-- Perform contract, lineage, date, unit, fallback, and downstream-consumer checks for the affected paths.
-- Warn before editing when impact is HIGH or CRITICAL.
-- Run broader tests/build checks proportional to the demonstrated blast radius.
-
-## Large codebase navigation
-- Before broad repository exploration, scan `docs/agent_codebase_map.md` and the relevant subdirectory `CLAUDE.md` / `AGENTS.md`.
-- Keep root-level instructions for global constraints only; put path-specific commands and conventions in the closest subdirectory config.
-- Prefer starting work from the relevant subtree (`frontend/`, `backend/`, `tests/`, or `docs/`) instead of loading the whole repo from root.
-- Avoid vague repo-wide searches through generated data, build outputs, dependencies, caches, logs, and temporary directories.
-- Use GitNexus/MCP evidence for cross-page impact, metric definitions, source lineage, report dates, and governed data questions before editing shared business paths.
-- Scope lint, typecheck, tests, and browser checks to the changed page or workflow first; widen only when the change crosses shared boundaries.
-
-## Frontend debt guardrails
-- Do not grow `frontend/src/api/client.ts`. New or materially changed endpoint implementations must go into the relevant domain client module, with `client.ts` kept as a composition boundary only.
-- Do not add new mock payload blocks to `frontend/src/api/client.ts`. Put domain mock data near the domain client or existing mock module, and keep mock/real transport separated.
-- Do not add repeated `style={{ ... }}` layout blocks to pages. Reuse page primitives, design tokens, or a page-local styles module for repeated cards, grids, tables, banners, and metric blocks.
-- A small dynamic inline style is acceptable only when it is truly local and not repeated.
-- When touching a page or workflow with business metrics, add the smallest useful tests around the changed adapter, formatter, selector/computed model, or component path.
-- Before completing frontend work, run `npm run debt:audit` from `frontend/` when the change touches pages, API clients, mocks, adapters, formatters, or selectors.
-- `scripts/audit_frontend_debt.mjs` records the current debt as a no-growth baseline. Lower baselines after cleanup; do not raise them without explicit justification.
-
-## Frontend data verification rules
-For every displayed metric, always trace:
-API response -> adapter/transformer -> store/state -> selector/computed -> component -> chart/table
-
-Always check:
-- unit consistency: 元 / 万元 / 亿元 / % / bp
-- precision and rounding
-- Decimal / float / string serialization
-- null vs 0 vs undefined vs NaN
-- currency conversion
-- trade date vs natural date
-- daily vs month-end vs YTD
-- as_of_date / fallback date / cached date
-- stale mock data or hard-coded fallback values
-- duplicate calculations in frontend
-- inconsistent filters across cards / charts / tables
-
-## MCP evidence workflow
-For Tier 2 and Tier 3 changes, use the project MCP servers before deciding the implementation shape. Tier 1 changes do not require business-data evidence unless they reveal or alter business behavior:
-
-- Use `moss-metric-contracts` to verify page contracts, metric definitions, units, calculation rules, and golden samples.
-- Use `moss-lineage-evidence` to verify source version, rule/cache lineage, fallback/stale status, and governance evidence.
-- Use `moss-data-catalog` to inspect available DuckDB tables, columns, and report dates through read-only catalog/date queries.
-- Use `gitnexus` to inspect relevant symbols, call paths, process traces, and impact before changing shared or cross-page code.
-- Use `playwright` for browser-level verification when the change affects visible frontend behavior.
-
-If an MCP server is unavailable, record which server was unavailable, what local evidence was used instead, and any residual risk. Do not guess metric definitions, units, dates, or source lineage when the required evidence is missing.
-
-## UI and page rules
-- Each page must answer one primary business question first.
-- The first screen must make the main conclusion obvious.
-- Explicitly surface:
-  - no data
-  - stale data
-  - fallback date
-  - loading failure
-  - metric definition pending confirmation
-- Do not add visual complexity unless it improves decision-making.
-
-## Forbidden without explicit instruction
-Do NOT proactively modify:
 - database schema
-- auth / permission framework
-- queue / scheduler / cache base
+- authentication or permission frameworks
+- queue, scheduler, or cache foundations
 - global SDK wrappers
-- shared infra layers
+- shared infrastructure layers
 - app-wide state architecture
 - unrelated backend services
 
-Unless there is direct evidence that one of them is the root cause of the current task.
+## GitNexus
 
-## Work protocol
-Before editing:
-- state the page or workflow being fixed
-- state the files to inspect first
-- state what will NOT be touched
+The indexed project is `moss-v3-codex-v1`.
 
-After editing:
-- report the root cause
-- list changed files
-- report validation steps and results
-- report remaining risks
+- Before changing a function, class, or method, run upstream impact analysis for that symbol and report direct callers, affected processes, and risk.
+- Warn before editing when impact is HIGH or CRITICAL.
+- Use process queries for unfamiliar flows and symbol context for callers/callees.
+- Use semantic rename tooling instead of search-and-replace for symbol renames.
+- Run change detection before committing.
+- If the index is reported stale, run `npx gitnexus analyze --skip-agents-md` so re-indexing does not expand the root instruction files.
+- Impact analysis is not required for documentation, copy, styles, or configuration edits that do not change code symbols.
 
-## Validation
-When changing business display logic, also add or update the smallest necessary tests for:
-- formatter
-- selector / computed
-- adapter / transform
+Detailed GitNexus workflows live under `.claude/skills/gitnexus/`; load only the workflow needed by the task.
 
-Run the narrowest relevant checks available in this repo first:
-- lint
-- typecheck
-- targeted tests
-- build when the changed boundary, risk, or release workflow warrants it
+## Work and validation protocol
 
-Do not turn every local edit into a repository-wide gate. Expand checks only when the change affects shared code, crosses workflows, or the narrow check reveals a wider problem. `npm run debt:audit` remains required for the frontend paths named in the frontend debt guardrails.
+Before editing, state:
 
-If a command cannot run, explain why instead of skipping silently.
+- the page or workflow in scope
+- the first files to inspect
+- what will not be touched
 
-<!-- gitnexus:start -->
-# GitNexus — Code Intelligence
+After editing, report:
 
-This project is indexed by GitNexus as **moss-v3-codex-v1** (100236 symbols, 145546 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+- root cause
+- changed files
+- validation commands and results
+- remaining risks
 
-> If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
-
-## Always Do
-
-- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `gitnexus_impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
-- **MUST run `gitnexus_detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows.
-- **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
-- When exploring unfamiliar code, use `gitnexus_query({query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
-- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `gitnexus_context({name: "symbolName"})`.
-
-## Never Do
-
-- NEVER edit a function, class, or method without first running `gitnexus_impact` on it.
-- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
-- NEVER rename symbols with find-and-replace — use `gitnexus_rename` which understands the call graph.
-- NEVER commit changes without running `gitnexus_detect_changes()` to check affected scope.
-
-## Resources
-
-| Resource | Use for |
-|----------|---------|
-| `gitnexus://repo/moss-v3-codex-v1/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/moss-v3-codex-v1/clusters` | All functional areas |
-| `gitnexus://repo/moss-v3-codex-v1/processes` | All execution flows |
-| `gitnexus://repo/moss-v3-codex-v1/process/{name}` | Step-by-step execution trace |
-
-## CLI
-
-| Task | Read this skill file |
-|------|---------------------|
-| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
-| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
-| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
-| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
-| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
-| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
-
-<!-- gitnexus:end -->
+Run the narrowest relevant lint, typecheck, targeted tests, and browser checks first. Widen only when a shared boundary is crossed or a narrow check reveals a broader issue. If a command cannot run, explain why.

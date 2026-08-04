@@ -1,174 +1,41 @@
 # CLAUDE.md
 
-本文件用于约束 AI 协作编码行为，减少误解、过度设计和无关改动。
+`AGENTS.md` is the authoritative project policy. This file adds only concise Claude Code workflow guidance.
 
-优先级说明：
-- 如与 `AGENTS.md` 冲突，以 `AGENTS.md` 为准。
-- 本文件用于补充“怎么做事”，不改变项目业务边界与架构铁律。
+## Workflow
 
----
+- Scan `docs/agent_codebase_map.md`, then read the closest `CLAUDE.md` / `AGENTS.md`.
+- Work on one page or workflow at a time; do not search the whole repository before locating the relevant route, service, metric contract, or test.
+- State material assumptions and ask only when ambiguity would materially change the result.
+- Prefer the smallest implementation and avoid unrelated cleanup, speculative configuration, and one-use abstractions.
+- Use targeted MCP/GitNexus evidence instead of loading large documents, datasets, or logs.
 
-## 大型代码库导航（Claude Code）
+## Architecture boundaries
 
-- 先读 `docs/agent_codebase_map.md` 获取目录地图，再进入相关子目录。
-- 在 `frontend/`、`backend/`、`tests/` 等目录工作时，优先遵守就近的 `CLAUDE.md` / `AGENTS.md`。
-- 根级上下文只保留全局纪律；页面、后端、测试命令和局部惯例放到子目录配置里。
-- 不要用模糊问题直接做全仓库大范围搜索；先定位页面、路由、service、metric contract 或测试入口。
-- 对业务指标、血缘、日期、口径、fallback/stale 证据，优先使用项目 MCP / GitNexus，而不是把大型文档和原始数据整块塞进上下文。
+Preserve:
 
----
+`frontend -> api -> services -> (repositories / core_finance / governance) -> storage`
 
-## 核心行为准则（Karpathy 四原则 + 本项目增强）
+- Official finance calculations belong only in `backend/app/core_finance/`.
+- Frontend code must not recreate official finance metrics.
+- API routes stay thin: validate, authorize, call services, and return responses.
+- API/service DuckDB access is read-only; writes flow through tasks.
+- Changes to H/A/T mapping, issued-bond exclusion, FX mid-price conversion, 514/516/517 merging, or Formal/Scenario separation require targeted tests and an impact report.
 
-### 1) 先思考再编码（Think Before Coding）
+## Change discipline
 
-- 不要默默假设：先显式写出关键假设。
-- 存在多种解读时，先列出选项，再请求确认，不得私自选择。
-- 发现更简单路径时要主动提出，不机械执行复杂方案。
-- 信息不完整时先停下，说明疑点并提问澄清。
+- For a bug, reproduce it with the smallest useful test before fixing when practical.
+- For a feature, define observable acceptance criteria before implementation.
+- For a refactor, verify behavior equivalence before and after.
+- Do not modify adjacent files, naming, formatting, or dead code unless the current change requires it.
+- Follow the GitNexus impact and pre-commit change-detection rules in `AGENTS.md`.
 
-执行要求：
-- 在动手前，用 3-6 条要点说明：目标、假设、方案、风险、验证方式。
+## Validation and reporting
 
-### 2) 简单优先（Simplicity First）
+- Run the narrowest relevant tests/checks first and widen only for shared boundaries or demonstrated risk.
+- Report changed files, test/check results, impact on formal finance paths, and remaining risks.
+- If a command or evidence source is unavailable, say why and identify the residual risk.
 
-- 只做用户明确要求的内容，不做“顺手增强”。
-- 单次使用逻辑禁止抽象成通用框架。
-- 不引入未被要求的“可配置化”“可扩展层”。
-- 不为不可能场景写防御性复杂逻辑。
+## Design
 
-自检问题：
-- 如果 200 行可收敛到 50 行，应主动重写为更小实现。
-- 如果一个中级工程师看了会说“过度设计”，就继续简化。
-
-### 3) 外科手术式改动（Surgical Changes）
-
-- 仅修改与当前任务直接相关的代码。
-- 不顺手改邻近文件、注释、命名、格式、无关重构。
-- 保持现有代码风格一致，不强行迁移个人偏好。
-- 发现历史遗留问题可以提示，但未经要求不得处理。
-
-清理边界：
-- 只清理“本次改动造成”的无用 import/变量/函数。
-- 既有死代码未经要求不得删除。
-
-### 4) 目标驱动执行（Goal-Driven Execution）
-
-- 将任务转成“可验证目标”，而不是模糊动作指令。
-- 修 bug：先写复现测试，再修复，再验证通过。
-- 加能力：先定义验收条件，再实现并跑验证。
-- 重构：保证改动前后行为等价，并用测试证明。
-
-多步骤输出模板：
-1. [步骤] -> verify: [命令/测试/可观察结果]
-2. [步骤] -> verify: [命令/测试/可观察结果]
-3. [步骤] -> verify: [命令/测试/可观察结果]
-
----
-
-## MOSS 项目执行附加约束（与 AGENTS.md 对齐）
-
-- 严格遵守分层调用方向：`frontend -> api -> services -> (repositories / core_finance / governance) -> storage`
-- 正式金融计算仅允许位于 `backend/app/core_finance/`
-- `frontend/` 不得补算正式金融指标
-- API 层仅做参数校验、鉴权、调用 service、返回响应
-- DuckDB 在 API 路径只读；写入仅允许任务链路
-
-如涉及以下高风险口径，必须补测试并说明影响范围：
-- H/A/T 映射
-- 发行类债券剔除逻辑
-- FX 中间价折算规则
-- 514/516/517 归并逻辑
-- Formal / Scenario 隔离
-
----
-
-## 任务响应默认结构（建议）
-
-每次实现默认给出：
-- 变更文件列表
-- 新增/修改测试
-- 验证命令与结果
-- 风险点与影响范围
-- 是否影响正式金融口径
-- 未完成项与下一步建议
-
----
-
-## 可直接复用的提问模板
-
-### 模板 A：修复类任务
-
-请按以下方式执行：
-- 先复述你的关键假设，不确定先问我
-- 先写一个失败测试复现问题
-- 用最小改动修复，不做无关重构
-- 运行相关测试并汇报结果
-- 输出变更文件、风险和影响范围
-
-### 模板 B：新增功能
-
-请按以下方式执行：
-- 先给 1 个最简方案和 1 个可选方案，并说明取舍
-- 我确认后再实现
-- 只实现当前需求，不做未来扩展层
-- 每一步给可验证结果（测试/命令）
-- 最后输出验收结果和剩余风险
-
-### 模板 C：重构优化
-
-请按以下方式执行：
-- 先定义“行为不变”的验证标准
-- 只重构目标模块，不触碰无关代码
-- 重构前后运行同一组测试并对比结果
-- 输出性能/可维护性收益与潜在回归点
-
----
-
-## Design System
-
-改动任何界面的版式、颜色、字体、间距前，**先读仓库根目录 `DESIGN.md`**。字体、色板、密度与「债券分析 / 组合工作台」首页的区块顺序以该文件与 `frontend/src/theme/designSystem.ts` 为准；未经产品确认，不得偏离参考权威或改换主结论优先级。在 QA 或审查中，对明显违背 `DESIGN.md` 的实现应标出。
-
-<!-- gitnexus:start -->
-# GitNexus — Code Intelligence
-
-This project is indexed by GitNexus as **moss-v3-codex-v1** (100236 symbols, 145546 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
-
-> If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
-
-## Always Do
-
-- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `gitnexus_impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
-- **MUST run `gitnexus_detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows.
-- **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
-- When exploring unfamiliar code, use `gitnexus_query({query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
-- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `gitnexus_context({name: "symbolName"})`.
-
-## Never Do
-
-- NEVER edit a function, class, or method without first running `gitnexus_impact` on it.
-- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
-- NEVER rename symbols with find-and-replace — use `gitnexus_rename` which understands the call graph.
-- NEVER commit changes without running `gitnexus_detect_changes()` to check affected scope.
-
-## Resources
-
-| Resource | Use for |
-|----------|---------|
-| `gitnexus://repo/moss-v3-codex-v1/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/moss-v3-codex-v1/clusters` | All functional areas |
-| `gitnexus://repo/moss-v3-codex-v1/processes` | All execution flows |
-| `gitnexus://repo/moss-v3-codex-v1/process/{name}` | Step-by-step execution trace |
-
-## CLI
-
-| Task | Read this skill file |
-|------|---------------------|
-| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
-| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
-| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
-| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
-| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
-| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
-
-<!-- gitnexus:end -->
+Before changing interface layout, color, typography, or spacing, read `DESIGN.md` and use `frontend/src/theme/designSystem.ts` plus existing page-local primitives.

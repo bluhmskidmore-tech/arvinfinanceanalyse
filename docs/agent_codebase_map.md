@@ -7,7 +7,7 @@ Purpose: give coding agents a fast table of contents before opening files. This 
 | Area | Start here | Notes |
 | --- | --- | --- |
 | Project rules | `AGENTS.md`, `CLAUDE.md`, `CLAUDE.local.md` | Root discipline, user preferences, and task reporting shape. |
-| Frontend app | `frontend/CLAUDE.md`, `frontend/src/router/routes.tsx`, `frontend/src/features/` | Pages, view models, adapters, mocks, and Vitest coverage. |
+| Frontend app | `frontend/AGENTS.md`, `frontend/CLAUDE.md`, `frontend/src/router/routes.tsx`, `frontend/src/features/` | Tiered page rules, view models, adapters, mocks, and Vitest coverage. |
 | Backend API | `backend/CLAUDE.md`, `backend/app/api/routes/`, `backend/app/services/` | FastAPI routes should stay thin; services coordinate domain work. |
 | Formal finance logic | `backend/app/core_finance/` | Official metric calculation logic belongs here, not frontend or API routes. |
 | Persistence and schema | `backend/app/repositories/`, `backend/app/schema_registry/duckdb/` | Read paths live in repositories; DuckDB writes flow through tasks. |
