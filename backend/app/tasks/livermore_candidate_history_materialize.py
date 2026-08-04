@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Any, cast
 
 import duckdb
-from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.core_finance.adjusted_returns import (
     PRICE_ADJUSTMENT_MODE,
     STOCK_ADJUSTMENT_FACTOR_TABLE,
@@ -18,6 +17,7 @@ from backend.app.core_finance.adjusted_returns import (
     net_return_after_costs,
 )
 from backend.app.core_finance.strategy_policy import POLICY
+from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.choice_stock_adapter import ChoiceStockReadiness, load_choice_stock_readiness
 from backend.app.schema_registry.duckdb_loader import REGISTRY_DIR, parse_registry_sql_text
@@ -884,6 +884,357 @@ def backfill_livermore_candidate_execution_history(
         }
     finally:
         conn.close()
+
+
+def repair_livermore_candidate_execution_gaps(
+    duckdb_path: str,
+    *,
+    dry_run: bool = True,
+    target_backup_path: str | None = None,
+    signal_kind: str = "stock_candidate",
+) -> dict[str, object]:
+    """Preview or repair exact logical-key gaps in persisted execution history."""
+    duckdb_file = Path(duckdb_path)
+    if not duckdb_file.is_file():
+        raise FileNotFoundError(f"DuckDB file not found: {duckdb_file}")
+
+    normalized_signal_kind = signal_kind.strip()
+    if not normalized_signal_kind:
+        raise ValueError("signal_kind cannot be blank.")
+
+    if normalized_signal_kind != "stock_candidate":
+        raise ValueError("execution-gap repair only supports signal_kind='stock_candidate'.")
+    if dry_run:
+        conn = duckdb.connect(str(duckdb_file), read_only=True)
+        try:
+            targets = _livermore_candidate_execution_gap_targets(
+                conn,
+                signal_kind=normalized_signal_kind,
+            )
+        finally:
+            conn.close()
+        return _livermore_candidate_execution_gap_result(
+            signal_kind=normalized_signal_kind,
+            targets=targets,
+            mode="dry_run",
+            run_id=None,
+            repaired_count=0,
+            deleted_physical_row_count=0,
+        )
+
+    with acquire_lock(LIVERMORE_CANDIDATE_HISTORY_LOCK, base_dir=duckdb_file.parent):
+        backup_evidence = _validate_livermore_execution_gap_backup(
+            duckdb_file,
+            target_backup_path=target_backup_path,
+        )
+        _validate_livermore_execution_gap_target_hash(
+            duckdb_file,
+            expected_backup_sha256=str(backup_evidence["backup_sha256"]),
+        )
+        run_id = f"livermore_candidate_execution_gap_repair:{uuid.uuid4()}"
+        conn = duckdb.connect(str(duckdb_file), read_only=False)
+        transaction_started = False
+        try:
+            conn.execute("begin transaction")
+            transaction_started = True
+            targets = _livermore_candidate_execution_gap_targets(
+                conn,
+                signal_kind=normalized_signal_kind,
+            )
+            repairable_targets = [target for target in targets if bool(target["repairable"])]
+            repaired_rows = [
+                _livermore_execution_gap_replacement_row(target, run_id=run_id)
+                for target in repairable_targets
+            ]
+            for target in repairable_targets:
+                key = cast(dict[str, object], target["key"])
+                conn.execute(
+                    f"""
+                    delete from {TABLE_EXECUTION_HIST}
+                    where signal_date = ? and stock_code = ? and signal_kind = ?
+                    """,
+                    [
+                        key["signal_date"],
+                        key["stock_code"],
+                        key["signal_kind"],
+                    ],
+                )
+            _insert_execution_history_rows(conn, repaired_rows)
+            conn.execute("commit")
+            transaction_started = False
+        except Exception:
+            if transaction_started:
+                conn.execute("rollback")
+            raise
+        finally:
+            conn.close()
+
+    result = _livermore_candidate_execution_gap_result(
+        signal_kind=normalized_signal_kind,
+        targets=targets,
+        mode="live",
+        run_id=run_id,
+        repaired_count=len(repairable_targets),
+        deleted_physical_row_count=sum(
+            _safe_int(target.get("physical_row_count"), default=1)
+            for target in repairable_targets
+        ),
+    )
+    result.update(backup_evidence)
+    return result
+
+
+def _livermore_candidate_execution_gap_targets(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    signal_kind: str,
+) -> list[dict[str, object]]:
+    candidate_rows = conn.execute(
+        f"""
+        with scoped as (
+          select signal_date,
+                 stock_code,
+                 stock_name,
+                 signal_kind,
+                 candidate_rank,
+                 market_state,
+                 entry_executable,
+                 data_status,
+                 formula_version,
+                 run_id,
+                 return_20d_net,
+                 return_20d_net_adj,
+                 max(
+                   case
+                     when entry_executable is true
+                      and return_20d_net is not null
+                      and return_20d_net_adj is null
+                     then 1 else 0
+                   end
+                 ) over logical_key as has_raw_20d_gap,
+                 max(
+                   case when lower(coalesce(data_status, '')) = 'pending' then 1 else 0 end
+                 ) over logical_key as has_pending,
+                 max(
+                   case when coalesce(formula_version, '') <> ? then 1 else 0 end
+                 ) over logical_key as has_stale_formula,
+                 count(*) over logical_key as physical_row_count,
+                 row_number() over (
+                   logical_key
+                   order by case when formula_version = ? then 0 else 1 end,
+                            run_id desc nulls last
+                 ) as logical_row_number
+          from {TABLE_EXECUTION_HIST}
+          where signal_kind = ?
+          window logical_key as (partition by signal_date, stock_code, signal_kind)
+        )
+        select signal_date,
+               stock_code,
+               stock_name,
+               signal_kind,
+               candidate_rank,
+               market_state,
+               entry_executable,
+               data_status,
+               formula_version,
+               run_id,
+               return_20d_net,
+               return_20d_net_adj,
+               has_raw_20d_gap,
+               has_pending,
+               has_stale_formula,
+               physical_row_count
+        from scoped
+        where logical_row_number = 1
+          and (has_raw_20d_gap = 1 or has_pending = 1 or has_stale_formula = 1)
+        order by signal_date, stock_code, signal_kind
+        """,
+        [EXECUTION_FORMULA_VERSION, EXECUTION_FORMULA_VERSION, signal_kind],
+    ).fetchall()
+
+    targets: list[dict[str, object]] = []
+    for row in candidate_rows:
+        stored_signal_date = _text(row[0])
+        signal_date = _normalize_trade_date_iso(row[0])
+        stored_stock_code = _text(row[1])
+        stock_code = stored_stock_code.upper()
+        computed = (
+            _execution_returns_for_candidate(
+                conn,
+                stock_code=stock_code,
+                snapshot_as_of_date=signal_date,
+            )
+            if signal_date and stock_code
+            else None
+        )
+        reasons: list[str] = []
+        if bool(row[12]):
+            reasons.append("raw_20d_without_adjusted_20d")
+        if bool(row[13]) and computed is not None and computed.get("data_status") == "complete":
+            reasons.append("pending_recomputes_complete")
+        if bool(row[14]):
+            reasons.append("formula_version_stale")
+        if not reasons:
+            continue
+
+        preview: dict[str, object] = {
+            "stock_name": _optional_text(row[2]),
+            "candidate_rank": _safe_int_or_none(row[4]),
+            "market_state": _optional_text(row[5]),
+            **(computed or {}),
+            "formula_version": EXECUTION_FORMULA_VERSION,
+        }
+        remaining_reasons: list[str] = []
+        if computed is None:
+            remaining_reasons.append("missing_execution_payload")
+        elif (
+            computed.get("entry_executable") is True
+            and computed.get("return_20d_net") is not None
+            and computed.get("return_20d_net_adj") is None
+        ):
+            remaining_reasons.append("raw_20d_without_adjusted_20d")
+        targets.append(
+            {
+                "key": {
+                    "signal_date": stored_signal_date,
+                    "stock_code": stored_stock_code,
+                    "signal_kind": signal_kind,
+                },
+                "reasons": reasons,
+                "physical_row_count": _safe_int(row[15], default=1),
+                "current": {
+                    "data_status": _optional_text(row[7]),
+                    "formula_version": _optional_text(row[8]),
+                    "run_id": _optional_text(row[9]),
+                    "return_20d_net": _safe_float_or_none(row[10]),
+                    "return_20d_net_adj": _safe_float_or_none(row[11]),
+                },
+                "preview": preview,
+                "repairable": computed is not None,
+                "remaining_reasons": remaining_reasons,
+            }
+        )
+    return targets
+
+
+def _livermore_execution_gap_replacement_row(
+    target: dict[str, object],
+    *,
+    run_id: str,
+) -> dict[str, object]:
+    key = cast(dict[str, object], target["key"])
+    preview = cast(dict[str, object], target["preview"])
+    return {
+        "signal_date": key["signal_date"],
+        "stock_code": key["stock_code"],
+        "signal_kind": key["signal_kind"],
+        **preview,
+        "run_id": run_id,
+    }
+
+
+def _livermore_candidate_execution_gap_result(
+    *,
+    signal_kind: str,
+    targets: list[dict[str, object]],
+    mode: str,
+    run_id: str | None,
+    repaired_count: int,
+    deleted_physical_row_count: int,
+) -> dict[str, object]:
+    unresolved_count = sum(
+        1
+        for target in targets
+        if not bool(target["repairable"]) or bool(target["remaining_reasons"])
+    )
+    preview_limit = 50
+    preview_targets = targets[:preview_limit]
+    target_physical_row_count = sum(
+        _safe_int(target.get("physical_row_count"), default=1) for target in targets
+    )
+    duplicate_physical_row_count = sum(
+        max(_safe_int(target.get("physical_row_count"), default=1) - 1, 0)
+        for target in targets
+    )
+    reason_counts: dict[str, int] = {}
+    remaining_reason_counts: dict[str, int] = {}
+    for target in targets:
+        for reason in _string_list(target.get("reasons")):
+            reason_counts[reason] = reason_counts.get(reason, 0) + 1
+        for reason in _string_list(target.get("remaining_reasons")):
+            remaining_reason_counts[reason] = remaining_reason_counts.get(reason, 0) + 1
+    return {
+        "status": "partial" if unresolved_count else "ok",
+        "mode": mode,
+        "signal_kind": signal_kind,
+        "target_count": len(targets),
+        "target_physical_row_count": target_physical_row_count,
+        "duplicate_physical_row_count": duplicate_physical_row_count,
+        "target_preview_count": len(preview_targets),
+        "preview_limit": preview_limit,
+        "targets_truncated": len(targets) > preview_limit,
+        "reason_counts": reason_counts,
+        "remaining_reason_counts": remaining_reason_counts,
+        "target_keys": [target["key"] for target in preview_targets],
+        "repaired_count": repaired_count,
+        "deleted_physical_row_count": deleted_physical_row_count,
+        "unresolved_count": unresolved_count,
+        "formula_version": EXECUTION_FORMULA_VERSION,
+        "run_id": run_id,
+        "target_backup_path": None,
+        "backup_verified": False,
+        "target_sha256_before": None,
+        "backup_sha256": None,
+        "targets": preview_targets,
+    }
+
+
+def _validate_livermore_execution_gap_backup(
+    duckdb_file: Path,
+    *,
+    target_backup_path: str | None,
+) -> dict[str, object]:
+    if target_backup_path is None or not target_backup_path.strip():
+        raise ValueError("target_backup_path is required for live execution-gap repair.")
+
+    target_resolved = duckdb_file.resolve(strict=True)
+    backup_file = Path(target_backup_path)
+    if not backup_file.is_file():
+        raise FileNotFoundError(f"Backup file not found: {backup_file}")
+    backup_resolved = backup_file.resolve(strict=True)
+    if target_resolved == backup_resolved or target_resolved.samefile(backup_resolved):
+        raise ValueError("Backup must be a different file from the target DuckDB.")
+
+    target_sha256 = _sha256_file(target_resolved)
+    backup_sha256 = _sha256_file(backup_resolved)
+    if target_sha256 != backup_sha256:
+        raise ValueError("Backup content hash does not match target DuckDB.")
+    return {
+        "target_backup_path": str(backup_resolved),
+        "backup_verified": True,
+        "target_sha256_before": target_sha256,
+        "backup_sha256": backup_sha256,
+    }
+
+
+def _validate_livermore_execution_gap_target_hash(
+    duckdb_file: Path,
+    *,
+    expected_backup_sha256: str,
+) -> None:
+    current_target_sha256 = _sha256_file(duckdb_file.resolve(strict=True))
+    if current_target_sha256 != expected_backup_sha256:
+        raise RuntimeError(
+            "Target DuckDB changed after backup verification; aborting live execution-gap repair."
+        )
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _calendar_dates_in_range(start_date: date, end_date: date) -> list[str]:
