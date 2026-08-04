@@ -43,6 +43,7 @@ def test_backend_release_suite_declares_bounded_phase2_gate():
         "tests/test_executive_release_contract.py",
         "tests/test_golden_sample_release_matrix.py",
         "tests/test_live_route_page_contract_completeness.py",
+        "tests/test_backend_dependency_contract.py",
         "tests/test_no_finance_logic_in_frontend.py",
     ]
     assert module.GOVERNANCE_MCP_FAST_SUITE_TESTS == [

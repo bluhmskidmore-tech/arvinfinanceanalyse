@@ -5,6 +5,7 @@ description = "Phase 1 backend skeleton for MOSS Agent Analytics OS"
 requires-python = ">=3.11"
 dependencies = [
   "beautifulsoup4>=4.12,<5",
+  "anyio>=4.0,<5",
   "fastapi>=0.115,<1",
   "uvicorn>=0.34,<1",
   "requests>=2.32,<3",
@@ -18,6 +19,7 @@ dependencies = [
   "dramatiq>=1.17,<2",
   "minio>=7.2,<8",
   "numpy>=1.26,<3",
+  "pandas>=2.2,<3",
   "openpyxl>=3.1,<4",
   "scipy>=1.13,<2",
   "xlrd>=2.0,<3",
@@ -26,7 +28,6 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "httpx>=0.28,<1",
-  "pandas>=2.2,<3",
   "pytest>=9.0.3,<10",
   "pytest-xdist>=3.6,<4",
 ]
