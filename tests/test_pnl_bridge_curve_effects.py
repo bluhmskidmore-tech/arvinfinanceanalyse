@@ -19,7 +19,6 @@ from backend.app.repositories.yield_curve_repo import (
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from backend.app.services.campisi_attribution_service import _formal_bridge_bond_rows
 from backend.app.services.pnl_bridge_service import _curve_points, pnl_bridge_envelope
-
 from tests.helpers import load_module
 from tests.test_pnl_api_contract import (
     _append_balance_build_run,

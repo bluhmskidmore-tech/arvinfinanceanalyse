@@ -9,7 +9,6 @@ from pathlib import Path
 import pytest
 from _pytest.tmpdir import TempPathFactory
 
-
 CONFTEST_PATH = Path(__file__).with_name("conftest.py").resolve()
 
 

@@ -5,7 +5,7 @@ import csv
 import importlib
 import os
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -1205,7 +1205,7 @@ def test_product_category_refresh_returns_409_when_refresh_is_already_in_progres
                 source_version="sv_product_category_pending",
                 vendor_version="vv_none",
             ).model_dump(),
-            "started_at": datetime.now(timezone.utc).isoformat(),
+            "started_at": datetime.now(UTC).isoformat(),
         },
     )
 
@@ -1588,7 +1588,7 @@ def test_product_category_refresh_reconciles_stale_inflight_run_and_requeues(
     _grant_product_category_adjustment_write(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
-    stale_time = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+    stale_time = (datetime.now(UTC) - timedelta(hours=2)).isoformat()
     GovernanceRepository(base_dir=governance_dir).append(
         CACHE_BUILD_RUN_STREAM,
         {
@@ -1647,7 +1647,7 @@ def test_product_category_refresh_reconciles_stale_queued_run_and_requeues(
     _grant_product_category_adjustment_write(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
-    stale_time = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+    stale_time = (datetime.now(UTC) - timedelta(hours=2)).isoformat()
     GovernanceRepository(base_dir=governance_dir).append(
         CACHE_BUILD_RUN_STREAM,
         {
