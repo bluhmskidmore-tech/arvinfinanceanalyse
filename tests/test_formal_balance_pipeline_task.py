@@ -101,10 +101,11 @@ def test_formal_balance_pipeline_runs_ingest_snapshot_and_balance_in_order(tmp_p
 
 
 def test_formal_balance_pipeline_uses_latest_report_manifest_when_incremental_batch_is_empty_for_date(
+    tmp_path: Path,
     monkeypatch,
 ):
     pipeline_mod = _load_pipeline_module()
-    base_dir = Path("test_output") / "formal_balance_pipeline" / uuid4().hex
+    base_dir = tmp_path / "formal_balance_pipeline" / uuid4().hex
     governance_dir = base_dir / "governance"
     governance_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = governance_dir / "source_manifest.jsonl"
