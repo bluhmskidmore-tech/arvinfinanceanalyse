@@ -1521,6 +1521,11 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
 
     assert response.status_code == 200
     payload = response.json()
+    result_meta = payload["result_meta"]
+    assert result_meta["basis"] == "analytical"
+    assert result_meta["formal_use_allowed"] is False
+    assert result_meta["quality_flag"] == "warning"
+    assert result_meta["as_of_date"] == payload["result"]["as_of_date"] == "2026-04-10"
     assert payload["result"]["default_data_sources"] == ["choice", "tushare"]
     assert payload["result"]["conclusion"]["stance"]
     assert payload["result"]["coverage"]["hit_count"] >= 6
@@ -2307,7 +2312,12 @@ def test_macro_toolkit_strategy_summaries_endpoint_returns_deferred_strategy_pay
     assert strategies["moving_average"]["status"] == "complete"
     assert strategies["moving_average"]["result"]["price_source"] == "choice_stock_daily_observation"
     assert payload["result"]["choice_stock_refresh"]["daily_observation"]["latest_trade_date"] == "2026-04-30"
-    assert "choice_stock_daily_observation" in payload["result_meta"]["tables_used"]
+    result_meta = payload["result_meta"]
+    assert result_meta["basis"] == "analytical"
+    assert result_meta["formal_use_allowed"] is False
+    assert result_meta["quality_flag"] == "warning"
+    assert result_meta["as_of_date"] == "2026-04-30"
+    assert "choice_stock_daily_observation" in result_meta["tables_used"]
 
 
 def test_macro_toolkit_strategy_summaries_reuses_loaded_factor_snapshot_for_shadow(

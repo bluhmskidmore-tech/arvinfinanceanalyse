@@ -556,6 +556,8 @@ def _build_macro_toolkit_analysis(detail: str, *, history_limit: int = DEFAULT_C
             "readiness_summary": readiness["readiness_summary"],
             "warnings": warnings,
         },
+        quality_flag="warning",
+        as_of_date=analysis_date,
     )
 
 
@@ -654,6 +656,7 @@ def _build_macro_toolkit_strategy_summaries() -> dict[str, object]:
             ),
         },
         quality_flag="ok" if macro_etf_ready else "warning",
+        as_of_date=strategy_as_of_date,
     )
 
 
