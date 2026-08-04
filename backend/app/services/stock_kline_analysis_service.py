@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import duckdb
+from backend.app.core_finance.field_normalization import TRADING_STATUS_SQL_IN_LIST
 from backend.app.services.formal_result_runtime import (
     FallbackMode,
     QualityFlag,
@@ -224,6 +225,7 @@ def _resolve_end_trade_date(conn: duckdb.DuckDBPyConnection, *, stock_code: str,
             select max(trade_date) as mx
             from {TABLE_OBS}
             where stock_code = ?
+              and lower(trim(coalesce(tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
             """,
             [stock_code],
         ).fetchone()
@@ -234,6 +236,7 @@ def _resolve_end_trade_date(conn: duckdb.DuckDBPyConnection, *, stock_code: str,
             from {TABLE_OBS}
             where stock_code = ?
               and trade_date <= ?
+              and lower(trim(coalesce(tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
             """,
             [stock_code, as_of_date.isoformat()],
         ).fetchone()
@@ -270,6 +273,7 @@ def _fetch_candles(
         from {TABLE_OBS}
         where stock_code = ?
           and trade_date <= ?
+          and lower(trim(coalesce(tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
         order by trade_date desc
         limit ?
         """,
@@ -542,20 +546,22 @@ def _is_one_price_candle(candle: dict[str, object]) -> bool:
 
 
 def _return_over(values: list[float | None], periods: int) -> float | None:
-    if len(values) <= periods:
+    usable = [value for value in values if value is not None]
+    if len(usable) <= periods:
         return None
-    latest = values[-1]
-    previous = values[-periods - 1]
-    if latest is None or previous is None or previous == 0:
+    latest = usable[-1]
+    previous = usable[-periods - 1]
+    if previous == 0:
         return None
     return latest / previous - 1
 
 
 def _mean_tail(values: list[float | None], periods: int) -> float | None:
-    usable = [value for value in values[-periods:] if value is not None]
-    if not usable:
+    usable = [value for value in values if value is not None]
+    if len(usable) < periods:
         return None
-    return sum(usable) / len(usable)
+    tail = usable[-periods:]
+    return sum(tail) / len(tail)
 
 
 def _maybe_float(value: object) -> float | None:

@@ -4,6 +4,7 @@ from datetime import date, timedelta
 from typing import Any
 
 import duckdb
+import pytest
 
 from tests.helpers import load_module
 
@@ -25,6 +26,7 @@ def _create_daily_observation_db(path: str, *, rows: int = 65) -> None:
               pctchange double,
               turn double,
               amplitude double,
+              tradestatus varchar,
               source_version varchar,
               vendor_version varchar
             )
@@ -62,6 +64,7 @@ def _create_daily_observation_db(path: str, *, rows: int = 65) -> None:
                     0.5,
                     1.2,
                     2.0,
+                    "Trading",
                     "sv_choice_stock_daily_test",
                     "vv_choice_stock_daily_test",
                 )
@@ -69,7 +72,7 @@ def _create_daily_observation_db(path: str, *, rows: int = 65) -> None:
         conn.executemany(
             """
             insert into choice_stock_daily_observation
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             payload,
         )
@@ -114,6 +117,45 @@ def test_stock_kline_analysis_envelope_scores_ohlcv_observation(tmp_path) -> Non
     assert {item["key"] for item in result["patterns"]} >= {"bullish_engulfing", "wide_body"}
 
 
+def test_stock_kline_analysis_uses_trading_rows_for_window_metrics(tmp_path) -> None:
+    module = load_module(
+        "backend.app.services.stock_kline_analysis_service",
+        "backend/app/services/stock_kline_analysis_service.py",
+    )
+    db_path = tmp_path / "stock-kline-placeholders.duckdb"
+    _create_daily_observation_db(str(db_path))
+    conn = duckdb.connect(str(db_path))
+    try:
+        conn.executemany(
+            """
+            insert into choice_stock_daily_observation
+            values (?, '000001.SZ', null, null, null, null, null, null, null, null, null, null, 'sv_placeholder', 'vv_placeholder')
+            """,
+            [((date(2026, 3, 7) + timedelta(days=i)).isoformat(),) for i in range(10)],
+        )
+    finally:
+        conn.close()
+
+    envelope = module.stock_kline_analysis_envelope(
+        duckdb_path=str(db_path),
+        stock_code="000001.SZ",
+        as_of_date=date(2026, 3, 16),
+        lookback=60,
+    )
+
+    result = envelope["result"]
+    closes = [10.0 + i * 0.05 + 0.03 for i in range(65)]
+    closes[-2] = 10.0 + 63 * 0.05 - 0.08
+    closes[-1] = 10.0 + 64 * 0.05 + 0.42
+
+    assert envelope["result_meta"]["evidence_rows"] == 60
+    assert result["as_of_date"] == "2026-03-06"
+    assert result["latest_candle"]["trade_date"] == "2026-03-06"
+    assert result["indicators"]["ma20"] == pytest.approx(sum(closes[-20:]) / 20)
+    assert result["indicators"]["return_20d"] == pytest.approx(closes[-1] / closes[-21] - 1)
+    assert "invalid_ohlc_rows" not in result["validity"]["warnings"]
+
+
 def test_stock_kline_analysis_missing_db_keeps_observational_boundary(tmp_path) -> None:
     module = load_module(
         "backend.app.services.stock_kline_analysis_service",
@@ -136,3 +178,75 @@ def test_stock_kline_analysis_missing_db_keeps_observational_boundary(tmp_path) 
     assert result["validity"]["usable"] is False
     assert result["observation_signal"]["level"] == "not_applicable"
     assert result["observation_signal"]["risks"] == ["duckdb_missing"]
+
+
+def test_stock_kline_analysis_ignores_null_close_rows_in_tail_metrics(tmp_path) -> None:
+    module = load_module(
+        "backend.app.services.stock_kline_analysis_service",
+        "backend/app/services/stock_kline_analysis_service.py",
+    )
+    db_path = tmp_path / "stock-kline-null-tail.duckdb"
+    _create_daily_observation_db(str(db_path), rows=30)
+    conn = duckdb.connect(str(db_path))
+    try:
+        conn.executemany(
+            """
+            insert into choice_stock_daily_observation
+            values (?, '000001.SZ', null, null, null, null, null, null, null, null, null, 'Trading', 'sv_placeholder', 'vv_placeholder')
+            """,
+            [((date(2026, 1, 31) + timedelta(days=i)).isoformat(),) for i in range(10)],
+        )
+        valid_tail_rows: list[tuple[Any, ...]] = []
+        for i in range(30, 40):
+            trade_date = (date(2026, 2, 10) + timedelta(days=i - 30)).isoformat()
+            base = 10.0 + i * 0.05
+            open_value = base
+            close_value = base + 0.03
+            high_value = close_value + 0.08
+            low_value = open_value - 0.08
+            valid_tail_rows.append(
+                (
+                    trade_date,
+                    "000001.SZ",
+                    open_value,
+                    high_value,
+                    low_value,
+                    close_value,
+                    1_000_000 + i * 1_000,
+                    (1_000_000 + i * 1_000) * close_value,
+                    0.5,
+                    1.2,
+                    2.0,
+                    "Trading",
+                    "sv_choice_stock_daily_test",
+                    "vv_choice_stock_daily_test",
+                )
+            )
+        conn.executemany(
+            """
+            insert into choice_stock_daily_observation
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            valid_tail_rows,
+        )
+    finally:
+        conn.close()
+
+    envelope = module.stock_kline_analysis_envelope(
+        duckdb_path=str(db_path),
+        stock_code="000001.SZ",
+        as_of_date=date(2026, 2, 19),
+        lookback=60,
+    )
+
+    result = envelope["result"]
+    closes = [10.0 + i * 0.05 + 0.03 for i in range(40)]
+    closes[28] = 10.0 + 28 * 0.05 - 0.08
+    closes[29] = 10.0 + 29 * 0.05 + 0.42
+
+    assert envelope["result_meta"]["evidence_rows"] == 50
+    assert result["as_of_date"] == "2026-02-19"
+    assert result["latest_candle"]["trade_date"] == "2026-02-19"
+    assert result["indicators"]["ma20"] == pytest.approx(sum(closes[-20:]) / 20)
+    assert result["indicators"]["return_20d"] == pytest.approx(closes[-1] / closes[-21] - 1)
+    assert "invalid_ohlc_rows" in result["validity"]["warnings"]
