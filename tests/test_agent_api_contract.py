@@ -1,21 +1,21 @@
 """
 Agent HTTP + schema contracts.
 
-Production default (`agent_enabled=False`): `POST /api/agent/query` returns **503** with
-`AgentDisabledResponse` — not a live Agent. Tests that return 200 use an isolated FastAPI
-app with `agent_enabled` stubbed True to exercise envelope/schema only.
+Production default (`agent_enabled=False`): Agent routes are not registered. Tests that return
+200 use an isolated FastAPI app with `agent_enabled` stubbed True to exercise envelope/schema
+only.
 """
 
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
-from backend.app.main import app as default_app
-from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV, AuthContext
 from tests.helpers import load_module
 
 AGENT_READ_HEADERS = {"X-User-Id": "agent-read-user", "X-User-Role": "viewer"}
@@ -43,12 +43,27 @@ def _agent_auth_fields(tmp_path) -> dict[str, str]:
     }
 
 
-def _seed_agent_read_scope(tmp_path, monkeypatch, *, user_id: str = "*") -> None:
+def _seed_agent_scope(
+    tmp_path,
+    monkeypatch,
+    *,
+    action: str,
+    user_id: str = "*",
+) -> None:
     _configure_agent_scope_store(tmp_path, monkeypatch).grant_scope(
         user_id=user_id,
         role=None,
         resource="agent",
+        action=action,
+    )
+
+
+def _seed_agent_read_scope(tmp_path, monkeypatch, *, user_id: str = "*") -> None:
+    _seed_agent_scope(
+        tmp_path,
+        monkeypatch,
         action="read",
+        user_id=user_id,
     )
 
 
@@ -130,6 +145,80 @@ def _client_with_stubbed_agent(monkeypatch):
     return TestClient(app)
 
 
+def test_agent_development_environment_bypasses_scope_store(monkeypatch) -> None:
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    scope_checks: list[str] = []
+
+    def unexpected_scope_check(**kwargs):
+        scope_checks.append(str(kwargs["action"]))
+        raise AssertionError("development Agent request reached the scope store")
+
+    monkeypatch.setattr(route_module, "ensure_user_allowed", unexpected_scope_check)
+    auth = AuthContext(
+        user_id="development-agent-user",
+        role="developer",
+        identity_source="fallback",
+    )
+    settings = SimpleNamespace(
+        environment="development",
+        agent_dev_scope_bypass=True,
+    )
+
+    route_module._ensure_agent_read_allowed(auth, settings)
+    route_module._ensure_agent_execute_allowed(auth, settings)
+
+    assert scope_checks == []
+
+
+def test_agent_development_bypass_requires_explicit_opt_in(monkeypatch) -> None:
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    scope_checks: list[str] = []
+
+    def record_scope_check(**kwargs):
+        scope_checks.append(str(kwargs["action"]))
+
+    monkeypatch.setattr(route_module, "ensure_user_allowed", record_scope_check)
+    auth = AuthContext(
+        user_id="development-agent-user",
+        role="developer",
+        identity_source="fallback",
+    )
+
+    route_module._ensure_agent_read_allowed(
+        auth,
+        SimpleNamespace(
+            environment="development",
+            agent_dev_scope_bypass=False,
+        ),
+    )
+    route_module._ensure_agent_execute_allowed(
+        auth,
+        SimpleNamespace(agent_dev_scope_bypass=True),
+    )
+    route_module._ensure_agent_read_allowed(
+        auth,
+        SimpleNamespace(
+            environment=" ",
+            agent_dev_scope_bypass=True,
+        ),
+    )
+    route_module._ensure_agent_execute_allowed(
+        auth,
+        SimpleNamespace(
+            environment="staging",
+            agent_dev_scope_bypass=True,
+        ),
+    )
+
+    assert scope_checks == ["read", "execute", "read", "execute"]
+
+
 def test_agent_enabled_endpoints_require_explicit_read_scope(tmp_path, monkeypatch) -> None:
     route_module = load_module(
         "backend.app.api.routes.agent",
@@ -143,6 +232,7 @@ def test_agent_enabled_endpoints_require_explicit_read_scope(tmp_path, monkeypat
             "SettingsStub",
             (),
             {
+                "environment": "production",
                 "agent_enabled": True,
                 "agent_provider": "hermes",
                 "agent_hermes_transport": "bridge",
@@ -179,29 +269,34 @@ def test_agent_enabled_endpoints_require_explicit_read_scope(tmp_path, monkeypat
     assert calls == []
 
 
-def test_default_app_agent_query_is_disabled_503(monkeypatch, tmp_path):
-    """Unmocked app: Agent is disabled unless the feature flag is explicitly enabled."""
-    def disabled_settings():
-        return type(
-            "SettingsStub",
-            (),
-            {
-                "agent_enabled": False,
-                "agent_provider": "local",
-                "duckdb_path": str(tmp_path / "moss.duckdb"),
-                "governance_path": str(tmp_path / "governance"),
-            },
-        )()
-    for route in default_app.routes:
-        if getattr(route, "path", None) == "/api/agent/query":
-            monkeypatch.setitem(route.endpoint.__globals__, "get_settings", disabled_settings)
-    client = TestClient(default_app)
-    response = client.post("/api/agent/query", json={"question": "PnL summary"})
+def test_default_app_does_not_publish_agent_routes_or_openapi_when_disabled(monkeypatch):
+    """Disabled configuration does not publish Agent URL or schema surfaces."""
+    monkeypatch.setenv("MOSS_AGENT_ENABLED", "false")
+    get_settings.cache_clear()
+    try:
+        disabled_main = load_module("backend.app.main", "backend/app/main.py")
+        paths = {getattr(route, "path", "") for route in disabled_main.app.routes}
+        client = TestClient(disabled_main.app)
+        response = client.post("/api/agent/query", json={"question": "PnL summary"})
 
-    assert response.status_code == 503
-    body = response.json()
-    assert body["enabled"] is False
-    assert "disabled" in body["detail"].lower()
+        assert not any(path.startswith("/api/agent") for path in paths)
+        assert not any(path.startswith("/api/agent") for path in disabled_main.app.openapi()["paths"])
+        assert response.status_code == 404
+    finally:
+        get_settings.cache_clear()
+
+
+def test_enabled_app_registers_agent_routes_and_openapi(monkeypatch):
+    monkeypatch.setenv("MOSS_AGENT_ENABLED", "true")
+    get_settings.cache_clear()
+    try:
+        enabled_main = load_module("backend.app.main", "backend/app/main.py")
+        paths = {getattr(route, "path", "") for route in enabled_main.app.routes}
+
+        assert "/api/agent/query" in paths
+        assert "/api/agent/query" in enabled_main.app.openapi()["paths"]
+    finally:
+        get_settings.cache_clear()
 
 
 def test_agent_request_schema_defines_phase1_contract():

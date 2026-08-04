@@ -63,7 +63,14 @@ class RouteAuthSurface:
 
 
 BACKEND_BOUNDARY_CASES: tuple[SurfaceCase, ...] = (
-    SurfaceCase("agent.query", "/api/agent/query", "POST", json={"question": "ping"}, detail_substring="disabled"),
+    SurfaceCase(
+        "agent.query",
+        "/api/agent/query",
+        "POST",
+        json={"question": "ping"},
+        expected_status=404,
+        detail_substring="not found",
+    ),
     SurfaceCase("preview.source-foundation", "/ui/preview/source-foundation", "GET"),
     SurfaceCase("preview.source-foundation.history", "/ui/preview/source-foundation/history", "GET", params={"limit": 5, "offset": 0}),
     SurfaceCase("preview.source-foundation.rows", "/ui/preview/source-foundation/zqtz/rows", "GET", params={"limit": 1, "offset": 0}),
@@ -159,6 +166,22 @@ RESERVED_WRITE_SURFACES = set(RESERVED_WRITE_POLICIES)
 RESERVED_HELPER_SCOPES = {
     ("choice_news.data", "import"),
 }
+
+_GATED_TOP_LEVEL_ROUTE_MODULES = {"agent"}
+_NESTED_ROUTE_MODULES = {"agent_workspace"}
+
+
+def _load_api_registry(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    agent_enabled: bool,
+):
+    monkeypatch.setenv("MOSS_AGENT_ENABLED", str(agent_enabled).lower())
+    get_settings.cache_clear()
+    for module_name in tuple(sys.modules):
+        if module_name == "backend.app.api" or module_name.startswith("backend.app.api."):
+            sys.modules.pop(module_name, None)
+    return load_module("backend.app.api", "backend/app/api/__init__.py")
 
 
 def _build_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
@@ -583,8 +606,12 @@ def test_backend_policy_classes_match_resource_action_semantics() -> None:
     assert admin_action_without_admin_class == []
 
 
-def test_api_router_registry_classifies_every_included_router() -> None:
-    api_module = load_module("backend.app.api", "backend/app/api/__init__.py")
+@pytest.mark.parametrize("agent_enabled", (False, True), ids=("agent-disabled", "agent-enabled"))
+def test_api_router_registry_classifies_every_included_router(
+    monkeypatch: pytest.MonkeyPatch,
+    agent_enabled: bool,
+) -> None:
+    api_module = _load_api_registry(monkeypatch, agent_enabled=agent_enabled)
 
     registry = tuple(api_module.ROUTE_REGISTRY)
     route_groups = {entry.group for entry in registry}
@@ -592,7 +619,7 @@ def test_api_router_registry_classifies_every_included_router() -> None:
     missing_tags = [entry.name for entry in registry if not entry.tags]
     missing_owner = [entry.name for entry in registry if not entry.owner.strip()]
 
-    assert len(registry) == 34
+    assert len(registry) == 33 + int(agent_enabled)
     assert len({entry.name for entry in registry}) == len(registry)
     assert missing_tags == []
     assert missing_owner == []
@@ -601,10 +628,15 @@ def test_api_router_registry_classifies_every_included_router() -> None:
         "analytical_compatibility",
         "preview",
         "macro_market",
-        "agent_experimental",
         "support",
     }
-    assert entries_by_name["agent"].group == "agent_experimental"
+    if agent_enabled:
+        assert "agent_experimental" in route_groups
+        assert entries_by_name["agent"].group == "agent_experimental"
+    else:
+        assert "agent_experimental" not in route_groups
+        assert "agent" not in entries_by_name
+    assert "agent_workspace" not in entries_by_name
     assert entries_by_name["source_preview"].group == "preview"
     assert entries_by_name["macro_etf_strategy"].group == "macro_market"
     assert entries_by_name["macro_toolkit"].group == "macro_market"
@@ -613,8 +645,12 @@ def test_api_router_registry_classifies_every_included_router() -> None:
     assert entries_by_name["cube_query"].group == "support"
 
 
-def test_api_router_registry_covers_every_route_module_file() -> None:
-    api_module = load_module("backend.app.api", "backend/app/api/__init__.py")
+@pytest.mark.parametrize("agent_enabled", (False, True), ids=("agent-disabled", "agent-enabled"))
+def test_api_router_registry_covers_every_route_module_file(
+    monkeypatch: pytest.MonkeyPatch,
+    agent_enabled: bool,
+) -> None:
+    api_module = _load_api_registry(monkeypatch, agent_enabled=agent_enabled)
 
     route_modules = {
         path.stem
@@ -626,11 +662,20 @@ def test_api_router_registry_covers_every_route_module_file() -> None:
         for entry in api_module.ROUTE_REGISTRY
     }
 
-    assert sorted(route_modules - registered_modules) == []
+    top_level_route_modules = route_modules - _NESTED_ROUTE_MODULES
+    expected_unregistered = _GATED_TOP_LEVEL_ROUTE_MODULES if not agent_enabled else set()
+
+    assert sorted(top_level_route_modules - registered_modules) == sorted(expected_unregistered)
+    assert registered_modules <= top_level_route_modules
+    assert _NESTED_ROUTE_MODULES.isdisjoint(registered_modules)
 
 
-def test_api_route_groups_expose_claim_boundary_metadata() -> None:
-    api_module = load_module("backend.app.api", "backend/app/api/__init__.py")
+@pytest.mark.parametrize("agent_enabled", (False, True), ids=("agent-disabled", "agent-enabled"))
+def test_api_route_groups_expose_claim_boundary_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+    agent_enabled: bool,
+) -> None:
+    api_module = _load_api_registry(monkeypatch, agent_enabled=agent_enabled)
 
     registry = tuple(api_module.ROUTE_REGISTRY)
     route_groups = {entry.group for entry in registry}
@@ -647,7 +692,7 @@ def test_api_route_groups_expose_claim_boundary_metadata() -> None:
     ]
 
     assert missing_group_metadata == []
-    assert extra_group_metadata == []
+    assert extra_group_metadata == ([] if agent_enabled else ["agent_experimental"])
     assert incomplete_metadata == []
     assert group_metadata["formal_mainline"].claim_boundary != group_metadata["preview"].claim_boundary
     assert "certified" not in group_metadata["agent_experimental"].claim_boundary.lower()
@@ -674,8 +719,12 @@ def test_route_scope_audit_documents_backend_api_route_groups() -> None:
         assert required in route_scope_doc
 
 
-def test_api_router_registry_matches_included_route_surface() -> None:
-    api_module = load_module("backend.app.api", "backend/app/api/__init__.py")
+@pytest.mark.parametrize("agent_enabled", (False, True), ids=("agent-disabled", "agent-enabled"))
+def test_api_router_registry_matches_included_route_surface(
+    monkeypatch: pytest.MonkeyPatch,
+    agent_enabled: bool,
+) -> None:
+    api_module = _load_api_registry(monkeypatch, agent_enabled=agent_enabled)
 
     registry = tuple(api_module.ROUTE_REGISTRY)
     registered_route_count = sum(len(entry.router.routes) for entry in registry)
@@ -685,7 +734,10 @@ def test_api_router_registry_matches_included_route_surface() -> None:
     }
 
     assert len(api_module.router.routes) == registered_route_count
-    assert group_route_counts["formal_mainline"] > group_route_counts["agent_experimental"]
+    if agent_enabled:
+        assert group_route_counts["formal_mainline"] > group_route_counts["agent_experimental"]
+    else:
+        assert "agent_experimental" not in group_route_counts
     assert group_route_counts["macro_market"] > 0
     assert group_route_counts["preview"] > 0
 

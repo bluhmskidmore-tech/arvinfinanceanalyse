@@ -5,12 +5,22 @@ from typing import Literal
 from backend.app.agent.schemas.agent_response import AgentEnvelope
 from pydantic import BaseModel, Field
 
-AgentRunStatus = Literal["queued", "starting", "running", "completed", "failed"]
+AgentRunStatus = Literal[
+    "queued",
+    "starting",
+    "running",
+    "completed",
+    "failed",
+    "cancelled",
+]
 
 
 class AgentRunStatusResponse(BaseModel):
     run_id: str
     status: AgentRunStatus
+    conversation_id: str | None = None
+    retry_of_run_id: str | None = None
+    artifact_refs: list[str] | None = None
     question: str | None = None
     provider: str = "hermes"
     model: str = "default"
@@ -24,9 +34,16 @@ class AgentRunStatusResponse(BaseModel):
     result: AgentEnvelope | None = None
 
 
+class AgentRunListResponse(BaseModel):
+    items: list[AgentRunStatusResponse]
+
+
 class AgentRunCreateResponse(BaseModel):
     run_id: str
     status: AgentRunStatus = "queued"
+    conversation_id: str | None = None
+    retry_of_run_id: str | None = None
+    artifact_refs: list[str] | None = None
     provider: str = "hermes"
     model: str = "default"
     transport: str = "bridge"
@@ -37,6 +54,9 @@ class AgentRunCreateResponse(BaseModel):
 class AgentRunRecord(BaseModel):
     run_id: str
     status: AgentRunStatus
+    conversation_id: str | None = None
+    retry_of_run_id: str | None = None
+    artifact_refs: list[str] | None = None
     question: str
     request: dict[str, object] = Field(default_factory=dict)
     provider: str = "hermes"

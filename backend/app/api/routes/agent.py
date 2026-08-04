@@ -3,34 +3,47 @@ from __future__ import annotations
 import re
 from typing import Annotated
 
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import JSONResponse, StreamingResponse
+
 from backend.app.agent.runtime.action_token import agent_action_confirmation_token_matches
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.agent.schemas.agent_response import AgentDisabledResponse, AgentEnvelope
 from backend.app.agent.schemas.agent_run import (
     AgentRunCreateResponse,
+    AgentRunListResponse,
     AgentRunStatusResponse,
 )
 from backend.app.agent.tools.analysis_view_tool import (
     has_explicit_local_agent_context,
     is_plain_analysis_chat_question,
 )
+from backend.app.api.routes.agent_workspace import router as workspace_router
 from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.agent_run_service import (
+    AgentRunDispatchError,
+    AgentRunStateConflict,
+    cancel_agent_run,
     create_agent_run,
     get_agent_run_owner,
     get_agent_run_status,
     iter_agent_run_events,
+    list_agent_runs,
+    retry_agent_run,
 )
 from backend.app.services.agent_service import (
     audit_disabled_agent_query,
     execute_agent_query,
     phase1_disabled_response,
 )
+from backend.app.services.agent_workspace_service import (
+    AgentWorkspaceStateConflict,
+    agent_workspace_lifecycle_lock,
+    assert_conversation_owned,
+)
 from backend.app.services.dexter_agent_service import execute_dexter_agent_query
 from backend.app.services.hermes_agent_service import execute_hermes_agent_query
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import JSONResponse, StreamingResponse
 
 router = APIRouter(prefix="/api/agent")
 
@@ -157,7 +170,8 @@ def _apply_auth_context(
     client_context = {
         key: value
         for key, value in request.context.items()
-        if key.strip().lower() != "run_id"
+        if key.strip().lower()
+        not in {"run_id", "retry_of_run_id", "artifact_refs"}
     }
     return request.model_copy(
         update={
@@ -171,13 +185,90 @@ def _apply_auth_context(
     )
 
 
-def _ensure_agent_read_allowed(auth: AuthContext, settings: object) -> None:
+def _ensure_agent_action_allowed(
+    auth: AuthContext,
+    settings: object,
+    *,
+    action: str,
+) -> None:
+    if (
+        str(getattr(settings, "environment", "")).strip().lower() == "development"
+        and getattr(settings, "agent_dev_scope_bypass", False) is True
+    ):
+        return
     try:
-        ensure_user_allowed(auth=auth, settings=settings, resource="agent", action="read")
+        ensure_user_allowed(
+            auth=auth,
+            settings=settings,
+            resource="agent",
+            action=action,
+        )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+def _ensure_agent_read_allowed(auth: AuthContext, settings: object) -> None:
+    _ensure_agent_action_allowed(auth, settings, action="read")
+
+
+def _ensure_agent_execute_allowed(auth: AuthContext, settings: object) -> None:
+    _ensure_agent_action_allowed(auth, settings, action="execute")
+
+
+def _ensure_agent_enabled(settings: object) -> None:
+    """Fail closed before any run authorization, lookup, or dispatch work."""
+    if getattr(settings, "agent_enabled", False) is not True:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=phase1_disabled_response().detail,
+        )
+
+
+def _ensure_agent_run_owned_by_auth(
+    *,
+    run_id: str,
+    auth: AuthContext,
+    settings: object,
+) -> None:
+    owner = get_agent_run_owner(run_id=run_id, settings=settings)
+    if owner != auth.user_id:
+        raise HTTPException(status_code=403, detail="Agent run belongs to a different user.")
+
+
+def _conversation_id_from_request(request: AgentQueryRequest) -> str | None:
+    if "conversation_id" not in request.context:
+        return None
+    value = request.context.get("conversation_id")
+    if not isinstance(value, str) or not value.strip():
+        raise HTTPException(
+            status_code=422,
+            detail="context.conversation_id must be a non-empty string.",
+        )
+    return value.strip()
+
+
+def _ensure_agent_conversation_owned_by_auth(
+    *,
+    conversation_id: str,
+    auth: AuthContext,
+    settings: object,
+    require_active: bool,
+) -> None:
+    try:
+        assert_conversation_owned(
+            settings=settings,
+            owner_user_id=auth.user_id,
+            conversation_id=conversation_id,
+            require_active=require_active,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AgentWorkspaceStateConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.post("/query", response_model=AgentEnvelope | AgentDisabledResponse)
@@ -210,7 +301,11 @@ def query_agent(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
-@router.post("/runs", response_model=AgentRunCreateResponse | AgentEnvelope | AgentDisabledResponse)
+@router.post(
+    "/runs",
+    response_model=AgentRunCreateResponse | AgentEnvelope | AgentDisabledResponse,
+    response_model_exclude_none=True,
+)
 def create_agent_run_endpoint(
     request: AgentQueryRequest,
     auth: Annotated[AuthContext, Depends(get_auth_context)],
@@ -229,14 +324,141 @@ def create_agent_run_endpoint(
             content=phase1_disabled_response().model_dump(mode="json"),
         )
     _ensure_agent_read_allowed(auth, settings)
-    provider, executor = _resolve_agent_executor(request, settings)
+    conversation_id = _conversation_id_from_request(request)
+    if conversation_id is not None:
+        request = request.model_copy(
+            update={
+                "context": {
+                    **request.context,
+                    "conversation_id": conversation_id,
+                }
+            }
+        )
+    provider, _executor = _resolve_agent_executor(request, settings)
 
-    return create_agent_run(
-        request=request,
-        settings=settings,
-        executor=executor,
-        provider=provider,
+    try:
+        if conversation_id is not None:
+            with agent_workspace_lifecycle_lock(settings=settings):
+                _ensure_agent_conversation_owned_by_auth(
+                    conversation_id=conversation_id,
+                    auth=auth,
+                    settings=settings,
+                    require_active=True,
+                )
+                return create_agent_run(
+                    request=request,
+                    settings=settings,
+                    provider=provider,
+                )
+        return create_agent_run(
+            request=request,
+            settings=settings,
+            provider=provider,
+        )
+    except AgentWorkspaceStateConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except AgentRunDispatchError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get(
+    "/runs",
+    response_model=AgentRunListResponse,
+    response_model_exclude_none=True,
+)
+def list_agent_runs_endpoint(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    conversation_id: Annotated[str | None, Query(min_length=1)] = None,
+) -> AgentRunListResponse:
+    settings = get_settings()
+    _ensure_agent_enabled(settings)
+    _ensure_agent_read_allowed(auth, settings)
+    normalized_conversation_id = (
+        str(conversation_id or "").strip() or None
     )
+    if conversation_id is not None and normalized_conversation_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail="conversation_id must be a non-empty string.",
+        )
+    if normalized_conversation_id is not None:
+        _ensure_agent_conversation_owned_by_auth(
+            conversation_id=normalized_conversation_id,
+            auth=auth,
+            settings=settings,
+            require_active=False,
+        )
+    return list_agent_runs(
+        settings=settings,
+        owner_user_id=auth.user_id,
+        limit=limit,
+        conversation_id=normalized_conversation_id,
+    )
+
+
+@router.post(
+    "/runs/{run_id}/cancel",
+    response_model=AgentRunStatusResponse,
+    response_model_exclude_none=True,
+)
+def cancel_agent_run_endpoint(
+    run_id: str,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> AgentRunStatusResponse:
+    settings = get_settings()
+    _ensure_agent_enabled(settings)
+    _ensure_agent_execute_allowed(auth, settings)
+    try:
+        _ensure_agent_run_owned_by_auth(
+            run_id=run_id,
+            auth=auth,
+            settings=settings,
+        )
+        return cancel_agent_run(run_id=run_id, settings=settings)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AgentRunStateConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/runs/{run_id}/retry",
+    response_model=AgentRunCreateResponse,
+    response_model_exclude_none=True,
+)
+def retry_agent_run_endpoint(
+    run_id: str,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> AgentRunCreateResponse:
+    settings = get_settings()
+    _ensure_agent_enabled(settings)
+    _ensure_agent_execute_allowed(auth, settings)
+    try:
+        _ensure_agent_run_owned_by_auth(
+            run_id=run_id,
+            auth=auth,
+            settings=settings,
+        )
+        run = get_agent_run_status(run_id=run_id, settings=settings)
+        if run.conversation_id is not None:
+            with agent_workspace_lifecycle_lock(settings=settings):
+                _ensure_agent_conversation_owned_by_auth(
+                    conversation_id=run.conversation_id,
+                    auth=auth,
+                    settings=settings,
+                    require_active=True,
+                )
+                return retry_agent_run(run_id=run_id, settings=settings)
+        return retry_agent_run(run_id=run_id, settings=settings)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AgentRunStateConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except AgentWorkspaceStateConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except AgentRunDispatchError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get(
@@ -249,11 +471,14 @@ def get_agent_run_endpoint(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
 ) -> AgentRunStatusResponse:
     settings = get_settings()
+    _ensure_agent_enabled(settings)
     _ensure_agent_read_allowed(auth, settings)
     try:
-        owner = get_agent_run_owner(run_id=run_id, settings=settings)
-        if owner is not None and owner != auth.user_id:
-            raise HTTPException(status_code=403, detail="Agent run belongs to a different user.")
+        _ensure_agent_run_owned_by_auth(
+            run_id=run_id,
+            auth=auth,
+            settings=settings,
+        )
         return get_agent_run_status(run_id=run_id, settings=settings)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -265,11 +490,14 @@ def get_agent_run_events_endpoint(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
 ) -> StreamingResponse:
     settings = get_settings()
+    _ensure_agent_enabled(settings)
     _ensure_agent_read_allowed(auth, settings)
     try:
-        owner = get_agent_run_owner(run_id=run_id, settings=settings)
-        if owner is not None and owner != auth.user_id:
-            raise HTTPException(status_code=403, detail="Agent run belongs to a different user.")
+        _ensure_agent_run_owned_by_auth(
+            run_id=run_id,
+            auth=auth,
+            settings=settings,
+        )
         initial_status = get_agent_run_status(run_id=run_id, settings=settings)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -286,3 +514,6 @@ def get_agent_run_events_endpoint(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+router.include_router(workspace_router)

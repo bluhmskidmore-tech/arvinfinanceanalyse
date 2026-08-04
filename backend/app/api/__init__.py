@@ -3,7 +3,6 @@ from typing import Literal
 
 from backend.app.api.routes.accounting_asset_movement import router as accounting_asset_movement_router
 from backend.app.api.routes.adb_analysis import router as adb_analysis_router
-from backend.app.api.routes.agent import router as agent_router
 from backend.app.api.routes.balance_analysis import router as balance_analysis_router
 from backend.app.api.routes.bond_analytics import router as bond_analytics_router
 from backend.app.api.routes.bond_dashboard import router as bond_dashboard_router
@@ -35,6 +34,7 @@ from backend.app.api.routes.qdb_gl_monthly_analysis import router as qdb_gl_mont
 from backend.app.api.routes.research_calendar import router as research_calendar_router
 from backend.app.api.routes.risk_tensor import router as risk_tensor_router
 from backend.app.api.routes.source_preview import router as source_preview_router
+from backend.app.governance.settings import get_settings
 from fastapi import APIRouter
 
 router = APIRouter()
@@ -109,7 +109,6 @@ ROUTE_GROUP_METADATA: dict[RouteGroup, RouteGroupMetadata] = {
 ROUTE_REGISTRY: tuple[RouteRegistryEntry, ...] = (
     RouteRegistryEntry("accounting_asset_movement", accounting_asset_movement_router, "formal_mainline", ("balance-movement-analysis",), "Balance movement owner"),
     RouteRegistryEntry("adb_analysis", adb_analysis_router, "formal_mainline", ("analysis-adb",), "Average balance owner"),
-    RouteRegistryEntry("agent", agent_router, "agent_experimental", ("agent",), "Agent workbench owner"),
     RouteRegistryEntry("balance_analysis", balance_analysis_router, "formal_mainline", ("balance-analysis",), "Balance analysis owner"),
     RouteRegistryEntry("bond_analytics", bond_analytics_router, "formal_mainline", ("bond-analytics",), "Bond analytics owner"),
     RouteRegistryEntry("bond_dashboard", bond_dashboard_router, "formal_mainline", ("bond-dashboard",), "Bond dashboard owner"),
@@ -142,6 +141,13 @@ ROUTE_REGISTRY: tuple[RouteRegistryEntry, ...] = (
     RouteRegistryEntry("risk_tensor", risk_tensor_router, "formal_mainline", ("risk",), "Risk tensor owner"),
     RouteRegistryEntry("source_preview", source_preview_router, "preview", ("preview",), "Reports and data owner"),
 )
+
+if get_settings().agent_enabled:
+    from backend.app.api.routes.agent import router as agent_router
+
+    ROUTE_REGISTRY += (
+        RouteRegistryEntry("agent", agent_router, "agent_experimental", ("agent",), "Agent workbench owner"),
+    )
 
 for entry in ROUTE_REGISTRY:
     router.include_router(entry.router, tags=list(entry.tags))

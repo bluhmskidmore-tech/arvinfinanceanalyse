@@ -28,6 +28,7 @@ def test_settings_defaults(monkeypatch):
     s = Settings(_env_file=None)
     assert s.environment == "development"
     assert s.agent_enabled is False
+    assert s.agent_dev_scope_bypass is False
     assert s.agent_provider == "local"
     assert s.agent_hermes_command == "wsl.exe"
     assert s.agent_hermes_wsl_distro == "HermesUbuntu"
@@ -56,6 +57,7 @@ def test_settings_env_overrides(monkeypatch):
     repo_root = Path(__file__).resolve().parents[1]
     monkeypatch.setenv("MOSS_ENVIRONMENT", "staging")
     monkeypatch.setenv("MOSS_AGENT_ENABLED", "true")
+    monkeypatch.setenv("MOSS_AGENT_DEV_SCOPE_BYPASS", "true")
     monkeypatch.setenv("MOSS_AGENT_PROVIDER", "hermes")
     monkeypatch.setenv("MOSS_AGENT_HERMES_COMMAND", "custom-hermes")
     monkeypatch.setenv("MOSS_AGENT_HERMES_WSL_DISTRO", "CustomUbuntu")
@@ -81,6 +83,7 @@ def test_settings_env_overrides(monkeypatch):
     s = Settings(_env_file=None)
     assert s.environment == "staging"
     assert s.agent_enabled is True
+    assert s.agent_dev_scope_bypass is True
     assert s.agent_provider == "hermes"
     assert s.agent_hermes_command == "custom-hermes"
     assert s.agent_hermes_wsl_distro == "CustomUbuntu"

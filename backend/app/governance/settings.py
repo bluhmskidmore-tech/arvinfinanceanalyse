@@ -93,6 +93,7 @@ class Settings(BaseSettings):
 
     environment: str = "development"
     agent_enabled: bool = False
+    agent_dev_scope_bypass: bool = False
     agent_provider: str = "local"
     agent_hermes_command: str = "wsl.exe"
     agent_hermes_wsl_distro: str = "HermesUbuntu"
