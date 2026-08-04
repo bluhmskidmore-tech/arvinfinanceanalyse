@@ -29,6 +29,19 @@ def test_docker_compose_bootstraps_backend_dependencies_and_uses_container_hosts
     assert "MOSS_VITE_API_PROXY: http://api:8000" in text
 
 
+def test_docker_compose_bootstraps_frontend_dependencies_in_a_container_volume():
+    compose_path = ROOT / "docker-compose.yml"
+    text = compose_path.read_text(encoding="utf-8")
+    frontend_section = text.split("\n  frontend:\n", maxsplit=1)[1].split(
+        "\nvolumes:\n", maxsplit=1
+    )[0]
+
+    assert "npm ci --legacy-peer-deps" in frontend_section
+    assert "node_modules/.bin/vite" in frontend_section
+    assert "- frontend_node_modules:/workspace/frontend/node_modules" in frontend_section
+    assert "\nvolumes:\n  frontend_node_modules:\n" in text
+
+
 def test_docker_compose_worker_has_one_migration_free_duckdb_writer_process():
     compose_path = ROOT / "docker-compose.yml"
     text = compose_path.read_text(encoding="utf-8")
@@ -36,7 +49,9 @@ def test_docker_compose_worker_has_one_migration_free_duckdb_writer_process():
     worker_section = text.split("\n  worker:\n", maxsplit=1)[1].split("\n  postgres:\n", maxsplit=1)[0]
 
     assert "healthcheck:" in api_section
-    assert "http://127.0.0.1:8000/health" in api_section
+    assert "http://127.0.0.1:8000/health/ready" in api_section
+    assert "import json,sys,urllib.request" in api_section
+    assert "sys.exit(0 if payload.get('status') == 'ok' else 1)" in api_section
     assert "--processes 1" in worker_section
     assert "MOSS_SKIP_STARTUP_STORAGE_MIGRATIONS: \"1\"" in worker_section
     assert "api:\n        condition: service_healthy" in worker_section

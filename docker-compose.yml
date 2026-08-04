@@ -19,7 +19,7 @@ services:
       - redis
       - minio
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).read()"]
+      test: ["CMD", "python", "-c", "import json,sys,urllib.request; payload=json.load(urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=2)); sys.exit(0 if payload.get('status') == 'ok' else 1)"]
       interval: 5s
       timeout: 3s
       retries: 12
@@ -78,12 +78,21 @@ services:
   frontend:
     image: node:22-alpine
     working_dir: /workspace/frontend
-    command: sh -c "if [ -f package.json ]; then npm run dev -- --host 0.0.0.0 --port 5173; else sleep infinity; fi"
+    command: >-
+      sh -c "if [ ! -x node_modules/.bin/vite ] ||
+      ! cmp package-lock.json node_modules/.moss-package-lock.json >/dev/null 2>&1;
+      then npm ci --legacy-peer-deps --include=optional &&
+      cp package-lock.json node_modules/.moss-package-lock.json;
+      fi && npm run dev -- --host 0.0.0.0 --port 5173"
     volumes:
       - ./:/workspace
+      - frontend_node_modules:/workspace/frontend/node_modules
     environment:
       MOSS_VITE_API_PROXY: http://api:8000
     ports:
       - "127.0.0.1:${MOSS_FRONTEND_PORT:-5173}:5173"
     depends_on:
       - api
+
+volumes:
+  frontend_node_modules:
