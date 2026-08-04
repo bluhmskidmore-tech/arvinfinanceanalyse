@@ -665,7 +665,7 @@ def test_api_returns_envelope(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
-def test_api_recomputes_asset_macaulay_duration_from_percent_rates(tmp_path, monkeypatch):
+def test_api_prefers_materialized_asset_macaulay_duration(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
     get_settings.cache_clear()
@@ -674,11 +674,6 @@ def test_api_recomputes_asset_macaulay_duration_from_percent_rates(tmp_path, mon
         "backend.app.services.cashflow_projection_service",
         "backend/app/services/cashflow_projection_service.py",
     )
-    bond_duration_mod = load_module(
-        "backend.app.core_finance.bond_duration",
-        "backend/app/core_finance/bond_duration.py",
-    )
-
     def fake_fetch_zqtz_rows(self, *, report_date, position_scope="all", currency_basis="CNY"):
         assert report_date == "2026-01-01"
         return [
@@ -715,8 +710,8 @@ def test_api_recomputes_asset_macaulay_duration_from_percent_rates(tmp_path, mon
                 "cost_center": "C1",
                 "currency_code": "CNY",
                 "maturity_date": date(2031, 1, 1),
-                "coupon_rate": Decimal("3.0"),
-                "ytm": Decimal("3.5"),
+                "coupon_rate": Decimal("0.03"),
+                "ytm": Decimal("0.035"),
                 "macaulay_duration": Decimal("1.25"),
             }
         ]
@@ -753,13 +748,99 @@ def test_api_recomputes_asset_macaulay_duration_from_percent_rates(tmp_path, mon
 
     assert response.status_code == 200
     payload = response.json()
+    assert Decimal(str(payload["result"]["asset_duration"]["raw"])) == Decimal("1.25")
+
+    get_settings.cache_clear()
+
+
+def test_duration_fallback_uses_decimal_rates_and_semiannual_frequency():
+    service_mod = load_module(
+        "backend.app.services.cashflow_projection_service",
+        "backend/app/services/cashflow_projection_service.py",
+    )
+    bond_duration_mod = load_module(
+        "backend.app.core_finance.bond_duration",
+        "backend/app/core_finance/bond_duration.py",
+    )
+    row = {
+        "report_date": date(2026, 1, 1),
+        "maturity_date": date(2031, 1, 1),
+        "instrument_code": "BOND-SEMI-001",
+        "coupon_rate": Decimal("0.03"),
+        "ytm": Decimal("0.035"),
+        "interest_mode": "semi-annual",
+        "macaulay_duration": None,
+    }
+
     expected = bond_duration_mod.estimate_duration(
         date(2031, 1, 1),
         date(2026, 1, 1),
         coupon_rate=Decimal("0.03"),
         ytm=Decimal("0.035"),
-        bond_code="BOND-001",
+        bond_code="BOND-SEMI-001",
+        coupon_frequency=2,
     )
-    assert Decimal(str(payload["result"]["asset_duration"]["raw"])) == expected
 
-    get_settings.cache_clear()
+    assert service_mod._recompute_macaulay_duration(row) == expected
+
+
+def test_cashflow_quality_discloses_non_preceding_bullet_value_dates():
+    service_mod = load_module('backend.app.services.cashflow_projection_service', 'backend/app/services/cashflow_projection_service.py')
+    maturity = date(2027, 1, 1)
+    rows = [
+        {'interest_mode': 'bullet', 'market_value': Decimal('50'), 'value_date': maturity, 'maturity_date': maturity},
+        {'interest_mode': 'bullet', 'market_value': Decimal('70'), 'value_date': date(2027, 1, 2), 'maturity_date': maturity},
+    ]
+    disclosures = service_mod._cashflow_projection_quality_disclosures(rows)
+    assert disclosures['bullet_value_date_fallback_count'] == 2
+    assert disclosures['bullet_value_date_fallback_market_value'] == Decimal('120')
+    assert any('one-year interest proxy' in warning for warning in disclosures['warnings'])
+
+
+def test_cashflow_quality_disclosures_cover_frequency_floating_and_bullet_proxies():
+    service_mod = load_module(
+        "backend.app.services.cashflow_projection_service",
+        "backend/app/services/cashflow_projection_service.py",
+    )
+    rows = [
+        {"interest_mode": "fixed", "market_value": Decimal("90"), "maturity_date": date(2027, 1, 1)},
+        {"interest_mode": "floating", "market_value": Decimal("180"), "maturity_date": date(2027, 1, 1)},
+        {"interest_mode": "fixed", "interest_payment_frequency": "semi-annual", "market_value": Decimal("70"), "maturity_date": date(2027, 1, 1)},
+        {"interest_mode": "bullet", "market_value": Decimal("50"), "value_date": None, "maturity_date": date(2027, 1, 1)},
+    ]
+
+    disclosures = service_mod._cashflow_projection_quality_disclosures(rows)
+
+    assert disclosures["payment_frequency_fallback_count"] == 2
+    assert disclosures["payment_frequency_fallback_market_value"] == Decimal("270")
+    assert disclosures["floating_rate_proxy_count"] == 1
+    assert disclosures["floating_rate_proxy_market_value"] == Decimal("180")
+    assert disclosures["bullet_value_date_fallback_count"] == 1
+    assert disclosures["bullet_value_date_fallback_market_value"] == Decimal("50")
+
+
+def test_attach_duration_treats_materialized_zero_as_valid():
+    service_mod = load_module(
+        "backend.app.services.cashflow_projection_service",
+        "backend/app/services/cashflow_projection_service.py",
+    )
+    key_fields = {
+        "instrument_code": "MATURED-BOND",
+        "portfolio_name": "P1",
+        "cost_center": "C1",
+        "currency_code": "CNY",
+    }
+    zqtz_row = {**key_fields, "position_scope": "asset"}
+    analytics_row = {
+        **key_fields,
+        "macaulay_duration": Decimal("0"),
+        "report_date": date(2026, 1, 1),
+        "maturity_date": date(2031, 1, 1),
+        "coupon_rate": Decimal("0.03"),
+        "ytm": Decimal("0.035"),
+        "interest_mode": "annual",
+    }
+
+    assert service_mod._attach_macaulay_duration([zqtz_row], [analytics_row])[0][
+        "macaulay_duration"
+    ] == Decimal("0")

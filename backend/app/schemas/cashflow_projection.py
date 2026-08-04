@@ -105,6 +105,18 @@ class CashflowProjectionResponse(BaseModel):
     reinvestment_risk_12m: Numeric
     monthly_buckets: list[CashflowMonthlyBucketPayload]
     top_maturing_assets_12m: list[CashflowMaturingAssetPayload]
+    floating_rate_proxy_count: int = 0
+    floating_rate_proxy_market_value: Numeric = Field(
+        default_factory=lambda: numeric_from_raw(raw=0.0, unit="yuan", sign_aware=False)
+    )
+    payment_frequency_fallback_count: int = 0
+    payment_frequency_fallback_market_value: Numeric = Field(
+        default_factory=lambda: numeric_from_raw(raw=0.0, unit="yuan", sign_aware=False)
+    )
+    bullet_value_date_fallback_count: int = 0
+    bullet_value_date_fallback_market_value: Numeric = Field(
+        default_factory=lambda: numeric_from_raw(raw=0.0, unit="yuan", sign_aware=False)
+    )
     warnings: list[str] = Field(default_factory=list)
     computed_at: str
 
@@ -118,6 +130,9 @@ class CashflowProjectionResponse(BaseModel):
         "equity_duration": ("years", True),
         "rate_sensitivity_1bp": ("yuan", True),
         "reinvestment_risk_12m": ("pct", False, "ratio"),
+        "floating_rate_proxy_market_value": ("yuan", False),
+        "payment_frequency_fallback_market_value": ("yuan", False),
+        "bullet_value_date_fallback_market_value": ("yuan", False),
     }
 
     @model_validator(mode="before")
