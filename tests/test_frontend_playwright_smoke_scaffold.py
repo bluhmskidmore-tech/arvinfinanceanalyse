@@ -139,4 +139,29 @@ def test_ci_runs_frontend_accessibility_smoke_with_local_server():
 
     assert "VITE_DATA_SOURCE=real npm run build" in workflow
     assert "MOSS_PLAYWRIGHT_USE_WEB_SERVER: \"1\"" in workflow
+    # The density spec targets the retired stock-analysis DOM and must not be a CI gate.
+    assert "stock-analysis-layout-density.spec.mjs" not in workflow
     assert "npm run test:a11y-smoke" in workflow
+
+
+def test_retired_stock_analysis_layout_density_entrypoint_stays_removed():
+    launcher_path = (
+        ROOT / "frontend" / "scripts" / "run-stock-analysis-layout-guard.mjs"
+    )
+    retired_spec_path = (
+        ROOT
+        / "frontend"
+        / "tests"
+        / "playwright"
+        / "stock-analysis-layout-density.spec.mjs"
+    )
+    package_text = (ROOT / "frontend" / "package.json").read_text(encoding="utf-8")
+    workflow_text = (
+        ROOT / ".github" / "workflows" / "ci.yml"
+    ).read_text(encoding="utf-8")
+
+    assert not launcher_path.exists(), f"Retired launcher was restored: {launcher_path}"
+    assert not retired_spec_path.exists(), f"Retired spec was restored: {retired_spec_path}"
+    assert "run-stock-analysis-layout-guard.mjs" not in package_text
+    assert "run-stock-analysis-layout-guard.mjs" not in workflow_text
+    assert "stock-analysis-layout-density.spec.mjs" not in package_text
