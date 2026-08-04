@@ -8,6 +8,7 @@ import {
   workbenchNavigation,
   type WorkbenchSection,
 } from "../mocks/navigation";
+import { AgentWorkbenchRoute } from "./AgentWorkbenchRoute";
 import { WorkbenchRouteFallback } from "./WorkbenchRouteFallback";
 import { WorkbenchNotFoundPage, WorkbenchRouteErrorBoundary } from "./WorkbenchRouteStatusPages";
 
@@ -116,7 +117,6 @@ const DecisionItemsPage = lazy(
   () => import("../features/decision-items/pages/DecisionItemsPage"),
 );
 const NewsEventsPage = lazy(() => import("../features/news-events/NewsEventsPage"));
-const AgentWorkbenchPage = lazy(() => import("../features/agent/AgentWorkbenchPage"));
 
 function routeElement(element: ReactNode) {
   return (
@@ -154,7 +154,7 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       };
     }
 
-    if (section.readiness !== "live") {
+    if (section.readiness !== "live" && section.path !== "/agent") {
       return placeholderRoute(section);
     }
 
@@ -371,7 +371,7 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
     if (section.path === "/agent") {
       return {
         path: section.path.slice(1),
-        element: themedRouteElement(<AgentWorkbenchPage />),
+        element: themedRouteElement(<AgentWorkbenchRoute />),
       };
     }
 

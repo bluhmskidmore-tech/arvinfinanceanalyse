@@ -267,12 +267,4 @@ export const liveRouteReadinessContracts = {
       "src/test/routes.test.tsx",
     ],
   },
-  "/agent": {
-    sourceFiles: ["src/features/agent/AgentWorkbenchPage.tsx"],
-    sourceAnchors: ["agent-workbench-shell", "agent-conversation-bottom"],
-    verificationFiles: [
-      "src/test/AgentPlaceholderPage.test.tsx",
-      "src/test/AgentWorkbenchPage.test.tsx",
-    ],
-  },
 } satisfies Record<string, LiveRouteReadinessContract>;

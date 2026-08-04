@@ -31,6 +31,11 @@ import { MARKET_HOME_CRISIS_SCORE_HISTORY_LIMIT } from "../features/workbench/mo
 import { refetchAfterMarketRefresh } from "../features/workbench/module-home/marketHomeRefresh";
 import { formatRawAsNumeric } from "../utils/format";
 
+vi.mock("../mocks/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../mocks/navigation")>()),
+  isAgentFrontendEnabled: () => true,
+}));
+
 vi.mock("../lib/echarts", () => ({
   default: ({
     option,

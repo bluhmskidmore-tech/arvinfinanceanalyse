@@ -19,6 +19,12 @@ import type {
   LivermoreStrategyPayload,
   StockAnalysisWorkbenchPayload,
 } from "../api/contracts";
+
+vi.mock("../mocks/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../mocks/navigation")>()),
+  isAgentFrontendEnabled: () => true,
+}));
+
 import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
 import { StockAnalysisCandidateComparison } from "../features/stock-analysis/components/StockAnalysisCandidateComparison";
 import { StockAnalysisCandidateLedgerTable } from "../features/stock-analysis/components/StockAnalysisCandidateLedgerTable";

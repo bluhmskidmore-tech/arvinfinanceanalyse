@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
 import { apiQueryKeys } from "../../../api/queryKeys";
+import { isAgentFrontendEnabled } from "../../../mocks/navigation";
 import {
   formatYieldCurveDateSummary,
   summarizeYieldCurveDates,
@@ -793,15 +794,17 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
               >
                 {isFetching ? "刷新中…" : "刷新"}
               </button>
-              <button
-                type="button"
-                className={`${dh.dhRefreshBtn} ${styles.roAgentEntryBtn}`}
-                data-testid="risk-overview-agent-open"
-                onClick={openAgentPanel}
-                aria-label="打开复核助手"
-              >
-                复核助手
-              </button>
+              {isAgentFrontendEnabled() ? (
+                <button
+                  type="button"
+                  className={`${dh.dhRefreshBtn} ${styles.roAgentEntryBtn}`}
+                  data-testid="risk-overview-agent-open"
+                  onClick={openAgentPanel}
+                  aria-label="打开复核助手"
+                >
+                  复核助手
+                </button>
+              ) : null}
             </span>
           </div>
 

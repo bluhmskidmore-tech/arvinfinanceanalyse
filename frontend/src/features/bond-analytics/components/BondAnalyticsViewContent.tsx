@@ -7,6 +7,7 @@ import type { ApiEnvelope } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
 import { runPollingTask } from "../../../app/jobs/polling";
 import { mapResearchCalendarEventToCalendarItem } from "../../../lib/researchCalendarToCalendarItem";
+import { isAgentFrontendEnabled } from "../../../mocks/navigation";
 import type {
   ActionAttributionResponse,
   BondAnalyticsAccountingClassFilter,
@@ -351,15 +352,17 @@ export function BondAnalyticsViewContent() {
           >
             中台配置
           </Link>
-          <button
-            type="button"
-            data-testid="bond-analysis-agent-open"
-            onClick={openAgentPanel}
-            aria-label="打开复核助手"
-            className="dashboard-home-action-button dashboard-home-action-button--secondary"
-          >
-            复核助手
-          </button>
+          {isAgentFrontendEnabled() ? (
+            <button
+              type="button"
+              data-testid="bond-analysis-agent-open"
+              onClick={openAgentPanel}
+              aria-label="打开复核助手"
+              className="dashboard-home-action-button dashboard-home-action-button--secondary"
+            >
+              复核助手
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => void handleBondAnalyticsRefresh()}

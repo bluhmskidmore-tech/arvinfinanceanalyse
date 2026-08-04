@@ -11,6 +11,11 @@ import type { Numeric, ResultMeta } from "../api/contracts";
 import type { ActionAttributionResponse } from "../features/bond-analytics/types";
 import { formatRawAsNumeric } from "../utils/format";
 
+vi.mock("../mocks/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../mocks/navigation")>()),
+  isAgentFrontendEnabled: () => true,
+}));
+
 let latestOverviewProps: Record<string, unknown> | null = null;
 let latestDetailProps: Record<string, unknown> | null = null;
 let detailMountSeq = 0;

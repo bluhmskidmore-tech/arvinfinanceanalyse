@@ -6,6 +6,11 @@ vi.mock("../lib/echarts", () => ({
   default: () => <div data-testid="dashboard-echarts-stub" />,
 }));
 
+vi.mock("../mocks/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../mocks/navigation")>()),
+  isAgentFrontendEnabled: () => true,
+}));
+
 vi.mock("../features/agent/AgentPanel", () => ({
   AgentPanel: function MockAgentPanel({
     pageId,

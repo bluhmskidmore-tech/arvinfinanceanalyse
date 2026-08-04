@@ -1,6 +1,7 @@
 import { ClockCircleOutlined, ReloadOutlined, SafetyCertificateOutlined, SearchOutlined } from "@ant-design/icons";
 import { Button as AntButton } from "antd";
 
+import { isAgentFrontendEnabled } from "../../../mocks/navigation";
 import { formatGeneratedAtLabel } from "../lib/stockAnalysisPageCopy";
 import { SA_SHELL_NUM } from "../lib/stockAnalysisPageChrome";
 
@@ -113,16 +114,18 @@ export function StockAnalysisWorkbenchActions({
       >
         <span>完整证据：口径待确认</span>
       </span>
-      <AntButton
-        type="text"
-        className="stock-analysis-page__agent-entry stock-analysis-page__dh-topbar-btn stock-analysis-page__agent-entry--quiet"
-        data-testid="stock-analysis-agent-open"
-        icon={<SafetyCertificateOutlined />}
-        onClick={onOpenAgentDrawer}
-        aria-expanded={agentDrawerOpen}
-      >
-        复核助手
-      </AntButton>
+      {isAgentFrontendEnabled() ? (
+        <AntButton
+          type="text"
+          className="stock-analysis-page__agent-entry stock-analysis-page__dh-topbar-btn stock-analysis-page__agent-entry--quiet"
+          data-testid="stock-analysis-agent-open"
+          icon={<SafetyCertificateOutlined />}
+          onClick={onOpenAgentDrawer}
+          aria-expanded={agentDrawerOpen}
+        >
+          复核助手
+        </AntButton>
+      ) : null}
       <AntButton
         data-testid="stock-analysis-refresh"
         className="stock-analysis-page__dh-topbar-btn"

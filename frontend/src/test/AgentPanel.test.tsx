@@ -6,6 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiClientProvider } from "../api/clientContext";
 import { AgentPanel } from "../features/agent/AgentPanel";
 
+vi.mock("../mocks/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../mocks/navigation")>()),
+  isAgentFrontendEnabled: () => true,
+}));
+
 const AGENT_PAGE_CONTEXT_CHANGE_LABEL = "页面上下文已更新";
 const AGENT_QUESTION_INPUT_LABEL = "向 Agent 提问";
 const REPO_PATH_LABEL = "GitNexus 仓库路径";

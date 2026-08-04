@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   findWorkbenchSectionByPath,
+  getVisibleWorkbenchNavigation,
+  isAgentFrontendEnabled,
   primaryWorkbenchNavigationGroups,
   primaryWorkbenchNavigation,
   resolveWorkbenchPathAlias,
@@ -18,16 +20,43 @@ describe("workbench navigation mocks", () => {
     expect(new Set(paths).size).toBe(paths.length);
   });
 
-  it("shows the live MOSS Chat route in primary navigation", () => {
+  it("keeps MOSS Chat hidden as a controlled direct-route pilot", () => {
     const agent = workbenchNavigation.find((s) => s.key === "agent");
     expect(agent).toBeDefined();
     expect(agent?.label).toBe("MOSS Chat");
-    expect(agent?.readiness).toBe("live");
-    expect(agent?.readinessLabel).toBe("可用");
-    expect(agent?.navigationVisibility).toBeUndefined();
+    expect(agent?.readiness).toBe("gated");
+    expect(agent?.readinessLabel).toBe("受控试用");
+    expect(agent?.navigationVisibility).toBe("hidden");
     expect(agent?.path).toBe("/agent");
-    expect(primaryWorkbenchNavigation.some((s) => s.key === "agent")).toBe(true);
+    expect(agent?.readinessNote).toContain("开发态显式开启前端开关");
+    expect(agent?.readinessNote).toContain("默认与生产环境保持关闭");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "agent")).toBe(false);
     expect(secondaryWorkbenchNavigation.some((s) => s.key === "agent")).toBe(false);
+    expect(isAgentFrontendEnabled()).toBe(false);
+  });
+
+  it("exposes MOSS Chat only with the explicit Vite development opt-in", () => {
+    const enabledEnvironment = {
+      DEV: true,
+      VITE_MOSS_AGENT_FRONTEND_ENABLED: "true",
+    };
+
+    expect(isAgentFrontendEnabled(enabledEnvironment)).toBe(true);
+    expect(getVisibleWorkbenchNavigation(enabledEnvironment).some((s) => s.key === "agent")).toBe(
+      true,
+    );
+    expect(
+      isAgentFrontendEnabled({
+        DEV: false,
+        VITE_MOSS_AGENT_FRONTEND_ENABLED: "true",
+      }),
+    ).toBe(false);
+    expect(
+      isAgentFrontendEnabled({
+        DEV: true,
+        VITE_MOSS_AGENT_FRONTEND_ENABLED: undefined,
+      }),
+    ).toBe(false);
   });
 
   it("excludes hidden entries from primaryWorkbenchNavigation", () => {

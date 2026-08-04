@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
 import { Outlet } from "react-router-dom";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { createApiClient } from "../api/client";
 import { primaryWorkbenchNavigation } from "../mocks/navigation";
@@ -281,6 +281,10 @@ function ThrowingRoute(): ReactElement {
 
 describe("RouteRegistry", () => {
   const mockClient = createApiClient({ mode: "mock" });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
 
   it("exposes the current visible primary workbench entries", () => {
     expect(workbenchSections).toHaveLength(primaryWorkbenchNavigation.length);
@@ -617,10 +621,33 @@ describe("RouteRegistry", () => {
     expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
   });
 
-  it("routes the hidden /agent path to the agent workbench module", async () => {
+  it("renders the existing 404 status instead of the Agent form when the route gate is closed", async () => {
     renderWorkbenchApp(["/agent"], { client: mockClient });
 
-    expect(await screen.findByLabelText(AGENT_QUESTION_INPUT_LABEL)).toBeInTheDocument();
-    expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("workbench-not-found-page")).toHaveTextContent("/agent");
+    expect(screen.queryByTestId("agent-workbench-page")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(AGENT_QUESTION_INPUT_LABEL)).not.toBeInTheDocument();
+    expect(screen.queryByText("MOSS Chat")).not.toBeInTheDocument();
+  });
+
+  it("renders the Agent workbench only with the explicit development opt-in", async () => {
+    vi.stubEnv("VITE_MOSS_AGENT_FRONTEND_ENABLED", "true");
+
+    renderWorkbenchApp(["/agent"], { client: mockClient });
+
+    expect(await screen.findByTestId("agent-workbench-page")).toBeInTheDocument();
+    expect(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL)).toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-not-found-page")).not.toBeInTheDocument();
+  });
+
+  it("keeps the Agent workbench closed in production even when the flag is set", async () => {
+    vi.stubEnv("DEV", false);
+    vi.stubEnv("VITE_MOSS_AGENT_FRONTEND_ENABLED", "true");
+
+    renderWorkbenchApp(["/agent"], { client: mockClient });
+
+    expect(await screen.findByTestId("workbench-not-found-page")).toHaveTextContent("/agent");
+    expect(screen.queryByTestId("agent-workbench-page")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(AGENT_QUESTION_INPUT_LABEL)).not.toBeInTheDocument();
   });
 });

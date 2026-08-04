@@ -316,32 +316,24 @@ describe("WorkbenchShell", () => {
     );
   });
 
-  it("shows MOSS Chat in visible shell navigation", async () => {
+  it("hides the unavailable Agent shortcut from shell navigation", async () => {
     renderShellAt("/");
 
-    const agentNav = await screen.findByTestId("workbench-agent-nav");
-    const agentLink = within(agentNav).getByRole("link", { name: /MOSS Chat/ });
-    expect(agentLink).toHaveAttribute("href", "/agent");
-    expect(agentNav).toHaveTextContent("对话");
-    expect(agentLink).toHaveTextContent("可用");
-    expect(agentNav).toHaveTextContent("直接提问");
+    await screen.findByTestId("workbench-group-nav");
+    expect(screen.queryByTestId("workbench-agent-nav")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /MOSS Chat/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /智能体对话/ })).not.toBeInTheDocument();
   });
 
-  it("uses stock-analysis shell labels without exposing Agent wording in the rail", async () => {
+  it("uses stock-analysis shell labels without rendering the unavailable Agent shortcut", async () => {
     renderShellAt("/stock-analysis");
 
     expect(await screen.findByText("stock-analysis body")).toBeInTheDocument();
     const layoutRoot = screen.getByTestId("workbench-group-nav").closest(".workbench-shell-grid--stock-analysis");
     expect(layoutRoot).not.toBeNull();
 
-    const agentNav = screen.getByTestId("workbench-agent-nav");
-    const agentLink = within(agentNav).getByRole("link", { name: /复核助手/ });
-    expect(agentLink).toHaveAttribute("href", "/agent");
-    expect(agentNav).toHaveTextContent("复核");
-    expect(agentNav).toHaveTextContent("跨页证据");
-    expect(agentNav).not.toHaveTextContent("Agent");
-    expect(agentNav).not.toHaveTextContent("Hermes");
+    expect(screen.queryByTestId("workbench-agent-nav")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /复核助手/ })).not.toBeInTheDocument();
   });
 
   it("shows current-group section links separately from the workspace groups", async () => {
@@ -351,7 +343,7 @@ describe("WorkbenchShell", () => {
     const hrefs = within(subnav)
       .getAllByRole("link")
       .map((link) => link.getAttribute("href"));
-    expect(hrefs).toEqual(["/platform-config", "/reports", "/cube-query", "/agent"]);
+    expect(hrefs).toEqual(["/platform-config", "/reports", "/cube-query"]);
     expect(hrefs).toContain("/reports");
   });
 
@@ -427,8 +419,7 @@ describe("WorkbenchShell", () => {
       "true",
     );
     expect(links.every((link) => link.textContent?.includes("首页"))).toBe(true);
-    expect(within(screen.getByTestId("workbench-agent-nav")).getByRole("link", { name: /MOSS Chat/ }))
-      .toHaveTextContent("可用");
+    expect(screen.queryByTestId("workbench-agent-nav")).not.toBeInTheDocument();
     expect(within(screen.getByTestId("workbench-support-nav")).getAllByRole("link").map(
       (link) => link.textContent,
     )).toEqual(["报表中心", "中台配置", "帮助文档"]);
@@ -890,17 +881,6 @@ describe("WorkbenchShell", () => {
     expect(await screen.findByText("shell body")).toBeInTheDocument();
     expect(screen.queryByText("Phase 1 Status")).not.toBeInTheDocument();
     expect(screen.queryByText("当前只突出可验证的真实读链路")).not.toBeInTheDocument();
-  });
-
-  it("keeps the /agent route reachable from the visible shell shortcuts", async () => {
-    renderShellAt("/agent");
-
-    expect(await screen.findByText("agent body")).toBeInTheDocument();
-    const agentNav = screen.getByTestId("workbench-agent-nav");
-    const agentLink = within(agentNav).getByRole("link", { name: /MOSS Chat/ });
-    expect(agentLink).toHaveAttribute("href", "/agent");
-    expect(agentLink).toHaveAttribute("data-active", "true");
-    expect(screen.queryByRole("button", { name: /智能体对话/ })).not.toBeInTheDocument();
   });
 
   it("lets /dashboard own the cockpit canvas without the group subnav", async () => {

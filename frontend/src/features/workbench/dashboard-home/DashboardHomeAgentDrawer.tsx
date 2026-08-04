@@ -2,6 +2,7 @@ import { lazy, Suspense } from "react";
 
 import { Button as AntButton, Drawer as AntDrawer } from "antd";
 
+import { isAgentFrontendEnabled } from "../../../mocks/navigation";
 import styles from "./dashboardHomeShell.module.css";
 
 const LazyAgentPanel = lazy(() =>
@@ -25,6 +26,10 @@ export function DashboardHomeAgentDrawer({
   currentFilters,
   onClose,
 }: DashboardHomeAgentDrawerProps) {
+  if (!isAgentFrontendEnabled()) {
+    return null;
+  }
+
   return (
     <AntDrawer
       placement="left"

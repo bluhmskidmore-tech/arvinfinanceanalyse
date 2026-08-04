@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 
 import type { AgentPageContext } from "../../api/contracts";
+import { isAgentFrontendEnabled } from "../../mocks/navigation";
 import { EmbeddedAgentCopilot } from "./AgentWorkbenchPage";
 
 import "./AgentPanel.css";
@@ -36,6 +37,10 @@ export function AgentPanel({
     }),
     [pageId, reportDate, currentFilters, defaultFilters, selectedRows, contextNote],
   );
+
+  if (!isAgentFrontendEnabled()) {
+    return null;
+  }
 
   return (
     <EmbeddedAgentCopilot

@@ -4,6 +4,7 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { LightIcon } from "../components/LightIcon";
 import {
   findWorkbenchSectionByPath,
+  isAgentFrontendEnabled,
   pathMatchesWorkbenchSection,
   primaryWorkbenchNavigationGroups,
   resolveWorkbenchGroupKey,
@@ -159,9 +160,20 @@ export function WorkbenchShell() {
   const location = useLocation();
   const pathnameResolved = resolveWorkbenchPathAlias(location.pathname);
   const searchParams = new URLSearchParams(location.search);
-  const matchedSection = findWorkbenchSectionByPath(location.pathname, workbenchNavigation);
+  const agentFrontendEnabled = isAgentFrontendEnabled();
+  const matchedSectionCandidate = findWorkbenchSectionByPath(
+    location.pathname,
+    workbenchNavigation,
+  );
+  const matchedSection =
+    matchedSectionCandidate?.key === "agent" && !agentFrontendEnabled
+      ? null
+      : matchedSectionCandidate;
   const currentSection = matchedSection ?? unknownWorkbenchSection;
   const currentRouteKnown = Boolean(matchedSection);
+  const showReadinessBanner =
+    currentSection.readiness !== "live" &&
+    (currentSection.key !== "agent" || agentFrontendEnabled);
   const isStockAnalysisShell = currentSection.key === "stock-analysis";
   const agentWorkbenchSection = visibleWorkbenchNavigation.find((section) => section.key === "agent");
   const agentWorkbenchActive = agentWorkbenchSection
@@ -795,7 +807,7 @@ export function WorkbenchShell() {
             </section>
           ) : null}
 
-          {currentSection.readiness !== "live" ? (
+          {showReadinessBanner ? (
             <section
               data-testid="workbench-readiness-banner"
               className="workbench-notice"

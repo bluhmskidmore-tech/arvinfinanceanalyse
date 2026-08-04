@@ -24,6 +24,7 @@ import type {
   StockAnalysisWorkbenchPayload,
 } from "../../../api/contracts";
 import { AnalysisGrid } from "../../../components/page/PagePrimitives";
+import { isAgentFrontendEnabled } from "../../../mocks/navigation";
 import {
   buildCandidateReviewQueue,
   buildClosedLoopSummary,
@@ -4943,38 +4944,40 @@ export default function StockAnalysisPage() {
             />
           </Suspense>
         ) : null}
-        <AntDrawer
-          placement="left"
-          width={560}
-          open={agentDrawerOpen}
-          onClose={() => setAgentDrawerOpen(false)}
-          className="stock-analysis-page__agent-drawer"
-          data-testid="stock-analysis-agent-drawer"
-          title="复核助手"
-          extra={
-            <AntButton
-              type="text"
-              onClick={() => setAgentDrawerOpen(false)}
-              aria-label="关闭抽屉"
-            >
-              关闭
-            </AntButton>
-          }
-        >
-          <div style={stockAnalysisPageCssVars} className="theme-dh-api stock-analysis-page__agent-drawer-body">
-            {agentDrawerOpen ? (
-              <Suspense fallback={<TextSkeleton className="w-full" />}>
-                <LazyAgentPanel
-                  pageId="stock-analysis"
-                  currentFilters={stockAnalysisAgentPageContext.current_filters}
-                  defaultFilters={{ research_domain: "stock" }}
-                  selectedRows={stockAnalysisAgentPageContext.selected_rows}
-                  contextNote={stockAnalysisAgentPageContext.context_note ?? null}
-                />
-              </Suspense>
-            ) : null}
-          </div>
-        </AntDrawer>
+        {isAgentFrontendEnabled() ? (
+          <AntDrawer
+            placement="left"
+            width={560}
+            open={agentDrawerOpen}
+            onClose={() => setAgentDrawerOpen(false)}
+            className="stock-analysis-page__agent-drawer"
+            data-testid="stock-analysis-agent-drawer"
+            title="复核助手"
+            extra={
+              <AntButton
+                type="text"
+                onClick={() => setAgentDrawerOpen(false)}
+                aria-label="关闭抽屉"
+              >
+                关闭
+              </AntButton>
+            }
+          >
+            <div style={stockAnalysisPageCssVars} className="theme-dh-api stock-analysis-page__agent-drawer-body">
+              {agentDrawerOpen ? (
+                <Suspense fallback={<TextSkeleton className="w-full" />}>
+                  <LazyAgentPanel
+                    pageId="stock-analysis"
+                    currentFilters={stockAnalysisAgentPageContext.current_filters}
+                    defaultFilters={{ research_domain: "stock" }}
+                    selectedRows={stockAnalysisAgentPageContext.selected_rows}
+                    contextNote={stockAnalysisAgentPageContext.context_note ?? null}
+                  />
+                </Suspense>
+              ) : null}
+            </div>
+          </AntDrawer>
+        ) : null}
       </section>
     </MarketWorkbenchFrame>
   );

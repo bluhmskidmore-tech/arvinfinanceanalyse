@@ -570,9 +570,11 @@ export const workbenchNavigation: WorkbenchSection[] = [
     path: "/agent",
     icon: "agent",
     description: "像聊天一样提问，需要时再展开证据、运行细节和页面上下文。",
-    readiness: "live",
-    readinessLabel: "可用",
-    readinessNote: "通过 /api/agent/query 提供对话、证据问答和页面助手能力。",
+    readiness: "gated",
+    readinessLabel: "受控试用",
+    readinessNote:
+      "仅在开发态显式开启前端开关时开放；默认与生产环境保持关闭，后端权限和开关继续 fail closed。",
+    navigationVisibility: "hidden",
   },
 ];
 
@@ -595,9 +597,28 @@ export function resolveWorkbenchGroupKey(section: WorkbenchSection): WorkbenchGr
   return workbenchSectionGroups[section.key] ?? "overview";
 }
 
-export const visibleWorkbenchNavigation = workbenchNavigation.filter(
-  (section) => section.navigationVisibility !== "hidden",
-);
+type AgentFrontendEnvironment = Pick<ImportMetaEnv, "DEV" | "VITE_MOSS_AGENT_FRONTEND_ENABLED">;
+
+export function isAgentFrontendEnabled(
+  environment: AgentFrontendEnvironment = import.meta.env,
+) {
+  return (
+    environment.DEV === true &&
+    environment.VITE_MOSS_AGENT_FRONTEND_ENABLED === "true"
+  );
+}
+
+export function getVisibleWorkbenchNavigation(
+  environment: AgentFrontendEnvironment = import.meta.env,
+) {
+  return workbenchNavigation.filter(
+    (section) =>
+      section.navigationVisibility !== "hidden" ||
+      (section.key === "agent" && isAgentFrontendEnabled(environment)),
+  );
+}
+
+export const visibleWorkbenchNavigation = getVisibleWorkbenchNavigation();
 
 export const primaryWorkbenchNavigation = visibleWorkbenchNavigation.filter(
   (section) => section.readiness === "live",

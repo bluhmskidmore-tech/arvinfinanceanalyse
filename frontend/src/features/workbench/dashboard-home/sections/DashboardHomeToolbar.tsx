@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 
 import { LightIcon } from "../../../../components/LightIcon";
+import { isAgentFrontendEnabled } from "../../../../mocks/navigation";
 import { HomeSearchBox } from "../HomeSearchBox";
 import type {
   HomeDecisionAction,
@@ -164,7 +165,7 @@ export function DashboardHomeToolbar({
           <LightIcon name="reload" />
           <span className={styles.dhRefreshLabel}>{refreshLabel}</span>
         </button>
-        {onOpenAgentPanel ? (
+        {onOpenAgentPanel && isAgentFrontendEnabled() ? (
           <button
             type="button"
             className={styles.dhAgentEntryBtn}
