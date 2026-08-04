@@ -7,6 +7,7 @@ import type {
   PnlByBusinessMonthlyBucket,
   PnlByBusinessRow,
   PnlByBusinessYtdItem,
+  PnlByBusinessYtdSummary,
 } from "../../api/contracts";
 
 import { buildPnlByBusinessSheets } from "./pnlByBusinessExport";
@@ -30,6 +31,26 @@ const minimalYtdRow = (patch: Partial<PnlByBusinessYtdItem> = {}): PnlByBusiness
   balance_yield_pct: null,
   proportion: "0.1",
   assets_count: 3,
+  ...patch,
+});
+
+const minimalYtdSummary = (
+  patch: Partial<PnlByBusinessYtdSummary> = {},
+): PnlByBusinessYtdSummary => ({
+  interest_income: "910000",
+  fair_value_change: "820000",
+  capital_gain: "730000",
+  manual_adjustment: "640000",
+  total_pnl: "550000",
+  avg_balance: "4600000000",
+  current_balance: "3700000000",
+  annualized_yield_pct: "12.34",
+  ftp_rate_pct: "1.6",
+  ftp_cost: "280000",
+  ftp_net_pnl: "190000",
+  ftp_net_annualized_yield_pct: "4.56",
+  proportion: "1",
+  assets_count: 91,
   ...patch,
 });
 
@@ -201,6 +222,66 @@ const minimalUnallocatedItems = [
 ];
 
 describe("buildPnlByBusinessSheets", () => {
+  it("uses the backend YTD summary for the parent total instead of summing child rows", () => {
+    const sheets = buildPnlByBusinessSheets({
+      viewMode: "ytd",
+      reportDate: "2025-12-31",
+      year: 2025,
+      periodStart: "2025-01-01",
+      periodEnd: "2025-12-31",
+      periodLabel: "2025 YTD",
+      ytdRows: [minimalYtdRow()],
+      ytdSummary: minimalYtdSummary(),
+      adbAvgByBusinessType: new Map(),
+      formalRows: [],
+      months: [],
+      adjustments: [],
+      adjustmentEvents: [],
+      bondBucketRows: [],
+      bondBucketMonthlyRows: [],
+      negativeFtpRows: [],
+      analysisRows: [],
+    });
+
+    const totalRow = sheets[1]?.data.at(-1);
+    expect(totalRow?.slice(1)).toEqual([
+      46,
+      91,
+      82,
+      73,
+      64,
+      55,
+      12.34,
+      19,
+      4.56,
+      1,
+      91,
+    ]);
+  });
+
+  it("does not fabricate a YTD parent total when the backend summary is missing", () => {
+    const sheets = buildPnlByBusinessSheets({
+      viewMode: "ytd",
+      reportDate: "2025-12-31",
+      year: 2025,
+      periodStart: "2025-01-01",
+      periodEnd: "2025-12-31",
+      periodLabel: "2025 YTD",
+      ytdRows: [minimalYtdRow()],
+      adbAvgByBusinessType: new Map(),
+      formalRows: [],
+      months: [],
+      adjustments: [],
+      adjustmentEvents: [],
+      bondBucketRows: [],
+      bondBucketMonthlyRows: [],
+      negativeFtpRows: [],
+      analysisRows: [],
+    });
+
+    expect(sheets[1]?.data).toHaveLength(2);
+  });
+
   it("builds monthly report sheets without YTD-only analysis tabs", () => {
     const sheets = buildPnlByBusinessSheets({
       viewMode: "monthly",
@@ -364,6 +445,13 @@ describe("buildPnlByBusinessSheets", () => {
           ftp_net_annualized_yield_pct: null,
         }),
       ],
+      ytdSummary: minimalYtdSummary({
+        avg_balance: "0",
+        annualized_yield_pct: null,
+        ftp_cost: null,
+        ftp_net_pnl: null,
+        ftp_net_annualized_yield_pct: null,
+      }),
       adbAvgByBusinessType: new Map([["政策性金融债", 0]]),
       formalRows: [],
       months: [],

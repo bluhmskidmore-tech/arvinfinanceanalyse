@@ -2600,6 +2600,7 @@ export default function PnlByBusinessPage() {
         periodEnd: ytdResult?.period_end_date,
         periodLabel: ytdResult?.period_label,
         ytdRows: viewMode === "ytd" && businessQuery.isSuccess ? ytdRows : [],
+        ytdSummary: viewMode === "ytd" && businessQuery.isSuccess ? ytdResult?.summary : undefined,
         unallocatedBreakdown:
           viewMode === "ytd" && businessQuery.isSuccess ? ytdResult?.unallocated_breakdown ?? [] : [],
         unallocatedItems:

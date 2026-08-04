@@ -6,6 +6,7 @@ import type {
   PnlByBusinessMonthlyItem,
   PnlByBusinessRow,
   PnlByBusinessYtdItem,
+  PnlByBusinessYtdSummary,
   PnlByBusinessManualAdjustmentPayload,
   PnlByBusinessAnalysisRow,
   PnlByBusinessAnalysisDimension,
@@ -86,6 +87,7 @@ export type PnlByBusinessExcelExportArgs = {
   periodLabel?: string | null;
   /** YTD 主表（年累计视图） */
   ytdRows: PnlByBusinessYtdItem[];
+  ytdSummary?: PnlByBusinessYtdSummary;
   unallocatedBreakdown?: PnlByBusinessYtdUnallocatedBreakdownRow[];
   unallocatedItems?: PnlByBusinessYtdUnallocatedItem[];
   adbAvgByBusinessType: Map<string, number>;
@@ -116,6 +118,7 @@ function appendSheet(sheets: PnlByBusinessExportSheet[], name: string, aoa: Shee
 
 function buildYtdMainSheet(
   rows: PnlByBusinessYtdItem[],
+  summary: PnlByBusinessYtdSummary | undefined,
   _adbMap: Map<string, number>,
   _ytdCalendarDays: number | null,
 ): SheetAoA {
@@ -151,48 +154,20 @@ function buildYtdMainSheet(
       row.assets_count,
     ]);
   }
-  if (parentRows.length > 0) {
-    let interest = 0;
-    let fairValue = 0;
-    let capital = 0;
-    let manual = 0;
-    let totalPnl = 0;
-    let assets = 0;
-    let adbSum = 0;
-    let hasAnyAdb = false;
-    let ftpNetPnl = 0;
-    let hasAnyFtpNetPnl = false;
-    for (const row of parentRows) {
-      interest += num(row.interest_income) ?? 0;
-      fairValue += num(row.fair_value_change) ?? 0;
-      capital += num(row.capital_gain) ?? 0;
-      manual += num(row.manual_adjustment) ?? 0;
-      totalPnl += num(row.total_pnl) ?? 0;
-      assets += row.assets_count;
-      const adb = num(row.avg_balance);
-      if (adb !== null) {
-        hasAnyAdb = true;
-        adbSum += adb;
-      }
-      const ftpNet = num(row.ftp_net_pnl);
-      if (ftpNet !== null) {
-        hasAnyFtpNetPnl = true;
-        ftpNetPnl += ftpNet;
-      }
-    }
+  if (summary) {
     data.push([
       "父级汇总",
-      hasAnyAdb ? adbSum / YUAN_PER_YI : null,
-      interest / YUAN_PER_WAN,
-      fairValue / YUAN_PER_WAN,
-      capital / YUAN_PER_WAN,
-      manual / YUAN_PER_WAN,
-      totalPnl / YUAN_PER_WAN,
-      null,
-      hasAnyFtpNetPnl ? ftpNetPnl / YUAN_PER_WAN : null,
-      null,
-      null,
-      assets,
+      yiFromYuan(summary.avg_balance),
+      wanFromYuan(summary.interest_income),
+      wanFromYuan(summary.fair_value_change),
+      wanFromYuan(summary.capital_gain),
+      wanFromYuan(summary.manual_adjustment),
+      wanFromYuan(summary.total_pnl),
+      num(summary.annualized_yield_pct),
+      wanFromYuan(summary.ftp_net_pnl),
+      num(summary.ftp_net_annualized_yield_pct),
+      num(summary.proportion),
+      summary.assets_count,
     ]);
   }
   return data;
@@ -653,7 +628,11 @@ export function buildPnlByBusinessSheets(args: PnlByBusinessExcelExportArgs): Pn
     }
   }
   if (args.viewMode === "ytd" && args.ytdRows.length > 0) {
-    appendSheet(wb, "YTD年累计明细", buildYtdMainSheet(args.ytdRows, args.adbAvgByBusinessType, ytdCalendarDays));
+    appendSheet(
+      wb,
+      "YTD年累计明细",
+      buildYtdMainSheet(args.ytdRows, args.ytdSummary, args.adbAvgByBusinessType, ytdCalendarDays),
+    );
     if ((args.unallocatedBreakdown?.length ?? 0) > 0) {
       appendSheet(wb, "YTD未分类汇总", buildYtdUnallocatedBreakdownSheet(args.unallocatedBreakdown ?? []));
     }
