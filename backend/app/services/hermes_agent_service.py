@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import threading
 import time
@@ -326,12 +327,30 @@ def run_hermes_agent(
 
     stdout = str(completed.stdout or "")
     stderr = str(completed.stderr or "")
+    answer = _extract_final_answer(stdout)
     if completed.returncode != 0:
+        if _is_nonfatal_hermes_mcp_shutdown(
+            returncode=completed.returncode,
+            stderr=stderr,
+            answer=answer,
+        ):
+            return {
+                "answer": answer,
+                "stdout": stdout,
+                "stderr": stderr,
+                "command": command,
+                "model": model or "default",
+                "toolsets": normalized_toolsets,
+                "transport": "cli",
+            }
         detail = _truncate((stderr or stdout).strip(), 2000)
         raise RuntimeError(f"Hermes failed with exit code {completed.returncode}: {detail}")
+    if not answer:
+        detail = _truncate((stderr or stdout).strip(), 2000)
+        raise RuntimeError(f"Hermes returned no answer: {detail or 'empty output'}")
 
     return {
-        "answer": _extract_final_answer(stdout),
+        "answer": answer,
         "stdout": stdout,
         "stderr": stderr,
         "command": command,
@@ -909,8 +928,79 @@ def _extract_final_answer(stdout: str) -> str:
         if stripped.startswith("Warning: Unknown toolsets:"):
             continue
         content.append(line)
-    answer = "\n".join(content).strip()
-    return answer or stdout.strip()
+    return "\n".join(content).strip()
+
+
+def _is_nonfatal_hermes_mcp_shutdown(
+    *, returncode: int, stderr: str, answer: str
+) -> bool:
+    return (
+        returncode == 1
+        and bool(answer.strip())
+        and _matches_benign_hermes_mcp_shutdown(stderr)
+    )
+
+
+def _matches_benign_hermes_mcp_shutdown(stderr: str) -> bool:
+    remaining = _remove_allowed_hermes_stderr_prefix(stderr)
+    return (
+        re.fullmatch(
+            r"Exception ignored in: <coroutine object MCPServerTask\.run at 0x[0-9a-fA-F]+>\n"
+            r"Traceback \(most recent call last\):\n"
+            r'  File "[^"\n]*/tools/mcp_tool\.py", line \d+, in run\n'
+            r"    parked = await self\._wait_for_reconnect_or_shutdown\(\n"
+            r" +\^+\n"
+            r'  File "[^"\n]*/tools/mcp_tool\.py", line \d+, '
+            r"in _wait_for_reconnect_or_shutdown\n"
+            r"    t\.cancel\(\)\n"
+            r'  File "[^"\n]*/asyncio/base_events\.py", line \d+, in call_soon\n'
+            r"    self\._check_closed\(\)\n"
+            r'  File "[^"\n]*/asyncio/base_events\.py", line \d+, in _check_closed\n'
+            r"    raise RuntimeError\('Event loop is closed'\)\n"
+            r"RuntimeError: Event loop is closed",
+            remaining,
+        )
+        is not None
+    )
+
+
+def _remove_allowed_hermes_stderr_prefix(stderr: str) -> str:
+    normalized = stderr.replace("\r\n", "\n").replace("\r", "\n").lstrip("\n")
+    session_match = re.search(
+        r"^session_id:\s*[A-Za-z0-9_-]+\n",
+        normalized,
+    )
+    if session_match is None:
+        session_match = re.search(
+            r"(?m)^session_id:\s*[A-Za-z0-9_-]+\n",
+            normalized,
+        )
+        if session_match is None:
+            return normalized.strip()
+        wsl_prefix = normalized[: session_match.start()]
+        nonblank_lines = [line for line in wsl_prefix.splitlines() if line.strip()]
+        if (
+            not nonblank_lines
+            or "\x00" not in nonblank_lines[0]
+            or not nonblank_lines[0].replace("\x00", "").lstrip().lower().startswith("wsl:")
+            or any("\x00" not in line for line in nonblank_lines)
+        ):
+            return normalized.strip()
+        decoded_prefix = "\n".join(line.replace("\x00", "") for line in nonblank_lines).lower()
+        if any(
+            marker in decoded_prefix
+            for marker in (
+                "api call",
+                "http ",
+                "error",
+                "failed",
+                "traceback",
+                "exception",
+                "runtimeerror",
+            )
+        ):
+            return normalized.strip()
+    return normalized[session_match.end() :].strip()
 
 
 def _append_hermes_audit(

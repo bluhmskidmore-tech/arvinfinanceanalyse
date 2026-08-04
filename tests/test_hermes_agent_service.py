@@ -9,6 +9,28 @@ from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.services import hermes_agent_service as service
 
 
+_BENIGN_MCP_SHUTDOWN_STDERR = (
+    "w\x00s\x00l\x00:\x00 localhost forwarding warning\x00\n"
+    "\n"
+    "session_id: 20260725_052841_9e1a2a\n"
+    "Exception ignored in: <coroutine object MCPServerTask.run at 0x76cfdda7d440>\n"
+    "Traceback (most recent call last):\n"
+    '  File "/home/hermes/hermes-agent/tools/mcp_tool.py", line 2783, in run\n'
+    "    parked = await self._wait_for_reconnect_or_shutdown(\n"
+    "             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"
+    '  File "/home/hermes/hermes-agent/tools/mcp_tool.py", line 1997, '
+    "in _wait_for_reconnect_or_shutdown\n"
+    "    t.cancel()\n"
+    '  File "/home/hermes/.local/share/uv/python/cpython-3.11.15-linux-x86_64-gnu/'
+    'lib/python3.11/asyncio/base_events.py", line 762, in call_soon\n'
+    "    self._check_closed()\n"
+    '  File "/home/hermes/.local/share/uv/python/cpython-3.11.15-linux-x86_64-gnu/'
+    'lib/python3.11/asyncio/base_events.py", line 520, in _check_closed\n'
+    "    raise RuntimeError('Event loop is closed')\n"
+    "RuntimeError: Event loop is closed\n"
+)
+
+
 def test_build_hermes_command_passes_lite_home_and_read_only_toolsets_to_wsl():
     args = service._build_hermes_command(
         command="wsl.exe",
@@ -87,6 +109,103 @@ def test_run_hermes_agent_sets_home_in_process_env_for_non_wsl(monkeypatch):
     assert result["toolsets"] == "evidence,query,research"
     assert calls[0]["env"]["HERMES_HOME"] == "/tmp/moss-hermes"
     assert "--toolsets" in calls[0]["args"]
+
+
+def test_run_hermes_agent_keeps_answer_when_hermes_mcp_shutdown_exits_one(monkeypatch):
+    def fake_run(_args, **_kwargs):
+        return SimpleNamespace(
+            returncode=1,
+            stdout="Warning: Unknown toolsets: evidence, query, research\nHermes answered.\n",
+            stderr=_BENIGN_MCP_SHUTDOWN_STDERR,
+        )
+
+    monkeypatch.setattr(service.subprocess, "run", fake_run)
+
+    result = service.run_hermes_agent(
+        request=AgentQueryRequest(question="ping"),
+        command="hermes",
+        wsl_distro="",
+        hermes_home="",
+        model="",
+        toolsets="evidence,query,research",
+        max_turns=1,
+        timeout_seconds=5,
+    )
+
+    assert result["answer"] == "Hermes answered."
+
+
+def test_run_hermes_agent_rejects_provider_error_before_mcp_shutdown(monkeypatch):
+    def fake_run(_args, **_kwargs):
+        return SimpleNamespace(
+            returncode=1,
+            stdout="Hermes answered despite provider failure.\n",
+            stderr=(
+                "API call failed after 3 retries: "
+                "HTTP 404: Invalid URL (POST /v1/chat/completions)\n"
+                + _BENIGN_MCP_SHUTDOWN_STDERR
+            ),
+        )
+
+    monkeypatch.setattr(service.subprocess, "run", fake_run)
+
+    with pytest.raises(RuntimeError, match="HTTP 404"):
+        service.run_hermes_agent(
+            request=AgentQueryRequest(question="ping"),
+            command="hermes",
+            wsl_distro="",
+            hermes_home="",
+            model="",
+            toolsets="evidence,query,research",
+            max_turns=1,
+            timeout_seconds=5,
+        )
+
+
+def test_run_hermes_agent_rejects_warning_only_stdout_on_mcp_shutdown(monkeypatch):
+    def fake_run(_args, **_kwargs):
+        return SimpleNamespace(
+            returncode=1,
+            stdout="Warning: Unknown toolsets: evidence, query, research\n",
+            stderr=_BENIGN_MCP_SHUTDOWN_STDERR,
+        )
+
+    monkeypatch.setattr(service.subprocess, "run", fake_run)
+
+    with pytest.raises(RuntimeError, match="Hermes failed with exit code 1"):
+        service.run_hermes_agent(
+            request=AgentQueryRequest(question="ping"),
+            command="hermes",
+            wsl_distro="",
+            hermes_home="",
+            model="",
+            toolsets="evidence,query,research",
+            max_turns=1,
+            timeout_seconds=5,
+        )
+
+
+def test_run_hermes_agent_rejects_warning_only_stdout_on_zero_exit(monkeypatch):
+    def fake_run(_args, **_kwargs):
+        return SimpleNamespace(
+            returncode=0,
+            stdout="Warning: Unknown toolsets: evidence, query, research\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(service.subprocess, "run", fake_run)
+
+    with pytest.raises(RuntimeError, match="Hermes returned no answer"):
+        service.run_hermes_agent(
+            request=AgentQueryRequest(question="ping"),
+            command="hermes",
+            wsl_distro="",
+            hermes_home="",
+            model="",
+            toolsets="evidence,query,research",
+            max_turns=1,
+            timeout_seconds=5,
+        )
 
 
 def test_build_hermes_bridge_command_uses_wsl_env_and_repo_script():
