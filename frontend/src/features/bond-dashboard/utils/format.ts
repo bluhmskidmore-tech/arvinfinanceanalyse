@@ -67,6 +67,6 @@ export function formatMomRatio(cur: Numeric | null | undefined, prev: Numeric | 
   const current = nativeToNumber(cur);
   const previous = nativeToNumber(prev);
   if (current === null || previous === null || previous === 0) return null;
-  const pct = ((current - previous) / previous) * 100;
+  const pct = ((current - previous) / Math.abs(previous)) * 100;
   return `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`;
 }

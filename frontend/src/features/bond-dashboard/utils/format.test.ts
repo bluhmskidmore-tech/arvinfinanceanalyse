@@ -33,4 +33,18 @@ describe("bond dashboard numeric formatters", () => {
   it("does not emit a fake -100% MoM when the current value is missing", () => {
     expect(formatMomRatio(num(null), num(100))).toBeNull();
   });
+
+  it("uses the absolute previous value as the MoM denominator", () => {
+    expect(formatMomRatio(num(-80), num(-100))).toBe("+20.00%");
+    expect(formatMomRatio(num(-120), num(-100))).toBe("-20.00%");
+    expect(formatMomRatio(num(120), num(100))).toBe("+20.00%");
+  });
+
+  it("returns null when either value is missing or the previous value is zero", () => {
+    expect(formatMomRatio(num(100), null)).toBeNull();
+    expect(formatMomRatio(num(100), num(null))).toBeNull();
+    expect(formatMomRatio(num(100), num(0))).toBeNull();
+    expect(formatMomRatio(null, num(-100))).toBeNull();
+    expect(formatMomRatio(num(null), num(-100))).toBeNull();
+  });
 });
