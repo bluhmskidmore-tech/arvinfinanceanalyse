@@ -38,7 +38,9 @@ def test_worker_bootstrap_declares_canonical_dramatiq_task_modules():
         "backend.app.tasks.pnl_materialize",
         "backend.app.tasks.balance_analysis_materialize",
         "backend.app.tasks.formal_balance_pipeline",
+        "backend.app.tasks.accounting_asset_movement",
         "backend.app.tasks.bond_analytics_materialize",
+        "backend.app.tasks.risk_tensor_materialize",
         "backend.app.tasks.product_category_pnl",
         "backend.app.tasks.snapshot_materialize",
         "backend.app.tasks.fx_mid_materialize",
@@ -68,6 +70,13 @@ def test_worker_bootstrap_loads_canonical_modules_on_import():
     assert "import_module" in text
     assert "CANONICAL_TASK_MODULES" in text
     assert "get_broker()" in text
+
+
+def test_worker_bootstrap_includes_task_owned_send_targets():
+    modules = set(_read_canonical_task_modules())
+
+    assert "backend.app.tasks.accounting_asset_movement" in modules
+    assert "backend.app.tasks.risk_tensor_materialize" in modules
 
 
 def test_choice_news_task_module_declares_tushare_news_background_actor():
