@@ -1,8 +1,13 @@
 from __future__ import annotations
 
-from decimal import Decimal
+from collections.abc import Mapping
+from decimal import Decimal, InvalidOperation
 
-from backend.app.core_finance.bond_analytics.common import classify_asset_class, infer_curve_type
+from backend.app.core_finance.bond_analytics.common import (
+    TENOR_YEARS,
+    classify_asset_class,
+    infer_curve_type,
+)
 from backend.app.core_finance.pnl_bridge import (
     PnlBridgeRow,
     build_pnl_bridge_rows,
@@ -58,6 +63,7 @@ from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope,
     build_formal_result_meta,
 )
+
 # Aligned with task-module identity constants; avoid import-time broker/actor registration.
 BALANCE_ANALYSIS_CACHE_KEY = "balance_analysis:materialize:formal"
 BALANCE_ANALYSIS_CACHE_VERSION = (
@@ -144,16 +150,42 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
     treasury_prior_warning = _optional_warning(treasury_current, "_prior_warning")
     cdb_prior_warning = _optional_warning(cdb_current, "_prior_warning")
     aaa_prior_warning = _optional_warning(aaa_current, "_prior_warning")
-    relevant_curve_warnings = _curve_warnings_for_bridge_rows(
-        current_balance_rows=current_balance_rows,
-        prior_balance_rows=prior_balance_rows,
-        treasury_current_warning=treasury_current_warning,
-        treasury_prior_warning=treasury_prior_warning,
-        cdb_current_warning=cdb_current_warning,
-        cdb_prior_warning=cdb_prior_warning,
-        aaa_current_warning=aaa_current_warning,
-        aaa_prior_warning=aaa_prior_warning,
-    )
+    treasury_current_points = _curve_points(treasury_current)
+    treasury_prior_points = _curve_points(_snapshot_dict(treasury_prior))
+    cdb_current_points = _curve_points(cdb_current)
+    cdb_prior_points = _curve_points(_snapshot_dict(cdb_prior))
+    aaa_current_points = _curve_points(aaa_current)
+    aaa_prior_points = _curve_points(_snapshot_dict(aaa_prior))
+    curve_conversion_warnings = [
+        (
+            f"Required {curve_type} curve snapshot for trade_date="
+            f"{snapshot.get('trade_date') or requested_trade_date} could not be converted "
+            "to validated curve points; curve effect remains 0."
+        )
+        for curve_type, requested_trade_date, snapshot, points in (
+            ("treasury", report_date, treasury_current, treasury_current_points),
+            ("treasury", prior_date, treasury_prior, treasury_prior_points),
+            ("cdb", report_date, cdb_current, cdb_current_points),
+            ("cdb", prior_date, cdb_prior, cdb_prior_points),
+            ("aaa_credit", report_date, aaa_current, aaa_current_points),
+            ("aaa_credit", prior_date, aaa_prior, aaa_prior_points),
+        )
+        if snapshot is not None and points is None
+    ]
+    relevant_curve_warnings = [
+        *_curve_warnings_for_bridge_rows(
+            current_balance_rows=current_balance_rows,
+            prior_balance_rows=prior_balance_rows,
+            treasury_current_warning=treasury_current_warning,
+            treasury_prior_warning=treasury_prior_warning,
+            cdb_current_warning=cdb_current_warning,
+            cdb_prior_warning=cdb_prior_warning,
+            aaa_current_warning=aaa_current_warning,
+            aaa_prior_warning=aaa_prior_warning,
+        ),
+        *curve_conversion_warnings,
+    ]
+    curve_conversion_failed = bool(curve_conversion_warnings)
     curve_latest_fallback = any(
         w and YIELD_CURVE_LATEST_FALLBACK_PREFIX in w
         for w in relevant_curve_warnings
@@ -161,18 +193,18 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
     curve_unavailable = any(
         w and w.startswith("No ")
         for w in relevant_curve_warnings
-    )
+    ) or curve_conversion_failed
 
     rows = build_pnl_bridge_rows(
         pnl_fi_rows=pnl_fi_rows,
         balance_rows_current=current_balance_rows,
         balance_rows_prior=prior_balance_rows,
-        treasury_curve_current=_curve_points(treasury_current),
-        treasury_curve_prior=_curve_points(_snapshot_dict(treasury_prior)),
-        cdb_curve_current=_curve_points(cdb_current),
-        cdb_curve_prior=_curve_points(_snapshot_dict(cdb_prior)),
-        aaa_credit_curve_current=_curve_points(aaa_current),
-        aaa_credit_curve_prior=_curve_points(_snapshot_dict(aaa_prior)),
+        treasury_curve_current=treasury_current_points,
+        treasury_curve_prior=treasury_prior_points,
+        cdb_curve_current=cdb_current_points,
+        cdb_curve_prior=cdb_prior_points,
+        aaa_credit_curve_current=aaa_current_points,
+        aaa_credit_curve_prior=aaa_prior_points,
         fx_rates_current=fx_current,
         fx_rates_prior=fx_prior,
     )
@@ -230,7 +262,11 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
         vendor_version=str(lineage["vendor_version"]),
         source_surface="pnl_bridge",
         quality_flag=_merge_bridge_quality_flag(
-            summary_quality=summary.quality_flag,
+            summary_quality=(
+                "warning"
+                if curve_conversion_failed and summary.quality_flag == "ok"
+                else summary.quality_flag
+            ),
             curve_latest_fallback=curve_latest_fallback,
         ),
         vendor_status=vendor_status,
@@ -633,13 +669,24 @@ def _snapshot_dict(value: object) -> dict[str, object]:
     return value if isinstance(value, dict) else {}
 
 
-def _curve_points(snapshot: dict[str, object] | None) -> list[dict[str, object]] | None:
+def _curve_points(snapshot: dict[str, object] | None) -> dict[str, Decimal] | None:
     if snapshot is None:
         return None
     value = snapshot.get("curve")
-    if not isinstance(value, list):
+    if not isinstance(value, Mapping):
         return None
-    return [item for item in value if isinstance(item, dict)]
+    curve_points: dict[str, Decimal] = {}
+    for tenor, rate in value.items():
+        if not isinstance(tenor, str) or tenor not in TENOR_YEARS:
+            return None
+        try:
+            decimal_rate = Decimal(str(rate))
+        except (InvalidOperation, TypeError, ValueError):
+            return None
+        if not decimal_rate.is_finite():
+            return None
+        curve_points[tenor] = decimal_rate
+    return curve_points
 
 
 def _resolve_pnl_lineage(*, governance_dir: str, report_date: str) -> dict[str, object]:
