@@ -418,7 +418,7 @@ describe("RouteRegistry", () => {
     renderWorkbenchApp(["/cross-asset"], { client: mockClient });
 
     expect(await screen.findByText("MOSS")).toBeInTheDocument();
-    expect(await screen.findByRole("navigation")).toBeInTheDocument();
+    expect(await screen.findByTestId("workbench-group-nav")).toBeInTheDocument();
   });
 
   it("renders the decision-items route", async () => {
