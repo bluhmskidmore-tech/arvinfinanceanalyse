@@ -28,6 +28,14 @@ jobs:
           cache: pip
           cache-dependency-path: backend/pyproject.toml
 
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.11.32"
+
+      - name: Check backend uv.lock consistency
+        run: uv lock --check --project backend
+
       - name: Install backend dependencies
         run: pip install -e "./backend[dev]"
 
@@ -35,7 +43,7 @@ jobs:
         run: python scripts/backend_release_suite.py
 
       - name: Run agent harness tests
-        run: python -m pytest tests/test_agent_eval_runner.py tests/test_agent_eval_spec.py tests/test_agent_eval_reward.py -q
+        run: python -m pytest tests/test_agent_eval_spec.py tests/test_agent_eval_reward.py -q
 
   backend-full-pytest:
     name: Backend Full Pytest
@@ -82,7 +90,7 @@ jobs:
         run: npm ci
 
       - name: TypeScript type check
-        run: npx tsc --noEmit
+        run: npm run typecheck
 
       - name: Run Vitest
         run: npx vitest run
