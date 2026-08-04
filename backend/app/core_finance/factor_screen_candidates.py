@@ -140,8 +140,8 @@ def compute_factor_screen_candidates(
 
     total_universe = len(df_clean)
     coverage_note = (
-        f"因子数据覆盖 {total_universe}/5201 只（{total_universe / 5201 * 100:.0f}%），"
-        "仅在有因子数据的股票中选股"
+        f"本次多因子评分池为 {total_universe} 只（必填字段完整且通过当前筛选条件），"
+        "仅在该评分池内生成观察候选"
     )
 
     return FactorScreenResult(

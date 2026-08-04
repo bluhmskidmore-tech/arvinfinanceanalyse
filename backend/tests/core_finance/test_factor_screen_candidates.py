@@ -240,9 +240,17 @@ def test_coverage_note_present() -> None:
         market_state="WARM",
         rows=rows,
     )
-    note = str(cast(dict[str, Any], result.payload)["coverage_note"])
-    assert "5201" in note
-    assert "覆盖" in note
+    payload = cast(dict[str, Any], result.payload)
+    note = str(payload["coverage_note"])
+    assert payload["input_stock_count"] == 8
+    assert note == (
+        "本次多因子评分池为 8 只（必填字段完整且通过当前筛选条件），"
+        "仅在该评分池内生成观察候选"
+    )
+    assert "5201" not in note
+    assert "/" not in note
+    assert "%" not in note
+    assert "％" not in note
 
 
 def test_runs_in_all_market_states() -> None:
