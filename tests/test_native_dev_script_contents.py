@@ -104,6 +104,8 @@ def test_dev_worker_runner_uses_in_process_dramatiq_worker():
     script = (ROOT / "backend" / "app" / "tasks" / "dev_worker_runner.py").read_text(encoding="utf-8")
     assert "backend.app.tasks.worker_bootstrap" in script
     assert "from dramatiq import Worker" in script
+    assert 'broker.emit_after("process_boot")' in script
+    assert script.index('broker.emit_after("process_boot")') < script.index("Worker(broker")
     assert "Worker(broker" in script
     assert "worker_threads=worker_threads" in script
     assert "multiprocessing.Pipe" not in script
