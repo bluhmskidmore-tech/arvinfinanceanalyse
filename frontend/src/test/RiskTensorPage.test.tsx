@@ -2178,6 +2178,45 @@ describe("RiskTensorPage", () => {
     );
   });
 
+  it.each([
+    { raw: 1.5, expected: "150.0%", tone: "positive" },
+    { raw: -1.2, expected: "-120.0%", tone: "negative" },
+    { raw: 1.01, expected: "101.0%", tone: "positive" },
+  ])(
+    "formats governed ratio raw=$raw as a deterministic percentage",
+    async ({ raw, expected, tone }) => {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", `tr_tensor_ratio_${raw}_dates`),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_ratio_${raw}_${reportDate}`),
+        result: {
+          ...tensorResult(reportDate),
+          liquidity_gap_30d_ratio: {
+            raw,
+            unit: "ratio" as const,
+            display: raw.toFixed(2),
+            precision: 2,
+            sign_aware: true,
+          },
+        },
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const ratioCard = await screen.findByTestId("risk-tensor-liquidity-gap-ratio");
+      expect(ratioCard).toHaveTextContent(expected);
+      expect(ratioCard).toHaveAttribute("data-tone", tone);
+      expect(screen.getByTestId("risk-tensor-liquidity-action")).toHaveTextContent(expected);
+    },
+  );
+
   it("flags missing or unparseable main payload fields without frontend recalculation", async () => {
     const base = createApiClient({ mode: "mock" });
     const getRiskTensorDates = vi.fn(async () => ({

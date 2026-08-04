@@ -244,6 +244,9 @@ function ratioPercentDisplay(value: Parameters<typeof bondNumericRawOrNull>[0]) 
   if (raw === null) {
     return display;
   }
+  if (value !== null && typeof value === "object" && value.unit === "ratio") {
+    return `${(raw * 100).toFixed(1)}%`;
+  }
   const abs = Math.abs(raw);
   if (abs <= 1) {
     return `${(raw * 100).toFixed(1)}%`;
