@@ -816,6 +816,30 @@ def test_agent_query_keeps_explicit_governed_intent_local_when_hermes_configured
     assert not hermes_calls
 
 
+def test_financial_workflow_context_forces_local_executor_when_hermes_is_configured():
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+    settings = type("SettingsStub", (), {"agent_provider": "hermes"})()
+    request = request_module.AgentQueryRequest(
+        question="生成市场与新闻简报",
+        context={
+            "workflow_id": "market_brief",
+            "workflow_mode": "execute",
+        },
+    )
+
+    provider, executor = route_module._resolve_agent_executor(request, settings)
+
+    assert provider == "local"
+    assert executor is route_module._execute_local_agent_query
+
+
 def test_agent_endpoints_reject_mutating_action_context(monkeypatch, tmp_path):
     route_module = load_module(
         "backend.app.api.routes.agent",

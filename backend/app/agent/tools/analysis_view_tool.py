@@ -7,6 +7,7 @@ from uuid import uuid4
 from backend.app.agent.runtime.action_token import agent_action_confirmation_token
 from backend.app.agent.runtime.financial_workflow_catalog import (
     FinancialWorkflow,
+    is_financial_workflow_id,
     resolve_financial_workflow,
 )
 from backend.app.agent.runtime.research_workflow_catalog import (
@@ -123,7 +124,11 @@ def has_explicit_local_agent_context(context: dict[str, Any] | None) -> bool:
     context = context or {}
     explicit_intent = str(context.get("intent") or "").strip().lower()
     explicit_workflow = str(context.get("workflow_id") or "").strip().lower()
-    return is_explicit_local_agent_intent(explicit_intent) or is_research_workflow_id(explicit_workflow)
+    return (
+        is_explicit_local_agent_intent(explicit_intent)
+        or is_financial_workflow_id(explicit_workflow)
+        or is_research_workflow_id(explicit_workflow)
+    )
 
 
 def is_plain_analysis_chat_question(question: str) -> bool:

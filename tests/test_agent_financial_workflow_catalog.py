@@ -50,6 +50,15 @@ def test_catalog_gets_workflow_by_hyphenated_id():
     assert workflow.workflow_id == "market_brief"
 
 
+def test_catalog_identifies_only_registered_financial_workflow_ids():
+    catalog = _catalog_module()
+
+    assert catalog.is_financial_workflow_id("portfolio-review") is True
+    assert catalog.is_financial_workflow_id("market_brief") is True
+    assert catalog.is_financial_workflow_id("research_radar_brief") is False
+    assert catalog.is_financial_workflow_id("unknown") is False
+
+
 def test_catalog_resolves_slash_commands_from_question():
     catalog = _catalog_module()
 

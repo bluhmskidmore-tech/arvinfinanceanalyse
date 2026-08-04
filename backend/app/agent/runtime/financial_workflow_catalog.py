@@ -92,6 +92,10 @@ def get_financial_workflow(workflow_id: str) -> FinancialWorkflow | None:
     return _WORKFLOW_BY_ID.get(normalized)
 
 
+def is_financial_workflow_id(workflow_id: str) -> bool:
+    return get_financial_workflow(workflow_id) is not None
+
+
 def resolve_financial_workflow(
     question: str,
     context: dict[str, Any] | None,
