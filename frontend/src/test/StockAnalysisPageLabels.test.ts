@@ -160,6 +160,7 @@ describe("stockAnalysisPageLabels", () => {
     expect(outputKeyLabel("vendor_unknown")).toBe("输出待确认");
     expect(outputKeyLabel(null)).toBe("待补");
     expect(dataGapFamilyLabel("factor_screen_candidates")).toBe("多因子");
+    expect(dataGapFamilyLabel("theme_taxonomy")).toBe("\u9898\u6750\u5206\u7c7b");
   });
 
   it("localizes cycle layer labels and evidence boundaries", () => {
@@ -175,6 +176,7 @@ describe("stockAnalysisPageLabels", () => {
 
     expect(cycleInputLabel("sector-rank")).toBe("板块强弱");
     expect(cycleInputLabel("external_vendor_cycle_feed")).toBe("输入待确认");
+    expect(cycleInputLabel("theme_taxonomy")).toBe("\u9898\u6750\u5206\u7c7b");
     expect(cycleInputSummary(["market_gate", "sector_rank", "stock_candidates", "pmi"], ["credit_impulse"])).toBe(
       "已有证据 市场门控、板块强弱、趋势候选 · 待补 信用脉冲",
     );

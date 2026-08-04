@@ -1426,6 +1426,7 @@ export function localizeStockDataFamily(inputFamily: string | null | undefined):
     factor_screen_candidates: "多因子",
     factor_screen: "多因子",
     theme_breakout: "题材观察",
+    theme_taxonomy: "\u9898\u6750\u5206\u7c7b",
     hybrid_fusion: "融合池",
     risk_exit: "风险退出",
     position_risk: "持仓风险",

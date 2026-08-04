@@ -129,6 +129,7 @@ export function cycleInputLabel(input: string | null | undefined) {
     uptrend_momentum_candidates: "上升趋势",
     fresh_trend_watchlist: "新趋势观察",
     theme_breakout: "题材观察",
+    theme_taxonomy: "\u9898\u6750\u5206\u7c7b",
     stock_candidate: "趋势候选",
     hybrid_fusion: "融合池",
     social_text_raw: "社交文本",
