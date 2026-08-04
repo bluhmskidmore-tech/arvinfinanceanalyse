@@ -937,7 +937,7 @@ class BondAnalyticsRepository:
                       when years_to_maturity <= 0.0192 then '7天内'
                       when years_to_maturity <= 0.0822 then '8-30天'
                       when years_to_maturity <= 0.2466 then '31-90天'
-                      when years_to_maturity <= 0.2740 then '91天-1年'
+                      when years_to_maturity <= 1 then '91天-1年'
                       when years_to_maturity <= 3 then '1-3年'
                       when years_to_maturity <= 5 then '3-5年'
                       else '5年以上'

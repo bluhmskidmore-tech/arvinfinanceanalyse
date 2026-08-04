@@ -290,3 +290,46 @@ def test_engine_repo_risk_chain_preserves_frequency_fallback_scale(tmp_path):
     assert formal_rows[0]["interest_payment_frequency_fallback_used"] is True
     assert tensor.payment_frequency_fallback_count == 1
     assert tensor.payment_frequency_fallback_market_value == Decimal("90")
+
+
+def test_fetch_dashboard_maturity_structure_uses_full_one_year_boundary(tmp_path):
+    path = str(tmp_path / "maturity-structure.duckdb")
+    conn = duckdb.connect(path, read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_formal_bond_analytics_daily (
+              report_date varchar,
+              instrument_code varchar,
+              years_to_maturity decimal(18, 8),
+              market_value decimal(18, 2)
+            )
+            """
+        )
+        maturity_days = [90, 91, 100, 101, 365, 366]
+        conn.executemany(
+            """
+            insert into fact_formal_bond_analytics_daily
+              (report_date, instrument_code, years_to_maturity, market_value)
+            values (?, ?, ?, ?)
+            """,
+            [
+                (
+                    REPORT_DATE,
+                    f"BOND-{days}D",
+                    Decimal(days) / Decimal("365"),
+                    Decimal("100"),
+                )
+                for days in maturity_days
+            ],
+        )
+    finally:
+        conn.close()
+
+    rows = BondAnalyticsRepository(path).fetch_dashboard_maturity_structure(REPORT_DATE)
+    buckets = {row["maturity_bucket"]: row for row in rows}
+
+    assert buckets["31-90天"]["bond_count"] == 1
+    assert buckets["91天-1年"]["bond_count"] == 4
+    assert buckets["91天-1年"]["total_market_value"] == Decimal("400.00")
+    assert buckets["1-3年"]["bond_count"] == 1
