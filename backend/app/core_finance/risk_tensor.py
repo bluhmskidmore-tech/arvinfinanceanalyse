@@ -134,9 +134,9 @@ def compute_portfolio_risk_tensor(
         (_safe_decimal(row.get("spread_dv01")) for row in rows if _is_credit(row.get("is_credit"))),
         ZERO,
     )
-    _warn_duration_exclusion_inputs(rows, warnings)
-    duration_rows = _duration_denominator_rows(rows)
-    duration_excluded_rows = _duration_excluded_rows(rows)
+    _warn_duration_exclusion_inputs(rows, report_date, warnings)
+    duration_rows = _duration_denominator_rows(rows, report_date)
+    duration_excluded_rows = _duration_excluded_rows(rows, report_date)
     missing_maturity_rows = [row for row in rows if _coerce_date(row.get("maturity_date")) is None]
     duration_market_value = _sum_field(duration_rows, "market_value")
     rate_risk_dv01 = _sum_field(duration_rows, "dv01")
@@ -258,48 +258,69 @@ def _aggregate_krd_values(
     return krd_values
 
 
-def _warn_duration_exclusion_inputs(rows: list[dict[str, Any]], warnings: list[str]) -> None:
-    excluded_rows = _duration_excluded_rows(rows)
+def _warn_duration_exclusion_inputs(
+    rows: list[dict[str, Any]],
+    report_date: date,
+    warnings: list[str],
+) -> None:
+    excluded_rows = _duration_excluded_rows(rows, report_date)
     if not excluded_rows:
         return
     excluded_market_value = sum(
         (_safe_decimal(row.get("market_value")) for row in excluded_rows),
         ZERO,
     )
-    missing_maturity_count = sum(
-        1 for row in excluded_rows if row.get("maturity_date") is None
-    )
-    non_positive_duration_count = sum(
-        1
+    no_maturity_rows = [row for row in excluded_rows if _coerce_date(row.get("maturity_date")) is None]
+    matured_outstanding_rows = [
+        row
         for row in excluded_rows
-        if row.get("maturity_date") is not None
+        if (maturity_date := _coerce_date(row.get("maturity_date"))) is not None
+        and maturity_date <= report_date
+    ]
+    non_positive_duration_rows = [
+        row
+        for row in excluded_rows
+        if (maturity_date := _coerce_date(row.get("maturity_date"))) is not None
+        and maturity_date > report_date
         and _safe_decimal(row.get("modified_duration")) <= ZERO
-    )
+    ]
     warnings.append(
         f"{len(excluded_rows)} rows carry market_value={excluded_market_value} and are "
         "excluded from portfolio duration denominator: "
-        f"{missing_maturity_count} without maturity_date; "
-        f"{non_positive_duration_count} with non-positive modified_duration. "
+        f"{len(no_maturity_rows)} without maturity_date "
+        f"(market_value={_sum_field(no_maturity_rows, 'market_value')}); "
+        f"{len(matured_outstanding_rows)} matured on or before report_date with outstanding "
+        f"market_value (market_value={_sum_field(matured_outstanding_rows, 'market_value')}); "
+        f"{len(non_positive_duration_rows)} future-dated with non-positive modified_duration "
+        f"(market_value={_sum_field(non_positive_duration_rows, 'market_value')}). "
         "DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated."
     )
 
 
-def _duration_denominator_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [row for row in rows if _is_duration_denominator_row(row)]
+def _duration_denominator_rows(
+    rows: list[dict[str, Any]],
+    report_date: date,
+) -> list[dict[str, Any]]:
+    return [row for row in rows if _is_duration_denominator_row(row, report_date)]
 
 
-def _duration_excluded_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _duration_excluded_rows(
+    rows: list[dict[str, Any]],
+    report_date: date,
+) -> list[dict[str, Any]]:
     return [
         row
         for row in rows
         if _safe_decimal(row.get("market_value")) != ZERO
-        and not _is_duration_denominator_row(row)
+        and not _is_duration_denominator_row(row, report_date)
     ]
 
 
-def _is_duration_denominator_row(row: dict[str, Any]) -> bool:
+def _is_duration_denominator_row(row: dict[str, Any], report_date: date) -> bool:
+    maturity_date = _coerce_date(row.get("maturity_date"))
     return (
-        row.get("maturity_date") is not None
+        maturity_date is not None
+        and maturity_date > report_date
         and _safe_decimal(row.get("modified_duration")) > ZERO
         and _safe_decimal(row.get("market_value")) != ZERO
     )

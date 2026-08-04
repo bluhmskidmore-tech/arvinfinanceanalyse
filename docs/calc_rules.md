@@ -207,7 +207,9 @@ DV01 口径：
 
 Duration denominator rules:
 - `total_market_value` remains the full bond analytics market value.
-- `portfolio_modified_duration` is weighted only by rows with a real `maturity_date`, positive `modified_duration`, and non-zero `market_value`.
+- `portfolio_modified_duration` is weighted only by rows with `maturity_date > report_date`, positive `modified_duration`, and non-zero `market_value`.
+- Duration exclusions are classified in priority order: `no_maturity` when `maturity_date is null`; `matured_or_expired_outstanding` when `maturity_date <= report_date` and market value is non-zero; then `nonpositive_duration` only for future-dated rows whose modified duration is null or non-positive. A maturity date equal to the report date is treated as matured.
+- Reclassifying an excluded row does not change `total_market_value`, `rate_risk_market_value`, `portfolio_dv01`, KRD, or the aggregate `duration_excluded_*` bridge. No class may receive a synthetic date, duration, DV01, market value, or `6M` bucket.
 - Fund-like or other no-maturity rows must not receive a synthetic maturity date. They are excluded from the duration denominator and disclosed through `duration_excluded_market_value` / `duration_excluded_count` in the risk tensor API.
 - `rate_risk_market_value`, `rate_risk_dv01`, and `rate_risk_modified_duration` expose the denominator used for the rate-risk duration view; `rate_risk_modified_duration` must reconcile to `portfolio_modified_duration`.
 - `rate_risk_market_value`, `rate_risk_dv01`, `rate_risk_modified_duration`, `duration_excluded_market_value`, and `duration_excluded_count` must be computed by the Risk Tensor materializer and persisted in `fact_formal_risk_tensor_daily`; the formal read path must not recompute or silently backfill them from Bond Analytics.
