@@ -70,9 +70,14 @@ export function reportDateContextLabel(ctx: HomeReportDateContext): string {
     return "暂无可用数据日";
   }
   if (ctx.mode === "fallback" || ctx.mode === "stale") {
-    const request = formatShortDate(ctx.requestedDate);
     const actual = formatShortDate(ctx.actualDataDate);
     const reason = ctx.divergenceReason ?? "请求日与实际数据日不一致";
+    if (!hasReportDateDivergence(ctx)) {
+      const actualLabel =
+        actual === GAP ? "实际数据日暂缺" : `实际数据 ${actual}`;
+      return `${actualLabel} · 原因：${reason}`;
+    }
+    const request = formatShortDate(ctx.requestedDate);
     return `请求 ${request} · 实际数据 ${actual} · 原因：${reason}`;
   }
   // exact
@@ -84,5 +89,12 @@ export function reportDateContextLabel(ctx: HomeReportDateContext): string {
  * fallback / stale 必须展示；其余模式用单一报告日即可。
  */
 export function hasReportDateDivergence(ctx: HomeReportDateContext): boolean {
-  return ctx.mode === "fallback" || ctx.mode === "stale";
+  const requestedDate = ctx.requestedDate.trim();
+  const actualDataDate = ctx.actualDataDate.trim();
+  return (
+    (ctx.mode === "fallback" || ctx.mode === "stale") &&
+    requestedDate.length > 0 &&
+    actualDataDate.length > 0 &&
+    requestedDate !== actualDataDate
+  );
 }

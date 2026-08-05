@@ -740,6 +740,10 @@ function buildReportDateContext(args: {
     (typeof meta?.requested_report_date === "string" ? meta.requested_report_date.trim() : "") ||
     "";
   const actualDataDate = args.reportDate.trim();
+  const hasRequestedDateDivergence =
+    requestedDate.length > 0 &&
+    actualDataDate.length > 0 &&
+    requestedDate !== actualDataDate;
   const dataAsOfDate = formatDomainEffectiveDates(args.domainsEffectiveDate);
   const generatedAt = formatSnapshotGeneratedAt(meta?.generated_at);
 
@@ -757,13 +761,15 @@ function buildReportDateContext(args: {
     divergenceReason = "主快照读取中";
   } else if (args.snapshotStale) {
     mode = "stale";
-    divergenceReason = args.staleWarning ?? "新报告日数据获取失败，当前展示上一版本数据";
+    divergenceReason = hasRequestedDateDivergence
+      ? args.staleWarning ?? "新报告日数据获取失败，当前展示上一版本数据"
+      : "主快照刷新失败，当前展示上一版本数据";
   } else if (actualDataDate.length === 0) {
     mode = "empty";
     divergenceReason = "暂无可用数据日";
   } else if (
     meta?.fallback_mode === "latest_snapshot" ||
-    (requestedDate.length > 0 && requestedDate !== actualDataDate)
+    hasRequestedDateDivergence
   ) {
     mode = "fallback";
     divergenceReason =

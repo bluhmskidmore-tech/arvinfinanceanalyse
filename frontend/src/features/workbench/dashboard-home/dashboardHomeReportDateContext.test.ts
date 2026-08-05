@@ -104,6 +104,33 @@ describe("mapToHomeFirstScreenView reportDateContext", () => {
     expect(hasReportDateDivergence(view.reportDateContext)).toBe(true);
   });
 
+  it.each(["2026-04-30"])(
+    "stale: %s 刷新失败只说明沿用上一版本，不制造请求日分歧",
+    (requestedReportDate) => {
+      const view = mapToHomeFirstScreenView({
+        ...baseInput,
+        reportDate: "2026-04-30",
+        requestedReportDate,
+        snapshotStale: true,
+        staleWarning: "新报告日数据获取失败，当前展示上一版本数据",
+        snapshotMeta: baseMeta({
+          requested_report_date: "2026-03-31",
+          resolved_report_date: "2026-04-30",
+        }),
+      });
+
+      expect(view.reportDateContext.mode).toBe("stale");
+      expect(view.reportDateContext.requestedDate).toBe(requestedReportDate);
+      expect(view.reportDateContext.divergenceReason).toBe(
+        "主快照刷新失败，当前展示上一版本数据",
+      );
+      expect(hasReportDateDivergence(view.reportDateContext)).toBe(false);
+      expect(reportDateContextLabel(view.reportDateContext)).toBe(
+        "实际数据 04/30 · 原因：主快照刷新失败，当前展示上一版本数据",
+      );
+    },
+  );
+
   it("loading: 主快照读取中", () => {
     const view = mapToHomeFirstScreenView({
       ...baseInput,
