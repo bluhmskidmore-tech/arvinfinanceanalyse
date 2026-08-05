@@ -545,6 +545,7 @@ def test_pnl_by_business_monthly_prefers_precomputed_payload(monkeypatch, tmp_pa
             result_kind,
             dimension,
             business_key,
+            effective_ftp_rate_pct,
             expected_rule_version,
             supplemental_source_version,
         ):
@@ -556,6 +557,7 @@ def test_pnl_by_business_monthly_prefers_precomputed_payload(monkeypatch, tmp_pa
                 "",
             )
             assert expected_rule_version == PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION
+            assert effective_ftp_rate_pct == Decimal("1.75")
             assert supplemental_source_version
             return cached_payload
 
@@ -638,6 +640,7 @@ def test_pnl_by_business_analysis_prefers_precomputed_payload(monkeypatch, tmp_p
             result_kind,
             dimension,
             business_key,
+            effective_ftp_rate_pct,
             expected_rule_version,
             supplemental_source_version,
         ):
@@ -649,6 +652,7 @@ def test_pnl_by_business_analysis_prefers_precomputed_payload(monkeypatch, tmp_p
                 "asset_zqtz_policy_financial_bond",
             )
             assert expected_rule_version == PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION
+            assert effective_ftp_rate_pct == Decimal("1.75")
             assert supplemental_source_version
             return cached_payload
 
@@ -739,7 +743,10 @@ def test_pnl_by_business_ytd_prefers_precomputed_payload(monkeypatch, tmp_path):
     monkeypatch.setattr(
         pnl_service,
         "get_settings",
-        lambda: SimpleNamespace(pnl_by_business_ytd_prefer_formal_facts=True),
+        lambda: SimpleNamespace(
+            pnl_by_business_ytd_prefer_formal_facts=True,
+            ftp_rate_pct=Decimal("9.99"),
+        ),
     )
     monkeypatch.setattr(
         pnl_service,
@@ -772,6 +779,7 @@ def test_pnl_by_business_ytd_prefers_precomputed_payload(monkeypatch, tmp_path):
             "result_kind": "ytd",
             "dimension": "",
             "business_key": "",
+            "effective_ftp_rate_pct": Decimal("1.75"),
         }
     ]
     assert payload["result"] == cached_payload
@@ -994,9 +1002,11 @@ def test_pnl_by_business_monthly_and_analysis_fall_back_when_adjustment_precompu
             result_kind,
             dimension,
             business_key,
+            effective_ftp_rate_pct,
             expected_rule_version,
             supplemental_source_version,
         ):
+            assert effective_ftp_rate_pct == Decimal("1.75")
             assert supplemental_source_version
             return None
 
@@ -1117,6 +1127,8 @@ def test_pnl_by_business_precompute_writes_page_payloads(tmp_path, monkeypatch):
     class FakePnlRepository:
         written_records: list[dict[str, object]] = []
         supplemental_source_version = ""
+        effective_ftp_rates: list[Decimal] = []
+        resolved_source_versions: list[str] = []
         pnl_fetch_count = 0
         precompute_fetch_count = 0
 
@@ -1183,11 +1195,21 @@ def test_pnl_by_business_precompute_writes_page_payloads(tmp_path, monkeypatch):
             ]
 
         def pnl_by_business_precompute_source_version(
-            self, *, year, as_of_date, supplemental_source_version=""
+            self,
+            *,
+            year,
+            as_of_date,
+            effective_ftp_rate_pct,
+            supplemental_source_version="",
         ):
             assert (year, as_of_date) == (2025, "2025-12-31")
             type(self).supplemental_source_version = supplemental_source_version
-            return f"source::{supplemental_source_version}"
+            type(self).effective_ftp_rates.append(effective_ftp_rate_pct)
+            source_version = (
+                f"source::{supplemental_source_version}::ftp={effective_ftp_rate_pct}"
+            )
+            type(self).resolved_source_versions.append(source_version)
+            return source_version
 
         def fetch_pnl_by_business_precompute(
             self,
@@ -1197,6 +1219,7 @@ def test_pnl_by_business_precompute_writes_page_payloads(tmp_path, monkeypatch):
             result_kind,
             dimension,
             business_key,
+            effective_ftp_rate_pct,
             expected_rule_version,
             supplemental_source_version,
         ):
@@ -1204,6 +1227,7 @@ def test_pnl_by_business_precompute_writes_page_payloads(tmp_path, monkeypatch):
             expected_source_version = self.pnl_by_business_precompute_source_version(
                 year=year,
                 as_of_date=as_of_date,
+                effective_ftp_rate_pct=effective_ftp_rate_pct,
                 supplemental_source_version=supplemental_source_version,
             )
             for record in type(self).written_records:
@@ -1303,7 +1327,9 @@ def test_pnl_by_business_precompute_writes_page_payloads(tmp_path, monkeypatch):
     assert monthly_by_key["asset_zqtz_policy_financial_bond"]["manual_adjustment"] == "25.00"
     assert monthly_by_key["asset_zqtz_policy_financial_bond"]["total_pnl"] == "125.00"
     assert FakePnlRepository.supplemental_source_version
-    assert monthly_record["source_version"] == f"source::{FakePnlRepository.supplemental_source_version}"
+    assert monthly_record["source_version"] == (
+        f"source::{FakePnlRepository.supplemental_source_version}::ftp=1.75"
+    )
 
     currency_record = next(
         record
@@ -1348,6 +1374,10 @@ def test_pnl_by_business_precompute_writes_page_payloads(tmp_path, monkeypatch):
     assert analysis_envelope["result_meta"]["trace_id"].endswith("_precomputed")
     assert FakePnlRepository.pnl_fetch_count == 1
     assert FakePnlRepository.precompute_fetch_count == 2
+    assert FakePnlRepository.effective_ftp_rates == [Decimal("1.75")] * 3
+    assert FakePnlRepository.resolved_source_versions == [
+        monthly_record["source_version"]
+    ] * 3
 
 
 def test_pnl_by_business_ytd_precompute_reuses_payload_builder_without_lineage(monkeypatch):
@@ -2074,7 +2104,10 @@ def test_pnl_by_business_ytd_rechecks_precompute_before_each_request(monkeypatch
     monkeypatch.setattr(
         pnl_service,
         "get_settings",
-        lambda: SimpleNamespace(pnl_by_business_ytd_prefer_formal_facts=True),
+        lambda: SimpleNamespace(
+            pnl_by_business_ytd_prefer_formal_facts=True,
+            ftp_rate_pct=Decimal("9.99"),
+        ),
     )
     monkeypatch.setattr(
         pnl_service,
@@ -2098,6 +2131,7 @@ def test_pnl_by_business_ytd_rechecks_precompute_before_each_request(monkeypatch
     assert first["result"]["call_count"] == 1
     assert second["result"]["call_count"] == 2
     assert len(fetches) == 2
+    assert {item["effective_ftp_rate_pct"] for item in fetches} == {Decimal("1.75")}
     assert len(calls) == 2
     pnl_service.clear_pnl_by_business_ytd_cache()
 
@@ -4290,6 +4324,7 @@ def test_pnl_by_business_precompute_batch_status_uses_selected_cutoff(
 
         def fetch_pnl_by_business_precompute_metadata(self, **kwargs):
             assert kwargs["as_of_date"] in {"2026-03-31", "2026-06-30"}
+            assert kwargs["effective_ftp_rate_pct"] == Decimal("1.60")
             type(self).verify_current_calls.append(bool(kwargs["verify_current"]))
             return None
 

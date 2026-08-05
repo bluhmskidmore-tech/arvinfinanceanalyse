@@ -44,7 +44,6 @@ from backend.app.services.pnl_by_business_unallocated import (
 
 TWOPLACES = Decimal("0.01")
 RATIOPLACES = Decimal("0.000001")
-PNL_BY_BUSINESS_PRECOMPUTE_SOURCE_VERSION = "sv_pnl_by_business_precompute_v4"
 PNL_BY_BUSINESS_GLOBAL_ANALYSIS_DIMENSIONS: tuple[PnlByBusinessAnalysisDimension, ...] = (
     "bond_bucket",
     "bond_bucket_monthly",
@@ -162,15 +161,11 @@ def precompute_pnl_by_business_payloads(
     ]
     if materialized_adjustments:
         source_tables.append(PNL_BY_BUSINESS_ADJUSTMENT_STREAM)
-    source_version_resolver = getattr(repo, "pnl_by_business_precompute_source_version", None)
-    precompute_source_version = (
-        source_version_resolver(
-            year=year,
-            as_of_date=period_end,
-            supplemental_source_version=supplemental_source_version,
-        )
-        if callable(source_version_resolver)
-        else PNL_BY_BUSINESS_PRECOMPUTE_SOURCE_VERSION
+    precompute_source_version = repo.pnl_by_business_precompute_source_version(
+        year=year,
+        as_of_date=period_end,
+        effective_ftp_rate_pct=ftp_rate_pct,
+        supplemental_source_version=supplemental_source_version,
     )
     generated_at = datetime.now(UTC).isoformat()
     records: list[dict[str, object]] = []

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, localcontext
 
 import pytest
 
@@ -29,6 +29,161 @@ def test_precompute_rule_version_tracks_current_analysis_contract() -> None:
     assert pnl_repo_module.PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION == (
         "rv_pnl_by_business_precompute_v8"
     )
+
+
+def test_precompute_source_fingerprint_tracks_canonical_effective_ftp_rate(tmp_path) -> None:
+    import duckdb
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    duckdb.connect(str(duckdb_path), read_only=False).close()
+    repo = pnl_repo_module.PnlRepository(str(duckdb_path))
+
+    fixed_rate_from_default_a = resolve_product_category_ftp_rate_pct(
+        date(2026, 12, 31), Decimal("9.99")
+    )
+    fixed_rate_from_default_b = resolve_product_category_ftp_rate_pct(
+        date(2026, 12, 31), Decimal("0.25")
+    )
+    fixed_source_a = repo.pnl_by_business_precompute_source_version(
+        year=2026,
+        as_of_date="2026-12-31",
+        effective_ftp_rate_pct=fixed_rate_from_default_a,
+    )
+    fixed_source_b = repo.pnl_by_business_precompute_source_version(
+        year=2026,
+        as_of_date="2026-12-31",
+        effective_ftp_rate_pct=fixed_rate_from_default_b,
+    )
+
+    canonical_source_a = repo.pnl_by_business_precompute_source_version(
+        year=2027,
+        as_of_date="2027-12-31",
+        effective_ftp_rate_pct=Decimal("1.60"),
+    )
+    canonical_source_b = repo.pnl_by_business_precompute_source_version(
+        year=2027,
+        as_of_date="2027-12-31",
+        effective_ftp_rate_pct=Decimal("1.6000"),
+    )
+    changed_source = repo.pnl_by_business_precompute_source_version(
+        year=2027,
+        as_of_date="2027-12-31",
+        effective_ftp_rate_pct=Decimal("1.61"),
+    )
+
+    assert fixed_rate_from_default_a == fixed_rate_from_default_b == Decimal("1.60")
+    assert fixed_source_a == fixed_source_b
+    assert canonical_source_a == canonical_source_b
+    assert canonical_source_a != changed_source
+    assert canonical_source_a.startswith("sv_pnl_by_business_precompute_v5:")
+    assert '"effective_ftp_rate_pct":"1.6"' in canonical_source_a
+    assert pnl_repo_module._canonical_decimal_text(Decimal("-0.000")) == "0"
+    assert pnl_repo_module._canonical_decimal_text(Decimal("-1.6000")) == "-1.6"
+
+
+def test_effective_ftp_rate_canonicalization_is_decimal_context_independent() -> None:
+    rate = Decimal("1.23456789012345678901234567890123456789")
+    canonical_by_precision: dict[int, str] = {}
+
+    for precision in (8, 28, 40):
+        with localcontext() as context:
+            context.prec = precision
+            canonical_by_precision[precision] = pnl_repo_module._canonical_decimal_text(rate)
+
+    assert set(canonical_by_precision.values()) == {
+        "1.23456789012345678901234567890123456789"
+    }
+
+
+@pytest.mark.parametrize("non_finite", [Decimal("NaN"), Decimal("Infinity"), Decimal("-Infinity")])
+def test_effective_ftp_rate_canonicalization_rejects_non_finite_values(
+    non_finite: Decimal,
+) -> None:
+    with pytest.raises(ValueError, match="must be finite"):
+        pnl_repo_module._canonical_decimal_text(non_finite)
+
+
+def test_precompute_fetch_and_metadata_reject_changed_effective_ftp_rate(tmp_path) -> None:
+    import duckdb
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    repo = pnl_repo_module.PnlRepository(str(duckdb_path))
+    duckdb.connect(str(duckdb_path), read_only=False).close()
+    stored_source_version = repo.pnl_by_business_precompute_source_version(
+        year=2027,
+        as_of_date="2027-12-31",
+        effective_ftp_rate_pct=Decimal("1.60"),
+    )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_pnl_by_business_precompute (
+                year integer, as_of_date varchar, result_kind varchar,
+                dimension varchar, business_key varchar,
+                payload_json varchar, source_version varchar, rule_version varchar,
+                generated_at timestamp
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_pnl_by_business_precompute values (
+                2027, '2027-12-31', 'monthly', '', '',
+                '{"current": true}', ?, ?, current_timestamp
+            )
+            """,
+            [stored_source_version, pnl_repo_module.PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION],
+        )
+    finally:
+        conn.close()
+
+    assert repo.fetch_pnl_by_business_precompute(
+        year=2027,
+        as_of_date="2027-12-31",
+        result_kind="monthly",
+        dimension="",
+        business_key="",
+        effective_ftp_rate_pct=Decimal("1.6000"),
+    ) == {"current": True}
+    assert repo.fetch_pnl_by_business_precompute(
+        year=2027,
+        as_of_date="2027-12-31",
+        result_kind="monthly",
+        dimension="",
+        business_key="",
+        effective_ftp_rate_pct=Decimal("1.61"),
+    ) is None
+    stale_metadata = repo.fetch_pnl_by_business_precompute_metadata(
+        year=2027,
+        as_of_date="2027-12-31",
+        effective_ftp_rate_pct=Decimal("1.61"),
+    )
+    assert stale_metadata is not None
+    assert stale_metadata["is_current"] is False
+
+
+def test_precompute_read_helper_forwards_effective_ftp_rate() -> None:
+    received: list[dict[str, object]] = []
+
+    class FakeRepository:
+        def fetch_pnl_by_business_precompute(self, **kwargs):
+            received.append(kwargs)
+            return None
+
+    pnl_service_module._fetch_pnl_by_business_precompute(
+        FakeRepository(),
+        governance_dir="missing-governance-dir",
+        year=2027,
+        as_of_date="2027-12-31",
+        result_kind="monthly",
+        dimension="",
+        business_key="",
+        effective_ftp_rate_pct=Decimal("1.6000"),
+    )
+
+    assert received[0]["effective_ftp_rate_pct"] == Decimal("1.6000")
 
 
 def test_precompute_classification_matches_live_when_only_formal_metadata_is_available() -> None:
@@ -251,6 +406,7 @@ def test_fetch_precompute_returns_none_when_rule_version_mismatches(tmp_path):
         result_kind="monthly",
         dimension="",
         business_key="",
+        effective_ftp_rate_pct=Decimal("1.75"),
         expected_rule_version=pnl_repo_module.PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION,
     )
 
@@ -330,6 +486,7 @@ def test_precompute_source_fingerprint_includes_fact_rule_version(tmp_path) -> N
     stale_source_version = repo.pnl_by_business_precompute_source_version(
         year=2026,
         as_of_date="2026-06-30",
+        effective_ftp_rate_pct=Decimal("1.60"),
     )
 
     conn = duckdb.connect(str(duckdb_path), read_only=False)
@@ -343,15 +500,17 @@ def test_precompute_source_fingerprint_includes_fact_rule_version(tmp_path) -> N
     current_source_version = repo.pnl_by_business_precompute_source_version(
         year=2026,
         as_of_date="2026-06-30",
+        effective_ftp_rate_pct=Decimal("1.60"),
     )
     adjusted_source_version = repo.pnl_by_business_precompute_source_version(
         year=2026,
         as_of_date="2026-06-30",
+        effective_ftp_rate_pct=Decimal("1.60"),
         supplemental_source_version="sv_pnl_by_business_adjustments_v1:test-change",
     )
 
-    assert stale_source_version.startswith("sv_pnl_by_business_precompute_v4:")
-    assert current_source_version.startswith("sv_pnl_by_business_precompute_v4:")
+    assert stale_source_version.startswith("sv_pnl_by_business_precompute_v5:")
+    assert current_source_version.startswith("sv_pnl_by_business_precompute_v5:")
     assert stale_source_version != current_source_version
     assert current_source_version != adjusted_source_version
     assert "sv_pnl_by_business_adjustments_v1:test-change" in adjusted_source_version
@@ -394,6 +553,7 @@ def test_precompute_source_fingerprint_changes_when_balance_currency_changes(tmp
     cny_source_version = repo.pnl_by_business_precompute_source_version(
         year=2026,
         as_of_date="2026-06-30",
+        effective_ftp_rate_pct=Decimal("1.60"),
     )
 
     conn = duckdb.connect(str(duckdb_path), read_only=False)
@@ -407,6 +567,7 @@ def test_precompute_source_fingerprint_changes_when_balance_currency_changes(tmp
     usd_source_version = repo.pnl_by_business_precompute_source_version(
         year=2026,
         as_of_date="2026-06-30",
+        effective_ftp_rate_pct=Decimal("1.60"),
     )
 
     assert cny_source_version != usd_source_version
@@ -449,6 +610,7 @@ def test_precompute_source_fingerprint_changes_when_balance_amounts_are_redistri
     original_source_version = repo.pnl_by_business_precompute_source_version(
         year=2026,
         as_of_date="2026-06-30",
+        effective_ftp_rate_pct=Decimal("1.60"),
     )
 
     conn = duckdb.connect(str(duckdb_path), read_only=False)
@@ -468,6 +630,7 @@ def test_precompute_source_fingerprint_changes_when_balance_amounts_are_redistri
     redistributed_source_version = repo.pnl_by_business_precompute_source_version(
         year=2026,
         as_of_date="2026-06-30",
+        effective_ftp_rate_pct=Decimal("1.60"),
     )
 
     assert original_source_version != redistributed_source_version
@@ -513,6 +676,7 @@ def test_precompute_source_fingerprint_changes_when_pnl_is_redistributed_between
     original_source_version = repo.pnl_by_business_precompute_source_version(
         year=2026,
         as_of_date="2026-06-30",
+        effective_ftp_rate_pct=Decimal("1.60"),
     )
 
     conn = duckdb.connect(str(duckdb_path), read_only=False)
@@ -536,6 +700,7 @@ def test_precompute_source_fingerprint_changes_when_pnl_is_redistributed_between
     redistributed_source_version = repo.pnl_by_business_precompute_source_version(
         year=2026,
         as_of_date="2026-06-30",
+        effective_ftp_rate_pct=Decimal("1.60"),
     )
 
     assert original_source_version != redistributed_source_version

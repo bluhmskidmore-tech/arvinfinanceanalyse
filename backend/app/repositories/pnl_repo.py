@@ -22,6 +22,18 @@ from backend.app.repositories.task_write_guard import require_repository_task_wr
 PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION = "rv_pnl_by_business_precompute_v8"
 
 
+def _canonical_decimal_text(value: Decimal) -> str:
+    decimal_value = Decimal(str(value))
+    if not decimal_value.is_finite():
+        raise ValueError("effective_ftp_rate_pct must be finite.")
+    if decimal_value == 0:
+        return "0"
+    decimal_text = format(decimal_value, "f")
+    if "." in decimal_text:
+        decimal_text = decimal_text.rstrip("0").rstrip(".")
+    return decimal_text
+
+
 def _position_book_key(portfolio_name: object, cost_center: object) -> str:
     pn = str(portfolio_name or "").strip()
     cc = str(cost_center or "").strip()
@@ -109,6 +121,7 @@ class PnlRepository:
         result_kind: str,
         dimension: str,
         business_key: str,
+        effective_ftp_rate_pct: Decimal,
         expected_rule_version: str = PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION,
         supplemental_source_version: str = "",
     ) -> dict[str, object] | None:
@@ -144,6 +157,7 @@ class PnlRepository:
         source_version = self.pnl_by_business_precompute_source_version(
             year=year,
             as_of_date=as_of_date,
+            effective_ftp_rate_pct=effective_ftp_rate_pct,
             supplemental_source_version=supplemental_source_version,
         )
         if str(row[1] or "") != source_version:
@@ -155,6 +169,7 @@ class PnlRepository:
         *,
         year: int,
         as_of_date: str,
+        effective_ftp_rate_pct: Decimal,
         supplemental_source_version: str = "",
         verify_current: bool = True,
     ) -> dict[str, object] | None:
@@ -188,6 +203,7 @@ class PnlRepository:
             self.pnl_by_business_precompute_source_version(
                 year=year,
                 as_of_date=as_of_date,
+                effective_ftp_rate_pct=effective_ftp_rate_pct,
                 supplemental_source_version=supplemental_source_version,
             )
             if verify_current
@@ -212,9 +228,11 @@ class PnlRepository:
         *,
         year: int,
         as_of_date: str,
+        effective_ftp_rate_pct: Decimal,
         supplemental_source_version: str = "",
     ) -> str:
         y = f"{year:04d}"
+        canonical_ftp_rate_pct = _canonical_decimal_text(effective_ftp_rate_pct)
         try:
             conn = duckdb.connect(self.path, read_only=True)
             report_dates: list[str] = []
@@ -233,9 +251,10 @@ class PnlRepository:
                 report_dates.extend(str(row[0]) for row in rows)
             period_start = f"{min(report_dates)[:7]}-01" if report_dates else f"{y}-01-01"
             fingerprint = {
-                "version": "v4",
+                "version": "v5",
                 "year": year,
                 "as_of_date": as_of_date,
+                "effective_ftp_rate_pct": canonical_ftp_rate_pct,
                 "period_start": period_start,
                 "report_dates": sorted(set(report_dates)),
                 "formal_fi": self._pnl_precompute_fact_stats(
@@ -259,12 +278,15 @@ class PnlRepository:
             }
         except duckdb.Error as exc:
             if "cannot open database" in str(exc).lower() or "does not exist" in str(exc).lower():
-                return "sv_pnl_by_business_precompute_v4:unavailable"
+                return (
+                    "sv_pnl_by_business_precompute_v5:unavailable:"
+                    f"ftp={canonical_ftp_rate_pct}"
+                )
             raise RuntimeError("Formal pnl storage is unavailable.") from exc
         finally:
             if "conn" in locals():
                 conn.close()
-        return "sv_pnl_by_business_precompute_v4:" + json.dumps(
+        return "sv_pnl_by_business_precompute_v5:" + json.dumps(
             fingerprint,
             ensure_ascii=False,
             sort_keys=True,
