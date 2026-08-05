@@ -611,12 +611,15 @@ def choice_macro_formal_envelope(duckdb_path: str) -> dict[str, object]:
 def macro_foundation_formal_envelope(duckdb_path: str) -> dict[str, object]:
     """Formal-basis envelope for the macro catalog (stable entries)."""
     payload = load_macro_vendor_payload(duckdb_path)
+    stable_payload = MacroVendorPayload(
+        series=[item for item in payload.series if item.refresh_tier == "stable"]
+    )
     source_version = _load_macro_vendor_source_version(
         duckdb_path,
-        series_ids=[item.series_id for item in payload.series],
+        series_ids=[item.series_id for item in stable_payload.series],
     )
     vendor_version = _aggregate_lineage_value(
-        [item.vendor_version for item in payload.series],
+        [item.vendor_version for item in stable_payload.series],
         empty_value="vv_none",
     )
     return build_result_envelope(
@@ -626,11 +629,11 @@ def macro_foundation_formal_envelope(duckdb_path: str) -> dict[str, object]:
         cache_version=CACHE_VERSION,
         source_version=source_version,
         rule_version=RULE_VERSION,
-        quality_flag=_quality_flag_for_presence(payload.series),
+        quality_flag=_quality_flag_for_presence(stable_payload.series),
         vendor_version=vendor_version,
-        vendor_status=_vendor_status_for_presence(payload.series),
+        vendor_status=_vendor_status_for_presence(stable_payload.series),
         fallback_mode="none",
-        result_payload=payload.model_dump(mode="json"),
+        result_payload=stable_payload.model_dump(mode="json"),
         source_surface="market_data",
     )
 

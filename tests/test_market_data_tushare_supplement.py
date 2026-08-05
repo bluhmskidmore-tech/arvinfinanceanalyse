@@ -176,6 +176,61 @@ def test_bond_futures_rankings_envelope_reads_cffex_member_rank_table(tmp_path):
     ]
 
 
+def test_macro_foundation_formal_envelope_keeps_only_stable_catalog_rows(tmp_path):
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table phase1_macro_vendor_catalog (
+              series_id varchar,
+              series_name varchar,
+              vendor_name varchar,
+              vendor_version varchar,
+              frequency varchar,
+              unit varchar,
+              refresh_tier varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into phase1_macro_vendor_catalog values
+              ('stable-1', 'Stable series', 'choice', 'vv-stable', 'daily', '%', 'stable'),
+              ('fallback-1', 'Fallback series', 'choice', 'vv-fallback', 'daily', '%', 'fallback'),
+              ('isolated-1', 'Isolated series', 'choice', 'vv-isolated', 'daily', '%', 'isolated')
+            """
+        )
+        conn.execute(
+            """
+            create table choice_market_snapshot (
+              series_id varchar,
+              source_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into choice_market_snapshot values
+              ('stable-1', 'sv-stable'),
+              ('fallback-1', 'sv-fallback'),
+              ('isolated-1', 'sv-isolated')
+            """
+        )
+    finally:
+        conn.close()
+
+    envelope = macro_foundation_formal_envelope(str(duckdb_path))
+
+    assert envelope["result_meta"]["formal_use_allowed"] is True
+    assert envelope["result_meta"]["source_version"] == "sv-stable"
+    assert envelope["result_meta"]["vendor_version"] == "vv-stable"
+    assert [row["series_id"] for row in envelope["result"]["series"]] == ["stable-1"]
+    assert [row["refresh_tier"] for row in envelope["result"]["series"]] == ["stable"]
+    assert envelope["result"]["series"][0]["theme"] == "unknown"
+    assert envelope["result"]["series"][0]["tags"] == []
+
+
 def test_macro_foundation_exposes_catalog_theme_and_safely_parsed_tags(tmp_path):
     duckdb_path = tmp_path / "moss.duckdb"
     conn = duckdb.connect(str(duckdb_path), read_only=False)

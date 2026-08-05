@@ -1359,7 +1359,7 @@ def test_macro_foundation_preview_exposes_policy_metadata_from_catalog(
     get_settings.cache_clear()
 
 
-def test_market_data_catalog_tolerates_legacy_policy_metadata(
+def test_market_data_catalog_excludes_legacy_non_stable_policy_metadata(
     tmp_path,
     monkeypatch,
 ):
@@ -1413,11 +1413,8 @@ def test_market_data_catalog_tolerates_legacy_policy_metadata(
     assert response.status_code == 200
     payload = response.json()
     assert payload["result_meta"]["result_kind"] == "market_data.catalog"
-    assert payload["result"]["series"][0]["series_id"] == "legacy_macro"
-    assert payload["result"]["series"][0]["refresh_tier"] is None
-    assert payload["result"]["series"][0]["fetch_mode"] is None
-    assert payload["result"]["series"][0]["fetch_granularity"] is None
-    assert payload["result"]["series"][0]["policy_note"] == "legacy external catalog metadata"
+    assert payload["result_meta"]["quality_flag"] == "warning"
+    assert payload["result"]["series"] == []
     get_settings.cache_clear()
 
 
