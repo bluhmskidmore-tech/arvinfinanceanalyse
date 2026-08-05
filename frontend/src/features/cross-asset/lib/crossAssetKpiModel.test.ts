@@ -69,6 +69,22 @@ describe("crossAssetKpiModel", () => {
     expect(cn?.tradeDate).toBe("2026-03-01");
   });
 
+  it("preserves sorted trade-date/value observations for resolved single-series KPIs", () => {
+    const cn = resolveCrossAssetKpis([
+      macroPoint("E1000180", 1.88, [
+        ["2026-03-01", 1.88],
+        ["2026-02-27", 1.9],
+        ["2026-02-28", 1.89],
+      ]),
+    ]).find((kpi) => kpi.key === "cn_gov_10y");
+
+    expect(cn?.sparklinePoints).toEqual([
+      { tradeDate: "2026-02-27", value: 1.9 },
+      { tradeDate: "2026-02-28", value: 1.89 },
+      { tradeDate: "2026-03-01", value: 1.88 },
+    ]);
+  });
+
   it("keeps financial conditions and CSI300 in separate semantic slots regardless of freshness", () => {
     const series = [
       macroPoint("EMM01843735", -1.54, [
@@ -222,6 +238,39 @@ describe("crossAssetKpiModel", () => {
     expect(spread?.sourceKind).toBe("derived");
     expect(spread?.tradeDate).toBe("2026-03-01");
     expect(spread?.sparkline.length).toBeGreaterThan(0);
+  });
+
+  it("keeps only common trade dates on a derived spread series", () => {
+    const spread = resolveCrossAssetKpis([
+      macroPoint("EMM00166466", 2.5, [
+        ["2026-04-01", 2.0],
+        ["2026-04-02", 2.1],
+        ["2026-04-04", 2.2],
+        ["2026-04-05", 2.3],
+        ["2026-04-06", 2.4],
+        ["2026-04-07", 2.5],
+      ]),
+      macroPoint("CA.US_GOV_10Y", 4.5, [
+        ["2026-04-01", 4.0],
+        ["2026-04-03", 4.1],
+        ["2026-04-04", 4.2],
+        ["2026-04-05", 4.3],
+        ["2026-04-06", 4.4],
+        ["2026-04-07", 4.5],
+      ]),
+    ]).find((kpi) => kpi.key === "gov_spread");
+
+    expect(spread?.sparklinePoints?.map((point) => point.tradeDate)).toEqual([
+      "2026-04-01",
+      "2026-04-04",
+      "2026-04-05",
+      "2026-04-06",
+      "2026-04-07",
+    ]);
+    expect(spread?.sparklinePoints).toHaveLength(5);
+    for (const point of spread?.sparklinePoints ?? []) {
+      expect(point.value).toBeCloseTo(-200, 8);
+    }
   });
 
   it("falls back to CDB–gov spread when US leg is missing", () => {

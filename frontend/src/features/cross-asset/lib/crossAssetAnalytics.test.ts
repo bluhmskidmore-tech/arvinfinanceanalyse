@@ -38,17 +38,55 @@ function makeKpi(
   };
 }
 
+function makeDatedKpi(
+  key: string,
+  label: string,
+  points: Array<{ tradeDate: string; value: number }>,
+): ResolvedCrossAssetKpi {
+  return {
+    ...makeKpi(
+      key,
+      label,
+      points.map((point) => point.value),
+    ),
+    sparklinePoints: points,
+  };
+}
+
 describe("buildCorrelationMatrix", () => {
   it("returns empty matrix if fewer than 2 eligible kpis", () => {
-    const result = buildCorrelationMatrix([makeKpi("a", "A", [1, 2])]);
+    const result = buildCorrelationMatrix([
+      makeDatedKpi("a", "A", [
+        { tradeDate: "2026-04-01", value: 1 },
+        { tradeDate: "2026-04-02", value: 2 },
+      ]),
+    ]);
     expect(result.keys.length).toBe(0); // < 5 points → not eligible
   });
 
   it("computes NxN matrix for eligible kpis", () => {
     const kpis = [
-      makeKpi("a", "A", [1, 2, 3, 4, 5]),
-      makeKpi("b", "B", [2, 4, 6, 8, 10]),
-      makeKpi("c", "C", [5, 4, 3, 2, 1]),
+      makeDatedKpi("a", "A", [
+        { tradeDate: "2026-04-01", value: 1 },
+        { tradeDate: "2026-04-02", value: 2 },
+        { tradeDate: "2026-04-03", value: 3 },
+        { tradeDate: "2026-04-04", value: 4 },
+        { tradeDate: "2026-04-05", value: 5 },
+      ]),
+      makeDatedKpi("b", "B", [
+        { tradeDate: "2026-04-01", value: 2 },
+        { tradeDate: "2026-04-02", value: 4 },
+        { tradeDate: "2026-04-03", value: 6 },
+        { tradeDate: "2026-04-04", value: 8 },
+        { tradeDate: "2026-04-05", value: 10 },
+      ]),
+      makeDatedKpi("c", "C", [
+        { tradeDate: "2026-04-01", value: 5 },
+        { tradeDate: "2026-04-02", value: 4 },
+        { tradeDate: "2026-04-03", value: 3 },
+        { tradeDate: "2026-04-04", value: 2 },
+        { tradeDate: "2026-04-05", value: 1 },
+      ]),
     ];
     const m = buildCorrelationMatrix(kpis);
     expect(m.keys).toEqual(["a", "b", "c"]);
@@ -64,12 +102,85 @@ describe("buildCorrelationMatrix", () => {
 
   it("excludes the zero-centered financial-conditions score from asset correlations", () => {
     const matrix = buildCorrelationMatrix([
-      makeKpi("financial_conditions", "金融条件指数", [-1.2, -0.8, -0.2, 0.1, -0.4]),
-      makeKpi("csi300", "沪深300", [3800, 3820, 3810, 3840, 3860]),
-      makeKpi("cn_gov_10y", "10Y国债", [2.1, 2.08, 2.09, 2.05, 2.04]),
+      makeDatedKpi("financial_conditions", "金融条件指数", [
+        { tradeDate: "2026-04-01", value: -1.2 },
+        { tradeDate: "2026-04-02", value: -0.8 },
+        { tradeDate: "2026-04-03", value: -0.2 },
+        { tradeDate: "2026-04-04", value: 0.1 },
+        { tradeDate: "2026-04-05", value: -0.4 },
+      ]),
+      makeDatedKpi("csi300", "沪深300", [
+        { tradeDate: "2026-04-01", value: 3800 },
+        { tradeDate: "2026-04-02", value: 3820 },
+        { tradeDate: "2026-04-03", value: 3810 },
+        { tradeDate: "2026-04-04", value: 3840 },
+        { tradeDate: "2026-04-05", value: 3860 },
+      ]),
+      makeDatedKpi("cn_gov_10y", "10Y国债", [
+        { tradeDate: "2026-04-01", value: 2.1 },
+        { tradeDate: "2026-04-02", value: 2.08 },
+        { tradeDate: "2026-04-03", value: 2.09 },
+        { tradeDate: "2026-04-04", value: 2.05 },
+        { tradeDate: "2026-04-05", value: 2.04 },
+      ]),
     ]);
 
     expect(matrix.keys).toEqual(["csi300", "cn_gov_10y"]);
+  });
+
+  it("aligns each pair by common trade dates instead of sparkline positions", () => {
+    const matrix = buildCorrelationMatrix([
+      makeDatedKpi("cn_gov_10y", "10Y CN gov", [
+        { tradeDate: "2026-04-01", value: 1 },
+        { tradeDate: "2026-04-02", value: 100 },
+        { tradeDate: "2026-04-04", value: 2 },
+        { tradeDate: "2026-04-05", value: 3 },
+        { tradeDate: "2026-04-06", value: 4 },
+        { tradeDate: "2026-04-07", value: 5 },
+      ]),
+      makeDatedKpi("brent", "Brent", [
+        { tradeDate: "2026-04-01", value: 1 },
+        { tradeDate: "2026-04-03", value: -100 },
+        { tradeDate: "2026-04-04", value: 2 },
+        { tradeDate: "2026-04-05", value: 3 },
+        { tradeDate: "2026-04-06", value: 4 },
+        { tradeDate: "2026-04-07", value: 5 },
+      ]),
+    ]);
+
+    expect(matrix.cells[0][1].value).toBeCloseTo(1, 8);
+  });
+
+  it("does not emit cross-series correlations when dated observations are unavailable", () => {
+    const matrix = buildCorrelationMatrix([
+      makeKpi("cn_gov_10y", "10Y CN gov", [1, 2, 3, 4, 5]),
+      makeKpi("brent", "Brent", [2, 4, 6, 8, 10]),
+    ]);
+
+    expect(matrix.keys).toEqual([]);
+    expect(matrix.cells).toEqual([]);
+  });
+
+  it("returns an unavailable cell when a pair has fewer than five common trade dates", () => {
+    const matrix = buildCorrelationMatrix([
+      makeDatedKpi("cn_gov_10y", "10Y CN gov", [
+        { tradeDate: "2026-04-01", value: 1 },
+        { tradeDate: "2026-04-02", value: 2 },
+        { tradeDate: "2026-04-03", value: 3 },
+        { tradeDate: "2026-04-04", value: 4 },
+        { tradeDate: "2026-04-05", value: 5 },
+      ]),
+      makeDatedKpi("brent", "Brent", [
+        { tradeDate: "2026-04-02", value: 2 },
+        { tradeDate: "2026-04-03", value: 3 },
+        { tradeDate: "2026-04-04", value: 4 },
+        { tradeDate: "2026-04-05", value: 5 },
+        { tradeDate: "2026-04-06", value: 6 },
+      ]),
+    ]);
+
+    expect(matrix.keys).toEqual(["cn_gov_10y", "brent"]);
+    expect(matrix.cells[0][1].value).toBeNull();
   });
 });
 

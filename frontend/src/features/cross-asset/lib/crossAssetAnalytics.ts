@@ -11,7 +11,12 @@
  */
 
 import { designTokens } from "../../../theme/designSystem";
-import { isAssetLevelKpiKey, type ResolvedCrossAssetKpi, type CrossAssetKpiFormat } from "./crossAssetKpiModel";
+import {
+  isAssetLevelKpiKey,
+  type CrossAssetDatedValue,
+  type ResolvedCrossAssetKpi,
+  type CrossAssetKpiFormat,
+} from "./crossAssetKpiModel";
 
 /**
  * Cross-asset analytics presentation palette.
@@ -98,28 +103,53 @@ function pearsonR(xs: number[], ys: number[]): number | null {
 }
 
 /**
- * Build an NxN correlation matrix from the sparkline arrays attached to KPIs.
- * Only includes KPIs that have at least 5 sparkline data points.
- * Correlation is computed on the overlapping tail of each pair.
+ * Build an NxN correlation matrix from date-bearing KPI observations.
+ * Only includes KPIs that have at least 5 unique dated observations.
+ * Each pair is aligned by common trade_date and requires at least 5 overlaps.
+ * Undated sparkline arrays are presentation-only and must not be positionally paired.
  */
 export function buildCorrelationMatrix(kpis: ResolvedCrossAssetKpi[]): CorrelationMatrix {
-  const eligible = kpis.filter((k) => isAssetLevelKpiKey(k.key) && k.sparkline.length >= 5);
-  const keys = eligible.map((k) => k.key);
-  const labels = eligible.map((k) => k.label);
+  const minimumObservations = 5;
+  const eligible = kpis
+    .map((kpi) => ({ kpi, points: normalizeDatedValues(kpi.sparklinePoints) }))
+    .filter(({ kpi, points }) => isAssetLevelKpiKey(kpi.key) && points.length >= minimumObservations);
+  const keys = eligible.map(({ kpi }) => kpi.key);
+  const labels = eligible.map(({ kpi }) => kpi.label);
 
-  const cells: CorrelationCell[][] = eligible.map((rowKpi, ri) => {
-    return eligible.map((colKpi, ci) => {
+  const cells: CorrelationCell[][] = eligible.map(({ kpi: rowKpi, points: rowPoints }, ri) => {
+    return eligible.map(({ kpi: colKpi, points: colPoints }, ci) => {
       if (ri === ci) {
         return { rowKey: rowKpi.key, colKey: colKpi.key, value: 1 };
       }
-      const minLen = Math.min(rowKpi.sparkline.length, colKpi.sparkline.length);
-      const xs = rowKpi.sparkline.slice(-minLen);
-      const ys = colKpi.sparkline.slice(-minLen);
-      return { rowKey: rowKpi.key, colKey: colKpi.key, value: pearsonR(xs, ys) };
+      const colByDate = new Map(colPoints.map((point) => [point.tradeDate, point.value]));
+      const aligned = rowPoints
+        .filter((point) => colByDate.has(point.tradeDate))
+        .map((point) => ({ x: point.value, y: colByDate.get(point.tradeDate)! }));
+      const value =
+        aligned.length >= minimumObservations
+          ? pearsonR(
+              aligned.map((point) => point.x),
+              aligned.map((point) => point.y),
+            )
+          : null;
+      return { rowKey: rowKpi.key, colKey: colKpi.key, value };
     });
   });
 
   return { keys, labels, cells };
+}
+
+function normalizeDatedValues(points: CrossAssetDatedValue[] | undefined): CrossAssetDatedValue[] {
+  const byDate = new Map<string, number>();
+  for (const point of points ?? []) {
+    if (!point.tradeDate || !Number.isFinite(point.value)) {
+      continue;
+    }
+    byDate.set(point.tradeDate, point.value);
+  }
+  return [...byDate.entries()]
+    .sort(([leftDate], [rightDate]) => leftDate.localeCompare(rightDate))
+    .map(([tradeDate, value]) => ({ tradeDate, value }));
 }
 
 /**

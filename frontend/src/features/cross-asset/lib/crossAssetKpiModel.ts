@@ -172,6 +172,17 @@ export type ResolvedCrossAssetKpi = {
   changeLabel: string;
   changeTone: "positive" | "negative" | "warning" | "default";
   sparkline: number[];
+  /**
+   * Date-bearing observations used by pairwise analytics.
+   * Optional for compatibility with presentation-only fixtures; correlation
+   * calculations must treat a missing value as unavailable, never positional.
+   */
+  sparklinePoints?: CrossAssetDatedValue[];
+};
+
+export type CrossAssetDatedValue = {
+  tradeDate: string;
+  value: number;
 };
 
 function pickPoint(
@@ -228,12 +239,12 @@ function formatFx(n: number) {
   return n.toFixed(4);
 }
 
-function sparklineFromPoint(point: ChoiceMacroLatestPoint | undefined): number[] {
+function sparklinePointsFromPoint(point: ChoiceMacroLatestPoint | undefined): CrossAssetDatedValue[] {
   if (!point?.recent_points?.length) {
     return [];
   }
   const sorted = [...point.recent_points].sort((a, b) => a.trade_date.localeCompare(b.trade_date));
-  return sorted.map((p) => p.value_numeric);
+  return sorted.map((p) => ({ tradeDate: p.trade_date, value: p.value_numeric }));
 }
 
 function mergeRecentByDate(
@@ -261,15 +272,18 @@ function toSpreadBp(minuendPct: number, subtrahendPct: number) {
   return (minuendPct - subtrahendPct) * 100;
 }
 
-function spreadSparklineFromPoints(
+function spreadSparklinePointsFromPoints(
   hi: ChoiceMacroLatestPoint | undefined,
   lo: ChoiceMacroLatestPoint | undefined,
-): number[] {
+): CrossAssetDatedValue[] {
   if (!hi?.recent_points?.length || !lo?.recent_points?.length) {
     return [];
   }
-  const { leftV, rightV } = mergeRecentByDate(hi.recent_points, lo.recent_points);
-  return leftV.map((lv, i) => toSpreadBp(lv, rightV[i]));
+  const { dates, leftV, rightV } = mergeRecentByDate(hi.recent_points, lo.recent_points);
+  return dates.map((tradeDate, index) => ({
+    tradeDate,
+    value: toSpreadBp(leftV[index], rightV[index]),
+  }));
 }
 
 function spreadLatestChange(sparkline: number[]): number | null {
@@ -366,7 +380,8 @@ function resolveSpreadSlot(
 ): ResolvedCrossAssetKpi {
   const preBp = pickPoint(byId, slot.precomputedCnUsBpIds);
   if (preBp) {
-    const sparkline = sparklineFromPoint(preBp);
+    const sparklinePoints = sparklinePointsFromPoint(preBp);
+    const sparkline = sparklinePoints.map((point) => point.value);
     const delta = spreadLatestChange(sparkline);
     return {
       key: slot.key,
@@ -382,6 +397,7 @@ function resolveSpreadSlot(
       changeLabel: changeLabelForSlot("bp", delta),
       changeTone: toneForChange("bp", delta),
       sparkline,
+      sparklinePoints,
     };
   }
 
@@ -421,11 +437,13 @@ function resolveSpreadSlot(
       changeLabel: "—",
       changeTone: "default",
       sparkline: [],
+      sparklinePoints: [],
     };
   }
 
   const vBp = toSpreadBp(hi.value_numeric, lo.value_numeric);
-  const sparkline = spreadSparklineFromPoints(hi, lo);
+  const sparklinePoints = spreadSparklinePointsFromPoints(hi, lo);
+  const sparkline = sparklinePoints.map((point) => point.value);
   const delta = spreadLatestChange(sparkline);
 
   return {
@@ -442,6 +460,7 @@ function resolveSpreadSlot(
     changeLabel: changeLabelForSlot("bp", delta),
     changeTone: toneForChange("bp", delta),
     sparkline,
+    sparklinePoints,
   };
 }
 
@@ -450,6 +469,7 @@ function resolveSingleSlot(slot: CrossAssetSingleSlot, byId: Map<string, ChoiceM
   const id = point?.series_id ?? slot.candidateSeriesIds[0] ?? slot.key;
   const delta = point?.latest_change ?? null;
   const label = slot.key === "money_market_7d" && point?.series_id === "CA.DR007" ? "DR007" : slot.label;
+  const sparklinePoints = sparklinePointsFromPoint(point);
   return {
     key: slot.key,
     label,
@@ -465,7 +485,8 @@ function resolveSingleSlot(slot: CrossAssetSingleSlot, byId: Map<string, ChoiceM
     valueLabel: valueLabelForSlot(slot.format, point?.value_numeric),
     changeLabel: changeLabelForSlot(slot.format, delta),
     changeTone: toneForChange(slot.format, delta),
-    sparkline: sparklineFromPoint(point),
+    sparkline: sparklinePoints.map((sparklinePoint) => sparklinePoint.value),
+    sparklinePoints,
   };
 }
 
