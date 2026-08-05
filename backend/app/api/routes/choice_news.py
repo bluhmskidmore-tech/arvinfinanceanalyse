@@ -3,7 +3,10 @@ from typing import Annotated
 
 from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
-from backend.app.services.choice_news_service import choice_news_latest_envelope
+from backend.app.services.choice_news_service import (
+    StockMatchMode,
+    choice_news_latest_envelope,
+)
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 router = APIRouter(prefix="/ui/news")
@@ -27,6 +30,9 @@ def choice_events_latest(
     group_id: str | None = None,
     topic_code: str | None = None,
     stock_code: str | None = Query(default=None, max_length=16),
+    stock_name: str | None = Query(default=None, max_length=64),
+    stock_match_mode: StockMatchMode = Query(default="best_effort"),
+    include_payload_json: bool = Query(default=True),
     error_only: bool = False,
     received_from: str | None = None,
     received_to: str | None = None,
@@ -39,6 +45,15 @@ def choice_events_latest(
                 status_code=400,
                 detail="Invalid stock_code. Allowed characters: letters, digits, '.', '-'.",
             )
+
+    cleaned_stock_name = None
+    if stock_name is not None and stock_name.strip():
+        if cleaned_stock_code is None:
+            raise HTTPException(
+                status_code=400,
+                detail="stock_name is only allowed as an alias when stock_code is provided.",
+            )
+        cleaned_stock_name = stock_name.strip().upper()
 
     settings = get_settings()
     try:
@@ -57,6 +72,9 @@ def choice_events_latest(
         group_id=group_id,
         topic_code=topic_code,
         stock_code=cleaned_stock_code,
+        stock_name=cleaned_stock_name,
+        stock_match_mode=stock_match_mode,
+        include_payload_json=include_payload_json,
         error_only=error_only,
         received_from=received_from,
         received_to=received_to,
