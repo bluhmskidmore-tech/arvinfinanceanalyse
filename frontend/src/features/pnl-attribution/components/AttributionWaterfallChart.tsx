@@ -14,6 +14,17 @@ function formatYi(value: number | null | undefined): string {
   return `${yi >= 0 ? "+" : ""}${yi.toFixed(2)} 亿`;
 }
 
+function rawOrNull(value: { raw: number | null } | null | undefined): number | null {
+  const raw = value?.raw;
+  return typeof raw === "number" && Number.isFinite(raw) ? raw : null;
+}
+
+function formatTooltipYi(value: unknown): string {
+  return typeof value === "number" && Number.isFinite(value)
+    ? `${value.toFixed(2)} 亿元`
+    : "—";
+}
+
 type Props = {
   data: VolumeRateAttributionPayload | null;
   state: DataSectionState;
@@ -30,39 +41,56 @@ export function AttributionWaterfallChart({ data, state, onRetry }: Props) {
       return null;
     }
     const categories: string[] = [];
-    const values: number[] = [];
+    const values: Array<number | null> = [];
     const colors: string[] = [];
 
     categories.push("上期损益");
-    values.push((data.total_previous_pnl?.raw ?? 0) / 100_000_000);
+    const previousRaw = rawOrNull(data.total_previous_pnl);
+    values.push(previousRaw === null ? null : previousRaw / 100_000_000);
     colors.push(ibTokens.color.inkMuted);
 
-    const vol = (data.total_volume_effect?.raw ?? 0) / 100_000_000;
+    const volumeRaw = rawOrNull(data.total_volume_effect);
+    const vol = volumeRaw === null ? null : volumeRaw / 100_000_000;
     categories.push("规模效应");
     values.push(vol);
-    colors.push(vol >= 0 ? ibTokens.color.down : ibTokens.color.up);
+    colors.push(
+      vol === null
+        ? ibTokens.color.inkMuted
+        : vol >= 0
+          ? ibTokens.color.down
+          : ibTokens.color.up,
+    );
 
-    const rate = (data.total_rate_effect?.raw ?? 0) / 100_000_000;
+    const rateRaw = rawOrNull(data.total_rate_effect);
+    const rate = rateRaw === null ? null : rateRaw / 100_000_000;
     categories.push("利率效应");
     values.push(rate);
-    colors.push(rate >= 0 ? ibTokens.color.down : ibTokens.color.up);
+    colors.push(
+      rate === null
+        ? ibTokens.color.inkMuted
+        : rate >= 0
+          ? ibTokens.color.down
+          : ibTokens.color.up,
+    );
 
-    const cross = (data.total_interaction_effect?.raw ?? 0) / 100_000_000;
-    if (Math.abs(cross) > 0.001) {
+    const crossRaw = rawOrNull(data.total_interaction_effect);
+    const cross = crossRaw === null ? null : crossRaw / 100_000_000;
+    if (cross !== null && Math.abs(cross) > 0.001) {
       categories.push("交叉效应");
       values.push(cross);
       colors.push(ibTokens.color.inkMuted);
     }
 
     categories.push("当期损益");
-    values.push((data.total_current_pnl.raw ?? 0) / 100_000_000);
+    const currentRaw = rawOrNull(data.total_current_pnl);
+    values.push(currentRaw === null ? null : currentRaw / 100_000_000);
     colors.push(ibTokens.color.accent);
 
     return {
       tooltip: {
         trigger: "axis",
         axisPointer: { type: "shadow" },
-        valueFormatter: (v) => `${Number(v).toFixed(2)} 亿元`,
+        valueFormatter: formatTooltipYi,
       },
       grid: {
         left: 48,
