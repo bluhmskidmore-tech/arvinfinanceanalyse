@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -80,6 +81,8 @@ def load_macro_vendor_payload(duckdb_path: str) -> MacroVendorPayload:
             "vendor_version",
             "frequency",
             "unit",
+            _catalog_column_expr("theme", available_columns, "NULL"),
+            _catalog_column_expr("tags_json", available_columns, "NULL"),
             _catalog_column_expr("refresh_tier", available_columns, "NULL"),
             _catalog_column_expr("fetch_mode", available_columns, "NULL"),
             _catalog_column_expr("fetch_granularity", available_columns, "NULL"),
@@ -107,6 +110,8 @@ def load_macro_vendor_payload(duckdb_path: str) -> MacroVendorPayload:
         vendor_version,
         frequency,
         unit,
+        theme,
+        tags_json,
         refresh_tier,
         fetch_mode,
         fetch_granularity,
@@ -121,6 +126,8 @@ def load_macro_vendor_payload(duckdb_path: str) -> MacroVendorPayload:
                 vendor_version=str(vendor_version),
                 frequency=str(frequency),
                 unit=str(unit),
+                theme=_as_optional_string(theme) or "unknown",
+                tags=_parse_string_list_json(tags_json),
                 refresh_tier=_sanitize_choice_macro_refresh_tier(
                     category.get("refresh_tier") or refresh_tier
                 ),
@@ -2085,6 +2092,23 @@ def _as_optional_string(value: object) -> str | None:
         return None
     text = str(value)
     return text if text else None
+
+
+def _parse_string_list_json(value: object) -> list[str]:
+    text = _as_optional_string(value)
+    if text is None:
+        return []
+    try:
+        parsed = json.loads(text)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [
+        normalized
+        for item in parsed
+        if isinstance(item, str) and (normalized := item.strip())
+    ]
 
 
 def _sanitize_choice_macro_refresh_tier(value: object) -> str | None:

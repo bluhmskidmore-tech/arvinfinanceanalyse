@@ -2,6 +2,7 @@ import duckdb
 
 from backend.app.repositories.cffex_member_rank_repo import ensure_cffex_member_rank_schema
 from backend.app.services.macro_vendor_service import (
+    macro_foundation_formal_envelope,
     market_data_bond_futures_rankings_envelope,
     market_data_coverage_summary_envelope,
     tushare_supplement_envelope,
@@ -173,6 +174,64 @@ def test_bond_futures_rankings_envelope_reads_cffex_member_rank_table(tmp_path):
             "rule_version": "rv_cffex_member_rank_choice_tushare_v1",
         }
     ]
+
+
+def test_macro_foundation_exposes_catalog_theme_and_safely_parsed_tags(tmp_path):
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table phase1_macro_vendor_catalog (
+              series_id varchar,
+              series_name varchar,
+              vendor_name varchar,
+              vendor_version varchar,
+              frequency varchar,
+              unit varchar,
+              theme varchar,
+              tags_json varchar,
+              refresh_tier varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into phase1_macro_vendor_catalog values
+              (
+                'rates-1',
+                'Rates series',
+                'choice',
+                'vv-rates',
+                'daily',
+                '%',
+                'rates',
+                '["rates", "liquidity", 7, null, "  curve  "]',
+                'stable'
+              ),
+              (
+                'bad-tags',
+                'Bad tags series',
+                'choice',
+                'vv-bad',
+                'daily',
+                '%',
+                null,
+                '{not-json',
+                'stable'
+              )
+            """
+        )
+    finally:
+        conn.close()
+
+    envelope = macro_foundation_formal_envelope(str(duckdb_path))
+    rows = {row["series_id"]: row for row in envelope["result"]["series"]}
+
+    assert rows["rates-1"]["theme"] == "rates"
+    assert rows["rates-1"]["tags"] == ["rates", "liquidity", "curve"]
+    assert rows["bad-tags"]["theme"] == "unknown"
+    assert rows["bad-tags"]["tags"] == []
 
 
 def test_coverage_summary_marks_bond_futures_ready_when_rankings_exist(tmp_path):

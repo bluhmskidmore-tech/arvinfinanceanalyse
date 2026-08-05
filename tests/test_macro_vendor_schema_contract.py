@@ -135,6 +135,8 @@ def test_macro_vendor_payload_default_read_target():
         ],
     )
     assert payload.read_target == "duckdb"
+    assert payload.series[0].theme == "unknown"
+    assert payload.series[0].tags == []
 
 
 def test_choice_macro_recent_point_default_quality_flag():
