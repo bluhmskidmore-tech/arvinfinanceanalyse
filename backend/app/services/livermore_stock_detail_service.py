@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import duckdb
+from backend.app.core_finance.field_normalization import TRADING_STATUS_SQL_IN_LIST
 from backend.app.services.formal_result_runtime import (
     FallbackMode,
     QualityFlag,
@@ -180,20 +181,22 @@ def _missing_envelope(
 def _resolve_end_trade_date(conn: duckdb.DuckDBPyConnection, *, stock_code: str, as_of_date: date | None) -> date | None:
     if as_of_date is not None:
         row = conn.execute(
-            """
+            f"""
             select max(trade_date) as mx
             from choice_stock_daily_observation
             where stock_code = ?
               and trade_date <= ?
+              and lower(trim(coalesce(tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
             """,
             [stock_code, as_of_date.isoformat()],
         ).fetchone()
     else:
         row = conn.execute(
-            """
+            f"""
             select max(trade_date) as mx
             from choice_stock_daily_observation
             where stock_code = ?
+              and lower(trim(coalesce(tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
             """,
             [stock_code],
         ).fetchone()
@@ -231,6 +234,7 @@ def _fetch_candles(
         from {TABLE_OBS}
         where stock_code = ?
           and trade_date <= ?
+          and lower(trim(coalesce(tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
         order by trade_date desc
         limit ?
         """,

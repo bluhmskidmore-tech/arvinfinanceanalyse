@@ -31,6 +31,7 @@ def _seed_stock_detail_tables(
               close_value double,
               volume double,
               amount double,
+              tradestatus varchar,
               source_version varchar,
               vendor_version varchar
             )
@@ -64,6 +65,7 @@ def _seed_stock_detail_tables(
                     base + 0.05,
                     1_000_000.0 + i,
                     10_000_000.0 + i,
+                    "Trading",
                     "sv_choice_stock_obs_test",
                     "vv_choice_stock_test",
                 )
@@ -71,8 +73,8 @@ def _seed_stock_detail_tables(
         conn.executemany(
             """
             insert into choice_stock_daily_observation
-            (trade_date, stock_code, open_value, high_value, low_value, close_value, volume, amount, source_version, vendor_version)
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (trade_date, stock_code, open_value, high_value, low_value, close_value, volume, amount, tradestatus, source_version, vendor_version)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             obs_rows,
         )
@@ -152,6 +154,39 @@ def test_stock_detail_happy_path_sorted_candles_and_factor(tmp_path, monkeypatch
     assert factor["pb"] == 1.8
     assert factor["roe"] == 0.11
     assert factor["dividend_yield"] == 0.025
+    get_settings.cache_clear()
+
+
+def test_stock_detail_excludes_non_trading_placeholder_rows(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "moss.duckdb"
+    _seed_stock_detail_tables(str(db_path), n_days=8)
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.executemany(
+            """
+            insert into choice_stock_daily_observation
+            (trade_date, stock_code, open_value, high_value, low_value, close_value, volume, amount, tradestatus, source_version, vendor_version)
+            values (?, '000001.SZ', null, null, null, null, null, null, null, 'sv_placeholder', 'vv_placeholder')
+            """,
+            [("2026-04-11",), ("2026-04-12",)],
+        )
+    finally:
+        conn.close()
+    client = _build_client(tmp_path, monkeypatch)
+
+    response = client.get(
+        "/ui/market-data/livermore/stock-detail",
+        params={"stock_code": "000001.SZ", "as_of_date": "2026-04-12", "lookback": 5},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result"]["as_of_date"] == "2026-04-10"
+    candles = payload["result"]["candles"]
+    assert len(candles) == 5
+    assert candles[0]["trade_date"] == "2026-04-06"
+    assert candles[-1]["trade_date"] == "2026-04-10"
+    assert all(candle["close_value"] is not None for candle in candles)
     get_settings.cache_clear()
 
 
