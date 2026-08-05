@@ -1072,6 +1072,70 @@ def test_formal_zqtz_balance_metrics_batch_history_matches_single_values(tmp_pat
         )["total_market_value_amount"]
         for d in dates
     }
+    for report_date in dates:
+        single = repo.fetch_formal_overview(
+            report_date=report_date,
+            position_scope="asset",
+            currency_basis="CNY",
+        )
+        assert history[report_date]["_metric_scope"] == "combined_formal_balance"
+        assert history[report_date]["source_version"] == single["source_version"]
+        assert history[report_date]["rule_version"] == single["rule_version"]
+
+
+def test_formal_zqtz_balance_metrics_batch_history_marks_zqtz_only_scope(tmp_path):
+    repo_module = load_module(
+        "backend.app.repositories.formal_zqtz_balance_metrics_repo_zqtz_history_contract",
+        "backend/app/repositories/formal_zqtz_balance_metrics_repo.py",
+    )
+    import duckdb
+
+    db_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_formal_zqtz_balance_daily (
+              report_date varchar,
+              instrument_code varchar,
+              portfolio_name varchar,
+              cost_center varchar,
+              invest_type_std varchar,
+              accounting_basis varchar,
+              position_scope varchar,
+              currency_basis varchar,
+              market_value_amount decimal(24, 8),
+              amortized_cost_amount decimal(24, 8),
+              accrued_interest_amount decimal(24, 8),
+              source_version varchar,
+              rule_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_zqtz_balance_daily values
+            ('2025-12-31', 'Z1', 'p', 'c', 'inv', 'acct', 'asset', 'CNY',
+             100, 100, 0, 'sv_z_1', 'rv_z_1')
+            """
+        )
+    finally:
+        conn.close()
+
+    repo = repo_module.FormalZqtzBalanceMetricsRepository(str(db_path))
+    history = repo.fetch_formal_overview_history(
+        report_dates=["2025-12-31"],
+        position_scope="asset",
+        currency_basis="CNY",
+    )
+
+    assert history["2025-12-31"] == {
+        "report_date": "2025-12-31",
+        "total_market_value_amount": Decimal("100.00000000"),
+        "_metric_scope": "zqtz_only",
+        "source_version": "sv_z_1",
+        "rule_version": "rv_z_1",
+    }
 
 
 def test_pnl_repository_batch_ytd_sums_match_single_date_sums(tmp_path):
