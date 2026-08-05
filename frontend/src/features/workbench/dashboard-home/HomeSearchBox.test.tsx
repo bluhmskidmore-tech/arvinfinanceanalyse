@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, useLocation } from "react-router-dom";
@@ -230,6 +230,58 @@ describe("HomeSearchBox", () => {
     const activeOptionId = input.getAttribute("aria-activedescendant");
     expect(activeOptionId).toBeTruthy();
     expect(document.getElementById(activeOptionId ?? "")).toBeInTheDocument();
+  });
+
+  it("scrolls only the listbox when the active option moves below its viewport", async () => {
+    const scrollingKpis: readonly HomeTerminalKpi[] = [
+      { ...kpis[1], id: "duration-scroll-a", label: "Scroll check A" },
+      { ...kpis[1], id: "duration-scroll-b", label: "Scroll check B" },
+    ];
+    render(
+      <StatefulBox
+        initial="Scroll check"
+        terminalKpis={scrollingKpis}
+        decisionActions={[]}
+      />,
+    );
+
+    const input = screen.getByRole("combobox");
+    fireEvent.focus(input);
+    const listbox = screen.getByRole("listbox") as HTMLUListElement;
+    const secondOption = screen.getAllByRole("option")[1] as HTMLLIElement;
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(secondOption, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    vi.spyOn(listbox, "getBoundingClientRect").mockReturnValue({
+      bottom: 40,
+      height: 40,
+      left: 0,
+      right: 200,
+      top: 0,
+      width: 200,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    vi.spyOn(secondOption, "getBoundingClientRect").mockReturnValue({
+      bottom: 66,
+      height: 24,
+      left: 0,
+      right: 200,
+      top: 42,
+      width: 200,
+      x: 0,
+      y: 42,
+      toJSON: () => ({}),
+    } as DOMRect);
+    listbox.scrollTop = 0;
+
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+
+    await waitFor(() => expect(listbox.scrollTop).toBe(26));
+    expect(scrollIntoView).not.toHaveBeenCalled();
   });
 
   it("commits an option from an assistive-technology click event", () => {

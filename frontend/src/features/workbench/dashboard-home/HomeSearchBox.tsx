@@ -97,7 +97,9 @@ export function HomeSearchBox({
     }
   }, [activeIndex, results.length]);
 
-  // 激活项滚动入视口
+  // Keep keyboard navigation local to the listbox. Element.scrollIntoView()
+  // may scroll the dashboard's page container and push the sticky toolbar
+  // above the viewport at compact desktop widths.
   useEffect(() => {
     if (!showResults) {
       return;
@@ -107,8 +109,16 @@ export function HomeSearchBox({
       return;
     }
     const active = list.querySelector<HTMLElement>(`[data-index="${safeActiveIndex}"]`);
-    if (active && typeof active.scrollIntoView === "function") {
-      active.scrollIntoView({ block: "nearest" });
+    if (!active) {
+      return;
+    }
+
+    const listRect = list.getBoundingClientRect();
+    const activeRect = active.getBoundingClientRect();
+    if (activeRect.top < listRect.top) {
+      list.scrollTop -= listRect.top - activeRect.top;
+    } else if (activeRect.bottom > listRect.bottom) {
+      list.scrollTop += activeRect.bottom - listRect.bottom;
     }
   }, [safeActiveIndex, showResults]);
 
