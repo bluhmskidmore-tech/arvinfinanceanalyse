@@ -1,6 +1,6 @@
+import subprocess
 from dataclasses import replace
 from pathlib import Path
-import subprocess
 
 import duckdb
 import pytest
@@ -24,6 +24,7 @@ EXPECTED_DEV_USER_SCOPE_GRANTS = {
     ("anonymous", "viewer", "market_data_ncd_proxy", "read"),
     ("anonymous", "viewer", "pnl_attribution", "read"),
     ("anonymous", "viewer", "product_category_pnl", "read"),
+    ("anonymous", "viewer", "qdb_gl_monthly_analysis", "read"),
     ("anonymous", "viewer", "research_calendar", "read"),
     ("anonymous", "viewer", "risk_tensor", "read"),
 }
@@ -79,6 +80,7 @@ def test_dev_postgres_cluster_env_mapping_prefers_seeded_storage_root(tmp_path):
 
     assert env["MOSS_POSTGRES_DSN"] == "postgresql://moss:moss@127.0.0.1:55432/moss"
     assert env["MOSS_GOVERNANCE_SQL_DSN"] == "postgresql://moss:moss@127.0.0.1:55432/moss"
+    assert env["MOSS_AGENT_DEV_SCOPE_BYPASS"] == "true"
     assert env["MOSS_REDIS_DSN"] == "redis://127.0.0.1:6379/11"
     assert env["MOSS_DUCKDB_PATH"] == str(repo_root / "data" / "moss.duckdb")
     assert env["MOSS_GOVERNANCE_PATH"] == str(repo_root / "data" / "governance")

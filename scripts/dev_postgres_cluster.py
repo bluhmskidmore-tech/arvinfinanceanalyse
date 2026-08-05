@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import duckdb
 import json
 import os
 import shutil
@@ -12,6 +11,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+import duckdb
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 55432
@@ -54,6 +54,7 @@ DEV_USER_SCOPE_GRANTS = (
     {"user_id": "anonymous", "role": "viewer", "resource": "market_data_ncd_proxy", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "pnl_attribution", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "product_category_pnl", "action": "read"},
+    {"user_id": "anonymous", "role": "viewer", "resource": "qdb_gl_monthly_analysis", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "research_calendar", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "risk_tensor", "action": "read"},
 )
@@ -107,6 +108,7 @@ def build_env_mapping(config: DevPostgresClusterConfig) -> dict[str, str]:
     storage_root = _resolve_storage_root_for_env(config)
     return {
         "MOSS_ENVIRONMENT": "development",
+        "MOSS_AGENT_DEV_SCOPE_BYPASS": "true",
         "MOSS_POSTGRES_DSN": config.postgres_dsn,
         "MOSS_GOVERNANCE_SQL_DSN": config.postgres_dsn,
         "MOSS_REDIS_DSN": DEFAULT_REDIS_DSN,
