@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 
 import duckdb
@@ -15,7 +16,7 @@ from backend.app.repositories.duckdb_migrations import (
 )
 from backend.app.repositories.duckdb_schema_registry import DuckDBSchemaRegistry
 
-_BASELINE_VERSION_COUNT = 37
+_BASELINE_VERSION_COUNT = 39
 _RISK_PROJECTION_QUALITY_COLUMNS = {
     "missing_maturity_market_value",
     "missing_maturity_count",
@@ -44,6 +45,13 @@ def test_apply_pending_on_fresh_db(tmp_path) -> None:
                 "select table_name from information_schema.tables where table_schema = 'main'"
             ).fetchall()
         }
+        indexes = {
+            row[0]
+            for row in conn.execute(
+                "select index_name from duckdb_indexes() "
+                "where table_name = 'fact_stock_official_disclosure'"
+            ).fetchall()
+        }
     finally:
         conn.close()
 
@@ -51,7 +59,15 @@ def test_apply_pending_on_fresh_db(tmp_path) -> None:
     assert "fact_formal_bond_analytics_daily" in names
     assert "fx_daily_mid" in names
     assert "fact_commodity_futures_daily" in names
+    assert "fact_stock_official_disclosure" in names
+    assert "stock_official_disclosure_sync_status" in names
     assert "_schema_migrations" in names
+
+    assert indexes == {
+        "idx_fact_stock_official_disclosure_code_publish_date",
+        "idx_fact_stock_official_disclosure_code_type_publish_date",
+        "idx_fact_stock_official_disclosure_type_period_publish_date",
+    }
 
 
 def test_idempotent_apply(tmp_path) -> None:
@@ -64,6 +80,137 @@ def test_idempotent_apply(tmp_path) -> None:
     registry2 = DuckDBSchemaRegistry(db_path=str(db_path))
     register_all(registry2)
     assert registry2.apply_pending() == []
+
+
+def test_stock_official_disclosure_upgrade_from_v37_is_idempotent(tmp_path) -> None:
+    db_path = tmp_path / "registry_stock_official_upgrade.duckdb"
+    registry = DuckDBSchemaRegistry(db_path=str(db_path))
+    register_all(registry)
+    assert len(registry.apply_pending()) == _BASELINE_VERSION_COUNT
+
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute("drop table fact_stock_official_disclosure")
+        conn.execute("drop table stock_official_disclosure_sync_status")
+        conn.execute("delete from _schema_migrations where version in (38, 39)")
+    finally:
+        conn.close()
+
+    upgraded = DuckDBSchemaRegistry(db_path=str(db_path))
+    register_all(upgraded)
+    assert upgraded.apply_pending() == [
+        "v38: Stock official disclosure fact + sync status",
+        "v39: Repair stock official disclosure timestamp timezone",
+    ]
+    assert upgraded.apply_pending() == []
+    conn = duckdb.connect(str(db_path), read_only=True)
+    try:
+        assert conn.execute(
+            "select count(*) from information_schema.tables "
+            "where table_name in ('fact_stock_official_disclosure', 'stock_official_disclosure_sync_status')"
+        ).fetchone() == (2,)
+    finally:
+        conn.close()
+
+
+def test_v39_repairs_pre_recorded_v38_plain_timestamps_as_shanghai_wall_clock(tmp_path) -> None:
+    """A v38-recorded legacy table gets only the v39 timezone repair."""
+    db_path = tmp_path / "registry_stock_official_timestamp_upgrade.duckdb"
+    registry = DuckDBSchemaRegistry(db_path=str(db_path))
+    register_all(registry)
+    assert len(registry.apply_pending()) == _BASELINE_VERSION_COUNT
+
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute("delete from _schema_migrations where version = 39")
+        conn.execute("drop index idx_fact_stock_official_disclosure_code_publish_date")
+        conn.execute("drop index idx_fact_stock_official_disclosure_code_type_publish_date")
+        conn.execute("drop index idx_fact_stock_official_disclosure_type_period_publish_date")
+        for table_name, column_name in (
+            ("fact_stock_official_disclosure", "received_at"),
+            ("fact_stock_official_disclosure", "ingested_at"),
+            ("stock_official_disclosure_sync_status", "last_attempt_at"),
+            ("stock_official_disclosure_sync_status", "last_success_at"),
+        ):
+            conn.execute(
+                f"alter table {table_name} alter column {column_name} "
+                "set data type timestamp using "
+                f"{column_name} at time zone 'Asia/Shanghai'"
+            )
+        conn.execute(
+            """
+            insert into fact_stock_official_disclosure (
+              disclosure_key, stock_code, stock_name, evidence_type,
+              publish_date, report_period, title, document_url, source_id,
+              source_label, source_version, vendor_version, received_at,
+              ingested_at, run_id, raw_json
+            ) values (
+              'legacy-key', '688072.SH', '拓荆科技', 'official_announcement',
+              '2026-04-20', null, 'legacy', 'https://example.com/legacy.pdf',
+              'legacy-source', '上市公司公告原文（Tushare）', 'sv_old', 'vv_old',
+              '2026-04-20 18:00:00', '2026-04-20 18:00:00', 'run-old', '{}'
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into stock_official_disclosure_sync_status (
+              stock_code, requested_from_date, covered_through_date,
+              last_attempt_at, last_success_at, status, fetched_count,
+              upserted_count, error, run_id, source_version
+            ) values (
+              '688072.SH', '2026-01-01', '2026-06-30',
+              '2026-04-20 18:00:00', '2026-04-20 18:00:00', 'success',
+              1, 1, null, 'run-old', 'sv_old'
+            )
+            """
+        )
+    finally:
+        conn.close()
+
+    upgraded = DuckDBSchemaRegistry(db_path=str(db_path))
+    register_all(upgraded)
+    assert upgraded.apply_pending() == ["v39: Repair stock official disclosure timestamp timezone"]
+    assert upgraded.apply_pending() == []
+
+    conn = duckdb.connect(str(db_path), read_only=True)
+    try:
+        types = {
+            (row[0], row[1]): row[2]
+            for row in conn.execute(
+                """
+                select table_name, column_name, data_type
+                from information_schema.columns
+                where table_schema = 'main'
+                  and (
+                    (table_name = 'fact_stock_official_disclosure' and column_name in ('received_at', 'ingested_at'))
+                    or (table_name = 'stock_official_disclosure_sync_status' and column_name in ('last_attempt_at', 'last_success_at'))
+                  )
+                """
+            ).fetchall()
+        }
+        instants = conn.execute(
+            """
+            select
+              epoch(received_at), epoch(ingested_at)
+            from fact_stock_official_disclosure
+            where disclosure_key = 'legacy-key'
+            """
+        ).fetchone()
+        sync_instants = conn.execute(
+            """
+            select epoch(last_attempt_at), epoch(last_success_at)
+            from stock_official_disclosure_sync_status
+            where stock_code = '688072.SH'
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    expected_epoch = datetime(2026, 4, 20, 10, 0, tzinfo=UTC).timestamp()
+    assert set(types.values()) == {"TIMESTAMP WITH TIME ZONE"}
+    assert instants == (expected_epoch, expected_epoch)
+    assert sync_instants == (expected_epoch, expected_epoch)
 
 
 def test_existing_autocommit_connection_rolls_back_failed_migration() -> None:
@@ -203,7 +350,7 @@ def test_migration_tracking(tmp_path) -> None:
     assert versions == list(range(1, _BASELINE_VERSION_COUNT + 1))
     assert len(rows) == _BASELINE_VERSION_COUNT
     assert any("snapshot" in str(row[1]).lower() for row in rows)
-    assert rows[-1] == (37, "Preserve bond payment-frequency fallback provenance")
+    assert rows[-1] == (39, "Repair stock official disclosure timestamp timezone")
 
 
 def test_v36_adds_projection_quality_columns_without_backfilling_legacy_rows() -> None:

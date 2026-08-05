@@ -351,6 +351,64 @@ def _v37_bond_payment_frequency_fallback_provenance(conn: duckdb.DuckDBPyConnect
     _run_sql_slice(conn, "38_bond_analytics_payment_frequency_provenance.sql")
 
 
+def _v38_stock_official_disclosure(conn: duckdb.DuckDBPyConnection) -> None:
+    _run_sql_slice(conn, "39_stock_official_disclosure.sql")
+
+
+def _v39_stock_official_disclosure_timestamp_tz(conn: duckdb.DuckDBPyConnection) -> None:
+    """Repair v38 tables created with plain TIMESTAMP wall-clock columns.
+
+    The v38 DDL now declares TIMESTAMPTZ for all four operational timestamps,
+    but a database that already recorded v38 may still have the earlier plain
+    TIMESTAMP shape. Interpret those legacy values in the project's
+    Asia/Shanghai business timezone exactly once; fresh v38 tables and already
+    repaired columns are left untouched.
+    """
+    _v38_stock_official_disclosure(conn)
+    targets = (
+        ("fact_stock_official_disclosure", "received_at"),
+        ("fact_stock_official_disclosure", "ingested_at"),
+        ("stock_official_disclosure_sync_status", "last_attempt_at"),
+        ("stock_official_disclosure_sync_status", "last_success_at"),
+    )
+    legacy_targets: list[tuple[str, str]] = []
+    for table_name, column_name in targets:
+        row = conn.execute(
+            """
+            select data_type
+            from information_schema.columns
+            where table_schema = 'main' and table_name = ? and column_name = ?
+            """,
+            [table_name, column_name],
+        ).fetchone()
+        if row is None:
+            continue
+        data_type = " ".join(str(row[0]).upper().split())
+        if data_type not in {"TIMESTAMP", "TIMESTAMP WITHOUT TIME ZONE"}:
+            continue
+        legacy_targets.append((table_name, column_name))
+
+    if not legacy_targets:
+        return
+
+    # DuckDB treats indexes as dependencies of ALTER COLUMN. Drop and rebuild
+    # the v38 indexes only for the legacy repair path; fresh TIMESTAMPTZ tables
+    # stay a true no-op.
+    for index_name in (
+        "idx_fact_stock_official_disclosure_code_publish_date",
+        "idx_fact_stock_official_disclosure_code_type_publish_date",
+        "idx_fact_stock_official_disclosure_type_period_publish_date",
+    ):
+        conn.execute(f"drop index if exists {index_name}")
+    for table_name, column_name in legacy_targets:
+        conn.execute(
+            f"alter table {table_name} alter column {column_name} "
+            "set data type timestamptz "
+            f"using {column_name} at time zone 'Asia/Shanghai'"
+        )
+    _v38_stock_official_disclosure(conn)
+
+
 def _v30_fact_snapshot_indexes(conn: duckdb.DuckDBPyConnection) -> None:
     text = (REGISTRY_DIR / "32_fact_snapshot_indexes.sql").read_text(encoding="utf-8")
     for statement in parse_registry_sql_text(text):
@@ -467,6 +525,8 @@ def register_all(registry: DuckDBSchemaRegistry) -> None:
     registry.register(35, "Preserve bond analytics value date", _v35_bond_analytics_value_date)
     registry.register(36, "Disclose risk tensor projection quality proxies", _v36_risk_tensor_projection_quality)
     registry.register(37, "Preserve bond payment-frequency fallback provenance", _v37_bond_payment_frequency_fallback_provenance)
+    registry.register(38, "Stock official disclosure fact + sync status", _v38_stock_official_disclosure)
+    registry.register(39, "Repair stock official disclosure timestamp timezone", _v39_stock_official_disclosure_timestamp_tz)
 
 
 def apply_pending_migrations_on_connection(conn: duckdb.DuckDBPyConnection) -> None:

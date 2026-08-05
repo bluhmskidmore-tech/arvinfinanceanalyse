@@ -39,8 +39,8 @@ def test_default_inventory_matches_release_default_surface() -> None:
     assert payload["surface"] == "default"
     assert payload["effective_feature_flags"]["MOSS_AGENT_ENABLED"] is False
     assert payload["summary"]["registry_entry_count"] == 33
-    assert payload["summary"]["operation_count"] == 245
-    assert payload["summary"]["unique_path_count"] == 238
+    assert payload["summary"]["operation_count"] == 246
+    assert payload["summary"]["unique_path_count"] == 239
     assert not any(operation["path"].startswith("/api/agent") for operation in payload["operations"])
 
 
@@ -51,16 +51,16 @@ def test_full_inventory_covers_all_known_routes_and_required_fields() -> None:
     assert payload["surface"] == "full"
     assert payload["effective_feature_flags"]["MOSS_AGENT_ENABLED"] is True
     assert payload["summary"]["registry_entry_count"] == 34
-    assert payload["summary"]["operation_count"] == 262
-    assert payload["summary"]["unique_path_count"] == 251
+    assert payload["summary"]["operation_count"] == 263
+    assert payload["summary"]["unique_path_count"] == 252
     assert payload["summary"]["method_counts"] == {
         "DELETE": 1,
-        "GET": 209,
+        "GET": 210,
         "PATCH": 1,
         "POST": 49,
         "PUT": 2,
     }
-    assert len({(operation["method"], operation["path"]) for operation in operations}) == 262
+    assert len({(operation["method"], operation["path"]) for operation in operations}) == 263
     assert operations == sorted(
         operations,
         key=lambda row: (row["path"], row["method"], row["registry_name"]),
@@ -103,10 +103,10 @@ def test_json_csv_and_markdown_formats_report_the_same_full_surface() -> None:
     csv_rows = list(csv.DictReader(io.StringIO(_run_inventory(surface="full", output_format="csv"))))
     markdown = _run_inventory(surface="full", output_format="markdown")
 
-    assert len(csv_rows) == json_payload["summary"]["operation_count"] == 262
+    assert len(csv_rows) == json_payload["summary"]["operation_count"] == 263
     assert {"method", "path", "route_group", "registry_name", "owner"} <= set(csv_rows[0])
     assert "- Surface: `full`" in markdown
-    assert "- Operations: **262**" in markdown
+    assert "- Operations: **263**" in markdown
     assert "| `agent_experimental` | 17 |" in markdown
     adb_line = next(line for line in markdown.splitlines() if line.startswith("| GET | /api/analysis/adb |"))
     assert "| (none) | unspecified_success |" in adb_line
@@ -126,6 +126,6 @@ def test_surface_switching_is_isolated_in_one_process() -> None:
     full_payload = module._load_inventory("full")
     default_again = module._load_inventory("default")
 
-    assert default_payload["summary"]["operation_count"] == 245
-    assert full_payload["summary"]["operation_count"] == 262
-    assert default_again["summary"]["operation_count"] == 245
+    assert default_payload["summary"]["operation_count"] == 246
+    assert full_payload["summary"]["operation_count"] == 263
+    assert default_again["summary"]["operation_count"] == 246

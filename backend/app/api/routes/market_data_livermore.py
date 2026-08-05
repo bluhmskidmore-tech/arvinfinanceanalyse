@@ -40,6 +40,7 @@ from backend.app.services.stock_analysis_workbench_service import (
     stock_analysis_workbench_envelope,
 )
 from backend.app.services.stock_kline_analysis_service import stock_kline_analysis_envelope
+from backend.app.services.stock_official_evidence_service import stock_official_evidence_envelope
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from pydantic import BaseModel
 
@@ -686,6 +687,48 @@ def stock_kline_analysis(
             ),
         ),
     )
+
+
+@router.get("/stock-analysis/official-evidence")
+def stock_official_evidence(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    response: Response,
+    stock_code: str = Query(..., min_length=1, max_length=16),
+    as_of_date: str | None = Query(None),
+    limit_per_type: int = Query(default=10, ge=1, le=20),
+) -> dict[str, object]:
+    cleaned = stock_code.strip()
+    if not _STOCK_CODE_LIVERMORE_PATTERN.fullmatch(cleaned):
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid stock_code. Allowed characters: letters, digits, '.', '-'.",
+        )
+    if as_of_date is None:
+        parsed_as_of = date.today()
+    else:
+        text = as_of_date.strip()
+        if not text:
+            raise HTTPException(status_code=422, detail="Invalid as_of_date. Expected YYYY-MM-DD.")
+        try:
+            parsed_as_of = date.fromisoformat(text)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Invalid as_of_date. Expected YYYY-MM-DD.") from exc
+
+    settings = get_settings()
+    _ensure_livermore_read_allowed(settings=settings, auth=auth)
+    started_at = time.perf_counter()
+    payload = timed_api_call(
+        "/ui/market-data/stock-analysis/official-evidence",
+        lambda: stock_official_evidence_envelope(
+            duckdb_path=str(settings.duckdb_path),
+            stock_code=cleaned,
+            as_of_date=parsed_as_of,
+            limit_per_type=limit_per_type,
+        ),
+    )
+    total_ms = (time.perf_counter() - started_at) * 1000
+    response.headers["Server-Timing"] = f"official-evidence;dur={total_ms:.3f}, query;dur={total_ms:.3f}"
+    return payload
 
 
 @router.get("/livermore/candidate-history")

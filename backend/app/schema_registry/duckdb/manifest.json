@@ -156,6 +156,11 @@
       "path": "33_market_breadth_daily.sql",
       "ensure_module": "backend.app.tasks.market_breadth_materialize",
       "ensure_symbol": "ensure_market_breadth_daily_schema"
+    },
+    {
+      "path": "39_stock_official_disclosure.sql",
+      "ensure_module": "backend.app.repositories.stock_official_disclosure_repo",
+      "ensure_symbol": "ensure_stock_official_disclosure_tables"
     }
   ]
 }
