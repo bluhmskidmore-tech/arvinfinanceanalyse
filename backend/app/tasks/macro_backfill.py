@@ -23,6 +23,9 @@ if str(_REPO_ROOT) not in sys.path:
 import duckdb  # noqa: E402
 import requests  # noqa: E402
 import xlrd  # noqa: E402
+from backend.app.core_finance.macro.toolkit.system_sources import (  # noqa: E402
+    normalize_macro_source_names,
+)
 from backend.app.governance.locks import LockDefinition, acquire_lock  # noqa: E402
 from backend.app.governance.settings import get_settings  # noqa: E402
 from backend.app.repositories.choice_client import ChoiceClient  # noqa: E402
@@ -625,12 +628,19 @@ def _fetch_rows_for_plan(
 def _normalize_sources_filter(sources_filter: list[str] | None) -> list[str] | None:
     if not sources_filter:
         return None
-    normalized = list(dict.fromkeys(str(source).strip() for source in sources_filter if str(source).strip()))
+    normalized = list(normalize_macro_source_names(sources_filter))
     supported = {source.value for source in BackfillSource}
     unknown = sorted(set(normalized) - supported)
     if unknown:
         raise ValueError(f"Unsupported macro backfill source(s): {', '.join(unknown)}")
     return normalized or None
+
+
+def _normalize_source_arg(value: str) -> str:
+    normalized = normalize_macro_source_names([value])
+    if not normalized:
+        raise ValueError("macro backfill source cannot be blank")
+    return normalized[0]
 
 
 def _fetch_outcome_issue(
@@ -1807,6 +1817,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--sources",
         nargs="+",
+        type=_normalize_source_arg,
         choices=[source.value for source in BackfillSource],
         default=None,
         help="Explicit source allow-list; configured plan order remains authoritative.",

@@ -423,15 +423,24 @@ def test_backfill_macro_series_rejects_unknown_source_filter(tmp_path: Path) -> 
     finally:
         conn.close()
 
-    with pytest.raises(ValueError, match="Unsupported macro backfill source"):
+    with pytest.raises(
+        ValueError,
+        match=r"Unsupported macro backfill source\(s\): unknown_vendor",
+    ):
         backfill_macro_series(
             duckdb_path=str(db_path),
             series_names=["M0017126"],
             start_date="2024-01-01",
             end_date="2026-05-20",
             dry_run=True,
-            sources_filter=["unknown_vendor"],
+            sources_filter=[" Unknown_Vendor "],
         )
+
+
+def test_normalize_sources_filter_strips_lowercases_and_preserves_first_seen_order() -> None:
+    assert macro_backfill_module._normalize_sources_filter(
+        [" TUSHARE_MACRO ", "choice_EDB", "tushare_macro", " CHOICE_EDB "]
+    ) == ["tushare_macro", "choice_edb"]
 
 
 def test_backfill_macro_series_rejects_source_incompatible_with_requested_target(
@@ -761,7 +770,7 @@ def test_macro_backfill_cli_accepts_explicit_sources_for_plan(tmp_path: Path) ->
             "backend.app.tasks.macro_backfill",
             "--dry-run",
             "--sources",
-            "tushare_macro",
+            " TuShArE_MaCrO ",
             "--series-names",
             "M0017126",
             "--start-date",
