@@ -291,6 +291,117 @@ class _CampisiRepo:
         return {"3Y": 2.5}
 
 
+class _MonthEndCurveFallbackRepo:
+    def list_report_dates(self) -> list[str]:
+        return ["2026-06-30", "2026-05-31"]
+
+    def fetch_bond_analytics_rows(self, *, report_date: str) -> list[dict[str, Any]]:
+        return [
+            {
+                "report_date": report_date,
+                "instrument_code": "BOND-1",
+                "asset_class_std": "rate",
+                "tenor_bucket": "5Y",
+                "market_value": 100_000_000.0,
+                "coupon_rate": 0.03,
+                "ytm": 0.03 if report_date == "2026-06-30" else 0.029,
+                "macaulay_duration": 5.1,
+                "modified_duration": 5.0,
+                "convexity": 20.0,
+                "years_to_maturity": 5.0,
+                "maturity_date": "2031-06-30",
+                "dv01": 50_000.0,
+            }
+        ]
+
+    def fetch_curve(self, trade_date: str, curve_type: str) -> dict[str, Decimal]:
+        assert curve_type == "treasury"
+        return {
+            "2026-05-29": {"10Y": Decimal("1.709")},
+            "2026-06-30": {"10Y": Decimal("1.733")},
+        }.get(trade_date, {})
+
+    def fetch_latest_trade_date_on_or_before(self, curve_type: str, trade_date: str) -> str | None:
+        assert curve_type == "treasury"
+        return {
+            "2026-05-31": "2026-05-29",
+            "2026-06-30": "2026-06-30",
+        }.get(trade_date)
+
+
+class _ExactCurveMaturityGapRepo:
+    def list_report_dates(self) -> list[str]:
+        return ["2026-07-31", "2026-06-30"]
+
+    def fetch_bond_analytics_rows(self, *, report_date: str) -> list[dict[str, Any]]:
+        valid_row = {
+            "report_date": report_date,
+            "instrument_code": "VALID-BOND",
+            "asset_class_std": "rate",
+            "tenor_bucket": "5Y",
+            "market_value": 60_000_000.0,
+            "coupon_rate": 0.03,
+            "ytm": 0.03 if report_date == "2026-07-31" else 0.029,
+            "macaulay_duration": 4.1,
+            "modified_duration": 4.0,
+            "convexity": 16.0,
+            "years_to_maturity": 4.0,
+            "maturity_date": "2030-07-31",
+            "dv01": 24_000.0,
+        }
+        if report_date != "2026-07-31":
+            return [valid_row]
+        return [
+            valid_row,
+            {
+                **valid_row,
+                "instrument_code": "MISSING-MATURITY",
+                "market_value": 30_000_000.0,
+                "ytm": None,
+                "macaulay_duration": 0.0,
+                "modified_duration": 0.0,
+                "convexity": 0.0,
+                "years_to_maturity": 0.0,
+                "maturity_date": None,
+                "dv01": 0.0,
+            },
+            {
+                **valid_row,
+                "instrument_code": "MATURED-BUT-HELD",
+                "market_value": 10_000_000.0,
+                "ytm": None,
+                "macaulay_duration": 0.0,
+                "modified_duration": 0.0,
+                "convexity": 0.0,
+                "years_to_maturity": 0.0,
+                "maturity_date": "2026-07-30",
+                "dv01": 0.0,
+            },
+            {
+                **valid_row,
+                "instrument_code": "NONPOSITIVE-DURATION",
+                "market_value": 5_000_000.0,
+                "ytm": 0.025,
+                "macaulay_duration": 0.0,
+                "modified_duration": 0.0,
+                "convexity": 0.0,
+                "years_to_maturity": 2.0,
+                "maturity_date": "2028-07-31",
+                "dv01": 0.0,
+            },
+        ]
+
+    def fetch_curve(self, trade_date: str, curve_type: str) -> dict[str, Decimal]:
+        assert curve_type == "treasury"
+        return {
+            "2026-06-30": {"10Y": Decimal("1.70")},
+            "2026-07-31": {"10Y": Decimal("1.75")},
+        }.get(trade_date, {})
+
+    def fetch_latest_trade_date_on_or_before(self, *_args, **_kwargs) -> str | None:
+        raise AssertionError("exact curve dates must not use fallback lookup")
+
+
 @dataclass
 class _CampisiCoreResult:
     num_days: int
@@ -596,11 +707,110 @@ def test_spread_envelope_empty():
         _assert_numeric_dict(result[k])
 
 
+def test_spread_envelope_uses_prior_curve_snapshot_for_non_trading_month_end(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    mod = _pnl_svc()
+    repo = _MonthEndCurveFallbackRepo()
+    monkeypatch.setattr(mod, "_bond_repo", lambda: repo)
+    monkeypatch.setattr(mod, "_curve_repo", lambda: repo)
+
+    env = mod.spread_attribution_envelope(report_date="2026-06-30", lookback_days=30)
+
+    assert env["result"]["total_treasury_effect"]["raw"] == pytest.approx(-120_000.0)
+    assert env["result"]["total_spread_effect"]["raw"] == pytest.approx(-380_000.0)
+    assert env["result_meta"]["quality_flag"] == "warning"
+    assert env["result_meta"]["fallback_mode"] == "latest_snapshot"
+    assert env["result_meta"]["fallback_date"] == "2026-05-29"
+
+
 def test_krd_envelope_empty():
     env = _pnl_svc().krd_attribution_envelope(report_date=None, lookback_days=30)
     result = env["result"]
     for k in ("total_market_value", "portfolio_duration", "portfolio_dv01", "total_duration_effect", "max_contribution_value"):
         _assert_numeric_dict(result[k])
+
+
+def test_krd_envelope_uses_prior_curve_snapshot_for_non_trading_month_end(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    mod = _pnl_svc()
+    repo = _MonthEndCurveFallbackRepo()
+    monkeypatch.setattr(mod, "_bond_repo", lambda: repo)
+    monkeypatch.setattr(mod, "_curve_repo", lambda: repo)
+
+    env = mod.krd_attribution_envelope(report_date="2026-06-30", lookback_days=30)
+
+    assert env["result"]["total_duration_effect"]["raw"] == pytest.approx(-120_000.0)
+    assert env["result"]["buckets"][0]["duration_contribution"]["raw"] == pytest.approx(-120_000.0)
+    assert env["result_meta"]["quality_flag"] == "warning"
+    assert env["result_meta"]["fallback_mode"] == "latest_snapshot"
+    assert env["result_meta"]["fallback_date"] == "2026-05-29"
+
+
+@pytest.mark.parametrize(
+    "envelope_name",
+    ["spread_attribution_envelope", "krd_attribution_envelope"],
+)
+def test_duration_risk_exclusions_warn_even_with_exact_curve_dates(
+    monkeypatch: pytest.MonkeyPatch,
+    envelope_name: str,
+):
+    mod = _pnl_svc()
+    repo = _ExactCurveMaturityGapRepo()
+    monkeypatch.setattr(mod, "_bond_repo", lambda: repo)
+    monkeypatch.setattr(mod, "_curve_repo", lambda: repo)
+
+    env = getattr(mod, envelope_name)(report_date="2026-07-31", lookback_days=30)
+
+    assert env["result_meta"]["filters_applied"]["treasury_curve_start_date"] == "2026-06-30"
+    assert env["result_meta"]["filters_applied"]["treasury_curve_end_date"] == "2026-07-31"
+    assert env["result_meta"]["quality_flag"] == "warning"
+
+
+@pytest.mark.parametrize(
+    "envelope_name",
+    ["spread_attribution_envelope", "krd_attribution_envelope"],
+)
+def test_duration_risk_coverage_uses_explicit_numeric_units(
+    monkeypatch: pytest.MonkeyPatch,
+    envelope_name: str,
+):
+    mod = _pnl_svc()
+    repo = _ExactCurveMaturityGapRepo()
+    monkeypatch.setattr(mod, "_bond_repo", lambda: repo)
+    monkeypatch.setattr(mod, "_curve_repo", lambda: repo)
+
+    env = getattr(mod, envelope_name)(report_date="2026-07-31", lookback_days=30)
+    coverage = env["result"]["risk_coverage"]
+
+    assert coverage["total_row_count"] == 4
+    assert coverage["covered_row_count"] == 1
+    assert coverage["excluded_row_count"] == 3
+    for key, expected_raw in (
+        ("total_market_value", 105_000_000.0),
+        ("covered_market_value", 60_000_000.0),
+        ("excluded_market_value", 45_000_000.0),
+    ):
+        _assert_numeric_dict(coverage[key])
+        assert coverage[key]["unit"] == "yuan"
+        assert coverage[key]["raw"] == pytest.approx(expected_raw)
+
+    assert coverage["coverage_pct"]["unit"] == "pct"
+    assert coverage["coverage_pct"]["raw"] == pytest.approx(0.571429)
+    assert coverage["excluded_pct"]["unit"] == "pct"
+    assert coverage["excluded_pct"]["raw"] == pytest.approx(0.428571)
+
+    exclusions = {item["reason"]: item for item in coverage["exclusions"]}
+    assert exclusions["no_maturity"]["row_count"] == 1
+    assert exclusions["no_maturity"]["market_value"]["unit"] == "yuan"
+    assert exclusions["no_maturity"]["market_value"]["raw"] == pytest.approx(30_000_000.0)
+    assert exclusions["matured_or_expired"]["row_count"] == 1
+    assert exclusions["matured_or_expired"]["market_value"]["unit"] == "yuan"
+    assert exclusions["matured_or_expired"]["market_value"]["raw"] == pytest.approx(10_000_000.0)
+    assert exclusions["nonpositive_duration"]["row_count"] == 1
+    assert exclusions["nonpositive_duration"]["market_value"]["unit"] == "yuan"
+    assert exclusions["nonpositive_duration"]["market_value"]["raw"] == pytest.approx(5_000_000.0)
 
 
 def test_advanced_summary_envelope_empty():
@@ -937,3 +1147,20 @@ def test_promote_helper_keeps_spread_rate_changes_in_bp():
     assert point["treasury_change"]["raw"] == pytest.approx(-6.98)
     assert point["spread_change"]["unit"] == "bp"
     assert point["spread_change"]["raw"] == pytest.approx(2.98)
+
+
+def test_krd_envelope_preserves_bp_and_pct_numeric_scales(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    mod = _pnl_svc()
+    repo = _MonthEndCurveFallbackRepo()
+    monkeypatch.setattr(mod, "_bond_repo", lambda: repo)
+    monkeypatch.setattr(mod, "_curve_repo", lambda: repo)
+
+    env = mod.krd_attribution_envelope(report_date="2026-06-30", lookback_days=30)
+    bucket = env["result"]["buckets"][0]
+
+    assert bucket["yield_change"]["unit"] == "bp"
+    assert bucket["yield_change"]["raw"] == pytest.approx(10.0)
+    assert bucket["weight"]["unit"] == "pct"
+    assert bucket["weight"]["raw"] == pytest.approx(1.0)

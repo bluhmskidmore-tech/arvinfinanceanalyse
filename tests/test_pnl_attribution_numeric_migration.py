@@ -326,6 +326,17 @@ class TestPayloadRoundTrip:
             start_date="2025-04-01",
             end_date="2025-04-30",
             total_market_value=100.0,
+            risk_coverage={
+                "total_row_count": 1,
+                "covered_row_count": 1,
+                "excluded_row_count": 0,
+                "total_market_value": 100.0,
+                "covered_market_value": 100.0,
+                "excluded_market_value": 0.0,
+                "coverage_pct": 100.0,
+                "excluded_pct": 0.0,
+                "exclusions": [],
+            },
             portfolio_duration=3.0,
             portfolio_dv01=1500000.0,
             total_duration_effect=2.0,
@@ -339,3 +350,44 @@ class TestPayloadRoundTrip:
         restored = KRDAttributionPayload.model_validate(dumped)
         assert restored.portfolio_dv01.unit == "dv01"
         assert restored.portfolio_duration.unit == "ratio"
+        assert restored.risk_coverage.coverage_pct.unit == "pct"
+        assert restored.risk_coverage.coverage_pct.raw == 1.0
+        assert restored.risk_coverage.covered_market_value.unit == "yuan"
+
+
+def test_spread_weight_numeric_uses_pct_contract() -> None:
+    item = SpreadAttributionItem(
+        category="rate",
+        category_type="asset",
+        market_value=100.0,
+        duration=3.0,
+        weight=0.4,
+        yield_change=1.0,
+        treasury_change=1.0,
+        spread_change=0.0,
+        treasury_effect=-1.0,
+        spread_effect=0.0,
+        total_price_effect=-1.0,
+        treasury_contribution_pct=100.0,
+        spread_contribution_pct=0.0,
+    )
+
+    assert item.weight.unit == "pct"
+
+
+def test_krd_bucket_units_are_pct_weight_and_bp_yield_change() -> None:
+    bucket = KRDAttributionBucket(
+        tenor="20Y",
+        tenor_years=20.0,
+        market_value=100.0,
+        weight=0.4,
+        bond_count=1,
+        bucket_duration=12.0,
+        yield_change=10.0,
+        duration_contribution=-1.0,
+        contribution_pct=1.0,
+    )
+
+    assert bucket.weight.unit == "pct"
+    assert bucket.yield_change is not None
+    assert bucket.yield_change.unit == "bp"

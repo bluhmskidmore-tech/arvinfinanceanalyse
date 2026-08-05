@@ -179,6 +179,8 @@ def _meta_warn(
     tables_used: list[str] | None = None,
     evidence_rows: int | None = None,
     as_of_date: str | None = None,
+    fallback_mode: Literal["none", "latest_snapshot"] = "none",
+    fallback_date: str | None = None,
 ):
     return build_formal_result_meta(
         trace_id=_trace_id(),
@@ -187,6 +189,8 @@ def _meta_warn(
         rule_version=RULE_VERSION,
         cache_version=CACHE_VERSION,
         quality_flag="warning",
+        fallback_mode=fallback_mode,
+        fallback_date=fallback_date,
         filters_applied=filters_applied,
         tables_used=tables_used,
         evidence_rows=evidence_rows,
@@ -552,6 +556,13 @@ def _with_optional_warnings(
         out["warnings"] = w
         return out
     return payload
+
+
+def _has_maturity_risk_exclusions(payload: dict[str, Any]) -> bool:
+    coverage = payload.get("risk_coverage")
+    if not isinstance(coverage, dict):
+        return False
+    return int(coverage.get("excluded_row_count") or 0) > 0
 
 
 _NUMERIC_JSON_KEYS = frozenset({"raw", "unit", "display", "precision", "sign_aware"})
@@ -1410,8 +1421,17 @@ def _spread_attribution_envelope_uncached(
     rows_e = bond.fetch_bond_analytics_rows(report_date=rd) if rd in dates else []
     anchor = _anchor_on_or_before(dates, start_iso)
     rows_s = bond.fetch_bond_analytics_rows(report_date=anchor) if anchor else []
-    t_end = _treasury_10y(curve.fetch_curve(rd, "treasury"))
-    t_start = _treasury_10y(curve.fetch_curve(anchor, "treasury")) if anchor else None
+    t_end, end_curve_date = _treasury_10y_on_or_before(curve, rd)
+    t_start, start_curve_date = (
+        _treasury_10y_on_or_before(curve, anchor) if anchor else (None, None)
+    )
+    fallback_date = (
+        start_curve_date
+        if start_curve_date is not None and start_curve_date != anchor
+        else end_curve_date if end_curve_date is not None and end_curve_date != rd else None
+    )
+    curve_fallback = fallback_date is not None
+    curve_missing = t_end is None or t_start is None
     payload = pa_wb.build_spread_attribution(
         report_date=rd,
         start_date=anchor or start_iso,
@@ -1421,12 +1441,20 @@ def _spread_attribution_envelope_uncached(
         treasury_10y_start_pct=t_start,
         treasury_10y_end_pct=t_end,
     )
-    warn = not rows_e or not rows_s
+    warn = (
+        not rows_e
+        or not rows_s
+        or curve_fallback
+        or curve_missing
+        or _has_maturity_risk_exclusions(payload)
+    )
     evidence_rows = len(rows_e) + len(rows_s)
     filters = {
         "requested_report_date": report_date,
         "resolved_report_date": rd,
         "start_date": anchor or start_iso,
+        "treasury_curve_start_date": start_curve_date,
+        "treasury_curve_end_date": end_curve_date,
         "lookback_days": lookback_days,
     }
     promoted = _promote_payload_numerics(payload, SpreadAttributionPayload)
@@ -1440,6 +1468,8 @@ def _spread_attribution_envelope_uncached(
                 tables_used=TABLES_BOND_ANALYTICS,
                 evidence_rows=evidence_rows,
                 as_of_date=rd,
+                fallback_mode="latest_snapshot" if curve_fallback else "none",
+                fallback_date=fallback_date,
             )
             if warn
             else _meta_ok(
@@ -1507,9 +1537,18 @@ def _krd_attribution_envelope_uncached(
     anchor = _anchor_on_or_before(dates, start_d.isoformat())
     rows_e = bond.fetch_bond_analytics_rows(report_date=rd) if rd in dates else []
     rows_s = bond.fetch_bond_analytics_rows(report_date=anchor) if anchor else []
-    t_end = _treasury_10y(curve.fetch_curve(rd, "treasury"))
-    t_start = _treasury_10y(curve.fetch_curve(anchor, "treasury")) if anchor else None
+    t_end, end_curve_date = _treasury_10y_on_or_before(curve, rd)
+    t_start, start_curve_date = (
+        _treasury_10y_on_or_before(curve, anchor) if anchor else (None, None)
+    )
     shift_bp = ((t_end - t_start) * 100.0) if t_end is not None and t_start is not None else None
+    fallback_date = (
+        start_curve_date
+        if start_curve_date is not None and start_curve_date != anchor
+        else end_curve_date if end_curve_date is not None and end_curve_date != rd else None
+    )
+    curve_fallback = fallback_date is not None
+    curve_missing = t_end is None or t_start is None
     payload = pa_wb.build_krd_attribution(
         report_date=rd,
         start_date=anchor or start_d.isoformat(),
@@ -1518,12 +1557,20 @@ def _krd_attribution_envelope_uncached(
         bond_rows_start=rows_s,
         treasury_shift_bp=shift_bp,
     )
-    warn = not rows_e or not rows_s
+    warn = (
+        not rows_e
+        or not rows_s
+        or curve_fallback
+        or curve_missing
+        or _has_maturity_risk_exclusions(payload)
+    )
     evidence_rows = len(rows_e) + len(rows_s)
     filters = {
         "requested_report_date": report_date,
         "resolved_report_date": rd,
         "start_date": anchor or start_d.isoformat(),
+        "treasury_curve_start_date": start_curve_date,
+        "treasury_curve_end_date": end_curve_date,
         "lookback_days": lookback_days,
     }
     promoted = _promote_payload_numerics(payload, KRDAttributionPayload)
@@ -1537,6 +1584,8 @@ def _krd_attribution_envelope_uncached(
                 tables_used=TABLES_BOND_ANALYTICS,
                 evidence_rows=evidence_rows,
                 as_of_date=rd,
+                fallback_mode="latest_snapshot" if curve_fallback else "none",
+                fallback_date=fallback_date,
             )
             if warn
             else _meta_ok(

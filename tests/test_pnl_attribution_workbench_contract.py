@@ -3,13 +3,26 @@ from __future__ import annotations
 import pytest
 
 from backend.app.core_finance.pnl_attribution.workbench import (
+    _risk_exclusion_reason,
     build_advanced_attribution_summary,
     build_krd_attribution,
     build_pnl_composition,
+    build_spread_attribution,
     build_tpl_market_correlation,
     build_volume_rate_attribution,
     build_volume_rate_attribution_from_grouped_rows,
 )
+
+
+def test_zero_market_value_matured_history_is_not_a_risk_exclusion() -> None:
+    row = {
+        "market_value": 0,
+        "maturity_date": "2026-06-10",
+        "years_to_maturity": 0,
+        "modified_duration": 0,
+    }
+
+    assert _risk_exclusion_reason(row, report_date="2026-06-30") is None
 
 
 def test_build_volume_rate_attribution_exposes_yields_as_percent_values() -> None:
@@ -347,3 +360,339 @@ def test_build_krd_attribution_keeps_parallel_for_aggregate_rate_shift_regressio
 
     assert bull["curve_shift_type"] == "parallel"
     assert parallel["curve_shift_type"] == "parallel"
+
+
+def test_spread_weighted_ytm_excludes_missing_values_from_denominator() -> None:
+    def row(*, market_value: float, ytm: float | None) -> dict[str, object]:
+        return {
+            "asset_class_std": "rate",
+            "tenor_bucket": "5Y",
+            "market_value": market_value,
+            "modified_duration": 2.0,
+            "macaulay_duration": 2.1,
+            "convexity": 0.0,
+            "years_to_maturity": 5.0,
+            "ytm": ytm,
+            "dv01": market_value * 2.0 / 10_000.0,
+        }
+
+    payload = build_spread_attribution(
+        report_date="2026-06-30",
+        start_date="2026-05-31",
+        end_date="2026-06-30",
+        bond_rows_start=[
+            row(market_value=100.0, ytm=0.030),
+            row(market_value=900.0, ytm=None),
+        ],
+        bond_rows_end=[
+            row(market_value=100.0, ytm=0.031),
+            row(market_value=900.0, ytm=None),
+        ],
+        treasury_10y_start_pct=2.0,
+        treasury_10y_end_pct=2.0,
+    )
+
+    assert payload["items"][0]["yield_change"] == pytest.approx(10.0)
+    assert payload["items"][0]["spread_change"] == pytest.approx(10.0)
+    assert payload["total_spread_effect"] == pytest.approx(-2.0)
+
+
+def test_spread_all_missing_ytm_stays_unavailable_instead_of_zero() -> None:
+    row = {
+        "asset_class_std": "other",
+        "tenor_bucket": "5Y",
+        "market_value": 1_000.0,
+        "modified_duration": 2.0,
+        "macaulay_duration": 2.1,
+        "convexity": 0.0,
+        "years_to_maturity": 5.0,
+        "ytm": None,
+        "dv01": 0.2,
+    }
+
+    payload = build_spread_attribution(
+        report_date="2026-06-30",
+        start_date="2026-05-31",
+        end_date="2026-06-30",
+        bond_rows_start=[row],
+        bond_rows_end=[row],
+        treasury_10y_start_pct=2.0,
+        treasury_10y_end_pct=2.0,
+    )
+
+    assert payload["items"][0]["yield_change"] is None
+    assert payload["items"][0]["spread_change"] is None
+
+
+def test_krd_rebuckets_legacy_start_rows_with_current_tenor_policy() -> None:
+    common = {
+        "market_value": 1_000_000.0,
+        "modified_duration": 12.0,
+        "macaulay_duration": 12.2,
+        "convexity": 0.0,
+        "dv01": 1_200.0,
+    }
+    payload = build_krd_attribution(
+        report_date="2026-06-30",
+        start_date="2026-05-31",
+        end_date="2026-06-30",
+        bond_rows_start=[
+            {**common, "tenor_bucket": "15Y", "years_to_maturity": 15.0, "ytm": 0.030},
+        ],
+        bond_rows_end=[
+            {**common, "tenor_bucket": "20Y", "years_to_maturity": 14.9, "ytm": 0.031},
+        ],
+        treasury_shift_bp=2.4,
+    )
+
+    assert [bucket["tenor"] for bucket in payload["buckets"]] == ["20Y"]
+    assert payload["buckets"][0]["yield_change"] == pytest.approx(10.0)
+    assert "10Y" in payload["curve_interpretation"]
+    assert "不参与贡献计算" in payload["curve_interpretation"]
+
+
+def test_krd_serializes_month_bucket_tenor_years() -> None:
+    row = {
+        "asset_class_std": "rate",
+        "tenor_bucket": "6M",
+        "market_value": 1_000_000.0,
+        "modified_duration": 0.25,
+        "macaulay_duration": 0.26,
+        "convexity": 0.0,
+        "maturity_date": "2026-12-30",
+        "years_to_maturity": 0.5,
+        "ytm": 0.02,
+        "dv01": 25.0,
+    }
+    payload = build_krd_attribution(
+        report_date="2026-06-30",
+        start_date="2026-05-31",
+        end_date="2026-06-30",
+        bond_rows_start=[row],
+        bond_rows_end=[row],
+        treasury_shift_bp=2.4,
+    )
+
+    assert payload["buckets"][0]["tenor"] == "6M"
+    assert payload["buckets"][0]["tenor_years"] == pytest.approx(0.5)
+
+
+def _maturity_risk_row(
+    *,
+    asset_class: str,
+    market_value: float,
+    modified_duration: float,
+    maturity_date: str | None,
+    years_to_maturity: float,
+    ytm: float | None,
+) -> dict[str, object]:
+    return {
+        "asset_class_std": asset_class,
+        "tenor_bucket": "5Y" if years_to_maturity > 0 else "6M",
+        "market_value": market_value,
+        "modified_duration": modified_duration,
+        "macaulay_duration": modified_duration,
+        "convexity": 0.0,
+        "maturity_date": maturity_date,
+        "years_to_maturity": years_to_maturity,
+        "ytm": ytm,
+        "dv01": market_value * modified_duration / 10_000.0,
+    }
+
+
+def _assert_partial_maturity_risk_coverage(payload: dict[str, object]) -> None:
+    coverage = payload["risk_coverage"]
+    assert isinstance(coverage, dict)
+    assert coverage["total_row_count"] == 3
+    assert coverage["covered_row_count"] == 1
+    assert coverage["excluded_row_count"] == 2
+    assert coverage["total_market_value"] == pytest.approx(1_000.0)
+    assert coverage["covered_market_value"] == pytest.approx(600.0)
+    assert coverage["excluded_market_value"] == pytest.approx(400.0)
+    assert coverage["covered_market_value"] + coverage["excluded_market_value"] == pytest.approx(
+        coverage["total_market_value"]
+    )
+    assert coverage["coverage_pct"] == pytest.approx(60.0)
+    assert coverage["excluded_pct"] == pytest.approx(40.0)
+
+    exclusions = {item["reason"]: item for item in coverage["exclusions"]}
+    assert exclusions["no_maturity"]["row_count"] == 1
+    assert exclusions["no_maturity"]["market_value"] == pytest.approx(300.0)
+    assert exclusions["matured_or_expired"]["row_count"] == 1
+    assert exclusions["matured_or_expired"]["market_value"] == pytest.approx(100.0)
+
+
+def test_krd_excludes_missing_and_matured_rows_and_reports_risk_coverage() -> None:
+    valid_start = _maturity_risk_row(
+        asset_class="rate",
+        market_value=600.0,
+        modified_duration=2.0,
+        maturity_date="2031-06-30",
+        years_to_maturity=5.0,
+        ytm=0.030,
+    )
+    valid_end = {**valid_start, "ytm": 0.031}
+    missing = _maturity_risk_row(
+        asset_class="other",
+        market_value=300.0,
+        modified_duration=4.0,
+        maturity_date=None,
+        years_to_maturity=5.0,
+        ytm=0.040,
+    )
+    matured = _maturity_risk_row(
+        asset_class="other",
+        market_value=100.0,
+        modified_duration=0.0,
+        maturity_date="2026-05-15",
+        years_to_maturity=0.0,
+        ytm=None,
+    )
+
+    covered_only = build_krd_attribution(
+        report_date="2026-06-30",
+        start_date="2026-05-31",
+        end_date="2026-06-30",
+        bond_rows_start=[valid_start],
+        bond_rows_end=[valid_end],
+        treasury_shift_bp=10.0,
+    )
+    mixed = build_krd_attribution(
+        report_date="2026-06-30",
+        start_date="2026-05-31",
+        end_date="2026-06-30",
+        bond_rows_start=[valid_start, missing, matured],
+        bond_rows_end=[valid_end, missing, matured],
+        treasury_shift_bp=10.0,
+    )
+
+    assert mixed["total_market_value"] == pytest.approx(1_000.0)
+    assert [bucket["tenor"] for bucket in mixed["buckets"]] == ["5Y"]
+    assert mixed["buckets"][0]["market_value"] == pytest.approx(600.0)
+    assert mixed["buckets"][0]["weight"] == pytest.approx(60.0)
+    assert mixed["buckets"][0]["bond_count"] == 1
+    assert mixed["portfolio_duration"] == pytest.approx(covered_only["portfolio_duration"])
+    assert mixed["portfolio_dv01"] == pytest.approx(covered_only["portfolio_dv01"])
+    assert mixed["total_duration_effect"] == pytest.approx(
+        covered_only["total_duration_effect"]
+    )
+    assert mixed["total_duration_effect"] == pytest.approx(-1.2)
+    _assert_partial_maturity_risk_coverage(mixed)
+
+
+def test_spread_excludes_missing_and_matured_rows_and_reports_risk_coverage() -> None:
+    valid_start = _maturity_risk_row(
+        asset_class="rate",
+        market_value=600.0,
+        modified_duration=2.0,
+        maturity_date="2031-06-30",
+        years_to_maturity=5.0,
+        ytm=0.030,
+    )
+    valid_end = {**valid_start, "ytm": 0.031}
+    missing = _maturity_risk_row(
+        asset_class="other",
+        market_value=300.0,
+        modified_duration=4.0,
+        maturity_date=None,
+        years_to_maturity=5.0,
+        ytm=0.040,
+    )
+    matured = _maturity_risk_row(
+        asset_class="other",
+        market_value=100.0,
+        modified_duration=0.0,
+        maturity_date="2026-05-15",
+        years_to_maturity=0.0,
+        ytm=None,
+    )
+
+    covered_only = build_spread_attribution(
+        report_date="2026-06-30",
+        start_date="2026-05-31",
+        end_date="2026-06-30",
+        bond_rows_start=[valid_start],
+        bond_rows_end=[valid_end],
+        treasury_10y_start_pct=2.00,
+        treasury_10y_end_pct=2.05,
+    )
+    mixed = build_spread_attribution(
+        report_date="2026-06-30",
+        start_date="2026-05-31",
+        end_date="2026-06-30",
+        bond_rows_start=[valid_start, missing, matured],
+        bond_rows_end=[valid_end, missing, matured],
+        treasury_10y_start_pct=2.00,
+        treasury_10y_end_pct=2.05,
+    )
+
+    assert mixed["total_market_value"] == pytest.approx(1_000.0)
+    assert [item["category"] for item in mixed["items"]] == ["rate"]
+    assert mixed["items"][0]["market_value"] == pytest.approx(600.0)
+    assert mixed["items"][0]["weight"] == pytest.approx(60.0)
+    assert mixed["portfolio_duration"] == pytest.approx(covered_only["portfolio_duration"])
+    assert mixed["total_treasury_effect"] == pytest.approx(
+        covered_only["total_treasury_effect"]
+    )
+    assert mixed["total_spread_effect"] == pytest.approx(covered_only["total_spread_effect"])
+    assert mixed["total_price_change"] == pytest.approx(covered_only["total_price_change"])
+    assert mixed["total_treasury_effect"] == pytest.approx(-0.6)
+    assert mixed["total_spread_effect"] == pytest.approx(-0.6)
+    _assert_partial_maturity_risk_coverage(mixed)
+
+def test_duration_risk_excludes_nonpositive_duration_end_to_end() -> None:
+    valid_start = _maturity_risk_row(
+        asset_class="rate",
+        market_value=600.0,
+        modified_duration=2.0,
+        maturity_date="2031-06-30",
+        years_to_maturity=5.0,
+        ytm=0.030,
+    )
+    valid_end = {**valid_start, "ytm": 0.031}
+    nonpositive = _maturity_risk_row(
+        asset_class="other",
+        market_value=400.0,
+        modified_duration=0.0,
+        maturity_date="2028-06-30",
+        years_to_maturity=2.0,
+        ytm=0.025,
+    )
+
+    krd = build_krd_attribution(
+        report_date="2026-06-30",
+        start_date="2026-05-31",
+        end_date="2026-06-30",
+        bond_rows_start=[valid_start, nonpositive],
+        bond_rows_end=[valid_end, nonpositive],
+        treasury_shift_bp=10.0,
+    )
+    spread = build_spread_attribution(
+        report_date="2026-06-30",
+        start_date="2026-05-31",
+        end_date="2026-06-30",
+        bond_rows_start=[valid_start, nonpositive],
+        bond_rows_end=[valid_end, nonpositive],
+        treasury_10y_start_pct=2.00,
+        treasury_10y_end_pct=2.05,
+    )
+
+    assert [bucket["tenor"] for bucket in krd["buckets"]] == ["5Y"]
+    assert [item["category"] for item in spread["items"]] == ["rate"]
+    for payload in (krd, spread):
+        coverage = payload["risk_coverage"]
+        assert coverage["total_row_count"] == 2
+        assert coverage["covered_row_count"] == 1
+        assert coverage["excluded_row_count"] == 1
+        assert coverage["total_market_value"] == pytest.approx(1_000.0)
+        assert coverage["covered_market_value"] == pytest.approx(600.0)
+        assert coverage["excluded_market_value"] == pytest.approx(400.0)
+        assert coverage["coverage_pct"] == pytest.approx(60.0)
+        assert coverage["excluded_pct"] == pytest.approx(40.0)
+        assert coverage["exclusions"] == [
+            {
+                "reason": "nonpositive_duration",
+                "row_count": 1,
+                "market_value": 400.0,
+            }
+        ]

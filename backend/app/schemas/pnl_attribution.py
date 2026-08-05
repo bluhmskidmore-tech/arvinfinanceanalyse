@@ -386,6 +386,51 @@ class CarryRollDownPayload(BaseModel):
 # =========================================================================
 
 
+class AttributionRiskCoverageExclusion(BaseModel):
+    reason: Literal[
+        "no_maturity",
+        "missing_maturity",
+        "matured_or_expired",
+        "nonpositive_duration",
+    ]
+    row_count: int
+    market_value: Numeric
+
+    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+        "market_value": ("yuan", False),
+    }
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce(cls, data: Any) -> Any:
+        return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
+
+
+class AttributionRiskCoverage(BaseModel):
+    total_row_count: int
+    covered_row_count: int
+    excluded_row_count: int
+    total_market_value: Numeric
+    covered_market_value: Numeric
+    excluded_market_value: Numeric
+    coverage_pct: Numeric
+    excluded_pct: Numeric
+    exclusions: list[AttributionRiskCoverageExclusion]
+
+    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+        "total_market_value": ("yuan", False),
+        "covered_market_value": ("yuan", False),
+        "excluded_market_value": ("yuan", False),
+        "coverage_pct": ("pct", False),
+        "excluded_pct": ("pct", False),
+    }
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce(cls, data: Any) -> Any:
+        return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
+
+
 class SpreadAttributionItem(BaseModel):
     category: str
     category_type: str
@@ -404,7 +449,7 @@ class SpreadAttributionItem(BaseModel):
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
         "market_value": ("yuan", False),
         "duration": ("ratio", False),
-        "weight": ("ratio", False),
+        "weight": ("pct", False),
         "yield_change": ("bp", True),
         "treasury_change": ("bp", True),
         "spread_change": ("bp", True),
@@ -429,6 +474,7 @@ class SpreadAttributionPayload(BaseModel):
     treasury_10y_end: Numeric | None = None
     treasury_10y_change: Numeric | None = None
     total_market_value: Numeric
+    risk_coverage: AttributionRiskCoverage
     portfolio_duration: Numeric
     total_treasury_effect: Numeric
     total_spread_effect: Numeric
@@ -475,11 +521,11 @@ class KRDAttributionBucket(BaseModel):
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
         "tenor_years": ("ratio", False),
         "market_value": ("yuan", False),
-        "weight": ("ratio", False),
+        "weight": ("pct", False),
         "bucket_duration": ("ratio", False),
         "avg_modified_duration": ("ratio", True),
         "krd": ("ratio", True),
-        "yield_change": ("pct", True),
+        "yield_change": ("bp", True),
         "duration_contribution": ("yuan", True),
         "contribution_pct": ("pct", True),
     }
@@ -508,6 +554,7 @@ class KRDAttributionPayload(BaseModel):
     start_date: str
     end_date: str
     total_market_value: Numeric
+    risk_coverage: AttributionRiskCoverage
     portfolio_duration: Numeric
     portfolio_dv01: Numeric
     total_duration_effect: Numeric
