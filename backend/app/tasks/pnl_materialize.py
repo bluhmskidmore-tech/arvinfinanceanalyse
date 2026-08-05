@@ -583,6 +583,7 @@ def _materialize_pnl_facts_under_writer_lock(
                     rule_version=RULE_VERSION,
                     basis=PNL_FORMAL_BASIS,
                     module_name="pnl",
+                    report_date=report_date,
                     fact_tables=["fact_formal_pnl_fi", "fact_nonstd_pnl_bridge"],
                 ).model_dump(),
             ),

@@ -18,6 +18,7 @@ from openpyxl import Workbook
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
+    CACHE_MANIFEST_STREAM,
     SOURCE_MANIFEST_STREAM,
     GovernanceRepository,
 )
@@ -6519,6 +6520,22 @@ def test_pnl_dates_returns_union_and_constituent_lists(tmp_path, monkeypatch):
         "nonstd_bridge_report_dates": ["2026-02-28", "2025-12-31"],
     }
     get_settings.cache_clear()
+
+
+def test_pnl_materialize_persists_report_date_on_each_formal_manifest(tmp_path, monkeypatch):
+    governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
+
+    manifests = [
+        row
+        for row in GovernanceRepository(base_dir=governance_dir).read_all(CACHE_MANIFEST_STREAM)
+        if row.get("cache_key") == "pnl:phase2:materialize:formal"
+    ]
+
+    assert [row.get("report_date") for row in manifests] == [
+        "2025-12-31",
+        "2026-01-31",
+        "2026-02-28",
+    ]
 
 
 def test_pnl_data_returns_shared_date_with_two_explicit_lists_and_report_date_build_lineage(tmp_path, monkeypatch):
