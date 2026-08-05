@@ -665,20 +665,24 @@ def _select_manifest_rows(
     archive_root: str | None = None,
 ) -> list[dict[str, object]]:
     resolved_archive_root = Path(archive_root).resolve() if archive_root else None
-    eligible_rows = [
+    scoped_rows = [
         row
         for row in manifest_rows
         if str(row.get("status", "")) in MANIFEST_ELIGIBLE_STATUSES
         and row.get("archived_path")
-        and _is_eligible_archived_path(str(row["archived_path"]), resolved_archive_root)
     ]
     if source_families is not None:
         allowed = {str(family) for family in source_families}
-        eligible_rows = [
+        scoped_rows = [
             row
-            for row in eligible_rows
+            for row in scoped_rows
             if str(row.get("source_family", "")) in allowed
         ]
+    eligible_rows = [
+        row
+        for row in scoped_rows
+        if _is_eligible_archived_path(str(row["archived_path"]), resolved_archive_root)
+    ]
     if ingest_batch_id is not None:
         return [
             row

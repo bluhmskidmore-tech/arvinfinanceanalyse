@@ -513,6 +513,12 @@ def test_materialize_fx_mid_for_report_date_uses_akshare_when_choice_is_incomple
             }
 
     monkeypatch.setattr(fx_mod, "ChoiceClient", lambda: _FakeChoiceClient())
+    monkeypatch.setattr(
+        fx_mod,
+        "_fetch_chinamoney_fx_mid_rows_for_report_date",
+        lambda report_date, *, candidates: [],
+        raising=False,
+    )
     monkeypatch.setattr(fx_mod, "AkShareVendorAdapter", lambda: _FakeAkShareVendor())
 
     payload = fx_mod.materialize_fx_mid_for_report_date.fn(
@@ -534,10 +540,80 @@ def test_materialize_fx_mid_for_report_date_uses_akshare_when_choice_is_incomple
             from fx_daily_mid
             """
         ).fetchall()
+        hkd_row = conn.execute(
+            """
+            select mid_rate
+            from fx_daily_mid
+            where trade_date = '2026-02-27'::date
+              and base_currency = 'HKD'
+              and quote_currency = 'CNY'
+            """
+        ).fetchone()
     finally:
         conn.close()
 
     assert rows == [("akshare", "sv_fx_akshare_fixture", "vv_akshare_fx_fixture")]
+    assert hkd_row == (Decimal("0.91743119"),)
+    get_settings.cache_clear()
+
+
+def test_materialize_fx_mid_uses_chinamoney_fallback_without_error_traceback(
+    tmp_path,
+    monkeypatch,
+    caplog,
+):
+    fx_mod = _load_fx_task_module()
+    catalog_path = tmp_path / "choice_macro_catalog.json"
+    _write_choice_fx_catalog(catalog_path)
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_CATALOG_FILE", str(catalog_path))
+    get_settings.cache_clear()
+
+    class _FailingChoiceClient:
+        def edb(self, codes, options=""):
+            raise RuntimeError("choice unavailable")
+
+    def _chinamoney_rows(report_date, *, candidates):
+        rates = {
+            "AUD": Decimal("4.7441"),
+            "CAD": Decimal("4.8206"),
+            "EUR": Decimal("7.7886"),
+            "HKD": Decimal("0.86559"),
+            "USD": Decimal("6.7894"),
+        }
+        return [
+            fx_mod._normalize_vendor_row(
+                requested_report_date=report_date,
+                candidate=candidate,
+                observed_trade_date=report_date,
+                raw_mid_rate=rates[candidate.base_currency],
+                source_name="CFETS",
+                source_version="sv_fx_chinamoney_fixture",
+                vendor_name="chinamoney",
+                vendor_version="vv_chinamoney_fx_fixture",
+                mid_rate_is_normalized=True,
+            )
+            for candidate in candidates
+        ]
+
+    monkeypatch.setattr(fx_mod, "ChoiceClient", lambda: _FailingChoiceClient())
+    monkeypatch.setattr(
+        fx_mod,
+        "_fetch_chinamoney_fx_mid_rows_for_report_date",
+        _chinamoney_rows,
+    )
+
+    with caplog.at_level("WARNING"):
+        payload = fx_mod.materialize_fx_mid_for_report_date.fn(
+            report_date="2026-07-31",
+            duckdb_path=str(tmp_path / "moss.duckdb"),
+            data_input_root=str(tmp_path / "data_input"),
+        )
+
+    assert payload["status"] == "completed"
+    assert payload["source_kind"] == "chinamoney"
+    assert payload["choice_error"] == "choice unavailable"
+    assert any("trying ChinaMoney fallback" in record.message for record in caplog.records)
+    assert not any(record.levelname == "ERROR" for record in caplog.records)
     get_settings.cache_clear()
 
 
@@ -560,6 +636,12 @@ def test_materialize_fx_mid_for_report_date_fails_closed_without_silent_csv_fall
             raise RuntimeError("akshare unavailable")
 
     monkeypatch.setattr(fx_mod, "ChoiceClient", lambda: _FailingChoiceClient())
+    monkeypatch.setattr(
+        fx_mod,
+        "_fetch_chinamoney_fx_mid_rows_for_report_date",
+        lambda report_date, *, candidates: [],
+        raising=False,
+    )
     monkeypatch.setattr(fx_mod, "AkShareVendorAdapter", lambda: _FailingAkShareVendor())
 
     with pytest.raises(ValueError, match="Choice failed: choice unavailable"):
@@ -569,3 +651,67 @@ def test_materialize_fx_mid_for_report_date_fails_closed_without_silent_csv_fall
             data_input_root=str(tmp_path / "data_input"),
         )
     get_settings.cache_clear()
+
+
+def test_fetch_chinamoney_fx_mid_rows_uses_official_pair_order_without_double_inversion(
+    tmp_path,
+    monkeypatch,
+):
+    fx_mod = _load_fx_task_module()
+    catalog_path = tmp_path / "choice_macro_catalog.json"
+    _write_choice_fx_catalog(catalog_path)
+    candidates = fx_mod.discover_formal_fx_candidates(catalog_path=catalog_path)
+
+    class _FakeResponse:
+        def __init__(self, response_timestamp):
+            self.response_timestamp = response_timestamp
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "head": {"provider": "CWAP", "ts": self.response_timestamp},
+                "data": {
+                    "searchlist": ["USD/CNY", "EUR/CNY", "HKD/CNY", "AUD/CNY", "CAD/CNY"],
+                },
+                "records": [
+                    {
+                        "date": "2026-07-31",
+                        "values": ["6.7894", "7.7886", "0.86559", "4.7441", "4.8206"],
+                    }
+                ],
+            }
+
+    calls = []
+
+    response_timestamps = iter([1785942941040, 1785942942040])
+
+    def _fake_post(url, *, params, headers, timeout):
+        calls.append({"url": url, "params": params, "headers": headers, "timeout": timeout})
+        return _FakeResponse(next(response_timestamps))
+
+    monkeypatch.setattr(fx_mod.requests, "post", _fake_post)
+
+    rows = fx_mod._fetch_chinamoney_fx_mid_rows_for_report_date(
+        "2026-07-31",
+        candidates=candidates,
+    )
+    rerun_rows = fx_mod._fetch_chinamoney_fx_mid_rows_for_report_date(
+        "2026-07-31",
+        candidates=candidates,
+    )
+
+    assert {str(row[1]): row[3] for row in rows} == {
+        "USD": Decimal("6.7894"),
+        "EUR": Decimal("7.7886"),
+        "AUD": Decimal("4.7441"),
+        "CAD": Decimal("4.8206"),
+        "HKD": Decimal("0.86559"),
+    }
+    assert {row[4] for row in rows} == {"CFETS"}
+    assert {row[8] for row in rows} == {"chinamoney"}
+    assert {row[11] for row in rows} == {"2026-07-31"}
+    assert {row[7] for row in rows} == {row[7] for row in rerun_rows}
+    assert calls[0]["params"]["startDate"] == "2026-07-24"
+    assert calls[0]["params"]["endDate"] == "2026-07-31"

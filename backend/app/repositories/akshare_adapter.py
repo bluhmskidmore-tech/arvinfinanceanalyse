@@ -48,6 +48,14 @@ AKSHARE_FX_PAIR_FIELD_CANDIDATES = ("pair", "currency_pair", "symbol", "名称",
 AKSHARE_FX_VALUE_FIELD_CANDIDATES = ("mid_rate", "rate", "price", "最新价", "中间价")
 AKSHARE_FX_DATE_FIELD_CANDIDATES = ("trade_date", "日期", "date")
 AKSHARE_FX_SOURCE_FIELD_CANDIDATES = ("source_name", "source", "来源")
+AKSHARE_SAFE_FX_FIELD_BY_BASE_CURRENCY = {
+    "USD": "\u7f8e\u5143",
+    "EUR": "\u6b27\u5143",
+    "AUD": "\u6fb3\u5143",
+    "CAD": "\u52a0\u5143",
+    "HKD": "\u6e2f\u5143",
+}
+AKSHARE_SAFE_FX_QUOTE_SCALE = Decimal("100")
 
 CHOICE_CURVE_CODES = {
     # ── 到期收益率（Par Yield）── 已有 ──
@@ -585,6 +593,37 @@ class VendorAdapter(VendorAdapterBase):
                 "source_name": _lookup_record_value(record, AKSHARE_FX_SOURCE_FIELD_CANDIDATES) or "AKSHARE",
                 "pair_value": str(pair_value),
             }
+
+        safe_field = AKSHARE_SAFE_FX_FIELD_BY_BASE_CURRENCY.get(base_currency)
+        if safe_field is None:
+            return None
+
+        safe_matches: list[dict[str, object]] = []
+        for record in records:
+            raw_rate = record.get(safe_field)
+            if raw_rate in (None, "", "nan"):
+                continue
+            trade_value = _lookup_record_value(record, AKSHARE_FX_DATE_FIELD_CANDIDATES)
+            if trade_value in (None, ""):
+                continue
+            try:
+                observed_trade_date = _normalize_record_trade_date(trade_value)
+                if not observed_trade_date or observed_trade_date > report_date:
+                    continue
+                normalized_rate = Decimal(str(raw_rate)) / AKSHARE_SAFE_FX_QUOTE_SCALE
+            except (ArithmeticError, TypeError, ValueError):
+                continue
+            safe_matches.append(
+                {
+                    "base_currency": base_currency,
+                    "mid_rate": normalized_rate,
+                    "observed_trade_date": observed_trade_date,
+                    "source_name": "CFETS",
+                    "pair_value": f"SAFE:{base_currency}/CNY",
+                }
+            )
+        if safe_matches:
+            return max(safe_matches, key=lambda item: str(item["observed_trade_date"]))
         return None
 
 

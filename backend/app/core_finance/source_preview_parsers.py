@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import hashlib
 from pathlib import Path
 
@@ -148,18 +149,34 @@ def _parse_pnl_source_file(
     source_version: str,
     metadata,
 ) -> tuple[str, str | None, list[dict[str, object]], list[dict[str, object]]]:
-    sheet = xlrd.open_workbook(str(path)).sheet_by_index(0)
-    headers = [str(sheet.cell_value(0, column)).strip() for column in range(sheet.ncols)]
+    raw_rows: list[dict[str, object]] = []
+    if path.suffix.lower() == ".csv":
+        with path.open("r", encoding="utf-8-sig", newline="") as handle:
+            for record in csv.DictReader(handle):
+                raw_rows.append(
+                    {
+                        str(header).strip(): value
+                        for header, value in record.items()
+                        if header is not None and str(header).strip()
+                    }
+                )
+    else:
+        sheet = xlrd.open_workbook(str(path)).sheet_by_index(0)
+        headers = [str(sheet.cell_value(0, column)).strip() for column in range(sheet.ncols)]
+        for row_index in range(1, sheet.nrows):
+            raw_rows.append(
+                {
+                    headers[column]: sheet.cell_value(row_index, column)
+                    for column in range(sheet.ncols)
+                    if headers[column]
+                }
+            )
+
     rows: list[dict[str, object]] = []
     traces: list[dict[str, object]] = []
     row_locator = 0
 
-    for row_index in range(1, sheet.nrows):
-        raw_row = {
-            headers[column]: sheet.cell_value(row_index, column)
-            for column in range(sheet.ncols)
-            if headers[column]
-        }
+    for raw_row in raw_rows:
         if not _text(raw_row, "\u503a\u5238\u4ee3\u7801"):
             continue
 

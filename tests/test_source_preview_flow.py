@@ -124,6 +124,32 @@ def test_source_preview_service_summarizes_real_zqtz_and_tyw_files():
     assert sum(tyw_summary["group_counts"].values()) == tyw_summary["total_rows"]
 
 
+def test_source_preview_parser_supports_utf8_pnl_csv(tmp_path):
+    parser_module = load_module(
+        "backend.app.core_finance.source_preview_parsers",
+        "backend/app/core_finance/source_preview_parsers.py",
+    )
+    csv_path = tmp_path / "FI_tmp_202603_delta.csv"
+    csv_path.write_text(
+        "\ufeff债券代码,投资类型,投资组合,成本中心,币种\n"
+        "010221,H,FIOA,50,RMB\n",
+        encoding="utf-8",
+    )
+
+    family, _report_date, rows, traces = parser_module.parse_source_file(
+        path=csv_path,
+        ingest_batch_id="batch-csv",
+        source_version="sv_csv",
+        source_file_name=csv_path.name,
+    )
+
+    assert family == "pnl"
+    assert len(rows) == 1
+    assert rows[0]["instrument_code"] == "010221"
+    assert rows[0]["source_version"] == "sv_csv"
+    assert traces
+
+
 def test_source_preview_service_reexports_supported_source_families_from_repo():
     preview_module = load_module(
         "backend.app.services.source_preview_service",
@@ -1804,6 +1830,64 @@ def test_materialize_ignores_manifest_rows_whose_archived_paths_no_longer_exist(
     summaries = preview_module.materialize_source_previews(
         duckdb_path=str(duckdb_path),
         governance_dir=str(governance_dir),
+    )
+
+    assert len(summaries) == 1
+    assert summaries[0]["source_version"] == "sv_valid"
+
+
+def test_materialize_applies_source_family_scope_before_archive_boundary_validation(tmp_path):
+    preview_module = load_module(
+        "backend.app.repositories.source_preview_repo",
+        "backend/app/repositories/source_preview_repo.py",
+    )
+    governance_module = load_module(
+        "backend.app.repositories.governance_repo",
+        "backend/app/repositories/governance_repo.py",
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    archive_dir = tmp_path / "archive"
+    archive_dir.mkdir()
+    valid_file = archive_dir / "TYWLSHOW-20251231.xls"
+    valid_file.write_bytes((ROOT / "data_input" / "TYWLSHOW-20251231.xls").read_bytes())
+    unrelated_file = tmp_path / "research-calendar.csv"
+    unrelated_file.write_text("date,value\n2025-12-31,1\n", encoding="utf-8")
+
+    repo = governance_module.GovernanceRepository(base_dir=governance_dir)
+    repo.append(
+        governance_module.SOURCE_MANIFEST_STREAM,
+        {
+            "ingest_batch_id": "batch-unrelated",
+            "created_at": "2026-04-10T00:00:02Z",
+            "source_family": "research_calendar",
+            "report_date": "2025-12-31",
+            "source_file": unrelated_file.name,
+            "source_version": "sv_unrelated",
+            "archived_path": str(unrelated_file),
+            "status": "completed",
+        },
+    )
+    repo.append(
+        governance_module.SOURCE_MANIFEST_STREAM,
+        {
+            "ingest_batch_id": "batch-valid",
+            "created_at": "2026-04-10T00:00:01Z",
+            "source_family": "tyw",
+            "report_date": "2025-12-31",
+            "source_file": valid_file.name,
+            "source_version": "sv_valid",
+            "archived_path": str(valid_file),
+            "status": "completed",
+        },
+    )
+
+    summaries = preview_module.materialize_source_previews(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        source_families=["tyw"],
+        archive_root=str(archive_dir),
     )
 
     assert len(summaries) == 1

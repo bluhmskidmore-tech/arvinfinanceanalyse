@@ -10,6 +10,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 import duckdb
+import requests
 from backend.app.core_finance.fx_calendar import is_cfets_fx_non_business_day
 from backend.app.governance.locks import acquire_lock, resolve_duckdb_writer_lock
 from backend.app.governance.settings import get_settings
@@ -32,6 +33,15 @@ CHOICE_SOURCE_NAME = "CFETS"
 AKSHARE_SOURCE_NAME = "AKSHARE"
 CHOICE_REQUEST_TIMEOUT_SECONDS = 5
 CHOICE_FX_LOOKBACK_DAYS = 7
+CHINAMONEY_FX_HISTORY_URL = "https://www.chinamoney.com.cn/ags/ms/cm-u-bk-ccpr/CcprHisNew"
+CHINAMONEY_REQUEST_TIMEOUT_SECONDS = 15
+CHINAMONEY_PAIR_BY_BASE_CURRENCY = {
+    "USD": "USD/CNY",
+    "EUR": "EUR/CNY",
+    "AUD": "AUD/CNY",
+    "CAD": "CAD/CNY",
+    "HKD": "HKD/CNY",
+}
 
 
 def resolve_fx_mid_csv_path(
@@ -200,6 +210,7 @@ def _normalize_vendor_row(
     source_version: str,
     vendor_name: str,
     vendor_version: str,
+    mid_rate_is_normalized: bool = False,
 ) -> tuple[object, ...]:
     requested_date = date.fromisoformat(requested_report_date)
     observed_date = date.fromisoformat(observed_trade_date)
@@ -217,7 +228,13 @@ def _normalize_vendor_row(
             f"Formal FX carry-forward is only allowed for confirmed non-business days; "
             f"requested_report_date={requested_report_date}, observed_trade_date={observed_trade_date}."
         )
-    mid_rate = _invert_mid_rate(raw_mid_rate) if candidate.invert_result else raw_mid_rate
+    mid_rate = (
+        raw_mid_rate
+        if mid_rate_is_normalized
+        else _invert_mid_rate(raw_mid_rate)
+        if candidate.invert_result
+        else raw_mid_rate
+    )
     is_business_day = observed_trade_date == requested_report_date
     return (
         requested_report_date,
@@ -306,6 +323,117 @@ def _fetch_choice_fx_mid_rows_for_report_date(
             )
         return normalized_rows
     return []
+
+
+def _fetch_chinamoney_fx_mid_rows_for_report_date(
+    report_date: str,
+    *,
+    candidates: list[FormalFxCandidate],
+) -> list[tuple[object, ...]]:
+    requested_date = date.fromisoformat(report_date)
+    requested_pairs: list[str] = []
+    for candidate in candidates:
+        pair = CHINAMONEY_PAIR_BY_BASE_CURRENCY.get(candidate.base_currency.upper())
+        if pair is None:
+            return []
+        requested_pairs.append(pair)
+
+    start_date = (requested_date - timedelta(days=CHOICE_FX_LOOKBACK_DAYS)).isoformat()
+    response = requests.post(
+        CHINAMONEY_FX_HISTORY_URL,
+        params={
+            "startDate": start_date,
+            "endDate": report_date,
+            "currency": ",".join(requested_pairs),
+            "pageNum": 1,
+            "pageSize": CHOICE_FX_LOOKBACK_DAYS + 1,
+        },
+        headers={
+            "Accept": "application/json",
+            "Referer": "https://www.chinamoney.com.cn/chinese/bkccpr/",
+            "User-Agent": "MOSS-V3 formal FX materializer",
+        },
+        timeout=CHINAMONEY_REQUEST_TIMEOUT_SECONDS,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if not isinstance(payload, dict):
+        return []
+
+    data_payload = payload.get("data")
+    records = payload.get("records")
+    if not isinstance(data_payload, dict) or not isinstance(records, list):
+        return []
+    response_pairs = data_payload.get("searchlist")
+    if not isinstance(response_pairs, list):
+        raw_currency = str(data_payload.get("currency") or "")
+        response_pairs = [item.strip() for item in raw_currency.split(",") if item.strip()]
+    normalized_response_pairs = [str(item).strip().upper() for item in response_pairs]
+
+    eligible_records = [
+        record
+        for record in records
+        if isinstance(record, dict)
+        and str(record.get("date") or "") <= report_date
+        and str(record.get("date") or "") >= start_date
+    ]
+    if not eligible_records:
+        return []
+    selected_record = max(eligible_records, key=lambda item: str(item.get("date") or ""))
+    observed_trade_date = str(selected_record.get("date") or "")
+    values = selected_record.get("values")
+    if not observed_trade_date or not isinstance(values, list) or len(values) != len(normalized_response_pairs):
+        return []
+
+    rates_by_pair: dict[str, Decimal] = {}
+    for pair, raw_value in zip(normalized_response_pairs, values, strict=True):
+        if raw_value in (None, "", "---"):
+            continue
+        try:
+            rates_by_pair[pair] = Decimal(str(raw_value).replace(",", ""))
+        except InvalidOperation:
+            continue
+    if any(pair not in rates_by_pair for pair in requested_pairs):
+        return []
+
+    response_head = payload.get("head")
+    stable_provider_metadata = {}
+    if isinstance(response_head, dict):
+        stable_provider_metadata = {
+            key: response_head[key]
+            for key in ("provider", "version", "rep_code", "repCode")
+            if response_head.get(key) not in (None, "")
+        }
+
+    lineage_payload = {
+        "requested_report_date": report_date,
+        "start_date": start_date,
+        "provider": stable_provider_metadata,
+        "response_pairs": normalized_response_pairs,
+        "selected_record": selected_record,
+    }
+    digest = hashlib.sha256(
+        json.dumps(lineage_payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()[:12]
+    source_version = f"sv_fx_chinamoney_{digest}"
+    vendor_version = f"vv_chinamoney_fx_{observed_trade_date.replace('-', '')}_{digest}"
+
+    normalized_rows: list[tuple[object, ...]] = []
+    for candidate, pair in zip(candidates, requested_pairs, strict=True):
+        normalized_rows.append(
+            _normalize_vendor_row(
+                requested_report_date=report_date,
+                candidate=candidate,
+                observed_trade_date=observed_trade_date,
+                raw_mid_rate=rates_by_pair[pair],
+                source_name=CHOICE_SOURCE_NAME,
+                source_version=source_version,
+                vendor_name="chinamoney",
+                vendor_version=vendor_version,
+                mid_rate_is_normalized=True,
+            )
+        )
+    return normalized_rows
 
 
 def _materialize_fx_mid_rows(
@@ -425,6 +553,7 @@ def _fetch_akshare_fx_mid_rows_for_report_date(
                 source_version=source_version,
                 vendor_name="akshare",
                 vendor_version=vendor_version,
+                mid_rate_is_normalized=True,
             )
         )
     return normalized_rows
@@ -487,7 +616,10 @@ def _materialize_fx_mid_for_report_date(
             candidates=candidates,
         )
     except Exception as exc:
-        logger.error("task failed: %s", exc, exc_info=True)
+        logger.warning(
+            "Choice FX source unavailable; trying ChinaMoney fallback: %s",
+            exc,
+        )
         choice_error = exc
         choice_rows = []
 
@@ -508,6 +640,38 @@ def _materialize_fx_mid_for_report_date(
             "candidate_count": len(candidates),
         }
 
+    chinamoney_error: Exception | None = None
+    try:
+        chinamoney_rows = _fetch_chinamoney_fx_mid_rows_for_report_date(
+            report_date,
+            candidates=candidates,
+        )
+    except Exception as exc:
+        logger.warning(
+            "ChinaMoney FX source unavailable; trying AkShare fallback: %s",
+            exc,
+        )
+        chinamoney_error = exc
+        chinamoney_rows = []
+
+    if chinamoney_rows:
+        if writer_lock_already_held:
+            _replace_fx_mid_rows(duckdb_path=duckdb_path, rows=chinamoney_rows)
+        else:
+            with acquire_lock(writer_lock, base_dir=duckdb_file.parent):
+                _replace_fx_mid_rows(duckdb_path=duckdb_path, rows=chinamoney_rows)
+        logger.info("completed materialize_fx_mid_for_report_date")
+        return {
+            "status": "completed",
+            "row_count": len(chinamoney_rows),
+            "source_version": str(chinamoney_rows[0][7]),
+            "vendor_version": str(chinamoney_rows[0][9]),
+            "source_kind": "chinamoney",
+            "report_date": report_date,
+            "candidate_count": len(candidates),
+            "choice_error": str(choice_error) if choice_error is not None else "",
+        }
+
     akshare_error: Exception | None = None
     try:
         akshare_rows = _fetch_akshare_fx_mid_rows_for_report_date(
@@ -515,7 +679,10 @@ def _materialize_fx_mid_for_report_date(
             candidates=candidates,
         )
     except Exception as exc:
-        logger.error("task failed: %s", exc, exc_info=True)
+        logger.warning(
+            "AkShare FX source unavailable; no live fallback remains: %s",
+            exc,
+        )
         akshare_error = exc
         akshare_rows = []
 
@@ -535,6 +702,7 @@ def _materialize_fx_mid_for_report_date(
             "report_date": report_date,
             "candidate_count": len(candidates),
             "choice_error": str(choice_error) if choice_error is not None else "",
+            "chinamoney_error": str(chinamoney_error) if chinamoney_error is not None else "",
         }
 
     error_details = []
@@ -542,6 +710,10 @@ def _materialize_fx_mid_for_report_date(
         error_details.append(f"Choice failed: {choice_error}")
     else:
         error_details.append("Choice returned no complete middle-rate candidate set.")
+    if chinamoney_error is not None:
+        error_details.append(f"ChinaMoney failed: {chinamoney_error}")
+    else:
+        error_details.append("ChinaMoney returned no complete middle-rate candidate set.")
     if akshare_error is not None:
         error_details.append(f"AkShare failed: {akshare_error}")
     else:

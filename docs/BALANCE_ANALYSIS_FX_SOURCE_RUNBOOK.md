@@ -9,7 +9,7 @@ It does not authorize unrelated Phase 2 work, Agent MVP work, or broad frontend 
 
 Current repo-executable normal path:
 
-`Choice catalog-driven middle-rate discovery -> Choice live fetch -> AkShare fallback -> fail closed`
+`Choice catalog-driven middle-rate discovery -> Choice live fetch -> ChinaMoney/CFETS official history -> AkShare fallback -> fail closed`
 
 Key rules:
 
@@ -23,6 +23,8 @@ Key rules:
   - `HKD -> CNY` (from reverse supplier orientation such as `人民币兑港元`)
 - Persisted formal rows must normalize to `(trade_date, base_currency, quote_currency='CNY')`.
 - Reverse supplier orientation must be inverted before persistence.
+- ChinaMoney response values must be mapped by the returned `searchlist` pair names; response position alone is not authoritative.
+- ChinaMoney `HKD/CNY` is already normalized and must not be inverted a second time merely because the Choice catalog candidate uses reverse orientation.
 - Missing required formal middle-rates must fail closed.
 - Non-middle-rate FX observations such as RMB indices or FX swap curves stay analytical-only and must not backflow into `fx_daily_mid`.
 
@@ -73,6 +75,19 @@ Current known formal reference series include:
 
 The catalog is the discovery surface. Code must not maintain a second hardcoded formal-series registry that bypasses catalog selection.
 
+## ChinaMoney Official Fallback
+
+When Choice is unavailable or incomplete, the formal task queries the China
+Foreign Exchange Trade System history endpoint exposed by ChinaMoney. Candidate
+membership still comes from the Choice catalog; the official response only
+supplies the dated values for those governed pairs.
+
+- Page: `https://www.chinamoney.com.cn/chinese/bkccpr/`
+- History endpoint: `https://www.chinamoney.com.cn/ags/ms/cm-u-bk-ccpr/CcprHisNew`
+- Persisted `source_name`: `CFETS`
+- Persisted `vendor_name`: `chinamoney`
+- Ordinary weekday gaps remain fail-closed; carry-forward remains subject to the CFETS calendar rule above.
+
 ## Explicit Manual Override Path
 
 The CSV/manual path is no longer the normal governed formal route.
@@ -87,6 +102,23 @@ If an explicit override path is configured, it must exist or the pipeline fails 
 There is no silent data-root CSV fallback on the governed normal path.
 
 ## Standard Entrypoints
+
+Canonical full core-data refresh:
+
+```bash
+python scripts/run_global_data_refresh.py --report-date 2026-07-31
+```
+
+Plan-only preflight:
+
+```bash
+python scripts/run_global_data_refresh.py --report-date 2026-07-31 --dry-run
+```
+
+This entrypoint is report-date driven, serialized by a global operator lock,
+stops at the first required failure, and ends with table/date and formal FX
+completeness/lineage checks. It never auto-discovers an FX CSV; a manual replay
+must pass `--fx-source-path` explicitly.
 
 Formal balance pipeline:
 
