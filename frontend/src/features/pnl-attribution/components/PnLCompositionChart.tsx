@@ -13,16 +13,16 @@ import "./PnLCompositionChart.css";
 
 function rawOr(
   n: { raw: number | null } | null | undefined,
-  fallback = 0,
-): number {
-  if (!n) return fallback;
-  return n.raw ?? fallback;
+): number | null {
+  const raw = n?.raw;
+  return typeof raw === "number" && Number.isFinite(raw) ? raw : null;
 }
 
 function pctPoints(
   n: { raw: number | null; unit?: string } | null | undefined,
-): number {
+): number | null {
   const raw = rawOr(n);
+  if (raw === null) return null;
   // Contract: pct Numeric raw is always a decimal ratio; convert unconditionally.
   return n?.unit === "pct" ? raw * 100 : raw;
 }
@@ -30,21 +30,41 @@ function pctPoints(
 function pctDisplay(
   n: { raw: number | null; unit?: string; display?: string } | null | undefined,
 ): string {
+  const points = pctPoints(n);
+  if (points === null) return "—";
   const display = n?.display?.trim();
   if (display) return display;
-  return `${pctPoints(n).toFixed(1)}%`;
+  return `${points.toFixed(1)}%`;
 }
 
-function toneColor(raw: number): string {
+function toneColor(raw: number | null): string {
+  if (raw === null) return pnlCompositionSeriesColors.neutral;
   if (raw > 0) return pnlCompositionSeriesColors.positive;
   if (raw < 0) return pnlCompositionSeriesColors.negative;
   return pnlCompositionSeriesColors.neutral;
 }
 
-function toneDirection(raw: number): "positive" | "negative" | "neutral" {
+function toneDirection(
+  raw: number | null,
+): "positive" | "negative" | "neutral" | undefined {
+  if (raw === null) return undefined;
   if (raw > 0) return "positive";
   if (raw < 0) return "negative";
   return "neutral";
+}
+
+function yiDisplay(
+  value: { raw: number | null } | null | undefined,
+  signed = false,
+): string {
+  const raw = rawOr(value);
+  if (raw === null) return "—";
+  const yi = raw / 100_000_000;
+  return `${signed && yi >= 0 ? "+" : ""}${yi.toFixed(2)} 亿`;
+}
+
+function yiCell(raw: number | null): string {
+  return raw === null ? "—" : (raw / 100_000_000).toFixed(2);
 }
 
 type Props = {
@@ -80,7 +100,7 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
       },
     ];
 
-    const hasAny = categories.some((c) => c.rawYuan !== 0);
+    const hasAny = categories.some((c) => c.rawYuan !== null);
     if (!hasAny) return null;
 
     // Reverse for yAxis so the first category renders at the top.
@@ -93,14 +113,16 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
         formatter: (params: unknown) => {
           const entries = params as Array<{
             axisValue: string;
-            data: { value: number; pct: number };
+            data: { value: number | null; pct: number | null };
           }>;
           if (!entries || entries.length === 0) return "";
           const e = entries[0];
           if (!e) return "";
           const yi = e.data.value;
+          if (yi === null) return `${e.axisValue}<br/>—`;
           const sign = yi >= 0 ? "+" : "";
-          return `${e.axisValue}<br/>${sign}${yi.toFixed(2)} 亿（占比 ${e.data.pct.toFixed(1)}%）`;
+          const pct = e.data.pct === null ? "—" : `${e.data.pct.toFixed(1)}%`;
+          return `${e.axisValue}<br/>${sign}${yi.toFixed(2)} 亿（占比 ${pct}）`;
         },
       },
       grid: {
@@ -135,18 +157,22 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
           type: "bar" as const,
           barWidth: 20,
           data: reversed.map((c) => ({
-            value: c.rawYuan / 100_000_000,
+            value: c.rawYuan === null ? null : c.rawYuan / 100_000_000,
             pct: c.pct,
             itemStyle: { color: toneColor(c.rawYuan) },
           })),
           label: {
             show: true,
             formatter: (params: { value?: unknown }) => {
+              if (params.value === null || params.value === undefined) {
+                return "—";
+              }
               const rawValue =
                 typeof params.value === "number"
                   ? params.value
-                  : Number(params.value ?? 0);
-              const v = Number.isFinite(rawValue) ? rawValue : 0;
+                  : Number(params.value);
+              if (!Number.isFinite(rawValue)) return "—";
+              const v = rawValue;
               const sign = v >= 0 ? "+" : "";
               return `${sign}${v.toFixed(2)}`;
             },
@@ -200,7 +226,10 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
           type: "bar" as const,
           stack: "t",
           data: data.trend_data.map(
-            (t) => rawOr(t.interest_income) / 100_000_000,
+            (t) => {
+              const raw = rawOr(t.interest_income);
+              return raw === null ? null : raw / 100_000_000;
+            },
           ),
           itemStyle: { color: pnlCompositionSeriesColors.interest },
         },
@@ -209,7 +238,10 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
           type: "bar" as const,
           stack: "t",
           data: data.trend_data.map(
-            (t) => rawOr(t.fair_value_change) / 100_000_000,
+            (t) => {
+              const raw = rawOr(t.fair_value_change);
+              return raw === null ? null : raw / 100_000_000;
+            },
           ),
           itemStyle: { color: pnlCompositionSeriesColors.fairValue },
         },
@@ -217,7 +249,10 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
           name: "投资收益",
           type: "bar" as const,
           stack: "t",
-          data: data.trend_data.map((t) => rawOr(t.capital_gain) / 100_000_000),
+          data: data.trend_data.map((t) => {
+            const raw = rawOr(t.capital_gain);
+            return raw === null ? null : raw / 100_000_000;
+          }),
           itemStyle: {
             color: pnlCompositionSeriesColors.capital,
             borderRadius: [
@@ -232,7 +267,10 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
           name: "其他收入",
           type: "bar" as const,
           stack: "t",
-          data: data.trend_data.map((t) => rawOr(t.other_income) / 100_000_000),
+          data: data.trend_data.map((t) => {
+            const raw = rawOr(t.other_income);
+            return raw === null ? null : raw / 100_000_000;
+          }),
           itemStyle: {
             color: pnlCompositionSeriesColors.other,
             borderRadius: [
@@ -261,7 +299,7 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
                   className="pnl-composition-chart__value"
                   data-direction={toneDirection(rawOr(data.total_pnl))}
                 >
-                  {`${rawOr(data.total_pnl) >= 0 ? "+" : ""}${(rawOr(data.total_pnl) / 100_000_000).toFixed(2)} 亿`}
+                  {yiDisplay(data.total_pnl, true)}
                 </div>
                 <div className="pnl-composition-chart__meta">
                   {data.report_period}
@@ -275,7 +313,7 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
                   className="pnl-composition-chart__value pnl-composition-chart__value--medium"
                   data-direction={toneDirection(rawOr(data.total_interest_income))}
                 >
-                  {`${(rawOr(data.total_interest_income) / 100_000_000).toFixed(2)} 亿`}
+                  {yiDisplay(data.total_interest_income)}
                 </div>
                 <div className="pnl-composition-chart__meta pnl-composition-chart__meta--interest">
                   占比 {pctDisplay(data.interest_pct)}
@@ -289,7 +327,7 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
                   className="pnl-composition-chart__value pnl-composition-chart__value--medium"
                   data-direction={toneDirection(rawOr(data.total_fair_value_change))}
                 >
-                  {`${rawOr(data.total_fair_value_change) >= 0 ? "+" : ""}${(rawOr(data.total_fair_value_change) / 100_000_000).toFixed(2)} 亿`}
+                  {yiDisplay(data.total_fair_value_change, true)}
                 </div>
                 <div className="pnl-composition-chart__meta pnl-composition-chart__meta--muted">
                   占比 {pctDisplay(data.fair_value_pct)}
@@ -303,7 +341,7 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
                   className="pnl-composition-chart__value pnl-composition-chart__value--medium"
                   data-direction={toneDirection(rawOr(data.total_capital_gain))}
                 >
-                  {`${rawOr(data.total_capital_gain) >= 0 ? "+" : ""}${(rawOr(data.total_capital_gain) / 100_000_000).toFixed(2)} 亿`}
+                  {yiDisplay(data.total_capital_gain, true)}
                 </div>
                 <div className="pnl-composition-chart__meta pnl-composition-chart__meta--muted">
                   占比 {pctDisplay(data.capital_gain_pct)}
@@ -315,7 +353,7 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
                   className="pnl-composition-chart__value pnl-composition-chart__value--medium"
                   data-direction={toneDirection(rawOr(data.total_other_income))}
                 >
-                  {`${rawOr(data.total_other_income) >= 0 ? "+" : ""}${(rawOr(data.total_other_income) / 100_000_000).toFixed(2)} 亿`}
+                  {yiDisplay(data.total_other_income, true)}
                 </div>
                 <div className="pnl-composition-chart__meta pnl-composition-chart__meta--muted">
                   占比 {pctDisplay(data.other_pct)}
@@ -372,6 +410,7 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
                     <tbody>
                       {data.items.map((item, idx) => {
                         const totalPnl = rawOr(item.total_pnl);
+                        const interestIncome = rawOr(item.interest_income);
                         const fvChange = rawOr(item.fair_value_change);
                         const capitalGain = rawOr(item.capital_gain);
                         const otherIncome = rawOr(item.other_income);
@@ -382,30 +421,33 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
                               data-align="right"
                               data-direction={toneDirection(totalPnl)}
                             >
-                              {(totalPnl / 100_000_000).toFixed(2)}
+                              {yiCell(totalPnl)}
                             </td>
-                            <td data-align="right" data-tone="profit">
-                              {(
-                                rawOr(item.interest_income) / 100_000_000
-                              ).toFixed(2)}
+                            <td
+                              data-align="right"
+                              data-tone={
+                                interestIncome === null ? undefined : "profit"
+                              }
+                            >
+                              {yiCell(interestIncome)}
                             </td>
                             <td
                               data-align="right"
                               data-direction={toneDirection(fvChange)}
                             >
-                              {(fvChange / 100_000_000).toFixed(2)}
+                              {yiCell(fvChange)}
                             </td>
                             <td
                               data-align="right"
                               data-direction={toneDirection(capitalGain)}
                             >
-                              {(capitalGain / 100_000_000).toFixed(2)}
+                              {yiCell(capitalGain)}
                             </td>
                             <td
                               data-align="right"
                               data-direction={toneDirection(otherIncome)}
                             >
-                              {(otherIncome / 100_000_000).toFixed(2)}
+                              {yiCell(otherIncome)}
                             </td>
                             <td data-align="right">
                               {pctDisplay(item.interest_pct)}

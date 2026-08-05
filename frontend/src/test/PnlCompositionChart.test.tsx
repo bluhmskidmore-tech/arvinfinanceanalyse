@@ -31,6 +31,10 @@ function numDisplay(raw: number | null, unit: Numeric["unit"], display: string):
   };
 }
 
+function undefinedNum(): Numeric {
+  return { ...num(null), raw: undefined } as unknown as Numeric;
+}
+
 const readyState: DataSectionState = { kind: "ok" };
 
 describe("PnLCompositionChart", () => {
@@ -137,5 +141,68 @@ describe("PnLCompositionChart", () => {
 
     expect(screen.getByText("占比 150.0%")).toBeInTheDocument();
     expect(screen.getByText("占比 -50.0%")).toBeInTheDocument();
+  });
+  it("renders missing numerics as gaps and preserves actual zero", () => {
+    const data: PnlCompositionPayload = {
+      report_period: "2026-06",
+      report_date: "2026-06-30",
+      total_pnl: num(null),
+      total_interest_income: num(null),
+      total_fair_value_change: num(0),
+      total_capital_gain: num(null),
+      total_other_income: undefinedNum(),
+      interest_pct: num(null, "pct"),
+      fair_value_pct: num(0, "pct"),
+      capital_gain_pct: num(null, "pct"),
+      other_pct: num(null, "pct"),
+      unexplained_residual: num(null),
+      items: [{
+        category: "rate bond",
+        category_type: "asset",
+        level: 0,
+        total_pnl: num(null),
+        interest_income: num(null),
+        fair_value_change: num(0),
+        capital_gain: num(null),
+        other_income: num(null),
+        interest_pct: num(null, "pct"),
+        fair_value_pct: num(0, "pct"),
+        capital_gain_pct: num(null, "pct"),
+        other_pct: num(null, "pct"),
+        unexplained_residual: num(null),
+      }],
+      trend_data: [{
+        period: "2026-06",
+        period_label: "2026-06",
+        interest_income: num(null),
+        fair_value_change: num(0),
+        capital_gain: num(null),
+        other_income: num(null),
+        total_pnl: num(null),
+      }],
+    };
+
+    render(<PnLCompositionChart data={data} state={readyState} onRetry={vi.fn()} />);
+
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+    const chartOptions = screen
+      .getAllByTestId("pnl-composition-echarts-stub")
+      .map((node) => JSON.parse(node.textContent ?? "null"));
+    const composition = chartOptions.find((option) => option?.series?.length === 1);
+    expect(
+      composition.series[0].data.map((point: { value: number | null }) => point.value),
+    ).toEqual([null, null, 0, null]);
+    expect(chartOptions.at(-1).series[0].data).toEqual([null]);
+    expect(screen.getAllByText("0.00").length).toBeGreaterThan(0);
+
+    const totalCard = screen.getByText("总损益").parentElement;
+    expect(totalCard?.querySelector(".pnl-composition-chart__value")).not.toHaveAttribute(
+      "data-direction",
+    );
+    const row = screen.getByText("rate bond").closest("tr");
+    const cells = row?.querySelectorAll("td");
+    expect(cells?.[1]).not.toHaveAttribute("data-direction");
+    expect(cells?.[2]).not.toHaveAttribute("data-tone");
+    expect(cells?.[3]).toHaveAttribute("data-direction", "neutral");
   });
 });
