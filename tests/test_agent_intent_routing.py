@@ -218,6 +218,88 @@ def test_portfolio_overview_native_currency_does_not_claim_yuan_unit(tmp_path, m
     assert all(not card.spec or "numeric" not in card.spec for card in envelope.cards)
 
 
+@pytest.mark.parametrize(
+    ("source_version", "rule_version", "missing_field"),
+    [
+        (None, "rv_balance_1", "source_version"),
+        ("sv_balance_1", None, "rule_version"),
+    ],
+)
+def test_portfolio_overview_incomplete_lineage_fails_closed(
+    tmp_path,
+    monkeypatch,
+    source_version: str | None,
+    rule_version: str | None,
+    missing_field: str,
+):
+    service_module = load_module(
+        "backend.app.services.agent_service",
+        "backend/app/services/agent_service.py",
+    )
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    class IncompleteLineageBalanceAnalysisRepository:
+        def __init__(self, path: str):
+            assert path == "test.duckdb"
+
+        def list_report_dates(self) -> list[str]:
+            return ["2026-03-31"]
+
+        def fetch_formal_overview(
+            self,
+            *,
+            report_date: str,
+            position_scope: str,
+            currency_basis: str,
+        ) -> dict[str, object]:
+            return {
+                "detail_row_count": 2,
+                "total_market_value_amount": 1000,
+                "total_amortized_cost_amount": 950,
+                "total_accrued_interest_amount": 12,
+                "source_version": source_version,
+                "rule_version": rule_version,
+            }
+
+    monkeypatch.setattr(
+        service_module,
+        "BalanceAnalysisRepository",
+        IncompleteLineageBalanceAnalysisRepository,
+    )
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
+    )
+
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="portfolio overview",
+            currency_basis="CNY",
+        )
+    )
+
+    assert envelope.result_meta.result_kind == "agent.portfolio_overview"
+    assert envelope.result_meta.formal_use_allowed is False
+    assert envelope.result_meta.quality_flag == "warning"
+    assert envelope.result_meta.amount_currency_basis == "CNY"
+    assert missing_field in (envelope.result_meta.amount_currency_basis_note or "")
+    assert envelope.evidence.evidence_rows == 2
+    assert not any(card.type == "metric" for card in envelope.cards)
+    status_card = next(card for card in envelope.cards if card.type == "status")
+    assert status_card.title == "Governed Lineage Incomplete"
+    assert missing_field in status_card.value
+    assert missing_field in envelope.answer
+    assert "元" not in envelope.answer
+
+
 def test_portfolio_amount_card_preserves_missing_value_as_null_numeric():
     service_module = load_module(
         "backend.app.services.agent_service",

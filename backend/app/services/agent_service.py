@@ -260,6 +260,27 @@ def _portfolio_overview_payload(request: AgentQueryRequest, duckdb_path: str) ->
                 "value": "原币口径可能包含多币种，不能标记为 yuan 或作为正式汇总金额。",
             }
         ]
+    elif not lineage_complete:
+        missing_lineage_parts = []
+        if not source_version:
+            missing_lineage_parts.append("source_version")
+        if not rule_version:
+            missing_lineage_parts.append("rule_version")
+        missing_lineage_text = ", ".join(missing_lineage_parts)
+        answer = (
+            f"{report_date} 的组合记录已返回，但受治理 lineage 缺少 {missing_lineage_text}；"
+            "系统已 fail-closed，未生成正式金额或 Numeric 指标。"
+        )
+        cards = [
+            {
+                "type": "status",
+                "title": "Governed Lineage Incomplete",
+                "value": (
+                    "Formal portfolio amount cards were suppressed because governed "
+                    f"lineage is missing {missing_lineage_text}."
+                ),
+            }
+        ]
     else:
         scope_amount_label = {
             "asset": "资产市值",
@@ -324,9 +345,11 @@ def _portfolio_overview_payload(request: AgentQueryRequest, duckdb_path: str) ->
         "fallback_mode": "none",
         "amount_currency_basis": currency_basis,
         "amount_currency_basis_note": (
-            "金额卡沿用正式 Balance Analysis 原始单位 yuan，未做前端换算。"
-            if cny_amount_contract
-            else "原币口径可能包含多币种，未生成金额型 Numeric 卡片。"
+            "原币口径可能包含多币种，未生成金额型 Numeric 卡片。"
+            if not cny_amount_contract
+            else "受治理 lineage 缺少 source_version 或 rule_version，已抑制正式金额型 Numeric 卡片。"
+            if not lineage_complete
+            else "金额卡沿用正式 Balance Analysis 原始单位 yuan，未做前端换算。"
         ),
         "requested_report_date": (
             _coerce_iso_report_date(requested_report_date)
