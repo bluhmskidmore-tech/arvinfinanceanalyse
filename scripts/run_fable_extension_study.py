@@ -63,6 +63,9 @@ CONTRACT_EVIDENCE_TO_RUNTIME_GATE = {
     "cost_basis_remains_comparable": "cost_basis_comparable",
     "candidate_retention_floor_passes": "fixed_15_plus_candidate_retention",
 }
+PRIMARY_BASIS_ADJUSTMENT_MODE_ALLOWLIST = {
+    "net_next_open_adjusted": frozenset({"adj_factor_ratio"}),
+}
 PANEL_FIELDS = (
     "signal_date",
     "stock_code",
@@ -85,6 +88,7 @@ PANEL_FIELDS = (
     "stored_signal_state",
     "replayed_signal_state",
     "replayed_gate_source",
+    "replayed_gate_state_missing",
     "state_lineage_conflict",
     "gate_state_as_of_date",
     "return_5d_net",
@@ -639,6 +643,10 @@ def build_candidate_panel(
         stored_signal_state = str(source.get("market_state") or "UNKNOWN")
         replayed_signal_state = _point_field(macro_point, "state") or "UNKNOWN"
         replayed_gate_source = _point_field(macro_point, "source") or "missing"
+        replayed_gate_state_missing = _replayed_gate_state_is_missing(
+            state=replayed_signal_state,
+            source=replayed_gate_source,
+        )
         source_executable = _as_bool(source.get("entry_executable"), default=False)
         item: dict[str, object] = dict(source)
         item.update(
@@ -653,8 +661,10 @@ def build_candidate_panel(
                 "stored_signal_state": stored_signal_state,
                 "replayed_signal_state": replayed_signal_state,
                 "replayed_gate_source": replayed_gate_source,
+                "replayed_gate_state_missing": replayed_gate_state_missing,
                 "state_lineage_conflict": bool(
-                    stored_signal_state != "UNKNOWN"
+                    not replayed_gate_state_missing
+                    and stored_signal_state != "UNKNOWN"
                     and replayed_signal_state != "UNKNOWN"
                     and stored_signal_state != replayed_signal_state
                 ),
@@ -1034,6 +1044,19 @@ def summarize_extension_study(
         for row in primary
         if str(row.get("replayed_signal_state") or "UNKNOWN") == "UNKNOWN"
     )
+    replayed_no_data_count = sum(
+        1
+        for row in primary
+        if str(row.get("replayed_signal_state") or "UNKNOWN") == "NO_DATA"
+    )
+    replayed_missing_count = sum(
+        1
+        for row in primary
+        if _replayed_gate_state_is_missing(
+            state=row.get("replayed_signal_state"),
+            source=row.get("replayed_gate_source"),
+        )
+    )
     adjusted_effect = date_block_bootstrap_effect(
         analysis_ready,
         outcome_field="return_20d_net_adj",
@@ -1074,7 +1097,7 @@ def summarize_extension_study(
         blockers.append("primary_adjusted_coverage_below_gate")
     if not sample_adequate:
         blockers.append("primary_sample_below_gate")
-    if replayed_unknown_count:
+    if replayed_missing_count:
         blockers.append("replayed_gate_state_missing")
 
     return {
@@ -1097,7 +1120,7 @@ def summarize_extension_study(
                 1 for row in primary if row.get("extension_bin") == "feature_missing"
             ),
             "stored_gate_state_missing_row_count": stored_unknown_count,
-            "replayed_gate_state_missing_row_count": replayed_unknown_count,
+            "replayed_gate_state_missing_row_count": replayed_missing_count,
             "distinct_signal_date_count": len(
                 {str(row.get("signal_date")) for row in primary}
             ),
@@ -1123,6 +1146,8 @@ def summarize_extension_study(
             ),
             "stored_unknown_count": stored_unknown_count,
             "replayed_unknown_count": replayed_unknown_count,
+            "replayed_no_data_count": replayed_no_data_count,
+            "replayed_missing_count": replayed_missing_count,
             "replayed_source_counts": dict(
                 sorted(
                     Counter(
@@ -1291,12 +1316,20 @@ def evaluate_promotion_gates(
             int(missing_cost_fields[field] or 0) == 0 for field in required_cost_fields
         )
     )
+    endpoint_basis = str(endpoint.get("basis") or "")
+    allowed_adjustment_modes = PRIMARY_BASIS_ADJUSTMENT_MODE_ALLOWLIST.get(
+        endpoint_basis,
+        frozenset(),
+    )
+    adjustment_mode_compatible = bool(
+        len(adjustment_modes) == 1 and adjustment_modes[0] in allowed_adjustment_modes
+    )
     cost_basis_comparable = bool(
         endpoint.get("field") == "return_20d_net_adj"
-        and endpoint.get("basis") == "net_next_open_adjusted"
+        and endpoint_basis == "net_next_open_adjusted"
         and len(set(formula_versions)) == 1
         and entry_price_kinds == ["next_open"]
-        and len(set(adjustment_modes)) == 1
+        and adjustment_mode_compatible
         and len(set(buy_costs)) == 1
         and len(set(sell_costs)) == 1
         and len(set(slippage_costs)) == 1
@@ -1365,6 +1398,8 @@ def evaluate_promotion_gates(
             "formula_versions": formula_versions,
             "entry_price_kinds": entry_price_kinds,
             "price_adjustment_modes": adjustment_modes,
+            "allowed_price_adjustment_modes": sorted(allowed_adjustment_modes),
+            "price_adjustment_mode_compatible": adjustment_mode_compatible,
             "buy_cost_bps_values": buy_costs,
             "sell_cost_bps_values": sell_costs,
             "slippage_bps_values": slippage_costs,
@@ -2031,6 +2066,15 @@ def _point_field(point: object, field: str) -> str:
     else:
         value = getattr(point, field, None)
     return str(value or "").strip()
+
+
+def _replayed_gate_state_is_missing(*, state: object, source: object) -> bool:
+    normalized_state = str(state or "").strip().upper()
+    normalized_source = str(source or "").strip().lower()
+    return normalized_state in {"", "UNKNOWN", "NO_DATA"} or normalized_source in {
+        "",
+        "missing",
+    }
 
 
 def _metadata_text_values(value: object) -> list[str]:

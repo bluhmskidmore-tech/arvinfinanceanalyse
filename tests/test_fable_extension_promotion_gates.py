@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from scripts.run_fable_extension_study import evaluate_promotion_gates
 
 
@@ -137,4 +139,50 @@ def test_cost_basis_gate_fails_closed_when_execution_basis_is_incomplete() -> No
 
     gate = evaluated["promotion_gate_evaluation"]["cost_basis_comparable"]
     assert gate["passed"] is False
+    assert "cost_basis_comparability_not_verified" in evaluated["promotion_blockers"]
+
+
+@pytest.mark.parametrize(
+    "price_adjustment_mode",
+    ["raw", "unadjusted", "mystery_mode"],
+)
+def test_cost_basis_gate_fails_closed_for_incompatible_adjustment_mode(
+    price_adjustment_mode: str,
+) -> None:
+    summary = {
+        "promotion_blockers": [],
+        "sample_accountability": {"primary_adjusted_coverage": 1.0},
+        "sample_adequacy": {"adequate": True},
+        "continuous_effect": {},
+        "chronological_holdout": {},
+        "monotonicity": {},
+        "state_lineage": {},
+    }
+    contract = {
+        "primary_endpoint": {
+            "field": "return_20d_net_adj",
+            "basis": "net_next_open_adjusted",
+        },
+        "sample_gates": {"minimum_primary_coverage": 0.95},
+        "promotion": {
+            "hard_rule_allowed": False,
+            "candidate_retention_floor": 0.60,
+            "required_evidence": ["cost_basis_remains_comparable"],
+        },
+    }
+    source_metadata = {
+        **COST_BASIS_METADATA,
+        "primary_price_adjustment_modes": [price_adjustment_mode],
+    }
+
+    evaluated = evaluate_promotion_gates(
+        summary,
+        panel=[],
+        contract=contract,
+        source_metadata=source_metadata,
+    )
+
+    gate = evaluated["promotion_gate_evaluation"]["cost_basis_comparable"]
+    assert gate["passed"] is False
+    assert gate["price_adjustment_mode_compatible"] is False
     assert "cost_basis_comparability_not_verified" in evaluated["promotion_blockers"]

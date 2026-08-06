@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import duckdb
 import pytest
 
+from backend.app.core_finance.gate_exposure_series import load_gate_exposure_by_date
 from scripts.run_fable_extension_study import (
     build_candidate_panel,
     date_block_bootstrap_effect,
@@ -181,6 +183,51 @@ def test_sample_adequacy_counts_only_feature_and_adjusted_outcome_ready_rows() -
     assert summary["sample_adequacy"]["primary_adjusted_row_count"] == 2
     assert summary["sample_adequacy"]["primary_analysis_ready_row_count"] == 1
     assert summary["sample_adequacy"]["adequate"] is False
+
+
+def test_real_gate_helper_missing_placeholder_blocks_replay_lineage() -> None:
+    conn = duckdb.connect(":memory:")
+    try:
+        macro_points = load_gate_exposure_by_date(
+            conn,
+            "2026-06-01",
+            "2026-06-01",
+        )
+    finally:
+        conn.close()
+
+    panel = build_candidate_panel(
+        [_row("000001.SZ", extension=0.04)],
+        trading_dates=TRADING_DATES,
+        macro_points=macro_points,
+    )
+
+    assert panel[0]["replayed_signal_state"] == "NO_DATA"
+    assert panel[0]["replayed_gate_source"] == "missing"
+    assert panel[0]["replayed_gate_state_missing"] is True
+    assert panel[0]["state_lineage_conflict"] is False
+
+    summary = summarize_extension_study(
+        panel,
+        study_version="rv_fable_extension_study_v1",
+        minimum_primary_coverage=0.95,
+        minimum_overall_rows=1,
+        minimum_overall_dates=1,
+        minimum_bin_rows=1,
+        minimum_bin_dates=1,
+        minimum_cell_rows=1,
+        minimum_cell_dates=1,
+        bootstrap_iterations=10,
+        bootstrap_seed=7,
+    )
+
+    assert (
+        summary["sample_accountability"]["replayed_gate_state_missing_row_count"] == 1
+    )
+    assert summary["state_lineage"]["replayed_unknown_count"] == 0
+    assert summary["state_lineage"]["replayed_no_data_count"] == 1
+    assert summary["state_lineage"]["replayed_missing_count"] == 1
+    assert "replayed_gate_state_missing" in summary["promotion_blockers"]
 
 
 def test_date_block_bootstrap_effect_is_deterministic_and_negative() -> None:
