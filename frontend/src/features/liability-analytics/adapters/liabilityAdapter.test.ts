@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { LiabilityCounterpartyPayload, Numeric } from "../../../api/contracts";
+import type { Numeric } from "../../../api/contracts";
+import type { LiabilityCounterpartyPayload } from "../../../api/liabilityAdbContracts";
 import { formatRawAsNumeric } from "../../../utils/format";
 import { adaptLiabilityCounterparty } from "./liabilityAdapter";
 

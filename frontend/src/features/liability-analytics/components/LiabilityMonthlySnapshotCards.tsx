@@ -1,6 +1,7 @@
 import { Card, Col, Row, Typography } from "antd";
 
-import type { LiabilitiesMonthlyItem, Numeric } from "../../../api/contracts";
+import type { Numeric } from "../../../api/contracts";
+import type { LiabilitiesMonthlyItem } from "../../../api/liabilityAdbContracts";
 import { isNumeric } from "../../../api/numeric";
 import { EM_DASH, formatNumeric } from "../../../utils/format";
 

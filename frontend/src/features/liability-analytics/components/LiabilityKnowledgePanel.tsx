@@ -1,6 +1,6 @@
 import { Card, Divider, Space, Spin, Tag, Typography } from "antd";
 
-import type { LiabilityKnowledgeNote } from "../../../api/contracts";
+import type { LiabilityKnowledgeNote } from "../../../api/liabilityAdbContracts";
 
 const { Text } = Typography;
 

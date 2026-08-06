@@ -1,6 +1,6 @@
 import { Card, Col, Row, Typography } from "antd";
 
-import type { LiabilityYieldKpi } from "../../../api/contracts";
+import type { LiabilityYieldKpi } from "../../../api/liabilityAdbContracts";
 import { EM_DASH } from "../../../utils/format";
 import { dailyNimStressFromKpi } from "../utils/nimStress";
 

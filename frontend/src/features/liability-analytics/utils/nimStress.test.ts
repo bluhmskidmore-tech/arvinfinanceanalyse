@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { LiabilityYieldKpi, Numeric } from "../../../api/contracts";
+import type { Numeric } from "../../../api/contracts";
+import type { LiabilityYieldKpi } from "../../../api/liabilityAdbContracts";
 import { formatRawAsNumeric } from "../../../utils/format";
 import { dailyNimStressFromKpi } from "./nimStress";
 

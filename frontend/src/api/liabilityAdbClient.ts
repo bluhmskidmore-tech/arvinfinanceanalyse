@@ -11,14 +11,16 @@ import type {
   ApiEnvelope,
   CockpitWarningsPayload,
   ContributionSplitPayload,
+  ResultMeta,
+  YieldByPeriodPayload,
+} from "./contracts";
+import type {
   LiabilitiesMonthlyPayload,
   LiabilityCounterpartyPayload,
   LiabilityKnowledgeBriefPayload,
   LiabilityRiskBucketsPayload,
   LiabilityYieldMetricsPayload,
-  ResultMeta,
-  YieldByPeriodPayload,
-} from "./contracts";
+} from "./liabilityAdbContracts";
 import { formatRawAsNumeric } from "../utils/format";
 
 export type LiabilityAdbClientMethods = {
