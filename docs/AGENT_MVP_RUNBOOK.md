@@ -6,6 +6,15 @@ Hermes 模式（`MOSS_AGENT_PROVIDER=hermes`）走 **`backend/app/services/herme
 
 ---
 
+## 当前发布边界（2026-07-25）
+
+- Agent MVP / Phase 4 尚未获得当前 repo-wide Phase 2 的发布授权，生产默认必须保持 `MOSS_AGENT_ENABLED=false`。
+- 禁用时，Agent router 不会导入或注册；`/api/agent*` 返回 HTTP 404，并且不会出现在 OpenAPI 中。
+- 路由内部保留的 503 disabled response 仅作为显式挂载 router 时的二次防线，不代表当前生产发布面仍公开 Agent URL。
+- `MOSS_AGENT_ENABLED=true` 只用于获得明确授权后的隔离试点或本地验证；设置环境变量本身不构成业务 owner 或发布批准，修改后必须重启后端。
+
+---
+
 ## 本地启用
 
 1. 环境变量前缀为 **`MOSS_`**（见 `backend/app/governance/settings.py`）。
@@ -13,7 +22,13 @@ Hermes 模式（`MOSS_AGENT_PROVIDER=hermes`）走 **`backend/app/services/herme
    - `MOSS_AGENT_ENABLED=true`
 3. 可选：`MOSS_AGENT_PROVIDER` —— `local`（默认，工具链路）或 `hermes`。
 
-禁用或未启用时，`POST /api/agent/query` 返回 **HTTP 503**，正文为 **`AgentDisabledResponse`**（例如含 `"enabled": false`）。
+### Agent 开发完整栈
+
+使用 `scripts\\dev-agent-up.ps1`（或双击 `scripts\\dev-agent-up.cmd`）启动 Agent-enabled API、worker 和 frontend。该入口显式设置 `MOSS_AGENT_ENABLED=true`、`MOSS_AGENT_DEV_SCOPE_BYPASS=true`、`MOSS_DEV_API_SCRIPT=dev-agent-api.ps1` 和 `VITE_MOSS_AGENT_FRONTEND_ENABLED=true`，然后复用 `dev-up.ps1` 的 Postgres、health/readiness、worker heartbeat、frontend 和重复进程保护。
+
+普通 `scripts\\dev-up.ps1` 保持 `dev-api.ps1` 默认值，不会自动开启 Agent。为避免把任意脚本名传入后台启动器，`MOSS_DEV_API_SCRIPT` 仅允许 `dev-api.ps1` 或 `dev-agent-api.ps1`。
+
+禁用或未启用时，Agent URL 不注册，`POST /api/agent/query` 返回 **HTTP 404**，OpenAPI 也不包含 `/api/agent*`。
 
 ---
 
@@ -160,21 +175,11 @@ Hermes 模式（`MOSS_AGENT_PROVIDER=hermes`）走 **`backend/app/services/herme
 - **只读**：Agent MVP 设计为从已有 DuckDB / 治理链路读取并组装答案，不在浏览器端执行任意 SQL。
 - **不执行客户端传来的 SQL**：前端与请求体均不应携带可执行 SQL 并由服务端直接执行（服务端工具链内部生成的审计字段 `sql_executed` 仅用于披露）。
 - **不通过本接口触发 refresh / 写入任务**：驾驶舱 **`AgentPanel`** 仅展示建议动作 chip，不触发写入副作用。
-- **禁用模式**：`MOSS_AGENT_ENABLED=false` 时接口返回 503，并写入审计（见 `audit_disabled_agent_query`）。
+- **禁用模式**：`MOSS_AGENT_ENABLED=false` 时 router 不注册，Agent URL 返回 404 且不进入 OpenAPI；路由级 503/audit 仅是显式挂载场景的二次防线。
 
 ---
 
-## Disabled 模式（503）
-
-响应示例（节选）：
-
-```json
-{
-  "enabled": false,
-  "phase": "phase1",
-  "detail": "Agent endpoint is planned but disabled in Phase 1."
-}
-```
+## Disabled 模式（404 / 未注册）
 
 前端应提示「Agent 当前未启用」，而不是当作 **`AgentEnvelope`** 解析。
 
@@ -184,7 +189,7 @@ Hermes 模式（`MOSS_AGENT_PROVIDER=hermes`）走 **`backend/app/services/herme
 
 | 现象 | 可能原因 | 建议 |
 |------|-----------|------|
-| HTTP 503，`enabled: false` | `MOSS_AGENT_ENABLED` 未打开 | 设为 `true` 并重启后端 |
+| HTTP 404，OpenAPI 无 `/api/agent*` | `MOSS_AGENT_ENABLED` 未打开 | 这是当前默认发布边界；只有取得明确试点授权后才可设为 `true` 并重启后端 |
 | HTTP 503，正文非 disabled JSON | 运行时错误（如 Hermes 超时）；参见 `RuntimeError` 路径 | 查后端日志、`MOSS_AGENT_PROVIDER` 与 Hermes 配置 |
 | 返回「无报告日期」类 **ValueError** | 某仓库无可用 `report_date` | 确认 DuckDB 批次与日期列表接口 |
 | `result_kind` 为 **`agent.unknown`** | 问题未匹配任一关键字且未指定 `context.intent` | 调整提问措辞或显式 intent |
