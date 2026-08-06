@@ -75,9 +75,9 @@ function bucketFallsWithinOneYear(bucket: string) {
 
 function buildDailyLiabilityConclusion(args: {
   yieldKpi: LiabilityYieldKpi | null;
-  counterpartyRows: LiabilityCpRow[];
+  authoritativeTop10ShareDisplay: string;
+  authoritativeTop10ShareRaw: number | null;
 }) {
-  const topShare = Math.max(...args.counterpartyRows.map((row) => row.share?.raw ?? 0), 0);
   const nimRaw = numericPctRaw(args.yieldKpi?.nim ?? null);
 
   if (nimRaw !== null && nimRaw <= 0) {
@@ -88,18 +88,18 @@ function buildDailyLiabilityConclusion(args: {
     };
   }
 
-  if (topShare >= 0.3) {
+  if (args.authoritativeTop10ShareRaw === null) {
     return {
       title: "当前结论",
-      body: "净息差仍为正，但资金来源集中度偏高，头部对手方依赖需要重点关注。",
-      detail: `头部对手方占比 ${args.counterpartyRows[0]?.share?.display ?? EM_DASH}，当前 NIM ${args.yieldKpi?.nim?.display ?? EM_DASH}。`,
+      body: "净息差仍为正，但对手方集中度权威指标暂缺，当前不对集中度做方向性判断。",
+      detail: `Top10 占比 ${args.authoritativeTop10ShareDisplay}，当前 NIM ${args.yieldKpi?.nim?.display ?? EM_DASH}。`,
     };
   }
 
   return {
     title: "当前结论",
-    body: "净息差仍为正，资金来源分布相对均衡。",
-    detail: `头部对手方占比 ${args.counterpartyRows[0]?.share?.display ?? EM_DASH}，当前 NIM ${args.yieldKpi?.nim?.display ?? EM_DASH}。`,
+    body: "净息差仍为正，资金来源集中度以后端权威指标持续跟踪。",
+    detail: `Top10 占比 ${args.authoritativeTop10ShareDisplay}，当前 NIM ${args.yieldKpi?.nim?.display ?? EM_DASH}。`,
   };
 }
 
@@ -412,9 +412,13 @@ export default function LiabilityAnalyticsPage() {
     dailyIbTerm.length === 0 &&
     dailyIssuedStructure.length === 0 &&
     dailyIssuedTerm.length === 0;
+  const authoritativeTop10Share = cpVm.vm?.top10Share ?? null;
+  const authoritativeTop10ShareRaw = authoritativeTop10Share?.raw ?? null;
+  const authoritativeTop10ShareDisplay = authoritativeTop10Share?.display ?? EM_DASH;
   const dailyConclusion = buildDailyLiabilityConclusion({
     yieldKpi,
-    counterpartyRows: dailyCpRows,
+    authoritativeTop10ShareDisplay,
+    authoritativeTop10ShareRaw,
   });
   /** `total_market_value_amount` 与资产负债页一致，为「元」口径；KPI 展示「亿元」需 ÷1e8。 */
   const assetTotalYi = useMemo(() => {
@@ -438,11 +442,10 @@ export default function LiabilityAnalyticsPage() {
       dailyTerm.filter((item) => bucketFallsWithinOneYear(item.bucket)).map((item) => item.amountYi?.raw),
     );
   }, [dailyTerm]);
-  const topCounterpartyShare = dailyCpRows[0]?.share?.display ?? EM_DASH;
   const watchItems: CockpitWatchItem[] = cockpitWarningsQuery.data?.result?.watch_items ?? [];
   const alertEvents: CockpitAlertEvent[] = cockpitWarningsQuery.data?.result?.alert_events ?? [];
   const syntheticSections = useMemo(() => getLiabilitySyntheticSectionStates(), []);
-  /** 风险全景：维度来自真实桶/对手方衍生；展示列为前端聚合文案 */
+  /** 风险全景：只展示后端权威集中度值，不在前端追加集中度评级推断。 */
   const riskOverviewRows = useMemo(
     () => [
       {
@@ -466,7 +469,16 @@ export default function LiabilityAnalyticsPage() {
         status: "预警",
         detail: `${formatYiOrDash(firstYearPressureYi)} 亿`,
       },
-      { label: "对手方集中度", level: topCounterpartyShare, trend: "→", status: "关注", detail: topCounterpartyShare },
+      {
+        label: "对手方集中度",
+        level: authoritativeTop10ShareDisplay,
+        trend: "→",
+        status: "中性",
+        detail:
+          authoritativeTop10ShareRaw === null
+            ? "Top10 占比权威值缺失"
+            : `Top10 占比 ${authoritativeTop10ShareDisplay}`,
+      },
       {
         label: "已发资产",
         level: assetTotalYi === null ? EM_DASH : `${assetTotalYi.toFixed(0)} 亿`,
@@ -475,7 +487,14 @@ export default function LiabilityAnalyticsPage() {
         detail: balanceOverviewQuery.data?.result.report_date ?? EM_DASH,
       },
     ],
-    [assetTotalYi, balanceOverviewQuery.data?.result.report_date, firstYearPressureYi, liabilityTotalYi, topCounterpartyShare],
+    [
+      assetTotalYi,
+      authoritativeTop10ShareDisplay,
+      authoritativeTop10ShareRaw,
+      balanceOverviewQuery.data?.result.report_date,
+      firstYearPressureYi,
+      liabilityTotalYi,
+    ],
   );
   const contributionRows: ContributionSplitRow[] = contributionQuery.data?.result?.contributions ?? [];
   const riskIndicators = [] as const;
@@ -495,20 +514,23 @@ export default function LiabilityAnalyticsPage() {
         yieldKpi,
         liabilityTotalYi,
         firstYearPressureYi,
-        topCounterpartyShare,
+        topCounterpartyShare: authoritativeTop10ShareDisplay,
         warningCount: watchItems.length,
         alertCount: alertEvents.length,
-        resultMetas: [
-          { key: "dates", title: "报告日目录", meta: datesQuery.data?.result_meta },
-          { key: "asset-overview", title: "资产端正式总览", meta: balanceOverviewQuery.data?.result_meta },
-          { key: "knowledge", title: "业务资料", meta: knowledgeQuery.data?.result_meta },
-          { key: "warnings", title: "关注/预警", meta: cockpitWarningsQuery.data?.result_meta },
-          { key: "contribution", title: "贡献拆分", meta: contributionQuery.data?.result_meta },
-        ],
-        unwrappedEvidenceLabels:
+        resultMetas:
           activeTab === "daily"
-            ? ["risk-buckets", "yield-metrics", "counterparty"]
-            : ["liabilities monthly", "ADB monthly"],
+            ? [
+                { key: "dates", title: "报告日目录", meta: datesQuery.data?.result_meta },
+                { key: "asset-overview", title: "资产端正式总览", meta: balanceOverviewQuery.data?.result_meta },
+                { key: "counterparty", title: "对手方集中度", meta: cpQuery.data?.result_meta },
+                { key: "knowledge", title: "业务资料", meta: knowledgeQuery.data?.result_meta },
+                { key: "warnings", title: "关注/预警", meta: cockpitWarningsQuery.data?.result_meta },
+                { key: "contribution", title: "贡献拆分", meta: contributionQuery.data?.result_meta },
+              ]
+            : [
+                { key: "liabilities-monthly", title: "负债月度日均", meta: monthlyQuery.data?.result_meta },
+                { key: "adb-monthly", title: "ADB 月度日均", meta: adbMonthlyQuery.data?.result_meta },
+              ],
         syntheticSections: [
           syntheticSections.riskIndicators,
           syntheticSections.calendarItems,
@@ -525,11 +547,14 @@ export default function LiabilityAnalyticsPage() {
       client.mode,
       cockpitWarningsQuery.data?.result_meta,
       contributionQuery.data?.result_meta,
+      cpQuery.data?.result_meta,
       datesQuery.data?.result_meta,
       explicitReportDate,
       firstYearPressureYi,
       knowledgeQuery.data?.result_meta,
       liabilityTotalYi,
+      monthlyQuery.data?.result_meta,
+      adbMonthlyQuery.data?.result_meta,
       reportDate,
       riskQuery.data?.report_date,
       selectedMonthData?.month_label,
@@ -537,7 +562,7 @@ export default function LiabilityAnalyticsPage() {
       selectedYear,
       syntheticSections.calendarItems,
       syntheticSections.riskIndicators,
-      topCounterpartyShare,
+      authoritativeTop10ShareDisplay,
       watchItems.length,
       yieldKpi,
     ],

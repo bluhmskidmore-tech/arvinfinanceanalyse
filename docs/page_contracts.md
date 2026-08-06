@@ -2024,9 +2024,13 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 | Daily liability cost | `MTR-LIAB-002` | `yield_metrics.kpi.liability_cost` |
 | Daily NIM | `MTR-LIAB-003` | `yield_metrics.kpi.nim` |
 | One-year maturity pressure | `MTR-LIAB-004` | `risk_buckets.liabilities_term_buckets[]` <= 1Y bucket |
-| Top counterparty share | `MTR-LIAB-005` | `counterparty.top_10[0].value / counterparty.total_value` |
+| Top10 counterparty share | `MTR-LIAB-005` | `counterparty.top10_share` / `liabilities_monthly.months[].top10_share` |
+| Counterparty concentration HHI | `MTR-LIAB-008` | `counterparty.hhi` / `liabilities_monthly.months[].hhi` |
 | Monthly average total liabilities | `MTR-LIAB-006` | `liabilities_monthly.months[].avg_total_liabilities` |
 | Monthly average liability cost | `MTR-LIAB-007` | `liabilities_monthly.months[].avg_liability_cost` |
+
+- `counterparty.population_count` / `liabilities_monthly.months[].population_count` and `counterparty.is_truncated` / `liabilities_monthly.months[].is_truncated` are sample-coverage contract state, not analytical metrics.
+- When `is_truncated=true`, the page must visibly mark the counterparty list as partial and must not represent the visible rows as a full-population concentration calculation.
 
 ### F. Tests
 

@@ -67,7 +67,6 @@ export type BuildLiabilityAnalyticsPageReadModelInput = {
   warningCount: number;
   alertCount: number;
   resultMetas: LiabilityResultMetaInput[];
-  unwrappedEvidenceLabels: string[];
   syntheticSections: LiabilitySyntheticEvidenceInput[];
 };
 
@@ -142,22 +141,6 @@ function buildEvidenceCard(source: LiabilityResultMetaInput): LiabilityPageEvide
   };
 }
 
-function buildMissingEvidenceCard(key: string, title: string): LiabilityPageEvidenceCard {
-  return {
-    key,
-    title,
-    resultKind: "结果元数据未透出",
-    basisLabel: "兼容端点",
-    qualityLabel: "待补状态证据",
-    fallbackLabel: "不可判定",
-    asOfDate: EM_DASH,
-    traceId: EM_DASH,
-    sourceVersion: EM_DASH,
-    ruleVersion: EM_DASH,
-    tone: "warning",
-  };
-}
-
 export function buildLiabilityAnalyticsPageReadModel(
   input: BuildLiabilityAnalyticsPageReadModelInput,
 ): LiabilityAnalyticsPageReadModel {
@@ -169,10 +152,6 @@ export function buildLiabilityAnalyticsPageReadModel(
     Boolean(input.resolvedReportDate) &&
     input.requestedReportDate !== input.resolvedReportDate;
   const resultMetas = input.resultMetas.map(buildEvidenceCard).filter(Boolean) as LiabilityPageEvidenceCard[];
-  const missingEvidenceCards = input.unwrappedEvidenceLabels.map((label, index) =>
-    buildMissingEvidenceCard(`unwrapped-${index}`, label),
-  );
-  const allEvidenceCards = [...resultMetas, ...missingEvidenceCards];
   const fallbackCards = resultMetas.filter((card) => card.fallbackLabel !== "none");
   const staleCards = input.resultMetas.filter(
     (source) => source.meta?.vendor_status === "vendor_stale" || source.meta?.vendor_status === "vendor_unavailable",
@@ -221,13 +200,6 @@ export function buildLiabilityAnalyticsPageReadModel(
       key: "quality",
       label: `${qualityCards.length} 个质量未通过`,
       tone: "danger",
-    });
-  }
-  if (missingEvidenceCards.length > 0) {
-    statusBadges.push({
-      key: "meta-gap",
-      label: `${missingEvidenceCards.length} 个兼容端点缺少可见元数据`,
-      tone: "warning",
     });
   }
 
@@ -323,14 +295,6 @@ export function buildLiabilityAnalyticsPageReadModel(
         .join("；"),
     });
   }
-  if (missingEvidenceCards.length > 0) {
-    stateSurfaces.push({
-      key: "missing-meta",
-      variant: "definition-pending",
-      title: "兼容端点结果元数据尚未透出",
-      description: input.unwrappedEvidenceLabels.join("、"),
-    });
-  }
   if (input.syntheticSections.length > 0) {
     stateSurfaces.push({
       key: "synthetic-sections",
@@ -356,7 +320,7 @@ export function buildLiabilityAnalyticsPageReadModel(
         : `${input.selectedYear} 年 · ${input.selectedMonthLabel ?? "未选择月份"}（月度日均）`,
     statusBadges,
     kpis,
-    evidenceCards: allEvidenceCards,
+    evidenceCards: resultMetas,
     stateSurfaces,
   };
 }

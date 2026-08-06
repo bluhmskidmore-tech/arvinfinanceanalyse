@@ -23,7 +23,7 @@ function meta(overrides: Partial<ResultMeta> = {}): ResultMeta {
 }
 
 describe("buildLiabilityAnalyticsPageReadModel", () => {
-  it("surfaces mode, evidence meta, and compatibility meta gaps", () => {
+  it("surfaces mode and visible evidence metadata without synthetic meta-gap placeholders", () => {
     const model = buildLiabilityAnalyticsPageReadModel({
       mode: "real",
       activeTab: "daily",
@@ -37,18 +37,20 @@ describe("buildLiabilityAnalyticsPageReadModel", () => {
       topCounterpartyShare: "30.00%",
       warningCount: 1,
       alertCount: 2,
-      resultMetas: [{ key: "knowledge", title: "业务资料", meta: meta({ result_kind: "liability.page_knowledge" }) }],
-      unwrappedEvidenceLabels: ["risk-buckets", "yield-metrics"],
+      resultMetas: [
+        { key: "knowledge", title: "业务资料", meta: meta({ result_kind: "liability.page_knowledge" }) },
+        { key: "counterparty", title: "对手方集中度", meta: meta({ result_kind: "liability.counterparty" }) },
+      ],
       syntheticSections: [],
     });
 
     expect(model.statusBadges.map((badge) => badge.label)).toContain("真实链路");
-    expect(model.statusBadges.map((badge) => badge.label)).toContain("2 个兼容端点缺少可见元数据");
     expect(model.kpis).toHaveLength(6);
     expect(model.kpis.find((kpi) => kpi.key === "warnings")?.value).toBe("3条");
-    expect(model.evidenceCards).toHaveLength(3);
+    expect(model.evidenceCards).toHaveLength(2);
     expect(model.evidenceCards[0]?.resultKind).toBe("liability.page_knowledge");
-    expect(model.stateSurfaces.map((surface) => surface.key)).toContain("missing-meta");
+    expect(model.statusBadges.map((badge) => badge.key)).not.toContain("meta-gap");
+    expect(model.stateSurfaces.map((surface) => surface.key)).not.toContain("missing-meta");
   });
 
   it("marks mock mode, fallback, stale vendor, and date mismatch", () => {
@@ -76,7 +78,6 @@ describe("buildLiabilityAnalyticsPageReadModel", () => {
           }),
         },
       ],
-      unwrappedEvidenceLabels: [],
       syntheticSections: [{ key: "calendar", title: "关键日历", detail: "接口预留" }],
     });
 
@@ -105,11 +106,11 @@ describe("buildLiabilityAnalyticsPageReadModel", () => {
       warningCount: 0,
       alertCount: 0,
       resultMetas: [],
-      unwrappedEvidenceLabels: ["liabilities monthly"],
       syntheticSections: [],
     });
 
     expect(model.reportLine).toBe("2026 年 · 2026-04（月度日均）");
+    expect(model.evidenceCards).toHaveLength(0);
     expect(model.kpis).toEqual([
       { key: "year", label: "统计年份", value: "2026", detail: "月度日均口径" },
       { key: "month", label: "当前月份", value: "2026-04", detail: "按月选择" },

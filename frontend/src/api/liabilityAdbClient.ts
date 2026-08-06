@@ -536,6 +536,7 @@ export function createDemoLiabilityAdbClient(
     async getLiabilityAdbMonthly(year: number) {
       await delay();
       return {
+        result_meta: buildLiabilityAnalyticalMockMeta("adb.monthly"),
         year,
         months: [],
         ytd_avg_assets: 0,
@@ -722,12 +723,16 @@ export function createRealLiabilityAdbClient(
         result_meta,
       };
     },
-    getLiabilityAdbMonthly: (year) =>
-      requestEnvelopeOrPlainJson<AdbMonthlyResponse>(
+    getLiabilityAdbMonthly: async (year) => {
+      const { result, result_meta } = await requestEnvelopeOrPlainJsonWithMeta<
+        Record<string, unknown>
+      >(
         fetchImpl,
         baseUrl,
         `/api/analysis/adb/monthly?year=${encodeURIComponent(String(year))}`,
-      ),
+      );
+      return normalizeAdbMonthlyResponse(result, result_meta);
+    },
     getAdb: ({ startDate, endDate }) => {
       const params = new URLSearchParams();
       params.set("start_date", startDate.trim());

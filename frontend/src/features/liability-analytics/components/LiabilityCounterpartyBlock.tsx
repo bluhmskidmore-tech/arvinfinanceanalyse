@@ -12,6 +12,7 @@ const { Text } = Typography;
 const CHART_PALETTE = ibChartTheme.palette;
 const CATEGORICAL = ibChartTheme.categoricalPalette;
 const BAR_COLOR = CHART_PALETTE[0];
+/** 银行扇区用分类色盘强调色，避免误用 palette 中的 --ib-down。 */
 const PIE_BANK = CATEGORICAL[0];
 const PIE_NONBANK = CATEGORICAL[1] ?? CHART_PALETTE[1];
 const PIE_EXTRA = CATEGORICAL;
@@ -42,9 +43,9 @@ function populationSummary(populationCount: number | null | undefined, isTruncat
     return EM_DASH;
   }
   if (isTruncated && populationCount > 0) {
-    return `${populationCount} names (Top10 shown)`;
+    return `${populationCount} 个对手方（仅展示前十）`;
   }
-  return `${populationCount} names`;
+  return `${populationCount} 个对手方`;
 }
 
 function bankNonBankFromByType(rows: LiabilityTypeRow[]): { name: string; value: number }[] {
@@ -55,14 +56,14 @@ function bankNonBankFromByType(rows: LiabilityTypeRow[]): { name: string; value:
     0,
   );
   return [
-    { name: "Bank", value: bank },
-    { name: "NonBank", value: nonBank },
+    { name: "银行", value: bank },
+    { name: "非银行", value: nonBank },
   ];
 }
 
 export function LiabilityCounterpartyBlock({
-  title = "Funding source concentration (Top10 counterparties)",
-  subtitle = "Scope: TYWL liability-side counterparties, excluding self-counterparty rows.",
+  title = "资金来源依赖度（前十对手方）",
+  subtitle = "口径：TYWL 负债端（对手方名称 × 余额；剔除“青岛银行股份有限公司”）。",
   totalValue,
   authoritativeTop10Share,
   authoritativeHhi,
@@ -115,7 +116,7 @@ export function LiabilityCounterpartyBlock({
           const balanceDisplay = numericToYiNumeric(row.value)?.display ?? EM_DASH;
           const shareDisplay = row.share?.display ?? EM_DASH;
           const weightedCostDisplay = row.weightedCost?.display ?? EM_DASH;
-          return `${row.name}<br/>Balance: ${balanceDisplay}<br/>Share: ${shareDisplay}<br/>Weighted cost: ${weightedCostDisplay}<br/>Type: ${row.type || EM_DASH}`;
+          return `${row.name}<br/>余额：${balanceDisplay}<br/>占比：${shareDisplay}<br/>加权负债成本：${weightedCostDisplay}<br/>类型：${row.type || EM_DASH}`;
         },
       },
       xAxis: { type: "value" },
@@ -149,7 +150,7 @@ export function LiabilityCounterpartyBlock({
             total !== null && Number.isFinite(total) && total > 0
               ? `${((point.value / total) * 100).toFixed(2)}%`
               : EM_DASH;
-          return `${point.name}<br/>Balance: ${(point.value / 1e8).toFixed(2)} yi<br/>Share: ${pct}`;
+          return `${point.name}<br/>余额：${(point.value / 1e8).toFixed(2)} 亿<br/>占比：${pct}`;
         },
       },
       series: [
@@ -182,16 +183,16 @@ export function LiabilityCounterpartyBlock({
           extra={
             <div className="liability-cp-extra">
               <span className="liability-cp-extra__line">
-                Total size: {numericToYiNumeric(totalValue)?.display ?? EM_DASH}
+                总规模：{numericToYiNumeric(totalValue)?.display ?? EM_DASH}
               </span>
               <span className="liability-cp-extra__line" data-testid="liability-cp-top10-share">
-                Top10 share: {authoritativeTop10Share?.display ?? EM_DASH}
+                Top10 占比：{authoritativeTop10Share?.display ?? EM_DASH}
               </span>
               <span className="liability-cp-extra__line" data-testid="liability-cp-hhi">
                 HHI: {authoritativeHhi?.display ?? EM_DASH}
               </span>
               <span className="liability-cp-extra__line" data-testid="liability-cp-population">
-                Population: {populationSummary(populationCount, isTruncated)}
+                样本覆盖：{populationSummary(populationCount, isTruncated)}
               </span>
             </div>
           }
@@ -216,9 +217,9 @@ export function LiabilityCounterpartyBlock({
         </Card>
       </Col>
       <Col xs={24} lg={8}>
-        <Card size="small" title="Institution mix">
+        <Card size="small" title="机构类型结构">
           <Text type="secondary" className="liability-panel-caption--tight">
-            Bank vs non-bank composition.
+            银行 vs 非银行（稳定性视角）。
           </Text>
           <div className="liability-chart-frame liability-chart-frame--pie">
             {loading ? (
@@ -230,7 +231,7 @@ export function LiabilityCounterpartyBlock({
             )}
           </div>
           <Text type="secondary" className="liability-panel-caption--tight">
-            Higher bank share usually implies more stable funding; rising non-bank share deserves liquidity review.
+            银行占比越高，通常资金稳定性更强；非银行占比上升需关注期限错配与流动性压力。
           </Text>
         </Card>
       </Col>
