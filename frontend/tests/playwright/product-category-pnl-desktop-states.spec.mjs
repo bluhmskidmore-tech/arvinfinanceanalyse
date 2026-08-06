@@ -24,6 +24,15 @@ async function installProductCategoryStateRoutes(page, state, options = {}) {
   let baselineFailuresRemaining = state === "error" ? 1 : 0;
   const reportDates = options.reportDates ?? [FIXED_REPORT_DATE];
 
+  await page.route("**/ui/macro/choice-series/latest", async (route) => {
+    await route.fulfill({
+      json: buildMockApiEnvelope("choice_macro.latest", {
+        read_target: "duckdb",
+        series: [],
+      }),
+    });
+  });
+
   await page.route("**/ui/pnl/product-category/dates", async (route) => {
     await route.fulfill({
       json: buildMockApiEnvelope(
