@@ -40,6 +40,133 @@ def _governance_repo(tmp_path: Path, *, backend_mode: str = "jsonl"):
     return governance_mod, repo, sql_dsn
 
 
+def _append_completed_build(path: Path, *, report_date: str = "2026-03-31") -> None:
+    _append_jsonl(
+        path / "cache_build_run.jsonl",
+        {
+            "run_id": "run-exact",
+            "job_name": "mock_standard_materialize",
+            "status": "completed",
+            "cache_key": "mock_standard:materialize:formal",
+            "cache_version": "cv_build",
+            "source_version": "sv_build",
+            "vendor_version": "vv_build",
+            "rule_version": "rv_build",
+            "report_date": report_date,
+        },
+    )
+
+
+def _manifest(*, report_date: str, vendor_version: str = "vv_manifest") -> dict[str, object]:
+    return {
+        "cache_key": "mock_standard:materialize:formal",
+        "cache_version": "cv_manifest",
+        "source_version": "sv_manifest",
+        "vendor_version": vendor_version,
+        "rule_version": "rv_manifest",
+        "report_date": report_date,
+    }
+
+
+def test_completed_build_does_not_hide_malformed_exact_manifest(tmp_path):
+    lineage_mod = _load_lineage_module()
+    _append_completed_build(tmp_path)
+    _append_jsonl(
+        tmp_path / "cache_manifest.jsonl",
+        _manifest(report_date="2026-03-31", vendor_version=""),
+    )
+
+    with pytest.raises(
+        lineage_mod.FormalLineageMalformedError,
+        match="missing vendor_version",
+    ):
+        lineage_mod.resolve_formal_manifest_lineage_with_completed_build(
+            governance_dir=str(tmp_path),
+            cache_key="mock_standard:materialize:formal",
+            job_name="mock_standard_materialize",
+            report_date="2026-03-31",
+        )
+
+
+def test_completed_build_propagates_manifest_repository_read_failure(tmp_path, monkeypatch):
+    lineage_mod = _load_lineage_module()
+    _append_completed_build(tmp_path)
+
+    def fail_manifest_read(*_args, **_kwargs):
+        raise RuntimeError("manifest backend exploded")
+
+    monkeypatch.setattr(
+        lineage_mod.GovernanceRepository,
+        "read_latest_manifest",
+        fail_manifest_read,
+    )
+
+    with pytest.raises(RuntimeError, match="manifest backend exploded"):
+        lineage_mod.resolve_formal_manifest_lineage_with_completed_build(
+            governance_dir=str(tmp_path),
+            cache_key="mock_standard:materialize:formal",
+            job_name="mock_standard_materialize",
+            report_date="2026-03-31",
+        )
+
+
+def test_completed_build_is_returned_when_exact_manifest_is_unavailable(tmp_path):
+    lineage_mod = _load_lineage_module()
+    _append_completed_build(tmp_path)
+
+    lineage = lineage_mod.resolve_formal_manifest_lineage_with_completed_build(
+        governance_dir=str(tmp_path),
+        cache_key="mock_standard:materialize:formal",
+        job_name="mock_standard_materialize",
+        report_date="2026-03-31",
+    )
+
+    assert lineage["run_id"] == "run-exact"
+    assert lineage["source_version"] == "sv_build"
+
+
+def test_no_build_uses_safe_prior_manifest_only_when_exact_is_unavailable(tmp_path):
+    lineage_mod = _load_lineage_module()
+    _append_jsonl(
+        tmp_path / "cache_manifest.jsonl",
+        _manifest(report_date="2026-03-30"),
+    )
+
+    lineage = lineage_mod.resolve_formal_manifest_lineage_with_completed_build(
+        governance_dir=str(tmp_path),
+        cache_key="mock_standard:materialize:formal",
+        job_name="mock_standard_materialize",
+        report_date="2026-03-31",
+    )
+
+    assert lineage["source_version"] == "sv_manifest"
+    assert lineage["_lineage_fallback_mode"] == "latest_snapshot"
+    assert lineage["_lineage_fallback_date"] == "2026-03-30"
+
+
+def test_no_build_does_not_fallback_when_exact_manifest_is_malformed(tmp_path):
+    lineage_mod = _load_lineage_module()
+    _append_jsonl(
+        tmp_path / "cache_manifest.jsonl",
+        _manifest(report_date="2026-03-30"),
+    )
+    _append_jsonl(
+        tmp_path / "cache_manifest.jsonl",
+        _manifest(report_date="2026-03-31", vendor_version=""),
+    )
+
+    with pytest.raises(
+        lineage_mod.FormalLineageMalformedError,
+        match="missing vendor_version",
+    ):
+        lineage_mod.resolve_formal_manifest_lineage_with_completed_build(
+            governance_dir=str(tmp_path),
+            cache_key="mock_standard:materialize:formal",
+            job_name="mock_standard_materialize",
+            report_date="2026-03-31",
+        )
+
+
 def test_resolve_formal_manifest_lineage_returns_latest_matching_record(tmp_path):
     lineage_mod = _load_lineage_module()
     manifest_path = tmp_path / "cache_manifest.jsonl"
