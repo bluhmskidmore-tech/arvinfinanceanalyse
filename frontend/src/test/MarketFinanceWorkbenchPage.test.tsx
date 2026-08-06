@@ -394,7 +394,7 @@ describe("MarketFinanceWorkbenchPage", () => {
 
     expect(
       within(screen.getByTestId("market-finance-kpi-market")).getByText(
-        "市场证据状态",
+        "10年国债",
       ),
     ).toBeInTheDocument();
     await waitFor(() => {
@@ -412,6 +412,9 @@ describe("MarketFinanceWorkbenchPage", () => {
     expect(root).not.toHaveTextContent("未确认测试序列");
 
     const evidence = screen.getByTestId("market-finance-evidence");
+    expect(evidence).toHaveTextContent("页面配置白名单");
+    expect(evidence).toHaveTextContent("PAGE contract");
+    expect(evidence).toHaveTextContent("owner signoff");
     for (const query of [
       "market-rates",
       "product-dates",
@@ -457,6 +460,43 @@ describe("MarketFinanceWorkbenchPage", () => {
         expect(evidence).toContainElement(titledElement as HTMLElement);
       }
     }
+  });
+
+  it("shows a missing marker for every unfilled market representative slot", async () => {
+    renderPage(
+      createControlledClient({
+        marketSeries: [
+          point({
+            series_id: "CA.CN_GOV_10Y",
+            value_numeric: 1.75,
+          }),
+          point({
+            series_id: "CA.USDCNY",
+            value_numeric: 7.14,
+            unit: "index",
+          }),
+          point(),
+        ],
+      }),
+    );
+
+    const root = await screen.findByTestId("market-finance-workbench");
+    const marketNode = screen.getByTestId("market-finance-spine-market");
+    await waitFor(() => {
+      expect(marketNode).toHaveTextContent("10年国债 1.75%");
+      expect(marketNode).toHaveTextContent("DR007 —");
+      expect(marketNode).toHaveTextContent("人民币汇率 7.14");
+      expect(marketNode).toHaveTextContent("信用利差 中短票AAA —");
+      expect(marketNode).toHaveTextContent("待复核");
+    });
+    expect(root).not.toHaveTextContent("9.99");
+    expect(root).not.toHaveTextContent("未确认测试序列");
+
+    const ratesRow = within(
+      screen.getByTestId("market-finance-evidence-matrix"),
+    ).getByRole("row", { name: /利率 \/ 资金/ });
+    expect(ratesRow).toHaveTextContent("DR007 —");
+    expect(ratesRow).toHaveTextContent("信用利差 中短票AAA —");
   });
 
   it("renders pending decision items from the governed read endpoint", async () => {
@@ -959,6 +999,12 @@ describe("MarketFinanceWorkbenchPage", () => {
     );
     expect(flags).toHaveTextContent("查询失败");
     expect(flags).not.toHaveTextContent("部分证据");
+    const marketNode = screen.getByTestId("market-finance-spine-market");
+    expect(marketNode).toHaveTextContent("查询失败");
+    expect(marketNode).toHaveTextContent("暂无可核验代表序列");
+    expect(marketNode).not.toHaveTextContent(
+      "页面配置白名单暂无命中代表序列",
+    );
     expect(
       screen.getByTestId("market-finance-query-status-product-pnl"),
     ).toHaveTextContent("未执行：日期目录查询异常");
@@ -995,6 +1041,12 @@ describe("MarketFinanceWorkbenchPage", () => {
     expect(flags).toHaveTextContent("无数据");
     expect(flags).not.toHaveTextContent("查询失败");
     expect(flags).not.toHaveTextContent("部分证据");
+    const marketNode = screen.getByTestId("market-finance-spine-market");
+    expect(marketNode).toHaveTextContent("无数据");
+    expect(marketNode).toHaveTextContent("暂无可核验代表序列");
+    expect(marketNode).not.toHaveTextContent(
+      "页面配置白名单暂无命中代表序列",
+    );
     expect(
       screen.getByTestId("market-finance-query-status-product-pnl"),
     ).toHaveTextContent("未执行：日期目录为空");

@@ -1,7 +1,7 @@
 .market-finance-workbench {
   --ib-ink-muted: var(--ib-ink-secondary);
   display: grid;
-  gap: var(--moss-space-3);
+  gap: var(--moss-space-1);
   min-width: 0;
   padding: var(--moss-space-4);
   background: var(--ib-paper);
@@ -22,6 +22,11 @@
   border-radius: var(--ib-radius);
   background: var(--ib-surface);
   box-shadow: none;
+}
+
+.market-finance-workbench .market-finance-workbench__hero {
+  gap: var(--moss-space-2);
+  padding: var(--moss-space-1) var(--moss-space-3);
 }
 
 .market-finance-workbench__hero .moss-page-v2-decision-hero__title {
@@ -154,7 +159,7 @@
   align-content: center;
   gap: 2px;
   min-width: 0;
-  min-height: 48px;
+  min-height: 44px;
   padding: var(--moss-space-1) var(--moss-space-3);
   border-right: 1px solid var(--ib-hairline);
 }
@@ -217,9 +222,9 @@
 
 .market-finance-workbench__spine {
   display: grid;
-  gap: var(--moss-space-2);
+  gap: var(--moss-space-1);
   min-width: 0;
-  padding: var(--moss-space-2);
+  padding: var(--moss-space-1);
   border: 1px solid var(--ib-hairline);
   border-radius: var(--ib-radius);
   background: var(--ib-surface);
@@ -281,8 +286,8 @@
   grid-template-rows: auto auto 1fr auto;
   gap: var(--moss-space-1);
   min-width: 0;
-  min-height: 150px;
-  padding: var(--moss-space-2);
+  min-height: 128px;
+  padding: var(--moss-space-1);
   border: 1px solid var(--ib-hairline);
   border-top: 2px solid var(--ib-accent);
   border-radius: var(--ib-radius);
@@ -347,7 +352,7 @@
   margin: 0;
   color: var(--ib-ink-secondary);
   font-size: 12px;
-  line-height: 1.55;
+  line-height: 1.45;
 }
 
 .market-finance-workbench__spine-node a,
@@ -370,14 +375,14 @@
 
 .market-finance-workbench .market-finance-workbench__kpis {
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--moss-space-2);
+  gap: var(--moss-space-1);
 }
 
 .market-finance-workbench__kpis .moss-page-v2-kpi-metric {
-  min-height: 132px;
+  min-height: 120px;
   align-content: start;
-  gap: var(--moss-space-2);
-  padding: var(--moss-space-3);
+  gap: var(--moss-space-1);
+  padding: var(--moss-space-1);
   border-color: var(--ib-hairline);
   border-radius: var(--ib-radius);
   background: var(--ib-surface);
@@ -385,7 +390,7 @@
 }
 
 .market-finance-workbench__kpis .moss-page-v2-kpi-metric__label {
-  min-height: 32px;
+  min-height: var(--moss-space-6);
   overflow: hidden;
   display: -webkit-box;
   color: var(--ib-ink-secondary);

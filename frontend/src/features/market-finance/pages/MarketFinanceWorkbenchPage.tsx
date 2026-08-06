@@ -26,6 +26,8 @@ import { pickRepresentativeSeries } from "./marketFinanceModel";
 import "./MarketFinanceWorkbenchPage.css";
 
 const MISSING_VALUE = "—";
+const MARKET_REPRESENTATIVE_BOUNDARY_NOTE =
+  "这是页面配置白名单展示，不等于独立 PAGE contract、跨域正式结论或 owner signoff。";
 const PRODUCT_CATEGORY_VIEW = "monthly";
 const COMPLETE_EVIDENCE_COUNT = 3;
 
@@ -195,6 +197,24 @@ function assessEvidence(input: EvidenceInput): EvidenceAssessment {
     queryError: false,
     metadataBlocked: false,
   };
+}
+
+function marketRepresentativeUnavailableLabel(
+  assessment: EvidenceAssessment,
+): string {
+  if (assessment.tone === "loading") {
+    return "加载中";
+  }
+  if (assessment.queryError) {
+    return "查询失败";
+  }
+  if (assessment.metadataBlocked) {
+    return "元信息阻断";
+  }
+  if (assessment.tone === "empty") {
+    return "无数据";
+  }
+  return assessment.label;
 }
 
 function notExecutedAssessment(
@@ -494,33 +514,41 @@ export default function MarketFinanceWorkbenchPage() {
     balanceOverview?.report_date ??
     (balanceDatesAssessment.usable ? balanceDate : null);
 
-  const representativeSeries = pickRepresentativeSeries(
-    marketAssessment.usable
-      ? (marketRatesQuery.data?.result.series ?? [])
-      : [],
-  );
+  const representativeSeries = marketAssessment.usable
+    ? pickRepresentativeSeries(marketRatesQuery.data?.result.series ?? [])
+    : [];
   const representativeByKey = new Map(
     representativeSeries.map((item) => [item.key, item]),
   );
-  const governmentTenYear = representativeByKey.get("cn-gov-10y");
+  const governmentTenYearSlot = representativeByKey.get("cn-gov-10y");
+  const governmentTenYear = governmentTenYearSlot?.point ?? null;
+  const hasMarketRepresentativeData = representativeSeries.some(
+    (item) => item.point !== null,
+  );
+  const hasMissingMarketRepresentative = representativeSeries.some(
+    (item) => item.point === null,
+  );
   const marketKpiValue = governmentTenYear
-    ? formatChoiceMacroValue(governmentTenYear.point, {
+    ? formatChoiceMacroValue(governmentTenYear, {
         spaceBeforeUnit: false,
         emptyDisplay: MISSING_VALUE,
       })
     : MISSING_VALUE;
-  const marketRepresentativeSummary =
-    representativeSeries.length > 0
-      ? representativeSeries
-          .map(
-            (item) =>
-              `${item.label} ${formatChoiceMacroValue(item.point, {
-                spaceBeforeUnit: false,
-                emptyDisplay: MISSING_VALUE,
-              })}`,
-          )
-          .join("；")
-      : MISSING_VALUE;
+  const marketRepresentativeSummary = marketAssessment.usable
+    ? representativeSeries
+        .map(
+          (item) =>
+            `${item.label} ${
+              item.point
+                ? formatChoiceMacroValue(item.point, {
+                    spaceBeforeUnit: false,
+                    emptyDisplay: MISSING_VALUE,
+                  })
+                : MISSING_VALUE
+            }`,
+        )
+        .join("；")
+    : MISSING_VALUE;
   const ftpValue = presentExistingValue(
     productPnl?.asset_total.baseline_ftp_rate_pct,
   );
@@ -656,16 +684,22 @@ export default function MarketFinanceWorkbenchPage() {
         ? "当前没有可核验读数，影响判断保持空缺。"
         : "现有读数已按各自日期分列；跨域传导、OCI 和资本 / RWA 尚无可核验联合口径，暂不生成影响评分。";
 
-  const marketBusinessTone: EvidenceTone = governmentTenYear
+  const marketBusinessTone: EvidenceTone = governmentTenYear && !hasMissingMarketRepresentative
     ? marketAssessment.tone
     : marketAssessment.usable
       ? "review"
       : marketAssessment.tone;
-  const marketBusinessLabel = governmentTenYear
+  const marketBusinessLabel = governmentTenYear && !hasMissingMarketRepresentative
     ? marketAssessment.label
     : marketAssessment.usable
       ? "待复核"
       : marketAssessment.label;
+
+  const marketTransmissionDetail = marketAssessment.usable
+    ? hasMarketRepresentativeData
+      ? `${marketRepresentativeSummary}；市场日 ${marketDate ?? MISSING_VALUE}`
+      : `页面配置白名单暂无命中代表序列：${marketRepresentativeSummary}；市场日 ${marketDate ?? MISSING_VALUE}`
+    : `${marketRepresentativeUnavailableLabel(marketAssessment)}；暂无可核验代表序列。市场日 ${marketDate ?? MISSING_VALUE}`;
 
   const transmissionNodes = [
     {
@@ -673,11 +707,7 @@ export default function MarketFinanceWorkbenchPage() {
       title: "市场变化",
       tone: marketBusinessTone,
       status: marketBusinessLabel,
-      detail: representativeSeries.length > 0
-        ? `${marketRepresentativeSummary}；市场日 ${marketDate ?? MISSING_VALUE}`
-        : marketAssessment.usable
-          ? `市场查询返回 ${marketSeriesCount} 条序列；业务代表序列待复核。元数据日 ${marketDate ?? MISSING_VALUE}`
-        : "市场利率查询暂无可核验读数。",
+      detail: marketTransmissionDetail,
       to: "/market-data",
       action: "查看市场证据",
     },
@@ -955,14 +985,14 @@ export default function MarketFinanceWorkbenchPage() {
         >
           <KpiBandMetric
             testId="market-finance-kpi-market"
-            label={governmentTenYear?.label ?? "市场证据状态"}
+            label={governmentTenYearSlot?.label ?? "市场证据状态"}
             value={<MetricValue value={marketKpiValue} />}
             footer={
               <div className="market-finance-workbench__metric-footer">
                 <span>
                   {governmentTenYear
                     ? `较前值 ${formatChoiceMacroDelta(
-                        governmentTenYear.point,
+                        governmentTenYear,
                         {
                           spaceBeforeUnit: false,
                           emptyDisplay: MISSING_VALUE,
@@ -981,7 +1011,7 @@ export default function MarketFinanceWorkbenchPage() {
                 </span>
                 <span>
                   行情日{" "}
-                  {governmentTenYear?.point.trade_date ??
+                  {governmentTenYear?.trade_date ??
                     marketDate ??
                     MISSING_VALUE}
                 </span>
@@ -1228,8 +1258,8 @@ export default function MarketFinanceWorkbenchPage() {
               <h3>市场利率证据</h3>
               <p>
                 {marketAssessment.usable
-                  ? `查询返回 ${marketSeriesCount} 条序列；本页未确认业务代表序列。`
-                  : "查询未返回可展示序列。"}
+                  ? `查询返回 ${marketSeriesCount} 条序列；按页面配置白名单逐槽展示代表序列，未命中槽位显示“—”，状态为“待复核”。${MARKET_REPRESENTATIVE_BOUNDARY_NOTE}`
+                  : `查询未返回可展示序列。${MARKET_REPRESENTATIVE_BOUNDARY_NOTE}`}
               </p>
               <span
                 data-testid="market-finance-query-status-market-rates"
