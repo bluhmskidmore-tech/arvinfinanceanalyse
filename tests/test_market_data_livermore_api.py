@@ -3891,7 +3891,7 @@ def test_livermore_gate_supplement_task_writes_rows(tmp_path, monkeypatch) -> No
     get_settings.cache_clear()
 
 
-def test_livermore_gate_supplement_refresh_returns_replay_metadata_without_reshaping_payload(
+def test_livermore_gate_supplement_refresh_returns_queue_metadata_without_reshaping_payload(
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -3910,26 +3910,23 @@ def test_livermore_gate_supplement_refresh_returns_replay_metadata_without_resha
         action="refresh",
     )
 
-    def fake_compute_and_materialize_gate_supplement(**kwargs):
+    def fake_queue_gate_supplement_refresh(**kwargs):
         assert kwargs["idempotency_key"] == " livermore-route-shape "
         return {
-            "status": "completed",
-            "computed_rows": 7,
-            "first_date": "2026-04-24",
-            "last_date": "2026-04-30",
-            "materialize_result": {
-                "status": "completed",
-                "run_id": "livermore-gate-supplement-shape-run",
-                "row_count": 7,
-            },
+            "status": "queued",
+            "run_id": "livermore-gate-supplement-shape-run",
+            "trigger_mode": "async",
+            "as_of_date": "2026-04-30",
+            "lookback_days": 30,
+            "queued_at": "2026-04-30T09:00:00+00:00",
             "idempotency_key": "livermore-route-shape",
             "idempotency_replay": False,
         }
 
     monkeypatch.setattr(
         route_module,
-        "compute_and_materialize_gate_supplement",
-        fake_compute_and_materialize_gate_supplement,
+        "queue_gate_supplement_refresh",
+        fake_queue_gate_supplement_refresh,
     )
 
     response = client.post(
@@ -3938,16 +3935,13 @@ def test_livermore_gate_supplement_refresh_returns_replay_metadata_without_resha
         headers={"Idempotency-Key": " livermore-route-shape "},
     )
 
-    assert response.status_code == 200, response.text
+    assert response.status_code == 202, response.text
     payload = response.json()
-    assert payload["status"] == "completed"
-    assert payload["computed_rows"] == 7
-    assert (
-        payload["materialize_result"]["run_id"] == "livermore-gate-supplement-shape-run"
-    )
+    assert payload["status"] == "queued"
+    assert payload["run_id"] == "livermore-gate-supplement-shape-run"
+    assert payload["trigger_mode"] == "async"
     assert payload["idempotency_key"] == "livermore-route-shape"
     assert payload["idempotency_replay"] is False
-    assert "run_id" not in payload
     get_settings.cache_clear()
 
 
@@ -4177,8 +4171,8 @@ def test_livermore_materialize_endpoints_invalidate_read_cache(
         counting_strategy,
     )
     monkeypatch.setattr(
-        "backend.app.api.routes.market_data_livermore.compute_and_materialize_gate_supplement",
-        lambda **_kwargs: {"status": "completed", "computed_rows": 1},
+        "backend.app.api.routes.market_data_livermore.queue_gate_supplement_refresh",
+        lambda **_kwargs: {"status": "queued", "run_id": "livermore-cache-refresh"},
     )
     settings = get_settings()
     UserScopeRepository(
@@ -4202,10 +4196,29 @@ def test_livermore_materialize_endpoints_invalidate_read_cache(
         "/ui/market-data/livermore/refresh-gate-supplement",
         params={"as_of_date": "2026-04-30", "lookback_days": 30},
     )
-    assert response.status_code == 200
+    assert response.status_code == 202
 
     third = client.get("/ui/market-data/livermore")
     assert third.status_code == 200
+    assert calls["count"] == 1
+
+    from backend.app.tasks import livermore_gate_supplement as task
+
+    monkeypatch.setattr(
+        task,
+        "_execute_livermore_gate_supplement_refresh",
+        lambda **_kwargs: {"status": "completed", "computed_rows": 1},
+    )
+    task.run_livermore_gate_supplement_refresh_task.fn(
+        duckdb_path=str(settings.duckdb_path),
+        governance_dir=str(settings.governance_path),
+        run_id="livermore-cache-refresh",
+        as_of_date="2026-04-30",
+        lookback_days=30,
+    )
+
+    fourth = client.get("/ui/market-data/livermore")
+    assert fourth.status_code == 200
     assert calls["count"] == 2
     market_home_response_cache.invalidate()
 

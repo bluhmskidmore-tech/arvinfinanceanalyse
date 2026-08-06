@@ -344,6 +344,18 @@ export function useMarketDataPageData(options: UseMarketDataPageDataOptions = {}
     formalRatesQuery,
     macroBondLinkageQuery,
     ncdFundingProxy: ncdFundingProxyQuery.data?.result,
-    refreshGateSupplement: () => client.refreshGateSupplement({ asOfDate: watchDate }),
+    refreshGateSupplement: () =>
+      runPollingTask({
+        start: () => client.refreshGateSupplement({ asOfDate: watchDate }),
+        getStatus: (runId) => client.getLivermoreGateSupplementRefreshStatus(runId),
+        intervalMs: 3_000,
+        maxAttempts: 120,
+        isTerminal: (status) =>
+          status === "completed"
+          || status === "failed"
+          || status === "partial"
+          || status === "insufficient_data"
+          || status === "no_computable_dates",
+      }),
   };
 }

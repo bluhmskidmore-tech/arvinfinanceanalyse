@@ -308,16 +308,11 @@ def _setup_livermore_gate_supplement(tmp_path: Path, monkeypatch: Any) -> tuple[
         "backend/app/services/livermore_gate_supplement_compute_service.py",
     )
 
-    def fake_materialize(*, duckdb_path: str, rows: list[dict[str, object]]) -> dict[str, object]:
-        calls.append({"duckdb_path": duckdb_path, "rows": rows})
-        return {
-            "status": "completed",
-            "run_id": f"livermore-gate-supplement-run-{len(calls)}",
-            "row_count": len(rows),
-        }
-
-    monkeypatch.setattr(service_mod, "_load_csi300_daily_returns", _fake_livermore_gate_daily_returns)
-    monkeypatch.setattr(service_mod, "materialize_livermore_gate_supplement_daily", fake_materialize)
+    monkeypatch.setattr(
+        service_mod.run_livermore_gate_supplement_refresh_task,
+        "send",
+        lambda **kwargs: calls.append(kwargs),
+    )
     return _main_client(), calls
 
 
@@ -789,6 +784,7 @@ ENDPOINTS = (
         different_target={"params": {"as_of_date": "2026-04-30", "lookback_days": 31}},
         setup=_setup_livermore_gate_supplement,
         refresh_payload=_livermore_gate_supplement_payload,
+        expected_status=202,
     ),
 )
 

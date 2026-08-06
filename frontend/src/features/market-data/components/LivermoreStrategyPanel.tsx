@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { isReservedBoundaryHttpMessage } from "../../../api/httpResponseError";
+import type { LivermoreGateSupplementRefreshAcceptance } from "../../../api/marketDataClient";
 import type { LivermoreStrategyModel } from "../lib/livermoreStrategyModel";
 import "./LivermoreStrategyPanel.css";
 
@@ -21,7 +22,7 @@ type Props = {
   isError: boolean;
   fetchErrorDetail?: string | null;
   onRetry: () => void;
-  onRefreshGateSupplement?: () => Promise<{ status: string; computed_rows: number; message?: string }>;
+  onRefreshGateSupplement?: () => Promise<LivermoreGateSupplementRefreshAcceptance>;
 };
 
 function statusClass(status: string) {
@@ -118,10 +119,20 @@ export function LivermoreStrategyPanel({
     try {
       const res = await onRefreshGateSupplement();
       if (res.status === "completed") {
-        setRefreshResult(`已计算 ${res.computed_rows} 条门控数据`);
+        setRefreshResult(`已计算 ${res.computed_rows ?? 0} 条门控数据`);
         setTimeout(() => onRetry(), 600);
-      } else {
+      } else if (
+        res.status === "partial"
+        || res.status === "insufficient_data"
+        || res.status === "no_computable_dates"
+      ) {
         setRefreshResult(res.message || `状态: ${res.status}`);
+      } else if (res.status === "failed") {
+        setRefreshResult(
+          `刷新失败: ${res.error_message || res.failure_category || res.failure_reason || res.status}`,
+        );
+      } else {
+        setRefreshResult(`刷新超时，请稍后查看 run_id ${res.run_id}`);
       }
     } catch (err) {
       setRefreshResult(`刷新失败: ${err instanceof Error ? err.message : String(err)}`);
@@ -209,9 +220,9 @@ export function LivermoreStrategyPanel({
               onClick={handleRefreshGate}
               disabled={refreshing}
               type="button"
-              title="从已有 CSI300 数据计算 breadth / limit-up 门控"
+              title="提交并轮询门控补充刷新任务"
             >
-              {refreshing ? "计算中…" : "刷新门控数据"}
+              {refreshing ? "刷新中…" : "刷新门控数据"}
             </button>
           ) : null}
           {refreshResult ? (

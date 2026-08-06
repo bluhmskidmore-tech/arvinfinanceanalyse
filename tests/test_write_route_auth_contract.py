@@ -253,7 +253,7 @@ def _patch_livermore_gate_supplement_refresh(monkeypatch, calls: list[str]) -> s
         calls.append("called")
         return {"status": "queued", "run_id": "livermore-gate-supplement-refresh-test"}
 
-    monkeypatch.setattr(route_module, "compute_and_materialize_gate_supplement", fake_refresh)
+    monkeypatch.setattr(route_module, "queue_gate_supplement_refresh", fake_refresh)
     return "livermore-gate-supplement-refresh-test"
 
 
@@ -332,6 +332,7 @@ def test_refresh_route_requires_explicit_scope_grant(path, body, resource, patch
     expected_status = 202 if path.split("?", 1)[0] in (
         "/ui/macro/toolkit/choice-stock/refresh",
         "/ui/macro/toolkit/source-backfill/refresh",
+        "/ui/market-data/livermore/refresh-gate-supplement",
     ) else 200
     assert allowed.status_code == expected_status, allowed.text
     assert expected_run_id in allowed.text

@@ -125,6 +125,7 @@ const STOCK_ANALYSIS_MARKET_DATA_METHODS = new Set<keyof MarketDataClientMethods
   "getLivermoreSignalConfluence",
   "materializeLivermorePositionSnapshot",
   "materializeLivermoreManualPositionSnapshot",
+  "getLivermoreGateSupplementRefreshStatus",
   "refreshGateSupplement",
 ]);
 

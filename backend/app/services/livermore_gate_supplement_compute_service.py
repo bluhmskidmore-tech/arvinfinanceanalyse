@@ -24,7 +24,8 @@ import json
 import logging
 import os
 import time
-from datetime import UTC, date, datetime
+import uuid
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -32,19 +33,41 @@ import duckdb
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
-from backend.app.tasks.livermore_gate_supplement import (
-    RULE_VERSION as LIVERMORE_GATE_SUPPLEMENT_MATERIALIZE_RULE_VERSION,
-)
-from backend.app.tasks.livermore_gate_supplement import (
-    materialize_livermore_gate_supplement_daily,
-)
-from backend.app.tasks.market_breadth_materialize import (
-    materialize_market_breadth_daily,
-)
+
+
+def materialize_livermore_gate_supplement_daily(*args: object, **kwargs: object) -> object:
+    """Lazy bridge keeps task registration out of the HTTP service import path."""
+    from backend.app.tasks.livermore_gate_supplement import (
+        materialize_livermore_gate_supplement_daily as _materialize,
+    )
+
+    return _materialize(*args, **kwargs)
+
+
+def materialize_market_breadth_daily(*args: object, **kwargs: object) -> object:
+    """Lazy bridge keeps market-breadth write tasks worker-owned."""
+    from backend.app.tasks.market_breadth_materialize import (
+        materialize_market_breadth_daily as _materialize,
+    )
+
+    return _materialize(*args, **kwargs)
+
+
+class _RunLivermoreGateSupplementRefreshTaskProxy:
+    def send(self, **kwargs: object) -> object:
+        from backend.app.tasks.livermore_gate_supplement import (
+            run_livermore_gate_supplement_refresh_task as _actor,
+        )
+
+        return _actor.send(**kwargs)
+
+
+run_livermore_gate_supplement_refresh_task = _RunLivermoreGateSupplementRefreshTaskProxy()
 
 logger = logging.getLogger(__name__)
 
 RULE_VERSION = "rv_livermore_gate_supplement_compute_v1"
+LIVERMORE_GATE_SUPPLEMENT_MATERIALIZE_RULE_VERSION = "rv_livermore_gate_supplement_v1"
 BROAD_INDEX_SERIES_ID = "CA.CSI300"
 PCT_CHG_SERIES_ID = "CA.CSI300_PCT_CHG"
 BREADTH_WINDOW = 5
@@ -58,6 +81,296 @@ LIVERMORE_GATE_SUPPLEMENT_IDEMPOTENCY_WAIT_TIMEOUT_SECONDS = 300.0
 LIVERMORE_GATE_SUPPLEMENT_IDEMPOTENCY_LOCK_ATTEMPT_SECONDS = 0.25
 LIVERMORE_GATE_SUPPLEMENT_IDEMPOTENCY_POLL_SECONDS = 0.05
 LIVERMORE_GATE_SUPPLEMENT_IDEMPOTENCY_POLL_MAX_SECONDS = 1.0
+_LIVERMORE_REFRESH_IN_FLIGHT_STATUSES = {"queued", "running", "retrying"}
+_LIVERMORE_REFRESH_STALE_AFTER = timedelta(hours=1)
+
+
+class LivermoreGateSupplementRefreshConflictError(RuntimeError):
+    pass
+
+
+class LivermoreGateSupplementRefreshQueueError(RuntimeError):
+    pass
+
+
+def _append_stale_livermore_refresh_failure(
+    repo: GovernanceRepository,
+    record: dict[str, object],
+) -> None:
+    repo.append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            **record,
+            "status": "failed",
+            "trigger_mode": "terminal",
+            "finished_at": datetime.now(UTC).isoformat(),
+            "error_message": "Marked stale Livermore gate-supplement refresh as failed.",
+            "failure_category": "stale_inflight",
+            "failure_reason": "stale_inflight",
+        },
+    )
+
+
+def queue_gate_supplement_refresh(
+    *,
+    duckdb_path: str,
+    governance_path: str,
+    as_of_date: date | None = None,
+    lookback_days: int = 30,
+    idempotency_key: str | None = None,
+    min_observations_per_day: int | None = None,
+) -> dict[str, object]:
+    if int(lookback_days) < 7 or int(lookback_days) > 365:
+        raise ValueError("lookback_days must be between 7 and 365.")
+    target_date = as_of_date or date.today()
+    target_date_text = target_date.isoformat()
+    normalized_idempotency_key = _normalize_idempotency_key(idempotency_key)
+    storage_target_digest = _storage_target_digest(duckdb_path)
+    request_fingerprint = hashlib.sha256(
+        repr(
+            (
+                storage_target_digest,
+                target_date_text,
+                int(lookback_days),
+                min_observations_per_day,
+            )
+        ).encode("utf-8")
+    ).hexdigest()
+    trigger_lock = _refresh_trigger_lock(
+        as_of_date=target_date_text,
+        lookback_days=int(lookback_days),
+        storage_target_digest=storage_target_digest,
+    )
+    repo = GovernanceRepository(base_dir=governance_path)
+    try:
+        with acquire_lock(trigger_lock, base_dir=governance_path, timeout_seconds=0.1):
+            records = _queued_livermore_refresh_records(repo)
+            if normalized_idempotency_key is not None:
+                for record in reversed(records):
+                    if not _livermore_refresh_record_matches_request(
+                        record,
+                        request_fingerprint=request_fingerprint,
+                        as_of_date=target_date_text,
+                        lookback_days=int(lookback_days),
+                        storage_target_digest=storage_target_digest,
+                    ):
+                        continue
+                    if str(record.get("idempotency_key") or "").strip() != normalized_idempotency_key:
+                        continue
+                    status = str(record.get("status") or "")
+                    if (
+                        status in _LIVERMORE_REFRESH_IN_FLIGHT_STATUSES
+                        and _livermore_refresh_record_is_stale(record)
+                    ):
+                        _append_stale_livermore_refresh_failure(repo, record)
+                        records = _queued_livermore_refresh_records(repo)
+                        break
+                    return _normalize_livermore_refresh_record(record, idempotency_replay=True)
+
+            latest_by_run_id: dict[str, dict[str, object]] = {}
+            for record in records:
+                if _livermore_refresh_record_matches_request(
+                    record,
+                    request_fingerprint=request_fingerprint,
+                    as_of_date=target_date_text,
+                    lookback_days=int(lookback_days),
+                    storage_target_digest=storage_target_digest,
+                ):
+                    latest_by_run_id[str(record.get("run_id") or "")] = record
+            fresh_active_records: list[dict[str, object]] = []
+            for record in latest_by_run_id.values():
+                if str(record.get("status") or "") not in _LIVERMORE_REFRESH_IN_FLIGHT_STATUSES:
+                    continue
+                if _livermore_refresh_record_is_stale(record):
+                    _append_stale_livermore_refresh_failure(repo, record)
+                else:
+                    fresh_active_records.append(record)
+            if fresh_active_records:
+                raise LivermoreGateSupplementRefreshConflictError(
+                    f"Livermore gate-supplement refresh already in progress for as_of_date={target_date_text}."
+                )
+
+            queued_at = datetime.now(UTC).isoformat()
+            run_id = (
+                f"{LIVERMORE_GATE_SUPPLEMENT_REFRESH_JOB_NAME}:"
+                f"{target_date_text}:{uuid.uuid4().hex[:12]}"
+            )
+            queued_payload: dict[str, object] = {
+                "run_id": run_id,
+                "job_name": LIVERMORE_GATE_SUPPLEMENT_REFRESH_JOB_NAME,
+                "status": "queued",
+                "trigger_mode": "async",
+                "cache_key": LIVERMORE_GATE_SUPPLEMENT_REFRESH_CACHE_KEY,
+                "cache_version": LIVERMORE_GATE_SUPPLEMENT_REFRESH_CACHE_VERSION,
+                "lock": trigger_lock.key,
+                "source_version": "sv_pending",
+                "vendor_version": "vv_pending",
+                "rule_version": RULE_VERSION,
+                "report_date": target_date_text,
+                "as_of_date": target_date_text,
+                "lookback_days": int(lookback_days),
+                "min_observations_per_day": min_observations_per_day,
+                "duckdb_path": str(duckdb_path),
+                "storage_target_digest": storage_target_digest,
+                "request_fingerprint": request_fingerprint,
+                "idempotency_key": normalized_idempotency_key,
+                "queued_at": queued_at,
+            }
+            repo.append(CACHE_BUILD_RUN_STREAM, queued_payload)
+            try:
+                run_livermore_gate_supplement_refresh_task.send(
+                    duckdb_path=str(duckdb_path),
+                    governance_dir=str(governance_path),
+                    run_id=run_id,
+                    as_of_date=target_date_text,
+                    lookback_days=int(lookback_days),
+                    min_observations_per_day=min_observations_per_day,
+                    storage_target_digest=storage_target_digest,
+                    request_fingerprint=request_fingerprint,
+                    idempotency_key=normalized_idempotency_key,
+                )
+            except Exception as exc:
+                repo.append(
+                    CACHE_BUILD_RUN_STREAM,
+                    {
+                        **queued_payload,
+                        "status": "failed",
+                        "trigger_mode": "terminal",
+                        "finished_at": datetime.now(UTC).isoformat(),
+                        "error_message": str(exc),
+                        "failure_category": "queue_dispatch_failure",
+                        "failure_reason": "queue_dispatch_failed",
+                    },
+                )
+                raise LivermoreGateSupplementRefreshQueueError(
+                    "Livermore gate-supplement refresh queue dispatch failed."
+                ) from exc
+    except TimeoutError as exc:
+        raise LivermoreGateSupplementRefreshConflictError(
+            f"Livermore gate-supplement refresh already in progress for as_of_date={target_date_text}."
+        ) from exc
+
+    return _normalize_livermore_refresh_record(queued_payload, idempotency_replay=False)
+
+
+def livermore_gate_supplement_refresh_status(
+    governance_path: str | Path,
+    *,
+    run_id: str = "",
+) -> dict[str, object]:
+    records = _queued_livermore_refresh_records(GovernanceRepository(base_dir=governance_path))
+    run_id_text = str(run_id or "").strip()
+    if run_id_text:
+        matching = [record for record in records if str(record.get("run_id") or "") == run_id_text]
+        if not matching:
+            raise ValueError(f"Livermore gate-supplement refresh run not found: {run_id_text}")
+        return _normalize_livermore_refresh_record(matching[-1], idempotency_replay=None)
+    if not records:
+        return {
+            "status": "idle",
+            "run_id": None,
+            "job_name": LIVERMORE_GATE_SUPPLEMENT_REFRESH_JOB_NAME,
+            "cache_key": LIVERMORE_GATE_SUPPLEMENT_REFRESH_CACHE_KEY,
+            "cache_version": LIVERMORE_GATE_SUPPLEMENT_REFRESH_CACHE_VERSION,
+            "rule_version": RULE_VERSION,
+            "trigger_mode": "idle",
+            "idempotency_replay": False,
+        }
+    return _normalize_livermore_refresh_record(records[-1], idempotency_replay=None)
+
+
+def _queued_livermore_refresh_records(repo: GovernanceRepository) -> list[dict[str, object]]:
+    return [
+        record
+        for record in repo.read_all(CACHE_BUILD_RUN_STREAM)
+        if str(record.get("cache_key") or "") == LIVERMORE_GATE_SUPPLEMENT_REFRESH_CACHE_KEY
+        and str(record.get("job_name") or "") == LIVERMORE_GATE_SUPPLEMENT_REFRESH_JOB_NAME
+    ]
+
+
+def _livermore_refresh_record_matches_request(
+    record: dict[str, object],
+    *,
+    request_fingerprint: str,
+    as_of_date: str,
+    lookback_days: int,
+    storage_target_digest: str,
+) -> bool:
+    recorded_fingerprint = str(record.get("request_fingerprint") or "").strip()
+    if recorded_fingerprint:
+        return recorded_fingerprint == request_fingerprint
+    return (
+        str(record.get("as_of_date") or record.get("report_date") or "") == as_of_date
+        and str(record.get("lookback_days") or "") == str(int(lookback_days))
+        and str(record.get("storage_target_digest") or "") == storage_target_digest
+    )
+
+
+def _normalize_livermore_refresh_record(
+    record: dict[str, object],
+    *,
+    idempotency_replay: bool | None,
+) -> dict[str, object]:
+    status = str(record.get("status") or "").strip() or "failed"
+    normalized: dict[str, object] = {
+        "run_id": str(record.get("run_id") or "") or None,
+        "job_name": LIVERMORE_GATE_SUPPLEMENT_REFRESH_JOB_NAME,
+        "status": status,
+        "trigger_mode": (
+            "async"
+            if status in _LIVERMORE_REFRESH_IN_FLIGHT_STATUSES
+            else "idle" if status == "idle" else "terminal"
+        ),
+        "cache_key": LIVERMORE_GATE_SUPPLEMENT_REFRESH_CACHE_KEY,
+        "cache_version": str(record.get("cache_version") or LIVERMORE_GATE_SUPPLEMENT_REFRESH_CACHE_VERSION),
+        "rule_version": str(record.get("rule_version") or RULE_VERSION),
+        "report_date": str(record.get("report_date") or record.get("as_of_date") or "") or None,
+        "as_of_date": str(record.get("as_of_date") or record.get("report_date") or "") or None,
+        "lookback_days": int(record.get("lookback_days") or 0) if record.get("lookback_days") is not None else None,
+        "min_observations_per_day": (
+            int(record.get("min_observations_per_day"))
+            if record.get("min_observations_per_day") is not None
+            else None
+        ),
+        "queued_at": str(record.get("queued_at") or "") or None,
+        "started_at": str(record.get("started_at") or "") or None,
+        "finished_at": str(record.get("finished_at") or "") or None,
+        "basis": str(record.get("basis") or "") or None,
+        "computed_rows": (
+            int(record.get("computed_rows"))
+            if record.get("computed_rows") is not None
+            else None
+        ),
+        "first_date": str(record.get("first_date") or "") or None,
+        "last_date": str(record.get("last_date") or "") or None,
+        "message": str(record.get("message") or "") or None,
+        "failure_category": str(record.get("failure_category") or "") or None,
+        "failure_reason": str(record.get("failure_reason") or "") or None,
+        "error_message": str(record.get("error_message") or "") or None,
+        "idempotency_key": _normalize_idempotency_key(str(record.get("idempotency_key") or "")),
+        "idempotency_replay": False if idempotency_replay is None else idempotency_replay,
+    }
+    result = record.get("result")
+    if isinstance(result, dict):
+        normalized["result"] = result
+    return normalized
+
+
+def _livermore_refresh_record_is_stale(record: dict[str, object]) -> bool:
+    for field_name in ("started_at", "queued_at", "created_at"):
+        raw_value = str(record.get(field_name) or "").strip()
+        if not raw_value:
+            continue
+        try:
+            parsed = datetime.fromisoformat(raw_value.replace("Z", "+00:00"))
+        except ValueError:
+            return True
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        else:
+            parsed = parsed.astimezone(UTC)
+        return datetime.now(UTC) - parsed > _LIVERMORE_REFRESH_STALE_AFTER
+    return True
 
 
 def compute_and_materialize_gate_supplement(

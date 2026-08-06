@@ -2638,6 +2638,29 @@ export function createMockMarketDataClient(): MarketDataDomainClientMethods {
         risk_exit_input_block_reason: "",
       };
     },
+    async getLivermoreGateSupplementRefreshStatus(runId: string) {
+      await delay();
+      return {
+        status: "completed" as const,
+        run_id: runId,
+        trigger_mode: "terminal" as const,
+        as_of_date: "2026-04-29",
+        lookback_days: 30,
+        queued_at: "2026-04-29T09:30:00Z",
+        started_at: "2026-04-29T09:30:05Z",
+        finished_at: "2026-04-29T09:30:12Z",
+        computed_rows: 15,
+        first_date: "2026-04-10",
+        last_date: "2026-04-29",
+        basis: "csi300_proxy",
+        message: null,
+        failure_category: null,
+        failure_reason: null,
+        error_message: null,
+        idempotency_key: null,
+        idempotency_replay: false,
+      };
+    },
     async getChoiceNewsEvents(options) {
       await delay();
       return buildMockChoiceNewsEnvelope(options);
@@ -2661,7 +2684,16 @@ export function createMockMarketDataClient(): MarketDataDomainClientMethods {
     },
     async refreshGateSupplement(_options?: { asOfDate?: string; lookbackDays?: number }) {
       await delay();
-      return { status: "completed", computed_rows: 15, first_date: "2026-04-10", last_date: "2026-04-29" };
+      return {
+        status: "queued" as const,
+        run_id: "livermore_gate_supplement_refresh:2026-04-29:mock",
+        trigger_mode: "async" as const,
+        as_of_date: "2026-04-29",
+        lookback_days: 30,
+        queued_at: "2026-04-29T09:30:00Z",
+        idempotency_key: null,
+        idempotency_replay: false,
+      };
     },
     async getMarketDataRates() {
       await delay();

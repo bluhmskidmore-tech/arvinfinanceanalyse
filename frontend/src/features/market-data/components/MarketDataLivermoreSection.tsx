@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Collapse } from "antd";
 
+import type { LivermoreGateSupplementRefreshAcceptance } from "../../../api/marketDataClient";
 import type { LivermoreStrategyModel } from "../lib/livermoreStrategyModel";
 import { LivermoreStrategyPanel } from "./LivermoreStrategyPanel";
 
@@ -10,7 +11,7 @@ type MarketDataLivermoreSectionProps = {
   isError: boolean;
   fetchErrorDetail: string | null;
   onRetry: () => void;
-  onRefreshGateSupplement?: () => Promise<{ status: string; computed_rows: number; message?: string }>;
+  onRefreshGateSupplement?: () => Promise<LivermoreGateSupplementRefreshAcceptance>;
   onExpandedChange: (expanded: boolean) => void;
 };
 

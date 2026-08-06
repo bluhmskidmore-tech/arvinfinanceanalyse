@@ -19,7 +19,10 @@ from backend.app.services.livermore_candidate_history_service import (
     livermore_candidate_history_strategy_score_envelope,
 )
 from backend.app.services.livermore_gate_supplement_compute_service import (
-    compute_and_materialize_gate_supplement,
+    LivermoreGateSupplementRefreshConflictError,
+    LivermoreGateSupplementRefreshQueueError,
+    livermore_gate_supplement_refresh_status,
+    queue_gate_supplement_refresh,
 )
 from backend.app.services.livermore_sector_rank_series_service import livermore_sector_rank_series_envelope
 from backend.app.services.livermore_signal_confluence_service import livermore_signal_confluence_envelope
@@ -540,14 +543,14 @@ def materialize_manual_position_snapshot(
     }
 
 
-@router.post("/livermore/refresh-gate-supplement")
+@router.post("/livermore/refresh-gate-supplement", status_code=202)
 def refresh_gate_supplement(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     as_of_date: str | None = Query(None),
     lookback_days: int = Query(default=30, ge=7, le=365),
 ) -> dict[str, object]:
-    """Compute and write breadth_5d + limit_up_quality_ok from landed CSI300 data."""
+    """Queue worker-owned breadth and Livermore gate-supplement materialization."""
     parsed_date: date | None = None
     if as_of_date is not None:
         try:
@@ -558,17 +561,39 @@ def refresh_gate_supplement(
     settings = get_settings()
     _ensure_livermore_gate_supplement_refresh_allowed(settings=settings, auth=auth)
     try:
-        result = compute_and_materialize_gate_supplement(
+        result = queue_gate_supplement_refresh(
             duckdb_path=str(settings.duckdb_path),
+            governance_path=str(settings.governance_path),
             as_of_date=parsed_date,
             lookback_days=lookback_days,
             idempotency_key=idempotency_key,
         )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except LivermoreGateSupplementRefreshConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except LivermoreGateSupplementRefreshQueueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    _invalidate_livermore_response_cache()
     return result
+
+
+@router.get("/livermore/refresh-gate-supplement/status")
+def refresh_gate_supplement_status(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    run_id: str = Query(default=""),
+) -> dict[str, object]:
+    settings = get_settings()
+    _ensure_livermore_read_allowed(settings=settings, auth=auth)
+    try:
+        return livermore_gate_supplement_refresh_status(
+            settings.governance_path,
+            run_id=run_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get("/livermore/stock-detail")

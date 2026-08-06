@@ -44,6 +44,35 @@ type MarketDataClientFactoryOptions = {
   baseUrl: string;
 };
 
+export type LivermoreGateSupplementRefreshAcceptance = {
+  status:
+    | "queued"
+    | "running"
+    | "retrying"
+    | "completed"
+    | "failed"
+    | "partial"
+    | "insufficient_data"
+    | "no_computable_dates";
+  run_id: string;
+  trigger_mode: "async" | "terminal";
+  as_of_date: string | null;
+  lookback_days: number | null;
+  queued_at: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  computed_rows?: number | null;
+  first_date?: string | null;
+  last_date?: string | null;
+  basis?: string | null;
+  message?: string | null;
+  failure_category?: string | null;
+  failure_reason?: string | null;
+  error_message?: string | null;
+  idempotency_key: string | null;
+  idempotency_replay: boolean;
+};
+
 /**
  * Market Data domain methods and their mock/real factories.
  */
@@ -154,10 +183,13 @@ export type MarketDataClientMethods = {
     asOfDate: string;
     positions: LivermoreManualPositionInput[];
   }) => Promise<LivermorePositionSnapshotPayload>;
+  getLivermoreGateSupplementRefreshStatus: (
+    runId: string,
+  ) => Promise<LivermoreGateSupplementRefreshAcceptance>;
   refreshGateSupplement: (options?: {
     asOfDate?: string;
     lookbackDays?: number;
-  }) => Promise<{ status: string; computed_rows: number; first_date?: string; last_date?: string; message?: string }>;
+  }) => Promise<LivermoreGateSupplementRefreshAcceptance>;
   getChoiceNewsEvents: (options: {
     limit: number;
     offset: number;
@@ -731,6 +763,12 @@ export function createRealMarketDataClient({
           }),
         },
       ),
+    getLivermoreGateSupplementRefreshStatus: (runId: string) =>
+      requestActionJson<LivermoreGateSupplementRefreshAcceptance>(
+        fetchImpl,
+        baseUrl,
+        `/ui/market-data/livermore/refresh-gate-supplement/status?run_id=${encodeURIComponent(runId)}`,
+      ),
     getChoiceNewsEvents: ({
       limit,
       offset,
@@ -814,7 +852,7 @@ export function createRealMarketDataClient({
         params.set("lookback_days", String(options.lookbackDays));
       }
       const query = params.toString();
-      return requestActionJson<{ status: string; computed_rows: number; first_date?: string; last_date?: string; message?: string }>(
+      return requestActionJson<LivermoreGateSupplementRefreshAcceptance>(
         fetchImpl,
         baseUrl,
         `/ui/market-data/livermore/refresh-gate-supplement${query ? `?${query}` : ""}`,

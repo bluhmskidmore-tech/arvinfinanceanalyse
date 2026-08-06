@@ -3,6 +3,7 @@ import type { QueryClient } from "@tanstack/react-query";
 
 import type { ApiClient } from "../../../api/client";
 import type { MacroToolkitChoiceStockRefreshRun } from "../../../api/macroToolkitClient";
+import type { LivermoreGateSupplementRefreshAcceptance } from "../../../api/marketDataClient";
 import { runPollingTask } from "../../../app/jobs/polling";
 
 type RefreshTone = "negative" | "neutral" | "positive" | "warning";
@@ -37,6 +38,24 @@ function refreshToneForStatus(status: string): RefreshTone {
   if (status === "completed") return "positive";
   if (status === "failed") return "negative";
   return "warning";
+}
+
+function gateRefreshStatusLabel(payload: LivermoreGateSupplementRefreshAcceptance): string {
+  if (payload.status === "completed") {
+    return `门禁补充已刷新 ${payload.computed_rows ?? 0} 行，run_id ${payload.run_id}`;
+  }
+  if (payload.status === "failed") {
+    const reason = payload.failure_category?.trim() || payload.error_message?.trim() || payload.status;
+    return `门禁补充刷新失败：${reason} · run_id ${payload.run_id}`;
+  }
+  if (
+    payload.status === "partial"
+    || payload.status === "insufficient_data"
+    || payload.status === "no_computable_dates"
+  ) {
+    return payload.message ?? `门禁补充状态：${payload.status} · run_id ${payload.run_id}`;
+  }
+  return `门禁补充刷新已受理并排队：run_id ${payload.run_id}`;
 }
 
 export function useStockSelectionRefresh({
@@ -87,13 +106,29 @@ export function useStockSelectionRefresh({
       const gateRefresh = await client.refreshGateSupplement({
         ...(asOfDate ? { asOfDate } : {}),
       });
-      if (gateRefresh.status !== "completed") {
-        throw new Error(gateRefresh.message ?? `门禁补充刷新失败：${gateRefresh.status}`);
+      const gateRefreshStatus = await runPollingTask<LivermoreGateSupplementRefreshAcceptance>({
+        start: async () => gateRefresh,
+        getStatus: async (runId) => client.getLivermoreGateSupplementRefreshStatus(runId),
+        intervalMs: 3_000,
+        maxAttempts: 120,
+        isTerminal: (status) =>
+          status === "completed"
+          || status === "failed"
+          || status === "partial"
+          || status === "insufficient_data"
+          || status === "no_computable_dates",
+        onUpdate: (payload) => {
+          setRefreshTone(payload.status === "completed" ? "positive" : "warning");
+          setRefreshResult(`${refreshStatusLabel(refresh)}；${gateRefreshStatusLabel(payload)}`);
+        },
+      });
+      if (gateRefreshStatus.status !== "completed") {
+        throw new Error(gateRefreshStatusLabel(gateRefreshStatus));
       }
 
       setRefreshTone("positive");
       setRefreshResult(
-        `${refreshStatusLabel(refresh)}；门禁补充已刷新 ${gateRefresh.computed_rows} 行`,
+        `${refreshStatusLabel(refresh)}；${gateRefreshStatusLabel(gateRefreshStatus)}`,
       );
       await queryClient.invalidateQueries({ queryKey: ["stock-analysis"] });
     } catch (error) {
