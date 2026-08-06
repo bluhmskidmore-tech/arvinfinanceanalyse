@@ -448,7 +448,9 @@ describe("startup performance guards", () => {
   it("keeps deferred terminal home body off a second timer after first screen settles", () => {
     const deferredTerminalSource = readFileSync(DEFERRED_TERMINAL_HOME_CONTENT_PATH, "utf8");
 
-    expect(deferredTerminalSource).toContain("requestIdleCallback(markReady");
+    expect(deferredTerminalSource).toContain("if (loadBody) {");
+    expect(deferredTerminalSource).toContain("setLoadFirstScreenHydration(true);");
+    expect(deferredTerminalSource).not.toContain("requestIdleCallback");
     expect(deferredTerminalSource).not.toContain("BODY_IDLE_MIN_DELAY_MS");
     expect(deferredTerminalSource).not.toContain("delayHandle = window.setTimeout(scheduleBodyLoad");
   });
