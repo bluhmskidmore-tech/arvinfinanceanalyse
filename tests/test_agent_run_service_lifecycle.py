@@ -128,30 +128,43 @@ def test_create_dispatches_lazy_task_with_only_run_id(monkeypatch, tmp_path):
     assert record["request"]["context"]["run_id"] == created.run_id
 
 
-def test_create_dispatch_failure_is_persisted_as_failed(monkeypatch, tmp_path):
+def test_create_dispatch_failure_is_persisted_as_failed(monkeypatch, tmp_path, caplog):
     settings = _settings(tmp_path)
+    raw_secret = "broker-password"
 
     def fail_dispatch(*, run_id):
-        raise ConnectionError(f"broker offline for {run_id}")
+        raise ConnectionError(
+            f"broker offline for {run_id} at "
+            f"redis://agent:{raw_secret}@127.0.0.1:6379/0?token=broker-token"
+        )
 
     monkeypatch.setattr(agent_run_service.execute_agent_run_task, "send", fail_dispatch)
 
-    with pytest.raises(
-        agent_run_service.AgentRunDispatchError,
-        match=r"^Agent run dispatch failed for agent_run:",
-    ):
+    with pytest.raises(agent_run_service.AgentRunDispatchError) as exc_info:
         agent_run_service.create_agent_run(
             request=_request("analyze"),
             settings=settings,
             provider="hermes",
         )
 
-    records = GovernanceRepository(settings.governance_path).read_all(
-        agent_run_service.AGENT_RUN_STREAM
-    )
+    assert str(exc_info.value) == "Agent run dispatch failed."
+    assert raw_secret not in str(exc_info.value)
+    assert "broker-token" not in str(exc_info.value)
+
+    repo = GovernanceRepository(settings.governance_path)
+    records = repo.read_all(agent_run_service.AGENT_RUN_STREAM)
     assert [record["status"] for record in records] == ["queued", "failed"]
     assert records[-1]["finished_at"]
-    assert "broker offline" in records[-1]["error_message"]
+    assert records[-1]["error_message"] == "Agent run dispatch failed."
+
+    audit_rows = repo.read_all(agent_run_service.AGENT_AUDIT_STREAM)
+    assert audit_rows[-1]["result_meta"]["error_code"] == "AGENT_RUN_DISPATCH_FAILED"
+    serialized_public_records = str([records, audit_rows, exc_info.value])
+    assert raw_secret not in serialized_public_records
+    assert "broker-token" not in serialized_public_records
+    assert raw_secret not in caplog.text
+    assert "broker-token" not in caplog.text
+    assert "[REDACTED]" in caplog.text
 
 
 def test_create_returns_existing_run_for_duplicate_owner_conversation_and_client_request_id(

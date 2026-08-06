@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -639,6 +640,62 @@ def test_agent_query_maps_executor_runtime_error_when_agent_is_on(monkeypatch, t
 
     assert response.status_code == 503
     assert response.json()["detail"] == "DuckDB read path unavailable."
+
+
+@pytest.mark.parametrize("provider", ["hermes", "dexter"])
+def test_agent_query_maps_provider_runtime_error_to_safe_stable_contract(
+    provider,
+    monkeypatch,
+    tmp_path,
+    caplog,
+):
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    _seed_agent_read_scope(tmp_path, monkeypatch)
+    settings = SimpleNamespace(
+        agent_enabled=True,
+        agent_provider=provider,
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_path=str(tmp_path / "governance"),
+        **_agent_auth_fields(tmp_path),
+    )
+    monkeypatch.setattr(route_module, "get_settings", lambda: settings)
+    raw_password = f"{provider}-password"
+    raw_token = f"{provider}-token"
+
+    def fail_provider(*_args, **_kwargs):
+        raise RuntimeError(
+            f"{provider} unavailable at "
+            f"https://operator:{raw_password}@provider.example/query?token={raw_token}"
+        )
+
+    monkeypatch.setattr(
+        route_module,
+        "execute_hermes_agent_query" if provider == "hermes" else "execute_dexter_agent_query",
+        fail_provider,
+    )
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/agent/query",
+        json={"question": "external provider diagnostics"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == {
+        "code": "AGENT_PROVIDER_EXECUTION_FAILED",
+        "message": "Agent provider execution failed.",
+    }
+    serialized_response = response.text
+    assert raw_password not in serialized_response
+    assert raw_token not in serialized_response
+    assert raw_password not in caplog.text
+    assert raw_token not in caplog.text
+    assert "[REDACTED]" in caplog.text
 
 
 def test_agent_query_routes_to_hermes_provider_when_configured(monkeypatch, tmp_path):

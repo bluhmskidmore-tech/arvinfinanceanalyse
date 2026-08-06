@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -1250,9 +1251,15 @@ def test_agent_run_status_keeps_recent_running_record_active(monkeypatch, tmp_pa
     assert [record["status"] for record in records] == ["running"]
 
 
-def test_agent_run_failure_records_error_message(monkeypatch, tmp_path):
+def test_agent_run_failure_records_error_message(monkeypatch, tmp_path, caplog):
+    raw_password = "run-provider-password"
+    raw_token = "run-provider-token"
+
     def fake_execute(request, governance_dir, settings):
-        raise RuntimeError("Hermes bridge unavailable")
+        raise RuntimeError(
+            "Hermes bridge unavailable at "
+            f"https://operator:{raw_password}@provider.example/query?token={raw_token}"
+        )
 
     client, _ = _client(monkeypatch, tmp_path, fake_execute)
 
@@ -1280,6 +1287,12 @@ def test_agent_run_failure_records_error_message(monkeypatch, tmp_path):
     assert audit["result_meta"]["result_kind"] == "agent.run_failed"
     assert audit["result_meta"]["error_type"] == "RuntimeError"
     assert audit["result_meta"]["error_code"] == "AGENT_RUN_EXECUTION_FAILED"
+    public_material = json.dumps([failed, latest, audit], ensure_ascii=False)
+    assert raw_password not in public_material
+    assert raw_token not in public_material
+    assert raw_password not in caplog.text
+    assert raw_token not in caplog.text
+    assert "[REDACTED]" in caplog.text
 
 
 def test_agent_run_accepts_local_provider_and_completes_lifecycle(monkeypatch, tmp_path):
@@ -1412,6 +1425,145 @@ def test_agent_run_follow_up_context_stays_local_even_with_dexter_provider(monke
     assert completed["provider"] == "local"
     assert local_calls == [("continue this", str(tmp_path / "moss.duckdb"), str(tmp_path / "governance"))]
     assert not dexter_calls
+
+
+@pytest.mark.parametrize("provider", ["hermes", "dexter"])
+def test_explicit_provider_diagnostic_overrides_local_routing_for_query_and_runs(
+    provider,
+    monkeypatch,
+    tmp_path,
+):
+    service_module = load_module(
+        "backend.app.services.agent_run_service",
+        "backend/app/services/agent_run_service.py",
+    )
+    service_module._AGENT_RUN_LATEST_RECORDS.clear()
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    _seed_agent_read_scope(tmp_path, monkeypatch)
+    settings = SimpleNamespace(
+        agent_enabled=True,
+        agent_provider=provider,
+        agent_hermes_model="hermes-test",
+        agent_hermes_transport="cli",
+        agent_hermes_toolsets="evidence",
+        agent_dexter_model="dexter-test",
+        agent_dexter_transport="cli",
+        agent_dexter_toolsets="research",
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_path=str(tmp_path / "governance"),
+        **_agent_auth_fields(tmp_path),
+    )
+    monkeypatch.setattr(route_module, "get_settings", lambda: settings)
+    provider_calls = []
+
+    def unexpected_local_execute(*_args, **_kwargs):
+        raise AssertionError("explicit provider diagnostic must not reach local executor")
+
+    def fake_provider_execute(request, governance_dir, runtime_settings):
+        provider_calls.append((request.question, governance_dir, runtime_settings.agent_provider))
+        return _sample_envelope().model_copy(
+            update={"answer": f"{provider} diagnostic answer"}
+        )
+
+    monkeypatch.setattr(route_module, "execute_agent_query", unexpected_local_execute)
+    monkeypatch.setattr(
+        route_module,
+        "execute_hermes_agent_query" if provider == "hermes" else "execute_dexter_agent_query",
+        fake_provider_execute,
+    )
+
+    def dispatch_inline(*, run_id):
+        return service_module.execute_agent_run_by_id(
+            run_id=run_id,
+            settings=settings,
+            executor=fake_provider_execute,
+        )
+
+    monkeypatch.setattr(service_module.execute_agent_run_task, "send", dispatch_inline)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+    body = {
+        "question": (
+            "explain external provider diagnostics for current page context "
+            "processes duration market value"
+        ),
+        "context": {
+            "conversation": {
+                "recent_turns": [
+                    {"result_kind": "agent.duration_risk", "answer": "prior governed result"}
+                ]
+            }
+        },
+        "page_context": {"page_id": "dashboard"},
+    }
+
+    query_response = client.post("/api/agent/query", json=body)
+    create_response = client.post("/api/agent/runs", json=body)
+
+    assert query_response.status_code == 200
+    assert query_response.json()["answer"] == f"{provider} diagnostic answer"
+    assert create_response.status_code == 200
+    created = create_response.json()
+    assert created["provider"] == provider
+    completed = _wait_for_terminal(client, created["run_id"])
+    assert completed["status"] == "completed"
+    assert completed["provider"] == provider
+    assert completed["result"]["answer"] == f"{provider} diagnostic answer"
+    assert [call[2] for call in provider_calls] == [provider, provider]
+
+
+def test_actual_hermes_fallback_is_safe_for_query_run_record_and_audit(
+    monkeypatch,
+    tmp_path,
+):
+    from backend.app.services import hermes_agent_service
+
+    raw_password = "actual-hermes-password"
+    raw_token = "actual-hermes-token"
+
+    def fail_hermes_runtime(**_kwargs):
+        raise RuntimeError(
+            "Hermes failed with stderr at "
+            f"https://operator:{raw_password}@provider.example/query?token={raw_token}"
+        )
+
+    monkeypatch.setattr(hermes_agent_service, "run_hermes_agent", fail_hermes_runtime)
+    client, settings = _client(
+        monkeypatch,
+        tmp_path,
+        hermes_agent_service.execute_hermes_agent_query,
+    )
+    body = {"question": "external provider diagnostics"}
+
+    query_response = client.post("/api/agent/query", json=body)
+    create_response = client.post("/api/agent/runs", json=body)
+
+    assert query_response.status_code == 200
+    assert query_response.json()["result_meta"]["result_kind"] == "agent.hermes_fallback"
+    assert create_response.status_code == 200
+    completed = _wait_for_terminal(client, create_response.json()["run_id"])
+    assert completed["status"] == "completed"
+    assert completed["result"]["result_meta"]["result_kind"] == "agent.hermes_fallback"
+    assert completed["result"]["evidence"]["filters_applied"]["fallback_reason"] == (
+        "hermes_runtime_unavailable"
+    )
+
+    public_material = "\n".join(
+        [
+            query_response.text,
+            create_response.text,
+            json.dumps(completed, ensure_ascii=False),
+            (Path(settings.governance_path) / "agent_run.jsonl").read_text(encoding="utf-8"),
+            (Path(settings.governance_path) / "agent_audit.jsonl").read_text(encoding="utf-8"),
+        ]
+    )
+    assert "Hermes failed with stderr" not in public_material
+    assert raw_password not in public_material
+    assert raw_token not in public_material
 
 
 def test_agent_run_local_owner_isolation(monkeypatch, tmp_path):

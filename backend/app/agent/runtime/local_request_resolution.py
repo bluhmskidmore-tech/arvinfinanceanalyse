@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -19,16 +20,16 @@ from backend.app.agent.schemas.agent_request import AgentQueryRequest
 _INTENT_PATTERNS: list[tuple[str, tuple[str, ...]]] = [
     (
         "gitnexus_status",
-        ("gitnexus", "仓库图谱", "代码图谱", "repo graph", "code graph", "影响分析", "context", "processes"),
+        ("gitnexus", "仓库图谱", "代码图谱", "repo graph", "code graph", "影响分析"),
     ),
     ("product_pnl", ("产品损益", "ftp")),
     ("pnl_bridge", ("桥接", "归因", "拆解", "bridge", "attribution")),
     ("risk_tensor", ("风险张量", "krd")),
-    ("duration_risk", ("久期", "dv01", "duration")),
+    ("duration_risk", ("久期", "dv01")),
     ("credit_exposure", ("信用", "利差", "集中度", "credit", "spread", "concentration")),
     (
         "portfolio_overview",
-        ("组合概览", "资产规模", "总览", "portfolio overview", "market value", "portfolio value", "asset size"),
+        ("组合概览", "资产规模", "总览", "portfolio overview", "portfolio value", "asset size"),
     ),
     ("pnl_summary", ("损益", "收益", "pnl")),
     ("market_data", ("宏观", "利率", "市场数据", "macro", "market data", "macro data", "rates data")),
@@ -110,6 +111,38 @@ _EXTERNAL_PROVIDER_PATTERNS = (
     "dexter diagnostic",
 )
 
+_GITNEXUS_AMBIGUOUS_TERMS = ("context", "process", "processes")
+_GITNEXUS_DOMAIN_TERMS = (
+    "gitnexus",
+    "code",
+    "repo",
+    "repository",
+    "symbol",
+    "call graph",
+)
+_DURATION_DOMAIN_TERMS = (
+    "asset",
+    "bond",
+    "effective",
+    "fixed income",
+    "interest rate",
+    "liability",
+    "modified",
+    "portfolio",
+    "rate risk",
+    "risk",
+)
+_MARKET_VALUE_DOMAIN_TERMS = (
+    "account",
+    "asset",
+    "balance sheet",
+    "bond",
+    "fund",
+    "holding",
+    "portfolio",
+    "position",
+)
+
 _LOCAL_INTENTS = frozenset(intent for intent, _keywords in _INTENT_PATTERNS)
 
 
@@ -143,12 +176,22 @@ def is_plain_analysis_chat_question(question: str) -> bool:
     normalized = _normalize_text(question)
     if not normalized:
         return False
-    if not any(pattern in normalized for pattern in _ANALYSIS_CHAT_PATTERNS):
+    if not any(
+        _matches_analysis_pattern(normalized, pattern)
+        for pattern in _ANALYSIS_CHAT_PATTERNS
+    ):
         return False
     return _intent_from_question(normalized) is None
 
 
 def resolve_local_request(request: AgentQueryRequest) -> LocalRequestResolution:
+    normalized_question = _normalize_text(request.question)
+    if _is_explicit_external_provider_prompt(normalized_question):
+        return LocalRequestResolution(
+            route="provider",
+            reason="provider_diagnostic",
+        )
+
     financial_workflow = resolve_financial_workflow(request.question, request.context)
     if financial_workflow is not None:
         return LocalRequestResolution(
@@ -179,8 +222,7 @@ def resolve_local_request(request: AgentQueryRequest) -> LocalRequestResolution:
             intent=explicit_intent,
         )
 
-    normalized_question = _normalize_text(request.question)
-    keyword_intent = _intent_from_question(normalized_question)
+    keyword_intent = _intent_from_question(normalized_question, request=request)
     if keyword_intent is not None:
         return LocalRequestResolution(
             route="local",
@@ -210,12 +252,6 @@ def resolve_local_request(request: AgentQueryRequest) -> LocalRequestResolution:
             route="local",
             reason="analysis_chat",
             intent="analysis_chat",
-        )
-
-    if _is_explicit_external_provider_prompt(normalized_question):
-        return LocalRequestResolution(
-            route="provider",
-            reason="provider_diagnostic",
         )
 
     return LocalRequestResolution(route="provider", reason="open_chat_or_unknown")
@@ -258,8 +294,8 @@ def _intent_from_text(value: Any) -> str | None:
     return None
 
 
-def _page_default_intent(request: AgentQueryRequest) -> str | None:
-    if request.page_context is None:
+def _page_default_intent(request: AgentQueryRequest | None) -> str | None:
+    if request is None or request.page_context is None:
         return None
     page_id = _normalize_text(request.page_context.page_id)
     return _PAGE_DEFAULT_INTENTS.get(page_id)
@@ -283,13 +319,62 @@ def _is_explicit_external_provider_prompt(normalized_question: str) -> bool:
     return any(token in normalized_question for token in _EXTERNAL_PROVIDER_PATTERNS)
 
 
-def _intent_from_question(normalized_question: str) -> str | None:
+def _intent_from_question(
+    normalized_question: str,
+    *,
+    request: AgentQueryRequest | None = None,
+) -> str | None:
     if not normalized_question:
         return None
     for intent, keywords in _INTENT_PATTERNS:
         if any(keyword.lower() in normalized_question for keyword in keywords):
             return intent
+    if _matches_domain_combination(
+        normalized_question,
+        ambiguous_terms=_GITNEXUS_AMBIGUOUS_TERMS,
+        domain_terms=_GITNEXUS_DOMAIN_TERMS,
+    ):
+        return "gitnexus_status"
+    if "duration" in normalized_question and (
+        _matches_any(normalized_question, _DURATION_DOMAIN_TERMS)
+        or _page_default_intent(request) == "duration_risk"
+    ):
+        return "duration_risk"
+    if "market value" in normalized_question and (
+        _matches_any(normalized_question, _MARKET_VALUE_DOMAIN_TERMS)
+        or _page_default_intent(request) == "portfolio_overview"
+    ):
+        return "portfolio_overview"
     return None
+
+
+def _matches_domain_combination(
+    normalized_question: str,
+    *,
+    ambiguous_terms: tuple[str, ...],
+    domain_terms: tuple[str, ...],
+) -> bool:
+    return _matches_any(normalized_question, ambiguous_terms) and _matches_any(
+        normalized_question,
+        domain_terms,
+    )
+
+
+def _matches_any(normalized_question: str, terms: tuple[str, ...]) -> bool:
+    return any(
+        re.search(
+            rf"(?<!\w){re.escape(term)}(?!\w)",
+            normalized_question,
+        )
+        is not None
+        for term in terms
+    )
+
+
+def _matches_analysis_pattern(normalized_question: str, pattern: str) -> bool:
+    if pattern.isascii():
+        return _matches_any(normalized_question, (pattern,))
+    return pattern in normalized_question
 
 
 def _normalize_intent(value: Any) -> str:

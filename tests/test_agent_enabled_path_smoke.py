@@ -972,6 +972,7 @@ def test_agent_query_enabled_path_returns_real_duration_risk_and_audit(tmp_path,
         json={
             "question": "duration",
             "context": {"user_id": "u_duration"},
+            "page_context": {"page_id": "bond-analytics"},
         },
     )
 

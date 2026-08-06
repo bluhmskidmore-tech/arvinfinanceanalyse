@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import subprocess
@@ -26,10 +27,14 @@ from backend.app.agent.schemas.agent_response import (
 from backend.app.core_finance.calibers.enums import Basis
 from backend.app.governance.agent_audit import AgentAuditPayload, append_agent_audit
 from backend.app.repositories.governance_repo import GovernanceRepository
+from backend.app.services.agent_error_sanitization import scrub_agent_runtime_error
 
 RULE_VERSION = "rv_agent_hermes_v1"
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _HERMES_BRIDGE_LOCK = threading.Lock()
+_HERMES_FALLBACK_REASON = "hermes_runtime_unavailable"
+_HERMES_FALLBACK_MESSAGE = "Hermes runtime unavailable; local fallback used."
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -155,15 +160,21 @@ def execute_hermes_agent_query(
         )
         envelope = build_hermes_envelope(request=request, result=result)
     except RuntimeError as exc:
+        _LOGGER.warning(
+            "Hermes provider runtime failed error_type=%s detail=%s",
+            exc.__class__.__name__,
+            scrub_agent_runtime_error(exc),
+        )
         result = {
             "answer": "",
             "stdout": "",
-            "stderr": str(exc),
+            "stderr": "",
             "command": str(settings.agent_hermes_command),
             "model": str(settings.agent_hermes_model or ""),
             "toolsets": str(getattr(settings, "agent_hermes_toolsets", "") or ""),
             "transport": str(getattr(settings, "agent_hermes_transport", "cli") or "cli"),
-            "error": str(exc),
+            "error": _HERMES_FALLBACK_MESSAGE,
+            "error_code": _HERMES_FALLBACK_REASON,
         }
         envelope = build_hermes_fallback_envelope(request=request, result=result)
     _append_hermes_audit(request, governance_dir, envelope, result)
@@ -596,13 +607,12 @@ def build_hermes_fallback_envelope(
 ) -> AgentEnvelope:
     trace_id = f"tr_agent_hermes_fallback_{uuid4().hex[:12]}"
     generated_at = datetime.now(UTC)
-    error_detail = _truncate(str(result.get("error") or result.get("stderr") or "Hermes runtime unavailable."), 1000)
     filters_applied = {
         key: value for key, value in request.filters.items() if value not in (None, "")
     }
     filters_applied["provider"] = "hermes"
     filters_applied["fallback_provider"] = "local"
-    filters_applied["fallback_reason"] = error_detail
+    filters_applied["fallback_reason"] = _HERMES_FALLBACK_REASON
     if result.get("model"):
         filters_applied["model"] = result["model"]
     if result.get("toolsets"):
@@ -812,7 +822,9 @@ def _build_ontology_context_block(question: str) -> str:
     except Exception:
         summaries = []
 
-    summaries_by_entity_id = {entity.entity_id: [] for entity in entities}
+    summaries_by_entity_id: dict[str, list[str]] = {
+        entity.entity_id: [] for entity in entities
+    }
     for summary in summaries:
         entity_id, separator, _ = str(summary).removeprefix("[").partition("]")
         if separator and entity_id in summaries_by_entity_id:
@@ -1022,8 +1034,14 @@ def _append_hermes_audit(
             run_id=str(request.context.get("run_id") or "").strip() or None,
             result_meta={
                 **envelope.result_meta.model_dump(mode="json"),
-                "stdout_excerpt": _truncate(result.get("stdout", ""), 1000),
-                "stderr_excerpt": _truncate(result.get("stderr", ""), 1000),
+                "stdout_excerpt": scrub_agent_runtime_error(
+                    result.get("stdout", ""),
+                    limit=1000,
+                ),
+                "stderr_excerpt": scrub_agent_runtime_error(
+                    result.get("stderr", ""),
+                    limit=1000,
+                ),
             },
         ),
     )

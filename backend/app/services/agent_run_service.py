@@ -21,6 +21,7 @@ from backend.app.agent.schemas.agent_run import (
 from backend.app.governance.agent_audit import AGENT_AUDIT_STREAM, AgentAuditPayload
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.repositories.governance_repo import GovernanceRepository
+from backend.app.services.agent_error_sanitization import scrub_agent_runtime_error
 
 AGENT_RUN_STREAM = "agent_run"
 AGENT_RUN_DISPATCH_STREAM = "agent_run_dispatch"
@@ -212,11 +213,12 @@ def create_agent_run(
             _DISPATCH_FAILURE_CODE,
             provider=queued_record.provider,
         )
-        _LOGGER.exception(
-            "Agent run dispatch failed run_id=%s provider=%s error_type=%s",
+        _LOGGER.error(
+            "Agent run dispatch failed run_id=%s provider=%s error_type=%s detail=%s",
             queued_record.run_id,
             queued_record.provider,
             exc.__class__.__name__,
+            scrub_agent_runtime_error(exc),
         )
         failed_record = _transition_record(
             settings=settings,
@@ -238,7 +240,7 @@ def create_agent_run(
                 error_code=_DISPATCH_FAILURE_CODE,
             ),
         )
-        raise AgentRunDispatchError(error_message) from exc
+        raise AgentRunDispatchError(error_message) from None
     _append_dispatch_acceptance(repo=repo, run_id=queued_record.run_id)
 
     return AgentRunCreateResponse(
@@ -826,11 +828,12 @@ def _execute_agent_run(
                     provider=provider,
                 )
                 error_code = _EXECUTION_FAILURE_CODE
-            _LOGGER.exception(
-                "Agent run execution failed run_id=%s provider=%s error_type=%s",
+            _LOGGER.error(
+                "Agent run execution failed run_id=%s provider=%s error_type=%s detail=%s",
                 run_id,
                 provider,
                 exc.__class__.__name__,
+                scrub_agent_runtime_error(exc),
             )
             failed_record = _transition_record(
                 settings=settings,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 from typing import Annotated
 
@@ -15,6 +16,7 @@ from backend.app.agent.schemas.agent_run import (
 from backend.app.api.routes.agent_workspace import router as workspace_router
 from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
+from backend.app.services.agent_error_sanitization import scrub_agent_runtime_error
 from backend.app.services.agent_run_service import (
     AgentRunDispatchError,
     AgentRunStateConflict,
@@ -75,6 +77,9 @@ _SUGGESTED_ACTION_CONFIRMATION_DETAIL = (
 _SUGGESTED_ACTION_CONFIRMATION_TOKEN_PATTERN = re.compile(
     r"^agent_action:v1:\d{1,12}:[0-9a-f]{64}$"
 )
+_PROVIDER_EXECUTION_FAILURE_CODE = "AGENT_PROVIDER_EXECUTION_FAILED"
+_PROVIDER_EXECUTION_FAILURE_DETAIL = "Agent provider execution failed."
+_LOGGER = logging.getLogger(__name__)
 
 
 def _provider_name(settings: object) -> str:
@@ -288,12 +293,27 @@ def query_agent(
 
     _ensure_agent_read_allowed(auth, settings)
 
+    provider = "local"
     try:
-        _provider, executor = _resolve_agent_executor(request, settings)
+        provider, executor = _resolve_agent_executor(request, settings)
         return executor(request, str(settings.governance_path), settings)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except RuntimeError as exc:
+        if provider != "local":
+            _LOGGER.error(
+                "Agent provider query failed provider=%s error_type=%s detail=%s",
+                provider,
+                exc.__class__.__name__,
+                scrub_agent_runtime_error(exc),
+            )
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": _PROVIDER_EXECUTION_FAILURE_CODE,
+                    "message": _PROVIDER_EXECUTION_FAILURE_DETAIL,
+                },
+            ) from None
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 

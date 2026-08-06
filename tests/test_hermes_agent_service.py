@@ -441,11 +441,20 @@ def test_execute_hermes_agent_query_keeps_business_questions_on_hermes_path(monk
     assert envelope.result_meta.result_kind == "agent.hermes"
 
 
-def test_execute_hermes_agent_query_returns_local_fallback_when_runtime_fails(monkeypatch, tmp_path):
+def test_execute_hermes_agent_query_returns_local_fallback_when_runtime_fails(
+    monkeypatch,
+    tmp_path,
+    caplog,
+):
     audit_calls = []
+    raw_password = "hermes-password"
+    raw_token = "hermes-token"
 
     def fake_run_hermes_agent(**_kwargs):
-        raise RuntimeError("Hermes failed with exit code 1: [Errno 32] Broken pipe")
+        raise RuntimeError(
+            "Hermes failed with exit code 1: [Errno 32] Broken pipe at "
+            f"https://operator:{raw_password}@provider.example/query?token={raw_token}"
+        )
 
     def fake_append_audit(request, governance_dir, envelope, result):
         audit_calls.append((request, governance_dir, envelope, result))
@@ -475,8 +484,21 @@ def test_execute_hermes_agent_query_returns_local_fallback_when_runtime_fails(mo
     assert envelope.result_meta.formal_use_allowed is False
     assert envelope.evidence.tables_used == ["hermes_local_fallback"]
     assert envelope.evidence.filters_applied["fallback_provider"] == "local"
-    assert "Broken pipe" in envelope.evidence.filters_applied["fallback_reason"]
+    assert envelope.evidence.filters_applied["fallback_reason"] == "hermes_runtime_unavailable"
     assert audit_calls
+    serialized_public_payload = json.dumps(
+        {
+            "envelope": envelope.model_dump(mode="json"),
+            "audit_result": audit_calls[0][3],
+        },
+        ensure_ascii=False,
+    )
+    assert "Broken pipe" not in serialized_public_payload
+    assert raw_password not in serialized_public_payload
+    assert raw_token not in serialized_public_payload
+    assert raw_password not in caplog.text
+    assert raw_token not in caplog.text
+    assert "[REDACTED]" in caplog.text
 
 
 def test_warm_hermes_bridge_if_configured_starts_daemon_thread(monkeypatch):

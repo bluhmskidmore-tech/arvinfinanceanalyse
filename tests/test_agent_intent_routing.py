@@ -442,6 +442,56 @@ def test_market_value_phrase_routes_to_portfolio_overview_not_market_data(tmp_pa
     assert any(card.title == "Total Market Value" for card in envelope.cards)
 
 
+@pytest.mark.parametrize(
+    ("question", "page_id", "expected_route", "expected_intent"),
+    [
+        ("context", None, "provider", None),
+        ("processes", None, "provider", None),
+        ("duration", None, "provider", None),
+        ("market value", None, "provider", None),
+        ("decode context", None, "provider", None),
+        ("report processes", None, "provider", None),
+        ("brisk duration", None, "provider", None),
+        ("fundamental market value", None, "provider", None),
+        ("GitNexus context", None, "local", "gitnexus_status"),
+        ("repository processes", None, "local", "gitnexus_status"),
+        ("bond duration", None, "local", "duration_risk"),
+        ("portfolio market value", None, "local", "portfolio_overview"),
+        ("duration", "bond-analytics", "local", "duration_risk"),
+        ("market value", "dashboard", "local", "portfolio_overview"),
+    ],
+)
+def test_ambiguous_english_intent_terms_require_domain_or_page_context(
+    question,
+    page_id,
+    expected_route,
+    expected_intent,
+):
+    resolution_module = load_module(
+        "backend.app.agent.runtime.local_request_resolution",
+        "backend/app/agent/runtime/local_request_resolution.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+    page_context = (
+        request_module.AgentPageContext(page_id=page_id)
+        if page_id is not None
+        else None
+    )
+
+    resolution = resolution_module.resolve_local_request(
+        request_module.AgentQueryRequest(
+            question=question,
+            page_context=page_context,
+        )
+    )
+
+    assert resolution.route == expected_route
+    assert resolution.intent == expected_intent
+
+
 def test_explicit_context_intent_routes_without_keyword_guessing(tmp_path):
     tool_module = load_module(
         "backend.app.agent.tools.analysis_view_tool",
