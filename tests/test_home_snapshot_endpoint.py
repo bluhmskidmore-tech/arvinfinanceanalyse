@@ -45,6 +45,25 @@ def _home_snapshot_with_dates(
     allow_partial: bool = False,
 ) -> dict[str, object]:
     es = _executive_service()
+
+    def product_headlines(
+        selected_report_date: str,
+    ) -> tuple[object, object, int, int]:
+        ytd = es._product_category_ytd_headline_from_values(
+            selected_report_date,
+            {
+                "grand_total": 120_000_000.0,
+                "intermediate_business_income": 20_000_000.0,
+            },
+        )
+        monthly = es._product_category_monthly_headline_from_values(
+            selected_report_date,
+            {"grand_total": 10_000_000.0},
+        )
+        assert ytd is not None
+        assert monthly is not None
+        return ytd, monthly, 0, 0
+
     monkeypatch.setattr(es, "_list_domain_date_context", lambda: context)
     monkeypatch.setattr(
         es,
@@ -59,8 +78,7 @@ def _home_snapshot_with_dates(
             "result": {"title": "attribution", "total": "0", "segments": []},
         },
     )
-    monkeypatch.setattr(es, "_build_product_category_ytd_headline", lambda _rd: None)
-    monkeypatch.setattr(es, "_build_product_category_monthly_headline", lambda _rd: None)
+    monkeypatch.setattr(es, "_build_product_category_headlines", product_headlines)
     return es.home_snapshot_envelope(report_date=report_date, allow_partial=allow_partial)
 
 
@@ -134,6 +152,7 @@ class TestHomeSnapshotDateSelection:
         assert "pnl" in result["domains_missing"]
         assert result["domains_effective_date"]["balance_sheet"] == "2026-04-08"
         assert result["domains_effective_date"]["pnl"] == "2026-04-07"
+        assert env["result_meta"]["vendor_status"] == "vendor_unavailable"
 
     def test_partial_no_requested_uses_union_max(self, monkeypatch: pytest.MonkeyPatch) -> None:
         env = _home_snapshot_with_dates(
@@ -145,6 +164,7 @@ class TestHomeSnapshotDateSelection:
         result = env["result"]
         assert result["report_date"] == "2026-04-08"
         assert {"pnl"} <= set(result["domains_missing"])
+        assert env["result_meta"]["vendor_status"] == "vendor_unavailable"
 
 
 class TestHomeSnapshotEnvelope:
@@ -184,6 +204,19 @@ class TestHomeSnapshotEnvelope:
 
     def test_strict_intersection_returns_unified_date(self) -> None:
         es = _executive_service()
+        ytd = es._product_category_ytd_headline_from_values(
+            "2026-04-08",
+            {
+                "grand_total": 120_000_000.0,
+                "intermediate_business_income": 20_000_000.0,
+            },
+        )
+        monthly = es._product_category_monthly_headline_from_values(
+            "2026-04-08",
+            {"grand_total": 10_000_000.0},
+        )
+        assert ytd is not None
+        assert monthly is not None
         with patch.object(es, "_list_domain_date_context") as mock_dates:
             mock_dates.return_value = {
                 "balance": ["2026-04-08"],
@@ -193,7 +226,11 @@ class TestHomeSnapshotEnvelope:
             }
             with patch.object(es, "executive_overview") as mock_ov:
                 with patch.object(es, "executive_pnl_attribution") as mock_attr:
-                    with patch.object(es, "_build_product_category_ytd_headline", return_value=None):
+                    with patch.object(
+                        es,
+                        "_build_product_category_headlines",
+                        return_value=(ytd, monthly, 0, 0),
+                    ):
                         mock_ov.return_value = {
                             "result_meta": {},
                             "result": {"title": "经营总览", "metrics": []},
@@ -244,6 +281,137 @@ class TestHomeSnapshotEnvelope:
             assert env["result"]["mode"] == "partial"
             assert "pnl" in env["result"]["domains_missing"]
             assert env["result_meta"]["quality_flag"] == "warning"
+
+    def test_component_degradation_is_promoted_to_snapshot_warning(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        es = _executive_service()
+        report_date = "2026-04-08"
+        ytd = es._product_category_ytd_headline_from_values(
+            report_date,
+            {
+                "grand_total": 120_000_000.0,
+                "intermediate_business_income": 20_000_000.0,
+            },
+        )
+        monthly = es._product_category_monthly_headline_from_values(
+            report_date,
+            {"grand_total": 10_000_000.0},
+        )
+        assert ytd is not None
+        assert monthly is not None
+
+        monkeypatch.setattr(
+            es,
+            "_list_domain_date_context",
+            lambda: {
+                "balance": [report_date],
+                "pnl": [report_date],
+                "liability": [report_date],
+                "bond": [report_date],
+            },
+        )
+        monkeypatch.setattr(
+            es,
+            "executive_overview",
+            lambda **_kwargs: {
+                "result_meta": {
+                    "quality_flag": "ok",
+                    "vendor_status": "ok",
+                },
+                "result": {"title": "经营总览", "metrics": []},
+            },
+        )
+        monkeypatch.setattr(
+            es,
+            "executive_pnl_attribution",
+            lambda report_date=None: {
+                "result_meta": {
+                    "quality_flag": "warning",
+                    "vendor_status": "vendor_unavailable",
+                },
+                "result": es._pnl_attribution_unavailable_payload().model_dump(
+                    mode="json"
+                ),
+            },
+        )
+        monkeypatch.setattr(
+            es,
+            "_build_product_category_headlines",
+            lambda _report_date: (ytd, monthly, 0, 0),
+        )
+
+        env = es.home_snapshot_envelope(
+            report_date=report_date,
+            allow_partial=False,
+        )
+
+        assert env["result"]["domains_missing"] == []
+        assert env["result_meta"]["quality_flag"] == "warning"
+        assert env["result_meta"]["vendor_status"] == "vendor_unavailable"
+        assert env["result_meta"]["filters_applied"]["degraded_components"] == [
+            "attribution"
+        ]
+
+    def test_missing_product_headlines_are_promoted_to_snapshot_warning(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        es = _executive_service()
+        report_date = "2026-04-08"
+        monkeypatch.setattr(
+            es,
+            "_list_domain_date_context",
+            lambda: {
+                "balance": [report_date],
+                "pnl": [report_date],
+                "liability": [report_date],
+                "bond": [report_date],
+            },
+        )
+        monkeypatch.setattr(
+            es,
+            "executive_overview",
+            lambda **_kwargs: {
+                "result_meta": {
+                    "quality_flag": "ok",
+                    "vendor_status": "ok",
+                },
+                "result": {"title": "经营总览", "metrics": []},
+            },
+        )
+        monkeypatch.setattr(
+            es,
+            "executive_pnl_attribution",
+            lambda report_date=None: {
+                "result_meta": {
+                    "quality_flag": "ok",
+                    "vendor_status": "ok",
+                },
+                "result": es._pnl_attribution_unavailable_payload().model_dump(
+                    mode="json"
+                ),
+            },
+        )
+        monkeypatch.setattr(
+            es,
+            "_build_product_category_headlines",
+            lambda _report_date: (None, None, 0, 0),
+        )
+
+        env = es.home_snapshot_envelope(
+            report_date=report_date,
+            allow_partial=False,
+        )
+
+        assert env["result"]["domains_missing"] == []
+        assert env["result_meta"]["quality_flag"] == "warning"
+        assert env["result_meta"]["vendor_status"] == "ok"
+        assert env["result_meta"]["filters_applied"]["degraded_components"] == [
+            "product_category_ytd",
+            "product_category_monthly",
+        ]
 
     def test_snapshot_reuses_domain_date_lists_for_overview(self, monkeypatch: pytest.MonkeyPatch) -> None:
         es = _executive_service()

@@ -4340,11 +4340,39 @@ def _compute_home_snapshot_envelope(
         product_category_monthly=product_category_monthly,
     )
 
+    degraded_components: list[str] = []
+    degraded_vendor_statuses: list[str] = []
+    for component_name, component_envelope in (
+        ("overview", overview_env),
+        ("attribution", attribution_env),
+    ):
+        component_meta = component_envelope.get("result_meta")
+        if not isinstance(component_meta, dict):
+            continue
+        component_quality = str(component_meta.get("quality_flag") or "").strip()
+        component_vendor = str(component_meta.get("vendor_status") or "").strip()
+        if (
+            component_quality not in {"", "ok"}
+            or component_vendor not in {"", "ok"}
+        ):
+            degraded_components.append(component_name)
+        if component_vendor in {"vendor_stale", "vendor_unavailable"}:
+            degraded_vendor_statuses.append(component_vendor)
+    if product_category_ytd is None:
+        degraded_components.append("product_category_ytd")
+    if product_category_monthly is None:
+        degraded_components.append("product_category_monthly")
+
+    snapshot_degraded = bool(domains_missing or degraded_components)
     quality_flag: Literal["ok", "warning", "error", "stale"] = (
-        "ok" if not domains_missing else "warning"
+        "warning" if snapshot_degraded else "ok"
     )
     vendor_status: Literal["ok", "vendor_stale", "vendor_unavailable"] = (
-        "ok" if not domains_missing else "vendor_stale"
+        "vendor_unavailable"
+        if domains_missing or "vendor_unavailable" in degraded_vendor_statuses
+        else "vendor_stale"
+        if "vendor_stale" in degraded_vendor_statuses
+        else "ok"
     )
 
     step_t0 = time.perf_counter()
@@ -4361,6 +4389,7 @@ def _compute_home_snapshot_envelope(
             "report_date": target_date,
             "effective_report_dates": effective,
             "domains_missing": domains_missing,
+            "degraded_components": degraded_components,
         },
     )
     _log_home_snapshot_perf_step(
