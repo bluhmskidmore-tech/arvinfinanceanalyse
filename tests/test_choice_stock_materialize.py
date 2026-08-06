@@ -700,6 +700,10 @@ def test_v20_database_upgrades_to_v21_choice_stock_schema(tmp_path: Path) -> Non
         "v31: Market breadth daily counts for Livermore gate",
         "v32: Recover read indexes and constrain governed PnL/FX grains",
         "v33: Materialize governed Risk Tensor read metrics and upstream lineage",
+        "v34: Preserve formal FI source classification metadata",
+        "v35: Preserve bond analytics value date",
+        "v36: Disclose risk tensor projection quality proxies",
+        "v37: Preserve bond payment-frequency fallback provenance",
     ]
     conn = duckdb.connect(str(db_path), read_only=True)
     try:
