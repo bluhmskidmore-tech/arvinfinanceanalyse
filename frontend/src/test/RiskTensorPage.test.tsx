@@ -300,7 +300,7 @@ describe("RiskTensorPage", () => {
     expect(screen.getByText("90 日资产现金流")).toBeInTheDocument();
     expect(screen.getByText("90 日负债现金流")).toBeInTheDocument();
     expect(screen.getAllByText("Issuer concentration above desk threshold").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("质量标记：预警")).toBeInTheDocument();
+    expect(screen.getAllByText("质量标记：预警").length).toBeGreaterThanOrEqual(1);
     const priorChange = screen.getByTestId("risk-tensor-prior-period-change");
     expect(priorChange).toHaveTextContent("较上一报告日 2026-02-27");
     expect(priorChange).toHaveTextContent("监管口径 DV01");
@@ -622,6 +622,38 @@ describe("RiskTensorPage", () => {
       expect(getRiskTensor).toHaveBeenCalledWith("2026-02-28");
       expect(getRiskTensor).not.toHaveBeenCalledWith("2026-02-27");
     });
+  });
+
+  it("surfaces result_meta quality and fallback in a first-screen data status strip", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_status_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => {
+      const resultMeta: ResultMeta = {
+        ...buildMeta("risk.tensor", `tr_tensor_status_${reportDate}`),
+        quality_flag: "warning",
+        fallback_mode: "latest_snapshot",
+        generated_at: "2026-04-12T08:00:00Z",
+      };
+      return {
+        result_meta: resultMeta,
+        result: tensorResult(reportDate),
+      };
+    });
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const status = await screen.findByTestId("risk-tensor-data-status");
+    expect(status).toHaveTextContent("质量标记：预警");
+    expect(status).toHaveTextContent("降级模式：最新快照降级");
+    expect(status).toHaveTextContent("生成时间：2026-04-12T08:00:00Z");
+    expect(status).toHaveTextContent("来源版本：sv_tensor_test");
   });
 
   it("honors report_date in the URL querystring", async () => {
