@@ -361,9 +361,13 @@ def _load_livermore_strategy_payload_uncached(
             as_of_date=latest_trade_date,
             conn=shared_conn,
         )
-    supplement: MarketGateSupplement | None = None
-    if latest_trade_date is not None:
-        supplement = fetch_market_gate_supplement(duckdb_path=duckdb_path, trade_date=latest_trade_date)
+        supplement: MarketGateSupplement | None = None
+        if latest_trade_date is not None:
+            supplement = fetch_market_gate_supplement(
+                duckdb_path=duckdb_path,
+                trade_date=latest_trade_date,
+                conn=shared_conn,
+            )
 
     market_gate = evaluate_market_gate(cast(list[BroadIndexObservation], history_rows), supplement=supplement)
     market_gate = apply_macro_gate_overlay(
@@ -1603,6 +1607,7 @@ def _load_choice_stock_outputs(
     stock_candidate_policy: str | None = None,
     macro_score: float | None = None,
     theme_overlay_result: ThemeOverlayReadResult | None = None,
+    conn: duckdb.DuckDBPyConnection | None = None,
 ) -> _ChoiceStockOutputs:
     if not stock_readiness.ready or as_of_date is None:
         return _ChoiceStockOutputs(
@@ -1630,6 +1635,21 @@ def _load_choice_stock_outputs(
             evidence_rows=0,
         )
 
+    if conn is None:
+        with _shared_read_only_connection(duckdb_path) as shared_conn:
+            if shared_conn is not None:
+                return _load_choice_stock_outputs(
+                    duckdb_path=duckdb_path,
+                    as_of_date=as_of_date,
+                    market_state=market_state,
+                    stock_readiness=stock_readiness,
+                    backfill_mode=backfill_mode,
+                    stock_candidate_policy=stock_candidate_policy,
+                    macro_score=macro_score,
+                    theme_overlay_result=theme_overlay_result,
+                    conn=shared_conn,
+                )
+
     if backfill_mode:
         from backend.app.tasks.choice_stock_materialize import ChoiceStockMaterializationCoverage
 
@@ -1647,6 +1667,7 @@ def _load_choice_stock_outputs(
         stock_coverage = load_choice_stock_materialization_coverage(
             duckdb_path=duckdb_path,
             as_of_date=as_of_date,
+            conn=conn,
         )
         sector_coverage = _project_sector_materialization_coverage(stock_coverage)
         if sector_coverage is None:
@@ -1654,7 +1675,22 @@ def _load_choice_stock_outputs(
                 duckdb_path=duckdb_path,
                 as_of_date=as_of_date,
                 required_items=SECTOR_REQUIRED_ITEMS,
+                conn=conn,
             )
+    if conn is not None:
+        return _load_choice_stock_outputs_on_conn(
+            conn,
+            duckdb_path=duckdb_path,
+            as_of_date=as_of_date,
+            market_state=market_state,
+            stock_readiness=stock_readiness,
+            backfill_mode=backfill_mode,
+            stock_candidate_policy=stock_candidate_policy,
+            macro_score=macro_score,
+            theme_overlay_result=theme_overlay_result,
+            sector_coverage=sector_coverage,
+            stock_coverage=stock_coverage,
+        )
     # Reuse one read-only connection for every stock loader in this request
     # instead of opening the DuckDB file once per loader.
     with _shared_read_only_connection(duckdb_path) as stock_conn:

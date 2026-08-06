@@ -688,9 +688,17 @@ def load_choice_stock_materialization_coverage(
     duckdb_path: str,
     as_of_date: str | date,
     required_items: tuple[tuple[str, str], ...] = REQUIRED_CHOICE_STOCK_REQUEST_ITEMS,
+    conn: duckdb.DuckDBPyConnection | None = None,
 ) -> ChoiceStockMaterializationCoverage:
     resolved_date = _normalize_date(as_of_date)
     path = Path(duckdb_path)
+    if conn is not None:
+        return _load_choice_stock_materialization_coverage_uncached(
+            path=path,
+            resolved_date=resolved_date,
+            required_items=required_items,
+            conn=conn,
+        )
     if not path.exists():
         return _coverage(
             as_of_date=resolved_date,
@@ -715,6 +723,7 @@ def load_choice_stock_materialization_coverage(
                 path=path,
                 resolved_date=resolved_date,
                 required_items=required_items,
+                conn=conn,
             ),
         )
 
@@ -722,6 +731,7 @@ def load_choice_stock_materialization_coverage(
         path=path,
         resolved_date=resolved_date,
         required_items=required_items,
+        conn=conn,
     )
 
 
@@ -750,16 +760,20 @@ def _load_choice_stock_materialization_coverage_uncached(
     path: Path,
     resolved_date: str,
     required_items: tuple[tuple[str, str], ...],
+    conn: duckdb.DuckDBPyConnection | None = None,
 ) -> ChoiceStockMaterializationCoverage:
-    try:
-        conn = duckdb.connect(str(path), read_only=True)
-    except duckdb.Error:
-        return _coverage(
-            as_of_date=resolved_date,
-            status="not_materialized",
-            completed=[],
-            missing=_format_required_items(required_items),
-        )
+    owns_conn = conn is None
+    if owns_conn:
+        try:
+            conn = duckdb.connect(str(path), read_only=True)
+        except duckdb.Error:
+            return _coverage(
+                as_of_date=resolved_date,
+                status="not_materialized",
+                completed=[],
+                missing=_format_required_items(required_items),
+            )
+    assert conn is not None
     try:
         tables = {row[0] for row in conn.execute("show tables").fetchall()}
         required_tables = {
@@ -786,7 +800,8 @@ def _load_choice_stock_materialization_coverage_uncached(
             missing=_format_required_items(required_items),
         )
     finally:
-        conn.close()
+        if owns_conn:
+            conn.close()
 
     completed = audited & landed
     missing = [item for item in _format_required_items(required_items) if item not in completed]

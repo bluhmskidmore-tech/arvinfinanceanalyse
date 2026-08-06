@@ -16,14 +16,22 @@ def ensure_livermore_gate_supplement_schema(conn: duckdb.DuckDBPyConnection) -> 
         conn.execute(statement)
 
 
-def fetch_market_gate_supplement(*, duckdb_path: str, trade_date: date) -> MarketGateSupplement | None:
-    path = Path(duckdb_path)
-    if not path.is_file():
-        return None
-    try:
-        conn = duckdb.connect(str(path), read_only=True)
-    except duckdb.Error:
-        return None
+def fetch_market_gate_supplement(
+    *,
+    duckdb_path: str,
+    trade_date: date,
+    conn: duckdb.DuckDBPyConnection | None = None,
+) -> MarketGateSupplement | None:
+    owns_conn = conn is None
+    if owns_conn:
+        path = Path(duckdb_path)
+        if not path.is_file():
+            return None
+        try:
+            conn = duckdb.connect(str(path), read_only=True)
+        except duckdb.Error:
+            return None
+    assert conn is not None
     try:
         row = conn.execute(
             """
@@ -47,7 +55,8 @@ def fetch_market_gate_supplement(*, duckdb_path: str, trade_date: date) -> Marke
     except duckdb.Error:
         return None
     finally:
-        conn.close()
+        if owns_conn:
+            conn.close()
 
     if not hit:
         return None

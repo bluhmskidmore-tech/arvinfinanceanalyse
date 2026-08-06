@@ -1347,6 +1347,7 @@ def test_livermore_strategy_derives_sector_ready_from_partial_full_coverage(
 
     calls: list[dict[str, object]] = []
     captured: dict[str, object] = {}
+    shared_conn = object()
     full_partial = ChoiceStockMaterializationCoverage(
         as_of_date="2026-06-18",
         full_coverage=False,
@@ -1376,7 +1377,7 @@ def test_livermore_strategy_derives_sector_ready_from_partial_full_coverage(
     monkeypatch.setattr(
         service,
         "_shared_read_only_connection",
-        lambda _duckdb_path: nullcontext(object()),
+        lambda _duckdb_path: nullcontext(shared_conn),
     )
     monkeypatch.setattr(
         service, "_load_choice_stock_outputs_on_conn", fake_outputs_on_conn
@@ -1390,7 +1391,13 @@ def test_livermore_strategy_derives_sector_ready_from_partial_full_coverage(
     )
 
     assert outputs.marker == "captured"
-    assert calls == [{"duckdb_path": "unused.duckdb", "as_of_date": "2026-06-18"}]
+    assert calls == [
+        {
+            "duckdb_path": "unused.duckdb",
+            "as_of_date": "2026-06-18",
+            "conn": shared_conn,
+        }
+    ]
     assert captured["stock_coverage"] is full_partial
     sector_coverage = captured["sector_coverage"]
     assert isinstance(sector_coverage, ChoiceStockMaterializationCoverage)
@@ -1417,6 +1424,7 @@ def test_livermore_strategy_rechecks_sector_when_full_coverage_is_not_materializ
 
     calls: list[dict[str, object]] = []
     captured: dict[str, object] = {}
+    shared_conn = object()
     full_not_materialized = ChoiceStockMaterializationCoverage(
         as_of_date="2026-06-18",
         full_coverage=False,
@@ -1456,7 +1464,7 @@ def test_livermore_strategy_rechecks_sector_when_full_coverage_is_not_materializ
     monkeypatch.setattr(
         service,
         "_shared_read_only_connection",
-        lambda _duckdb_path: nullcontext(object()),
+        lambda _duckdb_path: nullcontext(shared_conn),
     )
     monkeypatch.setattr(
         service, "_load_choice_stock_outputs_on_conn", fake_outputs_on_conn
@@ -1471,11 +1479,12 @@ def test_livermore_strategy_rechecks_sector_when_full_coverage_is_not_materializ
 
     assert outputs.marker == "captured"
     assert calls == [
-        {"duckdb_path": "unused.duckdb", "as_of_date": "2026-06-18"},
+        {"duckdb_path": "unused.duckdb", "as_of_date": "2026-06-18", "conn": shared_conn},
         {
             "duckdb_path": "unused.duckdb",
             "as_of_date": "2026-06-18",
             "required_items": service.SECTOR_REQUIRED_ITEMS,
+            "conn": shared_conn,
         },
     ]
     assert captured["stock_coverage"] is full_not_materialized
@@ -1492,6 +1501,7 @@ def test_livermore_strategy_projects_partial_sector_coverage_in_required_order(
 
     calls: list[dict[str, object]] = []
     captured: dict[str, object] = {}
+    shared_conn = object()
     full_partial = ChoiceStockMaterializationCoverage(
         as_of_date="2026-06-18",
         full_coverage=False,
@@ -1524,7 +1534,7 @@ def test_livermore_strategy_projects_partial_sector_coverage_in_required_order(
     monkeypatch.setattr(
         service,
         "_shared_read_only_connection",
-        lambda _duckdb_path: nullcontext(object()),
+        lambda _duckdb_path: nullcontext(shared_conn),
     )
     monkeypatch.setattr(
         service, "_load_choice_stock_outputs_on_conn", fake_outputs_on_conn
@@ -1538,7 +1548,13 @@ def test_livermore_strategy_projects_partial_sector_coverage_in_required_order(
     )
 
     assert outputs.marker == "captured"
-    assert calls == [{"duckdb_path": "unused.duckdb", "as_of_date": "2026-06-18"}]
+    assert calls == [
+        {
+            "duckdb_path": "unused.duckdb",
+            "as_of_date": "2026-06-18",
+            "conn": shared_conn,
+        }
+    ]
     sector_coverage = captured["sector_coverage"]
     assert isinstance(sector_coverage, ChoiceStockMaterializationCoverage)
     assert sector_coverage.full_coverage is False
