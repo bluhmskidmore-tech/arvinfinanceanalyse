@@ -1004,17 +1004,26 @@ function compactMetaStatus(value: ResultMeta["quality_flag"]) {
   };
 }
 
+function compactFallbackLabel(value: ResultMeta["fallback_mode"]) {
+  if (value === "none") {
+    return "未降级";
+  }
+  if (value === "latest_snapshot") {
+    return "最新快照降级";
+  }
+  return compactMetaValue(value);
+}
+
 function CurrentViewMetaStrip(props: {
   title: string;
   meta: ResultMeta;
   testId: string;
 }) {
   const quality = compactMetaStatus(props.meta.quality_flag);
-  const fallback =
-    props.meta.fallback_mode === "none"
-      ? "未降级"
-      : compactMetaValue(props.meta.fallback_mode);
+  const fallback = compactFallbackLabel(props.meta.fallback_mode);
   const fields = [
+    ["质量标记", quality.label],
+    ["降级模式", fallback],
     [
       "口径",
       props.meta.basis === "formal"
@@ -1086,7 +1095,7 @@ function CurrentViewMetaStrip(props: {
               color: quality.color,
             }}
           >
-            {quality.label}
+            质量标记：{quality.label}
           </span>
           <span
             style={{
@@ -1098,7 +1107,7 @@ function CurrentViewMetaStrip(props: {
               color: pageMutedTextColor,
             }}
           >
-            {fallback}
+            降级模式：{fallback}
           </span>
         </div>
       </div>
