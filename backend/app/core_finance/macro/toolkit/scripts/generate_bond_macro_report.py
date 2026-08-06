@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import math
 import os
 import sqlite3
@@ -12,25 +13,18 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-try:
+if importlib.util.find_spec("matplotlib") is None:
+    matplotlib = None
+    mdates = None
+    plt = None
+else:
     import matplotlib
 
     matplotlib.use("Agg")
     import matplotlib.dates as mdates
     import matplotlib.pyplot as plt
-except ImportError:
-    matplotlib = None
-    mdates = None
-    plt = None
 
-try:
-    from docx import Document
-    from docx.enum.section import WD_SECTION
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
-    from docx.oxml import OxmlElement
-    from docx.oxml.ns import qn
-    from docx.shared import Inches, Pt, RGBColor
-except ImportError:
+if importlib.util.find_spec("docx") is None:
     Document = None
     WD_SECTION = None
     WD_ALIGN_PARAGRAPH = None
@@ -39,11 +33,21 @@ except ImportError:
     Inches = None
     Pt = None
     RGBColor = None
+else:
+    from docx import Document
+    from docx.enum.section import WD_SECTION
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    from docx.shared import Inches, Pt, RGBColor
 
-_PKG = Path(__file__).resolve().parent.parent
-if str(_PKG) not in sys.path:
-    sys.path.insert(0, str(_PKG))
-from paths import ASSET_DIR, OUTPUT_DIR
+if __package__:
+    from backend.app.core_finance.macro.toolkit.paths import ASSET_DIR, OUTPUT_DIR
+else:
+    _PKG = Path(__file__).resolve().parent.parent
+    if str(_PKG) not in sys.path:
+        sys.path.insert(0, str(_PKG))
+    from paths import ASSET_DIR, OUTPUT_DIR
 
 MARKET_DB = Path(os.environ.get("MOSS_MARKET_DB_PATH", r"D:\MOSS-SYSTEM-V1\data_warehouse\market.db"))
 OUTPUT_DOC = OUTPUT_DIR / f"债券及宏观报告_{datetime.now().strftime('%Y%m%d_%H%M')}.docx"

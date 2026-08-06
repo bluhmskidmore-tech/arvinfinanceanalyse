@@ -1,6 +1,7 @@
 import warnings
 
 warnings.filterwarnings("ignore")
+import importlib.util
 import os
 import sys
 from datetime import datetime, timedelta
@@ -9,14 +10,14 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-try:
+if importlib.util.find_spec("matplotlib") is None:
+    matplotlib = None
+    plt = None
+else:
     import matplotlib
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-except ImportError:
-    matplotlib = None
-    plt = None
 
 from scipy.optimize import minimize
 

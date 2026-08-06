@@ -11,6 +11,7 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
+import importlib.util
 import sys
 
 import numpy as np
@@ -21,16 +22,16 @@ if __package__:
 else:
     import akshare as ak
 
-try:
+if importlib.util.find_spec("matplotlib") is None:
+    matplotlib = None
+    mdates = None
+    plt = None
+else:
     import matplotlib
 
     matplotlib.use("Agg")
     import matplotlib.dates as mdates
     import matplotlib.pyplot as plt
-except ImportError:
-    matplotlib = None
-    mdates = None
-    plt = None
 
 from datetime import datetime
 from pathlib import Path

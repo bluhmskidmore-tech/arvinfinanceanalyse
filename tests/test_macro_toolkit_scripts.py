@@ -4,6 +4,7 @@ import importlib
 import importlib.util
 import inspect
 import py_compile
+import subprocess
 import sys
 import time
 from datetime import UTC, date, datetime
@@ -918,22 +919,32 @@ def test_legacy_vendor_imports_resolve_to_system_choice_tushare(tmp_path, monkey
 def test_macro_toolkit_scripts_package_keeps_vendor_shims_local() -> None:
     previous_akshare = sys.modules.pop("akshare", None)
     previous_windpy = sys.modules.pop("WindPy", None)
+    previous_paths = sys.modules.pop("paths", None)
+    toolkit_path_count = sys.path.count(str(TOOLKIT_ROOT))
+    module_names = (
+        "backend.app.core_finance.macro.toolkit.scripts.cta_trend_cn",
+        "backend.app.core_finance.macro.toolkit.scripts.dcc_garch_cn",
+        "backend.app.core_finance.macro.toolkit.scripts.risk_parity_cn",
+        "backend.app.core_finance.macro.toolkit.scripts.credit_bond_data",
+        "backend.app.core_finance.macro.toolkit.scripts.credit_bond_dashboard",
+        "backend.app.core_finance.macro.toolkit.scripts.generate_bond_macro_report",
+    )
+    missing = object()
+    previous_modules = {name: sys.modules.pop(name, missing) for name in module_names}
     try:
-        for module_name in (
-            "backend.app.core_finance.macro.toolkit.scripts.cta_trend_cn",
-            "backend.app.core_finance.macro.toolkit.scripts.dcc_garch_cn",
-            "backend.app.core_finance.macro.toolkit.scripts.risk_parity_cn",
-            "backend.app.core_finance.macro.toolkit.scripts.credit_bond_data",
-        ):
-            sys.modules.pop(module_name, None)
-
         cta_script = importlib.import_module("backend.app.core_finance.macro.toolkit.scripts.cta_trend_cn")
         dcc_script = importlib.import_module("backend.app.core_finance.macro.toolkit.scripts.dcc_garch_cn")
         rp_script = importlib.import_module("backend.app.core_finance.macro.toolkit.scripts.risk_parity_cn")
         credit_bond_data = importlib.import_module("backend.app.core_finance.macro.toolkit.scripts.credit_bond_data")
+        credit_bond_dashboard = importlib.import_module("backend.app.core_finance.macro.toolkit.scripts.credit_bond_dashboard")
+        generate_bond_macro_report = importlib.import_module(
+            "backend.app.core_finance.macro.toolkit.scripts.generate_bond_macro_report"
+        )
 
         assert "akshare" not in sys.modules
         assert "WindPy" not in sys.modules
+        assert "paths" not in sys.modules
+        assert sys.path.count(str(TOOLKIT_ROOT)) == toolkit_path_count
     finally:
         if previous_akshare is not None:
             sys.modules["akshare"] = previous_akshare
@@ -943,6 +954,15 @@ def test_macro_toolkit_scripts_package_keeps_vendor_shims_local() -> None:
             sys.modules["WindPy"] = previous_windpy
         else:
             sys.modules.pop("WindPy", None)
+        if previous_paths is not None:
+            sys.modules["paths"] = previous_paths
+        else:
+            sys.modules.pop("paths", None)
+        for module_name, previous_module in previous_modules.items():
+            if previous_module is missing:
+                sys.modules.pop(module_name, None)
+            else:
+                sys.modules[module_name] = previous_module
 
     assert cta_script.load_prices.__module__ == "backend.app.core_finance.macro.toolkit.scripts.cta_trend_cn"
     assert dcc_script.load_prices.__module__ == "backend.app.core_finance.macro.toolkit.scripts.dcc_garch_cn"
@@ -950,6 +970,95 @@ def test_macro_toolkit_scripts_package_keeps_vendor_shims_local() -> None:
     assert Path(cta_script.ak.__file__).resolve() == (TOOLKIT_ROOT / "akshare.py").resolve()
     assert Path(dcc_script.ak.__file__).resolve() == (TOOLKIT_ROOT / "akshare.py").resolve()
     assert credit_bond_data.w.__class__.__module__ == "backend.app.core_finance.macro.toolkit.WindPy"
+    assert credit_bond_dashboard.paths.__name__ == "backend.app.core_finance.macro.toolkit.paths"
+    assert generate_bond_macro_report.ASSET_DIR == credit_bond_dashboard.paths.ASSET_DIR
+    assert generate_bond_macro_report.OUTPUT_DIR == credit_bond_dashboard.paths.OUTPUT_DIR
+
+
+def test_macro_toolkit_script_matplotlib_internal_import_error_propagates(monkeypatch) -> None:
+    import builtins
+
+    module_name = "backend.app.core_finance.macro.toolkit.scripts.cta_trend_cn"
+    previous_module = sys.modules.pop(module_name, None)
+    real_find_spec = importlib.util.find_spec
+    real_import = builtins.__import__
+    fake_matplotlib = SimpleNamespace(use=lambda *_args, **_kwargs: None)
+
+    def fake_find_spec(name: str, *args, **kwargs):
+        if name == "matplotlib":
+            return object()
+        return real_find_spec(name, *args, **kwargs)
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "matplotlib":
+            return fake_matplotlib
+        if name == "matplotlib.dates":
+            raise ImportError("synthetic internal matplotlib failure")
+        return real_import(name, globals, locals, fromlist, level)
+
+    try:
+        monkeypatch.setattr(importlib.util, "find_spec", fake_find_spec)
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        with pytest.raises(ImportError, match="synthetic internal matplotlib failure"):
+            importlib.import_module(module_name)
+    finally:
+        sys.modules.pop(module_name, None)
+        if previous_module is not None:
+            sys.modules[module_name] = previous_module
+
+
+def test_macro_toolkit_script_docx_internal_import_error_propagates(monkeypatch) -> None:
+    import builtins
+
+    module_name = "backend.app.core_finance.macro.toolkit.scripts.generate_bond_macro_report"
+    previous_module = sys.modules.pop(module_name, None)
+    real_find_spec = importlib.util.find_spec
+    real_import = builtins.__import__
+    fake_docx = SimpleNamespace(Document=object)
+
+    def fake_find_spec(name: str, *args, **kwargs):
+        if name == "matplotlib":
+            return None
+        if name == "docx":
+            return object()
+        return real_find_spec(name, *args, **kwargs)
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "docx":
+            return fake_docx
+        if name == "docx.enum.section":
+            raise ImportError("synthetic internal docx failure")
+        return real_import(name, globals, locals, fromlist, level)
+
+    try:
+        monkeypatch.setattr(importlib.util, "find_spec", fake_find_spec)
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        with pytest.raises(ImportError, match="synthetic internal docx failure"):
+            importlib.import_module(module_name)
+    finally:
+        sys.modules.pop(module_name, None)
+        if previous_module is not None:
+            sys.modules[module_name] = previous_module
+
+
+@pytest.mark.parametrize("script_name", ["akshare.py", "WindPy.py"])
+def test_macro_toolkit_standalone_vendor_shims_bootstrap_repo_root(script_name: str) -> None:
+    repo_root = Path(__file__).resolve().parent.parent
+    script_path = TOOLKIT_ROOT / "scripts" / script_name
+    assert script_path.resolve().parents[6] == repo_root
+    assert script_path.resolve().parents[6].exists()
+
+    result = subprocess.run(
+        [sys.executable, "-B", str(script_path)],
+        cwd=str(repo_root),
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "No module named 'backend'" not in result.stderr
 
 
 def test_windpy_cffex_member_rank_missing_rows_remain_read_only(tmp_path, monkeypatch) -> None:

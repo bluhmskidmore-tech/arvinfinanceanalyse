@@ -1,3 +1,4 @@
+import importlib.util
 import os
 import sys
 import warnings
@@ -6,16 +7,16 @@ warnings.filterwarnings("ignore")
 import numpy as np
 import pandas as pd
 
-try:
+if importlib.util.find_spec("matplotlib") is None:
+    matplotlib = None
+    gridspec = None
+    plt = None
+else:
     import matplotlib
 
     matplotlib.use("Agg")
     import matplotlib.gridspec as gridspec
     import matplotlib.pyplot as plt
-except ImportError:
-    matplotlib = None
-    gridspec = None
-    plt = None
 
 from datetime import datetime, timedelta
 from pathlib import Path

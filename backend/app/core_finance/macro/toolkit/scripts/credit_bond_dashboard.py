@@ -4,29 +4,34 @@ credit_bond_dashboard.py
 依赖：credit_bond_latest.csv, credit_signal.csv, credit_monitor.csv, risk_alert.csv
 输出：output/bond_macro_report_assets/credit_dashboard_*.png
 """
-import os
+import importlib.util
 import sys
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import warnings
+from pathlib import Path
 
-import paths
+if __package__:
+    from backend.app.core_finance.macro.toolkit import paths
+else:
+    _PKG = Path(__file__).resolve().parent.parent
+    if str(_PKG) not in sys.path:
+        sys.path.insert(0, str(_PKG))
+    import paths
 
 warnings.filterwarnings("ignore")
 
 
-try:
+if importlib.util.find_spec("matplotlib") is None:
+    matplotlib = None
+    gridspec = None
+    mpatches = None
+    plt = None
+else:
     import matplotlib
 
     matplotlib.use("Agg")
     import matplotlib.gridspec as gridspec
     import matplotlib.patches as mpatches
     import matplotlib.pyplot as plt
-except ImportError:
-    matplotlib = None
-    gridspec = None
-    mpatches = None
-    plt = None
 
 from datetime import datetime
 
