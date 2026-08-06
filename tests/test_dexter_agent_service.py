@@ -373,8 +373,9 @@ def test_execute_dexter_agent_query_appends_dexter_audit(tmp_path: Path, monkeyp
     assert payload["tools_used"] == ["portfolio.scan"]
     assert payload["tables_used"] == ["dexter_sidecar"]
     assert payload["filters_applied"]["provider"] == "dexter"
-    assert payload["result_meta"]["stdout_excerpt"] == "line1\nline2"
-    assert payload["result_meta"]["stderr_excerpt"] == "warn"
+    assert payload["result_meta"]["dexter_tool_name"] == "portfolio.scan"
+    assert "stdout_excerpt" not in payload["result_meta"]
+    assert "stderr_excerpt" not in payload["result_meta"]
 
 
 def test_execute_dexter_agent_query_injects_research_context_into_prompt(tmp_path: Path, monkeypatch):

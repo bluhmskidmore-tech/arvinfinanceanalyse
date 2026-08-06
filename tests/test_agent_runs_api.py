@@ -1586,6 +1586,122 @@ def test_actual_hermes_fallback_is_safe_for_query_run_record_and_audit(
     assert "detail=" not in caplog.text
 
 
+def test_actual_dexter_success_omits_provider_output_from_query_run_and_audit(
+    monkeypatch,
+    tmp_path,
+):
+    from backend.app.services import dexter_agent_service
+
+    service_module = load_module(
+        "backend.app.services.agent_run_service",
+        "backend/app/services/agent_run_service.py",
+    )
+    service_module._AGENT_RUN_LATEST_RECORDS.clear()
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    _seed_agent_read_scope(tmp_path, monkeypatch)
+    settings = SimpleNamespace(
+        agent_enabled=True,
+        agent_provider="dexter",
+        agent_dexter_command="dexter",
+        agent_dexter_transport="sidecar",
+        agent_dexter_bridge_url="http://127.0.0.1:7892",
+        agent_dexter_model="dexter-test",
+        agent_dexter_toolsets="sql,files",
+        agent_dexter_timeout_seconds=9.0,
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_path=str(tmp_path / "governance"),
+        **_agent_auth_fields(tmp_path),
+    )
+    sensitive_markers = (
+        "json-access-secret",
+        "dict-password-secret",
+        "opaque-provider-secret",
+        "multi-at-password",
+    )
+    provider_output = (
+        '{"access_token":"json-access-secret"} '
+        "{'password': 'dict-password-secret'} "
+        "opaque-provider-secret at "
+        "https://user:multi-at-password@segment@provider.example/query"
+    )
+
+    monkeypatch.setattr(route_module, "get_settings", lambda: settings)
+    monkeypatch.setattr(
+        dexter_agent_service,
+        "build_dexter_research_context",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        dexter_agent_service,
+        "run_dexter_agent",
+        lambda **_kwargs: {
+            "answer": "Dexter safe answer.",
+            "stdout": provider_output,
+            "stderr": provider_output,
+            "command": "dexter",
+            "tool_name": "portfolio.scan",
+            "model": "dexter-test",
+            "toolsets": "sql,files",
+            "transport": "sidecar",
+            "tables_used": ["dexter_sidecar"],
+        },
+    )
+    monkeypatch.setattr(
+        route_module,
+        "execute_dexter_agent_query",
+        dexter_agent_service.execute_dexter_agent_query,
+    )
+
+    def dispatch_inline(*, run_id):
+        return service_module.execute_agent_run_by_id(
+            run_id=run_id,
+            settings=settings,
+            executor=dexter_agent_service.execute_dexter_agent_query,
+        )
+
+    monkeypatch.setattr(service_module.execute_agent_run_task, "send", dispatch_inline)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+    body = {"question": "external provider diagnostics"}
+
+    query_response = client.post("/api/agent/query", json=body)
+    create_response = client.post("/api/agent/runs", json=body)
+    completed = _wait_for_terminal(client, create_response.json()["run_id"])
+
+    assert query_response.status_code == 200
+    assert query_response.json()["answer"] == "Dexter safe answer."
+    assert create_response.status_code == 200
+    assert completed["status"] == "completed"
+    assert completed["result"]["answer"] == "Dexter safe answer."
+
+    governance_path = Path(settings.governance_path)
+    audit_rows = [
+        json.loads(line)
+        for line in (governance_path / "agent_audit.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(audit_rows) == 2
+    for audit in audit_rows:
+        assert audit["result_meta"]["dexter_tool_name"] == "portfolio.scan"
+        assert "stdout_excerpt" not in audit["result_meta"]
+        assert "stderr_excerpt" not in audit["result_meta"]
+
+    public_material = "\n".join(
+        [
+            query_response.text,
+            create_response.text,
+            json.dumps(completed, ensure_ascii=False),
+            (governance_path / "agent_run.jsonl").read_text(encoding="utf-8"),
+            (governance_path / "agent_audit.jsonl").read_text(encoding="utf-8"),
+        ]
+    )
+    for marker in sensitive_markers:
+        assert marker not in public_material
+
+
 def test_agent_run_local_owner_isolation(monkeypatch, tmp_path):
     def fake_execute(request, duckdb_path, governance_dir):
         return _local_envelope()

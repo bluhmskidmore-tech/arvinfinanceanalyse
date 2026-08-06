@@ -121,7 +121,8 @@ def build_dexter_envelope(
     result: dict[str, Any],
     research_context: dict[str, Any] | None = None,
 ) -> AgentEnvelope:
-    has_research_context = bool(research_context and research_context.get("domain"))
+    research_context = research_context or {}
+    has_research_context = bool(research_context.get("domain"))
     trace_id = f"tr_agent_dexter_{uuid4().hex[:12]}"
     generated_at = datetime.now(UTC)
     filters_applied = {
@@ -331,8 +332,6 @@ def _append_dexter_audit(
             result_meta={
                 **envelope.result_meta.model_dump(mode="json"),
                 "dexter_tool_name": str(result.get("tool_name") or "dexter_cli"),
-                "stdout_excerpt": _truncate(str(result.get("stdout") or ""), 1000),
-                "stderr_excerpt": _truncate(str(result.get("stderr") or ""), 1000),
             },
         ),
     )
