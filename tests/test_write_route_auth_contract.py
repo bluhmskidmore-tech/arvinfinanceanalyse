@@ -359,7 +359,7 @@ def test_refresh_route_requires_explicit_scope_grant(path, body, resource, patch
     assert calls == ["called"]
 
 
-def test_livermore_status_route_requires_refresh_scope_not_broad_read(tmp_path, monkeypatch):
+def test_livermore_status_route_requires_read_scope_not_refresh(tmp_path, monkeypatch):
     sqlite_path = _setup_scope_store(tmp_path, monkeypatch, grant=False)
 
     from backend.app.repositories.user_scope_repo import UserScopeRepository
@@ -372,8 +372,8 @@ def test_livermore_status_route_requires_refresh_scope_not_broad_read(tmp_path, 
     repo.grant_scope(
         user_id="status-user",
         role=None,
-        resource="market_data.livermore",
-        action="read",
+        resource="market_data.livermore_gate_supplement",
+        action="refresh",
     )
 
     denied = client.get(
@@ -387,8 +387,8 @@ def test_livermore_status_route_requires_refresh_scope_not_broad_read(tmp_path, 
     repo.grant_scope(
         user_id="status-user",
         role=None,
-        resource="market_data.livermore_gate_supplement",
-        action="refresh",
+        resource="market_data.livermore",
+        action="read",
     )
     allowed = client.get(
         "/ui/market-data/livermore/refresh-gate-supplement/status",

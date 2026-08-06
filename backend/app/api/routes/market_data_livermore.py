@@ -587,7 +587,7 @@ def refresh_gate_supplement_status(
     run_id: str = Query(..., min_length=1),
 ) -> dict[str, object]:
     settings = get_settings()
-    _ensure_livermore_gate_supplement_refresh_allowed(settings=settings, auth=auth)
+    _ensure_livermore_read_allowed(settings=settings, auth=auth)
     if not run_id.strip():
         raise HTTPException(status_code=422, detail="run_id must be non-empty.")
     try:
