@@ -31,6 +31,21 @@ The cleanup script protects business inputs and evidence. It must not remove
 `.venv/`, `node_modules/`, or candidate directories that contain DuckDB, CSV,
 Parquet, Excel, SQLite, WAL, pickle, or governance JSONL files.
 
+Known local disposable roots are the only exception:
+
+- old `.codex-tmp/pytest-*`
+- `.pytest-basetemp`
+- `test_output/accounting_asset_movement`
+- `test_output/formal_balance_pipeline`
+- `frontend/test-results`
+- `.mypy_cache`
+- `backend/.mypy_cache`
+
+These remain eligible for cleanup even when they contain DuckDB/CSV/SQLite
+artifacts. This is a narrow path whitelist for known generated verification
+outputs and rebuildable type-check caches, not a global relaxation for data
+files. Unknown `test_output/*` subtrees are not disposable by default.
+
 ## Parallelism Boundary
 
 Do not raise the default `MOSS_DEV_WORKER_PROCESSES` value from 1 as a broad
