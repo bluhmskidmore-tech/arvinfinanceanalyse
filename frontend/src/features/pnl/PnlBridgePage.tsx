@@ -15,9 +15,10 @@ import { DataSection } from "../../components/DataSection";
 import type { DataSectionState } from "../../components/DataSection.types";
 import { FilterBar } from "../../components/FilterBar";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
+import { DataStatusStrip } from "../../components/page/PagePrimitives";
 import { SectionLead } from "../../components/page/SectionLead";
 import { controlBarStyle, modeBadgeStyle, summaryGridStyle } from "../../components/page/pageStyles";
-import type { Numeric, PnlBridgeQuality, PnlBridgeRow, PnlBridgeSummary } from "../../api/contracts";
+import type { Numeric, PnlBridgeQuality, PnlBridgeRow, PnlBridgeSummary, ResultMeta } from "../../api/contracts";
 import { designTokens } from "../../theme/designSystem";
 import { displayTokens } from "../../theme/displayTokens";
 import { shellTokens } from "../../theme/tokens";
@@ -72,6 +73,27 @@ const formalOnlyNoteStyle = {
   lineHeight: 1.65,
 } as const;
 
+const bridgeStatusStripStyle = {
+  marginBottom: 18,
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  flexWrap: "wrap",
+} as const;
+
+const bridgeStatusBadgeStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: 28,
+  padding: "4px 10px",
+  borderRadius: 999,
+  border: `1px solid ${designTokens.color.warning[200]}`,
+  background: designTokens.color.warning[50],
+  color: designTokens.color.warning[800],
+  fontSize: 12,
+  fontWeight: 700,
+} as const;
+
 const BRIDGE_CATEGORIES = [
   "票息",
   "骑乘",
@@ -90,6 +112,34 @@ const TRANSPARENT_BAR = {
   color: "rgba(0,0,0,0)",
   borderWidth: 0,
 } as const;
+
+function bridgeVendorStatusLabel(status: ResultMeta["vendor_status"]) {
+  if (status === "vendor_stale") return "供应商陈旧";
+  if (status === "vendor_unavailable") return "供应商不可用";
+  return null;
+}
+
+function bridgeFallbackModeLabel(mode: ResultMeta["fallback_mode"]) {
+  if (mode === "latest_snapshot") return "最新快照降级";
+  return null;
+}
+
+function bridgeQualityFlagLabel(flag: ResultMeta["quality_flag"]) {
+  if (flag === "warning") return "质量预警";
+  if (flag === "error") return "质量错误";
+  if (flag === "stale") return "质量陈旧";
+  if (flag === "missing") return "质量缺失";
+  return null;
+}
+
+function buildBridgeStatusBadges(meta: ResultMeta | null | undefined) {
+  if (!meta) return [];
+  return [
+    bridgeVendorStatusLabel(meta.vendor_status),
+    bridgeFallbackModeLabel(meta.fallback_mode),
+    bridgeQualityFlagLabel(meta.quality_flag),
+  ].filter((label): label is string => Boolean(label));
+}
 
 function buildWaterfallOption(summary: PnlBridgeSummary): EChartsOption {
   const displayStrings = [
@@ -360,6 +410,7 @@ export default function PnlBridgePage() {
   const summary = vm?.summary;
   const rows = vm?.rows ?? [];
   const warnings = vm?.warnings ?? [];
+  const bridgeStatusBadges = useMemo(() => buildBridgeStatusBadges(adapterOutput.meta), [adapterOutput.meta]);
 
   const chartOption = useMemo(() => (summary ? buildWaterfallOption(summary) : null), [summary]);
   const conclusion = useMemo(() => buildBridgeConclusion(summary), [summary]);
@@ -521,6 +572,16 @@ export default function PnlBridgePage() {
       <div data-testid="pnl-bridge-formal-only-note" style={formalOnlyNoteStyle}>
         本页当前只校验正式口径的损益桥接闭合；分析口径不在此页展开。
       </div>
+
+      {bridgeStatusBadges.length > 0 ? (
+        <DataStatusStrip testId="pnl-bridge-data-status" style={bridgeStatusStripStyle}>
+          {bridgeStatusBadges.map((label) => (
+            <span key={label} style={bridgeStatusBadgeStyle}>
+              {label}
+            </span>
+          ))}
+        </DataStatusStrip>
+      ) : null}
 
       <div data-testid="pnl-bridge-summary-section" data-state={summaryState.kind} style={{ marginBottom: 24 }}>
         <SectionLead

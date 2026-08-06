@@ -295,6 +295,42 @@ describe("PnlBridgePage", () => {
     expect(screen.getByTestId("pnl-bridge-summary-cards")).toHaveTextContent("15.40");
   });
 
+  it("surfaces vendor stale bridge metadata in the first-screen state and evidence panel", async () => {
+    const base = createApiClient({ mode: "real" });
+
+    renderPnlBridgePage({
+      ...base,
+      getFormalPnlDates: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.dates", "tr_bridge_dates_vendor_stale"),
+        result: {
+          report_dates: ["2025-12-31"],
+          formal_fi_report_dates: ["2025-12-31"],
+          nonstd_bridge_report_dates: [],
+        } satisfies PnlDatesPayload,
+      })),
+      getPnlBridge: vi.fn(async () => ({
+        result_meta: {
+          ...buildMeta("pnl.bridge", "tr_bridge_vendor_stale"),
+          vendor_status: "vendor_stale" as const,
+          filters_applied: { report_date: "2025-12-31" },
+        },
+        result: buildBridgePayload("2025-12-31", "IC-1", "15.40"),
+      })),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("pnl-bridge-summary-section")).toHaveAttribute("data-state", "stale");
+    });
+
+    expect(screen.getAllByTestId("data-section-stale-banner")).toHaveLength(2);
+    expect(screen.getByTestId("pnl-bridge-data-status")).toHaveTextContent("供应商陈旧");
+    expect(screen.getByTestId("pnl-bridge-summary-cards")).toHaveTextContent("15.40");
+
+    const metaPanel = await screen.findByTestId("pnl-bridge-result-meta-panel");
+    expect(metaPanel).toHaveTextContent("tr_bridge_vendor_stale");
+    expect(metaPanel).toHaveTextContent("供应商陈旧");
+  });
+
   it("refreshes bridge data for the selected report date and shows polling status", async () => {
     const user = userEvent.setup();
     const base = createApiClient({ mode: "real" });
