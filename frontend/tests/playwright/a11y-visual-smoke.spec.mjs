@@ -287,8 +287,8 @@ const gateHControlContextPages = [
     readySelector: '[data-testid="stock-analysis-page"]',
     controls: [
       {
-        label: "agent open action",
-        selector: '[data-testid="stock-analysis-agent-open"]',
+        label: "queue search",
+        selector: '[data-testid="stock-analysis-queue-search"]',
       },
       {
         label: "refresh action",
@@ -338,7 +338,7 @@ const gateHControlContextPages = [
     controls: [
       {
         label: "report date selector",
-        selector: '[data-testid="bond-analysis-overview"] select[aria-label="报告日"]',
+        selector: '[data-testid="bond-analysis-overview"] [role="combobox"][aria-label="报告日"]',
       },
       {
         label: "decision next action",
