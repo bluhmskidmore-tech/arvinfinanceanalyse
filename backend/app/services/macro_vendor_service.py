@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -727,8 +728,8 @@ def market_data_coverage_summary_envelope(duckdb_path: str) -> dict[str, object]
     )
     tushare = tushare_supplement_envelope(
         duckdb_path,
-        money_supply_limit=12,
-        eco_cal_limit=30,
+        money_supply_limit=120,
+        eco_cal_limit=300,
     )
 
     formal_rate_rows = formal_rates["result"].get("series", [])
@@ -933,7 +934,11 @@ def _load_tushare_supplement_payload(
     eco_limit = max(0, min(int(eco_cal_limit), 300))
     payload: dict[str, object] = {
         "money_supply_rows": [],
+        "money_supply_total_count": 0,
+        "money_supply_truncated": False,
         "eco_cal_rows": [],
+        "eco_cal_total_count": 0,
+        "eco_cal_truncated": False,
         "warnings": [],
     }
     source_versions: list[str] = []
@@ -957,17 +962,33 @@ def _load_tushare_supplement_payload(
 
     try:
         tables = {str(row[0]) for row in conn.execute("show tables").fetchall()}
-        money_rows, money_source_versions, money_vendor_versions, money_latest, money_tables, money_warnings = (
-            _load_tushare_money_supply_rows(conn, tables, limit=money_limit)
-        )
-        eco_rows, eco_source_versions, eco_vendor_versions, eco_latest, eco_tables, eco_warnings = (
-            _load_tushare_eco_calendar_rows(conn, tables, limit=eco_limit)
-        )
+        (
+            money_rows,
+            money_source_versions,
+            money_vendor_versions,
+            money_latest,
+            money_tables,
+            money_warnings,
+            money_total_count,
+        ) = _load_tushare_money_supply_rows(conn, tables, limit=money_limit)
+        (
+            eco_rows,
+            eco_source_versions,
+            eco_vendor_versions,
+            eco_latest,
+            eco_tables,
+            eco_warnings,
+            eco_total_count,
+        ) = _load_tushare_eco_calendar_rows(conn, tables, limit=eco_limit)
     finally:
         conn.close()
 
     payload["money_supply_rows"] = money_rows
+    payload["money_supply_total_count"] = money_total_count
+    payload["money_supply_truncated"] = money_total_count > len(money_rows)
     payload["eco_cal_rows"] = eco_rows
+    payload["eco_cal_total_count"] = eco_total_count
+    payload["eco_cal_truncated"] = eco_total_count > len(eco_rows)
     source_versions.extend(money_source_versions)
     source_versions.extend(eco_source_versions)
     vendor_versions.extend(money_vendor_versions)
@@ -981,7 +1002,7 @@ def _load_tushare_supplement_payload(
     warnings.extend(money_warnings)
     warnings.extend(eco_warnings)
     payload["warnings"] = warnings
-    latest_date = max(latest_dates) if latest_dates else None
+    latest_date = _max_normalized_iso_date(latest_dates)
     return payload, source_versions, vendor_versions, latest_date, warnings, tables_used
 
 
@@ -990,24 +1011,52 @@ def _load_tushare_money_supply_rows(
     tables: set[str],
     *,
     limit: int,
-) -> tuple[list[dict[str, object]], list[str], list[str], str | None, list[str], list[str]]:
-    if limit <= 0:
-        return [], [], [], None, [], []
+) -> tuple[
+    list[dict[str, object]],
+    list[str],
+    list[str],
+    str | None,
+    list[str],
+    list[str],
+    int,
+]:
     if "std_tushare_money_supply_monthly" in tables:
-        rows, source_versions, vendor_versions, latest = _load_tushare_money_supply_table(conn, limit=limit)
-        return rows, source_versions, vendor_versions, latest, ["std_tushare_money_supply_monthly"], []
+        rows, source_versions, vendor_versions, latest, warnings, total_count = (
+            _load_tushare_money_supply_table(conn, limit=limit)
+        )
+        return (
+            rows,
+            source_versions,
+            vendor_versions,
+            latest,
+            ["std_tushare_money_supply_monthly"],
+            warnings,
+            total_count,
+        )
     if "std_external_macro_daily" in tables:
-        rows, source_versions, vendor_versions, latest = _load_tushare_money_supply_external_macro(conn, limit=limit)
-        warnings = [] if rows else ["Tushare money supply rows are not materialized."]
-        return rows, source_versions, vendor_versions, latest, ["std_external_macro_daily"], warnings
-    return [], [], [], None, [], ["Tushare money supply table is not materialized."]
+        rows, source_versions, vendor_versions, latest, warnings, total_count = (
+            _load_tushare_money_supply_external_macro(conn, limit=limit)
+        )
+        if total_count == 0 and not warnings:
+            warnings = ["Tushare money supply rows are not materialized."]
+        return (
+            rows,
+            source_versions,
+            vendor_versions,
+            latest,
+            ["std_external_macro_daily"],
+            warnings,
+            total_count,
+        )
+    warnings = [] if limit <= 0 else ["Tushare money supply table is not materialized."]
+    return [], [], [], None, [], warnings, 0
 
 
 def _load_tushare_money_supply_table(
     conn: duckdb.DuckDBPyConnection,
     *,
     limit: int,
-) -> tuple[list[dict[str, object]], list[str], list[str], str | None]:
+) -> tuple[list[dict[str, object]], list[str], list[str], str | None, list[str], int]:
     columns = _duckdb_table_columns(conn, "std_tushare_money_supply_monthly")
     select_columns = [
         _column_or_null("month", columns),
@@ -1022,85 +1071,159 @@ def _load_tushare_money_supply_table(
         _column_or_null("m2_mom", columns),
         _column_or_null("source_version", columns),
         _column_or_null("vendor_version", columns),
+        _column_or_null("created_at", columns),
+        _column_or_null("ingest_batch_id", columns),
     ]
     raw_rows = conn.execute(
         f"""
         select {", ".join(select_columns)}
         from std_tushare_money_supply_monthly
-        order by month desc
-        limit {limit}
         """
     ).fetchall()
-    rows: list[dict[str, object]] = []
-    source_versions: list[str] = []
-    vendor_versions: list[str] = []
+    candidates_by_month: dict[str, list[dict[str, object]]] = {}
     for raw in raw_rows:
-        month = _string_or_empty(raw[0])
+        month = _normalize_iso_date(raw[0])
         if not month:
             continue
-        rows.append(
-            {
-                "month": month,
-                "m0": _float_or_none(raw[1]),
-                "m0_yoy": _float_or_none(raw[2]),
-                "m0_mom": _float_or_none(raw[3]),
-                "m1": _float_or_none(raw[4]),
-                "m1_yoy": _float_or_none(raw[5]),
-                "m1_mom": _float_or_none(raw[6]),
-                "m2": _float_or_none(raw[7]),
-                "m2_yoy": _float_or_none(raw[8]),
-                "m2_mom": _float_or_none(raw[9]),
-            }
+        row = {
+            "month": month,
+            "m0": _float_or_none(raw[1]),
+            "m0_yoy": _float_or_none(raw[2]),
+            "m0_mom": _float_or_none(raw[3]),
+            "m1": _float_or_none(raw[4]),
+            "m1_yoy": _float_or_none(raw[5]),
+            "m1_mom": _float_or_none(raw[6]),
+            "m2": _float_or_none(raw[7]),
+            "m2_yoy": _float_or_none(raw[8]),
+            "m2_mom": _float_or_none(raw[9]),
+        }
+        candidate = {
+            "month": month,
+            "row": row,
+            "source_version": _string_or_none(raw[10]),
+            "vendor_version": _string_or_none(raw[11]),
+            "lineage_key": (
+                _timestamp_sort_key(raw[12]),
+                _string_sort_key(raw[13]),
+            ),
+            "content_key": _stable_tushare_content_key(
+                row,
+                source_version=raw[10],
+                vendor_version=raw[11],
+            ),
+        }
+        candidates_by_month.setdefault(month, []).append(candidate)
+
+    selected: list[dict[str, object]] = []
+    warnings: list[str] = []
+    for month in sorted(candidates_by_month, reverse=True):
+        candidate, warning = _resolve_tushare_candidate(
+            candidates_by_month[month],
+            identity_label=f"Tushare money supply month {month}",
         )
-        if raw[10]:
-            source_versions.append(str(raw[10]))
-        if raw[11]:
-            vendor_versions.append(str(raw[11]))
-    latest = max((str(row["month"]) for row in rows), default=None)
-    return rows, source_versions, vendor_versions, latest
+        if warning:
+            warnings.append(warning)
+        if candidate is not None:
+            selected.append(candidate)
+
+    resolved = sorted(
+        selected,
+        key=lambda item: str(item["month"]),
+        reverse=True,
+    )
+    total_count = len(resolved)
+    ordered = resolved[:limit]
+    rows = [dict(item["row"]) for item in ordered]
+    source_versions = [
+        str(item["source_version"])
+        for item in ordered
+        if item.get("source_version")
+    ]
+    vendor_versions = [
+        str(item["vendor_version"])
+        for item in ordered
+        if item.get("vendor_version")
+    ]
+    latest = ordered[0]["month"] if ordered else None
+    return rows, source_versions, vendor_versions, latest, warnings, total_count
 
 
 def _load_tushare_money_supply_external_macro(
     conn: duckdb.DuckDBPyConnection,
     *,
     limit: int,
-) -> tuple[list[dict[str, object]], list[str], list[str], str | None]:
+) -> tuple[list[dict[str, object]], list[str], list[str], str | None, list[str], int]:
     raw_rows = conn.execute(
-        f"""
+        """
         select trade_date, value_numeric, source_version, vendor_version
         from std_external_macro_daily
         where series_id = 'tushare.macro.cn_money.monthly'
         order by trade_date desc
-        limit {limit}
         """
     ).fetchall()
-    rows: list[dict[str, object]] = []
-    source_versions: list[str] = []
-    vendor_versions: list[str] = []
+    candidates_by_month: dict[str, list[dict[str, object]]] = {}
     for trade_date, value_numeric, source_version, vendor_version in raw_rows:
-        month = _string_or_empty(trade_date)
+        month = _normalize_iso_date(trade_date)
         if not month:
             continue
-        rows.append(
-            {
-                "month": month,
-                "m0": None,
-                "m0_yoy": None,
-                "m0_mom": None,
-                "m1": None,
-                "m1_yoy": None,
-                "m1_mom": None,
-                "m2": None,
-                "m2_yoy": _float_or_none(value_numeric),
-                "m2_mom": None,
-            }
+        row = {
+            "month": month,
+            "m0": None,
+            "m0_yoy": None,
+            "m0_mom": None,
+            "m1": None,
+            "m1_yoy": None,
+            "m1_mom": None,
+            "m2": None,
+            "m2_yoy": _float_or_none(value_numeric),
+            "m2_mom": None,
+        }
+        candidate = {
+            "month": month,
+            "row": row,
+            "source_version": _string_or_none(source_version),
+            "vendor_version": _string_or_none(vendor_version),
+            "lineage_key": ("", ""),
+            "content_key": _stable_tushare_content_key(
+                row,
+                source_version=source_version,
+                vendor_version=vendor_version,
+            ),
+        }
+        candidates_by_month.setdefault(month, []).append(candidate)
+
+    selected: list[dict[str, object]] = []
+    warnings: list[str] = []
+    for month in sorted(candidates_by_month, reverse=True):
+        candidate, warning = _resolve_tushare_candidate(
+            candidates_by_month[month],
+            identity_label=f"Tushare fallback money supply month {month}",
         )
-        if source_version:
-            source_versions.append(str(source_version))
-        if vendor_version:
-            vendor_versions.append(str(vendor_version))
-    latest = max((str(row["month"]) for row in rows), default=None)
-    return rows, source_versions, vendor_versions, latest
+        if warning:
+            warnings.append(warning)
+        if candidate is not None:
+            selected.append(candidate)
+
+    resolved = sorted(
+        selected,
+        key=lambda item: str(item["month"]),
+        reverse=True,
+    )
+    total_count = len(resolved)
+    ordered = resolved[:limit]
+    rows = [dict(item["row"]) for item in ordered]
+    source_versions = [
+        str(item["source_version"])
+        for item in ordered
+        if item.get("source_version")
+    ]
+    vendor_versions = [
+        str(item["vendor_version"])
+        for item in ordered
+        if item.get("vendor_version")
+    ]
+    latest = ordered[0]["month"] if ordered else None
+    return rows, source_versions, vendor_versions, latest, warnings, total_count
 
 
 def _load_tushare_eco_calendar_rows(
@@ -1108,11 +1231,18 @@ def _load_tushare_eco_calendar_rows(
     tables: set[str],
     *,
     limit: int,
-) -> tuple[list[dict[str, object]], list[str], list[str], str | None, list[str], list[str]]:
-    if limit <= 0:
-        return [], [], [], None, [], []
+) -> tuple[
+    list[dict[str, object]],
+    list[str],
+    list[str],
+    str | None,
+    list[str],
+    list[str],
+    int,
+]:
     if "std_tushare_eco_cal_event" not in tables:
-        return [], [], [], None, [], ["Tushare economic calendar table is not materialized."]
+        warnings = [] if limit <= 0 else ["Tushare economic calendar table is not materialized."]
+        return [], [], [], None, [], warnings, 0
     columns = _duckdb_table_columns(conn, "std_tushare_eco_cal_event")
     select_columns = [
         _column_or_null("event_id", columns),
@@ -1126,41 +1256,101 @@ def _load_tushare_eco_calendar_rows(
         _column_or_null("fore_value", columns),
         _column_or_null("source_version", columns),
         _column_or_null("vendor_version", columns),
+        _column_or_null("created_at", columns),
+        _column_or_null("ingest_batch_id", columns),
     ]
     raw_rows = conn.execute(
         f"""
         select {", ".join(select_columns)}
         from std_tushare_eco_cal_event
-        order by event_date desc, event_time desc nulls last
-        limit {limit}
         """
     ).fetchall()
-    rows: list[dict[str, object]] = []
-    source_versions: list[str] = []
-    vendor_versions: list[str] = []
-    for index, raw in enumerate(raw_rows):
-        event_date = _string_or_empty(raw[1])
+    candidates_by_event_id: dict[str, list[dict[str, object]]] = {}
+    for raw in raw_rows:
+        event_date = _normalize_iso_date(raw[1])
         if not event_date:
             continue
-        rows.append(
-            {
-                "event_id": _string_or_empty(raw[0]) or f"{event_date}-{index}",
-                "event_date": event_date,
-                "event_time": _string_or_none(raw[2]),
-                "currency": _string_or_none(raw[3]),
-                "country": _string_or_none(raw[4]),
-                "event": _string_or_empty(raw[5]),
-                "value": _string_or_none(raw[6]),
-                "pre_value": _string_or_none(raw[7]),
-                "fore_value": _string_or_none(raw[8]),
-            }
+        event_id = _string_or_none(raw[0]) or _stable_tushare_eco_event_id(
+            event_date=event_date,
+            event_time=raw[2],
+            currency=raw[3],
+            country=raw[4],
+            event=raw[5],
         )
-        if raw[9]:
-            source_versions.append(str(raw[9]))
-        if raw[10]:
-            vendor_versions.append(str(raw[10]))
-    latest = max((str(row["event_date"]) for row in rows), default=None)
-    return rows, source_versions, vendor_versions, latest, ["std_tushare_eco_cal_event"], []
+        row = {
+            "event_id": event_id,
+            "event_date": event_date,
+            "event_time": _string_or_none(raw[2]),
+            "currency": _string_or_none(raw[3]),
+            "country": _string_or_none(raw[4]),
+            "event": _string_or_empty(raw[5]),
+            "value": _string_or_none(raw[6]),
+            "pre_value": _string_or_none(raw[7]),
+            "fore_value": _string_or_none(raw[8]),
+        }
+        candidate = {
+            "event_id": event_id,
+            "event_date": event_date,
+            "event_time": _string_or_none(raw[2]),
+            "row": row,
+            "source_version": _string_or_none(raw[9]),
+            "vendor_version": _string_or_none(raw[10]),
+            "lineage_key": (
+                _timestamp_sort_key(raw[11]),
+                _string_sort_key(raw[12]),
+            ),
+            "content_key": _stable_tushare_content_key(
+                row,
+                source_version=raw[9],
+                vendor_version=raw[10],
+            ),
+        }
+        candidates_by_event_id.setdefault(event_id, []).append(candidate)
+
+    selected: list[dict[str, object]] = []
+    warnings: list[str] = []
+    for event_id in sorted(candidates_by_event_id):
+        candidate, warning = _resolve_tushare_candidate(
+            candidates_by_event_id[event_id],
+            identity_label=f"Tushare economic calendar event {event_id}",
+        )
+        if warning:
+            warnings.append(warning)
+        if candidate is not None:
+            selected.append(candidate)
+
+    resolved = sorted(
+        selected,
+        key=lambda item: (
+            str(item["event_date"]),
+            _time_sort_key(item.get("event_time")),
+            str(item["event_id"]),
+        ),
+        reverse=True,
+    )
+    total_count = len(resolved)
+    ordered = resolved[:limit]
+    rows = [dict(item["row"]) for item in ordered]
+    source_versions = [
+        str(item["source_version"])
+        for item in ordered
+        if item.get("source_version")
+    ]
+    vendor_versions = [
+        str(item["vendor_version"])
+        for item in ordered
+        if item.get("vendor_version")
+    ]
+    latest = ordered[0]["event_date"] if ordered else None
+    return (
+        rows,
+        source_versions,
+        vendor_versions,
+        latest,
+        ["std_tushare_eco_cal_event"],
+        warnings,
+        total_count,
+    )
 
 
 def _load_bond_futures_rankings_payload(
@@ -1472,6 +1662,126 @@ def _normalize_iso_date(value: object) -> str | None:
         except ValueError:
             return None
     return None
+
+
+def _stable_tushare_eco_event_id(
+    *,
+    event_date: str,
+    event_time: object,
+    currency: object,
+    country: object,
+    event: object,
+) -> str:
+    natural_key = {
+        "event_date": event_date,
+        "event_time": _time_sort_key(event_time),
+        "currency": _normalized_identity_text(currency),
+        "country": _normalized_identity_text(country),
+        "event": _normalized_identity_text(event),
+    }
+    encoded = json.dumps(
+        natural_key,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return f"natural-{hashlib.sha256(encoded).hexdigest()[:20]}"
+
+
+def _normalized_identity_text(value: object) -> str:
+    return " ".join(str(value or "").split()).casefold()
+
+
+def _stable_tushare_content_key(
+    row: dict[str, object],
+    *,
+    source_version: object,
+    vendor_version: object,
+) -> str:
+    return json.dumps(
+        {
+            "row": row,
+            "source_version": _string_or_none(source_version),
+            "vendor_version": _string_or_none(vendor_version),
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+
+
+def _resolve_tushare_candidate(
+    candidates: list[dict[str, object]],
+    *,
+    identity_label: str,
+) -> tuple[dict[str, object] | None, str | None]:
+    if len(candidates) == 1:
+        return candidates[0], None
+
+    lineage_keys = [
+        tuple(candidate.get("lineage_key") or ("", ""))
+        for candidate in candidates
+    ]
+    latest_lineage_key = max(lineage_keys)
+    latest_candidates = [
+        candidate
+        for candidate, lineage_key in zip(candidates, lineage_keys, strict=True)
+        if lineage_key == latest_lineage_key
+    ]
+    if any(latest_lineage_key) and len(latest_candidates) == 1:
+        return latest_candidates[0], None
+
+    distinct_content = {
+        str(candidate.get("content_key") or "")
+        for candidate in latest_candidates
+    }
+    if len(distinct_content) == 1:
+        return min(
+            latest_candidates,
+            key=lambda candidate: str(candidate.get("content_key") or ""),
+        ), None
+
+    if not any(any(lineage_key) for lineage_key in lineage_keys):
+        lineage_message = "without created_at/ingest_batch_id"
+    else:
+        lineage_message = "with indistinguishable created_at/ingest_batch_id lineage"
+    return (
+        None,
+        f"{identity_label} has conflicting duplicate rows {lineage_message}; "
+        "omitted because the latest row cannot be determined.",
+    )
+
+
+def _timestamp_sort_key(value: object) -> str:
+    if isinstance(value, datetime):
+        normalized = value.astimezone(UTC) if value.tzinfo is not None else value
+        return normalized.isoformat()
+    text = _string_or_none(value)
+    if not text:
+        return ""
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return text
+    normalized = parsed.astimezone(UTC) if parsed.tzinfo is not None else parsed
+    return normalized.isoformat()
+
+
+def _time_sort_key(value: object) -> str:
+    text = _string_or_none(value)
+    if not text:
+        return ""
+    for time_format in ("%H:%M:%S", "%H:%M"):
+        try:
+            return datetime.strptime(text, time_format).time().isoformat()
+        except ValueError:
+            continue
+    return text
+
+
+def _string_sort_key(value: object) -> str:
+    return _string_or_none(value) or ""
 
 
 def _coverage_actions(sections: list[dict[str, object]]) -> list[dict[str, object]]:
