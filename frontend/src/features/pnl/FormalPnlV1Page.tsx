@@ -8,7 +8,8 @@ import "ag-grid-community/styles/ag-theme-alpine.css";
 import "../../styles/agGridInstitutional.css";
 
 import { useApiClient } from "../../api/client";
-import type { LiabilityYieldKpi, Numeric, PnlBasis, PnlV1DetailRow } from "../../api/contracts";
+import type { Numeric, PnlBasis, PnlV1DetailRow } from "../../api/contracts";
+import type { LiabilityYieldKpi } from "../../api/liabilityAdbContracts";
 import { formatNumeric } from "../../utils/format";
 import { runPollingTask } from "../../app/jobs/polling";
 import { FilterBar } from "../../components/FilterBar";

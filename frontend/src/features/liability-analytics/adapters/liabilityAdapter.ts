@@ -1,4 +1,5 @@
-import type { LiabilityCounterpartyPayload, Numeric } from "../../../api/contracts";
+import type { Numeric } from "../../../api/contracts";
+import type { LiabilityCounterpartyPayload } from "../../../api/liabilityAdbContracts";
 
 import type { LiabilityCpRow, LiabilityTypeRow } from "../components/LiabilityCounterpartyBlock";
 import { numericYuanRaw, shareOfTotalNumeric } from "../utils/money";

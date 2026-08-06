@@ -1,4 +1,5 @@
-import type { LiabilityYieldKpi, ResultMeta } from "../../../api/contracts";
+import type { ResultMeta } from "../../../api/contracts";
+import type { LiabilityYieldKpi } from "../../../api/liabilityAdbContracts";
 import { EM_DASH } from "../../../utils/format";
 
 export type LiabilityAnalyticsTabKey = "daily" | "monthly";

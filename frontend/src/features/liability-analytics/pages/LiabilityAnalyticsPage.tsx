@@ -16,7 +16,8 @@ import {
   PageFilterTray,
   PageStateSurface,
 } from "../../../components/page/PagePrimitives";
-import type { LiabilityYieldKpi, CockpitWatchItem, CockpitAlertEvent, ContributionSplitRow } from "../../../api/contracts";
+import type { CockpitWatchItem, CockpitAlertEvent, ContributionSplitRow } from "../../../api/contracts";
+import type { LiabilityYieldKpi } from "../../../api/liabilityAdbContracts";
 import { adaptLiabilityCounterparty, getLiabilitySyntheticSectionStates } from "../adapters/liabilityAdapter";
 import { LiabilityCounterpartyBlock, type LiabilityCpRow } from "../components/LiabilityCounterpartyBlock";
 import { LiabilityCustomerTable } from "../components/LiabilityCustomerTable";

@@ -1,4 +1,5 @@
-import type { LiabilityYieldKpi, Numeric } from "../../../api/contracts";
+import type { Numeric } from "../../../api/contracts";
+import type { LiabilityYieldKpi } from "../../../api/liabilityAdbContracts";
 
 function pctDecimal(n: Numeric | null | undefined): number | null {
   if (!n || n.raw === null || !Number.isFinite(n.raw)) {

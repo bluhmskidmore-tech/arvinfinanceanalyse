@@ -5,7 +5,8 @@ import type { EChartsOption } from "echarts";
 import { Spin } from "antd";
 
 import { useApiClient } from "../../api/client";
-import type { LiabilityYieldHistoryPoint, Numeric, PnlV1DetailRow } from "../../api/contracts";
+import type { Numeric, PnlV1DetailRow } from "../../api/contracts";
+import type { LiabilityYieldHistoryPoint } from "../../api/liabilityAdbContracts";
 import { fmtPct, formatNumeric, formatPercent } from "../../utils/format";
 import { BaseChart } from "../../components/charts/BaseChart";
 import { mossChartCategoricalPalette } from "../../components/charts/chartTheme";
