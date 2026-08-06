@@ -266,6 +266,17 @@ def _patch_livermore_gate_supplement_refresh(monkeypatch, calls: list[str]) -> s
     return "livermore-gate-supplement-refresh-test"
 
 
+def _patch_livermore_gate_supplement_status(monkeypatch, calls: list[str]) -> str:
+    import backend.app.api.routes.market_data_livermore as route_module
+
+    def fake_status(_governance_path, *, run_id: str):
+        calls.append(run_id)
+        return {"status": "queued", "run_id": run_id}
+
+    monkeypatch.setattr(route_module, "livermore_gate_supplement_refresh_status", fake_status)
+    return "livermore-gate-supplement-refresh-status-test"
+
+
 SCOPED_REFRESH_ROUTES = [
     ("/api/data/refresh_pnl", None, "formal_pnl", _patch_formal_pnl_refresh),
     ("/api/bond-analytics/refresh?report_date=2026-01-01", None, "bond_analytics", _patch_bond_analytics_refresh),
@@ -346,6 +357,47 @@ def test_refresh_route_requires_explicit_scope_grant(path, body, resource, patch
     assert allowed.status_code == expected_status, allowed.text
     assert expected_run_id in allowed.text
     assert calls == ["called"]
+
+
+def test_livermore_status_route_requires_refresh_scope_not_broad_read(tmp_path, monkeypatch):
+    sqlite_path = _setup_scope_store(tmp_path, monkeypatch, grant=False)
+
+    from backend.app.repositories.user_scope_repo import UserScopeRepository
+
+    calls: list[str] = []
+    expected_run_id = _patch_livermore_gate_supplement_status(monkeypatch, calls)
+    client = TestClient(_load_app(), raise_server_exceptions=False)
+
+    repo = UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}")
+    repo.grant_scope(
+        user_id="status-user",
+        role=None,
+        resource="market_data.livermore",
+        action="read",
+    )
+
+    denied = client.get(
+        "/ui/market-data/livermore/refresh-gate-supplement/status",
+        params={"run_id": "livermore-gate-supplement-refresh-status-test"},
+        headers={"X-User-Id": "status-user"},
+    )
+    assert denied.status_code == 403, denied.text
+    assert calls == []
+
+    repo.grant_scope(
+        user_id="status-user",
+        role=None,
+        resource="market_data.livermore_gate_supplement",
+        action="refresh",
+    )
+    allowed = client.get(
+        "/ui/market-data/livermore/refresh-gate-supplement/status",
+        params={"run_id": expected_run_id},
+        headers={"X-User-Id": "status-user"},
+    )
+    assert allowed.status_code == 200, allowed.text
+    assert expected_run_id in allowed.text
+    assert calls == [expected_run_id]
 
 
 def _patch_qdb_adjustment_create(monkeypatch, calls: list[str]) -> str:

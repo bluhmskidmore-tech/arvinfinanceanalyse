@@ -584,10 +584,12 @@ def refresh_gate_supplement(
 @router.get("/livermore/refresh-gate-supplement/status")
 def refresh_gate_supplement_status(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
-    run_id: str = Query(default=""),
+    run_id: str = Query(..., min_length=1),
 ) -> dict[str, object]:
     settings = get_settings()
-    _ensure_livermore_read_allowed(settings=settings, auth=auth)
+    _ensure_livermore_gate_supplement_refresh_allowed(settings=settings, auth=auth)
+    if not run_id.strip():
+        raise HTTPException(status_code=422, detail="run_id must be non-empty.")
     try:
         return livermore_gate_supplement_refresh_status(
             settings.governance_path,
@@ -1027,9 +1029,14 @@ def _present(value: object) -> bool:
 def _optional_count(value: object) -> int | None:
     if value in (None, ""):
         return None
-    try:
+    if isinstance(value, bool):
         parsed = int(value)
-    except (TypeError, ValueError):
+    elif isinstance(value, (int, float, str)):
+        try:
+            parsed = int(value)
+        except ValueError:
+            return None
+    else:
         return None
     return max(parsed, 0)
 

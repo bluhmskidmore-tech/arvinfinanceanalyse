@@ -4,10 +4,11 @@ import builtins
 import logging
 import sqlite3
 import sys
+from collections.abc import Callable
 from contextlib import nullcontext
 from datetime import date, timedelta
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 
 import duckdb
 import pytest
@@ -635,8 +636,9 @@ def test_livermore_workbench_summary_appends_result_without_replacing_meta() -> 
         envelope, summary_kind="candidate_history"
     )
 
-    assert out["result_meta"] is meta
-    assert out["result"]["workbench_summary"] == {
+    assert cast(dict[str, object], out["result_meta"]) is meta
+    result = cast(dict[str, object], out["result"])
+    assert result["workbench_summary"] == {
         "kind": "candidate_history",
         "item_count": 0,
         "summary_present": False,
@@ -4238,19 +4240,23 @@ def test_livermore_materialize_endpoints_invalidate_read_cache(
 def test_theme_overlay_fingerprint_breaks_all_strategy_outer_cache_keys() -> None:
     from backend.app.api.routes import market_data_livermore as route
 
-    common = {
+    common: dict[str, str] = {
         "duckdb_path": "fixture.duckdb",
         "catalog_file": "choice-stock.json",
         "as_of_date": "2026-07-08",
     }
-    for builder, extra in (
+    builders: tuple[
+        tuple[Callable[..., str], dict[str, Any]],
+        ...,
+    ] = (
         (route._livermore_strategy_cache_key, {}),
         (
             route._stock_analysis_workbench_cache_key,
             {"include": None, "sector_window_days": 20, "top_k": 10},
         ),
         (route._livermore_signal_confluence_cache_key, {}),
-    ):
+    )
+    for builder, extra in builders:
         first = builder(**common, **extra, theme_overlay_fingerprint="overlay-a")
         second = builder(**common, **extra, theme_overlay_fingerprint="overlay-b")
         assert first != second

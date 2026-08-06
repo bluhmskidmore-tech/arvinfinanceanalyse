@@ -447,7 +447,7 @@ def test_livermore_queue_keeps_replaying_non_stale_terminal_failure(
 def test_livermore_status_route_returns_404_for_unknown_run(tmp_path, monkeypatch) -> None:
     from backend.app.api.routes import market_data_livermore as route
 
-    monkeypatch.setattr(route, "_ensure_livermore_read_allowed", lambda **_kwargs: None)
+    monkeypatch.setattr(route, "_ensure_livermore_gate_supplement_refresh_allowed", lambda **_kwargs: None)
     monkeypatch.setattr(
         route,
         "get_settings",
@@ -467,6 +467,31 @@ def test_livermore_status_route_returns_404_for_unknown_run(tmp_path, monkeypatc
 
     assert response.status_code == 404
     assert "missing-run" in response.text
+
+
+@pytest.mark.parametrize("params", [{}, {"run_id": ""}, {"run_id": "   "}])
+def test_livermore_status_route_rejects_missing_or_blank_run_id(tmp_path, monkeypatch, params) -> None:
+    from backend.app.api.routes import market_data_livermore as route
+
+    monkeypatch.setattr(route, "_ensure_livermore_gate_supplement_refresh_allowed", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        route,
+        "get_settings",
+        lambda: SimpleNamespace(
+            governance_path=tmp_path / "governance",
+        ),
+    )
+
+    app = FastAPI()
+    app.include_router(route.router)
+    app.dependency_overrides[get_auth_context] = lambda: AuthContext(user_id="operator", role="admin")
+
+    response = TestClient(app, raise_server_exceptions=False).get(
+        "/ui/market-data/livermore/refresh-gate-supplement/status",
+        params=params,
+    )
+
+    assert response.status_code == 422
 
 
 def test_livermore_worker_records_partial_terminal_state(tmp_path, monkeypatch) -> None:
