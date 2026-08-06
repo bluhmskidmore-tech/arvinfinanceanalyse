@@ -450,7 +450,6 @@ def _livermore_refresh_record_is_retryable_stale_failure(record: GovernanceRecor
     return (
         str(record.get("status") or "") == "failed"
         and str(record.get("failure_category") or "") == "stale_inflight"
-        and str(record.get("failure_reason") or "") == "stale_inflight"
     )
 
 

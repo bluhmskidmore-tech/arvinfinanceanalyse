@@ -273,6 +273,55 @@ def test_livermore_queue_requeues_same_key_after_status_reconciles_stale_failure
     assert sent[-1]["run_id"] == retry["run_id"]
 
 
+def test_livermore_queue_requeues_legacy_stale_failure_without_failure_reason(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from backend.app.services import (
+        livermore_gate_supplement_compute_service as service,
+    )
+
+    governance_path = tmp_path / "governance"
+    sent: list[dict[str, object]] = []
+    actor = SimpleNamespace(send=lambda **kwargs: sent.append(dict(kwargs)))
+    monkeypatch.setattr(service, "run_livermore_gate_supplement_refresh_task", actor, raising=False)
+
+    first = service.queue_gate_supplement_refresh(
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_path=str(governance_path),
+        as_of_date=date(2026, 4, 30),
+        lookback_days=30,
+        idempotency_key="same-key",
+    )
+    repo = GovernanceRepository(base_dir=governance_path)
+    repo.append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            **repo.read_all(CACHE_BUILD_RUN_STREAM)[-1],
+            "status": "failed",
+            "trigger_mode": "terminal",
+            "finished_at": datetime.now(UTC).isoformat(),
+            "failure_category": "stale_inflight",
+            "failure_reason": None,
+            "error_message": "legacy stale row without reason",
+        },
+    )
+
+    retry = service.queue_gate_supplement_refresh(
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_path=str(governance_path),
+        as_of_date=date(2026, 4, 30),
+        lookback_days=30,
+        idempotency_key="same-key",
+    )
+
+    assert retry["status"] == "queued"
+    assert retry["run_id"] != first["run_id"]
+    assert retry["idempotency_replay"] is False
+    assert len(sent) == 2
+    assert sent[-1]["run_id"] == retry["run_id"]
+
+
 def test_livermore_queue_same_key_stale_retry_is_single_dispatch_under_concurrency(
     tmp_path,
     monkeypatch,
