@@ -1310,6 +1310,122 @@ class CssFinancialPatchClient:
         )
 
 
+class FullMarketCssFinancialClient:
+    def __init__(self, *, bulk_error: bool = False) -> None:
+        self.bulk_error = bulk_error
+        self.css_calls: list[list[str]] = []
+
+    def css(self, codes: object, indicators: object, *, options: str = "") -> object:
+        stock_codes = [code for code in str(codes).split(",") if code]
+        self.css_calls.append(stock_codes)
+        if self.bulk_error and len(stock_codes) > 280:
+            return SimpleNamespace(ErrorCode=1001, ErrorMsg="bulk request rejected")
+        return SimpleNamespace(
+            ErrorCode=0,
+            Indicators=["ROEWA", "GPMARGIN"],
+            Data={stock_code: [16.0, 44.5] for stock_code in stock_codes},
+        )
+
+
+class PartialBulkCssFinancialClient:
+    def __init__(self) -> None:
+        self.css_calls: list[list[str]] = []
+
+    def css(self, codes: object, indicators: object, *, options: str = "") -> object:
+        stock_codes = [code for code in str(codes).split(",") if code]
+        self.css_calls.append(stock_codes)
+        if len(self.css_calls) == 1:
+            partial_codes = stock_codes[:-1] + ["999999.SZ"]
+            data = {stock_code: [16.0, 44.5] for stock_code in partial_codes}
+        else:
+            data = {stock_code: [None, None] for stock_code in stock_codes}
+        return SimpleNamespace(
+            ErrorCode=0,
+            Indicators=["ROEWA", "GPMARGIN"],
+            Data=data,
+        )
+
+
+class MalformedBulkCssFinancialClient:
+    class MalformedResult:
+        ErrorCode = 0
+
+        @property
+        def Data(self) -> object:
+            raise ValueError("malformed Choice payload")
+
+    def __init__(self) -> None:
+        self.css_calls: list[list[str]] = []
+
+    def css(self, codes: object, indicators: object, *, options: str = "") -> object:
+        stock_codes = [code for code in str(codes).split(",") if code]
+        self.css_calls.append(stock_codes)
+        if len(self.css_calls) == 1:
+            return self.MalformedResult()
+        return SimpleNamespace(
+            ErrorCode=0,
+            Indicators=["ROEWA", "GPMARGIN"],
+            Data={stock_code: [16.0, 44.5] for stock_code in stock_codes},
+        )
+
+
+def test_choice_css_financial_factors_uses_one_full_market_request() -> None:
+    stock_codes = [f"{index:06d}.SZ" for index in range(281)]
+    client = FullMarketCssFinancialClient()
+
+    result = choice_stock_materialize_module._load_choice_css_financial_factors(
+        client,
+        "2026-07-22",
+        stock_codes,
+    )
+
+    assert len(client.css_calls) == 1
+    assert client.css_calls[0] == stock_codes
+    assert len(result) == len(stock_codes)
+
+
+def test_choice_css_financial_factors_falls_back_to_chunks_when_bulk_is_rejected() -> None:
+    stock_codes = [f"{index:06d}.SZ" for index in range(281)]
+    client = FullMarketCssFinancialClient(bulk_error=True)
+
+    result = choice_stock_materialize_module._load_choice_css_financial_factors(
+        client,
+        "2026-07-22",
+        stock_codes,
+    )
+
+    assert [len(codes) for codes in client.css_calls] == [281, 280, 1]
+    assert len(result) == len(stock_codes)
+
+
+def test_choice_css_financial_factors_discards_partial_bulk_values_before_chunk_fallback() -> None:
+    stock_codes = [f"{index:06d}.SZ" for index in range(281)]
+    client = PartialBulkCssFinancialClient()
+
+    result = choice_stock_materialize_module._load_choice_css_financial_factors(
+        client,
+        "2026-07-22",
+        stock_codes,
+    )
+
+    assert [len(codes) for codes in client.css_calls] == [281, 280, 1]
+    assert result == {}
+
+
+def test_choice_css_financial_factors_falls_back_to_chunks_when_bulk_payload_is_malformed() -> None:
+    stock_codes = [f"{index:06d}.SZ" for index in range(281)]
+    client = MalformedBulkCssFinancialClient()
+
+    result = choice_stock_materialize_module._load_choice_css_financial_factors(
+        client,
+        "2026-07-22",
+        stock_codes,
+    )
+
+    assert [len(codes) for codes in client.css_calls] == [281, 280, 1]
+    assert len(result) == len(stock_codes)
+
+
 def test_choice_stock_factor_snapshot_merges_choice_css_financials(tmp_path: Path) -> None:
     catalog_path = tmp_path / "choice_stock_catalog.json"
     duckdb_path = tmp_path / "moss_css_fin.duckdb"

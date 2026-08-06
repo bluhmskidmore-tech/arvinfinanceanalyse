@@ -984,23 +984,15 @@ def _load_choice_css_financial_factors(
         as_of_date,
         base_options=_choice_client_default_options(client),
     )
-    merged: dict[str, dict[str, float]] = {}
+    normalized_codes = sorted({str(code) for code in stock_codes if str(code)})
+    requested_codes = set(normalized_codes)
     chunk_size = max(40, CHOICE_CSS_FINANCIAL_CHUNK_SIZE)
 
-    for chunk in _stock_code_chunks(sorted({str(code) for code in stock_codes if str(code)}), chunk_size):
-        try:
-            result = client.css(",".join(chunk), indicators_raw, options=options)
-        except Exception:
-            logger.exception("Choice css financial chunk raised (%s codes)", len(chunk))
-            continue
-        if int(getattr(result, "ErrorCode", 0)) != 0:
-            logger.warning(
-                "Choice css financial chunk skipped: error=%s %s",
-                getattr(result, "ErrorCode", "?"),
-                getattr(result, "ErrorMsg", ""),
-            )
-            continue
-
+    def parse_result(
+        result: object,
+    ) -> tuple[set[str], dict[str, dict[str, float]]]:
+        observed_codes: set[str] = set()
+        parsed_values: dict[str, dict[str, float]] = {}
         parsed = _extract_result_rows(result, default_date=as_of_date)
         for row in parsed:
             stock_code = _text(
@@ -1016,6 +1008,7 @@ def _load_choice_css_financial_factors(
                 )
             if not stock_code:
                 continue
+            observed_codes.add(stock_code)
 
             roe_val: float | None = None
             gm_val: float | None = None
@@ -1035,8 +1028,50 @@ def _load_choice_css_financial_factors(
                 bucket["roe"] = roe_val
             if gm_val is not None:
                 bucket["gross_margin"] = gm_val
-            if bucket:
-                merged[stock_code] = bucket
+            if bucket and stock_code in requested_codes:
+                parsed_values[stock_code] = bucket
+        return observed_codes, parsed_values
+
+    try:
+        bulk_result = client.css(",".join(normalized_codes), indicators_raw, options=options)
+        if int(getattr(bulk_result, "ErrorCode", 0)) == 0:
+            observed_codes, bulk_values = parse_result(bulk_result)
+            if observed_codes == requested_codes:
+                return bulk_values
+            logger.warning(
+                "Choice css full-market financial response was incomplete (%s/%s codes); falling back to chunks.",
+                len(observed_codes),
+                len(requested_codes),
+            )
+        else:
+            logger.warning(
+                "Choice css full-market financial request failed: error=%s %s; falling back to chunks.",
+                getattr(bulk_result, "ErrorCode", "?"),
+                getattr(bulk_result, "ErrorMsg", ""),
+            )
+    except Exception as exc:
+        logger.warning(
+            "Choice css full-market financial request or parsing raised; falling back to chunks: %s",
+            exc,
+        )
+
+    merged: dict[str, dict[str, float]] = {}
+    for chunk in _stock_code_chunks(normalized_codes, chunk_size):
+        try:
+            result = client.css(",".join(chunk), indicators_raw, options=options)
+        except Exception:
+            logger.exception("Choice css financial chunk raised (%s codes)", len(chunk))
+            continue
+        if int(getattr(result, "ErrorCode", 0)) != 0:
+            logger.warning(
+                "Choice css financial chunk skipped: error=%s %s",
+                getattr(result, "ErrorCode", "?"),
+                getattr(result, "ErrorMsg", ""),
+            )
+            continue
+
+        _, chunk_values = parse_result(result)
+        merged.update(chunk_values)
     return merged
 
 
