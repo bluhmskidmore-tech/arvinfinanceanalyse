@@ -3,9 +3,6 @@ from __future__ import annotations
 import re
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import JSONResponse, StreamingResponse
-
 from backend.app.agent.runtime.action_token import agent_action_confirmation_token_matches
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.agent.schemas.agent_response import AgentDisabledResponse, AgentEnvelope
@@ -44,6 +41,8 @@ from backend.app.services.agent_workspace_service import (
 )
 from backend.app.services.dexter_agent_service import execute_dexter_agent_query
 from backend.app.services.hermes_agent_service import execute_hermes_agent_query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import JSONResponse, StreamingResponse
 
 router = APIRouter(prefix="/api/agent")
 

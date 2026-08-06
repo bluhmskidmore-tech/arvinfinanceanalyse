@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-
 from backend.app.agent.schemas.agent_workspace import (
     AgentArtifact,
     AgentArtifactListResponse,
@@ -36,6 +34,7 @@ from backend.app.services.agent_workspace_service import (
     list_projects,
     update_project,
 )
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 router = APIRouter()
 

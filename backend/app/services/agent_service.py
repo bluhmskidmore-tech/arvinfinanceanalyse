@@ -654,6 +654,9 @@ def _duration_risk_payload(
             if is_numeric_json(result.get(source_field))
         ]
         if duration_scope_complete:
+            assert isinstance(duration_excluded_count, int) and not isinstance(
+                duration_excluded_count, bool
+            )
             cards.append(
                 _duration_count_card(
                     title="Duration Excluded Count",
@@ -862,8 +865,14 @@ def _product_pnl_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[s
     if not rows:
         raise ValueError(f"No product-category rows for report_date={report_date} view={view}.")
     grand_total = next((row for row in rows if str(row.get("category_id")) == "grand_total"), rows[0])
-    asset_total = next((row for row in rows if str(row.get("category_id")) == "asset_total"), {})
-    liability_total = next((row for row in rows if str(row.get("category_id")) == "liability_total"), {})
+    asset_total: dict[str, Any] = next(
+        (row for row in rows if str(row.get("category_id")) == "asset_total"),
+        {},
+    )
+    liability_total: dict[str, Any] = next(
+        (row for row in rows if str(row.get("category_id")) == "liability_total"),
+        {},
+    )
     rd_mode: Literal["explicit", "latest_default"] = (
         "explicit" if _requested_report_date(request) else "latest_default"
     )

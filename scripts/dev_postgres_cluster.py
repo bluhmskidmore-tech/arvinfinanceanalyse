@@ -716,6 +716,7 @@ def main() -> int:
         Path(args.pg_bin_dir).resolve() if args.pg_bin_dir else None,
     )
 
+    payload: dict[str, object]
     try:
         if args.command == "up":
             payload = command_up(config)
@@ -726,7 +727,7 @@ def main() -> int:
         elif args.command == "reset-schema":
             payload = command_reset_schema(config)
         else:
-            payload = command_print_env(config)
+            payload = dict(command_print_env(config))
     except RuntimeError as exc:
         print(json.dumps({"error": str(exc)}, ensure_ascii=True), file=sys.stderr)
         return 1
