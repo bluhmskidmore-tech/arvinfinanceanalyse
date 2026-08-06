@@ -698,6 +698,52 @@ def test_follow_up_question_uses_structured_result_kind_when_answer_has_no_marke
     assert "Portfolio DV01=12" in envelope.answer
 
 
+def test_unrelated_question_with_conversation_context_does_not_reuse_previous_intent(tmp_path):
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers={
+            "duration_risk": lambda request: {
+                "answer": "duration ok",
+                "basis": "formal",
+                "result_kind": "agent.duration_risk",
+                "formal_use_allowed": True,
+                "source_version": "sv_test",
+                "quality_flag": "ok",
+                "row_count": 1,
+            }
+        },
+    )
+
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="tell me a joke",
+            context={
+                "conversation": {
+                    "recent_turns": [
+                        {
+                            "result_kind": "agent.duration_risk",
+                            "answer": "Previous governed answer.",
+                        }
+                    ]
+                }
+            },
+        )
+    )
+
+    assert envelope.result_meta.result_kind == "agent.unknown"
+    assert any(card.title == "Supported Queries" for card in envelope.cards)
+
+
 def test_agent_answers_use_business_analysis_sections(tmp_path):
     tool_module = load_module(
         "backend.app.agent.tools.analysis_view_tool",

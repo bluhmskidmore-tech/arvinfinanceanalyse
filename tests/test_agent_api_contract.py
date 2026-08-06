@@ -762,6 +762,78 @@ def test_agent_query_keeps_plain_analysis_chat_local_when_hermes_configured(monk
     assert not hermes_calls
 
 
+def test_agent_query_page_default_context_stays_local_even_with_hermes_provider(monkeypatch, tmp_path):
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    _seed_agent_read_scope(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        route_module,
+        "get_settings",
+        lambda: type(
+            "SettingsStub",
+            (),
+            {
+                "agent_enabled": True,
+                "agent_provider": "hermes",
+                "agent_hermes_command": "hermes",
+                "agent_hermes_wsl_distro": "",
+                "agent_hermes_model": "gpt-test",
+                "agent_hermes_timeout_seconds": 9.0,
+                "duckdb_path": str(tmp_path / "moss.duckdb"),
+                "governance_path": str(tmp_path / "governance"),
+                **_agent_auth_fields(tmp_path),
+            },
+        )(),
+    )
+    local_calls = []
+    hermes_calls = []
+    local_envelope = _sample_agent_envelope().model_copy(
+        update={
+            "answer": "Local page default answered.",
+            "result_meta": _sample_agent_envelope().result_meta.model_copy(
+                update={
+                    "result_kind": "agent.portfolio_overview",
+                    "formal_use_allowed": True,
+                }
+            ),
+        }
+    )
+
+    def fake_execute_agent_query(request, duckdb_path, governance_dir):
+        local_calls.append((request, duckdb_path, governance_dir))
+        return local_envelope
+
+    def fake_execute_hermes_agent_query(request, governance_dir, settings):
+        hermes_calls.append((request, governance_dir, settings))
+        return _sample_agent_envelope()
+
+    monkeypatch.setattr(route_module, "execute_agent_query", fake_execute_agent_query)
+    monkeypatch.setattr(route_module, "execute_hermes_agent_query", fake_execute_hermes_agent_query)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/agent/query",
+        json={
+            "question": "explain this page",
+            "page_context": {
+                "page_id": "dashboard",
+                "current_filters": {"report_date": "2026-03-31"},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["answer"] == "Local page default answered."
+    assert payload["result_meta"]["result_kind"] == "agent.portfolio_overview"
+    assert local_calls
+    assert not hermes_calls
+
+
 def test_agent_query_keeps_explicit_governed_intent_local_when_hermes_configured(monkeypatch, tmp_path):
     route_module = load_module(
         "backend.app.api.routes.agent",

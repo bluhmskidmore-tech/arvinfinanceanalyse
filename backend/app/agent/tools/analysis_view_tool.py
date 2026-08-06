@@ -5,16 +5,20 @@ from typing import Any, Literal, cast
 from uuid import uuid4
 
 from backend.app.agent.runtime.action_token import agent_action_confirmation_token
-from backend.app.agent.runtime.financial_workflow_catalog import (
-    FinancialWorkflow,
-    is_financial_workflow_id,
-    resolve_financial_workflow,
+from backend.app.agent.runtime.financial_workflow_catalog import FinancialWorkflow
+from backend.app.agent.runtime.local_request_resolution import (
+    has_explicit_local_agent_context as _has_explicit_local_agent_context,
 )
-from backend.app.agent.runtime.research_workflow_catalog import (
-    ResearchWorkflow,
-    is_research_workflow_id,
-    resolve_research_workflow,
+from backend.app.agent.runtime.local_request_resolution import (
+    is_explicit_local_agent_intent as _is_explicit_local_agent_intent,
 )
+from backend.app.agent.runtime.local_request_resolution import (
+    is_plain_analysis_chat_question as _is_plain_analysis_chat_question,
+)
+from backend.app.agent.runtime.local_request_resolution import (
+    resolve_local_request,
+)
+from backend.app.agent.runtime.research_workflow_catalog import ResearchWorkflow
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.agent.schemas.agent_response import (
     AgentCard,
@@ -113,23 +117,12 @@ _GOVERNED_PATHS_ZH = (
     ("news", "\u65b0\u95fb\u4e8b\u4ef6"),
 )
 
-_LOCAL_GOVERNED_INTENTS = frozenset(intent for intent, _label in _GOVERNED_PATHS)
-
-
 def is_explicit_local_agent_intent(intent: str) -> bool:
-    normalized = intent.strip().lower()
-    return normalized in _LOCAL_GOVERNED_INTENTS or is_research_workflow_id(normalized)
+    return _is_explicit_local_agent_intent(intent)
 
 
 def has_explicit_local_agent_context(context: dict[str, Any] | None) -> bool:
-    context = context or {}
-    explicit_intent = str(context.get("intent") or "").strip().lower()
-    explicit_workflow = str(context.get("workflow_id") or "").strip().lower()
-    return (
-        is_explicit_local_agent_intent(explicit_intent)
-        or is_financial_workflow_id(explicit_workflow)
-        or is_research_workflow_id(explicit_workflow)
-    )
+    return _has_explicit_local_agent_context(context)
 
 
 def _optional_text(value: Any) -> str | None:
@@ -140,16 +133,7 @@ def _optional_text(value: Any) -> str | None:
 
 
 def is_plain_analysis_chat_question(question: str) -> bool:
-    normalized = str(question or "").strip().lower()
-    if not normalized:
-        return False
-    if not any(pattern in normalized for pattern in _ANALYSIS_CHAT_PATTERNS):
-        return False
-    return not any(
-        keyword.lower() in normalized
-        for _intent, keywords in _INTENT_PATTERNS
-        for keyword in keywords
-    )
+    return _is_plain_analysis_chat_question(question)
 
 
 class AnalysisViewTool:
@@ -169,13 +153,14 @@ class AnalysisViewTool:
         self._evidence = EvidenceTool()
 
     def execute(self, request: AgentQueryRequest) -> AgentEnvelope:
-        workflow = resolve_financial_workflow(request.question, request.context)
+        resolution = resolve_local_request(request)
+        workflow = resolution.financial_workflow
         if workflow is not None:
             if str(request.context.get("workflow_mode") or "").strip().lower() == "execute":
                 return self._execute_workflow_envelope(request, workflow)
             return self._workflow_envelope(request, workflow)
 
-        research_workflow = resolve_research_workflow(request.question, request.context)
+        research_workflow = resolution.research_workflow
         if research_workflow is not None:
             explicit_intent = str(request.context.get("intent") or "").strip().lower().replace("-", "_")
             workflow_mode = str(request.context.get("workflow_mode") or "").strip().lower()
@@ -184,7 +169,7 @@ class AnalysisViewTool:
                 return self._execute_research_workflow(request, research_workflow)
             return self._research_workflow_plan_envelope(request, research_workflow)
 
-        intent = self._resolve_intent(request)
+        intent = resolution.intent or "unknown"
         try:
             if intent == "cube_query":
                 return self._cube_query(request)

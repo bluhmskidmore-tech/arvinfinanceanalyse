@@ -4,16 +4,13 @@ import re
 from typing import Annotated
 
 from backend.app.agent.runtime.action_token import agent_action_confirmation_token_matches
+from backend.app.agent.runtime.local_request_resolution import resolve_local_request
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.agent.schemas.agent_response import AgentDisabledResponse, AgentEnvelope
 from backend.app.agent.schemas.agent_run import (
     AgentRunCreateResponse,
     AgentRunListResponse,
     AgentRunStatusResponse,
-)
-from backend.app.agent.tools.analysis_view_tool import (
-    has_explicit_local_agent_context,
-    is_plain_analysis_chat_question,
 )
 from backend.app.api.routes.agent_workspace import router as workspace_router
 from backend.app.governance.settings import get_settings
@@ -94,7 +91,7 @@ def _run_executor_for_provider(settings: object):
 
 
 def _should_execute_local_query(request: AgentQueryRequest) -> bool:
-    return has_explicit_local_agent_context(request.context) or is_plain_analysis_chat_question(request.question)
+    return resolve_local_request(request).route == "local"
 
 
 def _execute_local_agent_query(
@@ -110,7 +107,7 @@ def _execute_local_agent_query(
 
 
 def _resolve_agent_executor(request: AgentQueryRequest, settings: object):
-    """Shared /query and /runs dispatch: forced-local contexts win, then provider."""
+    """Shared /query and /runs dispatch: governed local paths win, then provider."""
     if _should_execute_local_query(request):
         return "local", _execute_local_agent_query
     executor = _run_executor_for_provider(settings)
