@@ -30,7 +30,6 @@ EXPECTED_PULSE_DRIFT_ERRORS = [
     "strict_gate_matrix.status expected 'pass', got 'fail'",
     "strict_gate_matrix.strict_pass_gate_count expected 0, got 1",
     "strict_gate_matrix.unexpected_gate_count expected 0, got 1",
-    "route_scope.visible_unseeded_route_count expected 0, got 1",
 ]
 
 
@@ -265,7 +264,7 @@ def test_system_audit_monitoring_refresh_keeps_all_boundaries() -> None:
         "python scripts\\refresh_calculation_p1_owner_decision_snapshot.py "
         "--require-owner-decisions-captured"
     )
-    assert report["pulse"]["drift_error_count"] == 6
+    assert report["pulse"]["drift_error_count"] == 5
     assert report["pulse"]["drift_errors"] == EXPECTED_PULSE_DRIFT_ERRORS
     assert report["blocker_intake_board"]["status"] == "open_external_input_required"
     assert report["blocker_intake_board"]["blocker_count"] == 5

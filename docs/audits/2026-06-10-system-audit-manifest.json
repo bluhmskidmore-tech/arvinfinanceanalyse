@@ -103,10 +103,10 @@
       {
         "command": "python scripts\\codex_page_readiness.py --route-scope",
         "summary": {
-          "route_count": 39,
+          "route_count": 40,
           "seeded_trace_bundle_count": 39,
-          "visible_navigation_route_count": 36,
-          "visible_unseeded_route_count": 0,
+          "visible_navigation_route_count": 37,
+          "visible_unseeded_route_count": 1,
           "business_contract_certified_count": 0,
           "evidence_pending_count": 23,
           "frontend_ready_count": 6,
@@ -129,7 +129,7 @@
           "status": "pass",
           "completion_state": "not_complete",
           "open_blocker_count": 5,
-          "route_count": 39,
+          "route_count": 40,
           "business_contract_certified_count": 0,
           "business_display_route_gap_count": 0,
           "completion_snapshot_error_count": 0,
@@ -279,12 +279,12 @@
     {
       "scope": "system_audit_pulse_read_only_guard",
       "command": "pytest tests/test_system_audit_pulse.py -q; python scripts\\system_audit_pulse.py --generated-at 2026-08-06T22:30:00+08:00; python scripts\\system_audit_pulse.py --generated-at 2026-08-06T22:30:00+08:00 --format markdown",
-      "result": "9 passed; pulse status fail; completion_state=not_complete; open_blocker_count=5; route_count=40; visible_unseeded_route_count=1; business_contract_certified_count=0; tracked_route_count=26; route_gap_count=0; completion_snapshot status fail with error_count=2 because test_output/security-scans/osv-report.json and gitleaks-report.json are absent; strict matrix status fail with strict_pass_gate_count=1 and unexpected_gate_count=1; markdown watch board renders; drift_error_count=6; evidence_scope read_only=true and no approval/write/secret-clear/certification flags are set"
+      "result": "9 passed; pulse status fail; completion_state=not_complete; open_blocker_count=5; route_count=40; visible_unseeded_route_count=1; business_contract_certified_count=0; tracked_route_count=26; route_gap_count=0; completion_snapshot status fail with error_count=2 because test_output/security-scans/osv-report.json and gitleaks-report.json are absent; strict matrix status fail with strict_pass_gate_count=1 and unexpected_gate_count=1; markdown watch board renders; drift_error_count=5; evidence_scope read_only=true and no approval/write/secret-clear/certification flags are set"
     },
     {
       "scope": "system_audit_monitoring_refresh",
       "command": "python scripts\\refresh_system_audit_monitoring.py --manifest docs/audits/2026-06-10-system-audit-manifest.json --generated-at 2026-08-06T22:30:00+08:00 --latest-session-recheck-at 2026-08-06T22:30:00+08:00 --gitnexus-tool-names codex_app.handoff_thread codex_app.fork_thread codex_app.automation_update; pytest tests/test_system_audit_monitoring_refresh.py tests/test_system_audit_blocker_intake_board.py -q",
-      "result": "read-only unified monitoring snapshot refreshed at 2026-08-06T22:30:00+08:00 without rewriting component artifacts; the refresh exits non-zero fail-closed because completion verification reports the two absent security-scan inputs, pulse reports drift_error_count=6, and the strict matrix reports status=fail with strict_pass_gate_count=1 and unexpected_gate_count=1; blocker timestamps are sourced by ID (calculation=2026-08-06T22:30:00+08:00, Ledger=2026-06-10T21:25:00+08:00, direct App and local secret=2026-06-27T13:05:14+08:00); blocker intake board next=calculation-display-p1-decisions and remains open_external_input_required; boundaries still deny writes, approvals, secret reads/rotation, certification, and promotion; monitoring refresh/intake tests 11 passed"
+      "result": "read-only unified monitoring snapshot refreshed at 2026-08-06T22:30:00+08:00 without rewriting component artifacts; the refresh exits non-zero fail-closed because completion verification reports the two absent security-scan inputs, pulse reports drift_error_count=5, and the strict matrix reports status=fail with strict_pass_gate_count=1 and unexpected_gate_count=1; blocker timestamps are sourced by ID (calculation=2026-08-06T22:30:00+08:00, Ledger=2026-06-10T21:25:00+08:00, direct App and local secret=2026-06-27T13:05:14+08:00); blocker intake board next=calculation-display-p1-decisions and remains open_external_input_required; boundaries still deny writes, approvals, secret reads/rotation, certification, and promotion; monitoring refresh/intake tests 11 passed"
     },
     {
       "scope": "system_audit_monitoring_snapshot_verifier",

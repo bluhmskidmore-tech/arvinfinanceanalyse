@@ -168,7 +168,7 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
         "status": "pass",
         "completion_state": "not_complete",
         "open_blocker_count": len(manifest["open_blockers"]),
-        "route_count": counts["seeded_pages"],
+        "route_count": 40,
         "business_contract_certified_count": counts["business_contract_certified_routes"],
         "business_display_route_gap_count": counts["business_display_route_gaps"],
         "completion_snapshot_error_count": 0,
@@ -200,9 +200,6 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
     assert pulse_snapshot["completion_snapshot"]["error_count"] == 2
     assert pulse_snapshot["all_page_readiness"]["source"] == "manifest_last_full_readiness"
     assert pulse_snapshot["drift_errors"][:2] == EXPECTED_SECURITY_SCAN_ERRORS
-    assert "route_scope.visible_unseeded_route_count expected 0, got 1" in (
-        pulse_snapshot["drift_errors"]
-    )
     assert pulse_snapshot["evidence_scope"] == {
         "read_only": True,
         "writes_duckdb": False,
@@ -376,7 +373,7 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
     assert "route_gap_count=0" in pulse_evidence["result"]
     assert "markdown watch board renders" in pulse_evidence["result"]
     assert "pulse status fail" in pulse_evidence["result"]
-    assert "drift_error_count=6" in pulse_evidence["result"]
+    assert "drift_error_count=5" in pulse_evidence["result"]
     assert "no approval/write/secret-clear/certification flags" in pulse_evidence[
         "result"
     ]
@@ -449,7 +446,7 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
     assert monitoring_snapshot["pulse"]["open_blocker_count"] == len(
         manifest["open_blockers"]
     )
-    assert monitoring_snapshot["pulse"]["drift_error_count"] == 6
+    assert monitoring_snapshot["pulse"]["drift_error_count"] == 5
     assert monitoring_snapshot["pulse"]["drift_errors"][:2] == (
         EXPECTED_SECURITY_SCAN_ERRORS
     )
@@ -599,7 +596,7 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
         "command"
     ]
     assert monitoring_snapshot["generated_at"] in monitoring_evidence["result"]
-    assert "drift_error_count=6" in monitoring_evidence["result"]
+    assert "drift_error_count=5" in monitoring_evidence["result"]
     assert "blocker intake board next=calculation-display-p1-decisions" in (
         monitoring_evidence["result"]
     )

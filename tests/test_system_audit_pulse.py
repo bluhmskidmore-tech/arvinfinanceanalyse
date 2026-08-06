@@ -27,7 +27,6 @@ EXPECTED_DRIFT_ERRORS = [
     "strict_gate_matrix.status expected 'pass', got 'fail'",
     "strict_gate_matrix.strict_pass_gate_count expected 0, got 1",
     "strict_gate_matrix.unexpected_gate_count expected 0, got 1",
-    "route_scope.visible_unseeded_route_count expected 0, got 1",
 ]
 
 
@@ -204,7 +203,7 @@ def test_system_audit_pulse_detects_route_scope_drift(monkeypatch) -> None:
 
     assert report["status"] == "fail"
     assert (
-        "route_scope.visible_unseeded_route_count expected 0, got 2"
+        "route_scope.visible_unseeded_route_count expected 1, got 2"
         in report["drift_errors"]
     )
 

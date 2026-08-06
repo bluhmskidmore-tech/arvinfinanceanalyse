@@ -159,8 +159,7 @@
     "local-secret-hygiene required input artifact is missing: test_output/security-scans/gitleaks-report.json",
     "strict_gate_matrix.status expected 'pass', got 'fail'",
     "strict_gate_matrix.strict_pass_gate_count expected 0, got 1",
-    "strict_gate_matrix.unexpected_gate_count expected 0, got 1",
-    "route_scope.visible_unseeded_route_count expected 0, got 1"
+    "strict_gate_matrix.unexpected_gate_count expected 0, got 1"
   ],
   "claim_boundary": "This pulse is a read-only monitoring aggregate. It does not approve metrics, pages, owner signoff, governance records, secret hygiene, direct App MCP/GitNexus evidence, or route certification."
 }

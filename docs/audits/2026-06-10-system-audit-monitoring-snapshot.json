@@ -116,14 +116,13 @@
       "explicit_non_approval_boundary": "This packet records follow-up work only; it does not choose or approve any calculation convention."
     },
     "calculation_post_owner_plan_renderer_sync": true,
-    "drift_error_count": 6,
+    "drift_error_count": 5,
     "drift_errors": [
       "local-secret-hygiene required input artifact is missing: test_output/security-scans/osv-report.json",
       "local-secret-hygiene required input artifact is missing: test_output/security-scans/gitleaks-report.json",
       "strict_gate_matrix.status expected 'pass', got 'fail'",
       "strict_gate_matrix.strict_pass_gate_count expected 0, got 1",
-      "strict_gate_matrix.unexpected_gate_count expected 0, got 1",
-      "route_scope.visible_unseeded_route_count expected 0, got 1"
+      "strict_gate_matrix.unexpected_gate_count expected 0, got 1"
     ]
   },
   "blocker_intake_board": {

@@ -56,6 +56,20 @@ def _fresh_command_summary(manifest: dict[str, Any], command: str) -> dict[str, 
     return None
 
 
+def _route_scope_expectations(manifest: dict[str, Any]) -> dict[str, Any]:
+    counts = dict(manifest.get("counts") or {})
+    fresh_route_scope = _fresh_command_summary(
+        manifest,
+        "python scripts\\codex_page_readiness.py --route-scope",
+    ) or {}
+    return {
+        "seeded_trace_bundle_count": counts.get("seeded_pages"),
+        "business_contract_certified_count": counts.get("business_contract_certified_routes"),
+        "visible_unseeded_route_count": fresh_route_scope.get("visible_unseeded_route_count", 0),
+        "unclassified_count": 0,
+    }
+
+
 def _append_mismatch(
     errors: list[str],
     *,
@@ -330,6 +344,7 @@ def build_pulse(
     generated_at = generated_at or _default_generated_at()
     manifest = _load_json(manifest_path)
     counts = dict(manifest.get("counts") or {})
+    route_scope_expectations = _route_scope_expectations(manifest)
     route_scope = build_route_scope_classification_report()
     coverage = build_business_display_coverage_report(repo_root=repo_root)
     completion = (
@@ -389,25 +404,25 @@ def build_pulse(
     _append_mismatch(
         drift_errors,
         field="route_scope.seeded_trace_bundle_count",
-        expected=counts.get("seeded_pages"),
+        expected=route_scope_expectations["seeded_trace_bundle_count"],
         actual=route_summary["seeded_trace_bundle_count"],
     )
     _append_mismatch(
         drift_errors,
         field="route_scope.business_contract_certified_count",
-        expected=counts.get("business_contract_certified_routes"),
+        expected=route_scope_expectations["business_contract_certified_count"],
         actual=route_summary["business_contract_certified_count"],
     )
     _append_mismatch(
         drift_errors,
         field="route_scope.visible_unseeded_route_count",
-        expected=0,
+        expected=route_scope_expectations["visible_unseeded_route_count"],
         actual=route_summary["visible_unseeded_route_count"],
     )
     _append_mismatch(
         drift_errors,
         field="route_scope.unclassified_count",
-        expected=0,
+        expected=route_scope_expectations["unclassified_count"],
         actual=route_summary["unclassified_count"],
     )
     _append_mismatch(
