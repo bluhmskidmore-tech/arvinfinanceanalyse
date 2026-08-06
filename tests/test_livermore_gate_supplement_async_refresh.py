@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
+from threading import Lock, Thread
 from types import SimpleNamespace
 from typing import cast
 
@@ -210,6 +211,188 @@ def test_livermore_status_marks_stale_inflight_run_failed_once(
     assert first["failure_category"] == "stale_inflight"
     assert second["status"] == "failed"
     assert len(stale_failures) == 1
+
+
+def test_livermore_queue_requeues_same_key_after_status_reconciles_stale_failure(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from backend.app.services import (
+        livermore_gate_supplement_compute_service as service,
+    )
+
+    governance_path = tmp_path / "governance"
+    sent: list[dict[str, object]] = []
+    actor = SimpleNamespace(send=lambda **kwargs: sent.append(dict(kwargs)))
+    monkeypatch.setattr(service, "run_livermore_gate_supplement_refresh_task", actor, raising=False)
+
+    first = service.queue_gate_supplement_refresh(
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_path=str(governance_path),
+        as_of_date=date(2026, 4, 30),
+        lookback_days=30,
+        idempotency_key="same-key",
+    )
+    repo = GovernanceRepository(base_dir=governance_path)
+    stale_at = datetime.now(UTC) - service._LIVERMORE_REFRESH_STALE_AFTER - timedelta(seconds=1)
+    repo.append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            **repo.read_all(CACHE_BUILD_RUN_STREAM)[-1],
+            "status": "queued",
+            "trigger_mode": "async",
+            "queued_at": stale_at.isoformat(),
+        },
+    )
+
+    status = service.livermore_gate_supplement_refresh_status(
+        governance_path,
+        run_id=cast(str, first["run_id"]),
+    )
+    retry = service.queue_gate_supplement_refresh(
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_path=str(governance_path),
+        as_of_date=date(2026, 4, 30),
+        lookback_days=30,
+        idempotency_key="same-key",
+    )
+
+    stale_failures = [
+        record
+        for record in repo.read_all(CACHE_BUILD_RUN_STREAM)
+        if record.get("run_id") == first["run_id"]
+        and record.get("status") == "failed"
+        and record.get("failure_category") == "stale_inflight"
+    ]
+    assert status["status"] == "failed"
+    assert retry["status"] == "queued"
+    assert retry["run_id"] != first["run_id"]
+    assert retry["idempotency_replay"] is False
+    assert len(stale_failures) == 1
+    assert len(sent) == 2
+    assert sent[-1]["run_id"] == retry["run_id"]
+
+
+def test_livermore_queue_same_key_stale_retry_is_single_dispatch_under_concurrency(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from backend.app.services import (
+        livermore_gate_supplement_compute_service as service,
+    )
+
+    governance_path = tmp_path / "governance"
+    sent: list[dict[str, object]] = []
+    actor = SimpleNamespace(send=lambda **kwargs: sent.append(dict(kwargs)))
+    monkeypatch.setattr(service, "run_livermore_gate_supplement_refresh_task", actor, raising=False)
+
+    first = service.queue_gate_supplement_refresh(
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_path=str(governance_path),
+        as_of_date=date(2026, 4, 30),
+        lookback_days=30,
+        idempotency_key="same-key",
+    )
+    repo = GovernanceRepository(base_dir=governance_path)
+    stale_at = datetime.now(UTC) - service._LIVERMORE_REFRESH_STALE_AFTER - timedelta(seconds=1)
+    repo.append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            **repo.read_all(CACHE_BUILD_RUN_STREAM)[-1],
+            "status": "queued",
+            "trigger_mode": "async",
+            "queued_at": stale_at.isoformat(),
+        },
+    )
+    service.livermore_gate_supplement_refresh_status(
+        governance_path,
+        run_id=cast(str, first["run_id"]),
+    )
+
+    results: list[dict[str, object]] = []
+    errors: list[Exception] = []
+    results_lock = Lock()
+
+    def invoke_retry() -> None:
+        try:
+            payload = service.queue_gate_supplement_refresh(
+                duckdb_path=str(tmp_path / "moss.duckdb"),
+                governance_path=str(governance_path),
+                as_of_date=date(2026, 4, 30),
+                lookback_days=30,
+                idempotency_key="same-key",
+            )
+        except Exception as exc:  # noqa: BLE001
+            with results_lock:
+                errors.append(exc)
+            return
+        with results_lock:
+            results.append(payload)
+
+    first_thread = Thread(target=invoke_retry)
+    second_thread = Thread(target=invoke_retry)
+    first_thread.start()
+    second_thread.start()
+    first_thread.join(timeout=5)
+    second_thread.join(timeout=5)
+
+    assert errors == []
+    assert len(results) == 2
+    retry_run_ids = {cast(str, payload["run_id"]) for payload in results}
+    assert len(retry_run_ids) == 1
+    replay_flags = [payload["idempotency_replay"] for payload in results]
+    assert replay_flags.count(False) == 1
+    assert replay_flags.count(True) == 1
+    assert len(sent) == 2
+    assert sent[-1]["run_id"] in retry_run_ids
+
+
+def test_livermore_queue_keeps_replaying_non_stale_terminal_failure(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from backend.app.services import (
+        livermore_gate_supplement_compute_service as service,
+    )
+
+    governance_path = tmp_path / "governance"
+    sent: list[dict[str, object]] = []
+    actor = SimpleNamespace(send=lambda **kwargs: sent.append(dict(kwargs)))
+    monkeypatch.setattr(service, "run_livermore_gate_supplement_refresh_task", actor, raising=False)
+
+    first = service.queue_gate_supplement_refresh(
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_path=str(governance_path),
+        as_of_date=date(2026, 4, 30),
+        lookback_days=30,
+        idempotency_key="same-key",
+    )
+    repo = GovernanceRepository(base_dir=governance_path)
+    repo.append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            **repo.read_all(CACHE_BUILD_RUN_STREAM)[-1],
+            "status": "failed",
+            "trigger_mode": "terminal",
+            "finished_at": datetime.now(UTC).isoformat(),
+            "failure_category": "materialization_failure",
+            "failure_reason": "RuntimeError",
+            "error_message": "worker failed",
+        },
+    )
+
+    replay = service.queue_gate_supplement_refresh(
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_path=str(governance_path),
+        as_of_date=date(2026, 4, 30),
+        lookback_days=30,
+        idempotency_key="same-key",
+    )
+
+    assert replay["run_id"] == first["run_id"]
+    assert replay["status"] == "failed"
+    assert replay["idempotency_replay"] is True
+    assert len(sent) == 1
 
 
 def test_livermore_status_route_returns_404_for_unknown_run(tmp_path, monkeypatch) -> None:

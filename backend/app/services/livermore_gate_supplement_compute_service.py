@@ -232,17 +232,14 @@ def queue_gate_supplement_refresh(
         with acquire_lock(trigger_lock, base_dir=governance_path, timeout_seconds=0.1):
             records = _queued_livermore_refresh_records(repo)
             if normalized_idempotency_key is not None:
-                for record in reversed(records):
-                    if not _livermore_refresh_record_matches_request(
-                        record,
-                        request_fingerprint=request_fingerprint,
-                        as_of_date=target_date_text,
-                        lookback_days=int(lookback_days),
-                        storage_target_digest=storage_target_digest,
-                    ):
-                        continue
-                    if str(record.get("idempotency_key") or "").strip() != normalized_idempotency_key:
-                        continue
+                for record in _latest_livermore_refresh_records_for_request(
+                    records,
+                    request_fingerprint=request_fingerprint,
+                    as_of_date=target_date_text,
+                    lookback_days=int(lookback_days),
+                    storage_target_digest=storage_target_digest,
+                    idempotency_key=normalized_idempotency_key,
+                ):
                     status = str(record.get("status") or "")
                     if (
                         status in _LIVERMORE_REFRESH_IN_FLIGHT_STATUSES
@@ -251,6 +248,8 @@ def queue_gate_supplement_refresh(
                         _append_stale_livermore_refresh_failure(repo, record)
                         records = _queued_livermore_refresh_records(repo)
                         break
+                    if _livermore_refresh_record_is_retryable_stale_failure(record):
+                        continue
                     return _normalize_livermore_refresh_record(record, idempotency_replay=True)
 
             latest_by_run_id: dict[str, GovernanceRecord] = {}
@@ -415,6 +414,44 @@ def _latest_livermore_refresh_record(
 ) -> GovernanceRecord | None:
     matching = [record for record in records if str(record.get("run_id") or "") == run_id]
     return matching[-1] if matching else None
+
+
+def _latest_livermore_refresh_records_for_request(
+    records: list[GovernanceRecord],
+    *,
+    request_fingerprint: str,
+    as_of_date: str,
+    lookback_days: int,
+    storage_target_digest: str,
+    idempotency_key: str,
+) -> list[GovernanceRecord]:
+    latest_records: list[GovernanceRecord] = []
+    seen_run_ids: set[str] = set()
+    for record in reversed(records):
+        run_id = str(record.get("run_id") or "").strip()
+        if not run_id or run_id in seen_run_ids:
+            continue
+        if not _livermore_refresh_record_matches_request(
+            record,
+            request_fingerprint=request_fingerprint,
+            as_of_date=as_of_date,
+            lookback_days=lookback_days,
+            storage_target_digest=storage_target_digest,
+        ):
+            continue
+        if str(record.get("idempotency_key") or "").strip() != idempotency_key:
+            continue
+        seen_run_ids.add(run_id)
+        latest_records.append(record)
+    return latest_records
+
+
+def _livermore_refresh_record_is_retryable_stale_failure(record: GovernanceRecord) -> bool:
+    return (
+        str(record.get("status") or "") == "failed"
+        and str(record.get("failure_category") or "") == "stale_inflight"
+        and str(record.get("failure_reason") or "") == "stale_inflight"
+    )
 
 
 def _livermore_refresh_status_reconcile_lock(run_id: str) -> LockDefinition:
