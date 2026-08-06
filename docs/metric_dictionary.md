@@ -359,7 +359,7 @@ MTR-RSK-001 fixed-income convention note:
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `MTR-PAT-301` | 静态收益（年化） | business | `formal` | `AdvancedAttributionSummary.static_return_annualized` | `/pnl-attribution` advanced | 百分比；前端不得再次乘 12 | 当前页面直接消费 summary 字段 | `frontend/src/test/AdvancedAttributionChart.test.tsx` |
 | `MTR-PAT-302` | 国债曲线效应 | business | `formal` | `AdvancedAttributionSummary.treasury_effect_total` / `SpreadAttributionPayload.total_treasury_effect` | advanced | 金额，亿元展示 | advanced strip 必须显示 provenance | `frontend/src/test/AdvancedAttributionChart.test.tsx` |
-| `MTR-PAT-303` | KRD 桶收益率变动 | business | `formal` | `KRDAttributionBucket.yield_change` | advanced KRD 表格 | 当前页面按 BP 文义展示 | 字段名仍未显式带单位，属于后续缺口 | `frontend/src/test/AdvancedAttributionChart.test.tsx` |
+| `MTR-PAT-303` | 期限桶收益率变动（诊断） | business | `formal` | `KRDAttributionBucket.yield_change` | advanced 期限桶久期表格 | `Numeric.unit=bp`，页面按 BP 展示；仅作分桶观察，不参与贡献金额 | 起止两期按当前期限规则重分桶；缺失 YTM 同时退出加权分子与分母 | `frontend/src/test/AdvancedAttributionChart.test.tsx` |
 | `MTR-PAT-304` | 当前视图元信息 | quality | `formal` | `result_meta.generated_at / quality_flag / fallback_mode` | volume-rate / tpl-market / composition / advanced | 页面顶部 strip 必显 | 当前页已落地 | `frontend/src/test/PnlAttributionPage.test.tsx` |
 
 ## 12. 当前缺口清单
