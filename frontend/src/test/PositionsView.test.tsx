@@ -11,7 +11,7 @@ vi.mock("../lib/echarts", () => ({
   default: () => <div data-testid="positions-echarts-stub" />,
 }));
 
-function meta(resultKind: string): ResultMeta {
+function meta(resultKind: string, overrides: Partial<ResultMeta> = {}): ResultMeta {
   return {
     trace_id: `tr_${resultKind}`,
     basis: "formal",
@@ -26,12 +26,17 @@ function meta(resultKind: string): ResultMeta {
     fallback_mode: "none",
     scenario_flag: false,
     generated_at: "2026-01-02T00:00:00Z",
+    ...overrides,
   };
 }
 
-function envelope<T>(resultKind: string, result: T): ApiEnvelope<T> {
+function envelope<T>(
+  resultKind: string,
+  result: T,
+  metaOverrides: Partial<ResultMeta> = {},
+): ApiEnvelope<T> {
   return {
-    result_meta: meta(resultKind),
+    result_meta: meta(resultKind, metaOverrides),
     result,
   };
 }
@@ -71,6 +76,55 @@ describe("PositionsView", () => {
       await screen.findByRole("combobox", { name: "positions-report-date" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "债券持仓" })).toBeInTheDocument();
+  });
+
+  it("surfaces active positions list result_meta in the first-screen data status", async () => {
+    const client = createApiClient({ mode: "mock" });
+    client.getBalanceAnalysisDates = vi.fn(async () =>
+      envelope("balance-analysis.dates", { report_dates: ["2026-04-30"] }),
+    );
+    client.getPositionsBondSubTypes = vi.fn(async (): Promise<ApiEnvelope<SubTypesResponse>> =>
+      envelope("positions.bonds.sub_types", { sub_types: ["信用债"] }),
+    );
+    client.getPositionsBondsList = vi.fn(
+      async (options): Promise<ApiEnvelope<PageResponse<BondPositionItem>>> =>
+        envelope(
+          "positions.bonds.list",
+          {
+            items: [],
+            total: 0,
+            page: options.page,
+            page_size: options.pageSize,
+          },
+          {
+            quality_flag: "warning",
+            fallback_mode: "latest_snapshot",
+            source_version: "sv_positions_warning",
+            generated_at: "2026-05-01T08:00:00Z",
+          },
+        ),
+    );
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <MemoryRouter>
+            <PositionsView />
+          </MemoryRouter>
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    const status = await screen.findByTestId("positions-data-status");
+    await waitFor(() => {
+      expect(status).toHaveTextContent("质量标记：预警");
+      expect(status).toHaveTextContent("降级模式：最新快照降级");
+      expect(status).toHaveTextContent("生成时间：2026-05-01T08:00:00Z");
+      expect(status).toHaveTextContent("来源版本：sv_positions_warning");
+    });
   });
 
   it("renders duplicate bond codes without duplicate React row-key warnings", async () => {

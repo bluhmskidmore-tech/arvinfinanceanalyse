@@ -80,6 +80,35 @@ function metaSummary(meta: ResultMeta | null | undefined): string {
   return `${meta.quality_flag} · ${compactVersion(meta.source_version)} · ${compactVersion(meta.rule_version)}`;
 }
 
+function resultMetaQualityLabel(value: ResultMeta["quality_flag"] | undefined): string {
+  if (value === "ok") {
+    return "正常";
+  }
+  if (value === "warning") {
+    return "预警";
+  }
+  if (value === "error") {
+    return "错误";
+  }
+  if (value === "stale") {
+    return "陈旧";
+  }
+  if (value === "missing") {
+    return "缺失";
+  }
+  return "未提供";
+}
+
+function resultMetaFallbackLabel(value: ResultMeta["fallback_mode"] | undefined): string {
+  if (value === "none") {
+    return "未降级";
+  }
+  if (value === "latest_snapshot") {
+    return "最新快照降级";
+  }
+  return "未提供";
+}
+
 function topRatingItem(items: RatingStatsResponse["items"] | undefined) {
   if (!items?.length) {
     return null;
@@ -348,16 +377,14 @@ export default function PositionsView() {
 
   const bondsListQuery = useQuery({
     queryKey: ["positions", "bonds-list", client.mode, reportDate, selectedSubType, page],
-    queryFn: async () => {
-      const envelope = await client.getPositionsBondsList({
+    queryFn: () =>
+      client.getPositionsBondsList({
         reportDate: reportDate || null,
         subType: selectedSubType || null,
         page,
         pageSize: PAGE_SIZE,
         includeIssued: false,
-      });
-      return envelope.result;
-    },
+      }),
     enabled: tab === "bonds" && Boolean(reportDate),
     retry: false,
   });
@@ -372,16 +399,14 @@ export default function PositionsView() {
       direction,
       page,
     ],
-    queryFn: async () => {
-      const envelope = await client.getPositionsInterbankList({
+    queryFn: () =>
+      client.getPositionsInterbankList({
         reportDate: reportDate || null,
         productType: selectedProductType || null,
         direction,
         page,
         pageSize: PAGE_SIZE,
-      });
-      return envelope.result;
-    },
+      }),
     enabled: tab === "interbank" && Boolean(reportDate),
     retry: false,
   });
@@ -448,7 +473,11 @@ export default function PositionsView() {
     return items.filter((x) => x.customer_name.includes(q));
   }, [interbankCpSplit?.liability_items, searchText]);
 
-  const currentList = tab === "bonds" ? bondsListQuery.data : interbankListQuery.data;
+  const bondsList = bondsListQuery.data?.result;
+  const interbankList = interbankListQuery.data?.result;
+  const currentList = tab === "bonds" ? bondsList : interbankList;
+  const activeListMeta =
+    tab === "bonds" ? bondsListQuery.data?.result_meta : interbankListQuery.data?.result_meta;
   const listLoading = tab === "bonds" ? bondsListQuery.isLoading : interbankListQuery.isLoading;
   const totalPages = currentList ? Math.ceil(currentList.total / PAGE_SIZE) : 0;
   const canPrev = page > 1;
@@ -506,6 +535,14 @@ export default function PositionsView() {
             <span>日均分母=有数据 report_date 数</span>
             <span>{tab === "bonds" ? "当前：债券持仓" : "当前：同业持仓"}</span>
             <span>{activeScopeLabel}</span>
+            {activeListMeta ? (
+              <>
+                <span>质量标记：{resultMetaQualityLabel(activeListMeta.quality_flag)}</span>
+                <span>降级模式：{resultMetaFallbackLabel(activeListMeta.fallback_mode)}</span>
+                <span>生成时间：{activeListMeta.generated_at}</span>
+                <span>来源版本：{activeListMeta.source_version}</span>
+              </>
+            ) : null}
           </DataStatusStrip>
         }
       >
@@ -634,9 +671,9 @@ export default function PositionsView() {
               className="positions-view__table-card"
               title={selectedSubType || "全部债券持仓"}
               extra={
-                bondsListQuery.data ? (
+                bondsList ? (
                   <Typography.Text type="secondary">
-                    {bondsListQuery.data.total} 条 · 第 {page}/{Math.max(1, totalPages)} 页
+                    {bondsList.total} 条 · 第 {page}/{Math.max(1, totalPages)} 页
                   </Typography.Text>
                 ) : null
               }
@@ -645,13 +682,13 @@ export default function PositionsView() {
                 <div className="positions-view__loading">
                   <Spin />
                 </div>
-              ) : bondsListQuery.data && bondsListQuery.data.items.length > 0 ? (
+              ) : bondsList && bondsList.items.length > 0 ? (
                 <>
                   <Table
                     size="small"
                     pagination={false}
                     scroll={{ x: "max-content" }}
-                    dataSource={bondsListQuery.data.items.map((row, index) => ({
+                    dataSource={bondsList.items.map((row, index) => ({
                       key: [
                         page,
                         index,
@@ -829,9 +866,9 @@ export default function PositionsView() {
                 className="positions-view__table-card"
                 title={selectedProductType || "全部同业持仓"}
                 extra={
-                  interbankListQuery.data ? (
+                  interbankList ? (
                     <Typography.Text type="secondary">
-                      {interbankListQuery.data.total} 条 · 第 {page}/{Math.max(1, totalPages)} 页
+                      {interbankList.total} 条 · 第 {page}/{Math.max(1, totalPages)} 页
                     </Typography.Text>
                   ) : null
                 }
@@ -840,13 +877,13 @@ export default function PositionsView() {
                   <div className="positions-view__loading">
                     <Spin />
                   </div>
-                ) : interbankListQuery.data && interbankListQuery.data.items.length > 0 ? (
+                ) : interbankList && interbankList.items.length > 0 ? (
                   <>
                     <Table
                       size="small"
                       pagination={false}
                       scroll={{ x: "max-content" }}
-                      dataSource={interbankListQuery.data.items.map((row, index) => ({
+                      dataSource={interbankList.items.map((row, index) => ({
                         key: [
                           page,
                           index,
