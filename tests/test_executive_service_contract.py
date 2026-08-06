@@ -122,6 +122,48 @@ def _patch_executive_overview_metric_contexts(monkeypatch, exec_mod, tmp_path, g
     return dates
 
 
+def _seed_executive_overview_governed_lineage(governance_dir, exec_mod) -> None:
+    records = [
+        {
+            "cache_key": exec_mod.PNL_CACHE_KEY,
+            "job_name": exec_mod.PNL_JOB_NAME,
+            "status": "completed",
+            "report_date": "2026-04-29",
+            "source_version": "sv_pnl_prior",
+            "rule_version": "rv_pnl_prior",
+        },
+        {
+            "cache_key": exec_mod.PNL_CACHE_KEY,
+            "job_name": exec_mod.PNL_JOB_NAME,
+            "status": "completed",
+            "report_date": "2026-04-30",
+            "source_version": "sv_pnl_current",
+            "rule_version": "rv_pnl_current",
+        },
+        {
+            "cache_key": exec_mod.BOND_ANALYTICS_CACHE_KEY,
+            "job_name": "bond_analytics_materialize",
+            "status": "completed",
+            "report_date": "2026-04-29",
+            "source_version": "sv_bond_prior",
+            "rule_version": "rv_bond_prior",
+        },
+        {
+            "cache_key": exec_mod.BOND_ANALYTICS_CACHE_KEY,
+            "job_name": "bond_analytics_materialize",
+            "status": "completed",
+            "report_date": "2026-04-30",
+            "source_version": "sv_bond_current",
+            "rule_version": "rv_bond_current",
+        },
+    ]
+    stream_path = governance_dir / f"{exec_mod.CACHE_BUILD_RUN_STREAM}.jsonl"
+    stream_path.write_text(
+        "".join(json.dumps(record) + "\n" for record in records),
+        encoding="utf-8",
+    )
+
+
 def _assert_analytical_meta(meta: dict) -> None:
     assert meta["basis"] == "analytical"
     assert meta["formal_use_allowed"] is False
@@ -1688,8 +1730,8 @@ def test_executive_overview_warns_when_aum_lineage_is_missing(
                 "2026-04-29": {
                     "report_date": "2026-04-29",
                     "total_market_value_amount": 90.0,
-                    "source_version": None,
-                    "rule_version": None,
+                    "source_version": "sv_balance_prior",
+                    "rule_version": "rv_balance_prior",
                 },
             },
             [90.0, 100.0],
@@ -1710,6 +1752,89 @@ def test_executive_overview_warns_when_aum_lineage_is_missing(
     assert meta["quality_flag"] == "warning"
     assert meta["vendor_status"] == "vendor_unavailable"
     assert meta["source_version"] == exec_mod._MISS_SOURCE
+    aum_metric = next(metric for metric in out["result"]["metrics"] if metric["id"] == "aum")
+    assert aum_metric["delta"]["display"] == "+11.11%"
+
+
+def test_executive_overview_keeps_current_aum_trusted_when_prior_lineage_is_missing(
+    monkeypatch,
+    exec_mod,
+    tmp_path,
+):
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir(parents=True)
+    _seed_executive_overview_governed_lineage(governance_dir, exec_mod)
+    dates = _patch_executive_overview_metric_contexts(monkeypatch, exec_mod, tmp_path, governance_dir)
+    monkeypatch.setattr(
+        exec_mod,
+        "_fetch_aum_context",
+        lambda *_a, **_k: (
+            {
+                "2026-04-30": {
+                    "report_date": "2026-04-30",
+                    "total_market_value_amount": 100.0,
+                    "source_version": "sv_balance_current",
+                    "rule_version": "rv_balance_current",
+                },
+                "2026-04-29": {
+                    "report_date": "2026-04-29",
+                    "total_market_value_amount": 90.0,
+                    "source_version": None,
+                    "rule_version": None,
+                },
+            },
+            [90.0, 100.0],
+        ),
+    )
+
+    out = exec_mod.executive_overview(
+        report_date="2026-04-30",
+        date_context={
+            "balance": dates,
+            "pnl": dates,
+            "liability": dates,
+            "bond": dates,
+        },
+    )
+
+    meta = out["result_meta"]
+    assert meta["quality_flag"] == "ok"
+    assert meta["vendor_status"] == "ok"
+    assert meta["source_version"] != exec_mod._MISS_SOURCE
+    assert "sv_balance_current" in meta["source_version"]
+    assert "sv_balance_prior" not in meta["source_version"]
+    aum_metric = next(metric for metric in out["result"]["metrics"] if metric["id"] == "aum")
+    assert aum_metric["delta"]["display"] == "+11.11%"
+
+
+def test_executive_overview_accepts_complete_aum_current_and_prior_lineage(
+    monkeypatch,
+    exec_mod,
+    tmp_path,
+):
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir(parents=True)
+    _seed_executive_overview_governed_lineage(governance_dir, exec_mod)
+    dates = _patch_executive_overview_metric_contexts(monkeypatch, exec_mod, tmp_path, governance_dir)
+
+    out = exec_mod.executive_overview(
+        report_date="2026-04-30",
+        date_context={
+            "balance": dates,
+            "pnl": dates,
+            "liability": dates,
+            "bond": dates,
+        },
+    )
+
+    meta = out["result_meta"]
+    assert meta["quality_flag"] == "ok"
+    assert meta["vendor_status"] == "ok"
+    assert meta["source_version"] != exec_mod._MISS_SOURCE
+    assert "sv_balance_current" in meta["source_version"]
+    assert "sv_balance_prior" in meta["source_version"]
+    aum_metric = next(metric for metric in out["result"]["metrics"] if metric["id"] == "aum")
+    assert aum_metric["delta"]["display"] == "+11.11%"
 
 
 def test_executive_overview_warns_when_bond_lineage_source_version_is_empty(

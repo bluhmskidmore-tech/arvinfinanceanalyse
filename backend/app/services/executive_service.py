@@ -368,6 +368,15 @@ def _state_missing_required_lineage(state: dict[str, object]) -> bool:
     return bool(state.get("missing_lineage")) or not _state_has_lineage_tokens(state)
 
 
+def _mapping_missing_required_lineage(row: dict[str, object] | None) -> bool:
+    if row is None:
+        return False
+    return not (
+        _lineage_tokens(row.get("source_version"))
+        and _lineage_tokens(row.get("rule_version"))
+    )
+
+
 def _join_lineage_tokens(*values: object) -> str:
     return "__".join(_lineage_tokens(*values))
 
@@ -1683,6 +1692,8 @@ def _compute_executive_overview(
             "row": None,
             "source_versions": [],
             "rule_versions": [],
+            "current_missing_lineage": False,
+            "previous_missing_lineage": False,
         }
         try:
             balance_repo = FormalZqtzBalanceMetricsRepository(str(settings.duckdb_path))
@@ -1707,6 +1718,7 @@ def _compute_executive_overview(
             if current_row is not None:
                 raw = float(current_row["total_market_value_amount"])
                 state["raw"] = raw
+                state["current_missing_lineage"] = _mapping_missing_required_lineage(current_row)
                 state["source_versions"] = [current_row.get("source_version")]
                 state["rule_versions"] = [current_row.get("rule_version")]
                 previous_report_date = _previous_report_date(
@@ -1716,6 +1728,9 @@ def _compute_executive_overview(
                 if previous_report_date is not None:
                     previous_row = aum_rows_by_date.get(previous_report_date)
                     if previous_row is not None:
+                        state["previous_missing_lineage"] = _mapping_missing_required_lineage(
+                            previous_row
+                        )
                         state["source_versions"] = [
                             *list(state["source_versions"]),
                             previous_row.get("source_version"),
@@ -2270,8 +2285,9 @@ def _compute_executive_overview(
         or dv01_raw is None
     )
     lineage_fallback_failed = _cache_build_runs_full_fallback_failed(cache_build_run_fallback_state)
+    aum_current_missing_lineage = bool(aum_state.get("current_missing_lineage"))
     has_missing_lineage = (
-        (aum_raw is not None and _state_missing_required_lineage(aum_state))
+        (aum_raw is not None and aum_current_missing_lineage)
         or (ytd_raw is not None and _state_missing_required_lineage(ytd_state))
         or (dv01_raw is not None and _state_missing_required_lineage(dv01_state))
     )
