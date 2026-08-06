@@ -3,8 +3,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import sys
 import uuid
+from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,7 +37,30 @@ def backfill_stock_adjustment_factor(
     client: object | None = None,
     target_backup_path: str | Path | None = None,
     governance_lock: bool = False,
+    choice_universe_date: str | None = None,
 ) -> dict[str, object]:
+    if choice_universe_date and codes:
+        raise ValueError("--choice-universe-date cannot be combined with explicit codes")
+    if choice_universe_date:
+        normalized_choice_date = _normalize_compact_date(choice_universe_date)
+        try:
+            normalized_choice_date = date.fromisoformat(normalized_choice_date).isoformat()
+        except ValueError as exc:
+            raise ValueError("choice_universe_date must be a valid YYYY-MM-DD date") from exc
+        for option_name, option_value in (
+            ("--start-date", start_date),
+            ("--end-date", end_date),
+        ):
+            if option_value is None:
+                continue
+            normalized_option = _normalize_compact_date(option_value)
+            try:
+                normalized_option = date.fromisoformat(normalized_option).isoformat()
+            except ValueError as exc:
+                raise ValueError(f"{option_name} must be a valid YYYY-MM-DD date") from exc
+            if normalized_option != normalized_choice_date:
+                raise ValueError(f"{option_name} must match --choice-universe-date")
+        choice_universe_date = start_date = end_date = normalized_choice_date
     resolved_path = normalize_duckdb_path(duckdb_path)
     if not resolved_path.exists():
         raise FileNotFoundError(f"DuckDB file not found: {resolved_path}")
@@ -44,8 +69,12 @@ def backfill_stock_adjustment_factor(
     try:
         if not dry_run:
             ensure_stock_adjustment_factor_schema(conn)
-        selected_codes = _select_codes(conn, explicit_codes=codes)
-        selected_dates = _select_dates(conn, start_date=start_date, end_date=end_date)
+        if choice_universe_date:
+            selected_codes = _select_choice_universe_codes(conn, as_of_date=choice_universe_date)
+            selected_dates = [choice_universe_date]
+        else:
+            selected_codes = _select_codes(conn, explicit_codes=codes)
+            selected_dates = _select_dates(conn, start_date=start_date, end_date=end_date)
     finally:
         conn.close()
 
@@ -75,11 +104,28 @@ def backfill_stock_adjustment_factor(
         target_backup_path=target_backup_path,
         governance_lock=governance_lock,
     )
+    requested_cells = (
+        {(stock_code, choice_universe_date) for stock_code in selected_codes}
+        if choice_universe_date
+        else None
+    )
     rows = _fetch_tushare_adj_factor_rows(
         client or _DefaultTushareAdjustmentClient(),
         stock_codes=selected_codes,
         trade_dates=selected_dates,
+        requested_cells=requested_cells,
+        strict_requested_cells=choice_universe_date is not None,
     )
+    if requested_cells is not None:
+        returned_cells = {(str(row["stock_code"]), str(row["trade_date"])) for row in rows}
+        missing_cells = sorted(requested_cells - returned_cells)
+        if missing_cells:
+            preview = ", ".join(f"{code}@{trade_date}" for code, trade_date in missing_cells[:10])
+            raise RuntimeError(
+                "incomplete Choice-universe adjustment factors: "
+                f"missing {len(missing_cells)} of {len(requested_cells)} requested cells; "
+                f"preview: {preview}"
+            )
     source_version = _source_version(rows)
     run_id = f"stock_adjustment_factor:{selected_dates[0]}:{selected_dates[-1]}:{uuid.uuid4().hex[:12]}"
 
@@ -173,10 +219,14 @@ def _fetch_tushare_adj_factor_rows(
     *,
     stock_codes: list[str],
     trade_dates: list[str],
+    requested_cells: set[tuple[str, str]] | None = None,
+    strict_requested_cells: bool = False,
 ) -> list[dict[str, object]]:
     code_set = set(stock_codes)
     rows: list[dict[str, object]] = []
+    rows_by_cell: dict[tuple[str, str], dict[str, object]] = {}
     for trade_date in trade_dates:
+        requested_trade_date = _normalize_compact_date(trade_date)
         frame = client.adj_factor(
             trade_date=trade_date.replace("-", ""),
             fields="ts_code,trade_date,adj_factor",
@@ -188,14 +238,45 @@ def _fetch_tushare_adj_factor_rows(
             adj_factor = _float_or_none(record.get("adj_factor"))
             normalized_date = _normalize_compact_date(record.get("trade_date"))
             if adj_factor is None or not normalized_date:
+                if strict_requested_cells:
+                    raise RuntimeError(
+                        "incomplete Choice-universe adjustment factors: "
+                        f"invalid vendor cell for {stock_code}"
+                    )
                 continue
-            rows.append(
-                {
-                    "stock_code": stock_code,
-                    "trade_date": normalized_date,
-                    "adj_factor": adj_factor,
-                }
-            )
+            row = {
+                "stock_code": stock_code,
+                "trade_date": normalized_date,
+                "adj_factor": adj_factor,
+            }
+            if requested_cells is None:
+                rows.append(row)
+                continue
+            cell = (stock_code, normalized_date)
+            if normalized_date != requested_trade_date or cell not in requested_cells:
+                if strict_requested_cells:
+                    raise RuntimeError(
+                        "incomplete Choice-universe adjustment factors: "
+                        f"unexpected vendor cell {stock_code}@{normalized_date}"
+                    )
+                continue
+            if not math.isfinite(adj_factor) or adj_factor <= 0:
+                if strict_requested_cells:
+                    raise RuntimeError(
+                        "incomplete Choice-universe adjustment factors: "
+                        f"nonpositive or nonfinite factor for {stock_code}@{normalized_date}"
+                    )
+                continue
+            previous = rows_by_cell.get(cell)
+            if previous is not None:
+                if previous["adj_factor"] != adj_factor:
+                    raise RuntimeError(
+                        f"conflicting adj_factor values for {stock_code} on {normalized_date}"
+                    )
+                continue
+            rows_by_cell[cell] = row
+    if requested_cells is not None:
+        rows = list(rows_by_cell.values())
     return sorted(rows, key=lambda row: (str(row["trade_date"]), str(row["stock_code"])))
 
 
@@ -216,6 +297,39 @@ def _select_codes(conn: duckdb.DuckDBPyConnection, *, explicit_codes: list[str] 
             if code:
                 codes.add(code)
     return sorted(codes)
+
+
+def _select_choice_universe_codes(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    as_of_date: str,
+) -> list[str]:
+    normalized_date = _normalize_compact_date(as_of_date)
+    try:
+        normalized_date = date.fromisoformat(normalized_date).isoformat()
+    except ValueError as exc:
+        raise ValueError("choice_universe_date must be a valid YYYY-MM-DD date") from exc
+    table_name = "choice_stock_universe"
+    if table_name not in _table_names(conn):
+        raise RuntimeError("choice_stock_universe table is required for --choice-universe-date")
+    if not {"as_of_date", "stock_code"}.issubset(_table_columns(conn, table_name)):
+        raise RuntimeError("choice_stock_universe must contain as_of_date and stock_code")
+    rows = conn.execute(
+        f"select stock_code from {table_name} where cast(as_of_date as varchar) = ?",
+        [normalized_date],
+    ).fetchall()
+    codes = sorted(
+        {
+            str(row[0] or "").strip().upper()
+            for row in rows
+            if str(row[0] or "").strip()
+        }
+    )
+    if not codes:
+        raise RuntimeError(
+            f"choice_stock_universe has no stock codes for as_of_date {normalized_date}"
+        )
+    return codes
 
 
 def _select_dates(
@@ -350,6 +464,11 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--target-backup-path", default=None, help="Existing backup artifact required before non-dry-run writes.")
     parser.add_argument("--governance-lock", action="store_true", help="Acknowledge external backup/governance lock for non-dry-run writes.")
+    parser.add_argument(
+        "--choice-universe-date",
+        default=None,
+        help="Use the complete choice_stock_universe code scope for this exact as_of_date.",
+    )
     args = parser.parse_args()
 
     codes = [item.strip() for item in args.codes.split(",") if item.strip()]
@@ -362,6 +481,7 @@ def main() -> int:
             dry_run=args.dry_run,
             target_backup_path=args.target_backup_path,
             governance_lock=args.governance_lock,
+            choice_universe_date=args.choice_universe_date,
         )
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

@@ -181,9 +181,11 @@ class _AdjFactorClient:
     def __init__(self, rows_by_date: dict[str, list[dict[str, object]]]) -> None:
         self.rows_by_date = rows_by_date
         self.call_count = 0
+        self.calls: list[dict[str, object]] = []
 
     def adj_factor(self, **kwargs: object) -> list[dict[str, object]]:
         self.call_count += 1
+        self.calls.append(dict(kwargs))
         return self.rows_by_date.get(str(kwargs.get("trade_date")), [])
 
 
@@ -420,3 +422,372 @@ def test_stock_adjustment_factor_cli_returns_nonzero_for_partial_result(monkeypa
 
     assert exit_code != 0
     assert '"factor_write_status": "completed"' in capsys.readouterr().out
+
+
+def test_stock_adjustment_factor_choice_universe_scope_uses_exact_date_full_codes(tmp_path) -> None:
+    db_path = tmp_path / "stock-adjustment-choice-universe.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute("create table choice_stock_universe (as_of_date varchar, stock_code varchar)")
+        conn.executemany(
+            "insert into choice_stock_universe values (?, ?)",
+            [
+                ("2026-07-21", "000002.SZ"),
+                ("2026-07-21", "000001.SZ"),
+                ("2026-07-21", "000002.SZ"),
+                ("2026-07-20", "999999.SH"),
+            ],
+        )
+        conn.execute(
+            "create table livermore_candidate_history "
+            "(snapshot_as_of_date varchar, stock_code varchar)"
+        )
+        conn.execute(
+            "insert into livermore_candidate_history values ('2026-07-21', '600000.SH')"
+        )
+    finally:
+        conn.close()
+
+    module = load_module(
+        "scripts.backfill_stock_adjustment_factor_choice_universe",
+        "scripts/backfill_stock_adjustment_factor.py",
+    )
+    result = module.backfill_stock_adjustment_factor(
+        duckdb_path=db_path,
+        start_date="2026-07-21",
+        end_date="2026-07-21",
+        choice_universe_date="2026-07-21",
+        dry_run=True,
+    )
+
+    assert result["status"] == "dry_run"
+    assert result["code_count"] == 2
+    assert result["selected_codes_preview"] == ["000001.SZ", "000002.SZ"]
+    assert "600000.SH" not in result["selected_codes_preview"]
+    assert "999999.SH" not in result["selected_codes_preview"]
+
+
+@pytest.mark.parametrize(
+    ("extra_kwargs", "message"),
+    [
+        ({"codes": ["000001.SZ"]}, "explicit codes"),
+    ],
+)
+def test_stock_adjustment_factor_choice_universe_scope_rejects_other_code_scopes(
+    tmp_path,
+    extra_kwargs,
+    message,
+) -> None:
+    db_path = tmp_path / "stock-adjustment-choice-universe-mutual.duckdb"
+    duckdb.connect(str(db_path)).close()
+    module = load_module(
+        "scripts.backfill_stock_adjustment_factor_choice_universe_mutual",
+        "scripts/backfill_stock_adjustment_factor.py",
+    )
+
+    with pytest.raises(ValueError, match=message):
+        module.backfill_stock_adjustment_factor(
+            duckdb_path=db_path,
+            choice_universe_date="2026-07-21",
+            dry_run=True,
+            **extra_kwargs,
+        )
+
+
+def test_stock_adjustment_factor_choice_universe_scope_fails_when_table_missing(tmp_path) -> None:
+    db_path = tmp_path / "stock-adjustment-choice-universe-missing.duckdb"
+    duckdb.connect(str(db_path)).close()
+    module = load_module(
+        "scripts.backfill_stock_adjustment_factor_choice_universe_missing",
+        "scripts/backfill_stock_adjustment_factor.py",
+    )
+
+    with pytest.raises(RuntimeError, match="choice_stock_universe table is required"):
+        module.backfill_stock_adjustment_factor(
+            duckdb_path=db_path,
+            start_date="2026-07-21",
+            end_date="2026-07-21",
+            choice_universe_date="2026-07-21",
+            dry_run=True,
+        )
+
+
+def test_stock_adjustment_factor_choice_universe_scope_fails_when_date_has_no_codes(tmp_path) -> None:
+    db_path = tmp_path / "stock-adjustment-choice-universe-empty.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute("create table choice_stock_universe (as_of_date varchar, stock_code varchar)")
+        conn.execute("insert into choice_stock_universe values ('2026-07-20', '000001.SZ')")
+    finally:
+        conn.close()
+    module = load_module(
+        "scripts.backfill_stock_adjustment_factor_choice_universe_empty",
+        "scripts/backfill_stock_adjustment_factor.py",
+    )
+
+    with pytest.raises(RuntimeError, match="no stock codes for as_of_date 2026-07-21"):
+        module.backfill_stock_adjustment_factor(
+            duckdb_path=db_path,
+            start_date="2026-07-21",
+            end_date="2026-07-21",
+            choice_universe_date="2026-07-21",
+            dry_run=True,
+        )
+
+
+def test_stock_adjustment_factor_cli_passes_choice_universe_date(monkeypatch, capsys) -> None:
+    module = load_module(
+        "scripts.backfill_stock_adjustment_factor_choice_universe_cli",
+        "scripts/backfill_stock_adjustment_factor.py",
+    )
+    captured: dict[str, object] = {}
+
+    def fake_backfill(**kwargs: object) -> dict[str, object]:
+        captured.update(kwargs)
+        return {"status": "dry_run"}
+
+    monkeypatch.setattr(module, "backfill_stock_adjustment_factor", fake_backfill)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "backfill_stock_adjustment_factor.py",
+            "--choice-universe-date",
+            "2026-07-21",
+            "--start-date",
+            "2026-07-21",
+            "--end-date",
+            "2026-07-21",
+            "--dry-run",
+        ],
+    )
+
+    exit_code = module.main()
+
+    assert exit_code == 0
+    assert captured["choice_universe_date"] == "2026-07-21"
+    assert captured["codes"] is None
+    assert '"status": "dry_run"' in capsys.readouterr().out
+
+
+def _create_choice_universe_factor_fixture(db_path) -> None:
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute("create table choice_stock_universe (as_of_date varchar, stock_code varchar)")
+        conn.executemany(
+            "insert into choice_stock_universe values (?, ?)",
+            [
+                ("2026-07-21", "000001.SZ"),
+                ("2026-07-21", "000002.SZ"),
+            ],
+        )
+        conn.execute(
+            """
+            create table stock_adjustment_factor (
+              stock_code varchar,
+              trade_date varchar,
+              adj_factor double,
+              source_version varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.executemany(
+            "insert into stock_adjustment_factor values (?, '2026-07-21', ?, 'sv_existing', 'run-existing')",
+            [
+                ("000001.SZ", 9.1),
+                ("000002.SZ", 9.2),
+            ],
+        )
+    finally:
+        conn.close()
+
+
+def _choice_factor_rows(db_path) -> list[tuple[object, ...]]:
+    conn = duckdb.connect(str(db_path), read_only=True)
+    try:
+        return conn.execute(
+            """
+            select stock_code, trade_date, adj_factor, source_version, run_id
+            from stock_adjustment_factor
+            order by stock_code, trade_date, adj_factor
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+
+def test_stock_adjustment_factor_choice_universe_defaults_to_exact_single_date(tmp_path) -> None:
+    db_path = tmp_path / "stock-adjustment-choice-default-date.duckdb"
+    _create_choice_universe_factor_fixture(db_path)
+    module = load_module(
+        "scripts.backfill_stock_adjustment_factor_choice_default_date",
+        "scripts/backfill_stock_adjustment_factor.py",
+    )
+
+    result = module.backfill_stock_adjustment_factor(
+        duckdb_path=db_path,
+        choice_universe_date="2026-07-21",
+        dry_run=True,
+    )
+
+    assert result["start_date"] == "2026-07-21"
+    assert result["end_date"] == "2026-07-21"
+    assert result["date_count"] == 1
+    assert result["selected_dates_preview"] == ["2026-07-21"]
+
+
+@pytest.mark.parametrize(
+    ("start_date", "end_date"),
+    [
+        ("2026-07-20", None),
+        (None, "2026-07-22"),
+        ("2026-07-21", "2026-07-22"),
+    ],
+)
+def test_stock_adjustment_factor_choice_universe_rejects_nonmatching_date_scope(
+    tmp_path,
+    start_date,
+    end_date,
+) -> None:
+    db_path = tmp_path / "stock-adjustment-choice-date-mismatch.duckdb"
+    _create_choice_universe_factor_fixture(db_path)
+    module = load_module(
+        "scripts.backfill_stock_adjustment_factor_choice_date_mismatch",
+        "scripts/backfill_stock_adjustment_factor.py",
+    )
+
+    with pytest.raises(ValueError, match="must match --choice-universe-date"):
+        module.backfill_stock_adjustment_factor(
+            duckdb_path=db_path,
+            start_date=start_date,
+            end_date=end_date,
+            choice_universe_date="2026-07-21",
+            dry_run=True,
+        )
+
+
+@pytest.mark.parametrize(
+    "vendor_rows",
+    [
+        [
+            {"ts_code": "000001.SZ", "trade_date": "20260721", "adj_factor": 1.1},
+        ],
+        [
+            {"ts_code": "000001.SZ", "trade_date": "20260721", "adj_factor": 1.1},
+            {"ts_code": "000002.SZ", "trade_date": "20260721", "adj_factor": 2.2},
+            {"ts_code": "000002.SZ", "trade_date": "20260721", "adj_factor": 0.0},
+        ],
+        [
+            {"ts_code": "000001.SZ", "trade_date": "20260721", "adj_factor": 1.1},
+            {"ts_code": "000002.SZ", "trade_date": "20260721", "adj_factor": 2.2},
+            {"ts_code": "000002.SZ", "trade_date": "20260720", "adj_factor": 2.2},
+        ],
+    ],
+    ids=["missing-cell", "nonpositive-factor", "wrong-date"],
+)
+def test_stock_adjustment_factor_choice_universe_incomplete_payload_writes_nothing(
+    tmp_path,
+    vendor_rows,
+) -> None:
+    db_path = tmp_path / "stock-adjustment-choice-incomplete.duckdb"
+    _create_choice_universe_factor_fixture(db_path)
+    original_rows = _choice_factor_rows(db_path)
+    module = load_module(
+        "scripts.backfill_stock_adjustment_factor_choice_incomplete",
+        "scripts/backfill_stock_adjustment_factor.py",
+    )
+
+    with pytest.raises(RuntimeError, match="incomplete Choice-universe adjustment factors"):
+        module.backfill_stock_adjustment_factor(
+            duckdb_path=db_path,
+            choice_universe_date="2026-07-21",
+            governance_lock=True,
+            client=_AdjFactorClient({"20260721": vendor_rows}),
+        )
+
+    assert _choice_factor_rows(db_path) == original_rows
+
+
+def test_stock_adjustment_factor_choice_universe_conflicting_duplicate_writes_nothing(
+    tmp_path,
+) -> None:
+    db_path = tmp_path / "stock-adjustment-choice-conflict.duckdb"
+    _create_choice_universe_factor_fixture(db_path)
+    original_rows = _choice_factor_rows(db_path)
+    module = load_module(
+        "scripts.backfill_stock_adjustment_factor_choice_conflict",
+        "scripts/backfill_stock_adjustment_factor.py",
+    )
+
+    with pytest.raises(RuntimeError, match="conflicting adj_factor values"):
+        module.backfill_stock_adjustment_factor(
+            duckdb_path=db_path,
+            choice_universe_date="2026-07-21",
+            governance_lock=True,
+            client=_AdjFactorClient(
+                {
+                    "20260721": [
+                        {"ts_code": "000001.SZ", "trade_date": "20260721", "adj_factor": 1.1},
+                        {"ts_code": "000001.SZ", "trade_date": "20260721", "adj_factor": 1.2},
+                        {"ts_code": "000002.SZ", "trade_date": "20260721", "adj_factor": 2.2},
+                    ]
+                }
+            ),
+        )
+
+    assert _choice_factor_rows(db_path) == original_rows
+
+
+def test_stock_adjustment_factor_choice_universe_strict_complete_payload_deduplicates_and_writes(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    db_path = tmp_path / "stock-adjustment-choice-complete.duckdb"
+    _create_choice_universe_factor_fixture(db_path)
+    module = load_module(
+        "scripts.backfill_stock_adjustment_factor_choice_complete",
+        "scripts/backfill_stock_adjustment_factor.py",
+    )
+    maturity_module = __import__(
+        "backend.app.tasks.livermore_candidate_outcome_maturity",
+        fromlist=["mature_livermore_candidate_outcomes"],
+    )
+    monkeypatch.setattr(
+        maturity_module,
+        "mature_livermore_candidate_outcomes",
+        lambda *_args, **_kwargs: {"status": "completed", "updated_row_count": 0},
+    )
+    client = _AdjFactorClient(
+        {
+            "20260721": [
+                {"ts_code": "000001.SZ", "trade_date": "20260721", "adj_factor": 1.1},
+                {"ts_code": "000001.SZ", "trade_date": "20260721", "adj_factor": 1.1},
+                {"ts_code": "000002.SZ", "trade_date": "20260721", "adj_factor": 2.2},
+            ]
+        }
+    )
+
+    result = module.backfill_stock_adjustment_factor(
+        duckdb_path=db_path,
+        choice_universe_date="2026-07-21",
+        governance_lock=True,
+        client=client,
+    )
+
+    assert result["status"] == "completed"
+    assert result["requested_cell_count"] == 2
+    assert result["returned_cell_count"] == 2
+    assert result["missing_vendor_cell_count"] == 0
+    assert client.calls == [
+        {
+            "trade_date": "20260721",
+            "fields": "ts_code,trade_date,adj_factor",
+        }
+    ]
+    assert [
+        (stock_code, trade_date, factor)
+        for stock_code, trade_date, factor, _source_version, _run_id in _choice_factor_rows(db_path)
+    ] == [
+        ("000001.SZ", "2026-07-21", pytest.approx(1.1)),
+        ("000002.SZ", "2026-07-21", pytest.approx(2.2)),
+    ]
