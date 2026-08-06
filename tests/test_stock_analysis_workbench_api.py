@@ -155,6 +155,25 @@ def test_theme_breakout_nested_stocks_expand_and_merge_theme_memberships_without
         ("theme_breakout", "000001.SZ"),
         ("theme_breakout", "000002.SZ"),
     ]
+    stock_alpha = rows[0]
+    assert stock_alpha["source_module"] == "stock_candidates"
+    assert stock_alpha["rank"] == 1
+    assert stock_alpha["theme_memberships"] == [
+        {
+            "theme_key": "concept:C1",
+            "theme_name": "Theme one",
+            "rank": 1,
+            "source_kind": "tushare_current_overlay",
+            "member_rank": 2,
+        },
+        {
+            "theme_key": "concept:C2",
+            "theme_name": "Theme two",
+            "rank": 2,
+            "source_kind": "tushare_current_overlay",
+            "member_rank": 1,
+        },
+    ]
     theme_alpha = rows[1]
     assert theme_alpha["theme_key"] == "concept:C1"
     assert theme_alpha["theme_name"] == "Theme one"

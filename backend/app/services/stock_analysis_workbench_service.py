@@ -233,6 +233,18 @@ def _candidate_queue(result: dict[str, object], *, top_k: int) -> list[dict[str,
     }
     if "hybrid_fusion" in excluded_from_primary:
         excluded_from_primary.add("hybrid_fusion_candidates")
+    theme_rows = (
+        []
+        if "theme_breakout" in excluded_from_primary
+        else _theme_breakout_candidate_rows(result.get("theme_breakout"))
+    )
+    theme_memberships_by_stock = {
+        str(row.get("stock_code") or "").strip(): _list_of_mappings(
+            row.get("theme_memberships")
+        )
+        for row in theme_rows
+        if str(row.get("stock_code") or "").strip()
+    }
 
     rows: list[dict[str, object]] = []
     seen: set[tuple[str, str]] = set()
@@ -240,7 +252,7 @@ def _candidate_queue(result: dict[str, object], *, top_k: int) -> list[dict[str,
         if key in excluded_from_primary:
             continue
         module_items = (
-            _theme_breakout_candidate_rows(result.get(key))
+            theme_rows
             if key == "theme_breakout"
             else _items_from_container(result.get(key))
         )
@@ -254,6 +266,13 @@ def _candidate_queue(result: dict[str, object], *, top_k: int) -> list[dict[str,
                 seen.add(dedupe_key)
             row = dict(item)
             row["source_module"] = source_key
+            inherited_memberships = theme_memberships_by_stock.get(stock_code, [])
+            if inherited_memberships:
+                memberships = _list_of_mappings(row.get("theme_memberships"))
+                for membership in inherited_memberships:
+                    if membership not in memberships:
+                        memberships.append(dict(membership))
+                row["theme_memberships"] = memberships
             rows.append(row)
             if len(rows) >= top_k:
                 return rows
