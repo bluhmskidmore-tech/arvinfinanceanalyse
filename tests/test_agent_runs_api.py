@@ -602,7 +602,12 @@ def test_agent_run_cli_transport_records_failed_status_on_provider_failure(monke
         for line in (tmp_path / "governance" / "agent_run.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     assert [record["status"] for record in records] == ["queued", "failed"]
-    assert records[-1]["error_message"] == "Agent run dispatch failed: broker unavailable"
+    assert records[-1]["error_message"] == "Agent run dispatch failed."
+    audit_rows = [
+        json.loads(line)
+        for line in (tmp_path / "governance" / "agent_audit.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert audit_rows[-1]["result_meta"]["error_code"] == "AGENT_RUN_DISPATCH_FAILED"
 
 
 def test_agent_run_status_returns_404_for_unknown_run(monkeypatch, tmp_path):
@@ -1255,7 +1260,7 @@ def test_agent_run_failure_records_error_message(monkeypatch, tmp_path):
     failed = _wait_for_terminal(client, created["run_id"])
 
     assert failed["status"] == "failed"
-    assert failed["error_message"] == "Hermes bridge unavailable"
+    assert failed["error_message"] == "Agent provider execution failed."
     assert "result" not in failed
 
     records = [
@@ -1264,7 +1269,7 @@ def test_agent_run_failure_records_error_message(monkeypatch, tmp_path):
     ]
     latest = [record for record in records if record["run_id"] == created["run_id"]][-1]
     assert latest["status"] == "failed"
-    assert latest["error_message"] == "Hermes bridge unavailable"
+    assert latest["error_message"] == "Agent provider execution failed."
     audit_rows = [
         json.loads(line)
         for line in (tmp_path / "governance" / "agent_audit.jsonl").read_text(encoding="utf-8").splitlines()
@@ -1274,6 +1279,7 @@ def test_agent_run_failure_records_error_message(monkeypatch, tmp_path):
     assert audit["tools_used"] == ["agent_run", "provider:hermes", "status:failed"]
     assert audit["result_meta"]["result_kind"] == "agent.run_failed"
     assert audit["result_meta"]["error_type"] == "RuntimeError"
+    assert audit["result_meta"]["error_code"] == "AGENT_RUN_EXECUTION_FAILED"
 
 
 def test_agent_run_accepts_local_provider_and_completes_lifecycle(monkeypatch, tmp_path):
@@ -1331,6 +1337,81 @@ def test_agent_run_local_failure_records_failed_status(monkeypatch, tmp_path):
     assert failed["provider"] == "local"
     assert failed["error_message"] == "local toolchain failed"
     assert "result" not in failed
+
+
+def test_agent_run_follow_up_context_stays_local_even_with_dexter_provider(monkeypatch, tmp_path):
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    task_module = load_module(
+        "backend.app.tasks.agent_run",
+        "backend/app/tasks/agent_run.py",
+    )
+    _seed_agent_read_scope(tmp_path, monkeypatch)
+    settings = SimpleNamespace(
+        agent_enabled=True,
+        agent_provider="dexter",
+        agent_dexter_model="dexter-test",
+        agent_dexter_transport="cli",
+        agent_dexter_toolsets="sql,files",
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_path=str(tmp_path / "governance"),
+        **_agent_auth_fields(tmp_path),
+    )
+    monkeypatch.setattr(route_module, "get_settings", lambda: settings)
+    monkeypatch.setattr(task_module, "get_settings", lambda: settings)
+
+    local_calls = []
+    dexter_calls = []
+
+    def fake_local_execute(*, request, duckdb_path, governance_dir):
+        local_calls.append((request.question, duckdb_path, governance_dir))
+        return _local_envelope()
+
+    def fake_dexter_execute(request, governance_dir, runtime_settings):
+        dexter_calls.append((request.question, governance_dir, runtime_settings.agent_dexter_model))
+        return _sample_envelope()
+
+    monkeypatch.setattr(task_module, "execute_agent_query", fake_local_execute)
+    monkeypatch.setattr(task_module, "execute_dexter_agent_query", fake_dexter_execute)
+    service_module = __import__(
+        "backend.app.services.agent_run_service",
+        fromlist=["execute_agent_run_task"],
+    )
+    monkeypatch.setattr(
+        service_module.execute_agent_run_task,
+        "send",
+        lambda **kwargs: task_module._execute_agent_run_task(**kwargs),
+    )
+
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    created = client.post(
+        "/api/agent/runs",
+        json={
+            "question": "continue this",
+            "context": {
+                "conversation": {
+                    "recent_turns": [
+                        {
+                            "result_kind": "agent.duration_risk",
+                            "answer": "Previous local governed answer.",
+                        }
+                    ]
+                }
+            },
+        },
+    ).json()
+    completed = _wait_for_terminal(client, created["run_id"])
+
+    assert created["provider"] == "local"
+    assert completed["status"] == "completed"
+    assert completed["provider"] == "local"
+    assert local_calls == [("continue this", str(tmp_path / "moss.duckdb"), str(tmp_path / "governance"))]
+    assert not dexter_calls
 
 
 def test_agent_run_local_owner_isolation(monkeypatch, tmp_path):

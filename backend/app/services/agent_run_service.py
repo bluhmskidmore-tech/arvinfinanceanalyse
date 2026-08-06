@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
 import time
 from collections.abc import Callable
@@ -38,6 +39,9 @@ AGENT_RUN_DISPATCH_POLL_SECONDS = 0.01
 _AGENT_RUN_LATEST_RECORDS: dict[str, dict[str, object]] = {}
 _ACTIVE_AGENT_RUN_STATUSES = frozenset({"queued", "starting", "running"})
 _TERMINAL_AGENT_RUN_STATUSES = frozenset({"completed", "failed", "cancelled"})
+_DISPATCH_FAILURE_CODE = "AGENT_RUN_DISPATCH_FAILED"
+_EXECUTION_FAILURE_CODE = "AGENT_RUN_EXECUTION_FAILED"
+_LOGGER = logging.getLogger(__name__)
 
 AgentExecutor = Callable[[AgentQueryRequest, str, Any], AgentEnvelope]
 
@@ -204,14 +208,23 @@ def create_agent_run(
         execute_agent_run_task.send(run_id=queued_record.run_id)
     except Exception as exc:
         finished_at = _utc_now()
-        error_message = str(exc) or exc.__class__.__name__
+        error_message = _safe_run_error_message(
+            _DISPATCH_FAILURE_CODE,
+            provider=queued_record.provider,
+        )
+        _LOGGER.exception(
+            "Agent run dispatch failed run_id=%s provider=%s error_type=%s",
+            queued_record.run_id,
+            queued_record.provider,
+            exc.__class__.__name__,
+        )
         failed_record = _transition_record(
             settings=settings,
             run_id=queued_record.run_id,
             request=run_request,
             status="failed",
             finished_at=finished_at,
-            error_message=f"Agent run dispatch failed: {error_message}",
+            error_message=error_message,
         )
         _append_record_if_latest_status(
             settings=settings,
@@ -222,11 +235,10 @@ def create_agent_run(
                 request=run_request,
                 provider=failed_record.provider,
                 error_type=AgentRunDispatchError.__name__,
+                error_code=_DISPATCH_FAILURE_CODE,
             ),
         )
-        raise AgentRunDispatchError(
-            f"Agent run dispatch failed for {queued_record.run_id}: {error_message}"
-        ) from exc
+        raise AgentRunDispatchError(error_message) from exc
     _append_dispatch_acceptance(repo=repo, run_id=queued_record.run_id)
 
     return AgentRunCreateResponse(
@@ -617,16 +629,17 @@ def _find_existing_idempotent_run_record(
 def _create_response_for_existing_record(
     record: dict[str, object],
 ) -> AgentRunCreateResponse:
-    run_id = str(record.get("run_id") or "").strip()
     error_message = _optional_text(record.get("error_message"))
     if (
         str(record.get("status") or "") == "failed"
         and error_message is not None
-        and error_message.startswith("Agent run dispatch failed:")
-    ):
-        raise AgentRunDispatchError(
-            f"Agent run dispatch previously failed for {run_id}: {error_message}"
+        and error_message
+        == _safe_run_error_message(
+            _DISPATCH_FAILURE_CODE,
+            provider=_optional_text(record.get("provider")),
         )
+    ):
+        raise AgentRunDispatchError(error_message)
     _remember_run_record(record)
     return _create_response_from_record(record)
 
@@ -804,7 +817,21 @@ def _execute_agent_run(
             )
         except Exception as exc:
             finished_at = _utc_now()
+            provider = str(running_record.provider or "hermes")
             error_message = str(exc) or exc.__class__.__name__
+            error_code: str | None = None
+            if provider != "local":
+                error_message = _safe_run_error_message(
+                    _EXECUTION_FAILURE_CODE,
+                    provider=provider,
+                )
+                error_code = _EXECUTION_FAILURE_CODE
+            _LOGGER.exception(
+                "Agent run execution failed run_id=%s provider=%s error_type=%s",
+                run_id,
+                provider,
+                exc.__class__.__name__,
+            )
             failed_record = _transition_record(
                 settings=settings,
                 run_id=run_id,
@@ -824,6 +851,7 @@ def _execute_agent_run(
                     request=request,
                     provider=failed_record.provider,
                     error_type=exc.__class__.__name__,
+                    error_code=error_code,
                 ),
             )
             return
@@ -852,6 +880,7 @@ def _build_failed_run_audit_payload(
     request: AgentQueryRequest,
     provider: str,
     error_type: str,
+    error_code: str | None = None,
 ) -> AgentAuditPayload:
     trace_id = f"tr_agent_run_failed_{uuid4().hex[:12]}"
     return AgentAuditPayload(
@@ -875,8 +904,22 @@ def _build_failed_run_audit_payload(
             "scenario_flag": request.basis == "scenario",
             "provider": provider,
             "error_type": error_type,
+            **({"error_code": error_code} if error_code is not None else {}),
         },
     )
+
+
+def _safe_run_error_message(
+    error_code: str,
+    *,
+    provider: str | None = None,
+) -> str:
+    normalized_provider = str(provider or "").strip().lower()
+    if error_code == _DISPATCH_FAILURE_CODE:
+        return "Agent run dispatch failed."
+    if error_code == _EXECUTION_FAILURE_CODE and normalized_provider != "local":
+        return "Agent provider execution failed."
+    return "Agent run failed."
 
 
 def _transition_record(
