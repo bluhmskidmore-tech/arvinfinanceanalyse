@@ -13,16 +13,22 @@ warnings.filterwarnings("ignore")
 import sys
 
 import akshare as ak
-import matplotlib
 import numpy as np
 import pandas as pd
 
-matplotlib.use("Agg")
+try:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.dates as mdates
+    import matplotlib.pyplot as plt
+except ImportError:
+    matplotlib = None
+    mdates = None
+    plt = None
+
 from datetime import datetime
 from pathlib import Path
-
-import matplotlib.dates as mdates
-import matplotlib.pyplot as plt
 
 _PKG = Path(__file__).resolve().parent.parent
 if str(_PKG) not in sys.path:
@@ -53,6 +59,11 @@ ASSET_LABELS = {
 }
 
 RF = 0.015  # 无风险利率年化
+
+
+def _require_matplotlib() -> None:
+    if plt is None or mdates is None:
+        raise RuntimeError("matplotlib is required for CTA chart generation")
 
 
 # ============================================================
@@ -220,6 +231,7 @@ def backtest(price: pd.Series, signals: pd.DataFrame, years: int = 2) -> dict:
 # ============================================================
 
 def _set_style():
+    _require_matplotlib()
     plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "Arial Unicode MS"]
     plt.rcParams["axes.unicode_minus"] = False
     plt.rcParams["figure.dpi"] = 160
@@ -229,6 +241,7 @@ def _set_style():
 
 
 def plot_signals(prices: pd.DataFrame, all_signals: dict) -> Path:
+    _require_matplotlib()
     path = ASSET_DIR / "cta_signals.png"
     assets = list(prices.columns)
     n = len(assets)

@@ -915,6 +915,25 @@ def test_legacy_vendor_imports_resolve_to_system_choice_tushare(tmp_path, monkey
     assert member_rank.Data == [["中信期货", "国泰君安"], [12345.0, 8901.0]]
 
 
+def test_macro_toolkit_scripts_package_bootstraps_local_compat_modules() -> None:
+    previous_akshare = sys.modules.pop("akshare", None)
+    try:
+        cta_script = importlib.import_module("backend.app.core_finance.macro.toolkit.scripts.cta_trend_cn")
+        dcc_script = importlib.import_module("backend.app.core_finance.macro.toolkit.scripts.dcc_garch_cn")
+        rp_script = importlib.import_module("backend.app.core_finance.macro.toolkit.scripts.risk_parity_cn")
+        akshare = importlib.import_module("akshare")
+    finally:
+        if previous_akshare is not None:
+            sys.modules["akshare"] = previous_akshare
+        else:
+            sys.modules.pop("akshare", None)
+
+    assert cta_script.load_prices.__module__ == "backend.app.core_finance.macro.toolkit.scripts.cta_trend_cn"
+    assert dcc_script.load_prices.__module__ == "backend.app.core_finance.macro.toolkit.scripts.dcc_garch_cn"
+    assert rp_script.fetch_data.__module__ == "backend.app.core_finance.macro.toolkit.scripts.risk_parity_cn"
+    assert Path(akshare.__file__).resolve() == (TOOLKIT_ROOT / "akshare.py").resolve()
+
+
 def test_windpy_cffex_member_rank_missing_rows_remain_read_only(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_tushare_macro_db(duckdb_path)

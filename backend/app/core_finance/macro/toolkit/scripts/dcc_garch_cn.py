@@ -16,17 +16,24 @@ warnings.filterwarnings("ignore")
 import sys
 
 import akshare as ak
-import matplotlib
 import numpy as np
 import pandas as pd
 
-matplotlib.use("Agg")
+try:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.colors as mcolors
+    import matplotlib.dates as mdates
+    import matplotlib.pyplot as plt
+except ImportError:
+    matplotlib = None
+    mcolors = None
+    mdates = None
+    plt = None
+
 from datetime import datetime
 from pathlib import Path
-
-import matplotlib.colors as mcolors
-import matplotlib.dates as mdates
-import matplotlib.pyplot as plt
 
 _PKG = Path(__file__).resolve().parent.parent
 if str(_PKG) not in sys.path:
@@ -60,11 +67,17 @@ ASSET_LABELS = {
 WINDOW = 60  # 滚动相关窗口（交易日）
 
 
+def _require_matplotlib() -> None:
+    if plt is None or mdates is None or mcolors is None:
+        raise RuntimeError("matplotlib is required for DCC-GARCH chart generation")
+
+
 # ============================================================
 # 字体
 # ============================================================
 
 def _set_style():
+    _require_matplotlib()
     plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "Arial Unicode MS"]
     plt.rcParams["axes.unicode_minus"] = False
     plt.rcParams["figure.dpi"] = 160
@@ -198,6 +211,7 @@ def classify_warning(avg: float) -> str:
 # ============================================================
 
 def plot_heatmap(corr_matrix: pd.DataFrame, date_str: str, avg: float, warning: str) -> Path:
+    _require_matplotlib()
     path = ASSET_DIR / "dcc_heatmap.png"
     labels = [ASSET_LABELS.get(c, c) for c in corr_matrix.columns]
     n = len(labels)
@@ -233,6 +247,7 @@ def plot_heatmap(corr_matrix: pd.DataFrame, date_str: str, avg: float, warning: 
 
 
 def plot_timeseries(pair_series: dict) -> Path:
+    _require_matplotlib()
     path = ASSET_DIR / "dcc_timeseries.png"
     key_pairs = [
         ("hs300", "gold"),

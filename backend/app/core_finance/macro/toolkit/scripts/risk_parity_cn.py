@@ -6,21 +6,24 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
-import matplotlib
 import numpy as np
 import pandas as pd
 
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+try:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+except ImportError:
+    matplotlib = None
+    plt = None
+
 from scipy.optimize import minimize
 
 _PKG = Path(__file__).resolve().parent.parent
 if str(_PKG) not in sys.path:
     sys.path.insert(0, str(_PKG))
 from paths import ASSET_DIR, OUTPUT_DIR
-
-plt.rcParams["font.family"] = ["Microsoft YaHei", "SimHei", "sans-serif"]
-plt.rcParams["axes.unicode_minus"] = False
 
 COLORS = {"navy": "#0B1F33", "gold": "#C99A2E", "steel": "#4E6B8A", "teal": "#2E6F72", "orange": "#C76433"}
 
@@ -42,6 +45,11 @@ BUDGET_MAP = {
     "滞胀": {"hs300": 0.12, "csi500": 0.08, "gold": 0.30, "copper": 0.15, "crude_oil": 0.35},
     "衰退": {"hs300": 0.22, "csi500": 0.18, "gold": 0.30, "copper": 0.15, "crude_oil": 0.15},
 }
+
+
+def _require_matplotlib() -> None:
+    if plt is None:
+        raise RuntimeError("matplotlib is required for risk parity chart generation")
 
 
 def fetch_data():
@@ -185,6 +193,7 @@ def save_csv(asset_names, w_rp, w_rb, rc_rp, sig_rp, rc_rb, sig_rb, vol):
 
 
 def plot_results(asset_names, w_rp, w_rb, rc_rp, sig_rp, rc_rb, sig_rb, phase):
+    _require_matplotlib()
     os.makedirs(RP_CHART_DIR, exist_ok=True)
     fig, axes = plt.subplots(1, 2, figsize=(14, 6))
     fig.patch.set_facecolor("#F5F5F0")
