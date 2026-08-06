@@ -15,22 +15,35 @@ warnings.filterwarnings("ignore")
 
 import sys
 
-import akshare as ak
-import matplotlib
 import numpy as np
 import pandas as pd
 
-matplotlib.use("Agg")
+if __package__:
+    from backend.app.core_finance.macro.toolkit import akshare as ak
+else:
+    import akshare as ak
+
+try:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.dates as mdates
+    import matplotlib.pyplot as plt
+except ImportError:
+    matplotlib = None
+    mdates = None
+    plt = None
+
 from datetime import datetime
 from pathlib import Path
 
-import matplotlib.dates as mdates
-import matplotlib.pyplot as plt
-
-_PKG = Path(__file__).resolve().parent.parent
-if str(_PKG) not in sys.path:
-    sys.path.insert(0, str(_PKG))
-from paths import ASSET_DIR, OUTPUT_DIR
+if __package__:
+    from backend.app.core_finance.macro.toolkit.paths import ASSET_DIR, OUTPUT_DIR
+else:
+    _PKG = Path(__file__).resolve().parent.parent
+    if str(_PKG) not in sys.path:
+        sys.path.insert(0, str(_PKG))
+    from paths import ASSET_DIR, OUTPUT_DIR
 
 ROOT = OUTPUT_DIR
 
@@ -307,6 +320,8 @@ def regime_stats(regime_series: pd.Series) -> dict:
 # ============================================================
 
 def _set_style():
+    if plt is None or mdates is None:
+        raise RuntimeError("matplotlib is required for regime-switch chart generation")
     plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "Arial Unicode MS"]
     plt.rcParams["axes.unicode_minus"] = False
     plt.rcParams["figure.dpi"] = 160
@@ -317,6 +332,7 @@ def _set_style():
 
 def plot_regime_overview(prices: pd.DataFrame, all_regimes: dict) -> Path:
     """每个资产的价格 + 状态背景色"""
+    _set_style()
     path = ASSET_DIR / "regime_overview.png"
     assets = list(prices.columns)
     n = len(assets)
@@ -382,6 +398,7 @@ def plot_regime_overview(prices: pd.DataFrame, all_regimes: dict) -> Path:
 
 def plot_regime_distribution(all_regimes: dict) -> Path:
     """各资产状态分布堆叠柱状图"""
+    _set_style()
     path = ASSET_DIR / "regime_distribution.png"
 
     regime_order = ["趋势市", "弱趋势", "震荡市", "弱震荡", "高波动"]
@@ -437,6 +454,7 @@ def plot_regime_distribution(all_regimes: dict) -> Path:
 
 def plot_hurst_timeseries(prices: pd.DataFrame, all_regimes: dict) -> Path:
     """关键资产的 Hurst 指数时序"""
+    _set_style()
     path = ASSET_DIR / "hurst_timeseries.png"
 
     key_assets = ["hs300", "gold", "crude_oil"]
@@ -490,7 +508,6 @@ def main():
     print(f"  运行时间: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     print("=" * 60)
 
-    _set_style()
     prices = load_prices()
 
     print("\n[步骤2] 计算市场状态指标...")

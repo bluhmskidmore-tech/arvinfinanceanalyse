@@ -3,21 +3,30 @@ import sys
 import warnings
 
 warnings.filterwarnings("ignore")
-import matplotlib
 import numpy as np
 import pandas as pd
 
-matplotlib.use("Agg")
+try:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.gridspec as gridspec
+    import matplotlib.pyplot as plt
+except ImportError:
+    matplotlib = None
+    gridspec = None
+    plt = None
+
 from datetime import datetime, timedelta
 from pathlib import Path
 
-import matplotlib.gridspec as gridspec
-import matplotlib.pyplot as plt
-
-_PKG = Path(__file__).resolve().parent.parent
-if str(_PKG) not in sys.path:
-    sys.path.insert(0, str(_PKG))
-from paths import ASSET_DIR, OUTPUT_DIR
+if __package__:
+    from backend.app.core_finance.macro.toolkit.paths import ASSET_DIR, OUTPUT_DIR
+else:
+    _PKG = Path(__file__).resolve().parent.parent
+    if str(_PKG) not in sys.path:
+        sys.path.insert(0, str(_PKG))
+    from paths import ASSET_DIR, OUTPUT_DIR
 
 COLORS = {"navy":"#0B1F33","gold":"#C99A2E","danger":"#B83B3B","teal":"#2E6F72","sage":"#6E8B6B"}
 ASSET_COLORS = ["#0B1F33","#C99A2E","#B83B3B","#2E6F72","#6E8B6B"]
@@ -34,12 +43,13 @@ ASSETS = {
 CSV_OUT    = str(OUTPUT_DIR / "performance_results.csv")
 IMG_OUT    = str(ASSET_DIR / "performance.png")
 RP_CSV     = str(OUTPUT_DIR / "risk_parity_results.csv")
-plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "DejaVu Sans"]
-plt.rcParams["axes.unicode_minus"] = False
 
 
 def fetch_price_series(name, info):
-    import akshare as ak
+    if __package__:
+        from backend.app.core_finance.macro.toolkit import akshare as ak
+    else:
+        import akshare as ak
     today_str = datetime.today().strftime("%Y%m%d")
     try:
         if info["type"] == "index":
@@ -103,7 +113,16 @@ def portfolio_returns(returns_df, weights):
     w = weights / weights.sum()
     return (aligned * w).sum(axis=1)
 
+
+def _set_style() -> None:
+    if plt is None or gridspec is None:
+        raise RuntimeError("matplotlib is required for performance metrics chart generation")
+    plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "DejaVu Sans"]
+    plt.rcParams["axes.unicode_minus"] = False
+
+
 def plot_performance(df, path):
+    _set_style()
     fig = plt.figure(figsize=(14, 6), facecolor="white")
     gs = gridspec.GridSpec(1, 2, figure=fig, wspace=0.38)
     labels   = df["资产/组合"].tolist()

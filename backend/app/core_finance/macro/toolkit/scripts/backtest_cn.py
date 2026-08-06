@@ -13,23 +13,37 @@ warnings.filterwarnings("ignore")
 
 import sys
 
-import akshare as ak
-import matplotlib
 import numpy as np
 import pandas as pd
 
-matplotlib.use("Agg")
+if __package__:
+    from backend.app.core_finance.macro.toolkit import akshare as ak
+else:
+    import akshare as ak
+
+try:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.dates as mdates
+    import matplotlib.pyplot as plt
+except ImportError:
+    matplotlib = None
+    mdates = None
+    plt = None
+
 from datetime import datetime
 from pathlib import Path
 
-import matplotlib.dates as mdates
-import matplotlib.pyplot as plt
 from scipy.optimize import minimize
 
-_PKG = Path(__file__).resolve().parent.parent
-if str(_PKG) not in sys.path:
-    sys.path.insert(0, str(_PKG))
-from paths import ASSET_DIR, OUTPUT_DIR
+if __package__:
+    from backend.app.core_finance.macro.toolkit.paths import ASSET_DIR, OUTPUT_DIR
+else:
+    _PKG = Path(__file__).resolve().parent.parent
+    if str(_PKG) not in sys.path:
+        sys.path.insert(0, str(_PKG))
+    from paths import ASSET_DIR, OUTPUT_DIR
 
 ROOT = OUTPUT_DIR
 
@@ -100,7 +114,10 @@ def load_prices() -> pd.DataFrame:
     ]
     wind_ok = False
     try:
-        from WindPy import w as wind
+        if __package__:
+            from backend.app.core_finance.macro.toolkit.WindPy import w as wind
+        else:
+            from WindPy import w as wind
         r = wind.start(waitTime=8)
         if r.ErrorCode == 0:
             codes = ",".join(c for c, _ in BOND_ETFS)
@@ -518,6 +535,8 @@ def calc_annual_returns(ret_df: pd.DataFrame) -> pd.DataFrame:
 # ============================================================
 
 def _set_style():
+    if plt is None or mdates is None:
+        raise RuntimeError("matplotlib is required for backtest chart generation")
     plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "Arial Unicode MS"]
     plt.rcParams["axes.unicode_minus"] = False
     plt.rcParams["figure.dpi"] = 160
@@ -527,6 +546,7 @@ def _set_style():
 
 
 def plot_nav(ret_df: pd.DataFrame) -> Path:
+    _set_style()
     path = ASSET_DIR / "backtest_nav.png"
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 8),
                                     gridspec_kw={"height_ratios": [3, 1]}, sharex=True)
@@ -575,6 +595,7 @@ def plot_nav(ret_df: pd.DataFrame) -> Path:
 
 
 def plot_annual(annual_df: pd.DataFrame) -> Path:
+    _set_style()
     path = ASSET_DIR / "backtest_annual.png"
     strategies = [c for c in annual_df.columns if c != "年份"]
     years = annual_df["年份"].tolist()
@@ -610,6 +631,7 @@ def plot_annual(annual_df: pd.DataFrame) -> Path:
 
 
 def plot_metrics_heatmap(metrics_df: pd.DataFrame) -> Path:
+    _set_style()
     path = ASSET_DIR / "backtest_metrics.png"
     cols = ["年化收益%", "年化波动%", "夏普比率", "索提诺比率", "最大回撤%", "Calmar比率", "胜率%"]
     data = metrics_df.set_index("策略")[cols]
@@ -663,8 +685,6 @@ def main():
     print("  全策略综合回测框架")
     print(f"  运行时间: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     print("=" * 65)
-
-    _set_style()
     prices = load_prices()
 
     print("\n[步骤2] 运行回测...")

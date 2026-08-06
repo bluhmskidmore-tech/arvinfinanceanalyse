@@ -15,22 +15,35 @@ warnings.filterwarnings("ignore")
 
 import sys
 
-import akshare as ak
-import matplotlib
 import numpy as np
 import pandas as pd
 
-matplotlib.use("Agg")
+if __package__:
+    from backend.app.core_finance.macro.toolkit import akshare as ak
+else:
+    import akshare as ak
+
+try:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.dates as mdates
+    import matplotlib.pyplot as plt
+except ImportError:
+    matplotlib = None
+    mdates = None
+    plt = None
+
 from datetime import datetime
 from pathlib import Path
 
-import matplotlib.dates as mdates
-import matplotlib.pyplot as plt
-
-_PKG = Path(__file__).resolve().parent.parent
-if str(_PKG) not in sys.path:
-    sys.path.insert(0, str(_PKG))
-from paths import ASSET_DIR, OUTPUT_DIR
+if __package__:
+    from backend.app.core_finance.macro.toolkit.paths import ASSET_DIR, OUTPUT_DIR
+else:
+    _PKG = Path(__file__).resolve().parent.parent
+    if str(_PKG) not in sys.path:
+        sys.path.insert(0, str(_PKG))
+    from paths import ASSET_DIR, OUTPUT_DIR
 
 ROOT = OUTPUT_DIR
 
@@ -290,6 +303,8 @@ def evaluate_strategy(port_ret: pd.Series, turnover: list, name: str) -> dict:
 # ============================================================
 
 def _set_style():
+    if plt is None or mdates is None:
+        raise RuntimeError("matplotlib is required for rebalance chart generation")
     plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "Arial Unicode MS"]
     plt.rcParams["axes.unicode_minus"] = False
     plt.rcParams["figure.dpi"] = 160
@@ -300,6 +315,7 @@ def _set_style():
 
 def plot_comparison(prices: pd.DataFrame, results: dict) -> Path:
     """对比不同再平衡策略的累计收益"""
+    _set_style()
     path = ASSET_DIR / "rebalance_comparison.png"
 
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -337,6 +353,7 @@ def plot_comparison(prices: pd.DataFrame, results: dict) -> Path:
 
 def plot_weight_drift(weights_drift: pd.DataFrame, target_weights: dict) -> Path:
     """展示权重漂移（不再平衡情况）"""
+    _set_style()
     path = ASSET_DIR / "weight_drift.png"
 
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -385,8 +402,6 @@ def main():
     print("  再平衡策略模型")
     print(f"  运行时间: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     print("=" * 60)
-
-    _set_style()
 
     prices = load_prices()
     target_weights = load_target_weights()

@@ -13,15 +13,22 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-import akshare as ak
 import numpy as np
 import pandas as pd
 from arch import arch_model
 
-_PKG = Path(__file__).resolve().parent.parent
-if str(_PKG) not in sys.path:
-    sys.path.insert(0, str(_PKG))
-from paths import OUTPUT_DIR
+if __package__:
+    from backend.app.core_finance.macro.toolkit import akshare as ak
+else:
+    import akshare as ak
+
+if __package__:
+    from backend.app.core_finance.macro.toolkit.paths import OUTPUT_DIR
+else:
+    _PKG = Path(__file__).resolve().parent.parent
+    if str(_PKG) not in sys.path:
+        sys.path.insert(0, str(_PKG))
+    from paths import OUTPUT_DIR
 
 # ============================================================
 # 1. 数据获取

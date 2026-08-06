@@ -915,23 +915,41 @@ def test_legacy_vendor_imports_resolve_to_system_choice_tushare(tmp_path, monkey
     assert member_rank.Data == [["中信期货", "国泰君安"], [12345.0, 8901.0]]
 
 
-def test_macro_toolkit_scripts_package_bootstraps_local_compat_modules() -> None:
+def test_macro_toolkit_scripts_package_keeps_vendor_shims_local() -> None:
     previous_akshare = sys.modules.pop("akshare", None)
+    previous_windpy = sys.modules.pop("WindPy", None)
     try:
+        for module_name in (
+            "backend.app.core_finance.macro.toolkit.scripts.cta_trend_cn",
+            "backend.app.core_finance.macro.toolkit.scripts.dcc_garch_cn",
+            "backend.app.core_finance.macro.toolkit.scripts.risk_parity_cn",
+            "backend.app.core_finance.macro.toolkit.scripts.credit_bond_data",
+        ):
+            sys.modules.pop(module_name, None)
+
         cta_script = importlib.import_module("backend.app.core_finance.macro.toolkit.scripts.cta_trend_cn")
         dcc_script = importlib.import_module("backend.app.core_finance.macro.toolkit.scripts.dcc_garch_cn")
         rp_script = importlib.import_module("backend.app.core_finance.macro.toolkit.scripts.risk_parity_cn")
-        akshare = importlib.import_module("akshare")
+        credit_bond_data = importlib.import_module("backend.app.core_finance.macro.toolkit.scripts.credit_bond_data")
+
+        assert "akshare" not in sys.modules
+        assert "WindPy" not in sys.modules
     finally:
         if previous_akshare is not None:
             sys.modules["akshare"] = previous_akshare
         else:
             sys.modules.pop("akshare", None)
+        if previous_windpy is not None:
+            sys.modules["WindPy"] = previous_windpy
+        else:
+            sys.modules.pop("WindPy", None)
 
     assert cta_script.load_prices.__module__ == "backend.app.core_finance.macro.toolkit.scripts.cta_trend_cn"
     assert dcc_script.load_prices.__module__ == "backend.app.core_finance.macro.toolkit.scripts.dcc_garch_cn"
     assert rp_script.fetch_data.__module__ == "backend.app.core_finance.macro.toolkit.scripts.risk_parity_cn"
-    assert Path(akshare.__file__).resolve() == (TOOLKIT_ROOT / "akshare.py").resolve()
+    assert Path(cta_script.ak.__file__).resolve() == (TOOLKIT_ROOT / "akshare.py").resolve()
+    assert Path(dcc_script.ak.__file__).resolve() == (TOOLKIT_ROOT / "akshare.py").resolve()
+    assert credit_bond_data.w.__class__.__module__ == "backend.app.core_finance.macro.toolkit.WindPy"
 
 
 def test_windpy_cffex_member_rank_missing_rows_remain_read_only(tmp_path, monkeypatch) -> None:

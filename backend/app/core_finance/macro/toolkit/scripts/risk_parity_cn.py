@@ -20,10 +20,13 @@ except ImportError:
 
 from scipy.optimize import minimize
 
-_PKG = Path(__file__).resolve().parent.parent
-if str(_PKG) not in sys.path:
-    sys.path.insert(0, str(_PKG))
-from paths import ASSET_DIR, OUTPUT_DIR
+if __package__:
+    from backend.app.core_finance.macro.toolkit.paths import ASSET_DIR, OUTPUT_DIR
+else:
+    _PKG = Path(__file__).resolve().parent.parent
+    if str(_PKG) not in sys.path:
+        sys.path.insert(0, str(_PKG))
+    from paths import ASSET_DIR, OUTPUT_DIR
 
 COLORS = {"navy": "#0B1F33", "gold": "#C99A2E", "steel": "#4E6B8A", "teal": "#2E6F72", "orange": "#C76433"}
 
@@ -52,9 +55,18 @@ def _require_matplotlib() -> None:
         raise RuntimeError("matplotlib is required for risk parity chart generation")
 
 
+def _set_style() -> None:
+    _require_matplotlib()
+    plt.rcParams["font.family"] = ["Microsoft YaHei", "SimHei", "sans-serif"]
+    plt.rcParams["axes.unicode_minus"] = False
+
+
 def fetch_data():
     try:
-        import akshare as ak
+        if __package__:
+            from backend.app.core_finance.macro.toolkit import akshare as ak
+        else:
+            import akshare as ak
     except ImportError:
         print("[" + chr(38169) + chr(35823) + "] " + chr(35831) + chr(20808) + chr(23433) + chr(35013) + " akshare: pip install akshare")
         sys.exit(1)
@@ -193,7 +205,7 @@ def save_csv(asset_names, w_rp, w_rb, rc_rp, sig_rp, rc_rb, sig_rb, vol):
 
 
 def plot_results(asset_names, w_rp, w_rb, rc_rp, sig_rp, rc_rb, sig_rb, phase):
-    _require_matplotlib()
+    _set_style()
     os.makedirs(RP_CHART_DIR, exist_ok=True)
     fig, axes = plt.subplots(1, 2, figsize=(14, 6))
     fig.patch.set_facecolor("#F5F5F0")

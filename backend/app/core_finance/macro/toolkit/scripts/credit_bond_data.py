@@ -6,16 +6,21 @@ credit_bond_data.py
 """
 import os
 import sys
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import warnings
 
-import paths
+if __package__:
+    from backend.app.core_finance.macro.toolkit import paths
+else:
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    import paths
 
 warnings.filterwarnings("ignore")
 
 try:
-    from WindPy import w
+    if __package__:
+        from backend.app.core_finance.macro.toolkit.WindPy import w
+    else:
+        from WindPy import w
     WIND_AVAILABLE = w.start() == 0
 except Exception:
     WIND_AVAILABLE = False

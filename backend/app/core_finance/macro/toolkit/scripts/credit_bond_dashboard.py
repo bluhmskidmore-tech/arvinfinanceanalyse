@@ -14,20 +14,26 @@ import paths
 
 warnings.filterwarnings("ignore")
 
-import matplotlib
 
-matplotlib.use("Agg")
+try:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.gridspec as gridspec
+    import matplotlib.patches as mpatches
+    import matplotlib.pyplot as plt
+except ImportError:
+    matplotlib = None
+    gridspec = None
+    mpatches = None
+    plt = None
+
 from datetime import datetime
 
-import matplotlib.gridspec as gridspec
-import matplotlib.patches as mpatches
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
 # 中文字体
-plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei"]
-plt.rcParams["axes.unicode_minus"] = False
 
 COLORS = {
     "primary":   "#1a4b8c",
@@ -42,6 +48,13 @@ COLORS = {
     "text":      "#e6edf3",
     "text_dim":  "#8b949e",
 }
+
+
+def _set_style() -> None:
+    if plt is None or gridspec is None or mpatches is None:
+        raise RuntimeError("matplotlib is required for credit bond dashboard generation")
+    plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei"]
+    plt.rcParams["axes.unicode_minus"] = False
 
 
 # ── 信用利差图 ────────────────────────────────────────────────────────────────
@@ -226,6 +239,7 @@ def draw_kpi_card_on_ax(ax, title, value, subtitle, color):
 # ── 主函数 ────────────────────────────────────────────────────────────────────
 
 def generate_dashboard():
+    _set_style()
     fig = plt.figure(figsize=(16, 11), facecolor=COLORS["bg_dark"])
     fig.subplots_adjust(0.02, 0.02, 0.98, 0.97, wspace=0.25, hspace=0.35)
 

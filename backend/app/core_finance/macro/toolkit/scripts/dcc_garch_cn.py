@@ -15,9 +15,13 @@ warnings.filterwarnings("ignore")
 
 import sys
 
-import akshare as ak
 import numpy as np
 import pandas as pd
+
+if __package__:
+    from backend.app.core_finance.macro.toolkit import akshare as ak
+else:
+    import akshare as ak
 
 try:
     import matplotlib
@@ -35,10 +39,13 @@ except ImportError:
 from datetime import datetime
 from pathlib import Path
 
-_PKG = Path(__file__).resolve().parent.parent
-if str(_PKG) not in sys.path:
-    sys.path.insert(0, str(_PKG))
-from paths import ASSET_DIR, OUTPUT_DIR
+if __package__:
+    from backend.app.core_finance.macro.toolkit.paths import ASSET_DIR, OUTPUT_DIR
+else:
+    _PKG = Path(__file__).resolve().parent.parent
+    if str(_PKG) not in sys.path:
+        sys.path.insert(0, str(_PKG))
+    from paths import ASSET_DIR, OUTPUT_DIR
 
 ROOT = OUTPUT_DIR
 
@@ -299,8 +306,6 @@ def main():
     print("  DCC-GARCH 动态相关模型")
     print(f"  运行时间: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     print("=" * 60)
-
-    _set_style()
 
     prices = load_prices()
     log_ret = np.log(prices / prices.shift(1)).dropna() * 100

@@ -9,16 +9,36 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-import matplotlib.dates as mdates
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from docx import Document
-from docx.enum.section import WD_SECTION
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml import OxmlElement
-from docx.oxml.ns import qn
-from docx.shared import Inches, Pt, RGBColor
+
+try:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.dates as mdates
+    import matplotlib.pyplot as plt
+except ImportError:
+    matplotlib = None
+    mdates = None
+    plt = None
+
+try:
+    from docx import Document
+    from docx.enum.section import WD_SECTION
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    from docx.shared import Inches, Pt, RGBColor
+except ImportError:
+    Document = None
+    WD_SECTION = None
+    WD_ALIGN_PARAGRAPH = None
+    OxmlElement = None
+    qn = None
+    Inches = None
+    Pt = None
+    RGBColor = None
 
 _PKG = Path(__file__).resolve().parent.parent
 if str(_PKG) not in sys.path:
@@ -63,6 +83,8 @@ ASSET_LABELS = {
 
 
 def _set_matplotlib_style() -> None:
+    if plt is None or mdates is None:
+        raise RuntimeError("matplotlib is required for bond macro report generation")
     plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "Arial Unicode MS"]
     plt.rcParams["axes.unicode_minus"] = False
     plt.rcParams["figure.dpi"] = 160
@@ -1105,6 +1127,8 @@ def _make_cross_model_table(bundle: ReportBundle) -> pd.DataFrame:
 
 
 def _build_document(bundle: ReportBundle, chart_paths: list[Path]) -> Document:
+    if Document is None or WD_SECTION is None or WD_ALIGN_PARAGRAPH is None or OxmlElement is None or qn is None or Inches is None or Pt is None or RGBColor is None:
+        raise RuntimeError("python-docx is required for bond macro report generation")
     document = Document()
     _set_document_style(document)
     section = document.sections[0]
