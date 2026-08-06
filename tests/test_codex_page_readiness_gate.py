@@ -1350,7 +1350,12 @@ def test_pnl_attribution_readiness_exposes_run_commands_without_formal_pnl_promo
     assert not any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
 
 
-def test_page_readiness_cli_emits_json_report() -> None:
+def test_page_readiness_cli_emits_json_report(tmp_path: Path) -> None:
+    env = {
+        **os.environ,
+        "MOSS_DUCKDB_PATH": str(tmp_path / "missing.duckdb"),
+        "MOSS_GOVERNANCE_PATH": str(tmp_path / "empty-governance"),
+    }
     completed = subprocess.run(
         [
             sys.executable,
@@ -1359,16 +1364,21 @@ def test_page_readiness_cli_emits_json_report() -> None:
             "product-category-pnl",
         ],
         cwd=ROOT,
-        check=True,
+        check=False,
         capture_output=True,
+        env=env,
         stdin=subprocess.DEVNULL,
         text=True,
     )
 
     payload = json.loads(completed.stdout)
     assert payload["page_slug"] == "product-category-pnl"
-    assert payload["overall_status"] == "static-pass"
-    assert payload["blocking_gates"] == []
+    assert completed.returncode == 1
+    assert payload["overall_status"] == "blocked"
+    assert payload["blocking_gates"] == [
+        "catalog_date_evidence_sampled",
+        "direct_governance_record_ready",
+    ]
 
 
 def test_all_page_readiness_covers_every_unique_seeded_trace_bundle(
@@ -2168,6 +2178,8 @@ def test_page_readiness_cli_route_scope_mode_emits_classification_report() -> No
 
 
 def test_page_readiness_powershell_route_scope_mode_surfaces_classification_summary() -> None:
+    env = os.environ.copy()
+    env["PATH"] = str(Path(sys.executable).parent) + os.pathsep + env.get("PATH", "")
     completed = subprocess.run(
         [
             "powershell",
@@ -2181,6 +2193,7 @@ def test_page_readiness_powershell_route_scope_mode_surfaces_classification_summ
         cwd=ROOT,
         check=True,
         capture_output=True,
+        env=env,
         stdin=subprocess.DEVNULL,
         text=True,
     )
@@ -2222,6 +2235,8 @@ def test_page_readiness_powershell_route_scope_mode_surfaces_classification_summ
 
 
 def test_pnl_attribution_page_readiness_powershell_surfaces_approval_blockers() -> None:
+    env = os.environ.copy()
+    env["PATH"] = str(Path(sys.executable).parent) + os.pathsep + env.get("PATH", "")
     completed = subprocess.run(
         [
             "powershell",
@@ -2236,6 +2251,7 @@ def test_pnl_attribution_page_readiness_powershell_surfaces_approval_blockers() 
         cwd=ROOT,
         check=True,
         capture_output=True,
+        env=env,
         stdin=subprocess.DEVNULL,
         text=True,
     )
