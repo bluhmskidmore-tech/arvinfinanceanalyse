@@ -6,7 +6,6 @@ import { vi } from "vitest";
 
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
 import type { ApiEnvelope, ResultMeta, SourcePreviewPayload } from "../api/contracts";
-import { routerFuture } from "../router/routerFuture";
 import OperationsAnalysisPage from "../features/workbench/pages/OperationsAnalysisPage";
 
 vi.mock("../features/workbench/business-analysis/RevenueCostBridge", () => ({
@@ -36,7 +35,7 @@ function renderPage(client: ApiClient) {
 
   return render(
     <Wrapper>
-      <MemoryRouter future={routerFuture}>
+      <MemoryRouter>
         <OperationsAnalysisPage />
       </MemoryRouter>
     </Wrapper>,

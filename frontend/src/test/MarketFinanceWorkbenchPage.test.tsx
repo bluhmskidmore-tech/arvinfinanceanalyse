@@ -22,7 +22,6 @@ import type {
   ResultMeta,
 } from "../api/contracts";
 import MarketFinanceWorkbenchPage from "../features/market-finance/pages/MarketFinanceWorkbenchPage";
-import { routerFuture } from "../router/routerFuture";
 
 function renderPage(client: ApiClient) {
   function Wrapper({ children }: { children: ReactNode }) {
@@ -48,7 +47,7 @@ function renderPage(client: ApiClient) {
 
   return render(
     <Wrapper>
-      <MemoryRouter future={routerFuture}>
+      <MemoryRouter>
         <MarketFinanceWorkbenchPage />
       </MemoryRouter>
     </Wrapper>,
