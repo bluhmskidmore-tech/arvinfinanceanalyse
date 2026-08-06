@@ -141,6 +141,22 @@ function buildEvidenceCard(source: LiabilityResultMetaInput): LiabilityPageEvide
   };
 }
 
+function buildMissingEvidenceCard(source: LiabilityResultMetaInput): LiabilityPageEvidenceCard {
+  return {
+    key: source.key,
+    title: source.title,
+    resultKind: "结果元数据未透出",
+    basisLabel: "兼容端点",
+    qualityLabel: "待补状态证据",
+    fallbackLabel: "不可判定",
+    asOfDate: EM_DASH,
+    traceId: EM_DASH,
+    sourceVersion: EM_DASH,
+    ruleVersion: EM_DASH,
+    tone: "warning",
+  };
+}
+
 export function buildLiabilityAnalyticsPageReadModel(
   input: BuildLiabilityAnalyticsPageReadModelInput,
 ): LiabilityAnalyticsPageReadModel {
@@ -152,6 +168,10 @@ export function buildLiabilityAnalyticsPageReadModel(
     Boolean(input.resolvedReportDate) &&
     input.requestedReportDate !== input.resolvedReportDate;
   const resultMetas = input.resultMetas.map(buildEvidenceCard).filter(Boolean) as LiabilityPageEvidenceCard[];
+  const missingMetaInputs = input.resultMetas.filter((source) => !source.meta);
+  const evidenceCards = input.resultMetas.map((source) =>
+    source.meta ? buildEvidenceCard(source) : buildMissingEvidenceCard(source),
+  ) as LiabilityPageEvidenceCard[];
   const fallbackCards = resultMetas.filter((card) => card.fallbackLabel !== "none");
   const staleCards = input.resultMetas.filter(
     (source) => source.meta?.vendor_status === "vendor_stale" || source.meta?.vendor_status === "vendor_unavailable",
@@ -200,6 +220,13 @@ export function buildLiabilityAnalyticsPageReadModel(
       key: "quality",
       label: `${qualityCards.length} 个质量未通过`,
       tone: "danger",
+    });
+  }
+  if (missingMetaInputs.length > 0) {
+    statusBadges.push({
+      key: "meta-gap",
+      label: `${missingMetaInputs.length} 个核心读面缺少元数据`,
+      tone: "warning",
     });
   }
 
@@ -295,6 +322,14 @@ export function buildLiabilityAnalyticsPageReadModel(
         .join("；"),
     });
   }
+  if (missingMetaInputs.length > 0) {
+    stateSurfaces.push({
+      key: "missing-meta",
+      variant: "definition-pending",
+      title: "核心读面结果元数据未透出",
+      description: missingMetaInputs.map((source) => source.title).join("、"),
+    });
+  }
   if (input.syntheticSections.length > 0) {
     stateSurfaces.push({
       key: "synthetic-sections",
@@ -320,7 +355,7 @@ export function buildLiabilityAnalyticsPageReadModel(
         : `${input.selectedYear} 年 · ${input.selectedMonthLabel ?? "未选择月份"}（月度日均）`,
     statusBadges,
     kpis,
-    evidenceCards: resultMetas,
+    evidenceCards,
     stateSurfaces,
   };
 }

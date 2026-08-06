@@ -4299,10 +4299,62 @@ describe("createApiClient", () => {
 
     const payload = await client.getLiabilityRiskBuckets("2026-01-31");
 
-    expect(payload).not.toHaveProperty("result_meta");
+    expect(payload.result_meta?.result_kind).toBe("liability_analytics.risk_buckets");
     expect(payload.report_date).toBe("2026-01-31");
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/api/risk/buckets?report_date=2026-01-31",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+  });
+
+  it("preserves governed yield-metrics metadata in real mode", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_liab_yield",
+          basis: "analytical",
+          result_kind: "liability_analytics.yield_metrics",
+          formal_use_allowed: false,
+          source_version: "sv_liab_yield",
+          vendor_version: "vv_none",
+          rule_version: "rv_liab_yield",
+          cache_version: "cv_liab_yield",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-04-15T00:00:00Z",
+        },
+        result: {
+          report_date: "2026-01-31",
+          total_liabilities: 100,
+          interest_bearing_liabilities: 80,
+          annualized_cost_rate_pct: 1.23,
+          average_daily_balance: 95,
+          net_interest_spread_pct: 0.56,
+          net_interest_margin_pct: 0.78,
+          yield_curve_points: [],
+        },
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const payload = await client.getLiabilityYieldMetrics("2026-01-31");
+
+    expect(payload.result_meta?.result_kind).toBe("liability_analytics.yield_metrics");
+    expect(payload.report_date).toBe("2026-01-31");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/analysis/yield_metrics?report_date=2026-01-31",
       expect.objectContaining({
         headers: expect.objectContaining({
           Accept: "application/json",

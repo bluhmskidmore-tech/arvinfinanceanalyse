@@ -23,7 +23,7 @@ function meta(overrides: Partial<ResultMeta> = {}): ResultMeta {
 }
 
 describe("buildLiabilityAnalyticsPageReadModel", () => {
-  it("surfaces mode and visible evidence metadata without synthetic meta-gap placeholders", () => {
+  it("surfaces mode and visible evidence metadata when all core reads expose result metadata", () => {
     const model = buildLiabilityAnalyticsPageReadModel({
       mode: "real",
       activeTab: "daily",
@@ -51,6 +51,33 @@ describe("buildLiabilityAnalyticsPageReadModel", () => {
     expect(model.evidenceCards[0]?.resultKind).toBe("liability.page_knowledge");
     expect(model.statusBadges.map((badge) => badge.key)).not.toContain("meta-gap");
     expect(model.stateSurfaces.map((surface) => surface.key)).not.toContain("missing-meta");
+  });
+
+  it("fails closed to an explicit metadata gap when a core read does not expose result metadata", () => {
+    const model = buildLiabilityAnalyticsPageReadModel({
+      mode: "real",
+      activeTab: "daily",
+      requestedReportDate: "2025-12-31",
+      resolvedReportDate: "2025-12-31",
+      selectedYear: 2026,
+      selectedMonthLabel: null,
+      yieldKpi: null,
+      liabilityTotalYi: 12.34,
+      firstYearPressureYi: 5.67,
+      topCounterpartyShare: "30.00%",
+      warningCount: 0,
+      alertCount: 0,
+      resultMetas: [
+        { key: "risk-buckets", title: "负债期限结构", meta: null },
+        { key: "yield-metrics", title: "负债收益指标", meta: meta({ result_kind: "liability.yield_metrics" }) },
+      ],
+      syntheticSections: [],
+    });
+
+    expect(model.statusBadges.map((badge) => badge.key)).toContain("meta-gap");
+    expect(model.stateSurfaces.map((surface) => surface.key)).toContain("missing-meta");
+    expect(model.evidenceCards[0]?.resultKind).toBe("结果元数据未透出");
+    expect(model.evidenceCards[0]?.title).toBe("负债期限结构");
   });
 
   it("marks mock mode, fallback, stale vendor, and date mismatch", () => {

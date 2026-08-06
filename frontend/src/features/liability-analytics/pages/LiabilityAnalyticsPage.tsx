@@ -520,6 +520,8 @@ export default function LiabilityAnalyticsPage() {
         resultMetas:
           activeTab === "daily"
             ? [
+                { key: "risk-buckets", title: "负债期限结构", meta: riskQuery.data?.result_meta },
+                { key: "yield-metrics", title: "负债收益指标", meta: yieldQuery.data?.result_meta },
                 { key: "dates", title: "报告日目录", meta: datesQuery.data?.result_meta },
                 { key: "asset-overview", title: "资产端正式总览", meta: balanceOverviewQuery.data?.result_meta },
                 { key: "counterparty", title: "对手方集中度", meta: cpQuery.data?.result_meta },
@@ -556,6 +558,7 @@ export default function LiabilityAnalyticsPage() {
       monthlyQuery.data?.result_meta,
       adbMonthlyQuery.data?.result_meta,
       reportDate,
+      riskQuery.data?.result_meta,
       riskQuery.data?.report_date,
       selectedMonthData?.month_label,
       selectedReportDate,
@@ -564,6 +567,7 @@ export default function LiabilityAnalyticsPage() {
       syntheticSections.riskIndicators,
       authoritativeTop10ShareDisplay,
       watchItems.length,
+      yieldQuery.data?.result_meta,
       yieldKpi,
     ],
   );
