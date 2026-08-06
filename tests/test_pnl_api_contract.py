@@ -2076,6 +2076,82 @@ def test_pnl_by_business_analytical_envelope_exposes_requested_resolved_fallback
     assert meta["source_surface"] == "formal_pnl"
 
 
+def test_pnl_by_business_analytical_envelope_preserves_lineage_fallback_when_dates_match(
+    monkeypatch,
+    tmp_path,
+):
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    monkeypatch.setattr(
+        pnl_service,
+        "_build_pnl_formal_result_envelope_from_lineage",
+        lambda **kwargs: {
+            "result_meta": {
+                "result_kind": kwargs["result_kind"],
+                "basis": "formal",
+                "formal_use_allowed": True,
+                "quality_flag": "stale",
+                "fallback_mode": "latest_snapshot",
+                "fallback_date": "2026-05-31",
+            },
+            "result": kwargs["result_payload"],
+        },
+    )
+
+    payload = pnl_service._build_pnl_by_business_analytical_result_envelope(
+        governance_dir=str(tmp_path / "governance"),
+        requested_report_date="2026-06-30",
+        resolved_report_date="2026-06-30",
+        trace_id="tr_pnl_by_business_lineage_fallback",
+        result_kind="pnl.by_business_ytd",
+        result_payload={"source_tables": ["fact_formal_pnl_fi"]},
+    )
+
+    meta = payload["result_meta"]
+    assert meta["quality_flag"] == "stale"
+    assert meta["fallback_mode"] == "latest_snapshot"
+    assert meta["fallback_date"] == "2026-05-31"
+
+
+def test_pnl_by_business_analytical_envelope_does_not_downgrade_error_on_date_fallback(
+    monkeypatch,
+    tmp_path,
+):
+    captured: dict[str, object] = {}
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+
+    def _fake_envelope(**kwargs):
+        captured.update(kwargs)
+        return {
+            "result_meta": {
+                "quality_flag": kwargs["quality_flag"],
+                "fallback_mode": "none",
+                "fallback_date": None,
+            },
+            "result": kwargs["result_payload"],
+        }
+
+    monkeypatch.setattr(
+        pnl_service,
+        "_build_pnl_formal_result_envelope_from_lineage",
+        _fake_envelope,
+    )
+
+    payload = pnl_service._build_pnl_by_business_analytical_result_envelope(
+        governance_dir=str(tmp_path / "governance"),
+        requested_report_date="2026-06-30",
+        resolved_report_date="2026-05-31",
+        trace_id="tr_pnl_by_business_error",
+        result_kind="pnl.by_business_ytd",
+        result_payload={"source_tables": ["fact_formal_pnl_fi"]},
+        quality_flag="error",
+    )
+
+    assert captured["quality_flag"] == "error"
+    assert payload["result_meta"]["quality_flag"] == "error"
+    assert payload["result_meta"]["fallback_mode"] == "latest_snapshot"
+    assert payload["result_meta"]["fallback_date"] == "2026-05-31"
+
+
 def test_pnl_by_business_ytd_rechecks_precompute_before_each_request(monkeypatch, tmp_path):
     pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
     pnl_service.clear_pnl_by_business_ytd_cache()
@@ -3280,7 +3356,7 @@ def test_pnl_by_business_ytd_summary_aggregates_parent_amounts_before_rounding()
 
 
 def test_pnl_by_business_ytd_classifies_each_report_month_before_accumulating(tmp_path, monkeypatch):
-    _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
     duckdb_path = tmp_path / "moss.duckdb"
     classification = _seed_pnl_by_business_ytd_balance_rows(duckdb_path)
     commercial_type = classification["commercial_type"]
@@ -3387,6 +3463,14 @@ def test_pnl_by_business_ytd_classifies_each_report_month_before_accumulating(tm
         )
     finally:
         conn.close()
+
+    _append_manifest_override(
+        governance_dir,
+        source_version="fi-switch-v1",
+        vendor_version="vv_none",
+        rule_version="rv_pnl_phase2_materialize_v1",
+        report_date="2025-02-28",
+    )
 
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
     ytd_response = client.get("/api/pnl/by-business-ytd", params={"year": 2025, "as_of_date": "2025-02-28"})
@@ -6791,6 +6875,172 @@ def test_pnl_overview_prefers_report_date_specific_build_lineage_over_latest_man
     get_settings.cache_clear()
 
 
+def test_pnl_data_prefers_exact_date_manifest_when_completed_build_is_unavailable(
+    tmp_path,
+    monkeypatch,
+):
+    governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    _remove_governance_rows_for_report_date(
+        governance_dir,
+        stream=CACHE_BUILD_RUN_STREAM,
+        report_date="2025-12-31",
+    )
+    _append_manifest_override(
+        governance_dir,
+        source_version="sv_future_manifest",
+        vendor_version="vv_future_manifest",
+        rule_version="rv_future_manifest",
+        report_date="2026-03-31",
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/data", params={"date": "2025-12-31"})
+
+    assert response.status_code == 200
+    meta = response.json()["result_meta"]
+    assert meta["source_version"] == "fi-shared-v1__nonstd-shared-v1"
+    assert meta["vendor_version"] == "vv_none"
+    assert meta["rule_version"] == "rv_pnl_phase2_materialize_v3"
+    assert meta["fallback_mode"] == "none"
+    assert meta["quality_flag"] == "ok"
+    assert meta["fallback_date"] is None
+    get_settings.cache_clear()
+
+
+def test_pnl_overview_marks_prior_manifest_lineage_fallback_and_rejects_future_manifest(
+    tmp_path,
+    monkeypatch,
+):
+    governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    _remove_governance_rows_for_report_date(
+        governance_dir,
+        stream=CACHE_BUILD_RUN_STREAM,
+        report_date="2026-01-31",
+    )
+    _remove_governance_rows_for_report_date(
+        governance_dir,
+        stream=CACHE_MANIFEST_STREAM,
+        report_date="2026-01-31",
+    )
+    _append_manifest_override(
+        governance_dir,
+        source_version="sv_safe_prior_manifest",
+        vendor_version="vv_safe_prior_manifest",
+        rule_version="rv_safe_prior_manifest",
+        report_date="2025-12-31",
+    )
+    _append_manifest_override(
+        governance_dir,
+        source_version="sv_future_manifest",
+        vendor_version="vv_future_manifest",
+        rule_version="rv_future_manifest",
+        report_date="2026-03-31",
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/overview", params={"report_date": "2026-01-31"})
+
+    assert response.status_code == 200
+    meta = response.json()["result_meta"]
+    assert meta["source_version"] == "sv_safe_prior_manifest"
+    assert meta["vendor_version"] == "vv_safe_prior_manifest"
+    assert meta["rule_version"] == "rv_safe_prior_manifest"
+    assert meta["fallback_mode"] == "latest_snapshot"
+    assert meta["quality_flag"] == "stale"
+    assert meta["fallback_date"] == "2025-12-31"
+    get_settings.cache_clear()
+
+
+def test_pnl_data_fails_closed_when_only_future_manifest_lineage_is_available(
+    tmp_path,
+    monkeypatch,
+):
+    governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    _remove_governance_rows_for_report_date(
+        governance_dir,
+        stream=CACHE_BUILD_RUN_STREAM,
+        report_date="2025-12-31",
+    )
+    _remove_governance_rows_for_report_date(
+        governance_dir,
+        stream=CACHE_MANIFEST_STREAM,
+        report_date="2025-12-31",
+    )
+    _append_manifest_override(
+        governance_dir,
+        source_version="sv_future_only",
+        vendor_version="vv_future_only",
+        rule_version="rv_future_only",
+        report_date="2026-03-31",
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/data", params={"date": "2025-12-31"})
+
+    assert response.status_code == 503
+    assert "sv_future_only" not in response.text
+    get_settings.cache_clear()
+
+
+def test_pnl_data_fails_closed_when_exact_manifest_lineage_is_malformed(
+    tmp_path,
+    monkeypatch,
+):
+    governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    _append_manifest_override(
+        governance_dir,
+        source_version="sv_malformed_exact",
+        vendor_version="",
+        rule_version="rv_malformed_exact",
+        report_date="2025-12-31",
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/data", params={"date": "2025-12-31"})
+
+    assert response.status_code == 503
+    assert "missing vendor_version" in response.json()["detail"]
+    assert "sv_malformed_exact" not in response.text
+    get_settings.cache_clear()
+
+
+def test_pnl_overview_marks_undated_legacy_manifest_as_stale_fallback(
+    tmp_path,
+    monkeypatch,
+):
+    governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    _remove_governance_rows_for_report_date(
+        governance_dir,
+        stream=CACHE_BUILD_RUN_STREAM,
+        report_date="2025-12-31",
+    )
+    for report_date in ("2025-12-31", "2026-01-31", "2026-02-28"):
+        _remove_governance_rows_for_report_date(
+            governance_dir,
+            stream=CACHE_MANIFEST_STREAM,
+            report_date=report_date,
+        )
+    _append_manifest_override(
+        governance_dir,
+        source_version="sv_legacy_undated",
+        vendor_version="vv_legacy_undated",
+        rule_version="rv_legacy_undated",
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/overview", params={"report_date": "2025-12-31"})
+
+    assert response.status_code == 200
+    meta = response.json()["result_meta"]
+    assert meta["source_version"] == "sv_legacy_undated"
+    assert meta["vendor_version"] == "vv_legacy_undated"
+    assert meta["rule_version"] == "rv_legacy_undated"
+    assert meta["fallback_mode"] == "latest_snapshot"
+    assert meta["quality_flag"] == "stale"
+    assert meta["fallback_date"] is None
+    get_settings.cache_clear()
+
+
 def test_pnl_bridge_returns_rows_and_phase3_warning_when_balance_rows_are_unavailable(tmp_path, monkeypatch):
     governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
     _append_manifest_override(
@@ -6917,6 +7167,56 @@ def test_pnl_bridge_uses_report_date_specific_pnl_build_lineage_without_manifest
     assert payload["result_meta"]["source_version"] == "sv_pnl_build_2025_12"
     assert payload["result_meta"]["vendor_version"] == "vv_pnl_build_2025_12"
     assert payload["result_meta"]["rule_version"] == "rv_pnl_build_2025_12"
+    get_settings.cache_clear()
+
+
+def test_pnl_bridge_marks_prior_manifest_lineage_fallback_and_rejects_future_manifest(
+    tmp_path,
+    monkeypatch,
+):
+    governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    _remove_governance_rows_for_report_date(
+        governance_dir,
+        stream=CACHE_BUILD_RUN_STREAM,
+        report_date="2025-12-31",
+    )
+    _remove_governance_rows_for_report_date(
+        governance_dir,
+        stream=CACHE_MANIFEST_STREAM,
+        report_date="2025-12-31",
+    )
+    _append_manifest_override(
+        governance_dir,
+        source_version="sv_safe_prior_bridge_manifest",
+        vendor_version="vv_safe_prior_bridge_manifest",
+        rule_version="rv_safe_prior_bridge_manifest",
+        report_date="2025-10-31",
+    )
+    _append_manifest_override(
+        governance_dir,
+        source_version="sv_future_bridge_manifest",
+        vendor_version="vv_future_bridge_manifest",
+        rule_version="rv_future_bridge_manifest",
+        report_date="2026-01-31",
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/bridge", params={"report_date": "2025-12-31"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    meta = payload["result_meta"]
+    assert meta["source_version"] == "sv_safe_prior_bridge_manifest"
+    assert meta["vendor_version"] == "vv_safe_prior_bridge_manifest"
+    assert meta["rule_version"] == "rv_safe_prior_bridge_manifest"
+    assert meta["fallback_mode"] == "latest_snapshot"
+    assert meta["quality_flag"] != "ok"
+    assert meta["fallback_date"] == "2025-10-31"
+    assert any(
+        "PnL lineage fallback used for report_date=2025-12-31" in warning
+        and "lineage_report_date=2025-10-31" in warning
+        for warning in payload["result"]["warnings"]
+    )
     get_settings.cache_clear()
 
 
@@ -8294,6 +8594,7 @@ def _append_manifest_override(
     vendor_version: str,
     rule_version: str,
     cache_version: str | None = None,
+    report_date: str | None = None,
 ):
     manifest_path = governance_dir / "cache_manifest.jsonl"
     with manifest_path.open("a", encoding="utf-8") as handle:
@@ -8305,11 +8606,31 @@ def _append_manifest_override(
                     "source_version": source_version,
                     "vendor_version": vendor_version,
                     "rule_version": rule_version,
+                    "report_date": report_date,
                 },
                 ensure_ascii=False,
-        )
+            )
             + "\n"
         )
+
+
+def _remove_governance_rows_for_report_date(
+    governance_dir,
+    *,
+    stream: str,
+    report_date: str,
+) -> None:
+    path = governance_dir / f"{stream}.jsonl"
+    rows = [
+        json.loads(line)
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    retained = [row for row in rows if str(row.get("report_date") or "") != report_date]
+    path.write_text(
+        "".join(f"{json.dumps(row, ensure_ascii=False)}\n" for row in retained),
+        encoding="utf-8",
+    )
 
 
 def _seed_pnl_bridge_balance_rows(

@@ -15,7 +15,7 @@ from backend.app.core_finance.pnl_bridge import (
 )
 from backend.app.governance.formal_compute_lineage import (
     resolve_completed_formal_build_lineage,
-    resolve_formal_manifest_lineage,
+    resolve_formal_manifest_lineage_with_completed_build,
 )
 from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
 from backend.app.repositories.pnl_repo import PnlRepository
@@ -242,17 +242,28 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
     # PAGE-BRIDGE-001: business report_date is exact (no report-date fallback).
     # Curve trade dates are never promoted to fallback_date.
     resolved_report_date = str(payload.report_date)
+    pnl_lineage_fallback = lineage.get("_lineage_fallback_mode") == "latest_snapshot"
     if curve_unavailable:
         # Mixed vendor_unavailable + latest_snapshot: vendor_status reports unavailable,
         # while quality_flag still merges stale from curve_latest_fallback (intentional).
-        fallback_mode = "none"
+        fallback_mode = "latest_snapshot" if pnl_lineage_fallback else "none"
         vendor_status = "vendor_unavailable"
-    elif curve_latest_fallback:
+    elif curve_latest_fallback or pnl_lineage_fallback:
         fallback_mode = "latest_snapshot"
-        vendor_status = "vendor_stale"
+        vendor_status = "vendor_stale" if curve_latest_fallback else "ok"
     else:
         fallback_mode = "none"
         vendor_status = "ok"
+    quality_flag = _merge_bridge_quality_flag(
+        summary_quality=(
+            "warning"
+            if curve_conversion_failed and summary.quality_flag == "ok"
+            else summary.quality_flag
+        ),
+        curve_latest_fallback=curve_latest_fallback,
+    )
+    if pnl_lineage_fallback and quality_flag != "error":
+        quality_flag = "stale"
     result_meta = build_formal_result_meta(
         trace_id=f"tr_pnl_bridge_{report_date}",
         result_kind="pnl.bridge",
@@ -261,21 +272,18 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
         rule_version=str(lineage["rule_version"]),
         vendor_version=str(lineage["vendor_version"]),
         source_surface="pnl_bridge",
-        quality_flag=_merge_bridge_quality_flag(
-            summary_quality=(
-                "warning"
-                if curve_conversion_failed and summary.quality_flag == "ok"
-                else summary.quality_flag
-            ),
-            curve_latest_fallback=curve_latest_fallback,
-        ),
+        quality_flag=quality_flag,
         vendor_status=vendor_status,
         fallback_mode=fallback_mode,
         requested_report_date=report_date,
         resolved_report_date=resolved_report_date,
         as_of_date=resolved_report_date,
-        # PAGE-BRIDGE-001: business report_date has no fallback (exact match required upstream).
-        fallback_date=None,
+        # The business report_date remains exact; this date identifies lineage fallback only.
+        fallback_date=(
+            str(lineage.get("_lineage_fallback_date") or "").strip() or None
+            if pnl_lineage_fallback
+            else None
+        ),
     )
     return build_formal_result_envelope(
         result_meta=result_meta,
@@ -420,7 +428,7 @@ def _resolve_bridge_lineage(
     current_balance_rows: list[dict[str, object]],
     prior_balance_rows: list[dict[str, object]],
     curve_snapshots: list[dict[str, object]],
-) -> tuple[dict[str, str], list[str]]:
+) -> tuple[dict[str, object], list[str]]:
     pnl_lineage = _resolve_pnl_lineage(
         governance_dir=governance_dir,
         report_date=report_date,
@@ -433,6 +441,16 @@ def _resolve_bridge_lineage(
     )
 
     warnings: list[str] = []
+    pnl_lineage_fallback = pnl_lineage.get("_lineage_fallback_mode") == "latest_snapshot"
+    pnl_lineage_fallback_date = (
+        str(pnl_lineage.get("_lineage_fallback_date") or "").strip() or None
+    )
+    if pnl_lineage_fallback:
+        warnings.append(
+            f"PnL lineage fallback used for report_date={report_date}; "
+            f"lineage_report_date={pnl_lineage_fallback_date or 'unknown'}; "
+            "exact completed build and exact-date manifest unavailable."
+        )
     current_balance_lineage, used_current_fallback = _resolve_balance_lineage_component(
         build_lineage=current_build,
         balance_rows=current_balance_rows,
@@ -464,31 +482,32 @@ def _resolve_bridge_lineage(
         *[str(snapshot.get("vendor_version") or "").strip() for snapshot in curve_snapshots]
     )
 
-    return (
-        {
-            "source_version": _merge_lineage_values(
-                str(pnl_lineage["source_version"]),
-                current_balance_lineage["source_version"],
-                prior_balance_lineage["source_version"],
-                curve_source,
-                curve_vendor_names,
-            ),
-            "rule_version": _merge_lineage_values(
-                str(pnl_lineage["rule_version"]),
-                current_balance_lineage["rule_version"],
-                prior_balance_lineage["rule_version"],
-                curve_rule,
-            ),
-            "vendor_version": _merge_lineage_values(
-                str(pnl_lineage["vendor_version"]),
-                current_balance_lineage["vendor_version"],
-                prior_balance_lineage["vendor_version"],
-                curve_vendor,
-            )
-            or "vv_none",
-        },
-        warnings,
-    )
+    combined_lineage: dict[str, object] = {
+        "source_version": _merge_lineage_values(
+            str(pnl_lineage["source_version"]),
+            current_balance_lineage["source_version"],
+            prior_balance_lineage["source_version"],
+            curve_source,
+            curve_vendor_names,
+        ),
+        "rule_version": _merge_lineage_values(
+            str(pnl_lineage["rule_version"]),
+            current_balance_lineage["rule_version"],
+            prior_balance_lineage["rule_version"],
+            curve_rule,
+        ),
+        "vendor_version": _merge_lineage_values(
+            str(pnl_lineage["vendor_version"]),
+            current_balance_lineage["vendor_version"],
+            prior_balance_lineage["vendor_version"],
+            curve_vendor,
+        )
+        or "vv_none",
+    }
+    if pnl_lineage_fallback:
+        combined_lineage["_lineage_fallback_mode"] = "latest_snapshot"
+        combined_lineage["_lineage_fallback_date"] = pnl_lineage_fallback_date
+    return combined_lineage, warnings
 
 
 def _resolve_balance_build_lineage(
@@ -690,31 +709,11 @@ def _curve_points(snapshot: dict[str, object] | None) -> dict[str, Decimal] | No
 
 
 def _resolve_pnl_lineage(*, governance_dir: str, report_date: str) -> dict[str, object]:
-    build_lineage = resolve_completed_formal_build_lineage(
+    return resolve_formal_manifest_lineage_with_completed_build(
         governance_dir=governance_dir,
         cache_key=PNL_CACHE_KEY,
         job_name="pnl_materialize",
         report_date=report_date,
-    )
-    if build_lineage is not None:
-        try:
-            manifest_lineage = resolve_formal_manifest_lineage(
-                governance_dir=governance_dir,
-                cache_key=PNL_CACHE_KEY,
-            )
-        except RuntimeError:
-            return build_lineage
-        return {
-            **manifest_lineage,
-            **{
-                key: value
-                for key, value in build_lineage.items()
-                if str(value or "").strip()
-            },
-        }
-    return resolve_formal_manifest_lineage(
-        governance_dir=governance_dir,
-        cache_key=PNL_CACHE_KEY,
     )
 
 

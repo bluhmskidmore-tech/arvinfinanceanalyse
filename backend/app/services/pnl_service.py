@@ -28,8 +28,7 @@ from backend.app.core_finance.zqtz_asset_bond_category import (
     match_zqtz_asset_bond_rows,
 )
 from backend.app.governance.formal_compute_lineage import (
-    resolve_completed_formal_build_lineage,
-    resolve_formal_manifest_lineage,
+    resolve_formal_manifest_lineage_with_completed_build,
 )
 from backend.app.governance.locks import LockDefinition, acquire_lock, resolve_duckdb_writer_lock
 from backend.app.governance.settings import Settings, get_settings
@@ -3888,18 +3887,23 @@ def _build_pnl_by_business_analytical_result_envelope(
     filters_applied: dict[str, object] | None = None,
 ) -> dict[str, object]:
     fallback_used = bool(requested_report_date and requested_report_date != resolved_report_date)
+    effective_quality_flag = quality_flag
+    if fallback_used and effective_quality_flag != "error":
+        effective_quality_flag = "warning"
     envelope = _build_pnl_formal_result_envelope_from_lineage(
         governance_dir=governance_dir,
         report_date=resolved_report_date,
         trace_id=trace_id,
         result_kind=result_kind,
         result_payload=result_payload,
-        quality_flag="warning" if fallback_used else quality_flag,
+        quality_flag=effective_quality_flag,
     )
     meta = envelope.get("result_meta")
     if not isinstance(meta, dict):
         meta = {}
         envelope["result_meta"] = meta
+    lineage_fallback_mode = meta.get("fallback_mode", "none")
+    lineage_fallback_date = meta.get("fallback_date")
     source_tables = result_payload.get("source_tables")
     meta.update(
         {
@@ -3908,8 +3912,8 @@ def _build_pnl_by_business_analytical_result_envelope(
             "requested_report_date": requested_report_date or resolved_report_date,
             "resolved_report_date": resolved_report_date,
             "as_of_date": resolved_report_date,
-            "fallback_date": resolved_report_date if fallback_used else None,
-            "fallback_mode": "latest_snapshot" if fallback_used else "none",
+            "fallback_date": resolved_report_date if fallback_used else lineage_fallback_date,
+            "fallback_mode": "latest_snapshot" if fallback_used else lineage_fallback_mode,
             "date_basis": "formal_report_date_cutoff",
             "filters_applied": filters_applied or {},
             "tables_used": list(source_tables) if isinstance(source_tables, list) else [],
@@ -3928,10 +3932,19 @@ def _build_pnl_formal_result_envelope_from_lineage(
     result_payload: dict[str, object],
     quality_flag: str | None = None,
 ) -> dict[str, object]:
-    lineage = _resolve_pnl_lineage(
+    lineage = resolve_formal_manifest_lineage_with_completed_build(
         governance_dir=governance_dir,
+        cache_key=PNL_CACHE_KEY,
+        job_name=PNL_JOB_NAME,
         report_date=report_date,
     )
+    lineage_fallback = lineage.get("_lineage_fallback_mode") == "latest_snapshot"
+    effective_quality_flag = quality_flag
+    if lineage_fallback and effective_quality_flag != "error":
+        effective_quality_flag = "stale"
+    fallback_date = None
+    if lineage_fallback:
+        fallback_date = str(lineage.get("_lineage_fallback_date") or "").strip() or None
     return build_formal_result_envelope_from_lineage_runtime(
         trace_id=trace_id,
         result_kind=result_kind,
@@ -3939,37 +3952,12 @@ def _build_pnl_formal_result_envelope_from_lineage(
         default_cache_version=PNL_CACHE_VERSION,
         use_lineage_cache_version=False,
         result_payload=result_payload,
-        quality_flag=quality_flag,
-    )
-
-
-def _resolve_pnl_lineage(*, governance_dir: str, report_date: str | None) -> dict[str, object]:
-    if report_date:
-        build_lineage = resolve_completed_formal_build_lineage(
-            governance_dir=governance_dir,
-            cache_key=PNL_CACHE_KEY,
-            job_name=PNL_JOB_NAME,
-            report_date=report_date,
-        )
-        if build_lineage is not None:
-            try:
-                manifest_lineage = resolve_formal_manifest_lineage(
-                    governance_dir=governance_dir,
-                    cache_key=PNL_CACHE_KEY,
-                )
-            except RuntimeError:
-                return build_lineage
-            return {
-                **manifest_lineage,
-                **{
-                    key: value
-                    for key, value in build_lineage.items()
-                    if str(value or "").strip()
-                },
-            }
-    return resolve_formal_manifest_lineage(
-        governance_dir=governance_dir,
-        cache_key=PNL_CACHE_KEY,
+        quality_flag=effective_quality_flag,
+        fallback_mode="latest_snapshot" if lineage_fallback else "none",
+        requested_report_date=report_date,
+        resolved_report_date=report_date,
+        as_of_date=report_date,
+        fallback_date=fallback_date,
     )
 
 
