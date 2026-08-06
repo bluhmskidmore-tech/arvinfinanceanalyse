@@ -370,6 +370,9 @@ def test_dev_postgres_down_script_parses_json_status_payload():
 
 def test_dev_postgres_common_script_runs_dev_cluster_helper_directly():
     script = (ROOT / "scripts" / "dev-postgres-common.ps1").read_text(encoding="utf-8")
+    assert "dev-python.ps1" in script
+    assert "Resolve-DevPython" in script
+    assert "Get-Command python -ErrorAction Stop" not in script
     assert "& $python" in script
     assert "ConvertFrom-Json" in script
     assert "Start-Process" not in script

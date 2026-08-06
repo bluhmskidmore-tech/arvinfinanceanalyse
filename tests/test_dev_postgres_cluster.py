@@ -609,7 +609,7 @@ def test_seed_dev_user_scopes_grants_local_read_surfaces_once(tmp_path, monkeypa
     assert command.count("INSERT INTO user_role_scope") == len(module.DEV_USER_SCOPE_GRANTS)
 
 
-def test_resolve_python_executable_prefers_path_python(monkeypatch):
+def test_resolve_python_executable_prefers_current_interpreter(monkeypatch):
     module = load_module(
         "scripts.dev_postgres_cluster",
         "scripts/dev_postgres_cluster.py",
@@ -618,5 +618,4 @@ def test_resolve_python_executable_prefers_path_python(monkeypatch):
     monkeypatch.setattr(module.shutil, "which", lambda name: r"C:\Python\python.exe" if name == "python" else None)
     monkeypatch.setattr(module.sys, "executable", r"C:\Fallback\python.exe")
 
-    assert module._resolve_python_executable() == r"C:\Python\python.exe"
-
+    assert module._resolve_python_executable() == r"C:\Fallback\python.exe"

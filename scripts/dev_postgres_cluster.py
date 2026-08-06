@@ -140,7 +140,7 @@ def resolve_pg_bin_dir() -> Path:
 
 
 def _resolve_python_executable() -> str:
-    return shutil.which("python") or sys.executable
+    return sys.executable or shutil.which("python") or "python"
 
 
 def _sql_identifier(value: str) -> str:
