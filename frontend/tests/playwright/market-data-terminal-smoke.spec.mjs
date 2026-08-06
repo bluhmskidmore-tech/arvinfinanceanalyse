@@ -23,6 +23,9 @@ test.describe("market data terminal first screen", () => {
     await expect(fxFormalCollapse).toBeVisible();
     await expect(page.locator('[data-testid="market-data-fx-formal-panel"]')).toHaveCount(0);
 
+    const extendedTerminalMount = page.locator('[data-lazy-mount="extended-terminal"]');
+    await expect(extendedTerminalMount).toBeAttached();
+    await extendedTerminalMount.scrollIntoViewIfNeeded();
     const extendedTerminalCollapse = page.getByTestId("market-data-extended-terminal-collapse");
     await expect(extendedTerminalCollapse).toBeVisible();
     await extendedTerminalCollapse.locator(".ant-collapse-header").first().click();

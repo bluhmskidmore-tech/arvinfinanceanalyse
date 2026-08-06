@@ -12,6 +12,9 @@ test.describe("dashboard home release history disclosure", () => {
     const content = disclosure.locator(":scope > div");
     const rows = disclosure.getByTestId("dashboard-home-release-history-row");
 
+    const deferredSentinel = page.getByTestId("dashboard-home-deferred-sentinel");
+    await expect(deferredSentinel).toBeAttached();
+    await deferredSentinel.scrollIntoViewIfNeeded();
     await expect(disclosure).toBeVisible({ timeout: 60_000 });
     await disclosure.scrollIntoViewIfNeeded();
     await expect(disclosure).not.toHaveAttribute("open");
