@@ -540,4 +540,3 @@ def test_execution_gap_repair_result_bounds_operator_preview_and_keeps_full_coun
     assert result["remaining_reason_counts"] == {}
     assert result["repaired_count"] == 55
     assert result["deleted_physical_row_count"] == 60
-
