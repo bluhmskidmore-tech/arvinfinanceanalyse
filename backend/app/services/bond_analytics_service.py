@@ -94,6 +94,8 @@ except ImportError:
 
 from backend.app.schemas.analysis_service import AnalysisQuery
 from backend.app.schemas.bond_analytics import (
+    DV01_BASIS,
+    DV01_SCENARIO_PNL_BASIS,
     AccountingClassAuditItem,
     AccountingClassAuditResponse,
     ActionAttributionResponse,
@@ -108,12 +110,10 @@ from backend.app.schemas.bond_analytics import (
     ConcentrationItem,
     ConcentrationMetrics,
     CreditSpreadMigrationResponse,
-    DV01_BASIS,
     DV01ActionBondItem,
     DV01ActionIssuerItem,
     DV01ActionPlanResponse,
     DV01ActionScenarioBreach,
-    DV01_SCENARIO_PNL_BASIS,
     DV01ActionTenorItem,
     DV01LimitConfigStatusResponse,
     DV01LimitConfigStatusRow,
@@ -151,6 +151,7 @@ from backend.app.services.formal_result_runtime import (
     build_formal_result_meta_from_lineage,
     build_result_envelope,
 )
+
 # 与 tasks 模块对齐的身份常量；只读路径不得 import tasks（broker/actor 注册）。
 CACHE_KEY = "bond_analytics:materialize:formal"
 CACHE_VERSION = "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v1"

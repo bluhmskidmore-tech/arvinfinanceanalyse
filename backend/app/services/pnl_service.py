@@ -1592,19 +1592,9 @@ def _pnl_by_business_ytd_envelope_uncached(
             year=year,
             as_of_date=period_end,
         )
-        effective_ftp_rate_pct = resolve_product_category_ftp_rate_pct(
-            date(year, 12, 31),
-            settings.ftp_rate_pct,
-        )
+        effective_ftp_rate_pct = resolve_product_category_ftp_rate_pct(date(year, 12, 31), settings.ftp_rate_pct)
         precomputed = _fetch_pnl_by_business_precompute(
-            repo,
-            governance_dir=governance_dir,
-            year=year,
-            as_of_date=period_end,
-            result_kind="ytd",
-            dimension="",
-            business_key="",
-            effective_ftp_rate_pct=effective_ftp_rate_pct,
+            repo, governance_dir=governance_dir, year=year, as_of_date=period_end, result_kind="ytd", dimension="", business_key="", effective_ftp_rate_pct=effective_ftp_rate_pct
         )
         if (
             precomputed is not None
@@ -1636,15 +1626,7 @@ def _pnl_by_business_ytd_envelope_uncached(
 
 
 def _fetch_pnl_by_business_precompute(
-    repo: PnlRepository,
-    *,
-    governance_dir: str,
-    year: int,
-    as_of_date: str,
-    result_kind: str,
-    dimension: str,
-    business_key: str,
-    effective_ftp_rate_pct: Decimal,
+    repo: PnlRepository, *, governance_dir: str, year: int, as_of_date: str, result_kind: str, dimension: str, business_key: str, effective_ftp_rate_pct: Decimal
 ) -> dict[str, object] | None:
     fetcher = getattr(repo, "fetch_pnl_by_business_precompute", None)
     if not callable(fetcher):
@@ -1739,14 +1721,7 @@ def pnl_by_business_analysis_envelope(
     settings = get_settings()
     ftp_rate_pct = resolve_product_category_ftp_rate_pct(date(year, 12, 31), settings.ftp_rate_pct)
     precomputed = _fetch_pnl_by_business_precompute(
-        repo,
-        governance_dir=governance_dir,
-        year=year,
-        as_of_date=period_end,
-        result_kind="analysis",
-        dimension=dimension,
-        business_key=str(business_key or "").strip(),
-        effective_ftp_rate_pct=ftp_rate_pct,
+        repo, governance_dir=governance_dir, year=year, as_of_date=period_end, result_kind="analysis", dimension=dimension, business_key=str(business_key or "").strip(), effective_ftp_rate_pct=ftp_rate_pct
     )
     if (
         precomputed is not None
@@ -1870,14 +1845,7 @@ def pnl_by_business_monthly_envelope(
     settings = get_settings()
     ftp_rate_pct = resolve_product_category_ftp_rate_pct(date(year, 12, 31), settings.ftp_rate_pct)
     precomputed = _fetch_pnl_by_business_precompute(
-        repo,
-        governance_dir=governance_dir,
-        year=year,
-        as_of_date=period_end,
-        result_kind="monthly",
-        dimension="",
-        business_key="",
-        effective_ftp_rate_pct=ftp_rate_pct,
+        repo, governance_dir=governance_dir, year=year, as_of_date=period_end, result_kind="monthly", dimension="", business_key="", effective_ftp_rate_pct=ftp_rate_pct
     )
     if (
         precomputed is not None
@@ -2112,8 +2080,7 @@ def pnl_by_business_precompute_status(
             year=normalized_year,
             as_of_date=period_end,
             effective_ftp_rate_pct=resolve_product_category_ftp_rate_pct(
-                date(normalized_year, 12, 31),
-                settings.ftp_rate_pct,
+                date(normalized_year, 12, 31), settings.ftp_rate_pct
             ),
             supplemental_source_version=pnl_by_business_manual_adjustment_source_version(active_adjustments),
             verify_current=not inflight,
