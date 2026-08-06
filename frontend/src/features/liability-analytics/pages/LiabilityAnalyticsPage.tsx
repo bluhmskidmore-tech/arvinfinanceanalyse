@@ -520,18 +520,20 @@ export default function LiabilityAnalyticsPage() {
         resultMetas:
           activeTab === "daily"
             ? [
-                { key: "risk-buckets", title: "负债期限结构", meta: riskQuery.data?.result_meta },
-                { key: "yield-metrics", title: "负债收益指标", meta: yieldQuery.data?.result_meta },
-                { key: "dates", title: "报告日目录", meta: datesQuery.data?.result_meta },
-                { key: "asset-overview", title: "资产端正式总览", meta: balanceOverviewQuery.data?.result_meta },
-                { key: "counterparty", title: "对手方集中度", meta: cpQuery.data?.result_meta },
-                { key: "knowledge", title: "业务资料", meta: knowledgeQuery.data?.result_meta },
-                { key: "warnings", title: "关注/预警", meta: cockpitWarningsQuery.data?.result_meta },
-                { key: "contribution", title: "贡献拆分", meta: contributionQuery.data?.result_meta },
+                // Daily hero + KPI band are driven by risk, yield, and counterparty reads.
+                { key: "risk-buckets", title: "负债期限结构", required: true, meta: riskQuery.data?.result_meta },
+                { key: "yield-metrics", title: "负债收益指标", required: true, meta: yieldQuery.data?.result_meta },
+                { key: "dates", title: "报告日目录", required: false, meta: datesQuery.data?.result_meta },
+                { key: "asset-overview", title: "资产端正式总览", required: false, meta: balanceOverviewQuery.data?.result_meta },
+                { key: "counterparty", title: "对手方集中度", required: true, meta: cpQuery.data?.result_meta },
+                { key: "knowledge", title: "业务资料", required: false, meta: knowledgeQuery.data?.result_meta },
+                { key: "warnings", title: "关注/预警", required: false, meta: cockpitWarningsQuery.data?.result_meta },
+                { key: "contribution", title: "贡献拆分", required: false, meta: contributionQuery.data?.result_meta },
               ]
             : [
-                { key: "liabilities-monthly", title: "负债月度日均", meta: monthlyQuery.data?.result_meta },
-                { key: "adb-monthly", title: "ADB 月度日均", meta: adbMonthlyQuery.data?.result_meta },
+                // Monthly tab readout is driven by liabilities-monthly and adb-monthly.
+                { key: "liabilities-monthly", title: "负债月度日均", required: true, meta: monthlyQuery.data?.result_meta },
+                { key: "adb-monthly", title: "ADB 月度日均", required: true, meta: adbMonthlyQuery.data?.result_meta },
               ],
         syntheticSections: [
           syntheticSections.riskIndicators,

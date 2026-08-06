@@ -50,6 +50,7 @@ export type LiabilitySyntheticEvidenceInput = {
 export type LiabilityResultMetaInput = {
   key: string;
   title: string;
+  required: boolean;
   meta?: ResultMeta | null;
 };
 
@@ -168,10 +169,14 @@ export function buildLiabilityAnalyticsPageReadModel(
     Boolean(input.resolvedReportDate) &&
     input.requestedReportDate !== input.resolvedReportDate;
   const resultMetas = input.resultMetas.map(buildEvidenceCard).filter(Boolean) as LiabilityPageEvidenceCard[];
-  const missingMetaInputs = input.resultMetas.filter((source) => !source.meta);
-  const evidenceCards = input.resultMetas.map((source) =>
-    source.meta ? buildEvidenceCard(source) : buildMissingEvidenceCard(source),
-  ) as LiabilityPageEvidenceCard[];
+  const missingMetaInputs = input.resultMetas.filter((source) => source.required && !source.meta);
+  const evidenceCards = input.resultMetas.flatMap((source) => {
+    if (source.meta) {
+      const card = buildEvidenceCard(source);
+      return card ? [card] : [];
+    }
+    return source.required ? [buildMissingEvidenceCard(source)] : [];
+  });
   const fallbackCards = resultMetas.filter((card) => card.fallbackLabel !== "none");
   const staleCards = input.resultMetas.filter(
     (source) => source.meta?.vendor_status === "vendor_stale" || source.meta?.vendor_status === "vendor_unavailable",

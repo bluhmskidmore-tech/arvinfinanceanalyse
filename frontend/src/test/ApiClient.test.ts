@@ -96,6 +96,33 @@ describe("createApiClient", () => {
     expect(payload.result_meta.fallback_mode).toBe("none");
   });
 
+  it("keeps liability mock readers on the governed result_meta shape", async () => {
+    const client = createApiClient({ mode: "mock" });
+
+    const [risk, yieldMetrics, counterparty, liabilitiesMonthly, adbMonthly] = await Promise.all([
+      client.getLiabilityRiskBuckets("2026-01-31"),
+      client.getLiabilityYieldMetrics("2026-01-31"),
+      client.getLiabilityCounterparty({ reportDate: "2026-01-31", topN: 10 }),
+      client.getLiabilitiesMonthly(2026),
+      client.getLiabilityAdbMonthly(2026),
+    ]);
+
+    expect(risk.result_meta?.result_kind).toBe("liability_analytics.risk_buckets");
+    expect(yieldMetrics.result_meta?.result_kind).toBe("liability_analytics.yield_metrics");
+    expect(counterparty.result_meta?.result_kind).toBe("liability_analytics.counterparty");
+    expect(liabilitiesMonthly.result_meta?.result_kind).toBe("liability_analytics.monthly");
+    expect(adbMonthly.result_meta?.result_kind).toBe("adb.monthly");
+    expect(
+      [risk, yieldMetrics, counterparty, liabilitiesMonthly, adbMonthly].every(
+        (payload) =>
+          payload.result_meta?.basis === "analytical" &&
+          payload.result_meta?.formal_use_allowed === false &&
+          payload.result_meta?.fallback_mode === "none" &&
+          payload.result_meta?.vendor_status === "ok",
+      ),
+    ).toBe(true);
+  });
+
   it("keeps mock positions list count envelopes at candidate analytical boundary", async () => {
     const client = createApiClient({ mode: "mock" });
 
