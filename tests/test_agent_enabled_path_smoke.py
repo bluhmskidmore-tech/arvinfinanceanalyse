@@ -959,7 +959,7 @@ def test_agent_query_enabled_path_returns_real_pnl_bridge_and_audit(tmp_path, mo
 def test_agent_query_enabled_path_returns_real_duration_risk_and_audit(tmp_path, monkeypatch):
     duckdb_path = tmp_path / "moss-duration.duckdb"
     governance_dir = tmp_path / "governance-duration"
-    _seed_agent_bond_analytics_tables(duckdb_path)
+    _seed_agent_risk_tensor_tables(duckdb_path, governance_dir)
 
     _enable_local_agent(monkeypatch)
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
@@ -980,16 +980,41 @@ def test_agent_query_enabled_path_returns_real_duration_risk_and_audit(tmp_path,
     assert payload["result_meta"]["basis"] == "formal"
     assert payload["result_meta"]["result_kind"] == "agent.duration_risk"
     assert payload["result_meta"]["formal_use_allowed"] is True
-    assert payload["evidence"]["tables_used"] == ["fact_formal_bond_analytics_daily"]
-    assert payload["evidence"]["evidence_rows"] == 2
-    assert any(card["title"] == "Portfolio DV01" for card in payload["cards"])
+    assert payload["result_meta"]["requested_report_date"] is None
+    assert payload["result_meta"]["resolved_report_date"] == REPORT_DATE
+    assert payload["result_meta"]["as_of_date"] == REPORT_DATE
+    assert payload["result_meta"]["date_basis"] == "formal_snapshot"
+    assert payload["result_meta"]["source_surface"] == "risk_tensor"
+    assert payload["result_meta"]["amount_currency_basis"] == "CNY"
+    assert payload["evidence"]["tables_used"] == ["fact_formal_risk_tensor_daily"]
+    assert payload["evidence"]["evidence_rows"] == 3
+    assert payload["result_meta"]["tables_used"] == payload["evidence"]["tables_used"]
+    assert payload["result_meta"]["filters_applied"] == payload["evidence"]["filters_applied"]
+
+    cards = {card["title"]: card for card in payload["cards"]}
+    assert "Portfolio Duration" not in cards
+    assert cards["Portfolio Modified Duration"]["spec"]["metric_id"] == "MTR-RSK-010"
+    assert cards["Portfolio Modified Duration"]["spec"]["numeric"]["unit"] == "ratio"
+    assert cards["Portfolio Modified Duration"]["spec"]["numeric"]["display"] == "4.20"
+    assert cards["Portfolio DV01"]["spec"]["metric_id"] == "MTR-RSK-001"
+    assert cards["Portfolio DV01"]["spec"]["numeric"]["unit"] == "dv01"
+    assert cards["Portfolio DV01"]["spec"]["numeric"]["display"] == "12.34"
+    assert cards["Portfolio Convexity"]["spec"]["metric_id"] == "MTR-RSK-009"
+    assert cards["Rate Risk Market Value"]["spec"]["metric_id"] == "MTR-RSK-021"
+    assert cards["Rate Risk Market Value"]["spec"]["numeric"]["unit"] == "yuan"
+    assert cards["Duration Excluded Market Value"]["spec"]["metric_id"] == "MTR-RSK-104"
+    assert cards["Duration Excluded Market Value"]["spec"]["numeric"]["unit"] == "yuan"
+    assert cards["Duration Excluded Count"]["spec"]["metric_id"] == "MTR-RSK-103"
+    assert cards["Duration Excluded Count"]["spec"]["numeric"]["precision"] == 0
+    assert "组合修正久期" in payload["answer"]
+    assert "CNY/1bp" in payload["answer"]
 
     audit_path = governance_dir / "agent_audit.jsonl"
     assert audit_path.exists()
     audit_payload = json.loads(audit_path.read_text(encoding="utf-8").splitlines()[-1])
     assert audit_payload["user_id"] == "u_duration"
     assert audit_payload["query_text"] == "duration"
-    assert audit_payload["tables_used"] == ["fact_formal_bond_analytics_daily"]
+    assert audit_payload["tables_used"] == ["fact_formal_risk_tensor_daily"]
 
 
 def test_agent_query_enabled_path_returns_real_credit_exposure_and_audit(tmp_path, monkeypatch):

@@ -980,7 +980,49 @@ def test_pnl_summary_intent_routes_to_pnl_repo(tmp_path, monkeypatch):
     assert any(card.title == "Total PnL" for card in envelope.cards)
 
 
-def test_duration_risk_intent_routes_to_bond_analytics(tmp_path, monkeypatch):
+def _duration_risk_upstream(
+    report_date: str,
+    *,
+    bond_count: int = 3,
+    quality_flag: str = "ok",
+) -> dict[str, object]:
+    def numeric(raw: float, unit: str, display: str) -> dict[str, object]:
+        return {
+            "raw": raw,
+            "unit": unit,
+            "display": display,
+            "precision": 2,
+            "sign_aware": False,
+        }
+
+    return {
+        "result": {
+            "report_date": report_date,
+            "portfolio_modified_duration": numeric(4.1, "ratio", "4.10"),
+            "portfolio_dv01": numeric(12.34, "dv01", "12.34"),
+            "portfolio_convexity": numeric(0.88, "ratio", "0.88"),
+            "rate_risk_market_value": numeric(900.0, "yuan", "900.00"),
+            "duration_excluded_market_value": numeric(100.0, "yuan", "100.00"),
+            "duration_excluded_count": 1,
+            "bond_count": bond_count,
+            "quality_flag": quality_flag,
+            "warnings": [],
+        },
+        "result_meta": {
+            "basis": "formal",
+            "formal_use_allowed": True,
+            "quality_flag": quality_flag,
+            "source_version": "sv_risk_tensor_test",
+            "vendor_version": "vv_none",
+            "rule_version": "rv_risk_tensor_test",
+            "cache_version": "cv_risk_tensor_test",
+            "vendor_status": "ok",
+            "fallback_mode": "none",
+        },
+    }
+
+
+def test_duration_risk_intent_routes_to_formal_risk_tensor(tmp_path, monkeypatch):
     service_module = load_module(
         "backend.app.services.agent_service",
         "backend/app/services/agent_service.py",
@@ -996,25 +1038,23 @@ def test_duration_risk_intent_routes_to_bond_analytics(tmp_path, monkeypatch):
 
     calls: list[str] = []
 
-    class StubBondAnalyticsRepository:
+    class StubRiskTensorRepository:
         def __init__(self, path: str):
             assert path == "test.duckdb"
 
         def list_report_dates(self) -> list[str]:
             return ["2026-03-31"]
 
-        def fetch_portfolio_risk_summary(self, *, report_date: str) -> dict[str, object]:
-            calls.append(report_date)
-            return {
-                "bond_count": 3,
-                "total_market_value": 1000,
-                "portfolio_duration": 4.25,
-                "portfolio_modified_duration": 4.1,
-                "portfolio_convexity": 0.88,
-                "portfolio_dv01": 12.34,
-            }
+    def fake_risk_tensor_envelope(*, report_date: str, **_: object) -> dict[str, object]:
+        calls.append(report_date)
+        return _duration_risk_upstream(report_date, quality_flag="warning")
 
-    monkeypatch.setattr(service_module, "BondAnalyticsRepository", StubBondAnalyticsRepository)
+    risk_service_module = load_module(
+        "backend.app.services.risk_tensor_service",
+        "backend/app/services/risk_tensor_service.py",
+    )
+    monkeypatch.setattr(service_module, "RiskTensorRepository", StubRiskTensorRepository)
+    monkeypatch.setattr(risk_service_module, "risk_tensor_envelope", fake_risk_tensor_envelope)
 
     tool = tool_module.AnalysisViewTool(
         "test.duckdb",
@@ -1029,11 +1069,212 @@ def test_duration_risk_intent_routes_to_bond_analytics(tmp_path, monkeypatch):
     assert envelope.result_meta.result_kind == "agent.duration_risk"
     assert envelope.result_meta.basis == "formal"
     assert envelope.result_meta.filters_applied["report_date"] == "2026-03-31"
-    assert envelope.evidence.tables_used == ["fact_formal_bond_analytics_daily"]
+    assert envelope.result_meta.requested_report_date is None
+    assert envelope.result_meta.resolved_report_date == "2026-03-31"
+    assert envelope.result_meta.as_of_date == "2026-03-31"
+    assert envelope.result_meta.date_basis == "formal_snapshot"
+    assert envelope.result_meta.source_surface == "risk_tensor"
+    assert envelope.result_meta.amount_currency_basis == "CNY"
+    assert envelope.result_meta.formal_use_allowed is True
+    assert envelope.result_meta.quality_flag == "warning"
+    assert envelope.result_meta.source_version == "sv_risk_tensor_test"
+    assert envelope.result_meta.vendor_version == "vv_none"
+    assert envelope.result_meta.rule_version == "rv_risk_tensor_test"
+    assert envelope.result_meta.cache_version == "cv_risk_tensor_test"
+    assert envelope.result_meta.vendor_status == "ok"
+    assert envelope.result_meta.fallback_mode == "none"
+    assert envelope.evidence.tables_used == ["fact_formal_risk_tensor_daily"]
     assert envelope.evidence.sql_executed
     assert all(sql.lower().startswith("select") for sql in envelope.evidence.sql_executed)
-    assert any("from fact_formal_bond_analytics_daily" in sql for sql in envelope.evidence.sql_executed)
-    assert any(card.title == "Portfolio DV01" for card in envelope.cards)
+    assert any("from fact_formal_risk_tensor_daily" in sql for sql in envelope.evidence.sql_executed)
+
+    cards = {card.title: card for card in envelope.cards}
+    assert "Portfolio Duration" not in cards
+    assert cards["Portfolio Modified Duration"].spec == {
+        "metric_id": "MTR-RSK-010",
+        "source_field": "portfolio_modified_duration",
+        "raw_value": "4.1",
+        "raw_unit": "ratio",
+        "raw_precision": 2,
+        "numeric": {
+            "raw": 4.1,
+            "unit": "ratio",
+            "display": "4.10",
+            "precision": 2,
+            "sign_aware": False,
+        },
+    }
+    assert cards["Portfolio DV01"].spec["metric_id"] == "MTR-RSK-001"
+    assert cards["Portfolio DV01"].spec["numeric"]["unit"] == "dv01"
+    assert cards["Portfolio Convexity"].spec["metric_id"] == "MTR-RSK-009"
+    assert cards["Rate Risk Market Value"].spec["metric_id"] == "MTR-RSK-021"
+    assert cards["Rate Risk Market Value"].spec["numeric"]["unit"] == "yuan"
+    assert cards["Duration Excluded Market Value"].spec["metric_id"] == "MTR-RSK-104"
+    assert cards["Duration Excluded Market Value"].spec["numeric"]["unit"] == "yuan"
+    assert cards["Duration Excluded Count"].spec["metric_id"] == "MTR-RSK-103"
+    assert cards["Duration Excluded Count"].spec["numeric"]["unit"] == "count"
+    assert cards["Duration Excluded Count"].spec["numeric"]["precision"] == 0
+    assert "组合修正久期" in envelope.answer
+    assert "CNY/1bp" in envelope.answer
+
+
+def test_duration_risk_empty_tensor_does_not_synthesize_formal_metrics(tmp_path, monkeypatch):
+    service_module = load_module(
+        "backend.app.services.agent_service",
+        "backend/app/services/agent_service.py",
+    )
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    class StubRiskTensorRepository:
+        def __init__(self, path: str):
+            assert path == "test.duckdb"
+
+        def list_report_dates(self) -> list[str]:
+            return ["2026-03-31"]
+
+    def fake_risk_tensor_envelope(*, report_date: str, **_: object) -> dict[str, object]:
+        return _duration_risk_upstream(
+            report_date,
+            bond_count=0,
+            quality_flag="warning",
+        )
+
+    risk_service_module = load_module(
+        "backend.app.services.risk_tensor_service",
+        "backend/app/services/risk_tensor_service.py",
+    )
+    monkeypatch.setattr(service_module, "RiskTensorRepository", StubRiskTensorRepository)
+    monkeypatch.setattr(risk_service_module, "risk_tensor_envelope", fake_risk_tensor_envelope)
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
+    )
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(question="组合久期和DV01风险怎么样")
+    )
+
+    assert envelope.result_meta.result_kind == "agent.duration_risk"
+    assert envelope.result_meta.formal_use_allowed is False
+    assert envelope.result_meta.quality_flag == "warning"
+    assert envelope.evidence.evidence_rows == 0
+    assert all(card.spec is None or "metric_id" not in card.spec for card in envelope.cards)
+    assert "没有可用的风险张量债券数据" in envelope.answer
+
+
+def test_duration_risk_preserves_valid_zero_dv01(tmp_path, monkeypatch):
+    service_module = load_module(
+        "backend.app.services.agent_service",
+        "backend/app/services/agent_service.py",
+    )
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    class StubRiskTensorRepository:
+        def __init__(self, path: str):
+            assert path == "test.duckdb"
+
+        def list_report_dates(self) -> list[str]:
+            return ["2026-03-31"]
+
+    def fake_risk_tensor_envelope(*, report_date: str, **_: object) -> dict[str, object]:
+        upstream = _duration_risk_upstream(report_date)
+        result = upstream["result"]
+        assert isinstance(result, dict)
+        result["portfolio_dv01"] = {
+            "raw": 0.0,
+            "unit": "dv01",
+            "display": "0.00",
+            "precision": 2,
+            "sign_aware": False,
+        }
+        return upstream
+
+    risk_service_module = load_module(
+        "backend.app.services.risk_tensor_service",
+        "backend/app/services/risk_tensor_service.py",
+    )
+    monkeypatch.setattr(service_module, "RiskTensorRepository", StubRiskTensorRepository)
+    monkeypatch.setattr(risk_service_module, "risk_tensor_envelope", fake_risk_tensor_envelope)
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
+    )
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(question="组合久期和DV01风险怎么样")
+    )
+
+    dv01_card = next(card for card in envelope.cards if card.title == "Portfolio DV01")
+    assert envelope.result_meta.formal_use_allowed is True
+    assert dv01_card.spec["numeric"]["raw"] == 0.0
+    assert dv01_card.spec["numeric"]["display"] == "0.00"
+
+
+def test_duration_risk_native_currency_request_fails_closed(tmp_path, monkeypatch):
+    service_module = load_module(
+        "backend.app.services.agent_service",
+        "backend/app/services/agent_service.py",
+    )
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    class StubRiskTensorRepository:
+        def __init__(self, path: str):
+            assert path == "test.duckdb"
+
+        def list_report_dates(self) -> list[str]:
+            return ["2026-03-31"]
+
+    def fake_risk_tensor_envelope(*, report_date: str, **_: object) -> dict[str, object]:
+        return _duration_risk_upstream(report_date)
+
+    risk_service_module = load_module(
+        "backend.app.services.risk_tensor_service",
+        "backend/app/services/risk_tensor_service.py",
+    )
+    monkeypatch.setattr(service_module, "RiskTensorRepository", StubRiskTensorRepository)
+    monkeypatch.setattr(risk_service_module, "risk_tensor_envelope", fake_risk_tensor_envelope)
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
+    )
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="组合久期和DV01风险怎么样",
+            currency_basis="native",
+        )
+    )
+
+    assert envelope.result_meta.formal_use_allowed is False
+    assert envelope.result_meta.quality_flag == "warning"
+    assert envelope.result_meta.amount_currency_basis == "CNY"
+    assert all(card.spec is None or "metric_id" not in card.spec for card in envelope.cards)
+    assert "native" in envelope.answer
+    assert "Risk Tensor 仅提供 CNY" in envelope.answer
 
 
 @pytest.mark.parametrize("historical_date", ["2024-01-01", "2025-11-20", "2026-02-28"])
@@ -1057,25 +1298,23 @@ def test_duration_risk_uses_explicit_historical_report_date_when_governed(
 
     calls: list[str] = []
 
-    class StubBondAnalyticsRepository:
+    class StubRiskTensorRepository:
         def __init__(self, path: str):
             assert path == "test.duckdb"
 
         def list_report_dates(self) -> list[str]:
             return ["2026-03-31", "2025-11-20", "2026-02-28", "2024-01-01"]
 
-        def fetch_portfolio_risk_summary(self, *, report_date: str) -> dict[str, object]:
-            calls.append(report_date)
-            return {
-                "bond_count": 1,
-                "total_market_value": 100,
-                "portfolio_duration": 3.0,
-                "portfolio_modified_duration": 2.9,
-                "portfolio_convexity": 0.5,
-                "portfolio_dv01": 1.0,
-            }
+    def fake_risk_tensor_envelope(*, report_date: str, **_: object) -> dict[str, object]:
+        calls.append(report_date)
+        return _duration_risk_upstream(report_date)
 
-    monkeypatch.setattr(service_module, "BondAnalyticsRepository", StubBondAnalyticsRepository)
+    risk_service_module = load_module(
+        "backend.app.services.risk_tensor_service",
+        "backend/app/services/risk_tensor_service.py",
+    )
+    monkeypatch.setattr(service_module, "RiskTensorRepository", StubRiskTensorRepository)
+    monkeypatch.setattr(risk_service_module, "risk_tensor_envelope", fake_risk_tensor_envelope)
 
     tool = tool_module.AnalysisViewTool(
         "test.duckdb",
@@ -1092,6 +1331,10 @@ def test_duration_risk_uses_explicit_historical_report_date_when_governed(
     assert calls == [historical_date]
     assert envelope.result_meta.result_kind == "agent.duration_risk"
     assert envelope.result_meta.filters_applied["report_date"] == historical_date
+    assert envelope.result_meta.filters_applied["report_date_resolution"] == "explicit"
+    assert envelope.result_meta.requested_report_date == historical_date
+    assert envelope.result_meta.resolved_report_date == historical_date
+    assert envelope.result_meta.fallback_date is None
 
 
 def test_duration_risk_returns_error_envelope_when_explicit_date_not_governed(tmp_path, monkeypatch):
@@ -1108,17 +1351,22 @@ def test_duration_risk_returns_error_envelope_when_explicit_date_not_governed(tm
         "backend/app/agent/schemas/agent_request.py",
     )
 
-    class StubBondAnalyticsRepository:
+    class StubRiskTensorRepository:
         def __init__(self, path: str):
             pass
 
         def list_report_dates(self) -> list[str]:
             return ["2026-03-31"]
 
-        def fetch_portfolio_risk_summary(self, *, report_date: str) -> dict[str, object]:
-            raise AssertionError("should not query")
+    def fail_risk_tensor_envelope(**_: object) -> dict[str, object]:
+        raise AssertionError("should not query")
 
-    monkeypatch.setattr(service_module, "BondAnalyticsRepository", StubBondAnalyticsRepository)
+    risk_service_module = load_module(
+        "backend.app.services.risk_tensor_service",
+        "backend/app/services/risk_tensor_service.py",
+    )
+    monkeypatch.setattr(service_module, "RiskTensorRepository", StubRiskTensorRepository)
+    monkeypatch.setattr(risk_service_module, "risk_tensor_envelope", fail_risk_tensor_envelope)
 
     tool = tool_module.AnalysisViewTool(
         "test.duckdb",

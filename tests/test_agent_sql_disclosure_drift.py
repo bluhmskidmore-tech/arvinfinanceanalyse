@@ -68,7 +68,6 @@ def test_agent_sql_disclosures_remain_read_only_parameterized_templates():
     disclosures = [
         *agent_service._PORTFOLIO_OVERVIEW_SQL_DISCLOSURE,
         *agent_service._PNL_SUMMARY_SQL_DISCLOSURE,
-        *agent_service._DURATION_RISK_SQL_DISCLOSURE,
         *agent_service._CREDIT_EXPOSURE_SQL_DISCLOSURE,
         *agent_service._RISK_TENSOR_SQL_DISCLOSURE,
         *agent_service._PNL_BRIDGE_SQL_DISCLOSURE,
@@ -109,19 +108,17 @@ def test_pnl_summary_disclosure_tracks_repository_tables_and_report_date():
     )
 
 
-def test_duration_and_credit_disclosures_track_bond_repository_filters():
-    row_source = _source(BondAnalyticsRepository.fetch_bond_analytics_rows)
-    assert BOND_ANALYTICS_FACT_TABLE in _disclosure(
-        *agent_service._DURATION_RISK_SQL_DISCLOSURE
-    )
+def test_credit_disclosure_tracks_bond_repository_filters():
     assert BOND_ANALYTICS_FACT_TABLE in _disclosure(
         *agent_service._CREDIT_EXPOSURE_SQL_DISCLOSURE
     )
-    assert "report_date" in row_source
-    assert "report_date" in _disclosure(*agent_service._DURATION_RISK_SQL_DISCLOSURE)
     credit_source = _source(
         BondAnalyticsRepository.fetch_credit_summary,
         BondAnalyticsRepository.fetch_bond_analytics_rows,
+    )
+    assert "report_date" in credit_source
+    assert "report_date" in _disclosure(
+        *agent_service._CREDIT_EXPOSURE_SQL_DISCLOSURE
     )
     assert "asset_class_std" in credit_source
     assert "asset_class_std" in _disclosure(
@@ -132,7 +129,10 @@ def test_duration_and_credit_disclosures_track_bond_repository_filters():
 def test_risk_tensor_disclosure_tracks_repository_table_and_report_date():
     source = _source(RiskTensorRepository.fetch_risk_tensor_row)
     disclosed = _disclosure(*agent_service._RISK_TENSOR_SQL_DISCLOSURE)
+    duration_source = _source(agent_service._duration_risk_payload)
     assert RISK_TENSOR_FACT_TABLE in disclosed
+    assert "risktensorrepository" in duration_source
+    assert "_risk_tensor_sql_disclosure" in duration_source
     assert "report_date" in source
     assert "report_date" in disclosed
     for field_name in RISK_TENSOR_PROJECTION_QUALITY_FIELDS:

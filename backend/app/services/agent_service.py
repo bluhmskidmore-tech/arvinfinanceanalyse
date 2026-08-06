@@ -18,6 +18,7 @@ from backend.app.repositories.product_category_pnl_repo import (
     PRODUCT_CATEGORY_PNL_ROWS_SQL,
     ProductCategoryPnlRepository,
 )
+from backend.app.repositories.risk_tensor_repo import RiskTensorRepository
 from backend.app.services.explicit_numeric import is_numeric_json
 from backend.app.services.gitnexus_service import build_gitnexus_status_payload
 from backend.app.services.research_radar_service import research_radar_brief_payload
@@ -54,12 +55,6 @@ _PNL_SUMMARY_SQL_DISCLOSURE = [
         "select count(*) as nonstd_bridge_row_count, sum(interest_income_514), sum(fair_value_change_516), "
         "sum(capital_gain_517), sum(manual_adjustment), sum(total_pnl) "
         "from fact_nonstd_pnl_bridge where report_date = ?"
-    ),
-]
-_DURATION_RISK_SQL_DISCLOSURE = [
-    (
-        "select instrument_code, market_value, macaulay_duration, modified_duration, convexity, dv01 "
-        "from fact_formal_bond_analytics_daily where report_date = ? order by instrument_code"
     ),
 ]
 _CREDIT_EXPOSURE_SQL_DISCLOSURE = [
@@ -200,7 +195,11 @@ def _build_intent_handlers(
         "research_radar_brief": lambda request: research_radar_brief_payload(request, duckdb_path),
         "portfolio_overview": lambda request: _portfolio_overview_payload(request, duckdb_path),
         "pnl_summary": lambda request: _pnl_summary_payload(request, duckdb_path),
-        "duration_risk": lambda request: _duration_risk_payload(request, duckdb_path),
+        "duration_risk": lambda request: _duration_risk_payload(
+            request,
+            duckdb_path,
+            governance_dir,
+        ),
         "credit_exposure": lambda request: _credit_exposure_payload(request, duckdb_path),
         "product_pnl": lambda request: _product_pnl_payload(request, duckdb_path),
         "pnl_bridge": lambda request: _pnl_bridge_payload(request, duckdb_path, governance_dir),
@@ -527,49 +526,257 @@ def _pnl_summary_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[s
     }
 
 
-def _duration_risk_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[str, Any]:
-    repo = BondAnalyticsRepository(duckdb_path)
+def _duration_risk_payload(
+    request: AgentQueryRequest,
+    duckdb_path: str,
+    governance_dir: str,
+) -> dict[str, Any]:
+    from backend.app.services.risk_tensor_service import risk_tensor_envelope
+
+    repo = RiskTensorRepository(duckdb_path)
     report_date = _latest_or_requested(request, repo.list_report_dates())
     if report_date is None:
-        raise ValueError("No bond-analytics report date is available.")
-    summary = repo.fetch_portfolio_risk_summary(report_date=report_date)
+        raise ValueError("No risk-tensor report date is available.")
+    upstream = risk_tensor_envelope(
+        duckdb_path=duckdb_path,
+        governance_dir=governance_dir,
+        report_date=report_date,
+    )
+    result = dict(upstream.get("result", {}))
+    meta = dict(upstream.get("result_meta", {}))
     rd_mode: Literal["explicit", "latest_default"] = (
         "explicit" if _requested_report_date(request) else "latest_default"
     )
-    return {
-        "answer": (
-            f"{report_date} 的利率风险摘要已返回，组合久期 {summary['portfolio_duration']}，"
-            f"DV01 {summary['portfolio_dv01']}。"
-        ),
-        "cards": [
-            {"type": "metric", "title": "Portfolio Duration", "value": str(summary["portfolio_duration"])},
+    requested_currency_basis = _balance_analysis_currency_basis(request)
+    cny_risk_contract = requested_currency_basis == "CNY"
+    bond_count = int(result.get("bond_count") or 0)
+    required_numeric_fields = (
+        "portfolio_modified_duration",
+        "portfolio_dv01",
+        "portfolio_convexity",
+        "rate_risk_market_value",
+        "duration_excluded_market_value",
+    )
+    numeric_contract_complete = all(
+        is_numeric_json(result.get(field_name))
+        and result[field_name].get("raw") is not None
+        for field_name in required_numeric_fields
+    )
+    duration_excluded_count = result.get("duration_excluded_count")
+    duration_scope_complete = (
+        isinstance(duration_excluded_count, int)
+        and not isinstance(duration_excluded_count, bool)
+    )
+    formal_use_allowed = (
+        bool(meta.get("formal_use_allowed", False))
+        and bond_count > 0
+        and cny_risk_contract
+        and numeric_contract_complete
+        and duration_scope_complete
+    )
+    upstream_quality = str(meta.get("quality_flag") or result.get("quality_flag") or "warning")
+    quality_flag = (
+        upstream_quality
+        if upstream_quality in {"error", "stale"}
+        else "ok"
+        if upstream_quality == "ok" and formal_use_allowed
+        else "warning"
+    )
+
+    cards: list[dict[str, Any]]
+    if not cny_risk_contract:
+        cards = [
             {
-                "type": "metric",
-                "title": "Portfolio Modified Duration",
-                "value": str(summary["portfolio_modified_duration"]),
+                "type": "status",
+                "title": "Currency Basis Requires Review",
+                "value": (
+                    "Risk Tensor exposes the governed aggregate in CNY; "
+                    f"requested currency_basis={requested_currency_basis} was not converted."
+                ),
+            }
+        ]
+        answer = (
+            f"{report_date} 的 Risk Tensor 仅提供 CNY 正式口径，当前请求为 "
+            f"currency_basis={requested_currency_basis}；系统未做币种换算，也未生成正式久期风险指标。"
+        )
+    elif bond_count <= 0:
+        cards = [
+            {
+                "type": "status",
+                "title": "Duration Risk Status",
+                "value": "No governed risk-tensor bond rows are available for the selected report date.",
+            }
+        ]
+        answer = (
+            f"{report_date} 没有可用的风险张量债券数据；未生成修正久期、DV01 或凸性正式指标。"
+        )
+    else:
+        metric_specs = (
+            (
+                "Portfolio Modified Duration",
+                "MTR-RSK-010",
+                "portfolio_modified_duration",
+            ),
+            ("Portfolio DV01", "MTR-RSK-001", "portfolio_dv01"),
+            ("Portfolio Convexity", "MTR-RSK-009", "portfolio_convexity"),
+            ("Rate Risk Market Value", "MTR-RSK-021", "rate_risk_market_value"),
+            (
+                "Duration Excluded Market Value",
+                "MTR-RSK-104",
+                "duration_excluded_market_value",
+            ),
+        )
+        cards = [
+            _duration_numeric_card(
+                title=title,
+                metric_id=metric_id,
+                source_field=source_field,
+                value=result.get(source_field),
+            )
+            for title, metric_id, source_field in metric_specs
+            if is_numeric_json(result.get(source_field))
+        ]
+        if duration_scope_complete:
+            cards.append(
+                _duration_count_card(
+                    title="Duration Excluded Count",
+                    metric_id="MTR-RSK-103",
+                    source_field="duration_excluded_count",
+                    value=duration_excluded_count,
+                )
+            )
+        cards.append(
+            {
+                "type": "status",
+                "title": "Formal Duration Boundary",
+                "value": (
+                    "Formal duration uses Risk Tensor modified duration. "
+                    "DV01 uses CNY face value × modified duration / 10,000 (CNY/1bp). "
+                    "Bond Analytics Macaulay duration is not presented as an approved MTR metric."
+                ),
+            }
+        )
+        modified_duration_display = _duration_numeric_display(
+            result.get("portfolio_modified_duration")
+        )
+        dv01_display = _duration_numeric_display(result.get("portfolio_dv01"))
+        convexity_display = _duration_numeric_display(result.get("portfolio_convexity"))
+        excluded_market_value_display = _duration_numeric_display(
+            result.get("duration_excluded_market_value")
+        )
+        excluded_count_display = (
+            f"{duration_excluded_count:,}" if duration_scope_complete else "—"
+        )
+        answer = (
+            f"{report_date} 的正式利率风险摘要已返回：组合修正久期 "
+            f"{modified_duration_display}，组合 DV01 {dv01_display} CNY/1bp，"
+            f"组合凸性 {convexity_display}。DV01 按 CNY 面值乘修正久期除以 10,000 汇总；"
+            f"久期分母排除 {excluded_count_display} 行、"
+            f"排除市值 {excluded_market_value_display} 元。"
+        )
+
+    return {
+        "answer": answer,
+        "cards": cards,
+        "tables_used": ["fact_formal_risk_tensor_daily"],
+        "filters_applied": _audit_filters(
+            request,
+            report_date,
+            resolution=rd_mode,
+            extra={
+                "currency_basis": requested_currency_basis,
+                "governed_currency_basis": "CNY",
             },
-            {"type": "metric", "title": "Portfolio DV01", "value": str(summary["portfolio_dv01"])},
-            {"type": "metric", "title": "Portfolio Convexity", "value": str(summary["portfolio_convexity"])},
-        ],
-        "tables_used": ["fact_formal_bond_analytics_daily"],
-        "filters_applied": _audit_filters(request, report_date, resolution=rd_mode),
-        "row_count": int(summary.get("bond_count", 0)),
-        "sql_executed": _DURATION_RISK_SQL_DISCLOSURE,
-        "quality_flag": "ok",
-        "basis": "formal",
-        "formal_use_allowed": True,
-        "scenario_flag": False,
-        "source_version": "sv_agent_duration_risk",
-        "rule_version": RULE_VERSION,
-        "cache_version": "cv_agent_duration_risk_v1",
+        ),
+        "row_count": bond_count,
+        "sql_executed": _RISK_TENSOR_SQL_DISCLOSURE,
+        "quality_flag": quality_flag,
+        "basis": str(meta.get("basis") or "formal"),
+        "formal_use_allowed": formal_use_allowed,
+        "scenario_flag": bool(meta.get("scenario_flag", False)),
+        "amount_currency_basis": "CNY",
+        "amount_currency_basis_note": (
+            "DV01 is CNY per 1bp on CNY face value; rate-risk and excluded market values are yuan."
+            if cny_risk_contract
+            else (
+                f"Requested currency_basis={requested_currency_basis}; Risk Tensor remained CNY "
+                "and formal metric cards were suppressed."
+            )
+        ),
+        "requested_report_date": _requested_report_date(request),
+        "resolved_report_date": report_date,
+        "as_of_date": report_date,
+        "date_basis": "formal_snapshot",
+        "fallback_date": None,
+        "source_surface": "risk_tensor",
+        "source_version": str(meta.get("source_version") or "sv_agent_duration_risk"),
+        "vendor_version": str(meta.get("vendor_version") or "vv_none"),
+        "rule_version": str(meta.get("rule_version") or RULE_VERSION),
+        "cache_version": str(meta.get("cache_version") or "cv_agent_duration_risk_v1"),
         "result_kind": "agent.duration_risk",
-        "vendor_status": "ok",
-        "fallback_mode": "none",
+        "vendor_status": str(meta.get("vendor_status") or "ok"),
+        "fallback_mode": str(meta.get("fallback_mode") or "none"),
         "next_drill": [
             {"dimension": "tenor_bucket", "label": "按期限桶查看"},
-            {"dimension": "asset_class", "label": "按资产类查看"},
+            {"dimension": "duration_exclusions", "label": "查看久期排除项"},
         ],
     }
+
+
+def _duration_numeric_card(
+    *,
+    title: str,
+    metric_id: str,
+    source_field: str,
+    value: Any,
+) -> dict[str, Any]:
+    if not is_numeric_json(value):
+        raise ValueError(f"Governed Numeric is required for duration field {source_field}.")
+    numeric = dict(value)
+    raw = numeric.get("raw")
+    precision = int(numeric.get("precision") or 0)
+    display = str(numeric.get("display") or "—")
+    return {
+        "type": "metric",
+        "title": title,
+        "value": display,
+        "spec": {
+            "metric_id": metric_id,
+            "source_field": source_field,
+            "raw_value": None if raw is None else str(raw),
+            "raw_unit": str(numeric.get("unit") or ""),
+            "raw_precision": precision,
+            "numeric": numeric,
+        },
+    }
+
+
+def _duration_count_card(
+    *,
+    title: str,
+    metric_id: str,
+    source_field: str,
+    value: int,
+) -> dict[str, Any]:
+    numeric = {
+        "raw": value,
+        "unit": "count",
+        "display": f"{value:,}",
+        "precision": 0,
+        "sign_aware": False,
+    }
+    return _duration_numeric_card(
+        title=title,
+        metric_id=metric_id,
+        source_field=source_field,
+        value=numeric,
+    )
+
+
+def _duration_numeric_display(value: Any) -> str:
+    if not is_numeric_json(value):
+        return "—"
+    return str(value.get("display") or "—")
 
 
 def _credit_exposure_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[str, Any]:
