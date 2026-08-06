@@ -7,6 +7,7 @@ import sys
 from contextlib import nullcontext
 from datetime import date, timedelta
 from types import SimpleNamespace
+from typing import cast
 
 import duckdb
 import pytest
@@ -2333,10 +2334,10 @@ def test_livermore_stock_detail_logs_api_perf(tmp_path, monkeypatch, caplog) -> 
         f'trace_id="{record.trace_id}" result_kind="{record.result_kind}" '
         "duckdb_statement_count=null"
     )
-    assert getattr(record, "duration_ms") >= 0
-    assert getattr(record, "result_kind") == "market_data.livermore.stock_detail"
-    assert getattr(record, "trace_id")
-    assert getattr(record, "duckdb_statement_count") is None
+    assert record.duration_ms >= 0
+    assert record.result_kind == "market_data.livermore.stock_detail"
+    assert record.trace_id
+    assert record.duckdb_statement_count is None
     get_settings.cache_clear()
 
 
@@ -3090,10 +3091,11 @@ def test_livermore_signal_confluence_api_returns_analytical_envelope_and_resolve
             "adversarial_payload": adversarial_payload,
             "backtest_window_summary": backtest_window_summary,
         }
+        closed_loop_state = cast(dict[str, object], confluence_payload["closed_loop_state"])
         return {
             **confluence_payload,
             "closed_loop_state": {
-                **confluence_payload["closed_loop_state"],
+                **closed_loop_state,
                 "replay_status": {
                     "window_status": "partial",
                     "has_decision_usable_completed_stats": False,
@@ -3209,8 +3211,9 @@ def test_livermore_signal_confluence_api_returns_analytical_envelope_and_resolve
     )
     assert payload["result"]["diagnostics"] == confluence_payload["diagnostics"]
     assert payload["result"]["disclaimer"] == confluence_payload["disclaimer"]
+    closed_loop_state = cast(dict[str, object], confluence_payload["closed_loop_state"])
     assert payload["result"]["closed_loop_state"] == {
-        **confluence_payload["closed_loop_state"],
+        **closed_loop_state,
         "replay_status": {
             "window_status": "partial",
             "has_decision_usable_completed_stats": False,
@@ -3867,7 +3870,7 @@ def test_livermore_gate_supplement_task_writes_rows(tmp_path, monkeypatch) -> No
     apply_pending_migrations_on_connection(conn)
     conn.close()
 
-    out = materialize_livermore_gate_supplement_daily.fn(
+    out = materialize_livermore_gate_supplement_daily(
         duckdb_path=str(db),
         rows=[
             {
@@ -3951,12 +3954,8 @@ def test_livermore_position_snapshot_endpoint_dispatches_async_materialization(
     csv_path = tmp_path / "data_input" / "livermore" / "positions.csv"
     csv_path.parent.mkdir(parents=True, exist_ok=True)
     csv_path.write_text(
-        "\n".join(
-            [
-                "as_of_date,stock_code,stock_name,entry_cost,bars_since_entry,position_quantity,position_status,source_system",
-                "2026-04-30,000001.SZ,Alpha,10.5,6,10000,ACTIVE,unit_test_position_book",
-            ]
-        ),
+        "as_of_date,stock_code,stock_name,entry_cost,bars_since_entry,position_quantity,position_status,source_system\n"
+        "2026-04-30,000001.SZ,Alpha,10.5,6,10000,ACTIVE,unit_test_position_book",
         encoding="utf-8",
     )
     client = _build_client(tmp_path, monkeypatch)
@@ -4001,12 +4000,8 @@ def test_livermore_position_snapshot_endpoint_rejects_csv_outside_input_root(
 ) -> None:
     outside_path = tmp_path / "positions.csv"
     outside_path.write_text(
-        "\n".join(
-            [
-                "as_of_date,stock_code,stock_name,entry_cost,bars_since_entry,position_status",
-                "2026-04-30,000001.SZ,Alpha,10.5,6,ACTIVE",
-            ]
-        ),
+        "as_of_date,stock_code,stock_name,entry_cost,bars_since_entry,position_status\n"
+        "2026-04-30,000001.SZ,Alpha,10.5,6,ACTIVE",
         encoding="utf-8",
     )
     client = _build_client(tmp_path, monkeypatch)
@@ -4066,7 +4061,8 @@ def test_livermore_position_snapshot_manual_endpoint_dispatches_async_materializ
     assert payload["input_mode"] == "manual"
     assert len(queued_messages) == 1
     assert queued_messages[0]["as_of_date"] == "2026-04-30"
-    assert len(queued_messages[0]["rows"]) == 1
+    queued_rows = cast(list[dict[str, object]], queued_messages[0]["rows"])
+    assert len(queued_rows) == 1
     assert invalidations == []
     get_settings.cache_clear()
 
@@ -4209,7 +4205,7 @@ def test_livermore_materialize_endpoints_invalidate_read_cache(
         "_execute_livermore_gate_supplement_refresh",
         lambda **_kwargs: {"status": "completed", "computed_rows": 1},
     )
-    task.run_livermore_gate_supplement_refresh_task.fn(
+    task.run_livermore_gate_supplement_refresh(
         duckdb_path=str(settings.duckdb_path),
         governance_dir=str(settings.governance_path),
         run_id="livermore-cache-refresh",

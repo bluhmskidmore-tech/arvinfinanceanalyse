@@ -1,8 +1,16 @@
 """Verify write-route auth contracts, including scoped refresh exceptions."""
 from __future__ import annotations
 
+from typing import Any, Protocol, cast
+
 import pytest
 from fastapi.testclient import TestClient
+
+
+class _SettingsGetterWithCacheClear(Protocol):
+    def __call__(self) -> object: ...
+
+    def cache_clear(self) -> None: ...
 
 
 def _load_app():
@@ -15,6 +23,7 @@ def _setup_scope_store(tmp_path, monkeypatch, *, grant: bool):
     """Set up SQLite-backed scope store. If grant=False, no permissions are seeded."""
     from backend.app.governance.settings import get_settings
 
+    get_settings = cast(_SettingsGetterWithCacheClear, get_settings)
     sqlite_path = tmp_path / "auth-scope-contract.db"
     monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
     monkeypatch.setenv("MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST", "1")
@@ -28,7 +37,7 @@ def _setup_scope_store(tmp_path, monkeypatch, *, grant: bool):
     return sqlite_path
 
 
-MUTATION_ROUTES = [
+MUTATION_ROUTES: list[tuple[str, str, dict[str, Any] | None]] = [
     ("POST", "/api/kpi/metrics", {"metric_code": "T", "metric_name": "Test", "major_category": "A", "owner_id": 1, "year": 2026, "score_weight": "1.0", "data_source_type": "MANUAL", "scoring_rule_type": "LINEAR"}),
     ("PUT", "/api/kpi/metrics/99999", {"metric_code": "T", "metric_name": "Test", "major_category": "A", "owner_id": 1, "year": 2026, "score_weight": "1.0", "data_source_type": "MANUAL", "scoring_rule_type": "LINEAR"}),
     ("DELETE", "/api/kpi/metrics/99999", None),

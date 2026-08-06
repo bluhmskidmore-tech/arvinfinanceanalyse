@@ -19,9 +19,13 @@ def _read_canonical_task_modules() -> tuple[str, ...]:
             for target in node.targets:
                 if isinstance(target, ast.Name) and target.id == "CANONICAL_TASK_MODULES":
                     return tuple(ast.literal_eval(node.value))
-        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-            if node.target.id == "CANONICAL_TASK_MODULES":
-                return tuple(ast.literal_eval(node.value))
+        if (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == "CANONICAL_TASK_MODULES"
+            and node.value is not None
+        ):
+            return tuple(ast.literal_eval(node.value))
     raise AssertionError("worker_bootstrap.py must define CANONICAL_TASK_MODULES")
 
 
@@ -52,6 +56,7 @@ def test_worker_bootstrap_declares_canonical_dramatiq_task_modules():
         "backend.app.tasks.macro_toolkit_freshness_refresh",
         "backend.app.tasks.macro_toolkit_write_refresh",
         "backend.app.tasks.livermore_position_snapshot_materialize",
+        "backend.app.tasks.livermore_gate_supplement",
         "backend.app.tasks.ledger_import",
     )
 
@@ -77,6 +82,15 @@ def test_tushare_macro_task_declares_refresh_actor():
     text = task_path.read_text(encoding="utf-8")
     assert "refresh_tushare_macro = register_actor_once(" in text
     assert '"refresh_tushare_macro"' in text
+
+
+def test_livermore_gate_supplement_task_disables_hidden_retries():
+    task_path = ROOT / "backend" / "app" / "tasks" / "livermore_gate_supplement.py"
+    text = task_path.read_text(encoding="utf-8")
+    assert 'register_actor_once(\n        "run_livermore_gate_supplement_refresh"' in text
+    assert "max_retries=0" in text
+
+
 def test_broker_uses_redis_broker_in_production_even_under_pytest(monkeypatch):
     broker_module = load_module(
         "backend.app.tasks.broker",

@@ -5,14 +5,14 @@ and payload shapes. This suite asserts only the shared write-refresh invariants.
 """
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, timedelta
-import json
 from pathlib import Path
 from threading import Event, Lock, Thread
-from typing import Any
+from typing import Any, Protocol, cast
 
 import pytest
 from fastapi import FastAPI
@@ -27,11 +27,23 @@ from tests.test_bond_analytics_materialize_flow import (
     _seed_bond_snapshot_rows,
     seed_yield_curves_for_bond_analytics_tests,
 )
-from tests.test_product_category_pnl_flow import _write_month_pair as _write_product_category_month_pair
-from tests.test_qdb_gl_monthly_analysis_core import _write_month_pair as _write_qdb_month_pair
-
+from tests.test_product_category_pnl_flow import (
+    _write_month_pair as _write_product_category_month_pair,
+)
+from tests.test_qdb_gl_monthly_analysis_core import (
+    _write_month_pair as _write_qdb_month_pair,
+)
 
 Request = dict[str, Any]
+
+
+class _SettingsGetterWithCacheClear(Protocol):
+    def __call__(self) -> object: ...
+
+    def cache_clear(self) -> None: ...
+
+
+get_settings = cast(_SettingsGetterWithCacheClear, get_settings)
 
 
 @dataclass(frozen=True)
@@ -78,6 +90,14 @@ def _refresh_run_id(refresh: dict[str, Any]) -> object:
     if isinstance(materialize_result, dict) and "run_id" in materialize_result:
         return materialize_result["run_id"]
     return refresh["run_id"]
+
+
+def _materialize_result_run_id(payload: dict[str, Any]) -> str:
+    materialize_result = payload.get("materialize_result")
+    assert isinstance(materialize_result, dict)
+    run_id = materialize_result.get("run_id")
+    assert isinstance(run_id, str)
+    return run_id
 
 
 def _assert_different_target_identity(
@@ -270,17 +290,20 @@ def _setup_macro_choice_stock(tmp_path: Path, monkeypatch: Any) -> tuple[TestCli
     calls: list[object] = []
     route_mod = load_module("backend.app.api.routes.macro_toolkit", "backend/app/api/routes/macro_toolkit.py")
     service_mod = route_mod.macro_toolkit_service
-    monkeypatch.setattr(
-        service_mod,
-        "materialize_choice_stock_inputs",
-        lambda **kwargs: calls.append(("history", kwargs))
-        or {"status": "completed", "row_count": 111, "source_version": "sv_history"},
-    )
+
+    def fake_materialize_choice_stock_inputs(**kwargs: object) -> dict[str, object]:
+        calls.append(("history", kwargs))
+        return {"status": "completed", "row_count": 111, "source_version": "sv_history"}
+
+    def fake_materialize_choice_stock_factor_snapshot(**kwargs: object) -> dict[str, object]:
+        calls.append(("factor", kwargs))
+        return {"status": "completed", "row_count": 222, "source_version": "sv_factor"}
+
+    monkeypatch.setattr(service_mod, "materialize_choice_stock_inputs", fake_materialize_choice_stock_inputs)
     monkeypatch.setattr(
         service_mod,
         "materialize_choice_stock_factor_snapshot",
-        lambda **kwargs: calls.append(("factor", kwargs))
-        or {"status": "completed", "row_count": 222, "source_version": "sv_factor"},
+        fake_materialize_choice_stock_factor_snapshot,
     )
     monkeypatch.setattr(
         service_mod.run_choice_stock_refresh_task,
@@ -384,7 +407,7 @@ def test_livermore_gate_supplement_idempotency_key_serializes_same_target_refres
                 lookback_days=30,
                 idempotency_key=" livermore-gate-supplement-concurrent ",
             )
-        except BaseException as exc:
+        except Exception as exc:  # noqa: BLE001
             with results_lock:
                 errors.append(exc)
             return
@@ -407,7 +430,7 @@ def test_livermore_gate_supplement_idempotency_key_serializes_same_target_refres
     assert errors == []
     assert len(results) == 2
     assert len(calls) == 1
-    run_ids = {payload["materialize_result"]["run_id"] for payload in results}
+    run_ids = {_materialize_result_run_id(payload) for payload in results}
     assert len(run_ids) == 1
     replay_flags = [payload["idempotency_replay"] for payload in results]
     assert replay_flags.count(False) == 1
@@ -481,7 +504,7 @@ def test_livermore_gate_supplement_idempotency_key_replays_after_short_lock_time
                 lookback_days=30,
                 idempotency_key=" livermore-gate-supplement-timeout ",
             )
-        except BaseException as exc:
+        except Exception as exc:  # noqa: BLE001
             with results_lock:
                 errors.append(exc)
             return
@@ -504,7 +527,7 @@ def test_livermore_gate_supplement_idempotency_key_replays_after_short_lock_time
     assert errors == []
     assert len(results) == 2
     assert len(calls) == 1
-    run_ids = {payload["materialize_result"]["run_id"] for payload in results}
+    run_ids = {_materialize_result_run_id(payload) for payload in results}
     assert run_ids == {"livermore-gate-supplement-timeout-run-1"}
     replay_flags = [payload["idempotency_replay"] for payload in results]
     assert replay_flags.count(False) == 1
@@ -554,8 +577,8 @@ def test_livermore_gate_supplement_idempotency_key_does_not_replay_across_duckdb
 
     assert first_payload["idempotency_replay"] is False
     assert second_payload["idempotency_replay"] is False
-    assert first_payload["materialize_result"]["run_id"] == "livermore-gate-supplement-target-run-1"
-    assert second_payload["materialize_result"]["run_id"] == "livermore-gate-supplement-target-run-2"
+    assert _materialize_result_run_id(first_payload) == "livermore-gate-supplement-target-run-1"
+    assert _materialize_result_run_id(second_payload) == "livermore-gate-supplement-target-run-2"
     assert [call["duckdb_path"] for call in calls] == [str(first_duckdb_path), str(second_duckdb_path)]
 
     records = [
@@ -588,7 +611,7 @@ def test_livermore_gate_supplement_without_idempotency_key_keeps_bounded_lock_ti
     def fake_acquire_lock(*args: object, **kwargs: object):
         del args
         timeout_seconds = kwargs.get("timeout_seconds")
-        attempts.append(float(timeout_seconds) if timeout_seconds is not None else None)
+        attempts.append(float(timeout_seconds) if isinstance(timeout_seconds, (int, float)) else None)
         raise TimeoutError("simulated no-key Livermore refresh lock timeout")
         yield
 

@@ -2,12 +2,16 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
+from backend.app.repositories.governance_repo import (
+    CACHE_BUILD_RUN_STREAM,
+    GovernanceRepository,
+)
 from backend.app.security.auth_context import AuthContext, get_auth_context
 
 
@@ -15,6 +19,10 @@ def test_livermore_refresh_route_queues_without_running_sync_compute(tmp_path, m
     from backend.app.api.routes import market_data_livermore as route
 
     calls: list[dict[str, object]] = []
+    def fake_queue_gate_supplement_refresh(**kwargs: object) -> dict[str, object]:
+        calls.append(dict(kwargs))
+        return {"status": "queued", "run_id": "livermore-refresh-run", "trigger_mode": "async"}
+
     monkeypatch.setattr(route, "_ensure_livermore_gate_supplement_refresh_allowed", lambda **_kwargs: None)
     monkeypatch.setattr(
         route,
@@ -27,8 +35,7 @@ def test_livermore_refresh_route_queues_without_running_sync_compute(tmp_path, m
     monkeypatch.setattr(
         route,
         "queue_gate_supplement_refresh",
-        lambda **kwargs: calls.append(dict(kwargs))
-        or {"status": "queued", "run_id": "livermore-refresh-run", "trigger_mode": "async"},
+        fake_queue_gate_supplement_refresh,
         raising=False,
     )
     app = FastAPI()
@@ -54,7 +61,9 @@ def test_livermore_refresh_route_queues_without_running_sync_compute(tmp_path, m
 
 
 def test_livermore_queue_replays_same_key_without_duplicate_dispatch(tmp_path, monkeypatch) -> None:
-    from backend.app.services import livermore_gate_supplement_compute_service as service
+    from backend.app.services import (
+        livermore_gate_supplement_compute_service as service,
+    )
 
     sent: list[dict[str, object]] = []
     actor = SimpleNamespace(send=lambda **kwargs: sent.append(dict(kwargs)))
@@ -91,7 +100,9 @@ def test_livermore_queue_replaces_stale_same_key_inflight_run(
     stale_status: str,
     timestamp_field: str,
 ) -> None:
-    from backend.app.services import livermore_gate_supplement_compute_service as service
+    from backend.app.services import (
+        livermore_gate_supplement_compute_service as service,
+    )
 
     governance_path = tmp_path / "governance"
     sent: list[dict[str, object]] = []
@@ -142,6 +153,90 @@ def test_livermore_queue_replaces_stale_same_key_inflight_run(
     assert sent[0]["run_id"] == retry["run_id"]
 
 
+@pytest.mark.parametrize(
+    ("stale_status", "timestamp_field"),
+    [("queued", "queued_at"), ("running", "started_at"), ("retrying", "started_at")],
+)
+def test_livermore_status_marks_stale_inflight_run_failed_once(
+    tmp_path,
+    stale_status: str,
+    timestamp_field: str,
+) -> None:
+    from backend.app.services import (
+        livermore_gate_supplement_compute_service as service,
+    )
+
+    governance_path = tmp_path / "governance"
+    repo = GovernanceRepository(base_dir=governance_path)
+    stale_at = datetime.now(UTC) - service._LIVERMORE_REFRESH_STALE_AFTER - timedelta(seconds=1)
+    repo.append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            "run_id": f"livermore-stale-{stale_status}",
+            "job_name": service.LIVERMORE_GATE_SUPPLEMENT_REFRESH_JOB_NAME,
+            "status": stale_status,
+            "trigger_mode": "async",
+            "cache_key": service.LIVERMORE_GATE_SUPPLEMENT_REFRESH_CACHE_KEY,
+            "cache_version": service.LIVERMORE_GATE_SUPPLEMENT_REFRESH_CACHE_VERSION,
+            "rule_version": service.RULE_VERSION,
+            "as_of_date": "2026-04-30",
+            "report_date": "2026-04-30",
+            "lookback_days": 30,
+            timestamp_field: stale_at.isoformat(),
+        },
+    )
+
+    first = service.livermore_gate_supplement_refresh_status(
+        governance_path,
+        run_id=f"livermore-stale-{stale_status}",
+    )
+    second = service.livermore_gate_supplement_refresh_status(
+        governance_path,
+        run_id=f"livermore-stale-{stale_status}",
+    )
+
+    matching = [
+        record
+        for record in repo.read_all(CACHE_BUILD_RUN_STREAM)
+        if record.get("run_id") == f"livermore-stale-{stale_status}"
+    ]
+    stale_failures = [
+        record
+        for record in matching
+        if record.get("status") == "failed" and record.get("failure_category") == "stale_inflight"
+    ]
+    assert first["status"] == "failed"
+    assert first["trigger_mode"] == "terminal"
+    assert first["failure_category"] == "stale_inflight"
+    assert second["status"] == "failed"
+    assert len(stale_failures) == 1
+
+
+def test_livermore_status_route_returns_404_for_unknown_run(tmp_path, monkeypatch) -> None:
+    from backend.app.api.routes import market_data_livermore as route
+
+    monkeypatch.setattr(route, "_ensure_livermore_read_allowed", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        route,
+        "get_settings",
+        lambda: SimpleNamespace(
+            governance_path=tmp_path / "governance",
+        ),
+    )
+
+    app = FastAPI()
+    app.include_router(route.router)
+    app.dependency_overrides[get_auth_context] = lambda: AuthContext(user_id="reader", role="admin")
+
+    response = TestClient(app, raise_server_exceptions=False).get(
+        "/ui/market-data/livermore/refresh-gate-supplement/status",
+        params={"run_id": "missing-run"},
+    )
+
+    assert response.status_code == 404
+    assert "missing-run" in response.text
+
+
 def test_livermore_worker_records_partial_terminal_state(tmp_path, monkeypatch) -> None:
     from backend.app.tasks import livermore_gate_supplement as task
 
@@ -156,7 +251,7 @@ def test_livermore_worker_records_partial_terminal_state(tmp_path, monkeypatch) 
         raising=False,
     )
 
-    payload = task.run_livermore_gate_supplement_refresh_task.fn(
+    payload = task.run_livermore_gate_supplement_refresh(
         duckdb_path=str(tmp_path / "moss.duckdb"),
         governance_dir=str(tmp_path / "governance"),
         run_id="livermore-governed-run",
@@ -172,3 +267,10 @@ def test_livermore_worker_records_partial_terminal_state(tmp_path, monkeypatch) 
     assert records[-1]["run_id"] == "livermore-governed-run"
     assert records[-1]["status"] == "partial"
     assert records[-1]["failure_stage"] == "gate_supplement_materialize"
+
+
+def test_livermore_worker_actor_disables_hidden_retries() -> None:
+    from backend.app.tasks import livermore_gate_supplement as task
+
+    actor_options = cast(dict[str, object], task.run_livermore_gate_supplement_refresh_task.options)
+    assert actor_options["max_retries"] == 0

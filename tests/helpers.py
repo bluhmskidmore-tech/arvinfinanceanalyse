@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import importlib
+import importlib.abc
+import importlib.machinery
 import importlib.util
 import sys
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -37,14 +40,16 @@ def load_module(module_name: str, relative_path: str):
     spec = importlib.util.spec_from_file_location(module_name, path)
     if spec is None or spec.loader is None:
         pytest.fail(f"Failed to create import spec for {path}")
+    typed_spec = cast(importlib.machinery.ModuleSpec, spec)
+    typed_loader = cast(importlib.abc.Loader, typed_spec.loader)
 
     if module_name == "backend.app.main":
         _purge_backend_main_import_chain()
 
-    module = importlib.util.module_from_spec(spec)
+    module = importlib.util.module_from_spec(typed_spec)
     sys.modules[module_name] = module
     try:
-        spec.loader.exec_module(module)
+        typed_loader.exec_module(module)
     except Exception:
         if sys.modules.get(module_name) is module:
             sys.modules.pop(module_name, None)

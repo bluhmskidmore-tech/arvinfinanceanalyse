@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, cast
 
 import duckdb
 from backend.app.governance.locks import LockDefinition, acquire_lock
@@ -20,6 +21,13 @@ REFRESH_JOB_NAME = "livermore_gate_supplement_refresh"
 REFRESH_CACHE_KEY = "livermore_gate_supplement_daily"
 REFRESH_CACHE_VERSION = "cv_livermore_gate_supplement_refresh_v1"
 REFRESH_RULE_VERSION = "rv_livermore_gate_supplement_compute_v1"
+
+
+class _LivermoreRefreshActor(Protocol):
+    fn: Callable[..., dict[str, object]]
+    options: dict[str, object]
+
+    def send(self, **kwargs: object) -> object: ...
 
 
 def materialize_livermore_gate_supplement_daily(
@@ -96,7 +104,7 @@ def materialize_livermore_gate_supplement_daily(
     }
 
 
-materialize_livermore_gate_supplement_daily.fn = materialize_livermore_gate_supplement_daily
+materialize_livermore_gate_supplement_daily.fn = materialize_livermore_gate_supplement_daily  # type: ignore[attr-defined]
 
 
 def _execute_livermore_gate_supplement_refresh(
@@ -199,9 +207,12 @@ def run_livermore_gate_supplement_refresh(
     return terminal
 
 
-run_livermore_gate_supplement_refresh_task = register_actor_once(
-    "run_livermore_gate_supplement_refresh",
-    run_livermore_gate_supplement_refresh,
-    max_retries=3,
-    time_limit_ms=3_600_000,
+run_livermore_gate_supplement_refresh_task = cast(
+    _LivermoreRefreshActor,
+    register_actor_once(
+        "run_livermore_gate_supplement_refresh",
+        run_livermore_gate_supplement_refresh,
+        max_retries=0,
+        time_limit_ms=3_600_000,
+    ),
 )

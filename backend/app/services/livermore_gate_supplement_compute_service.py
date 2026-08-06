@@ -27,42 +27,128 @@ import time
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, TypeAlias, cast
 
 import duckdb
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
 
+GovernanceRecord: TypeAlias = dict[str, object]
 
-def materialize_livermore_gate_supplement_daily(*args: object, **kwargs: object) -> object:
+
+class _LivermoreGateSupplementMaterializer(Protocol):
+    def __call__(
+        self,
+        *,
+        duckdb_path: str | None = None,
+        rows: list[dict[str, Any]],
+        run_id: str | None = None,
+    ) -> dict[str, object]: ...
+
+
+class _MarketBreadthMaterializer(Protocol):
+    def __call__(
+        self,
+        *,
+        duckdb_path: str,
+        as_of_date: date,
+        lookback_days: int,
+        min_observations_per_day: int | None = None,
+    ) -> dict[str, object]: ...
+
+
+class _LivermoreRefreshTaskActor(Protocol):
+    def send(
+        self,
+        *,
+        duckdb_path: str,
+        governance_dir: str,
+        run_id: str,
+        as_of_date: str,
+        lookback_days: int,
+        min_observations_per_day: int | None = None,
+        storage_target_digest: str,
+        request_fingerprint: str,
+        idempotency_key: str | None = None,
+    ) -> object: ...
+
+
+def materialize_livermore_gate_supplement_daily(
+    *,
+    duckdb_path: str | None = None,
+    rows: list[dict[str, Any]],
+    run_id: str | None = None,
+) -> dict[str, object]:
     """Lazy bridge keeps task registration out of the HTTP service import path."""
     from backend.app.tasks.livermore_gate_supplement import (
         materialize_livermore_gate_supplement_daily as _materialize,
     )
 
-    return _materialize(*args, **kwargs)
+    typed_materialize = cast(_LivermoreGateSupplementMaterializer, _materialize)
+    return typed_materialize(
+        duckdb_path=duckdb_path,
+        rows=rows,
+        run_id=run_id,
+    )
 
 
-def materialize_market_breadth_daily(*args: object, **kwargs: object) -> object:
+def materialize_market_breadth_daily(
+    *,
+    duckdb_path: str,
+    as_of_date: date,
+    lookback_days: int,
+    min_observations_per_day: int | None = None,
+) -> dict[str, object]:
     """Lazy bridge keeps market-breadth write tasks worker-owned."""
     from backend.app.tasks.market_breadth_materialize import (
         materialize_market_breadth_daily as _materialize,
     )
 
-    return _materialize(*args, **kwargs)
+    typed_materialize = cast(_MarketBreadthMaterializer, _materialize)
+    return typed_materialize(
+        duckdb_path=duckdb_path,
+        as_of_date=as_of_date,
+        lookback_days=lookback_days,
+        min_observations_per_day=min_observations_per_day,
+    )
 
 
 class _RunLivermoreGateSupplementRefreshTaskProxy:
-    def send(self, **kwargs: object) -> object:
+    def send(
+        self,
+        *,
+        duckdb_path: str,
+        governance_dir: str,
+        run_id: str,
+        as_of_date: str,
+        lookback_days: int,
+        min_observations_per_day: int | None = None,
+        storage_target_digest: str,
+        request_fingerprint: str,
+        idempotency_key: str | None = None,
+    ) -> object:
         from backend.app.tasks.livermore_gate_supplement import (
             run_livermore_gate_supplement_refresh_task as _actor,
         )
 
-        return _actor.send(**kwargs)
+        typed_actor = cast(_LivermoreRefreshTaskActor, _actor)
+        return typed_actor.send(
+            duckdb_path=duckdb_path,
+            governance_dir=governance_dir,
+            run_id=run_id,
+            as_of_date=as_of_date,
+            lookback_days=lookback_days,
+            min_observations_per_day=min_observations_per_day,
+            storage_target_digest=storage_target_digest,
+            request_fingerprint=request_fingerprint,
+            idempotency_key=idempotency_key,
+        )
 
 
-run_livermore_gate_supplement_refresh_task = _RunLivermoreGateSupplementRefreshTaskProxy()
+run_livermore_gate_supplement_refresh_task: _LivermoreRefreshTaskActor = (
+    _RunLivermoreGateSupplementRefreshTaskProxy()
+)
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +167,7 @@ LIVERMORE_GATE_SUPPLEMENT_IDEMPOTENCY_WAIT_TIMEOUT_SECONDS = 300.0
 LIVERMORE_GATE_SUPPLEMENT_IDEMPOTENCY_LOCK_ATTEMPT_SECONDS = 0.25
 LIVERMORE_GATE_SUPPLEMENT_IDEMPOTENCY_POLL_SECONDS = 0.05
 LIVERMORE_GATE_SUPPLEMENT_IDEMPOTENCY_POLL_MAX_SECONDS = 1.0
+LIVERMORE_GATE_SUPPLEMENT_STATUS_RECONCILE_LOCK_TIMEOUT_SECONDS = 0.5
 _LIVERMORE_REFRESH_IN_FLIGHT_STATUSES = {"queued", "running", "retrying"}
 _LIVERMORE_REFRESH_STALE_AFTER = timedelta(hours=1)
 
@@ -95,20 +182,19 @@ class LivermoreGateSupplementRefreshQueueError(RuntimeError):
 
 def _append_stale_livermore_refresh_failure(
     repo: GovernanceRepository,
-    record: dict[str, object],
-) -> None:
-    repo.append(
-        CACHE_BUILD_RUN_STREAM,
-        {
-            **record,
-            "status": "failed",
-            "trigger_mode": "terminal",
-            "finished_at": datetime.now(UTC).isoformat(),
-            "error_message": "Marked stale Livermore gate-supplement refresh as failed.",
-            "failure_category": "stale_inflight",
-            "failure_reason": "stale_inflight",
-        },
-    )
+    record: GovernanceRecord,
+) -> GovernanceRecord:
+    stale_failure: GovernanceRecord = {
+        **record,
+        "status": "failed",
+        "trigger_mode": "terminal",
+        "finished_at": datetime.now(UTC).isoformat(),
+        "error_message": "Marked stale Livermore gate-supplement refresh as failed.",
+        "failure_category": "stale_inflight",
+        "failure_reason": "stale_inflight",
+    }
+    repo.append(CACHE_BUILD_RUN_STREAM, stale_failure)
+    return stale_failure
 
 
 def queue_gate_supplement_refresh(
@@ -167,7 +253,7 @@ def queue_gate_supplement_refresh(
                         break
                     return _normalize_livermore_refresh_record(record, idempotency_replay=True)
 
-            latest_by_run_id: dict[str, dict[str, object]] = {}
+            latest_by_run_id: dict[str, GovernanceRecord] = {}
             for record in records:
                 if _livermore_refresh_record_matches_request(
                     record,
@@ -177,7 +263,7 @@ def queue_gate_supplement_refresh(
                     storage_target_digest=storage_target_digest,
                 ):
                     latest_by_run_id[str(record.get("run_id") or "")] = record
-            fresh_active_records: list[dict[str, object]] = []
+            fresh_active_records: list[GovernanceRecord] = []
             for record in latest_by_run_id.values():
                 if str(record.get("status") or "") not in _LIVERMORE_REFRESH_IN_FLIGHT_STATUSES:
                     continue
@@ -258,13 +344,21 @@ def livermore_gate_supplement_refresh_status(
     *,
     run_id: str = "",
 ) -> dict[str, object]:
-    records = _queued_livermore_refresh_records(GovernanceRepository(base_dir=governance_path))
+    repo = GovernanceRepository(base_dir=governance_path)
+    records = _queued_livermore_refresh_records(repo)
     run_id_text = str(run_id or "").strip()
     if run_id_text:
-        matching = [record for record in records if str(record.get("run_id") or "") == run_id_text]
-        if not matching:
+        latest = _latest_livermore_refresh_record(records, run_id=run_id_text)
+        if latest is None:
             raise ValueError(f"Livermore gate-supplement refresh run not found: {run_id_text}")
-        return _normalize_livermore_refresh_record(matching[-1], idempotency_replay=None)
+        return _normalize_livermore_refresh_record(
+            _reconcile_stale_livermore_refresh_record(
+                repo,
+                governance_path=governance_path,
+                run_id=run_id_text,
+            ),
+            idempotency_replay=None,
+        )
     if not records:
         return {
             "status": "idle",
@@ -276,10 +370,18 @@ def livermore_gate_supplement_refresh_status(
             "trigger_mode": "idle",
             "idempotency_replay": False,
         }
-    return _normalize_livermore_refresh_record(records[-1], idempotency_replay=None)
+    latest = records[-1]
+    latest_run_id = str(latest.get("run_id") or "").strip()
+    if latest_run_id:
+        latest = _reconcile_stale_livermore_refresh_record(
+            repo,
+            governance_path=governance_path,
+            run_id=latest_run_id,
+        )
+    return _normalize_livermore_refresh_record(latest, idempotency_replay=None)
 
 
-def _queued_livermore_refresh_records(repo: GovernanceRepository) -> list[dict[str, object]]:
+def _queued_livermore_refresh_records(repo: GovernanceRepository) -> list[GovernanceRecord]:
     return [
         record
         for record in repo.read_all(CACHE_BUILD_RUN_STREAM)
@@ -289,7 +391,7 @@ def _queued_livermore_refresh_records(repo: GovernanceRepository) -> list[dict[s
 
 
 def _livermore_refresh_record_matches_request(
-    record: dict[str, object],
+    record: GovernanceRecord,
     *,
     request_fingerprint: str,
     as_of_date: str,
@@ -306,8 +408,60 @@ def _livermore_refresh_record_matches_request(
     )
 
 
+def _latest_livermore_refresh_record(
+    records: list[GovernanceRecord],
+    *,
+    run_id: str,
+) -> GovernanceRecord | None:
+    matching = [record for record in records if str(record.get("run_id") or "") == run_id]
+    return matching[-1] if matching else None
+
+
+def _livermore_refresh_status_reconcile_lock(run_id: str) -> LockDefinition:
+    return LockDefinition(
+        key=f"lock:livermore-gate-supplement-refresh-status:{run_id}",
+        ttl_seconds=30,
+    )
+
+
+def _reconcile_stale_livermore_refresh_record(
+    repo: GovernanceRepository,
+    *,
+    governance_path: str | Path,
+    run_id: str,
+) -> GovernanceRecord:
+    def _latest_for_run() -> GovernanceRecord:
+        latest = _latest_livermore_refresh_record(_queued_livermore_refresh_records(repo), run_id=run_id)
+        if latest is None:
+            raise ValueError(f"Livermore gate-supplement refresh run not found: {run_id}")
+        return latest
+
+    latest = _latest_for_run()
+    if (
+        str(latest.get("status") or "") not in _LIVERMORE_REFRESH_IN_FLIGHT_STATUSES
+        or not _livermore_refresh_record_is_stale(latest)
+    ):
+        return latest
+
+    try:
+        with acquire_lock(
+            _livermore_refresh_status_reconcile_lock(run_id),
+            base_dir=governance_path,
+            timeout_seconds=LIVERMORE_GATE_SUPPLEMENT_STATUS_RECONCILE_LOCK_TIMEOUT_SECONDS,
+        ):
+            refreshed = _latest_for_run()
+            if (
+                str(refreshed.get("status") or "") in _LIVERMORE_REFRESH_IN_FLIGHT_STATUSES
+                and _livermore_refresh_record_is_stale(refreshed)
+            ):
+                return _append_stale_livermore_refresh_failure(repo, refreshed)
+            return refreshed
+    except TimeoutError:
+        return _latest_for_run()
+
+
 def _normalize_livermore_refresh_record(
-    record: dict[str, object],
+    record: GovernanceRecord,
     *,
     idempotency_replay: bool | None,
 ) -> dict[str, object]:
@@ -326,21 +480,13 @@ def _normalize_livermore_refresh_record(
         "rule_version": str(record.get("rule_version") or RULE_VERSION),
         "report_date": str(record.get("report_date") or record.get("as_of_date") or "") or None,
         "as_of_date": str(record.get("as_of_date") or record.get("report_date") or "") or None,
-        "lookback_days": int(record.get("lookback_days") or 0) if record.get("lookback_days") is not None else None,
-        "min_observations_per_day": (
-            int(record.get("min_observations_per_day"))
-            if record.get("min_observations_per_day") is not None
-            else None
-        ),
+        "lookback_days": _coerce_optional_int(record.get("lookback_days")),
+        "min_observations_per_day": _coerce_optional_int(record.get("min_observations_per_day")),
         "queued_at": str(record.get("queued_at") or "") or None,
         "started_at": str(record.get("started_at") or "") or None,
         "finished_at": str(record.get("finished_at") or "") or None,
         "basis": str(record.get("basis") or "") or None,
-        "computed_rows": (
-            int(record.get("computed_rows"))
-            if record.get("computed_rows") is not None
-            else None
-        ),
+        "computed_rows": _coerce_optional_int(record.get("computed_rows")),
         "first_date": str(record.get("first_date") or "") or None,
         "last_date": str(record.get("last_date") or "") or None,
         "message": str(record.get("message") or "") or None,
@@ -612,16 +758,20 @@ def _try_market_breadth_payload(
     min_observations_per_day: int | None,
 ) -> dict[str, object] | None:
     """Real all-market breadth basis; returns None to fall back to the CSI300 proxy."""
-    kwargs: dict[str, object] = {}
-    if min_observations_per_day is not None:
-        kwargs["min_observations_per_day"] = int(min_observations_per_day)
     try:
-        result = materialize_market_breadth_daily(
-            duckdb_path=duckdb_path,
-            as_of_date=target_date,
-            lookback_days=lookback_days,
-            **kwargs,  # type: ignore[arg-type]
-        )
+        if min_observations_per_day is None:
+            result = materialize_market_breadth_daily(
+                duckdb_path=duckdb_path,
+                as_of_date=target_date,
+                lookback_days=lookback_days,
+            )
+        else:
+            result = materialize_market_breadth_daily(
+                duckdb_path=duckdb_path,
+                as_of_date=target_date,
+                lookback_days=lookback_days,
+                min_observations_per_day=int(min_observations_per_day),
+            )
     except Exception:
         logger.warning(
             "Market breadth materialization failed; falling back to CSI300 proxy.",
@@ -648,7 +798,8 @@ def _try_market_breadth_payload(
             "idempotency_key": idempotency_key,
             "idempotency_replay": False,
         }
-    if int(result.get("supplement_row_count") or 0) <= 0:
+    supplement_row_count = _coerce_optional_int(result.get("supplement_row_count")) or 0
+    if supplement_row_count <= 0:
         # The all-market source is landed (status=completed) but no complete
         # 5-day breadth window could be computed (e.g. partial-universe days).
         # Do NOT fall back to the CSI300 proxy here: the proxy path would
@@ -675,7 +826,7 @@ def _try_market_breadth_payload(
     return {
         "status": "completed",
         "basis": "market_breadth",
-        "computed_rows": int(result["supplement_row_count"]),
+        "computed_rows": supplement_row_count,
         "first_date": result.get("first_supplement_date"),
         "last_date": result.get("last_supplement_date"),
         "materialize_result": result.get("materialize_result"),
@@ -693,6 +844,16 @@ def _try_market_breadth_payload(
 def _normalize_idempotency_key(value: str | None) -> str | None:
     text = str(value or "").strip()
     return text or None
+
+
+def _coerce_optional_int(value: object) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, float, str)):
+        return int(value)
+    return int(str(value))
 
 
 def _storage_target_digest(duckdb_path: str) -> str:
