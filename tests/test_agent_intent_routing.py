@@ -252,6 +252,56 @@ def test_generic_dashboard_page_question_routes_to_page_default_intent(tmp_path)
     assert "dashboard overview ok" in envelope.answer
 
 
+def test_generic_pnl_attribution_page_question_routes_to_pnl_bridge(tmp_path):
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers={
+            "pnl_summary": lambda request: {
+                "answer": "pnl summary ok",
+                "basis": "formal",
+                "result_kind": "agent.pnl_summary",
+                "formal_use_allowed": True,
+                "source_version": "sv_test",
+                "quality_flag": "ok",
+                "row_count": 1,
+            },
+            "pnl_bridge": lambda request: {
+                "answer": "pnl bridge ok",
+                "basis": "formal",
+                "result_kind": "agent.pnl_bridge",
+                "formal_use_allowed": True,
+                "source_version": "sv_test",
+                "quality_flag": "ok",
+                "row_count": 1,
+                "cards": [{"type": "metric", "title": "Residual", "value": "0.2"}],
+            },
+        },
+    )
+
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="解释当前页面的主要结论",
+            page_context=request_module.AgentPageContext(
+                page_id="pnl-attribution",
+                current_filters={"report_date": "2026-03-31"},
+            ),
+        )
+    )
+
+    assert envelope.result_meta.result_kind == "agent.pnl_bridge"
+    assert "Residual=0.2" in envelope.answer
+
+
 def test_specific_duration_question_with_page_context_beats_page_default_intent(tmp_path):
     tool_module = load_module(
         "backend.app.agent.tools.analysis_view_tool",

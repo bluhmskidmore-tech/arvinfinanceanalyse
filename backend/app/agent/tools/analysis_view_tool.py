@@ -57,7 +57,7 @@ _PAGE_DEFAULT_INTENTS = {
     "dashboard": "portfolio_overview",
     "bond-dashboard": "portfolio_overview",
     "balance-analysis": "portfolio_overview",
-    "pnl-attribution": "pnl_summary",
+    "pnl-attribution": "pnl_bridge",
     "product-category-pnl": "product_pnl",
     "risk-tensor": "risk_tensor",
     "bond-analytics": "duration_risk",
