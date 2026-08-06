@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import * as ReactRouterDom from "react-router-dom";
+import { MemoryRouter } from "react-router-dom";
 import { RouterProvider } from "react-router-dom";
 import { beforeAll, vi } from "vitest";
 
@@ -961,9 +961,9 @@ describe("BalanceAnalysisPage", () => {
     };
 
     render(
-      <ReactRouterDom.MemoryRouter>
+      <MemoryRouter>
         <AdbAnalyticalPreview comparison={comparison} href="/average-balance" />
-      </ReactRouterDom.MemoryRouter>,
+      </MemoryRouter>,
     );
 
     const comparisonOption = balanceAnalysisEchartsOptions.find((option) => {
@@ -1851,13 +1851,6 @@ describe("BalanceAnalysisPage", () => {
     }));
     const getSummarySpy = vi.fn(async ({ offset }: { offset: number }) => buildSummaryResponse(offset));
     const getWorkbookSpy = vi.fn(async () => buildWorkbookResponse());
-    let currentSearch = "report_date=2025-11-30&position_scope=liability&currency_basis=native";
-    const useSearchParamsSpy = vi
-      .spyOn(ReactRouterDom, "useSearchParams")
-      .mockImplementation(
-        () => [new URLSearchParams(currentSearch), vi.fn()] as ReturnType<typeof ReactRouterDom.useSearchParams>,
-      );
-
     const client = {
       ...baseClient,
       getBalanceAnalysisDates: getDatesSpy,
@@ -1867,39 +1860,35 @@ describe("BalanceAnalysisPage", () => {
       getBalanceAnalysisWorkbook: getWorkbookSpy,
     };
 
-    const rendered = renderBalanceAnalysisWithClient(client, ["/balance-analysis"]);
+    const rendered = renderBalanceAnalysisWithClient(
+      client,
+      ["/balance-analysis?report_date=2025-11-30&position_scope=liability&currency_basis=native"],
+    );
 
     await waitFor(() => {
-      expect(getOverviewSpy).toHaveBeenCalledWith({
+      expect(getOverviewSpy).toHaveBeenLastCalledWith({
         reportDate: "2025-11-30",
         positionScope: "liability",
         currencyBasis: "native",
       });
     });
 
-    currentSearch = "report_date=2025-12-31&position_scope=asset&currency_basis=CNY";
-    rendered.rerender(
-      <ApiClientProvider client={client}>
-        <QueryClientProvider client={rendered.queryClient}>
-          <RouterProvider router={rendered.router} future={routerFuture} />
-        </QueryClientProvider>
-      </ApiClientProvider>,
+    await rendered.router.navigate(
+      "/balance-analysis?report_date=2025-12-31&position_scope=asset&currency_basis=CNY",
     );
 
     await waitFor(() => {
-      expect(getOverviewSpy).toHaveBeenCalledWith({
+      expect(getOverviewSpy).toHaveBeenLastCalledWith({
         reportDate: "2025-12-31",
         positionScope: "asset",
         currencyBasis: "CNY",
       });
-      expect(getDetailSpy).toHaveBeenCalledWith({
+      expect(getDetailSpy).toHaveBeenLastCalledWith({
         reportDate: "2025-12-31",
         positionScope: "asset",
         currencyBasis: "CNY",
       });
     });
-
-    useSearchParamsSpy.mockRestore();
   });
 
   it("downloads the filtered summary export as csv", async () => {
