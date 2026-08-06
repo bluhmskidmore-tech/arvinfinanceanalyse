@@ -354,6 +354,78 @@ class TestHomeSnapshotEnvelope:
             "attribution"
         ]
 
+    def test_aum_lineage_warning_in_overview_is_promoted_to_snapshot_warning(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        es = _executive_service()
+        report_date = "2026-04-08"
+        ytd = es._product_category_ytd_headline_from_values(
+            report_date,
+            {
+                "grand_total": 120_000_000.0,
+                "intermediate_business_income": 20_000_000.0,
+            },
+        )
+        monthly = es._product_category_monthly_headline_from_values(
+            report_date,
+            {"grand_total": 10_000_000.0},
+        )
+        assert ytd is not None
+        assert monthly is not None
+
+        monkeypatch.setattr(
+            es,
+            "_list_domain_date_context",
+            lambda: {
+                "balance": [report_date],
+                "pnl": [report_date],
+                "liability": [report_date],
+                "bond": [report_date],
+            },
+        )
+        monkeypatch.setattr(
+            es,
+            "executive_overview",
+            lambda **_kwargs: {
+                "result_meta": {
+                    "quality_flag": "warning",
+                    "vendor_status": "vendor_unavailable",
+                },
+                "result": {"title": "经营总览", "metrics": []},
+            },
+        )
+        monkeypatch.setattr(
+            es,
+            "executive_pnl_attribution",
+            lambda report_date=None: {
+                "result_meta": {
+                    "quality_flag": "ok",
+                    "vendor_status": "ok",
+                },
+                "result": es._pnl_attribution_unavailable_payload().model_dump(
+                    mode="json"
+                ),
+            },
+        )
+        monkeypatch.setattr(
+            es,
+            "_build_product_category_headlines",
+            lambda _report_date: (ytd, monthly, 0, 0),
+        )
+
+        env = es.home_snapshot_envelope(
+            report_date=report_date,
+            allow_partial=False,
+        )
+
+        assert env["result"]["domains_missing"] == []
+        assert env["result_meta"]["quality_flag"] == "warning"
+        assert env["result_meta"]["vendor_status"] == "vendor_unavailable"
+        assert env["result_meta"]["filters_applied"]["degraded_components"] == [
+            "overview"
+        ]
+
     def test_missing_product_headlines_are_promoted_to_snapshot_warning(
         self,
         monkeypatch: pytest.MonkeyPatch,

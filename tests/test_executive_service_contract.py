@@ -509,10 +509,16 @@ def test_executive_overview_uses_requested_report_date(monkeypatch, exec_mod):
             calls.append(("aum", report_date))
             assert currency_basis == "CNY"
             values = {
-                "2025-11-20": 321.0e8,
-                "2025-10-31": 300.0e8,
+                "2025-11-20": (321.0e8, "sv-balance-current", "rv-balance-current"),
+                "2025-10-31": (300.0e8, "sv-balance-prior", "rv-balance-prior"),
             }
-            return {"report_date": report_date, "total_market_value_amount": values[report_date]}
+            total_market_value_amount, source_version, rule_version = values[report_date]
+            return {
+                "report_date": report_date,
+                "total_market_value_amount": total_market_value_amount,
+                "source_version": source_version,
+                "rule_version": rule_version,
+            }
 
     class PnlRepo:
         def __init__(self, *_a, **_k):
@@ -1804,7 +1810,8 @@ def test_executive_overview_keeps_current_aum_trusted_when_prior_lineage_is_miss
     assert "sv_balance_current" in meta["source_version"]
     assert "sv_balance_prior" not in meta["source_version"]
     aum_metric = next(metric for metric in out["result"]["metrics"] if metric["id"] == "aum")
-    assert aum_metric["delta"]["display"] == "+11.11%"
+    assert aum_metric["delta"]["raw"] is None
+    assert aum_metric["delta"]["display"] == "无环比"
 
 
 def test_executive_overview_accepts_complete_aum_current_and_prior_lineage(

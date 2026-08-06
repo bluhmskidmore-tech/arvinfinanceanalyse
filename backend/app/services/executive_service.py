@@ -1739,10 +1739,19 @@ def _compute_executive_overview(
                             *list(state["rule_versions"]),
                             previous_row.get("rule_version"),
                         ]
-                        state["delta"] = _format_percent_change(
-                            raw,
-                            float(previous_row["total_market_value_amount"]),
-                        )
+                        if state["previous_missing_lineage"]:
+                            state["delta"] = Numeric(
+                                raw=None,
+                                unit="pct",
+                                display="无环比",
+                                precision=2,
+                                sign_aware=True,
+                            )
+                        else:
+                            state["delta"] = _format_percent_change(
+                                raw,
+                                float(previous_row["total_market_value_amount"]),
+                            )
         except (RuntimeError, OSError, TypeError, ValueError):
             state["raw"] = None
         return state
