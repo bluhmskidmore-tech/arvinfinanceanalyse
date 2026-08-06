@@ -30,7 +30,7 @@ export const MARKET_FINANCE_REPRESENTATIVE_SERIES: readonly MarketFinanceReprese
 ];
 
 export type SelectedMarketFinanceSeries = MarketFinanceRepresentativeSeries & {
-  point: ChoiceMacroLatestPoint;
+  point: ChoiceMacroLatestPoint | null;
 };
 
 export function pickRepresentativeSeries(
@@ -42,11 +42,11 @@ export function pickRepresentativeSeries(
     (point) => (point.refresh_tier ?? "stable") !== "isolated",
   );
 
-  return whitelist.flatMap((representative) => {
+  return whitelist.map((representative) => {
     const point = representative.ids
       .map((id) => candidates.find((candidate) => candidate.series_id === id))
       .find((candidate): candidate is ChoiceMacroLatestPoint => Boolean(candidate));
 
-    return point ? [{ ...representative, point }] : [];
+    return { ...representative, point: point ?? null };
   });
 }

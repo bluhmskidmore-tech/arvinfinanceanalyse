@@ -35,11 +35,25 @@ describe("pickRepresentativeSeries", () => {
       point("UNCONFIRMED.001", { value_numeric: 9.99 }),
     ]);
 
-    expect(selected.map((item) => [item.key, item.point.series_id])).toEqual([
+    expect(selected.map((item) => [item.key, item.point?.series_id ?? null])).toEqual([
       ["cn-gov-10y", "CA.CN_GOV_10Y"],
       ["dr007", "CA.DR007"],
       ["usdcny", "CA.USDCNY"],
       ["credit-aaa", "CN_CREDIT_AAA_1Y"],
+    ]);
+  });
+
+  it("keeps each configured slot visible when a representative is missing", () => {
+    const selected = pickRepresentativeSeries([
+      point("CA.CN_GOV_10Y"),
+      point("CA.USDCNY"),
+    ]);
+
+    expect(selected.map((item) => [item.key, item.point?.series_id ?? null])).toEqual([
+      ["cn-gov-10y", "CA.CN_GOV_10Y"],
+      ["dr007", null],
+      ["usdcny", "CA.USDCNY"],
+      ["credit-aaa", null],
     ]);
   });
 
@@ -49,7 +63,7 @@ describe("pickRepresentativeSeries", () => {
       point("E1000180", { value_numeric: 1.73 }),
     ]);
 
-    expect(selected[0]?.point.series_id).toBe("E1000180");
+    expect(selected[0]?.point?.series_id).toBe("E1000180");
   });
 
   it("excludes isolated points even when their id is approved", () => {
@@ -57,7 +71,8 @@ describe("pickRepresentativeSeries", () => {
       point("CA.CN_GOV_10Y", { refresh_tier: "isolated" }),
     ]);
 
-    expect(selected).toEqual([]);
+    expect(selected).toHaveLength(MARKET_FINANCE_REPRESENTATIVE_SERIES.length);
+    expect(selected.every((item) => item.point === null)).toBe(true);
   });
 
   it("does not substitute an unrelated series for a missing representative", () => {
@@ -65,7 +80,8 @@ describe("pickRepresentativeSeries", () => {
       point("UNCONFIRMED.001", { value_numeric: 9.99 }),
     ]);
 
-    expect(selected).toEqual([]);
+    expect(selected).toHaveLength(MARKET_FINANCE_REPRESENTATIVE_SERIES.length);
+    expect(selected.every((item) => item.point === null)).toBe(true);
   });
 
   it("keeps source points unchanged", () => {
