@@ -382,15 +382,9 @@ def test_bond_analytics_refresh_status_returns_failed_terminal_record(tmp_path, 
 
 
 def test_bond_analytics_refresh_status_returns_503_when_status_backend_unavailable(tmp_path, monkeypatch):
-    import sys
-
     _configure_bond_analytics_api_env(tmp_path, monkeypatch)
-    # Clear cached modules so monkeypatch targets the same GovernanceRepository
-    # instance that the route handler will use.
-    for mod_name in list(sys.modules):
-        if mod_name.startswith("backend.app."):
-            sys.modules.pop(mod_name, None)
-
+    # Patch the live service module before reloading the app import chain so the
+    # route handler observes the same GovernanceRepository class identity.
     service_mod = load_module(
         "backend.app.services.bond_analytics_service",
         "backend/app/services/bond_analytics_service.py",
