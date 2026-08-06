@@ -1114,6 +1114,7 @@ def _navigation_page_slug(
         "risk-overview": "risk-home",
         "performance-home": "performance-home",
         "reports-center": "reports-home",
+        "pnl-by-business-insights": "pnl-by-business",
     }.get(key)
     if mapped is not None:
         return mapped

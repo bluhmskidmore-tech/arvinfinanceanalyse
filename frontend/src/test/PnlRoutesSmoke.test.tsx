@@ -1054,7 +1054,12 @@ function buildPnlClient(): ApiClient {
 
 describe("pnl routed pages smoke", () => {
   beforeAll(async () => {
-    await preloadWorkbenchRouteModules("pnl", "pnl-bridge", "pnl-by-business");
+    await preloadWorkbenchRouteModules(
+      "pnl",
+      "pnl-bridge",
+      "pnl-by-business",
+      "pnl-by-business-insights",
+    );
   }, 20_000);
 
   it("keeps /pnl yield analysis colors on the homepage blue-gray token family", () => {

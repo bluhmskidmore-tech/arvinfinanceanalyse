@@ -29,6 +29,8 @@ const routeModulePreloaders = {
   "pnl-attribution": () => import("../features/pnl-attribution/pages/PnlAttributionPage"),
   "pnl-bridge": () => import("../features/pnl/PnlBridgePage"),
   "pnl-by-business": () => import("../features/pnl/PnlByBusinessPage"),
+  "pnl-by-business-insights": () =>
+    import("../features/pnl-business-insights/PnlByBusinessInsightsPage"),
   "product-category-pnl": () =>
     import("../features/product-category-pnl/pages/ProductCategoryPnlPage"),
   "product-category-pnl-audit": () =>

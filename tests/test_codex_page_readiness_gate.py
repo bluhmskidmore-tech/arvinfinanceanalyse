@@ -1672,6 +1672,21 @@ def test_route_scope_classification_preserves_missing_consistency_no_effect_fiel
     )
 
 
+def test_pnl_business_insights_detail_navigation_reuses_governing_page_seed() -> None:
+    payload = build_route_scope_classification_report()
+    rows_by_slug = {row["page_slug"]: row for row in payload["routes"]}
+    visible_unseeded = {
+        row["page_slug"]: row["route"]
+        for row in payload["routes"]
+        if row["source"] == "visible_navigation_unseeded"
+    }
+
+    assert visible_unseeded == {"market-finance": "/market-finance"}
+    assert "pnl-by-business-insights" not in rows_by_slug
+    assert rows_by_slug["pnl-by-business"]["page_id"] == "PAGE-PNL-BY-BUSINESS-001"
+    assert rows_by_slug["pnl-by-business"]["visible_navigation_route"] is True
+
+
 def test_route_scope_classification_keeps_certification_claim_route_scoped() -> None:
     payload = build_route_scope_classification_report()
     rows_by_slug = {
@@ -1685,8 +1700,8 @@ def test_route_scope_classification_keeps_certification_claim_route_scoped() -> 
     assert payload["summary"]["business_contract_certified_count"] == 0
     assert payload["summary"]["evidence_pending_count"] == 23
     assert payload["summary"]["gate_i_gap_count"] == 0
-    assert payload["summary"]["not_started_count"] == 0
-    assert payload["summary"]["visible_unseeded_route_count"] == 0
+    assert payload["summary"]["not_started_count"] == 1
+    assert payload["summary"]["visible_unseeded_route_count"] == 1
     assert payload["summary"]["unclassified_count"] == 0
     assert payload["summary"]["business_owner_action_signoff_missing_or_invalid_item_count"] == 5
     assert payload["summary"]["business_owner_action_signoff_pending_review_item_count"] == 10
@@ -1694,6 +1709,10 @@ def test_route_scope_classification_keeps_certification_claim_route_scoped() -> 
         "No seeded route is business-contract-certified until direct golden approval, "
         "manual audit closure, and captured business-owner approval all exist."
     )
+
+    assert rows_by_slug["market-finance"]["source"] == "visible_navigation_unseeded"
+    assert rows_by_slug["market-finance"]["route"] == "/market-finance"
+    assert "pnl-by-business-insights" not in rows_by_slug
 
     assert rows_by_slug["product-category-pnl"]["classification"] == "evidence-pending"
     assert rows_by_slug["product-category-pnl"]["blocking_reason"] == "business_owner_approval_pending"
@@ -2141,8 +2160,11 @@ def test_page_readiness_cli_route_scope_mode_emits_classification_report() -> No
     assert rows_by_slug["team-performance"]["classification"] == "evidence-pending"
     assert rows_by_slug["platform-config"]["classification"] == "evidence-pending"
     assert rows_by_slug["news-events"]["classification"] == "evidence-pending"
-    assert payload["summary"]["visible_unseeded_route_count"] == 0
-    assert payload["summary"]["not_started_count"] == 0
+    assert payload["summary"]["visible_unseeded_route_count"] == 1
+    assert payload["summary"]["not_started_count"] == 1
+    assert rows_by_slug["market-finance"]["source"] == "visible_navigation_unseeded"
+    assert rows_by_slug["market-finance"]["route"] == "/market-finance"
+    assert "pnl-by-business-insights" not in rows_by_slug
 
 
 def test_page_readiness_powershell_route_scope_mode_surfaces_classification_summary() -> None:
@@ -2165,8 +2187,8 @@ def test_page_readiness_powershell_route_scope_mode_surfaces_classification_summ
 
     assert "MOSS page readiness gate: route-scope classification" in completed.stdout
     assert (
-        "Summary: route_count=39; seeded_trace_bundle_count=39; "
-        "visible_unseeded_route_count=0; business_contract_certified_count=0; "
+        "Summary: route_count=40; seeded_trace_bundle_count=39; "
+        "visible_unseeded_route_count=1; business_contract_certified_count=0; "
         "evidence_pending_count=23; gate_i_gap_count=0; unclassified_count=0; "
         "business_owner_action_signoff_missing_or_invalid_item_count=5; "
         "business_owner_action_signoff_pending_review_item_count=10"
