@@ -86,6 +86,34 @@ def test_dev_agent_api_uses_short_hermes_timeout_for_local_responsiveness():
     assert "set MOSS_AGENT_DEV_SCOPE_BYPASS=true" in cmd
 
 
+def test_dev_agent_up_starts_the_full_stack_with_explicit_agent_environment():
+    ps1 = (ROOT / "scripts" / "dev-agent-up.ps1").read_text(encoding="utf-8")
+    cmd = (ROOT / "scripts" / "dev-agent-up.cmd").read_text(encoding="utf-8")
+
+    assert '$env:MOSS_AGENT_ENABLED = "true"' in ps1
+    assert '$env:MOSS_AGENT_DEV_SCOPE_BYPASS = "true"' in ps1
+    assert '$env:MOSS_DEV_API_SCRIPT = "dev-agent-api.ps1"' in ps1
+    assert '$env:VITE_MOSS_AGENT_FRONTEND_ENABLED = "true"' in ps1
+    assert '& "$root\\scripts\\dev-up.ps1"' in ps1
+    assert "$originalAgentEnvironment = @{}" in ps1
+    assert "try {" in ps1
+    assert "} finally {" in ps1
+    assert 'Remove-Item -Path "Env:$name" -ErrorAction SilentlyContinue' in ps1
+    assert 'Set-Item -Path "Env:$name" -Value $originalValue.Value' in ps1
+    assert '"%ROOT%\\scripts\\dev-agent-up.ps1"' in cmd
+
+
+def test_dev_up_uses_agent_specific_readiness_probes_for_agent_api():
+    script = (ROOT / "scripts" / "dev-up.ps1").read_text(encoding="utf-8")
+
+    assert '$agentDevMode = $apiScriptName -eq "dev-agent-api.ps1"' in script
+    assert "if ($agentDevMode) {" in script
+    assert 'http://127.0.0.1:7888/api/agent/projects' in script
+    assert 'http://127.0.0.1:7888/api/agent/runs?limit=1' in script
+    assert "Agent projects:" in script
+    assert "Agent runs:" in script
+
+
 def test_dev_worker_script_bootstraps_native_environment():
     script = (ROOT / "scripts" / "dev-worker.ps1").read_text(encoding="utf-8")
     assert ". .\\scripts\\dev-env.ps1" in script or ". \"$root\\scripts\\dev-env.ps1\"" in script
@@ -182,6 +210,10 @@ def test_dev_up_script_bootstraps_local_postgres_and_starts_native_processes():
     assert "dev-postgres-up.ps1" in script
     assert '$LASTEXITCODE -ne 0' in script
     assert "dev-api.ps1" in script
+    assert '$allowedApiScriptNames = @("dev-api.ps1", "dev-agent-api.ps1")' in script
+    assert '$apiScriptName -notin $allowedApiScriptNames' in script
+    assert "MOSS_DEV_API_SCRIPT must be one of:" in script
+    assert "-ScriptName $apiScriptName" in script
     assert "dev-worker.ps1" in script
     assert "dev-frontend.ps1" in script
     assert "Start-Process" not in script

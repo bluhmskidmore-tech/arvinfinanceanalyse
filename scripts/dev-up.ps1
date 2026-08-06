@@ -9,6 +9,17 @@ $powershellExe = (Get-Command powershell -ErrorAction Stop).Source
 $logRoot = Join-Path $root "tmp-governance\runtime-clean\logs"
 New-Item -ItemType Directory -Force $logRoot | Out-Null
 $script:ProcessInspectionAvailable = $true
+$allowedApiScriptNames = @("dev-api.ps1", "dev-agent-api.ps1")
+$apiScriptName = if ([string]::IsNullOrWhiteSpace($env:MOSS_DEV_API_SCRIPT)) {
+  "dev-api.ps1"
+} else {
+  [string]$env:MOSS_DEV_API_SCRIPT
+}
+if ($apiScriptName -notin $allowedApiScriptNames) {
+  throw "MOSS_DEV_API_SCRIPT must be one of: $($allowedApiScriptNames -join ', '). Received: $apiScriptName"
+}
+$apiLogName = [System.IO.Path]::GetFileNameWithoutExtension($apiScriptName)
+$agentDevMode = $apiScriptName -eq "dev-agent-api.ps1"
 
 function Wait-HttpEndpoint {
   param(
@@ -502,19 +513,19 @@ if ($LASTEXITCODE -ne 0) {
 
 $postgresPort = Wait-TcpPort -ListenHost "127.0.0.1" -Port 55432 -TimeoutSeconds 120 -Description "local Postgres dev cluster"
 
-$existingApiLaunch = Assert-PortAvailableForScriptStart -Port 7888 -ScriptName "dev-api.ps1" -Description "API"
+$existingApiLaunch = Assert-PortAvailableForScriptStart -Port 7888 -ScriptName $apiScriptName -Description "API"
 if ($existingApiLaunch) {
   $apiLaunch = [pscustomobject]@{
     Started = $false
     ProcessId = $existingApiLaunch.ProcessId
-    StdoutPath = Join-Path $logRoot "dev-api.out.log"
-    StderrPath = Join-Path $logRoot "dev-api.err.log"
+    StdoutPath = Join-Path $logRoot "$apiLogName.out.log"
+    StderrPath = Join-Path $logRoot "$apiLogName.err.log"
   }
 } else {
-  $apiLaunch = Start-DevScriptDetached -ScriptName "dev-api.ps1"
+  $apiLaunch = Start-DevScriptDetached -ScriptName $apiScriptName
 }
 $workerLaunch = Start-DevScriptDetached -ScriptName "dev-worker.ps1"
-$apiLogPaths = @($apiLaunch.StderrPath, $apiLaunch.StdoutPath, (Join-Path $logRoot "dev-api.err.log"), (Join-Path $logRoot "dev-api.out.log"))
+$apiLogPaths = @($apiLaunch.StderrPath, $apiLaunch.StdoutPath, (Join-Path $logRoot "$apiLogName.err.log"), (Join-Path $logRoot "$apiLogName.out.log"))
 $workerLogPaths = @($workerLaunch.StderrPath, $workerLaunch.StdoutPath, (Join-Path $logRoot "dev-worker.err.log"), (Join-Path $logRoot "dev-worker.out.log"))
 
 $workerHeartbeatPath = Join-Path $root "tmp-governance\runtime-clean\governance\dev-worker-heartbeat.json"
@@ -528,31 +539,36 @@ if ($LASTEXITCODE -ne 0) {
 
 $apiHealth = Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:7888/health" -Description "API health" -LogPaths $apiLogPaths
 $apiReady = Wait-JsonStatusOkEndpointWithLogs -Url "http://127.0.0.1:7888/health/ready" -Description "API readiness" -LogPaths $apiLogPaths
-$homeSnapshotWarm = Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:7888/ui/home/snapshot" -TimeoutSeconds 120 -Description "home snapshot warm cache" -LogPaths $apiLogPaths
-$apiReadyAfterHomeWarm = Wait-JsonStatusOkEndpointWithLogs -Url "http://127.0.0.1:7888/health/ready" -Description "API readiness after home snapshot warm cache" -LogPaths $apiLogPaths
-$apiReadyAfterHomeWarmPayload = $apiReadyAfterHomeWarm.Content | ConvertFrom-Json
-$homeSnapshotPrewarm = $apiReadyAfterHomeWarmPayload.checks.home_snapshot_prewarm
-if ($null -eq $homeSnapshotPrewarm) {
-  throw "API readiness after home snapshot warm cache did not expose checks.home_snapshot_prewarm. Restart the API so the home prewarm guard is active."
+if ($agentDevMode) {
+  $agentProjects = Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:7888/api/agent/projects" -Description "Agent projects" -LogPaths $apiLogPaths
+  $agentRuns = Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:7888/api/agent/runs?limit=1" -Description "Agent runs" -LogPaths $apiLogPaths
+} else {
+  $homeSnapshotWarm = Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:7888/ui/home/snapshot" -TimeoutSeconds 120 -Description "home snapshot warm cache" -LogPaths $apiLogPaths
+  $apiReadyAfterHomeWarm = Wait-JsonStatusOkEndpointWithLogs -Url "http://127.0.0.1:7888/health/ready" -Description "API readiness after home snapshot warm cache" -LogPaths $apiLogPaths
+  $apiReadyAfterHomeWarmPayload = $apiReadyAfterHomeWarm.Content | ConvertFrom-Json
+  $homeSnapshotPrewarm = $apiReadyAfterHomeWarmPayload.checks.home_snapshot_prewarm
+  if ($null -eq $homeSnapshotPrewarm) {
+    throw "API readiness after home snapshot warm cache did not expose checks.home_snapshot_prewarm. Restart the API so the home prewarm guard is active."
+  }
+  if ($homeSnapshotPrewarm.status -ne "ready") {
+    throw "Home snapshot prewarm is not ready: status=$($homeSnapshotPrewarm.status) error=$($homeSnapshotPrewarm.error)"
+  }
+  $bondDates = Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:7888/api/bond-analytics/dates" -Description "bond analytics dates" -LogPaths $apiLogPaths
+  $riskDates = Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:7888/api/risk/tensor/dates" -Description "risk tensor dates" -LogPaths $apiLogPaths
+  $riskDatesPayload = $riskDates.Content | ConvertFrom-Json
+  $riskReportDate = @($riskDatesPayload.result.report_dates) | Select-Object -First 1
+  if ([string]::IsNullOrWhiteSpace($riskReportDate)) {
+    throw "Risk tensor dates smoke returned no report_dates."
+  }
+  $riskTensorSmoke = Invoke-ConcurrentHttpSmoke `
+    -Url "http://127.0.0.1:7888/api/risk/tensor?report_date=$riskReportDate" `
+    -RequestCount 8 `
+    -Description "risk tensor detail concurrent smoke"
+  $riskDatesSmoke = Invoke-ConcurrentHttpSmoke `
+    -Url "http://127.0.0.1:7888/api/risk/tensor/dates" `
+    -RequestCount 4 `
+    -Description "risk tensor dates concurrent smoke"
 }
-if ($homeSnapshotPrewarm.status -ne "ready") {
-  throw "Home snapshot prewarm is not ready: status=$($homeSnapshotPrewarm.status) error=$($homeSnapshotPrewarm.error)"
-}
-$bondDates = Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:7888/api/bond-analytics/dates" -Description "bond analytics dates" -LogPaths $apiLogPaths
-$riskDates = Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:7888/api/risk/tensor/dates" -Description "risk tensor dates" -LogPaths $apiLogPaths
-$riskDatesPayload = $riskDates.Content | ConvertFrom-Json
-$riskReportDate = @($riskDatesPayload.result.report_dates) | Select-Object -First 1
-if ([string]::IsNullOrWhiteSpace($riskReportDate)) {
-  throw "Risk tensor dates smoke returned no report_dates."
-}
-$riskTensorSmoke = Invoke-ConcurrentHttpSmoke `
-  -Url "http://127.0.0.1:7888/api/risk/tensor?report_date=$riskReportDate" `
-  -RequestCount 8 `
-  -Description "risk tensor detail concurrent smoke"
-$riskDatesSmoke = Invoke-ConcurrentHttpSmoke `
-  -Url "http://127.0.0.1:7888/api/risk/tensor/dates" `
-  -RequestCount 4 `
-  -Description "risk tensor dates concurrent smoke"
 $frontendLaunch = Start-DevScriptDetached -ScriptName "dev-frontend.ps1"
 $frontendLogPaths = @($frontendLaunch.StderrPath, $frontendLaunch.StdoutPath, (Join-Path $logRoot "dev-frontend.err.log"), (Join-Path $logRoot "dev-frontend.out.log"))
 $frontendRoot = Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:5888" -Description "frontend root" -LogPaths $frontendLogPaths
@@ -583,6 +599,7 @@ if ($auditSummary.dirty_rows -ne 0) {
 }
 
 Write-Host "Native MOSS dev stack launched." -ForegroundColor Cyan
+Write-Host "API script: $apiScriptName" -ForegroundColor DarkGray
 Write-Host "API:      http://127.0.0.1:7888" -ForegroundColor Gray
 Write-Host "Frontend: http://127.0.0.1:5888" -ForegroundColor Gray
 Write-Host "Postgres: postgresql://moss:moss@127.0.0.1:55432/moss" -ForegroundColor Gray
@@ -592,10 +609,15 @@ Write-Host "Frontend PID: $($frontendProcess.ProcessId)" -ForegroundColor DarkGr
 Write-Host "Postgres PID: $($postgresPort.OwningProcess)" -ForegroundColor DarkGray
 Write-Host "API health:   $($apiHealth.StatusCode)" -ForegroundColor DarkGray
 Write-Host "API ready:    $($apiReady.StatusCode)" -ForegroundColor DarkGray
-Write-Host "Home cache:   $($homeSnapshotWarm.StatusCode) snapshot warmed" -ForegroundColor DarkGray
-Write-Host "Home prewarm: $($homeSnapshotPrewarm.status) ($($homeSnapshotPrewarm.last_duration_ms) ms) error=$($homeSnapshotPrewarm.error)" -ForegroundColor DarkGray
-Write-Host "Bond dates:   $($bondDates.StatusCode)" -ForegroundColor DarkGray
-Write-Host "Risk tensor:  $($riskTensorSmoke.Count) detail + $($riskDatesSmoke.Count) dates concurrent checks, report_date=$riskReportDate" -ForegroundColor DarkGray
+if ($agentDevMode) {
+  Write-Host "Agent projects: $($agentProjects.StatusCode)" -ForegroundColor DarkGray
+  Write-Host "Agent runs:     $($agentRuns.StatusCode)" -ForegroundColor DarkGray
+} else {
+  Write-Host "Home cache:   $($homeSnapshotWarm.StatusCode) snapshot warmed" -ForegroundColor DarkGray
+  Write-Host "Home prewarm: $($homeSnapshotPrewarm.status) ($($homeSnapshotPrewarm.last_duration_ms) ms) error=$($homeSnapshotPrewarm.error)" -ForegroundColor DarkGray
+  Write-Host "Bond dates:   $($bondDates.StatusCode)" -ForegroundColor DarkGray
+  Write-Host "Risk tensor:  $($riskTensorSmoke.Count) detail + $($riskDatesSmoke.Count) dates concurrent checks, report_date=$riskReportDate" -ForegroundColor DarkGray
+}
 Write-Host "Frontend:     $($frontendRoot.StatusCode) root + $($frontendClientContext.StatusCode) client context module" -ForegroundColor DarkGray
 Write-Host "Worker smoke: $($workerHeartbeat.token)" -ForegroundColor DarkGray
 Write-Host "Lineage audit: clean" -ForegroundColor DarkGray
