@@ -810,6 +810,33 @@ class BalanceAnalysisRepository(DuckDBRepository):
                     as asset_total_accrued_interest_amount,
                   zqtz.liability_accrued_interest_amount + tyw.liability_accrued_interest_amount
                     as liability_total_accrued_interest_amount,
+                  zqtz.detail_row_count + tyw.detail_row_count as lineage_row_count,
+                  (
+                    select count(*)
+                    from (
+                      select source_version
+                      from fact_formal_zqtz_balance_daily
+                      where {' and '.join(zqtz_where_parts)}
+                      union all
+                      select source_version
+                      from fact_formal_tyw_balance_daily
+                      where {' and '.join(tyw_where_parts)}
+                    )
+                    where coalesce(trim(source_version), '') = ''
+                  ) as source_version_missing_count,
+                  (
+                    select count(*)
+                    from (
+                      select rule_version
+                      from fact_formal_zqtz_balance_daily
+                      where {' and '.join(zqtz_where_parts)}
+                      union all
+                      select rule_version
+                      from fact_formal_tyw_balance_daily
+                      where {' and '.join(tyw_where_parts)}
+                    )
+                    where coalesce(trim(rule_version), '') = ''
+                  ) as rule_version_missing_count,
                   (
                     select string_agg(source_version, '__' order by source_version)
                     from (
@@ -843,6 +870,10 @@ class BalanceAnalysisRepository(DuckDBRepository):
                     report_date,
                     position_scope,
                     currency_basis,
+                    *zqtz_params,
+                    *tyw_params,
+                    *zqtz_params,
+                    *tyw_params,
                     *zqtz_params,
                     *tyw_params,
                     *zqtz_params,
@@ -892,6 +923,33 @@ class BalanceAnalysisRepository(DuckDBRepository):
                   zqtz.total_market_value_amount + tyw.total_market_value_amount as total_market_value_amount,
                   zqtz.total_amortized_cost_amount + tyw.total_amortized_cost_amount as total_amortized_cost_amount,
                   zqtz.total_accrued_interest_amount + tyw.total_accrued_interest_amount as total_accrued_interest_amount,
+                  zqtz.detail_row_count + tyw.detail_row_count as lineage_row_count,
+                  (
+                    select count(*)
+                    from (
+                      select source_version
+                      from fact_formal_zqtz_balance_daily
+                      where {' and '.join(zqtz_where_parts)}
+                      union all
+                      select source_version
+                      from fact_formal_tyw_balance_daily
+                      where {' and '.join(tyw_where_parts)}
+                    )
+                    where coalesce(trim(source_version), '') = ''
+                  ) as source_version_missing_count,
+                  (
+                    select count(*)
+                    from (
+                      select rule_version
+                      from fact_formal_zqtz_balance_daily
+                      where {' and '.join(zqtz_where_parts)}
+                      union all
+                      select rule_version
+                      from fact_formal_tyw_balance_daily
+                      where {' and '.join(tyw_where_parts)}
+                    )
+                    where coalesce(trim(rule_version), '') = ''
+                  ) as rule_version_missing_count,
                   (
                     select string_agg(source_version, '__' order by source_version)
                     from (
@@ -929,6 +987,10 @@ class BalanceAnalysisRepository(DuckDBRepository):
                     *tyw_params,
                     *zqtz_params,
                     *tyw_params,
+                    *zqtz_params,
+                    *tyw_params,
+                    *zqtz_params,
+                    *tyw_params,
                 ],
             )
 
@@ -954,7 +1016,15 @@ class BalanceAnalysisRepository(DuckDBRepository):
                     "liability_total_accrued_interest_amount",
                 ]
             )
-        columns.extend(["source_version", "rule_version"])
+        columns.extend(
+            [
+                "lineage_row_count",
+                "source_version_missing_count",
+                "rule_version_missing_count",
+                "source_version",
+                "rule_version",
+            ]
+        )
         out = dict(zip(columns, row, strict=True))
         if position_scope == "asset":
             tma, taa, tai = (out["total_market_value_amount"], out["total_amortized_cost_amount"], out["total_accrued_interest_amount"])

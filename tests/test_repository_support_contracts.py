@@ -987,6 +987,9 @@ def test_formal_zqtz_balance_metrics_repo_exposes_combined_formal_overview(tmp_p
         "liability_total_amortized_cost_amount": 0,
         "asset_total_accrued_interest_amount": Decimal("0E-8"),
         "liability_total_accrued_interest_amount": 0,
+        "lineage_row_count": 2,
+        "source_version_missing_count": 0,
+        "rule_version_missing_count": 0,
         "source_version": "sv_t_1__sv_z_1",
         "rule_version": "rv_t_1__rv_z_1",
     }

@@ -225,6 +225,9 @@ def _portfolio_overview_payload(request: AgentQueryRequest, duckdb_path: str) ->
         currency_basis=currency_basis,
     )
     detail_row_count = int(overview["detail_row_count"])
+    lineage_row_count = int(overview.get("lineage_row_count") or detail_row_count or 0)
+    source_version_missing_count = int(overview.get("source_version_missing_count") or 0)
+    rule_version_missing_count = int(overview.get("rule_version_missing_count") or 0)
     source_version = str(overview.get("source_version") or "").strip()
     rule_version = str(overview.get("rule_version") or "").strip()
     requested_report_date = _requested_report_date(request)
@@ -232,7 +235,11 @@ def _portfolio_overview_payload(request: AgentQueryRequest, duckdb_path: str) ->
         "explicit" if requested_report_date else "latest_default"
     )
     cny_amount_contract = currency_basis == "CNY"
-    lineage_complete = bool(source_version and rule_version)
+    lineage_complete = (
+        lineage_row_count > 0
+        and source_version_missing_count == 0
+        and rule_version_missing_count == 0
+    )
     formal_use_allowed = detail_row_count > 0 and cny_amount_contract and lineage_complete
     quality_flag: Literal["ok", "warning"] = "ok" if formal_use_allowed else "warning"
 
@@ -262,9 +269,9 @@ def _portfolio_overview_payload(request: AgentQueryRequest, duckdb_path: str) ->
         ]
     elif not lineage_complete:
         missing_lineage_parts = []
-        if not source_version:
+        if source_version_missing_count > 0:
             missing_lineage_parts.append("source_version")
-        if not rule_version:
+        if rule_version_missing_count > 0:
             missing_lineage_parts.append("rule_version")
         missing_lineage_text = ", ".join(missing_lineage_parts)
         answer = (
