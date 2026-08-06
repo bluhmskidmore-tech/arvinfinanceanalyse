@@ -108,6 +108,34 @@ P1_ROW_RE = re.compile(r"^\|\s*(P1-\d{2})\s*\|")
 PREWORK_RE = re.compile(r"^-\s+\*\*(P1-\d{2})\b")
 TIMESTAMP_RE = re.compile(r"Refreshed at `([^`]+)`")
 P108_TEST_RE = re.compile(r"`(npm\.cmd test -- [^`]+)` was rerun at `([^`]+)`")
+EXPECTED_OWNER_DECISION_CLOSED_ACCEPTANCE = {
+    "P1-07": {
+        "selected_option": "B",
+        "status": "implemented-and-verified",
+        "matrix_evidence_anchors": (
+            "-0.3*liquidity_score",
+            "build_macro_context_v1",
+        ),
+        "capture_evidence_anchors": (
+            "tests/test_macro_bond_linkage.py",
+            "build_macro_context_v1",
+        ),
+    },
+    "P1-09": {
+        "selected_option": "A",
+        "status": "implemented-and-verified",
+        "matrix_evidence_anchors": (
+            "MTR-BMV-005",
+            "current_balance_pct",
+            "resolveBucketSharePct",
+        ),
+        "capture_evidence_anchors": (
+            "MTR-BMV-005",
+            "balanceMovementShareModel.test.ts",
+            "BalanceMovementAnalysisPage.test.tsx",
+        ),
+    },
+}
 
 
 def _now_shanghai() -> str:
@@ -121,6 +149,20 @@ def _section(text: str, start_marker: str, end_marker: str | None = None) -> str
     if end_marker is not None and end_marker in section:
         section = section.split(end_marker, maxsplit=1)[0]
     return section
+
+
+def _section_to_next_heading(text: str, start_marker: str) -> str:
+    section = _section(text, start_marker)
+    next_heading = re.search(r"^##\s+", section, re.MULTILINE)
+    return section[: next_heading.start()] if next_heading else section
+
+
+def _repo_relative_identifier(path: Path) -> str:
+    resolved = Path(path).resolve()
+    try:
+        return resolved.relative_to(ROOT.resolve()).as_posix()
+    except ValueError:
+        return str(resolved)
 
 
 def _markdown_cells(line: str) -> list[str]:
@@ -218,6 +260,25 @@ def _capture_rows(section: str) -> list[dict[str, Any]]:
                 "verification_gate": cells[5] if len(cells) > 5 else "",
                 "status": cells[6] if len(cells) > 6 else "",
                 "raw": line,
+            }
+        )
+    return rows
+
+
+def _closed_capture_rows(section: str) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for cells in _table_body_cells(section):
+        if len(cells) < 6:
+            continue
+        p1_id = cells[0].strip().strip("`")
+        if not re.fullmatch(r"P1-\d{2}", p1_id):
+            continue
+        rows.append(
+            {
+                "id": p1_id,
+                "selected_decision": cells[2],
+                "capture_evidence": cells[3],
+                "status": cells[4],
             }
         )
     return rows
@@ -414,6 +475,66 @@ def _unexpected_ids(actual_ids: list[str]) -> list[str]:
     return [p1_id for p1_id in actual_ids if p1_id not in expected]
 
 
+def _owner_decision_closed_acceptance(
+    *,
+    matrix_rows: list[dict[str, Any]],
+    capture_rows: list[dict[str, str]],
+) -> tuple[dict[str, Any], list[str]]:
+    matrix_by_id = {row["id"]: row for row in matrix_rows}
+    capture_by_id = {row["id"]: row for row in capture_rows}
+    records: dict[str, Any] = {}
+    errors: list[str] = []
+
+    for p1_id, expected in EXPECTED_OWNER_DECISION_CLOSED_ACCEPTANCE.items():
+        matrix_row = matrix_by_id.get(p1_id) or {}
+        matrix_cells = matrix_row.get("cells") or []
+        matrix_evidence = str(matrix_cells[2]) if len(matrix_cells) > 2 else ""
+        capture_row = capture_by_id.get(p1_id) or {}
+        selected_decision = str(capture_row.get("selected_decision") or "")
+        capture_evidence = str(capture_row.get("capture_evidence") or "")
+        status = str(capture_row.get("status") or "")
+        selected_option = _selected_option_letter(selected_decision)
+        matrix_selected_option = _selected_option_letter(matrix_evidence)
+        checks = {
+            "matrix_row_present": bool(matrix_row),
+            "capture_row_present": bool(capture_row),
+            "matrix_selected_option_matches": (
+                matrix_selected_option == expected["selected_option"]
+            ),
+            "capture_selected_option_matches": (
+                selected_option == expected["selected_option"]
+            ),
+            "status_matches": status == expected["status"],
+            "matrix_evidence_complete": all(
+                anchor in matrix_evidence
+                for anchor in expected["matrix_evidence_anchors"]
+            ),
+            "capture_evidence_complete": all(
+                anchor in capture_evidence
+                for anchor in expected["capture_evidence_anchors"]
+            ),
+        }
+        for check_name, passed in checks.items():
+            if not passed:
+                errors.append(
+                    f"owner-decision closure acceptance failed: {p1_id} {check_name}"
+                )
+        records[p1_id] = {
+            "selected_option": selected_option,
+            "selected_decision": selected_decision,
+            "status": status,
+            "matrix_evidence": matrix_evidence,
+            "capture_evidence": capture_evidence,
+            "checks": checks,
+        }
+
+    return {
+        "expected_ids": list(EXPECTED_OWNER_DECISION_CLOSED_ACCEPTANCE),
+        "records_by_id": records,
+        "all_accepted": not errors,
+    }, errors
+
+
 def build_snapshot(
     *,
     generated_at: str | None = None,
@@ -432,7 +553,7 @@ def build_snapshot(
     verified_closed_section = _section(
         matrix_text,
         "## Verified Closed Before Owner Review",
-        "## Engineering Prework / Impact Slice Map",
+        "## Verified Closed After Owner Decision",
     )
     owner_decision_closed_section = _section(
         matrix_text,
@@ -448,6 +569,10 @@ def build_snapshot(
         OPEN_CAPTURE_SECTION_MARKER,
         CLOSED_CAPTURE_SECTION_MARKER,
     )
+    closed_capture_section = _section_to_next_heading(
+        capture_text,
+        CLOSED_CAPTURE_SECTION_MARKER,
+    )
 
     open_rows = _decision_rows(decision_section)
     open_ids = [row["id"] for row in open_rows]
@@ -459,6 +584,12 @@ def build_snapshot(
     verified_closed_ids = [row["id"] for row in verified_closed_rows]
     owner_decision_closed_rows = _decision_rows(owner_decision_closed_section)
     owner_decision_closed_ids = [row["id"] for row in owner_decision_closed_rows]
+    owner_decision_closed_acceptance, owner_decision_acceptance_errors = (
+        _owner_decision_closed_acceptance(
+            matrix_rows=owner_decision_closed_rows,
+            capture_rows=_closed_capture_rows(closed_capture_section),
+        )
+    )
     prework_ids = _prework_ids(prework_section)
     capture_rows = _capture_rows(capture_section)
     capture_ids = [row["id"] for row in capture_rows]
@@ -525,6 +656,7 @@ def build_snapshot(
         drift_errors.append(
             "owner-decision closed P1 IDs do not match the expected order"
         )
+    drift_errors.extend(owner_decision_acceptance_errors)
     if _missing_ids(prework_ids):
         drift_errors.append("engineering prework map is missing open P1 IDs")
     if _unexpected_ids(prework_ids):
@@ -540,7 +672,7 @@ def build_snapshot(
     return {
         "report_kind": "calculation_p1_owner_decision_snapshot",
         "generated_at": generated_at,
-        "repo_root": str(ROOT),
+        "repo_root": ".",
         "audit_date": AUDIT_DATE,
         "state_as_of": "2026-08-06",
         "historical_baseline": {
@@ -564,7 +696,7 @@ def build_snapshot(
             "certifies_routes": False,
         },
         "matrix": {
-            "path": str(Path(matrix_path)),
+            "path": _repo_relative_identifier(Path(matrix_path)),
             "latest_verification_refresh": _timestamp(matrix_text),
             "open_decision_ids": open_ids,
             "open_decision_count": len(open_ids),
@@ -580,6 +712,7 @@ def build_snapshot(
             "p1_08_in_open_rows": "P1-08" in open_ids,
             "verified_closed_ids": verified_closed_ids,
             "owner_decision_closed_ids": owner_decision_closed_ids,
+            "owner_decision_closed_acceptance": owner_decision_closed_acceptance,
             "p1_08_verified_closed": "P1-08" in verified_closed_ids,
             "p1_08_regression": _p108_test_evidence(matrix_text),
         },
@@ -591,7 +724,7 @@ def build_snapshot(
             "boundary_checks": boundary_checks,
         },
         "capture_template": {
-            "path": str(Path(capture_template_path)),
+            "path": _repo_relative_identifier(Path(capture_template_path)),
             "row_ids": capture_ids,
             "row_count": len(capture_ids),
             "missing_ids": _missing_ids(capture_ids),

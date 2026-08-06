@@ -51,8 +51,16 @@ def test_calculation_p1_owner_decision_snapshot_preserves_fail_closed_boundary()
     assert snapshot["matrix"]["capture_template_candidate_options_match_matrix"] is True
     assert snapshot["matrix"]["p1_08_in_open_rows"] is False
     assert snapshot["matrix"]["p1_08_verified_closed"] is True
+    assert snapshot["matrix"]["verified_closed_ids"] == ["P1-08"]
     assert snapshot["matrix"]["owner_decision_closed_ids"] == (
         EXPECTED_OWNER_DECISION_CLOSED_P1_IDS
+    )
+    assert snapshot["repo_root"] == "."
+    assert snapshot["matrix"]["path"] == (
+        "docs/audits/2026-06-10-calculation-p1-owner-decision-matrix.md"
+    )
+    assert snapshot["capture_template"]["path"] == (
+        "docs/audits/2026-06-10-owner-decision-capture-template.zh.md"
     )
     assert snapshot["matrix"]["p1_08_regression"] == {
         "command": (
@@ -108,6 +116,57 @@ def test_calculation_p1_owner_decision_snapshot_preserves_fail_closed_boundary()
     assert snapshot["meeting_record"]["is_complete"] is False
     assert snapshot["drift_errors"] == []
     assert "does not choose or approve any calculation convention" in snapshot["boundary"]
+
+
+def test_calculation_p1_owner_decision_snapshot_locks_literal_closed_acceptance() -> None:
+    snapshot = build_snapshot(generated_at="2026-08-06T22:30:00+08:00")
+
+    acceptance = snapshot["matrix"]["owner_decision_closed_acceptance"]
+    assert acceptance["expected_ids"] == ["P1-07", "P1-09"]
+    assert acceptance["all_accepted"] is True
+
+    p107 = acceptance["records_by_id"]["P1-07"]
+    assert p107["selected_option"] == "B"
+    assert p107["status"] == "implemented-and-verified"
+    assert "tests/test_macro_bond_linkage.py" in p107["capture_evidence"]
+    assert "build_macro_context_v1" in p107["capture_evidence"]
+    assert "-0.3*liquidity_score" in p107["matrix_evidence"]
+    assert all(p107["checks"].values())
+
+    p109 = acceptance["records_by_id"]["P1-09"]
+    assert p109["selected_option"] == "A"
+    assert p109["status"] == "implemented-and-verified"
+    assert "MTR-BMV-005" in p109["capture_evidence"]
+    assert "balanceMovementShareModel.test.ts" in p109["capture_evidence"]
+    assert "BalanceMovementAnalysisPage.test.tsx" in p109["capture_evidence"]
+    assert "current_balance_pct" in p109["matrix_evidence"]
+    assert "resolveBucketSharePct" in p109["matrix_evidence"]
+    assert all(p109["checks"].values())
+
+
+def test_calculation_p1_owner_decision_snapshot_fails_closed_when_closed_option_drifts(
+    tmp_path: Path,
+) -> None:
+    capture_path = tmp_path / "capture-template.md"
+    capture_text = CAPTURE_TEMPLATE.read_text(encoding="utf-8").replace(
+        "Option B - liquidity remains looseness-positive but enters composite with inverse sign",
+        "Option A - liquidity remains looseness-positive but enters composite with inverse sign",
+        1,
+    )
+    capture_path.write_text(capture_text, encoding="utf-8")
+
+    snapshot = build_snapshot(
+        generated_at="2026-08-06T22:30:00+08:00",
+        matrix_path=MATRIX,
+        capture_template_path=capture_path,
+    )
+
+    assert snapshot["status"]["overall"] == "matrix_drift"
+    assert snapshot["matrix"]["owner_decision_closed_acceptance"]["all_accepted"] is False
+    assert (
+        "owner-decision closure acceptance failed: P1-07 capture_selected_option_matches"
+        in snapshot["drift_errors"]
+    )
 
 
 def test_calculation_p1_owner_decision_snapshot_cli_outputs_json(tmp_path: Path) -> None:

@@ -1,7 +1,7 @@
 {
   "report_kind": "calculation_p1_owner_decision_snapshot",
   "generated_at": "2026-08-06T22:30:00+08:00",
-  "repo_root": "G:\\MOSS-V3-worktrees\\p1-governance-sync-20260806",
+  "repo_root": ".",
   "audit_date": "2026-06-10",
   "state_as_of": "2026-08-06",
   "historical_baseline": {
@@ -33,7 +33,7 @@
     "certifies_routes": false
   },
   "matrix": {
-    "path": "G:\\MOSS-V3-worktrees\\p1-governance-sync-20260806\\docs\\audits\\2026-06-10-calculation-p1-owner-decision-matrix.md",
+    "path": "docs/audits/2026-06-10-calculation-p1-owner-decision-matrix.md",
     "latest_verification_refresh": "2026-08-06T22:30:00+08:00",
     "open_decision_ids": [
       "P1-01",
@@ -140,14 +140,53 @@
     "capture_template_candidate_options_match_matrix": true,
     "p1_08_in_open_rows": false,
     "verified_closed_ids": [
-      "P1-08",
-      "P1-07",
-      "P1-09"
+      "P1-08"
     ],
     "owner_decision_closed_ids": [
       "P1-07",
       "P1-09"
     ],
+    "owner_decision_closed_acceptance": {
+      "expected_ids": [
+        "P1-07",
+        "P1-09"
+      ],
+      "records_by_id": {
+        "P1-07": {
+          "selected_option": "B",
+          "selected_decision": "Option B - liquidity remains looseness-positive but enters composite with inverse sign",
+          "status": "implemented-and-verified",
+          "matrix_evidence": "Option B selected and implemented: `liquidity_score` remains looseness-positive, `composite_score` remains bond-unfavorable/tightness-positive, and the composite formula uses `-0.3*liquidity_score`; regression isolates liquidity movement and checks `build_macro_context_v1` formula/polarity metadata.",
+          "capture_evidence": "`tests/test_macro_bond_linkage.py`; `build_macro_context_v1` formula/polarity metadata；前端 polarity copy",
+          "checks": {
+            "matrix_row_present": true,
+            "capture_row_present": true,
+            "matrix_selected_option_matches": true,
+            "capture_selected_option_matches": true,
+            "status_matches": true,
+            "matrix_evidence_complete": true,
+            "capture_evidence_complete": true
+          }
+        },
+        "P1-09": {
+          "selected_option": "A",
+          "selected_decision": "Option A - backend current_balance_pct is authoritative",
+          "status": "implemented-and-verified",
+          "matrix_evidence": "Option A selected and implemented: `MTR-BMV-005` binds the formal display to backend `AccountingAssetMovementRowPayload.current_balance_pct`; `resolveBucketSharePct` accepts only that value, and model/page regressions prove backend precedence, missing-share `—`, and fail-closed chart behavior.",
+          "capture_evidence": "`docs/metric_dictionary.md` `MTR-BMV-005`; `balanceMovementShareModel.test.ts`; `BalanceMovementAnalysisPage.test.tsx`; typecheck/target ESLint",
+          "checks": {
+            "matrix_row_present": true,
+            "capture_row_present": true,
+            "matrix_selected_option_matches": true,
+            "capture_selected_option_matches": true,
+            "status_matches": true,
+            "matrix_evidence_complete": true,
+            "capture_evidence_complete": true
+          }
+        }
+      },
+      "all_accepted": true
+    },
     "p1_08_verified_closed": true,
     "p1_08_regression": {
       "command": "npm.cmd test -- src/features/bond-dashboard/utils/format.test.ts src/test/BondDashboardPage.test.tsx",
@@ -179,7 +218,7 @@
     }
   },
   "capture_template": {
-    "path": "G:\\MOSS-V3-worktrees\\p1-governance-sync-20260806\\docs\\audits\\2026-06-10-owner-decision-capture-template.zh.md",
+    "path": "docs/audits/2026-06-10-owner-decision-capture-template.zh.md",
     "row_ids": [
       "P1-01",
       "P1-02",
