@@ -211,6 +211,9 @@ def test_livermore_status_marks_stale_inflight_run_failed_once(
     assert first["failure_category"] == "stale_inflight"
     assert second["status"] == "failed"
     assert len(stale_failures) == 1
+    assert stale_failures[0]["failure_reason"] == "stale_inflight"
+    assert stale_failures[0]["trigger_mode"] == "terminal"
+    assert stale_failures[0]["finished_at"]
 
 
 def test_livermore_queue_requeues_same_key_after_status_reconciles_stale_failure(
