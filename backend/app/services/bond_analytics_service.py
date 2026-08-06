@@ -914,13 +914,6 @@ def refresh_bond_analytics(
                     f"Bond analytics refresh already in progress for report_date={report_date}."
                 )
 
-            try:
-                _prepare_yield_curve_inputs_for_refresh(settings=settings, report_date=report_date)
-            except Exception as exc:
-                raise BondAnalyticsRefreshServiceError(
-                    f"Bond analytics refresh could not prepare yield curve inputs for report_date={report_date}."
-                ) from exc
-
             run_id = _build_run_id()
             queued_at = datetime.now(UTC).isoformat()
             GovernanceRepository(base_dir=settings.governance_path).append(

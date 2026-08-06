@@ -73,6 +73,65 @@ def _execute_bond_analytics_materialization(
     )
 
 
+def ensure_yield_curve_inputs_on_or_before(*args: object, **kwargs: object) -> object:
+    from backend.app.tasks.yield_curve_materialize import (
+        ensure_yield_curve_inputs_on_or_before as _ensure,
+    )
+
+    return _ensure(*args, **kwargs)
+
+
+def _yield_curve_anchor_dates_for_materialization(
+    *,
+    duckdb_path: str,
+    report_date: str,
+) -> tuple[str, ...]:
+    report_dt = date.fromisoformat(report_date)
+    anchors = {
+        report_dt.isoformat(),
+        report_dt.replace(day=1).isoformat(),
+    }
+    prior_balance_date = BondAnalyticsRepository(duckdb_path).resolve_prior_curve_anchor_report_date(
+        report_date=report_date,
+    )
+    if prior_balance_date:
+        anchors.add(prior_balance_date)
+    return tuple(sorted(anchors))
+
+
+def _execute_bond_analytics_with_curve_preparation(
+    *,
+    report_date: str,
+    duckdb_file: Path,
+) -> FormalComputeMaterializeResult:
+    try:
+        ensure_yield_curve_inputs_on_or_before(
+            anchor_dates=_yield_curve_anchor_dates_for_materialization(
+                duckdb_path=str(duckdb_file),
+                report_date=report_date,
+            ),
+            duckdb_path=str(duckdb_file),
+        )
+    except Exception as exc:
+        raise FormalComputeMaterializeFailure(
+            source_version=BOND_ANALYTICS_MODULE.running_source_version,
+            vendor_version="vv_none",
+            message=f"yield_curve_prepare_failed: {exc}",
+        ) from exc
+    return _execute_bond_analytics_materialization(
+        report_date=report_date,
+        duckdb_file=duckdb_file,
+    )
+
+
+def _invalidate_bond_analytics_worker_caches(report_date: str) -> None:
+    from backend.app.services.bond_analytics_service import (
+        _invalidate_bond_analytics_caches_for_report_date,
+    )
+
+    _invalidate_bond_analytics_caches_for_report_date(report_date)
+
+
 def _materialize_bond_analytics_facts(
     *,
     report_date: str,
@@ -85,7 +144,7 @@ def _materialize_bond_analytics_facts(
     duckdb_file.parent.mkdir(parents=True, exist_ok=True)
     governance_path = Path(governance_dir or settings.governance_path)
 
-    return run_formal_materialize(
+    payload = run_formal_materialize(
         descriptor=BOND_ANALYTICS_MODULE,
         job_name="bond_analytics_materialize",
         report_date=report_date,
@@ -93,11 +152,13 @@ def _materialize_bond_analytics_facts(
         lock_base_dir=str(duckdb_file.parent),
         duckdb_path=str(duckdb_file),
         run_id=run_id,
-        execute_materialization=lambda: _execute_bond_analytics_materialization(
+        execute_materialization=lambda: _execute_bond_analytics_with_curve_preparation(
             report_date=report_date,
             duckdb_file=duckdb_file,
         ),
     )
+    _invalidate_bond_analytics_worker_caches(report_date)
+    return payload
 
 
 materialize_bond_analytics_facts = register_actor_once(

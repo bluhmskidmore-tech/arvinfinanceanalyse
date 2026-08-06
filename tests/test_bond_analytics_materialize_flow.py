@@ -305,6 +305,12 @@ def seed_yield_curves_for_bond_analytics_tests(duckdb_path: str) -> None:
             repo.replace_curve_snapshots(trade_date=trade_date, snapshots=snapshots, rule_version=RULE_VERSION)
 
 
+@pytest.fixture(autouse=True)
+def _seed_worker_yield_curve_inputs(tmp_path) -> None:
+    """Keep materialization unit tests local now that curve preparation runs in the worker."""
+    seed_yield_curves_for_bond_analytics_tests(str(tmp_path / "moss.duckdb"))
+
+
 def _materialize_sample_facts(tmp_path):
     repo_mod, task_mod = _load_modules()
     duckdb_path = tmp_path / "moss.duckdb"
