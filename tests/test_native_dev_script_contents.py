@@ -82,6 +82,8 @@ def test_dev_agent_api_uses_short_hermes_timeout_for_local_responsiveness():
     assert "MOSS_AGENT_HERMES_TIMEOUT_SECONDS=$($env:MOSS_AGENT_HERMES_TIMEOUT_SECONDS)" in ps1
     assert "set MOSS_AGENT_HERMES_TIMEOUT_SECONDS=12" in cmd
     assert "MOSS_AGENT_HERMES_TIMEOUT_SECONDS=%MOSS_AGENT_HERMES_TIMEOUT_SECONDS%" in cmd
+    assert '$env:MOSS_AGENT_DEV_SCOPE_BYPASS = "true"' in ps1
+    assert "set MOSS_AGENT_DEV_SCOPE_BYPASS=true" in cmd
 
 
 def test_dev_worker_script_bootstraps_native_environment():

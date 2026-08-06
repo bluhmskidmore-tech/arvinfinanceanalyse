@@ -4,6 +4,7 @@ $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
 $env:MOSS_AGENT_ENABLED = "true"
+$env:MOSS_AGENT_DEV_SCOPE_BYPASS = "true"
 $env:MOSS_AGENT_PROVIDER = "hermes"
 $env:MOSS_AGENT_HERMES_HOME = "/home/hermes/.hermes"
 $env:MOSS_AGENT_HERMES_TRANSPORT = "cli"
@@ -16,6 +17,7 @@ $env:MOSS_SKIP_STARTUP_STORAGE_MIGRATIONS = "1"
 
 Write-Host "[MOSS Agent] Repo root: $root" -ForegroundColor Cyan
 Write-Host "[MOSS Agent] MOSS_AGENT_ENABLED=$($env:MOSS_AGENT_ENABLED)" -ForegroundColor DarkGray
+Write-Host "[MOSS Agent] MOSS_AGENT_DEV_SCOPE_BYPASS=$($env:MOSS_AGENT_DEV_SCOPE_BYPASS)" -ForegroundColor DarkGray
 Write-Host "[MOSS Agent] MOSS_AGENT_PROVIDER=$($env:MOSS_AGENT_PROVIDER)" -ForegroundColor DarkGray
 Write-Host "[MOSS Agent] MOSS_AGENT_HERMES_HOME=$($env:MOSS_AGENT_HERMES_HOME)" -ForegroundColor DarkGray
 Write-Host "[MOSS Agent] MOSS_AGENT_HERMES_TRANSPORT=$($env:MOSS_AGENT_HERMES_TRANSPORT)" -ForegroundColor DarkGray
