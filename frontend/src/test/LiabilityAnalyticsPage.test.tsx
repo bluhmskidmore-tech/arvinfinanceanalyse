@@ -7,11 +7,10 @@ import { MemoryRouter } from "react-router-dom";
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
 import type {
   BalanceAnalysisDatesPayload,
-  LiabilityRiskBucketsPayload,
-  LiabilityYieldMetricsPayload,
   Numeric,
   ResultMeta,
 } from "../api/contracts";
+import type { LiabilityRiskBucketsPayload, LiabilityYieldMetricsPayload } from "../api/liabilityAdbContracts";
 import type { LiabilityCounterpartyResponse } from "../api/liabilityAdbClient";
 import LiabilityAnalyticsPage from "../features/liability-analytics/pages/LiabilityAnalyticsPage";
 import { formatRawAsNumeric } from "../utils/format";
