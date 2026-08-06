@@ -211,12 +211,68 @@ jobs:
 
   osv:
     name: OSV Dependency Scan
-    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.3.0
+    needs: frontend
+    runs-on: ubuntu-latest
     permissions:
       security-events: write
       contents: read
       actions: read
-    with:
-      scan-args: |-
-        --lockfile=backend/uv.lock
-        --lockfile=frontend/package-lock.json
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare OSV evidence directory
+        run: mkdir -p test_output/security-scans
+
+      - name: Install pinned OSV-Scanner
+        run: |
+          curl --fail --location --silent --show-error \
+            --output /tmp/osv-scanner \
+            https://github.com/google/osv-scanner/releases/download/v2.3.0/osv-scanner_linux_amd64
+          echo "e774e5770c31d60745c067be5f69bf3b46641b6d0e0ed87fd65e569cda35dc50  /tmp/osv-scanner" \
+            | sha256sum --check --strict
+          chmod +x /tmp/osv-scanner
+          /tmp/osv-scanner --version
+
+      - name: Run raw OSV dependency scan
+        continue-on-error: true
+        run: |
+          python scripts/osv_reconciliation_gate.py scan \
+            --scanner /tmp/osv-scanner \
+            --raw-report test_output/security-scans/osv-report.json \
+            --scan-receipt test_output/security-scans/osv-scan-receipt.json
+
+      - name: Convert raw OSV evidence to SARIF without deciding the release gate
+        uses: google/osv-scanner-action/osv-reporter-action@9ca325867d8b4f9a3ccd4a0ca372e3cc7fcee3ef # v2.3.0
+        with:
+          scan-args: |-
+            --output=test_output/security-scans/osv-results.sarif
+            --new=test_output/security-scans/osv-report.json
+            --gh-annotations=false
+            --fail-on-vuln=false
+
+      - name: Reconcile only exact approved OSV tuples
+        if: ${{ always() }}
+        run: |
+          python scripts/osv_reconciliation_gate.py evaluate \
+            --raw-report test_output/security-scans/osv-report.json \
+            --scan-receipt test_output/security-scans/osv-scan-receipt.json \
+            --records docs/audits/osv-reconciliation-records.json \
+            --output test_output/security-scans/osv-adjudication.json
+
+      - name: Upload raw and adjudicated OSV evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: osv-scan-evidence
+          path: |
+            test_output/security-scans/osv-report.json
+            test_output/security-scans/osv-scan-receipt.json
+            test_output/security-scans/osv-adjudication.json
+            test_output/security-scans/osv-results.sarif
+
+      - name: Upload OSV SARIF to code scanning
+        if: ${{ always() && hashFiles('test_output/security-scans/osv-results.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@014f16e7ab1402f30e7c3329d33797e7948572db # v4.31.3
+        with:
+          sarif_file: test_output/security-scans/osv-results.sarif
