@@ -141,6 +141,8 @@ def test_ci_runs_frontend_accessibility_smoke_with_local_server():
     assert "MOSS_PLAYWRIGHT_USE_WEB_SERVER: \"1\"" in workflow
     # The density spec targets the retired stock-analysis DOM and must not be a CI gate.
     assert "stock-analysis-layout-density.spec.mjs" not in workflow
+    assert 'VITE_DATA_SOURCE: "mock"' in workflow
+    assert "stock-analysis-mock-smoke.spec.mjs" in workflow
     assert "npm run test:a11y-smoke" in workflow
 
 

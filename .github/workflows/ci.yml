@@ -110,6 +110,13 @@ jobs:
           MOSS_PLAYWRIGHT_BASE_URL: "http://127.0.0.1:5888"
         run: npm run test:a11y-smoke
 
+      - name: Frontend stock-analysis mock smoke
+        env:
+          MOSS_PLAYWRIGHT_USE_WEB_SERVER: "1"
+          MOSS_PLAYWRIGHT_BASE_URL: "http://127.0.0.1:5888"
+          VITE_DATA_SOURCE: "mock"
+        run: npm run test:a11y-smoke -- tests/playwright/stock-analysis-mock-smoke.spec.mjs
+
   lint:
     name: Frontend Lint
     runs-on: ubuntu-latest
