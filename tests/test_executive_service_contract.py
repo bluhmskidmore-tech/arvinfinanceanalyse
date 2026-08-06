@@ -1666,6 +1666,52 @@ def test_executive_overview_warns_when_full_scan_has_no_matching_lineage(
     assert meta["source_version"] == exec_mod._MISS_SOURCE
 
 
+def test_executive_overview_warns_when_aum_lineage_is_missing(
+    monkeypatch,
+    exec_mod,
+    tmp_path,
+):
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir(parents=True)
+    dates = _patch_executive_overview_metric_contexts(monkeypatch, exec_mod, tmp_path, governance_dir)
+    monkeypatch.setattr(
+        exec_mod,
+        "_fetch_aum_context",
+        lambda *_a, **_k: (
+            {
+                "2026-04-30": {
+                    "report_date": "2026-04-30",
+                    "total_market_value_amount": 100.0,
+                    "source_version": None,
+                    "rule_version": None,
+                },
+                "2026-04-29": {
+                    "report_date": "2026-04-29",
+                    "total_market_value_amount": 90.0,
+                    "source_version": None,
+                    "rule_version": None,
+                },
+            },
+            [90.0, 100.0],
+        ),
+    )
+
+    out = exec_mod.executive_overview(
+        report_date="2026-04-30",
+        date_context={
+            "balance": dates,
+            "pnl": dates,
+            "liability": dates,
+            "bond": dates,
+        },
+    )
+
+    meta = out["result_meta"]
+    assert meta["quality_flag"] == "warning"
+    assert meta["vendor_status"] == "vendor_unavailable"
+    assert meta["source_version"] == exec_mod._MISS_SOURCE
+
+
 def test_executive_overview_warns_when_bond_lineage_source_version_is_empty(
     monkeypatch,
     exec_mod,

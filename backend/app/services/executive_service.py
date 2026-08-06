@@ -2271,7 +2271,8 @@ def _compute_executive_overview(
     )
     lineage_fallback_failed = _cache_build_runs_full_fallback_failed(cache_build_run_fallback_state)
     has_missing_lineage = (
-        (ytd_raw is not None and _state_missing_required_lineage(ytd_state))
+        (aum_raw is not None and _state_missing_required_lineage(aum_state))
+        or (ytd_raw is not None and _state_missing_required_lineage(ytd_state))
         or (dv01_raw is not None and _state_missing_required_lineage(dv01_state))
     )
     has_overview_warning = has_missing_governed_metrics or has_missing_lineage
