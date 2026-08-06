@@ -25,6 +25,7 @@ from backend.app.agent.schemas.agent_response import (
 )
 from backend.app.agent.tools.evidence_tool import EvidenceTool
 from backend.app.schemas.cube_query import CubeQueryRequest
+from backend.app.schemas.result_meta import SourceSurface
 from backend.app.services.cube_query_service import CubeQueryService
 
 _HELP_ITEMS = [
@@ -129,6 +130,13 @@ def has_explicit_local_agent_context(context: dict[str, Any] | None) -> bool:
         or is_financial_workflow_id(explicit_workflow)
         or is_research_workflow_id(explicit_workflow)
     )
+
+
+def _optional_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    return normalized or None
 
 
 def is_plain_analysis_chat_question(question: str) -> bool:
@@ -945,6 +953,8 @@ class AnalysisViewTool:
             basis=cast(Literal["formal", "scenario", "analytical", "ledger"], payload.get("basis") or request.basis),
             result_kind=str(payload.get("result_kind") or f"agent.{intent}"),
             formal_use_allowed=bool(payload.get("formal_use_allowed", False)),
+            amount_currency_basis=_optional_text(payload.get("amount_currency_basis")),
+            amount_currency_basis_note=_optional_text(payload.get("amount_currency_basis_note")),
             source_version=str(payload.get("source_version") or "sv_agent_unknown"),
             vendor_version=str(payload.get("vendor_version") or "vv_none"),
             rule_version=str(payload.get("rule_version") or "rv_agent_mvp_v1"),
@@ -955,12 +965,18 @@ class AnalysisViewTool:
                 payload.get("vendor_status") or "ok",
             ),
             fallback_mode=cast(Literal["none", "latest_snapshot"], payload.get("fallback_mode") or "none"),
+            requested_report_date=_optional_text(payload.get("requested_report_date")),
+            resolved_report_date=_optional_text(payload.get("resolved_report_date")),
             scenario_flag=bool(payload.get("scenario_flag", False)),
+            as_of_date=_optional_text(payload.get("as_of_date")),
+            date_basis=_optional_text(payload.get("date_basis")),
+            fallback_date=_optional_text(payload.get("fallback_date")),
             tables_used=evidence.tables_used,
             filters_applied=evidence.filters_applied,
             sql_executed=evidence.sql_executed,
             evidence_rows=evidence.evidence_rows,
             next_drill=next_drill,
+            source_surface=cast(SourceSurface | None, _optional_text(payload.get("source_surface"))),
         )
         answer_mode = str(payload.get("answer_mode") or "business").strip().lower()
         raw_answer = str(payload.get("answer") or "")

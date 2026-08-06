@@ -628,7 +628,32 @@ def test_agent_query_enabled_path_returns_real_portfolio_overview_and_audit(tmp_
         "currency_basis": "CNY",
     }
     assert payload["evidence"]["evidence_rows"] == 2
-    assert any(card["title"] == "Total Market Value" for card in payload["cards"])
+    market_value_card = next(card for card in payload["cards"] if card["title"] == "Total Market Value")
+    assert market_value_card["value"] == "1,500.00000000 元"
+    assert market_value_card["spec"] == {
+        "metric_id": "MTR-BAL-001",
+        "source_field": "total_market_value_amount",
+        "raw_value": "1500.00000000",
+        "raw_unit": "yuan",
+        "raw_precision": 8,
+        "numeric": {
+            "raw": 1500.0,
+            "unit": "yuan",
+            "display": "1,500.00000000 元",
+            "precision": 8,
+            "sign_aware": False,
+        },
+    }
+    assert payload["result_meta"]["amount_currency_basis"] == "CNY"
+    assert payload["result_meta"]["requested_report_date"] is None
+    assert payload["result_meta"]["resolved_report_date"] == REPORT_DATE
+    assert payload["result_meta"]["as_of_date"] == REPORT_DATE
+    assert payload["result_meta"]["date_basis"] == "balance_analysis_report_date"
+    assert payload["result_meta"]["fallback_date"] is None
+    assert payload["result_meta"]["source_surface"] == "formal_balance"
+    assert payload["result_meta"]["tables_used"] == payload["evidence"]["tables_used"]
+    assert payload["result_meta"]["filters_applied"] == payload["evidence"]["filters_applied"]
+    assert payload["result_meta"]["evidence_rows"] == payload["evidence"]["evidence_rows"]
     assert REPORT_DATE in payload["answer"]
 
     audit_path = governance_dir / "agent_audit.jsonl"

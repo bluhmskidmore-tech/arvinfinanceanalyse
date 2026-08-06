@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 from collections.abc import Callable
 from datetime import date
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Literal
 from uuid import uuid4
 
@@ -22,6 +23,7 @@ from backend.app.services.research_radar_service import research_radar_brief_pay
 
 RULE_VERSION = "rv_agent_mvp_v1"
 BalanceAnalysisRepository = None
+_PORTFOLIO_AMOUNT_QUANTUM = Decimal("0.00000001")
 
 # 仅用于证据披露（sql_executed）：与 repository 实际执行语句等价的只读 SELECT 模板，
 # `?` 为参数占位符；实际绑定值见 evidence.filters_applied。服务端从不执行客户端传入 SQL。
@@ -222,20 +224,82 @@ def _portfolio_overview_payload(request: AgentQueryRequest, duckdb_path: str) ->
         position_scope=request.position_scope,
         currency_basis=currency_basis,
     )
+    detail_row_count = int(overview["detail_row_count"])
+    source_version = str(overview.get("source_version") or "").strip()
+    rule_version = str(overview.get("rule_version") or "").strip()
+    requested_report_date = _requested_report_date(request)
     rd_mode: Literal["explicit", "latest_default"] = (
-        "explicit" if _requested_report_date(request) else "latest_default"
+        "explicit" if requested_report_date else "latest_default"
     )
+    cny_amount_contract = currency_basis == "CNY"
+    lineage_complete = bool(source_version and rule_version)
+    formal_use_allowed = detail_row_count > 0 and cny_amount_contract and lineage_complete
+    quality_flag: Literal["ok", "warning"] = "ok" if formal_use_allowed else "warning"
+
+    if detail_row_count <= 0:
+        answer = (
+            f"{report_date} 在 position_scope={request.position_scope}、"
+            f"currency_basis={currency_basis} 下没有受治理的组合明细，未生成金融金额。"
+        )
+        cards = [
+            {
+                "type": "status",
+                "title": "No Governed Portfolio Data",
+                "value": "当前筛选条件没有可用于正式展示的组合记录。",
+            }
+        ]
+    elif not cny_amount_contract:
+        answer = (
+            f"{report_date} 的组合记录已返回，但 currency_basis={currency_basis} "
+            "不具备单一人民币金额单位，未生成金额型指标卡。"
+        )
+        cards = [
+            {
+                "type": "status",
+                "title": "Currency Unit Requires Review",
+                "value": "原币口径可能包含多币种，不能标记为 yuan 或作为正式汇总金额。",
+            }
+        ]
+    else:
+        scope_amount_label = {
+            "asset": "资产市值",
+            "liability": "负债市值",
+            "all": "资产与负债市值毛额",
+        }.get(request.position_scope, "组合市值")
+        cards = [
+            _portfolio_amount_card(
+                title="Total Market Value",
+                metric_id="MTR-BAL-001",
+                source_field="total_market_value_amount",
+                value=overview["total_market_value_amount"],
+            ),
+            _portfolio_amount_card(
+                title="Total Amortized Cost",
+                metric_id="MTR-BAL-002",
+                source_field="total_amortized_cost_amount",
+                value=overview["total_amortized_cost_amount"],
+            ),
+            _portfolio_amount_card(
+                title="Total Accrued Interest",
+                metric_id="MTR-BAL-003",
+                source_field="total_accrued_interest_amount",
+                value=overview["total_accrued_interest_amount"],
+            ),
+            _portfolio_count_card(
+                title="Detail Rows",
+                metric_id="MTR-BAL-101",
+                source_field="detail_row_count",
+                value=detail_row_count,
+            ),
+        ]
+        answer = (
+            f"{report_date} 的组合概览已返回，当前口径共 {detail_row_count} 条明细，"
+            f"{scope_amount_label} {cards[0]['value']}。"
+        )
+
     return {
-        "answer": (
-            f"{report_date} 的组合概览已返回，当前口径共 {overview['detail_row_count']} 条明细，"
-            f"总资产规模 {overview['total_market_value_amount']}。"
-        ),
-        "cards": [
-            {"type": "metric", "title": "Total Market Value", "value": str(overview["total_market_value_amount"])},
-            {"type": "metric", "title": "Total Amortized Cost", "value": str(overview["total_amortized_cost_amount"])},
-            {"type": "metric", "title": "Total Accrued Interest", "value": str(overview["total_accrued_interest_amount"])},
-            {"type": "metric", "title": "Detail Rows", "value": str(overview["detail_row_count"])},
-        ],
+        "answer": answer,
+        "cards": cards,
         "tables_used": ["fact_formal_zqtz_balance_daily", "fact_formal_tyw_balance_daily"],
         "filters_applied": _audit_filters(
             request,
@@ -246,18 +310,34 @@ def _portfolio_overview_payload(request: AgentQueryRequest, duckdb_path: str) ->
                 "currency_basis": currency_basis,
             },
         ),
-        "row_count": int(overview["detail_row_count"]),
+        "row_count": detail_row_count,
         "sql_executed": _PORTFOLIO_OVERVIEW_SQL_DISCLOSURE,
-        "quality_flag": "ok",
+        "quality_flag": quality_flag,
         "basis": "formal",
-        "formal_use_allowed": True,
+        "formal_use_allowed": formal_use_allowed,
         "scenario_flag": False,
-        "source_version": str(overview.get("source_version") or "sv_balance_analysis_unknown"),
-        "rule_version": str(overview.get("rule_version") or RULE_VERSION),
+        "source_version": source_version or "sv_balance_analysis_unavailable",
+        "rule_version": rule_version or "rv_balance_analysis_unavailable",
         "cache_version": "cv_agent_portfolio_overview_v1",
         "result_kind": "agent.portfolio_overview",
         "vendor_status": "ok",
         "fallback_mode": "none",
+        "amount_currency_basis": currency_basis,
+        "amount_currency_basis_note": (
+            "金额卡沿用正式 Balance Analysis 原始单位 yuan，未做前端换算。"
+            if cny_amount_contract
+            else "原币口径可能包含多币种，未生成金额型 Numeric 卡片。"
+        ),
+        "requested_report_date": (
+            _coerce_iso_report_date(requested_report_date)
+            if requested_report_date is not None
+            else None
+        ),
+        "resolved_report_date": report_date,
+        "as_of_date": report_date,
+        "date_basis": "balance_analysis_report_date",
+        "fallback_date": None,
+        "source_surface": "formal_balance",
         "next_drill": [
             {"dimension": "portfolio", "label": "按组合查看"},
             {"dimension": "cost_center", "label": "按成本中心查看"},
@@ -278,10 +358,96 @@ def _portfolio_overview_payload(request: AgentQueryRequest, duckdb_path: str) ->
 
 
 def _balance_analysis_currency_basis(request: AgentQueryRequest) -> str:
-    currency_basis = str(request.currency_basis or "CNY").strip().upper()
+    raw_currency_basis = str(request.currency_basis or "CNY").strip()
+    if raw_currency_basis.lower() == "native":
+        return "native"
+    currency_basis = raw_currency_basis.upper()
     if currency_basis == "CNX":
         return "CNY"
     return currency_basis or "CNY"
+
+
+def _portfolio_amount_card(
+    *,
+    title: str,
+    metric_id: str,
+    source_field: str,
+    value: Any,
+) -> dict[str, Any]:
+    if value is None:
+        return {
+            "type": "metric",
+            "title": title,
+            "value": "—",
+            "spec": {
+                "metric_id": metric_id,
+                "source_field": source_field,
+                "raw_value": None,
+                "raw_unit": "yuan",
+                "raw_precision": 8,
+                "numeric": {
+                    "raw": None,
+                    "unit": "yuan",
+                    "display": "—",
+                    "precision": 8,
+                    "sign_aware": False,
+                },
+            },
+        }
+    raw_decimal = Decimal(str(value)).quantize(
+        _PORTFOLIO_AMOUNT_QUANTUM,
+        rounding=ROUND_HALF_UP,
+    )
+    raw_value = format(raw_decimal, ".8f")
+    display = f"{raw_decimal:,.8f} 元"
+    return {
+        "type": "metric",
+        "title": title,
+        "value": display,
+        "spec": {
+            "metric_id": metric_id,
+            "source_field": source_field,
+            "raw_value": raw_value,
+            "raw_unit": "yuan",
+            "raw_precision": 8,
+            "numeric": {
+                "raw": float(raw_decimal),
+                "unit": "yuan",
+                "display": display,
+                "precision": 8,
+                "sign_aware": False,
+            },
+        },
+    }
+
+
+def _portfolio_count_card(
+    *,
+    title: str,
+    metric_id: str,
+    source_field: str,
+    value: int,
+) -> dict[str, Any]:
+    display = f"{value:,}"
+    return {
+        "type": "metric",
+        "title": title,
+        "value": display,
+        "spec": {
+            "metric_id": metric_id,
+            "source_field": source_field,
+            "raw_value": str(value),
+            "raw_unit": "count",
+            "raw_precision": 0,
+            "numeric": {
+                "raw": value,
+                "unit": "count",
+                "display": display,
+                "precision": 0,
+                "sign_aware": False,
+            },
+        },
+    }
 
 
 def _pnl_summary_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[str, Any]:

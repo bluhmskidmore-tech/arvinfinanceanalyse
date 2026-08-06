@@ -60,6 +60,7 @@ def test_portfolio_overview_intent_routes_to_balance_analysis_repo(tmp_path, mon
     envelope = tool.execute(
         request_module.AgentQueryRequest(
             question="portfolio overview",
+            filters={"report_date": "2026-03-31"},
             position_scope="asset",
             currency_basis="CNY",
         )
@@ -72,7 +73,173 @@ def test_portfolio_overview_intent_routes_to_balance_analysis_repo(tmp_path, mon
         "fact_formal_zqtz_balance_daily",
         "fact_formal_tyw_balance_daily",
     ]
-    assert any(card.title == "Total Market Value" for card in envelope.cards)
+    market_value_card = next(card for card in envelope.cards if card.title == "Total Market Value")
+    assert market_value_card.value == "1,000.00000000 元"
+    assert market_value_card.spec == {
+        "metric_id": "MTR-BAL-001",
+        "source_field": "total_market_value_amount",
+        "raw_value": "1000.00000000",
+        "raw_unit": "yuan",
+        "raw_precision": 8,
+        "numeric": {
+            "raw": 1000.0,
+            "unit": "yuan",
+            "display": "1,000.00000000 元",
+            "precision": 8,
+            "sign_aware": False,
+        },
+    }
+    assert envelope.result_meta.amount_currency_basis == "CNY"
+    assert envelope.result_meta.requested_report_date == "2026-03-31"
+    assert envelope.result_meta.resolved_report_date == "2026-03-31"
+    assert envelope.result_meta.as_of_date == "2026-03-31"
+    assert envelope.result_meta.date_basis == "balance_analysis_report_date"
+    assert envelope.result_meta.fallback_date is None
+    assert envelope.result_meta.source_surface == "formal_balance"
+
+
+def test_portfolio_overview_empty_scope_does_not_synthesize_financial_zeroes(tmp_path, monkeypatch):
+    service_module = load_module(
+        "backend.app.services.agent_service",
+        "backend/app/services/agent_service.py",
+    )
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    class EmptyBalanceAnalysisRepository:
+        def __init__(self, path: str):
+            assert path == "test.duckdb"
+
+        def list_report_dates(self) -> list[str]:
+            return ["2026-03-31"]
+
+        def fetch_formal_overview(
+            self,
+            *,
+            report_date: str,
+            position_scope: str,
+            currency_basis: str,
+        ) -> dict[str, object]:
+            return {
+                "detail_row_count": 0,
+                "total_market_value_amount": 0,
+                "total_amortized_cost_amount": 0,
+                "total_accrued_interest_amount": 0,
+                "source_version": None,
+                "rule_version": None,
+            }
+
+    monkeypatch.setattr(service_module, "BalanceAnalysisRepository", EmptyBalanceAnalysisRepository)
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
+    )
+
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="portfolio overview",
+            position_scope="liability",
+            currency_basis="CNY",
+        )
+    )
+
+    assert envelope.result_meta.result_kind == "agent.portfolio_overview"
+    assert envelope.result_meta.formal_use_allowed is False
+    assert envelope.result_meta.quality_flag == "warning"
+    assert envelope.evidence.evidence_rows == 0
+    assert not any(card.type == "metric" for card in envelope.cards)
+    assert any(card.type == "status" for card in envelope.cards)
+    assert "0.00000000" not in envelope.answer
+
+
+def test_portfolio_overview_native_currency_does_not_claim_yuan_unit(tmp_path, monkeypatch):
+    service_module = load_module(
+        "backend.app.services.agent_service",
+        "backend/app/services/agent_service.py",
+    )
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    class NativeBalanceAnalysisRepository:
+        def __init__(self, path: str):
+            assert path == "test.duckdb"
+
+        def list_report_dates(self) -> list[str]:
+            return ["2026-03-31"]
+
+        def fetch_formal_overview(
+            self,
+            *,
+            report_date: str,
+            position_scope: str,
+            currency_basis: str,
+        ) -> dict[str, object]:
+            assert currency_basis == "native"
+            return {
+                "detail_row_count": 2,
+                "total_market_value_amount": 1000,
+                "total_amortized_cost_amount": 950,
+                "total_accrued_interest_amount": 12,
+                "source_version": "sv_native_1",
+                "rule_version": "rv_native_1",
+            }
+
+    monkeypatch.setattr(service_module, "BalanceAnalysisRepository", NativeBalanceAnalysisRepository)
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
+    )
+
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="portfolio overview",
+            currency_basis="native",
+        )
+    )
+
+    assert envelope.result_meta.formal_use_allowed is False
+    assert envelope.result_meta.quality_flag == "warning"
+    assert envelope.result_meta.amount_currency_basis == "native"
+    assert not any(card.type == "metric" for card in envelope.cards)
+    assert all(not card.spec or "numeric" not in card.spec for card in envelope.cards)
+
+
+def test_portfolio_amount_card_preserves_missing_value_as_null_numeric():
+    service_module = load_module(
+        "backend.app.services.agent_service",
+        "backend/app/services/agent_service.py",
+    )
+
+    card = service_module._portfolio_amount_card(
+        title="Total Market Value",
+        metric_id="MTR-BAL-001",
+        source_field="total_market_value_amount",
+        value=None,
+    )
+
+    assert card["value"] == "—"
+    assert card["spec"]["raw_value"] is None
+    assert card["spec"]["numeric"] == {
+        "raw": None,
+        "unit": "yuan",
+        "display": "—",
+        "precision": 8,
+        "sign_aware": False,
+    }
 
 
 def test_market_value_phrase_routes_to_portfolio_overview_not_market_data(tmp_path, monkeypatch):
