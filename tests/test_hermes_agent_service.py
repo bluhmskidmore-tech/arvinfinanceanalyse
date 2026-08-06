@@ -300,8 +300,14 @@ def test_hermes_audit_carries_managed_run_id(tmp_path):
     )
     result = {
         "answer": "pong",
-        "stdout": "pong",
-        "stderr": "",
+        "stdout": (
+            '{"access_token":"json-access-secret"} '
+            "{'password': 'dict-password-secret'}"
+        ),
+        "stderr": (
+            "opaque-provider-secret at "
+            "https://user:multi-at-password@segment@provider.example/query"
+        ),
         "command": "hermes_bridge",
         "model": "default",
         "toolsets": "evidence,query,research",
@@ -315,6 +321,16 @@ def test_hermes_audit_carries_managed_run_id(tmp_path):
         (tmp_path / "governance" / "agent_audit.jsonl").read_text(encoding="utf-8").splitlines()[-1]
     )
     assert payload["run_id"] == "agent_run:hermes-audit"
+    assert "stdout_excerpt" not in payload["result_meta"]
+    assert "stderr_excerpt" not in payload["result_meta"]
+    persisted_audit = json.dumps(payload, ensure_ascii=False)
+    for marker in (
+        "json-access-secret",
+        "dict-password-secret",
+        "opaque-provider-secret",
+        "multi-at-password",
+    ):
+        assert marker not in persisted_audit
 
 
 def test_execute_hermes_agent_query_answers_short_open_chat_locally(monkeypatch, tmp_path):
@@ -447,13 +463,23 @@ def test_execute_hermes_agent_query_returns_local_fallback_when_runtime_fails(
     caplog,
 ):
     audit_calls = []
-    raw_password = "hermes-password"
-    raw_token = "hermes-token"
+    sensitive_markers = (
+        "json-access-secret",
+        "dict-password-secret",
+        "opaque-provider-secret",
+        "multi-at-password",
+    )
+    provider_error = (
+        '{"access_token":"json-access-secret"} '
+        "{'password': 'dict-password-secret'} "
+        "opaque-provider-secret at "
+        "https://user:multi-at-password@segment@provider.example/query"
+    )
 
     def fake_run_hermes_agent(**_kwargs):
         raise RuntimeError(
-            "Hermes failed with exit code 1: [Errno 32] Broken pipe at "
-            f"https://operator:{raw_password}@provider.example/query?token={raw_token}"
+            "Hermes failed with exit code 1: [Errno 32] Broken pipe: "
+            f"{provider_error}"
         )
 
     def fake_append_audit(request, governance_dir, envelope, result):
@@ -494,11 +520,12 @@ def test_execute_hermes_agent_query_returns_local_fallback_when_runtime_fails(
         ensure_ascii=False,
     )
     assert "Broken pipe" not in serialized_public_payload
-    assert raw_password not in serialized_public_payload
-    assert raw_token not in serialized_public_payload
-    assert raw_password not in caplog.text
-    assert raw_token not in caplog.text
-    assert "[REDACTED]" in caplog.text
+    for marker in sensitive_markers:
+        assert marker not in serialized_public_payload
+        assert marker not in caplog.text
+    assert "error_code=hermes_runtime_unavailable" in caplog.text
+    assert "error_type=RuntimeError" in caplog.text
+    assert "detail=" not in caplog.text
 
 
 def test_warm_hermes_bridge_if_configured_starts_daemon_thread(monkeypatch):

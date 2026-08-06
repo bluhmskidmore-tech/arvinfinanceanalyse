@@ -1252,14 +1252,21 @@ def test_agent_run_status_keeps_recent_running_record_active(monkeypatch, tmp_pa
 
 
 def test_agent_run_failure_records_error_message(monkeypatch, tmp_path, caplog):
-    raw_password = "run-provider-password"
-    raw_token = "run-provider-token"
+    sensitive_markers = (
+        "json-access-secret",
+        "dict-password-secret",
+        "opaque-provider-secret",
+        "multi-at-password",
+    )
+    provider_error = (
+        '{"access_token":"json-access-secret"} '
+        "{'password': 'dict-password-secret'} "
+        "opaque-provider-secret at "
+        "https://user:multi-at-password@segment@provider.example/query"
+    )
 
     def fake_execute(request, governance_dir, settings):
-        raise RuntimeError(
-            "Hermes bridge unavailable at "
-            f"https://operator:{raw_password}@provider.example/query?token={raw_token}"
-        )
+        raise RuntimeError(f"Hermes bridge unavailable: {provider_error}")
 
     client, _ = _client(monkeypatch, tmp_path, fake_execute)
 
@@ -1288,11 +1295,12 @@ def test_agent_run_failure_records_error_message(monkeypatch, tmp_path, caplog):
     assert audit["result_meta"]["error_type"] == "RuntimeError"
     assert audit["result_meta"]["error_code"] == "AGENT_RUN_EXECUTION_FAILED"
     public_material = json.dumps([failed, latest, audit], ensure_ascii=False)
-    assert raw_password not in public_material
-    assert raw_token not in public_material
-    assert raw_password not in caplog.text
-    assert raw_token not in caplog.text
-    assert "[REDACTED]" in caplog.text
+    for marker in sensitive_markers:
+        assert marker not in public_material
+        assert marker not in caplog.text
+    assert "error_code=AGENT_RUN_EXECUTION_FAILED" in caplog.text
+    assert "error_type=RuntimeError" in caplog.text
+    assert "detail=" not in caplog.text
 
 
 def test_agent_run_accepts_local_provider_and_completes_lifecycle(monkeypatch, tmp_path):
@@ -1519,17 +1527,25 @@ def test_explicit_provider_diagnostic_overrides_local_routing_for_query_and_runs
 def test_actual_hermes_fallback_is_safe_for_query_run_record_and_audit(
     monkeypatch,
     tmp_path,
+    caplog,
 ):
     from backend.app.services import hermes_agent_service
 
-    raw_password = "actual-hermes-password"
-    raw_token = "actual-hermes-token"
+    sensitive_markers = (
+        "json-access-secret",
+        "dict-password-secret",
+        "opaque-provider-secret",
+        "multi-at-password",
+    )
+    provider_error = (
+        '{"access_token":"json-access-secret"} '
+        "{'password': 'dict-password-secret'} "
+        "opaque-provider-secret at "
+        "https://user:multi-at-password@segment@provider.example/query"
+    )
 
     def fail_hermes_runtime(**_kwargs):
-        raise RuntimeError(
-            "Hermes failed with stderr at "
-            f"https://operator:{raw_password}@provider.example/query?token={raw_token}"
-        )
+        raise RuntimeError(f"Hermes failed with stderr: {provider_error}")
 
     monkeypatch.setattr(hermes_agent_service, "run_hermes_agent", fail_hermes_runtime)
     client, settings = _client(
@@ -1562,8 +1578,12 @@ def test_actual_hermes_fallback_is_safe_for_query_run_record_and_audit(
         ]
     )
     assert "Hermes failed with stderr" not in public_material
-    assert raw_password not in public_material
-    assert raw_token not in public_material
+    for marker in sensitive_markers:
+        assert marker not in public_material
+        assert marker not in caplog.text
+    assert "error_code=hermes_runtime_unavailable" in caplog.text
+    assert "error_type=RuntimeError" in caplog.text
+    assert "detail=" not in caplog.text
 
 
 def test_agent_run_local_owner_isolation(monkeypatch, tmp_path):

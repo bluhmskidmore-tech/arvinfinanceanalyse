@@ -16,7 +16,6 @@ from backend.app.agent.schemas.agent_run import (
 from backend.app.api.routes.agent_workspace import router as workspace_router
 from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
-from backend.app.services.agent_error_sanitization import scrub_agent_runtime_error
 from backend.app.services.agent_run_service import (
     AgentRunDispatchError,
     AgentRunStateConflict,
@@ -302,10 +301,10 @@ def query_agent(
     except RuntimeError as exc:
         if provider != "local":
             _LOGGER.error(
-                "Agent provider query failed provider=%s error_type=%s detail=%s",
+                "Agent provider query failed provider=%s error_type=%s error_code=%s",
                 provider,
                 exc.__class__.__name__,
-                scrub_agent_runtime_error(exc),
+                _PROVIDER_EXECUTION_FAILURE_CODE,
             )
             raise HTTPException(
                 status_code=503,

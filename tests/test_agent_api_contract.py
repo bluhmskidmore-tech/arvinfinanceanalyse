@@ -662,14 +662,22 @@ def test_agent_query_maps_provider_runtime_error_to_safe_stable_contract(
         **_agent_auth_fields(tmp_path),
     )
     monkeypatch.setattr(route_module, "get_settings", lambda: settings)
-    raw_password = f"{provider}-password"
-    raw_token = f"{provider}-token"
+    sensitive_markers = (
+        "json-access-secret",
+        "dict-password-secret",
+        "opaque-provider-secret",
+        "multi-at-password",
+    )
+    provider_error = (
+        f"{provider} unavailable with "
+        '{"access_token":"json-access-secret"} '
+        "{'password': 'dict-password-secret'} "
+        "opaque-provider-secret at "
+        "https://user:multi-at-password@segment@provider.example/query"
+    )
 
     def fail_provider(*_args, **_kwargs):
-        raise RuntimeError(
-            f"{provider} unavailable at "
-            f"https://operator:{raw_password}@provider.example/query?token={raw_token}"
-        )
+        raise RuntimeError(provider_error)
 
     monkeypatch.setattr(
         route_module,
@@ -691,11 +699,12 @@ def test_agent_query_maps_provider_runtime_error_to_safe_stable_contract(
         "message": "Agent provider execution failed.",
     }
     serialized_response = response.text
-    assert raw_password not in serialized_response
-    assert raw_token not in serialized_response
-    assert raw_password not in caplog.text
-    assert raw_token not in caplog.text
-    assert "[REDACTED]" in caplog.text
+    for marker in sensitive_markers:
+        assert marker not in serialized_response
+        assert marker not in caplog.text
+    assert "error_code=AGENT_PROVIDER_EXECUTION_FAILED" in caplog.text
+    assert "error_type=RuntimeError" in caplog.text
+    assert "detail=" not in caplog.text
 
 
 def test_agent_query_routes_to_hermes_provider_when_configured(monkeypatch, tmp_path):

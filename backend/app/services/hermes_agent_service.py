@@ -27,7 +27,6 @@ from backend.app.agent.schemas.agent_response import (
 from backend.app.core_finance.calibers.enums import Basis
 from backend.app.governance.agent_audit import AgentAuditPayload, append_agent_audit
 from backend.app.repositories.governance_repo import GovernanceRepository
-from backend.app.services.agent_error_sanitization import scrub_agent_runtime_error
 
 RULE_VERSION = "rv_agent_hermes_v1"
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -161,9 +160,9 @@ def execute_hermes_agent_query(
         envelope = build_hermes_envelope(request=request, result=result)
     except RuntimeError as exc:
         _LOGGER.warning(
-            "Hermes provider runtime failed error_type=%s detail=%s",
+            "Hermes provider runtime failed provider=hermes error_type=%s error_code=%s",
             exc.__class__.__name__,
-            scrub_agent_runtime_error(exc),
+            _HERMES_FALLBACK_REASON,
         )
         result = {
             "answer": "",
@@ -1032,17 +1031,7 @@ def _append_hermes_audit(
             filters_applied=envelope.evidence.filters_applied,
             trace_id=envelope.result_meta.trace_id,
             run_id=str(request.context.get("run_id") or "").strip() or None,
-            result_meta={
-                **envelope.result_meta.model_dump(mode="json"),
-                "stdout_excerpt": scrub_agent_runtime_error(
-                    result.get("stdout", ""),
-                    limit=1000,
-                ),
-                "stderr_excerpt": scrub_agent_runtime_error(
-                    result.get("stderr", ""),
-                    limit=1000,
-                ),
-            },
+            result_meta=envelope.result_meta.model_dump(mode="json"),
         ),
     )
 
