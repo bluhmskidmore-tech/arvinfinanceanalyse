@@ -1369,6 +1369,28 @@ class MalformedBulkCssFinancialClient:
         )
 
 
+class SparseBulkCssFinancialClient:
+    def __init__(
+        self,
+        *,
+        bulk_values_by_code: dict[str, list[object]],
+        chunk_values_by_code: dict[str, list[object]] | None = None,
+    ) -> None:
+        self.bulk_values_by_code = bulk_values_by_code
+        self.chunk_values_by_code = chunk_values_by_code or bulk_values_by_code
+        self.css_calls: list[list[str]] = []
+
+    def css(self, codes: object, indicators: object, *, options: str = "") -> object:
+        stock_codes = [code for code in str(codes).split(",") if code]
+        self.css_calls.append(stock_codes)
+        values_by_code = self.bulk_values_by_code if len(self.css_calls) == 1 else self.chunk_values_by_code
+        return SimpleNamespace(
+            ErrorCode=0,
+            Indicators=["ROEWA", "GPMARGIN"],
+            Data={stock_code: values_by_code.get(stock_code, [None, None]) for stock_code in stock_codes},
+        )
+
+
 def test_choice_css_financial_factors_uses_one_full_market_request() -> None:
     stock_codes = [f"{index:06d}.SZ" for index in range(281)]
     client = FullMarketCssFinancialClient()
@@ -1398,7 +1420,7 @@ def test_choice_css_financial_factors_falls_back_to_chunks_when_bulk_is_rejected
     assert len(result) == len(stock_codes)
 
 
-def test_choice_css_financial_factors_discards_partial_bulk_values_before_chunk_fallback() -> None:
+def test_choice_css_financial_factors_keeps_valid_bulk_values_when_only_missing_codes_need_chunk_fallback() -> None:
     stock_codes = [f"{index:06d}.SZ" for index in range(281)]
     client = PartialBulkCssFinancialClient()
 
@@ -1408,8 +1430,10 @@ def test_choice_css_financial_factors_discards_partial_bulk_values_before_chunk_
         stock_codes,
     )
 
-    assert [len(codes) for codes in client.css_calls] == [281, 280, 1]
-    assert result == {}
+    missing_code = stock_codes[-1]
+    assert [len(codes) for codes in client.css_calls] == [281, 1]
+    assert missing_code not in result
+    assert len(result) == len(stock_codes) - 1
 
 
 def test_choice_css_financial_factors_falls_back_to_chunks_when_bulk_payload_is_malformed() -> None:
@@ -1424,6 +1448,93 @@ def test_choice_css_financial_factors_falls_back_to_chunks_when_bulk_payload_is_
 
     assert [len(codes) for codes in client.css_calls] == [281, 280, 1]
     assert len(result) == len(stock_codes)
+
+
+def test_choice_css_financial_factors_falls_back_for_codes_with_only_blank_bulk_cells() -> None:
+    stock_codes = [f"{index:06d}.SZ" for index in range(281)]
+    blank_code = stock_codes[-1]
+    client = SparseBulkCssFinancialClient(
+        bulk_values_by_code={
+            stock_code: ([None, None] if stock_code == blank_code else [16.0, 44.5]) for stock_code in stock_codes
+        },
+        chunk_values_by_code={blank_code: [18.0, 45.5]},
+    )
+
+    result = choice_stock_materialize_module._load_choice_css_financial_factors(
+        client,
+        "2026-07-22",
+        stock_codes,
+    )
+
+    assert [len(codes) for codes in client.css_calls] == [281, 1]
+    assert result[blank_code]["roe"] == pytest.approx(0.18)
+    assert result[blank_code]["gross_margin"] == pytest.approx(0.455)
+
+
+def test_choice_css_financial_factors_skip_chunk_fallback_when_bulk_satisfies_required_field_contract() -> None:
+    stock_codes = ["000001.SZ", "000002.SZ"]
+    client = SparseBulkCssFinancialClient(
+        bulk_values_by_code={
+            "000001.SZ": [16.0, None],
+            "000002.SZ": [None, 44.5],
+        }
+    )
+
+    result = choice_stock_materialize_module._load_choice_css_financial_factors(
+        client,
+        "2026-07-22",
+        stock_codes,
+        required_fields_by_code={
+            "000001.SZ": {"roe"},
+            "000002.SZ": {"gross_margin"},
+        },
+    )
+
+    assert client.css_calls == [stock_codes]
+    assert result == {
+        "000001.SZ": {"roe": pytest.approx(0.16)},
+        "000002.SZ": {"gross_margin": pytest.approx(0.445)},
+    }
+
+
+def test_choice_css_financial_factors_merge_chunk_values_into_partial_bulk_rows() -> None:
+    stock_codes = ["000001.SZ"]
+    client = SparseBulkCssFinancialClient(
+        bulk_values_by_code={"000001.SZ": [16.0, None]},
+        chunk_values_by_code={"000001.SZ": [None, 44.5]},
+    )
+
+    result = choice_stock_materialize_module._load_choice_css_financial_factors(
+        client,
+        "2026-07-22",
+        stock_codes,
+    )
+
+    assert client.css_calls == [stock_codes, stock_codes]
+    assert result == {
+        "000001.SZ": {
+            "roe": pytest.approx(0.16),
+            "gross_margin": pytest.approx(0.445),
+        }
+    }
+
+
+def test_choice_css_financial_factors_fail_closed_when_bulk_and_chunk_leave_required_fields_blank() -> None:
+    stock_codes = ["000001.SZ"]
+    client = SparseBulkCssFinancialClient(
+        bulk_values_by_code={"000001.SZ": [16.0, None]},
+        chunk_values_by_code={"000001.SZ": [None, None]},
+    )
+
+    result = choice_stock_materialize_module._load_choice_css_financial_factors(
+        client,
+        "2026-07-22",
+        stock_codes,
+        required_fields_by_code={"000001.SZ": {"gross_margin"}},
+    )
+
+    assert client.css_calls == [stock_codes, stock_codes]
+    assert result == {"000001.SZ": {"roe": pytest.approx(0.16)}}
 
 
 def test_choice_stock_factor_snapshot_merges_choice_css_financials(tmp_path: Path) -> None:

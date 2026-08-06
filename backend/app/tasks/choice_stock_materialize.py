@@ -592,18 +592,24 @@ def materialize_choice_stock_factor_snapshot(
         choice_fallback_used = False
         vendor_inputs = ["tushare.daily_basic", "tushare.fina_indicator"]
         if use_choice_financial_fallback and CHOICE_CSS_FINANCIAL_INDICATORS.strip():
-            needs_choice = sorted(
-                {
-                    code
-                    for code in stock_codes
-                    if financial.get(code, {}).get("roe") is None
-                    or financial.get(code, {}).get("gross_margin") is None
+            required_choice_fields_by_code = {
+                code: {
+                    field_key
+                    for field_key in ("roe", "gross_margin")
+                    if financial.get(code, {}).get(field_key) is None
                 }
-            )
+                for code in stock_codes
+            }
+            needs_choice = sorted(code for code, missing_fields in required_choice_fields_by_code.items() if missing_fields)
             if needs_choice:
                 try:
                     c_client = choice_stock_client if choice_stock_client is not None else _DefaultChoiceStockClient()
-                    patch = _load_choice_css_financial_factors(c_client, resolved_date, needs_choice)
+                    patch = _load_choice_css_financial_factors(
+                        c_client,
+                        resolved_date,
+                        needs_choice,
+                        required_fields_by_code=required_choice_fields_by_code,
+                    )
                     choice_fallback_used = bool(patch)
                     for stock_code, values in patch.items():
                         merged = dict(financial.get(stock_code, {}))
@@ -966,6 +972,8 @@ def _load_choice_css_financial_factors(
     client: object,
     as_of_date: str,
     stock_codes: list[str],
+    *,
+    required_fields_by_code: dict[str, set[str]] | None = None,
 ) -> dict[str, dict[str, float]]:
     """Point-in-time ROE / gross margin via Choice css (covers sparse Tushare fina_indicator).
 
@@ -987,11 +995,20 @@ def _load_choice_css_financial_factors(
     normalized_codes = sorted({str(code) for code in stock_codes if str(code)})
     requested_codes = set(normalized_codes)
     chunk_size = max(40, CHOICE_CSS_FINANCIAL_CHUNK_SIZE)
+    bulk_values: dict[str, dict[str, float]] = {}
+    incomplete_codes = set(requested_codes)
+    resolved_required_fields_by_code = {
+        code: set(required_fields_by_code.get(code, ())) if required_fields_by_code is not None else {"roe", "gross_margin"}
+        for code in normalized_codes
+    }
 
     def parse_result(
         result: object,
-    ) -> tuple[set[str], dict[str, dict[str, float]]]:
+        *,
+        required_fields: dict[str, set[str]],
+    ) -> tuple[set[str], set[str], dict[str, dict[str, float]]]:
         observed_codes: set[str] = set()
+        complete_codes: set[str] = set()
         parsed_values: dict[str, dict[str, float]] = {}
         parsed = _extract_result_rows(result, default_date=as_of_date)
         for row in parsed:
@@ -1030,17 +1047,28 @@ def _load_choice_css_financial_factors(
                 bucket["gross_margin"] = gm_val
             if bucket and stock_code in requested_codes:
                 parsed_values[stock_code] = bucket
-        return observed_codes, parsed_values
+                required = required_fields.get(stock_code, set())
+                if not required or required.issubset(bucket):
+                    complete_codes.add(stock_code)
+            elif stock_code in requested_codes and not required_fields.get(stock_code, set()):
+                complete_codes.add(stock_code)
+        return observed_codes, complete_codes, parsed_values
 
     try:
         bulk_result = client.css(",".join(normalized_codes), indicators_raw, options=options)
         if int(getattr(bulk_result, "ErrorCode", 0)) == 0:
-            observed_codes, bulk_values = parse_result(bulk_result)
-            if observed_codes == requested_codes:
+            observed_codes, complete_codes, bulk_values = parse_result(
+                bulk_result,
+                required_fields=resolved_required_fields_by_code,
+            )
+            incomplete_codes = requested_codes - complete_codes
+            if observed_codes == requested_codes and not incomplete_codes:
                 return bulk_values
             logger.warning(
-                "Choice css full-market financial response was incomplete (%s/%s codes); falling back to chunks.",
+                "Choice css full-market financial response was incomplete (%s/%s codes observed, %s/%s codes complete); falling back to chunks.",
                 len(observed_codes),
+                len(requested_codes),
+                len(complete_codes),
                 len(requested_codes),
             )
         else:
@@ -1049,14 +1077,23 @@ def _load_choice_css_financial_factors(
                 getattr(bulk_result, "ErrorCode", "?"),
                 getattr(bulk_result, "ErrorMsg", ""),
             )
+            incomplete_codes = requested_codes
     except Exception as exc:
         logger.warning(
             "Choice css full-market financial request or parsing raised; falling back to chunks: %s",
             exc,
         )
+        bulk_values = {}
+        incomplete_codes = requested_codes
+    else:
+        incomplete_codes = requested_codes - set(
+            code
+            for code, fields in resolved_required_fields_by_code.items()
+            if fields.issubset(set(bulk_values.get(code, {})))
+        )
 
-    merged: dict[str, dict[str, float]] = {}
-    for chunk in _stock_code_chunks(normalized_codes, chunk_size):
+    merged: dict[str, dict[str, float]] = {code: dict(values) for code, values in bulk_values.items()}
+    for chunk in _stock_code_chunks(sorted(incomplete_codes), chunk_size):
         try:
             result = client.css(",".join(chunk), indicators_raw, options=options)
         except Exception:
@@ -1070,8 +1107,16 @@ def _load_choice_css_financial_factors(
             )
             continue
 
-        _, chunk_values = parse_result(result)
-        merged.update(chunk_values)
+        remaining_required_fields = {
+            code: resolved_required_fields_by_code.get(code, set()) - set(merged.get(code, {}))
+            for code in chunk
+        }
+        _, _, chunk_values = parse_result(result, required_fields=remaining_required_fields)
+        for stock_code, values in chunk_values.items():
+            bucket = merged.setdefault(stock_code, {})
+            for field_key, numeric in values.items():
+                if bucket.get(field_key) is None:
+                    bucket[field_key] = numeric
     return merged
 
 
