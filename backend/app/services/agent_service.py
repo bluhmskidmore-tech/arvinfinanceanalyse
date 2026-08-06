@@ -550,17 +550,19 @@ def _duration_risk_payload(
     requested_currency_basis = _balance_analysis_currency_basis(request)
     cny_risk_contract = requested_currency_basis == "CNY"
     bond_count = int(result.get("bond_count") or 0)
-    required_numeric_fields = (
-        "portfolio_modified_duration",
-        "portfolio_dv01",
-        "portfolio_convexity",
-        "rate_risk_market_value",
-        "duration_excluded_market_value",
-    )
+    required_numeric_fields = {
+        "portfolio_modified_duration": "ratio",
+        "portfolio_dv01": "dv01",
+        "portfolio_convexity": "ratio",
+        "rate_risk_market_value": "yuan",
+        "duration_excluded_market_value": "yuan",
+    }
     numeric_contract_complete = all(
-        is_numeric_json(result.get(field_name))
-        and result[field_name].get("raw") is not None
-        for field_name in required_numeric_fields
+        _has_governed_duration_numeric_contract(
+            result.get(field_name),
+            expected_unit=expected_unit,
+        )
+        for field_name, expected_unit in required_numeric_fields.items()
     )
     duration_excluded_count = result.get("duration_excluded_count")
     duration_scope_complete = (
@@ -609,6 +611,21 @@ def _duration_risk_payload(
         ]
         answer = (
             f"{report_date} 没有可用的风险张量债券数据；未生成修正久期、DV01 或凸性正式指标。"
+        )
+    elif not numeric_contract_complete:
+        cards = [
+            {
+                "type": "status",
+                "title": "Duration Numeric Contract Incomplete",
+                "value": (
+                    "One or more governed Risk Tensor Numeric fields are missing raw/display "
+                    "values or use an unexpected unit, so formal duration metrics were suppressed."
+                ),
+            }
+        ]
+        answer = (
+            f"{report_date} 的 Risk Tensor 已返回，但正式 Numeric contract 不完整；"
+            "系统已 fail-closed，未生成正式修正久期、DV01、凸性或金额型风险指标。"
         )
     else:
         metric_specs = (
@@ -696,12 +713,14 @@ def _duration_risk_payload(
         "scenario_flag": bool(meta.get("scenario_flag", False)),
         "amount_currency_basis": "CNY",
         "amount_currency_basis_note": (
-            "DV01 is CNY per 1bp on CNY face value; rate-risk and excluded market values are yuan."
-            if cny_risk_contract
-            else (
+            (
                 f"Requested currency_basis={requested_currency_basis}; Risk Tensor remained CNY "
                 "and formal metric cards were suppressed."
             )
+            if not cny_risk_contract
+            else "Governed Risk Tensor Numeric contract is incomplete; formal duration metric cards were suppressed."
+            if not numeric_contract_complete
+            else "DV01 is CNY per 1bp on CNY face value; rate-risk and excluded market values are yuan."
         ),
         "requested_report_date": _requested_report_date(request),
         "resolved_report_date": report_date,
@@ -771,6 +790,19 @@ def _duration_count_card(
         source_field=source_field,
         value=numeric,
     )
+
+
+def _has_governed_duration_numeric_contract(
+    value: Any,
+    *,
+    expected_unit: str,
+) -> bool:
+    if not is_numeric_json(value):
+        return False
+    raw = value.get("raw")
+    display = str(value.get("display") or "").strip()
+    unit = str(value.get("unit") or "").strip()
+    return raw is not None and bool(display) and unit == expected_unit
 
 
 def _duration_numeric_display(value: Any) -> str:

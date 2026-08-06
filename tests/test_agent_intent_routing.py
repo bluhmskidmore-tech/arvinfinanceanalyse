@@ -1226,6 +1226,178 @@ def test_duration_risk_preserves_valid_zero_dv01(tmp_path, monkeypatch):
     assert dv01_card.spec["numeric"]["display"] == "0.00"
 
 
+@pytest.mark.parametrize(
+    "field_name",
+    [
+        "portfolio_modified_duration",
+        "portfolio_dv01",
+        "portfolio_convexity",
+        "rate_risk_market_value",
+        "duration_excluded_market_value",
+    ],
+)
+def test_duration_risk_missing_required_numeric_raw_fails_closed(
+    tmp_path,
+    monkeypatch,
+    field_name: str,
+):
+    service_module = load_module(
+        "backend.app.services.agent_service",
+        "backend/app/services/agent_service.py",
+    )
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    class StubRiskTensorRepository:
+        def __init__(self, path: str):
+            assert path == "test.duckdb"
+
+        def list_report_dates(self) -> list[str]:
+            return ["2026-03-31"]
+
+    def fake_risk_tensor_envelope(*, report_date: str, **_: object) -> dict[str, object]:
+        upstream = _duration_risk_upstream(report_date)
+        result = upstream["result"]
+        assert isinstance(result, dict)
+        numeric = dict(result[field_name])
+        numeric["raw"] = None
+        result[field_name] = numeric
+        return upstream
+
+    risk_service_module = load_module(
+        "backend.app.services.risk_tensor_service",
+        "backend/app/services/risk_tensor_service.py",
+    )
+    monkeypatch.setattr(service_module, "RiskTensorRepository", StubRiskTensorRepository)
+    monkeypatch.setattr(risk_service_module, "risk_tensor_envelope", fake_risk_tensor_envelope)
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
+    )
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(question="组合久期和DV01风险怎么样")
+    )
+
+    assert envelope.result_meta.formal_use_allowed is False
+    assert envelope.result_meta.quality_flag == "warning"
+    assert "Numeric contract 不完整" in envelope.answer
+    assert not any(card.type == "metric" for card in envelope.cards)
+    status_card = next(card for card in envelope.cards if card.type == "status")
+    assert status_card.title == "Duration Numeric Contract Incomplete"
+
+
+def test_duration_risk_missing_required_numeric_display_fails_closed(tmp_path, monkeypatch):
+    service_module = load_module(
+        "backend.app.services.agent_service",
+        "backend/app/services/agent_service.py",
+    )
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    class StubRiskTensorRepository:
+        def __init__(self, path: str):
+            assert path == "test.duckdb"
+
+        def list_report_dates(self) -> list[str]:
+            return ["2026-03-31"]
+
+    def fake_risk_tensor_envelope(*, report_date: str, **_: object) -> dict[str, object]:
+        upstream = _duration_risk_upstream(report_date)
+        result = upstream["result"]
+        assert isinstance(result, dict)
+        numeric = dict(result["portfolio_dv01"])
+        numeric["display"] = ""
+        result["portfolio_dv01"] = numeric
+        return upstream
+
+    risk_service_module = load_module(
+        "backend.app.services.risk_tensor_service",
+        "backend/app/services/risk_tensor_service.py",
+    )
+    monkeypatch.setattr(service_module, "RiskTensorRepository", StubRiskTensorRepository)
+    monkeypatch.setattr(risk_service_module, "risk_tensor_envelope", fake_risk_tensor_envelope)
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
+    )
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(question="组合久期和DV01风险怎么样")
+    )
+
+    assert envelope.result_meta.formal_use_allowed is False
+    assert envelope.result_meta.quality_flag == "warning"
+    assert "missing raw/display values" in (envelope.cards[0].value or "").lower()
+    assert not any(card.type == "metric" for card in envelope.cards)
+
+
+def test_duration_risk_wrong_required_numeric_unit_fails_closed(tmp_path, monkeypatch):
+    service_module = load_module(
+        "backend.app.services.agent_service",
+        "backend/app/services/agent_service.py",
+    )
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    class StubRiskTensorRepository:
+        def __init__(self, path: str):
+            assert path == "test.duckdb"
+
+        def list_report_dates(self) -> list[str]:
+            return ["2026-03-31"]
+
+    def fake_risk_tensor_envelope(*, report_date: str, **_: object) -> dict[str, object]:
+        upstream = _duration_risk_upstream(report_date)
+        result = upstream["result"]
+        assert isinstance(result, dict)
+        numeric = dict(result["rate_risk_market_value"])
+        numeric["unit"] = "ratio"
+        result["rate_risk_market_value"] = numeric
+        return upstream
+
+    risk_service_module = load_module(
+        "backend.app.services.risk_tensor_service",
+        "backend/app/services/risk_tensor_service.py",
+    )
+    monkeypatch.setattr(service_module, "RiskTensorRepository", StubRiskTensorRepository)
+    monkeypatch.setattr(risk_service_module, "risk_tensor_envelope", fake_risk_tensor_envelope)
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
+    )
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(question="组合久期和DV01风险怎么样")
+    )
+
+    assert envelope.result_meta.formal_use_allowed is False
+    assert envelope.result_meta.quality_flag == "warning"
+    assert "suppressed" in (envelope.result_meta.amount_currency_basis_note or "").lower()
+    assert not any(card.type == "metric" for card in envelope.cards)
+
+
 def test_duration_risk_native_currency_request_fails_closed(tmp_path, monkeypatch):
     service_module = load_module(
         "backend.app.services.agent_service",
