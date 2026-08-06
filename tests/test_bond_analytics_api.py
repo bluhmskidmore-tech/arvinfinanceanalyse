@@ -32,6 +32,20 @@ REPORT_DATE = "2026-03-31"
 BOND_ANALYTICS_READ_HEADERS = {"X-User-Id": "bond-analytics-read-user", "X-User-Role": "viewer"}
 
 
+@pytest.fixture(autouse=True)
+def _keep_bond_analytics_api_tests_local(monkeypatch) -> None:
+    """API contract tests should not trigger worker-side vendor curve backfills."""
+    curve_task_mod = load_module(
+        "backend.app.tasks.yield_curve_materialize",
+        "backend/app/tasks/yield_curve_materialize.py",
+    )
+    monkeypatch.setattr(
+        curve_task_mod,
+        "ensure_yield_curve_inputs_on_or_before",
+        lambda **_kwargs: None,
+    )
+
+
 def _perf_records(caplog, endpoint: str):
     return [
         record
