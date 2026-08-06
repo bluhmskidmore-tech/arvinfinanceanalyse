@@ -7,17 +7,50 @@ import duckdb
 from backend.app.services.formal_result_runtime import build_result_envelope
 from backend.app.services.research_radar_compare import build_choice_news_compare_payload
 
-RULE_VERSION = "rv_choice_news_v1"
-CACHE_VERSION = "cv_choice_news_v1"
+RULE_VERSION = "rv_choice_news_v2"
+CACHE_VERSION = "cv_choice_news_v2"
+
+_CHOICE_NEWS_DISPLAY_HEADLINE_SQL = (
+    "coalesce("
+    "nullif(trim(json_extract_string(try_cast(payload_json as json), '$.headline')), ''), "
+    "nullif(trim(json_extract_string(try_cast(payload_json as json), '$.title')), ''), "
+    "nullif(trim(json_extract_string(try_cast(payload_json as json), '$.news_title')), ''), "
+    "nullif(trim(json_extract_string(try_cast(payload_json as json), '$.subject')), '')"
+    ") as display_headline"
+)
+_CHOICE_NEWS_DISPLAY_SUMMARY_SQL = (
+    "coalesce("
+    "nullif(trim(json_extract_string(try_cast(payload_json as json), '$.summary')), ''), "
+    "nullif(trim(json_extract_string(try_cast(payload_json as json), '$.content')), ''), "
+    "nullif(trim(json_extract_string(try_cast(payload_json as json), '$.text')), ''), "
+    "nullif(trim(json_extract_string(try_cast(payload_json as json), '$.message')), ''), "
+    "nullif(trim(json_extract_string(try_cast(payload_json as json), '$.description')), '')"
+    ") as display_summary"
+)
 
 # 主干事件查询模板：执行与披露共用同一份（`?` 为绑定占位符，最后两个为 limit / offset）。
 _CHOICE_NEWS_LATEST_EVENTS_SQL_TEMPLATE = (
     "select event_key, received_at, group_id, content_type, serial_id, request_id, "
-    "error_code, error_msg, topic_code, item_index, payload_text, payload_json "
+    "error_code, error_msg, topic_code, item_index, payload_text, {payload_json_projection}, "
+    "{display_headline_projection}, {display_summary_projection} "
     "from choice_news_event {where_clause} "
     "order by received_at desc, topic_code asc, item_index asc "
     "limit ? offset ?"
 )
+
+
+def _choice_news_latest_events_sql(
+    *,
+    where_clause: str,
+    include_payload_json: bool,
+) -> str:
+    payload_json_projection = "payload_json" if include_payload_json else "cast(null as varchar) as payload_json"
+    return _CHOICE_NEWS_LATEST_EVENTS_SQL_TEMPLATE.format(
+        where_clause=where_clause,
+        payload_json_projection=payload_json_projection,
+        display_headline_projection=_CHOICE_NEWS_DISPLAY_HEADLINE_SQL,
+        display_summary_projection=_CHOICE_NEWS_DISPLAY_SUMMARY_SQL,
+    )
 
 
 def choice_news_latest_sql_disclosure(
@@ -25,6 +58,7 @@ def choice_news_latest_sql_disclosure(
     group_id: str | None = None,
     topic_code: str | None = None,
     stock_code: str | None = None,
+    include_payload_json: bool = True,
     error_only: bool = False,
     received_from: str | None = None,
     received_to: str | None = None,
@@ -39,7 +73,30 @@ def choice_news_latest_sql_disclosure(
         received_from=received_from,
         received_to=received_to or date.today().isoformat(),
     )
-    return [" ".join(_CHOICE_NEWS_LATEST_EVENTS_SQL_TEMPLATE.format(where_clause=where_clause).split())]
+    sql = _choice_news_latest_events_sql(
+        where_clause=where_clause,
+        include_payload_json=include_payload_json,
+    )
+    return [" ".join(sql.split())]
+
+
+def _choice_news_display_text(
+    payload_text: object,
+    display_headline: object,
+    display_summary: object,
+) -> str | None:
+    normalized_payload_text = str(payload_text).strip() if payload_text is not None else ""
+    if normalized_payload_text:
+        return normalized_payload_text
+    headline = str(display_headline).strip() if display_headline is not None else ""
+    summary = str(display_summary).strip() if display_summary is not None else ""
+    if headline and summary and headline != summary:
+        return f"{headline} - {summary}"
+    if headline:
+        return headline
+    if summary:
+        return summary
+    return None
 
 
 def choice_news_latest_envelope(
@@ -50,6 +107,7 @@ def choice_news_latest_envelope(
     topic_code: str | None = None,
     stock_code: str | None = None,
     error_only: bool = False,
+    include_payload_json: bool = True,
     received_from: str | None = None,
     received_to: str | None = None,
 ) -> dict[str, object]:
@@ -104,7 +162,10 @@ def choice_news_latest_envelope(
                 ).fetchone()
                 total_rows = int(total_row[0]) if total_row is not None else 0
                 rows = conn.execute(
-                    _CHOICE_NEWS_LATEST_EVENTS_SQL_TEMPLATE.format(where_clause=where_clause),
+                    _choice_news_latest_events_sql(
+                        where_clause=where_clause,
+                        include_payload_json=include_payload_json,
+                    ),
                     [*params, limit, offset],
                 ).fetchall()
         except duckdb.Error:
@@ -127,8 +188,35 @@ def choice_news_latest_envelope(
             "item_index": int(str(item_index)),
             "payload_text": payload_text,
             "payload_json": payload_json,
+            "display_text": _choice_news_display_text(
+                payload_text,
+                display_headline,
+                display_summary,
+            ),
         }
-        for event_key, received_at, group_id, content_type, serial_id, request_id, error_code, error_msg, topic_code, item_index, payload_text, payload_json in rows
+        for (
+            event_key,
+            received_at,
+            group_id,
+            content_type,
+            serial_id,
+            request_id,
+            error_code,
+            error_msg,
+            topic_code,
+            item_index,
+            payload_text,
+            payload_json,
+            display_headline,
+            display_summary,
+        ) in rows
+    ]
+    compare_rows = [
+        {
+            **event,
+            "payload_text": event["display_text"] or event["payload_text"],
+        }
+        for event in payload_rows
     ]
 
     result_payload: dict[str, object] = {
@@ -137,7 +225,8 @@ def choice_news_latest_envelope(
         "offset": offset,
         "as_of_date": as_of_date,
         "excluded_future_rows": excluded_future_rows,
-        "compare": build_choice_news_compare_payload(payload_rows),
+        "payload_json_included": include_payload_json,
+        "compare": build_choice_news_compare_payload(compare_rows),
         "events": payload_rows,
     }
     if normalized_stock_code is not None:

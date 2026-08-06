@@ -20,17 +20,41 @@ export type NewsAndCalendarNewsState = {
   isError: boolean;
 };
 
+function structuredNewsSummary(payloadJson: string): string | null {
+  try {
+    const parsed: unknown = JSON.parse(payloadJson);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const record = parsed as Record<string, unknown>;
+    const pick = (...keys: string[]) => {
+      for (const key of keys) {
+        const value = record[key];
+        if (typeof value === "string" && value.trim()) return value.trim();
+      }
+      return null;
+    };
+    const headline = pick("headline", "title", "news_title", "subject");
+    const summary = pick("summary", "content", "text", "message", "description");
+    if (headline && summary && headline !== summary) return `${headline} — ${summary}`;
+    return headline ?? summary;
+  } catch {
+    return null;
+  }
+}
+
 function summarizeNewsLine(event: ChoiceNewsEvent) {
+  if (event.error_code !== 0) {
+    return "资讯源回调异常，事件内容暂不可用";
+  }
   if (event.payload_text?.trim()) {
     return event.payload_text.trim();
   }
+  if (event.display_text?.trim()) {
+    return event.display_text.trim();
+  }
   if (event.payload_json?.trim()) {
-    return event.payload_json.trim();
+    return structuredNewsSummary(event.payload_json) ?? "已收到结构化资讯事件";
   }
-  if (event.error_code !== 0) {
-    return event.error_msg || "回调空包";
-  }
-  return "（空内容）";
+  return "事件内容暂未返回";
 }
 
 function formatReceivedTime(iso: string) {
@@ -68,7 +92,7 @@ export function NewsAndCalendar({
   const client = useApiClient();
   const newsQuery = useQuery({
     queryKey: ["market-data", "headlines", "choice-events", client.mode],
-    queryFn: () => client.getChoiceNewsEvents({ limit: 12, offset: 0 }),
+    queryFn: () => client.getChoiceNewsEvents({ limit: 12, offset: 0, includePayloadJson: false }),
     retry: false,
     enabled: !newsState,
     ...externalDataQueryOptions({ refresh_tier: "stable", fetch_mode: "date_slice" }),
@@ -88,6 +112,7 @@ export function NewsAndCalendar({
   const headlineRows = useMemo(() => {
     const events = newsPayload?.events ?? [];
     return events.map((e) => ({
+      key: e.event_key,
       time: formatReceivedTime(e.received_at),
       title: summarizeNewsLine(e),
     }));
@@ -124,24 +149,35 @@ export function NewsAndCalendar({
             children: (
               <div className="market-data-news-calendar-pane">
                 {newsIsLoading ? (
-                  <div className="market-data-news-calendar-loading">
+                  <div data-testid="market-data-news-loading" className="market-data-news-calendar-loading">
                     <Spin />
                   </div>
                 ) : newsIsError ? (
-                  <p className="market-data-news-calendar-empty">资讯加载失败，请稍后重试。</p>
+                  <p data-testid="market-data-news-error" className="market-data-news-calendar-empty">
+                    资讯加载失败，请稍后重试。
+                  </p>
                 ) : headlineRows.length === 0 ? (
-                  <p className="market-data-news-calendar-empty">当前无资讯事件，请确认数据源或稍后刷新。</p>
+                  <p data-testid="market-data-news-empty" className="market-data-news-calendar-empty">
+                    当前无资讯事件，请确认数据源或稍后刷新。
+                  </p>
                 ) : (
-                  <ul className="market-data-news-calendar-list">
-                    {headlineRows.map((row, idx) => (
-                      <li key={`${row.time}-${idx}`} className="market-data-news-calendar-item">
-                        <span className="market-data-news-calendar-item__time" style={tabularNumsStyle}>
-                          {row.time}
-                        </span>
-                        <span className="market-data-news-calendar-item__title">{row.title}</span>
-                      </li>
-                    ))}
-                  </ul>
+                  <>
+                    <p data-testid="market-data-news-summary" className="market-data-news-calendar-summary">
+                      返回 {headlineRows.length}/{newsPayload?.total_rows ?? headlineRows.length} 条
+                      {" · "}查询截止 {newsPayload?.as_of_date ?? "待返回"}
+                      {" · "}排除未来事件 {newsPayload?.excluded_future_rows ?? 0} 条
+                    </p>
+                    <ul data-testid="market-data-news-list" className="market-data-news-calendar-list">
+                      {headlineRows.map((row) => (
+                        <li key={row.key} className="market-data-news-calendar-item">
+                          <span className="market-data-news-calendar-item__time" style={tabularNumsStyle}>
+                            {row.time}
+                          </span>
+                          <span className="market-data-news-calendar-item__title">{row.title}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
                 )}
               </div>
             ),

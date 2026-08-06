@@ -108,7 +108,7 @@ export const liveRouteReadinessContracts = {
   },
   "/market-data": {
     sourceFiles: ["src/features/market-data/pages/MarketDataPage.tsx"],
-    sourceAnchors: ["market-data-page", "market-data-status-strip"],
+    sourceAnchors: ["market-data-page", "market-data-active-filter-summary"],
     verificationFiles: ["src/test/MarketDataPage.test.tsx"],
   },
   "/market-finance": {

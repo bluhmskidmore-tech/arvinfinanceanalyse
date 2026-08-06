@@ -5279,6 +5279,19 @@ section[data-page-key="market-data"] > main[data-testid="market-workbench-body"]
   line-height: 1.45;
 }
 
+.market-data-news-calendar-summary {
+  margin: 0 0 6px;
+  padding: 5px 8px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  color: var(--ib-ink-muted);
+  background: color-mix(in srgb, var(--ib-paper) 88%, var(--ib-surface-muted));
+  font-family: var(--moss-font-mono), "Cascadia Mono", monospace;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.35;
+}
+
 .market-data-news-calendar-list {
   display: grid;
   gap: 0;

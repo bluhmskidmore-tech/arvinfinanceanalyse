@@ -17,15 +17,14 @@ import {
 } from "../../../components/page/PagePrimitives";
 import { designTokens } from "../../../theme/designSystem";
 import type {
-  FxAnalyticalPayload,
   MarketDataCoverageSection,
   MarketDataCoverageSummaryPayload,
-  ResultMeta,
 } from "../../../api/contracts";
 import { BondFuturesTable } from "../components/BondFuturesTable";
 import { BondTradeDetail } from "../components/BondTradeDetail";
 import { CreditBondTradesTable } from "../components/CreditBondTradesTable";
 import { MarketDataExtendedTerminalSection } from "../components/MarketDataExtendedTerminalSection";
+import { MarketDataDetailDeck } from "../components/MarketDataDetailDeck";
 import { MarketDataFxFormalSection } from "../components/MarketDataFxFormalSection";
 import { MarketDataFxSeriesDeck } from "../components/MarketDataFxSeriesDeck";
 import { MarketDataLiquidityDeck } from "../components/MarketDataLiquidityDeck";
@@ -36,12 +35,14 @@ import { MarketDataLivermoreSection } from "../components/MarketDataLivermoreSec
 import { MarketTerminalTicker } from "../components/MarketTerminalTicker";
 import { MoneyMarketTable } from "../components/MoneyMarketTable";
 import { NcdMatrix } from "../components/NcdMatrix";
+import { NewsAndCalendar } from "../components/NewsAndCalendar";
 import { MarketDataSeriesCategoryCard } from "../components/MarketDataSeriesCategoryCard";
 import { MarketDataTushareSupplementSection } from "../components/MarketDataTushareSupplementSection";
 import { MarketDataTermStructureChart } from "../components/MarketDataTermStructureChart";
 import { marketCatalogRefreshTier } from "../lib/marketDataCategoryStore";
 import {
   buildCatalogVendorNameMap,
+  filterMoneyMarketRows,
   filterRateQuoteRows,
   filterTerminalTickerItems,
   type MarketDataRateQuoteSection,
@@ -49,16 +50,39 @@ import {
 import { useMarketDataPageData } from "../hooks/useMarketDataPageData";
 import type { MarketOverviewMetric } from "./MarketDataHeroSection";
 import { MarketDataMacroDepthTabs } from "./MarketDataMacroDepthTabs";
+import { MarketDataFigmaDesktopView } from "./MarketDataFigmaDesktopView";
 import { buildSpreadSlots, buildMarketDataBasisChipLabel, buildTerminalKpiMetricsFromTickerItems, formatMarketWorkbenchSourceSummary } from "./marketDataPageModel";
 import { useLazyMount } from "../lib/useLazyMount";
 import { MarketWorkbenchFrame } from "../../workbench/market-shell";
 import "./MarketDataPage.css";
+import "./marketDataNocturne.css";
 
 /** 展示已拉取的宏观稳定/降级序列（不含页尾目录运维面板）。 */
 const MARKET_DATA_SHOW_MACRO_SERIES_DECK = true;
 
 /** 展示已拉取的外汇分析序列分组。 */
 const MARKET_DATA_SHOW_FX_ANALYSIS_SECTION = true;
+
+/** Legacy terminal remains source-compatible while the routed page renders only the approved Figma surface. */
+const MARKET_DATA_SHOW_LEGACY_SURFACE = false;
+
+const MARKET_DATA_CURVE_FILTER_OPTIONS = [
+  { value: "both", label: "国债+国开" },
+  { value: "treasury", label: "国债" },
+  { value: "cdb", label: "国开" },
+] as const;
+
+const MARKET_DATA_SOURCE_FILTER_OPTIONS = [
+  { value: "all", label: "全部来源" },
+  { value: "choice", label: "Choice" },
+  { value: "internal", label: "内部" },
+] as const;
+
+const MARKET_DATA_CREDIT_FILTER_OPTIONS = [
+  { value: "both", label: "全部信用" },
+  { value: "mtn", label: "中票" },
+  { value: "urban", label: "城投" },
+] as const;
 
 const s = designTokens.space;
 
@@ -93,10 +117,6 @@ function fxAnalyticalGroupTitle(title: string) {
   return labels[title] ?? title;
 }
 
-function fxAnalyticalObservationCount(groups: FxAnalyticalPayload["groups"]): number {
-  return groups.reduce((total, group) => total + group.series.length + (group.events?.length ?? 0), 0);
-}
-
 function coverageStatusLabel(status: MarketDataCoverageSection["status"]): string {
   const labels: Record<MarketDataCoverageSection["status"], string> = {
     ready: "数据正常",
@@ -128,10 +148,23 @@ function marketDataSourceLabel(value: string | null | undefined): string {
   return value;
 }
 
+function isAccessDeniedError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const status = (error as { status?: unknown; response?: { status?: unknown } }).status
+    ?? (error as { response?: { status?: unknown } }).response?.status;
+  if (status === 403) {
+    return true;
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return /(^|\D)403(\D|$)|forbidden|permission|not allowed|access denied|无权限|不允许/i.test(message);
+}
+
 function marketDataEvidenceLineLabel(line: string): string {
   const labels: Record<string, string> = {
-    "formal rates": "正式利率",
-    "macro latest": "宏观最新",
+    "formal rates": "正式市场序列",
+    "macro latest": "市场与宏观最新",
     "FX formal": "外汇正式",
     "FX analytical": "外汇分析",
     "NCD proxy": "存单代理",
@@ -148,10 +181,6 @@ function coverageActionLabel(section: MarketDataCoverageSection): string {
   if (section.status === "deferred") return "按需展开";
   if (section.fallback_mode !== "none") return "查看数据延迟";
   return "查看详情";
-}
-
-function coverageFallbackMode(value: ResultMeta["fallback_mode"] | undefined): "none" | "latest_snapshot" {
-  return value === "latest_snapshot" ? "latest_snapshot" : "none";
 }
 
 function weekChangeBpText(sparklineValues: readonly number[]): string {
@@ -415,15 +444,17 @@ export default function MarketDataPage() {
   );
   const lazyExtended = useLazyMount({ rootMargin: "300px", fallbackDelayMs: 0 });
   const lazySupplementary = useLazyMount({ rootMargin: "300px", fallbackDelayMs: 0 });
+  const lazyDetails = useLazyMount({ rootMargin: "500px", fallbackDelayMs: 2500 });
   // The delay only protects no-IntersectionObserver environments; normal browsers wait for viewport proximity.
   const lazyLivermore = useLazyMount({ rootMargin: "400px", fallbackDelayMs: 2000 });
   const [macroDepthTab, setMacroDepthTab] = useState<"curve" | "spreads" | "linkage">("curve");
   const [viewMode] = useState<"default" | "compact">("default");
   const [curveFilter, setCurveFilter] = useState<"treasury" | "cdb" | "both">("both");
-  const [creditSegment] = useState<"mtn" | "urban" | "both">("both");
+  const [creditSegment, setCreditSegment] = useState<"mtn" | "urban" | "both">("both");
   const [sourceFilter, setSourceFilter] = useState<"all" | "choice" | "internal">("all");
   const linkageFetchEnabled =
     linkageCollapseExpanded ||
+    lazyDetails.shouldMount ||
     macroDepthTab === "spreads" ||
     macroDepthTab === "linkage" ||
     creditSegment !== "both";
@@ -437,10 +468,14 @@ export default function MarketDataPage() {
     pageModel,
     catalogQuery,
     latestQuery,
+    externalDataWatermarksQuery,
     fxAnalyticalQuery,
     fxFormalStatusQuery,
     ncdFundingProxyQuery,
+    bondFuturesRankingsQuery,
+    coverageSummaryQuery,
     livermoreStrategyQuery,
+    formalRatesQuery,
     macroBondLinkageQuery,
     ncdFundingProxy,
     refreshGateSupplement,
@@ -449,56 +484,30 @@ export default function MarketDataPage() {
     livermoreEnabled: lazyLivermore.shouldMount || livermoreExpanded,
     linkageEnabled: linkageFetchEnabled,
   });
-  // Warm-only queries: refresh still refetches them, but they must not fire on first paint.
-  const deferredWarmQueryOptions = {
-    enabled: false,
-    retry: false as const,
-    ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
-  };
-  const livermoreSignalConfluenceQuery = useQuery({
-    queryKey: ["market-data", "livermore-signal-confluence", client.mode, watchDate],
-    queryFn: () => client.getLivermoreSignalConfluence({ asOfDate: watchDate }),
-    ...deferredWarmQueryOptions,
-  });
-  const livermoreStrategyScoreQuery = useQuery({
-    queryKey: ["market-data", "livermore-strategy-score", client.mode],
-    queryFn: () => client.getLivermoreStrategyScore(),
-    ...deferredWarmQueryOptions,
-  });
-  const livermoreSectorRankSeriesQuery = useQuery({
-    queryKey: ["market-data", "livermore-sector-rank-series", client.mode, watchDate],
-    queryFn: () => client.getLivermoreSectorRankSeries({ asOfDate: watchDate, topK: 5 }),
-    ...deferredWarmQueryOptions,
-  });
-  const livermoreCandidateHistoryQuery = useQuery({
-    queryKey: ["market-data", "livermore-candidate-history", client.mode],
-    queryFn: () => client.getLivermoreCandidateHistory({ limit: 40 }),
-    ...deferredWarmQueryOptions,
-  });
-  const livermoreStrategyOptimizationQuery = useQuery({
-    queryKey: ["market-data", "livermore-strategy-optimization", client.mode],
-    queryFn: () => client.getLivermoreStrategyOptimization(),
-    ...deferredWarmQueryOptions,
-  });
-  const livermoreCycleProxyBacktestQuery = useQuery({
-    queryKey: ["market-data", "livermore-cycle-proxy-backtest", client.mode],
-    queryFn: () => client.getLivermoreCycleProxyBacktest(),
-    ...deferredWarmQueryOptions,
-  });
-  const livermorePortfolioBacktestQuery = useQuery({
-    queryKey: ["market-data", "livermore-portfolio-backtest", client.mode],
-    queryFn: () => client.getLivermoreCandidateHistoryPortfolioBacktest(),
-    ...deferredWarmQueryOptions,
-  });
   const tushareSupplementQuery = useQuery({
     queryKey: ["market-data", "tushare-supplement", client.mode],
-    queryFn: () => client.getTushareSupplement({ moneySupplyLimit: 12, ecoCalLimit: 30 }),
-    ...deferredWarmQueryOptions,
+    queryFn: () => client.getTushareSupplement({ moneySupplyLimit: 120, ecoCalLimit: 300 }),
+    enabled: lazyDetails.shouldMount,
+    retry: false,
+    ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
+    refetchOnWindowFocus: false,
   });
-  const macroToolkitAnalysisQuery = useQuery({
-    queryKey: ["market-data", "macro-toolkit-analysis-core", client.mode],
-    queryFn: () => client.getMacroToolkitAnalysis({ detail: "core" }),
-    ...deferredWarmQueryOptions,
+  const supplyCalendarQuery = useQuery({
+    queryKey: ["market-data", "supply-calendar", client.mode, watchDate],
+    queryFn: () =>
+      client.getResearchCalendarEvents({
+        reportDate: watchDate || undefined,
+      }),
+    retry: false,
+    ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
+    refetchOnWindowFocus: false,
+  });
+  const choiceNewsQuery = useQuery({
+    queryKey: ["market-data", "headlines", "choice-events", client.mode],
+    queryFn: () => client.getChoiceNewsEvents({ limit: 12, offset: 0, includePayloadJson: false }),
+    retry: false,
+    ...externalDataQueryOptions({ refresh_tier: "stable", fetch_mode: "date_slice" }),
+    refetchOnWindowFocus: false,
   });
   const {
     catalog,
@@ -527,7 +536,6 @@ export default function MarketDataPage() {
     terminalTickerItems,
     latestSeries,
   } = pageModel;
-  const ncdFundingProxyMeta = ncdFundingProxyQuery.data?.result_meta;
   const macroSeriesLoading = catalogQuery.isLoading || latestQuery.isLoading;
   const macroSeriesError = catalogQuery.isError || latestQuery.isError;
   const macroSeriesEmpty =
@@ -552,6 +560,32 @@ export default function MarketDataPage() {
         catalogVendorNames,
       ),
     [terminalTickerItems, curveFilter, sourceFilter, terminalModel, catalogVendorNames],
+  );
+  const filteredRateRows = useMemo(
+    () =>
+      filterRateQuoteRows(
+        terminalModel.rateQuotes.rows,
+        curveFilter,
+        sourceFilter,
+        catalogVendorNames,
+      ),
+    [terminalModel.rateQuotes.rows, curveFilter, sourceFilter, catalogVendorNames],
+  );
+  const filteredMoneyRows = useMemo(
+    () =>
+      filterMoneyMarketRows(
+        terminalModel.moneyMarket.rows,
+        sourceFilter,
+        catalogVendorNames,
+    ),
+    [terminalModel.moneyMarket.rows, sourceFilter, catalogVendorNames],
+  );
+  const analyticalSubstituteCount = useMemo(
+    () =>
+      [...filteredRateRows, ...filteredMoneyRows].filter(
+        (row) => row.basis !== "formal" || !row.formalUseAllowed,
+      ).length,
+    [filteredMoneyRows, filteredRateRows],
   );
   const filteredTerminalKpiMetrics = useMemo(
     () => buildTerminalKpiMetricsFromTickerItems(filteredTickerItems),
@@ -583,7 +617,7 @@ export default function MarketDataPage() {
   const formalUseBlocked =
     formalRatesMeta?.basis === "formal" && formalRatesMeta.formal_use_allowed === false;
   const ratesBasisValue = formalRatesMeta?.basis ?? rateQuotesSource?.basis ?? "unknown";
-  const ratesBasisLabel = formalUseBlocked ? "暂不可正式使用" : marketDataBasisLabel(ratesBasisValue);
+  const ratesBasisLabel = formalUseBlocked ? "formal · blocked" : marketDataBasisLabel(ratesBasisValue);
   const formalUseAllowedLabel =
     formalRatesMeta?.formal_use_allowed === undefined
       ? "待确认"
@@ -596,15 +630,23 @@ export default function MarketDataPage() {
     formalUseBlocked,
     watchDate,
   });
+  const curveFilterLabel =
+    MARKET_DATA_CURVE_FILTER_OPTIONS.find((option) => option.value === curveFilter)?.label ?? curveFilter;
+  const sourceFilterLabel =
+    MARKET_DATA_SOURCE_FILTER_OPTIONS.find((option) => option.value === sourceFilter)?.label ?? sourceFilter;
+  const creditSegmentLabel =
+    MARKET_DATA_CREDIT_FILTER_OPTIONS.find((option) => option.value === creditSegment)?.label ?? creditSegment;
   const tickerStatusDate =
     formalRatesMeta?.resolved_report_date ??
     formalRatesMeta?.as_of_date ??
     filteredTickerItems[filteredTickerItems.length - 1]?.tradeDate ??
     null;
   const marketWorkbenchStatus = {
-    label: isFormalBasis ? (formalUseBlocked ? "暂不可正式使用" : "正式片段") : "混合来源",
+    label: formalUseBlocked ? "分析/候选" : isFormalBasis ? "正式片段" : "混合来源",
     tone: formalUseBlocked ? "watch" : isFormalBasis ? "ok" : ("watch" as const),
-    detail: "正式利率片段 + 分析读面，未新增前端指标推导",
+    detail: formalUseBlocked
+      ? "正式市场片段当前禁止作为正式口径；其余分析读面保持候选语义"
+      : "正式市场片段 + 分析读面，未新增前端指标推导",
   } as const;
   const sourceFallback =
     formalRatesMeta?.source_version ?? rateQuotesSource?.sourceVersion ?? "source-pending";
@@ -625,134 +667,14 @@ export default function MarketDataPage() {
     }
     return map;
   }, [latestSeries]);
-  const displayedCoverageSections = useMemo<MarketDataCoverageSection[]>(() => {
-    if (coverageSections.length > 0) {
-      return coverageSections;
-    }
-    const rateQuoteRowCount = terminalModel.rateQuotes.rows.length;
-    const ncdProxyRowCount = ncdFundingProxy?.rows?.length ?? 0;
-    const fxAnalyticalSeriesCount = fxAnalyticalObservationCount(fxAnalyticalGroups);
-    const bondFuturesCount = terminalModel.bondFutures.rows.length;
-    const cashBondSourcePending = terminalModel.bondTrades.status === "source-pending";
-    const creditSourcePending = terminalModel.creditTrades.status === "source-pending";
-    return [
-      {
-        key: "formal_rates",
-        label: "正式利率片段",
-        status: rateQuoteRowCount > 0 ? "ready" : "empty",
-        basis: formalRatesMeta?.basis === "formal" ? "formal" : "analytical",
-        formal_use_allowed: formalRatesMeta?.formal_use_allowed ?? false,
-        quality_flag: formalRatesMeta?.quality_flag ?? "warning",
-        fallback_mode: coverageFallbackMode(formalRatesMeta?.fallback_mode),
-        vendor_status: formalRatesMeta?.vendor_status ?? "ok",
-        row_count: rateQuoteRowCount,
-        latest_trade_date: watchDate || linkageReportDate || null,
-        source_pending: false,
-        proxy_only: false,
-        message: "覆盖摘要不可用时，回退使用当前利率表。",
-      },
-      {
-        key: "macro_latest",
-        label: "宏观最新观察",
-        status: latestSeries.length > 0 ? "warning" : "empty",
-        basis: "analytical",
-        formal_use_allowed: false,
-        quality_flag: "warning",
-        fallback_mode: "latest_snapshot",
-        vendor_status: "ok",
-        series_count: latestSeries.length,
-        latest_trade_date: linkageReportDate || watchDate || null,
-        source_pending: false,
-        proxy_only: false,
-        message: "宏观最新仅为分析观察，不作为正式市场口径。",
-      },
-      {
-        key: "fx_analytical",
-        label: "外汇分析组",
-        status: fxAnalyticalSeriesCount > 0 ? "warning" : "empty",
-        basis: "analytical",
-        formal_use_allowed: false,
-        quality_flag: "warning",
-        fallback_mode: "latest_snapshot",
-        vendor_status: "ok",
-        row_count: fxAnalyticalSeriesCount,
-        group_count: fxAnalyticalGroups.length,
-        latest_trade_date: watchDate || null,
-        source_pending: false,
-        proxy_only: false,
-        message: "外汇分析组仅作观察。",
-      },
-      {
-        key: "ncd_proxy",
-        label: "存单资金代理",
-        status: "proxy_only",
-        basis: "analytical",
-        formal_use_allowed: false,
-        quality_flag: ncdFundingProxyMeta?.quality_flag ?? "warning",
-        fallback_mode: coverageFallbackMode(ncdFundingProxyMeta?.fallback_mode),
-        vendor_status: ncdFundingProxyMeta?.vendor_status ?? "ok",
-        row_count: ncdProxyRowCount || 1,
-        as_of_date: watchDate || null,
-        source_pending: false,
-        proxy_only: true,
-        message: "仅为 Shibor 资金代理，不是真实存单期限评级矩阵。",
-      },
-      {
-        key: "bond_futures",
-        label: "国债期货排名",
-        status: bondFuturesCount > 0 ? "ready" : "source_pending",
-        basis: "analytical",
-        formal_use_allowed: false,
-        quality_flag: bondFuturesCount > 0 ? "ok" : "warning",
-        fallback_mode: "none",
-        vendor_status: bondFuturesCount > 0 ? "ok" : "vendor_unavailable",
-        row_count: bondFuturesCount,
-        latest_trade_date: watchDate || null,
-        source_pending: bondFuturesCount === 0,
-        proxy_only: false,
-        message: bondFuturesCount > 0 ? "国债期货分析排名可用。" : "国债期货数据源未接入。",
-      },
-      {
-        key: "cash_bond_trades",
-        label: "现券成交",
-        status: cashBondSourcePending ? "source_pending" : "ready",
-        basis: "analytical",
-        formal_use_allowed: false,
-        quality_flag: cashBondSourcePending ? "warning" : "ok",
-        fallback_mode: "none",
-        vendor_status: cashBondSourcePending ? "vendor_unavailable" : "ok",
-        source_pending: cashBondSourcePending,
-        proxy_only: false,
-        message: "现券成交数据源未接入。",
-      },
-      {
-        key: "credit_trades",
-        label: "信用成交",
-        status: creditSourcePending ? "source_pending" : "ready",
-        basis: "analytical",
-        formal_use_allowed: false,
-        quality_flag: creditSourcePending ? "warning" : "ok",
-        fallback_mode: "none",
-        vendor_status: creditSourcePending ? "vendor_unavailable" : "ok",
-        source_pending: creditSourcePending,
-        proxy_only: false,
-        message: "信用成交数据源未接入。",
-      },
-    ];
-  }, [
-    coverageSections,
-    formalRatesMeta,
-    fxAnalyticalGroups,
-    latestSeries.length,
-    linkageReportDate,
-    ncdFundingProxy?.rows?.length,
-    ncdFundingProxyMeta,
-    terminalModel.bondFutures.rows.length,
-    terminalModel.bondTrades.status,
-    terminalModel.creditTrades.status,
-    terminalModel.rateQuotes.rows.length,
-    watchDate,
-  ]);
+  const displayedCoverageSections = coverageSections;
+  const coverageSummaryState = coverageSummaryQuery.isLoading
+    ? "loading"
+    : coverageSummaryQuery.isError
+      ? "error"
+      : coverageSummary && coverageSections.length > 0
+        ? "ready"
+        : "empty";
   const sourcePendingLabels = useMemo(() => {
     const fallbackLabels: Record<string, string> = {
       bond_futures: "国债期货",
@@ -769,26 +691,12 @@ export default function MarketDataPage() {
   const handleMarketDataRefresh = useCallback(async () => {
     await handleRefresh();
     await Promise.all([
-      livermoreSignalConfluenceQuery.refetch(nonCancellingRefetchOptions),
-      livermoreStrategyScoreQuery.refetch(nonCancellingRefetchOptions),
-      livermoreSectorRankSeriesQuery.refetch(nonCancellingRefetchOptions),
-      livermoreCandidateHistoryQuery.refetch(nonCancellingRefetchOptions),
-      livermoreStrategyOptimizationQuery.refetch(nonCancellingRefetchOptions),
-      livermoreCycleProxyBacktestQuery.refetch(nonCancellingRefetchOptions),
-      livermorePortfolioBacktestQuery.refetch(nonCancellingRefetchOptions),
       tushareSupplementQuery.refetch(nonCancellingRefetchOptions),
-      macroToolkitAnalysisQuery.refetch(nonCancellingRefetchOptions),
+      supplyCalendarQuery.refetch(nonCancellingRefetchOptions),
     ]);
   }, [
     handleRefresh,
-    livermoreCandidateHistoryQuery,
-    livermoreCycleProxyBacktestQuery,
-    livermorePortfolioBacktestQuery,
-    livermoreSectorRankSeriesQuery,
-    livermoreSignalConfluenceQuery,
-    livermoreStrategyOptimizationQuery,
-    livermoreStrategyScoreQuery,
-    macroToolkitAnalysisQuery,
+    supplyCalendarQuery,
     tushareSupplementQuery,
   ]);
 
@@ -856,6 +764,19 @@ export default function MarketDataPage() {
     }));
   }, [filteredTerminalKpiMetrics, pipelineOverviewMetrics]);
 
+  const shouldRenderExtendedTerminalSection =
+    deferredWorkspacesRequested ||
+    terminalModel.bondFutures.rows.length > 0 ||
+    terminalModel.bondTrades.rows.length > 0 ||
+    terminalModel.creditTrades.rows.length > 0 ||
+    sourcePendingCount > 0;
+
+  const shouldRenderSupplementarySection =
+    deferredWorkspacesRequested ||
+    supplementarySectionRequested ||
+    stableSeries.length + fallbackSeries.length > 0 ||
+    fxAnalyticalGroups.length > 0;
+
   return (
     <MarketWorkbenchFrame
       pageKey="market-data"
@@ -877,16 +798,245 @@ export default function MarketDataPage() {
       }
     >
       <section
-        className="market-data-page"
+        className="market-data-page market-data-page--nocturne theme-dh-api"
         data-testid="market-data-page"
         data-layout-rev="2026-07-01-redesign"
         data-view-mode={viewMode}
       >
+        <h1 className="market-data-sr-only" data-testid="market-data-page-title">
+          市场数据
+        </h1>
+        <section className="market-data-filter-strip" data-testid="market-data-filter-strip">
+          <div className="market-data-filter-strip-primary">
+            <div className="market-data-filter-strip-head">
+              <div>
+                <span className="market-data-filter-strip-eyebrow">观察命令条</span>
+                <strong>筛选与刷新</strong>
+              </div>
+              <p className="market-data-filter-strip-note">
+                观察/请求日期仅影响本页请求与刷新；数据日期以后端实际返回为准。
+              </p>
+            </div>
+            <div className="market-data-filter-strip-controls">
+              <label className="market-data-filter-strip-date-group">
+                <span>观察/请求日期</span>
+                <input
+                  type="date"
+                  value={watchDate}
+                  onChange={(e) => setWatchDate(e.target.value)}
+                  className="market-data-hero-date-input"
+                  data-testid="market-data-date-picker"
+                  aria-label="市场数据观察日期"
+                />
+              </label>
+              <div className="market-data-filter-strip-select-group">
+                <span>利率曲线</span>
+                <Select
+                  size="small"
+                  value={curveFilter}
+                  onChange={setCurveFilter}
+                  className="market-data-hero-select market-data-hero-select--curve"
+                  aria-label="利率曲线筛选"
+                  options={MARKET_DATA_CURVE_FILTER_OPTIONS.map((option) => ({ ...option }))}
+                  data-testid="market-data-curve-filter"
+                />
+              </div>
+              <div className="market-data-filter-strip-select-group">
+                <span>数据来源</span>
+                <Select
+                  size="small"
+                  value={sourceFilter}
+                  onChange={setSourceFilter}
+                  className="market-data-hero-select market-data-hero-select--source"
+                  aria-label="数据来源筛选"
+                  options={MARKET_DATA_SOURCE_FILTER_OPTIONS.map((option) => ({ ...option }))}
+                  data-testid="market-data-source-filter"
+                />
+              </div>
+              <div className="market-data-filter-strip-select-group">
+                <span>信用分层</span>
+                <Select
+                  size="small"
+                  value={creditSegment}
+                  onChange={setCreditSegment}
+                  className="market-data-hero-select market-data-hero-select--credit"
+                  aria-label="信用分层筛选"
+                  options={MARKET_DATA_CREDIT_FILTER_OPTIONS.map((option) => ({ ...option }))}
+                  data-testid="market-data-credit-filter"
+                />
+              </div>
+              <button
+                onClick={handleMarketDataRefresh}
+                disabled={isRefreshing}
+                className="market-data-hero-refresh-btn"
+                data-testid="market-data-refresh-btn"
+              >
+                {isRefreshing ? "刷新中…" : "刷新数据"}
+              </button>
+            </div>
+          </div>
+          <DataStatusStrip testId="market-data-active-filter-summary">
+            <span>{statusBadges.readinessVerdict}</span>
+            <span aria-hidden="true">·</span>
+            <span>{statusBadges.overviewReadinessLabel}</span>
+            <span aria-hidden="true">·</span>
+            <span>{`观察/请求日期 ${watchDate || "待设置"}`}</span>
+            <span aria-hidden="true">·</span>
+            <span>{`数据日期 ${tickerStatusDate ?? "待返回"}`}</span>
+            <span aria-hidden="true">·</span>
+            <span>{`曲线 ${curveFilterLabel}`}</span>
+            <span aria-hidden="true">·</span>
+            <span>{`来源 ${sourceFilterLabel}`}</span>
+            <span aria-hidden="true">·</span>
+            <span>{`信用 ${creditSegmentLabel}`}</span>
+            {formalUseBlocked ? (
+              <>
+                <span aria-hidden="true">·</span>
+                <span className="market-data-hero-status-warn">{basisChipLabel}</span>
+              </>
+            ) : null}
+            {isRefreshing ? (
+              <>
+                <span aria-hidden="true">·</span>
+                <span className="market-data-hero-status-accent">{refreshStatus || "刷新中…"}</span>
+              </>
+            ) : null}
+            {refreshError ? (
+              <>
+                <span aria-hidden="true">·</span>
+                <span className="market-data-hero-status-danger">{refreshError}</span>
+              </>
+            ) : null}
+          </DataStatusStrip>
+        </section>
+        <MarketDataFigmaDesktopView
+          watchDate={watchDate}
+          statusDate={tickerStatusDate}
+          tickerItems={filteredTickerItems}
+          rateRows={filteredRateRows}
+          moneyRows={filteredMoneyRows}
+          moneySeriesLoading={formalRatesQuery.isLoading || latestQuery.isLoading}
+          moneySeriesError={formalRatesQuery.isError || latestQuery.isError}
+          analyticalSubstituteCount={analyticalSubstituteCount}
+          formalSeriesLoading={formalRatesQuery.isLoading}
+          formalSeriesError={formalRatesQuery.isError}
+          latestSeries={latestSeries}
+          latestSeriesLoading={latestQuery.isLoading}
+          latestSeriesError={latestQuery.isError}
+          fxFormalStatus={pageModel.fxFormalStatus}
+          fxFormalLoading={fxFormalStatusQuery.isLoading}
+          fxFormalError={fxFormalStatusQuery.isError}
+          ncdFundingProxy={ncdFundingProxy}
+          ncdLoading={ncdFundingProxyQuery.isLoading}
+          ncdError={ncdFundingProxyQuery.isError}
+          coverageSummary={coverageSummary}
+          coverageSections={displayedCoverageSections}
+          coverageSummaryState={coverageSummaryState}
+          catalogCount={catalog.length}
+          catalogLoading={catalogQuery.isLoading}
+          catalogError={catalogQuery.isError}
+          livermorePayload={livermoreStrategyQuery.data?.result}
+          livermoreLoading={livermoreStrategyQuery.isLoading}
+          livermoreError={livermoreStrategyQuery.isError}
+          linkagePayload={macroBondLinkageQuery.data?.result}
+          linkageLoading={macroBondLinkageQuery.isLoading}
+          linkageError={macroBondLinkageQuery.isError}
+          newsPayload={choiceNewsQuery.data?.result ?? null}
+          newsLoading={choiceNewsQuery.isLoading}
+          newsError={choiceNewsQuery.isError}
+          livermoreRef={lazyLivermore.ref}
+          supplyEvents={supplyCalendarQuery.data ?? []}
+          supplyLoading={supplyCalendarQuery.isLoading}
+          supplyError={supplyCalendarQuery.isError}
+        />
+        <div data-testid="market-data-figma-news-panel">
+          <NewsAndCalendar
+            newsState={{
+              payload: choiceNewsQuery.data?.result ?? null,
+              isLoading: choiceNewsQuery.isLoading,
+              isError: choiceNewsQuery.isError,
+            }}
+            calendarState={{
+              rows: supplyCalendarQuery.data ?? [],
+              isLoading: supplyCalendarQuery.isLoading,
+              isError: supplyCalendarQuery.isError,
+            }}
+          />
+        </div>
+        <MarketDataDetailDeck
+          detailRef={lazyDetails.ref}
+          catalog={catalog}
+          formalRateSeries={formalRatesQuery.data?.result.series ?? []}
+          formalDerivedSpreads={formalRatesQuery.data?.result.derived_spreads}
+          formalUseBlocked={formalUseBlocked}
+          latestSeries={latestSeries}
+          macroDerivedSpreads={latestQuery.data?.result.derived_spreads}
+          fxFormalStatus={pageModel.fxFormalStatus}
+          fxAnalytical={fxAnalyticalQuery.data?.result}
+          ncdFundingProxy={ncdFundingProxy}
+          bondFutures={bondFuturesRankingsQuery.data?.result}
+          coverageSummary={coverageSummary}
+          linkage={macroBondLinkageQuery.data?.result}
+          creditSegment={creditSegment}
+          creditSpreadSlots={spreadSlots}
+          livermore={livermoreStrategyQuery.data?.result}
+          watermarks={externalDataWatermarksQuery.data}
+          tushare={tushareSupplementQuery.data?.result}
+          supplyEvents={supplyCalendarQuery.data ?? []}
+          resultMeta={[
+            { key: "catalog", label: "宏观目录", meta: catalogQuery.data?.result_meta },
+            { key: "formal-rates", label: "正式市场序列", meta: formalRatesQuery.data?.result_meta },
+            { key: "macro-latest", label: "市场与宏观最新", meta: latestQuery.data?.result_meta },
+            { key: "fx-formal", label: "外汇正式", meta: fxFormalStatusQuery.data?.result_meta },
+            { key: "fx-analytical", label: "外汇分析", meta: fxAnalyticalQuery.data?.result_meta },
+            { key: "ncd-proxy", label: "存单代理", meta: ncdFundingProxyQuery.data?.result_meta },
+            { key: "bond-futures", label: "国债期货", meta: bondFuturesRankingsQuery.data?.result_meta },
+            { key: "coverage", label: "覆盖摘要", meta: coverageSummaryQuery.data?.result_meta },
+            { key: "linkage", label: "宏债联动", meta: macroBondLinkageQuery.data?.result_meta },
+            { key: "livermore", label: "策略观察", meta: livermoreStrategyQuery.data?.result_meta },
+            { key: "tushare", label: "补充数据", meta: tushareSupplementQuery.data?.result_meta },
+          ]}
+          loading={{
+            catalog: catalogQuery.isLoading,
+            formalRates: formalRatesQuery.isLoading,
+            macroLatest: latestQuery.isLoading,
+            fxFormal: fxFormalStatusQuery.isLoading,
+            fxAnalytical: fxAnalyticalQuery.isLoading,
+            ncd: ncdFundingProxyQuery.isLoading,
+            bondFutures: bondFuturesRankingsQuery.isLoading,
+            coverage: coverageSummaryQuery.isLoading,
+            linkage: macroBondLinkageQuery.isLoading,
+            livermore: livermoreStrategyQuery.isLoading,
+            watermarks: externalDataWatermarksQuery.isLoading,
+            tushare: tushareSupplementQuery.isLoading,
+            supply: supplyCalendarQuery.isLoading,
+          }}
+          error={{
+            catalog: catalogQuery.isError,
+            formalRates: formalRatesQuery.isError,
+            macroLatest: latestQuery.isError,
+            fxFormal: fxFormalStatusQuery.isError,
+            fxAnalytical: fxAnalyticalQuery.isError,
+            ncd: ncdFundingProxyQuery.isError,
+            bondFutures: bondFuturesRankingsQuery.isError,
+            coverage: coverageSummaryQuery.isError,
+            linkage: macroBondLinkageQuery.isError,
+            livermore: livermoreStrategyQuery.isError,
+            watermarks: externalDataWatermarksQuery.isError,
+            tushare: tushareSupplementQuery.isError,
+            supply: supplyCalendarQuery.isError,
+          }}
+          watermarksAccessDenied={isAccessDeniedError(externalDataWatermarksQuery.error)}
+        />
+
+        {MARKET_DATA_SHOW_LEGACY_SURFACE ? (
+        <div className="market-data-deep-workspaces" data-testid="market-data-deep-workspaces">
         <PageDecisionHero
           title="市场数据"
           businessQuestion="当前市场利率、资金面、外汇状况如何？"
           eyebrow="市场数据终端"
           testId="market-data-hero"
+          className="market-data-nocturne-command"
           reportDateSlot={
             <div className="market-data-hero-date-slot">
               <input
@@ -935,11 +1085,7 @@ export default function MarketDataPage() {
                 onChange={setCurveFilter}
                 className="market-data-hero-select market-data-hero-select--curve"
                 aria-label="利率曲线筛选"
-                options={[
-                  { value: "both", label: "国债+国开" },
-                  { value: "treasury", label: "国债" },
-                  { value: "cdb", label: "国开" },
-                ]}
+                options={MARKET_DATA_CURVE_FILTER_OPTIONS.map((option) => ({ ...option }))}
                 data-testid="market-data-curve-filter"
               />
               <Select
@@ -948,11 +1094,7 @@ export default function MarketDataPage() {
                 onChange={setSourceFilter}
                 className="market-data-hero-select market-data-hero-select--source"
                 aria-label="数据来源筛选"
-                options={[
-                  { value: "all", label: "全部来源" },
-                  { value: "choice", label: "Choice" },
-                  { value: "internal", label: "内部" },
-                ]}
+                options={MARKET_DATA_SOURCE_FILTER_OPTIONS.map((option) => ({ ...option }))}
                 data-testid="market-data-source-filter"
               />
               <button
@@ -1072,7 +1214,7 @@ export default function MarketDataPage() {
             />
 
             <div ref={lazyExtended.ref} data-lazy-mount="extended-terminal">
-              {lazyExtended.shouldMount || deferredWorkspacesRequested ? (
+              {shouldRenderExtendedTerminalSection ? (
                 <MarketDataExtendedTerminalSection sourcePendingCount={sourcePendingCount}>
                   <div className="market-data-observation-grid" data-testid="market-data-source-pending-deck">
                     <BondFuturesTable model={terminalModel.bondFutures} />
@@ -1086,13 +1228,11 @@ export default function MarketDataPage() {
                     </span>
                   </div>
                 </MarketDataExtendedTerminalSection>
-              ) : (
-                <div className="market-data-lazy-placeholder" />
-              )}
+              ) : null}
             </div>
 
             <div ref={lazySupplementary.ref} data-lazy-mount="supplementary-series">
-              {(lazySupplementary.shouldMount || supplementarySectionRequested || deferredWorkspacesRequested) &&
+              {shouldRenderSupplementarySection &&
               (MARKET_DATA_SHOW_MACRO_SERIES_DECK || MARKET_DATA_SHOW_FX_ANALYSIS_SECTION) ? (
                 <MarketDataSupplementarySeriesSection
                   macroSeriesCount={stableSeries.length + fallbackSeries.length}
@@ -1162,12 +1302,10 @@ export default function MarketDataPage() {
                     ) : null
                   }
                 />
-              ) : (
-                <div className="market-data-lazy-placeholder" />
-              )}
+              ) : null}
             </div>
 
-            <div ref={lazyLivermore.ref} data-lazy-mount="livermore-section">
+            <div data-lazy-mount="livermore-section">
               <MarketDataLivermoreSection
                 model={livermoreStrategy}
                 isLoading={livermoreStrategyQuery.isLoading}
@@ -1233,6 +1371,8 @@ export default function MarketDataPage() {
             </section>
           </aside>
         </div>
+        </div>
+        ) : null}
       </section>
     </MarketWorkbenchFrame>
   );

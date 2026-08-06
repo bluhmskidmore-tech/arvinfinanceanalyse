@@ -261,6 +261,55 @@ def test_choice_events_latest_topic_code_param_filters(tmp_path, monkeypatch) ->
     get_settings.cache_clear()
 
 
+def test_choice_events_latest_can_omit_raw_json_and_keep_display_text(
+    tmp_path, monkeypatch
+) -> None:
+    _seed_choice_news_topics(tmp_path)
+    conn = duckdb.connect(str(tmp_path / "moss.duckdb"), read_only=False)
+    try:
+        conn.execute(
+            """
+            insert into choice_news_event values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                "ev_structured_only",
+                "2026-05-08T10:30:00Z",
+                "g1",
+                "sectornews",
+                20,
+                1,
+                0,
+                "",
+                "TOPIC_STRUCTURED_ONLY",
+                0,
+                None,
+                '{"headline":"Policy follow-up","summary":"PBOC commentary"}',
+            ],
+        )
+    finally:
+        conn.close()
+
+    client = _choice_news_read_client(tmp_path, monkeypatch)
+    response = client.get(
+        "/ui/news/choice-events/latest",
+        params={
+            "topic_code": "TOPIC_STRUCTURED_ONLY",
+            "include_payload_json": "false",
+        },
+    )
+
+    assert response.status_code == 200
+    result = response.json()["result"]
+    assert result["payload_json_included"] is False
+    assert result["total_rows"] == 1
+    event = result["events"][0]
+    assert event["payload_text"] is None
+    assert event["payload_json"] is None
+    assert event["display_text"] == "Policy follow-up - PBOC commentary"
+    assert result["compare"]["review_needed"][0]["headline"] == event["display_text"]
+    get_settings.cache_clear()
+
+
 def test_choice_events_latest_returns_deterministic_research_compare(tmp_path, monkeypatch) -> None:
     _seed_choice_news_topics(tmp_path)
     _append_research_radar_events(tmp_path)

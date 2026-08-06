@@ -23,6 +23,8 @@ export type MarketDataTerminalSource = {
   traceId: string;
 };
 
+export type MarketDataTerminalRowOrigin = "rates_bundle" | "macro_latest";
+
 export type MarketDataTerminalRowBase = {
   key: string;
   seriesId: string;
@@ -30,6 +32,11 @@ export type MarketDataTerminalRowBase = {
   rateText: string;
   deltaText: string;
   tradeDate: string;
+  origin: MarketDataTerminalRowOrigin;
+  basis: ResultMeta["basis"];
+  formalUseAllowed: boolean;
+  fallbackMode: ResultMeta["fallback_mode"];
+  vendorStatus: ResultMeta["vendor_status"];
   sourceVersion: string;
   vendorVersion: string;
   qualityFlag: ApiQuality | "unknown";
@@ -352,6 +359,7 @@ type BuildMarketDataTerminalModelOptions = {
 type SourcePoint = {
   point: ChoiceMacroLatestPoint;
   meta: ResultMeta;
+  origin: MarketDataTerminalRowOrigin;
 };
 
 type RateSpec = {
@@ -399,27 +407,28 @@ function terminalSource(meta: ResultMeta): MarketDataTerminalSource {
 }
 
 function buildSourcePointMap(
-  envelopes: Array<ApiEnvelope<ChoiceMacroLatestPayload> | undefined>,
+  envelope: ApiEnvelope<ChoiceMacroLatestPayload> | undefined,
+  origin: MarketDataTerminalRowOrigin,
 ): Map<string, SourcePoint> {
   const out = new Map<string, SourcePoint>();
-  for (const envelope of envelopes) {
-    if (!envelope) {
-      continue;
-    }
-    for (const point of envelope.result.series) {
-      if (!out.has(point.series_id)) {
-        out.set(point.series_id, { point, meta: envelope.result_meta });
-      }
+  if (!envelope) {
+    return out;
+  }
+  for (const point of envelope.result.series) {
+    if (!out.has(point.series_id)) {
+      out.set(point.series_id, { point, meta: envelope.result_meta, origin });
     }
   }
   return out;
 }
 
-function findSourcePoint(map: Map<string, SourcePoint>, seriesIds: string[]) {
-  for (const seriesId of seriesIds) {
-    const found = map.get(seriesId);
-    if (found) {
-      return found;
+function findSourcePoint(maps: Map<string, SourcePoint>[], seriesIds: string[]) {
+  for (const map of maps) {
+    for (const seriesId of seriesIds) {
+      const found = map.get(seriesId);
+      if (found) {
+        return found;
+      }
     }
   }
   return null;
@@ -453,7 +462,7 @@ export function resolveLatestMarketDataTradeDate(
 }
 
 function rowBase(sourcePoint: SourcePoint): MarketDataTerminalRowBase {
-  const { point, meta } = sourcePoint;
+  const { point, meta, origin } = sourcePoint;
   return {
     key: point.series_id,
     seriesId: point.series_id,
@@ -461,6 +470,11 @@ function rowBase(sourcePoint: SourcePoint): MarketDataTerminalRowBase {
     rateText: formatChoiceMacroValue(point, { spaceBeforeUnit: false }),
     deltaText: formatChoiceMacroDelta(point, { spaceBeforeUnit: false, emptyDisplay: "缺前值" }),
     tradeDate: point.trade_date,
+    origin,
+    basis: meta.basis,
+    formalUseAllowed: meta.formal_use_allowed,
+    fallbackMode: meta.fallback_mode,
+    vendorStatus: meta.vendor_status,
     sourceVersion: meta.source_version,
     vendorVersion: point.vendor_version || meta.vendor_version,
     qualityFlag: point.quality_flag ?? meta.quality_flag ?? "unknown",
@@ -545,9 +559,12 @@ export function buildMarketDataTerminalModel({
   latestEnvelope,
   bondFuturesRankingsEnvelope,
 }: BuildMarketDataTerminalModelOptions): MarketDataTerminalModel {
-  const bySeriesId = buildSourcePointMap([ratesEnvelope, latestEnvelope]);
+  const sourceMaps = [
+    buildSourcePointMap(ratesEnvelope, "rates_bundle"),
+    buildSourcePointMap(latestEnvelope, "macro_latest"),
+  ];
   const rateRows = RATE_QUOTE_SPECS.flatMap((spec) => {
-    const sourcePoint = findSourcePoint(bySeriesId, spec.seriesIds);
+    const sourcePoint = findSourcePoint(sourceMaps, spec.seriesIds);
     if (!sourcePoint) {
       return [];
     }
@@ -560,7 +577,7 @@ export function buildMarketDataTerminalModel({
     ];
   });
   const moneyRows = MONEY_MARKET_SPECS.flatMap((spec) => {
-    const sourcePoint = findSourcePoint(bySeriesId, spec.seriesIds);
+    const sourcePoint = findSourcePoint(sourceMaps, spec.seriesIds);
     if (!sourcePoint) {
       return [];
     }
