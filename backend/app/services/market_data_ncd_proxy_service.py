@@ -42,13 +42,17 @@ class _ProxyPayloadResult:
     vendor_version: str
 
 
-def load_ncd_funding_proxy_payload() -> NcdFundingProxyPayload:
-    return _load_ncd_funding_proxy_result().payload
+def load_ncd_funding_proxy_payload(duckdb_path: str | None = None) -> NcdFundingProxyPayload:
+    return _load_ncd_funding_proxy_result(duckdb_path).payload
 
 
-def _load_ncd_funding_proxy_result() -> _ProxyPayloadResult:
-    settings = get_settings()
-    landed_result = _load_landed_ncd_funding_proxy_result(str(settings.duckdb_path))
+def _load_ncd_funding_proxy_result(duckdb_path: str | None = None) -> _ProxyPayloadResult:
+    if duckdb_path is None:
+        settings = get_settings()
+        resolved_duckdb_path = str(settings.duckdb_path)
+    else:
+        resolved_duckdb_path = str(duckdb_path)
+    landed_result = _load_landed_ncd_funding_proxy_result(resolved_duckdb_path)
     if landed_result is not None:
         return landed_result
 
@@ -301,8 +305,13 @@ def _optional_text(value: object) -> str | None:
     return text or None
 
 
-def ncd_funding_proxy_envelope() -> dict[str, object]:
-    result = _load_ncd_funding_proxy_result()
+def ncd_funding_proxy_envelope(duckdb_path: str | None = None) -> dict[str, object]:
+    if duckdb_path is None:
+        settings = get_settings()
+        resolved_duckdb_path = str(settings.duckdb_path)
+    else:
+        resolved_duckdb_path = str(duckdb_path)
+    result = _load_ncd_funding_proxy_result(resolved_duckdb_path)
     payload = result.payload
     quality_flag: QualityFlag = "ok" if payload.rows else "warning"
     vendor_status: VendorStatus = "ok" if payload.rows else "vendor_unavailable"
@@ -318,7 +327,48 @@ def ncd_funding_proxy_envelope() -> dict[str, object]:
         vendor_status=vendor_status,
         fallback_mode="none",
         result_payload=payload.model_dump(mode="json", by_alias=True),
+        tables_used=_ncd_proxy_tables_used(resolved_duckdb_path),
+        evidence_rows=len(payload.rows),
+        source_surface="market_data",
+        as_of_date=payload.as_of_date,
+        resolved_report_date=payload.as_of_date,
     )
+
+
+def _ncd_proxy_tables_used(duckdb_path: str) -> list[str]:
+    duckdb_file = Path(duckdb_path)
+    if not duckdb_file.exists():
+        return []
+    try:
+        conn = duckdb.connect(str(duckdb_file), read_only=True)
+    except duckdb.Error:
+        return []
+    try:
+        available = {
+            str(row[0])
+            for row in conn.execute(
+                """
+                select table_name
+                from information_schema.tables
+                where table_name in (
+                  'choice_market_snapshot',
+                  'fact_choice_macro_daily',
+                  'phase1_macro_vendor_catalog'
+                )
+                """
+            ).fetchall()
+        }
+    finally:
+        conn.close()
+
+    tables_used: list[str] = []
+    if "choice_market_snapshot" in available:
+        tables_used.append("choice_market_snapshot")
+    if "fact_choice_macro_daily" in available:
+        tables_used.append("fact_choice_macro_daily")
+        if "phase1_macro_vendor_catalog" in available:
+            tables_used.append("phase1_macro_vendor_catalog")
+    return sorted(tables_used)
 
 
 def _build_proxy_row(

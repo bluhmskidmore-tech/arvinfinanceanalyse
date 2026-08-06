@@ -42,6 +42,7 @@ from backend.app.schemas.macro_vendor import (
     MacroVendorPayload,
     MacroVendorSeries,
 )
+from backend.app.services import market_data_ncd_proxy_service as ncd_proxy_service
 from backend.app.services.formal_result_runtime import build_result_envelope
 
 RULE_VERSION = "rv_phase1_macro_vendor_v1"
@@ -718,6 +719,7 @@ def market_data_coverage_summary_envelope(duckdb_path: str) -> dict[str, object]
     macro_latest = choice_macro_latest_envelope(duckdb_path)
     fx_formal = fx_formal_status_envelope(duckdb_path)
     fx_analytical = fx_analytical_envelope(duckdb_path)
+    ncd_proxy = ncd_proxy_service.ncd_funding_proxy_envelope(duckdb_path)
     bond_futures = market_data_bond_futures_rankings_envelope(
         duckdb_path,
         contract="T.CFE",
@@ -734,6 +736,9 @@ def market_data_coverage_summary_envelope(duckdb_path: str) -> dict[str, object]
     fx_formal_result = fx_formal["result"]
     fx_analytical_groups = fx_analytical["result"].get("groups", [])
     fx_analytical_series_count = sum(len(group.get("series", [])) for group in fx_analytical_groups)
+    ncd_result = ncd_proxy["result"]
+    ncd_rows = ncd_result.get("rows", [])
+    ncd_as_of_date = _string_or_none(ncd_result.get("as_of_date"))
     bond_rows = bond_futures["result"].get("rows", [])
     tushare_result = tushare["result"]
     tushare_row_count = len(tushare_result.get("money_supply_rows", [])) + len(
@@ -790,29 +795,30 @@ def market_data_coverage_summary_envelope(duckdb_path: str) -> dict[str, object]
             meta=fx_analytical["result_meta"],
             row_count=fx_analytical_series_count,
             group_count=len(fx_analytical_groups),
-            latest_trade_date=_result_meta_date(fx_analytical["result_meta"]),
+            latest_trade_date=_latest_fx_group_date(fx_analytical_groups),
             source_pending=False,
             proxy_only=False,
             message="Analytical FX groups remain observation-only.",
         ),
-        {
-            "key": "ncd_proxy",
-            "label": "NCD funding proxy",
-            "status": "proxy_only",
-            "basis": "analytical",
-            "formal_use_allowed": False,
-            "quality_flag": "warning",
-            "fallback_mode": "none",
-            "vendor_status": "ok",
-            "row_count": None,
-            "series_count": None,
-            "group_count": None,
-            "latest_trade_date": None,
-            "as_of_date": None,
-            "source_pending": False,
-            "proxy_only": True,
-            "message": "NCD remains proxy-only until the formal tenor-rating matrix contract lands.",
-        },
+        _coverage_section(
+            key="ncd_proxy",
+            label="NCD funding proxy",
+            status="proxy_only" if ncd_rows else "empty",
+            basis="analytical",
+            formal_use_allowed=False,
+            meta=ncd_proxy["result_meta"],
+            row_count=len(ncd_rows) if isinstance(ncd_rows, list) else None,
+            latest_trade_date=ncd_as_of_date,
+            as_of_date=ncd_as_of_date,
+            source_pending=not bool(ncd_rows),
+            proxy_only=bool(ncd_rows),
+            message=(
+                "No NCD funding proxy rows are available; the formal tenor-rating matrix "
+                "remains source-pending."
+                if not ncd_rows
+                else "Proxy-only NCD funding rows reflect the landed Shibor coverage snapshot."
+            ),
+        ),
         _coverage_section(
             key="bond_futures",
             label="Bond futures rankings",
@@ -855,6 +861,12 @@ def market_data_coverage_summary_envelope(duckdb_path: str) -> dict[str, object]
         and section["status"] in {"warning", "empty", "stale", "deferred"}
         and not section["source_pending"]
     )
+    readable_count = sum(
+        1
+        for section in sections
+        if section["status"] not in {"empty", "source_pending"}
+    )
+    empty_count = sum(1 for section in sections if section["status"] == "empty")
     as_of_date = _latest_coverage_date(sections)
     generated_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     payload = {
@@ -863,9 +875,12 @@ def market_data_coverage_summary_envelope(duckdb_path: str) -> dict[str, object]
         "generated_at": generated_at,
         "headline": {
             "readiness_label": (
-                f"{len(sections) - source_pending_count}/{len(sections)} sections readable; "
-                f"{source_pending_count} source gaps; {proxy_only_count} proxy-only"
+                f"{readable_count}/{len(sections)} sections readable; "
+                f"{source_pending_count} source gaps; {empty_count} empty; "
+                f"{proxy_only_count} proxy-only"
             ),
+            "readable_count": readable_count,
+            "empty_count": empty_count,
             "formal_fragment_ready": bool(formal_rate_rows),
             "formal_use_allowed": False,
             "analytical_warning_count": analytical_warning_count,
@@ -877,14 +892,14 @@ def market_data_coverage_summary_envelope(duckdb_path: str) -> dict[str, object]
     }
     source_versions = [
         _meta_text(envelope, "source_version")
-        for envelope in (formal_rates, macro_latest, fx_formal, fx_analytical, bond_futures, tushare)
+        for envelope in (formal_rates, macro_latest, fx_formal, fx_analytical, ncd_proxy, bond_futures, tushare)
     ]
     vendor_versions = [
         _meta_text(envelope, "vendor_version")
-        for envelope in (formal_rates, macro_latest, fx_formal, fx_analytical, bond_futures, tushare)
+        for envelope in (formal_rates, macro_latest, fx_formal, fx_analytical, ncd_proxy, bond_futures, tushare)
     ]
     tables_used: list[str] = []
-    for envelope in (formal_rates, macro_latest, fx_formal, fx_analytical, bond_futures, tushare):
+    for envelope in (formal_rates, macro_latest, fx_formal, fx_analytical, ncd_proxy, bond_futures, tushare):
         tables_used.extend(str(item) for item in envelope.get("result_meta", {}).get("tables_used", []))
 
     return build_result_envelope(
@@ -1374,20 +1389,36 @@ def _fx_formal_coverage_status(result: dict[str, object]) -> str:
 def _latest_choice_series_date(rows: object) -> str | None:
     if not isinstance(rows, list):
         return None
-    dates = [
-        str(row.get("trade_date") or "")
-        for row in rows
-        if isinstance(row, dict) and str(row.get("trade_date") or "").strip()
-    ]
-    return max(dates) if dates else None
+    return _max_normalized_iso_date(
+        [
+            row.get("trade_date")
+            for row in rows
+            if isinstance(row, dict) and str(row.get("trade_date") or "").strip()
+        ]
+    )
+
+
+def _latest_fx_group_date(groups: object) -> str | None:
+    if not isinstance(groups, list):
+        return None
+    return _max_normalized_iso_date(
+        [
+            point.get("trade_date")
+            for group in groups
+            if isinstance(group, dict)
+            for point in group.get("series", [])
+            if isinstance(point, dict) and str(point.get("trade_date") or "").strip()
+        ]
+    )
 
 
 def _result_meta_date(meta: dict[str, object]) -> str | None:
-    for key in ("as_of_date", "resolved_report_date", "fallback_date", "generated_at"):
-        value = _string_or_none(meta.get(key))
-        if value:
-            return value[:10]
-    return None
+    return _max_normalized_iso_date(
+        [
+            _string_or_none(meta.get(key))
+            for key in ("as_of_date", "resolved_report_date", "fallback_date")
+        ]
+    )
 
 
 def _latest_coverage_date(sections: list[dict[str, object]]) -> str | None:
@@ -1396,8 +1427,51 @@ def _latest_coverage_date(sections: list[dict[str, object]]) -> str | None:
         for key in ("latest_trade_date", "as_of_date"):
             value = _string_or_none(section.get(key))
             if value:
-                dates.append(value[:10])
-    return max(dates) if dates else None
+                dates.append(value)
+    return _max_normalized_iso_date(dates)
+
+
+def _max_normalized_iso_date(values: list[object]) -> str | None:
+    normalized = [
+        iso_date
+        for iso_date in (_normalize_iso_date(value) for value in values)
+        if iso_date is not None
+    ]
+    return max(normalized) if normalized else None
+
+
+def _normalize_iso_date(value: object) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    text = str(value).strip()
+    if not text:
+        return None
+
+    candidates = [text, text.replace("/", "-")]
+    if len(text) >= 10:
+        candidates.append(text[:10].replace("/", "-"))
+    for candidate in candidates:
+        try:
+            return date.fromisoformat(candidate).isoformat()
+        except ValueError:
+            continue
+
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).date().isoformat()
+    except ValueError:
+        pass
+
+    digits_only = "".join(character for character in text if character.isdigit())
+    if len(digits_only) >= 8:
+        try:
+            return datetime.strptime(digits_only[:8], "%Y%m%d").date().isoformat()
+        except ValueError:
+            return None
+    return None
 
 
 def _coverage_actions(sections: list[dict[str, object]]) -> list[dict[str, object]]:

@@ -1,5 +1,6 @@
 import duckdb
 
+from backend.app.governance.settings import get_settings
 from backend.app.repositories.cffex_member_rank_repo import ensure_cffex_member_rank_schema
 from backend.app.services.macro_vendor_service import (
     macro_foundation_formal_envelope,
@@ -7,6 +8,87 @@ from backend.app.services.macro_vendor_service import (
     market_data_coverage_summary_envelope,
     tushare_supplement_envelope,
 )
+from backend.app.services.market_data_ncd_proxy_service import ncd_funding_proxy_envelope
+
+
+def _set_temp_duckdb_settings(monkeypatch, duckdb_path) -> None:
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    getattr(get_settings, "cache_clear")()
+
+
+def _write_ncd_shibor_fixture(duckdb_path, *, trade_date: str, source_version: str) -> None:
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_choice_macro_daily (
+              series_id varchar,
+              series_name varchar,
+              trade_date varchar,
+              value_numeric double,
+              frequency varchar,
+              unit varchar,
+              source_version varchar,
+              vendor_version varchar,
+              quality_flag varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table phase1_macro_vendor_catalog (
+              series_id varchar,
+              series_name varchar,
+              vendor_name varchar,
+              vendor_version varchar,
+              frequency varchar,
+              unit varchar,
+              refresh_tier varchar
+            )
+            """
+        )
+        conn.executemany(
+            """
+            insert into phase1_macro_vendor_catalog values (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    f"ncd.shibor.{tenor.lower()}",
+                    f"Shibor {tenor}",
+                    "tushare",
+                    "vv-tushare",
+                    "daily",
+                    "%",
+                    "fallback",
+                )
+                for tenor in ("1M", "3M", "6M", "9M", "1Y")
+            ],
+        )
+        conn.executemany(
+            """
+            insert into fact_choice_macro_daily values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    f"ncd.shibor.{tenor.lower()}",
+                    f"Shibor {tenor}",
+                    trade_date,
+                    value,
+                    "daily",
+                    "%",
+                    source_version,
+                    "vv-tushare",
+                    "ok",
+                )
+                for tenor, value in zip(
+                    ("1M", "3M", "6M", "9M", "1Y"),
+                    (1.1, 1.2, 1.3, 1.4, 1.5),
+                    strict=True,
+                )
+            ],
+        )
+    finally:
+        conn.close()
 
 
 def test_tushare_supplement_envelope_reads_landed_tables(tmp_path):
@@ -287,6 +369,151 @@ def test_macro_foundation_exposes_catalog_theme_and_safely_parsed_tags(tmp_path)
     assert rows["rates-1"]["tags"] == ["rates", "liquidity", "curve"]
     assert rows["bad-tags"]["theme"] == "unknown"
     assert rows["bad-tags"]["tags"] == []
+
+
+def test_coverage_summary_uses_live_ncd_proxy_and_fx_series_dates(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    _set_temp_duckdb_settings(monkeypatch, duckdb_path)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_choice_macro_daily (
+              series_id varchar,
+              series_name varchar,
+              trade_date varchar,
+              value_numeric double,
+              frequency varchar,
+              unit varchar,
+              source_version varchar,
+              vendor_version varchar,
+              quality_flag varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table phase1_macro_vendor_catalog (
+              series_id varchar,
+              series_name varchar,
+              vendor_name varchar,
+              vendor_version varchar,
+              frequency varchar,
+              unit varchar,
+              refresh_tier varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into phase1_macro_vendor_catalog values
+              ('fx.swap.1y', 'USD/CNY Swap 1Y', 'choice', 'vv-choice', 'daily', '%', 'fallback'),
+              ('ncd.shibor.1m', 'Shibor 1M', 'tushare', 'vv-tushare', 'daily', '%', 'fallback'),
+              ('ncd.shibor.3m', 'Shibor 3M', 'tushare', 'vv-tushare', 'daily', '%', 'fallback'),
+              ('ncd.shibor.6m', 'Shibor 6M', 'tushare', 'vv-tushare', 'daily', '%', 'fallback'),
+              ('ncd.shibor.9m', 'Shibor 9M', 'tushare', 'vv-tushare', 'daily', '%', 'fallback'),
+              ('ncd.shibor.1y', 'Shibor 1Y', 'tushare', 'vv-tushare', 'daily', '%', 'fallback')
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_choice_macro_daily values
+              ('fx.swap.1y', 'USD/CNY Swap 1Y', '2026-06-01', 2.5, 'daily', '%', 'sv-fx', 'vv-choice', 'ok'),
+              ('fx.swap.1y', 'USD/CNY Swap 1Y', '2026-05-31', 2.4, 'daily', '%', 'sv-fx', 'vv-choice', 'ok'),
+              ('ncd.shibor.1m', 'Shibor 1M', '2026-06-15', 1.1, 'daily', '%', 'sv-shibor', 'vv-tushare', 'ok'),
+              ('ncd.shibor.3m', 'Shibor 3M', '2026-06-15', 1.2, 'daily', '%', 'sv-shibor', 'vv-tushare', 'ok'),
+              ('ncd.shibor.6m', 'Shibor 6M', '2026-06-15', 1.3, 'daily', '%', 'sv-shibor', 'vv-tushare', 'ok'),
+              ('ncd.shibor.9m', 'Shibor 9M', '2026-06-15', 1.4, 'daily', '%', 'sv-shibor', 'vv-tushare', 'ok'),
+              ('ncd.shibor.1y', 'Shibor 1Y', '2026-06-15', 1.5, 'daily', '%', 'sv-shibor', 'vv-tushare', 'ok')
+            """
+        )
+    finally:
+        conn.close()
+
+    try:
+        envelope = market_data_coverage_summary_envelope(str(duckdb_path))
+    finally:
+        getattr(get_settings, "cache_clear")()
+
+    sections = {section["key"]: section for section in envelope["result"]["sections"]}
+    assert sections["fx_analytical"]["latest_trade_date"] == "2026-06-01"
+    assert sections["ncd_proxy"]["status"] == "proxy_only"
+    assert sections["ncd_proxy"]["row_count"] == 1
+    assert sections["ncd_proxy"]["latest_trade_date"] == "2026-06-15"
+    assert sections["ncd_proxy"]["as_of_date"] == "2026-06-15"
+    assert sections["ncd_proxy"]["quality_flag"] == "ok"
+
+
+def test_coverage_summary_ncd_uses_parameter_database_not_global_settings(tmp_path, monkeypatch):
+    settings_duckdb_path = tmp_path / "settings-a.duckdb"
+    parameter_duckdb_path = tmp_path / "parameter-b.duckdb"
+    _write_ncd_shibor_fixture(
+        settings_duckdb_path,
+        trade_date="2026-06-01",
+        source_version="sv-settings-a",
+    )
+    _write_ncd_shibor_fixture(
+        parameter_duckdb_path,
+        trade_date="2026-07-15",
+        source_version="sv-parameter-b",
+    )
+    _set_temp_duckdb_settings(monkeypatch, settings_duckdb_path)
+
+    try:
+        ncd_envelope = ncd_funding_proxy_envelope(str(parameter_duckdb_path))
+        coverage = market_data_coverage_summary_envelope(str(parameter_duckdb_path))
+    finally:
+        getattr(get_settings, "cache_clear")()
+
+    assert ncd_envelope["result"]["as_of_date"] == "2026-07-15"
+    assert ncd_envelope["result_meta"]["as_of_date"] == "2026-07-15"
+    assert ncd_envelope["result_meta"]["resolved_report_date"] == "2026-07-15"
+    assert ncd_envelope["result_meta"]["tables_used"] == [
+        "fact_choice_macro_daily",
+        "phase1_macro_vendor_catalog",
+    ]
+    assert ncd_envelope["result_meta"]["evidence_rows"] == 1
+    assert ncd_envelope["result_meta"]["source_version"] == "sv-parameter-b"
+
+    sections = {section["key"]: section for section in coverage["result"]["sections"]}
+    assert sections["ncd_proxy"]["latest_trade_date"] == "2026-07-15"
+    assert sections["ncd_proxy"]["row_count"] == 1
+    assert "sv-settings-a" not in coverage["result_meta"]["source_version"]
+    assert "sv-parameter-b" in coverage["result_meta"]["source_version"]
+
+
+def test_coverage_summary_marks_missing_parameter_ncd_as_empty(tmp_path, monkeypatch):
+    settings_duckdb_path = tmp_path / "settings-a.duckdb"
+    parameter_duckdb_path = tmp_path / "parameter-empty.duckdb"
+    _write_ncd_shibor_fixture(
+        settings_duckdb_path,
+        trade_date="2026-06-01",
+        source_version="sv-settings-a",
+    )
+    conn = duckdb.connect(str(parameter_duckdb_path), read_only=False)
+    conn.close()
+    _set_temp_duckdb_settings(monkeypatch, settings_duckdb_path)
+
+    try:
+        coverage = market_data_coverage_summary_envelope(str(parameter_duckdb_path))
+    finally:
+        getattr(get_settings, "cache_clear")()
+
+    sections = {section["key"]: section for section in coverage["result"]["sections"]}
+    ncd_section = sections["ncd_proxy"]
+    assert ncd_section["status"] == "empty"
+    assert ncd_section["row_count"] == 0
+    assert ncd_section["source_pending"] is True
+    assert ncd_section["proxy_only"] is False
+    assert ncd_section["vendor_status"] == "vendor_unavailable"
+    assert ncd_section["quality_flag"] == "warning"
+    assert ncd_section["latest_trade_date"] is None
+    assert ncd_section["as_of_date"] is None
+    assert "No NCD funding proxy rows are available" in ncd_section["message"]
+    assert "proxy-only" not in ncd_section["message"].lower()
+    assert coverage["result"]["headline"]["readable_count"] == 0
+    assert coverage["result"]["headline"]["empty_count"] == 5
+    assert "sv-settings-a" not in coverage["result_meta"]["source_version"]
 
 
 def test_coverage_summary_marks_bond_futures_ready_when_rankings_exist(tmp_path):
