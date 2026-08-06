@@ -23,9 +23,25 @@ import type {
 } from "./liabilityAdbContracts";
 import { formatRawAsNumeric } from "../utils/format";
 
+export type LiabilityRiskBucketsResponse = LiabilityRiskBucketsPayload & {
+  result_meta?: ResultMeta;
+};
+
+export type LiabilityYieldMetricsResponse = LiabilityYieldMetricsPayload & {
+  result_meta?: ResultMeta;
+};
+
+export type LiabilityCounterpartyResponse = LiabilityCounterpartyPayload & {
+  result_meta?: ResultMeta;
+};
+
+export type LiabilitiesMonthlyResponse = LiabilitiesMonthlyPayload & {
+  result_meta?: ResultMeta;
+};
+
 export type LiabilityAdbClientMethods = {
-  getLiabilityRiskBuckets: (reportDate?: string | null) => Promise<LiabilityRiskBucketsPayload>;
-  getLiabilityYieldMetrics: (reportDate?: string | null) => Promise<LiabilityYieldMetricsPayload>;
+  getLiabilityRiskBuckets: (reportDate?: string | null) => Promise<LiabilityRiskBucketsResponse>;
+  getLiabilityYieldMetrics: (reportDate?: string | null) => Promise<LiabilityYieldMetricsResponse>;
   getYieldByPeriod: (options: {
     year: number;
     periodType?: "monthly" | "quarterly" | "yearly";
@@ -33,11 +49,11 @@ export type LiabilityAdbClientMethods = {
   getLiabilityCounterparty: (options: {
     reportDate?: string | null;
     topN?: number;
-  }) => Promise<LiabilityCounterpartyPayload>;
+  }) => Promise<LiabilityCounterpartyResponse>;
   getLiabilityKnowledgeBrief: () => Promise<ApiEnvelope<LiabilityKnowledgeBriefPayload>>;
   getCockpitWarnings: (reportDate?: string | null) => Promise<ApiEnvelope<CockpitWarningsPayload>>;
   getContributionSplit: (reportDate?: string | null) => Promise<ApiEnvelope<ContributionSplitPayload>>;
-  getLiabilitiesMonthly: (year: number) => Promise<LiabilitiesMonthlyPayload>;
+  getLiabilitiesMonthly: (year: number) => Promise<LiabilitiesMonthlyResponse>;
   getLiabilityAdbMonthly: (year: number) => Promise<AdbMonthlyResponse>;
   getAdb: (params: { startDate: string; endDate: string }) => Promise<AdbPayload>;
   getAdbComparison: (
@@ -360,6 +376,24 @@ function normalizeAdbMonthlyResponse(
   };
 }
 
+function buildLiabilityAnalyticalMockMeta(resultKind: string): ResultMeta {
+  return {
+    trace_id: `tr_${resultKind}_mock`,
+    basis: "analytical",
+    result_kind: resultKind,
+    formal_use_allowed: false,
+    source_version: "sv_liability_mock",
+    vendor_version: "vv_none",
+    rule_version: "rv_liability_mock",
+    cache_version: "cv_liability_mock",
+    quality_flag: "warning",
+    vendor_status: "ok",
+    fallback_mode: "none",
+    scenario_flag: false,
+    generated_at: new Date().toISOString(),
+  };
+}
+
 export function createDemoLiabilityAdbClient(
   delay: Delay,
   ensureMockClientBundle: EnsureLiabilityAdbMockBundle,
@@ -368,6 +402,7 @@ export function createDemoLiabilityAdbClient(
     async getLiabilityRiskBuckets(reportDate?: string | null) {
       await delay();
       return {
+        result_meta: buildLiabilityAnalyticalMockMeta("liability_analytics.risk_buckets"),
         report_date: reportDate?.trim() || "",
         liabilities_structure: [],
         liabilities_term_buckets: [],
@@ -380,6 +415,7 @@ export function createDemoLiabilityAdbClient(
     async getLiabilityYieldMetrics(reportDate?: string | null) {
       await delay();
       return {
+        result_meta: buildLiabilityAnalyticalMockMeta("liability_analytics.yield_metrics"),
         report_date: reportDate?.trim() || "",
         kpi: {
           asset_yield: null,
@@ -426,8 +462,13 @@ export function createDemoLiabilityAdbClient(
     async getLiabilityCounterparty(options: { reportDate?: string | null; topN?: number }) {
       await delay();
       return {
+        result_meta: buildLiabilityAnalyticalMockMeta("liability_analytics.counterparty"),
         report_date: options.reportDate?.trim() || "",
         total_value: formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: false }),
+        top10_share: null,
+        hhi: null,
+        population_count: 0,
+        is_truncated: false,
         top_10: [],
         by_type: [],
       };
@@ -485,6 +526,7 @@ export function createDemoLiabilityAdbClient(
     async getLiabilitiesMonthly(year: number) {
       await delay();
       return {
+        result_meta: buildLiabilityAnalyticalMockMeta("liability_analytics.monthly"),
         year,
         months: [],
         ytd_avg_total_liabilities: null,
@@ -584,11 +626,14 @@ export function createRealLiabilityAdbClient(
         params.set("report_date", reportDate.trim());
       }
       const q = params.toString();
-      return requestEnvelopeOrPlainJson<LiabilityRiskBucketsPayload>(
+      return requestEnvelopeOrPlainJsonWithMeta<LiabilityRiskBucketsPayload>(
         fetchImpl,
         baseUrl,
         `/api/risk/buckets${q ? `?${q}` : ""}`,
-      );
+      ).then(({ result, result_meta }) => ({
+        ...result,
+        result_meta,
+      }));
     },
     getLiabilityYieldMetrics: (reportDate) => {
       const params = new URLSearchParams();
@@ -596,11 +641,14 @@ export function createRealLiabilityAdbClient(
         params.set("report_date", reportDate.trim());
       }
       const q = params.toString();
-      return requestEnvelopeOrPlainJson<LiabilityYieldMetricsPayload>(
+      return requestEnvelopeOrPlainJsonWithMeta<LiabilityYieldMetricsPayload>(
         fetchImpl,
         baseUrl,
         `/api/analysis/yield_metrics${q ? `?${q}` : ""}`,
-      );
+      ).then(({ result, result_meta }) => ({
+        ...result,
+        result_meta,
+      }));
     },
     getYieldByPeriod: ({ year, periodType }) => {
       const params = new URLSearchParams();
@@ -614,7 +662,7 @@ export function createRealLiabilityAdbClient(
         `/api/analysis/yield-by-period?${params.toString()}`,
       );
     },
-    getLiabilityCounterparty: ({ reportDate, topN }) => {
+    getLiabilityCounterparty: async ({ reportDate, topN }) => {
       const params = new URLSearchParams();
       if (reportDate?.trim()) {
         params.set("report_date", reportDate.trim());
@@ -623,11 +671,15 @@ export function createRealLiabilityAdbClient(
         params.set("top_n", String(topN));
       }
       const q = params.toString();
-      return requestEnvelopeOrPlainJson<LiabilityCounterpartyPayload>(
+      const { result, result_meta } = await requestEnvelopeOrPlainJsonWithMeta<LiabilityCounterpartyPayload>(
         fetchImpl,
         baseUrl,
         `/api/analysis/liabilities/counterparty${q ? `?${q}` : ""}`,
       );
+      return {
+        ...result,
+        result_meta,
+      };
     },
     getLiabilityKnowledgeBrief: () =>
       requestJson<LiabilityKnowledgeBriefPayload>(
@@ -659,12 +711,17 @@ export function createRealLiabilityAdbClient(
         `/api/analysis/liabilities/contribution-split${q ? `?${q}` : ""}`,
       );
     },
-    getLiabilitiesMonthly: (year) =>
-      requestEnvelopeOrPlainJson<LiabilitiesMonthlyPayload>(
+    getLiabilitiesMonthly: async (year) => {
+      const { result, result_meta } = await requestEnvelopeOrPlainJsonWithMeta<LiabilitiesMonthlyPayload>(
         fetchImpl,
         baseUrl,
         `/api/liabilities/monthly?year=${encodeURIComponent(String(year))}`,
-      ),
+      );
+      return {
+        ...result,
+        result_meta,
+      };
+    },
     getLiabilityAdbMonthly: (year) =>
       requestEnvelopeOrPlainJson<AdbMonthlyResponse>(
         fetchImpl,

@@ -596,6 +596,14 @@ def compute_liability_counterparty(
     ranked = sorted(grouped.items(), key=lambda item: (-item[1].value, item[0]))
     top_ranked = ranked[: max(top_n, 1)]
     total_value = sum((item.value for item in grouped.values()), ZERO)
+    population_count = len(ranked)
+    if total_value > ZERO:
+        top10_value = sum((agg.value for _, agg in ranked[:10]), ZERO)
+        top10_share = top10_value / total_value
+        hhi = sum(((agg.value / total_value) ** 2 for _, agg in ranked), ZERO) * Decimal("10000")
+    else:
+        top10_share = None
+        hhi = None
 
     top_items: list[dict[str, Any]] = []
     for name, agg in top_ranked:
@@ -619,6 +627,10 @@ def compute_liability_counterparty(
     return {
         "report_date": report_date,
         "total_value": to_float(total_value) or 0.0,
+        "top10_share": to_float(top10_share),
+        "hhi": to_float(hhi),
+        "population_count": population_count,
+        "is_truncated": len(top_items) < population_count,
         "top_10": top_items,
         "by_type": by_type,
     }
@@ -726,7 +738,8 @@ def compute_liabilities_monthly(year: int, zqtz_rows: list[dict[str, Any]], tyw_
         # outward compatibility behavior here instead of exposing recomputed values.
         mom_change = None
         mom_change_pct = None
-        counterparty_total_avg = sum((cpty.value for cpty in agg.counterparty.values()), ZERO) / divisor
+        counterparty_total = sum((cpty.value for cpty in agg.counterparty.values()), ZERO)
+        counterparty_total_avg = counterparty_total / divisor
         details: list[dict[str, Any]] = []
         sorted_counterparties = sorted(
             agg.counterparty.items(),
@@ -736,6 +749,14 @@ def compute_liabilities_monthly(year: int, zqtz_rows: list[dict[str, Any]], tyw_
                 _descending_text_key(item[1].first_position_id),
             ),
         )
+        population_count = len(sorted_counterparties)
+        if counterparty_total > ZERO:
+            top10_value = sum((cpty.value for _, cpty in sorted_counterparties[:10]), ZERO)
+            top10_share = top10_value / counterparty_total
+            hhi = sum(((cpty.value / counterparty_total) ** 2 for _, cpty in sorted_counterparties), ZERO) * Decimal("10000")
+        else:
+            top10_share = None
+            hhi = None
         for cpty_name, cpty in sorted_counterparties:
             avg_value = cpty.value / divisor
             weighted_cost = (cpty.weighted_num / cpty.weighted_den) if cpty.weighted_den > ZERO else None
@@ -799,6 +820,10 @@ def compute_liabilities_monthly(year: int, zqtz_rows: list[dict[str, Any]], tyw_
                 "avg_liability_cost": to_float(avg_liability_cost),
                 "mom_change": to_float(mom_change),
                 "mom_change_pct": to_float(mom_change_pct),
+                "top10_share": to_float(top10_share),
+                "hhi": to_float(hhi),
+                "population_count": population_count,
+                "is_truncated": len(details[:10]) < population_count,
                 "counterparty_top10": details[:10],
                 "by_institution_type": by_institution_type,
                 "structure_overview": structure_overview,

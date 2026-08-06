@@ -485,6 +485,10 @@ def liability_counterparty_payload(
             result_payload=LiabilityCounterpartyPayload(
                 report_date="",
                 total_value=0.0,
+                top10_share=None,
+                hhi=None,
+                population_count=0,
+                is_truncated=False,
                 top_10=[],
                 by_type=[],
             ).model_dump(mode="json"),

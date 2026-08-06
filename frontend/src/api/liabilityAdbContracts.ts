@@ -1,4 +1,4 @@
-/** Liability / ADB domain contracts moved down from the shared API contract barrel. */
+/** Liability / ADB domain contracts moved out of the shared API contract barrel. */
 import type { Numeric } from "./contracts";
 
 export type LiabilityBucketAmountItem = {
@@ -73,6 +73,10 @@ export type LiabilityCounterpartyTypeSlice = {
 export type LiabilityCounterpartyPayload = {
   report_date: string;
   total_value: Numeric;
+  top10_share: Numeric | null;
+  hhi: Numeric | null;
+  population_count: number;
+  is_truncated: boolean;
   top_10: LiabilityCounterpartyItem[];
   by_type: LiabilityCounterpartyTypeSlice[];
 };
@@ -94,7 +98,6 @@ export type LiabilityKnowledgeBriefPayload = {
   notes: LiabilityKnowledgeNote[];
 };
 
-/** Aligns with backend `LiabilityMonthlyBreakdownRow`. */
 export type LiabilityMonthlyBreakdownRow = {
   category?: string | null;
   bucket?: string | null;
@@ -117,6 +120,10 @@ export type LiabilitiesMonthlyItem = {
   avg_liability_cost: Numeric | null;
   mom_change: Numeric | null;
   mom_change_pct: Numeric | null;
+  top10_share: Numeric | null;
+  hhi: Numeric | null;
+  population_count: number;
+  is_truncated: boolean;
   counterparty_top10?: LiabilityMonthlyBreakdownRow[];
   by_institution_type?: LiabilityMonthlyBreakdownRow[];
   structure_overview?: LiabilityMonthlyBreakdownRow[];

@@ -982,6 +982,10 @@ export default function LiabilityAnalyticsPage() {
                 />
                 <LiabilityCounterpartyBlock
                   totalValue={cpVm.vm?.totalValue ?? null}
+                  authoritativeTop10Share={cpVm.vm?.top10Share ?? null}
+                  authoritativeHhi={cpVm.vm?.hhi ?? null}
+                  populationCount={cpVm.vm?.populationCount ?? null}
+                  isTruncated={cpVm.vm?.isTruncated ?? false}
                   counterpartyRows={dailyCpRows}
                   byType={cpVm.vm?.byType ?? []}
                   loading={cpQuery.isLoading}
@@ -1074,6 +1078,10 @@ export default function LiabilityAnalyticsPage() {
                 title="资金来源依赖度（前十对手方）"
                 subtitle="口径：月度日均（TYWL 负债端）。"
                 totalValue={selectedMonthData.avg_total_liabilities ?? null}
+                authoritativeTop10Share={selectedMonthData.top10_share ?? null}
+                authoritativeHhi={selectedMonthData.hhi ?? null}
+                populationCount={selectedMonthData.population_count ?? null}
+                isTruncated={selectedMonthData.is_truncated ?? false}
                 counterpartyRows={monthlyCpRowsAll}
                 barRankingRows={monthlyCpBarRows}
                 byType={monthlyByInstitution}

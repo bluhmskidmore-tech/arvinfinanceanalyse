@@ -7,14 +7,12 @@ import { MemoryRouter } from "react-router-dom";
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
 import type {
   BalanceAnalysisDatesPayload,
+  LiabilityRiskBucketsPayload,
+  LiabilityYieldMetricsPayload,
   Numeric,
   ResultMeta,
 } from "../api/contracts";
-import type {
-  LiabilityCounterpartyPayload,
-  LiabilityRiskBucketsPayload,
-  LiabilityYieldMetricsPayload,
-} from "../api/liabilityAdbContracts";
+import type { LiabilityCounterpartyResponse } from "../api/liabilityAdbClient";
 import LiabilityAnalyticsPage from "../features/liability-analytics/pages/LiabilityAnalyticsPage";
 import { formatRawAsNumeric } from "../utils/format";
 
@@ -104,10 +102,14 @@ function yieldPayload(reportDate: string): LiabilityYieldMetricsPayload {
   };
 }
 
-function counterpartyPayload(reportDate: string, totalValue = 200_000_000): LiabilityCounterpartyPayload {
+function counterpartyPayload(reportDate: string, totalValue = 200_000_000): LiabilityCounterpartyResponse {
   return {
     report_date: reportDate,
     total_value: numeric(totalValue, "yuan"),
+    top10_share: numeric(0.5, "pct"),
+    hhi: numeric(1800, "count"),
+    population_count: 2,
+    is_truncated: false,
     top_10: [
       {
         name: "Bank A",

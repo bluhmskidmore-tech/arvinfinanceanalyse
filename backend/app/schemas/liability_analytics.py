@@ -218,6 +218,10 @@ class LiabilityMonthlyItem(BaseModel):
     avg_liability_cost: Numeric | None = None
     mom_change: Numeric | None = None
     mom_change_pct: Numeric | None = None
+    top10_share: Numeric | None = None
+    hhi: Numeric | None = None
+    population_count: int = Field(default=0, ge=0)
+    is_truncated: bool = False
     counterparty_top10: list[LiabilityMonthlyBreakdownRow] = Field(default_factory=list)
     by_institution_type: list[LiabilityMonthlyBreakdownRow] = Field(default_factory=list)
     structure_overview: list[LiabilityMonthlyBreakdownRow] = Field(default_factory=list)
@@ -240,6 +244,8 @@ class LiabilityMonthlyItem(BaseModel):
         "avg_liability_cost": ("pct", True, "ratio"),
         "mom_change": ("yuan", True),
         "mom_change_pct": ("pct", True),
+        "top10_share": ("pct", False, "ratio"),
+        "hhi": ("count", False),
     }
 
     @model_validator(mode="before")
@@ -297,11 +303,17 @@ class LiabilityCounterpartyPayload(BaseModel):
 
     report_date: str
     total_value: Numeric
+    top10_share: Numeric | None = None
+    hhi: Numeric | None = None
+    population_count: int = Field(default=0, ge=0)
+    is_truncated: bool = False
     top_10: list[LiabilityCounterpartyTopItem]
     by_type: list[LiabilityCounterpartyByTypeItem]
 
-    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+    _NUMERIC_FIELDS: ClassVar[dict[str, _NumericFieldSpec]] = {
         "total_value": ("yuan", False),
+        "top10_share": ("pct", False, "ratio"),
+        "hhi": ("count", False),
     }
 
     @model_validator(mode="before")
