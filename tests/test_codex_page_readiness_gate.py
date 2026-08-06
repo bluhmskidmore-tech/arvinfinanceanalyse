@@ -1912,7 +1912,7 @@ def test_route_scope_classification_keeps_certification_claim_route_scoped() -> 
     assert rows_by_slug["average-balance"]["classification"] == "evidence-pending"
     assert rows_by_slug["average-balance"]["blocking_reason"] == "business_owner_approval_pending"
     assert rows_by_slug["average-balance"]["route"] == "/average-balance"
-    assert rows_by_slug["average-balance"]["page_id"] == "GAP-AVERAGE-BALANCE-PAGE"
+    assert rows_by_slug["average-balance"]["page_id"] == "PAGE-ADB-001"
     assert rows_by_slug["average-balance"]["source"] == "seeded_trace_bundle"
     assert rows_by_slug["average-balance"]["run_supported"] is True
     assert rows_by_slug["average-balance"]["formal_use_allowed"] is False
@@ -1928,12 +1928,12 @@ def test_route_scope_classification_keeps_certification_claim_route_scoped() -> 
     assert rows_by_slug["bank-ledger-dashboard"]["source"] == "seeded_trace_bundle"
     assert rows_by_slug["bank-ledger-dashboard"]["run_supported"] is True
     assert rows_by_slug["bank-ledger-dashboard"]["formal_use_allowed"] is False
-    assert rows_by_slug["bank-ledger-dashboard"]["has_golden_samples"] is False
+    assert rows_by_slug["bank-ledger-dashboard"]["has_golden_samples"] is True
     assert rows_by_slug["bank-ledger-dashboard"]["golden_sample_approved"] is False
     assert rows_by_slug["cashflow-projection"]["classification"] == "evidence-pending"
     assert rows_by_slug["cashflow-projection"]["blocking_reason"] == "golden_or_manual_audit_or_owner_approval_pending"
     assert rows_by_slug["cashflow-projection"]["route"] == "/cashflow-projection"
-    assert rows_by_slug["cashflow-projection"]["page_id"] == "GAP-CASHFLOW-PROJECTION-PAGE"
+    assert rows_by_slug["cashflow-projection"]["page_id"] == "PAGE-CFP-001"
     assert rows_by_slug["cashflow-projection"]["source"] == "seeded_trace_bundle"
     assert rows_by_slug["cashflow-projection"]["run_supported"] is True
     assert rows_by_slug["cashflow-projection"]["formal_use_allowed"] is False
@@ -1942,7 +1942,7 @@ def test_route_scope_classification_keeps_certification_claim_route_scoped() -> 
     assert rows_by_slug["concentration-monitor"]["classification"] == "evidence-pending"
     assert rows_by_slug["concentration-monitor"]["blocking_reason"] == "golden_or_manual_audit_or_owner_approval_pending"
     assert rows_by_slug["concentration-monitor"]["route"] == "/concentration-monitor"
-    assert rows_by_slug["concentration-monitor"]["page_id"] == "GAP-CONCENTRATION-MONITOR-PAGE"
+    assert rows_by_slug["concentration-monitor"]["page_id"] == "PAGE-CONC-001"
     assert rows_by_slug["concentration-monitor"]["source"] == "seeded_trace_bundle"
     assert rows_by_slug["concentration-monitor"]["run_supported"] is True
     assert rows_by_slug["concentration-monitor"]["formal_use_allowed"] is False
