@@ -38,6 +38,27 @@ def test_bond_refresh_service_only_dispatches_and_does_not_prepare_curves(tmp_pa
     assert sent[0]["run_id"] == payload["run_id"]
 
 
+def test_bond_worker_anchor_dates_include_report_month_start_and_prior_balance_date(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from backend.app.tasks import bond_analytics_materialize as task
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    monkeypatch.setattr(
+        task.BondAnalyticsRepository,
+        "resolve_prior_curve_anchor_report_date",
+        lambda self, *, report_date: "2026-03-01" if report_date == "2026-03-31" else None,
+    )
+
+    anchors = task._yield_curve_anchor_dates_for_materialization(
+        duckdb_path=str(duckdb_path),
+        report_date="2026-03-31",
+    )
+
+    assert anchors == ("2026-03-01", "2026-03-31")
+
+
 def test_bond_worker_curve_prepare_failure_blocks_main_materialization_and_is_traced(
     tmp_path,
     monkeypatch,
