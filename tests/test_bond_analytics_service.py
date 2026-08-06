@@ -838,6 +838,8 @@ def test_bond_analytics_dv01_risk_defaults_to_oci_scope_and_parallel_shocks(tmp_
 
     assert payload["result_meta"]["result_kind"] == "bond_analytics.dv01_risk"
     assert result["accounting_class"] == "OCI"
+    assert result["dv01_basis"] == "face_value_modified_duration"
+    assert result["scenario_pnl_basis"] == "face_value_dv01_linear"
     assert result["position_count"] == 1
     assert _numeric_raw(result["total_face_value"]) == Decimal("200")
     assert _numeric_raw(result["total_market_value"]) == Decimal("190")

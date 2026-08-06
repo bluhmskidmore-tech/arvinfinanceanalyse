@@ -70,6 +70,8 @@ function createDv01RiskPayload(
   return {
     report_date: "2026-03-31",
     accounting_class: accountingClass,
+    dv01_basis: "face_value_modified_duration",
+    scenario_pnl_basis: "face_value_dv01_linear",
     total_face_value: yuan(1_000_000_000),
     total_market_value: yuan(1_020_000_000),
     face_weighted_modified_duration: ratio(durationRaw),

@@ -553,6 +553,8 @@ describe("buildRiskBondDv01Summary", () => {
     const payload: DV01RiskPayload = {
       report_date: "2026-06-30",
       accounting_class: accountingClass,
+      dv01_basis: "face_value_modified_duration",
+      scenario_pnl_basis: "face_value_dv01_linear",
       total_face_value: num(1_250_000_000, { unit: "yuan" }),
       total_market_value: num(1_200_000_000, { unit: "yuan" }),
       face_weighted_modified_duration: num(3.45, {

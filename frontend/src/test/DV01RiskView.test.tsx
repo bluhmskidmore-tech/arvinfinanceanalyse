@@ -102,6 +102,8 @@ function payload(overrides: Partial<DV01RiskPayload> = {}): DV01RiskPayload {
   return {
     report_date: "2026-03-31",
     accounting_class: "OCI",
+    dv01_basis: "face_value_modified_duration",
+    scenario_pnl_basis: "face_value_dv01_linear",
     total_face_value: yuan(10_000_000_000),
     total_market_value: yuan(10_500_000_000),
     face_weighted_modified_duration: ratio(3.43),

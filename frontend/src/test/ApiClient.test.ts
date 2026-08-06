@@ -1724,6 +1724,14 @@ describe("createApiClient", () => {
     });
   });
 
+  it("includes DV01 basis disclosures in the mock fallback", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const payload = await client.getBondAnalyticsDv01Risk("2026-03-31");
+
+    expect(payload.result.dv01_basis).toBe("face_value_modified_duration");
+    expect(payload.result.scenario_pnl_basis).toBe("face_value_dv01_linear");
+  });
+
   it("uses real mode for the bond analytics DV01 risk endpoint", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
@@ -1746,6 +1754,8 @@ describe("createApiClient", () => {
         result: {
           report_date: "2026-03-31",
           accounting_class: "OCI",
+          dv01_basis: "face_value_modified_duration",
+          scenario_pnl_basis: "face_value_dv01_linear",
           total_face_value: {
             raw: 0,
             unit: "yuan",
@@ -1797,6 +1807,8 @@ describe("createApiClient", () => {
     });
 
     expect(payload.result_meta.result_kind).toBe("bond_analytics.dv01_risk");
+    expect(payload.result.dv01_basis).toBe("face_value_modified_duration");
+    expect(payload.result.scenario_pnl_basis).toBe("face_value_dv01_linear");
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/api/bond-analytics/dv01-risk?report_date=2026-03-31&accounting_class=all&top_n=50&shock_bps=5%2C25",
       expect.objectContaining({ headers: expect.objectContaining({ Accept: "application/json" }) }),

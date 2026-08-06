@@ -674,6 +674,8 @@ export function createDemoBondAnalyticsClient(
         {
           report_date: reportDate,
           accounting_class: accountingClass,
+          dv01_basis: "face_value_modified_duration",
+          scenario_pnl_basis: "face_value_dv01_linear",
           total_face_value: zeroYuan,
           total_market_value: zeroYuan,
           face_weighted_modified_duration: zeroRatio,

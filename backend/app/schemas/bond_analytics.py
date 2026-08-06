@@ -11,10 +11,13 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
-from typing import Any, ClassVar, Literal
+from typing import Any, ClassVar, Final, Literal
 
 from backend.app.schemas.common_numeric import Numeric, NumericUnit, numeric_from_raw
 from pydantic import BaseModel, Field, model_validator
+
+DV01_BASIS: Final = "face_value_modified_duration"
+DV01_SCENARIO_PNL_BASIS: Final = "face_value_dv01_linear"
 
 
 def _coerce_value_to_numeric(value: Any, unit: NumericUnit, sign_aware: bool) -> Any:
@@ -872,6 +875,8 @@ class DV01RiskResponse(BaseModel):
 
     report_date: date
     accounting_class: str
+    dv01_basis: Literal["face_value_modified_duration"] = DV01_BASIS
+    scenario_pnl_basis: Literal["face_value_dv01_linear"] = DV01_SCENARIO_PNL_BASIS
     total_face_value: Numeric
     total_market_value: Numeric
     face_weighted_modified_duration: Numeric

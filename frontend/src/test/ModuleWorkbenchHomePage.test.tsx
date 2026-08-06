@@ -791,6 +791,8 @@ function bondDv01EvidenceEnvelope(
     {
       report_date: reportDate,
       accounting_class: accountingClass,
+      dv01_basis: "face_value_modified_duration",
+      scenario_pnl_basis: "face_value_dv01_linear",
       total_face_value: n(snapshot.faceYi * 100_000_000, "yuan"),
       total_market_value: n(snapshot.marketYi * 100_000_000, "yuan"),
       face_weighted_modified_duration: n(snapshot.duration, "ratio"),

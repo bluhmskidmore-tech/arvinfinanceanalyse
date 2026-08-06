@@ -466,6 +466,8 @@ def test_bond_analytics_dv01_risk_returns_numeric_payload(tmp_path, monkeypatch)
     assert payload["result_meta"]["result_kind"] == "bond_analytics.dv01_risk"
     result = payload["result"]
     assert result["accounting_class"] == "OCI"
+    assert result["dv01_basis"] == "face_value_modified_duration"
+    assert result["scenario_pnl_basis"] == "face_value_dv01_linear"
     assert result["total_dv01"]["unit"] == "dv01"
     assert result["total_face_value"]["unit"] == "yuan"
     assert result["shock_scenarios"][0]["estimated_pnl"]["unit"] == "yuan"

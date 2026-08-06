@@ -9,6 +9,7 @@ from backend.app.core_finance.bond_analytics.dv01 import (
     build_dv01_action_tenor_payloads,
     build_dv01_movement_attribution_payloads,
     build_dv01_movement_bond_payloads,
+    build_dv01_shock_scenario_payloads,
     build_dv01_tenor_bucket_payloads,
     build_dv01_top_bond_payloads,
     build_dv01_top_issuer_payloads,
@@ -80,6 +81,18 @@ def test_dv01_core_keeps_face_weighted_duration_and_parallel_shock_order() -> No
         Decimal("-10"),
         Decimal("25"),
         Decimal("-25"),
+    ]
+
+
+def test_dv01_core_shock_pnl_uses_total_dv01_face_value_basis() -> None:
+    scenarios = build_dv01_shock_scenario_payloads(
+        total_dv01=Decimal("0.02"),
+        shocks=[Decimal("100")],
+    )
+
+    assert [(row["shock_bp"], row["estimated_pnl"]) for row in scenarios] == [
+        (Decimal("100"), Decimal("-2.00")),
+        (Decimal("-100"), Decimal("2.00")),
     ]
 
 

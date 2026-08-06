@@ -540,6 +540,8 @@ export type DV01TopIssuerItem = {
 export type DV01RiskPayload = {
   report_date: string;
   accounting_class: string;
+  dv01_basis: "face_value_modified_duration";
+  scenario_pnl_basis: "face_value_dv01_linear";
   total_face_value: Numeric;
   total_market_value: Numeric;
   face_weighted_modified_duration: Numeric;

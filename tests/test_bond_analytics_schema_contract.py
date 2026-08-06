@@ -17,6 +17,7 @@ from backend.app.schemas.bond_analytics import (
     ConcentrationItem,
     ConcentrationMetrics,
     CreditSpreadMigrationResponse,
+    DV01RiskResponse,
     ExcessSourceBreakdown,
     KRDBucket,
     KRDCurveRiskResponse,
@@ -156,6 +157,21 @@ def test_krd_curve_risk_nested_defaults():
     assert resp.krd_buckets[0].krd.raw == pytest.approx(0.1)
     assert resp.scenarios[0].by_asset_class == {}
     assert resp.warnings == []
+
+
+def test_dv01_risk_response_basis_defaults():
+    response = DV01RiskResponse(
+        report_date=date(2026, 3, 31),
+        accounting_class="OCI",
+        total_face_value="100",
+        total_market_value="99",
+        face_weighted_modified_duration="3",
+        total_dv01="0.03",
+        position_count=1,
+    )
+
+    assert response.dv01_basis == "face_value_modified_duration"
+    assert response.scenario_pnl_basis == "face_value_dv01_linear"
 
 
 def test_krd_bucket_accepts_legacy_krd_alias_as_avg_modified_duration():
