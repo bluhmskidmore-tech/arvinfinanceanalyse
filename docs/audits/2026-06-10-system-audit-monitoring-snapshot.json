@@ -20,9 +20,9 @@
   "refresh_results": {
     "calculation_owner_decision": {
       "status": "owner_decision_required",
-      "open_decision_count": 10,
+      "open_decision_count": 8,
       "captured_decision_count": 0,
-      "incomplete_decision_count": 10,
+      "incomplete_decision_count": 8,
       "invalid_selected_decision_count": 0,
       "invalid_status_count": 0,
       "drift_error_count": 0
@@ -62,16 +62,16 @@
   "completion_verification": {
     "status": "pass",
     "open_blocker_count": 5,
-    "calculation_packet_p1_count": 10,
+    "calculation_packet_p1_count": 8,
     "calculation_packet_execution_anchor_ready": true,
-    "calculation_packet_execution_referenced_path_count": 24,
+    "calculation_packet_execution_referenced_path_count": 18,
     "calculation_packet_missing_execution_referenced_path_count": 0,
-    "calculation_owner_meeting_checklist_count": 10,
+    "calculation_owner_meeting_checklist_count": 8,
     "calculation_owner_meeting_material_ready": true,
     "calculation_owner_meeting_implementation_ready": false,
-    "calculation_owner_meeting_missing_capture_field_count": 50,
+    "calculation_owner_meeting_missing_capture_field_count": 40,
     "calculation_owner_meeting_missing_field_count": 8,
-    "calculation_first_priority_count": 3,
+    "calculation_first_priority_count": 2,
     "calculation_first_priority_owner_intake_ready": true,
     "calculation_first_priority_implementation_ready": false,
     "calculation_post_owner_ready_for_implementation_count": 0,
@@ -80,7 +80,7 @@
     "calculation_post_owner_blocking_reasons": [
       "owner_decision_capture_incomplete"
     ],
-    "calculation_post_owner_incomplete_count": 10,
+    "calculation_post_owner_incomplete_count": 8,
     "calculation_post_owner_invalid_selected_decision_count": 0,
     "calculation_post_owner_no_invalid_selected_decisions": true,
     "calculation_post_owner_global_gate_ready": false,
@@ -106,10 +106,10 @@
       "responsible_owner_type": "business_owner_and_metric_governance",
       "strict_gate_command": "python scripts\\refresh_calculation_p1_owner_decision_snapshot.py --require-owner-decisions-captured",
       "required_external_input_count": 2,
-      "first_required_external_input": "business owner selects the authoritative convention for P1-01 through P1-07 and P1-09 through P1-11",
-      "required_output_count": 11,
+      "first_required_external_input": "business owner selects the authoritative convention for P1-01 through P1-06, P1-10, and P1-11",
+      "required_output_count": 9,
       "first_required_output": "authoritative convention selected for P1-01",
-      "fail_closed_until": "All 10 owner-decision rows are moved to verified-closed evidence with targeted tests.",
+      "fail_closed_until": "All 8 remaining owner-decision rows are moved to verified-closed evidence with targeted tests.",
       "explicit_non_approval_boundary": "This packet records follow-up work only; it does not choose or approve any calculation convention."
     },
     "calculation_post_owner_plan_renderer_sync": true,
@@ -132,10 +132,10 @@
       "responsible_owner_type": "business_owner_and_metric_governance",
       "strict_gate_command": "python scripts\\refresh_calculation_p1_owner_decision_snapshot.py --require-owner-decisions-captured",
       "required_external_input_count": 2,
-      "first_required_external_input": "business owner selects the authoritative convention for P1-01 through P1-07 and P1-09 through P1-11",
-      "required_output_count": 11,
+      "first_required_external_input": "business owner selects the authoritative convention for P1-01 through P1-06, P1-10, and P1-11",
+      "required_output_count": 9,
       "first_required_output": "authoritative convention selected for P1-01",
-      "fail_closed_until": "All 10 owner-decision rows are moved to verified-closed evidence with targeted tests.",
+      "fail_closed_until": "All 8 remaining owner-decision rows are moved to verified-closed evidence with targeted tests.",
       "explicit_non_approval_boundary": "This packet records follow-up work only; it does not choose or approve any calculation convention."
     },
     "evidence_scope": {
@@ -207,7 +207,7 @@
         "actual_current_exit": "non_zero",
         "expectation_met": true,
         "blocker_id": "calculation-display-p1-decisions",
-        "blocking_detail": "captured_decision_count=0; row_count=10; pending_count=10; invalid_selected_decision_count=0; invalid_status_count=0; meeting_record_complete=false; missing_meeting_field_count=8",
+        "blocking_detail": "captured_decision_count=0; row_count=8; pending_count=8; invalid_selected_decision_count=0; invalid_status_count=0; meeting_record_complete=false; missing_meeting_field_count=8",
         "boundary": "This gate does not choose or approve calculation conventions."
       },
       {
@@ -218,7 +218,7 @@
         "actual_current_exit": "non_zero",
         "expectation_met": true,
         "blocker_id": "calculation-display-p1-decisions",
-        "blocking_detail": "owner_decision_capture_complete=false; implementation_ready=false; ready_for_implementation_count=0; non_implementation_decision_count=0; incomplete_count=10; post_owner_blocking_reasons=['owner_decision_capture_incomplete']",
+        "blocking_detail": "owner_decision_capture_complete=false; implementation_ready=false; ready_for_implementation_count=0; non_implementation_decision_count=0; incomplete_count=8; post_owner_blocking_reasons=['owner_decision_capture_incomplete']",
         "boundary": "This gate routes already captured owner decisions only; it does not choose conventions or execute implementation."
       },
       {
@@ -266,10 +266,10 @@
       "responsible_owner_type": "business_owner_and_metric_governance",
       "strict_gate_command": "python scripts\\refresh_calculation_p1_owner_decision_snapshot.py --require-owner-decisions-captured",
       "required_external_input_count": 2,
-      "first_required_external_input": "business owner selects the authoritative convention for P1-01 through P1-07 and P1-09 through P1-11",
-      "required_output_count": 11,
+      "first_required_external_input": "business owner selects the authoritative convention for P1-01 through P1-06, P1-10, and P1-11",
+      "required_output_count": 9,
       "first_required_output": "authoritative convention selected for P1-01",
-      "fail_closed_until": "All 10 owner-decision rows are moved to verified-closed evidence with targeted tests.",
+      "fail_closed_until": "All 8 remaining owner-decision rows are moved to verified-closed evidence with targeted tests.",
       "explicit_non_approval_boundary": "This packet records follow-up work only; it does not choose or approve any calculation convention."
     },
     "strict_gate_matrix": {
@@ -313,7 +313,7 @@
     "calculation_owner_decision": {
       "status": "owner_decision_required",
       "captured_decision_count": 0,
-      "incomplete_decision_count": 10,
+      "incomplete_decision_count": 8,
       "invalid_selected_decision_count": 0,
       "invalid_status_count": 0,
       "chooses_or_approves_conventions": false

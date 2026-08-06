@@ -272,7 +272,7 @@ def test_verify_monitoring_snapshot_fails_when_completion_packet_count_drifts(
 
     assert result["status"] == "fail"
     assert (
-        "monitoring completion calculation_packet_p1_count expected 10, got 9"
+        "monitoring completion calculation_packet_p1_count expected 8, got 9"
         in result["errors"]
     )
 
@@ -287,7 +287,7 @@ def test_verify_monitoring_snapshot_fails_when_completion_packet_anchor_summary_
     ] = False
     monitoring["completion_verification"][
         "calculation_packet_execution_referenced_path_count"
-    ] = 23
+    ] = 17
     monitoring["completion_verification"][
         "calculation_packet_missing_execution_referenced_path_count"
     ] = 1
@@ -302,7 +302,7 @@ def test_verify_monitoring_snapshot_fails_when_completion_packet_anchor_summary_
     ) in result["errors"]
     assert (
         "monitoring completion calculation_packet_execution_referenced_path_count "
-        "expected 24, got 23"
+        "expected 18, got 17"
     ) in result["errors"]
     assert (
         "monitoring completion "
@@ -337,7 +337,7 @@ def test_verify_monitoring_snapshot_fails_when_owner_meeting_summary_drifts(
     assert result["status"] == "fail"
     assert (
         "monitoring completion calculation_owner_meeting_checklist_count "
-        "expected 10, got 9"
+        "expected 8, got 9"
     ) in result["errors"]
     assert (
         "monitoring completion calculation_owner_meeting_material_ready "
@@ -349,7 +349,7 @@ def test_verify_monitoring_snapshot_fails_when_owner_meeting_summary_drifts(
     ) in result["errors"]
     assert (
         "monitoring completion "
-        "calculation_owner_meeting_missing_capture_field_count expected 50, got 39"
+        "calculation_owner_meeting_missing_capture_field_count expected 40, got 39"
     ) in result["errors"]
     assert (
         "monitoring completion calculation_owner_meeting_missing_field_count "
@@ -362,7 +362,7 @@ def test_verify_monitoring_snapshot_fails_when_first_priority_summary_drifts(
 ) -> None:
     manifest_path = _copy_monitoring_package(tmp_path)
     monitoring = _load_package_json(manifest_path, "system_audit_monitoring_snapshot")
-    monitoring["completion_verification"]["calculation_first_priority_count"] = 2
+    monitoring["completion_verification"]["calculation_first_priority_count"] = 1
     monitoring["completion_verification"][
         "calculation_first_priority_owner_intake_ready"
     ] = False
@@ -375,7 +375,7 @@ def test_verify_monitoring_snapshot_fails_when_first_priority_summary_drifts(
 
     assert result["status"] == "fail"
     assert (
-        "monitoring completion calculation_first_priority_count expected 3, got 2"
+        "monitoring completion calculation_first_priority_count expected 2, got 1"
         in result["errors"]
     )
     assert (
@@ -425,7 +425,7 @@ def test_verify_monitoring_snapshot_fails_when_post_owner_summary_drifts(
     ) in result["errors"]
     assert (
         "monitoring completion calculation_post_owner_incomplete_count "
-        "expected 10, got 9"
+        "expected 8, got 9"
     ) in result["errors"]
     assert (
         "monitoring completion "

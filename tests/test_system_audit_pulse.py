@@ -43,7 +43,7 @@ def test_system_audit_pulse_aggregates_live_monitors_without_approval() -> None:
     assert report["business_display"]["route_gap_count"] == 0
     assert report["completion_snapshot"]["status"] == "pass"
     assert report["completion_snapshot"]["open_blocker_count"] == 5
-    assert report["completion_snapshot"]["calculation_packet_p1_count"] == 10
+    assert report["completion_snapshot"]["calculation_packet_p1_count"] == 8
     assert report["completion_snapshot"]["calculation_meeting_record_complete"] is False
     assert report["completion_snapshot"]["calculation_missing_meeting_field_count"] == 8
     assert (
@@ -67,7 +67,7 @@ def test_system_audit_pulse_aggregates_live_monitors_without_approval() -> None:
     assert report["completion_snapshot"]["calculation_post_owner_blocking_reasons"] == [
         "owner_decision_capture_incomplete"
     ]
-    assert report["completion_snapshot"]["calculation_post_owner_incomplete_count"] == 10
+    assert report["completion_snapshot"]["calculation_post_owner_incomplete_count"] == 8
     assert (
         report["completion_snapshot"][
             "calculation_post_owner_invalid_selected_decision_count"
@@ -105,12 +105,12 @@ def test_system_audit_pulse_aggregates_live_monitors_without_approval() -> None:
         "required_external_input_count": 2,
         "first_required_external_input": (
             "business owner selects the authoritative convention for P1-01 "
-            "through P1-07 and P1-09 through P1-11"
+            "through P1-06, P1-10, and P1-11"
         ),
-        "required_output_count": 11,
+        "required_output_count": 9,
         "first_required_output": "authoritative convention selected for P1-01",
         "fail_closed_until": (
-            "All 10 owner-decision rows are moved to verified-closed evidence "
+            "All 8 remaining owner-decision rows are moved to verified-closed evidence "
             "with targeted tests."
         ),
         "explicit_non_approval_boundary": (
@@ -220,7 +220,7 @@ def test_system_audit_pulse_cli_outputs_json() -> None:
     assert payload["blocker_intake_board"]["next_blocker_detail"][
         "responsible_owner_type"
     ] == "business_owner_and_metric_governance"
-    assert payload["completion_snapshot"]["calculation_packet_p1_count"] == 10
+    assert payload["completion_snapshot"]["calculation_packet_p1_count"] == 8
     assert payload["completion_snapshot"]["calculation_meeting_record_complete"] is False
     assert payload["completion_snapshot"]["calculation_missing_meeting_field_count"] == 8
     assert (
@@ -244,7 +244,7 @@ def test_system_audit_pulse_cli_outputs_json() -> None:
     assert payload["completion_snapshot"]["calculation_post_owner_blocking_reasons"] == [
         "owner_decision_capture_incomplete"
     ]
-    assert payload["completion_snapshot"]["calculation_post_owner_incomplete_count"] == 10
+    assert payload["completion_snapshot"]["calculation_post_owner_incomplete_count"] == 8
     assert (
         payload["completion_snapshot"][
             "calculation_post_owner_invalid_selected_decision_count"
@@ -282,11 +282,11 @@ def test_system_audit_pulse_formats_markdown_without_approval() -> None:
         "`python scripts\\refresh_calculation_p1_owner_decision_snapshot.py "
         "--require-owner-decisions-captured`"
     ) in markdown
-    assert "`p1_packet=10`" in markdown
+    assert "`p1_packet=8`" in markdown
     assert "`meeting_record=false`" in markdown
     assert "`missing_meeting_fields=8`" in markdown
     assert "`post_owner_ready=0`" in markdown
-    assert "`post_owner_incomplete=10`" in markdown
+    assert "`post_owner_incomplete=8`" in markdown
     assert "`post_owner_invalid_selected=0`" in markdown
     assert "`post_owner_gate=false`" in markdown
     assert "`post_owner_sync=true`" in markdown
@@ -322,11 +322,11 @@ def test_system_audit_pulse_cli_outputs_markdown() -> None:
     assert "- Completion state: `not_complete`" in completed.stdout
     assert "- Next blocker: `calculation-display-p1-decisions`" in completed.stdout
     assert "`business_contract_certified=0`" in completed.stdout
-    assert "`p1_packet=10`" in completed.stdout
+    assert "`p1_packet=8`" in completed.stdout
     assert "`meeting_record=false`" in completed.stdout
     assert "`missing_meeting_fields=8`" in completed.stdout
     assert "`post_owner_ready=0`" in completed.stdout
-    assert "`post_owner_incomplete=10`" in completed.stdout
+    assert "`post_owner_incomplete=8`" in completed.stdout
     assert "`post_owner_invalid_selected=0`" in completed.stdout
     assert "`post_owner_gate=false`" in completed.stdout
     assert "`post_owner_sync=true`" in completed.stdout

@@ -18,7 +18,9 @@ from scripts.calculation_p1_owner_decision_packet import (  # noqa: E402
 )
 from scripts.refresh_calculation_p1_owner_decision_snapshot import (  # noqa: E402
     CAPTURED_DECISION_STATUSES,
+    CLOSED_CAPTURE_SECTION_MARKER,
     DEFAULT_CAPTURE_TEMPLATE,
+    OPEN_CAPTURE_SECTION_MARKER,
     _capture_rows,
     _incomplete_capture_fields,
     _section,
@@ -75,7 +77,13 @@ def _bool_text(value: bool) -> str:
 
 def _capture_rows_from_template(path: Path) -> list[dict[str, Any]]:
     text = Path(path).read_text(encoding="utf-8")
-    return _capture_rows(_section(text, "## 10", "## 7"))
+    return _capture_rows(
+        _section(
+            text,
+            OPEN_CAPTURE_SECTION_MARKER,
+            CLOSED_CAPTURE_SECTION_MARKER,
+        )
+    )
 
 
 def _row_status(row: dict[str, Any]) -> str:

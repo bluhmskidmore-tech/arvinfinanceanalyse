@@ -131,7 +131,7 @@
     {
       "blocker_id": "calculation-display-p1-decisions",
       "current_status": "not_complete",
-      "last_checked_at": "2026-06-10T21:25:00+08:00",
+      "last_checked_at": "2026-08-06T22:30:00+08:00",
       "responsible_owner_type": "business_owner_and_metric_governance",
       "required_input_artifacts": [
         "docs/audits/2026-06-10-calculation-logic-audit.md",
@@ -145,8 +145,6 @@
         "authoritative convention selected for P1-04",
         "authoritative convention selected for P1-05",
         "authoritative convention selected for P1-06",
-        "authoritative convention selected for P1-07",
-        "authoritative convention selected for P1-09",
         "authoritative convention selected for P1-10",
         "authoritative convention selected for P1-11",
         "docs/calc_rules.md and page contracts updated for selected conventions before implementation closure"
@@ -162,21 +160,21 @@
         "prepare implementation slices per P1 row without selecting an ambiguous convention in code"
       ],
       "external_input_required_for_closure": [
-        "business owner selects the authoritative convention for P1-01 through P1-07 and P1-09 through P1-11",
+        "business owner selects the authoritative convention for P1-01 through P1-06, P1-10, and P1-11",
         "metric governance accepts the target rule location in docs/calc_rules.md, metric dictionary, or page contract"
       ],
       "closure_evidence_after_external_input": [
         "docs/calc_rules.md, contracts, implementation, and tests reflect the selected convention",
         "tests that formerly froze the losing convention are updated with numeric regression evidence",
-        "the relevant P1 rows move to verified-closed evidence without reopening P1-08"
+        "the relevant P1 rows move to verified-closed evidence without reopening P1-07, P1-08, or P1-09"
       ],
       "explicit_non_approval_boundary": "This packet records follow-up work only; it does not choose or approve any calculation convention.",
       "prohibited_actions": [
         "infer a formal metric convention from UI copy or preview data",
         "change implementation before owner convention selection when the rule is ambiguous",
-        "reopen P1-08 without new contrary evidence"
+        "reopen P1-07, P1-08, or P1-09 without new contrary evidence"
       ],
-      "fail_closed_until": "All 10 owner-decision rows are moved to verified-closed evidence with targeted tests."
+      "fail_closed_until": "All 8 remaining owner-decision rows are moved to verified-closed evidence with targeted tests."
     },
     {
       "blocker_id": "direct-app-mcp-gitnexus-evidence",

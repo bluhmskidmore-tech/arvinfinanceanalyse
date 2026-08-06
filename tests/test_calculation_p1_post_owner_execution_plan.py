@@ -33,14 +33,14 @@ def test_calculation_p1_post_owner_execution_plan_routes_current_pending_rows() 
     assert plan["source_snapshot_status"] == "owner_decision_required"
     assert plan["global_owner_decision_gate_ready"] is False
     assert plan["implementation_ready"] is False
-    assert plan["row_count"] == 10
+    assert plan["row_count"] == 8
     assert plan["captured_decision_count"] == 0
     assert plan["owner_decision_capture_complete"] is False
     assert plan["ready_for_implementation_count"] == 0
     assert plan["deferred_count"] == 0
     assert plan["rejected_count"] == 0
     assert plan["non_implementation_decision_count"] == 0
-    assert plan["incomplete_count"] == 10
+    assert plan["incomplete_count"] == 8
     assert plan["post_owner_blocking_reasons"] == [
         "owner_decision_capture_incomplete"
     ]
@@ -76,30 +76,29 @@ def test_calculation_p1_post_owner_execution_plan_routes_current_pending_rows() 
         "P1-04",
         "P1-05",
         "P1-06",
-        "P1-07",
-        "P1-09",
         "P1-10",
         "P1-11",
     ]
-    p109 = next(item for item in plan["items"] if item["p1_id"] == "P1-09")
-    assert p109["bucket"] == "incomplete"
-    assert p109["status"] == "pending"
+    p110 = next(item for item in plan["items"] if item["p1_id"] == "P1-10")
+    assert p110["bucket"] == "incomplete"
+    assert p110["status"] == "pending"
     assert (
-        p109["verification_gate"]
-        == "suggested: model/component tests proving backend value wins"
+        p110["verification_gate"]
+        == "suggested: backend DTO / frontend removal tests"
     )
     assert (
-        p109["owner_decision_gate"]
-        == "Component/model tests prove backend value wins and missing share remains missing."
+        p110["owner_decision_gate"]
+        == "Backend DTO added or confirmed; frontend removes formal aggregation; "
+        "adapter/component tests consume DTO values."
     )
-    assert p109["missing_capture_fields"] == [
+    assert p110["missing_capture_fields"] == [
         "selected_decision",
         "owner_rationale",
         "implementation_owner",
         "verification_gate",
         "status",
     ]
-    assert "BalanceMovementAnalysisPage.tsx" in " ".join(p109["referenced_paths"])
+    assert "yieldAnalysisAggregates.ts" in " ".join(p110["referenced_paths"])
 
 
 def test_calculation_p1_post_owner_execution_plan_classifies_captured_rows(
@@ -107,23 +106,21 @@ def test_calculation_p1_post_owner_execution_plan_classifies_captured_rows(
 ) -> None:
     snapshot = json.loads(SNAPSHOT.read_text(encoding="utf-8"))
     snapshot["capture_template"]["captured_decision_count"] = 3
-    snapshot["capture_template"]["captured_decision_ids"] = ["P1-09", "P1-10", "P1-11"]
-    snapshot["capture_template"]["incomplete_decision_count"] = 7
+    snapshot["capture_template"]["captured_decision_ids"] = ["P1-06", "P1-10", "P1-11"]
+    snapshot["capture_template"]["incomplete_decision_count"] = 5
     snapshot["capture_template"]["incomplete_decision_ids"] = [
         "P1-01",
         "P1-02",
         "P1-03",
         "P1-04",
         "P1-05",
-        "P1-06",
-        "P1-07",
     ]
     snapshot["capture_template"]["incomplete_fields_by_id"] = {
         key: value
         for key, value in snapshot["capture_template"][
             "incomplete_fields_by_id"
         ].items()
-        if key not in {"P1-09", "P1-10", "P1-11"}
+        if key not in {"P1-06", "P1-10", "P1-11"}
     }
     snapshot_path = tmp_path / "snapshot.json"
     snapshot_path.write_text(
@@ -134,7 +131,10 @@ def test_calculation_p1_post_owner_execution_plan_classifies_captured_rows(
     lines = CAPTURE_TEMPLATE.read_text(encoding="utf-8").splitlines()
     rewritten: list[str] = []
     decisions = {
-        "P1-09": ("Option A - backend current_balance_pct authoritative", "approved-for-implementation"),
+        "P1-06": (
+            "Option A - nonzero explained/residual with zero actual is warning/undefined",
+            "approved-for-implementation",
+        ),
         "P1-10": ("Option B - frontend may derive display aggregates", "deferred"),
         "P1-11": ("Option A - backend provides governed matrix", "rejected"),
     }
@@ -160,16 +160,16 @@ def test_calculation_p1_post_owner_execution_plan_classifies_captured_rows(
     )
 
     assert [item["p1_id"] for item in plan["queues"]["ready_for_implementation"]] == [
-        "P1-09"
+        "P1-06"
     ]
     assert [item["p1_id"] for item in plan["queues"]["deferred"]] == ["P1-10"]
     assert [item["p1_id"] for item in plan["queues"]["rejected"]] == ["P1-11"]
     assert plan["ready_for_implementation_count"] == 1
     assert plan["deferred_count"] == 1
     assert plan["rejected_count"] == 1
-    assert plan["incomplete_count"] == 7
+    assert plan["incomplete_count"] == 5
     assert plan["invalid_selected_decision_count"] == 0
-    assert plan["live_template_incomplete_count"] == 7
+    assert plan["live_template_incomplete_count"] == 5
     assert plan["global_owner_decision_gate_ready"] is False
     assert plan["implementation_ready"] is False
 
@@ -202,8 +202,6 @@ def test_calculation_p1_post_owner_execution_plan_separates_capture_from_impleme
         "P1-04": ("Option A - require independent position and ledger source anchors", "deferred"),
         "P1-05": ("Option A - period average scale", "approved-for-implementation"),
         "P1-06": ("Option A - nonzero explained/residual with zero actual is warning/undefined", "approved-for-implementation"),
-        "P1-07": ("Option B - liquidity remains looseness-positive but enters composite with inverse sign", "approved-for-implementation"),
-        "P1-09": ("Option A - backend current_balance_pct is authoritative", "approved-for-implementation"),
         "P1-10": ("Option A - backend DTO only", "approved-for-implementation"),
         "P1-11": ("Option A - backend provides governed matrix", "rejected"),
     }
@@ -232,7 +230,7 @@ def test_calculation_p1_post_owner_execution_plan_separates_capture_from_impleme
     assert plan["owner_decision_capture_complete"] is True
     assert plan["global_owner_decision_gate_ready"] is True
     assert plan["implementation_ready"] is False
-    assert plan["ready_for_implementation_count"] == 8
+    assert plan["ready_for_implementation_count"] == 6
     assert plan["deferred_count"] == 1
     assert plan["rejected_count"] == 1
     assert plan["non_implementation_decision_count"] == 2
@@ -271,8 +269,6 @@ def test_calculation_p1_post_owner_execution_plan_accepts_all_approved_owner_inp
         "P1-04": "Option A - require independent position and ledger source anchors",
         "P1-05": "Option A - period average scale",
         "P1-06": "Option A - nonzero explained/residual with zero actual is warning/undefined",
-        "P1-07": "Option B - liquidity remains looseness-positive but enters composite with inverse sign",
-        "P1-09": "Option A - backend current_balance_pct is authoritative",
         "P1-10": "Option A - backend DTO only",
         "P1-11": "Option A - backend provides governed matrix",
     }
@@ -300,7 +296,7 @@ def test_calculation_p1_post_owner_execution_plan_accepts_all_approved_owner_inp
     assert plan["owner_decision_capture_complete"] is True
     assert plan["global_owner_decision_gate_ready"] is True
     assert plan["implementation_ready"] is True
-    assert plan["ready_for_implementation_count"] == 10
+    assert plan["ready_for_implementation_count"] == 8
     assert plan["deferred_count"] == 0
     assert plan["rejected_count"] == 0
     assert plan["non_implementation_decision_count"] == 0
@@ -313,19 +309,19 @@ def test_calculation_p1_post_owner_execution_plan_rechecks_live_template_fields(
 ) -> None:
     snapshot = json.loads(SNAPSHOT.read_text(encoding="utf-8"))
     snapshot["capture_template"]["captured_decision_count"] = 1
-    snapshot["capture_template"]["captured_decision_ids"] = ["P1-09"]
-    snapshot["capture_template"]["incomplete_decision_count"] = 9
+    snapshot["capture_template"]["captured_decision_ids"] = ["P1-10"]
+    snapshot["capture_template"]["incomplete_decision_count"] = 7
     snapshot["capture_template"]["incomplete_decision_ids"] = [
         p1_id
         for p1_id in snapshot["capture_template"]["row_ids"]
-        if p1_id != "P1-09"
+        if p1_id != "P1-10"
     ]
     snapshot["capture_template"]["incomplete_fields_by_id"] = {
         key: value
         for key, value in snapshot["capture_template"][
             "incomplete_fields_by_id"
         ].items()
-        if key != "P1-09"
+        if key != "P1-10"
     }
     snapshot["capture_template"]["invalid_selected_decision_by_id"] = {}
     snapshot["capture_template"]["invalid_selected_decision_count"] = 0
@@ -339,7 +335,7 @@ def test_calculation_p1_post_owner_execution_plan_rechecks_live_template_fields(
     lines = CAPTURE_TEMPLATE.read_text(encoding="utf-8").splitlines()
     rewritten: list[str] = []
     for line in lines:
-        if not line.startswith("| P1-09 |"):
+        if not line.startswith("| P1-10 |"):
             rewritten.append(line)
             continue
         cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
@@ -357,14 +353,14 @@ def test_calculation_p1_post_owner_execution_plan_rechecks_live_template_fields(
         capture_template_path=capture_path,
     )
 
-    p109 = next(item for item in plan["items"] if item["p1_id"] == "P1-09")
-    assert p109["bucket"] == "incomplete"
-    assert p109["missing_capture_fields"] == ["selected_decision"]
-    assert "P1-09" not in [
+    p110 = next(item for item in plan["items"] if item["p1_id"] == "P1-10")
+    assert p110["bucket"] == "incomplete"
+    assert p110["missing_capture_fields"] == ["selected_decision"]
+    assert "P1-10" not in [
         item["p1_id"] for item in plan["queues"]["ready_for_implementation"]
     ]
-    assert "P1-09" in [item["p1_id"] for item in plan["queues"]["incomplete"]]
-    assert plan["live_template_incomplete_count"] == 10
+    assert "P1-10" in [item["p1_id"] for item in plan["queues"]["incomplete"]]
+    assert plan["live_template_incomplete_count"] == 8
     assert (
         plan["readiness_checks"]["live_template_matches_snapshot_missing_fields"]
         is False
@@ -380,7 +376,7 @@ def test_calculation_p1_post_owner_execution_plan_blocks_invalid_selected_decisi
     snapshot = json.loads(SNAPSHOT.read_text(encoding="utf-8"))
     snapshot["capture_template"]["captured_decision_count"] = 0
     snapshot["capture_template"]["captured_decision_ids"] = []
-    snapshot["capture_template"]["invalid_selected_decision_by_id"] = {"P1-09": "Z"}
+    snapshot["capture_template"]["invalid_selected_decision_by_id"] = {"P1-10": "Z"}
     snapshot["capture_template"]["invalid_selected_decision_count"] = 1
     snapshot["capture_template"]["invalid_status_by_id"] = {}
     snapshot["capture_template"]["incomplete_fields_by_id"] = {
@@ -389,7 +385,7 @@ def test_calculation_p1_post_owner_execution_plan_blocks_invalid_selected_decisi
             "incomplete_fields_by_id"
         ].items()
     }
-    snapshot["capture_template"]["incomplete_fields_by_id"]["P1-09"] = [
+    snapshot["capture_template"]["incomplete_fields_by_id"]["P1-10"] = [
         "selected_decision"
     ]
     snapshot_path = tmp_path / "snapshot.json"
@@ -401,7 +397,7 @@ def test_calculation_p1_post_owner_execution_plan_blocks_invalid_selected_decisi
     lines = CAPTURE_TEMPLATE.read_text(encoding="utf-8").splitlines()
     rewritten: list[str] = []
     for line in lines:
-        if not line.startswith("| P1-09 |"):
+        if not line.startswith("| P1-10 |"):
             rewritten.append(line)
             continue
         cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
@@ -419,14 +415,14 @@ def test_calculation_p1_post_owner_execution_plan_blocks_invalid_selected_decisi
         capture_template_path=capture_path,
     )
 
-    p109 = next(item for item in plan["items"] if item["p1_id"] == "P1-09")
-    assert p109["bucket"] == "incomplete"
-    assert p109["invalid_selected_decision"] == "Z"
-    assert p109["missing_capture_fields"] == ["selected_decision"]
-    assert "P1-09" not in [
+    p110 = next(item for item in plan["items"] if item["p1_id"] == "P1-10")
+    assert p110["bucket"] == "incomplete"
+    assert p110["invalid_selected_decision"] == "Z"
+    assert p110["missing_capture_fields"] == ["selected_decision"]
+    assert "P1-10" not in [
         item["p1_id"] for item in plan["queues"]["ready_for_implementation"]
     ]
-    assert "P1-09" in [item["p1_id"] for item in plan["queues"]["incomplete"]]
+    assert "P1-10" in [item["p1_id"] for item in plan["queues"]["incomplete"]]
     assert plan["invalid_selected_decision_count"] == 1
     assert plan["readiness_checks"]["no_invalid_selected_decisions"] is False
     assert plan["readiness_checks"]["source_snapshot_is_owner_decision_required"] is True
@@ -439,8 +435,8 @@ def test_calculation_p1_post_owner_execution_plan_blocks_matrix_drift_snapshot(
 ) -> None:
     snapshot = json.loads(SNAPSHOT.read_text(encoding="utf-8"))
     snapshot["status"]["overall"] = "matrix_drift"
-    snapshot["capture_template"]["captured_decision_count"] = 3
-    snapshot["capture_template"]["captured_decision_ids"] = ["P1-09", "P1-10", "P1-11"]
+    snapshot["capture_template"]["captured_decision_count"] = 1
+    snapshot["capture_template"]["captured_decision_ids"] = ["P1-10"]
     snapshot["capture_template"]["incomplete_decision_count"] = 7
     snapshot["capture_template"]["incomplete_decision_ids"] = [
         "P1-01",
@@ -449,14 +445,14 @@ def test_calculation_p1_post_owner_execution_plan_blocks_matrix_drift_snapshot(
         "P1-04",
         "P1-05",
         "P1-06",
-        "P1-07",
+        "P1-11",
     ]
     snapshot["capture_template"]["incomplete_fields_by_id"] = {
         key: value
         for key, value in snapshot["capture_template"][
             "incomplete_fields_by_id"
         ].items()
-        if key not in {"P1-09", "P1-10", "P1-11"}
+        if key != "P1-10"
     }
     snapshot_path = tmp_path / "snapshot.json"
     snapshot_path.write_text(
@@ -467,11 +463,11 @@ def test_calculation_p1_post_owner_execution_plan_blocks_matrix_drift_snapshot(
     lines = CAPTURE_TEMPLATE.read_text(encoding="utf-8").splitlines()
     rewritten: list[str] = []
     for line in lines:
-        if not line.startswith("| P1-09 |"):
+        if not line.startswith("| P1-10 |"):
             rewritten.append(line)
             continue
         cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        cells[2] = "Option A - backend current_balance_pct authoritative"
+        cells[2] = "Option A - backend DTO only"
         cells[3] = "Owner rationale captured for deterministic routing."
         cells[4] = "metric-governance-owner"
         cells[5] = "targeted regression and strict gate"
@@ -485,12 +481,12 @@ def test_calculation_p1_post_owner_execution_plan_blocks_matrix_drift_snapshot(
         capture_template_path=capture_path,
     )
 
-    p109 = next(item for item in plan["items"] if item["p1_id"] == "P1-09")
-    assert p109["bucket"] == "incomplete"
-    assert "P1-09" not in [
+    p110 = next(item for item in plan["items"] if item["p1_id"] == "P1-10")
+    assert p110["bucket"] == "incomplete"
+    assert "P1-10" not in [
         item["p1_id"] for item in plan["queues"]["ready_for_implementation"]
     ]
-    assert "P1-09" in [item["p1_id"] for item in plan["queues"]["incomplete"]]
+    assert "P1-10" in [item["p1_id"] for item in plan["queues"]["incomplete"]]
     assert plan["ready_for_implementation_count"] == 0
     assert plan["readiness_checks"]["source_snapshot_is_owner_decision_required"] is False
     assert plan["global_owner_decision_gate_ready"] is False
@@ -520,7 +516,7 @@ def test_calculation_p1_post_owner_execution_plan_cli_writes_markdown(
     assert payload["implementation_ready"] is False
     assert payload["ready_for_implementation_count"] == 0
     assert payload["non_implementation_decision_count"] == 0
-    assert payload["incomplete_count"] == 10
+    assert payload["incomplete_count"] == 8
     assert payload["post_owner_blocking_reasons"] == [
         "owner_decision_capture_incomplete"
     ]
@@ -536,7 +532,7 @@ def test_calculation_p1_post_owner_execution_plan_cli_writes_markdown(
     ) in text
     assert "`ready_for_implementation_count=0`" in text
     assert "`non_implementation_decision_count=0`" in text
-    assert "`incomplete_count=10`" in text
+    assert "`incomplete_count=8`" in text
     assert "`post_owner_blocking_reasons=owner_decision_capture_incomplete`" in text
     assert "`source_snapshot_is_owner_decision_required=true`" in text
     assert "`owner_decision_capture_complete=false`" in text
@@ -547,7 +543,7 @@ def test_calculation_p1_post_owner_execution_plan_cli_writes_markdown(
     assert "`changes_implementation_code=false`" in text
     assert "Verification gate" in text
     assert "Owner decision gate" in text
-    assert "model/component tests proving backend value wins" in text
+    assert "backend DTO / frontend removal tests" in text
     assert "execute implementation when the meeting record is incomplete" in text
     assert "does not choose or approve conventions" in text
 

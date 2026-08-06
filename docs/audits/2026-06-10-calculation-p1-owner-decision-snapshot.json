@@ -1,22 +1,11 @@
 {
   "report_kind": "calculation_p1_owner_decision_snapshot",
-  "generated_at": "2026-06-10T21:25:00+08:00",
-  "repo_root": "F:\\MOSS-V3",
+  "generated_at": "2026-08-06T22:30:00+08:00",
+  "repo_root": "G:\\MOSS-V3-worktrees\\p1-governance-sync-20260806",
   "audit_date": "2026-06-10",
-  "refresh_command": "python scripts\\refresh_calculation_p1_owner_decision_snapshot.py",
-  "status": {
-    "overall": "owner_decision_required",
-    "fail_closed": true,
-    "chooses_or_approves_conventions": false,
-    "changes_code": false,
-    "approves_metrics": false,
-    "approves_pages": false,
-    "captures_business_owner_approval": false,
-    "certifies_routes": false
-  },
-  "matrix": {
-    "path": "F:\\MOSS-V3\\docs\\audits\\2026-06-10-calculation-p1-owner-decision-matrix.md",
-    "latest_verification_refresh": "2026-06-10T21:25:00+08:00",
+  "state_as_of": "2026-08-06",
+  "historical_baseline": {
+    "as_of": "2026-06-10T21:25:00+08:00",
     "open_decision_ids": [
       "P1-01",
       "P1-02",
@@ -30,6 +19,33 @@
       "P1-11"
     ],
     "open_decision_count": 10,
+    "scope": "Historical source snapshot only; current owner intake is represented by matrix.open_decision_ids and capture_template.row_ids."
+  },
+  "refresh_command": "python scripts\\refresh_calculation_p1_owner_decision_snapshot.py",
+  "status": {
+    "overall": "owner_decision_required",
+    "fail_closed": true,
+    "chooses_or_approves_conventions": false,
+    "changes_code": false,
+    "approves_metrics": false,
+    "approves_pages": false,
+    "captures_business_owner_approval": false,
+    "certifies_routes": false
+  },
+  "matrix": {
+    "path": "G:\\MOSS-V3-worktrees\\p1-governance-sync-20260806\\docs\\audits\\2026-06-10-calculation-p1-owner-decision-matrix.md",
+    "latest_verification_refresh": "2026-08-06T22:30:00+08:00",
+    "open_decision_ids": [
+      "P1-01",
+      "P1-02",
+      "P1-03",
+      "P1-04",
+      "P1-05",
+      "P1-06",
+      "P1-10",
+      "P1-11"
+    ],
+    "open_decision_count": 8,
     "expected_open_decision_ids": [
       "P1-01",
       "P1-02",
@@ -37,12 +53,10 @@
       "P1-04",
       "P1-05",
       "P1-06",
-      "P1-07",
-      "P1-09",
       "P1-10",
       "P1-11"
     ],
-    "expected_open_decision_count": 10,
+    "expected_open_decision_count": 8,
     "missing_open_decision_ids": [],
     "unexpected_open_decision_ids": [],
     "candidate_options_by_id": {
@@ -73,16 +87,6 @@
       "P1-06": {
         "A": "nonzero explained/residual with zero actual is warning/undefined",
         "B": "force ratio to 0 and mark ok"
-      },
-      "P1-07": {
-        "A": "all components tightness-positive",
-        "B": "liquidity remains looseness-positive but enters composite with inverse sign",
-        "C": "separate liquidity narrative from composite"
-      },
-      "P1-09": {
-        "A": "backend `current_balance_pct` is authoritative",
-        "B": "frontend recomputes from visible rows",
-        "C": "backend provides both official and visible-row share"
       },
       "P1-10": {
         "A": "backend DTO only",
@@ -123,16 +127,6 @@
         "A",
         "B"
       ],
-      "P1-07": [
-        "A",
-        "B",
-        "C"
-      ],
-      "P1-09": [
-        "A",
-        "B",
-        "C"
-      ],
       "P1-10": [
         "A",
         "B",
@@ -146,7 +140,13 @@
     "capture_template_candidate_options_match_matrix": true,
     "p1_08_in_open_rows": false,
     "verified_closed_ids": [
-      "P1-08"
+      "P1-08",
+      "P1-07",
+      "P1-09"
+    ],
+    "owner_decision_closed_ids": [
+      "P1-07",
+      "P1-09"
     ],
     "p1_08_verified_closed": true,
     "p1_08_regression": {
@@ -162,12 +162,10 @@
       "P1-04",
       "P1-05",
       "P1-06",
-      "P1-07",
-      "P1-09",
       "P1-10",
       "P1-11"
     ],
-    "mapped_count": 10,
+    "mapped_count": 8,
     "missing_ids": [],
     "unexpected_ids": [],
     "boundary_checks": {
@@ -181,7 +179,7 @@
     }
   },
   "capture_template": {
-    "path": "F:\\MOSS-V3\\docs\\audits\\2026-06-10-owner-decision-capture-template.zh.md",
+    "path": "G:\\MOSS-V3-worktrees\\p1-governance-sync-20260806\\docs\\audits\\2026-06-10-owner-decision-capture-template.zh.md",
     "row_ids": [
       "P1-01",
       "P1-02",
@@ -189,15 +187,13 @@
       "P1-04",
       "P1-05",
       "P1-06",
-      "P1-07",
-      "P1-09",
       "P1-10",
       "P1-11"
     ],
-    "row_count": 10,
+    "row_count": 8,
     "missing_ids": [],
     "unexpected_ids": [],
-    "pending_count": 10,
+    "pending_count": 8,
     "captured_statuses": [
       "approved-for-implementation",
       "deferred",
@@ -232,16 +228,6 @@
         "A": "nonzero explained/residual with zero actual is warning/undefined",
         "B": "force ratio to 0 and mark ok"
       },
-      "P1-07": {
-        "A": "all components tightness-positive",
-        "B": "liquidity remains looseness-positive but enters composite with inverse sign",
-        "C": "separate liquidity narrative from composite"
-      },
-      "P1-09": {
-        "A": "backend `current_balance_pct` is authoritative",
-        "B": "frontend recomputes from visible rows",
-        "C": "backend provides both official and visible-row share"
-      },
       "P1-10": {
         "A": "backend DTO only",
         "B": "frontend may derive display aggregates",
@@ -257,7 +243,7 @@
     "invalid_selected_decision_count": 0,
     "captured_decision_count": 0,
     "captured_decision_ids": [],
-    "incomplete_decision_count": 10,
+    "incomplete_decision_count": 8,
     "incomplete_decision_ids": [
       "P1-01",
       "P1-02",
@@ -265,8 +251,6 @@
       "P1-04",
       "P1-05",
       "P1-06",
-      "P1-07",
-      "P1-09",
       "P1-10",
       "P1-11"
     ],
@@ -313,20 +297,6 @@
         "verification_gate",
         "status"
       ],
-      "P1-07": [
-        "selected_decision",
-        "owner_rationale",
-        "implementation_owner",
-        "verification_gate",
-        "status"
-      ],
-      "P1-09": [
-        "selected_decision",
-        "owner_rationale",
-        "implementation_owner",
-        "verification_gate",
-        "status"
-      ],
       "P1-10": [
         "selected_decision",
         "owner_rationale",
@@ -360,6 +330,6 @@
     "is_complete": false
   },
   "drift_errors": [],
-  "closure_gate": "Business owner and metric governance must select the authoritative convention for P1-01 through P1-07 and P1-09 through P1-11 before implementation closure. After that, docs/calc_rules.md, contracts, implementation, and targeted tests must move each selected row to verified-closed evidence without reopening P1-08.",
+  "closure_gate": "Business owner and metric governance must select the authoritative convention for the remaining P1-01 through P1-06, P1-10, and P1-11 rows before implementation closure. P1-07 and P1-09 are already verified closed after their recorded owner decisions. After that, docs/calc_rules.md, contracts, implementation, and targeted tests must move each selected row to verified-closed evidence without reopening P1-07, P1-08, or P1-09.",
   "boundary": "This snapshot is read-only owner-decision intake evidence. It does not choose or approve any calculation convention, change implementation code, approve metrics or pages, capture business-owner approval, or certify routes."
 }

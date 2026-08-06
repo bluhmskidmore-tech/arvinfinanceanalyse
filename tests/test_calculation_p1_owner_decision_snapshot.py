@@ -12,6 +12,8 @@ from scripts.refresh_calculation_p1_owner_decision_snapshot import (
 )
 from scripts.verify_system_audit_completion_snapshot import (
     EXPECTED_OPEN_CALCULATION_P1_IDS,
+    EXPECTED_OWNER_DECISION_CLOSED_P1_IDS,
+    HISTORICAL_OPEN_CALCULATION_P1_IDS,
 )
 
 
@@ -38,11 +40,20 @@ def test_calculation_p1_owner_decision_snapshot_preserves_fail_closed_boundary()
         "certifies_routes": False,
     }
     assert snapshot["matrix"]["open_decision_ids"] == EXPECTED_OPEN_CALCULATION_P1_IDS
-    assert snapshot["matrix"]["open_decision_count"] == 10
+    assert snapshot["matrix"]["open_decision_count"] == len(
+        EXPECTED_OPEN_CALCULATION_P1_IDS
+    )
+    assert snapshot["historical_baseline"]["open_decision_ids"] == (
+        HISTORICAL_OPEN_CALCULATION_P1_IDS
+    )
+    assert snapshot["historical_baseline"]["open_decision_count"] == 10
     assert snapshot["matrix"]["candidate_option_letters_by_id"]["P1-11"] == ["A", "B"]
     assert snapshot["matrix"]["capture_template_candidate_options_match_matrix"] is True
     assert snapshot["matrix"]["p1_08_in_open_rows"] is False
     assert snapshot["matrix"]["p1_08_verified_closed"] is True
+    assert snapshot["matrix"]["owner_decision_closed_ids"] == (
+        EXPECTED_OWNER_DECISION_CLOSED_P1_IDS
+    )
     assert snapshot["matrix"]["p1_08_regression"] == {
         "command": (
             "npm.cmd test -- src/features/bond-dashboard/utils/format.test.ts "
@@ -61,7 +72,9 @@ def test_calculation_p1_owner_decision_snapshot_preserves_fail_closed_boundary()
         is True
     )
     assert snapshot["capture_template"]["row_ids"] == EXPECTED_OPEN_CALCULATION_P1_IDS
-    assert snapshot["capture_template"]["pending_count"] == 10
+    assert snapshot["capture_template"]["pending_count"] == len(
+        EXPECTED_OPEN_CALCULATION_P1_IDS
+    )
     assert snapshot["capture_template"]["candidate_contract_options_by_id"] == snapshot[
         "matrix"
     ]["candidate_options_by_id"]
@@ -77,7 +90,9 @@ def test_calculation_p1_owner_decision_snapshot_preserves_fail_closed_boundary()
     assert snapshot["capture_template"]["invalid_selected_decision_by_id"] == {}
     assert snapshot["capture_template"]["invalid_selected_decision_count"] == 0
     assert snapshot["capture_template"]["captured_decision_count"] == 0
-    assert snapshot["capture_template"]["incomplete_decision_count"] == 10
+    assert snapshot["capture_template"]["incomplete_decision_count"] == len(
+        EXPECTED_OPEN_CALCULATION_P1_IDS
+    )
     assert snapshot["capture_template"]["incomplete_decision_ids"] == (
         EXPECTED_OPEN_CALCULATION_P1_IDS
     )
@@ -118,7 +133,9 @@ def test_calculation_p1_owner_decision_snapshot_cli_outputs_json(tmp_path: Path)
     payload = json.loads(output_path.read_text(encoding="utf-8"))
     assert payload["generated_at"] == "2026-06-10T20:45:00+08:00"
     assert payload["status"]["overall"] == "owner_decision_required"
-    assert payload["matrix"]["open_decision_count"] == 10
+    assert payload["matrix"]["open_decision_count"] == len(
+        EXPECTED_OPEN_CALCULATION_P1_IDS
+    )
     assert payload["drift_errors"] == []
 
 
@@ -148,9 +165,15 @@ def test_calculation_p1_owner_decision_snapshot_cli_strict_gate_rejects_pending_
     payload = json.loads(completed.stdout)
     assert payload["status"]["overall"] == "owner_decision_required"
     assert payload["capture_template"]["captured_decision_count"] == 0
-    assert payload["capture_template"]["row_count"] == 10
-    assert payload["capture_template"]["pending_count"] == 10
-    assert payload["capture_template"]["incomplete_decision_count"] == 10
+    assert payload["capture_template"]["row_count"] == len(
+        EXPECTED_OPEN_CALCULATION_P1_IDS
+    )
+    assert payload["capture_template"]["pending_count"] == len(
+        EXPECTED_OPEN_CALCULATION_P1_IDS
+    )
+    assert payload["capture_template"]["incomplete_decision_count"] == len(
+        EXPECTED_OPEN_CALCULATION_P1_IDS
+    )
     assert payload["meeting_record"]["is_complete"] is False
     assert "Calculation P1 owner decisions are not fully captured" in completed.stderr
     assert "captured_decision_count=0" in completed.stderr
@@ -167,8 +190,6 @@ def test_calculation_p1_owner_decision_snapshot_strict_gate_requires_meeting_rec
         "P1-04": "Option A - independent position and ledger source anchors",
         "P1-05": "Option A - period average scale",
         "P1-06": "Option A - nonzero residual with zero actual warning",
-        "P1-07": "Option A - components tightness positive",
-        "P1-09": "Option A - backend current_balance_pct authoritative",
         "P1-10": "Option A - backend DTO only",
         "P1-11": "Option A - backend provides governed matrix",
     }
@@ -210,7 +231,9 @@ def test_calculation_p1_owner_decision_snapshot_strict_gate_requires_meeting_rec
 
     assert completed.returncode == 1
     payload = json.loads(completed.stdout)
-    assert payload["capture_template"]["captured_decision_count"] == 10
+    assert payload["capture_template"]["captured_decision_count"] == len(
+        EXPECTED_OPEN_CALCULATION_P1_IDS
+    )
     assert payload["capture_template"]["invalid_selected_decision_count"] == 0
     assert payload["capture_template"]["incomplete_decision_count"] == 0
     assert payload["meeting_record"]["is_complete"] is False
@@ -240,7 +263,9 @@ def test_calculation_p1_owner_decision_snapshot_does_not_count_partial_rows_as_c
 
     assert snapshot["status"]["overall"] == "owner_decision_required"
     assert snapshot["capture_template"]["captured_decision_count"] == 0
-    assert snapshot["capture_template"]["incomplete_decision_count"] == 10
+    assert snapshot["capture_template"]["incomplete_decision_count"] == len(
+        EXPECTED_OPEN_CALCULATION_P1_IDS
+    )
     assert snapshot["capture_template"]["incomplete_fields_by_id"]["P1-01"] == [
         "selected_decision",
         "owner_rationale",

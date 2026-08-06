@@ -32,7 +32,7 @@
     "required_completion_gate_count": 5,
     "business_contract_certified_routes": 0,
     "owner_approval_pending_pages": 7,
-    "calculation_display_open_p1": 10,
+    "calculation_display_open_p1": 8,
     "direct_app_tool_discovery_count": 0,
     "local_secret_gitleaks_finding_count": 2,
     "readiness_direct_evidence_null_count": 0,
@@ -89,7 +89,7 @@
     {
       "blocker_id": "calculation-display-p1-decisions",
       "status": "not_complete",
-      "last_checked_at": "2026-06-10T21:25:00+08:00",
+      "last_checked_at": "2026-08-06T22:30:00+08:00",
       "required_evidence": [
         "business owner selects authoritative convention for every remaining P1 row",
         "docs/calc_rules.md updated for selected conventions",
@@ -98,12 +98,12 @@
         "targeted tests updated and passing"
       ],
       "current_contradicting_evidence": [
-        "10 rows remain open",
-        "P1-01 through P1-07 remain open",
-        "P1-09 through P1-11 remain open",
-        "only P1-08 is verified closed"
+        "8 rows remain open",
+        "P1-01 through P1-06 remain open",
+        "P1-10 and P1-11 remain open",
+        "P1-07 and P1-09 are owner-selected and implementation-verified closed; P1-08 remains verified closed from before owner review"
       ],
-      "fail_closed_until": "All 10 owner-decision rows are moved to verified-closed evidence with targeted tests."
+      "fail_closed_until": "All 8 remaining owner-decision rows are moved to verified-closed evidence with targeted tests."
     },
     {
       "blocker_id": "direct-app-mcp-gitnexus-evidence",

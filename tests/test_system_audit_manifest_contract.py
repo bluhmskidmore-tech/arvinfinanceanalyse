@@ -225,8 +225,6 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
         "P1-04",
         "P1-05",
         "P1-06",
-        "P1-07",
-        "P1-09",
         "P1-10",
         "P1-11",
     ]
@@ -234,7 +232,12 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
     assert open_decision_ids == expected_open_decision_ids
     assert all(not line.startswith("| P1-08 |") for line in open_decision_rows)
     assert "P1-08" in verified_closed_section
-    assert "Open owner-decision row count remains `10`" in decision_matrix
+    assert "original 2026-06-10 10-row baseline remains explicitly historical" in (
+        decision_matrix
+    )
+    assert "Current rows still needing owner-decision work" in decision_matrix
+    assert "P1-07" in verified_closed_section
+    assert "P1-09" in verified_closed_section
     assert "passed with 2 test files and 16 tests" in decision_matrix
 
     prework_marker = "## Engineering Prework / Impact Slice Map"
@@ -248,16 +251,16 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
         assert f"**{p1_id}" in prework_section
 
     assert "Calculation P1 Owner Decision Packet" in decision_packet
-    assert "`decision_item_count=10`" in decision_packet
-    assert "`pending_decision_count=10`" in decision_packet
+    assert "`decision_item_count=8`" in decision_packet
+    assert "`pending_decision_count=8`" in decision_packet
     assert "`captured_decision_count=0`" in decision_packet
     assert (
         "`post_owner_required_fields=selected_decision, owner_rationale, "
         "implementation_owner, verification_gate, status`"
     ) in decision_packet
-    assert "First priority group: `P1-09, P1-10, P1-11`" in decision_packet
+    assert "First priority group: `P1-10, P1-11`" in decision_packet
     assert "Owner decision gate" in decision_packet
-    assert "Component/model tests prove backend value wins" in decision_packet
+    assert "Backend DTO added or confirmed" in decision_packet
     assert "`captures_owner_decisions=false`" in decision_packet
     assert "`chooses_or_approves_conventions=false`" in decision_packet
     assert "treat proposed review defaults as approved rules" in decision_packet
@@ -270,8 +273,8 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
     assert "Calculation P1 Owner Meeting Checklist" in owner_meeting_checklist
     assert "Owner meeting material ready: `true`" in owner_meeting_checklist
     assert "Implementation ready: `false`" in owner_meeting_checklist
-    assert "`decision_item_count=10`" in owner_meeting_checklist
-    assert "`total_missing_capture_field_count=50`" in owner_meeting_checklist
+    assert "`decision_item_count=8`" in owner_meeting_checklist
+    assert "`total_missing_capture_field_count=40`" in owner_meeting_checklist
     assert "`meeting_missing_field_count=8`" in owner_meeting_checklist
     assert "`captures_owner_decisions=false`" in owner_meeting_checklist
     assert "`chooses_or_approves_conventions=false`" in owner_meeting_checklist
@@ -285,7 +288,7 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
 
     assert "Calculation P1 First Priority Readiness Packet" in first_priority_packet
     assert "source_snapshot_status=owner_decision_required" in first_priority_packet
-    assert "`first_priority_ids=P1-09, P1-10, P1-11`" in first_priority_packet
+    assert "`first_priority_ids=P1-10, P1-11`" in first_priority_packet
     assert (
         "`post_owner_required_fields=selected_decision, owner_rationale, "
         "implementation_owner, verification_gate, status`"
@@ -293,12 +296,10 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
     assert "`owner_intake_ready=true`" in first_priority_packet
     assert "`implementation_ready=false`" in first_priority_packet
     assert "Owner Decision Gate" in first_priority_packet
-    assert "model/component tests proving backend value wins" in first_priority_packet
     assert "backend DTO / frontend removal tests" in first_priority_packet
     assert "API contract plus frontend test" in first_priority_packet
     assert "`captures_owner_decisions=false`" in first_priority_packet
     assert "`chooses_or_approves_conventions=false`" in first_priority_packet
-    assert "BalanceMovementAnalysisPage.tsx" in first_priority_packet
     assert "yieldAnalysisAggregates.ts" in first_priority_packet
     assert "zqtzAdbAvgRollup.ts" in first_priority_packet
     assert "CreditSpreadView.tsx" in first_priority_packet
@@ -314,7 +315,7 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
 
     assert "Calculation P1 Post-Owner Execution Plan" in post_owner_plan
     assert "`ready_for_implementation_count=0`" in post_owner_plan
-    assert "`incomplete_count=10`" in post_owner_plan
+    assert "`incomplete_count=8`" in post_owner_plan
     assert "`global_owner_decision_gate_ready=false`" in post_owner_plan
     assert "`implementation_ready=false`" in post_owner_plan
     assert "`captures_owner_decisions=false`" in post_owner_plan
@@ -407,7 +408,7 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
         monitoring_snapshot["completion_verification"][
             "calculation_post_owner_incomplete_count"
         ]
-        == 10
+        == 8
     )
     assert (
         monitoring_snapshot["completion_verification"][
@@ -604,7 +605,7 @@ def test_completion_checklist_maps_open_blockers_without_approval() -> None:
     assert "`ledger-pnl-direct-governance-record`" in checklist
     assert "record_write_status=not_requested" in checklist
     assert "`calculation-display-p1-decisions`" in checklist
-    assert "10 rows remain open" in checklist
+    assert "8 rows remain open" in checklist
     assert "`direct-app-mcp-gitnexus-evidence`" in checklist
     assert "`tool_search` returned 0 relevant direct MOSS/GitNexus tools" in checklist
     assert "focused MOSS keyword rechecks returned 0 tools" in checklist
@@ -813,13 +814,13 @@ def test_owner_governance_follow_up_packet_routes_all_open_blockers_fail_closed(
     assert "| P1-00A | Use the owner/governance follow-up packet" in action_register
     assert "2026-06-10-owner-governance-follow-up-brief.zh.md" in action_register
     assert "follow_up_packet_count=5" in action_register
-    assert "calculation_prework_p1_count=10" in action_register
+    assert "calculation_prework_p1_count=8" in action_register
     assert "unauthorized Ledger PnL `--write`" in action_register
     assert "2026-06-10-owner-governance-follow-up-packet.json" in main_report
     assert "2026-06-10-owner-governance-follow-up-brief.zh.md" in main_report
     assert "follow_up_packet_count=5" in main_report
     assert "follow_up_brief_blocker_count=5" in main_report
-    assert "calculation_prework_p1_count=10" in main_report
+    assert "calculation_prework_p1_count=8" in main_report
     assert "verify_system_audit_monitoring_snapshot.py" in main_report
     assert "pulse_completion_state=not_complete" in main_report
     assert "21 passed" in main_report
@@ -829,7 +830,7 @@ def test_owner_governance_follow_up_packet_routes_all_open_blockers_fail_closed(
     assert "2026-06-10-owner-governance-follow-up-brief.zh.md" in executive_summary_zh
     assert "follow_up_packet_count=5" in executive_summary_zh
     assert "follow_up_brief_blocker_count=5" in executive_summary_zh
-    assert "calculation_prework_p1_count=10" in executive_summary_zh
+    assert "calculation_prework_p1_count=8" in executive_summary_zh
     assert "verify_system_audit_monitoring_snapshot.py" in executive_summary_zh
     assert "pulse_completion_state=not_complete" in executive_summary_zh
     assert "21 passed" in executive_summary_zh

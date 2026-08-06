@@ -14,6 +14,8 @@ if str(ROOT) not in sys.path:
 
 from scripts.verify_system_audit_completion_snapshot import (  # noqa: E402
     EXPECTED_OPEN_CALCULATION_P1_IDS,
+    EXPECTED_OWNER_DECISION_CLOSED_P1_IDS,
+    HISTORICAL_OPEN_CALCULATION_P1_IDS,
 )
 
 
@@ -28,6 +30,8 @@ DEFAULT_OUTPUT = (
     ROOT / "docs" / "audits" / f"{AUDIT_DATE}-calculation-p1-owner-decision-snapshot.json"
 )
 REFRESH_COMMAND = "python scripts\\refresh_calculation_p1_owner_decision_snapshot.py"
+OPEN_CAPTURE_SECTION_MARKER = "## 待处理 P1 口径裁决"
+CLOSED_CAPTURE_SECTION_MARKER = "## 已选并实现的 P1 决定"
 CAPTURE_TEMPLATE_NON_APPROVAL_BOUNDARY = (
     "Boundary: this template does not approve calculation conventions, pages, "
     "governance records, owner approvals, direct MCP/GitNexus evidence, or strict checker results."
@@ -139,7 +143,7 @@ def _table_body_cells(section: str) -> list[list[str]]:
 
 
 def _meeting_record_section(capture_text: str) -> str:
-    before_decisions = capture_text.split("## 10", maxsplit=1)[0]
+    before_decisions = capture_text.split(OPEN_CAPTURE_SECTION_MARKER, maxsplit=1)[0]
     headers = list(re.finditer(r"^##\s+", before_decisions, re.MULTILINE))
     if not headers:
         return ""
@@ -430,14 +434,19 @@ def build_snapshot(
         "## Verified Closed Before Owner Review",
         "## Engineering Prework / Impact Slice Map",
     )
+    owner_decision_closed_section = _section(
+        matrix_text,
+        "## Verified Closed After Owner Decision",
+        "## Engineering Prework / Impact Slice Map",
+    )
     prework_section = _section(
         matrix_text,
         "## Engineering Prework / Impact Slice Map",
     )
     capture_section = _section(
         capture_text,
-        "## 10",
-        "## 7",
+        OPEN_CAPTURE_SECTION_MARKER,
+        CLOSED_CAPTURE_SECTION_MARKER,
     )
 
     open_rows = _decision_rows(decision_section)
@@ -448,6 +457,8 @@ def build_snapshot(
     )
     verified_closed_rows = _decision_rows(verified_closed_section)
     verified_closed_ids = [row["id"] for row in verified_closed_rows]
+    owner_decision_closed_rows = _decision_rows(owner_decision_closed_section)
+    owner_decision_closed_ids = [row["id"] for row in owner_decision_closed_rows]
     prework_ids = _prework_ids(prework_section)
     capture_rows = _capture_rows(capture_section)
     capture_ids = [row["id"] for row in capture_rows]
@@ -510,6 +521,10 @@ def build_snapshot(
         drift_errors.append("P1-08 appears in open owner-decision rows")
     if "P1-08" not in verified_closed_ids:
         drift_errors.append("P1-08 verified-closed row is missing")
+    if owner_decision_closed_ids != EXPECTED_OWNER_DECISION_CLOSED_P1_IDS:
+        drift_errors.append(
+            "owner-decision closed P1 IDs do not match the expected order"
+        )
     if _missing_ids(prework_ids):
         drift_errors.append("engineering prework map is missing open P1 IDs")
     if _unexpected_ids(prework_ids):
@@ -527,6 +542,16 @@ def build_snapshot(
         "generated_at": generated_at,
         "repo_root": str(ROOT),
         "audit_date": AUDIT_DATE,
+        "state_as_of": "2026-08-06",
+        "historical_baseline": {
+            "as_of": "2026-06-10T21:25:00+08:00",
+            "open_decision_ids": list(HISTORICAL_OPEN_CALCULATION_P1_IDS),
+            "open_decision_count": len(HISTORICAL_OPEN_CALCULATION_P1_IDS),
+            "scope": (
+                "Historical source snapshot only; current owner intake is represented "
+                "by matrix.open_decision_ids and capture_template.row_ids."
+            ),
+        },
         "refresh_command": REFRESH_COMMAND,
         "status": {
             "overall": "owner_decision_required" if not drift_errors else "matrix_drift",
@@ -554,6 +579,7 @@ def build_snapshot(
             ),
             "p1_08_in_open_rows": "P1-08" in open_ids,
             "verified_closed_ids": verified_closed_ids,
+            "owner_decision_closed_ids": owner_decision_closed_ids,
             "p1_08_verified_closed": "P1-08" in verified_closed_ids,
             "p1_08_regression": _p108_test_evidence(matrix_text),
         },
@@ -594,9 +620,12 @@ def build_snapshot(
         "drift_errors": drift_errors,
         "closure_gate": (
             "Business owner and metric governance must select the authoritative convention "
-            "for P1-01 through P1-07 and P1-09 through P1-11 before implementation closure. "
+            "for the remaining P1-01 through P1-06, P1-10, and P1-11 rows before "
+            "implementation closure. P1-07 and P1-09 are already verified closed after "
+            "their recorded owner decisions. "
             "After that, docs/calc_rules.md, contracts, implementation, and targeted tests must "
-            "move each selected row to verified-closed evidence without reopening P1-08."
+            "move each selected row to verified-closed evidence without reopening P1-07, "
+            "P1-08, or P1-09."
         ),
         "boundary": (
             "This snapshot is read-only owner-decision intake evidence. It does not choose or "

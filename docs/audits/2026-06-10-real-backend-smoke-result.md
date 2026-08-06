@@ -55,4 +55,4 @@ Interpretation: the accepted closure evidence is the full `47 passed` rerun. The
 
 ## Non-Approval Statement
 
-This smoke result closes only the full real-backend browser-smoke audit lane. It does not grant business-owner approval, does not write or approve governance records, does not approve metrics, does not certify routes, does not resolve the 10 remaining calculation/display P1 owner decisions, and does not replace direct Codex App MCP/GitNexus evidence.
+This smoke result closes only the full real-backend browser-smoke audit lane. It does not grant business-owner approval, does not write or approve governance records, does not approve metrics, does not certify routes, does not resolve calculation/display P1 owner decisions, and does not replace direct Codex App MCP/GitNexus evidence. At the 2026-06-10 run date that separate lane had 10 open rows; the current 2026-08-06 governance overlay has 8 remaining after P1-07 and P1-09 closed.

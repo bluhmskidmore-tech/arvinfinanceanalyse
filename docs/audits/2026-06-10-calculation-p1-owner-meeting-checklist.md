@@ -7,18 +7,16 @@ Execution anchor ready: `true`
 
 This checklist prepares the owner/governance meeting for the `calculation-display-p1-decisions` blocker. It does not select a convention, approve a metric, or close any P1 row.
 
-**2026-07-03 P1-07 overlay**: owner/chat decision selected Option B for macro liquidity polarity and implementation is complete. `liquidity_score` remains looseness-positive, `composite_score` remains bond-unfavorable/tightness-positive, and the composite formula now uses `-0.3*liquidity_score`. The generated 2026-06-10 snapshot counters below are retained as historical source-snapshot values.
-
 ## Summary
 
-- `decision_item_count=10`
-- `pending_decision_count=10`
+- `decision_item_count=8`
+- `pending_decision_count=8`
 - `captured_decision_count=0`
-- `incomplete_decision_count=10`
-- `total_missing_capture_field_count=50`
+- `incomplete_decision_count=8`
+- `total_missing_capture_field_count=40`
 - `meeting_missing_field_count=8`
 - `meeting_record_complete=false`
-- `execution_referenced_path_count=24`
+- `execution_referenced_path_count=18`
 - `missing_execution_referenced_path_count=0`
 - `post_meeting_required_fields=selected_decision, owner_rationale, implementation_owner, verification_gate, status`
 - `post_meeting_allowed_statuses=approved-for-implementation, deferred, rejected`
@@ -51,8 +49,6 @@ This checklist prepares the owner/governance meeting for the `calculation-displa
 | `P1-04` | 4 | QDB position-vs-ledger reconciliation | Decide whether the current check is a control or only a diagnostic. | A: require independent position and ledger source anchors; B: keep current same-source comparison but label it non-control. | Prefer A for any governance/control claim. | `selected_decision`, `owner_rationale`, `implementation_owner`, `verification_gate`, `status` | Reconciliation evidence uses two independent sources, or UI/report explicitly marks the check as non-control. |
 | `P1-05` | 2 | Period yield denominator | Define the denominator for quarterly/yearly yield. | A: period average scale; B: sum of month-end snapshots; C: weighted daily average when daily facts exist. | Prefer A/C; avoid summing snapshots as scale. | `selected_decision`, `owner_rationale`, `implementation_owner`, `verification_gate`, `status` | Rule written to `calc_rules.md`; numeric tests for monthly, quarterly, and yearly buckets. |
 | `P1-06` | 3 | PnL bridge zero-actual residual | Decide how reconciliation quality behaves when `actual_pnl=0`. | A: nonzero explained/residual with zero actual is warning/undefined; B: force ratio to 0 and mark ok. | Prefer A, consistent with fail-loud controls. | `selected_decision`, `owner_rationale`, `implementation_owner`, `verification_gate`, `status` | Regression where `actual_pnl=0` and explained amount nonzero returns warning and visible diagnostics. |
-| `P1-07` | 3 | Macro liquidity score polarity | Captured 2026-07-03: keep `liquidity_score` looseness-positive and invert it only inside the composite. | Option B: liquidity remains looseness-positive but enters composite with inverse sign. | Implemented as `0.4*rate - 0.3*liquidity + 0.2*growth + 0.1*inflation`. | captured; implemented | Isolated liquidity regression, macro-context formula/polarity metadata assertions, and frontend copy states polarity. |
-| `P1-09` | 1 | Balance movement share source | Decide authoritative source for current-balance share. | A: backend `current_balance_pct` is authoritative; B: frontend recomputes from visible rows; C: backend provides both official and visible-row share. | Prefer A, with C only if users need visible-row share. | `selected_decision`, `owner_rationale`, `implementation_owner`, `verification_gate`, `status` | Component/model tests prove backend value wins and missing share remains missing. |
 | `P1-10` | 1 | Frontend formal aggregation | Decide where formal PnL/yield/ADB aggregations are computed. | A: backend DTO only; B: frontend may derive display aggregates; C: frontend derives only clearly non-formal UI helpers. | Prefer A for formal metrics and C for labeled non-formal helpers. | `selected_decision`, `owner_rationale`, `implementation_owner`, `verification_gate`, `status` | Backend DTO added or confirmed; frontend removes formal aggregation; adapter/component tests consume DTO values. |
 | `P1-11` | 1 | Credit spread rating-tenor matrix | Decide owner of rating-tenor bucket aggregation. | A: backend provides governed matrix; B: frontend aggregates rows and owns bucket mapping. | Prefer A. | `selected_decision`, `owner_rationale`, `implementation_owner`, `verification_gate`, `status` | API contract for rating-tenor matrix; frontend renders provided matrix only; regression covers bucket boundaries. |
 
@@ -70,8 +66,6 @@ Allowed option letters are row-specific; some P1 rows only allow `Option A` and 
 | `P1-04` | `Option A`: require independent position and ledger source anchors<br>`Option B`: keep current same-source comparison but label it non-control | `Option <allowed letter> - <copied option description>` |
 | `P1-05` | `Option A`: period average scale<br>`Option B`: sum of month-end snapshots<br>`Option C`: weighted daily average when daily facts exist | `Option <allowed letter> - <copied option description>` |
 | `P1-06` | `Option A`: nonzero explained/residual with zero actual is warning/undefined<br>`Option B`: force ratio to 0 and mark ok | `Option <allowed letter> - <copied option description>` |
-| `P1-07` | `Option A`: all components tightness-positive<br>`Option B`: liquidity remains looseness-positive but enters composite with inverse sign<br>`Option C`: separate liquidity narrative from composite | `Option <allowed letter> - <copied option description>` |
-| `P1-09` | `Option A`: backend `current_balance_pct` is authoritative<br>`Option B`: frontend recomputes from visible rows<br>`Option C`: backend provides both official and visible-row share | `Option <allowed letter> - <copied option description>` |
 | `P1-10` | `Option A`: backend DTO only<br>`Option B`: frontend may derive display aggregates<br>`Option C`: frontend derives only clearly non-formal UI helpers | `Option <allowed letter> - <copied option description>` |
 | `P1-11` | `Option A`: backend provides governed matrix<br>`Option B`: frontend aggregates rows and owns bucket mapping | `Option <allowed letter> - <copied option description>` |
 
@@ -85,8 +79,6 @@ Allowed option letters are row-specific; some P1 rows only allow `Option A` and 
 | `P1-04` | Same-source formulas make diff permanently zero and create false assurance. | Reconciliation evidence uses two independent sources, or UI/report explicitly marks the check as non-control. | after governance classifies the check as a control or diagnostic, update `backend/app/core_finance/qdb_gl_monthly_analysis.py` so control claims require independent anchors, or label same-source checks as non-control; regression should use QDB GL core/API tests to prove the selected label and evidence path. |
 | `P1-05` | Quarterly yield can be understated by roughly 3x and yearly view by roughly 12x. | Rule written to `calc_rules.md`; numeric tests for monthly, quarterly, and yearly buckets. | after the denominator rule is approved, normalize `backend/app/core_finance/yield_by_period.py` and the `frontend/src/features/pnl/yieldAnalysis/YieldByPeriodPanel.tsx` display contract; regression should extend `tests/test_yield_by_period_core.py` across monthly, quarterly, and yearly buckets. |
 | `P1-06` | Material residuals can be hidden behind `quality_flag=ok`. | Regression where `actual_pnl=0` and explained amount nonzero returns warning and visible diagnostics. | after reconciliation-quality behavior is selected, align `backend/app/core_finance/pnl_bridge.py` with `backend/app/core_finance/attribution_core.py` or document the explicit difference; regression should cover `actual_pnl=0` with nonzero explained/residual in `tests/test_pnl_bridge_core.py`. |
-| `P1-07` | Closed for the "funding looseness increases tightening / shorten duration" defect. | Isolated liquidity regression, macro-context formula/polarity metadata assertions, and frontend copy states polarity. | completed 2026-07-03 under Option B; future derived narratives must keep `liquidity_score` looseness-positive and `composite_score` bond-unfavorable/tightness-positive. |
-| `P1-09` | Frontend can override governed backend percentages and show 0% when calculation is unavailable. | Component/model tests prove backend value wins and missing share remains missing. | after the authoritative share source is selected, update `frontend/src/features/balance-movement-analysis/pages/BalanceMovementAnalysisPage.tsx` to prefer the governed backend value or clearly label visible-row share; regression should extend `frontend/src/test/BalanceMovementAnalysisPage.test.tsx` for backend value precedence and missing-share display. |
 | `P1-10` | Decimal values are converted to floating point, category trees are duplicated, and frontend can diverge from governed rules. | Backend DTO added or confirmed; frontend removes formal aggregation; adapter/component tests consume DTO values. | after backend-vs-frontend aggregation ownership is approved, move or label formal aggregation currently in `frontend/src/features/pnl/yieldAnalysis/yieldAnalysisAggregates.ts` and `frontend/src/features/pnl/zqtzAdbAvgRollup.ts`; regression should keep DTO consumption and non-formal helper boundaries explicit in the corresponding frontend tests. |
 | `P1-11` | Frontend hard-coded buckets can drift from backend tenor/rating rules without detection. | API contract for rating-tenor matrix; frontend renders provided matrix only; regression covers bucket boundaries. | after matrix ownership is approved, render a governed backend matrix or explicitly document frontend ownership in `frontend/src/features/bond-analytics/components/CreditSpreadView.tsx`; regression should update `frontend/src/test/CreditSpreadView.test.tsx` for rating/tenor bucket boundaries and missing governed matrix behavior. |
 

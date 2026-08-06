@@ -117,7 +117,7 @@ def test_system_audit_monitoring_refresh_keeps_all_boundaries() -> None:
         report["completion_verification"][
             "calculation_packet_execution_referenced_path_count"
         ]
-        == 24
+        == 18
     )
     assert (
         report["completion_verification"][
@@ -125,7 +125,7 @@ def test_system_audit_monitoring_refresh_keeps_all_boundaries() -> None:
         ]
         == 0
     )
-    assert report["completion_verification"]["calculation_owner_meeting_checklist_count"] == 10
+    assert report["completion_verification"]["calculation_owner_meeting_checklist_count"] == 8
     assert (
         report["completion_verification"]["calculation_owner_meeting_material_ready"]
         is True
@@ -140,13 +140,13 @@ def test_system_audit_monitoring_refresh_keeps_all_boundaries() -> None:
         report["completion_verification"][
             "calculation_owner_meeting_missing_capture_field_count"
         ]
-        == 50
+        == 40
     )
     assert (
         report["completion_verification"]["calculation_owner_meeting_missing_field_count"]
         == 8
     )
-    assert report["completion_verification"]["calculation_first_priority_count"] == 3
+    assert report["completion_verification"]["calculation_first_priority_count"] == 2
     assert (
         report["completion_verification"][
             "calculation_first_priority_owner_intake_ready"
@@ -184,7 +184,7 @@ def test_system_audit_monitoring_refresh_keeps_all_boundaries() -> None:
         report["completion_verification"][
             "calculation_post_owner_incomplete_count"
         ]
-        == 10
+        == 8
     )
     assert (
         report["completion_verification"][
@@ -355,7 +355,7 @@ def test_system_audit_monitoring_refresh_keeps_all_boundaries() -> None:
     ] == 0
     assert report["latest_session_recheck"]["calculation_owner_decision"][
         "incomplete_decision_count"
-    ] == 10
+    ] == 8
     assert report["latest_session_recheck"]["calculation_owner_decision"][
         "invalid_selected_decision_count"
     ] == 0
@@ -455,7 +455,7 @@ def test_system_audit_monitoring_refresh_cli_writes_monitor_report_only(
         payload["completion_verification"][
             "calculation_packet_execution_referenced_path_count"
         ]
-        == 24
+        == 18
     )
     assert (
         payload["completion_verification"][
@@ -465,7 +465,7 @@ def test_system_audit_monitoring_refresh_cli_writes_monitor_report_only(
     )
     assert (
         payload["completion_verification"]["calculation_owner_meeting_checklist_count"]
-        == 10
+        == 8
     )
     assert (
         payload["completion_verification"]["calculation_owner_meeting_material_ready"]
@@ -481,13 +481,13 @@ def test_system_audit_monitoring_refresh_cli_writes_monitor_report_only(
         payload["completion_verification"][
             "calculation_owner_meeting_missing_capture_field_count"
         ]
-        == 50
+        == 40
     )
     assert (
         payload["completion_verification"]["calculation_owner_meeting_missing_field_count"]
         == 8
     )
-    assert payload["completion_verification"]["calculation_first_priority_count"] == 3
+    assert payload["completion_verification"]["calculation_first_priority_count"] == 2
     assert (
         payload["completion_verification"][
             "calculation_first_priority_owner_intake_ready"
@@ -521,7 +521,7 @@ def test_system_audit_monitoring_refresh_cli_writes_monitor_report_only(
     assert payload["completion_verification"][
         "calculation_post_owner_blocking_reasons"
     ] == ["owner_decision_capture_incomplete"]
-    assert payload["completion_verification"]["calculation_post_owner_incomplete_count"] == 10
+    assert payload["completion_verification"]["calculation_post_owner_incomplete_count"] == 8
     assert (
         payload["completion_verification"]["calculation_post_owner_global_gate_ready"]
         is False

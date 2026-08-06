@@ -26,15 +26,17 @@ def test_calculation_p1_owner_meeting_checklist_prepares_owner_intake() -> None:
     assert checklist["source_snapshot_status"] == "owner_decision_required"
     assert checklist["owner_meeting_material_ready"] is True
     assert checklist["implementation_ready"] is False
-    assert checklist["decision_item_count"] == 10
-    assert checklist["pending_decision_count"] == 10
+    assert checklist["decision_item_count"] == len(EXPECTED_OPEN_CALCULATION_P1_IDS)
+    assert checklist["pending_decision_count"] == len(EXPECTED_OPEN_CALCULATION_P1_IDS)
     assert checklist["captured_decision_count"] == 0
-    assert checklist["incomplete_decision_count"] == 10
-    assert checklist["total_missing_capture_field_count"] == 50
+    assert checklist["incomplete_decision_count"] == len(
+        EXPECTED_OPEN_CALCULATION_P1_IDS
+    )
+    assert checklist["total_missing_capture_field_count"] == 40
     assert checklist["meeting_missing_field_count"] == 8
     assert checklist["meeting_record_complete"] is False
     assert checklist["execution_anchor_ready"] is True
-    assert checklist["execution_referenced_path_count"] == 24
+    assert checklist["execution_referenced_path_count"] == 18
     assert checklist["missing_execution_referenced_path_count"] == 0
     assert checklist["decision_ids"] == EXPECTED_OPEN_CALCULATION_P1_IDS
     assert checklist["post_meeting_required_fields"] == [
@@ -108,10 +110,10 @@ def test_calculation_p1_owner_meeting_checklist_cli_writes_markdown(
     assert payload["packet_path"] == str(output_path)
     assert payload["owner_meeting_material_ready"] is True
     assert payload["implementation_ready"] is False
-    assert payload["decision_item_count"] == 10
-    assert payload["pending_decision_count"] == 10
+    assert payload["decision_item_count"] == len(EXPECTED_OPEN_CALCULATION_P1_IDS)
+    assert payload["pending_decision_count"] == len(EXPECTED_OPEN_CALCULATION_P1_IDS)
     assert payload["captured_decision_count"] == 0
-    assert payload["total_missing_capture_field_count"] == 50
+    assert payload["total_missing_capture_field_count"] == 40
     assert payload["meeting_missing_field_count"] == 8
     assert payload["execution_anchor_ready"] is True
     assert payload["evidence_scope"]["authorizes_ledger_pnl_governance_write"] is False
@@ -120,8 +122,8 @@ def test_calculation_p1_owner_meeting_checklist_cli_writes_markdown(
     assert "Calculation P1 Owner Meeting Checklist" in text
     assert "Owner meeting material ready: `true`" in text
     assert "Implementation ready: `false`" in text
-    assert "`decision_item_count=10`" in text
-    assert "`total_missing_capture_field_count=50`" in text
+    assert "`decision_item_count=8`" in text
+    assert "`total_missing_capture_field_count=40`" in text
     assert "`meeting_missing_field_count=8`" in text
     assert "## Owner Questions" in text
     assert "Owner decision gate" in text

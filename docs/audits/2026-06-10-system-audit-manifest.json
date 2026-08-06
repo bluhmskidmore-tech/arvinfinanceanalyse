@@ -76,7 +76,7 @@
     "browser_smoke_a11y_configured_routes": 26,
     "owner_approval_pending_pages": 7,
     "owner_approval_action_items": 84,
-    "calculation_display_open_p1": 10,
+    "calculation_display_open_p1": 8,
     "calculation_display_open_p0": 0,
     "action_register_priority_rows": 12
   },
@@ -176,9 +176,9 @@
       "id": "calculation-display-p1-decisions",
       "severity": "P1",
       "status": "owner_decision_required",
-      "decision_rows": 10,
-      "last_checked_at": "2026-06-10T21:25:00+08:00",
-      "closure_gate": "business owner chooses authoritative convention before implementation and tests are updated; P1-08 bond-dashboard null handling is already verified closed in the current worktree"
+      "decision_rows": 8,
+      "last_checked_at": "2026-08-06T22:30:00+08:00",
+      "closure_gate": "business owner chooses authoritative convention for the 8 remaining rows before implementation and tests are updated; P1-07 and P1-09 are owner-selected and implementation-verified closed, while P1-08 remains verified closed from before owner review"
     },
     {
       "id": "direct-app-mcp-gitnexus-evidence",
@@ -274,7 +274,7 @@
     {
       "scope": "completion_snapshot_verifier",
       "command": "python scripts\\verify_system_audit_completion_snapshot.py",
-      "result": "pass; open_blocker_count=5; completion_gate_count=5; follow_up_packet_count=5; follow_up_brief_blocker_count=5; calculation_prework_p1_count=10; calculation_snapshot_status=owner_decision_required; errors=[]"
+      "result": "2026-08-06 P1 verification aligned open/capture/prework counts at 8, owner-decision closed IDs at P1-07/P1-09, first-priority count at 2, and post-owner incomplete count at 8; 19 P1-focused completion-verifier tests passed. The full command remains fail-closed because two pre-existing non-P1 required inputs under gitignored test_output/security-scans are absent from the isolated worktree."
     },
     {
       "scope": "system_audit_pulse_read_only_guard",
@@ -304,7 +304,7 @@
     {
       "scope": "bond_dashboard_null_handling_formatter_and_page_slice",
       "command": "npm.cmd test -- src/features/bond-dashboard/utils/format.test.ts src/test/BondDashboardPage.test.tsx",
-      "result": "calculation owner-decision snapshot refreshed at 2026-06-10T21:25:00+08:00; matrix still has 10 open P1 rows, capture template has 10 pending rows, captured_decision_count=0, P1-08 remains verified-closed only; P1-08 regression rerun at 2026-06-10T19:29:53+08:00: 2 test files passed, 16 tests passed"
+      "result": "calculation owner-decision snapshot refreshed at 2026-08-06T22:30:00+08:00; the original 2026-06-10 10-row state is retained as historical baseline, while the active matrix and capture template have 8 unresolved rows with captured_decision_count=0; P1-07 and P1-09 are owner-selected and implementation-verified closed, and P1-08 remains verified closed from before owner review; the historical P1-08 regression rerun at 2026-06-10T19:29:53+08:00 passed 2 test files / 16 tests"
     },
     {
       "scope": "direct_app_mcp_gitnexus_tool_discovery",
@@ -331,7 +331,7 @@
     "Use docs/audits/2026-06-10-system-audit-completion-snapshot.json for machine-readable completion gate checks.",
     "Use docs/audits/2026-06-10-owner-governance-follow-up-packet.json as the owner/governance handoff packet for the five open blockers.",
     "Record meeting outputs in docs/audits/2026-06-10-owner-decision-capture-template.zh.md before copying approved inputs into authoritative templates and rules.",
-    "Resolve the 10 remaining calculation/display P1 owner decisions before code changes that select a convention; keep P1-08 closed by its formatter/page regression evidence.",
+    "Resolve the 8 remaining calculation/display P1 owner decisions before code changes that select a convention; keep P1-07, P1-08, and P1-09 closed by their decision and regression evidence.",
     "Use the approved governance workflow to write or locate the Ledger PnL direct page/API record.",
     "Capture owner approval packets for the seven pending pages, keeping ledger-pnl last.",
     "Use docs/audits/2026-06-10-direct-app-mcp-gitnexus-tool-surface-runbook.md to repeat direct App MCP and GitNexus evidence collection when tool surfaces are available.",

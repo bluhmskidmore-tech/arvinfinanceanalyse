@@ -17,7 +17,7 @@
     {
       "id": "ledger-pnl-direct-governance-record",
       "status": "dry_run_candidate_only",
-      "last_checked_at": "2026-06-10T21:25:00+08:00"
+      "last_checked_at": "2026-08-06T22:30:00+08:00"
     },
     {
       "id": "calculation-display-p1-decisions",
@@ -73,8 +73,8 @@
     "follow_up_brief_blocker_count": 5,
     "follow_up_completion_order_status": "pass",
     "follow_up_completion_order_error_count": 0,
-    "calculation_prework_p1_count": 10,
-    "calculation_packet_p1_count": 10,
+    "calculation_prework_p1_count": 8,
+    "calculation_packet_p1_count": 8,
     "calculation_meeting_record_complete": false,
     "calculation_missing_meeting_field_count": 8,
     "calculation_post_owner_ready_for_implementation_count": 0,
@@ -83,7 +83,7 @@
     "calculation_post_owner_blocking_reasons": [
       "owner_decision_capture_incomplete"
     ],
-    "calculation_post_owner_incomplete_count": 10,
+    "calculation_post_owner_incomplete_count": 8,
     "calculation_post_owner_invalid_selected_decision_count": 0,
     "calculation_post_owner_no_invalid_selected_decisions": true,
     "calculation_post_owner_global_gate_ready": false,
@@ -107,10 +107,10 @@
       "responsible_owner_type": "business_owner_and_metric_governance",
       "strict_gate_command": "python scripts\\refresh_calculation_p1_owner_decision_snapshot.py --require-owner-decisions-captured",
       "required_external_input_count": 2,
-      "first_required_external_input": "business owner selects the authoritative convention for P1-01 through P1-07 and P1-09 through P1-11",
-      "required_output_count": 11,
+      "first_required_external_input": "business owner selects the authoritative convention for P1-01 through P1-06, P1-10, and P1-11",
+      "required_output_count": 9,
       "first_required_output": "authoritative convention selected for P1-01",
-      "fail_closed_until": "All 10 owner-decision rows are moved to verified-closed evidence with targeted tests.",
+      "fail_closed_until": "All 8 remaining owner-decision rows are moved to verified-closed evidence with targeted tests.",
       "explicit_non_approval_boundary": "This packet records follow-up work only; it does not choose or approve any calculation convention."
     },
     "evidence_scope": {

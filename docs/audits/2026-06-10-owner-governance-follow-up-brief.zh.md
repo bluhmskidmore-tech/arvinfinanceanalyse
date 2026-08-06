@@ -4,6 +4,8 @@
 
 这份简报把 `2026-06-10-owner-governance-follow-up-packet.json` 翻译成可开会、可分派、可复核的中文跟进清单。它只用于推动 5 个开放阻塞进入对应 owner/governance 流程，不批准指标、页面、治理记录或 route certification，不捕获 business owner 签核，不授权 Ledger PnL `--write`，也不读取、不请求、不捕获 secret 值。
 
+P1 路由状态覆盖至 `2026-08-06T22:30:00+08:00`：原 10 项是 2026-06-10 历史基线；P1-07 与 P1-09 已按 owner 选择实现并验证关闭，当前只路由 8 项未决事项。
+
 当前快照结论：
 - `current_status=not_complete`
 - Packet path: `docs/audits/2026-06-10-owner-governance-follow-up-packet.json`
@@ -16,7 +18,7 @@
 
 | 顺序 | Blocker | 责任 owner 类型 | 必须产出的结果 | 不能做什么 |
 | --- | --- | --- | --- | --- |
-| 1 | `calculation-display-p1-decisions` | business owner + metric governance | 10 个剩余 P1 的权威口径裁决，并把结论写入 `docs/calc_rules.md`、page contract 或 metric dictionary 后再实现和测试。 | 不从 UI 文案、预览数据或当前测试通过结果推断正式口径。 |
+| 1 | `calculation-display-p1-decisions` | business owner + metric governance | 8 个剩余 P1（P1-01 至 P1-06、P1-10、P1-11）的权威口径裁决，并把结论写入 `docs/calc_rules.md`、page contract 或 metric dictionary 后再实现和测试。 | 不从 UI 文案、预览数据或当前测试通过结果推断正式口径；不重新打开已有决定与验证证据的 P1-07、P1-08、P1-09。 |
 | 2 | `ledger-pnl-direct-governance-record` | governance owner + Ledger PnL business owner | 明确授权写入或定位 direct record；记录必须覆盖 `PAGE-LEDGER-PNL-001`、`/api/ledger-pnl/summary`、`ledger_pnl.summary:2026-05-31:ALL`。 | 不把 dry-run 当 written record，不在未授权时运行 Ledger PnL `--write`。 |
 | 3 | `owner-approval-7-pages` | page business owners + engineering QA gatekeeper | 7 个页面逐页补齐 owner name、role、decision、approval date、signature 和页面证据复核确认。 | 不用 browser smoke、测试通过或跟进包替代 owner approval。 |
 | 4 | `direct-app-mcp-gitnexus-evidence` | engineering tooling owner | 新 Codex App 会话暴露 MOSS MCP / GitNexus 工具，或 tooling owner 记录工具暴露阻塞。 | 不把 local stdio MCP 成功当作 direct App-surface closure。 |

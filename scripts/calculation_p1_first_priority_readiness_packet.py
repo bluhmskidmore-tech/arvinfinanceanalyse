@@ -2,21 +2,13 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-from scripts.verify_system_audit_completion_snapshot import (  # noqa: E402
-    EXPECTED_OPEN_CALCULATION_P1_IDS,
-)
-
 
 AUDIT_DATE = "2026-06-10"
-FIRST_PRIORITY_IDS = ["P1-09", "P1-10", "P1-11"]
+FIRST_PRIORITY_IDS = ["P1-10", "P1-11"]
 POST_OWNER_REQUIRED_FIELDS = [
     "selected_decision",
     "owner_rationale",
@@ -60,35 +52,6 @@ PROHIBITED_ACTIONS = [
 ]
 
 FIRST_PRIORITY_ITEMS: list[dict[str, Any]] = [
-    {
-        "p1_id": "P1-09",
-        "area": "Balance movement share source",
-        "owner_decision_needed": (
-            "Decide whether backend current_balance_pct is authoritative, frontend "
-            "visible-row share is allowed, or both official and visible-row shares are needed."
-        ),
-        "current_risk": (
-            "Frontend display can obscure governed backend percentages or convert missing "
-            "share evidence into a visible 0% story."
-        ),
-        "code_anchors": [
-            "frontend/src/features/balance-movement-analysis/pages/BalanceMovementAnalysisPage.tsx",
-        ],
-        "test_anchors": [
-            "frontend/src/test/BalanceMovementAnalysisPage.test.tsx",
-        ],
-        "current_test_evidence": [
-            "BalanceMovementAnalysisPage preserves backend-missing balance share percentages instead of recomputing them.",
-        ],
-        "post_owner_actions": [
-            "If backend share is authoritative, keep backend value precedence and make missing share visibly missing.",
-            "If visible-row share is allowed, label it separately from official backend share.",
-            "Extend BalanceMovementAnalysisPage tests for the selected source rule and missing-share display.",
-        ],
-        "owner_decision_gate": (
-            "model/component tests proving backend value wins or visible-row share is explicitly labeled"
-        ),
-    },
     {
         "p1_id": "P1-10",
         "area": "Frontend formal aggregation",
@@ -178,7 +141,7 @@ def _open_ids_from_snapshot(snapshot: dict[str, Any]) -> list[str]:
 
 
 def _first_priority_matrix_present(matrix_text: str) -> bool:
-    return "P1-09, P1-10, and P1-11" in matrix_text
+    return "P1-10 and P1-11" in matrix_text
 
 
 def build_packet(
@@ -281,7 +244,7 @@ def build_packet(
         "evidence_scope": dict(EVIDENCE_SCOPE),
         "prohibited_actions": list(PROHIBITED_ACTIONS),
         "boundary": (
-            "This readiness packet is read-only. It maps P1-09, P1-10, and P1-11 "
+            "This readiness packet is read-only. It maps P1-10 and P1-11 "
             "to current code/test anchors and post-owner execution gates; it does not "
             "choose or approve any calculation convention, change implementation code, "
             "capture owner decisions, approve metrics or pages, write governance records, "
@@ -331,7 +294,7 @@ Owner intake ready: `{str(packet['owner_intake_ready']).lower()}`
 Implementation ready: `{str(packet['implementation_ready']).lower()}`
 Source snapshot generated at: `{packet['source_snapshot_generated_at']}`
 
-This packet prepares the first priority group inside the calculation/display P1 blocker. It records current code anchors, existing test anchors, and the post-owner execution gates for `P1-09`, `P1-10`, and `P1-11`. It does not approve a convention or change implementation code.
+This packet prepares the current first priority group inside the calculation/display P1 blocker. It records current code anchors, existing test anchors, and the post-owner execution gates for `P1-10` and `P1-11`. P1-09 was selected and implemented previously and is not part of current owner intake. This packet does not approve a convention or change implementation code.
 
 ## Summary
 
@@ -378,7 +341,7 @@ This packet prepares the first priority group inside the calculation/display P1 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Build the read-only P1-09/P1-10/P1-11 calculation readiness packet.",
+        description="Build the read-only P1-10/P1-11 calculation readiness packet.",
     )
     parser.add_argument("--matrix", type=Path, default=DEFAULT_MATRIX)
     parser.add_argument("--snapshot", type=Path, default=DEFAULT_SNAPSHOT)

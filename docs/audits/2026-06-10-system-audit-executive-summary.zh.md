@@ -2,7 +2,7 @@
 
 ## 一句话结论
 
-本轮系统审计已经形成完整证据包和执行队列，并新增 owner/governance 跟进包把 5 个开放阻塞逐项路由到责任 owner、所需输入、治理输出和验证命令；但系统尚未达到业务闭环。当前仍开放：页面 owner approval、Ledger PnL 直接治理记录、10 个剩余计算/展示 P1 口径裁决、direct App MCP/GitNexus 证据、以及本地 secret hygiene。真实后端全量 browser smoke 已完成 47/47 通过，审计快照 verifier 报告 `follow_up_packet_count=5`、`follow_up_brief_blocker_count=5`、`calculation_prework_p1_count=10`，合同测试为 21 passed；这些只证明技术证据包自洽，不等于业务批准。
+本轮系统审计已经形成完整证据包和执行队列，并新增 owner/governance 跟进包把 5 个开放阻塞逐项路由到责任 owner、所需输入、治理输出和验证命令；但系统尚未达到业务闭环。P1 路由状态覆盖至 `2026-08-06T22:30:00+08:00`：当前仍开放页面 owner approval、Ledger PnL 直接治理记录、8 个剩余计算/展示 P1 口径裁决、direct App MCP/GitNexus 证据以及本地 secret hygiene。P1-07 与 P1-09 已按 owner 选择实现并验证关闭，P1-08 保持验证关闭；原 10 项状态仅作为 2026-06-10 历史基线。真实后端全量 browser smoke 已完成 47/47 通过；这些技术证据不等于业务批准。
 
 ## 已完成的审计交付
 
@@ -12,12 +12,12 @@
 | `2026-06-10-system-audit-index.md` | 本次审计文件入口。 |
 | `2026-06-10-system-audit-action-register.md` | 后续执行队列，含 12 条优先级行动。 |
 | `2026-06-10-system-audit-completion-checklist.md` | 审计完成度检查清单，保持 5 个 completion gate fail-closed。 |
-| `2026-06-10-system-audit-completion-snapshot.json` | 机器可读完成快照：5 个开放阻塞、5 个 completion gate、`follow_up_packet_count=5`、`follow_up_brief_blocker_count=5`、`calculation_prework_p1_count=10`。 |
+| `2026-06-10-system-audit-completion-snapshot.json` | 机器可读完成快照：5 个开放阻塞、5 个 completion gate，当前计算预备映射为 `calculation_prework_p1_count=8`。 |
 | `2026-06-10-owner-governance-follow-up-packet.json` | owner/governance 跟进包：路由 5 个开放阻塞，但不批准指标、页面、治理记录或 route certification。 |
 | `2026-06-10-owner-governance-follow-up-brief.zh.md` | owner/governance 中文跟进简报：把 5 个开放阻塞转成可开会、可分派、可复核的责任清单。 |
-| `scripts/verify_system_audit_completion_snapshot.py` / `scripts/verify_system_audit_monitoring_snapshot.py` / `tests/test_system_audit_*.py` | 审计包一致性 guard：当前窄测包含 21 passed 合同守卫和 7 passed monitoring verifier，并覆盖 10 个开放计算/展示 P1 的工程预备映射。 |
-| `2026-06-10-calculation-logic-audit.md` | 计算/展示逻辑专项审计，记录 10 个剩余开放 P1；P1-08 已验证关闭。 |
-| `2026-06-10-calculation-p1-owner-decision-matrix.md` | 10 个剩余 P1 的 owner 裁决矩阵，另记录 P1-08 关闭证据。 |
+| `scripts/verify_system_audit_completion_snapshot.py` / `scripts/verify_system_audit_monitoring_snapshot.py` / `tests/test_system_audit_*.py` | 审计包一致性 guard：当前 P1 定向 guard 覆盖 8 个开放计算/展示 P1 的工程预备映射；非 P1 基线状态另行验证。 |
+| `2026-06-10-calculation-logic-audit.md` | 计算/展示逻辑专项审计，保留 2026-06-10 原始 10 项历史基线。 |
+| `2026-06-10-calculation-p1-owner-decision-matrix.md` | 当前 8 个剩余 P1 的 owner 裁决矩阵，另记录 P1-07、P1-09 owner-decision 关闭及 P1-08 关闭证据。 |
 | `2026-06-10-owner-approval-mcp-evidence-summary.md` | 7 个 owner approval 待完成页面的 MCP/审批证据汇总。 |
 | `business-display-coverage-report.json` | 26 个业务展示路由的覆盖映射，当前 0 route gap。 |
 
@@ -38,7 +38,7 @@
 | --- | --- | --- |
 | 7 个页面 owner approval | 全部 `pending`；strict mode 仍失败 | 缺 owner name / role / decision / date / signature 和页面证据复核。 |
 | Ledger PnL 直接治理记录 | dry-run candidate 字段齐全，但 `cache_manifest.jsonl` 没有写入记录 | dry-run 不是正式治理记录，不能证明页面/API 执行闭环。 |
-| 计算/展示逻辑 P1 | 10 个 P1 开放；P1-08 已验证关闭 | 多数需要业务 owner 先裁决口径，再改规则、实现和测试。 |
+| 计算/展示逻辑 P1 | 8 个 P1 开放；P1-07、P1-09 已按 owner 选择实现并验证关闭，P1-08 保持验证关闭 | 剩余项需要业务 owner 先裁决口径，再改规则、实现和测试。 |
 | 真正 real backend 全量 smoke | 已重跑通过：47/47；结果见 `2026-06-10-real-backend-smoke-result.md` | 只关闭浏览器 smoke 门；不批准 owner、指标、页面、治理记录或 MCP/GitNexus 证据。 |
 | MCP/GitNexus App 直连证据 | 本地 stdio MCP 可用，App 直连工具未暴露 | 需要新会话/工具面复核 direct App MCP 与 GitNexus evidence。 |
 | 本地 secret hygiene | 2026-06-10T15:45:10+08:00 刷新：OSV 0 漏洞；redacted gitleaks 仍命中 ignored/untracked `config/.env` 两个 secret 名，未捕获 secret 值 | 需要环境 owner 轮换或确认，不能把值写入仓库。 |
@@ -47,7 +47,7 @@
 
 1. 保持所有 owner / closure / formal-use gate fail-closed。
 2. 先使用 `2026-06-10-owner-governance-follow-up-packet.json` 和 `2026-06-10-owner-governance-follow-up-brief.zh.md` 把 5 个开放阻塞交给对应 owner/governance 责任方；这些材料不授权 Ledger PnL `--write`，也不请求或捕获 secret 值。
-3. 召开 10 个剩余计算/展示 P1 的 owner 裁决会，使用 `2026-06-10-calculation-p1-owner-decision-matrix.md`。
+3. 召开 8 个剩余计算/展示 P1 的 owner 裁决会，使用 `2026-06-10-calculation-p1-owner-decision-matrix.md`。
 4. 对 Ledger PnL 走授权治理流程，写入或定位直接 page/API 记录，再重新跑治理验证。
 5. 逐页完成 7 个 owner approval packet，Ledger PnL 放最后。
 6. 工具面可用后重跑 direct App MCP / GitNexus evidence。
@@ -62,4 +62,4 @@
 - 技术测试通过不是 owner approval。
 - owner/governance 跟进包不是正式审批文件，也不授权 Ledger PnL `--write`。
 - 本摘要不是正式审批文件。
-Guard refresh: `pytest tests/test_system_audit_manifest_contract.py tests/test_system_audit_completion_snapshot_verifier.py -q` -> 21 passed; `pytest tests/test_system_audit_monitoring_snapshot_verifier.py -q` -> 7 passed; `python scripts\verify_system_audit_completion_snapshot.py` -> `follow_up_packet_count=5`, `follow_up_brief_blocker_count=5`, `calculation_prework_p1_count=10`, `errors=[]`; `python scripts\verify_system_audit_monitoring_snapshot.py` -> `pulse_completion_state=not_complete`, `errors=[]`. This is technical evidence only, not business approval.
+Historical 2026-06-10 guard evidence was 21 passed for completion contracts and 7 passed for monitoring verifier. The 2026-08-06 P1 refresh updates the active target to `calculation_prework_p1_count=8`; current verification results must be read from the branch validation record. This is technical evidence only, not business approval.

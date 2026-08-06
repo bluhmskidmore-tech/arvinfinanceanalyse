@@ -184,17 +184,17 @@ def test_verify_completion_snapshot_passes_for_checked_in_audit_package() -> Non
     assert result["completion_gate_count"] == 5
     assert result["follow_up_packet_count"] == 5
     assert result["follow_up_brief_blocker_count"] == 5
-    assert result["calculation_prework_p1_count"] == 10
-    assert result["calculation_packet_p1_count"] == 10
+    assert result["calculation_prework_p1_count"] == 8
+    assert result["calculation_packet_p1_count"] == 8
     assert result["calculation_packet_execution_anchor_ready"] is True
-    assert result["calculation_packet_execution_referenced_path_count"] == 24
+    assert result["calculation_packet_execution_referenced_path_count"] == 18
     assert result["calculation_packet_missing_execution_referenced_path_count"] == 0
-    assert result["calculation_owner_meeting_checklist_count"] == 10
+    assert result["calculation_owner_meeting_checklist_count"] == 8
     assert result["calculation_owner_meeting_material_ready"] is True
     assert result["calculation_owner_meeting_implementation_ready"] is False
-    assert result["calculation_owner_meeting_missing_capture_field_count"] == 50
+    assert result["calculation_owner_meeting_missing_capture_field_count"] == 40
     assert result["calculation_owner_meeting_missing_field_count"] == 8
-    assert result["calculation_first_priority_count"] == 3
+    assert result["calculation_first_priority_count"] == 2
     assert result["calculation_first_priority_owner_intake_ready"] is True
     assert result["calculation_first_priority_implementation_ready"] is False
     assert result["calculation_post_owner_ready_for_implementation_count"] == 0
@@ -203,14 +203,14 @@ def test_verify_completion_snapshot_passes_for_checked_in_audit_package() -> Non
     assert result["calculation_post_owner_blocking_reasons"] == [
         "owner_decision_capture_incomplete"
     ]
-    assert result["calculation_post_owner_incomplete_count"] == 10
+    assert result["calculation_post_owner_incomplete_count"] == 8
     assert result["calculation_post_owner_invalid_selected_decision_count"] == 0
     assert result["calculation_post_owner_no_invalid_selected_decisions"] is True
     assert result["calculation_post_owner_global_gate_ready"] is False
     assert result["calculation_post_owner_implementation_ready"] is False
     assert result["calculation_post_owner_plan_renderer_sync"] is True
     assert result["calculation_snapshot_status"] == "owner_decision_required"
-    assert result["calculation_incomplete_decision_count"] == 10
+    assert result["calculation_incomplete_decision_count"] == 8
     assert result["calculation_meeting_record_complete"] is False
     assert result["calculation_missing_meeting_field_count"] == 8
     assert result["follow_up_completion_order_status"] == "pass"
@@ -739,8 +739,8 @@ def test_verify_completion_snapshot_fails_when_post_owner_plan_is_stale(
         "calculation_post_owner_execution_plan"
     ]
     packet = packet_path.read_text(encoding="utf-8").replace(
-        "| `incomplete` | 10 |",
-        "| `incomplete` | 10 | `P1-01`, `P1-02`, `P1-03`, `P1-04`, `P1-05`, `P1-06`, `P1-07`, `P1-09`, `P1-10`, `P1-11`, `P1-99` |",
+        "| `incomplete` | 8 | `P1-01`, `P1-02`, `P1-03`, `P1-04`, `P1-05`, `P1-06`, `P1-10`, `P1-11` |",
+        "| `incomplete` | 8 | `P1-01`, `P1-02`, `P1-03`, `P1-04`, `P1-05`, `P1-06`, `P1-10`, `P1-11`, `P1-99` |",
     )
     packet_path.write_text(packet, encoding="utf-8")
 
@@ -761,8 +761,9 @@ def test_verify_completion_snapshot_fails_when_post_owner_plan_sources_drift(
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     matrix_path = tmp_path / manifest["artifacts"]["calculation_owner_decision_matrix"]
     matrix = matrix_path.read_text(encoding="utf-8").replace(
-        "Component/model tests prove backend value wins and missing share remains missing.",
-        "Component/model tests prove backend value wins after source drift.",
+        "Backend DTO added or confirmed; frontend removes formal aggregation; "
+        "adapter/component tests consume DTO values.",
+        "Backend DTO added or confirmed after source drift.",
     )
     matrix_path.write_text(matrix, encoding="utf-8")
 
@@ -979,7 +980,7 @@ def test_verify_completion_snapshot_cli_outputs_json() -> None:
     assert payload["status"] == "pass"
     assert payload["follow_up_packet_count"] == 5
     assert payload["follow_up_brief_blocker_count"] == 5
-    assert payload["calculation_prework_p1_count"] == 10
+    assert payload["calculation_prework_p1_count"] == 8
     assert payload["errors"] == []
 
 

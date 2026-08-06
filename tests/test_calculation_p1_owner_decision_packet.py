@@ -27,8 +27,8 @@ def test_calculation_p1_owner_decision_packet_prepares_first_blocker_without_app
     assert packet["owner_decision_ready"] is False
     assert packet["implementation_ready"] is False
     assert packet["execution_anchor_ready"] is True
-    assert packet["decision_item_count"] == 10
-    assert packet["pending_decision_count"] == 10
+    assert packet["decision_item_count"] == len(EXPECTED_OPEN_CALCULATION_P1_IDS)
+    assert packet["pending_decision_count"] == len(EXPECTED_OPEN_CALCULATION_P1_IDS)
     assert packet["captured_decision_count"] == 0
     assert packet["post_owner_required_fields"] == [
         "selected_decision",
@@ -48,7 +48,7 @@ def test_calculation_p1_owner_decision_packet_prepares_first_blocker_without_app
     ]
     assert packet["first_priority_group"] == {
         "rank": 1,
-        "p1_ids": ["P1-09", "P1-10", "P1-11"],
+        "p1_ids": ["P1-10", "P1-11"],
         "rationale": (
             "fastest remaining frontend/user-facing risk reduction once owner accepts "
             "the boundary."
@@ -62,7 +62,7 @@ def test_calculation_p1_owner_decision_packet_prepares_first_blocker_without_app
         "captured_decision_count": 0,
         "invalid_status_count": 0,
         "invalid_selected_decision_count": 0,
-        "execution_slice_count": 10,
+        "execution_slice_count": len(EXPECTED_OPEN_CALCULATION_P1_IDS),
         "execution_referenced_path_count": packet["execution_referenced_path_count"],
         "all_execution_slices_present": True,
         "all_execution_slice_paths_exist": True,
@@ -86,30 +86,32 @@ def test_calculation_p1_owner_decision_packet_prepares_first_blocker_without_app
     assert "treat proposed review defaults as approved rules" in packet["prohibited_actions"]
     assert "does not choose or approve conventions" in packet["boundary"]
 
-    p109 = next(item for item in packet["decision_items"] if item["p1_id"] == "P1-09")
-    assert p109["priority_rank"] == 1
-    assert p109["area"] == "Balance movement share source"
-    assert p109["current_status"] == "pending_owner_decision"
-    assert p109["captures_owner_decision"] is False
-    assert p109["allowed_candidate_options"] == {
-        "A": "backend `current_balance_pct` is authoritative",
-        "B": "frontend recomputes from visible rows",
-        "C": "backend provides both official and visible-row share",
+    assert "P1-09" not in packet["decision_ids"]
+    p110 = next(item for item in packet["decision_items"] if item["p1_id"] == "P1-10")
+    assert p110["priority_rank"] == 1
+    assert p110["area"] == "Frontend formal aggregation"
+    assert p110["current_status"] == "pending_owner_decision"
+    assert p110["captures_owner_decision"] is False
+    assert p110["allowed_candidate_options"] == {
+        "A": "backend DTO only",
+        "B": "frontend may derive display aggregates",
+        "C": "frontend derives only clearly non-formal UI helpers",
     }
-    assert p109["post_decision_execution_slice"]["all_referenced_paths_exist"] is True
-    assert p109["post_decision_execution_slice"]["missing_referenced_paths"] == []
-    assert p109["closure_evidence"] == (
-        "Component/model tests prove backend value wins and missing share remains missing."
+    assert p110["post_decision_execution_slice"]["all_referenced_paths_exist"] is True
+    assert p110["post_decision_execution_slice"]["missing_referenced_paths"] == []
+    assert p110["closure_evidence"] == (
+        "Backend DTO added or confirmed; frontend removes formal aggregation; "
+        "adapter/component tests consume DTO values."
     )
-    assert p109["missing_capture_fields"] == [
+    assert p110["missing_capture_fields"] == [
         "selected_decision",
         "owner_rationale",
         "implementation_owner",
         "verification_gate",
         "status",
     ]
-    assert "BalanceMovementAnalysisPage.tsx" in " ".join(
-        p109["post_decision_execution_slice"]["referenced_paths"]
+    assert "yieldAnalysisAggregates.ts" in " ".join(
+        p110["post_decision_execution_slice"]["referenced_paths"]
     )
 
 
@@ -133,13 +135,15 @@ def test_calculation_p1_owner_decision_packet_cli_writes_markdown(tmp_path: Path
     assert payload["owner_decision_ready"] is False
     assert payload["implementation_ready"] is False
     assert payload["execution_anchor_ready"] is True
-    assert payload["decision_item_count"] == 10
-    assert payload["pending_decision_count"] == 10
+    assert payload["decision_item_count"] == len(EXPECTED_OPEN_CALCULATION_P1_IDS)
+    assert payload["pending_decision_count"] == len(EXPECTED_OPEN_CALCULATION_P1_IDS)
     assert payload["captured_decision_count"] == 0
     assert payload["execution_referenced_path_count"] >= 10
     assert payload["missing_execution_referenced_paths"] == []
-    assert payload["first_priority_group"]["p1_ids"] == ["P1-09", "P1-10", "P1-11"]
-    assert payload["intake_checklist"]["execution_slice_count"] == 10
+    assert payload["first_priority_group"]["p1_ids"] == ["P1-10", "P1-11"]
+    assert payload["intake_checklist"]["execution_slice_count"] == len(
+        EXPECTED_OPEN_CALCULATION_P1_IDS
+    )
     assert payload["intake_checklist"]["invalid_selected_decision_count"] == 0
     assert payload["intake_checklist"]["all_execution_slices_present"] is True
     assert payload["intake_checklist"]["all_execution_slice_paths_exist"] is True
@@ -151,8 +155,8 @@ def test_calculation_p1_owner_decision_packet_cli_writes_markdown(tmp_path: Path
     text = output_path.read_text(encoding="utf-8")
     assert "Calculation P1 Owner Decision Packet" in text
     assert "decision_status=owner_decision_required" in text
-    assert "decision_item_count=10" in text
-    assert "pending_decision_count=10" in text
+    assert "decision_item_count=8" in text
+    assert "pending_decision_count=8" in text
     assert "captured_decision_count=0" in text
     assert (
         "`post_owner_required_fields=selected_decision, owner_rationale, "
@@ -160,12 +164,11 @@ def test_calculation_p1_owner_decision_packet_cli_writes_markdown(tmp_path: Path
     ) in text
     assert "Execution anchor ready: `true`" in text
     assert "Owner decision gate" in text
-    assert "Component/model tests prove backend value wins" in text
+    assert "Backend DTO added or confirmed" in text
     assert "## Execution Anchor Checks" in text
     assert "## Candidate Option Contract" in text
     assert "Allowed option letters are row-specific" in text
     assert "evidence-only wording" in text
-    assert "`Option A`: backend `current_balance_pct` is authoritative" in text
     assert "`Option A`: backend provides governed matrix" in text
     assert "`Option B`: frontend aggregates rows and owns bucket mapping" in text
     assert "Required capture format, not a recommendation" in text
@@ -174,12 +177,12 @@ def test_calculation_p1_owner_decision_packet_cli_writes_markdown(tmp_path: Path
     assert "undefined option letters" in text
     assert "`all_execution_slice_paths_exist=true`" in text
     assert "`missing_execution_referenced_path_count=0`" in text
-    assert "First priority group: `P1-09, P1-10, P1-11`" in text
+    assert "First priority group: `P1-10, P1-11`" in text
     assert "`captures_owner_decisions=false`" in text
     assert "`chooses_or_approves_conventions=false`" in text
     assert "`invalid_selected_decision_count=0`" in text
     assert "treat proposed review defaults as approved rules" in text
-    assert "BalanceMovementAnalysisPage.tsx" in text
+    assert "BalanceMovementAnalysisPage.tsx" not in text
     assert "yieldAnalysisAggregates.ts" in text
     assert "CreditSpreadView.tsx" in text
     assert "authorize Ledger PnL `--write`" in text

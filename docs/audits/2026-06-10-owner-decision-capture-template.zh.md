@@ -6,6 +6,8 @@ Boundary: this template does not approve calculation conventions, pages, governa
 
 这是一份 owner 决策采集模板。填写本模板不等于完成页面审批、治理记录写入、route certification 或 metric approval。正式闭环仍以各页面 owner approval template、治理记录、MCP evidence、测试输出和 strict checker 为准。
 
+本文件名保留 2026-06-10 审计起点。下方“待处理”表是 2026-08-06 的前向状态，只包含仍需 owner 裁决的 8 项；P1-07 和 P1-09 的已选并实现记录单列为历史闭环证据，不得重复计入待处理数。
+
 ## 会议记录
 
 | 字段 | 填写 |
@@ -19,7 +21,7 @@ Boundary: this template does not approve calculation conventions, pages, governa
 | 记录人 |  |
 | 本次结论状态 | draft / approved-for-implementation / deferred / rejected |
 
-## 10 个剩余计算/展示 P1 口径裁决
+## 待处理 P1 口径裁决（8 项）
 
 填写规则：
 
@@ -42,8 +44,6 @@ Boundary: this template does not approve calculation conventions, pages, governa
 | `P1-04` | A: require independent position and ledger source anchors; B: keep current same-source comparison but label it non-control. | `Option <allowed letter> - <copied option description>` |
 | `P1-05` | A: period average scale; B: sum of month-end snapshots; C: weighted daily average when daily facts exist. | `Option <allowed letter> - <copied option description>` |
 | `P1-06` | A: nonzero explained/residual with zero actual is warning/undefined; B: force ratio to 0 and mark ok. | `Option <allowed letter> - <copied option description>` |
-| `P1-07` | A: all components tightness-positive; B: liquidity remains looseness-positive but enters composite with inverse sign; C: separate liquidity narrative from composite. | `Option <allowed letter> - <copied option description>` |
-| `P1-09` | A: backend `current_balance_pct` is authoritative; B: frontend recomputes from visible rows; C: backend provides both official and visible-row share. | `Option <allowed letter> - <copied option description>` |
 | `P1-10` | A: backend DTO only; B: frontend may derive display aggregates; C: frontend derives only clearly non-formal UI helpers. | `Option <allowed letter> - <copied option description>` |
 | `P1-11` | A: backend provides governed matrix; B: frontend aggregates rows and owns bucket mapping. | `Option <allowed letter> - <copied option description>` |
 
@@ -55,10 +55,15 @@ Boundary: this template does not approve calculation conventions, pages, governa
 | P1-04 | QDB position-vs-ledger reconciliation control status |  |  |  | suggested: independent source anchors or non-control label | pending |
 | P1-05 | Quarterly/yearly yield denominator |  |  |  | suggested: monthly/quarterly/yearly numeric tests | pending |
 | P1-06 | PnL bridge zero-actual residual quality |  |  |  | suggested: zero-actual nonzero-explained warning regression | pending |
-| P1-07 | Macro liquidity score polarity | Option B - liquidity remains looseness-positive but enters composite with inverse sign | 保留 `liquidity_score` 宽松=正的既有语义，避免破坏下游展示；`composite_score` 统一为对债不利/偏紧压力=正，聚合时对流动性取反。 | codex/system-audit-remediation | `tests/test_macro_bond_linkage.py` isolated liquidity regressions; `build_macro_context_v1` formula/polarity metadata assertions; frontend polarity copy checks | approved-for-implementation |
-| P1-09 | Balance movement share source | Option A - backend current_balance_pct is authoritative | 后端治理 DTO 是正式占比的唯一来源；前端不得基于可见行重复计算，后端缺失值必须保持缺失并显式展示，不得降级为 0%。 | codex/system-audit-remediation | `docs/metric_dictionary.md` `MTR-BMV-005` source/display contract; model/component tests proving backend value wins and missing share remains missing: `frontend/src/features/balance-movement-analysis/lib/balanceMovementShareModel.test.ts` backend-only share regression; `frontend/src/test/BalanceMovementAnalysisPage.test.tsx` backend precedence, missing-share `—`, and fail-closed chart checks; `npm run typecheck`; target ESLint | approved-for-implementation |
 | P1-10 | Frontend formal aggregation boundary |  |  |  | suggested: backend DTO / frontend removal tests | pending |
 | P1-11 | Credit spread rating-tenor matrix owner |  |  |  | suggested: API contract + frontend renders provided matrix | pending |
+
+## 已选并实现的 P1 决定（历史闭环，不再采集）
+
+| P1 | 决策主题 | selected_decision | 实现与验证证据 | 状态 | 剩余边界 |
+| --- | --- | --- | --- | --- | --- |
+| `P1-07` | Macro liquidity score polarity | Option B - liquidity remains looseness-positive but enters composite with inverse sign | `tests/test_macro_bond_linkage.py`; `build_macro_context_v1` formula/polarity metadata；前端 polarity copy | implemented-and-verified | 不代表页面 business-owner approval；旧缓存/物化输出在生产使用前仍需刷新。 |
+| `P1-09` | Balance movement share source | Option A - backend current_balance_pct is authoritative | `docs/metric_dictionary.md` `MTR-BMV-005`; `balanceMovementShareModel.test.ts`; `BalanceMovementAnalysisPage.test.tsx`; typecheck/target ESLint | implemented-and-verified | 不认证上游占比计算、lineage/freshness、页面 business-owner approval 或其他汇总指标。 |
 
 ## 7 个页面 owner approval 采集
 

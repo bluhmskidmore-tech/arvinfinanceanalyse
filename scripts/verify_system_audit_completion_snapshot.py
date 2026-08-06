@@ -20,11 +20,22 @@ EXPECTED_OPEN_CALCULATION_P1_IDS = [
     "P1-04",
     "P1-05",
     "P1-06",
+    "P1-10",
+    "P1-11",
+]
+HISTORICAL_OPEN_CALCULATION_P1_IDS = [
+    "P1-01",
+    "P1-02",
+    "P1-03",
+    "P1-04",
+    "P1-05",
+    "P1-06",
     "P1-07",
     "P1-09",
     "P1-10",
     "P1-11",
 ]
+EXPECTED_OWNER_DECISION_CLOSED_P1_IDS = ["P1-07", "P1-09"]
 FOLLOW_UP_COMPLETION_ORDER_CONSTRAINTS = [
     (
         "calculation-display-p1-decisions",
@@ -531,6 +542,9 @@ def _verify_calculation_p1_prework_map(
         errors.append("P1-08 must not appear as an open owner-decision row")
     if "P1-08" not in verified_closed_section:
         errors.append("P1-08 verified-closed evidence is missing")
+    for p1_id in EXPECTED_OWNER_DECISION_CLOSED_P1_IDS:
+        if p1_id not in verified_closed_section:
+            errors.append(f"{p1_id} owner-decision closure evidence is missing")
 
     prework_marker = "## Engineering Prework / Impact Slice Map"
     if prework_marker not in verified_closed_section:
@@ -605,6 +619,18 @@ def _verify_calculation_p1_snapshot(
         errors.append("calculation owner decision snapshot must keep P1-08 out of open rows")
     if matrix.get("p1_08_verified_closed") is not True:
         errors.append("calculation owner decision snapshot must keep P1-08 verified closed")
+    if matrix.get("owner_decision_closed_ids") != EXPECTED_OWNER_DECISION_CLOSED_P1_IDS:
+        errors.append(
+            "calculation owner decision snapshot owner-decision closed IDs do not match expected"
+        )
+
+    historical_baseline = snapshot.get("historical_baseline", {})
+    if historical_baseline.get("open_decision_ids") != HISTORICAL_OPEN_CALCULATION_P1_IDS:
+        errors.append("calculation owner decision historical baseline IDs drifted")
+    if historical_baseline.get("open_decision_count") != len(
+        HISTORICAL_OPEN_CALCULATION_P1_IDS
+    ):
+        errors.append("calculation owner decision historical baseline count drifted")
 
     prework = snapshot.get("engineering_prework_map", {})
     if prework.get("mapped_ids") != EXPECTED_OPEN_CALCULATION_P1_IDS:
@@ -690,8 +716,8 @@ def _verify_calculation_p1_owner_decision_packet(
         "Owner decision ready: `false`",
         "Implementation ready: `false`",
         "Execution anchor ready: `true`",
-        "`decision_item_count=10`",
-        "`pending_decision_count=10`",
+        "`decision_item_count=8`",
+        "`pending_decision_count=8`",
         "`captured_decision_count=0`",
         (
             "`post_owner_required_fields=selected_decision, owner_rationale, "
@@ -701,9 +727,9 @@ def _verify_calculation_p1_owner_decision_packet(
         "`missing_execution_referenced_path_count=0`",
         "`all_execution_slices_present=true`",
         "`all_execution_slice_paths_exist=true`",
-        "First priority group: `P1-09, P1-10, P1-11`",
+        "First priority group: `P1-10, P1-11`",
         "Owner decision gate",
-        "Component/model tests prove backend value wins",
+        "Backend DTO added or confirmed",
         "## Execution Anchor Checks",
         "`captures_owner_decisions=false`",
         "`chooses_or_approves_conventions=false`",
@@ -790,11 +816,11 @@ def _verify_calculation_p1_owner_meeting_checklist(
         "Owner meeting material ready: `true`",
         "Implementation ready: `false`",
         "Execution anchor ready: `true`",
-        "`decision_item_count=10`",
-        "`pending_decision_count=10`",
+        "`decision_item_count=8`",
+        "`pending_decision_count=8`",
         "`captured_decision_count=0`",
-        "`incomplete_decision_count=10`",
-        "`total_missing_capture_field_count=50`",
+        "`incomplete_decision_count=8`",
+        "`total_missing_capture_field_count=40`",
         "`meeting_missing_field_count=8`",
         "`meeting_record_complete=false`",
         "`missing_execution_referenced_path_count=0`",
@@ -835,7 +861,7 @@ def _verify_calculation_p1_owner_meeting_checklist(
         "owner_meeting_material_ready": "Owner meeting material ready: `true`" in text,
         "implementation_ready": "Implementation ready: `true`" in text,
         "total_missing_capture_field_count": (
-            50 if "`total_missing_capture_field_count=50`" in text else None
+            40 if "`total_missing_capture_field_count=40`" in text else None
         ),
         "meeting_missing_field_count": (
             8 if "`meeting_missing_field_count=8`" in text else None
@@ -876,8 +902,8 @@ def _verify_calculation_p1_first_priority_readiness_packet(
         "source_snapshot_status=owner_decision_required",
         "Owner intake ready: `true`",
         "Implementation ready: `false`",
-        "`first_priority_ids=P1-09, P1-10, P1-11`",
-        "`first_priority_count=3`",
+        "`first_priority_ids=P1-10, P1-11`",
+        "`first_priority_count=2`",
         "`captured_decision_count=0`",
         (
             "`post_owner_required_fields=selected_decision, owner_rationale, "
@@ -889,10 +915,8 @@ def _verify_calculation_p1_first_priority_readiness_packet(
         "`chooses_or_approves_conventions=false`",
         "`changes_implementation_code=false`",
         "Owner Decision Gate",
-        "model/component tests proving backend value wins",
         "backend DTO / frontend removal tests",
         "API contract plus frontend test",
-        "BalanceMovementAnalysisPage.tsx",
         "yieldAnalysisAggregates.ts",
         "zqtzAdbAvgRollup.ts",
         "CreditSpreadView.tsx",
@@ -907,7 +931,7 @@ def _verify_calculation_p1_first_priority_readiness_packet(
                 f"{phrase}"
             )
 
-    first_priority_ids = ["P1-09", "P1-10", "P1-11"]
+    first_priority_ids = ["P1-10", "P1-11"]
     for p1_id in first_priority_ids:
         if f"`{p1_id}`" not in text:
             errors.append(
@@ -1011,13 +1035,13 @@ def _verify_calculation_p1_post_owner_execution_plan(
         "source_snapshot_status=owner_decision_required",
         "Global owner gate ready: `false`",
         "Implementation ready: `false`",
-        "`row_count=10`",
+        "`row_count=8`",
         "`captured_decision_count=0`",
         "`ready_for_implementation_count=0`",
         "`deferred_count=0`",
         "`rejected_count=0`",
         "`non_implementation_decision_count=0`",
-        "`incomplete_count=10`",
+        "`incomplete_count=8`",
         "`post_owner_blocking_reasons=owner_decision_capture_incomplete`",
         "`meeting_record_complete=false`",
         "`missing_meeting_field_count=8`",
@@ -1084,7 +1108,7 @@ def _verify_calculation_p1_post_owner_execution_plan(
             in text
             else []
         ),
-        "incomplete_count": 10 if "`incomplete_count=10`" in text else None,
+        "incomplete_count": 8 if "`incomplete_count=8`" in text else None,
         "invalid_selected_decision_count": (
             0 if "`invalid_selected_decision_count=0`" in text else None
         ),

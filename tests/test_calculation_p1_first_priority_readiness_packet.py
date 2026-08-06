@@ -18,13 +18,13 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "calculation_p1_first_priority_readiness_packet.py"
 
 
-def test_first_priority_readiness_packet_maps_p109_p110_p111_without_approval() -> None:
+def test_first_priority_readiness_packet_maps_current_p110_p111_without_approval() -> None:
     packet = build_packet()
 
     assert packet["packet_kind"] == "calculation_p1_first_priority_readiness_packet"
     assert packet["source_snapshot_status"] == "owner_decision_required"
     assert packet["first_priority_ids"] == FIRST_PRIORITY_IDS
-    assert packet["first_priority_count"] == 3
+    assert packet["first_priority_count"] == 2
     assert packet["owner_intake_ready"] is True
     assert packet["implementation_ready"] is False
     assert packet["captured_decision_count"] == 0
@@ -60,14 +60,11 @@ def test_first_priority_readiness_packet_maps_p109_p110_p111_without_approval() 
 
     items = {item["p1_id"]: item for item in packet["items"]}
     assert set(items) == set(FIRST_PRIORITY_IDS)
-    assert "BalanceMovementAnalysisPage.tsx" in " ".join(items["P1-09"]["code_anchors"])
+    assert "P1-09" not in items
     assert "yieldAnalysisAggregates.ts" in " ".join(items["P1-10"]["code_anchors"])
     assert "zqtzAdbAvgRollup.ts" in " ".join(items["P1-10"]["code_anchors"])
     assert "CreditSpreadView.tsx" in " ".join(items["P1-11"]["code_anchors"])
     assert "CreditSpreadView.test.tsx" in " ".join(items["P1-11"]["test_anchors"])
-    assert items["P1-09"]["owner_decision_gate"] == (
-        "model/component tests proving backend value wins or visible-row share is explicitly labeled"
-    )
     assert "backend DTO / frontend removal tests" in items["P1-10"][
         "owner_decision_gate"
     ]
@@ -107,7 +104,7 @@ def test_first_priority_readiness_packet_cli_writes_markdown(tmp_path: Path) -> 
     text = output_path.read_text(encoding="utf-8")
     assert "Calculation P1 First Priority Readiness Packet" in text
     assert "source_snapshot_status=owner_decision_required" in text
-    assert "`first_priority_ids=P1-09, P1-10, P1-11`" in text
+    assert "`first_priority_ids=P1-10, P1-11`" in text
     assert (
         "`post_owner_required_fields=selected_decision, owner_rationale, "
         "implementation_owner, verification_gate, status`"
@@ -115,10 +112,9 @@ def test_first_priority_readiness_packet_cli_writes_markdown(tmp_path: Path) -> 
     assert "`owner_intake_ready=true`" in text
     assert "`implementation_ready=false`" in text
     assert "Owner Decision Gate" in text
-    assert "model/component tests proving backend value wins" in text
     assert "backend DTO / frontend removal tests" in text
     assert "API contract plus frontend test" in text
-    assert "BalanceMovementAnalysisPage.tsx" in text
+    assert "BalanceMovementAnalysisPage.tsx" not in text
     assert "yieldAnalysisAggregates.ts" in text
     assert "zqtzAdbAvgRollup.ts" in text
     assert "CreditSpreadView.tsx" in text
@@ -134,7 +130,7 @@ def test_checked_in_first_priority_readiness_packet_matches_renderer() -> None:
     checked_in_markdown = DEFAULT_OUTPUT.read_text(encoding="utf-8")
 
     assert checked_in_markdown == expected_markdown
-    assert "`P1-09`" in checked_in_markdown
+    assert "`P1-09`" not in checked_in_markdown
     assert "`P1-10`" in checked_in_markdown
     assert "`P1-11`" in checked_in_markdown
     assert "`post_owner_required_fields=selected_decision, owner_rationale" in (
