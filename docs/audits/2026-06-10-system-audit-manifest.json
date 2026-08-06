@@ -1,7 +1,7 @@
 {
   "report_kind": "system_wide_skills_audit_manifest",
-  "generated_at": "2026-06-10T21:25:00+08:00",
-  "repo_root": "F:\\MOSS-V3",
+  "generated_at": "2026-08-06T22:30:00+08:00",
+  "repo_root": ".",
   "audit_date": "2026-06-10",
   "status": {
     "overall": "evidence_package_ready_but_business_closure_not_achieved",
@@ -184,7 +184,7 @@
       "id": "direct-app-mcp-gitnexus-evidence",
       "severity": "P1",
       "status": "tool_surface_unavailable_in_session",
-      "last_checked_at": "2026-06-10T21:25:00+08:00",
+      "last_checked_at": "2026-06-27T13:05:14+08:00",
       "tool_discovery_query": "moss metric contracts lineage evidence data catalog gitnexus MCP tools",
       "tool_discovery_result": "0 relevant direct MOSS/GitNexus tools found; focused GitNexus recheck returned only 3 non-evidence Codex App management tools",
       "snapshot": "docs/audits/2026-06-10-direct-app-mcp-gitnexus-tool-surface-snapshot.json",
@@ -199,7 +199,7 @@
         "MOSS_TUSHARE_TOKEN",
         "STITCH_API_KEY"
       ],
-      "last_checked_at": "2026-06-10T21:25:00+08:00",
+      "last_checked_at": "2026-06-27T13:05:14+08:00",
       "snapshot": "docs/audits/2026-06-10-local-secret-hygiene-snapshot.json",
       "runbook": "docs/audits/2026-06-10-local-secret-hygiene-runbook.md",
       "owner_attestation_packet": "docs/audits/2026-06-10-local-secret-hygiene-owner-attestation-packet.md",
@@ -278,23 +278,23 @@
     },
     {
       "scope": "system_audit_pulse_read_only_guard",
-      "command": "pytest tests/test_system_audit_pulse.py -q; python scripts\\system_audit_pulse.py --generated-at 2026-06-10T19:45:00+08:00; python scripts\\system_audit_pulse.py --generated-at 2026-06-10T19:45:00+08:00 --format markdown",
-      "result": "7 passed; pulse status pass; completion_state=not_complete; open_blocker_count=5; route_count=39; business_contract_certified_count=0; tracked_route_count=26; route_gap_count=0; completion_snapshot status pass; markdown watch board renders; drift_errors=[]; evidence_scope read_only=true and no approval/write/secret-clear/certification flags are set"
+      "command": "pytest tests/test_system_audit_pulse.py -q; python scripts\\system_audit_pulse.py --generated-at 2026-08-06T22:30:00+08:00; python scripts\\system_audit_pulse.py --generated-at 2026-08-06T22:30:00+08:00 --format markdown",
+      "result": "9 passed; pulse status fail; completion_state=not_complete; open_blocker_count=5; route_count=40; visible_unseeded_route_count=1; business_contract_certified_count=0; tracked_route_count=26; route_gap_count=0; completion_snapshot status fail with error_count=2 because test_output/security-scans/osv-report.json and gitleaks-report.json are absent; strict matrix status fail with strict_pass_gate_count=1 and unexpected_gate_count=1; markdown watch board renders; drift_error_count=6; evidence_scope read_only=true and no approval/write/secret-clear/certification flags are set"
     },
     {
       "scope": "system_audit_monitoring_refresh",
-      "command": "python scripts\\refresh_system_audit_monitoring.py --generated-at 2026-06-10T21:25:00+08:00 --latest-session-recheck-at 2026-06-11T00:16:22+08:00 --write-outputs --gitnexus-tool-names codex_app.handoff_thread codex_app.fork_thread codex_app.automation_update; pytest tests/test_system_audit_monitoring_refresh.py tests/test_system_audit_blocker_intake_board.py -q --basetemp test_output\\pytest-blocker-intake-monitoring-green",
-      "result": "read-only unified monitoring snapshot refreshed at 2026-06-10T21:25:00+08:00; calculation, direct App MCP/GitNexus, local secret hygiene, Ledger PnL direct governance record, blocker intake board, and pulse snapshots were regenerated; monitoring status pass, completion verifier pass, pulse pass/not_complete with 5 blockers and drift_errors=[]; blocker intake board next=calculation-display-p1-decisions and remains open_external_input_required; boundaries still deny DuckDB writes, governance-record writes, secret-value reads/rotation, owner approval, metric/page approval, route certification, secret clearance, Ledger PnL --write authorization, and candidate-data promotion; monitoring refresh/intake tests 7 passed"
+      "command": "python scripts\\refresh_system_audit_monitoring.py --manifest docs/audits/2026-06-10-system-audit-manifest.json --generated-at 2026-08-06T22:30:00+08:00 --latest-session-recheck-at 2026-08-06T22:30:00+08:00 --gitnexus-tool-names codex_app.handoff_thread codex_app.fork_thread codex_app.automation_update; pytest tests/test_system_audit_monitoring_refresh.py tests/test_system_audit_blocker_intake_board.py -q",
+      "result": "read-only unified monitoring snapshot refreshed at 2026-08-06T22:30:00+08:00 without rewriting component artifacts; the refresh exits non-zero fail-closed because completion verification reports the two absent security-scan inputs, pulse reports drift_error_count=6, and the strict matrix reports status=fail with strict_pass_gate_count=1 and unexpected_gate_count=1; blocker timestamps are sourced by ID (calculation=2026-08-06T22:30:00+08:00, Ledger=2026-06-10T21:25:00+08:00, direct App and local secret=2026-06-27T13:05:14+08:00); blocker intake board next=calculation-display-p1-decisions and remains open_external_input_required; boundaries still deny writes, approvals, secret reads/rotation, certification, and promotion; monitoring refresh/intake tests 11 passed"
     },
     {
       "scope": "system_audit_monitoring_snapshot_verifier",
       "command": "pytest tests/test_system_audit_monitoring_snapshot_verifier.py -q; python scripts\\verify_system_audit_monitoring_snapshot.py",
-      "result": "7 passed; monitoring snapshot verifier pass; generated_at=2026-06-10T21:25:00+08:00; open_blocker_count=5; completion_status=pass; pulse_status=pass; pulse_completion_state=not_complete; errors=[]; verifies monitoring snapshot, manifest, pulse, completion snapshot, calculation snapshot, direct App MCP/GitNexus snapshot, local secret hygiene snapshot, and Ledger PnL direct-governance snapshot stay aligned without granting approval, formal use, secret clearance, direct App evidence, or governance writes"
+      "result": "26 passed; monitoring snapshot verifier status=pass with errors=[] because the generated package is internally aligned; generated_at=2026-08-06T22:30:00+08:00; open_blocker_count=5; completion_status=fail; pulse_status=fail; pulse_completion_state=not_complete; strict_gate_status=fail; strict_pass_gate_count=1; independently verifies blocker-derived 9 required outputs, 8 pending decisions, per-ID timestamps, stable repo-relative paths, and fail-closed child states without granting approval, formal use, secret clearance, direct App evidence, or governance writes"
     },
     {
       "scope": "local_secret_hygiene_boundary",
-      "command": "python scripts\\refresh_local_secret_hygiene_snapshot.py --generated-at 2026-06-10T21:25:00+08:00; python scripts\\supply_chain_security_scan.py --dry-run; git check-ignore -v config/.env; git ls-files -- config/.env; git status --ignored --short -- config/.env",
-      "result": "last full refresh at 2026-06-10T15:45:10+08:00; latest non-closing retry at 2026-06-10T17:30:56+08:00; latest boundary-only recheck at 2026-06-10T21:25:00+08:00; gitleaks dry-run command includes --redact; config/.env exists, is ignored by .gitignore:4, is untracked, and is reported as ignored; redacted report still confirms two local findings by name only; secret hygiene refresh tests passed; OSV retry was not refreshed because proxy 127.0.0.1:9 refused the connection; secret values were not read or captured"
+      "command": "python scripts\\refresh_local_secret_hygiene_snapshot.py --generated-at 2026-06-27T13:05:14+08:00; python scripts\\supply_chain_security_scan.py --dry-run; git check-ignore -v config/.env; git ls-files -- config/.env; git status --ignored --short -- config/.env",
+      "result": "last full refresh at 2026-06-10T15:45:10+08:00; latest non-closing retry at 2026-06-10T17:30:56+08:00, when OSV could not refresh because proxy 127.0.0.1:9 refused the connection; latest boundary-only recheck at 2026-06-27T13:05:14+08:00; gitleaks dry-run command includes --redact; config/.env exists, is ignored by .gitignore:4, is untracked, and is reported as ignored; redacted report still confirms two local findings by name only; required test_output/security-scans artifacts are absent in the isolated worktree, so completion remains fail-closed; secret values were not read or captured"
     },
     {
       "scope": "ledger_pnl_direct_governance_record_snapshot",
@@ -308,8 +308,8 @@
     },
     {
       "scope": "direct_app_mcp_gitnexus_tool_discovery",
-      "command": "tool_search query: moss metric contracts lineage evidence data catalog gitnexus MCP tools; python scripts\\refresh_direct_app_mcp_gitnexus_tool_surface_snapshot.py --generated-at 2026-06-10T21:25:00+08:00 --gitnexus-tool-names codex_app.handoff_thread codex_app.fork_thread codex_app.automation_update",
-      "result": "refreshed at 2026-06-10T21:25:00+08:00; 0 relevant direct MOSS/GitNexus tools found in current Codex App tool surface; focused MOSS keyword rechecks returned 0 tools; focused GitNexus keyword recheck returned 3 Codex App thread/automation management tools and 0 relevant direct GitNexus or MOSS evidence tools; local .codex/config.toml and .mcp.json still declare the expected servers, so the direct App evidence gap remains fail-closed"
+      "command": "tool_search query: moss metric contracts lineage evidence data catalog gitnexus MCP tools; python scripts\\refresh_direct_app_mcp_gitnexus_tool_surface_snapshot.py --generated-at 2026-06-27T13:05:14+08:00",
+      "result": "refreshed at 2026-06-27T13:05:14+08:00; 0 relevant direct MOSS/GitNexus tools found in current Codex App tool surface; focused MOSS and GitNexus keyword rechecks returned 0 tools; local .codex/config.toml and .mcp.json still declare the expected servers, so the direct App evidence gap remains fail-closed"
     },
     {
       "scope": "full_real_backend_browser_smoke",

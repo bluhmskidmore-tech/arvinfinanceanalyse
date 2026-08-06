@@ -1,9 +1,9 @@
 {
   "report_kind": "system_audit_monitoring_snapshot",
-  "generated_at": "2026-06-10T21:25:00+08:00",
-  "repo_root": "F:\\MOSS-V3",
+  "generated_at": "2026-08-06T22:30:00+08:00",
+  "repo_root": ".",
   "audit_date": "2026-06-10",
-  "write_outputs": true,
+  "write_outputs": false,
   "evidence_scope": {
     "read_only": true,
     "writes_duckdb": false,
@@ -42,7 +42,7 @@
     },
     "local_secret_hygiene": {
       "status": "local_ignored_untracked_findings",
-      "latest_boundary_only_recheck_at": "2026-06-10T21:25:00+08:00",
+      "latest_boundary_only_recheck_at": "2026-06-27T13:05:14+08:00",
       "secret_values_captured": false,
       "clears_secret_scan": false
     },
@@ -60,7 +60,7 @@
     }
   },
   "completion_verification": {
-    "status": "pass",
+    "status": "fail",
     "open_blocker_count": 5,
     "calculation_packet_p1_count": 8,
     "calculation_packet_execution_anchor_ready": true,
@@ -93,11 +93,14 @@
     "calculation_missing_meeting_field_count": 8,
     "follow_up_completion_order_status": "pass",
     "follow_up_completion_order_error_count": 0,
-    "error_count": 0,
-    "errors": []
+    "error_count": 2,
+    "errors": [
+      "local-secret-hygiene required input artifact is missing: test_output/security-scans/osv-report.json",
+      "local-secret-hygiene required input artifact is missing: test_output/security-scans/gitleaks-report.json"
+    ]
   },
   "pulse": {
-    "status": "pass",
+    "status": "fail",
     "completion_state": "not_complete",
     "open_blocker_count": 5,
     "next_blocker_id": "calculation-display-p1-decisions",
@@ -113,8 +116,15 @@
       "explicit_non_approval_boundary": "This packet records follow-up work only; it does not choose or approve any calculation convention."
     },
     "calculation_post_owner_plan_renderer_sync": true,
-    "drift_error_count": 0,
-    "drift_errors": []
+    "drift_error_count": 6,
+    "drift_errors": [
+      "local-secret-hygiene required input artifact is missing: test_output/security-scans/osv-report.json",
+      "local-secret-hygiene required input artifact is missing: test_output/security-scans/gitleaks-report.json",
+      "strict_gate_matrix.status expected 'pass', got 'fail'",
+      "strict_gate_matrix.strict_pass_gate_count expected 0, got 1",
+      "strict_gate_matrix.unexpected_gate_count expected 0, got 1",
+      "route_scope.visible_unseeded_route_count expected 0, got 1"
+    ]
   },
   "blocker_intake_board": {
     "status": "open_external_input_required",
@@ -153,7 +163,7 @@
     "boundary": "This blocker intake board is read-only. It does not approve metrics, pages, business-owner signoff, governance records, route certification, direct App MCP/GitNexus evidence, local secret hygiene, or Ledger PnL --write execution."
   },
   "strict_gate_matrix": {
-    "status": "pass",
+    "status": "fail",
     "completion_state": "not_complete",
     "full_score_ready": false,
     "open_blocker_count": 5,
@@ -161,8 +171,8 @@
     "completion_order_guard_error_count": 0,
     "gate_count": 8,
     "expected_blocked_gate_count": 8,
-    "strict_pass_gate_count": 0,
-    "unexpected_gate_count": 0,
+    "strict_pass_gate_count": 1,
+    "unexpected_gate_count": 1,
     "guard_error_count": 0,
     "guard_errors": [],
     "gates": [
@@ -246,19 +256,19 @@
       {
         "gate_id": "local-secret-hygiene-clean-boundary",
         "command": "python scripts\\refresh_local_secret_hygiene_snapshot.py --require-clean-boundary",
-        "strict_pass": false,
+        "strict_pass": true,
         "expected_current_exit": "non_zero",
-        "actual_current_exit": "non_zero",
-        "expectation_met": true,
+        "actual_current_exit": "zero",
+        "expectation_met": false,
         "blocker_id": "local-secret-hygiene",
-        "blocking_detail": "ignored_status='!! config/.env'; secret_values_captured=False; clears_secret_scan=False",
+        "blocking_detail": "ignored_status=''; secret_values_captured=False; clears_secret_scan=False",
         "boundary": "This gate is value-free and does not read, rotate, or clear secrets."
       }
     ],
     "boundary": "This matrix is read-only. It reports strict-gate expectations and current blocked status; it does not approve owner decisions, pages, metrics, governance writes, direct App evidence, secret hygiene, or route certification."
   },
   "latest_session_recheck": {
-    "checked_at": "2026-06-10T21:25:00+08:00",
+    "checked_at": "2026-08-06T22:30:00+08:00",
     "closure_effect": "none",
     "open_blocker_count": 5,
     "next_blocker": {
@@ -273,16 +283,16 @@
       "explicit_non_approval_boundary": "This packet records follow-up work only; it does not choose or approve any calculation convention."
     },
     "strict_gate_matrix": {
-      "status": "pass",
+      "status": "fail",
       "gate_count": 8,
-      "strict_pass_gate_count": 0,
-      "unexpected_gate_count": 0,
+      "strict_pass_gate_count": 1,
+      "unexpected_gate_count": 1,
       "completion_order_guard_status": "pass",
       "guard_error_count": 0
     },
     "calculation_post_owner_plan_renderer_sync": true,
     "direct_app_mcp_gitnexus_tool_surface": {
-      "checked_at": "2026-06-10T21:25:00+08:00",
+      "checked_at": "2026-06-27T13:05:14+08:00",
       "status": "tool_surface_unavailable_in_current_codex_app_session",
       "returned_primary_tool_count": 0,
       "returned_gitnexus_tool_count": 3,
@@ -293,12 +303,14 @@
       "direct_gitnexus_evidence_captured": false
     },
     "local_secret_hygiene": {
+      "checked_at": "2026-06-27T13:05:14+08:00",
       "status": "local_ignored_untracked_findings",
       "values_read": false,
       "secret_values_captured": false,
       "clears_secret_scan": false
     },
     "ledger_pnl_direct_governance_record": {
+      "checked_at": "2026-06-10T21:25:00+08:00",
       "status": "dry_run_candidate_only",
       "record_write_status": "not_requested",
       "post_write_ready": false,
@@ -311,6 +323,7 @@
       "formal_use_allowed": false
     },
     "calculation_owner_decision": {
+      "checked_at": "2026-08-06T22:30:00+08:00",
       "status": "owner_decision_required",
       "captured_decision_count": 0,
       "incomplete_decision_count": 8,
@@ -320,11 +333,11 @@
     }
   },
   "output_paths": {
-    "calculation_owner_decision_snapshot": "F:\\MOSS-V3\\docs\\audits\\2026-06-10-calculation-p1-owner-decision-snapshot.json",
-    "direct_app_mcp_gitnexus_tool_surface_snapshot": "F:\\MOSS-V3\\docs\\audits\\2026-06-10-direct-app-mcp-gitnexus-tool-surface-snapshot.json",
-    "local_secret_hygiene_snapshot": "F:\\MOSS-V3\\docs\\audits\\2026-06-10-local-secret-hygiene-snapshot.json",
-    "ledger_pnl_direct_governance_record_snapshot": "F:\\MOSS-V3\\docs\\audits\\2026-06-10-ledger-pnl-direct-governance-record-snapshot.json",
-    "system_audit_pulse_snapshot": "F:\\MOSS-V3\\docs\\audits\\2026-06-10-system-audit-pulse-snapshot.json"
+    "calculation_owner_decision_snapshot": "docs/audits/2026-06-10-calculation-p1-owner-decision-snapshot.json",
+    "direct_app_mcp_gitnexus_tool_surface_snapshot": "docs/audits/2026-06-10-direct-app-mcp-gitnexus-tool-surface-snapshot.json",
+    "local_secret_hygiene_snapshot": "docs/audits/2026-06-10-local-secret-hygiene-snapshot.json",
+    "ledger_pnl_direct_governance_record_snapshot": "docs/audits/2026-06-10-ledger-pnl-direct-governance-record-snapshot.json",
+    "system_audit_pulse_snapshot": "docs/audits/2026-06-10-system-audit-pulse-snapshot.json"
   },
   "boundary": "This monitoring snapshot refreshes read-only audit artifacts and runs the read-only pulse/completion verifier. It does not write DuckDB or governance records, read or rotate secret values, capture owner approval, approve metrics or pages, certify routes, clear secret scans, or promote candidate data."
 }

@@ -63,3 +63,5 @@
 - owner/governance 跟进包不是正式审批文件，也不授权 Ledger PnL `--write`。
 - 本摘要不是正式审批文件。
 Historical 2026-06-10 guard evidence was 21 passed for completion contracts and 7 passed for monitoring verifier. The 2026-08-06 P1 refresh updates the active target to `calculation_prework_p1_count=8`; current verification results must be read from the branch validation record. This is technical evidence only, not business approval.
+
+Current routing counters are `follow_up_packet_count=5`, `follow_up_brief_blocker_count=5`, `calculation_prework_p1_count=8`, and `pulse_completion_state=not_complete`. This package does not authorize Ledger PnL `--write`.

@@ -15,6 +15,23 @@ MONITORING_SNAPSHOT = (
     / "audits"
     / "2026-06-10-system-audit-monitoring-snapshot.json"
 )
+EXPECTED_SECURITY_SCAN_ERRORS = [
+    (
+        "local-secret-hygiene required input artifact is missing: "
+        "test_output/security-scans/osv-report.json"
+    ),
+    (
+        "local-secret-hygiene required input artifact is missing: "
+        "test_output/security-scans/gitleaks-report.json"
+    ),
+]
+EXPECTED_PULSE_DRIFT_ERRORS = [
+    *EXPECTED_SECURITY_SCAN_ERRORS,
+    "strict_gate_matrix.status expected 'pass', got 'fail'",
+    "strict_gate_matrix.strict_pass_gate_count expected 0, got 1",
+    "strict_gate_matrix.unexpected_gate_count expected 0, got 1",
+    "route_scope.visible_unseeded_route_count expected 0, got 1",
+]
 
 
 def test_write_json_preserves_existing_file_when_replace_fails(
@@ -70,9 +87,9 @@ def test_system_audit_monitoring_refresh_keeps_all_boundaries() -> None:
     }
     assert report["refresh_results"]["calculation_owner_decision"] == {
         "status": "owner_decision_required",
-        "open_decision_count": 10,
+        "open_decision_count": 8,
         "captured_decision_count": 0,
-        "incomplete_decision_count": 10,
+        "incomplete_decision_count": 8,
         "invalid_selected_decision_count": 0,
         "invalid_status_count": 0,
         "drift_error_count": 0,
@@ -108,7 +125,7 @@ def test_system_audit_monitoring_refresh_keeps_all_boundaries() -> None:
     assert report["refresh_results"]["ledger_pnl_direct_governance_record"][
         "closure_approved"
     ] is False
-    assert report["completion_verification"]["status"] == "pass"
+    assert report["completion_verification"]["status"] == "fail"
     assert (
         report["completion_verification"]["calculation_packet_execution_anchor_ready"]
         is True
@@ -235,8 +252,9 @@ def test_system_audit_monitoring_refresh_keeps_all_boundaries() -> None:
         report["completion_verification"]["follow_up_completion_order_status"] == "pass"
     )
     assert report["completion_verification"]["follow_up_completion_order_error_count"] == 0
-    assert report["completion_verification"]["error_count"] == 0
-    assert report["pulse"]["status"] == "pass"
+    assert report["completion_verification"]["error_count"] == 2
+    assert report["completion_verification"]["errors"] == EXPECTED_SECURITY_SCAN_ERRORS
+    assert report["pulse"]["status"] == "fail"
     assert report["pulse"]["completion_state"] == "not_complete"
     assert report["pulse"]["open_blocker_count"] == 5
     assert report["pulse"]["next_blocker_id"] == "calculation-display-p1-decisions"
@@ -247,7 +265,8 @@ def test_system_audit_monitoring_refresh_keeps_all_boundaries() -> None:
         "python scripts\\refresh_calculation_p1_owner_decision_snapshot.py "
         "--require-owner-decisions-captured"
     )
-    assert report["pulse"]["drift_error_count"] == 0
+    assert report["pulse"]["drift_error_count"] == 6
+    assert report["pulse"]["drift_errors"] == EXPECTED_PULSE_DRIFT_ERRORS
     assert report["blocker_intake_board"]["status"] == "open_external_input_required"
     assert report["blocker_intake_board"]["blocker_count"] == 5
     assert report["blocker_intake_board"]["completion_order"] == [
@@ -276,15 +295,15 @@ def test_system_audit_monitoring_refresh_keeps_all_boundaries() -> None:
         "certifies_routes": False,
     }
     assert "does not approve metrics" in report["blocker_intake_board"]["boundary"]
-    assert report["strict_gate_matrix"]["status"] == "pass"
+    assert report["strict_gate_matrix"]["status"] == "fail"
     assert report["strict_gate_matrix"]["full_score_ready"] is False
     assert report["strict_gate_matrix"]["open_blocker_count"] == 5
     assert report["strict_gate_matrix"]["completion_order_guard_status"] == "pass"
     assert report["strict_gate_matrix"]["completion_order_guard_error_count"] == 0
     assert report["strict_gate_matrix"]["gate_count"] == 8
     assert report["strict_gate_matrix"]["expected_blocked_gate_count"] == 8
-    assert report["strict_gate_matrix"]["strict_pass_gate_count"] == 0
-    assert report["strict_gate_matrix"]["unexpected_gate_count"] == 0
+    assert report["strict_gate_matrix"]["strict_pass_gate_count"] == 1
+    assert report["strict_gate_matrix"]["unexpected_gate_count"] == 1
     assert report["strict_gate_matrix"]["guard_error_count"] == 0
     assert report["strict_gate_matrix"]["guard_errors"] == []
     assert {
@@ -306,16 +325,16 @@ def test_system_audit_monitoring_refresh_keeps_all_boundaries() -> None:
         report["pulse"]["next_blocker_detail"]
     )
     assert report["latest_session_recheck"]["strict_gate_matrix"] == {
-        "status": "pass",
+        "status": "fail",
         "gate_count": 8,
-        "strict_pass_gate_count": 0,
-        "unexpected_gate_count": 0,
+        "strict_pass_gate_count": 1,
+        "unexpected_gate_count": 1,
         "completion_order_guard_status": "pass",
         "guard_error_count": 0,
     }
     assert report["latest_session_recheck"]["direct_app_mcp_gitnexus_tool_surface"][
         "checked_at"
-    ] == "2026-06-10T21:25:00+08:00"
+    ] == "2026-06-27T13:05:14+08:00"
     assert report["latest_session_recheck"]["direct_app_mcp_gitnexus_tool_surface"][
         "returned_primary_tool_count"
     ] == 0
@@ -366,6 +385,50 @@ def test_system_audit_monitoring_refresh_keeps_all_boundaries() -> None:
     assert "read or rotate secret values" in report["boundary"]
 
 
+def test_system_audit_monitoring_refresh_locks_current_p1_counts_as_literals() -> None:
+    report = monitor.build_monitoring_snapshot(
+        generated_at="2026-08-06T22:30:00+08:00",
+        gitnexus_tool_names=[
+            "codex_app.handoff_thread",
+            "codex_app.fork_thread",
+            "codex_app.automation_update",
+        ],
+    )
+
+    calculation = report["refresh_results"]["calculation_owner_decision"]
+    assert calculation["open_decision_count"] == 8
+    assert calculation["incomplete_decision_count"] == 8
+    assert report["pulse"]["next_blocker_detail"]["required_output_count"] == 9
+    assert report["blocker_intake_board"]["next_blocker_detail"][
+        "required_output_count"
+    ] == 9
+
+
+def test_system_audit_monitoring_refresh_uses_blocker_evidence_timestamps() -> None:
+    report = monitor.build_monitoring_snapshot(
+        generated_at="2026-08-06T22:30:00+08:00",
+    )
+
+    recheck = report["latest_session_recheck"]
+    assert recheck["checked_at"] == "2026-08-06T22:30:00+08:00"
+    assert recheck["calculation_owner_decision"]["checked_at"] == (
+        "2026-08-06T22:30:00+08:00"
+    )
+    assert recheck["ledger_pnl_direct_governance_record"]["checked_at"] == (
+        "2026-06-10T21:25:00+08:00"
+    )
+    assert recheck["direct_app_mcp_gitnexus_tool_surface"]["checked_at"] == (
+        "2026-06-27T13:05:14+08:00"
+    )
+    assert recheck["local_secret_hygiene"]["checked_at"] == (
+        "2026-06-27T13:05:14+08:00"
+    )
+    assert report["repo_root"] == "."
+    assert report["output_paths"]["system_audit_pulse_snapshot"] == (
+        "docs/audits/2026-06-10-system-audit-pulse-snapshot.json"
+    )
+
+
 def test_system_audit_monitoring_refresh_does_not_read_stale_strict_gate_summary(
     monkeypatch,
 ) -> None:
@@ -383,11 +446,11 @@ def test_system_audit_monitoring_refresh_does_not_read_stale_strict_gate_summary
         ],
     )
 
-    assert report["pulse"]["status"] == "pass"
-    assert report["pulse"]["drift_error_count"] == 0
-    assert report["strict_gate_matrix"]["status"] == "pass"
+    assert report["pulse"]["status"] == "fail"
+    assert report["pulse"]["drift_errors"] == EXPECTED_PULSE_DRIFT_ERRORS
+    assert report["strict_gate_matrix"]["status"] == "fail"
     assert report["strict_gate_matrix"]["open_blocker_count"] == 5
-    assert report["strict_gate_matrix"]["strict_pass_gate_count"] == 0
+    assert report["strict_gate_matrix"]["strict_pass_gate_count"] == 1
 
 
 def test_system_audit_monitoring_refresh_does_not_reuse_stale_monitoring_failure(
@@ -417,10 +480,12 @@ def test_system_audit_monitoring_refresh_does_not_reuse_stale_monitoring_failure
         ],
     )
 
-    assert report["completion_verification"]["status"] == "pass"
-    assert report["completion_verification"]["errors"] == []
-    assert report["pulse"]["status"] == "pass"
-    assert report["pulse"]["drift_errors"] == []
+    assert report["completion_verification"]["status"] == "fail"
+    assert report["completion_verification"]["errors"] == EXPECTED_SECURITY_SCAN_ERRORS
+    assert "stale monitoring failure" not in report["completion_verification"]["errors"]
+    assert report["pulse"]["status"] == "fail"
+    assert report["pulse"]["drift_errors"] == EXPECTED_PULSE_DRIFT_ERRORS
+    assert "stale monitoring failure" not in report["pulse"]["drift_errors"]
 
 
 def test_system_audit_monitoring_refresh_cli_writes_monitor_report_only(
@@ -442,11 +507,12 @@ def test_system_audit_monitoring_refresh_cli_writes_monitor_report_only(
     )
 
     payload = json.loads(output_path.read_text(encoding="utf-8"))
-    assert exit_code == 0
+    assert exit_code == 1
     assert payload["generated_at"] == "2026-06-10T21:25:00+08:00"
     assert payload["latest_session_recheck"]["checked_at"] == "2026-06-10T21:25:00+08:00"
     assert payload["write_outputs"] is False
-    assert payload["completion_verification"]["status"] == "pass"
+    assert payload["completion_verification"]["status"] == "fail"
+    assert payload["completion_verification"]["errors"] == EXPECTED_SECURITY_SCAN_ERRORS
     assert (
         payload["completion_verification"]["calculation_packet_execution_anchor_ready"]
         is True
@@ -558,7 +624,8 @@ def test_system_audit_monitoring_refresh_cli_writes_monitor_report_only(
     assert (
         payload["completion_verification"]["follow_up_completion_order_status"] == "pass"
     )
-    assert payload["pulse"]["status"] == "pass"
+    assert payload["pulse"]["status"] == "fail"
+    assert payload["pulse"]["drift_errors"] == EXPECTED_PULSE_DRIFT_ERRORS
     assert payload["pulse"]["calculation_post_owner_plan_renderer_sync"] is True
     assert payload["pulse"]["next_blocker_id"] == "calculation-display-p1-decisions"
     assert payload["pulse"]["next_blocker_detail"]["strict_gate_command"] == (
@@ -577,7 +644,7 @@ def test_system_audit_monitoring_refresh_cli_writes_monitor_report_only(
     assert payload["blocker_intake_board"]["next_blocker_detail"] == (
         payload["pulse"]["next_blocker_detail"]
     )
-    assert payload["strict_gate_matrix"]["strict_pass_gate_count"] == 0
+    assert payload["strict_gate_matrix"]["strict_pass_gate_count"] == 1
     assert payload["strict_gate_matrix"]["completion_order_guard_status"] == "pass"
     assert payload["strict_gate_matrix"]["guard_error_count"] == 0
 
@@ -589,10 +656,10 @@ def test_system_audit_monitoring_refresh_preserves_existing_tool_surface_observa
 
     assert report["latest_session_recheck"]["direct_app_mcp_gitnexus_tool_surface"][
         "checked_at"
-    ] == "2026-06-10T21:25:00+08:00"
+    ] == "2026-06-27T13:05:14+08:00"
     assert report["latest_session_recheck"]["direct_app_mcp_gitnexus_tool_surface"][
         "returned_gitnexus_tool_count"
-    ] == 3
+    ] == 0
     assert report["latest_session_recheck"]["direct_app_mcp_gitnexus_tool_surface"][
         "returned_moss_general_tool_count"
     ] == 0

@@ -1,7 +1,7 @@
 {
   "report_kind": "system_audit_completion_snapshot",
-  "generated_at": "2026-06-10T21:25:00+08:00",
-  "repo_root": "F:\\MOSS-V3",
+  "generated_at": "2026-08-06T22:30:00+08:00",
+  "repo_root": ".",
   "audit_date": "2026-06-10",
   "status": {
     "overall": "not_complete",
@@ -108,7 +108,7 @@
     {
       "blocker_id": "direct-app-mcp-gitnexus-evidence",
       "status": "not_complete",
-      "last_checked_at": "2026-06-10T21:25:00+08:00",
+      "last_checked_at": "2026-06-27T13:05:14+08:00",
       "required_evidence": [
         "fresh Codex App tool surface exposes expected MOSS MCP tools",
         "fresh Codex App tool surface exposes GitNexus tools",
@@ -128,7 +128,7 @@
     {
       "blocker_id": "local-secret-hygiene",
       "status": "not_complete",
-      "last_checked_at": "2026-06-10T21:25:00+08:00",
+      "last_checked_at": "2026-06-27T13:05:14+08:00",
       "required_evidence": [
         "environment owner rotates, removes, or accepts local-only config/.env findings outside the repository",
         "clean-runner gitleaks passes or records accepted local-only findings",

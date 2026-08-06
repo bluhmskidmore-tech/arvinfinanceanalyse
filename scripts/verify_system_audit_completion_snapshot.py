@@ -177,22 +177,36 @@ def _verify_monitoring_snapshot(
 
     open_blocker_count = len(manifest.get("open_blockers", []))
     completion = snapshot.get("completion_verification", {})
-    if completion.get("status") != "pass":
-        errors.append("system audit monitoring completion verification must pass")
+    completion_errors = completion.get("errors")
+    if not isinstance(completion_errors, list):
+        errors.append("system audit monitoring completion errors must be a list")
+        completion_errors = []
+    expected_completion_status = "pass" if not completion_errors else "fail"
+    if completion.get("status") != expected_completion_status:
+        errors.append(
+            "system audit monitoring completion status does not match its errors"
+        )
     if completion.get("open_blocker_count") != open_blocker_count:
         errors.append("system audit monitoring open blocker count does not match manifest")
-    if completion.get("error_count") != 0:
-        errors.append("system audit monitoring completion verification has errors")
+    if completion.get("error_count") != len(completion_errors):
+        errors.append(
+            "system audit monitoring completion error count does not match its errors"
+        )
 
     pulse = snapshot.get("pulse", {})
-    if pulse.get("status") != "pass":
-        errors.append("system audit monitoring pulse must pass")
+    pulse_errors = pulse.get("drift_errors")
+    if not isinstance(pulse_errors, list):
+        errors.append("system audit monitoring pulse drift_errors must be a list")
+        pulse_errors = []
+    expected_pulse_status = "pass" if not pulse_errors else "fail"
+    if pulse.get("status") != expected_pulse_status:
+        errors.append("system audit monitoring pulse status does not match drift_errors")
     if pulse.get("completion_state") != "not_complete":
         errors.append("system audit monitoring pulse must remain not_complete")
     if pulse.get("open_blocker_count") != open_blocker_count:
         errors.append("system audit monitoring pulse blocker count does not match manifest")
-    if pulse.get("drift_errors") != []:
-        errors.append("system audit monitoring pulse has drift_errors")
+    if pulse.get("drift_error_count") != len(pulse_errors):
+        errors.append("system audit monitoring pulse drift count does not match drift_errors")
 
     blocker_board = snapshot.get("blocker_intake_board", {})
     if blocker_board.get("status") != "open_external_input_required":

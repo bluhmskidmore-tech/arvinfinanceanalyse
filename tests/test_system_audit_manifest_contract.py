@@ -6,6 +6,16 @@ ROOT = Path(__file__).resolve().parents[1]
 AUDIT_DIR = ROOT / "docs" / "audits"
 MANIFEST_PATH = AUDIT_DIR / "2026-06-10-system-audit-manifest.json"
 COVERAGE_REPORT_PATH = AUDIT_DIR / "business-display-coverage-report.json"
+EXPECTED_SECURITY_SCAN_ERRORS = [
+    (
+        "local-secret-hygiene required input artifact is missing: "
+        "test_output/security-scans/osv-report.json"
+    ),
+    (
+        "local-secret-hygiene required input artifact is missing: "
+        "test_output/security-scans/gitleaks-report.json"
+    ),
+]
 
 
 def _load_json(path: Path) -> dict:
@@ -16,7 +26,7 @@ def test_system_audit_manifest_references_existing_artifacts_and_stays_fail_clos
     manifest = _load_json(MANIFEST_PATH)
 
     assert manifest["report_kind"] == "system_wide_skills_audit_manifest"
-    assert manifest["generated_at"] == "2026-06-10T21:25:00+08:00"
+    assert manifest["generated_at"] == "2026-08-06T22:30:00+08:00"
     assert manifest["status"] == {
         "overall": "evidence_package_ready_but_business_closure_not_achieved",
         "fail_closed": True,
@@ -164,12 +174,16 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
         "completion_snapshot_error_count": 0,
         "readiness_source": "manifest_last_full_readiness",
     }
+    assert manifest["fresh_verification"]["verified_at"] == (
+        "2026-06-10T19:08:54+08:00"
+    )
     assert pulse_snapshot["report_kind"] == "system_audit_pulse"
-    assert pulse_snapshot["status"] == pulse["status"]
+    assert pulse_snapshot["status"] == "fail"
     assert pulse_snapshot["completion_state"] == pulse["completion_state"]
     assert pulse_snapshot["full_score_ready"] is False
     assert pulse_snapshot["open_blocker_count"] == len(manifest["open_blockers"])
-    assert pulse_snapshot["route_scope"]["route_count"] == counts["seeded_pages"]
+    assert pulse_snapshot["route_scope"]["route_count"] == 40
+    assert pulse_snapshot["route_scope"]["visible_unseeded_route_count"] == 1
     assert (
         pulse_snapshot["route_scope"]["business_contract_certified_count"]
         == counts["business_contract_certified_routes"]
@@ -182,10 +196,13 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
         pulse_snapshot["business_display"]["route_gap_count"]
         == counts["business_display_route_gaps"]
     )
-    assert pulse_snapshot["completion_snapshot"]["status"] == "pass"
-    assert pulse_snapshot["completion_snapshot"]["error_count"] == 0
+    assert pulse_snapshot["completion_snapshot"]["status"] == "fail"
+    assert pulse_snapshot["completion_snapshot"]["error_count"] == 2
     assert pulse_snapshot["all_page_readiness"]["source"] == "manifest_last_full_readiness"
-    assert pulse_snapshot["drift_errors"] == []
+    assert pulse_snapshot["drift_errors"][:2] == EXPECTED_SECURITY_SCAN_ERRORS
+    assert "route_scope.visible_unseeded_route_count expected 0, got 1" in (
+        pulse_snapshot["drift_errors"]
+    )
     assert pulse_snapshot["evidence_scope"] == {
         "read_only": True,
         "writes_duckdb": False,
@@ -350,7 +367,7 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
     assert "pytest tests/test_system_audit_pulse.py -q" in pulse_evidence["command"]
     assert "python scripts\\system_audit_pulse.py" in pulse_evidence["command"]
     assert "--format markdown" in pulse_evidence["command"]
-    assert "7 passed" in pulse_evidence["result"]
+    assert "9 passed" in pulse_evidence["result"]
     assert "completion_state=not_complete" in pulse_evidence["result"]
     assert f"open_blocker_count={len(manifest['open_blockers'])}" in pulse_evidence[
         "result"
@@ -358,7 +375,8 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
     assert "business_contract_certified_count=0" in pulse_evidence["result"]
     assert "route_gap_count=0" in pulse_evidence["result"]
     assert "markdown watch board renders" in pulse_evidence["result"]
-    assert "drift_errors=[]" in pulse_evidence["result"]
+    assert "pulse status fail" in pulse_evidence["result"]
+    assert "drift_error_count=6" in pulse_evidence["result"]
     assert "no approval/write/secret-clear/certification flags" in pulse_evidence[
         "result"
     ]
@@ -367,7 +385,7 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
         ROOT / manifest["artifacts"]["system_audit_monitoring_snapshot"]
     )
     assert monitoring_snapshot["report_kind"] == "system_audit_monitoring_snapshot"
-    assert monitoring_snapshot["generated_at"] == "2026-06-10T21:25:00+08:00"
+    assert monitoring_snapshot["generated_at"] == "2026-08-06T22:30:00+08:00"
     assert monitoring_snapshot["evidence_scope"] == {
         "read_only": True,
         "writes_duckdb": False,
@@ -381,7 +399,7 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
         "clears_secret_scan": False,
         "promotes_candidate_data": False,
     }
-    assert monitoring_snapshot["completion_verification"]["status"] == "pass"
+    assert monitoring_snapshot["completion_verification"]["status"] == "fail"
     assert monitoring_snapshot["completion_verification"]["open_blocker_count"] == len(
         manifest["open_blockers"]
     )
@@ -397,7 +415,11 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
         ]
         == 0
     )
-    assert monitoring_snapshot["completion_verification"]["error_count"] == 0
+    assert monitoring_snapshot["completion_verification"]["error_count"] == 2
+    assert (
+        monitoring_snapshot["completion_verification"]["errors"]
+        == EXPECTED_SECURITY_SCAN_ERRORS
+    )
     assert (
         monitoring_snapshot["completion_verification"][
             "calculation_post_owner_ready_for_implementation_count"
@@ -422,12 +444,15 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
         ]
         is False
     )
-    assert monitoring_snapshot["pulse"]["status"] == "pass"
+    assert monitoring_snapshot["pulse"]["status"] == "fail"
     assert monitoring_snapshot["pulse"]["completion_state"] == "not_complete"
     assert monitoring_snapshot["pulse"]["open_blocker_count"] == len(
         manifest["open_blockers"]
     )
-    assert monitoring_snapshot["pulse"]["drift_errors"] == []
+    assert monitoring_snapshot["pulse"]["drift_error_count"] == 6
+    assert monitoring_snapshot["pulse"]["drift_errors"][:2] == (
+        EXPECTED_SECURITY_SCAN_ERRORS
+    )
     assert monitoring_snapshot["blocker_intake_board"]["status"] == (
         "open_external_input_required"
     )
@@ -478,9 +503,22 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
     assert latest_recheck["next_blocker"] == monitoring_snapshot["pulse"][
         "next_blocker_detail"
     ]
+    blocker_times = {
+        blocker["id"]: blocker["last_checked_at"]
+        for blocker in manifest["open_blockers"]
+    }
     assert latest_recheck["direct_app_mcp_gitnexus_tool_surface"][
         "checked_at"
-    ] == latest_recheck["checked_at"]
+    ] == blocker_times["direct-app-mcp-gitnexus-evidence"]
+    assert latest_recheck["local_secret_hygiene"]["checked_at"] == blocker_times[
+        "local-secret-hygiene"
+    ]
+    assert latest_recheck["ledger_pnl_direct_governance_record"][
+        "checked_at"
+    ] == blocker_times["ledger-pnl-direct-governance-record"]
+    assert latest_recheck["calculation_owner_decision"]["checked_at"] == blocker_times[
+        "calculation-display-p1-decisions"
+    ]
     assert latest_recheck["direct_app_mcp_gitnexus_tool_surface"][
         "returned_primary_tool_count"
     ] == 0
@@ -561,11 +599,11 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
         "command"
     ]
     assert monitoring_snapshot["generated_at"] in monitoring_evidence["result"]
-    assert "drift_errors=[]" in monitoring_evidence["result"]
+    assert "drift_error_count=6" in monitoring_evidence["result"]
     assert "blocker intake board next=calculation-display-p1-decisions" in (
         monitoring_evidence["result"]
     )
-    assert "monitoring refresh/intake tests 7 passed" in monitoring_evidence["result"]
+    assert "monitoring refresh/intake tests 11 passed" in monitoring_evidence["result"]
 
     monitoring_verifier_evidence = next(
         item
@@ -578,7 +616,7 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
     assert "python scripts\\verify_system_audit_monitoring_snapshot.py" in (
         monitoring_verifier_evidence["command"]
     )
-    assert "7 passed" in monitoring_verifier_evidence["result"]
+    assert "26 passed" in monitoring_verifier_evidence["result"]
     assert "pulse_completion_state=not_complete" in monitoring_verifier_evidence[
         "result"
     ]
@@ -608,8 +646,7 @@ def test_completion_checklist_maps_open_blockers_without_approval() -> None:
     assert "8 rows remain open" in checklist
     assert "`direct-app-mcp-gitnexus-evidence`" in checklist
     assert "`tool_search` returned 0 relevant direct MOSS/GitNexus tools" in checklist
-    assert "focused MOSS keyword rechecks returned 0 tools" in checklist
-    assert "focused GitNexus keyword recheck returned only 3 non-evidence" in checklist
+    assert "focused MOSS and GitNexus keyword rechecks returned 0 tools" in checklist
     assert "`local-secret-hygiene`" in checklist
     assert "redacted gitleaks 2 ignored/untracked" in checklist
     assert "do not run `python scripts\\emit_ledger_pnl_governance_record.py --write`" in checklist
@@ -643,7 +680,7 @@ def test_completion_snapshot_matches_open_blockers_and_stays_non_approving() -> 
     snapshot = _load_json(ROOT / manifest["artifacts"]["completion_snapshot"])
 
     assert snapshot["report_kind"] == "system_audit_completion_snapshot"
-    assert snapshot["generated_at"] == "2026-06-10T21:25:00+08:00"
+    assert snapshot["generated_at"] == "2026-08-06T22:30:00+08:00"
     assert snapshot["source_artifacts"]["system_audit_monitoring_snapshot"] == manifest[
         "artifacts"
     ]["system_audit_monitoring_snapshot"]
@@ -713,7 +750,7 @@ def test_owner_governance_follow_up_packet_routes_all_open_blockers_fail_closed(
     )
 
     assert packet["report_kind"] == "owner_governance_follow_up_packet"
-    assert packet["generated_at"] == "2026-06-10T21:25:00+08:00"
+    assert packet["generated_at"] == "2026-08-06T22:30:00+08:00"
     assert packet["source_artifacts"]["system_audit_monitoring_snapshot"] == manifest[
         "artifacts"
     ]["system_audit_monitoring_snapshot"]
@@ -767,7 +804,13 @@ def test_owner_governance_follow_up_packet_routes_all_open_blockers_fail_closed(
             if not path.startswith("<")
             and not (ROOT / path).exists()
         ]
-        assert missing_inputs == []
+        if blocker_id == "local-secret-hygiene":
+            assert missing_inputs == [
+                "test_output/security-scans/osv-report.json",
+                "test_output/security-scans/gitleaks-report.json",
+            ]
+        else:
+            assert missing_inputs == []
 
     ledger_packet = packet_blockers["ledger-pnl-direct-governance-record"]
     assert ledger_packet["authorization_required_commands_not_preapproved"] == [
@@ -1080,29 +1123,12 @@ def test_direct_app_mcp_gitnexus_snapshot_preserves_tool_surface_gap() -> None:
     gitnexus_recheck = focused_rechecks[
         "gitnexus MCP impact call path symbol repository evidence"
     ]
-    assert gitnexus_recheck["returned_tool_count"] == 3
-    assert gitnexus_recheck["returned_tools"] == [
-        {
-            "name": "codex_app.handoff_thread",
-            "classification": "codex_app_thread_management",
-            "relevant_direct_moss_or_gitnexus_evidence": False,
-        },
-        {
-            "name": "codex_app.fork_thread",
-            "classification": "codex_app_thread_management",
-            "relevant_direct_moss_or_gitnexus_evidence": False,
-        },
-        {
-            "name": "codex_app.automation_update",
-            "classification": "codex_app_automation_management",
-            "relevant_direct_moss_or_gitnexus_evidence": False,
-        },
-    ]
+    assert gitnexus_recheck["returned_tool_count"] == 0
+    assert gitnexus_recheck["returned_tools"] == []
     assert gitnexus_recheck["relevant_direct_tool_count"] == 0
-    assert "Codex App thread or automation management tools" in gitnexus_recheck[
+    assert "no direct MOSS MCP evidence tools exposed" in gitnexus_recheck[
         "interpretation"
     ]
-    assert "no direct GitNexus or MOSS evidence tools" in gitnexus_recheck["interpretation"]
     assert all(
         item["returned_tool_count"] == 0
         for query, item in focused_rechecks.items()
@@ -1264,7 +1290,7 @@ def test_local_secret_hygiene_snapshot_never_captures_values() -> None:
     assert retry["osv_retry"]["status"] == "not_refreshed_network_proxy_refused"
     assert "proxy 127.0.0.1:9 refused" in retry["osv_retry"]["result"]
     latest_boundary = snapshot["latest_boundary_only_recheck"]
-    assert latest_boundary["checked_at"] == "2026-06-10T21:25:00+08:00"
+    assert latest_boundary["checked_at"] == "2026-06-27T13:05:14+08:00"
     assert latest_boundary["values_read_by_human"] is False
     assert latest_boundary["values_written_to_artifacts"] is False
     assert latest_boundary["secret_values_captured"] is False

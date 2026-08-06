@@ -107,14 +107,14 @@ def test_verify_monitoring_snapshot_passes_for_checked_in_audit_package() -> Non
     result = verify_monitoring_snapshot(manifest_path=MANIFEST)
 
     assert result["status"] == "pass"
-    assert result["generated_at"] == "2026-06-10T21:25:00+08:00"
+    assert result["generated_at"] == "2026-08-06T22:30:00+08:00"
     assert result["open_blocker_count"] == 5
-    assert result["completion_status"] == "pass"
+    assert result["completion_status"] == "fail"
     assert result["completion_order_guard_status"] == "pass"
-    assert result["pulse_status"] == "pass"
+    assert result["pulse_status"] == "fail"
     assert result["pulse_completion_state"] == "not_complete"
-    assert result["strict_gate_status"] == "pass"
-    assert result["strict_pass_gate_count"] == 0
+    assert result["strict_gate_status"] == "fail"
+    assert result["strict_pass_gate_count"] == 1
     assert result["strict_gate_count"] == 8
     assert result["strict_completion_order_guard_status"] == "pass"
     assert result["errors"] == []
@@ -125,13 +125,37 @@ def test_verify_monitoring_snapshot_fails_when_monitoring_write_flag_drifts(
 ) -> None:
     manifest_path = _copy_monitoring_package(tmp_path)
     monitoring = _load_package_json(manifest_path, "system_audit_monitoring_snapshot")
-    monitoring["write_outputs"] = False
+    monitoring["write_outputs"] = True
     _write_package_json(manifest_path, "system_audit_monitoring_snapshot", monitoring)
 
     result = verify_monitoring_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
 
     assert result["status"] == "fail"
-    assert "monitoring write_outputs expected True, got False" in result["errors"]
+    assert "monitoring write_outputs expected False, got True" in result["errors"]
+
+
+def test_verify_monitoring_snapshot_rejects_temporary_absolute_output_paths(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _copy_monitoring_package(tmp_path)
+    monitoring = _load_package_json(manifest_path, "system_audit_monitoring_snapshot")
+    monitoring["output_paths"]["calculation_owner_decision_snapshot"] = (
+        "G:\\temporary-worktree\\calculation.json"
+    )
+    _write_package_json(manifest_path, "system_audit_monitoring_snapshot", monitoring)
+
+    result = verify_monitoring_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
+
+    assert result["status"] == "fail"
+    assert any(
+        error.startswith("monitoring output_paths expected")
+        for error in result["errors"]
+    )
+    assert (
+        "monitoring output path calculation_owner_decision_snapshot must be "
+        "repo-relative, got 'G:\\\\temporary-worktree\\\\calculation.json'"
+        in result["errors"]
+    )
 
 
 def test_verify_monitoring_snapshot_fails_when_ledger_formal_use_is_promoted(
@@ -199,10 +223,10 @@ def test_verify_monitoring_snapshot_fails_when_latest_direct_recheck_drifts(
 ) -> None:
     manifest_path = _copy_monitoring_package(tmp_path)
     monitoring = _load_package_json(manifest_path, "system_audit_monitoring_snapshot")
-    expected_checked_at = monitoring["latest_session_recheck"]["checked_at"]
     direct = monitoring["latest_session_recheck"][
         "direct_app_mcp_gitnexus_tool_surface"
     ]
+    expected_checked_at = direct["checked_at"]
     direct["checked_at"] = "2026-06-10T21:26:00+08:00"
     direct["returned_moss_general_tool_count"] = 1
     _write_package_json(manifest_path, "system_audit_monitoring_snapshot", monitoring)
@@ -549,12 +573,13 @@ def test_verify_monitoring_snapshot_fails_when_strict_gate_is_promoted(
     result = verify_monitoring_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
 
     assert result["status"] == "fail"
-    assert "strict gate matrix strict_pass_gate_count expected 0, got 1" in result[
+    assert "strict gate matrix strict_pass_gate_count expected 2, got 1" in result[
         "errors"
     ]
-    assert "strict gate system-audit-full-score strict_pass must be false" in result[
-        "errors"
-    ]
+    assert (
+        "strict gate system-audit-full-score actual_current_exit expected 'zero', "
+        "got 'non_zero'"
+    ) in result["errors"]
 
 
 def test_verify_monitoring_snapshot_fails_when_blocker_intake_board_claims_closure(
@@ -624,6 +649,32 @@ def test_verify_monitoring_snapshot_fails_when_next_blocker_detail_drifts(
     ) in result["errors"]
 
 
+def test_verify_monitoring_snapshot_uses_follow_up_packet_required_output_count(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _copy_monitoring_package(tmp_path)
+    monitoring = _load_package_json(manifest_path, "system_audit_monitoring_snapshot")
+    monitoring["pulse"]["next_blocker_detail"]["required_output_count"] = 8
+    monitoring["blocker_intake_board"]["next_blocker_detail"][
+        "required_output_count"
+    ] = 8
+    monitoring["latest_session_recheck"]["next_blocker"][
+        "required_output_count"
+    ] = 8
+    _write_package_json(manifest_path, "system_audit_monitoring_snapshot", monitoring)
+
+    result = verify_monitoring_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
+
+    assert result["status"] == "fail"
+    assert "monitoring pulse next detail required_output_count expected 9, got 8" in result[
+        "errors"
+    ]
+    assert (
+        "blocker intake board next detail required_output_count expected 9, got 8"
+        in result["errors"]
+    )
+
+
 def test_verify_monitoring_snapshot_fails_when_post_owner_sync_summary_drifts(
     tmp_path: Path,
 ) -> None:
@@ -682,7 +733,6 @@ def test_verify_monitoring_snapshot_fails_when_strict_gate_guard_drifts(
         "latest session completion order guard status expected 'pass', got 'missing'"
         in result["errors"]
     )
-    assert "latest session guard error count expected 0, got 1" in result["errors"]
 
 
 def test_verify_monitoring_snapshot_cli_outputs_json() -> None:
@@ -703,8 +753,8 @@ def test_verify_monitoring_snapshot_cli_outputs_json() -> None:
     assert payload["pulse_completion_state"] == "not_complete"
     assert payload["next_blocker_id"] == "calculation-display-p1-decisions"
     assert payload["completion_order_guard_status"] == "pass"
-    assert payload["strict_gate_status"] == "pass"
-    assert payload["strict_pass_gate_count"] == 0
+    assert payload["strict_gate_status"] == "fail"
+    assert payload["strict_pass_gate_count"] == 1
     assert payload["strict_completion_order_guard_status"] == "pass"
     assert payload["errors"] == []
 

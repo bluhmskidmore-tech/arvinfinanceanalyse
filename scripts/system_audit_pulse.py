@@ -11,17 +11,19 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.business_display_coverage_report import (
+from scripts.business_display_coverage_report import (  # noqa: E402
     build_report as build_business_display_coverage_report,
 )
-from scripts.codex_page_readiness import (
+from scripts.codex_page_readiness import (  # noqa: E402
     build_all_page_readiness_report,
     build_route_scope_classification_report,
 )
-from scripts.system_audit_blocker_intake_board import (
+from scripts.system_audit_blocker_intake_board import (  # noqa: E402
     build_board as build_blocker_intake_board,
 )
-from scripts.verify_system_audit_completion_snapshot import verify_completion_snapshot
+from scripts.verify_system_audit_completion_snapshot import (  # noqa: E402
+    verify_completion_snapshot,
+)
 
 
 DEFAULT_MANIFEST = ROOT / "docs" / "audits" / "2026-06-10-system-audit-manifest.json"
@@ -154,6 +156,14 @@ def _resolve_path(repo_root: Path, path_value: str) -> Path:
     return path if path.is_absolute() else repo_root / path
 
 
+def _repo_relative_identifier(path: Path, *, repo_root: Path) -> str:
+    resolved = Path(path).resolve()
+    try:
+        return resolved.relative_to(Path(repo_root).resolve()).as_posix()
+    except ValueError:
+        return str(resolved)
+
+
 def _strict_gate_summary(
     *,
     manifest: dict[str, Any],
@@ -183,7 +193,7 @@ def _strict_gate_summary(
     matrix = monitoring.get("strict_gate_matrix") or {}
     return {
         "status": matrix.get("status"),
-        "source": str(path),
+        "source": _repo_relative_identifier(path, repo_root=repo_root),
         "source_generated_at": monitoring.get("generated_at"),
         "completion_state": matrix.get("completion_state"),
         "full_score_ready": matrix.get("full_score_ready"),
@@ -325,7 +335,11 @@ def build_pulse(
     completion = (
         dict(completion_override)
         if completion_override is not None
-        else verify_completion_snapshot(manifest_path=manifest_path, repo_root=repo_root)
+        else verify_completion_snapshot(
+            manifest_path=manifest_path,
+            repo_root=repo_root,
+            verify_monitoring=False,
+        )
     )
     blocker_intake_board = build_blocker_intake_board(
         generated_at=generated_at,
@@ -446,8 +460,11 @@ def build_pulse(
     return {
         "report_kind": "system_audit_pulse",
         "generated_at": generated_at,
-        "repo_root": str(repo_root),
-        "manifest_path": str(manifest_path),
+        "repo_root": ".",
+        "manifest_path": _repo_relative_identifier(
+            manifest_path,
+            repo_root=repo_root,
+        ),
         "status": "pass" if not drift_errors else "fail",
         "full_score_ready": False,
         "completion_state": "not_complete" if open_blockers else "ready_for_completion_audit",

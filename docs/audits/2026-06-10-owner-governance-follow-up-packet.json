@@ -1,7 +1,7 @@
 {
   "report_kind": "owner_governance_follow_up_packet",
-  "generated_at": "2026-06-10T21:25:00+08:00",
-  "repo_root": "F:\\MOSS-V3",
+  "generated_at": "2026-08-06T22:30:00+08:00",
+  "repo_root": ".",
   "audit_date": "2026-06-10",
   "status": {
     "overall": "follow_up_required",
@@ -179,7 +179,7 @@
     {
       "blocker_id": "direct-app-mcp-gitnexus-evidence",
       "current_status": "not_complete",
-      "last_checked_at": "2026-06-10T21:25:00+08:00",
+      "last_checked_at": "2026-06-27T13:05:14+08:00",
       "responsible_owner_type": "engineering_tooling_owner",
       "required_input_artifacts": [
         "docs/audits/2026-06-10-direct-app-mcp-gitnexus-tool-surface-snapshot.json",
@@ -223,7 +223,7 @@
     {
       "blocker_id": "local-secret-hygiene",
       "current_status": "not_complete",
-      "last_checked_at": "2026-06-10T21:25:00+08:00",
+      "last_checked_at": "2026-06-27T13:05:14+08:00",
       "responsible_owner_type": "environment_owner_and_security_owner",
       "required_input_artifacts": [
         "docs/audits/2026-06-10-local-secret-hygiene-snapshot.json",

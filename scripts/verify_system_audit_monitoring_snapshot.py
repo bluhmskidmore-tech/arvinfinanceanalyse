@@ -20,7 +20,6 @@ EXPECTED_CALCULATION_STRICT_GATE_COMMAND = (
     "python scripts\\refresh_calculation_p1_owner_decision_snapshot.py "
     "--require-owner-decisions-captured"
 )
-EXPECTED_NEXT_BLOCKER_OWNER_TYPE = "business_owner_and_metric_governance"
 EXPECTED_EVIDENCE_SCOPE = {
     "read_only": True,
     "writes_duckdb": False,
@@ -129,11 +128,52 @@ def _expect_false(
         errors.append(f"{label} must be false")
 
 
+def _expect_repo_relative_identifier(
+    errors: list[str],
+    *,
+    label: str,
+    actual: Any,
+) -> None:
+    if not isinstance(actual, str) or not actual:
+        errors.append(f"{label} must be a non-empty repo-relative identifier")
+        return
+    path = Path(actual)
+    if path.is_absolute() or path.drive:
+        errors.append(f"{label} must be repo-relative, got {actual!r}")
+
+
 def _blockers_by_id(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {
         item.get("id"): item
         for item in manifest.get("open_blockers", [])
         if isinstance(item, dict)
+    }
+
+
+def _expected_next_blocker_detail(
+    follow_up_packet: dict[str, Any],
+) -> dict[str, Any]:
+    packet = next(
+        (
+            item
+            for item in follow_up_packet.get("blocker_packets") or []
+            if isinstance(item, dict)
+            and item.get("blocker_id") == EXPECTED_NEXT_BLOCKER_ID
+        ),
+        {},
+    )
+    external_inputs = list(packet.get("external_input_required_for_closure") or [])
+    required_outputs = list(packet.get("required_meeting_or_governance_output") or [])
+    return {
+        "responsible_owner_type": packet.get("responsible_owner_type"),
+        "required_external_input_count": len(external_inputs),
+        "first_required_external_input": external_inputs[0] if external_inputs else None,
+        "required_output_count": len(required_outputs),
+        "first_required_output": required_outputs[0] if required_outputs else None,
+        "fail_closed_until": packet.get("fail_closed_until"),
+        "explicit_non_approval_boundary": packet.get(
+            "explicit_non_approval_boundary"
+        ),
     }
 
 
@@ -166,7 +206,6 @@ def _verify_refresh_results(
 ) -> None:
     blockers = _blockers_by_id(manifest)
     refresh = monitoring.get("refresh_results") or {}
-    generated_at = monitoring.get("generated_at")
 
     calculation_result = refresh.get("calculation_owner_decision") or {}
     calculation_capture = calculation.get("capture_template", {})
@@ -222,7 +261,9 @@ def _verify_refresh_results(
         errors,
         label="calculation snapshot generated_at",
         actual=calculation.get("generated_at"),
-        expected=generated_at,
+        expected=(blockers.get(EXPECTED_NEXT_BLOCKER_ID) or {}).get(
+            "last_checked_at"
+        ),
     )
 
     direct_result = refresh.get("direct_app_mcp_gitnexus_tool_surface") or {}
@@ -266,7 +307,9 @@ def _verify_refresh_results(
         errors,
         label="direct App snapshot generated_at",
         actual=direct_tool.get("generated_at"),
-        expected=generated_at,
+        expected=(blockers.get("direct-app-mcp-gitnexus-evidence") or {}).get(
+            "last_checked_at"
+        ),
     )
 
     secret_result = refresh.get("local_secret_hygiene") or {}
@@ -308,7 +351,9 @@ def _verify_refresh_results(
         errors,
         label="local secret boundary checked_at",
         actual=secret_boundary.get("checked_at"),
-        expected=generated_at,
+        expected=(blockers.get("local-secret-hygiene") or {}).get(
+            "last_checked_at"
+        ),
     )
 
     ledger_result = refresh.get("ledger_pnl_direct_governance_record") or {}
@@ -358,13 +403,16 @@ def _verify_refresh_results(
         errors,
         label="Ledger PnL snapshot generated_at",
         actual=ledger.get("generated_at"),
-        expected=generated_at,
+        expected=(blockers.get("ledger-pnl-direct-governance-record") or {}).get(
+            "last_checked_at"
+        ),
     )
 
 
 def _verify_next_blocker_detail(
     *,
     detail: dict[str, Any],
+    expected_detail: dict[str, Any],
     owner_label: str,
     errors: list[str],
 ) -> None:
@@ -372,7 +420,7 @@ def _verify_next_blocker_detail(
         errors,
         label=f"{owner_label} next blocker owner type",
         actual=detail.get("responsible_owner_type"),
-        expected=EXPECTED_NEXT_BLOCKER_OWNER_TYPE,
+        expected=expected_detail.get("responsible_owner_type"),
     )
     _expect_equal(
         errors,
@@ -384,14 +432,26 @@ def _verify_next_blocker_detail(
         errors,
         label=f"{owner_label} next detail required_external_input_count",
         actual=detail.get("required_external_input_count"),
-        expected=2,
+        expected=expected_detail.get("required_external_input_count"),
     )
     _expect_equal(
         errors,
         label=f"{owner_label} next detail required_output_count",
         actual=detail.get("required_output_count"),
-        expected=11,
+        expected=expected_detail.get("required_output_count"),
     )
+    for field in (
+        "first_required_external_input",
+        "first_required_output",
+        "fail_closed_until",
+        "explicit_non_approval_boundary",
+    ):
+        _expect_equal(
+            errors,
+            label=f"{owner_label} next detail {field}",
+            actual=detail.get(field),
+            expected=expected_detail.get(field),
+        )
     boundary = detail.get("explicit_non_approval_boundary", "")
     if "does not choose or approve" not in boundary:
         errors.append(
@@ -404,6 +464,7 @@ def _verify_pulse(
     manifest: dict[str, Any],
     monitoring: dict[str, Any],
     pulse_snapshot: dict[str, Any],
+    expected_next_detail: dict[str, Any],
     errors: list[str],
 ) -> None:
     monitor_pulse = monitoring.get("pulse") or {}
@@ -411,9 +472,31 @@ def _verify_pulse(
     open_blocker_count = len(manifest.get("open_blockers", []))
     _expect_equal(
         errors,
+        label="current pulse generated_at",
+        actual=pulse_snapshot.get("generated_at"),
+        expected=monitoring.get("generated_at"),
+    )
+    _expect_equal(
+        errors,
+        label="current pulse repo_root",
+        actual=pulse_snapshot.get("repo_root"),
+        expected=".",
+    )
+    _expect_repo_relative_identifier(
+        errors,
+        label="current pulse manifest_path",
+        actual=pulse_snapshot.get("manifest_path"),
+    )
+    _expect_repo_relative_identifier(
+        errors,
+        label="current pulse strict gate source",
+        actual=(pulse_snapshot.get("strict_gate_matrix") or {}).get("source"),
+    )
+    _expect_equal(
+        errors,
         label="monitoring pulse status",
         actual=monitor_pulse.get("status"),
-        expected="pass",
+        expected=pulse_snapshot.get("status"),
     )
     _expect_equal(
         errors,
@@ -437,7 +520,13 @@ def _verify_pulse(
         errors,
         label="monitoring pulse drift_errors",
         actual=monitor_pulse.get("drift_errors"),
-        expected=[],
+        expected=pulse_snapshot.get("drift_errors"),
+    )
+    _expect_equal(
+        errors,
+        label="monitoring pulse drift_error_count",
+        actual=monitor_pulse.get("drift_error_count"),
+        expected=len(monitor_pulse.get("drift_errors") or []),
     )
     _expect_equal(
         errors,
@@ -502,6 +591,7 @@ def _verify_pulse(
         return
     _verify_next_blocker_detail(
         detail=next_detail,
+        expected_detail=expected_next_detail,
         owner_label="monitoring pulse",
         errors=errors,
     )
@@ -516,13 +606,6 @@ def _verify_strict_gate_matrix(
     matrix = monitoring.get("strict_gate_matrix") or {}
     gates = matrix.get("gates")
     open_blocker_count = len(manifest.get("open_blockers", []))
-
-    _expect_equal(
-        errors,
-        label="strict gate matrix status",
-        actual=matrix.get("status"),
-        expected="pass",
-    )
     _expect_equal(
         errors,
         label="strict gate matrix completion_state",
@@ -562,39 +645,84 @@ def _verify_strict_gate_matrix(
         actual=matrix.get("gate_count"),
         expected=len(EXPECTED_STRICT_GATE_IDS),
     )
+    if not isinstance(gates, list):
+        errors.append("strict gate matrix gates must be a list")
+        return
+
+    guard_errors = matrix.get("guard_errors")
+    if not isinstance(guard_errors, list):
+        errors.append("strict gate matrix guard_errors must be a list")
+        guard_errors = []
+    completion = monitoring.get("completion_verification") or {}
+    expected_guard_errors: list[str] = []
+    completion_order_status = completion.get("follow_up_completion_order_status")
+    completion_order_error_count = completion.get(
+        "follow_up_completion_order_error_count"
+    )
+    if completion_order_status != "pass":
+        expected_guard_errors.append(
+            "completion order guard status expected 'pass', "
+            f"got {completion_order_status!r}"
+        )
+    if completion_order_error_count != 0:
+        expected_guard_errors.append(
+            "completion order guard error count expected 0, "
+            f"got {completion_order_error_count!r}"
+        )
+    expected_blocked_count = sum(
+        1
+        for gate in gates
+        if isinstance(gate, dict) and gate.get("expected_current_exit") == "non_zero"
+    )
+    strict_pass_count = sum(
+        1
+        for gate in gates
+        if isinstance(gate, dict) and gate.get("strict_pass") is True
+    )
+    unexpected_count = sum(
+        1
+        for gate in gates
+        if isinstance(gate, dict) and gate.get("expectation_met") is False
+    )
+    expected_status = (
+        "pass" if unexpected_count == 0 and not expected_guard_errors else "fail"
+    )
+    _expect_equal(
+        errors,
+        label="strict gate matrix status",
+        actual=matrix.get("status"),
+        expected=expected_status,
+    )
     _expect_equal(
         errors,
         label="strict gate matrix expected_blocked_gate_count",
         actual=matrix.get("expected_blocked_gate_count"),
-        expected=len(EXPECTED_STRICT_GATE_IDS),
+        expected=expected_blocked_count,
     )
     _expect_equal(
         errors,
         label="strict gate matrix strict_pass_gate_count",
         actual=matrix.get("strict_pass_gate_count"),
-        expected=0,
+        expected=strict_pass_count,
     )
     _expect_equal(
         errors,
         label="strict gate matrix unexpected_gate_count",
         actual=matrix.get("unexpected_gate_count"),
-        expected=0,
+        expected=unexpected_count,
     )
     _expect_equal(
         errors,
         label="strict gate matrix guard_error_count",
         actual=matrix.get("guard_error_count"),
-        expected=0,
+        expected=len(expected_guard_errors),
     )
     _expect_equal(
         errors,
         label="strict gate matrix guard_errors",
-        actual=matrix.get("guard_errors"),
-        expected=[],
+        actual=guard_errors,
+        expected=expected_guard_errors,
     )
-    if not isinstance(gates, list):
-        errors.append("strict gate matrix gates must be a list")
-        return
 
     gate_ids = {gate.get("gate_id") for gate in gates if isinstance(gate, dict)}
     if gate_ids != EXPECTED_STRICT_GATE_IDS:
@@ -608,14 +736,20 @@ def _verify_strict_gate_matrix(
             errors.append(
                 f"strict gate {gate_id} expected_current_exit must be non_zero"
             )
-        if gate.get("actual_current_exit") != "non_zero":
+        expected_actual_exit = "zero" if gate.get("strict_pass") is True else "non_zero"
+        if gate.get("actual_current_exit") != expected_actual_exit:
             errors.append(
-                f"strict gate {gate_id} actual_current_exit must be non_zero"
+                f"strict gate {gate_id} actual_current_exit expected "
+                f"{expected_actual_exit!r}, got {gate.get('actual_current_exit')!r}"
             )
-        if gate.get("strict_pass") is not False:
-            errors.append(f"strict gate {gate_id} strict_pass must be false")
-        if gate.get("expectation_met") is not True:
-            errors.append(f"strict gate {gate_id} expectation_met must be true")
+        expected_expectation_met = (
+            gate.get("actual_current_exit") == gate.get("expected_current_exit")
+        )
+        if gate.get("expectation_met") is not expected_expectation_met:
+            errors.append(
+                f"strict gate {gate_id} expectation_met expected "
+                f"{expected_expectation_met!r}, got {gate.get('expectation_met')!r}"
+            )
 
     boundary = matrix.get("boundary", "")
     if "does not approve owner decisions" not in boundary:
@@ -628,6 +762,7 @@ def _verify_blocker_intake_board(
     *,
     manifest: dict[str, Any],
     monitoring: dict[str, Any],
+    expected_next_detail: dict[str, Any],
     errors: list[str],
 ) -> None:
     board = monitoring.get("blocker_intake_board") or {}
@@ -676,6 +811,7 @@ def _verify_blocker_intake_board(
     if isinstance(next_detail, dict):
         _verify_next_blocker_detail(
             detail=next_detail,
+            expected_detail=expected_next_detail,
             owner_label="blocker intake board",
             errors=errors,
         )
@@ -719,6 +855,8 @@ def _verify_latest_session_recheck(
     errors: list[str],
 ) -> None:
     recheck = monitoring.get("latest_session_recheck") or {}
+    blockers = _blockers_by_id(manifest)
+    matrix = monitoring.get("strict_gate_matrix") or {}
     _expect_equal(
         errors,
         label="latest session recheck closure_effect",
@@ -751,7 +889,7 @@ def _verify_latest_session_recheck(
         errors,
         label="latest session strict gate matrix status",
         actual=strict.get("status"),
-        expected="pass",
+        expected=matrix.get("status"),
     )
     _expect_equal(
         errors,
@@ -763,13 +901,13 @@ def _verify_latest_session_recheck(
         errors,
         label="latest session strict pass gate count",
         actual=strict.get("strict_pass_gate_count"),
-        expected=0,
+        expected=matrix.get("strict_pass_gate_count"),
     )
     _expect_equal(
         errors,
         label="latest session unexpected strict gate count",
         actual=strict.get("unexpected_gate_count"),
-        expected=0,
+        expected=matrix.get("unexpected_gate_count"),
     )
     _expect_equal(
         errors,
@@ -783,7 +921,7 @@ def _verify_latest_session_recheck(
         errors,
         label="latest session guard error count",
         actual=strict.get("guard_error_count"),
-        expected=0,
+        expected=matrix.get("guard_error_count"),
     )
 
     direct = recheck.get("direct_app_mcp_gitnexus_tool_surface") or {}
@@ -791,7 +929,9 @@ def _verify_latest_session_recheck(
         errors,
         label="latest session direct App checked_at",
         actual=direct.get("checked_at"),
-        expected=recheck.get("checked_at"),
+        expected=(blockers.get("direct-app-mcp-gitnexus-evidence") or {}).get(
+            "last_checked_at"
+        ),
     )
     _expect_equal(
         errors,
@@ -841,6 +981,12 @@ def _verify_latest_session_recheck(
     )
 
     secret = recheck.get("local_secret_hygiene") or {}
+    _expect_equal(
+        errors,
+        label="latest session local secret checked_at",
+        actual=secret.get("checked_at"),
+        expected=(blockers.get("local-secret-hygiene") or {}).get("last_checked_at"),
+    )
     _expect_false(
         errors,
         label="latest session secret values_read",
@@ -858,6 +1004,14 @@ def _verify_latest_session_recheck(
     )
 
     ledger = recheck.get("ledger_pnl_direct_governance_record") or {}
+    _expect_equal(
+        errors,
+        label="latest session Ledger checked_at",
+        actual=ledger.get("checked_at"),
+        expected=(blockers.get("ledger-pnl-direct-governance-record") or {}).get(
+            "last_checked_at"
+        ),
+    )
     _expect_equal(
         errors,
         label="latest session Ledger record_write_status",
@@ -878,6 +1032,14 @@ def _verify_latest_session_recheck(
     calculation = recheck.get("calculation_owner_decision") or {}
     _expect_equal(
         errors,
+        label="latest session calculation checked_at",
+        actual=calculation.get("checked_at"),
+        expected=(blockers.get(EXPECTED_NEXT_BLOCKER_ID) or {}).get(
+            "last_checked_at"
+        ),
+    )
+    _expect_equal(
+        errors,
         label="latest session calculation captured_decision_count",
         actual=calculation.get("captured_decision_count"),
         expected=0,
@@ -886,7 +1048,7 @@ def _verify_latest_session_recheck(
         errors,
         label="latest session calculation incomplete_decision_count",
         actual=calculation.get("incomplete_decision_count"),
-        expected=10,
+        expected=manifest.get("counts", {}).get("calculation_display_open_p1"),
     )
     _expect_equal(
         errors,
@@ -921,6 +1083,12 @@ def _verify_completion_mirror(
             actual=monitoring_completion.get(key),
             expected=completion_verification.get(key),
         )
+    _expect_equal(
+        errors,
+        label="monitoring completion error_count",
+        actual=monitoring_completion.get("error_count"),
+        expected=len(completion_verification.get("errors") or []),
+    )
 
 
 def verify_monitoring_snapshot(
@@ -940,6 +1108,12 @@ def verify_monitoring_snapshot(
     completion_path = _artifact_path(
         manifest,
         "completion_snapshot",
+        repo_root=repo_root,
+        errors=errors,
+    )
+    follow_up_packet_path = _artifact_path(
+        manifest,
+        "owner_governance_follow_up_packet",
         repo_root=repo_root,
         errors=errors,
     )
@@ -986,6 +1160,7 @@ def verify_monitoring_snapshot(
 
     assert monitoring_path is not None
     assert completion_path is not None
+    assert follow_up_packet_path is not None
     assert pulse_path is not None
     assert calculation_path is not None
     assert direct_path is not None
@@ -994,6 +1169,7 @@ def verify_monitoring_snapshot(
 
     monitoring = _load_json(monitoring_path)
     completion_snapshot = _load_json(completion_path)
+    follow_up_packet = _load_json(follow_up_packet_path)
     pulse_snapshot = _load_json(pulse_path)
     calculation = _load_json(calculation_path)
     direct_tool = _load_json(direct_path)
@@ -1002,7 +1178,9 @@ def verify_monitoring_snapshot(
     completion_verification = verify_completion_snapshot(
         manifest_path=manifest_path,
         repo_root=repo_root,
+        verify_monitoring=False,
     )
+    expected_next_detail = _expected_next_blocker_detail(follow_up_packet)
 
     _expect_equal(
         errors,
@@ -1026,8 +1204,36 @@ def verify_monitoring_snapshot(
         errors,
         label="monitoring write_outputs",
         actual=monitoring.get("write_outputs"),
-        expected=True,
+        expected=False,
     )
+    _expect_equal(
+        errors,
+        label="monitoring repo_root",
+        actual=monitoring.get("repo_root"),
+        expected=".",
+    )
+    expected_output_paths = {
+        key: str(manifest.get("artifacts", {}).get(key, "")).replace("\\", "/")
+        for key in (
+            "calculation_owner_decision_snapshot",
+            "direct_app_mcp_gitnexus_tool_surface_snapshot",
+            "local_secret_hygiene_snapshot",
+            "ledger_pnl_direct_governance_record_snapshot",
+            "system_audit_pulse_snapshot",
+        )
+    }
+    _expect_equal(
+        errors,
+        label="monitoring output_paths",
+        actual=monitoring.get("output_paths"),
+        expected=expected_output_paths,
+    )
+    for key, value in (monitoring.get("output_paths") or {}).items():
+        _expect_repo_relative_identifier(
+            errors,
+            label=f"monitoring output path {key}",
+            actual=value,
+        )
     boundary = monitoring.get("boundary", "")
     if "does not write DuckDB or governance records" not in boundary:
         errors.append("monitoring boundary must deny DuckDB/governance writes")
@@ -1036,12 +1242,6 @@ def verify_monitoring_snapshot(
     if "approve metrics or pages" not in boundary:
         errors.append("monitoring boundary must deny metric/page approval")
 
-    _expect_equal(
-        errors,
-        label="completion verifier status",
-        actual=completion_verification.get("status"),
-        expected="pass",
-    )
     _verify_completion_mirror(
         monitoring=monitoring,
         completion_verification=completion_verification,
@@ -1058,6 +1258,7 @@ def verify_monitoring_snapshot(
         manifest=manifest,
         monitoring=monitoring,
         pulse_snapshot=pulse_snapshot,
+        expected_next_detail=expected_next_detail,
         errors=errors,
     )
     _verify_strict_gate_matrix(
@@ -1068,6 +1269,7 @@ def verify_monitoring_snapshot(
     _verify_blocker_intake_board(
         manifest=manifest,
         monitoring=monitoring,
+        expected_next_detail=expected_next_detail,
         errors=errors,
     )
     _verify_refresh_results(

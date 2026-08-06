@@ -42,6 +42,9 @@ from scripts.verify_system_audit_completion_snapshot import (  # noqa: E402
 
 
 AUDIT_DATE = "2026-06-10"
+DEFAULT_MANIFEST = (
+    ROOT / "docs" / "audits" / f"{AUDIT_DATE}-system-audit-manifest.json"
+)
 DEFAULT_OUTPUT = (
     ROOT / "docs" / "audits" / f"{AUDIT_DATE}-system-audit-monitoring-snapshot.json"
 )
@@ -85,6 +88,29 @@ def _timestamp(prefix: str, generated_at: str) -> str:
     return f"{generated_at}::{prefix}"
 
 
+def _repo_relative_identifier(path: Path) -> str:
+    resolved = Path(path).resolve()
+    try:
+        return resolved.relative_to(ROOT.resolve()).as_posix()
+    except ValueError:
+        return str(resolved)
+
+
+def _resolve_repo_path(path_value: str) -> Path:
+    path = Path(path_value)
+    return path if path.is_absolute() else ROOT / path
+
+
+def _blocker_checked_at(
+    blockers_by_id: dict[str, dict[str, Any]],
+    blocker_id: str,
+    *,
+    fallback: str,
+) -> str:
+    value = (blockers_by_id.get(blocker_id) or {}).get("last_checked_at")
+    return str(value) if value else fallback
+
+
 def _tool_names(rows: Any) -> list[str]:
     if not isinstance(rows, list):
         return []
@@ -119,6 +145,7 @@ def _existing_direct_tool_names(path: Path = DEFAULT_DIRECT_TOOL_OUTPUT) -> dict
 
 def build_monitoring_snapshot(
     *,
+    manifest_path: Path = DEFAULT_MANIFEST,
     generated_at: str | None = None,
     latest_session_recheck_at: str | None = None,
     write_outputs: bool = False,
@@ -129,6 +156,33 @@ def build_monitoring_snapshot(
 ) -> dict[str, Any]:
     generated_at = generated_at or _now_shanghai()
     latest_session_recheck_at = latest_session_recheck_at or generated_at
+    manifest_path = Path(manifest_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    blockers_by_id = {
+        str(item.get("id")): item
+        for item in manifest.get("open_blockers") or []
+        if isinstance(item, dict)
+    }
+    calculation_checked_at = _blocker_checked_at(
+        blockers_by_id,
+        "calculation-display-p1-decisions",
+        fallback=generated_at,
+    )
+    direct_tool_checked_at = _blocker_checked_at(
+        blockers_by_id,
+        "direct-app-mcp-gitnexus-evidence",
+        fallback=generated_at,
+    )
+    secret_checked_at = _blocker_checked_at(
+        blockers_by_id,
+        "local-secret-hygiene",
+        fallback=generated_at,
+    )
+    ledger_checked_at = _blocker_checked_at(
+        blockers_by_id,
+        "ledger-pnl-direct-governance-record",
+        fallback=generated_at,
+    )
     existing_direct_tool_names = _existing_direct_tool_names()
     resolved_primary_tool_names = (
         primary_tool_names
@@ -150,21 +204,29 @@ def build_monitoring_snapshot(
         if moss_named_tool_names is not None
         else existing_direct_tool_names["moss_named_tool_names"]
     )
-    calc_snapshot = build_calculation_snapshot(generated_at=generated_at)
+    calc_snapshot = build_calculation_snapshot(generated_at=calculation_checked_at)
     direct_snapshot = build_direct_tool_snapshot(
-        generated_at=generated_at,
+        generated_at=direct_tool_checked_at,
         primary_tool_names=resolved_primary_tool_names,
         gitnexus_tool_names=resolved_gitnexus_tool_names,
         moss_general_tool_names=resolved_moss_general_tool_names,
         moss_named_tool_names=resolved_moss_named_tool_names,
     )
-    secret_snapshot = build_secret_snapshot(generated_at=generated_at)
+    secret_snapshot = build_secret_snapshot(generated_at=secret_checked_at)
     ledger_snapshot = build_ledger_snapshot(
-        generated_at=generated_at,
-        record_created_at=generated_at,
+        generated_at=ledger_checked_at,
+        record_created_at=ledger_checked_at,
     )
-    blocker_intake_board = build_blocker_intake_board(generated_at=generated_at)
-    completion = verify_completion_snapshot(verify_monitoring=False)
+    blocker_intake_board = build_blocker_intake_board(
+        generated_at=generated_at,
+        manifest_path=manifest_path,
+        repo_root=ROOT,
+    )
+    completion = verify_completion_snapshot(
+        manifest_path=manifest_path,
+        repo_root=ROOT,
+        verify_monitoring=False,
+    )
     pulse_for_matrix = {
         "full_score_ready": False,
         "completion_state": (
@@ -176,10 +238,7 @@ def build_monitoring_snapshot(
     }
     strict_gate_matrix = build_strict_gate_matrix(
         generated_at=generated_at,
-        manifest_path=ROOT
-        / "docs"
-        / "audits"
-        / f"{AUDIT_DATE}-system-audit-manifest.json",
+        manifest_path=manifest_path,
         pulse=pulse_for_matrix,
         completion=completion,
         monitoring={
@@ -196,33 +255,23 @@ def build_monitoring_snapshot(
         generated_at=generated_at,
         strict_gate_summary_override=strict_gate_summary_from_matrix(
             strict_gate_matrix,
-            source=str(DEFAULT_OUTPUT),
+            source=_repo_relative_identifier(DEFAULT_OUTPUT),
             source_generated_at=generated_at,
         ),
         completion_override=completion,
+        manifest_path=manifest_path,
+        repo_root=ROOT,
     )
 
     outputs = {
-        "calculation_owner_decision_snapshot": ROOT
-        / "docs"
-        / "audits"
-        / f"{AUDIT_DATE}-calculation-p1-owner-decision-snapshot.json",
-        "direct_app_mcp_gitnexus_tool_surface_snapshot": ROOT
-        / "docs"
-        / "audits"
-        / f"{AUDIT_DATE}-direct-app-mcp-gitnexus-tool-surface-snapshot.json",
-        "local_secret_hygiene_snapshot": ROOT
-        / "docs"
-        / "audits"
-        / f"{AUDIT_DATE}-local-secret-hygiene-snapshot.json",
-        "ledger_pnl_direct_governance_record_snapshot": ROOT
-        / "docs"
-        / "audits"
-        / f"{AUDIT_DATE}-ledger-pnl-direct-governance-record-snapshot.json",
-        "system_audit_pulse_snapshot": ROOT
-        / "docs"
-        / "audits"
-        / f"{AUDIT_DATE}-system-audit-pulse-snapshot.json",
+        key: _resolve_repo_path(str(manifest["artifacts"][key]))
+        for key in (
+            "calculation_owner_decision_snapshot",
+            "direct_app_mcp_gitnexus_tool_surface_snapshot",
+            "local_secret_hygiene_snapshot",
+            "ledger_pnl_direct_governance_record_snapshot",
+            "system_audit_pulse_snapshot",
+        )
     }
 
     if write_outputs:
@@ -235,7 +284,7 @@ def build_monitoring_snapshot(
     return {
         "report_kind": "system_audit_monitoring_snapshot",
         "generated_at": generated_at,
-        "repo_root": str(ROOT),
+        "repo_root": ".",
         "audit_date": AUDIT_DATE,
         "write_outputs": write_outputs,
         "evidence_scope": dict(EVIDENCE_SCOPE),
@@ -450,7 +499,7 @@ def build_monitoring_snapshot(
                 "calculation_post_owner_plan_renderer_sync"
             ],
             "direct_app_mcp_gitnexus_tool_surface": {
-                "checked_at": latest_session_recheck_at,
+                "checked_at": direct_tool_checked_at,
                 "status": direct_snapshot["status"]["overall"],
                 "returned_primary_tool_count": direct_snapshot["tool_discovery"][
                     "discovered_tool_count"
@@ -477,6 +526,7 @@ def build_monitoring_snapshot(
                 ],
             },
             "local_secret_hygiene": {
+                "checked_at": secret_checked_at,
                 "status": secret_snapshot["status"]["overall"],
                 "values_read": secret_snapshot["value_handling"]["values_read"],
                 "secret_values_captured": secret_snapshot["status"][
@@ -485,6 +535,7 @@ def build_monitoring_snapshot(
                 "clears_secret_scan": secret_snapshot["status"]["clears_secret_scan"],
             },
             "ledger_pnl_direct_governance_record": {
+                "checked_at": ledger_checked_at,
                 "status": ledger_snapshot["status"]["overall"],
                 "record_write_status": ledger_snapshot["dry_run_result"][
                     "record_write_status"
@@ -501,6 +552,7 @@ def build_monitoring_snapshot(
                 ],
             },
             "calculation_owner_decision": {
+                "checked_at": calculation_checked_at,
                 "status": calc_snapshot["status"]["overall"],
                 "captured_decision_count": calc_snapshot["capture_template"][
                     "captured_decision_count"
@@ -519,7 +571,9 @@ def build_monitoring_snapshot(
                 ],
             },
         },
-        "output_paths": {key: str(path) for key, path in outputs.items()},
+        "output_paths": {
+            key: _repo_relative_identifier(path) for key, path in outputs.items()
+        },
         "boundary": (
             "This monitoring snapshot refreshes read-only audit artifacts and runs the "
             "read-only pulse/completion verifier. It does not write DuckDB or governance "
@@ -534,6 +588,7 @@ def main(argv: list[str] | None = None) -> int:
         description="Run the read-only system audit monitoring refresh bundle.",
     )
     parser.add_argument("--generated-at", default=None)
+    parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--latest-session-recheck-at", default=None)
     parser.add_argument("--write-outputs", action="store_true")
     parser.add_argument("--primary-tool-names", nargs="*", default=None)
@@ -544,6 +599,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     report = build_monitoring_snapshot(
+        manifest_path=args.manifest,
         generated_at=args.generated_at,
         latest_session_recheck_at=args.latest_session_recheck_at,
         write_outputs=args.write_outputs,

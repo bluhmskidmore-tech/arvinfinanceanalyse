@@ -11,6 +11,16 @@ from scripts.verify_system_audit_completion_snapshot import verify_completion_sn
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "verify_system_audit_completion_snapshot.py"
 MANIFEST = ROOT / "docs" / "audits" / "2026-06-10-system-audit-manifest.json"
+EXPECTED_SECURITY_SCAN_ERRORS = [
+    (
+        "local-secret-hygiene required input artifact is missing: "
+        "test_output/security-scans/osv-report.json"
+    ),
+    (
+        "local-secret-hygiene required input artifact is missing: "
+        "test_output/security-scans/gitleaks-report.json"
+    ),
+]
 
 
 def _copy_audit_files(tmp_path: Path) -> Path:
@@ -176,10 +186,10 @@ def _copy_audit_files(tmp_path: Path) -> Path:
     return manifest_path
 
 
-def test_verify_completion_snapshot_passes_for_checked_in_audit_package() -> None:
+def test_verify_completion_snapshot_fails_closed_for_missing_security_outputs() -> None:
     result = verify_completion_snapshot(manifest_path=MANIFEST)
 
-    assert result["status"] == "pass"
+    assert result["status"] == "fail"
     assert result["open_blocker_count"] == 5
     assert result["completion_gate_count"] == 5
     assert result["follow_up_packet_count"] == 5
@@ -215,7 +225,7 @@ def test_verify_completion_snapshot_passes_for_checked_in_audit_package() -> Non
     assert result["calculation_missing_meeting_field_count"] == 8
     assert result["follow_up_completion_order_status"] == "pass"
     assert result["follow_up_completion_order_error_count"] == 0
-    assert result["errors"] == []
+    assert result["errors"] == EXPECTED_SECURITY_SCAN_ERRORS
 
 
 def test_verify_completion_snapshot_fails_when_gate_timestamp_drifts(tmp_path: Path) -> None:
@@ -974,14 +984,14 @@ def test_verify_completion_snapshot_cli_outputs_json() -> None:
         text=True,
     )
 
-    assert completed.returncode == 0
+    assert completed.returncode == 1
     payload = json.loads(completed.stdout)
     assert payload["report_kind"] == "system_audit_completion_snapshot_verification"
-    assert payload["status"] == "pass"
+    assert payload["status"] == "fail"
     assert payload["follow_up_packet_count"] == 5
     assert payload["follow_up_brief_blocker_count"] == 5
     assert payload["calculation_prework_p1_count"] == 8
-    assert payload["errors"] == []
+    assert payload["errors"] == EXPECTED_SECURITY_SCAN_ERRORS
 
 
 def test_verify_completion_snapshot_cli_strict_completion_rejects_current_blockers() -> None:
@@ -1002,8 +1012,7 @@ def test_verify_completion_snapshot_cli_strict_completion_rejects_current_blocke
 
     assert completed.returncode == 1
     payload = json.loads(completed.stdout)
-    assert payload["status"] == "pass"
+    assert payload["status"] == "fail"
     assert payload["open_blocker_count"] == 5
-    assert payload["errors"] == []
-    assert "System audit completion is not complete" in completed.stderr
-    assert "open_blocker_count=5" in completed.stderr
+    assert payload["errors"] == EXPECTED_SECURITY_SCAN_ERRORS
+    assert completed.stderr == ""

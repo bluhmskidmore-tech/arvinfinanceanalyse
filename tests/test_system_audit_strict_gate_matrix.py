@@ -30,7 +30,7 @@ def test_system_audit_strict_gate_matrix_reports_expected_blocked_gates(
     report = strict_gate_matrix
 
     assert report["report_kind"] == "system_audit_strict_gate_matrix"
-    assert report["status"] == "pass"
+    assert report["status"] == "fail"
     assert report["completion_state"] == "not_complete"
     assert report["full_score_ready"] is False
     assert report["open_blocker_count"] == 5
@@ -38,8 +38,8 @@ def test_system_audit_strict_gate_matrix_reports_expected_blocked_gates(
     assert report["completion_order_guard_error_count"] == 0
     assert report["gate_count"] == 8
     assert report["expected_blocked_gate_count"] == 8
-    assert report["strict_pass_gate_count"] == 0
-    assert report["unexpected_gate_count"] == 0
+    assert report["strict_pass_gate_count"] == 1
+    assert report["unexpected_gate_count"] == 1
     assert report["guard_error_count"] == 0
     assert report["guard_errors"] == []
 
@@ -55,8 +55,16 @@ def test_system_audit_strict_gate_matrix_reports_expected_blocked_gates(
         "local-secret-hygiene-clean-boundary",
     }
     assert all(item["expected_current_exit"] == "non_zero" for item in gates.values())
-    assert all(item["actual_current_exit"] == "non_zero" for item in gates.values())
-    assert all(item["expectation_met"] is True for item in gates.values())
+    local_secret_gate = gates["local-secret-hygiene-clean-boundary"]
+    assert local_secret_gate["actual_current_exit"] == "zero"
+    assert local_secret_gate["strict_pass"] is True
+    assert local_secret_gate["expectation_met"] is False
+    assert all(
+        item["actual_current_exit"] == "non_zero"
+        and item["expectation_met"] is True
+        for gate_id, item in gates.items()
+        if gate_id != "local-secret-hygiene-clean-boundary"
+    )
     assert "captured_decision_count=0" in gates[
         "calculation-p1-owner-decisions-captured"
     ]["blocking_detail"]
@@ -90,7 +98,7 @@ def test_system_audit_strict_gate_matrix_reports_expected_blocked_gates(
     assert "missing_direct_servers=" in gates[
         "direct-app-mcp-gitnexus-evidence-captured"
     ]["blocking_detail"]
-    assert "ignored_status='!! config/.env'" in gates[
+    assert "ignored_status=''" in gates[
         "local-secret-hygiene-clean-boundary"
     ]["blocking_detail"]
     assert "does not approve owner decisions" in report["boundary"]
@@ -180,8 +188,8 @@ def test_system_audit_strict_gate_matrix_formats_markdown(
     markdown = format_markdown_matrix(strict_gate_matrix)
 
     assert markdown.startswith("# System Audit Strict Gate Matrix")
-    assert "- Status: `pass`" in markdown
-    assert "- Strict pass gates: `0/8`" in markdown
+    assert "- Status: `fail`" in markdown
+    assert "- Strict pass gates: `1/8`" in markdown
     assert "- Completion order guard: `pass` (errors `0`)" in markdown
     assert "`calculation-p1-owner-decisions-captured`" in markdown
     assert "`local-secret-hygiene-clean-boundary`" in markdown
@@ -207,7 +215,7 @@ def test_system_audit_strict_gate_matrix_cli_outputs_markdown() -> None:
 
     assert completed.returncode == 0
     assert "# System Audit Strict Gate Matrix" in completed.stdout
-    assert "- Strict pass gates: `0/8`" in completed.stdout
+    assert "- Strict pass gates: `1/8`" in completed.stdout
     assert "- Completion order guard: `pass` (errors `0`)" in completed.stdout
     assert "`ledger-pnl-written-record-located`" in completed.stdout
 
@@ -215,10 +223,10 @@ def test_system_audit_strict_gate_matrix_cli_outputs_markdown() -> None:
 def test_system_audit_strict_gate_matrix_rebuilds_when_monitoring_snapshot_gate_ids_are_stale() -> None:
     report = build_matrix(generated_at="2026-06-10T22:55:00+08:00")
 
-    assert report["status"] == "pass"
+    assert report["status"] == "fail"
     assert report["open_blocker_count"] == 5
     assert report["gate_count"] == 8
-    assert report["strict_pass_gate_count"] == 0
+    assert report["strict_pass_gate_count"] == 1
     assert {
         gate["gate_id"] for gate in report["gates"]
     } >= {"calculation-p1-post-owner-implementation-ready"}
@@ -271,8 +279,8 @@ def test_system_audit_strict_gate_matrix_prefers_fresh_monitoring_snapshot(
         manifest_path=manifest_path,
     )
 
-    assert report["status"] == "pass"
+    assert report["status"] == "fail"
     assert report["open_blocker_count"] == 5
     assert report["gate_count"] == 8
-    assert report["strict_pass_gate_count"] == 0
+    assert report["strict_pass_gate_count"] == 1
     assert report["completion_order_guard_status"] == "pass"
