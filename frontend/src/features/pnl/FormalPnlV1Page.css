@@ -137,6 +137,27 @@
   line-height: 1.65;
 }
 
+.formal-pnl-v1-data-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.formal-pnl-v1-data-status__badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 10px;
+  border: 1px solid var(--moss-color-warning-200);
+  border-radius: 999px;
+  background: var(--moss-color-warning-50);
+  color: var(--moss-color-warning-800);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .formal-pnl-v1-overview-section {
   margin-bottom: var(--moss-space-6);
 }
