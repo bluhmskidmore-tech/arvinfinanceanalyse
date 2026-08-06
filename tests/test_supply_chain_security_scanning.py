@@ -53,6 +53,11 @@ def test_gitleaks_config_extends_defaults_without_tracked_source_snapshot_allowl
     )
     assert "regulatory_dv01" in allowlist_regexes
     assert "dominant_krd_bucket" in allowlist_regexes
+    assert "cache_key" in allowlist_regexes
+    assert "idempotency_key" in allowlist_regexes
+    assert "candidate_idempotency_key" in allowlist_regexes
+    assert "readiness_evidence_key" in allowlist_regexes
+    assert "evidence_pack_key" in allowlist_regexes
     assert "apiKey" not in allowlist_regexes
 
 
