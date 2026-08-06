@@ -943,7 +943,10 @@ def test_agent_query_enabled_path_returns_real_pnl_bridge_and_audit(tmp_path, mo
         "report_date_resolution": "latest_default",
     }
     assert payload["evidence"]["evidence_rows"] == 1
-    assert any(card["title"] == "Explained PnL" for card in payload["cards"])
+    explained_card = next(card for card in payload["cards"] if card["title"] == "Explained PnL")
+    assert explained_card["value"].endswith(" yuan")
+    assert explained_card["spec"]["numeric"]["unit"] == "yuan"
+    assert explained_card["spec"]["numeric"]["display"] in explained_card["value"]
 
     audit_path = governance_dir / "agent_audit.jsonl"
     assert audit_path.exists()

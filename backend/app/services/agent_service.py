@@ -18,6 +18,7 @@ from backend.app.repositories.product_category_pnl_repo import (
     PRODUCT_CATEGORY_PNL_ROWS_SQL,
     ProductCategoryPnlRepository,
 )
+from backend.app.services.explicit_numeric import is_numeric_json
 from backend.app.services.gitnexus_service import build_gitnexus_status_payload
 from backend.app.services.research_radar_service import research_radar_brief_payload
 
@@ -685,20 +686,21 @@ def _pnl_bridge_payload(
         "explicit" if _requested_report_date(request) else "latest_default"
     )
     base_filters = _audit_filters(request, report_date, resolution=rd_mode)
+    quality_flag = str(meta.get("quality_flag") or "warning")
     return {
         "answer": f"{report_date} 的 PnL bridge 已返回。",
         "cards": [
-            {"type": "metric", "title": "Explained PnL", "value": str(summary.get("total_explained_pnl", ""))},
-            {"type": "metric", "title": "Actual PnL", "value": str(summary.get("total_actual_pnl", ""))},
-            {"type": "metric", "title": "Residual", "value": str(summary.get("total_residual", ""))},
+            _agent_metric_card("Explained PnL", summary.get("total_explained_pnl")),
+            _agent_metric_card("Actual PnL", summary.get("total_actual_pnl")),
+            _agent_metric_card("Residual", summary.get("total_residual")),
         ],
         "tables_used": ["fact_formal_pnl_fi", "fact_formal_zqtz_balance_daily"],
         "filters_applied": base_filters,
         "row_count": int(summary.get("row_count", 0)),
         "sql_executed": _PNL_BRIDGE_SQL_DISCLOSURE,
-        "quality_flag": str(meta.get("quality_flag") or "warning"),
+        "quality_flag": quality_flag,
         "basis": str(meta.get("basis") or "formal"),
-        "formal_use_allowed": bool(meta.get("formal_use_allowed", True)),
+        "formal_use_allowed": bool(meta.get("formal_use_allowed", True)) and quality_flag != "error",
         "scenario_flag": bool(meta.get("scenario_flag", False)),
         "source_version": str(meta.get("source_version") or "sv_agent_pnl_bridge"),
         "vendor_version": str(meta.get("vendor_version") or "vv_none"),
@@ -708,6 +710,23 @@ def _pnl_bridge_payload(
         "fallback_mode": str(meta.get("fallback_mode") or "none"),
         "result_kind": "agent.pnl_bridge",
         "next_drill": [{"dimension": "instrument", "label": "按券桥接查看"}],
+    }
+
+
+def _agent_metric_card(title: str, value: Any) -> dict[str, Any]:
+    if is_numeric_json(value):
+        display = str(value.get("display") or "--")
+        unit = str(value.get("unit") or "").strip()
+        return {
+            "type": "metric",
+            "title": title,
+            "value": f"{display} {unit}".strip(),
+            "spec": {"numeric": dict(value)},
+        }
+    return {
+        "type": "metric",
+        "title": title,
+        "value": "" if value is None else str(value),
     }
 
 
