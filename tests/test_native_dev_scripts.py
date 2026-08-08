@@ -233,7 +233,7 @@ def test_codex_verify_page_supports_dashboard_home_dry_run():
     output = run_powershell_script("codex-verify-page.ps1", "-PageSlug", "dashboard-home")
 
     assert "Codex verify page: dashboard-home" in output
-    assert "tests/test_project_mcp_servers.py" in output
+    assert "tests/test_project_mcp_fast_contracts.py" in output
     assert "tests/test_home_snapshot_endpoint.py" in output
     assert "DashboardPage.test.tsx" in output
     assert "dashboardCockpitHomeModel.test.ts" in output
@@ -245,7 +245,7 @@ def test_codex_verify_page_supports_balance_analysis_dry_run():
     output = run_powershell_script("codex-verify-page.ps1", "-PageSlug", "balance-analysis")
 
     assert "Codex verify page: balance-analysis" in output
-    assert "tests/test_project_mcp_servers.py" in output
+    assert "tests/test_project_mcp_fast_contracts.py" in output
     assert "tests/test_balance_analysis_api.py" in output
     assert "BalanceAnalysisPage.test.tsx" in output
     assert "@balance-analysis" in output
@@ -295,7 +295,7 @@ def test_codex_verify_page_supports_pnl_bridge_dry_run():
     output = run_powershell_script("codex-verify-page.ps1", "-PageSlug", "pnl-bridge")
 
     assert "Codex verify page: pnl-bridge" in output
-    assert "tests/test_project_mcp_servers.py" in output
+    assert "tests/test_project_mcp_fast_contracts.py" in output
     assert "tests/test_pnl_bridge_core.py" in output
     assert "tests/test_pnl_bridge_curve_effects.py" in output
     assert "PnlBridgePage.test.tsx" in output
@@ -322,7 +322,7 @@ def test_codex_verify_page_supports_bond_dashboard_dry_run():
     output = run_powershell_script("codex-verify-page.ps1", "-PageSlug", "bond-dashboard")
 
     assert "Codex verify page: bond-dashboard" in output
-    assert "tests/test_project_mcp_servers.py" in output
+    assert "tests/test_project_mcp_fast_contracts.py" in output
     assert "tests/test_bond_dashboard_api_contract.py" in output
     assert "tests/test_bond_dashboard_headlines_contract.py" in output
     assert "BondDashboardPage.test.tsx" in output
@@ -351,7 +351,7 @@ def test_codex_verify_page_supports_balance_movement_analysis_dry_run():
     output = run_powershell_script("codex-verify-page.ps1", "-PageSlug", "balance-movement-analysis")
 
     assert "Codex verify page: balance-movement-analysis" in output
-    assert "tests/test_project_mcp_servers.py" in output
+    assert "tests/test_project_mcp_fast_contracts.py" in output
     assert "tests/test_accounting_asset_movement_api.py" in output
     assert "tests/test_accounting_asset_movement_service.py" in output
     assert "BalanceMovementAnalysisPage.test.tsx" in output
@@ -364,7 +364,7 @@ def test_codex_verify_page_supports_ledger_pnl_dry_run():
     output = run_powershell_script("codex-verify-page.ps1", "-PageSlug", "ledger-pnl")
 
     assert "Codex verify page: ledger-pnl" in output
-    assert "tests/test_project_mcp_servers.py" in output
+    assert "tests/test_project_mcp_fast_contracts.py" in output
     assert "tests/test_ledger_pnl_service.py" in output
     assert "tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py" in output
     assert "LedgerPnlPage.test.tsx" in output
@@ -378,7 +378,7 @@ def test_codex_verify_page_supports_positions_dry_run():
     output = run_powershell_script("codex-verify-page.ps1", "-PageSlug", "positions")
 
     assert "Codex verify page: positions" in output
-    assert "tests/test_project_mcp_servers.py" in output
+    assert "tests/test_project_mcp_fast_contracts.py" in output
     assert "tests/test_positions_api_contract.py" in output
     assert "PositionsView.test.tsx" in output
     assert "RouteRegistry.test.tsx" in output
@@ -392,7 +392,7 @@ def test_codex_verify_page_supports_operations_analysis_dry_run():
     output = run_powershell_script("codex-verify-page.ps1", "-PageSlug", "operations-analysis")
 
     assert "Codex verify page: operations-analysis" in output
-    assert "tests/test_project_mcp_servers.py" in output
+    assert "tests/test_project_mcp_fast_contracts.py" in output
     assert "tests/test_product_category_pnl_flow.py" in output
     assert "tests/test_balance_analysis_api.py" in output
     assert "OperationsAnalysisPage.test.tsx" in output
@@ -406,7 +406,7 @@ def test_codex_verify_page_supports_liability_analytics_dry_run():
     output = run_powershell_script("codex-verify-page.ps1", "-PageSlug", "liability-analytics")
 
     assert "Codex verify page: liability-analytics" in output
-    assert "tests/test_project_mcp_servers.py" in output
+    assert "tests/test_project_mcp_fast_contracts.py" in output
     assert "tests/test_liability_analytics_api.py" in output
     assert "tests/test_liability_analytics_envelope_contract.py" in output
     assert "tests/test_liability_analytics_unit_semantics.py" in output
@@ -422,7 +422,7 @@ def test_codex_verify_page_supports_market_data_dry_run():
     output = run_powershell_script("codex-verify-page.ps1", "-PageSlug", "market-data")
 
     assert "Codex verify page: market-data" in output
-    assert "tests/test_project_mcp_servers.py" in output
+    assert "tests/test_project_mcp_fast_contracts.py" in output
     assert "tests/test_result_meta_on_all_ui_endpoints.py" in output
     assert "tests/test_market_data_ncd_proxy_api.py" in output
     assert "tests/test_market_data_livermore_api.py" in output
@@ -439,7 +439,7 @@ def test_codex_verify_page_supports_macro_toolkit_dry_run():
     output = run_powershell_script("codex-verify-page.ps1", "-PageSlug", "macro-toolkit")
 
     assert "Codex verify page: macro-toolkit" in output
-    assert "tests/test_project_mcp_servers.py" in output
+    assert "tests/test_project_mcp_fast_contracts.py" in output
     assert "tests/test_macro_toolkit_scripts.py" in output
     assert "tests/test_macro_toolkit_choice_stock_refresh_overview.py" in output
     assert "tests/test_macro_toolkit_shadow_portfolio_report.py" in output
@@ -475,7 +475,7 @@ def test_codex_verify_page_supports_pnl_attribution_dry_run():
     output = run_powershell_script("codex-verify-page.ps1", "-PageSlug", "pnl-attribution")
 
     assert "Codex verify page: pnl-attribution" in output
-    assert "tests/test_project_mcp_servers.py" in output
+    assert "tests/test_project_mcp_fast_contracts.py" in output
     assert "tests/test_pnl_attribution_api_contract.py" in output
     assert "tests/test_pnl_attribution_workbench_contract.py" in output
     assert "tests/test_pnl_attribution_service_explicit_numeric.py" in output
@@ -1089,24 +1089,23 @@ def test_codex_page_readiness_supports_balance_movement_analysis_dry_run():
     )
     output = completed.stdout + completed.stderr
 
-    assert completed.returncode != 0
+    assert completed.returncode == 0
     assert "MOSS page readiness gate: balance-movement-analysis" in output
     assert "candidate_or_pending" in output
     assert "golden_sample_boundary: pass" in output
     assert "missing" in output
     assert "catalog_date_evidence_sampled: pass" in output
     assert "direct_governance_record_ready: pass" in output
-    assert "balance_movement_read_model_freshness: block" in output
-    assert "Blocking gates:" in output
-    assert "- balance_movement_read_model_freshness" in output
+    assert "balance_movement_read_model_freshness: pass" in output
+    assert "Blocking gates:" not in output
     assert "codex-page-smoke.ps1 -PageSlug balance-movement-analysis" in output
     assert "codex-verify-page.ps1 -PageSlug balance-movement-analysis -Run" in output
     assert "full data-catalog/date review required" not in output
     assert "direct page-keyed governance records" not in output
     assert "dedicated golden sample is missing" in output
     assert "Business owner approval is still required" in output
-    assert "Static page readiness gates blocked." in output
-    assert "Dry run complete. Pass -Run to execute page checks." not in output
+    assert "Static page readiness gates blocked." not in output
+    assert "Dry run complete. Pass -Run to execute page checks." in output
 
 
 def test_codex_page_readiness_supports_ledger_pnl_dry_run():
@@ -1244,11 +1243,12 @@ def test_codex_page_readiness_all_mode_defaults_to_batch_dry_run():
 
     assert "MOSS page readiness gate: all seeded pages" in output
     assert "Summary: page_count=39" in output
-    assert "blocked_count=1" in output
+    assert "static_pass_count=39" in output
+    assert "blocked_count=0" in output
     assert "run_supported_count=27" in output
     assert "Page readiness rows:" in output
-    assert "Blocking pages:" in output
-    assert "- balance-movement-analysis" in output
+    assert "Blocking pages:" not in output
+    assert "- balance-movement-analysis: static-pass" in output
     assert "executive-pnl-attribution: static-pass" in output
     assert "product-category-pnl" in output
     assert "balance-analysis" in output
