@@ -674,7 +674,7 @@ def test_bond_dashboard_dates_falls_back_to_facts_lineage_when_manifest_missing(
     )
 
     payload = load_module(
-        "backend.app.services.bond_dashboard_service",
+        "tests._bond_dashboard_dates_fallback",
         "backend/app/services/bond_dashboard_service.py",
     ).get_bond_dashboard_dates()
 
