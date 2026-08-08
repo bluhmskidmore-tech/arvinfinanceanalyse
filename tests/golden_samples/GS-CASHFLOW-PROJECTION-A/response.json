@@ -846,6 +846,30 @@
         "currency_code": "CNY"
       }
     ],
+    "floating_rate_proxy_count": 0,
+    "floating_rate_proxy_market_value": {
+      "raw": 0.0,
+      "unit": "yuan",
+      "display": "0.00",
+      "precision": 2,
+      "sign_aware": false
+    },
+    "payment_frequency_fallback_count": 0,
+    "payment_frequency_fallback_market_value": {
+      "raw": 0.0,
+      "unit": "yuan",
+      "display": "0.00",
+      "precision": 2,
+      "sign_aware": false
+    },
+    "bullet_value_date_fallback_count": 0,
+    "bullet_value_date_fallback_market_value": {
+      "raw": 0.0,
+      "unit": "yuan",
+      "display": "0.00",
+      "precision": 2,
+      "sign_aware": false
+    },
     "warnings": [
       "Liability duration uses a remaining-term proxy (years to maturity), not a cashflow-weighted duration."
     ],

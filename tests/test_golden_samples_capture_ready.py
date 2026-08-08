@@ -2428,6 +2428,12 @@ def _validate_cashflow_projection(actual: dict[str, Any], expected: dict[str, An
             ("result", "reinvestment_risk_12m"),
             ("result", "monthly_buckets"),
             ("result", "top_maturing_assets_12m"),
+            ("result", "floating_rate_proxy_count"),
+            ("result", "floating_rate_proxy_market_value"),
+            ("result", "payment_frequency_fallback_count"),
+            ("result", "payment_frequency_fallback_market_value"),
+            ("result", "bullet_value_date_fallback_count"),
+            ("result", "bullet_value_date_fallback_market_value"),
             ("result", "warnings"),
         ],
     )

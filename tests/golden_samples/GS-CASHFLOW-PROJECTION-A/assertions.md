@@ -41,6 +41,9 @@
 - `result.monthly_buckets[3].year_month == "2026-07"` and `net_cashflow.display == "-800.00"`.
 - `result.monthly_buckets[6].year_month == "2026-10"` and `net_cashflow.display == "+1,000.00"`.
 - `result.top_maturing_assets_12m[0].instrument_code == "CF-BOND-001"`.
+- `result.floating_rate_proxy_count == 0` and `result.floating_rate_proxy_market_value.raw == 0.0`.
+- `result.payment_frequency_fallback_count == 0` and `result.payment_frequency_fallback_market_value.raw == 0.0`.
+- `result.bullet_value_date_fallback_count == 0` and `result.bullet_value_date_fallback_market_value.raw == 0.0`.
 - Numeric values remain backend-owned `Numeric` objects with `raw`, `unit`, `display`, `precision`, and `sign_aware`.
 
 ## Boundary
