@@ -14,7 +14,6 @@ from scripts.portfolio_home_closure_artifact_summary import (  # noqa: E402
     artifact_required_now,
 )
 from scripts.portfolio_home_closure_scorecard import (  # noqa: E402
-    VERIFICATION_COMMANDS,
     _render_verification_commands,
 )
 from scripts.portfolio_home_full_closure_evidence import (  # noqa: E402
@@ -43,73 +42,23 @@ OWNER_INPUT_SUMMARY_COMMAND = (
     "python scripts/portfolio_home_owner_input_needed_summary.py --limit 3 "
     "--output docs/portfolio/portfolio-home-owner-input-needed-summary.json --check-current"
 )
-SCORECARD_VERIFICATION_COMMANDS = {
-    str(command.get("command"))
-    for command in VERIFICATION_COMMANDS
-    if isinstance(command, dict) and command.get("command")
-}
-
-
 def _scorecard_verification_commands(report_date: str) -> set[str]:
-    """Allow the canonical date-qualified commands emitted by the scorecard.
+    """Return the canonical commands emitted for the selected report date.
 
     The scorecard renders report-date arguments into its owner-facing command
-    list, while the static command registry remains date-independent.  Keep
-    both forms accepted so handoff validation follows the selected report
-    date without weakening the command allowlist.
+    list. Date-independent commands remain unchanged in the rendered list;
+    date-sensitive commands must retain the selected report date.
     """
 
-    rendered = {
+    return {
         str(command.get("command"))
         for command in _render_verification_commands(report_date)
         if isinstance(command, dict) and command.get("command")
     }
-    return SCORECARD_VERIFICATION_COMMANDS | rendered
-
-
-def _without_report_date(command: str) -> str:
-    tokens = command.split()
-    normalized: list[str] = []
-    skip_next = False
-    for token in tokens:
-        if skip_next:
-            skip_next = False
-            continue
-        if token == "--report-date":
-            skip_next = True
-            continue
-        if token.startswith("--report-date="):
-            continue
-        normalized.append(token)
-    return " ".join(normalized)
-
-
-def _report_dates(command: str) -> list[str]:
-    tokens = command.split()
-    dates: list[str] = []
-    skip_next = False
-    for token in tokens:
-        if skip_next:
-            dates.append(token)
-            skip_next = False
-            continue
-        if token == "--report-date":
-            skip_next = True
-            continue
-        if token.startswith("--report-date="):
-            dates.append(token.split("=", 1)[1])
-    return dates
 
 
 def _recheck_command_allowlisted(command: str, *, report_date: str) -> bool:
-    allowlisted_commands = _scorecard_verification_commands(report_date)
-    if command in allowlisted_commands:
-        return True
-    dates = _report_dates(command)
-    if not dates or any(date != report_date for date in dates):
-        return False
-    normalized = _without_report_date(command)
-    return normalized in {_without_report_date(item) for item in SCORECARD_VERIFICATION_COMMANDS}
+    return command in _scorecard_verification_commands(report_date)
 
 
 def _list(value: object) -> list[object]:

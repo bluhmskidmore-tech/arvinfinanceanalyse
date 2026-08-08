@@ -926,3 +926,23 @@ def test_portfolio_home_evidence_snapshot_portable_verifier_preserves_external_p
         "--output",
         "C:/external/result.json",
     ]
+
+
+def test_portfolio_home_evidence_snapshot_portable_verifier_preserves_python_wrapper(
+    tmp_path: Path,
+) -> None:
+    report = {
+        "docs_root": str(tmp_path / "repo" / "docs"),
+        "results": [
+            {
+                "argv": [
+                    "C:/external/python-wrapper.exe",
+                    "scripts/portfolio_home_closure_scorecard.py",
+                ],
+            },
+        ],
+    }
+
+    normalized = portable_verification_report(report, repo_root=tmp_path / "repo")
+
+    assert normalized["results"][0]["argv"][0] == "C:/external/python-wrapper.exe"

@@ -234,6 +234,50 @@ def test_portfolio_home_owner_handoff_completeness_check_blocks_wrong_report_dat
     assert route_checks["risk_owner"]["unallowlisted_recheck_commands"] == [wrong_date_command]
 
 
+def test_portfolio_home_owner_handoff_completeness_check_blocks_unqualified_nondefault_date() -> None:
+    summary = json.loads(
+        (ROOT / "docs" / "portfolio" / "portfolio-home-owner-input-needed-summary.json").read_text(
+            encoding="utf-8",
+        ),
+    )
+    summary["report_date"] = "2026-06-30"
+    route = next(item for item in summary["owner_routes"] if item["owner"] == "risk_owner")
+    unqualified_command = (
+        "python scripts/portfolio_home_risk_warning_consistency.py --require-clean"
+    )
+    route["recheck_commands"] = [unqualified_command]
+
+    report = handoff_completeness_report(summary, docs_root=ROOT / "docs")
+
+    route_checks = {item["owner"]: item for item in report["route_checks"]}
+    assert route_checks["risk_owner"]["status"] == "blocked"
+    assert route_checks["risk_owner"]["unallowlisted_recheck_commands"] == [
+        unqualified_command,
+    ]
+
+
+def test_portfolio_home_owner_handoff_completeness_check_blocks_noncanonical_argument_order() -> None:
+    summary = json.loads(
+        (ROOT / "docs" / "portfolio" / "portfolio-home-owner-input-needed-summary.json").read_text(
+            encoding="utf-8",
+        ),
+    )
+    route = next(item for item in summary["owner_routes"] if item["owner"] == "business_owner")
+    reordered_command = (
+        "python scripts/portfolio_home_owner_decision_intake_check.py "
+        "--limit 3 --require-ready --report-date 2026-05-31"
+    )
+    route["recheck_commands"] = [reordered_command]
+
+    report = handoff_completeness_report(summary, docs_root=ROOT / "docs")
+
+    route_checks = {item["owner"]: item for item in report["route_checks"]}
+    assert route_checks["business_owner"]["status"] == "blocked"
+    assert route_checks["business_owner"]["unallowlisted_recheck_commands"] == [
+        reordered_command,
+    ]
+
+
 def test_portfolio_home_owner_handoff_completeness_check_blocks_missing_required_artifact(
     tmp_path: Path,
 ) -> None:

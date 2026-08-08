@@ -59,6 +59,10 @@ def snapshot_sha256(snapshot: dict[str, object]) -> str:
 
 
 _WINDOWS_ABSOLUTE_PATH = re.compile(r"^[A-Za-z]:[\\/]")
+_PYTHON_EXECUTABLE_NAME = re.compile(
+    r"^python(?:3(?:\.\d+)*)?(?:\.exe)?$",
+    re.IGNORECASE,
+)
 
 
 def _portable_repo_path(value: object, *, repo_root: Path) -> object:
@@ -159,7 +163,9 @@ def portable_verification_report(
             if (
                 index == 0
                 and isinstance(token, str)
-                and Path(token.replace("\\", "/")).name.lower().startswith("python")
+                and _PYTHON_EXECUTABLE_NAME.fullmatch(
+                    Path(token.replace("\\", "/")).name,
+                )
             ):
                 portable_argv.append("python")
             else:
