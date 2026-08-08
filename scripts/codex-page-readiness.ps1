@@ -14,8 +14,10 @@ $root = Split-Path -Parent $PSScriptRoot
 $pythonScript = Join-Path $root "scripts\codex_page_readiness.py"
 $smokeScript = Join-Path $root "scripts\codex-page-smoke.ps1"
 $verifyScript = Join-Path $root "scripts\codex-verify-page.ps1"
+. "$root\scripts\codex-python-helper.ps1"
 
 Set-Location $root
+$pythonExe = Resolve-CodexPython
 
 function Write-PageReadinessReport {
   param(
@@ -569,7 +571,7 @@ function Assert-AllApprovalCaptured {
 if ($RouteScope) {
   Write-Output "MOSS page readiness gate: route-scope classification"
 
-  $json = & python $pythonScript --route-scope
+  $json = & $pythonExe $pythonScript --route-scope
   if ($LASTEXITCODE -ne 0) {
     throw "Static route-scope classification failed."
   }
@@ -583,7 +585,7 @@ if ($RouteScope) {
 if ($All) {
   Write-Output "MOSS page readiness gate: all seeded pages"
 
-  $json = & python $pythonScript --all
+  $json = & $pythonExe $pythonScript --all
   if ($LASTEXITCODE -ne 0) {
     throw "Static page readiness evaluation failed for all seeded pages."
   }
@@ -671,7 +673,7 @@ if ($All) {
 
 Write-Output "MOSS page readiness gate: $PageSlug"
 
-$json = & python $pythonScript --page-slug $PageSlug
+$json = & $pythonExe $pythonScript --page-slug $PageSlug
 $pythonExitCode = $LASTEXITCODE
 $jsonText = $json | Out-String
 if ([string]::IsNullOrWhiteSpace($jsonText)) {

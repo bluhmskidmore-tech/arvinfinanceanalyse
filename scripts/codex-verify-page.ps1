@@ -13,6 +13,7 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $frontendRoot = Join-Path $root "frontend"
 $playwrightOutputRoot = Join-Path $root ".codex-tmp\playwright-page-results"
+. "$root\scripts\codex-python-helper.ps1"
 
 function Resolve-CodexPytestTempRoot {
   if (-not [string]::IsNullOrWhiteSpace($env:CODEX_PYTEST_BASETEMP_ROOT)) {
@@ -93,6 +94,7 @@ function Test-CodexBrowserSmokeCheck {
 $codexPytestTempRoot = Resolve-CodexPytestTempRoot
 
 Set-Location $root
+$pythonExe = $null
 
 Write-Output "Codex verify page: $PageSlug"
 
@@ -1470,7 +1472,14 @@ foreach ($check in $checks) {
         [Environment]::SetEnvironmentVariable($entry.Key, [string]$entry.Value, "Process")
       }
     }
-    & $check.Command @($check.Args)
+    $commandToRun = $check.Command
+    if ($isPytestCheck) {
+      if ($null -eq $pythonExe) {
+        $pythonExe = Resolve-CodexPython -RequiredModules @("fastapi", "uvicorn", "dramatiq", "redis", "duckdb", "sqlalchemy", "psycopg", "pytest")
+      }
+      $commandToRun = $pythonExe
+    }
+    & $commandToRun @($check.Args)
     $commandSucceeded = $?
     $exitCode = $LASTEXITCODE
     if (-not $commandSucceeded) {
