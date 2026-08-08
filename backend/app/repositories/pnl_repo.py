@@ -7,7 +7,7 @@ from datetime import date
 from decimal import Decimal
 
 import duckdb
-from backend.app.core_finance.pnl import (
+from backend.app.core_finance.pnl_constants import (
     PNL_514_VAT_EFFECTIVE_END_DATE,
     PNL_514_VAT_EFFECTIVE_START_DATE,
     PNL_FORMAL_FACT_RULE_VERSION,

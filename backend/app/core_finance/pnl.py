@@ -16,6 +16,11 @@ from backend.app.core_finance.field_normalization import (
     is_approved_status,
     normalize_currency_basis_value,
 )
+from backend.app.core_finance.pnl_constants import (
+    PNL_514_VAT_EFFECTIVE_END_DATE,
+    PNL_514_VAT_EFFECTIVE_START_DATE,
+    PNL_FORMAL_FACT_RULE_VERSION,
+)
 
 InvestTypeStd = Literal["H", "A", "T"]
 AccountingBasis = Literal["AC", "FVOCI", "FVTPL"]
@@ -41,9 +46,6 @@ TWOPLACES = Decimal("0.01")
 YIELD_PCT_PLACES = Decimal("0.000001")
 BP_PLACES = Decimal("0.0001")
 FI_514_VAT_DIVISOR = Decimal("1.06")
-PNL_514_VAT_EFFECTIVE_START_DATE = date(2026, 1, 1)
-PNL_514_VAT_EFFECTIVE_END_DATE = date(2026, 6, 30)
-PNL_FORMAL_FACT_RULE_VERSION = "rv_pnl_phase2_materialize_v3"
 FI_CUMULATIVE_REALIZED_517_EVENT_TYPE = "fi_cumulative_realized_517"
 FI_514_TAXABLE_ASSET_CLASS_TOKENS: tuple[str, ...] = (
     "同业存单",
@@ -511,6 +513,9 @@ __all__ = [
     "AccountingBasis",
     "CurrencyBasis",
     "FiPnlRecord",
+    "PNL_514_VAT_EFFECTIVE_END_DATE",
+    "PNL_514_VAT_EFFECTIVE_START_DATE",
+    "PNL_FORMAL_FACT_RULE_VERSION",
     "FormalPnlFiFactRow",
     "InvestTypeStd",
     "JournalType",
