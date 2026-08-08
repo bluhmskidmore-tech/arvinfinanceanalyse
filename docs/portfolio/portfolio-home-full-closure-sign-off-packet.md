@@ -275,7 +275,7 @@ Observed status:
 - Score methodology is `discrete_full_closure_gate`; the `0.14` gap is not allocated across blockers as linear weights.
 - Closure scorecard reports `score_status=blocked` and `full_score_ready=false`.
 - Closure scorecard strict full-score gate exits non-zero while score blockers remain.
-- Closure scorecard blockers: `risk_tensor_quality_warning`, `krd_contract_decision_required`, `bond_maturity_date_remediation_required`, `tyw_liability_maturity_date_remediation_required`, `duration_exclusion_warning_mismatch`, `risk_tensor_warning_mismatch`, `business_owner_approval`, `owner_decision_intake_blocked`.
+- Closure scorecard blockers: `risk_tensor_quality_warning`, `krd_contract_decision_required`, `bond_matured_outstanding_reconciliation_required`, `tyw_liability_maturity_date_remediation_required`, `krd_bucket_warning_mismatch`, `duration_exclusion_warning_mismatch`, `risk_tensor_warning_mismatch`, `business_owner_approval`, `owner_decision_intake_blocked`.
 - Closure scorecard action map records `owner`, `next_action`, `evidence_command`, and `exit_criteria` for every score blocker.
 - Closure scorecard gates carry `score_blocker_action_coverage.status=clean`; unknown or unassigned score blockers prevent strict activation.
 - Closure scorecard emits `verification_commands` with evidence, strict-gate, and regression commands plus expected blocked-state exits.

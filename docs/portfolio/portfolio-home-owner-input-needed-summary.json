@@ -3,8 +3,8 @@
   "page_id": "PAGE-PORTFOLIO-HOME-001",
   "page_slug": "portfolio",
   "report_date": "2026-05-31",
-  "duckdb_path": "F:\\MOSS-V3\\data\\moss.duckdb",
-  "template_path": "F:\\MOSS-V3\\docs\\portfolio\\portfolio-home-business-owner-approval-template.md",
+  "duckdb_path": "data/moss.duckdb",
+  "template_path": "docs/portfolio/portfolio-home-business-owner-approval-template.md",
   "current_score": "99.86 / 100",
   "remaining_gap": "0.14",
   "score_status": "blocked",
@@ -12,8 +12,9 @@
   "score_blockers": [
     "risk_tensor_quality_warning",
     "krd_contract_decision_required",
-    "bond_maturity_date_remediation_required",
+    "bond_matured_outstanding_reconciliation_required",
     "tyw_liability_maturity_date_remediation_required",
+    "krd_bucket_warning_mismatch",
     "duration_exclusion_warning_mismatch",
     "risk_tensor_warning_mismatch",
     "business_owner_approval",
@@ -31,8 +32,9 @@
       "score_blockers": [
         "risk_tensor_quality_warning",
         "krd_contract_decision_required",
-        "bond_maturity_date_remediation_required",
+        "bond_matured_outstanding_reconciliation_required",
         "tyw_liability_maturity_date_remediation_required",
+        "krd_bucket_warning_mismatch",
         "duration_exclusion_warning_mismatch",
         "risk_tensor_warning_mismatch",
         "business_owner_approval",
@@ -41,8 +43,9 @@
       "assigned_blockers": [
         "risk_tensor_quality_warning",
         "krd_contract_decision_required",
-        "bond_maturity_date_remediation_required",
+        "bond_matured_outstanding_reconciliation_required",
         "tyw_liability_maturity_date_remediation_required",
+        "krd_bucket_warning_mismatch",
         "duration_exclusion_warning_mismatch",
         "risk_tensor_warning_mismatch",
         "business_owner_approval",
@@ -59,8 +62,9 @@
       "covered_blockers": [
         "risk_tensor_quality_warning",
         "krd_contract_decision_required",
-        "bond_maturity_date_remediation_required",
+        "bond_matured_outstanding_reconciliation_required",
         "tyw_liability_maturity_date_remediation_required",
+        "krd_bucket_warning_mismatch",
         "duration_exclusion_warning_mismatch",
         "risk_tensor_warning_mismatch",
         "business_owner_approval",
@@ -72,8 +76,9 @@
       "expected_blockers": [
         "risk_tensor_quality_warning",
         "krd_contract_decision_required",
-        "bond_maturity_date_remediation_required",
+        "bond_matured_outstanding_reconciliation_required",
         "tyw_liability_maturity_date_remediation_required",
+        "krd_bucket_warning_mismatch",
         "duration_exclusion_warning_mismatch",
         "risk_tensor_warning_mismatch",
         "business_owner_approval",
@@ -82,8 +87,9 @@
       "covered_blockers": [
         "risk_tensor_quality_warning",
         "krd_contract_decision_required",
-        "bond_maturity_date_remediation_required",
+        "bond_matured_outstanding_reconciliation_required",
         "tyw_liability_maturity_date_remediation_required",
+        "krd_bucket_warning_mismatch",
         "duration_exclusion_warning_mismatch",
         "risk_tensor_warning_mismatch",
         "business_owner_approval",
@@ -143,22 +149,22 @@
       },
       {
         "name": "evidence_snapshot",
-        "command": "python scripts/portfolio_home_evidence_snapshot.py --scorecard-limit 1 --verifier-limit 1 --require-verifier-matched",
+        "command": "python scripts/portfolio_home_evidence_snapshot.py --scorecard-limit 1 --verifier-limit 1 --require-verifier-matched --report-date 2026-05-31",
         "available": true
       },
       {
         "name": "owner_action_packet",
-        "command": "python scripts/portfolio_home_owner_action_packet.py --limit 3",
+        "command": "python scripts/portfolio_home_owner_action_packet.py --limit 3 --report-date 2026-05-31",
         "available": true
       },
       {
         "name": "closure_artifact_presence_check",
-        "command": "python scripts/portfolio_home_closure_artifact_presence_check.py --limit 3 --require-current",
+        "command": "python scripts/portfolio_home_closure_artifact_presence_check.py --limit 3 --require-current --report-date 2026-05-31",
         "available": true
       },
       {
         "name": "evidence_packet_guard",
-        "command": "python scripts/portfolio_home_evidence_packet_guard.py --require-clean",
+        "command": "python scripts/portfolio_home_evidence_packet_guard.py --require-clean --report-date 2026-05-31",
         "available": true
       },
       {
@@ -183,22 +189,22 @@
       },
       {
         "name": "dependency_consistency_strict_gate",
-        "command": "python scripts/portfolio_home_dependency_consistency_check.py --limit 3 --require-consistent",
+        "command": "python scripts/portfolio_home_dependency_consistency_check.py --limit 3 --require-consistent --report-date 2026-05-31",
         "available": true
       },
       {
         "name": "owner_decision_intake_strict_gate",
-        "command": "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready",
+        "command": "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready --report-date 2026-05-31",
         "available": true
       },
       {
         "name": "scorecard_strict_gate",
-        "command": "python scripts/portfolio_home_closure_scorecard.py --limit 3 --require-full-score",
+        "command": "python scripts/portfolio_home_closure_scorecard.py --limit 3 --require-full-score --report-date 2026-05-31",
         "available": true
       },
       {
         "name": "business_owner_approval_strict_gate",
-        "command": "python scripts/check_portfolio_home_business_owner_approval.py --require-captured",
+        "command": "python scripts/check_portfolio_home_business_owner_approval.py --require-captured --report-date 2026-05-31",
         "available": true
       }
     ]
@@ -260,7 +266,7 @@
   },
   "missing_input_counts": {
     "krd_missing_decision_rows": 503,
-    "maturity_missing_decision_rows": 1569,
+    "maturity_missing_decision_rows": 1455,
     "business_owner_approval_action_items": 19
   },
   "owner_routes": [
@@ -269,6 +275,7 @@
       "input_status": "owner_input_needed",
       "blockers": [
         "risk_tensor_quality_warning",
+        "krd_bucket_warning_mismatch",
         "risk_tensor_warning_mismatch",
         "krd_contract_decision_required"
       ],
@@ -281,7 +288,7 @@
       "evidence_sources": [
         {
           "name": "risk_warning_consistency",
-          "command": "python scripts/portfolio_home_risk_warning_consistency.py --require-consistent",
+          "command": "python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-consistent",
           "fields": [
             "parsed_warnings",
             "recomputed_warnings",
@@ -293,7 +300,19 @@
         },
         {
           "name": "risk_warning_consistency",
-          "command": "python scripts/portfolio_home_risk_warning_consistency.py --require-consistent",
+          "command": "python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-consistent",
+          "fields": [
+            "parsed_warnings",
+            "recomputed_warnings",
+            "duration_exclusion_delta_detail",
+            "warning_resolution_matrix",
+            "decision_blockers"
+          ],
+          "boundary": "Evidence-only warning consistency check; does not approve the metric, clean the risk tensor, or close the page."
+        },
+        {
+          "name": "risk_warning_consistency",
+          "command": "python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-consistent",
           "fields": [
             "parsed_warnings",
             "recomputed_warnings",
@@ -328,14 +347,16 @@
         "verification_rerun_date"
       ],
       "recheck_commands": [
-        "python scripts/portfolio_home_risk_warning_consistency.py --require-clean",
-        "python scripts/portfolio_home_full_closure_evidence.py --require-clean",
-        "python scripts/portfolio_home_krd_remap_review_queue.py --require-clean",
-        "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready"
+        "python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-clean",
+        "python scripts/portfolio_home_full_closure_evidence.py --report-date 2026-05-31 --require-clean",
+        "python scripts/portfolio_home_krd_remap_review_queue.py --report-date 2026-05-31 --require-clean",
+        "python scripts/portfolio_home_owner_decision_intake_check.py --report-date 2026-05-31 --limit 3 --require-ready",
+        "python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-consistent"
       ],
       "exit_criteria": [
         "Risk warning clean gate exits 0 and full-closure evidence no longer reports risk_tensor_quality_warning.",
         "KRD review queue exits 0 under the approved contract and the metric contract records the decision.",
+        "Risk warning consistency confirms the KRD bucket warning matches current formal bonds, and rematerialization is completed or /portfolio remains candidate-only when the warning cannot yet be cleared.",
         "Risk warning clean gate exits 0 with no risk tensor warning mismatch."
       ],
       "decision_gap_counts": {
@@ -364,9 +385,11 @@
         "approves_metric_or_page": false,
         "certification_effect": "none",
         "current_consistency_blockers": [
+          "krd_bucket_warning_mismatch",
           "duration_exclusion_warning_mismatch"
         ],
         "would_clear_consistency_blockers": [
+          "krd_bucket_warning_mismatch",
           "duration_exclusion_warning_mismatch"
         ],
         "preview_consistency_status": "consistent",
@@ -378,7 +401,7 @@
         ],
         "preview_warnings": [
           "Non-standard tenor buckets remapped to nearest KRD bucket: 20Y, 2Y, 6M",
-          "120 rows carry market_value=39109594105.50000008 and are excluded from portfolio duration denominator: 114 without maturity_date; 6 with non-positive modified_duration. DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated.",
+          "120 rows carry market_value=39109594105.50000008 and are excluded from portfolio duration denominator: 114 without maturity_date (market_value=37622164239.83000008); 6 matured on or before report_date with outstanding market_value (market_value=1487429865.67000000); 0 future-dated with non-positive modified_duration (market_value=0.00000000). DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated.",
           "Excluded 114 rows without maturity_date from liquidity gap calculation.",
           "Excluded 1455 liability rows without maturity_date from liquidity gap calculation."
         ]
@@ -388,19 +411,27 @@
       "owner": "data_owner",
       "input_status": "owner_input_needed",
       "blockers": [
-        "bond_maturity_date_remediation_required",
         "tyw_liability_maturity_date_remediation_required",
+        "bond_matured_outstanding_reconciliation_required",
         "duration_exclusion_warning_mismatch"
       ],
       "decision_artifacts": [
-        "docs/portfolio/maturity-remediation/2026-05-31/bond_missing_maturity.csv",
         "docs/portfolio/maturity-remediation/2026-05-31/tyw_liability_missing_maturity.csv",
         "docs/portfolio/maturity-remediation/2026-05-31/maturity_scoped_exclusion_evidence.json"
       ],
       "evidence_sources": [
         {
+          "name": "matured_outstanding_queue",
+          "command": "python scripts/portfolio_home_matured_outstanding_queue.py --report-date 2026-05-31 --require-empty",
+          "fields": [
+            "summary",
+            "rows"
+          ],
+          "boundary": "Read-only reconciliation evidence; does not change source positions, approve an exception, or close the page."
+        },
+        {
           "name": "risk_warning_consistency",
-          "command": "python scripts/portfolio_home_risk_warning_consistency.py --require-consistent",
+          "command": "python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-consistent",
           "fields": [
             "parsed_warnings",
             "recomputed_warnings",
@@ -427,18 +458,20 @@
         "verification_rerun_matched"
       ],
       "recheck_commands": [
-        "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
-        "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready",
-        "python scripts/portfolio_home_risk_warning_consistency.py --require-consistent"
+        "python scripts/portfolio_home_matured_outstanding_queue.py --report-date 2026-05-31 --require-empty",
+        "python scripts/portfolio_home_full_closure_evidence.py --report-date 2026-05-31 --require-clean",
+        "python scripts/portfolio_home_maturity_remediation_queue.py --report-date 2026-05-31 --require-empty",
+        "python scripts/portfolio_home_owner_decision_intake_check.py --report-date 2026-05-31 --limit 3 --require-ready",
+        "python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-consistent"
       ],
       "exit_criteria": [
-        "Bond maturity remediation queue is empty or signed exclusion evidence is captured and surfaced as a boundary.",
+        "Matured outstanding strict queue exits 0 with no matured or unparseable non-zero bond positions.",
         "TYW liability maturity remediation queue is empty or signed exclusion evidence is captured and surfaced as a boundary.",
         "Risk warning consistency reports matching parsed and recomputed duration-exclusion evidence."
       ],
       "decision_gap_counts": {
-        "missing_decision_rows": 1569,
-        "bond_missing_decision_rows": 114,
+        "missing_decision_rows": 1455,
+        "bond_missing_decision_rows": 0,
         "tyw_liability_missing_decision_rows": 1455
       },
       "comment_gap_counts": {},
@@ -455,9 +488,11 @@
         "approves_metric_or_page": false,
         "certification_effect": "none",
         "current_consistency_blockers": [
+          "krd_bucket_warning_mismatch",
           "duration_exclusion_warning_mismatch"
         ],
         "would_clear_consistency_blockers": [
+          "krd_bucket_warning_mismatch",
           "duration_exclusion_warning_mismatch"
         ],
         "preview_consistency_status": "consistent",
@@ -469,7 +504,7 @@
         ],
         "preview_warnings": [
           "Non-standard tenor buckets remapped to nearest KRD bucket: 20Y, 2Y, 6M",
-          "120 rows carry market_value=39109594105.50000008 and are excluded from portfolio duration denominator: 114 without maturity_date; 6 with non-positive modified_duration. DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated.",
+          "120 rows carry market_value=39109594105.50000008 and are excluded from portfolio duration denominator: 114 without maturity_date (market_value=37622164239.83000008); 6 matured on or before report_date with outstanding market_value (market_value=1487429865.67000000); 0 future-dated with non-positive modified_duration (market_value=0.00000000). DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated.",
           "Excluded 114 rows without maturity_date from liquidity gap calculation.",
           "Excluded 1455 liability rows without maturity_date from liquidity gap calculation."
         ]
@@ -487,7 +522,6 @@
         "docs/portfolio/krd-contract-decision/2026-05-31/krd_remap_summary.csv",
         "docs/portfolio/krd-contract-decision/2026-05-31/krd_remap_detail.csv",
         "docs/portfolio/krd-contract-decision/2026-05-31/exact_bucket_schema_evidence.json",
-        "docs/portfolio/maturity-remediation/2026-05-31/bond_missing_maturity.csv",
         "docs/portfolio/maturity-remediation/2026-05-31/tyw_liability_missing_maturity.csv",
         "docs/portfolio/krd-contract-decision/2026-05-31/nearest_bucket_approval_evidence.json",
         "docs/portfolio/maturity-remediation/2026-05-31/maturity_scoped_exclusion_evidence.json"
@@ -534,10 +568,10 @@
         "risk_owner_countersigned"
       ],
       "recheck_commands": [
-        "python scripts/check_portfolio_home_business_owner_approval.py --require-captured",
-        "python scripts/portfolio_home_business_owner_approval_packet.py --limit 3 --require-ready",
-        "python scripts/portfolio_home_closure_scorecard.py --limit 3 --require-full-score",
-        "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready"
+        "python scripts/check_portfolio_home_business_owner_approval.py --report-date 2026-05-31 --require-captured",
+        "python scripts/portfolio_home_business_owner_approval_packet.py --report-date 2026-05-31 --limit 3 --require-ready",
+        "python scripts/portfolio_home_closure_scorecard.py --report-date 2026-05-31 --limit 3 --require-full-score",
+        "python scripts/portfolio_home_owner_decision_intake_check.py --report-date 2026-05-31 --limit 3 --require-ready"
       ],
       "exit_criteria": [
         "Approval checker exits 0 and evidence_scope.approves_metric_or_page is true.",
