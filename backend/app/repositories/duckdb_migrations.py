@@ -43,8 +43,18 @@ def _ensure_zqtz_patch_target_tables(conn: duckdb.DuckDBPyConnection) -> None:
 def ensure_fx_daily_mid_schema_if_missing(conn: duckdb.DuckDBPyConnection) -> None:
     """Re-apply fx DDL when the table is missing (e.g. dropped) but migrations are already recorded."""
     if _main_table_exists(conn, "fx_daily_mid"):
+        _v30_fact_snapshot_indexes(conn)
+    else:
+        _run_sql_slice(conn, "10_fx_mid.sql")
+        _v30_fact_snapshot_indexes(conn)
+    if not _main_table_exists(conn, "fx_daily_mid"):
         return
-    _run_sql_slice(conn, "10_fx_mid.sql")
+    conn.execute(
+        """
+        create unique index if not exists uq_fx_daily_mid_natural_key
+        on fx_daily_mid (trade_date, base_currency, quote_currency)
+        """
+    )
 
 
 def ensure_choice_macro_schema_if_missing(conn: duckdb.DuckDBPyConnection) -> None:

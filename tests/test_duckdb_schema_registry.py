@@ -9,6 +9,7 @@ from pathlib import Path
 import duckdb
 import pytest
 from backend.app.repositories.duckdb_migrations import (
+    ensure_fx_daily_mid_schema_if_missing,
     _v32_add_table_constraints,
     _v36_risk_tensor_projection_quality,
     _v37_bond_payment_frequency_fallback_provenance,
@@ -805,3 +806,69 @@ def test_v32_defers_unique_indexes_without_enforceable_grain_contract() -> None:
     assert "uq_fact_formal_zqtz_balance_daily_natural_key" not in sql
     assert "uq_zqtz_bond_daily_snapshot_natural_key" not in sql
     assert "uq_fact_formal_bond_analytics_daily_natural_key" not in sql
+
+
+def test_ensure_fx_daily_mid_schema_if_missing_restores_indexes_after_drop() -> None:
+    conn = duckdb.connect(":memory:")
+    try:
+        conn.execute(
+            """
+            create table fx_daily_mid (
+              trade_date date,
+              base_currency varchar,
+              quote_currency varchar,
+              mid_rate decimal(24, 8),
+              source_name varchar,
+              is_business_day boolean,
+              is_carry_forward boolean,
+              source_version varchar,
+              vendor_name varchar,
+              vendor_version varchar,
+              vendor_series_code varchar,
+              observed_trade_date date
+            )
+            """
+        )
+        conn.execute("drop table fx_daily_mid")
+
+        ensure_fx_daily_mid_schema_if_missing(conn)
+
+        assert {
+            "idx_fx_daily_mid_trade_date_base_currency",
+            "uq_fx_daily_mid_natural_key",
+        } <= _index_names(conn)
+
+        conn.execute(
+            """
+            insert or replace into fx_daily_mid (
+              trade_date,
+              base_currency,
+              quote_currency,
+              mid_rate,
+              source_name,
+              is_business_day,
+              is_carry_forward,
+              source_version,
+              vendor_name,
+              vendor_version,
+              vendor_series_code,
+              observed_trade_date
+            ) values (
+              '2026-06-30',
+              'USD',
+              'CNY',
+              7.2,
+              'CFETS',
+              true,
+              false,
+              'sv_fx_test',
+              'choice',
+              'v1',
+              'EMM00058124',
+              '2026-06-30'
+            )
+            """
+        )
+        assert conn.execute("select count(*) from fx_daily_mid").fetchone() == (1,)
+    finally:
+        conn.close()
