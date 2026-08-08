@@ -57,6 +57,15 @@ def _patch_usd_only_formal_fx_candidates(fx_mod, monkeypatch):
     )
 
 
+def _patch_chinamoney_fx_failure(fx_mod, monkeypatch, message: str = "chinamoney unavailable"):
+    monkeypatch.setattr(
+        fx_mod,
+        "_fetch_chinamoney_fx_mid_rows_for_report_date",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError(message)),
+        raising=False,
+    )
+
+
 def _patch_skip_fx_refresh(task_mod, monkeypatch):
     monkeypatch.setattr(
         task_mod.materialize_fx_mid_for_report_date,
@@ -350,6 +359,7 @@ def test_balance_analysis_materialize_fails_when_required_fx_rate_is_missing(tmp
                 {"edb": lambda self, codes, options="", **_kwargs: (_ for _ in ()).throw(RuntimeError("choice unavailable"))},
             )(),
         )
+        _patch_chinamoney_fx_failure(fx_mod, monkeypatch)
         monkeypatch.setattr(
             fx_mod,
             "AkShareVendorAdapter",
@@ -906,6 +916,7 @@ def test_balance_analysis_materialize_does_not_autodiscover_fx_csv_from_data_inp
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_input_root))
     _patch_usd_only_formal_fx_candidates(fx_mod, monkeypatch)
     monkeypatch.setattr(fx_mod, "ChoiceClient", lambda: _FailingChoiceClient())
+    _patch_chinamoney_fx_failure(fx_mod, monkeypatch)
     monkeypatch.setattr(fx_mod, "AkShareVendorAdapter", lambda: _FailingAkShareVendor())
     get_settings.cache_clear()
 
@@ -1138,6 +1149,7 @@ def test_balance_analysis_materialize_rejects_choice_fx_carry_forward_on_busines
     monkeypatch.delenv("MOSS_FX_OFFICIAL_SOURCE_PATH", raising=False)
     monkeypatch.delenv("MOSS_FX_MID_CSV_PATH", raising=False)
     monkeypatch.setattr(fx_mod, "ChoiceClient", lambda: fake_client)
+    _patch_chinamoney_fx_failure(fx_mod, monkeypatch)
     monkeypatch.setattr(
         fx_mod,
         "AkShareVendorAdapter",
