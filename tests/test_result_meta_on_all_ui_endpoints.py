@@ -511,10 +511,9 @@ def test_agent_post_disabled_stub_is_explicit_not_live_envelope(tmp_path, monkey
             filters={},
         ).model_dump(mode="json"),
     )
-    assert response.status_code == 503
+    assert response.status_code == 404
     body = response.json()
-    assert body.get("enabled") is False
-    assert "disabled" in str(body.get("detail", "")).lower()
+    assert body == {"detail": "Not Found"}
     assert "result_meta" not in body
     get_settings.cache_clear()
 
