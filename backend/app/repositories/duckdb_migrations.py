@@ -40,21 +40,66 @@ def _ensure_zqtz_patch_target_tables(conn: duckdb.DuckDBPyConnection) -> None:
         _run_sql_slice(conn, "05_balance_analysis.sql")
 
 
+def _connection_has_explicit_transaction(conn: duckdb.DuckDBPyConnection) -> bool:
+    """Detect whether the caller already owns the active DuckDB transaction."""
+    first_id = conn.execute("select txid_current()").fetchone()[0]
+    second_id = conn.execute("select txid_current()").fetchone()[0]
+    return first_id == second_id
+
+
+def _ensure_fx_daily_mid_head_schema(conn: duckdb.DuckDBPyConnection) -> None:
+    """Restore the FX head schema and constraints using the governed registry DDL."""
+    caller_owns_transaction = _connection_has_explicit_transaction(conn)
+    transaction_started = False
+    try:
+        if not caller_owns_transaction:
+            conn.execute("begin transaction")
+            transaction_started = True
+
+        _run_sql_slice(conn, "10_fx_mid.sql")
+        if _main_table_exists(conn, "fx_daily_mid"):
+            key_columns = ("trade_date", "base_currency", "quote_currency")
+            nullable_columns = [
+                column
+                for column in key_columns
+                if (
+                    conn.execute(
+                        """
+                        select is_nullable
+                        from information_schema.columns
+                        where table_schema = 'main' and table_name = 'fx_daily_mid' and column_name = ?
+                        """,
+                        [column],
+                    ).fetchone()
+                    or (None,)
+                )[0]
+                == "YES"
+            ]
+            if nullable_columns:
+                conn.execute("drop index if exists idx_fx_daily_mid_trade_date_base_currency")
+                conn.execute("drop index if exists uq_fx_daily_mid_natural_key")
+                for column in nullable_columns:
+                    conn.execute(f"alter table fx_daily_mid alter column {column} set not null")
+            _v30_fact_snapshot_indexes(conn)
+            conn.execute(
+                """
+                create unique index if not exists uq_fx_daily_mid_natural_key
+                on fx_daily_mid (trade_date, base_currency, quote_currency)
+                """
+            )
+
+        if transaction_started:
+            conn.execute("commit")
+            transaction_started = False
+    except Exception:
+        if transaction_started:
+            conn.execute("rollback")
+        raise
+
+
 def ensure_fx_daily_mid_schema_if_missing(conn: duckdb.DuckDBPyConnection) -> None:
     """Re-apply fx DDL when the table is missing (e.g. dropped) but migrations are already recorded."""
-    if _main_table_exists(conn, "fx_daily_mid"):
-        _v30_fact_snapshot_indexes(conn)
-    else:
-        _run_sql_slice(conn, "10_fx_mid.sql")
-        _v30_fact_snapshot_indexes(conn)
-    if not _main_table_exists(conn, "fx_daily_mid"):
-        return
-    conn.execute(
-        """
-        create unique index if not exists uq_fx_daily_mid_natural_key
-        on fx_daily_mid (trade_date, base_currency, quote_currency)
-        """
-    )
+    _ensure_fx_daily_mid_head_schema(conn)
 
 
 def ensure_choice_macro_schema_if_missing(conn: duckdb.DuckDBPyConnection) -> None:

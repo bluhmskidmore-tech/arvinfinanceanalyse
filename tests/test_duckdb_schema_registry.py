@@ -833,10 +833,23 @@ def test_ensure_fx_daily_mid_schema_if_missing_restores_indexes_after_drop() -> 
 
         ensure_fx_daily_mid_schema_if_missing(conn)
 
+        columns = {
+            row[0]: row[1]
+            for row in conn.execute(
+                """
+                select column_name, is_nullable
+                from information_schema.columns
+                where table_schema = 'main' and table_name = 'fx_daily_mid'
+                """
+            ).fetchall()
+        }
         assert {
             "idx_fx_daily_mid_trade_date_base_currency",
             "uq_fx_daily_mid_natural_key",
         } <= _index_names(conn)
+        assert columns["trade_date"] == "NO"
+        assert columns["base_currency"] == "NO"
+        assert columns["quote_currency"] == "NO"
 
         conn.execute(
             """
@@ -869,6 +882,73 @@ def test_ensure_fx_daily_mid_schema_if_missing_restores_indexes_after_drop() -> 
             )
             """
         )
+
+        with pytest.raises(duckdb.ConstraintException):
+            conn.execute(
+                """
+                insert into fx_daily_mid (
+                  trade_date,
+                  base_currency,
+                  quote_currency,
+                  mid_rate,
+                  source_name,
+                  is_business_day,
+                  is_carry_forward,
+                  source_version,
+                  vendor_name,
+                  vendor_version,
+                  vendor_series_code,
+                  observed_trade_date
+                ) values (
+                  null,
+                  'USD',
+                  'CNY',
+                  7.2,
+                  'CFETS',
+                  true,
+                  false,
+                  'sv_fx_test',
+                  'choice',
+                  'v1',
+                  'EMM00058124',
+                  '2026-06-30'
+                )
+                """
+            )
+
+        with pytest.raises(duckdb.ConstraintException):
+            conn.execute(
+                """
+                insert into fx_daily_mid (
+                  trade_date,
+                  base_currency,
+                  quote_currency,
+                  mid_rate,
+                  source_name,
+                  is_business_day,
+                  is_carry_forward,
+                  source_version,
+                  vendor_name,
+                  vendor_version,
+                  vendor_series_code,
+                  observed_trade_date
+                ) values (
+                  '2026-06-30',
+                  'USD',
+                  'CNY',
+                  7.2,
+                  'CFETS',
+                  true,
+                  false,
+                  'sv_fx_test',
+                  'choice',
+                  'v1',
+                  'EMM00058124',
+                  '2026-06-30'
+                )
+                """
+            )
+
         assert conn.execute("select count(*) from fx_daily_mid").fetchone() == (1,)
     finally:
         conn.close()
