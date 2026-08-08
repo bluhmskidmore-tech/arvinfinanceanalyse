@@ -1154,11 +1154,11 @@ def test_portfolio_home_business_owner_approval_packet_reports_pending_scope() -
         "status": "pending_owner_input",
         "blockers": [
             "business_owner_approval_not_captured",
-                "scorecard_full_score_not_ready",
-                "scorecard_score_status_not_ready",
-                "owner_decision_intake_not_ready",
-                "risk_warning_not_clean",
-            ],
+            "scorecard_full_score_not_ready",
+            "scorecard_score_status_not_ready",
+            "owner_decision_intake_not_ready",
+            "risk_warning_not_clean",
+        ],
     }
     risk_warning_status = packet["risk_warning_clean_status"]
     assert {
