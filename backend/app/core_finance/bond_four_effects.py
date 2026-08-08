@@ -147,6 +147,8 @@ def compute_bond_four_effects(
     if has_accrued:
         dirty_change = (mv_end + ai_end) - (mv_start + ai_start)
         coupon_cash = income_return - (ai_end - ai_start)
+        # Keep the clean-price + income identity; a negative inferred coupon
+        # is surfaced as a diagnostic below instead of being clamped away.
         total_return = dirty_change + coupon_cash
     else:
         total_return = total_price_change + income_return
@@ -179,6 +181,16 @@ def compute_bond_four_effects(
         logger.warning(
             "bond %s: accrued_interest missing on both sides, falling back to clean-price basis",
             log_id,
+        )
+    elif coupon_cash < Decimal("0"):
+        diagnostics.append("accrued_interest_exceeds_modeled_carry")
+        logger.warning(
+            "bond %s: accrued-interest delta %s exceeds modeled carry %s; "
+            "retaining clean-price + income identity (inferred coupon_cash=%s)",
+            log_id,
+            ai_end - ai_start,
+            income_return,
+            coupon_cash,
         )
 
     return {

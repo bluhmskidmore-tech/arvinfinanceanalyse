@@ -394,6 +394,26 @@ class TestFourEffectsSumToTotal:
         )
         assert float(result["selection_effect"]) > dirty_only - income + 1.0
 
+    def test_signed_short_notional_preserves_clean_identity_on_ai_mismatch(self):
+        """Signed short inputs must not be clamped to dirty movement."""
+        bond = _make_bond(
+            coupon_rate=0.03,
+            face_value=-1_000.0,
+            market_value_start=-1_000.0,
+            market_value_end=-1_010.0,
+            ytm=0.03,
+            maturity_date=date(2030, 6, 30),
+            accrued_interest_start=-5.0,
+            accrued_interest_end=-7.0,
+        )
+        result = compute_bond_four_effects(
+            bond, 30, Decimal("0"), Decimal("0"), date(2026, 1, 1)
+        )
+
+        expected_total = -10.0 - (0.03 * 1_000.0 * 30.0 / 365.0)
+        assert float(result["total_return"]) == pytest.approx(expected_total)
+        assert "accrued_interest_exceeds_modeled_carry" in result["diagnostics"]
+
     def test_yield_rise_scenario(self):
         """Rising yield environment."""
         bond = _make_bond(

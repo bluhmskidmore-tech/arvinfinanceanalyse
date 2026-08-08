@@ -496,7 +496,7 @@ class TestFullCampisiAttribution:
         assert abs(sum_effects - totals["total_return"]) < 1.0  # Within 1 yuan
 
     def test_full_price_total_return_uses_accrued_interest_when_available(self):
-        """Campisi total return should use full-price change when accrued interest is supplied."""
+        """AI mismatch keeps the clean-price + income identity and is disclosed."""
         positions = [
             {
                 "bond_code": "AI.IB",
@@ -515,7 +515,9 @@ class TestFullCampisiAttribution:
 
         result = campisi_attribution(positions, {}, {}, date(2026, 1, 1), date(2026, 1, 31))
 
-        assert result.totals["total_return"] == pytest.approx(13.0)
+        expected_total_return = 10.0 + (0.03 * 1000.0 * 30.0 / 365.0)
+        assert result.totals["total_return"] == pytest.approx(expected_total_return)
+        assert "AI.IB: accrued_interest_exceeds_modeled_carry" in result.diagnostics
 
     def test_ac_class_zeroes_market_effects(self):
         """AC class bonds should have zero treasury/spread/selection effects."""
