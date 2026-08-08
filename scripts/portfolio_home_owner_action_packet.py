@@ -63,6 +63,18 @@ STRICT_HANDOFF_GATE_NAMES = [
 ]
 
 
+def _portable_provenance_path(value: object) -> object:
+    """Keep repository-owned provenance stable across worktrees."""
+
+    if not isinstance(value, str):
+        return value
+    try:
+        relative = Path(value).resolve().relative_to(ROOT.resolve())
+    except (OSError, ValueError):
+        return value
+    return relative.as_posix()
+
+
 def _action_by_blocker(actions: list[object]) -> dict[str, dict[str, object]]:
     by_blocker: dict[str, dict[str, object]] = {}
     for action in actions:
@@ -575,6 +587,10 @@ def _closure_recheck_commands(
     blocker: str,
     report_date: str = DEFAULT_REPORT_DATE,
 ) -> list[str]:
+    def _date_qualified(command: str) -> str:
+        command_head, separator, command_tail = command.partition(".py")
+        return f"{command_head}{separator} --report-date {report_date}{command_tail}"
+
     if blocker == "krd_bucket_warning_mismatch":
         return [
             f"python scripts/portfolio_home_risk_warning_consistency.py --report-date {report_date} --require-consistent",
@@ -598,12 +614,12 @@ def _closure_recheck_commands(
     if blocker == "krd_contract_decision_required":
         return [
             f"python scripts/portfolio_home_krd_remap_review_queue.py --report-date {report_date} --require-clean",
-            f"{OWNER_DECISION_INTAKE_COMMAND} --report-date {report_date}",
+            _date_qualified(OWNER_DECISION_INTAKE_COMMAND),
         ]
     if blocker == "tyw_liability_maturity_date_remediation_required":
         return [
             f"python scripts/portfolio_home_maturity_remediation_queue.py --report-date {report_date} --require-empty",
-            f"{OWNER_DECISION_INTAKE_COMMAND} --report-date {report_date}",
+            _date_qualified(OWNER_DECISION_INTAKE_COMMAND),
         ]
     if blocker == "business_owner_approval":
         return [
@@ -612,7 +628,7 @@ def _closure_recheck_commands(
             f"python scripts/portfolio_home_closure_scorecard.py --report-date {report_date} --limit 3 --require-full-score",
         ]
     if blocker == "owner_decision_intake_blocked":
-        return [f"{OWNER_DECISION_INTAKE_COMMAND} --report-date {report_date}"]
+        return [_date_qualified(OWNER_DECISION_INTAKE_COMMAND)]
     return []
 
 
@@ -1046,8 +1062,8 @@ def build_packet(
         "page_id": scorecard["page_id"],
         "page_slug": scorecard["page_slug"],
         "report_date": scorecard["report_date"],
-        "duckdb_path": scorecard["duckdb_path"],
-        "template_path": scorecard["template_path"],
+        "duckdb_path": _portable_provenance_path(scorecard["duckdb_path"]),
+        "template_path": _portable_provenance_path(scorecard["template_path"]),
         "current_score": scorecard["current_score"],
         "remaining_gap": scorecard["remaining_gap"],
         "score_status": scorecard["score_status"],

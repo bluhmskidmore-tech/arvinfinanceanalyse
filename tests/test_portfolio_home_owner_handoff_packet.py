@@ -192,7 +192,10 @@ def test_portfolio_home_owner_handoff_packet_builds_owner_ready_markdown() -> No
         "`risk_tensor_warning_mismatch`"
     ) in markdown
     assert "- Risk tensor rematerialization preview: `would_remain_blocked`" in markdown
-    assert "- Risk tensor preview would clear: `duration_exclusion_warning_mismatch`" in markdown
+    assert (
+        "- Risk tensor preview would clear: `krd_bucket_warning_mismatch`, "
+        "`duration_exclusion_warning_mismatch`"
+    ) in markdown
     assert "- Risk tensor preview decision status: `blocked`" in markdown
     assert "- Risk tensor preview decision blockers: `risk_tensor_quality_warning`" in markdown
     assert "- Risk tensor preview writes database: `false`" in markdown
@@ -221,8 +224,8 @@ def test_portfolio_home_owner_handoff_packet_builds_owner_ready_markdown() -> No
     assert "- Score blocker action coverage unassigned blockers: `none`" in markdown
     assert (
         "- Score blocker action coverage covered blockers: `risk_tensor_quality_warning`, "
-        "`krd_contract_decision_required`, `bond_maturity_date_remediation_required`, "
-        "`tyw_liability_maturity_date_remediation_required`, "
+        "`krd_contract_decision_required`, `bond_matured_outstanding_reconciliation_required`, "
+        "`tyw_liability_maturity_date_remediation_required`, `krd_bucket_warning_mismatch`, "
         "`duration_exclusion_warning_mismatch`, `risk_tensor_warning_mismatch`, "
         "`business_owner_approval`, `owner_decision_intake_blocked`"
     ) in markdown
@@ -238,7 +241,7 @@ def test_portfolio_home_owner_handoff_packet_builds_owner_ready_markdown() -> No
     ) in markdown
     assert (
         "- Owner intake CSV summary: `krd_summary_row_count=3`, "
-        "`krd_detail_row_count=500`, `bond_missing_maturity_row_count=114`, "
+        "`krd_detail_row_count=500`, `bond_missing_maturity_row_count=0`, "
         "`tyw_liability_missing_maturity_row_count=1455`."
     ) in markdown
     assert (
@@ -272,7 +275,8 @@ def test_portfolio_home_owner_handoff_packet_builds_owner_ready_markdown() -> No
     ) in markdown
     assert "- Risk Owner quickstart:" in markdown
     assert (
-        "  - Close: `risk_tensor_quality_warning`, `risk_tensor_warning_mismatch`, "
+        "  - Close: `risk_tensor_quality_warning`, `krd_bucket_warning_mismatch`, "
+        "`risk_tensor_warning_mismatch`, "
         "`krd_contract_decision_required`"
     ) in markdown
     assert (
@@ -297,13 +301,12 @@ def test_portfolio_home_owner_handoff_packet_builds_owner_ready_markdown() -> No
     ) in markdown
     assert "- Data Owner quickstart:" in markdown
     assert (
-        "  - Close: `bond_maturity_date_remediation_required`, "
-        "`tyw_liability_maturity_date_remediation_required`, "
+        "  - Close: `tyw_liability_maturity_date_remediation_required`, "
+        "`bond_matured_outstanding_reconciliation_required`, "
         "`duration_exclusion_warning_mismatch`"
     ) in markdown
     assert (
-        "  - Fill/review: `docs/portfolio/maturity-remediation/2026-05-31/bond_missing_maturity.csv`; "
-        "`docs/portfolio/maturity-remediation/2026-05-31/tyw_liability_missing_maturity.csv`; "
+        "  - Fill/review: `docs/portfolio/maturity-remediation/2026-05-31/tyw_liability_missing_maturity.csv`; "
         "`docs/portfolio/maturity-remediation/2026-05-31/maturity_scoped_exclusion_evidence.json`"
     ) in markdown
     assert "  - Required fields: `proposed_maturity_date`, `owner_decision`, `owner_comment`" in markdown
@@ -323,8 +326,8 @@ def test_portfolio_home_owner_handoff_packet_builds_owner_ready_markdown() -> No
         "`risk_warning_consistency` (`parsed_warnings`, `recomputed_warnings`, "
         "`duration_exclusion_delta_detail`, `warning_resolution_matrix`, "
         "`decision_blockers`) | "
-        "`python scripts/portfolio_home_risk_warning_consistency.py --require-clean`; "
-        "`python scripts/portfolio_home_full_closure_evidence.py --require-clean` | "
+        "`python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-clean`; "
+        "`python scripts/portfolio_home_full_closure_evidence.py --report-date 2026-05-31 --require-clean` | "
         "Risk tensor quality is clean for report_date 2026-05-31 and strict "
         "full-closure evidence no longer reports this blocker. |"
     ) in markdown
@@ -334,36 +337,35 @@ def test_portfolio_home_owner_handoff_packet_builds_owner_ready_markdown() -> No
         "`docs/portfolio/krd-contract-decision/2026-05-31/krd_remap_detail.csv`; "
         "`docs/portfolio/krd-contract-decision/2026-05-31/nearest_bucket_approval_evidence.json`; "
         "`docs/portfolio/krd-contract-decision/2026-05-31/exact_bucket_schema_evidence.json` | "
-        "`python scripts/portfolio_home_krd_remap_review_queue.py --require-clean`; "
-        "`python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready` | "
+        "`python scripts/portfolio_home_krd_remap_review_queue.py --report-date 2026-05-31 --require-clean`; "
+        "`python scripts/portfolio_home_owner_decision_intake_check.py --report-date 2026-05-31 --limit 3 --require-ready` | "
         "Risk-owner KRD decision is captured with notes for every scoped row, "
         "conditional nearest-bucket or exact-bucket evidence is valid when selected, "
         "and the KRD strict gate exits 0. |"
     ) in markdown
     assert (
-        "| `bond_maturity_date_remediation_required` | `data_owner` | "
-        "`docs/portfolio/maturity-remediation/2026-05-31/bond_missing_maturity.csv`; "
-        "`docs/portfolio/maturity-remediation/2026-05-31/maturity_scoped_exclusion_evidence.json` | "
-        "`python scripts/portfolio_home_maturity_remediation_queue.py --require-empty`; "
-        "`python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready` | "
-        "Bond missing-maturity rows are remediated at source or covered by a signed scoped exclusion "
-        "evidence file, and the maturity strict gate exits 0. |"
+        "| `bond_matured_outstanding_reconciliation_required` | `data_owner` | "
+        "`matured_outstanding_queue` (`summary`, `rows`) | "
+        "`python scripts/portfolio_home_matured_outstanding_queue.py --report-date 2026-05-31 --require-empty`; "
+        "`python scripts/portfolio_home_full_closure_evidence.py --report-date 2026-05-31 --require-clean` | "
+        "Matured or unparseable non-zero bond positions are reconciled at source, and the "
+        "matured-outstanding strict queue exits 0. |"
     ) in markdown
     assert (
         "| `tyw_liability_maturity_date_remediation_required` | `data_owner` | "
         "`docs/portfolio/maturity-remediation/2026-05-31/tyw_liability_missing_maturity.csv`; "
         "`docs/portfolio/maturity-remediation/2026-05-31/maturity_scoped_exclusion_evidence.json` | "
-        "`python scripts/portfolio_home_maturity_remediation_queue.py --require-empty`; "
-        "`python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready` | "
+        "`python scripts/portfolio_home_maturity_remediation_queue.py --report-date 2026-05-31 --require-empty`; "
+        "`python scripts/portfolio_home_owner_decision_intake_check.py --report-date 2026-05-31 --limit 3 --require-ready` | "
         "TYW liability missing-maturity rows are remediated at source or covered by a signed scoped "
         "exclusion evidence file, and the maturity strict gate exits 0. |"
     ) in markdown
     assert (
         "| `business_owner_approval` | `business_owner` | "
         "`docs/portfolio/portfolio-home-business-owner-approval-template.md` | "
-        "`python scripts/check_portfolio_home_business_owner_approval.py --require-captured`; "
-        "`python scripts/portfolio_home_business_owner_approval_packet.py --limit 3 --require-ready`; "
-        "`python scripts/portfolio_home_closure_scorecard.py --limit 3 --require-full-score` | "
+        "`python scripts/check_portfolio_home_business_owner_approval.py --report-date 2026-05-31 --require-captured`; "
+        "`python scripts/portfolio_home_business_owner_approval_packet.py --report-date 2026-05-31 --limit 3 --require-ready`; "
+        "`python scripts/portfolio_home_closure_scorecard.py --report-date 2026-05-31 --limit 3 --require-full-score` | "
         "Business-owner approval is signed, risk-owner countersignature is present, "
         "evidence scope approves the page, and the full scorecard strict gate exits 0. |"
     ) in markdown
@@ -373,11 +375,10 @@ def test_portfolio_home_owner_handoff_packet_builds_owner_ready_markdown() -> No
         "`docs/portfolio/krd-contract-decision/2026-05-31/krd_remap_detail.csv`; "
         "`docs/portfolio/krd-contract-decision/2026-05-31/nearest_bucket_approval_evidence.json`; "
         "`docs/portfolio/krd-contract-decision/2026-05-31/exact_bucket_schema_evidence.json`; "
-        "`docs/portfolio/maturity-remediation/2026-05-31/bond_missing_maturity.csv`; "
         "`docs/portfolio/maturity-remediation/2026-05-31/tyw_liability_missing_maturity.csv`; "
         "`docs/portfolio/maturity-remediation/2026-05-31/maturity_scoped_exclusion_evidence.json`; "
         "`docs/portfolio/portfolio-home-business-owner-approval-template.md` | "
-        "`python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready` | "
+        "`python scripts/portfolio_home_owner_decision_intake_check.py --report-date 2026-05-31 --limit 3 --require-ready` | "
         "Risk-owner CSV decisions, nearest-bucket or exact-bucket evidence, "
         "data-owner CSV decisions, scoped-exclusion evidence, and business-owner approval "
         "are reconciled, and the owner decision intake strict gate exits 0. |"
@@ -385,15 +386,19 @@ def test_portfolio_home_owner_handoff_packet_builds_owner_ready_markdown() -> No
     assert "## Owner Checklist" in markdown
     assert (
         "- [ ] Risk Owner: close `risk_tensor_quality_warning`, "
-        "`risk_tensor_warning_mismatch`, `krd_contract_decision_required`"
+        "`krd_bucket_warning_mismatch`, `risk_tensor_warning_mismatch`, "
+        "`krd_contract_decision_required`"
     ) in markdown
     assert (
-        "  - Evidence commands: `python scripts/portfolio_home_risk_warning_consistency.py --require-clean`; "
-        "`python scripts/portfolio_home_krd_remap_review_queue.py --require-clean`"
+        "  - Evidence commands: `python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-clean`; "
+        "`python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-consistent`; "
+        "`python scripts/portfolio_home_krd_remap_review_queue.py --report-date 2026-05-31 --require-clean`"
     ) in markdown
     assert (
         "  - Exit criteria: Risk warning clean gate exits 0 and full-closure evidence no longer reports "
-        "risk_tensor_quality_warning; Risk warning clean gate exits 0 with no risk tensor warning mismatch; "
+        "risk_tensor_quality_warning; Risk warning consistency confirms the KRD bucket warning matches current "
+        "formal bonds, and rematerialization is completed or /portfolio remains candidate-only when the warning "
+        "cannot yet be cleared; Risk warning clean gate exits 0 with no risk tensor warning mismatch; "
         "KRD review queue exits 0 under the approved contract and the metric contract records the decision."
     ) in markdown
     assert (
@@ -426,25 +431,24 @@ def test_portfolio_home_owner_handoff_packet_builds_owner_ready_markdown() -> No
         "`require_exact_bucket_schema`, `reject`"
     ) in markdown
     assert (
-        "- [ ] Data Owner: close `bond_maturity_date_remediation_required`, "
-        "`tyw_liability_maturity_date_remediation_required`, "
+        "- [ ] Data Owner: close `tyw_liability_maturity_date_remediation_required`, "
+        "`bond_matured_outstanding_reconciliation_required`, "
         "`duration_exclusion_warning_mismatch`"
     ) in markdown
     assert (
-        "  - Evidence commands: `python scripts/portfolio_home_maturity_remediation_queue.py --require-empty`; "
-        "`python scripts/portfolio_home_risk_warning_consistency.py --require-consistent`\n"
-        "  - Exit criteria: Bond maturity remediation queue is empty or signed exclusion evidence is captured "
-        "and surfaced as a boundary; TYW liability maturity remediation queue is empty or signed exclusion "
-        "evidence is captured and surfaced as a boundary; Risk warning consistency reports matching parsed "
-        "and recomputed duration-exclusion evidence.\n"
-        "  - Artifacts: `docs/portfolio/maturity-remediation/2026-05-31/bond_missing_maturity.csv`; "
-        "`docs/portfolio/maturity-remediation/2026-05-31/tyw_liability_missing_maturity.csv`; "
+        "  - Evidence commands: `python scripts/portfolio_home_maturity_remediation_queue.py --report-date 2026-05-31 --require-empty`; "
+        "`python scripts/portfolio_home_matured_outstanding_queue.py --report-date 2026-05-31 --require-empty`; "
+        "`python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-consistent`\n"
+        "  - Exit criteria: TYW liability maturity remediation queue is empty or signed exclusion evidence is captured "
+        "and surfaced as a boundary; Matured outstanding strict queue exits 0 with no matured or unparseable non-zero "
+        "bond positions; Risk warning consistency reports matching parsed and recomputed duration-exclusion evidence.\n"
+        "  - Artifacts: `docs/portfolio/maturity-remediation/2026-05-31/tyw_liability_missing_maturity.csv`; "
         "`docs/portfolio/maturity-remediation/2026-05-31/maturity_scoped_exclusion_evidence.json`"
     ) in markdown
-    assert "  - Workload: maturity remediation fields across 1569 rows (bond 114, TYW liability 1455)." in markdown
+    assert "  - Workload: maturity remediation fields across 1455 rows (bond 0, TYW liability 1455)." in markdown
     assert (
-        "  - Current gaps: maturity owner decision missing on 1569 rows "
-        "(bond 114, TYW liability 1455)."
+        "  - Current gaps: maturity owner decision missing on 1455 rows "
+        "(bond 0, TYW liability 1455)."
     ) in markdown
     assert (
         "  - Artifact fields to review/fill: `proposed_maturity_date`, `owner_decision`, `owner_comment`"
@@ -489,43 +493,43 @@ def test_portfolio_home_owner_handoff_packet_builds_owner_ready_markdown() -> No
         "- After owner updates: each strict gate below must exit 0 before `/portfolio` can claim full closure."
     ) in markdown
     assert (
-        "- `python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready`: "
+        "- `python scripts/portfolio_home_owner_decision_intake_check.py --report-date 2026-05-31 --limit 3 --require-ready`: "
         "currently `exit_nonzero`; after updates `exit_0`."
     ) in markdown
     assert (
-        "- `python scripts/portfolio_home_business_owner_approval_packet.py --limit 3 --require-ready`: "
+        "- `python scripts/portfolio_home_business_owner_approval_packet.py --report-date 2026-05-31 --limit 3 --require-ready`: "
         "currently `exit_nonzero`; after updates `exit_0`."
     ) in markdown
     assert (
-        "- `python scripts/portfolio_home_closure_scorecard.py --limit 3 --require-full-score`: "
+        "- `python scripts/portfolio_home_closure_scorecard.py --report-date 2026-05-31 --limit 3 --require-full-score`: "
         "currently `exit_nonzero`; after updates `exit_0`."
     ) in markdown
     assert "## Risk Owner" in markdown
     assert "`risk_tensor_quality_warning`" in markdown
+    assert "`krd_bucket_warning_mismatch`" in markdown
     assert "`krd_contract_decision_required`" in markdown
     assert (
         "- KRD decision scale: `20Y` maps to `krd_30y` across 39 rows with "
         "DV01 23598290.06912522; `2Y` maps to `krd_3y` across 301 rows with "
         "DV01 9195343.60983627; `6M` maps to `krd_1y` across 282 rows "
-        "(160 non-zero DV01 rows) with DV01 571392.61874547."
+        "(160 non-zero DV01 rows) with DV01 571392.61884027."
     ) in markdown
     assert "docs/portfolio/krd-contract-decision/2026-05-31/krd_remap_summary.csv" in markdown
     assert "Allowed decisions: `approve_nearest_bucket`, `require_exact_bucket_schema`, `reject`" in markdown
     assert "## Data Owner" in markdown
-    assert "`bond_maturity_date_remediation_required`" in markdown
+    assert "`bond_matured_outstanding_reconciliation_required`" in markdown
     assert "`tyw_liability_maturity_date_remediation_required`" in markdown
     assert (
-        "- Maturity decision scale: bond queue has 114 missing maturity rows "
-        "with market value 37622164239.83000008; TYW liability queue has "
+        "- Maturity decision scale: bond queue has 0 missing maturity rows "
+        "with market value 0; TYW liability queue has "
         "1455 missing maturity rows with principal 43822652393.01000002."
     ) in markdown
-    assert "docs/portfolio/maturity-remediation/2026-05-31/bond_missing_maturity.csv" in markdown
     assert "Allowed decisions: `remediate_source`, `approve_scoped_exclusion`, `reject`" in markdown
     assert "## Business Owner" in markdown
     assert "`business_owner_approval`" in markdown
     assert "docs/portfolio/portfolio-home-business-owner-approval-template.md" in markdown
     assert "## Recheck Commands" in markdown
-    assert "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready" in markdown
+    assert "python scripts/portfolio_home_owner_decision_intake_check.py --report-date 2026-05-31 --limit 3 --require-ready" in markdown
     assert "python scripts/portfolio_home_business_owner_approval_packet.py --limit 3 --require-ready" in markdown
     assert "python scripts/portfolio_home_closure_scorecard.py --limit 3 --require-full-score" in markdown
     assert "python scripts/portfolio_home_closure_artifact_presence_check.py --limit 3 --require-current" in markdown
@@ -1053,7 +1057,7 @@ def test_portfolio_home_owner_handoff_packet_reports_maturity_comment_gaps(tmp_p
 
     assert (
         "  - Current comment gaps: maturity `approve_scoped_exclusion` owner comments "
-        "missing on 1569 rows."
+        "missing on 1455 rows."
     ) in markdown
 
 
@@ -1178,7 +1182,7 @@ def test_portfolio_home_owner_handoff_packet_reports_multi_decision_maturity_com
 
     assert (
         "  - Current comment gaps: maturity `approve_scoped_exclusion` owner comments "
-        "missing on 785 rows; maturity `reject` owner comments missing on 784 rows."
+        "missing on 728 rows; maturity `reject` owner comments missing on 727 rows."
     ) in markdown
 
 
@@ -1243,11 +1247,12 @@ def test_portfolio_home_owner_handoff_packet_surfaces_rejected_owner_decisions(
 
     assert "- Owner intake blockers: `krd_owner_decision_rejected`, `maturity_owner_decision_rejected`" in markdown
     assert (
-        "- Blockers: `risk_tensor_quality_warning`, `risk_tensor_warning_mismatch`, "
-        "`krd_contract_decision_required`, `krd_owner_decision_rejected`"
+        "- Blockers: `risk_tensor_quality_warning`, `krd_bucket_warning_mismatch`, "
+        "`risk_tensor_warning_mismatch`, `krd_contract_decision_required`, "
+        "`krd_owner_decision_rejected`"
     ) in markdown
     assert (
-        "- Blockers: `bond_maturity_date_remediation_required`, "
-        "`tyw_liability_maturity_date_remediation_required`, "
+        "- Blockers: `tyw_liability_maturity_date_remediation_required`, "
+        "`bond_matured_outstanding_reconciliation_required`, "
         "`duration_exclusion_warning_mismatch`, `maturity_owner_decision_rejected`"
     ) in markdown

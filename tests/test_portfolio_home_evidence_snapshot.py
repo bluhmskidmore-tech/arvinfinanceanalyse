@@ -11,6 +11,7 @@ import pytest
 from scripts.portfolio_home_evidence_snapshot import (
     build_snapshot,
     owner_handoff_completeness_alignment,
+    portable_verification_report,
     snapshot_sha256,
     owner_decision_intake_alignment,
 )
@@ -82,7 +83,7 @@ def test_portfolio_home_evidence_snapshot_summarizes_current_blocked_state() -> 
     assert snapshot["full_score_ready"] is False
     assert "risk_tensor_quality_warning" in snapshot["score_blockers"]
     assert snapshot["gate_summary"]["risk_tensor_quality_flag"] == "warning"
-    assert snapshot["gate_summary"]["bond_missing_maturity_rows"] == 114
+    assert snapshot["gate_summary"]["bond_missing_maturity_rows"] == 0
     assert snapshot["gate_summary"]["owner_decision_intake_status"] == "pending"
     assert snapshot["gate_summary"]["owner_decision_intake_ready"] is False
     assert snapshot["gate_summary"]["owner_decision_intake_blockers"] == [
@@ -278,7 +279,7 @@ def test_portfolio_home_evidence_snapshot_summarizes_current_blocked_state() -> 
             "krd_summary_row_count": 3,
             "krd_detail_row_count": 500,
             "krd_owner_decision_fields_blank": True,
-            "bond_missing_maturity_row_count": 114,
+            "bond_missing_maturity_row_count": 0,
             "tyw_liability_missing_maturity_row_count": 1455,
             "maturity_owner_fields_blank": True,
         },
@@ -298,7 +299,7 @@ def test_portfolio_home_evidence_snapshot_summarizes_current_blocked_state() -> 
             "krd_summary_row_count": 3,
             "krd_detail_row_count": 500,
             "krd_owner_decision_fields_blank": True,
-            "bond_missing_maturity_row_count": 114,
+            "bond_missing_maturity_row_count": 0,
             "tyw_liability_missing_maturity_row_count": 1455,
             "maturity_owner_fields_blank": True,
         },
@@ -352,8 +353,8 @@ def test_portfolio_home_evidence_snapshot_summarizes_current_blocked_state() -> 
                 "detail_missing_decision_rows": 500,
             },
             "maturity": {
-                "missing_decision_rows": 1569,
-                "bond_missing_decision_rows": 114,
+                "missing_decision_rows": 1455,
+                "bond_missing_decision_rows": 0,
                 "tyw_liability_missing_decision_rows": 1455,
             },
         },
@@ -423,8 +424,8 @@ def test_portfolio_home_evidence_snapshot_summarizes_current_blocked_state() -> 
                 "detail_missing_decision_rows": 500,
             },
             "maturity": {
-                "missing_decision_rows": 1569,
-                "bond_missing_decision_rows": 114,
+                "missing_decision_rows": 1455,
+                "bond_missing_decision_rows": 0,
                 "tyw_liability_missing_decision_rows": 1455,
             },
         },
@@ -833,7 +834,7 @@ def test_portfolio_home_evidence_snapshot_passes_docs_root_to_embedded_verifier(
         report_date="2026-05-31",
         template_path=TEMPLATE,
         scorecard_limit=1,
-        verifier_limit=17,
+        verifier_limit=19,
         docs_root=docs_dir,
     )
 
@@ -843,10 +844,85 @@ def test_portfolio_home_evidence_snapshot_passes_docs_root_to_embedded_verifier(
         if item["name"] == "scorecard"
     )
     assert scorecard_result["argv"] == [
-        sys.executable,
+        "python",
         "scripts/portfolio_home_closure_scorecard.py",
         "--limit",
         "3",
         "--docs-root",
-        str(docs_dir),
+        "docs",
+    ]
+
+
+def test_portfolio_home_evidence_snapshot_portable_verifier_normalizes_worktree_and_python(
+    tmp_path: Path,
+) -> None:
+    first_root = tmp_path / "first-worktree"
+    second_root = tmp_path / "second-worktree"
+    first_report = {
+        "docs_root": str(first_root / "docs"),
+        "results": [
+            {
+                "argv": [
+                    str(first_root / "venv" / "Scripts" / "python.exe"),
+                    "scripts/portfolio_home_closure_scorecard.py",
+                    "--docs-root",
+                    str(first_root / "docs"),
+                ],
+            },
+        ],
+    }
+    second_report = {
+        "docs_root": str(second_root / "docs"),
+        "results": [
+            {
+                "argv": [
+                    str(second_root / "venv" / "python.exe"),
+                    "scripts/portfolio_home_closure_scorecard.py",
+                    "--docs-root",
+                    str(second_root / "docs"),
+                ],
+            },
+        ],
+    }
+
+    first = portable_verification_report(first_report, repo_root=first_root)
+    second = portable_verification_report(second_report, repo_root=second_root)
+
+    assert first == second == {
+        "docs_root": "docs",
+        "results": [
+            {
+                "argv": [
+                    "python",
+                    "scripts/portfolio_home_closure_scorecard.py",
+                    "--docs-root",
+                    "docs",
+                ],
+            },
+        ],
+    }
+
+
+def test_portfolio_home_evidence_snapshot_portable_verifier_preserves_external_paths(
+    tmp_path: Path,
+) -> None:
+    report = {
+        "docs_root": str(tmp_path / "repo" / "docs"),
+        "results": [
+            {
+                "argv": [
+                    "C:/external/tool.exe",
+                    "--output",
+                    "C:/external/result.json",
+                ],
+            },
+        ],
+    }
+
+    normalized = portable_verification_report(report, repo_root=tmp_path / "repo")
+
+    assert normalized["results"][0]["argv"] == [
+        "C:/external/tool.exe",
+        "--output",
+        "C:/external/result.json",
     ]

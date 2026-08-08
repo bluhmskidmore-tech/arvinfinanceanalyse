@@ -41,6 +41,7 @@ from scripts.portfolio_home_owner_action_packet import (  # noqa: E402
 )
 from scripts.portfolio_home_evidence_snapshot import (  # noqa: E402
     _gate_summary,
+    portable_verification_report,
     verification_scope_summary,
 )
 from scripts.verify_portfolio_home_scorecard_commands import (  # noqa: E402
@@ -585,12 +586,21 @@ def _verification_report_canonical_blockers(
     result_count = verification_report.get("result_count")
     if not isinstance(result_count, int):
         return ["evidence_snapshot_verification_report_result_count_missing"]
-    expected_report = build_verification_report(
-        limit=result_count,
-        expected_state=str(verification_report.get("expected_state") or "blocked"),
+    expected_report = portable_verification_report(
+        build_verification_report(
+            limit=result_count,
+            expected_state=str(verification_report.get("expected_state") or "blocked"),
+            docs_root=docs_root,
+        ),
+        repo_root=ROOT,
         docs_root=docs_root,
     )
-    if verification_report != expected_report:
+    actual_report = portable_verification_report(
+        verification_report,
+        repo_root=ROOT,
+        docs_root=docs_root,
+    )
+    if actual_report != expected_report:
         return ["evidence_snapshot_verification_report_canonical_mismatch"]
     return []
 

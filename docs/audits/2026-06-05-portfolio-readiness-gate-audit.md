@@ -366,7 +366,7 @@ What is now strong:
 
 Authoritative score blockers from the scorecard:
 
-- `risk_tensor_quality_warning`, `krd_contract_decision_required`, `bond_maturity_date_remediation_required`, `tyw_liability_maturity_date_remediation_required`, `duration_exclusion_warning_mismatch`, `risk_tensor_warning_mismatch`, `business_owner_approval`, and `owner_decision_intake_blocked`.
+- `risk_tensor_quality_warning`, `krd_contract_decision_required`, `bond_matured_outstanding_reconciliation_required`, `tyw_liability_maturity_date_remediation_required`, `krd_bucket_warning_mismatch`, `duration_exclusion_warning_mismatch`, `risk_tensor_warning_mismatch`, `business_owner_approval`, and `owner_decision_intake_blocked`.
 
 What still prevents 100:
 

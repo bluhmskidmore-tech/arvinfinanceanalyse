@@ -662,7 +662,7 @@ def test_portfolio_home_owner_action_packet_groups_current_blockers_by_owner() -
             ],
             "recheck_commands": [
                 "python scripts/portfolio_home_krd_remap_review_queue.py --report-date 2026-05-31 --require-clean",
-                "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready --report-date 2026-05-31",
+                "python scripts/portfolio_home_owner_decision_intake_check.py --report-date 2026-05-31 --limit 3 --require-ready",
             ],
             "exit_criteria": (
                 "KRD review queue exits 0 under the approved contract and the metric "
@@ -742,7 +742,7 @@ def test_portfolio_home_owner_action_packet_groups_current_blockers_by_owner() -
             ],
             "recheck_commands": [
                 "python scripts/portfolio_home_maturity_remediation_queue.py --report-date 2026-05-31 --require-empty",
-                "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready --report-date 2026-05-31",
+                "python scripts/portfolio_home_owner_decision_intake_check.py --report-date 2026-05-31 --limit 3 --require-ready",
             ],
             "exit_criteria": (
                 "TYW liability maturity remediation queue is empty or signed exclusion "
@@ -985,7 +985,7 @@ def test_portfolio_home_owner_action_packet_groups_current_blockers_by_owner() -
                 "evidence_scope",
             ],
             "recheck_commands": [
-                "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready --report-date 2026-05-31",
+                "python scripts/portfolio_home_owner_decision_intake_check.py --report-date 2026-05-31 --limit 3 --require-ready",
             ],
             "exit_criteria": "Owner decision intake strict gate exits 0 and reports intake_ready=true.",
             "removes_blocker_when": (
@@ -1486,11 +1486,10 @@ def test_portfolio_home_owner_action_packet_groups_current_blockers_by_owner() -
         "status": "pending_owner_input",
         "blockers": [
             "business_owner_approval_not_captured",
-            "scorecard_full_score_not_ready",
-            "scorecard_score_status_not_ready",
-            "owner_decision_intake_not_ready",
-            "rerun_evidence_not_valid",
-            "risk_warning_not_clean",
+                "scorecard_full_score_not_ready",
+                "scorecard_score_status_not_ready",
+                "owner_decision_intake_not_ready",
+                "risk_warning_not_clean",
         ],
     }
     assert business_owner["activation_guard"] == _activation_guard(False)

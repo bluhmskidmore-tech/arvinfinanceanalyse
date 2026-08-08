@@ -38,7 +38,7 @@ def test_portfolio_home_owner_handoff_completeness_check_reports_current_clean_h
         report_date=REPORT_DATE,
         template_path=TEMPLATE,
         docs_root=ROOT / "docs",
-        limit=1,
+        limit=3,
     )
 
     assert report["check_kind"] == "portfolio_home_owner_handoff_completeness"
@@ -81,7 +81,7 @@ def test_portfolio_home_owner_handoff_completeness_check_reports_current_clean_h
 
 
 def test_portfolio_home_owner_handoff_completeness_check_cli_require_clean() -> None:
-    returncode, payload = _run_check("--limit", "1", "--require-clean")
+    returncode, payload = _run_check("--limit", "3", "--require-clean")
 
     assert returncode == 0
     assert payload["status"] == "clean"
@@ -195,6 +195,45 @@ def test_portfolio_home_owner_handoff_completeness_check_blocks_unallowlisted_re
     ]
 
 
+def test_portfolio_home_owner_handoff_completeness_check_allows_date_qualified_gate() -> None:
+    summary = json.loads(
+        (ROOT / "docs" / "portfolio" / "portfolio-home-owner-input-needed-summary.json").read_text(
+            encoding="utf-8",
+        ),
+    )
+    route = next(item for item in summary["owner_routes"] if item["owner"] == "risk_owner")
+    route["recheck_commands"] = [
+        "python scripts/portfolio_home_risk_warning_consistency.py "
+        "--report-date 2026-05-31 --require-clean",
+    ]
+
+    report = handoff_completeness_report(summary, docs_root=ROOT / "docs")
+
+    route_checks = {item["owner"]: item for item in report["route_checks"]}
+    assert route_checks["risk_owner"]["status"] == "clean"
+    assert route_checks["risk_owner"]["unallowlisted_recheck_commands"] == []
+
+
+def test_portfolio_home_owner_handoff_completeness_check_blocks_wrong_report_date() -> None:
+    summary = json.loads(
+        (ROOT / "docs" / "portfolio" / "portfolio-home-owner-input-needed-summary.json").read_text(
+            encoding="utf-8",
+        ),
+    )
+    route = next(item for item in summary["owner_routes"] if item["owner"] == "risk_owner")
+    wrong_date_command = (
+        "python scripts/portfolio_home_risk_warning_consistency.py "
+        "--report-date 2026-06-01 --require-clean"
+    )
+    route["recheck_commands"] = [wrong_date_command]
+
+    report = handoff_completeness_report(summary, docs_root=ROOT / "docs")
+
+    route_checks = {item["owner"]: item for item in report["route_checks"]}
+    assert route_checks["risk_owner"]["status"] == "blocked"
+    assert route_checks["risk_owner"]["unallowlisted_recheck_commands"] == [wrong_date_command]
+
+
 def test_portfolio_home_owner_handoff_completeness_check_blocks_missing_required_artifact(
     tmp_path: Path,
 ) -> None:
@@ -211,7 +250,7 @@ def test_portfolio_home_owner_handoff_completeness_check_blocks_missing_required
         / "portfolio"
         / "maturity-remediation"
         / REPORT_DATE
-        / "bond_missing_maturity.csv"
+        / "tyw_liability_missing_maturity.csv"
     )
     required_artifact.unlink()
 
@@ -220,6 +259,6 @@ def test_portfolio_home_owner_handoff_completeness_check_blocks_missing_required
     assert report["status"] == "blocked"
     assert (
         "data_owner_decision_artifact_missing:"
-        "docs/portfolio/maturity-remediation/2026-05-31/bond_missing_maturity.csv"
+        "docs/portfolio/maturity-remediation/2026-05-31/tyw_liability_missing_maturity.csv"
         in report["blockers"]
     )

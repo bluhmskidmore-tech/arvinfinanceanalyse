@@ -213,8 +213,9 @@ def test_portfolio_home_owner_input_needed_summary_routes_current_owner_inputs()
     assert summary["score_blockers"] == [
         "risk_tensor_quality_warning",
         "krd_contract_decision_required",
-        "bond_maturity_date_remediation_required",
+        "bond_matured_outstanding_reconciliation_required",
         "tyw_liability_maturity_date_remediation_required",
+        "krd_bucket_warning_mismatch",
         "duration_exclusion_warning_mismatch",
         "risk_tensor_warning_mismatch",
         "business_owner_approval",
@@ -227,7 +228,7 @@ def test_portfolio_home_owner_input_needed_summary_routes_current_owner_inputs()
     }
     assert summary["missing_input_counts"] == {
         "krd_missing_decision_rows": 503,
-        "maturity_missing_decision_rows": 1569,
+        "maturity_missing_decision_rows": 1455,
         "business_owner_approval_action_items": 19,
     }
     assert summary["owner_input_boundary"] == {
@@ -256,6 +257,7 @@ def test_portfolio_home_owner_input_needed_summary_routes_current_owner_inputs()
     assert routes["risk_owner"]["input_status"] == "owner_input_needed"
     assert routes["risk_owner"]["blockers"] == [
         "risk_tensor_quality_warning",
+        "krd_bucket_warning_mismatch",
         "risk_tensor_warning_mismatch",
         "krd_contract_decision_required",
     ]
@@ -270,8 +272,14 @@ def test_portfolio_home_owner_input_needed_summary_routes_current_owner_inputs()
         "writes_database": False,
         "approves_metric_or_page": False,
         "certification_effect": "none",
-        "current_consistency_blockers": ["duration_exclusion_warning_mismatch"],
-        "would_clear_consistency_blockers": ["duration_exclusion_warning_mismatch"],
+            "current_consistency_blockers": [
+                "krd_bucket_warning_mismatch",
+                "duration_exclusion_warning_mismatch",
+            ],
+            "would_clear_consistency_blockers": [
+                "krd_bucket_warning_mismatch",
+                "duration_exclusion_warning_mismatch",
+            ],
         "preview_consistency_status": "consistent",
         "preview_consistency_blockers": [],
         "preview_quality_flag": "warning",
@@ -279,13 +287,16 @@ def test_portfolio_home_owner_input_needed_summary_routes_current_owner_inputs()
         "preview_decision_blockers": ["risk_tensor_quality_warning"],
         "preview_warnings": [
             "Non-standard tenor buckets remapped to nearest KRD bucket: 20Y, 2Y, 6M",
-            (
-                "120 rows carry market_value=39109594105.50000008 and are "
-                "excluded from portfolio duration denominator: 114 without "
-                "maturity_date; 6 with non-positive modified_duration. DV01 "
-                "totals remain sourced from row dv01; duration metrics ignore "
-                "these rows until inputs are remediated."
-            ),
+                (
+                    "120 rows carry market_value=39109594105.50000008 and are "
+                    "excluded from portfolio duration denominator: 114 without "
+                    "maturity_date (market_value=37622164239.83000008); 6 matured "
+                    "on or before report_date with outstanding market_value "
+                    "(market_value=1487429865.67000000); 0 future-dated with "
+                    "non-positive modified_duration (market_value=0.00000000). "
+                    "DV01 totals remain sourced from row dv01; duration metrics "
+                    "ignore these rows until inputs are remediated."
+                ),
             "Excluded 114 rows without maturity_date from liquidity gap calculation.",
             "Excluded 1455 liability rows without maturity_date from liquidity gap calculation.",
         ],
@@ -298,7 +309,7 @@ def test_portfolio_home_owner_input_needed_summary_routes_current_owner_inputs()
     ]
     assert {
         "name": "risk_warning_consistency",
-        "command": "python scripts/portfolio_home_risk_warning_consistency.py --require-consistent",
+            "command": "python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-consistent",
         "fields": [
             "parsed_warnings",
             "recomputed_warnings",
@@ -312,18 +323,21 @@ def test_portfolio_home_owner_input_needed_summary_routes_current_owner_inputs()
         ),
     } in routes["risk_owner"]["evidence_sources"]
     assert "risk_owner_decision" in routes["risk_owner"]["required_fields"]
-    assert "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready" in routes[
+    assert "python scripts/portfolio_home_owner_decision_intake_check.py --report-date 2026-05-31 --limit 3 --require-ready" in routes[
         "risk_owner"
     ]["recheck_commands"]
 
     assert routes["data_owner"]["decision_gap_counts"] == {
-        "missing_decision_rows": 1569,
-        "bond_missing_decision_rows": 114,
+            "missing_decision_rows": 1455,
+            "bond_missing_decision_rows": 0,
         "tyw_liability_missing_decision_rows": 1455,
     }
     assert routes["data_owner"]["risk_tensor_rematerialization_preview"][
         "would_clear_consistency_blockers"
-    ] == ["duration_exclusion_warning_mismatch"]
+    ] == [
+        "krd_bucket_warning_mismatch",
+        "duration_exclusion_warning_mismatch",
+    ]
     assert routes["data_owner"]["risk_tensor_rematerialization_preview"][
         "preview_decision_status"
     ] == "blocked"
@@ -332,12 +346,11 @@ def test_portfolio_home_owner_input_needed_summary_routes_current_owner_inputs()
         == "none"
     )
     assert routes["data_owner"]["blockers"] == [
-        "bond_maturity_date_remediation_required",
         "tyw_liability_maturity_date_remediation_required",
+        "bond_matured_outstanding_reconciliation_required",
         "duration_exclusion_warning_mismatch",
     ]
     assert routes["data_owner"]["decision_artifacts"] == [
-        "docs/portfolio/maturity-remediation/2026-05-31/bond_missing_maturity.csv",
         "docs/portfolio/maturity-remediation/2026-05-31/tyw_liability_missing_maturity.csv",
         "docs/portfolio/maturity-remediation/2026-05-31/maturity_scoped_exclusion_evidence.json",
     ]
@@ -347,7 +360,6 @@ def test_portfolio_home_owner_input_needed_summary_routes_current_owner_inputs()
         "docs/portfolio/krd-contract-decision/2026-05-31/krd_remap_summary.csv",
         "docs/portfolio/krd-contract-decision/2026-05-31/krd_remap_detail.csv",
         "docs/portfolio/krd-contract-decision/2026-05-31/exact_bucket_schema_evidence.json",
-        "docs/portfolio/maturity-remediation/2026-05-31/bond_missing_maturity.csv",
         "docs/portfolio/maturity-remediation/2026-05-31/tyw_liability_missing_maturity.csv",
         "docs/portfolio/krd-contract-decision/2026-05-31/nearest_bucket_approval_evidence.json",
         "docs/portfolio/maturity-remediation/2026-05-31/maturity_scoped_exclusion_evidence.json",

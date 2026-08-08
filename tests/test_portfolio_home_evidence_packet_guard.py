@@ -321,8 +321,9 @@ def test_portfolio_home_evidence_packet_guard_reports_current_packets() -> None:
         "score_blockers": [
             "risk_tensor_quality_warning",
             "krd_contract_decision_required",
-            "bond_maturity_date_remediation_required",
+            "bond_matured_outstanding_reconciliation_required",
             "tyw_liability_maturity_date_remediation_required",
+            "krd_bucket_warning_mismatch",
             "duration_exclusion_warning_mismatch",
             "risk_tensor_warning_mismatch",
             "business_owner_approval",
@@ -380,6 +381,22 @@ def test_portfolio_home_evidence_packet_guard_reports_current_packets() -> None:
         if artifact["kind"] in {"json", "owner_summary", "markdown"}:
             assert artifact["boundary_status"] == "clean"
             assert artifact["boundary_mismatches"] == []
+
+
+def test_portfolio_home_evidence_packet_guard_accepts_copied_docs_root(
+    tmp_path: Path,
+) -> None:
+    docs_root = _copy_portfolio_docs(tmp_path)
+
+    report = build_report(docs_root=docs_root)
+
+    assert report["status"] == "clean"
+    assert report["blockers"] == []
+    snapshot = next(
+        artifact for artifact in report["artifacts"] if artifact["name"] == "evidence_snapshot"
+    )
+    assert snapshot["status"] == "clean"
+    assert snapshot["blockers"] == []
 
 
 def test_portfolio_home_evidence_packet_guard_cli_require_clean() -> None:
@@ -738,6 +755,29 @@ def test_portfolio_home_evidence_packet_guard_blocks_evidence_snapshot_verifier_
     assert artifacts["evidence_snapshot"]["status"] == "blocked"
 
 
+def test_portfolio_home_evidence_packet_guard_blocks_portable_verifier_argv_drift(
+    tmp_path: Path,
+) -> None:
+    docs_root = _copy_portfolio_docs(tmp_path)
+    snapshot_path = docs_root / "portfolio" / "portfolio-home-evidence-snapshot.json"
+    snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    verifier = snapshot["verification_report"]
+    assert isinstance(verifier, dict)
+    results = verifier["results"]
+    assert isinstance(results, list)
+    result = results[0]
+    assert isinstance(result, dict)
+    argv = result["argv"]
+    assert isinstance(argv, list)
+    argv[1] = "scripts/portfolio_home_unallowlisted.py"
+    snapshot_path.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    report = build_report(docs_root=docs_root)
+
+    assert report["status"] == "blocked"
+    assert "evidence_snapshot_verification_report_canonical_mismatch" in report["blockers"]
+
+
 def test_portfolio_home_evidence_packet_guard_requires_limited_verifier_scope(
     tmp_path: Path,
 ) -> None:
@@ -1044,7 +1084,7 @@ def test_portfolio_home_evidence_packet_guard_blocks_owner_action_csv_summary_dr
     assert isinstance(data_owner, dict)
     csv_summary = data_owner["csv_check_summary"]
     assert isinstance(csv_summary, dict)
-    csv_summary["bond_missing_maturity_row_count"] = 0
+    csv_summary["bond_missing_maturity_row_count"] = 1
     packet_path.write_text(json.dumps(packet, ensure_ascii=False, indent=2), encoding="utf-8")
 
     report = build_report(docs_root=docs_root)

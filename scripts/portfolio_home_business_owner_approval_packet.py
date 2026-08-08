@@ -349,6 +349,18 @@ RERUN_APPROVAL_REQUIRED_BUSINESS_OWNER_BOUNDARY = {
         "risk_warning_not_clean",
     ],
 }
+
+
+def _portable_provenance_path(value: object) -> object:
+    """Keep repository-owned provenance stable across worktrees."""
+
+    if not isinstance(value, str):
+        return value
+    try:
+        relative = Path(value).resolve().relative_to(ROOT.resolve())
+    except (OSError, ValueError):
+        return value
+    return relative.as_posix()
 RERUN_VERIFICATION_REPORT_BLOCKER_MAP = {
     "verification_report_missing": "rerun_evidence_verifier_missing",
     "verification_report_expected_state_mismatch": "rerun_evidence_verifier_state_mismatch",
@@ -1290,8 +1302,8 @@ def build_packet(
         "page_id": scorecard["page_id"],
         "page_slug": scorecard["page_slug"],
         "report_date": scorecard["report_date"],
-        "duckdb_path": scorecard["duckdb_path"],
-        "template_path": scorecard["template_path"],
+        "duckdb_path": _portable_provenance_path(scorecard["duckdb_path"]),
+        "template_path": _portable_provenance_path(scorecard["template_path"]),
         "packet_status": "ready_for_activation" if activation_ready else "pending",
         "activation_ready": activation_ready,
         "current_score": scorecard["current_score"],
