@@ -704,6 +704,8 @@ def test_v20_database_upgrades_to_v21_choice_stock_schema(tmp_path: Path) -> Non
         "v35: Preserve bond analytics value date",
         "v36: Disclose risk tensor projection quality proxies",
         "v37: Preserve bond payment-frequency fallback provenance",
+        "v38: Stock official disclosure fact + sync status",
+        "v39: Repair stock official disclosure timestamp timezone",
     ]
     conn = duckdb.connect(str(db_path), read_only=True)
     try:

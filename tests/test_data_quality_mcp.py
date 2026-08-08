@@ -203,7 +203,7 @@ def test_data_quality_mcp_exposes_readiness_report_tool(tmp_path: Path) -> None:
             and issue["table"] == "fact_formal_yield_curve_daily"
         ]
         assert len(yield_curve_issues) == 1
-        assert yield_curve_issues[0]["details"] == {"latest": "2026-04-30", "target": "2026-05-31"}
+        assert yield_curve_issues[0]["details"] == {"latest": "2026-04-30", "target": "2026-06-05"}
     finally:
         server.close()
 
