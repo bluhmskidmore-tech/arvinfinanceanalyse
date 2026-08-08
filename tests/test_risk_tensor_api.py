@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from tests.helpers import load_module
-from tests.test_bond_analytics_materialize_flow import REPORT_DATE
+from tests.test_bond_analytics_materialize_flow import REPORT_DATE, seed_yield_curves_for_bond_analytics_tests
 from tests.test_bond_analytics_service import _configure_and_materialize
 from tests.test_risk_tensor_service import (
     _configure_and_materialize_clean_risk_tensor,
@@ -325,6 +325,20 @@ def test_risk_tensor_api_returns_503_when_downstream_fact_is_stale_against_newer
         )
     finally:
         conn.close()
+
+    seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
+
+    yield_curve_mod = load_module(
+        "backend.app.repositories.akshare_adapter",
+        "backend/app/repositories/akshare_adapter.py",
+    )
+
+    def _fail_if_vendor_called(*_args, **_kwargs):
+        raise AssertionError("yield vendor should not be called")
+
+    monkeypatch.setattr(yield_curve_mod.VendorAdapter, "_fetch_akshare_curve", _fail_if_vendor_called)
+    monkeypatch.setattr(yield_curve_mod.VendorAdapter, "_fetch_choice_curve", _fail_if_vendor_called)
+    monkeypatch.setattr(yield_curve_mod.VendorAdapter, "_fetch_chinabond_gkh_curve", _fail_if_vendor_called)
 
     bond_task_mod = load_module(
         "backend.app.tasks.bond_analytics_materialize",

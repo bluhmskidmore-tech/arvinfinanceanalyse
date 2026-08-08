@@ -64,12 +64,47 @@ def _clear_seeded_yield_curve_inputs(duckdb_path: str) -> None:
         conn.execute(
             """
             delete from fact_formal_yield_curve_daily
-            where trade_date in ('2026-03-01', '2026-03-30', '2026-03-31')
+            where trade_date in ('2026-01-20', '2026-03-01', '2026-03-30', '2026-03-31')
               and curve_type in ('treasury', 'cdb', 'aaa_credit')
             """
         )
     finally:
         conn.close()
+
+
+def test_configure_and_materialize_clears_seeded_yield_curve_inputs(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    yield_curve_mod = load_module(
+        "backend.app.repositories.akshare_adapter",
+        "backend/app/repositories/akshare_adapter.py",
+    )
+
+    def _fail_if_vendor_called(*_args, **_kwargs):
+        raise AssertionError("yield vendor should not be called")
+
+    monkeypatch.setattr(yield_curve_mod.VendorAdapter, "_fetch_akshare_curve", _fail_if_vendor_called)
+    monkeypatch.setattr(yield_curve_mod.VendorAdapter, "_fetch_choice_curve", _fail_if_vendor_called)
+    monkeypatch.setattr(yield_curve_mod.VendorAdapter, "_fetch_chinabond_gkh_curve", _fail_if_vendor_called)
+
+    duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        rows = conn.execute(
+            """
+            select trade_date, curve_type, count(*) as row_count
+            from fact_formal_yield_curve_daily
+            where trade_date in ('2026-01-20', '2026-03-01', '2026-03-30', '2026-03-31')
+            group by trade_date, curve_type
+            order by trade_date, curve_type
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert rows == []
 
 
 def _append_completed_bond_analytics_build(

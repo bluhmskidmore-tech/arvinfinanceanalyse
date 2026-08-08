@@ -266,7 +266,7 @@ def _seed_duplicate_formal_zqtz_balance_for_cb001(duckdb_path: str) -> None:
     _seed_formal_zqtz_balance_for_cb001(duckdb_path, market_value_amount=Decimal("-1900"))
 
 
-BOND_ANALYTICS_TEST_YIELD_ANCHORS = ("2026-03-01", "2026-03-30", "2026-03-31")
+BOND_ANALYTICS_TEST_YIELD_ANCHORS = ("2026-01-20", "2026-03-01", "2026-03-30", "2026-03-31")
 
 
 def seed_yield_curves_for_bond_analytics_tests(duckdb_path: str) -> None:

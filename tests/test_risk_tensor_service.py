@@ -964,6 +964,20 @@ def test_risk_tensor_service_fails_when_downstream_fact_is_stale_against_newer_u
     finally:
         conn.close()
 
+    seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
+
+    yield_curve_mod = load_module(
+        "backend.app.repositories.akshare_adapter",
+        "backend/app/repositories/akshare_adapter.py",
+    )
+
+    def _fail_if_vendor_called(*_args, **_kwargs):
+        raise AssertionError("yield vendor should not be called")
+
+    monkeypatch.setattr(yield_curve_mod.VendorAdapter, "_fetch_akshare_curve", _fail_if_vendor_called)
+    monkeypatch.setattr(yield_curve_mod.VendorAdapter, "_fetch_choice_curve", _fail_if_vendor_called)
+    monkeypatch.setattr(yield_curve_mod.VendorAdapter, "_fetch_chinabond_gkh_curve", _fail_if_vendor_called)
+
     bond_task_mod = load_module(
         "backend.app.tasks.bond_analytics_materialize",
         "backend/app/tasks/bond_analytics_materialize.py",
