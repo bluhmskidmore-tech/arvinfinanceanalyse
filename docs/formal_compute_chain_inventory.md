@@ -42,7 +42,7 @@ Business authority remains with `AGENTS.md`, `docs/DOCUMENT_AUTHORITY.md`, `docs
 
 | Surface | Current source treatment | Inventory handling |
 | --- | --- | --- |
-| `/agent` | live / governed-mixed-source / `PAGE-AGENT-001` | Route row may trace read-only and analytical boundaries. This file does not authorize Agent MVP work. |
+| `/agent` | gated / hidden / development-only / `PAGE-AGENT-001` | Retained only to trace read-only and analytical development boundaries. This file does not authorize Agent MVP work, route publication, navigation exposure, or production enablement. |
 | `/cube-query` | live / candidate / `PAGE-CUBE-QUERY-001` | Controlled query surface. It can expose result metadata for covered fact tables, but it is not a new page-level formal truth surface. |
 | `/liability-analytics` | live / governed-mixed-source / `PAGE-LIAB-ANALYTICS-001` | Preserve formal, derived, and compatibility section boundaries. |
 | `liability_analytics_compat` | non-route dependency note consumed by `/liability-analytics`; not a separate live frontend route | Record only as dependency context under `/liability-analytics`, not as a route row. |

@@ -1893,7 +1893,7 @@
 
 - Page ID: `PAGE-AGENT-001`
 - Primary front-end route: `/agent`
-- Status: `active`
+- Status: `gated / hidden / development-only`; retained for controlled development and validation, and intentionally excluded from the live route maturity registry.
 - Primary APIs:
   - `POST /api/agent/runs`
   - `GET /api/agent/runs/{run_id}`

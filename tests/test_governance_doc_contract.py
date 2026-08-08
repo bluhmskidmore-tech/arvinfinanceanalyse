@@ -318,14 +318,32 @@ def test_formal_compute_chain_inventory_is_supporting_and_non_authorizing():
         assert chain_name in inventory
 
     for required in (
-        "| `/agent` | live | governed-mixed-source | PAGE-AGENT-001 |",
         "| `/cube-query` | live | candidate | PAGE-CUBE-QUERY-001 |",
         "| `/liability-analytics` | live | governed-mixed-source | PAGE-LIAB-ANALYTICS-001 |",
     ):
         assert required in maturity_registry
 
+    agent_maturity_rows = [
+        line for line in maturity_registry.splitlines() if line.startswith("| `/agent` |")
+    ]
+    assert agent_maturity_rows == []
+
+    agent_contract = page_contracts.split("## 14.1 PAGE-AGENT-001", maxsplit=1)[1].split(
+        "\n## ",
+        maxsplit=1,
+    )[0]
     for required in (
+        "Page ID: `PAGE-AGENT-001`",
         "Primary front-end route: `/agent`",
+        "Status: `gated / hidden / development-only`",
+        "POST /api/agent/runs",
+        "GET /api/agent/runs/{run_id}",
+        "POST /api/agent/query",
+    ):
+        assert required in agent_contract
+    assert "Status: `active`" not in agent_contract
+
+    for required in (
         "Primary front-end route: `/cube-query`",
         "Primary front-end route: `/liability-analytics`",
         "liability_analytics_compat",
@@ -333,7 +351,7 @@ def test_formal_compute_chain_inventory_is_supporting_and_non_authorizing():
         assert required in page_contracts
 
     for required in (
-        "| `/agent` | live / governed-mixed-source / `PAGE-AGENT-001` |",
+        "| `/agent` | gated / hidden / development-only / `PAGE-AGENT-001` |",
         "| `/cube-query` | live / candidate / `PAGE-CUBE-QUERY-001` |",
         "| `/liability-analytics` | live / governed-mixed-source / `PAGE-LIAB-ANALYTICS-001` |",
         "| `liability_analytics_compat` | non-route dependency note consumed by `/liability-analytics`; "
@@ -357,6 +375,8 @@ def test_formal_compute_chain_inventory_is_supporting_and_non_authorizing():
         assert forbidden not in inventory
 
     forbidden_route_claims = (
+        "| `/agent` | live | governed-mixed-source | PAGE-AGENT-001 |",
+        "| `/agent` | live / governed-mixed-source / `PAGE-AGENT-001` |",
         "/agent` | live / candidate",
         "/agent` | live / excluded",
         "PAGE-AGENT-001` | candidate",
@@ -370,7 +390,7 @@ def test_formal_compute_chain_inventory_is_supporting_and_non_authorizing():
         "liability_analytics_compat` | excluded",
     )
     for forbidden in forbidden_route_claims:
-        assert forbidden not in inventory
+        assert forbidden not in "\n".join((maturity_registry, inventory))
 
 
 def test_operations_analysis_contract_matches_current_product_category_headline_binding():
