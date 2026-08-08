@@ -1,7 +1,7 @@
 # Average Balance Live Smoke Evidence
 
 Date: 2026-06-09
-Page ID: `GAP-AVERAGE-BALANCE-PAGE`
+Page ID: `PAGE-ADB-001`
 Page slug: `average-balance`
 frontend_route: /average-balance
 primary_api: /api/analysis/adb
@@ -35,7 +35,7 @@ Result: passed.
 
 Smoke checklist focus:
 
-- `GAP-AVERAGE-BALANCE-PAGE` remains candidate ADB analysis.
+- `PAGE-ADB-001` remains candidate ADB analysis.
 - First screen remains scoped to `/average-balance`.
 - Primary API remains `/api/analysis/adb`.
 - Supporting APIs remain `/api/analysis/adb/comparison`, `/api/analysis/adb/monthly`, `/api/analysis/adb/coverage`, and `/ui/balance-analysis/dates`.
@@ -74,7 +74,7 @@ python scripts/codex_page_readiness.py --page-slug average-balance
 Observed status:
 
 - `overall_status=static-pass`
-- `audit_review.status=ready_for_audit_review`
+- `audit_review.status=blocked_by_record_gaps`
 - `formal_use_allowed=false`
 - `closure_approved=false`
 - `business_owner_approval_captured=false`

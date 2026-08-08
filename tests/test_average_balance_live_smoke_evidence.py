@@ -45,7 +45,7 @@ def test_average_balance_live_smoke_evidence_cli_writes_durable_artifact(
     assert payload == {
         "artifact_kind": "average_balance_live_smoke_evidence",
         "artifact_path": str(output_path),
-        "page_id": "GAP-AVERAGE-BALANCE-PAGE",
+        "page_id": "PAGE-ADB-001",
         "page_slug": "average-balance",
         "smoke_execution_status": "passed",
         "verify_execution_status": "passed",
@@ -65,7 +65,7 @@ def test_average_balance_live_smoke_evidence_cli_writes_durable_artifact(
 
     text = output_path.read_text(encoding="utf-8")
     assert "# Average Balance Live Smoke Evidence" in text
-    assert "Page ID: `GAP-AVERAGE-BALANCE-PAGE`" in text
+    assert "Page ID: `PAGE-ADB-001`" in text
     assert "Page slug: `average-balance`" in text
     assert "frontend_route: /average-balance" in text
     assert "primary_api: /api/analysis/adb" in text
@@ -78,7 +78,7 @@ def test_average_balance_live_smoke_evidence_cli_writes_durable_artifact(
     assert "scripts/codex-verify-page.ps1 -PageSlug average-balance -Run" in text
     assert "python scripts/codex_page_readiness.py --page-slug average-balance" in text
     assert "`overall_status=static-pass`" in text
-    assert "`audit_review.status=ready_for_audit_review`" in text
+    assert "`audit_review.status=blocked_by_record_gaps`" in text
     assert "UI/API payload review remains tied to `tests/golden_samples/GS-AVERAGE-BALANCE-A/response.json`." in text
     assert "MTR-ADB-003` remains monthly ADB/NIM pending" in text
     assert "does not approve closure" in text

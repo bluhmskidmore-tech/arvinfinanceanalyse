@@ -1,7 +1,7 @@
 {
   "report_kind": "business_display_coverage_report",
   "generated_at": "2026-06-10T22:23:43+08:00",
-  "repo_root": "F:\\MOSS-V3",
+  "repo_root": "G:\\MOSS-V3-worktrees\\full-workspace-final-20260808",
   "summary": {
     "tracked_route_count": 26,
     "route_gap_count": 0,
@@ -231,7 +231,7 @@
     },
     {
       "route": "/average-balance",
-      "page_id": "GAP-AVERAGE-BALANCE-PAGE",
+      "page_id": "PAGE-ADB-001",
       "risk_tier": "critical",
       "business_boundary": "candidate_daily_adb_not_formal_balance_truth",
       "coverage_status": "tracked",
@@ -315,7 +315,7 @@
     },
     {
       "route": "/concentration-monitor",
-      "page_id": "GAP-CONCENTRATION-MONITOR-PAGE",
+      "page_id": "PAGE-CONC-001",
       "risk_tier": "high",
       "business_boundary": "candidate_concentration_monitor",
       "coverage_status": "tracked",
@@ -639,7 +639,7 @@
           "path": "frontend/tests/playwright/a11y-visual-smoke.spec.mjs",
           "exists": true,
           "configured": true,
-          "ready_selector": "[data-testid=\"yield-analysis-page\"]",
+          "ready_selector": "[data-testid=\"formal-pnl-v1-page\"]",
           "runs_test": false
         }
       },
