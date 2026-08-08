@@ -74,7 +74,7 @@ python scripts/codex_page_readiness.py --page-slug average-balance
 Observed status:
 
 - `overall_status=static-pass`
-- `audit_review.status=blocked_by_record_gaps`
+- `audit_review.status=ready_for_audit_review`
 - `formal_use_allowed=false`
 - `closure_approved=false`
 - `business_owner_approval_captured=false`

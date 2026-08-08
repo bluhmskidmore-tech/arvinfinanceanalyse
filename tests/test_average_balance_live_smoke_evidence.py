@@ -78,7 +78,7 @@ def test_average_balance_live_smoke_evidence_cli_writes_durable_artifact(
     assert "scripts/codex-verify-page.ps1 -PageSlug average-balance -Run" in text
     assert "python scripts/codex_page_readiness.py --page-slug average-balance" in text
     assert "`overall_status=static-pass`" in text
-    assert "`audit_review.status=blocked_by_record_gaps`" in text
+    assert "`audit_review.status=ready_for_audit_review`" in text
     assert "UI/API payload review remains tied to `tests/golden_samples/GS-AVERAGE-BALANCE-A/response.json`." in text
     assert "MTR-ADB-003` remains monthly ADB/NIM pending" in text
     assert "does not approve closure" in text
