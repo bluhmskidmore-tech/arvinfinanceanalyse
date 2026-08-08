@@ -694,7 +694,7 @@ canonical grain：
 ## 11. FX Source Drop Contract
 
 - Current `zqtz / tyw` formal balance FX acquisition contract is defined by [BALANCE_ANALYSIS_FX_SOURCE_RUNBOOK.md](BALANCE_ANALYSIS_FX_SOURCE_RUNBOOK.md).
-- Current normal governed formal route: `Choice catalog-driven middle-rate discovery -> Choice live fetch -> AkShare fallback -> fail closed`.
+- Current normal governed formal route: `Choice catalog-driven middle-rate discovery -> Choice live fetch -> ChinaMoney/CFETS official history -> AkShare fallback -> fail closed`.
 - Current first-wave formal candidate set is catalog-derived and normalizes to `AUD/EUR/USD/CAD/HKD -> CNY`.
 - Reverse vendor orientation such as `??????` must be inverted before persistence so DuckDB formal reads continue to use `base_currency -> CNY`.
 - Current repo-owned authority files:
