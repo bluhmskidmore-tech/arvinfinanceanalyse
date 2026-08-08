@@ -485,6 +485,8 @@ def _materialize_pnl_facts_under_writer_lock(
             [report_date],
         )
 
+        # Human: caliber-formal_scenario_gate-justified -- this branch persists an
+        # already-governed formal fact batch; it does not choose formal vs scenario.
         if formal_fi_values:
             conn.executemany(
                 """
@@ -500,6 +502,8 @@ def _materialize_pnl_facts_under_writer_lock(
             )
 
         stale_formal_fi_keys = existing_formal_fi_keys - formal_fi_keys
+        # Human: caliber-formal_scenario_gate-justified -- this branch deletes stale
+        # keys within the already-selected formal fact store; it is not a basis gate.
         if stale_formal_fi_keys:
             conn.executemany(
                 """

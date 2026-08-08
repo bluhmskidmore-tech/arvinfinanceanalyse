@@ -962,6 +962,8 @@ def _promotion_readiness(
                 f"已登记 {len(formal_metrics)} 项冻结正式指标契约。"
                 if formal_passed
                 else (
+                    # Human: caliber-formal_scenario_gate-justified -- formal_status
+                    # is a frozen-contract availability label, not a basis gate.
                     "正式契约登记状态暂不可读取。"
                     if formal_status == "unavailable"
                     else f"{report_month} 正式财务指标冻结契约尚未登记。"

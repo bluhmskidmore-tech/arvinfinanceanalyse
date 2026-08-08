@@ -788,6 +788,9 @@ def _noninterest_outcome(
     context: FinanceMetricDataContext,
     divisor: Decimal,
 ) -> ValidationOutcome:
+    # Human: caliber-subject_514_516_517_merge-justified -- governed recon.noninterest
+    # explicitly reconciles 511, 512, 527, 513, 516, 517, 518, and 519; this is not
+    # JournalType sign or subject-merge logic.
     account_codes = ("511", "512", "527", "513", "516", "517", "518", "519")
     manual_ids = (
         "input.adjustment.noninterest.r091",

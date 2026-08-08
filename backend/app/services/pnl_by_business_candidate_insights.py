@@ -851,6 +851,9 @@ def _build_insights_envelope(
         year=year,
         as_of_date=as_of_date,
     )
+    # Human: caliber-formal_scenario_gate-justified -- this is a second-layer
+    # source-admission check after endpoint and basis selection, not a replacement
+    # for the canonical basis/view policy.
     if basis == "formal":
         rejected_components = [
             f"{entry.get('component')}:{entry.get('admission_reason') or 'not_admitted'}"

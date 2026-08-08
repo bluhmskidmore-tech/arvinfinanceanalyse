@@ -903,6 +903,9 @@ def _build_failed_run_audit_payload(
             "result_kind": "agent.run_failed",
             "formal_use_allowed": False,
             "quality_flag": "error",
+            # Human: caliber-formal_scenario_gate-justified -- this only discloses
+            # the already-selected request basis in failed-run metadata; it cannot
+            # authorize formal or scenario use.
             "scenario_flag": request.basis == "scenario",
             "provider": provider,
             "error_type": error_type,
