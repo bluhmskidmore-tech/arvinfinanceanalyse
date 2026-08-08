@@ -22,6 +22,21 @@ from tests.test_bond_analytics_materialize_flow import (
 from tests.test_bond_analytics_service import _configure_and_materialize
 
 
+@pytest.fixture(autouse=True)
+def _fail_closed_against_live_yield_vendor(monkeypatch):
+    yield_curve_mod = load_module(
+        "backend.app.tasks.yield_curve_materialize",
+        "backend/app/tasks/yield_curve_materialize.py",
+    )
+
+    def _fail_if_vendor_called(*_args, **_kwargs):
+        raise AssertionError("yield vendor should not be called")
+
+    monkeypatch.setattr(yield_curve_mod.VendorAdapter, "_fetch_akshare_curve", _fail_if_vendor_called)
+    monkeypatch.setattr(yield_curve_mod.VendorAdapter, "_fetch_choice_curve", _fail_if_vendor_called)
+    monkeypatch.setattr(yield_curve_mod.VendorAdapter, "_fetch_chinabond_gkh_curve", _fail_if_vendor_called)
+
+
 def _materialize_risk_tensor(duckdb_path, governance_dir):
     task_mod = load_module(
         "backend.app.tasks.risk_tensor_materialize",
@@ -83,6 +98,7 @@ def _configure_and_materialize_degraded_snapshot(tmp_path, monkeypatch):
     finally:
         conn.close()
 
+    seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
     bond_task_mod = load_module(
         "backend.app.tasks.bond_analytics_materialize",
         "backend/app/tasks/bond_analytics_materialize.py",
@@ -868,6 +884,7 @@ def test_risk_tensor_dates_envelope_blocks_stale_report_dates(tmp_path, monkeypa
     finally:
         conn.close()
 
+    seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
     bond_task_mod = load_module(
         "backend.app.tasks.bond_analytics_materialize",
         "backend/app/tasks/bond_analytics_materialize.py",
@@ -967,8 +984,8 @@ def test_risk_tensor_service_fails_when_downstream_fact_is_stale_against_newer_u
     seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
 
     yield_curve_mod = load_module(
-        "backend.app.repositories.akshare_adapter",
-        "backend/app/repositories/akshare_adapter.py",
+        "backend.app.tasks.yield_curve_materialize",
+        "backend/app/tasks/yield_curve_materialize.py",
     )
 
     def _fail_if_vendor_called(*_args, **_kwargs):

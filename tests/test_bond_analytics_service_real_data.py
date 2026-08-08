@@ -11,7 +11,8 @@ from backend.app.governance.settings import get_settings
 from tests.helpers import load_module
 from tests.test_bond_analytics_curve_effects import _seed_curve_rows
 from tests.test_bond_analytics_materialize_flow import REPORT_DATE
-from tests.test_bond_analytics_service import _configure_and_materialize
+from tests.test_bond_analytics_materialize_flow import seed_yield_curves_for_bond_analytics_tests
+from tests.test_bond_analytics_service import _clear_seeded_yield_curve_inputs, _configure_and_materialize
 
 
 @pytest.fixture
@@ -25,6 +26,21 @@ def service_mod(tmp_path, monkeypatch):
         yield module
     finally:
         get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def _fail_closed_against_live_yield_vendor(monkeypatch):
+    yield_curve_mod = load_module(
+        "backend.app.tasks.yield_curve_materialize",
+        "backend/app/tasks/yield_curve_materialize.py",
+    )
+
+    def _fail_if_vendor_called(*_args, **_kwargs):
+        raise AssertionError("yield vendor should not be called")
+
+    monkeypatch.setattr(yield_curve_mod.VendorAdapter, "_fetch_akshare_curve", _fail_if_vendor_called)
+    monkeypatch.setattr(yield_curve_mod.VendorAdapter, "_fetch_choice_curve", _fail_if_vendor_called)
+    monkeypatch.setattr(yield_curve_mod.VendorAdapter, "_fetch_chinabond_gkh_curve", _fail_if_vendor_called)
 
 
 def _seed_fx_rows(duckdb_path: str) -> None:
@@ -133,11 +149,13 @@ def test_return_decomposition_fx_effect_nonzero_for_usd_bonds(tmp_path, monkeypa
         )
     finally:
         conn.close()
+    seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
     _task_mod.materialize_bond_analytics_facts.fn(
         report_date=REPORT_DATE,
         duckdb_path=str(duckdb_path),
         governance_dir=str(_governance_dir),
     )
+    _clear_seeded_yield_curve_inputs(str(duckdb_path))
     service_mod = load_module(
         f"tests._bond_contract.bond_analytics_service_{uuid.uuid4().hex}",
         "backend/app/services/bond_analytics_service.py",
@@ -201,6 +219,7 @@ def test_return_decomposition_warns_when_fx_uses_latest_available_snapshot(tmp_p
         )
     finally:
         conn.close()
+    seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
     task_mod.materialize_bond_analytics_facts.fn(
         report_date=REPORT_DATE,
         duckdb_path=str(duckdb_path),
@@ -256,6 +275,7 @@ def test_return_decomposition_marks_result_meta_stale_when_fx_uses_latest_availa
         )
     finally:
         conn.close()
+    seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
     task_mod.materialize_bond_analytics_facts.fn(
         report_date=REPORT_DATE,
         duckdb_path=str(duckdb_path),
@@ -292,6 +312,7 @@ def test_return_decomposition_marks_result_meta_unavailable_when_required_fx_mis
         )
     finally:
         conn.close()
+    seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
     task_mod.materialize_bond_analytics_facts.fn(
         report_date=REPORT_DATE,
         duckdb_path=str(duckdb_path),

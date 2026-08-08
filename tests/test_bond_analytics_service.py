@@ -77,8 +77,8 @@ def test_configure_and_materialize_clears_seeded_yield_curve_inputs(
     monkeypatch,
 ) -> None:
     yield_curve_mod = load_module(
-        "backend.app.repositories.akshare_adapter",
-        "backend/app/repositories/akshare_adapter.py",
+        "backend.app.tasks.yield_curve_materialize",
+        "backend/app/tasks/yield_curve_materialize.py",
     )
 
     def _fail_if_vendor_called(*_args, **_kwargs):
@@ -917,6 +917,7 @@ def test_bond_analytics_service_discloses_cny_amount_basis_and_foreign_fallback_
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     get_settings.cache_clear()
     _seed_bond_snapshot_rows(str(duckdb_path))
+    seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
 
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
@@ -979,11 +980,14 @@ def test_bond_analytics_service_discloses_cny_amount_basis_and_foreign_fallback_
         "backend.app.tasks.bond_analytics_materialize",
         "backend/app/tasks/bond_analytics_materialize.py",
     )
-    task_mod.materialize_bond_analytics_facts.fn(
-        report_date=REPORT_DATE,
-        duckdb_path=str(duckdb_path),
-        governance_dir=str(governance_dir),
-    )
+    try:
+        task_mod.materialize_bond_analytics_facts.fn(
+            report_date=REPORT_DATE,
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+        )
+    finally:
+        _clear_seeded_yield_curve_inputs(str(duckdb_path))
     service_mod = load_module(
         "backend.app.services.bond_analytics_service",
         "backend/app/services/bond_analytics_service.py",
