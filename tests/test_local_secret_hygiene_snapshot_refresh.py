@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 import scripts.refresh_local_secret_hygiene_snapshot as refresh_module
 
 
@@ -10,6 +12,31 @@ ROOT = Path(__file__).resolve().parents[1]
 SNAPSHOT = (
     ROOT / "docs" / "audits" / "2026-06-10-local-secret-hygiene-snapshot.json"
 )
+
+
+@pytest.fixture(autouse=True)
+def _stub_value_free_dirty_boundary(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        refresh_module,
+        "_boundary_checks",
+        lambda: {
+            "config_env_exists": True,
+            "git_check_ignore": {
+                "command": "git check-ignore -v config/.env",
+                "exit_code": 0,
+                "matched_rule": ".gitignore:4:config/.env",
+            },
+            "git_ls_files": {
+                "command": "git ls-files -- config/.env",
+                "exit_code": 0,
+                "tracked_path_count": 0,
+            },
+            "git_status_ignored": {
+                "command": "git status --ignored --short -- config/.env",
+                "result": "!! config/.env",
+            },
+        },
+    )
 
 
 def test_local_secret_hygiene_boundary_refresh_preserves_no_value_boundary() -> None:

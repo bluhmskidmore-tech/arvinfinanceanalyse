@@ -12,7 +12,7 @@ This packet prepares the local secret hygiene owner handoff without reading, req
 - Detected secret names only: `MOSS_TUSHARE_TOKEN`, `STITCH_API_KEY`
 - Allowed owner decisions: `rotated`, `removed`, `accepted-local-only`, `deferred`
 - Required attestation fields: `environment_owner`, `security_owner`, `decision`, `decision_date`, `external_evidence_reference`, `clean_runner_or_acceptance_result`
-- Latest boundary-only recheck: `2026-06-10T21:25:00+08:00`
+- Latest boundary-only recheck: `2026-06-27T13:05:14+08:00`
 
 ## Source Artifacts
 
