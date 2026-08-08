@@ -9,8 +9,8 @@ from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.bond_dashboard_service import (
     get_bond_dashboard_asset_structure,
-    get_bond_dashboard_business_type_metrics,
     get_bond_dashboard_bundle,
+    get_bond_dashboard_business_type_metrics,
     get_bond_dashboard_dates,
     get_bond_dashboard_headline_kpis,
     get_bond_dashboard_home_summary,
@@ -224,8 +224,8 @@ def dashboard_bundle(
     report_date: date | None = Query(None, description="Report date (YYYY-MM-DD)"),
     industry_top_n: int = Query(10, ge=1, le=500, description="Top industries for industry-distribution"),
     analytics_top_n: int = Query(10, ge=1, le=500, description="Top rows for analytics bundle sections"),
-    dv01_top_n: int = Query(1, ge=1, le=100, description="Top DV01 rows for bundled dv01-risk sections"),
-    dv01_shock_bps: str = Query("1", description="Comma-separated DV01 shock scenarios in bps"),
+    dv01_top_n: int = Query(1, ge=1, le=100, description="Top dv01 rows for bundled dv01-risk sections"),
+    dv01_shock_bps: str = Query("1", description="Comma-separated dv01 shock scenarios in bps"),
     dv01_accounting_class: str = Query("all", description="Accounting class for the dv01-risk bundle alias"),
     curve_types: str = Query("treasury,cdb", description="Comma-separated yield curve types"),
 ):
