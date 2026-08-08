@@ -1507,6 +1507,7 @@ def _setup_cashflow_projection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
                 "cost_center": "CF",
                 "position_scope": "asset",
                 "maturity_date": date(2026, 10, 30),
+                "value_date": date(2026, 4, 30),
                 "face_value_amount": Decimal("1000"),
                 "market_value_amount": Decimal("1000"),
                 "coupon_rate": Decimal("0"),
@@ -1548,7 +1549,6 @@ def _setup_cashflow_projection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
                 "maturity_date": date(2026, 10, 30),
                 "coupon_rate": Decimal("0"),
                 "ytm": Decimal("0"),
-                "macaulay_duration": Decimal("0.50"),
             }
         ]
 

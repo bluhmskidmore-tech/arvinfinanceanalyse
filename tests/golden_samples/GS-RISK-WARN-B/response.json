@@ -244,7 +244,7 @@
     "quality_flag": "warning",
     "warnings": [
       "Non-standard tenor buckets remapped to nearest KRD bucket: 20Y",
-      "1 rows carry market_value=99.00000000 and are excluded from portfolio duration denominator: 1 without maturity_date; 0 with non-positive modified_duration. DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated.",
+      "1 rows carry market_value=99.00000000 and are excluded from portfolio duration denominator: 1 without maturity_date (market_value=99.00000000); 0 matured on or before report_date with outstanding market_value (market_value=0); 0 future-dated with non-positive modified_duration (market_value=0). DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated.",
       "Excluded 1 rows without maturity_date from liquidity gap calculation.",
       "2 rows with market_value=330.00000000 lack an explicit payment frequency; annual coupon frequency is used as a proxy."
     ]
