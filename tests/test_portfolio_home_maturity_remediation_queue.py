@@ -8,7 +8,9 @@ import sys
 from pathlib import Path
 
 import duckdb
+import pytest
 
+import scripts.portfolio_home_maturity_remediation_export as maturity_export
 from scripts.portfolio_home_maturity_remediation_export import build_export_packet
 from scripts.portfolio_home_maturity_remediation_queue import (
     MATURITY_REMEDIATION_ACTIONS,
@@ -941,6 +943,35 @@ def test_portfolio_home_maturity_remediation_export_check_current_blocks_stale_g
     assert returncode == 1
     assert payload["status"] == "stale"
     assert "manifest_export_summary_mismatch" in payload["current_blockers"]
+
+
+def test_portfolio_home_maturity_remediation_export_labels_repo_relative_duckdb_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_root = tmp_path / "worktree"
+    fake_root.mkdir()
+    monkeypatch.setattr(maturity_export, "ROOT", fake_root)
+    monkeypatch.chdir(fake_root)
+
+    assert (
+        maturity_export._duckdb_path_label(fake_root / "data" / "moss.duckdb")
+        == "data/moss.duckdb"
+    )
+    external_duckdb = tmp_path / "external" / "moss.duckdb"
+    external_duckdb.parent.mkdir(parents=True, exist_ok=True)
+    external_duckdb.touch()
+    escape_path = fake_root / ".." / "external" / "moss.duckdb"
+    sibling_spelling = external_duckdb.parent / "." / "moss.duckdb"
+    other_external_duckdb = tmp_path / "other" / "moss.duckdb"
+    other_external_duckdb.parent.mkdir(parents=True, exist_ok=True)
+    other_external_duckdb.touch()
+    expected_external_label = str(external_duckdb.resolve())
+
+    assert maturity_export._duckdb_path_label(escape_path) == expected_external_label
+    assert maturity_export._duckdb_path_label(sibling_spelling) == expected_external_label
+    assert maturity_export._duckdb_path_label(external_duckdb) == expected_external_label
+    assert maturity_export._duckdb_path_label(other_external_duckdb) != expected_external_label
 
 
 def test_portfolio_home_maturity_remediation_export_cli_require_clean_blocks_missing_rows(

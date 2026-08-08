@@ -178,6 +178,14 @@ def _manifest_export_files(report_date: str) -> dict[str, str]:
     }
 
 
+def _duckdb_path_label(duckdb_path: Path) -> str:
+    resolved = duckdb_path.resolve()
+    try:
+        return resolved.relative_to(ROOT).as_posix()
+    except ValueError:
+        return str(resolved)
+
+
 def _write_csv(path: Path, fields: list[str], rows: list[dict[str, object]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8-sig", newline="") as handle:
@@ -305,7 +313,7 @@ def build_export_packet(
         "page_id": queue["page_id"],
         "page_slug": queue["page_slug"],
         "report_date": report_date,
-        "duckdb_path": str(duckdb_path),
+        "duckdb_path": _duckdb_path_label(duckdb_path),
         "export_status": "clean" if not blockers else "blocked",
         "remediation_blockers": blockers,
         "export_summary": summary,

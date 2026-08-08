@@ -3,7 +3,7 @@
   "page_id": "PAGE-PORTFOLIO-HOME-001",
   "page_slug": "portfolio",
   "report_date": "2026-05-31",
-  "duckdb_path": "F:\\MOSS-V3\\data\\moss.duckdb",
+  "duckdb_path": "data/moss.duckdb",
   "export_status": "decision_required",
   "review_blockers": [
     "krd_contract_decision_required"
