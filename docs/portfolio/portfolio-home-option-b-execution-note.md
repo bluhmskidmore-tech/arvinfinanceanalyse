@@ -93,7 +93,7 @@ Risk owner:
 
 Data owner:
 
-- Remediate or approve scoped exclusion for `114` missing bond maturity rows.
+- Reconcile the `6` matured non-zero bond positions at source; a scoped exclusion cannot close this blocker.
 - Remediate or approve scoped exclusion for `1455` missing TYW liability maturity rows in the risk scope.
 - Reconcile `duration_exclusion_warning_mismatch` where parsed duration-exclusion market value is `38318400505.50000008` and recomputed evidence is `39109594105.50000008`.
 
