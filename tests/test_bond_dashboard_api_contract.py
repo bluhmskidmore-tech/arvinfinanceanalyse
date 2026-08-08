@@ -375,7 +375,9 @@ def test_bond_dashboard_service_uses_shared_lineage_and_meta_helpers() -> None:
     assert "_analytical_envelope" in src
 
 
-def test_bond_dashboard_service_reuses_formal_fact_rows_for_same_report_date(monkeypatch) -> None:
+def test_bond_dashboard_service_reuses_formal_fact_rows_for_same_report_date(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
+    get_settings.cache_clear()
     service_mod = load_module(
         "tests._bond_dashboard_service_fact_cache",
         "backend/app/services/bond_dashboard_service.py",
@@ -444,6 +446,10 @@ def test_bond_dashboard_service_reuses_formal_fact_rows_for_same_report_date(mon
         "_duckdb_cache_version_token",
         lambda: ("fake.duckdb", 1),
     )
+    _append_bond_analytics_completed_build(
+        report_date=REPORT_DATE,
+        source_version="sv_cached_fact",
+    )
 
     service_mod.get_bond_dashboard_headline_kpis(date.fromisoformat(REPORT_DATE))
     service_mod.get_bond_dashboard_risk_indicators(date.fromisoformat(REPORT_DATE))
@@ -452,7 +458,9 @@ def test_bond_dashboard_service_reuses_formal_fact_rows_for_same_report_date(mon
     assert FakeBondDashboardRepo.fetch_fact_calls == 1
 
 
-def test_bond_dashboard_home_summary_builds_child_payloads_without_child_envelopes(monkeypatch) -> None:
+def test_bond_dashboard_home_summary_builds_child_payloads_without_child_envelopes(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
+    get_settings.cache_clear()
     service_mod = load_module(
         "tests._bond_dashboard_home_summary_payload_builders",
         "backend/app/services/bond_dashboard_service.py",
@@ -588,6 +596,10 @@ def test_bond_dashboard_home_summary_builds_child_payloads_without_child_envelop
         lambda: ("fake.duckdb", 1),
     )
     monkeypatch.setattr(service_mod, "_analytical_envelope", fail_child_envelope)
+    _append_bond_analytics_completed_build(
+        report_date=REPORT_DATE,
+        source_version="sv_home_summary",
+    )
 
     payload = service_mod.get_bond_dashboard_home_summary(date.fromisoformat(REPORT_DATE))
     cached_payload = service_mod.get_bond_dashboard_home_summary(date.fromisoformat(REPORT_DATE))
