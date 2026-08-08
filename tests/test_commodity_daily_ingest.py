@@ -357,6 +357,7 @@ def test_completed_ingest_reports_series_id_when_product_has_no_rows(tmp_path, m
     payload = run_commodity_daily_ingest(
         start_date="2024-01-01",
         end_date="2024-01-10",
+        duckdb_path=str(duckdb_path),
         products=("RB",),
         dry_run=False,
     )
@@ -430,6 +431,7 @@ def test_completed_ingest_preserves_unreturned_existing_trade_dates(tmp_path, mo
     payload = run_commodity_daily_ingest(
         start_date="2024-01-02",
         end_date="2024-01-04",
+        duckdb_path=str(duckdb_path),
         products=("RB",),
         dry_run=False,
     )

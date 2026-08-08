@@ -58,6 +58,11 @@ def test_macro_report_bundle_download_serves_only_verified_manifest_artifacts(
     content = b"downloadable report"
     _write_bundle(output_dir / macro_report_asset_service.BUNDLE_DIRNAME, content=content)
     monkeypatch.setattr(macro_toolkit_route, "OUTPUT_DIR", output_dir)
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "_ensure_macro_toolkit_read_allowed",
+        lambda *_args, **_kwargs: None,
+    )
     app = FastAPI()
     app.include_router(macro_toolkit_router)
     client = TestClient(app)
