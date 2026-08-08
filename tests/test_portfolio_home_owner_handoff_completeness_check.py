@@ -191,6 +191,7 @@ def test_portfolio_home_owner_handoff_completeness_check_blocks_unallowlisted_re
     assert "risk_owner_recheck_commands_unallowlisted" in report["blockers"]
     route_checks = {item["owner"]: item for item in report["route_checks"]}
     assert route_checks["risk_owner"]["unallowlisted_recheck_commands"] == [
+        "python scripts/portfolio_home_risk_warning_consistency.py --require-clean",
         "python scripts/not_a_scorecard_gate.py --require-clean",
     ]
 
