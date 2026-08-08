@@ -346,16 +346,28 @@ def refresh_accounting_asset_movement_window_sync(
     return _refresh_accounting_asset_movement_window(
         report_dates=report_dates,
         anchor_report_date=anchor_report_date,
-        duckdb_path=duckdb_path,
-        governance_dir=governance_dir,
         currency_basis=currency_basis,
-        product_category_refreshed_dates=product_category_refreshed_dates,
-        formal_balance_refreshed_dates=formal_balance_refreshed_dates,
-        product_category_source_dir=product_category_source_dir,
-        data_root=data_root,
-        archive_dir=archive_dir,
-        fx_source_path=fx_source_path,
-        run_id=run_id,
+        **({} if duckdb_path is None else {"duckdb_path": duckdb_path}),
+        **({} if governance_dir is None else {"governance_dir": governance_dir}),
+        **(
+            {}
+            if product_category_refreshed_dates is None
+            else {"product_category_refreshed_dates": product_category_refreshed_dates}
+        ),
+        **(
+            {}
+            if formal_balance_refreshed_dates is None
+            else {"formal_balance_refreshed_dates": formal_balance_refreshed_dates}
+        ),
+        **(
+            {}
+            if product_category_source_dir is None
+            else {"product_category_source_dir": product_category_source_dir}
+        ),
+        **({} if data_root is None else {"data_root": data_root}),
+        **({} if archive_dir is None else {"archive_dir": archive_dir}),
+        **({} if fx_source_path is None else {"fx_source_path": fx_source_path}),
+        **({} if run_id is None else {"run_id": run_id}),
     )
 
 

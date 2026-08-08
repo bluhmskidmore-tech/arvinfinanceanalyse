@@ -316,15 +316,15 @@ def run_formal_balance_pipeline_sync(
     fx_source_path: str | None = None,
 ) -> dict[str, object]:
     return _run_formal_balance_pipeline(
-        report_date=report_date,
-        start_date=start_date,
-        end_date=end_date,
-        backfill=backfill,
-        data_root=data_root,
-        duckdb_path=duckdb_path,
-        governance_dir=governance_dir,
-        archive_dir=archive_dir,
-        fx_source_path=fx_source_path,
+        **({} if report_date is None else {"report_date": report_date}),
+        **({} if start_date is None else {"start_date": start_date}),
+        **({} if end_date is None else {"end_date": end_date}),
+        **({} if not backfill else {"backfill": backfill}),
+        **({} if data_root is None else {"data_root": data_root}),
+        **({} if duckdb_path is None else {"duckdb_path": duckdb_path}),
+        **({} if governance_dir is None else {"governance_dir": governance_dir}),
+        **({} if archive_dir is None else {"archive_dir": archive_dir}),
+        **({} if fx_source_path is None else {"fx_source_path": fx_source_path}),
     )
 
 
