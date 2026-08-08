@@ -17,6 +17,7 @@ from tests.test_bond_analytics_materialize_flow import (
     REPORT_DATE,
     _seed_bond_snapshot_rows,
     _seed_formal_zqtz_balance_for_cb001,
+    seed_yield_curves_for_bond_analytics_tests,
 )
 
 
@@ -27,9 +28,10 @@ def _configure_and_materialize(tmp_path, monkeypatch, *, interest_mode_override:
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     get_settings.cache_clear()
     _seed_bond_snapshot_rows(str(duckdb_path))
-    if interest_mode_override is not None:
-        conn = duckdb.connect(str(duckdb_path), read_only=False)
-        try:
+    seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        if interest_mode_override is not None:
             conn.execute(
                 """
                 update zqtz_bond_daily_snapshot
@@ -39,18 +41,35 @@ def _configure_and_materialize(tmp_path, monkeypatch, *, interest_mode_override:
                 """,
                 [interest_mode_override, REPORT_DATE],
             )
-        finally:
-            conn.close()
+    finally:
+        conn.close()
     task_mod = load_module(
         "backend.app.tasks.bond_analytics_materialize",
         "backend/app/tasks/bond_analytics_materialize.py",
     )
-    task_mod.materialize_bond_analytics_facts.fn(
-        report_date=REPORT_DATE,
-        duckdb_path=str(duckdb_path),
-        governance_dir=str(governance_dir),
-    )
+    try:
+        task_mod.materialize_bond_analytics_facts.fn(
+            report_date=REPORT_DATE,
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+        )
+    finally:
+        _clear_seeded_yield_curve_inputs(str(duckdb_path))
     return duckdb_path, governance_dir, task_mod
+
+
+def _clear_seeded_yield_curve_inputs(duckdb_path: str) -> None:
+    conn = duckdb.connect(duckdb_path, read_only=False)
+    try:
+        conn.execute(
+            """
+            delete from fact_formal_yield_curve_daily
+            where trade_date in ('2026-03-01', '2026-03-30', '2026-03-31')
+              and curve_type in ('treasury', 'cdb', 'aaa_credit')
+            """
+        )
+    finally:
+        conn.close()
 
 
 def _append_completed_bond_analytics_build(
