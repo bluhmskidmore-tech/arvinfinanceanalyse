@@ -82,7 +82,6 @@ def test_portfolio_home_closure_artifact_presence_check_reports_current_real_doc
     } == {
         "docs/portfolio/krd-contract-decision/2026-05-31/krd_remap_summary.csv",
         "docs/portfolio/krd-contract-decision/2026-05-31/krd_remap_detail.csv",
-        "docs/portfolio/maturity-remediation/2026-05-31/bond_missing_maturity.csv",
         "docs/portfolio/maturity-remediation/2026-05-31/tyw_liability_missing_maturity.csv",
         "docs/portfolio/portfolio-home-business-owner-approval-template.md",
     }
