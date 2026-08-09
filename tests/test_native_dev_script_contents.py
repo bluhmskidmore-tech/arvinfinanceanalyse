@@ -158,6 +158,9 @@ def test_dev_python_prefers_repo_virtualenv_before_system_python():
 def test_dev_env_script_sets_repo_relative_data_paths():
     script = (ROOT / "scripts" / "dev-env.ps1").read_text(encoding="utf-8")
     assert "Join-Path $root" in script
+    assert '. "$root\\scripts\\dev-python.ps1"' in script
+    assert '$devEnvPython = Resolve-DevPython -RequiredModules @("duckdb")' in script
+    assert "Get-Command python -ErrorAction Stop" not in script
     assert 'Join-Path $root "data\\moss.duckdb"' in script
     assert 'Join-Path $root "data\\archive"' in script
     assert "dev_postgres_cluster.py" in script
