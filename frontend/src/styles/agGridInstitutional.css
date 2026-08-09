@@ -10,6 +10,16 @@
   --ag-font-size: 12px;
 }
 
+.theme-dh-api :where(.ag-theme-alpine, .ag-theme-quartz) {
+  --ag-background-color: var(--dh-api-panel);
+  --ag-header-background-color: var(--dh-api-panel-3);
+  --ag-odd-row-background-color: rgba(255, 255, 255, 0.01);
+  --ag-row-hover-color: rgba(114, 167, 220, 0.08);
+  --ag-border-color: var(--dh-api-line);
+  --ag-header-foreground-color: var(--dh-api-soft);
+  --ag-foreground-color: var(--dh-api-ink);
+}
+
 .moss-ag-grid {
   width: 100%;
   min-width: 0;

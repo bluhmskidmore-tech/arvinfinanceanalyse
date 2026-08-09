@@ -1,4 +1,45 @@
 /* Compact cockpit alignment for the shared decision hero and status strip. */
+.decision-items-page.theme-dh-api {
+  --ib-paper: var(--dh-api-bg);
+  --ib-surface: var(--dh-api-panel);
+  --ib-surface-muted: var(--dh-api-panel-2);
+  --ib-hairline: var(--dh-api-line-soft);
+  --ib-ink: var(--dh-api-ink);
+  --ib-ink-secondary: var(--dh-api-soft);
+  --ib-ink-muted: var(--dh-api-muted);
+  --ib-accent: var(--dh-api-blue);
+  --ib-up: var(--dh-api-green);
+  --ib-down: var(--dh-api-red);
+  --ib-warn: var(--dh-api-amber);
+  --ib-radius: var(--dh-api-radius);
+
+  min-height: 100%;
+  background: var(--dh-api-bg);
+  color: var(--dh-api-ink);
+}
+
+.decision-items-page.theme-dh-api :where(.ant-btn, .ant-input, .ant-input-textarea textarea, .ant-select-selector) {
+  border-color: var(--dh-api-line) !important;
+  background: var(--dh-api-panel-2) !important;
+  color: var(--dh-api-ink) !important;
+  box-shadow: none !important;
+}
+
+.decision-items-page.theme-dh-api :where(.ant-btn:hover, .ant-btn:focus-visible) {
+  border-color: var(--dh-api-blue) !important;
+  color: var(--dh-api-ink) !important;
+}
+
+.decision-items-page.theme-dh-api :where(.ant-btn-primary) {
+  border-color: var(--dh-api-blue) !important;
+  background: var(--dh-api-blue) !important;
+  color: var(--dh-api-bg) !important;
+}
+
+.decision-items-page.theme-dh-api :where(.ant-select-arrow, .ant-input::placeholder, .ant-input-textarea textarea::placeholder) {
+  color: var(--dh-api-muted) !important;
+}
+
 .decision-items-page .moss-page-v2-decision-hero {
   padding: 14px 16px;
   border: 1px solid var(--ib-hairline);

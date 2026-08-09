@@ -225,6 +225,7 @@
  */
 .theme-dh-api,
 .workbench-shell-grid--cockpit:has(.theme-dh-api),
+.workbench-shell-grid:has(.themed-route-boundary.theme-dh-api),
 .market-data-overview-board[data-variant="data-overview"] {
   --dh-api-bg: #070a12;
   --dh-api-rail: #0a1019;
@@ -251,6 +252,93 @@
 }
 
 .theme-dh-api,
-.workbench-shell-grid--cockpit:has(.theme-dh-api) {
+.workbench-shell-grid--cockpit:has(.theme-dh-api),
+.workbench-shell-grid:has(.themed-route-boundary.theme-dh-api) {
   color-scheme: dark;
+}
+
+.themed-route-boundary.theme-dh-api,
+.workbench-shell-grid:has(.themed-route-boundary.theme-dh-api) {
+  --ib-paper: var(--dh-api-bg);
+  --ib-surface: var(--dh-api-panel);
+  --ib-surface-muted: var(--dh-api-panel-2);
+  --ib-hairline: var(--dh-api-line);
+  --ib-rule-strong: var(--dh-api-line);
+  --ib-ink: var(--dh-api-ink);
+  --ib-ink-secondary: var(--dh-api-soft);
+  --ib-ink-muted: var(--dh-api-muted);
+  --ib-accent: var(--dh-api-blue);
+  --ib-accent-hover: #8bb7e4;
+  --ib-accent-surface: var(--dh-api-blue-soft);
+  --ib-up: var(--dh-api-green);
+  --ib-down: var(--dh-api-red);
+  --ib-warn: var(--dh-api-amber);
+  --ib-rail-bg: var(--dh-api-rail);
+  --ib-rail-border: var(--dh-api-line-soft);
+  --ib-rail-text: var(--dh-api-soft);
+  --ib-rail-text-active: var(--dh-api-ink);
+  --ib-rail-active-bar: var(--dh-api-amber);
+  --ib-rail-active-bg: rgba(16, 26, 42, 0.88);
+  --ib-rail-section-label: var(--dh-api-muted);
+  --ib-gold: var(--dh-api-amber);
+
+  --moss-institutional-bg: var(--dh-api-bg);
+  --moss-institutional-bg-deep: var(--dh-api-bg);
+  --moss-institutional-surface: var(--dh-api-panel);
+  --moss-institutional-surface-raised: var(--dh-api-panel);
+  --moss-institutional-surface-muted: var(--dh-api-panel-2);
+  --moss-institutional-border: var(--dh-api-line);
+  --moss-institutional-border-strong: var(--dh-api-line);
+  --moss-institutional-divider: var(--dh-api-line-soft);
+  --moss-institutional-row-stripe: rgba(255, 255, 255, 0.01);
+  --moss-institutional-row-hover: rgba(114, 167, 220, 0.08);
+  --moss-institutional-text: var(--dh-api-ink);
+  --moss-institutional-text-muted: var(--dh-api-soft);
+  --moss-institutional-rail-top: var(--dh-api-rail);
+  --moss-institutional-rail-bottom: var(--dh-api-rail);
+  --moss-institutional-rail-edge: var(--dh-api-line-soft);
+  --moss-institutional-accent-gold: var(--dh-api-amber);
+  --moss-institutional-accent-cyan: var(--dh-api-blue);
+  --moss-institutional-focus-ring: rgba(114, 167, 220, 0.34);
+
+  --moss-color-surface-base: var(--dh-api-bg);
+  --moss-color-card-bg: var(--dh-api-panel);
+  --moss-color-border-default: var(--dh-api-line);
+  --moss-color-text-primary: var(--dh-api-ink);
+  --moss-color-text-secondary: var(--dh-api-soft);
+  --moss-color-text-muted: var(--dh-api-muted);
+  --moss-color-link: var(--dh-api-blue);
+  --moss-color-primary-rgb: 114, 167, 220;
+  --moss-color-success-rgb: 102, 185, 139;
+  --moss-border-hover: color-mix(in srgb, var(--dh-api-blue) 42%, var(--dh-api-line) 58%);
+  --moss-shell-rail-bg: var(--dh-api-rail);
+  --moss-shell-rail-bg-stack: var(--dh-api-rail);
+  --moss-shell-rail-border: var(--dh-api-line-soft);
+  --moss-shell-rail-surface: transparent;
+  --moss-shell-rail-text: var(--dh-api-soft);
+  --moss-shell-rail-text-muted: var(--dh-api-muted);
+  --moss-shell-rail-active-bg:
+    linear-gradient(90deg, rgba(201, 165, 101, 0.16), rgba(114, 167, 220, 0.08)),
+    rgba(16, 26, 42, 0.88);
+  --moss-shell-rail-active-border: var(--dh-api-amber);
+  --moss-shell-rail-mark-glow: transparent;
+  --moss-shell-terminal-bg:
+    linear-gradient(180deg, rgba(16, 26, 42, 0.94), rgba(10, 16, 25, 0.94));
+  --moss-shell-terminal-border: var(--dh-api-line);
+  --moss-shell-pulse-bg: var(--dh-api-panel);
+  --moss-shell-pulse-border: var(--dh-api-line);
+  --moss-shell-paper-bg:
+    linear-gradient(180deg, rgba(16, 26, 42, 0.96) 0%, rgba(12, 20, 33, 0.98) 100%);
+  --moss-shell-paper-shade:
+    radial-gradient(circle at top right, rgba(114, 167, 220, 0.09), transparent 48%);
+  --moss-shadow-card: none;
+  --moss-shadow-panel: none;
+  --moss-shadow-popover: 0 18px 32px rgba(0, 0, 0, 0.24);
+  --moss-shadow-modal: 0 22px 44px rgba(0, 0, 0, 0.28);
+  --moss-shadow-rail: none;
+  --moss-shadow-institutional-active: inset 3px 0 0 rgba(201, 165, 101, 0.84);
+
+  min-height: 100%;
+  color: var(--dh-api-ink);
+  background: var(--dh-api-bg);
 }

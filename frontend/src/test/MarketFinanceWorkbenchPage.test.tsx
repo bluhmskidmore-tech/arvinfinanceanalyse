@@ -361,7 +361,7 @@ describe("MarketFinanceWorkbenchPage", () => {
     ).toBeInTheDocument();
 
     const root = screen.getByTestId("market-finance-workbench");
-    expect(root).not.toHaveClass("theme-dh-api");
+    expect(root.querySelector(".market-finance-workbench.theme-dh-api")).not.toBeNull();
     expect(root.querySelector("main")).toBeNull();
     expect(
       screen.getByRole("group", { name: "当前观察范围" }),

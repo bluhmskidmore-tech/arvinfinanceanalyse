@@ -1,27 +1,30 @@
+import { theme as antdTheme } from "antd";
 import type { ThemeConfig } from "antd";
 
-import { designTokens } from "./designSystem";
-import { shellTokens } from "./tokens";
+import { designTokens, dhApiTokens } from "./designSystem";
+
+const routeSurfaceShadow = "none";
 
 export const workbenchTheme: ThemeConfig = {
+  algorithm: antdTheme.darkAlgorithm,
   token: {
-    colorPrimary: shellTokens.colorAccent,
-    colorSuccess: shellTokens.colorSuccess,
-    colorWarning: shellTokens.colorWarning,
-    colorError: shellTokens.colorDanger,
-    colorInfo: shellTokens.colorInfo,
-    colorLink: shellTokens.colorInfo,
-    colorLinkHover: designTokens.color.info[600],
-    colorLinkActive: designTokens.color.info[700],
-    colorText: shellTokens.colorTextPrimary,
-    colorTextSecondary: shellTokens.colorTextSecondary,
-    colorTextTertiary: shellTokens.colorTextMuted,
-    colorBorder: shellTokens.colorBorder,
-    colorBorderSecondary: shellTokens.colorBorderSoft,
-    colorBgBase: shellTokens.colorBgApp,
-    colorBgContainer: shellTokens.colorBgSurface,
-    colorBgElevated: shellTokens.colorBgCanvas,
-    colorFillAlter: shellTokens.colorBgMuted,
+    colorPrimary: dhApiTokens.color.blue,
+    colorSuccess: dhApiTokens.color.green,
+    colorWarning: dhApiTokens.color.amber,
+    colorError: dhApiTokens.color.red,
+    colorInfo: dhApiTokens.color.blue,
+    colorLink: dhApiTokens.color.blue,
+    colorLinkHover: "#8bb7e4",
+    colorLinkActive: "#5c93c7",
+    colorText: dhApiTokens.color.ink,
+    colorTextSecondary: dhApiTokens.color.inkSoft,
+    colorTextTertiary: dhApiTokens.color.inkMuted,
+    colorBorder: dhApiTokens.color.line,
+    colorBorderSecondary: dhApiTokens.color.lineSoft,
+    colorBgBase: dhApiTokens.color.bg,
+    colorBgContainer: dhApiTokens.color.panel,
+    colorBgElevated: dhApiTokens.color.panel2,
+    colorFillAlter: dhApiTokens.color.panel2,
     borderRadius: 2,
     wireframe: false,
     fontSize: designTokens.fontSize[13],
@@ -33,7 +36,7 @@ export const workbenchTheme: ThemeConfig = {
     fontFamily: designTokens.fontFamily.sans,
     lineHeight: designTokens.lineHeight.normal,
     boxShadow: "none",
-    boxShadowSecondary: shellTokens.shadowCard,
+    boxShadowSecondary: routeSurfaceShadow,
     padding: designTokens.space[3],
     paddingLG: designTokens.space[4],
     paddingSM: designTokens.space[2],
@@ -49,6 +52,7 @@ export const workbenchTheme: ThemeConfig = {
       paddingInline: designTokens.space[4],
       paddingBlock: designTokens.space[2],
       fontWeight: 600,
+      primaryColor: dhApiTokens.color.bg,
       primaryShadow: "none",
     },
     Input: {
@@ -63,33 +67,33 @@ export const workbenchTheme: ThemeConfig = {
       borderRadiusLG: 2,
       paddingLG: designTokens.card.padding,
       headerBg: "transparent",
-      boxShadow: "none",
+      boxShadow: routeSurfaceShadow,
     },
     Table: {
       borderRadius: 2,
       cellPaddingBlock: Math.round((designTokens.density.tableRowCompact - designTokens.fontSize[13] * 1.35) / 2),
       cellPaddingInline: designTokens.space[3],
       cellFontSize: designTokens.fontSize[13],
-      headerBg: shellTokens.colorBgMuted,
-      headerColor: designTokens.color.institutional.textMuted,
-      rowHoverBg: designTokens.color.institutional.rowHover,
+      headerBg: dhApiTokens.color.panel3,
+      headerColor: dhApiTokens.color.inkSoft,
+      rowHoverBg: "rgba(114, 167, 220, 0.08)",
     },
     Layout: {
-      bodyBg: shellTokens.colorBgApp,
-      siderBg: shellTokens.railBg,
+      bodyBg: dhApiTokens.color.bg,
+      siderBg: dhApiTokens.color.rail,
       headerBg: "transparent",
     },
     Tabs: {
       horizontalMargin: `0 0 ${designTokens.space[4]}px 0`,
       titleFontSize: designTokens.fontSize[14],
-      cardBg: shellTokens.colorBgMuted,
-      itemSelectedColor: shellTokens.colorAccent,
+      cardBg: dhApiTokens.color.panel2,
+      itemSelectedColor: dhApiTokens.color.blue,
     },
     Modal: {
-      boxShadow: shellTokens.shadowPanel,
+      boxShadow: routeSurfaceShadow,
     },
     Tooltip: {
-      colorBgSpotlight: designTokens.color.neutral[800],
+      colorBgSpotlight: dhApiTokens.color.panel3,
     },
   },
 };

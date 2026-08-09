@@ -55,6 +55,44 @@ body {
   background: var(--moss-institutional-bg);
 }
 
+.workbench-shell-grid:has(.themed-route-boundary.theme-dh-api) {
+  color: var(--dh-api-ink);
+  background:
+    radial-gradient(circle at 18% 0%, rgba(114, 167, 220, 0.06), transparent 26%),
+    radial-gradient(circle at 90% 12%, rgba(201, 165, 101, 0.04), transparent 28%),
+    var(--dh-api-bg) !important;
+}
+
+.workbench-shell-grid:has(.themed-route-boundary.theme-dh-api) .workbench-shell-aside,
+.workbench-shell-grid:has(.themed-route-boundary.theme-dh-api) .workbench-shell-rail {
+  background:
+    linear-gradient(180deg, rgba(17, 27, 42, 0.98), rgba(8, 13, 22, 0.98)),
+    var(--dh-api-rail) !important;
+  border-color: var(--dh-api-line-soft) !important;
+}
+
+.workbench-shell-grid:has(.themed-route-boundary.theme-dh-api) .workbench-main-column > main,
+.workbench-shell-grid:has(.themed-route-boundary.theme-dh-api) .workbench-main-surface {
+  border-color: var(--dh-api-line) !important;
+  background:
+    var(--moss-shell-paper-shade),
+    var(--moss-shell-paper-bg) !important;
+  box-shadow: none !important;
+}
+
+.workbench-shell-grid:has(.themed-route-boundary.theme-dh-api) .moss-page-v2-surface,
+.workbench-shell-grid:has(.themed-route-boundary.theme-dh-api) .moss-page-v2-evidence-panel,
+.workbench-shell-grid:has(.themed-route-boundary.theme-dh-api) .moss-page-v2-decision-hero__conclusion {
+  border-color: var(--dh-api-line) !important;
+  background:
+    linear-gradient(180deg, rgba(16, 26, 42, 0.98) 0%, rgba(12, 20, 33, 0.98) 100%) !important;
+  box-shadow: none !important;
+}
+
+.workbench-shell-grid:has(.themed-route-boundary.theme-dh-api) .moss-page-v2-decision-hero__conclusion {
+  border-left-color: rgba(114, 167, 220, 0.72) !important;
+}
+
 .moss-data-mode-ribbon {
   position: fixed;
   top: 0;

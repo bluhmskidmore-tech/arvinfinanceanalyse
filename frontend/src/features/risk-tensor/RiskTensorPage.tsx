@@ -1701,7 +1701,7 @@ export default function RiskTensorPage() {
     ) : null;
 
   return (
-    <section>
+    <section className="risk-tensor-page theme-dh-api" data-testid="risk-tensor-page">
       <div className="risk-tensor-page__hero">
         <h1>风险张量</h1>
         <p>

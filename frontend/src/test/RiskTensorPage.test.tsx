@@ -289,6 +289,7 @@ describe("RiskTensorPage", () => {
       getRiskTensor,
     });
 
+    expect(await screen.findByTestId("risk-tensor-page")).toHaveClass("theme-dh-api");
     const kpi = await screen.findByTestId("risk-tensor-kpi-grid");
     expect(kpi).toHaveTextContent(new RegExp(`12\\.00\\s*${WAN_YUAN_UNIT}`));
     expect(kpi).toHaveTextContent(new RegExp(`88\\.00\\s*${WAN_YUAN_UNIT}`));

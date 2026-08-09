@@ -839,7 +839,7 @@ export default function MarketFinanceWorkbenchPage() {
 
   return (
     <PageV2Shell testId="market-finance-workbench">
-      <div className="market-finance-workbench">
+      <div className="market-finance-workbench theme-dh-api">
         <PageDecisionHero
           className="market-finance-workbench__hero"
           eyebrow="金市投研 × 计划财务"

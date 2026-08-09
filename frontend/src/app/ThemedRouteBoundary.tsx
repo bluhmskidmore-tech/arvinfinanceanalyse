@@ -8,5 +8,15 @@ type ThemedRouteBoundaryProps = {
 };
 
 export default function ThemedRouteBoundary({ children }: ThemedRouteBoundaryProps) {
-  return <ConfigProvider theme={workbenchTheme}>{children}</ConfigProvider>;
+  return (
+    <ConfigProvider theme={workbenchTheme}>
+      <div
+        className="themed-route-boundary theme-dh-api"
+        data-moss-theme="dark"
+        data-moss-theme-scope="route"
+      >
+        {children}
+      </div>
+    </ConfigProvider>
+  );
 }

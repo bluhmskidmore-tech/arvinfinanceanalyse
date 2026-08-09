@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { stockAnalysisPageCssVars } from "../features/stock-analysis/lib/stockAnalysisTokens";
-import { designTokens, ibTokens } from "../theme/designSystem";
+import { designTokens, dhApiTokens, ibTokens } from "../theme/designSystem";
 import { shellTokens } from "../theme/tokens";
 import { workbenchTheme } from "../theme/theme";
 
@@ -37,6 +37,12 @@ function readCssWithLocalImports(filePath: string, seen = new Set<string>()): st
 
 function stripCssComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, "");
+}
+
+function extractRootCssBlock(css: string): string {
+  const cleaned = stripCssComments(css);
+  const match = cleaned.match(/:root\s*\{([\s\S]*?)\n\}/);
+  return match?.[1] ?? cleaned;
 }
 
 /** Extract --moss-* declarations; values trimmed, internal whitespace collapsed for comparison. */
@@ -72,7 +78,7 @@ function normalizeHex(value: string): string {
 }
 
 describe("ibTokens", () => {
-  const globalCss = readCssWithLocalImports(GLOBAL_CSS_PATH);
+  const globalCss = extractRootCssBlock(readCssWithLocalImports(GLOBAL_CSS_PATH));
   const ibVars = parseIbCssVars(globalCss);
 
   it("exposes core IB light restyle variables aligned with ibTokens", () => {
@@ -129,35 +135,36 @@ describe("shellTokens", () => {
 });
 
 describe("workbenchTheme", () => {
-  it("maps token fields to shellTokens", () => {
+  it("maps token fields to the route-scoped dark terminal palette", () => {
     const { token } = workbenchTheme;
+    expect(workbenchTheme.algorithm).toBeDefined();
     expect(token).toBeDefined();
-    expect(token?.colorPrimary).toBe(shellTokens.colorAccent);
-    expect(token?.colorSuccess).toBe(shellTokens.colorSuccess);
-    expect(token?.colorWarning).toBe(shellTokens.colorWarning);
-    expect(token?.colorError).toBe(shellTokens.colorDanger);
-    expect(token?.colorText).toBe(shellTokens.colorTextPrimary);
-    expect(token?.colorTextSecondary).toBe(shellTokens.colorTextSecondary);
-    expect(token?.colorBorder).toBe(shellTokens.colorBorder);
-    expect(token?.colorBgBase).toBe(shellTokens.colorBgApp);
-    expect(token?.colorBgContainer).toBe(shellTokens.colorBgSurface);
-    expect(token?.colorFillAlter).toBe(shellTokens.colorBgMuted);
+    expect(token?.colorPrimary).toBe(dhApiTokens.color.blue);
+    expect(token?.colorSuccess).toBe(dhApiTokens.color.green);
+    expect(token?.colorWarning).toBe(dhApiTokens.color.amber);
+    expect(token?.colorError).toBe(dhApiTokens.color.red);
+    expect(token?.colorText).toBe(dhApiTokens.color.ink);
+    expect(token?.colorTextSecondary).toBe(dhApiTokens.color.inkSoft);
+    expect(token?.colorBorder).toBe(dhApiTokens.color.line);
+    expect(token?.colorBgBase).toBe(dhApiTokens.color.bg);
+    expect(token?.colorBgContainer).toBe(dhApiTokens.color.panel);
+    expect(token?.colorFillAlter).toBe(dhApiTokens.color.panel2);
     expect(token?.borderRadius).toBe(2);
   });
 
-  it("defines Card and Layout overrides from shellTokens", () => {
+  it("defines Card and Layout overrides from the dark route tokens", () => {
     const { components } = workbenchTheme;
     expect(components?.Card?.borderRadiusLG).toBe(2);
     expect(components?.Card?.boxShadow).toBe("none");
-    expect(components?.Layout?.bodyBg).toBe(shellTokens.colorBgApp);
-    expect(components?.Layout?.siderBg).toBe(shellTokens.railBg);
+    expect(components?.Layout?.bodyBg).toBe(dhApiTokens.color.bg);
+    expect(components?.Layout?.siderBg).toBe(dhApiTokens.color.rail);
   });
 
-  it("keeps table chrome on institutional density and row tokens", () => {
+  it("keeps table chrome on the dark route density and row tokens", () => {
     const { components } = workbenchTheme;
-    expect(components?.Table?.headerBg).toBe(shellTokens.colorBgMuted);
-    expect(components?.Table?.headerColor).toBe(designTokens.color.institutional.textMuted);
-    expect(components?.Table?.rowHoverBg).toBe(designTokens.color.institutional.rowHover);
+    expect(components?.Table?.headerBg).toBe(dhApiTokens.color.panel3);
+    expect(components?.Table?.headerColor).toBe(dhApiTokens.color.inkSoft);
+    expect(components?.Table?.rowHoverBg).toBe("rgba(114, 167, 220, 0.08)");
   });
 });
 
@@ -172,7 +179,8 @@ describe("stockAnalysisPageCssVars", () => {
 });
 
 describe("globalCss design token bridge (:root)", () => {
-  const globalCss = readCssWithLocalImports(GLOBAL_CSS_PATH);
+  const fullGlobalCss = readCssWithLocalImports(GLOBAL_CSS_PATH);
+  const globalCss = extractRootCssBlock(fullGlobalCss);
   const workbenchInstitutionalConsoleCss = readFileSync(
     WORKBENCH_INSTITUTIONAL_CONSOLE_CSS_PATH,
     "utf8",
@@ -258,17 +266,17 @@ describe("globalCss design token bridge (:root)", () => {
   });
 
   it("keeps Page V2 and cockpit shell class hooks in the eager global stylesheet", () => {
-    expect(globalCss).toContain(".moss-page-v2-shell");
-    expect(globalCss).toContain(".moss-page-v2-surface");
-    expect(globalCss).toContain(".moss-page-v2-decision-hero");
-    expect(globalCss).toContain(".moss-page-v2-data-status");
-    expect(globalCss).toContain(".moss-page-v2-kpi-band");
-    expect(globalCss).toContain(".moss-page-v2-evidence-panel");
-    expect(globalCss).toContain(".moss-page-v2-state-surface");
-    expect(globalCss).toContain(".workbench-shell-grid--cockpit");
-    expect(globalCss).not.toContain(".workbench-shell-grid--institutional-console");
-    expect(globalCss).not.toContain("ag-theme-alpine");
-    expect(globalCss).toContain(".dashboard-home-shell");
+    expect(fullGlobalCss).toContain(".moss-page-v2-shell");
+    expect(fullGlobalCss).toContain(".moss-page-v2-surface");
+    expect(fullGlobalCss).toContain(".moss-page-v2-decision-hero");
+    expect(fullGlobalCss).toContain(".moss-page-v2-data-status");
+    expect(fullGlobalCss).toContain(".moss-page-v2-kpi-band");
+    expect(fullGlobalCss).toContain(".moss-page-v2-evidence-panel");
+    expect(fullGlobalCss).toContain(".moss-page-v2-state-surface");
+    expect(fullGlobalCss).toContain(".workbench-shell-grid--cockpit");
+    expect(fullGlobalCss).not.toContain(".workbench-shell-grid--institutional-console");
+    expect(fullGlobalCss).not.toContain("ag-theme-alpine");
+    expect(fullGlobalCss).toContain(".dashboard-home-shell");
   });
 
   it("keeps institutional console skin in the deferred stylesheet", () => {
@@ -323,11 +331,11 @@ describe("globalCss design token bridge (:root)", () => {
     ];
 
     for (const selector of deferredSelectors) {
-      expect(globalCss).not.toContain(selector);
+      expect(fullGlobalCss).not.toContain(selector);
       expect(workbenchDeferredChromeCss).toContain(selector);
     }
-    expect(globalCss).toContain(".workbench-shell-grid--cockpit");
-    expect(globalCss).toContain(".dashboard-home-shell");
+    expect(fullGlobalCss).toContain(".workbench-shell-grid--cockpit");
+    expect(fullGlobalCss).toContain(".dashboard-home-shell");
   });
 
   it("keeps AG Grid theme aliases out of the eager global stylesheet", () => {
@@ -337,19 +345,33 @@ describe("globalCss design token bridge (:root)", () => {
       ".workbench-shell-grid--institutional-console :where(.ag-theme-alpine, .ag-theme-quartz)",
     );
     expect(agGridCss).toContain("--ag-background-color");
-    expect(globalCss).not.toContain("ag-theme-alpine");
+    expect(fullGlobalCss).not.toContain("ag-theme-alpine");
+  });
+
+  it("scopes a dark token remap to ThemedRouteBoundary owners", () => {
+    expect(fullGlobalCss).toContain(".themed-route-boundary.theme-dh-api");
+    expect(fullGlobalCss).toContain("--ib-paper: var(--dh-api-bg);");
+    expect(fullGlobalCss).toContain("--moss-color-text-primary: var(--dh-api-ink);");
+  });
+
+  it("gives shell owners a dark AG Grid variable bridge for themed routes", () => {
+    const agGridCss = readFileSync(AG_GRID_INSTITUTIONAL_CSS_PATH, "utf8");
+
+    expect(agGridCss).toContain('.theme-dh-api :where(.ag-theme-alpine, .ag-theme-quartz)');
+    expect(agGridCss).toContain("--ag-header-background-color: var(--dh-api-panel-3);");
+    expect(agGridCss).toContain("--ag-foreground-color: var(--dh-api-ink);");
   });
 
   it("keeps dashboard-home compatibility styles rooted to known page owners", () => {
-    expect(globalCss).toContain(
+    expect(fullGlobalCss).toContain(
       ':where([data-testid="bond-analysis-overview"]).dashboard-home-shell',
     );
-    expect(globalCss).toContain(
+    expect(fullGlobalCss).toContain(
       ':where([data-testid="bond-analysis-overview"]) .dashboard-home-toolbar',
     );
-    expect(globalCss).not.toMatch(/(^|[,{]\s*)\.dashboard-home-toolbar\b/m);
-    expect(globalCss).not.toMatch(/(^|[,{]\s*)\.dashboard-action-ledger\b/m);
-    expect(globalCss).not.toMatch(/\.workbench-shell-grid--cockpit\s+\.dashboard-home-shell\b/m);
-    expect(globalCss).not.toContain("fixed-income-dashboard-page");
+    expect(fullGlobalCss).not.toMatch(/(^|[,{]\s*)\.dashboard-home-toolbar\b/m);
+    expect(fullGlobalCss).not.toMatch(/(^|[,{]\s*)\.dashboard-action-ledger\b/m);
+    expect(fullGlobalCss).not.toMatch(/\.workbench-shell-grid--cockpit\s+\.dashboard-home-shell\b/m);
+    expect(fullGlobalCss).not.toContain("fixed-income-dashboard-page");
   });
 });

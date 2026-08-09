@@ -11,11 +11,14 @@ const fallbackCss = readFileSync(
 
 describe("WorkbenchRouteFallback", () => {
   it("exposes an accessible loading status without inline styles", () => {
-    render(<WorkbenchRouteFallback />);
+    const { container } = render(<WorkbenchRouteFallback />);
 
     const status = screen.getByRole("status");
     expect(status).toHaveTextContent("页面加载中");
     expect(status).not.toHaveAttribute("style");
+
+    const themeOwner = container.querySelector('[data-moss-theme="dark"].theme-dh-api');
+    expect(themeOwner).toContainElement(status);
   });
 
   it("reserves stable route geometry with a motion-safe skeleton", () => {

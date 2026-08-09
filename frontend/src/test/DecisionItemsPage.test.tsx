@@ -158,7 +158,7 @@ describe("DecisionItemsPage", () => {
         }),
       );
     });
-    expect(await screen.findByTestId("decision-items-page")).toBeInTheDocument();
+    expect(await screen.findByTestId("decision-items-page")).toHaveClass("theme-dh-api");
   });
 
   it("uses the report date from dashboard decision action links", async () => {

@@ -363,7 +363,7 @@ export default function ModuleWorkbenchHomePage({
         : "ok";
 
   return (
-    <section className={styles.moduleHome} data-testid="module-workbench-home">
+    <section className={`${styles.moduleHome} theme-dh-api`} data-testid="module-workbench-home">
       <header className={styles.topbar}>
         <div className={styles.titleBlock}>
           <div className={styles.titleRow}>

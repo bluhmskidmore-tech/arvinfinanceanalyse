@@ -5012,7 +5012,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
 
   return (
     <section
-      className={`${MT_SHELL_PAGE} macro-toolkit-page macro-toolkit-page--details-${detailDensity}`}
+      className={`${MT_SHELL_PAGE} macro-toolkit-page theme-dh-api macro-toolkit-page--details-${detailDensity}`}
       data-testid="macro-toolkit-page"
     >
       <header

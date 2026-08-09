@@ -1,33 +1,33 @@
 .macro-toolkit-page {
-  --dh-bg: #f5f7f9;
-  --dh-card: #ffffff;
-  --dh-card-soft: #f8fafc;
-  --dh-surface-muted: #eef2f7;
-  --dh-line: #e5e7eb;
-  --dh-line-soft: #eef2f7;
-  --dh-line-strong: #d8dee8;
-  --dh-ink: #1f2937;
-  --dh-ink-2: #374151;
-  --dh-muted: #6b7280;
-  --dh-muted-2: #94a3b8;
-  --dh-blue: #1850a1;
-  --dh-blue-2: #3b82f6;
-  --dh-blue-deep: #123f80;
-  --dh-blue-soft: rgba(24, 80, 161, 0.08);
-  --dh-navy: #1f2937;
-  --dh-steel: #64748b;
-  --dh-green: #2d8a5e;
-  --dh-green-soft: rgba(45, 138, 94, 0.1);
-  --dh-red: #ef4444;
-  --dh-red-soft: rgba(239, 68, 68, 0.1);
-  --dh-amber: #d97706;
-  --dh-amber-soft: rgba(217, 119, 6, 0.12);
-  --dh-gold: #8a6f2a;
+  --dh-bg: var(--dh-api-bg);
+  --dh-card: var(--dh-api-panel);
+  --dh-card-soft: var(--dh-api-panel-2);
+  --dh-surface-muted: var(--dh-api-panel-3);
+  --dh-line: var(--dh-api-line);
+  --dh-line-soft: var(--dh-api-line-soft);
+  --dh-line-strong: var(--dh-api-line);
+  --dh-ink: var(--dh-api-ink);
+  --dh-ink-2: var(--dh-api-ink-soft);
+  --dh-muted: var(--dh-api-ink-muted);
+  --dh-muted-2: var(--dh-api-ink-muted);
+  --dh-blue: var(--dh-api-blue);
+  --dh-blue-2: var(--dh-api-blue);
+  --dh-blue-deep: var(--dh-api-blue);
+  --dh-blue-soft: rgba(114, 167, 220, 0.12);
+  --dh-navy: var(--dh-api-bg);
+  --dh-steel: var(--dh-api-ink-muted);
+  --dh-green: var(--dh-api-green);
+  --dh-green-soft: rgba(102, 185, 139, 0.12);
+  --dh-red: var(--dh-api-red);
+  --dh-red-soft: rgba(212, 122, 114, 0.12);
+  --dh-amber: var(--dh-api-amber);
+  --dh-amber-soft: rgba(201, 165, 101, 0.12);
+  --dh-gold: var(--dh-api-amber);
   --ib-paper: var(--dh-bg);
   --ib-surface: var(--dh-card);
   --ib-surface-muted: var(--dh-card-soft);
   --ib-hairline: var(--dh-line-strong);
-  --ib-rule-strong: #cbd5e1;
+  --ib-rule-strong: var(--dh-line);
   --ib-ink: var(--dh-ink);
   --ib-ink-secondary: var(--dh-ink-2);
   --ib-ink-muted: var(--dh-muted);
@@ -38,6 +38,8 @@
   --ib-down: var(--dh-red);
   --ib-warn: var(--dh-amber);
   --ib-gold: var(--dh-gold);
+  --ib-radius: 6px;
+  --ib-serif: var(--moss-font-sans);
   --macro-toolkit-card: var(--ib-surface);
   --macro-toolkit-card-soft: var(--ib-surface-muted);
   --macro-toolkit-card-muted: var(--ib-surface-muted);
@@ -51,9 +53,12 @@
   --macro-toolkit-warning: var(--ib-warn);
   --macro-toolkit-primary-soft: var(--ib-accent-surface);
   --macro-toolkit-info-soft: var(--ib-accent-surface);
-  --macro-toolkit-success-soft: var(--ib-paper);
-  --macro-toolkit-danger-soft: var(--ib-paper);
-  --macro-toolkit-warning-soft: var(--ib-paper);
+  --macro-toolkit-success-soft: rgba(102, 185, 139, 0.12);
+  --macro-toolkit-danger-soft: rgba(212, 122, 114, 0.12);
+  --macro-toolkit-warning-soft: rgba(201, 165, 101, 0.12);
+  color-scheme: dark;
+  color: var(--dh-ink);
+  background: var(--dh-bg);
   min-width: 0;
   padding-bottom: 32px;
 }
@@ -2463,7 +2468,13 @@ button.macro-toolkit-committee-closure-rail__step:hover:not(:disabled),
 .macro-toolkit-observation-boundaries .ant-alert {
   min-width: 0;
   padding: 10px 12px;
+  border-color: var(--macro-toolkit-border);
   border-radius: var(--moss-radius-sm);
+  background: var(--macro-toolkit-card-soft);
+}
+
+.macro-toolkit-observation-boundaries .ant-alert-icon {
+  color: var(--macro-toolkit-info);
 }
 
 .macro-toolkit-observation-boundaries .ant-alert-message {

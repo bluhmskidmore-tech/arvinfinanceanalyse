@@ -1,3 +1,45 @@
+.risk-tensor-page.theme-dh-api {
+  --ib-paper: var(--dh-api-bg);
+  --ib-surface: var(--dh-api-panel);
+  --ib-surface-muted: var(--dh-api-panel-2);
+  --ib-hairline: var(--dh-api-line-soft);
+  --ib-ink: var(--dh-api-ink);
+  --ib-ink-secondary: var(--dh-api-soft);
+  --ib-ink-muted: var(--dh-api-muted);
+  --ib-accent: var(--dh-api-blue);
+  --ib-accent-surface: var(--dh-api-blue-soft);
+  --ib-radius: var(--dh-api-radius);
+  --ib-shadow: none;
+  --ib-warn: var(--dh-api-amber);
+  --moss-color-border-default: var(--dh-api-line);
+  --moss-color-card-bg: var(--dh-api-panel);
+  --moss-color-danger-200: var(--dh-api-line);
+  --moss-color-danger-50: var(--dh-api-red-soft);
+  --moss-color-danger-600: var(--dh-api-red);
+  --moss-color-danger-700: var(--dh-api-red);
+  --moss-color-info-300: var(--dh-api-line);
+  --moss-color-info-50: var(--dh-api-blue-soft);
+  --moss-color-info-600: var(--dh-api-blue);
+  --moss-color-neutral-200: var(--dh-api-line);
+  --moss-color-neutral-50: var(--dh-api-panel-2);
+  --moss-color-success-200: var(--dh-api-line);
+  --moss-color-success-50: var(--dh-api-green-soft);
+  --moss-color-success-600: var(--dh-api-green);
+  --moss-color-text-muted: var(--dh-api-soft);
+  --moss-color-text-primary: var(--dh-api-ink);
+  --moss-color-warning-200: var(--dh-api-line);
+  --moss-color-warning-300: var(--dh-api-line-soft);
+  --moss-color-warning-50: var(--dh-api-amber-soft);
+  --moss-color-warning-600: var(--dh-api-amber);
+  --moss-shadow-card: none;
+
+  display: grid;
+  gap: 16px;
+  min-height: 100%;
+  background: var(--dh-api-bg);
+  color: var(--dh-api-ink);
+}
+
 .risk-tensor-brief {
   display: grid;
   gap: 12px;

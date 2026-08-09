@@ -299,7 +299,7 @@ export default function DecisionItemsPage() {
     : "—";
 
   return (
-    <div className="decision-items-page" data-testid="decision-items-page">
+    <div className="decision-items-page theme-dh-api" data-testid="decision-items-page">
       <PageDecisionHero
         testId="decision-items-contract-hero"
         title="决策事项"
