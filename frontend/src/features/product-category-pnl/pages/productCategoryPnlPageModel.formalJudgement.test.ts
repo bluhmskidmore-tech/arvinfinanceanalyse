@@ -15,6 +15,9 @@ const formalMeta: ResultMeta = {
   basis: "formal",
   formal_use_allowed: true,
   scenario_flag: false,
+  quality_flag: "ok",
+  vendor_status: "ok",
+  fallback_mode: "none",
 };
 
 function buildHealth(meta: ResultMeta | null | undefined) {
@@ -38,9 +41,12 @@ describe("buildProductCategoryDataHealth formal judgement gate", () => {
   ] satisfies Array<[string, Partial<ResultMeta>]>)(
     "blocks operating judgement when %s",
     (_reason, metaOverrides) => {
-      expect(buildHealth({ ...formalMeta, ...metaOverrides })).toMatchObject({
+      expect(
+        buildHealth({ ...formalMeta, ...metaOverrides }),
+      ).toMatchObject({
         state: "degraded",
         judgementState: "blocked",
+        judgementLabel: "正式判断阻断",
       });
     },
   );
@@ -49,6 +55,7 @@ describe("buildProductCategoryDataHealth formal judgement gate", () => {
     expect(buildHealth(undefined)).toMatchObject({
       state: "degraded",
       judgementState: "blocked",
+      judgementLabel: "正式判断阻断",
     });
   });
 
@@ -56,6 +63,7 @@ describe("buildProductCategoryDataHealth formal judgement gate", () => {
     expect(buildHealth(formalMeta)).toMatchObject({
       state: "ready",
       judgementState: "allowed",
+      judgementLabel: "可用于经营判断",
     });
   });
 });
