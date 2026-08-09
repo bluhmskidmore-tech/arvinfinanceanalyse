@@ -1,0 +1,275 @@
+.pageRoot {
+  position: relative;
+  min-width: 0;
+  min-height: 100%;
+  color: var(--dh-api-ink);
+  background: var(--dh-api-bg);
+}
+
+.chapterNav {
+  position: sticky;
+  z-index: 40;
+  top: 0;
+  display: grid;
+  grid-template-rows: 20px 26px;
+  min-width: 0;
+  height: 46px;
+  border-bottom: 1px solid var(--dh-api-line);
+  background: var(--dh-api-panel);
+}
+
+.subpageNav {
+  display: grid;
+  min-width: 0;
+  height: 20px;
+  padding: 0 76px 0 4px;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  border-bottom: 1px solid var(--dh-api-line);
+  background: var(--dh-api-panel-2);
+}
+
+.subpageLink {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  overflow: hidden;
+  color: var(--dh-api-muted);
+  font-size: 9px;
+  font-weight: 560;
+  letter-spacing: 0.015em;
+  line-height: 1;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.subpageLink:hover {
+  color: var(--dh-api-ink-soft);
+  background: var(--dh-api-panel-2);
+}
+
+.subpageLink:focus-visible {
+  z-index: 1;
+  outline: 1px solid var(--ib-accent-hover);
+  outline-offset: -2px;
+}
+
+.subpageLink[data-active="true"] {
+  color: var(--ib-accent-hover);
+  font-weight: 650;
+  background: var(--dh-api-panel);
+  box-shadow: inset 0 -1px var(--ib-accent-hover);
+}
+
+.chapterNavInner {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  width: 100%;
+  height: 26px;
+  padding: 0 76px 0 4px;
+}
+
+.chapterNavLink {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  overflow: hidden;
+  color: var(--dh-api-muted);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease;
+}
+
+.chapterNavLink::after {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 44px;
+  height: 1px;
+  transform: translateX(-50%);
+  background: transparent;
+  content: "";
+}
+
+.chapterNavLink:hover {
+  color: var(--dh-api-ink-soft);
+  background: var(--dh-api-panel);
+}
+
+.chapterNavLink:focus-visible {
+  z-index: 1;
+  outline: 1px solid var(--ib-accent-hover);
+  outline-offset: -2px;
+}
+
+.chapterNavLink[data-active="true"] {
+  color: var(--ib-accent-hover);
+  font-weight: 680;
+}
+
+.chapterNavLink[data-active="true"]::after {
+  background: var(--ib-accent-hover);
+}
+
+.main {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: 6px;
+  padding: 4px;
+  background: var(--dh-api-bg);
+}
+
+/* The page shell owns the persistent navigation rail. Keep the dense screen's
+ * search and refresh actions available without changing its 46px footprint. */
+.pageRoot :global([data-testid="module-home-toolbar"]) {
+  position: absolute;
+  z-index: 41;
+  top: 0;
+  right: 6px;
+  display: flex;
+  width: auto;
+  height: 46px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.pageRoot :global([data-testid="module-home-market-dense-chapter-tabs"]),
+.pageRoot :global([data-testid="module-home-market-dense-date"]),
+.pageRoot :global([data-testid="module-home-market-dense-status"]) {
+  display: none;
+}
+
+.pageRoot :global([data-testid="module-home-market-dense-utility"]) {
+  gap: 4px;
+  padding: 0;
+}
+
+.pageRoot :global([data-testid="module-home-market-dense-search"]) {
+  width: 30px;
+  padding: 0 8px;
+  gap: 0;
+  overflow: hidden;
+  transition: width 140ms ease;
+}
+
+.pageRoot
+  :global([data-testid="module-home-market-dense-search"]:focus-within) {
+  position: absolute;
+  z-index: 42;
+  top: 48px;
+  right: 34px;
+  width: 220px;
+  gap: 7px;
+  background: var(--dh-api-panel);
+  box-shadow: var(--moss-shadow-popover);
+}
+
+.pageRoot :global([data-testid="module-home-market-dense-search"] input) {
+  width: 0;
+  opacity: 0;
+}
+
+.pageRoot
+  :global([data-testid="module-home-market-dense-search"]:focus-within input) {
+  width: 100%;
+  opacity: 1;
+}
+
+.pageRoot :global([data-testid="module-home-market-dense-refresh"]) {
+  width: 30px;
+  padding: 0;
+  justify-content: center;
+  font-size: 0;
+}
+
+.pageRoot :global([data-testid="module-home-market-dense-refresh"] svg) {
+  width: 12px;
+  height: 12px;
+}
+
+.pageRoot :global(#market-overview-judgment),
+.pageRoot :global(#market-overview-evidence),
+.pageRoot :global(#market-financial-charts-all),
+.pageRoot :global(#market-backend-data-all) {
+  scroll-margin-top: 52px;
+}
+
+@media (max-width: 720px) {
+  .chapterNav {
+    grid-template-rows: 18px 20px;
+    height: 38px;
+  }
+
+  .subpageNav {
+    height: 18px;
+    padding: 0 66px 0 2px;
+  }
+
+  .subpageLink {
+    padding: 0;
+    font-size: 8.5px;
+    letter-spacing: 0;
+  }
+
+  .chapterNavInner {
+    height: 20px;
+    padding: 0 66px 0 2px;
+  }
+
+  .chapterNavLink {
+    padding: 0 3px;
+    font-size: 9.5px;
+    letter-spacing: 0;
+  }
+
+  .chapterNavLink::after {
+    width: 28px;
+  }
+
+  .main {
+    gap: 4px;
+    padding: 2px;
+  }
+
+  .pageRoot :global([data-testid="module-home-toolbar"]) {
+    right: 2px;
+    height: 38px;
+  }
+
+  .pageRoot
+    :global([data-testid="module-home-market-dense-search"]:focus-within) {
+    top: 40px;
+    width: min(190px, calc(100vw - 56px));
+  }
+
+  .pageRoot :global(#market-overview-judgment),
+  .pageRoot :global(#market-overview-evidence),
+  .pageRoot :global(#market-financial-charts-all),
+  .pageRoot :global(#market-backend-data-all) {
+    scroll-margin-top: 42px;
+  }
+}
+
+@media print {
+  .chapterNav {
+    position: static;
+  }
+}

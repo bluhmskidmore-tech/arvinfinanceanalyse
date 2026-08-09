@@ -1,18 +1,22 @@
 import { test, expect } from "@playwright/test";
 
 const MARKET_READY_SELECTOR = '[data-testid="module-workbench-home"]';
-const REQUIRED_FIRST_SCREEN_SURFACES = [
-  "module-home-market-macro-ticker",
-  "module-home-kpi-strip",
-  "module-home-market-actions",
-  "module-home-market-bottom-nav",
+const EXPECTED_SUBPAGE_HREFS = [
+  "/market-overview",
+  "/market-data",
+  "/cross-asset",
+  "/macro-observation",
+  "/macro-toolkit",
+  "/stock-analysis",
+  "/news-events",
 ];
-const REQUIRED_AUDIT_SURFACES = [
-  "module-home-market-matrix",
-  "module-home-market-terminal",
-  "module-home-yield-curve",
-  "module-home-macro-snapshot",
+const EXPECTED_CHAPTER_HREFS = [
+  "#market-overview-judgment",
+  "#market-overview-evidence",
+  "#market-financial-charts-all",
+  "#market-backend-data-all",
 ];
+const EXPECTED_ACTION_HREFS = ["/macro-toolkit", "/market-data", "/cross-asset"];
 
 const suspiciousTextPattern = /[\uFFFD]|\u93C3|\u9359|\u5BF0|\u9215/;
 
@@ -23,83 +27,130 @@ async function openMarketOverview(page, viewport) {
   await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => undefined);
 }
 
+function expectBoxWithinViewport(box, width, label) {
+  expect(box, `${label} should have a bounding box`).toBeTruthy();
+  expect(box.x, `${label} should not overflow left`).toBeGreaterThanOrEqual(-1);
+  expect(box.x + box.width, `${label} should not overflow right`).toBeLessThanOrEqual(
+    width + 1,
+  );
+}
+
 test.describe("market overview browser smoke", () => {
-  test("renders the market ticker, KPI trend cues, and action queue on desktop", async ({ page }) => {
+  test("renders the dense market overview contract on desktop", async ({ page }) => {
     await openMarketOverview(page, { width: 1440, height: 1100 });
-
-    for (const testId of REQUIRED_FIRST_SCREEN_SURFACES) {
-      await expect(page.getByTestId(testId), `${testId} should render`).toBeVisible();
-    }
-
-    await page
-      .getByTestId("module-home-market-audit-footer")
-      .locator(".ant-collapse-header")
-      .first()
-      .click();
-
-    for (const testId of REQUIRED_AUDIT_SURFACES) {
-      await expect(page.getByTestId(testId), `${testId} should render`).toBeVisible();
-    }
 
     const root = page.getByTestId("module-workbench-home");
     await expect(root).not.toHaveText(suspiciousTextPattern);
 
-    const ticker = page.getByTestId("module-home-market-macro-ticker");
-    await expect(ticker.locator("svg").first()).toBeVisible();
-    await expect(ticker).toContainText("DR007");
+    const subpageNav = page.getByTestId("module-home-market-subpage-nav");
+    const chapterNav = page.getByTestId("module-home-market-chapter-nav");
+    const dense = page.getByTestId("module-home-market-dense");
+    const toolbar = page.getByTestId("module-home-toolbar");
+    const utility = page.getByTestId("module-home-market-dense-utility");
+    const search = page.getByTestId("module-home-market-dense-search");
+    const refresh = page.getByTestId("module-home-market-dense-refresh");
 
-    const kpis = page.getByTestId("module-home-kpi-strip");
-    await expect(kpis.locator("svg")).toHaveCount(3);
-    await expect(page.getByTestId("module-home-market-kpi-equity-detail")).toHaveAttribute(
-      "data-change",
-      "down",
-    );
-    await expect(page.getByTestId("module-home-market-matrix-cell-rates-summary")).toHaveAttribute(
-      "data-change",
-      "down",
-    );
+    await expect(subpageNav).toBeVisible();
+    await expect(chapterNav).toBeVisible();
+    await expect(dense).toBeVisible();
+    await expect(toolbar).toBeVisible();
+    await expect(utility).toBeVisible();
+    await expect(search).toBeVisible();
+    await expect(refresh).toBeVisible();
 
-    const rateRows = page.locator('[data-testid^="module-home-rate-"]');
-    if ((await rateRows.count()) > 0) {
-      await expect(rateRows.first().locator("[data-change]")).toHaveAttribute(
-        "data-change",
-        /^(up|down|flat)$/,
-      );
+    const subpageHrefs = await subpageNav
+      .locator("a")
+      .evaluateAll((links) => links.map((link) => link.getAttribute("href")));
+    const chapterHrefs = await chapterNav
+      .locator("a")
+      .evaluateAll((links) => links.map((link) => link.getAttribute("href")));
+    for (const href of EXPECTED_SUBPAGE_HREFS) {
+      expect(subpageHrefs).toContain(href);
+    }
+    for (const href of EXPECTED_CHAPTER_HREFS) {
+      expect(chapterHrefs).toContain(href);
+    }
+    await expect(subpageNav.locator('a[aria-current="page"]')).toHaveCount(1);
+    await expect(chapterNav.locator('a[aria-current="location"]')).toHaveCount(1);
+
+    await expect(page.locator("#market-overview-judgment")).toBeVisible();
+    await expect(page.locator("#market-overview-evidence")).toBeVisible();
+    await expect(page.locator("#market-financial-charts-all")).toBeVisible();
+    await expect(page.locator("#market-backend-data-all")).toBeVisible();
+
+    await expect(page.locator("#market-overview-judgment")).toContainText("DR007");
+    await expect(page.locator("#market-overview-evidence")).toContainText("DR007");
+
+    const actionQueue = page.locator("#market-overview-actions");
+    const actionLinks = actionQueue.locator("a");
+    await expect(actionQueue).toBeVisible();
+    const actionHrefs = await actionLinks.evaluateAll((links) =>
+      links.map((link) => link.getAttribute("href")),
+    );
+    expect(actionHrefs).toEqual(EXPECTED_ACTION_HREFS);
+    const actionTones = await actionLinks.evaluateAll((links) =>
+      links.map((link) => link.getAttribute("data-tone")),
+    );
+    for (const tone of actionTones) {
+      expect(tone).toMatch(/^(up|down|watch|ok|muted|error)$/);
     }
 
-    const actionQueue = page.getByTestId("module-home-market-actions");
-    await expect(actionQueue).toContainText("\u786E\u8BA4\u5173\u952E\u5229\u7387\u4E0E\u5229\u5DEE\u53D8\u52A8");
-    await expect(actionQueue).toContainText("\u8DDF\u8E2A\u8DE8\u8D44\u4EA7\u4F20\u5BFC");
-    await expect(page.getByTestId("module-home-market-bottom-nav").locator("a")).toHaveCount(7);
+    const denseCharts = page.locator('[data-testid^="module-home-market-dense-chart-"]');
+    await expect(denseCharts).toHaveCount(6);
+    await expect(denseCharts.filter({ has: page.getByText("DR007", { exact: true }) }).first()).toBeVisible();
+
+    const signalCards = page.locator("#market-overview-signals article");
+    await expect(signalCards).toHaveCount(6);
+    const signalTones = await signalCards.evaluateAll((cards) =>
+      cards.map((card) => card.getAttribute("data-tone")),
+    );
+    for (const tone of signalTones) {
+      expect(tone).toMatch(/^(alert|watch|ok|muted)$/);
+    }
   });
 
-  test("keeps the market overview first-screen surfaces inside a mobile viewport", async ({ page }) => {
+  test("keeps the dense market overview rails and first-screen surfaces inside a mobile viewport", async ({ page }) => {
     await openMarketOverview(page, { width: 390, height: 844 });
 
-    const overflow = await page.evaluate(() =>
-      Array.from(document.querySelectorAll("[data-testid]"))
-        .filter((element) => !element.closest('[data-testid="module-home-market-macro-ticker"]'))
-        .map((element) => {
-          const rect = element.getBoundingClientRect();
-          return {
-            id: element.getAttribute("data-testid"),
-            left: Math.round(rect.left),
-            right: Math.round(rect.right),
-            width: Math.round(rect.width),
-          };
-        })
-        .filter((box) => box.width > 0 && (box.left < -2 || box.right > window.innerWidth + 2))
-        .slice(0, 20),
+    const noHorizontalOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth + 2,
     );
+    expect(noHorizontalOverflow).toBe(true);
 
-    expect(overflow, JSON.stringify(overflow, null, 2)).toEqual([]);
-    const ticker = page.getByTestId("module-home-market-macro-ticker");
-    await expect(ticker).toBeVisible();
-    const tickerBox = await ticker.boundingBox();
-    expect(tickerBox?.x ?? 0).toBeGreaterThanOrEqual(0);
-    expect((tickerBox?.x ?? 0) + (tickerBox?.width ?? 0)).toBeLessThanOrEqual(390);
-    await expect(ticker).toContainText("DR007");
-    await expect(page.getByTestId("module-home-kpi-strip")).toBeVisible();
-    await expect(page.getByTestId("module-home-market-actions")).toBeVisible();
+    const subpageNav = page.getByTestId("module-home-market-subpage-nav");
+    const chapterNav = page.getByTestId("module-home-market-chapter-nav");
+    const dense = page.getByTestId("module-home-market-dense");
+    const toolbar = page.getByTestId("module-home-toolbar");
+    const search = page.getByTestId("module-home-market-dense-search");
+    const refresh = page.getByTestId("module-home-market-dense-refresh");
+    const judgment = page.locator("#market-overview-judgment");
+
+    await expect(subpageNav).toBeVisible();
+    await expect(chapterNav).toBeVisible();
+    await expect(dense).toBeVisible();
+    await expect(toolbar).toBeVisible();
+    await expect(search).toBeVisible();
+    await expect(refresh).toBeVisible();
+    await expect(judgment).toBeVisible();
+    await expect(judgment).toContainText("DR007");
+
+    const collapsedSearchBox = await search.boundingBox();
+
+    expectBoxWithinViewport(await subpageNav.boundingBox(), 390, "subpage nav");
+    expectBoxWithinViewport(await chapterNav.boundingBox(), 390, "chapter nav");
+    expectBoxWithinViewport(await toolbar.boundingBox(), 390, "toolbar");
+    expectBoxWithinViewport(collapsedSearchBox, 390, "search rail");
+    expectBoxWithinViewport(await refresh.boundingBox(), 390, "refresh button");
+
+    await search.locator("input").focus();
+    await expect(search.locator("input")).toBeFocused();
+    const expandedSearchBox = await search.boundingBox();
+    expect(expandedSearchBox?.width ?? 0).toBeGreaterThan(collapsedSearchBox?.width ?? 0);
+    expectBoxWithinViewport(expandedSearchBox, 390, "expanded search rail");
+
+    await page.locator("#market-overview-evidence").scrollIntoViewIfNeeded();
+    const signalCards = page.locator("#market-overview-signals article");
+    await expect(signalCards.first()).toBeVisible();
+    await expect(signalCards).toHaveCount(6);
   });
 });

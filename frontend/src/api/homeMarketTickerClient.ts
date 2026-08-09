@@ -64,6 +64,7 @@ export function createRealHomeMarketTickerClient({
       groupId,
       topicCode,
       stockCode,
+      includePayloadJson,
       errorOnly,
       receivedFrom,
       receivedTo,
@@ -74,6 +75,9 @@ export function createRealHomeMarketTickerClient({
       if (groupId?.trim()) params.set("group_id", groupId.trim());
       if (topicCode?.trim()) params.set("topic_code", topicCode.trim());
       if (stockCode?.trim()) params.set("stock_code", stockCode.trim());
+      if (typeof includePayloadJson === "boolean") {
+        params.set("include_payload_json", String(includePayloadJson));
+      }
       if (errorOnly) params.set("error_only", "true");
       if (receivedFrom?.trim()) params.set("received_from", receivedFrom.trim());
       if (receivedTo?.trim()) params.set("received_to", receivedTo.trim());

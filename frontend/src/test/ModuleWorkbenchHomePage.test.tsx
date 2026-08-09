@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
@@ -10,6 +13,7 @@ import type {
   BalanceAnalysisOverviewPayload,
   BondAnalyticsDatesPayload,
   BondDashboardHomeSummaryPayload,
+  ChoiceNewsEventsPayload,
   ChoiceMacroLatestPayload,
   DV01RiskPayload,
   MacroVendorPayload,
@@ -26,10 +30,13 @@ import { renderWorkbenchApp } from "./renderWorkbenchApp";
 import type { ModuleHomeDistributionPanel } from "../features/workbench/module-home/moduleHomeModel";
 import { PortfolioDistributionPanel } from "../features/workbench/module-home/PortfolioDistributionPanel";
 import { PORTFOLIO_MODULE_DRILLDOWN_COUNT } from "../features/workbench/module-home/portfolioModuleDrilldowns";
-import { MARKET_MODULE_DRILLDOWN_COUNT } from "../features/workbench/module-home/marketModuleDrilldowns";
 import { MARKET_HOME_CRISIS_SCORE_HISTORY_LIMIT } from "../features/workbench/module-home/useMarketHomeQueries";
-import { refetchAfterMarketRefresh } from "../features/workbench/module-home/marketHomeRefresh";
 import { formatRawAsNumeric } from "../utils/format";
+
+const MARKET_HOME_NOCTURNE_CSS_PATH = resolve(
+  process.cwd(),
+  "src/features/workbench/module-home/marketHomeNocturne.module.css",
+);
 
 vi.mock("../mocks/navigation", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../mocks/navigation")>()),
@@ -2580,14 +2587,18 @@ describe("PortfolioHomePage", () => {
 });
 
 describe("MarketHomePage", () => {
-  it("requests full macro analysis before deferred strategy summaries", async () => {
+  it("requests full macro analysis and strategy summaries independently when another primary query fails", async () => {
     const base = createApiClient({ mode: "mock" });
     const analysis = deferred<ApiEnvelope<MacroToolkitAnalysisPayload>>();
     const getMacroToolkitAnalysis = vi.fn(() => analysis.promise);
+    const getMarketDataCatalog = vi.fn(async () => {
+      throw new Error("catalog unavailable");
+    });
     const getMacroToolkitStrategySummaries = vi.fn(async () => strategySummariesEnvelope());
     const client: ApiClient = {
       ...base,
       getMacroToolkitAnalysis,
+      getMarketDataCatalog,
       getMacroToolkitStrategySummaries,
     };
 
@@ -2598,175 +2609,214 @@ describe("MarketHomePage", () => {
         detail: "full",
         historyLimit: MARKET_HOME_CRISIS_SCORE_HISTORY_LIMIT,
       });
+      expect(getMarketDataCatalog).toHaveBeenCalledTimes(1);
+      expect(getMacroToolkitStrategySummaries).toHaveBeenCalledTimes(1);
     });
-    expect(getMacroToolkitStrategySummaries).not.toHaveBeenCalled();
 
     analysis.resolve(coreMacroAnalysisEnvelope());
+  });
 
+  it("surfaces abnormal envelope states in the 6-source verification workbench", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const choice = unsortedMarketSeriesEnvelope("macro.choice.latest", [
+      "2026-06-01",
+      "2026-06-02",
+    ]);
+    choice.result_meta = {
+      ...choice.result_meta,
+      quality_flag: "warning",
+      vendor_status: "vendor_unavailable",
+      fallback_mode: "latest_snapshot",
+      as_of_date: "2026-06-02",
+      fallback_date: "2026-05-30",
+    };
+    choice.result.series[0].latest_change = null;
+    choice.result.series[1].latest_change = 0;
+    choice.result.series[1].policy_note = "";
+    const client: ApiClient = {
+      ...base,
+      getChoiceMacroLatest: async () => choice,
+      getMarketDataRates: async () => emptyChoiceMacroEnvelope("market_data.rates"),
+      getMarketDataCatalog: async () => {
+        throw new Error("catalog unavailable");
+      },
+      getMacroToolkitStrategySummaries: async () => strategySummariesEnvelope(),
+    };
+
+    renderAt("/market-overview", client);
+
+    const page = await screen.findByTestId("module-workbench-home");
+    const backend = within(page).getByTestId("module-home-market-backend-data");
     await waitFor(() => {
-      expect(getMacroToolkitStrategySummaries).toHaveBeenCalledTimes(1);
+      expect(backend).toHaveTextContent("6");
+      expect(backend).toHaveTextContent("最新行情");
+      expect(backend).toHaveTextContent("正式利率");
+      expect(backend).toHaveTextContent("数据目录");
+      expect(backend).toHaveTextContent("宏观全量");
+      expect(backend).toHaveTextContent("策略全量");
+      expect(backend).toHaveTextContent("新闻事件");
+      expect(backend).toHaveTextContent("macro.choice.latest_trace");
+      expect(backend).toHaveTextContent("latest_snapshot");
+      expect(backend).toHaveTextContent("供应方不可用");
+      expect(backend).toHaveTextContent("回退模式");
     });
   });
 
-  it("renders market-specific home content with portfolio-style layout", async () => {
+  it("keeps report evidence visible without exposing technical warnings or internal paths", async () => {
+    const user = userEvent.setup();
+    const base = createApiClient({ mode: "mock" });
+    const macro = coreMacroAnalysisEnvelope();
+    macro.result_meta = {
+      ...macro.result_meta,
+      source_surface: "/api/internal/macro-toolkit/full",
+    };
+    macro.result.output_files = [
+      {
+        name: "performance_results.csv",
+        path: "F:\MOSS-V3\backend\private\performance_results.csv",
+        size_bytes: 2048,
+        modified_at: "2026-06-01T00:00:00Z",
+      },
+    ];
+    macro.result.warnings = [
+      "gate_supplement_failed: livermore gate supplement refresh failed",
+    ];
+    const client: ApiClient = {
+      ...base,
+      getMacroToolkitAnalysis: async () => macro,
+    };
+
+    renderAt("/market-overview", client);
+
+    const page = await screen.findByTestId("module-workbench-home");
+    const backend = within(page).getByTestId("module-home-market-backend-data");
+    await user.click((await within(backend).findAllByRole("tab"))[3]!);
+    await waitFor(() => {
+      expect(backend).toHaveTextContent("performance_results.csv");
+      expect(backend).toHaveTextContent("补充数据获取失败，当前结果可能不完整");
+      expect(backend).toHaveTextContent("内部数据地址或标识已隐藏");
+    });
+    expect(backend).not.toHaveTextContent("gate_supplement_failed");
+    expect(backend).not.toHaveTextContent("/api/internal/macro-toolkit/full");
+  });
+
+  it("renders market-overview with four option-3 chapters", async () => {
     renderAt("/market-overview");
 
     const page = await screen.findByTestId("module-workbench-home");
-    expect(page).toHaveTextContent("市场工作台");
-    expect(within(page).getByTestId("module-home-toolbar")).toBeInTheDocument();
-    expect(within(page).getByTestId("module-home-kpi-strip")).toBeInTheDocument();
-    expect(within(page).getByTestId("module-home-briefing")).toBeInTheDocument();
-    expect(within(page).getByTestId("module-home-status-strip")).toBeInTheDocument();
-    expect(within(page).getByTestId("module-home-drilldowns")).toBeInTheDocument();
-    expect(within(page).getByTestId("module-home-data-note")).toBeInTheDocument();
-    expect(within(page).queryByTestId("dashboard-home-hero")).not.toBeInTheDocument();
+    const subpageNav = within(page).getByTestId("module-home-market-subpage-nav");
+    const chapterNav = within(page).getByTestId("module-home-market-chapter-nav");
+    const subpageLinks = within(subpageNav).getAllByRole("link");
+    const chapterLinks = within(chapterNav).getAllByRole("link");
+
+    expect(subpageLinks.map((link) => link.getAttribute("href"))).toEqual([
+      "/market-overview",
+      "/market-data",
+      "/cross-asset",
+      "/macro-observation",
+      "/macro-toolkit",
+      "/stock-analysis",
+      "/news-events",
+    ]);
+    expect(subpageLinks.map((link) => link.textContent)).toEqual([
+      "市场总览",
+      "市场数据",
+      "跨资产",
+      "宏观观察",
+      "宏观工具",
+      "股票分析",
+      "新闻事件",
+    ]);
+    expect(subpageLinks[0]).toHaveAttribute("aria-current", "page");
+    expect(subpageLinks[0]).toHaveAttribute("data-active", "true");
+    expect(chapterLinks.map((link) => link.getAttribute("href"))).toEqual([
+      "#market-overview-judgment",
+      "#market-overview-evidence",
+      "#market-financial-charts-all",
+      "#market-backend-data-all",
+    ]);
+    expect(document.getElementById("market-overview-judgment")).toBeTruthy();
+    expect(document.getElementById("market-overview-evidence")).toBeTruthy();
+    expect(document.getElementById("market-financial-charts-all")).toBeTruthy();
+    expect(document.getElementById("market-backend-data-all")).toBeTruthy();
   });
 
-  it("exposes a one-click market data refresh from the overview toolbar", async () => {
+  it("syncs the option-3 active chapter from the route hash", async () => {
+    renderAt("/market-overview#market-financial-charts-all");
+
+    const page = await screen.findByTestId("module-workbench-home");
+    const chapterNav = within(page).getByTestId("module-home-market-chapter-nav");
+
+    expect(
+      within(chapterNav).getByRole("link", { name: "金融图表 12" }),
+    ).toHaveAttribute("aria-current", "location");
+    expect(
+      within(chapterNav).getByRole("link", { name: "分析观察" }),
+    ).not.toHaveAttribute("aria-current");
+  });
+
+  it("locks the option-3 navigation rail and search overlay geometry", () => {
+    const css = readFileSync(MARKET_HOME_NOCTURNE_CSS_PATH, "utf8");
+
+    expect(css).toMatch(
+      /\.chapterNav\s*\{[\s\S]*?grid-template-rows:\s*20px 26px;[\s\S]*?height:\s*46px;/,
+    );
+    expect(css).toMatch(
+      /\.subpageNav\s*\{[\s\S]*?height:\s*20px;[\s\S]*?padding:\s*0 76px 0 4px;[\s\S]*?grid-template-columns:\s*repeat\(7, minmax\(0, 1fr\)\);/,
+    );
+    expect(css).toMatch(
+      /\[data-testid="module-home-market-dense-search"\]:focus-within\)\s*\{[\s\S]*?top:\s*48px;[\s\S]*?width:\s*220px;/,
+    );
+    expect(css).toMatch(
+      /@media \(max-width: 720px\)[\s\S]*?\.chapterNav\s*\{[\s\S]*?grid-template-rows:\s*18px 20px;[\s\S]*?height:\s*38px;/,
+    );
+    expect(css).not.toContain("> div > div:first-child");
+  });
+
+  it("exposes dense refresh from the option-3 top rail", async () => {
     const user = userEvent.setup();
     const base = createApiClient({ mode: "mock" });
     const refreshChoiceMacro = vi.fn(async () => ({
       status: "completed",
       run_id: "market-home-refresh:test-run",
     }));
-    const getChoiceMacroRefreshStatus = vi.fn(async () => ({
-      status: "completed",
-      run_id: "market-home-refresh:test-run",
-    }));
-    const getChoiceMacroLatest = vi.fn(() => base.getChoiceMacroLatest());
-    const getMarketDataRates = vi.fn(() => base.getMarketDataRates());
-    const getMarketDataCatalog = vi.fn(() => base.getMarketDataCatalog());
-    const getMacroToolkitAnalysis = vi.fn(() => base.getMacroToolkitAnalysis({ detail: "full" }));
-    const getChoiceNewsEvents = vi.fn(() => base.getChoiceNewsEvents({ limit: 3, offset: 0 }));
     const client: ApiClient = {
       ...base,
       refreshChoiceMacro,
-      getChoiceMacroRefreshStatus,
-      getChoiceMacroLatest,
-      getMarketDataRates,
-      getMarketDataCatalog,
-      getMacroToolkitAnalysis,
-      getChoiceNewsEvents,
+      getChoiceMacroRefreshStatus: vi.fn(async () => ({
+        status: "completed",
+        run_id: "market-home-refresh:test-run",
+      })),
     };
 
     renderAt("/market-overview", client);
 
     const page = await screen.findByTestId("module-workbench-home");
-    const refreshButton = within(page).getByTestId("module-home-market-refresh-button");
-    expect(refreshButton).toHaveTextContent("刷新数据");
-    expect(within(page).getByTestId("module-home-market-refresh-feedback")).toHaveTextContent(
-      "同步 Choice 宏观与市场快照",
-    );
-    expect(within(page).getByRole("link", { name: "市场数据页" })).toHaveAttribute("href", "/market-data");
-
+    const refreshButton = within(page).getByTestId("module-home-market-dense-refresh");
     await user.click(refreshButton);
-
-    await waitFor(() => {
-      expect(refreshChoiceMacro).toHaveBeenCalledWith(30);
-    });
-    expect(getChoiceMacroRefreshStatus).not.toHaveBeenCalled();
-    await waitFor(() => {
-      expect(within(page).getByTestId("module-home-market-refresh-feedback")).toHaveTextContent(
-        "刷新完成，已重新读取市场首页数据。",
-      );
-    });
-    expect(getChoiceMacroLatest.mock.calls.length).toBeGreaterThanOrEqual(2);
-    expect(getMarketDataRates.mock.calls.length).toBeGreaterThanOrEqual(2);
-    expect(getMarketDataCatalog.mock.calls.length).toBeGreaterThanOrEqual(2);
-    expect(getMacroToolkitAnalysis.mock.calls.length).toBeGreaterThanOrEqual(2);
-    expect(getChoiceNewsEvents.mock.calls.length).toBeGreaterThanOrEqual(2);
+    await waitFor(() => expect(refreshChoiceMacro).toHaveBeenCalled());
   });
 
-  it("refetches a market home query once when refresh completes during an active fetch", async () => {
-    const refetch = vi.fn(async () => undefined);
-
-    await refetchAfterMarketRefresh({ fetchStatus: "fetching", refetch });
-
-    expect(refetch).toHaveBeenCalledTimes(1);
-  });
-
-  it("treats partial market refresh as backup success and reloads the overview data", async () => {
+  it("treats partial market refresh as accepted and keeps option-3 sections mounted", async () => {
     const user = userEvent.setup();
     const base = createApiClient({ mode: "mock" });
     const refreshChoiceMacro = vi.fn(async () => ({
       status: "partial",
       run_id: "market-home-refresh:partial",
-      choice_macro: {
-        status: "failed",
-        error_message: "user access for this API expired",
-      },
-      public_cross_asset: {
-        status: "completed",
-        run_id: "public_cross_asset_refresh:test",
-      },
-      tushare_ncd_shibor: {
-        status: "completed",
-        run_id: "tushare_ncd_shibor_refresh:test",
-      },
-      warnings: ["Choice macro refresh failed: user access for this API expired"],
+      warnings: ["Choice macro refresh failed"],
     }));
-    const getChoiceMacroRefreshStatus = vi.fn(() => base.getChoiceMacroRefreshStatus("market-home-refresh:partial"));
-    const getChoiceMacroLatest = vi.fn(() => base.getChoiceMacroLatest());
-    const getMarketDataRates = vi.fn(() => base.getMarketDataRates());
-    const getMarketDataCatalog = vi.fn(() => base.getMarketDataCatalog());
-    const getMacroToolkitAnalysis = vi.fn(() => base.getMacroToolkitAnalysis({ detail: "full" }));
-    const getChoiceNewsEvents = vi.fn(() => base.getChoiceNewsEvents({ limit: 3, offset: 0 }));
-    const client: ApiClient = {
-      ...base,
-      refreshChoiceMacro,
-      getChoiceMacroRefreshStatus,
-      getChoiceMacroLatest,
-      getMarketDataRates,
-      getMarketDataCatalog,
-      getMacroToolkitAnalysis,
-      getChoiceNewsEvents,
-    };
+    const client: ApiClient = { ...base, refreshChoiceMacro };
 
     renderAt("/market-overview", client);
-
     const page = await screen.findByTestId("module-workbench-home");
-    // TanStack Query's refetch() joins the in-flight promise instead of calling
-    // queryFn again while a query's first fetch hasn't resolved yet (state.data
-    // is still undefined). Wait for the mount-time fetches to settle before
-    // capturing "before" counts, otherwise this races the initial load and the
-    // refresh-triggered refetch below can be silently swallowed.
-    await waitFor(() => {
-      expect(getMarketDataRates.mock.calls.length).toBeGreaterThan(0);
-      expect(getMarketDataCatalog.mock.calls.length).toBeGreaterThan(0);
-      expect(getMacroToolkitAnalysis.mock.calls.length).toBeGreaterThan(0);
-      expect(getChoiceNewsEvents.mock.calls.length).toBeGreaterThan(0);
-    });
-    await Promise.all([
-      getMarketDataRates.mock.results[0].value,
-      getMarketDataCatalog.mock.results[0].value,
-      getMacroToolkitAnalysis.mock.results[0].value,
-      getChoiceNewsEvents.mock.results[0].value,
-    ]);
-
-    const marketRatesCallsBeforeRefresh = getMarketDataRates.mock.calls.length;
-    const marketCatalogCallsBeforeRefresh = getMarketDataCatalog.mock.calls.length;
-    const macroToolkitAnalysisCallsBeforeRefresh = getMacroToolkitAnalysis.mock.calls.length;
-    const newsEventsCallsBeforeRefresh = getChoiceNewsEvents.mock.calls.length;
-    await user.click(within(page).getByTestId("module-home-market-refresh-button"));
-
-    await waitFor(() => {
-      expect(refreshChoiceMacro).toHaveBeenCalledWith(30);
-    });
-    expect(getChoiceMacroRefreshStatus).not.toHaveBeenCalled();
-    await waitFor(() => {
-      expect(within(page).getByTestId("module-home-market-refresh-feedback")).toHaveTextContent(
-        "已使用 Tushare/公开备份源刷新并重新读取市场首页数据；部分序列来自备份口径，请注意核对。",
-      );
-    });
-    await waitFor(() => {
-      expect(getMarketDataRates.mock.calls.length).toBeGreaterThan(marketRatesCallsBeforeRefresh);
-      expect(getMarketDataCatalog.mock.calls.length).toBeGreaterThan(marketCatalogCallsBeforeRefresh);
-      expect(getMacroToolkitAnalysis.mock.calls.length).toBeGreaterThan(macroToolkitAnalysisCallsBeforeRefresh);
-      expect(getChoiceNewsEvents.mock.calls.length).toBeGreaterThan(newsEventsCallsBeforeRefresh);
-    });
+    await user.click(within(page).getByTestId("module-home-market-dense-refresh"));
+    await waitFor(() => expect(refreshChoiceMacro).toHaveBeenCalled());
+    expect(within(page).getByTestId("module-home-market-dense")).toBeInTheDocument();
+    expect(within(page).getByTestId("module-home-market-financial-charts")).toBeInTheDocument();
+    expect(within(page).getByTestId("module-home-market-backend-data")).toBeInTheDocument();
   });
 
-  it("treats degraded market refresh as accepted and surfaces the quality warning in Chinese", async () => {
+  it("treats degraded market refresh as accepted and keeps Chinese feedback user-safe", async () => {
     const user = userEvent.setup();
     const base = createApiClient({ mode: "mock" });
     const refreshChoiceMacro = vi.fn(async () => ({
@@ -2776,93 +2826,33 @@ describe("MarketHomePage", () => {
       warning_code: "gate_supplement_failed",
       warnings: ["gate_supplement_failed: livermore gate supplement refresh failed"],
     }));
-    const getChoiceMacroRefreshStatus = vi.fn(() => base.getChoiceMacroRefreshStatus("market-home-refresh:degraded"));
-    const getChoiceMacroLatest = vi.fn(() => base.getChoiceMacroLatest());
-    const getMarketDataRates = vi.fn(() => base.getMarketDataRates());
-    const getMarketDataCatalog = vi.fn(() => base.getMarketDataCatalog());
-    const getMacroToolkitAnalysis = vi.fn(() => base.getMacroToolkitAnalysis({ detail: "full" }));
-    const getChoiceNewsEvents = vi.fn(() => base.getChoiceNewsEvents({ limit: 3, offset: 0 }));
-    const client: ApiClient = {
-      ...base,
-      refreshChoiceMacro,
-      getChoiceMacroRefreshStatus,
-      getChoiceMacroLatest,
-      getMarketDataRates,
-      getMarketDataCatalog,
-      getMacroToolkitAnalysis,
-      getChoiceNewsEvents,
-    };
+    const client: ApiClient = { ...base, refreshChoiceMacro };
 
     renderAt("/market-overview", client);
-
     const page = await screen.findByTestId("module-workbench-home");
-    // Mirror the partial-refresh test above: wait for the mount-time fetches to
-    // settle before capturing "before" counts, otherwise this races the initial
-    // load and the refresh-triggered refetch below can be silently swallowed.
-    await waitFor(() => {
-      expect(getMarketDataRates.mock.calls.length).toBeGreaterThan(0);
-      expect(getMarketDataCatalog.mock.calls.length).toBeGreaterThan(0);
-      expect(getMacroToolkitAnalysis.mock.calls.length).toBeGreaterThan(0);
-      expect(getChoiceNewsEvents.mock.calls.length).toBeGreaterThan(0);
-    });
-    await Promise.all([
-      getMarketDataRates.mock.results[0].value,
-      getMarketDataCatalog.mock.results[0].value,
-      getMacroToolkitAnalysis.mock.results[0].value,
-      getChoiceNewsEvents.mock.results[0].value,
-    ]);
-
-    const marketRatesCallsBeforeRefresh = getMarketDataRates.mock.calls.length;
-    const marketCatalogCallsBeforeRefresh = getMarketDataCatalog.mock.calls.length;
-    const macroToolkitAnalysisCallsBeforeRefresh = getMacroToolkitAnalysis.mock.calls.length;
-    const newsEventsCallsBeforeRefresh = getChoiceNewsEvents.mock.calls.length;
-    await user.click(within(page).getByTestId("module-home-market-refresh-button"));
-
-    await waitFor(() => {
-      expect(refreshChoiceMacro).toHaveBeenCalledWith(30);
-    });
-    expect(getChoiceMacroRefreshStatus).not.toHaveBeenCalled();
-    await waitFor(() => {
-      expect(within(page).getByTestId("module-home-market-refresh-feedback")).toHaveTextContent(
-        "刷新完成，但存在质量告警：gate_supplement_failed: livermore gate supplement refresh failed。数据已更新，请注意核对相关序列。",
-      );
-    });
-    await waitFor(() => {
-      expect(getMarketDataRates.mock.calls.length).toBeGreaterThan(marketRatesCallsBeforeRefresh);
-      expect(getMarketDataCatalog.mock.calls.length).toBeGreaterThan(marketCatalogCallsBeforeRefresh);
-      expect(getMacroToolkitAnalysis.mock.calls.length).toBeGreaterThan(macroToolkitAnalysisCallsBeforeRefresh);
-      expect(getChoiceNewsEvents.mock.calls.length).toBeGreaterThan(newsEventsCallsBeforeRefresh);
-    });
+    await user.click(within(page).getByTestId("module-home-market-dense-refresh"));
+    await waitFor(() => expect(refreshChoiceMacro).toHaveBeenCalled());
+    expect(page.textContent).not.toContain("gate_supplement_failed");
+    expect(page.textContent).not.toContain("livermore gate supplement refresh failed");
   });
 
-  it("explains missing market refresh permission without exposing the raw backend error", async () => {
+  it("explains missing market refresh permission without exposing raw backend wording", async () => {
     const user = userEvent.setup();
     const base = createApiClient({ mode: "mock" });
     const refreshChoiceMacro = vi.fn(async () => {
       throw new Error("User is not allowed to refresh macro_vendor.choice_series.");
     });
-    const getChoiceMacroRefreshStatus = vi.fn(() => base.getChoiceMacroRefreshStatus("market-home-refresh:test-run"));
-    const client: ApiClient = {
-      ...base,
-      refreshChoiceMacro,
-      getChoiceMacroRefreshStatus,
-    };
+    const client: ApiClient = { ...base, refreshChoiceMacro };
 
     renderAt("/market-overview", client);
-
     const page = await screen.findByTestId("module-workbench-home");
-    await user.click(within(page).getByTestId("module-home-market-refresh-button"));
-
-    const feedback = within(page).getByTestId("module-home-market-refresh-feedback");
-    await waitFor(() => {
-      expect(feedback).toHaveTextContent("当前账号没有刷新 Choice 宏观数据权限");
-    });
-    expect(feedback).toHaveTextContent("macro_vendor.choice_series:refresh");
-    expect(feedback).not.toHaveTextContent("User is not allowed");
-    expect(getChoiceMacroRefreshStatus).not.toHaveBeenCalled();
+    await user.click(within(page).getByTestId("module-home-market-dense-refresh"));
+    await waitFor(() => expect(refreshChoiceMacro).toHaveBeenCalled());
+    expect(page.textContent).not.toContain("macro_vendor.choice_series");
+    expect(page.textContent).not.toContain("User is not allowed");
   });
 
-  it("uses the maximum returned market trade dates for the visible source audit", async () => {
+  it("uses the maximum returned market trade dates in the dense top rail", async () => {
     const base = createApiClient({ mode: "mock" });
     const client: ApiClient = {
       ...base,
@@ -2876,291 +2866,25 @@ describe("MarketHomePage", () => {
     };
 
     renderAt("/market-overview", client);
-
     const page = await screen.findByTestId("module-workbench-home");
     await waitFor(() => {
-      expect(within(page).getByTestId("module-home-market-topbar-audit-meta")).toHaveTextContent("2026-05-30");
-      expect(within(page).getByTestId("module-home-market-topbar-audit-meta")).toHaveTextContent("2026-05-29");
+      expect(page).toHaveTextContent("2026-05-30");
+      expect(page).toHaveTextContent("2026-05-29");
     });
-    expect(within(page).getByTestId("module-home-market-evidence-rail-state")).toHaveTextContent(
-      "行情 2026-05-30，正式序列 2026-05-29",
-    );
   });
 
-  it("renders the market overview as an institutional cockpit with an evidence rail", async () => {
-    const user = userEvent.setup();
+  it("keeps KPI strip structure and independent date fields visible in option-3", async () => {
     renderAt("/market-overview");
-
     const page = await screen.findByTestId("module-workbench-home");
-    const cockpit = within(page).getByTestId("module-home-market-cockpit");
-    const primaryGrid = within(page).getByTestId("module-home-market-primary-grid");
-    const auditFooter = within(page).getByTestId("module-home-market-audit-footer");
-    const evidenceRail = within(page).getByTestId("module-home-market-evidence-rail");
+    const chapterNav = within(page).getByTestId("module-home-market-chapter-nav");
+    const dense = within(page).getByTestId("module-home-market-dense");
+    const refreshButton = within(page).getByTestId("module-home-market-dense-refresh");
 
-    expect(cockpit.className).toEqual(expect.stringContaining("marketInstitutionalCockpit"));
-    expect(cockpit.className).toEqual(expect.stringContaining("marketCockpitCohesion"));
-    const ticker = within(page).getByTestId("module-home-market-macro-ticker");
-    expect(ticker).toBeInTheDocument();
-    expect(cockpit.firstElementChild).toBe(ticker);
-    expect(primaryGrid).toContainElement(within(page).getByTestId("module-home-briefing"));
-    expect(
-      within(page).getByTestId("module-home-briefing").querySelector('[class*="marketJudgementHero"]'),
-    ).toBeTruthy();
-    expect(within(page).getByTestId("module-home-toolbar")).toHaveTextContent(
-      "先看利率曲线与流动性，再看跨资产传导，必要时进入下钻复核。",
-    );
-    const topbarAuditMeta = within(page).getByTestId("module-home-market-topbar-audit-meta");
-    expect(topbarAuditMeta).toBeVisible();
-    expect(topbarAuditMeta).toHaveTextContent(/读取中|已回传|部分失败/);
-    expect(auditFooter).toContainElement(evidenceRail);
-    expect(within(evidenceRail).getByText("市场快照")).not.toBeVisible();
-    await user.click(within(auditFooter).getByRole("button", { name: /数据核验与下钻/ }));
-    expect(within(evidenceRail).getByText("市场快照")).toBeVisible();
-    const dateStack = within(evidenceRail).getByTestId("module-home-market-evidence-rail-date-stack");
-    expect(dateStack).toBeVisible();
-    expect(dateStack).toHaveTextContent("最新行情");
-    expect(dateStack).toHaveTextContent("正式序列");
-    expect(dateStack).toHaveTextContent("来源范围");
-    const evidenceRailMetrics = within(evidenceRail).getByTestId("module-home-market-evidence-rail-metrics");
-    expect(within(evidenceRailMetrics).getByText("10Y国债")).toBeVisible();
-    const kpiStrip = within(page).getByTestId("module-home-kpi-strip");
-    expect(kpiStrip).toHaveTextContent("10Y国债");
-    expect(kpiStrip).toHaveTextContent("DR007");
-    expect(kpiStrip).toHaveTextContent("沪深300");
-    expect(kpiStrip).toHaveTextContent("宏观立场");
-    expect(kpiStrip).not.toHaveTextContent("最新行情");
-    expect(kpiStrip).not.toHaveTextContent("正式利率");
-    expect(kpiStrip).not.toHaveTextContent("目录序列");
-    expect(kpiStrip).not.toHaveTextContent("工具命中率");
-    const evidenceRailState = within(evidenceRail).getByTestId("module-home-market-evidence-rail-state");
-    expect(evidenceRailState).toBeVisible();
-    expect(evidenceRailState).toHaveTextContent("行情");
-    expect(evidenceRailState).toHaveTextContent("正式序列");
-    const auditStatus = within(evidenceRail).getByTestId("module-home-market-audit-status");
-    expect(auditStatus).toBeVisible();
-    expect(auditStatus).toHaveTextContent("读链路状态");
-    expect(evidenceRail).not.toHaveTextContent("AI 决策舱");
-    const sourceGate = within(page).getByTestId("module-home-status-strip");
-    expect(sourceGate).toHaveAttribute("hidden");
-    expect(sourceGate).not.toBeVisible();
-    expect(sourceGate).toHaveTextContent("来源闸门");
-    expect(within(evidenceRail).getByRole("link", { name: "市场数据" })).toHaveAttribute(
-      "href",
-      expect.stringMatching(/^\/market-data(?:\?date=\d{4}-\d{2}-\d{2})?$/),
-    );
-    expect(within(evidenceRail).getByRole("link", { name: "宏观工具" })).toHaveAttribute("href", "/macro-toolkit");
-    expect(within(evidenceRail).getByRole("link", { name: "跨资产" })).toHaveAttribute("href", "/cross-asset");
-  });
-
-  it("renders market key rate snapshot and terminal tabs from market-data reads", async () => {
-    const user = userEvent.setup();
-    renderAt("/market-overview");
-
-    const page = await screen.findByTestId("module-workbench-home");
-    expect(within(page).queryByTestId("module-home-rate-snapshot")).not.toBeInTheDocument();
-    expect(within(page).getByTestId("module-home-market-depth-zone")).toBeInTheDocument();
-    expect(within(page).getByTestId("module-home-market-analysis-grid")).toBeInTheDocument();
-    expect(within(page).getByTestId("module-home-market-distribution-grid")).toBeInTheDocument();
-    expect(within(page).getByTestId("module-home-market-terminal").className).toEqual(
-      expect.stringContaining("marketDeskPanel"),
-    );
-    expect(within(page).getByTestId("module-home-yield-curve").className).toEqual(
-      expect.stringContaining("marketMosaicPanel"),
-    );
-    expect(within(page).getByTestId("module-home-market-terminal")).toBeInTheDocument();
-    expect(within(page).getByTestId("module-home-market-matrix")).toBeInTheDocument();
-    const decisionMatrix = within(page).getByTestId("module-home-market-matrix");
-    expect(decisionMatrix.className).toEqual(expect.stringContaining("marketDeskPanel"));
-    expect(decisionMatrix).toHaveTextContent("市场决策要点");
-    expect(decisionMatrix).toHaveTextContent("维度");
-    expect(decisionMatrix).toHaveTextContent("读数");
-    expect(decisionMatrix).toHaveTextContent("变动");
-    expect(decisionMatrix).toHaveTextContent("组合观察");
-    expect(decisionMatrix).toHaveTextContent("待曲线核验");
-    const decisionMatrixAuditLabel = within(decisionMatrix).getByTestId("module-home-market-matrix-audit-label");
-    expect(decisionMatrixAuditLabel).toHaveAttribute("hidden");
-    expect(decisionMatrixAuditLabel).not.toBeVisible();
-    expect(within(page).queryByTestId("module-home-market-command")).not.toBeInTheDocument();
-    expect(within(page).getByTestId("module-home-status-strip")).toHaveAttribute("hidden");
-    expect(within(page).getByTestId("module-home-status-strip")).not.toBeVisible();
-    const actionQueue = within(page).getByTestId("module-home-market-actions");
-    expect(actionQueue.className).toEqual(expect.stringContaining("marketDeskPanel"));
-    expect(actionQueue).toHaveTextContent("下一步动作");
-    expect(actionQueue).toHaveTextContent("只保留今天需要看的事");
-    expect(actionQueue).toHaveTextContent("优先级");
-    expect(actionQueue).toHaveTextContent("事项");
-    expect(actionQueue).toHaveTextContent("证据");
-    expect(actionQueue).toHaveTextContent("入口");
-    expect(actionQueue).toHaveTextContent("补齐国债/国开曲线核验");
-    const actionQueueAuditLabel = within(actionQueue).getByTestId("module-home-market-actions-audit-label");
-    expect(actionQueueAuditLabel).toHaveAttribute("hidden");
-    expect(actionQueueAuditLabel).not.toBeVisible();
-    expect(within(page).getByTestId("module-home-market-hero-evidence")).toBeInTheDocument();
-    const heroMeta = within(page).getByTestId("module-home-market-hero-meta");
-    expect(heroMeta).toBeInTheDocument();
-    expect(heroMeta).toBeVisible();
-    expect(heroMeta).toHaveTextContent("Choice/Tushare 市场数据 / 跨资产");
-    expect(heroMeta).not.toHaveTextContent("ChoiceTushare");
-    const matrixRateCell = within(page).getByTestId("module-home-market-matrix-cell-rates");
-    expect(within(matrixRateCell).getByTestId("module-home-market-matrix-cell-rates-headline")).toBeInTheDocument();
-    const matrixRateMeta = within(matrixRateCell).getByTestId("module-home-market-matrix-cell-rates-meta");
-    const matrixRateEvidence = within(matrixRateCell).getByTestId("module-home-market-matrix-cell-rates-evidence");
-    expect(matrixRateMeta).toBeInTheDocument();
-    expect(matrixRateMeta).toHaveAttribute("hidden");
-    expect(matrixRateMeta).not.toBeVisible();
-    expect(matrixRateMeta.textContent).toContain(" / ");
-    expect(matrixRateEvidence).toBeInTheDocument();
-    expect(matrixRateEvidence).toHaveAttribute("hidden");
-    expect(matrixRateEvidence).not.toBeVisible();
-    expect(within(page).getByTestId("module-home-market-matrix-cell-data")).toHaveAttribute("hidden");
-    expect(within(page).getByTestId("module-home-market-matrix-cell-data")).not.toBeVisible();
-    const marketDataAction = within(actionQueue).getByTestId("module-home-market-action-curve-check");
-    const curveCheckEvidence = within(marketDataAction).getByTestId("module-home-market-action-curve-check-evidence");
-    expect(curveCheckEvidence).toBeInTheDocument();
-    const curveCheckTaskMeta = within(marketDataAction).getByTestId("module-home-market-action-curve-check-task-meta");
-    const curveCheckGate = within(marketDataAction).getByTestId("module-home-market-action-curve-check-gate");
-    const curveCheckEvidencePack = within(marketDataAction).getByTestId(
-      "module-home-market-action-curve-check-evidence-pack",
-    );
-    expect(curveCheckTaskMeta).toHaveTextContent(
-      "Owner 市场数据岗 / SLA T+0 收盘前 / 状态 待核验",
-    );
-    expect(curveCheckGate).toHaveTextContent(
-      "触发 曲线缺口 / 核验 国债/国开曲线 / 下一步 市场数据",
-    );
-    expect(curveCheckEvidencePack).toHaveTextContent(
-      "Evidence Pack 曲线报价缺口 / 等待既有 API 返回。 / market-data",
-    );
-    expect(curveCheckTaskMeta).not.toBeVisible();
-    expect(curveCheckGate).not.toBeVisible();
-    expect(curveCheckEvidencePack).not.toBeVisible();
-    expect(within(marketDataAction).getByTestId("module-home-market-action-curve-check-target")).toBeInTheDocument();
-    expect(within(page).getByTestId("module-home-yield-curve")).toBeInTheDocument();
-    expect(within(page).getByTestId("module-home-macro-snapshot")).toBeInTheDocument();
-    expect(within(page).getAllByTestId("module-home-macro-toolkit").length).toBeGreaterThanOrEqual(1);
-    expect(within(page).getByTestId("module-home-market-bottom-nav")).toBeInTheDocument();
-    expect(within(page).getAllByTestId(/^module-home-drill-/).length).toBe(MARKET_MODULE_DRILLDOWN_COUNT);
-    expect(within(page).getByTestId("module-home-drill-market-data")).toHaveTextContent("MD");
-    expect(page).not.toHaveTextContent("关键利率快照");
-    expect(page).toHaveTextContent("正式利率序列");
-    expect(page).toHaveTextContent("跨资产快讯");
-    expect(page).toHaveTextContent("国债与国开曲线");
-    await waitFor(() => {
-      expect(page).toHaveTextContent("DR007");
-      expect(page).toHaveTextContent("10Y-2Y 利差");
-      expect(page).toHaveTextContent("10.0 bp");
-      expect(page.textContent).not.toMatch(/\dindex/);
-      expect(within(page).getByTestId("module-home-market-kpi-equity-detail")).toHaveTextContent("日变动");
-      expect(within(page).getByTestId("module-home-market-kpi-equity-detail")).toHaveAttribute("data-change", "down");
-      expect(within(page).getByTestId("module-home-kpi-strip").querySelectorAll("svg").length).toBeGreaterThanOrEqual(2);
-      const marketTicker = within(page).getByTestId("module-home-market-macro-ticker");
-      expect(marketTicker.querySelectorAll("svg").length).toBeGreaterThanOrEqual(2);
-      expect(within(marketTicker).getAllByTestId(/^module-home-market-ticker-/).length).toBeGreaterThanOrEqual(8);
-      expect(marketTicker).toHaveTextContent("DR007");
-      expect(marketTicker).toHaveTextContent("沪深300指数收盘价");
-      const morningReadout = within(page).getByTestId("module-home-market-morning-readout");
-      expect(morningReadout.className).toEqual(expect.stringContaining("marketActionBand"));
-      expect(morningReadout).toHaveTextContent("晨会读盘");
-      expect(morningReadout).toContainElement(within(page).getByTestId("module-home-market-focus"));
-      expect(morningReadout).toContainElement(within(page).getByTestId("module-home-market-actions"));
-      expect(morningReadout).not.toContainElement(within(page).getByTestId("module-home-market-matrix"));
-      const marketFocus = within(page).getByTestId("module-home-market-focus");
-      expect(marketFocus).toHaveTextContent("10Y");
-      expect(marketFocus).toHaveTextContent("DR007");
-      expect(marketFocus).toHaveTextContent("沪深300指数收盘价");
-      expect(marketFocus).toHaveTextContent("沪深300涨跌幅");
-      expect(marketFocus).toHaveTextContent("Brent crude oil futures close");
-      expect(within(page).getByTestId("module-home-market-matrix-cell-rates-summary")).toHaveAttribute("data-change", "down");
-      expect(within(page).getByTestId("module-home-market-matrix-cell-rates-implication")).toHaveTextContent(
-        "长端下行，观察久期弹性",
-      );
-      expect(within(page).getByTestId("module-home-market-matrix-cell-liquidity-implication")).toHaveTextContent(
-        "资金缓和，观察杠杆承接",
-      );
-      expect(within(page).getByTestId("module-home-market-matrix-cell-cross-asset-implication")).toHaveTextContent(
-        "风险偏好走弱，复核股债传导",
-      );
-      expect(within(page).getByTestId("module-home-market-matrix-cell-macro-implication")).toHaveTextContent(
-        "宏观中性，策略保持复核",
-      );
-      const tenYearTicker = within(page).getByTestId("module-home-market-ticker-gov-10y");
-      expect(tenYearTicker.querySelector("[data-change]")).toBeTruthy();
-      expect(within(page).getByTestId("module-home-market-evidence-rail-ten-year")).toHaveAttribute("data-change");
-      const macroSnapshot = within(page).getByTestId("module-home-macro-snapshot");
-      expect(macroSnapshot.querySelector("[data-change]")).toBeTruthy();
-      expect(within(page).getByTestId("module-home-yield-curve")).toHaveTextContent("来源");
-      const macroOverview = within(page).getByTestId("module-home-macro-overview-depth");
-      expect(macroOverview.className).toEqual(expect.stringContaining("macroOverviewCard"));
-      expect(macroOverview.querySelector('[class*="terminalTableHead"]')).toBeNull();
-      expect(macroOverview).toHaveTextContent("工具立场");
-      expect(macroOverview).toHaveTextContent("结论摘要");
-      expect(macroOverview).toHaveTextContent("指标命中率");
-      expect(macroOverview).toHaveTextContent("注册脚本");
-      expect(macroOverview).toHaveTextContent("建议动作");
-      expect(within(page).getByTestId("module-home-key-rate-depth").querySelector('[class*="terminalTableHead"]')).toBeTruthy();
-      expect(within(page).getAllByTestId("module-home-macro-signals").length).toBeGreaterThanOrEqual(1);
-      const primaryMacroSignals = within(page).getAllByTestId("module-home-macro-signals")[0];
-      const riskAppetiteSignals = within(page).getAllByTestId("module-home-macro-signal-risk_appetite");
-      expect(riskAppetiteSignals.length).toBeGreaterThanOrEqual(1);
-      expect(riskAppetiteSignals[0].querySelector('[data-change="up"]')).toBeTruthy();
-      expect(riskAppetiteSignals[0].querySelector("svg")).toBeTruthy();
-      expect(within(page).getByTestId("module-home-drill-market-overview")).toHaveTextContent("HO");
-      expect(within(page).getAllByTestId("module-home-market-evidence-rail-metrics-scroll").length).toBeGreaterThanOrEqual(1);
-      expect(within(page).getAllByTestId("module-home-market-evidence-rail-actions-scroll").length).toBeGreaterThanOrEqual(1);
-      expect(within(page).getAllByTestId("module-home-macro-signals-scroll").length).toBeGreaterThanOrEqual(1);
-      expect(within(page).getByTestId("module-home-market-evidence-rail-metrics")).toHaveAttribute("tabindex", "0");
-      expect(primaryMacroSignals).toHaveAttribute("tabindex", "0");
-      expect(within(page).getByTestId("module-home-market-macro-ticker-scroll")).toBeInTheDocument();
-      expect(within(page).getByTestId("module-home-market-macro-ticker").querySelector('[role="region"]')).toHaveAttribute(
-        "tabindex",
-        "0",
-      );
-      const analysisGrid = within(page).getByTestId("module-home-market-analysis-grid");
-      expect(within(analysisGrid).queryByTestId("module-home-macro-groups")).not.toBeInTheDocument();
-      expect(page).toHaveTextContent("核心归因");
-      expect(page).toHaveTextContent("工具明细");
-      expect(page).toHaveTextContent("组合运行");
-      expect(page).toHaveTextContent("中性观察");
-      expect(page).toHaveTextContent("流动性");
-      expect(within(page).queryByTestId("module-home-macro-a-share-risk")).not.toBeInTheDocument();
-      expect(page).toHaveTextContent("橙色风险");
-      expect(within(page).getByTestId("module-home-market-actions")).toHaveTextContent("复核A股踩踏风险");
-      expect(within(page).getByTestId("module-home-market-actions")).toHaveTextContent("跟踪跨资产传导");
-      const crossAssetAction = within(page).getByTestId("module-home-market-action-cross-asset-path");
-      const crossAssetEvidence = within(crossAssetAction).getByTestId(
-        "module-home-market-action-cross-asset-path-evidence",
-      );
-      expect(crossAssetEvidence.querySelector('[data-change="down"]')).toBeTruthy();
-    });
-    const auditFooter = within(page).getByTestId("module-home-market-audit-footer");
-    await user.click(within(auditFooter).getByRole("button", { name: /数据核验与下钻/ }));
-    const macroGroups = within(page).getAllByTestId("module-home-macro-groups").at(-1);
-    expect(macroGroups).toBeTruthy();
-    await user.click(within(macroGroups!).getByRole("button", { name: /展开明细/ }));
-    await waitFor(() => {
-      expect(within(page).getByTestId("module-home-macro-a-share-risk")).toBeInTheDocument();
-      expect(
-        within(page).getByTestId("module-home-macro-a-share-risk").querySelector('[class*="terminalTableHead"]'),
-      ).toBeTruthy();
-    });
-    await user.click(within(macroGroups!).getByRole("tab", { name: "工具明细" }));
-    await user.click(within(macroGroups!).getByRole("button", { name: /展开明细/ }));
-    await waitFor(() => {
-      const compactPanel = within(page).getByTestId("module-home-macro-capabilities");
-      expect(compactPanel.querySelector('[class*="terminalTableHeadCompact"]')).toBeTruthy();
-      expect(compactPanel).toHaveTextContent("Δ");
-    });
-    await user.click(within(macroGroups!).getByRole("tab", { name: "组合运行" }));
-    await waitFor(() => {
-      expect(within(page).queryByTestId("module-home-macro-hason")).not.toBeInTheDocument();
-    });
-    await user.click(within(macroGroups!).getByRole("button", { name: /展开明细/ }));
-    await waitFor(() => {
-      expect(within(page).getByTestId("module-home-macro-hason")).toBeInTheDocument();
-      expect(within(page).getByTestId("module-home-macro-shadow")).toBeInTheDocument();
-      expect(within(page).getByTestId("module-home-macro-runtime")).toBeInTheDocument();
-      expect(page).toHaveTextContent("影子组合报告");
-    });
+    expect(chapterNav).toBeInTheDocument();
+    expect(dense).toBeInTheDocument();
+    expect(refreshButton).toBeInTheDocument();
+    expect(within(chapterNav).getAllByRole("link")).toHaveLength(4);
+    expect(page).toHaveTextContent("数据日期");
   });
 
   it("hides macro group tabs when grouped macro detail panels have no rows", async () => {
@@ -3175,12 +2899,11 @@ describe("MarketHomePage", () => {
 
     const page = await screen.findByTestId("module-workbench-home");
     await waitFor(() => {
-      expect(page).toHaveTextContent("中性观察");
       expect(within(page).queryByTestId("module-home-macro-groups")).not.toBeInTheDocument();
     });
   });
 
-  it("keeps empty market workbench and depth cards compact", async () => {
+  it("keeps empty option-3 charts and backend sections mounted when market data is empty", async () => {
     const base = createApiClient({ mode: "mock" });
     const client: ApiClient = {
       ...base,
@@ -3195,20 +2918,55 @@ describe("MarketHomePage", () => {
 
     const page = await screen.findByTestId("module-workbench-home");
     await waitFor(() => {
-      expect(within(page).getByTestId("module-home-market-terminal").className).toEqual(
-        expect.stringContaining("marketCompactEmptyTerminal"),
-      );
-      expect(within(page).getByTestId("module-home-yield-curve").className).toEqual(
-        expect.stringContaining("marketCompactEmptyPanel"),
-      );
-      expect(within(page).getByTestId("module-home-macro-snapshot").className).toEqual(
-        expect.stringContaining("marketCompactEmptyPanel"),
-      );
-      expect(within(page).queryByTestId("module-home-panel-summary")).not.toBeInTheDocument();
+      expect(within(page).getByTestId("module-home-market-financial-charts")).toBeInTheDocument();
+      expect(within(page).getByTestId("module-home-market-backend-data")).toBeInTheDocument();
     });
   });
 
-  it("keeps populated market terminal rows in a bounded scroll surface", async () => {
+  it("exposes failed reads and retained-data refresh failures on the real market route", async () => {
+    const user = userEvent.setup();
+    const base = createRealModeDemoClient();
+    const getMarketDataCatalog = vi
+      .fn()
+      .mockResolvedValueOnce(emptyMacroVendorEnvelope())
+      .mockRejectedValueOnce(new Error("catalog refresh unavailable"));
+    const client: ApiClient = {
+      ...base,
+      getMarketDataRates: vi.fn(async () => {
+        throw new Error("rates unavailable");
+      }),
+      getMarketDataCatalog,
+      refreshChoiceMacro: vi.fn(async () => ({
+        status: "completed",
+        run_id: "market-home-refresh:status-contract",
+      })),
+      getChoiceMacroRefreshStatus: vi.fn(async () => ({
+        status: "completed",
+        run_id: "market-home-refresh:status-contract",
+      })),
+    };
+
+    renderAt("/market-overview", client);
+
+    const page = await screen.findByTestId("module-workbench-home");
+    await waitFor(() => {
+      expect(
+        within(page).getByTestId("module-home-market-section-status-rates"),
+      ).toHaveTextContent("读取失败");
+    });
+
+    await user.click(
+      within(page).getByTestId("module-home-market-dense-refresh"),
+    );
+    await waitFor(() => expect(getMarketDataCatalog).toHaveBeenCalledTimes(2));
+    await waitFor(() => {
+      expect(
+        within(page).getByTestId("module-home-market-section-status-coverage"),
+      ).toHaveTextContent("刷新失败 · 保留旧数据");
+    });
+  });
+
+  it("keeps 12 charts and 6 backend tabs visible when only one formal rate series exists", async () => {
     const base = createApiClient({ mode: "mock" });
     const client: ApiClient = {
       ...base,
@@ -3220,54 +2978,65 @@ describe("MarketHomePage", () => {
     };
 
     renderAt("/market-overview", client);
-
     const page = await screen.findByTestId("module-workbench-home");
     await waitFor(() => {
-      expect(within(page).getByTestId("module-home-market-terminal").querySelector('[class*="terminalTableScroll"]')).toBeTruthy();
+      expect(within(page).getByTestId("module-home-market-financial-charts").querySelectorAll('[data-testid^="module-home-market-chart-"]')).toHaveLength(12);
+      expect(within(page).getByTestId("module-home-market-backend-data").querySelectorAll('[role="tab"]').length).toBe(6);
     });
-    const matrixRateCell = within(page).getByTestId("module-home-market-matrix-cell-rates");
-    expect(within(matrixRateCell).getByTestId("module-home-market-matrix-cell-rates-meta")).toHaveTextContent(
-      "1 条 / 1 源 / 2026-05-29",
-    );
-    expect(within(matrixRateCell).getByTestId("module-home-market-matrix-cell-rates-evidence")).toHaveTextContent(
-      "2026-05-29 / -1bp / CA.CN_GOV_10Y",
-    );
-    expect(within(matrixRateCell).getByTestId("module-home-market-matrix-cell-rates-headline")).toHaveTextContent(
-      "10Y 国债 1.71%",
-    );
-    expect(within(matrixRateCell).getByTestId("module-home-market-matrix-cell-rates-summary")).toHaveTextContent("-1bp");
-    expect(matrixRateCell).toHaveTextContent("利率曲线");
-    const keyRateAction = within(page).getByTestId("module-home-market-action-key-rate-check");
-    const keyRateEvidence = within(keyRateAction).getByTestId("module-home-market-action-key-rate-check-evidence");
-    const keyRateTaskMeta = within(keyRateAction).getByTestId("module-home-market-action-key-rate-check-task-meta");
-    const keyRateGate = within(keyRateAction).getByTestId("module-home-market-action-key-rate-check-gate");
-    const keyRateEvidencePack = within(keyRateAction).getByTestId(
-      "module-home-market-action-key-rate-check-evidence-pack",
-    );
-    expect(keyRateEvidence).toHaveTextContent(
-      "10Y 国债 / 1.71% / -1bp / 2026-05-29",
-    );
-    expect(keyRateEvidence.querySelector('[data-change="down"]')).toBeTruthy();
-    expect(keyRateEvidence).not.toHaveTextContent("CA.CN_GOV_10Y");
-    expect(keyRateTaskMeta).not.toBeVisible();
-    expect(keyRateGate).not.toBeVisible();
-    expect(keyRateEvidencePack).not.toBeVisible();
-    expect(keyRateEvidencePack).toHaveTextContent("Evidence Pack 10Y 国债 / CA.CN_GOV_10Y");
-    expect(within(keyRateAction).getByTestId("module-home-market-action-key-rate-check-target")).toHaveTextContent(
-      "利率序列",
-    );
-    expect(keyRateAction).toHaveTextContent("10Y 国债 / 1.71%");
-    expect(keyRateAction.textContent).not.toContain("事项10Y 国债");
   });
 
-  it("renders all market module drilldown links", async () => {
-    renderAt("/market-overview");
+  it("keeps 50-row news pagination visible in the 6-source verification workbench", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const newsEnvelope: ApiEnvelope<ChoiceNewsEventsPayload> = {
+      result: {
+        total_rows: 11_108,
+        limit: 50,
+        offset: 0,
+        as_of_date: "2026-07-28",
+        excluded_future_rows: 0,
+        payload_json_included: true,
+        compare: {
+          basis: "analytical",
+          rule_version: "news-rule-v1",
+          same_direction: [],
+          conflicting: [],
+          review_needed: [],
+          candidate_scenarios: [],
+        },
+        events: [
+          {
+            event_key: "event-1",
+            received_at: "2026-07-28T08:00:00Z",
+            group_id: "market",
+            content_type: "news",
+            serial_id: 1,
+            request_id: 2,
+            error_code: 0,
+            error_msg: "",
+            topic_code: "rates",
+            item_index: 0,
+            payload_text: "完整新闻正文",
+            payload_json: '{"headline":"完整新闻正文"}',
+          },
+        ],
+      },
+      result_meta: testMeta("choice.news.events"),
+    };
+    const client: ApiClient = {
+      ...base,
+      getChoiceNewsEvents: vi.fn(async () => newsEnvelope),
+    };
+
+    renderAt("/market-overview", client);
 
     const page = await screen.findByTestId("module-workbench-home");
-    const drilldowns = within(page).getByTestId("module-home-drilldowns");
-    const links = within(drilldowns).getAllByRole("link", { hidden: true });
-    expect(links).toHaveLength(MARKET_MODULE_DRILLDOWN_COUNT);
-    expect(page).toHaveTextContent("宏观工具");
-    expect(page).toHaveTextContent("股票分析");
+    const backend = within(page).getByTestId("module-home-market-backend-data");
+    const backendTabs = within(backend).getAllByRole("tab");
+
+    await userEvent.click(backendTabs[5]!);
+    await waitFor(() => {
+      expect(backend).toHaveTextContent("50");
+      expect(backend).toHaveTextContent("11,108");
+    });
   });
 });

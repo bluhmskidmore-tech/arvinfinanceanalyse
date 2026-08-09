@@ -2135,12 +2135,16 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 - Primary front-end route: `/market-overview`
 - Status: `active module home`
 - Primary frontend files:
-  - `frontend/src/features/workbench/module-home/ModuleWorkbenchHomePage.tsx`
-  - `frontend/src/features/workbench/module-home/moduleHomeModel.ts`
+  - `frontend/src/features/workbench/module-home/MarketHomePage.tsx`
+  - `frontend/src/features/workbench/module-home/MarketHomeLayout.tsx`
   - `frontend/src/features/workbench/module-home/useMarketHomeQueries.ts`
+  - `frontend/src/features/workbench/module-home/MarketOverviewDenseFirstScreen.tsx`
+  - `frontend/src/features/workbench/module-home/MarketFinancialChartsWorkbench.tsx`
+  - `frontend/src/features/workbench/module-home/MarketBackendDataWorkbench.tsx`
 - Primary downstream pages:
   - `/market-data`
   - `/cross-asset`
+  - `/macro-observation`
   - `/macro-toolkit`
   - `/stock-analysis`
   - `/news-events`
@@ -2153,18 +2157,21 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 
 ### C. Data chain
 
-- `useMarketHomeQueries` loads Choice macro latest data, market rate series, market catalog, and macro toolkit **full** analysis with `historyLimit: 430` (Crisis Score 历史窗口)。
-- `buildModuleHomeView(... kind="market")` maps query envelopes into market KPI cards, rate tables, macro/toolkit panels, `MarketCrisisExplainBand`（Crisis Score 解释带）、`MarketDeskIntelStrip`（含 `yield_curve_shape` 形态标签）与 source statuses。
+- `useMarketHomeQueries` concurrently loads Choice macro latest data, formal market-rate series, market catalog, macro toolkit **full** analysis with `historyLimit: 430`, macro strategy summaries, and one shared latest-500 Choice News sample with `include_payload_json=false`.
+- `buildModuleHomeView(... kind="market")` maps the returned envelopes into the market view; `MarketHomeLayout` renders that evidence through `MarketOverviewDenseFirstScreen`, `MarketFinancialChartsWorkbench`, and `MarketBackendDataWorkbench`.
+- The dense first screen and the twelve-chart workbench share the same compact Choice News query/cache key so their latest-500 sample cannot diverge within one page load. The News tab in `MarketBackendDataWorkbench` is intentionally separate: it uses backend pagination with `limit=50`, `offset`, and `include_payload_json=true` for field-level verification.
+- `MarketFinancialChartsWorkbench` groups the returned evidence into rates/liquidity, cross-asset, macro signals, strategy/risk, news, and coverage sections. Raw-value charts preserve backend units. Cross-asset comparison is explicitly analytical and normalizes each selected series to its first visible observation = 100.
 - The page references market data result metadata and child-page readiness instead of defining a new market metric contract.
-- 商品旁证 / 影子评估不在市场首页完整展开；仅保留研究说明链接至 `/macro-toolkit#macro-toolkit-crisis-detail`。
+- Macro conclusions, strategy summaries, commodity evidence, and news remain observation-only / analytical and must not be promoted into a formal operating conclusion or trading instruction.
 
 ### D. Units, dates, and status
 
-- Rate, FX, spread, and macro units come from the originating market or macro payload and their local formatters.
-- Trade dates and as-of dates must stay tied to the source row or result metadata.
+- Rate, FX, spread, commodity, index, and macro units come from the originating payload. Mixed-unit series must not share an axis unless the backend units are coherent; the frontend must not guess a conversion.
+- Trade dates and as-of dates stay tied to the source row or result metadata. Yield-curve snapshots use one coherent latest report date; missing observations remain gaps (`null`) and must not be connected or interpolated.
 - Empty state: no rates, no catalog, or no macro toolkit result must show a missing/partial status.
 - Failure state: failed market or macro queries must be visible and must not be replaced by demo market values.
-- Stale/fallback state: vendor, fallback, catalog, and source-version status must remain visible.
+- Stale/fallback state: vendor, fallback, catalog, source-version, and refresh-error-with-retained-data status must remain visible. Such retained evidence may stay inspectable, but it must hold the first-screen judgment and suggested action rather than drive them.
+- Formality state: macro-toolkit evidence must expose its `basis`, `formal_use_allowed`, quality/vendor/fallback state, and a visible non-formal review gate.
 
 ### E. Metric bindings
 
@@ -2173,7 +2180,10 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 
 ### F. Tests
 
-- Frontend: `frontend/src/test/ModuleWorkbenchHomeModel.test.ts`, `frontend/src/test/RouteRegistry.test.tsx`.
+- Route integration: `frontend/src/test/ModuleWorkbenchHomePage.test.tsx`, `frontend/src/test/LiveRouteReadiness.test.tsx`.
+- Focused frontend: `MarketFinancialChartsWorkbench.test.tsx`, `marketFinancialChartsModel.test.ts`, `MarketBackendDataWorkbench.test.tsx`, `marketOverviewDenseModel.test.ts`, and `marketOverviewDenseLiquidityModel.test.ts` under `frontend/src/features/workbench/module-home/`.
+- Browser: `frontend/tests/playwright/market-overview-smoke.spec.mjs`.
+- Backend Choice News compact/full contract: `tests/test_choice_news_routes.py`.
 - Contract gate: `tests/test_live_route_page_contract_completeness.py`.
 
 ## 14.6.1 PAGE-CROSS-ASSET-001 Cross-Asset Drivers

@@ -122,11 +122,13 @@ function buildMockChoiceNewsEnvelope(options: {
   groupId?: string;
   topicCode?: string;
   stockCode?: string;
+  includePayloadJson?: boolean;
   errorOnly?: boolean;
   receivedFrom?: string;
   receivedTo?: string;
 }): ApiEnvelope<ChoiceNewsEventsPayload> {
   const stockCode = options.stockCode?.trim().toUpperCase() || null;
+  const includePayloadJson = options.includePayloadJson !== false;
   const filtered = MOCK_NEWS_EVENTS.filter((event) => {
     if (options.groupId?.trim() && event.group_id !== options.groupId.trim()) return false;
     if (options.topicCode?.trim() && event.topic_code !== options.topicCode.trim()) return false;
@@ -139,14 +141,20 @@ function buildMockChoiceNewsEnvelope(options: {
     }
     return true;
   });
+  const pageEvents = filtered
+    .slice(options.offset, options.offset + options.limit)
+    .map((event) =>
+      includePayloadJson ? event : { ...event, payload_json: null },
+    );
   const result: ChoiceNewsEventsPayload = {
     total_rows: filtered.length,
     limit: options.limit,
     offset: options.offset,
     as_of_date: "2026-04-23",
     excluded_future_rows: 0,
-    compare: buildMockChoiceNewsCompare(filtered),
-    events: filtered.slice(options.offset, options.offset + options.limit),
+    payload_json_included: includePayloadJson,
+    compare: buildMockChoiceNewsCompare(pageEvents),
+    events: pageEvents,
   };
   if (stockCode) {
     result.stock_code = stockCode;

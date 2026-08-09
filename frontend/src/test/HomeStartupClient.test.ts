@@ -274,6 +274,61 @@ describe("home startup deferred client", () => {
     });
   });
 
+  it("serializes explicit include_payload_json for deferred home market ticker choice news reads", async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          result_meta: { basis: "analytical" },
+          result: {
+            total_rows: 0,
+            limit: 2,
+            offset: 0,
+            as_of_date: "2026-04-23",
+            excluded_future_rows: 0,
+            payload_json_included: false,
+            events: [],
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    ) as unknown as typeof fetch;
+    const client = createDeferredApiClient({
+      mode: "real",
+      baseUrl: "http://backend.local",
+      fetchImpl,
+    });
+
+    await client.getChoiceNewsEvents({
+      limit: 2,
+      offset: 0,
+      includePayloadJson: false,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://backend.local/ui/news/choice-events/latest?limit=2&offset=0&include_payload_json=false",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+  });
+
+  it("routes compact Choice News through the deferred mock home ticker client", async () => {
+    const client = createDeferredApiClient({ mode: "mock" });
+
+    const payload = await client.getChoiceNewsEvents({
+      limit: 1,
+      offset: 1,
+      includePayloadJson: false,
+    });
+    const returnedEventId = payload.result.events[0]?.event_key;
+
+    expect(payload.result.payload_json_included).toBe(false);
+    expect(payload.result.events[0]?.payload_json).toBeNull();
+    expect(payload.result.compare?.same_direction[0]?.source_event_ids).toEqual([
+      returnedEventId,
+    ]);
+  });
+
   it("passes return decomposition detail through the deferred home supplemental client", async () => {
     const fetchImpl = vi.fn(async () =>
       new Response(

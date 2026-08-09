@@ -219,6 +219,7 @@ def test_choice_events_latest_authorized_returns_envelope(
     assert payload["result_meta"]["formal_use_allowed"] is False
     assert payload["result_meta"]["source_surface"] == "choice_news"
     assert payload["result_meta"]["tables_used"] == ["choice_news_event"]
+    assert payload["result"]["payload_json_included"] is True
     assert isinstance(payload["result"]["events"], list)
     assert payload["result"]["total_rows"] >= 0
     get_settings.cache_clear()
@@ -263,6 +264,31 @@ def test_choice_events_latest_no_duckdb_file_returns_empty_envelope(
     response = client.get("/ui/news/choice-events/latest")
     assert response.status_code == 200
     body = response.json()
+    assert body["result"]["payload_json_included"] is True
+    assert body["result"]["events"] == []
+    assert body["result"]["total_rows"] == 0
+    get_settings.cache_clear()
+
+
+def test_choice_events_latest_no_duckdb_file_compact_mode_returns_empty_envelope(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "nonexistent.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    sqlite_path = tmp_path / "auth-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    get_settings.cache_clear()
+    UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="*",
+        role=None,
+        resource="choice_news.data",
+        action="read",
+    )
+    for mod in ("backend.app.main", "backend.app.api"):
+        sys.modules.pop(mod, None)
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/ui/news/choice-events/latest", params={"include_payload_json": "false"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["result"]["payload_json_included"] is False
     assert body["result"]["events"] == []
     assert body["result"]["total_rows"] == 0
     get_settings.cache_clear()

@@ -1573,13 +1573,13 @@ export type ChoiceNewsEventsPayload = {
   offset: number;
   as_of_date: string | null;
   excluded_future_rows: number;
+  payload_json_included?: boolean;
   stock_code?: string | null;
   stock_filter_mode?: string | null;
   stock_filter_tokens?: string[];
   compare?: ChoiceNewsComparePayload;
   events: ChoiceNewsEvent[];
 };
-
 /** 与 `GET /ui/news/choice-events/latest` 返回的 `result.events[]` 单行一致（后端 payload_rows）。 */
 export type ChoiceNewsLatestEvent = ChoiceNewsEvent;
 

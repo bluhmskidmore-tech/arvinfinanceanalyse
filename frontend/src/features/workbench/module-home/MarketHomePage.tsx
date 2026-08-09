@@ -33,8 +33,6 @@ function panelByKey(panels: ModuleHomeDetailPanel[] | undefined, key: string) {
   return panels?.find((panel) => panel.key === key);
 }
 
-const CHOICE_MACRO_REFRESH_RESOURCE = "macro_vendor.choice_series";
-const CHOICE_MACRO_REFRESH_PERMISSION = `${CHOICE_MACRO_REFRESH_RESOURCE}:refresh`;
 const MARKET_REFRESH_TERMINAL_STATUSES = new Set(["completed", "partial", "degraded", "failed"]);
 const MARKET_REFRESH_ACCEPTED_STATUSES = new Set(["completed", "partial", "degraded"]);
 const MARKET_REFRESH_FAILED_DATA_NOTICE = "当前展示的仍是上次成功刷新的数据。";
@@ -42,17 +40,45 @@ const MARKET_REFRESH_FAILED_DATA_NOTICE = "当前展示的仍是上次成功刷�
 function formatChoiceMacroRefreshError(error: unknown) {
   const message =
     error instanceof Error ? error.message : typeof error === "string" ? error : "";
-  if (/not allowed/i.test(message) && message.includes(CHOICE_MACRO_REFRESH_RESOURCE)) {
-    return `当前账号没有刷新 Choice 宏观数据权限，请先授予 ${CHOICE_MACRO_REFRESH_PERMISSION}；已保留当前已落库数据。`;
+  if (/not allowed|permission|forbidden|denied|无权限|权限不足/i.test(message)) {
+    return "当前账号没有刷新 Choice 宏观数据的权限。";
   }
-  return message || "刷新市场数据失败";
+  if (/timeout|timed out|超时/i.test(message)) {
+    return "市场数据源响应超时，请稍后重试。";
+  }
+  if (/vendor|供应方/i.test(message)) {
+    return "供应方数据刷新异常，请稍后重试。";
+  }
+  return "市场数据刷新失败，请稍后重试。";
+}
+
+function formatRefreshWarning(message: string) {
+  if (/permission|not allowed|forbidden|denied|无权限|权限不足/i.test(message)) {
+    return "部分数据源权限不足";
+  }
+  if (/timeout|timed out|超时/i.test(message)) {
+    return "部分数据源响应超时";
+  }
+  if (/vendor|供应方/i.test(message)) {
+    return "供应方数据异常";
+  }
+  if (/supplement|gate[_\s-]?supplement|补充数据/i.test(message)) {
+    return "补充数据刷新未完成";
+  }
+  if (/[\u3400-\u9fff]/u.test(message) && !/failed|error|exception/i.test(message)) {
+    return message.trim();
+  }
+  return "部分序列未通过完整性校验";
 }
 
 function formatDegradedRefreshStatus(payload: ChoiceMacroRefreshPayload) {
-  const warningText =
-    payload.warnings?.filter((item) => item.trim().length > 0).join("；") ||
-    payload.warning_code ||
-    "数据质量异常";
+  const warningText = Array.from(
+    new Set(
+      [...(payload.warnings ?? []), payload.warning_code ?? ""]
+        .filter((item) => item.trim().length > 0)
+        .map(formatRefreshWarning),
+    ),
+  ).join("；") || "部分序列未通过完整性校验";
   return `刷新完成，但存在质量告警：${warningText}。数据已更新，请注意核对相关序列。`;
 }
 
@@ -85,8 +111,8 @@ export default function MarketHomePage() {
         intervalMs: 3000,
         maxAttempts: 120,
         isTerminal: (status) => MARKET_REFRESH_TERMINAL_STATUSES.has(status),
-        onUpdate: (p) => {
-          setRefreshStatus([p.status, p.run_id].filter(Boolean).join(" · "));
+        onUpdate: () => {
+          setRefreshStatus("刷新任务处理中，正在读取最新市场数据…");
         },
       });
       if (!MARKET_REFRESH_ACCEPTED_STATUSES.has(payload.status)) {
@@ -145,6 +171,7 @@ export default function MarketHomePage() {
         isRefreshing={isRefreshing}
         refreshStatus={refreshStatus}
         refreshError={refreshError}
+        queries={queries}
         onRefreshData={handleRefreshData}
       />
     </section>

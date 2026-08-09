@@ -196,6 +196,7 @@ export type MarketDataClientMethods = {
     groupId?: string;
     topicCode?: string;
     stockCode?: string;
+    includePayloadJson?: boolean;
     errorOnly?: boolean;
     receivedFrom?: string;
     receivedTo?: string;
@@ -775,6 +776,7 @@ export function createRealMarketDataClient({
       groupId,
       topicCode,
       stockCode,
+      includePayloadJson,
       errorOnly,
       receivedFrom,
       receivedTo,
@@ -790,6 +792,9 @@ export function createRealMarketDataClient({
       }
       if (stockCode?.trim()) {
         params.set("stock_code", stockCode.trim());
+      }
+      if (typeof includePayloadJson === "boolean") {
+        params.set("include_payload_json", String(includePayloadJson));
       }
       if (errorOnly) {
         params.set("error_only", "true");

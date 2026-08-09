@@ -2753,6 +2753,7 @@ describe("createApiClient", () => {
     expect(filtered.result.total_rows).toBe(1);
     expect(filtered.result.as_of_date).toBe("2026-04-23");
     expect(filtered.result.excluded_future_rows).toBe(0);
+    expect(filtered.result.payload_json_included).toBe(true);
     expect(filtered.result.events[0]?.topic_code).toBe("S888010007API");
     expect(paged.result.total_rows).toBe(8);
     expect(paged.result.events[0]?.event_key).toBe("ce_mock_003");
@@ -2815,13 +2816,14 @@ describe("createApiClient", () => {
       groupId: "news_cmd1",
       topicCode: "S888010007API",
       stockCode: "000001.SZ",
+      includePayloadJson: true,
       errorOnly: true,
       receivedFrom: "2026-04-10T08:00:00Z",
       receivedTo: "2026-04-10T10:00:00Z",
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:8000/ui/news/choice-events/latest?limit=2&offset=0&group_id=news_cmd1&topic_code=S888010007API&stock_code=000001.SZ&error_only=true&received_from=2026-04-10T08%3A00%3A00Z&received_to=2026-04-10T10%3A00%3A00Z",
+      "http://localhost:8000/ui/news/choice-events/latest?limit=2&offset=0&group_id=news_cmd1&topic_code=S888010007API&stock_code=000001.SZ&include_payload_json=true&error_only=true&received_from=2026-04-10T08%3A00%3A00Z&received_to=2026-04-10T10%3A00%3A00Z",
       expect.objectContaining({
         headers: expect.objectContaining({
           Accept: "application/json",

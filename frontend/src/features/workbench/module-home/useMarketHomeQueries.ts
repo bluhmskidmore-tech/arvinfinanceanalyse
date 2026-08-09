@@ -50,22 +50,27 @@ export function useMarketHomeQueries(): ModuleHomeSourceQueries {
   });
 
   const newsEventsQuery = useQuery({
-    queryKey: ["module-home", "news-events", client.mode],
-    queryFn: () => client.getChoiceNewsEvents({ limit: 3, offset: 0 }),
+    queryKey: [
+      "module-home",
+      "news-events",
+      "compact",
+      500,
+      0,
+      false,
+      client.mode,
+    ],
+    queryFn: () =>
+      client.getChoiceNewsEvents({
+        limit: 500,
+        offset: 0,
+        includePayloadJson: false,
+      }),
     ...MARKET_HOME_QUERY_OPTIONS,
   });
-
-  const primaryQueriesReady = Boolean(
-    choiceLatestQuery.data &&
-      marketRatesQuery.data &&
-      marketCatalogQuery.data &&
-      macroToolkitAnalysisQuery.data,
-  );
 
   const macroToolkitStrategySummariesQuery = useQuery({
     queryKey: ["module-home", "macro-toolkit-strategy-summaries", client.mode],
     queryFn: () => client.getMacroToolkitStrategySummaries(),
-    enabled: primaryQueriesReady,
     ...MARKET_HOME_QUERY_OPTIONS,
   });
 
