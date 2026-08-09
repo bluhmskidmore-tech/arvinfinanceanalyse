@@ -171,6 +171,26 @@ def test_formal_canonical_usd_cny_rate_fails_closed_when_input_rows_are_empty() 
     assert "formal" in str(excinfo.value)
 
 
+@pytest.mark.parametrize(
+    "invalid_rate",
+    [
+        Decimal("0"),
+        Decimal("-7.2"),
+        Decimal("NaN"),
+        Decimal("Infinity"),
+        Decimal("-Infinity"),
+    ],
+)
+def test_formal_canonical_usd_cny_rate_rejects_nonpositive_or_nonfinite_input(
+    invalid_rate: Decimal,
+) -> None:
+    with pytest.raises(FxRateUnavailableError, match="no valid input rows"):
+        get_usd_cny_rate(
+            [(date(2026, 3, 31), invalid_rate)],
+            date(2026, 3, 31),
+        )
+
+
 def test_formal_canonical_usd_cny_rate_fails_closed_when_only_stale_rows_exist() -> None:
     with pytest.raises(FxRateUnavailableError) as excinfo:
         get_usd_cny_rate(

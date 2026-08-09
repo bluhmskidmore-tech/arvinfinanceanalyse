@@ -651,6 +651,55 @@ def test_pnl_materialize_task_converts_usd_fi_rows_with_month_end_fx(tmp_path):
     ]
 
 
+@pytest.mark.parametrize("invalid_rate", ["0", "-7.2", "NaN", "Infinity", "-Infinity"])
+def test_load_pnl_fx_rates_rejects_nonpositive_or_nonfinite_rate(
+    tmp_path,
+    invalid_rate,
+):
+    task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.pnl_materialize",
+            "backend/app/tasks/pnl_materialize.py",
+        )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fx_daily_mid (
+              trade_date varchar,
+              base_currency varchar,
+              quote_currency varchar,
+              mid_rate varchar,
+              source_name varchar,
+              is_business_day boolean,
+              is_carry_forward boolean,
+              source_version varchar,
+              observed_trade_date varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fx_daily_mid values
+            ('2025-12-31', 'USD', 'CNY', ?, 'CFETS', true, false, 'sv_fx_invalid', '2025-12-31')
+            """,
+            [invalid_rate],
+        )
+    finally:
+        conn.close()
+
+    with pytest.raises(ValueError, match="finite and greater than zero"):
+        task_module._load_pnl_fx_rates(
+            duckdb_path=duckdb_path,
+            report_date="2025-12-31",
+            fi_rows=[{"fx_base_currency": "USD"}],
+            nonstd_rows_by_type={},
+        )
+
+
 def test_pnl_materialize_task_converts_j1_nonstd_rows_with_month_end_fx(tmp_path) -> None:
     task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
     if task_module is None:

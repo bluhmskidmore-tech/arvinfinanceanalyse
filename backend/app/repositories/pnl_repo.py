@@ -4,9 +4,11 @@ import json
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 import duckdb
+from backend.app.core_finance.fx_calendar import is_cfets_fx_non_business_day
+from backend.app.core_finance.fx_rates import is_valid_fx_mid_rate
 from backend.app.core_finance.pnl_constants import (
     PNL_514_VAT_EFFECTIVE_END_DATE,
     PNL_514_VAT_EFFECTIVE_START_DATE,
@@ -714,6 +716,18 @@ class PnlRepository:
             if base_currency is None or mid_rate is None:
                 continue
             base = str(base_currency)
+            try:
+                rate = Decimal(str(mid_rate))
+            except InvalidOperation as exc:
+                raise ValueError(
+                    f"Invalid formal fx rate for base_currency={base} report_date={report_date}: "
+                    "mid_rate must be finite and greater than zero."
+                ) from exc
+            if not is_valid_fx_mid_rate(rate):
+                raise ValueError(
+                    f"Invalid formal fx rate for base_currency={base} report_date={report_date}: "
+                    "mid_rate must be finite and greater than zero."
+                )
             business_day = bool(is_business_day)
             carry_forward = bool(is_carry_forward)
             observed_trade_date_str = str(observed_trade_date) if observed_trade_date is not None else None
@@ -723,7 +737,7 @@ class PnlRepository:
                         f"Invalid formal fx metadata for base_currency={base} report_date={report_date}: "
                         "business-day row cannot be carry-forward."
                     )
-                rates[base] = Decimal(str(mid_rate))
+                rates[base] = rate
                 continue
             if not carry_forward or observed_trade_date_str is None:
                 raise ValueError(
@@ -735,7 +749,16 @@ class PnlRepository:
                     f"Invalid formal fx carry-forward metadata for base_currency={base} report_date={report_date}: "
                     f"observed_trade_date={observed_trade_date_str} must be before report_date."
                 )
-            rates[base] = Decimal(str(mid_rate))
+            if not is_cfets_fx_non_business_day(
+                report_date,
+                base_currency=base,
+                quote_currency="CNY",
+            ):
+                raise ValueError(
+                    f"Invalid formal fx carry-forward metadata for base_currency={base} report_date={report_date}: "
+                    "carry-forward is only allowed for confirmed non-business-day rows."
+                )
+            rates[base] = rate
 
         missing = [currency for currency in required_fx if currency not in rates]
         if missing:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 import duckdb
 from backend.app.core_finance.balance_analysis import (
@@ -12,6 +12,7 @@ from backend.app.core_finance.balance_analysis import (
     ZqtzSnapshotRow,
 )
 from backend.app.core_finance.fx_calendar import is_cfets_fx_non_business_day
+from backend.app.core_finance.fx_rates import is_valid_fx_mid_rate
 from backend.app.repositories.currency_codes import normalize_currency_code
 from backend.app.repositories.duckdb_migrations import (
     apply_pending_migrations_on_connection,
@@ -253,6 +254,18 @@ class BalanceAnalysisRepository(DuckDBRepository):
             raise ValueError(
                 f"Missing formal fx rate for base_currency={base_currency_normalized} report_date={report_date}"
             )
+        try:
+            rate = Decimal(str(mid_rate))
+        except InvalidOperation as exc:
+            raise ValueError(
+                f"Invalid formal fx rate for base_currency={base_currency_normalized} report_date={report_date}: "
+                "mid_rate must be finite and greater than zero."
+            ) from exc
+        if not is_valid_fx_mid_rate(rate):
+            raise ValueError(
+                f"Invalid formal fx rate for base_currency={base_currency_normalized} report_date={report_date}: "
+                "mid_rate must be finite and greater than zero."
+            )
 
         business_day = bool(is_business_day)
         carry_forward = bool(is_carry_forward)
@@ -264,7 +277,7 @@ class BalanceAnalysisRepository(DuckDBRepository):
                     "business-day row cannot be carry-forward."
                 )
             return FormalFxRateLookup(
-                rate=Decimal(str(mid_rate)),
+                rate=rate,
                 source_version=str(source_version or ""),
                 is_business_day=True,
                 is_carry_forward=False,
@@ -291,7 +304,7 @@ class BalanceAnalysisRepository(DuckDBRepository):
                 "carry-forward is only allowed for confirmed non-business-day rows."
             )
         return FormalFxRateLookup(
-            rate=Decimal(str(mid_rate)),
+            rate=rate,
             source_version=str(source_version or ""),
             is_business_day=False,
             is_carry_forward=True,

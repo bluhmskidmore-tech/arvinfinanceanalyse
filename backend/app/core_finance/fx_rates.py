@@ -21,6 +21,11 @@ class FxRateUnavailableError(RuntimeError):
 _FORMAL_CARRY_FORWARD_MAX_LOOKBACK_DAYS = 14
 
 
+def is_valid_fx_mid_rate(value: Decimal | None) -> bool:
+    """Return whether an FX middle rate is safe for formal conversion."""
+    return value is not None and value.is_finite() and value > 0
+
+
 def is_weekend_non_business_day(target_date: date | str) -> bool:
     if isinstance(target_date, str):
         target_date = date.fromisoformat(target_date)
@@ -36,7 +41,13 @@ def get_usd_cny_rate(
 ) -> tuple[Decimal, date | None, list[str]]:
     warnings: list[str] = []
 
-    valid = [(d, to_decimal(v)) for d, v in rows if v is not None and to_decimal(v) > 0]
+    valid: list[tuple[date, Decimal]] = []
+    for observed_date, value in rows:
+        if value is None:
+            continue
+        rate = to_decimal(value)
+        if is_valid_fx_mid_rate(rate):
+            valid.append((observed_date, rate))
     if not valid:
         if allow_stale_fallback:
             raise FxRateUnavailableError(

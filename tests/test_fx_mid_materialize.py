@@ -249,6 +249,105 @@ def test_fx_mid_materialize_replaces_existing_canonical_key(tmp_path):
     assert rows == [(date(2026, 2, 27), "USD", "CNY", Decimal("7.25000000"))]
 
 
+@pytest.mark.parametrize("invalid_rate", ["0", "-7.2", "NaN", "Infinity", "-Infinity"])
+def test_fx_mid_materialize_rejects_invalid_csv_rate_before_database_creation(
+    tmp_path,
+    invalid_rate,
+):
+    fx_mod = _load_fx_task_module()
+    csv_path = tmp_path / "fx_mid.csv"
+    duckdb_path = tmp_path / "moss.duckdb"
+    csv_path.write_text(
+        "\n".join(
+            [
+                "trade_date,base_currency,quote_currency,mid_rate,source_name,is_business_day,is_carry_forward",
+                f"2026-02-27,USD,CNY,{invalid_rate},CFETS,true,false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="finite and greater than zero"):
+        fx_mod.materialize_fx_mid_rows.fn(
+            csv_path=str(csv_path),
+            duckdb_path=str(duckdb_path),
+        )
+
+    assert not duckdb_path.exists()
+
+
+@pytest.mark.parametrize(
+    "invalid_rate",
+    [
+        Decimal("0"),
+        Decimal("-7.2"),
+        Decimal("NaN"),
+        Decimal("Infinity"),
+        Decimal("-Infinity"),
+    ],
+)
+def test_normalize_vendor_row_rejects_invalid_rate_before_inversion(invalid_rate):
+    fx_mod = _load_fx_task_module()
+    candidate = fx_mod.FormalFxCandidate(
+        series_id="EMM01588399",
+        series_name="CNY/HKD middle rate",
+        vendor_series_code="EMM01588399",
+        base_currency="HKD",
+        quote_currency="CNY",
+        invert_result=True,
+    )
+
+    with pytest.raises(ValueError, match="finite and greater than zero"):
+        fx_mod._normalize_vendor_row(
+            requested_report_date="2026-02-27",
+            candidate=candidate,
+            observed_trade_date="2026-02-27",
+            raw_mid_rate=invalid_rate,
+            source_name="CFETS",
+            source_version="sv_test",
+            vendor_name="choice",
+            vendor_version="vv_test",
+        )
+
+
+def test_replace_fx_mid_rows_rejects_invalid_derived_rate_before_connecting(
+    tmp_path,
+    monkeypatch,
+):
+    fx_mod = _load_fx_task_module()
+    connect_called = False
+
+    def fail_if_connected(*_args, **_kwargs):
+        nonlocal connect_called
+        connect_called = True
+        raise AssertionError("DuckDB connection must not open for an invalid FX rate")
+
+    monkeypatch.setattr(fx_mod.duckdb, "connect", fail_if_connected)
+
+    with pytest.raises(ValueError, match="finite and greater than zero"):
+        fx_mod._replace_fx_mid_rows(
+            duckdb_path=str(tmp_path / "moss.duckdb"),
+            rows=[
+                (
+                    "2026-02-27",
+                    "USD",
+                    "CNY",
+                    Decimal("0"),
+                    "CFETS",
+                    True,
+                    False,
+                    "sv_test",
+                    "choice",
+                    "vv_test",
+                    "EMM00058124",
+                    "2026-02-27",
+                )
+            ],
+        )
+
+    assert connect_called is False
+
+
 def test_fx_mid_materialize_preserves_preflight_error_before_transaction(tmp_path):
     fx_mod = _load_fx_task_module()
     duckdb_path = tmp_path / "moss.duckdb"

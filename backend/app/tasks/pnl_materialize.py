@@ -5,7 +5,7 @@ import logging
 import re
 from calendar import monthrange
 from datetime import UTC, date, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 import duckdb
@@ -13,6 +13,7 @@ from backend.app.core_finance.config.classification_rules import (
     LEDGER_PNL_ACCOUNT_PREFIXES,
 )
 from backend.app.core_finance.fx_calendar import is_cfets_fx_non_business_day
+from backend.app.core_finance.fx_rates import is_valid_fx_mid_rate
 from backend.app.core_finance.pnl import (
     PNL_FORMAL_FACT_RULE_VERSION,
     build_formal_pnl_fi_fact_rows,
@@ -678,9 +679,9 @@ def _load_pnl_fx_rates(
         placeholders = ", ".join(["?"] * len(required_fx))
         rows = conn.execute(
             f"""
-            select
-              upper(base_currency) as base_currency,
-              cast(mid_rate as decimal(24, 8)) as mid_rate,
+              select
+                upper(base_currency) as base_currency,
+              mid_rate,
               coalesce(source_version, '') as source_version,
               is_business_day,
               is_carry_forward,
@@ -699,6 +700,18 @@ def _load_pnl_fx_rates(
         if base_currency is None or mid_rate is None:
             continue
         base = str(base_currency)
+        try:
+            rate = Decimal(str(mid_rate))
+        except InvalidOperation as exc:
+            raise ValueError(
+                f"Invalid formal fx rate for base_currency={base} report_date={report_date}: "
+                "mid_rate must be numeric, finite, and greater than zero."
+            ) from exc
+        if not is_valid_fx_mid_rate(rate):
+            raise ValueError(
+                f"Invalid formal fx rate for base_currency={base} report_date={report_date}: "
+                "mid_rate must be finite and greater than zero."
+            )
         business_day = bool(is_business_day)
         carry_forward = bool(is_carry_forward)
         observed_trade_date_str = str(observed_trade_date) if observed_trade_date is not None else None
@@ -708,7 +721,7 @@ def _load_pnl_fx_rates(
                     f"Invalid formal fx metadata for base_currency={base} report_date={report_date}: "
                     "business-day row cannot be carry-forward."
                 )
-            rates[base] = (Decimal(str(mid_rate)), str(source_version or ""))
+            rates[base] = (rate, str(source_version or ""))
             continue
         if not carry_forward or observed_trade_date_str is None:
             raise ValueError(
@@ -729,7 +742,7 @@ def _load_pnl_fx_rates(
                 f"Invalid formal fx carry-forward metadata for base_currency={base} report_date={report_date}: "
                 "carry-forward is only allowed for confirmed non-business-day rows."
             )
-        rates[base] = (Decimal(str(mid_rate)), str(source_version or ""))
+        rates[base] = (rate, str(source_version or ""))
 
     missing = [code for code in required_fx if code not in rates]
     if missing:

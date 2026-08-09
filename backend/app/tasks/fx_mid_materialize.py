@@ -12,6 +12,7 @@ from pathlib import Path
 import duckdb
 import requests
 from backend.app.core_finance.fx_calendar import is_cfets_fx_non_business_day
+from backend.app.core_finance.fx_rates import is_valid_fx_mid_rate
 from backend.app.governance.locks import acquire_lock, resolve_duckdb_writer_lock
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.akshare_adapter import VendorAdapter as AkShareVendorAdapter
@@ -118,6 +119,17 @@ def _replace_fx_mid_rows(
     duckdb_path: str,
     rows: list[tuple[object, ...]],
 ) -> None:
+    for row in rows:
+        try:
+            mid_rate = Decimal(str(row[3]))
+        except (IndexError, InvalidOperation, TypeError, ValueError) as exc:
+            raise ValueError("Invalid formal FX mid_rate in materialize input.") from exc
+        if not is_valid_fx_mid_rate(mid_rate):
+            raise ValueError(
+                "Invalid formal FX mid_rate in materialize input: "
+                "value must be finite and greater than zero."
+            )
+
     canonical_keys = {
         (row[0], str(row[1]).upper(), str(row[2]).upper())
         for row in rows
@@ -195,8 +207,11 @@ def _extract_choice_mid_rate(
 
 
 def _invert_mid_rate(value: Decimal) -> Decimal:
-    if value == 0:
-        raise ValueError("FX vendor returned zero for a reverse pair; cannot normalize reciprocal rate.")
+    if not is_valid_fx_mid_rate(value):
+        raise ValueError(
+            "FX vendor returned an invalid reverse-pair mid_rate; "
+            "value must be finite and greater than zero."
+        )
     return Decimal("1") / value
 
 
@@ -212,6 +227,12 @@ def _normalize_vendor_row(
     vendor_version: str,
     mid_rate_is_normalized: bool = False,
 ) -> tuple[object, ...]:
+    if not is_valid_fx_mid_rate(raw_mid_rate):
+        raise ValueError(
+            f"FX vendor returned invalid mid_rate for pair={candidate.pair_label}; "
+            "value must be finite and greater than zero."
+        )
+
     requested_date = date.fromisoformat(requested_report_date)
     observed_date = date.fromisoformat(observed_trade_date)
     if observed_date > requested_date:
@@ -235,6 +256,11 @@ def _normalize_vendor_row(
         if candidate.invert_result
         else raw_mid_rate
     )
+    if not is_valid_fx_mid_rate(mid_rate):
+        raise ValueError(
+            f"Normalized formal FX mid_rate is invalid for pair={candidate.pair_label}; "
+            "value must be finite and greater than zero."
+        )
     is_business_day = observed_trade_date == requested_report_date
     return (
         requested_report_date,
@@ -476,6 +502,11 @@ def _materialize_fx_mid_rows_under_writer_lock(
                 mid_rate = Decimal(str(row["mid_rate"]).strip())
             except InvalidOperation as exc:
                 raise ValueError(f"Invalid mid_rate value in FX CSV: {row['mid_rate']!r}") from exc
+            if not is_valid_fx_mid_rate(mid_rate):
+                raise ValueError(
+                    f"Invalid mid_rate value in FX CSV: {row['mid_rate']!r}; "
+                    "value must be finite and greater than zero."
+                )
             source_name = str(row.get("source_name") or csv_file.stem).strip()
             normalized_row = (
                 trade_date,
