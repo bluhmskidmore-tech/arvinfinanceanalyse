@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import duckdb
+import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
@@ -914,3 +915,66 @@ def test_positions_optional_report_date_routes_fall_back_to_latest_snapshot_date
     assert details.status_code == 200
     assert details.json()["result"]["report_date"] == "2026-01-12"
     assert details.json()["result"]["bond_count"] == 1
+
+
+@pytest.mark.parametrize(
+    ("path", "params"),
+    [
+        ("/api/positions/bonds", {"report_date": "not-a-date"}),
+        (
+            "/api/positions/counterparty/bonds",
+            {"start_date": "2026-99-01", "end_date": "2026-01-31"},
+        ),
+        ("/api/positions/bonds/sub_types", {"report_date": "2026-02-30"}),
+        (
+            "/api/positions/customer/details",
+            {"customer_name": "发行人甲", "report_date": "bad"},
+        ),
+        (
+            "/api/positions/customer/trend",
+            {"customer_name": "发行人甲", "end_date": "2026-13-01"},
+        ),
+    ],
+)
+def test_positions_routes_reject_malformed_dates_with_422(
+    tmp_path,
+    monkeypatch,
+    path: str,
+    params: dict[str, str],
+) -> None:
+    db = tmp_path / "pos.duckdb"
+    _seed_positions_db(db)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db))
+    client = _authorized_positions_client(tmp_path, monkeypatch)
+
+    response = client.get(path, params=params)
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/positions/counterparty/bonds",
+        "/api/positions/counterparty/interbank/split",
+        "/api/positions/stats/rating",
+        "/api/positions/stats/industry",
+    ],
+)
+def test_positions_range_routes_reject_start_after_end(
+    tmp_path,
+    monkeypatch,
+    path: str,
+) -> None:
+    db = tmp_path / "pos.duckdb"
+    _seed_positions_db(db)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db))
+    client = _authorized_positions_client(tmp_path, monkeypatch)
+
+    response = client.get(
+        path,
+        params={"start_date": "2026-02-01", "end_date": "2026-01-31"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "start_date must be on or before end_date."
