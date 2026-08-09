@@ -5,10 +5,13 @@ from decimal import Decimal
 
 import duckdb
 import pytest
+from fastapi.testclient import TestClient
 
 from backend.app.core_finance.pnl_bridge import build_pnl_bridge_rows
+from backend.app.governance.formal_compute_lineage import FormalLineageMalformedError
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
+from backend.app.repositories.governance_repo import GovernanceRepository
 from backend.app.repositories.pnl_repo import PnlRepository
 from backend.app.repositories.user_scope_repo import UserScopeRepository
 from backend.app.repositories.yield_curve_repo import (
@@ -18,7 +21,11 @@ from backend.app.repositories.yield_curve_repo import (
 )
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from backend.app.services.campisi_attribution_service import _formal_bridge_bond_rows
-from backend.app.services.pnl_bridge_service import _curve_points, pnl_bridge_envelope
+from backend.app.services.pnl_bridge_service import (
+    _curve_points,
+    _resolve_pnl_lineage,
+    pnl_bridge_envelope,
+)
 from tests.helpers import load_module
 from tests.test_pnl_api_contract import (
     _append_balance_build_run,
@@ -103,6 +110,98 @@ def test_curve_points_accepts_real_repository_mapping_and_strictly_converts_valu
 )
 def test_curve_points_fails_closed_for_legacy_or_invalid_curve_shapes(curve):
     assert _curve_points({"curve": curve}) is None
+
+
+def test_pnl_bridge_lineage_propagates_manifest_repository_failure_with_exact_build(
+    monkeypatch,
+):
+    build = {"source_version": "sv", "vendor_version": "vv", "rule_version": "rv"}
+    monkeypatch.setattr(
+        GovernanceRepository,
+        "read_latest_completed_run",
+        lambda *args, **kwargs: build,
+    )
+
+    def fail_manifest_read(*args, **kwargs):
+        raise RuntimeError("manifest repository unavailable")
+
+    monkeypatch.setattr(GovernanceRepository, "read_latest_manifest", fail_manifest_read)
+    with pytest.raises(RuntimeError, match="manifest repository unavailable"):
+        _resolve_pnl_lineage(governance_dir="unused", report_date="2025-12-31")
+
+
+def test_pnl_bridge_lineage_propagates_malformed_manifest_with_exact_build(
+    monkeypatch,
+):
+    build = {"source_version": "sv", "vendor_version": "vv", "rule_version": "rv"}
+    malformed = {
+        "source_version": "sv_manifest",
+        "vendor_version": "vv_manifest",
+        "rule_version": "",
+    }
+    monkeypatch.setattr(
+        GovernanceRepository,
+        "read_latest_completed_run",
+        lambda *args, **kwargs: build,
+    )
+    monkeypatch.setattr(
+        GovernanceRepository,
+        "read_latest_manifest",
+        lambda *args, **kwargs: malformed,
+    )
+
+    with pytest.raises(FormalLineageMalformedError, match="missing rule_version"):
+        _resolve_pnl_lineage(governance_dir="unused", report_date="2025-12-31")
+
+
+def test_pnl_bridge_lineage_allows_exact_build_when_manifest_does_not_exist(
+    monkeypatch,
+):
+    build = {"source_version": "sv", "vendor_version": "vv", "rule_version": "rv"}
+    monkeypatch.setattr(
+        GovernanceRepository,
+        "read_latest_completed_run",
+        lambda *args, **kwargs: build,
+    )
+    monkeypatch.setattr(
+        GovernanceRepository,
+        "read_latest_manifest",
+        lambda *args, **kwargs: None,
+    )
+
+    assert _resolve_pnl_lineage(
+        governance_dir="unused",
+        report_date="2025-12-31",
+    ) == build
+
+
+def test_pnl_bridge_api_fails_closed_when_manifest_repository_is_unavailable(
+    tmp_path,
+    monkeypatch,
+):
+    _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    bridge_service = load_module(
+        "backend.app.services.pnl_bridge_service",
+        "backend/app/services/pnl_bridge_service.py",
+    )
+
+    def fail_lineage_resolution(**kwargs):
+        raise RuntimeError("manifest repository unavailable")
+
+    monkeypatch.setattr(
+        bridge_service,
+        "resolve_formal_manifest_lineage_with_completed_build",
+        fail_lineage_resolution,
+    )
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        raise_server_exceptions=False,
+    )
+
+    response = client.get("/api/pnl/bridge", params={"report_date": "2025-12-31"})
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "manifest repository unavailable"
 
 
 def test_pnl_bridge_envelope_marks_required_curve_conversion_failure_unavailable(
