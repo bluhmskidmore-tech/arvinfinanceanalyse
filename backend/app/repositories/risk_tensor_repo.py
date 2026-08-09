@@ -542,17 +542,16 @@ def load_latest_bond_analytics_lineage(
     governance_dir: str,
     report_date: str,
 ) -> dict[str, str] | None:
-    rows = [
-        row
-        for row in GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
-        if str(row.get("cache_key")) == BOND_ANALYTICS_CACHE_KEY
-        and str(row.get("job_name")) == "bond_analytics_materialize"
-        and str(row.get("status")) == "completed"
-        and str(row.get("report_date")) == report_date
-    ]
-    if not rows:
+    latest = None
+    for row in GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM):
+        if (
+            str(row.get("cache_key")) == BOND_ANALYTICS_CACHE_KEY
+            and str(row.get("job_name")) == "bond_analytics_materialize"
+            and str(row.get("report_date")) == report_date
+        ):
+            latest = row
+    if latest is None or str(latest.get("status")) != "completed":
         return None
-    latest = rows[-1]
     return {
         "source_version": str(latest.get("source_version") or "").strip(),
         "rule_version": str(latest.get("rule_version") or "").strip(),
@@ -565,22 +564,27 @@ def load_latest_bond_analytics_lineage_by_report_date(
     *,
     governance_dir: str,
 ) -> dict[str, dict[str, str]]:
-    lineage_by_report_date: dict[str, dict[str, str]] = {}
+    latest_by_report_date: dict[str, dict[str, object]] = {}
     for row in GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM):
         if (
             str(row.get("cache_key")) != BOND_ANALYTICS_CACHE_KEY
             or str(row.get("job_name")) != "bond_analytics_materialize"
-            or str(row.get("status")) != "completed"
         ):
             continue
         report_date = str(row.get("report_date") or "").strip()
         if not report_date:
             continue
+        latest_by_report_date[report_date] = row
+
+    lineage_by_report_date: dict[str, dict[str, str]] = {}
+    for report_date, latest in latest_by_report_date.items():
+        if str(latest.get("status")) != "completed":
+            continue
         lineage_by_report_date[report_date] = {
-            "source_version": str(row.get("source_version") or "").strip(),
-            "rule_version": str(row.get("rule_version") or "").strip(),
-            "cache_version": str(row.get("cache_version") or "").strip(),
-            "vendor_version": str(row.get("vendor_version") or "vv_none").strip() or "vv_none",
+            "source_version": str(latest.get("source_version") or "").strip(),
+            "rule_version": str(latest.get("rule_version") or "").strip(),
+            "cache_version": str(latest.get("cache_version") or "").strip(),
+            "vendor_version": str(latest.get("vendor_version") or "vv_none").strip() or "vv_none",
         }
     return lineage_by_report_date
 

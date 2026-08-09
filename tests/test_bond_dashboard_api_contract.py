@@ -8,6 +8,8 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+import duckdb
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -456,6 +458,68 @@ def test_bond_dashboard_service_reuses_formal_fact_rows_for_same_report_date(tmp
     service_mod.get_bond_dashboard_portfolio_comparison(date.fromisoformat(REPORT_DATE))
 
     assert FakeBondDashboardRepo.fetch_fact_calls == 1
+
+
+def test_bond_dashboard_direct_consumer_does_not_serve_warmed_facts_after_closure_failure(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from backend.app.schemas.formal_compute_runtime import FormalComputeMaterializeFailure
+    from tests.test_bond_analytics_materialize_flow import (
+        _seed_foreign_bond_snapshot_row,
+        _seed_formal_zqtz_balance_for_cb001,
+        seed_yield_curves_for_bond_analytics_tests,
+    )
+    from tests.test_bond_analytics_service import _configure_and_materialize
+
+    duckdb_path, governance_dir, task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+    dashboard_mod = load_module(
+        "backend.app.services.bond_dashboard_service",
+        "backend/app/services/bond_dashboard_service.py",
+    )
+    dashboard_mod.clear_bond_dashboard_runtime_cache()
+    warmed = dashboard_mod.get_bond_dashboard_headline_kpis(date.fromisoformat(REPORT_DATE))
+    assert warmed["result_meta"]["evidence_rows"] == 3
+    assert warmed["result"]["kpis"]["bond_count"] == 3
+    assert warmed["result"]["kpis"]["total_market_value"]["raw"] > 0
+
+    _seed_foreign_bond_snapshot_row(
+        str(duckdb_path),
+        instrument_code="USD-DASHBOARD-CLOSURE",
+    )
+    _seed_formal_zqtz_balance_for_cb001(
+        str(duckdb_path),
+        instrument_code="USD-DASHBOARD-CLOSURE",
+        face_value_amount=Decimal("700"),
+        market_value_amount=Decimal("720"),
+        amortized_cost_amount=Decimal("686"),
+        accrued_interest_amount=Decimal("7"),
+    )
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            update fact_formal_zqtz_balance_daily
+            set market_value_amount = NULL
+            where report_date = ? and instrument_code = ? and currency_basis = 'CNY'
+            """,
+            [REPORT_DATE, "USD-DASHBOARD-CLOSURE"],
+        )
+    finally:
+        conn.close()
+
+    seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
+    with pytest.raises(FormalComputeMaterializeFailure, match="formal CNY closure unavailable"):
+        task_mod.materialize_bond_analytics_facts.fn(
+            report_date=REPORT_DATE,
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+        )
+
+    after = dashboard_mod.get_bond_dashboard_headline_kpis(date.fromisoformat(REPORT_DATE))
+    assert after["result_meta"]["evidence_rows"] == 0
+    assert after["result"]["kpis"]["bond_count"] == 0
+    assert after["result"]["kpis"]["total_market_value"]["raw"] == 0
 
 
 def test_bond_dashboard_home_summary_builds_child_payloads_without_child_envelopes(tmp_path, monkeypatch) -> None:

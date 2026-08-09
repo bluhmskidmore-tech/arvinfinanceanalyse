@@ -250,6 +250,32 @@ def _replace_test_risk_tensor_row(
         )
 
 
+def _append_bond_analytics_terminal(
+    governance_dir,
+    *,
+    report_date: str,
+    status: str,
+    run_id: str,
+    source_version: str,
+    rule_version: str = "rv_bond_analytics_formal_materialize_v1",
+    cache_version: str = "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v1",
+) -> None:
+    GovernanceRepository(base_dir=governance_dir).append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            "run_id": run_id,
+            "job_name": "bond_analytics_materialize",
+            "status": status,
+            "cache_key": "bond_analytics:materialize:formal",
+            "cache_version": cache_version,
+            "source_version": source_version,
+            "vendor_version": "vv_none",
+            "rule_version": rule_version,
+            "report_date": report_date,
+        },
+    )
+
+
 def test_risk_tensor_service_returns_formal_envelope_with_lineage(tmp_path, monkeypatch):
     duckdb_path, governance_dir, _task_mod = _configure_and_materialize_clean_risk_tensor(tmp_path, monkeypatch)
     service_mod = load_module(
@@ -558,6 +584,68 @@ def test_risk_tensor_cache_invalidates_when_upstream_governance_lineage_changes(
             governance_dir=str(governance_dir),
             report_date=REPORT_DATE,
         )
+
+    get_settings.cache_clear()
+
+
+@pytest.mark.parametrize("latest_status", ["failed", "running", "queued"])
+def test_risk_tensor_blocks_prior_ready_row_until_latest_bond_run_completes(
+    tmp_path,
+    monkeypatch,
+    latest_status: str,
+):
+    duckdb_path, governance_dir, _task_mod = _configure_and_materialize_risk_tensor(
+        tmp_path,
+        monkeypatch,
+    )
+    service_mod = load_module(
+        "backend.app.services.risk_tensor_service",
+        "backend/app/services/risk_tensor_service.py",
+    )
+    service_mod.invalidate_risk_tensor_read_cache()
+    ready = service_mod.risk_tensor_envelope(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        report_date=REPORT_DATE,
+    )
+    assert ready["result_meta"]["formal_use_allowed"] is True
+
+    risk_repo = service_mod.RiskTensorRepository(str(duckdb_path))
+    stored_row = risk_repo.fetch_risk_tensor_row(REPORT_DATE)
+    assert stored_row is not None
+
+    _append_bond_analytics_terminal(
+        governance_dir,
+        report_date=REPORT_DATE,
+        status=latest_status,
+        run_id=f"bond-lineage-{latest_status}",
+        source_version="sv_bond_failed_or_pending",
+    )
+    service_mod.invalidate_risk_tensor_read_cache()
+    with pytest.raises(RuntimeError, match="Bond analytics lineage missing"):
+        service_mod.risk_tensor_envelope(
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+            report_date=REPORT_DATE,
+        )
+
+    _append_bond_analytics_terminal(
+        governance_dir,
+        report_date=REPORT_DATE,
+        status="completed",
+        run_id=f"bond-lineage-recovery-{latest_status}",
+        source_version=str(stored_row["upstream_source_version"]),
+        rule_version=str(stored_row["upstream_rule_version"]),
+        cache_version=str(stored_row["upstream_cache_version"]),
+    )
+    service_mod.invalidate_risk_tensor_read_cache()
+    recovered = service_mod.risk_tensor_envelope(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        report_date=REPORT_DATE,
+    )
+    assert recovered["result_meta"]["formal_use_allowed"] is True
+    assert recovered["result_meta"]["source_version"] == stored_row["source_version"]
 
     get_settings.cache_clear()
 

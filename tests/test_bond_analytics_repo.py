@@ -17,11 +17,11 @@ from backend.app.repositories.snapshot_repo import ensure_snapshot_tables
 REPORT_DATE = "2026-03-31"
 
 
-def _analytics_row():
+def _analytics_row(report_date: str = REPORT_DATE):
     return compute_bond_analytics_rows(
         [
             {
-                "report_date": date.fromisoformat(REPORT_DATE),
+                "report_date": date.fromisoformat(report_date),
                 "instrument_code": "BOND-VALUE-DATE",
                 "currency_code": "CNY",
                 "face_value_native": Decimal("100"),
@@ -36,7 +36,7 @@ def _analytics_row():
                 "is_issuance_like": False,
             }
         ],
-        date.fromisoformat(REPORT_DATE),
+        date.fromisoformat(report_date),
     )[0]
 
 
@@ -75,6 +75,99 @@ def test_load_snapshot_rows_reads_value_date(tmp_path):
     rows = BondAnalyticsRepository(path).load_snapshot_rows(REPORT_DATE)
 
     assert rows[0]["value_date"] == date(2023, 4, 20)
+
+
+def test_load_snapshot_rows_fails_closed_for_duplicate_formal_cny_with_partial_null(tmp_path):
+    """A complete duplicate must not mask a partial formal-CNY row via SUM(NULL)."""
+
+    from tests.test_bond_analytics_materialize_flow import (
+        _seed_bond_snapshot_rows,
+        _seed_formal_zqtz_balance_for_cb001,
+    )
+
+    path = str(tmp_path / "duplicate-formal-cny.duckdb")
+    _seed_bond_snapshot_rows(path)
+    _seed_formal_zqtz_balance_for_cb001(
+        path,
+        market_value_amount=Decimal("1900"),
+        face_value_amount=Decimal("2000"),
+        amortized_cost_amount=Decimal("1880"),
+        accrued_interest_amount=Decimal("20"),
+        accounting_basis="FVOCI",
+    )
+    _seed_formal_zqtz_balance_for_cb001(
+        path,
+        market_value_amount=Decimal("1901"),
+        face_value_amount=Decimal("2001"),
+        amortized_cost_amount=Decimal("1881"),
+        accrued_interest_amount=Decimal("21"),
+        accounting_basis="FVOCI",
+    )
+
+    conn = duckdb.connect(path, read_only=False)
+    try:
+        conn.execute(
+            """
+            update fact_formal_zqtz_balance_daily
+            set accrued_interest_amount = NULL
+            where report_date = ?
+              and instrument_code = ?
+              and market_value_amount = ?
+            """,
+            [REPORT_DATE, "CB-001", Decimal("1901")],
+        )
+    finally:
+        conn.close()
+
+    row = next(
+        row
+        for row in BondAnalyticsRepository(path).load_snapshot_rows(REPORT_DATE)
+        if row["instrument_code"] == "CB-001"
+    )
+
+    assert row["face_value_cny"] is None
+    assert row["market_value_cny"] is None
+    assert row["amortized_cost_cny"] is None
+    assert row["accrued_interest_cny"] is None
+
+
+def test_invalidate_report_date_facts_removes_only_target_bond_and_risk_rows(tmp_path):
+    path = str(tmp_path / "target-date-invalidation.duckdb")
+    repo = BondAnalyticsRepository(path)
+    other_report_date = "2026-02-28"
+
+    with repository_task_write_scope("backend.app.tasks.bond_analytics_repo_test"):
+        repo.replace_bond_analytics_rows(
+            report_date=REPORT_DATE,
+            rows=[_analytics_row(REPORT_DATE)],
+        )
+        repo.replace_bond_analytics_rows(
+            report_date=other_report_date,
+            rows=[_analytics_row(other_report_date)],
+        )
+
+    conn = duckdb.connect(path, read_only=False)
+    try:
+        conn.executemany(
+            "insert into fact_formal_risk_tensor_daily (report_date) values (?)",
+            [(REPORT_DATE,), (other_report_date,)],
+        )
+    finally:
+        conn.close()
+
+    with repository_task_write_scope("backend.app.tasks.bond_analytics_repo_test"):
+        repo.invalidate_report_date_facts(report_date=REPORT_DATE)
+
+    assert repo.fetch_bond_analytics_rows(report_date=REPORT_DATE) == []
+    assert len(repo.fetch_bond_analytics_rows(report_date=other_report_date)) == 1
+    conn = duckdb.connect(path, read_only=True)
+    try:
+        risk_rows = conn.execute(
+            "select report_date from fact_formal_risk_tensor_daily order by report_date"
+        ).fetchall()
+    finally:
+        conn.close()
+    assert risk_rows == [(other_report_date,)]
 
 
 def test_fetch_bond_analytics_treats_missing_legacy_value_date_column_as_null(tmp_path):

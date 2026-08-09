@@ -5,8 +5,10 @@ from decimal import Decimal
 from pathlib import Path
 
 import duckdb
+import pytest
 
 from backend.app.governance.settings import get_settings
+from backend.app.schemas.formal_compute_runtime import FormalComputeMaterializeFailure
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
     GovernanceRepository,
@@ -15,6 +17,7 @@ from tests.helpers import load_module
 from tests.test_bond_analytics_curve_effects import _seed_curve_rows
 from tests.test_bond_analytics_materialize_flow import (
     REPORT_DATE,
+    _seed_foreign_bond_snapshot_row,
     _seed_bond_snapshot_rows,
     _seed_formal_zqtz_balance_for_cb001,
     seed_yield_curves_for_bond_analytics_tests,
@@ -120,6 +123,31 @@ def _append_completed_bond_analytics_build(
             "run_id": f"bond-analytics-test:{report_date}",
             "job_name": service_mod.JOB_NAME,
             "status": "completed",
+            "cache_key": service_mod.CACHE_KEY,
+            "cache_version": service_mod.CACHE_VERSION,
+            "source_version": source_version,
+            "vendor_version": "vv_none",
+            "rule_version": service_mod.RULE_VERSION,
+            "report_date": report_date,
+        },
+    )
+
+
+def _append_bond_analytics_terminal(
+    governance_dir: Path,
+    service_mod,
+    *,
+    report_date: str,
+    status: str,
+    run_id: str,
+    source_version: str,
+) -> None:
+    GovernanceRepository(base_dir=governance_dir).append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            "run_id": run_id,
+            "job_name": service_mod.JOB_NAME,
+            "status": status,
             "cache_key": service_mod.CACHE_KEY,
             "cache_version": service_mod.CACHE_VERSION,
             "source_version": source_version,
@@ -352,6 +380,7 @@ def test_action_attribution_success_response_uses_core_payload_builder(tmp_path,
                 "cost_center": "Desk 7",
                 "asset_class_std": "OCI",
                 "accounting_class": "TPL",
+                "currency_code": "CNY",
                 "source_version": "sv_bond_test",
             }
             if report_date == "2026-02-28":
@@ -910,7 +939,10 @@ def test_bond_analytics_dv01_risk_defaults_to_oci_scope_and_parallel_shocks(tmp_
     get_settings.cache_clear()
 
 
-def test_bond_analytics_service_discloses_cny_amount_basis_and_foreign_fallback_risk(tmp_path, monkeypatch):
+def test_bond_analytics_service_discloses_cny_amount_basis_with_legacy_provenance_warning(
+    tmp_path,
+    monkeypatch,
+):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
@@ -997,8 +1029,403 @@ def test_bond_analytics_service_discloses_cny_amount_basis_and_foreign_fallback_
 
     assert payload["result_meta"]["amount_currency_basis"] == "CNY"
     assert "CNY/RMB basis" in payload["result_meta"]["amount_currency_basis_note"]
-    assert any("row-level fallback markers" in warning for warning in payload["result"]["warnings"])
-    assert any("USD" in warning for warning in payload["result"]["warnings"])
+    assert "complete formal CNY closure" in payload["result_meta"]["amount_currency_basis_note"]
+    assert any(
+        item["instrument_code"] == "USD-CB-SVC"
+        and _numeric_raw(item["market_value"]) == Decimal("720")
+        for item in payload["result"]["items"]
+    )
+    assert any("legacy facts" in warning.lower() for warning in payload["result"]["warnings"])
+    assert any("row-level closure provenance" in warning.lower() for warning in payload["result"]["warnings"])
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_service_read_gate_blocks_warmed_facts_after_closure_failure_and_recovers(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path, governance_dir, task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    repo_mod = load_module(
+        "backend.app.repositories.bond_analytics_repo",
+        "backend/app/repositories/bond_analytics_repo.py",
+    )
+    warmed = service_mod.get_top_holdings(date.fromisoformat(REPORT_DATE), top_n=10)
+    warmed_meta = warmed["result_meta"]
+    assert warmed_meta["formal_use_allowed"] is True
+    assert len(warmed["result"]["items"]) == 3
+
+    _seed_foreign_bond_snapshot_row(
+        str(duckdb_path),
+        instrument_code="USD-SVC-GATE-CLOSURE",
+    )
+    _seed_formal_zqtz_balance_for_cb001(
+        str(duckdb_path),
+        instrument_code="USD-SVC-GATE-CLOSURE",
+        face_value_amount=Decimal("700"),
+        market_value_amount=Decimal("720"),
+        amortized_cost_amount=Decimal("686"),
+        accrued_interest_amount=Decimal("7"),
+    )
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            update fact_formal_zqtz_balance_daily
+            set market_value_amount = NULL
+            where report_date = ? and instrument_code = ? and currency_basis = 'CNY'
+            """,
+            [REPORT_DATE, "USD-SVC-GATE-CLOSURE"],
+        )
+    finally:
+        conn.close()
+
+    seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
+    with pytest.raises(FormalComputeMaterializeFailure, match="formal CNY closure unavailable"):
+        task_mod.materialize_bond_analytics_facts.fn(
+            report_date=REPORT_DATE,
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+        )
+
+    assert repo_mod.BondAnalyticsRepository(str(duckdb_path)).fetch_bond_analytics_rows(
+        report_date=REPORT_DATE,
+    ) == []
+    failed_runs = [
+        row
+        for row in GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
+        if row.get("cache_key") == service_mod.CACHE_KEY
+        and row.get("job_name") == service_mod.JOB_NAME
+        and row.get("report_date") == REPORT_DATE
+    ]
+    assert failed_runs[-1]["status"] == "failed"
+
+    try:
+        after_failure = service_mod.get_top_holdings(date.fromisoformat(REPORT_DATE), top_n=10)
+    except RuntimeError as exc:
+        message = str(exc).lower()
+        assert "bond analytics" in message
+        assert any(token in message for token in ("failed", "unavailable", "stale", "pending"))
+    else:
+        failure_meta = after_failure["result_meta"]
+        assert failure_meta["formal_use_allowed"] is False
+        assert failure_meta["quality_flag"] != "ok"
+        assert failure_meta["source_version"] != warmed_meta["source_version"]
+        assert after_failure["result"]["items"] == []
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            update fact_formal_zqtz_balance_daily
+            set market_value_amount = ?
+            where report_date = ? and instrument_code = ? and currency_basis = 'CNY'
+            """,
+            [Decimal("720"), REPORT_DATE, "USD-SVC-GATE-CLOSURE"],
+        )
+    finally:
+        conn.close()
+
+    seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
+    recovered_payload = task_mod.materialize_bond_analytics_facts.fn(
+        report_date=REPORT_DATE,
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+    assert recovered_payload["status"] == "completed"
+    recovered_runs = [
+        row
+        for row in GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
+        if row.get("cache_key") == service_mod.CACHE_KEY
+        and row.get("job_name") == service_mod.JOB_NAME
+        and row.get("report_date") == REPORT_DATE
+    ]
+    assert recovered_runs[-1]["status"] == "completed"
+
+    recovered = service_mod.get_top_holdings(date.fromisoformat(REPORT_DATE), top_n=10)
+    assert recovered["result_meta"]["formal_use_allowed"] is True
+    assert recovered["result_meta"]["quality_flag"] == "ok"
+    assert any(
+        item["instrument_code"] == "USD-SVC-GATE-CLOSURE"
+        and _numeric_raw(item["market_value"]) == Decimal("720")
+        for item in recovered["result"]["items"]
+    )
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_public_caches_require_latest_completed_terminal_before_cache_hit(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path, governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    repo_mod = load_module(
+        "backend.app.repositories.bond_analytics_repo",
+        "backend/app/repositories/bond_analytics_repo.py",
+    )
+    assert len(repo_mod.BondAnalyticsRepository(str(duckdb_path)).fetch_bond_analytics_rows(
+        report_date=REPORT_DATE,
+    )) == 3
+    completed_rows = [
+        row
+        for row in GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
+        if row.get("cache_key") == service_mod.CACHE_KEY
+        and row.get("job_name") == service_mod.JOB_NAME
+        and row.get("report_date") == REPORT_DATE
+    ]
+    assert completed_rows[-1]["status"] == "completed"
+
+    report_date = date.fromisoformat(REPORT_DATE)
+    cached_lineage = {
+        "source_version": completed_rows[-1]["source_version"],
+        "rule_version": completed_rows[-1]["rule_version"],
+        "cache_version": completed_rows[-1]["cache_version"],
+    }
+    old_return = {
+        "sentinel": "return-ready",
+        "result_meta": {
+            "formal_use_allowed": True,
+            "quality_flag": "ok",
+            **cached_lineage,
+        },
+    }
+    old_action = {
+        "sentinel": "action-ready",
+        "result_meta": {
+            "formal_use_allowed": True,
+            "quality_flag": "ok",
+            **cached_lineage,
+        },
+    }
+    old_benchmark = {
+        "sentinel": "benchmark-ready",
+        "result_meta": {
+            "formal_use_allowed": True,
+            "quality_flag": "ok",
+            **cached_lineage,
+        },
+    }
+    return_key = (REPORT_DATE, "MoM", "all", "all")
+    action_key = (REPORT_DATE, "MoM")
+    benchmark_token = service_mod._duckdb_cache_version_token()
+    benchmark_key = (REPORT_DATE, "MoM", "CDB_INDEX", *benchmark_token)
+    service_mod._return_decomposition_cache.set(return_key, old_return)
+    service_mod._action_attribution_cache.set(action_key, old_action)
+    service_mod._benchmark_excess_cache.set(benchmark_key, old_benchmark)
+    db_token_before = service_mod._duckdb_cache_version_token()
+
+    _append_bond_analytics_terminal(
+        governance_dir,
+        service_mod,
+        report_date=REPORT_DATE,
+        status="failed",
+        run_id="bond-cache-bypass-failed",
+        source_version="sv_bond_failed_cache_bypass",
+    )
+    assert service_mod._duckdb_cache_version_token() == db_token_before
+
+    with pytest.raises(RuntimeError, match="Bond analytics formal build terminal unavailable"):
+        service_mod.get_return_decomposition(report_date)
+    with pytest.raises(RuntimeError, match="Bond analytics formal build terminal unavailable"):
+        service_mod.get_action_attribution(report_date)
+    with pytest.raises(RuntimeError, match="Bond analytics formal build terminal unavailable"):
+        service_mod.get_benchmark_excess(report_date)
+
+    old_benchmark_many = {
+        REPORT_DATE: old_benchmark,
+    }
+    service_mod._benchmark_excess_cache.set(benchmark_key, old_benchmark_many[REPORT_DATE])
+    with pytest.raises(RuntimeError, match="Bond analytics formal build terminal unavailable"):
+        service_mod.get_benchmark_excess_many([report_date])
+
+    _append_bond_analytics_terminal(
+        governance_dir,
+        service_mod,
+        report_date=REPORT_DATE,
+        status="completed",
+        run_id="bond-cache-bypass-recovered",
+        source_version="sv_bond_snap_1",
+    )
+    assert service_mod.get_return_decomposition(report_date) == old_return
+    assert service_mod.get_action_attribution(report_date) == old_action
+    assert service_mod.get_benchmark_excess(report_date) == old_benchmark_many[REPORT_DATE]
+    assert service_mod.get_benchmark_excess_many([report_date]) == old_benchmark_many
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_public_caches_bypass_older_completed_lineage(
+    tmp_path,
+    monkeypatch,
+):
+    _duckdb_path, governance_dir, _task_mod = _configure_and_materialize(
+        tmp_path,
+        monkeypatch,
+    )
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    report_date = date.fromisoformat(REPORT_DATE)
+
+    warmed_return = service_mod.get_return_decomposition(report_date)
+    warmed_action = service_mod.get_action_attribution(report_date)
+    warmed_benchmark = service_mod.get_benchmark_excess(report_date)
+    assert warmed_return["result_meta"]["source_version"] == "sv_bond_snap_1"
+    assert warmed_action["result_meta"]["source_version"] == "sv_bond_snap_1"
+    assert warmed_benchmark["result_meta"]["source_version"] == "sv_bond_snap_1"
+
+    newer_source_version = "sv_bond_newer_completed_cross_process"
+    _append_bond_analytics_terminal(
+        governance_dir,
+        service_mod,
+        report_date=REPORT_DATE,
+        status="completed",
+        run_id="bond-cache-newer-completed",
+        source_version=newer_source_version,
+    )
+
+    refreshed_benchmark_many = service_mod.get_benchmark_excess_many([report_date])
+    refreshed_return = service_mod.get_return_decomposition(report_date)
+    refreshed_action = service_mod.get_action_attribution(report_date)
+
+    assert (
+        refreshed_benchmark_many[REPORT_DATE]["result_meta"]["source_version"]
+        == newer_source_version
+    )
+    assert refreshed_return["result_meta"]["source_version"] == newer_source_version
+    assert refreshed_action["result_meta"]["source_version"] == newer_source_version
+    assert refreshed_return is not warmed_return
+    assert refreshed_action is not warmed_action
+    assert refreshed_benchmark_many[REPORT_DATE] is not warmed_benchmark
+    get_settings.cache_clear()
+
+
+@pytest.mark.parametrize("governance_mode", ["empty", "no_matching"])
+def test_bond_analytics_public_caches_reject_missing_same_date_lineage(
+    tmp_path,
+    monkeypatch,
+    governance_mode: str,
+):
+    duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    active_governance_dir = tmp_path / f"governance-{governance_mode}"
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(active_governance_dir))
+    get_settings.cache_clear()
+
+    report_date = date.fromisoformat(REPORT_DATE)
+    token = service_mod._duckdb_cache_version_token()
+    service_mod._return_decomposition_cache.set(
+        (REPORT_DATE, "MoM", "all", "all"),
+        {"sentinel": "return-ready"},
+    )
+    service_mod._action_attribution_cache.set(
+        (REPORT_DATE, "MoM"),
+        {"sentinel": "action-ready"},
+    )
+    service_mod._benchmark_excess_cache.set(
+        (REPORT_DATE, "MoM", "CDB_INDEX", *token),
+        {"sentinel": "benchmark-ready"},
+    )
+    if governance_mode == "no_matching":
+        _append_bond_analytics_terminal(
+            active_governance_dir,
+            service_mod,
+            report_date="2026-04-30",
+            status="completed",
+            run_id="bond-cache-missing-date",
+            source_version="sv_other_date",
+        )
+
+    calls = (
+        lambda: service_mod.get_return_decomposition(report_date),
+        lambda: service_mod.get_action_attribution(report_date),
+        lambda: service_mod.get_benchmark_excess(report_date),
+        lambda: service_mod.get_benchmark_excess_many([report_date]),
+    )
+    for call in calls:
+        with pytest.raises(RuntimeError, match="Bond analytics formal build terminal unavailable"):
+            call()
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_public_caches_reject_completed_lineage_without_source_version(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path, governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    report_date = date.fromisoformat(REPORT_DATE)
+    token = service_mod._duckdb_cache_version_token()
+    service_mod._return_decomposition_cache.set(
+        (REPORT_DATE, "MoM", "all", "all"),
+        {"sentinel": "return-ready"},
+    )
+    service_mod._action_attribution_cache.set(
+        (REPORT_DATE, "MoM"),
+        {"sentinel": "action-ready"},
+    )
+    service_mod._benchmark_excess_cache.set(
+        (REPORT_DATE, "MoM", "CDB_INDEX", *token),
+        {"sentinel": "benchmark-ready"},
+    )
+    _append_bond_analytics_terminal(
+        governance_dir,
+        service_mod,
+        report_date=REPORT_DATE,
+        status="completed",
+        run_id="bond-cache-missing-source",
+        source_version="",
+    )
+
+    calls = (
+        lambda: service_mod.get_return_decomposition(report_date),
+        lambda: service_mod.get_action_attribution(report_date),
+        lambda: service_mod.get_benchmark_excess(report_date),
+        lambda: service_mod.get_benchmark_excess_many([report_date]),
+    )
+    for call in calls:
+        with pytest.raises(RuntimeError, match="Bond analytics formal build terminal unavailable"):
+            call()
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_cache_miss_without_governance_keeps_empty_endpoint_semantics(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path = tmp_path / "empty-no-governance.duckdb"
+    governance_dir = tmp_path / "empty-no-governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    payload = service_mod.get_return_decomposition(
+        date(2099, 12, 31),
+        period_type="MoM",
+        asset_class="all",
+        accounting_class="all",
+    )
+
+    assert payload["result"]["bond_count"] == 0
+    assert payload["result"]["bond_details"] == []
+    assert payload["result_meta"]["basis"] == "formal"
+    assert any("not yet populated" in warning for warning in payload["result"]["warnings"])
     get_settings.cache_clear()
 
 
@@ -1227,6 +1654,7 @@ def test_bond_analytics_dv01_movement_explains_oci_delta_with_prior_report_date(
                 "rating": "AAA",
                 "tenor_bucket": "3-5Y",
                 "accounting_class": "OCI",
+                "currency_code": "CNY",
                 "face_value": Decimal("1000000"),
                 "market_value": Decimal("1005000"),
                 "modified_duration": Decimal("3"),
@@ -1243,6 +1671,7 @@ def test_bond_analytics_dv01_movement_explains_oci_delta_with_prior_report_date(
                 "rating": "AA+",
                 "tenor_bucket": "1-3Y",
                 "accounting_class": "OCI",
+                "currency_code": "CNY",
                 "face_value": Decimal("500000"),
                 "market_value": Decimal("501000"),
                 "modified_duration": Decimal("2"),
@@ -1457,6 +1886,7 @@ def test_bond_analytics_dv01_action_plan_flags_risk_and_hedge_size(tmp_path, mon
             "rating": "AAA",
             "tenor_bucket": "7-10Y",
             "accounting_class": "OCI",
+            "currency_code": "CNY",
             "face_value": Decimal("1000000"),
             "market_value": Decimal("1005000"),
             "modified_duration": Decimal("8"),
@@ -1473,6 +1903,7 @@ def test_bond_analytics_dv01_action_plan_flags_risk_and_hedge_size(tmp_path, mon
             "rating": "AA+",
             "tenor_bucket": "7-10Y",
             "accounting_class": "OCI",
+            "currency_code": "CNY",
             "face_value": Decimal("500000"),
             "market_value": Decimal("501000"),
             "modified_duration": Decimal("7"),
@@ -1586,6 +2017,7 @@ def test_bond_analytics_dv01_action_plan_uses_formal_limit_config(tmp_path, monk
             "rating": "AAA",
             "tenor_bucket": "7-10Y",
             "accounting_class": "OCI",
+            "currency_code": "CNY",
             "face_value": Decimal("1000000"),
             "market_value": Decimal("1005000"),
             "modified_duration": Decimal("8"),
@@ -1602,6 +2034,7 @@ def test_bond_analytics_dv01_action_plan_uses_formal_limit_config(tmp_path, monk
             "rating": "AA+",
             "tenor_bucket": "7-10Y",
             "accounting_class": "OCI",
+            "currency_code": "CNY",
             "face_value": Decimal("500000"),
             "market_value": Decimal("501000"),
             "modified_duration": Decimal("7"),

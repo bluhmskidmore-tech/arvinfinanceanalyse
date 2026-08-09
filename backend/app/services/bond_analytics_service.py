@@ -204,8 +204,11 @@ BOND_ANALYTICS_FACT_TABLE = "fact_formal_bond_analytics_daily"
 EMPTY_WARNING = "DuckDB bond analytics fact table not yet populated — returning empty result"
 BOND_ANALYTICS_AMOUNT_CURRENCY_BASIS = "CNY"
 BOND_ANALYTICS_AMOUNT_CURRENCY_BASIS_NOTE = (
-    "Amount fields in this response, where present, are disclosed on a CNY/RMB basis."
+    "Amount fields in this response are disclosed on a CNY/RMB basis. CNY-identity rows use native CNY amounts; "
+    "foreign-currency rows require complete formal CNY closure during current materialization."
 )
+# Compatibility warning retained because legacy facts do not carry row-level
+# formal-CNY-closure provenance.
 BOND_ANALYTICS_FOREIGN_CURRENCY_FALLBACK_WARNING = (
     "Foreign-currency bond positions are disclosed on a CNY/RMB basis where formal CNY closure is available. "
     "The current API model does not expose row-level fallback markers; if upstream formal CNY closure is missing "
@@ -600,8 +603,13 @@ def _overlay_return_decomposition_trading_pnl517(
 
 
 def _lineage(report_date: str, rows: list[dict[str, object]]) -> dict[str, str]:
+    settings = get_settings()
+    _require_latest_completed_bond_analytics_run(
+        report_date,
+        require_present=bool(rows),
+    )
     return resolve_formal_facts_lineage(
-        governance_dir=str(get_settings().governance_path),
+        governance_dir=str(settings.governance_path),
         cache_key=CACHE_KEY,
         job_name=JOB_NAME,
         report_date=report_date,
@@ -638,10 +646,78 @@ def _latest_governance_row(
             continue
         if report_date is not None and str(row.get("report_date") or "").strip() != report_date:
             continue
-        if completed_only and str(row.get("status") or "").strip() != "completed":
+        if completed_only and str(row.get("status") or "").strip().lower() != "completed":
             continue
         return row
     return {}
+
+
+def _require_latest_completed_bond_analytics_run(
+    report_date: str,
+    build_rows: list[dict[str, object]] | None = None,
+    *,
+    require_present: bool = False,
+    cache_hit: bool = False,
+) -> dict[str, object]:
+    if build_rows is None:
+        settings = get_settings()
+        build_rows = GovernanceRepository(base_dir=settings.governance_path).read_all(
+            CACHE_BUILD_RUN_STREAM
+        )
+    latest_build = _latest_governance_row(
+        build_rows,
+        cache_key=CACHE_KEY,
+        job_name=JOB_NAME,
+        report_date=report_date,
+    )
+    if not latest_build:
+        if require_present:
+            cache_context = " for cached result" if cache_hit else ""
+            raise RuntimeError(
+                "Bond analytics formal build terminal unavailable "
+                f"for report_date={report_date}: no completed run{cache_context}; refusing stale lineage."
+            )
+        return latest_build
+    if latest_build and str(latest_build.get("status") or "").strip().lower() != "completed":
+        status = str(latest_build.get("status") or "unknown").strip().lower() or "unknown"
+        raise RuntimeError(
+            "Bond analytics formal build terminal unavailable "
+            f"for report_date={report_date}: latest status={status}; refusing stale lineage."
+        )
+    if not str(latest_build.get("source_version") or "").strip():
+        raise RuntimeError(
+            "Bond analytics formal build terminal unavailable "
+            f"for report_date={report_date}: completed run missing source_version; refusing stale lineage."
+        )
+    return latest_build
+
+
+def _cached_result_matches_latest_completed_run(
+    cached_result: object,
+    latest_build: dict[str, object],
+) -> bool:
+    if not isinstance(cached_result, dict):
+        return False
+    result_meta = cached_result.get("result_meta")
+    if not isinstance(result_meta, dict):
+        return False
+    for field_name in ("source_version", "rule_version", "cache_version"):
+        latest_value = str(latest_build.get(field_name) or "").strip()
+        cached_value = str(result_meta.get(field_name) or "").strip()
+        if latest_value and not _composite_lineage_contains(cached_value, latest_value):
+            return False
+    return True
+
+
+def _composite_lineage_contains(composite_value: str, expected_value: str) -> bool:
+    if not composite_value or not expected_value:
+        return False
+    return (
+        composite_value == expected_value
+        or composite_value.startswith(f"{expected_value}__")
+        or composite_value.endswith(f"__{expected_value}")
+        or f"__{expected_value}__" in composite_value
+    )
 
 
 def _lineage_from_governance_rows(
@@ -651,6 +727,11 @@ def _lineage_from_governance_rows(
     build_rows: list[dict[str, object]],
     manifest_rows: list[dict[str, object]],
 ) -> dict[str, str]:
+    _require_latest_completed_bond_analytics_run(
+        report_date,
+        build_rows=build_rows,
+        require_present=bool(rows),
+    )
     latest_build = _latest_governance_row(
         build_rows,
         cache_key=CACHE_KEY,
@@ -713,14 +794,15 @@ def _meta(result_kind: str, report_date: date, rows: list[dict[str, object]]):
 
 
 def _is_cny_currency(currency_code: object) -> bool:
-    return str(currency_code or "").strip().upper() in {"", "CNY", "CNX", "RMB"}
+    return str(currency_code or "").strip().upper() in {"CNY", "CNH", "RMB"}
 
 
 def _foreign_currency_codes(rows: list[dict[str, object]]) -> list[str]:
     return sorted(
         {
-            str(row.get("currency_code") or "").strip().upper()
+            str(row.get("currency_code") or "").strip().upper() or "<blank>"
             for row in rows
+            if "currency_code" in row
             if not _is_cny_currency(row.get("currency_code"))
         }
     )
@@ -748,6 +830,8 @@ def _with_bond_amount_disclosure(
     if foreign_codes:
         warning = (
             f"{BOND_ANALYTICS_FOREIGN_CURRENCY_FALLBACK_WARNING} "
+            "Legacy facts may not expose row-level closure provenance and can predate current fail-closed "
+            "materialization. "
             f"Detected foreign currencies: {', '.join(foreign_codes)}."
         )
         result_payload["warnings"] = _ordered_unique_warnings([*warnings, warning])
@@ -1378,7 +1462,15 @@ def _get_return_decomposition(
     )
     hit, cached = _return_decomposition_cache.get(_cache_key)
     if hit:
-        return cached
+        latest_build = _require_latest_completed_bond_analytics_run(
+            report_date.isoformat(),
+            require_present=True,
+            cache_hit=True,
+        )
+        if _cached_result_matches_latest_completed_run(cached, latest_build):
+            return cached
+        _return_decomposition_cache.invalidate(_cache_key)
+    _require_latest_completed_bond_analytics_run(report_date.isoformat())
 
     period_start, period_end = resolve_period(report_date, period_type)
     rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat(), asset_class=asset_class, accounting_class=accounting_class)
@@ -2172,7 +2264,15 @@ def get_benchmark_excess(report_date: date, period_type: str = "MoM", benchmark_
     )
     hit, cached = _benchmark_excess_cache.get(_cache_key)
     if hit:
-        return cached
+        latest_build = _require_latest_completed_bond_analytics_run(
+            report_date.isoformat(),
+            require_present=True,
+            cache_hit=True,
+        )
+        if _cached_result_matches_latest_completed_run(cached, latest_build):
+            return cached
+        _benchmark_excess_cache.invalidate(_cache_key)
+    _require_latest_completed_bond_analytics_run(report_date.isoformat())
 
     period_start, period_end = resolve_period(report_date, period_type)
     rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat())
@@ -2223,19 +2323,38 @@ def get_benchmark_excess_many(
     if not requested_dates:
         return {}
     cache_token = _duckdb_cache_version_token()
+    settings = get_settings()
+    governance_repo = GovernanceRepository(base_dir=settings.governance_path)
+    build_rows = governance_repo.read_all(CACHE_BUILD_RUN_STREAM)
     out: dict[str, dict] = {}
     missing_dates: list[date] = []
     for report_date in requested_dates:
+        report_date_text = report_date.isoformat()
         cache_key = (
-            report_date.isoformat(),
+            report_date_text,
             period_type,
             benchmark_id,
             *cache_token,
         )
         hit, cached = _benchmark_excess_cache.get(cache_key)
         if hit:
-            out[report_date.isoformat()] = cached
+            latest_build = _require_latest_completed_bond_analytics_run(
+                report_date_text,
+                build_rows=build_rows,
+                require_present=True,
+                cache_hit=True,
+            )
+            if _cached_result_matches_latest_completed_run(cached, latest_build):
+                out[report_date_text] = cached
+            else:
+                _benchmark_excess_cache.invalidate(cache_key)
+                missing_dates.append(report_date)
         else:
+            _require_latest_completed_bond_analytics_run(
+                report_date_text,
+                build_rows=build_rows,
+                require_present=False,
+            )
             missing_dates.append(report_date)
     if not missing_dates:
         return out
@@ -2244,9 +2363,6 @@ def get_benchmark_excess_many(
     rows_by_date = repo.fetch_bond_analytics_rows_for_dates(
         report_dates=[value.isoformat() for value in missing_dates]
     )
-    settings = get_settings()
-    governance_repo = GovernanceRepository(base_dir=settings.governance_path)
-    build_rows = governance_repo.read_all(CACHE_BUILD_RUN_STREAM)
     manifest_rows = governance_repo.read_all(CACHE_MANIFEST_STREAM)
 
     period_by_date = {
@@ -3854,7 +3970,15 @@ def get_action_attribution(report_date: date, period_type: str = "MoM") -> dict:
     _cache_key = (report_date.isoformat(), period_type)
     hit, cached = _action_attribution_cache.get(_cache_key)
     if hit:
-        return cached
+        latest_build = _require_latest_completed_bond_analytics_run(
+            report_date.isoformat(),
+            require_present=True,
+            cache_hit=True,
+        )
+        if _cached_result_matches_latest_completed_run(cached, latest_build):
+            return cached
+        _action_attribution_cache.invalidate(_cache_key)
+    _require_latest_completed_bond_analytics_run(report_date.isoformat())
 
     period_start, period_end = resolve_period(report_date, period_type)
     repo = _repo()

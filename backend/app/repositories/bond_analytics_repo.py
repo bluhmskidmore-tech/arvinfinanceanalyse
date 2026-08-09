@@ -18,6 +18,7 @@ from backend.app.repositories.task_write_guard import require_repository_task_wr
 FACT_TABLE = "fact_formal_bond_analytics_daily"
 SNAPSHOT_TABLE = "zqtz_bond_daily_snapshot"
 BALANCE_ZQTZ_FACT_TABLE = "fact_formal_zqtz_balance_daily"
+RISK_TENSOR_FACT_TABLE = "fact_formal_risk_tensor_daily"
 
 _DASHBOARD_ASSET_GROUP_COLUMNS = frozenset({"bond_type", "rating", "portfolio_name", "tenor_bucket"})
 _DURATION_DENOMINATOR_SQL = (
@@ -174,11 +175,6 @@ class BondAnalyticsRepository:
         try:
             if not _table_exists(conn, self.path, SNAPSHOT_TABLE):
                 return []
-            snapshot_market_value_cny_expr = (
-                "s.market_value_cny"
-                if _column_exists(conn, self.path, SNAPSHOT_TABLE, "market_value_cny")
-                else "null"
-            )
             value_date_expr = (
                 "s.value_date"
                 if _column_exists(conn, self.path, SNAPSHOT_TABLE, "value_date")
@@ -186,10 +182,13 @@ class BondAnalyticsRepository:
             )
             balance_join = ""
             accounting_basis_expr = "null"
-            face_value_cny_expr = "s.face_value_native"
-            market_value_cny_expr = snapshot_market_value_cny_expr
-            amortized_cost_cny_expr = "s.amortized_cost_native"
-            accrued_interest_cny_expr = "s.accrued_interest_native"
+            # CNY closure is sourced only from the governed formal balance fact.
+            # Keep all CNY projections NULL until a matching formal row exists;
+            # the engine intentionally uses native values only for CNY-identity rows.
+            face_value_cny_expr = "null"
+            market_value_cny_expr = "null"
+            amortized_cost_cny_expr = "null"
+            accrued_interest_cny_expr = "null"
             if _table_exists(conn, self.path, BALANCE_ZQTZ_FACT_TABLE):
                 balance_join = f"""
                 left join (
@@ -209,10 +208,38 @@ class BondAnalyticsRepository:
                     is_issuance_like_key,
                     currency_code_key,
                     max(accounting_basis) as accounting_basis,
-                    sum(face_value_amount) as face_value_amount,
-                    sum(market_value_amount) as market_value_amount,
-                    sum(amortized_cost_amount) as amortized_cost_amount,
-                    sum(accrued_interest_amount) as accrued_interest_amount
+                    case
+                      when count(*) = count(face_value_amount)
+                       and count(*) = count(market_value_amount)
+                       and count(*) = count(amortized_cost_amount)
+                       and count(*) = count(accrued_interest_amount)
+                      then sum(face_value_amount)
+                      else null
+                    end as face_value_amount,
+                    case
+                      when count(*) = count(face_value_amount)
+                       and count(*) = count(market_value_amount)
+                       and count(*) = count(amortized_cost_amount)
+                       and count(*) = count(accrued_interest_amount)
+                      then sum(market_value_amount)
+                      else null
+                    end as market_value_amount,
+                    case
+                      when count(*) = count(face_value_amount)
+                       and count(*) = count(market_value_amount)
+                       and count(*) = count(amortized_cost_amount)
+                       and count(*) = count(accrued_interest_amount)
+                      then sum(amortized_cost_amount)
+                      else null
+                    end as amortized_cost_amount,
+                    case
+                      when count(*) = count(face_value_amount)
+                       and count(*) = count(market_value_amount)
+                       and count(*) = count(amortized_cost_amount)
+                       and count(*) = count(accrued_interest_amount)
+                      then sum(accrued_interest_amount)
+                      else null
+                    end as accrued_interest_amount
                   from (
                     select
                       cast(report_date as varchar) as report_date,
@@ -270,10 +297,10 @@ class BondAnalyticsRepository:
                  and upper(trim(coalesce(s.currency_code, ''))) = b.currency_code_key
                 """
                 accounting_basis_expr = "b.accounting_basis"
-                face_value_cny_expr = "coalesce(b.face_value_amount, s.face_value_native)"
-                market_value_cny_expr = f"coalesce(b.market_value_amount, {snapshot_market_value_cny_expr})"
-                amortized_cost_cny_expr = "coalesce(b.amortized_cost_amount, s.amortized_cost_native)"
-                accrued_interest_cny_expr = "coalesce(b.accrued_interest_amount, s.accrued_interest_native)"
+                face_value_cny_expr = "b.face_value_amount"
+                market_value_cny_expr = "b.market_value_amount"
+                amortized_cost_cny_expr = "b.amortized_cost_amount"
+                accrued_interest_cny_expr = "b.accrued_interest_amount"
             rows = conn.execute(
                 f"""
                 select s.report_date, s.instrument_code, s.instrument_name, s.portfolio_name, s.cost_center,
@@ -373,6 +400,30 @@ class BondAnalyticsRepository:
                         )
                         for row in rows
                     ],
+                )
+            conn.execute("commit")
+        except Exception:
+            conn.execute("rollback")
+            raise
+        finally:
+            conn.close()
+
+    def invalidate_report_date_facts(self, *, report_date: str) -> None:
+        """Remove stale bond/risk facts for one report date after closure failure."""
+
+        require_repository_task_write_scope("invalidate_report_date_facts")
+        conn = duckdb.connect(self.path, read_only=False)
+        try:
+            conn.execute("begin transaction")
+            if _table_exists(conn, self.path, FACT_TABLE):
+                conn.execute(
+                    f"delete from {FACT_TABLE} where report_date = ?",
+                    [report_date],
+                )
+            if _table_exists(conn, self.path, RISK_TENSOR_FACT_TABLE):
+                conn.execute(
+                    f"delete from {RISK_TENSOR_FACT_TABLE} where report_date = ?",
+                    [report_date],
                 )
             conn.execute("commit")
         except Exception:

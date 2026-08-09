@@ -16,6 +16,41 @@ def _module():
     )
 
 
+def _foreign_bond_snapshot_row() -> dict[str, object]:
+    return {
+        "report_date": date(2026, 3, 31),
+        "instrument_code": "USD-CLOSURE-001",
+        "instrument_name": "USD formal CNY closure bond",
+        "portfolio_name": "Portfolio",
+        "cost_center": "CC-USD",
+        "account_category": "bank book",
+        "accounting_basis": "FVOCI",
+        "asset_class": "credit bond",
+        "bond_type": "corporate bond",
+        "issuer_name": "Issuer",
+        "industry_name": "Industry",
+        "rating": "A",
+        "currency_code": "USD",
+        "face_value_native": Decimal("100"),
+        "face_value_cny": Decimal("700"),
+        "market_value_native": Decimal("100"),
+        "market_value_cny": Decimal("720"),
+        "amortized_cost_native": Decimal("98"),
+        "amortized_cost_cny": Decimal("686"),
+        "accrued_interest_native": Decimal("1"),
+        "accrued_interest_cny": Decimal("7"),
+        "coupon_rate": Decimal("3.0"),
+        "ytm_value": Decimal("4.0"),
+        "maturity_date": date(2031, 3, 31),
+        "interest_mode": "annual",
+        "is_issuance_like": False,
+        "source_version": "sv_snapshot_usd",
+        "rule_version": "rv_snapshot_usd",
+        "ingest_batch_id": "ib_usd",
+        "trace_id": "trace_usd",
+    }
+
+
 def test_compute_bond_analytics_rows_filters_issuance_like_and_derives_credit_metrics() -> None:
     module = _module()
     report_date = date(2026, 3, 31)
@@ -172,7 +207,9 @@ def test_compute_bond_analytics_rows_uses_formal_cny_values_and_accounting_basis
             "market_value_native": Decimal("100"),
             "market_value_cny": Decimal("720"),
             "amortized_cost_native": Decimal("98"),
+            "amortized_cost_cny": Decimal("686"),
             "accrued_interest_native": Decimal("1"),
+            "accrued_interest_cny": Decimal("7"),
             "coupon_rate": Decimal("3.0"),
             "ytm_value": Decimal("4.0"),
             "maturity_date": date(2031, 3, 31),
@@ -194,53 +231,88 @@ def test_compute_bond_analytics_rows_uses_formal_cny_values_and_accounting_basis
     assert row.face_value == Decimal("700")
     assert row.market_value_native == Decimal("100")
     assert row.market_value == Decimal("720")
+    assert row.amortized_cost == Decimal("686")
+    assert row.accrued_interest == Decimal("7")
     assert row.dv01 == Decimal("700") * row.modified_duration / Decimal("10000")
 
 
-def test_compute_bond_analytics_rows_falls_back_to_native_face_value_when_cny_face_missing() -> None:
+@pytest.mark.parametrize("identity_currency", ["CNY", "RMB"])
+def test_compute_bond_analytics_rows_keeps_cny_rmb_identity_on_native_amounts(
+    identity_currency: str,
+) -> None:
     module = _module()
-    report_date = date(2026, 3, 31)
-    snapshot_rows = [
-        {
-            "report_date": report_date,
-            "instrument_code": "USD-NATIVE-FACE-001",
-            "instrument_name": "USD bond without formal CNY face",
-            "portfolio_name": "Portfolio",
-            "cost_center": "CC-USD",
-            "account_category": "bank book",
-            "accounting_basis": "FVOCI",
-            "asset_class": "credit bond",
-            "bond_type": "corporate bond",
-            "issuer_name": "Issuer",
-            "industry_name": "Industry",
-            "rating": "A",
-            "currency_code": "USD",
-            "face_value_native": Decimal("100"),
-            "market_value_native": Decimal("98"),
-            "market_value_cny": Decimal("686"),
-            "amortized_cost_native": Decimal("97"),
-            "amortized_cost_cny": Decimal("679"),
-            "accrued_interest_native": Decimal("1"),
-            "accrued_interest_cny": Decimal("7"),
-            "coupon_rate": Decimal("3.0"),
-            "ytm_value": Decimal("4.0"),
-            "maturity_date": date(2031, 3, 31),
-            "interest_mode": "annual",
-            "is_issuance_like": False,
-            "source_version": "sv_snapshot_usd",
-            "rule_version": "rv_snapshot_usd",
-            "ingest_batch_id": "ib_usd",
-            "trace_id": "trace_usd",
-        }
-    ]
+    snapshot_row = _foreign_bond_snapshot_row()
+    snapshot_row["currency_code"] = identity_currency
+    for field_name in (
+        "face_value_cny",
+        "market_value_cny",
+        "amortized_cost_cny",
+        "accrued_interest_cny",
+    ):
+        snapshot_row.pop(field_name)
 
-    row = module.compute_bond_analytics_rows(snapshot_rows, report_date)[0]
+    row = module.compute_bond_analytics_rows(
+        [snapshot_row],
+        date(2026, 3, 31),
+    )[0]
 
+    assert row.currency_code == identity_currency
     assert row.face_value == Decimal("100")
-    assert row.market_value == Decimal("686")
-    assert row.accrued_interest == Decimal("7")
-    assert row.dv01 == Decimal("100") * row.modified_duration / Decimal("10000")
-    assert row.dv01 != row.market_value * row.modified_duration / Decimal("10000")
+    assert row.market_value == Decimal("100")
+    assert row.amortized_cost == Decimal("98")
+    assert row.accrued_interest == Decimal("1")
+
+
+def test_compute_bond_analytics_rows_requires_formal_cny_closure_for_cnx() -> None:
+    module = _module()
+    snapshot_row = _foreign_bond_snapshot_row()
+    snapshot_row["currency_code"] = "CNX"
+    for field_name in (
+        "face_value_cny",
+        "market_value_cny",
+        "amortized_cost_cny",
+        "accrued_interest_cny",
+    ):
+        snapshot_row.pop(field_name)
+
+    with pytest.raises(
+        ValueError,
+        match=r"formal CNY closure unavailable:.*instrument_code=USD-CLOSURE-001.*face_value_cny",
+    ):
+        module.compute_bond_analytics_rows(
+            [snapshot_row],
+            date(2026, 3, 31),
+        )
+
+
+@pytest.mark.parametrize(
+    ("missing_field", "invalid_value"),
+    [
+        ("face_value_cny", None),
+        ("market_value_cny", None),
+        ("amortized_cost_cny", None),
+        ("accrued_interest_cny", None),
+        ("face_value_cny", ""),
+        ("face_value_cny", Decimal("NaN")),
+        ("market_value_cny", Decimal("Infinity")),
+    ],
+)
+def test_compute_bond_analytics_rows_rejects_foreign_bond_without_formal_cny_closure(
+    missing_field: str,
+    invalid_value: object,
+) -> None:
+    module = _module()
+    snapshot_row = _foreign_bond_snapshot_row()
+    snapshot_row[missing_field] = invalid_value
+
+    with pytest.raises(
+        ValueError,
+        match=rf"formal CNY closure unavailable:.*instrument_code=USD-CLOSURE-001.*{missing_field}",
+    ):
+        module.compute_bond_analytics_rows(
+            [snapshot_row],
+            date(2026, 3, 31),
+        )
 
 
 def test_compute_bond_analytics_rows_uses_formal_cny_cost_and_accrued_for_foreign_bond() -> None:
@@ -685,9 +757,13 @@ def test_compute_bond_analytics_rows_backfills_missing_lineage_with_deterministi
             "rating": "AA+",
             "currency_code": "USD",
             "face_value_native": Decimal("50"),
+            "face_value_cny": Decimal("350"),
             "market_value_native": Decimal("48"),
+            "market_value_cny": Decimal("336"),
             "amortized_cost_native": Decimal("49"),
+            "amortized_cost_cny": Decimal("343"),
             "accrued_interest_native": Decimal("0.4"),
+            "accrued_interest_cny": Decimal("2.8"),
             "coupon_rate": None,
             "ytm_value": None,
             "maturity_date": None,

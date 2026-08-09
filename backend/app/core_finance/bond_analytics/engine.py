@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from backend.app.core_finance.bond_analytics.common import (
@@ -27,6 +27,46 @@ from backend.app.core_finance.interest_mode import (
 MISSING_SOURCE_VERSION = "sv_bond_analytics_snapshot_missing"
 ENGINE_RULE_VERSION = "rv_bond_analytics_engine_v1"
 MISSING_INGEST_BATCH_ID = "ib_bond_analytics_missing"
+_FORMAL_CNY_AMOUNT_FIELDS = (
+    "face_value_cny",
+    "market_value_cny",
+    "amortized_cost_cny",
+    "accrued_interest_cny",
+)
+
+
+class FormalCNYClosureError(ValueError):
+    """Raised when a foreign-currency row lacks a complete CNY closure."""
+
+    def __init__(
+        self,
+        *,
+        report_date: date,
+        instrument_code: str,
+        currency_code: str,
+        missing_fields: tuple[str, ...] = (),
+        invalid_fields: tuple[str, ...] = (),
+    ) -> None:
+        self.report_date = report_date
+        self.instrument_code = instrument_code
+        self.currency_code = currency_code
+        self.missing_fields = tuple(missing_fields)
+        self.invalid_fields = tuple(invalid_fields)
+
+        details: list[str] = []
+        if self.missing_fields:
+            details.append(f"missing fields={','.join(self.missing_fields)}")
+        if self.invalid_fields:
+            details.append(f"invalid fields={','.join(self.invalid_fields)}")
+        if not details:
+            details.append("missing/invalid fields=unknown")
+        super().__init__(
+            "formal CNY closure unavailable: "
+            f"report_date={report_date.isoformat()}, "
+            f"instrument_code={instrument_code or '<unknown>'}, "
+            f"currency={currency_code or '<unknown>'}; "
+            + "; ".join(details)
+        )
 
 
 @dataclass(slots=True, frozen=True)
@@ -126,40 +166,30 @@ def compute_bond_analytics_rows(
             maturity_date=maturity_date,
         )
         currency_code = _as_text(snapshot_row.get("currency_code"))
+        formal_cny_amounts = (
+            _validate_formal_cny_closure(
+                snapshot_row=snapshot_row,
+                report_date=report_date,
+                instrument_code=instrument_code,
+                currency_code=currency_code,
+            )
+            if not _is_cny_currency(currency_code)
+            else {}
+        )
         face_value_native = safe_decimal(snapshot_row.get("face_value_native"))
-        face_value_cny = snapshot_row.get("face_value_cny")
-        face_value = (
-            safe_decimal(face_value_cny)
-            if (
-                not _is_cny_currency(currency_code)
-                and face_value_cny is not None
-                and str(face_value_cny).strip() != ""
-            )
-            else face_value_native
-        )
+        face_value = formal_cny_amounts.get("face_value_cny", face_value_native)
         market_value_native = safe_decimal(snapshot_row.get("market_value_native"))
-        market_value_cny = snapshot_row.get("market_value_cny")
-        market_value = (
-            safe_decimal(market_value_cny)
-            if (
-                not _is_cny_currency(currency_code)
-                and market_value_cny is not None
-                and str(market_value_cny).strip() != ""
-            )
-            else market_value_native
-        )
+        market_value = formal_cny_amounts.get("market_value_cny", market_value_native)
         amortized_cost_native = safe_decimal(snapshot_row.get("amortized_cost_native"))
-        amortized_cost_cny = snapshot_row.get("amortized_cost_cny")
         amortized_cost = _select_cny_amount(
             currency_code=currency_code,
-            cny_value=amortized_cost_cny,
+            cny_value=formal_cny_amounts.get("amortized_cost_cny"),
             native_value=amortized_cost_native,
         )
         accrued_interest_native = safe_decimal(snapshot_row.get("accrued_interest_native"))
-        accrued_interest_cny = snapshot_row.get("accrued_interest_cny")
         accrued_interest = _select_cny_amount(
             currency_code=currency_code,
-            cny_value=accrued_interest_cny,
+            cny_value=formal_cny_amounts.get("accrued_interest_cny"),
             native_value=accrued_interest_native,
         )
         if years_to_maturity == Decimal("0"):
@@ -288,11 +318,48 @@ def _is_cny_currency(value: str) -> bool:
     return value.upper() in {"CNY", "RMB", "CNH"}
 
 
+def _validate_formal_cny_closure(
+    *,
+    snapshot_row: dict[str, Any],
+    report_date: date,
+    instrument_code: str,
+    currency_code: str,
+) -> dict[str, Decimal]:
+    parsed: dict[str, Decimal] = {}
+    missing_fields: list[str] = []
+    invalid_fields: list[str] = []
+
+    for field_name in _FORMAL_CNY_AMOUNT_FIELDS:
+        raw_value = snapshot_row.get(field_name)
+        if raw_value is None or not str(raw_value).strip():
+            missing_fields.append(field_name)
+            continue
+        try:
+            value = raw_value if isinstance(raw_value, Decimal) else Decimal(str(raw_value))
+        except (InvalidOperation, TypeError, ValueError):
+            invalid_fields.append(field_name)
+            continue
+        if not value.is_finite():
+            invalid_fields.append(field_name)
+            continue
+        parsed[field_name] = value
+
+    if missing_fields or invalid_fields:
+        raise FormalCNYClosureError(
+            report_date=report_date,
+            instrument_code=instrument_code,
+            currency_code=currency_code,
+            missing_fields=tuple(missing_fields),
+            invalid_fields=tuple(invalid_fields),
+        )
+    return parsed
+
+
 def _select_cny_amount(*, currency_code: str, cny_value: Any, native_value: Decimal) -> Decimal:
     if _is_cny_currency(currency_code):
         return native_value
     if cny_value is None or str(cny_value).strip() == "":
-        return native_value
+        raise ValueError("formal CNY closure unavailable: non-CNY amount is missing")
     return safe_decimal(cny_value)
 
 
@@ -347,6 +414,7 @@ def _coerce_bool(value: Any) -> bool:
 __all__ = [
     "BondAnalyticsRow",
     "ENGINE_RULE_VERSION",
+    "FormalCNYClosureError",
     "MISSING_INGEST_BATCH_ID",
     "MISSING_SOURCE_VERSION",
     "compute_bond_analytics_rows",

@@ -11,6 +11,7 @@ from backend.app.governance.settings import get_settings
 from tests.helpers import load_module
 from tests.test_bond_analytics_curve_effects import _seed_curve_rows
 from tests.test_bond_analytics_materialize_flow import REPORT_DATE
+from tests.test_bond_analytics_materialize_flow import _seed_formal_zqtz_balance_for_cb001
 from tests.test_bond_analytics_materialize_flow import seed_yield_curves_for_bond_analytics_tests
 from tests.test_bond_analytics_service import _clear_seeded_yield_curve_inputs, _configure_and_materialize
 
@@ -71,6 +72,58 @@ def _seed_fx_rows(duckdb_path: str) -> None:
         )
     finally:
         conn.close()
+
+
+def _seed_formal_cny_closure_for_foreign_snapshot(
+    duckdb_path: str,
+    *,
+    instrument_code: str,
+    fx_rate: Decimal = Decimal("7.08270000"),
+    invest_type_std: str = "A",
+    accounting_basis: str = "FVOCI",
+) -> None:
+    conn = duckdb.connect(duckdb_path, read_only=True)
+    try:
+        row = conn.execute(
+            """
+            select face_value_native, market_value_native, amortized_cost_native, accrued_interest_native
+            from zqtz_bond_daily_snapshot
+            where report_date = ? and instrument_code = ?
+            """,
+            [REPORT_DATE, instrument_code],
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row is not None
+    native_amounts = [Decimal(str(value)) for value in row]
+    _seed_formal_zqtz_balance_for_cb001(
+        duckdb_path,
+        instrument_code=instrument_code,
+        face_value_amount=native_amounts[0] * fx_rate,
+        market_value_amount=native_amounts[1] * fx_rate,
+        amortized_cost_amount=native_amounts[2] * fx_rate,
+        accrued_interest_amount=native_amounts[3] * fx_rate,
+        invest_type_std=invest_type_std,
+        accounting_basis=accounting_basis,
+    )
+
+
+def _fact_accounting_class(duckdb_path: str, *, instrument_code: str) -> str:
+    conn = duckdb.connect(duckdb_path, read_only=True)
+    try:
+        row = conn.execute(
+            """
+            select accounting_class
+            from fact_formal_bond_analytics_daily
+            where report_date = ? and instrument_code = ?
+            """,
+            [REPORT_DATE, instrument_code],
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row is not None
+    return str(row[0])
 
 
 def test_bond_analytics_return_decomposition_with_real_facts_uses_filtered_fact_rows(service_mod):
@@ -149,6 +202,10 @@ def test_return_decomposition_fx_effect_nonzero_for_usd_bonds(tmp_path, monkeypa
         )
     finally:
         conn.close()
+    _seed_formal_cny_closure_for_foreign_snapshot(
+        str(duckdb_path),
+        instrument_code="CB-001",
+    )
     seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
     _task_mod.materialize_bond_analytics_facts.fn(
         report_date=REPORT_DATE,
@@ -219,6 +276,10 @@ def test_return_decomposition_warns_when_fx_uses_latest_available_snapshot(tmp_p
         )
     finally:
         conn.close()
+    _seed_formal_cny_closure_for_foreign_snapshot(
+        str(duckdb_path),
+        instrument_code="CB-001",
+    )
     seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
     task_mod.materialize_bond_analytics_facts.fn(
         report_date=REPORT_DATE,
@@ -275,12 +336,19 @@ def test_return_decomposition_marks_result_meta_stale_when_fx_uses_latest_availa
         )
     finally:
         conn.close()
+    _seed_formal_cny_closure_for_foreign_snapshot(
+        str(duckdb_path),
+        instrument_code="TB-001",
+        invest_type_std="H",
+        accounting_basis="AC",
+    )
     seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
     task_mod.materialize_bond_analytics_facts.fn(
         report_date=REPORT_DATE,
         duckdb_path=str(duckdb_path),
         governance_dir=str(governance_dir),
     )
+    assert _fact_accounting_class(str(duckdb_path), instrument_code="TB-001") == "AC"
     service_mod = load_module(
         f"tests._bond_contract.bond_analytics_service_{uuid.uuid4().hex}",
         "backend/app/services/bond_analytics_service.py",
@@ -312,12 +380,19 @@ def test_return_decomposition_marks_result_meta_unavailable_when_required_fx_mis
         )
     finally:
         conn.close()
+    _seed_formal_cny_closure_for_foreign_snapshot(
+        str(duckdb_path),
+        instrument_code="TB-001",
+        invest_type_std="H",
+        accounting_basis="AC",
+    )
     seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
     task_mod.materialize_bond_analytics_facts.fn(
         report_date=REPORT_DATE,
         duckdb_path=str(duckdb_path),
         governance_dir=str(governance_dir),
     )
+    assert _fact_accounting_class(str(duckdb_path), instrument_code="TB-001") == "AC"
     service_mod = load_module(
         f"tests._bond_contract.bond_analytics_service_{uuid.uuid4().hex}",
         "backend/app/services/bond_analytics_service.py",
