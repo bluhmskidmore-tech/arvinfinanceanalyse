@@ -400,6 +400,8 @@ export default function DashboardHomePage() {
     <div className="dark text-foreground bg-background min-h-screen">
       <section
         data-testid="dashboard-home-page"
+        data-moss-theme="dark"
+        data-moss-theme-scope="dashboard-home"
         className={`theme-dh-api ${styles.dhPage} ${styles.dhApiBackedHome} ${optionTwoStyles.page}`}
       >
         <DashboardHomeToolbar

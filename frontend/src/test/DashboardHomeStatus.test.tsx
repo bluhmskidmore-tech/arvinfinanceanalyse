@@ -33,6 +33,9 @@ describe("DashboardHomeStatus", () => {
       expect(dataStatus).toHaveTextContent("权限不足");
     });
     const page = screen.getByTestId("dashboard-home-page");
+    expect(page).toHaveClass("theme-dh-api");
+    expect(page).toHaveAttribute("data-moss-theme", "dark");
+    expect(page).toHaveAttribute("data-moss-theme-scope", "dashboard-home");
     expect(page).not.toHaveTextContent("服务不可达");
     expect(screen.getByTestId("dashboard-home-morning-hero")).toBeInTheDocument();
     expect(
