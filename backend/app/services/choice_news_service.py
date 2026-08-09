@@ -138,7 +138,9 @@ def choice_news_latest_envelope(
     )
     rows: list[tuple[object, ...]]
     excluded_future_rows = 0
+    source_unavailable = False
     if not duckdb_file.exists():
+        source_unavailable = True
         total_rows = 0
         rows = []
     else:
@@ -146,6 +148,7 @@ def choice_news_latest_envelope(
         try:
             tables = {row[0] for row in conn.execute("show tables").fetchall()}
             if "choice_news_event" not in tables:
+                source_unavailable = True
                 total_rows = 0
                 rows = []
             else:
@@ -191,6 +194,7 @@ def choice_news_latest_envelope(
                     [*params, limit, offset],
                 ).fetchall()
         except duckdb.Error:
+            source_unavailable = True
             total_rows = 0
             rows = []
         finally:
@@ -260,7 +264,8 @@ def choice_news_latest_envelope(
         cache_version=CACHE_VERSION,
         source_version=f"sv_choice_news_{len(payload_rows)}",
         rule_version=RULE_VERSION,
-        quality_flag="warning" if excluded_future_rows else "ok",
+        quality_flag="warning" if source_unavailable or excluded_future_rows else "ok",
+        vendor_status="vendor_unavailable" if source_unavailable else "ok",
         filters_applied={
             "received_to": effective_received_to,
             "future_rows_excluded": excluded_future_rows,

@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import sys
 
+import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.user_scope_repo import UserScopeRepository
+from backend.app.services.choice_news_service import choice_news_latest_envelope
 from tests.helpers import load_module
 
 
@@ -829,3 +831,83 @@ def test_choice_news_latest_api_supports_topic_time_and_error_filters(tmp_path, 
     assert error_payload["result"]["events"][0]["error_code"] == 10003013
     assert error_payload["result"]["events"][0]["topic_code"] == "__callback__"
     get_settings.cache_clear()
+
+
+def _create_empty_choice_news_table(duckdb_path) -> None:
+    conn = duckdb.connect(str(duckdb_path))
+    try:
+        conn.execute(
+            """
+            create table choice_news_event (
+              event_key varchar,
+              received_at varchar,
+              group_id varchar,
+              content_type varchar,
+              serial_id bigint,
+              request_id bigint,
+              error_code integer,
+              error_msg varchar,
+              topic_code varchar,
+              item_index integer,
+              payload_text varchar,
+              payload_json varchar
+            )
+            """
+        )
+    finally:
+        conn.close()
+
+
+def _assert_choice_news_source_unavailable(payload: dict[str, object]) -> None:
+    meta = payload["result_meta"]
+    result = payload["result"]
+    assert isinstance(meta, dict)
+    assert isinstance(result, dict)
+    assert meta["quality_flag"] == "warning"
+    assert meta["vendor_status"] == "vendor_unavailable"
+    assert meta["fallback_mode"] == "none"
+    assert result["total_rows"] == 0
+
+
+def test_choice_news_source_health_missing_file_is_unavailable(tmp_path) -> None:
+    payload = choice_news_latest_envelope(str(tmp_path / "missing.duckdb"))
+
+    _assert_choice_news_source_unavailable(payload)
+
+
+def test_choice_news_source_health_missing_table_is_unavailable(tmp_path) -> None:
+    duckdb_path = tmp_path / "missing-table.duckdb"
+    duckdb.connect(str(duckdb_path)).close()
+
+    payload = choice_news_latest_envelope(str(duckdb_path))
+
+    _assert_choice_news_source_unavailable(payload)
+
+
+def test_choice_news_source_health_query_error_is_unavailable(tmp_path) -> None:
+    duckdb_path = tmp_path / "malformed-table.duckdb"
+    conn = duckdb.connect(str(duckdb_path))
+    try:
+        conn.execute("create table choice_news_event (unexpected_column integer)")
+    finally:
+        conn.close()
+
+    payload = choice_news_latest_envelope(str(duckdb_path))
+
+    _assert_choice_news_source_unavailable(payload)
+
+
+def test_choice_news_source_health_empty_table_stays_healthy(tmp_path) -> None:
+    duckdb_path = tmp_path / "healthy-empty.duckdb"
+    _create_empty_choice_news_table(duckdb_path)
+
+    payload = choice_news_latest_envelope(str(duckdb_path))
+    meta = payload["result_meta"]
+    result = payload["result"]
+
+    assert isinstance(meta, dict)
+    assert isinstance(result, dict)
+    assert meta["quality_flag"] == "ok"
+    assert meta["vendor_status"] == "ok"
+    assert meta["fallback_mode"] == "none"
+    assert result["total_rows"] == 0
