@@ -884,6 +884,15 @@ def test_choice_news_source_health_missing_table_is_unavailable(tmp_path) -> Non
     _assert_choice_news_source_unavailable(payload)
 
 
+def test_choice_news_source_health_invalid_database_is_unavailable(tmp_path) -> None:
+    duckdb_path = tmp_path / "invalid.duckdb"
+    duckdb_path.write_bytes(b"not a duckdb database")
+
+    payload = choice_news_latest_envelope(str(duckdb_path))
+
+    _assert_choice_news_source_unavailable(payload)
+
+
 def test_choice_news_source_health_query_error_is_unavailable(tmp_path) -> None:
     duckdb_path = tmp_path / "malformed-table.duckdb"
     conn = duckdb.connect(str(duckdb_path))

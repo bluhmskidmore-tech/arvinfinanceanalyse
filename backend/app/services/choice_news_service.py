@@ -144,8 +144,9 @@ def choice_news_latest_envelope(
         total_rows = 0
         rows = []
     else:
-        conn = duckdb.connect(str(duckdb_file), read_only=True)
+        conn = None
         try:
+            conn = duckdb.connect(str(duckdb_file), read_only=True)
             tables = {row[0] for row in conn.execute("show tables").fetchall()}
             if "choice_news_event" not in tables:
                 source_unavailable = True
@@ -198,7 +199,8 @@ def choice_news_latest_envelope(
             total_rows = 0
             rows = []
         finally:
-            conn.close()
+            if conn is not None:
+                conn.close()
 
     payload_rows = [
         {
