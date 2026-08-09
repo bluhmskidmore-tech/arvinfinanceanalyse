@@ -699,6 +699,8 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
     [riskTensorQuery.data],
   );
   const tensorWarnings = tensor?.warnings ?? [];
+  const visibleTensorWarnings = tensorWarnings.slice(0, 3);
+  const remainingTensorWarnings = tensorWarnings.slice(3);
   const hotKrdBucket = krdBars.find((bar) => bar.hot)?.bucket;
 
   const isFetching =
@@ -771,11 +773,17 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
       className={`theme-dh-api ${dh.dhPage} ${dh.dhApiBackedHome} ${styles.roV6Scope}`}
       data-testid="risk-overview-page"
     >
-      <main className={dh.dhLayout}>
-        <div className={dh.dhMain}>
+      <div
+        className={`${dh.dhLayout} ${styles.roLayout}`}
+        data-testid="risk-overview-layout"
+      >
+        <div
+          className={`${dh.dhMain} ${styles.roMain}`}
+          data-testid="risk-overview-main"
+        >
           {/* Top rail — report identity + state + refresh */}
-          <div className={dh.dhApiTopRail}>
-            <strong>MOSS 利率风险总览</strong>
+          <div className={`${dh.dhApiTopRail} ${styles.roTopRail}`}>
+            <h1>MOSS 利率风险总览</h1>
             <span>
               {reportDate !== "-" ? `报告日 ${reportDate}` : "暂无数据日"}
               {view.question ? ` · ${view.question}` : ""}
@@ -831,7 +839,11 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
           ) : null}
 
           {/* 01 风险处置判断（hero 大数字 + 上下文 chips） */}
-          <section className={styles.roV6Hero} data-testid="risk-overview-hero">
+          <section
+            className={styles.roV6Hero}
+            data-testid="risk-overview-hero"
+            id="risk-overview-actions"
+          >
             <div data-testid="risk-overview-decision">
               <div className={styles.roSecHead}>
                 <i>01</i>
@@ -924,6 +936,7 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
             className={styles.roBondEvidence}
             data-manual-comparison="blocked"
             data-testid="risk-overview-bond-evidence"
+            id="risk-overview-bond-evidence"
           >
             <div className={styles.roBondEvidenceHead}>
               <div>
@@ -985,7 +998,7 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
           ) : null}
 
           {/* 02 风险截面摘要（开放三栏） */}
-          <section data-testid="risk-overview-briefings">
+          <section data-testid="risk-overview-briefings" id="risk-overview-briefings">
             <div className={styles.roSecHead}>
               <i>02</i>
               <h2>风险截面摘要</h2>
@@ -1003,7 +1016,7 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
           </section>
 
           {/* 03 风险证据链 */}
-          <section data-testid="risk-overview-evidence">
+          <section data-testid="risk-overview-evidence" id="risk-overview-evidence">
             <div className={styles.roSecHead}>
               <i>03</i>
               <h2>风险证据板</h2>
@@ -1260,7 +1273,7 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
           </section>
 
           {/* 04 数据质量与血缘 */}
-          <section data-testid="risk-overview-quality">
+          <section data-testid="risk-overview-quality" id="risk-overview-quality">
             <div className={styles.roSecHead}>
               <i>04</i>
               <h2>数据质量与血缘</h2>
@@ -1282,10 +1295,28 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
                   </span>
                 </div>
                 {tensorWarnings.length > 0 ? (
-                  <div className={styles.roV6Warns}>
-                    {tensorWarnings.map((warning) => (
-                      <p key={warning}>{warning}</p>
+                  <div
+                    className={styles.roV6Warns}
+                    data-testid="risk-overview-warning-list"
+                  >
+                    {visibleTensorWarnings.map((warning, index) => (
+                      <p key={`${index}-${warning}`}>{warning}</p>
                     ))}
+                    {remainingTensorWarnings.length > 0 ? (
+                      <details
+                        className={styles.roWarningDetails}
+                        data-testid="risk-overview-warning-details"
+                      >
+                        <summary className={styles.roWarningSummary}>
+                          展开其余 {remainingTensorWarnings.length} 条原始提示
+                        </summary>
+                        <div className={styles.roWarningRemainder}>
+                          {remainingTensorWarnings.map((warning, index) => (
+                            <p key={`${index + visibleTensorWarnings.length}-${warning}`}>{warning}</p>
+                          ))}
+                        </div>
+                      </details>
+                    ) : null}
                   </div>
                 ) : (
                   <p className={styles.roV6EmptyText}>
@@ -1315,13 +1346,34 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
           </section>
         </div>
 
-        <aside className={dh.dhRail} data-testid="risk-overview-rail">
+        <aside
+          className={`${dh.dhRail} ${styles.roRail}`}
+          data-testid="risk-overview-rail"
+        >
           <section className={dh.dhRailCard} data-testid="risk-overview-drilldowns">
             <div className={dh.dhRailCardHeader}>
               <span>下钻入口</span>
               <span className={dh.dhRailCardKicker}>Drill-down</span>
             </div>
             <div className={dh.dhRailCardBody}>
+              <nav className={styles.roSectionNav} aria-label="风险总览页内章节">
+                <span className={styles.roSectionNavLabel}>页内章节</span>
+                <a className={styles.roSectionNavLink} href="#risk-overview-actions">
+                  01 风险处置
+                </a>
+                <a className={styles.roSectionNavLink} href="#risk-overview-bond-evidence">
+                  债券口径
+                </a>
+                <a className={styles.roSectionNavLink} href="#risk-overview-briefings">
+                  02 风险摘要
+                </a>
+                <a className={styles.roSectionNavLink} href="#risk-overview-evidence">
+                  03 风险证据
+                </a>
+                <a className={styles.roSectionNavLink} href="#risk-overview-quality">
+                  04 数据质量
+                </a>
+              </nav>
               <div className={dh.dhRailActionList}>
                 {config.drilldowns.map((item) => (
                   <div className={`${dh.dhRailActionRow} ${styles.roDrillRow}`} key={item.key}>
@@ -1348,7 +1400,7 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
             </div>
           </section>
         </aside>
-      </main>
+      </div>
 
       {agentPanelMounted ? (
         <Suspense fallback={null}>

@@ -1672,20 +1672,19 @@ text.roV6CurveEndText.roV6CurveAcc {
   width: 100%;
 }
 
-/* ── 2) 页题恢复：top rail 内的 <strong>（壳层 display:none 藏掉）。
-   路径 main.dhLayout > div.dhMain > div.dhApiTopRail > strong，
-   结构依赖 4 层；恢复后 rail 需回到三列，否则第二个 span 折行。 ── */
-.roV6Scope > main > div:first-child > div:first-child {
+/* ── 2) 页题：以页面私有 top rail 锚点兼容语义 h1 与旧 strong。 ── */
+.roV6Scope .roTopRail {
   grid-template-columns: auto minmax(0, 1fr) auto;
 }
 
-.roV6Scope > main > div:first-child > div:first-child > strong {
+.roV6Scope .roTopRail > :is(h1, strong) {
   color: var(--ro-ink);
   display: block !important;
   font-size: 22px;
   font-weight: 700;
   letter-spacing: 0.01em;
   line-height: 1.2;
+  margin: 0;
   white-space: nowrap;
 }
 
@@ -1841,7 +1840,7 @@ text.roV6CurveEndText.roV6CurveAcc {
   font-size: 20px;
 }
 
-.roV6Scope > main > div:first-child > div:first-child > strong {
+.roV6Scope .roTopRail > :is(h1, strong) {
   font-size: 24px;
 }
 
@@ -1917,5 +1916,144 @@ text.roV6CurveEndText.roV6CurveAcc {
   .roDrillRow:hover {
     transform: none;
     transition: none;
+  }
+}
+
+/* ── Risk overview layout/readability closure (Tier 1 · 2026-08) ────────────
+   Keep the 1440px two-column decision layout intact. Stack before the
+   two-column main area becomes too narrow for readable bond evidence, then
+   let the decision column and reflowed rail use the effective page width. */
+.roSectionNav {
+  align-items: center;
+  border-bottom: 1px solid var(--ro-line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  min-width: 0;
+  padding: 0 2px 10px;
+}
+
+.roSectionNavLabel {
+  color: var(--ro-mut);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.roSectionNavLink {
+  color: var(--ro-ink-2);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.roSectionNavLink:hover {
+  color: var(--ro-acc);
+  text-decoration: underline;
+}
+
+.roSectionNavLink:focus-visible,
+.roWarningSummary:focus-visible {
+  outline: 1px solid var(--ro-acc);
+  outline-offset: 2px;
+}
+
+.roWarningDetails {
+  color: var(--dh-api-muted);
+  font-size: 11.5px;
+  line-height: 1.55;
+  min-width: 0;
+}
+
+.roWarningSummary {
+  cursor: pointer;
+  overflow-wrap: break-word;
+}
+
+.roWarningSummary::marker {
+  color: var(--ro-amber);
+}
+
+.roWarningRemainder {
+  display: block;
+  margin-top: 4px;
+  overflow: visible;
+  overflow-wrap: break-word;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+/* Keep values and their units together; long narrative copy wraps by words. */
+.roBondMetric strong {
+  overflow-wrap: normal;
+  white-space: nowrap;
+  word-break: normal;
+}
+
+.roBondComparison strong,
+.roBondComparisonBasis b,
+.roBondNotices,
+.roBondTrendEmpty,
+.roBondTrendNotice,
+.roV6Warns p {
+  overflow-wrap: break-word;
+}
+
+.roBondBoundary,
+.roBondComparisonBasis,
+.roBondNotices,
+.roBondTrendEmpty,
+.roBondTrendNotice,
+.roBlockedBody span,
+.roV6Warns p {
+  font-size: 11.5px;
+}
+
+@media (max-width: 1350px) {
+  .roV6Scope > .roLayout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .roV6Scope .roLayout > :is(.roMain, .roRail) {
+    grid-column: 1 / -1;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .roV6Scope .roMain {
+    grid-row: 1;
+  }
+
+  .roV6Scope .roRail {
+    grid-row: 2;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    position: static;
+  }
+}
+
+@media (max-width: 900px) {
+  .roV6Scope .roTopRail {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .roV6Scope .roTopRail > :is(h1, strong) {
+    grid-column: 1 / -1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .roV6Scope .roRail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .roV6Scope .roTopRail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .roV6Scope .roTopRail > span {
+    white-space: normal;
   }
 }
