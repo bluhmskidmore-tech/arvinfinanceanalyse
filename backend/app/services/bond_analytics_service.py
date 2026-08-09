@@ -709,6 +709,18 @@ def _cached_result_matches_latest_completed_run(
     return True
 
 
+def _completed_build_cache_token(latest_build: dict[str, object]) -> tuple[str, ...]:
+    if not latest_build:
+        return ("no-completed-build",)
+    return (
+        str(latest_build.get("run_id") or "").strip(),
+        str(latest_build.get("source_version") or "").strip(),
+        str(latest_build.get("rule_version") or "").strip(),
+        str(latest_build.get("cache_version") or "").strip(),
+        str(latest_build.get("finished_at") or "").strip(),
+    )
+
+
 def _composite_lineage_contains(composite_value: str, expected_value: str) -> bool:
     if not composite_value or not expected_value:
         return False
@@ -1455,22 +1467,42 @@ def _get_return_decomposition(
     *,
     include_bond_details: bool,
 ) -> dict:
+    latest_build = _require_latest_completed_bond_analytics_run(
+        report_date.isoformat()
+    )
+    cache_version_token = (
+        *_duckdb_cache_version_token(),
+        *_completed_build_cache_token(latest_build),
+    )
     _cache_key = (
-        (report_date.isoformat(), period_type, asset_class, accounting_class)
+        (
+            report_date.isoformat(),
+            period_type,
+            asset_class,
+            accounting_class,
+            *cache_version_token,
+        )
         if include_bond_details
-        else (report_date.isoformat(), period_type, asset_class, accounting_class, "summary")
+        else (
+            report_date.isoformat(),
+            period_type,
+            asset_class,
+            accounting_class,
+            "summary",
+            *cache_version_token,
+        )
     )
     hit, cached = _return_decomposition_cache.get(_cache_key)
     if hit:
-        latest_build = _require_latest_completed_bond_analytics_run(
-            report_date.isoformat(),
-            require_present=True,
-            cache_hit=True,
-        )
+        if not latest_build:
+            _require_latest_completed_bond_analytics_run(
+                report_date.isoformat(),
+                require_present=True,
+                cache_hit=True,
+            )
         if _cached_result_matches_latest_completed_run(cached, latest_build):
             return cached
         _return_decomposition_cache.invalidate(_cache_key)
-    _require_latest_completed_bond_analytics_run(report_date.isoformat())
 
     period_start, period_end = resolve_period(report_date, period_type)
     rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat(), asset_class=asset_class, accounting_class=accounting_class)
@@ -2256,23 +2288,27 @@ def _build_benchmark_excess_envelope_from_inputs(
 
 
 def get_benchmark_excess(report_date: date, period_type: str = "MoM", benchmark_id: str = "CDB_INDEX") -> dict:
+    latest_build = _require_latest_completed_bond_analytics_run(
+        report_date.isoformat()
+    )
     _cache_key = (
         report_date.isoformat(),
         period_type,
         benchmark_id,
         *_duckdb_cache_version_token(),
+        *_completed_build_cache_token(latest_build),
     )
     hit, cached = _benchmark_excess_cache.get(_cache_key)
     if hit:
-        latest_build = _require_latest_completed_bond_analytics_run(
-            report_date.isoformat(),
-            require_present=True,
-            cache_hit=True,
-        )
+        if not latest_build:
+            _require_latest_completed_bond_analytics_run(
+                report_date.isoformat(),
+                require_present=True,
+                cache_hit=True,
+            )
         if _cached_result_matches_latest_completed_run(cached, latest_build):
             return cached
         _benchmark_excess_cache.invalidate(_cache_key)
-    _require_latest_completed_bond_analytics_run(report_date.isoformat())
 
     period_start, period_end = resolve_period(report_date, period_type)
     rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat())
@@ -2328,33 +2364,37 @@ def get_benchmark_excess_many(
     build_rows = governance_repo.read_all(CACHE_BUILD_RUN_STREAM)
     out: dict[str, dict] = {}
     missing_dates: list[date] = []
+    cache_keys_by_date: dict[str, tuple] = {}
     for report_date in requested_dates:
         report_date_text = report_date.isoformat()
+        latest_build = _require_latest_completed_bond_analytics_run(
+            report_date_text,
+            build_rows=build_rows,
+            require_present=False,
+        )
         cache_key = (
             report_date_text,
             period_type,
             benchmark_id,
             *cache_token,
+            *_completed_build_cache_token(latest_build),
         )
+        cache_keys_by_date[report_date_text] = cache_key
         hit, cached = _benchmark_excess_cache.get(cache_key)
         if hit:
-            latest_build = _require_latest_completed_bond_analytics_run(
-                report_date_text,
-                build_rows=build_rows,
-                require_present=True,
-                cache_hit=True,
-            )
+            if not latest_build:
+                _require_latest_completed_bond_analytics_run(
+                    report_date_text,
+                    build_rows=build_rows,
+                    require_present=True,
+                    cache_hit=True,
+                )
             if _cached_result_matches_latest_completed_run(cached, latest_build):
                 out[report_date_text] = cached
             else:
                 _benchmark_excess_cache.invalidate(cache_key)
                 missing_dates.append(report_date)
         else:
-            _require_latest_completed_bond_analytics_run(
-                report_date_text,
-                build_rows=build_rows,
-                require_present=False,
-            )
             missing_dates.append(report_date)
     if not missing_dates:
         return out
@@ -2436,13 +2476,7 @@ def get_benchmark_excess_many(
                 meta=meta,
                 curves=curves,
             )
-        cache_key = (
-            report_date_text,
-            period_type,
-            benchmark_id,
-            *cache_token,
-        )
-        _benchmark_excess_cache.set(cache_key, result)
+        _benchmark_excess_cache.set(cache_keys_by_date[report_date_text], result)
         out[report_date_text] = result
     return {report_date.isoformat(): out[report_date.isoformat()] for report_date in requested_dates if report_date.isoformat() in out}
 
@@ -3967,18 +4001,26 @@ def _build_action_attribution_success_response(
 
 
 def get_action_attribution(report_date: date, period_type: str = "MoM") -> dict:
-    _cache_key = (report_date.isoformat(), period_type)
+    latest_build = _require_latest_completed_bond_analytics_run(
+        report_date.isoformat()
+    )
+    _cache_key = (
+        report_date.isoformat(),
+        period_type,
+        *_duckdb_cache_version_token(),
+        *_completed_build_cache_token(latest_build),
+    )
     hit, cached = _action_attribution_cache.get(_cache_key)
     if hit:
-        latest_build = _require_latest_completed_bond_analytics_run(
-            report_date.isoformat(),
-            require_present=True,
-            cache_hit=True,
-        )
+        if not latest_build:
+            _require_latest_completed_bond_analytics_run(
+                report_date.isoformat(),
+                require_present=True,
+                cache_hit=True,
+            )
         if _cached_result_matches_latest_completed_run(cached, latest_build):
             return cached
         _action_attribution_cache.invalidate(_cache_key)
-    _require_latest_completed_bond_analytics_run(report_date.isoformat())
 
     period_start, period_end = resolve_period(report_date, period_type)
     repo = _repo()

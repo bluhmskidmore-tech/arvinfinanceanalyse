@@ -1182,42 +1182,13 @@ def test_bond_analytics_public_caches_require_latest_completed_terminal_before_c
     assert completed_rows[-1]["status"] == "completed"
 
     report_date = date.fromisoformat(REPORT_DATE)
-    cached_lineage = {
-        "source_version": completed_rows[-1]["source_version"],
-        "rule_version": completed_rows[-1]["rule_version"],
-        "cache_version": completed_rows[-1]["cache_version"],
-    }
-    old_return = {
-        "sentinel": "return-ready",
-        "result_meta": {
-            "formal_use_allowed": True,
-            "quality_flag": "ok",
-            **cached_lineage,
-        },
-    }
-    old_action = {
-        "sentinel": "action-ready",
-        "result_meta": {
-            "formal_use_allowed": True,
-            "quality_flag": "ok",
-            **cached_lineage,
-        },
-    }
-    old_benchmark = {
-        "sentinel": "benchmark-ready",
-        "result_meta": {
-            "formal_use_allowed": True,
-            "quality_flag": "ok",
-            **cached_lineage,
-        },
-    }
-    return_key = (REPORT_DATE, "MoM", "all", "all")
-    action_key = (REPORT_DATE, "MoM")
-    benchmark_token = service_mod._duckdb_cache_version_token()
-    benchmark_key = (REPORT_DATE, "MoM", "CDB_INDEX", *benchmark_token)
-    service_mod._return_decomposition_cache.set(return_key, old_return)
-    service_mod._action_attribution_cache.set(action_key, old_action)
-    service_mod._benchmark_excess_cache.set(benchmark_key, old_benchmark)
+    old_return = service_mod.get_return_decomposition(report_date)
+    old_action = service_mod.get_action_attribution(report_date)
+    old_benchmark = service_mod.get_benchmark_excess(report_date)
+    assert service_mod.get_return_decomposition(report_date) is old_return
+    assert service_mod.get_action_attribution(report_date) is old_action
+    assert service_mod.get_benchmark_excess(report_date) is old_benchmark
+    assert service_mod.get_benchmark_excess_many([report_date])[REPORT_DATE] is old_benchmark
     db_token_before = service_mod._duckdb_cache_version_token()
 
     _append_bond_analytics_terminal(
@@ -1237,10 +1208,6 @@ def test_bond_analytics_public_caches_require_latest_completed_terminal_before_c
     with pytest.raises(RuntimeError, match="Bond analytics formal build terminal unavailable"):
         service_mod.get_benchmark_excess(report_date)
 
-    old_benchmark_many = {
-        REPORT_DATE: old_benchmark,
-    }
-    service_mod._benchmark_excess_cache.set(benchmark_key, old_benchmark_many[REPORT_DATE])
     with pytest.raises(RuntimeError, match="Bond analytics formal build terminal unavailable"):
         service_mod.get_benchmark_excess_many([report_date])
 
@@ -1252,10 +1219,14 @@ def test_bond_analytics_public_caches_require_latest_completed_terminal_before_c
         run_id="bond-cache-bypass-recovered",
         source_version="sv_bond_snap_1",
     )
-    assert service_mod.get_return_decomposition(report_date) == old_return
-    assert service_mod.get_action_attribution(report_date) == old_action
-    assert service_mod.get_benchmark_excess(report_date) == old_benchmark_many[REPORT_DATE]
-    assert service_mod.get_benchmark_excess_many([report_date]) == old_benchmark_many
+    refreshed_return = service_mod.get_return_decomposition(report_date)
+    refreshed_action = service_mod.get_action_attribution(report_date)
+    refreshed_benchmark = service_mod.get_benchmark_excess(report_date)
+    refreshed_benchmark_many = service_mod.get_benchmark_excess_many([report_date])
+    assert refreshed_return is not old_return
+    assert refreshed_action is not old_action
+    assert refreshed_benchmark is not old_benchmark
+    assert refreshed_benchmark_many[REPORT_DATE] is refreshed_benchmark
     get_settings.cache_clear()
 
 
@@ -1276,6 +1247,9 @@ def test_bond_analytics_public_caches_bypass_older_completed_lineage(
     warmed_return = service_mod.get_return_decomposition(report_date)
     warmed_action = service_mod.get_action_attribution(report_date)
     warmed_benchmark = service_mod.get_benchmark_excess(report_date)
+    assert service_mod.get_return_decomposition(report_date) is warmed_return
+    assert service_mod.get_action_attribution(report_date) is warmed_action
+    assert service_mod.get_benchmark_excess_many([report_date])[REPORT_DATE] is warmed_benchmark
     assert warmed_return["result_meta"]["source_version"] == "sv_bond_snap_1"
     assert warmed_action["result_meta"]["source_version"] == "sv_bond_snap_1"
     assert warmed_benchmark["result_meta"]["source_version"] == "sv_bond_snap_1"
@@ -1303,6 +1277,56 @@ def test_bond_analytics_public_caches_bypass_older_completed_lineage(
     assert refreshed_return is not warmed_return
     assert refreshed_action is not warmed_action
     assert refreshed_benchmark_many[REPORT_DATE] is not warmed_benchmark
+    assert (
+        service_mod.get_benchmark_excess(report_date)
+        is refreshed_benchmark_many[REPORT_DATE]
+    )
+    assert (
+        service_mod.get_benchmark_excess_many([report_date])[REPORT_DATE]
+        is refreshed_benchmark_many[REPORT_DATE]
+    )
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_public_caches_bypass_older_run_with_same_lineage_versions(
+    tmp_path,
+    monkeypatch,
+):
+    _duckdb_path, governance_dir, _task_mod = _configure_and_materialize(
+        tmp_path,
+        monkeypatch,
+    )
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    report_date = date.fromisoformat(REPORT_DATE)
+
+    warmed_return = service_mod.get_return_decomposition(report_date)
+    warmed_action = service_mod.get_action_attribution(report_date)
+    warmed_benchmark = service_mod.get_benchmark_excess(report_date)
+    assert service_mod.get_return_decomposition(report_date) is warmed_return
+    assert service_mod.get_action_attribution(report_date) is warmed_action
+    assert service_mod.get_benchmark_excess_many([report_date])[REPORT_DATE] is warmed_benchmark
+
+    _append_bond_analytics_terminal(
+        governance_dir,
+        service_mod,
+        report_date=REPORT_DATE,
+        status="completed",
+        run_id="bond-cache-newer-completed-same-lineage",
+        source_version="sv_bond_snap_1",
+    )
+
+    refreshed_return = service_mod.get_return_decomposition(report_date)
+    refreshed_action = service_mod.get_action_attribution(report_date)
+    refreshed_benchmark = service_mod.get_benchmark_excess(report_date)
+    refreshed_benchmark_many = service_mod.get_benchmark_excess_many([report_date])
+
+    assert refreshed_return is not warmed_return
+    assert refreshed_action is not warmed_action
+    assert refreshed_benchmark is not warmed_benchmark
+    assert refreshed_benchmark_many[REPORT_DATE] is refreshed_benchmark
     get_settings.cache_clear()
 
 
