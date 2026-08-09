@@ -1,6 +1,61 @@
 from pathlib import Path
 
+import duckdb
+
 from tests.helpers import load_module
+
+
+def test_duckdb_healthcheck_reports_missing_database_as_not_ok(tmp_path):
+    duckdb_module = load_module(
+        "backend.app.repositories.duckdb_repo_health_missing",
+        "backend/app/repositories/duckdb_repo.py",
+    )
+    duckdb_path = tmp_path / "missing.duckdb"
+
+    result = duckdb_module.DuckDBRepository(str(duckdb_path)).healthcheck()
+
+    assert result == {
+        "ok": False,
+        "mode": "read_only",
+        "path": str(duckdb_path),
+        "can_connect": False,
+        "sql_roundtrip": False,
+    }
+    assert not duckdb_path.exists()
+
+
+def test_duckdb_healthcheck_reports_corrupt_database_as_not_ok(tmp_path):
+    duckdb_module = load_module(
+        "backend.app.repositories.duckdb_repo_health_corrupt",
+        "backend/app/repositories/duckdb_repo.py",
+    )
+    duckdb_path = tmp_path / "corrupt.duckdb"
+    duckdb_path.write_text("not a duckdb database", encoding="utf-8")
+
+    result = duckdb_module.DuckDBRepository(str(duckdb_path)).healthcheck()
+
+    assert result["ok"] is False
+    assert result["can_connect"] is False
+    assert result["sql_roundtrip"] is False
+
+
+def test_duckdb_healthcheck_requires_read_only_sql_roundtrip(tmp_path):
+    duckdb_module = load_module(
+        "backend.app.repositories.duckdb_repo_health_ready",
+        "backend/app/repositories/duckdb_repo.py",
+    )
+    duckdb_path = tmp_path / "ready.duckdb"
+    duckdb.connect(str(duckdb_path)).close()
+
+    result = duckdb_module.DuckDBRepository(str(duckdb_path)).healthcheck()
+
+    assert result == {
+        "ok": True,
+        "mode": "read_only",
+        "path": str(duckdb_path),
+        "can_connect": True,
+        "sql_roundtrip": True,
+    }
 
 
 def test_network_backed_repositories_report_unreachable_endpoints_as_not_ok():

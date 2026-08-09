@@ -122,11 +122,27 @@ class DuckDBRepository:
         self._scope = threading.local()
 
     def healthcheck(self) -> dict[str, object]:
-        return {
-            "ok": True,
+        result: dict[str, object] = {
+            "ok": False,
             "mode": "read_only",
             "path": self.path,
+            "can_connect": False,
+            "sql_roundtrip": False,
         }
+        conn: duckdb.DuckDBPyConnection | None = None
+        try:
+            conn = self._connect_read_only()
+            if conn is None:
+                return result
+            result["can_connect"] = True
+            result["sql_roundtrip"] = conn.execute("select 1").fetchone() == (1,)
+            result["ok"] = result["sql_roundtrip"]
+        except (OSError, duckdb.Error):
+            return result
+        finally:
+            if conn is not None:
+                conn.close()
+        return result
 
     @contextmanager
     def scoped_connection(self) -> Iterator[duckdb.DuckDBPyConnection | None]:

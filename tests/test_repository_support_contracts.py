@@ -274,25 +274,41 @@ def test_redis_healthcheck_oserror_failure(monkeypatch):
     assert result["dsn"] == dsn
 
 
-def test_duckdb_repository_defaults_and_healthcheck_shape():
+def test_duckdb_repository_defaults_and_healthcheck_shape(tmp_path):
     duck_module = load_module(
         "backend.app.repositories.duck_support_contract",
         "backend/app/repositories/duckdb_repo.py",
     )
-    repo = duck_module.DuckDBRepository("/data/analytics.duckdb")
+    duckdb_path = tmp_path / "analytics.duckdb"
+    duck_module.duckdb.connect(str(duckdb_path)).close()
+    repo = duck_module.DuckDBRepository(str(duckdb_path))
     assert repo.read_only is True
     h = repo.healthcheck()
-    assert h == {"ok": True, "mode": "read_only", "path": "/data/analytics.duckdb"}
+    assert h == {
+        "ok": True,
+        "mode": "read_only",
+        "path": str(duckdb_path),
+        "can_connect": True,
+        "sql_roundtrip": True,
+    }
 
 
-def test_duckdb_healthcheck_ignores_read_only_false_field():
+def test_duckdb_healthcheck_ignores_read_only_false_field(tmp_path):
     duck_module = load_module(
         "backend.app.repositories.duck_support_contract_b",
         "backend/app/repositories/duckdb_repo.py",
     )
-    repo = duck_module.DuckDBRepository("/tmp/x.duckdb", read_only=False)
+    duckdb_path = tmp_path / "compat.duckdb"
+    duck_module.duckdb.connect(str(duckdb_path)).close()
+    repo = duck_module.DuckDBRepository(str(duckdb_path), read_only=False)
     assert repo.read_only is False
-    assert repo.healthcheck() == {"ok": True, "mode": "read_only", "path": "/tmp/x.duckdb"}
+    assert repo.healthcheck() == {
+        "ok": True,
+        "mode": "read_only",
+        "path": str(duckdb_path),
+        "can_connect": True,
+        "sql_roundtrip": True,
+    }
 
 
 def test_duckdb_repository_keeps_connections_read_only_for_compat_flag(monkeypatch: pytest.MonkeyPatch):
