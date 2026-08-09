@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Literal
 
 import duckdb
+import pytest
 
+from backend.app.repositories import external_data_catalog_repo as catalog_repo_module
 from backend.app.repositories.external_data_catalog_repo import (
     ExternalDataCatalogRepository,
     ensure_external_data_catalog_schema,
@@ -63,3 +66,78 @@ def test_list_all_and_get_and_by_domain() -> None:
         assert [r.series_id for r in macro_only] == ["m1"]
     finally:
         conn.close()
+
+
+def _seed_path_catalog(path: Path) -> None:
+    conn = duckdb.connect(str(path))
+    try:
+        ensure_external_data_catalog_schema(conn)
+        ExternalDataCatalogRepository(conn=conn).register(_sample_entry(series_id="path.series"))
+    finally:
+        conn.close()
+
+
+def test_path_reads_open_read_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    db_path = tmp_path / "catalog.duckdb"
+    _seed_path_catalog(db_path)
+    original_connect = duckdb.connect
+    read_only_modes: list[bool] = []
+
+    def _recording_connect(path: str, *, read_only: bool = False):
+        read_only_modes.append(read_only)
+        return original_connect(path, read_only=read_only)
+
+    monkeypatch.setattr(catalog_repo_module.duckdb, "connect", _recording_connect)
+    repo = ExternalDataCatalogRepository(path=str(db_path))
+
+    assert [entry.series_id for entry in repo.list_all()] == ["path.series"]
+    assert repo.get_by_series_id("path.series") is not None
+    assert [entry.series_id for entry in repo.list_by_domain("macro")] == ["path.series"]
+    assert read_only_modes == [True, True, True]
+
+
+def test_absent_path_read_does_not_create_database(tmp_path: Path) -> None:
+    db_path = tmp_path / "missing.duckdb"
+    repo = ExternalDataCatalogRepository(path=str(db_path))
+
+    with pytest.raises(duckdb.Error):
+        repo.list_all()
+
+    assert not db_path.exists()
+
+
+@pytest.mark.parametrize("path", ["", ":memory:"])
+def test_memory_path_read_preserves_missing_table_behavior(path: str) -> None:
+    repo = ExternalDataCatalogRepository(path=path)
+
+    with pytest.raises(duckdb.CatalogException, match="external_data_catalog does not exist"):
+        repo.list_all()
+
+
+def test_path_registration_remains_writable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "catalog.duckdb"
+    conn = duckdb.connect(str(db_path))
+    try:
+        ensure_external_data_catalog_schema(conn)
+    finally:
+        conn.close()
+
+    original_connect = duckdb.connect
+    read_only_modes: list[bool] = []
+
+    def _recording_connect(path: str, *, read_only: bool = False):
+        read_only_modes.append(read_only)
+        return original_connect(path, read_only=read_only)
+
+    monkeypatch.setattr(catalog_repo_module.duckdb, "connect", _recording_connect)
+    repo = ExternalDataCatalogRepository(path=str(db_path))
+
+    repo.register(_sample_entry(series_id="written.series"))
+    persisted = repo.get_by_series_id("written.series")
+
+    assert persisted is not None
+    assert persisted.series_id == "written.series"
+    assert read_only_modes == [False, True]

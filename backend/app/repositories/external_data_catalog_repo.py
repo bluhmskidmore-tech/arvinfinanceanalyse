@@ -36,11 +36,12 @@ class ExternalDataCatalogRepository:
         self._conn = conn
 
     @contextmanager
-    def _connection(self):
+    def _connection(self, *, read_only: bool):
         if self._conn is not None:
             yield self._conn
             return
-        c = duckdb.connect(self._path or ":memory:")
+        path = self._path or ":memory:"
+        c = duckdb.connect(path) if path == ":memory:" else duckdb.connect(path, read_only=read_only)
         try:
             yield c
         finally:
@@ -118,7 +119,7 @@ class ExternalDataCatalogRepository:
             entry.catalog_version,
             entry.created_at,
         ]
-        with self._connection() as conn:
+        with self._connection(read_only=False) as conn:
             conn.execute(sql, params)
         return entry
 
@@ -131,7 +132,7 @@ class ExternalDataCatalogRepository:
             from external_data_catalog
             order by series_id
         """
-        with self._connection() as conn:
+        with self._connection(read_only=True) as conn:
             rows = conn.execute(sql).fetchall()
         return [self._row_to_entry(tuple(r)) for r in rows]
 
@@ -145,7 +146,7 @@ class ExternalDataCatalogRepository:
             where series_id = ?
             limit 1
         """
-        with self._connection() as conn:
+        with self._connection(read_only=True) as conn:
             row = conn.execute(sql, [series_id]).fetchone()
         if row is None:
             return None
@@ -161,6 +162,6 @@ class ExternalDataCatalogRepository:
             where domain = ?
             order by series_id
         """
-        with self._connection() as conn:
+        with self._connection(read_only=True) as conn:
             rows = conn.execute(sql, [domain]).fetchall()
         return [self._row_to_entry(tuple(r)) for r in rows]
