@@ -1,6 +1,7 @@
 export const DASHBOARD_MACRO_NEWS_TOPIC_LIMIT = 6;
 export const DASHBOARD_MACRO_NEWS_FALLBACK_SCAN_LIMIT = 200;
 export const DASHBOARD_BOND_NEWS_TOPIC_LIMIT = 8;
+export const DASHBOARD_HOME_CONTENT_REFETCH_INTERVAL_MS = 5 * 60 * 1000;
 
 export const DASHBOARD_MACRO_NEWS_TOPICS = [
   { code: "S888010007API", label: "经济数据" },
@@ -19,26 +20,62 @@ export const DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS = [
 ] as const;
 
 export const DASHBOARD_BOND_NEWS_TOPICS = [
-  { code: "tushare.news", label: "市场快讯" },
-  { code: "tushare.major", label: "重大新闻" },
-  { code: "tushare.npr", label: "政策要闻" },
-  { code: "tushare.research", label: "研究观点" },
+  {
+    code: "tushare.news",
+    groupId: "tushare_news",
+    landedPrefixes: ["tushare.news"],
+    label: "市场快讯",
+  },
+  {
+    code: "tushare.major",
+    groupId: "tushare_major",
+    landedPrefixes: ["tushare.major"],
+    label: "重大新闻",
+  },
+  {
+    code: "tushare.npr",
+    groupId: "tushare_policy",
+    landedPrefixes: ["tushare.npr", "tushare.policy"],
+    label: "政策要闻",
+  },
+  {
+    code: "tushare.research",
+    groupId: "tushare_research",
+    landedPrefixes: ["tushare.research"],
+    label: "研究观点",
+  },
 ] as const;
 
 const DASHBOARD_MACRO_NEWS_TOPIC_LABELS: ReadonlyMap<string, string> = new Map(
   [...DASHBOARD_MACRO_NEWS_TOPICS, ...DASHBOARD_BOND_NEWS_TOPICS].map((topic) => [topic.code, topic.label] as const),
 );
 
+const DASHBOARD_BOND_NEWS_GROUP_LABELS: ReadonlyMap<string, string> = new Map(
+  DASHBOARD_BOND_NEWS_TOPICS.map((topic) => [topic.groupId, topic.label] as const),
+);
+
 const DASHBOARD_MACRO_NEWS_FALLBACK_TOPIC_LABELS: ReadonlyMap<string, string> = new Map(
   DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => [topic.code, topic.label] as const),
 );
 
-export function dashboardMacroNewsTopicLabel(topicCode: string): string {
+export function dashboardMacroNewsTopicLabel(topicCode: string, groupId?: string): string {
   const normalized = topicCode.trim();
+  const normalizedGroupId = groupId?.trim() ?? "";
   if (!normalized || normalized === "—") {
-    return "宏观新闻";
+    return DASHBOARD_BOND_NEWS_GROUP_LABELS.get(normalizedGroupId) ?? "宏观新闻";
   }
-  return DASHBOARD_MACRO_NEWS_TOPIC_LABELS.get(normalized) ?? "宏观新闻";
+  const exactLabel = DASHBOARD_MACRO_NEWS_TOPIC_LABELS.get(normalized);
+  if (exactLabel) {
+    return exactLabel;
+  }
+  const landedTopic = DASHBOARD_BOND_NEWS_TOPICS.find((topic) =>
+    topic.landedPrefixes.some((prefix) => normalized.startsWith(prefix)),
+  );
+  return (
+    landedTopic?.label ??
+    DASHBOARD_BOND_NEWS_GROUP_LABELS.get(normalizedGroupId) ??
+    "宏观新闻"
+  );
 }
 
 export function dashboardMacroNewsFallbackTopicLabel(topicCode: string): string {

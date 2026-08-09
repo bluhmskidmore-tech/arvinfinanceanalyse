@@ -93,6 +93,39 @@ describe("useDashboardHomeFirstScreenViewModel report date", () => {
     expect(result.current.effectiveReportDate).toBe("");
     expect(result.current.view.reportDateContext.actualDataDate).toBe("");
     expect(result.current.view.reportDateContext.mode).toBe("empty");
+    expect(result.current.view.headerStatus.formalUseAllowed).toBeNull();
+    expect(result.current.view.headerStatus.governanceFeedAvailable).toBe(false);
+  });
+
+  it("keeps analytical usage separate from an otherwise healthy data-quality state", () => {
+    boundaryMock.current = {
+      ...(boundaryMock.current as Record<string, unknown>),
+      adapterOutput: {
+        ...(boundaryMock.current as { adapterOutput: Record<string, unknown> }).adapterOutput,
+        productCategoryHeadline: { state: "ready", metrics: [] },
+      },
+      snapshotResult: {
+        report_date: "2026-06-30",
+        mode: "strict",
+        domains_missing: [],
+      },
+      snapshotMeta: {
+        basis: "analytical",
+        formal_use_allowed: false,
+        fallback_mode: "none",
+        vendor_status: "ok",
+        quality_flag: "ok",
+        generated_at: "2026-08-01T14:23:24Z",
+      },
+    };
+
+    const { result } = renderHook(() => useDashboardHomeFirstScreenViewModel());
+
+    expect(result.current.view.headerStatus.dataStatusKind).toBe("ok");
+    expect(result.current.view.headerStatus.formalUseAllowed).toBe(false);
+    expect(result.current.view.headerStatus.governanceFeedAvailable).toBe(false);
+    expect(result.current.view.headerStatus.dataSyncPrefix).toBe("分析快照已更新");
+    expect(result.current.view.headerStatus.dataSyncPrefix).not.toContain("正式数据");
   });
 
   it("keeps missing data domains in data quality instead of inventing risk actions", () => {

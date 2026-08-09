@@ -9,6 +9,10 @@ import type {
   HomeSnapshotOverviewMetricVM,
   HomeSnapshotPnlAttributionVM,
 } from "./dashboardHomeSnapshotAdapter";
+import {
+  dashboardHomeSnapshotFailureCopy,
+  type DashboardHomeSnapshotFailureCopy,
+} from "./dashboardHomeAvailability";
 import type {
   DashboardHomeFirstScreenView,
   HomeDecisionAction,
@@ -41,6 +45,7 @@ export type MapToHomeFirstScreenViewInput = {
   snapshotMeta: ResultMeta | null;
   alertCount: number;
   snapshotUnavailable: boolean;
+  snapshotErrorDetail?: string | null;
   snapshotStale: boolean;
   snapshotLoading: boolean;
   staleWarning?: string | null;
@@ -142,6 +147,22 @@ function formatDv01(raw: number): string {
   return raw.toLocaleString("en-US", {
     maximumFractionDigits: 2,
   });
+}
+
+function formatBp(raw: number): string {
+  return raw.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function formatWan(raw: number, signAware = false): string {
+  const wan = raw / 10_000;
+  const formatted = wan.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return `${signAware && wan >= 0 ? "+" : ""}${formatted}`;
 }
 
 function numericDisplay(value: NumericLike, fallback = GAP, unitHint?: string): string {
@@ -380,15 +401,16 @@ function buildDecisionActions(args: {
   alertCount: number;
   reportDate: string;
   snapshotUnavailable: boolean;
+  snapshotFailure: DashboardHomeSnapshotFailureCopy;
 }): HomeDecisionAction[] {
   if (args.snapshotUnavailable) {
     return [
       {
         id: "snapshot-unavailable",
-        title: "首页数据服务不可达",
+        title: args.snapshotFailure.label,
         priority: "high",
-        sourceLabel: "数据服务",
-        reason: "恢复首页数据服务后刷新日报",
+        sourceLabel: "首页主快照",
+        reason: args.snapshotFailure.recovery,
         to: undefined,
         statusKind: "backend-gap",
       },
@@ -458,10 +480,75 @@ function terminalKpiFromSnapshotMetric(metric: HomeSnapshotOverviewMetricVM): Ho
     label: metric.label,
     value: split.value,
     unit: split.unit,
-    delta: delta === GAP ? GAP : `较前日 ${delta}`,
+    delta: delta === GAP ? GAP : `变动 ${delta}`,
     deltaTone: valueRaw == null ? "muted" : metricToneToDelta(metric.tone),
     sparkline: buildSparklineFromHistory(metric.history, flatSparkline(numericRaw(metric.value) ?? 1)),
     state: valueRaw != null ? "ready" : "empty",
+  };
+}
+
+function rawState(value: NumericLike): HomeDataStateKind {
+  return numericRaw(value) == null ? "empty" : "ready";
+}
+
+function numericBpParts(value: NumericLike): { value: string; unit?: string } {
+  const raw = numericRaw(value);
+  if (raw == null) {
+    return { value: GAP };
+  }
+  return { value: formatBp(raw), unit: "bp" };
+}
+
+function numericWanParts(value: NumericLike): { value: string; unit?: string } {
+  const raw = numericRaw(value);
+  if (raw == null) {
+    return { value: GAP };
+  }
+  return { value: formatWan(raw), unit: "万" };
+}
+
+function rawDeltaDisplay(
+  current: NumericLike,
+  previous: NumericLike,
+  options: { suffix: string; scale?: number; digits?: number },
+): { delta: string; tone: HomeDeltaTone } {
+  const currentRaw = numericRaw(current);
+  const previousRaw = numericRaw(previous);
+  if (currentRaw == null || previousRaw == null) {
+    return { delta: GAP, tone: "muted" };
+  }
+  const scale = options.scale ?? 1;
+  const digits = options.digits ?? 2;
+  const delta = (currentRaw - previousRaw) / scale;
+  if (Math.abs(delta) < 1e-9) {
+    return { delta: "变动 持平", tone: "flat" };
+  }
+  const sign = delta > 0 ? "+" : "";
+  return {
+    delta: `变动 ${sign}${delta.toFixed(digits)}${options.suffix}`,
+    tone: delta > 0 ? "up" : "down",
+  };
+}
+
+function terminalKpiFromParts(args: {
+  id: string;
+  label: string;
+  value: string;
+  unit?: string;
+  delta: string;
+  deltaTone: HomeDeltaTone;
+  sparkline?: readonly number[];
+  state: HomeDataStateKind;
+}): HomeTerminalKpi {
+  return {
+    id: args.id,
+    label: args.label,
+    value: args.value,
+    unit: args.unit,
+    delta: args.delta,
+    deltaTone: args.deltaTone,
+    sparkline: args.sparkline ?? [],
+    state: args.state,
   };
 }
 
@@ -476,6 +563,12 @@ function buildTerminalKpis(args: {
   attribution: HomeSnapshotPnlAttributionVM | null;
 }): HomeTerminalKpi[] {
   const totalMarketValue = args.aumMetric?.value;
+  const spreadBp = args.headline?.kpis.credit_spread_median;
+  const prevSpreadBp = args.headline?.prev_kpis?.credit_spread_median;
+  const totalDv01 =
+    args.headline?.kpis.total_dv01 ??
+    args.dv01Metric?.value ??
+    args.portfolio?.total_dv01;
   const duration =
     args.durationMetric?.value ??
     args.headline?.kpis.weighted_duration ??
@@ -585,6 +678,54 @@ function buildTerminalKpis(args: {
       }),
     );
   }
+
+  const spreadParts = numericBpParts(spreadBp);
+  const spreadDelta = rawDeltaDisplay(spreadBp, prevSpreadBp, {
+    suffix: "bp",
+  });
+  kpis.push(
+    terminalKpiFromParts({
+      id: "spread-bp",
+      label: "息差",
+      value: spreadParts.value,
+      unit: spreadParts.unit,
+      delta: spreadDelta.delta,
+      deltaTone: spreadDelta.tone,
+      state: rawState(spreadBp),
+    }),
+  );
+
+  const dv01WanParts = numericWanParts(totalDv01);
+  const dv01WanDelta = rawDeltaDisplay(totalDv01, args.headline?.prev_kpis?.total_dv01, {
+    suffix: "万",
+    scale: 10_000,
+  });
+  kpis.push(
+    terminalKpiFromParts({
+      id: "dv01-wan",
+      label: "DV01",
+      value: dv01WanParts.value,
+      unit: dv01WanParts.value === GAP ? undefined : "万元/bp",
+      delta: dv01WanDelta.delta,
+      deltaTone: dv01WanDelta.tone,
+      sparkline:
+        args.dv01Metric?.history?.length && args.dv01Metric.history.length > 1
+          ? args.dv01Metric.history.map((point) => point / 10_000)
+          : [],
+      state: rawState(totalDv01),
+    }),
+  );
+
+  kpis.push(
+    terminalKpiFromParts({
+      id: "holding-occupancy",
+      label: "持仓占用",
+      value: GAP,
+      delta: GAP,
+      deltaTone: "muted",
+      state: "empty",
+    }),
+  );
 
   return kpis;
 }
@@ -730,15 +871,18 @@ function buildReportDateContext(args: {
   domainsEffectiveDate?: Readonly<Record<string, string>>;
   snapshotMeta: ResultMeta | null;
   snapshotUnavailable: boolean;
+  snapshotErrorDetail?: string | null;
   snapshotStale: boolean;
   snapshotLoading: boolean;
   staleWarning?: string | null;
 }): HomeReportDateContext {
   const meta = args.snapshotMeta;
   const requestedDate =
-    args.requestedReportDate?.trim() ||
-    (typeof meta?.requested_report_date === "string" ? meta.requested_report_date.trim() : "") ||
-    "";
+    args.requestedReportDate !== undefined
+      ? args.requestedReportDate.trim()
+      : typeof meta?.requested_report_date === "string"
+        ? meta.requested_report_date.trim()
+        : "";
   const actualDataDate = args.reportDate.trim();
   const hasRequestedDateDivergence =
     requestedDate.length > 0 &&
@@ -755,7 +899,9 @@ function buildReportDateContext(args: {
     divergenceReason = "样例数据日";
   } else if (args.snapshotUnavailable) {
     mode = "error";
-    divergenceReason = "首页数据服务不可达";
+    divergenceReason = dashboardHomeSnapshotFailureCopy(
+      args.snapshotErrorDetail,
+    ).reason;
   } else if (args.snapshotLoading) {
     mode = "loading";
     divergenceReason = "主快照读取中";
@@ -863,6 +1009,9 @@ export function mapToHomeFirstScreenView(
   input: MapToHomeFirstScreenViewInput,
 ): DashboardHomeFirstScreenView {
   const reportDate = cleanDate(input.reportDate) || GAP;
+  const snapshotFailure = dashboardHomeSnapshotFailureCopy(
+    input.snapshotErrorDetail,
+  );
   const missingDomains = buildMissingDomains(input.domainsMissing);
   const productCategoryHeadline = input.productCategoryHeadline ?? {
     state: "empty",
@@ -881,12 +1030,17 @@ export function mapToHomeFirstScreenView(
           ? "stale"
           : governanceReview?.kind ?? "ok";
   const dataSyncPrefix = input.snapshotUnavailable
-    ? "首页数据服务不可达"
+    ? snapshotFailure.label
     : input.snapshotLoading
       ? "主快照读取中"
       : input.snapshotStale
         ? "展示上一版本"
-        : governanceReview?.reason ?? "数据已更新";
+        : governanceReview?.reason ??
+          (input.snapshotMeta?.formal_use_allowed === false
+            ? "分析快照已更新"
+            : input.snapshotMeta?.formal_use_allowed === true
+              ? "正式数据已更新"
+              : "数据已更新");
   const generatedTime = input.snapshotMeta?.generated_at?.slice(11, 16)?.trim();
   const dataUpdatedAt = input.snapshotUnavailable || input.snapshotLoading
     ? GAP
@@ -924,6 +1078,7 @@ export function mapToHomeFirstScreenView(
     domainsEffectiveDate: input.domainsEffectiveDate,
     snapshotMeta: input.snapshotMeta,
     snapshotUnavailable: input.snapshotUnavailable,
+    snapshotErrorDetail: input.snapshotErrorDetail,
     snapshotStale: input.snapshotStale,
     snapshotLoading: input.snapshotLoading,
     staleWarning: input.staleWarning,
@@ -932,12 +1087,13 @@ export function mapToHomeFirstScreenView(
     alertCount: input.alertCount,
     reportDate,
     snapshotUnavailable: input.snapshotUnavailable,
+    snapshotFailure,
   });
   const actionableCount = decisionActions.filter(
     (action) => action.statusKind === "ready" && Boolean(action.to),
   ).length;
   const decisionSuggestions = input.snapshotUnavailable
-    ? [{ id: "snapshot-unavailable-suggestion", text: "恢复首页数据服务后刷新日报" }]
+    ? [{ id: "snapshot-unavailable-suggestion", text: snapshotFailure.recovery }]
     : suggestions;
 
   return {
@@ -946,9 +1102,17 @@ export function mapToHomeFirstScreenView(
     reportDateContext,
     headerStatus: {
       dataStatusKind,
+      snapshotFailureKind: input.snapshotUnavailable
+        ? snapshotFailure.kind
+        : null,
+      formalUseAllowed: input.snapshotMeta?.formal_use_allowed ?? null,
+      // 首页尚无治理待办 feed；硬编码 0 不能被解释成“真实无待办”。
+      governanceFeedAvailable: false,
       dataUpdatedAt,
       marketStatus: input.snapshotUnavailable
-        ? "服务未连接"
+        ? snapshotFailure.kind === "permission"
+          ? "权限不足"
+          : "读取失败"
         : input.snapshotLoading
           ? "等待数据"
           : input.snapshotStale
@@ -974,13 +1138,13 @@ export function mapToHomeFirstScreenView(
       dataSyncPrefix,
     },
     decisionRail: {
-      conclusion: input.snapshotUnavailable ? "首页数据服务不可达" : buildDecisionSummary(verdict, terminalKpis),
+      conclusion: input.snapshotUnavailable ? snapshotFailure.label : buildDecisionSummary(verdict, terminalKpis),
       maxDragLabel: GAP,
       maxDragValue: GAP,
       maxContributionLabel: GAP,
       maxContributionValue: GAP,
       keyRisk: input.snapshotUnavailable
-        ? "未执行：风险核验依赖主快照，当前服务不可达"
+        ? `未执行：风险核验依赖主快照，${snapshotFailure.reason}`
         : formatVerdictReason(verdict?.reasons?.[0]),
       suggestions: decisionSuggestions,
       actions: decisionActions,

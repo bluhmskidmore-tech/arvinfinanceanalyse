@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { apiQueryKeys } from "../../../api/queryKeys";
 import { todayIsoDate } from "../pages/dashboardPageHelpers";
+import { DASHBOARD_HOME_CONTENT_REFETCH_INTERVAL_MS } from "../dashboard/dashboardMacroNewsTopics";
 import { mapToHomeBodyView } from "./dashboardHomeBodyView";
 import { useDashboardHomeBodyData } from "./useDashboardHomeBodyData";
 import { useDashboardHomeMacroReleaseContextQuery } from "./useDashboardHomeMacroReleaseContextQuery";
@@ -209,6 +210,7 @@ export function useDashboardHomeViewModel(
     hasFormalContextData &&
     Boolean(supplementalReportDate);
   const hasDeferredFormalContext = hasDeferredIncomeTrendData;
+  const dashboardTodayIsoDate = useMemo(() => todayIsoDate(), []);
 
   const {
     marketRatesQuery,
@@ -263,10 +265,13 @@ export function useDashboardHomeViewModel(
   });
 
   const researchReportsQuery = useQuery({
-    queryKey: apiQueryKeys.homeResearchReports(dataClient.mode, supplementalReportDate, 5),
-    queryFn: () => dataClient.getHomeResearchReports(supplementalReportDate ?? "", 5),
+    queryKey: apiQueryKeys.homeResearchReports(dataClient.mode, dashboardTodayIsoDate, 5),
+    queryFn: () => dataClient.getHomeResearchReports(dashboardTodayIsoDate, 5),
     retry: false,
     staleTime: 60_000,
+    refetchInterval: DASHBOARD_HOME_CONTENT_REFETCH_INTERVAL_MS,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
     enabled: hasDeferredSupplementalReportDate && hasBodyDetailData && hasBodyStructureData,
   });
 
@@ -278,7 +283,6 @@ export function useDashboardHomeViewModel(
     enabled: hasDeferredIncomeTrendData,
   });
 
-  const dashboardTodayIsoDate = useMemo(() => todayIsoDate(), []);
   const { macroReleaseContextQuery } = useDashboardHomeMacroReleaseContextQuery({
     dataClient,
     enabled: hasDeferredSupplementalReportDate,
@@ -325,6 +329,7 @@ export function useDashboardHomeViewModel(
       mapToHomeBodyView({
         reportDate: effectiveReportDate,
         useMockFallback,
+        overviewMetrics: adapterOutput.overview?.vm?.metrics ?? null,
         attribution: adapterOutput.attribution.vm,
         creditSpreadMigration: creditSpreadMigrationQuery.data?.result ?? null,
         returnDecomposition: returnDecompositionQuery.data?.result ?? null,
@@ -340,6 +345,7 @@ export function useDashboardHomeViewModel(
           hasDeferredSupplementalReportDate &&
           !homeSummaryQuery.data &&
           !homeSummaryQuery.isError,
+        homeSummaryError: homeSummaryQuery.isError,
         yieldDistribution: homeSummaryQuery.data?.result.yield_distribution ?? null,
         portfolioComparison: homeSummaryQuery.data?.result.portfolio_comparison ?? null,
         spreadAnalysis: homeSummaryQuery.data?.result.spread ?? null,
@@ -376,6 +382,7 @@ export function useDashboardHomeViewModel(
       }),
     [
       adapterOutput.attribution.vm,
+      adapterOutput.overview?.vm?.metrics,
       bondNewsEvents,
       bondNewsPayloads,
       creditSpreadMigrationQuery.data?.result,

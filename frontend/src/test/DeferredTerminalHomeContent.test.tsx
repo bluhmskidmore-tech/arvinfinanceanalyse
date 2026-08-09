@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { DashboardHomeFirstScreenHydration } from "../features/workbench/dashboard-home/dashboardHomeFirstScreenTypes";
+import { createMockHomeFirstScreenView } from "../features/workbench/dashboard-home/dashboardHomeFirstScreenMockView";
 import { DeferredTerminalHomeContent } from "../features/workbench/dashboard-home/DeferredTerminalHomeContent";
 import type { DashboardHomeSnapshotBoundary } from "../features/workbench/dashboard-home/useDashboardHomeFirstScreenViewModel";
 import { useDashboardHomeSupplementalHydration } from "../features/workbench/dashboard-home/useDashboardHomeSupplementalHydration";
@@ -79,6 +80,7 @@ describe("DeferredTerminalHomeContent", () => {
     render(
       <DeferredTerminalHomeContent
         snapshotBoundary={{} as DashboardHomeSnapshotBoundary}
+        firstScreenView={createMockHomeFirstScreenView()}
         userReachedDeferredContent={false}
       />,
     );
@@ -100,6 +102,7 @@ describe("DeferredTerminalHomeContent", () => {
     const { rerender } = render(
       <DeferredTerminalHomeContent
         snapshotBoundary={snapshotBoundary}
+        firstScreenView={createMockHomeFirstScreenView()}
         userReachedDeferredContent={false}
         onFirstScreenHydrated={onFirstScreenHydrated}
       />,
@@ -112,6 +115,7 @@ describe("DeferredTerminalHomeContent", () => {
     rerender(
       <DeferredTerminalHomeContent
         snapshotBoundary={snapshotBoundary}
+        firstScreenView={createMockHomeFirstScreenView()}
         userReachedDeferredContent={false}
         onFirstScreenHydrated={onFirstScreenHydrated}
       />,

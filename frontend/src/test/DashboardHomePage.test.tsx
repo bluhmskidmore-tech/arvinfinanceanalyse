@@ -1,6 +1,5 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, vi } from "vitest";
-import { MemoryRouter } from "react-router-dom";
 
 vi.mock("../lib/echarts", () => ({
   default: () => <div data-testid="dashboard-echarts-stub" />,
@@ -51,8 +50,6 @@ import {
   DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS,
   DASHBOARD_MACRO_NEWS_TOPICS,
 } from "../features/workbench/dashboard/dashboardMacroNewsTopics";
-import type { DashboardHomeBodyView } from "../features/workbench/dashboard-home/dashboardHomeBodyView";
-import { TerminalHomeContent } from "../features/workbench/dashboard-home/TerminalHomeContent";
 import { todayIsoDate as resolveTodayIsoDate } from "../features/workbench/pages/dashboardPageHelpers";
 import { preloadWorkbenchRouteModules } from "./preloadWorkbenchRouteModules";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
@@ -60,6 +57,7 @@ import { renderWorkbenchApp } from "./renderWorkbenchApp";
 type MockIntersectionObserver = {
   observe: ReturnType<typeof vi.fn>;
   disconnect: ReturnType<typeof vi.fn>;
+  options: IntersectionObserverInit[];
   triggerAll: (entry?: Partial<IntersectionObserverEntry>) => void;
 };
 
@@ -68,6 +66,7 @@ afterEach(() => {
     restoreHomeGateTimers();
     restoreHomeGateTimers = null;
   }
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -81,9 +80,11 @@ beforeAll(async () => {
 
 function stubIntersectionObserver(): MockIntersectionObserver {
   const callbacks: IntersectionObserverCallback[] = [];
+  const options: IntersectionObserverInit[] = [];
   const observer: MockIntersectionObserver = {
     observe: vi.fn(),
     disconnect: vi.fn(),
+    options,
     triggerAll: (entry = {}) => {
       const target = (entry.target ?? document.createElement("div")) as Element;
       for (const callback of callbacks) {
@@ -101,8 +102,12 @@ function stubIntersectionObserver(): MockIntersectionObserver {
       }
     },
   };
-  const MockObserver = vi.fn(function MockIntersectionObserver(callback: IntersectionObserverCallback) {
+  const MockObserver = vi.fn(function MockIntersectionObserver(
+    callback: IntersectionObserverCallback,
+    init?: IntersectionObserverInit,
+  ) {
     callbacks.push(callback);
+    options.push(init ?? {});
     return observer;
   });
 
@@ -318,23 +323,22 @@ function requestedNewsTopicCount(
   return requestedNewsTopicCodes(spy).filter((requestedTopicCode) => requestedTopicCode === topicCode).length;
 }
 
-function bondNewsTopicCodesExcludingFallbackTopics(): string[] {
-  const fallbackTopicCodes = new Set<string>(DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code));
-  return DASHBOARD_BOND_NEWS_TOPICS.filter((topic) => !fallbackTopicCodes.has(topic.code)).map(
-    (topic) => topic.code,
-  );
+function requestedNewsGroupIds(spy: {
+  mock: { calls: Array<Parameters<ApiClient["getChoiceNewsEvents"]>> };
+}): string[] {
+  return spy.mock.calls.map(([options]) => options.groupId ?? "");
 }
 
-function bondNewsOnlyTopicCodesAfterProbe(): string[] {
-  return bondNewsTopicCodesExcludingFallbackTopics().slice(1);
+function bondNewsGroupIds(): string[] {
+  return DASHBOARD_BOND_NEWS_TOPICS.map((topic) => topic.groupId);
 }
 
-function bondNewsProbeTopicCode(): string {
-  return bondNewsTopicCodesExcludingFallbackTopics()[0] ?? "";
+function bondNewsProbeGroupId(): string {
+  return bondNewsGroupIds()[0] ?? "";
 }
 
-function remainingBondNewsTopicCodesAfterProbe(): string[] {
-  return bondNewsTopicCodesExcludingFallbackTopics().slice(1);
+function remainingBondNewsGroupIdsAfterProbe(): string[] {
+  return bondNewsGroupIds().slice(1);
 }
 
 function choiceNewsEvent(overrides: Partial<ChoiceNewsEvent>): ChoiceNewsEvent {
@@ -410,121 +414,6 @@ function createSupplementalHomeSpies(mockSnapshotSource: ApiClient) {
   };
 }
 
-function createTerminalStateView(overrides: Partial<DashboardHomeBodyView> = {}): DashboardHomeBodyView {
-  const baseState = { kind: "empty" as const, label: "暂无数据" };
-  return {
-    reportDate: "2026-04-30",
-    quickDrilldowns: [],
-    macroBriefing: {
-      releaseItems: [],
-      releaseHistoryItems: [],
-      releaseWindowLabel: "未来 45 天",
-      releaseMessage: "暂无已维护发布日期，请补充配置清单。",
-      newsItems: [],
-      newsMessage: "政策与资金面：暂无债券相关更新",
-      newsStale: false,
-      newsFreshnessLabel: "暂无更新",
-      newsSourceLabel: "来源：Choice 宏观新闻",
-      newsAsOfLabel: "数据截至：暂无",
-      newsStatusLabel: "来源状态：暂无数据",
-      newsRefreshLabel: "刷新：随页面查询自动更新",
-      policyFundingSummary: {
-        headline: "暂无可展示的政策与资金面快讯。",
-        chips: [
-          { id: "as-of", label: "数据截至：暂无", tone: "neutral" },
-          { id: "freshness", label: "暂无更新", tone: "neutral" },
-        ],
-        groups: [],
-      },
-      supplyItems: [{ id: "supply-empty", label: "供给/招标：当前窗口无事件" }],
-    },
-    bondNews: {
-      holdingHits: [],
-      marketNews: [],
-      creditAndIssuanceNews: [],
-      holdingMessage: "持仓命中：当前无相关新闻",
-      marketMessage: "债券市场：暂无相关新闻",
-      creditMessage: "发行/评级：暂无相关新闻",
-      sourceLabel: "来源：Choice / Tushare 债券新闻",
-      asOfLabel: "数据截至：暂无",
-      statusLabel: "来源状态：暂无数据",
-      refreshLabel: "刷新：随页面查询自动更新",
-    },
-    marketContext: {
-      temperatureLabel: "市场温度：中性",
-      temperatureScore: 50,
-      temperatureTone: "neutral",
-      drivers: ["外部市场暂无明显方向"],
-      contextBlocks: [
-        {
-          id: "pnl",
-          label: "PnL归因",
-          title: "等待正式归因数据",
-          detail: "未收到 return-decomposition 正式 payload",
-          foot: "不从总 PnL 反推归因",
-        },
-        {
-          id: "curve",
-          label: "曲线/利率",
-          title: "等待曲线期限结构",
-          detail: "未收到 yield_curve_term_structure 正式 payload",
-          foot: "默认曲线 treasury,cdb,aaa_credit",
-        },
-        {
-          id: "credit",
-          label: "信用利差",
-          title: "等待信用利差上下文",
-          detail: "未收到 credit_spread_migration 正式 payload",
-          foot: "只作解释变量，不改变 PnL 计算",
-        },
-      ],
-      aiSummary: [
-        "PnL归因：等待正式归因数据；未收到 return-decomposition 正式 payload。",
-        "曲线/利率：等待曲线期限结构；未收到 yield_curve_term_structure 正式 payload。",
-      ],
-      sourceLabel: "来源：收益归因 / yield_curve_term_structure / credit_spread_migration",
-      asOfLabel: "数据截至：暂无",
-      statusLabel: "来源状态：等待正式数据",
-      refreshLabel: "刷新：随报告日查询自动更新",
-    },
-    holdingRows: [],
-    holdingsState: { kind: "empty", label: "重仓券暂无数据" },
-    assetDistribution: [],
-    assetDistributionState: baseState,
-    ratingDistribution: [],
-    ratingDistributionState: baseState,
-    maturityDistribution: [],
-    maturityDistributionState: { kind: "empty", label: "久期分布暂无数据" },
-    industryDistribution: [],
-    industryDistributionState: { kind: "error", label: "行业分布加载失败" },
-    yieldDistribution: [],
-    yieldDistributionState: baseState,
-    portfolioComparison: [],
-    portfolioComparisonState: baseState,
-    riskExposureMetrics: [],
-    riskExposureState: { kind: "empty", label: "风险指标暂无数据" },
-    positionChanges: [],
-    positionChangesState: { kind: "error", label: "增减仓加载失败" },
-    researchReports: [],
-    researchReportsState: { kind: "error", label: "研究报告加载失败" },
-    incomeTrend: [],
-    incomeTrendState: { kind: "partial", label: "缺 CDB_INDEX 可核验曲线" },
-    incomeTrendSection: {
-      key: "income-trend",
-      status: { kind: "partial", label: "缺 CDB_INDEX 可核验曲线" },
-      reportDate: "2026-04-30",
-      dateBasis: "supplemental_report_date",
-      source: "home_income_trend",
-      sourceMeta: null,
-      warnings: [],
-      missingComponents: [],
-      unitNotes: [],
-      data: [],
-    },
-    ...overrides,
-  };
-}
-
 describe("DashboardHomePage", () => {
   it("renders the home shell while snapshot query is unresolved", async () => {
     const base = createApiClient({ mode: "mock" });
@@ -548,22 +437,6 @@ describe("DashboardHomePage", () => {
       expect(releaseSnapshot).toBeDefined();
     });
     releaseSnapshot?.();
-  });
-
-  it("renders the command dock as plain links without fake function-key hints", async () => {
-    renderDashboardHome();
-
-    const dock = await screen.findByTestId("dashboard-home-command-dock");
-    expect(dock).not.toHaveTextContent(/F[2-6]/);
-    expect(dock).not.toHaveTextContent("指标检索");
-
-    const links = within(dock).getAllByRole("link");
-    expect(links.map((link) => link.getAttribute("href")?.split("?")[0])).toEqual([
-      "/bond-analysis",
-      "/risk-overview",
-      "/pnl-attribution",
-      "/decision-items",
-    ]);
   });
 
   it("opens the review copilot drawer with the dashboard page context", { timeout: 45_000 }, async () => {
@@ -667,10 +540,10 @@ describe("DashboardHomePage", () => {
       expect.arrayContaining([DASHBOARD_MACRO_NEWS_TOPICS[0].code]),
     );
     expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
-      expect.arrayContaining([
-        ...DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code),
-        ...DASHBOARD_BOND_NEWS_TOPICS.map((topic) => topic.code),
-      ]),
+      expect.arrayContaining(DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code)),
+    );
+    expect(requestedNewsGroupIds(getChoiceNewsEvents)).not.toEqual(
+      expect.arrayContaining(bondNewsGroupIds()),
     );
 
     await waitForSecondaryEventFeedDataDelay();
@@ -684,14 +557,30 @@ describe("DashboardHomePage", () => {
     await waitForBondNewsFeedDataDelay();
     await runPendingIdleIfAny(idle);
     await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
-        expect.arrayContaining(bondNewsTopicCodesExcludingFallbackTopics()),
+      expect(requestedNewsGroupIds(getChoiceNewsEvents)).toEqual(
+        expect.arrayContaining(bondNewsGroupIds()),
       );
     });
 
     await waitForFormalContextDataDelay();
     await runPendingIdleIfAny(idle);
     expect(getHomeIncomeTrend).toHaveBeenCalled();
+  });
+
+  it("keeps stored-news reread available while source updates remain backend-controlled", async () => {
+    renderPolicyFundingDeepLink();
+
+    const bondNews = await screen.findByTestId("dashboard-home-bond-news");
+    expect(
+      within(bondNews).getByRole("button", {
+        name: "重新读取已落库新闻与研报",
+      }),
+    ).toBeEnabled();
+    expect(
+      within(bondNews).getByRole("button", {
+        name: "来源更新由后台受控任务维护",
+      }),
+    ).toBeDisabled();
   });
 
   it("starts policy funding event feeds immediately on the Chinese deep link", async () => {
@@ -823,9 +712,14 @@ describe("DashboardHomePage", () => {
         expect.arrayContaining(DASHBOARD_MACRO_NEWS_TOPICS.map((topic) => topic.code)),
       );
     });
-    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
-      expect.arrayContaining(DASHBOARD_BOND_NEWS_TOPICS.map((topic) => topic.code)),
+    expect(requestedNewsGroupIds(getChoiceNewsEvents)).toEqual(
+      expect.arrayContaining(bondNewsGroupIds()),
     );
+    expect(
+      getChoiceNewsEvents.mock.calls
+        .filter(([options]) => Boolean(options.groupId))
+        .every(([options]) => options.topicCode == null),
+    ).toBe(true);
     expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
       expect.arrayContaining(DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code)),
     );
@@ -833,8 +727,8 @@ describe("DashboardHomePage", () => {
     await waitForBondNewsFeedDataDelay();
     await runPendingIdleIfAny(idle);
     await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
-        expect.arrayContaining(bondNewsTopicCodesExcludingFallbackTopics()),
+      expect(requestedNewsGroupIds(getChoiceNewsEvents)).toEqual(
+        expect.arrayContaining(bondNewsGroupIds()),
       );
     });
     expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
@@ -907,10 +801,10 @@ describe("DashboardHomePage", () => {
     await runPendingIdleIfAny(idle);
     await waitFor(() => {
       expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
-        expect.arrayContaining([
-          ...DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code),
-          ...bondNewsTopicCodesExcludingFallbackTopics(),
-        ]),
+        expect.arrayContaining(DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code)),
+      );
+      expect(requestedNewsGroupIds(getChoiceNewsEvents)).toEqual(
+        expect.arrayContaining(bondNewsGroupIds()),
       );
     });
     expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
@@ -1104,16 +998,17 @@ describe("DashboardHomePage", () => {
     await waitForBondNewsFeedDataDelay();
     await runPendingIdleIfAny(idle);
     await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
-        expect.arrayContaining(bondNewsTopicCodesExcludingFallbackTopics()),
+      expect(requestedNewsGroupIds(getChoiceNewsEvents)).toEqual(
+        expect.arrayContaining(bondNewsGroupIds()),
       );
     });
     expect(requestedNewsTopicCount(getChoiceNewsEvents, "tushare.npr")).toBe(1);
-    expect(requestedNewsTopicCount(getChoiceNewsEvents, "tushare.research")).toBe(1);
-    expect(requestedNewsTopicCount(getChoiceNewsEvents, "tushare.news")).toBe(1);
+    expect(requestedNewsGroupIds(getChoiceNewsEvents)).toEqual(
+      expect.arrayContaining(bondNewsGroupIds()),
+    );
   });
 
-  it("stops bond news topic loading when the bond probe has no usable rows", async () => {
+  it("continues bond news topic loading when the bond probe has no usable rows", async () => {
     const base = createApiClient({ mode: "real" });
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     let releaseSnapshot: (() => void) | undefined;
@@ -1131,11 +1026,12 @@ describe("DashboardHomePage", () => {
           }),
         ]);
       }
-      if (options.topicCode === bondNewsProbeTopicCode()) {
+      if (options.groupId === bondNewsProbeGroupId()) {
         return choiceNewsEnvelope([
           choiceNewsEvent({
             event_key: "bond-probe-error",
-            topic_code: options.topicCode,
+            group_id: options.groupId,
+            topic_code: DASHBOARD_BOND_NEWS_TOPICS[0].code,
             error_code: 10001012,
             error_msg: "insufficient user access",
             payload_text: null,
@@ -1175,9 +1071,6 @@ describe("DashboardHomePage", () => {
     });
     releaseSnapshot?.();
     await revealHomeBodyStructureData(idle);
-    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
-      expect.arrayContaining([bondNewsProbeTopicCode(), ...bondNewsOnlyTopicCodesAfterProbe()]),
-    );
 
     await waitForEventFeedDataDelay();
     await runPendingIdleIfAny(idle);
@@ -1198,12 +1091,12 @@ describe("DashboardHomePage", () => {
     await waitForBondNewsFeedDataDelay();
     await runPendingIdleIfAny(idle);
     await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
-        expect.arrayContaining([bondNewsProbeTopicCode()]),
+      expect(requestedNewsGroupIds(getChoiceNewsEvents)).toEqual(
+        expect.arrayContaining([bondNewsProbeGroupId()]),
       );
     });
-    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
-      expect.arrayContaining(remainingBondNewsTopicCodesAfterProbe()),
+    expect(requestedNewsGroupIds(getChoiceNewsEvents)).toEqual(
+      expect.arrayContaining(remainingBondNewsGroupIdsAfterProbe()),
     );
   });
 
@@ -1225,11 +1118,12 @@ describe("DashboardHomePage", () => {
           }),
         ]);
       }
-      if (options.topicCode === bondNewsProbeTopicCode()) {
+      if (options.groupId === bondNewsProbeGroupId()) {
         return choiceNewsEnvelope([
           choiceNewsEvent({
             event_key: "bond-probe-hit",
-            topic_code: options.topicCode,
+            group_id: options.groupId,
+            topic_code: DASHBOARD_BOND_NEWS_TOPICS[0].code,
             payload_text: "债券市场收益率曲线下行，资金面保持宽松。",
           }),
         ]);
@@ -1271,8 +1165,8 @@ describe("DashboardHomePage", () => {
     await waitForBondNewsFeedDataDelay();
     await runPendingIdleIfAny(idle);
     await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
-        expect.arrayContaining(bondNewsTopicCodesExcludingFallbackTopics()),
+      expect(requestedNewsGroupIds(getChoiceNewsEvents)).toEqual(
+        expect.arrayContaining(bondNewsGroupIds()),
       );
     });
   });
@@ -1412,11 +1306,12 @@ describe("DashboardHomePage", () => {
     });
   });
 
-  it("keeps below-fold content unmounted while its boundary stays outside the viewport", async () => {
+  it("loads below-fold content when its boundary enters the viewport", async () => {
     const observer = stubIntersectionObserver();
     const idle = stubIdleCallbacks();
 
     renderDashboardHome();
+    expect(observer.observe).not.toHaveBeenCalled();
 
     expect(await screen.findByTestId("dashboard-home-hero")).toBeInTheDocument();
     expect(screen.getByTestId("dashboard-home-deferred-index")).toBeInTheDocument();
@@ -1425,9 +1320,13 @@ describe("DashboardHomePage", () => {
     await waitForBodyAutoRevealDelay();
 
     expect(observer.observe).toHaveBeenCalled();
+    expect(observer.options[0]?.root).toBeNull();
     expect(observer.observe).toHaveBeenCalledWith(
       screen.getByTestId("dashboard-home-deferred-sentinel"),
     );
+    expect(
+      screen.getByTestId("dashboard-home-deferred-sentinel").getAttribute("class"),
+    ).toMatch(/deferredSentinel/);
     expect(idle.pendingCount()).toBe(0);
     expect(screen.queryByTestId("dashboard-home-work-grid")).not.toBeInTheDocument();
 
@@ -1512,6 +1411,39 @@ describe("DashboardHomePage", () => {
     await waitFor(() => {
       expect(supplementalCalls.getBondDashboardHeadlineKpis).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("reveals below-fold content when the internal layout scroll container scrolls before any observer callback", async () => {
+    const observer = stubIntersectionObserver();
+    const getComputedStyle = window.getComputedStyle.bind(window);
+    vi.spyOn(window, "getComputedStyle").mockImplementation((element, pseudoElement) => {
+      const style = getComputedStyle(element, pseudoElement);
+      if ((element as HTMLElement).dataset.testid !== "dashboard-home-scroll-root") {
+        return style;
+      }
+      return new Proxy(style, {
+        get(target, property, receiver) {
+          if (property === "overflowY") {
+            return "auto";
+          }
+          return Reflect.get(target, property, receiver);
+        },
+      });
+    });
+
+    renderDashboardHome();
+
+    expect(await screen.findByTestId("dashboard-home-hero")).toBeInTheDocument();
+    expect(screen.queryByTestId("dashboard-home-work-grid")).not.toBeInTheDocument();
+    const scrollRoot = screen.getByTestId("dashboard-home-scroll-root");
+    expect(observer.options[0]?.root).toBe(scrollRoot);
+
+    await act(async () => {
+      fireEvent.scroll(scrollRoot);
+    });
+
+    expect(await screen.findByTestId("dashboard-home-work-grid")).toBeInTheDocument();
+    expect(observer.disconnect).toHaveBeenCalled();
   });
 
   it("does not reuse an old idle gate for supplemental queries while a new report-date snapshot is pending", async () => {
@@ -2124,6 +2056,14 @@ describe("DashboardHomePage", () => {
         ...envelope,
         result_meta: {
           ...envelope.result_meta,
+          trace_id: "trace-real-home-overview",
+          basis: "analytical" as const,
+          formal_use_allowed: false,
+          source_version: "sv_home_overview_test",
+          vendor_version: "vv_home_overview_test",
+          rule_version: "rv_home_overview_test",
+          cache_version: "cv_home_overview_test",
+          source_surface: "executive_analytical",
           generated_at: "2026-04-30T10:45:00+08:00",
         },
         result: {
@@ -2237,7 +2177,11 @@ describe("DashboardHomePage", () => {
       expect(within(hero).getByTestId("dashboard-home-kpi-aum")).toHaveTextContent("4,567.89");
       expect(within(hero).getByTestId("dashboard-home-kpi-yield")).toHaveTextContent("+36.39");
       expect(within(hero).getByTestId("dashboard-home-kpi-nim")).toHaveTextContent("+1.05");
-      expect(within(hero).getByTestId("dashboard-home-kpi-dv01")).toHaveTextContent("106,223,757");
+      expect(within(hero).getByTestId("dashboard-home-kpi-dv01-wan")).toBeInTheDocument();
+      expect(within(hero).queryByTestId("dashboard-home-kpi-spread-bp")).not.toBeInTheDocument();
+      expect(
+        within(hero).queryByTestId("dashboard-home-kpi-holding-occupancy"),
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -2357,12 +2301,13 @@ describe("DashboardHomePage", () => {
     renderDashboardHome(client);
 
     const hero = await screen.findByTestId("dashboard-home-hero");
-    const primaryCards = within(hero).getAllByRole("article");
+    const kpiStrip = within(hero).getByTestId("dashboard-home-hero-kpi-strip");
+    const primaryCards = within(kpiStrip).getAllByRole("article");
     expect(primaryCards.map((card) => card.getAttribute("data-testid"))).toEqual([
       "dashboard-home-kpi-aum",
       "dashboard-home-kpi-yield",
       "dashboard-home-kpi-nim",
-      "dashboard-home-kpi-dv01",
+      "dashboard-home-kpi-dv01-wan",
     ]);
     primaryCards.forEach((card) => expect(card).toHaveTextContent("—"));
     expect(within(hero).queryByTestId("dashboard-home-kpi-bond-market-value")).not.toBeInTheDocument();
@@ -2657,8 +2602,20 @@ describe("DashboardHomePage", () => {
     });
     const positionChanges = await screen.findByTestId("dashboard-home-position-changes");
     expect(positionChanges).toHaveTextContent("240002.IB");
-    expect(positionChanges).toHaveTextContent("+2.00pp");
-    expect(positionChanges).toHaveTextContent("现值");
+    expect(positionChanges).toHaveTextContent("+30.00 亿");
+    expect(positionChanges).not.toHaveTextContent("+2.00pp");
+    expect(positionChanges).not.toHaveTextContent("现值");
+    expect(
+      within(positionChanges).getByTestId("dashboard-home-position-comparison"),
+    ).toHaveAttribute("data-state", "unavailable");
+    expect(
+      within(positionChanges).getByRole("link", {
+        name: /查看 .+（240002\.IB）明细/,
+      }),
+    ).toHaveAttribute(
+      "href",
+      "/bond-trading-desk?bond_code=240002.IB&report_date=2026-04-30",
+    );
     const incomeTrend = await screen.findByTestId("dashboard-home-income-trend");
     await waitFor(() => {
       expect(incomeTrend).toHaveTextContent("组合");
@@ -2672,116 +2629,6 @@ describe("DashboardHomePage", () => {
     expect(screen.queryByTestId("dashboard-home-backend-gap-income-trend")).not.toBeInTheDocument();
   });
 
-  it("renders compact explicit states instead of blank terminal cards", () => {
-    render(
-      <MemoryRouter>
-        <TerminalHomeContent view={createTerminalStateView()} />
-      </MemoryRouter>,
-    );
-
-    expect(screen.getByTestId("dashboard-home-holdings-table")).toHaveTextContent("重仓券暂无数据");
-    expect(screen.getByTestId("dashboard-home-position-changes")).toHaveTextContent("增减仓加载失败");
-    expect(screen.getByTestId("dashboard-home-research-reports")).toHaveTextContent("研究报告加载失败");
-    expect(screen.getByTestId("dashboard-home-income-trend")).toHaveTextContent("缺 CDB_INDEX 可核验曲线");
-    expect(screen.getByTestId("dashboard-home-income-trend")).toHaveTextContent("部分指标缺失，结论需复核");
-    expect(screen.getByTestId("dashboard-home-market-context")).toHaveTextContent("今日市场解释");
-    expect(screen.getByTestId("dashboard-home-market-context")).toHaveTextContent("市场温度：中性");
-    expect(screen.getByTestId("dashboard-home-market-context")).toHaveTextContent("PnL归因");
-    expect(screen.getByTestId("dashboard-home-market-context")).toHaveTextContent("曲线/利率");
-    expect(screen.getByTestId("dashboard-home-market-context")).toHaveTextContent("信用利差");
-    expect(screen.queryByText("后端工单")).not.toBeInTheDocument();
-    expect(screen.queryByText("杠杆率")).not.toBeInTheDocument();
-  });
-
-  it("renders structure board as a coverage map with folded gaps", () => {
-    render(
-      <MemoryRouter>
-        <TerminalHomeContent
-          view={createTerminalStateView({
-            assetDistributionState: { kind: "ready", label: "ready" },
-            assetDistribution: [
-              {
-                id: "policy-fi",
-                label: "Policy FI",
-                value: "20.03",
-                pct: "20.03%",
-                pctRaw: 20.03,
-              },
-            ],
-            ratingDistributionState: { kind: "empty", label: "rating missing" },
-          })}
-        />
-      </MemoryRouter>,
-    );
-
-    const board = screen.getByTestId("dashboard-home-structure-board");
-    const coverage = within(board).getByTestId("dashboard-home-structure-coverage");
-    expect(coverage).toHaveTextContent("1/6");
-    expect(coverage).toHaveTextContent("就绪");
-    expect(coverage).toHaveTextContent("缺口");
-
-    const expanded = within(board).getByTestId("dashboard-home-structure-expanded-grid");
-    expect(expanded.querySelectorAll("article")).toHaveLength(1);
-    expect(expanded).toHaveTextContent("Policy FI");
-
-    const gapBand = within(board).getByTestId("dashboard-home-structure-gap-band");
-    expect(gapBand).toHaveTextContent("rating missing");
-    expect(gapBand).toHaveTextContent("保留端点");
-    expect(gapBand).not.toHaveTextContent("503");
-  });
-
-  it("renders income trend as portfolio benchmark and excess context", () => {
-    render(
-      <MemoryRouter>
-        <TerminalHomeContent
-          view={createTerminalStateView({
-            incomeTrendState: { kind: "ready", label: "已接入" },
-            incomeTrend: [
-              {
-                id: "2026-03-31",
-                date: "2026-03-31",
-                portfolioPnl: "+1.20 亿",
-                benchmarkPnl: "+0.80 亿",
-                excessPnl: "+0.40 亿",
-                portfolioRaw: 120_000_000,
-                benchmarkRaw: 80_000_000,
-                excessRaw: 40_000_000,
-              },
-              {
-                id: "2026-04-30",
-                date: "2026-04-30",
-                portfolioPnl: "+0.90 亿",
-                benchmarkPnl: "+0.60 亿",
-                excessPnl: "+0.30 亿",
-                portfolioRaw: 90_000_000,
-                benchmarkRaw: 60_000_000,
-                excessRaw: 30_000_000,
-              },
-              {
-                id: "2026-05-31",
-                date: "2026-05-31",
-                portfolioPnl: "—",
-                benchmarkPnl: "—",
-                excessPnl: "—",
-                portfolioRaw: null,
-                benchmarkRaw: null,
-                excessRaw: null,
-              },
-            ],
-          })}
-        />
-      </MemoryRouter>,
-    );
-
-    const incomeTrend = screen.getByTestId("dashboard-home-income-trend");
-    expect(incomeTrend).toHaveTextContent("数据截至 2026-04-30");
-    expect(incomeTrend).toHaveTextContent("CDB_INDEX / MoM");
-    expect(incomeTrend).toHaveTextContent("组合");
-    expect(incomeTrend).toHaveTextContent("CDB基准");
-    expect(incomeTrend).toHaveTextContent("超额");
-    expect(incomeTrend).toHaveTextContent("基准+0.60 亿");
-    expect(incomeTrend).toHaveTextContent("超额+0.30 亿");
-  });
     /*
     expect(screen.getByTestId("dashboard-home-backend-gap-research-reports")).toHaveTextContent(
       "后端待接入",
@@ -2792,56 +2639,6 @@ describe("DashboardHomePage", () => {
   });
 
     */
-  it("defers dashboard chart runtime until visible chart regions are reached by user scroll", async () => {
-    const observer = stubIntersectionObserver();
-
-    render(
-      <MemoryRouter>
-        <TerminalHomeContent
-          view={createTerminalStateView({
-            assetDistributionState: { kind: "ready", label: "ready" },
-            assetDistribution: [
-              { id: "bond", label: "Bond", value: "90.00", pct: "90.00%", pctRaw: 90 },
-              { id: "cash", label: "Cash", value: "10.00", pct: "10.00%", pctRaw: 10 },
-            ],
-            incomeTrendState: { kind: "ready", label: "ready" },
-            incomeTrend: [
-              {
-                id: "2026-04-30",
-                date: "2026-04-30",
-                portfolioPnl: "+0.90",
-                benchmarkPnl: "+0.60",
-                excessPnl: "+0.30",
-                portfolioRaw: 90_000_000,
-                benchmarkRaw: 60_000_000,
-                excessRaw: 30_000_000,
-              },
-            ],
-          })}
-        />
-      </MemoryRouter>,
-    );
-
-    expect(screen.getByTestId("dashboard-home-income-trend")).toHaveTextContent("CDB_INDEX / MoM");
-    expect(observer.observe).toHaveBeenCalled();
-    expect(screen.queryByTestId("dashboard-echarts-stub")).not.toBeInTheDocument();
-
-    await act(async () => {
-      observer.triggerAll({ isIntersecting: true, intersectionRatio: 1 });
-    });
-    await waitForTestClock(0);
-
-    expect(screen.queryByTestId("dashboard-echarts-stub")).not.toBeInTheDocument();
-
-    await act(async () => {
-      window.dispatchEvent(new Event("scroll"));
-    });
-
-    await waitFor(() => {
-      expect(screen.getAllByTestId("dashboard-echarts-stub").length).toBeGreaterThan(0);
-    });
-  });
-
   it("renders supply and auction calendar items from the research calendar feed", async () => {
     const researchCalendarCalls: Array<{
       reportDate?: string;
@@ -2924,8 +2721,8 @@ describe("DashboardHomePage", () => {
         "C000003002",
       ]),
     );
-    expect(topicCodes).toEqual(
-      expect.arrayContaining(["tushare.major", "tushare.npr", "tushare.research"]),
+    expect(requestedNewsGroupIds(getChoiceNewsEvents)).toEqual(
+      expect.arrayContaining(bondNewsGroupIds()),
     );
   });
 

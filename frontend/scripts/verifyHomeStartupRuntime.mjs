@@ -23,18 +23,21 @@ const productionBundleInputs = [
   "src/layouts/WorkbenchShellMarketTicker.tsx",
   "src/layouts/workbenchShellTicker.ts",
   "src/features/workbench/dashboard-home/DashboardHomePage.tsx",
+  "src/features/workbench/dashboard-home/DashboardHomeOptionTwoOverview.tsx",
+  "src/features/workbench/dashboard-home/DashboardHomeOptionTwoLayout.tsx",
+  "src/features/workbench/dashboard-home/dashboardHomeOptionTwoShared.ts",
   "src/features/workbench/dashboard-home/dashboardHomeFirstScreenView.ts",
   "src/features/workbench/dashboard-home/dashboardHomeFirstScreenMockView.ts",
-  "src/features/workbench/dashboard-home/TerminalHomeFirstScreen.tsx",
   "src/features/workbench/dashboard-home/DeferredTerminalHomeContent.tsx",
-  "src/features/workbench/dashboard-home/TerminalHomeContent.tsx",
+  "src/features/workbench/dashboard-home/DeferredTerminalHomeBody.tsx",
   "src/features/workbench/dashboard-home/useDashboardHomeFirstScreenViewModel.ts",
   "src/features/workbench/dashboard-home/useDashboardHomeSupplementalHydration.ts",
   "src/features/workbench/dashboard-home/useMockHomeFirstScreenView.ts",
   "src/features/workbench/dashboard-home/useDashboardHomeViewModel.ts",
   "src/features/workbench/dashboard-home/useDashboardHomeBodyData.ts",
   "src/features/workbench/dashboard-home/dashboardHomeShell.module.css",
-  "src/features/workbench/dashboard-home/dashboardHome.module.css",
+  "src/features/workbench/dashboard-home/dashboardHomeOptionTwo.module.css",
+  "src/features/workbench/dashboard-home/dashboardHomeHoldingDrawer.module.css",
   "src/styles/global.css",
   "src/styles/workbenchInstitutionalConsole.css",
   "src/styles/workbenchDeferredChrome.css",
@@ -328,7 +331,9 @@ async function sampleHome(page, baseUrl) {
   await page.waitForTimeout(FIRST_SCREEN_OBSERVATION_MS);
 
   const initialUrls = requestLog.map((entry) => entry.url);
-  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await page.locator('[data-testid="dashboard-home-scroll-root"]').evaluate((node) => {
+    node.scrollTop = node.scrollHeight;
+  });
   await waitForTrackedRequests(
     page,
     requestLog,

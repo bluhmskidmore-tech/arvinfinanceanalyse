@@ -15,7 +15,7 @@ export type HomeDataStateKind =
  * - fallback: 请求日无数据，回退到最近可用快照（请求日 ≠ 实际数据日）
  * - stale: 新报告日获取失败，沿用上一版本数据
  * - loading: 主快照读取中
- * - error: 首页数据服务不可达
+ * - error: 首页主快照读取失败（包括权限或请求失败）
  * - mock: 样例数据（无真实后端）
  * - empty: 暂无任何数据日
  */
@@ -59,6 +59,9 @@ export type HomeGovernanceStatusKind =
 
 export type HomeHeaderStatus = {
   dataStatusKind: HomeGovernanceStatusKind;
+  snapshotFailureKind?: "permission" | "requestFailed" | null;
+  formalUseAllowed?: boolean | null;
+  governanceFeedAvailable?: boolean;
   dataUpdatedAt: string;
   marketStatus: string;
   valuationLabel: string;
@@ -152,7 +155,14 @@ export type DashboardHomeFirstScreenView = {
 export type DashboardHomeFirstScreenHydration = Pick<
   DashboardHomeFirstScreenView,
   "reportDate" | "headerStatus" | "decisionRail" | "terminalKpis" | "keyRiskStrip"
->;
+> & {
+  supplementalState?: HomeSupplementalApiState;
+};
+
+export type HomeSupplementalApiState = {
+  kind: HomeDataStateKind;
+  label: string;
+};
 
 export function resolveDeltaClass(
   tone: HomeDeltaTone,

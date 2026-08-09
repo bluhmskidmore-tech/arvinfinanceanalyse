@@ -259,7 +259,7 @@ describe("dashboard-home adapter helpers", () => {
     expect(model.holdingHits).toHaveLength(0);
     expect(model.marketNews).toHaveLength(0);
     expect(model.creditAndIssuanceNews).toHaveLength(0);
-    expect(model.asOfLabel).toBe("已查询至 06-01 12:00");
+    expect(model.asOfLabel).toBe("已查询事件至 06-01 12:00");
     expect(model.statusLabel).toBe("来源状态：未命中债券相关内容");
     expect(model.holdingMessage).toBe("持仓命中：已查询 2 条新闻，未命中当前持仓或发行人。");
     expect(model.marketMessage).toBe("债券市场：已查询 2 条新闻，未筛出债券市场相关内容。");

@@ -7,7 +7,10 @@ import {
   mapToHomeFirstScreenView,
   type MapToHomeFirstScreenViewInput,
 } from "./dashboardHomeFirstScreenView";
-import type { DashboardHomeFirstScreenHydration } from "./dashboardHomeFirstScreenTypes";
+import type {
+  DashboardHomeFirstScreenHydration,
+  HomeSupplementalApiState,
+} from "./dashboardHomeFirstScreenTypes";
 import type { DashboardHomeSnapshotBoundary } from "./useDashboardHomeFirstScreenViewModel";
 import { useMockHomeFirstScreenView } from "./useMockHomeFirstScreenView";
 
@@ -132,6 +135,35 @@ export function useDashboardHomeSupplementalHydration(
     staleTime: 60_000,
     enabled: !useMockFallback && hasDeferredSupplementalReportDate && hasFirstScreenHydrationData,
   });
+  const supplementalQueriesEnabled =
+    !useMockFallback &&
+    hasDeferredSupplementalReportDate &&
+    hasFirstScreenHydrationData;
+  const supplementalState = useMemo<HomeSupplementalApiState>(
+    () =>
+      !hasSupplementalReportDate
+        ? { kind: "backend-gap", label: "等待主快照报告日" }
+        : useMockFallback
+          ? { kind: "backend-gap", label: "样例模式未请求" }
+          : !supplementalQueriesEnabled
+            ? { kind: "loading", label: "等待补充查询" }
+            : bondHeadlineQuery.isError && portfolioHeadlinesQuery.isError
+              ? { kind: "error", label: "补充查询失败" }
+              : bondHeadlineQuery.isError || portfolioHeadlinesQuery.isError
+                ? { kind: "partial", label: "补充查询部分失败" }
+                : bondHeadlineQuery.isSuccess && portfolioHeadlinesQuery.isSuccess
+                  ? { kind: "ready", label: "补充查询已完成" }
+                  : { kind: "loading", label: "补充查询读取中" },
+    [
+      bondHeadlineQuery.isError,
+      bondHeadlineQuery.isSuccess,
+      hasSupplementalReportDate,
+      portfolioHeadlinesQuery.isError,
+      portfolioHeadlinesQuery.isSuccess,
+      supplementalQueriesEnabled,
+      useMockFallback,
+    ],
+  );
 
   const sanitizedMetrics = useMemo(
     () =>
@@ -201,6 +233,7 @@ export function useDashboardHomeSupplementalHydration(
       decisionRail: view.decisionRail,
       terminalKpis: view.terminalKpis,
       keyRiskStrip: view.keyRiskStrip,
+      supplementalState,
     }),
     [
       view.decisionRail,
@@ -208,6 +241,7 @@ export function useDashboardHomeSupplementalHydration(
       view.keyRiskStrip,
       view.reportDate,
       view.terminalKpis,
+      supplementalState,
     ],
   );
 }

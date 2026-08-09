@@ -6,20 +6,13 @@ import { describe, expect, it, vi } from "vitest";
 import { createApiClient, type ApiClient } from "../../../api/client";
 import {
   DASHBOARD_BOND_NEWS_TOPICS,
-  DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS,
+  DASHBOARD_HOME_CONTENT_REFETCH_INTERVAL_MS,
 } from "../dashboard/dashboardMacroNewsTopics";
+import { todayIsoDate } from "../pages/dashboardPageHelpers";
 import type { DashboardHomeSnapshotBoundary } from "./useDashboardHomeFirstScreenViewModel";
 import { useDashboardHomeViewModel } from "./useDashboardHomeViewModel";
 
-// Mirrors the dedupe applied in useDashboardHomeBodyData: the bond news probe
-// topic is the first bond topic that isn't already covered by the macro
-// fallback topics.
-const MACRO_FALLBACK_TOPIC_CODES = new Set<string>(
-  DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code),
-);
-const BOND_NEWS_PROBE_TOPIC_CODE = DASHBOARD_BOND_NEWS_TOPICS.find(
-  (topic) => !MACRO_FALLBACK_TOPIC_CODES.has(topic.code),
-)?.code;
+const BOND_NEWS_PROBE_GROUP_ID = DASHBOARD_BOND_NEWS_TOPICS[0]?.groupId;
 
 // Gate release must stay well under these budgets. They intentionally sit far
 // below the previous implementation's worst case (2s for the body-detail /
@@ -27,13 +20,16 @@ const BOND_NEWS_PROBE_TOPIC_CODE = DASHBOARD_BOND_NEWS_TOPICS.find(
 // chain), so a regression back to long per-tier delays fails this test.
 const GATED_QUERY_TIMEOUT_MS = 2_000;
 
-function createWrapper() {
+function createQueryClient() {
+  return new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, staleTime: 0, gcTime: 0, refetchOnWindowFocus: false },
+    },
+  });
+}
+
+function createWrapper(queryClient = createQueryClient()) {
   return function Wrapper({ children }: { children: ReactNode }) {
-    const queryClient = new QueryClient({
-      defaultOptions: {
-        queries: { retry: false, staleTime: 0, gcTime: 0, refetchOnWindowFocus: false },
-      },
-    });
     return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
   };
 }
@@ -133,7 +129,7 @@ describe("useDashboardHomeViewModel release timing", () => {
   });
 
   it("fires the bond news probe after the event-feed tier, no longer chained behind the macro fallback tier", async () => {
-    expect(BOND_NEWS_PROBE_TOPIC_CODE).toBeTruthy();
+    expect(BOND_NEWS_PROBE_GROUP_ID).toBeTruthy();
     const reportDate = "2026-05-31";
     const getChoiceNewsEvents = vi.fn(createApiClient({ mode: "mock" }).getChoiceNewsEvents);
     const dataClient = createHomeViewModelClient({
@@ -156,11 +152,45 @@ describe("useDashboardHomeViewModel release timing", () => {
       () => {
         expect(
           getChoiceNewsEvents.mock.calls.some(
-            ([params]) => params.topicCode === BOND_NEWS_PROBE_TOPIC_CODE,
+            ([params]) => params.groupId === BOND_NEWS_PROBE_GROUP_ID,
           ),
         ).toBe(true);
       },
       { timeout: 850 },
     );
+  });
+
+  it("queries current-day research independently from the portfolio report date", async () => {
+    const reportDate = "2026-05-31";
+    const queryClient = createQueryClient();
+    const getHomeResearchReports = vi.fn(
+      createApiClient({ mode: "mock" }).getHomeResearchReports,
+    );
+    const dataClient = createHomeViewModelClient({
+      getHomeResearchReports,
+      getResearchCalendarEvents: vi.fn(async () => []),
+    });
+
+    renderHook(() => useDashboardHomeViewModel(buildSnapshotBoundary(dataClient, reportDate)), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await waitFor(
+      () => {
+        expect(getHomeResearchReports).toHaveBeenCalledWith(todayIsoDate(), 5);
+      },
+      { timeout: GATED_QUERY_TIMEOUT_MS },
+    );
+    expect(getHomeResearchReports).not.toHaveBeenCalledWith(reportDate, 5);
+
+    const query = queryClient.getQueryCache().find({
+      queryKey: ["home", "research-reports", "real", todayIsoDate(), 5],
+      exact: true,
+    });
+    expect(query?.observers[0]?.options.refetchInterval).toBe(
+      DASHBOARD_HOME_CONTENT_REFETCH_INTERVAL_MS,
+    );
+    expect(query?.observers[0]?.options.refetchIntervalInBackground).toBe(false);
+    expect(query?.observers[0]?.options.refetchOnWindowFocus).toBe(true);
   });
 });

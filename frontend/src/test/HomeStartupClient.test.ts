@@ -4,6 +4,77 @@ import { createDeferredApiClient } from "../api/clientContext";
 import { formatRawAsNumeric } from "../utils/format";
 
 describe("home startup deferred client", () => {
+  it("routes portfolio startup reads through the lightweight home clients", async () => {
+    const requestedUrls: string[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      requestedUrls.push(String(input));
+      return new Response(
+        JSON.stringify({
+          result_meta: { basis: "formal" },
+          result: {},
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+    const client = createDeferredApiClient({
+      mode: "real",
+      baseUrl: "http://backend.local",
+      fetchImpl,
+    });
+
+    await client.getBondDashboardDates();
+    await client.getRiskTensorDates();
+    await client.getBalanceAnalysisDates();
+    await client.getBalanceAnalysisOverview({
+      reportDate: "2026-04-30",
+      positionScope: "all",
+      currencyBasis: "CNY",
+    });
+    await client.getBalanceAnalysisSummaryByBasis({
+      reportDate: "2026-04-30",
+      positionScope: "all",
+      currencyBasis: "CNY",
+    });
+    await client.getBalanceMovementDates("CNX");
+    await client.getBalanceMovementAnalysis({
+      reportDate: "2026-04-30",
+      currencyBasis: "CNX",
+    });
+    await client.getAdbComparison("2026-01-01", "2026-04-30");
+    await client.getPnlAttributionAnalysisSummary("2026-04-30");
+
+    expect(requestedUrls).toEqual([
+      "http://backend.local/api/bond-dashboard/dates",
+      "http://backend.local/api/risk/tensor/dates",
+      "http://backend.local/ui/balance-analysis/dates",
+      "http://backend.local/ui/balance-analysis/overview?report_date=2026-04-30&position_scope=all&currency_basis=CNY",
+      "http://backend.local/ui/balance-analysis/summary-by-basis?report_date=2026-04-30&position_scope=all&currency_basis=CNY",
+      "http://backend.local/ui/balance-movement-analysis/dates?currency_basis=CNX",
+      "http://backend.local/ui/balance-movement-analysis?report_date=2026-04-30&currency_basis=CNX",
+      "http://backend.local/api/analysis/adb/comparison?start_date=2026-01-01&end_date=2026-04-30",
+      "http://backend.local/api/pnl-attribution/summary?report_date=2026-04-30",
+    ]);
+  });
+
+  it("preserves the governed risk-date envelope in lightweight mock mode", async () => {
+    const client = createDeferredApiClient({ mode: "mock" });
+
+    const envelope = await client.getRiskTensorDates();
+
+    expect(envelope.result.report_dates).toEqual([
+      "2026-02-28",
+      "2026-01-31",
+      "2025-12-31",
+    ]);
+    expect(envelope.result_meta).toMatchObject({
+      basis: "formal",
+      formal_use_allowed: true,
+      source_version: "sv_risk_tensor_fact_mock_v3",
+      rule_version: "rv_risk_tensor_formal_materialize_v5",
+      cache_version: "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v5",
+    });
+  });
+
   it("preserves balance-analysis automatic hydration reads in lightweight mock mode", async () => {
     const client = createDeferredApiClient({ mode: "mock" });
 

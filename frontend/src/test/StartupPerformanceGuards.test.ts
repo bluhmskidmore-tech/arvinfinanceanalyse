@@ -73,17 +73,17 @@ const HOME_SPARKLINE_PATH = resolve(
   FRONTEND_ROOT,
   "src/features/workbench/dashboard-home/HomeSparkline.tsx",
 );
-const TERMINAL_HOME_CONTENT_PATH = resolve(
+const DASHBOARD_HOME_OPTION_TWO_LAYOUT_PATH = resolve(
   FRONTEND_ROOT,
-  "src/features/workbench/dashboard-home/TerminalHomeContent.tsx",
+  "src/features/workbench/dashboard-home/DashboardHomeOptionTwoLayout.tsx",
 );
-const TERMINAL_HOME_WORK_GRID_PATH = resolve(
+const DASHBOARD_HOME_OPTION_TWO_OVERVIEW_PATH = resolve(
   FRONTEND_ROOT,
-  "src/features/workbench/dashboard-home/TerminalHomeWorkGrid.tsx",
+  "src/features/workbench/dashboard-home/DashboardHomeOptionTwoOverview.tsx",
 );
-const TERMINAL_HOME_DEFERRED_SECTIONS_PATH = resolve(
+const DASHBOARD_HOME_OPTION_TWO_SUPPORT_BAND_PATH = resolve(
   FRONTEND_ROOT,
-  "src/features/workbench/dashboard-home/TerminalHomeDeferredSections.tsx",
+  "src/features/workbench/dashboard-home/DashboardHomeOptionTwoSupportBand.tsx",
 );
 const DEFERRED_TERMINAL_HOME_CONTENT_PATH = resolve(
   FRONTEND_ROOT,
@@ -338,85 +338,57 @@ describe("startup performance guards", () => {
     );
   });
 
-  it("does not statically import ECharts in the terminal home content", () => {
-    const terminalHomeContentSource = readFileSync(TERMINAL_HOME_CONTENT_PATH, "utf8");
-
-    expect(terminalHomeContentSource).not.toMatch(
-      /from\s+["']\.\.\/\.\.\/\.\.\/lib\/echarts["']/,
-    );
-  });
-
-  it("keeps the terminal home work grid behind a lazy body split", () => {
-    const terminalHomeContentSource = readFileSync(TERMINAL_HOME_CONTENT_PATH, "utf8");
-
-    expect(terminalHomeContentSource).toContain('import("./TerminalHomeWorkGrid")');
-    expect(terminalHomeContentSource).not.toContain("function HoldingsPanel");
-    expect(terminalHomeContentSource).not.toContain("function IncomeTrendPanel");
-    expect(terminalHomeContentSource).not.toContain("function DistributionPanel");
-    expect(terminalHomeContentSource).not.toContain("buildIncomeTrendOption");
-  });
-
-  it("keeps terminal home secondary sections behind a lazy split", () => {
-    const terminalHomeContentSource = readFileSync(TERMINAL_HOME_CONTENT_PATH, "utf8");
-
-    expect(terminalHomeContentSource).toContain('import("./TerminalHomeDeferredSections")');
-    expect(terminalHomeContentSource).not.toMatch(
-      /import\s+\{\s*BondNewsSection\s*\}\s+from\s+["']\.\/sections\/BondNewsSection["']/,
-    );
-    expect(terminalHomeContentSource).not.toMatch(
-      /import\s+\{\s*ResearchCalendarSection\s*\}\s+from\s+["']\.\/sections\/ResearchCalendarSection["']/,
-    );
-    expect(terminalHomeContentSource).not.toContain("function QuickDrilldowns");
-    expect(terminalHomeContentSource).not.toContain('data-testid="dashboard-home-bottom-grid"');
-    expect(terminalHomeContentSource).not.toContain('data-testid="dashboard-home-research-calendar"');
-  });
-
-  it("keeps deferred terminal home secondary sections off chart and work-grid code", () => {
-    const deferredSectionsSource = readFileSync(TERMINAL_HOME_DEFERRED_SECTIONS_PATH, "utf8");
-
-    expect(deferredSectionsSource).toContain("BondNewsSection");
-    expect(deferredSectionsSource).toContain("ResearchCalendarSection");
-    expect(deferredSectionsSource).toContain("QuickDrilldowns");
-    expect(deferredSectionsSource).not.toContain("TerminalHomeWorkGrid");
-    expect(deferredSectionsSource).not.toContain("../../../lib/echarts");
-    expect(deferredSectionsSource).not.toContain("buildIncomeTrendOption");
-  });
-
-  it("keeps the lazy terminal home work grid scoped to below-fold panels", () => {
-    const workGridSource = readFileSync(TERMINAL_HOME_WORK_GRID_PATH, "utf8");
-
-    expect(workGridSource).toContain('data-testid="dashboard-home-work-grid"');
-    for (const firstScreenOrShellArtifact of [
-      "showFirstScreen",
-      "TerminalKpiStrip",
-      "RiskStrip",
-      "BondNewsSection",
-      "ResearchCalendarSection",
-      "MarketContextPanel",
-      "QuickDrilldowns",
-      "dashboard-home-market-context",
-      "dashboard-home-bottom-grid",
-      "dashboard-home-research-calendar",
-    ]) {
-      expect(workGridSource).not.toContain(firstScreenOrShellArtifact);
-    }
-  });
-
-  it("keeps below-fold terminal home content out of the first-screen module", () => {
+  it("keeps the confirmed option-two body behind the deferred lazy boundary", () => {
     const dashboardHomePageSource = readFileSync(DASHBOARD_HOME_PAGE_PATH, "utf8");
+    const deferredContentSource = readFileSync(
+      DEFERRED_TERMINAL_HOME_CONTENT_PATH,
+      "utf8",
+    );
+    const deferredBodySource = readFileSync(
+      DEFERRED_TERMINAL_HOME_BODY_PATH,
+      "utf8",
+    );
 
-    expect(dashboardHomePageSource).toContain('import { TerminalHomeFirstScreen } from "./TerminalHomeFirstScreen"');
     expect(dashboardHomePageSource).toContain('from "./useDashboardHomeFirstScreenViewModel"');
-    expect(dashboardHomePageSource).toContain('lazy(() =>');
     expect(dashboardHomePageSource).toContain('import("./DeferredTerminalHomeContent")');
+    expect(dashboardHomePageSource).not.toContain("DashboardHomeOptionTwoBody");
     expect(dashboardHomePageSource).not.toContain('from "./useDashboardHomeViewModel"');
     expect(dashboardHomePageSource).not.toContain('from "./dashboardHomeView"');
-    expect(dashboardHomePageSource).not.toMatch(
-      /import\s+\{\s*TerminalHomeContent\s*\}\s+from\s+["']\.\/TerminalHomeContent["']/,
+    expect(deferredContentSource).toContain('import("./DeferredTerminalHomeBody")');
+    expect(deferredContentSource).not.toContain("DashboardHomeOptionTwoLayout");
+    expect(deferredBodySource).toContain(
+      'from "./DashboardHomeOptionTwoLayout"',
     );
+  });
+
+  it("keeps the option-two body source scoped to below-fold modules", () => {
+    const optionTwoLayoutSource = readFileSync(
+      DASHBOARD_HOME_OPTION_TWO_LAYOUT_PATH,
+      "utf8",
+    );
+    const optionTwoSupportSource = readFileSync(
+      DASHBOARD_HOME_OPTION_TWO_SUPPORT_BAND_PATH,
+      "utf8",
+    );
+
+    expect(optionTwoLayoutSource).toContain(
+      'data-testid="dashboard-home-work-grid"',
+    );
+    expect(optionTwoLayoutSource).toContain("BondNewsSection");
+    expect(optionTwoLayoutSource).toContain("ResearchCalendarSection");
+    expect(optionTwoLayoutSource).toContain("DashboardHomeOptionTwoResearchList");
+    expect(optionTwoSupportSource).toContain(
+      'data-testid="dashboard-home-bottom-grid"',
+    );
+    expect(optionTwoLayoutSource).not.toContain("../../../lib/echarts");
+    expect(optionTwoSupportSource).not.toContain("../../../lib/echarts");
   });
 
   it("keeps first-screen home modules off the full dashboard home stylesheet", () => {
+    const optionTwoOverviewSource = readFileSync(
+      DASHBOARD_HOME_OPTION_TWO_OVERVIEW_PATH,
+      "utf8",
+    );
     const firstScreenSources = [
       readFileSync(DASHBOARD_HOME_PAGE_PATH, "utf8"),
       readFileSync(TERMINAL_HOME_FIRST_SCREEN_PATH, "utf8"),
@@ -430,6 +402,10 @@ describe("startup performance guards", () => {
       expect(source).toContain("dashboardHomeShell.module.css");
       expect(source).not.toContain("dashboardHome.module.css");
     }
+    expect(optionTwoOverviewSource).toContain(
+      "dashboardHomeOptionTwo.module.css",
+    );
+    expect(optionTwoOverviewSource).not.toContain("dashboardHome.module.css");
   });
 
   it("keeps below-fold terminal home rendering out of the supplemental data loader", () => {
@@ -589,9 +565,8 @@ describe("startup performance guards", () => {
     const bodyPathSources = [
       readFileSync(HOME_VIEW_MODEL_PATH, "utf8"),
       readFileSync(DEFERRED_TERMINAL_HOME_BODY_PATH, "utf8"),
-      readFileSync(TERMINAL_HOME_CONTENT_PATH, "utf8"),
-      readFileSync(TERMINAL_HOME_WORK_GRID_PATH, "utf8"),
-      readFileSync(TERMINAL_HOME_DEFERRED_SECTIONS_PATH, "utf8"),
+      readFileSync(DASHBOARD_HOME_OPTION_TWO_LAYOUT_PATH, "utf8"),
+      readFileSync(DASHBOARD_HOME_OPTION_TWO_SUPPORT_BAND_PATH, "utf8"),
     ];
 
     expect(bodyModelSource).toContain("mapToHomeBodyView");

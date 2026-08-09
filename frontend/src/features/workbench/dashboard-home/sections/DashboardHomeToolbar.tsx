@@ -42,6 +42,7 @@ type DashboardHomeToolbarProps = {
   terminalKpis: readonly HomeTerminalKpi[];
   decisionActions: readonly HomeDecisionAction[];
   allowPartial: boolean;
+  partialModeSupported?: boolean;
   onAllowPartialChange: (checked: boolean) => void;
   onRefresh: () => void;
   refreshLabel: string;
@@ -50,7 +51,7 @@ type DashboardHomeToolbarProps = {
 };
 
 export function DashboardHomeToolbar({
-  title = "组合经营日报",
+  title = "经营日报",
   toolbarTestId = "dashboard-home-toolbar",
   headerStatus,
   reportDateInput,
@@ -61,6 +62,7 @@ export function DashboardHomeToolbar({
   terminalKpis,
   decisionActions,
   allowPartial,
+  partialModeSupported = false,
   onAllowPartialChange,
   onRefresh,
   refreshLabel,
@@ -68,18 +70,28 @@ export function DashboardHomeToolbar({
   onOpenAgentPanel,
 }: DashboardHomeToolbarProps) {
   const showDateDivergence = hasReportDateDivergence(reportDateContext);
+  const updateStamp =
+    reportDateContext.generatedAt?.replace("T", " ").slice(0, 16) ||
+    headerStatus.dataUpdatedAt;
   return (
     <header data-testid={toolbarTestId} className={styles.dhTopbar}>
-      <div className={styles.dhTopbarLeft}>
-        <div className={styles.dhTitleBrand}>
+      <div className={styles.dhTopbarLeft} data-role="dashboard-home-toolbar-left">
+        <div className={styles.dhTitleBrand} data-role="dashboard-home-title-brand">
           <h1 className={styles.dhTitle}>{title}</h1>
-          <span className={styles.dhTitleCaption}>PORTFOLIO DAILY</span>
+          <span className={styles.dhTitleCaption}>/ DECISION DESK</span>
         </div>
 
-        <div className={styles.dhToolbarControl}>
-          <span className={styles.dhDateLabel}>报告日</span>
-          <label className={styles.dhDateSelect}>
+        <div className={styles.dhToolbarControl} data-role="dashboard-home-date-control">
+          <span className={styles.dhDateLabel} data-role="dashboard-home-date-label">报告日</span>
+          <label className={styles.dhDateSelect} data-role="dashboard-home-date-select">
             <LightIcon className={styles.dhDateSelectIcon} name="calendar" />
+            <span
+              className={styles.dhDateSelectValue}
+              data-role="dashboard-home-date-value"
+              aria-hidden="true"
+            >
+              {reportDateInput || "----------"}
+            </span>
             <input
               aria-label="报告日"
               type="date"
@@ -104,21 +116,19 @@ export function DashboardHomeToolbar({
             <i className={styles.dhDateContextDot} aria-hidden="true" />
             {showDateDivergence || reportDateContext.mode === "mock"
               ? reportDateContextLabel(reportDateContext)
-              : reportDateModeLabel(reportDateContext.mode)}
+              : reportDateContext.actualDataDate
+                ? `数据截至 ${reportDateContext.actualDataDate}`
+                : reportDateModeLabel(reportDateContext.mode)}
+          </span>
+          <span data-role="dashboard-home-update-stamp">
+            {`更新 ${updateStamp}`}
           </span>
         </div>
 
-        <HomeSearchBox
-          value={toolbarSearch}
-          onValueChange={onSearchChange}
-          terminalKpis={terminalKpis}
-          decisionActions={decisionActions}
-          reportDate={reportDateContext.actualDataDate}
-        />
       </div>
 
-      <div className={styles.dhTopbarRight}>
-        <div className={styles.dhStatusRow}>
+      <div className={styles.dhTopbarRight} data-role="dashboard-home-toolbar-right">
+        <div className={styles.dhStatusRow} data-role="dashboard-home-status-row">
           <span
             data-testid="dashboard-home-data-status"
             data-status-kind={headerStatus.dataStatusKind}
@@ -129,6 +139,7 @@ export function DashboardHomeToolbar({
             <span className={styles.dhNum}>{headerStatus.dataUpdatedAt}</span>
           </span>
           <span
+            data-role="dashboard-home-market-status"
             className={styles.dhStatusPill}
             title={`${headerStatus.marketStatus} · ${headerStatus.valuationLabel}`}
           >
@@ -148,14 +159,36 @@ export function DashboardHomeToolbar({
             </Link>
           ) : null}
         </div>
-        <label className={styles.dhPartialToggle}>
+        <label
+          className={styles.dhPartialToggle}
+          data-role="dashboard-home-partial-toggle"
+          data-mode-availability={partialModeSupported ? "available" : "blocked"}
+          title={
+            partialModeSupported
+              ? undefined
+              : "部分数据模式暂不可用：日期与空值口径待后端修正"
+          }
+        >
           <input
             type="checkbox"
-            checked={allowPartial}
-            onChange={(event) => onAllowPartialChange(event.target.checked)}
+            aria-label={partialModeSupported && allowPartial ? "显示部分数据" : "仅完整数据"}
+            checked={partialModeSupported && allowPartial}
+            disabled={!partialModeSupported}
+            onChange={(event) => {
+              if (partialModeSupported) {
+                onAllowPartialChange(event.target.checked);
+              }
+            }}
           />
-          <span>{allowPartial ? "显示部分数据" : "仅完整数据"}</span>
+          <span>{partialModeSupported && allowPartial ? "显示部分数据" : "仅完整数据"}</span>
         </label>
+        <HomeSearchBox
+          value={toolbarSearch}
+          onValueChange={onSearchChange}
+          terminalKpis={terminalKpis}
+          decisionActions={decisionActions}
+          reportDate={reportDateContext.actualDataDate}
+        />
         <button
           type="button"
           className={styles.dhRefreshBtn}
@@ -171,10 +204,10 @@ export function DashboardHomeToolbar({
             className={styles.dhAgentEntryBtn}
             data-testid="dashboard-home-agent-open"
             onClick={onOpenAgentPanel}
-            aria-label="打开复核助手"
+            aria-label="打开财顾助手"
           >
             <LightIcon name="file-search" />
-            <span className={styles.dhRefreshLabel}>复核助手</span>
+            <span className={styles.dhRefreshLabel}>财顾助手</span>
           </button>
         ) : null}
       </div>

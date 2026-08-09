@@ -9,6 +9,7 @@ import { shouldRequestHomeMacroNewsFallback } from "./adapters/buildHomeMacroBri
 import {
   DASHBOARD_BOND_NEWS_TOPIC_LIMIT,
   DASHBOARD_BOND_NEWS_TOPICS,
+  DASHBOARD_HOME_CONTENT_REFETCH_INTERVAL_MS,
   DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS,
   DASHBOARD_MACRO_NEWS_TOPICS,
   DASHBOARD_MACRO_NEWS_TOPIC_LIMIT,
@@ -24,14 +25,19 @@ import {
 const CHOICE_NEWS_PERMISSION_ERROR_CODE = 10001012;
 const [DASHBOARD_MACRO_NEWS_PROBE_TOPIC, ...DASHBOARD_MACRO_NEWS_REMAINING_TOPICS] =
   DASHBOARD_MACRO_NEWS_TOPICS;
-const DASHBOARD_MACRO_NEWS_FALLBACK_TOPIC_CODES = new Set<string>(
-  DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code),
-);
-const DASHBOARD_BOND_NEWS_DEDUPED_TOPICS = DASHBOARD_BOND_NEWS_TOPICS.filter(
-  (topic) => !DASHBOARD_MACRO_NEWS_FALLBACK_TOPIC_CODES.has(topic.code),
-);
+// Direct bond-news reads use stable source groups. They intentionally remain
+// independent from the exact-topic macro fallback probes: a fallback topic can
+// be absent while another item in the same landed group is available.
+const DASHBOARD_BOND_NEWS_DEDUPED_TOPICS = DASHBOARD_BOND_NEWS_TOPICS;
 const [DASHBOARD_BOND_NEWS_PROBE_TOPIC, ...DASHBOARD_BOND_NEWS_REMAINING_TOPICS] =
   DASHBOARD_BOND_NEWS_DEDUPED_TOPICS;
+const HOME_CONTENT_QUERY_OPTIONS = {
+  retry: false,
+  staleTime: 60_000,
+  refetchInterval: DASHBOARD_HOME_CONTENT_REFETCH_INTERVAL_MS,
+  refetchIntervalInBackground: false,
+  refetchOnWindowFocus: true,
+} as const;
 
 type UseDashboardHomeBodyDataOptions = {
   dataClient: ApiClient;
@@ -78,8 +84,7 @@ export function useDashboardHomeBodyData({
           offset: 0,
           topicCode: DASHBOARD_MACRO_NEWS_PROBE_TOPIC.code,
         }),
-      retry: false,
-      staleTime: 60_000,
+      ...HOME_CONTENT_QUERY_OPTIONS,
       enabled: loadEventFeeds,
     }],
   });
@@ -102,8 +107,7 @@ export function useDashboardHomeBodyData({
           offset: 0,
           topicCode: topic.code,
         }),
-      retry: false,
-      staleTime: 60_000,
+      ...HOME_CONTENT_QUERY_OPTIONS,
       enabled: loadRemainingChoiceMacroNews,
     })),
   });
@@ -137,45 +141,38 @@ export function useDashboardHomeBodyData({
           offset: 0,
           topicCode: topic.code,
       }),
-      retry: false,
-      staleTime: 60_000,
+      ...HOME_CONTENT_QUERY_OPTIONS,
       enabled: shouldLoadMacroNewsFallback,
     })),
   });
 
   const bondNewsProbeQueries = useQueries({
     queries: [{
-      queryKey: ["dashboard", "bond-news", dataClient.mode, DASHBOARD_BOND_NEWS_PROBE_TOPIC?.code ?? "none"],
+      queryKey: ["dashboard", "bond-news", dataClient.mode, DASHBOARD_BOND_NEWS_PROBE_TOPIC?.groupId ?? "none"],
       queryFn: () =>
         dataClient.getChoiceNewsEvents({
           limit: DASHBOARD_BOND_NEWS_TOPIC_LIMIT,
           offset: 0,
-          topicCode: DASHBOARD_BOND_NEWS_PROBE_TOPIC?.code ?? "",
+          groupId: DASHBOARD_BOND_NEWS_PROBE_TOPIC?.groupId ?? "",
         }),
-      retry: false,
-      staleTime: 60_000,
+      ...HOME_CONTENT_QUERY_OPTIONS,
       enabled: loadBondNewsFeeds && Boolean(DASHBOARD_BOND_NEWS_PROBE_TOPIC),
     }],
   });
   const bondNewsProbeQuery = bondNewsProbeQueries[0];
-  const bondNewsProbeHasRows = Boolean(
-    bondNewsProbeQuery?.data?.result.events.some((event) => event.error_code === 0),
-  );
   const loadRemainingBondNews =
     loadBondNewsFeeds &&
-    Boolean(bondNewsProbeQuery?.isSuccess) &&
-    bondNewsProbeHasRows;
+    Boolean(bondNewsProbeQuery?.isSuccess || bondNewsProbeQuery?.isError);
   const remainingBondNewsQueries = useQueries({
     queries: DASHBOARD_BOND_NEWS_REMAINING_TOPICS.map((topic) => ({
-      queryKey: ["dashboard", "bond-news", dataClient.mode, topic.code],
+      queryKey: ["dashboard", "bond-news", dataClient.mode, topic.groupId],
       queryFn: () =>
         dataClient.getChoiceNewsEvents({
           limit: DASHBOARD_BOND_NEWS_TOPIC_LIMIT,
           offset: 0,
-          topicCode: topic.code,
+          groupId: topic.groupId,
       }),
-      retry: false,
-      staleTime: 60_000,
+      ...HOME_CONTENT_QUERY_OPTIONS,
       enabled: loadRemainingBondNews,
     })),
   });

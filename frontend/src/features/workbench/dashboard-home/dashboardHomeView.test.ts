@@ -300,10 +300,10 @@ describe("mapToHomeView", () => {
       "国债收益率曲线延续下行，资金面保持宽松",
       "信用债发行提速，评级调整和兑付安排受关注",
     ]);
-    expect(view.bondNews.sourceLabel).toBe("来源：Choice / Tushare 债券新闻");
-    expect(view.bondNews.asOfLabel).toBe("数据截至 06-01 09:30");
+    expect(view.bondNews.sourceLabel).toBe("后端入库：Choice / Tushare 债券新闻");
+    expect(view.bondNews.asOfLabel).toBe("最新事件 06-01 09:30");
     expect(view.bondNews.statusLabel).toBe("来源状态：正常");
-    expect(view.bondNews.refreshLabel).toBe("刷新：随页面查询自动更新");
+    expect(view.bondNews.refreshLabel).toBe("页面读取：每 5 分钟重新读取已落库数据");
   });
 
   it("marks bond news as stale when the latest event is older than seven days", () => {
@@ -349,7 +349,7 @@ describe("mapToHomeView", () => {
     } as Parameters<typeof mapToHomeView>[0]);
 
     expect(view.bondNews.marketNews[0]?.title).toBe("国债收益率曲线延续下行，资金面保持宽松");
-    expect(view.bondNews.asOfLabel).toBe("数据截至 05-23 15:06");
+    expect(view.bondNews.asOfLabel).toBe("最新事件 05-23 15:06");
     expect(view.bondNews.statusLabel).toBe("来源状态：偏旧");
   });
 
@@ -447,7 +447,7 @@ describe("mapToHomeView", () => {
       "人民币绿色主权债券发行利率公布，认购倍数处于高位。",
       "信用债发行提速，评级调整和兑付安排受关注。",
     ]);
-    expect(view.bondNews.asOfLabel).toBe("数据截至 06-01 09:20");
+    expect(view.bondNews.asOfLabel).toBe("最新事件 06-01 09:20");
   });
 
   it("falls back to Tushare macro news when Choice feed is stale", () => {

@@ -24,6 +24,10 @@ import type {
   YieldCurveTermStructurePayload,
 } from "../../../api/contracts";
 import {
+  normalizeHomeResearchLink,
+  normalizeHomeResearchPublishedDate,
+} from "./dashboardHomeResearchContract";
+import {
   DASHBOARD_COCKPIT_REPORT_DATE,
   DASHBOARD_MARKET_PULSE_MOCK,
   DASHBOARD_QUICK_DRILLDOWN_MOCK,
@@ -48,7 +52,10 @@ import {
   mapHomeSummaryDistributions,
   type HomeDistributionView,
 } from "./adapters/mapHomeSummaryDistributions";
-import type { HomeSnapshotPnlAttributionVM } from "./dashboardHomeSnapshotAdapter";
+import type {
+  HomeSnapshotOverviewMetricVM,
+  HomeSnapshotPnlAttributionVM,
+} from "./dashboardHomeSnapshotAdapter";
 import { mapMarketTape, type HomeMarketTicker } from "./dashboardHomeMarket";
 import type { HomeDataStateKind, HomeDeltaTone } from "./dashboardHomeFirstScreenTypes";
 import { formatDv01Wan } from "../../bond-dashboard/utils/format";
@@ -96,7 +103,9 @@ export type HomeHoldingRow = {
   name: string;
   assetClass: string;
   marketValue: string;
+  marketValueRaw?: number | null;
   weight: string;
+  weightRaw?: number | null;
   ytm: string;
   duration: string;
   rating: string;
@@ -154,7 +163,9 @@ export type HomeIncomeTrendRow = {
 
 export type DashboardHomeBodyView = {
   reportDate: string;
+  portfolioAum: string;
   marketContext: HomeMarketContextModel;
+  marketTape?: readonly HomeMarketTicker[];
   quickDrilldowns: readonly HomeQuickDrill[];
   macroBriefing: HomeMacroBriefingModel;
   bondNews: HomeBondNewsModel;
@@ -186,6 +197,7 @@ export type DashboardHomeBodyView = {
 export type MapToHomeBodyViewInput = {
   reportDate: string;
   useMockFallback: boolean;
+  overviewMetrics?: readonly HomeSnapshotOverviewMetricVM[] | null;
   attribution: HomeSnapshotPnlAttributionVM | null;
   creditSpreadMigration: CreditSpreadMigrationPayload | null;
   returnDecomposition: ReturnDecompositionPayload | null;
@@ -198,6 +210,7 @@ export type MapToHomeBodyViewInput = {
   industryDistribution: IndustryDistPayload | null;
   homeSummaryMeta?: ResultMeta | null;
   homeSummaryLoading?: boolean;
+  homeSummaryError?: boolean;
   yieldDistribution?: YieldDistributionPayload | null;
   portfolioComparison?: PortfolioComparisonPayload | null;
   spreadAnalysis?: SpreadAnalysisPayload | null;
@@ -567,7 +580,9 @@ function buildHoldingRows(
       name: item.instrument_name?.trim() || item.issuer_name?.trim() || GAP,
       assetClass: localizeAssetClass(item.asset_class),
       marketValue: numericValueOrGap(item.market_value, "yuan"),
+      marketValueRaw: numericRaw(item.market_value),
       weight: numericValueOrGap(item.weight, "pct"),
+      weightRaw: numericRaw(item.weight),
       ytm: numericValueOrGap(item.ytm, "pct"),
       duration: numericValueOrGap(item.modified_duration, "ratio"),
       rating: holdingRatingLabel(item.rating, item.asset_class),
@@ -636,11 +651,11 @@ function buildResearchReportRows(
       id: item.id,
       title: item.title.trim() || GAP,
       category: item.category.trim() || "research",
-      publishedAt: item.published_at.slice(0, 10) || GAP,
+      publishedAt: normalizeHomeResearchPublishedDate(item.published_at) ?? GAP,
       source: item.source.trim() || GAP,
       institution: item.institution?.trim() || GAP,
       summary: item.summary?.trim() || GAP,
-      link: item.link,
+      link: normalizeHomeResearchLink(item.link),
       isNewsFallback: false,
     })),
   };
@@ -660,7 +675,7 @@ function buildResearchNewsFallbackRows(
       id: `macro-news-${item.id}`,
       title: item.title,
       category: `新闻补位 · ${item.topicLabel}`,
-      publishedAt: item.timeLabel,
+      publishedAt: GAP,
       source,
       institution: source,
       summary: `${source} · ${item.freshnessLabel}`,
@@ -901,7 +916,9 @@ function buildMockBodyView(): DashboardHomeBodyView {
 
   return {
     reportDate: DASHBOARD_COCKPIT_REPORT_DATE,
+    portfolioAum: GAP,
     marketContext,
+    marketTape,
     quickDrilldowns: buildQuickDrilldowns(),
     macroBriefing,
     bondNews,
@@ -949,6 +966,9 @@ export function mapToHomeBodyView(input: MapToHomeBodyViewInput): DashboardHomeB
   }
 
   const reportDate = cleanDate(input.reportDate) || GAP;
+  const portfolioAum = numericDisplay(
+    input.overviewMetrics?.find((metric) => metric.id === "aum")?.value,
+  );
   const todayIsoDate = input.todayIsoDate?.trim() || resolveTodayIsoDate();
   const researchCalendar = buildHomeResearchCalendarModel({
     events: input.calendarEvents,
@@ -1006,11 +1026,13 @@ export function mapToHomeBodyView(input: MapToHomeBodyViewInput): DashboardHomeB
   const homeDistributionByKey = new Map(
     homeSummaryDistributionViews.map((section) => [section.key, section]),
   );
-  const homeSummaryLoadingState = input.homeSummaryLoading
+  const homeSummaryState = input.homeSummaryLoading
     ? displayState("loading", "home-summary 读取中")
-    : null;
-  const riskExposure = homeSummaryLoadingState
-    ? { metrics: [], state: homeSummaryLoadingState }
+    : input.homeSummaryError
+      ? displayState("error", "home-summary 读取失败")
+      : null;
+  const riskExposure = homeSummaryState
+    ? { metrics: [], state: homeSummaryState }
     : buildRiskExposureMetrics(
         input.riskIndicators,
         reportDate,
@@ -1053,8 +1075,8 @@ export function mapToHomeBodyView(input: MapToHomeBodyViewInput): DashboardHomeB
     incomeTrendMapped,
     reportDate,
   );
-  const assetDistributionMapped = homeSummaryLoadingState
-    ? { slices: [], state: homeSummaryLoadingState }
+  const assetDistributionMapped = homeSummaryState
+    ? { slices: [], state: homeSummaryState }
     : mapStructureSlices(
         input.assetStructure,
         reportDate,
@@ -1062,8 +1084,8 @@ export function mapToHomeBodyView(input: MapToHomeBodyViewInput): DashboardHomeB
         "资产分布暂无数据",
         input.homeSummaryMeta,
       );
-  const ratingMapped = homeSummaryLoadingState
-    ? { slices: [], state: homeSummaryLoadingState }
+  const ratingMapped = homeSummaryState
+    ? { slices: [], state: homeSummaryState }
     : mapStructureSlices(
         input.ratingStructure,
         reportDate,
@@ -1071,8 +1093,8 @@ export function mapToHomeBodyView(input: MapToHomeBodyViewInput): DashboardHomeB
         "评级分布暂无数据",
         input.homeSummaryMeta,
       );
-  const maturityMapped = homeSummaryLoadingState
-    ? { slices: [], state: homeSummaryLoadingState }
+  const maturityMapped = homeSummaryState
+    ? { slices: [], state: homeSummaryState }
     : mapStructureSlices(
         input.maturityStructure,
         reportDate,
@@ -1080,8 +1102,8 @@ export function mapToHomeBodyView(input: MapToHomeBodyViewInput): DashboardHomeB
         "久期分布暂无数据",
         input.homeSummaryMeta,
       );
-  const industryMapped = homeSummaryLoadingState
-    ? { slices: [], state: homeSummaryLoadingState }
+  const industryMapped = homeSummaryState
+    ? { slices: [], state: homeSummaryState }
     : mapStructureSlices(
         input.industryDistribution,
         reportDate,
@@ -1089,8 +1111,8 @@ export function mapToHomeBodyView(input: MapToHomeBodyViewInput): DashboardHomeB
         "行业分布暂无数据",
         input.homeSummaryMeta,
       );
-  const yieldDistributionMapped = homeSummaryLoadingState
-    ? { slices: [], state: homeSummaryLoadingState }
+  const yieldDistributionMapped = homeSummaryState
+    ? { slices: [], state: homeSummaryState }
     : mapDistributionViewToSlices(
         homeDistributionByKey.get("yield_distribution"),
         input.yieldDistribution?.report_date,
@@ -1098,8 +1120,8 @@ export function mapToHomeBodyView(input: MapToHomeBodyViewInput): DashboardHomeB
         "收益率分布暂无数据",
         input.homeSummaryMeta,
       );
-  const portfolioComparisonMapped = homeSummaryLoadingState
-    ? { slices: [], state: homeSummaryLoadingState }
+  const portfolioComparisonMapped = homeSummaryState
+    ? { slices: [], state: homeSummaryState }
     : mapDistributionViewToSlices(
         homeDistributionByKey.get("portfolio_comparison"),
         input.portfolioComparison?.report_date,
@@ -1110,7 +1132,9 @@ export function mapToHomeBodyView(input: MapToHomeBodyViewInput): DashboardHomeB
 
   return {
     reportDate,
+    portfolioAum,
     marketContext,
+    marketTape,
     quickDrilldowns: buildQuickDrilldowns(),
     macroBriefing,
     bondNews,

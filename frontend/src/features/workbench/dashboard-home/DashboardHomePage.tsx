@@ -1,15 +1,24 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { useLocation } from "react-router-dom";
 
 import styles from "./dashboardHomeShell.module.css";
+import optionTwoStyles from "./dashboardHomeOptionTwo.module.css";
+import { DashboardHomeOptionTwoOverview } from "./DashboardHomeOptionTwoOverview";
 import { DeferredEvidenceIndexPreview } from "./DeferredEvidenceIndexPreview";
-import { TerminalHomeFirstScreen } from "./TerminalHomeFirstScreen";
+import { buildDashboardHomeAvailability } from "./dashboardHomeAvailability";
 import type {
   DashboardHomeFirstScreenHydration,
   DashboardHomeFirstScreenView,
 } from "./dashboardHomeFirstScreenTypes";
 import { DashboardHomeToolbar } from "./sections/DashboardHomeToolbar";
-import { DecisionRailSection } from "./sections/DecisionRailSection";
 import { useDashboardHomeFirstScreenViewModel } from "./useDashboardHomeFirstScreenViewModel";
 
 type IdleWindow = Window & {
@@ -22,12 +31,15 @@ const HOME_DEFERRED_CONTENT_IDLE_MIN_DELAY_MS = 800;
 const HOME_DEFERRED_CONTENT_IDLE_TIMEOUT_MS = 1_200;
 const HOME_DEFERRED_CONTENT_TIMEOUT_FALLBACK_MS = 600;
 const POLICY_FUNDING_DEEP_LINK_PATH = "/政策与资金面";
-const HOME_COMMANDS = [
-  { label: "组合变动", to: "/bond-analysis" },
-  { label: "久期分析", to: "/risk-overview" },
-  { label: "收益归因", to: "/pnl-attribution" },
-  { label: "待办管理", to: "/decision-items" },
-];
+
+function resolveHomeScrollRoot(node: HTMLElement | null): HTMLElement | null {
+  if (!node) {
+    return null;
+  }
+  return /^(auto|scroll|overlay)$/.test(window.getComputedStyle(node).overflowY)
+    ? node
+    : null;
+}
 
 const DeferredTerminalHomeContent = lazy(() =>
   import("./DeferredTerminalHomeContent").then((module) => ({
@@ -74,59 +86,11 @@ function isPolicyFundingDeepLink(pathname: string): boolean {
   }
 }
 
-function reportDateCommandPath(path: string, reportDate: string): string {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) {
-    return path;
-  }
-  const params = new URLSearchParams({ report_date: reportDate });
-  return `${path}?${params.toString()}`;
-}
-
-function HomeCommandDock({
-  reportDate,
-  dataSyncPrefix,
-  dataStatusKind,
-}: {
-  reportDate: string;
-  dataSyncPrefix: string;
-  dataStatusKind: DashboardHomeFirstScreenView["headerStatus"]["dataStatusKind"];
-}) {
-  const statusLabel = dataStatusKind === "ok"
-    ? "SYNCED"
-    : dataStatusKind === "loading"
-      ? "LOADING"
-      : dataStatusKind === "error"
-        ? "OFFLINE"
-        : dataStatusKind === "fallback"
-          ? "FALLBACK"
-          : dataStatusKind === "partial"
-            ? "PARTIAL"
-            : "STALE";
-  return (
-    <nav className={styles.dhCommandDock} data-testid="dashboard-home-command-dock" aria-label="日报快捷命令">
-      <span className={styles.dhCommandLabel}>CMD</span>
-      <div className={styles.dhCommandList}>
-        {HOME_COMMANDS.map((command) => (
-          <Link
-            key={command.to}
-            className={styles.dhCommandItem}
-            to={reportDateCommandPath(command.to, reportDate)}
-          >
-            <span>{command.label}</span>
-          </Link>
-        ))}
-      </div>
-      <span className={styles.dhCommandStatus} data-status-kind={dataStatusKind}>
-        <span className={styles.dhCommandStatusDot} aria-hidden="true" />
-        <span className={styles.dhCommandStatusSynced}>{statusLabel}</span>
-        <span aria-hidden="true">·</span>
-        <span>{dataSyncPrefix}</span>
-      </span>
-    </nav>
-  );
-}
-
-function useDeferredHomeContent(snapshotSettled: boolean, eagerLoad: boolean) {
+function useDeferredHomeContent(
+  snapshotSettled: boolean,
+  eagerLoad: boolean,
+  layoutScrollRootRef: { current: HTMLElement | null },
+) {
   const deferredContentSentinelRef = useRef<HTMLDivElement | null>(null);
   const [shouldLoad, setShouldLoad] = useState(false);
   const [userReachedDeferredContent, setUserReachedDeferredContent] = useState(false);
@@ -149,36 +113,86 @@ function useDeferredHomeContent(snapshotSettled: boolean, eagerLoad: boolean) {
       return undefined;
     }
 
-    const deferredContentNode = deferredContentSentinelRef.current;
-    if (typeof window.IntersectionObserver !== "undefined" && deferredContentNode) {
-      const observer = new window.IntersectionObserver((entries) => {
-        if (entries.some((entry) => entry.isIntersecting || entry.intersectionRatio > 0)) {
-          markUserReached();
-          observer.disconnect();
-        }
-      });
-      observer.observe(deferredContentNode);
-      return () => observer.disconnect();
-    }
-
+    const layoutScrollRoot = resolveHomeScrollRoot(layoutScrollRootRef.current);
     const handleKeyDown = (event: KeyboardEvent) => {
       if (HOME_DEFERRED_CONTENT_REVEAL_KEYS.has(event.key)) {
         markUserReached();
       }
     };
+    const scrollTarget: Window | HTMLElement = layoutScrollRoot ?? window;
+    const addPassiveListener = (
+      eventName: "scroll" | "wheel" | "touchmove",
+      listener: () => void,
+    ) => {
+      scrollTarget.addEventListener(eventName, listener, { passive: true });
+    };
     const removeReachListeners = () => {
-      window.removeEventListener("scroll", markUserReached);
-      window.removeEventListener("wheel", markUserReached);
-      window.removeEventListener("touchmove", markUserReached);
+      scrollTarget.removeEventListener("scroll", markUserReached);
+      scrollTarget.removeEventListener("wheel", markUserReached);
+      scrollTarget.removeEventListener("touchmove", markUserReached);
       window.removeEventListener("keydown", handleKeyDown);
     };
-    window.addEventListener("scroll", markUserReached, { passive: true });
-    window.addEventListener("wheel", markUserReached, { passive: true });
-    window.addEventListener("touchmove", markUserReached, { passive: true });
+
+    addPassiveListener("scroll", markUserReached);
+    addPassiveListener("wheel", markUserReached);
+    addPassiveListener("touchmove", markUserReached);
     window.addEventListener("keydown", handleKeyDown);
 
     return removeReachListeners;
-  }, [eagerLoad, markUserReached, shouldLoad, snapshotSettled, userReachedDeferredContent]);
+  }, [
+    eagerLoad,
+    layoutScrollRootRef,
+    markUserReached,
+    shouldLoad,
+    snapshotSettled,
+    userReachedDeferredContent,
+  ]);
+
+  useEffect(() => {
+    if (eagerLoad && snapshotSettled) {
+      setUserReachedDeferredContent(true);
+      setShouldLoad(true);
+      return undefined;
+    }
+
+    if (shouldLoad || userReachedDeferredContent) {
+      return undefined;
+    }
+
+    const deferredContentNode = deferredContentSentinelRef.current;
+    if (typeof window.IntersectionObserver === "undefined" || !deferredContentNode) {
+      return undefined;
+    }
+    const intersectionRoot = resolveHomeScrollRoot(layoutScrollRootRef.current);
+
+    const observer = new window.IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting || entry.intersectionRatio > 0)) {
+          markUserReached();
+          observer.disconnect();
+        }
+      },
+      { root: intersectionRoot },
+    );
+    let isActive = true;
+    const observeHandle = window.setTimeout(() => {
+      if (isActive) {
+        observer.observe(deferredContentNode);
+      }
+    }, HOME_DEFERRED_CONTENT_IDLE_MIN_DELAY_MS);
+    return () => {
+      isActive = false;
+      window.clearTimeout(observeHandle);
+      observer.disconnect();
+    };
+  }, [
+    eagerLoad,
+    layoutScrollRootRef,
+    markUserReached,
+    shouldLoad,
+    snapshotSettled,
+    userReachedDeferredContent,
+  ]);
 
   useEffect(() => {
     if (eagerLoad && snapshotSettled) {
@@ -249,6 +263,7 @@ function useDeferredHomeContent(snapshotSettled: boolean, eagerLoad: boolean) {
 
 export default function DashboardHomePage() {
   const location = useLocation();
+  const layoutScrollRootRef = useRef<HTMLDivElement | null>(null);
   const shouldFocusPolicyFunding = isPolicyFundingDeepLink(location.pathname);
   const {
     view,
@@ -266,13 +281,14 @@ export default function DashboardHomePage() {
     deferredContentSentinelRef,
     shouldLoad: loadDeferredContent,
     userReachedDeferredContent,
-  } = useDeferredHomeContent(!snapshotQuery.isFetching, shouldFocusPolicyFunding);
-  const homeAvailabilityKind =
-    snapshotBoundary.displayMode === "real" && snapshotQuery.isError && !snapshotBoundary.snapshotResult
-      ? "serviceUnavailable"
-      : "normal";
+  } = useDeferredHomeContent(
+    !snapshotQuery.isFetching,
+    shouldFocusPolicyFunding,
+    layoutScrollRootRef,
+  );
   const [hydratedFirstScreen, setHydratedFirstScreen] =
     useState<HydratedFirstScreenState | null>(null);
+  const lastSnapshotErrorDetailRef = useRef<string | null>(null);
   const [agentPanelOpen, setAgentPanelOpen] = useState(false);
   const [agentPanelMounted, setAgentPanelMounted] = useState(false);
   const activeReportDate = view.reportDate;
@@ -313,6 +329,49 @@ export default function DashboardHomePage() {
         : view,
     [activeReportDate, hydratedFirstScreen, view],
   );
+  const snapshotErrorDetail =
+    snapshotQuery.error instanceof Error ? snapshotQuery.error.message : null;
+  useEffect(() => {
+    if (snapshotErrorDetail) {
+      lastSnapshotErrorDetailRef.current = snapshotErrorDetail;
+    } else if (snapshotQuery.isSuccess) {
+      lastSnapshotErrorDetailRef.current = null;
+    }
+  }, [snapshotErrorDetail, snapshotQuery.isSuccess]);
+  const retryingUnresolvedSnapshot =
+    snapshotQuery.isFetching &&
+    !snapshotBoundary.snapshotResult &&
+    Boolean(lastSnapshotErrorDetailRef.current);
+  const retainedSnapshotErrorDetail =
+    snapshotErrorDetail ||
+    (retryingUnresolvedSnapshot
+      ? lastSnapshotErrorDetailRef.current
+      : null);
+  const homeAvailability = useMemo(
+    () =>
+      buildDashboardHomeAvailability({
+        dataStatusKind: firstScreenView.headerStatus.dataStatusKind,
+        dataSyncPrefix: firstScreenView.headerStatus.dataSyncPrefix,
+        reportDateContext: firstScreenView.reportDateContext,
+        snapshotMeta: snapshotBoundary.snapshotMeta,
+        snapshotErrorDetail: retainedSnapshotErrorDetail,
+        snapshotRetryingAfterError: retryingUnresolvedSnapshot,
+        missingDomainLabels: firstScreenView.missingDomains.map(
+          (domain) => domain.label,
+        ),
+      }),
+    [
+      firstScreenView.headerStatus.dataStatusKind,
+      firstScreenView.headerStatus.dataSyncPrefix,
+      firstScreenView.missingDomains,
+      firstScreenView.reportDateContext,
+      snapshotBoundary.snapshotMeta,
+      retainedSnapshotErrorDetail,
+      retryingUnresolvedSnapshot,
+    ],
+  );
+  const homeAvailabilityKind =
+    homeAvailability.kind === "error" ? "serviceUnavailable" : "normal";
   const agentPanelFilters = useMemo(
     () => ({
       allow_partial: allowPartial,
@@ -324,9 +383,12 @@ export default function DashboardHomePage() {
     <Suspense fallback={<DeferredEvidenceIndexPreview />}>
       <DeferredTerminalHomeContent
         snapshotBoundary={snapshotBoundary}
+        firstScreenView={firstScreenView}
         userReachedDeferredContent={userReachedDeferredContent}
         focusPolicyFunding={shouldFocusPolicyFunding}
+        homeAvailability={homeAvailability}
         homeAvailabilityKind={homeAvailabilityKind}
+        snapshotRefreshing={snapshotQuery.isFetching}
         onFirstScreenHydrated={handleFirstScreenHydrated}
       />
     </Suspense>
@@ -338,7 +400,7 @@ export default function DashboardHomePage() {
     <div className="dark text-foreground bg-background min-h-screen">
       <section
         data-testid="dashboard-home-page"
-        className={`theme-dh-api ${styles.dhPage} ${styles.dhApiBackedHome}`}
+        className={`theme-dh-api ${styles.dhPage} ${styles.dhApiBackedHome} ${optionTwoStyles.page}`}
       >
         <DashboardHomeToolbar
           title="组合经营日报"
@@ -358,40 +420,29 @@ export default function DashboardHomePage() {
           onOpenAgentPanel={openAgentPanel}
         />
 
-        <main className={styles.dhLayout}>
-          <div className={`${styles.dhMain} ${styles.dhPrimaryMain}`}>
-            <TerminalHomeFirstScreen view={firstScreenView} />
-          </div>
-
-          <DecisionRailSection
-            decisionRail={firstScreenView.decisionRail}
-            reportDate={firstScreenView.reportDate}
-            dataSyncPrefix={firstScreenView.decisionRail.dataSyncPrefix}
-            dataStatusKind={firstScreenView.headerStatus.dataStatusKind}
-            snapshotMeta={snapshotBoundary.snapshotMeta}
-            reportDateContext={firstScreenView.reportDateContext}
-            missingDomains={firstScreenView.missingDomains}
-          />
+        <div
+          ref={layoutScrollRootRef}
+          data-testid="dashboard-home-scroll-root"
+          className={optionTwoStyles.layout}
+          role="region"
+          aria-label="组合经营日报内容"
+        >
+          <DashboardHomeOptionTwoOverview view={firstScreenView} />
 
           <div
             data-testid="dashboard-home-deferred-content"
-            className={`${styles.dhMain} ${styles.dhDeferredMain}`}
+            className={optionTwoStyles.deferred}
             aria-busy={!loadDeferredContent}
           >
             {deferredHomeContent}
             <div
               ref={deferredContentSentinelRef}
               data-testid="dashboard-home-deferred-sentinel"
+              className={optionTwoStyles.deferredSentinel}
               aria-hidden="true"
             />
           </div>
-        </main>
-
-        <HomeCommandDock
-          reportDate={firstScreenView.reportDate}
-          dataSyncPrefix={firstScreenView.headerStatus.dataSyncPrefix}
-          dataStatusKind={firstScreenView.headerStatus.dataStatusKind}
-        />
+        </div>
 
         {agentPanelMounted ? (
           <Suspense fallback={null}>

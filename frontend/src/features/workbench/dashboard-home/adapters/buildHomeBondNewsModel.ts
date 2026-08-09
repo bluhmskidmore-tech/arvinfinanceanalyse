@@ -36,12 +36,31 @@ type MatchCandidate = {
   priority: number;
 };
 
-const BOND_NEWS_SOURCE_LABEL = "来源：Choice / Tushare 债券新闻";
-const BOND_NEWS_REFRESH_LABEL = "刷新：随页面查询自动更新";
+type ResolvedEventTimestamp = {
+  value: string;
+  source: "content" | "received";
+  sortValue: number;
+};
+
+const BOND_NEWS_SOURCE_LABEL = "后端入库：Choice / Tushare 债券新闻";
+const BOND_NEWS_REFRESH_LABEL = "页面读取：每 5 分钟重新读取已落库数据";
 const BOND_NEWS_STALE_DAYS = 7;
 const HOLDING_HIT_LIMIT = 4;
 const MARKET_NEWS_LIMIT = 5;
 const CREDIT_NEWS_LIMIT = 4;
+const CONTENT_TIMESTAMP_KEYS = [
+  "published_at",
+  "published_time",
+  "publish_time",
+  "publish_date",
+  "pub_time",
+  "pubtime",
+  "datetime",
+  "trade_date",
+  "pub_date",
+  "report_date",
+  "date",
+] as const;
 
 const BOND_MARKET_KEYWORDS = [
   "债券",
@@ -135,6 +154,75 @@ function dateLabel(value: string): string {
   return normalized;
 }
 
+function parsePayloadJson(payloadJson: string | null | undefined): Record<string, unknown> | null {
+  const raw = payloadJson?.trim();
+  if (!raw) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeTimestampCandidate(value: unknown): string {
+  if (typeof value !== "string" && typeof value !== "number") {
+    return "";
+  }
+  const raw = String(value).trim();
+  if (!raw) {
+    return "";
+  }
+  const compactDateTime = raw.match(
+    /^(\d{4})(\d{2})(\d{2})[ T]?(\d{2})(\d{2})(\d{2})$/,
+  );
+  if (compactDateTime) {
+    const [, year, month, day, hour, minute, second] = compactDateTime;
+    return `${year}-${month}-${day}T${hour}:${minute}:${second}`;
+  }
+  const compactDate = raw.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (compactDate) {
+    const [, year, month, day] = compactDate;
+    return `${year}-${month}-${day}`;
+  }
+  const normalized = raw.replaceAll("/", "-").replace(" ", "T");
+  if (!/^\d{4}-\d{2}-\d{2}/.test(normalized)) {
+    return "";
+  }
+  return Number.isNaN(new Date(normalized).getTime()) ? "" : normalized;
+}
+
+function timestampSortValue(value: string): number {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+}
+
+function resolveEventTimestamp(event: ChoiceNewsEvent): ResolvedEventTimestamp {
+  const payload = parsePayloadJson(event.payload_json);
+  if (payload) {
+    for (const key of CONTENT_TIMESTAMP_KEYS) {
+      const value = normalizeTimestampCandidate(payload[key]);
+      if (value) {
+        return {
+          value,
+          source: "content",
+          sortValue: timestampSortValue(value),
+        };
+      }
+    }
+  }
+  const receivedAt = normalizeTimestampCandidate(event.received_at) || event.received_at.trim();
+  return {
+    value: receivedAt,
+    source: "received",
+    sortValue: timestampSortValue(receivedAt),
+  };
+}
+
 function daysBetween(leftIso: string, rightIso: string): number | null {
   const left = new Date(`${leftIso.slice(0, 10)}T00:00:00Z`);
   const right = new Date(`${rightIso.slice(0, 10)}T00:00:00Z`);
@@ -168,18 +256,13 @@ function eventText(event: ChoiceNewsEvent): string {
 }
 
 function extractTitleFromPayloadJson(payloadJson: string | null | undefined): string {
-  const raw = payloadJson?.trim();
-  if (!raw) {
+  const parsed = parsePayloadJson(payloadJson);
+  if (!parsed) {
     return "";
   }
-  try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const headline = typeof parsed.headline === "string" ? parsed.headline.trim() : "";
-    const title = typeof parsed.title === "string" ? parsed.title.trim() : "";
-    return stripHtmlTags(headline || title);
-  } catch {
-    return "";
-  }
+  const headline = typeof parsed.headline === "string" ? parsed.headline.trim() : "";
+  const title = typeof parsed.title === "string" ? parsed.title.trim() : "";
+  return stripHtmlTags(headline || title);
 }
 
 function summarizeBondNewsEvent(event: ChoiceNewsEvent): string {
@@ -267,8 +350,8 @@ function toBondNewsItem(
   return {
     id: event.event_key,
     title,
-    timeLabel: dateLabel(event.received_at),
-    sourceLabel: dashboardMacroNewsTopicLabel(event.topic_code),
+    timeLabel: dateLabel(resolveEventTimestamp(event).value),
+    sourceLabel: dashboardMacroNewsTopicLabel(event.topic_code, event.group_id),
     topicLabel,
     hitLabel,
   };
@@ -286,14 +369,19 @@ export function buildHomeBondNewsModel(input: {
   const candidates = buildMatchCandidates(input);
   const sortedEvents = (input.events ?? [])
     .filter((event) => event.error_code === 0)
+    .map((event) => ({ event, timestamp: resolveEventTimestamp(event) }))
     .slice()
-    .sort((left, right) => right.received_at.localeCompare(left.received_at));
+    .sort(
+      (left, right) =>
+        right.timestamp.sortValue - left.timestamp.sortValue ||
+        right.event.received_at.localeCompare(left.event.received_at),
+    );
   const holdingHits: HomeBondNewsItem[] = [];
   const marketNews: HomeBondNewsItem[] = [];
   const creditAndIssuanceNews: HomeBondNewsItem[] = [];
-  let latestIncludedReceivedAt = "";
+  let latestIncludedTimestamp: ResolvedEventTimestamp | null = null;
 
-  for (const event of sortedEvents) {
+  for (const { event, timestamp } of sortedEvents) {
     const title = summarizeBondNewsEvent(event);
     if (title.length < 6) {
       continue;
@@ -311,8 +399,8 @@ export function buildHomeBondNewsModel(input: {
     }
 
     seenTitles.add(dedupeKey);
-    if (!latestIncludedReceivedAt) {
-      latestIncludedReceivedAt = event.received_at;
+    if (!latestIncludedTimestamp) {
+      latestIncludedTimestamp = timestamp;
     }
     if (holdingHit) {
       holdingHits.push(toBondNewsItem(event, title, "持仓命中", holdingHit));
@@ -323,12 +411,15 @@ export function buildHomeBondNewsModel(input: {
     }
   }
 
-  const latestDate = latestIncludedReceivedAt.slice(0, 10);
+  const latestDate = latestIncludedTimestamp?.value.slice(0, 10) ?? "";
   const staleDays = latestDate ? daysBetween(input.todayIsoDate, latestDate) : null;
   const isStale = staleDays != null && staleDays > BOND_NEWS_STALE_DAYS;
-  const latestTimeLabel = latestIncludedReceivedAt ? dateLabel(latestIncludedReceivedAt) : "";
-  const latestQueriedTimeLabel = sortedEvents[0]?.received_at
-    ? dateLabel(sortedEvents[0].received_at)
+  const latestTimeLabel = latestIncludedTimestamp
+    ? dateLabel(latestIncludedTimestamp.value)
+    : "";
+  const latestQueriedTimestamp = sortedEvents[0]?.timestamp;
+  const latestQueriedTimeLabel = latestQueriedTimestamp
+    ? dateLabel(latestQueriedTimestamp.value)
     : "";
   const includedNewsCount =
     holdingHits.length + marketNews.length + creditAndIssuanceNews.length;
@@ -336,10 +427,10 @@ export function buildHomeBondNewsModel(input: {
   const noBondNewsButQueried = includedNewsCount === 0 && queriedNewsCount > 0;
   const payloadAsOfDate = latestChoiceNewsPayloadAsOfDate(input.choiceNewsPayloads);
   const excludedFutureRows = excludedFutureRowsTotal(input.choiceNewsPayloads);
+  const excludedFutureRowsSuffix =
+    excludedFutureRows > 0 ? ` · 已剔除未来 ${excludedFutureRows} 条` : "";
   const payloadAsOfLabel = payloadAsOfDate
-    ? excludedFutureRows > 0
-      ? `数据日期 ${payloadAsOfDate} · 已剔除未来 ${excludedFutureRows} 条`
-      : `数据日期 ${payloadAsOfDate}`
+    ? `查询日期 ${payloadAsOfDate}${excludedFutureRowsSuffix}`
     : "";
 
   return {
@@ -366,12 +457,15 @@ export function buildHomeBondNewsModel(input: {
           : "发行/评级：暂无相关新闻",
     sourceLabel: BOND_NEWS_SOURCE_LABEL,
     asOfLabel:
-      payloadAsOfLabel ||
-      (latestTimeLabel
-        ? `数据截至 ${latestTimeLabel}`
+      latestTimeLabel
+        ? latestIncludedTimestamp?.source === "content"
+          ? `最新内容 ${latestTimeLabel}${excludedFutureRowsSuffix}`
+          : `最新事件 ${latestTimeLabel}${excludedFutureRowsSuffix}`
         : latestQueriedTimeLabel
-          ? `已查询至 ${latestQueriedTimeLabel}`
-          : "数据截至：暂无"),
+          ? latestQueriedTimestamp?.source === "content"
+            ? `已查询内容至 ${latestQueriedTimeLabel}${excludedFutureRowsSuffix}`
+            : `已查询事件至 ${latestQueriedTimeLabel}${excludedFutureRowsSuffix}`
+          : payloadAsOfLabel || "最新内容：暂无",
     statusLabel:
       includedNewsCount > 0
         ? isStale

@@ -104,7 +104,7 @@ describe("mapToHomeFirstScreenView reportDateContext", () => {
     expect(hasReportDateDivergence(view.reportDateContext)).toBe(true);
   });
 
-  it.each(["2026-04-30"])(
+  it.each(["", "2026-04-30"])(
     "stale: %s 刷新失败只说明沿用上一版本，不制造请求日分歧",
     (requestedReportDate) => {
       const view = mapToHomeFirstScreenView({
@@ -143,16 +143,19 @@ describe("mapToHomeFirstScreenView reportDateContext", () => {
     expect(reportDateContextLabel(view.reportDateContext)).toBe("主快照读取中");
   });
 
-  it("error: 首页数据服务不可达", () => {
+  it("error: preserves the permission reason instead of claiming service outage", () => {
     const view = mapToHomeFirstScreenView({
       ...baseInput,
       reportDate: "",
       requestedReportDate: "2026-04-30",
       snapshotUnavailable: true,
+      snapshotErrorDetail: "User is not allowed to read executive.",
       snapshotMeta: null,
     });
     expect(view.reportDateContext.mode).toBe("error");
-    expect(reportDateContextLabel(view.reportDateContext)).toBe("首页数据服务不可达");
+    expect(reportDateContextLabel(view.reportDateContext)).toBe(
+      "当前账号缺少 executive 读取权限",
+    );
   });
 
   it("mock: 样例数据日语义一致", () => {
@@ -235,6 +238,16 @@ describe("mapToHomeFirstScreenView reportDateContext", () => {
       "stale",
     ],
     [
+      "同日报告组件不可用",
+      {
+        snapshotMeta: baseMeta({
+          quality_flag: "warning",
+          vendor_status: "vendor_unavailable",
+        }),
+      },
+      "partial",
+    ],
+    [
       "quality 异常",
       { snapshotMeta: baseMeta({ quality_flag: "warning" }) },
       "partial",
@@ -248,6 +261,21 @@ describe("mapToHomeFirstScreenView reportDateContext", () => {
 
     expect(view.headerStatus.dataStatusKind).toBe(expectedKind);
     expect(view.headerStatus.dataSyncPrefix).toContain("复核");
+  });
+
+  it("does not describe same-date component degradation as a previous snapshot", () => {
+    const view = mapToHomeFirstScreenView({
+      ...baseInput,
+      reportDate: "2026-04-30",
+      snapshotMeta: baseMeta({
+        quality_flag: "warning",
+        vendor_status: "vendor_unavailable",
+      }),
+    });
+
+    expect(view.headerStatus.dataStatusKind).toBe("partial");
+    expect(view.headerStatus.dataSyncPrefix).toContain("复核");
+    expect(view.headerStatus.dataSyncPrefix).not.toContain("上一版本");
   });
 
   it.each([

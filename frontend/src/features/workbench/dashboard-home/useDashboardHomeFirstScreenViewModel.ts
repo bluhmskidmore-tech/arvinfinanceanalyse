@@ -69,6 +69,10 @@ export function useDashboardHomeFirstScreenViewModel() {
       snapshotMeta,
       alertCount,
       snapshotUnavailable,
+      snapshotErrorDetail:
+        snapshotQuery.error instanceof Error
+          ? snapshotQuery.error.message
+          : null,
       snapshotStale,
       snapshotLoading,
       staleWarning: reportDateDataWarning,
@@ -86,6 +90,7 @@ export function useDashboardHomeFirstScreenViewModel() {
       sanitizedMetrics,
       snapshotMeta,
       snapshotResult?.mode,
+      snapshotQuery.error,
       snapshotStale,
       snapshotLoading,
       snapshotUnavailable,

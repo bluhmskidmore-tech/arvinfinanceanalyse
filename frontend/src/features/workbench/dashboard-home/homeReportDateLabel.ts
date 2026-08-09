@@ -39,7 +39,7 @@ export function reportDateModeLabel(mode: HomeReportDateMode): string {
     case "loading":
       return "读取中";
     case "error":
-      return "服务不可达";
+      return "读取失败";
     case "mock":
       return "样例数据";
     case "empty":
@@ -64,7 +64,7 @@ export function reportDateContextLabel(ctx: HomeReportDateContext): string {
     return "主快照读取中";
   }
   if (ctx.mode === "error") {
-    return "首页数据服务不可达";
+    return ctx.divergenceReason?.trim() || "首页快照读取失败";
   }
   if (ctx.mode === "empty") {
     return "暂无可用数据日";

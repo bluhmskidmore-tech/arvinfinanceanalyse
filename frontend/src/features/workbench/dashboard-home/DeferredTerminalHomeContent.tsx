@@ -1,7 +1,11 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 
-import type { DashboardHomeFirstScreenHydration } from "./dashboardHomeFirstScreenTypes";
+import type {
+  DashboardHomeFirstScreenHydration,
+  DashboardHomeFirstScreenView,
+} from "./dashboardHomeFirstScreenTypes";
 import { DeferredEvidenceIndexPreview } from "./DeferredEvidenceIndexPreview";
+import type { DashboardHomeAvailability } from "./dashboardHomeAvailability";
 import styles from "./dashboardHomeShell.module.css";
 import type { DashboardHomeSnapshotBoundary } from "./useDashboardHomeFirstScreenViewModel";
 import { useDashboardHomeSupplementalHydration } from "./useDashboardHomeSupplementalHydration";
@@ -14,9 +18,12 @@ const DeferredTerminalHomeBody = lazy(() =>
 
 type DeferredTerminalHomeContentProps = {
   snapshotBoundary: DashboardHomeSnapshotBoundary;
+  firstScreenView: DashboardHomeFirstScreenView;
   userReachedDeferredContent: boolean;
   focusPolicyFunding?: boolean;
+  homeAvailability?: DashboardHomeAvailability;
   homeAvailabilityKind?: "normal" | "serviceUnavailable";
+  snapshotRefreshing?: boolean;
   onFirstScreenHydrated?: (hydration: DashboardHomeFirstScreenHydration) => void;
 };
 
@@ -39,14 +46,18 @@ function firstScreenHydrationSignature(hydration: DashboardHomeFirstScreenHydrat
       delta: item.delta,
       deltaTone: item.deltaTone,
     })),
+    supplementalState: hydration.supplementalState,
   });
 }
 
 export function DeferredTerminalHomeContent({
   snapshotBoundary,
+  firstScreenView,
   userReachedDeferredContent,
   focusPolicyFunding = false,
+  homeAvailability,
   homeAvailabilityKind = "normal",
+  snapshotRefreshing = false,
   onFirstScreenHydrated,
 }: DeferredTerminalHomeContentProps) {
   const [loadFirstScreenHydration, setLoadFirstScreenHydration] = useState(false);
@@ -88,8 +99,13 @@ export function DeferredTerminalHomeContent({
     <Suspense fallback={<div aria-hidden="true" className={styles.dhTerminalDeferredPlaceholder} />}>
       <DeferredTerminalHomeBody
         snapshotBoundary={snapshotBoundary}
+        firstScreenView={firstScreenView}
         focusPolicyFunding={focusPolicyFunding}
+        homeAvailability={homeAvailability}
         homeAvailabilityKind={homeAvailabilityKind}
+        snapshotRefreshing={snapshotRefreshing}
+        supplementalState={firstScreenHydration.supplementalState}
+        updatedAt={firstScreenHydration.headerStatus.dataUpdatedAt}
       />
     </Suspense>
   );

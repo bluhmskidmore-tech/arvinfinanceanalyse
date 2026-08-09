@@ -13,7 +13,10 @@ import {
   summarizeYieldCurveDates,
   type YieldCurveDateSummary,
 } from "../../../../lib/yieldCurveDateSummary";
-import type { HomeMarketTicker } from "../dashboardHomeMarket";
+import {
+  mapMarketSeries,
+  type HomeMarketTicker,
+} from "../dashboardHomeMarket";
 
 export type HomeMarketContextTone = "cool" | "neutral" | "hot";
 
@@ -25,12 +28,28 @@ export type HomeMarketContextBlock = {
   foot: string;
 };
 
+export type HomeMarketCurveRow = {
+  tenor: (typeof KEY_TENORS)[number];
+  yieldLabel: string;
+  deltaLabel: string;
+  deltaTone: "up" | "down" | "flat" | "muted";
+};
+
+export type HomeMarketCurveTable = {
+  title: string;
+  asOfLabel: string;
+  rows: readonly HomeMarketCurveRow[];
+  emptyMessage: string | null;
+};
+
 export type HomeMarketContextModel = {
   temperatureLabel: string;
   temperatureScore: number;
   temperatureTone: HomeMarketContextTone;
   drivers: readonly string[];
   contextBlocks: readonly HomeMarketContextBlock[];
+  curveTable: HomeMarketCurveTable;
+  rateSeries: readonly HomeMarketTicker[];
   aiSummary: readonly string[];
   sourceLabel: string;
   asOfLabel: string;
@@ -53,7 +72,8 @@ type MoneyComponent = {
   raw: number;
 };
 
-const SOURCE_LABEL = "来源：收益归因 / yield_curve_term_structure / credit_spread_migration";
+const SOURCE_LABEL =
+  "来源：收益归因 / yield_curve_term_structure / credit_spread_migration";
 const REFRESH_LABEL = "刷新：随报告日查询自动更新";
 const GAP = "—";
 const KEY_TENORS = ["1Y", "3Y", "5Y", "10Y"] as const;
@@ -67,19 +87,32 @@ function numericDisplay(value: Numeric | null | undefined): string {
 }
 
 function numericRaw(value: Numeric | null | undefined): number | null {
-  return typeof value?.raw === "number" && Number.isFinite(value.raw) ? value.raw : null;
+  return typeof value?.raw === "number" && Number.isFinite(value.raw)
+    ? value.raw
+    : null;
 }
 
 function isDisplayableNumeric(value: Numeric | null | undefined): boolean {
   const display = value?.display?.trim();
-  return numericRaw(value) !== null && Boolean(display) && display !== GAP && display !== "undefined";
+  return (
+    numericRaw(value) !== null &&
+    Boolean(display) &&
+    display !== GAP &&
+    display !== "undefined"
+  );
 }
 
-function displayOrMissing(value: Numeric | null | undefined, missingLabel: string): string {
+function displayOrMissing(
+  value: Numeric | null | undefined,
+  missingLabel: string,
+): string {
   return isDisplayableNumeric(value) ? numericDisplay(value) : missingLabel;
 }
 
-function ratioPercentOrMissing(value: Numeric | null | undefined, missingLabel: string): string {
+function ratioPercentOrMissing(
+  value: Numeric | null | undefined,
+  missingLabel: string,
+): string {
   const raw = numericRaw(value);
   return raw === null ? missingLabel : `${(raw * 100).toFixed(2)}%`;
 }
@@ -94,13 +127,17 @@ function formatYiSigned(rawYuan: number): string {
 }
 
 function latestIsoDate(values: readonly (string | null | undefined)[]): string {
-  return values
-    .map((value) => value?.slice(0, 10) ?? "")
-    .filter(Boolean)
-    .sort((left, right) => right.localeCompare(left))[0] ?? "";
+  return (
+    values
+      .map((value) => value?.slice(0, 10) ?? "")
+      .filter(Boolean)
+      .sort((left, right) => right.localeCompare(left))[0] ?? ""
+  );
 }
 
-function buildTemperature(marketTape: readonly HomeMarketTicker[]): Pick<
+function buildTemperature(
+  marketTape: readonly HomeMarketTicker[],
+): Pick<
   HomeMarketContextModel,
   "temperatureLabel" | "temperatureScore" | "temperatureTone" | "drivers"
 > {
@@ -154,19 +191,30 @@ function buildTemperature(marketTape: readonly HomeMarketTicker[]): Pick<
 
   const temperatureScore = clampScore(score);
   const temperatureTone: HomeMarketContextTone =
-    temperatureScore >= 65 ? "hot" : temperatureScore <= 40 ? "cool" : "neutral";
+    temperatureScore >= 65
+      ? "hot"
+      : temperatureScore <= 40
+        ? "cool"
+        : "neutral";
   const label =
-    temperatureTone === "hot" ? "偏热" : temperatureTone === "cool" ? "偏冷" : "中性";
+    temperatureTone === "hot"
+      ? "偏热"
+      : temperatureTone === "cool"
+        ? "偏冷"
+        : "中性";
 
   return {
     temperatureLabel: `市场温度：${label}`,
     temperatureScore,
     temperatureTone,
-    drivers: drivers.length > 0 ? drivers.slice(0, 4) : ["外部市场暂无明显方向"],
+    drivers:
+      drivers.length > 0 ? drivers.slice(0, 4) : ["外部市场暂无明显方向"],
   };
 }
 
-function strongestPositive(components: readonly AttributionComponent[]): AttributionComponent | null {
+function strongestPositive(
+  components: readonly AttributionComponent[],
+): AttributionComponent | null {
   return components.reduce<AttributionComponent | null>((best, item) => {
     const raw = numericRaw(item.value);
     if (raw == null || raw <= 0) {
@@ -177,7 +225,9 @@ function strongestPositive(components: readonly AttributionComponent[]): Attribu
   }, null);
 }
 
-function strongestNegative(components: readonly AttributionComponent[]): AttributionComponent | null {
+function strongestNegative(
+  components: readonly AttributionComponent[],
+): AttributionComponent | null {
   return components.reduce<AttributionComponent | null>((best, item) => {
     const raw = numericRaw(item.value);
     if (raw == null || raw >= 0) {
@@ -188,7 +238,9 @@ function strongestNegative(components: readonly AttributionComponent[]): Attribu
   }, null);
 }
 
-function strongestPositiveMoney(components: readonly MoneyComponent[]): MoneyComponent | null {
+function strongestPositiveMoney(
+  components: readonly MoneyComponent[],
+): MoneyComponent | null {
   return components.reduce<MoneyComponent | null>((best, item) => {
     if (!Number.isFinite(item.raw) || item.raw <= 0) {
       return best;
@@ -197,7 +249,9 @@ function strongestPositiveMoney(components: readonly MoneyComponent[]): MoneyCom
   }, null);
 }
 
-function strongestNegativeMoney(components: readonly MoneyComponent[]): MoneyComponent | null {
+function strongestNegativeMoney(
+  components: readonly MoneyComponent[],
+): MoneyComponent | null {
   return components.reduce<MoneyComponent | null>((best, item) => {
     if (!Number.isFinite(item.raw) || item.raw >= 0) {
       return best;
@@ -206,7 +260,9 @@ function strongestNegativeMoney(components: readonly MoneyComponent[]): MoneyCom
   }, null);
 }
 
-function moneyComponentBreakdown(components: readonly MoneyComponent[]): string {
+function moneyComponentBreakdown(
+  components: readonly MoneyComponent[],
+): string {
   return `四因子 ${components.map((item) => `${item.label} ${formatYiSigned(item.raw)}`).join(" · ")}`;
 }
 
@@ -242,14 +298,19 @@ function buildPnlBlock(
   }
 
   if (!returnDecomposition) {
-    const fallback = [attribution.maxDragLabel, attribution.maxContributionLabel]
+    const fallback = [
+      attribution.maxDragLabel,
+      attribution.maxContributionLabel,
+    ]
       .filter((item) => item && item !== GAP)
       .join(" / ");
     return {
       id: "pnl",
       label: "PnL归因",
       title: "等待正式归因数据",
-      detail: fallback ? `已有瀑布图线索：${fallback}` : "未收到 return-decomposition 正式 payload",
+      detail: fallback
+        ? `已有瀑布图线索：${fallback}`
+        : "未收到 return-decomposition 正式 payload",
       foot: "不从总 PnL 反推归因",
     };
   }
@@ -283,6 +344,24 @@ function curveLabel(curveType: string): string {
   return curveType.trim() || "曲线";
 }
 
+function curveTableTitle(
+  curve: YieldCurveTermStructureCurvePayload | null,
+): string {
+  if (!curve) {
+    return "收益率曲线";
+  }
+  const curveName =
+    curve.curve_type === "cdb"
+      ? "国开债收益率"
+      : curve.curve_type === "treasury"
+        ? "国债收益率"
+        : curve.curve_type === "aaa_credit"
+          ? "AAA信用收益率"
+          : `${curveLabel(curve.curve_type)}收益率`;
+  const vendorName = curve.vendor_name.trim();
+  return vendorName ? `${curveName}（${vendorName}）` : curveName;
+}
+
 function findCurve(
   payload: YieldCurveTermStructurePayload | null | undefined,
 ): YieldCurveTermStructureCurvePayload | null {
@@ -295,17 +374,77 @@ function findCurve(
   );
 }
 
-function pointForTenor(curve: YieldCurveTermStructureCurvePayload, tenor: string) {
-  return curve.points.find((point) => point.tenor.toUpperCase() === tenor.toUpperCase()) ?? null;
+function findMarketTableCurve(
+  payload: YieldCurveTermStructurePayload | null | undefined,
+): YieldCurveTermStructureCurvePayload | null {
+  const curves = payload?.curves ?? [];
+  return (
+    curves.find((curve) => curve.curve_type === "treasury") ??
+    curves.find((curve) => curve.curve_type === "cdb") ??
+    curves[0] ??
+    null
+  );
 }
 
-function formatTenorPoint(curve: YieldCurveTermStructureCurvePayload, tenor: string): string {
+function pointForTenor(
+  curve: YieldCurveTermStructureCurvePayload,
+  tenor: string,
+) {
+  return (
+    curve.points.find(
+      (point) => point.tenor.toUpperCase() === tenor.toUpperCase(),
+    ) ?? null
+  );
+}
+
+function formatTenorPoint(
+  curve: YieldCurveTermStructureCurvePayload,
+  tenor: string,
+): string {
   const point = pointForTenor(curve, tenor);
   if (!point?.yield_pct) {
     return `${tenor} ${GAP}`;
   }
   const delta = numericDisplay(point.delta_bp_prev);
-  return delta === GAP ? `${tenor} ${numericDisplay(point.yield_pct)}` : `${tenor} ${numericDisplay(point.yield_pct)}(${delta})`;
+  return delta === GAP
+    ? `${tenor} ${numericDisplay(point.yield_pct)}`
+    : `${tenor} ${numericDisplay(point.yield_pct)}(${delta})`;
+}
+
+function curveDeltaTone(
+  value: Numeric | null | undefined,
+): HomeMarketCurveRow["deltaTone"] {
+  const raw = numericRaw(value);
+  if (raw === null) return "muted";
+  if (raw > 0) return "up";
+  if (raw < 0) return "down";
+  return "flat";
+}
+
+function buildCurveTable(
+  payload: YieldCurveTermStructurePayload | null | undefined,
+): HomeMarketCurveTable {
+  const curve = findMarketTableCurve(payload);
+  const rows = KEY_TENORS.map((tenor): HomeMarketCurveRow => {
+    const point = curve ? pointForTenor(curve, tenor) : null;
+    return {
+      tenor,
+      yieldLabel: displayOrMissing(point?.yield_pct, GAP),
+      deltaLabel: displayOrMissing(point?.delta_bp_prev, GAP),
+      deltaTone: isDisplayableNumeric(point?.delta_bp_prev)
+        ? curveDeltaTone(point?.delta_bp_prev)
+        : "muted",
+    };
+  });
+  const hasAnyValue = rows.some(
+    (row) => row.yieldLabel !== GAP || row.deltaLabel !== GAP,
+  );
+  return {
+    title: curveTableTitle(curve),
+    asOfLabel: curve?.trade_date_resolved?.slice(0, 10) ?? "",
+    rows,
+    emptyMessage: hasAnyValue ? null : "关键期限数据暂不可用",
+  };
 }
 
 function buildCurveBlock(
@@ -328,9 +467,15 @@ function buildCurveBlock(
   const title = tenYear?.yield_pct
     ? `${curveName} 10Y ${numericDisplay(tenYear.yield_pct)}`
     : `${curveName} 关键期限`;
-  const delta = tenYear?.delta_bp_prev ? `，日变化 ${numericDisplay(tenYear.delta_bp_prev)}` : "";
-  const detail = KEY_TENORS.map((tenor) => formatTenorPoint(curve, tenor)).join(" · ");
-  const availableCurves = payload?.curves.map((item) => curveLabel(item.curve_type)).join(" / ") || curveName;
+  const delta = tenYear?.delta_bp_prev
+    ? `，日变化 ${numericDisplay(tenYear.delta_bp_prev)}`
+    : "";
+  const detail = KEY_TENORS.map((tenor) => formatTenorPoint(curve, tenor)).join(
+    " · ",
+  );
+  const availableCurves =
+    payload?.curves.map((item) => curveLabel(item.curve_type)).join(" / ") ||
+    curveName;
   return {
     id: "curve",
     label: "曲线/利率",
@@ -340,21 +485,32 @@ function buildCurveBlock(
   };
 }
 
-function findSpreadScenario25(payload: CreditSpreadMigrationPayload): Numeric | null | undefined {
+function findSpreadScenario25(
+  payload: CreditSpreadMigrationPayload,
+): Numeric | null | undefined {
   const scenario = payload.spread_scenarios.find((item) => {
     const shock = numericRaw(item.spread_change_bp);
-    return shock === 25 || (shock === null && item.scenario_name.includes("25") && !item.scenario_name.includes("收窄"));
+    return (
+      shock === 25 ||
+      (shock === null &&
+        item.scenario_name.includes("25") &&
+        !item.scenario_name.includes("收窄"))
+    );
   });
   return scenario?.pnl_impact;
 }
 
 function hasSpreadLevelGap(payload: CreditSpreadMigrationPayload): boolean {
   return payload.warnings.some((warning) =>
-    /Spread level input unavailable|weighted_avg_spread remains 0/i.test(warning),
+    /Spread level input unavailable|weighted_avg_spread remains 0/i.test(
+      warning,
+    ),
   );
 }
 
-function buildCreditBlock(payload: CreditSpreadMigrationPayload | null | undefined): HomeMarketContextBlock {
+function buildCreditBlock(
+  payload: CreditSpreadMigrationPayload | null | undefined,
+): HomeMarketContextBlock {
   if (!payload) {
     return {
       id: "credit",
@@ -378,7 +534,9 @@ function buildCreditBlock(payload: CreditSpreadMigrationPayload | null | undefin
 }
 
 function buildSummary(blocks: readonly HomeMarketContextBlock[]): string[] {
-  return blocks.map((block) => `${block.label}：${block.title}；${block.detail}。`);
+  return blocks.map(
+    (block) => `${block.label}：${block.title}；${block.detail}。`,
+  );
 }
 
 function buildStatusLabel(input: {
@@ -403,7 +561,9 @@ function buildStatusLabel(input: {
   if (warningCount > 0) {
     return "来源状态：正式链路有提示";
   }
-  return missing.length > 0 ? `来源状态：部分缺 ${missing.join("/")}` : "来源状态：正式链路";
+  return missing.length > 0
+    ? `来源状态：部分缺 ${missing.join("/")}`
+    : "来源状态：正式链路";
 }
 
 export function buildHomeMarketContextModel(input: {
@@ -424,10 +584,15 @@ export function buildHomeMarketContextModel(input: {
     input.yieldCurveTermStructure?.curves ?? [],
   );
   const contextBlocks = [
-    buildPnlBlock(input.campisiFourEffects, input.returnDecomposition, input.attribution),
+    buildPnlBlock(
+      input.campisiFourEffects,
+      input.returnDecomposition,
+      input.attribution,
+    ),
     buildCurveBlock(input.yieldCurveTermStructure, yieldCurveDateSummary),
     buildCreditBlock(input.creditSpreadMigration),
   ];
+  const curveTable = buildCurveTable(input.yieldCurveTermStructure);
   const asOfDate = latestIsoDate([
     input.returnDecomposition?.report_date,
     input.campisiFourEffects?.report_date,
@@ -438,6 +603,8 @@ export function buildHomeMarketContextModel(input: {
   return {
     ...temperature,
     contextBlocks,
+    curveTable,
+    rateSeries: mapMarketSeries(input.marketPoints),
     aiSummary: buildSummary(contextBlocks),
     sourceLabel: SOURCE_LABEL,
     asOfLabel: asOfDate ? `数据截至 ${asOfDate}` : "数据截至：暂无",

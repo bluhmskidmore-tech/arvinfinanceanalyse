@@ -2,7 +2,6 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { DashboardHomeAmbientCanvas } from "./DashboardHomeAmbientCanvas";
 import { createMockHomeFirstScreenView } from "./dashboardHomeFirstScreenMockView";
 import { DecisionRailSection } from "./sections/DecisionRailSection";
 import { TerminalHomeFirstScreen } from "./TerminalHomeFirstScreen";
@@ -11,7 +10,45 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+function completeReferenceKpis(
+  base: ReturnType<typeof createMockHomeFirstScreenView>,
+) {
+  const seed = base.terminalKpis[0]!;
+  return ["aum", "yield", "nim", "dv01-wan"].map((id) => ({
+    ...seed,
+    id,
+    label: id,
+    value: "1.00",
+    state: "ready" as const,
+  }));
+}
+
 describe("dashboard home decision closure", () => {
+  it("keeps the KPI tape to four governed, non-interactive cards", () => {
+    const base = createMockHomeFirstScreenView();
+    const terminalKpis = completeReferenceKpis(base);
+
+    render(
+      <MemoryRouter>
+        <TerminalHomeFirstScreen view={{ ...base, terminalKpis }} />
+      </MemoryRouter>,
+    );
+
+    const strip = screen.getByTestId("dashboard-home-hero-kpi-strip");
+    expect(within(strip).getAllByRole("article")).toHaveLength(4);
+    expect(screen.getByTestId("dashboard-home-kpi-aum")).toHaveTextContent(
+      "1.00",
+    );
+    expect(
+      screen.queryByTestId("dashboard-home-kpi-spread-bp"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("dashboard-home-kpi-holding-occupancy"),
+    ).not.toBeInTheDocument();
+    expect(within(strip).queryAllByRole("button")).toHaveLength(0);
+    expect(within(strip).queryAllByRole("link")).toHaveLength(0);
+  });
+
   it("shows one ready high-priority action as the hero primary action", () => {
     const base = createMockHomeFirstScreenView();
     const view = {
@@ -90,11 +127,7 @@ describe("dashboard home decision closure", () => {
         mode: "stale" as const,
         divergenceReason: "沿用上一版本数据",
       },
-      terminalKpis: base.terminalKpis.map((kpi) => ({
-        ...kpi,
-        value: "1.00",
-        state: "ready" as const,
-      })),
+      terminalKpis: completeReferenceKpis(base),
     };
 
     render(
@@ -121,11 +154,7 @@ describe("dashboard home decision closure", () => {
         dataStatusKind: "partial" as const,
         dataSyncPrefix: "产品分类经营摘要不完整，需复核",
       },
-      terminalKpis: base.terminalKpis.map((kpi) => ({
-        ...kpi,
-        value: "1.00",
-        state: "ready" as const,
-      })),
+      terminalKpis: completeReferenceKpis(base),
       productCategoryHeadline: {
         state: "partial" as const,
         metrics: [
@@ -195,7 +224,8 @@ describe("dashboard home decision closure", () => {
       "暂无证据",
     );
     const sourceGate = screen.getByRole("region", { name: "来源核验" });
-    expect(within(sourceGate).getAllByText("暂无")).toHaveLength(5);
+    expect(within(sourceGate).getAllByText("暂无")).toHaveLength(3);
+    expect(within(sourceGate).getAllByText("未请求")).toHaveLength(2);
 
     unmount();
     render(
@@ -213,7 +243,12 @@ describe("dashboard home decision closure", () => {
     expect(screen.getByTestId("dashboard-home-rail-data-status")).toHaveTextContent(
       "暂无可用快照",
     );
-    expect(screen.getByTestId("dashboard-home-rail-updated-at")).toHaveTextContent("暂无");
+    const unavailableGeneratedAt = screen.getByTestId(
+      "dashboard-home-rail-updated-at",
+    );
+    expect(unavailableGeneratedAt).toHaveTextContent("暂无");
+    expect(unavailableGeneratedAt).not.toHaveTextContent("16:00");
+    expect(unavailableGeneratedAt.tagName).toBe("SPAN");
   });
 
   it("shows honest owner and deadline gaps for every decision action", () => {
@@ -234,11 +269,52 @@ describe("dashboard home decision closure", () => {
 
     const actionRows = screen.getAllByTestId("dashboard-home-decision-action-row");
     expect(actionRows).toHaveLength(view.decisionRail.actions.length);
-    actionRows.forEach((row) => {
+    actionRows.forEach((row, index) => {
       expect(within(row).getByText("负责人待接入")).toBeInTheDocument();
       expect(within(row).getByText("截止时间未维护")).toBeInTheDocument();
       expect(within(row).getByText(/优先级/)).toBeInTheDocument();
+      expect(row.getAttribute("title")).toContain(
+        view.decisionRail.actions[index]?.reason,
+      );
     });
+    expect(
+      screen.getByRole("region", { name: "待复核列表" }),
+    ).toHaveAttribute("tabindex", "0");
+    expect(
+      screen.getByRole("list", { name: "可下钻建议" }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps truncated KPI and evidence text recoverable from titles", () => {
+    const view = createMockHomeFirstScreenView();
+
+    render(
+      <MemoryRouter>
+        <TerminalHomeFirstScreen view={view} />
+        <DecisionRailSection
+          decisionRail={view.decisionRail}
+          reportDate={view.reportDate}
+          dataSyncPrefix={view.headerStatus.dataSyncPrefix}
+          dataStatusKind={view.headerStatus.dataStatusKind}
+          snapshotMeta={null}
+          reportDateContext={view.reportDateContext}
+        />
+      </MemoryRouter>,
+    );
+
+    const aumKpi = screen.getByTestId("dashboard-home-kpi-aum");
+    expect(aumKpi.querySelector("strong[title]")).not.toBeNull();
+    expect(
+      Array.from(aumKpi.querySelectorAll("span[title]")).some((node) =>
+        node.getAttribute("title")?.includes("·"),
+      ),
+    ).toBe(true);
+
+    const evidenceCard = screen.getByTestId(
+      "dashboard-home-evidence-material-card",
+    );
+    const sourceRow = within(evidenceCard).getByText("来源").parentElement;
+    expect(sourceRow?.getAttribute("title")).toContain("来源：");
   });
 
   it("keeps only the genuinely horizontal source evidence keyboard-scrollable", () => {
@@ -294,15 +370,6 @@ describe("dashboard home decision closure", () => {
     scrollWidthSpy.mockRestore();
   });
 
-  it("does not request a canvas context under jsdom (ambient visual only draws in real browsers)", () => {
-    const getContext = vi
-      .spyOn(HTMLCanvasElement.prototype, "getContext")
-      .mockImplementation(() => null);
-
-    render(<DashboardHomeAmbientCanvas />);
-
-    expect(getContext).not.toHaveBeenCalled();
-  });
 });
 
 describe("TerminalHomeFirstScreen fallback source semantics", () => {

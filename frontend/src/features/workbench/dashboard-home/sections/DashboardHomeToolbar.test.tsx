@@ -88,10 +88,23 @@ describe("DashboardHomeToolbar", () => {
     expect(onReportDateChange).toHaveBeenCalledWith("2026-03-31");
   });
 
-  it("uses readable copy for the partial-data toggle", () => {
+  it("blocks the partial-data toggle until backend date and null semantics are reliable", () => {
+    const onAllowPartialChange = vi.fn();
+    renderToolbar({ allowPartial: true, onAllowPartialChange });
+
+    const blockedToggle = screen.getByLabelText("仅完整数据");
+    expect(blockedToggle).not.toBeChecked();
+    expect(blockedToggle).toBeDisabled();
+    fireEvent.click(blockedToggle);
+    expect(onAllowPartialChange).not.toHaveBeenCalled();
+  });
+
+  it("uses readable copy when the partial-data mode is explicitly supported", () => {
     const { rerender } = render(
       <MemoryRouter>
-        <DashboardHomeToolbar {...makeToolbarProps({ allowPartial: true })} />
+        <DashboardHomeToolbar
+          {...makeToolbarProps({ allowPartial: true, partialModeSupported: true })}
+        />
       </MemoryRouter>,
     );
 
@@ -99,7 +112,9 @@ describe("DashboardHomeToolbar", () => {
 
     rerender(
       <MemoryRouter>
-        <DashboardHomeToolbar {...makeToolbarProps({ allowPartial: false })} />
+        <DashboardHomeToolbar
+          {...makeToolbarProps({ allowPartial: false, partialModeSupported: true })}
+        />
       </MemoryRouter>,
     );
 

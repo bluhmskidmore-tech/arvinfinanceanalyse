@@ -6,24 +6,28 @@ import { describe, expect, it, vi } from "vitest";
 import { createApiClient, type ApiClient } from "../../../api/client";
 import type { ApiEnvelope, ChoiceNewsEvent, ChoiceNewsEventsPayload } from "../../../api/contracts";
 import {
+  DASHBOARD_BOND_NEWS_TOPICS,
+  DASHBOARD_HOME_CONTENT_REFETCH_INTERVAL_MS,
   DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS,
   DASHBOARD_MACRO_NEWS_TOPICS,
 } from "../dashboard/dashboardMacroNewsTopics";
 import { useDashboardHomeBodyData } from "./useDashboardHomeBodyData";
 
-function createWrapper() {
-  return function Wrapper({ children }: { children: ReactNode }) {
-    const queryClient = new QueryClient({
-      defaultOptions: {
-        queries: {
-          retry: false,
-          staleTime: 0,
-          gcTime: 0,
-          refetchOnWindowFocus: false,
-        },
+function createQueryClient() {
+  return new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+        staleTime: 0,
+        gcTime: 0,
+        refetchOnWindowFocus: false,
       },
-    });
+    },
+  });
+}
 
+function createWrapper(queryClient = createQueryClient()) {
+  return function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
   };
 }
@@ -186,5 +190,146 @@ describe("useDashboardHomeBodyData", () => {
         ),
       ).toBe(false);
     });
+  });
+
+  it("queries each direct bond-news feed by stable group id", async () => {
+    const getChoiceNewsEvents = vi.fn<ApiClient["getChoiceNewsEvents"]>(async (params) =>
+      choiceNewsEnvelope([
+        choiceEvent({
+          event_key: `bond-${params.groupId ?? "unknown"}`,
+          received_at: "2026-07-27T09:00:00+08:00",
+          group_id: params.groupId ?? "tushare_news",
+          topic_code: "tushare.news.sina",
+          payload_text: "国债收益率曲线今日小幅下行",
+        }),
+      ]),
+    );
+    const dataClient = createHomeBodyClient({
+      getChoiceNewsEvents,
+      getResearchCalendarEvents: vi.fn(async () => []),
+    });
+
+    renderHook(
+      () =>
+        useDashboardHomeBodyData({
+          dataClient,
+          supplementalReportDate: "2026-05-31",
+          loadBasicData: false,
+          loadEventFeeds: false,
+          loadSecondaryEventFeeds: false,
+          loadBondNewsFeeds: true,
+          loadFormalData: false,
+        }),
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => {
+      expect(
+        getChoiceNewsEvents.mock.calls
+          .map(([params]) => params.groupId)
+          .filter((groupId): groupId is string => Boolean(groupId)),
+      ).toEqual(expect.arrayContaining(DASHBOARD_BOND_NEWS_TOPICS.map((topic) => topic.groupId)));
+    });
+    expect(
+      getChoiceNewsEvents.mock.calls.some(([params]) =>
+        DASHBOARD_BOND_NEWS_TOPICS.some(
+          (topic) => params.topicCode === topic.code && !params.groupId,
+        ),
+      ),
+    ).toBe(false);
+  });
+
+  it("loads remaining bond-news feeds when the probe group is empty", async () => {
+    const probeTopic = DASHBOARD_BOND_NEWS_TOPICS[0]!;
+    const remainingTopic = DASHBOARD_BOND_NEWS_TOPICS[1]!;
+    const remainingEvent = choiceEvent({
+      event_key: `bond-${remainingTopic.groupId}`,
+      received_at: "2026-07-27T09:00:00+08:00",
+      group_id: remainingTopic.groupId,
+      topic_code: remainingTopic.code,
+      payload_text: "债券市场有效新闻",
+    });
+    const getChoiceNewsEvents = vi.fn<ApiClient["getChoiceNewsEvents"]>(async (params) =>
+      choiceNewsEnvelope(params.groupId === remainingTopic.groupId ? [remainingEvent] : []),
+    );
+    const dataClient = createHomeBodyClient({
+      getChoiceNewsEvents,
+      getResearchCalendarEvents: vi.fn(async () => []),
+    });
+
+    renderHook(
+      () =>
+        useDashboardHomeBodyData({
+          dataClient,
+          supplementalReportDate: "2026-05-31",
+          loadBasicData: false,
+          loadEventFeeds: false,
+          loadSecondaryEventFeeds: false,
+          loadBondNewsFeeds: true,
+          loadFormalData: false,
+        }),
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => {
+      expect(getChoiceNewsEvents).toHaveBeenCalledWith(
+        expect.objectContaining({ groupId: probeTopic.groupId }),
+      );
+      expect(
+        getChoiceNewsEvents.mock.calls
+          .map(([params]) => params.groupId)
+          .filter((groupId): groupId is string => Boolean(groupId)),
+      ).toEqual(expect.arrayContaining(DASHBOARD_BOND_NEWS_TOPICS.map((topic) => topic.groupId)));
+    });
+    expect(getChoiceNewsEvents).toHaveBeenCalledWith(
+      expect.objectContaining({ groupId: remainingTopic.groupId }),
+    );
+  });
+
+  it("keeps homepage news reads active every five minutes without background polling", async () => {
+    const queryClient = createQueryClient();
+    const getChoiceNewsEvents = vi.fn<ApiClient["getChoiceNewsEvents"]>(async () =>
+      choiceNewsEnvelope([]),
+    );
+    const dataClient = createHomeBodyClient({
+      getChoiceNewsEvents,
+      getResearchCalendarEvents: vi.fn(async () => []),
+    });
+
+    renderHook(
+      () =>
+        useDashboardHomeBodyData({
+          dataClient,
+          supplementalReportDate: "2026-05-31",
+          loadBasicData: false,
+          loadEventFeeds: true,
+          loadSecondaryEventFeeds: true,
+          loadBondNewsFeeds: true,
+          loadFormalData: false,
+        }),
+      { wrapper: createWrapper(queryClient) },
+    );
+
+    await waitFor(() => {
+      expect(getChoiceNewsEvents).toHaveBeenCalled();
+    });
+    const queryPrefixes = [
+      ["dashboard", "macro-news"],
+      ["dashboard", "macro-news-fallback"],
+      ["dashboard", "bond-news"],
+    ] as const;
+    for (const prefix of queryPrefixes) {
+      const query = queryClient
+        .getQueryCache()
+        .getAll()
+        .find((candidate) =>
+          prefix.every((part, index) => candidate.queryKey[index] === part),
+        );
+      expect(query?.observers[0]?.options.refetchInterval).toBe(
+        DASHBOARD_HOME_CONTENT_REFETCH_INTERVAL_MS,
+      );
+      expect(query?.observers[0]?.options.refetchIntervalInBackground).toBe(false);
+      expect(query?.observers[0]?.options.refetchOnWindowFocus).toBe(true);
+    }
   });
 });
