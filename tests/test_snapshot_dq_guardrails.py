@@ -6,9 +6,11 @@ import duckdb
 import pytest
 
 from backend.app.repositories.snapshot_repo import (
+    ensure_snapshot_tables,
     merge_tyw_rows_by_grain,
     merge_zqtz_rows_by_grain,
     replace_tyw_snapshot_rows,
+    replace_zqtz_snapshot_rows,
 )
 from backend.app.repositories.task_write_guard import repository_task_write_scope
 
@@ -180,3 +182,54 @@ def test_replace_tyw_snapshot_rows_can_replace_all_rows_for_report_date(tmp_path
         conn.close()
 
     assert result == [("new-1", "ib", 200)]
+
+
+def test_snapshot_replace_preserves_decimal_precision_for_zqtz_and_tyw(tmp_path) -> None:
+    db_path = tmp_path / "snapshot-precision.duckdb"
+    conn = duckdb.connect(str(db_path))
+    try:
+        ensure_snapshot_tables(conn)
+        zqtz_row = _zqtz_row(
+            face_value="123456789012.12345678",
+            market_value="9999999999.99999999",
+            amortized_cost="1234567890.12345678",
+        )
+        zqtz_row["accrued_interest_native"] = Decimal("987654321.87654321")
+        tyw_row = _tyw_row(
+            position_id="precision-tyw",
+            principal="123456789012.12345678",
+            accrued="987654321.87654321",
+            rate="0.12345678",
+        )
+
+        with repository_task_write_scope("backend.app.tasks.snapshot_precision_test"):
+            replace_zqtz_snapshot_rows(conn, [zqtz_row], ingest_batch_ids=["ib"])
+            replace_tyw_snapshot_rows(conn, [tyw_row], ingest_batch_ids=["ib"])
+
+        zqtz_values = conn.execute(
+            """
+            select face_value_native, market_value_native,
+                   amortized_cost_native, accrued_interest_native
+            from zqtz_bond_daily_snapshot
+            """
+        ).fetchone()
+        tyw_values = conn.execute(
+            """
+            select principal_native, accrued_interest_native, funding_cost_rate
+            from tyw_interbank_daily_snapshot
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert zqtz_values == (
+        Decimal("123456789012.12345678"),
+        Decimal("9999999999.99999999"),
+        Decimal("1234567890.12345678"),
+        Decimal("987654321.87654321"),
+    )
+    assert tyw_values == (
+        Decimal("123456789012.12345678"),
+        Decimal("987654321.87654321"),
+        Decimal("0.12345678"),
+    )

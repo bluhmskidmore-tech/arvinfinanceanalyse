@@ -79,8 +79,11 @@ def delete_tyw_snapshots_for_report_dates(
 
 
 def _sql_value(value: object) -> object:
-    if isinstance(value, Decimal):
-        return float(value)
+    """Keep exact Python values for DuckDB parameter binding.
+
+    DuckDB accepts ``Decimal`` directly. Converting it to ``float`` here loses
+    precision before DECIMAL columns can apply their declared scale.
+    """
     return value
 
 
