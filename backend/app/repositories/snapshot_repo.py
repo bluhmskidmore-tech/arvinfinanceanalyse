@@ -180,6 +180,71 @@ def replace_zqtz_snapshot_rows(
     return len(rows)
 
 
+def repair_zqtz_snapshot_coupon_rates(
+    conn: duckdb.DuckDBPyConnection,
+    repairs: list[dict[str, Any]],
+) -> int:
+    """Apply an exact, task-scoped coupon remediation without replacing snapshot rows."""
+
+    require_repository_task_write_scope("repair_zqtz_snapshot_coupon_rates")
+    changed_count = 0
+    conn.execute("begin transaction")
+    try:
+        for repair in repairs:
+            key_params = [repair["report_date"], repair["instrument_code"]]
+            current = conn.execute(
+                f"""
+                select coupon_rate, source_version, rule_version, trace_id
+                from {ZQTZ_TABLE}
+                where cast(report_date as varchar) = ?
+                  and cast(instrument_code as varchar) = ?
+                """,
+                key_params,
+            ).fetchall()
+            if len(current) != 1:
+                raise RuntimeError(
+                    "Coupon remediation target must resolve to exactly one snapshot row: "
+                    f"report_date={repair['report_date']}, "
+                    f"instrument_code={repair['instrument_code']}, rows={len(current)}."
+                )
+            expected_before = (
+                repair["before_coupon_rate"],
+                repair["source_version_before"],
+                repair["rule_version_before"],
+                repair["trace_id_before"],
+            )
+            if tuple(current[0]) != expected_before:
+                raise RuntimeError(
+                    "Coupon remediation target changed after preview: "
+                    f"report_date={repair['report_date']}, "
+                    f"instrument_code={repair['instrument_code']}."
+                )
+            conn.execute(
+                f"""
+                update {ZQTZ_TABLE}
+                set coupon_rate = ?,
+                    source_version = ?,
+                    rule_version = ?,
+                    trace_id = ?
+                where cast(report_date as varchar) = ?
+                  and cast(instrument_code as varchar) = ?
+                """,
+                [
+                    repair["after_coupon_rate"],
+                    repair["source_version_after"],
+                    repair["rule_version_after"],
+                    repair["trace_id_after"],
+                    *key_params,
+                ],
+            )
+            changed_count += 1
+        conn.execute("commit")
+    except Exception:
+        conn.execute("rollback")
+        raise
+    return changed_count
+
+
 def replace_tyw_snapshot_rows(
     conn: duckdb.DuckDBPyConnection,
     rows: list[dict[str, Any]],
