@@ -14,7 +14,7 @@ from typing import Literal
 
 from backend.app.core_finance.alert_engine import evaluate_alerts
 from backend.app.core_finance.liability_analytics_compat import compute_liability_yield_metrics
-from backend.app.core_finance.risk_tensor import PortfolioRiskTensor, compute_portfolio_risk_tensor
+from backend.app.core_finance.risk_tensor import PortfolioRiskTensor
 from backend.app.governance.formal_compute_lineage import resolve_completed_formal_build_lineage
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
@@ -27,12 +27,7 @@ from backend.app.repositories.liability_analytics_repo import LiabilityAnalytics
 from backend.app.repositories.news_warehouse_repo import NewsWarehouseRepository
 from backend.app.repositories.pnl_repo import PnlRepository
 from backend.app.repositories.product_category_pnl_repo import ProductCategoryPnlRepository
-from backend.app.repositories.risk_tensor_repo import (
-    RiskTensorRepository,
-    load_current_tyw_liability_rule_version,
-    load_current_tyw_liability_source_version,
-    load_latest_bond_analytics_lineage,
-)
+from backend.app.repositories.risk_tensor_repo import load_latest_bond_analytics_lineage
 from backend.app.schemas.common_numeric import Numeric
 from backend.app.schemas.executive_dashboard import (
     AlertItem,
@@ -73,6 +68,10 @@ from backend.app.services.kpi_service import (
 from backend.app.services.product_category_pnl_service import (
     product_category_pnl_envelope,
     resolve_product_category_ytd_payload_for_home_snapshot,
+)
+from backend.app.services.risk_tensor_service import (
+    risk_tensor_dates_envelope,
+    risk_tensor_envelope,
 )
 from backend.app.services.runtime_cache import InMemoryTTLCache, get_runtime_cache
 
@@ -2619,97 +2618,81 @@ def _fallback_executive_alerts() -> dict[str, object]:
     )
 
 
-def _decimal_from_fact_value(value: object) -> Decimal:
+def _decimal_from_formal_numeric(
+    value: object,
+    *,
+    field_name: str,
+    allow_none: bool = False,
+) -> Decimal:
+    if isinstance(value, dict):
+        if "raw" not in value:
+            raise ValueError(f"Formal risk tensor numeric field {field_name!r} has no raw value.")
+        value = value["raw"]
     if value is None:
-        return Decimal("0")
-    if isinstance(value, Decimal):
-        return value
-    return Decimal(str(value))
+        if allow_none:
+            return Decimal("0")
+        raise ValueError(f"Formal risk tensor numeric field {field_name!r} is null.")
+    if isinstance(value, bool):
+        raise ValueError(f"Formal risk tensor numeric field {field_name!r} is boolean.")
+    try:
+        decimal_value = value if isinstance(value, Decimal) else Decimal(str(value))
+    except (ArithmeticError, TypeError, ValueError) as exc:
+        raise ValueError(
+            f"Formal risk tensor numeric field {field_name!r} is invalid."
+        ) from exc
+    if not decimal_value.is_finite():
+        raise ValueError(f"Formal risk tensor numeric field {field_name!r} is not finite.")
+    return decimal_value
 
 
-def _portfolio_risk_tensor_from_fact_row(
-    row: dict[str, object],
+def _portfolio_risk_tensor_from_formal_result(
+    result: dict[str, object],
     *,
-    report_date: date,
+    expected_report_date: date,
 ) -> PortfolioRiskTensor:
-    return PortfolioRiskTensor(
-        report_date=report_date,
-        portfolio_dv01=_decimal_from_fact_value(row["portfolio_dv01"]),
-        regulatory_dv01=_decimal_from_fact_value(row.get("regulatory_dv01")),
-        krd_1y=_decimal_from_fact_value(row["krd_1y"]),
-        krd_3y=_decimal_from_fact_value(row["krd_3y"]),
-        krd_5y=_decimal_from_fact_value(row["krd_5y"]),
-        krd_7y=_decimal_from_fact_value(row["krd_7y"]),
-        krd_10y=_decimal_from_fact_value(row["krd_10y"]),
-        krd_30y=_decimal_from_fact_value(row["krd_30y"]),
-        cs01=_decimal_from_fact_value(row["cs01"]),
-        portfolio_convexity=_decimal_from_fact_value(row["portfolio_convexity"]),
-        portfolio_modified_duration=_decimal_from_fact_value(row["portfolio_modified_duration"]),
-        issuer_concentration_hhi=_decimal_from_fact_value(row["issuer_concentration_hhi"]),
-        issuer_top5_weight=_decimal_from_fact_value(row["issuer_top5_weight"]),
-        asset_cashflow_30d=_decimal_from_fact_value(row["asset_cashflow_30d"]),
-        asset_cashflow_90d=_decimal_from_fact_value(row["asset_cashflow_90d"]),
-        liability_cashflow_30d=_decimal_from_fact_value(row["liability_cashflow_30d"]),
-        liability_cashflow_90d=_decimal_from_fact_value(row["liability_cashflow_90d"]),
-        liquidity_gap_30d=_decimal_from_fact_value(row["liquidity_gap_30d"]),
-        liquidity_gap_90d=_decimal_from_fact_value(row["liquidity_gap_90d"]),
-        liquidity_gap_30d_ratio=_decimal_from_fact_value(row["liquidity_gap_30d_ratio"]),
-        total_market_value=_decimal_from_fact_value(row["total_market_value"]),
-        bond_count=int(row["bond_count"]),
-        quality_flag=str(row["quality_flag"]),
-        warnings=list(row.get("warnings") or []),
-    )
+    result_report_date = date.fromisoformat(str(result["report_date"]))
+    if result_report_date != expected_report_date:
+        raise ValueError(
+            "Formal risk tensor report_date does not match the requested executive alerts date."
+        )
+    warnings = result.get("warnings") or []
+    if not isinstance(warnings, list):
+        raise ValueError("Formal risk tensor warnings must be a list.")
 
-
-def _executive_alerts_risk_tensor_stale_reason(
-    *,
-    duckdb_path: str,
-    governance_dir: str,
-    report_date_text: str,
-    row: dict[str, object] | None,
-) -> str | None:
-    if row is None:
-        return f"Risk tensor fact missing for report_date={report_date_text}."
-
-    upstream_lineage = load_latest_bond_analytics_lineage(
-        governance_dir=governance_dir,
-        report_date=report_date_text,
-    )
-    if upstream_lineage is None or not upstream_lineage["source_version"]:
-        upstream_source_version = ""
-    else:
-        upstream_source_version = upstream_lineage["source_version"]
-
-    current_tyw_liability_source_version = load_current_tyw_liability_source_version(
-        duckdb_path=duckdb_path,
-        report_date=report_date_text,
-    )
-    current_tyw_liability_rule_version = load_current_tyw_liability_rule_version(
-        duckdb_path=duckdb_path,
-        report_date=report_date_text,
-    )
-
-    if not upstream_source_version:
-        return (
-            f"Bond analytics lineage missing for report_date={report_date_text}; "
-            "cannot validate risk tensor freshness."
+    def _numeric(field_name: str, *, allow_none: bool = False) -> Decimal:
+        return _decimal_from_formal_numeric(
+            result.get(field_name),
+            field_name=field_name,
+            allow_none=allow_none,
         )
 
-    if str(row.get("upstream_source_version") or "").strip() != upstream_source_version:
-        return f"Risk tensor stale against bond analytics lineage for report_date={report_date_text}."
-
-    stored_tyw_liability_source_version = str(row.get("liability_source_version") or "").strip()
-    if current_tyw_liability_source_version and (
-        stored_tyw_liability_source_version != current_tyw_liability_source_version
-    ):
-        return f"Risk tensor stale against TYW liability lineage for report_date={report_date_text}."
-
-    stored_tyw_liability_rule_version = str(row.get("liability_rule_version") or "").strip()
-    if current_tyw_liability_rule_version and (
-        stored_tyw_liability_rule_version != current_tyw_liability_rule_version
-    ):
-        return f"Risk tensor stale against TYW liability lineage for report_date={report_date_text}."
-    return None
+    return PortfolioRiskTensor(
+        report_date=result_report_date,
+        portfolio_dv01=_numeric("portfolio_dv01"),
+        regulatory_dv01=_numeric("regulatory_dv01", allow_none=True),
+        krd_1y=_numeric("krd_1y"),
+        krd_3y=_numeric("krd_3y"),
+        krd_5y=_numeric("krd_5y"),
+        krd_7y=_numeric("krd_7y"),
+        krd_10y=_numeric("krd_10y"),
+        krd_30y=_numeric("krd_30y"),
+        cs01=_numeric("cs01"),
+        portfolio_convexity=_numeric("portfolio_convexity"),
+        portfolio_modified_duration=_numeric("portfolio_modified_duration"),
+        issuer_concentration_hhi=_numeric("issuer_concentration_hhi"),
+        issuer_top5_weight=_numeric("issuer_top5_weight"),
+        asset_cashflow_30d=_numeric("asset_cashflow_30d"),
+        asset_cashflow_90d=_numeric("asset_cashflow_90d"),
+        liability_cashflow_30d=_numeric("liability_cashflow_30d"),
+        liability_cashflow_90d=_numeric("liability_cashflow_90d"),
+        liquidity_gap_30d=_numeric("liquidity_gap_30d"),
+        liquidity_gap_90d=_numeric("liquidity_gap_90d"),
+        liquidity_gap_30d_ratio=_numeric("liquidity_gap_30d_ratio"),
+        total_market_value=_numeric("total_market_value"),
+        bond_count=int(result["bond_count"]),
+        quality_flag=str(result["quality_flag"]),
+        warnings=[str(warning) for warning in warnings],
+    )
 
 
 def _load_executive_alerts_risk_tensor(
@@ -2718,52 +2701,90 @@ def _load_executive_alerts_risk_tensor(
     governance_dir: str,
     normalized_report_date: str,
     report_date_value: date,
-    bond_repo: BondAnalyticsRepository,
-) -> PortfolioRiskTensor:
-    fact_row = RiskTensorRepository(duckdb_path).fetch_risk_tensor_row(normalized_report_date)
-    if fact_row is not None and governance_dir:
-        stale_reason = _executive_alerts_risk_tensor_stale_reason(
-            duckdb_path=duckdb_path,
-            governance_dir=governance_dir,
-            report_date_text=normalized_report_date,
-            row=fact_row,
-        )
-        if stale_reason is None:
-            return _portfolio_risk_tensor_from_fact_row(
-                fact_row,
-                report_date=report_date_value,
-            )
-    rows = bond_repo.fetch_bond_analytics_rows(report_date=normalized_report_date)
-    return compute_portfolio_risk_tensor(rows, report_date=report_date_value)
+) -> tuple[PortfolioRiskTensor, dict[str, object]]:
+    envelope = risk_tensor_envelope(
+        duckdb_path=duckdb_path,
+        governance_dir=governance_dir,
+        report_date=normalized_report_date,
+    )
+    result = envelope.get("result")
+    result_meta = envelope.get("result_meta")
+    if not isinstance(result, dict) or not isinstance(result_meta, dict):
+        raise ValueError("Formal risk tensor owner returned an invalid envelope.")
+    if result_meta.get("result_kind") != "risk.tensor":
+        raise ValueError("Formal risk tensor owner returned an unexpected result kind.")
+    if not str(result_meta.get("source_version") or "").strip():
+        raise ValueError("Formal risk tensor owner returned no source lineage.")
+    if not str(result_meta.get("rule_version") or "").strip():
+        raise ValueError("Formal risk tensor owner returned no rule lineage.")
+    return (
+        _portfolio_risk_tensor_from_formal_result(
+            result,
+            expected_report_date=report_date_value,
+        ),
+        result_meta,
+    )
+
+
+def _latest_formal_risk_tensor_report_date(
+    *,
+    duckdb_path: str,
+    governance_dir: str,
+) -> str | None:
+    envelope = risk_tensor_dates_envelope(
+        duckdb_path=duckdb_path,
+        governance_dir=governance_dir,
+    )
+    result = envelope.get("result")
+    result_meta = envelope.get("result_meta")
+    if not isinstance(result, dict) or not isinstance(result_meta, dict):
+        raise ValueError("Formal risk tensor dates owner returned an invalid envelope.")
+    if result_meta.get("result_kind") != "risk.tensor.dates":
+        raise ValueError("Formal risk tensor dates owner returned an unexpected result kind.")
+    report_dates = result.get("report_dates")
+    if not isinstance(report_dates, list):
+        raise ValueError("Formal risk tensor dates owner returned invalid report_dates.")
+    if not report_dates:
+        return None
+    return date.fromisoformat(str(report_dates[0])).isoformat()
+
+
+def _formal_risk_tensor_quality_flag(
+    result_meta: dict[str, object],
+    tensor: PortfolioRiskTensor,
+) -> Literal["ok", "warning", "error", "stale"]:
+    value = str(result_meta.get("quality_flag") or tensor.quality_flag).strip()
+    if value == "ok":
+        return "ok"
+    if value == "warning":
+        return "warning"
+    if value == "error":
+        return "error"
+    if value == "stale":
+        return "stale"
+    raise ValueError(f"Formal risk tensor owner returned invalid quality_flag={value!r}.")
 
 
 def executive_alerts(report_date: str | None = None) -> dict[str, object]:
     settings = get_settings()
+    duckdb_path = str(settings.duckdb_path)
     governance_dir = str(getattr(settings, "governance_path", "") or "").strip()
     explicit_requested = _normalize_report_date(report_date)
     try:
-        repo = BondAnalyticsRepository(str(settings.duckdb_path))
         normalized_report_date = explicit_requested
         if normalized_report_date is None:
-            dates = repo.list_report_dates()
-            if not dates:
-                return _fallback_executive_alerts()
-            normalized_report_date = dates[0]
-        elif normalized_report_date not in repo.list_report_dates():
-            return _envelope(
-                "executive.alerts",
-                _empty_alerts_payload(),
-                quality_flag="warning",
-                vendor_status="vendor_unavailable",
-                source_version=_MISS_SOURCE,
+            normalized_report_date = _latest_formal_risk_tensor_report_date(
+                duckdb_path=duckdb_path,
+                governance_dir=governance_dir,
             )
+            if normalized_report_date is None:
+                return _fallback_executive_alerts()
         report_date_value = date.fromisoformat(normalized_report_date)
-        tensor = _load_executive_alerts_risk_tensor(
-            duckdb_path=str(settings.duckdb_path),
+        tensor, tensor_meta = _load_executive_alerts_risk_tensor(
+            duckdb_path=duckdb_path,
             governance_dir=governance_dir,
             normalized_report_date=normalized_report_date,
             report_date_value=report_date_value,
-            bond_repo=repo,
         )
         raw = evaluate_alerts(tensor)
         occurred_at = datetime.now().strftime("%H:%M")
@@ -2778,27 +2799,24 @@ def executive_alerts(report_date: str | None = None) -> dict[str, object]:
             for entry in raw
         ]
         payload = AlertsPayload(title="预警与事件", items=items)
-        alerts_source_version = _DEFAULT_SOURCE
-        alerts_rule_version = _DEFAULT_RULE
-        if governance_dir:
-            lineage = load_latest_bond_analytics_lineage(
-                governance_dir=governance_dir,
-                report_date=normalized_report_date,
-            )
-            if lineage is not None:
-                alerts_source_version = _join_lineage_tokens(
-                    alerts_source_version,
-                    lineage.get("source_version"),
-                )
-                alerts_rule_version = _join_lineage_tokens(
-                    alerts_rule_version,
-                    lineage.get("rule_version"),
-                )
+        alerts_source_version = _join_lineage_tokens(
+            _DEFAULT_SOURCE,
+            tensor_meta.get("source_version"),
+        )
+        alerts_rule_version = _join_lineage_tokens(
+            _DEFAULT_RULE,
+            tensor_meta.get("rule_version"),
+        )
         return _envelope(
             "executive.alerts",
             payload,
+            quality_flag=_formal_risk_tensor_quality_flag(tensor_meta, tensor),
             source_version=alerts_source_version,
             rule_version=alerts_rule_version,
+            requested_report_date=explicit_requested,
+            resolved_report_date=normalized_report_date,
+            as_of_date=normalized_report_date,
+            date_basis="formal_snapshot",
         )
     except (RuntimeError, OSError, TypeError, ValueError, AttributeError, KeyError):
         if explicit_requested is not None:

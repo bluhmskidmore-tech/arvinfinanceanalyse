@@ -52,6 +52,72 @@ def exec_mod(monkeypatch, tmp_path):
     return mod
 
 
+class _ForbiddenBondAnalyticsRepository:
+    def __init__(self, *_args, **_kwargs):
+        raise AssertionError("executive alerts must not read bond analytics directly")
+
+
+def _formal_numeric(
+    raw: float,
+    *,
+    unit: str = "ratio",
+    sign_aware: bool = False,
+) -> dict[str, object]:
+    return {
+        "raw": raw,
+        "unit": unit,
+        "display": str(raw),
+        "precision": 2,
+        "sign_aware": sign_aware,
+    }
+
+
+def _formal_risk_tensor_envelope(
+    *,
+    report_date: str,
+    source_version: str = "sv_alerts_lineage",
+    rule_version: str = "rv_alerts_lineage",
+) -> dict[str, object]:
+    numeric_fields = {
+        "portfolio_dv01": _formal_numeric(800_000.0, unit="dv01"),
+        "regulatory_dv01": _formal_numeric(800_000.0, unit="dv01"),
+        "krd_1y": _formal_numeric(0.1, sign_aware=True),
+        "krd_3y": _formal_numeric(0.2, sign_aware=True),
+        "krd_5y": _formal_numeric(0.3, sign_aware=True),
+        "krd_7y": _formal_numeric(0.2, sign_aware=True),
+        "krd_10y": _formal_numeric(0.15, sign_aware=True),
+        "krd_30y": _formal_numeric(0.05, sign_aware=True),
+        "cs01": _formal_numeric(80_000.0, unit="dv01"),
+        "portfolio_convexity": _formal_numeric(70.0),
+        "portfolio_modified_duration": _formal_numeric(8.0),
+        "issuer_concentration_hhi": _formal_numeric(0.4),
+        "issuer_top5_weight": _formal_numeric(0.6),
+        "asset_cashflow_30d": _formal_numeric(30_000_000.0, unit="yuan"),
+        "asset_cashflow_90d": _formal_numeric(60_000_000.0, unit="yuan"),
+        "liability_cashflow_30d": _formal_numeric(10_000_000.0, unit="yuan"),
+        "liability_cashflow_90d": _formal_numeric(20_000_000.0, unit="yuan"),
+        "liquidity_gap_30d": _formal_numeric(20_000_000.0, unit="yuan", sign_aware=True),
+        "liquidity_gap_90d": _formal_numeric(40_000_000.0, unit="yuan", sign_aware=True),
+        "liquidity_gap_30d_ratio": _formal_numeric(0.2, sign_aware=True),
+        "total_market_value": _formal_numeric(100_000_000.0, unit="yuan"),
+    }
+    return {
+        "result_meta": {
+            "result_kind": "risk.tensor",
+            "source_version": source_version,
+            "rule_version": rule_version,
+            "quality_flag": "ok",
+        },
+        "result": {
+            "report_date": report_date,
+            **numeric_fields,
+            "bond_count": 1,
+            "quality_flag": "ok",
+            "warnings": [],
+        },
+    }
+
+
 def _patch_executive_overview_metric_contexts(monkeypatch, exec_mod, tmp_path, governance_dir):
     dates = ["2026-04-30", "2026-04-29"]
     monkeypatch.setattr(
@@ -2398,14 +2464,16 @@ def test_executive_risk_overview_uses_requested_report_date(monkeypatch, exec_mo
 
 
 def test_executive_alerts_fallback_empty_dates(monkeypatch, exec_mod):
-    class EmptyDates:
-        def __init__(self, *_a, **_k):
-            pass
-
-        def list_report_dates(self):
-            return []
-
-    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", EmptyDates)
+    monkeypatch.setattr(
+        exec_mod,
+        "risk_tensor_dates_envelope",
+        lambda **_kwargs: {
+            "result_meta": {"result_kind": "risk.tensor.dates"},
+            "result": {"report_dates": [], "blocked_report_dates": []},
+        },
+        raising=False,
+    )
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", _ForbiddenBondAnalyticsRepository)
     out = exec_mod.executive_alerts()
     assert out["result_meta"]["result_kind"] == "executive.alerts"
     assert out["result_meta"]["source_version"] == "sv_exec_dashboard_explicit_miss_v1"
@@ -2415,21 +2483,23 @@ def test_executive_alerts_fallback_empty_dates(monkeypatch, exec_mod):
 
 
 def test_executive_alerts_fallback_on_exception(monkeypatch, exec_mod):
-    class Boom:
-        def __init__(self, *_a, **_k):
-            raise OSError("boom")
+    def _raise_owner_error(**_kwargs):
+        raise OSError("boom")
 
-    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", Boom)
+    monkeypatch.setattr(
+        exec_mod,
+        "risk_tensor_dates_envelope",
+        _raise_owner_error,
+        raising=False,
+    )
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", _ForbiddenBondAnalyticsRepository)
     out = exec_mod.executive_alerts()
     assert out["result_meta"]["source_version"] == "sv_exec_dashboard_explicit_miss_v1"
     assert out["result"]["title"] == "预警与事件"
     assert out["result"]["items"] == []
 
 
-def test_executive_alerts_repo_orchestration_contract(monkeypatch, exec_mod):
-    class FakeTensor:
-        pass
-
+def test_executive_alerts_formal_owner_orchestration_contract(monkeypatch, exec_mod):
     fixed_alerts = [
         {
             "rule_id": "rule-a",
@@ -2445,33 +2515,23 @@ def test_executive_alerts_repo_orchestration_contract(monkeypatch, exec_mod):
         },
     ]
 
-    class BondRepo:
-        def __init__(self, *_a, **_k):
-            pass
-
-        def list_report_dates(self):
-            return ["2026-05-01"]
-
-        def fetch_bond_analytics_rows(self, report_date: str):
-            return [{"market_value": 1, "dv01": 0}]
-
-    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", BondRepo)
+    owner_calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", _ForbiddenBondAnalyticsRepository)
     monkeypatch.setattr(
         exec_mod,
-        "load_latest_bond_analytics_lineage",
-        lambda **kwargs: {
-            "source_version": "sv_alerts_lineage",
-            "rule_version": "rv_alerts_lineage",
-            "cache_version": "cv_alerts_lineage",
-            "vendor_version": "vv_none",
+        "risk_tensor_dates_envelope",
+        lambda **_kwargs: {
+            "result_meta": {"result_kind": "risk.tensor.dates"},
+            "result": {"report_dates": ["2026-05-01"], "blocked_report_dates": []},
         },
         raising=False,
     )
-    monkeypatch.setattr(
-        exec_mod,
-        "compute_portfolio_risk_tensor",
-        lambda rows, report_date: FakeTensor(),
-    )
+
+    def _load_formal_tensor(*, duckdb_path: str, governance_dir: str, report_date: str):
+        owner_calls.append((duckdb_path, report_date))
+        return _formal_risk_tensor_envelope(report_date=report_date)
+
+    monkeypatch.setattr(exec_mod, "risk_tensor_envelope", _load_formal_tensor, raising=False)
     monkeypatch.setattr(
         exec_mod,
         "evaluate_alerts",
@@ -2482,8 +2542,13 @@ def test_executive_alerts_repo_orchestration_contract(monkeypatch, exec_mod):
 
     out = exec_mod.executive_alerts()
     items = out["result"]["items"]
+    assert owner_calls and owner_calls[0][1] == "2026-05-01"
     assert out["result_meta"]["source_version"] == "sv_alerts_lineage__sv_exec_dashboard_v1"
     assert out["result_meta"]["rule_version"] == "rv_alerts_lineage__rv_exec_dashboard_v1"
+    assert out["result_meta"]["requested_report_date"] is None
+    assert out["result_meta"]["resolved_report_date"] == "2026-05-01"
+    assert out["result_meta"]["as_of_date"] == "2026-05-01"
+    assert out["result_meta"]["date_basis"] == "formal_snapshot"
     assert len(items) == 2
     assert items[0]["id"] == "rule-a"
     assert items[0]["severity"] == "high"
@@ -2512,45 +2577,167 @@ def test_executive_risk_overview_no_demo_fallback_when_requested_date_not_govern
     assert out["result"]["signals"] == []
 
 
-def test_executive_alerts_no_demo_fallback_when_requested_date_not_governed(monkeypatch, exec_mod):
-    class Repo:
-        def __init__(self, *_a, **_k):
-            pass
+@pytest.mark.parametrize("owner_error", [ValueError("missing"), RuntimeError("stale")])
+def test_executive_alerts_does_not_recompute_when_formal_tensor_is_unavailable(
+    monkeypatch,
+    exec_mod,
+    owner_error,
+):
+    calls: list[str] = []
 
-        def list_report_dates(self):
-            return ["2026-02-28"]
+    def _load_formal_tensor(*, duckdb_path: str, governance_dir: str, report_date: str):
+        calls.append(report_date)
+        raise owner_error
 
-        def fetch_bond_analytics_rows(self, report_date: str):
-            raise AssertionError("rows should not load for missing governed dates")
-
-    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", Repo)
+    monkeypatch.setattr(exec_mod, "risk_tensor_envelope", _load_formal_tensor, raising=False)
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", _ForbiddenBondAnalyticsRepository)
     out = exec_mod.executive_alerts(report_date="2025-11-20")
 
+    assert calls == ["2025-11-20"]
     assert out["result_meta"]["result_kind"] == "executive.alerts"
     assert out["result_meta"]["source_version"] == "sv_exec_dashboard_explicit_miss_v1"
+    assert out["result_meta"]["vendor_status"] == "vendor_unavailable"
     assert out["result"]["items"] == []
+
+
+def test_executive_alerts_latest_owner_failure_uses_compatibility_fallback(
+    monkeypatch,
+    exec_mod,
+):
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", _ForbiddenBondAnalyticsRepository)
+    monkeypatch.setattr(
+        exec_mod,
+        "risk_tensor_dates_envelope",
+        lambda **_kwargs: {
+            "result_meta": {"result_kind": "risk.tensor.dates"},
+            "result": {"report_dates": ["2026-05-01"], "blocked_report_dates": []},
+        },
+    )
+
+    def _raise_stale_owner(**_kwargs):
+        raise RuntimeError("stale")
+
+    monkeypatch.setattr(exec_mod, "risk_tensor_envelope", _raise_stale_owner)
+
+    out = exec_mod.executive_alerts()
+
+    assert out["result_meta"]["source_version"] == "sv_exec_dashboard_explicit_miss_v1"
+    assert out["result_meta"]["quality_flag"] == "warning"
+    assert out["result_meta"]["vendor_status"] == "vendor_unavailable"
+    assert out["result"]["items"] == []
+
+
+@pytest.mark.parametrize(
+    "invalid_contract",
+    ["report_date_mismatch", "required_numeric_null", "missing_source_lineage"],
+)
+def test_executive_alerts_fails_closed_on_invalid_formal_owner_contract(
+    monkeypatch,
+    exec_mod,
+    invalid_contract,
+):
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", _ForbiddenBondAnalyticsRepository)
+
+    def _load_invalid_formal_tensor(
+        *,
+        duckdb_path: str,
+        governance_dir: str,
+        report_date: str,
+    ):
+        envelope = _formal_risk_tensor_envelope(report_date=report_date)
+        result = envelope["result"]
+        result_meta = envelope["result_meta"]
+        assert isinstance(result, dict)
+        assert isinstance(result_meta, dict)
+        if invalid_contract == "report_date_mismatch":
+            result["report_date"] = "2026-05-01"
+        elif invalid_contract == "required_numeric_null":
+            required_numeric = result["liquidity_gap_30d_ratio"]
+            assert isinstance(required_numeric, dict)
+            required_numeric["raw"] = None
+        else:
+            result_meta.pop("source_version")
+        return envelope
+
+    monkeypatch.setattr(exec_mod, "risk_tensor_envelope", _load_invalid_formal_tensor)
+    monkeypatch.setattr(
+        exec_mod,
+        "evaluate_alerts",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("invalid formal owner payload must not reach alert evaluation")
+        ),
+    )
+
+    out = exec_mod.executive_alerts(report_date="2025-11-20")
+
+    assert out["result_meta"]["source_version"] == "sv_exec_dashboard_explicit_miss_v1"
+    assert out["result_meta"]["quality_flag"] == "warning"
+    assert out["result_meta"]["vendor_status"] == "vendor_unavailable"
+    assert out["result"]["items"] == []
+
+
+def test_executive_alerts_accepts_optional_numeric_null_and_propagates_owner_quality(
+    monkeypatch,
+    exec_mod,
+):
+    captured_regulatory_dv01: list[object] = []
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", _ForbiddenBondAnalyticsRepository)
+
+    def _load_warning_formal_tensor(
+        *,
+        duckdb_path: str,
+        governance_dir: str,
+        report_date: str,
+    ):
+        envelope = _formal_risk_tensor_envelope(report_date=report_date)
+        result = envelope["result"]
+        result_meta = envelope["result_meta"]
+        assert isinstance(result, dict)
+        assert isinstance(result_meta, dict)
+        regulatory_dv01 = result["regulatory_dv01"]
+        assert isinstance(regulatory_dv01, dict)
+        regulatory_dv01["raw"] = None
+        result["quality_flag"] = "warning"
+        result_meta["quality_flag"] = "warning"
+        return envelope
+
+    def _evaluate(tensor, rules=None):
+        captured_regulatory_dv01.append(tensor.regulatory_dv01)
+        return []
+
+    monkeypatch.setattr(exec_mod, "risk_tensor_envelope", _load_warning_formal_tensor)
+    monkeypatch.setattr(exec_mod, "evaluate_alerts", _evaluate)
+
+    out = exec_mod.executive_alerts(report_date="2025-11-20")
+
+    assert [str(value) for value in captured_regulatory_dv01] == ["0"]
+    assert out["result_meta"]["quality_flag"] == "warning"
+    assert out["result_meta"]["vendor_status"] == "ok"
+    assert out["result_meta"]["requested_report_date"] == "2025-11-20"
+    assert out["result_meta"]["resolved_report_date"] == "2025-11-20"
+    assert out["result_meta"]["as_of_date"] == "2025-11-20"
+    assert out["result_meta"]["date_basis"] == "formal_snapshot"
 
 
 def test_executive_alerts_uses_requested_report_date(monkeypatch, exec_mod):
     calls: list[str] = []
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", _ForbiddenBondAnalyticsRepository)
 
-    class BondRepo:
-        def __init__(self, *_a, **_k):
-            pass
+    def _dates_should_not_load(**_kwargs):
+        raise AssertionError("explicit report_date must not be replaced by the latest date")
 
-        def list_report_dates(self):
-            return ["2026-02-28", "2025-11-20"]
-
-        def fetch_bond_analytics_rows(self, report_date: str):
-            calls.append(report_date)
-            return [{"market_value": 1, "dv01": 0}]
-
-    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", BondRepo)
     monkeypatch.setattr(
         exec_mod,
-        "compute_portfolio_risk_tensor",
-        lambda rows, report_date: SimpleNamespace(report_date=report_date),
+        "risk_tensor_dates_envelope",
+        _dates_should_not_load,
+        raising=False,
     )
+
+    def _load_formal_tensor(*, duckdb_path: str, governance_dir: str, report_date: str):
+        calls.append(report_date)
+        return _formal_risk_tensor_envelope(report_date=report_date)
+
+    monkeypatch.setattr(exec_mod, "risk_tensor_envelope", _load_formal_tensor, raising=False)
     monkeypatch.setattr(
         exec_mod,
         "evaluate_alerts",

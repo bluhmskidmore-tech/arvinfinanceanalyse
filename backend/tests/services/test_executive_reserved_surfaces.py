@@ -306,7 +306,7 @@ def test_executive_contribution_service_reads_product_category_repo(
     assert rows["credit"]["contribution"]["raw"] == pytest.approx(0.0)
 
 
-def test_executive_alerts_service_reads_duckdb_fact(
+def test_executive_alerts_service_does_not_recompute_without_formal_risk_tensor_fact(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -317,5 +317,6 @@ def test_executive_alerts_service_reads_duckdb_fact(
     out = executive_service.executive_alerts(report_date=REPORT_DATE)
 
     assert out["result_meta"]["result_kind"] == "executive.alerts"
-    assert out["result_meta"]["vendor_status"] == "ok"
-    assert {item["id"] for item in out["result"]["items"]} >= {"R_DUR_HIGH", "R_CREDIT_CONC"}
+    assert out["result_meta"]["vendor_status"] == "vendor_unavailable"
+    assert out["result_meta"]["source_version"] == "sv_exec_dashboard_explicit_miss_v1"
+    assert out["result"]["items"] == []
