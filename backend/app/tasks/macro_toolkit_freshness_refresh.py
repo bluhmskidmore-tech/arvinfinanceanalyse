@@ -222,6 +222,27 @@ def _run_required_step(
     result = {field: raw_result.get(field) for field in result_fields}
     raw_status = str(raw_result.get("status") or "unknown")
     if raw_status in {"completed", "success"}:
+        row_count_reason: str | None = None
+        if "row_count" not in raw_result:
+            row_count_reason = "missing row_count"
+        else:
+            try:
+                row_count = int(raw_result["row_count"])
+            except (TypeError, ValueError, OverflowError):
+                row_count_reason = "invalid row_count"
+            else:
+                if row_count <= 0:
+                    row_count_reason = f"non-positive row_count: {row_count}"
+        if row_count_reason is not None:
+            return _step_receipt(
+                step=step,
+                status="failed",
+                started_at=started_at,
+                started_clock=started_clock,
+                attempt_count=attempt_count,
+                result=result,
+                reason=f"{step} returned success status with {row_count_reason}",
+            )
         return _step_receipt(
             step=step,
             status="success",

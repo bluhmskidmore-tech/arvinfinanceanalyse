@@ -7,6 +7,8 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -16,6 +18,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from backend.app.network.source_bound_socks_proxy import (  # noqa: E402
+    source_bound_socks_proxy,
+)
 from backend.app.tasks.macro_toolkit_freshness_refresh import (  # noqa: E402
     SOURCE_VERSION,
     refresh_macro_toolkit_freshness,
@@ -43,6 +48,10 @@ def _parser() -> argparse.ArgumentParser:
         choices=("manual", "shadow", "scheduled"),
         default="manual",
         help="Classify the caller for receipt validation (default: manual).",
+    )
+    parser.add_argument(
+        "--choice-source-ip",
+        help="For --run-once only, bind Choice vendor traffic to this IPv4 address.",
     )
     return parser
 
@@ -94,8 +103,31 @@ def _write_receipt_atomic(path: Path, receipt: dict[str, object]) -> None:
         raise
 
 
+@contextmanager
+def _choice_source_proxy_environment(source_ip: str) -> Iterator[None]:
+    keys = (
+        "CHOICE_MACRO_SOCKS5_PROXY_HOST",
+        "CHOICE_MACRO_SOCKS5_PROXY_PORT",
+    )
+    previous = {key: os.environ.get(key) for key in keys}
+    with source_bound_socks_proxy(source_ip=source_ip) as endpoint:
+        os.environ[keys[0]] = endpoint.host
+        os.environ[keys[1]] = str(endpoint.port)
+        try:
+            yield
+        finally:
+            for key, value in previous.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
+    parser = _parser()
+    args = parser.parse_args(argv)
+    if args.choice_source_ip and not args.run_once:
+        parser.error("--choice-source-ip requires --run-once")
     include_cffex = not args.skip_cffex
     if args.dry_run:
         invocation_mode = "dry_run"
@@ -110,7 +142,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         }
     else:
         invocation_mode = "run_once"
-        result = refresh_macro_toolkit_freshness_actor.fn(include_cffex=include_cffex)
+        if args.choice_source_ip:
+            with _choice_source_proxy_environment(args.choice_source_ip):
+                result = refresh_macro_toolkit_freshness_actor.fn(include_cffex=include_cffex)
+        else:
+            result = refresh_macro_toolkit_freshness_actor.fn(include_cffex=include_cffex)
     status = str(result.get("status") or "failed")
     exit_code = 0 if status in SUCCESS_STATUSES else 1
     print(json.dumps(result, ensure_ascii=False, default=str))

@@ -10,6 +10,9 @@ import pytest
 from backend.app.tasks import macro_toolkit_freshness_refresh as freshness
 
 
+_MISSING_ROW_COUNT = object()
+
+
 def _assert_receipt_metadata(receipt: dict[str, object]) -> None:
     started_at = datetime.fromisoformat(str(receipt["started_at"]))
     finished_at = datetime.fromisoformat(str(receipt["finished_at"]))
@@ -230,6 +233,51 @@ def test_policy_rate_no_rows_fails_required_freshness_step(
     assert result["status"] == "failed"
     assert policy_rate["status"] == "failed"
     assert "no_rows" in str(policy_rate["reason"])
+
+
+@pytest.mark.parametrize(
+    ("raw_status", "row_count", "expected_reason"),
+    [
+        pytest.param("completed", 0, "non-positive row_count: 0", id="completed-int-zero"),
+        pytest.param("success", "0", "non-positive row_count: 0", id="success-string-zero"),
+        pytest.param("completed", -1, "non-positive row_count: -1", id="negative"),
+        pytest.param("success", None, "invalid row_count", id="none"),
+        pytest.param("completed", _MISSING_ROW_COUNT, "missing row_count", id="missing"),
+        pytest.param("success", "not-an-int", "invalid row_count", id="unparseable"),
+        pytest.param("completed", float("inf"), "invalid row_count", id="positive-infinity"),
+        pytest.param("success", float("-inf"), "invalid row_count", id="negative-infinity"),
+    ],
+)
+def test_required_success_status_requires_positive_integer_row_count(
+    monkeypatch,
+    live_refresh_dependencies,
+    raw_status: str,
+    row_count: object,
+    expected_reason: str,
+) -> None:
+    raw_result = {
+        "status": raw_status,
+        "series_count": 0,
+        "run_id": "public-empty",
+        "warnings": [],
+    }
+    if row_count is not _MISSING_ROW_COUNT:
+        raw_result["row_count"] = row_count
+    monkeypatch.setattr(
+        freshness,
+        "refresh_public_cross_asset_headlines",
+        lambda **_kwargs: raw_result,
+    )
+
+    result = freshness.refresh_macro_toolkit_freshness(
+        today=date(2026, 7, 20),
+        duckdb_path=live_refresh_dependencies["duckdb_path"],
+    )
+
+    headlines = next(step for step in result["steps"] if step["step"] == "public_cross_asset_headlines")
+    assert result["status"] == "failed"
+    assert headlines["status"] == "failed"
+    assert expected_reason in str(headlines["reason"])
 
 
 def test_required_step_receipt_counts_duckdb_lock_retries(
@@ -712,3 +760,64 @@ def test_skip_cffex_help_names_all_remaining_steps() -> None:
     assert "commodity" in skip_line
     assert "headlines" in skip_line
     assert "ncd" in skip_line
+
+
+def test_cli_run_once_scopes_choice_source_proxy_environment(monkeypatch) -> None:
+    from scripts import macro_toolkit_freshness_refresh as cli
+
+    events: list[tuple[str, object]] = []
+
+    class _Endpoint:
+        host = "127.0.0.1"
+        port = 18081
+
+    class _ProxyContext:
+        def __enter__(self):
+            events.append(("proxy_enter", "192.0.2.10"))
+            return _Endpoint()
+
+        def __exit__(self, exc_type, exc, traceback):
+            events.append(("proxy_exit", exc_type))
+
+    class _Actor:
+        actor_name = "refresh_macro_toolkit_freshness"
+
+        def fn(self, **kwargs):
+            assert kwargs == {"include_cffex": True}
+            events.append(
+                (
+                    "actor",
+                    (
+                        cli.os.environ["CHOICE_MACRO_SOCKS5_PROXY_HOST"],
+                        cli.os.environ["CHOICE_MACRO_SOCKS5_PROXY_PORT"],
+                    ),
+                )
+            )
+            return {"status": "success"}
+
+    monkeypatch.setenv("CHOICE_MACRO_SOCKS5_PROXY_HOST", "previous-host")
+    monkeypatch.setenv("CHOICE_MACRO_SOCKS5_PROXY_PORT", "1234")
+    monkeypatch.setattr(cli, "refresh_macro_toolkit_freshness_actor", _Actor())
+    monkeypatch.setattr(
+        cli,
+        "source_bound_socks_proxy",
+        lambda *, source_ip: _ProxyContext(),
+        raising=False,
+    )
+
+    assert cli.main(["--run-once", "--choice-source-ip", "192.0.2.10"]) == 0
+    assert events == [
+        ("proxy_enter", "192.0.2.10"),
+        ("actor", ("127.0.0.1", "18081")),
+        ("proxy_exit", None),
+    ]
+    assert cli.os.environ["CHOICE_MACRO_SOCKS5_PROXY_HOST"] == "previous-host"
+    assert cli.os.environ["CHOICE_MACRO_SOCKS5_PROXY_PORT"] == "1234"
+
+
+@pytest.mark.parametrize("mode", ["--dry-run", "--enqueue"])
+def test_cli_choice_source_ip_requires_run_once(mode) -> None:
+    from scripts import macro_toolkit_freshness_refresh as cli
+
+    with pytest.raises(SystemExit, match="2"):
+        cli.main([mode, "--choice-source-ip", "192.0.2.10"])

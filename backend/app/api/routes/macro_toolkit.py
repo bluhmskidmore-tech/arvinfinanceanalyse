@@ -464,6 +464,13 @@ def _build_macro_toolkit_analysis(detail: str, *, history_limit: int = DEFAULT_C
         output_dir=OUTPUT_DIR,
         reference_date=analysis_date,
     )
+    base_signal_cards = _analysis_signal_cards(
+        indicator_by_key,
+        output_files,
+        [],
+        None,
+        capabilities_deferred=True,
+    )
     if detail == "core":
         a_share_risk = None
         capability_results: list[dict[str, object]] = []
@@ -471,6 +478,7 @@ def _build_macro_toolkit_analysis(detail: str, *, history_limit: int = DEFAULT_C
         source_checks: list[dict[str, object]] = []
         capabilities: list[dict[str, object]] = []
         runtime_status = _analysis_runtime_status("core")
+        signal_cards = base_signal_cards
     else:
         a_share_risk, capability_results, strategy_summaries = _build_macro_toolkit_full_analysis_blocks(
             settings.duckdb_path,
@@ -497,13 +505,12 @@ def _build_macro_toolkit_analysis(detail: str, *, history_limit: int = DEFAULT_C
         source_checks = _source_checks(settings.duckdb_path, source_check_cache=source_check_cache)
         capabilities = _capability_plan(settings.duckdb_path, source_check_cache=source_check_cache)
         runtime_status = _analysis_runtime_status("full")
-    signal_cards = _analysis_signal_cards(
-        indicator_by_key,
-        output_files,
-        capability_results,
-        a_share_risk,
-        capabilities_deferred=detail == "core",
-    )
+        signal_cards = _analysis_signal_cards(
+            indicator_by_key,
+            output_files,
+            capability_results,
+            a_share_risk,
+        )
     hason_strategy = _hason_macro_strategy_summary(output_files, analysis_date=analysis_date)
     hit_count = sum(1 for item in indicators if item["latest_value"] is not None)
     coverage = {
@@ -513,7 +520,14 @@ def _build_macro_toolkit_analysis(detail: str, *, history_limit: int = DEFAULT_C
         "script_count": len(iter_toolkit_scripts()),
         "output_file_count": len(output_files),
     }
-    conclusion = _analysis_conclusion(signal_cards, coverage)
+    conclusion = _analysis_conclusion(base_signal_cards, coverage)
+    conclusion["basis"] = {
+        "source": "core_signal_cards",
+        "signal_cards": [
+            {"key": str(card["key"]), "tone": str(card["tone"])}
+            for card in base_signal_cards
+        ],
+    }
     warnings = _analysis_warnings(coverage)
     data_health = _analysis_data_health(
         indicators=indicators,
