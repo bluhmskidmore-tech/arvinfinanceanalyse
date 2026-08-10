@@ -217,6 +217,7 @@ def _materialize_bond_analytics_facts(
     duckdb_path: str | None = None,
     governance_dir: str | None = None,
     run_id: str | None = None,
+    use_existing_curves_only: bool = False,
 ) -> dict[str, object]:
     settings = get_settings()
     duckdb_file = Path(duckdb_path or settings.duckdb_path)
@@ -232,9 +233,16 @@ def _materialize_bond_analytics_facts(
             lock_base_dir=str(duckdb_file.parent),
             duckdb_path=str(duckdb_file),
             run_id=run_id,
-            execute_materialization=lambda: _execute_bond_analytics_with_curve_preparation(
-                report_date=report_date,
-                duckdb_file=duckdb_file,
+            execute_materialization=lambda: (
+                _execute_bond_analytics_materialization(
+                    report_date=report_date,
+                    duckdb_file=duckdb_file,
+                )
+                if use_existing_curves_only
+                else _execute_bond_analytics_with_curve_preparation(
+                    report_date=report_date,
+                    duckdb_file=duckdb_file,
+                )
             ),
         )
     finally:

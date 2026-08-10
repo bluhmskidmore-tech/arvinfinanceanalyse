@@ -145,20 +145,22 @@ def _execute_balance_analysis_materialization(
     governance_dir: str,
     data_root: str | None = None,
     fx_source_path: str | None = None,
+    use_existing_fx_only: bool = False,
 ) -> FormalComputeMaterializeResult:
     settings = get_settings()
-    materialize_fx_mid_for_report_date.fn(
-        report_date=report_date,
-        duckdb_path=str(duckdb_file),
-        data_input_root=str(data_root or settings.data_input_root),
-        official_csv_path=str(
-            fx_source_path
-            or getattr(settings, "fx_official_source_path", "")
-            or ""
-        ),
-        explicit_csv_path=str(getattr(settings, "fx_mid_csv_path", "") or ""),
-        writer_lock_already_held=True,
-    )
+    if not use_existing_fx_only:
+        materialize_fx_mid_for_report_date.fn(
+            report_date=report_date,
+            duckdb_path=str(duckdb_file),
+            data_input_root=str(data_root or settings.data_input_root),
+            official_csv_path=str(
+                fx_source_path
+                or getattr(settings, "fx_official_source_path", "")
+                or ""
+            ),
+            explicit_csv_path=str(getattr(settings, "fx_mid_csv_path", "") or ""),
+            writer_lock_already_held=True,
+        )
 
     repo = BalanceAnalysisRepository(str(duckdb_file))
     zqtz_ingest_batch_id = _resolve_snapshot_ingest_batch_id(
@@ -286,6 +288,7 @@ def _materialize_balance_analysis_facts(
     ingest_batch_id: str | None = None,
     data_root: str | None = None,
     fx_source_path: str | None = None,
+    use_existing_fx_only: bool = False,
 ) -> dict[str, object]:
     settings = get_settings()
     duckdb_file = Path(duckdb_path or settings.duckdb_path)
@@ -307,6 +310,7 @@ def _materialize_balance_analysis_facts(
             governance_dir=str(governance_path),
             data_root=data_root,
             fx_source_path=fx_source_path,
+            use_existing_fx_only=use_existing_fx_only,
         ),
     )
 

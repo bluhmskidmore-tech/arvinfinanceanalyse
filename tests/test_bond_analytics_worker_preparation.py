@@ -59,6 +59,63 @@ def test_bond_worker_anchor_dates_include_report_month_start_and_prior_balance_d
     assert anchors == ("2026-03-01", "2026-03-31")
 
 
+def test_bond_worker_existing_curves_only_skips_prepare_while_default_prepares(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from backend.app.tasks import bond_analytics_materialize as task
+
+    events: list[str] = []
+    monkeypatch.setattr(
+        task,
+        "_yield_curve_anchor_dates_for_materialization",
+        lambda **_kwargs: events.append("anchors") or ("2026-03-01", "2026-03-31"),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        task,
+        "ensure_yield_curve_inputs_on_or_before",
+        lambda **_kwargs: events.append("prepare"),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        task,
+        "_execute_bond_analytics_materialization",
+        lambda **_kwargs: events.append("main")
+        or FormalComputeMaterializeResult(
+            source_version="sv_bond",
+            vendor_version="vv_none",
+            payload={"row_count": 1},
+        ),
+    )
+    monkeypatch.setattr(
+        task,
+        "_invalidate_bond_analytics_worker_caches",
+        lambda _report_date: events.append("invalidate"),
+        raising=False,
+    )
+
+    existing_only_payload = task.materialize_bond_analytics_facts.fn(
+        report_date="2026-03-31",
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_dir=str(tmp_path / "governance"),
+        use_existing_curves_only=True,
+    )
+
+    assert existing_only_payload["status"] == "completed"
+    assert events == ["main", "invalidate"]
+
+    events.clear()
+    default_payload = task.materialize_bond_analytics_facts.fn(
+        report_date="2026-03-31",
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_dir=str(tmp_path / "governance"),
+    )
+
+    assert default_payload["status"] == "completed"
+    assert events == ["anchors", "prepare", "main", "invalidate"]
+
+
 def test_bond_worker_curve_prepare_failure_blocks_main_materialization_and_is_traced(
     tmp_path,
     monkeypatch,

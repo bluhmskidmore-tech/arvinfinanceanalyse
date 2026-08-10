@@ -186,6 +186,54 @@ def _seed_snapshot_and_fx_tables(duckdb_path: str) -> None:
         conn.close()
 
 
+def test_balance_analysis_existing_fx_only_skips_refresh_while_default_refreshes(
+    tmp_path,
+    monkeypatch,
+):
+    _repo_mod, task_mod = _load_modules()
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    _seed_snapshot_and_fx_tables(str(duckdb_path))
+
+    monkeypatch.setattr(
+        task_mod.materialize_fx_mid_for_report_date,
+        "fn",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("existing-FX-only materialization refreshed FX")
+        ),
+    )
+    existing_only_payload = task_mod.materialize_balance_analysis_facts.fn(
+        report_date="2025-12-31",
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        use_existing_fx_only=True,
+    )
+
+    refresh_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        task_mod.materialize_fx_mid_for_report_date,
+        "fn",
+        lambda **kwargs: refresh_calls.append(dict(kwargs))
+        or {
+            "status": "completed",
+            "row_count": 0,
+            "source_kind": "stub",
+        },
+    )
+    default_payload = task_mod.materialize_balance_analysis_facts.fn(
+        report_date="2025-12-31",
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    assert existing_only_payload["status"] == "completed"
+    assert default_payload["status"] == "completed"
+    assert len(refresh_calls) == 1
+    assert refresh_calls[0]["report_date"] == "2025-12-31"
+    assert refresh_calls[0]["writer_lock_already_held"] is True
+
+
 def test_choice_fx_fetch_accepts_legacy_choice_client_signature(monkeypatch):
     fx_mod = _load_fx_module()
 
