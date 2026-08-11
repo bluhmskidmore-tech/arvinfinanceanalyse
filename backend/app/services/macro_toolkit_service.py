@@ -10,7 +10,7 @@ import sys
 import threading
 import uuid
 from _thread import LockType
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from functools import lru_cache
@@ -37,6 +37,10 @@ from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.repositories.cffex_member_rank_repo import (
     normalize_cffex_contract,
     normalize_cffex_sources,
+)
+from backend.app.repositories.choice_stock_units import (
+    amount_rmb_sql,
+    scale_unknown_sql,
 )
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
@@ -471,6 +475,532 @@ def macro_model_readiness(
             "observation_only": MACRO_TOOLKIT_OBSERVATION_ONLY,
             "formal_use_allowed": MACRO_TOOLKIT_FORMAL_USE_ALLOWED,
         },
+    }
+
+
+# ---------------------------------------------------------------------------
+# Model chain results (observation-only read surface over artifact CSVs)
+# ---------------------------------------------------------------------------
+
+_MODEL_CHAIN_MISSING_HEADLINE = "产物缺失"
+_MODEL_CHAIN_DETAIL_HEADLINE = "详见明细"
+_MODEL_CHAIN_NA_TEXT = "—"
+_MODEL_CHAIN_FINAL_SIGNAL_ARTIFACT = "final_signal.csv"
+# dcc_latest.csv 宽表中除配对列以外的元信息列。
+_MODEL_CHAIN_DCC_META_COLUMNS = ("日期", "平均相关系数", "预警状态")
+
+
+def _model_chain_cell_text(value: object) -> str:
+    """Render one CSV cell as display text; NaN/blank become the em-dash placeholder."""
+    if value is None:
+        return _MODEL_CHAIN_NA_TEXT
+    try:
+        if pd.isna(value):
+            return _MODEL_CHAIN_NA_TEXT
+    except (TypeError, ValueError):
+        pass
+    text = str(value).strip()
+    return text if text else _MODEL_CHAIN_NA_TEXT
+
+
+def _model_chain_contains(value: object, keyword: str) -> bool:
+    text = _model_chain_cell_text(value)
+    if text == _MODEL_CHAIN_NA_TEXT:
+        return False
+    return keyword in text
+
+
+def _model_chain_max_row(frame: pd.DataFrame, column: str) -> pd.Series | None:
+    """Row holding the largest parseable numeric value in ``column``; None when nothing parses."""
+    if column not in frame.columns:
+        return None
+    best_row: pd.Series | None = None
+    best_value: float | None = None
+    for _, row in frame.iterrows():
+        parsed = _float_or_none(row.get(column))
+        if parsed is None:
+            continue
+        if best_value is None or parsed > best_value:
+            best_value = parsed
+            best_row = row
+    return best_row
+
+
+def _load_model_chain_frame(path: Path) -> pd.DataFrame | None:
+    """Load one artifact CSV keeping every value as its original text; None when missing/empty/unreadable."""
+    if not path.is_file():
+        return None
+    try:
+        frame = pd.read_csv(path, encoding="utf-8-sig", dtype=str)
+    except (OSError, UnicodeError, ValueError, pd.errors.EmptyDataError, pd.errors.ParserError):
+        return None
+    if frame.empty:
+        return None
+    return frame
+
+
+def _model_chain_latest_date_text(frame: pd.DataFrame) -> str | None:
+    date_column = next(
+        (column for column in MACRO_TOOLKIT_OUTPUT_DATE_COLUMNS if column in frame.columns),
+        None,
+    )
+    if date_column is None:
+        return None
+    texts = [
+        text
+        for text in (_model_chain_cell_text(value) for value in frame[date_column])
+        if text != _MODEL_CHAIN_NA_TEXT
+    ]
+    if not texts:
+        return None
+    # 产物日期均为 ISO 风格（YYYY-MM / YYYY-MM-DD），字符串序即时间序；保留原始文本粒度。
+    return max(texts)
+
+
+def _model_chain_as_of(frame: pd.DataFrame, path: Path) -> str | None:
+    latest = _model_chain_latest_date_text(frame)
+    if latest is not None:
+        return latest
+    try:
+        modified_at = path.stat().st_mtime
+    except OSError:
+        return None
+    return datetime.fromtimestamp(modified_at, UTC).date().isoformat()
+
+
+def _model_chain_table(
+    frame: pd.DataFrame,
+    model_def: Mapping[str, object],
+) -> tuple[list[str], list[list[str]]]:
+    mode = str(model_def.get("table_mode") or "select")
+    if mode == "dcc_pairs":
+        # dcc_latest.csv 是单行宽表：把 10 个配对列转置成「资产对/相关系数」两列表格，取最末行为最新值。
+        pair_columns = [
+            str(column) for column in frame.columns if str(column) not in _MODEL_CHAIN_DCC_META_COLUMNS
+        ]
+        latest = frame.iloc[-1]
+        return ["资产对", "相关系数"], [
+            [column, _model_chain_cell_text(latest.get(column))] for column in pair_columns
+        ]
+    if mode == "all":
+        selected = [(str(column), str(column)) for column in frame.columns]
+    else:
+        declared = model_def.get("columns") or ()
+        # 列名以产物文件实际表头为准；声明列缺失时跳过该列，保持 columns 与 rows 对齐。
+        selected = [
+            (str(source), str(label))
+            for source, label in declared
+            if str(source) in frame.columns
+        ]
+    columns = [label for _, label in selected]
+    rows = [
+        [_model_chain_cell_text(row.get(source)) for source, _ in selected]
+        for _, row in frame.iterrows()
+    ]
+    return columns, rows
+
+
+def _model_chain_merrill_headline(frame: pd.DataFrame) -> str:
+    # *_latest.csv 为单行产物；多行时取最末行为最新，不重排。
+    row = frame.iloc[-1]
+    quadrant = _model_chain_cell_text(row.get("传统象限"))
+    direction = _model_chain_cell_text(row.get("bond_direction"))
+    return f"象限 {quadrant} · 债券方向 {direction}"
+
+
+def _model_chain_garch_headline(frame: pd.DataFrame) -> str:
+    if "波动率状态" not in frame.columns:
+        return _MODEL_CHAIN_DETAIL_HEADLINE
+    high_count = sum(1 for value in frame["波动率状态"] if _model_chain_contains(value, "高波动"))
+    top_row = _model_chain_max_row(frame, "年化波动率%")
+    if top_row is None:
+        return _MODEL_CHAIN_DETAIL_HEADLINE
+    asset = _model_chain_cell_text(top_row.get("资产"))
+    volatility = _model_chain_cell_text(top_row.get("年化波动率%"))
+    return f"高波动 {high_count}/{len(frame)} · 最高 {asset} {volatility}%"
+
+
+def _model_chain_dcc_headline(frame: pd.DataFrame) -> str:
+    row = frame.iloc[-1]
+    average = _model_chain_cell_text(row.get("平均相关系数"))
+    status = _model_chain_cell_text(row.get("预警状态"))
+    return f"平均相关 {average} · {status}"
+
+
+def _model_chain_regime_headline(frame: pd.DataFrame) -> str:
+    if "当前状态" not in frame.columns:
+        return _MODEL_CHAIN_DETAIL_HEADLINE
+    high_count = sum(1 for value in frame["当前状态"] if _model_chain_contains(value, "高波动"))
+    return f"高波动 {high_count}/{len(frame)}"
+
+
+def _model_chain_cta_headline(frame: pd.DataFrame) -> str:
+    if "操作建议" not in frame.columns or "资产" not in frame.columns:
+        return _MODEL_CHAIN_DETAIL_HEADLINE
+
+    def _assets_for(keyword: str) -> str:
+        assets = [
+            _model_chain_cell_text(row.get("资产"))
+            for _, row in frame.iterrows()
+            if _model_chain_contains(row.get("操作建议"), keyword)
+        ]
+        return "、".join(assets) if assets else "无"
+
+    return f"强多头 {_assets_for('强多头')} · 强空头 {_assets_for('强空头')}"
+
+
+def _model_chain_risk_parity_headline(frame: pd.DataFrame) -> str:
+    top_row = _model_chain_max_row(frame, "风险平价权重%")
+    if top_row is None:
+        return _MODEL_CHAIN_DETAIL_HEADLINE
+    asset = _model_chain_cell_text(top_row.get("资产"))
+    weight = _model_chain_cell_text(top_row.get("风险平价权重%"))
+    return f"风险平价最大权重 {asset} {weight}%"
+
+
+def _model_chain_crisis_headline(frame: pd.DataFrame) -> str:
+    row = frame.iloc[-1]
+    score = _model_chain_cell_text(row.get("Crisis Score"))
+    state = _model_chain_cell_text(row.get("市场状态"))
+    return f"{score} · {state}"
+
+
+def _model_chain_risk_monitor_headline(frame: pd.DataFrame) -> str:
+    cooling = _model_chain_cell_text(frame.iloc[-1].get("cooling_until"))
+    if cooling == _MODEL_CHAIN_NA_TEXT:
+        return "无冷却 · 正常运行"
+    return f"冷却至 {cooling}"
+
+
+def _model_chain_rebalance_headline(frame: pd.DataFrame) -> str:
+    top_row = _model_chain_max_row(frame, "夏普比率")
+    if top_row is None:
+        return _MODEL_CHAIN_DETAIL_HEADLINE
+    strategy = _model_chain_cell_text(top_row.get("策略"))
+    sharpe = _model_chain_cell_text(top_row.get("夏普比率"))
+    return f"最优 {strategy} · 夏普 {sharpe}"
+
+
+def _model_chain_performance_headline(frame: pd.DataFrame) -> str:
+    top_row = _model_chain_max_row(frame, "夏普比率")
+    if top_row is None:
+        return _MODEL_CHAIN_DETAIL_HEADLINE
+    # 第一列即「资产/组合」标识列（以实际表头为准）。
+    best = _model_chain_cell_text(top_row.get(str(frame.columns[0])))
+    sharpe = _model_chain_cell_text(top_row.get("夏普比率"))
+    return f"最佳 {best} · 夏普 {sharpe}"
+
+
+def _model_chain_backtest_headline(frame: pd.DataFrame) -> str:
+    top_row = _model_chain_max_row(frame, "夏普比率")
+    if top_row is None:
+        return _MODEL_CHAIN_DETAIL_HEADLINE
+    strategy = _model_chain_cell_text(top_row.get("策略"))
+    sharpe = _model_chain_cell_text(top_row.get("夏普比率"))
+    return f"最优 {strategy} · 夏普 {sharpe}"
+
+
+def _model_chain_final_signal_headline(frame: pd.DataFrame) -> str:
+    if "最终信号" not in frame.columns:
+        return _MODEL_CHAIN_DETAIL_HEADLINE
+    counts: dict[str, int] = {}
+    for value in frame["最终信号"]:
+        text = _model_chain_cell_text(value)
+        if text == _MODEL_CHAIN_NA_TEXT:
+            continue
+        counts[text] = counts.get(text, 0) + 1
+    if not counts:
+        return _MODEL_CHAIN_DETAIL_HEADLINE
+    total = sum(counts.values())
+    if len(counts) == 1:
+        value, count = next(iter(counts.items()))
+        return f"{value} {count}/{total}"
+    return " · ".join(f"{value} {count}" for value, count in counts.items())
+
+
+_MODEL_CHAIN_STEP_DEFINITIONS: tuple[dict[str, object], ...] = (
+    {
+        "key": "market_state",
+        "step_no": 1,
+        "label": "市场状态识别",
+        "models": (
+            {
+                "id": "merrill_clock",
+                "label": "美林时钟（中国版）",
+                "script_name": "merrill_clock_cn",
+                "artifact": "merrill_clock_latest.csv",
+                "table_mode": "select",
+                "columns": (
+                    ("日期", "日期"),
+                    ("增长动量", "增长动量"),
+                    ("通胀动量", "通胀动量"),
+                    ("流动性动量", "流动性动量"),
+                    ("传统象限", "传统象限"),
+                    ("bond_direction", "债券方向"),
+                ),
+                "headline": _model_chain_merrill_headline,
+            },
+            {
+                "id": "garch",
+                "label": "GARCH 波动率",
+                "script_name": "garch_multi_asset",
+                "artifact": "garch_results.csv",
+                "table_mode": "select",
+                "columns": (
+                    ("资产", "资产"),
+                    ("最优模型", "最优模型"),
+                    ("年化波动率%", "年化波动率%"),
+                    ("波动率状态", "波动率状态"),
+                    ("操作建议", "操作建议"),
+                ),
+                "headline": _model_chain_garch_headline,
+            },
+            {
+                "id": "dcc_garch",
+                "label": "DCC-GARCH 动态相关",
+                "script_name": "dcc_garch_cn",
+                "artifact": "dcc_latest.csv",
+                "table_mode": "dcc_pairs",
+                "headline": _model_chain_dcc_headline,
+            },
+            {
+                "id": "regime",
+                "label": "市场状态转换",
+                "script_name": "regime_switch_cn",
+                "artifact": "regime_results.csv",
+                "table_mode": "select",
+                "columns": (
+                    ("资产", "资产"),
+                    ("当前状态", "当前状态"),
+                    ("策略建议", "策略建议"),
+                    ("年化波动率%", "年化波动率%"),
+                ),
+                "headline": _model_chain_regime_headline,
+            },
+        ),
+    },
+    {
+        "key": "strategy_selection",
+        "step_no": 2,
+        "label": "策略选择",
+        "models": (
+            {
+                "id": "cta_trend",
+                "label": "CTA 趋势跟踪",
+                "script_name": "cta_trend_cn",
+                "artifact": "cta_results.csv",
+                "table_mode": "select",
+                "columns": (
+                    ("资产", "资产"),
+                    ("合成信号", "合成信号"),
+                    ("趋势强度", "趋势强度"),
+                    ("操作建议", "操作建议"),
+                    ("策略年化收益%", "策略年化收益%"),
+                    ("策略夏普比率", "策略夏普比率"),
+                ),
+                "headline": _model_chain_cta_headline,
+            },
+        ),
+    },
+    {
+        "key": "allocation",
+        "step_no": 3,
+        "label": "资产配置",
+        "models": (
+            {
+                "id": "risk_parity",
+                "label": "风险平价 + 风险预算",
+                "script_name": "risk_parity_cn",
+                "artifact": "risk_parity_results.csv",
+                "table_mode": "select",
+                "columns": (
+                    ("资产", "资产"),
+                    ("风险平价权重%", "风险平价权重%"),
+                    ("风险预算权重%", "风险预算权重%"),
+                    ("年化波动率%", "年化波动率%"),
+                ),
+                "headline": _model_chain_risk_parity_headline,
+            },
+        ),
+    },
+    {
+        "key": "risk_management",
+        "step_no": 4,
+        "label": "风险管理",
+        "models": (
+            {
+                "id": "crisis_score",
+                "label": "Crisis Score 危机评分",
+                "script_name": "crisis_score_cn",
+                "artifact": "crisis_score_latest.csv",
+                "table_mode": "all",
+                "headline": _model_chain_crisis_headline,
+            },
+            {
+                "id": "risk_monitor",
+                "label": "导航仪风控",
+                "script_name": "risk_monitor",
+                "artifact": "risk_state.csv",
+                "table_mode": "all",
+                "headline": _model_chain_risk_monitor_headline,
+            },
+        ),
+    },
+    {
+        "key": "rebalance",
+        "step_no": 5,
+        "label": "再平衡",
+        "models": (
+            {
+                "id": "rebalance",
+                "label": "再平衡策略对比",
+                "script_name": "rebalance_cn",
+                "artifact": "rebalance_results.csv",
+                "table_mode": "select",
+                "columns": (
+                    ("策略", "策略"),
+                    ("年化收益%", "年化收益%"),
+                    ("年化波动%", "年化波动%"),
+                    ("夏普比率", "夏普比率"),
+                    ("再平衡次数", "再平衡次数"),
+                    ("累计收益%", "累计收益%"),
+                ),
+                "headline": _model_chain_rebalance_headline,
+            },
+        ),
+    },
+    {
+        "key": "performance",
+        "step_no": 6,
+        "label": "绩效评估",
+        "models": (
+            {
+                "id": "performance",
+                "label": "夏普/索提诺绩效",
+                "script_name": "performance_metrics_cn",
+                "artifact": "performance_results.csv",
+                "table_mode": "all",
+                "headline": _model_chain_performance_headline,
+            },
+            {
+                "id": "backtest",
+                "label": "策略回测",
+                "script_name": "backtest_cn",
+                "artifact": "backtest_results.csv",
+                "table_mode": "select",
+                # 契约要求“策略名 + 年化收益/夏普/最大回撤/胜率/累计收益”；
+                # 按实际表头映射为：策略/年化收益%/夏普比率/最大回撤%/胜率%/累计收益%。
+                "columns": (
+                    ("策略", "策略"),
+                    ("年化收益%", "年化收益%"),
+                    ("夏普比率", "夏普比率"),
+                    ("最大回撤%", "最大回撤%"),
+                    ("胜率%", "胜率%"),
+                    ("累计收益%", "累计收益%"),
+                ),
+                "headline": _model_chain_backtest_headline,
+            },
+        ),
+    },
+    {
+        "key": "final_signal",
+        "step_no": 7,
+        "label": "决策链输出",
+        "models": (
+            {
+                "id": "final_signal",
+                "label": "最终信号聚合",
+                "script_name": "signal_aggregator",
+                "artifact": _MODEL_CHAIN_FINAL_SIGNAL_ARTIFACT,
+                "table_mode": "select",
+                "columns": (
+                    ("品种", "品种"),
+                    ("日期", "日期"),
+                    ("第一层_方向", "第一层_方向"),
+                    ("最终信号", "最终信号"),
+                    ("仓位比例", "仓位比例"),
+                    ("置信度", "置信度"),
+                    ("信号说明", "信号说明"),
+                ),
+                "headline": _model_chain_final_signal_headline,
+            },
+        ),
+    },
+)
+
+
+def _model_chain_model_payload(
+    model_def: Mapping[str, object],
+    *,
+    output_dir: Path,
+) -> dict[str, object]:
+    artifact = str(model_def["artifact"])
+    payload: dict[str, object] = {
+        "id": model_def["id"],
+        "label": model_def["label"],
+        "script_name": model_def["script_name"],
+        "artifact": artifact,
+    }
+    path = output_dir / artifact
+    frame = _load_model_chain_frame(path)
+    if frame is None:
+        payload.update(
+            {
+                "artifact_status": "missing",
+                "as_of": None,
+                "headline": _MODEL_CHAIN_MISSING_HEADLINE,
+                "columns": [],
+                "rows": [],
+            }
+        )
+        return payload
+    columns, rows = _model_chain_table(frame, model_def)
+    headline_builder = model_def["headline"]
+    payload.update(
+        {
+            "artifact_status": "ok",
+            "as_of": _model_chain_as_of(frame, path),
+            "headline": headline_builder(frame),
+            "columns": columns,
+            "rows": rows,
+        }
+    )
+    return payload
+
+
+def _model_chain_final_signal_as_of_date(output_dir: Path) -> str | None:
+    frame = _load_model_chain_frame(output_dir / _MODEL_CHAIN_FINAL_SIGNAL_ARTIFACT)
+    if frame is None:
+        return None
+    return _model_chain_latest_date_text(frame)
+
+
+def build_model_chain_results(output_dir: Path | str = OUTPUT_DIR) -> dict[str, object]:
+    """观察口径：把十个模型脚本的最新产物 CSV 按尽调笔记决策链组装为只读结构。
+
+    仅做文本透传与 headline 摘要拼装，不含任何业务计算；产物缺失/为空/解析失败时
+    对应模型降级为 ``artifact_status="missing"``，不抛异常、不影响其他模型。
+    """
+    directory = Path(output_dir)
+    steps: list[dict[str, object]] = []
+    for step_def in _MODEL_CHAIN_STEP_DEFINITIONS:
+        models = [
+            _model_chain_model_payload(model_def, output_dir=directory)
+            for model_def in step_def["models"]
+        ]
+        steps.append(
+            {
+                "key": step_def["key"],
+                "step_no": step_def["step_no"],
+                "label": step_def["label"],
+                "models": models,
+            }
+        )
+    return {
+        "as_of_date": _model_chain_final_signal_as_of_date(directory),
+        "observation_only": MACRO_TOOLKIT_OBSERVATION_ONLY,
+        "formal_use_allowed": MACRO_TOOLKIT_FORMAL_USE_ALLOWED,
+        "steps": steps,
     }
 
 
@@ -1004,6 +1534,9 @@ def _normalize_macro_source_backfill_refresh_record(
                 record.get("source_by_series")
             ),
             "vendor_versions": _public_text_mapping(record.get("vendor_versions")),
+            # 失败明细（series/alias -> 原因）不得在 normalize 白名单中丢弃，
+            # 否则 blocked/partial/failed 的 source 级原因对状态查询不可见。
+            "errors": _public_text_mapping(record.get("errors")),
         }
     )
     return normalized
@@ -1670,6 +2203,7 @@ def load_equity_strategy_price_context(duckdb_path: str | Path | None) -> dict[s
         conn = duckdb.connect(str(path), read_only=True)
     except duckdb.Error:
         return None
+    unit_warnings: list[str] = []
     try:
         tables = {row[0] for row in conn.execute("show tables").fetchall()}
         if "choice_stock_daily_observation" not in tables:
@@ -1714,40 +2248,94 @@ def load_equity_strategy_price_context(duckdb_path: str | Path | None) -> dict[s
             if canonical_dates
             else [latest_trade_date, start_date, latest_trade_date]
         )
-        frame = conn.execute(
-            f"""
-            with latest_sample as (
-              select stock_code
-              from choice_stock_daily_observation
-              where {sample_date_expression} = ?
-                and close_value is not null
-                and close_value > 0
-              order by coalesce(amount, 0) desc, stock_code asc
-              limit {EQUITY_PRICE_MAX_STOCKS}
+
+        def load_observations(
+            amount_projection: str,
+            unknown_projection: str,
+            vendor_projection: str,
+            sample_rank_expression: str,
+        ) -> pd.DataFrame:
+            # 样本排序键同样按 vendor 代际归一化为元:单日样本内两代零重叠,
+            # 序关系本不受统一倍数影响,但 NULL/空白 vendor 行(无法定标)按
+            # raw 值可能虚占 top-N 名额、下游又归一化为 NULL 浪费槽位。
+            return conn.execute(
+                f"""
+                with latest_sample as (
+                  select stock_code
+                  from choice_stock_daily_observation
+                  where {sample_date_expression} = ?
+                    and close_value is not null
+                    and close_value > 0
+                  order by coalesce({sample_rank_expression}, 0) desc, stock_code asc
+                  limit {EQUITY_PRICE_MAX_STOCKS}
+                )
+                select
+                  try_cast(daily.trade_date as date) as trade_date,
+                  daily.stock_code,
+                  daily.close_value,
+                  {amount_projection},
+                  daily.pctchange,
+                  daily.turn,
+                  daily.amplitude,
+                  daily.highlimit,
+                  daily.lowlimit,
+                  daily.source_version,
+                  {vendor_projection},
+                  {unknown_projection}
+                from choice_stock_daily_observation daily
+                join latest_sample sample
+                  on sample.stock_code = daily.stock_code
+                where {daily_date_expression} > ?
+                  and {daily_date_expression} <= ?
+                  and daily.close_value is not null
+                  and daily.close_value > 0
+                order by {daily_date_expression} asc, daily.stock_code asc
+                """,
+                date_parameters,
+            ).df()
+
+        # docs/data_contracts.md §4.10: amount 跨 vendor 代际统一为人民币元。
+        try:
+            frame = load_observations(
+                amount_rmb_sql(table_alias="daily", alias="amount"),
+                scale_unknown_sql(
+                    "amount",
+                    table_alias="daily",
+                    alias="_amount_scale_unknown",
+                ),
+                "daily.vendor_version",
+                amount_rmb_sql(alias=None),
             )
-            select
-              try_cast(daily.trade_date as date) as trade_date,
-              daily.stock_code,
-              daily.close_value,
-              daily.amount,
-              daily.pctchange,
-              daily.turn,
-              daily.amplitude,
-              daily.highlimit,
-              daily.lowlimit,
-              daily.source_version,
-              daily.vendor_version
-            from choice_stock_daily_observation daily
-            join latest_sample sample
-              on sample.stock_code = daily.stock_code
-            where {daily_date_expression} > ?
-              and {daily_date_expression} <= ?
-              and daily.close_value is not null
-              and daily.close_value > 0
-            order by {daily_date_expression} asc, daily.stock_code asc
-            """,
-            date_parameters,
-        ).df()
+        except duckdb.BinderException as exc:
+            if "vendor_version" not in str(exc).casefold():
+                raise
+            warning = (
+                "choice_stock_daily_observation 缺少 vendor_version，"
+                "低拥挤策略 amount 无法定标，已按 NULL 输出（fail-closed）。"
+            )
+            logger.warning(warning)
+            unit_warnings.append(warning)
+            frame = load_observations(
+                "cast(null as double) as amount",
+                "false as _amount_scale_unknown",
+                "cast(null as varchar) as vendor_version",
+                "amount",
+            )
+        unknown_scale = (
+            frame.pop("_amount_scale_unknown")
+            if "_amount_scale_unknown" in frame.columns
+            else None
+        )
+        if unknown_scale is not None:
+            unknown_count = int(pd.Series(unknown_scale).fillna(False).astype(bool).sum())
+            if unknown_count:
+                warning = (
+                    "choice_stock_daily_observation 有 "
+                    f"{unknown_count} 行 amount 非空但 vendor_version 为 NULL，"
+                    "低拥挤策略 amount 已按未知单位置空。"
+                )
+                logger.warning(warning)
+                unit_warnings.append(warning)
         financials = None
         if not frame.empty:
             try:
@@ -1797,7 +2385,25 @@ def load_equity_strategy_price_context(duckdb_path: str | Path | None) -> dict[s
         ],
         "source_versions": _unique_texts(frame["source_version"].tolist()),
         "vendor_versions": _unique_texts(frame["vendor_version"].tolist()),
+        "warnings": unit_warnings,
     }
+
+
+def equity_strategy_summary_warnings(
+    price_context: dict[str, object] | None,
+    warnings: Iterable[object] | None = None,
+) -> list[str]:
+    """合并策略自身告警与 price_context 中的单位类告警（docs/data_contracts.md §4.10）。
+
+    ``load_equity_strategy_price_context`` 已将 ``vendor_version`` 缺列 / 行级 NULL
+    的 fail-closed 告警写入 ``context["warnings"]``；A股策略 summary 的构造方
+    （目前在 ``backend/app/api/routes/macro_toolkit.py``）应改用本函数拼装最终
+    ``warnings`` 字段，而不是丢弃 ``price_context`` 中的单位降级信息。
+    """
+    context_warnings = (
+        price_context.get("warnings") if isinstance(price_context, dict) else None
+    )
+    return _unique_texts([*(warnings or []), *(context_warnings or [])])
 
 
 def load_equity_strategy_factor_snapshot(
@@ -1923,6 +2529,7 @@ def load_a_share_stampede_risk_context(duckdb_path: str | Path | None) -> dict[s
         conn = duckdb.connect(str(path), read_only=True)
     except duckdb.Error:
         return None
+    warnings: list[str] = []
     try:
         if not _duckdb_table_exists(conn, "choice_stock_daily_observation"):
             return None
@@ -1966,48 +2573,99 @@ def load_a_share_stampede_risk_context(duckdb_path: str | Path | None) -> dict[s
             if canonical_dates
             else [latest_trade_date, start_date, latest_trade_date]
         )
-        observations = conn.execute(
-            f"""
-            with latest_sample as (
-              select stock_code
-              from choice_stock_daily_observation
-              where {sample_date_expression} = ?
-                and close_value is not null
-                and close_value > 0
-              order by coalesce(amount, 0) desc, stock_code asc
-              limit {A_SHARE_RISK_MAX_STOCKS}
+
+        def load_observations(
+            amount_projection: str,
+            unknown_projection: str,
+            vendor_projection: str,
+            sample_rank_expression: str,
+        ) -> pd.DataFrame:
+            # 样本排序键按 vendor 代际归一化为元(理由同低拥挤策略加载器)。
+            return conn.execute(
+                f"""
+                with latest_sample as (
+                  select stock_code
+                  from choice_stock_daily_observation
+                  where {sample_date_expression} = ?
+                    and close_value is not null
+                    and close_value > 0
+                  order by coalesce({sample_rank_expression}, 0) desc, stock_code asc
+                  limit {A_SHARE_RISK_MAX_STOCKS}
+                )
+                select
+                  try_cast(daily.trade_date as date) as trade_date,
+                  daily.stock_code,
+                  daily.open_value,
+                  daily.high_value,
+                  daily.low_value,
+                  daily.close_value,
+                  {amount_projection},
+                  daily.pctchange,
+                  daily.turn,
+                  daily.amplitude,
+                  daily.tradestatus,
+                  try_cast(daily.highlimit as double) as highlimit,
+                  try_cast(daily.lowlimit as double) as lowlimit,
+                  daily.source_version,
+                  {vendor_projection},
+                  {unknown_projection}
+                from choice_stock_daily_observation daily
+                join latest_sample sample
+                  on sample.stock_code = daily.stock_code
+                where {daily_date_expression} > ?
+                  and {daily_date_expression} <= ?
+                  and daily.close_value is not null
+                  and daily.close_value > 0
+                order by {daily_date_expression} asc, daily.stock_code asc
+                """,
+                date_parameters,
+            ).df()
+
+        # docs/data_contracts.md §4.10: 全市场 amount 跨 vendor 代际统一为人民币元。
+        try:
+            observations = load_observations(
+                amount_rmb_sql(table_alias="daily", alias="amount"),
+                scale_unknown_sql(
+                    "amount",
+                    table_alias="daily",
+                    alias="_amount_scale_unknown",
+                ),
+                "daily.vendor_version",
+                amount_rmb_sql(alias=None),
             )
-            select
-              try_cast(daily.trade_date as date) as trade_date,
-              daily.stock_code,
-              daily.open_value,
-              daily.high_value,
-              daily.low_value,
-              daily.close_value,
-              daily.amount,
-              daily.pctchange,
-              daily.turn,
-              daily.amplitude,
-              daily.tradestatus,
-              try_cast(daily.highlimit as double) as highlimit,
-              try_cast(daily.lowlimit as double) as lowlimit,
-              daily.source_version,
-              daily.vendor_version
-            from choice_stock_daily_observation daily
-            join latest_sample sample
-              on sample.stock_code = daily.stock_code
-            where {daily_date_expression} > ?
-              and {daily_date_expression} <= ?
-              and daily.close_value is not null
-              and daily.close_value > 0
-            order by {daily_date_expression} asc, daily.stock_code asc
-            """,
-            date_parameters,
-        ).df()
+        except duckdb.BinderException as exc:
+            if "vendor_version" not in str(exc).casefold():
+                raise
+            warning = (
+                "choice_stock_daily_observation 缺少 vendor_version，"
+                "A 股踩踏风险 amount 无法定标，已按 NULL 输出（fail-closed）。"
+            )
+            logger.warning(warning)
+            warnings.append(warning)
+            observations = load_observations(
+                "cast(null as double) as amount",
+                "false as _amount_scale_unknown",
+                "cast(null as varchar) as vendor_version",
+                "amount",
+            )
+        unknown_scale = (
+            observations.pop("_amount_scale_unknown")
+            if "_amount_scale_unknown" in observations.columns
+            else None
+        )
+        if unknown_scale is not None:
+            unknown_count = int(pd.Series(unknown_scale).fillna(False).astype(bool).sum())
+            if unknown_count:
+                warning = (
+                    "choice_stock_daily_observation 有 "
+                    f"{unknown_count} 行 amount 非空但 vendor_version 为 NULL，"
+                    "A 股踩踏风险 amount 已按未知单位置空。"
+                )
+                logger.warning(warning)
+                warnings.append(warning)
         if observations.empty:
             return None
         tables_used = ["choice_stock_daily_observation"]
-        warnings: list[str] = []
         _merge_a_share_universe(conn, observations, latest_trade_date, tables_used, warnings)
         _merge_a_share_limit_quality(conn, observations, latest_trade_date, tables_used)
         theme_frame = _load_a_share_theme_frame(conn, latest_trade_date, tables_used)
