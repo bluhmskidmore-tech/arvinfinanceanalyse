@@ -34,6 +34,7 @@ import {
   shareOfTotalNumeric,
 } from "../utils/money";
 import { EM_DASH } from "../../../utils/format";
+import { fixedOrDash } from "../../../pageModel";
 import { buildLiabilityAnalyticsPageReadModel } from "./liabilityAnalyticsPageModel";
 import "./LiabilityAnalyticsPage.css";
 
@@ -51,13 +52,6 @@ function sumKnownNumericRaw(values: Array<number | null | undefined>): number | 
     return acc + value;
   }, 0);
   return hasValue ? sum : null;
-}
-
-function formatYiOrDash(value: number | null | undefined, digits = 0): string {
-  if (value === null || value === undefined || !Number.isFinite(value)) {
-    return EM_DASH;
-  }
-  return value.toFixed(digits);
 }
 
 function bucketFallsWithinOneYear(bucket: string) {
@@ -453,21 +447,21 @@ export default function LiabilityAnalyticsPage() {
         level: firstYearPressureYi === null ? EM_DASH : firstYearPressureYi > 0 ? "中高" : "低",
         trend: "↑",
         status: "关注",
-        detail: `${formatYiOrDash(firstYearPressureYi)} 亿`,
+        detail: `${fixedOrDash(firstYearPressureYi, 0)} 亿`,
       },
       {
         label: "流动性压力",
         level: liabilityTotalYi === null ? EM_DASH : liabilityTotalYi > 0 ? "中高" : "低",
         trend: "↑",
         status: "关注",
-        detail: `${formatYiOrDash(liabilityTotalYi)} 亿`,
+        detail: `${fixedOrDash(liabilityTotalYi, 0)} 亿`,
       },
       {
         label: "负债滚续压力",
         level: firstYearPressureYi === null ? EM_DASH : firstYearPressureYi > 100 ? "高" : "中",
         trend: "↑",
         status: "预警",
-        detail: `${formatYiOrDash(firstYearPressureYi)} 亿`,
+        detail: `${fixedOrDash(firstYearPressureYi, 0)} 亿`,
       },
       {
         label: "对手方集中度",
@@ -833,7 +827,7 @@ export default function LiabilityAnalyticsPage() {
                         />
                         <KpiCard
                           label="1Y压力"
-                          value={`${formatYiOrDash(firstYearPressureYi, 2)}亿`}
+                          value={`${fixedOrDash(firstYearPressureYi, 2)}亿`}
                           detail="到期负债"
                           valueVariant="text"
                         />

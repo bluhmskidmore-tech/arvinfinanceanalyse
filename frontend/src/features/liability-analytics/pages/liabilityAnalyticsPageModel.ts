@@ -1,6 +1,13 @@
 import type { ResultMeta } from "../../../api/contracts";
 import type { LiabilityYieldKpi } from "../../../api/liabilityAdbContracts";
-import { EM_DASH } from "../../../utils/format";
+import {
+  EM_DASH,
+  buildStateSurfaces,
+  fixedOrDash,
+  numericRaw,
+  type LabeledValue,
+  type StateSurfaceItem,
+} from "../../../pageModel";
 
 export type LiabilityAnalyticsTabKey = "daily" | "monthly";
 
@@ -12,13 +19,8 @@ export type LiabilityPageStatusBadge = {
   tone: LiabilityPageBadgeTone;
 };
 
-export type LiabilityPageKpi = {
-  key: string;
-  label: string;
-  value: string;
-  unit?: string;
-  detail?: string;
-};
+/** KPI band 行与共享 `LabeledValue` 同构，直接采用共享原语。 */
+export type LiabilityPageKpi = LabeledValue;
 
 export type LiabilityPageEvidenceCard = {
   key: string;
@@ -34,12 +36,8 @@ export type LiabilityPageEvidenceCard = {
   tone: LiabilityPageBadgeTone;
 };
 
-export type LiabilityPageStateSurface = {
-  key: string;
-  variant: "neutral" | "fallback-date" | "mock" | "stale" | "definition-pending";
-  title: string;
-  description: string;
-};
+/** 状态面条目使用共享 `StateSurfaceItem`（variant 词汇与 PageStateSurface 组件对齐）。 */
+export type LiabilityPageStateSurface = StateSurfaceItem;
 
 export type LiabilitySyntheticEvidenceInput = {
   key: string;
@@ -80,16 +78,9 @@ export type LiabilityAnalyticsPageReadModel = {
   stateSurfaces: LiabilityPageStateSurface[];
 };
 
-function formatYi(value: number | null | undefined) {
-  if (value === null || value === undefined || !Number.isFinite(value)) {
-    return EM_DASH;
-  }
-  return value.toFixed(2);
-}
-
 function formatBpFromPctNumeric(kpi: LiabilityYieldKpi | null) {
-  const nim = kpi?.nim?.raw;
-  if (nim === null || nim === undefined || !Number.isFinite(nim)) {
+  const nim = numericRaw(kpi?.nim);
+  if (nim === null) {
     return EM_DASH;
   }
   return `${(nim * 10000).toFixed(1)}bp`;
@@ -241,7 +232,7 @@ export function buildLiabilityAnalyticsPageReadModel(
           {
             key: "liability-total",
             label: "市场负债",
-            value: formatYi(input.liabilityTotalYi),
+            value: fixedOrDash(input.liabilityTotalYi, 2),
             unit: "亿",
             detail: "对手方总额 / 期限桶回退",
           },
@@ -260,7 +251,7 @@ export function buildLiabilityAnalyticsPageReadModel(
           {
             key: "one-year-pressure",
             label: "1年内到期",
-            value: formatYi(input.firstYearPressureYi),
+            value: fixedOrDash(input.firstYearPressureYi, 2),
             unit: "亿",
             detail: "按期限桶展示汇总",
           },
@@ -292,65 +283,62 @@ export function buildLiabilityAnalyticsPageReadModel(
           },
         ];
 
-  const stateSurfaces: LiabilityPageStateSurface[] = [];
-  if (isMock) {
-    stateSurfaces.push({
-      key: "mock",
-      variant: "mock",
-      title: "当前为演示数据",
-      description: "页面可用于交互验证，但不能作为正式负债经营判断。",
-    });
-  }
-  if (hasDateMismatch) {
-    stateSurfaces.push({
-      key: "date-mismatch",
-      variant: "fallback-date",
-      title: "请求报告日与返回报告日不一致",
-      description: `请求 ${requested}，当前返回 ${resolved}，需要在下钻前确认是否为兜底或最新快照。`,
-    });
-  }
-  if (fallbackCards.length > 0) {
-    stateSurfaces.push({
-      key: "fallback",
-      variant: "fallback-date",
-      title: "存在兜底结果",
-      description: fallbackCards.map((card) => `${card.title}: ${card.fallbackLabel}`).join("；"),
-    });
-  }
-  if (staleCards.length > 0) {
-    stateSurfaces.push({
-      key: "stale",
-      variant: "stale",
-      title: "存在供应商状态异常",
-      description: staleCards
-        .map((source) => `${source.title}: ${source.meta?.vendor_status ?? EM_DASH}`)
-        .join("；"),
-    });
-  }
-  if (missingMetaInputs.length > 0) {
-    stateSurfaces.push({
-      key: "missing-meta",
-      variant: "definition-pending",
-      title: "核心读面结果元数据未透出",
-      description: missingMetaInputs.map((source) => source.title).join("、"),
-    });
-  }
-  if (input.syntheticSections.length > 0) {
-    stateSurfaces.push({
-      key: "synthetic-sections",
-      variant: "definition-pending",
-      title: "合成/预留区块已显式降级",
-      description: `${input.syntheticSections.map((section) => section.title).join("、")} 的详情保留在对应区块，不混入首屏正式判断。`,
-    });
-  }
-  if (stateSurfaces.length === 0) {
-    stateSurfaces.push({
-      key: "ok",
-      variant: "neutral",
-      title: "状态证据已归集",
-      description: "当前可见结果元数据未显示兜底、过期或质量异常。",
-    });
-  }
+  const stateSurfaces = buildStateSurfaces(
+    [
+      {
+        when: isMock,
+        key: "mock",
+        variant: "mock",
+        title: "当前为演示数据",
+        description: "页面可用于交互验证，但不能作为正式负债经营判断。",
+      },
+      {
+        when: hasDateMismatch,
+        key: "date-mismatch",
+        variant: "fallback-date",
+        title: "请求报告日与返回报告日不一致",
+        description: `请求 ${requested}，当前返回 ${resolved}，需要在下钻前确认是否为兜底或最新快照。`,
+      },
+      {
+        when: fallbackCards.length > 0,
+        key: "fallback",
+        variant: "fallback-date",
+        title: "存在兜底结果",
+        description: fallbackCards.map((card) => `${card.title}: ${card.fallbackLabel}`).join("；"),
+      },
+      {
+        when: staleCards.length > 0,
+        key: "stale",
+        variant: "stale",
+        title: "存在供应商状态异常",
+        description: staleCards
+          .map((source) => `${source.title}: ${source.meta?.vendor_status ?? EM_DASH}`)
+          .join("；"),
+      },
+      {
+        when: missingMetaInputs.length > 0,
+        key: "missing-meta",
+        variant: "definition-pending",
+        title: "核心读面结果元数据未透出",
+        description: missingMetaInputs.map((source) => source.title).join("、"),
+      },
+      {
+        when: input.syntheticSections.length > 0,
+        key: "synthetic-sections",
+        variant: "definition-pending",
+        title: "合成/预留区块已显式降级",
+        description: `${input.syntheticSections.map((section) => section.title).join("、")} 的详情保留在对应区块，不混入首屏正式判断。`,
+      },
+    ],
+    {
+      emptyFallback: {
+        key: "ok",
+        variant: "neutral",
+        title: "状态证据已归集",
+        description: "当前可见结果元数据未显示兜底、过期或质量异常。",
+      },
+    },
+  );
 
   return {
     modeBadge: statusBadges[1],

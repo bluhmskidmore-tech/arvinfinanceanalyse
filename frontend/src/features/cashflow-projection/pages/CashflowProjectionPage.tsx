@@ -93,7 +93,7 @@ function axisYiLabel(value: number): string {
 }
 
 function tooltipYi(value: number): string {
-  if (!Number.isFinite(value)) return "—";
+  if (!Number.isFinite(value)) return EM_DASH;
   return `${toYi(value).toLocaleString("zh-CN", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
@@ -430,9 +430,9 @@ export default function CashflowProjectionPage() {
                   <span>口径 {projectionMeta.basis}</span>
                   <span>质量 {projectionMeta.quality_flag}</span>
                   <span>结果类型 {projectionMeta.result_kind}</span>
-                  <span>日期基准 {projectionMeta.date_basis ?? "—"}</span>
-                  <span>使用表 {projectionMeta.tables_used?.join(", ") || "—"}</span>
-                  <span>证据行 {projectionMeta.evidence_rows ?? "—"}</span>
+                  <span>日期基准 {projectionMeta.date_basis ?? EM_DASH}</span>
+                  <span>使用表 {projectionMeta.tables_used?.join(", ") || EM_DASH}</span>
+                  <span>证据行 {projectionMeta.evidence_rows ?? EM_DASH}</span>
                 </div>
               </section>
             ) : null}

@@ -1,4 +1,5 @@
 import type { Numeric } from "../../../api/contracts";
+import { numericRaw, numericRawOrZero, type MetricTone } from "../../../pageModel";
 import type { CashflowProjectionVM } from "../adapters/cashflowProjectionAdapter";
 
 export type CashflowMonthlyProjectionSeries = {
@@ -9,7 +10,7 @@ export type CashflowMonthlyProjectionSeries = {
 };
 
 export type CashflowProjectionRiskReadout = {
-  tone: "positive" | "warning" | "neutral";
+  tone: Extract<MetricTone, "positive" | "warning" | "neutral">;
   summary: string;
   negativeCumulativeMonths: number;
   worstCumulativeMonth: string;
@@ -26,17 +27,6 @@ export type CashflowRateSensitivitySemantic = {
 
 /** Display tone for duration gap — positive gap must never map to up/green. */
 export type CashflowDurationGapTone = "default" | "gapPositive" | "negative" | "warning";
-
-function numericRawOrZero(value: Numeric): number {
-  return value.raw === null || !Number.isFinite(value.raw) ? 0 : value.raw;
-}
-
-function numericRaw(value: Numeric | undefined): number | null {
-  if (!value || value.raw === null || !Number.isFinite(value.raw)) {
-    return null;
-  }
-  return value.raw;
-}
 
 /**
  * Duration-gap color policy (DESIGN Decisions Log 2026-07-19):

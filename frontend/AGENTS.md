@@ -69,6 +69,12 @@ Explicitly surface material no-data, stale-data, fallback-date, loading-failure,
 - Do not add visual complexity unless it improves a decision.
 - Do not raise frontend debt baselines without explicit justification.
 
+### Page view-model primitives
+
+- New page view models must build on `src/pageModel` primitives (`LabeledValue`, `StateSurfaceItem`, `buildStateSurfaces`, `MetricTone`, …) plus the shared helpers in `src/utils/format.ts` and `src/utils/tone.ts`.
+- Do not add page-private formatter or tone implementations that duplicate those shared helpers; extend `src/pageModel` only when a shape repeats across several page models.
+- New pages must render missing values as `EM_DASH` (`—`) from `src/utils/format.ts`; do not introduce `"-"` or `"--"` placeholders.
+
 ## Evidence and validation
 
 - Tier 1 requires no business-data MCP evidence unless business behavior is exposed or changed.
