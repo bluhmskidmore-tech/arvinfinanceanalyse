@@ -150,8 +150,34 @@ def test_pnl_bridge_result_meta_dates_no_fallback(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
+def _zero_out_516_for_report_date(duckdb_path) -> None:
+    """把共享夹具行的 516 归零，保持 summary 健康。
+
+    互斥分解后（审计 PNL-01），带非零 516 且无可用曲线的 FVTPL 行会诚实地
+    产生残差与 error 标记；本测试的目的只是验证 stale 合并语义，需要一个
+    quality=ok 的背景 summary，故将公允价值变动清零（业务上等价于
+    "本期无待解释的公允变动"）。
+    """
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            update fact_formal_pnl_fi
+            set total_pnl = total_pnl - fair_value_change_516,
+                fair_value_change_516 = 0
+            where report_date = ?
+            """,
+            [REPORT_DATE],
+        )
+    finally:
+        conn.close()
+
+
 def test_pnl_bridge_result_meta_dates_latest_snapshot_fallback(tmp_path, monkeypatch):
-    _prepare_bridge_fixture(tmp_path, monkeypatch, curve_rows=_latest_fallback_treasury_curves())
+    duckdb_path = _prepare_bridge_fixture(
+        tmp_path, monkeypatch, curve_rows=_latest_fallback_treasury_curves()
+    )
+    _zero_out_516_for_report_date(duckdb_path)
 
     payload = _get_bridge()
     meta = payload["result_meta"]

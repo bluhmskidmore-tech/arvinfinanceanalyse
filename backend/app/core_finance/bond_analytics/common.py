@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date
-from decimal import ROUND_CEILING, Decimal
+from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal
 
 from backend.app.core_finance.config.classification_rules import infer_invest_type
 from backend.app.core_finance.field_normalization import (
@@ -32,7 +32,11 @@ def safe_decimal(value) -> Decimal:
 
 
 def decimal_to_str(value: Decimal) -> str:
-    return str(value.quantize(Decimal("0.01"))) if isinstance(value, Decimal) else str(value)
+    return (
+        str(value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+        if isinstance(value, Decimal)
+        else str(value)
+    )
 
 
 # --- Asset classification ---
@@ -273,8 +277,18 @@ TENOR_YEARS: dict[str, float] = {
 }
 
 
+def tenor_to_years_or_none(tenor: str) -> float | None:
+    """已知期限词表精确查询；未知标签返回 ``None`` 由调用方决定跳过或报错。"""
+    return TENOR_YEARS.get(tenor)
+
+
 def tenor_to_years(tenor: str) -> float:
-    return TENOR_YEARS.get(tenor, 5.0)
+    years = TENOR_YEARS.get(tenor)
+    if years is None:
+        # 未知标签绝不静默映射为 5.0 年：假 5Y 节点会与真实 5Y 重复（三次样条
+        # h=0 除零）并污染全部插值结果（2026-08 审计 FI-05）。
+        raise ValueError(f"Unknown curve tenor label: {tenor!r}")
+    return years
 
 
 def get_tenor_bucket(years_to_maturity: float) -> str:
@@ -298,11 +312,24 @@ def get_tenor_bucket(years_to_maturity: float) -> str:
 
 
 def build_curve_points(curve: dict[str, Decimal]) -> list[tuple[float, Decimal]]:
-    points = []
+    # 未知期限标签跳过并告警（不发明节点）；按 years 去重以保证 x 严格递增，
+    # 防止三次样条 h=0 除零（2026-08 审计 FI-05）。
+    points: dict[float, Decimal] = {}
+    skipped: list[str] = []
     for tenor, rate in curve.items():
-        years = tenor_to_years(tenor)
-        points.append((years, safe_decimal(rate)))
-    return sorted(points, key=lambda x: x[0])
+        years = tenor_to_years_or_none(tenor)
+        if years is None:
+            skipped.append(str(tenor))
+            continue
+        points[years] = safe_decimal(rate)
+    if skipped:
+        logger.warning(
+            "build_curve_points skipped unknown tenor labels %s (kept %d of %d nodes)",
+            sorted(skipped),
+            len(points),
+            len(curve),
+        )
+    return sorted(points.items(), key=lambda x: x[0])
 
 
 def interpolate_rate(points: list[tuple[float, Decimal]], target_years: float) -> Decimal:

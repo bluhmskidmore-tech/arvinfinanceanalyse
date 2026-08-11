@@ -54,6 +54,50 @@ def test_rating_aa_and_below_portfolio_weight_ignores_unknown_rating() -> None:
     assert w == Decimal("0.5")
 
 
+def test_summarize_credit_weighted_avg_spread_published_in_bp() -> None:
+    """AAA 4.00% − 国债 3.00% = 1 个百分点，契约单位为 bp，应发布 100（审计 FI-01）。"""
+    rm = _read_models_module()
+    rows = [
+        {
+            "accounting_class": "OCI",
+            "market_value": Decimal("100"),
+            "years_to_maturity": Decimal("5"),
+            "spread_dv01": Decimal("0.04"),
+            "modified_duration": Decimal("4"),
+        }
+    ]
+    summary = rm.summarize_credit(
+        rows,
+        total_rows=rows,
+        aaa_credit_curve_current={"5Y": Decimal("4.00")},
+        treasury_curve_current={"5Y": Decimal("3.00")},
+    )
+    assert summary["weighted_avg_spread"] == Decimal("100")
+
+
+def test_build_curve_points_skips_unknown_tenor_instead_of_faking_5y() -> None:
+    """未知期限标签不得静默映射为假 5Y 节点（审计 FI-05）：跳过并告警，插值不崩溃。"""
+    points = common.build_curve_points(
+        {
+            "1Y": Decimal("2.00"),
+            "5Y": Decimal("3.00"),
+            "8Y": Decimal("3.20"),  # 词表外标签：旧行为会映射为 5.0 年与真实 5Y 重复
+            "10Y": Decimal("3.50"),
+        }
+    )
+
+    assert [years for years, _ in points] == [1.0, 5.0, 10.0]
+    # 旧行为在此处触发三次样条 h=0 除零；现在应正常插值。
+    rate = common.interpolate_rate(points, 8.0)
+    assert Decimal("2") < rate < Decimal("4")
+
+
+def test_tenor_to_years_fails_loud_on_unknown_label() -> None:
+    """tenor_to_years 对词表外标签 fail-loud，而不是发明 5.0 年（审计 FI-05）。"""
+    with pytest.raises(ValueError, match="Unknown curve tenor label"):
+        common.tenor_to_years("8Y")
+
+
 def test_classify_asset_class_rate_credit_other() -> None:
     assert common.classify_asset_class("国债") == "rate"
     assert common.classify_asset_class("企业债") == "credit"

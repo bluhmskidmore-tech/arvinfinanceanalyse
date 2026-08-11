@@ -8,7 +8,7 @@ the underlying PnL, balance, FX, or FTP calculations.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from backend.app.core_finance.pnl import TWOPLACES
 from backend.app.core_finance.zqtz_asset_bond_category import is_parent_zqtz_business_row
@@ -29,7 +29,7 @@ def _decimal(value: object) -> Decimal | None:
 
 
 def _quantize_pct(value: Decimal) -> Decimal:
-    return value.quantize(TWOPLACES)
+    return value.quantize(TWOPLACES, rounding=ROUND_HALF_UP)
 
 
 def _parent_rows(items: Sequence[Mapping[str, object]]) -> list[Mapping[str, object]]:
@@ -380,7 +380,7 @@ def build_scale_yield_quadrant(
                 "business_type": str(item.get("business_type") or ""),
                 "avg_balance": avg_balance,
                 "scale_share_pct": _quantize_pct(scale_share),
-                "ftp_net_annualized_yield_pct": yield_pct.quantize(SIXPLACES),
+                "ftp_net_annualized_yield_pct": yield_pct.quantize(SIXPLACES, rounding=ROUND_HALF_UP),
                 "quadrant_key": quadrant_key,
             }
         )
@@ -389,7 +389,7 @@ def build_scale_yield_quadrant(
         **common,
         "available": True,
         "scale_share_median_pct": _quantize_pct(scale_median),
-        "ftp_net_annualized_yield_median_pct": yield_median.quantize(SIXPLACES),
+        "ftp_net_annualized_yield_median_pct": yield_median.quantize(SIXPLACES, rounding=ROUND_HALF_UP),
         "rows": rows,
     }
 

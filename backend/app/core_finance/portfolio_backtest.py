@@ -6,6 +6,7 @@ import statistics
 from bisect import bisect_right
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
+from datetime import date
 from pathlib import Path
 
 from backend.app.core_finance.adjusted_returns import net_return_after_costs
@@ -319,7 +320,12 @@ def run_portfolio_backtest(
     probe_confirmed_count = 0
     probe_failed_exit_count = 0
 
-    for trade_date in trade_dates:
+    for trade_index, trade_date in enumerate(trade_dates):
+        # 敞口由 T 日收盘决定、T+1 日生效（与 gate_timing_csi300 基准和
+        # vol_target_overlay 同一口径，2026-07-19 审计 宏观 H-1）：建仓规模只能
+        # 使用上一交易日已知的敞口决策，否则策略侧存在前视偏差且与已加一天
+        # 滞后的基准不可比（2026-08 审计 MAC-01）。序列首日无 T-1 决策，退回当日。
+        prior_trade_date = trade_dates[trade_index - 1] if trade_index > 0 else None
         trade_date_has_actual_exposure = trade_date in daily_exposure_by_date
         if trade_date_has_actual_exposure:
             exposure_actual_days += 1
@@ -453,10 +459,17 @@ def run_portfolio_backtest(
                 skip_counts["no_slot"] += 1
                 continue
 
+            # 持仓记录的市场状态保持当日语义；仅敞口决策取 T-1（见循环头注释）。
             state = candidate.market_state or market_state_by_date.get(trade_date, "OFF")
+            if prior_trade_date is not None:
+                exposure_decision_date = prior_trade_date
+                exposure_state = market_state_by_date.get(prior_trade_date, "OFF")
+            else:
+                exposure_decision_date = trade_date
+                exposure_state = state
             exposure = _exposure_for_date(
-                trade_date,
-                state=state,
+                exposure_decision_date,
+                state=exposure_state,
                 exposure_by_date=daily_exposure_by_date,
                 exposure_by_market_state=exposure_by_market_state,
             )
@@ -695,11 +708,15 @@ def summarize_equity_curve(
 
     values = [float(row["net_value"]) for row in equity_curve]
     sample_days = max(len(values) - 1, 0)
+    # equity 曲线是信号驱动的稀疏日期序列，"记录条数 = 交易日"不成立；年化必须
+    # 按真实日历跨度折算（365/span），与 candidate_history_proxy_backtest 的
+    # PROXY_ANNUALIZATION_DAYS_PER_YEAR/span_days 同一口径（2026-08 审计 MAC-02）。
+    annualization = _annualization_factor([str(row.get("date") or "") for row in equity_curve])
     terminal_value = values[-1]
     cumulative_return = terminal_value / initial_capital - 1.0 if initial_capital > 0 else None
     cagr = (
-        (terminal_value / initial_capital) ** (252 / sample_days) - 1.0
-        if sample_days > 0 and terminal_value > 0 and initial_capital > 0
+        (terminal_value / initial_capital) ** annualization - 1.0
+        if annualization is not None and terminal_value > 0 and initial_capital > 0
         else None
     )
     daily_returns = [
@@ -707,13 +724,16 @@ def summarize_equity_curve(
         for index in range(1, len(values))
         if values[index - 1] > 0
     ]
-    daily_sharpe = _sharpe(daily_returns)
+    daily_sharpe = _sharpe(
+        daily_returns,
+        periods_per_year=(sample_days * annualization if annualization is not None else None),
+    )
     buy_turnover = sum(
         float(row.get("amount") or 0.0) / initial_capital
         for row in trades
         if row.get("action") == "buy"
     )
-    annual_turnover = buy_turnover * 252 / sample_days if sample_days > 0 else None
+    annual_turnover = buy_turnover * annualization if annualization is not None else None
     open_counts = [int(row.get("open_positions") or 0) for row in equity_curve]
     slot_values = [
         float(row.get("slot_utilization"))
@@ -815,15 +835,16 @@ def build_benchmark_comparison(
     strategy_values = [float(row["strategy"]) for row in curves]
     buy_hold_values = [float(row["csi300_buy_hold"]) for row in curves]
     gate_values = [float(row["gate_timing_csi300"]) for row in curves]
+    curve_dates = [str(row["date"]) for row in curves]
     strategy_return = strategy_values[-1] / initial_capital - 1.0
     gate_return = gate_values[-1] / initial_capital - 1.0
     return {
         "status": "ready",
         "curves": curves,
         "metrics": {
-            "strategy": _metrics_from_values(strategy_values, initial_capital=initial_capital),
-            "csi300_buy_hold": _metrics_from_values(buy_hold_values, initial_capital=initial_capital),
-            "gate_timing_csi300": _metrics_from_values(gate_values, initial_capital=initial_capital),
+            "strategy": _metrics_from_values(strategy_values, initial_capital=initial_capital, dates=curve_dates),
+            "csi300_buy_hold": _metrics_from_values(buy_hold_values, initial_capital=initial_capital, dates=curve_dates),
+            "gate_timing_csi300": _metrics_from_values(gate_values, initial_capital=initial_capital, dates=curve_dates),
             "stock_selection_increment": {
                 "cumulative_return": round(strategy_return - gate_return, 6),
                 "terminal_value_spread": round(strategy_values[-1] - gate_values[-1], 6),
@@ -1017,7 +1038,37 @@ def _benchmark_returns_by_date(rows: Sequence[Mapping[str, object]]) -> dict[str
     return returns
 
 
-def _metrics_from_values(values: Sequence[float], *, initial_capital: float) -> dict[str, object]:
+def _annualization_factor(dates: Sequence[str]) -> float | None:
+    """日历跨度年化因子 365/span_days。
+
+    信号驱动的稀疏日期序列不能按"记录条数=交易日"年化（2026-08 审计
+    MAC-02）；与 candidate_history_proxy_backtest 的
+    ``PROXY_ANNUALIZATION_DAYS_PER_YEAR / span_days`` 口径一致。
+    跨度不足（少于 2 个可解析日期或同日）时返回 ``None``。
+    """
+    parsed: list[date] = []
+    for value in dates:
+        text = str(value or "")[:10]
+        if not text:
+            continue
+        try:
+            parsed.append(date.fromisoformat(text))
+        except ValueError:
+            continue
+    if len(parsed) < 2:
+        return None
+    span_days = (max(parsed) - min(parsed)).days
+    if span_days <= 0:
+        return None
+    return 365.0 / span_days
+
+
+def _metrics_from_values(
+    values: Sequence[float],
+    *,
+    initial_capital: float,
+    dates: Sequence[str] = (),
+) -> dict[str, object]:
     if not values:
         return {
             "sample_days": 0,
@@ -1027,10 +1078,11 @@ def _metrics_from_values(values: Sequence[float], *, initial_capital: float) -> 
             "daily_sharpe": None,
         }
     sample_days = max(len(values) - 1, 0)
+    annualization = _annualization_factor(dates)
     terminal_value = values[-1]
     cagr = (
-        (terminal_value / initial_capital) ** (252 / sample_days) - 1.0
-        if sample_days > 0 and terminal_value > 0 and initial_capital > 0
+        (terminal_value / initial_capital) ** annualization - 1.0
+        if annualization is not None and terminal_value > 0 and initial_capital > 0
         else None
     )
     returns = [
@@ -1044,7 +1096,12 @@ def _metrics_from_values(values: Sequence[float], *, initial_capital: float) -> 
         "cumulative_return": _round_optional(terminal_value / initial_capital - 1.0),
         "cagr": _round_optional(cagr),
         "max_drawdown": _round_optional(_max_drawdown(values)),
-        "daily_sharpe": _round_optional(_sharpe(returns)),
+        "daily_sharpe": _round_optional(
+            _sharpe(
+                returns,
+                periods_per_year=(sample_days * annualization if annualization is not None else None),
+            )
+        ),
     }
 
 
@@ -1382,13 +1439,19 @@ def _max_drawdown(values: Sequence[float]) -> float | None:
     return max_drawdown
 
 
-def _sharpe(returns: Sequence[float]) -> float | None:
-    if len(returns) < 2:
+def _sharpe(returns: Sequence[float], *, periods_per_year: float | None = None) -> float | None:
+    """按估计步频年化的 Sharpe。
+
+    ``periods_per_year`` = 步数 × (365/日历跨度)，即每年经历的曲线步数估计；
+    稀疏序列下固定 sqrt(252) 会系统性放大结果（2026-08 审计 MAC-02）。
+    无法估计年化基准时返回 ``None`` 而不是给出不可比的数字。
+    """
+    if len(returns) < 2 or periods_per_year is None or periods_per_year <= 0:
         return None
     stdev = statistics.stdev(returns)
     if stdev <= 0:
         return None
-    return statistics.fmean(returns) / stdev * math.sqrt(252)
+    return statistics.fmean(returns) / stdev * math.sqrt(periods_per_year)
 
 
 def _first_float(*values: object) -> float | None:

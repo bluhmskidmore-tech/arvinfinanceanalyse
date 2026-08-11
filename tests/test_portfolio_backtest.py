@@ -10,6 +10,7 @@ from backend.app.core_finance.portfolio_backtest import (
     filter_rows_by_liquidity_floor,
     liquidity_floor_summary,
     run_portfolio_backtest,
+    summarize_equity_curve,
 )
 from backend.app.core_finance.portfolio_paths import position_path_key
 
@@ -122,15 +123,17 @@ def test_portfolio_backtest_applies_exposure_slots_and_entry_blocks() -> None:
     assert curve_by_date["2026-06-01"]["buy_notional"] == pytest.approx(50.0)
     assert curve_by_date["2026-06-01"]["max_single_name_weight"] == pytest.approx(0.25)
     assert curve_by_date["2026-06-03"]["net_value"] == pytest.approx(97.5)
-    assert curve_by_date["2026-06-03"]["buy_notional"] == pytest.approx(48.75)
-    assert curve_by_date["2026-06-04"]["net_value"] == pytest.approx(107.25)
-    assert result.metrics["cumulative_return"] == pytest.approx(0.0725)
+    # 敞口 T+1 生效（审计 MAC-01）：06-03 建仓使用 06-02 收盘的 WARM(0.5) 决策，
+    # 而不是 06-03 当日的 HOT(1.0)：97.5 × 0.5 / 2 = 24.375。
+    assert curve_by_date["2026-06-03"]["buy_notional"] == pytest.approx(24.375)
+    assert curve_by_date["2026-06-04"]["net_value"] == pytest.approx(102.375)
+    assert result.metrics["cumulative_return"] == pytest.approx(0.02375)
     assert result.skip_counts["entry_blocked"] == 1
     assert result.skip_counts["no_slot"] == 1
     assert [row["amount"] for row in result.trades if row["action"] == "buy"] == [
         pytest.approx(25.0),
         pytest.approx(25.0),
-        pytest.approx(48.75),
+        pytest.approx(24.375),
     ]
 
 
@@ -228,6 +231,98 @@ def test_portfolio_backtest_excludes_signal_only_dates_from_exposure_metrics() -
     assert [row["date"] for row in result.equity_curve] == ["2026-06-01", "2026-06-03"]
     assert result.metrics["sample_days"] == 1
     assert result.metrics["exposure_fallback_day_ratio"] == pytest.approx(0.0)
+
+
+def test_portfolio_backtest_entry_exposure_uses_prior_day_decision() -> None:
+    """建仓敞口 T+1 生效（审计 MAC-01）：当日收盘才产生的敞口决策不得用于当日建仓。
+
+    与 gate_timing_csi300 基准和 vol_target_overlay 的既有 T+1 规则
+    （2026-07-19 审计 宏观 H-1）同一口径；序列首日退回当日决策。
+    """
+    rows = [
+        _execution_row(
+            signal_date="2026-05-29",
+            stock_code="000001.SZ",
+            rank=1,
+            market_state="HOT",
+            entry_date="2026-06-01",
+            exit_date_5d="2026-06-05",
+            return_5d_net_adj=0.10,
+        ),
+        _execution_row(
+            signal_date="2026-06-01",
+            stock_code="000002.SZ",
+            rank=1,
+            market_state="HOT",
+            entry_date="2026-06-02",
+            exit_date_5d="2026-06-05",
+            return_5d_net_adj=0.10,
+        ),
+    ]
+    market_states = [
+        {"trade_date": "2026-06-01", "market_state": "HOT"},
+        {"trade_date": "2026-06-02", "market_state": "HOT"},
+        {"trade_date": "2026-06-05", "market_state": "HOT"},
+    ]
+    result = run_portfolio_backtest(
+        rows,
+        market_states,
+        variant="fixed_5d",
+        initial_capital=100.0,
+        max_positions=5,
+        exposure_by_market_state=EXPOSURE,
+        # T 日收盘决定的敞口：06-01 决定 1.0，06-02 决定 0.0。
+        exposure_by_date={"2026-06-01": 1.0, "2026-06-02": 0.0},
+    )
+
+    buys = [trade for trade in result.trades if trade["action"] == "buy"]
+    buy_codes_by_date = {(trade["date"], trade["stock_code"]) for trade in buys}
+    # 首日无 T-1 决策，退回当日决策（1.0）→ 可建仓。
+    assert ("2026-06-01", "000001.SZ") in buy_codes_by_date
+    # 06-02 建仓使用 06-01 收盘的决策（1.0），而不是 06-02 当日的 0.0。
+    assert ("2026-06-02", "000002.SZ") in buy_codes_by_date
+
+
+def test_summarize_equity_curve_annualizes_by_calendar_span_not_row_count() -> None:
+    """稀疏 equity 曲线按日历跨度年化（审计 MAC-02），不得按记录条数套 252。"""
+    curve = [
+        {"date": "2026-01-02", "net_value": 100.0, "open_positions": 0},
+        {"date": "2026-06-30", "net_value": 105.0, "open_positions": 1},
+        {"date": "2026-12-28", "net_value": 110.0, "open_positions": 0},
+    ]
+    trades = [{"action": "buy", "amount": 100.0}]
+
+    metrics = summarize_equity_curve(
+        curve,
+        initial_capital=100.0,
+        max_positions=5,
+        trades=trades,
+    )
+
+    span_days = (date(2026, 12, 28) - date(2026, 1, 2)).days
+    assert metrics["sample_days"] == 2
+    assert metrics["cagr"] == pytest.approx(1.10 ** (365 / span_days) - 1.0, abs=1e-6)
+    assert metrics["annual_turnover"] == pytest.approx(1.0 * 365 / span_days, abs=1e-6)
+    # 旧口径 (1.10)**(252/2)-1 是天文数字；日历口径应接近 10%。
+    assert metrics["cagr"] < 0.2
+
+
+def test_summarize_equity_curve_returns_none_when_span_cannot_annualize() -> None:
+    """同日/单点曲线无法年化：返回 None 而不是编造年化数字（审计 MAC-02）。"""
+    curve = [
+        {"date": "2026-06-01", "net_value": 100.0, "open_positions": 0},
+        {"date": "2026-06-01", "net_value": 101.0, "open_positions": 0},
+    ]
+    metrics = summarize_equity_curve(
+        curve,
+        initial_capital=100.0,
+        max_positions=5,
+        trades=[],
+    )
+
+    assert metrics["cagr"] is None
+    assert metrics["annual_turnover"] is None
+    assert metrics["daily_sharpe"] is None
 
 
 def test_portfolio_path_mode_fixed_horizon_matches_horizon_mode_daily_values() -> None:

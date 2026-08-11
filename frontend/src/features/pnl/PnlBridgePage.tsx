@@ -39,6 +39,8 @@ function kpiToneFromNumeric(n: Numeric): "default" | "positive" | "negative" {
   return "default";
 }
 
+// 互斥分解口径（2026-08 审计 PNL-01）：未实现公允（516）是市场效应要解释的
+// 对象，不再作为解释分量进入瀑布；明细表仍保留该列作参照。
 const BRIDGE_CATEGORIES = [
   "票息",
   "骑乘",
@@ -46,7 +48,6 @@ const BRIDGE_CATEGORIES = [
   "信用利差",
   "汇兑",
   "已实现交易",
-  "未实现公允",
   "人工调整",
   "解释合计",
   "实际PnL",
@@ -66,7 +67,6 @@ export function buildWaterfallOption(summary: PnlBridgeSummary): EChartsOption {
     summary.total_credit_spread.display,
     summary.total_fx_translation.display,
     summary.total_realized_trading.display,
-    summary.total_unrealized_fv.display,
     summary.total_manual_adjustment.display,
     summary.total_explained_pnl.display,
     summary.total_actual_pnl.display,
@@ -79,7 +79,6 @@ export function buildWaterfallOption(summary: PnlBridgeSummary): EChartsOption {
     summary.total_credit_spread.raw,
     summary.total_fx_translation.raw,
     summary.total_realized_trading.raw,
-    summary.total_unrealized_fv.raw,
     summary.total_manual_adjustment.raw,
   ];
 

@@ -17,7 +17,7 @@ New code should import from balance_workbook package instead.
 from __future__ import annotations
 
 from datetime import date
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 
 from backend.app.core_finance.balance_analysis import (
@@ -1348,7 +1348,7 @@ def _build_decision_items_table(
                     "title": f"关注 {top_rating['rating']} 评级集中度",
                     "action_label": "复核集中度",
                     "severity": "medium" if top_share < Decimal("0.75") else "high",
-                    "reason": f"最高评级桶占比已达 {(top_share * Decimal('100')).quantize(Decimal('0.01'))}%。",
+                    "reason": f"最高评级桶占比已达 {(top_share * Decimal('100')).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)}%。",
                     "source_section": "rating_analysis",
                     "rule_id": "bal_wb_decision_rating_001",
                     "rule_version": "v1",

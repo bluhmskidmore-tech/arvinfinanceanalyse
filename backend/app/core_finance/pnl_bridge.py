@@ -3,8 +3,9 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
+from backend.app.core_finance.accounting_basis_constants import ACCOUNTING_BASIS_FVTPL
 from backend.app.core_finance.bond_analytics.common import (
     build_curve_points,
     build_full_curve,
@@ -156,73 +157,94 @@ def build_pnl_bridge_rows(
         )
         prior_balance = prior_resolution.row
 
-        curve_type = infer_curve_type(
-            raw_row.get("instrument_name"),
-            current_balance.get("bond_type") if current_balance else "",
-            current_balance.get("asset_class") if current_balance else "",
-            current_balance.get("instrument_name") if current_balance else "",
-        )
-        current_curve = cdb_curve_current if curve_type == "cdb" else treasury_curve_current
-        prior_curve = cdb_curve_prior if curve_type == "cdb" else treasury_curve_prior
-
-        # roll_down / curve_shift / credit_spread all key off the current balance row's
-        # years-to-maturity and modified duration; compute them once per row instead of
-        # once per effect (all three effects require a current benchmark curve).
-        if current_balance is not None and current_curve:
-            years_to_maturity = _years_to_maturity(report_date=report_date, row=current_balance)
-            modified_duration = (
-                _modified_duration(report_date=report_date, row=current_balance)
-                if years_to_maturity > 0
-                else ZERO
-            )
-        else:
-            years_to_maturity = 0.0
-            modified_duration = ZERO
-
         carry = _coerce_decimal(raw_row.get("interest_income_514", ZERO))
-        roll_down = _calculate_roll_down(
-            report_date=report_date,
-            current_balance=current_balance,
-            prior_balance=prior_balance,
-            curve=current_curve,
-            curve_lookup=curve_lookup,
-            years_to_maturity=years_to_maturity,
-            modified_duration=modified_duration,
-        )
-        treasury_curve = _calculate_curve_shift(
-            report_date=report_date,
-            current_balance=current_balance,
-            current_curve=current_curve,
-            prior_curve=prior_curve,
-            curve_lookup=curve_lookup,
-            years_to_maturity=years_to_maturity,
-            modified_duration=modified_duration,
-        )
-        credit_spread = _calculate_credit_spread_shift(
-            report_date=report_date,
-            current_balance=current_balance,
-            current_curve=current_curve,
-            prior_curve=prior_curve,
-            aaa_credit_curve_current=aaa_credit_curve_current,
-            aaa_credit_curve_prior=aaa_credit_curve_prior,
-            curve_lookup=curve_lookup,
-            years_to_maturity=years_to_maturity,
-            modified_duration=modified_duration,
-        )
-        fx_translation = _calculate_fx_translation(
-            currency_basis=currency_basis,
-            exposure_native=_fx_exposure_native(current_balance),
-            fx_rate_current=fx_rates_current,
-            fx_rate_prior=fx_rates_prior,
-        )
-        fx_rate_missing_diagnostic = _fx_rate_missing_diagnostic(
-            currency_basis=currency_basis,
-            fx_rate_current=fx_rates_current,
-            fx_rate_prior=fx_rates_prior,
-        )
         realized_trading = _coerce_decimal(raw_row.get("capital_gain_517", ZERO))
         unrealized_fv = _coerce_decimal(raw_row.get("fair_value_change_516", ZERO))
         manual_adjustment = _coerce_decimal(raw_row.get("manual_adjustment", ZERO))
+
+        # 市场效应（骑乘/曲线/利差/汇兑）是对公允价值变动 516 的解释项，只对
+        # FVTPL 行计算：非 FVTPL 行的 516 已在正式事实门控中剔除
+        # （pnl._recognized_pnl_components），其会计损益中不存在这些效应可解释
+        # 的部分。与 bond_four_effects 的 AC 归零、campisi_attribution_service
+        # 的 FVTPL 门控保持同一口径（2026-08 审计 PNL-02）。
+        include_market_effects = (
+            str(raw_row.get("accounting_basis") or "") == ACCOUNTING_BASIS_FVTPL
+        )
+        if include_market_effects:
+            curve_type = infer_curve_type(
+                raw_row.get("instrument_name"),
+                current_balance.get("bond_type") if current_balance else "",
+                current_balance.get("asset_class") if current_balance else "",
+                current_balance.get("instrument_name") if current_balance else "",
+            )
+            current_curve = cdb_curve_current if curve_type == "cdb" else treasury_curve_current
+            prior_curve = cdb_curve_prior if curve_type == "cdb" else treasury_curve_prior
+
+            # roll_down / curve_shift / credit_spread all key off the current balance row's
+            # years-to-maturity and modified duration; compute them once per row instead of
+            # once per effect (all three effects require a current benchmark curve).
+            if current_balance is not None and current_curve:
+                years_to_maturity = _years_to_maturity(report_date=report_date, row=current_balance)
+                modified_duration = (
+                    _modified_duration(report_date=report_date, row=current_balance)
+                    if years_to_maturity > 0
+                    else ZERO
+                )
+            else:
+                years_to_maturity = 0.0
+                modified_duration = ZERO
+
+            roll_down = _calculate_roll_down(
+                report_date=report_date,
+                current_balance=current_balance,
+                prior_balance=prior_balance,
+                curve=current_curve,
+                curve_lookup=curve_lookup,
+                years_to_maturity=years_to_maturity,
+                modified_duration=modified_duration,
+            )
+            treasury_curve = _calculate_curve_shift(
+                report_date=report_date,
+                current_balance=current_balance,
+                current_curve=current_curve,
+                prior_curve=prior_curve,
+                curve_lookup=curve_lookup,
+                years_to_maturity=years_to_maturity,
+                modified_duration=modified_duration,
+            )
+            credit_spread = _calculate_credit_spread_shift(
+                report_date=report_date,
+                current_balance=current_balance,
+                current_curve=current_curve,
+                prior_curve=prior_curve,
+                aaa_credit_curve_current=aaa_credit_curve_current,
+                aaa_credit_curve_prior=aaa_credit_curve_prior,
+                curve_lookup=curve_lookup,
+                years_to_maturity=years_to_maturity,
+                modified_duration=modified_duration,
+            )
+            fx_translation = _calculate_fx_translation(
+                currency_basis=currency_basis,
+                exposure_native=_fx_exposure_native(current_balance),
+                fx_rate_current=fx_rates_current,
+                fx_rate_prior=fx_rates_prior,
+            )
+            fx_rate_missing_diagnostic = _fx_rate_missing_diagnostic(
+                currency_basis=currency_basis,
+                fx_rate_current=fx_rates_current,
+                fx_rate_prior=fx_rates_prior,
+            )
+        else:
+            roll_down = ZERO
+            treasury_curve = ZERO
+            credit_spread = ZERO
+            fx_translation = ZERO
+            fx_rate_missing_diagnostic = None
+
+        # 互斥分解：516 不计入 explained。市场效应本身就是对 516 的解释，二者
+        # 同时相加会使 residual 在代数上恒等于市场效应之和的相反数，质量标记
+        # 随之失真（2026-08 审计 PNL-01）。residual = 516 − 市场效应，即模型
+        # 未能解释的公允价值变动；非 FVTPL 行两侧均为 0，残差自然闭合。
         explained_pnl = (
             carry
             + roll_down
@@ -230,7 +252,6 @@ def build_pnl_bridge_rows(
             + credit_spread
             + fx_translation
             + realized_trading
-            + unrealized_fv
             + manual_adjustment
         )
         actual_raw = raw_row.get("total_pnl")
@@ -486,7 +507,9 @@ def _calculate_fx_translation(
     prior_rate = fx_rate_prior.get(base)
     if current_rate is None or prior_rate is None:
         return ZERO
-    return (exposure_native * (current_rate - prior_rate)).quantize(AMOUNT_SCALE)
+    return (exposure_native * (current_rate - prior_rate)).quantize(
+        AMOUNT_SCALE, rounding=ROUND_HALF_UP
+    )
 
 
 def _fx_rate_missing_diagnostic(

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from calendar import monthrange
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -505,7 +505,7 @@ def compute_deviation(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return computed
 
 
-def compute_asset_liability_structure(rows_3d: list[dict[str, Any]]) -> dict[str, Decimal]:
+def compute_asset_liability_structure(rows_3d: list[dict[str, Any]]) -> dict[str, Decimal | None]:
     rows_by_code = {row["科目代码"]: row for row in rows_3d}
 
     def value(code: str, field: str = "期末余额") -> Decimal:
@@ -544,15 +544,17 @@ def compute_asset_liability_structure(rows_3d: list[dict[str, Any]]) -> dict[str
         "总资产": total_assets,
         "总负债": total_liabilities,
         "投资总额": investment_total,
-        "存贷比%": _pct(loan_total, deposit_total),
-        "贷款减值准备率%": _pct(provision, loan_total),
-        "定期化率%": _pct(term_deposit, deposit_total),
-        "活期率%": _pct(demand_deposit, deposit_total),
-        "高流动性占比%": _pct(liquid_total, total_assets),
+        # 零分母表示取数缺失，统一返回 None（"无法计算"）而不是伪装成 0%，
+        # 与本文件其余百分比口径（_safe_pct）一致（2026-08 审计 BAL-01）。
+        "存贷比%": _safe_pct(loan_total, deposit_total),
+        "贷款减值准备率%": _safe_pct(provision, loan_total),
+        "定期化率%": _safe_pct(term_deposit, deposit_total),
+        "活期率%": _safe_pct(demand_deposit, deposit_total),
+        "高流动性占比%": _safe_pct(liquid_total, total_assets),
     }
 
 
-def _financial_indicator_status_rows(metrics: dict[str, Decimal]) -> list[dict[str, Any]]:
+def _financial_indicator_status_rows(metrics: dict[str, Decimal | None]) -> list[dict[str, Any]]:
     qdb_rows = [
         ("总资产（QDB源）", _display_number(_to_yi(metrics["总资产"])), "亿元"),
         ("总负债（QDB源）", _display_number(_to_yi(metrics["总负债"])), "亿元"),
@@ -2199,10 +2201,6 @@ def _safe_pct(numerator: Decimal | None, denominator: Decimal | None) -> Decimal
     return numerator / abs(denominator) * Decimal("100")
 
 
-def _pct(numerator: Decimal, denominator: Decimal) -> Decimal:
-    return ZERO if denominator == ZERO else numerator / denominator * Decimal("100")
-
-
 def _to_yi(value: Decimal | None) -> Decimal:
     return (value or ZERO) / ONE_HUNDRED_MILLION
 
@@ -2214,7 +2212,7 @@ def _display_yi(value: Decimal | None) -> int | float | None:
 def _display_number(value: Decimal | None) -> int | float | None:
     if value is None:
         return None
-    normalized = value.quantize(Decimal("0.01"))
+    normalized = value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     return int(normalized) if normalized == normalized.to_integral_value() else float(normalized)
 
 

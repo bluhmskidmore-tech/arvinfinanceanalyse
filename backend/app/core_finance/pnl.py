@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Literal, get_args
 
 from backend.app.core_finance.config.classification_rules import (
@@ -731,11 +731,13 @@ def _append_unique(items: list[str], value: str) -> None:
 
 
 def _quantize_amount(value: Decimal) -> Decimal:
-    return value.quantize(TWOPLACES)
+    # 显式 ROUND_HALF_UP：与 decimal_utils/credit_spread_analysis 的全库口径一致，
+    # 避免默认银行家舍入造成跨模块分尾差（2026-08 审计 SHR-01）。
+    return value.quantize(TWOPLACES, rounding=ROUND_HALF_UP)
 
 
 def _quantize_yield_pct(value: object) -> Decimal:
-    return Decimal(str(value)).quantize(YIELD_PCT_PLACES)
+    return Decimal(str(value)).quantize(YIELD_PCT_PLACES, rounding=ROUND_HALF_UP)
 
 
 def _optional_amount_delta(current: Decimal | None, previous: Decimal | None) -> Decimal | None:
@@ -747,7 +749,7 @@ def _optional_amount_delta(current: Decimal | None, previous: Decimal | None) ->
 def _optional_yield_delta_bp(current: Decimal | None, previous: Decimal | None) -> Decimal | None:
     if current is None or previous is None:
         return None
-    return ((current - previous) * Decimal("100")).quantize(BP_PLACES)
+    return ((current - previous) * Decimal("100")).quantize(BP_PLACES, rounding=ROUND_HALF_UP)
 
 
 def _recognized_pnl_components(row: FiPnlRecord) -> RecognizedPnlComponents:

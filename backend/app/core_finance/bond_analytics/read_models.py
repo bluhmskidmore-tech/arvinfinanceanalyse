@@ -861,7 +861,9 @@ def _weighted_average_spread(
     if effective_market_value == ZERO:
         return ZERO
     # Denominator is MV of rows that contributed to the numerator; rows with spread=0 still add MV here.
-    return weighted_spread / effective_market_value
+    # Curves are quoted in percentage points; the schema contract publishes this
+    # field in bp (1 pp = 100 bp), so scale before returning (2026-08 审计 FI-01).
+    return weighted_spread / effective_market_value * Decimal("100")
 
 
 def _weighted_spread_change(

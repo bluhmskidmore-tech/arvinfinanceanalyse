@@ -10,7 +10,7 @@ z_score: 95% = 1.645, 99% = 2.326
 from __future__ import annotations
 
 import math
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 _Z_95 = Decimal("1.6449")
 _Z_99 = Decimal("2.3263")
@@ -34,10 +34,11 @@ def compute_position_var(
     var_1d_99 = abs_dv01 * _Z_99 * daily_vol_bp
     var_10d_99 = var_1d_99 * _SQRT_10
 
+    # 显式 ROUND_HALF_UP，与全库舍入口径一致（2026-08 审计 SHR-01）。
     return {
-        "var_1d_95": var_1d_95.quantize(Decimal("0.01")),
-        "var_1d_99": var_1d_99.quantize(Decimal("0.01")),
-        "var_10d_99": var_10d_99.quantize(Decimal("0.01")),
+        "var_1d_95": var_1d_95.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+        "var_1d_99": var_1d_99.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+        "var_10d_99": var_10d_99.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
     }
 
 

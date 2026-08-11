@@ -282,6 +282,27 @@ def test_asset_liability_overview_uses_financial_indicator_subject_scope():
     assert metrics["贷款减值准备率%"] == module.Decimal("18.51851851851851851851851852")
 
 
+def test_asset_liability_structure_zero_denominator_yields_none_not_zero():
+    """零分母代表取数缺失，比率必须是 None（无法计算）而不是伪装成 0%（审计 BAL-01）。"""
+    module = load_module(
+        "backend.app.core_finance.qdb_gl_monthly_analysis",
+        "backend/app/core_finance/qdb_gl_monthly_analysis.py",
+    )
+
+    metrics = module.compute_asset_liability_structure(
+        [
+            {"科目代码": "123", "期末余额": 40 * B},
+        ],
+    )
+
+    assert metrics["存款总额"] == module.Decimal("0")
+    assert metrics["存贷比%"] is None
+    assert metrics["定期化率%"] is None
+    assert metrics["活期率%"] is None
+    # 分母存在、分子为 0 的场景仍是真实的 0%，不受影响。
+    assert metrics["贷款减值准备率%"] == module.Decimal("0")
+
+
 def test_qdb_gl_workbook_alerts_ledger_self_check_placeholder_mismatch():
     module = load_module(
         "backend.app.core_finance.qdb_gl_monthly_analysis",

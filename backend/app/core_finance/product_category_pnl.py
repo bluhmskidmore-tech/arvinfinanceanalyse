@@ -3,7 +3,7 @@ from __future__ import annotations
 from calendar import monthrange
 from dataclasses import dataclass, replace
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Mapping
 
 from backend.app.core_finance.field_normalization import is_approved_status
@@ -590,8 +590,8 @@ def _subtract_when_present(left: Decimal | None, right: Decimal | None) -> Decim
 def _build_product_category_metric_value(value: Decimal | None) -> ProductCategoryMetricValue | None:
     if value is None:
         return None
-    raw = value.quantize(PRODUCT_CATEGORY_RATE_RAW_QUANT)
-    display = f"{raw.quantize(PRODUCT_CATEGORY_RATE_DISPLAY_QUANT)}%"
+    raw = value.quantize(PRODUCT_CATEGORY_RATE_RAW_QUANT, rounding=ROUND_HALF_UP)
+    display = f"{raw.quantize(PRODUCT_CATEGORY_RATE_DISPLAY_QUANT, rounding=ROUND_HALF_UP)}%"
     return ProductCategoryMetricValue(raw=raw, display=display)
 
 

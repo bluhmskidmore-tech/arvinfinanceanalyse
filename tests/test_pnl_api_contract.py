@@ -7097,9 +7097,11 @@ def test_pnl_bridge_returns_rows_and_phase3_warning_when_balance_rows_are_unavai
     assert summary["total_realized_trading"]["raw"] == 1.75
     assert summary["total_unrealized_fv"]["raw"] == -3.25
     assert summary["total_manual_adjustment"]["raw"] == 0.5
-    assert summary["total_explained_pnl"]["raw"] == 11.5
+    # 互斥分解（审计 PNL-01）：explained = 514 + 517 + 手工调整，516 是被解释
+    # 对象；无可用曲线时 516 全额落入残差。
+    assert summary["total_explained_pnl"]["raw"] == 14.75
     assert summary["total_actual_pnl"]["raw"] == 11.5
-    assert summary["total_residual"]["raw"] == 0.0
+    assert summary["total_residual"]["raw"] == -3.25
     get_settings.cache_clear()
 
 
@@ -7266,9 +7268,10 @@ def test_pnl_bridge_uses_current_and_latest_available_bond_prior_balance_rows(tm
     assert summary["total_realized_trading"]["raw"] == 1.75
     assert summary["total_unrealized_fv"]["raw"] == -3.25
     assert summary["total_manual_adjustment"]["raw"] == 0.5
-    assert summary["total_explained_pnl"]["raw"] == 11.5
+    # 互斥分解（审计 PNL-01）：explained 不含 516；无可用曲线时 516 全额落入残差。
+    assert summary["total_explained_pnl"]["raw"] == 14.75
     assert summary["total_actual_pnl"]["raw"] == 11.5
-    assert summary["total_residual"]["raw"] == 0.0
+    assert summary["total_residual"]["raw"] == -3.25
     assert payload["result"]["warnings"][0] == (
         "Phase 3 partial delivery: roll_down / treasury_curve / credit_spread use governed curves when available."
     )

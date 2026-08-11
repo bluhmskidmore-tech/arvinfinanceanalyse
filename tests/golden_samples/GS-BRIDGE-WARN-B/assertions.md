@@ -20,9 +20,10 @@
 - `rows[0].balance_diagnostics == []`.
 - `summary.total_beginning_dirty_mv == "91.00000000"`.
 - `summary.total_ending_dirty_mv == "102.00000000"`.
-- `summary.total_explained_pnl == "11.50000000"`.
+- `summary.total_explained_pnl == "14.75000000"`（互斥分解：explained 不含 516，2026-08-11 审计 PNL-01）.
 - `summary.total_actual_pnl == "11.50000000"`.
-- `summary.total_residual == "0.00000000"`.
+- `summary.total_residual == "-3.25000000"`（无可用曲线时 FVTPL 行的 516 全额落入残差，quality 诚实为 `error`）.
+- `result_meta.quality_flag == summary.quality_flag`（vendor_unavailable 本身不越级改写质量标记，语义不变）.
 - `warnings` contains:
   - current phase-3 partial delivery warning
   - `Balance lineage fallback used for report_date=2025-12-31`

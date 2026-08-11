@@ -227,6 +227,21 @@ def test_pnl_bridge_envelope_marks_required_curve_conversion_failure_unavailable
             ("2025-10-31", "treasury", "1Y", Decimal("1.00"), "choice", "vv_prior", "sv_prior", "rv_curve"),
         ],
     )
+    # 互斥分解后（审计 PNL-01），带非零 516 且曲线转换失败的 FVTPL 行会诚实产生
+    # 残差与 error。本测试只验证 vendor_unavailable 标记与告警文案，需要健康
+    # summary 背景，故把共享夹具行的 516 清零（等价于"本期无待解释的公允变动"）。
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            update fact_formal_pnl_fi
+            set total_pnl = total_pnl - fair_value_change_516,
+                fair_value_change_516 = 0
+            where report_date = '2025-12-31'
+            """
+        )
+    finally:
+        conn.close()
 
     original_fetch_snapshot = YieldCurveRepository.fetch_curve_snapshot
 

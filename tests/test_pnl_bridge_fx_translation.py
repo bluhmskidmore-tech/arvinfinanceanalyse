@@ -323,5 +323,7 @@ def test_fx_translation_integration_with_pnl_bridge():
     row = rows[0]
     # dirty exposure = 100 + 2 = 102; 102 * (7.0827 - 7.04135) = 4.2177
     assert row.fx_translation == Decimal("4.21770000")
-    assert row.explained_pnl == Decimal("24.21770000")
+    # 互斥分解：explained = 514(10) + 517(3) + 手工调整(2) + FX 效应(4.2177)，
+    # 516(5.00) 是被解释对象、不再计入（审计 PNL-01）。
+    assert row.explained_pnl == Decimal("19.21770000")
 

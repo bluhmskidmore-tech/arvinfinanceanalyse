@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 
 from backend.app.core_finance.config.classification_rules import infer_invest_type
@@ -95,7 +95,7 @@ def compute_macaulay_duration(
         factor = _ONE - coupon_rate * years_to_maturity / (_TWO * (_ONE + coupon_rate * years_to_maturity))
         if factor < _FLOOR:
             factor = _FLOOR
-        return (years_to_maturity * factor).quantize(Decimal("0.0001"))
+        return (years_to_maturity * factor).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
 
     try:
         n_periods = int((years_to_maturity * freq_d).to_integral_value())
@@ -121,7 +121,7 @@ def compute_macaulay_duration(
         if mac_dur_years <= _ZERO or mac_dur_years > years_to_maturity:
             return years_to_maturity
 
-        return mac_dur_years.quantize(Decimal("0.0001"))
+        return mac_dur_years.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
 
     except (OverflowError, ZeroDivisionError, ValueError, InvalidOperation):
         return years_to_maturity
