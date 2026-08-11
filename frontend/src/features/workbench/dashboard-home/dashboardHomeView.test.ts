@@ -1124,4 +1124,27 @@ describe("mapToHomeView", () => {
     expect(riskExposureCreditRatio?.value).toBe("29.54%");
     expect(riskExposureSpreadDv01?.value).toBe("2,711.72 万");
   });
+
+  it("keeps risk exposure DV01 and key risk strip DV01 on the same 万元 unit for the same report_date", () => {
+    const view = mapToHomeView({
+      ...baseRealInput,
+      riskIndicators: {
+        report_date: "2026-04-30",
+        total_market_value: numeric(348_819_181_969.6323, "3,488.19 亿"),
+        total_dv01: numeric(105_628_442, "105,628,442.00", "dv01"),
+        weighted_duration: numeric(4.42922856, "4.43", "ratio"),
+        credit_ratio: numeric(0.29543613, "0.30", "ratio"),
+        weighted_convexity: numeric(27.60155099, "27.60", "ratio"),
+        total_spread_dv01: numeric(27_117_248.92176532, "27,117,248.92", "dv01"),
+        reinvestment_ratio_1y: numeric(0.36137719, "0.36", "ratio"),
+      },
+    });
+
+    const riskExposureDv01 = view.riskExposureMetrics.find((metric) => metric.id === "dv01");
+    const keyRiskStripDv01 = view.keyRiskStrip.find((ticker) => ticker.id === "risk-dv01");
+
+    expect(riskExposureDv01?.value).toBe("10,562.84 万");
+    expect(keyRiskStripDv01?.value).toBe("10,562.84 万");
+    expect(riskExposureDv01?.value).toBe(keyRiskStripDv01?.value);
+  });
 });

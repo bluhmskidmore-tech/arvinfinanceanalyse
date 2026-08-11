@@ -582,12 +582,16 @@ describe("dashboard home first-screen actions", () => {
 
     expect(view.keyRiskStrip).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ id: "risk-dv01", value: "9,812,345.00" }),
+        expect.objectContaining({ id: "risk-dv01", value: "981.23 万" }),
         expect.objectContaining({ id: "risk-duration", value: "4.18" }),
         expect.objectContaining({ id: "risk-credit", value: "62.10%" }),
         expect.objectContaining({ id: "risk-top5", value: "41.20%" }),
       ]),
     );
+
+    const dv01WanKpi = view.terminalKpis.find((kpi) => kpi.id === "dv01-wan");
+    const riskDv01 = view.keyRiskStrip.find((item) => item.id === "risk-dv01");
+    expect(riskDv01?.value).toBe(`${dv01WanKpi?.value} 万`);
 
     render(
       <MemoryRouter>

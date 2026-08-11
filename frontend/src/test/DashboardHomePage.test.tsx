@@ -44,7 +44,11 @@ vi.mock("../features/agent/AgentPanel", () => ({
 }));
 
 import { createApiClient, type ApiClient } from "../api/client";
-import type { ApiEnvelope, ChoiceNewsEvent, ChoiceNewsEventsPayload } from "../api/contracts";
+import type {
+  ApiEnvelope,
+  ChoiceNewsEvent,
+  ChoiceNewsEventsBatchPayload,
+} from "../api/contracts";
 import {
   DASHBOARD_BOND_NEWS_TOPICS,
   DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS,
@@ -310,35 +314,31 @@ async function revealFormalContextOnLoadedHome(idle: StubbedIdleCallbacks) {
   await runNextIdle(idle);
 }
 
-function requestedNewsTopicCodes(spy: {
-  mock: { calls: Array<Parameters<ApiClient["getChoiceNewsEvents"]>> };
-}): string[] {
-  return spy.mock.calls.map(([options]) => options.topicCode ?? "");
+type ChoiceNewsBatchOptions = Parameters<ApiClient["getChoiceNewsEventsBatch"]>[0];
+type ChoiceNewsBatchSpy = {
+  mock: { calls: Array<[ChoiceNewsBatchOptions]> };
+};
+
+// 批量化后请求形态从“每 topic 一次调用”变为“每波一次批量调用”，
+// 这些 helper 把批量调用摊平回 topic/group 维度，让原有场景断言语义保持不变。
+function requestedNewsTopicCodes(spy: ChoiceNewsBatchSpy): string[] {
+  return spy.mock.calls.flatMap(([options]) =>
+    (options.topics ?? []).map(({ topicCode }) => topicCode),
+  );
 }
 
-function requestedNewsTopicCount(
-  spy: { mock: { calls: Array<Parameters<ApiClient["getChoiceNewsEvents"]>> } },
-  topicCode: string,
-): number {
+function requestedNewsTopicCount(spy: ChoiceNewsBatchSpy, topicCode: string): number {
   return requestedNewsTopicCodes(spy).filter((requestedTopicCode) => requestedTopicCode === topicCode).length;
 }
 
-function requestedNewsGroupIds(spy: {
-  mock: { calls: Array<Parameters<ApiClient["getChoiceNewsEvents"]>> };
-}): string[] {
-  return spy.mock.calls.map(([options]) => options.groupId ?? "");
+function requestedNewsGroupIds(spy: ChoiceNewsBatchSpy): string[] {
+  return spy.mock.calls.flatMap(([options]) =>
+    (options.groups ?? []).map(({ groupId }) => groupId),
+  );
 }
 
 function bondNewsGroupIds(): string[] {
   return DASHBOARD_BOND_NEWS_TOPICS.map((topic) => topic.groupId);
-}
-
-function bondNewsProbeGroupId(): string {
-  return bondNewsGroupIds()[0] ?? "";
-}
-
-function remainingBondNewsGroupIdsAfterProbe(): string[] {
-  return bondNewsGroupIds().slice(1);
 }
 
 function choiceNewsEvent(overrides: Partial<ChoiceNewsEvent>): ChoiceNewsEvent {
@@ -358,12 +358,17 @@ function choiceNewsEvent(overrides: Partial<ChoiceNewsEvent>): ChoiceNewsEvent {
   };
 }
 
-function choiceNewsEnvelope(events: ChoiceNewsEvent[]): ApiEnvelope<ChoiceNewsEventsPayload> {
+/** 按契约回放批量响应：batches 顺序与请求顺序一致（先 topics 后 groups）。 */
+function choiceNewsBatchEnvelope(
+  options: ChoiceNewsBatchOptions,
+  eventsForTopic: (topicCode: string) => ChoiceNewsEvent[] = () => [],
+  eventsForGroup: (groupId: string) => ChoiceNewsEvent[] = () => [],
+): ApiEnvelope<ChoiceNewsEventsBatchPayload> {
   return {
     result_meta: {
       basis: "formal",
       trace_id: "tr_home_choice_news_test",
-      result_kind: "news.choice.latest",
+      result_kind: "news.choice.latest_batch",
       formal_use_allowed: true,
       source_version: "sv_test",
       vendor_version: "vv_test",
@@ -376,12 +381,20 @@ function choiceNewsEnvelope(events: ChoiceNewsEvent[]): ApiEnvelope<ChoiceNewsEv
       generated_at: "2026-06-04T00:00:00Z",
     },
     result: {
-      total_rows: events.length,
-      limit: events.length,
-      offset: 0,
-      as_of_date: "2026-06-04",
-      excluded_future_rows: 0,
-      events,
+      batches: [
+        ...(options.topics ?? []).map(({ topicCode }) => ({
+          key: `topic:${topicCode}`,
+          topic_code: topicCode,
+          group_id: null,
+          events: eventsForTopic(topicCode),
+        })),
+        ...(options.groups ?? []).map(({ groupId }) => ({
+          key: `group:${groupId}`,
+          topic_code: null,
+          group_id: groupId,
+          events: eventsForGroup(groupId),
+        })),
+      ],
     },
   };
 }
@@ -402,6 +415,7 @@ function createSupplementalHomeSpies(mockSnapshotSource: ApiClient) {
     getBalanceAnalysisDecisionItems: vi.fn(mockSnapshotSource.getBalanceAnalysisDecisionItems),
     getResearchCalendarEvents: vi.fn(async () => []),
     getChoiceNewsEvents: vi.fn(mockSnapshotSource.getChoiceNewsEvents),
+    getChoiceNewsEventsBatch: vi.fn(mockSnapshotSource.getChoiceNewsEventsBatch),
     getBondDashboardAssetStructure: vi.fn(mockSnapshotSource.getBondDashboardAssetStructure),
     getBondDashboardMaturityStructure: vi.fn(mockSnapshotSource.getBondDashboardMaturityStructure),
     getBondDashboardIndustryDistribution: vi.fn(mockSnapshotSource.getBondDashboardIndustryDistribution),
@@ -474,8 +488,8 @@ describe("DashboardHomePage", () => {
     let releaseSnapshot: (() => void) | undefined;
     const idle = stubIdleCallbacks();
     const getResearchCalendarEvents = vi.fn(async () => []);
-    const getChoiceNewsEvents = vi.fn(async (options) =>
-      mockSnapshotSource.getChoiceNewsEvents(options),
+    const getChoiceNewsEventsBatch = vi.fn(async (options: ChoiceNewsBatchOptions) =>
+      mockSnapshotSource.getChoiceNewsEventsBatch(options),
     );
     const getHomeIncomeTrend = vi.fn(async (...args: Parameters<ApiClient["getHomeIncomeTrend"]>) =>
       mockSnapshotSource.getHomeIncomeTrend(...args),
@@ -497,7 +511,7 @@ describe("DashboardHomePage", () => {
         return mockSnapshotSource.getHomeSnapshot(...args);
       },
       getResearchCalendarEvents,
-      getChoiceNewsEvents,
+      getChoiceNewsEventsBatch,
       getHomeIncomeTrend,
       getBondAnalyticsTopHoldings,
       getBondAnalyticsPositionChanges,
@@ -510,7 +524,7 @@ describe("DashboardHomePage", () => {
       expect(releaseSnapshot).toBeDefined();
     });
     expect(getResearchCalendarEvents).not.toHaveBeenCalled();
-    expect(getChoiceNewsEvents).not.toHaveBeenCalled();
+    expect(getChoiceNewsEventsBatch).not.toHaveBeenCalled();
     expect(getHomeIncomeTrend).not.toHaveBeenCalled();
 
     releaseSnapshot?.();
@@ -519,14 +533,14 @@ describe("DashboardHomePage", () => {
     await runNextIdle(idle);
     await screen.findByTestId("dashboard-home-work-grid");
     expect(getResearchCalendarEvents).not.toHaveBeenCalled();
-    expect(getChoiceNewsEvents).not.toHaveBeenCalled();
+    expect(getChoiceNewsEventsBatch).not.toHaveBeenCalled();
     expect(getHomeIncomeTrend).not.toHaveBeenCalled();
 
     await waitForBodyDetailDataDelay();
     await runNextIdle(idle);
     await waitFor(() => {
       expect(getResearchCalendarEvents).toHaveBeenCalled();
-      expect(getChoiceNewsEvents).toHaveBeenCalled();
+      expect(getChoiceNewsEventsBatch).toHaveBeenCalled();
       expect(getHomeIncomeTrend).toHaveBeenCalled();
     });
     expect(getBondAnalyticsTopHoldings).not.toHaveBeenCalled();
@@ -536,20 +550,17 @@ describe("DashboardHomePage", () => {
     await waitFor(() => {
       expect(getBondAnalyticsTopHoldings).toHaveBeenCalled();
     });
-    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
-      expect.arrayContaining([DASHBOARD_MACRO_NEWS_TOPICS[0].code]),
-    );
-    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
-      expect.arrayContaining(DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code)),
-    );
-    expect(requestedNewsGroupIds(getChoiceNewsEvents)).not.toEqual(
-      expect.arrayContaining(bondNewsGroupIds()),
+    // Batch collapses all macro topics into one request. Secondary/bond gates
+    // share the same post-event-feed delay window as structure, so by this
+    // point they may already be in-flight; only assert the primary macro batch.
+    expect(requestedNewsTopicCodes(getChoiceNewsEventsBatch)).toEqual(
+      expect.arrayContaining(DASHBOARD_MACRO_NEWS_TOPICS.map((topic) => topic.code)),
     );
 
     await waitForSecondaryEventFeedDataDelay();
     await runPendingIdleIfAny(idle);
     await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
+      expect(requestedNewsTopicCodes(getChoiceNewsEventsBatch)).toEqual(
         expect.arrayContaining(DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code)),
       );
     });
@@ -557,7 +568,7 @@ describe("DashboardHomePage", () => {
     await waitForBondNewsFeedDataDelay();
     await runPendingIdleIfAny(idle);
     await waitFor(() => {
-      expect(requestedNewsGroupIds(getChoiceNewsEvents)).toEqual(
+      expect(requestedNewsGroupIds(getChoiceNewsEventsBatch)).toEqual(
         expect.arrayContaining(bondNewsGroupIds()),
       );
     });
@@ -589,19 +600,20 @@ describe("DashboardHomePage", () => {
     let releaseSnapshot: (() => void) | undefined;
     const idle = stubIdleCallbacks();
     const getResearchCalendarEvents = vi.fn(async () => []);
-    const getChoiceNewsEvents = vi.fn(async (options: Parameters<ApiClient["getChoiceNewsEvents"]>[0]) => {
-      if (options.topicCode === "tushare.news.sina") {
-        return choiceNewsEnvelope([
-          choiceNewsEvent({
-            event_key: "tushare-policy-funding-deep-link",
-            received_at: "2026-06-04T10:17:00Z",
-            topic_code: "tushare.news.sina",
-            payload_text: "10年期美国国债收益率最新上涨2.8个基点，报4.483%。",
-          }),
-        ]);
-      }
-      return choiceNewsEnvelope([]);
-    });
+    const getChoiceNewsEventsBatch = vi.fn(async (options: ChoiceNewsBatchOptions) =>
+      choiceNewsBatchEnvelope(options, (topicCode) =>
+        topicCode === "tushare.news.sina"
+          ? [
+              choiceNewsEvent({
+                event_key: "tushare-policy-funding-deep-link",
+                received_at: "2026-06-04T10:17:00Z",
+                topic_code: "tushare.news.sina",
+                payload_text: "10年期美国国债收益率最新上涨2.8个基点，报4.483%。",
+              }),
+            ]
+          : [],
+      ),
+    );
     const client = createRealModeHomeClient({
       ...base,
       getHomeSnapshot: async (...args) => {
@@ -611,7 +623,7 @@ describe("DashboardHomePage", () => {
         return mockSnapshotSource.getHomeSnapshot(...args);
       },
       getResearchCalendarEvents,
-      getChoiceNewsEvents,
+      getChoiceNewsEventsBatch,
       getHomeIncomeTrend: vi.fn(async (...args: Parameters<ApiClient["getHomeIncomeTrend"]>) =>
         mockSnapshotSource.getHomeIncomeTrend(...args),
       ),
@@ -637,14 +649,16 @@ describe("DashboardHomePage", () => {
 
     await waitFor(() => {
       expect(getResearchCalendarEvents).toHaveBeenCalled();
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
+      expect(requestedNewsTopicCodes(getChoiceNewsEventsBatch)).toEqual(
         expect.arrayContaining([DASHBOARD_MACRO_NEWS_TOPICS[0].code]),
       );
     });
     await waitForSecondaryEventFeedDataDelay();
     await runPendingIdleIfAny(idle);
     await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(expect.arrayContaining(["tushare.news.sina"]));
+      expect(requestedNewsTopicCodes(getChoiceNewsEventsBatch)).toEqual(
+        expect.arrayContaining(["tushare.news.sina"]),
+      );
     });
     const policyFundingPane = screen.getByTestId("dashboard-home-policy-funding-pane");
     await waitFor(() => {
@@ -663,18 +677,19 @@ describe("DashboardHomePage", () => {
     let releaseSnapshot: (() => void) | undefined;
     const idle = stubIdleCallbacks();
     const getResearchCalendarEvents = vi.fn(async () => []);
-    const getChoiceNewsEvents = vi.fn(async (options: Parameters<ApiClient["getChoiceNewsEvents"]>[0]) => {
-      if (DASHBOARD_MACRO_NEWS_TOPICS.some((topic) => topic.code === options.topicCode)) {
-        return choiceNewsEnvelope([
-          choiceNewsEvent({
-            received_at: `${resolveTodayIsoDate()}T09:30:00Z`,
-            topic_code: options.topicCode,
-            payload_text: "资金面维持平稳，DR007 小幅回落。",
-          }),
-        ]);
-      }
-      return mockSnapshotSource.getChoiceNewsEvents(options);
-    });
+    const getChoiceNewsEventsBatch = vi.fn(async (options: ChoiceNewsBatchOptions) =>
+      choiceNewsBatchEnvelope(options, (topicCode) =>
+        DASHBOARD_MACRO_NEWS_TOPICS.some((topic) => topic.code === topicCode)
+          ? [
+              choiceNewsEvent({
+                received_at: `${resolveTodayIsoDate()}T09:30:00Z`,
+                topic_code: topicCode,
+                payload_text: "资金面维持平稳，DR007 小幅回落。",
+              }),
+            ]
+          : [],
+      ),
+    );
     const client = createRealModeHomeClient({
       ...base,
       getHomeSnapshot: async (...args) => {
@@ -684,7 +699,7 @@ describe("DashboardHomePage", () => {
         return mockSnapshotSource.getHomeSnapshot(...args);
       },
       getResearchCalendarEvents,
-      getChoiceNewsEvents,
+      getChoiceNewsEventsBatch,
       getHomeIncomeTrend: vi.fn(async (...args: Parameters<ApiClient["getHomeIncomeTrend"]>) =>
         mockSnapshotSource.getHomeIncomeTrend(...args),
       ),
@@ -708,55 +723,56 @@ describe("DashboardHomePage", () => {
     await revealHomeBodyDetailAndEventFeeds(idle);
 
     await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
+      expect(requestedNewsTopicCodes(getChoiceNewsEventsBatch)).toEqual(
         expect.arrayContaining(DASHBOARD_MACRO_NEWS_TOPICS.map((topic) => topic.code)),
       );
     });
-    expect(requestedNewsGroupIds(getChoiceNewsEvents)).toEqual(
-      expect.arrayContaining(bondNewsGroupIds()),
-    );
-    expect(
-      getChoiceNewsEvents.mock.calls
-        .filter(([options]) => Boolean(options.groupId))
-        .every(([options]) => options.topicCode == null),
-    ).toBe(true);
-    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
+    expect(requestedNewsTopicCodes(getChoiceNewsEventsBatch)).not.toEqual(
       expect.arrayContaining(DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code)),
     );
 
     await waitForBondNewsFeedDataDelay();
     await runPendingIdleIfAny(idle);
     await waitFor(() => {
-      expect(requestedNewsGroupIds(getChoiceNewsEvents)).toEqual(
+      expect(requestedNewsGroupIds(getChoiceNewsEventsBatch)).toEqual(
         expect.arrayContaining(bondNewsGroupIds()),
       );
     });
-    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
+    // 债券 group 批量请求不携带 topics，宏观 topic 批量请求不携带 groups。
+    expect(
+      getChoiceNewsEventsBatch.mock.calls
+        .filter(([options]) => (options.groups?.length ?? 0) > 0)
+        .every(([options]) => (options.topics?.length ?? 0) === 0),
+    ).toBe(true);
+    expect(requestedNewsTopicCodes(getChoiceNewsEventsBatch)).not.toEqual(
       expect.arrayContaining(DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code)),
     );
     expect(getResearchCalendarEvents).toHaveBeenCalled();
   });
 
-  it("short-circuits the remaining Choice macro topics when the probe reports missing permission", async () => {
+  // 原“probe 权限错误时跳过剩余 topic”改为批量语义：一个批量请求覆盖全部宏观
+  // topic（无级联可跳过），权限错误按 topic 落在各自 events 中，兜底触发语义不变。
+  it("keeps macro topics in one batch and still triggers fallback when the probe topic reports missing permission", async () => {
     const base = createApiClient({ mode: "real" });
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     let releaseSnapshot: (() => void) | undefined;
     const idle = stubIdleCallbacks();
     const getResearchCalendarEvents = vi.fn(async () => []);
-    const getChoiceNewsEvents = vi.fn(async (options: Parameters<ApiClient["getChoiceNewsEvents"]>[0]) => {
-      if (options.topicCode === DASHBOARD_MACRO_NEWS_TOPICS[0].code) {
-        return choiceNewsEnvelope([
-          choiceNewsEvent({
-            event_key: "choice-permission-error",
-            topic_code: options.topicCode,
-            error_code: 10001012,
-            error_msg: "insufficient user access",
-            payload_text: null,
-          }),
-        ]);
-      }
-      return mockSnapshotSource.getChoiceNewsEvents(options);
-    });
+    const getChoiceNewsEventsBatch = vi.fn(async (options: ChoiceNewsBatchOptions) =>
+      choiceNewsBatchEnvelope(options, (topicCode) =>
+        topicCode === DASHBOARD_MACRO_NEWS_TOPICS[0].code
+          ? [
+              choiceNewsEvent({
+                event_key: "choice-permission-error",
+                topic_code: topicCode,
+                error_code: 10001012,
+                error_msg: "insufficient user access",
+                payload_text: null,
+              }),
+            ]
+          : [],
+      ),
+    );
     const client = createRealModeHomeClient({
       ...base,
       getHomeSnapshot: async (...args) => {
@@ -766,7 +782,7 @@ describe("DashboardHomePage", () => {
         return mockSnapshotSource.getHomeSnapshot(...args);
       },
       getResearchCalendarEvents,
-      getChoiceNewsEvents,
+      getChoiceNewsEventsBatch,
       getHomeIncomeTrend: vi.fn(async (...args: Parameters<ApiClient["getHomeIncomeTrend"]>) =>
         mockSnapshotSource.getHomeIncomeTrend(...args),
       ),
@@ -790,7 +806,7 @@ describe("DashboardHomePage", () => {
     await revealHomeBodyDetailAndEventFeeds(idle);
 
     await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
+      expect(requestedNewsTopicCodes(getChoiceNewsEventsBatch)).toEqual(
         expect.arrayContaining([
           DASHBOARD_MACRO_NEWS_TOPICS[0].code,
           ...DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code),
@@ -800,30 +816,40 @@ describe("DashboardHomePage", () => {
     await waitForBondNewsFeedDataDelay();
     await runPendingIdleIfAny(idle);
     await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
+      expect(requestedNewsTopicCodes(getChoiceNewsEventsBatch)).toEqual(
         expect.arrayContaining(DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code)),
       );
-      expect(requestedNewsGroupIds(getChoiceNewsEvents)).toEqual(
+      expect(requestedNewsGroupIds(getChoiceNewsEventsBatch)).toEqual(
         expect.arrayContaining(bondNewsGroupIds()),
       );
     });
-    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
-      expect.arrayContaining(DASHBOARD_MACRO_NEWS_TOPICS.slice(1).map((topic) => topic.code)),
+    // 宏观主批只发一次（全部 topic 合并进同一个批量请求，不存在 probe→remaining 级联）。
+    const macroBatchCalls = getChoiceNewsEventsBatch.mock.calls.filter(([options]) =>
+      (options.topics ?? []).some(
+        ({ topicCode }) => topicCode === DASHBOARD_MACRO_NEWS_TOPICS[0].code,
+      ),
+    );
+    expect(macroBatchCalls).toHaveLength(1);
+    expect((macroBatchCalls[0]?.[0].topics ?? []).map(({ topicCode }) => topicCode)).toEqual(
+      DASHBOARD_MACRO_NEWS_TOPICS.map((topic) => topic.code),
     );
     expect(getResearchCalendarEvents).toHaveBeenCalled();
   });
 
-  it("loads macro fallback news when the Choice probe request fails", async () => {
+  it("loads macro fallback news when the Choice macro batch request fails", async () => {
     const base = createApiClient({ mode: "real" });
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     let releaseSnapshot: (() => void) | undefined;
     const idle = stubIdleCallbacks();
     const getResearchCalendarEvents = vi.fn(async () => []);
-    const getChoiceNewsEvents = vi.fn(async (options: Parameters<ApiClient["getChoiceNewsEvents"]>[0]) => {
-      if (options.topicCode === DASHBOARD_MACRO_NEWS_TOPICS[0].code) {
-        throw new Error("choice probe unavailable");
+    const getChoiceNewsEventsBatch = vi.fn(async (options: ChoiceNewsBatchOptions) => {
+      const isMacroBatch = (options.topics ?? []).some(
+        ({ topicCode }) => topicCode === DASHBOARD_MACRO_NEWS_TOPICS[0].code,
+      );
+      if (isMacroBatch) {
+        throw new Error("choice macro batch unavailable");
       }
-      return mockSnapshotSource.getChoiceNewsEvents(options);
+      return choiceNewsBatchEnvelope(options);
     });
     const client = createRealModeHomeClient({
       ...base,
@@ -834,7 +860,7 @@ describe("DashboardHomePage", () => {
         return mockSnapshotSource.getHomeSnapshot(...args);
       },
       getResearchCalendarEvents,
-      getChoiceNewsEvents,
+      getChoiceNewsEventsBatch,
       getHomeIncomeTrend: vi.fn(async (...args: Parameters<ApiClient["getHomeIncomeTrend"]>) =>
         mockSnapshotSource.getHomeIncomeTrend(...args),
       ),
@@ -858,16 +884,13 @@ describe("DashboardHomePage", () => {
     await revealHomeBodyDetailAndEventFeeds(idle);
 
     await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
+      expect(requestedNewsTopicCodes(getChoiceNewsEventsBatch)).toEqual(
         expect.arrayContaining([
           DASHBOARD_MACRO_NEWS_TOPICS[0].code,
           ...DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code),
         ]),
       );
     });
-    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
-      expect.arrayContaining(DASHBOARD_MACRO_NEWS_TOPICS.slice(1).map((topic) => topic.code)),
-    );
     expect(getResearchCalendarEvents).toHaveBeenCalled();
   });
 
@@ -877,19 +900,20 @@ describe("DashboardHomePage", () => {
     let releaseSnapshot: (() => void) | undefined;
     const idle = stubIdleCallbacks();
     const getResearchCalendarEvents = vi.fn(async () => []);
-    const getChoiceNewsEvents = vi.fn(async (options: Parameters<ApiClient["getChoiceNewsEvents"]>[0]) => {
-      if (options.topicCode === "tushare.news.sina") {
-        return choiceNewsEnvelope([
-          choiceNewsEvent({
-            event_key: "tushare-policy-funding",
-            received_at: "2026-06-04T10:17:00Z",
-            topic_code: "tushare.news.sina",
-            payload_text: "10年期美国国债收益率最新上涨2.8个基点，报4.483%。",
-          }),
-        ]);
-      }
-      return choiceNewsEnvelope([]);
-    });
+    const getChoiceNewsEventsBatch = vi.fn(async (options: ChoiceNewsBatchOptions) =>
+      choiceNewsBatchEnvelope(options, (topicCode) =>
+        topicCode === "tushare.news.sina"
+          ? [
+              choiceNewsEvent({
+                event_key: "tushare-policy-funding",
+                received_at: "2026-06-04T10:17:00Z",
+                topic_code: "tushare.news.sina",
+                payload_text: "10年期美国国债收益率最新上涨2.8个基点，报4.483%。",
+              }),
+            ]
+          : [],
+      ),
+    );
     const client = createRealModeHomeClient({
       ...base,
       getHomeSnapshot: async (...args) => {
@@ -899,7 +923,7 @@ describe("DashboardHomePage", () => {
         return mockSnapshotSource.getHomeSnapshot(...args);
       },
       getResearchCalendarEvents,
-      getChoiceNewsEvents,
+      getChoiceNewsEventsBatch,
       getHomeIncomeTrend: vi.fn(async (...args: Parameters<ApiClient["getHomeIncomeTrend"]>) =>
         mockSnapshotSource.getHomeIncomeTrend(...args),
       ),
@@ -925,7 +949,7 @@ describe("DashboardHomePage", () => {
     await runPendingIdleIfAny(idle);
 
     await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
+      expect(requestedNewsTopicCodes(getChoiceNewsEventsBatch)).toEqual(
         expect.arrayContaining(["tushare.news.sina"]),
       );
     });
@@ -940,20 +964,21 @@ describe("DashboardHomePage", () => {
     let releaseSnapshot: (() => void) | undefined;
     const idle = stubIdleCallbacks();
     const getResearchCalendarEvents = vi.fn(async () => []);
-    const getChoiceNewsEvents = vi.fn(async (options: Parameters<ApiClient["getChoiceNewsEvents"]>[0]) => {
-      if (options.topicCode === DASHBOARD_MACRO_NEWS_TOPICS[0].code) {
-        return choiceNewsEnvelope([
-          choiceNewsEvent({
-            event_key: "choice-permission-error",
-            topic_code: options.topicCode,
-            error_code: 10001012,
-            error_msg: "insufficient user access",
-            payload_text: null,
-          }),
-        ]);
-      }
-      return mockSnapshotSource.getChoiceNewsEvents(options);
-    });
+    const getChoiceNewsEventsBatch = vi.fn(async (options: ChoiceNewsBatchOptions) =>
+      choiceNewsBatchEnvelope(options, (topicCode) =>
+        topicCode === DASHBOARD_MACRO_NEWS_TOPICS[0].code
+          ? [
+              choiceNewsEvent({
+                event_key: "choice-permission-error",
+                topic_code: topicCode,
+                error_code: 10001012,
+                error_msg: "insufficient user access",
+                payload_text: null,
+              }),
+            ]
+          : [],
+      ),
+    );
     const client = createRealModeHomeClient({
       ...base,
       getHomeSnapshot: async (...args) => {
@@ -963,7 +988,7 @@ describe("DashboardHomePage", () => {
         return mockSnapshotSource.getHomeSnapshot(...args);
       },
       getResearchCalendarEvents,
-      getChoiceNewsEvents,
+      getChoiceNewsEventsBatch,
       getHomeIncomeTrend: vi.fn(async (...args: Parameters<ApiClient["getHomeIncomeTrend"]>) =>
         mockSnapshotSource.getHomeIncomeTrend(...args),
       ),
@@ -987,9 +1012,9 @@ describe("DashboardHomePage", () => {
     await revealHomeBodyDetailAndEventFeeds(idle);
 
     await waitFor(() => {
-      expect(requestedNewsTopicCount(getChoiceNewsEvents, "tushare.npr")).toBe(1);
+      expect(requestedNewsTopicCount(getChoiceNewsEventsBatch, "tushare.npr")).toBe(1);
     });
-    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
+    expect(requestedNewsTopicCodes(getChoiceNewsEventsBatch)).toEqual(
       expect.arrayContaining([
         DASHBOARD_MACRO_NEWS_TOPICS[0].code,
         ...DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code),
@@ -998,12 +1023,13 @@ describe("DashboardHomePage", () => {
     await waitForBondNewsFeedDataDelay();
     await runPendingIdleIfAny(idle);
     await waitFor(() => {
-      expect(requestedNewsGroupIds(getChoiceNewsEvents)).toEqual(
+      expect(requestedNewsGroupIds(getChoiceNewsEventsBatch)).toEqual(
         expect.arrayContaining(bondNewsGroupIds()),
       );
     });
-    expect(requestedNewsTopicCount(getChoiceNewsEvents, "tushare.npr")).toBe(1);
-    expect(requestedNewsGroupIds(getChoiceNewsEvents)).toEqual(
+    // 兜底 topic 只以 topic 形式请求一次；债券侧继续走 group 维度，不重复拉同一 topic。
+    expect(requestedNewsTopicCount(getChoiceNewsEventsBatch, "tushare.npr")).toBe(1);
+    expect(requestedNewsGroupIds(getChoiceNewsEventsBatch)).toEqual(
       expect.arrayContaining(bondNewsGroupIds()),
     );
   });
@@ -1014,32 +1040,36 @@ describe("DashboardHomePage", () => {
     let releaseSnapshot: (() => void) | undefined;
     const idle = stubIdleCallbacks();
     const getResearchCalendarEvents = vi.fn(async () => []);
-    const getChoiceNewsEvents = vi.fn(async (options: Parameters<ApiClient["getChoiceNewsEvents"]>[0]) => {
-      if (options.topicCode === DASHBOARD_MACRO_NEWS_TOPICS[0].code) {
-        return choiceNewsEnvelope([
-          choiceNewsEvent({
-            event_key: "choice-permission-error",
-            topic_code: options.topicCode,
-            error_code: 10001012,
-            error_msg: "insufficient user access",
-            payload_text: null,
-          }),
-        ]);
-      }
-      if (options.groupId === bondNewsProbeGroupId()) {
-        return choiceNewsEnvelope([
-          choiceNewsEvent({
-            event_key: "bond-probe-error",
-            group_id: options.groupId,
-            topic_code: DASHBOARD_BOND_NEWS_TOPICS[0].code,
-            error_code: 10001012,
-            error_msg: "insufficient user access",
-            payload_text: null,
-          }),
-        ]);
-      }
-      return mockSnapshotSource.getChoiceNewsEvents(options);
-    });
+    const getChoiceNewsEventsBatch = vi.fn(async (options: ChoiceNewsBatchOptions) =>
+      choiceNewsBatchEnvelope(
+        options,
+        (topicCode) =>
+          topicCode === DASHBOARD_MACRO_NEWS_TOPICS[0].code
+            ? [
+                choiceNewsEvent({
+                  event_key: "choice-permission-error",
+                  topic_code: topicCode,
+                  error_code: 10001012,
+                  error_msg: "insufficient user access",
+                  payload_text: null,
+                }),
+              ]
+            : [],
+        (groupId) =>
+          groupId === DASHBOARD_BOND_NEWS_TOPICS[0].groupId
+            ? [
+                choiceNewsEvent({
+                  event_key: "bond-probe-error",
+                  group_id: groupId,
+                  topic_code: DASHBOARD_BOND_NEWS_TOPICS[0].code,
+                  error_code: 10001012,
+                  error_msg: "insufficient user access",
+                  payload_text: null,
+                }),
+              ]
+            : [],
+      ),
+    );
     const client = createRealModeHomeClient({
       ...base,
       getHomeSnapshot: async (...args) => {
@@ -1049,7 +1079,7 @@ describe("DashboardHomePage", () => {
         return mockSnapshotSource.getHomeSnapshot(...args);
       },
       getResearchCalendarEvents,
-      getChoiceNewsEvents,
+      getChoiceNewsEventsBatch,
       getHomeIncomeTrend: vi.fn(async (...args: Parameters<ApiClient["getHomeIncomeTrend"]>) =>
         mockSnapshotSource.getHomeIncomeTrend(...args),
       ),
@@ -1075,15 +1105,15 @@ describe("DashboardHomePage", () => {
     await waitForEventFeedDataDelay();
     await runPendingIdleIfAny(idle);
     await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
-        expect.arrayContaining([DASHBOARD_MACRO_NEWS_TOPICS[0].code]),
+      expect(requestedNewsTopicCodes(getChoiceNewsEventsBatch)).toEqual(
+        expect.arrayContaining(DASHBOARD_MACRO_NEWS_TOPICS.map((topic) => topic.code)),
       );
     });
 
     await waitForSecondaryEventFeedDataDelay();
     await runPendingIdleIfAny(idle);
     await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
+      expect(requestedNewsTopicCodes(getChoiceNewsEventsBatch)).toEqual(
         expect.arrayContaining(DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code)),
       );
     });
@@ -1091,13 +1121,10 @@ describe("DashboardHomePage", () => {
     await waitForBondNewsFeedDataDelay();
     await runPendingIdleIfAny(idle);
     await waitFor(() => {
-      expect(requestedNewsGroupIds(getChoiceNewsEvents)).toEqual(
-        expect.arrayContaining([bondNewsProbeGroupId()]),
+      expect(requestedNewsGroupIds(getChoiceNewsEventsBatch)).toEqual(
+        expect.arrayContaining(bondNewsGroupIds()),
       );
     });
-    expect(requestedNewsGroupIds(getChoiceNewsEvents)).toEqual(
-      expect.arrayContaining(remainingBondNewsGroupIdsAfterProbe()),
-    );
   });
 
   it("loads remaining bond news topics when the bond probe has rows", async () => {
@@ -1106,30 +1133,34 @@ describe("DashboardHomePage", () => {
     let releaseSnapshot: (() => void) | undefined;
     const idle = stubIdleCallbacks();
     const getResearchCalendarEvents = vi.fn(async () => []);
-    const getChoiceNewsEvents = vi.fn(async (options: Parameters<ApiClient["getChoiceNewsEvents"]>[0]) => {
-      if (options.topicCode === DASHBOARD_MACRO_NEWS_TOPICS[0].code) {
-        return choiceNewsEnvelope([
-          choiceNewsEvent({
-            event_key: "choice-permission-error",
-            topic_code: options.topicCode,
-            error_code: 10001012,
-            error_msg: "insufficient user access",
-            payload_text: null,
-          }),
-        ]);
-      }
-      if (options.groupId === bondNewsProbeGroupId()) {
-        return choiceNewsEnvelope([
-          choiceNewsEvent({
-            event_key: "bond-probe-hit",
-            group_id: options.groupId,
-            topic_code: DASHBOARD_BOND_NEWS_TOPICS[0].code,
-            payload_text: "债券市场收益率曲线下行，资金面保持宽松。",
-          }),
-        ]);
-      }
-      return mockSnapshotSource.getChoiceNewsEvents(options);
-    });
+    const getChoiceNewsEventsBatch = vi.fn(async (options: ChoiceNewsBatchOptions) =>
+      choiceNewsBatchEnvelope(
+        options,
+        (topicCode) =>
+          topicCode === DASHBOARD_MACRO_NEWS_TOPICS[0].code
+            ? [
+                choiceNewsEvent({
+                  event_key: "choice-permission-error",
+                  topic_code: topicCode,
+                  error_code: 10001012,
+                  error_msg: "insufficient user access",
+                  payload_text: null,
+                }),
+              ]
+            : [],
+        (groupId) =>
+          groupId === DASHBOARD_BOND_NEWS_TOPICS[0].groupId
+            ? [
+                choiceNewsEvent({
+                  event_key: "bond-probe-hit",
+                  group_id: groupId,
+                  topic_code: DASHBOARD_BOND_NEWS_TOPICS[0].code,
+                  payload_text: "债券市场收益率曲线下行，资金面保持宽松。",
+                }),
+              ]
+            : [],
+      ),
+    );
     const client = createRealModeHomeClient({
       ...base,
       getHomeSnapshot: async (...args) => {
@@ -1139,7 +1170,7 @@ describe("DashboardHomePage", () => {
         return mockSnapshotSource.getHomeSnapshot(...args);
       },
       getResearchCalendarEvents,
-      getChoiceNewsEvents,
+      getChoiceNewsEventsBatch,
       getHomeIncomeTrend: vi.fn(async (...args: Parameters<ApiClient["getHomeIncomeTrend"]>) =>
         mockSnapshotSource.getHomeIncomeTrend(...args),
       ),
@@ -1165,7 +1196,7 @@ describe("DashboardHomePage", () => {
     await waitForBondNewsFeedDataDelay();
     await runPendingIdleIfAny(idle);
     await waitFor(() => {
-      expect(requestedNewsGroupIds(getChoiceNewsEvents)).toEqual(
+      expect(requestedNewsGroupIds(getChoiceNewsEventsBatch)).toEqual(
         expect.arrayContaining(bondNewsGroupIds()),
       );
     });
@@ -1975,11 +2006,13 @@ describe("DashboardHomePage", () => {
         {
           accountingClass: "all",
           assetClass: "all",
+          detail: "summary",
         },
       );
       expect(supplementalCalls.getPnlCampisiFourEffects).toHaveBeenCalledWith({
         endDate: "2026-03-31",
         lookbackDays: 30,
+        detail: "summary",
       });
       expect(supplementalCalls.getBondAnalyticsYieldCurveTermStructure).toHaveBeenCalledWith(
         "2026-03-31",
@@ -2689,15 +2722,20 @@ describe("DashboardHomePage", () => {
     const idle = stubIdleCallbacks();
     const getResearchCalendarEvents = vi.fn(async () => []);
     const mockNewsClient = createApiClient({ mode: "mock" });
-    const getChoiceNewsEvents = vi.fn((options) => mockNewsClient.getChoiceNewsEvents(options));
-    const client = createRealModeHomeClient({ getResearchCalendarEvents, getChoiceNewsEvents });
+    const getChoiceNewsEventsBatch = vi.fn((options: ChoiceNewsBatchOptions) =>
+      mockNewsClient.getChoiceNewsEventsBatch(options),
+    );
+    const client = createRealModeHomeClient({
+      getResearchCalendarEvents,
+      getChoiceNewsEventsBatch,
+    });
 
     renderDashboardHome(client);
     await revealHomeBodyDetailAndEventFeeds(idle);
 
     await waitFor(() => {
       expect(getResearchCalendarEvents).toHaveBeenCalled();
-      expect(getChoiceNewsEvents).toHaveBeenCalled();
+      expect(getChoiceNewsEventsBatch).toHaveBeenCalled();
     });
     const calendar = await screen.findByTestId("dashboard-home-research-calendar");
     await waitFor(() => {
@@ -2710,8 +2748,7 @@ describe("DashboardHomePage", () => {
       expect(calendar).toHaveTextContent("供给/招标：已查询当前窗口，暂无事件");
       expect(calendar).not.toHaveTextContent("当前窗口暂无供给/招标事件。");
     });
-    const topicCodes = getChoiceNewsEvents.mock.calls.map(([options]) => options.topicCode);
-    expect(topicCodes).toEqual(
+    expect(requestedNewsTopicCodes(getChoiceNewsEventsBatch)).toEqual(
       expect.arrayContaining([
         "S888010007API",
         "S888010003API",
@@ -2721,9 +2758,13 @@ describe("DashboardHomePage", () => {
         "C000003002",
       ]),
     );
-    expect(requestedNewsGroupIds(getChoiceNewsEvents)).toEqual(
-      expect.arrayContaining(bondNewsGroupIds()),
-    );
+    await waitForBondNewsFeedDataDelay();
+    await runPendingIdleIfAny(idle);
+    await waitFor(() => {
+      expect(requestedNewsGroupIds(getChoiceNewsEventsBatch)).toEqual(
+        expect.arrayContaining(bondNewsGroupIds()),
+      );
+    });
   });
 
   it("keeps an explicit error state when the external event feed fails", async () => {

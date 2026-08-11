@@ -47,6 +47,7 @@ type DashboardHomeToolbarProps = {
   onRefresh: () => void;
   refreshLabel: string;
   refreshAriaLabel?: string;
+  refreshing?: boolean;
   onOpenAgentPanel?: () => void;
 };
 
@@ -67,6 +68,7 @@ export function DashboardHomeToolbar({
   onRefresh,
   refreshLabel,
   refreshAriaLabel = "刷新首页数据",
+  refreshing = false,
   onOpenAgentPanel,
 }: DashboardHomeToolbarProps) {
   const showDateDivergence = hasReportDateDivergence(reportDateContext);
@@ -78,7 +80,6 @@ export function DashboardHomeToolbar({
       <div className={styles.dhTopbarLeft} data-role="dashboard-home-toolbar-left">
         <div className={styles.dhTitleBrand} data-role="dashboard-home-title-brand">
           <h1 className={styles.dhTitle}>{title}</h1>
-          <span className={styles.dhTitleCaption}>/ DECISION DESK</span>
         </div>
 
         <div className={styles.dhToolbarControl} data-role="dashboard-home-date-control">
@@ -194,6 +195,8 @@ export function DashboardHomeToolbar({
           className={styles.dhRefreshBtn}
           onClick={onRefresh}
           aria-label={refreshAriaLabel}
+          aria-busy={refreshing || undefined}
+          data-refreshing={refreshing ? "true" : undefined}
         >
           <LightIcon name="reload" />
           <span className={styles.dhRefreshLabel}>{refreshLabel}</span>

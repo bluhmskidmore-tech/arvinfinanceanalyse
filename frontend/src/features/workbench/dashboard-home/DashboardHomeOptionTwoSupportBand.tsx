@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import type { DashboardHomeBodyView } from "./dashboardHomeBodyView";
 import type { HomeGovernanceStatusKind } from "./dashboardHomeFirstScreenTypes";
 import type { HomeMarketTicker } from "./dashboardHomeMarket";
+import { OptionTwoSparkline } from "./OptionTwoSparkline";
 import styles from "./dashboardHomeOptionTwoSupportBand.module.css";
 
 type DashboardHomeOptionTwoSupportBandProps = {
@@ -12,6 +13,8 @@ type DashboardHomeOptionTwoSupportBandProps = {
 
 const GAP = "—";
 const KEY_TENORS = ["1Y", "3Y", "5Y", "10Y"] as const;
+/** 期限的真实年限，用于小图横轴按比例定位（1/3/5/10 年不是等距）。 */
+const KEY_TENOR_YEARS = [1, 3, 5, 10] as const;
 const FUNDING_PROXY_SERIES = [
   { id: "dr007", label: "DR007", seriesIds: ["M002", "CA.DR007"] },
   { id: "shibor-1m", label: "SHIBOR 1M", seriesIds: ["NCD.SHIBOR.1M"] },
@@ -39,6 +42,28 @@ function governanceStatusLabel(kind: HomeGovernanceStatusKind): string {
 function displayOrGap(value: string | null | undefined): string {
   const normalized = value?.trim();
   return normalized && normalized !== "undefined" ? normalized : GAP;
+}
+
+/** 从已展示的收益率文案取数值（如 "1.60%"/"+1.12%" → 数值），格式不符则不取，仅用于同屏走势示意。 */
+function parseCurveYield(label: string): number | null {
+  const match = /^\s*([+-]?\d{1,3}(?:,\d{3})*(?:\.\d+)?|[+-]?\d+(?:\.\d+)?)\s*%?\s*$/.exec(
+    label,
+  );
+  if (!match) return null;
+  const value = Number(match[1]!.replaceAll(",", ""));
+  return Number.isFinite(value) ? value : null;
+}
+
+/** 微小变动被格式化成 "-0bp"/"+0bp" 时归零并转中性色，避免"负零标红"。 */
+function neutralizeZeroDelta(
+  delta: string,
+  tone: HomeMarketTicker["deltaTone"],
+): { delta: string; tone: HomeMarketTicker["deltaTone"] } {
+  const trimmed = delta.trim();
+  if (/^[-+]0(?:\.0+)?\s*(?:bp|pp|%)?$/.test(trimmed)) {
+    return { delta: trimmed.replace(/^[-+]/, ""), tone: "flat" };
+  }
+  return { delta, tone };
 }
 
 function tickerBySeriesIds(
@@ -73,7 +98,9 @@ function fundingVendorLabel(ticker: HomeMarketTicker): string {
 
 function fundingPolicyLabel(ticker: HomeMarketTicker): string {
   const policy = ticker.policyNote?.trim() ?? "";
-  return policy.includes("FDR007") ? "FDR007代理" : policy;
+  // 长政策说明由行内 title（fundingTickerTitle）全量披露；
+  // 可见行只保留短代理标记，避免整列重复截断的英文长串。
+  return /\bFDR007\b/.test(policy) ? "FDR007代理" : "";
 }
 
 function fundingTickerTitle(ticker: HomeMarketTicker): string {
@@ -115,7 +142,6 @@ function MarketCurvePanel({ view }: { view: DashboardHomeBodyView }) {
     >
       <header className={styles.panelHeader}>
         <div>
-          <span>曲线来源与日期</span>
           <h2 id="option-two-market-curve-title">{displayOrGap(curve.title)}</h2>
         </div>
         <time dateTime={curve.asOfLabel || undefined}>
@@ -124,17 +150,41 @@ function MarketCurvePanel({ view }: { view: DashboardHomeBodyView }) {
       </header>
 
       <div className={styles.curveMeta}>
-        <span>{displayOrGap(context.sourceLabel)}</span>
-        <span>{displayOrGap(context.asOfLabel)}</span>
-        <span>{displayOrGap(context.statusLabel)}</span>
-        <span>{displayOrGap(context.refreshLabel)}</span>
+        <span
+          className={styles.curveMetaSource}
+          title={displayOrGap(context.sourceLabel)}
+        >
+          {displayOrGap(context.sourceLabel)}
+        </span>
+        <span title={displayOrGap(context.asOfLabel)}>
+          {displayOrGap(context.asOfLabel)}
+        </span>
+        <span title={displayOrGap(context.statusLabel)}>
+          {displayOrGap(context.statusLabel)}
+        </span>
+        <span title={displayOrGap(context.refreshLabel)}>
+          {displayOrGap(context.refreshLabel)}
+        </span>
       </div>
 
       {!hasAnyValue ? (
         <p className={styles.gapNotice} data-state="backend-gap">
           {curve.emptyMessage || "关键期限数据暂不可用"}
         </p>
-      ) : null}
+      ) : (
+        <div className={styles.curveSpark}>
+          <OptionTwoSparkline
+            values={rows.map((row) =>
+              row.state === "ready" ? parseCurveYield(row.yieldLabel) : null,
+            )}
+            xValues={KEY_TENOR_YEARS}
+            title={rows
+              .map((row) => `${row.tenor} ${row.yieldLabel}`)
+              .join(" / ")}
+            endDot
+          />
+        </div>
+      )}
 
       <div className={styles.tableScroller}>
         <table
@@ -206,7 +256,6 @@ function FundingProxyPanel({
     >
       <header className={styles.panelHeader}>
         <div>
-          <span>Funding proxy</span>
           <h2 id="option-two-funding-title">资金代理覆盖</h2>
         </div>
         <strong>{statusLabel}</strong>
@@ -214,7 +263,7 @@ function FundingProxyPanel({
 
       <div
         className={styles.coverage}
-        role="img"
+        role="group"
         aria-label={`资金代理覆盖 ${landedCount} 条`}
         title="覆盖数量只表示已落地的正式资金代理行情行数，不代表资金松紧或流动性评分"
       >
@@ -226,6 +275,9 @@ function FundingProxyPanel({
         {fundingRows.map((row) => {
           const ticker = row.ticker;
           const policyLabel = ticker ? fundingPolicyLabel(ticker) : "";
+          const deltaDisplay = ticker
+            ? neutralizeZeroDelta(ticker.delta, ticker.deltaTone)
+            : null;
           return (
             <div
               key={row.id}
@@ -244,8 +296,8 @@ function FundingProxyPanel({
                 >
                   <strong>
                     {displayOrGap(ticker.value)}
-                    <em data-tone={ticker.deltaTone}>
-                      {displayOrGap(ticker.delta)}
+                    <em data-tone={deltaDisplay?.tone ?? ticker.deltaTone}>
+                      {displayOrGap(deltaDisplay?.delta ?? ticker.delta)}
                     </em>
                   </strong>
                   <small>
@@ -284,7 +336,6 @@ function QuickDrilldownPanel({
     >
       <header className={styles.panelHeader}>
         <div>
-          <span>Route-backed</span>
           <h2 id="option-two-quick-drilldowns-title">快捷下钻</h2>
         </div>
         <strong>{`${view.quickDrilldowns.length} 个入口`}</strong>

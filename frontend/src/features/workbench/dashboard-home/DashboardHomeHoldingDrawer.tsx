@@ -133,6 +133,7 @@ export function DashboardHomeHoldingDrawer({
   return createPortal(
     <div
       className={`theme-dh-api ${styles.drawerLayer}`}
+      data-moss-theme-scope="dashboard-home"
       data-testid="dashboard-home-holding-drawer"
     >
       <div

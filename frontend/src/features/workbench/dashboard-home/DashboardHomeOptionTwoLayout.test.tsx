@@ -250,6 +250,37 @@ describe("DashboardHomeOptionTwoBody", () => {
     expect(status.textContent).toContain("valuation");
   });
 
+  it("shows the mock-data banner on the first screen when useMockFallback is true", () => {
+    const view = createMockHomeFirstScreenView();
+    expect(view.useMockFallback).toBe(true);
+
+    render(
+      <MemoryRouter>
+        <DashboardHomeOptionTwoOverview view={view} />
+      </MemoryRouter>,
+    );
+
+    const banner = screen.getByTestId("dashboard-home-mock-banner");
+    expect(banner).toHaveTextContent("演示数据");
+    expect(banner).toHaveTextContent("不作正式判断");
+  });
+
+  it("hides the mock-data banner when the view is not on the mock fallback", () => {
+    const view = {
+      ...createMockHomeFirstScreenView(),
+      useMockFallback: false,
+    };
+
+    render(
+      <MemoryRouter>
+        <DashboardHomeOptionTwoOverview view={view} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByTestId("dashboard-home-mock-banner")).not.toBeInTheDocument();
+    expect(screen.queryByText("演示数据")).not.toBeInTheDocument();
+  });
+
   it("treats distribution pctRaw as display-percent points for sub-one-percent rows", () => {
     const baseView = mapToHomeBodyView({
       reportDate: "2026-06-30",

@@ -1181,7 +1181,7 @@ function buildKeyRiskStrip(
         {
           id: "risk-dv01",
           label: "组合DV01",
-          value: numericValueOrGap(riskIndicators.total_dv01, "dv01"),
+          value: dv01WanValueOrGap(riskIndicators.total_dv01),
           delta: "现值",
           deltaTone: "flat",
         },
@@ -1195,7 +1195,7 @@ function buildKeyRiskStrip(
         {
           id: "spread-dv01",
           label: "利差DV01",
-          value: numericValueOrGap(riskIndicators.total_spread_dv01, "dv01"),
+          value: dv01WanValueOrGap(riskIndicators.total_spread_dv01),
           delta: "现值",
           deltaTone: "flat",
         },

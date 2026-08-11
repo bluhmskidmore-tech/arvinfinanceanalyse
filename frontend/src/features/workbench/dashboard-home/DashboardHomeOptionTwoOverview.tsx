@@ -1,18 +1,22 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { LightIcon } from "../../../components/LightIcon";
+import { mapStatusEntry } from "../../../components/StatusContract";
 import type {
   DashboardHomeFirstScreenView,
+  HomeDataStateKind,
   HomeDecisionAction,
   HomeTerminalKpi,
 } from "./dashboardHomeFirstScreenTypes";
 import {
-  compactClock,
   type HomeStatusKind,
   reportDatePath,
   stateLabel,
   statusTone,
 } from "./dashboardHomeOptionTwoShared";
+import { formatKpiNumeric, parseKpiNumeric } from "./kpiCountUpFormat";
+import { OptionTwoSparkline } from "./OptionTwoSparkline";
 import styles from "./dashboardHomeOptionTwo.module.css";
 
 type DashboardHomeOptionTwoOverviewProps = {
@@ -85,6 +89,87 @@ function decisionTitle(value: string): string {
   return /^趋势判断/.test(title) ? title : `趋势判断：${title}`;
 }
 
+/** 演示数据披露文案统一取自状态契约（dataSource.mock），避免另造词汇。 */
+const MOCK_DATA_DISCLOSURE = mapStatusEntry("dataSource", "mock");
+
+const KPI_COUNT_UP_MS = 900;
+
+function isTestRuntime(): boolean {
+  return (
+    import.meta.env.MODE === "test" ||
+    (import.meta.env as Record<string, unknown>).VITEST != null
+  );
+}
+
+function canAnimateKpiValue(): boolean {
+  return (
+    !isTestRuntime() &&
+    typeof window !== "undefined" &&
+    typeof window.requestAnimationFrame === "function" &&
+    !(
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    )
+  );
+}
+
+/**
+ * 数字滚动（交接包 Interactions 规范）：900ms ease-out；测试与 reduced-motion 直接落定。
+ * 动画帧对读屏隐藏，最终值以 sr-only 常驻，避免辅助技术连读中间帧。
+ */
+function AnimatedKpiValue({
+  value,
+  state,
+}: {
+  value: string;
+  state: HomeDataStateKind;
+}) {
+  const parsed = state === "ready" ? parseKpiNumeric(value) : null;
+  const animatable = parsed != null && canAnimateKpiValue();
+  const [display, setDisplay] = useState(() =>
+    animatable && parsed ? formatKpiNumeric(parsed, 0) : value,
+  );
+
+  useEffect(() => {
+    if (!animatable || !parsed) {
+      setDisplay(value);
+      return undefined;
+    }
+    let frame = 0;
+    let active = true;
+    const start = performance.now();
+    setDisplay(formatKpiNumeric(parsed, 0));
+    const tick = (now: number) => {
+      if (!active) return;
+      const k = Math.min((now - start) / KPI_COUNT_UP_MS, 1);
+      if (k >= 1) {
+        setDisplay(value);
+        return;
+      }
+      const eased = 1 - (1 - k) ** 3;
+      setDisplay(formatKpiNumeric(parsed, parsed.abs * eased));
+      frame = window.requestAnimationFrame(tick);
+    };
+    frame = window.requestAnimationFrame(tick);
+    return () => {
+      active = false;
+      window.cancelAnimationFrame(frame);
+    };
+    // parsed 由 value/state 派生，依赖以两个源为准。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [animatable, state, value]);
+
+  if (!animatable) {
+    return <>{display}</>;
+  }
+  return (
+    <>
+      <span aria-hidden="true">{display}</span>
+      <span className={styles.srOnly}>{value}</span>
+    </>
+  );
+}
+
 function kpiDisplay(
   kpi: DashboardHomeFirstScreenView["terminalKpis"][number],
   semanticId: string,
@@ -148,6 +233,17 @@ export function DashboardHomeOptionTwoOverview({
   const productStateText = stateLabel(productKind);
 
   return (
+    <>
+      {view.useMockFallback ? (
+        <p
+          role="status"
+          data-testid="dashboard-home-mock-banner"
+          className={styles.mockBanner}
+        >
+          <strong>{MOCK_DATA_DISCLOSURE.label}</strong>
+          <span>{MOCK_DATA_DISCLOSURE.description}</span>
+        </p>
+      ) : null}
     <section
       data-testid="dashboard-home-hero"
       className={styles.overview}
@@ -259,7 +355,6 @@ export function DashboardHomeOptionTwoOverview({
         <header className={styles.overviewSectionHeader}>
           <span>02</span>
           <h2 id="option-two-summary-title">组合变化</h2>
-          <strong>{`报告日 ${view.reportDate}`}</strong>
         </header>
 
         <div className={styles.portfolioSummaryBody}>
@@ -268,8 +363,7 @@ export function DashboardHomeOptionTwoOverview({
             className={styles.overviewNarrative}
           >
             <div className={styles.overviewEyebrow}>
-              <strong>观察结论 · 不计入治理待办</strong>
-              <span>{`更新 ${compactClock(view.headerStatus.dataUpdatedAt)}`}</span>
+              <strong>观察结论</strong>
             </div>
             <h3>{decisionTitle(view.decisionRail.conclusion)}</h3>
             <p>{decisionReason}</p>
@@ -307,10 +401,15 @@ export function DashboardHomeOptionTwoOverview({
                 >
                   <span title={kpi.label}>{kpi.label || spec.label}</span>
                   <strong>
-                    {display.value}
+                    <AnimatedKpiValue value={display.value} state={kpi.state} />
                     {display.unit ? <small>{display.unit}</small> : null}
                   </strong>
                   <em data-tone={kpi.deltaTone}>{kpi.delta || "—"}</em>
+                  {kpi.sparkline.length > 1 ? (
+                    <span className={styles.kpiSparkSlot} aria-hidden="true">
+                      <OptionTwoSparkline values={kpi.sparkline} />
+                    </span>
+                  ) : null}
                 </article>
               );
             })}
@@ -318,5 +417,6 @@ export function DashboardHomeOptionTwoOverview({
         </div>
       </section>
     </section>
+    </>
   );
 }

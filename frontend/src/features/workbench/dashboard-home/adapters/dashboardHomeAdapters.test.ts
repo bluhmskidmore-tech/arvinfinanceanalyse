@@ -87,6 +87,12 @@ describe("dashboard-home adapter helpers", () => {
           bond_count: 4,
           percentage: numeric(0.6, "60%", "pct"),
         },
+        {
+          category: "",
+          total_market_value: numeric(0, ""),
+          bond_count: 0,
+          percentage: numeric(0, "", "pct"),
+        },
       ],
     };
     const yieldPayload: YieldDistributionPayload = {
@@ -117,6 +123,13 @@ describe("dashboard-home adapter helpers", () => {
       percentageRaw: 0.6,
       percentageDisplay: "60%",
       count: 4,
+    });
+    expect(assetSection?.rows[1]).toMatchObject({
+      label: "—",
+      valueRaw: 0,
+      valueDisplay: "—",
+      percentageRaw: 0,
+      count: 0,
     });
     expect(yieldSection?.rows[0]).toMatchObject({
       label: "2.5%-3.0%",

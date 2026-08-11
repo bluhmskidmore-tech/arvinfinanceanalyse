@@ -202,7 +202,7 @@ describe("DashboardHomeOptionTwoSupportBand", () => {
     expect(panel).toHaveAttribute("data-state", "ready");
     expect(panel).toHaveTextContent("4 条代理已落地");
     expect(
-      within(panel).getByRole("img", { name: "资金代理覆盖 4 条" }),
+      within(panel).getByRole("group", { name: "资金代理覆盖 4 条" }),
     ).toHaveTextContent("4");
     const dr007 = within(panel).getByText("DR007").closest("div");
     expect(dr007?.querySelector("dd")).toHaveAttribute("data-series-id", "M002");
@@ -211,6 +211,9 @@ describe("DashboardHomeOptionTwoSupportBand", () => {
       "2026-07-29",
     );
     expect(dr007).toHaveTextContent("Choice");
+    // 非 FDR007 的长政策说明不再占可见行，但行级 title 保留全量披露。
+    expect(dr007).not.toHaveTextContent("primary governed DR007 alias");
+    expect(dr007?.getAttribute("title")).toContain("primary governed DR007 alias");
     expect(panel).toHaveTextContent("FDR007代理");
     expect(panel).toHaveTextContent(
       "未接入：R007 / R001 / GC001；不以 DR007 或 SHIBOR 替代",
@@ -272,7 +275,7 @@ describe("DashboardHomeOptionTwoSupportBand", () => {
     expect(panel).toHaveAttribute("data-state", "backend-gap");
     expect(panel).toHaveTextContent("资金代理未落地");
     expect(
-      within(panel).getByRole("img", { name: "资金代理覆盖 0 条" }),
+      within(panel).getByRole("group", { name: "资金代理覆盖 0 条" }),
     ).toHaveTextContent("—");
     expect(panel.querySelectorAll("dd[data-series-id]")).toHaveLength(0);
     expect(

@@ -1,7 +1,12 @@
 import { useMemo } from "react";
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 
 import type { ApiClient } from "../../../api/client";
+import type {
+  ApiEnvelope,
+  ChoiceNewsEventsBatchPayload,
+  ChoiceNewsEventsPayload,
+} from "../../../api/contracts";
 import { apiQueryKeys } from "../../../api/queryKeys";
 import { useDashboardResearchCalendarQuery } from "../pages/useDashboardResearchCalendarQuery";
 import { todayIsoDate } from "../pages/dashboardPageHelpers";
@@ -23,21 +28,131 @@ import {
 } from "../dashboard/services/dashboardApi";
 
 const CHOICE_NEWS_PERMISSION_ERROR_CODE = 10001012;
-const [DASHBOARD_MACRO_NEWS_PROBE_TOPIC, ...DASHBOARD_MACRO_NEWS_REMAINING_TOPICS] =
-  DASHBOARD_MACRO_NEWS_TOPICS;
-// Direct bond-news reads use stable source groups. They intentionally remain
-// independent from the exact-topic macro fallback probes: a fallback topic can
-// be absent while another item in the same landed group is available.
-const DASHBOARD_BOND_NEWS_DEDUPED_TOPICS = DASHBOARD_BOND_NEWS_TOPICS;
-const [DASHBOARD_BOND_NEWS_PROBE_TOPIC, ...DASHBOARD_BOND_NEWS_REMAINING_TOPICS] =
-  DASHBOARD_BOND_NEWS_DEDUPED_TOPICS;
+// News/context feeds tolerate a 5-minute staleness window aligned with the
+// periodic refetch interval, so a remount inside the window reuses cache
+// instead of re-issuing the batch requests. Formal metric queries below keep
+// their own staleTime of 60s.
 const HOME_CONTENT_QUERY_OPTIONS = {
   retry: false,
-  staleTime: 60_000,
+  staleTime: DASHBOARD_HOME_CONTENT_REFETCH_INTERVAL_MS,
   refetchInterval: DASHBOARD_HOME_CONTENT_REFETCH_INTERVAL_MS,
   refetchIntervalInBackground: false,
   refetchOnWindowFocus: true,
 } as const;
+
+type HomeNewsBatchTopicRequest = { topicCode: string; limit: number };
+type HomeNewsBatchGroupRequest = { groupId: string; limit: number };
+type HomeNewsDerivedRequest = { key: string; limit: number };
+
+const MACRO_NEWS_BATCH_TOPICS: readonly HomeNewsBatchTopicRequest[] =
+  DASHBOARD_MACRO_NEWS_TOPICS.map((topic) => ({
+    topicCode: topic.code,
+    limit: DASHBOARD_MACRO_NEWS_TOPIC_LIMIT,
+  }));
+const MACRO_NEWS_FALLBACK_BATCH_TOPICS: readonly HomeNewsBatchTopicRequest[] =
+  DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => ({
+    topicCode: topic.code,
+    limit: topic.queryLimit,
+  }));
+// Direct bond-news reads use stable source groups. They intentionally remain
+// independent from the exact-topic macro fallback probes: a fallback topic can
+// be absent while another item in the same landed group is available.
+const BOND_NEWS_BATCH_GROUPS: readonly HomeNewsBatchGroupRequest[] =
+  DASHBOARD_BOND_NEWS_TOPICS.map((topic) => ({
+    groupId: topic.groupId,
+    limit: DASHBOARD_BOND_NEWS_TOPIC_LIMIT,
+  }));
+
+function sortedBatchFingerprint(entries: readonly string[]): string {
+  return [...entries].sort().join(",");
+}
+
+const MACRO_NEWS_BATCH_FINGERPRINT = sortedBatchFingerprint(
+  MACRO_NEWS_BATCH_TOPICS.map(({ topicCode, limit }) => `${topicCode}:${limit}`),
+);
+const MACRO_NEWS_FALLBACK_BATCH_FINGERPRINT = sortedBatchFingerprint(
+  MACRO_NEWS_FALLBACK_BATCH_TOPICS.map(({ topicCode, limit }) => `${topicCode}:${limit}`),
+);
+const BOND_NEWS_BATCH_FINGERPRINT = sortedBatchFingerprint(
+  BOND_NEWS_BATCH_GROUPS.map(({ groupId, limit }) => `${groupId}:${limit}`),
+);
+
+const MACRO_NEWS_DERIVED_REQUESTS: readonly HomeNewsDerivedRequest[] =
+  MACRO_NEWS_BATCH_TOPICS.map(({ topicCode, limit }) => ({
+    key: `topic:${topicCode}`,
+    limit,
+  }));
+const MACRO_NEWS_FALLBACK_DERIVED_REQUESTS: readonly HomeNewsDerivedRequest[] =
+  MACRO_NEWS_FALLBACK_BATCH_TOPICS.map(({ topicCode, limit }) => ({
+    key: `topic:${topicCode}`,
+    limit,
+  }));
+const BOND_NEWS_DERIVED_REQUESTS: readonly HomeNewsDerivedRequest[] =
+  BOND_NEWS_BATCH_GROUPS.map(({ groupId, limit }) => ({
+    key: `group:${groupId}`,
+    limit,
+  }));
+
+/**
+ * Per-topic query-shaped state derived from one batch request. Mirrors the
+ * subset of the TanStack query result consumed downstream
+ * (`data.result.events` / `data.result` / `isLoading` / `isError` /
+ * `isSuccess`), so view models and sections keep their original per-topic
+ * contract while the network layer collapses to one request per wave.
+ */
+export type DashboardHomeNewsQueryState = {
+  data: ApiEnvelope<ChoiceNewsEventsPayload> | undefined;
+  error: unknown;
+  isLoading: boolean;
+  isError: boolean;
+  isSuccess: boolean;
+};
+
+type HomeNewsBatchQueryState = {
+  data: ApiEnvelope<ChoiceNewsEventsBatchPayload> | undefined;
+  error: unknown;
+  isLoading: boolean;
+  isError: boolean;
+  isSuccess: boolean;
+};
+
+function deriveHomeNewsQueries(
+  batch: HomeNewsBatchQueryState,
+  requests: readonly HomeNewsDerivedRequest[],
+): DashboardHomeNewsQueryState[] {
+  const batchAsOfDate = batch.data?.result_meta.as_of_date ?? null;
+  const rawFutureRowsExcluded = batch.data?.result_meta.filters_applied?.future_rows_excluded;
+  const batchFutureRowsExcluded =
+    typeof rawFutureRowsExcluded === "number" ? rawFutureRowsExcluded : 0;
+  return requests.map(({ key, limit }, index) => {
+    const events =
+      batch.data?.result.batches.find((item) => item.key === key)?.events ?? [];
+    return {
+      // The batch contract only carries per-topic events, so the derived
+      // envelope synthesizes the single-query payload shape around them.
+      // as_of_date is shared by every sub-query; the future-rows count is a
+      // batch-level aggregate, so it goes onto the first payload only —
+      // downstream sums payloads and would otherwise multiply it.
+      data: batch.data
+        ? {
+            result_meta: batch.data.result_meta,
+            result: {
+              total_rows: events.length,
+              limit,
+              offset: 0,
+              as_of_date: batchAsOfDate,
+              excluded_future_rows: index === 0 ? batchFutureRowsExcluded : 0,
+              events,
+            },
+          }
+        : undefined,
+      error: batch.error,
+      isLoading: batch.isLoading,
+      isError: batch.isError,
+      isSuccess: batch.isSuccess,
+    };
+  });
+}
 
 type UseDashboardHomeBodyDataOptions = {
   dataClient: ApiClient;
@@ -75,111 +190,134 @@ export function useDashboardHomeBodyData({
     enabled: loadEventFeeds,
   });
 
-  const macroNewsQueries = useQueries({
-    queries: [{
-      queryKey: ["dashboard", "macro-news", dataClient.mode, DASHBOARD_MACRO_NEWS_PROBE_TOPIC.code],
-      queryFn: () =>
-        dataClient.getChoiceNewsEvents({
-          limit: DASHBOARD_MACRO_NEWS_TOPIC_LIMIT,
-          offset: 0,
-          topicCode: DASHBOARD_MACRO_NEWS_PROBE_TOPIC.code,
-        }),
-      ...HOME_CONTENT_QUERY_OPTIONS,
-      enabled: loadEventFeeds,
-    }],
+  const macroNewsBatchQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "macro-news",
+      dataClient.mode,
+      "batch",
+      MACRO_NEWS_BATCH_FINGERPRINT,
+    ],
+    queryFn: () =>
+      dataClient.getChoiceNewsEventsBatch({ topics: MACRO_NEWS_BATCH_TOPICS }),
+    ...HOME_CONTENT_QUERY_OPTIONS,
+    enabled: loadEventFeeds,
   });
+  const macroNewsQueries = useMemo(
+    () =>
+      deriveHomeNewsQueries(
+        {
+          data: macroNewsBatchQuery.data,
+          error: macroNewsBatchQuery.error,
+          isLoading: macroNewsBatchQuery.isLoading,
+          isError: macroNewsBatchQuery.isError,
+          isSuccess: macroNewsBatchQuery.isSuccess,
+        },
+        MACRO_NEWS_DERIVED_REQUESTS,
+      ),
+    [
+      macroNewsBatchQuery.data,
+      macroNewsBatchQuery.error,
+      macroNewsBatchQuery.isLoading,
+      macroNewsBatchQuery.isError,
+      macroNewsBatchQuery.isSuccess,
+    ],
+  );
+  // Permission probing keeps the original first-topic semantics: the batch
+  // endpoint returns permission-error events inside each topic's events, so
+  // the first topic acts as the representative probe.
   const macroNewsProbeQuery = macroNewsQueries[0];
   const macroNewsProbeHasPermissionError = Boolean(
     macroNewsProbeQuery?.data?.result.events.some(
       (event) => event.error_code === CHOICE_NEWS_PERMISSION_ERROR_CODE,
     ),
   );
-  const loadRemainingChoiceMacroNews =
-    loadEventFeeds &&
-    Boolean(macroNewsProbeQuery?.isSuccess) &&
-    !macroNewsProbeHasPermissionError;
-  const remainingMacroNewsQueries = useQueries({
-    queries: DASHBOARD_MACRO_NEWS_REMAINING_TOPICS.map((topic) => ({
-      queryKey: ["dashboard", "macro-news", dataClient.mode, topic.code],
-      queryFn: () =>
-        dataClient.getChoiceNewsEvents({
-          limit: DASHBOARD_MACRO_NEWS_TOPIC_LIMIT,
-          offset: 0,
-          topicCode: topic.code,
-        }),
-      ...HOME_CONTENT_QUERY_OPTIONS,
-      enabled: loadRemainingChoiceMacroNews,
-    })),
-  });
-  const allMacroNewsQueries = [
-    ...macroNewsQueries.slice(0, 1),
-    ...remainingMacroNewsQueries,
-  ];
   const macroNewsSettled =
     loadEventFeeds &&
-    allMacroNewsQueries.length > 0 &&
+    macroNewsQueries.length > 0 &&
     (macroNewsProbeHasPermissionError ||
       Boolean(macroNewsProbeQuery?.isError) ||
-      allMacroNewsQueries.every((query) => query.isSuccess || query.isError));
+      macroNewsQueries.every((query) => query.isSuccess || query.isError));
   const shouldLoadMacroNewsFallback =
     loadSecondaryEventFeeds &&
     macroNewsSettled &&
     (macroNewsProbeHasPermissionError ||
       Boolean(macroNewsProbeQuery?.isError) ||
-      allMacroNewsQueries.every((query) => query.isError) ||
+      macroNewsQueries.every((query) => query.isError) ||
       shouldRequestHomeMacroNewsFallback({
-        choiceEvents: allMacroNewsQueries.flatMap((query) => query.data?.result.events ?? []),
+        choiceEvents: macroNewsQueries.flatMap((query) => query.data?.result.events ?? []),
         todayIsoDate: dashboardTodayIsoDate,
       }));
 
-  const macroNewsFallbackQueries = useQueries({
-    queries: DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => ({
-      queryKey: ["dashboard", "macro-news-fallback", dataClient.mode, topic.code, topic.queryLimit],
-      queryFn: () =>
-        dataClient.getChoiceNewsEvents({
-          limit: topic.queryLimit,
-          offset: 0,
-          topicCode: topic.code,
+  const macroNewsFallbackBatchQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "macro-news-fallback",
+      dataClient.mode,
+      "batch",
+      MACRO_NEWS_FALLBACK_BATCH_FINGERPRINT,
+    ],
+    queryFn: () =>
+      dataClient.getChoiceNewsEventsBatch({
+        topics: MACRO_NEWS_FALLBACK_BATCH_TOPICS,
       }),
-      ...HOME_CONTENT_QUERY_OPTIONS,
-      enabled: shouldLoadMacroNewsFallback,
-    })),
+    ...HOME_CONTENT_QUERY_OPTIONS,
+    enabled: shouldLoadMacroNewsFallback,
   });
+  const macroNewsFallbackQueries = useMemo(
+    () =>
+      deriveHomeNewsQueries(
+        {
+          data: macroNewsFallbackBatchQuery.data,
+          error: macroNewsFallbackBatchQuery.error,
+          isLoading: macroNewsFallbackBatchQuery.isLoading,
+          isError: macroNewsFallbackBatchQuery.isError,
+          isSuccess: macroNewsFallbackBatchQuery.isSuccess,
+        },
+        MACRO_NEWS_FALLBACK_DERIVED_REQUESTS,
+      ),
+    [
+      macroNewsFallbackBatchQuery.data,
+      macroNewsFallbackBatchQuery.error,
+      macroNewsFallbackBatchQuery.isLoading,
+      macroNewsFallbackBatchQuery.isError,
+      macroNewsFallbackBatchQuery.isSuccess,
+    ],
+  );
 
-  const bondNewsProbeQueries = useQueries({
-    queries: [{
-      queryKey: ["dashboard", "bond-news", dataClient.mode, DASHBOARD_BOND_NEWS_PROBE_TOPIC?.groupId ?? "none"],
-      queryFn: () =>
-        dataClient.getChoiceNewsEvents({
-          limit: DASHBOARD_BOND_NEWS_TOPIC_LIMIT,
-          offset: 0,
-          groupId: DASHBOARD_BOND_NEWS_PROBE_TOPIC?.groupId ?? "",
-        }),
-      ...HOME_CONTENT_QUERY_OPTIONS,
-      enabled: loadBondNewsFeeds && Boolean(DASHBOARD_BOND_NEWS_PROBE_TOPIC),
-    }],
+  const bondNewsBatchQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "bond-news",
+      dataClient.mode,
+      "batch",
+      BOND_NEWS_BATCH_FINGERPRINT,
+    ],
+    queryFn: () =>
+      dataClient.getChoiceNewsEventsBatch({ groups: BOND_NEWS_BATCH_GROUPS }),
+    ...HOME_CONTENT_QUERY_OPTIONS,
+    enabled: loadBondNewsFeeds,
   });
-  const bondNewsProbeQuery = bondNewsProbeQueries[0];
-  const loadRemainingBondNews =
-    loadBondNewsFeeds &&
-    Boolean(bondNewsProbeQuery?.isSuccess || bondNewsProbeQuery?.isError);
-  const remainingBondNewsQueries = useQueries({
-    queries: DASHBOARD_BOND_NEWS_REMAINING_TOPICS.map((topic) => ({
-      queryKey: ["dashboard", "bond-news", dataClient.mode, topic.groupId],
-      queryFn: () =>
-        dataClient.getChoiceNewsEvents({
-          limit: DASHBOARD_BOND_NEWS_TOPIC_LIMIT,
-          offset: 0,
-          groupId: topic.groupId,
-      }),
-      ...HOME_CONTENT_QUERY_OPTIONS,
-      enabled: loadRemainingBondNews,
-    })),
-  });
-  const bondNewsQueries = [
-    ...(DASHBOARD_BOND_NEWS_PROBE_TOPIC ? bondNewsProbeQueries : []),
-    ...remainingBondNewsQueries,
-  ];
+  const bondNewsQueries = useMemo(
+    () =>
+      deriveHomeNewsQueries(
+        {
+          data: bondNewsBatchQuery.data,
+          error: bondNewsBatchQuery.error,
+          isLoading: bondNewsBatchQuery.isLoading,
+          isError: bondNewsBatchQuery.isError,
+          isSuccess: bondNewsBatchQuery.isSuccess,
+        },
+        BOND_NEWS_DERIVED_REQUESTS,
+      ),
+    [
+      bondNewsBatchQuery.data,
+      bondNewsBatchQuery.error,
+      bondNewsBatchQuery.isLoading,
+      bondNewsBatchQuery.isError,
+      bondNewsBatchQuery.isSuccess,
+    ],
+  );
 
   const creditSpreadMigrationQuery = useQuery({
     queryKey: apiQueryKeys.bondAnalyticsCreditSpreadMigration(dataClient.mode, supplementalReportDate),
@@ -196,8 +334,12 @@ export function useDashboardHomeBodyData({
       "MoM",
       "all",
       "all",
+      "summary",
     ),
-    queryFn: () => getReturnDecompositionContext(dataClient, supplementalReportDate ?? ""),
+    queryFn: () =>
+      getReturnDecompositionContext(dataClient, supplementalReportDate ?? "", {
+        detail: "summary",
+      }),
     retry: false,
     staleTime: 60_000,
     enabled: loadDatedFormalData,
@@ -208,8 +350,12 @@ export function useDashboardHomeBodyData({
       dataClient.mode,
       supplementalReportDate,
       30,
+      "summary",
     ),
-    queryFn: () => getCampisiAttributionContext(dataClient, supplementalReportDate ?? ""),
+    queryFn: () =>
+      getCampisiAttributionContext(dataClient, supplementalReportDate ?? "", {
+        detail: "summary",
+      }),
     retry: false,
     staleTime: 60_000,
     enabled: loadDatedFormalData,
@@ -234,7 +380,7 @@ export function useDashboardHomeBodyData({
     campisiFourEffectsQuery,
     yieldCurveTermStructureQuery,
     researchCalendarQuery: researchCalendar.researchCalendarQuery,
-    macroNewsQueries: allMacroNewsQueries,
+    macroNewsQueries,
     macroNewsFallbackQueries,
     bondNewsQueries,
     calendarStartDate: researchCalendar.calendarStartDate,

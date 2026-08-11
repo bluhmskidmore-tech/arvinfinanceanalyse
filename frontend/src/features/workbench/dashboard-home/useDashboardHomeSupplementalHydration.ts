@@ -19,9 +19,12 @@ type IdleWindow = Window & {
   cancelIdleCallback?: (handle: number) => void;
 };
 
-const FIRST_SCREEN_HYDRATION_IDLE_MIN_DELAY_MS = 600;
-const FIRST_SCREEN_HYDRATION_IDLE_TIMEOUT_MS = 1_200;
-const FIRST_SCREEN_HYDRATION_TIMEOUT_FALLBACK_MS = 900;
+// Aligned with the body tiers (150/250/200): these two queries enrich the
+// *first-screen* KPI strip, and the previous 600/1200/900 gate pushed the
+// heaviest of them (headline-kpis) into the very last request wave.
+const FIRST_SCREEN_HYDRATION_IDLE_MIN_DELAY_MS = 150;
+const FIRST_SCREEN_HYDRATION_IDLE_TIMEOUT_MS = 250;
+const FIRST_SCREEN_HYDRATION_TIMEOUT_FALLBACK_MS = 200;
 
 function useFirstScreenHydrationGate(reportDate: string | undefined, enabled: boolean) {
   const [readyReportDate, setReadyReportDate] = useState<string | null>(null);

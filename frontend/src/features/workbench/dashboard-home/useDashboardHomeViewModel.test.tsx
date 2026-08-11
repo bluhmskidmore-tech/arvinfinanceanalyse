@@ -110,9 +110,13 @@ describe("useDashboardHomeViewModel release timing", () => {
 
   it("releases the event-feed/secondary/bond-news chain well under the previous 3-second budget", async () => {
     const reportDate = "2026-05-31";
-    const getChoiceNewsEvents = vi.fn(createApiClient({ mode: "mock" }).getChoiceNewsEvents);
+    // News waves now travel through the batch endpoint (one request per wave)
+    // instead of per-topic getChoiceNewsEvents calls.
+    const getChoiceNewsEventsBatch = vi.fn(
+      createApiClient({ mode: "mock" }).getChoiceNewsEventsBatch,
+    );
     const dataClient = createHomeViewModelClient({
-      getChoiceNewsEvents,
+      getChoiceNewsEventsBatch,
       getResearchCalendarEvents: vi.fn(async () => []),
     });
 
@@ -122,7 +126,7 @@ describe("useDashboardHomeViewModel release timing", () => {
 
     await waitFor(
       () => {
-        expect(getChoiceNewsEvents).toHaveBeenCalled();
+        expect(getChoiceNewsEventsBatch).toHaveBeenCalled();
       },
       { timeout: GATED_QUERY_TIMEOUT_MS },
     );
@@ -131,9 +135,11 @@ describe("useDashboardHomeViewModel release timing", () => {
   it("fires the bond news probe after the event-feed tier, no longer chained behind the macro fallback tier", async () => {
     expect(BOND_NEWS_PROBE_GROUP_ID).toBeTruthy();
     const reportDate = "2026-05-31";
-    const getChoiceNewsEvents = vi.fn(createApiClient({ mode: "mock" }).getChoiceNewsEvents);
+    const getChoiceNewsEventsBatch = vi.fn(
+      createApiClient({ mode: "mock" }).getChoiceNewsEventsBatch,
+    );
     const dataClient = createHomeViewModelClient({
-      getChoiceNewsEvents,
+      getChoiceNewsEventsBatch,
       getResearchCalendarEvents: vi.fn(async () => []),
     });
 
@@ -143,16 +149,19 @@ describe("useDashboardHomeViewModel release timing", () => {
 
     // Each idle gate resolves in ~350ms in this jsdom environment (no
     // requestIdleCallback, so it falls through to the timeout fallback).
-    // The bond news probe now depends only on the event-feed tier (one gate,
-    // ~350ms), not on the event-feed -> secondary-event-feed chain (two
-    // gates, ~700ms) that used to sit in front of it. Asserting it resolves
-    // well inside a single extra tier's budget catches any regression back
-    // to the three-tier chain (which would need ~1050ms).
+    // The bond news wave (a single batch request carrying the probe group)
+    // now depends only on the event-feed tier (one gate, ~350ms), not on the
+    // event-feed -> secondary-event-feed chain (two gates, ~700ms) that used
+    // to sit in front of it. Asserting it resolves well inside a single extra
+    // tier's budget catches any regression back to the three-tier chain
+    // (which would need ~1050ms).
     await waitFor(
       () => {
         expect(
-          getChoiceNewsEvents.mock.calls.some(
-            ([params]) => params.groupId === BOND_NEWS_PROBE_GROUP_ID,
+          getChoiceNewsEventsBatch.mock.calls.some(([options]) =>
+            (options.groups ?? []).some(
+              (group) => group.groupId === BOND_NEWS_PROBE_GROUP_ID,
+            ),
           ),
         ).toBe(true);
       },

@@ -315,10 +315,6 @@ function findMetric(
   return metrics.find((metric) => ids.includes(metric.id));
 }
 
-function flatSparkline(value: number, length = 12): readonly number[] {
-  return Array.from({ length }, () => value);
-}
-
 function buildSparklineFromHistory(history: number[] | null, fallback: readonly number[]): readonly number[] {
   if (history && history.length > 1) {
     return history;
@@ -475,14 +471,29 @@ function terminalKpiFromSnapshotMetric(metric: HomeSnapshotOverviewMetricVM): Ho
   const valueRaw = numericRaw(metric.value);
   const split = splitNumericDisplay(metric.value);
   const delta = valueRaw == null ? GAP : numericDisplay(metric.delta);
+  const deltaRaw = numericRaw(metric.delta);
+  // 变动方向色跟数值符号（绿涨红跌），后端 tone 只保留 warning 语义与无法判向时的回退。
+  const deltaTone: HomeDeltaTone =
+    valueRaw == null
+      ? "muted"
+      : metric.tone === "warning"
+        ? "warn"
+        : deltaRaw != null
+          ? deltaRaw > 0
+            ? "up"
+            : deltaRaw < 0
+              ? "down"
+              : "flat"
+          : metricToneToDelta(metric.tone);
   return {
     id: metric.id,
     label: metric.label,
     value: split.value,
     unit: split.unit,
     delta: delta === GAP ? GAP : `变动 ${delta}`,
-    deltaTone: valueRaw == null ? "muted" : metricToneToDelta(metric.tone),
-    sparkline: buildSparklineFromHistory(metric.history, flatSparkline(numericRaw(metric.value) ?? 1)),
+    deltaTone,
+    // 无真实历史时不再用常数序列兜底：宁可不画线，不用假走势冒充数据。
+    sparkline: buildSparklineFromHistory(metric.history, []),
     state: valueRaw != null ? "ready" : "empty",
   };
 }
@@ -505,6 +516,15 @@ function numericWanParts(value: NumericLike): { value: string; unit?: string } {
     return { value: GAP };
   }
   return { value: formatWan(raw), unit: "万" };
+}
+
+// Raw dv01 values carry yuan-level magnitude even when the source Numeric's own
+// `unit`/`display` claim "dv01" (see numericDisplay's "dv01" branch), so any
+// single-string display (no separate unit field, e.g. keyRiskStrip) must apply
+// the same 万 conversion as numericWanParts/dv01-wan instead of trusting `display`.
+function dv01WanValueOrGap(value: NumericLike): string {
+  const parts = numericWanParts(value);
+  return parts.value === GAP ? GAP : `${parts.value} 万`;
 }
 
 function rawDeltaDisplay(
@@ -585,7 +605,7 @@ function buildTerminalKpis(args: {
       label: "组合市值",
       value: totalMarketValue,
       previous: args.headline?.prev_kpis?.total_market_value,
-      sparkline: buildSparklineFromHistory(aumHistory, flatSparkline(1)),
+      sparkline: buildSparklineFromHistory(aumHistory, []),
       unitHint: "yuan",
     }),
   ];
@@ -609,7 +629,7 @@ function buildTerminalKpis(args: {
         id: "day-pnl",
         label: "月度盈亏（本月）",
         value: args.attribution.total,
-        sparkline: flatSparkline(0.9),
+        sparkline: [],
         unitHint: "yuan",
       }),
     );
@@ -622,7 +642,7 @@ function buildTerminalKpis(args: {
         label: "债券市值（持仓口径）",
         value: args.headline.kpis.total_market_value,
         previous: args.headline.prev_kpis?.total_market_value,
-        sparkline: flatSparkline(1.2),
+        sparkline: [],
         unitHint: "yuan",
       }),
     );
@@ -635,7 +655,7 @@ function buildTerminalKpis(args: {
         label: "未实现损益（存量）",
         value: args.headline.kpis.unrealized_pnl,
         previous: args.headline.prev_kpis?.unrealized_pnl,
-        sparkline: flatSparkline(0.8),
+        sparkline: [],
         unitHint: "yuan",
       }),
     );
@@ -648,7 +668,7 @@ function buildTerminalKpis(args: {
         label: "加权久期",
         value: duration,
         previous: args.headline?.prev_kpis?.weighted_duration,
-        sparkline: flatSparkline(1.05),
+        sparkline: [],
         unitHint: "ratio",
       }),
     );
@@ -661,7 +681,7 @@ function buildTerminalKpis(args: {
         label: "组合YTM",
         value: levelDisplayNumeric(ytm),
         previous: args.headline?.prev_kpis?.weighted_ytm,
-        sparkline: flatSparkline(1.1),
+        sparkline: [],
         unitHint: "pct",
       }),
     );
@@ -673,7 +693,7 @@ function buildTerminalKpis(args: {
         id: "credit-ratio",
         label: "信用占比",
         value: ratioAsPercentNumeric(creditRatio),
-        sparkline: flatSparkline(0.95),
+        sparkline: [],
         unitHint: "pct",
       }),
     );
@@ -755,12 +775,13 @@ function buildKeyRiskStrip(args: {
   const issuerTop5Weight = args.portfolio?.issuer_top5_weight;
 
   return [
-    riskTickerFromNumeric({
+    {
       id: "risk-dv01",
       label: "利率敏感度",
-      value: totalDv01,
-      unitHint: "dv01",
-    }),
+      value: dv01WanValueOrGap(totalDv01),
+      delta: "当前值",
+      deltaTone: "flat" as const,
+    },
     riskTickerFromNumeric({
       id: "risk-duration",
       label: "久期",

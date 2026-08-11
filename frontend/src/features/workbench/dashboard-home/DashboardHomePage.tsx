@@ -47,6 +47,40 @@ const DeferredTerminalHomeContent = lazy(() =>
   })),
 );
 
+const HOME_DEFERRED_CHUNK_PREFETCH_DELAY_MS = 600;
+
+/**
+ * 下折内容藏在 800ms 揭示门控之后，但它的 chunk 原本要等门控放行才开始下载，
+ * 形成 Content → Body → API client 三跳串行 RTT，把第二波请求推迟 150-300ms。
+ * 在门控等待的窗口里用运行时 import() 预热同一批模块：只下载求值、不渲染、
+ * 不发请求，揭示时机不变；chunk 归属与 HTML 预加载预算也不变（bundle 守卫禁止
+ * 这些 chunk 出现在 eager preload 里，运行时 import() 不在其检查范围）。
+ * 用 setTimeout 而非 requestIdleCallback：600ms 已避开首屏渲染，且不占用
+ * 揭示门控依赖的 idle 队列。
+ */
+function useDeferredHomeChunkPrefetch() {
+  useEffect(() => {
+    // 纯网络预热，测试环境里既无意义又会把真实 chunk 拉进 jsdom。
+    if (import.meta.env.TEST) {
+      return undefined;
+    }
+    let cancelled = false;
+    const timeoutHandle = window.setTimeout(() => {
+      if (cancelled) {
+        return;
+      }
+      void import("./DeferredTerminalHomeContent");
+      void import("./DeferredTerminalHomeBody");
+      void import("../../../api/homeSupplementalClient");
+      void import("../../../api/homeMarketTickerClient");
+    }, HOME_DEFERRED_CHUNK_PREFETCH_DELAY_MS);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutHandle);
+    };
+  }, []);
+}
+
 const LazyDashboardHomeAgentDrawer = lazy(() =>
   import("./DashboardHomeAgentDrawer").then((module) => ({
     default: module.DashboardHomeAgentDrawer,
@@ -264,6 +298,7 @@ function useDeferredHomeContent(
 export default function DashboardHomePage() {
   const location = useLocation();
   const layoutScrollRootRef = useRef<HTMLDivElement | null>(null);
+  useDeferredHomeChunkPrefetch();
   const shouldFocusPolicyFunding = isPolicyFundingDeepLink(location.pathname);
   const {
     view,
@@ -291,12 +326,57 @@ export default function DashboardHomePage() {
   const lastSnapshotErrorDetailRef = useRef<string | null>(null);
   const [agentPanelOpen, setAgentPanelOpen] = useState(false);
   const [agentPanelMounted, setAgentPanelMounted] = useState(false);
+  const [refreshNotice, setRefreshNotice] = useState<string | null>(null);
+  const refreshNoticeTimerRef = useRef<number | null>(null);
   const activeReportDate = view.reportDate;
 
   const openAgentPanel = useCallback(() => {
     setAgentPanelMounted(true);
     setAgentPanelOpen(true);
   }, []);
+
+  // 手动刷新完成后的轻量反馈（交接包 Interactions；测试环境静默）。
+  // 直接消费 refetch 的 Promise 结果，不依赖 isFetching/isSuccess 边沿推断。
+  const handleToolbarRefresh = useCallback(() => {
+    void (async () => {
+      let succeeded = true;
+      try {
+        const result = (await refreshSnapshot()) as
+          | { isSuccess?: boolean; status?: string }
+          | null
+          | undefined;
+        if (result && (result.isSuccess === false || result.status === "error")) {
+          succeeded = false;
+        }
+      } catch {
+        succeeded = false;
+      }
+      if (
+        !succeeded ||
+        import.meta.env.MODE === "test" ||
+        (import.meta.env as Record<string, unknown>).VITEST != null
+      ) {
+        return;
+      }
+      setRefreshNotice("首页数据已刷新");
+      if (refreshNoticeTimerRef.current != null) {
+        window.clearTimeout(refreshNoticeTimerRef.current);
+      }
+      refreshNoticeTimerRef.current = window.setTimeout(() => {
+        setRefreshNotice(null);
+        refreshNoticeTimerRef.current = null;
+      }, 2300);
+    })();
+  }, [refreshSnapshot]);
+
+  useEffect(
+    () => () => {
+      if (refreshNoticeTimerRef.current != null) {
+        window.clearTimeout(refreshNoticeTimerRef.current);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     setHydratedFirstScreen(null);
@@ -416,9 +496,10 @@ export default function DashboardHomePage() {
           decisionActions={firstScreenView.decisionRail.actions}
           allowPartial={allowPartial}
           onAllowPartialChange={setAllowPartial}
-          onRefresh={() => void refreshSnapshot()}
+          onRefresh={handleToolbarRefresh}
           refreshLabel={snapshotQuery.isFetching ? "刷新中…" : "刷新"}
           refreshAriaLabel="刷新首页数据"
+          refreshing={snapshotQuery.isFetching}
           onOpenAgentPanel={openAgentPanel}
         />
 
@@ -455,6 +536,12 @@ export default function DashboardHomePage() {
               onClose={() => setAgentPanelOpen(false)}
             />
           </Suspense>
+        ) : null}
+
+        {refreshNotice ? (
+          <div className={optionTwoStyles.refreshToast} role="status">
+            {refreshNotice}
+          </div>
         ) : null}
       </section>
     </div>

@@ -8,6 +8,7 @@ import type {
   SpreadAnalysisPayload,
   YieldDistributionPayload,
 } from "../../../../api/contracts";
+import { EM_DASH } from "../../../../utils/format";
 
 export type HomeDistributionRowView = {
   id: string;
@@ -47,7 +48,7 @@ function numericRaw(value: Numeric | null | undefined): number | null {
 
 function numericDisplay(value: Numeric | null | undefined): string {
   const display = value?.display?.trim();
-  return display ? display : "--";
+  return display ? display : EM_DASH;
 }
 
 function maybePercentageDisplay(value: Numeric | null | undefined): string | undefined {
@@ -92,7 +93,7 @@ function mapStructureSection<T extends StructurePayload["items"][number]>(
       withOptionalFields(
         {
           id: `${key}-${getLabel(item) || index}`,
-          label: getLabel(item) || "--",
+          label: getLabel(item) || EM_DASH,
           valueRaw: numericRaw(item.total_market_value),
           valueDisplay: numericDisplay(item.total_market_value),
           percentageRaw: numericRaw(item.percentage),
@@ -113,7 +114,7 @@ function mapYieldDistribution(payload: YieldDistributionPayload | undefined): Ho
     reportDate: payload?.report_date ?? "",
     rows: (payload?.items ?? []).map((item, index) => ({
       id: `yield-${item.yield_bucket || index}`,
-      label: item.yield_bucket || "--",
+      label: item.yield_bucket || EM_DASH,
       valueRaw: numericRaw(item.total_market_value),
       valueDisplay: numericDisplay(item.total_market_value),
       percentageRaw: null,
@@ -129,7 +130,7 @@ function mapPortfolioComparison(payload: PortfolioComparisonPayload | undefined)
     reportDate: payload?.report_date ?? "",
     rows: (payload?.items ?? []).map((item, index) => ({
       id: `portfolio-${item.portfolio_name || index}`,
-      label: item.portfolio_name || "--",
+      label: item.portfolio_name || EM_DASH,
       valueRaw: numericRaw(item.total_market_value),
       valueDisplay: numericDisplay(item.total_market_value),
       percentageRaw: null,
@@ -145,7 +146,7 @@ function mapSpread(payload: SpreadAnalysisPayload | undefined): HomeDistribution
     reportDate: payload?.report_date ?? "",
     rows: (payload?.items ?? []).map((item, index) => ({
       id: `spread-${item.bond_type || index}`,
-      label: item.bond_type || "--",
+      label: item.bond_type || EM_DASH,
       valueRaw: numericRaw(item.total_market_value),
       valueDisplay: numericDisplay(item.total_market_value),
       percentageRaw: null,
@@ -161,9 +162,9 @@ function mapBusinessType(payload: BondBusinessTypeMetricsResult | undefined): Ho
     reportDate: payload?.report_date ?? "",
     rows: (payload?.items ?? []).map((item, index) => ({
       id: `business-type-${item.name || index}`,
-      label: item.name || "--",
+      label: item.name || EM_DASH,
       valueRaw: parseDisplayNumber(item.market_value),
-      valueDisplay: item.market_value || "--",
+      valueDisplay: item.market_value || EM_DASH,
       percentageRaw: null,
     })),
   };

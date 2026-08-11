@@ -35,6 +35,23 @@
   -webkit-font-smoothing: antialiased;
 }
 
+/*
+ * Nocturne 首页换肤：色板与 dh-api 重映射的唯一定义在 tokens.css
+ * （[data-moss-theme-scope="dashboard-home"] 块）。这里只用双写类名
+ * 复述 shell 模块 .dhApiBackedHome 在同一元素上重复定义过的少数变量，
+ * 保证与模块注入顺序无关；全部走 var 引用，不落裸 hex。
+ */
+.page.page {
+  --dh-api-line: var(--nct-ring);
+  --dh-api-line-soft: var(--nct-line);
+  --dh-api-gold: var(--nct-warn);
+  --dh-api-blue-soft: color-mix(in srgb, var(--nct-accent) 12%, transparent);
+  --dh-api-green-soft: color-mix(in srgb, var(--nct-up) 12%, transparent);
+  --dh-api-amber-soft: color-mix(in srgb, var(--nct-warn) 13%, transparent);
+  --dh-api-red-soft: color-mix(in srgb, var(--nct-down) 13%, transparent);
+  background: var(--nct-bg);
+}
+
 .page > [data-testid="dashboard-home-toolbar"] {
   display: flex;
   height: 54px;
@@ -45,7 +62,7 @@
   border: 0;
   border-bottom: 1px solid var(--option-two-line);
   border-radius: 0;
-  background: rgba(6, 15, 26, 0.98);
+  background: var(--option-two-bg);
 }
 
 .page
@@ -130,7 +147,7 @@
   align-items: center;
   gap: 8px;
   color: var(--option-two-muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .page
@@ -144,7 +161,7 @@
 .page
   > [data-testid="dashboard-home-toolbar"]
   [data-role="dashboard-home-date-value"] {
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .page
@@ -175,7 +192,7 @@
   border-color: var(--option-two-line-strong);
   border-radius: var(--dh-api-radius, 6px);
   background: transparent;
-  font-size: 10px;
+  font-size: 11px;
   white-space: nowrap;
 }
 
@@ -184,15 +201,27 @@
   [data-role="dashboard-home-status-row"]
   > * {
   display: inline-flex;
+  border-radius: 999px;
 }
 
 .page
   > [data-testid="dashboard-home-toolbar"]
   [data-role="dashboard-home-status-row"]
   [data-tone="ok"] {
-  border-color: rgba(89, 185, 135, 0.28) !important;
-  background: rgba(24, 62, 47, 0.12) !important;
+  border-color: color-mix(in srgb, var(--option-two-green) 38%, transparent) !important;
+  background: color-mix(in srgb, var(--option-two-green) 8%, transparent) !important;
   color: var(--option-two-green) !important;
+}
+
+.page > [data-testid="dashboard-home-toolbar"] button:hover {
+  background: color-mix(in srgb, var(--option-two-blue) 10%, transparent);
+}
+
+.page
+  > [data-testid="dashboard-home-toolbar"]
+  [data-testid="dashboard-home-agent-open"] {
+  border-color: color-mix(in srgb, var(--option-two-blue) 55%, transparent);
+  color: var(--option-two-blue);
 }
 
 .page
@@ -285,6 +314,18 @@
   height: 1px;
 }
 
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .overview,
 .holdingsChanges,
 .riskTasks,
@@ -307,6 +348,31 @@
   gap: 10px;
   border: 0;
   background: transparent;
+}
+
+/* 演示数据披露横幅：仅 useMockFallback=true 时渲染在首屏顶部。 */
+.mockBanner {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--option-two-red) 45%, transparent);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-api-red-soft);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.mockBanner > strong {
+  color: var(--option-two-red);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.mockBanner > span {
+  color: var(--option-two-soft);
 }
 
 .todayPanel,
@@ -436,8 +502,9 @@
   white-space: nowrap;
 }
 
+/* 结论标题用主墨色；"待复核"等状态语义由左列状态格与使用范围 chip 承担（琥珀降噪）。 */
 .overviewAttention > strong {
-  color: var(--option-two-amber);
+  color: var(--option-two-ink);
   font-size: 14px;
   line-height: 22px;
 }
@@ -556,7 +623,7 @@
 .overviewNarrative h3 {
   overflow: hidden;
   margin: 0;
-  color: var(--option-two-amber);
+  color: var(--option-two-ink);
   font-size: 15px;
   line-height: 22px;
   letter-spacing: -0.01em;
@@ -592,7 +659,7 @@
 .panelHeader a:hover,
 .trustFooter a:hover,
 .marketResearchPanel footer a:hover {
-  color: color-mix(in srgb, var(--option-two-blue) 72%, var(--option-two-ink));
+  color: var(--nct-accent-300);
 }
 
 .kpiRail {
@@ -670,14 +737,39 @@
   white-space: nowrap;
 }
 
+.kpiSparkSlot {
+  display: block;
+  height: 20px;
+  min-height: 20px;
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--option-two-blue);
+}
+
+.kpiSparkSlot svg {
+  display: block;
+  width: 100%;
+  height: 20px;
+  opacity: 0.85;
+}
+
+.kpiItem[data-state="empty"] .kpiSparkSlot,
+.kpiItem[data-state="partial"] .kpiSparkSlot {
+  opacity: 0.35;
+}
+
+/*
+ * 涨跌色统一为「涨/正=绿、跌/负=红」（Nocturne 交接稿 --up/--down 语义，
+ * 业主 2026-08-11 确认）。持仓变动矩阵的 increase=绿/decrease=红 与此一致。
+ */
 .page [data-tone="up"],
-.page [data-tone="bad"] {
-  color: var(--option-two-red) !important;
+.page [data-tone="ok"] {
+  color: var(--option-two-green) !important;
 }
 
 .page [data-tone="down"],
-.page [data-tone="ok"] {
-  color: var(--option-two-green) !important;
+.page [data-tone="bad"] {
+  color: var(--option-two-red) !important;
 }
 
 .page [data-tone="warn"] {
@@ -779,6 +871,95 @@
       38fr
     );
   gap: 12px;
+}
+
+/*
+ * 懒加载区块入场显现（一次性，随分级加载挂载触发；§8 minimal-functional）。
+ * 仅 opacity/transform，占位高度已由骨架保留，不产生布局位移。
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .availabilityNotice,
+  .holdingsChanges,
+  .riskTasks,
+  .analyticsPanel,
+  .marketResearchPanel,
+  .trustFooter,
+  .extendedEvidence > section {
+    animation: optionTwoPanelRise 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  }
+
+  .riskTasks {
+    animation-delay: 45ms;
+  }
+
+  .analyticsPanel {
+    animation-delay: 90ms;
+  }
+
+  .marketResearchPanel {
+    animation-delay: 135ms;
+  }
+
+  .trustFooter {
+    animation-delay: 180ms;
+  }
+
+  .extendedEvidence > section:nth-child(2) {
+    animation-delay: 45ms;
+  }
+}
+
+@keyframes optionTwoPanelRise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+/* 刷新按钮加载指示：仅在拉取快照期间旋转（状态反馈，非装饰循环）。 */
+@media (prefers-reduced-motion: no-preference) {
+  .page
+    > [data-testid="dashboard-home-toolbar"]
+    button[data-refreshing="true"]
+    svg {
+    animation: optionTwoSpin 0.8s linear infinite;
+  }
+}
+
+@keyframes optionTwoSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.refreshToast {
+  position: fixed;
+  bottom: calc(26px + env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  z-index: 60;
+  max-width: calc(100vw - 24px);
+  padding: 7px 16px;
+  border: 1px solid var(--option-two-line-strong);
+  border-radius: 999px;
+  background: var(--option-two-panel-3);
+  color: var(--option-two-ink);
+  font-size: 12px;
+  line-height: 18px;
+  transform: translateX(-50%);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .refreshToast {
+    animation: optionTwoToastIn 0.18s ease-out;
+  }
+}
+
+@keyframes optionTwoToastIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 6px);
+  }
 }
 
 .availabilityNotice {
@@ -999,7 +1180,7 @@
 .researchTableWrap td {
   height: 22px;
   padding: 2px 5px;
-  border-bottom: 1px solid rgba(116, 151, 194, 0.14);
+  border-bottom: 1px solid color-mix(in srgb, var(--option-two-ink) 9%, transparent);
   overflow: hidden;
   color: var(--option-two-soft);
   font-size: 12px;
@@ -1022,6 +1203,13 @@
 .positionMatrix th:nth-child(n + 2),
 .positionMatrix td:nth-child(n + 2) {
   text-align: right;
+}
+
+/* 数值列统一走数据字体（§3：对比性数字必须 tabular 等宽栈）。 */
+.holdingsTablePanel td:nth-child(n + 4),
+.positionMatrix td:nth-child(n + 2),
+.incomeTrend table td {
+  font-family: var(--option-two-font-data);
 }
 
 .holdingsTablePanel th:first-child,
@@ -1086,11 +1274,11 @@
 .holdingsTablePanel tbody tr:hover,
 .holdingsTablePanel tbody tr:focus-visible {
   outline: none;
-  background: rgba(117, 169, 227, 0.08);
+  background: color-mix(in srgb, var(--option-two-blue) 8%, transparent);
 }
 
 .positionMatrix th:first-child {
-  width: 50%;
+  width: 44%;
 }
 
 .positionMatrix td:first-child strong,
@@ -1111,22 +1299,13 @@
   font-family: var(--font-tabular, Consolas, monospace);
 }
 
+/* 语义色只落在承载方向的数字上，去掉整格底色块（色块减负）。 */
 .positionMatrix td[data-direction="increase"] {
   color: var(--option-two-green);
-  background: rgba(103, 201, 154, 0.08);
 }
 
 .positionMatrix td[data-direction="decrease"] {
   color: var(--option-two-red);
-  background: rgba(223, 121, 111, 0.08);
-}
-
-.positionMatrix td[data-tone="up"] {
-  background: rgba(103, 201, 154, 0.08);
-}
-
-.positionMatrix td[data-tone="down"] {
-  background: rgba(223, 121, 111, 0.08);
 }
 
 .positionMatrix td[data-direction] a {
@@ -1164,13 +1343,30 @@
 }
 
 .incomeTrend > h3 {
+  display: flex;
   margin: 0;
   height: 24px;
   padding: 0 8px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   line-height: 24px;
   color: var(--option-two-ink);
   font-size: 11px;
   font-weight: 600;
+}
+
+.incomeTrend > h3 > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.incomeTrendSpark {
+  width: 92px;
+  height: 14px;
+  flex: 0 0 auto;
+  color: var(--option-two-blue);
 }
 
 .incomeTrend .stateMessage {
@@ -1249,7 +1445,7 @@
   overflow: hidden;
   color: var(--option-two-ink);
   font-family: var(--font-tabular, Consolas, monospace);
-  font-size: 11px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1337,7 +1533,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  border-top: 1px solid rgba(116, 151, 194, 0.14);
+  border-top: 1px solid color-mix(in srgb, var(--option-two-ink) 9%, transparent);
 }
 
 .actionList > div > span {
@@ -1389,7 +1585,7 @@
 .actionList em {
   flex: 0 0 auto;
   padding: 2px 7px;
-  border: 1px solid rgba(210, 170, 94, 0.45);
+  border: 1px solid color-mix(in srgb, var(--option-two-amber) 45%, transparent);
   border-radius: var(--dh-api-radius, 6px);
   background: transparent;
   color: var(--option-two-amber);
@@ -1476,17 +1672,18 @@
 }
 
 .distributionRow {
+  position: relative;
   display: grid;
-  height: 17px;
+  height: 18px;
   min-width: 0;
   align-items: center;
   grid-template-columns: minmax(72px, 1fr) auto auto;
   gap: 6px;
   color: var(--option-two-soft);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 16px;
   font-variant-numeric: tabular-nums;
-  border-bottom: 1px solid rgba(116, 151, 194, 0.1);
+  border-bottom: 1px solid color-mix(in srgb, var(--option-two-ink) 7%, transparent);
 }
 
 .distributionRow > span {
@@ -1495,26 +1692,47 @@
   white-space: nowrap;
 }
 
+/* 分布占比微条：沿行底 2px，视觉编码不占行高。 */
 .distributionRow progress {
-  display: none;
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: block;
+  width: 100%;
+  height: 2px;
+  border: 0;
+  appearance: none;
+  background: transparent;
+  pointer-events: none;
 }
 
 .distributionRow progress::-webkit-progress-bar {
-  background: rgba(117, 169, 227, 0.12);
+  background: transparent;
 }
 
 .distributionRow progress::-webkit-progress-value {
-  background: var(--option-two-blue);
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--option-two-blue) 55%, var(--option-two-bg)),
+    var(--option-two-blue)
+  );
 }
 
 .distributionRow progress::-moz-progress-bar {
-  background: var(--option-two-blue);
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--option-two-blue) 55%, var(--option-two-bg)),
+    var(--option-two-blue)
+  );
 }
 
 .distributionRow strong,
 .distributionRow em {
   overflow: hidden;
   color: var(--option-two-soft);
+  font-family: var(--option-two-font-data);
+  font-size: 12px;
   font-style: normal;
   font-weight: 500;
   text-align: right;
@@ -1687,7 +1905,7 @@
   grid-template-columns: 72px minmax(0, 1fr) 124px;
   align-items: center;
   gap: 8px;
-  border-bottom: 1px solid rgba(116, 151, 194, 0.14);
+  border-bottom: 1px solid color-mix(in srgb, var(--option-two-ink) 9%, transparent);
 }
 
 .researchList span,
@@ -2250,6 +2468,96 @@
       > small
   ) {
   display: none !important;
+}
+
+/*
+ * Nocturne 同步到工作台外壳：变量由 tokens.css 的
+ * .workbench-shell-grid:has([data-moss-theme-scope="dashboard-home"]) 块提供；
+ * 这里只负责背景铺色，并压过 workbenchShell.css 里 cockpit 变体的
+ * 硬编码藏青渐变与金色高亮（均带 !important），全部走 var 引用。
+ */
+:global(
+  .workbench-shell-grid.workbench-shell-grid:has(
+      [data-testid="dashboard-home-page"]
+    )
+) {
+  /* cockpit 变体的钢蓝径向渐变带 !important，此处必须同级压制。 */
+  background: var(--nct-bg) !important;
+}
+
+:global(
+  .workbench-shell-grid--cockpit.workbench-shell-grid--cockpit:has(
+      [data-testid="dashboard-home-page"]
+    )
+    .workbench-shell-rail-brand-wrap
+) {
+  border-bottom-color: var(--nct-line) !important;
+}
+
+:global(
+  .workbench-shell-grid--cockpit.workbench-shell-grid--cockpit:has(
+      [data-testid="dashboard-home-page"]
+    )
+    .workbench-shell-rail
+) {
+  background: var(--nct-rail) !important;
+  border-right: 1px solid var(--nct-line) !important;
+}
+
+:global(
+  .workbench-shell-grid--cockpit.workbench-shell-grid--cockpit:has(
+      [data-testid="dashboard-home-page"]
+    )
+    .workbench-shell-rail-mark
+) {
+  background: var(--nct-surface) !important;
+  border: 1px solid var(--nct-ring) !important;
+  box-shadow: none !important;
+  color: var(--nct-accent-300) !important;
+}
+
+:global(
+  .workbench-shell-grid--cockpit.workbench-shell-grid--cockpit:has(
+      [data-testid="dashboard-home-page"]
+    )
+    .workbench-shell-group-link:hover
+),
+:global(
+  .workbench-shell-grid--cockpit.workbench-shell-grid--cockpit:has(
+      [data-testid="dashboard-home-page"]
+    )
+    .workbench-shell-agent-nav__link:hover
+),
+:global(
+  .workbench-shell-grid--cockpit.workbench-shell-grid--cockpit:has(
+      [data-testid="dashboard-home-page"]
+    )
+    .workbench-shell-support-link:hover
+) {
+  background: color-mix(in srgb, var(--nct-accent) 9%, transparent) !important;
+  border-color: color-mix(in srgb, var(--nct-accent) 22%, transparent) !important;
+}
+
+:global(
+  .workbench-shell-grid--cockpit.workbench-shell-grid--cockpit:has(
+      [data-testid="dashboard-home-page"]
+    )
+    .workbench-shell-group-link[data-active="true"]
+) {
+  background: color-mix(in srgb, var(--nct-accent) 13%, transparent) !important;
+  border-color: color-mix(in srgb, var(--nct-accent) 30%, transparent) !important;
+  box-shadow: inset 2px 0 0 var(--nct-accent) !important;
+  color: var(--nct-accent-300) !important;
+}
+
+:global(
+  .workbench-shell-grid--cockpit.workbench-shell-grid--cockpit:has(
+      [data-testid="dashboard-home-page"]
+    )
+    a[data-active="true"]
+    .workbench-shell-group-icon
+) {
+  color: var(--nct-accent-400) !important;
 }
 
 :global(
@@ -2885,12 +3193,23 @@
   .kpiItem {
     height: 92px;
     min-height: 0;
+    padding-block: 8px;
     padding-inline: 8px;
   }
 
   .kpiItem > strong,
   .kpiItem[data-compact-value="true"] > strong {
     font-size: 16px;
+    line-height: 22px;
+  }
+
+  /* 92px 预算装不下走势线：该断点整体隐藏，保住数值与变动的可读性。 */
+  .kpiSparkSlot {
+    display: none;
+  }
+
+  .holdingsTablePanel th:nth-child(7) {
+    width: 66px;
   }
 
   .bodyGrid {
@@ -2970,7 +3289,7 @@
   }
 
   .holdingsTablePanel th:nth-child(3) {
-    width: 172px;
+    width: 148px;
   }
 
   .positionMatrix th,

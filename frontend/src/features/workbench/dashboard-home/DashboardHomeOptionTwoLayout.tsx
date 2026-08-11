@@ -18,6 +18,7 @@ import { DashboardHomeHoldingDrawer } from "./DashboardHomeHoldingDrawer";
 import { DashboardHomeOptionTwoGovernanceSection } from "./DashboardHomeOptionTwoGovernanceSection";
 import { DashboardHomeOptionTwoResearchList } from "./DashboardHomeOptionTwoResearchList";
 import { DashboardHomeOptionTwoSupportBand } from "./DashboardHomeOptionTwoSupportBand";
+import { OptionTwoSparkline } from "./OptionTwoSparkline";
 import {
   compactClock,
   reportDatePath,
@@ -163,7 +164,11 @@ function DistributionColumn({
         {rows.slice(0, 6).map((row) => (
           <div key={row.id} className={styles.distributionRow}>
             <span title={row.label}>{row.label}</span>
-            <progress max={100} value={distributionPercent(row.pctRaw)} />
+            <progress
+              max={100}
+              value={distributionPercent(row.pctRaw)}
+              aria-label={`${row.label} 占比 ${row.pct}`}
+            />
             <strong>{row.value}</strong>
             <em>{row.pct}</em>
           </div>
@@ -488,7 +493,18 @@ export function DashboardHomeOptionTwoBody({
                 <strong>{stateLabel(view.portfolioComparisonState.kind)}</strong>
               </div>
               <section className={styles.incomeTrend} data-testid="dashboard-home-income-trend">
-                <h3>收益趋势（组合 / 基准 / 超额）</h3>
+                <h3>
+                  <span>收益趋势（组合 / 基准 / 超额）</span>
+                  {view.incomeTrendState.kind === "ready" &&
+                  view.incomeTrend.length > 1 ? (
+                    <OptionTwoSparkline
+                      className={styles.incomeTrendSpark}
+                      values={view.incomeTrend.map((row) => row.portfolioRaw)}
+                      title={`组合损益走势（全序列 ${view.incomeTrend.length} 个月度点，表格列近 3 期）`}
+                      endDot
+                    />
+                  ) : null}
+                </h3>
                 {view.incomeTrend.length > 0 ? (
                   <table>
                     <thead>
