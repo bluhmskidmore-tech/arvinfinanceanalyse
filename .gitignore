@@ -134,3 +134,15 @@ tmp-governance/
 # Local commit-scoped audit exports are generated on demand and never tracked
 /moss_v3_audit_pack.zip
 /audit_pack/source_snapshot/
+
+# One-off visual / cleanup scratch (complexity-slimming Phase 0)
+frontend/tmp-*/
+frontend/scripts/tmp-*.mjs
+frontend/scripts/tmp-*.js
+frontend/scripts/tmp-*.cjs
+tmp-*.png
+tmp-*.mjs
+/tmp-*.py
+**/tmp-*-shots/
+/design-qa.md
+/audit_pack/01_PROJECT_TREE.md
