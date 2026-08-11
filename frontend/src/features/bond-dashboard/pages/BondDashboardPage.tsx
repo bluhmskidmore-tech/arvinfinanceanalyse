@@ -14,6 +14,7 @@ import type {
 } from "../../../api/contracts";
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
 import { EvidencePanel, PageStateSurface } from "../../../components/page/PagePrimitives";
+import { numericRaw } from "../../../pageModel";
 import {
   BOND_DASHBOARD_PAGE_BUNDLE_SECTIONS,
   bondDashboardAssetSectionForGroup,
@@ -56,22 +57,16 @@ const BUSINESS_TYPE_METRIC_COLUMNS: TableColumnsType<BusinessTypeMetricRow> = [
   },
 ];
 
-function numericRawOrNull(value: Numeric | null | undefined): number | null {
-  return value?.raw === null || value?.raw === undefined || !Number.isFinite(value.raw)
-    ? null
-    : value.raw;
-}
-
 function formatYiOrNoData(value: Numeric | null | undefined): string {
-  return numericRawOrNull(value) === null ? "—" : formatYi(value);
+  return numericRaw(value) === null ? "—" : formatYi(value);
 }
 
 function formatYearsOrNoData(value: Numeric | null | undefined): string {
-  return numericRawOrNull(value) === null ? "—" : formatYears(value);
+  return numericRaw(value) === null ? "—" : formatYears(value);
 }
 
 function formatCreditRatioDetail(value: Numeric | null | undefined): string {
-  return numericRawOrNull(value) === null
+  return numericRaw(value) === null
     ? "当前信用占比 —"
     : `当前信用占比 ${formatRatePercent(value, 1)}%`;
 }
@@ -114,8 +109,8 @@ function buildDashboardConclusion(
     };
   }
 
-  const totalMarketValue = numericRawOrNull(headline.kpis.total_market_value);
-  const creditRatio = numericRawOrNull(risk.credit_ratio);
+  const totalMarketValue = numericRaw(headline.kpis.total_market_value);
+  const creditRatio = numericRaw(risk.credit_ratio);
   const creditTone =
     creditRatio === null
       ? "信用仓位 —"

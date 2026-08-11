@@ -21,6 +21,7 @@ import {
   bondNumericDisplay,
   bondNumericRawOrNull,
 } from "../bond-analytics/adapters/bondAnalyticsAdapter";
+import { numericRaw } from "../../pageModel";
 import { EM_DASH } from "../../utils/format";
 import "./RiskTensorPage.css";
 
@@ -141,7 +142,7 @@ function riskTensorRawOrNull(value: RiskTensorDisplayValue): number | null {
     const raw = Number(normalized);
     return Number.isFinite(raw) ? raw : null;
   }
-  return value.raw !== null && Number.isFinite(value.raw) ? value.raw : null;
+  return numericRaw(value);
 }
 
 function riskTensorScalarIssue(value: RiskTensorDisplayValue | null | undefined) {

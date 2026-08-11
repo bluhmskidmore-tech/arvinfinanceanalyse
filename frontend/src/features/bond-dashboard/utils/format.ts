@@ -1,4 +1,5 @@
 import type { Numeric } from "../../../api/contracts";
+import { numericRaw } from "../../../pageModel";
 
 type NumericLike = Numeric | number | null | undefined;
 
@@ -7,10 +8,7 @@ export function nativeToNumber(value: NumericLike): number | null {
   if (typeof value === "number") {
     return Number.isFinite(value) ? value : null;
   }
-  if (value?.raw === null || value?.raw === undefined || !Number.isFinite(value.raw)) {
-    return null;
-  }
-  return value.raw;
+  return numericRaw(value);
 }
 
 /** Governed yuan field -> yi display for cards/tables. */

@@ -1,4 +1,5 @@
 import type { KpiCardProps } from "../../../components/KpiCard";
+import { toneFromSignedValue } from "../../../pageModel";
 
 export type KpiTone = NonNullable<KpiCardProps["tone"]>;
 
@@ -21,11 +22,10 @@ export function parseDisplayNumber(value: string): number | null {
   return sign * n;
 }
 
+/** 与共享 `toneFromSignedValue` 同构，仅将 "neutral" 映射为 KpiCard 的 "default"。 */
 export function toneFromSignedNumber(n: number | null): KpiTone {
-  if (n == null || n === 0) {
-    return "default";
-  }
-  return n > 0 ? "positive" : "negative";
+  const tone = toneFromSignedValue(n);
+  return tone === "neutral" ? "default" : tone;
 }
 
 export function toneFromSignedDisplayString(value: string): KpiTone {

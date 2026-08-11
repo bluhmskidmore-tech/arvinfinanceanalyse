@@ -1,4 +1,5 @@
 import type { Numeric, ReturnDecompositionPayload } from "../../../api/contracts";
+import { numericRaw } from "../../../pageModel";
 
 /** Raw scalar for charts / sorting; governed Numeric or legacy string. */
 export function bondNumericRaw(n: Numeric | string | null | undefined): number | null {
@@ -9,10 +10,7 @@ export function bondNumericRaw(n: Numeric | string | null | undefined): number |
     const v = Number.parseFloat(n);
     return Number.isFinite(v) ? v : null;
   }
-  if (n.raw === null || !Number.isFinite(n.raw)) {
-    return null;
-  }
-  return n.raw;
+  return numericRaw(n);
 }
 
 export function bondNumericRawOrNull(n: Numeric | string | null | undefined): number | null {

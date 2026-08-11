@@ -16,6 +16,7 @@ import type {
   BalanceMovementPayload,
   ResultMeta,
 } from "../../../api/contracts";
+import { buildStateSurfaces, type StateSurfaceItem } from "../../../pageModel";
 
 /** Minimum bar width (%) used by workbook distribution / gap panels (matches BalanceAnalysisPage). */
 export const BALANCE_ANALYSIS_MIN_CHART_BAR_WIDTH_PCT = 14;
@@ -604,12 +605,8 @@ export type BalanceAnalysisPageStatusBadge = {
   tone: "success" | "warning" | "danger" | "info" | "neutral" | "mock";
 };
 
-export type BalanceAnalysisPageStateSurface = {
-  key: string;
-  variant: "neutral" | "loading" | "empty" | "error" | "stale" | "fallback-date" | "mock";
-  title: string;
-  description: string;
-};
+/** 状态面条目使用共享 `StateSurfaceItem`（variant 词汇与 PageStateSurface 组件对齐）。 */
+export type BalanceAnalysisPageStateSurface = StateSurfaceItem;
 
 export type BalanceAnalysisPageEvidenceCard = {
   key: string;
@@ -870,54 +867,50 @@ export function buildBalanceAnalysisPageReadModel(
     statusBadges.push({ key: "quality-error", label: "质量错误", tone: "danger" });
   }
 
-  const stateSurfaces: BalanceAnalysisPageStateSurface[] = [];
-  if (input.clientMode === "mock") {
-    stateSurfaces.push({
+  const stateSurfaces = buildStateSurfaces([
+    {
+      when: input.clientMode === "mock",
       key: "mock",
       variant: "mock",
       title: "当前为演示数据",
       description: "页面可验证交互与布局，但不得把 mock 数值当成正式口径。",
-    });
-  }
-  if (dateStatus === "matched") {
-    stateSurfaces.push({
+    },
+    {
+      when: dateStatus === "matched",
       key: "date-matched",
       variant: "neutral",
       title: "报告日已匹配",
       description: `请求报告日与后端返回报告日一致：${resolvedReportDate}。`,
-    });
-  } else if (dateStatus === "mismatch") {
-    stateSurfaces.push({
+    },
+    {
+      when: dateStatus === "mismatch",
       key: "date-mismatch",
       variant: "fallback-date",
       title: "报告日不一致",
       description: `请求 ${requestedReportDate}，后端返回 ${resolvedReportDate}，不得静默当作同一报告日。`,
-    });
-  }
-  if (hasStale) {
-    stateSurfaces.push({
+    },
+    {
+      when: hasStale,
       key: "stale",
       variant: "stale",
       title: "存在陈旧数据标记",
       description: "至少一个正式读面返回陈旧标记，需要在结论旁显式提醒。",
-    });
-  }
-  if (hasFallback) {
-    stateSurfaces.push({
+    },
+    {
+      when: hasFallback,
       key: "fallback",
       variant: "fallback-date",
       title: "存在降级日期",
       description: "至少一个正式读面使用最新快照降级，需查看证据账本确认数据日。",
-    });
-  }
-  if (hasQualityError) {
-    stateSurfaces.push({
+    },
+    {
+      when: hasQualityError,
       key: "quality-error",
       variant: "error",
       title: "存在质量错误",
       description: "至少一个正式读面返回错误或缺失，不应渲染为正常结论。",
-    });
-  }
+    },
+  ]);
 
   return {
     requestedReportDate,
