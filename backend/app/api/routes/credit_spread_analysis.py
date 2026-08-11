@@ -3,26 +3,17 @@ from __future__ import annotations
 from datetime import date
 from typing import Annotated
 
+from backend.app.api.deps import ensure_read_allowed
 from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.credit_spread_analysis_service import get_credit_spread_analysis
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 
 router = APIRouter(prefix="/api/credit-spread-analysis", tags=["credit-spread"])
 
 
 def _ensure_credit_spread_analysis_read_allowed(auth: AuthContext) -> None:
-    try:
-        ensure_user_allowed(
-            auth=auth,
-            settings=get_settings(),
-            resource="credit_spread_analysis",
-            action="read",
-        )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    ensure_read_allowed(auth, "credit_spread_analysis", settings=get_settings(), authorize=ensure_user_allowed)
 
 
 @router.get("/detail")

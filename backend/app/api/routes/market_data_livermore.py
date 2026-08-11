@@ -7,6 +7,7 @@ from datetime import date
 from pathlib import Path
 from typing import Annotated
 
+from backend.app.api.deps import ensure_read_allowed
 from backend.app.api.perf_logging import timed_api_call
 from backend.app.api.response_cache import market_home_response_cache
 from backend.app.governance.settings import get_settings
@@ -85,27 +86,12 @@ def _ensure_livermore_position_import_allowed(*, settings: object, auth: AuthCon
 
 
 def _ensure_livermore_read_allowed(*, settings: object, auth: AuthContext) -> None:
-    try:
-        ensure_user_allowed(
-            auth=auth,
-            settings=settings,
-            resource="market_data.livermore",
-            action="read",
-        )
-    except PermissionError as exc:
-        if _allows_development_fallback_read(auth=auth, environment=getattr(settings, "environment", "")):
-            return
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-
-def _allows_development_fallback_read(*, auth: AuthContext, environment: object) -> bool:
-    return (
-        str(environment).strip().lower() == "development"
-        and auth.identity_source == "fallback"
-        and auth.user_id == "anonymous"
-        and auth.role == "viewer"
+    ensure_read_allowed(
+        auth,
+        "market_data.livermore",
+        settings=settings,
+        allow_dev_fallback=True,
+        authorize=ensure_user_allowed,
     )
 
 

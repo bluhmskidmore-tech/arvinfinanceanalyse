@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Annotated
 
+from backend.app.api.deps import ensure_read_allowed
 from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.risk_tensor_service import (
@@ -44,17 +45,14 @@ def _risk_tensor_unavailable_response(
 
 
 def _ensure_risk_tensor_read_allowed(auth: AuthContext, settings) -> None:
+    ensure_read_allowed(auth, "risk_tensor", settings=settings, authorize=ensure_user_allowed)
+
+
+def _validate_risk_report_date(report_date: str) -> None:
     try:
-        ensure_user_allowed(
-            auth=auth,
-            settings=settings,
-            resource="risk_tensor",
-            action="read",
-        )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        date.fromisoformat(report_date)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Invalid report_date. Expected YYYY-MM-DD.") from exc
 
 
 @router.get("/tensor/dates")
@@ -79,11 +77,7 @@ def risk_tensor(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(...),
 ) -> dict:
-    try:
-        date.fromisoformat(report_date)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail="Invalid report_date. Expected YYYY-MM-DD.") from exc
-
+    _validate_risk_report_date(report_date)
     settings = get_settings()
     _ensure_risk_tensor_read_allowed(auth, settings)
     try:
@@ -109,11 +103,7 @@ def risk_tensor_history(
     report_date: str = Query(...),
     periods: int = Query(24, ge=2, le=60),
 ) -> dict:
-    try:
-        date.fromisoformat(report_date)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail="Invalid report_date. Expected YYYY-MM-DD.") from exc
-
+    _validate_risk_report_date(report_date)
     settings = get_settings()
     _ensure_risk_tensor_read_allowed(auth, settings)
     try:
@@ -139,11 +129,7 @@ def risk_scenario_stress(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(...),
 ) -> dict:
-    try:
-        date.fromisoformat(report_date)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail="Invalid report_date. Expected YYYY-MM-DD.") from exc
-
+    _validate_risk_report_date(report_date)
     settings = get_settings()
     _ensure_risk_tensor_read_allowed(auth, settings)
     try:

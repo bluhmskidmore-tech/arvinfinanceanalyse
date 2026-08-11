@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Annotated
 
+from backend.app.api.deps import ensure_read_allowed
 from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.macro_etf_strategy_service import macro_etf_strategy_envelope
@@ -30,27 +31,11 @@ def macro_etf_strategy(
 
 
 def _ensure_macro_etf_strategy_read_allowed(*, auth: AuthContext, settings: object) -> None:
-    try:
-        ensure_user_allowed(
-            auth=auth,
-            settings=settings,
-            resource="market_data.macro_etf_strategy",
-            action="read",
-        )
-    except PermissionError as exc:
-        if _allows_development_fallback_read(auth=auth, environment=getattr(settings, "environment", "")):
-            return
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        if _allows_development_fallback_read(auth=auth, environment=getattr(settings, "environment", "")):
-            return
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-
-def _allows_development_fallback_read(*, auth: AuthContext, environment: object) -> bool:
-    return (
-        str(environment).strip().lower() == "development"
-        and auth.identity_source == "fallback"
-        and auth.user_id == "anonymous"
-        and auth.role == "viewer"
+    ensure_read_allowed(
+        auth,
+        "market_data.macro_etf_strategy",
+        settings=settings,
+        allow_dev_fallback=True,
+        allow_dev_fallback_on_unavailable=True,
+        authorize=ensure_user_allowed,
     )

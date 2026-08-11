@@ -1,5 +1,6 @@
 from typing import Annotated
 
+from backend.app.api.deps import ensure_read_allowed
 from backend.app.api.perf_logging import timed_api_call
 from backend.app.api.response_cache import (
     market_home_catalog_cache_key,
@@ -33,17 +34,7 @@ router = APIRouter()
 
 
 def _ensure_macro_vendor_read_allowed(auth: AuthContext) -> None:
-    try:
-        ensure_user_allowed(
-            auth=auth,
-            settings=get_settings(),
-            resource="macro_vendor",
-            action="read",
-        )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    ensure_read_allowed(auth, "macro_vendor", settings=get_settings(), authorize=ensure_user_allowed)
 
 
 # ── Formal market-data endpoints (Phase 1 promotion) ───────────────

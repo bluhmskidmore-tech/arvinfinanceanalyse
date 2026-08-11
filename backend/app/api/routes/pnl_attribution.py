@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
+from backend.app.api.deps import ensure_read_allowed
 from backend.app.governance.settings import get_settings
 from backend.app.schemas.pnl_attribution import (
     CampisiAttributionEnvelope,
@@ -20,23 +21,13 @@ from backend.app.services.pnl_attribution_service import (
     tpl_market_correlation_envelope,
     volume_rate_attribution_envelope,
 )
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 
 router = APIRouter(prefix="/api/pnl-attribution", tags=["pnl-attribution"])
 
 
 def _ensure_pnl_attribution_read_allowed(auth: AuthContext) -> None:
-    try:
-        ensure_user_allowed(
-            auth=auth,
-            settings=get_settings(),
-            resource="pnl_attribution",
-            action="read",
-        )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    ensure_read_allowed(auth, "pnl_attribution", settings=get_settings(), authorize=ensure_user_allowed)
 
 
 @router.get("/volume-rate")

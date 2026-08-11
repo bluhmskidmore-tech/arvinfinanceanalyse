@@ -2,6 +2,7 @@ from datetime import date
 from importlib import import_module
 from typing import Annotated, Literal
 
+from backend.app.api.deps import ensure_read_allowed
 from backend.app.api.perf_logging import timed_api_call
 from backend.app.governance.settings import get_settings
 from backend.app.schemas.pnl import PnlByBusinessAnalysisDimension, PnlByBusinessManualAdjustmentRequest
@@ -17,12 +18,7 @@ def _pnl_service():
 
 
 def _ensure_pnl_read_allowed(auth: AuthContext, settings) -> None:
-    try:
-        ensure_user_allowed(auth=auth, settings=settings, resource="pnl", action="read")
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    ensure_read_allowed(auth, "pnl", settings=settings, authorize=ensure_user_allowed)
 
 
 @router.get("/pnl/dates", response_model=ResultEnvelope)

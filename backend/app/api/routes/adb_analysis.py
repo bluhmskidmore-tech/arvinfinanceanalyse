@@ -6,6 +6,7 @@ import logging
 from datetime import date, datetime
 from typing import Annotated
 
+from backend.app.api.deps import ensure_read_allowed
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services import adb_analysis_service
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -46,17 +47,7 @@ def _parse_opt_date(s: str | None) -> date | None:
 
 
 def _ensure_adb_analysis_read_allowed(auth: AuthContext, settings) -> None:
-    try:
-        ensure_user_allowed(
-            auth=auth,
-            settings=settings,
-            resource="adb_analysis",
-            action="read",
-        )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    ensure_read_allowed(auth, "adb_analysis", settings=settings, authorize=ensure_user_allowed)
 
 
 @router.get("/adb")

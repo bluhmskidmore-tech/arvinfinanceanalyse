@@ -3,6 +3,7 @@ from datetime import date as calendar_date
 from importlib import import_module
 from typing import Annotated, Literal
 
+from backend.app.api.deps import ensure_read_allowed
 from backend.app.governance.settings import get_settings
 from backend.app.schemas.candidate_financial_indicator_component_detail import (
     CandidateFinancialIndicatorComponentDetailEnvelope,
@@ -52,17 +53,7 @@ def _monthly_analysis_svc():
 
 
 def _ensure_ledger_pnl_read_allowed(auth: AuthContext) -> None:
-    try:
-        ensure_user_allowed(
-            auth=auth,
-            settings=get_settings(),
-            resource="ledger_pnl",
-            action="read",
-        )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    ensure_read_allowed(auth, "ledger_pnl", settings=get_settings(), authorize=ensure_user_allowed)
 
 
 def _validated_report_date(value: str) -> str:

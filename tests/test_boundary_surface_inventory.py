@@ -170,6 +170,10 @@ RESERVED_HELPER_SCOPES = {
 _GATED_TOP_LEVEL_ROUTE_MODULES = {"agent"}
 _NESTED_ROUTE_MODULES = {"agent_workspace"}
 
+# Routes reach the scope store either directly or through the shared
+# `backend/app/api/deps.ensure_read_allowed` guard, which pins action="read".
+_AUTHZ_CALL_NAMES = frozenset({"ensure_user_allowed", "ensure_read_allowed"})
+
 
 def _load_api_registry(
     monkeypatch: pytest.MonkeyPatch,
@@ -271,6 +275,14 @@ def _literal_keyword(call: ast.Call, name: str) -> str | None:
     return None
 
 
+def _literal_argument(call: ast.Call, index: int, name: str) -> str | None:
+    if len(call.args) > index:
+        candidate = call.args[index]
+        if isinstance(candidate, ast.Constant) and isinstance(candidate.value, str):
+            return candidate.value
+    return _literal_keyword(call, name)
+
+
 def _name_keyword(call: ast.Call, name: str) -> str | None:
     for keyword in call.keywords:
         if keyword.arg == name and isinstance(keyword.value, ast.Name):
@@ -288,6 +300,11 @@ def _ensure_user_allowed_scopes(node: ast.AST) -> frozenset[tuple[str, str]]:
             func_name = child.func.id
         elif isinstance(child.func, ast.Attribute):
             func_name = child.func.attr
+        if func_name == "ensure_read_allowed":
+            resource = _literal_argument(child, 1, "resource")
+            if resource:
+                scopes.add((resource, "read"))
+            continue
         if func_name != "ensure_user_allowed":
             continue
         resource = _literal_keyword(child, "resource")
@@ -362,7 +379,7 @@ def _route_auth_surfaces() -> list[RouteAuthSurface]:
             for node in tree.body
             if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
         }
-        direct_authz = {name for name, node in functions.items() if "ensure_user_allowed" in _call_names(node)}
+        direct_authz = {name for name, node in functions.items() if _call_names(node) & _AUTHZ_CALL_NAMES}
         authz_closure = set(direct_authz)
         authz_scopes_by_function = {
             name: _ensure_user_allowed_scopes(node)

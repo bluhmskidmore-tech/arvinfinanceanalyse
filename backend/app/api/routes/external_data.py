@@ -6,6 +6,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 
+from backend.app.api.deps import ensure_read_allowed
 from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.external_data_service import default_service
@@ -18,17 +19,7 @@ DomainParam = Literal["macro", "news", "yield_curve", "fx", "other"]
 
 
 def _ensure_external_data_read_allowed(auth: AuthContext) -> None:
-    try:
-        ensure_user_allowed(
-            auth=auth,
-            settings=get_settings(),
-            resource="external_data",
-            action="read",
-        )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    ensure_read_allowed(auth, "external_data", settings=get_settings(), authorize=ensure_user_allowed)
 
 
 @router.get("/catalog")
