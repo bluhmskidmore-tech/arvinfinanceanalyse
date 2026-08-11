@@ -36,19 +36,35 @@
 }
 
 /*
- * Nocturne 首页换肤：色板与 dh-api 重映射的唯一定义在 tokens.css
- * （[data-moss-theme-scope="dashboard-home"] 块）。这里只用双写类名
- * 复述 shell 模块 .dhApiBackedHome 在同一元素上重复定义过的少数变量，
- * 保证与模块注入顺序无关；全部走 var 引用，不落裸 hex。
+ * Nocturne 首页换肤：色板数值的唯一定义在 tokens.css
+ * （[data-moss-theme-scope="dashboard-home"] 块，--nct-*）。
+ * shell 模块存在两处在同一元素上重复定义 --dh-api-* 字面量的历史层
+ * （.dhApiBackedHome 约 2105 行、Fable 1a 翻译层
+ * .dhApiBackedHome[data-testid="dashboard-home-page"] 约 5123 行，
+ * 特异性 0,2,0）。这里用三写类名（0,3,0）复述全套映射，
+ * 与模块注入顺序无关地压制它们；全部走 var 引用，不落裸 hex。
  */
-.page.page {
+.page.page.page {
+  --dh-api-bg: var(--nct-bg);
+  --dh-api-rail: var(--nct-rail);
+  --dh-api-panel: var(--nct-surface);
+  --dh-api-panel-2: var(--nct-well);
+  --dh-api-panel-3: var(--nct-raised);
   --dh-api-line: var(--nct-ring);
   --dh-api-line-soft: var(--nct-line);
+  --dh-api-ink: var(--nct-ink);
+  --dh-api-soft: var(--nct-soft);
+  --dh-api-muted: var(--nct-muted);
+  --dh-api-blue: var(--nct-accent);
+  --dh-api-green: var(--nct-up);
+  --dh-api-amber: var(--nct-warn);
   --dh-api-gold: var(--nct-warn);
+  --dh-api-red: var(--nct-down);
   --dh-api-blue-soft: color-mix(in srgb, var(--nct-accent) 12%, transparent);
   --dh-api-green-soft: color-mix(in srgb, var(--nct-up) 12%, transparent);
   --dh-api-amber-soft: color-mix(in srgb, var(--nct-warn) 13%, transparent);
   --dh-api-red-soft: color-mix(in srgb, var(--nct-down) 13%, transparent);
+  --dh-api-radius: 8px;
   background: var(--nct-bg);
 }
 
