@@ -4,12 +4,14 @@ import type {
   AdvancedAttributionSummary,
   CarryRollDownPayload,
   KRDAttributionPayload,
+  Numeric,
   SpreadAttributionPayload,
 } from "../../../api/contracts";
 import { PageDataSection } from "../../../components/page/PageDataSection";
 import type { DataSectionState } from "../../../components/DataSection.types";
 import { createBarChartOption, createBaseChartOption } from "../../../components/charts/chartTheme";
 import { designTokens, ibTokens } from "../../../theme/designSystem";
+import { numericRaw } from "../../../pageModel";
 import "./AdvancedAttributionChart.css";
 
 const CONTRIBUTION_PCT_CALIBER_NOTE =
@@ -54,15 +56,8 @@ function formatYi(value: number | null | undefined): string {
   return `${yi >= 0 ? "+" : ""}${yi.toFixed(2)} 亿`;
 }
 
-function numericRaw(value: { raw: number | null } | null | undefined): number | null {
-  const raw = value?.raw;
-  return typeof raw === "number" && Number.isFinite(raw) ? raw : null;
-}
-
 /** 契约：`pct` 字段 raw 恒为小数比率，×100 转百分点；缺失（raw=null）返回 null，不补 0。 */
-function pctPoints(
-  value: { raw: number | null; unit?: string } | null | undefined,
-): number | null {
+function pctPoints(value: Numeric | null | undefined): number | null {
   const raw = numericRaw(value);
   if (raw === null) {
     return null;
@@ -71,7 +66,7 @@ function pctPoints(
 }
 
 /** 图表/表格中以「亿」为单位的数值；缺失返回 null。 */
-function yiOrNull(value: { raw: number | null } | null | undefined): number | null {
+function yiOrNull(value: Numeric | null | undefined): number | null {
   const raw = numericRaw(value);
   return raw === null ? null : raw / 100_000_000;
 }
@@ -85,9 +80,7 @@ function numericDisplay(
   return value?.raw == null ? fallback : value.raw.toFixed(2);
 }
 
-function pctDisplay(
-  value: { raw: number | null; unit?: string; display?: string } | null | undefined,
-): string {
+function pctDisplay(value: Numeric | null | undefined): string {
   const display = value?.display?.trim();
   if (display) return display;
   const points = pctPoints(value);

@@ -1,4 +1,5 @@
 import type { Numeric } from "../../api/contracts";
+import { numericRaw } from "../../pageModel";
 
 export function displayStr(value: string | Numeric | undefined) {
   if (value === undefined || value === "") {
@@ -16,8 +17,7 @@ export function parseRatio(value: string | Numeric | undefined): number | null {
     return null;
   }
   if (typeof value === "object" && value !== null && "raw" in value) {
-    const r = value.raw;
-    return r !== null && Number.isFinite(r) ? r : null;
+    return numericRaw(value);
   }
   const n = Number.parseFloat(value);
   return Number.isFinite(n) ? n : null;

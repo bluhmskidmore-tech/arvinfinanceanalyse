@@ -1,9 +1,10 @@
 import { useMemo } from "react";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
-import type { VolumeRateAttributionPayload } from "../../../api/contracts";
+import type { Numeric, VolumeRateAttributionPayload } from "../../../api/contracts";
 import { PageDataSection } from "../../../components/page/PageDataSection";
 import type { DataSectionState } from "../../../components/DataSection.types";
 import { designTokens, ibTokens } from "../../../theme/designSystem";
+import { numericRaw } from "../../../pageModel";
 import "./AttributionWaterfallChart.css";
 
 function formatYi(value: number | null | undefined): string {
@@ -14,9 +15,8 @@ function formatYi(value: number | null | undefined): string {
   return `${yi >= 0 ? "+" : ""}${yi.toFixed(2)} 亿`;
 }
 
-function rawOrNull(value: { raw: number | null } | null | undefined): number | null {
-  const raw = value?.raw;
-  return typeof raw === "number" && Number.isFinite(raw) ? raw : null;
+function rawOrNull(value: Numeric | null | undefined): number | null {
+  return numericRaw(value);
 }
 
 function formatTooltipYi(value: unknown): string {

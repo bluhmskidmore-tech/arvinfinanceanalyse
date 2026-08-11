@@ -1,9 +1,10 @@
 import { useMemo } from "react";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
-import type { VolumeRateAttributionPayload } from "../../../api/contracts";
+import type { Numeric, VolumeRateAttributionPayload } from "../../../api/contracts";
 import type { DataSectionState } from "../../../components/DataSection.types";
 import { PageDataSection } from "../../../components/page/PageDataSection";
 import { designTokens } from "../../../theme/designSystem";
+import { numericRaw } from "../../../pageModel";
 import "./VolumeRateAnalysisChart.css";
 
 type Props = {
@@ -12,11 +13,10 @@ type Props = {
   onRetry: () => void;
 };
 
-type NumericLike = { raw: number | null } | null | undefined;
+type NumericLike = Numeric | null | undefined;
 
 function rawOrNull(value: NumericLike): number | null {
-  const raw = value?.raw;
-  return typeof raw === "number" && Number.isFinite(raw) ? raw : null;
+  return numericRaw(value);
 }
 
 /** 缺失（对象为 null 或 raw 为 null）显示 "—"，不显示 0。 */

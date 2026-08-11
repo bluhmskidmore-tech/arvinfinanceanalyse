@@ -10,6 +10,7 @@ import { PageDataSection } from "../../../components/page/PageDataSection";
 import type { DataSectionState } from "../../../components/DataSection.types";
 import { designTokens } from "../../../theme/designSystem";
 import { formatProductCategoryRowDisplayValue } from "../../product-category-pnl/pages/productCategoryPnlPageModel";
+import { numericRaw as sharedNumericRaw } from "../../../pageModel";
 import "./TPLMarketChart.css";
 
 function formatYi(value: number | null | undefined): string {
@@ -85,7 +86,7 @@ function numericRaw(value: Numeric | number | null | undefined): number | null {
     return value;
   }
   if (value && typeof value === "object") {
-    return value.raw;
+    return sharedNumericRaw(value);
   }
   return null;
 }

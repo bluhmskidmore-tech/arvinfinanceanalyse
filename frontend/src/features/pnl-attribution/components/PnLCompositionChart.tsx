@@ -3,8 +3,9 @@ import { useMemo } from "react";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { PageDataSection } from "../../../components/page/PageDataSection";
 import type { DataSectionState } from "../../../components/DataSection.types";
-import type { PnlCompositionPayload } from "../../../api/contracts";
+import type { Numeric, PnlCompositionPayload } from "../../../api/contracts";
 import { designTokens } from "../../../theme/designSystem";
+import { numericRaw } from "../../../pageModel";
 import {
   pnlChartLabelOnFill,
   pnlCompositionSeriesColors,
@@ -12,14 +13,13 @@ import {
 import "./PnLCompositionChart.css";
 
 function rawOr(
-  n: { raw: number | null } | null | undefined,
+  n: Numeric | null | undefined,
 ): number | null {
-  const raw = n?.raw;
-  return typeof raw === "number" && Number.isFinite(raw) ? raw : null;
+  return numericRaw(n);
 }
 
 function pctPoints(
-  n: { raw: number | null; unit?: string } | null | undefined,
+  n: Numeric | null | undefined,
 ): number | null {
   const raw = rawOr(n);
   if (raw === null) return null;
@@ -28,7 +28,7 @@ function pctPoints(
 }
 
 function pctDisplay(
-  n: { raw: number | null; unit?: string; display?: string } | null | undefined,
+  n: Numeric | null | undefined,
 ): string {
   const points = pctPoints(n);
   if (points === null) return "—";
@@ -54,7 +54,7 @@ function toneDirection(
 }
 
 function yiDisplay(
-  value: { raw: number | null } | null | undefined,
+  value: Numeric | null | undefined,
   signed = false,
 ): string {
   const raw = rawOr(value);
