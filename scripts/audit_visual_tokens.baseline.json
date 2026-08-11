@@ -648,7 +648,7 @@
     "doubleDash": 0
   },
   "frontend/src/styles/tokens.css": {
-    "hex": 105,
+    "hex": 122,
     "forbidden": 0,
     "offRadius": 0,
     "doubleDash": 0
@@ -708,7 +708,7 @@
     "doubleDash": 0
   },
   "frontend/src/theme/designSystem.ts": {
-    "hex": 203,
+    "hex": 205,
     "forbidden": 0,
     "offRadius": 0,
     "doubleDash": 0

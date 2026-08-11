@@ -342,3 +342,63 @@
   color: var(--dh-api-ink);
   background: var(--dh-api-bg);
 }
+
+/*
+ * Nocturne 首页换肤 —— 组合经营日报专属（业主 2026-08-11 拍板，见 DESIGN.md
+ * Decisions Log）。色板源自设计交接包「三个布局方向设计评审」的
+ * tokens/nocturne-styles.css：单一蓝紫 accent、低饱和绿涨红跌、8px 卡片圆角。
+ * 仅换肤不动版式；作用域限定首页页面根及其所在工作台外壳，其余深色页面
+ * 仍走 §2.2 的 dh-api 钢蓝基准。本块需排在 .theme-dh-api 定义之后以确保
+ * 同元素同名变量按源序覆盖。
+ */
+[data-moss-theme-scope="dashboard-home"],
+.workbench-shell-grid:has([data-moss-theme-scope="dashboard-home"]) {
+  --nct-bg: #161826;
+  --nct-rail: #131522;
+  --nct-surface: #232532;
+  --nct-well: #1c1e2b;
+  --nct-raised: #2b2d3d;
+  --nct-ring: #3f424d;
+  --nct-line: color-mix(in srgb, #e9e9ed 12%, transparent);
+  --nct-ink: #f3f5fe;
+  --nct-soft: #b2b6ca;
+  --nct-muted: #9397ab;
+  --nct-accent: #9184d9;
+  --nct-accent-300: #d2cefd;
+  --nct-accent-400: #b5abfc;
+  --nct-up: #5abd99;
+  --nct-down: #d97b6c;
+  --nct-warn: #d5b26e;
+
+  --dh-api-bg: var(--nct-bg);
+  --dh-api-rail: var(--nct-rail);
+  --dh-api-panel: var(--nct-surface);
+  --dh-api-panel-2: var(--nct-well);
+  --dh-api-panel-3: var(--nct-raised);
+  --dh-api-line: var(--nct-ring);
+  --dh-api-line-soft: var(--nct-line);
+  --dh-api-ink: var(--nct-ink);
+  --dh-api-soft: var(--nct-soft);
+  --dh-api-muted: var(--nct-muted);
+  --dh-api-blue: var(--nct-accent);
+  --dh-api-green: var(--nct-up);
+  --dh-api-amber: var(--nct-warn);
+  --dh-api-gold: var(--nct-warn);
+  --dh-api-red: var(--nct-down);
+  --dh-api-blue-soft: color-mix(in srgb, var(--nct-accent) 12%, transparent);
+  --dh-api-green-soft: color-mix(in srgb, var(--nct-up) 12%, transparent);
+  --dh-api-amber-soft: color-mix(in srgb, var(--nct-warn) 13%, transparent);
+  --dh-api-red-soft: color-mix(in srgb, var(--nct-down) 13%, transparent);
+  --dh-api-radius: 8px;
+  --moss-shell-rail-bg: var(--nct-rail);
+  --moss-shell-rail-bg-stack: var(--nct-rail);
+  --moss-shell-rail-active-bg: color-mix(in srgb, var(--nct-accent) 14%, transparent);
+  --moss-shell-rail-active-border: var(--nct-accent);
+  --moss-shadow-institutional-active: inset 2px 0 0 var(--nct-accent);
+  --moss-institutional-focus-ring: color-mix(in srgb, var(--nct-accent) 34%, transparent);
+  --ib-rail-text-active: var(--nct-accent-300);
+  /* 旧的 dh-home-nocturne-* 雏形变量并入同一色源，避免第二套 Nocturne 值漂移。 */
+  --dh-home-nocturne-ink: var(--nct-ink);
+  --dh-home-nocturne-muted: var(--nct-muted);
+  --dh-home-nocturne-rule: var(--nct-ring);
+}
