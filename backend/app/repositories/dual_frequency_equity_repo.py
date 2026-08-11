@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import duckdb
+from backend.app.repositories.choice_stock_units import amount_rmb_sql, scale_unknown_sql
 
 INDEX_TABLE = "fact_choice_macro_daily"
 MARKET_AMOUNT_TABLE = "choice_stock_daily_observation"
@@ -207,7 +208,23 @@ def load_dual_frequency_equity_history(
                     (
                         amount_by_date,
                         amount_stats,
-                    ) = _market_amount_result_from_records(amount_records)
+                    ) = _market_amount_result_from_records(
+                        amount_records,
+                        vendor_version_available="vendor_version" in amount_columns,
+                    )
+                    if amount_stats.get("scale_unknown_row_count"):
+                        result["warnings"].append(
+                            "market_amount_vendor_unscalable_rows_ignored"
+                        )
+                    if (
+                        amount_stats.get("unit_normalization")
+                        == "skipped_vendor_version_column_missing"
+                    ):
+                        # 缺 vendor_version 列时无法定标,fail-closed 输出 NULL;
+                        # 监控上需要与"仅缺证据列"区分开(单位归一化被跳过更严重)。
+                        result["warnings"].append(
+                            "market_amount_unit_normalization_skipped"
+                        )
 
         missing_amount_date_count = 0
         for row in index_rows:
@@ -317,12 +334,27 @@ def _load_market_amount_records(
         if "stock_code" in columns
         else "null as stock_code"
     )
+    # Two vendor generations disagree on amount units (docs/data_contracts.md
+    # §4.10): tushare-era rows are RMB thousands, choice_native-era rows are
+    # RMB. A raw sum(amount) mixes units across the 2025-12-31/2026-01-05
+    # boundary. Normalize to RMB via vendor_version before aggregating; when
+    # the column itself is missing (older schema/synthetic table, not reachable
+    # in production), the amount cannot be scaled and is fail-closed to NULL,
+    # surfaced through amount_stats/unit_normalization instead of guessing units.
+    has_vendor_version = "vendor_version" in columns
+    if has_vendor_version:
+        amount_value_select = amount_rmb_sql(table_alias="stock", alias=None)
+        scale_unknown_select = scale_unknown_sql("amount", table_alias="stock")
+    else:
+        amount_value_select = "cast(null as double)"
+        scale_unknown_select = "cast(false as boolean)"
     normalized_cte = f"""
         normalized as (
           select
             try_cast(stock.trade_date as date) as trade_day,
             {stock_code_select},
-            try_cast(stock.amount as double) as amount_value,
+            {amount_value_select} as amount_value,
+            {scale_unknown_select} as scale_unknown,
             {", ".join(evidence_select)}
           from {MARKET_AMOUNT_TABLE} as stock
           inner join requested_dates as requested
@@ -366,6 +398,7 @@ def _load_market_amount_records(
           count(*) as canonical_row_count,
           count(amount_value) as amount_value_row_count,
           count(*) filter (where amount_value is null) as null_amount_row_count,
+          count(*) filter (where scale_unknown) as scale_unknown_row_count,
           list(distinct source_version)
             filter (where source_version is not null) as source_versions,
           list(distinct vendor_version)
@@ -384,9 +417,17 @@ def _load_market_amount_records(
 
 def _market_amount_result_from_records(
     records: list[tuple[Any, ...]],
+    *,
+    vendor_version_available: bool,
 ) -> tuple[dict[str, float | None], dict[str, Any]]:
     amount_by_date: dict[str, float | None] = {}
     stats = _empty_amount_source()
+    stats["unit_normalization"] = (
+        "applied_via_vendor_generation" if vendor_version_available
+        else "skipped_vendor_version_column_missing"
+    )
+    if not vendor_version_available:
+        stats["unit"] = "source_native_unit_unconfirmed"
     source_versions: set[str] = set()
     vendor_versions: set[str] = set()
     rule_versions: set[str] = set()
@@ -400,12 +441,13 @@ def _market_amount_result_from_records(
         stats["canonical_row_count"] += int(record[2] or 0)
         stats["amount_value_row_count"] += int(record[3] or 0)
         stats["null_amount_row_count"] += int(record[4] or 0)
+        stats["scale_unknown_row_count"] += int(record[5] or 0)
         stats["valid_amount_observation_count"] += int(record[3] or 0)
         stats["null_amount_observation_count"] += int(record[4] or 0)
-        _add_texts(source_versions, record[5])
-        _add_texts(vendor_versions, record[6])
-        _add_texts(rule_versions, record[7])
-        _add_texts(run_ids, record[8])
+        _add_texts(source_versions, record[6])
+        _add_texts(vendor_versions, record[7])
+        _add_texts(rule_versions, record[8])
+        _add_texts(run_ids, record[9])
     stats["status"] = "ready" if records else "unavailable"
     stats["quality"] = (
         "degraded"
@@ -520,7 +562,8 @@ def _empty_amount_source() -> dict[str, Any]:
         "quality": "unavailable",
         "table": MARKET_AMOUNT_TABLE,
         "field": "amount",
-        "unit": "source_native_unit_unconfirmed",
+        "unit": "rmb_normalized_by_vendor_generation_see_data_contracts_4_10",
+        "unit_normalization": "not_applicable",
         "aggregation": "sum_by_trade_date_after_latest_stock_date_deduplication",
         "date_count": 0,
         "canonical_row_count": 0,
@@ -528,6 +571,7 @@ def _empty_amount_source() -> dict[str, Any]:
         "null_amount_row_count": 0,
         "valid_amount_observation_count": 0,
         "null_amount_observation_count": 0,
+        "scale_unknown_row_count": 0,
         "missing_trade_date_count": 0,
         "source_versions": [],
         "vendor_versions": [],

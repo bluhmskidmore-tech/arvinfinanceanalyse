@@ -838,6 +838,112 @@ def test_portfolio_vol_target_none_emits_no_warning() -> None:
     assert result.metrics["vol_target_warning"] is None
 
 
+def test_portfolio_horizon_mode_labels_risk_metrics_as_realized_only() -> None:
+    result = run_portfolio_backtest(
+        [
+            _execution_row(
+                signal_date="2026-05-29",
+                stock_code="000001.SZ",
+                rank=1,
+                market_state="HOT",
+                entry_date="2026-06-01",
+                exit_date_5d="2026-06-03",
+                return_5d_net_adj=0.0,
+            )
+        ],
+        [{"trade_date": "2026-06-01", "market_state": "HOT"}],
+        variant="fixed_5d",
+        initial_capital=100.0,
+        max_positions=1,
+        exposure_by_market_state=EXPOSURE,
+    )
+
+    assert result.metrics["mode"] == "horizon"
+    assert result.metrics["risk_metrics_basis"] == "realized_only"
+    assert result.metrics["risk_metrics_warning"] is not None
+    assert "盯市" in result.metrics["risk_metrics_warning"]
+    assert "系统性低估" in result.metrics["risk_metrics_warning"]
+    assert result.metrics["holding_days_marked_at_cost"] == 1
+    assert result.metrics["mtm_cost_fallback_position_days"] is None
+
+
+def test_portfolio_path_mode_labels_risk_metrics_as_mark_to_market() -> None:
+    result = run_portfolio_backtest(
+        [
+            _execution_row(
+                signal_date="2026-05-29",
+                stock_code="000001.SZ",
+                rank=1,
+                market_state="HOT",
+                entry_date="2026-06-01",
+                exit_date_5d="2026-06-03",
+                return_5d_net_adj=0.0,
+            )
+        ],
+        [{"trade_date": "2026-06-01", "market_state": "HOT"}],
+        mode="path",
+        price_paths={
+            position_path_key("000001.SZ", "2026-06-01"): [
+                {"trade_date": "2026-06-01", "adj_open": 10.0, "adj_close": 10.0},
+                {"trade_date": "2026-06-02", "adj_open": 10.0, "adj_close": 10.0},
+                {"trade_date": "2026-06-03", "adj_open": 10.0, "adj_close": 10.0},
+                {"trade_date": "2026-06-04", "adj_open": 10.0, "adj_close": 10.0},
+                {"trade_date": "2026-06-05", "adj_open": 10.0, "adj_close": 10.0},
+            ]
+        },
+        variant="fixed_5d",
+        initial_capital=100.0,
+        max_positions=1,
+        exposure_by_market_state=EXPOSURE,
+    )
+
+    assert result.metrics["mode"] == "path"
+    assert result.metrics["risk_metrics_basis"] == "mark_to_market"
+    assert result.metrics["risk_metrics_warning"] is None
+    assert result.metrics["holding_days_marked_at_cost"] is None
+    assert result.metrics["mtm_position_days"] == 4
+    assert result.metrics["mtm_cost_fallback_position_days"] == 0
+    assert result.metrics["mtm_cost_fallback_ratio"] == pytest.approx(0.0)
+    assert result.metrics["mtm_cost_fallback_exit_trades"] == 0
+
+
+def test_portfolio_path_mode_discloses_cost_fallback_position_days() -> None:
+    result = run_portfolio_backtest(
+        [
+            _execution_row(
+                signal_date="2026-05-29",
+                stock_code="000001.SZ",
+                rank=1,
+                market_state="HOT",
+                entry_date="2026-06-01",
+                exit_date_5d="2026-06-03",
+                return_5d_net_adj=0.0,
+            )
+        ],
+        [{"trade_date": f"2026-06-0{day}", "market_state": "HOT"} for day in range(1, 4)],
+        mode="path",
+        price_paths={
+            position_path_key("000001.SZ", "2026-06-01"): [
+                {"trade_date": "2026-06-01", "adj_open": 10.0},
+                {"trade_date": "2026-06-02", "adj_open": 10.0},
+                {"trade_date": "2026-06-03", "adj_open": 10.0},
+            ]
+        },
+        variant="fixed_5d",
+        initial_capital=100.0,
+        max_positions=1,
+        exposure_by_market_state=EXPOSURE,
+    )
+
+    assert result.metrics["risk_metrics_basis"] == "mark_to_market"
+    assert result.metrics["mtm_position_days"] == 2
+    assert result.metrics["mtm_cost_fallback_position_days"] == 2
+    assert result.metrics["mtm_cost_fallback_ratio"] == pytest.approx(1.0)
+    assert result.metrics["mtm_cost_fallback_exit_trades"] == 1
+    assert "成本计价回退" in str(result.metrics["risk_metrics_warning"])
+    assert "降级盯市口径" in str(result.metrics["risk_metrics_warning"])
+
+
 def test_portfolio_probe_pyramid_confirms_and_adds_next_open() -> None:
     result = run_portfolio_backtest(
         [
@@ -1392,9 +1498,92 @@ def test_portfolio_script_loads_adjusted_signal_high_for_probe_variants(tmp_path
     finally:
         conn.close()
 
-    assert rows[0]["daily_amount"] == pytest.approx(300_000_000.0)
+    # 观察表缺 vendor_version 列:无法定标 raw amount(可能是千元),
+    # fail-closed 输出 NULL 并告警,不得参与元口径阈值判断。
+    assert rows[0]["daily_amount"] is None
     assert rows[0]["signal_high"] == pytest.approx(21.0)
     assert not any("high_value unavailable" in issue for issue in issues)
+    assert any(
+        "vendor_version unavailable" in issue and "kept null" in issue for issue in issues
+    )
+
+
+def test_portfolio_script_normalizes_daily_amount_by_vendor_generation(tmp_path) -> None:
+    """amount 两代 vendor 单位口径:tushare 代际=千元、choice_native 代际=元,读取边界统一归一化为元。"""
+    from scripts.run_portfolio_backtest import _load_execution_rows
+
+    db_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table livermore_candidate_execution_history (
+              signal_date varchar,
+              stock_code varchar,
+              stock_name varchar,
+              signal_kind varchar,
+              candidate_rank integer,
+              market_state varchar,
+              entry_date varchar,
+              entry_price double,
+              entry_executable boolean,
+              entry_block_reason varchar,
+              exit_date_5d varchar,
+              return_5d_net_adj double,
+              exit_date_20d varchar,
+              return_20d_net_adj double
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table choice_stock_daily_observation (
+              trade_date varchar,
+              stock_code varchar,
+              amount double,
+              vendor_version varchar
+            )
+            """
+        )
+        conn.executemany(
+            """
+            insert into livermore_candidate_execution_history values
+            (?, ?, ?, 'stock_candidate', ?, 'HOT', ?, 10.0, true, null,
+             null, 0.01, null, 0.02)
+            """,
+            [
+                ("2025-06-02", "000001.SZ", "Tushare Gen", 1, "2025-06-03"),
+                ("2026-06-01", "000002.SZ", "Native Gen", 1, "2026-06-02"),
+                ("2026-06-01", "000003.SZ", "Null Vendor", 2, "2026-06-02"),
+            ],
+        )
+        conn.executemany(
+            "insert into choice_stock_daily_observation values (?, ?, ?, ?)",
+            [
+                # tushare 代际:单位=千元,300_000 千元 → 3e8 元
+                ("2025-06-02", "000001.SZ", 300_000.0, "vv_choice_tushare_stock_20251231_001"),
+                # choice_native 代际:单位=元,原值透传
+                ("2026-06-01", "000002.SZ", 500_000_000.0, "vv_choice_stock_20260811_001"),
+                # vendor_version 为 NULL:无法定标 → daily_amount 为 NULL 并计入告警
+                ("2026-06-01", "000003.SZ", 400_000_000.0, None),
+            ],
+        )
+        rows, issues = _load_execution_rows(
+            conn,
+            tables={"livermore_candidate_execution_history", "choice_stock_daily_observation"},
+            signal_kind="stock_candidate",
+            start_date=None,
+            end_date=None,
+        )
+    finally:
+        conn.close()
+
+    by_code = {row["stock_code"]: row for row in rows}
+    assert by_code["000001.SZ"]["daily_amount"] == pytest.approx(300_000_000.0)
+    assert by_code["000002.SZ"]["daily_amount"] == pytest.approx(500_000_000.0)
+    assert by_code["000003.SZ"]["daily_amount"] is None
+    assert any("null vendor_version" in issue for issue in issues)
+    assert not any("vendor_version unavailable" in issue for issue in issues)
 
 
 def test_portfolio_script_loads_history_ema10_without_signal_kind_column(tmp_path) -> None:
@@ -1676,3 +1865,125 @@ def test_portfolio_script_loads_legacy_net_return_columns(tmp_path) -> None:
 
     assert payload["status"] == "ready"
     assert payload["results"]["fixed_5d"]["metrics"]["cumulative_return"] is not None
+    assert any("return_5d_net_adj unavailable" in issue for issue in payload["issues"])
+    assert any("non *_net_adj column" in issue for issue in payload["issues"])
+
+
+def test_portfolio_script_discloses_lowlimit_gap_vendor_eras_and_floor_basis(tmp_path) -> None:
+    from scripts.run_portfolio_backtest import run_portfolio_backtest_from_duckdb
+
+    db_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table livermore_candidate_execution_history (
+              signal_date varchar,
+              stock_code varchar,
+              stock_name varchar,
+              signal_kind varchar,
+              candidate_rank integer,
+              market_state varchar,
+              entry_date varchar,
+              entry_price double,
+              entry_executable boolean,
+              entry_block_reason varchar,
+              exit_date_5d varchar,
+              return_5d_net_adj double,
+              exit_date_20d varchar,
+              return_20d_net_adj double
+            )
+            """
+        )
+        conn.executemany(
+            """
+            insert into livermore_candidate_execution_history values
+            (?, ?, ?, 'stock_candidate', 1, 'HOT', ?, 10.0, true, null, ?, 0.01, ?, 0.02)
+            """,
+            [
+                (
+                    "2025-12-31",
+                    "000001.SZ",
+                    "Tushare Gen",
+                    "2026-01-02",
+                    "2026-01-08",
+                    "2026-01-29",
+                ),
+                (
+                    "2026-01-05",
+                    "000002.SZ",
+                    "Native Gen",
+                    "2026-01-06",
+                    "2026-01-12",
+                    "2026-02-02",
+                ),
+            ],
+        )
+        conn.execute(
+            """
+            create table choice_stock_daily_observation (
+              trade_date varchar,
+              stock_code varchar,
+              open_value double,
+              high_value double,
+              low_value double,
+              close_value double,
+              volume double,
+              amount double,
+              tradestatus varchar,
+              highlimit varchar,
+              lowlimit varchar,
+              vendor_version varchar
+            )
+            """
+        )
+        obs_rows = []
+        for stock_code, start_day, vendor_version, lowlimit in [
+            ("000001.SZ", date(2026, 1, 2), "vv_choice_tushare_stock_20251231_001", "9.0"),
+            ("000002.SZ", date(2026, 1, 6), "vv_choice_stock_20260811_001", "N"),
+        ]:
+            for offset in range(5):
+                trade_date = (start_day + timedelta(days=offset)).isoformat()
+                obs_rows.append(
+                    (
+                        trade_date,
+                        stock_code,
+                        10.0,
+                        10.5,
+                        9.5,
+                        10.1,
+                        1_000_000.0,
+                        300_000.0 if "tushare" in vendor_version else 300_000_000.0,
+                        "1",
+                        "11.0",
+                        lowlimit,
+                        vendor_version,
+                    )
+                )
+        conn.executemany(
+            "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            obs_rows,
+        )
+    finally:
+        conn.close()
+
+    report_path = tmp_path / "report.md"
+    payload = run_portfolio_backtest_from_duckdb(
+        db_path=str(db_path),
+        report_path=report_path,
+        output_dir=tmp_path / "out",
+        mode="path",
+        hold_progress_report_path=tmp_path / "hold.md",
+    )
+    report = report_path.read_text(encoding="utf-8")
+
+    assert payload["status"] == "ready"
+    assert payload["tushare_era_rows"] == 1
+    assert payload["native_era_rows"] == 1
+    assert payload["price_path_lowlimit_unparseable_rows"] == 5
+    assert payload["price_path_lowlimit_unparseable_ratio"] == pytest.approx(0.5)
+    assert any("lowlimit" in issue and "limit-down deferred sell detection is ineffective" in issue for issue in payload["issues"])
+    assert "daily_amount is normalized to RMB yuan per docs/data_contracts.md §4.10" in payload["metric_basis"]
+    assert "tushare_era_rows: 1" in report
+    assert "native_era_rows: 1" in report
+    assert "after-floor values are not directly comparable" in report

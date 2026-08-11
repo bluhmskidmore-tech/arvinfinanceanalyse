@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import inspect
+import json
+import math
 from typing import Any, cast
 
 from backend.app.core_finance import factor_screen_candidates as factor_module
@@ -233,6 +235,64 @@ def test_factor_screen_excludes_st_and_extreme_financial_rows() -> None:
     assert "600004.SH" not in codes
 
 
+def test_factor_screen_excludes_non_positive_valuation_rows() -> None:
+    """负/零 pe/pb/ps（亏损股或异常数据）不得因"低者优"排名获得最高估值分进入候选。"""
+    rows = [_sample_row(i) for i in range(30)]
+    loss_maker = {
+        **_sample_row(200),
+        "stock_code": "688001.SH",
+        "stock_name": "LossMaker",
+        "industry": "半导体",
+        "sector_name": "半导体",
+        # 负 PE 若不过滤，会在低者优排名中排到最优档
+        "pe": -3.5,
+        "pb": 0.9,
+        "ps": 0.5,
+        "roe": 0.25,
+        "gross_margin": 0.45,
+        "three_month_return": 0.30,
+        "twelve_month_return": 0.60,
+        "volatility": 0.10,
+        "dividend_yield": 0.05,
+    }
+    zero_pe = {
+        **loss_maker,
+        "stock_code": "688002.SH",
+        "stock_name": "ZeroPe",
+        "pe": 0.0,
+    }
+    negative_pb = {
+        **loss_maker,
+        "stock_code": "688003.SH",
+        "stock_name": "NegativePb",
+        "pe": 8.0,
+        "pb": -1.2,
+    }
+    negative_ps = {
+        **loss_maker,
+        "stock_code": "688004.SH",
+        "stock_name": "NegativePs",
+        "pe": 8.0,
+        "ps": -0.4,
+    }
+    all_rows = [*rows, loss_maker, zero_pe, negative_pb, negative_ps]
+
+    result = compute_factor_screen_candidates(
+        as_of_date="2026-04-30",
+        market_state="WARM",
+        rows=all_rows,
+    )
+
+    payload = cast(dict[str, Any], result.payload)
+    codes = {str(item["stock_code"]) for item in cast(list[dict[str, Any]], payload["items"])}
+    assert "688001.SH" not in codes
+    assert "688002.SH" not in codes
+    assert "688003.SH" not in codes
+    assert "688004.SH" not in codes
+    # 非正估值行也不得计入评分池规模
+    assert payload["input_stock_count"] == 30
+
+
 def test_coverage_note_present() -> None:
     rows = [_sample_row(i) for i in range(8)]
     result = compute_factor_screen_candidates(
@@ -251,6 +311,114 @@ def test_coverage_note_present() -> None:
     assert "/" not in note
     assert "%" not in note
     assert "％" not in note
+
+
+def test_infinite_pe_pb_ps_excluded_and_payload_json_safe() -> None:
+    """+inf pe/pb/ps 不得因"low is good"排名穿透正值过滤混入候选，且输出须可 JSON 序列化。"""
+    rows = [_sample_row(i) for i in range(30)]
+    inf_pe_row = {
+        **_sample_row(200),
+        "stock_code": "900001.SH",
+        "stock_name": "InfPe",
+        "industry": "半导体",
+        "sector_name": "半导体",
+        "pe": float("inf"),
+        "roe": 0.30,
+        "gross_margin": 0.50,
+        "three_month_return": 0.40,
+        "twelve_month_return": 0.70,
+        "dividend_yield": 0.01,
+    }
+    inf_pb_row = {**inf_pe_row, "stock_code": "900002.SH", "stock_name": "InfPb", "pe": 8.0, "pb": float("inf")}
+    inf_ps_row = {**inf_pe_row, "stock_code": "900003.SH", "stock_name": "InfPs", "pe": 8.0, "ps": float("-inf")}
+
+    result = compute_factor_screen_candidates(
+        as_of_date="2026-04-30",
+        market_state="WARM",
+        rows=[*rows, inf_pe_row, inf_pb_row, inf_ps_row],
+    )
+    payload = cast(dict[str, Any], result.payload)
+    codes = {str(item["stock_code"]) for item in cast(list[dict[str, Any]], payload["items"])}
+
+    assert "900001.SH" not in codes
+    assert "900002.SH" not in codes
+    assert "900003.SH" not in codes
+    # JSON 输出不得包含 Infinity/NaN 非法 token（json.dumps 默认 allow_nan=True 会写出字面量，
+    # 必须先确认 payload 里不存在非有限 float，再走 dumps 才算真正验证）。
+    serialized = json.dumps(payload, allow_nan=False)
+    assert "Infinity" not in serialized
+    assert "NaN" not in serialized
+
+
+def test_non_pe_pb_ps_infinite_factor_not_leaked_to_output() -> None:
+    """roe/dividend_yield 等其余因子出现 inf 时：_rank_score 已把该分项判 0 分，行仍可能保留，
+    但展示字段不得把 inf 泄漏到候选输出（JSON 必须可序列化）。"""
+    rows = [_sample_row(i) for i in range(10)]
+    inf_dividend_row = {
+        **_sample_row(300),
+        "stock_code": "900010.SH",
+        "stock_name": "InfDividend",
+        "industry": "银行",
+        "sector_name": "银行",
+        "dividend_yield": float("inf"),
+    }
+    result = compute_factor_screen_candidates(
+        as_of_date="2026-04-30",
+        market_state="WARM",
+        rows=[*rows, inf_dividend_row],
+    )
+    payload = cast(dict[str, Any], result.payload)
+    for item in cast(list[dict[str, Any]], payload["items"]):
+        for key in ("pe", "pb", "roe", "gross_margin", "three_month_return", "twelve_month_return", "dividend_yield"):
+            value = item[key]
+            assert value is None or math.isfinite(float(value))
+    serialized = json.dumps(payload, allow_nan=False)
+    assert "Infinity" not in serialized
+
+
+def test_all_rows_filtered_out_reports_empty_pool_with_zero_input_count() -> None:
+    """全部行必填字段完整但均未通过筛选(如全部 ST)：input_stock_count 须为 0（进入评分池的行数），
+    而非过滤前的原始行数；coverage_note 须反映"未通过筛选"而非"数据全部为空"。"""
+    rows = []
+    for i in range(5):
+        row = _sample_row(i)
+        row["stock_name"] = f"*ST Risk{i}"
+        rows.append(row)
+
+    result = compute_factor_screen_candidates(
+        as_of_date="2026-04-30",
+        market_state="WARM",
+        rows=rows,
+    )
+    payload = cast(dict[str, Any], result.payload)
+
+    assert payload["input_stock_count"] == 0
+    assert payload["candidate_count"] == 0
+    assert payload["items"] == []
+    assert payload["filtered_out_count"] == 5
+    assert "未通过筛选" in str(payload["coverage_note"])
+    assert "全部为空" not in str(payload["coverage_note"])
+
+
+def test_all_rows_missing_required_values_reports_empty_pool_distinct_note() -> None:
+    """必填字段列存在但取值全部缺失(NaN)：coverage_note 应区别于"未通过筛选"，
+    明确指向字段缺失这一根因。"""
+    rows = [_sample_row(i) for i in range(5)]
+    for row in rows:
+        row["pe"] = None
+
+    result = compute_factor_screen_candidates(
+        as_of_date="2026-04-30",
+        market_state="WARM",
+        rows=rows,
+    )
+    payload = cast(dict[str, Any], result.payload)
+
+    assert payload["input_stock_count"] == 0
+    assert payload["candidate_count"] == 0
+    assert payload["filtered_out_count"] == 5
+    assert "缺失" in str(payload["coverage_note"])
+    assert "未通过筛选" not in str(payload["coverage_note"])
 
 
 def test_runs_in_all_market_states() -> None:

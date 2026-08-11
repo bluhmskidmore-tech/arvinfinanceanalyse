@@ -277,8 +277,21 @@ def to_float_safe(v: Any) -> float | None:
         return None
 
 
+# pearson_corr 方差项退化判定的相对容差：方差项由两个近乎相等的大数相减
+# 得到，常数/近常数序列在浮点抵消下可能残留极小的非零正值；相对量级低于
+# 该阈值视为方差为 0（相关无定义），返回 None 而非伪装的数值。
+_PEARSON_DEGENERATE_RTOL = 1e-12
+
+
 def pearson_corr(x: list[float], y: list[float], min_samples: int = 5) -> float | None:
     if len(x) != len(y) or len(x) < min_samples:
+        return None
+    # 共享工具需 fail-safe：调用方通常已过滤 None，但 None/非有限值一旦混入
+    # 会在 sum() 阶段抛 TypeError（None）或把脏数据传染到后续计算（NaN/inf）。
+    # 提前扫描拦截，出口处的 isfinite(r) 检查仍保留作为兜底。
+    if any(v is None or not math.isfinite(v) for v in x):
+        return None
+    if any(v is None or not math.isfinite(v) for v in y):
         return None
     n = len(x)
     sum_x = sum(x)
@@ -287,10 +300,20 @@ def pearson_corr(x: list[float], y: list[float], min_samples: int = 5) -> float 
     sum_xx = sum(xi * xi for xi in x)
     sum_yy = sum(yi * yi for yi in y)
     num = n * sum_xy - sum_x * sum_y
-    den = (n * sum_xx - sum_x * sum_x) * (n * sum_yy - sum_y * sum_y)
+    var_x = n * sum_xx - sum_x * sum_x
+    var_y = n * sum_yy - sum_y * sum_y
+    if var_x <= _PEARSON_DEGENERATE_RTOL * (n * sum_xx + sum_x * sum_x):
+        return None
+    if var_y <= _PEARSON_DEGENERATE_RTOL * (n * sum_yy + sum_y * sum_y):
+        return None
+    den = var_x * var_y
     if den <= 0:
         return None
     r = num / math.sqrt(den)
+    # NaN/inf 输入会传染到 r,而 min(1.0, nan) 按 CPython 语义返回 1.0——
+    # 会把脏数据伪装成完全正相关;非有限值一律视为相关不可得。
+    if not math.isfinite(r):
+        return None
     return max(-1.0, min(1.0, r))
 
 

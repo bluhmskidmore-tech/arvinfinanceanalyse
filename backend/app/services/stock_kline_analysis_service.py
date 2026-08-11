@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import date
 from pathlib import Path
@@ -7,12 +8,19 @@ from typing import Any, cast
 
 import duckdb
 from backend.app.core_finance.field_normalization import TRADING_STATUS_SQL_IN_LIST
+from backend.app.repositories.choice_stock_units import (
+    amount_rmb_sql,
+    scale_unknown_sql,
+    volume_shares_sql,
+)
 from backend.app.services.formal_result_runtime import (
     FallbackMode,
     QualityFlag,
     VendorStatus,
     build_result_envelope,
 )
+
+logger = logging.getLogger(__name__)
 
 RESULT_KIND = "market_data.stock_analysis.kline"
 RULE_VERSION = "rv_stock_kline_analysis_observation_v1"
@@ -54,7 +62,7 @@ def stock_kline_analysis_envelope(
                     lookback=lookback,
                     reason_code="stock_ohlcv_missing",
                 )
-            rows = _fetch_candles(
+            rows, unit_warnings = _fetch_candles(
                 conn,
                 stock_code=stock_code,
                 end_trade_date=end_bound,
@@ -93,8 +101,27 @@ def stock_kline_analysis_envelope(
         for candle in candles
     ]
     analysis = _analyze_candles(public_candles)
+    if unit_warnings:
+        validity = cast(dict[str, object], analysis["validity"])
+        validity_warnings = cast(list[str], validity["warnings"])
+        signal = cast(dict[str, object], analysis["observation_signal"])
+        signal_risks = cast(list[str], signal["risks"])
+        diagnostics = cast(list[dict[str, object]], analysis["diagnostics"])
+        for warning in unit_warnings:
+            if warning not in validity_warnings:
+                validity_warnings.append(warning)
+            if warning not in signal_risks:
+                signal_risks.append(warning)
+            diagnostics.append(
+                {
+                    "severity": "warning",
+                    "code": warning,
+                    "message": "OHLCV unit normalization warning; review volume and amount evidence.",
+                }
+            )
+        signal["confidence"] = "low"
     state = str(analysis["state"])
-    quality_flag = "ok" if state == "ok" else "warning"
+    quality_flag = "ok" if state == "ok" and not unit_warnings else "warning"
 
     result_payload: dict[str, object] = {
         "basis": "analytical",
@@ -254,33 +281,87 @@ def _fetch_candles(
     stock_code: str,
     end_trade_date: date,
     lookback: int,
-) -> list[dict[str, Any]]:
-    result = conn.execute(
-        f"""
-        select
-          trade_date,
-          open_value,
-          high_value,
-          low_value,
-          close_value,
-          volume,
-          amount,
-          pctchange,
-          turn,
-          amplitude,
-          source_version,
-          vendor_version
-        from {TABLE_OBS}
-        where stock_code = ?
-          and trade_date <= ?
-          and lower(trim(coalesce(tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
-        order by trade_date desc
-        limit ?
-        """,
-        [stock_code, end_trade_date.isoformat(), lookback],
-    )
-    cols = [d[0] for d in result.description]
-    return [dict(zip(cols, row, strict=True)) for row in result.fetchall()]
+) -> tuple[list[dict[str, Any]], list[str]]:
+    def execute(
+        volume_projection: str,
+        amount_projection: str,
+        volume_unknown_projection: str,
+        amount_unknown_projection: str,
+        vendor_projection: str,
+    ) -> list[dict[str, Any]]:
+        result = conn.execute(
+            f"""
+            select
+              trade_date,
+              open_value,
+              high_value,
+              low_value,
+              close_value,
+              {volume_projection},
+              {amount_projection},
+              pctchange,
+              turn,
+              amplitude,
+              source_version,
+              {vendor_projection},
+              {volume_unknown_projection},
+              {amount_unknown_projection}
+            from {TABLE_OBS}
+            where stock_code = ?
+              and trade_date <= ?
+              and lower(trim(coalesce(tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
+            order by trade_date desc
+            limit ?
+            """,
+            [stock_code, end_trade_date.isoformat(), lookback],
+        )
+        cols = [d[0] for d in result.description]
+        return [dict(zip(cols, row, strict=True)) for row in result.fetchall()]
+
+    warnings: list[str] = []
+    # docs/data_contracts.md §4.10: K 线 amount/volume 统一为人民币元/股。
+    try:
+        rows = execute(
+            volume_shares_sql(alias="volume"),
+            amount_rmb_sql(alias="amount"),
+            scale_unknown_sql("volume", alias="_volume_scale_unknown"),
+            scale_unknown_sql("amount", alias="_amount_scale_unknown"),
+            "vendor_version",
+        )
+    except duckdb.BinderException as exc:
+        if "vendor_version" not in str(exc).casefold():
+            raise
+        logger.warning(
+            "%s missing vendor_version; stock k-line amount/volume cannot be scaled, "
+            "output as NULL (fail-closed)",
+            TABLE_OBS,
+        )
+        warnings.append("vendor_version_column_missing_null_units")
+        rows = execute(
+            "cast(null as double) as volume",
+            "cast(null as double) as amount",
+            "false as _volume_scale_unknown",
+            "false as _amount_scale_unknown",
+            "cast(null as varchar) as vendor_version",
+        )
+
+    volume_unknown_count = sum(bool(row.pop("_volume_scale_unknown", False)) for row in rows)
+    amount_unknown_count = sum(bool(row.pop("_amount_scale_unknown", False)) for row in rows)
+    if volume_unknown_count:
+        logger.warning(
+            "%s has %d k-line rows with volume but null vendor_version; normalized volume is null",
+            TABLE_OBS,
+            volume_unknown_count,
+        )
+        warnings.append("volume_unit_scale_unknown")
+    if amount_unknown_count:
+        logger.warning(
+            "%s has %d k-line rows with amount but null vendor_version; normalized amount is null",
+            TABLE_OBS,
+            amount_unknown_count,
+        )
+        warnings.append("amount_unit_scale_unknown")
+    return rows, warnings
 
 
 def _analyze_candles(candles: list[dict[str, object]]) -> dict[str, object]:

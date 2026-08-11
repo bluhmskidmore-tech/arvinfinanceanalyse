@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
+import numpy as np
 import pandas as pd
 
 from backend.app.core_finance.strategy_policy import POLICY
@@ -80,16 +82,27 @@ def compute_factor_screen_candidates(
         if col not in df.columns:
             df[col] = ""
 
-    df_clean = df.dropna(subset=required)
-    df_clean = _filter_factor_screen_universe(df_clean)
+    df_required = df.dropna(subset=required)
+    df_clean = _filter_factor_screen_universe(df_required)
     if df_clean.empty:
+        # input_stock_count 语义为"进入评分池的行数"(过滤后),此处评分池为空则为 0；
+        # screened_out_count 用于区分"必填字段全空"与"必填字段完整但未通过筛选"两种根因。
+        screened_out_count = len(df_required)
+        if screened_out_count > 0:
+            coverage_note = (
+                f"必填字段完整的 {screened_out_count} 只候选均未通过筛选条件"
+                "(如 ST、极端 ROE/股息率、非正估值等),评分池为空"
+            )
+        else:
+            coverage_note = "因子必填字段全部缺失,评分池为空"
         return FactorScreenResult(
             payload=_build_payload(
                 as_of_date=as_of_date,
                 market_state=market_state,
-                input_count=len(rows),
+                input_count=0,
                 items=[],
-                coverage_note="因子数据全部为空",
+                coverage_note=coverage_note,
+                filtered_out_count=len(rows),
             )
         )
 
@@ -151,6 +164,7 @@ def compute_factor_screen_candidates(
             input_count=total_universe,
             items=items,
             coverage_note=coverage_note,
+            filtered_out_count=len(rows) - total_universe,
         )
     )
 
@@ -162,12 +176,14 @@ def _build_payload(
     input_count: int,
     items: list[dict[str, object]],
     coverage_note: str,
+    filtered_out_count: int = 0,
 ) -> dict[str, object]:
     return {
         "as_of_date": as_of_date,
         "formula_version": FORMULA_VERSION,
         "market_state": market_state,
         "input_stock_count": input_count,
+        "filtered_out_count": filtered_out_count,
         "candidate_count": len(items),
         "coverage_note": coverage_note,
         "items": items,
@@ -176,9 +192,14 @@ def _build_payload(
 
 def _safe_round(value: object, ndigits: int = 4) -> float | None:
     try:
-        return round(float(value), ndigits)  # type: ignore[arg-type]
+        as_float = float(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return None
+    # +-inf/NaN 若透传到 JSON 输出会产生非法 token(Infinity/NaN);展示字段一律
+    # 退化为 None,而非把脏数据伪装成数值。评分权重已由 _rank_score 处理(NA -> 0)。
+    if not math.isfinite(as_float):
+        return None
+    return round(as_float, ndigits)
 
 
 def _multi_factor_selection(
@@ -242,4 +263,13 @@ def _filter_factor_screen_universe(df: pd.DataFrame) -> pd.DataFrame:
     mask &= pd.to_numeric(df["roe"], errors="coerce").abs() <= MAX_ABS_ROE
     mask &= pd.to_numeric(df["dividend_yield"], errors="coerce") <= MAX_DIVIDEND_YIELD
     mask &= pd.to_numeric(df["gross_margin"], errors="coerce") >= MIN_POSITIVE_MARGIN
+    # 估值因子按"低者优"排名打分：负/零 pe/pb/ps（亏损或异常数据）会被排到
+    # 最优档，必须先排除。摄入层（stock_factor_refresh / choice_stock_materialize
+    # 的 _positive_float_or_none）已保证非正值写为 NULL，此处为口径防护，
+    # 与 livermore_stock_candidates 基本面 overlay 的正值口径一致。
+    # 同时要求有限：+inf > 0 为真，若不显式排除会绕过"正值"过滤混入候选
+    # （且后续 JSON 输出会产生非法的 Infinity token）。
+    for column in ("pe", "pb", "ps"):
+        numeric = pd.to_numeric(df[column], errors="coerce")
+        mask &= np.isfinite(numeric) & (numeric > 0)
     return df[mask]

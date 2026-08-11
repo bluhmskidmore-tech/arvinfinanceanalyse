@@ -255,11 +255,7 @@ def _candidate_row(
     if sector_rank == 1 and abnormal_turnover >= CROWDED_LEADER_TURNOVER_BLOCK:
         return None, False
 
-    atu_in_band = policy.abnormal_turnover_min <= abnormal_turnover
-    if policy.abnormal_turnover_max == ABNORMAL_TURNOVER_MAX_V7:
-        atu_in_band = atu_in_band and abnormal_turnover < policy.abnormal_turnover_max
-    else:
-        atu_in_band = atu_in_band and abnormal_turnover <= policy.abnormal_turnover_max
+    atu_in_band = _abnormal_turnover_allowed(abnormal_turnover=abnormal_turnover, policy=policy)
 
     signal = (
         close_value > breakout_level
@@ -524,9 +520,9 @@ def _abnormal_turnover_allowed(
 ) -> bool:
     if abnormal_turnover < policy.abnormal_turnover_min:
         return False
-    if policy.abnormal_turnover_max == ABNORMAL_TURNOVER_MAX_V7:
-        return abnormal_turnover < policy.abnormal_turnover_max
-    return abnormal_turnover <= policy.abnormal_turnover_max
+    if policy.abnormal_turnover_max_inclusive:
+        return abnormal_turnover <= policy.abnormal_turnover_max
+    return abnormal_turnover < policy.abnormal_turnover_max
 
 
 def _build_payload(

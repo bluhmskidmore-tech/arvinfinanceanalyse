@@ -43,7 +43,14 @@ def build_dual_frequency_equity_snapshot(
 ) -> dict[str, Any]:
     """Build a pure, observation-only dual-frequency equity strategy snapshot.
 
-    ``daily_rows`` must provide ``trade_date``, ``close`` and ``amount``. The
+    ``daily_rows`` must provide ``trade_date``, ``close`` and ``amount``.
+    ``amount`` must already be a single-unit series (the repository layer
+    normalizes choice_stock_daily_observation to RMB across vendor
+    generations per docs/data_contracts.md §4.10). The amount-ratio
+    thresholds (``high_amount_ratio``/``thrust_amount_ratio``) are
+    dimensionless and only meaningful when every row shares that unit;
+    feeding mixed-unit rows fabricates attack/exit transitions at the
+    vendor boundary. The
     slow layer is deliberately limited to an upstream-supplied cap; this
     function does not reinterpret a macro score as a temperature or risk
     budget. A final target is emitted only when the survival layer can be
@@ -157,7 +164,7 @@ def build_dual_frequency_equity_snapshot(
         },
         "provenance": {
             "calculation_module": "backend.app.core_finance.macro.dual_frequency_equity",
-            "source_strategy": "C:/Users/arvin/Desktop/a_share_dual_freq_v6.py",
+            "source_strategy": "desktop:a_share_dual_freq_v6.py",
             "integration_mode": "ported_read_only_candidate",
             "slow_cap_source": "upstream_input",
             "fast_input_fields": ["trade_date", "close", "amount"],

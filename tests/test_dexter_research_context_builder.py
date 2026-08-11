@@ -389,3 +389,86 @@ def test_missing_research_context_records_limitations_without_tables(tmp_path):
     assert context["tables_used"] == []
     assert context["sql_executed"] == []
     assert "DuckDB database is not available" in context["limitations"][0]
+
+
+def test_stock_research_context_normalizes_tushare_amount_and_volume_units(tmp_path):
+    duckdb_path = tmp_path / "mixed-units.duckdb"
+    conn = _connect(duckdb_path)
+    try:
+        conn.execute(
+            """
+            create table choice_stock_daily_observation (
+              trade_date varchar, stock_code varchar, open_value double, high_value double,
+              low_value double, close_value double, volume double, amount double,
+              pctchange double, turn double, amplitude double, tradestatus varchar,
+              highlimit varchar, lowlimit varchar, source_version varchar,
+              vendor_version varchar, rule_version varchar, run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into choice_stock_daily_observation values
+            ('2025-12-31','000001.SZ',20,22,19,21.9,1000,2000,3.2,1.5,4.1,
+             '交易','N','N','sv_price','vv_choice_tushare_stock_20251231','rv_price','run-price')
+            """
+        )
+    finally:
+        conn.close()
+
+    context = build_dexter_research_context(
+        request=AgentQueryRequest(
+            question="分析这只股票",
+            filters={"research_domain": "stock", "stock_code": "000001.SZ"},
+        ),
+        duckdb_path=str(duckdb_path),
+    )
+
+    daily = context["stock"]["daily_observation"]
+    assert daily["volume"] == 100_000.0
+    assert daily["amount"] == 2_000_000.0
+    assert daily["volume_unit"] == "shares"
+    assert daily["amount_unit"] == "CNY"
+
+
+def test_stock_research_context_legacy_schema_fails_closed_with_limitation(
+    tmp_path,
+):
+    duckdb_path = tmp_path / "legacy-schema.duckdb"
+    conn = _connect(duckdb_path)
+    try:
+        conn.execute(
+            """
+            create table choice_stock_daily_observation (
+              trade_date varchar, stock_code varchar, open_value double, high_value double,
+              low_value double, close_value double, volume double, amount double,
+              pctchange double, turn double, amplitude double, tradestatus varchar,
+              highlimit varchar, lowlimit varchar, source_version varchar,
+              rule_version varchar, run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into choice_stock_daily_observation values
+            ('2025-12-31','000001.SZ',20,22,19,21.9,1000,2000,3.2,1.5,4.1,
+             '交易','N','N','sv_price','rv_price','run-price')
+            """
+        )
+    finally:
+        conn.close()
+
+    context = build_dexter_research_context(
+        request=AgentQueryRequest(
+            question="分析这只股票",
+            filters={"research_domain": "stock", "stock_code": "000001.SZ"},
+        ),
+        duckdb_path=str(duckdb_path),
+    )
+
+    daily = context["stock"]["daily_observation"]
+    assert daily["volume"] is None
+    assert daily["amount"] is None
+    assert daily["volume_unit"] == "unknown"
+    assert daily["amount_unit"] == "unknown"
+    assert any("vendor_version" in limitation for limitation in context["limitations"])

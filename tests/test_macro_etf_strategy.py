@@ -64,6 +64,16 @@ def test_order_draft_uses_quotes_and_stays_manual_review_only() -> None:
     assert all(order["notional"] <= DEFAULT_CONFIG["max_single_order_pct"] * draft["nav"] for order in draft["orders"])
 
 
+def test_provenance_source_script_is_machine_independent_identifier() -> None:
+    payload = build_macro_etf_strategy_snapshot(
+        config=DEFAULT_CONFIG,
+        macro_state=DEFAULT_MACRO_STATE,
+        as_of_date=date(2026, 7, 3),
+    )
+
+    assert payload["provenance"]["source_script"] == "desktop:files.zip/live_macro_strategy.py"
+
+
 def test_service_envelope_marks_missing_quotes_without_generating_orders(tmp_path: Path) -> None:
     cfg_path = tmp_path / "macro_etf_strategy.json"
     macro_path = tmp_path / "macro_etf_macro_state.json"
@@ -144,6 +154,8 @@ def test_service_embeds_read_only_dual_frequency_without_changing_orders(
                     "quality": "degraded",
                     "valid_amount_observation_count": 1000,
                     "null_amount_observation_count": 2,
+                    "unit": "rmb_normalized_by_vendor_generation_see_data_contracts_4_10",
+                    "unit_normalization": "applied_via_vendor_generation",
                 }
             },
             "warnings": ["market_amount_null_values_ignored"],
@@ -177,6 +189,15 @@ def test_service_embeds_read_only_dual_frequency_without_changing_orders(
         "null_amount_observation_count"
     ] == 2
     assert dual["provenance"]["amount_methodology"]["is_csi300_constituent_turnover"] is False
+    # amount_methodology 的单位口径必须与仓储层 market_amount 源元数据一致,不得自相矛盾。
+    assert (
+        dual["provenance"]["amount_methodology"]["unit"]
+        == dual["data_status"]["history"]["sources"]["market_amount"]["unit"]
+    )
+    assert (
+        dual["provenance"]["amount_methodology"]["unit_normalization"]
+        == dual["data_status"]["history"]["sources"]["market_amount"]["unit_normalization"]
+    )
     assert "market-wide proxy" in dual["warnings"][-1]
     assert result["position"]["target_weights"] == {
         "512480": 0.156938,

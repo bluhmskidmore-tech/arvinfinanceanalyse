@@ -16,6 +16,9 @@ class StockCandidatePolicyDefinition:
     abnormal_turnover_min: float
     abnormal_turnover_max: float
     close_strength_first: bool = False
+    #: 异常换手上界的开闭：True 表示闭区间（<= max），False 表示开区间（< max）。
+    #: 下界始终为闭区间（>= min）。
+    abnormal_turnover_max_inclusive: bool = True
 
 
 @dataclass(frozen=True)
@@ -86,6 +89,8 @@ _STOCK_CANDIDATE_POLICIES = (
         gap_norm_max=0.45,
         abnormal_turnover_min=1.2,
         abnormal_turnover_max=2.0,
+        # v7 主档历史口径为开区间上界（< 2.0），显式声明以保持行为不变。
+        abnormal_turnover_max_inclusive=False,
     ),
     StockCandidatePolicyDefinition(
         name="exp3b",

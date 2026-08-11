@@ -595,6 +595,44 @@ canonical grain：
 - 只作市场/宏观/情景增强
 - 是否允许 formal 使用由配置决定
 
+### 4.10 choice_stock_daily_observation
+
+用途：A 股日频行情观察表，供 Livermore 股票研究等分析路径读取；不是统一单位完成后的标准化 OHLCV 事实表。
+
+#### 单位契约
+
+表内存在两代 vendor 摄入；`amount` 与 `volume` 的存储单位随 `vendor_version` 变化，消费者不得把原始列视为跨全表同单位字段。
+
+| 代际 | `vendor_version` 特征 | 覆盖区间 | `amount` 存储单位 | `volume` 存储单位 | 价格类列 |
+| --- | --- | --- | --- | --- | --- |
+| Tushare 代际 | `like '%tushare%'`（`vv_choice_tushare_stock_*`） | 2024-01-02 至 2025-12-31（总 2,489,981 行，`amount` 非空 2,484,974 行） | 千元 | 手（100 股） | `open_value` / `high_value` / `low_value` / `close_value` 均为元 |
+| Choice native 代际 | 不含 `tushare`（例如 `vv_choice_stock_20260811_*`） | 2026-01-05 至今（总 760,368 行，`amount` 非空 755,704 行） | 元 | 股 | `open_value` / `high_value` / `low_value` / `close_value` 均为元 |
+
+代际边界为 **2025-12-31 → 2026-01-05**。两代际在 `(stock_code, trade_date)` 上零重叠。
+
+#### 证据摘要
+
+- Tushare 摄入使用 daily 接口字段 `ts_code` / `vol` / `amount`；该接口官方口径为 `amount` 千元、`vol` 手。
+- Tushare 代际 `amount / (volume × close)` 中位比值约为 `0.1`；全代际 `amount` 最大值为 `9.0e7`，按千元解释约为 900 亿元，量级合理。
+- Choice native 代际同一比值中位约为 `1.0`。平安银行（`000001.SZ`）在 2026-08-11 的观测为 `amount=749,686,462` 元、`volume=66,336,053` 股，与约 7.5 亿元实际成交额相符。
+
+#### 消费规则
+
+- `POLICY.entry_filters.min_daily_amount = 200_000_000.0` 的语义单位为**元**。
+- 任一读取 `amount` / `volume` 的绝对阈值比较，必须先按 `vendor_version` 将原始值归一化到元 / 股。
+- 任一跨代际时序计算（包括均线、量比及其派生信号），必须先按代际归一化；禁止直接拼接或比较原始 `amount` / `volume`。
+- **fail-closed 规则**：`vendor_version` 行值为 NULL、或观察表缺失 `vendor_version` 列（旧 schema / 合成表）时，`amount` / `volume` 一律输出 NULL 并告警，禁止原值透传（无法定标的原始值不得流入任何阈值比较、时序计算或对外展示/提示语料）。
+- 价格类列两代单位均为元，不适用上述金额和成交量换算。
+- `turn`（换手率，百分点）两代口径一致：Tushare 摄入优先取 `turnover_rate_f`（自由流通口径），缺失时回退 `turnover_rate`（总股本口径）；边界实证无尺度断裂（跨界均值比中位 0.90），`abnormal_turnover` 等相对量比跨代可比。消费者不应假设该列是严格单一口径的自由流通换手。
+
+#### `highlimit` / `lowlimit` 覆盖缺口（2026 段无数值价格）
+
+该两列为 VARCHAR，且存在字段语义冲突：Choice 上游 `HIGHLIMIT`/`LOWLIMIT` 是**是/否标志而非价格**（见 `config/choice_stock_catalog.json` 的 `daily_limit_flags` 描述）。Tushare 代际行内的数值价格来自权限兜底路径；choice_native 代际（2026-01-05 起）全部 760,368 行**不含可解析的数值价格**（0 行可 `try_cast`）。消费影响：`limit_ratio` 有完整规则兜底、`one_word_board` 用四价相等判定，均未失效；但 `closed_up_limit` 在 2026 段硬失效，`portfolio_paths` 的跌停顺延卖出在 2026 段会把跌停日误判为可卖。消费者不得假设该两列是跨代际可用的数值涨跌停价；数值价格建议以 `tushare.stk_limit` 类专用源另行落地（截至本契约更新，回填任务尚未建立）。
+
+#### Batch3 治理状态
+
+`scripts/run_batch3_stock_strategy_research.py` 先前将该字段标为 `daily_amount_rmb_unconfirmed`，原因是当时仅有本地 pass-through lineage，尚无 vendor 单位证据。现已具备 Tushare 官方接口口径及上述代际交叉校验，可建议将该状态升级为 confirmed；该状态变更及其脚本内落实由 Batch3 维护者负责，不属于本文档变更范围。
+
 ## 5. 事实表清单
 
 - `fact_bond_monthly_avg`

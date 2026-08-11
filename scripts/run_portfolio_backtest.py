@@ -35,6 +35,10 @@ from backend.app.core_finance.portfolio_paths import (  # noqa: E402
 )
 from backend.app.core_finance.strategy_policy import POLICY  # noqa: E402
 from backend.app.core_finance.vol_target_overlay import build_vol_target_index_comparison  # noqa: E402
+from backend.app.repositories.choice_stock_units import (  # noqa: E402
+    amount_rmb_sql,
+    scale_unknown_sql,
+)
 
 TABLE_EXECUTION_HIST = "livermore_candidate_execution_history"
 TABLE_OBS = "choice_stock_daily_observation"
@@ -44,6 +48,15 @@ TABLE_BENCHMARK_SNAPSHOT = "choice_market_snapshot"
 BENCHMARK_SERIES_ID = "CA.CSI300"
 DEFAULT_REPORT_PATH = Path("docs/pnl/2026-07-portfolio-backtest-report.md")
 DEFAULT_HOLD_PROGRESS_MATRIX_PATH = Path("docs/pnl/2026-07-batch2-hold-progress-matrix.md")
+CHOICE_NATIVE_ERA_START = "2026-01-05"
+METRIC_BASIS = (
+    "T+1 open execution history, net adjusted horizon returns, daily market_gate exposure when available; "
+    "otherwise policy state fallback; daily_amount is normalized to RMB yuan per docs/data_contracts.md §4.10, "
+    "so liquidity-floor / metrics_after_floor values are not directly comparable with pre-normalization reports; "
+    "risk_budget variants size by risk_per_trade / stop_distance_pct with policy caps; "
+    "max_entry_premium variants skip rows with entry_price/signal_close - 1 above the threshold; "
+    "probe_pyramid variants use half-size probes, close>signal-high confirmation, and next-open add/failed-exit path accounting"
+)
 
 
 def run_portfolio_backtest_from_duckdb(
@@ -190,16 +203,31 @@ def run_portfolio_backtest_from_duckdb(
         (str(result.metrics.get("exposure_basis")) for result in results.values() if result.metrics.get("exposure_basis")),
         "state_max_fallback",
     )
+    era_counts = _execution_vendor_era_counts(execution_rows)
+    lowlimit_unparseable_rows = _price_path_unparseable_lowlimit_rows(price_paths)
+    lowlimit_total_rows = _price_path_row_count(price_paths)
+    lowlimit_unparseable_ratio = (
+        round(lowlimit_unparseable_rows / lowlimit_total_rows, 6) if lowlimit_total_rows else 0.0
+    )
+    if mode == "path" and lowlimit_unparseable_ratio > 0:
+        load_issues.append(
+            "Price path lowlimit disclosure: "
+            f"{lowlimit_unparseable_rows}/{lowlimit_total_rows} rows have unparseable lowlimit; "
+            "per docs/data_contracts.md §4.10 highlimit/lowlimit coverage gap, the 2026 Choice native era "
+            "lacks numeric limit prices, so limit-down deferred sell detection is ineffective for those rows."
+        )
     payload = {
         "status": "ready",
         "db_path": str(db_file),
         "report_path": str(report),
         "csv_paths": csv_paths,
         "execution_row_count": len(execution_rows),
+        "tushare_era_rows": era_counts["tushare_era_rows"],
+        "native_era_rows": era_counts["native_era_rows"],
         "signal_kind": signal_kind,
         "portfolio_engine_version": PORTFOLIO_ENGINE_VERSION,
         "mode": mode,
-        "metric_basis": "T+1 open execution history, net adjusted horizon returns, daily market_gate exposure when available; otherwise policy state fallback; risk_budget variants size by risk_per_trade / stop_distance_pct with policy caps; max_entry_premium variants skip rows with entry_price/signal_close - 1 above the threshold; probe_pyramid variants use half-size probes, close>signal-high confirmation, and next-open add/failed-exit path accounting",
+        "metric_basis": METRIC_BASIS,
         "exposure_basis": actual_exposure_basis,
         "daily_exposure_rows": len(exposure_rows),
         "price_path_count": len(price_paths),
@@ -208,6 +236,9 @@ def run_portfolio_backtest_from_duckdb(
             _price_path_forward_filled_adj_factor_rows(price_paths)
         ),
         "price_path_raw_fallback_paths": _price_path_raw_fallback_paths(price_paths),
+        "price_path_lowlimit_unparseable_rows": lowlimit_unparseable_rows,
+        "price_path_lowlimit_total_rows": lowlimit_total_rows,
+        "price_path_lowlimit_unparseable_ratio": lowlimit_unparseable_ratio,
         "results": {
             variant: {
                 "metrics": result.metrics,
@@ -265,10 +296,18 @@ def _load_execution_rows(
         "exit_date_20d",
     }
     missing = sorted(required - columns)
+    return_5d_column = _first_available_column(
+        columns,
+        ("return_5d_net_adj", "return_5d_adj", "return_5d_net", "return_5d"),
+    )
     return_5d_expr = _first_available_column_sql(
         columns,
         ("return_5d_net_adj", "return_5d_adj", "return_5d_net", "return_5d"),
         alias="return_5d_net_adj",
+    )
+    return_20d_column = _first_available_column(
+        columns,
+        ("return_20d_net_adj", "return_20d_adj", "return_20d_net", "return_20d"),
     )
     return_20d_expr = _first_available_column_sql(
         columns,
@@ -284,6 +323,7 @@ def _load_execution_rows(
 
     obs_columns = _columns(conn, TABLE_OBS) if TABLE_OBS in tables else set()
     has_daily_amount = "amount" in obs_columns
+    has_obs_vendor_version = "vendor_version" in obs_columns
     has_signal_high = "high_value" in obs_columns
     has_execution_signal_close = "signal_close" in columns
     has_observation_signal_close = "close_value" in obs_columns
@@ -294,7 +334,18 @@ def _load_execution_rows(
         "adj_factor",
     }.issubset(_columns(conn, TABLE_ADJ_FACTOR))
     has_daily_join = has_daily_amount or has_signal_high or (not has_execution_signal_close and has_observation_signal_close)
-    daily_select = "d.amount as daily_amount" if has_daily_amount else "cast(null as double) as daily_amount"
+    # amount 两代 vendor 单位口径（契约 docs/data_contracts.md §4.10）经共享
+    # helper 归一化为元；vendor_version 为 NULL 或列缺失时无法定标，
+    # fail-closed 输出 NULL（raw 值可能是千元，不得参与元口径阈值判断）。
+    if has_daily_amount and has_obs_vendor_version:
+        daily_select = amount_rmb_sql(table_alias="d", alias="daily_amount")
+    else:
+        daily_select = "cast(null as double) as daily_amount"
+    amount_scale_unknown_select = (
+        scale_unknown_sql("amount", table_alias="d", alias="daily_amount_scale_unknown")
+        if has_daily_amount and has_obs_vendor_version
+        else "false as daily_amount_scale_unknown"
+    )
     signal_factor_expr = "af_signal.adj_factor" if has_signal_adj else "1.0"
     signal_adj_missing_select = (
         "d.stock_code is not null and af_signal.adj_factor is null as signal_adj_factor_missing"
@@ -384,7 +435,8 @@ def _load_execution_rows(
           {daily_select},
           {signal_high_select},
           {history_select},
-          {signal_adj_missing_select}
+          {signal_adj_missing_select},
+          {amount_scale_unknown_select}
         from {TABLE_EXECUTION_HIST} e
         {daily_join}
         {signal_adj_join}
@@ -418,8 +470,20 @@ def _load_execution_rows(
         for row in rows
     ]
     issues = []
+    issues.extend(
+        _return_column_basis_issues(
+            {
+                "return_5d_net_adj": return_5d_column,
+                "return_20d_net_adj": return_20d_column,
+            }
+        )
+    )
     if not has_daily_amount:
         issues.append(f"{TABLE_OBS}.amount unavailable; liquidity sensitivity keeps rows as unknown.")
+    elif not has_obs_vendor_version:
+        issues.append(
+            f"{TABLE_OBS}.vendor_version unavailable; daily_amount kept null (unit basis unavailable)."
+        )
     if not has_signal_high:
         issues.append(f"{TABLE_OBS}.high_value unavailable; probe_pyramid variants skip rows.")
     if not has_execution_signal_close and not has_observation_signal_close:
@@ -429,6 +493,12 @@ def _load_execution_rows(
         issues.append(
             f"{signal_adj_missing_count} rows lacked signal-day adjustment factors; "
             "signal_high/observation signal_close are set to null for adjusted-basis variants."
+        )
+    amount_scale_unknown_count = sum(1 for row in rows if bool(row[19]))
+    if amount_scale_unknown_count:
+        issues.append(
+            f"{amount_scale_unknown_count} rows have amount with null vendor_version; "
+            "daily_amount set to null (unit scale unknown)."
         )
     return out, issues
 
@@ -525,12 +595,56 @@ def _columns(conn: duckdb.DuckDBPyConnection, table: str) -> set[str]:
 
 
 def _first_available_column_sql(columns: set[str], candidates: Sequence[str], *, alias: str) -> str | None:
-    available = [f"e.{column}" for column in candidates if column in columns]
-    if not available:
+    selected = _first_available_column(columns, candidates)
+    if selected is None:
         return None
+    available = [f"e.{column}" for column in candidates if column in columns]
     if len(available) == 1:
         return f"{available[0]} as {alias}"
     return f"coalesce({', '.join(available)}) as {alias}"
+
+
+def _first_available_column(columns: set[str], candidates: Sequence[str]) -> str | None:
+    return next((column for column in candidates if column in columns), None)
+
+
+def _return_column_basis_issues(selected_by_alias: Mapping[str, str | None]) -> list[str]:
+    issues: list[str] = []
+    for alias, selected in selected_by_alias.items():
+        if selected is None or selected == alias:
+            continue
+        issues.append(
+            f"{alias} unavailable; using {selected} for {alias}. "
+            "metric_basis says net adjusted horizon returns, but this run fell back to a non *_net_adj column."
+        )
+    return issues
+
+
+def _execution_vendor_era_counts(rows: Sequence[Mapping[str, object]]) -> dict[str, int]:
+    tushare_rows = 0
+    native_rows = 0
+    for row in rows:
+        signal_date = str(row.get("signal_date") or "")[:10]
+        if signal_date and signal_date < CHOICE_NATIVE_ERA_START:
+            tushare_rows += 1
+        elif signal_date:
+            native_rows += 1
+    return {"tushare_era_rows": tushare_rows, "native_era_rows": native_rows}
+
+
+def _price_path_row_count(price_paths: Mapping[str, Sequence[Mapping[str, object]]]) -> int:
+    return sum(len(rows) for rows in price_paths.values())
+
+
+def _price_path_unparseable_lowlimit_rows(
+    price_paths: Mapping[str, Sequence[Mapping[str, object]]],
+) -> int:
+    return sum(
+        1
+        for rows in price_paths.values()
+        for row in rows
+        if row.get("lowlimit") is None
+    )
 
 
 def _price_path_missing_adj_factor_rows(
@@ -856,6 +970,8 @@ def _write_ready_report(path: Path, payload: dict[str, Any]) -> None:
         f"- portfolio_engine_version: {payload['portfolio_engine_version']}",
         f"- mode: {payload['mode']}",
         f"- execution_row_count: {payload['execution_row_count']}",
+        f"- tushare_era_rows: {payload['tushare_era_rows']}",
+        f"- native_era_rows: {payload['native_era_rows']}",
         f"- metric_basis: {payload['metric_basis']}",
         f"- exposure_basis: {payload['exposure_basis']}",
         f"- daily_exposure_rows: {payload['daily_exposure_rows']}",
@@ -863,6 +979,8 @@ def _write_ready_report(path: Path, payload: dict[str, Any]) -> None:
         f"- price_path_adj_factor_missing_rows: {payload['price_path_adj_factor_missing_rows']}",
         f"- price_path_adj_factor_forward_filled_rows: {payload['price_path_adj_factor_forward_filled_rows']}",
         f"- price_path_raw_fallback_paths: {payload['price_path_raw_fallback_paths']}",
+        f"- price_path_lowlimit_unparseable_rows: {payload['price_path_lowlimit_unparseable_rows']}",
+        f"- price_path_lowlimit_unparseable_ratio: {payload['price_path_lowlimit_unparseable_ratio']}",
         f"- benchmark_tables: {payload['benchmark_tables'] or 'unavailable'}",
         f"- issues: {payload['issues'] or []}",
         "",
@@ -904,6 +1022,29 @@ def _write_ready_report(path: Path, payload: dict[str, Any]) -> None:
                 fallback_days=_fmt(metrics.get("exposure_fallback_days")),
                 fallback_ratio=_fmt(metrics.get("exposure_fallback_day_ratio")),
                 skips=skips,
+            )
+        )
+    lines.extend(
+        [
+            "",
+            "## Risk Metric Disclosures",
+            "",
+            "| variant | risk_metrics_basis | holding_days_marked_at_cost | mtm_position_days | mtm_cost_fallback_position_days | mtm_cost_fallback_ratio | mtm_cost_fallback_exit_trades | risk_metrics_warning |",
+            "|---|---|---:|---:|---:|---:|---:|---|",
+        ]
+    )
+    for variant, result in payload["results"].items():
+        metrics = result["metrics"]
+        lines.append(
+            "| {variant} | {basis} | {cost_days} | {mtm_days} | {fallback_days} | {fallback_ratio} | {fallback_exits} | {warning} |".format(
+                variant=variant,
+                basis=metrics.get("risk_metrics_basis") or "NA",
+                cost_days=_fmt(metrics.get("holding_days_marked_at_cost")),
+                mtm_days=_fmt(metrics.get("mtm_position_days")),
+                fallback_days=_fmt(metrics.get("mtm_cost_fallback_position_days")),
+                fallback_ratio=_fmt(metrics.get("mtm_cost_fallback_ratio")),
+                fallback_exits=_fmt(metrics.get("mtm_cost_fallback_exit_trades")),
+                warning=metrics.get("risk_metrics_warning") or "NA",
             )
         )
     lines.extend(
@@ -976,6 +1117,8 @@ def _write_ready_report(path: Path, payload: dict[str, Any]) -> None:
             f"- known_fail_rows: {summary['known_fail_rows']}",
             f"- missing_amount_rows: {summary['missing_amount_rows']}",
             f"- filtered_row_count: {liquidity['filtered_row_count']}",
+            "- basis_note: daily_amount is normalized to RMB yuan per docs/data_contracts.md §4.10; "
+            "after-floor values are not directly comparable with pre-normalization historical reports.",
             "",
             "| variant | before_cumulative_return | after_floor_cumulative_return | before_max_drawdown | after_floor_max_drawdown |",
             "|---|---:|---:|---:|---:|",

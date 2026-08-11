@@ -92,6 +92,11 @@ from backend.app.repositories.choice_stock_adapter import (
     choice_stock_readiness_missing,
     load_choice_stock_readiness,
 )
+from backend.app.repositories.choice_stock_units import (
+    amount_rmb_sql,
+    scale_unknown_sql,
+    volume_shares_sql,
+)
 from backend.app.repositories.livermore_gate_supplement_repo import fetch_market_gate_supplement
 from backend.app.repositories.stock_analysis_theme_overlay_reader import (
     StockAnalysisThemeOverlayReader,
@@ -2188,8 +2193,8 @@ def _load_dual_stock_history_inputs(
             daily.stock_code,
             daily.close_value,
             daily.turn,
-            daily.amount,
-            daily.volume,
+            {amount_rmb_sql(table_alias="daily", alias="amount")},
+            {volume_shares_sql(table_alias="daily", alias="volume")},
             targets.want_candidate,
             targets.want_trading,
             cast(daily.trade_date as date) as trade_day,
@@ -2417,10 +2422,29 @@ def _load_stock_candidate_snapshots(
             if factor_snapshot_date is not None
             else ""
         )
+        # amount 两代 vendor 单位口径（契约 docs/data_contracts.md §4.10）经共享
+        # helper 归一化为元；vendor_version 为 NULL 时无法定标 fail-closed 输出 NULL。
+        # 观察表缺 amount 或 vendor_version 列时同样 fail-closed 输出 NULL，
+        # 避免主查询 Binder Error 被上层静默吞掉。
+        has_obs_vendor_version = _table_has_columns(
+            conn, "choice_stock_daily_observation", ["vendor_version"]
+        )
         daily_amount_select = (
-            "daily.amount"
-            if _table_has_columns(conn, "choice_stock_daily_observation", ["amount"])
+            amount_rmb_sql(table_alias="daily", alias="amount")
+            if has_obs_vendor_version
+            and _table_has_columns(conn, "choice_stock_daily_observation", ["amount"])
             else "cast(null as double) as amount"
+        )
+        daily_vendor_select = (
+            "daily.vendor_version" if has_obs_vendor_version else "cast(null as varchar)"
+        )
+        # 告警计数须与 fail-closed 语义一致:仅统计"amount 非空且 vendor_version 为
+        # NULL"(真正无法定标)的行,而非任何 vendor_version 为 NULL 的行。
+        daily_amount_scale_unknown_select = (
+            scale_unknown_sql("amount", table_alias="daily", alias="_amount_scale_unknown")
+            if has_obs_vendor_version
+            and _table_has_columns(conn, "choice_stock_daily_observation", ["amount"])
+            else "false as _amount_scale_unknown"
         )
         params: list[object] = [membership_snapshot_date, as_of_date, limit_snapshot_date]
         if factor_snapshot_date is not None:
@@ -2446,11 +2470,12 @@ def _load_stock_candidate_snapshots(
               membership.source_version,
               membership.vendor_version,
               daily.source_version,
-              daily.vendor_version,
+              {daily_vendor_select},
               limits.source_version,
               limits.vendor_version,
               {factor_select},
-              {daily_amount_select}
+              {daily_amount_select},
+              {daily_amount_scale_unknown_select}
             from choice_stock_universe universe
             join choice_stock_sector_membership membership
               on membership.stock_code = universe.stock_code
@@ -2587,6 +2612,23 @@ def _load_stock_candidate_snapshots(
         source_versions.extend(str(value) for value in (row[12], row[14], row[16], row[18]) if value)
         vendor_versions.extend(str(value) for value in (row[13], row[15], row[17], row[19]) if value)
 
+    if not has_obs_vendor_version:
+        if current_rows:
+            logger.warning(
+                "choice_stock_daily_observation lacks vendor_version column on %s; "
+                "daily_amount kept null (unit basis unavailable)",
+                as_of_date,
+            )
+    else:
+        null_vendor_amount_rows = sum(1 for row in current_rows if bool(row[30]))
+        if null_vendor_amount_rows:
+            logger.warning(
+                "choice_stock_daily_observation has %d rows with non-null amount but "
+                "null vendor_version on %s; daily_amount left null (unit scale unknown)",
+                null_vendor_amount_rows,
+                as_of_date,
+            )
+
     tables_used = [
         "choice_stock_universe",
         "choice_stock_sector_membership",
@@ -2661,7 +2703,7 @@ def _load_trading_stock_snapshot_inputs(
               daily.close_value,
               daily.low_value,
               daily.high_value,
-              daily.volume,
+              {volume_shares_sql(table_alias="daily", alias="volume")},
               daily.pctchange,
               daily.turn,
               daily.amplitude
@@ -2695,8 +2737,8 @@ def _load_trading_stock_snapshot_inputs(
                   select
                     stock_code,
                     close_value,
-                    amount,
-                    volume,
+                    {amount_rmb_sql(alias="amount")},
+                    {volume_shares_sql(alias="volume")},
                     row_number() over (
                       partition by stock_code
                       order by cast(trade_date as date) desc
@@ -2933,7 +2975,7 @@ def _load_mean_reversion_snapshots(
               daily.close_value,
               daily.low_value,
               daily.high_value,
-              daily.volume
+              {volume_shares_sql(table_alias="daily", alias="volume")}
             from choice_stock_daily_observation daily
             left join choice_stock_universe universe
               on universe.stock_code = daily.stock_code
@@ -2952,7 +2994,7 @@ def _load_mean_reversion_snapshots(
         placeholders = ",".join("?" for _ in stock_codes)
         history_rows = conn.execute(
             f"""
-            select stock_code, close_value, volume
+            select stock_code, close_value, {volume_shares_sql(alias="volume")}
             from choice_stock_daily_observation
             where stock_code in ({placeholders})
               and cast(trade_date as date) <= cast(? as date)
@@ -3069,7 +3111,7 @@ def _load_uptrend_momentum_snapshots(
         placeholders = ",".join("?" for _ in stock_codes)
         history_rows = conn.execute(
             f"""
-            select stock_code, close_value, amount
+            select stock_code, close_value, {amount_rmb_sql(alias="amount")}
             from choice_stock_daily_observation
             where stock_code in ({placeholders})
               and cast(trade_date as date) <= cast(? as date)
@@ -3191,7 +3233,7 @@ def _load_fresh_trend_watchlist_snapshots(
         placeholders = ",".join("?" for _ in stock_codes)
         history_rows = conn.execute(
             f"""
-            select stock_code, close_value, amount
+            select stock_code, close_value, {amount_rmb_sql(alias="amount")}
             from choice_stock_daily_observation
             where stock_code in ({placeholders})
               and cast(trade_date as date) <= cast(? as date)
@@ -4074,7 +4116,7 @@ def _load_risk_exit_snapshots(
         placeholders = ",".join("?" for _ in stock_codes)
         history_rows = conn.execute(
             f"""
-            select stock_code, close_value, volume, source_version, vendor_version
+            select stock_code, close_value, {volume_shares_sql(alias="volume")}, source_version, vendor_version
             from choice_stock_daily_observation
             where stock_code in ({placeholders})
               and cast(trade_date as date) <= cast(? as date)

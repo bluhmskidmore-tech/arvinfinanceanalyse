@@ -250,3 +250,103 @@ def test_stock_kline_analysis_ignores_null_close_rows_in_tail_metrics(tmp_path) 
     assert result["indicators"]["ma20"] == pytest.approx(sum(closes[-20:]) / 20)
     assert result["indicators"]["return_20d"] == pytest.approx(closes[-1] / closes[-21] - 1)
     assert "invalid_ohlc_rows" in result["validity"]["warnings"]
+
+
+def test_stock_kline_analysis_normalizes_cross_generation_volume_before_ratio(tmp_path) -> None:
+    module = load_module(
+        "backend.app.services.stock_kline_analysis_service",
+        "backend/app/services/stock_kline_analysis_service.py",
+    )
+    db_path = tmp_path / "stock-kline-mixed-units.duckdb"
+    _create_daily_observation_db(str(db_path), rows=30)
+    conn = duckdb.connect(str(db_path))
+    try:
+        conn.execute(
+            """
+            update choice_stock_daily_observation
+            set volume = volume / 100.0,
+                amount = amount / 1000.0,
+                vendor_version = 'vv_choice_tushare_stock_20251231'
+            where trade_date < (select max(trade_date) from choice_stock_daily_observation)
+            """
+        )
+    finally:
+        conn.close()
+
+    envelope = module.stock_kline_analysis_envelope(
+        duckdb_path=str(db_path),
+        stock_code="000001.SZ",
+        as_of_date=date(2026, 1, 30),
+        lookback=30,
+    )
+
+    expected_average = sum(1_000_000 + i * 1_000 for i in range(9, 29)) / 20
+    expected_ratio = (1_000_000 + 29 * 1_000) / expected_average
+    result = envelope["result"]
+    assert result["state"] == "ok"
+    assert result["indicators"]["volume_ratio_20d"] == pytest.approx(expected_ratio)
+    assert result["validity"]["liquidity"]["average_volume_20d"] == pytest.approx(
+        sum(1_000_000 + i * 1_000 for i in range(10, 30)) / 20
+    )
+
+
+def test_stock_kline_analysis_fails_closed_to_null_when_vendor_column_missing(
+    tmp_path,
+) -> None:
+    module = load_module(
+        "backend.app.services.stock_kline_analysis_service",
+        "backend/app/services/stock_kline_analysis_service.py",
+    )
+    db_path = tmp_path / "stock-kline-legacy-schema.duckdb"
+    _create_daily_observation_db(str(db_path), rows=30)
+    conn = duckdb.connect(str(db_path))
+    try:
+        conn.execute("alter table choice_stock_daily_observation drop column vendor_version")
+    finally:
+        conn.close()
+
+    envelope = module.stock_kline_analysis_envelope(
+        duckdb_path=str(db_path),
+        stock_code="000001.SZ",
+        as_of_date=date(2026, 1, 30),
+        lookback=30,
+    )
+
+    result = envelope["result"]
+    assert result["state"] == "ok"
+    assert result["latest_candle"]["volume"] is None
+    assert result["latest_candle"]["amount"] is None
+    assert result["indicators"]["volume_ratio_20d"] is None
+    assert "vendor_version_column_missing_null_units" in result["validity"]["warnings"]
+    assert envelope["result_meta"]["quality_flag"] == "warning"
+
+
+def test_stock_kline_analysis_null_vendor_row_propagates_none_with_warning(tmp_path) -> None:
+    module = load_module(
+        "backend.app.services.stock_kline_analysis_service",
+        "backend/app/services/stock_kline_analysis_service.py",
+    )
+    db_path = tmp_path / "stock-kline-null-vendor-row.duckdb"
+    _create_daily_observation_db(str(db_path), rows=30)
+    conn = duckdb.connect(str(db_path))
+    try:
+        conn.execute(
+            "update choice_stock_daily_observation set vendor_version = NULL "
+            "where trade_date = '2026-01-30'"
+        )
+    finally:
+        conn.close()
+
+    envelope = module.stock_kline_analysis_envelope(
+        duckdb_path=str(db_path),
+        stock_code="000001.SZ",
+        as_of_date=date(2026, 1, 30),
+        lookback=30,
+    )
+
+    result = envelope["result"]
+    assert result["latest_candle"]["volume"] is None
+    assert result["latest_candle"]["amount"] is None
+    assert "volume_unit_scale_unknown" in result["validity"]["warnings"]
+    assert "amount_unit_scale_unknown" in result["validity"]["warnings"]
+    assert envelope["result_meta"]["quality_flag"] == "warning"

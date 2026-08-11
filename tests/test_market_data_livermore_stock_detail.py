@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import sys
 from datetime import date, timedelta
 
@@ -155,6 +156,109 @@ def test_stock_detail_happy_path_sorted_candles_and_factor(tmp_path, monkeypatch
     assert factor["roe"] == 0.11
     assert factor["dividend_yield"] == 0.025
     get_settings.cache_clear()
+
+
+def test_stock_detail_normalizes_cross_generation_candle_amount_and_volume(tmp_path) -> None:
+    module = load_module(
+        "backend.app.services.livermore_stock_detail_service",
+        "backend/app/services/livermore_stock_detail_service.py",
+    )
+    db_path = tmp_path / "mixed-units.duckdb"
+    _seed_stock_detail_tables(
+        str(db_path),
+        end=date(2026, 1, 5),
+        n_days=2,
+    )
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            update choice_stock_daily_observation
+            set trade_date = '2025-12-31',
+                volume = volume / 100.0,
+                amount = amount / 1000.0,
+                vendor_version = 'vv_choice_tushare_stock_20251231'
+            where trade_date = '2026-01-04'
+            """
+        )
+    finally:
+        conn.close()
+
+    envelope = module.livermore_stock_detail_envelope(
+        duckdb_path=str(db_path),
+        stock_code="000001.SZ",
+        as_of_date=date(2026, 1, 5),
+        lookback=5,
+    )
+
+    candles = envelope["result"]["candles"]
+    assert [candle["trade_date"] for candle in candles] == ["2025-12-31", "2026-01-05"]
+    assert candles[0]["volume"] == 1_000_000.0
+    assert candles[0]["amount"] == 10_000_000.0
+    assert candles[1]["volume"] == 1_000_001.0
+    assert candles[1]["amount"] == 10_000_001.0
+    assert candles[1]["volume"] / candles[0]["volume"] < 1.01
+    assert candles[1]["amount"] / candles[0]["amount"] < 1.01
+
+
+def test_stock_detail_fails_closed_to_null_when_vendor_column_missing(tmp_path, caplog) -> None:
+    module = load_module(
+        "backend.app.services.livermore_stock_detail_service",
+        "backend/app/services/livermore_stock_detail_service.py",
+    )
+    db_path = tmp_path / "legacy-schema.duckdb"
+    _seed_stock_detail_tables(str(db_path), n_days=2)
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute("alter table choice_stock_daily_observation drop column vendor_version")
+    finally:
+        conn.close()
+
+    with caplog.at_level(logging.WARNING):
+        envelope = module.livermore_stock_detail_envelope(
+            duckdb_path=str(db_path),
+            stock_code="000001.SZ",
+            as_of_date=date(2026, 4, 10),
+            lookback=5,
+        )
+
+    result = envelope["result"]
+    assert result["state"] == "ok"
+    assert result["candles"][0]["volume"] is None
+    assert result["candles"][0]["amount"] is None
+    assert "warnings" not in result
+    assert envelope["result_meta"]["quality_flag"] == "warning"
+    assert "vendor_version" in caplog.text
+
+
+def test_stock_detail_null_vendor_row_propagates_none_with_warning(tmp_path) -> None:
+    module = load_module(
+        "backend.app.services.livermore_stock_detail_service",
+        "backend/app/services/livermore_stock_detail_service.py",
+    )
+    db_path = tmp_path / "null-vendor-row.duckdb"
+    _seed_stock_detail_tables(str(db_path), n_days=5)
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute(
+            "update choice_stock_daily_observation set vendor_version = NULL "
+            "where trade_date = '2026-04-10'"
+        )
+    finally:
+        conn.close()
+
+    envelope = module.livermore_stock_detail_envelope(
+        duckdb_path=str(db_path),
+        stock_code="000001.SZ",
+        as_of_date=date(2026, 4, 10),
+        lookback=5,
+    )
+
+    candles = envelope["result"]["candles"]
+    target = next(c for c in candles if c["trade_date"] == "2026-04-10")
+    assert target["volume"] is None
+    assert target["amount"] is None
+    assert envelope["result_meta"]["quality_flag"] == "warning"
 
 
 def test_stock_detail_excludes_non_trading_placeholder_rows(tmp_path, monkeypatch) -> None:

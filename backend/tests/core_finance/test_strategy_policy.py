@@ -78,18 +78,22 @@ def test_strategy_policy_snapshot_values_are_centralized() -> None:
     assert policies["default"].gap_norm_max == 0.45
     assert policies["default"].abnormal_turnover_min == 1.2
     assert policies["default"].abnormal_turnover_max == 2.0
+    assert policies["default"].abnormal_turnover_max_inclusive is False
     assert policies["default"].close_strength_first is False
     assert policies["exp3b"].active_market_states == frozenset({"WARM", "HOT"})
     assert policies["exp3b"].close_strength_min == 0.99
     assert policies["exp3b"].gap_norm_max == 0.35
     assert policies["exp3b"].abnormal_turnover_min == 1.2
     assert policies["exp3b"].abnormal_turnover_max == 2.4
+    assert policies["exp3b"].abnormal_turnover_max_inclusive is True
     assert policies["exp3b"].close_strength_first is True
     assert policies["exp3c_shadow"].abnormal_turnover_min == 1.0
     assert policies["exp3c_shadow"].abnormal_turnover_max == 2.4
+    assert policies["exp3c_shadow"].abnormal_turnover_max_inclusive is True
     assert policies["v6_compat"].active_market_states == frozenset({"WARM", "HOT", "OVERHEAT"})
     assert policies["v6_compat"].abnormal_turnover_min == 1.0
     assert policies["v6_compat"].abnormal_turnover_max == 3.5
+    assert policies["v6_compat"].abnormal_turnover_max_inclusive is True
 
     assert POLICY.monitoring_thresholds.factor_screen_primary_coverage_threshold == 0.8
     assert POLICY.monitoring_thresholds.factor_screen_partial_coverage_threshold == 0.5
@@ -137,6 +141,38 @@ def test_strategy_policy_mirrors_market_gate_exposures() -> None:
     )
     assert overheat_gate["state"] == "OVERHEAT"
     assert overheat_gate["exposure"] in possible_exposures["OVERHEAT"]
+
+
+def test_abnormal_turnover_band_boundaries_follow_declared_inclusivity() -> None:
+    """锁定各档位异常换手上界的开闭语义与历史行为一致：
+    default 为开区间上界（< 2.0），其余档位为闭区间上界（<= max）。"""
+    from backend.app.core_finance.livermore_stock_candidates import _abnormal_turnover_allowed
+    from backend.app.core_finance.strategy_policy import POLICY
+
+    policies = {policy.name: policy for policy in POLICY.entry_filters.stock_candidate_policies}
+
+    default = policies["default"]
+    assert _abnormal_turnover_allowed(abnormal_turnover=1.2, policy=default) is True
+    assert _abnormal_turnover_allowed(abnormal_turnover=1.999999, policy=default) is True
+    assert _abnormal_turnover_allowed(abnormal_turnover=2.0, policy=default) is False
+    assert _abnormal_turnover_allowed(abnormal_turnover=1.199999, policy=default) is False
+
+    for name in ("exp3b", "exp3c_shadow", "v6_compat"):
+        policy = policies[name]
+        assert (
+            _abnormal_turnover_allowed(abnormal_turnover=policy.abnormal_turnover_max, policy=policy)
+            is True
+        ), name
+        assert (
+            _abnormal_turnover_allowed(
+                abnormal_turnover=policy.abnormal_turnover_max + 1e-9, policy=policy
+            )
+            is False
+        ), name
+        assert (
+            _abnormal_turnover_allowed(abnormal_turnover=policy.abnormal_turnover_min, policy=policy)
+            is True
+        ), name
 
 
 def test_strategy_formula_versions_match_current_contracts() -> None:

@@ -64,7 +64,8 @@ def _seed_chinese_status_observation(conn: duckdb.DuckDBPyConnection) -> None:
           pctchange double,
           low_value double,
           high_value double,
-          amplitude double
+          amplitude double,
+          vendor_version varchar
         )
         """
     )
@@ -89,10 +90,12 @@ def _seed_chinese_status_observation(conn: duckdb.DuckDBPyConnection) -> None:
                 9.5,
                 10.5,
                 2.0,
+                # choice_native 代际 vendor:amount/volume 归一化为恒等变换。
+                "vv_choice_stock_20260630_001",
             )
         )
     conn.executemany(
-        "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         rows,
     )
 

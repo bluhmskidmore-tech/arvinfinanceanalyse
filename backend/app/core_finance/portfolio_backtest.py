@@ -26,6 +26,11 @@ VOL_TARGET_NOT_WIRED_WARNING = (
     "实际波动率目标暴露需通过 vol_target_overlay.build_vol_target_index_comparison "
     "计算出的 exposure_by_date 传入才会生效。"
 )
+HORIZON_REALIZED_ONLY_WARNING = (
+    "horizon 模式下持仓按买入成本记账、不做盯市，equity 曲线仅在卖出日反映损益；"
+    "max_drawdown / daily_sharpe 等风险指标只覆盖已实现口径，系统性低估(确定性方向)持仓期内的"
+    "真实回撤与波动。需要盯市口径请使用 mode='path'。"
+)
 VARIANT_HORIZONS = {
     "fixed_5d": "5d",
     "fixed_20d": "20d",
@@ -319,6 +324,10 @@ def run_portfolio_backtest(
     probe_entry_count = 0
     probe_confirmed_count = 0
     probe_failed_exit_count = 0
+    holding_days_marked_at_cost = 0
+    mtm_position_days = 0
+    mtm_cost_fallback_position_days = 0
+    mtm_cost_fallback_exit_trades = 0
 
     for trade_index, trade_date in enumerate(trade_dates):
         # 敞口由 T 日收盘决定、T+1 日生效（与 gate_timing_csi300 基准和
@@ -338,6 +347,8 @@ def run_portfolio_backtest(
                 probe_event = _probe_event_for_open(position, trade_date)
                 if probe_event and probe_event["event"] == "fail":
                     exit_price = _safe_float(probe_event.get("price"))
+                    if _position_exit_uses_cost_fallback(position, mode=mode, exit_price=exit_price):
+                        mtm_cost_fallback_exit_trades += 1
                     proceeds = _position_exit_proceeds(position, mode=mode, exit_price=exit_price)
                     cash += proceeds
                     realized_pnl += proceeds - position.amount
@@ -583,6 +594,8 @@ def run_portfolio_backtest(
         remaining_positions = []
         for position in positions:
             if position.exit_date <= trade_date:
+                if _position_exit_uses_cost_fallback(position, mode=mode):
+                    mtm_cost_fallback_exit_trades += 1
                 proceeds = _position_exit_proceeds(position, mode=mode)
                 cash += proceeds
                 realized_pnl += proceeds - position.amount
@@ -599,6 +612,15 @@ def run_portfolio_backtest(
                 remaining_positions.append(position)
         positions = remaining_positions
 
+        if mode == "path":
+            mtm_position_days += len(positions)
+            mtm_cost_fallback_position_days += sum(
+                1
+                for position in positions
+                if _position_uses_cost_mark(position, trade_date, mode=mode)
+            )
+        else:
+            holding_days_marked_at_cost += len(positions)
         invested = _invested_value(positions, trade_date, mode=mode)
         equity = cash + invested
         max_single_name_weight = (
@@ -640,10 +662,27 @@ def run_portfolio_backtest(
         trades=trades,
     )
     exposure_days = exposure_actual_days + exposure_fallback_days
+    mtm_cost_fallback_ratio = (
+        round(mtm_cost_fallback_position_days / mtm_position_days, 6) if mtm_position_days else 0.0
+    )
     metrics.update(
         {
             "portfolio_engine_version": PORTFOLIO_ENGINE_VERSION,
             "mode": mode,
+            "risk_metrics_basis": "mark_to_market" if mode == "path" else "realized_only",
+            "risk_metrics_warning": _risk_metrics_warning(
+                mode,
+                mtm_cost_fallback_position_days=mtm_cost_fallback_position_days,
+                mtm_position_days=mtm_position_days,
+                mtm_cost_fallback_exit_trades=mtm_cost_fallback_exit_trades,
+            ),
+            "holding_days_marked_at_cost": holding_days_marked_at_cost if mode != "path" else None,
+            "mtm_position_days": mtm_position_days if mode == "path" else None,
+            "mtm_cost_fallback_position_days": (
+                mtm_cost_fallback_position_days if mode == "path" else None
+            ),
+            "mtm_cost_fallback_ratio": mtm_cost_fallback_ratio if mode == "path" else None,
+            "mtm_cost_fallback_exit_trades": mtm_cost_fallback_exit_trades if mode == "path" else None,
             "sizing": sizing,
             "entry_style": entry_style,
             "max_entry_premium": max_entry_premium,
@@ -1405,6 +1444,46 @@ def _position_value(position: _Position, trade_date: str, *, mode: str) -> float
     if entry is None or entry <= 0:
         return position.amount
     return position.amount * mark / entry
+
+
+def _position_uses_cost_mark(position: _Position, trade_date: str, *, mode: str) -> bool:
+    if mode != "path":
+        return False
+    mark = _path_mark_for_date(position.path_rows, trade_date)
+    return mark is None or mark <= 0
+
+
+def _position_exit_uses_cost_fallback(
+    position: _Position,
+    *,
+    mode: str,
+    exit_price: float | None = None,
+) -> bool:
+    if mode != "path":
+        return False
+    if not position.lots:
+        return True
+    price = exit_price if exit_price is not None else position.exit_price
+    return price is None or price <= 0
+
+
+def _risk_metrics_warning(
+    mode: str,
+    *,
+    mtm_cost_fallback_position_days: int,
+    mtm_position_days: int,
+    mtm_cost_fallback_exit_trades: int,
+) -> str | None:
+    if mode != "path":
+        return HORIZON_REALIZED_ONLY_WARNING
+    if mtm_cost_fallback_position_days <= 0 and mtm_cost_fallback_exit_trades <= 0:
+        return None
+    return (
+        "path 模式标记为 mark_to_market，但存在缺少可用盯市价格的成本计价回退："
+        f"{mtm_cost_fallback_position_days}/{mtm_position_days} 个持仓-日按成本计价，"
+        f"{mtm_cost_fallback_exit_trades} 笔 path 退出按成本/既有收益口径结算；"
+        "相关风险指标为降级盯市口径。"
+    )
 
 
 def _path_mark_for_date(rows: Sequence[Mapping[str, object]], trade_date: str) -> float | None:

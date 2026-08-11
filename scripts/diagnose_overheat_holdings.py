@@ -22,6 +22,10 @@ from backend.app.core_finance.livermore_risk_exit import (  # noqa: E402
 )
 from backend.app.core_finance.livermore_risk_exit import RiskExitSnapshot, compute_risk_exit  # noqa: E402
 from backend.app.core_finance.strategy_policy import POLICY  # noqa: E402
+from backend.app.repositories.choice_stock_units import (  # noqa: E402
+    scale_unknown_sql,
+    volume_shares_sql,
+)
 
 DEFAULT_REPORT_PATH = Path("docs/pnl/2026-07-batch2-overheat-holdings-report.md")
 TABLE_POSITION = "livermore_position_snapshot"
@@ -210,6 +214,13 @@ def _load_price_rows(
     missing = sorted(required - obs_columns)
     if missing:
         return {}, [f"{TABLE_OBS} missing columns: {', '.join(missing)}"]
+    issues: list[str] = []
+    has_vendor_version = "vendor_version" in obs_columns
+    if not has_vendor_version:
+        issues.append(
+            f"{TABLE_OBS} missing vendor_version; volume cannot be scaled, "
+            "output as NULL (fail-closed); affected stocks are risk-exit unevaluable."
+        )
     has_adj = TABLE_ADJ_FACTOR in tables and {"stock_code", "trade_date", "adj_factor"}.issubset(
         _columns(conn, TABLE_ADJ_FACTOR)
     )
@@ -229,9 +240,26 @@ def _load_price_rows(
         if has_adj
         else ""
     )
+    # docs/data_contracts.md §4.10: 风险退出历史 volume 跨代际统一为股;
+    # 缺 vendor_version 列时无法定标,fail-closed 输出 NULL(该股风险退出不可评估)。
+    volume_select = (
+        volume_shares_sql(table_alias="d", alias="volume")
+        if has_vendor_version
+        else "cast(null as double) as volume"
+    )
+    volume_unknown_select = (
+        scale_unknown_sql(
+            "volume",
+            table_alias="d",
+            alias="_volume_scale_unknown",
+        )
+        if has_vendor_version
+        else "false as _volume_scale_unknown"
+    )
     rows = conn.execute(
         f"""
-        select d.stock_code, d.trade_date, d.close_value, d.volume, {adj_select}
+        select d.stock_code, d.trade_date, d.close_value, {volume_select},
+               {adj_select}, {volume_unknown_select}
         from {TABLE_OBS} d
         {adj_join}
         where d.stock_code in ({placeholders})
@@ -243,9 +271,11 @@ def _load_price_rows(
         [*codes, min_date.isoformat(), max_date.isoformat()],
     ).fetchall()
     by_code: dict[str, list[dict[str, object]]] = {}
-    for stock_code, trade_date, close_value, volume, adj_factor in rows:
+    unknown_volume_count = 0
+    for stock_code, trade_date, close_value, volume, adj_factor, volume_scale_unknown in rows:
         close = _safe_float(close_value)
         factor = _safe_float(adj_factor)
+        unknown_volume_count += int(bool(volume_scale_unknown))
         if close is None:
             continue
         factor_missing = has_adj and factor is None
@@ -260,7 +290,12 @@ def _load_price_rows(
                 "mark_price": mark_price,
             }
         )
-    return by_code, []
+    if unknown_volume_count:
+        issues.append(
+            f"{TABLE_OBS} has {unknown_volume_count} rows with volume but null vendor_version; "
+            "normalized volume was left null."
+        )
+    return by_code, issues
 
 
 def _build_samples(

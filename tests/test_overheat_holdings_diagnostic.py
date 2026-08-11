@@ -7,6 +7,7 @@ import duckdb
 import pytest
 
 from scripts.diagnose_overheat_holdings import (
+    _load_price_rows,
     analyze_overheat_holding_samples,
     run_overheat_holdings_diagnostic,
 )
@@ -146,6 +147,84 @@ def test_overheat_holdings_diagnostic_builds_ready_report_from_snapshot_and_pric
     assert payload["status"] == "ready"
     assert payload["sample_count"] == 1
     assert payload["state_summary"]["OVERHEAT"]["sample_count"] == 1
-    assert payload["overheat_blindspot"]["blindspot_count"] == 1
-    assert payload["overheat_blindspot"]["blindspot_ratio"] == pytest.approx(1.0)
+    # 缺 vendor_version 列时 volume fail-closed 为 NULL,该持仓风险退出不可评估
+    # (evaluable_sample_count == 0),因此不再计入 blindspot 分子/分母,避免用未定标的
+    # raw volume 误判风险退出确认比。
+    assert payload["overheat_blindspot"]["evaluable_sample_count"] == 0
+    assert payload["overheat_blindspot"]["blindspot_count"] == 0
+    assert payload["overheat_blindspot"]["blindspot_ratio"] is None
+    assert any("vendor_version" in issue for issue in payload["issues"])
     assert "OVERHEAT" in report_path.read_text(encoding="utf-8")
+
+
+def test_overheat_price_loader_normalizes_cross_generation_volume(tmp_path) -> None:
+    db_path = tmp_path / "mixed-units.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table choice_stock_daily_observation (
+              trade_date varchar,
+              stock_code varchar,
+              close_value double,
+              volume double,
+              vendor_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into choice_stock_daily_observation values
+              ('2025-12-31', '000001.SZ', 10.0, 10000.0, 'vv_choice_tushare_stock_20251231'),
+              ('2026-01-05', '000001.SZ', 10.1, 1000000.0, 'vv_choice_stock_20260105')
+            """
+        )
+
+        rows_by_code, issues = _load_price_rows(
+            conn,
+            tables={"choice_stock_daily_observation"},
+            positions=[{"stock_code": "000001.SZ", "as_of_date": "2026-01-05"}],
+        )
+    finally:
+        conn.close()
+
+    assert issues == []
+    assert [row["volume"] for row in rows_by_code["000001.SZ"]] == [
+        1_000_000.0,
+        1_000_000.0,
+    ]
+
+
+def test_overheat_price_loader_null_vendor_row_propagates_none_with_warning(tmp_path) -> None:
+    db_path = tmp_path / "null-vendor-row.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table choice_stock_daily_observation (
+              trade_date varchar,
+              stock_code varchar,
+              close_value double,
+              volume double,
+              vendor_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into choice_stock_daily_observation values
+              ('2025-12-31', '000001.SZ', 10.0, 10000.0, NULL),
+              ('2026-01-05', '000001.SZ', 10.1, 1000000.0, 'vv_choice_stock_20260105')
+            """
+        )
+
+        rows_by_code, issues = _load_price_rows(
+            conn,
+            tables={"choice_stock_daily_observation"},
+            positions=[{"stock_code": "000001.SZ", "as_of_date": "2026-01-05"}],
+        )
+    finally:
+        conn.close()
+
+    assert [row["volume"] for row in rows_by_code["000001.SZ"]] == [None, 1_000_000.0]
+    assert any("vendor_version" in issue for issue in issues)

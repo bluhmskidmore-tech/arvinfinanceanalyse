@@ -5,6 +5,11 @@ from typing import Any
 
 import duckdb
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
+from backend.app.repositories.choice_stock_units import (
+    amount_rmb_sql,
+    scale_unknown_sql,
+    volume_shares_sql,
+)
 
 DEFAULT_MACRO_SERIES_IDS = (
     "legacy.yield.choice.treasury.10Y",
@@ -104,12 +109,45 @@ def _build_stock_context(
     stock: dict[str, Any] = {}
     if "choice_stock_daily_observation" in tables:
         context["tables_used"].append("choice_stock_daily_observation")
+        daily_columns = _table_columns(conn, "choice_stock_daily_observation")
+        has_vendor_version = "vendor_version" in daily_columns
+        if has_vendor_version:
+            # docs/data_contracts.md §4.10: Dexter 日线 amount/volume 统一为人民币元/股。
+            volume_projection = volume_shares_sql(alias="volume")
+            amount_projection = amount_rmb_sql(alias="amount")
+            vendor_projection = "vendor_version"
+            volume_unknown_projection = scale_unknown_sql(
+                "volume",
+                alias="_volume_scale_unknown",
+            )
+            amount_unknown_projection = scale_unknown_sql(
+                "amount",
+                alias="_amount_scale_unknown",
+            )
+            volume_unit_projection = "'shares' as volume_unit"
+            amount_unit_projection = "'CNY' as amount_unit"
+        else:
+            # docs/data_contracts.md §4.10 fail-closed: 缺失 vendor_version 列时无法定标,
+            # amount/volume 一律置空,禁止原始值透传进入 Dexter 语料。
+            volume_projection = "cast(null as double) as volume"
+            amount_projection = "cast(null as double) as amount"
+            vendor_projection = "cast(null as varchar) as vendor_version"
+            volume_unknown_projection = "false as _volume_scale_unknown"
+            amount_unknown_projection = "false as _amount_scale_unknown"
+            volume_unit_projection = "'unknown' as volume_unit"
+            amount_unit_projection = "'unknown' as amount_unit"
+            context["limitations"].append(
+                "choice_stock_daily_observation missing vendor_version column; "
+                "amount/volume cannot be calibrated and were set to null (fail-closed)."
+            )
         row = _fetch_one(
             conn,
-            """
+            f"""
             select trade_date, stock_code, open_value, high_value, low_value, close_value,
-                   volume, amount, pctchange, turn, amplitude, tradestatus,
-                   highlimit, lowlimit, source_version, vendor_version, rule_version, run_id
+                   {volume_projection}, {amount_projection}, pctchange, turn, amplitude, tradestatus,
+                   highlimit, lowlimit, source_version, {vendor_projection}, rule_version, run_id,
+                   {volume_unit_projection}, {amount_unit_projection},
+                   {volume_unknown_projection}, {amount_unknown_projection}
             from choice_stock_daily_observation
             where stock_code = ?
               and (? = '' or trade_date <= ?)
@@ -120,6 +158,20 @@ def _build_stock_context(
             sql_executed=context["sql_executed"],
         )
         if row:
+            volume_scale_unknown = bool(row.pop("_volume_scale_unknown", False))
+            amount_scale_unknown = bool(row.pop("_amount_scale_unknown", False))
+            if volume_scale_unknown:
+                row["volume_unit"] = "unknown"
+                context["limitations"].append(
+                    "Daily observation volume is non-null but vendor_version is null; "
+                    "normalized volume was left null."
+                )
+            if amount_scale_unknown:
+                row["amount_unit"] = "unknown"
+                context["limitations"].append(
+                    "Daily observation amount is non-null but vendor_version is null; "
+                    "normalized amount was left null."
+                )
             stock["daily_observation"] = row
             context["evidence_rows"] += 1
         else:
@@ -448,6 +500,16 @@ def _fetch_one(
         return None
     columns = [desc[0] for desc in cursor.description]
     return dict(zip(columns, row, strict=False))
+
+
+def _table_columns(
+    conn: duckdb.DuckDBPyConnection,
+    table_name: str,
+) -> set[str]:
+    return {
+        str(row[1]).lower()
+        for row in conn.execute(f"pragma table_info('{table_name}')").fetchall()
+    }
 
 
 def _fetch_all(

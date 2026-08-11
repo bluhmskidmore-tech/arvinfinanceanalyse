@@ -461,3 +461,16 @@ def test_two_insufficient_survival_inputs_report_combined_reason_and_warnings() 
     assert any("state date does not match" in warning for warning in payload["warnings"])
     assert any("NAV date does not match" in warning for warning in payload["warnings"])
     assert any("Neither the authoritative" in warning for warning in payload["warnings"])
+
+
+def test_provenance_source_strategy_is_machine_independent_identifier() -> None:
+    rows = _market_rows([100.0] * 60)
+    as_of = date.fromisoformat(str(rows[-1]["trade_date"]))
+
+    payload = build_dual_frequency_equity_snapshot(
+        daily_rows=rows,
+        slow_cap=0.7,
+        as_of_date=as_of,
+    )
+
+    assert payload["provenance"]["source_strategy"] == "desktop:a_share_dual_freq_v6.py"

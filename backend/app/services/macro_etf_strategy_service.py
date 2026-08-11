@@ -274,13 +274,17 @@ def _attach_dual_frequency_history(
     result["data_status"] = data_status
     provenance = dict(result.get("provenance") or {})
     provenance["history"] = history_meta
+    # unit/unit_normalization 跟随仓储层 market_amount 源元数据,避免与
+    # sources.market_amount.unit(按 vendor 代际归一化为元)自相矛盾。
+    market_amount_source = (history.get("sources") or {}).get("market_amount") or {}
     provenance["amount_methodology"] = {
         "source_table": "choice_stock_daily_observation",
         "field": "amount",
         "aggregation": "daily_sum_all_a_share_observations",
         "scope": "all_a_share_market_proxy",
         "is_csi300_constituent_turnover": False,
-        "unit": "source_native_unit_unconfirmed",
+        "unit": str(market_amount_source.get("unit") or "source_native_unit_unconfirmed"),
+        "unit_normalization": market_amount_source.get("unit_normalization"),
     }
     result["provenance"] = provenance
     result["warnings"] = _unique_texts(

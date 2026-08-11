@@ -14,6 +14,8 @@ from backend.app.repositories.choice_stock_adapter import ChoiceStockReadiness
 
 AS_OF_DATE = "2026-06-30"
 HISTORY_WINDOW = service.CHOICE_STOCK_HISTORY_WINDOW
+# choice_native 代际 vendor:amount=元、volume=股,归一化为恒等变换。
+_NATIVE_VENDOR = "vv_choice_stock_20260630_001"
 
 
 def _seed_adversarial_history(conn: duckdb.DuckDBPyConnection) -> None:
@@ -26,7 +28,8 @@ def _seed_adversarial_history(conn: duckdb.DuckDBPyConnection) -> None:
           turn double,
           amount double,
           volume double,
-          tradestatus varchar
+          tradestatus varchar,
+          vendor_version varchar
         )
         """
     )
@@ -66,20 +69,21 @@ def _seed_adversarial_history(conn: duckdb.DuckDBPyConnection) -> None:
                 amount,
                 volume,
                 tradestatus,
+                _NATIVE_VENDOR,
             )
         )
 
     rows.extend(
         [
-            ("2026-07-01", "BOTH", 9999.0, 999.0, 99999.0, 999999.0, "Trading"),
-            ("2026-06-29", "CANDIDATE_ONLY", 21.0, 2.1, 210.0, 2100.0, "Trading"),
-            ("2026-06-30", "CANDIDATE_ONLY", 22.0, 2.2, 220.0, 2200.0, "Suspended"),
-            ("2026-06-29", "TRADING_ONLY", 31.0, 3.1, 310.0, 3100.0, "Trading"),
-            ("2026-06-30", "TRADING_ONLY", 32.0, 3.2, 320.0, 3200.0, "Trading"),
+            ("2026-07-01", "BOTH", 9999.0, 999.0, 99999.0, 999999.0, "Trading", _NATIVE_VENDOR),
+            ("2026-06-29", "CANDIDATE_ONLY", 21.0, 2.1, 210.0, 2100.0, "Trading", _NATIVE_VENDOR),
+            ("2026-06-30", "CANDIDATE_ONLY", 22.0, 2.2, 220.0, 2200.0, "Suspended", _NATIVE_VENDOR),
+            ("2026-06-29", "TRADING_ONLY", 31.0, 3.1, 310.0, 3100.0, "Trading", _NATIVE_VENDOR),
+            ("2026-06-30", "TRADING_ONLY", 32.0, 3.2, 320.0, 3200.0, "Trading", _NATIVE_VENDOR),
         ]
     )
     conn.executemany(
-        "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?, ?, ?)",
+        "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?, ?, ?, ?)",
         rows,
     )
 
@@ -209,17 +213,18 @@ def test_candidate_history_keeps_zero_turnover_suspension_day_alignment() -> Non
               turn double,
               amount double,
               volume double,
-              tradestatus varchar
+              tradestatus varchar,
+              vendor_version varchar
             )
             """
         )
         conn.executemany(
-            "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?, ?, ?)",
+            "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?, ?, ?, ?)",
             [
-                ("2026-06-26", "ZERO.SZ", 9.0, 1.1, 900.0, 9000.0, "Trading"),
+                ("2026-06-26", "ZERO.SZ", 9.0, 1.1, 900.0, 9000.0, "Trading", _NATIVE_VENDOR),
                 # 停牌日：换手为 0，收盘沿用，整行应保留
-                ("2026-06-29", "ZERO.SZ", 10.0, 0.0, 0.0, 0.0, "Suspended"),
-                ("2026-06-30", "ZERO.SZ", 11.0, 1.2, 1100.0, 11000.0, "Trading"),
+                ("2026-06-29", "ZERO.SZ", 10.0, 0.0, 0.0, 0.0, "Suspended", _NATIVE_VENDOR),
+                ("2026-06-30", "ZERO.SZ", 11.0, 1.2, 1100.0, 11000.0, "Trading", _NATIVE_VENDOR),
             ],
         )
 
@@ -236,6 +241,75 @@ def test_candidate_history_keeps_zero_turnover_suspension_day_alignment() -> Non
     assert history["close"] == [9.0, 10.0, 11.0]
     assert history["turn"] == [1.1, 0.0, 1.2]
     assert history["close"][-2] == 10.0
+
+
+def test_dual_stock_history_normalizes_amount_volume_across_vendor_generations() -> None:
+    """两代 vendor 单位口径(契约 §4.10):tushare 代际 amount=千元/volume=手,
+    choice_native 代际 amount=元/volume=股;共享历史加载器输出统一为元/股,
+    NULL vendor 无法定标 fail-closed 输出 None;close/turn 两代一致不换算。"""
+    conn = duckdb.connect(":memory:")
+    try:
+        conn.execute(
+            """
+            create table choice_stock_daily_observation (
+              trade_date varchar,
+              stock_code varchar,
+              close_value double,
+              turn double,
+              amount double,
+              volume double,
+              tradestatus varchar,
+              vendor_version varchar
+            )
+            """
+        )
+        conn.executemany(
+            "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                # tushare 代际(大小写混排验证 lower() 匹配):300_000 千元 → 3e8 元,
+                # 500_000 手 → 5e7 股。
+                (
+                    "2026-06-26",
+                    "GEN.SZ",
+                    10.0,
+                    1.1,
+                    300_000.0,
+                    500_000.0,
+                    "Trading",
+                    "VV_Choice_TUSHARE_stock_20251231",
+                ),
+                # choice_native 代际:元/股原值透传。
+                (
+                    "2026-06-29",
+                    "GEN.SZ",
+                    10.2,
+                    1.2,
+                    400_000_000.0,
+                    60_000_000.0,
+                    "Trading",
+                    _NATIVE_VENDOR,
+                ),
+                # vendor_version 为 NULL:无法定标 → amount/volume 输出 None。
+                ("2026-06-30", "GEN.SZ", 10.4, 1.3, 999.0, 999.0, "Trading", None),
+            ],
+        )
+
+        actual = service._load_dual_stock_history_inputs(
+            conn=conn,
+            as_of_date=AS_OF_DATE,
+            candidate_stock_codes=["GEN.SZ"],
+            trading_stock_codes=["GEN.SZ"],
+        )
+    finally:
+        conn.close()
+
+    trading = actual.trading_history_by_code["GEN.SZ"]
+    assert trading["close"] == [10.0, 10.2, 10.4]
+    assert trading["amount"] == [300_000_000.0, 400_000_000.0, None]
+    assert trading["volume"] == [50_000_000.0, 60_000_000.0, None]
+    candidate = actual.candidate_history_by_code["GEN.SZ"]
+    # turn 为百分点口径,两代一致,禁止换算。
+    assert candidate["turn"] == [1.1, 1.2, 1.3]
 
 
 def test_dual_stock_history_scan_matches_both_legacy_windows() -> None:
