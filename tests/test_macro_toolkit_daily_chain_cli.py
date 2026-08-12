@@ -34,12 +34,16 @@ def test_extra_scripts_cover_offchain_models_in_dependency_order() -> None:
         "rebalance_cn",
         "performance_metrics_cn",
         "backtest_cn",
+        "generate_bond_macro_report",
     )
     # rebalance/performance/backtest 消费 risk_parity 产物，必须排在其后。
     order = {name: index for index, name in enumerate(cli.EXTRA_MODEL_SCRIPTS)}
     assert order["risk_parity_cn"] < order["rebalance_cn"]
     assert order["risk_parity_cn"] < order["performance_metrics_cn"]
     assert order["risk_parity_cn"] < order["backtest_cn"]
+    # 图文日报消费全部模型产物，必须在 backtest_cn 之后且是最后一步。
+    assert order["backtest_cn"] < order["generate_bond_macro_report"]
+    assert cli.EXTRA_MODEL_SCRIPTS[-1] == "generate_bond_macro_report"
 
 
 def test_dry_run_writes_receipt_and_exits_zero(tmp_path, monkeypatch, capsys) -> None:
@@ -89,9 +93,10 @@ def test_extra_script_failure_turns_run_into_failed_exit_one(tmp_path, monkeypat
     steps = {step["script"]: step for step in receipt["result"]["extra_scripts"]}
     assert steps["rebalance_cn"]["status"] == "error"
     assert "synthetic model failure" in str(steps["rebalance_cn"]["error"])
-    # 单个模型失败不阻断后续模型执行。
+    # 单个模型失败不阻断后续模型与图文日报执行。
     assert steps["performance_metrics_cn"]["status"] == "completed"
     assert steps["backtest_cn"]["status"] == "completed"
+    assert steps["generate_bond_macro_report"]["status"] == "completed"
 
 
 def test_chain_exception_still_writes_failed_receipt(tmp_path, monkeypatch) -> None:

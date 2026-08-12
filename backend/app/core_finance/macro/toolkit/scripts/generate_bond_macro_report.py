@@ -239,6 +239,11 @@ class ReportBundle:
     regime_df: pd.DataFrame | None
     backtest_df: pd.DataFrame | None
     backtest_annual_df: pd.DataFrame | None
+    # 三层拦截最终信号链（signal_aggregator / bond_futures_signals / crowding_cn / risk_monitor 产物）
+    final_signal_df: pd.DataFrame | None
+    bond_signals_df: pd.DataFrame | None
+    crowding_df: pd.DataFrame | None
+    risk_log_df: pd.DataFrame | None
 
 
 def _build_bundle() -> ReportBundle:
@@ -300,6 +305,10 @@ def _build_bundle() -> ReportBundle:
     regime_df      = _try_load("regime_results.csv")
     backtest_df    = _try_load("backtest_results.csv")
     backtest_annual_df = _try_load("backtest_annual.csv")
+    final_signal_df = _try_load("final_signal.csv")
+    bond_signals_df = _try_load("bond_signals_latest.csv")
+    crowding_df     = _try_load("crowding_latest.csv")
+    risk_log_df     = _try_load("risk_log.csv")
 
     return ReportBundle(
         rate_latest=rate_latest,
@@ -327,6 +336,10 @@ def _build_bundle() -> ReportBundle:
         regime_df=regime_df,
         backtest_df=backtest_df,
         backtest_annual_df=backtest_annual_df,
+        final_signal_df=final_signal_df,
+        bond_signals_df=bond_signals_df,
+        crowding_df=crowding_df,
+        risk_log_df=risk_log_df,
     )
 
 
@@ -462,12 +475,12 @@ def _plot_garch_risk(bundle: ReportBundle) -> Path:
     path = ASSET_DIR / "garch_risk.png"
     df = bundle.garch_df.sort_values("年化波动率%", ascending=True).copy()
     fig, ax = plt.subplots(figsize=(8.5, 4.9))
-    _styled_axes(ax, "跨资产波动状态", "年化波动率越高，越不适合在当前阶段承担方向性进攻仓位")
+    _styled_axes(ax, "跨资产波动状态", "绝对年化波动率阈值三档：低波动<15% / 中波动15%-30% / 高波动>30%")
     palette = []
-    for state in df["波动率状态"]:
-        if "极端" in state:
+    for state in df["波动率状态"].astype(str):
+        if "高波动" in state:
             palette.append(COLORS["danger"])
-        elif "高" in state:
+        elif "中波动" in state:
             palette.append(COLORS["orange"])
         else:
             palette.append(COLORS["navy"])
@@ -712,16 +725,176 @@ def _credit_takeaways(bundle: ReportBundle) -> list[str]:
     ]
 
 
-def _garch_takeaways(bundle: ReportBundle) -> list[str]:
-    extreme = bundle.garch_df[bundle.garch_df["波动率状态"].astype(str).str.contains("极端")]["asset_name"].tolist()
-    extreme_text = "、".join(extreme) if extreme else "无"
-    return [
-        "GARCH 参数不能直接套笔记默认值。沪深300的 alpha 低于默认股票参数，说明对新信息的反应比预设更迟钝；如果沿用默认值，会高估市场对突发冲击的即时反应。",
-        "黄金的 beta 明显高于默认商品参数，同时模型自动选择了 EGARCH / t，说明它不仅波动持续性更强，而且存在显著的不对称效应。",
-        "中证500与原油选择了 skew-t，意味着收益率分布偏斜、左尾更厚；铜最接近教科书式商品，参数与默认值最接近。",
-        f"当前亮红灯的资产是 {extreme_text}。其中黄金年化波动率约 {bundle.garch_df.loc[bundle.garch_df['asset_name']=='黄金','年化波动率%'].iloc[0]:.2f}%，原油约 {bundle.garch_df.loc[bundle.garch_df['asset_name']=='原油','年化波动率%'].iloc[0]:.2f}%，都不适合承担过重方向性仓位。",
-        f"样本外相关性最低的资产仍有 {bundle.garch_df['样本外相关性'].min():.3f}，说明这套波动率模型整体是可用的，足以作为风控和仓位约束信号。",
+def _gate_passed(value) -> bool:
+    """CSV 布尔列可能读为 bool 或 'True'/'False' 文本，统一按文本判断。"""
+    return str(value).strip().lower() == "true"
+
+
+def _final_signal_headline(final_signal_df: pd.DataFrame | None) -> str:
+    if final_signal_df is None or final_signal_df.empty:
+        return "三层拦截最终信号（final_signal.csv）暂未生成，请先运行 signal_aggregator。"
+    date_text = str(final_signal_df["日期"].iloc[-1])
+    active = final_signal_df[final_signal_df["最终信号"].astype(str) != "空仓"]
+    if active.empty:
+        return f"三层拦截最终信号（{date_text}）：全部品种被拦截，空仓观望。"
+    parts = "、".join(
+        f"{row['品种']} {row['最终信号']}（仓位 {float(row['仓位比例']):.1%}，置信度 {int(row['置信度'])}/3）"
+        for _, row in active.iterrows()
+    )
+    flat = final_signal_df[final_signal_df["最终信号"].astype(str) == "空仓"]["品种"].astype(str).tolist()
+    flat_text = f"；{'、'.join(flat)} 被拦截空仓" if flat else ""
+    return f"三层拦截最终信号（{date_text}）：{parts}{flat_text}。"
+
+
+def _make_final_signal_table(final_signal_df: pd.DataFrame) -> pd.DataFrame:
+    rows = []
+    for _, row in final_signal_df.iterrows():
+        gate1 = f"{row['第一层_方向']}｜{'通过' if _gate_passed(row['第一层_通过']) else '未通过'}"
+        rows.append(
+            {
+                "品种": row["品种"],
+                "第一层宏观方向门": gate1,
+                "第二层安全边际门": "通过" if _gate_passed(row["第二层_通过"]) else "未通过",
+                "第三层拥挤度门": "通过" if _gate_passed(row["第三层_通过"]) else "未通过",
+                "最终信号": row["最终信号"],
+                "仓位比例": f"{float(row['仓位比例']):.1%}",
+                "置信度": f"{int(row['置信度'])}/3",
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _make_tech_crowding_table(
+    bond_signals_df: pd.DataFrame | None,
+    crowding_df: pd.DataFrame | None,
+) -> pd.DataFrame:
+    """四因子技术面 + 拥挤度对照表。技术面不参与三层门控，仅作对照。"""
+    merged: dict[str, dict[str, object]] = {}
+    if bond_signals_df is not None and len(bond_signals_df):
+        for _, row in bond_signals_df.iterrows():
+            merged[str(row["品种"])] = {
+                "品种": row["品种"],
+                "技术面方向": row["信号方向"],
+                "信号强度": row["信号强度"],
+                "双均线": row["双均线"],
+                "唐奇安": row["唐奇安"],
+                "MACD": row["MACD"],
+                "布林带": row["布林带"],
+            }
+    if crowding_df is not None and len(crowding_df):
+        for _, row in crowding_df.iterrows():
+            entry = merged.setdefault(str(row["品种"]), {"品种": row["品种"]})
+            entry["拥挤度分位"] = f"{float(row['C分位数']):.0%}"
+            entry["拥挤度信号"] = row["拥挤度信号"]
+    return pd.DataFrame(list(merged.values()))
+
+
+def _final_signal_takeaways(
+    final_signal_df: pd.DataFrame | None,
+    bond_signals_df: pd.DataFrame | None = None,
+    crowding_df: pd.DataFrame | None = None,
+) -> list[str]:
+    if final_signal_df is None or final_signal_df.empty:
+        return [_final_signal_headline(final_signal_df)]
+    lines = [_final_signal_headline(final_signal_df)]
+    for _, row in final_signal_df.iterrows():
+        lines.append(
+            f"{row['品种']}：最终信号 {row['最终信号']}，仓位 {float(row['仓位比例']):.1%}，"
+            f"置信度 {int(row['置信度'])}/3。信号说明：{row['信号说明']}"
+        )
+    lines.append(
+        "三层拦截口径：第一层为宏观方向门（美林时钟象限给出多/空方向），第二层为净基差安全边际"
+        "（顺方向安全边际不足则拦截），第三层为拥挤度反向过滤（信号方向与持仓拥挤同向则拦截）；"
+        "置信度为实证通过的门控层数（0-3，数据缺失降级的层不计入）。上游门拦截后，下游门不再评估，实际拦截层以信号说明为准。"
+    )
+    if bond_signals_df is not None and len(bond_signals_df):
+        tech_parts = "、".join(
+            f"{row['品种']} {row['信号方向']}（{row['信号强度']}，{row['说明']}）"
+            for _, row in bond_signals_df.iterrows()
+        )
+        lines.append(f"四因子技术面对照：{tech_parts}。技术面不参与三层门控，仅作对照参考。")
+        diverging = []
+        final_by_symbol = {str(r["品种"]): str(r["最终信号"]) for _, r in final_signal_df.iterrows()}
+        for _, row in bond_signals_df.iterrows():
+            final_signal = final_by_symbol.get(str(row["品种"]))
+            if final_signal in {"多", "空"} and str(row["信号方向"]) != final_signal:
+                diverging.append(str(row["品种"]))
+        if diverging:
+            lines.append(
+                f"技术面与最终信号方向不一致的品种：{'、'.join(diverging)}；"
+                "两者口径不同（技术面为四因子投票，最终信号为三层拦截），以最终信号为链条结论。"
+            )
+    if crowding_df is not None and len(crowding_df):
+        crowd_parts = "、".join(
+            f"{row['品种']} {row['拥挤度信号']}（分位 {float(row['C分位数']):.0%}）"
+            for _, row in crowding_df.iterrows()
+        )
+        lines.append(f"拥挤度证据（第三层门依据）：{crowd_parts}。")
+    return lines
+
+
+def _garch_takeaways(garch_df: pd.DataFrame) -> list[str]:
+    """GARCH 段叙事：尽调笔记绝对年化波动率阈值三档口径（低<15% / 中15%-30% / 高>30%）。"""
+    df = garch_df.copy()
+    if "asset_name" not in df.columns:
+        df["asset_name"] = df["资产"].map(lambda x: ASSET_LABELS.get(x, x))
+    lines = [
+        "波动率状态采用尽调笔记的绝对年化波动率阈值三档口径：低波动（<15%）、中波动（15%-30%）、高波动（>30%），"
+        "取代早期按自身历史分位数划分四档的做法；状态与操作建议均直接取自 garch_results.csv 产物列。"
     ]
+    for regime in ("高波动", "中波动", "低波动"):
+        sub = df[df["波动率状态"].astype(str) == regime]
+        if sub.empty:
+            continue
+        parts = "、".join(
+            f"{row['asset_name']}（年化 {float(row['年化波动率%']):.2f}%，{row['操作建议']}）"
+            for _, row in sub.iterrows()
+        )
+        lines.append(f"{regime}资产：{parts}。")
+    failed = df[df["约束校验"].astype(str) != "通过"]
+    if failed.empty:
+        lines.append(
+            "参数约束校验：全部资产通过笔记约束（omega>0、alpha≥0、beta≥0、持久性<1；EGARCH 仅要求 |beta|<1）。"
+        )
+    else:
+        failed_parts = "、".join(f"{row['asset_name']}（{row['约束校验']}）" for _, row in failed.iterrows())
+        lines.append(f"参数约束校验：{failed_parts}，相关资产的参数与波动率预测解读需谨慎。")
+    lines.append(
+        f"样本外波动率预测相关性介于 {float(df['样本外相关性'].min()):.3f} 至 {float(df['样本外相关性'].max()):.3f}，"
+        "模型整体可用作风控与仓位约束参考。"
+    )
+    return lines
+
+
+def _cta_takeaway_lines(cta_df: pd.DataFrame) -> list[str]:
+    strongest = cta_df.sort_values("合成信号", key=abs, ascending=False).iloc[0]
+    per_asset = "、".join(
+        f"{row['资产']} {int(row['止损次数'])}次/{int(row['减仓天数'])}天" for _, row in cta_df.iterrows()
+    )
+    total_stops = int(cta_df["止损次数"].sum())
+    total_deleverage = int(cta_df["减仓天数"].sum())
+    return [
+        f"CTA 趋势：当前趋势最强资产为'{strongest['资产']}'（合成信号 {float(strongest['合成信号']):+.3f}，{strongest['操作建议']}），"
+        f"策略近2年夏普比率 {strongest['策略夏普比率']}。",
+        f"CTA 止损统计：回测三列（策略年化收益%、策略夏普比率、买持年化收益%）为含止损口径；"
+        f"全品种累计触发止损 {total_stops} 次、波动减仓 {total_deleverage} 天（各资产止损次数/减仓天数：{per_asset}）。",
+    ]
+
+
+def _risk_alert_takeaways(risk_log_df: pd.DataFrame | None, tail_rows: int = 10) -> list[str]:
+    """导航仪监测告警：取 risk_log.csv 尾部记录中 event_type 以 _ALERT 结尾的行。"""
+    if risk_log_df is None or risk_log_df.empty:
+        return ["风险导航仪日志（risk_log.csv）暂未生成，无法给出监测告警状态。"]
+    tail = risk_log_df.tail(tail_rows)
+    alerts = tail[tail["event_type"].astype(str).str.endswith("_ALERT")]
+    if alerts.empty:
+        return [f"导航仪监测正常：risk_log.csv 最近 {len(tail)} 条记录中无告警事件（event_type 以 _ALERT 结尾的行）。"]
+    lines = [
+        f"导航仪监测告警：risk_log.csv 最近 {len(tail)} 条记录中出现 {len(alerts)} 条告警，按 时间｜事件｜对象｜说明 列示如下。"
+    ]
+    for _, row in alerts.iterrows():
+        lines.append(f"{row['datetime']}｜{row['event_type']}｜{row['symbol']}｜{row['detail']}")
+    return lines
 
 
 def _model_cross_takeaways(bundle: ReportBundle) -> list[str]:
@@ -734,12 +907,12 @@ def _model_cross_takeaways(bundle: ReportBundle) -> list[str]:
     stock_pref = _safe_float(bundle.merrill_latest["股票偏好"]) or 0.0
     gold_pref = _safe_float(bundle.merrill_latest["黄金偏好"]) or 0.0
 
-    # GARCH 信号
-    extreme = bundle.garch_df[bundle.garch_df["波动率状态"].astype(str).str.contains("极端")]["asset_name"].tolist()
-    if extreme:
-        garch_signal = f"GARCH 显示 {'、'.join(extreme)} 处于极端波动状态，方向性仓位需谨慎"
+    # GARCH 信号（绝对阈值三档口径，高波动=年化>30%）
+    high_vol = bundle.garch_df[bundle.garch_df["波动率状态"].astype(str) == "高波动"]["asset_name"].tolist()
+    if high_vol:
+        garch_signal = f"GARCH 显示 {'、'.join(high_vol)} 处于高波动状态（年化>30%），方向性仓位需谨慎"
     else:
-        garch_signal = "GARCH 各资产波动率均处于正常区间，无极端波动预警"
+        garch_signal = "GARCH 各资产均处于低/中波动区间，无高波动资产"
 
     # Crisis Score 信号
     if crisis_score < 1:
@@ -773,7 +946,7 @@ def _model_cross_takeaways(bundle: ReportBundle) -> list[str]:
     # 三模型综合判断
     defensive_signals = sum([
         crisis_score > 1,
-        bool(extreme),
+        bool(high_vol),
         bond_pref < -0.2,
         stock_pref < -0.2,
     ])
@@ -827,13 +1000,9 @@ def _quant_models_takeaways(bundle: ReportBundle) -> list[str]:
                 f"年化收益 {float(best['年化收益%']):.2f}%，年化波动 {float(best['年化波动%']):.2f}%。"
             )
 
-    # CTA
+    # CTA（含止损统计，回测三列为含止损口径）
     if bundle.cta_df is not None and len(bundle.cta_df):
-        strongest = bundle.cta_df.sort_values("合成信号", key=abs, ascending=False).iloc[0]
-        lines.append(
-            f"CTA 趋势：当前趋势最强资产为'{strongest['资产']}'（合成信号 {float(strongest['合成信号']):+.3f}，{strongest['操作建议']}），"
-            f"策略近2年夏普比率 {strongest['策略夏普比率']}。"
-        )
+        lines.extend(_cta_takeaway_lines(bundle.cta_df))
 
     # 再平衡
     if bundle.rebalance_df is not None and len(bundle.rebalance_df):
@@ -1084,18 +1253,20 @@ def _make_garch_table(bundle: ReportBundle) -> pd.DataFrame:
                 "默认α": f"{row['note_alpha']:.2f}",
                 "实际β": f"{row['beta']:.3f}",
                 "默认β": f"{row['note_beta']:.2f}",
+                "约束校验": row["约束校验"],
                 "年化波动率%": f"{row['年化波动率%']:.2f}",
                 "样本外相关性": f"{row['样本外相关性']:.3f}",
                 "状态": row["波动率状态"],
+                "操作建议": row["操作建议"],
             }
         )
     return pd.DataFrame(rows)
 
 
 def _make_cross_model_table(bundle: ReportBundle) -> pd.DataFrame:
-    garch_extreme = bundle.garch_df[bundle.garch_df["波动率状态"].astype(str).str.contains("极端")]["asset_name"].tolist()
-    garch_signal = f"{'、'.join(garch_extreme)} 极端波动" if garch_extreme else "无极端波动资产"
-    garch_meaning = "高波动资产需控制仓位，风险预算优先防御" if garch_extreme else "波动率正常，可按计划配置"
+    garch_high_vol = bundle.garch_df[bundle.garch_df["波动率状态"].astype(str) == "高波动"]["asset_name"].tolist()
+    garch_signal = f"{'、'.join(garch_high_vol)} 高波动（年化>30%）" if garch_high_vol else "无高波动资产"
+    garch_meaning = "高波动资产需控制仓位，风险预算优先防御" if garch_high_vol else "波动率处于低/中档，可按计划配置"
 
     crisis_score = _safe_float(bundle.crisis_latest.get("Crisis Score")) or 0.0
     fx_z     = _safe_float(bundle.crisis_latest.get("汇率波动率z"))  or 0.0
@@ -1145,7 +1316,19 @@ def _build_document(bundle: ReportBundle, chart_paths: list[Path]) -> Document:
         f"| 月度宏观最新数据截至 {bundle.macro_latest['trade_date'].strftime('%Y-%m-%d')}"
     )
     _add_title(document, "债券及宏观观察报告", subtitle)
-    document.add_paragraph("数据来源：MOSS 本地 market.db（日频利率、信用、流动性与月度宏观） + macro_toolkit 输出（GARCH、Crisis Score、美林时钟）。")
+    disclaimer = document.add_paragraph()
+    disclaimer_run = disclaimer.add_run(
+        "观察口径声明：本报告为宏观工具箱观察链产物，仅供内部研究观察，非正式投资信号，不构成投资建议；"
+        "正式口径以 MOSS 正式计算链为准。"
+    )
+    disclaimer_run.bold = True
+    disclaimer_run.font.name = "Microsoft YaHei"
+    disclaimer_run.font.color.rgb = RGBColor(184, 59, 59)
+    disclaimer_run._element.rPr.rFonts.set(qn("w:eastAsia"), "Microsoft YaHei")
+    document.add_paragraph(
+        "数据来源：MOSS 本地 market.db（日频利率、信用、流动性与月度宏观） + macro_toolkit 输出"
+        "（三层拦截最终信号、四因子技术面、拥挤度、GARCH、Crisis Score、美林时钟、CTA、风险导航仪日志等产物 CSV）。"
+    )
 
     # 核心结论：全部动态生成
     pmi = float(bundle.macro_latest["pmi"])
@@ -1185,33 +1368,46 @@ def _build_document(bundle: ReportBundle, chart_paths: list[Path]) -> Document:
         credit_view = f"AA-AAA 等级利差 {aa_aaa:.2f}bp（近1年{aa_aaa_pct:.0f}%分位），等级利差已压缩，不宜继续下沉"
     else:
         credit_view = f"AA-AAA 等级利差 {aa_aaa:.2f}bp（近1年{aa_aaa_pct:.0f}%分位），信用分层合理"
-    # 模型综合
-    extreme = bundle.garch_df[bundle.garch_df["波动率状态"].astype(str).str.contains("极端")]["asset_name"].tolist()
+    # 模型综合（GARCH 按绝对阈值三档口径，高波动=年化>30%）
+    high_vol = bundle.garch_df[bundle.garch_df["波动率状态"].astype(str) == "高波动"]["asset_name"].tolist()
     if crisis_score >= 2:
-        model_view = f"三模型高度防御：GARCH 极端波动资产{'、'.join(extreme) if extreme else '无'}，Crisis Score {crisis_score:.3f}（高风险），美林时钟{merrill_phase}"
-    elif crisis_score >= 1 or extreme:
-        model_view = f"三模型偏防御：{'GARCH 极端波动资产' + '、'.join(extreme) + '，' if extreme else ''}Crisis Score {crisis_score:.3f}（警惕），美林时钟{merrill_phase}"
+        model_view = f"三模型高度防御：GARCH 高波动资产{'、'.join(high_vol) if high_vol else '无'}，Crisis Score {crisis_score:.3f}（高风险），美林时钟{merrill_phase}"
+    elif crisis_score >= 1 or high_vol:
+        model_view = f"三模型偏防御：{'GARCH 高波动资产' + '、'.join(high_vol) + '，' if high_vol else ''}Crisis Score {crisis_score:.3f}（警惕），美林时钟{merrill_phase}"
     else:
-        model_view = f"三模型信号中性：Crisis Score {crisis_score:.3f}（正常），美林时钟{merrill_phase}，无极端波动预警"
+        model_view = f"三模型信号中性：Crisis Score {crisis_score:.3f}（正常），美林时钟{merrill_phase}，无高波动资产"
 
     document.add_heading("一、核心结论", level=1)
     _add_bullets(
         document,
         [
+            _final_signal_headline(bundle.final_signal_df),
             f"{growth_view}，PMI {pmi:.1f}；{price_view}，CPI {cpi:.1f}%，PPI {ppi:.1f}%。",
             f"截至 {bundle.rate_latest['trade_date'].strftime('%Y-%m-%d')}，10Y 国债 {y10:.4f}%。{bond_view}。",
             f"信用层面：{credit_view}。",
             f"{model_view}。",
         ],
     )
-    document.add_heading("二、宏观环境", level=1)
+    document.add_heading("二、最终信号（三层拦截）", level=1)
+    if bundle.final_signal_df is not None and len(bundle.final_signal_df):
+        document.add_paragraph("三层拦截最终信号表（signal_aggregator 产物 final_signal.csv）")
+        _add_table(document, _make_final_signal_table(bundle.final_signal_df))
+        document.add_paragraph("")
+    tech_crowding_table = _make_tech_crowding_table(bundle.bond_signals_df, bundle.crowding_df)
+    if len(tech_crowding_table):
+        document.add_paragraph("四因子技术面与拥挤度对照表（技术面不参与三层门控，仅作对照）")
+        _add_table(document, tech_crowding_table)
+        document.add_paragraph("")
+    for text in _final_signal_takeaways(bundle.final_signal_df, bundle.bond_signals_df, bundle.crowding_df):
+        document.add_paragraph(text)
+    document.add_heading("三、宏观环境", level=1)
     document.add_paragraph("月度宏观指标表")
     _add_table(document, _make_macro_table(bundle))
     document.add_paragraph("")
     for text in _macro_takeaways(bundle):
         document.add_paragraph(text)
     document.add_picture(str(chart_paths[3]), width=Inches(6.8))
-    document.add_heading("三、利率债市场", level=1)
+    document.add_heading("四、利率债市场", level=1)
     document.add_paragraph("国债关键期限利率表")
     _add_table(document, _make_rate_table(bundle))
     document.add_paragraph("")
@@ -1219,30 +1415,30 @@ def _build_document(bundle: ReportBundle, chart_paths: list[Path]) -> Document:
         document.add_paragraph(text)
     document.add_picture(str(chart_paths[0]), width=Inches(6.8))
     document.add_picture(str(chart_paths[1]), width=Inches(6.8))
-    document.add_heading("四、信用债与风险偏好", level=1)
+    document.add_heading("五、信用债与风险偏好", level=1)
     document.add_paragraph("信用利差表")
     _add_table(document, _make_credit_table(bundle))
     document.add_paragraph("")
     for text in _credit_takeaways(bundle):
         document.add_paragraph(text)
     document.add_picture(str(chart_paths[2]), width=Inches(6.8))
-    document.add_heading("五、量化模型增补", level=1)
+    document.add_heading("六、量化模型增补", level=1)
     document.add_paragraph("模型摘要")
     _add_table(document, _make_toolkit_table(bundle))
     document.add_paragraph("")
-    document.add_paragraph("GARCH 参数对照")
+    document.add_paragraph("GARCH 参数对照（含约束校验与产物操作建议）")
     _add_table(document, _make_garch_table(bundle))
     document.add_paragraph("")
-    for text in _garch_takeaways(bundle):
+    for text in _garch_takeaways(bundle.garch_df):
         document.add_paragraph(text)
     document.add_picture(str(chart_paths[4]), width=Inches(6.8))
     document.add_picture(str(chart_paths[5]), width=Inches(6.8))
-    document.add_heading("六、模型交叉验证", level=1)
+    document.add_heading("七、模型交叉验证", level=1)
     _add_table(document, _make_cross_model_table(bundle))
     document.add_paragraph("")
     for text in _model_cross_takeaways(bundle):
         document.add_paragraph(text)
-    document.add_heading("七、量化模型扩展", level=1)
+    document.add_heading("八、量化模型扩展", level=1)
     document.add_paragraph("六大量化模型快照")
     _add_table(document, _make_quant_summary_table(bundle))
     document.add_paragraph("")
@@ -1261,7 +1457,7 @@ def _build_document(bundle: ReportBundle, chart_paths: list[Path]) -> Document:
         img_path = ASSET_DIR / img_name
         if img_path.exists():
             document.add_picture(str(img_path), width=Inches(6.8))
-    document.add_heading("八、全策略综合回测", level=1)
+    document.add_heading("九、全策略综合回测", level=1)
     if bundle.backtest_df is not None and len(bundle.backtest_df):
         document.add_paragraph("策略绩效汇总（近5年，扣除交易成本）")
         _add_table(document, bundle.backtest_df)
@@ -1284,10 +1480,13 @@ def _build_document(bundle: ReportBundle, chart_paths: list[Path]) -> Document:
         )
     else:
         document.add_paragraph("回测数据暂未生成，请先运行 backtest_cn.py。")
-    document.add_heading("九、策略建议", level=1)
+    document.add_heading("十、风险监测（导航仪）", level=1)
+    for text in _risk_alert_takeaways(bundle.risk_log_df):
+        document.add_paragraph(text)
+    document.add_heading("十一、策略建议", level=1)
     _add_bullets(document, _strategy_recommendations(bundle))
-    document.add_heading("十、说明", level=1)
-    document.add_paragraph("1. 债券日频数据采用 market.db 中最新有效交易日。 2. 月度宏观指标采用数据库内最新非空发布值，日期可能晚于实际统计月份。 3. 本报告用于内部分析，不构成投资建议。")
+    document.add_heading("十二、说明", level=1)
+    document.add_paragraph("1. 债券日频数据采用 market.db 中最新有效交易日。 2. 月度宏观指标采用数据库内最新非空发布值，日期可能晚于实际统计月份。 3. 本报告为观察口径产物，仅供内部研究观察，非正式投资信号，不构成投资建议。")
     document.add_section(WD_SECTION.NEW_PAGE)
     return document
 

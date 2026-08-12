@@ -7,7 +7,9 @@ updated vendor data):
    bond futures, crowding, DCC, CTA, signal aggregator, risk monitor);
 2. the off-chain model scripts that complete the due-diligence note's
    ten-model set (GARCH, regime switch, risk parity, rebalance,
-   performance metrics, backtest) in dependency order.
+   performance metrics, backtest) in dependency order;
+3. the illustrated daily report generator (generate_bond_macro_report),
+   which consumes every model artifact above and therefore runs last.
 
 Observation-only: artifacts stay non-formal and never enter formal finance.
 """
@@ -47,6 +49,8 @@ EXTRA_MODEL_SCRIPTS: tuple[str, ...] = (
     "rebalance_cn",
     "performance_metrics_cn",
     "backtest_cn",
+    # 图文日报消费上面全部模型产物 CSV，必须排在最后一步。
+    "generate_bond_macro_report",
 )
 
 
@@ -65,7 +69,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--skip-extra-scripts",
         action="store_true",
-        help="Run only the registered chain; skip the six off-chain model scripts.",
+        help="Run only the registered chain; skip the off-chain model scripts and the daily report.",
     )
     return parser
 
