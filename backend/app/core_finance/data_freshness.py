@@ -12,10 +12,13 @@ import roots can use it without pulling extra project dependencies.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
+
+_LOGGER = logging.getLogger(__name__)
 
 FRESHNESS_TIER_FRESH = "fresh"
 FRESHNESS_TIER_STALE = "stale"
@@ -44,6 +47,30 @@ class FreshnessAssessment:
     tier: str
     confidence: Decimal
     notes: tuple[str, ...] = ()
+    # Explicit look-ahead disclosure (age_days < 0). The tier stays fresh so
+    # tier-only consumers keep their behavior; consumers that must react to
+    # look-ahead already key off age_days and can now also read this flag.
+    lookahead: bool = False
+    # True when the requested cadence was not recognised after normalization
+    # and daily thresholds were applied as a conservative fallback.
+    cadence_fallback: bool = False
+
+
+def _normalize_cadence(cadence: str) -> tuple[str, bool]:
+    """Return (threshold_key, fallback_used) for a raw cadence value.
+
+    Case/whitespace variants such as "Monthly" normalize to their canonical
+    key. Unknown cadences fall back to the strictest (daily) thresholds and
+    are disclosed via the flag plus a warning log instead of failing the
+    read-only assessment path.
+    """
+    normalized = cadence.strip().lower()
+    if normalized in STALE_AFTER_DAYS:
+        return normalized, False
+    _LOGGER.warning(
+        "Unknown freshness cadence %r; falling back to daily thresholds.", cadence
+    )
+    return "daily", True
 
 
 def _coerce_date(value: Any) -> date | None:
@@ -76,13 +103,15 @@ def assess_freshness(
             confidence=CONFIDENCE_BY_TIER[FRESHNESS_TIER_UNKNOWN],
         )
     age_days = (as_of - latest).days
-    key = cadence if cadence in STALE_AFTER_DAYS else "daily"
+    key, cadence_fallback = _normalize_cadence(cadence)
     if age_days < 0:
         return FreshnessAssessment(
             age_days=age_days,
             tier=FRESHNESS_TIER_FRESH,
-            confidence=CONFIDENCE_BY_TIER[FRESHNESS_TIER_STALE],
+            confidence=CONFIDENCE_BY_TIER[FRESHNESS_TIER_FRESH],
             notes=("LOOKAHEAD_DATE_DETECTED",),
+            lookahead=True,
+            cadence_fallback=cadence_fallback,
         )
     if age_days > EXPIRED_AFTER_DAYS[key]:
         tier = FRESHNESS_TIER_EXPIRED
@@ -90,4 +119,9 @@ def assess_freshness(
         tier = FRESHNESS_TIER_STALE
     else:
         tier = FRESHNESS_TIER_FRESH
-    return FreshnessAssessment(age_days=age_days, tier=tier, confidence=CONFIDENCE_BY_TIER[tier])
+    return FreshnessAssessment(
+        age_days=age_days,
+        tier=tier,
+        confidence=CONFIDENCE_BY_TIER[tier],
+        cadence_fallback=cadence_fallback,
+    )

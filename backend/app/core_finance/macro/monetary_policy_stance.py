@@ -109,7 +109,9 @@ def _score_term_structure(slope_bp: Decimal | None) -> Decimal | None:
     if slope_bp < Decimal("50"):
         return Decimal("-20") + (slope_bp - Decimal("20")) * Decimal("0.67")
     if slope_bp < Decimal("80"):
-        return (slope_bp - Decimal("50")) * Decimal("1.67")
+        # 斜率取 100/30 使该段在 80bp 处精确衔接满分 100，
+        # 避免旧系数 1.67 造成 79.9→80 约 50 分的跳变。
+        return (slope_bp - Decimal("50")) * Decimal("100") / Decimal("30")
     return Decimal("100")
 
 
