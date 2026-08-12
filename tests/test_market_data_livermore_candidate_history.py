@@ -11,6 +11,10 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
+from backend.app.core_finance.candidate_history_proxy_backtest import (
+    CYCLE_PROXY_ENTRY_PRICE_WARNING,
+    PORTFOLIO_PROXY_ENTRY_PRICE_WARNING,
+)
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.choice_stock_adapter import ChoiceStockReadiness
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
@@ -5191,7 +5195,6 @@ def test_macro_context_v1_stabilizes_lineage_and_missing_state() -> None:
 
 def test_livermore_macro_context_wrapper_uses_service_normalizer(monkeypatch) -> None:
     from backend.app.api.routes import market_data_livermore as route
-    from backend.app.services import macro_bond_linkage_service as svc
 
     captured_report_dates: list[date] = []
 
@@ -5223,7 +5226,15 @@ def test_livermore_macro_context_wrapper_uses_service_normalizer(monkeypatch) ->
             },
         }
 
-    monkeypatch.setattr(svc, "get_macro_environment_context", fake_macro_environment_context)
+    # Patch the namespace the route-bound function actually dereferences:
+    # tests.helpers.load_module can fork backend.app.services.macro_bond_linkage_service
+    # in sys.modules, so patching a module handle resolved via import may miss the
+    # instance whose get_macro_context_v1 the route bound at its own import time.
+    monkeypatch.setitem(
+        route.get_macro_context_v1.__globals__,
+        "get_macro_environment_context",
+        fake_macro_environment_context,
+    )
 
     context = route._livermore_macro_context_v1_for_date("2026-05-01T15:30:00+08:00")
 
@@ -6403,6 +6414,7 @@ def test_cycle_proxy_backtest_marks_unsupported_when_no_completed_proxy_rows(tmp
     assert body["status"] == "unsupported"
     assert body["summary"] is None
     assert body["nav_series"] == []
+    assert body["caliber_disclosure"] is None
 
 
 def test_cycle_proxy_backtest_api_happy_path_and_query_validation(monkeypatch, tmp_path) -> None:
@@ -6444,6 +6456,151 @@ def test_cycle_proxy_backtest_api_happy_path_and_query_validation(monkeypatch, t
         ).status_code
         == 422
     )
+    get_settings.cache_clear()
+
+
+def test_cycle_proxy_backtest_api_exposes_caliber_disclosure(monkeypatch, tmp_path) -> None:
+    """Endpoint chain: caliber_disclosure presence, semantics, and null when the backtest is unavailable."""
+    db_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        _insert_strategy_score_rows(
+            conn,
+            [
+                (
+                    "2025-12-01",
+                    "000001.SZ",
+                    "Tushare Era",
+                    "stock_candidate",
+                    0.10,
+                    0.12,
+                    0.20,
+                    '{"market_state":"WARM"}',
+                ),
+                (
+                    "2026-05-01",
+                    "000002.SZ",
+                    "Native Era",
+                    "stock_candidate",
+                    0.05,
+                    0.06,
+                    0.10,
+                    '{"market_state":"WARM"}',
+                ),
+            ],
+        )
+        _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-01")
+    finally:
+        conn.close()
+
+    client = _build_client(tmp_path, monkeypatch)
+    response = client.get(
+        "/ui/market-data/livermore/cycle-proxy-backtest",
+        params={"snapshot_from": "2025-12-01", "snapshot_to": "2026-05-01"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()["result"]
+    assert body["status"] == "proxy"
+    disclosure = body["caliber_disclosure"]
+    assert disclosure["entry_price_warning"] == CYCLE_PROXY_ENTRY_PRICE_WARNING
+    assert disclosure["return_field_stats"] == {
+        "return_rows_execution_net_adjusted": 0,
+        "return_rows_adjusted": 0,
+        "return_rows_adjusted_fallback": 0,
+        "return_rows_gross_fallback": 2,
+    }
+    # signal_date < 2026-01-05 counts as tushare era, >= counts as Choice native era.
+    assert disclosure["sample_generation"] == {"tushare_era_rows": 1, "native_era_rows": 1}
+    assert CYCLE_PROXY_ENTRY_PRICE_WARNING in disclosure["basis_notes"]
+    assert any("2026-01-05" in note for note in disclosure["basis_notes"])
+
+    unavailable = client.get(
+        "/ui/market-data/livermore/cycle-proxy-backtest",
+        params={"snapshot_from": "2024-01-01", "snapshot_to": "2024-01-31"},
+    )
+    assert unavailable.status_code == 200
+    unavailable_body = unavailable.json()["result"]
+    assert unavailable_body["status"] == "unsupported"
+    assert "caliber_disclosure" in unavailable_body
+    assert unavailable_body["caliber_disclosure"] is None
+    get_settings.cache_clear()
+
+
+def test_candidate_history_portfolio_backtest_api_exposes_caliber_disclosure(monkeypatch, tmp_path) -> None:
+    """Endpoint chain: portfolio-proxy caliber_disclosure semantics and null when unavailable."""
+    db_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        _minimal_observation_schema(conn)
+        conn.executemany(
+            "insert into choice_stock_daily_observation (trade_date, stock_code, close_value) values (?, ?, ?)",
+            [
+                ("2025-12-01", "000001.SZ", 100.0),
+                ("2025-12-02", "000001.SZ", 105.0),
+                ("2026-05-04", "000001.SZ", 110.0),
+                ("2026-05-05", "000001.SZ", 112.0),
+            ],
+        )
+        _insert_strategy_score_rows(
+            conn,
+            [
+                (
+                    "2025-12-01",
+                    "000001.SZ",
+                    "Tushare Era",
+                    "stock_candidate",
+                    None,
+                    None,
+                    None,
+                    '{"market_state":"WARM"}',
+                ),
+                (
+                    "2026-05-04",
+                    "000001.SZ",
+                    "Native Era",
+                    "stock_candidate",
+                    None,
+                    None,
+                    None,
+                    '{"market_state":"WARM"}',
+                ),
+            ],
+        )
+        conn.execute("update livermore_candidate_history set data_status = 'pending'")
+    finally:
+        conn.close()
+
+    client = _build_client(tmp_path, monkeypatch)
+    response = client.get(
+        "/ui/market-data/livermore/candidate-history-portfolio-backtest",
+        params={"snapshot_from": "2025-12-01", "snapshot_to": "2026-05-05"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()["result"]
+    assert body["status"] == "portfolio_proxy"
+    disclosure = body["caliber_disclosure"]
+    assert disclosure["entry_price_warning"] == PORTFOLIO_PROXY_ENTRY_PRICE_WARNING
+    # The monthly proxy has no per-row return-field selection; its return
+    # caliber is the mark-to-market price-source split (no adj factors seeded).
+    assert disclosure["return_field_stats"] == {
+        "price_rows_adjusted": 0,
+        "price_rows_raw_fallback": 4,
+    }
+    assert disclosure["sample_generation"] == {"tushare_era_rows": 1, "native_era_rows": 1}
+    assert PORTFOLIO_PROXY_ENTRY_PRICE_WARNING in disclosure["basis_notes"]
+    assert any("2026-01-05" in note for note in disclosure["basis_notes"])
+
+    unavailable = client.get(
+        "/ui/market-data/livermore/candidate-history-portfolio-backtest",
+        params={"snapshot_from": "2024-01-01", "snapshot_to": "2024-01-31"},
+    )
+    assert unavailable.status_code == 200
+    unavailable_body = unavailable.json()["result"]
+    assert unavailable_body["status"] == "unsupported"
+    assert "caliber_disclosure" in unavailable_body
+    assert unavailable_body["caliber_disclosure"] is None
     get_settings.cache_clear()
 
 
@@ -6669,6 +6826,7 @@ def test_candidate_history_portfolio_backtest_marks_unsupported_without_replay_r
     assert body["status"] == "unsupported"
     assert body["summary"] is None
     assert body["nav_series"] == []
+    assert body["caliber_disclosure"] is None
 
 
 def test_candidate_history_portfolio_backtest_api_happy_path_and_query_validation(monkeypatch, tmp_path) -> None:
@@ -6753,10 +6911,21 @@ def test_cycle_proxy_backtest_payload_structure_characterization(tmp_path) -> No
         "snapshot_to",
         "missing_full_strategy_inputs",
         "warnings",
+        "caliber_disclosure",
         "summary",
         "nav_series",
     }
     assert required_payload_keys <= set(body)
+    assert set(body["caliber_disclosure"]) == {
+        "entry_price_warning",
+        "return_field_stats",
+        "sample_generation",
+        "basis_notes",
+    }
+    assert set(body["caliber_disclosure"]["sample_generation"]) == {
+        "tushare_era_rows",
+        "native_era_rows",
+    }
     required_summary_keys = {
         "sample_days",
         "candidate_rows",
@@ -6816,11 +6985,22 @@ def test_candidate_history_portfolio_backtest_payload_structure_characterization
         "snapshot_to",
         "missing_full_strategy_inputs",
         "warnings",
+        "caliber_disclosure",
         "summary",
         "nav_series",
         "rebalance_log",
     }
     assert required_payload_keys <= set(body)
+    assert set(body["caliber_disclosure"]) == {
+        "entry_price_warning",
+        "return_field_stats",
+        "sample_generation",
+        "basis_notes",
+    }
+    assert set(body["caliber_disclosure"]["sample_generation"]) == {
+        "tushare_era_rows",
+        "native_era_rows",
+    }
     required_summary_keys = {
         "sample_days",
         "candidate_rows",

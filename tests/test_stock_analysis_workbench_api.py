@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from datetime import date
 from typing import Any
 
@@ -787,6 +788,92 @@ def test_stock_analysis_workbench_route_validates_date_and_delegates_to_service(
 
     assert invalid.status_code == 422
     assert len(calls) == 1
+    route_module.market_home_response_cache.invalidate()
+
+
+def test_stock_analysis_workbench_endpoint_passes_through_candidate_liquidity_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Lock daily_amount / liquidity_floor_pass pass-through (true / false / null tri-state)."""
+    route_module = load_module(
+        "backend.app.api.routes.market_data_livermore",
+        "backend/app/api/routes/market_data_livermore.py",
+    )
+    workbench_module = sys.modules[route_module.stock_analysis_workbench_envelope.__module__]
+
+    strategy_envelope = _strategy_envelope()
+    strategy_envelope["result"]["stock_candidates"] = {
+        "items": [
+            {
+                "rank": 1,
+                "stock_code": "000001.SZ",
+                "stock_name": "平安银行",
+                "daily_amount": 260_000_000.0,
+                "liquidity_floor_pass": True,
+            },
+            {
+                "rank": 2,
+                "stock_code": "000002.SZ",
+                "stock_name": "万科A",
+                "daily_amount": 120_000_000.0,
+                "liquidity_floor_pass": False,
+            },
+            {
+                "rank": 3,
+                "stock_code": "000003.SZ",
+                "stock_name": "缺流动性数据",
+                "daily_amount": None,
+                "liquidity_floor_pass": None,
+            },
+        ],
+    }
+    monkeypatch.setattr(
+        workbench_module,
+        "livermore_strategy_envelope_from_catalog",
+        lambda **_kwargs: strategy_envelope,
+    )
+    monkeypatch.setattr(
+        route_module, "_ensure_livermore_read_allowed", lambda **_kwargs: None
+    )
+    route_module.market_home_response_cache.invalidate()
+
+    app = FastAPI()
+    app.include_router(route_module.router)
+    app.dependency_overrides[route_module.get_auth_context] = lambda: (
+        route_module.AuthContext(
+            user_id="route-test",
+            role="viewer",
+            identity_source="test",
+        )
+    )
+    client = TestClient(app)
+
+    response = client.get(
+        "/ui/market-data/stock-analysis/workbench",
+        params={"as_of_date": "2026-06-26", "top_k": 3},
+    )
+
+    assert response.status_code == 200
+    result = response.json()["result"]
+    expected = [
+        ("000001.SZ", 260_000_000.0, True),
+        ("000002.SZ", 120_000_000.0, False),
+        ("000003.SZ", None, None),
+    ]
+    main_items = result["modules"]["main"]["result"]["stock_candidates"]["items"]
+    assert [
+        (item["stock_code"], item["daily_amount"], item["liquidity_floor_pass"])
+        for item in main_items
+    ] == expected
+    review_rows = [
+        row
+        for row in result["first_screen"]["review_queue"]
+        if row["source_module"] == "stock_candidates"
+    ]
+    assert [
+        (row["stock_code"], row["daily_amount"], row["liquidity_floor_pass"])
+        for row in review_rows
+    ] == expected
     route_module.market_home_response_cache.invalidate()
 
 

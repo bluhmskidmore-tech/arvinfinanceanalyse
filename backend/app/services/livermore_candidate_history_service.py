@@ -183,6 +183,22 @@ _CYCLE_PROXY_MISSING_FULL_STRATEGY_INPUTS = [
     "valuation_percentile_history",
     "earnings_revision",
 ]
+# Vendor-era boundary for the caliber_disclosure sample_generation split;
+# mirrors CHOICE_NATIVE_ERA_START in scripts/run_portfolio_backtest.py.
+CHOICE_NATIVE_ERA_START = "2026-01-05"
+_CYCLE_PROXY_RETURN_PREFERENCE_NOTE = (
+    "Executable next-open return_5d_net_adj is preferred and already includes formal transaction costs; "
+    "when unavailable, the read side applies those costs to return_5d_adj (gross return_5d second fallback)."
+)
+_PORTFOLIO_PROXY_BASIS_NOTE = (
+    "It uses first-available monthly stock_candidate snapshots, equal-weight top-6 replay rows, "
+    "daily adjusted-close mark-to-market with raw-close fallback, and fixed transaction-cost assumptions."
+)
+_SAMPLE_GENERATION_ERA_NOTE = (
+    "sample_generation splits replay rows by signal date at the 2026-01-05 Choice-native era boundary "
+    "(earlier rows come from the tushare-era ingestion, later rows from the Choice-native ingestion), "
+    "matching CHOICE_NATIVE_ERA_START in scripts/run_portfolio_backtest.py."
+)
 
 _SELECT_COLUMNS = (
     "snapshot_as_of_date",
@@ -2747,13 +2763,26 @@ def _build_cycle_proxy_backtest_payload(
 ) -> dict[str, Any]:
     proxy_items = _cycle_proxy_items(items)
     nav_series = build_cycle_proxy_nav_series(proxy_items)
+    return_field_stats = cycle_proxy_return_field_stats(proxy_items)
     summary = build_cycle_proxy_summary(
         nav_series,
         candidate_rows=len(proxy_items),
         benchmark_rows=benchmark_rows or [],
         benchmark_series_id=BENCHMARK_SERIES_ID,
-        return_field_stats=cycle_proxy_return_field_stats(proxy_items),
+        return_field_stats=return_field_stats,
     )
+    caliber_disclosure: dict[str, Any] | None = None
+    if summary is not None:
+        caliber_disclosure = {
+            "entry_price_warning": CYCLE_PROXY_ENTRY_PRICE_WARNING,
+            "return_field_stats": return_field_stats,
+            "sample_generation": _era_sample_generation(proxy_items),
+            "basis_notes": [
+                CYCLE_PROXY_ENTRY_PRICE_WARNING,
+                _CYCLE_PROXY_RETURN_PREFERENCE_NOTE,
+                _SAMPLE_GENERATION_ERA_NOTE,
+            ],
+        }
     return {
         "status": "proxy" if summary is not None else "unsupported",
         "full_strategy_status": "blocked_missing_inputs",
@@ -2773,11 +2802,12 @@ def _build_cycle_proxy_backtest_payload(
         "warnings": [
             "This is a reduced proxy backtest, not the full A-share cycle-rotation strategy.",
             "It uses daily candidate rows already persisted by the existing Livermore replay pipeline.",
-            "Executable next-open return_5d_net_adj is preferred and already includes formal transaction costs; when unavailable, the read side applies those costs to return_5d_adj (gross return_5d second fallback).",
+            _CYCLE_PROXY_RETURN_PREFERENCE_NOTE,
             CYCLE_PROXY_ENTRY_PRICE_WARNING,
             "Proxy evidence only: cost and return conventions are aligned with the formal engine constants, but results are not produced by the formal path backtest engine.",
             "Full benchmark attribution and the report's monthly core cadence are still not modeled here.",
         ],
+        "caliber_disclosure": caliber_disclosure,
         "summary": summary,
         "nav_series": nav_series,
     }
@@ -2804,6 +2834,21 @@ def _build_candidate_history_portfolio_backtest_payload(
         benchmark_series_id=BENCHMARK_SERIES_ID,
         price_field_stats=price_field_stats,
     )
+    caliber_disclosure: dict[str, Any] | None = None
+    if summary is not None:
+        rebalance_items = [row for rebalance in rebalances for row in rebalance["items"]]
+        caliber_disclosure = {
+            "entry_price_warning": PORTFOLIO_PROXY_ENTRY_PRICE_WARNING,
+            # The monthly portfolio proxy has no per-row return-field selection;
+            # its return caliber is the mark-to-market price-source split.
+            "return_field_stats": price_field_stats,
+            "sample_generation": _era_sample_generation(rebalance_items),
+            "basis_notes": [
+                PORTFOLIO_PROXY_ENTRY_PRICE_WARNING,
+                _PORTFOLIO_PROXY_BASIS_NOTE,
+                _SAMPLE_GENERATION_ERA_NOTE,
+            ],
+        }
     return {
         "status": "portfolio_proxy" if summary is not None else "unsupported",
         "full_strategy_status": "blocked_missing_inputs",
@@ -2816,7 +2861,7 @@ def _build_candidate_history_portfolio_backtest_payload(
         "missing_full_strategy_inputs": list(_CYCLE_PROXY_MISSING_FULL_STRATEGY_INPUTS),
         "warnings": [
             "This is a candidate-history portfolio proxy, not the full A-share cycle-rotation strategy.",
-            "It uses first-available monthly stock_candidate snapshots, equal-weight top-6 replay rows, daily adjusted-close mark-to-market with raw-close fallback, and fixed transaction-cost assumptions.",
+            _PORTFOLIO_PROXY_BASIS_NOTE,
             PORTFOLIO_PROXY_ENTRY_PRICE_WARNING,
             "Proxy evidence only: transaction costs (buy/sell fees plus per-side slippage) are aligned with the formal engine constants, but results are not produced by the formal path backtest engine.",
             "It still lacks the report's macro, industry-cycle, fund-flow, valuation-history, and earnings-revision inputs.",
@@ -2825,10 +2870,28 @@ def _build_candidate_history_portfolio_backtest_payload(
                 for code in stale_price_codes
             ],
         ],
+        "caliber_disclosure": caliber_disclosure,
         "summary": summary,
         "nav_series": nav_series,
         "rebalance_log": rebalance_log,
     }
+
+
+def _era_sample_generation(items: list[dict[str, Any]]) -> dict[str, int]:
+    """Split replay rows at the Choice-native era boundary by signal date.
+
+    Mirrors ``_execution_vendor_era_counts`` in ``scripts/run_portfolio_backtest.py``;
+    candidate-history replay rows carry their signal date as ``snapshot_as_of_date``.
+    """
+    tushare_rows = 0
+    native_rows = 0
+    for row in items:
+        signal_date = str(row.get("snapshot_as_of_date") or "")[:10]
+        if signal_date and signal_date < CHOICE_NATIVE_ERA_START:
+            tushare_rows += 1
+        elif signal_date:
+            native_rows += 1
+    return {"tushare_era_rows": tushare_rows, "native_era_rows": native_rows}
 
 
 def _cycle_proxy_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
