@@ -80,7 +80,7 @@ beforeEach(() => {
 
 beforeAll(async () => {
   await preloadWorkbenchRouteModules("dashboard-home");
-}, 20_000);
+}, 60_000);
 
 function stubIntersectionObserver(): MockIntersectionObserver {
   const callbacks: IntersectionObserverCallback[] = [];

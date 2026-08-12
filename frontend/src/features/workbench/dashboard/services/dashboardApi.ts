@@ -81,10 +81,12 @@ export function getReturnDecompositionContext(
 export function getCampisiAttributionContext(
   client: DashboardApiClient,
   reportDate: string,
+  options?: { detail?: "full" | "summary" },
 ) {
   return client.getPnlCampisiFourEffects({
     endDate: reportDate,
     lookbackDays: 30,
+    ...(options?.detail ? { detail: options.detail } : {}),
   });
 }
 

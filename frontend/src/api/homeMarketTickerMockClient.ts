@@ -3,6 +3,7 @@ import type {
   ApiEnvelope,
   ChoiceMacroLatestPayload,
   ChoiceMacroLatestPoint,
+  ChoiceNewsEventsBatchPayload,
   ChoiceNewsEventsPayload,
   ResearchCalendarEvent,
 } from "./contracts";
@@ -206,6 +207,28 @@ function buildMockChoiceNewsCompare(
   };
 }
 
+/** 批量端点 mock：把单查 mock 按 topic/group 分桶，batches 顺序与请求一致（先 topics 后 groups）。 */
+function buildMockChoiceNewsBatchEnvelope(options: {
+  topics?: readonly { topicCode: string; limit: number }[];
+  groups?: readonly { groupId: string; limit: number }[];
+}): ApiEnvelope<ChoiceNewsEventsBatchPayload> {
+  const batches: ChoiceNewsEventsBatchPayload["batches"] = [
+    ...(options.topics ?? []).map(({ topicCode, limit }) => ({
+      key: `topic:${topicCode}`,
+      topic_code: topicCode,
+      group_id: null,
+      events: buildMockChoiceNewsEnvelope({ limit, offset: 0, topicCode }).result.events,
+    })),
+    ...(options.groups ?? []).map(({ groupId, limit }) => ({
+      key: `group:${groupId}`,
+      topic_code: null,
+      group_id: groupId,
+      events: buildMockChoiceNewsEnvelope({ limit, offset: 0, groupId }).result.events,
+    })),
+  ];
+  return buildMockApiEnvelope("news.choice.latest_batch", { batches });
+}
+
 function buildMockResearchCalendarEvents(reportDate?: string): ResearchCalendarEvent[] {
   const baseDate = reportDate?.trim() || "2026-04-18";
   return [
@@ -250,6 +273,10 @@ export function createMockHomeMarketTickerClient(): HomeMarketTickerClientMethod
     async getChoiceNewsEvents(options) {
       await delay();
       return buildMockChoiceNewsEnvelope(options);
+    },
+    async getChoiceNewsEventsBatch(options) {
+      await delay();
+      return buildMockChoiceNewsBatchEnvelope(options);
     },
     async getResearchCalendarEvents(options) {
       await delay();

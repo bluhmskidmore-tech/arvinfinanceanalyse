@@ -718,6 +718,37 @@ export type LivermoreStockCandidateItem = {
   dividend_yield?: number | null;
   factor_score?: number | null;
   factor_overlay_rank?: number | null;
+  /** 当日成交额（人民币元，已按数据代际归一化）；接口未提供时为 null。 */
+  daily_amount?: number | null;
+  /** 是否满足 2 亿元日成交门槛；null 表示数据缺失，不构成"未通过"判断。 */
+  liquidity_floor_pass?: boolean | null;
+};
+
+/** risk_budget 建议仓位单票条目：raw_weight 为单票权重上限建议（0-1 小数）。 */
+export type LivermorePositionSizeHintItem = {
+  stock_code: string;
+  raw_weight: number;
+  stop_distance_pct: number;
+  stop_basis: "ema10_stop_ref" | "fallback" | string;
+  capped: boolean;
+};
+
+/** stock_candidate 建议仓位块（sizing_rb_v1）：串联 gate 敞口语义见 gate_exposure_note，等权 shadow 对照说明见 equal_weight_shadow_note。 */
+export type LivermorePositionSizeHint = {
+  policy_version: string;
+  sizing_mode: string;
+  signal_kind: string;
+  risk_per_trade: number;
+  single_name_cap: number;
+  fallback_stop_distance_pct: number;
+  stop_basis: string;
+  items: LivermorePositionSizeHintItem[];
+  stop_ref_fallback_count: number;
+  stop_ref_missing_ratio: number;
+  coverage_degraded: boolean;
+  coverage_warning: string | null;
+  gate_exposure_note: string;
+  equal_weight_shadow_note: string;
 };
 
 export type LivermoreStockCandidatesPayload = {
@@ -738,6 +769,8 @@ export type LivermoreStockCandidatesPayload = {
     factor_missing_count?: number | null;
   };
   items: LivermoreStockCandidateItem[];
+  /** 老响应或字段未上线时缺失/为 null；前端必须容错，缺失时不渲染建议仓位。 */
+  position_size_hint?: LivermorePositionSizeHint | null;
 };
 
 export type LivermoreThemeBreakoutStockItem = {
@@ -1132,6 +1165,14 @@ export type LivermoreCycleProxyBacktestNavPoint = {
   candidate_count: number;
 };
 
+/** 回测口径披露：解释代理回测样本的入场价与来源代际构成，纯增量、只读展示。 */
+export type LivermoreProxyBacktestCaliberDisclosure = {
+  entry_price_warning: string | null;
+  return_field_stats: Record<string, unknown> | null;
+  sample_generation: { tushare_era_rows: number; native_era_rows: number } | null;
+  basis_notes: string[];
+};
+
 export type LivermoreCycleProxyBacktestPayload = {
   status: "proxy" | "unsupported" | string;
   full_strategy_status: "blocked_missing_inputs" | string;
@@ -1146,6 +1187,8 @@ export type LivermoreCycleProxyBacktestPayload = {
   summary: LivermoreCycleProxyBacktestSummary | null;
   nav_series: LivermoreCycleProxyBacktestNavPoint[];
   workbench_summary?: Record<string, unknown>;
+  /** 老响应或字段未上线时缺失/为 null；前端必须容错，缺失时不渲染披露区块。 */
+  caliber_disclosure?: LivermoreProxyBacktestCaliberDisclosure | null;
 };
 
 export type LivermoreCandidateHistoryPortfolioBacktestNavPoint = {
@@ -1193,6 +1236,8 @@ export type LivermoreCandidateHistoryPortfolioBacktestPayload = {
   nav_series: LivermoreCandidateHistoryPortfolioBacktestNavPoint[];
   rebalance_log: LivermoreCandidateHistoryPortfolioBacktestRebalance[];
   workbench_summary?: Record<string, unknown>;
+  /** 老响应或字段未上线时缺失/为 null；前端必须容错，缺失时不渲染披露区块。 */
+  caliber_disclosure?: LivermoreProxyBacktestCaliberDisclosure | null;
 };
 
 export type LivermoreStrategyPayload = {
@@ -1424,6 +1469,59 @@ export type StockKlineAnalysisPayload = {
     risks: string[];
   };
   diagnostics: Array<Record<string, unknown>>;
+};
+
+export type StockHeavyweightTrendState = "ok" | "partial" | "insufficient" | "missing" | string;
+
+export type StockHeavyweightTrendStock = {
+  rank: number | null;
+  stock_code: string;
+  stock_name: string;
+  /** Single-day pctchange from the sector leader snapshot; used to tie out against the workbench card. */
+  pctchange: number | null;
+  turn: number | null;
+  /** Sessions the stock actually traded inside the window, ascending. */
+  trade_dates: string[];
+  close_values: number[];
+  /** (close / first_close - 1) * 100, index-aligned with trade_dates. */
+  cum_pct_changes: number[];
+  point_count: number;
+  missing_point_count: number;
+  trend_state: StockHeavyweightTrendState;
+  trend_note: string | null;
+  window_return_pct: number | null;
+};
+
+export type StockHeavyweightTrendSector = {
+  sector_code: string;
+  sector_name: string;
+  sector_rank: number | null;
+  stocks: StockHeavyweightTrendStock[];
+};
+
+export type StockHeavyweightTrendsPayload = {
+  basis: "analytical";
+  state: "ok" | "missing";
+  contract_status: "observational_only";
+  formal_use_allowed: false;
+  requested_as_of_date: string | null;
+  as_of_date: string | null;
+  window_days: number;
+  sector_limit: number;
+  stocks_per_sector: number;
+  series_basis: string;
+  window_trade_dates: string[];
+  sectors: StockHeavyweightTrendSector[];
+  coverage: {
+    sector_count: number;
+    stock_count: number;
+    stock_with_series_count: number;
+    stock_missing_series_count: number;
+    window_trade_date_count: number;
+  };
+  metric_notes: string[];
+  warnings: string[];
+  reason_code?: string;
 };
 
 export type LivermoreSectorRankSeriesPoint = {

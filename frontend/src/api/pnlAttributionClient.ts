@@ -59,7 +59,9 @@ export type PnlAttributionClientMethods = {
     reportDate?: string,
   ) => Promise<ApiEnvelope<AdvancedAttributionSummary>>;
   getPnlCampisiAttribution: (options?: CampisiOptions) => Promise<ApiEnvelope<CampisiAttributionPayload>>;
-  getPnlCampisiFourEffects: (options?: CampisiOptions) => Promise<ApiEnvelope<CampisiFourEffectsPayload>>;
+  getPnlCampisiFourEffects: (
+    options?: CampisiOptions & { detail?: "full" | "summary" },
+  ) => Promise<ApiEnvelope<CampisiFourEffectsPayload>>;
   getPnlCampisiEnhanced: (options?: CampisiOptions) => Promise<ApiEnvelope<CampisiEnhancedPayload>>;
   getPnlCampisiMaturityBuckets: (options?: CampisiOptions) => Promise<ApiEnvelope<CampisiMaturityBucketsPayload>>;
 };
@@ -70,7 +72,7 @@ export type PnlAttributionClientFactoryOptions = {
   requestJson: RequestJson;
 };
 
-function buildCampisiQuery(options?: CampisiOptions) {
+function buildCampisiQuery(options?: CampisiOptions & { detail?: "full" | "summary" }) {
   const params = new URLSearchParams();
   if (options?.startDate?.trim()) {
     params.set("start_date", options.startDate.trim());
@@ -80,6 +82,9 @@ function buildCampisiQuery(options?: CampisiOptions) {
   }
   if (Number.isFinite(options?.lookbackDays)) {
     params.set("lookback_days", String(options?.lookbackDays));
+  }
+  if (options?.detail) {
+    params.set("detail", options.detail);
   }
   const query = params.toString();
   return query ? `?${query}` : "";

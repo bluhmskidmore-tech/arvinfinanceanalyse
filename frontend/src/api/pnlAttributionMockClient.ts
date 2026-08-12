@@ -71,9 +71,14 @@ export function createDemoPnlAttributionClient(delay: Delay): PnlAttributionClie
       await delay();
       return buildMockApiEnvelope("pnl_attribution.campisi", mockCampisiAttribution);
     },
-    async getPnlCampisiFourEffects(_options) {
+    async getPnlCampisiFourEffects(options) {
       await delay();
-      return buildMockApiEnvelope("campisi.four_effects", mockCampisiFourEffects, {
+      // Mirrors backend detail=summary: totals/by_asset_class/closure kept, by_bond emptied.
+      const payload =
+        options?.detail === "summary"
+          ? { ...mockCampisiFourEffects, by_bond: [] }
+          : mockCampisiFourEffects;
+      return buildMockApiEnvelope("campisi.four_effects", payload, {
         basis: "formal",
         formal_use_allowed: true,
       });

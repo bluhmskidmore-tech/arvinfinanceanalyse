@@ -3,6 +3,7 @@ import type {
   ApiEnvelope,
   ChoiceMacroLatestPayload,
   ChoiceMacroRefreshPayload,
+  ChoiceNewsEventsBatchPayload,
   ChoiceNewsEventsPayload,
   ExternalDataWatermarkLedger,
   FxAnalyticalPayload,
@@ -33,6 +34,7 @@ import type {
   SourcePreviewRowsPayload,
   SourcePreviewTracesPayload,
   StockAnalysisWorkbenchPayload,
+  StockHeavyweightTrendsPayload,
   StockKlineAnalysisPayload,
 } from "./contracts";
 import { mapResearchCalendarApiEvent } from "../lib/researchCalendarApiEvent";
@@ -137,6 +139,12 @@ export type MarketDataClientMethods = {
     asOfDate?: string;
     lookback?: number;
   }) => Promise<ApiEnvelope<StockKlineAnalysisPayload>>;
+  getStockHeavyweightTrends: (options?: {
+    asOfDate?: string;
+    windowDays?: number;
+    sectorLimit?: number;
+    stocksPerSector?: number;
+  }) => Promise<ApiEnvelope<StockHeavyweightTrendsPayload>>;
   getLivermoreCandidateHistory: (options?: {
     stockCode?: string;
     snapshotFrom?: string;
@@ -201,6 +209,10 @@ export type MarketDataClientMethods = {
     receivedFrom?: string;
     receivedTo?: string;
   }) => Promise<ApiEnvelope<ChoiceNewsEventsPayload>>;
+  getChoiceNewsEventsBatch: (options: {
+    topics?: readonly { topicCode: string; limit: number }[];
+    groups?: readonly { groupId: string; limit: number }[];
+  }) => Promise<ApiEnvelope<ChoiceNewsEventsBatchPayload>>;
   ingestTushareNprNews: (options?: { limit?: number }) => Promise<{
     status: string;
     inserted: number;
@@ -285,6 +297,30 @@ function buildStockDetailQuery(options: { stockCode: string; asOfDate?: string; 
     params.set("lookback", String(options.lookback));
   }
   return `?${params.toString()}`;
+}
+
+function buildStockHeavyweightTrendsQuery(options?: {
+  asOfDate?: string;
+  windowDays?: number;
+  sectorLimit?: number;
+  stocksPerSector?: number;
+}) {
+  const params = new URLSearchParams();
+  const asOf = options?.asOfDate?.trim();
+  if (asOf) {
+    params.set("as_of_date", asOf);
+  }
+  if (options?.windowDays != null) {
+    params.set("window_days", String(options.windowDays));
+  }
+  if (options?.sectorLimit != null) {
+    params.set("sector_limit", String(options.sectorLimit));
+  }
+  if (options?.stocksPerSector != null) {
+    params.set("stocks_per_sector", String(options.stocksPerSector));
+  }
+  const query = params.toString();
+  return query ? `?${query}` : "";
 }
 
 function buildSectorRankSeriesQuery(options?: {
@@ -654,6 +690,17 @@ export function createRealMarketDataClient({
         baseUrl,
         `/ui/market-data/stock-analysis/kline-analysis${buildStockDetailQuery(options)}`,
       ),
+    getStockHeavyweightTrends: (options?: {
+      asOfDate?: string;
+      windowDays?: number;
+      sectorLimit?: number;
+      stocksPerSector?: number;
+    }) =>
+      requestJson<StockHeavyweightTrendsPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/market-data/stock-analysis/heavyweight-trends${buildStockHeavyweightTrendsQuery(options)}`,
+      ),
     getLivermoreCandidateHistory: (options?: {
       stockCode?: string;
       snapshotFrom?: string;
@@ -809,6 +856,26 @@ export function createRealMarketDataClient({
         fetchImpl,
         baseUrl,
         `/ui/news/choice-events/latest?${params.toString()}`,
+      );
+    },
+    getChoiceNewsEventsBatch: ({ topics, groups }) => {
+      const params = new URLSearchParams();
+      const topicPairs = (topics ?? [])
+        .filter(({ topicCode }) => topicCode.trim())
+        .map(({ topicCode, limit }) => `${topicCode.trim()}:${limit}`);
+      if (topicPairs.length > 0) {
+        params.set("topics", topicPairs.join(","));
+      }
+      const groupPairs = (groups ?? [])
+        .filter(({ groupId }) => groupId.trim())
+        .map(({ groupId, limit }) => `${groupId.trim()}:${limit}`);
+      if (groupPairs.length > 0) {
+        params.set("groups", groupPairs.join(","));
+      }
+      return requestJson<ChoiceNewsEventsBatchPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/news/choice-events/latest-batch?${params.toString()}`,
       );
     },
     getResearchCalendarEvents: (options) => {

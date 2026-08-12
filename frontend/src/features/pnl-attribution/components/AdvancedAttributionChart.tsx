@@ -25,15 +25,24 @@ const BAR_RADIUS = [
 ];
 
 function valueDirection(value: number | null | undefined) {
-  return (value ?? 0) >= 0 ? "positive" : "negative";
+  if (value === null || value === undefined) {
+    return "neutral";
+  }
+  return value >= 0 ? "positive" : "negative";
 }
 
 function rateMoveDirection(value: number | null | undefined) {
-  return (value ?? 0) <= 0 ? "positive" : "negative";
+  if (value === null || value === undefined) {
+    return "neutral";
+  }
+  return value <= 0 ? "positive" : "negative";
 }
 
 function toneDirection(value: number | null | undefined, positiveTone = "info", negativeTone = "warning") {
-  return (value ?? 0) >= 0 ? positiveTone : negativeTone;
+  if (value === null || value === undefined) {
+    return "neutral";
+  }
+  return value >= 0 ? positiveTone : negativeTone;
 }
 
 function AttributionPctCaliberNote(props: { testId: string }) {
@@ -272,7 +281,8 @@ export function AdvancedAttributionChart({
         {
           name: "市值占比",
           type: "bar",
-          data: krdData.buckets.map((b) => numericRaw(b.weight)),
+          // weight 契约 raw 为小数比率，经 pctPoints ×100 与「贡献占比」同轴（百分点）。
+          data: krdData.buckets.map((b) => pctPoints(b.weight)),
           itemStyle: {
             color: ibTokens.color.up,
             borderRadius: BAR_RADIUS,
@@ -598,13 +608,13 @@ export function AdvancedAttributionChart({
                       市值(亿)
                     </th>
                     <th className="advanced-attribution-chart__table-num">
-                      占比%
+                      占比
                     </th>
                     <th className="advanced-attribution-chart__table-num">
                       久期
                     </th>
                     <th className="advanced-attribution-chart__table-num">
-                      Δyield
+                      Δyield(bp)
                     </th>
                     <th className="advanced-attribution-chart__table-num">
                       贡献(亿)
@@ -627,7 +637,7 @@ export function AdvancedAttributionChart({
                         {yiOrNull(b.market_value)?.toFixed(1) ?? "—"}
                       </td>
                       <td className="advanced-attribution-chart__table-num">
-                        {b.weight.raw != null ? b.weight.raw.toFixed(1) : "—"}
+                        {pctDisplay(b.weight)}
                       </td>
                       <td className="advanced-attribution-chart__table-num">
                         {numericDisplay(b.bucket_duration)}

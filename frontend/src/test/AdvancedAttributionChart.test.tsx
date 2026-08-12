@@ -48,6 +48,20 @@ function pct(raw: number | null, display: string): Numeric {
   };
 }
 
+function riskCoverage() {
+  return {
+    total_row_count: 100,
+    covered_row_count: 100,
+    excluded_row_count: 0,
+    total_market_value: n(12_000_000_000),
+    covered_market_value: n(12_000_000_000),
+    excluded_market_value: n(0),
+    coverage_pct: pct(1, "100.00%"),
+    excluded_pct: pct(0, "0.00%"),
+    exclusions: [],
+  };
+}
+
 describe("AdvancedAttributionChart", () => {
   it("keeps component-level style debt from regressing", () => {
     const source = readFileSync(advancedChartSourcePath, "utf8");
@@ -86,6 +100,7 @@ describe("AdvancedAttributionChart", () => {
       treasury_10y_end: n(0.022, "pct"),
       treasury_10y_change: n(-15, "bp"),
       total_market_value: n(12_000_000_000),
+      risk_coverage: riskCoverage(),
       portfolio_duration: n(3.8),
       total_treasury_effect: n(22_000_000),
       total_spread_effect: n(-4_000_000),
@@ -99,6 +114,7 @@ describe("AdvancedAttributionChart", () => {
       start_date: "2026-03-01",
       end_date: "2026-03-31",
       total_market_value: n(12_000_000_000),
+      risk_coverage: riskCoverage(),
       portfolio_duration: n(3.8),
       portfolio_dv01: n(4_200_000),
       total_duration_effect: n(18_000_000),
@@ -177,6 +193,7 @@ describe("AdvancedAttributionChart", () => {
       treasury_10y_end: pct(0.0179, "+1.79%"),
       treasury_10y_change: n(-6.98, "bp"),
       total_market_value: n(12_000_000_000),
+      risk_coverage: riskCoverage(),
       portfolio_duration: n(3.8),
       total_treasury_effect: n(22_000_000),
       total_spread_effect: n(-4_000_000),
@@ -190,6 +207,7 @@ describe("AdvancedAttributionChart", () => {
       start_date: "2026-03-31",
       end_date: "2026-04-30",
       total_market_value: n(12_000_000_000),
+      risk_coverage: riskCoverage(),
       portfolio_duration: n(3.8),
       portfolio_dv01: n(4_200_000),
       total_duration_effect: n(18_000_000),
@@ -236,6 +254,7 @@ describe("AdvancedAttributionChart", () => {
       start_date: "2026-03-31",
       end_date: "2026-04-30",
       total_market_value: n(12_000_000_000),
+      risk_coverage: riskCoverage(),
       portfolio_duration: n(3.8),
       portfolio_dv01: n(null),
       total_duration_effect: n(18_000_000),

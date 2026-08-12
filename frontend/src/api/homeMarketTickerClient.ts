@@ -2,6 +2,7 @@ import type { ApiClient } from "./client";
 import type {
   ApiEnvelope,
   ChoiceMacroLatestPayload,
+  ChoiceNewsEventsBatchPayload,
   ChoiceNewsEventsPayload,
   ResearchCalendarResultPayload,
 } from "./contracts";
@@ -15,6 +16,7 @@ export type HomeMarketTickerClientMethods = Pick<
   | "getChoiceMacroLatest"
   | "getMarketDataRates"
   | "getChoiceNewsEvents"
+  | "getChoiceNewsEventsBatch"
   | "getResearchCalendarEvents"
 >;
 
@@ -85,6 +87,22 @@ export function createRealHomeMarketTickerClient({
         fetchImpl,
         baseUrl,
         `/ui/news/choice-events/latest?${params.toString()}`,
+      );
+    },
+    getChoiceNewsEventsBatch: ({ topics, groups }) => {
+      const params = new URLSearchParams();
+      const topicPairs = (topics ?? [])
+        .filter(({ topicCode }) => topicCode.trim())
+        .map(({ topicCode, limit }) => `${topicCode.trim()}:${limit}`);
+      if (topicPairs.length > 0) params.set("topics", topicPairs.join(","));
+      const groupPairs = (groups ?? [])
+        .filter(({ groupId }) => groupId.trim())
+        .map(({ groupId, limit }) => `${groupId.trim()}:${limit}`);
+      if (groupPairs.length > 0) params.set("groups", groupPairs.join(","));
+      return requestJson<ChoiceNewsEventsBatchPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/news/choice-events/latest-batch?${params.toString()}`,
       );
     },
     getResearchCalendarEvents: (options) => {

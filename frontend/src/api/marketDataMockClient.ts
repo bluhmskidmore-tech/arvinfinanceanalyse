@@ -3,6 +3,7 @@ import type {
   ChoiceMacroLatestPayload,
   ChoiceMacroRecentPoint,
   ChoiceMacroRefreshPayload,
+  ChoiceNewsEventsBatchPayload,
   ChoiceNewsEventsPayload,
   ExternalDataWatermarkLedger,
   FxAnalyticalPayload,
@@ -23,12 +24,59 @@ import type {
   SourcePreviewColumn,
   SourcePreviewSummary,
   StockAnalysisWorkbenchPayload,
+  StockHeavyweightTrendStock,
 } from "./contracts";
 import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
 import { MOCK_CHOICE_MACRO_TUSHARE_EQUITY_SERIES } from "./marketDataMocks";
 import type { MarketDataDomainClientMethods } from "./marketDataClient";
 
 const delay = async () => new Promise((resolve) => setTimeout(resolve, 40));
+
+/** Weekday-only mock trading calendar ending at `endDate`, ascending. */
+function buildMockTradeDates(endDate: string, count: number): string[] {
+  const dates: string[] = [];
+  const cursor = new Date(`${endDate}T12:00:00Z`);
+  while (dates.length < count) {
+    const weekday = cursor.getUTCDay();
+    if (weekday !== 0 && weekday !== 6) {
+      dates.push(cursor.toISOString().slice(0, 10));
+    }
+    cursor.setUTCDate(cursor.getUTCDate() - 1);
+  }
+  return dates.reverse();
+}
+
+function buildMockHeavyweightStock(input: {
+  rank: number;
+  stockCode: string;
+  stockName: string;
+  pctchange: number;
+  turn: number;
+  baseClose: number;
+  step: number;
+  tradeDates: string[];
+}): StockHeavyweightTrendStock {
+  const closeValues = input.tradeDates.map((_, index) =>
+    Number((input.baseClose + input.step * index).toFixed(4)),
+  );
+  const base = closeValues[0] ?? input.baseClose;
+  const cumPctChanges = closeValues.map((close) => Number(((close / base - 1) * 100).toFixed(4)));
+  return {
+    rank: input.rank,
+    stock_code: input.stockCode,
+    stock_name: input.stockName,
+    pctchange: input.pctchange,
+    turn: input.turn,
+    trade_dates: [...input.tradeDates],
+    close_values: closeValues,
+    cum_pct_changes: cumPctChanges,
+    point_count: closeValues.length,
+    missing_point_count: 0,
+    trend_state: "ok",
+    trend_note: null,
+    window_return_pct: cumPctChanges[cumPctChanges.length - 1] ?? null,
+  };
+}
 
 function buildMockChoiceMacroRecentPoints(
   endDate: string,
@@ -340,6 +388,28 @@ function buildMockChoiceNewsEnvelope(options: {
     result.stock_filter_tokens = stockFilterTokens;
   }
   return buildMockApiEnvelope("news.choice.latest", result);
+}
+
+/** 批量端点 mock：把单查 mock 按 topic/group 分桶，batches 顺序与请求一致（先 topics 后 groups）。 */
+function buildMockChoiceNewsBatchEnvelope(options: {
+  topics?: readonly { topicCode: string; limit: number }[];
+  groups?: readonly { groupId: string; limit: number }[];
+}): ApiEnvelope<ChoiceNewsEventsBatchPayload> {
+  const batches: ChoiceNewsEventsBatchPayload["batches"] = [
+    ...(options.topics ?? []).map(({ topicCode, limit }) => ({
+      key: `topic:${topicCode}`,
+      topic_code: topicCode,
+      group_id: null,
+      events: buildMockChoiceNewsEnvelope({ limit, offset: 0, topicCode }).result.events,
+    })),
+    ...(options.groups ?? []).map(({ groupId, limit }) => ({
+      key: `group:${groupId}`,
+      topic_code: null,
+      group_id: groupId,
+      events: buildMockChoiceNewsEnvelope({ limit, offset: 0, groupId }).result.events,
+    })),
+  ];
+  return buildMockApiEnvelope("news.choice.latest_batch", { batches });
 }
 
 function buildMockChoiceNewsCompare(
@@ -2251,6 +2321,92 @@ export function createMockMarketDataClient(): MarketDataDomainClientMethods {
         },
       );
     },
+    async getStockHeavyweightTrends(options?: {
+      asOfDate?: string;
+      windowDays?: number;
+      sectorLimit?: number;
+      stocksPerSector?: number;
+    }) {
+      await delay();
+      const windowDays = options?.windowDays ?? 20;
+      const asOfDate = options?.asOfDate ?? "2026-04-09";
+      const tradeDates = buildMockTradeDates(asOfDate, windowDays);
+      return buildMockApiEnvelope(
+        "market_data.stock_analysis.heavyweight_trends",
+        {
+          basis: "analytical",
+          state: "ok",
+          contract_status: "observational_only",
+          formal_use_allowed: false,
+          requested_as_of_date: options?.asOfDate ?? null,
+          as_of_date: asOfDate,
+          window_days: windowDays,
+          sector_limit: options?.sectorLimit ?? 8,
+          stocks_per_sector: options?.stocksPerSector ?? 3,
+          series_basis: "cum_pct_from_first_close",
+          window_trade_dates: tradeDates,
+          // Mirrors the two sectors and leader constituents in the mock workbench payload.
+          sectors: [
+            {
+              sector_code: "801001",
+              sector_name: "AI",
+              sector_rank: 1,
+              stocks: [
+                buildMockHeavyweightStock({
+                  rank: 1,
+                  stockCode: "000001.SZ",
+                  stockName: "Alpha",
+                  pctchange: 5.2,
+                  turn: 4.8,
+                  baseClose: 18.4,
+                  step: 0.18,
+                  tradeDates,
+                }),
+              ],
+            },
+            {
+              sector_code: "801002",
+              sector_name: "Bank",
+              sector_rank: 2,
+              stocks: [
+                buildMockHeavyweightStock({
+                  rank: 1,
+                  stockCode: "000002.SZ",
+                  stockName: "Beta",
+                  pctchange: 2.4,
+                  turn: 3.6,
+                  baseClose: 9.6,
+                  step: -0.04,
+                  tradeDates,
+                }),
+              ],
+            },
+          ],
+          coverage: {
+            sector_count: 2,
+            stock_count: 2,
+            stock_with_series_count: 2,
+            stock_missing_series_count: 0,
+            window_trade_date_count: tradeDates.length,
+          },
+          metric_notes: [
+            "cum_pct_change: (close / first_close - 1) * 100 over the stock's observed sessions in the window; not compounded across suspensions and not a formal return metric",
+          ],
+          warnings: [],
+        },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "sv_stock_heavyweight_trend_mock",
+          vendor_version: "vv_stock_heavyweight_trend_mock",
+          rule_version: "rv_stock_heavyweight_trend_v1",
+          cache_version: "cv_stock_heavyweight_trend_v1",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+        },
+      );
+    },
     async getLivermoreCandidateHistory(options?: {
       stockCode?: string;
       snapshotFrom?: string;
@@ -2536,6 +2692,21 @@ export function createMockMarketDataClient(): MarketDataDomainClientMethods {
               candidate_count: 6,
             },
           ],
+          caliber_disclosure: {
+            entry_price_warning:
+              "本窗口样本入场价按可执行次日开盘净收益优先取值，无法执行时回退至复权/未复权收盘近似，非全部为真实成交价。",
+            return_field_stats: {
+              return_rows_execution_net_adjusted: 433,
+              return_rows_adjusted: 23,
+              return_rows_adjusted_fallback: 23,
+              return_rows_gross_fallback: 90,
+            },
+            sample_generation: { tushare_era_rows: 0, native_era_rows: 546 },
+            basis_notes: [
+              "本窗口样本入场价按可执行次日开盘净收益优先取值，无法执行时回退至复权/未复权收盘近似，非全部为真实成交价。",
+              "样本全部落在自建行情代际（2026-04），无旧数据源代际样本。",
+            ],
+          },
         },
         {
           basis: "analytical",
@@ -2575,6 +2746,9 @@ export function createMockMarketDataClient(): MarketDataDomainClientMethods {
           summary: null,
           nav_series: [],
           rebalance_log: [],
+          // 与后端语义对齐:summary 为 null(无样本)时披露整块为 null,
+          // 后端不会产生"无样本但披露非空"的状态。
+          caliber_disclosure: null,
         },
         {
           basis: "analytical",
@@ -2672,6 +2846,10 @@ export function createMockMarketDataClient(): MarketDataDomainClientMethods {
     async getChoiceNewsEvents(options) {
       await delay();
       return buildMockChoiceNewsEnvelope(options);
+    },
+    async getChoiceNewsEventsBatch(options) {
+      await delay();
+      return buildMockChoiceNewsBatchEnvelope(options);
     },
     async getResearchCalendarEvents(options) {
       await delay();
