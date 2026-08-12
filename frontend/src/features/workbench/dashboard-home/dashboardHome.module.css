@@ -2705,8 +2705,11 @@
   content: " · ";
 }
 
+.dhBondNewsSection {
+  margin-bottom: var(--dh-space-2);
+}
+
 .dhBondNewsCard {
-  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   padding: 12px 14px 14px;
 }
 
@@ -2716,6 +2719,12 @@
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 8px;
+}
+
+.dhBondNewsHeader > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
 }
 
 .dhBondNewsHeader span {
@@ -2733,15 +2742,23 @@
 }
 
 .dhBondNewsGrid {
-  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
+  display: grid;
+  align-items: start;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
 }
 
 .dhBondNewsGroup {
-  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+  min-height: 120px;
+  padding: 10px 12px;
   border: 1px solid var(--dh-line);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.008);
+  transition: background 0.2s ease, border-color 0.2s ease;
 }
 .dhBondNewsGroup:hover {
   background: rgba(255, 255, 255, 0.016);
@@ -2779,6 +2796,18 @@
   min-width: 0;
 }
 
+.dhBondNewsItem {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  min-width: 0;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.024);
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
 .dhBondNewsItem + .dhBondNewsItem {
   border-top: 1px solid rgba(255, 255, 255, 0.04);
   border-top-left-radius: 0;
@@ -2787,6 +2816,21 @@
 .dhBondNewsItem:hover {
   background: rgba(255, 255, 255, 0.04);
   border-color: rgba(255, 255, 255, 0.06);
+}
+
+.dhBondNewsTopic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 54px;
+  padding: 3px 7px;
+  border-radius: 8px;
+  background: rgba(53, 103, 155, 0.12);
+  color: var(--dh-blue);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.25;
+  white-space: nowrap;
 }
 
 .dhBondNewsBody {
@@ -4135,6 +4179,10 @@
   white-space: nowrap;
 }
 
+.dhTerminalChangeCurrent {
+  color: var(--dh-muted);
+}
+
 .dhTerminalChangeValue {
   display: grid;
   gap: 1px;
@@ -4151,7 +4199,6 @@
 }
 
 .dhTerminalChangeCurrent {
-  color: var(--dh-muted);
   display: grid;
   gap: 1px;
 }
@@ -4715,9 +4762,55 @@
   min-width: 0;
 }
 
+.dhTerminalBottom {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--dh-space-2);
+  margin-top: var(--dh-space-2);
+}
+
 .dhTerminalQuick {
-  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
+  min-height: 78px;
+  padding: var(--dh-space-3);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--dh-space-2);
   color: var(--dh-ink);
+  text-decoration: none;
+}
+
+.dhTerminalQuick span {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 2px;
+  border: 1px solid var(--dh-line);
+  color: var(--ib-ink);
+  background: transparent;
+  font-size: 16px;
+}
+
+.dhTerminalQuick b {
+  min-width: 0;
+  font-size: 13px;
+  color: var(--dh-ink);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhTerminalQuick em {
+  color: var(--ib-ink-secondary);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 500;
+  border: 1px solid var(--dh-line);
+  border-radius: 2px;
+  padding: 2px 8px;
+  background: var(--ib-surface);
 }
 
 /* Decision rail */
@@ -5206,8 +5299,11 @@
     grid-column: 1 / -1;
   }
 
+  .dhTerminalQuick {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
   .dhTerminalQuick em {
-    /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     display: none;
   }
 
@@ -5236,6 +5332,36 @@
 }
 
 /* API-backed Figma body: evidence-led homepage modules */
+.dhApiHomeBody {
+  --dh-api-line: rgba(103, 119, 142, 0.34);
+  --dh-api-line-soft: rgba(103, 119, 142, 0.22);
+  --dh-api-muted: var(--dh-hex-9aa8bb);
+  --dh-api-blue-soft: rgba(114, 167, 220, 0.12);
+  --dh-api-green-soft: rgba(102, 185, 139, 0.12);
+  --dh-api-amber-soft: rgba(201, 165, 101, 0.13);
+  --dh-api-red-soft: rgba(212, 122, 114, 0.13);
+  --dh-card: var(--dh-api-panel);
+  --dh-card-soft: var(--dh-api-panel-2);
+  --dh-line: var(--dh-api-line-soft);
+  --dh-line-strong: var(--dh-api-line);
+  --dh-ink: var(--dh-api-ink);
+  --dh-ink-2: #c6d1dd;
+  --dh-muted: var(--dh-api-muted);
+  --dh-muted-2: var(--dh-api-soft);
+  --dh-blue: var(--dh-api-blue);
+  --dh-blue-deep: var(--dh-api-blue);
+  --dh-blue-soft: var(--dh-api-blue-soft);
+  --dh-green: var(--dh-api-green);
+  --dh-green-soft: var(--dh-api-green-soft);
+  --dh-red: var(--dh-api-red);
+  --dh-red-soft: var(--dh-api-red-soft);
+  --dh-amber: var(--dh-api-amber);
+  --dh-amber-soft: var(--dh-api-amber-soft);
+  color: var(--dh-api-ink);
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
 
 .dhApiHomeBody .dhNum {
   letter-spacing: 0;
@@ -5702,8 +5828,40 @@
   min-width: 0;
 }
 
+.dhApiModuleHead,
+.dhApiHomeBody .dhTerminalPanelHead {
+  align-items: center;
+  border-bottom: 1px solid rgba(36, 49, 73, 0.58);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-width: 0;
+  padding-bottom: 9px;
+}
+
+.dhApiModuleHead h3,
+.dhApiHomeBody .dhTerminalPanelHead h3 {
+  color: var(--dh-api-ink);
+  font-size: 12px;
+  font-weight: 760;
+  line-height: 1.25;
+  margin: 0;
+}
+
 .dhApiHomeBody .dhTerminalPanelHead h3::before {
   display: none;
+}
+
+.dhApiModuleHead span,
+.dhApiHomeBody .dhTerminalPanelHead span {
+  color: var(--dh-api-muted);
+  font-family: var(--dh-font-mono);
+  font-size: 11px;
+  letter-spacing: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .dhApiModuleHead .dhInlineStatus,
@@ -5787,6 +5945,23 @@
   min-width: 0;
   overflow-x: auto;
   width: 100%;
+}
+
+.dhApiDirectoryTable {
+  border-collapse: collapse;
+  min-width: 860px;
+  table-layout: fixed;
+  width: 100%;
+}
+
+.dhApiDirectoryTable th,
+.dhApiDirectoryTable td {
+  border-bottom: 1px solid rgba(36, 49, 73, 0.46);
+  font-size: 12px;
+  line-height: 1.35;
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: middle;
 }
 
 .dhApiDirectoryTable th {
@@ -6211,8 +6386,24 @@
   color: var(--dh-api-muted);
 }
 
+.dhApiHomeBody .dhTerminalHoldings .dhTerminalTable th {
+  height: 31px;
+}
+
 .dhApiHomeBody .dhTerminalTable td {
   border-bottom-color: rgba(103, 119, 142, 0.18);
+}
+
+.dhApiHomeBody .dhTerminalHoldings .dhTerminalTable td {
+  height: auto;
+  min-height: 42px;
+}
+
+.dhApiHomeBody .dhTerminalHoldings .dhTerminalTable td:first-child {
+  height: auto;
+  min-height: 42px;
+  padding-top: 6px;
+  padding-bottom: 6px;
 }
 
 .dhApiHomeBody .dhTerminalHoldings .dhTerminalTable tbody tr:nth-child(-n + 3) td:first-child {
@@ -6358,6 +6549,18 @@
   grid-template-columns: repeat(2, minmax(96px, 1fr));
 }
 
+.dhApiHomeBody .dhTerminalIncomeLedgerMetrics div {
+  align-content: center;
+  align-items: end;
+  background: rgba(8, 18, 32, 0.52);
+  border: 1px solid rgba(45, 66, 96, 0.42);
+  border-radius: 4px;
+  display: grid;
+  justify-items: end;
+  min-height: 42px;
+  padding: 4px 6px;
+}
+
 .dhApiHomeBody .dhTerminalIncomeLedgerMetrics small {
   color: var(--dh-api-soft);
   font-family: var(--dh-font-mono);
@@ -6395,6 +6598,44 @@
   background: var(--dh-hex-d4a85f);
 }
 
+.dhApiHomeBody .dhTerminalStateSurface {
+  background: var(--dh-api-panel-2);
+  border-color: var(--dh-api-line-soft);
+  color: var(--dh-api-muted);
+}
+
+.dhApiHomeBody .dhTerminalStateIcon {
+  background: transparent;
+}
+
+.dhApiStructureBoard {
+  display: grid;
+  gap: 14px;
+  padding-bottom: 18px;
+}
+
+.dhApiCoverageMap {
+  align-items: stretch;
+  background: var(--dh-hex-091321);
+  border: 1px solid rgba(46, 67, 98, 0.82);
+  border-radius: 8px;
+  display: grid;
+  gap: 1px;
+  grid-template-columns: 154px minmax(0, 1fr) 220px;
+  overflow: hidden;
+  padding: 1px;
+}
+
+.dhApiCoverageScore {
+  background:
+    linear-gradient(180deg, rgba(105, 184, 230, 0.08), rgba(105, 184, 230, 0)),
+    var(--dh-hex-0b1726);
+  display: grid;
+  gap: 5px;
+  justify-items: start;
+  padding: 15px 16px;
+}
+
 .dhApiCoverageScore small,
 .dhApiCoverageScore span {
   color: var(--dh-api-muted);
@@ -6410,6 +6651,28 @@
   font-size: 27px;
   font-weight: 820;
   line-height: 1;
+}
+
+.dhApiCoverageDomains {
+  align-content: center;
+  background: var(--dh-hex-0b1726);
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  min-width: 0;
+  padding: 11px;
+}
+
+.dhApiCoverageDomains span {
+  background: rgba(8, 18, 32, 0.74);
+  border: 1px solid rgba(45, 66, 96, 0.68);
+  border-radius: 6px;
+  display: grid;
+  gap: 7px;
+  min-height: 70px;
+  min-width: 0;
+  padding: 11px 10px 10px;
+  position: relative;
 }
 
 .dhApiCoverageDomains span::before {
@@ -6514,6 +6777,20 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.dhApiStructureCard {
+  --dh-structure-accent: #69b8e6;
+  background: var(--dh-hex-0b1726);
+  border: 1px solid #20324a;
+  border-radius: 8px;
+  box-shadow: 0 10px 24px -12px rgba(0, 0, 0, 0.18);
+  display: grid;
+  gap: 12px;
+  min-height: 210px;
+  overflow: hidden;
+  padding: 18px 20px 14px;
+  position: relative;
+}
+
 .dhApiStructureCard::before {
   background: var(--dh-structure-accent);
   content: "";
@@ -6607,6 +6884,17 @@
   margin: -4px 0 2px;
 }
 
+.dhApiStructureRows {
+  display: grid;
+  gap: 10px;
+}
+
+.dhApiStructureRow {
+  display: grid;
+  gap: 7px 12px;
+  grid-template-columns: minmax(0, 1fr) 110px;
+}
+
 .dhApiStructureRow span {
   color: #a9b8cb;
   font-size: 13px;
@@ -6649,6 +6937,15 @@
   opacity: 0.78;
 }
 
+.dhApiStructureFooter {
+  align-items: end;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-top: auto;
+  min-width: 0;
+}
+
 .dhApiStructureFooter small {
   color: var(--dh-api-muted);
   font-size: 11px;
@@ -6665,6 +6962,30 @@
   white-space: nowrap;
 }
 
+.dhApiCoverageGapBand {
+  align-items: start;
+  background: var(--dh-hex-091321);
+  border: 1px solid rgba(46, 67, 98, 0.78);
+  border-radius: 8px;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 168px minmax(0, 1fr);
+  padding: 16px;
+}
+
+.dhApiCoverageGapBand > span {
+  align-content: start;
+  background:
+    linear-gradient(180deg, rgba(211, 164, 93, 0.055), rgba(211, 164, 93, 0)),
+    rgba(12, 25, 42, 0.72);
+  border: 1px solid rgba(55, 73, 104, 0.48);
+  border-radius: 6px;
+  display: grid;
+  gap: 7px;
+  min-height: 0;
+  padding: 13px 14px;
+}
+
 .dhApiCoverageGapBand > span b {
   color: var(--dh-api-ink);
   font-size: 12px;
@@ -6676,6 +6997,26 @@
   font-family: var(--dh-font-mono);
   font-size: 11px;
   line-height: 1.35;
+}
+
+.dhApiCoverageGapBand > div {
+  background: transparent;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dhApiCoverageGapBand em {
+  background: rgba(12, 25, 42, 0.74);
+  border: 1px solid rgba(45, 66, 96, 0.58);
+  border-left: 2px solid var(--dh-hex-d4a85f);
+  border-radius: 6px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  font-style: normal;
+  gap: 5px 12px;
+  min-height: 52px;
+  padding: 10px 11px 9px;
 }
 
 .dhApiCoverageGapBand strong {
@@ -6735,6 +7076,20 @@
   min-height: 0;
 }
 
+.dhApiHomeBody .dhTerminalReportStack {
+  gap: 10px;
+}
+
+.dhApiHomeBody .dhTerminalReportFeatured {
+  background: linear-gradient(180deg, rgba(201, 165, 101, 0.045), rgba(201, 165, 101, 0)), var(--dh-api-panel-2);
+  border: 1px solid rgba(36, 49, 73, 0.62);
+  border-left: 2px solid var(--dh-api-amber);
+  border-radius: 5px;
+  grid-template-columns: 118px minmax(0, 1fr);
+  min-height: 88px;
+  padding: 12px 13px;
+}
+
 .dhApiHomeBody .dhTerminalReportFeatured:hover,
 .dhApiHomeBody .dhTerminalReportCompactRow:hover {
   background: rgba(16, 27, 44, 0.72);
@@ -6771,6 +7126,13 @@
   border-radius: 5px;
 }
 
+.dhApiHomeBody .dhTerminalReportCompactRow {
+  border: 0;
+  grid-template-columns: 76px minmax(0, 1fr) minmax(110px, 0.32fr) auto auto;
+  min-height: 34px;
+  padding: 8px 10px;
+}
+
 .dhApiHomeBody .dhTerminalReportCompactDate {
   color: var(--dh-api-blue);
   font-family: var(--dh-font-mono);
@@ -6802,6 +7164,23 @@
   margin: 0;
 }
 
+.dhApiMarketContext p:first-of-type {
+  border-left: 2px solid var(--dh-api-blue);
+  color: var(--dh-hex-eef4ff);
+  font-size: 13px;
+  font-weight: 760;
+  line-height: 1.4;
+  padding-left: 10px;
+}
+
+.dhApiMarketContext p:nth-of-type(2) {
+  background: linear-gradient(180deg, rgba(114, 167, 220, 0.035), rgba(114, 167, 220, 0)), var(--dh-api-panel-2);
+  border: 1px solid rgba(36, 49, 73, 0.56);
+  border-radius: 5px;
+  min-height: 58px;
+  padding: 12px;
+}
+
 .dhApiMarketContext .dhPanelDrillLink {
   align-items: center;
   border: 1px solid rgba(87, 166, 216, 0.24);
@@ -6817,6 +7196,17 @@
   display: grid;
   margin-top: 2px;
   overflow: hidden;
+}
+
+.dhApiMarketRows div {
+  align-items: center;
+  background: var(--dh-api-panel-2);
+  border-bottom: 1px solid rgba(36, 49, 73, 0.46);
+  display: grid;
+  column-gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(72px, max-content) 56px;
+  min-height: 38px;
+  padding: 8px 12px;
 }
 
 .dhApiMarketRows div:last-child {
@@ -6847,6 +7237,27 @@
 
 .dhApiEvidenceRail {
   padding-bottom: 18px;
+}
+
+.dhApiEvidenceRows {
+  border: 1px solid rgba(36, 49, 73, 0.58);
+  border-radius: 5px;
+  display: grid;
+  gap: 0;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  overflow: hidden;
+}
+
+.dhApiEvidenceRow {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.014), rgba(255, 255, 255, 0)), var(--dh-api-panel-2);
+  border: 0;
+  border-left: 2px solid transparent;
+  border-right: 1px solid rgba(36, 49, 73, 0.58);
+  display: grid;
+  gap: 8px;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  min-height: 128px;
+  padding: 13px 14px;
 }
 
 .dhApiEvidenceRow:last-child {
@@ -6897,6 +7308,14 @@
   line-height: 1.3;
 }
 
+.dhApiEvidenceRow code {
+  color: var(--dh-api-muted);
+  font-family: var(--dh-font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: normal;
+}
+
 .dhApiEvidenceRow strong {
   align-items: center;
   border: 1px solid currentColor;
@@ -6909,6 +7328,16 @@
   min-height: 20px;
   padding: 0 8px;
   width: max-content;
+}
+
+.dhApiMobileFold {
+  background: transparent;
+  border: 0;
+  display: block;
+}
+
+.dhApiMobileFoldSummary {
+  display: none;
 }
 
 .dhApiMobileFoldBody {
@@ -6937,6 +7366,10 @@
   .dhApiLedgerGrid,
   .dhApiContextGrid {
     grid-template-columns: 1fr;
+  }
+
+  .dhApiCoverageMap {
+    grid-template-columns: 146px minmax(0, 1fr);
   }
 
   .dhApiCoverageStats {
@@ -7077,6 +7510,10 @@
     border-right: 0;
   }
 
+  .dhApiCoverageDomains {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .dhApiCoverageGapBand > div {
     grid-template-columns: 1fr;
   }
@@ -7118,7 +7555,6 @@
 
 /* Dashboard home lower-half closure: formal empty states and unified ledgers. */
 .dhApiHomeBody .dhTerminalStateSurface {
-  color: var(--dh-api-muted);
   align-content: center;
   background:
     linear-gradient(135deg, rgba(114, 167, 220, 0.055), transparent 42%),
@@ -7257,24 +7693,12 @@
 
 .dhApiModuleHead,
 .dhApiHomeBody .dhTerminalPanelHead {
-  align-items: center;
-  border-bottom: 1px solid rgba(36, 49, 73, 0.58);
-  display: flex;
-  gap: 12px;
-  justify-content: space-between;
-  min-width: 0;
-  padding-bottom: 9px;
   border-bottom-color: rgba(126, 157, 194, 0.2);
   min-height: 30px;
 }
 
 .dhApiModuleHead h3,
 .dhApiHomeBody .dhTerminalPanelHead h3 {
-  color: var(--dh-api-ink);
-  font-size: 12px;
-  font-weight: 760;
-  line-height: 1.25;
-  margin: 0;
   align-items: center;
   display: inline-flex;
   gap: 8px;
@@ -7293,13 +7717,6 @@
 
 .dhApiModuleHead span,
 .dhApiHomeBody .dhTerminalPanelHead span {
-  font-family: var(--dh-font-mono);
-  font-size: 11px;
-  letter-spacing: 0;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   color: rgba(169, 182, 199, 0.82);
 }
 
@@ -7321,7 +7738,6 @@
 }
 
 .dhApiDirectoryTable {
-  border-collapse: collapse;
   max-width: 100%;
   min-width: 0;
   table-layout: fixed;
@@ -7358,12 +7774,6 @@
 
 .dhApiDirectoryTable th,
 .dhApiDirectoryTable td {
-  border-bottom: 1px solid rgba(36, 49, 73, 0.46);
-  font-size: 12px;
-  line-height: 1.35;
-  padding: 8px 10px;
-  text-align: left;
-  vertical-align: middle;
   overflow-wrap: anywhere;
   word-break: break-word;
 }
@@ -7398,6 +7808,12 @@
   box-shadow: inset 0 1px 0 rgba(232, 238, 247, 0.045);
 }
 
+.dhApiCoverageGapBand {
+  background:
+    linear-gradient(135deg, rgba(201, 165, 101, 0.045), transparent 42%),
+    var(--dh-hex-091321);
+}
+
 .dhApiCoverageGapBand em,
 .dhApiEvidenceRow,
 .dhApiMarketRows div {
@@ -7420,14 +7836,10 @@
 }
 
 .dhApiMobileFold {
-  background: transparent;
-  border: 0;
-  display: block;
   border-color: rgba(55, 73, 104, 0.72);
 }
 
 .dhApiMobileFoldSummary {
-  display: none;
   background:
     linear-gradient(90deg, rgba(201, 165, 101, 0.09), transparent 48%),
     rgba(7, 12, 20, 0.18);
@@ -7442,19 +7854,26 @@
   padding: 0 8px;
 }
 
+.dhTerminalBottom {
+  gap: 10px;
+}
+
 .dhTerminalQuick {
-  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
-  background: linear-gradient(180deg, rgba(232, 238, 247, 0.022), rgba(232, 238, 247, 0.004)), var(--dh-api-panel);
+  background:
+    linear-gradient(180deg, rgba(232, 238, 247, 0.022), rgba(232, 238, 247, 0.004)),
+    var(--dh-api-panel);
   border-color: rgba(55, 73, 104, 0.66);
+  border-radius: 6px;
+  min-height: 64px;
+  padding: 10px 12px;
+}
+
+.dhTerminalQuick span {
+  background: rgba(7, 12, 20, 0.28);
+  border-color: rgba(126, 157, 194, 0.16);
 }
 
 .dhTerminalQuick em {
-  font-size: 11px;
-  font-style: normal;
-  font-weight: 500;
-  border: 1px solid var(--dh-line);
-  border-radius: 2px;
-  padding: 2px 8px;
   background: rgba(7, 12, 20, 0.22);
   border-color: rgba(126, 157, 194, 0.16);
   color: var(--dh-api-muted);
@@ -7529,37 +7948,13 @@
     width: 74px;
   }
 
+  .dhTerminalBottom {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 /* Dashboard home page density normalization: align lower modules to the first-screen cockpit. */
 .dhApiHomeBody {
-  --dh-api-line: rgba(103, 119, 142, 0.34);
-  --dh-api-line-soft: rgba(103, 119, 142, 0.22);
-  --dh-api-muted: var(--dh-hex-9aa8bb);
-  --dh-api-blue-soft: rgba(114, 167, 220, 0.12);
-  --dh-api-green-soft: rgba(102, 185, 139, 0.12);
-  --dh-api-amber-soft: rgba(201, 165, 101, 0.13);
-  --dh-api-red-soft: rgba(212, 122, 114, 0.13);
-  --dh-card: var(--dh-api-panel);
-  --dh-card-soft: var(--dh-api-panel-2);
-  --dh-line: var(--dh-api-line-soft);
-  --dh-line-strong: var(--dh-api-line);
-  --dh-ink: var(--dh-api-ink);
-  --dh-ink-2: #c6d1dd;
-  --dh-muted: var(--dh-api-muted);
-  --dh-muted-2: var(--dh-api-soft);
-  --dh-blue: var(--dh-api-blue);
-  --dh-blue-deep: var(--dh-api-blue);
-  --dh-blue-soft: var(--dh-api-blue-soft);
-  --dh-green: var(--dh-api-green);
-  --dh-green-soft: var(--dh-api-green-soft);
-  --dh-red: var(--dh-api-red);
-  --dh-red-soft: var(--dh-api-red-soft);
-  --dh-amber: var(--dh-api-amber);
-  --dh-amber-soft: var(--dh-api-amber-soft);
-  color: var(--dh-api-ink);
-  display: grid;
-  min-width: 0;
   gap: 14px;
 }
 
@@ -7760,13 +8155,6 @@
 }
 
 .dhApiHomeBody .dhTerminalIncomeLedgerMetrics div {
-  align-content: center;
-  align-items: end;
-  background: rgba(8, 18, 32, 0.52);
-  border: 1px solid rgba(45, 66, 96, 0.42);
-  border-radius: 4px;
-  display: grid;
-  justify-items: end;
   min-height: 42px;
   padding: 4px 6px;
 }
@@ -7795,47 +8183,25 @@
 }
 
 .dhApiStructureBoard {
-  display: grid;
   gap: 12px;
   padding-bottom: 14px;
 }
 
 .dhApiCoverageMap {
-  align-items: stretch;
-  background: var(--dh-hex-091321);
-  border: 1px solid rgba(46, 67, 98, 0.82);
-  border-radius: 8px;
-  display: grid;
-  gap: 1px;
-  overflow: hidden;
-  padding: 1px;
   grid-template-columns: 138px minmax(0, 1fr) 190px;
 }
 
 .dhApiCoverageScore {
-  background: linear-gradient(180deg, rgba(105, 184, 230, 0.08), rgba(105, 184, 230, 0)), var(--dh-hex-0b1726);
-  display: grid;
-  justify-items: start;
   gap: 4px;
   padding: 12px;
 }
 
 .dhApiCoverageDomains {
-  align-content: center;
-  background: var(--dh-hex-0b1726);
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  min-width: 0;
   gap: 6px;
   padding: 9px;
 }
 
 .dhApiCoverageDomains span {
-  background: rgba(8, 18, 32, 0.74);
-  border: 1px solid rgba(45, 66, 96, 0.68);
-  display: grid;
-  min-width: 0;
-  position: relative;
   border-radius: 5px;
   gap: 5px;
   min-height: 58px;
@@ -7851,75 +8217,41 @@
 }
 
 .dhApiStructureCard {
-  --dh-structure-accent: #69b8e6;
-  background: var(--dh-hex-0b1726);
-  border: 1px solid #20324a;
-  border-radius: 8px;
-  box-shadow: 0 10px 24px -12px rgba(0, 0, 0, 0.18);
-  display: grid;
-  overflow: hidden;
-  position: relative;
   gap: 9px;
   min-height: 168px;
   padding: 13px;
 }
 
 .dhApiStructureRows {
-  display: grid;
   gap: 7px;
 }
 
 .dhApiStructureRow {
-  display: grid;
   gap: 5px 10px;
   grid-template-columns: minmax(0, 1fr) 92px;
 }
 
 .dhApiStructureFooter {
-  align-items: end;
-  display: flex;
-  justify-content: space-between;
-  margin-top: auto;
-  min-width: 0;
   gap: 8px;
 }
 
 .dhApiCoverageGapBand {
-  align-items: start;
-  border: 1px solid rgba(46, 67, 98, 0.78);
-  border-radius: 8px;
-  display: grid;
-  background: linear-gradient(135deg, rgba(201, 165, 101, 0.045), transparent 42%), var(--dh-hex-091321);
   gap: 12px;
   grid-template-columns: 148px minmax(0, 1fr);
   padding: 12px;
 }
 
 .dhApiCoverageGapBand > span {
-  align-content: start;
-  background: linear-gradient(180deg, rgba(211, 164, 93, 0.055), rgba(211, 164, 93, 0)), rgba(12, 25, 42, 0.72);
-  border: 1px solid rgba(55, 73, 104, 0.48);
-  display: grid;
-  min-height: 0;
   border-radius: 5px;
   gap: 5px;
   padding: 10px;
 }
 
 .dhApiCoverageGapBand > div {
-  background: transparent;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 7px;
 }
 
 .dhApiCoverageGapBand em {
-  background: rgba(12, 25, 42, 0.74);
-  border: 1px solid rgba(45, 66, 96, 0.58);
-  border-left: 2px solid var(--dh-hex-d4a85f);
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  font-style: normal;
   border-radius: 5px;
   gap: 4px 9px;
   min-height: 46px;
@@ -7927,59 +8259,30 @@
 }
 
 .dhApiEvidenceRows {
-  border: 1px solid rgba(36, 49, 73, 0.58);
-  border-radius: 5px;
-  display: grid;
-  gap: 0;
-  overflow: hidden;
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .dhApiEvidenceRow {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.014), rgba(255, 255, 255, 0)), var(--dh-api-panel-2);
-  border: 0;
-  border-left: 2px solid transparent;
-  border-right: 1px solid rgba(36, 49, 73, 0.58);
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
   gap: 7px;
   min-height: 108px;
   padding: 11px;
 }
 
 .dhApiEvidenceRow code {
-  color: var(--dh-api-muted);
-  font-family: var(--dh-font-mono);
-  white-space: normal;
   font-size: 12px;
   line-height: 1.45;
 }
 
 .dhApiMarketContext p:first-of-type {
-  border-left: 2px solid var(--dh-api-blue);
-  color: var(--dh-hex-eef4ff);
-  font-weight: 760;
-  line-height: 1.4;
-  padding-left: 10px;
   font-size: 12px;
 }
 
 .dhApiMarketContext p:nth-of-type(2) {
-  background: linear-gradient(180deg, rgba(114, 167, 220, 0.035), rgba(114, 167, 220, 0)), var(--dh-api-panel-2);
-  border: 1px solid rgba(36, 49, 73, 0.56);
-  border-radius: 5px;
   min-height: 50px;
   padding: 10px;
 }
 
 .dhApiMarketRows div {
-  align-items: center;
-  background: var(--dh-api-panel-2);
-  border-bottom: 1px solid rgba(36, 49, 73, 0.46);
-  display: grid;
-  column-gap: 12px;
-  min-height: 38px;
-  padding: 8px 12px;
   grid-template-columns: minmax(0, 1fr) minmax(72px, max-content) 56px;
 }
 
@@ -8000,9 +8303,6 @@
 }
 
 .dhApiHomeBody .dhTerminalReportFeatured {
-  background: linear-gradient(180deg, rgba(201, 165, 101, 0.045), rgba(201, 165, 101, 0)), var(--dh-api-panel-2);
-  border: 1px solid rgba(36, 49, 73, 0.62);
-  border-left: 2px solid var(--dh-api-amber);
   border-radius: 6px;
   grid-template-columns: 104px minmax(0, 1fr);
   min-height: 78px;
@@ -8010,8 +8310,6 @@
 }
 
 .dhApiHomeBody .dhTerminalReportCompactRow {
-  border: 0;
-  grid-template-columns: 76px minmax(0, 1fr) minmax(110px, 0.32fr) auto auto;
   min-height: 31px;
   padding: 7px 9px;
 }
@@ -8039,50 +8337,25 @@
 }
 
 .dhBondNewsHeader > div {
-  display: grid;
-  min-width: 0;
   gap: 0;
 }
 
 .dhBondNewsGrid {
-  display: grid;
-  align-items: start;
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .dhBondNewsGroup {
-  display: grid;
-  align-content: start;
-  min-width: 0;
-  transition: background 0.2s ease, border-color 0.2s ease;
   gap: 7px;
   min-height: 112px;
   padding: 10px;
 }
 
 .dhBondNewsItem {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: start;
-  min-width: 0;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  background: rgba(255, 255, 255, 0.024);
-  transition: background 0.18s ease, border-color 0.18s ease;
   gap: 7px;
   padding: 7px;
 }
 
 .dhBondNewsTopic {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 3px 7px;
-  border-radius: 8px;
-  font-size: 11px;
-  font-weight: 800;
-  line-height: 1.25;
-  white-space: nowrap;
   background: rgba(114, 167, 220, 0.1);
   border: 1px solid rgba(114, 167, 220, 0.22);
   color: var(--dh-api-blue);
@@ -8115,41 +8388,23 @@
 }
 
 .dhTerminalBottom {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
   margin-top: 0;
 }
 
 .dhTerminalQuick {
-  display: grid;
-  align-items: center;
-  gap: var(--dh-space-2);
-  text-decoration: none;
-  border-radius: 6px;
   grid-template-columns: auto minmax(0, 1fr) auto;
   min-height: 54px;
   padding: 8px 10px;
 }
 
 .dhTerminalQuick span {
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--dh-line);
-  color: var(--ib-ink);
-  font-size: 16px;
-  background: rgba(7, 12, 20, 0.28);
-  border-color: rgba(126, 157, 194, 0.16);
   border-radius: 4px;
   height: 24px;
   width: 24px;
 }
 
 .dhTerminalQuick b {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   color: var(--dh-api-ink);
   font-size: 12px;
   font-weight: 720;
