@@ -23,6 +23,8 @@ from backend.app.governance.settings import get_settings  # noqa: E402
 from backend.app.schema_registry.duckdb_loader import REGISTRY_DIR, parse_registry_sql_text  # noqa: E402
 from backend.app.tasks.choice_stock_materialize import (  # noqa: E402
     REQUIRED_CHOICE_STOCK_REQUEST_ITEMS,
+    assert_choice_stock_vendor_era,
+    assert_known_choice_stock_daily_vendor_version,
     ensure_choice_stock_schema,
 )
 
@@ -37,6 +39,7 @@ def supplement_livermore_after_close_inputs(
     target_date: str | date,
     source_as_of_date: str | date | None = None,
     dry_run: bool = False,
+    allow_cross_era_backfill: bool = False,
 ) -> dict[str, object]:
     resolved_path = _resolve_duckdb_path(duckdb_path)
     resolved_date = _normalize_date(target_date)
@@ -104,6 +107,17 @@ def supplement_livermore_after_close_inputs(
         }
         if dry_run:
             return {"status": "dry_run", "duckdb_path": str(resolved_path), "run_id": run_id, "plan": plan}
+
+        # 写入守卫(与主物化任务共享):vendor 必须命中已知代际白名单;本脚本 OHLCV 来自
+        # Tushare pro.daily(千元/手口径,vendor 含 tushare 子串),在 choice_native 代际日期
+        # (>= 2026-01-05)补写属于跨代际写入,默认 fail-loud,须显式 --allow-cross-era-backfill
+        # 知情放行(消费端仍按 tushare 子串正确定标单位)。
+        assert_known_choice_stock_daily_vendor_version(vendor_version)
+        assert_choice_stock_vendor_era(
+            [resolved_date],
+            vendor_version=vendor_version,
+            allow_cross_era_backfill=allow_cross_era_backfill,
+        )
 
         conn.execute("begin transaction")
         try:
@@ -755,6 +769,11 @@ def main() -> int:
     parser.add_argument("--target-date", required=True)
     parser.add_argument("--source-as-of-date", default="")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--allow-cross-era-backfill",
+        action="store_true",
+        help="知情放行代际守卫:允许 tushare 口径 supplement vendor 补写 choice_native 代际日期。",
+    )
     args = parser.parse_args()
     try:
         payload = supplement_livermore_after_close_inputs(
@@ -762,6 +781,7 @@ def main() -> int:
             target_date=args.target_date,
             source_as_of_date=args.source_as_of_date or None,
             dry_run=args.dry_run,
+            allow_cross_era_backfill=args.allow_cross_era_backfill,
         )
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

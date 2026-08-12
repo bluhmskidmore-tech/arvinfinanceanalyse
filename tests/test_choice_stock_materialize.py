@@ -873,6 +873,9 @@ def test_choice_stock_materialize_can_fill_tushare_ths_concept_fallback(tmp_path
         client=PermissionDeniedCsdChoiceStockClient(),
         tushare_client=tushare_client,
         enable_tushare_concept_fallback=True,
+        # OHLCV 走 Tushare fallback 而 as_of 落在 choice_native 代际区,代际守卫默认拒绝;
+        # 此测试验证 fallback 数据流本身,显式受控放行。
+        allow_cross_era_backfill=True,
     )
 
     assert result["status"] == "completed"
@@ -964,10 +967,14 @@ def test_choice_stock_materialize_falls_back_to_tushare_when_choice_csd_is_denie
         catalog_path=str(catalog_path),
         client=PermissionDeniedCsdChoiceStockClient(),
         tushare_client=tushare_client,
+        # OHLCV 走 Tushare fallback 而 as_of 落在 choice_native 代际区,代际守卫默认拒绝;
+        # 此测试验证 fallback 数据流本身,显式受控放行。
+        allow_cross_era_backfill=True,
     )
 
     assert result["status"] == "completed"
     assert str(result["vendor_version"]).startswith("vv_choice_tushare_stock_20260428_")
+    assert str(result["daily_vendor_version"]).startswith("vv_choice_tushare_stock_20260428_")
     assert [name for name, _ in tushare_client.calls] == [
         "trade_cal",
         "daily",
@@ -1026,6 +1033,9 @@ def test_choice_stock_materialize_falls_back_to_tushare_when_choice_universe_is_
         catalog_path=str(catalog_path),
         client=ExpiredChoiceStockClient(),
         tushare_client=tushare_client,
+        # OHLCV 走 Tushare fallback 而 as_of 落在 choice_native 代际区,代际守卫默认拒绝;
+        # 此测试验证 fallback 数据流本身,显式受控放行。
+        allow_cross_era_backfill=True,
     )
 
     assert result["status"] == "completed"
@@ -1118,6 +1128,9 @@ def test_choice_stock_tushare_fallback_loads_limit_flags_for_each_trade_date(tmp
         catalog_path=str(catalog_path),
         client=PermissionDeniedCsdChoiceStockClient(),
         tushare_client=tushare_client,
+        # OHLCV 走 Tushare fallback 而 as_of 落在 choice_native 代际区,代际守卫默认拒绝;
+        # 此测试验证 fallback 数据流本身,显式受控放行。
+        allow_cross_era_backfill=True,
     )
 
     conn = duckdb.connect(str(duckdb_path), read_only=True)
@@ -1156,6 +1169,9 @@ def test_choice_stock_tushare_fallback_retries_transient_limit_timeout(tmp_path:
         catalog_path=str(catalog_path),
         client=PermissionDeniedCsdChoiceStockClient(),
         tushare_client=tushare_client,
+        # OHLCV 走 Tushare fallback 而 as_of 落在 choice_native 代际区,代际守卫默认拒绝;
+        # 此测试验证 fallback 数据流本身,显式受控放行。
+        allow_cross_era_backfill=True,
     )
 
     limit_call_dates = [kwargs["trade_date"] for name, kwargs in tushare_client.calls if name == "stk_limit"]
@@ -1175,6 +1191,9 @@ def test_choice_stock_factor_snapshot_materializes_into_stock_database(tmp_path:
         catalog_path=str(catalog_path),
         client=stock_client,
         tushare_client=tushare_client,
+        # OHLCV 走 Tushare fallback 而 as_of 落在 choice_native 代际区,代际守卫默认拒绝;
+        # 此测试验证 fallback 数据流本身,显式受控放行。
+        allow_cross_era_backfill=True,
     )
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
@@ -1268,6 +1287,9 @@ def test_choice_stock_factor_snapshot_keeps_rows_when_dividend_yield_missing(tmp
         catalog_path=str(catalog_path),
         client=PermissionDeniedCsdChoiceStockClient(),
         tushare_client=tushare_client,
+        # OHLCV 走 Tushare fallback 而 as_of 落在 choice_native 代际区,代际守卫默认拒绝;
+        # 此测试验证 fallback 数据流本身,显式受控放行。
+        allow_cross_era_backfill=True,
     )
 
     result = materialize_choice_stock_factor_snapshot(
@@ -1555,6 +1577,9 @@ def test_choice_stock_factor_snapshot_merges_choice_css_financials(tmp_path: Pat
         catalog_path=str(catalog_path),
         client=PermissionDeniedCsdChoiceStockClient(),
         tushare_client=sparse_tushare,
+        # OHLCV 走 Tushare fallback 而 as_of 落在 choice_native 代际区,代际守卫默认拒绝;
+        # 此测试验证 fallback 数据流本身,显式受控放行。
+        allow_cross_era_backfill=True,
     )
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:

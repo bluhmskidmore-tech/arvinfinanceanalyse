@@ -621,7 +621,8 @@ canonical grain：
 - `POLICY.entry_filters.min_daily_amount = 200_000_000.0` 的语义单位为**元**。
 - 任一读取 `amount` / `volume` 的绝对阈值比较，必须先按 `vendor_version` 将原始值归一化到元 / 股。
 - 任一跨代际时序计算（包括均线、量比及其派生信号），必须先按代际归一化；禁止直接拼接或比较原始 `amount` / `volume`。
-- **fail-closed 规则**：`vendor_version` 行值为 NULL、或观察表缺失 `vendor_version` 列（旧 schema / 合成表）时，`amount` / `volume` 一律输出 NULL 并告警，禁止原值透传（无法定标的原始值不得流入任何阈值比较、时序计算或对外展示/提示语料）。
+- **fail-closed 规则**：`vendor_version` 行值为 NULL / 空白、观察表缺失 `vendor_version` 列（旧 schema / 合成表）、或**非空但不匹配任一已知代际模式（未知 vendor）**时，`amount` / `volume` 一律输出 NULL 并告警，禁止原值透传或按 native 猜测（无法定标的原始值不得流入任何阈值比较、时序计算或对外展示/提示语料）。
+- **已知 vendor 模式白名单**：`like '%tushare%'` → 千元/手（覆盖主模式 `vv_choice_tushare_stock_*` 与盘后补充模式 `vv_livermore_supplement_tushare_sina_*`，后者数据来自 Tushare `pro.daily`，同为千元/手口径）；`vv_choice_stock_*` 前缀 → 元/股透传。新数据源接入必须同步登记：消费端 `backend/app/repositories/choice_stock_units.py`、摄入侧白名单 `DAILY_OBSERVATION_VENDOR_VERSION_PATTERNS`（`backend/app/tasks/choice_stock_materialize.py`）与本节。
 - 价格类列两代单位均为元，不适用上述金额和成交量换算。
 - `turn`（换手率，百分点）两代口径一致：Tushare 摄入优先取 `turnover_rate_f`（自由流通口径），缺失时回退 `turnover_rate`（总股本口径）；边界实证无尺度断裂（跨界均值比中位 0.90），`abnormal_turnover` 等相对量比跨代可比。消费者不应假设该列是严格单一口径的自由流通换手。
 

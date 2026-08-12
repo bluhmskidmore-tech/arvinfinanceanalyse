@@ -1,7 +1,8 @@
 """choice_stock_daily_observation 单位归一化 SQL 表达式的行为锁定。
 
 单位契约见 docs/data_contracts.md §4.10:tushare 代际 amount=千元/volume=手,
-choice_native 代际 amount=元/volume=股,NULL/空白 vendor 无法定标输出 NULL。
+choice_native 代际 amount=元/volume=股,NULL/空白/未知模式 vendor 无法定标输出 NULL
+(fail-closed)。
 """
 
 from __future__ import annotations
@@ -130,10 +131,11 @@ def test_scale_unknown_sql_flags_null_vendor_rows_only() -> None:
     assert negated[0] == 3  # 6 行中 NULLV.SZ / EMPTYV.SZ / BLANKV.SZ 被排除
 
 
-def test_unknown_non_null_vendor_passes_through_as_native() -> None:
-    """锁定现状语义:非空且不含 tushare 的未知 vendor 按 choice_native(元/股)透传。
+def test_unknown_non_null_vendor_fails_closed_to_null() -> None:
+    """锁定 fail-closed 语义:非空但不匹配已知代际模式的未知 vendor 输出 NULL。
 
-    第三代 vendor 引入时本测试应爆红,提示同步回改本模块与契约 §4.10。
+    已知模式:``%tushare%``(千元/手,含主模式与 supplement 模式)与
+    ``vv_choice_stock_%``(元/股)。其余无法定标,禁止按 native 猜测透传。
     """
 
     conn = _seeded_connection()
@@ -142,13 +144,46 @@ def test_unknown_non_null_vendor_passes_through_as_native() -> None:
             "insert into choice_stock_daily_observation values "
             "('THIRDGEN.SZ', 200.0, 300.0, 'vv_wind_stock_20270101_abc')"
         )
+        rows = dict(
+            conn.execute(
+                f"select stock_code, {amount_rmb_sql()} from choice_stock_daily_observation"
+            ).fetchall()
+        )
         row = conn.execute(
-            f"select {amount_rmb_sql()}, {volume_shares_sql()} "
-            "from choice_stock_daily_observation where stock_code = 'THIRDGEN.SZ'"
+            f"select {amount_rmb_sql()}, {volume_shares_sql()}, "
+            + scale_unknown_sql("amount")
+            + " from choice_stock_daily_observation where stock_code = 'THIRDGEN.SZ'"
         ).fetchone()
     finally:
         conn.close()
 
     assert row is not None
-    assert row[0] == 200.0  # 未知代际透传(fail-open),依赖摄入侧命名纪律
-    assert row[1] == 300.0
+    assert row[0] is None  # 未知代际 fail-closed
+    assert row[1] is None
+    assert row[2] is True  # scale_unknown 同步把未知模式计为无法定标
+    # 既有已知代际行为零变化
+    assert rows["TUSHARE.SZ"] == 300_000_000.0
+    assert rows["NATIVE.SZ"] == 500_000_000.0
+
+
+def test_supplement_tushare_vendor_scales_as_tushare_generation() -> None:
+    """盘后补充模式(vv_livermore_supplement_tushare_sina_*)按 tushare 千元/手定标。"""
+
+    conn = _seeded_connection()
+    try:
+        conn.execute(
+            "insert into choice_stock_daily_observation values "
+            "('SUPP.SZ', 500.0, 40.0, 'vv_livermore_supplement_tushare_sina_20260622_2879311a6e15')"
+        )
+        row = conn.execute(
+            f"select {amount_rmb_sql()}, {volume_shares_sql()}, "
+            + scale_unknown_sql("amount")
+            + " from choice_stock_daily_observation where stock_code = 'SUPP.SZ'"
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row is not None
+    assert row[0] == 500_000.0  # 千元 -> 元
+    assert row[1] == 4_000.0  # 手 -> 股
+    assert row[2] is False

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import tempfile
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
@@ -67,10 +68,7 @@ def build_choice_stock_observation_manifest(
         "history_result.source_version",
         history_result.get("source_version"),
     )
-    vendor_version = _required_text(
-        "history_result.vendor_version",
-        history_result.get("vendor_version"),
-    )
+    vendor_version = _daily_landing_vendor_version(history_result)
     materialized_row_count = _positive_int(
         "history_result.row_count",
         history_result.get("row_count"),
@@ -128,7 +126,7 @@ def verify_choice_stock_daily_observation_landing(
     normalized_report_date = _iso_date("report_date", report_date)
     materialization_run_id = _required_text("history_result.run_id", history_result.get("run_id"))
     source_version = _required_text("history_result.source_version", history_result.get("source_version"))
-    vendor_version = _required_text("history_result.vendor_version", history_result.get("vendor_version"))
+    vendor_version = _daily_landing_vendor_version(history_result)
 
     conn = duckdb.connect(str(path), read_only=True)
     try:
@@ -284,11 +282,13 @@ def resolve_latest_committed_choice_stock_observation(
                 run_rows[0][2],
             )
             != source_version
-            or _required_text(
-                "materialization_run.vendor_version",
-                run_rows[0][3],
+            or not _daily_vendor_matches_run_vendor(
+                daily_vendor=vendor_version,
+                run_vendor=_required_text(
+                    "materialization_run.vendor_version",
+                    run_rows[0][3],
+                ),
             )
-            != vendor_version
             or _required_text(
                 "materialization_run.rule_version",
                 run_rows[0][4],
@@ -657,6 +657,28 @@ def _manifest_matches_observation(
         return all(lineage.get(key) == value for key, value in expected.items())
     except (TypeError, ValueError):
         return False
+
+
+# daily observation 行按 OHLCV 实际来源打标(materialize 任务的 daily_vendor_version),
+# run 级 vendor_version 记录整个 run 是否发生过任何 fallback,两者前缀可分叉但共享
+# 同一 "_{yyyymmdd}_{hash}" 后缀以证明同一 run 血缘。
+_MAIN_VENDOR_LINEAGE_RE = re.compile(r"^vv_choice(?:_tushare)?_stock_(\d{8}_[0-9a-f]{12})$")
+
+
+def _daily_landing_vendor_version(history_result: Mapping[str, object]) -> str:
+    """落地验证/manifest 使用 daily 行的实际 vendor;旧 payload 无该键时回退 run 级 vendor。"""
+    daily_vendor = str(history_result.get("daily_vendor_version") or "").strip()
+    if daily_vendor:
+        return daily_vendor
+    return _required_text("history_result.vendor_version", history_result.get("vendor_version"))
+
+
+def _daily_vendor_matches_run_vendor(*, daily_vendor: str, run_vendor: str) -> bool:
+    if daily_vendor == run_vendor:
+        return True
+    daily_match = _MAIN_VENDOR_LINEAGE_RE.match(daily_vendor)
+    run_match = _MAIN_VENDOR_LINEAGE_RE.match(run_vendor)
+    return daily_match is not None and run_match is not None and daily_match.group(1) == run_match.group(1)
 
 
 def _require_table_columns(

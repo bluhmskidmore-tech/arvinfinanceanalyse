@@ -5,8 +5,10 @@ import json
 import logging
 import math
 import os
+import re
 import time
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from functools import partial
@@ -65,6 +67,27 @@ TUSHARE_FALLBACK_AUDIT_STATUS = "completed_tushare_fallback"
 TUSHARE_THS_CONCEPT_FALLBACK_AUDIT_STATUS = "completed_tushare_ths_fallback"
 TUSHARE_THS_CONCEPT_FIELD_KEY = "tushare_ths_concept_membership"
 
+OHLCV_FIELD_KEY = "daily_ohlcv_amount"
+# choice_stock_daily_observation 两代 vendor 单位代际边界(权威契约 docs/data_contracts.md §4.10):
+# tushare 代际(amount=千元/volume=手)封存于 2025-12-31(含),choice_native 代际(amount=元/
+# volume=股)自 2026-01-05(含)起,两代在 (stock_code, trade_date) 上零重叠。语义与
+# scripts/run_portfolio_backtest.py 的 CHOICE_NATIVE_ERA_START 一致(各自独立定义)。
+TUSHARE_ERA_LAST_TRADE_DATE = "2025-12-31"
+CHOICE_NATIVE_ERA_START_DATE = "2026-01-05"
+# daily observation vendor_version 已知代际模式白名单(消费端按 %tushare% 子串定标,
+# 见 backend/app/repositories/choice_stock_units.py)。supplement 模式来自
+# scripts/supplement_livermore_after_close_inputs.py:其 OHLCV 来自 Tushare pro.daily
+# (千元/手口径),vendor 含 tushare 子串使消费端正确 ×1000/×100。
+DAILY_OBSERVATION_VENDOR_VERSION_PATTERNS = (
+    r"^vv_choice_tushare_stock_\d{8}_[0-9a-f]{12}$",
+    r"^vv_choice_stock_\d{8}_[0-9a-f]{12}$",
+    r"^vv_livermore_supplement_tushare_sina_\d{8}_[0-9a-f]{12}$",
+)
+DQ_IDENTITY_SAMPLE_ROWS = 100
+DQ_IDENTITY_EXPECTED_RATIO_TUSHARE = 0.1
+DQ_IDENTITY_EXPECTED_RATIO_NATIVE = 1.0
+DQ_IDENTITY_RELATIVE_TOLERANCE = 0.30
+
 
 def _get_em_c() -> Any | None:
     return choice_runtime._get_em_c()
@@ -85,6 +108,18 @@ class ChoiceStockRequestError(RuntimeError):
         super().__init__(error_msg)
         self.error_code = error_code
         self.error_msg = error_msg
+
+
+class ChoiceStockVendorEraViolationError(RuntimeError):
+    """daily_ohlcv_amount 行的 vendor 代际标签与 trade_date 代际区间冲突(契约 docs/data_contracts.md §4.10)。"""
+
+
+class ChoiceStockOhlcvMixedSourceError(RuntimeError):
+    """同一 run 内 daily_ohlcv_amount 数据混合了 Choice native 与 Tushare fallback 来源,无法单标签定标。"""
+
+
+class ChoiceStockUnknownVendorVersionError(RuntimeError):
+    """vendor_version 不在 choice_stock_daily_observation 已知代际模式白名单内(契约 docs/data_contracts.md §4.10)。"""
 
 
 class _DefaultChoiceStockClient:
@@ -190,6 +225,7 @@ def materialize_choice_stock_inputs(
     client: object | None = None,
     tushare_client: object | None = None,
     enable_tushare_concept_fallback: bool = False,
+    allow_cross_era_backfill: bool = False,
 ) -> dict[str, object]:
     settings = get_settings()
     resolved_date = _normalize_date(as_of_date)
@@ -218,6 +254,9 @@ def materialize_choice_stock_inputs(
     concept_rows: list[dict[str, object]] = []
     movement_rows: list[dict[str, object]] = []
     daily_by_key: dict[tuple[str, str], dict[str, object]] = {}
+    # daily_ohlcv_amount 数据的实际来源集合("choice" / "tushare");daily observation 的
+    # vendor_version 只跟随该集合,不受其他 field_key 请求 fallback 影响。
+    ohlcv_source_tags: set[str] = set()
 
     try:
         current_request = universe_request
@@ -302,6 +341,8 @@ def materialize_choice_stock_inputs(
                             end_date=end_date,
                         )
                     csd_rows = tushare_cache.rows_for_request(request)
+                    if request.field_key == OHLCV_FIELD_KEY:
+                        ohlcv_source_tags.add("tushare")
                     _merge_daily_rows(daily_by_key, csd_rows, request)
                     request_audits.append(
                         _build_request_audit(
@@ -367,6 +408,8 @@ def materialize_choice_stock_inputs(
                         as_of_date=resolved_date,
                     ):
                         csd_rows.extend(_normalize_csd_rows(result, request, default_date=resolved_date))
+                    if request.field_key == OHLCV_FIELD_KEY:
+                        ohlcv_source_tags.add("choice")
                 except ChoiceStockRequestError as exc:
                     if exc.error_code != CHOICE_CSD_PERMISSION_DENIED_ERROR_CODE:
                         raise
@@ -382,7 +425,11 @@ def materialize_choice_stock_inputs(
                             start_date=start_date,
                             end_date=end_date,
                         )
+                    # permission-denied fallback 整体替换 csd_rows,单请求内不混源;
+                    # OHLCV 来源标记与替换后的行保持一致。
                     csd_rows = tushare_cache.rows_for_request(request)
+                    if request.field_key == OHLCV_FIELD_KEY:
+                        ohlcv_source_tags.add("tushare")
                     audit_status = TUSHARE_FALLBACK_AUDIT_STATUS
                     audit_error_code = exc.error_code
                     audit_error_msg = f"Choice csd unavailable; filled from Tushare stock fallback: {exc.error_msg}"
@@ -469,6 +516,21 @@ def materialize_choice_stock_inputs(
     )
     vendor_prefix = "vv_choice_tushare_stock" if _used_tushare_fallback(request_audits) else "vv_choice_stock"
     vendor_version = f"{vendor_prefix}_{resolved_date.replace('-', '')}_{source_version.removeprefix('sv_choice_stock_')}"
+    # daily observation 行的 vendor_version 只跟随 OHLCV 数据本身的实际来源(契约 §4.10 的
+    # 单位代际标签),与其他 field_key 请求是否 fallback 无关;run/audit 等表保留 run 级标签。
+    daily_vendor_prefix = _resolve_daily_observation_vendor_prefix(
+        ohlcv_source_tags=ohlcv_source_tags,
+        daily_row_count=len(daily_rows),
+        as_of_date=resolved_date,
+    )
+    daily_vendor_version = (
+        f"{daily_vendor_prefix}_{resolved_date.replace('-', '')}_{source_version.removeprefix('sv_choice_stock_')}"
+    )
+    _assert_daily_rows_within_vendor_era(
+        daily_rows,
+        vendor_version=daily_vendor_version,
+        allow_cross_era_backfill=allow_cross_era_backfill,
+    )
     completed_at = datetime.now(UTC).isoformat()
     row_count = len(universe_rows) + len(sector_rows) + len(daily_rows) + len(limit_rows)
     row_count += len(concept_rows) + len(movement_rows)
@@ -517,7 +579,7 @@ def materialize_choice_stock_inputs(
             rows=daily_rows,
             run_id=run_id,
             source_version=source_version,
-            vendor_version=vendor_version,
+            vendor_version=daily_vendor_version,
         )
         _insert_limit_quality(
             conn,
@@ -541,6 +603,16 @@ def materialize_choice_stock_inputs(
             vendor_version=vendor_version,
         )
         conn.execute("commit")
+        # 首版观察模式:写入完成后自动执行 DQ 守卫检查,失败仅告警不回滚。
+        try:
+            dq_checks = run_choice_stock_daily_observation_dq_checks(
+                conn,
+                run_id=run_id,
+                expected_vendor_version=daily_vendor_version,
+            )
+        except Exception:
+            logger.exception("choice_stock daily observation DQ checks crashed for run_id=%s", run_id)
+            dq_checks = {"status": "error", "issues": ["dq checks crashed; see task log"], "checks": {}}
     except Exception:
         conn.execute("rollback")
         raise
@@ -556,6 +628,8 @@ def materialize_choice_stock_inputs(
         "row_count": row_count,
         "source_version": source_version,
         "vendor_version": vendor_version,
+        "daily_vendor_version": daily_vendor_version,
+        "dq_checks": dq_checks,
     }
 
 
@@ -1817,6 +1891,206 @@ def _used_tushare_fallback(request_audits: list[dict[str, object]]) -> bool:
         audit.get("status") in {TUSHARE_FALLBACK_AUDIT_STATUS, TUSHARE_THS_CONCEPT_FALLBACK_AUDIT_STATUS}
         for audit in request_audits
     )
+
+
+def _resolve_daily_observation_vendor_prefix(
+    *,
+    ohlcv_source_tags: set[str],
+    daily_row_count: int,
+    as_of_date: str,
+) -> str:
+    """按 daily_ohlcv_amount 数据的实际来源决定 daily observation 的 vendor 前缀。
+
+    当前请求结构下 OHLCV 请求要么整体走 Choice native、要么整体被 Tushare fallback 替换
+    (permission-denied 时丢弃已取的 Choice 分片),单 run 内不产生行级混源;若未来结构变化
+    导致混源,fail-loud 拒绝写入,不允许混源单标签。
+    """
+
+    if len(ohlcv_source_tags) > 1:
+        raise ChoiceStockOhlcvMixedSourceError(
+            f"daily_ohlcv_amount data for {as_of_date} mixes sources {sorted(ohlcv_source_tags)} in one run; "
+            "a single vendor_version cannot label mixed-unit rows (docs/data_contracts.md §4.10). "
+            "Refusing to write; split the run per source before retrying."
+        )
+    if not ohlcv_source_tags and daily_row_count > 0:
+        raise ChoiceStockOhlcvMixedSourceError(
+            f"daily observation rows for {as_of_date} exist but no daily_ohlcv_amount source was recorded; "
+            "cannot determine the amount/volume unit generation (docs/data_contracts.md §4.10). Refusing to write."
+        )
+    return "vv_choice_tushare_stock" if "tushare" in ohlcv_source_tags else "vv_choice_stock"
+
+
+def assert_known_choice_stock_daily_vendor_version(vendor_version: str) -> None:
+    """断言 vendor_version 命中 choice_stock_daily_observation 已知代际模式白名单。
+
+    供本模块及旁路写入脚本(supplement / as-of copy)共享;未知模式 fail-loud,
+    防止消费端(按 vendor 定标单位)遇到无法定标的新 vendor。
+    """
+
+    normalized = str(vendor_version or "").strip()
+    if not normalized or not any(re.match(pattern, normalized) for pattern in DAILY_OBSERVATION_VENDOR_VERSION_PATTERNS):
+        raise ChoiceStockUnknownVendorVersionError(
+            f"vendor_version {vendor_version!r} is not in the known choice_stock_daily_observation "
+            "generation whitelist; consumers cannot determine amount/volume units "
+            "(docs/data_contracts.md §4.10). Register the pattern in "
+            "DAILY_OBSERVATION_VENDOR_VERSION_PATTERNS and the unit contract before writing."
+        )
+
+
+def assert_choice_stock_vendor_era(
+    trade_dates: Iterable[object],
+    *,
+    vendor_version: str,
+    allow_cross_era_backfill: bool = False,
+) -> None:
+    """历史重放代际守卫:拒绝把某代 vendor 标签写进另一代的 trade_date 封存区。
+
+    契约 docs/data_contracts.md §4.10 声明两代在 (stock_code, trade_date) 上零重叠:
+    tushare 单位代际(amount=千元/volume=手,vendor 含 tushare 子串)止于
+    TUSHARE_ERA_LAST_TRADE_DATE,choice_native 代际(amount=元/volume=股)始于
+    CHOICE_NATIVE_ERA_START_DATE。仅显式传入 ``allow_cross_era_backfill=True``
+    (受控重物化/受控盘后补充)才可绕过。供本模块及旁路写入脚本共享。
+    """
+
+    if allow_cross_era_backfill:
+        return
+    normalized_dates = {str(value) for value in trade_dates if str(value or "").strip()}
+    if not normalized_dates:
+        return
+    is_tushare_generation = "tushare" in vendor_version.lower()
+    if is_tushare_generation:
+        violating_dates = sorted(value for value in normalized_dates if value >= CHOICE_NATIVE_ERA_START_DATE)
+        rule = (
+            f"tushare-generation vendor_version must not write trade_date >= {CHOICE_NATIVE_ERA_START_DATE} "
+            "(choice_native era)"
+        )
+    else:
+        violating_dates = sorted(value for value in normalized_dates if value <= TUSHARE_ERA_LAST_TRADE_DATE)
+        rule = (
+            f"native-generation vendor_version must not write trade_date <= {TUSHARE_ERA_LAST_TRADE_DATE} "
+            "(sealed tushare era)"
+        )
+    if violating_dates:
+        preview = ", ".join(violating_dates[:5])
+        raise ChoiceStockVendorEraViolationError(
+            f"Vendor era guard rejected the write: {rule}; vendor_version={vendor_version}, "
+            f"{len(violating_dates)} violating trade_date(s) (first: {preview}). "
+            "Per docs/data_contracts.md §4.10 the two unit generations must stay zero-overlap on "
+            "(stock_code, trade_date). Pass allow_cross_era_backfill=True only for a deliberate, "
+            "controlled re-materialization."
+        )
+
+
+def _assert_daily_rows_within_vendor_era(
+    daily_rows: list[dict[str, object]],
+    *,
+    vendor_version: str,
+    allow_cross_era_backfill: bool,
+) -> None:
+    assert_choice_stock_vendor_era(
+        (row.get("trade_date") for row in daily_rows),
+        vendor_version=vendor_version,
+        allow_cross_era_backfill=allow_cross_era_backfill,
+    )
+
+
+def run_choice_stock_daily_observation_dq_checks(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    run_id: str,
+    expected_vendor_version: str,
+) -> dict[str, object]:
+    """写入完成后的轻量 DQ 守卫检查(观察模式:仅告警,不回滚)。
+
+    检查项:
+    1. 本次写入行 vendor_version 非空非空白且匹配已知代际模式白名单;
+    2. 本次写入范围内 (stock_code, trade_date) 无重复;
+    3. 抽样恒等式:amount/(volume*close) 中位比值落在该代际预期
+       (native≈1.0、tushare≈0.1,容差 ±30%),偏出则告警疑似单位错标。
+    """
+
+    issues: list[str] = []
+    checks: dict[str, object] = {}
+
+    vendor_rows = conn.execute(
+        "select distinct coalesce(vendor_version, '') from choice_stock_daily_observation where run_id = ?",
+        [run_id],
+    ).fetchall()
+    vendors = [str(row[0]) for row in vendor_rows]
+    bad_vendors = [
+        vendor
+        for vendor in vendors
+        if not vendor.strip() or not any(re.match(pattern, vendor) for pattern in DAILY_OBSERVATION_VENDOR_VERSION_PATTERNS)
+    ]
+    checks["vendor_version_whitelist"] = {
+        "distinct_vendor_versions": vendors,
+        "unknown_or_blank": bad_vendors,
+    }
+    if bad_vendors:
+        issues.append(
+            f"vendor_version outside the known generation whitelist (or blank): {bad_vendors}; "
+            "consumers cannot determine amount/volume units (docs/data_contracts.md §4.10)"
+        )
+
+    duplicate_key_count = int(
+        conn.execute(
+            """
+            select count(*) from (
+                select stock_code, trade_date
+                from choice_stock_daily_observation
+                where run_id = ?
+                group by stock_code, trade_date
+                having count(*) > 1
+            )
+            """,
+            [run_id],
+        ).fetchone()[0]
+    )
+    checks["duplicate_keys"] = {"duplicate_key_count": duplicate_key_count}
+    if duplicate_key_count:
+        issues.append(f"{duplicate_key_count} duplicated (stock_code, trade_date) key(s) within this run's write scope")
+
+    # 伪随机可重复抽样:按 hash 排序取前 N 行,避免依赖 DuckDB SAMPLE 语法差异。
+    median_ratio_row = conn.execute(
+        """
+        select median(amount / (volume * close_value)) from (
+            select amount, volume, close_value
+            from choice_stock_daily_observation
+            where run_id = ?
+              and amount is not null and volume is not null and close_value is not null
+              and volume > 0 and close_value > 0
+            order by hash(stock_code || '|' || trade_date)
+            limit ?
+        )
+        """,
+        [run_id, DQ_IDENTITY_SAMPLE_ROWS],
+    ).fetchone()
+    median_ratio = float(median_ratio_row[0]) if median_ratio_row and median_ratio_row[0] is not None else None
+    expected_ratio = (
+        DQ_IDENTITY_EXPECTED_RATIO_TUSHARE
+        if "tushare" in expected_vendor_version.lower()
+        else DQ_IDENTITY_EXPECTED_RATIO_NATIVE
+    )
+    lower_bound = expected_ratio * (1 - DQ_IDENTITY_RELATIVE_TOLERANCE)
+    upper_bound = expected_ratio * (1 + DQ_IDENTITY_RELATIVE_TOLERANCE)
+    checks["amount_volume_close_identity"] = {
+        "median_ratio": median_ratio,
+        "expected_ratio": expected_ratio,
+        "tolerance_bounds": [lower_bound, upper_bound],
+        "sample_rows": DQ_IDENTITY_SAMPLE_ROWS,
+    }
+    if median_ratio is not None and not (lower_bound <= median_ratio <= upper_bound):
+        issues.append(
+            f"suspected unit mislabeling: sampled median amount/(volume*close) = {median_ratio:.4f} "
+            f"but vendor generation of {expected_vendor_version} expects ~{expected_ratio} "
+            f"(tolerance [{lower_bound:.4f}, {upper_bound:.4f}])"
+        )
+
+    status = "passed" if not issues else "warning"
+    if issues:
+        for issue in issues:
+            logger.warning("choice_stock daily observation DQ check failed for run_id=%s: %s", run_id, issue)
+    return {"status": status, "issues": issues, "checks": checks}
 
 
 def _build_request_audit(
