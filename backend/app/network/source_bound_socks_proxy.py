@@ -29,6 +29,69 @@ _CONNECTION_REFUSED = 5
 _COMMAND_NOT_SUPPORTED = 7
 _ADDRESS_TYPE_NOT_SUPPORTED = 8
 
+AUTO_SOURCE_IP = "auto"
+# UDP connect 不发包，只让内核完成选路，据此问出出网会使用哪个本机地址。
+_ROUTE_PROBE_TARGET = ("223.5.5.5", 80)
+
+
+def local_ipv4_addresses() -> list[str]:
+    """Best-effort list of this host's IPv4 addresses, for diagnostics."""
+    addresses: set[str] = set()
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            addresses.add(str(info[4][0]))
+    except OSError:
+        return []
+    return sorted(addresses)
+
+
+def is_bindable_ipv4(source_ip: str) -> bool:
+    """Whether a socket on this host can actually bind to ``source_ip``."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            probe.bind((source_ip, 0))
+    except OSError:
+        return False
+    return True
+
+
+def detect_outbound_source_ip() -> str:
+    """Ask the kernel which local IPv4 address egress traffic would leave from.
+
+    This follows the default route, so it returns the VPN/virtual adapter when one
+    holds the default route — which is usually the route callers are trying to avoid.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+        probe.connect(_ROUTE_PROBE_TARGET)
+        return str(probe.getsockname()[0])
+
+
+def resolve_vendor_source_ip(value: str) -> str:
+    """Resolve a vendor source-ip argument to an address this host can bind.
+
+    A stale address reaches the vendor SDK only as ``connect sock5 proxy fail``,
+    which hides the real cause, so it has to fail here instead.
+    """
+    raw = str(value or "").strip()
+    if not raw:
+        raise ValueError("vendor source ip must not be empty")
+    if raw.lower() == AUTO_SOURCE_IP:
+        try:
+            return detect_outbound_source_ip()
+        except OSError as exc:
+            raise ValueError(f"could not detect an outbound IPv4 source address: {exc}") from exc
+    parsed = ipaddress.ip_address(raw)
+    if not isinstance(parsed, ipaddress.IPv4Address):
+        raise ValueError("vendor source ip must be an IPv4 address")
+    resolved = str(parsed)
+    if not is_bindable_ipv4(resolved):
+        available = ", ".join(local_ipv4_addresses()) or "(none detected)"
+        raise ValueError(
+            f"vendor source ip {resolved} is not assigned to this host "
+            f"(available IPv4: {available}); pass '{AUTO_SOURCE_IP}' to use the outbound address"
+        )
+    return resolved
+
 
 class _SourceBoundServer(socketserver.ThreadingTCPServer):
     address_family = socket.AF_INET
@@ -223,6 +286,12 @@ class _SourceBoundSocksProxy:
         parsed_source_ip = ipaddress.ip_address(source_ip)
         if not isinstance(parsed_source_ip, ipaddress.IPv4Address):
             raise ValueError("source_ip must be an IPv4 address")
+        if not is_bindable_ipv4(str(parsed_source_ip)):
+            available = ", ".join(local_ipv4_addresses()) or "(none detected)"
+            raise ValueError(
+                f"source_ip {parsed_source_ip} is not assigned to this host "
+                f"(available IPv4: {available})"
+            )
         if not 0 <= listen_port <= 65535:
             raise ValueError("listen_port must be between 0 and 65535")
         if connect_timeout <= 0:

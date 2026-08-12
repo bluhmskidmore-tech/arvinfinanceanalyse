@@ -42,6 +42,7 @@ if str(ROOT) not in sys.path:
 
 from backend.app.governance.settings import get_settings  # noqa: E402
 from backend.app.network.source_bound_socks_proxy import (  # noqa: E402
+    resolve_vendor_source_ip,
     source_bound_socks_proxy,
 )
 from backend.app.services.livermore_gate_supplement_compute_service import (  # noqa: E402
@@ -96,7 +97,10 @@ def _parser() -> argparse.ArgumentParser:
         "--vendor-source-ip",
         help=(
             "For --run-once only: bind Choice traffic to a loopback SOCKS5 proxy and all other "
-            "vendor sockets to this IPv4 source address (bypasses a TLS-breaking default route)."
+            "vendor sockets to this IPv4 source address (bypasses a TLS-breaking default route). "
+            "Prefer an explicit address: 'auto' follows the default route, which on a host "
+            "with a VPN is often the very route this flag exists to bypass. An address that "
+            "is no longer assigned to the host is rejected up front."
         ),
     )
     parser.add_argument("--factor-max-stock-count", type=int)
@@ -330,6 +334,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.vendor_source_ip and not args.run_once:
         parser.error("--vendor-source-ip requires --run-once")
+    if args.vendor_source_ip:
+        try:
+            args.vendor_source_ip = resolve_vendor_source_ip(args.vendor_source_ip)
+        except ValueError as exc:
+            parser.error(str(exc))
 
     settings = get_settings()
     duckdb_path = str(settings.duckdb_path)

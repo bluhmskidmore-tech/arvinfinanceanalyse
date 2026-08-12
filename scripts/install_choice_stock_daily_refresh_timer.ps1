@@ -19,14 +19,19 @@ $receiptPath = Join-Path $logDir "choice_stock_daily_refresh_receipt.json"
 $wrapper = Join-Path $logDir "choice_stock_daily_refresh_runner.cmd"
 $vendorSourceArg = if ([string]::IsNullOrWhiteSpace($VendorSourceIp)) {
     ""
+} elseif ($VendorSourceIp.Trim().ToLowerInvariant() -eq "auto") {
+    # "auto" follows the default route, which on a VPN host is often the route this
+    # flag exists to bypass. Prefer pinning the physical adapter's address; a pinned
+    # address that later goes stale is now rejected with a clear error at run time.
+    " --vendor-source-ip `"auto`""
 } else {
     try {
         $parsedVendorSourceIp = [System.Net.IPAddress]::Parse($VendorSourceIp)
     } catch {
-        throw "VendorSourceIp must be a valid IPv4 address."
+        throw "VendorSourceIp must be a valid IPv4 address or 'auto'."
     }
     if ($parsedVendorSourceIp.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetwork) {
-        throw "VendorSourceIp must be a valid IPv4 address."
+        throw "VendorSourceIp must be a valid IPv4 address or 'auto'."
     }
     " --vendor-source-ip `"$($parsedVendorSourceIp.ToString())`""
 }
