@@ -12,6 +12,10 @@
   --ib-down: var(--dh-api-red);
   --ib-warn: var(--dh-api-amber);
   --ib-radius: var(--dh-api-radius);
+  /* PagePrimitives（PageSectionLead）内联墨字浅色兜底在深底不可读，经 --moss-page-* 变量接管 */
+  --moss-page-ink: var(--ib-ink);
+  --moss-page-ink-secondary: var(--ib-ink-secondary);
+  --moss-page-ink-muted: var(--ib-ink-muted);
 
   min-height: 100%;
   background: var(--dh-api-bg);

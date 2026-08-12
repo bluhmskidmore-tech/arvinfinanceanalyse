@@ -3,6 +3,10 @@
   padding: 24px;
   background: var(--ib-paper);
   color: var(--ib-ink);
+  /* PagePrimitives（PageSectionLead）内联墨字浅色兜底在 theme-dh-api 深底不可读，经 --moss-page-* 变量接管 */
+  --moss-page-ink: var(--ib-ink);
+  --moss-page-ink-secondary: var(--ib-ink-secondary);
+  --moss-page-ink-muted: var(--ib-ink-muted);
 }
 
 .kpiGrid {

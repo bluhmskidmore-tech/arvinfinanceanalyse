@@ -8,6 +8,10 @@
   /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   padding: 0;
   gap: var(--dh-space-2, 12px);
+  /* PagePrimitives（PageSectionLead）内联墨字浅色兜底在 theme-dh-api 深底不可读，经 --moss-page-* 变量接管 */
+  --moss-page-ink: var(--ib-ink);
+  --moss-page-ink-secondary: var(--ib-ink-secondary);
+  --moss-page-ink-muted: var(--ib-ink-muted);
 }
 
 .balance-analysis-abnormal-sentinels {
