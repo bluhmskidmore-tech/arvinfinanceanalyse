@@ -237,12 +237,27 @@ def build_pnl_bridge_rows(
                 fx_rate_current=fx_rates_current,
                 fx_rate_prior=fx_rates_prior,
             )
+            market_value_base_missing_diagnostic = _market_value_base_missing_diagnostic(
+                current_balance=current_balance,
+                current_curve=current_curve,
+                years_to_maturity=years_to_maturity,
+                modified_duration=modified_duration,
+            )
+            roll_down_window_missing_diagnostic = _roll_down_window_missing_diagnostic(
+                current_balance=current_balance,
+                prior_balance=prior_balance,
+                current_curve=current_curve,
+                years_to_maturity=years_to_maturity,
+                modified_duration=modified_duration,
+            )
         else:
             roll_down = ZERO
             treasury_curve = ZERO
             credit_spread = ZERO
             fx_translation = ZERO
             fx_rate_missing_diagnostic = None
+            market_value_base_missing_diagnostic = None
+            roll_down_window_missing_diagnostic = None
 
         # 互斥分解：516 不计入 explained。市场效应本身就是对 516 的解释，二者
         # 同时相加会使 residual 在代数上恒等于市场效应之和的相反数，质量标记
@@ -306,6 +321,10 @@ def build_pnl_bridge_rows(
                         else None
                     ),
                     fx_rate_missing_diagnostic=fx_rate_missing_diagnostic,
+                    market_value_base_missing_diagnostic=(
+                        market_value_base_missing_diagnostic
+                    ),
+                    roll_down_window_missing_diagnostic=roll_down_window_missing_diagnostic,
                 ),
             )
         )
@@ -646,9 +665,97 @@ def _percent_rate_to_decimal(value: object) -> Decimal:
     return Decimal(str(normalized))
 
 
+_MARKET_VALUE_KEYS = ("market_value_amount", "market_value", "market_value_native")
+_ACCRUED_INTEREST_KEYS = (
+    "accrued_interest_amount",
+    "accrued_interest",
+    "accrued_interest_native",
+)
+
+
+def _first_available_value(row: Mapping[str, object], keys: tuple[str, ...]) -> object | None:
+    """First value among ``keys`` that is neither absent nor NULL-like.
+
+    ``row.get(a, row.get(b, default))`` only falls back when ``a`` is *absent*; a nullable
+    column materialized as ``None`` (``fact_formal_zqtz_balance_daily.market_value_amount``)
+    short-circuits the chain and collapses to 0 without ever reaching ``b``. NULL-like is
+    ``None`` / ``""``, matching ``_coerce_decimal`` and ``_fx_exposure_native``.
+    """
+    for key in keys:
+        value = row.get(key)
+        if value not in (None, ""):
+            return value
+    return None
+
+
 def _curve_market_value(row: Mapping[str, object]) -> Decimal:
-    return _coerce_decimal(
-        row.get("market_value_amount", row.get("market_value", row.get("market_value_native", ZERO)))
+    return _coerce_decimal(_first_available_value(row, _MARKET_VALUE_KEYS))
+
+
+def _market_value_base_missing_diagnostic(
+    *,
+    current_balance: Mapping[str, object] | None,
+    current_curve: dict[str, Decimal] | None,
+    years_to_maturity: float,
+    modified_duration: Decimal,
+) -> str | None:
+    """Distinguish "flat position" from "missing market-value base" on curve effects.
+
+    ``_curve_market_value`` returns 0 both for a genuinely flat position and for a balance
+    row whose market-value columns are all NULL. Only the latter zeroes roll_down /
+    treasury_curve / credit_spread against the operator's expectation, with the gap
+    silently absorbed by the residual, so the diagnostic fires only when the row is
+    otherwise eligible for a non-zero curve effect (current balance row, benchmark curve,
+    positive remaining tenor, non-zero modified duration).
+    """
+    if current_balance is None or not current_curve:
+        return None
+    if years_to_maturity <= 0 or modified_duration == ZERO:
+        return None
+    if _first_available_value(current_balance, _MARKET_VALUE_KEYS) is not None:
+        return None
+    return (
+        "MARKET_VALUE_BASE_MISSING: current balance row has no usable market value "
+        f"({'/'.join(_MARKET_VALUE_KEYS)} all missing or NULL); "
+        "roll_down / treasury_curve / credit_spread defaulted to 0."
+    )
+
+
+def _roll_down_window_missing_diagnostic(
+    *,
+    current_balance: Mapping[str, object] | None,
+    prior_balance: Mapping[str, object] | None,
+    current_curve: dict[str, Decimal] | None,
+    years_to_maturity: float,
+    modified_duration: Decimal,
+) -> str | None:
+    """Flag roll_down zeroed by the rolling window while curve effects still compute.
+
+    ``_calculate_roll_down`` additionally requires a prior balance row and a positive day
+    count, while ``_calculate_curve_shift`` / ``_calculate_credit_spread_shift`` key off the
+    current row only. A missing or same-day prior row therefore yields a half decomposition
+    (curve effect without roll effect) that the generic "Missing prior balance row"
+    diagnostic does not attribute to roll_down. Fires only when roll_down would otherwise
+    have been non-zero, so a flat or base-less position is not double-reported.
+    """
+    if current_balance is None or not current_curve:
+        return None
+    if years_to_maturity <= 0 or modified_duration == ZERO:
+        return None
+    if _curve_market_value(current_balance) == ZERO:
+        return None
+    if prior_balance is not None and (
+        _period_days(current_balance=current_balance, prior_balance=prior_balance) > 0
+    ):
+        return None
+    reason = (
+        "prior balance row unavailable"
+        if prior_balance is None
+        else "prior balance row shares the current report_date (period_days=0)"
+    )
+    return (
+        f"ROLL_DOWN_WINDOW_MISSING: {reason}; roll_down defaulted to 0 while "
+        "treasury_curve / credit_spread still computed from the current balance row."
     )
 
 
@@ -672,6 +779,8 @@ def _build_balance_diagnostics(
     prior_resolution_diagnostic: str | None = None,
     actual_pnl_diagnostic: str | None = None,
     fx_rate_missing_diagnostic: str | None = None,
+    market_value_base_missing_diagnostic: str | None = None,
+    roll_down_window_missing_diagnostic: str | None = None,
 ) -> tuple[str, ...]:
     diagnostics: list[str] = []
     if current_resolution_diagnostic:
@@ -682,6 +791,10 @@ def _build_balance_diagnostics(
         diagnostics.append(actual_pnl_diagnostic)
     if fx_rate_missing_diagnostic:
         diagnostics.append(fx_rate_missing_diagnostic)
+    if market_value_base_missing_diagnostic:
+        diagnostics.append(market_value_base_missing_diagnostic)
+    if roll_down_window_missing_diagnostic:
+        diagnostics.append(roll_down_window_missing_diagnostic)
     if current_balance is None:
         diagnostics.append("Missing current balance row; ending_dirty_mv defaults to 0.")
     if prior_balance is None:
@@ -759,15 +872,8 @@ def _resolve_balance_row(
 def _dirty_market_value(row: Mapping[str, object] | None) -> Decimal:
     if row is None:
         return ZERO
-    market_value = _coerce_decimal(
-        row.get("market_value_amount", row.get("market_value", row.get("market_value_native", ZERO)))
-    )
-    accrued_interest = _coerce_decimal(
-        row.get(
-            "accrued_interest_amount",
-            row.get("accrued_interest", row.get("accrued_interest_native", ZERO)),
-        )
-    )
+    market_value = _coerce_decimal(_first_available_value(row, _MARKET_VALUE_KEYS))
+    accrued_interest = _coerce_decimal(_first_available_value(row, _ACCRUED_INTEREST_KEYS))
     return market_value + accrued_interest
 
 

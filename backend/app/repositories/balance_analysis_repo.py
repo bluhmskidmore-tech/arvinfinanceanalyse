@@ -1458,6 +1458,13 @@ class BalanceAnalysisRepository(DuckDBRepository):
         conn: duckdb.DuckDBPyConnection,
         report_date: str,
     ) -> list[dict[str, Any]]:
+        """Aggregate formal ZQTZ rows for Campisi decision-grade reads.
+
+        Rate weighting excludes missing coupon_rate / ytm_value from both the
+        numerator and denominator (缺失≠0). Explicit 0 remains a valid
+        zero-coupon / zero-ytm observation and stays in the weighted average.
+        Coverage ratios are MV-weighted share of rows with a non-null rate.
+        """
         if not _campisi_decision_table_exists(conn, "fact_formal_zqtz_balance_daily"):
             return []
         return _campisi_decision_duckdb_rows(
@@ -1478,14 +1485,29 @@ class BalanceAnalysisRepository(DuckDBRepository):
                 sum(coalesce(market_value_amount, 0)) as market_value_amount,
                 sum(coalesce(amortized_cost_amount, 0)) as amortized_cost_amount,
                 sum(coalesce(accrued_interest_amount, 0)) as accrued_interest_amount,
+                -- 缺失≠0：缺 coupon 行不得 coalesce 成 0 拉低加权利率；显式 0 才是零息。
                 case
-                    when sum(abs(coalesce(market_value_amount, 0))) = 0 then avg(coupon_rate)
-                    else sum(coalesce(coupon_rate, 0) * abs(coalesce(market_value_amount, 0))) / sum(abs(coalesce(market_value_amount, 0)))
+                    when sum(case when coupon_rate is not null then abs(coalesce(market_value_amount, 0)) else 0 end) = 0
+                        then avg(coupon_rate)
+                    else sum(coupon_rate * abs(coalesce(market_value_amount, 0)))
+                         / sum(case when coupon_rate is not null then abs(coalesce(market_value_amount, 0)) else 0 end)
                 end as coupon_rate,
                 case
-                    when sum(abs(coalesce(market_value_amount, 0))) = 0 then avg(ytm_value)
-                    else sum(coalesce(ytm_value, 0) * abs(coalesce(market_value_amount, 0))) / sum(abs(coalesce(market_value_amount, 0)))
+                    when sum(case when ytm_value is not null then abs(coalesce(market_value_amount, 0)) else 0 end) = 0
+                        then avg(ytm_value)
+                    else sum(ytm_value * abs(coalesce(market_value_amount, 0)))
+                         / sum(case when ytm_value is not null then abs(coalesce(market_value_amount, 0)) else 0 end)
                 end as ytm_value,
+                case
+                    when sum(abs(coalesce(market_value_amount, 0))) = 0 then null
+                    else sum(case when coupon_rate is not null then abs(coalesce(market_value_amount, 0)) else 0 end)
+                         / sum(abs(coalesce(market_value_amount, 0)))
+                end as coupon_rate_coverage_ratio,
+                case
+                    when sum(abs(coalesce(market_value_amount, 0))) = 0 then null
+                    else sum(case when ytm_value is not null then abs(coalesce(market_value_amount, 0)) else 0 end)
+                         / sum(abs(coalesce(market_value_amount, 0)))
+                end as ytm_value_coverage_ratio,
                 min(maturity_date) as maturity_date,
                 count(*) as source_row_count
             from fact_formal_zqtz_balance_daily

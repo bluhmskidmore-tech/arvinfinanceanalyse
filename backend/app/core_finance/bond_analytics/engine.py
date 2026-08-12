@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -38,8 +38,32 @@ _FORMAL_CNY_AMOUNT_FIELDS = (
     "amortized_cost_cny",
     "accrued_interest_cny",
 )
-# par 回退聚合告警中最多列出的债券代码数，超出以“…共 N 只”收尾（防日志爆炸）。
-_YTM_PAR_FALLBACK_LOG_CODE_LIMIT = 20
+# 假设口径聚合告警中最多列出的债券代码数，超出以“…共 N 只”收尾（防日志爆炸）。
+_DISCLOSURE_LOG_CODE_LIMIT = 20
+
+# 利率输入可得性分级：把「真实 0」「缺失」「脏值」三类彻底分开。
+# 归一后为 0 的零息券是合法观测值（observed），与 None 不同；
+# ``normalize_percent_rate_to_decimal`` 对 >20%、负数、非数值返回 None，
+# 这类脏值同样不是观测值，只是与「字段为空」的成因不同。
+RATE_INPUT_STATUS_OBSERVED = "observed"
+RATE_INPUT_STATUS_MISSING = "missing"
+RATE_INPUT_STATUS_DIRTY = "dirty"
+
+# 行级久期/DV01/凸性输入质量标记：消费方据此判断该行三项指标是否有观测支撑。
+# observed             —— 票息与 ytm 均为观测值（含真实零息 coupon=0），常规计算。
+# ytm_par_fallback     —— 有票息、ytm 缺失/脏值/非正，按 par 假设（ytm=coupon）计算。
+# ytm_unavailable      —— 零息券缺 ytm：Macaulay=剩余年限本就正确，但修正久期未折现、
+#                         凸性退化为 D²，属近似值。
+# coupon_unavailable   —— 票息缺失/脏值：久期退化为「剩余年限」这一零息代理，
+#                         该行久期/DV01/凸性不可当作正式风险指标使用。
+# no_remaining_term    —— 无剩余期限（已到期或缺到期日），三项指标按 0 记，与利率输入无关。
+DURATION_QUALITY_OBSERVED = "observed"
+DURATION_QUALITY_YTM_PAR_FALLBACK = "ytm_par_fallback"
+DURATION_QUALITY_YTM_UNAVAILABLE = "ytm_unavailable"
+DURATION_QUALITY_COUPON_UNAVAILABLE = "coupon_unavailable"
+DURATION_QUALITY_NO_REMAINING_TERM = "no_remaining_term"
+
+COUPON_UNAVAILABLE_RULE_ID = "duration_coupon_unavailable_proxy_v1"
 
 
 class FormalCNYClosureError(ValueError):
@@ -74,6 +98,20 @@ class FormalCNYClosureError(ValueError):
             f"currency={currency_code or '<unknown>'}; "
             + "; ".join(details)
         )
+
+
+@dataclass(slots=True)
+class _AssumptionDisclosure:
+    """按假设口径（而非观测值）计算的行的聚合披露累加器：行数 / 市值 / 债券代码。"""
+
+    row_count: int = 0
+    market_value: Decimal = Decimal("0")
+    instrument_codes: list[str] = field(default_factory=list)
+
+    def record(self, *, instrument_code: str, market_value: Decimal) -> None:
+        self.row_count += 1
+        self.market_value += market_value
+        self.instrument_codes.append(instrument_code or "<unknown>")
 
 
 @dataclass(slots=True, frozen=True)
@@ -120,6 +158,12 @@ class BondAnalyticsRow:
     trace_id: str
     value_date: date | None = None
     interest_payment_frequency_fallback_used: bool | None = None
+    # 诚实性披露（W-fi-2026-08 P1 后续）：区分票息/ytm 的「真实 0」「缺失」「脏值」，
+    # 并声明该行久期/DV01/凸性是观测值支撑还是假设值支撑。默认值只服务于
+    # 直接构造 BondAnalyticsRow 的测试/夹具，引擎始终显式赋值。
+    coupon_rate_input_status: str = RATE_INPUT_STATUS_OBSERVED
+    ytm_input_status: str = RATE_INPUT_STATUS_OBSERVED
+    duration_quality_flag: str = DURATION_QUALITY_OBSERVED
 
 
 def compute_bond_analytics_rows(
@@ -129,9 +173,8 @@ def compute_bond_analytics_rows(
     """Project canonical snapshot rows into pure-compute bond analytics rows."""
 
     analytics_rows: list[BondAnalyticsRow] = []
-    ytm_par_fallback_row_count = 0
-    ytm_par_fallback_market_value = Decimal("0")
-    ytm_par_fallback_instrument_codes: list[str] = []
+    ytm_par_fallback = _AssumptionDisclosure()
+    coupon_unavailable = _AssumptionDisclosure()
     for index, snapshot_row in enumerate(snapshot_rows):
         if _coerce_bool(snapshot_row.get("is_issuance_like")):
             continue
@@ -164,12 +207,14 @@ def compute_bond_analytics_rows(
             accounting_class = map_accounting_class(accounting_source)
             accounting_rule_id, _ = get_accounting_rule_trace(accounting_source)
 
-        coupon_rate = _normalize_rate_decimal(snapshot_row.get("coupon_rate"))
+        coupon_rate, coupon_rate_input_status = _classify_rate_input(
+            snapshot_row.get("coupon_rate")
+        )
         interest_mode = _as_text(snapshot_row.get("interest_mode"))
         interest_payment_frequency, interest_payment_frequency_fallback_used = resolve_interest_payment_frequency(interest_mode)
         coupon_frequency = coupon_frequency_per_year(interest_mode)
         interest_rate_style = classify_interest_rate_style(interest_mode)
-        ytm = _normalize_rate_decimal(snapshot_row.get("ytm_value"))
+        ytm, ytm_input_status = _classify_rate_input(snapshot_row.get("ytm_value"))
         maturity_date = _coerce_date(snapshot_row.get("maturity_date"))
         years_to_maturity = _compute_years_to_maturity(
             report_date=report_date,
@@ -207,23 +252,40 @@ def compute_bond_analytics_rows(
             modified_duration = Decimal("0")
             convexity = Decimal("0")
             dv01 = Decimal("0")
+            duration_quality_flag = DURATION_QUALITY_NO_REMAINING_TERM
         else:
+            # 缺失/脏值的票息与 ytm 在算式入口仍按 0 代入（保持既有数值行为），
+            # 但不再静默：duration_quality_flag 逐行声明该行三项指标究竟由观测值
+            # 还是假设值支撑，缺失与脏值再由 *_input_status 进一步区分。
+            coupon_rate_for_math = coupon_rate if coupon_rate is not None else Decimal("0")
+            ytm_for_math = ytm if ytm is not None else Decimal("0")
             # W-fi-2026-08 P1：有票息缺 ytm 的行按 par 假设（ytm=coupon）计算
             # 久期/修正久期/凸性，三项指标共用同一生效 ytm 口径；
             # ytm>0 正常路径 effective_ytm == ytm，行为不变。
             effective_ytm, ytm_par_fallback_used = resolve_ytm_with_par_fallback(
-                coupon_rate or Decimal("0"),
-                ytm or Decimal("0"),
+                coupon_rate_for_math,
+                ytm_for_math,
+            )
+            duration_quality_flag = _resolve_duration_quality_flag(
+                coupon_rate_input_status=coupon_rate_input_status,
+                ytm_input_status=ytm_input_status,
+                ytm_par_fallback_used=ytm_par_fallback_used,
             )
             if ytm_par_fallback_used:
-                ytm_par_fallback_row_count += 1
-                ytm_par_fallback_market_value += market_value
-                ytm_par_fallback_instrument_codes.append(instrument_code or "<unknown>")
+                ytm_par_fallback.record(
+                    instrument_code=instrument_code,
+                    market_value=market_value,
+                )
+            if duration_quality_flag == DURATION_QUALITY_COUPON_UNAVAILABLE:
+                coupon_unavailable.record(
+                    instrument_code=instrument_code,
+                    market_value=market_value,
+                )
             macaulay_duration = estimate_duration(
                 maturity_date,
                 report_date,
-                coupon_rate=coupon_rate or Decimal("0"),
-                ytm=ytm or Decimal("0"),
+                coupon_rate=coupon_rate_for_math,
+                ytm=ytm_for_math,
                 bond_code=instrument_code,
                 coupon_frequency=coupon_frequency,
             )
@@ -294,31 +356,70 @@ def compute_bond_analytics_rows(
                     f"trace_bond_analytics_{instrument_code or 'row'}_{index}",
                 ),
                 value_date=_coerce_date(snapshot_row.get("value_date")),
+                coupon_rate_input_status=coupon_rate_input_status,
+                ytm_input_status=ytm_input_status,
+                duration_quality_flag=duration_quality_flag,
             )
         )
 
-    if ytm_par_fallback_row_count:
-        # 聚合级披露（无行级 provenance 列，schema 不变）：本批有票息但 ytm
+    if ytm_par_fallback.row_count:
+        # 聚合级披露（行级标记见 duration_quality_flag，尚未落库）：本批有票息但 ytm
         # 缺失/非正的行按 par 假设计算久期/DV01；附回退债券代码清单便于排查。
         logger.warning(
             "compute_bond_analytics_rows: %d coupon-bond rows with missing/non-positive ytm "
             "used par-assumption duration (rule_id=%s, ytm=coupon_rate); "
             "market_value_cny=%s report_date=%s instrument_codes=%s",
-            ytm_par_fallback_row_count,
+            ytm_par_fallback.row_count,
             YTM_PAR_FALLBACK_RULE_ID,
-            ytm_par_fallback_market_value,
+            ytm_par_fallback.market_value,
             report_date.isoformat(),
-            _format_ytm_par_fallback_instrument_codes(ytm_par_fallback_instrument_codes),
+            _format_disclosure_instrument_codes(ytm_par_fallback.instrument_codes),
+        )
+
+    if coupon_unavailable.row_count:
+        # 票息缺失/脏值：这些行的久期只是「剩余年限」零息代理，DV01/凸性同源，
+        # 不得当作观测支撑的正式风险指标；行级标记为 coupon_unavailable。
+        logger.warning(
+            "compute_bond_analytics_rows: %d rows with missing/dirty coupon_rate produced "
+            "remaining-term duration proxy (rule_id=%s, duration_quality_flag=%s); "
+            "their duration/DV01/convexity are assumption-based, not observation-backed; "
+            "market_value_cny=%s report_date=%s instrument_codes=%s",
+            coupon_unavailable.row_count,
+            COUPON_UNAVAILABLE_RULE_ID,
+            DURATION_QUALITY_COUPON_UNAVAILABLE,
+            coupon_unavailable.market_value,
+            report_date.isoformat(),
+            _format_disclosure_instrument_codes(coupon_unavailable.instrument_codes),
         )
 
     return analytics_rows
 
 
-def _format_ytm_par_fallback_instrument_codes(codes: list[str]) -> str:
-    """去重保序后最多列 20 个回退债券代码，超出以“…共 N 只”收尾（N 为去重后总只数）。"""
+def _resolve_duration_quality_flag(
+    *,
+    coupon_rate_input_status: str,
+    ytm_input_status: str,
+    ytm_par_fallback_used: bool,
+) -> str:
+    """按输入可得性给该行久期/DV01/凸性定级（取最严重的一项）。
+
+    票息未知最严重：``estimate_duration`` 在 ``coupon_rate<=0`` 时直接返回剩余
+    年限（零息假设），对真正的付息债会系统性高估久期与 DV01，且无法由 ytm 补救。
+    """
+    if coupon_rate_input_status != RATE_INPUT_STATUS_OBSERVED:
+        return DURATION_QUALITY_COUPON_UNAVAILABLE
+    if ytm_par_fallback_used:
+        return DURATION_QUALITY_YTM_PAR_FALLBACK
+    if ytm_input_status != RATE_INPUT_STATUS_OBSERVED:
+        return DURATION_QUALITY_YTM_UNAVAILABLE
+    return DURATION_QUALITY_OBSERVED
+
+
+def _format_disclosure_instrument_codes(codes: list[str]) -> str:
+    """去重保序后最多列 20 个披露债券代码，超出以“…共 N 只”收尾（N 为去重后总只数）。"""
     unique_codes = list(dict.fromkeys(codes))
-    shown = ",".join(unique_codes[:_YTM_PAR_FALLBACK_LOG_CODE_LIMIT])
-    if len(unique_codes) > _YTM_PAR_FALLBACK_LOG_CODE_LIMIT:
+    shown = ",".join(unique_codes[:_DISCLOSURE_LOG_CODE_LIMIT])
+    if len(unique_codes) > _DISCLOSURE_LOG_CODE_LIMIT:
         return f"{shown}…共 {len(unique_codes)} 只"
     return shown
 
@@ -436,6 +537,25 @@ def _normalize_rate_decimal(value: Any) -> Decimal | None:
     return Decimal(str(normalized))
 
 
+def _classify_rate_input(value: Any) -> tuple[Decimal | None, str]:
+    """归一利率并区分「真实 0」「缺失」「脏值」三类输入。
+
+    - 归一成功（含零息券的真实 0）→ ``(值, observed)``；
+    - 字段为 ``None`` / 空串 → ``(None, missing)``；
+    - 有值但被 ``normalize_percent_rate_to_decimal`` 拒绝（>20%、负数、非数值）
+      → ``(None, dirty)``。
+
+    缺失与脏值的归一结果同为 ``None``，数值路径一致，但成因不同：缺失指向上游
+    补数，脏值指向源数据清洗，必须分别可见。
+    """
+    normalized = _normalize_rate_decimal(value)
+    if normalized is not None:
+        return normalized, RATE_INPUT_STATUS_OBSERVED
+    if value is None or not str(value).strip():
+        return None, RATE_INPUT_STATUS_MISSING
+    return None, RATE_INPUT_STATUS_DIRTY
+
+
 def _coerce_date(value: Any) -> date | None:
     if value is None:
         return None
@@ -456,6 +576,15 @@ def _coerce_bool(value: Any) -> bool:
 
 
 __all__ = [
+    "COUPON_UNAVAILABLE_RULE_ID",
+    "DURATION_QUALITY_COUPON_UNAVAILABLE",
+    "DURATION_QUALITY_NO_REMAINING_TERM",
+    "DURATION_QUALITY_OBSERVED",
+    "DURATION_QUALITY_YTM_PAR_FALLBACK",
+    "DURATION_QUALITY_YTM_UNAVAILABLE",
+    "RATE_INPUT_STATUS_DIRTY",
+    "RATE_INPUT_STATUS_MISSING",
+    "RATE_INPUT_STATUS_OBSERVED",
     "BondAnalyticsRow",
     "ENGINE_RULE_VERSION",
     "FormalCNYClosureError",

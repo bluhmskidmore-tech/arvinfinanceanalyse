@@ -109,3 +109,61 @@ def test_campisi_decision_balance_rows_take_cny_basis_only_without_double_count(
 
     total_market_value = sum(row["market_value_amount"] for row in rows)
     assert total_market_value == Decimal("1420")
+
+
+def _seed_missing_rate_rows(conn: duckdb.DuckDBPyConnection) -> None:
+    """同组多行：有票息/有YTM、缺失、显式零息各一条，用于证明缺失≠0。"""
+    rows = [
+        (
+            "2026-01-01", "BOND_MIX", "Bond Mix", "FIOA", "5010", "bond", "treasury", "AAA",
+            "H", "AC", "asset", "CNY", "CNY",
+            Decimal("100"), Decimal("100"), Decimal("100"), Decimal("1"),
+            Decimal("0.04"), Decimal("0.05"), "2031-01-01", False,
+        ),
+        (
+            "2026-01-01", "BOND_MIX", "Bond Mix", "FIOA", "5010", "bond", "treasury", "AAA",
+            "H", "AC", "asset", "CNY", "CNY",
+            Decimal("100"), Decimal("100"), Decimal("100"), Decimal("1"),
+            None, None, "2031-01-01", False,
+        ),
+        (
+            "2026-01-01", "BOND_MIX", "Bond Mix", "FIOA", "5010", "bond", "treasury", "AAA",
+            "H", "AC", "asset", "CNY", "CNY",
+            Decimal("50"), Decimal("50"), Decimal("50"), Decimal("0"),
+            Decimal("0"), Decimal("0"), "2031-01-01", False,
+        ),
+    ]
+    conn.executemany(
+        """
+        insert into fact_formal_zqtz_balance_daily values
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        rows,
+    )
+
+
+def test_campisi_decision_balance_rows_exclude_missing_rates_from_weighted_avg(tmp_path) -> None:
+    """缺失利率不得 coalesce 成 0 拉低加权；覆盖率只计有利率的市值。"""
+    db_path = tmp_path / "campisi_decision_missing_rate.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        _create_zqtz_balance_fact_table(conn)
+        _seed_missing_rate_rows(conn)
+    finally:
+        conn.close()
+
+    repo = BalanceAnalysisRepository(str(db_path))
+    rows = repo.fetch_campisi_decision_balance_rows("2026-01-01")
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["market_value_amount"] == Decimal("250")
+    # 加权 coupon = (0.04*100 + 0*50) / (100+50) = 0.04*2/3；缺失 100 不进分母。
+    assert float(row["coupon_rate"]) == pytest.approx(0.04 * 100 / 150)
+    # 加权 ytm = (0.05*100 + 0*50) / 150
+    assert float(row["ytm_value"]) == pytest.approx(0.05 * 100 / 150)
+    # 覆盖率 = 有利率市值 / 总市值 = 150/250
+    assert float(row["coupon_rate_coverage_ratio"]) == pytest.approx(0.6)
+    assert float(row["ytm_value_coverage_ratio"]) == pytest.approx(0.6)
+    # 若仍用 coalesce(rate,0)/全量分母，会得到 0.04*100/250=0.016，覆盖率虚高为 1。
+    assert float(row["coupon_rate"]) != pytest.approx(0.016)

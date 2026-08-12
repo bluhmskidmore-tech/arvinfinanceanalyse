@@ -142,6 +142,7 @@ _RISK_INDICATORS_KEYS = (
     "weighted_convexity",
     "total_spread_dv01",
     "reinvestment_ratio_1y",
+    "weighted_convexity_coverage_ratio",
 )
 
 _Q8 = Decimal("0.00000001")
@@ -810,7 +811,13 @@ class BondAnalyticsRepository:
             conn.close()
 
     def fetch_business_type_metrics(self, report_date: str) -> list[dict[str, object]]:
-        """Aggregate by bond_type: market_value, YTM and modified_duration (market-value weighted)."""
+        """Aggregate by bond_type: market_value, YTM and modified_duration (market-value weighted).
+
+        Rows missing ytm / modified_duration are excluded from that metric's
+        numerator and denominator alike (缺失≠0); an explicit 0 is a real
+        observation and keeps its weight. ``*_coverage_ratio`` reports the
+        market-value share actually carrying the field.
+        """
         ytm_norm = (
             "(case when ytm is null then null "
             "when ytm > 1 and ytm <= 100 then ytm / 100.0 else ytm end)"
@@ -826,9 +833,17 @@ class BondAnalyticsRepository:
                 select
                   cast(bond_type as varchar) as name,
                   coalesce(sum(market_value), 0) as market_value,
-                  sum(({ytm_norm}) * market_value) / nullif(sum(market_value), 0) as weighted_avg_ytm,
-                  sum(coalesce(modified_duration, 0) * market_value)
-                    / nullif(sum(market_value), 0) as weighted_avg_duration
+                  -- 缺失≠0：缺 YTM/久期的持仓不得进入分母，否则加权值被系统性拉低。
+                  sum(({ytm_norm}) * market_value)
+                    / nullif(sum(case when ytm is not null then market_value else 0 end), 0)
+                    as weighted_avg_ytm,
+                  sum(modified_duration * market_value)
+                    / nullif(sum(case when modified_duration is not null then market_value else 0 end), 0)
+                    as weighted_avg_duration,
+                  sum(case when ytm is not null then market_value else 0 end)
+                    / nullif(sum(market_value), 0) as weighted_avg_ytm_coverage_ratio,
+                  sum(case when modified_duration is not null then market_value else 0 end)
+                    / nullif(sum(market_value), 0) as weighted_avg_duration_coverage_ratio
                 from {FACT_TABLE}
                 where cast(report_date as varchar) = ?
                   and bond_type is not null
@@ -844,6 +859,8 @@ class BondAnalyticsRepository:
                     "market_value": row[1],
                     "weighted_avg_ytm": row[2],
                     "weighted_avg_duration": row[3],
+                    "weighted_avg_ytm_coverage_ratio": row[4],
+                    "weighted_avg_duration_coverage_ratio": row[5],
                 }
                 for row in rows
             ]
@@ -1086,9 +1103,11 @@ class BondAnalyticsRepository:
                     then sum(case when is_credit then market_value else 0 end) / sum(market_value)
                     else 0
                   end as credit_ratio,
+                  -- 缺失≠0：缺凸性的持仓不得进入分母，否则加权凸性被系统性拉低。
                   case
-                    when coalesce(sum(market_value), 0) > 0
-                    then sum(convexity * market_value) / sum(market_value)
+                    when coalesce(sum(case when convexity is not null then market_value else 0 end), 0) > 0
+                    then sum(convexity * market_value)
+                       / sum(case when convexity is not null then market_value else 0 end)
                     else 0
                   end as weighted_convexity,
                   coalesce(sum(spread_dv01), 0) as total_spread_dv01,
@@ -1096,7 +1115,12 @@ class BondAnalyticsRepository:
                     when coalesce(sum(face_value), 0) > 0
                     then sum(case when years_to_maturity <= 1 then face_value else 0 end) / sum(face_value)
                     else 0
-                  end as reinvestment_ratio_1y
+                  end as reinvestment_ratio_1y,
+                  case
+                    when coalesce(sum(market_value), 0) > 0
+                    then sum(case when convexity is not null then market_value else 0 end) / sum(market_value)
+                    else 0
+                  end as weighted_convexity_coverage_ratio
                 from {FACT_TABLE}
                 where cast(report_date as varchar) = ?
                 """,
@@ -1159,6 +1183,14 @@ class BondAnalyticsRepository:
         conn: duckdb.DuckDBPyConnection,
         report_date: str,
     ) -> list[dict[str, Any]]:
+        """Aggregate formal bond-analytics rows for Campisi decision-grade reads.
+
+        Weighting excludes missing coupon_rate / ytm / years_to_maturity /
+        modified_duration / convexity from both the numerator and denominator
+        (缺失≠0). Explicit 0 remains a valid zero-coupon / zero-ytm /
+        zero-convexity observation and stays in the weighted average.
+        Coverage ratios are the MV-weighted share of rows carrying the field.
+        """
         if not _campisi_decision_table_exists(conn, FACT_TABLE):
             return []
         return _campisi_decision_duckdb_rows(
@@ -1178,28 +1210,64 @@ class BondAnalyticsRepository:
                 sum(coalesce(market_value, 0)) as market_value,
                 sum(coalesce(amortized_cost, 0)) as amortized_cost,
                 sum(coalesce(accrued_interest, 0)) as accrued_interest,
+                -- 缺失≠0：缺字段的行不得 coalesce 成 0 拉低加权值；显式 0 才是真实观测。
                 case
-                    when sum(abs(coalesce(market_value, 0))) = 0 then avg(coupon_rate)
-                    else sum(coalesce(coupon_rate, 0) * abs(coalesce(market_value, 0))) / sum(abs(coalesce(market_value, 0)))
+                    when sum(case when coupon_rate is not null then abs(coalesce(market_value, 0)) else 0 end) = 0
+                        then avg(coupon_rate)
+                    else sum(coupon_rate * abs(coalesce(market_value, 0)))
+                         / sum(case when coupon_rate is not null then abs(coalesce(market_value, 0)) else 0 end)
                 end as coupon_rate,
                 case
-                    when sum(abs(coalesce(market_value, 0))) = 0 then avg(ytm)
-                    else sum(coalesce(ytm, 0) * abs(coalesce(market_value, 0))) / sum(abs(coalesce(market_value, 0)))
+                    when sum(case when ytm is not null then abs(coalesce(market_value, 0)) else 0 end) = 0
+                        then avg(ytm)
+                    else sum(ytm * abs(coalesce(market_value, 0)))
+                         / sum(case when ytm is not null then abs(coalesce(market_value, 0)) else 0 end)
                 end as ytm,
                 min(maturity_date) as maturity_date,
                 case
-                    when sum(abs(coalesce(market_value, 0))) = 0 then avg(years_to_maturity)
-                    else sum(coalesce(years_to_maturity, 0) * abs(coalesce(market_value, 0))) / sum(abs(coalesce(market_value, 0)))
+                    when sum(case when years_to_maturity is not null then abs(coalesce(market_value, 0)) else 0 end) = 0
+                        then avg(years_to_maturity)
+                    else sum(years_to_maturity * abs(coalesce(market_value, 0)))
+                         / sum(case when years_to_maturity is not null then abs(coalesce(market_value, 0)) else 0 end)
                 end as years_to_maturity,
                 max(tenor_bucket) as tenor_bucket,
                 case
-                    when sum(abs(coalesce(market_value, 0))) = 0 then avg(modified_duration)
-                    else sum(coalesce(modified_duration, 0) * abs(coalesce(market_value, 0))) / sum(abs(coalesce(market_value, 0)))
+                    when sum(case when modified_duration is not null then abs(coalesce(market_value, 0)) else 0 end) = 0
+                        then avg(modified_duration)
+                    else sum(modified_duration * abs(coalesce(market_value, 0)))
+                         / sum(case when modified_duration is not null then abs(coalesce(market_value, 0)) else 0 end)
                 end as modified_duration,
                 case
-                    when sum(abs(coalesce(market_value, 0))) = 0 then avg(convexity)
-                    else sum(coalesce(convexity, 0) * abs(coalesce(market_value, 0))) / sum(abs(coalesce(market_value, 0)))
+                    when sum(case when convexity is not null then abs(coalesce(market_value, 0)) else 0 end) = 0
+                        then avg(convexity)
+                    else sum(convexity * abs(coalesce(market_value, 0)))
+                         / sum(case when convexity is not null then abs(coalesce(market_value, 0)) else 0 end)
                 end as convexity,
+                case
+                    when sum(abs(coalesce(market_value, 0))) = 0 then null
+                    else sum(case when coupon_rate is not null then abs(coalesce(market_value, 0)) else 0 end)
+                         / sum(abs(coalesce(market_value, 0)))
+                end as coupon_rate_coverage_ratio,
+                case
+                    when sum(abs(coalesce(market_value, 0))) = 0 then null
+                    else sum(case when ytm is not null then abs(coalesce(market_value, 0)) else 0 end)
+                         / sum(abs(coalesce(market_value, 0)))
+                end as ytm_coverage_ratio,
+                case
+                    when sum(abs(coalesce(market_value, 0))) = 0 then null
+                    else sum(case when years_to_maturity is not null then abs(coalesce(market_value, 0)) else 0 end)
+                         / sum(abs(coalesce(market_value, 0)))
+                end as years_to_maturity_coverage_ratio,
+                case
+                    when sum(abs(coalesce(market_value, 0))) = 0 then null
+                    else sum(case when modified_duration is not null then abs(coalesce(market_value, 0)) else 0 end)
+                         / sum(abs(coalesce(market_value, 0)))
+                end as modified_duration_coverage_ratio,
+                case
+                    when sum(abs(coalesce(market_value, 0))) = 0 then null
+                    else sum(case when convexity is not null then abs(coalesce(market_value, 0)) else 0 end)
+                         / sum(abs(coalesce(market_value, 0)))
+                end as convexity_coverage_ratio,
                 sum(coalesce(dv01, 0)) as dv01,
                 max(case when coalesce(is_credit, false) then 1 else 0 end) as is_credit,
                 sum(coalesce(spread_dv01, 0)) as spread_dv01,
@@ -1257,6 +1325,7 @@ def _empty_dashboard_headline_kpis_row() -> dict[str, object]:
         "weighted_coupon": z,
         "credit_spread_median": None,
         "total_dv01": z,
+        "weighted_coupon_coverage_ratio": z,
     }
 
 
@@ -1273,13 +1342,20 @@ def _fetch_one_period_headline_kpis(
           coalesce(sum(market_value - amortized_cost), 0) as unrealized_pnl,
           coalesce(sum(amortized_cost), 0) as total_amortized_cost,
           coalesce(sum(accrued_interest), 0) as total_accrued_interest,
+          -- 缺失≠0：缺票息的持仓不得进入分母，否则加权票息被系统性拉低。
           case
-            when coalesce(sum(face_value), 0) > 0
-            then sum(coupon_rate * face_value) / sum(face_value)
+            when coalesce(sum(case when coupon_rate is not null then face_value else 0 end), 0) > 0
+            then sum(coupon_rate * face_value)
+               / sum(case when coupon_rate is not null then face_value else 0 end)
             else 0
           end as weighted_coupon,
           median(case when is_credit then ytm end) as credit_spread_median,
-          coalesce(sum(dv01), 0) as total_dv01
+          coalesce(sum(dv01), 0) as total_dv01,
+          case
+            when coalesce(sum(face_value), 0) > 0
+            then sum(case when coupon_rate is not null then face_value else 0 end) / sum(face_value)
+            else 0
+          end as weighted_coupon_coverage_ratio
         from {FACT_TABLE}
         where cast(report_date as varchar) = ?
         """,
@@ -1300,6 +1376,7 @@ def _fetch_one_period_headline_kpis(
         "weighted_coupon": _decimal(row[6]),
         "credit_spread_median": None if row[7] is None else _decimal(row[7]),
         "total_dv01": _decimal(row[8]),
+        "weighted_coupon_coverage_ratio": _decimal(row[9]),
     }
 
 
@@ -1348,6 +1425,7 @@ def _empty_dashboard_risk_indicators_row() -> dict[str, object]:
         "weighted_convexity": z,
         "total_spread_dv01": z,
         "reinvestment_ratio_1y": z,
+        "weighted_convexity_coverage_ratio": z,
     }
 
 
