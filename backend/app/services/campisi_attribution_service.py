@@ -13,12 +13,13 @@ Campisi 完整归因桥接层 — 将 V3 的 DuckDB 数据转换为 campisi.py �
 from __future__ import annotations
 
 import hashlib
+import logging
 import time
 import uuid
 from collections import defaultdict
 from copy import deepcopy
 from datetime import date, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from threading import Lock
 from typing import Any
@@ -40,6 +41,7 @@ from backend.app.core_finance.campisi import (
     usable_spread_bp,
 )
 from backend.app.core_finance.campisi_decision_grade import (
+    DirtyNumericInputError,
     compute_decision_grade_row,
     normalize_accounting_basis,
     primary_driver,
@@ -55,6 +57,8 @@ from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope,
     build_formal_result_meta,
 )
+
+logger = logging.getLogger(__name__)
 
 RULE_VERSION = "rv_campisi_full_v1"
 CACHE_VERSION = "cv_campisi_full_v1"
@@ -611,13 +615,25 @@ def _is_generic_asset_class(value: str) -> bool:
     return value.strip().lower() in {"", "other", "unknown"}
 
 
+# 序列化后的缺失占位符：按真缺失处理，与脏输入语义区分。
+_MISSING_NUMERIC_TEXT = {"nan", "none", "null"}
+
+
 def _decimal_value(value: Any) -> Decimal:
+    """真缺失（None/空白/NaN/缺失占位符）→ 0；脏输入 → DirtyNumericInputError，不静默落零。"""
     if _is_missing(value):
         return Decimal("0")
-    try:
-        return Decimal(str(value))
-    except Exception:
+    if isinstance(value, str) and value.strip().lower() in _MISSING_NUMERIC_TEXT:
         return Decimal("0")
+    try:
+        parsed = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError) as exc:
+        raise DirtyNumericInputError(
+            f"无法解析为 Decimal 的脏数值输入：{value!r}（{type(value).__name__}）"
+        ) from exc
+    if not parsed.is_finite():
+        raise DirtyNumericInputError(f"非有限数值不得进入 Campisi 计算：{value!r}")
+    return parsed
 
 
 def _numeric_raw(value: Any) -> Decimal:
@@ -638,8 +654,9 @@ def _is_missing(value: Any) -> bool:
     if isinstance(value, str):
         return not value.strip()
     try:
+        # NaN != NaN；pandas NA 布尔化抛 TypeError，numpy 数组抛 ValueError，均按"非缺失"处理。
         return bool(value != value)
-    except Exception:
+    except (TypeError, ValueError):
         return False
 
 
@@ -909,10 +926,16 @@ def _fetch_formal_bridge(*, settings: Any, report_date: str) -> dict[str, Any]:
     )
 
 
+# 正式桥接的"可用性降级"只覆盖数据/环境类失败（无数据 ValueError、血缘损坏 RuntimeError、
+# DuckDB/文件访问错误）；编程错误（KeyError/TypeError/AttributeError 等）不再被静默吞掉。
+_BRIDGE_UNAVAILABLE_ERRORS = (duckdb.Error, OSError, ValueError, RuntimeError)
+
+
 def _try_fetch_formal_bridge(*, settings: Any, report_date: str) -> dict[str, Any] | None:
     try:
         return _fetch_formal_bridge(settings=settings, report_date=report_date)
-    except Exception:
+    except _BRIDGE_UNAVAILABLE_ERRORS as exc:
+        logger.warning("正式 PnL 桥接不可用（report_date=%s）：%s", report_date, exc)
         return None
 
 
@@ -937,7 +960,8 @@ def _try_fetch_cached_formal_bridge(
         return cached
     try:
         bridge = _fetch_formal_bridge(settings=settings, report_date=report_date)
-    except Exception:
+    except _BRIDGE_UNAVAILABLE_ERRORS as exc:
+        logger.warning("正式 PnL 桥接不可用（report_date=%s，缓存路径）：%s", report_date, exc)
         return None
     return _set_cached_campisi_bridge(cache_key, bridge)
 
@@ -1457,7 +1481,7 @@ def _decision_table_exists(conn: duckdb.DuckDBPyConnection, table_name: str) -> 
                 [table_name],
             ).fetchone()[0]
         )
-    except Exception:
+    except duckdb.Error:
         return False
 
 
@@ -1692,7 +1716,21 @@ def _fetch_decision_curve(
         """,
         [curve_type, resolved],
     )
-    return {str(record["tenor"]).upper(): _decimal_value(record.get("rate_pct")) for record in records}, resolved
+    curve: dict[str, Decimal] = {}
+    for record in records:
+        tenor = str(record["tenor"]).upper()
+        try:
+            curve[tenor] = _decimal_value(record.get("rate_pct"))
+        except DirtyNumericInputError as exc:
+            # 脏点位按缺失点位处理（不伪造 0 利率），后续缺曲线机制会计入残差并披露。
+            logger.warning(
+                "正式收益率曲线含脏点位，已跳过：curve_type=%s trade_date=%s tenor=%s：%s",
+                curve_type,
+                resolved,
+                tenor,
+                exc,
+            )
+    return curve, resolved
 
 
 def _fetch_decision_curves(
@@ -1974,6 +2012,7 @@ def campisi_decision_grade_envelope(
         computed_rows: list[dict[str, Any]] = []
         warnings: list[str] = list(curve_warnings)
         out_of_scope_rows = 0
+        dirty_input_rows = 0
         duplicate_position_keys = 0
         aggregated_position_groups = 0
         accounting_matrix: dict[str, dict[str, Any]] = {}
@@ -1991,6 +2030,60 @@ def campisi_decision_grade_envelope(
                 continue
 
             accounting_basis = normalize_accounting_basis(pnl_row.get("accounting_basis"))
+            try:
+                row_formal_pnl = _decimal_value(pnl_row.get("total_pnl"))
+                row_valuation_516 = _decimal_value(pnl_row.get("fair_value_change_516"))
+                duplicate_key = (
+                    _decimal_value((analytics or {}).get("source_row_count")) > 1
+                    or _decimal_value((balance or {}).get("source_row_count")) > 1
+                )
+                market_value = (analytics or {}).get("market_value")
+                if _is_missing(market_value):
+                    market_value = (balance or {}).get("market_value_amount")
+                row_input = {
+                    "actual_pnl": pnl_row.get("total_pnl"),
+                    "carry": pnl_row.get("interest_income_514"),
+                    "realized_trading": pnl_row.get("capital_gain_517"),
+                    "manual_adjustment": pnl_row.get("manual_adjustment"),
+                    "market_value": market_value,
+                    "modified_duration": (analytics or {}).get("modified_duration"),
+                    "convexity": (analytics or {}).get("convexity"),
+                    "spread_dv01": (analytics or {}).get("spread_dv01"),
+                    "years_to_maturity": (analytics or balance or {}).get("years_to_maturity"),
+                    "rating": (analytics or balance or {}).get("rating"),
+                    "is_credit": bool((analytics or {}).get("is_credit"))
+                    or "credit" in _text_value((analytics or balance or {}).get("asset_class_std") or (balance or {}).get("asset_class")).lower(),
+                    "duplicate_position_key": duplicate_key,
+                    "duplicate_position_key_is_ambiguous": False,
+                    "missing_analytics": analytics is None,
+                    "include_market_effects_in_formal_pnl": accounting_basis == ACCOUNTING_BASIS_FVTPL,
+                }
+                computed = compute_decision_grade_row(
+                    row_input,
+                    treasury_start=curves["treasury_start"],
+                    treasury_end=curves["treasury_end"],
+                    credit_start_by_rating=curves["credit_start_by_rating"],
+                    credit_end_by_rating=curves["credit_end_by_rating"],
+                )
+                row_market_value = campisi_decision_decimal(market_value)
+            except DirtyNumericInputError as exc:
+                # 脏输入行不得静默变 0 计入总额：整行跳过并显式披露。
+                dirty_input_rows += 1
+                logger.warning(
+                    "Campisi 决策评级行含脏数值输入，已跳过：instrument=%s portfolio=%s cost_center=%s：%s",
+                    pnl_row.get("instrument_code"),
+                    pnl_row.get("portfolio_name"),
+                    pnl_row.get("cost_center"),
+                    exc,
+                )
+                warnings.append(
+                    f"PnL 明细行含脏数值输入，已跳过且不计入决策评级总额"
+                    f"（{_text_value(pnl_row.get('instrument_code')) or 'unknown'}）：{exc}"
+                )
+                continue
+
+            if duplicate_key:
+                aggregated_position_groups += 1
             matrix_row = accounting_matrix.setdefault(
                 accounting_basis,
                 {
@@ -2000,51 +2093,16 @@ def campisi_decision_grade_envelope(
                     "interpretation": _accounting_interpretation(accounting_basis),
                 },
             )
-            matrix_row["formal_pnl"] += _decimal_value(pnl_row.get("total_pnl"))
-            matrix_row["valuation_or_oci_516"] += _decimal_value(pnl_row.get("fair_value_change_516"))
-
-            duplicate_key = (
-                _decimal_value((analytics or {}).get("source_row_count")) > 1
-                or _decimal_value((balance or {}).get("source_row_count")) > 1
-            )
-            if duplicate_key:
-                aggregated_position_groups += 1
-            market_value = (analytics or {}).get("market_value")
-            if _is_missing(market_value):
-                market_value = (balance or {}).get("market_value_amount")
-            row_input = {
-                "actual_pnl": pnl_row.get("total_pnl"),
-                "carry": pnl_row.get("interest_income_514"),
-                "realized_trading": pnl_row.get("capital_gain_517"),
-                "manual_adjustment": pnl_row.get("manual_adjustment"),
-                "market_value": market_value,
-                "modified_duration": (analytics or {}).get("modified_duration"),
-                "convexity": (analytics or {}).get("convexity"),
-                "spread_dv01": (analytics or {}).get("spread_dv01"),
-                "years_to_maturity": (analytics or balance or {}).get("years_to_maturity"),
-                "rating": (analytics or balance or {}).get("rating"),
-                "is_credit": bool((analytics or {}).get("is_credit"))
-                or "credit" in _text_value((analytics or balance or {}).get("asset_class_std") or (balance or {}).get("asset_class")).lower(),
-                "duplicate_position_key": duplicate_key,
-                "duplicate_position_key_is_ambiguous": False,
-                "missing_analytics": analytics is None,
-                "include_market_effects_in_formal_pnl": accounting_basis == ACCOUNTING_BASIS_FVTPL,
-            }
-            computed = compute_decision_grade_row(
-                row_input,
-                treasury_start=curves["treasury_start"],
-                treasury_end=curves["treasury_end"],
-                credit_start_by_rating=curves["credit_start_by_rating"],
-                credit_end_by_rating=curves["credit_end_by_rating"],
-            )
+            matrix_row["formal_pnl"] += row_formal_pnl
+            matrix_row["valuation_or_oci_516"] += row_valuation_516
             computed.update(
                 {
                     "instrument_code": pnl_row.get("instrument_code"),
                     "portfolio_name": pnl_row.get("portfolio_name"),
                     "cost_center": pnl_row.get("cost_center"),
                     "accounting_basis": accounting_basis,
-                    "fair_value_change_516": _decimal_value(pnl_row.get("fair_value_change_516")),
-                    "market_value": campisi_decision_decimal(market_value),
+                    "fair_value_change_516": row_valuation_516,
+                    "market_value": row_market_value,
                 }
             )
             warnings.extend(computed.get("diagnostics") or [])
@@ -2078,8 +2136,22 @@ def campisi_decision_grade_envelope(
                 missing_spread_count += 1
 
         for row in analytics_rows:
-            component_dv01 += _decimal_value(row.get("dv01"))
-            component_cs01 += _decimal_value(row.get("spread_dv01"))
+            try:
+                row_dv01 = _decimal_value(row.get("dv01"))
+                row_cs01 = _decimal_value(row.get("spread_dv01"))
+            except DirtyNumericInputError as exc:
+                logger.warning(
+                    "Campisi 决策评级 analytics 行 DV01/CS01 含脏数值输入，已跳过：instrument=%s：%s",
+                    row.get("instrument_code"),
+                    exc,
+                )
+                warnings.append(
+                    f"analytics 行 DV01/CS01 含脏数值输入，已跳过该行贡献"
+                    f"（{_text_value(row.get('instrument_code')) or 'unknown'}）：{exc}"
+                )
+                continue
+            component_dv01 += row_dv01
+            component_cs01 += row_cs01
 
         residual_noise = totals["residual_noise"]
         residual_ratio = _decision_residual_ratio(
@@ -2156,6 +2228,7 @@ def campisi_decision_grade_envelope(
                 "duplicate_position_keys": duplicate_position_keys,
                 "aggregated_position_groups": aggregated_position_groups,
                 "unmatched_pnl_rows": out_of_scope_rows,
+                "dirty_input_row_count": dirty_input_rows,
                 "stale_curve_fallback_count": stale_curve_fallback_count,
                 "warnings": sorted(set(warnings)),
             },

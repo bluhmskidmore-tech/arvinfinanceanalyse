@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from decimal import Decimal
+import math
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 ZERO = Decimal("0")
@@ -25,13 +26,44 @@ _CREDIT_CURVE_BY_RATING = {
 }
 
 
-def decimal_value(value: Any) -> Decimal:
+class DirtyNumericInputError(ValueError):
+    """脏数值输入：非缺失、但无法解析为有限 Decimal 的值。
+
+    决策评级等正式口径禁止把脏输入静默当 0；真缺失（None/NaN/空白占位）
+    仍按既有缺失语义处理，两者语义必须可区分。
+    """
+
+
+# 序列化后的缺失占位符（"nan"/"none"/"null"/空白）按真缺失处理，与脏输入区分。
+_MISSING_NUMERIC_TEXT = {"", "nan", "none", "null"}
+
+
+def is_missing_numeric(value: Any) -> bool:
+    """真缺失：None、空白/缺失占位字符串、float/Decimal NaN。"""
     if value is None:
+        return True
+    if isinstance(value, str):
+        return value.strip().lower() in _MISSING_NUMERIC_TEXT
+    if isinstance(value, float):
+        return math.isnan(value)
+    if isinstance(value, Decimal):
+        return value.is_nan()
+    return False
+
+
+def decimal_value(value: Any) -> Decimal:
+    """真缺失 → ZERO（维持既有缺失聚合语义）；脏输入 → DirtyNumericInputError。"""
+    if is_missing_numeric(value):
         return ZERO
     try:
-        return Decimal(str(value))
-    except Exception:
-        return ZERO
+        result = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError) as exc:
+        raise DirtyNumericInputError(
+            f"无法解析为 Decimal 的脏数值输入：{value!r}（{type(value).__name__}）"
+        ) from exc
+    if not result.is_finite():
+        raise DirtyNumericInputError(f"非有限数值不得进入决策评级计算：{value!r}")
+    return result
 
 
 def normalize_accounting_basis(value: Any) -> str:

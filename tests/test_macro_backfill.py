@@ -114,6 +114,56 @@ def test_fetch_rows_for_plan_retries_transient_source_error(
     )
 
 
+def test_fetch_rows_for_plan_narrowed_catch_propagates_unexpected_bug(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """窄化后的捕获：vendor/IO 类失败仍降级换源，代码缺陷类异常必须抛出。"""
+    plan = SeriesBackfillPlan(
+        series_id="M0017126",
+        series_name="制造业PMI",
+        existing_rows=0,
+        start_date="2024-01-01",
+        end_date="2026-05-20",
+        frequency="monthly",
+        unit="index",
+        sources=(BackfillSource.TUSHARE_MACRO,),
+        snapshot_rows_in_range=0,
+        notes="test",
+    )
+    monkeypatch.setattr(macro_backfill_module.time, "sleep", lambda _seconds: None)
+
+    def buggy_fetch(_source: BackfillSource, **_kwargs: object) -> list[BackfillRow]:
+        raise TypeError("unexpected mapper bug")
+
+    monkeypatch.setattr(macro_backfill_module, "_fetch_by_source", buggy_fetch)
+    with pytest.raises(TypeError, match="unexpected mapper bug"):
+        _fetch_rows_for_plan(
+            plan,
+            duckdb_path=tmp_path / "unused.duckdb",
+            vendor_series_code="M0017126",
+            start_date="2024-01-01",
+            end_date="2026-05-20",
+            sources_filter=["tushare_macro"],
+        )
+
+    def vendor_failure(_source: BackfillSource, **_kwargs: object) -> list[BackfillRow]:
+        raise RuntimeError("Choice cnq failed: 10002")
+
+    monkeypatch.setattr(macro_backfill_module, "_fetch_by_source", vendor_failure)
+    outcome = _fetch_rows_for_plan(
+        plan,
+        duckdb_path=tmp_path / "unused.duckdb",
+        vendor_series_code="M0017126",
+        start_date="2024-01-01",
+        end_date="2026-05-20",
+        sources_filter=["tushare_macro"],
+    )
+    assert outcome.source is None
+    assert outcome.rows == ()
+    assert outcome.attempted_sources == (BackfillSource.TUSHARE_MACRO,)
+
+
 def test_backfill_macro_series_dry_run_lists_sparse_series(tmp_path: Path) -> None:
     db_path = tmp_path / "macro.duckdb"
     conn = duckdb.connect(str(db_path))

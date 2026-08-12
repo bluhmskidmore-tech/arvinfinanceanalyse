@@ -381,11 +381,43 @@ def _join_lineage_tokens(*values: object) -> str:
 
 
 class _HomeCacheBuildRunRows(list[dict[str, object]]):
-    def __init__(self, rows: list[dict[str, object]], *, is_partial: bool) -> None:
+    def __init__(
+        self,
+        rows: list[dict[str, object]],
+        *,
+        is_partial: bool,
+        bad_row_count: int = 0,
+        first_bad_row_preview: str | None = None,
+    ) -> None:
         super().__init__(rows)
         self.is_partial = is_partial
+        self.bad_row_count = bad_row_count
+        self.first_bad_row_preview = first_bad_row_preview
         self.full_rows: list[dict[str, object]] | None = None
         self._full_rows_lock = threading.Lock()
+
+
+_HOME_CACHE_BUILD_RUN_BAD_ROW_PREVIEW_CHARS = 200
+_HOME_CACHE_BUILD_RUN_BAD_ROW_WARNED_SOURCES: set[str] = set()
+_HOME_CACHE_BUILD_RUN_BAD_ROW_WARN_LOCK = threading.Lock()
+
+
+def _warn_cache_build_run_bad_rows_once(
+    source: str,
+    bad_row_count: int,
+    first_bad_row_preview: str | None,
+) -> None:
+    """Warn about malformed cache_build_run rows, deduplicated per source file."""
+    with _HOME_CACHE_BUILD_RUN_BAD_ROW_WARN_LOCK:
+        if source in _HOME_CACHE_BUILD_RUN_BAD_ROW_WARNED_SOURCES:
+            return
+        _HOME_CACHE_BUILD_RUN_BAD_ROW_WARNED_SOURCES.add(source)
+    logger.warning(
+        "cache_build_run read skipped %d malformed row(s) from %s; first_bad_row=%r",
+        bad_row_count,
+        source,
+        first_bad_row_preview,
+    )
 
 
 class _HomeCacheBuildRunFallbackState:
@@ -421,6 +453,15 @@ def _read_recent_cache_build_runs_for_executive_overview(
         return None
     is_partial = stat.st_size > _HOME_CACHE_BUILD_RUN_TAIL_BYTES
     rows: list[dict[str, object]] = []
+    bad_row_count = 0
+    first_bad_row_preview: str | None = None
+
+    def record_bad_row(text: str) -> None:
+        nonlocal bad_row_count, first_bad_row_preview
+        bad_row_count += 1
+        if first_bad_row_preview is None:
+            first_bad_row_preview = text[:_HOME_CACHE_BUILD_RUN_BAD_ROW_PREVIEW_CHARS]
+
     for line in data.splitlines():
         text = line.strip()
         if not text:
@@ -428,10 +469,20 @@ def _read_recent_cache_build_runs_for_executive_overview(
         try:
             row = json.loads(text)
         except json.JSONDecodeError:
+            record_bad_row(text)
             continue
         if isinstance(row, dict):
             rows.append(row)
-    return _HomeCacheBuildRunRows(rows, is_partial=is_partial)
+        else:
+            record_bad_row(text)
+    if bad_row_count:
+        _warn_cache_build_run_bad_rows_once(str(target), bad_row_count, first_bad_row_preview)
+    return _HomeCacheBuildRunRows(
+        rows,
+        is_partial=is_partial,
+        bad_row_count=bad_row_count,
+        first_bad_row_preview=first_bad_row_preview,
+    )
 
 
 def _full_cache_build_runs_for_partial_rows(
@@ -3103,6 +3154,42 @@ def _product_category_monthly_headline_from_values(
     )
 
 
+class _ProductCategoryHeadlineValues(dict[str, dict[str, object]]):
+    """Home-headline fast-path values carrying explicit degradation metadata.
+
+    Mirrors the `_HomeCacheBuildRunRows` pattern: shape-compatible with the
+    plain dict consumers already `.get()` from, while exposing fail-visible
+    `degraded` / `degraded_reason` attributes instead of a silent empty dict.
+    """
+
+    def __init__(
+        self,
+        values: dict[str, dict[str, object]] | None = None,
+        *,
+        degraded: bool = False,
+        degraded_reason: str | None = None,
+    ) -> None:
+        super().__init__(values or {})
+        self.degraded = degraded
+        self.degraded_reason = degraded_reason
+
+
+class _DegradedProductCategoryHeadline:
+    """Explicit degraded marker returned instead of a silent ``None``.
+
+    The headline payload schemas cannot carry warnings, so the failure reason
+    rides on this marker; `_compute_home_snapshot_envelope` converts it back
+    to ``None`` for the payload and surfaces the reason in
+    ``filters_applied.degraded_reasons``.
+    """
+
+    degraded = True
+
+    def __init__(self, component: str, reason: str) -> None:
+        self.component = component
+        self.reason = reason
+
+
 def _fetch_product_category_home_headline_values(
     duck_path: str,
     report_date: str,
@@ -3113,11 +3200,20 @@ def _fetch_product_category_home_headline_values(
             report_date=report_date,
             views=views,
         )
-    except Exception:
-        return {}
+    except Exception as exc:
+        reason = f"{type(exc).__name__}: {exc}"
+        logger.warning(
+            "product_category home headline fast path failed (views=%s, report_date=%s): %s",
+            views,
+            report_date,
+            reason,
+        )
+        return _ProductCategoryHeadlineValues(degraded=True, degraded_reason=reason)
 
 
-def _build_product_category_ytd_headline(report_date: str) -> ProductCategoryYtdHeadlinePayload | None:
+def _build_product_category_ytd_headline(
+    report_date: str,
+) -> ProductCategoryYtdHeadlinePayload | _DegradedProductCategoryHeadline | None:
     """与 /product-category-pnl「汇总视图」（ytd）一致：grand_total + intermediate_business_income。"""
     settings = get_settings()
     duck_path = str(getattr(settings, "duckdb_path", "") or "").strip()
@@ -3136,8 +3232,14 @@ def _build_product_category_ytd_headline(report_date: str) -> ProductCategoryYtd
             report_date,
             float(settings.ftp_rate_pct),
         )
-    except Exception:
-        return None
+    except Exception as exc:
+        reason = f"{type(exc).__name__}: {exc}"
+        logger.warning(
+            "product_category ytd headline fallback resolver failed (report_date=%s): %s",
+            report_date,
+            reason,
+        )
+        return _DegradedProductCategoryHeadline("product_category_ytd", reason)
 
     if pc_payload is None:
         return None
@@ -3223,7 +3325,7 @@ def _build_product_category_monthly_headline(report_date: str) -> ProductCategor
 def _build_product_category_headlines(
     report_date: str,
 ) -> tuple[
-    ProductCategoryYtdHeadlinePayload | None,
+    ProductCategoryYtdHeadlinePayload | _DegradedProductCategoryHeadline | None,
     ProductCategoryMonthlyHeadlinePayload | None,
     int,
     int,
@@ -3249,7 +3351,10 @@ def _build_product_category_headlines(
             elapsed_ms = int((time.perf_counter() - started_at) * 1000)
             return ytd_headline, monthly_headline, elapsed_ms, elapsed_ms
 
-    def timed_ytd() -> tuple[ProductCategoryYtdHeadlinePayload | None, int]:
+    def timed_ytd() -> tuple[
+        ProductCategoryYtdHeadlinePayload | _DegradedProductCategoryHeadline | None,
+        int,
+    ]:
         started_at = time.perf_counter()
         return _build_product_category_ytd_headline(report_date), int((time.perf_counter() - started_at) * 1000)
 
@@ -4353,6 +4458,12 @@ def _compute_home_snapshot_envelope(
         product_category_ytd_ms,
         product_category_monthly_ms,
     ) = _build_product_category_headlines(target_date)
+    product_category_degraded_reasons: dict[str, str] = {}
+    if isinstance(product_category_ytd, _DegradedProductCategoryHeadline):
+        product_category_degraded_reasons[product_category_ytd.component] = (
+            product_category_ytd.reason
+        )
+        product_category_ytd = None
     _log_home_snapshot_perf_step(
         "product_category_ytd",
         step_t0,
@@ -4434,6 +4545,7 @@ def _compute_home_snapshot_envelope(
             "effective_report_dates": effective,
             "domains_missing": domains_missing,
             "degraded_components": degraded_components,
+            "degraded_reasons": product_category_degraded_reasons,
         },
     )
     _log_home_snapshot_perf_step(

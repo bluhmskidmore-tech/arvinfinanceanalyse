@@ -733,7 +733,11 @@ def resolve_product_category_ytd_payload_for_home_snapshot(
         try:
             return ProductCategoryPnlPayload.model_validate(result_dict)
         except Exception:
-            pass
+            logger.warning(
+                "product_category read-model ytd payload failed validation for %s; falling back to canonical recompute",
+                report_date,
+                exc_info=True,
+            )
     return product_category_pnl_payload_from_canonical_ytd_anchor(
         duckdb_path, governance_dir, report_date, ftp_rate_pct
     )

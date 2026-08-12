@@ -46,6 +46,16 @@ RULE_VERSION = "rv_backfill_macro_v1"
 MIN_ROW_THRESHOLD = 10
 FETCH_MAX_ATTEMPTS = 3
 FETCH_RETRY_DELAY_SECONDS = 1.0
+# 源级取数失败（vendor/网络/IO/解析/duckdb 读）允许重试并降级到下一数据源；
+# 其余异常（如 TypeError/KeyError 一类代码缺陷）必须直接抛出，不得吞掉。
+# OSError 已覆盖 requests 异常（requests.RequestException 继承 IOError）。
+FETCH_RETRYABLE_EXCEPTIONS: tuple[type[Exception], ...] = (
+    ImportError,
+    OSError,
+    RuntimeError,
+    ValueError,
+    duckdb.Error,
+)
 CYCLE_ROTATION_MACRO_CONFIG_PATH = _REPO_ROOT / "config" / "cycle_rotation_macro_series.json"
 CYCLE_ROTATION_MACRO_OFFICIAL_RELEASES_PATH = (
     _REPO_ROOT / "config" / "cycle_rotation_macro_official_releases.json"
@@ -588,7 +598,7 @@ def _fetch_rows_for_plan(
                     end_date=end_date,
                 )
                 break
-            except Exception as exc:
+            except FETCH_RETRYABLE_EXCEPTIONS as exc:
                 logger.warning(
                     "macro backfill fetch failed series=%s source=%s attempt=%d/%d error=%s",
                     plan.series_name,

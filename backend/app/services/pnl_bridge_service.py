@@ -150,27 +150,39 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
     treasury_prior_warning = _optional_warning(treasury_current, "_prior_warning")
     cdb_prior_warning = _optional_warning(cdb_current, "_prior_warning")
     aaa_prior_warning = _optional_warning(aaa_current, "_prior_warning")
-    treasury_current_points = _curve_points(treasury_current)
-    treasury_prior_points = _curve_points(_snapshot_dict(treasury_prior))
-    cdb_current_points = _curve_points(cdb_current)
-    cdb_prior_points = _curve_points(_snapshot_dict(cdb_prior))
-    aaa_current_points = _curve_points(aaa_current)
-    aaa_prior_points = _curve_points(_snapshot_dict(aaa_prior))
+    treasury_current_points, treasury_current_curve_error = _curve_points_with_reason(treasury_current)
+    treasury_prior_points, treasury_prior_curve_error = _curve_points_with_reason(_snapshot_dict(treasury_prior))
+    cdb_current_points, cdb_current_curve_error = _curve_points_with_reason(cdb_current)
+    cdb_prior_points, cdb_prior_curve_error = _curve_points_with_reason(_snapshot_dict(cdb_prior))
+    aaa_current_points, aaa_current_curve_error = _curve_points_with_reason(aaa_current)
+    aaa_prior_points, aaa_prior_curve_error = _curve_points_with_reason(_snapshot_dict(aaa_prior))
+    curve_conversion_slots = (
+        ("treasury", report_date, treasury_current, treasury_current_points, treasury_current_curve_error),
+        ("treasury", prior_date, treasury_prior, treasury_prior_points, treasury_prior_curve_error),
+        ("cdb", report_date, cdb_current, cdb_current_points, cdb_current_curve_error),
+        ("cdb", prior_date, cdb_prior, cdb_prior_points, cdb_prior_curve_error),
+        ("aaa_credit", report_date, aaa_current, aaa_current_points, aaa_current_curve_error),
+        ("aaa_credit", prior_date, aaa_prior, aaa_prior_points, aaa_prior_curve_error),
+    )
     curve_conversion_warnings = [
         (
             f"Required {curve_type} curve snapshot for trade_date="
             f"{snapshot.get('trade_date') or requested_trade_date} could not be converted "
             "to validated curve points; curve effect remains 0."
         )
-        for curve_type, requested_trade_date, snapshot, points in (
-            ("treasury", report_date, treasury_current, treasury_current_points),
-            ("treasury", prior_date, treasury_prior, treasury_prior_points),
-            ("cdb", report_date, cdb_current, cdb_current_points),
-            ("cdb", prior_date, cdb_prior, cdb_prior_points),
-            ("aaa_credit", report_date, aaa_current, aaa_current_points),
-            ("aaa_credit", prior_date, aaa_prior, aaa_prior_points),
-        )
+        for curve_type, requested_trade_date, snapshot, points, _reason in curve_conversion_slots
         if snapshot is not None and points is None
+    ]
+    # Disclosure companion to the generic conversion warning above (kept verbatim for
+    # exact-string consumers): each failed slot also reports its validation reason.
+    curve_snapshot_error_warnings = [
+        (
+            f"curve_snapshot_error: {curve_type} curve snapshot for trade_date="
+            f"{snapshot.get('trade_date') or requested_trade_date} rejected: {reason}; "
+            "curve effect remains 0."
+        )
+        for curve_type, requested_trade_date, snapshot, _points, reason in curve_conversion_slots
+        if snapshot is not None and reason is not None
     ]
     relevant_curve_warnings = [
         *_curve_warnings_for_bridge_rows(
@@ -184,6 +196,7 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
             aaa_prior_warning=aaa_prior_warning,
         ),
         *curve_conversion_warnings,
+        *curve_snapshot_error_warnings,
     ]
     curve_conversion_failed = bool(curve_conversion_warnings)
     curve_latest_fallback = any(
@@ -689,23 +702,35 @@ def _snapshot_dict(value: object) -> dict[str, object]:
 
 
 def _curve_points(snapshot: dict[str, object] | None) -> dict[str, Decimal] | None:
+    points, _reason = _curve_points_with_reason(snapshot)
+    return points
+
+
+def _curve_points_with_reason(
+    snapshot: dict[str, object] | None,
+) -> tuple[dict[str, Decimal] | None, str | None]:
+    """Strictly convert a snapshot curve; on failure return ``(None, reason)``.
+
+    The reason feeds the warnings channel only (disclosure). Callers keep the
+    designed zeroed-curve fallback for the numeric path.
+    """
     if snapshot is None:
-        return None
+        return None, None
     value = snapshot.get("curve")
     if not isinstance(value, Mapping):
-        return None
+        return None, f"curve payload is not a mapping (got {type(value).__name__})"
     curve_points: dict[str, Decimal] = {}
     for tenor, rate in value.items():
         if not isinstance(tenor, str) or tenor not in TENOR_YEARS:
-            return None
+            return None, f"unknown tenor label {tenor!r}"
         try:
             decimal_rate = Decimal(str(rate))
         except (InvalidOperation, TypeError, ValueError):
-            return None
+            return None, f"invalid rate {rate!r} for tenor {tenor!r}"
         if not decimal_rate.is_finite():
-            return None
+            return None, f"non-finite rate {rate!r} for tenor {tenor!r}"
         curve_points[tenor] = decimal_rate
-    return curve_points
+    return curve_points, None
 
 
 def _resolve_pnl_lineage(*, governance_dir: str, report_date: str) -> dict[str, object]:
