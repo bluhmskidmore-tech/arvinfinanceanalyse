@@ -16,11 +16,13 @@ import type {
   LedgerPnlCandidateFinancialIndicatorsResultMeta,
   LedgerPnlFormalFinancialIndicatorContractPayload,
   LedgerPnlFormalIndicatorRuleChecksPayload,
+  LedgerPnlIndicatorSummaryPayload,
   LedgerPnlDatesPayload,
   LedgerPnlSummaryPayload,
   LedgerPnlDataPayload,
 } from "../api/contracts";
 import candidateFinancialIndicatorFixture from "./fixtures/ledgerPnlCandidateFinancialIndicators202606.json";
+import financialIndicatorSummary202603Fixture from "./fixtures/ledgerPnlFinancialIndicatorSummary202603.json";
 
 const mockLedgerMoney = (yuan: string) => ({
   yuan,
@@ -2820,5 +2822,41 @@ export function buildMockLedgerPnlCandidateFinancialIndicatorComponentDetail(
         ending_yuan: endings[index],
       })),
     }],
+  };
+}
+
+export const MOCK_LEDGER_PNL_INDICATOR_SUMMARY_RULE_VERSION =
+  "rv_ledger_financial_indicator_summary_v1";
+export const MOCK_LEDGER_PNL_INDICATOR_SUMMARY_CACHE_VERSION =
+  "cv_ledger_pnl_financial_indicator_summary_v1";
+
+const mockLedgerPnlFinancialIndicatorSummary202603 =
+  financialIndicatorSummary202603Fixture as LedgerPnlIndicatorSummaryPayload;
+
+export function buildMockLedgerPnlFinancialIndicatorSummary(
+  reportMonth: string,
+  currencyBasis: MockLedgerPnlCurrencyBasis = MOCK_LEDGER_PNL_DEFAULT_CURRENCY_BASIS,
+): LedgerPnlIndicatorSummaryPayload {
+  const normalizedReportMonth = reportMonth.trim();
+  const fixture = mockLedgerPnlFinancialIndicatorSummary202603;
+  if (normalizedReportMonth === fixture.report_month && currencyBasis === "CNX") {
+    return fixture;
+  }
+  // 其他月份/币种：保留行结构，数值置空（缺来源不得伪装成 0）。
+  const year = Number(normalizedReportMonth.slice(0, 4)) || fixture.report_year;
+  return {
+    ...fixture,
+    report_month: normalizedReportMonth || fixture.report_month,
+    report_year: year,
+    title: `${year}年经营指标情况表（总账口径）`,
+    currency_basis: currencyBasis,
+    data_status: "no_data",
+    periods: [],
+    sections: fixture.sections.map((section) => ({
+      ...section,
+      rows: section.rows.map((row) => ({ ...row, values: [] })),
+    })),
+    quality_checks: [],
+    source_files: [],
   };
 }
