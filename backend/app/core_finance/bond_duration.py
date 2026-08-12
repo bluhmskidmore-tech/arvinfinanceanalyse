@@ -235,7 +235,14 @@ def estimate_convexity_bond(
     wind_convexity: Decimal | None = None,
     coupon_frequency: int = 2,
 ) -> Decimal:
-    """与旧 common.estimate_convexity 公式一致（供后续迁移 quantitative 测试）。"""
+    """基于 Macaulay 久期 ``D`` 的凸性近似（非现金流二阶导凸性）。
+
+    正收益率时本式为 ``[D² + D(1 + 1/f)] / (1 + y/f)²``，与
+    ``bond_analytics.common.estimate_convexity`` 的
+    ``D(D + 1) / (1 + y/f)²`` 不一致。``f=1`` 时本式多
+    ``D / (1 + y)²``，一般相对高 ``1 / (D + 1)``；仅 ``D=1`` 时高 50%。
+    非正收益率与 Wind 覆盖分支保留既有兼容行为。
+    """
     if wind_convexity is not None and wind_convexity > Decimal("0"):
         return wind_convexity
 

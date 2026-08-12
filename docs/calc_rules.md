@@ -332,6 +332,23 @@ Coupon-frequency authority（2026-07-20）：
 - `bond_four_effects`、`bond_duration` 与 `bond_analytics.common` 的默认参数仅为兼容入口，不构成正式业务口径；正式调用链必须显式传入频率。
 - Campisi 正式归因当前尚未接入该权威：`merge_positions` 未保留 `interest_mode`，`campisi._coupon_freq` 仍按资产类别启发式取 1/2。切换该路径会改变历史归因结果，须经 owner 裁决并安排全期回归/重算；在此之前不得宣称 Campisi 与 Bond Analytics 已统一频率口径。
 
+## Convexity dual-caliber baseline（2026-08-12）
+
+当前两套凸性实现均以 **Macaulay 久期** `D` 为入参，属于基于久期的近似式，**不是**按现金流对收益率求二阶导得到的标准现金流凸性。标准参照式为
+`C_std = Σ[CF_k × k(k+1) / (1+y/f)^(k+2)] / (P × f²)`。
+
+- `bond_analytics/common.py::estimate_convexity`：正收益率分支为 `C_common = D(D+1) / (1+y/f)²`；直接调用方是 `bond_analytics/engine.py::compute_bond_analytics_rows`（正式 Bond Analytics 物化计算链）。`y<=0` 时保留既有 `D²` 兼容回退。
+- `bond_duration.py::estimate_convexity_bond`：正收益率分支为 `C_bond_duration = [D² + D(1+1/f)] / (1+y/f)²`；直接调用方是 `bond_four_effects.py::compute_bond_six_effects` 与 `krd.py::build_krd_position_metrics`，`campisi.py::campisi_enhanced` 经四效应路径间接调用。`y<=0` 与 Wind 覆盖分支保留既有兼容行为。
+
+两式不一致：`f=1` 时 `C_bond_duration` 比 `C_common` 多 `D/(1+y)²`，一般相对高 `1/(D+1)`；仅当 `D=1` 时高 50%，不能把 50% 当作任意久期下的固定差异。
+
+相对标准现金流凸性的既有扫描证据（1Y~30Y × 年付/半年付，偏差定义为 `(近似值-C_std)/C_std`）：
+
+- `C_common`：−26.1% ~ +33.2%。
+- `C_bond_duration`：−23.4% ~ +66.6%。
+
+两套现有行为由 `tests/test_convexity_caliber_baseline.py` 冻结；凸性标准化改造待业务批准维护窗口，在批准前不得以“公式对齐”为由修改数值口径、提升规则版本或触发重物化。
+
 Credit-spread benchmark tenor（2026-07-20）：
 - 信用利差逐券基准优先按 `years_to_maturity` 在同日国债曲线上线性插值。
 - `years_to_maturity` 缺失、非有限或非正时，才回退 `tenor_bucket` 兼容口径。
@@ -354,6 +371,32 @@ Credit-spread benchmark tenor（2026-07-20）：
 - 权威字段：`avg_modified_duration` = 桶内市值加权平均修正久期。
 - `krd` 为同值弃用别名（过渡期保留）。
 - 该字段**不是** `core_finance/krd.py` 的 key-rate duration 贡献，也**不是** `risk_tensor` 的桶内 ΣDV01。
+
+## Fractional-period duration dual caliber（2026-08-12）
+
+同一只碎期券（结算/报告日落在两个付息日之间）在仓库内有两套 Macaulay 久期实现，数值不同。两者并存，但**用途不可互换**：
+
+- **正式口径 = 引擎街市惯例**：`bond_analytics/common.py::compute_macaulay_duration`。首期按碎期天数做分数幂折现（`(1+y) ** period_number`，`period_number` 带小数），期数按 `ROUND_CEILING` 取整。正式 Bond Analytics 物化（`bond_analytics/engine.py`）、`pnl_bridge.py` 走该实现，其结果即正式 DV01、修正久期与情景损益的来源。
+- **近似口径 = 整期闭式**：`bond_duration.py::compute_macaulay_duration`。期数 `N = to_integral_value(years × frequency)`（Decimal 默认 `ROUND_HALF_EVEN`），不做碎期折现、不扣应计，等价于"恰好剩 N 个完整付息期"；另有两处上限保护：`剩余年限 ≤ 0.25 → 久期 = 剩余年限`、`Macaulay > 剩余年限 → 回退为剩余年限`。
+
+误差量级（实测：coupon 4% / ytm 5% / 半年付，report_date `2026-03-20`，逐日扫 200–11000 天）：
+
+| 剩余期限 | 两套实现最大相对差 | 最差点（引擎 vs 闭式，年） |
+|---|---|---|
+| 整期券（`years × frequency` 为整数） | ≈ 0.0002% | 4.5695 vs 4.5695，差异仅来自 1e-4 量化 |
+| ≤ 3Y | 47.6% | 0.748 年：0.7381 vs 0.5000（闭式取整到 1 期并触发上限保护） |
+| 3–7Y | 6.7% | 3.249 年：3.0461 vs 2.8543 |
+| 7–15Y | 3.8% | 7.252 年：6.2675 vs 6.5154 |
+| > 15Y | 2.3% | 30.005 年：16.2238 vs 16.6020 |
+
+基准参考案例（`tests/test_bond_duration_goldens.py` 券5 同一组参数）：剩余 1000 天、票息 4% / ytm 5% / 半年付 → Macaulay `2.5940` 年（引擎）vs `2.4025` 年（闭式），相对差 `+7.97%`；修正久期 `2.5308` vs `2.3439`。
+
+适用边界：
+
+- 正式披露、正式 DV01、正式久期、情景损益一律以引擎街市惯例为准；闭式结果不得写入正式事实表，也不得与引擎结果混入同一汇总。
+- 闭式仅适用于休眠模块（`krd.py`、`credit_spread.py`）与明确标注为估算的非出账路径。接线任一休眠模块前，必须先按本条确认久期来源。
+- 误差由碎期驱动：整期券两套一致到量化精度，剩余期限越短、`years × frequency` 距离整数越远，闭式偏差越大；剩余期限 < 1 年时闭式不可用于任何对外数值。
+- 两套实现的黄金测试各自独立锁定，不得互相引用对方的期望值来"对齐"。
 
 ## 15. Business Type Insights（批准口径，2026-07-15）
 
