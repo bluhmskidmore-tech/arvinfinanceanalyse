@@ -60,7 +60,7 @@
           ],
           "has_synthetic_alternative": false,
           "recommendation": "synthesize",
-          "note": "可仿照 tests/fixtures/ledger_pnl 的 synthetic_aggregate_preserving 回放模式生成聚合守恒合成 fixture"
+          "note": "envelope 主对账路径已被 tests/test_finance_metric_component_detail_synthetic.py 间接覆盖（同一服务入口）；本文件独有的 stale-parent/桥阻断/源哈希漂移治理分支尚无合成版，待后续批次迁移"
         }
       ]
     },
@@ -79,9 +79,9 @@
             "data_input/pnl_总账对账-日均/总账对账202606.xlsx",
             "data_input/pnl_总账对账-日均/日均202605.xlsx"
           ],
-          "has_synthetic_alternative": false,
+          "has_synthetic_alternative": true,
           "recommendation": "synthesize",
-          "note": "同文件其余用例已用内存化 stub 覆盖逻辑分支；真实回放部分可迁移到合成工作簿"
+          "note": "合成版 tests/test_candidate_financial_indicator_period_comparison_service_synthetic.py（fixture: tests/synthetic_ledger_pnl_fixture.py）走同一磁盘 xlsx->解析->规则->桥->schema 路径，CI 可跑；真实回放保留为黄金锚点（真实 sha 锁、missing_required_sheet 缺口分支仅真实源可复现）"
         }
       ]
     },
@@ -115,9 +115,9 @@
             "data_input/pnl_总账对账-日均/总账对账202605.xlsx",
             "data_input/pnl_总账对账-日均/总账对账202606.xlsx"
           ],
-          "has_synthetic_alternative": false,
+          "has_synthetic_alternative": true,
           "recommendation": "synthesize",
-          "note": "可仿照 tests/fixtures/ledger_pnl 的 synthetic_aggregate_preserving 回放模式生成聚合守恒合成 fixture"
+          "note": "合成版 tests/test_finance_metric_component_detail_synthetic.py（fixture: tests/synthetic_ledger_pnl_fixture.py）覆盖精确对账/top 源定位/抵消户三个核心场景（经服务 envelope 触达同一 core 计算）；account_set_mismatch 与 failed-foot 两个 fail-closed 场景暂未合成，真实回放保留为黄金锚点"
         }
       ]
     },
@@ -199,6 +199,24 @@
           "count": 1,
           "category": "real-data",
           "reason": "财务指标汇总真实总账源回放断言，本地真实台账源目录缺失时跳过",
+          "depends_on": [
+            "data_input/*总账对账*日均*/ 目录（本机受治理真实源，位于 gitignore 的 data_input/ 下）"
+          ],
+          "has_synthetic_alternative": false,
+          "recommendation": "keep-controlled",
+          "note": "2026-08-12 并行会话新增用例；由 ci_skip_registry 守卫拦截后登记"
+        }
+      ]
+    },
+    {
+      "file": "tests/test_ledger_financial_indicator_summary_cny.py",
+      "expected_counts": {"skip_call": 1},
+      "occurrences": [
+        {
+          "kind": "skip_call",
+          "count": 1,
+          "category": "real-data",
+          "reason": "CNY 口径恒等校验真实总账源回放断言，本地真实台账源目录缺失时跳过",
           "depends_on": [
             "data_input/*总账对账*日均*/ 目录（本机受治理真实源，位于 gitignore 的 data_input/ 下）"
           ],
