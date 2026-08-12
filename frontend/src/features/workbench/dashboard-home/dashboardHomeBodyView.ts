@@ -165,7 +165,7 @@ export type HomeIncomeTrendRow = {
   missingReason: string | null;
 };
 
-/** 各期限 DV01 敞口（来自 /api/bond-analytics/krd-curve-risk 的 krd_buckets）。 */
+/** 各期限利率风险敞口（来自 /api/bond-analytics/krd-curve-risk 的 krd_buckets）。 */
 export type HomeKrdBucketRow = {
   id: string;
   tenor: string;

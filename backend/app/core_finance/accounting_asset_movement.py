@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
-from typing import Literal
+from typing import Literal, Protocol
 
 from backend.app.core_finance.accounting_basis_constants import ACCOUNTING_BASIS_AC
 
@@ -54,6 +55,26 @@ class AccountingAssetMovementRow:
     reconciliation_status: ReconciliationStatus
     source_version: str = ""
     rule_version: str = ""
+
+
+class AccountingAssetMovementSummaryRow(Protocol):
+    previous_balance: Decimal
+    current_balance: Decimal
+    balance_change: Decimal
+    zqtz_amount: Decimal
+    reconciliation_diff: Decimal
+    reconciliation_status: ReconciliationStatus
+
+
+@dataclass(slots=True, frozen=True)
+class AccountingAssetMovementSummary:
+    previous_balance_total: Decimal
+    current_balance_total: Decimal
+    balance_change_total: Decimal
+    zqtz_amount_total: Decimal
+    reconciliation_diff_total: Decimal
+    matched_bucket_count: int
+    bucket_count: int
 
 
 def build_accounting_asset_movement_rows(
@@ -131,6 +152,40 @@ def build_accounting_asset_movement_rows(
     return rows
 
 
+def build_accounting_asset_movement_summary(
+    rows: Iterable[AccountingAssetMovementSummaryRow],
+) -> AccountingAssetMovementSummary:
+    materialized_rows = tuple(rows)
+    return AccountingAssetMovementSummary(
+        previous_balance_total=sum(
+            (row.previous_balance for row in materialized_rows),
+            ZERO,
+        ),
+        current_balance_total=sum(
+            (row.current_balance for row in materialized_rows),
+            ZERO,
+        ),
+        balance_change_total=sum(
+            (row.balance_change for row in materialized_rows),
+            ZERO,
+        ),
+        zqtz_amount_total=sum(
+            (row.zqtz_amount for row in materialized_rows),
+            ZERO,
+        ),
+        reconciliation_diff_total=sum(
+            (row.reconciliation_diff for row in materialized_rows),
+            ZERO,
+        ),
+        matched_bucket_count=sum(
+            1
+            for row in materialized_rows
+            if row.reconciliation_status == "matched"
+        ),
+        bucket_count=len(materialized_rows),
+    )
+
+
 def _bucket_from_accounting_basis(value: str) -> BasisBucket | None:
     normalized = str(value or "").strip().upper()
     if normalized in {"AC", "H"}:
@@ -183,9 +238,11 @@ def _append_unique(items: list[str], value: str) -> None:
 
 __all__ = [
     "AccountingAssetMovementRow",
+    "AccountingAssetMovementSummary",
     "BasisBucket",
     "GlAccountingAssetBalance",
     "ReconciliationStatus",
     "ZqtzAccountingAssetBalance",
     "build_accounting_asset_movement_rows",
+    "build_accounting_asset_movement_summary",
 ]

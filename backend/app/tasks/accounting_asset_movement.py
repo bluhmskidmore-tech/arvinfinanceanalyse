@@ -27,7 +27,7 @@ from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.formal_balance_pipeline import run_formal_balance_pipeline_sync
 from backend.app.tasks.product_category_pnl import materialize_product_category_pnl_sync
 
-RULE_VERSION = "rv_accounting_asset_movement_v2"
+RULE_VERSION = "rv_accounting_asset_movement_v3"
 CACHE_KEY = "accounting_asset_movement.monthly"
 CACHE_VERSION = "cv_accounting_asset_movement_v1"
 JOB_NAME = "accounting_asset_movement_refresh"

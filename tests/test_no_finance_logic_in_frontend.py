@@ -49,12 +49,33 @@ DISPLAY_ONLY_FILE_SNIPPETS = {
     "features/workbench/dashboard/dashboardCockpitModel.ts": DASHBOARD_COCKPIT_DISPLAY_ONLY_SNIPPETS,
     "features/workbench/dashboard-home/dashboardHomeBodyView.ts": (
         # Dashboard home body reads backend-provided metrics and fixed mock values
-        # for display; these snippets are display-only field formatting.
+        # for display; these snippets are display-only field formatting. The
+        # KRDCurveRiskPayload identifier is the api-layer response type name.
+        "KRDCurveRiskPayload",
         '{ id: "dv01", label: "利率风险 DV01", value: dv01WanValueOrGap(payload.total_dv01) },',
         '{ id: "convexity", label: "加权凸性", value: numericValueOrGap(payload.weighted_convexity, "ratio") },',
         '{ id: "spread-dv01", label: "利差 DV01", value: dv01WanValueOrGap(payload.total_spread_dv01) },',
         '{ id: "dv01", label: "利率风险 DV01", value: "10,615.59 万" },',
         '{ id: "spread-dv01", label: "利差 DV01", value: GAP },',
+    ),
+    "features/workbench/dashboard-home/DashboardHomeOptionTwoLayout.tsx": (
+        # Option two dedupes the risk panel cell whose backend-provided label
+        # repeats the first-screen KPI; matching the label is display plumbing.
+        'metric.label.toUpperCase().includes("DV01"),',
+    ),
+    "features/workbench/dashboard-home/DashboardHomeOptionTwoOverview.tsx": (
+        # Option two declares the backend-provided KPI's display label only.
+        '{ id: "dv01-wan", label: "DV01", sourceIds: ["dv01-wan", "dv01"] },',
+    ),
+    "features/workbench/dashboard-home/DashboardHomeOptionTwoSupportBand.tsx": (
+        # KRD strip renders backend-provided per-tenor exposures; title/aria
+        # strings are display copy only.
+        '各期限 DV01',
+        'title={`${bucket.tenor} DV01 ${bucket.dv01Display}（利率上行 1bp 的估值敏感度）`}',
+    ),
+    "features/workbench/dashboard-home/dashboardHomeFirstScreenView.ts": (
+        # First-screen view model labels an already supplied DV01 display value.
+        'label: "DV01",',
     ),
     "features/workbench/dashboard-home/dashboardHomeView.ts": (
         # Dashboard home renders backend-provided risk readouts; these snippets
@@ -82,7 +103,7 @@ DISPLAY_ONLY_FILE_SNIPPETS = {
             '      {\n'
             '        label: "DV01",\n'
             '        value: dv01Value,\n'
-            '        tone: dv01Value === "-" ? "muted" : "ok",\n'
+            '        tone: dv01Value === EM_DASH ? "muted" : "ok",\n'
             "      },"
         ),
         '"当前为 MOCK 模式，样例市值、信用占比、DV01、持仓只数和归因结论仅用于页面结构验证，不可用于业务决策。";',

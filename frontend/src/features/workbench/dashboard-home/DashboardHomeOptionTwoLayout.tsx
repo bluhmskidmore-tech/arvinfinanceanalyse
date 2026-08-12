@@ -304,7 +304,7 @@ export function DashboardHomeOptionTwoBody({
     .slice(0, 3);
   const visibleRiskMetrics = [...riskPrimaryMetrics, ...riskSecondaryMetrics].slice(0, 5);
   // Top5 主体集中度来自首屏快照的风险条（portfolio headlines），风险概览此前未呈现。
-  // 替换与首屏 KPI 带完全重复的 DV01 格（§6 去重），保持 5 格避免窄面板挤压数值。
+  // 替换与首屏 KPI 带完全重复的利率风险格（§6 去重），保持 5 格避免窄面板挤压数值。
   const top5Concentration = firstScreenView.keyRiskStrip.find(
     (item) => item.id === "risk-top5",
   );
