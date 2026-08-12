@@ -1,19 +1,19 @@
 .candidate-period-comparison {
-  --candidate-navy: var(--ib-accent);
-  --candidate-blue: var(--ib-accent-hover);
-  --candidate-ink: var(--ib-ink);
-  --candidate-muted: var(--ib-ink-secondary);
-  --candidate-line: var(--ib-hairline);
-  --candidate-soft: var(--ib-surface-muted);
+  --candidate-navy: var(--dh-api-blue);
+  --candidate-blue: var(--dh-api-blue);
+  --candidate-ink: var(--dh-api-ink);
+  --candidate-muted: var(--dh-api-soft);
+  --candidate-line: var(--dh-api-line);
+  --candidate-soft: var(--dh-api-panel-2);
   display: grid;
   gap: 12px;
   margin: 14px 0;
   padding: 14px;
-  border: 1px solid var(--candidate-line, var(--ib-hairline));
-  border-left: 3px solid var(--candidate-blue, var(--ib-accent-hover));
-  border-radius: var(--ib-radius, 2px);
-  background: var(--candidate-soft, var(--ib-surface-muted));
-  color: var(--candidate-ink, var(--ib-ink));
+  border: 1px solid var(--candidate-line, var(--dh-api-line));
+  border-left: 3px solid var(--candidate-blue, var(--dh-api-blue));
+  border-radius: var(--dh-api-radius);
+  background: var(--candidate-soft, var(--dh-api-panel-2));
+  color: var(--candidate-ink, var(--dh-api-ink));
 }
 
 .candidate-period-comparison__header {
@@ -28,7 +28,7 @@
 }
 
 .candidate-period-comparison__header > div:first-child > span {
-  color: var(--candidate-blue, var(--ib-accent-hover));
+  color: var(--candidate-blue, var(--dh-api-blue));
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.12em;
@@ -36,7 +36,7 @@
 
 .candidate-period-comparison__header h3 {
   margin: 4px 0 0;
-  color: var(--candidate-navy, var(--ib-accent));
+  color: var(--candidate-navy, var(--dh-api-blue));
   font-size: 18px;
   line-height: 1.25;
 }
@@ -44,7 +44,7 @@
 .candidate-period-comparison__header p,
 .candidate-period-comparison__scope-gap p {
   margin: 5px 0 0;
-  color: var(--candidate-muted, var(--ib-ink-secondary));
+  color: var(--candidate-muted, var(--dh-api-soft));
   font-size: 12px;
   line-height: 1.5;
 }
@@ -60,16 +60,16 @@
 .candidate-period-comparison__boundary strong {
   padding: 5px 8px;
   border: 1px solid var(--moss-color-warning-300);
-  border-radius: var(--ib-radius, 2px);
+  border-radius: var(--dh-api-radius);
   background: var(--moss-color-warning-50);
-  color: var(--ib-warn);
+  color: var(--dh-api-amber);
   font-size: 11px;
 }
 
 .candidate-period-comparison__boundary small,
 .candidate-period-comparison__scope-gap small,
 .candidate-period-comparison__footer {
-  color: var(--candidate-muted, var(--ib-ink-secondary));
+  color: var(--candidate-muted, var(--dh-api-soft));
   font-size: 11px;
 }
 
@@ -81,9 +81,9 @@
   gap: 12px;
   padding: 9px 10px;
   border: 1px solid var(--moss-color-warning-300);
-  border-radius: var(--ib-radius, 2px);
+  border-radius: var(--dh-api-radius);
   background: var(--moss-color-warning-50);
-  color: var(--ib-warn);
+  color: var(--dh-api-amber);
   font-size: 11px;
   line-height: 1.45;
 }
@@ -96,11 +96,11 @@
   display: grid;
   border-color: var(--moss-color-info-200);
   background: var(--moss-color-info-50);
-  color: var(--ib-accent);
+  color: var(--dh-api-blue);
 }
 
 .candidate-period-comparison__scope-ready small {
-  color: var(--candidate-muted, var(--ib-ink-secondary));
+  color: var(--candidate-muted, var(--dh-api-soft));
 }
 
 .candidate-period-comparison__scope-gap {
@@ -109,12 +109,12 @@
   gap: 12px 18px;
   padding: 11px 12px;
   border: 1px solid var(--moss-color-warning-300);
-  border-radius: var(--ib-radius, 2px);
-  background: var(--candidate-paper, var(--ib-surface));
+  border-radius: var(--dh-api-radius);
+  background: var(--candidate-paper, var(--dh-api-panel));
 }
 
 .candidate-period-comparison__scope-gap > div > strong {
-  color: var(--candidate-navy, var(--ib-accent));
+  color: var(--candidate-navy, var(--dh-api-blue));
   font-size: 13px;
 }
 
@@ -132,9 +132,9 @@
   justify-content: space-between;
   gap: 10px;
   padding: 6px 8px;
-  border-left: 2px solid var(--ib-warn);
+  border-left: 2px solid var(--dh-api-amber);
   background: var(--moss-color-warning-50);
-  color: var(--ib-warn);
+  color: var(--dh-api-amber);
   font-size: 11px;
 }
 
@@ -147,8 +147,8 @@
   max-width: 100%;
   overflow: hidden;
   border: 1px solid var(--moss-color-info-200);
-  border-radius: var(--ib-radius, 2px);
-  background: var(--candidate-paper, var(--ib-surface));
+  border-radius: var(--dh-api-radius);
+  background: var(--candidate-paper, var(--dh-api-panel));
 }
 
 .candidate-period-comparison__interest-bridge-header {
@@ -163,7 +163,7 @@
 
 .candidate-period-comparison__interest-bridge h4 {
   margin: 0;
-  color: var(--candidate-navy, var(--ib-accent));
+  color: var(--candidate-navy, var(--dh-api-blue));
   font-size: 13px;
   line-height: 1.35;
 }
@@ -173,7 +173,7 @@
 .candidate-period-comparison__interest-bridge--quiet p,
 .candidate-period-comparison__interest-bridge--failed p {
   margin: 3px 0 0;
-  color: var(--candidate-muted, var(--ib-ink-secondary));
+  color: var(--candidate-muted, var(--dh-api-soft));
   font-size: 10px;
   line-height: 1.45;
 }
@@ -187,15 +187,15 @@
 }
 
 .candidate-period-comparison__interest-bridge-result strong {
-  color: var(--candidate-blue, var(--ib-accent-hover));
+  color: var(--candidate-blue, var(--dh-api-blue));
   font-size: 12px;
 }
 
 .candidate-period-comparison__interest-bridge-result span {
   padding: 3px 6px;
   border: 1px solid var(--moss-color-info-200);
-  border-radius: var(--ib-radius, 2px);
-  color: var(--ib-accent);
+  border-radius: var(--dh-api-radius);
+  color: var(--dh-api-blue);
   font-size: 10px;
   font-weight: 800;
 }
@@ -214,7 +214,7 @@
 }
 
 .candidate-period-comparison__interest-bridge tbody td {
-  color: var(--candidate-ink, var(--ib-ink));
+  color: var(--candidate-ink, var(--dh-api-ink));
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   white-space: nowrap;
@@ -229,7 +229,7 @@
   border-bottom: 1px solid currentColor;
   border-radius: 0;
   background: transparent;
-  color: var(--candidate-blue, var(--ib-accent-hover));
+  color: var(--candidate-blue, var(--dh-api-blue));
   font: inherit;
   text-align: left;
   cursor: pointer;
@@ -238,19 +238,19 @@
 .candidate-period-comparison__interest-bridge-trigger:hover,
 .candidate-period-comparison__interest-bridge-trigger:focus-visible,
 .candidate-period-comparison__interest-bridge-trigger[aria-expanded="true"] {
-  color: var(--candidate-navy, var(--ib-accent));
+  color: var(--candidate-navy, var(--dh-api-blue));
   outline: 2px solid var(--moss-color-info-200);
   outline-offset: 2px;
 }
 
 .candidate-period-comparison .candidate-period-comparison__interest-bridge tbody td:last-child {
   display: table-cell;
-  color: var(--candidate-blue, var(--ib-accent-hover));
+  color: var(--candidate-blue, var(--dh-api-blue));
 }
 
 .candidate-period-comparison__interest-bridge-note {
   padding: 7px 12px;
-  border-top: 1px solid var(--candidate-line, var(--ib-hairline));
+  border-top: 1px solid var(--candidate-line, var(--dh-api-line));
 }
 
 .candidate-period-comparison__interest-bridge--quiet,
@@ -258,8 +258,8 @@
   display: grid;
   gap: 3px;
   padding: 10px 12px;
-  border-color: var(--candidate-line, var(--ib-hairline));
-  background: var(--candidate-soft, var(--ib-surface-muted));
+  border-color: var(--candidate-line, var(--dh-api-line));
+  background: var(--candidate-soft, var(--dh-api-panel-2));
 }
 
 .candidate-period-comparison__interest-bridge--failed {
@@ -268,15 +268,15 @@
 }
 
 .candidate-period-comparison__interest-bridge--failed p strong {
-  color: var(--ib-down);
+  color: var(--dh-api-red);
   font-variant-numeric: tabular-nums;
 }
 
 .candidate-period-comparison__table-wrap {
   overflow-x: auto;
-  border: 1px solid var(--candidate-line, var(--ib-hairline));
-  border-radius: var(--ib-radius, 2px);
-  background: var(--candidate-paper, var(--ib-surface));
+  border: 1px solid var(--candidate-line, var(--dh-api-line));
+  border-radius: var(--dh-api-radius);
+  background: var(--candidate-paper, var(--dh-api-panel));
 }
 
 .candidate-period-comparison table {
@@ -290,14 +290,14 @@
 .candidate-period-comparison th,
 .candidate-period-comparison td {
   padding: 9px 10px;
-  border-bottom: 1px solid var(--candidate-line, var(--ib-hairline));
+  border-bottom: 1px solid var(--candidate-line, var(--dh-api-line));
   vertical-align: top;
   text-align: left;
 }
 
 .candidate-period-comparison thead th {
-  background: var(--candidate-soft, var(--ib-surface-muted));
-  color: var(--candidate-muted, var(--ib-ink-secondary));
+  background: var(--candidate-soft, var(--dh-api-panel-2));
+  color: var(--candidate-muted, var(--dh-api-soft));
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.04em;
@@ -322,33 +322,33 @@
 .candidate-period-comparison tbody th {
   display: grid;
   gap: 3px;
-  color: var(--candidate-navy, var(--ib-accent));
+  color: var(--candidate-navy, var(--dh-api-blue));
 }
 
 .candidate-period-comparison tbody th code {
   overflow: hidden;
-  color: var(--candidate-muted, var(--ib-ink-secondary));
+  color: var(--candidate-muted, var(--dh-api-soft));
   font-size: 9px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .candidate-period-comparison tbody th small {
-  color: var(--ib-warn);
+  color: var(--dh-api-amber);
   font-size: 10px;
   font-weight: 500;
   line-height: 1.4;
 }
 
 .candidate-period-comparison__number {
-  color: var(--candidate-ink, var(--ib-ink));
+  color: var(--candidate-ink, var(--dh-api-ink));
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   white-space: nowrap;
 }
 
 .candidate-period-comparison__delta {
-  color: var(--candidate-blue, var(--ib-accent-hover));
+  color: var(--candidate-blue, var(--dh-api-blue));
 }
 
 .candidate-period-comparison tbody td:last-child {
@@ -357,11 +357,11 @@
 }
 
 .candidate-period-comparison tbody td:last-child strong {
-  color: var(--candidate-navy, var(--ib-accent));
+  color: var(--candidate-navy, var(--dh-api-blue));
 }
 
 .candidate-period-comparison tbody td:last-child small {
-  color: var(--candidate-muted, var(--ib-ink-secondary));
+  color: var(--candidate-muted, var(--dh-api-soft));
 }
 
 .candidate-period-comparison__footer {
@@ -377,19 +377,19 @@
   place-content: center;
   gap: 6px;
   padding: 20px;
-  border: 1px dashed var(--candidate-line, var(--ib-hairline));
-  border-radius: var(--ib-radius, 2px);
-  background: var(--candidate-paper, var(--ib-surface));
+  border: 1px dashed var(--candidate-line, var(--dh-api-line));
+  border-radius: var(--dh-api-radius);
+  background: var(--candidate-paper, var(--dh-api-panel));
   text-align: center;
 }
 
 .candidate-period-comparison__state strong {
-  color: var(--candidate-navy, var(--ib-accent));
+  color: var(--candidate-navy, var(--dh-api-blue));
   font-size: 14px;
 }
 
 .candidate-period-comparison__state span {
-  color: var(--candidate-muted, var(--ib-ink-secondary));
+  color: var(--candidate-muted, var(--dh-api-soft));
   font-size: 12px;
 }
 
@@ -403,10 +403,10 @@
   justify-self: center;
   margin-top: 3px;
   padding: 6px 11px;
-  border: 1px solid var(--candidate-blue, var(--ib-accent-hover));
-  border-radius: var(--ib-radius, 2px);
-  background: var(--candidate-paper, var(--ib-surface));
-  color: var(--candidate-blue, var(--ib-accent-hover));
+  border: 1px solid var(--candidate-blue, var(--dh-api-blue));
+  border-radius: var(--dh-api-radius);
+  background: var(--candidate-paper, var(--dh-api-panel));
+  color: var(--candidate-blue, var(--dh-api-blue));
   cursor: pointer;
   font: inherit;
   font-size: 11px;

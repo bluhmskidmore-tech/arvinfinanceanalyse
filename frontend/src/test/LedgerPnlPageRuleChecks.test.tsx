@@ -200,7 +200,7 @@ describe("LedgerPnlPage candidate analysis authority", () => {
     const strip = await screen.findByTestId("ledger-pnl-functional-audit-strip");
 
     expect(strip).toHaveTextContent("候选分析状态");
-    expect(strip).toHaveTextContent("ready · candidate");
+    expect(strip).toHaveTextContent("可用 · 候选口径");
     expect(strip).toHaveTextContent("ledger_pnl.analysis · evidence 37");
     expect(screen.queryByTestId("ledger-pnl-explainability-panel")).not.toBeInTheDocument();
   });

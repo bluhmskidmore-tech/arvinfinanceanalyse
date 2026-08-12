@@ -1,0 +1,106 @@
+.ledger-pnl-section-nav {
+  position: sticky;
+  top: var(--ledger-pnl-section-nav-offset, 0px);
+  z-index: 20;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+  scrollbar-color: var(--dh-api-line) var(--dh-api-panel);
+  scrollbar-width: thin;
+}
+
+.ledger-pnl-section-nav::-webkit-scrollbar {
+  height: 6px;
+}
+
+.ledger-pnl-section-nav::-webkit-scrollbar-track {
+  background: var(--dh-api-panel);
+}
+
+.ledger-pnl-section-nav::-webkit-scrollbar-thumb {
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-line);
+}
+
+.ledger-pnl-section-nav__items {
+  display: flex;
+  min-width: max-content;
+  gap: 4px;
+  padding: 8px;
+}
+
+.ledger-pnl-section-nav__item {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--dh-api-radius);
+  background: transparent;
+  color: var(--dh-api-soft);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.25;
+  white-space: nowrap;
+  transition:
+    border-color var(--moss-motion-duration-fast) var(--moss-motion-ease-out),
+    background-color var(--moss-motion-duration-fast) var(--moss-motion-ease-out),
+    color var(--moss-motion-duration-fast) var(--moss-motion-ease-out);
+}
+
+.ledger-pnl-section-nav__item:hover:not(:disabled) {
+  border-color: var(--dh-api-line);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-ink);
+}
+
+.ledger-pnl-section-nav__item:focus-visible {
+  outline: 2px solid var(--dh-api-blue);
+  outline-offset: 2px;
+}
+
+.ledger-pnl-section-nav__item--active {
+  border-color: var(--dh-api-line);
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-ink);
+}
+
+.ledger-pnl-section-nav__item:disabled {
+  color: var(--dh-api-muted);
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.ledger-pnl-section-nav__badge {
+  padding: 2px 5px;
+  border: 1px solid currentColor;
+  border-radius: var(--dh-api-radius);
+  color: var(--dh-api-muted);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.ledger-pnl-section-nav__badge[data-tone="ok"] {
+  color: var(--dh-api-green);
+}
+
+.ledger-pnl-section-nav__badge[data-tone="warning"] {
+  color: var(--dh-api-amber);
+}
+
+.ledger-pnl-section-nav__badge[data-tone="danger"] {
+  color: var(--dh-api-red);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ledger-pnl-section-nav__item {
+    transition: none;
+  }
+}

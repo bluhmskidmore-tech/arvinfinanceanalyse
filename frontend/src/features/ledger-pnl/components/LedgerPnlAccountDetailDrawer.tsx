@@ -312,6 +312,7 @@ export function LedgerPnlAccountDetailDrawer(props: Props) {
       closable={false}
       className="ledger-account-detail"
       data-testid="ledger-pnl-account-detail-drawer"
+      data-moss-theme-scope="ledger-pnl"
       title="科目损益穿透"
       extra={(
         <AntButton type="text" onClick={handleClose} aria-label="关闭科目损益穿透">

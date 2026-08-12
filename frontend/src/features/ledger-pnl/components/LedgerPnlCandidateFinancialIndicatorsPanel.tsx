@@ -31,6 +31,8 @@ import "./LedgerPnlCandidateFinancialIndicatorsPanel.css";
 type Props = {
   reportMonth: string;
   currency?: "CNX" | "CNY";
+  /** 视口门控：false 时不发起候选指标查询（区块尚未进入视口）。默认 true。 */
+  enabled?: boolean;
 };
 
 const INCOME_METRIC_IDS = [
@@ -1162,6 +1164,7 @@ function SourceVersionImpactCard({
 export function LedgerPnlCandidateFinancialIndicatorsPanel({
   reportMonth,
   currency = "CNX",
+  enabled = true,
 }: Props) {
   const client = useApiClient();
   const normalizedReportMonth = reportMonth.trim();
@@ -1185,7 +1188,7 @@ export function LedgerPnlCandidateFinancialIndicatorsPanel({
     queryFn: () => client.getLedgerPnlCandidateFinancialIndicators(normalizedReportMonth, {
       includeLineage: false,
     }),
-    enabled: Boolean(normalizedReportMonth),
+    enabled: enabled && Boolean(normalizedReportMonth),
     retry: false,
   });
   const detailQuery = useQuery({

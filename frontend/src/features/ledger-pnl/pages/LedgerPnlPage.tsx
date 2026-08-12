@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
+import { useDeferredSectionSeen } from "../../../hooks/useDeferredSectionSeen";
 import { EM_DASH } from "../../../utils/format";
 import { FilterBar } from "../../../components/FilterBar";
 import type {
@@ -23,6 +24,20 @@ import type {
 } from "../../../api/contracts";
 import { LedgerPnlAccountDetailDrawer } from "../components/LedgerPnlAccountDetailDrawer";
 import { LedgerPnlCandidateFinancialIndicatorsPanel } from "../components/LedgerPnlCandidateFinancialIndicatorsPanel";
+import { LedgerPnlFinancialIndicatorSummaryPanel } from "../components/LedgerPnlFinancialIndicatorSummaryPanel";
+import {
+  LedgerPnlDataTable,
+  type LedgerPnlDataTableColumn,
+} from "../components/LedgerPnlDataTable";
+import {
+  LedgerPnlSectionNav,
+  type LedgerPnlSectionNavItem,
+} from "../components/LedgerPnlSectionNav";
+import {
+  LedgerPnlWorkbookTables,
+  buildLedgerPnlWorkbookGroups,
+  type LedgerPnlWorkbookTableSpec,
+} from "../components/LedgerPnlWorkbookTables";
 import {
   LedgerPnlAnalysisWorkbench,
   type LedgerPnlContributorSelection,
@@ -36,6 +51,18 @@ const LEDGER_PNL_FORMAL_CONTRACT_MATERIAL_CHECKLIST_ID =
   "ledger-pnl-formal-indicator-source-contract-material-checklist";
 const LEDGER_PNL_REPORT_DATE_SELECT_ID = "ledger-pnl-report-date-select";
 const LEDGER_PNL_RULE_CHECKS_PANEL_ID = "ledger-pnl-formal-indicator-rule-checks-panel";
+/** 章节锚点：整页高度远超一屏，导航条与各区块靠这组 id 对齐。 */
+const LEDGER_PNL_SECTION_IDS = {
+  verdict: "ledger-pnl-section-verdict",
+  summary: "ledger-pnl-section-summary",
+  analysis: "ledger-pnl-section-analysis",
+  indicators: "ledger-pnl-section-indicators",
+  candidate: "ledger-pnl-section-candidate",
+  reconciliation: "ledger-pnl-section-reconciliation",
+  accounts: "ledger-pnl-section-accounts",
+  detail: "ledger-pnl-section-detail",
+  evidence: "ledger-pnl-section-evidence",
+} as const;
 const LEDGER_PNL_CURRENCY_BASIS_OPTIONS = [
   { value: "CNX", label: "CNX（综本）" },
   { value: "CNY", label: "CNY（人民币账）" },
@@ -89,15 +116,61 @@ function LedgerSummaryCard({ card }: { card: LedgerSummaryCardModel }) {
         {card.value}
       </div>
       {candidateMetric ? (
-        <div className="ledger-pnl-summary-card__note">
-          {candidateMetric.metricId} · {candidateMetric.note}
+        <div
+          className="ledger-pnl-summary-card__note"
+          title={`${candidateMetric.metricId} ${candidateMetric.note}`}
+        >
+          {candidateMetric.metricId} {candidateMetric.note}
         </div>
       ) : null}
     </div>
   );
 }
 
-const LEDGER_TABLE_ROW_LIMIT = 200;
+const LEDGER_TABLE_PAGE_SIZE = 25;
+
+/** 区块头右侧的状态位：ready 时不占版面，其余状态用一句中文露出（DESIGN.md §6 五态）。 */
+type LedgerSectionState = { label: string; tone: "loading" | "error" | "empty" } | null;
+
+function ledgerSectionState(
+  query: { isLoading: boolean; isError: boolean },
+  options?: { isEmpty?: boolean; emptyLabel?: string },
+): LedgerSectionState {
+  if (query.isLoading) {
+    return { label: "读取中", tone: "loading" };
+  }
+  if (query.isError) {
+    return { label: "读取失败", tone: "error" };
+  }
+  if (options?.isEmpty) {
+    return { label: options.emptyLabel ?? "暂无数据", tone: "empty" };
+  }
+  return null;
+}
+
+/** 编号分区头（首页 Nocturne 语言）：序号由 CSS counter 生成，避免手写编号漂移。 */
+function LedgerPnlSectionLead({
+  title,
+  state,
+  note,
+}: {
+  title: string;
+  state?: LedgerSectionState;
+  note?: string;
+}) {
+  return (
+    <header className="ledger-pnl-section__lead">
+      <h2>{title}</h2>
+      {state ? (
+        <span className="ledger-pnl-section__state" data-state={state.tone} role="status">
+          {state.label}
+        </span>
+      ) : note ? (
+        <span className="ledger-pnl-section__note">{note}</span>
+      ) : null}
+    </header>
+  );
+}
 
 function formatMoney(value: LedgerMoneyValue | null | undefined) {
   const yi = String(value?.yi ?? "").trim();
@@ -126,13 +199,11 @@ function ledgerMoneyAbsYuan(value: LedgerMoneyValue | null | undefined) {
   return yuan === null ? -1 : Math.abs(yuan);
 }
 
+/** 默认排序：金额绝对值降序，让影响最大的科目排在首页。 */
 function sortLedgerRowsByAbsYuan<T>(
   rows: T[],
   selectMoney: (row: T) => LedgerMoneyValue | null | undefined,
 ) {
-  if (rows.length <= LEDGER_TABLE_ROW_LIMIT) {
-    return rows;
-  }
   return rows
     .map((row, index) => ({
       row,
@@ -153,15 +224,34 @@ function LedgerTableStateRow(props: { colSpan: number; message: string }) {
   );
 }
 
-function LedgerTableTruncationRow(props: { colSpan: number; label: string; total: number }) {
-  if (props.total <= LEDGER_TABLE_ROW_LIMIT) {
-    return null;
-  }
+/**
+ * 视口门控区块的占位骨架（DESIGN.md §6：带背板与接近折叠头部的高度，防止内容到达时重排）。
+ * 数据查询在区块进入视口后才发起，骨架期不出现"读取失败"之类的误导状态。
+ */
+function LedgerSectionSkeleton(props: {
+  testId: string;
+  title: string;
+  minHeight: number;
+}) {
+  const style = {
+    "--ledger-pnl-skeleton-min-height": `${props.minHeight}px`,
+  } as CSSProperties;
   return (
-    <LedgerTableStateRow
-      colSpan={props.colSpan}
-      message={`${props.label}已按金额绝对值展示前 ${LEDGER_TABLE_ROW_LIMIT} 条 / 总计 ${props.total} 条`}
-    />
+    <div
+      data-testid={props.testId}
+      className="ledger-pnl-section-skeleton"
+      style={style}
+      role="status"
+      aria-label={`${props.title}待加载`}
+    >
+      <div className="ledger-pnl-section-skeleton__title">{props.title}</div>
+      <div className="ledger-pnl-section-skeleton__note">该区块进入视口后自动加载数据。</div>
+      <div className="ledger-pnl-section-skeleton__bars" aria-hidden>
+        <span />
+        <span />
+        <span />
+      </div>
+    </div>
   );
 }
 
@@ -786,7 +876,35 @@ type LedgerFunctionalAuditProps = {
   isDatesError: boolean;
   isAnalysisLoading: boolean;
   isAnalysisError: boolean;
+  /** 对账区块尚未进入视口：月度工作簿与正式契约查询被视口门控，尚未发起。 */
+  reconciliationDeferred: boolean;
 };
+
+/*
+ * 后端状态枚举的中文呈现（DESIGN.md §7 一页一语域）。
+ * 未登记的枚举原样透出，避免新状态被翻译层吞成已知值。
+ */
+const LEDGER_ANALYSIS_STATUS_COPY: Record<string, string> = {
+  ready: "可用",
+  no_data: "无数据",
+};
+
+const LEDGER_METRIC_STATUS_COPY: Record<string, string> = {
+  candidate: "候选口径",
+};
+
+const LEDGER_BASIS_AVAILABILITY_COPY: Record<string, string> = {
+  ready: "可用",
+  no_data: "无数据",
+};
+
+function ledgerEnumCopy(value: string | null | undefined, dictionary: Record<string, string>) {
+  const raw = String(value ?? "").trim();
+  if (!raw) {
+    return "未返回";
+  }
+  return dictionary[raw] ?? raw;
+}
 
 function buildLedgerAnalysisAuditState(props: LedgerFunctionalAuditProps) {
   const payload = props.analysisEnvelope?.result;
@@ -796,9 +914,17 @@ function buildLedgerAnalysisAuditState(props: LedgerFunctionalAuditProps) {
   const asOfDate = metaString(meta?.as_of_date) ?? "缺失";
   const sourceVersion = metaString(meta?.source_version) ?? payload?.source_version ?? "缺失";
   const evidenceRows = formatEvidenceRows(meta);
-  const analysisStatus = payload ? `${payload.analysis_status} · ${payload.metric_status}` : "未返回";
+  const analysisStatus = payload
+    ? `${ledgerEnumCopy(payload.analysis_status, LEDGER_ANALYSIS_STATUS_COPY)} · ${ledgerEnumCopy(
+        payload.metric_status,
+        LEDGER_METRIC_STATUS_COPY,
+      )}`
+    : "未返回";
   const basisStatus = payload
-    ? `${payload.currency_basis}；CNX=${payload.basis_availability.CNX} / CNY=${payload.basis_availability.CNY}`
+    ? `${payload.currency_basis}；CNX ${ledgerEnumCopy(
+        payload.basis_availability.CNX,
+        LEDGER_BASIS_AVAILABILITY_COPY,
+      )} / CNY ${ledgerEnumCopy(payload.basis_availability.CNY, LEDGER_BASIS_AVAILABILITY_COPY)}`
     : "未返回";
   const sourceRisk = collectSourceRiskSegments("候选分析", meta);
   const sourceStatus = sourceRisk.length > 0 ? sourceRisk.join("；") : "来源正常";
@@ -839,7 +965,9 @@ function buildLedgerAnalysisAuditState(props: LedgerFunctionalAuditProps) {
   const formalUseAllowed = props.formalIndicatorSourceContract?.formal_use_allowed === true;
   const releaseGate = registeredPendingReleaseGate(props.formalIndicatorSourceContract);
   const emptyFormalContractMetrics = hasEmptyFormalContractMetrics(props.formalIndicatorSourceContract);
-  const formalStatus = !props.requestedReportMonth
+  const formalStatus = props.reconciliationDeferred
+    ? "对账区块未加载"
+    : !props.requestedReportMonth
     ? "等待报告月份"
     : props.isFormalContractLoading
       ? "正式契约读取中"
@@ -868,8 +996,12 @@ function buildLedgerAnalysisAuditState(props: LedgerFunctionalAuditProps) {
     evidenceAction,
     dateStatus,
     dateAction,
-    monthlyAnalysisStatus: monthlyWorkbookState.status,
-    monthlyAnalysisAction: monthlyWorkbookState.action,
+    monthlyAnalysisStatus: props.reconciliationDeferred
+      ? "对账区块未加载"
+      : monthlyWorkbookState.status,
+    monthlyAnalysisAction: props.reconciliationDeferred
+      ? "滚动到对账区或经章节导航进入后自动加载"
+      : monthlyWorkbookState.action,
     formalStatus,
   };
 
@@ -914,6 +1046,14 @@ function buildLedgerAnalysisAuditState(props: LedgerFunctionalAuditProps) {
   }
   if (formalUseAllowed) {
     return { tone: "ok", title: "正式财务指标可用", detail: "正式值由正式契约展示；候选分析仅保留为旁证。", ...shared };
+  }
+  if (props.reconciliationDeferred) {
+    return {
+      tone: "pending",
+      title: "候选分析可用，对账区待加载",
+      detail: "月度工作簿与正式契约在对账区块进入视口后加载；此前不形成正式指标结论。",
+      ...shared,
+    };
   }
   if (monthlyWorkbookState.blockingDetail && props.requestedReportMonth && props.hasMatchingAnalysisMonth) {
     return { tone: "warning", title: "候选分析可用，月度工作簿不可信", detail: monthlyWorkbookState.blockingDetail, ...shared };
@@ -997,11 +1137,7 @@ function LedgerFunctionalAuditStrip(props: LedgerFunctionalAuditProps) {
         <h2 className="ledger-pnl-functional-strip__title">{state.title}</h2>
         <div className="ledger-pnl-functional-strip__detail">{state.detail}</div>
       </div>
-      <div className="ledger-pnl-functional-strip__facts">
-        <div>
-          <span>请求报告日</span>
-          <strong>{state.requestedDate}</strong>
-        </div>
+      <div className="ledger-pnl-functional-strip__headline-facts">
         <div>
           <span>解析报告日</span>
           <strong>{state.resolvedDate}</strong>
@@ -1017,6 +1153,21 @@ function LedgerFunctionalAuditStrip(props: LedgerFunctionalAuditProps) {
         <div>
           <span>候选分析状态</span>
           <strong>{state.analysisStatus}</strong>
+        </div>
+        <div>
+          <span>正式边界</span>
+          <strong>{state.formalStatus}</strong>
+        </div>
+      </div>
+      <details className="ledger-pnl-functional-strip__audit">
+        <summary className="ledger-pnl-functional-strip__audit-summary">
+          审计明细与判断链
+        </summary>
+        <div className="ledger-pnl-functional-strip__audit-body">
+      <div className="ledger-pnl-functional-strip__facts">
+        <div>
+          <span>请求报告日</span>
+          <strong>{state.requestedDate}</strong>
         </div>
         <div>
           <span>分析质量</span>
@@ -1049,10 +1200,6 @@ function LedgerFunctionalAuditStrip(props: LedgerFunctionalAuditProps) {
         <div>
           <span>月度工作簿</span>
           <strong>{state.monthlyAnalysisStatus}</strong>
-        </div>
-        <div>
-          <span>正式边界</span>
-          <strong>{state.formalStatus}</strong>
         </div>
         <div>
           <span>正式契约缺口</span>
@@ -1173,6 +1320,8 @@ function LedgerFunctionalAuditStrip(props: LedgerFunctionalAuditProps) {
           </div>
         </div>
       ) : null}
+        </div>
+      </details>
     </section>
   );
 }
@@ -1184,7 +1333,7 @@ function reportDateToMonth(reportDate: string) {
 
 function formatAnalysisValue(value: unknown) {
   if (value === null || value === undefined || value === "") {
-    return "-";
+    return EM_DASH;
   }
   if (typeof value === "number") {
     return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value);
@@ -1197,10 +1346,6 @@ function findAnalysisSheet(
   key: string,
 ) {
   return sheets?.find((sheet) => sheet.key === key);
-}
-
-function pickDisplayColumns(sheet: QdbGlMonthlyAnalysisSheet | undefined, limit = 4) {
-  return (sheet?.columns ?? []).slice(0, limit);
 }
 
 type FinancialIndicatorStatusRow = {
@@ -1908,50 +2053,6 @@ function FormalIndicatorRuleChecksPanel(props: {
   );
 }
 
-function AnalysisTable(props: {
-  title: string;
-  sheet: QdbGlMonthlyAnalysisSheet | undefined;
-  testId: string;
-  columnLimit?: number;
-  rowLimit?: number;
-}) {
-  const columns = pickDisplayColumns(props.sheet, props.columnLimit ?? 4);
-  const rows = props.sheet?.rows.slice(0, props.rowLimit ?? 5) ?? [];
-  return (
-    <section data-testid={props.testId} className="ledger-pnl-analysis__table">
-      <div className="ledger-pnl-analysis__table-title">
-        {props.title}
-      </div>
-      {columns.length > 0 && rows.length > 0 ? (
-        <table className="ledger-pnl-table">
-          <thead>
-            <tr className="ledger-pnl-analysis__table-head-row">
-              {columns.map((column) => (
-                <th key={column} className="ledger-pnl-analysis__th">
-                  {column}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, rowIndex) => (
-              <tr key={`${props.testId}-${rowIndex}`} className="ledger-pnl-analysis__tr">
-                {columns.map((column) => (
-                  <td key={column} className="ledger-pnl-analysis__td">
-                    {formatAnalysisValue(row[column])}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : (
-        <div className="ledger-pnl-analysis__empty">暂无可展示数据</div>
-      )}
-    </section>
-  );
-}
-
 export default function LedgerPnlPage() {
   const client = useApiClient();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -2002,11 +2103,7 @@ export default function LedgerPnlPage() {
   const data = dataQuery.data?.result;
   const accountSummaryRows = useMemo(() => summary?.by_account ?? [], [summary?.by_account]);
   const visibleAccountSummaryRows = useMemo(
-    () =>
-      sortLedgerRowsByAbsYuan(accountSummaryRows, (item) => item.total_pnl).slice(
-        0,
-        LEDGER_TABLE_ROW_LIMIT,
-      ),
+    () => sortLedgerRowsByAbsYuan(accountSummaryRows, (item) => item.total_pnl),
     [accountSummaryRows],
   );
   const detailRows = useMemo(() => data?.items ?? [], [data?.items]);
@@ -2017,12 +2114,121 @@ export default function LedgerPnlPage() {
     [detailAccountFilter, detailRows],
   );
   const visibleDetailRows = useMemo(
-    () =>
-      sortLedgerRowsByAbsYuan(filteredDetailRows, (item) => item.monthly_pnl).slice(
-        0,
-        LEDGER_TABLE_ROW_LIMIT,
-      ),
+    () => sortLedgerRowsByAbsYuan(filteredDetailRows, (item) => item.monthly_pnl),
     [filteredDetailRows],
+  );
+  /*
+   * 明细区块头的后端汇总位：/data 已返回本口径合计与行数，页面此前只消费了 items。
+   * no_data 时后端把金额补成 0，所以按 data_status 显式收敛为不展示，避免把补零当真零；
+   * 科目筛选生效时也不展示，避免全量合计与筛选后的表体互相矛盾。
+   */
+  const detailSummaryNote = useMemo(() => {
+    if (!data || data.data_status === "no_data" || detailAccountFilter) {
+      return undefined;
+    }
+    const total = formatMoney(data.summary?.total_pnl);
+    const count = data.summary?.count;
+    if (total === EM_DASH || typeof count !== "number") {
+      return undefined;
+    }
+    return `合计 ${total} · ${count} 行`;
+  }, [data, detailAccountFilter]);
+
+  const accountSummaryColumns = useMemo<
+    LedgerPnlDataTableColumn<(typeof visibleAccountSummaryRows)[number]>[]
+  >(
+    () => [
+      {
+        key: "account",
+        header: "科目",
+        searchValue: (item) => `${item.account_code} ${item.account_name}`,
+        sortValue: (item) => item.account_code,
+        render: (item) => (
+          <>
+            <div>{item.account_code}</div>
+            <div className="ledger-pnl-table__td-sub">{item.account_name}</div>
+          </>
+        ),
+      },
+      {
+        key: "total_pnl",
+        header: "损益",
+        numeric: true,
+        sortValue: (item) => ledgerMoneyYuan(item.total_pnl),
+        render: (item) => formatMoney(item.total_pnl),
+      },
+      {
+        key: "count",
+        header: "笔数",
+        numeric: true,
+        sortValue: (item) => item.count,
+        render: (item) => item.count,
+      },
+    ],
+    [],
+  );
+
+  const detailColumns = useMemo<
+    LedgerPnlDataTableColumn<(typeof visibleDetailRows)[number]>[]
+  >(
+    () => [
+      {
+        key: "account_code",
+        header: "科目代码",
+        searchValue: (item) => item.account_code,
+        sortValue: (item) => item.account_code,
+        render: (item) => item.account_code,
+      },
+      {
+        key: "account_name",
+        header: "科目名称",
+        searchValue: (item) => item.account_name,
+        sortValue: (item) => item.account_name,
+        render: (item) => item.account_name,
+      },
+      {
+        key: "currency",
+        header: "币种",
+        sortValue: (item) => item.currency,
+        render: (item) => item.currency,
+      },
+      {
+        key: "beginning_balance",
+        header: "期初",
+        numeric: true,
+        sortValue: (item) => ledgerMoneyYuan(item.beginning_balance),
+        render: (item) => formatMoney(item.beginning_balance),
+      },
+      {
+        key: "ending_balance",
+        header: "期末",
+        numeric: true,
+        sortValue: (item) => ledgerMoneyYuan(item.ending_balance),
+        render: (item) => formatMoney(item.ending_balance),
+      },
+      {
+        key: "monthly_pnl",
+        header: "月损益",
+        numeric: true,
+        sortValue: (item) => ledgerMoneyYuan(item.monthly_pnl),
+        render: (item) => formatMoney(item.monthly_pnl),
+      },
+      {
+        key: "daily_avg_balance",
+        header: "月日均",
+        numeric: true,
+        sortValue: (item) => ledgerMoneyYuan(item.daily_avg_balance),
+        render: (item) => formatMoney(item.daily_avg_balance),
+      },
+      {
+        key: "days_in_period",
+        header: "天数",
+        numeric: true,
+        sortValue: (item) => item.days_in_period,
+        render: (item) => item.days_in_period,
+      },
+    ],
+    [],
   );
 
   const locateContributorInDetail = (selection: LedgerPnlContributorSelection) => {
@@ -2041,23 +2247,34 @@ export default function LedgerPnlPage() {
     Boolean(requestedAnalysisMonth) && monthlyAnalysisMonths.includes(requestedAnalysisMonth);
   const selectedAnalysisMonth = hasMatchingAnalysisMonth ? requestedAnalysisMonth : "";
 
+  /*
+   * 视口门控：三个重区块（经营指标 / 候选指标 / 对账与日均）进入视口才发起查询，
+   * 首屏只保留 dates/summary/data/analysis 与轻量的月度日期清单。
+   * 兜底延时取 0：jsdom（无 IntersectionObserver）里一个宏任务后即视为可见，
+   * 现有页面级集成测试的 waitFor 足以覆盖，无需逐条改造。
+   * seen 一旦为 true 不再回退，区块挂载后的行为与门控前完全一致。
+   */
+  const indicatorsSection = useDeferredSectionSeen<HTMLDivElement>(true, 0);
+  const candidateSection = useDeferredSectionSeen<HTMLDivElement>(true, 0);
+  const reconciliationSection = useDeferredSectionSeen<HTMLElement>(true, 0);
+
   const formalIndicatorSourceContractQuery = useQuery({
     queryKey: ["ledger-pnl", "formal-financial-indicators", client.mode, requestedAnalysisMonth],
-    enabled: Boolean(requestedAnalysisMonth),
+    enabled: reconciliationSection.seen && Boolean(requestedAnalysisMonth),
     queryFn: () => client.getLedgerPnlFormalFinancialIndicators(requestedAnalysisMonth),
     retry: false,
   });
 
   const formalIndicatorRuleChecksQuery = useQuery({
     queryKey: ["ledger-pnl", "formal-indicator-rule-checks", client.mode, requestedAnalysisMonth],
-    enabled: Boolean(requestedAnalysisMonth),
+    enabled: reconciliationSection.seen && Boolean(requestedAnalysisMonth),
     queryFn: () => client.getLedgerPnlFormalIndicatorRuleChecks(requestedAnalysisMonth),
     retry: false,
   });
 
   const monthlyAnalysisWorkbookQuery = useQuery({
     queryKey: ["ledger-pnl", "monthly-analysis", "workbook", client.mode, selectedAnalysisMonth],
-    enabled: hasMatchingAnalysisMonth,
+    enabled: reconciliationSection.seen && hasMatchingAnalysisMonth,
     queryFn: () => client.getLedgerPnlMonthlyAnalysisWorkbook({ reportMonth: selectedAnalysisMonth }),
     retry: false,
   });
@@ -2122,6 +2339,60 @@ export default function LedgerPnlPage() {
     "parent_company_revenue_components",
   );
   const industryGapSheet = findAnalysisSheet(trustedMonthlyAnalysisWorkbook?.sheets, "industry_gap");
+  const monthlyWorkbookGroups = useMemo(() => {
+    const specs: LedgerPnlWorkbookTableSpec[] = [
+      { title: "财务指标落地状态", sheet: financialIndicatorStatusSheet, testId: "ledger-pnl-monthly-analysis-financial-indicator-status", columnLimit: 5, rowLimit: 20 },
+      { title: "3位科目总览", sheet: summary3dSheet, testId: "ledger-pnl-monthly-analysis-summary-3d", columnLimit: 8, rowLimit: 8 },
+      { title: "资产结构", sheet: assetStructureSheet, testId: "ledger-pnl-monthly-analysis-asset-structure", columnLimit: 6, rowLimit: 8 },
+      { title: "负债结构", sheet: liabilityStructureSheet, testId: "ledger-pnl-monthly-analysis-liability-structure", columnLimit: 6, rowLimit: 8 },
+      { title: "贷款行业", sheet: loanIndustrySheet, testId: "ledger-pnl-monthly-analysis-loan-industry", columnLimit: 7, rowLimit: 8 },
+      { title: "存款行业_活期", sheet: depositDemandIndustrySheet, testId: "ledger-pnl-monthly-analysis-deposit-demand-industry", columnLimit: 7, rowLimit: 8 },
+      { title: "存款行业_定期", sheet: depositTermIndustrySheet, testId: "ledger-pnl-monthly-analysis-deposit-term-industry", columnLimit: 7, rowLimit: 8 },
+      { title: "11位偏离TOP", sheet: top11dSheet, testId: "ledger-pnl-monthly-analysis-top-11d", columnLimit: 5 },
+      { title: "异动预警", sheet: alertsSheet, testId: "ledger-pnl-monthly-analysis-alerts", columnLimit: 5 },
+      { title: "分部基础规模", sheet: segmentBaseScaleSheet, testId: "ledger-pnl-monthly-analysis-segment-base-scale", columnLimit: 5 },
+      { title: "分部规模同比环比", sheet: segmentScaleCompareSheet, testId: "ledger-pnl-monthly-analysis-segment-scale-compare", columnLimit: 7 },
+      { title: "公司规模", sheet: companyScaleSheet, testId: "ledger-pnl-monthly-analysis-company-scale", columnLimit: 5 },
+      { title: "公司规模同比环比", sheet: companyScaleCompareSheet, testId: "ledger-pnl-monthly-analysis-company-scale-compare", columnLimit: 7 },
+      { title: "零售规模", sheet: retailScaleSheet, testId: "ledger-pnl-monthly-analysis-retail-scale", columnLimit: 5 },
+      { title: "零售规模同比环比", sheet: retailScaleCompareSheet, testId: "ledger-pnl-monthly-analysis-retail-scale-compare", columnLimit: 7 },
+      { title: "金融市场规模", sheet: financialMarketScaleSheet, testId: "ledger-pnl-monthly-analysis-financial-market-scale", columnLimit: 5 },
+      { title: "金融市场规模同比环比", sheet: financialMarketScaleCompareSheet, testId: "ledger-pnl-monthly-analysis-financial-market-scale-compare", columnLimit: 7 },
+      { title: "收益率分析（总账可复算）", sheet: incomeRateAnalysisSheet, testId: "ledger-pnl-monthly-analysis-income-rate", columnLimit: 7 },
+      { title: "收益量价归因（年累计同比）", sheet: incomeRateAttributionSheet, testId: "ledger-pnl-monthly-analysis-income-rate-attribution", columnLimit: 9 },
+      { title: "存款利息拆分", sheet: depositInterestSplitSheet, testId: "ledger-pnl-monthly-analysis-deposit-interest-split", columnLimit: 11, rowLimit: 9 },
+      { title: "母公司营收分项", sheet: parentCompanyRevenueSheet, testId: "ledger-pnl-monthly-analysis-parent-company-revenue", columnLimit: 11, rowLimit: 17 },
+      { title: "外币分析", sheet: foreignCurrencySheet, testId: "ledger-pnl-monthly-analysis-foreign-currency", columnLimit: 6, rowLimit: 8 },
+      { title: "行业存贷差", sheet: industryGapSheet, testId: "ledger-pnl-monthly-analysis-industry-gap", columnLimit: 5 },
+    ];
+    return buildLedgerPnlWorkbookGroups(
+      Object.fromEntries(specs.map((spec) => [spec.title, spec])),
+    );
+  }, [
+    alertsSheet,
+    assetStructureSheet,
+    companyScaleCompareSheet,
+    companyScaleSheet,
+    depositDemandIndustrySheet,
+    depositInterestSplitSheet,
+    depositTermIndustrySheet,
+    financialIndicatorStatusSheet,
+    financialMarketScaleCompareSheet,
+    financialMarketScaleSheet,
+    foreignCurrencySheet,
+    incomeRateAnalysisSheet,
+    incomeRateAttributionSheet,
+    industryGapSheet,
+    liabilityStructureSheet,
+    loanIndustrySheet,
+    parentCompanyRevenueSheet,
+    retailScaleCompareSheet,
+    retailScaleSheet,
+    segmentBaseScaleSheet,
+    segmentScaleCompareSheet,
+    summary3dSheet,
+    top11dSheet,
+  ]);
   const overviewLabelColumn = overviewSheet?.columns[0];
   const overviewValueColumn = overviewSheet?.columns[1];
   const overviewRows =
@@ -2162,6 +2433,45 @@ export default function LedgerPnlPage() {
     },
   ];
 
+  const sectionNavItems = useMemo<LedgerPnlSectionNavItem[]>(
+    () => [
+      { id: LEDGER_PNL_SECTION_IDS.verdict, label: "当日结论" },
+      { id: LEDGER_PNL_SECTION_IDS.summary, label: "账面总览" },
+      { id: LEDGER_PNL_SECTION_IDS.analysis, label: "损益分析" },
+      { id: LEDGER_PNL_SECTION_IDS.indicators, label: "经营指标" },
+      { id: LEDGER_PNL_SECTION_IDS.candidate, label: "候选指标" },
+      { id: LEDGER_PNL_SECTION_IDS.reconciliation, label: "对账与日均" },
+      { id: LEDGER_PNL_SECTION_IDS.accounts, label: "科目汇总" },
+      { id: LEDGER_PNL_SECTION_IDS.detail, label: "科目明细" },
+      { id: LEDGER_PNL_SECTION_IDS.evidence, label: "证据与元信息" },
+    ],
+    [],
+  );
+
+  /**
+   * 章节导航直达前，唤醒目标及其上方全部门控区块：
+   * 只唤醒目标会让滚动途中的骨架在 IO 触发后才加载，
+   * 上方内容高度随后变化，目标锚点被推移（锚点漂移）。
+   */
+  const wakeSectionsForNavigate = (targetId: string) => {
+    const gatedSections = [
+      { id: LEDGER_PNL_SECTION_IDS.indicators, markSeen: indicatorsSection.markSeen },
+      { id: LEDGER_PNL_SECTION_IDS.candidate, markSeen: candidateSection.markSeen },
+      { id: LEDGER_PNL_SECTION_IDS.reconciliation, markSeen: reconciliationSection.markSeen },
+    ];
+    const navOrder = sectionNavItems.map((item) => item.id);
+    const targetIndex = navOrder.indexOf(targetId);
+    if (targetIndex < 0) {
+      return;
+    }
+    for (const gated of gatedSections) {
+      const gatedIndex = navOrder.indexOf(gated.id);
+      if (gatedIndex >= 0 && gatedIndex <= targetIndex) {
+        gated.markSeen();
+      }
+    }
+  };
+
   useEffect(() => {
     const nextParams = new URLSearchParams(searchParams);
     nextParams.delete("report_date");
@@ -2177,8 +2487,16 @@ export default function LedgerPnlPage() {
     }
   }, [currency, searchParams, selectedReportDate, setSearchParams]);
 
+  /*
+   * 深色 owner 由外层 ThemedRouteBoundary 的 data-moss-theme="dark" 承担；
+   * 页根只声明 Nocturne scope，重复声明 owner 会让深色路由校验判定出两个 owner。
+   */
   return (
-    <section data-testid="ledger-pnl-page">
+    <section
+      data-testid="ledger-pnl-page"
+      data-moss-theme-scope="ledger-pnl"
+      className="ledger-pnl-page theme-dh-api"
+    >
       <div className="ledger-pnl-header">
         <div>
           <h1 data-testid="ledger-pnl-page-title" className="ledger-pnl-header__title">
@@ -2228,11 +2546,6 @@ export default function LedgerPnlPage() {
               </option>
             ))}
           </select>
-          {selectedReportDateMissingFromDates ? (
-            <div className="ledger-pnl-analysis__empty ledger-pnl-analysis__empty--hint">
-              当前报告日不在可选列表中，仍按查询日期读取总账数据
-            </div>
-          ) : null}
         </label>
         <label>
           <span className="ledger-pnl-filters__label">
@@ -2255,20 +2568,69 @@ export default function LedgerPnlPage() {
               </option>
             ))}
           </select>
-          <small>CNX（综本）与 CNY（人民币账）是重叠账务口径，不可相加。</small>
         </label>
+        <p className="ledger-pnl-filters__note">
+          CNX（综本）与 CNY（人民币账）是重叠账务口径，不可相加。
+          {selectedReportDateMissingFromDates ? (
+            <span className="ledger-pnl-filters__note--warn">
+              当前报告日不在可选列表中，仍按查询日期读取总账数据
+            </span>
+          ) : null}
+        </p>
       </FilterBar>
 
-      <LedgerPnlAnalysisWorkbench
-        envelope={analysisQuery.data}
-        isLoading={analysisQuery.isLoading}
-        isError={analysisQuery.isError}
-        error={analysisQuery.error}
-        onRetry={() => {
-          void analysisQuery.refetch();
-        }}
-        onSelectContributor={setSelectedContributor}
+      <LedgerPnlSectionNav
+        items={sectionNavItems}
+        onBeforeNavigate={wakeSectionsForNavigate}
       />
+
+      {/* 首屏必须先回答「本报告日总账口径能得出什么判断、证据是否可信」（DESIGN.md §9 首屏一问）。 */}
+      <section id={LEDGER_PNL_SECTION_IDS.verdict} className="ledger-pnl-section">
+        <LedgerPnlSectionLead title="当日结论" note="总账候选口径" />
+        <LedgerFunctionalAuditStrip
+          selectedReportDate={selectedReportDate}
+          selectedReportDateMissingFromDates={selectedReportDateMissingFromDates}
+          reportDates={reportDates}
+          datesMeta={datesQuery.data?.result_meta}
+          analysisEnvelope={analysisQuery.data}
+          analysisError={analysisQuery.error}
+          requestedReportMonth={requestedAnalysisMonth}
+          monthlyAnalysisWorkbook={monthlyAnalysisWorkbook}
+          monthlyAnalysisWorkbookMeta={monthlyAnalysisWorkbookQuery.data?.result_meta}
+          formalIndicatorSourceContract={formalIndicatorSourceContract}
+          hasMatchingAnalysisMonth={hasMatchingAnalysisMonth}
+          isMonthlyAnalysisDatesLoading={monthlyAnalysisDatesQuery.isLoading}
+          isMonthlyAnalysisDatesError={monthlyAnalysisDatesQuery.isError}
+          isMonthlyAnalysisWorkbookLoading={monthlyAnalysisWorkbookQuery.isLoading}
+          isMonthlyAnalysisWorkbookError={monthlyAnalysisWorkbookQuery.isError}
+          isFormalContractLoading={formalIndicatorSourceContractQuery.isLoading}
+          isFormalContractError={formalIndicatorSourceContractQuery.isError}
+          isDatesLoading={datesQuery.isLoading}
+          isDatesError={datesQuery.isError}
+          isAnalysisLoading={analysisQuery.isLoading}
+          isAnalysisError={analysisQuery.isError}
+          reconciliationDeferred={!reconciliationSection.seen}
+        />
+      </section>
+
+      <section id={LEDGER_PNL_SECTION_IDS.summary} className="ledger-pnl-section">
+        <LedgerPnlSectionLead
+          title="账面总览"
+          state={ledgerSectionState(summaryQuery, {
+            isEmpty: summary?.data_status === "no_data",
+            emptyLabel: "当期无总账证据",
+          })}
+          note={`${currency} 口径 · 亿元`}
+        />
+        <div
+          data-testid="ledger-pnl-summary-cards"
+          className="ledger-pnl-summary-grid"
+        >
+          {summaryCards.map((card) => (
+            <LedgerSummaryCard key={card.key} card={card} />
+          ))}
+        </div>
+      </section>
 
       <LedgerPnlAccountDetailDrawer
         selection={selectedContributor}
@@ -2278,50 +2640,75 @@ export default function LedgerPnlPage() {
         onLocate={locateContributorInDetail}
       />
 
-      <LedgerFunctionalAuditStrip
-        selectedReportDate={selectedReportDate}
-        selectedReportDateMissingFromDates={selectedReportDateMissingFromDates}
-        reportDates={reportDates}
-        datesMeta={datesQuery.data?.result_meta}
-        analysisEnvelope={analysisQuery.data}
-        analysisError={analysisQuery.error}
-        requestedReportMonth={requestedAnalysisMonth}
-        monthlyAnalysisWorkbook={monthlyAnalysisWorkbook}
-        monthlyAnalysisWorkbookMeta={monthlyAnalysisWorkbookQuery.data?.result_meta}
-        formalIndicatorSourceContract={formalIndicatorSourceContract}
-        hasMatchingAnalysisMonth={hasMatchingAnalysisMonth}
-        isMonthlyAnalysisDatesLoading={monthlyAnalysisDatesQuery.isLoading}
-        isMonthlyAnalysisDatesError={monthlyAnalysisDatesQuery.isError}
-        isMonthlyAnalysisWorkbookLoading={monthlyAnalysisWorkbookQuery.isLoading}
-        isMonthlyAnalysisWorkbookError={monthlyAnalysisWorkbookQuery.isError}
-        isFormalContractLoading={formalIndicatorSourceContractQuery.isLoading}
-        isFormalContractError={formalIndicatorSourceContractQuery.isError}
-        isDatesLoading={datesQuery.isLoading}
-        isDatesError={datesQuery.isError}
-        isAnalysisLoading={analysisQuery.isLoading}
-        isAnalysisError={analysisQuery.isError}
-      />
+      <section id={LEDGER_PNL_SECTION_IDS.analysis} className="ledger-pnl-section">
+        <LedgerPnlSectionLead title="损益分析" state={ledgerSectionState(analysisQuery)} />
+        <LedgerPnlAnalysisWorkbench
+          envelope={analysisQuery.data}
+          isLoading={analysisQuery.isLoading}
+          isError={analysisQuery.isError}
+          error={analysisQuery.error}
+          onRetry={() => {
+            void analysisQuery.refetch();
+          }}
+          onSelectContributor={setSelectedContributor}
+        />
+      </section>
 
-      <div data-testid="ledger-pnl-summary-cards" className="ledger-pnl-summary-grid">
-        {summaryCards.map((card) => (
-          <LedgerSummaryCard key={card.key} card={card} />
-        ))}
-      </div>
+      <section
+        id={LEDGER_PNL_SECTION_IDS.indicators}
+        ref={indicatorsSection.ref}
+        className="ledger-pnl-section"
+      >
+        <LedgerPnlSectionLead title="经营指标" note={`${requestedAnalysisMonth || EM_DASH} · 总账口径`} />
+        {indicatorsSection.seen ? (
+          <LedgerPnlFinancialIndicatorSummaryPanel
+            reportMonth={requestedAnalysisMonth}
+            currency={currency}
+          />
+        ) : (
+          <LedgerSectionSkeleton
+            testId="ledger-pnl-indicators-skeleton"
+            title="经营指标情况表（总账口径）"
+            minHeight={260}
+          />
+        )}
+      </section>
 
-      <LedgerPnlCandidateFinancialIndicatorsPanel
-        reportMonth={requestedAnalysisMonth}
-        currency={currency}
-      />
+      <section
+        id={LEDGER_PNL_SECTION_IDS.candidate}
+        ref={candidateSection.ref}
+        className="ledger-pnl-section"
+      >
+        <LedgerPnlSectionLead title="候选指标" note="候选口径，不可正式使用" />
+        {candidateSection.seen ? (
+          <LedgerPnlCandidateFinancialIndicatorsPanel
+            reportMonth={requestedAnalysisMonth}
+            currency={currency}
+          />
+        ) : (
+          <LedgerSectionSkeleton
+            testId="ledger-pnl-candidate-skeleton"
+            title="候选财务指标"
+            minHeight={320}
+          />
+        )}
+      </section>
 
-      <section data-testid="ledger-pnl-monthly-analysis-panel" className="ledger-pnl-analysis">
+      <section
+        id={LEDGER_PNL_SECTION_IDS.reconciliation}
+        ref={reconciliationSection.ref}
+        className="ledger-pnl-section"
+      >
+        <LedgerPnlSectionLead title="对账与日均" note="月度工作簿口径" />
+        <section
+          data-testid="ledger-pnl-monthly-analysis-panel"
+          className="ledger-pnl-analysis"
+        >
         <div className="ledger-pnl-analysis__header">
           <div>
-            <h2 className="ledger-pnl-analysis__title">
+            <h3 className="ledger-pnl-analysis__title">
               总账对账 + 日均分析
-            </h2>
-            <div className="ledger-pnl-analysis__subtitle">
-              月度工作簿口径，直接展示后端已重建的分析结果。
-            </div>
+            </h3>
           </div>
           <span data-testid="ledger-pnl-monthly-analysis-month" className="ledger-pnl-analysis__month">
             {selectedAnalysisMonth ||
@@ -2333,6 +2720,14 @@ export default function LedgerPnlPage() {
           </span>
         </div>
 
+        {!reconciliationSection.seen ? (
+          <LedgerSectionSkeleton
+            testId="ledger-pnl-reconciliation-skeleton"
+            title="对账明细与正式契约"
+            minHeight={420}
+          />
+        ) : (
+          <>
         {monthlyAnalysisDatesQuery.isError ? (
           <div data-testid="ledger-pnl-monthly-analysis-error" className="ledger-pnl-analysis__empty">
             月度分析月份读取失败
@@ -2394,159 +2789,19 @@ export default function LedgerPnlPage() {
           </div>
         )}
 
-        <div className="ledger-pnl-analysis__tables">
-          <AnalysisTable
-            title="财务指标落地状态"
-            sheet={financialIndicatorStatusSheet}
-            testId="ledger-pnl-monthly-analysis-financial-indicator-status"
-            columnLimit={5}
-            rowLimit={20}
-          />
-          <AnalysisTable
-            title="3位科目总览"
-            sheet={summary3dSheet}
-            testId="ledger-pnl-monthly-analysis-summary-3d"
-            columnLimit={8}
-            rowLimit={8}
-          />
-          <AnalysisTable
-            title="资产结构"
-            sheet={assetStructureSheet}
-            testId="ledger-pnl-monthly-analysis-asset-structure"
-            columnLimit={6}
-            rowLimit={8}
-          />
-          <AnalysisTable
-            title="负债结构"
-            sheet={liabilityStructureSheet}
-            testId="ledger-pnl-monthly-analysis-liability-structure"
-            columnLimit={6}
-            rowLimit={8}
-          />
-          <AnalysisTable
-            title="贷款行业"
-            sheet={loanIndustrySheet}
-            testId="ledger-pnl-monthly-analysis-loan-industry"
-            columnLimit={7}
-            rowLimit={8}
-          />
-          <AnalysisTable
-            title="存款行业_活期"
-            sheet={depositDemandIndustrySheet}
-            testId="ledger-pnl-monthly-analysis-deposit-demand-industry"
-            columnLimit={7}
-            rowLimit={8}
-          />
-          <AnalysisTable
-            title="存款行业_定期"
-            sheet={depositTermIndustrySheet}
-            testId="ledger-pnl-monthly-analysis-deposit-term-industry"
-            columnLimit={7}
-            rowLimit={8}
-          />
-          <AnalysisTable
-            title="11位偏离TOP"
-            sheet={top11dSheet}
-            testId="ledger-pnl-monthly-analysis-top-11d"
-            columnLimit={5}
-          />
-          <AnalysisTable
-            title="异动预警"
-            sheet={alertsSheet}
-            testId="ledger-pnl-monthly-analysis-alerts"
-            columnLimit={5}
-          />
-          <AnalysisTable
-            title="分部基础规模"
-            sheet={segmentBaseScaleSheet}
-            testId="ledger-pnl-monthly-analysis-segment-base-scale"
-            columnLimit={5}
-          />
-          <AnalysisTable
-            title="分部规模同比环比"
-            sheet={segmentScaleCompareSheet}
-            testId="ledger-pnl-monthly-analysis-segment-scale-compare"
-            columnLimit={7}
-          />
-          <AnalysisTable
-            title="公司规模"
-            sheet={companyScaleSheet}
-            testId="ledger-pnl-monthly-analysis-company-scale"
-            columnLimit={5}
-          />
-          <AnalysisTable
-            title="公司规模同比环比"
-            sheet={companyScaleCompareSheet}
-            testId="ledger-pnl-monthly-analysis-company-scale-compare"
-            columnLimit={7}
-          />
-          <AnalysisTable
-            title="零售规模"
-            sheet={retailScaleSheet}
-            testId="ledger-pnl-monthly-analysis-retail-scale"
-            columnLimit={5}
-          />
-          <AnalysisTable
-            title="零售规模同比环比"
-            sheet={retailScaleCompareSheet}
-            testId="ledger-pnl-monthly-analysis-retail-scale-compare"
-            columnLimit={7}
-          />
-          <AnalysisTable
-            title="金融市场规模"
-            sheet={financialMarketScaleSheet}
-            testId="ledger-pnl-monthly-analysis-financial-market-scale"
-            columnLimit={5}
-          />
-          <AnalysisTable
-            title="金融市场规模同比环比"
-            sheet={financialMarketScaleCompareSheet}
-            testId="ledger-pnl-monthly-analysis-financial-market-scale-compare"
-            columnLimit={7}
-          />
-          <AnalysisTable
-            title="收益率分析（总账可复算）"
-            sheet={incomeRateAnalysisSheet}
-            testId="ledger-pnl-monthly-analysis-income-rate"
-            columnLimit={7}
-          />
-          <AnalysisTable
-            title="收益量价归因（年累计同比）"
-            sheet={incomeRateAttributionSheet}
-            testId="ledger-pnl-monthly-analysis-income-rate-attribution"
-            columnLimit={9}
-          />
-          <AnalysisTable
-            title="存款利息拆分"
-            sheet={depositInterestSplitSheet}
-            testId="ledger-pnl-monthly-analysis-deposit-interest-split"
-            columnLimit={11}
-            rowLimit={9}
-          />
-          <AnalysisTable
-            title="母公司营收分项"
-            sheet={parentCompanyRevenueSheet}
-            testId="ledger-pnl-monthly-analysis-parent-company-revenue"
-            columnLimit={11}
-            rowLimit={17}
-          />
-          <AnalysisTable
-            title="外币分析"
-            sheet={foreignCurrencySheet}
-            testId="ledger-pnl-monthly-analysis-foreign-currency"
-            columnLimit={6}
-            rowLimit={8}
-          />
-          <AnalysisTable
-            title="行业存贷差"
-            sheet={industryGapSheet}
-            testId="ledger-pnl-monthly-analysis-industry-gap"
-            columnLimit={5}
-          />
-        </div>
+        <LedgerPnlWorkbookTables groups={monthlyWorkbookGroups} />
+          </>
+        )}
+        </section>
       </section>
 
-      <div className="ledger-pnl-summary-table-grid">
+      <section id={LEDGER_PNL_SECTION_IDS.accounts} className="ledger-pnl-section">
+        <LedgerPnlSectionLead
+          title="科目汇总"
+          state={ledgerSectionState(summaryQuery)}
+          note={`${(summary?.by_account ?? []).length} 个科目`}
+        />
+        <div className="ledger-pnl-summary-table-grid">
         <div data-testid="ledger-pnl-currency-summary-table" className="ledger-pnl-table-shell">
           <div className="ledger-pnl-table-shell__title">
             币种汇总
@@ -2577,123 +2832,88 @@ export default function LedgerPnlPage() {
           </table>
         </div>
 
-        <div data-testid="ledger-pnl-account-summary-table" className="ledger-pnl-table-shell">
-          <div className="ledger-pnl-table-shell__title">
-            科目汇总
-          </div>
-          <table className="ledger-pnl-table">
-            <thead>
-              <tr className="ledger-pnl-table__head-row">
-                <th className="ledger-pnl-table__th">科目</th>
-                <th className="ledger-pnl-table__th ledger-pnl-table__th--num">损益</th>
-                <th className="ledger-pnl-table__th ledger-pnl-table__th--num">笔数</th>
-              </tr>
-            </thead>
-            <tbody>
-              {summaryQuery.isLoading ? (
-                <LedgerTableStateRow colSpan={3} message="科目汇总读取中" />
-              ) : summaryQuery.isError ? (
-                <LedgerTableStateRow colSpan={3} message="科目汇总读取失败" />
-              ) : accountSummaryRows.length > 0 ? (
-                <>
-                  {visibleAccountSummaryRows.map((item) => (
-                    <tr key={item.account_code} className="ledger-pnl-table__row">
-                      <td className="ledger-pnl-table__td">
-                        <div>{item.account_code}</div>
-                        <div className="ledger-pnl-table__td-sub">
-                          {item.account_name}
-                        </div>
-                      </td>
-                      <td className="ledger-pnl-table__td ledger-pnl-table__td--num">{formatMoney(item.total_pnl)}</td>
-                      <td className="ledger-pnl-table__td ledger-pnl-table__td--num">{item.count}</td>
-                    </tr>
-                  ))}
-                  <LedgerTableTruncationRow
-                    colSpan={3}
-                    label="科目汇总"
-                    total={accountSummaryRows.length}
-                  />
-                </>
-              ) : (
-                <LedgerTableStateRow colSpan={3} message="暂无科目汇总数据" />
-              )}
-            </tbody>
-          </table>
+        <LedgerPnlDataTable
+          testId="ledger-pnl-account-summary-table"
+          title="科目汇总"
+          caption={
+            visibleAccountSummaryRows.length > 0
+              ? `共 ${visibleAccountSummaryRows.length} 个科目，默认按损益绝对值降序`
+              : undefined
+          }
+          columns={accountSummaryColumns}
+          rows={visibleAccountSummaryRows}
+          rowKey={(item) => item.account_code}
+          isLoading={summaryQuery.isLoading}
+          isError={summaryQuery.isError}
+          loadingMessage="科目汇总读取中"
+          errorMessage="科目汇总读取失败"
+          emptyMessage="暂无科目汇总数据"
+          searchPlaceholder="搜索科目代码或名称"
+          pageSize={LEDGER_TABLE_PAGE_SIZE}
+        />
         </div>
-      </div>
+      </section>
 
-      <div
+      <section
         ref={detailTableRef}
         tabIndex={-1}
-        data-testid="ledger-pnl-detail-table"
-        className="ledger-pnl-table-shell"
+        id={LEDGER_PNL_SECTION_IDS.detail}
+        data-testid="ledger-pnl-detail-table-anchor"
+        className="ledger-pnl-section"
       >
-        <div className="ledger-pnl-table-shell__title">
-          科目明细
-        </div>
-        {detailAccountFilter ? (
-          <div
-            className="ledger-pnl-detail-account-filter"
-            data-testid="ledger-pnl-detail-account-filter"
-          >
-            <div>
-              <strong>
-                当前仅显示 {detailAccountFilter.account_code} {detailAccountFilter.account_name}
-              </strong>
-              <span>
-                月日均不参与本次账户损益穿透；0 可能来自日均源缺行，不能解释为已观测真实零
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setDetailAccountFilter(null)}
-              aria-label="清除科目筛选"
-            >
-              清除筛选
-            </button>
-          </div>
-        ) : null}
-        <table className="ledger-pnl-table">
-          <thead>
-            <tr className="ledger-pnl-table__head-row">
-              <th className="ledger-pnl-table__th">科目代码</th>
-              <th className="ledger-pnl-table__th">科目名称</th>
-              <th className="ledger-pnl-table__th">币种</th>
-              <th className="ledger-pnl-table__th ledger-pnl-table__th--num">期初</th>
-              <th className="ledger-pnl-table__th ledger-pnl-table__th--num">期末</th>
-              <th className="ledger-pnl-table__th ledger-pnl-table__th--num">月损益</th>
-              <th className="ledger-pnl-table__th ledger-pnl-table__th--num">月日均</th>
-              <th className="ledger-pnl-table__th ledger-pnl-table__th--num">天数</th>
-            </tr>
-          </thead>
-          <tbody>
-            {dataQuery.isLoading ? (
-              <LedgerTableStateRow colSpan={8} message="科目明细读取中" />
-            ) : dataQuery.isError ? (
-              <LedgerTableStateRow colSpan={8} message="科目明细读取失败" />
-            ) : filteredDetailRows.length > 0 ? (
-              <>
-                {visibleDetailRows.map((item) => (
-                  <tr key={`${item.account_code}-${item.currency}`} className="ledger-pnl-table__row">
-                    <td className="ledger-pnl-table__td">{item.account_code}</td>
-                    <td className="ledger-pnl-table__td">{item.account_name}</td>
-                    <td className="ledger-pnl-table__td">{item.currency}</td>
-                    <td className="ledger-pnl-table__td ledger-pnl-table__td--num">{formatMoney(item.beginning_balance)}</td>
-                    <td className="ledger-pnl-table__td ledger-pnl-table__td--num">{formatMoney(item.ending_balance)}</td>
-                    <td className="ledger-pnl-table__td ledger-pnl-table__td--num">{formatMoney(item.monthly_pnl)}</td>
-                    <td className="ledger-pnl-table__td ledger-pnl-table__td--num">{formatMoney(item.daily_avg_balance)}</td>
-                    <td className="ledger-pnl-table__td ledger-pnl-table__td--num">{item.days_in_period}</td>
-                  </tr>
-                ))}
-                <LedgerTableTruncationRow colSpan={8} label="科目明细" total={filteredDetailRows.length} />
-              </>
-            ) : (
-              <LedgerTableStateRow colSpan={8} message="暂无科目明细数据" />
-            )}
-          </tbody>
-        </table>
-      </div>
+        <LedgerPnlSectionLead
+          title="科目明细"
+          state={ledgerSectionState(dataQuery)}
+          note={detailSummaryNote}
+        />
+        <LedgerPnlDataTable
+          testId="ledger-pnl-detail-table"
+          title="科目明细"
+          caption={
+            visibleDetailRows.length > 0
+              ? `共 ${visibleDetailRows.length} 行，默认按月损益绝对值降序`
+              : undefined
+          }
+          columns={detailColumns}
+          rows={visibleDetailRows}
+          rowKey={(item) => `${item.account_code}-${item.currency}`}
+          isLoading={dataQuery.isLoading}
+          isError={dataQuery.isError}
+          loadingMessage="科目明细读取中"
+          errorMessage="科目明细读取失败"
+          emptyMessage="暂无科目明细数据"
+          searchPlaceholder="搜索科目代码或名称"
+          pageSize={LEDGER_TABLE_PAGE_SIZE}
+          notice={
+            detailAccountFilter ? (
+              <div
+                className="ledger-pnl-detail-account-filter"
+                data-testid="ledger-pnl-detail-account-filter"
+              >
+                <div>
+                  <strong>
+                    当前仅显示 {detailAccountFilter.account_code} {detailAccountFilter.account_name}
+                  </strong>
+                  <span>
+                    月日均不参与本次账户损益穿透；0 可能来自日均源缺行，不能解释为已观测真实零
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDetailAccountFilter(null)}
+                  aria-label="清除科目筛选"
+                >
+                  清除筛选
+                </button>
+              </div>
+            ) : null
+          }
+        />
+      </section>
 
+      <section id={LEDGER_PNL_SECTION_IDS.evidence} className="ledger-pnl-section">
+        <LedgerPnlSectionLead title="证据与元信息" note="接口口径与来源版本" />
+        <div className="ledger-pnl-evidence-layer">
       <FormalResultMetaPanel
         testId="ledger-pnl-result-meta-panel"
         sections={[
@@ -2714,6 +2934,8 @@ export default function LedgerPnlPage() {
           },
         ]}
       />
+        </div>
+      </section>
     </section>
   );
 }

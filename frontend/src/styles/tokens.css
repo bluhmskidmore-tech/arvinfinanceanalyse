@@ -344,15 +344,23 @@
 }
 
 /*
- * Nocturne 首页换肤 —— 组合经营日报专属（业主 2026-08-11 拍板，见 DESIGN.md
- * Decisions Log）。色板源自设计交接包「三个布局方向设计评审」的
- * tokens/nocturne-styles.css：单一蓝紫 accent、低饱和绿涨红跌、8px 卡片圆角。
- * 仅换肤不动版式；作用域限定首页页面根及其所在工作台外壳，其余深色页面
- * 仍走 §2.2 的 dh-api 钢蓝基准。本块需排在 .theme-dh-api 定义之后以确保
- * 同元素同名变量按源序覆盖。
+ * Nocturne 换肤 —— 组合经营日报（业主 2026-08-11 拍板）+ 宏观工具
+ * /macro-toolkit、/macro-observation（业主 2026-08-12 指示按首页重构，
+ * 以选择器别名扩展 scope，未新增任何色值；见 DESIGN.md Decisions Log）
+ * + 总账损益 /ledger-pnl（业主 2026-08-12 指示按首页标准实现，同样只加
+ * 选择器别名，不新增色值）。
+ * 色板源自设计交接包「三个布局方向设计评审」的 tokens/nocturne-styles.css：
+ * 单一蓝紫 accent、低饱和绿涨红跌、8px 卡片圆角（--dh-api-radius）。
+ * 作用域限定以上页面根及其所在工作台外壳，其余深色页面仍走 §2.2 的
+ * dh-api 钢蓝基准。本块需排在 .theme-dh-api 定义之后以确保同元素同名
+ * 变量按源序覆盖。
  */
 [data-moss-theme-scope="dashboard-home"],
-.workbench-shell-grid:has([data-moss-theme-scope="dashboard-home"]) {
+[data-moss-theme-scope="macro-toolkit"],
+[data-moss-theme-scope="ledger-pnl"],
+.workbench-shell-grid:has([data-moss-theme-scope="dashboard-home"]),
+.workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"]),
+.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]) {
   --nct-bg: #161826;
   --nct-rail: #131522;
   --nct-surface: #232532;
@@ -401,4 +409,18 @@
   --dh-home-nocturne-ink: var(--nct-ink);
   --dh-home-nocturne-muted: var(--nct-muted);
   --dh-home-nocturne-rule: var(--nct-ring);
+}
+
+/*
+ * 宏观工具与总账损益路由的外壳铬件补充映射：终端条/纸面渐变在 .theme-dh-api
+ * 块里是烘焙死的钢蓝 rgba 渐变，Nocturne scope 翻不动；首页因不渲染这些铬件
+ * 而无感。此块仅对渲染外壳铬件的 scope 生效，值全部引用 --nct-*，不新增色值。
+ */
+[data-moss-theme-scope="macro-toolkit"],
+[data-moss-theme-scope="ledger-pnl"],
+.workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"]),
+.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]) {
+  --moss-shell-terminal-bg: var(--nct-rail);
+  --moss-shell-paper-bg: var(--nct-bg);
+  --moss-shell-paper-shade: none;
 }

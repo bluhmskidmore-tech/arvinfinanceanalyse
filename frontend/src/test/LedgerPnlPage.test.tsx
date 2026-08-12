@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
@@ -804,7 +804,7 @@ describe("LedgerPnlPage", () => {
     await waitFor(() => {
       expect(strip).toHaveTextContent("候选分析可用，正式契约读取中");
       expect(strip).toHaveTextContent("分析证据行1");
-      expect(strip).toHaveTextContent("候选分析状态ready · candidate");
+      expect(strip).toHaveTextContent("候选分析状态可用 · 候选口径");
       expect(strip).toHaveTextContent("候选分析证据ledger_pnl.analysis · evidence 1");
     });
 
@@ -1013,7 +1013,7 @@ describe("LedgerPnlPage", () => {
     await waitFor(() => {
       expect(strip).toHaveTextContent("候选分析可用，正式契约明细缺失");
       expect(strip).toHaveTextContent("正式契约缺口无正式契约明细");
-      expect(strip).toHaveTextContent("候选分析状态ready · candidate");
+      expect(strip).toHaveTextContent("候选分析状态可用 · 候选口径");
     });
 
     const decisionPath = within(strip).getByTestId("ledger-pnl-decision-path");
@@ -1433,14 +1433,14 @@ describe("LedgerPnlPage", () => {
       expect(strip).toHaveTextContent("正式财务指标契约缺失");
       expect(strip).toHaveTextContent("补齐 202605 正式财务指标 Excel 冻结样本");
       expect(strip).toHaveTextContent("分析证据行1");
-      expect(strip).toHaveTextContent("候选分析状态ready · candidate");
+      expect(strip).toHaveTextContent("候选分析状态可用 · 候选口径");
       expect(strip).toHaveTextContent("候选分析证据ledger_pnl.analysis · evidence 1");
       expect(strip).toHaveTextContent("来源状态来源正常");
       expect(strip).toHaveTextContent("候选补证入口 候选分析证据完整");
     });
 
     const decisionPath = within(strip).getByTestId("ledger-pnl-decision-path");
-    expect(decisionPath).toHaveTextContent("候选分析状态ready · candidate");
+    expect(decisionPath).toHaveTextContent("候选分析状态可用 · 候选口径");
     expect(decisionPath).toHaveTextContent("候选补证路径候选分析证据完整");
     expect(decisionPath).toHaveTextContent("分析证据处理路径使用后端分析 DTO");
     expect(decisionPath).toHaveTextContent("来源处理路径来源状态正常");
@@ -2009,7 +2009,7 @@ describe("LedgerPnlPage", () => {
       expect(strip).toHaveTextContent("候选分析可用，正式契约读取失败");
       expect(strip).toHaveTextContent("正式契约缺口");
       expect(strip).toHaveTextContent("正式契约读取失败");
-      expect(strip).toHaveTextContent("候选分析状态ready · candidate");
+      expect(strip).toHaveTextContent("候选分析状态可用 · 候选口径");
     });
     const decisionPath = within(strip).getByTestId("ledger-pnl-decision-path");
     expect(decisionPath).toHaveTextContent("正式状态正式契约读取失败");
@@ -2116,7 +2116,7 @@ describe("LedgerPnlPage", () => {
     await waitFor(() => {
       expect(strip).toHaveTextContent("报告日未列入可选清单");
       expect(strip).toHaveTextContent("请核对日期清单和源文件登记");
-      expect(strip).toHaveTextContent("候选分析状态ready · candidate");
+      expect(strip).toHaveTextContent("候选分析状态可用 · 候选口径");
     });
   });
 
@@ -2293,7 +2293,7 @@ describe("LedgerPnlPage", () => {
     expect(screen.queryByTestId("ledger-pnl-explainability-panel")).not.toBeInTheDocument();
     expect(await screen.findByTestId("ledger-pnl-analysis-workbench")).toHaveAttribute("data-state", "ready");
     expect(screen.getByTestId("ledger-pnl-functional-audit-strip")).toHaveTextContent(
-      "候选分析状态ready · candidate",
+      "候选分析状态可用 · 候选口径",
     );
 
     const detailTable = await screen.findByTestId("ledger-pnl-detail-table");
@@ -2398,7 +2398,7 @@ describe("LedgerPnlPage", () => {
 
     const strip = await screen.findByTestId("ledger-pnl-functional-audit-strip");
     await waitFor(() => {
-      expect(strip).toHaveTextContent("候选分析状态ready · candidate");
+      expect(strip).toHaveTextContent("候选分析状态可用 · 候选口径");
       expect(strip).toHaveTextContent("候选分析证据ledger_pnl.analysis · evidence 1");
     });
     expect(await screen.findByText("币种汇总读取失败")).toBeInTheDocument();
@@ -2501,7 +2501,7 @@ describe("LedgerPnlPage", () => {
       expect(detailTable).toHaveTextContent("514100");
       expect(detailTable).not.toHaveTextContent("519900");
       expect(scrollIntoView).toHaveBeenCalled();
-      expect(detailTable).toHaveFocus();
+      expect(screen.getByTestId("ledger-pnl-detail-table-anchor")).toHaveFocus();
 
       await user.click(within(filter).getByRole("button", { name: "清除科目筛选" }));
       expect(screen.queryByTestId("ledger-pnl-detail-account-filter")).not.toBeInTheDocument();
@@ -2511,7 +2511,7 @@ describe("LedgerPnlPage", () => {
     }
   });
 
-  it("caps very large ledger tables and keeps the full row count visible", async () => {
+  it("paginates very large ledger tables and keeps every row reachable", async () => {
     const base = createApiClient({ mode: "mock" });
     const byAccount = Array.from({ length: 201 }, (_, index) => {
       const rowNumber = index + 1;
@@ -2587,13 +2587,26 @@ describe("LedgerPnlPage", () => {
     await waitFor(() => {
       expect(accountTable).toHaveTextContent("account-row-201");
     });
-    expect(accountTable).toHaveTextContent("科目汇总已按金额绝对值展示前 200 条 / 总计 201 条");
+    expect(
+      within(accountTable).getByTestId("ledger-pnl-account-summary-table-range"),
+    ).toHaveTextContent("第 1-25 条 / 共 201 条");
     expect(within(accountTable).queryByText(/^account-row-1$/)).not.toBeInTheDocument();
 
     const detailTable = screen.getByTestId("ledger-pnl-detail-table");
     expect(detailTable).toHaveTextContent("detail-row-201");
-    expect(detailTable).toHaveTextContent("科目明细已按金额绝对值展示前 200 条 / 总计 201 条");
+    expect(within(detailTable).getByTestId("ledger-pnl-detail-table-range")).toHaveTextContent(
+      "第 1-25 条 / 共 201 条",
+    );
     expect(within(detailTable).queryByText(/^detail-row-200$/)).not.toBeInTheDocument();
+
+    // 被分页隐去的行仍然可达：这是从"只渲染前 200 条"改为分页后的关键保证。
+    await userEvent.click(
+      within(accountTable).getByTestId("ledger-pnl-account-summary-table-next"),
+    );
+    expect(
+      within(accountTable).getByTestId("ledger-pnl-account-summary-table-range"),
+    ).toHaveTextContent("第 26-50 条 / 共 201 条");
+    expect(within(accountTable).getByText("account-row-176")).toBeInTheDocument();
   });
 
   it("uses the report_date query for ledger reads while the date list is still loading", async () => {
@@ -3182,6 +3195,8 @@ describe("LedgerPnlPage", () => {
     expect(screen.getByTestId("ledger-pnl-formal-indicator-status-panel")).toHaveTextContent("formal_pending");
     expect(screen.getByTestId("ledger-pnl-monthly-analysis-summary-3d")).toHaveTextContent("公司贷款");
     expect(screen.getByTestId("ledger-pnl-monthly-analysis-alerts")).toHaveTextContent("14001000001");
+
+    await userEvent.click(screen.getByTestId("ledger-pnl-workbook-tables-tab-segment"));
     expect(screen.getByText("分部基础规模")).toBeInTheDocument();
     expect(screen.getByTestId("ledger-pnl-monthly-analysis-segment-base-scale")).toHaveTextContent("微贷中心");
     expect(screen.getByTestId("ledger-pnl-monthly-analysis-segment-base-scale")).toHaveTextContent(
@@ -3223,6 +3238,7 @@ describe("LedgerPnlPage", () => {
     expect(screen.getByTestId("ledger-pnl-monthly-analysis-financial-market-scale-compare")).toHaveTextContent(
       "月度分析-金融市场",
     );
+    await userEvent.click(screen.getByTestId("ledger-pnl-workbook-tables-tab-income"));
     expect(screen.getByText("收益率分析（总账可复算）")).toBeInTheDocument();
     expect(screen.getByTestId("ledger-pnl-monthly-analysis-income-rate")).toHaveTextContent(
       "公司贷款利息收入",
@@ -3346,8 +3362,164 @@ describe("LedgerPnlPage", () => {
     expect(candidateRead.mock.calls[0]).toHaveLength(2);
 
     const summaryCards = screen.getByTestId("ledger-pnl-summary-cards");
+    const indicatorSummaryPanel = screen.getByTestId(
+      "ledger-pnl-financial-indicator-summary-panel",
+    );
     const monthlyPanel = screen.getByTestId("ledger-pnl-monthly-analysis-panel");
-    expect(summaryCards.nextElementSibling).toBe(panel);
-    expect(panel.nextElementSibling).toBe(monthlyPanel);
+    const precedes = (earlier: Element, later: Element) =>
+      Boolean(
+        earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+    expect(precedes(summaryCards, indicatorSummaryPanel)).toBe(true);
+    expect(precedes(indicatorSummaryPanel, panel)).toBe(true);
+    expect(precedes(panel, monthlyPanel)).toBe(true);
+  });
+
+  describe("viewport-gated sections", () => {
+    class ControlledIntersectionObserver {
+      static instances: ControlledIntersectionObserver[] = [];
+
+      static reset() {
+        ControlledIntersectionObserver.instances = [];
+      }
+
+      static intersectAll() {
+        for (const instance of [...ControlledIntersectionObserver.instances]) {
+          const entries = [...instance.elements].map((element) => ({
+            isIntersecting: true,
+            target: element,
+          }));
+          if (entries.length > 0) {
+            instance.callback(entries);
+          }
+        }
+      }
+
+      elements = new Set<Element>();
+
+      constructor(
+        private readonly callback: (
+          entries: Array<{ isIntersecting: boolean; target: Element }>,
+        ) => void,
+      ) {
+        ControlledIntersectionObserver.instances.push(this);
+      }
+
+      observe = (element: Element) => {
+        this.elements.add(element);
+      };
+
+      unobserve = (element: Element) => {
+        this.elements.delete(element);
+      };
+
+      disconnect = () => {
+        this.elements.clear();
+      };
+    }
+
+    function buildGatedClient() {
+      const base = createApiClient({ mode: "mock" });
+      const spies = {
+        candidate: vi.fn(base.getLedgerPnlCandidateFinancialIndicators),
+        indicatorSummary: vi.fn(base.getLedgerPnlFinancialIndicatorSummary),
+        formalContract: vi.fn(base.getLedgerPnlFormalFinancialIndicators),
+        ruleChecks: vi.fn(base.getLedgerPnlFormalIndicatorRuleChecks),
+        workbook: vi.fn(base.getLedgerPnlMonthlyAnalysisWorkbook),
+      };
+      const client: ApiClient = {
+        ...base,
+        getLedgerPnlCandidateFinancialIndicators: spies.candidate,
+        getLedgerPnlFinancialIndicatorSummary: spies.indicatorSummary,
+        getLedgerPnlFormalFinancialIndicators: spies.formalContract,
+        getLedgerPnlFormalIndicatorRuleChecks: spies.ruleChecks,
+        getLedgerPnlMonthlyAnalysisWorkbook: spies.workbook,
+      };
+      return { client, spies };
+    }
+
+    beforeEach(() => {
+      ControlledIntersectionObserver.reset();
+      vi.stubGlobal("IntersectionObserver", ControlledIntersectionObserver);
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("does not fire gated queries until their sections enter the viewport", async () => {
+      const { client, spies } = buildGatedClient();
+
+      renderLedgerPnlPage(client, "/ledger-pnl?report_date=2025-12-31");
+
+      await screen.findByTestId("ledger-pnl-analysis-conclusion");
+
+      expect(screen.getByTestId("ledger-pnl-indicators-skeleton")).toBeInTheDocument();
+      expect(screen.getByTestId("ledger-pnl-candidate-skeleton")).toBeInTheDocument();
+      expect(screen.getByTestId("ledger-pnl-reconciliation-skeleton")).toBeInTheDocument();
+      expect(spies.candidate).not.toHaveBeenCalled();
+      expect(spies.indicatorSummary).not.toHaveBeenCalled();
+      expect(spies.formalContract).not.toHaveBeenCalled();
+      expect(spies.ruleChecks).not.toHaveBeenCalled();
+      expect(spies.workbook).not.toHaveBeenCalled();
+
+      const strip = screen.getByTestId("ledger-pnl-functional-audit-strip");
+      await waitFor(() => {
+        expect(strip).toHaveTextContent("候选分析可用，对账区待加载");
+      });
+      expect(strip).toHaveTextContent("对账区块未加载");
+      expect(strip).not.toHaveTextContent("正式契约读取失败");
+
+      act(() => {
+        ControlledIntersectionObserver.intersectAll();
+      });
+
+      await waitFor(() => {
+        expect(spies.candidate).toHaveBeenCalled();
+        expect(spies.indicatorSummary).toHaveBeenCalled();
+        expect(spies.formalContract).toHaveBeenCalled();
+        expect(spies.ruleChecks).toHaveBeenCalled();
+      });
+      expect(screen.queryByTestId("ledger-pnl-indicators-skeleton")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("ledger-pnl-candidate-skeleton")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("ledger-pnl-reconciliation-skeleton")).not.toBeInTheDocument();
+    });
+
+    it("wakes the target and every gated section above it when navigating from the section nav", async () => {
+      const { client, spies } = buildGatedClient();
+      const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+      HTMLElement.prototype.scrollIntoView = vi.fn();
+
+      try {
+        renderLedgerPnlPage(client, "/ledger-pnl?report_date=2025-12-31");
+
+        await screen.findByTestId("ledger-pnl-analysis-conclusion");
+        expect(spies.candidate).not.toHaveBeenCalled();
+
+        await userEvent.click(
+          screen.getByTestId(
+            "ledger-pnl-section-nav-item-ledger-pnl-section-reconciliation",
+          ),
+        );
+
+        await waitFor(() => {
+          expect(spies.indicatorSummary).toHaveBeenCalled();
+          expect(spies.candidate).toHaveBeenCalled();
+          expect(spies.formalContract).toHaveBeenCalled();
+          expect(spies.ruleChecks).toHaveBeenCalled();
+        });
+        expect(
+          screen.queryByTestId("ledger-pnl-indicators-skeleton"),
+        ).not.toBeInTheDocument();
+        expect(
+          screen.queryByTestId("ledger-pnl-candidate-skeleton"),
+        ).not.toBeInTheDocument();
+        expect(
+          screen.queryByTestId("ledger-pnl-reconciliation-skeleton"),
+        ).not.toBeInTheDocument();
+      } finally {
+        HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+      }
+    });
   });
 });

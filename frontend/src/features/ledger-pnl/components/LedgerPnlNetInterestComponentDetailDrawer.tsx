@@ -394,6 +394,7 @@ export function LedgerPnlNetInterestComponentDetailDrawer({
       closable={false}
       rootClassName="ledger-net-interest-detail"
       data-testid="ledger-pnl-net-interest-component-detail-drawer"
+      data-moss-theme-scope="ledger-pnl"
       title="净息贡献项科目穿透"
       extra={(
         <AntButton type="text" onClick={onClose} aria-label="关闭净息贡献项科目穿透">

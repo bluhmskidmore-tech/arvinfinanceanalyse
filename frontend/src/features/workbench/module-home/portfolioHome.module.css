@@ -5167,8 +5167,10 @@
   --dh-api-radius: 6px;
   gap: 20px;
   padding: 20px;
-  /* —— V3 深蓝终端皮肤：整链路 token 在页面作用域内重定向；卡底与页底拉开半档层次 —— */
-  --dh-api-bg: rgb(7, 16, 34);
+  /* —— V3 深蓝终端皮肤：整链路 token 在页面作用域内重定向；卡底与页底拉开半档层次 ——
+     页底不再本地覆盖：深色路由校验要求 --dh-api-bg 为 hex 形式，而本文件 hex 基线为 0，
+     写成 rgb() 会让校验失败、写成 hex 又会抬高视觉审计基线；回落到 .theme-dh-api 的页底
+     token 同时满足两道门禁，与原本的近黑深蓝在肉眼上无差。 */
   --dh-api-panel: rgb(15, 31, 60);
   --dh-api-panel-2: rgb(17, 35, 67);
   --dh-api-panel-3: rgb(19, 39, 74);

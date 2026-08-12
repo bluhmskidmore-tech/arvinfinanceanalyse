@@ -2,9 +2,9 @@
   margin-bottom: var(--moss-space-4);
   padding: var(--moss-space-4);
   overflow: hidden;
-  border: 1px solid var(--ib-hairline);
-  border-radius: var(--ib-radius, 2px);
-  background: var(--ib-surface);
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
 }
 
 .ledger-analysis-header {
@@ -17,7 +17,7 @@
 
 .ledger-analysis-eyebrow,
 .ledger-analysis-card__header > div > span {
-  color: var(--ib-accent);
+  color: var(--dh-api-blue);
   font-size: 10px;
   font-weight: 800;
   line-height: 1.3;
@@ -25,20 +25,12 @@
   text-transform: uppercase;
 }
 
-.ledger-analysis-header h2 {
-  margin: 5px 0 0;
-  color: var(--ib-ink);
-  font-size: 22px;
-  font-weight: 760;
-  line-height: 1.2;
-}
-
-.ledger-analysis-header p {
-  max-width: 780px;
-  margin: 7px 0 0;
-  color: var(--ib-ink-secondary);
-  font-size: 13px;
-  line-height: 1.55;
+.ledger-analysis-header h3 {
+  margin: 4px 0 0;
+  color: var(--dh-api-ink);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.25;
 }
 
 .ledger-analysis-header__badges {
@@ -57,7 +49,7 @@
   align-items: center;
   min-height: 28px;
   padding: 5px 9px;
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius);
   font-size: 11px;
   font-weight: 750;
   line-height: 1.3;
@@ -73,7 +65,7 @@
 .ledger-analysis-card__date,
 .ledger-analysis-card__unit {
   background: var(--moss-color-neutral-100);
-  color: var(--ib-ink-secondary);
+  color: var(--dh-api-soft);
 }
 
 .ledger-analysis-source-status {
@@ -82,7 +74,7 @@
   margin-bottom: var(--moss-space-3);
   padding: 10px 12px;
   border: 1px solid var(--moss-color-warning-200);
-  border-radius: var(--ib-radius, 2px);
+  border-radius: var(--dh-api-radius);
   background: var(--moss-color-warning-50);
 }
 
@@ -90,7 +82,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px 12px;
-  color: var(--ib-warn);
+  color: var(--dh-api-amber);
   font-size: 12px;
 }
 
@@ -101,13 +93,13 @@
   padding: var(--moss-space-4);
   place-content: center;
   border: 1px dashed var(--moss-color-neutral-300);
-  border-radius: var(--ib-radius, 2px);
-  color: var(--ib-ink-secondary);
+  border-radius: var(--dh-api-radius);
+  color: var(--dh-api-soft);
   text-align: center;
 }
 
 .ledger-analysis-state strong {
-  color: var(--ib-ink);
+  color: var(--dh-api-ink);
   font-size: 16px;
 }
 
@@ -127,18 +119,22 @@
   margin: 5px auto 0;
   padding: 7px 12px;
   border: 1px solid var(--moss-color-primary-300);
-  border-radius: var(--ib-radius, 2px);
-  background: var(--ib-surface);
-  color: var(--ib-accent-hover);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+  color: var(--dh-api-blue);
   font: inherit;
   font-size: 12px;
   font-weight: 750;
   cursor: pointer;
 }
 
+/*
+ * 单列：核心/其他/全量三个金额由紧邻的桥接卡以等式形式给出，
+ * 结论区只承担方向判断，避免同屏第三次重复同一组数字。
+ */
 .ledger-analysis-conclusion {
   display: grid;
-  grid-template-columns: minmax(240px, 0.72fr) minmax(0, 1.6fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--moss-space-3);
   margin-bottom: var(--moss-space-3);
 }
@@ -146,43 +142,45 @@
 .ledger-analysis-conclusion__statement,
 .ledger-analysis-metric-grid article,
 .ledger-analysis-card {
-  border: 1px solid var(--ib-hairline);
-  border-radius: var(--ib-radius, 2px);
-  background: var(--ib-surface);
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
 }
 
 .ledger-analysis-conclusion__statement {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--moss-space-3);
   padding: var(--moss-space-3);
-  border-left: 4px solid var(--ib-accent-surface0);
+  border-left: 4px solid var(--dh-api-blue-soft);
 }
 
 .ledger-analysis-conclusion__statement > span,
 .ledger-analysis-metric-grid span,
 .ledger-analysis-residual span {
-  color: var(--ib-surface-muted0);
+  color: var(--dh-api-muted);
   font-size: 11px;
   font-weight: 700;
 }
 
 .ledger-analysis-conclusion__statement > strong {
-  display: block;
-  margin-top: 6px;
-  color: var(--ib-ink);
+  color: var(--dh-api-ink);
   font-size: 20px;
   line-height: 1.25;
 }
 
 .ledger-analysis-conclusion__statement > strong[data-tone="positive"] {
-  color: var(--ib-up);
+  color: var(--dh-api-green);
 }
 
 .ledger-analysis-conclusion__statement > strong[data-tone="negative"] {
-  color: var(--ib-down);
+  color: var(--dh-api-red);
 }
 
 .ledger-analysis-conclusion__statement p {
-  margin: 7px 0 0;
-  color: var(--ib-ink-secondary);
+  margin: 0;
+  color: var(--dh-api-soft);
   font-size: 12px;
   font-weight: 650;
 }
@@ -201,7 +199,7 @@
 .ledger-analysis-metric-grid strong {
   display: block;
   margin-top: 9px;
-  color: var(--ib-ink);
+  color: var(--dh-api-ink);
   font-size: 22px;
   line-height: 1.2;
   overflow-wrap: anywhere;
@@ -236,7 +234,7 @@
 
 .ledger-analysis-card__header h3 {
   margin: 4px 0 0;
-  color: var(--ib-ink);
+  color: var(--dh-api-ink);
   font-size: 15px;
   font-weight: 740;
   line-height: 1.3;
@@ -254,20 +252,20 @@
   min-width: 0;
   gap: 6px;
   padding: 10px;
-  border-radius: var(--ib-radius, 2px);
-  background: var(--ib-surface-muted);
-  color: var(--ib-ink-secondary);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
   font-size: 11px;
 }
 
 .ledger-analysis-bridge__term strong {
-  color: var(--ib-ink);
+  color: var(--dh-api-ink);
   font-size: 15px;
   overflow-wrap: anywhere;
 }
 
 .ledger-analysis-bridge__term--total {
-  background: var(--ib-accent-surface);
+  background: var(--dh-api-blue-soft);
 }
 
 .ledger-analysis-bridge__operator {
@@ -291,13 +289,13 @@
 }
 
 .ledger-analysis-residual strong {
-  color: var(--ib-ink);
+  color: var(--dh-api-ink);
   font-size: 13px;
 }
 
 .ledger-analysis-residual small {
   margin-left: auto;
-  color: var(--ib-surface-muted0);
+  color: var(--dh-api-muted);
   font-size: 10px;
 }
 
@@ -314,14 +312,14 @@
 
 .ledger-analysis-period-highlights span {
   padding: 6px 9px;
-  border-radius: var(--ib-radius, 2px);
-  background: var(--ib-accent-surface);
-  color: var(--ib-ink-secondary);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-soft);
   font-size: 11px;
 }
 
 .ledger-analysis-period-highlights strong {
-  color: var(--ib-ink);
+  color: var(--dh-api-ink);
 }
 
 .ledger-analysis-table-wrap table {
@@ -340,7 +338,7 @@
 }
 
 .ledger-analysis-table-wrap th {
-  color: var(--ib-surface-muted0);
+  color: var(--dh-api-muted);
   font-size: 10px;
   font-weight: 750;
   letter-spacing: 0.04em;
@@ -356,16 +354,16 @@
   display: grid;
   gap: 5px;
   padding: var(--moss-space-3);
-  border-radius: var(--ib-radius, 2px);
+  border-radius: var(--dh-api-radius);
   background: var(--moss-color-warning-50);
-  color: var(--ib-warn);
+  color: var(--dh-api-amber);
   font-size: 12px;
 }
 
 .ledger-analysis-empty {
   margin: 0;
   padding: var(--moss-space-3);
-  color: var(--ib-surface-muted0);
+  color: var(--dh-api-muted);
   font-size: 12px;
 }
 
@@ -378,15 +376,15 @@
 
 .ledger-analysis-contributor-totals span {
   padding: 6px 9px;
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius);
   background: var(--moss-color-neutral-100);
-  color: var(--ib-ink-secondary);
+  color: var(--dh-api-soft);
   font-size: 11px;
 }
 
 .ledger-analysis-contributor-totals strong {
   margin-left: 5px;
-  color: var(--ib-ink);
+  color: var(--dh-api-ink);
 }
 
 .ledger-analysis-contributor-grid {
@@ -399,13 +397,13 @@
   min-width: 0;
   padding: 10px;
   border: 1px solid var(--moss-color-neutral-100);
-  border-radius: var(--ib-radius, 2px);
-  background: var(--ib-surface-muted);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
 }
 
 .ledger-analysis-contributor-list h4 {
   margin: 0 0 7px;
-  color: var(--ib-ink-secondary);
+  color: var(--dh-api-soft);
   font-size: 12px;
 }
 
@@ -431,7 +429,7 @@
   width: 100%;
   padding: 7px 4px;
   border: 0;
-  border-radius: var(--ib-radius, 2px);
+  border-radius: var(--dh-api-radius);
   background: transparent;
   color: inherit;
   font: inherit;
@@ -444,7 +442,7 @@
 }
 
 .ledger-analysis-contributor-list li > button:focus-visible {
-  outline: 2px solid var(--ib-accent-surface0);
+  outline: 2px solid var(--dh-api-blue-soft);
   outline-offset: 1px;
 }
 
@@ -458,8 +456,8 @@
   height: 20px;
   place-items: center;
   border-radius: 50%;
-  background: var(--ib-surface);
-  color: var(--ib-surface-muted0);
+  background: var(--dh-api-panel);
+  color: var(--dh-api-muted);
   font-size: 10px;
   font-weight: 750;
 }
@@ -475,7 +473,7 @@
 }
 
 .ledger-analysis-contributor-name small {
-  color: var(--ib-surface-muted0);
+  color: var(--dh-api-muted);
 }
 
 .ledger-analysis-calculation-basis {
@@ -484,14 +482,14 @@
   gap: 5px 12px;
   margin-top: var(--moss-space-3);
   padding-top: var(--moss-space-3);
-  border-top: 1px solid var(--ib-hairline);
-  color: var(--ib-surface-muted0);
+  border-top: 1px solid var(--dh-api-line);
+  color: var(--dh-api-muted);
   font-size: 10px;
   line-height: 1.45;
 }
 
 .ledger-analysis-calculation-basis strong {
-  color: var(--ib-ink-secondary);
+  color: var(--dh-api-soft);
 }
 
 @media (max-width: 720px) {

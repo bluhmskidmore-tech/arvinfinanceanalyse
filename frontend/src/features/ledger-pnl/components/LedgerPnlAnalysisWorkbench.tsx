@@ -110,8 +110,7 @@ function AnalysisHeader({ payload }: { payload: LedgerPnlAnalysisPayload | undef
     <header className="ledger-analysis-header">
       <div>
         <span className="ledger-analysis-eyebrow">候选总账读模型</span>
-        <h2>总账损益分析工作台</h2>
-        <p>回答损益方向、核心与其他 5* 桥接、账务口径差异、上一期变化及科目贡献。</p>
+        <h3>总账损益分析工作台</h3>
       </div>
       <div className="ledger-analysis-header__badges">
         <span className="ledger-analysis-candidate-badge">候选分析</span>
@@ -128,20 +127,6 @@ function ConclusionPanel({ payload }: { payload: LedgerPnlAnalysisPayload }) {
         <span>当期判断</span>
         <strong data-tone={payload.conclusion.direction}>{directionCopy[payload.conclusion.direction]}</strong>
         <p data-tone={payload.conclusion.other_effect}>{otherEffectCopy[payload.conclusion.other_effect]}</p>
-      </div>
-      <div className="ledger-analysis-metric-grid">
-        <article>
-          <span>核心损益</span>
-          <strong>{formatMoney(payload.conclusion.core_pnl)}</strong>
-        </article>
-        <article>
-          <span>其他 5* 损益</span>
-          <strong>{formatMoney(payload.conclusion.other_5_pnl)}</strong>
-        </article>
-        <article data-tone={payload.conclusion.direction}>
-          <span>全量损益</span>
-          <strong>{formatMoney(payload.conclusion.all_pnl)}</strong>
-        </article>
       </div>
     </section>
   );
