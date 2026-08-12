@@ -303,14 +303,33 @@ export function DashboardHomeOptionTwoBody({
     .filter((metric) => !riskPrimaryIds.has(metric.id))
     .slice(0, 3);
   const visibleRiskMetrics = [...riskPrimaryMetrics, ...riskSecondaryMetrics].slice(0, 5);
+  // Top5 主体集中度来自首屏快照的风险条（portfolio headlines），风险概览此前未呈现。
+  const top5Concentration = firstScreenView.keyRiskStrip.find(
+    (item) => item.id === "risk-top5",
+  );
+  if (
+    top5Concentration &&
+    !visibleRiskMetrics.some((metric) => metric.id === top5Concentration.id)
+  ) {
+    visibleRiskMetrics.push({
+      id: top5Concentration.id,
+      label: top5Concentration.label,
+      value: top5Concentration.value,
+    });
+  }
+  // 待复核事项预览（余额分析台账 pending 前 2 条）优先占用观测行槽位。
+  const decisionPreviewRows = view.decisionItemsPreview.slice(0, 2);
+  const decisionPreviewCount = decisionPreviewRows.length;
+  const recommendationSlots = Math.max(0, 3 - decisionPreviewCount);
   const visibleRecommendationCount = actions.length > 0
-    ? Math.min(actions.length, 3)
-    : Math.min(suggestions.length, 3);
+    ? Math.min(actions.length, recommendationSlots)
+    : Math.min(suggestions.length, recommendationSlots);
   const visibleRiskObservations = riskObservations.slice(
     0,
-    Math.max(0, 3 - visibleRecommendationCount),
+    Math.max(0, 3 - decisionPreviewCount - visibleRecommendationCount),
   );
-  const riskItemCount = visibleRecommendationCount + visibleRiskObservations.length;
+  const riskItemCount =
+    decisionPreviewCount + visibleRecommendationCount + visibleRiskObservations.length;
   const trustCompleteness = trust.total > 0
     ? Math.round((trust.ready / trust.total) * 100)
     : 0;
@@ -519,9 +538,22 @@ export function DashboardHomeOptionTwoBody({
                       {view.incomeTrend.slice(-3).map((row) => (
                         <tr key={row.id}>
                           <td>{row.date.slice(0, 7)}</td>
-                          <td>{row.portfolioPnl}</td>
-                          <td>{row.benchmarkPnl}</td>
-                          <td>{row.excessPnl}</td>
+                          <td title={row.portfolioPnl}>{row.portfolioPnl}</td>
+                          <td title={row.benchmarkPnl}>{row.benchmarkPnl}</td>
+                          <td
+                            data-tone={
+                              row.excessRaw == null
+                                ? undefined
+                                : row.excessRaw > 0
+                                  ? "up"
+                                  : row.excessRaw < 0
+                                    ? "down"
+                                    : "flat"
+                            }
+                            title={row.excessPnl}
+                          >
+                            {row.excessPnl}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -557,8 +589,35 @@ export function DashboardHomeOptionTwoBody({
           </section>
           <section className={styles.actionList} aria-label="风险观测与建议">
             <h3>风险观测与建议</h3>
+            {decisionPreviewRows.map((item) => (
+              <div
+                key={`decision-preview-${item.id}`}
+                data-priority={item.severity === "high" ? "high" : "medium"}
+                data-testid="dashboard-home-decision-preview-row"
+              >
+                <span>
+                  <LightIcon name={item.severity === "high" ? "alert" : "warning"} />
+                  <strong title={item.reason || item.title}>{item.title}</strong>
+                  <small>
+                    {view.decisionItemsReportDate
+                      ? `余额分析台账 · 截至 ${view.decisionItemsReportDate}`
+                      : "余额分析台账"}
+                  </small>
+                </span>
+                <Link
+                  to={`/decision-items?source=dashboard-home&action_id=risk-review-queue${
+                    view.decisionItemsReportDate
+                      ? `&report_date=${encodeURIComponent(view.decisionItemsReportDate)}`
+                      : ""
+                  }`}
+                  aria-label={`查看待复核事项：${item.title}`}
+                >
+                  {item.actionLabel}
+                </Link>
+              </div>
+            ))}
             {actions.length > 0 ? (
-              actions.slice(0, 3).map((action) => (
+              actions.slice(0, recommendationSlots).map((action) => (
                 <div key={action.id} data-priority={action.priority}>
                   <span>
                     <LightIcon name={action.priority === "high" ? "alert" : "warning"} />
@@ -574,8 +633,8 @@ export function DashboardHomeOptionTwoBody({
                   )}
                 </div>
               ))
-            ) : suggestions.length > 0 ? (
-              suggestions.slice(0, 3).map((suggestion) => (
+            ) : suggestions.length > 0 && recommendationSlots > 0 ? (
+              suggestions.slice(0, recommendationSlots).map((suggestion) => (
                 <div key={suggestion.id}>
                   <span>
                     <LightIcon name="bulb" />
@@ -591,7 +650,7 @@ export function DashboardHomeOptionTwoBody({
                   )}
                 </div>
               ))
-            ) : visibleRiskObservations.length === 0 ? (
+            ) : visibleRiskObservations.length === 0 && decisionPreviewCount === 0 ? (
               <p>
                 {firstScreenView.headerStatus.governanceFeedAvailable === true
                   ? "暂无治理待办或风险观测"

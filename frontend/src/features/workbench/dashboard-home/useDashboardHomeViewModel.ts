@@ -283,6 +283,44 @@ export function useDashboardHomeViewModel(
     enabled: hasDeferredIncomeTrendData,
   });
 
+  const krdCurveRiskQuery = useQuery({
+    queryKey: apiQueryKeys.bondAnalyticsKrdCurveRisk(dataClient.mode, supplementalReportDate),
+    queryFn: () => dataClient.getBondAnalyticsKrdCurveRisk(supplementalReportDate ?? ""),
+    retry: false,
+    staleTime: 60_000,
+    enabled: hasDeferredSupplementalReportDate && hasBodyDetailData && hasBodyStructureData,
+  });
+
+  // 待复核事项走余额分析域：日期取该域最新报告日，与债券报告日分属两个口径。
+  const balanceDatesQuery = useQuery({
+    queryKey: ["balance-analysis", "dates"],
+    queryFn: () => dataClient.getBalanceAnalysisDates(),
+    retry: false,
+    staleTime: 60_000,
+    enabled: hasDeferredSupplementalReportDate && hasBodyDetailData && hasBodyStructureData,
+  });
+  const latestBalanceReportDate = useMemo(() => {
+    const dates = balanceDatesQuery.data?.result?.report_dates ?? [];
+    return dates.length > 0 ? [...dates].sort((a, b) => a.localeCompare(b)).at(-1) ?? null : null;
+  }, [balanceDatesQuery.data?.result?.report_dates]);
+  const decisionItemsQuery = useQuery({
+    queryKey: apiQueryKeys.balanceAnalysisDecisionItems(
+      dataClient.mode,
+      latestBalanceReportDate,
+      "all",
+      "CNY",
+    ),
+    queryFn: () =>
+      dataClient.getBalanceAnalysisDecisionItems({
+        reportDate: latestBalanceReportDate ?? "",
+        positionScope: "all",
+        currencyBasis: "CNY",
+      }),
+    retry: false,
+    staleTime: 60_000,
+    enabled: Boolean(latestBalanceReportDate),
+  });
+
   const { macroReleaseContextQuery } = useDashboardHomeMacroReleaseContextQuery({
     dataClient,
     enabled: hasDeferredSupplementalReportDate,
@@ -363,6 +401,14 @@ export function useDashboardHomeViewModel(
         incomeTrend: incomeTrendQuery.data?.result ?? null,
         incomeTrendLoading: incomeTrendQuery.isLoading,
         incomeTrendError: incomeTrendQuery.isError,
+        krdCurveRisk: krdCurveRiskQuery.data?.result ?? null,
+        krdLoading: krdCurveRiskQuery.isLoading,
+        krdError: krdCurveRiskQuery.isError,
+        decisionItems: decisionItemsQuery.data?.result ?? null,
+        decisionItemsLoading:
+          balanceDatesQuery.isLoading || decisionItemsQuery.isLoading,
+        decisionItemsError:
+          balanceDatesQuery.isError || decisionItemsQuery.isError,
         calendarEvents: researchCalendarQuery.data ?? null,
         calendarLoading: researchCalendarQuery.isLoading,
         calendarError: researchCalendarQuery.isError,
@@ -405,6 +451,14 @@ export function useDashboardHomeViewModel(
       incomeTrendQuery.data?.result,
       incomeTrendQuery.isLoading,
       incomeTrendQuery.isError,
+      krdCurveRiskQuery.data?.result,
+      krdCurveRiskQuery.isLoading,
+      krdCurveRiskQuery.isError,
+      balanceDatesQuery.isLoading,
+      balanceDatesQuery.isError,
+      decisionItemsQuery.data?.result,
+      decisionItemsQuery.isLoading,
+      decisionItemsQuery.isError,
       yieldCurveTermStructureQuery.data?.result,
       calendarEndDate,
       calendarStartDate,

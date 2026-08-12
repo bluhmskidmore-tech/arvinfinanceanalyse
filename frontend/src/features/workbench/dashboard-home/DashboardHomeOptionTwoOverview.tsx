@@ -366,7 +366,31 @@ export function DashboardHomeOptionTwoOverview({
               <strong>观察结论</strong>
             </div>
             <h3>{decisionTitle(view.decisionRail.conclusion)}</h3>
-            <p>{decisionReason}</p>
+            <p title={decisionReason}>{decisionReason}</p>
+            {view.decisionRail.maxContributionLabel !== "—" ||
+            view.decisionRail.maxDragLabel !== "—" ? (
+              <div
+                className={styles.attributionHints}
+                data-testid="dashboard-home-attribution-hints"
+              >
+                {view.decisionRail.maxContributionLabel !== "—" ? (
+                  <span
+                    title={`最大贡献 ${view.decisionRail.maxContributionLabel} ${view.decisionRail.maxContributionValue}（来自快照经营贡献拆解）`}
+                  >
+                    贡献 {view.decisionRail.maxContributionLabel}
+                    <em data-tone="up">{view.decisionRail.maxContributionValue}</em>
+                  </span>
+                ) : null}
+                {view.decisionRail.maxDragLabel !== "—" ? (
+                  <span
+                    title={`最大拖累 ${view.decisionRail.maxDragLabel} ${view.decisionRail.maxDragValue}（来自快照经营贡献拆解）`}
+                  >
+                    拖累 {view.decisionRail.maxDragLabel}
+                    <em data-tone="down">{view.decisionRail.maxDragValue}</em>
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
             <Link
               to={narrativeActionTo}
               className={styles.overviewLink}

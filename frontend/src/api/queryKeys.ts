@@ -106,6 +106,16 @@ export const apiQueryKeys = {
       normalizeReportDate(reportDate),
       groupBy,
     ] as const,
+  bondAnalyticsKrdCurveRisk: (
+    mode: string,
+    reportDate: string | null | undefined,
+  ) =>
+    [
+      "bond-analytics",
+      "krd-curve-risk",
+      mode,
+      normalizeReportDate(reportDate),
+    ] as const,
   bondAnalyticsTopHoldings: (
     mode: string,
     reportDate: string | null | undefined,
@@ -220,6 +230,7 @@ export const apiQueryKeys = {
     mode: string,
     reportDate: string | null | undefined,
     lookbackDays: number,
+    detail = "full",
   ) =>
     [
       "pnl-attribution",
@@ -227,6 +238,7 @@ export const apiQueryKeys = {
       mode,
       normalizeReportDate(reportDate),
       lookbackDays,
+      detail,
     ] as const,
   balanceAnalysisDecisionItems: (
     mode: string,

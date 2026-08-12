@@ -117,6 +117,74 @@
   height: 30px;
 }
 
+/* 各期限 DV01 敞口条：与上方收益率曲线形成"曲线 × 敞口"对照。 */
+.krdStrip {
+  padding: 5px 10px 7px;
+  border-bottom: 1px solid var(--option-two-line);
+}
+
+.krdStripTitle {
+  display: flex;
+  min-height: 18px;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--option-two-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.krdStripTitle small {
+  color: var(--option-two-muted);
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.krdRow {
+  display: grid;
+  min-height: 19px;
+  align-items: center;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.krdRow > span {
+  color: var(--option-two-soft);
+  font-family: var(--option-two-font-data);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.krdRow > i {
+  display: block;
+  height: 4px;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--option-two-ink) 7%, transparent);
+}
+
+.krdRow > i > b {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--option-two-blue) 55%, var(--option-two-bg)),
+    var(--option-two-blue)
+  );
+}
+
+.krdRow > strong {
+  min-width: 72px;
+  color: var(--option-two-ink);
+  font-family: var(--option-two-font-data);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  text-align: right;
+}
+
 .tableScroller {
   display: flex;
   min-width: 0;

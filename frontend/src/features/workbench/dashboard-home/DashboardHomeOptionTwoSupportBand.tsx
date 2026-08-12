@@ -186,6 +186,46 @@ function MarketCurvePanel({ view }: { view: DashboardHomeBodyView }) {
         </div>
       )}
 
+      {view.krdState.kind === "ready" && view.krdBuckets.length > 0 ? (
+        <div
+          className={styles.krdStrip}
+          data-testid="dashboard-home-krd-strip"
+          aria-label="各期限 DV01 敞口"
+        >
+          <span className={styles.krdStripTitle}>
+            各期限 DV01
+            <small>万元/bp</small>
+          </span>
+          {(() => {
+            const buckets = view.krdBuckets.slice(0, 8);
+            const maxAbs = Math.max(
+              1e-9,
+              ...buckets.map((bucket) => Math.abs(bucket.dv01Raw ?? 0)),
+            );
+            return buckets.map((bucket) => (
+              <div
+                key={bucket.id}
+                className={styles.krdRow}
+                title={`${bucket.tenor} DV01 ${bucket.dv01Display}（利率上行 1bp 的估值敏感度）`}
+              >
+                <span>{bucket.tenor}</span>
+                <i aria-hidden="true">
+                  <b
+                    style={{
+                      width: `${Math.max(
+                        2,
+                        (Math.abs(bucket.dv01Raw ?? 0) / maxAbs) * 100,
+                      ).toFixed(1)}%`,
+                    }}
+                  />
+                </i>
+                <strong>{bucket.dv01Display}</strong>
+              </div>
+            ));
+          })()}
+        </div>
+      ) : null}
+
       <div className={styles.tableScroller}>
         <table
           className={styles.curveTable}

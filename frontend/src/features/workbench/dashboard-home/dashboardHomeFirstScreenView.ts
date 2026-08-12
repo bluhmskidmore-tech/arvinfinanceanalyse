@@ -803,6 +803,38 @@ function buildKeyRiskStrip(args: {
   ].filter((item) => item.value !== GAP);
 }
 
+/**
+ * 从快照归因段取最大拖累（最负）与最大贡献（最正）：
+ * 只做展示层选择，不做任何再计算；无归因数据时全部回 GAP。
+ */
+function attributionExtremes(attribution: HomeSnapshotPnlAttributionVM | null): {
+  maxDragLabel: string;
+  maxDragValue: string;
+  maxContributionLabel: string;
+  maxContributionValue: string;
+} {
+  let drag: { label: string; raw: number; display: string } | null = null;
+  let contribution: { label: string; raw: number; display: string } | null = null;
+  for (const segment of attribution?.segments ?? []) {
+    const raw = numericRaw(segment.amount);
+    if (raw == null || !Number.isFinite(raw)) continue;
+    const display = numericDisplay(segment.amount, GAP, "yuan");
+    if (display === GAP) continue;
+    if (raw < 0 && (!drag || raw < drag.raw)) {
+      drag = { label: segment.label, raw, display };
+    }
+    if (raw > 0 && (!contribution || raw > contribution.raw)) {
+      contribution = { label: segment.label, raw, display };
+    }
+  }
+  return {
+    maxDragLabel: drag?.label ?? GAP,
+    maxDragValue: drag?.display ?? GAP,
+    maxContributionLabel: contribution?.label ?? GAP,
+    maxContributionValue: contribution?.display ?? GAP,
+  };
+}
+
 function hasDisplayText(value: string | null | undefined): boolean {
   const trimmed = value?.trim();
   return Boolean(trimmed && trimmed !== GAP && trimmed !== "--");
@@ -1160,10 +1192,7 @@ export function mapToHomeFirstScreenView(
     },
     decisionRail: {
       conclusion: input.snapshotUnavailable ? snapshotFailure.label : buildDecisionSummary(verdict, terminalKpis),
-      maxDragLabel: GAP,
-      maxDragValue: GAP,
-      maxContributionLabel: GAP,
-      maxContributionValue: GAP,
+      ...attributionExtremes(input.snapshotUnavailable ? null : input.attribution),
       keyRisk: input.snapshotUnavailable
         ? `未执行：风险核验依赖主快照，${snapshotFailure.reason}`
         : formatVerdictReason(verdict?.reasons?.[0]),

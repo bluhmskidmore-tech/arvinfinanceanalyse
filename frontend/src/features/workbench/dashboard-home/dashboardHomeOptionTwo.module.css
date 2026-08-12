@@ -647,6 +647,7 @@
   white-space: nowrap;
 }
 
+/* 依据压缩为单行（完整文案在 title），为归因徽标行腾出高度。 */
 .overviewNarrative p {
   margin: 2px 0 0;
   display: -webkit-box;
@@ -657,7 +658,37 @@
   text-overflow: ellipsis;
   white-space: normal;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
+}
+
+.attributionHints {
+  display: flex;
+  min-width: 0;
+  margin-top: 3px;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+}
+
+.attributionHints > span {
+  display: inline-flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 5px;
+  overflow: hidden;
+  color: var(--option-two-muted);
+  font-size: 11px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attributionHints em {
+  font-family: var(--option-two-font-data);
+  font-size: 11px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }
 
 .overviewLink {
@@ -1430,6 +1461,11 @@
   min-height: 56px;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   border-bottom: 1px solid var(--option-two-line);
+}
+
+/* 追加 Top5 集中度后为 6 格。 */
+.riskMetricGrid:has(> div:nth-child(6)) {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
 .riskMetricGrid > div {

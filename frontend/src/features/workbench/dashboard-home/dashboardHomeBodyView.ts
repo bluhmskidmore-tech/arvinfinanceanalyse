@@ -1,5 +1,6 @@
 import type {
   AssetStructurePayload,
+  BalanceAnalysisDecisionItemsPayload,
   BondBusinessTypeMetricsResult,
   BondPositionChangesPayload,
   BondTopHoldingsPayload,
@@ -12,6 +13,7 @@ import type {
   HomeMacroReleaseContextPayload,
   HomeResearchReportsPayload,
   IndustryDistPayload,
+  KRDCurveRiskPayload,
   MaturityStructurePayload,
   Numeric,
   PortfolioComparisonPayload,
@@ -161,6 +163,23 @@ export type HomeIncomeTrendRow = {
   excessRaw: number | null;
 };
 
+/** 各期限 DV01 敞口（来自 /api/bond-analytics/krd-curve-risk 的 krd_buckets）。 */
+export type HomeKrdBucketRow = {
+  id: string;
+  tenor: string;
+  dv01Display: string;
+  dv01Raw: number | null;
+};
+
+/** 待复核事项预览（来自 /ui/balance-analysis/decision-items，pending 优先）。 */
+export type HomeDecisionItemPreviewRow = {
+  id: string;
+  title: string;
+  severity: "high" | "medium" | "low";
+  actionLabel: string;
+  reason: string;
+};
+
 export type DashboardHomeBodyView = {
   reportDate: string;
   portfolioAum: string;
@@ -192,6 +211,12 @@ export type DashboardHomeBodyView = {
   incomeTrend: readonly HomeIncomeTrendRow[];
   incomeTrendState: HomeTerminalListState;
   incomeTrendSection: HomeTrustedSection<readonly HomeIncomeTrendRow[]>;
+  krdBuckets: readonly HomeKrdBucketRow[];
+  krdState: HomeTerminalListState;
+  decisionItemsPreview: readonly HomeDecisionItemPreviewRow[];
+  decisionItemsState: HomeTerminalListState;
+  /** 余额分析域的事项报告日（与债券报告日不同域，供来源标注）。 */
+  decisionItemsReportDate: string;
 };
 
 export type MapToHomeBodyViewInput = {
@@ -228,6 +253,12 @@ export type MapToHomeBodyViewInput = {
   incomeTrend: HomeIncomeTrendPayload | null;
   incomeTrendLoading: boolean;
   incomeTrendError: boolean;
+  krdCurveRisk?: KRDCurveRiskPayload | null;
+  krdLoading?: boolean;
+  krdError?: boolean;
+  decisionItems?: BalanceAnalysisDecisionItemsPayload | null;
+  decisionItemsLoading?: boolean;
+  decisionItemsError?: boolean;
   calendarEvents: readonly ResearchCalendarEvent[] | null;
   calendarLoading: boolean;
   calendarError: boolean;
@@ -768,6 +799,111 @@ function buildIncomeTrendRows(
   };
 }
 
+function buildKrdBucketRows(args: {
+  payload: KRDCurveRiskPayload | null | undefined;
+  loading?: boolean;
+  error?: boolean;
+  expectedReportDate: string;
+}): { rows: HomeKrdBucketRow[]; state: HomeTerminalListState } {
+  if (args.error) {
+    return { rows: [], state: displayState("error", "期限敞口读取失败") };
+  }
+  if (args.loading) {
+    return { rows: [], state: displayState("loading", "期限敞口读取中") };
+  }
+  if (!args.payload?.krd_buckets?.length) {
+    return { rows: [], state: displayState("empty", "暂无期限敞口数据") };
+  }
+  const state = reportDateState(
+    args.expectedReportDate,
+    args.payload.report_date,
+    "暂无期限敞口数据",
+  );
+  if (state.kind !== "ready") {
+    return { rows: [], state };
+  }
+  const rows = args.payload.krd_buckets
+    .map((bucket, index) => {
+      const raw = numericRaw(bucket.dv01);
+      return {
+        id: `${bucket.tenor}-${index}`,
+        tenor: bucket.tenor,
+        dv01Display:
+          raw == null
+            ? GAP
+            : (raw / 1e4).toLocaleString("zh-CN", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              }),
+        dv01Raw: raw,
+      };
+    })
+    .sort((a, b) => krdTenorSortKey(a.tenor) - krdTenorSortKey(b.tenor));
+  return { rows, state };
+}
+
+/** 期限文本转年限（"6M"→0.5、"10Y"→10），无法解析的排最后。 */
+function krdTenorSortKey(tenor: string): number {
+  const match = /([\d.]+)\s*([YyMm])?/.exec(tenor);
+  const value = match ? Number(match[1]) : Number.NaN;
+  if (!Number.isFinite(value)) return Number.MAX_SAFE_INTEGER;
+  return match?.[2]?.toLowerCase() === "m" ? value / 12 : value;
+}
+
+const DECISION_SEVERITY_ORDER: Record<HomeDecisionItemPreviewRow["severity"], number> = {
+  high: 0,
+  medium: 1,
+  low: 2,
+};
+
+function normalizeDecisionSeverity(value: unknown): HomeDecisionItemPreviewRow["severity"] {
+  return value === "high" || value === "medium" || value === "low" ? value : "medium";
+}
+
+/** 余额分析域日期与首页债券报告日不同域：不做日期一致性判定，只透传标注。 */
+function buildDecisionItemsPreview(args: {
+  payload: BalanceAnalysisDecisionItemsPayload | null | undefined;
+  loading?: boolean;
+  error?: boolean;
+}): {
+  rows: HomeDecisionItemPreviewRow[];
+  state: HomeTerminalListState;
+  reportDate: string;
+} {
+  if (args.error) {
+    return { rows: [], state: displayState("error", "决策事项读取失败"), reportDate: "" };
+  }
+  if (args.loading) {
+    return { rows: [], state: displayState("loading", "决策事项读取中"), reportDate: "" };
+  }
+  if (!args.payload) {
+    return { rows: [], state: displayState("empty", "决策事项未接入"), reportDate: "" };
+  }
+  const rows = args.payload.rows
+    .filter((row) => row.latest_status?.status === "pending")
+    .sort(
+      (a, b) =>
+        DECISION_SEVERITY_ORDER[normalizeDecisionSeverity(a.severity)] -
+        DECISION_SEVERITY_ORDER[normalizeDecisionSeverity(b.severity)],
+    )
+    .slice(0, 2)
+    .map((row) => ({
+      id: row.decision_key,
+      title: row.title?.trim() || row.decision_key,
+      severity: normalizeDecisionSeverity(row.severity),
+      actionLabel: row.action_label?.trim() || "去处理",
+      reason: row.reason?.trim() || "",
+    }));
+  return {
+    rows,
+    state: displayState(
+      "ready",
+      rows.length > 0 ? `${rows.length} 项待处理` : "暂无待处理事项",
+    ),
+    reportDate: cleanDate(args.payload.report_date),
+  };
+}
+
 function buildIncomeTrendSection(
   payload: HomeIncomeTrendPayload | null | undefined,
   mapped: { rows: readonly HomeIncomeTrendRow[]; state: HomeTerminalListState },
@@ -957,6 +1093,11 @@ function buildMockBodyView(): DashboardHomeBodyView {
       incomeTrendMapped,
       DASHBOARD_COCKPIT_REPORT_DATE,
     ),
+    krdBuckets: [],
+    krdState: displayState("empty", "样例模式暂无期限敞口"),
+    decisionItemsPreview: [],
+    decisionItemsState: displayState("empty", "样例模式暂无决策事项"),
+    decisionItemsReportDate: "",
   };
 }
 
@@ -1075,6 +1216,17 @@ export function mapToHomeBodyView(input: MapToHomeBodyViewInput): DashboardHomeB
     incomeTrendMapped,
     reportDate,
   );
+  const krdMapped = buildKrdBucketRows({
+    payload: input.krdCurveRisk,
+    loading: input.krdLoading,
+    error: input.krdError,
+    expectedReportDate: reportDate,
+  });
+  const decisionItemsMapped = buildDecisionItemsPreview({
+    payload: input.decisionItems,
+    loading: input.decisionItemsLoading,
+    error: input.decisionItemsError,
+  });
   const assetDistributionMapped = homeSummaryState
     ? { slices: [], state: homeSummaryState }
     : mapStructureSlices(
@@ -1161,5 +1313,10 @@ export function mapToHomeBodyView(input: MapToHomeBodyViewInput): DashboardHomeB
     incomeTrend: incomeTrendMapped.rows,
     incomeTrendState: incomeTrendMapped.state,
     incomeTrendSection,
+    krdBuckets: krdMapped.rows,
+    krdState: krdMapped.state,
+    decisionItemsPreview: decisionItemsMapped.rows,
+    decisionItemsState: decisionItemsMapped.state,
+    decisionItemsReportDate: decisionItemsMapped.reportDate,
   };
 }
