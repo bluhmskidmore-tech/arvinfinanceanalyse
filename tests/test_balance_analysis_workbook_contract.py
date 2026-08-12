@@ -669,18 +669,22 @@ def test_workbook_decision_and_risk_items_use_full_scope_maturity_gap_amount():
             is_issuance_like=is_issuance_like,
         )
 
+    # BAL-P1-08（owner 2026-08-12 裁决）：severity 阈值为绝对亿元口径
+    # （high ≥ 100 亿 = 1,000,000 万元，medium ≥ 10 亿 = 100,000 万元）。
+    # 资产 150 亿元、发行类负债 135 亿元：全口径缺口 15 亿元（150,000 万元）→ medium；
+    # 若误用窄口径缺口 150 亿元（1,500,000 万元）则为 high，severity 仍可判别口径。
     rows = [
         zqtz_row(
             code="ASSET",
             position_scope="asset",
-            face_value_amount=Decimal("1000000"),
+            face_value_amount=Decimal("15000000000"),
             maturity_date=date(2026, 6, 30),
             is_issuance_like=False,
         ),
         zqtz_row(
             code="ISSUE",
             position_scope="liability",
-            face_value_amount=Decimal("900000"),
+            face_value_amount=Decimal("13500000000"),
             maturity_date=date(2026, 6, 30),
             is_issuance_like=True,
         ),
@@ -692,12 +696,12 @@ def test_workbook_decision_and_risk_items_use_full_scope_maturity_gap_amount():
     )
 
     assert gap_decision["severity"] == "medium"
-    assert gap_decision["reason"] == "全口径期限桶缺口为 10 万元。"
+    assert gap_decision["reason"] == "全口径期限桶缺口为 150000 万元。"
 
     risk_section = workbook_module._build_risk_alerts_table(report_date, rows[1:], [])
     gap_risk = next(row for row in risk_section["rows"] if row["rule_id"] == "bal_wb_risk_gap_001")
 
-    assert gap_risk["reason"] == "Full-scope gap dropped to -90 wan yuan."
+    assert gap_risk["reason"] == "Full-scope gap dropped to -1350000 wan yuan."
 
 
 def test_workbook_interest_mode_table_normalizes_fixed_floating_and_unknown_labels():

@@ -138,6 +138,14 @@ RETAIL_SCALE_BRANCH_LOAN_MISSING_SOURCE = "source_missing: 零售分支行个贷
 RETAIL_SCALE_COMPARE_SOURCE = "月度分析-零售板块：总账对账+日均同源历史月重建"
 FINANCIAL_MARKET_SCALE_SOURCE = "金融市场规模：总账对账+日均同源科目重建"
 FINANCIAL_MARKET_SCALE_COMPARE_SOURCE = "月度分析-金融市场：总账对账+日均同源历史月重建"
+COMPANY_SCALE_STRUCTURED_RESIDUAL_SOURCE = (
+    "disclosure: 公司存款组件和(活期+定期+结构性)-公司存款合计；"
+    "结构性组件取21601全族而合计仅含21601020001，残差口径归属待会计owner裁决（BAL-P1-07）"
+)
+RETAIL_SCALE_STRUCTURED_RESIDUAL_SOURCE = (
+    "disclosure: 零售存款组件和(活期+定期+结构性)-零售存款合计；"
+    "结构性组件取21602全族而合计仅含21602020001，残差口径归属待会计owner裁决（BAL-P1-07）"
+)
 INCOME_RATE_ANALYSIS_SOURCE = "收益率分析：总账收益科目+日均规模重建"
 INCOME_RATE_ATTRIBUTION_SOURCE = "收益量价归因：总账收益科目+日均规模按年累计同比拆解"
 INCOME_RATE_MISSING_SOURCE = "source_missing: 财务指标表该项依赖外部营收分项/FTP/收益率来源，当前总账+日均闭环未确认"
@@ -315,12 +323,18 @@ def merge_all(gl_data: dict[str, list[dict[str, Any]]], rj_data: dict[str, list[
 
     cny_index = {row["科目代码"]: row for row in gl_data.get("人民币", [])}
     merged["外币分析"] = []
+    # 综本有、人民币账套没有的科目就是纯外币科目：人民币余额按 0 参与，
+    # 外币部分等于全额综本余额。旧实现直接 continue，会让纯外币科目整体
+    # 从外币分析里消失（漏报外币敞口），因此改为参与并单独披露条数。
+    missing_cny_row_count = 0
     for row in cnx_rows:
         cny_row = cny_index.get(row["科目代码"])
         if cny_row is None:
-            continue
+            missing_cny_row_count += 1
+            cny_value = ZERO
+        else:
+            cny_value = cny_row["期末余额"]
         cnx_value = row["期末余额"]
-        cny_value = cny_row["期末余额"]
         foreign_value = cnx_value - cny_value
         foreign_share = None if cnx_value == ZERO else foreign_value / abs(cnx_value) * Decimal("100")
         merged["外币分析"].append(
@@ -333,6 +347,7 @@ def merge_all(gl_data: dict[str, list[dict[str, Any]]], rj_data: dict[str, list[
                 "外币占比%": foreign_share,
             }
         )
+    merged["外币分析_缺人民币行数"] = missing_cny_row_count
     return merged
 
 
@@ -467,7 +482,12 @@ def build_qdb_gl_monthly_analysis_workbook(
     )
     if parent_company_revenue_sheet is not None:
         sheets.append(parent_company_revenue_sheet)
-    return {"report_month": report_month, "sheets": sheets}
+    return {
+        "report_month": report_month,
+        "sheets": sheets,
+        # 外币分析里按人民币余额 0 兜底参与的纯外币科目条数（口径披露）。
+        "missing_cny_row_count": int(merged_data.get("外币分析_缺人民币行数") or 0),
+    }
 
 
 def export_qdb_gl_monthly_analysis_workbook_xlsx_bytes(workbook_payload: dict[str, Any]) -> bytes:
@@ -675,8 +695,9 @@ def compute_industry_gap(merged_data: dict[str, Any]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for row in loans:
         industry_code = row["行业代码"]
-        demand_row = demand.get(industry_code)
-        term_row = term.get(industry_code)
+        # BAL-P1-02：有贷款无存款的行业按显式空映射参与，存款缺失按 0 计，不再触发 None.get 崩溃。
+        demand_row = demand.get(industry_code) or {}
+        term_row = term.get(industry_code) or {}
         deposit_end = abs(_as_decimal(demand_row.get("期末余额")) or ZERO) + abs(_as_decimal(term_row.get("期末余额")) or ZERO)
         deposit_avg = abs(_as_decimal(demand_row.get("月日均")) or ZERO) + abs(_as_decimal(term_row.get("月日均")) or ZERO)
         loan_end = _as_decimal(row.get("期末余额")) or ZERO
@@ -951,6 +972,42 @@ def _build_segment_scale_compare_sheet(
     )
 
 
+def _with_deposit_component_residual_disclosure(
+    raw_rows: list[dict[str, Any]],
+    *,
+    label: str,
+    component_names: tuple[str, ...],
+    total_name: str,
+    source: str,
+) -> list[dict[str, Any]]:
+    """BAL-P1-07：在规模 sheet 内披露"存款组件和-合计"残差，不改动任何组件/合计口径。"""
+    by_name = {row["指标"]: row for row in raw_rows}
+    total_row = by_name.get(total_name)
+    component_rows = [by_name[name] for name in component_names if name in by_name]
+    if total_row is None or len(component_rows) != len(component_names):
+        return raw_rows
+
+    def residual(field: str) -> Decimal | None:
+        total_value = total_row.get(field)
+        component_values = [row.get(field) for row in component_rows]
+        if total_value is None or any(value is None for value in component_values):
+            return None
+        return sum(component_values, ZERO) - total_value
+
+    rows = list(raw_rows)
+    rows.insert(
+        rows.index(total_row) + 1,
+        {
+            "指标": label,
+            "时点余额": residual("时点余额"),
+            "年日均": residual("年日均"),
+            "月日均": residual("月日均"),
+            "口径来源": source,
+        },
+    )
+    return rows
+
+
 def _build_company_scale_sheet(
     *,
     report_month: str,
@@ -962,6 +1019,13 @@ def _build_company_scale_sheet(
     rows = _company_scale_raw_rows(merged_data)
     if not rows:
         return None
+    rows = _with_deposit_component_residual_disclosure(
+        rows,
+        label="披露：公司存款组件和-合计残差",
+        component_names=("公司存款-活期", "公司存款-定期", "公司存款-结构性"),
+        total_name="公司存款合计",
+        source=COMPANY_SCALE_STRUCTURED_RESIDUAL_SOURCE,
+    )
     return _sheet(
         "company_scale",
         "公司规模",
@@ -1149,6 +1213,13 @@ def _build_retail_scale_sheet(
     rows = _retail_scale_raw_rows(merged_data)
     if not rows:
         return None
+    rows = _with_deposit_component_residual_disclosure(
+        rows,
+        label="披露：零售存款组件和-合计残差",
+        component_names=("零售存款-活期", "零售存款-定期", "零售存款-结构性"),
+        total_name="零售存款合计",
+        source=RETAIL_SCALE_STRUCTURED_RESIDUAL_SOURCE,
+    )
     return _sheet(
         "retail_scale",
         "零售规模",
@@ -1362,7 +1433,8 @@ def _financial_market_scale_raw_rows(merged_data: dict[str, Any]) -> list[dict[s
         if field in {"年日均", "月日均"}:
             row = avg_rows_5.get(code)
             return ZERO if row is None else (_as_decimal(row.get(field)) or ZERO)
-        return ZERO
+        # BAL-P1-01：时点余额复用 11 位科目前缀求和，使同业资产时点与年/月日均同口径扣减 14004/14005。
+        return sum_11d(code, field)
 
     def interest_earning_bonds(field: str) -> Decimal:
         return (

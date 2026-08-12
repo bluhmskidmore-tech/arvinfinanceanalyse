@@ -1714,10 +1714,14 @@ def _decimal_value(value: Any) -> Decimal:
 
 
 def _severity_from_gap(gap_value: Decimal) -> str:
+    # BAL-P1-08（owner 2026-08-12 裁决）：绝对亿元口径，以万元表达。
+    # high ≥ 100 亿元（=1,000,000 万元），medium ≥ 10 亿元（=100,000 万元）。
+    # 依据生产 2026-07-29..31 三日校准：桶级 |全口径缺口| p25=90 亿 / p50=206 亿 /
+    # max=614 亿，原 20/5 万元阈值在银行体量下恒为 high；本档位使三档均有出现率。
     absolute_gap = abs(gap_value)
-    if absolute_gap >= Decimal("20"):
+    if absolute_gap >= Decimal("1000000"):
         return "high"
-    if absolute_gap >= Decimal("5"):
+    if absolute_gap >= Decimal("100000"):
         return "medium"
     return "low"
 

@@ -92,8 +92,11 @@ def _merged_weighted_average(specs: list[tuple[list[Any], Any, Any]]) -> Decimal
             value = value_fn(row)
             if value in (None, ""):
                 continue
-            weight = Decimal(str(weight_fn(row)))
-            numerator += weight * Decimal(str(value))
+            weight = _to_finite_decimal(weight_fn(row))
+            value_dec = _to_finite_decimal(value)
+            if weight == _ZERO:
+                continue
+            numerator += weight * value_dec
             denominator += weight
     if denominator == _ZERO:
         return None
@@ -139,7 +142,7 @@ def _spread_bp(asset_rate_pct: Decimal | None, liability_rate_pct: Decimal | Non
 
 
 def _rate_value(value: Decimal | None) -> Decimal:
-    return Decimal(str(value)) if value is not None else _ZERO
+    return _to_finite_decimal(value)
 
 
 def _normalize_interest_mode(value: str) -> str:
@@ -156,16 +159,17 @@ def _to_wanyuan(value: Decimal) -> Decimal:
 
 
 def _decimal_value(value: Any) -> Decimal:
-    if value in (None, ""):
-        return _ZERO
-    return Decimal(str(value))
+    return _to_finite_decimal(value)
 
 
 def _severity_from_gap(gap_value: Decimal) -> str:
+    # BAL-P1-08（owner 2026-08-12 裁决）：绝对亿元口径，以万元表达。
+    # high ≥ 100 亿元（=1,000,000 万元），medium ≥ 10 亿元（=100,000 万元）。
+    # 与单体权威实现 balance_analysis_workbook.py 保持一致（cross-scope 等价性锁定）。
     absolute_gap = abs(gap_value)
-    if absolute_gap >= Decimal("20"):
+    if absolute_gap >= Decimal("1000000"):
         return "high"
-    if absolute_gap >= Decimal("5"):
+    if absolute_gap >= Decimal("100000"):
         return "medium"
     return "low"
 
