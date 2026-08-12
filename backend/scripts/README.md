@@ -46,3 +46,7 @@ Verify: python -m pytest tests/test_xxx.py    # 推荐：给出验证命令
 
 - 目标目录：`backend/scripts/archive/`（可按主题分子目录）。
 - `one-off` 目的达成或被替代（如 `backfill_formal_balance.py` 与 `batch_materialize_balance.py` 功能重叠，人工确认保留其一）后，经批准用 `git mv` 移入，配套测试同步处理，`pytest --collect-only` 验证无 import 断裂。
+
+## 归档记录
+
+- 2026-08-12（C5 批次 1）：`diagnose_adb_coverage.py`、`diagnose_balance_diff.py` 移入 `archive/adb-recon-2026-05/`；`fix_silent_exceptions.py`、`probe_choice_treasury_10y_history.py` 移入 `archive/one-off-repairs/`（均无配套测试）；守卫白名单同步移除并排除 archive/ 扫描。

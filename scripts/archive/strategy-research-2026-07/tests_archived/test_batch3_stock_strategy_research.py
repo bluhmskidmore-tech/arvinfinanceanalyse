@@ -1,3 +1,5 @@
+# ARCHIVED 2026-08-12（C5 脚本盘点批次 1 归档）：随 ../run_batch3_stock_strategy_research.py 一并移出 tests/。
+# pytest 不再收集（pytest.ini testpaths 仅 tests/、backend/tests/）；归档件冻结、不保证可运行，仅作追溯。
 import duckdb
 import pytest
 

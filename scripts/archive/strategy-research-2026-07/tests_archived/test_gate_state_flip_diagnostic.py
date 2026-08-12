@@ -1,3 +1,5 @@
+# ARCHIVED 2026-08-12（C5 脚本盘点批次 1 归档）：随 ../diagnose_gate_state_flips.py 一并移出 tests/。
+# pytest 不再收集（pytest.ini testpaths 仅 tests/、backend/tests/）；归档件冻结、不保证可运行，仅作追溯。
 from __future__ import annotations
 
 import duckdb

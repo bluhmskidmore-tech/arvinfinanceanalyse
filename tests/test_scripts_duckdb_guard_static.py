@@ -19,6 +19,11 @@
 
 2026-08-12 首批迁移（C4）：10 个常驻只读脚本的裸 connect 已迁至
 ``duckdb_repo.read_only_connection``，对应条目已按棘轮规则移除。
+
+2026-08-12 C5 批次 1 归档：15 个一次性已完成脚本（scripts/ 13 + backend/scripts/ 2）
+经 ``git mv`` 移入 ``scripts/archive/`` / ``backend/scripts/archive/``，对应条目已移除。
+扫描器同步排除各扫描根下的 ``archive/`` 子目录：归档件（含 tests_archived/ 内随迁的
+配套测试）已冻结、不再属于活跃脚本存量，其历史裸连接以 C5 报告与本注记留痕。
 """
 
 from __future__ import annotations
@@ -47,21 +52,14 @@ _MANUAL_WRITE_SCRIPTS = frozenset(
 
 # scripts/ 与 backend/scripts/ 存量白名单（文件 -> 裸 duckdb.connect( 调用点数）。
 _SCRIPTS_ALLOWLIST: dict[str, int] = {
-    "scripts/_run_diagnose_adb_other.py": 1,
     # MANUAL WRITE SCRIPT：read_only=False 直写 livermore 历史表（人工回填）。
     "scripts/backfill_adjusted_returns.py": 1,
-    "scripts/backfill_csi300_benchmark_from_backup.py": 2,  # read_only=bool(dry_run) 写路径
     # MANUAL WRITE SCRIPT：read_only=False 直写 stock_adjustment_factor（自带备份守卫）。
     "scripts/backfill_stock_adjustment_factor.py": 2,
-    "scripts/compare_formal_snapshot_adb_sources.py": 1,
     "scripts/copy_choice_stock_asof_from_duckdb.py": 1,  # read_only=bool(dry_run) 写路径
     "scripts/dev-env.ps1": 1,  # PowerShell 内嵌 Python 只读探活
     "scripts/dev_postgres_cluster.py": 1,
-    "scripts/diagnose_entry_premium.py": 1,
-    "scripts/diagnose_gate_state_flips.py": 1,
-    "scripts/diagnose_macro_multiplier.py": 1,
     "scripts/diagnose_overheat_holdings.py": 1,
-    "scripts/diff_zqtz_formal_vs_snapshot.py": 1,
     "scripts/mcp/moss_project_mcp.py": 2,
     "scripts/portfolio_home_full_closure_evidence.py": 1,
     "scripts/portfolio_home_krd_remap_review_queue.py": 1,
@@ -69,22 +67,14 @@ _SCRIPTS_ALLOWLIST: dict[str, int] = {
     "scripts/portfolio_home_maturity_remediation_queue.py": 1,
     "scripts/portfolio_home_risk_warning_consistency.py": 1,
     "scripts/refresh_tushare_news_backup.py": 1,
-    "scripts/run_batch3_stock_strategy_research.py": 9,
-    "scripts/run_decimal_precision_backfill.py": 3,
     "scripts/stock_strategy_health_diagnostic.py": 1,
     "scripts/supplement_livermore_after_close_inputs.py": 1,  # read_only=bool(dry_run) 写路径
-    "scripts/validate_risk_exit_rules.py": 1,
-    "scripts/verify_adb_source_coverage.py": 1,
-    "scripts/verify_decimal_precision_backfill.py": 1,
-    "scripts/walk_forward_threshold_scan.py": 1,
     # MANUAL WRITE SCRIPT：read_only=False 直写宏观环境表（persist_macro_environment_rows，
     # 亦被 backend/scripts/backfill_crisis_score_inputs.py 复用，均为人工执行）。
     "backend/scripts/backfill_cross_asset_macro_environment.py": 2,
     "backend/scripts/backfill_formal_balance.py": 3,
     "backend/scripts/batch_materialize_balance.py": 4,
     "backend/scripts/bootstrap_data_pipeline.py": 3,
-    "backend/scripts/diagnose_adb_coverage.py": 1,
-    "backend/scripts/diagnose_balance_diff.py": 1,
 }
 
 # backend/app/services/ 存量白名单：全部为 read_only=True 直连。
@@ -129,6 +119,10 @@ def _scan_bare_connect_counts() -> dict[str, int]:
             if not path.is_file() or path.suffix.lower() not in _SCAN_SUFFIXES:
                 continue
             if "__pycache__" in path.parts:
+                continue
+            # 归档区（scripts/archive/、backend/scripts/archive/）是冻结的一次性件，
+            # 不属于活跃脚本存量台账（见模块 docstring 2026-08-12 C5 批次 1 注记）。
+            if path.relative_to(base).parts[0] == "archive":
                 continue
             hits = len(_BARE_CONNECT.findall(path.read_text(encoding="utf-8", errors="ignore")))
             if hits:

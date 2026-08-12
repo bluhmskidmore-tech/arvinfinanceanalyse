@@ -43,6 +43,10 @@ Verify: python -m pytest tests/test_xxx.py    # 推荐：给出验证命令
 - 移动必须人工批准后用 `git mv` 执行，并**同步移动/退役配套测试**（大量 `tests/test_*.py` 直接 import `scripts.*`，先 `pytest --collect-only` 验证无 import 断裂再提交）。
 - 归档 ≠ 删除：archive 内脚本不再保证可运行，仅作追溯。
 
+## 归档记录
+
+- 2026-08-12（C5 批次 1）：19 个一次性已完成脚本（+1 个伴随 SQL）移入 `archive/` 主题目录（`adb-recon-2026-05/`、`strategy-research-2026-07/`、`decimal-backfill-2026-07-31/`、`one-off-repairs/`、`perf-profiling/`、`page-closure-evidence-2026-06/`），10 个专属测试随迁至各主题 `tests_archived/`；守卫白名单同步移除并排除 archive/ 扫描。明细与跳过项见 C5 报告 §6。
+
 ## 其他约定
 
 - 顶层脚本通过 `ROOT = Path(__file__).resolve().parents[1]` + `sys.path.insert` 引仓库根；请沿用该样式。
