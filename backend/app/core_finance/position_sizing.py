@@ -31,6 +31,14 @@ GATE_EXPOSURE_NOTE = (
 
 EQUAL_WEIGHT_SHADOW_NOTE = "等权 shadow 对照仍在回测输出（sizing=equal_weight 变体），用于 drift 监控。"
 
+OOS_VALIDATION_NOTE = (
+    "walk-forward 样本外验证显示逐窗最优 rpt 在 0.25%~1% 间漂移，"
+    "固定 0.5% 的全窗口优势在样本外普遍缩水；"
+    "本建议仅供参考，需结合等权 shadow 对照观察。"
+)
+
+OOS_VALIDATION_EVIDENCE_REF = "tmp-strategy-reports/walk-forward-first-run.md"
+
 COVERAGE_DEGRADED_WARNING = (
     "ema10 stop_ref 缺失率超过 10%，建议仓位提示已降级：缺失候选按 fallback 止损距离估算，仅供参考。"
 )
@@ -117,4 +125,9 @@ def build_stock_candidate_position_size_hint(
         "coverage_warning": COVERAGE_DEGRADED_WARNING if coverage_degraded else None,
         "gate_exposure_note": GATE_EXPOSURE_NOTE,
         "equal_weight_shadow_note": EQUAL_WEIGHT_SHADOW_NOTE,
+        "oos_validation": {
+            "status": sizing.oos_validation_status,
+            "note": OOS_VALIDATION_NOTE,
+            "evidence_ref": OOS_VALIDATION_EVIDENCE_REF,
+        },
     }

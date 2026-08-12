@@ -116,6 +116,7 @@ def test_strategy_policy_snapshot_values_are_centralized() -> None:
     assert POLICY.sizing.fallback_stop_distance_pct == 0.08
     assert POLICY.sizing.stop_basis == "ema10_stop_ref"
     assert POLICY.sizing.applies_to == ("stock_candidate",)
+    assert POLICY.sizing.oos_validation_status == "not_supported_by_walk_forward"
 
 
 def test_sizing_policy_mirrors_backtest_variant_parameters() -> None:

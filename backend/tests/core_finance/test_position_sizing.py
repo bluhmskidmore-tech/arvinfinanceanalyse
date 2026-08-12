@@ -6,11 +6,15 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 from backend.app.core_finance.position_sizing import (
     COVERAGE_DEGRADED_WARNING,
     EQUAL_WEIGHT_SHADOW_NOTE,
     GATE_EXPOSURE_NOTE,
+    OOS_VALIDATION_EVIDENCE_REF,
+    OOS_VALIDATION_NOTE,
     STOP_BASIS_EMA10,
     STOP_BASIS_FALLBACK,
     build_stock_candidate_position_size_hint,
@@ -134,6 +138,26 @@ def test_hint_block_policy_metadata_and_notes() -> None:
     assert block["equal_weight_shadow_note"] == EQUAL_WEIGHT_SHADOW_NOTE
     assert "等权" in EQUAL_WEIGHT_SHADOW_NOTE
     assert "回测" in EQUAL_WEIGHT_SHADOW_NOTE
+    assert block["oos_validation"] == {
+        "status": "not_supported_by_walk_forward",
+        "note": OOS_VALIDATION_NOTE,
+        "evidence_ref": OOS_VALIDATION_EVIDENCE_REF,
+    }
+    assert "0.25%~1%" in OOS_VALIDATION_NOTE
+    assert "固定 0.5%" in OOS_VALIDATION_NOTE
+    assert "等权 shadow" in OOS_VALIDATION_NOTE
+    assert OOS_VALIDATION_EVIDENCE_REF == "tmp-strategy-reports/walk-forward-first-run.md"
+
+    custom_status = "test_walk_forward_status"
+    custom_block = build_stock_candidate_position_size_hint(
+        [_item("600000.SH", close=100.0, ema10=96.0)],
+        policy=replace(POLICY.sizing, oos_validation_status=custom_status),
+    )
+    assert custom_block["oos_validation"] == {
+        "status": custom_status,
+        "note": OOS_VALIDATION_NOTE,
+        "evidence_ref": OOS_VALIDATION_EVIDENCE_REF,
+    }
 
 
 def test_hint_block_coverage_degradation_hook() -> None:

@@ -84,6 +84,7 @@ class SizingPolicy:
     fallback_stop_distance_pct: float
     stop_basis: str
     applies_to: tuple[str, ...]
+    oos_validation_status: str = "not_supported_by_walk_forward"
 
 
 @dataclass(frozen=True)
