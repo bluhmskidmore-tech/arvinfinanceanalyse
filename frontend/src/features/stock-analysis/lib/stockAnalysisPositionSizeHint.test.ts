@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 
 import type { LivermorePositionSizeHint, LivermoreStrategyPayload } from "../../../api/contracts";
 import { buildCandidateReviewQueue } from "./stockAnalysisPageModel";
@@ -52,7 +52,7 @@ function buildPositionSizeHint(
     oos_validation: {
       status: "not_supported_by_walk_forward",
       note: OOS_NOTE,
-      evidence_ref: "tmp-strategy-reports/walk-forward-first-run.md",
+      evidence_ref: "docs/strategy-reports/walk-forward-first-run.md",
     },
     ...overrides,
   };
@@ -226,7 +226,7 @@ describe("stock candidate position size hint pass-through", () => {
     expect(notice?.oosNote).toBe(OOS_NOTE);
     expect(notice?.coverageWarning).toBeNull();
     expect(notice?.detail).toContain(`样本外验证：${OOS_NOTE}`);
-    expect(notice?.detail).toContain("验证证据：tmp-strategy-reports/walk-forward-first-run.md");
+    expect(notice?.detail).toContain("验证证据：docs/strategy-reports/walk-forward-first-run.md");
     expect(notice?.detail).toContain(GATE_NOTE);
     expect(notice?.detail).toContain(SHADOW_NOTE);
   });

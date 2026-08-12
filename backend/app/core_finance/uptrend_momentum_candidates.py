@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import math
 from collections.abc import Sequence
@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import cast
 
 EPS = 1e-12
-# 蓝本 tmp-strategy-reports/momentum-rescale-impact.md：60 日池内 Spearman
+# 蓝本 docs/strategy-reports/momentum-rescale-impact.md：60 日池内 Spearman
 # 中位 0.978、有效日 Top-30 Jaccard 中位 0.818；历史按 formula_version 断代且不回改。
 FORMULA_VERSION = "rv_uptrend_momentum_candidates_v2"
 ACTIVE_MARKET_STATES = frozenset({"WARM", "HOT"})

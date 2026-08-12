@@ -1,4 +1,4 @@
-"""实时建议仓位（position_size_hint）正式计算。
+﻿"""实时建议仓位（position_size_hint）正式计算。
 
 与回测引擎 `portfolio_backtest` 的 risk_budget 变体保持同款公式：
 
@@ -7,7 +7,7 @@
 
 hint 是"单票权重上限建议"：引擎语义中 risk_budget 与 gate 敞口为串联约束
 （先算单票权重，再受当日 gate 敞口剩余预算截断），实时提示不做敞口截断计算，
-串联语义以文案披露。评估依据见 tmp-strategy-reports/risk-budget-promotion.md。
+串联语义以文案披露。评估依据见 docs/strategy-reports/risk-budget-promotion.md。
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ OOS_VALIDATION_NOTE = (
     "本建议仅供参考，需结合等权 shadow 对照观察。"
 )
 
-OOS_VALIDATION_EVIDENCE_REF = "tmp-strategy-reports/walk-forward-first-run.md"
+OOS_VALIDATION_EVIDENCE_REF = "docs/strategy-reports/walk-forward-first-run.md"
 
 COVERAGE_DEGRADED_WARNING = (
     "ema10 stop_ref 缺失率超过 10%，建议仓位提示已降级：缺失候选按 fallback 止损距离估算，仅供参考。"

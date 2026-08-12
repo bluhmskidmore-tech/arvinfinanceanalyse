@@ -1,4 +1,4 @@
-"""position_size_hint 黄金样本：公式与回测引擎 risk_budget 变体同款。
+﻿"""position_size_hint 黄金样本：公式与回测引擎 risk_budget 变体同款。
 
 覆盖：ema10 stop_ref 正常、cap 截断、stop 缺失/非正 fallback、
 覆盖率退化告警钩子、gate 串联语义与等权 shadow 说明文案。
@@ -146,7 +146,7 @@ def test_hint_block_policy_metadata_and_notes() -> None:
     assert "0.25%~1%" in OOS_VALIDATION_NOTE
     assert "固定 0.5%" in OOS_VALIDATION_NOTE
     assert "等权 shadow" in OOS_VALIDATION_NOTE
-    assert OOS_VALIDATION_EVIDENCE_REF == "tmp-strategy-reports/walk-forward-first-run.md"
+    assert OOS_VALIDATION_EVIDENCE_REF == "docs/strategy-reports/walk-forward-first-run.md"
 
     custom_status = "test_walk_forward_status"
     custom_block = build_stock_candidate_position_size_hint(

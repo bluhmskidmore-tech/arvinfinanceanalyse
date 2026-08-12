@@ -1,4 +1,4 @@
-"""Walk-forward 样本外验证框架（只读分析工具）。
+﻿"""Walk-forward 样本外验证框架（只读分析工具）。
 
 用途：把"全窗口 in-sample 回测"得到的策略结论，放到滚动的训练/验证切割上重跑，
 区分"稳健优势"与"过拟合 / 时段红利"。
@@ -14,7 +14,7 @@
 
     .venv\\Scripts\\python.exe scripts/run_walk_forward_validation.py \\
         --db-path data/moss.duckdb \\
-        --report-path tmp-strategy-reports/walk-forward-first-run.md
+        --report-path docs/strategy-reports/walk-forward-first-run.md
 """
 
 from __future__ import annotations
@@ -88,7 +88,7 @@ from scripts.walk_forward_core import (  # noqa: E402
 )
 
 DEFAULT_DB_PATH = "data/moss.duckdb"
-DEFAULT_REPORT_PATH = Path("tmp-strategy-reports/walk-forward-first-run.md")
+DEFAULT_REPORT_PATH = Path("docs/strategy-reports/walk-forward-first-run.md")
 VARIANT = "fixed_20d"
 HORIZON_DAYS = 20
 PRIMARY_SCHEDULE = ScheduleConfig(label="primary_6t_2v_2s", train_months=6, valid_months=2, step_months=2)

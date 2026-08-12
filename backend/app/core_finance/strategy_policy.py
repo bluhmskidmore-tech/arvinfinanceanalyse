@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -95,7 +95,7 @@ class SizingPolicy:
     与回测引擎 `portfolio_backtest` 的 risk_budget 变体同款公式：
     raw_weight = min(risk_per_trade / stop_distance_pct, single_name_cap)。
     hint 是单票权重上限建议；实盘串联 gate 敞口预算截断由引擎语义约定，
-    实时提示不做敞口截断计算。评估依据见 tmp-strategy-reports/risk-budget-promotion.md。
+    实时提示不做敞口截断计算。评估依据见 docs/strategy-reports/risk-budget-promotion.md。
     """
 
     policy_version: str
@@ -170,7 +170,7 @@ _STOCK_CANDIDATE_POLICIES = (
 # theme_breakout 多题材 proxy 池。成员数为 2026-08-12 审计日生产库口径
 # （choice_stock_universe × choice_stock_sector_membership × choice_stock_daily_observation
 # 内连接，快照/交易日 2026-08-11）。历史 Critical 问题：池内仅 semiconductor_proxy
-# 一项，"题材突破"实际退化为单一半导体行业动量（tmp-strategy-reports/
+# 一项，"题材突破"实际退化为单一半导体行业动量（docs/strategy-reports/
 # theme-breakout-decay-review.md §8）。低空经济类题材因名称关键词仅命中 1 只、
 # 且概念表非时点数据而未纳入。
 _THEME_PROXY_POOL: tuple[ThemeProxyDefinition, ...] = (
