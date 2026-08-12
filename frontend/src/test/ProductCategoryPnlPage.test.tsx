@@ -17,6 +17,7 @@ import {
 import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
 import { buildMockProductCategoryPnlEnvelope } from "../mocks/productCategoryPnl";
 import { dhApiTokens } from "../theme/designSystem";
+import { EM_DASH } from "../utils/format";
 import { preloadWorkbenchRouteModules } from "./preloadWorkbenchRouteModules";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
@@ -680,8 +681,8 @@ describe("ProductCategoryPnlPage", () => {
     expect(formatProductCategoryChartNumberTwoDecimals("1728.585")).toBe(
       "1728.59",
     );
-    expect(formatProductCategoryChartNumberTwoDecimals(null)).toBe("-");
-    expect(formatProductCategoryChartNumberTwoDecimals(undefined)).toBe("-");
+    expect(formatProductCategoryChartNumberTwoDecimals(null)).toBe(EM_DASH);
+    expect(formatProductCategoryChartNumberTwoDecimals(undefined)).toBe(EM_DASH);
   });
 
   it("models the report-date and baseline data-health states without silent fallback", () => {

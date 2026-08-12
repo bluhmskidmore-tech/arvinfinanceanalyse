@@ -10,6 +10,7 @@ import type {
   ResultMeta,
 } from "../../../api/contracts";
 import { designTokens } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
 
 import {
   PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY,
@@ -2265,7 +2266,7 @@ describe("productCategoryPnlPageModel", () => {
   it("formats attribution effects from governed yuan values into yi display values", () => {
     expect(formatProductCategoryAttributionEffect(yi(0.5))).toBe("0.50");
     expect(formatProductCategoryAttributionEffect(yi(-0.25))).toBe("-0.25");
-    expect(formatProductCategoryAttributionEffect(null)).toBe("-");
+    expect(formatProductCategoryAttributionEffect(null)).toBe(EM_DASH);
   });
 
   it("flags material closure_error residuals for display warnings", () => {
@@ -2472,9 +2473,9 @@ describe("productCategoryPnlPageModel", () => {
       state: "incomplete",
       currentAssetYieldLabel: "2.68%",
       currentLiabilityYieldLabel: "1.63%",
-      currentSpreadLabel: "-",
-      priorSpreadLabel: "-",
-      spreadDeltaLabel: "-",
+      currentSpreadLabel: EM_DASH,
+      priorSpreadLabel: EM_DASH,
+      spreadDeltaLabel: EM_DASH,
     });
   });
 
@@ -2541,8 +2542,8 @@ describe("productCategoryPnlPageModel", () => {
       expect(surface.spreadAttribution.reason).toBe(
         "后端未返回资产端或负债端收益率字段，无法展示利差归因。",
       );
-      expect(surface.spreadAttribution.currentSpreadLabel).toBe("-");
-      expect(surface.spreadAttribution.priorSpreadLabel).toBe("-");
+      expect(surface.spreadAttribution.currentSpreadLabel).toBe(EM_DASH);
+      expect(surface.spreadAttribution.priorSpreadLabel).toBe(EM_DASH);
     }
   });
 
@@ -3417,8 +3418,8 @@ describe("productCategoryPnlPageModel", () => {
     }
     expect(attribution.currentAssetYieldLabel).toBe("缺失");
     expect(attribution.currentLiabilityYieldLabel).toBe("缺失");
-    expect(attribution.assetYieldDeltaLabel).toBe("-");
-    expect(attribution.liabilityYieldDeltaLabel).toBe("-");
+    expect(attribution.assetYieldDeltaLabel).toBe(EM_DASH);
+    expect(attribution.liabilityYieldDeltaLabel).toBe(EM_DASH);
     expect(attribution.reason).toBe(
       "后端未返回资产端或负债端收益率字段，无法展示利差归因。",
     );
@@ -4650,17 +4651,17 @@ describe("productCategoryPnlPageModel", () => {
       matrix.rows.find((item) => item.categoryId === "repo_liabilities"),
     ).toMatchObject({
       cells: [
-        { amountLabel: "-", rateLabel: "-" },
+        { amountLabel: EM_DASH, rateLabel: EM_DASH },
         { amountLabel: "51.00", rateLabel: "1.33" },
-        { amountLabel: "-", rateLabel: "-" },
+        { amountLabel: EM_DASH, rateLabel: EM_DASH },
       ],
-      movement: { amountLabel: "-", rateLabel: "-" },
+      movement: { amountLabel: EM_DASH, rateLabel: EM_DASH },
     });
     expect(
       matrix.rows.find((item) => item.categoryId === "interbank_cds"),
     ).toMatchObject({
       categoryLabel: "同业存单",
-      movement: { amountLabel: "-", rateLabel: "-" },
+      movement: { amountLabel: EM_DASH, rateLabel: EM_DASH },
     });
   });
 
@@ -4803,9 +4804,9 @@ describe("productCategoryPnlPageModel", () => {
     ).toMatchObject({
       cells: [
         { amountLabel: "110.00", rateLabel: "1.45" },
-        { amountLabel: "-", rateLabel: "1.40" },
+        { amountLabel: EM_DASH, rateLabel: "1.40" },
       ],
-      movement: { amountLabel: "-", rateLabel: "-5bp" },
+      movement: { amountLabel: EM_DASH, rateLabel: "-5bp" },
     });
 
     const foreignMatrix = matrix.currencyMatrices.find(
@@ -4912,7 +4913,7 @@ describe("productCategoryPnlPageModel", () => {
       matrix.rows.find((item) => item.categoryId === "interbank_deposits")
         ?.movement,
     ).toEqual({
-      amountLabel: "-",
+      amountLabel: EM_DASH,
       rateLabel: "+10bp",
     });
   });
@@ -4986,10 +4987,10 @@ describe("productCategoryPnlPageModel", () => {
         (item) => item.categoryId === "interbank_deposits",
       ),
     ).toMatchObject({
-      latestAmountLabel: "-",
-      amountDeltaLabel: "-",
-      latestRateLabel: "-",
-      rateDeltaLabel: "-",
+      latestAmountLabel: EM_DASH,
+      amountDeltaLabel: EM_DASH,
+      latestRateLabel: EM_DASH,
+      rateDeltaLabel: EM_DASH,
       comparisonLabel: "当前指标缺失",
     });
   });
@@ -5088,9 +5089,9 @@ describe("productCategoryPnlPageModel", () => {
       ),
     ).toMatchObject({
       latestAmountLabel: "25.00",
-      amountDeltaLabel: "-",
+      amountDeltaLabel: EM_DASH,
       latestRateLabel: "3.25",
-      rateDeltaLabel: "-",
+      rateDeltaLabel: EM_DASH,
       comparisonLabel: "缺少可比上期",
     });
   });
@@ -5426,8 +5427,8 @@ describe("productCategoryPnlPageModel", () => {
   });
 
   it("formats nullish values as dash and passes through invalid decimal-like strings unchanged", () => {
-    expect(formatProductCategoryValue(null)).toBe("-");
-    expect(formatProductCategoryValue(undefined)).toBe("-");
+    expect(formatProductCategoryValue(null)).toBe(EM_DASH);
+    expect(formatProductCategoryValue(undefined)).toBe(EM_DASH);
     expect(
       formatProductCategoryRowDisplayValue(
         row({ category_id: "repo_liabilities", side: "liability" }),
@@ -5438,7 +5439,7 @@ describe("productCategoryPnlPageModel", () => {
 
   it("formats yield values as percentages without money unit scaling", () => {
     expect(formatProductCategoryYieldValue("2.345")).toBe("2.35");
-    expect(formatProductCategoryYieldValue(null)).toBe("-");
+    expect(formatProductCategoryYieldValue(null)).toBe(EM_DASH);
     expect(formatProductCategoryYieldValue("not-a-number")).toBe(
       "not-a-number",
     );

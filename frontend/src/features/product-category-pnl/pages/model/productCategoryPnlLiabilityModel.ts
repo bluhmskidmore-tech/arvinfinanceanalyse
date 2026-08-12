@@ -2,6 +2,7 @@ import type {
   DecimalLike,
   ProductCategoryPnlRow,
 } from "../../../../api/contracts";
+import { EM_DASH } from "../../../../utils/format";
 import {
   chronologicalProductCategorySnapshotsInternal,
   type ProductCategoryReportDateParts,
@@ -387,9 +388,10 @@ export function selectProductCategoryLiabilityDetailTrendRowsImpl(input: {
     return {
       categoryId: row.category_id,
       categoryLabel: row.category_name || row.category_id,
-      latestAmountLabel: latestAmount !== null ? latestAmount.toFixed(2) : "-",
+      latestAmountLabel:
+        latestAmount !== null ? latestAmount.toFixed(2) : EM_DASH,
       amountDeltaLabel: input.signedYiDeltaLabel(amountDelta),
-      latestRateLabel: latestRate !== null ? latestRate.toFixed(2) : "-",
+      latestRateLabel: latestRate !== null ? latestRate.toFixed(2) : EM_DASH,
       rateDeltaLabel: input.signedBpLabel(rateDelta),
       comparisonLabel: liabilityComparisonLabel({
         amountLatestLabel: latestAmount !== null ? latestLabel : null,
@@ -540,9 +542,9 @@ function liabilityDetailMetricLabels(input: {
   });
   const rateValue = input.percentNumber(input.row?.weighted_yield);
   return {
-    amountLabel: amountValue !== null ? amountValue.toFixed(2) : "-",
+    amountLabel: amountValue !== null ? amountValue.toFixed(2) : EM_DASH,
     amountValue,
-    rateLabel: rateValue !== null ? rateValue.toFixed(2) : "-",
+    rateLabel: rateValue !== null ? rateValue.toFixed(2) : EM_DASH,
     rateValue,
   };
 }

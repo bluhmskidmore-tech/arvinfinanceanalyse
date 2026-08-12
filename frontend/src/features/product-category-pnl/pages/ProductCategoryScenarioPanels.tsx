@@ -1,6 +1,7 @@
 import { type ReactNode, useState } from "react";
 
 import { PageStateSurface } from "../../../components/page/PagePrimitives";
+import { EM_DASH } from "../../../utils/format";
 import {
   type ProductCategoryDecisionFocusSurface,
   type ProductCategoryScenarioExplanation,
@@ -544,7 +545,7 @@ export function ProductCategoryFinancialAnalysisPanel(props: {
         </div>
         <span className="product-category-operating-analysis__badge">
           基线总净营收{" "}
-          {props.scenarioSensitivity.baselineGrandTotalLabel ?? "-"} 亿元
+          {props.scenarioSensitivity.baselineGrandTotalLabel ?? EM_DASH} 亿元
         </span>
       </div>
       {props.candidateNotice}

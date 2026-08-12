@@ -21,6 +21,7 @@ import {
   type ProductCategoryRootCauseSurface,
   selectProductCategoryClosureErrorSignal,
 } from "./productCategoryPnlPageModel";
+import { EM_DASH } from "../../../utils/format";
 
 const ATTRIBUTION_EFFECT_COLUMNS = [
   ["scale_effect", "规模因素"],
@@ -624,13 +625,13 @@ export function ProductCategoryLiabilityDetailMatrixMobileReadout(props: {
       fields={[
         {
           label: "\u6700\u65b0\u65e5\u5747\u989d",
-          value: latestCell?.amountLabel ?? "-",
+          value: latestCell?.amountLabel ?? EM_DASH,
           testId:
             "product-category-liability-side-detail-matrix-mobile-readout-latest-amount",
         },
         {
           label: "\u6700\u65b0\u6536\u76ca\u7387",
-          value: latestCell?.rateLabel ?? "-",
+          value: latestCell?.rateLabel ?? EM_DASH,
           testId:
             "product-category-liability-side-detail-matrix-mobile-readout-latest-rate",
         },
@@ -678,12 +679,12 @@ export function ProductCategoryLiabilityCurrencyMatrixMobileReadout(props: {
       fields={[
         {
           label: "\u6700\u65b0\u65e5\u5747\u989d",
-          value: latestCell?.amountLabel ?? "-",
+          value: latestCell?.amountLabel ?? EM_DASH,
           testId: `product-category-liability-side-currency-matrix-${props.matrix.currencyKey}-mobile-readout-latest-amount`,
         },
         {
           label: "\u6700\u65b0\u6536\u76ca\u7387",
-          value: latestCell?.rateLabel ?? "-",
+          value: latestCell?.rateLabel ?? EM_DASH,
           testId: `product-category-liability-side-currency-matrix-${props.matrix.currencyKey}-mobile-readout-latest-rate`,
         },
         {
@@ -840,7 +841,7 @@ function ProductCategoryAttributionComparisonMobileReadout(props: {
           label: "\u6700\u5927\u62c6\u5206\u9879",
           value: largestEffect
             ? `${largestEffect.label} ${formatProductCategoryAttributionEffect(largestEffect.value)}`
-            : "-",
+            : EM_DASH,
           testId:
             "product-category-attribution-comparison-mobile-readout-largest-effect",
         },
@@ -1433,11 +1434,11 @@ function formatAttributionPointValue(
   key: (typeof ATTRIBUTION_POINT_COLUMNS)[number][0],
 ): string {
   if (!point) {
-    return "-";
+    return EM_DASH;
   }
   if (key === "yield_pct") {
     const value = formatProductCategoryYieldValue(point.yield_pct);
-    return value === "-" ? "-" : `${value}%`;
+    return value === EM_DASH ? EM_DASH : `${value}%`;
   }
   if (key === "scale") {
     return formatProductCategoryRowDisplayValue(

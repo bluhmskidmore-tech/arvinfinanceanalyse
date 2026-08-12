@@ -474,7 +474,7 @@ export function MarketPayloadNode({
 }
 
 function ResultMetaPanel({ meta }: { meta: ResultMeta }) {
-  const entries = Object.entries(meta as unknown as Record<string, unknown>);
+  const entries: [string, unknown][] = Object.entries(meta);
   const primaryEntries = PRIMARY_META_FIELDS.map((key) =>
     entries.find(([entryKey]) => entryKey === key),
   ).filter((entry): entry is [string, unknown] => Boolean(entry));

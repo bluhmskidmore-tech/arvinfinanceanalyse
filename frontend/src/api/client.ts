@@ -489,7 +489,7 @@ function createLazyDemoClient(methodNames: string[]): ApiClient {
     return composed;
   });
   // Plain object (not Proxy): spread / Object.keys / spies match eager client.
-  const client = { mode: "mock" } as unknown as Record<string, unknown>;
+  const client: Record<string, unknown> = { mode: "mock" };
   for (const name of methodNames) {
     if (name === "mode") continue;
     // Classic function keeps call-site `this` for bundle assembly + overrides.
@@ -503,7 +503,8 @@ function createLazyDemoClient(methodNames: string[]): ApiClient {
       );
     };
   }
-  return client as unknown as ApiClient;
+  // 动态拼装面收窄为单跳；dev/test 启动断言（上方 missing 检查）保证方法面完整。
+  return client as ApiClient;
 }
 
 export function createApiClient(options: ApiClientOptions = {}): ApiClient {

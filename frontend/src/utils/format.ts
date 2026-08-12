@@ -1,3 +1,10 @@
+// 共享格式化层（单文件双轨，2026-08-12 登记）：
+// - 治理 API（"Governed Numeric helpers" 分节起）：EM_DASH / formatYi / formatPercent /
+//   formatBp / formatNumeric / formatRawAsNumeric 及 *AsYiPlain 系列。
+//   缺省值语义：null/undefined/NaN 一律显示 EM_DASH（"—"）；真零显示 "0.00"，
+//   与缺失必须不同形；空串输入不得经 Number("") 变 0。语义由 format.test.ts 固化。
+// - legacy fmt* 双轨（fmtYi/fmtBp/fmtPct/fmtChange/fmtRate/fmtCount）：
+//   legacy 待收敛，新代码禁用。仅存量组件消费；迁移按页面逐个收口，不做批量替换。
 const zhNumberFormat = new Intl.NumberFormat("zh-CN");
 
 export function fmtYi(v: number): string {
@@ -50,28 +57,30 @@ function signPrefix(raw: number, signed: boolean): string {
 /**
  * Null-tolerant yuan-in-yi formatter.
  * Converts ``raw`` (yuan) to a "XX.XX 亿" display string with optional leading ``+``.
+ * ``null``/``undefined``/``NaN`` render as ``EM_DASH``.
  */
 export function formatYi(raw: number | null | undefined, signed: boolean): string {
-  if (raw === null || raw === undefined) return NULL_DISPLAY;
+  if (raw === null || raw === undefined || Number.isNaN(raw)) return NULL_DISPLAY;
   const yi = raw / 100_000_000;
   return `${signPrefix(yi, signed)}${yi.toFixed(2)} 亿`;
 }
 
 /**
  * Null-tolerant ratio-as-percent formatter. ``raw`` is a decimal ratio
- * (e.g. 0.0255 → "+2.55%").
+ * (e.g. 0.0255 → "+2.55%"). ``null``/``undefined``/``NaN`` render as ``EM_DASH``.
  */
 export function formatPercent(raw: number | null | undefined, signed: boolean): string {
-  if (raw === null || raw === undefined) return NULL_DISPLAY;
+  if (raw === null || raw === undefined || Number.isNaN(raw)) return NULL_DISPLAY;
   const pct = raw * 100;
   return `${signPrefix(pct, signed)}${pct.toFixed(2)}%`;
 }
 
 /**
  * Null-tolerant basis-point formatter. ``raw`` is already in bp.
+ * ``null``/``undefined``/``NaN`` render as ``EM_DASH``.
  */
 export function formatBp(raw: number | null | undefined, signed: boolean): string {
-  if (raw === null || raw === undefined) return NULL_DISPLAY;
+  if (raw === null || raw === undefined || Number.isNaN(raw)) return NULL_DISPLAY;
   return `${signPrefix(raw, signed)}${raw.toFixed(1)} bp`;
 }
 
@@ -94,7 +103,10 @@ export function formatRawAsNumeric(opts: {
   precision?: number;
 }): Numeric {
   const { raw, unit, sign_aware } = opts;
-  const rawNorm = raw === undefined || raw === null ? null : raw;
+  // NaN 与 null/undefined 同视为缺失：display 走 EM_DASH，raw 归一为 null，
+  // 避免 NaN 泄漏进 Numeric.raw（JSON 序列化也无法表达 NaN）。
+  const rawNorm =
+    raw === undefined || raw === null || Number.isNaN(raw) ? null : raw;
 
   let display: string;
   let precision: number;
@@ -166,6 +178,7 @@ const WAN_PER_YI = 10_000;
  */
 export function formatYuanAmountAsYiPlain(raw: string | number | null | undefined): string {
   if (raw === null || raw === undefined || raw === "") return NULL_DISPLAY;
+  if (typeof raw === "number" && !Number.isFinite(raw)) return NULL_DISPLAY;
   const n = Number.parseFloat(String(raw).replace(/,/g, ""));
   if (!Number.isFinite(n)) return String(raw);
   return (n / YUAN_PER_YI).toLocaleString("zh-CN", {
@@ -179,6 +192,7 @@ export function formatYuanAmountAsYiPlain(raw: string | number | null | undefine
  */
 export function formatWanAmountAsYiPlain(raw: string | number | null | undefined): string {
   if (raw === null || raw === undefined || raw === "") return NULL_DISPLAY;
+  if (typeof raw === "number" && !Number.isFinite(raw)) return NULL_DISPLAY;
   const n = Number.parseFloat(String(raw).replace(/,/g, ""));
   if (!Number.isFinite(n)) return String(raw);
   return (n / WAN_PER_YI).toLocaleString("zh-CN", {

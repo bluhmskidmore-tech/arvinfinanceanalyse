@@ -9,14 +9,14 @@ import {
 
 import type { MossAgGridProps } from "../../../components/grid";
 
-type LazyMossAgGridComponent = <TData = unknown>(
-  props: MossAgGridProps<TData>,
-) => ReactElement;
+// React.lazy 无法保留泛型组件签名，模块级持有 unknown 实例化（泛型实例化赋值，非强转）。
+type UntypedMossAgGrid = (props: MossAgGridProps<unknown>) => ReactElement;
 
 const LazyMossAgGrid = lazy(async () => {
   const { MossAgGrid } = await import("../../../components/grid/MossAgGrid");
-  return { default: MossAgGrid };
-}) as unknown as LazyMossAgGridComponent;
+  const Component: UntypedMossAgGrid = MossAgGrid;
+  return { default: Component };
+});
 
 function gridHeight(height: MossAgGridProps["height"]): string | undefined {
   if (height === undefined) {
@@ -62,7 +62,7 @@ export function DeferredBalanceAnalysisGrid<TData = unknown>(
             />
           }
         >
-          <LazyMossAgGrid<TData> {...props} />
+          <LazyMossAgGrid {...(props as MossAgGridProps<unknown>)} />
         </Suspense>
       ) : null}
     </div>

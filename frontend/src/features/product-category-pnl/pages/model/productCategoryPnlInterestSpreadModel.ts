@@ -2,6 +2,7 @@ import type {
   DecimalLike,
   ProductCategoryPnlRow,
 } from "../../../../api/contracts";
+import { EM_DASH } from "../../../../utils/format";
 import {
   formatProductCategoryReportMonthLabelInternal,
   interestSpreadMetricNumberInternal,
@@ -239,12 +240,12 @@ function basisPointDelta(
 }
 
 function interestSpreadPercentLabel(value: number | null): string {
-  return value === null ? "-" : `${value.toFixed(2)}%`;
+  return value === null ? EM_DASH : `${value.toFixed(2)}%`;
 }
 
 function signedBpLabelWithOneDecimal(value: number | null): string {
   if (value === null || !Number.isFinite(value)) {
-    return "-";
+    return EM_DASH;
   }
   const sign = value > 0 ? "+" : value < 0 ? "-" : "";
   return `${sign}${Math.abs(value).toFixed(1)}bp`;
@@ -325,13 +326,14 @@ function interestSpreadAttributionDetailPoint(
       snapshot?.label ??
       (snapshot
         ? formatProductCategoryReportMonthLabelInternal(snapshot.reportDate)
-        : "-"),
+        : EM_DASH),
     amountLabel: row
       ? `${formatRowDisplayValue(row, row[amountField])}\u4ebf\u5143`
-      : "-",
+      : EM_DASH,
     cashLabel: row
       ? `${formatRowDisplayValue(row, row[cashField])}\u4ebf\u5143`
-      : "-",
-    yieldLabel: yieldValue === null ? "-" : `${formatYieldValue(yieldValue)}%`,
+      : EM_DASH,
+    yieldLabel:
+      yieldValue === null ? EM_DASH : `${formatYieldValue(yieldValue)}%`,
   };
 }

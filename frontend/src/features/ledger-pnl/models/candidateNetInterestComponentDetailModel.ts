@@ -399,7 +399,8 @@ export function buildCandidateNetInterestComponentDetailViewModel(
     || !value.rows.every((row) => isDetailRow(row, sourcePeriods))
   ) return closedModel("invalid_contract", "可用科目穿透未通过后端字符串身份校验。");
 
-  const payload = value as unknown as LedgerPnlCandidateFinancialIndicatorComponentDetail;
+  // 上方已逐字段完成契约校验，此处仅做单跳收窄。
+  const payload = value as LedgerPnlCandidateFinancialIndicatorComponentDetail;
   return {
     state: "available",
     payload,

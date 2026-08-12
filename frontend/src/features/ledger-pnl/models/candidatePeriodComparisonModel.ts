@@ -535,7 +535,8 @@ function parseComparisonPayload(
     )
   ) return invalidPayload("malformed_payload");
 
-  return value as unknown as LedgerPnlCandidateFinancialIndicatorPeriodComparison;
+  // 上方已逐字段完成契约校验，此处仅做单跳收窄。
+  return value as LedgerPnlCandidateFinancialIndicatorPeriodComparison;
 }
 
 function invalidPayload(reason: InvalidComparisonModel["reason"]): InvalidComparisonModel {

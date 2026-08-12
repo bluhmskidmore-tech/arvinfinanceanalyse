@@ -31,6 +31,7 @@ import {
   selectProductCategoryTwoYearInterestSpreadReportPointsImpl,
 } from "./model/productCategoryPnlTrendAndChartModel";
 import { designTokens } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
 
 /** Display order for category rows; does not re-aggregate backend totals. */
 const DISPLAY_ORDER = [
@@ -1017,7 +1018,7 @@ export function formatProductCategoryValue(
   digits = 2,
 ): string {
   if (value === null || value === undefined) {
-    return "-";
+    return EM_DASH;
   }
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
@@ -1064,7 +1065,7 @@ export function formatProductCategoryRowDisplayValue(
   digits = 2,
 ): string {
   if (value === null || value === undefined) {
-    return "-";
+    return EM_DASH;
   }
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
@@ -1082,7 +1083,7 @@ export function formatProductCategoryForeignDisplayValue(
   digits = 2,
 ): string {
   if (value === null || value === undefined) {
-    return "-";
+    return EM_DASH;
   }
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
@@ -1097,7 +1098,7 @@ export function formatProductCategoryYieldValue(
   digits = 2,
 ): string {
   if (value === null || value === undefined) {
-    return "-";
+    return EM_DASH;
   }
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
@@ -1110,10 +1111,10 @@ export function formatProductCategoryChartNumberTwoDecimals(
   value: unknown,
 ): string {
   if (value === null || value === undefined) {
-    return "-";
+    return EM_DASH;
   }
   const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed.toFixed(2) : "-";
+  return Number.isFinite(parsed) ? parsed.toFixed(2) : EM_DASH;
 }
 
 export function toneForProductCategoryValue(
@@ -1202,14 +1203,14 @@ function formatSignedProductCategoryYi(value: number | null): string {
 
 function productCategoryPercentLabel(value: number | null): string {
   if (value === null || !Number.isFinite(value)) {
-    return "-";
+    return EM_DASH;
   }
   return `${value.toFixed(1)}%`;
 }
 
 function productCategoryYiNumberLabel(value: number | null): string {
   if (value === null || !Number.isFinite(value)) {
-    return "-";
+    return EM_DASH;
   }
   return value.toFixed(2);
 }
@@ -1444,7 +1445,7 @@ function selectProductCategoryOperatingQuadrant(
         scale,
         yieldPct,
         netIncome,
-        netIncomeLabel: netIncome !== null ? netIncome.toFixed(2) : "-",
+        netIncomeLabel: netIncome !== null ? netIncome.toFixed(2) : EM_DASH,
       };
     })
     .filter(
@@ -1468,8 +1469,8 @@ function selectProductCategoryOperatingQuadrant(
     return {
       scaleBenchmark: null,
       yieldBenchmark: null,
-      scaleBenchmarkLabel: "-",
-      yieldBenchmarkLabel: "-",
+      scaleBenchmarkLabel: EM_DASH,
+      yieldBenchmarkLabel: EM_DASH,
       rows: [],
       emptyCopy: "当前缺少可用于规模/收益率象限的规模或收益率。",
     };
@@ -1596,7 +1597,7 @@ function selectProductCategoryOperatingActionQueue(input: {
           `净营收 ${lowYieldLoss.netIncome.toFixed(2)} 亿元`,
           `规模 ${lowYieldLoss.scale.toFixed(2)} 亿元`,
           `收益率 ${lowYieldLoss.yieldPct.toFixed(2)}%`,
-          `变动 ${lowYieldLoss.movement?.deltaLabel ?? "-"} 亿元`,
+          `变动 ${lowYieldLoss.movement?.deltaLabel ?? EM_DASH} 亿元`,
         ],
         tone: "negative",
       }),
@@ -1774,16 +1775,16 @@ const EMPTY_PRODUCT_CATEGORY_SCENARIO_PRESSURE_SUMMARY: ProductCategoryScenarioP
   {
     breakeven: {
       label: "临界 FTP",
-      valueLabel: "-",
+      valueLabel: EM_DASH,
       detailLabel: "待加载可比较情景后估算；此处仅做线性插值辅助判断。",
       tone: "neutral",
     },
     sideOffset: {
-      rateLabel: "-",
-      totalDeltaLabel: "-",
-      assetDeltaLabel: "-",
-      liabilityDeltaLabel: "-",
-      offsetLabel: "-",
+      rateLabel: EM_DASH,
+      totalDeltaLabel: EM_DASH,
+      assetDeltaLabel: EM_DASH,
+      liabilityDeltaLabel: EM_DASH,
+      offsetLabel: EM_DASH,
       conclusionLabel: "待加载情景矩阵后拆分资产端与负债端冲抵关系。",
       assetWidthClassName: "is-width-0",
       liabilityWidthClassName: "is-width-0",
@@ -1882,7 +1883,7 @@ function selectProductCategoryScenarioRiskRows(
     }
   >();
   for (const row of rows) {
-    if (row.topMoverCategoryLabel === "-" || row.topMoverDelta === null) {
+    if (row.topMoverCategoryLabel === EM_DASH || row.topMoverDelta === null) {
       continue;
     }
     const current = byCategory.get(row.topMoverCategoryLabel);
@@ -2174,7 +2175,7 @@ function selectProductCategoryScenarioActionClosureRows(
       const worstCell = row.cells.find(
         (cell) => cell.rateLabel === row.worstRateLabel,
       );
-      const scenarioNetIncomeLabel = worstCell?.netIncomeLabel ?? "-";
+      const scenarioNetIncomeLabel = worstCell?.netIncomeLabel ?? EM_DASH;
       const recommendationLabel =
         productCategoryScenarioClosureRecommendation(row);
       return {
@@ -2257,7 +2258,7 @@ function selectProductCategoryScenarioBreakeven(
   if (worst && worst.grandDelta > 0) {
     return {
       label: "临界 FTP",
-      valueLabel: `高于 ${sortedByRate[sortedByRate.length - 1]?.rateLabel ?? "-"}`,
+      valueLabel: `高于 ${sortedByRate[sortedByRate.length - 1]?.rateLabel ?? EM_DASH}`,
       detailLabel: `已加载情景均高于基线，最低差额 ${worst.grandDeltaLabel}；未在当前区间触发临界点。`,
       tone: "positive",
     };
@@ -2265,7 +2266,7 @@ function selectProductCategoryScenarioBreakeven(
   if (best && best.grandDelta < 0) {
     return {
       label: "临界 FTP",
-      valueLabel: `低于 ${sortedByRate[0]?.rateLabel ?? "-"}`,
+      valueLabel: `低于 ${sortedByRate[0]?.rateLabel ?? EM_DASH}`,
       detailLabel: `已加载情景均低于基线，最高差额 ${best.grandDeltaLabel}；需复核情景输入或基线安全垫。`,
       tone: "negative",
     };
@@ -2322,7 +2323,7 @@ function productCategoryScenarioSideLabel(side: string): string {
   if (side === "liability") {
     return "负债端";
   }
-  return side || "-";
+  return side || EM_DASH;
 }
 
 function productCategoryScenarioReviewAction(
@@ -2354,7 +2355,7 @@ function selectProductCategoryScenarioReviewRows(input: {
   for (const scenario of input.scenarios) {
     const scenarioRate = decimalNumber(scenario.scenario_rate_pct);
     const triggerRateLabel =
-      scenarioRate === null ? "-" : `${scenarioRate.toFixed(2)}%`;
+      scenarioRate === null ? EM_DASH : `${scenarioRate.toFixed(2)}%`;
     for (const row of leafProductCategoryRows(scenario.rows)) {
       const delta = productCategoryRowDeltaYi(input.baselineRowsById, row);
       if (delta === null || delta === 0) {
@@ -2471,7 +2472,7 @@ function scenarioExplanationBridge(input: {
     input.attributionTotal === null
   ) {
     return {
-      bridgeLabel: `口径桥：情景压力 ${scenarioDeltaLabel} 亿元；正式归因合计 ${attributionTotalLabel} 亿元；差异 -。`,
+      bridgeLabel: `口径桥：情景压力 ${scenarioDeltaLabel} 亿元；正式归因合计 ${attributionTotalLabel} 亿元；差异 ${EM_DASH}。`,
       bridgeConclusionLabel:
         "当前缺少可比较的情景压力或正式归因驱动，暂不能做口径差异判断。",
       bridgeTone: "neutral",
@@ -2542,13 +2543,13 @@ export function selectProductCategoryScenarioExplanation(input: {
     return {
       categoryId: input.categoryId,
       categoryLabel: input.categoryId,
-      sideLabel: "-",
-      triggerRateLabel: "-",
-      scenarioDeltaLabel: "-",
-      baselineNetIncomeLabel: "-",
-      scenarioNetIncomeLabel: "-",
+      sideLabel: EM_DASH,
+      triggerRateLabel: EM_DASH,
+      scenarioDeltaLabel: EM_DASH,
+      baselineNetIncomeLabel: EM_DASH,
+      scenarioNetIncomeLabel: EM_DASH,
       summaryLabel: "当前正式基线未返回该产品行，无法形成行级情景解释。",
-      bridgeLabel: "口径桥：情景压力 - 亿元；正式归因合计 - 亿元；差异 -。",
+      bridgeLabel: `口径桥：情景压力 ${EM_DASH} 亿元；正式归因合计 ${EM_DASH} 亿元；差异 ${EM_DASH}。`,
       bridgeConclusionLabel:
         "当前缺少可比较的情景压力或正式归因驱动，暂不能做口径差异判断。",
       bridgeTone: "neutral",
@@ -2608,7 +2609,7 @@ export function selectProductCategoryScenarioExplanation(input: {
   const scenarioDeltaLabel = formatSignedProductCategoryYi(
     topMove?.delta ?? null,
   );
-  const triggerRateLabel = topMove?.rateLabel ?? "-";
+  const triggerRateLabel = topMove?.rateLabel ?? EM_DASH;
   const baselineNetIncomeLabel =
     productCategoryYiNumberLabel(baselineNetIncome);
   const scenarioNetIncomeLabel = productCategoryYiNumberLabel(
@@ -2731,7 +2732,7 @@ export function selectProductCategoryScenarioSensitivitySurface(input: {
       grandNetIncomeLabel: productCategoryYiNumberLabel(grandValue),
       grandDeltaLabel: formatSignedProductCategoryYi(grandDelta),
       topMoverCategoryLabel:
-        topMover?.row.category_name || topMover?.row.category_id || "-",
+        topMover?.row.category_name || topMover?.row.category_id || EM_DASH,
       topMoverDelta: topMover?.delta ?? null,
       topMoverDeltaLabel: formatSignedProductCategoryYi(
         topMover?.delta ?? null,
@@ -2813,7 +2814,7 @@ export function selectProductCategoryAttributionWaterfallSurface(
     return {
       metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
       title: "经营差异瀑布",
-      deltaLabel: "-",
+      deltaLabel: EM_DASH,
       rows: [],
       emptyCopy: "当前缺少可用的全表经营差异归因。",
     };
@@ -2862,7 +2863,7 @@ export function selectProductCategoryAttributionWaterfallSurface(
       valueLabel: formatSignedProductCategoryYi(value),
       cumulative: rawValue === null ? null : cumulative,
       cumulativeLabel:
-        rawValue === null ? "-" : productCategoryYiNumberLabel(cumulative),
+        rawValue === null ? EM_DASH : productCategoryYiNumberLabel(cumulative),
       tone: productCategoryDeltaTone(value),
     });
   }
@@ -2966,14 +2967,14 @@ export function selectProductCategoryRootCauseSurface(input: {
       delta: headlineRow.delta,
       deltaLabel: formatSignedProductCategoryYi(headlineRow.delta),
       driverLabel: leadingDriver?.label ?? "未识别",
-      driverValueLabel: leadingDriver?.valueLabel ?? "-",
+      driverValueLabel: leadingDriver?.valueLabel ?? EM_DASH,
       currentNetIncomeLabel: productCategoryYiNumberLabel(currentNetIncome),
       priorNetIncomeLabel: productCategoryYiNumberLabel(priorNetIncome),
       scaleLabel: productCategoryYiNumberLabel(scale),
-      yieldLabel: yieldPct === null ? "-" : `${yieldPct.toFixed(2)}%`,
+      yieldLabel: yieldPct === null ? EM_DASH : `${yieldPct.toFixed(2)}%`,
       conclusionLabel: `${headlineRow.row.category_name || headlineRow.row.category_id} 变动 ${formatSignedProductCategoryYi(
         headlineRow.delta,
-      )} 亿元，主导原因是 ${leadingDriver?.label ?? "未识别"} ${leadingDriver?.valueLabel ?? "-"} 亿元。`,
+      )} 亿元，主导原因是 ${leadingDriver?.label ?? "未识别"} ${leadingDriver?.valueLabel ?? EM_DASH} 亿元。`,
       tone: productCategoryDeltaTone(headlineRow.delta),
     },
     driverRows,
@@ -2981,7 +2982,7 @@ export function selectProductCategoryRootCauseSurface(input: {
       `本期净营收 ${productCategoryYiNumberLabel(currentNetIncome)} 亿元`,
       `对比期净营收 ${productCategoryYiNumberLabel(priorNetIncome)} 亿元`,
       `当前规模 ${productCategoryYiNumberLabel(scale)} 亿元`,
-      `当前收益率 ${yieldPct === null ? "-" : `${yieldPct.toFixed(2)}%`}`,
+      `当前收益率 ${yieldPct === null ? EM_DASH : `${yieldPct.toFixed(2)}%`}`,
       `闭合误差 ${formatSignedProductCategoryYi(closureError)} 亿元`,
     ],
     emptyCopy: null,
@@ -3109,7 +3110,7 @@ export function selectProductCategoryDecisionFocusSurface(input: {
 
 function signedBpLabel(value: number | null): string {
   if (value === null || !Number.isFinite(value)) {
-    return "-";
+    return EM_DASH;
   }
   if (value === 0) {
     return "0bp";
@@ -3119,14 +3120,14 @@ function signedBpLabel(value: number | null): string {
 
 function bpLabel(value: number | null): string {
   if (value === null || !Number.isFinite(value)) {
-    return "-";
+    return EM_DASH;
   }
   return `${value.toFixed(1).replace(/\.0$/, "")}bp`;
 }
 
 function signedYiDeltaLabel(value: number | null): string {
   if (value === null || !Number.isFinite(value)) {
-    return "-";
+    return EM_DASH;
   }
   if (value === 0) {
     return "0.00";
@@ -3174,14 +3175,14 @@ function averageProductCategoryNumber(
 
 function productCategoryRateLabel(rate: number | null): string {
   if (rate === null || !Number.isFinite(rate)) {
-    return "-";
+    return EM_DASH;
   }
   return `${(rate * 100).toFixed(1)}%`;
 }
 
 function signedProductCategoryBpDeltaLabel(value: number | null): string {
   if (value === null || !Number.isFinite(value)) {
-    return "-";
+    return EM_DASH;
   }
   if (value === 0) {
     return "0.0bp";
@@ -3553,8 +3554,8 @@ function productCategoryBacktestLatestReviewRows(input: {
         reasonLabel: `历史回测建议${calibration.recommendationLabel}：${calibration.reasonLabel}`,
         impactLabel: actionRow
           ? `历史均值：净营收 ${actionRow.averageNetIncomeDeltaLabel} 亿元 · 收益率 ${actionRow.averageYieldDeltaBpLabel} · 规模 ${actionRow.averageScaleDeltaLabel} 亿元`
-          : "历史均值：-",
-        watchReportDateLabel: `观察月份：${watchReportDate ?? "-"}`,
+          : `历史均值：${EM_DASH}`,
+        watchReportDateLabel: `观察月份：${watchReportDate ?? EM_DASH}`,
         releaseConditionLabel: releaseConditionForAction(row.actionKind),
         observationLabel: observationForAction(row.actionKind),
         gapLabel: gapForAction(row),
@@ -3729,7 +3730,7 @@ function productCategoryBacktestEmptyCopy(
     const expectedNextReportDate = productCategoryNextMonthEndDate(
       skippedRow.reportDate,
     );
-    return `需要至少两个连续月度正式 payload 才能回测行动信号；${skippedRow.reportDate} 后缺少 ${expectedNextReportDate ?? "-"}，实际下一期为 ${skippedRow.nextReportDate}。`;
+    return `需要至少两个连续月度正式 payload 才能回测行动信号；${skippedRow.reportDate} 后缺少 ${expectedNextReportDate ?? EM_DASH}，实际下一期为 ${skippedRow.nextReportDate}。`;
   }
   return "需要至少两个连续月度正式 payload 才能回测行动信号。";
 }
@@ -3820,7 +3821,7 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
         reportDate: current.report_date,
         nextReportDate: next.report_date,
         statusLabel: "跳过：非连续月份",
-        detailLabel: `期望下一月末 ${productCategoryNextMonthEndDate(current.report_date) ?? "-"}，实际 ${next.report_date}`,
+        detailLabel: `期望下一月末 ${productCategoryNextMonthEndDate(current.report_date) ?? EM_DASH}，实际 ${next.report_date}`,
         signalCount: currentActions.length,
         tone: "negative",
       });
@@ -3915,7 +3916,7 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
       reportDate: latestPayload.report_date,
       nextReportDate: null,
       statusLabel: "最新月待观察",
-      detailLabel: `等待下一期 ${productCategoryNextMonthEndDate(latestPayload.report_date) ?? "-"} payload 验证`,
+      detailLabel: `等待下一期 ${productCategoryNextMonthEndDate(latestPayload.report_date) ?? EM_DASH} payload 验证`,
       signalCount: latestPendingCount,
       tone: "neutral",
     });
@@ -4022,7 +4023,7 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
           comparableCount: comparableRows.length,
           missRate,
           missRateLabel: productCategoryRateLabel(missRate),
-          primaryReasonLabel: reasonRows[0]?.reasonLabel ?? "-",
+          primaryReasonLabel: reasonRows[0]?.reasonLabel ?? EM_DASH,
           reasonRows,
           tone: productCategoryBacktestTone(
             missRate === null ? null : 1 - missRate,
@@ -4070,7 +4071,7 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
       coverageLabel:
         evaluatedDates.length > 0
           ? `${evaluatedDates[0]} 至 ${evaluatedDates[evaluatedDates.length - 1]}`
-          : "-",
+          : EM_DASH,
       attributionCoverageLabel: attributionCoverage.attributionCoverageLabel,
       attributionCoverageDetailLabel:
         attributionCoverage.attributionCoverageDetailLabel,
@@ -4114,7 +4115,7 @@ function productCategorySideLabel(side: string): string {
   if (side === "liability") {
     return "\u8d1f\u503a";
   }
-  return side || "-";
+  return side || EM_DASH;
 }
 
 function formatProductCategoryDiagnosticMoneyLabel(
@@ -4125,14 +4126,14 @@ function formatProductCategoryDiagnosticMoneyLabel(
   const display = options?.foreignDisplay
     ? formatProductCategoryForeignDisplayValue(row, value)
     : formatProductCategoryRowDisplayValue(row, value);
-  return display === "-" ? "\u7f3a\u5931" : `${display} \u4ebf\u5143`;
+  return display === EM_DASH ? "\u7f3a\u5931" : `${display} \u4ebf\u5143`;
 }
 
 function formatProductCategoryDiagnosticYieldLabel(
   value: DecimalLike | null | undefined,
 ): { label: string; missing: boolean } {
   const display = formatProductCategoryYieldValue(value);
-  if (display === "-") {
+  if (display === EM_DASH) {
     return { label: "\u6536\u76ca\u7387\u7f3a\u5931", missing: true };
   }
   return { label: `${display}%`, missing: false };
@@ -4215,10 +4216,10 @@ function buildProductCategoryDiagnosticsMatrixRow(
     categoryLabel: row.category_name,
     sideLabel: productCategorySideLabel(row.side),
     scaleLabel:
-      scaleDisplay === "-"
+      scaleDisplay === EM_DASH
         ? "\u89c4\u6a21\u7f3a\u5931"
         : `${scaleDisplay} \u4ebf\u5143`,
-    scaleMissing: scaleDisplay === "-",
+    scaleMissing: scaleDisplay === EM_DASH,
     businessNetIncomeLabel: formatProductCategoryDiagnosticMoneyLabel(
       row,
       row.business_net_income,
@@ -4438,10 +4439,10 @@ export function buildProductCategoryDiagnosticsSurface(input: {
           row.business_net_income,
         ),
         scaleLabel:
-          scaleDisplay === "-"
+          scaleDisplay === EM_DASH
             ? "\u89c4\u6a21\u7f3a\u5931"
             : `${scaleDisplay} \u4ebf\u5143`,
-        scaleMissing: scaleDisplay === "-",
+        scaleMissing: scaleDisplay === EM_DASH,
         yieldLabel: yieldDisplay.label,
         yieldMissing: yieldDisplay.missing,
         driverHint: buildProductCategoryDriverHint(row),
@@ -4561,7 +4562,7 @@ function formatProductCategoryManagementYi(value: number): string {
 
 function formatProductCategoryManagementPercent(value: number | null): string {
   return value === null || !Number.isFinite(value)
-    ? "-"
+    ? EM_DASH
     : `${value.toFixed(1)}%`;
 }
 

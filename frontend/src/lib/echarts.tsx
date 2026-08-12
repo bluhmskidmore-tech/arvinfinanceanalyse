@@ -78,9 +78,12 @@ echarts.registerTheme("moss-dark-hero", {
 
 export type { EChartsOption } from "echarts";
 
-const ReactEChartsCore = (
-  (ReactEChartsCoreModule as unknown as { default?: typeof ReactEChartsCoreModule }).default ?? ReactEChartsCoreModule
-) as typeof ReactEChartsCoreModule;
+type ReactEChartsCoreExport = typeof ReactEChartsCoreModule;
+
+// CJS/ESM 互操作：部分打包条件下拿到的是带 default 的命名空间对象，取 default 兜底。
+const ReactEChartsCore =
+  (ReactEChartsCoreModule as ReactEChartsCoreExport & { default?: ReactEChartsCoreExport })
+    .default ?? ReactEChartsCoreModule;
 
 export default function ReactECharts({ theme = "moss-dark-hero", ...props }: EChartsReactProps) {
   return <ReactEChartsCore echarts={echarts} theme={theme} {...props} />;

@@ -204,10 +204,25 @@ function normalizeConcentration(
   };
 }
 
+/**
+ * envelope.result 关键结构运行时检查：后端返回可能偏离声明类型，
+ * 非对象时披露并返回 null，由调用方走既有请求失败错误态。
+ */
+function envelopeResultRecord(value: unknown, endpoint: string): Record<string, unknown> | null {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  console.error(`[homeSupplementalClient] ${endpoint} 返回的 envelope.result 不是对象，无法归一化。`);
+  return null;
+}
+
 function normalizeCreditSpreadMigrationEnvelope(
   envelope: ApiEnvelope<CreditSpreadMigrationPayload>,
 ): ApiEnvelope<CreditSpreadMigrationPayload> {
-  const source = envelope.result as unknown as Record<string, unknown>;
+  const source = envelopeResultRecord(envelope.result, "credit-spread-migration");
+  if (!source) {
+    throw new Error("credit-spread-migration envelope.result 缺失关键结构");
+  }
   const spreadScenarios = Array.isArray(source.spread_scenarios) ? source.spread_scenarios : [];
   const migrationScenarios = Array.isArray(source.migration_scenarios) ? source.migration_scenarios : [];
   const bondDetails = Array.isArray(source.bond_details) ? source.bond_details : undefined;
@@ -266,7 +281,10 @@ function normalizeCreditSpreadMigrationEnvelope(
 function normalizePortfolioHeadlinesEnvelope(
   envelope: ApiEnvelope<BondPortfolioHeadlinesPayload>,
 ): ApiEnvelope<BondPortfolioHeadlinesPayload> {
-  const source = envelope.result as unknown as Record<string, unknown>;
+  const source = envelopeResultRecord(envelope.result, "portfolio-headlines");
+  if (!source) {
+    throw new Error("portfolio-headlines envelope.result 缺失关键结构");
+  }
   const byAssetClass = Array.isArray(source.by_asset_class) ? source.by_asset_class : [];
   return {
     ...envelope,

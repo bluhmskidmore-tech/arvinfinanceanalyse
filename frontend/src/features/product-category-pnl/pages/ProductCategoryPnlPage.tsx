@@ -108,6 +108,7 @@ import {
   selectProductCategoryTwoYearInterestSpreadReportPoints,
   selectProductCategoryTrendReportPoints,
 } from "./productCategoryPnlPageModel";
+import { EM_DASH } from "../../../utils/format";
 
 function ProductCategoryCandidateMetricNotice(props: {
   testId: string;
@@ -625,7 +626,7 @@ function ProductCategoryFormalTableMobileReadout(
                   focusedBusinessRow,
                   focusedBusinessRow.cnx_scale,
                 )
-              : "-"
+              : EM_DASH
           }
           detail="综本规模"
         />
@@ -637,7 +638,7 @@ function ProductCategoryFormalTableMobileReadout(
                   focusedBusinessRow,
                   focusedBusinessRow.cny_net,
                 )
-              : "-"
+              : EM_DASH
           }
           detail="正式表返回值"
         />
@@ -649,7 +650,7 @@ function ProductCategoryFormalTableMobileReadout(
                   focusedBusinessRow,
                   focusedBusinessRow.foreign_net,
                 )
-              : "-"
+              : EM_DASH
           }
           detail="外币原值"
         />
@@ -661,7 +662,7 @@ function ProductCategoryFormalTableMobileReadout(
                   focusedBusinessRow,
                   focusedBusinessRow.business_net_income,
                 )
-              : "-"
+              : EM_DASH
           }
           detail="当前产品"
         />
@@ -672,7 +673,7 @@ function ProductCategoryFormalTableMobileReadout(
               ? formatProductCategoryYieldValue(
                   focusedBusinessRow.weighted_yield,
                 )
-              : "-"
+              : EM_DASH
           }
           detail="正式表返回值"
         />
@@ -1023,7 +1024,7 @@ function formatProductCategoryTrendMetric(
   unit: string,
 ): string {
   if (value === null || value === undefined || !Number.isFinite(value)) {
-    return "-";
+    return EM_DASH;
   }
   return `${value.toLocaleString("zh-CN", {
     minimumFractionDigits: 2,
@@ -3554,25 +3555,25 @@ export default function ProductCategoryPnlPage() {
                     <span>
                       <small>最新日均额</small>
                       <strong>
-                        {liabilityTrendReadout?.latestAmountLabel ?? "-"}
+                        {liabilityTrendReadout?.latestAmountLabel ?? EM_DASH}
                       </strong>
                     </span>
                     <span>
                       <small>最新收益率</small>
                       <strong>
-                        {liabilityTrendReadout?.latestRateLabel ?? "-"}
+                        {liabilityTrendReadout?.latestRateLabel ?? EM_DASH}
                       </strong>
                     </span>
                     <span>
                       <small>日均额变动</small>
                       <strong>
-                        {liabilityTrendReadout?.amountDeltaLabel ?? "-"}
+                        {liabilityTrendReadout?.amountDeltaLabel ?? EM_DASH}
                       </strong>
                     </span>
                     <span>
                       <small>收益率变动</small>
                       <strong>
-                        {liabilityTrendReadout?.rateDeltaLabel ?? "-"}
+                        {liabilityTrendReadout?.rateDeltaLabel ?? EM_DASH}
                       </strong>
                     </span>
                   </div>

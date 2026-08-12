@@ -5,6 +5,7 @@ import {
   selectProductCategoryOperatingActionBacktestSurface,
   selectProductCategoryOperatingAnalysisSurface,
 } from "./productCategoryPnlPageModel";
+import { EM_DASH } from "../../../utils/format";
 
 type ProductCategoryManagementMonitoringSurface = ReturnType<
   typeof selectProductCategoryManagementMonitoringSurface
@@ -295,7 +296,7 @@ export function ProductCategoryOperatingAnalysisPanel(props: {
           </p>
         </div>
         <span className="product-category-operating-analysis__badge">
-          全表净营收 {props.surface.contribution.grandTotalLabel ?? "-"} 亿元
+          全表净营收 {props.surface.contribution.grandTotalLabel ?? EM_DASH} 亿元
         </span>
       </div>
       {props.candidateNotice}
