@@ -341,22 +341,33 @@ def test_duration_gap_calculation_uses_full_scope_term_proxy():
     assert result.liability_weighted_duration == Decimal("1.666666666666666666666666667")
     assert result.total_asset_market_value == Decimal("200")
     assert result.total_liability_value == Decimal("150")
-    # ALM textbook: DGAP = D_A - (L/A) * D_L; D_E = (D_A*A - D_L*L) / E
-    total_assets = Decimal("200")
-    total_liabilities = Decimal("150")
-    equity = total_assets - total_liabilities
+    # Full duration coverage: nothing excluded, coverage == 1 on both sides, so the
+    # honest caliber must reproduce the textbook full-balance result exactly.
+    assert result.asset_duration_covered_balance == Decimal("200")
+    assert result.liability_duration_covered_balance == Decimal("150")
+    assert result.asset_excluded_balance == Decimal("0")
+    assert result.liability_excluded_balance == Decimal("0")
+    assert result.asset_duration_coverage_ratio == Decimal("1")
+    assert result.liability_duration_coverage_ratio == Decimal("1")
+    # Honest caliber: DD_A = Σ(D_i * balance_i) over covered rows; DGAP uses the
+    # duration-covered leverage (here L_cov/A_cov == 150/200); D_E = (DD_A - DD_L)/E.
+    days_tyw_asset = Decimal((date(2026, 7, 1) - date(2026, 1, 1)).days)
+    days_bond_liab = Decimal((date(2027, 1, 1) - date(2026, 1, 1)).days)
+    days_tyw_liab = Decimal((date(2028, 1, 1) - date(2026, 1, 1)).days)
+    asset_dollar_duration = Decimal("1.8") * Decimal("100") + (days_tyw_asset / Decimal("365")) * Decimal("100")
+    liability_dollar_duration = (
+        (days_bond_liab / Decimal("365")) * Decimal("50") + (days_tyw_liab / Decimal("365")) * Decimal("100")
+    )
+    equity = Decimal("200") - Decimal("150")
     expected_gap = result.asset_weighted_duration - (
-        total_liabilities / total_assets
+        Decimal("150") / Decimal("200")
     ) * result.liability_weighted_duration
-    expected_equity_duration = (
-        result.asset_weighted_duration * total_assets
-        - result.liability_weighted_duration * total_liabilities
-    ) / equity
+    expected_equity_duration = (asset_dollar_duration - liability_dollar_duration) / equity
     assert result.duration_gap == expected_gap
     assert result.modified_duration_gap == expected_gap
     assert result.equity_duration == expected_equity_duration
-    # Sign convention: rates up 1bp -> equity value change = -D_E * E * 1bp
-    assert result.rate_sensitivity_1bp == -(expected_equity_duration * equity * Decimal("0.0001"))
+    # Sign convention: rates up 1bp -> equity value change = -(DD_A - DD_L) * 1bp
+    assert result.rate_sensitivity_1bp == -((asset_dollar_duration - liability_dollar_duration) * Decimal("0.0001"))
     assert any("remaining-term proxy" in warning for warning in result.warnings)
 
 
@@ -404,14 +415,129 @@ def test_duration_gap_warns_when_missing_maturity_excludes_rows():
 
     assert result.asset_weighted_duration == Decimal("3.2")
     assert result.liability_weighted_duration == Decimal("2")
-    # DGAP = 3.2 - (200/300) * 2; D_E = (3.2*300 - 2*200) / 100 = 5.6
-    assert result.duration_gap == Decimal("3.2") - (Decimal("200") / Decimal("300")) * Decimal("2")
-    assert result.modified_duration_gap == result.duration_gap
     assert result.total_asset_market_value == Decimal("300")
     assert result.total_liability_value == Decimal("200")
-    assert result.equity_duration == Decimal("5.6")
-    assert result.rate_sensitivity_1bp == Decimal("-0.0560")
+    # Honest caliber: the 100 liability lacking maturity is NOT assigned the covered
+    # average duration; it is disclosed as excluded_balance with coverage 0.5.
+    assert result.asset_duration_covered_balance == Decimal("300")
+    assert result.liability_duration_covered_balance == Decimal("100")
+    assert result.asset_excluded_balance == Decimal("0")
+    assert result.liability_excluded_balance == Decimal("100")
+    assert result.asset_duration_coverage_ratio == Decimal("1")
+    assert result.liability_duration_coverage_ratio == Decimal("0.5")
+    # Gap leverage now uses the duration-covered liability base (100/300), not 200/300.
+    assert result.duration_gap == Decimal("3.2") - (Decimal("100") / Decimal("300")) * Decimal("2")
+    assert result.modified_duration_gap == result.duration_gap
+    # DD_A - DD_L = 3.2*300 - 2*100 = 760; D_E = 760/100 = 7.6.
+    assert result.equity_duration == Decimal("7.6")
+    assert result.rate_sensitivity_1bp == Decimal("-0.076")
+    # Regression guard: the old average-duration extrapolation reported 5.6 / -0.0560.
+    assert result.equity_duration != Decimal("5.6")
+    assert result.rate_sensitivity_1bp != Decimal("-0.0560")
     assert any("missing maturity information" in warning for warning in result.warnings)
+    assert any("does not extrapolate" in warning for warning in result.warnings)
+
+
+def test_duration_gap_excludes_asset_without_duration_from_dollar_duration():
+    module = _core_module()
+
+    result = module.compute_duration_gap(
+        zqtz_rows=[
+            {
+                "instrument_code": "BOND-DUR",
+                "instrument_name": "Bond with duration",
+                "position_scope": "asset",
+                "maturity_date": date(2030, 1, 1),
+                "market_value_amount": Decimal("100"),
+                "macaulay_duration": Decimal("4"),
+                "interest_mode": "annual",
+                "currency_code": "CNY",
+            },
+            {
+                "instrument_code": "BOND-NODUR",
+                "instrument_name": "Asset missing duration",
+                "position_scope": "asset",
+                "maturity_date": None,
+                "market_value_amount": Decimal("100"),
+                "interest_mode": "annual",
+                "currency_code": "CNY",
+            },
+        ],
+        tyw_rows=[
+            {
+                "position_id": "TYW-LIAB",
+                "counterparty_name": "Bank",
+                "position_scope": "liability",
+                "maturity_date": date(2027, 1, 1),
+                "principal_amount": Decimal("100"),
+                "funding_cost_rate": Decimal("3.0"),
+                "currency_code": "CNY",
+            },
+        ],
+        report_date=date(2026, 1, 1),
+        horizon_months=24,
+    )
+
+    # 200 of asset balance, only 100 carries duration.
+    assert result.total_asset_market_value == Decimal("200")
+    assert result.asset_duration_covered_balance == Decimal("100")
+    assert result.asset_excluded_balance == Decimal("100")
+    assert result.asset_duration_coverage_ratio == Decimal("0.5")
+    assert result.asset_weighted_duration == Decimal("4")
+    assert result.liability_excluded_balance == Decimal("0")
+
+    liability_duration = Decimal((date(2027, 1, 1) - date(2026, 1, 1)).days) / Decimal("365")
+    assert result.liability_weighted_duration == liability_duration
+
+    # Honest DD gap uses the covered asset balance only: 4*100 - D_L*100. The old
+    # caliber applied D_A=4 to the full 200 (=> 800), inflating equity duration.
+    equity = Decimal("200") - Decimal("100")
+    expected_equity_dollar_duration = Decimal("4") * Decimal("100") - liability_duration * Decimal("100")
+    assert result.equity_duration == expected_equity_dollar_duration / equity
+    assert result.rate_sensitivity_1bp == -(expected_equity_dollar_duration * Decimal("0.0001"))
+    # Gap leverage uses covered asset base (100), not the full 200.
+    assert result.duration_gap == Decimal("4") - (Decimal("100") / Decimal("100")) * liability_duration
+    assert result.duration_gap != Decimal("4") - (Decimal("100") / Decimal("200")) * liability_duration
+    assert any("does not extrapolate" in warning for warning in result.warnings)
+
+
+def test_duration_gap_zero_assets_returns_unavailable_metrics():
+    module = _core_module()
+
+    result = module.compute_duration_gap(
+        zqtz_rows=[
+            {
+                "instrument_code": "BOND-LIAB",
+                "instrument_name": "Issued bond",
+                "position_scope": "liability",
+                "maturity_date": date(2028, 1, 1),
+                "market_value_amount": Decimal("500"),
+                "coupon_rate": Decimal("3.0"),
+                "interest_mode": "annual",
+                "currency_code": "CNY",
+            },
+        ],
+        tyw_rows=[],
+        report_date=date(2026, 1, 1),
+        horizon_months=24,
+    )
+
+    assert result.total_asset_market_value == Decimal("0")
+    assert result.total_liability_value == Decimal("500")
+    # Asset denominator is zero -> duration-gap family is unavailable (None), never a
+    # misleading -liability_duration value.
+    assert result.asset_weighted_duration is None
+    assert result.duration_gap is None
+    assert result.modified_duration_gap is None
+    assert result.equity_duration is None
+    assert result.rate_sensitivity_1bp is None
+    assert result.reinvestment_risk_12m is None
+    assert result.asset_duration_coverage_ratio is None
+    # Liability duration is still observable and disclosed.
+    liability_duration = Decimal((date(2028, 1, 1) - date(2026, 1, 1)).days) / Decimal("365")
+    assert result.liability_weighted_duration == liability_duration
+    assert result.liability_duration_covered_balance == Decimal("500")
+    assert any("unavailable" in warning for warning in result.warnings)
 
 
 def test_tywl_demand_positions_without_maturity_use_one_month_proxy():

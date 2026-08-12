@@ -3,6 +3,8 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
+# Security note: MOSS_AGENT_DEV_SCOPE_BYPASS skips Agent scope checks only for
+# loopback API clients (127.0.0.1/::1). Non-loopback clients are rejected.
 $env:MOSS_AGENT_ENABLED = "true"
 $env:MOSS_AGENT_DEV_SCOPE_BYPASS = "true"
 $env:MOSS_AGENT_PROVIDER = "hermes"

@@ -47,43 +47,43 @@
     },
     "krd_1y": {
       "raw": 0.00982318,
-      "unit": "ratio",
-      "display": "+0.01",
+      "unit": "dv01",
+      "display": "0.01",
       "precision": 2,
       "sign_aware": true
     },
     "krd_3y": {
       "raw": 0.0,
-      "unit": "ratio",
-      "display": "+0.00",
+      "unit": "dv01",
+      "display": "0.00",
       "precision": 2,
       "sign_aware": true
     },
     "krd_5y": {
       "raw": 0.09138735,
-      "unit": "ratio",
-      "display": "+0.09",
+      "unit": "dv01",
+      "display": "0.09",
       "precision": 2,
       "sign_aware": true
     },
     "krd_7y": {
       "raw": 0.0,
-      "unit": "ratio",
-      "display": "+0.00",
+      "unit": "dv01",
+      "display": "0.00",
       "precision": 2,
       "sign_aware": true
     },
     "krd_10y": {
       "raw": 0.12054196,
-      "unit": "ratio",
-      "display": "+0.12",
+      "unit": "dv01",
+      "display": "0.12",
       "precision": 2,
       "sign_aware": true
     },
     "krd_30y": {
       "raw": 0.0,
-      "unit": "ratio",
-      "display": "+0.00",
+      "unit": "dv01",
+      "display": "0.00",
       "precision": 2,
       "sign_aware": true
     },
@@ -103,7 +103,7 @@
     },
     "portfolio_modified_duration": {
       "raw": 4.87293147,
-      "unit": "ratio",
+      "unit": "years",
       "display": "4.87",
       "precision": 2,
       "sign_aware": false
@@ -194,7 +194,7 @@
     },
     "rate_risk_modified_duration": {
       "raw": 4.87293147,
-      "unit": "ratio",
+      "unit": "years",
       "display": "4.87",
       "precision": 2,
       "sign_aware": false

@@ -38,19 +38,35 @@ class MonthlyBucket:
 
 @dataclass(slots=True, frozen=True)
 class DurationGapResult:
-    """Duration-gap analysis output."""
+    """Duration-gap analysis output.
+
+    Honest-caliber disclosure: weighted durations and the duration gap are built
+    only from rows that carry a duration (the *duration-covered* balance). Balances
+    that lack a duration are reported separately via ``*_excluded_balance`` /
+    ``*_coverage_ratio`` and are never assigned the covered average duration. When
+    the duration-covered asset balance is zero the duration-gap family
+    (``asset_weighted_duration``, ``duration_gap``, ``modified_duration_gap``,
+    ``equity_duration``, ``rate_sensitivity_1bp``) is ``None`` (unavailable) rather
+    than a misleading value.
+    """
 
     report_date: date
-    asset_weighted_duration: Decimal
+    asset_weighted_duration: Decimal | None
     liability_weighted_duration: Decimal
-    duration_gap: Decimal
-    modified_duration_gap: Decimal
+    duration_gap: Decimal | None
+    modified_duration_gap: Decimal | None
     total_asset_market_value: Decimal
     total_liability_value: Decimal
-    equity_duration: Decimal
-    rate_sensitivity_1bp: Decimal
+    asset_duration_covered_balance: Decimal
+    liability_duration_covered_balance: Decimal
+    asset_excluded_balance: Decimal
+    liability_excluded_balance: Decimal
+    asset_duration_coverage_ratio: Decimal | None
+    liability_duration_coverage_ratio: Decimal | None
+    equity_duration: Decimal | None
+    rate_sensitivity_1bp: Decimal | None
     monthly_buckets: list[MonthlyBucket]
-    reinvestment_risk_12m: Decimal
+    reinvestment_risk_12m: Decimal | None
     warnings: list[str]
 
 
@@ -308,17 +324,28 @@ def compute_duration_gap(
     Compute full-scope term-proxy duration gap, projected monthly cashflows,
     and 12-month reinvestment risk from formal balance facts.
 
-    Formulas (textbook ALM):
-    - ``duration_gap = D_A - (L / A) * D_L``
-    - ``equity_duration = (D_A * A - D_L * L) / E`` (equals ``duration_gap * A / E``)
-    - ``modified_duration_gap`` currently mirrors ``duration_gap`` (term-proxy /
-      Macaulay basis, not divided by (1 + y)); treat it as a proxy pending
-      confirmation of the modified-duration convention.
+    Honest caliber (no implicit extrapolation):
+    - Dollar-duration numerators are the direct sums over duration-covered rows,
+      ``DD_A = Σ(D_i * balance_i)`` and ``DD_L = Σ(D_j * balance_j)``.
+    - ``A_cov`` / ``L_cov`` are the duration-covered balances (denominators for the
+      headline weighted durations). Balances lacking duration are excluded and
+      disclosed via ``asset_excluded_balance`` / ``liability_excluded_balance`` and
+      ``*_coverage_ratio``; they are never assigned the covered average duration.
+    - ``duration_gap = D_A - (L_cov / A_cov) * D_L`` (leverage on the covered base,
+      so ``duration_gap * A_cov == DD_A - DD_L``).
+    - ``equity_duration = (DD_A - DD_L) / E`` with ``E = A_total - L_total``.
+    - ``modified_duration_gap`` mirrors ``duration_gap`` (term-proxy / Macaulay
+      basis, not divided by (1 + y)); treat it as a proxy pending confirmation of
+      the modified-duration convention.
 
-    Sign convention for ``rate_sensitivity_1bp``: it is the projected change in
-    equity value for a +1bp parallel rate move, i.e.
-    ``-equity_duration * equity * 0.0001``. With a positive equity duration a
-    rate rise produces a negative sensitivity (equity value falls).
+    Sign convention for ``rate_sensitivity_1bp``: projected change in equity value
+    for a +1bp parallel rate move, ``-(DD_A - DD_L) * 0.0001``. With a positive
+    equity dollar duration a rate rise produces a negative sensitivity.
+
+    Availability: when the duration-covered asset balance is zero (no assets, or no
+    asset carries duration) the duration-gap family is returned as ``None`` with a
+    warning instead of a misleading ``-D_L`` value. ``reinvestment_risk_12m`` is
+    ``None`` when total asset market value is zero.
     """
 
     warnings: list[str] = []
@@ -327,8 +354,8 @@ def compute_duration_gap(
     total_liability_value = ZERO
     asset_duration_numerator = ZERO
     liability_duration_numerator = ZERO
-    asset_duration_weight = ZERO
-    liability_duration_weight = ZERO
+    asset_duration_covered_balance = ZERO
+    liability_duration_covered_balance = ZERO
 
     for row in zqtz_rows:
         scope = _row_scope(row)
@@ -350,10 +377,10 @@ def compute_duration_gap(
             continue
         if scope == "asset":
             asset_duration_numerator += duration * market_value
-            asset_duration_weight += market_value
+            asset_duration_covered_balance += market_value
         else:
             liability_duration_numerator += duration * market_value
-            liability_duration_weight += market_value
+            liability_duration_covered_balance += market_value
 
     for row in tyw_rows:
         scope = _row_scope(row)
@@ -375,47 +402,90 @@ def compute_duration_gap(
             continue
         if scope == "asset":
             asset_duration_numerator += duration * principal
-            asset_duration_weight += principal
+            asset_duration_covered_balance += principal
         else:
             liability_duration_numerator += duration * principal
-            liability_duration_weight += principal
+            liability_duration_covered_balance += principal
 
-    asset_weighted_duration = asset_duration_numerator / asset_duration_weight if asset_duration_weight > ZERO else ZERO
-    liability_weighted_duration = (
-        liability_duration_numerator / liability_duration_weight if liability_duration_weight > ZERO else ZERO
+    asset_excluded_balance = total_asset_market_value - asset_duration_covered_balance
+    liability_excluded_balance = total_liability_value - liability_duration_covered_balance
+    asset_duration_coverage_ratio: Decimal | None = (
+        asset_duration_covered_balance / total_asset_market_value if total_asset_market_value > ZERO else None
     )
-    if total_asset_market_value > ZERO:
-        duration_gap = asset_weighted_duration - (
-            total_liability_value / total_asset_market_value
-        ) * liability_weighted_duration
-    else:
-        duration_gap = asset_weighted_duration - liability_weighted_duration
-    modified_duration_gap = duration_gap
+    liability_duration_coverage_ratio: Decimal | None = (
+        liability_duration_covered_balance / total_liability_value if total_liability_value > ZERO else None
+    )
 
-    if liability_duration_weight > ZERO:
+    # Headline weighted durations divide the direct Σ(duration × balance) numerator
+    # by the duration-covered balance only; excluded balances never inherit the
+    # covered average duration.
+    liability_weighted_duration = (
+        liability_duration_numerator / liability_duration_covered_balance
+        if liability_duration_covered_balance > ZERO
+        else ZERO
+    )
+
+    if liability_duration_covered_balance > ZERO:
         _append_warning(
             warnings,
             "Liability duration uses a remaining-term proxy (years to maturity), not a cashflow-weighted duration.",
         )
-
-    if total_asset_market_value <= ZERO:
-        _append_warning(warnings, "Total asset market value is zero; duration gap metrics were computed as zero.")
+    if asset_excluded_balance > ZERO:
+        _append_warning(
+            warnings,
+            f"{asset_excluded_balance} of {total_asset_market_value} asset market value lacks duration "
+            "information; the duration gap uses only the duration-covered balance and does not extrapolate "
+            "the covered average duration onto the excluded balance.",
+        )
+    if liability_excluded_balance > ZERO:
+        _append_warning(
+            warnings,
+            f"{liability_excluded_balance} of {total_liability_value} liability value lacks duration "
+            "information; the duration gap uses only the duration-covered balance and does not extrapolate "
+            "the covered average duration onto the excluded balance.",
+        )
     if total_liability_value <= ZERO:
         _append_warning(warnings, "No liability rows were available; liability duration defaults to zero.")
 
     equity = total_asset_market_value - total_liability_value
-    if equity == ZERO:
-        _append_warning(warnings, "Equity is zero; equity duration and 1bp sensitivity were set to zero.")
-        equity_duration = ZERO
-        rate_sensitivity_1bp = ZERO
+    if asset_duration_covered_balance > ZERO:
+        asset_weighted_duration: Decimal | None = asset_duration_numerator / asset_duration_covered_balance
+        duration_gap: Decimal | None = asset_weighted_duration - (
+            liability_duration_covered_balance / asset_duration_covered_balance
+        ) * liability_weighted_duration
+        modified_duration_gap: Decimal | None = duration_gap
+        # Equity dollar-duration is the measured DD_A - DD_L (covered rows only), so
+        # missing-duration balances are not extrapolated into the 1bp sensitivity.
+        equity_dollar_duration = asset_duration_numerator - liability_duration_numerator
+        if equity == ZERO:
+            _append_warning(warnings, "Equity is zero; equity duration and 1bp sensitivity were set to zero.")
+            equity_duration: Decimal | None = ZERO
+            rate_sensitivity_1bp: Decimal | None = ZERO
+        else:
+            equity_duration = equity_dollar_duration / equity
+            rate_sensitivity_1bp = -(equity_dollar_duration * ONE_BPS)
+            if equity < ZERO:
+                _append_warning(warnings, "Equity is negative; equity duration should be interpreted with caution.")
     else:
-        equity_duration = (
-            asset_weighted_duration * total_asset_market_value
-            - liability_weighted_duration * total_liability_value
-        ) / equity
-        rate_sensitivity_1bp = -(equity_duration * equity * ONE_BPS)
-        if equity < ZERO:
-            _append_warning(warnings, "Equity is negative; equity duration should be interpreted with caution.")
+        # Asset denominator is zero (no assets, or no asset carries duration): the
+        # duration-gap family is undefined. Return explicit unavailability instead of
+        # a misleading -liability_duration value.
+        asset_weighted_duration = None
+        duration_gap = None
+        modified_duration_gap = None
+        equity_duration = None
+        rate_sensitivity_1bp = None
+        if total_asset_market_value <= ZERO:
+            _append_warning(
+                warnings,
+                "Total asset market value is zero; duration gap, equity duration and 1bp sensitivity are unavailable.",
+            )
+        else:
+            _append_warning(
+                warnings,
+                "No asset positions carry duration information; duration gap, equity duration and 1bp "
+                "sensitivity are unavailable.",
+            )
 
     projected_cashflows = [
         *project_zqtz_cashflows(zqtz_rows, report_date, horizon_months=horizon_months),
@@ -442,7 +512,9 @@ def compute_duration_gap(
             continue
         maturing_asset_face_value_12m += _coerce_decimal(_get_value(row, "principal_amount", "principal_native"))
 
-    reinvestment_risk_12m = maturing_asset_face_value_12m / total_asset_market_value if total_asset_market_value > ZERO else ZERO
+    reinvestment_risk_12m: Decimal | None = (
+        maturing_asset_face_value_12m / total_asset_market_value if total_asset_market_value > ZERO else None
+    )
 
     return DurationGapResult(
         report_date=report_date,
@@ -452,6 +524,12 @@ def compute_duration_gap(
         modified_duration_gap=modified_duration_gap,
         total_asset_market_value=total_asset_market_value,
         total_liability_value=total_liability_value,
+        asset_duration_covered_balance=asset_duration_covered_balance,
+        liability_duration_covered_balance=liability_duration_covered_balance,
+        asset_excluded_balance=asset_excluded_balance,
+        liability_excluded_balance=liability_excluded_balance,
+        asset_duration_coverage_ratio=asset_duration_coverage_ratio,
+        liability_duration_coverage_ratio=liability_duration_coverage_ratio,
         equity_duration=equity_duration,
         rate_sensitivity_1bp=rate_sensitivity_1bp,
         monthly_buckets=monthly_buckets,

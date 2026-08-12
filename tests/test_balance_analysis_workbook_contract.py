@@ -1359,6 +1359,14 @@ def test_workbook_exposes_rule_reference_section(
     assert issuance_rule["source_section"] == "12.2 zqtz formal fact 规则"
     assert "发行类" in str(issuance_rule["summary"])
 
+    overdue_interest_rule = next(
+        row for row in rows if row["rule_id"] == "bal_overdue_interest_days_placeholder"
+    )
+    assert overdue_interest_rule["source_doc"] == "docs/calc_rules.md"
+    assert "未拆分本金/利息逾期天数" in str(overdue_interest_rule["summary"])
+    assert "占位 0" in str(overdue_interest_rule["summary"])
+    assert "不代表无利息逾期" in str(overdue_interest_rule["summary"])
+
     get_settings.cache_clear()
 
 

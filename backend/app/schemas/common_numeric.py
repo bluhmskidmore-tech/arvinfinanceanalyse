@@ -8,6 +8,7 @@ Design reference: ``docs/superpowers/specs/2026-04-18-frontend-numeric-correctne
 """
 from __future__ import annotations
 
+import math
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -101,6 +102,9 @@ def numeric_from_raw(
         return null_numeric(unit=unit, precision=precision, sign_aware=sign_aware)
 
     raw_value = float(raw)
+    if not math.isfinite(raw_value):
+        return null_numeric(unit=unit, precision=precision, sign_aware=sign_aware)
+
     normalized_raw = _normalize_numeric_raw(raw_value, unit, raw_scale)
     display = _format_numeric_display(
         raw=normalized_raw,

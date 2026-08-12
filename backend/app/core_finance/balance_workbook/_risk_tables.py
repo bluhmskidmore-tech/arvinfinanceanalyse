@@ -136,6 +136,15 @@ def _build_regulatory_limits_table(
 
 
 def _build_overdue_credit_quality_detail_table(zqtz_rows: list[FormalZqtzBalanceFactRow]) -> dict[str, Any]:
+    # NOTE (source-data limitation, docs/calc_rules.md §14): the source ZQTZ
+    # snapshot carries a single ``overdue_days`` field with no principal/interest
+    # split, so ``overdue_interest_days`` is always a placeholder 0 (see
+    # ``_zqtz_overdue_days_split`` in balance_analysis.py). It must not be read
+    # as evidence of zero interest overdue. The governed workbook
+    # (balance_analysis_workbook.py) surfaces this caveat via the
+    # ``rule_reference`` table entry ``bal_overdue_interest_days_placeholder``;
+    # keep that annotation in sync if this module is ever wired into the live
+    # builder.
     asset_rows = [row for row in zqtz_rows if row.position_scope == "asset"]
     overdue_rows = [
         row

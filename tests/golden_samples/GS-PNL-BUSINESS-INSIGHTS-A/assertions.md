@@ -43,7 +43,7 @@
 
 ## Frozen Values
 
-- `MTR-PNLBIZ-001` / `MTR-PNLBIZ-002`: `total_avg_balance == "1000.00"`, `hhi_pct == "53.12"`, and `top_n_share_pct == "100.00"`. The two current-period parent rows have YTD average-balance shares of 62.50% and 37.50%.
+- `MTR-PNLBIZ-001` / `MTR-PNLBIZ-002`: `total_avg_balance == "1000.00"`, `hhi_pct == "53.13"` (raw 53.125 quantized with the core-finance `ROUND_HALF_UP` convention), and `top_n_share_pct == "100.00"`. The two current-period parent rows have YTD average-balance shares of 62.50% and 37.50%.
 - `MTR-PNLBIZ-003` / `MTR-PNLBIZ-004`: the rolling window is `2025-03` through `2026-02`, but only 2025-12, 2026-01, and 2026-02 are observed. Overall and both populated business rows have `months_observed == 3`, `eligible == false`, `status == "insufficient_observations"`, null formal share/streak, and `warning_triggered == false`. The other nine months are gaps, not zeros.
 - `MTR-PNLBIZ-005`: the exact baseline cutoff is `2025-02-28`. Policy financial bond rises from 30.00% to 37.50% (`+7.50pp`) and treasury bond falls from 70.00% to 62.50% (`-7.50pp`); both rows have `lifecycle_status == "continued"`.
 - `MTR-PNLBIZ-007`: `minimum_eligible_rows == 6`, `eligible_row_count == 2`, and `total_avg_balance == "1000.00"`; therefore `available == false`, both medians are `null`, and `rows == []`.

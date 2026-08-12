@@ -3,10 +3,13 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
+import pytest
+
 from backend.app.core_finance.action_attribution import (
     bond_analytics_action_line_payload,
     build_action_attribution_placeholder_payload,
     build_action_attribution_success_payload,
+    compute_action_attribution_bonds,
     select_action_attribution_pnl_report_dates,
 )
 
@@ -200,3 +203,144 @@ def test_select_action_attribution_pnl_report_dates_uses_period_end_for_mom() ->
 
     assert selected == ["2026-03-31"]
     assert warnings == []
+
+
+def test_compute_action_attribution_bonds_closes_totals_for_no_significant_change_position() -> None:
+    """存续持仓久期/市值变动均低于阈值时不生成 detail 行，但需在
+    ``by_action_type`` 中以 UNALLOCATED 汇总行披露，使合计与
+    ``total_pnl_from_actions`` 闭合（回归 by_action_type 与 total 不闭合的缺陷）。
+    """
+    positions_start = [
+        {
+            "bond_code": "BOND-HOLD",
+            "book_id": "PF::Desk",
+            "market_value": Decimal("100000000"),
+            "modified_duration": Decimal("3.00"),
+            "asset_class": "rate",
+        }
+    ]
+    positions_end = [
+        {
+            "bond_code": "BOND-HOLD",
+            "book_id": "PF::Desk",
+            "market_value": Decimal("100500000"),  # +0.5%，低于 mv_ratio_epsilon(2%)
+            "modified_duration": Decimal("3.05"),  # +0.05，低于 duration_epsilon(0.15)
+            "asset_class": "rate",
+        }
+    ]
+    pnl_by_key = {"BOND-HOLD::PF::Desk": Decimal("42000")}
+
+    raw = compute_action_attribution_bonds(
+        period_start=date(2026, 3, 1),
+        period_end=date(2026, 3, 31),
+        positions_start=positions_start,
+        positions_end=positions_end,
+        pnl_by_key=pnl_by_key,
+    )
+
+    assert raw["total_actions"] == 0
+    assert raw["action_details"] == []
+    assert raw["total_pnl_from_actions"] == pytest.approx(42000.0)
+
+    by_type = {row["action_type"]: row for row in raw["by_action_type"]}
+    assert "UNALLOCATED" in by_type
+    assert by_type["UNALLOCATED"]["action_count"] == 1
+    assert by_type["UNALLOCATED"]["total_pnl_economic"] == pytest.approx(42000.0)
+
+    detail_sum = sum(row["total_pnl_economic"] for row in raw["by_action_type"])
+    assert detail_sum == pytest.approx(raw["total_pnl_from_actions"])
+    assert "ACTION_ATTRIBUTION_PNL_NOT_FULLY_IN_DETAILS" not in raw["warnings"]
+
+
+def test_compute_action_attribution_bonds_closes_totals_with_mixed_buy_sell_and_hold() -> None:
+    """买入/卖出正常生成 detail 行，同时存在的存续无显著变化持仓通过
+    UNALLOCATED 行闭合，既有分类行为保持回归。
+    """
+    positions_start = [
+        {
+            "bond_code": "BOND-SELL",
+            "book_id": "PF::Desk",
+            "market_value": Decimal("50000000"),
+            "modified_duration": Decimal("2.5"),
+            "asset_class": "credit",
+        },
+        {
+            "bond_code": "BOND-HOLD",
+            "book_id": "PF::Desk",
+            "market_value": Decimal("100000000"),
+            "modified_duration": Decimal("3.00"),
+            "asset_class": "rate",
+        },
+    ]
+    positions_end = [
+        {
+            "bond_code": "BOND-HOLD",
+            "book_id": "PF::Desk",
+            "market_value": Decimal("100500000"),
+            "modified_duration": Decimal("3.05"),
+            "asset_class": "rate",
+        },
+        {
+            "bond_code": "BOND-BUY",
+            "book_id": "PF::Desk",
+            "market_value": Decimal("30000000"),
+            "modified_duration": Decimal("4.00"),
+            "asset_class": "rate",
+        },
+    ]
+    pnl_by_key = {
+        "BOND-SELL::PF::Desk": Decimal("-15000"),
+        "BOND-HOLD::PF::Desk": Decimal("42000"),
+        "BOND-BUY::PF::Desk": Decimal("8000"),
+    }
+
+    raw = compute_action_attribution_bonds(
+        period_start=date(2026, 3, 1),
+        period_end=date(2026, 3, 31),
+        positions_start=positions_start,
+        positions_end=positions_end,
+        pnl_by_key=pnl_by_key,
+    )
+
+    assert raw["total_actions"] == 2
+    action_types_in_details = {d["action_type"] for d in raw["action_details"]}
+    assert action_types_in_details == {"TIMING_BUY", "TIMING_SELL"}
+    # 会计口径当前仍是经济口径的占位复制值（详见函数 docstring）。
+    for detail in raw["action_details"]:
+        assert detail["pnl_accounting"] == pytest.approx(detail["pnl_economic"])
+
+    by_type = {row["action_type"]: row for row in raw["by_action_type"]}
+    assert "UNALLOCATED" in by_type
+    assert by_type["UNALLOCATED"]["action_count"] == 1
+    assert by_type["UNALLOCATED"]["total_pnl_economic"] == pytest.approx(42000.0)
+
+    assert raw["total_pnl_from_actions"] == pytest.approx(35000.0)
+    detail_sum = sum(row["total_pnl_economic"] for row in raw["by_action_type"])
+    assert detail_sum == pytest.approx(raw["total_pnl_from_actions"])
+    assert "ACTION_ATTRIBUTION_PNL_NOT_FULLY_IN_DETAILS" not in raw["warnings"]
+
+
+def test_compute_action_attribution_bonds_omits_unallocated_row_when_fully_covered() -> None:
+    """既有场景（全部持仓变动均生成 detail 行）不应出现多余的 UNALLOCATED 行。"""
+    positions_end = [
+        {
+            "bond_code": "BOND-NEW",
+            "book_id": "PF::Desk",
+            "market_value": Decimal("10000000"),
+            "modified_duration": Decimal("5.0"),
+            "asset_class": "rate",
+        }
+    ]
+    pnl_by_key = {"BOND-NEW::PF::Desk": Decimal("1000")}
+
+    raw = compute_action_attribution_bonds(
+        period_start=date(2026, 3, 1),
+        period_end=date(2026, 3, 31),
+        positions_start=[],
+        positions_end=positions_end,
+        pnl_by_key=pnl_by_key,
+    )
+
+    action_types = {row["action_type"] for row in raw["by_action_type"]}
+    assert "UNALLOCATED" not in action_types
+    assert raw["total_pnl_from_actions"] == pytest.approx(1000.0)

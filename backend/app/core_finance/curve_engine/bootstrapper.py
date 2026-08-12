@@ -46,11 +46,15 @@ class BootstrapResult:
 
 @dataclass(frozen=True, slots=True)
 class CrossValidationResult:
-    """Comparison between bootstrapped and vendor-provided spot curves."""
+    """Comparison between bootstrapped and vendor-provided spot curves.
+
+    ``is_consistent`` is ``None`` when the curves have no overlapping tenors
+    and therefore cannot be compared.
+    """
     max_abs_diff_bps: float
     mean_abs_diff_bps: float
     tenor_diffs: list[tuple[float, float]]  # (years, diff_bps)
-    is_consistent: bool  # True if max_abs_diff_bps < threshold
+    is_consistent: bool | None
 
 
 def bootstrap_zero_curve(
@@ -71,6 +75,13 @@ def bootstrap_zero_curve(
     -------
     BootstrapResult
         Zero-coupon curve points (also in percent) and discount factors.
+
+    Notes
+    -----
+    Short nodes without an intermediate coupon use ``par == spot`` and annual
+    effective compounding, ``D(t) = (1 + r) ** -t``.  Coupon-bearing nodes are
+    stripped from their periodic cash flows; returned zero rates use the same
+    annual effective convention.
     """
     sorted_pars = sorted(par_yields, key=lambda p: p.years)
     if not sorted_pars:
@@ -84,15 +95,16 @@ def bootstrap_zero_curve(
     for i, par_point in enumerate(sorted_pars):
         t = par_point.years
         c = float(par_point.rate) / 100.0  # pct → decimal
+        n_periods = max(1, int(round(t * coupon_frequency)))
+        has_intermediate_coupons = coupon_frequency > 1 and n_periods > 1
 
-        if t <= 1.0 or i == 0:
-            # Short end: treat par yield as zero-coupon rate directly.
+        if (t <= 1.0 or i == 0) and not has_intermediate_coupons:
+            # Coupon-free short end: treat par yield as zero-coupon directly.
             z = float(par_point.rate)
             df = 1.0 / (1.0 + c) ** t if (1.0 + c) > 0 and t > 0 else 1.0
         else:
             # Bootstrap: solve for the terminal discount factor.
             coupon_per_period = c / coupon_frequency
-            n_periods = max(1, int(round(t * coupon_frequency)))
 
             # Sum PV of intermediate coupons using known discount factors.
             pv_coupons = 0.0
@@ -172,7 +184,7 @@ def cross_validate_spot_curve(
             max_abs_diff_bps=0.0,
             mean_abs_diff_bps=0.0,
             tenor_diffs=[],
-            is_consistent=True,
+            is_consistent=None,
         )
 
     abs_diffs = [abs(d) for _, d in tenor_diffs]

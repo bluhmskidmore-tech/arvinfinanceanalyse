@@ -50,15 +50,15 @@ class RiskTensorPayload(BaseModel):
     report_date: date
     portfolio_dv01: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="dv01", sign_aware=False))
     regulatory_dv01: Numeric | None = None
-    krd_1y: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=True))
-    krd_3y: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=True))
-    krd_5y: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=True))
-    krd_7y: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=True))
-    krd_10y: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=True))
-    krd_30y: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=True))
+    krd_1y: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="dv01", sign_aware=True))
+    krd_3y: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="dv01", sign_aware=True))
+    krd_5y: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="dv01", sign_aware=True))
+    krd_7y: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="dv01", sign_aware=True))
+    krd_10y: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="dv01", sign_aware=True))
+    krd_30y: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="dv01", sign_aware=True))
     cs01: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="dv01", sign_aware=False))
     portfolio_convexity: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=False))
-    portfolio_modified_duration: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=False))
+    portfolio_modified_duration: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="years", sign_aware=False))
     issuer_concentration_hhi: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=False))
     issuer_top5_weight: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=False))
     asset_cashflow_30d: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="yuan", sign_aware=False))
@@ -90,15 +90,15 @@ class RiskTensorPayload(BaseModel):
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
         "portfolio_dv01": ("dv01", False),
         "regulatory_dv01": ("dv01", False),
-        "krd_1y": ("ratio", True),
-        "krd_3y": ("ratio", True),
-        "krd_5y": ("ratio", True),
-        "krd_7y": ("ratio", True),
-        "krd_10y": ("ratio", True),
-        "krd_30y": ("ratio", True),
+        "krd_1y": ("dv01", True),
+        "krd_3y": ("dv01", True),
+        "krd_5y": ("dv01", True),
+        "krd_7y": ("dv01", True),
+        "krd_10y": ("dv01", True),
+        "krd_30y": ("dv01", True),
         "cs01": ("dv01", False),
         "portfolio_convexity": ("ratio", False),
-        "portfolio_modified_duration": ("ratio", False),
+        "portfolio_modified_duration": ("years", False),
         "issuer_concentration_hhi": ("ratio", False),
         "issuer_top5_weight": ("ratio", False),
         "asset_cashflow_30d": ("yuan", False),
@@ -111,7 +111,7 @@ class RiskTensorPayload(BaseModel):
         "total_market_value": ("yuan", False),
         "rate_risk_market_value": ("yuan", False),
         "rate_risk_dv01": ("dv01", False),
-        "rate_risk_modified_duration": ("ratio", False),
+        "rate_risk_modified_duration": ("years", False),
         "duration_excluded_market_value": ("yuan", False),
         "missing_maturity_market_value": ("yuan", False),
         "floating_rate_proxy_market_value": ("yuan", False),

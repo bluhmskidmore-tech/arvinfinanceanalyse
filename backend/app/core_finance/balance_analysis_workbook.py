@@ -810,6 +810,17 @@ def _build_rule_reference_table() -> dict[str, Any]:
             "source_doc": "docs/BALANCE_ANALYSIS_SPEC_FOR_CODEX.md",
             "source_section": "13 当前 governed workbook 已支持的 section keys",
         },
+        {
+            "rule_id": "bal_overdue_interest_days_placeholder",
+            "rule_name": "利息逾期天数口径限制",
+            "summary": (
+                "源数据（ZQTZ 快照 overdue_days）未拆分本金/利息逾期天数，"
+                "'overdue_credit_quality' 与 'overdue_credit_quality_ratings' 表中的"
+                "利息逾期天数列为源数据限制下的占位 0，不代表无利息逾期。"
+            ),
+            "source_doc": "docs/calc_rules.md",
+            "source_section": "14 禁止事项（不允许静默降级为 0 且不打标记）",
+        },
     ]
     return _table(
         "rule_reference",
@@ -1566,8 +1577,20 @@ def _group_rows(rows: list[Any], key_fn) -> dict[str, list[Any]]:
     return grouped
 
 
+def _to_finite_decimal(value: Any) -> Decimal:
+    if value in (None, ""):
+        return _ZERO
+    try:
+        result = value if isinstance(value, Decimal) else Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return _ZERO
+    if not result.is_finite():
+        return _ZERO
+    return result
+
+
 def _sum_decimal(rows: list[Any], value_fn) -> Decimal:
-    return sum((Decimal(str(value_fn(row))) for row in rows), _ZERO)
+    return sum((_to_finite_decimal(value_fn(row)) for row in rows), _ZERO)
 
 
 def _weighted_average(rows: list[Any], weight_fn, value_fn) -> Decimal | None:
@@ -1577,8 +1600,11 @@ def _weighted_average(rows: list[Any], weight_fn, value_fn) -> Decimal | None:
         value = value_fn(row)
         if value in (None, ""):
             continue
-        weight = Decimal(str(weight_fn(row)))
-        numerator += weight * Decimal(str(value))
+        weight = _to_finite_decimal(weight_fn(row))
+        value_dec = _to_finite_decimal(value)
+        if weight == _ZERO:
+            continue
+        numerator += weight * value_dec
         denominator += weight
     if denominator == _ZERO:
         return None
@@ -1593,8 +1619,11 @@ def _merged_weighted_average(specs: list[tuple[list[Any], Any, Any]]) -> Decimal
             value = value_fn(row)
             if value in (None, ""):
                 continue
-            weight = Decimal(str(weight_fn(row)))
-            numerator += weight * Decimal(str(value))
+            weight = _to_finite_decimal(weight_fn(row))
+            value_dec = _to_finite_decimal(value)
+            if weight == _ZERO:
+                continue
+            numerator += weight * value_dec
             denominator += weight
     if denominator == _ZERO:
         return None
@@ -1640,7 +1669,7 @@ def _spread_bp(asset_rate_pct: Decimal | None, liability_rate_pct: Decimal | Non
 
 
 def _rate_value(value: Decimal | None) -> Decimal:
-    return Decimal(str(value)) if value is not None else _ZERO
+    return _to_finite_decimal(value)
 
 
 def _normalize_interest_mode(value: str) -> str:
@@ -1681,15 +1710,7 @@ def _table(key: str, title: str, columns: list[tuple[str, str]], rows: list[dict
 
 
 def _decimal_value(value: Any) -> Decimal:
-    if value in (None, ""):
-        return _ZERO
-    try:
-        result = value if isinstance(value, Decimal) else Decimal(str(value))
-    except (InvalidOperation, ValueError, TypeError):
-        return _ZERO
-    if not result.is_finite():
-        return _ZERO
-    return result
+    return _to_finite_decimal(value)
 
 
 def _severity_from_gap(gap_value: Decimal) -> str:

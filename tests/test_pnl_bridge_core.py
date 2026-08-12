@@ -788,3 +788,29 @@ def test_bridge_phase3_stubs_are_zero():
     assert row.treasury_curve == Decimal("0")
     assert row.credit_spread == Decimal("0")
     assert row.fx_translation == Decimal("0")
+
+
+def test_modified_duration_fallback_applies_par_assumption_when_ytm_missing():
+    """W-fi-2026-08 P1 残余修复：有票息缺 ytm 的余额行重算修正久期时，
+    Macaulay 与修正折算必须共用同一 par 生效 ytm（=coupon），而非用原始
+    ytm=0 跳过折算返回未折算的 Macaulay（约 +3% 高估）。
+
+    独立手算（年付、c=y=3%、整 10 年）：
+    par Macaulay = (1.03/0.03) x (1 - 1.03**-10) = 8.786108921879104
+    修正久期 = 8.786108921879104 / 1.03 = 8.530202836775829
+    """
+    from datetime import timedelta
+
+    from backend.app.core_finance.pnl_bridge import _modified_duration
+
+    report_date = date(2026, 7, 31)
+    row = {
+        "maturity_date": (report_date + timedelta(days=3650)).isoformat(),
+        "coupon_rate": "3",  # fact 表 percent 口径（3 = 3%）
+        "ytm_value": None,
+        "instrument_code": "PARFALL.IB",
+    }
+    result = _modified_duration(report_date=report_date, row=row)
+    assert abs(result - Decimal("8.530202836775829")) < Decimal("1e-9")
+    # 回归锚：修复前返回未折算的 par Macaulay（8.7861...），不允许回潮。
+    assert abs(result - Decimal("8.786108921879104")) > Decimal("0.2")

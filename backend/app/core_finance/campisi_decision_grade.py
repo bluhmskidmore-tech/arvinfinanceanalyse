@@ -282,7 +282,9 @@ def compute_decision_grade_row(
     return {
         "components": components,
         "actual_pnl": actual_pnl,
-        "explained_pnl": sum(components.values(), ZERO),
+        # explained_pnl 仅累加真正可归因的固定因子；selection_proxy/residual_noise 是承接
+        # 缺口的平衡项，若计入会使下游 explained_pnl≡actual_pnl，令闭合判定代数恒真（假门禁）。
+        "explained_pnl": fixed_components,
         "residual_reasons": sorted(set(residual_reasons)),
         "diagnostics": diagnostics,
     }

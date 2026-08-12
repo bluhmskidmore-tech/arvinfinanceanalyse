@@ -249,6 +249,40 @@ def test_fx_mid_materialize_replaces_existing_canonical_key(tmp_path):
     assert rows == [(date(2026, 2, 27), "USD", "CNY", Decimal("7.25000000"))]
 
 
+@pytest.mark.parametrize(
+    ("base_currency", "quote_currency"),
+    [
+        ("CNY", "USD"),
+        ("CNY", "CNY"),
+    ],
+)
+def test_fx_mid_materialize_rejects_invalid_csv_currency_direction(
+    tmp_path,
+    base_currency,
+    quote_currency,
+):
+    fx_mod = _load_fx_task_module()
+    csv_path = tmp_path / "fx_mid.csv"
+    duckdb_path = tmp_path / "moss.duckdb"
+    csv_path.write_text(
+        "\n".join(
+            [
+                "trade_date,base_currency,quote_currency,mid_rate,source_name,is_business_day,is_carry_forward",
+                f"2026-02-27,{base_currency},{quote_currency},7.24,CFETS,true,false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="Expected formal FX CSV direction"):
+        fx_mod.materialize_fx_mid_rows.fn(
+            csv_path=str(csv_path),
+            duckdb_path=str(duckdb_path),
+        )
+
+    assert not duckdb_path.exists()
+
+
 @pytest.mark.parametrize("invalid_rate", ["0", "-7.2", "NaN", "Infinity", "-Infinity"])
 def test_fx_mid_materialize_rejects_invalid_csv_rate_before_database_creation(
     tmp_path,

@@ -370,6 +370,9 @@ def test_legacy_campisi_envelope_uses_formal_bridge_when_available(
                     "treasury_curve": {"raw": 2.0},
                     "credit_spread": {"raw": 3.0},
                     "actual_pnl": {"raw": 35.0},
+                    # PnlBridgeRowSchema 强制 residual；bridge 路径的 selection 用它做
+                    # 独立闭合对照。residual = actual − explained = 35 − (5+1+2+3)。
+                    "residual": {"raw": 24.0},
                 }
             ],
         },

@@ -43,6 +43,7 @@ CHINAMONEY_PAIR_BY_BASE_CURRENCY = {
     "CAD": "CAD/CNY",
     "HKD": "HKD/CNY",
 }
+FORMAL_FX_QUOTE_CURRENCY = "CNY"
 
 
 def resolve_fx_mid_csv_path(
@@ -498,6 +499,18 @@ def _materialize_fx_mid_rows_under_writer_lock(
             trade_date = str(row["trade_date"]).strip()
             base_currency = normalize_currency_code(str(row["base_currency"]))
             quote_currency = normalize_currency_code(str(row["quote_currency"]))
+            if (
+                quote_currency != FORMAL_FX_QUOTE_CURRENCY
+                or base_currency == quote_currency
+            ):
+                raise ValueError(
+                    "Invalid FX mid CSV currency direction: "
+                    f"row={row!r}, normalized_base_currency={base_currency!r}, "
+                    f"normalized_quote_currency={quote_currency!r}. "
+                    "Expected formal FX CSV direction is "
+                    f"base_currency=<foreign currency>, quote_currency={FORMAL_FX_QUOTE_CURRENCY} "
+                    "(XXX/CNY). Hand-entered CSV rates are not auto-inverted."
+                )
             try:
                 mid_rate = Decimal(str(row["mid_rate"]).strip())
             except InvalidOperation as exc:

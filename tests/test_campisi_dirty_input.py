@@ -19,6 +19,7 @@ from backend.app.core_finance.campisi_decision_grade import (
     compute_decision_grade_row,
     decimal_value,
 )
+from backend.app.repositories.pnl_repo import PnlRepository
 from backend.app.services import campisi_attribution_service as campisi_svc
 from tests.test_campisi_decision_grade import (
     _create_decision_grade_tables,
@@ -179,15 +180,15 @@ def test_decision_grade_envelope_skips_dirty_row_and_discloses(
         lambda: SimpleNamespace(duckdb_path=str(db_path), governance_path=str(tmp_path)),
     )
 
-    original_fetch = campisi_svc._fetch_decision_pnl_rows
+    original_fetch = PnlRepository.fetch_campisi_decision_pnl_rows
 
-    def fetch_with_dirty_row(conn, report_date):
-        rows = original_fetch(conn, report_date)
+    def fetch_with_dirty_row(self, report_date, *, conn=None):
+        rows = original_fetch(self, report_date, conn=conn)
         dirty = dict(rows[0])
         dirty["total_pnl"] = "N/A"  # 脏输入：数值列出现非数字字符串
         return rows + [dirty]
 
-    monkeypatch.setattr(campisi_svc, "_fetch_decision_pnl_rows", fetch_with_dirty_row)
+    monkeypatch.setattr(PnlRepository, "fetch_campisi_decision_pnl_rows", fetch_with_dirty_row)
 
     envelope = campisi_svc.campisi_decision_grade_envelope(
         start_date="2026-01-01",
@@ -200,7 +201,9 @@ def test_decision_grade_envelope_skips_dirty_row_and_discloses(
     assert result["summary"]["bond_scope_row_count"] == 2
     assert result["residual_diagnostics"]["dirty_input_row_count"] == 1
     assert any("脏数值输入" in warning for warning in result["warnings"])
-    assert result["summary"]["quality_flag"] == "warning"
+    # 样本自身 closure=error（缺口 98/107 落在 selection_proxy），质量信号取更严重的一档。
+    assert result["formal_pnl_view"]["closure"]["status"] == "error"
+    assert result["summary"]["quality_flag"] == "error"
     # 会计矩阵不被脏行污染（脏行既不加 0 也不加错值）。
     assert result["accounting_matrix"]["FVTPL"]["formal_pnl"] == pytest.approx(100.0)
     assert result["accounting_matrix"]["FVOCI"]["formal_pnl"] == pytest.approx(7.0)

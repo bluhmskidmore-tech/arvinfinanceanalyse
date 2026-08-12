@@ -9,6 +9,7 @@ from backend.app.core_finance.bond_duration import (
     compute_macaulay_duration,
     estimate_convexity_bond,
     estimate_duration,
+    infer_accounting_class,
     modified_duration_from_macaulay,
 )
 
@@ -186,6 +187,40 @@ class TestModifiedDuration:
 
         assert modified == wind_mod_dur
 
+    def test_mod_dur_less_than_macaulay(self):
+        """修正久期应小于麦考利久期（正利率）"""
+        mac = Decimal("5.0")
+        mod = modified_duration_from_macaulay(mac, Decimal("0.03"), 2, wind_mod_dur=None)
+        assert mod < mac
+
+
+class TestInferAccountingClass:
+    """会计分类推断（从 backend/tests 迁入）。"""
+
+    def test_ac_from_amortized_cost(self):
+        assert infer_accounting_class("摊余成本债权投资") == "AC"
+
+    def test_ac_from_bare_amortized(self):
+        assert infer_accounting_class("摊余") == "AC"
+
+    def test_oci_from_fvoci(self):
+        assert infer_accounting_class("其他债权投资OCI") == "OCI"
+
+    def test_oci_from_available_for_sale(self):
+        assert infer_accounting_class("可供出售金融资产") == "OCI"
+
+    def test_tpl_from_trading(self):
+        assert infer_accounting_class("交易性金融资产") == "TPL"
+
+    def test_none_returns_tpl(self):
+        assert infer_accounting_class(None) == "TPL"
+
+    def test_empty_string_returns_tpl(self):
+        assert infer_accounting_class("") == "TPL"
+
+    def test_unknown_returns_tpl(self):
+        assert infer_accounting_class("未知资产类别XYZ") == "TPL"
+
 
 class TestConvexity:
     """Test convexity estimation."""
@@ -355,3 +390,48 @@ class TestEstimateDuration:
         assert duration > Decimal("0")
         years_to_maturity = Decimal((maturity - report).days) / Decimal("365")
         assert duration <= years_to_maturity
+
+    def test_normal_bond_duration_in_range(self):
+        """正常债券久期应在合理范围内"""
+        dur = estimate_duration(
+            maturity_date=date(2027, 12, 31),
+            report_date=date(2024, 1, 31),
+            coupon_rate=Decimal("0.03"),
+            ytm=Decimal("0.03"),
+        )
+        assert Decimal("1") < dur < Decimal("5")
+
+    def test_short_term_bond_low_duration(self):
+        """短期债券久期应小于长期债券"""
+        short = estimate_duration(
+            maturity_date=date(2024, 6, 30),
+            report_date=date(2024, 1, 31),
+            coupon_rate=Decimal("0.03"),
+            ytm=Decimal("0.03"),
+        )
+        long_ = estimate_duration(
+            maturity_date=date(2034, 1, 31),
+            report_date=date(2024, 1, 31),
+            coupon_rate=Decimal("0.03"),
+            ytm=Decimal("0.03"),
+        )
+        assert short < long_
+
+    def test_zero_coupon_duration_equals_maturity(self):
+        """零息债券久期应接近到期年限"""
+        dur = estimate_duration(
+            maturity_date=date(2029, 1, 31),
+            report_date=date(2024, 1, 31),
+            coupon_rate=Decimal("0"),
+            ytm=Decimal("0.03"),
+        )
+        # 2024-01-31 到 2029-01-31 实际约 5.003 年（含闰年），允许 ±0.1
+        assert Decimal("4.9") < dur < Decimal("5.1")
+
+    def test_returns_decimal(self):
+        dur = estimate_duration(
+            maturity_date=date(2027, 12, 31),
+            report_date=date(2024, 1, 31),
+            coupon_rate=Decimal("0.03"),
+        )
+        assert isinstance(dur, Decimal)

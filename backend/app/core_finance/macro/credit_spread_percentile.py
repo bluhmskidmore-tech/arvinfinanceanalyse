@@ -11,7 +11,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from app.core_finance.macro.helpers import build_curve_history
+from backend.app.core_finance.macro.helpers import build_curve_history
 
 _M16_LOOKBACK_DAYS_3Y = 756
 _M16_LOOKBACK_DAYS_1Y = 252
@@ -105,8 +105,11 @@ def compute_credit_spread_percentile(
         cutoff_1y = date(report_date.year - 1, report_date.month, 28)
 
     today_snap = history_wide[0] if history_wide else {}
+    # 排除当日观测（history_wide[0]/dates_used[0]），避免当日值混入自身对比样本。
+    history_prior = history_wide[1:]
+    dates_prior = dates_used[1:]
     rows_1y_snaps = [
-        h for h, d in zip(history_wide, dates_used, strict=False) if d >= cutoff_1y
+        h for h, d in zip(history_prior, dates_prior, strict=False) if d >= cutoff_1y
     ][: _M16_LOOKBACK_DAYS_1Y]
 
     spreads_out: list[dict[str, Any]] = []
@@ -119,7 +122,7 @@ def compute_credit_spread_percentile(
         if cur is None:
             continue
 
-        hist_3y = [h[field] for h in history_wide if h.get(field) is not None]
+        hist_3y = [h[field] for h in history_prior if h.get(field) is not None]
         hist_1y = [h[field] for h in rows_1y_snaps if h.get(field) is not None]
 
         pct_3y = _calc_percentile(float(cur), hist_3y)

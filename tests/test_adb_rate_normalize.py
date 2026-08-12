@@ -50,6 +50,6 @@ def test_normalize_rate_values_handles_nan_like_inputs_without_vector_dependency
     )
 
     # coupon_rate is percent: 2.5 -> 0.025; 0.035 -> 0.035% -> 0.00035.
-    # The liability ADB path still explicitly maps true None/0 coupon rows to 0 for zero-coupon semantics.
+    # Liability ADB enrich keeps missing coupons nullable; explicit 0 remains 0% for zero-coupon semantics.
     assert normalized[:3] == [None, None, None]
     assert normalized[3:] == pytest.approx([0.025, 0.00035], abs=1e-10)

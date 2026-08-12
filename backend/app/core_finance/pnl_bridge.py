@@ -13,6 +13,7 @@ from backend.app.core_finance.bond_analytics.common import (
     estimate_duration,
     estimate_modified_duration,
     infer_curve_type,
+    resolve_ytm_with_par_fallback,
 )
 from backend.app.core_finance.curve_engine.curve_types import (
     CurvePoint,
@@ -25,6 +26,7 @@ from backend.app.core_finance.curve_engine.interpolation import (
 from backend.app.core_finance.curve_engine.interpolation import (
     interpolate as _interpolate_fitted_curve,
 )
+from backend.app.core_finance.rate_units import normalize_percent_rate_to_decimal
 
 ZERO = Decimal("0")
 HUNDRED = Decimal("100")
@@ -223,14 +225,15 @@ def build_pnl_bridge_rows(
                 years_to_maturity=years_to_maturity,
                 modified_duration=modified_duration,
             )
+            fx_currency_code = _fx_currency_code(current_balance, fallback=currency_basis)
             fx_translation = _calculate_fx_translation(
-                currency_basis=currency_basis,
+                currency_code=fx_currency_code,
                 exposure_native=_fx_exposure_native(current_balance),
                 fx_rate_current=fx_rates_current,
                 fx_rate_prior=fx_rates_prior,
             )
             fx_rate_missing_diagnostic = _fx_rate_missing_diagnostic(
-                currency_basis=currency_basis,
+                currency_code=fx_currency_code,
                 fx_rate_current=fx_rates_current,
                 fx_rate_prior=fx_rates_prior,
             )
@@ -468,21 +471,43 @@ def _calculate_credit_spread_shift(
 def _fx_exposure_native(row: Mapping[str, object] | None) -> Decimal:
     """Native FX base for bridge translation.
 
-    Prefer dirty market value (aligned with beginning/ending dirty MV framing and with
-    ``read_models._fx_effect``'s market-value base). Fall back to face only when no
-    market-value fields are present so legacy fixtures still exercise the FX path.
+    Bridge balance rows come from the CNY-basis projection
+    (``fetch_pnl_bridge_zqtz_balance_rows``), so their ``market_value_amount`` /
+    ``accrued_interest_amount`` are already FX-converted and must not be multiplied by
+    the rate delta again (that would scale fx_translation by the FX rate). Use the
+    service-enriched native dirty market value (``market_value_native`` +
+    ``accrued_interest_native``, aligned with ``read_models._fx_effect``'s
+    market-value base); fall back to ``face_value_native`` only when the native
+    market-value fields are absent, else 0.
     """
     if row is None:
         return ZERO
-    dirty = _dirty_market_value(row)
-    if dirty != ZERO:
-        return dirty
+    market_value_native = row.get("market_value_native")
+    accrued_interest_native = row.get("accrued_interest_native")
+    if market_value_native not in (None, "") or accrued_interest_native not in (None, ""):
+        return _coerce_decimal(market_value_native) + _coerce_decimal(accrued_interest_native)
     return _coerce_decimal(row.get("face_value_native", ZERO))
+
+
+def _fx_currency_code(row: Mapping[str, object] | None, *, fallback: str) -> str:
+    """Resolve the traded currency of a bridge row.
+
+    The PnL fact's ``currency_basis`` is only the CNY/CNX reporting caliber
+    (``pnl.CurrencyBasis``), so it can never identify a foreign currency; the balance
+    row's ``currency_code`` column carries the real one. Resolution order mirrors
+    ``pnl_bridge_service._bridge_fx_base_currencies`` so the currency looked up here is
+    always a key of the FX dictionaries that service loaded.
+    """
+    if row is not None:
+        code = str(row.get("currency_code") or row.get("currency_basis") or "")
+        if code:
+            return code
+    return fallback
 
 
 def _calculate_fx_translation(
     *,
-    currency_basis: str,
+    currency_code: str,
     exposure_native: Decimal,
     fx_rate_current: dict[str, Decimal] | None,
     fx_rate_prior: dict[str, Decimal] | None,
@@ -500,7 +525,7 @@ def _calculate_fx_translation(
     """
     if not fx_rate_current or not fx_rate_prior:
         return ZERO
-    base = currency_basis.upper().strip()
+    base = currency_code.upper().strip()
     if base in ("", "CNY", "CNX", "RMB"):
         return ZERO
     current_rate = fx_rate_current.get(base)
@@ -514,7 +539,7 @@ def _calculate_fx_translation(
 
 def _fx_rate_missing_diagnostic(
     *,
-    currency_basis: str,
+    currency_code: str,
     fx_rate_current: dict[str, Decimal] | None,
     fx_rate_prior: dict[str, Decimal] | None,
 ) -> str | None:
@@ -524,7 +549,7 @@ def _fx_rate_missing_diagnostic(
     be translated because the FX dictionary or the row's rate is missing. Domestic rows
     (empty/CNY/CNX/RMB) have no FX exposure and never produce a diagnostic.
     """
-    base = currency_basis.upper().strip()
+    base = currency_code.upper().strip()
     if base in ("", "CNY", "CNX", "RMB"):
         return None
     if not fx_rate_current or not fx_rate_prior:
@@ -588,8 +613,8 @@ def _modified_duration(*, report_date: date, row: Mapping[str, object]) -> Decim
     if maturity_date_value in (None, ""):
         return ZERO
     maturity_date = _coerce_date(maturity_date_value)
-    coupon_rate = _coerce_decimal(row.get("coupon_rate", ZERO))
-    ytm_value = _coerce_decimal(row.get("ytm_value", ZERO))
+    coupon_rate = _percent_rate_to_decimal(row.get("coupon_rate"))
+    ytm_value = _percent_rate_to_decimal(row.get("ytm_value"))
     macaulay_duration = estimate_duration(
         maturity_date=maturity_date,
         report_date=report_date,
@@ -597,7 +622,28 @@ def _modified_duration(*, report_date: date, row: Mapping[str, object]) -> Decim
         ytm=ytm_value,
         bond_code=str(row.get("instrument_code") or ""),
     )
-    return estimate_modified_duration(macaulay_duration, ytm_value)
+    # W-fi-2026-08 P1 残余：ytm 缺失/非正时 estimate_duration 已按 par 假设
+    # （ytm=coupon）计算 Macaulay，修正久期折算必须使用同一生效 ytm，否则
+    # 有票息缺 ytm 行返回未折算的 Macaulay（约 +3% 高估）。
+    effective_ytm, _ytm_par_fallback_used = resolve_ytm_with_par_fallback(coupon_rate, ytm_value)
+    return estimate_modified_duration(macaulay_duration, effective_ytm)
+
+
+def _percent_rate_to_decimal(value: object) -> Decimal:
+    """Normalize a ``fact_formal_zqtz_balance_daily`` annual rate to decimal form.
+
+    ``coupon_rate`` / ``ytm_value`` are stored in percent caliber (2.38 = 2.38%; see
+    docs/audits/2026-07-19-system-calculation-audit.md 取证 1) while
+    ``estimate_duration`` / ``estimate_modified_duration`` expect decimal form, so the
+    raw value collapses duration systematically. Dirty inputs (missing, negative,
+    > 20%) normalize to ``0``; ``estimate_duration`` / ``estimate_modified_duration``
+    then apply the par-assumption fallback (ytm=coupon) for coupon-bearing rows and
+    years-to-maturity only for zero-coupon rows.
+    """
+    normalized = normalize_percent_rate_to_decimal(value)
+    if normalized is None:
+        return ZERO
+    return Decimal(str(normalized))
 
 
 def _curve_market_value(row: Mapping[str, object]) -> Decimal:

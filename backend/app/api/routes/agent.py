@@ -13,7 +13,10 @@ from backend.app.agent.schemas.agent_run import (
     AgentRunListResponse,
     AgentRunStatusResponse,
 )
-from backend.app.api.routes.agent_workspace import router as workspace_router
+from backend.app.api.routes.agent_workspace import (
+    _dev_bypass_allowed,
+    router as workspace_router,
+)
 from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.agent_run_service import (
@@ -39,7 +42,7 @@ from backend.app.services.agent_workspace_service import (
 )
 from backend.app.services.dexter_agent_service import execute_dexter_agent_query
 from backend.app.services.hermes_agent_service import execute_hermes_agent_query
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse, StreamingResponse
 
 router = APIRouter(prefix="/api/agent")
@@ -189,12 +192,10 @@ def _ensure_agent_action_allowed(
     auth: AuthContext,
     settings: object,
     *,
+    http_request: Request,
     action: str,
 ) -> None:
-    if (
-        str(getattr(settings, "environment", "")).strip().lower() == "development"
-        and getattr(settings, "agent_dev_scope_bypass", False) is True
-    ):
+    if _dev_bypass_allowed(http_request, settings, action=action):
         return
     try:
         ensure_user_allowed(
@@ -209,12 +210,32 @@ def _ensure_agent_action_allowed(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
-def _ensure_agent_read_allowed(auth: AuthContext, settings: object) -> None:
-    _ensure_agent_action_allowed(auth, settings, action="read")
+def _ensure_agent_read_allowed(
+    auth: AuthContext,
+    settings: object,
+    *,
+    http_request: Request,
+) -> None:
+    _ensure_agent_action_allowed(
+        auth,
+        settings,
+        http_request=http_request,
+        action="read",
+    )
 
 
-def _ensure_agent_execute_allowed(auth: AuthContext, settings: object) -> None:
-    _ensure_agent_action_allowed(auth, settings, action="execute")
+def _ensure_agent_execute_allowed(
+    auth: AuthContext,
+    settings: object,
+    *,
+    http_request: Request,
+) -> None:
+    _ensure_agent_action_allowed(
+        auth,
+        settings,
+        http_request=http_request,
+        action="execute",
+    )
 
 
 def _ensure_agent_enabled(settings: object) -> None:
@@ -274,6 +295,7 @@ def _ensure_agent_conversation_owned_by_auth(
 @router.post("/query", response_model=AgentEnvelope | AgentDisabledResponse)
 def query_agent(
     request: AgentQueryRequest,
+    http_request: Request,
     auth: Annotated[AuthContext, Depends(get_auth_context)],
 ) -> AgentEnvelope | JSONResponse:
     request = _apply_auth_context(request, auth)
@@ -290,7 +312,7 @@ def query_agent(
             content=phase1_disabled_response().model_dump(mode="json"),
         )
 
-    _ensure_agent_read_allowed(auth, settings)
+    _ensure_agent_read_allowed(auth, settings, http_request=http_request)
 
     provider = "local"
     try:
@@ -323,6 +345,7 @@ def query_agent(
 )
 def create_agent_run_endpoint(
     request: AgentQueryRequest,
+    http_request: Request,
     auth: Annotated[AuthContext, Depends(get_auth_context)],
 ) -> AgentRunCreateResponse | AgentEnvelope | JSONResponse:
     request = _apply_auth_context(request, auth)
@@ -338,7 +361,7 @@ def create_agent_run_endpoint(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content=phase1_disabled_response().model_dump(mode="json"),
         )
-    _ensure_agent_read_allowed(auth, settings)
+    _ensure_agent_read_allowed(auth, settings, http_request=http_request)
     conversation_id = _conversation_id_from_request(request)
     if conversation_id is not None:
         request = request.model_copy(
@@ -382,13 +405,14 @@ def create_agent_run_endpoint(
     response_model_exclude_none=True,
 )
 def list_agent_runs_endpoint(
+    http_request: Request,
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     conversation_id: Annotated[str | None, Query(min_length=1)] = None,
 ) -> AgentRunListResponse:
     settings = get_settings()
     _ensure_agent_enabled(settings)
-    _ensure_agent_read_allowed(auth, settings)
+    _ensure_agent_read_allowed(auth, settings, http_request=http_request)
     normalized_conversation_id = (
         str(conversation_id or "").strip() or None
     )
@@ -419,11 +443,12 @@ def list_agent_runs_endpoint(
 )
 def cancel_agent_run_endpoint(
     run_id: str,
+    http_request: Request,
     auth: Annotated[AuthContext, Depends(get_auth_context)],
 ) -> AgentRunStatusResponse:
     settings = get_settings()
     _ensure_agent_enabled(settings)
-    _ensure_agent_execute_allowed(auth, settings)
+    _ensure_agent_execute_allowed(auth, settings, http_request=http_request)
     try:
         _ensure_agent_run_owned_by_auth(
             run_id=run_id,
@@ -444,11 +469,12 @@ def cancel_agent_run_endpoint(
 )
 def retry_agent_run_endpoint(
     run_id: str,
+    http_request: Request,
     auth: Annotated[AuthContext, Depends(get_auth_context)],
 ) -> AgentRunCreateResponse:
     settings = get_settings()
     _ensure_agent_enabled(settings)
-    _ensure_agent_execute_allowed(auth, settings)
+    _ensure_agent_execute_allowed(auth, settings, http_request=http_request)
     try:
         _ensure_agent_run_owned_by_auth(
             run_id=run_id,
@@ -483,11 +509,12 @@ def retry_agent_run_endpoint(
 )
 def get_agent_run_endpoint(
     run_id: str,
+    http_request: Request,
     auth: Annotated[AuthContext, Depends(get_auth_context)],
 ) -> AgentRunStatusResponse:
     settings = get_settings()
     _ensure_agent_enabled(settings)
-    _ensure_agent_read_allowed(auth, settings)
+    _ensure_agent_read_allowed(auth, settings, http_request=http_request)
     try:
         _ensure_agent_run_owned_by_auth(
             run_id=run_id,
@@ -502,11 +529,12 @@ def get_agent_run_endpoint(
 @router.get("/runs/{run_id}/events")
 def get_agent_run_events_endpoint(
     run_id: str,
+    http_request: Request,
     auth: Annotated[AuthContext, Depends(get_auth_context)],
 ) -> StreamingResponse:
     settings = get_settings()
     _ensure_agent_enabled(settings)
-    _ensure_agent_read_allowed(auth, settings)
+    _ensure_agent_read_allowed(auth, settings, http_request=http_request)
     try:
         _ensure_agent_run_owned_by_auth(
             run_id=run_id,

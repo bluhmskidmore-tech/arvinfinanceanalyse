@@ -446,7 +446,7 @@ def _seed_agent_pnl_bridge_tables(duckdb_path: Path, governance_dir: Path) -> No
         conn.execute(
             """
             insert into fact_formal_pnl_fi values
-            (?, 'BOND-001', '缁勫悎A', 'CC100', 'H', 'AC', 'CNY', 10, 5, 2, 0, 17, 'sv_fi_bridge_1', 'rv_fi_bridge_1', 'batch-1', 'tr-fi-bridge-1')
+            (?, 'BOND-001', '缁勫悎A', 'CC100', 'H', 'AC', 'CNY', 10, 0, 2, 0, 12, 'sv_fi_bridge_1', 'rv_fi_bridge_1', 'batch-1', 'tr-fi-bridge-1')
             """,
             [REPORT_DATE],
         )
@@ -995,7 +995,7 @@ def test_agent_query_enabled_path_returns_real_duration_risk_and_audit(tmp_path,
     cards = {card["title"]: card for card in payload["cards"]}
     assert "Portfolio Duration" not in cards
     assert cards["Portfolio Modified Duration"]["spec"]["metric_id"] == "MTR-RSK-010"
-    assert cards["Portfolio Modified Duration"]["spec"]["numeric"]["unit"] == "ratio"
+    assert cards["Portfolio Modified Duration"]["spec"]["numeric"]["unit"] == "years"
     assert cards["Portfolio Modified Duration"]["spec"]["numeric"]["display"] == "4.20"
     assert cards["Portfolio DV01"]["spec"]["metric_id"] == "MTR-RSK-001"
     assert cards["Portfolio DV01"]["spec"]["numeric"]["unit"] == "dv01"

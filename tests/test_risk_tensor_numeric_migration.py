@@ -66,6 +66,9 @@ class TestRiskTensorNumericMigration:
         assert isinstance(payload.regulatory_dv01, Numeric)
         assert payload.portfolio_dv01.unit == "dv01"
         assert payload.regulatory_dv01.unit == "dv01"
+        assert payload.krd_1y.unit == "dv01"
+        assert payload.portfolio_modified_duration.unit == "years"
+        assert payload.rate_risk_modified_duration.unit == "years"
         assert payload.total_market_value.sign_aware is False
 
     def test_accepts_native_numeric(self) -> None:
@@ -73,15 +76,15 @@ class TestRiskTensorNumericMigration:
             report_date=date(2026, 3, 31),
             portfolio_dv01=Numeric(raw=3.5, unit="dv01", display="3.50", precision=2, sign_aware=False),
             regulatory_dv01=Numeric(raw=3.5, unit="dv01", display="3.50", precision=2, sign_aware=False),
-            krd_1y=Numeric(raw=0.5, unit="ratio", display="+0.50", precision=2, sign_aware=True),
-            krd_3y=Numeric(raw=0.6, unit="ratio", display="+0.60", precision=2, sign_aware=True),
-            krd_5y=Numeric(raw=0.7, unit="ratio", display="+0.70", precision=2, sign_aware=True),
-            krd_7y=Numeric(raw=0.8, unit="ratio", display="+0.80", precision=2, sign_aware=True),
-            krd_10y=Numeric(raw=0.9, unit="ratio", display="+0.90", precision=2, sign_aware=True),
-            krd_30y=Numeric(raw=0.0, unit="ratio", display="+0.00", precision=2, sign_aware=True),
+            krd_1y=Numeric(raw=0.5, unit="dv01", display="0.50", precision=2, sign_aware=True),
+            krd_3y=Numeric(raw=0.6, unit="dv01", display="0.60", precision=2, sign_aware=True),
+            krd_5y=Numeric(raw=0.7, unit="dv01", display="0.70", precision=2, sign_aware=True),
+            krd_7y=Numeric(raw=0.8, unit="dv01", display="0.80", precision=2, sign_aware=True),
+            krd_10y=Numeric(raw=0.9, unit="dv01", display="0.90", precision=2, sign_aware=True),
+            krd_30y=Numeric(raw=0.0, unit="dv01", display="0.00", precision=2, sign_aware=True),
             cs01=Numeric(raw=1.25, unit="dv01", display="1.25", precision=2, sign_aware=False),
             portfolio_convexity=Numeric(raw=0.22, unit="ratio", display="0.22", precision=2, sign_aware=False),
-            portfolio_modified_duration=Numeric(raw=3.1, unit="ratio", display="3.10", precision=2, sign_aware=False),
+            portfolio_modified_duration=Numeric(raw=3.1, unit="years", display="3.10", precision=2, sign_aware=False),
             issuer_concentration_hhi=Numeric(raw=0.33, unit="ratio", display="0.33", precision=2, sign_aware=False),
             issuer_top5_weight=Numeric(raw=1.0, unit="ratio", display="1.00", precision=2, sign_aware=False),
             asset_cashflow_30d=Numeric(raw=14.0, unit="yuan", display="14.00", precision=2, sign_aware=False),
@@ -94,7 +97,7 @@ class TestRiskTensorNumericMigration:
             total_market_value=Numeric(raw=429.0, unit="yuan", display="429.00", precision=2, sign_aware=False),
             rate_risk_market_value=Numeric(raw=429.0, unit="yuan", display="429.00", precision=2, sign_aware=False),
             rate_risk_dv01=Numeric(raw=3.5, unit="dv01", display="3.50", precision=2, sign_aware=False),
-            rate_risk_modified_duration=Numeric(raw=3.1, unit="ratio", display="3.10", precision=2, sign_aware=False),
+            rate_risk_modified_duration=Numeric(raw=3.1, unit="years", display="3.10", precision=2, sign_aware=False),
             duration_excluded_market_value=Numeric(raw=0.0, unit="yuan", display="0.00", precision=2, sign_aware=False),
             duration_excluded_count=0,
             bond_count=3,
@@ -144,6 +147,9 @@ class TestRiskTensorNumericMigration:
         restored = RiskTensorPayload.model_validate(dumped)
         assert restored.regulatory_dv01 is not None
         assert restored.regulatory_dv01.raw == 3.5
+        assert restored.krd_10y.unit == "dv01"
+        assert restored.portfolio_modified_duration.unit == "years"
+        assert restored.rate_risk_modified_duration.unit == "years"
         assert restored.total_market_value.raw == 429.0
 
         tensor = PortfolioRiskTensor(

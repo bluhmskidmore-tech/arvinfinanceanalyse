@@ -495,6 +495,8 @@ def test_adb_endpoints_return_structure(tmp_path: Path, monkeypatch) -> None:
     assert comparison.status_code == 200, comparison.text
     payload = comparison.json()
     assert payload["result_meta"]["basis"] == "analytical"
+    assert payload["result_meta"]["quality_flag"] == "ok"
+    assert payload["result_meta"]["fallback_mode"] == "none"
     payload = payload["result"]
     assert payload["num_days"] == 2
     assert payload["report_date"] == "2025-06-03"
@@ -1058,11 +1060,15 @@ def test_adb_comparison_supplements_missing_snapshot_dates_per_source(
     )
     adb_analysis_service.clear_adb_comparison_cache()
 
-    payload = adb_analysis_service.adb_comparison_envelope(
+    envelope = adb_analysis_service.adb_comparison_envelope(
         "2025-06-02",
         "2025-06-02",
         top_n=10,
-    )["result"]
+    )
+    assert envelope["result_meta"]["quality_flag"] == "warning"
+    assert envelope["result_meta"]["fallback_mode"] == "latest_snapshot"
+    assert "tyw_interbank_daily_snapshot" in envelope["result_meta"]["tables_used"]
+    payload = envelope["result"]
     assert payload["adb_denominator_basis"] == "formal+snapshot_calendar"
     # 单日窗口日均为 None（insufficient_window）；时点余额与同业区间日均仍出数。
     assert payload["total_spot_assets"] > 0
@@ -1109,6 +1115,9 @@ def test_adb_comparison_denominator_uses_calendar_span(
     assert payload["num_days"] == 10
     assert payload["coverage_days"] == 5
     assert payload["adb_denominator_basis"] == "formal_calendar"
+    comparison_json = response.json()
+    assert comparison_json["result_meta"]["quality_flag"] == "ok"
+    assert comparison_json["result_meta"]["fallback_mode"] == "none"
     assert payload["sample_filled"] is True
     assert payload["sample_fill_method"] == "observed_days_scaled_to_calendar"
     # 样本补齐：5 个观测日各 1 亿，扩展到 10 天窗口后日均仍保持 1 亿

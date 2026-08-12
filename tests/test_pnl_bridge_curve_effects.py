@@ -382,7 +382,15 @@ def test_pnl_bridge_curve_effects_match_core_and_do_not_leak_into_campisi_select
         str(service_row["treasury_curve"]["raw"])
     )
     spread = Decimal(str(service_row["credit_spread"]["raw"]))
-    expected_selection = actual - carry - treasury - spread
+    # FORMAL_BRIDGE_DECOMPOSITION_BASIS: bridge-path selection_effect is the residual
+    # after carry, treasury, spread, realized_trading, manual_adjustment, and
+    # fx_translation, so already-explained bridge details must not leak into it either.
+    explained_details = (
+        Decimal(str(service_row["realized_trading"]["raw"]))
+        + Decimal(str(service_row["manual_adjustment"]["raw"]))
+        + Decimal(str(service_row["fx_translation"]["raw"]))
+    )
+    expected_selection = actual - carry - treasury - spread - explained_details
 
     assert campisi_row["treasury_effect"] == pytest.approx(float(treasury))
     assert campisi_row["spread_effect"] == pytest.approx(float(spread))

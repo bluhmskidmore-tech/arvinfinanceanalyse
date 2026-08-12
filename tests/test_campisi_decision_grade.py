@@ -390,7 +390,9 @@ def test_decision_grade_campisi_closes_formal_pnl_and_separates_valuation_view(
     result = envelope["result"]
     assert envelope["result_meta"]["result_kind"] == "campisi.decision_grade"
     assert result["summary"]["formal_actual_pnl"] == pytest.approx(107.0)
-    assert result["summary"]["explained_pnl"] == pytest.approx(107.0)
+    # explained_pnl 只累加固定因子（不含 selection_proxy=98/residual_noise=0），
+    # 因此 = 107 - 98 = 9，而不再等于 actual（此前的假门禁恒等）。
+    assert result["summary"]["explained_pnl"] == pytest.approx(9.0)
     assert result["summary"]["residual_noise"] == pytest.approx(0.0)
     assert result["formal_pnl_view"]["components"]["carry"] == pytest.approx(17.0)
     assert result["formal_pnl_view"]["components"]["rate_level_effect"] == pytest.approx(-20.0)
@@ -399,6 +401,12 @@ def test_decision_grade_campisi_closes_formal_pnl_and_separates_valuation_view(
     assert result["formal_pnl_view"]["components"]["realized_trading"] == pytest.approx(5.0)
     assert result["formal_pnl_view"]["components"]["manual_adjustment"] == pytest.approx(2.0)
     assert result["formal_pnl_view"]["components"]["selection_proxy"] == pytest.approx(98.0)
+    # 真实闭合：explained(9) 未能解释的缺口 = selection_proxy(98)，闭合差异必须暴露且判为未闭合。
+    closure = result["formal_pnl_view"]["closure"]
+    assert result["formal_pnl_view"]["explained_pnl"] == pytest.approx(9.0)
+    assert closure["difference"] == pytest.approx(98.0)
+    assert closure["status"] != "closed"
+    assert closure["status"] == "error"
     assert result["valuation_oci_view"]["total_valuation_change_516"] == pytest.approx(70.0)
     assert result["valuation_oci_view"]["fvoci_valuation_change_516"] == pytest.approx(50.0)
     assert result["valuation_oci_view"]["fvtpl_valuation_change_516"] == pytest.approx(20.0)
@@ -431,7 +439,9 @@ def test_decision_grade_missing_curve_goes_to_residual_noise_not_selection_proxy
 
     assert result["formal_pnl_view"]["components"]["selection_proxy"] == pytest.approx(0.0)
     assert result["formal_pnl_view"]["components"]["residual_noise"] == pytest.approx(83.0)
-    assert result["summary"]["quality_flag"] == "warning"
+    # 缺曲线导致 83/107 未被固定因子解释：closure=error 必须上抛为 error 级质量信号。
+    assert result["formal_pnl_view"]["closure"]["status"] == "error"
+    assert result["summary"]["quality_flag"] == "error"
     assert result["residual_diagnostics"]["missing_curve_count"] > 0
     assert any("曲线" in warning for warning in result["warnings"])
 
