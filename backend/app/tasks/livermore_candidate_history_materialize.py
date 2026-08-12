@@ -1490,6 +1490,13 @@ def _build_signal_rows(payload: dict[str, object]) -> list[dict[str, object]]:
                             "three_month_return": item.get("three_month_return"),
                             "twelve_month_return": item.get("twelve_month_return"),
                             "dividend_yield": item.get("dividend_yield"),
+                            # 治理字段：选股公式版本补记(键名与 hybrid_fusion/momentum 族
+                            # 一致为 formula_version)；item 级缺失时回退 payload 级,
+                            # 兼容 v2 历史 payload 重放。
+                            "formula_version": item.get("formula_version")
+                            or factor_screen_raw.get("formula_version"),
+                            # v3 流动性地板证据(元),供滚动 pass 率审计回溯。
+                            "avg_amount_20d": item.get("avg_amount_20d"),
                         },
                     }
                 )
@@ -1573,6 +1580,11 @@ def _build_signal_rows(payload: dict[str, object]) -> list[dict[str, object]]:
                             "pctchange": item.get("pctchange"),
                             "turn": item.get("turn"),
                             "amplitude": item.get("amplitude"),
+                            # 治理字段:评分公式版本补记(键名与 factor_screen/
+                            # hybrid_fusion 一致);item 级缺失回退 payload 级,
+                            # 兼容 v1 历史 payload 重放。历史按版本断代不回改。
+                            "formula_version": item.get("formula_version")
+                            or uptrend_raw.get("formula_version"),
                         },
                     }
                 )
@@ -1622,6 +1634,9 @@ def _build_signal_rows(payload: dict[str, object]) -> list[dict[str, object]]:
                             "turn": item.get("turn"),
                             "amplitude": item.get("amplitude"),
                             "hlimitedays": item.get("hlimitedays"),
+                            # 治理字段:评分公式版本补记(同 uptrend 分支)。
+                            "formula_version": item.get("formula_version")
+                            or fresh_trend_raw.get("formula_version"),
                         },
                     }
                 )

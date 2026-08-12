@@ -6,7 +6,9 @@ from dataclasses import dataclass
 from typing import cast
 
 EPS = 1e-12
-FORMULA_VERSION = "rv_uptrend_momentum_candidates_v1"
+# 蓝本 tmp-strategy-reports/momentum-rescale-impact.md：60 日池内 Spearman
+# 中位 0.978、有效日 Top-30 Jaccard 中位 0.818；历史按 formula_version 断代且不回改。
+FORMULA_VERSION = "rv_uptrend_momentum_candidates_v2"
 ACTIVE_MARKET_STATES = frozenset({"WARM", "HOT"})
 MIN_HISTORY_BARS = 121
 MIN_AMOUNT_BARS = 21
@@ -178,15 +180,16 @@ def _candidate_row(
     pctchange = _valid_float(snapshot.pctchange)
     turn = _valid_float(snapshot.turn)
     amplitude = _valid_float(snapshot.amplitude)
-    score = (
-        return_20d * 0.35
-        + return_60d * 0.30
-        + return_120d * 0.15
-        + min(amount_ratio / 2.0, 1.0) * 0.10
-        + max(0.0, 1.0 - close_to_ma20 / MAX_CLOSE_TO_MA20) * 0.10
+    score = _score_uptrend_momentum(
+        return_20d=return_20d,
+        return_60d=return_60d,
+        return_120d=return_120d,
+        amount_ratio=amount_ratio,
+        close_to_ma20=close_to_ma20,
     )
 
     return {
+        "formula_version": FORMULA_VERSION,
         "stock_code": snapshot.stock_code,
         "stock_name": snapshot.stock_name,
         "sector_code": snapshot.sector_code,
@@ -205,6 +208,23 @@ def _candidate_row(
         "amplitude": round(amplitude, 6) if amplitude is not None else None,
         "score": round(score, 6),
     }
+
+
+def _score_uptrend_momentum(
+    *,
+    return_20d: float,
+    return_60d: float,
+    return_120d: float,
+    amount_ratio: float,
+    close_to_ma20: float,
+) -> float:
+    return (
+        min(max(return_20d, 0.0) / MAX_RETURN_20D, 1.0) * 0.35
+        + min(max(return_60d, 0.0) / MAX_RETURN_60D, 1.0) * 0.30
+        + min(max(return_120d, 0.0) / MAX_RETURN_120D, 1.0) * 0.15
+        + min(amount_ratio / 2.5, 1.0) * 0.10
+        + max(0.0, 1.0 - close_to_ma20 / MAX_CLOSE_TO_MA20) * 0.10
+    )
 
 
 def _limit_per_sector(rows: list[dict[str, object]]) -> list[dict[str, object]]:

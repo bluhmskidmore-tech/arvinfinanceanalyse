@@ -50,6 +50,9 @@ class MonitoringThresholds:
     factor_screen_primary_coverage_threshold: float
     factor_screen_partial_coverage_threshold: float
     factor_screen_freshness_threshold_days: int
+    # v3 流动性治理：候选近 20 日均成交额通过率低于该阈值时，factor_screen
+    # 降级为观察名单（服务层 _factor_screen_degradation_reasons 消费）。
+    factor_screen_liquidity_pass_threshold: float
 
 
 @dataclass(frozen=True)
@@ -62,6 +65,25 @@ class BacktestVariantPolicy:
     max_entry_premium_grid: tuple[float | None, ...]
     vol_target_grid: tuple[float, ...]
     vol_target_window: int
+
+
+@dataclass(frozen=True)
+class SizingPolicy:
+    """正式化的实时建议仓位政策（risk_budget sizing，stock_candidate 先行）。
+
+    与回测引擎 `portfolio_backtest` 的 risk_budget 变体同款公式：
+    raw_weight = min(risk_per_trade / stop_distance_pct, single_name_cap)。
+    hint 是单票权重上限建议；实盘串联 gate 敞口预算截断由引擎语义约定，
+    实时提示不做敞口截断计算。评估依据见 tmp-strategy-reports/risk-budget-promotion.md。
+    """
+
+    policy_version: str
+    sizing_mode: str
+    risk_per_trade: float
+    single_name_cap: float
+    fallback_stop_distance_pct: float
+    stop_basis: str
+    applies_to: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -79,6 +101,7 @@ class StrategyPolicy:
     entry_filters: EntryFilterPolicy
     monitoring_thresholds: MonitoringThresholds
     backtest_variants: BacktestVariantPolicy
+    sizing: SizingPolicy
 
 
 _STOCK_CANDIDATE_POLICIES = (
@@ -172,6 +195,7 @@ POLICY = StrategyPolicy(
         factor_screen_primary_coverage_threshold=0.8,
         factor_screen_partial_coverage_threshold=0.5,
         factor_screen_freshness_threshold_days=3,
+        factor_screen_liquidity_pass_threshold=0.95,
     ),
     backtest_variants=BacktestVariantPolicy(
         risk_budget_risk_per_trade_grid=(0.005, 0.010),
@@ -182,5 +206,14 @@ POLICY = StrategyPolicy(
         max_entry_premium_grid=(0.02, 0.03, None),
         vol_target_grid=(0.15, 0.20),
         vol_target_window=20,
+    ),
+    sizing=SizingPolicy(
+        policy_version="sizing_rb_v1_stock_candidate",
+        sizing_mode="risk_budget",
+        risk_per_trade=0.005,
+        single_name_cap=0.25,
+        fallback_stop_distance_pct=0.08,
+        stop_basis="ema10_stop_ref",
+        applies_to=("stock_candidate",),
     ),
 )

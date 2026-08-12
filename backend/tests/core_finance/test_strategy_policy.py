@@ -98,6 +98,7 @@ def test_strategy_policy_snapshot_values_are_centralized() -> None:
     assert POLICY.monitoring_thresholds.factor_screen_primary_coverage_threshold == 0.8
     assert POLICY.monitoring_thresholds.factor_screen_partial_coverage_threshold == 0.5
     assert POLICY.monitoring_thresholds.factor_screen_freshness_threshold_days == 3
+    assert POLICY.monitoring_thresholds.factor_screen_liquidity_pass_threshold == 0.95
 
     assert POLICY.backtest_variants.risk_budget_risk_per_trade_grid == (0.005, 0.010)
     assert POLICY.backtest_variants.risk_budget_single_name_cap == 0.25
@@ -107,6 +108,27 @@ def test_strategy_policy_snapshot_values_are_centralized() -> None:
     assert POLICY.backtest_variants.max_entry_premium_grid == (0.02, 0.03, None)
     assert POLICY.backtest_variants.vol_target_grid == (0.15, 0.20)
     assert POLICY.backtest_variants.vol_target_window == 20
+
+    assert POLICY.sizing.policy_version == "sizing_rb_v1_stock_candidate"
+    assert POLICY.sizing.sizing_mode == "risk_budget"
+    assert POLICY.sizing.risk_per_trade == 0.005
+    assert POLICY.sizing.single_name_cap == 0.25
+    assert POLICY.sizing.fallback_stop_distance_pct == 0.08
+    assert POLICY.sizing.stop_basis == "ema10_stop_ref"
+    assert POLICY.sizing.applies_to == ("stock_candidate",)
+
+
+def test_sizing_policy_mirrors_backtest_variant_parameters() -> None:
+    """正式化 sizing 政策与回测变体参数保持同源：rpt 取网格首档（蓝本推荐 0.5%），
+    cap 与 fallback 止损距离逐字段一致，防止两套口径漂移。"""
+    from backend.app.core_finance.strategy_policy import POLICY
+
+    assert POLICY.sizing.risk_per_trade == POLICY.backtest_variants.risk_budget_risk_per_trade_grid[0]
+    assert POLICY.sizing.single_name_cap == POLICY.backtest_variants.risk_budget_single_name_cap
+    assert (
+        POLICY.sizing.fallback_stop_distance_pct
+        == POLICY.backtest_variants.risk_budget_fallback_stop_distance_pct
+    )
 
 
 def test_strategy_policy_mirrors_market_gate_exposures() -> None:
@@ -186,7 +208,7 @@ def test_strategy_formula_versions_match_current_contracts() -> None:
     from backend.app.tasks import livermore_candidate_history_materialize
 
     assert mean_reversion_candidates.FORMULA_VERSION == "rv_mean_reversion_candidates_v2"
-    assert factor_screen_candidates.FORMULA_VERSION == "rv_factor_screen_candidates_v2"
+    assert factor_screen_candidates.FORMULA_VERSION == "rv_factor_screen_candidates_v3"
     assert hybrid_fusion_candidates.FORMULA_VERSION == "rv_hybrid_fusion_candidates_v4"
     assert livermore_stock_candidates.FORMULA_VERSION == "rv_livermore_stock_candidates_bundle_v7"
     assert livermore_risk_exit.FORMULA_VERSION == "rv_livermore_risk_exit_ema10_volume_obsfallback_v3"
@@ -215,6 +237,8 @@ def test_existing_modules_alias_policy_values() -> None:
     assert mean_reversion_candidates.ACTIVE_MARKET_STATES is POLICY.mean_reversion_active_states
     assert hybrid_fusion_candidates.ACTIVE_MARKET_STATES is POLICY.hybrid_fusion_active_states
     assert factor_screen_candidates.ACTIVE_MARKET_STATES is POLICY.factor_screen_active_states
+    # v3 流动性地板阈值必须与动量族入场过滤同源,禁止另写字面量。
+    assert factor_screen_candidates.MIN_AVG_AMOUNT_20D == POLICY.entry_filters.min_daily_amount
     assert livermore_signal_confluence_service.ENTRY_OBSERVATION_STATES is POLICY.entry_observation_states
     assert livermore_signal_confluence_service.MACRO_MULTIPLIERS is POLICY.macro_multipliers
     assert livermore_risk_exit.MIN_HISTORY == POLICY.risk_exit.min_history

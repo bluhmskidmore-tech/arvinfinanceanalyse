@@ -46,6 +46,132 @@ def _snapshot(
     )
 
 
+@pytest.mark.parametrize(
+    (
+        "return_20d",
+        "return_60d",
+        "return_120d",
+        "amount_ratio",
+        "turn",
+        "stock_code",
+        "close_to_ma20",
+        "expected_score",
+    ),
+    [
+        pytest.param(
+            0.90,
+            1.60,
+            3.20,
+            2.50,
+            10.0,
+            "300001.SZ",
+            0.16,
+            1.060000,
+            id="F1-all-components-at-cap",
+        ),
+        pytest.param(
+            0.08,
+            0.18,
+            3.20,
+            1.00,
+            5.0,
+            "002001.SZ",
+            0.05,
+            0.309056,
+            id="F2-long-term-surge",
+        ),
+        pytest.param(
+            0.50,
+            0.80,
+            1.00,
+            3.50,
+            20.0,
+            "688001.SH",
+            0.25,
+            0.618972,
+            id="F3-ratio-upper-and-max-penalty",
+        ),
+        pytest.param(
+            0.30,
+            0.60,
+            1.00,
+            0.70,
+            8.0,
+            "300002.SZ",
+            0.10,
+            0.452483,
+            id="F4-ratio-lower-bound",
+        ),
+        pytest.param(
+            0.88,
+            0.60,
+            0.60,
+            2.00,
+            12.0,
+            "301001.SZ",
+            0.08,
+            0.746361,
+            id="F5-short-term-strength",
+        ),
+        pytest.param(
+            0.88,
+            0.60,
+            0.60,
+            2.00,
+            12.0,
+            "002002.SZ",
+            0.08,
+            0.686361,
+            id="F6-002-board-bonus",
+        ),
+    ],
+)
+def test_fresh_trend_watchlist_v2_golden_scores(
+    return_20d: float,
+    return_60d: float,
+    return_120d: float,
+    amount_ratio: float,
+    turn: float,
+    stock_code: str,
+    close_to_ma20: float,
+    expected_score: float,
+) -> None:
+    score = fresh_module._score_fresh_trend_watchlist(
+        return_20d=return_20d,
+        return_60d=return_60d,
+        return_120d=return_120d,
+        amount_ratio=amount_ratio,
+        turn=turn,
+        stock_code=stock_code,
+        close_to_ma20=close_to_ma20,
+    )
+
+    assert round(score, 6) == expected_score
+
+
+def test_fresh_trend_watchlist_v2_preserves_board_bonus_gap() -> None:
+    growth_board_score = fresh_module._score_fresh_trend_watchlist(
+        return_20d=0.88,
+        return_60d=0.60,
+        return_120d=0.60,
+        amount_ratio=2.00,
+        turn=12.0,
+        stock_code="301001.SZ",
+        close_to_ma20=0.08,
+    )
+    small_mid_board_score = fresh_module._score_fresh_trend_watchlist(
+        return_20d=0.88,
+        return_60d=0.60,
+        return_120d=0.60,
+        amount_ratio=2.00,
+        turn=12.0,
+        stock_code="002002.SZ",
+        close_to_ma20=0.08,
+    )
+
+    assert round(growth_board_score - small_mid_board_score, 6) == 0.060000
+
+
 def test_fresh_trend_watchlist_selects_high_beta_growth_boards_even_in_overheat() -> None:
     growth_trend = [20.0 + i * 0.23 for i in range(121)]
     mainboard_trend = [20.0 + i * 0.23 for i in range(121)]
@@ -64,7 +190,7 @@ def test_fresh_trend_watchlist_selects_high_beta_growth_boards_even_in_overheat(
     )
 
     payload = result.payload
-    assert payload["formula_version"] == "rv_fresh_trend_watchlist_candidates_v1"
+    assert payload["formula_version"] == "rv_fresh_trend_watchlist_candidates_v2"
     assert payload["observation_only"] is True
     assert payload["market_state"] == "OVERHEAT"
     assert payload["candidate_count"] == 1
@@ -72,6 +198,7 @@ def test_fresh_trend_watchlist_selects_high_beta_growth_boards_even_in_overheat(
 
     item = payload["items"][0]
     assert item["rank"] == 1
+    assert item["formula_version"] == payload["formula_version"]
     assert item["stock_code"] == "300001.SZ"
     assert item["stock_name"] == "Fresh Trend"
     assert item["sector_name"] == "Electronics"
@@ -79,7 +206,7 @@ def test_fresh_trend_watchlist_selects_high_beta_growth_boards_even_in_overheat(
     assert item["return_20d"] >= 0.08
     assert item["return_60d"] >= 0.18
     assert item["return_120d"] >= 0.30
-    assert item["score"] > 0
+    assert item["score"] == 0.372170
 
 
 def test_fresh_trend_watchlist_excludes_chinese_old_economy_sectors() -> None:

@@ -6,7 +6,9 @@ from dataclasses import dataclass
 from typing import cast
 
 EPS = 1e-12
-FORMULA_VERSION = "rv_fresh_trend_watchlist_candidates_v1"
+# 蓝本 tmp-strategy-reports/momentum-rescale-impact.md：60 日池内 Spearman
+# 中位 0.956、有效日 Top-20 Jaccard 中位 0.667；历史按 formula_version 断代且不回改。
+FORMULA_VERSION = "rv_fresh_trend_watchlist_candidates_v2"
 ACTIVE_MARKET_STATES = frozenset({"WARM", "HOT", "OVERHEAT"})
 GROWTH_BOARD_PREFIXES = ("300", "301", "688", "002")
 MIN_HISTORY_BARS = 121
@@ -222,17 +224,18 @@ def _candidate_row(
     pctchange = _valid_float(snapshot.pctchange)
     turn = _valid_float(snapshot.turn)
     amplitude = _valid_float(snapshot.amplitude)
-    score = (
-        return_20d * 0.40
-        + return_60d * 0.28
-        + return_120d * 0.14
-        + min(amount_ratio, 2.5) * 0.08
-        + min((turn or 0.0) / 10.0, 1.0) * 0.06
-        + _board_bonus(snapshot.stock_code)
-        - max(close_to_ma20 - MAX_CLOSE_EXTENSION_FOR_PENALTY, 0.0) * 0.30
+    score = _score_fresh_trend_watchlist(
+        return_20d=return_20d,
+        return_60d=return_60d,
+        return_120d=return_120d,
+        amount_ratio=amount_ratio,
+        turn=turn,
+        stock_code=snapshot.stock_code,
+        close_to_ma20=close_to_ma20,
     )
 
     return {
+        "formula_version": FORMULA_VERSION,
         "stock_code": snapshot.stock_code,
         "stock_name": snapshot.stock_name,
         "sector_code": snapshot.sector_code,
@@ -253,6 +256,27 @@ def _candidate_row(
         "hlimitedays": int(hlimitedays) if hlimitedays is not None else None,
         "score": round(score, 6),
     }
+
+
+def _score_fresh_trend_watchlist(
+    *,
+    return_20d: float,
+    return_60d: float,
+    return_120d: float,
+    amount_ratio: float,
+    turn: float | None,
+    stock_code: str,
+    close_to_ma20: float,
+) -> float:
+    return (
+        min(max(return_20d, 0.0) / MAX_RETURN_20D, 1.0) * 0.40
+        + min(max(return_60d, 0.0) / MAX_RETURN_60D, 1.0) * 0.28
+        + min(max(return_120d, 0.0) / MAX_RETURN_120D, 1.0) * 0.14
+        + min(amount_ratio / 2.5, 1.0) * 0.08
+        + min((turn or 0.0) / 10.0, 1.0) * 0.06
+        + _board_bonus(stock_code)
+        - max(close_to_ma20 - MAX_CLOSE_EXTENSION_FOR_PENALTY, 0.0) * 0.30
+    )
 
 
 def _limit_per_sector(rows: list[dict[str, object]]) -> list[dict[str, object]]:
