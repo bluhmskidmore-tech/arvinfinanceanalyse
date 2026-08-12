@@ -12,23 +12,32 @@ from backend.app.core_finance.field_normalization import (
     ACCOUNTING_BASIS_FVTPL,
     derive_accounting_basis_value,
 )
+from backend.app.core_finance.safe_decimal import safe_decimal as _core_safe_decimal
 
 logger = logging.getLogger(__name__)
 
 # --- Decimal helpers ---
 
+# 身份哨兵：共享实现在任何回退分支都原样返回 ``default`` 对象，据此区分
+# "转换失败回退 0" 与 "输入本就是 0"。取值仍为 Decimal("0")，即使将来共享实现
+# 不再返回同一对象，也只会漏掉日志而不会改变返回值。
+_CONVERSION_FALLBACK = Decimal("0")
+
+
 def safe_decimal(value) -> Decimal:
+    """Bond-analytics 侧入口，委托 ``core_finance.safe_decimal`` 取值。
+
+    共享实现已覆盖 None / NaN / Infinity / numpy 标量 / 空串等全部缺省语义；
+    本包历史上按 ERROR 级披露转换失败（共享实现按 warning 级），保留该级别。
+    None 属于常规缺失输入，与历史行为一致地静默归 0。
+    """
     if value is None:
         return Decimal("0")
-    if isinstance(value, Decimal):
-        # Decimal("NaN") / Decimal("Infinity") 会静默污染所有下游算术，按缺省语义归 0。
-        return value if value.is_finite() else Decimal("0")
-    try:
-        result = Decimal(str(value))
-    except (TypeError, ValueError, ArithmeticError):
-        logger.exception("safe_decimal: failed to convert %r", type(value).__name__)
+    result = _core_safe_decimal(value, default=_CONVERSION_FALLBACK)
+    if result is _CONVERSION_FALLBACK:
+        logger.error("safe_decimal: failed to convert %r", type(value).__name__)
         return Decimal("0")
-    return result if result.is_finite() else Decimal("0")
+    return result
 
 
 def decimal_to_str(value: Decimal) -> str:
@@ -164,6 +173,30 @@ def get_accounting_rule_trace(asset_class: str) -> tuple[str, str | None]:
 
 # --- Duration estimation ---
 
+YTM_PAR_FALLBACK_RULE_ID = "ytm_par_fallback_duration_v1"
+
+
+def resolve_ytm_with_par_fallback(
+    coupon_rate: Decimal,
+    ytm: Decimal,
+) -> tuple[Decimal, bool]:
+    """解析久期/修正久期/凸性估计所用的生效 ytm；有票息缺 ytm 时用 par 假设。
+
+    W-fi-2026-08 P1：有票息但 ytm 缺失/非正的债此前落入零息回退
+    （Macaulay=剩余年限），10Y/3% 票息券回退值 10 年 vs par 口径 ≈8.79 年，
+    久期与 DV01 被系统性高估。与 bond_duration._estimate_macaulay_duration_years
+    的既有口径对齐：按 ytm=coupon_rate（par 假设）走 Macaulay。
+
+    返回 ``(生效 ytm, 是否使用 par 回退)``。ytm>0 正常路径与零票息路径
+    （零息债 Macaulay=剩余年限本就正确）行为不变。
+    """
+    if ytm > 0:
+        return ytm, False
+    if coupon_rate > 0:
+        return coupon_rate, True
+    return ytm, False
+
+
 def compute_macaulay_duration(
     coupon_rate: Decimal,
     ytm: Decimal,
@@ -236,10 +269,11 @@ def estimate_duration(
 
     years = Decimal(str(remaining_days)) / Decimal("365")
 
-    if coupon_rate > 0 and ytm > 0:
+    effective_ytm, _par_fallback_used = resolve_ytm_with_par_fallback(coupon_rate, ytm)
+    if coupon_rate > 0 and effective_ytm > 0:
         return compute_macaulay_duration(
             coupon_rate,
-            ytm,
+            effective_ytm,
             years,
             coupon_frequency=coupon_frequency,
         )
@@ -252,6 +286,12 @@ def estimate_modified_duration(
     ytm: Decimal,
     coupon_frequency: int = 1,
 ) -> Decimal:
+    """Macaulay → 修正久期；``ytm`` 应传久期估计实际使用的生效 ytm。
+
+    par 假设路径（estimate_duration 对有票息缺 ytm 的债按 ytm=coupon 计算）
+    的调用方需传入该生效 ytm（见 ``resolve_ytm_with_par_fallback``），否则
+    ytm<=0 时保持既有语义：不折算、原样返回 Macaulay。
+    """
     if ytm <= 0 or coupon_frequency <= 0:
         return macaulay_duration
     return macaulay_duration / (Decimal("1") + ytm / Decimal(str(coupon_frequency)))

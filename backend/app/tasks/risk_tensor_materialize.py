@@ -4,6 +4,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
+from backend.app.core_finance.bond_analytics.common import YTM_PAR_FALLBACK_RULE_ID
 from backend.app.core_finance.module_contracts import FormalComputeModuleDescriptor
 from backend.app.core_finance.module_registry import ensure_formal_module
 from backend.app.core_finance.risk_tensor import compute_portfolio_risk_tensor
@@ -165,6 +166,30 @@ def _finite_decimal_or_none(value: object) -> Decimal | None:
     return parsed if parsed.is_finite() else None
 
 
+def _ytm_par_fallback_disclosure(rows: list[dict[str, object]]) -> tuple[int, Decimal]:
+    """统计上游按 par 假设（ytm=coupon）计算久期/DV01 的行（聚合披露）。
+
+    bond_analytics 引擎（W-fi-2026-08 P1）对有票息但 ytm 缺失/非正的行按
+    ``common.resolve_ytm_with_par_fallback`` 采用 par 假设；
+    fact_formal_bond_analytics_daily 无行级 provenance 列（本轮不改 schema），
+    此处按同一判定条件在物化结果元数据中做聚合级披露。
+    """
+    count = 0
+    market_value = _ZERO
+    for row in rows:
+        coupon_rate = _finite_decimal_or_none(row.get("coupon_rate"))
+        if coupon_rate is None or coupon_rate <= _ZERO:
+            continue
+        ytm = _finite_decimal_or_none(row.get("ytm"))
+        if ytm is not None and ytm > _ZERO:
+            continue
+        count += 1
+        row_market_value = _finite_decimal_or_none(row.get("market_value"))
+        if row_market_value is not None:
+            market_value += row_market_value
+    return count, market_value
+
+
 def _normalized_discount_ncd_coupon_market_value(
     row: dict[str, object],
     *,
@@ -255,6 +280,7 @@ def _execute_risk_tensor_materialization(
         raw_rows,
         report_day=report_day,
     )
+    ytm_par_fallback_row_count, ytm_par_fallback_market_value = _ytm_par_fallback_disclosure(rows)
     liability_rows = _load_liability_rows(
         duckdb_file=duckdb_file,
         report_date=report_date,
@@ -370,6 +396,9 @@ def _execute_risk_tensor_materialization(
             "coupon_normalization_rule_id": _NCD_ZERO_COUPON_RULE_ID,
             "coupon_normalized_row_count": coupon_normalized_row_count,
             "coupon_normalized_market_value": str(coupon_normalized_market_value),
+            "ytm_par_fallback_rule_id": YTM_PAR_FALLBACK_RULE_ID,
+            "ytm_par_fallback_row_count": ytm_par_fallback_row_count,
+            "ytm_par_fallback_market_value": str(ytm_par_fallback_market_value),
         },
     )
 

@@ -1,6 +1,7 @@
 """Pure bond-analytics calculations from snapshot rows."""
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
@@ -8,6 +9,7 @@ from typing import Any
 
 from backend.app.core_finance.bond_analytics.common import (
     ACCOUNTING_BASIS_RISK_CLASS_RULE_IDS,
+    YTM_PAR_FALLBACK_RULE_ID,
     classify_asset_class,
     estimate_convexity,
     estimate_duration,
@@ -16,6 +18,7 @@ from backend.app.core_finance.bond_analytics.common import (
     get_tenor_bucket,
     map_accounting_basis_to_risk_class,
     map_accounting_class,
+    resolve_ytm_with_par_fallback,
     safe_decimal,
 )
 from backend.app.core_finance.interest_mode import (
@@ -23,6 +26,8 @@ from backend.app.core_finance.interest_mode import (
     coupon_frequency_per_year,
     resolve_interest_payment_frequency,
 )
+
+logger = logging.getLogger(__name__)
 
 MISSING_SOURCE_VERSION = "sv_bond_analytics_snapshot_missing"
 ENGINE_RULE_VERSION = "rv_bond_analytics_engine_v1"
@@ -33,6 +38,8 @@ _FORMAL_CNY_AMOUNT_FIELDS = (
     "amortized_cost_cny",
     "accrued_interest_cny",
 )
+# par 回退聚合告警中最多列出的债券代码数，超出以“…共 N 只”收尾（防日志爆炸）。
+_YTM_PAR_FALLBACK_LOG_CODE_LIMIT = 20
 
 
 class FormalCNYClosureError(ValueError):
@@ -122,6 +129,9 @@ def compute_bond_analytics_rows(
     """Project canonical snapshot rows into pure-compute bond analytics rows."""
 
     analytics_rows: list[BondAnalyticsRow] = []
+    ytm_par_fallback_row_count = 0
+    ytm_par_fallback_market_value = Decimal("0")
+    ytm_par_fallback_instrument_codes: list[str] = []
     for index, snapshot_row in enumerate(snapshot_rows):
         if _coerce_bool(snapshot_row.get("is_issuance_like")):
             continue
@@ -198,6 +208,17 @@ def compute_bond_analytics_rows(
             convexity = Decimal("0")
             dv01 = Decimal("0")
         else:
+            # W-fi-2026-08 P1：有票息缺 ytm 的行按 par 假设（ytm=coupon）计算
+            # 久期/修正久期/凸性，三项指标共用同一生效 ytm 口径；
+            # ytm>0 正常路径 effective_ytm == ytm，行为不变。
+            effective_ytm, ytm_par_fallback_used = resolve_ytm_with_par_fallback(
+                coupon_rate or Decimal("0"),
+                ytm or Decimal("0"),
+            )
+            if ytm_par_fallback_used:
+                ytm_par_fallback_row_count += 1
+                ytm_par_fallback_market_value += market_value
+                ytm_par_fallback_instrument_codes.append(instrument_code or "<unknown>")
             macaulay_duration = estimate_duration(
                 maturity_date,
                 report_date,
@@ -208,12 +229,12 @@ def compute_bond_analytics_rows(
             )
             modified_duration = estimate_modified_duration(
                 macaulay_duration,
-                ytm or Decimal("0"),
+                effective_ytm,
                 coupon_frequency=coupon_frequency,
             )
             convexity = estimate_convexity(
                 macaulay_duration,
-                ytm or Decimal("0"),
+                effective_ytm,
                 coupon_frequency=coupon_frequency,
             )
             dv01 = face_value * modified_duration / Decimal("10000")
@@ -276,7 +297,30 @@ def compute_bond_analytics_rows(
             )
         )
 
+    if ytm_par_fallback_row_count:
+        # 聚合级披露（无行级 provenance 列，schema 不变）：本批有票息但 ytm
+        # 缺失/非正的行按 par 假设计算久期/DV01；附回退债券代码清单便于排查。
+        logger.warning(
+            "compute_bond_analytics_rows: %d coupon-bond rows with missing/non-positive ytm "
+            "used par-assumption duration (rule_id=%s, ytm=coupon_rate); "
+            "market_value_cny=%s report_date=%s instrument_codes=%s",
+            ytm_par_fallback_row_count,
+            YTM_PAR_FALLBACK_RULE_ID,
+            ytm_par_fallback_market_value,
+            report_date.isoformat(),
+            _format_ytm_par_fallback_instrument_codes(ytm_par_fallback_instrument_codes),
+        )
+
     return analytics_rows
+
+
+def _format_ytm_par_fallback_instrument_codes(codes: list[str]) -> str:
+    """去重保序后最多列 20 个回退债券代码，超出以“…共 N 只”收尾（N 为去重后总只数）。"""
+    unique_codes = list(dict.fromkeys(codes))
+    shown = ",".join(unique_codes[:_YTM_PAR_FALLBACK_LOG_CODE_LIMIT])
+    if len(unique_codes) > _YTM_PAR_FALLBACK_LOG_CODE_LIMIT:
+        return f"{shown}…共 {len(unique_codes)} 只"
+    return shown
 
 
 def _compute_years_to_maturity(*, report_date: date, maturity_date: date | None) -> Decimal:

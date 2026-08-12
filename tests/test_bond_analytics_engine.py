@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import date
 from decimal import Decimal
 
@@ -182,6 +183,137 @@ def test_compute_bond_analytics_rows_preserves_annual_frequency_fallback_provena
 
     assert rows[0].interest_payment_frequency == "annual"
     assert rows[0].interest_payment_frequency_fallback_used is True
+
+
+def _par_fallback_snapshot_row(**overrides: object) -> dict[str, object]:
+    row: dict[str, object] = {
+        "report_date": date(2026, 1, 1),
+        "instrument_code": "PAR-FB-001",
+        "instrument_name": "有票息缺 ytm 债",
+        "portfolio_name": "组合A",
+        "cost_center": "CC1",
+        "account_category": "可供出售类资产",
+        "asset_class": "债券资产",
+        "bond_type": "企业债",
+        "currency_code": "CNY",
+        "face_value_native": Decimal("100"),
+        "market_value_native": Decimal("95"),
+        "amortized_cost_native": Decimal("93"),
+        "accrued_interest_native": Decimal("1"),
+        "coupon_rate": Decimal("3.0"),  # percent 口径 → 0.03
+        "ytm_value": None,  # ytm 缺失
+        # 2026-01-01 → 2035-12-30 恰 3650 天 → years_to_maturity = 10（整）
+        "maturity_date": date(2035, 12, 30),
+        "interest_mode": "annual",
+        "is_issuance_like": False,
+    }
+    row.update(overrides)
+    return row
+
+
+def test_compute_bond_analytics_rows_par_fallback_for_coupon_bond_missing_ytm(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """有票息缺 ytm 的行：三项指标按 par 假设（ytm=coupon）计算，聚合告警可观测。
+
+    黄金手算（10Y=3650 天、年付 3%、par ytm=3%；闭式独立推导，未经被测函数）：
+      Macaulay  = (1.03/0.03)(1 - 1.03^-10)      = 8.786108921879104...
+      修正久期  = Macaulay / 1.03                 = 8.530202836775829...
+      凸性      = Macaulay(Macaulay+1) / 1.03^2   = 81.046110763505234...
+      DV01      = 100 × 修正久期 / 10000          = 0.0853020283677582...
+    旧缺陷下 Macaulay=修正久期=10（零息假设）、DV01=0.1，系统性高估。
+    """
+    module = _module()
+    report_date = date(2026, 1, 1)
+    with caplog.at_level(
+        logging.WARNING, logger="backend.app.core_finance.bond_analytics.engine"
+    ):
+        rows = module.compute_bond_analytics_rows(
+            [_par_fallback_snapshot_row()], report_date
+        )
+
+    assert len(rows) == 1
+    row = rows[0]
+    tol = Decimal("0.000001")
+    assert row.years_to_maturity == Decimal("10")
+    assert abs(row.macaulay_duration - Decimal("8.786108921879104")) < tol
+    assert abs(row.modified_duration - Decimal("8.530202836775829")) < tol
+    assert abs(row.convexity - Decimal("81.046110763505234")) < tol
+    assert abs(row.dv01 - Decimal("0.085302028367758")) < tol
+    # 不再等于剩余年限（旧回退值 10）。
+    assert row.macaulay_duration < row.years_to_maturity
+
+    fallback_warnings = [
+        message
+        for message in caplog.messages
+        if "par-assumption duration" in message
+    ]
+    assert len(fallback_warnings) == 1
+    assert common.YTM_PAR_FALLBACK_RULE_ID in fallback_warnings[0]
+    assert "1 coupon-bond rows" in fallback_warnings[0]
+    assert "market_value_cny=95" in fallback_warnings[0]
+    # 日志级行清单：带具体回退债券代码；未超上限不出现“…共 N 只”截断尾。
+    assert "instrument_codes=PAR-FB-001" in fallback_warnings[0]
+    assert "…共" not in fallback_warnings[0]
+
+
+def test_compute_bond_analytics_rows_par_fallback_code_list_truncates_beyond_20(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """超过 20 只回退券时：单条告警只列前 20 个代码，以“…共 N 只”收尾。"""
+    module = _module()
+    report_date = date(2026, 1, 1)
+    codes = [f"PAR-FB-{i:03d}" for i in range(1, 26)]  # 25 只，超过生产上限 20
+    with caplog.at_level(
+        logging.WARNING, logger="backend.app.core_finance.bond_analytics.engine"
+    ):
+        rows = module.compute_bond_analytics_rows(
+            [_par_fallback_snapshot_row(instrument_code=code) for code in codes],
+            report_date,
+        )
+
+    assert len(rows) == 25
+    fallback_warnings = [
+        message
+        for message in caplog.messages
+        if "par-assumption duration" in message
+    ]
+    # 保持单条聚合 WARNING，不逐券告警。
+    assert len(fallback_warnings) == 1
+    message = fallback_warnings[0]
+    assert "25 coupon-bond rows" in message
+    for code in codes[:20]:
+        assert code in message
+    for code in codes[20:]:
+        assert code not in message
+    assert message.endswith("…共 25 只")
+
+
+def test_compute_bond_analytics_rows_zero_coupon_missing_ytm_unchanged(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """零票息 + ytm 缺失：仍回退剩余年限（正确口径），不触发 par 假设告警。"""
+    module = _module()
+    report_date = date(2026, 1, 1)
+    with caplog.at_level(
+        logging.WARNING, logger="backend.app.core_finance.bond_analytics.engine"
+    ):
+        rows = module.compute_bond_analytics_rows(
+            [
+                _par_fallback_snapshot_row(
+                    instrument_code="ZERO-FB-001",
+                    coupon_rate=None,
+                )
+            ],
+            report_date,
+        )
+
+    row = rows[0]
+    assert row.macaulay_duration == Decimal("10")
+    assert row.modified_duration == Decimal("10")
+    assert row.convexity == Decimal("100")
+    assert row.dv01 == Decimal("100") * Decimal("10") / Decimal("10000")
+    assert not [m for m in caplog.messages if "par-assumption duration" in m]
 
 
 def test_compute_bond_analytics_rows_uses_formal_cny_values_and_accounting_basis() -> None:

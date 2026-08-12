@@ -409,6 +409,72 @@ def test_risk_tensor_materialize_leaves_non_null_coupon_unchanged(monkeypatch):
     assert result.payload["coupon_normalized_market_value"] == "0"
 
 
+def _coupon_bond_fact_row(
+    code: str,
+    *,
+    coupon_rate,
+    ytm,
+    market_value,
+) -> dict[str, object]:
+    return {
+        "instrument_code": code,
+        "bond_type": "企业债",
+        "maturity_date": "2036-01-15",
+        "market_value": market_value,
+        "face_value": Decimal("100"),
+        "coupon_rate": coupon_rate,
+        "ytm": ytm,
+        "accrued_interest": Decimal("0"),
+        "modified_duration": Decimal("8.53"),
+        "convexity": Decimal("81"),
+        "dv01": Decimal("0.0853"),
+        "spread_dv01": Decimal("0.0853"),
+        "interest_payment_frequency_fallback_used": False,
+    }
+
+
+def test_risk_tensor_materialize_reports_ytm_par_fallback_aggregate(monkeypatch):
+    """W-fi-2026-08 P1：有票息但 ytm 缺失/非正的行（上游按 par 假设算久期/DV01）
+    在物化结果元数据中做聚合披露；无行级 provenance 列，schema 不变。"""
+    rows = [
+        # 有票息 + ytm 缺失 → 计入
+        _coupon_bond_fact_row(
+            "PAR-FB-001", coupon_rate=Decimal("0.03"), ytm=None, market_value=Decimal("120")
+        ),
+        # 有票息 + ytm 非正 → 计入
+        _coupon_bond_fact_row(
+            "PAR-FB-002", coupon_rate=Decimal("0.028"), ytm=Decimal("0"), market_value=Decimal("80")
+        ),
+        # 有票息 + ytm 正常 → 不计入
+        _coupon_bond_fact_row(
+            "NORMAL-001", coupon_rate=Decimal("0.03"), ytm=Decimal("0.025"), market_value=Decimal("500")
+        ),
+        # 零票息 + ytm 缺失（零息回退口径本就正确）→ 不计入
+        _coupon_bond_fact_row(
+            "ZERO-001", coupon_rate=Decimal("0"), ytm=None, market_value=Decimal("300")
+        ),
+    ]
+
+    _task_mod, result, _captured = _execute_risk_tensor_with_rows(monkeypatch, rows)
+
+    assert result.payload["ytm_par_fallback_rule_id"] == "ytm_par_fallback_duration_v1"
+    assert result.payload["ytm_par_fallback_row_count"] == 2
+    assert result.payload["ytm_par_fallback_market_value"] == "200"
+
+
+def test_risk_tensor_materialize_ytm_par_fallback_zero_when_all_ytm_present(monkeypatch):
+    rows = [
+        _coupon_bond_fact_row(
+            "NORMAL-001", coupon_rate=Decimal("0.03"), ytm=Decimal("0.025"), market_value=Decimal("500")
+        ),
+    ]
+
+    _task_mod, result, _captured = _execute_risk_tensor_with_rows(monkeypatch, rows)
+
+    assert result.payload["ytm_par_fallback_row_count"] == 0
+    assert result.payload["ytm_par_fallback_market_value"] == "0"
+
+
 @pytest.mark.parametrize(
     ("case_name", "mutate_row"),
     [
