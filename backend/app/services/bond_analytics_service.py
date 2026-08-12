@@ -5,10 +5,11 @@ import logging
 import threading
 import time
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict
 
 from backend.app.core_finance.action_attribution import (
     bond_analytics_action_line_payload,
@@ -62,7 +63,9 @@ try:
 except ImportError:
     from backend.app.repositories import yield_curve_repo as _yield_curve_repo
 
-    YieldCurveRepository = _yield_curve_repo.YieldCurveRepository
+    # Runtime fallback rebinding of the class name; mypy cannot model
+    # conditional re-assignment of an imported type.
+    YieldCurveRepository = _yield_curve_repo.YieldCurveRepository  # type: ignore[misc]
     FX_LATEST_FALLBACK_PREFIX = getattr(
         _yield_curve_repo,
         "FX_LATEST_FALLBACK_PREFIX",
@@ -91,6 +94,8 @@ except ImportError:
             f"{YIELD_CURVE_LATEST_FALLBACK_PREFIX}: Using latest available {curve_type} curve "
             f"from trade_date={resolved_trade_date} for requested_trade_date={requested_trade_date}."
         )
+
+from pydantic import BaseModel
 
 from backend.app.schemas.analysis_service import AnalysisQuery
 from backend.app.schemas.bond_analytics import (
@@ -144,6 +149,7 @@ from backend.app.services.explicit_numeric import (
     promote_flat_payload,
 )
 from backend.app.services.formal_result_runtime import (
+    QualityFlag,
     build_analytical_result_meta,
     build_formal_result_envelope,
     build_formal_result_envelope_from_lineage,
@@ -257,6 +263,79 @@ BENCHMARK_WARNING_CODE = "benchmark_excess_benchmark_data_unavailable"
 SPREAD_WARNING_CODE = "credit_spread_weighted_avg_spread_input_unavailable"
 Q8 = Decimal("0.00000001")
 ZERO = Decimal("0")
+
+
+class _CurveSlots(TypedDict):
+    """Current/prior snapshot+warning slots per curve type (runtime is a plain dict)."""
+
+    treasury_current: dict[str, object] | None
+    treasury_prior: dict[str, object] | None
+    treasury_current_warning: str | None
+    treasury_prior_warning: str | None
+    cdb_current: dict[str, object] | None
+    cdb_prior: dict[str, object] | None
+    cdb_current_warning: str | None
+    cdb_prior_warning: str | None
+    aaa_current: dict[str, object] | None
+    aaa_prior: dict[str, object] | None
+    aaa_current_warning: str | None
+    aaa_prior_warning: str | None
+
+
+class _CurveBundle(_CurveSlots):
+    """Shape of the dict returned by _fetch_all_curve_pairs (runtime unchanged)."""
+
+    curve_snapshots: list[dict[str, object]]
+    relevant_curve_warnings: Sequence[str | None]
+    curve_latest_fallback: bool
+    curve_unavailable: bool
+
+
+class _ReturnDecompositionInputs(_CurveBundle):
+    fx_rates_current: dict[str, Decimal] | None
+    fx_current_warning: str | None
+    fx_rates_prior: dict[str, Decimal] | None
+    fx_prior_warning: str | None
+    fx_unavailable: bool
+    fx_latest_fallback: bool
+    fx_missing_warnings: list[str]
+
+
+class _BenchmarkCurveBundle(_CurveBundle):
+    current_curve: dict[str, object] | None
+    prior_curve: dict[str, object] | None
+    current_warning: str | None
+    prior_warning: str | None
+
+
+class _CreditCurveBundle(TypedDict):
+    treasury_current: dict[str, object] | None
+    treasury_warning: str | None
+    aaa_current: dict[str, object] | None
+    aaa_warning: str | None
+    curve_snapshots: list[dict[str, object]]
+    curve_latest_fallback: bool
+    curve_unavailable: bool
+
+
+def _optional_snapshot(value: object) -> dict[str, object] | None:
+    # "_prior_snapshot" is stored as dict | None by the curve pair resolvers.
+    return value if isinstance(value, dict) else None
+
+
+def _optional_warning_text(value: object) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def _snapshot_curve_points(snapshot: dict[str, object] | None) -> dict[str, Decimal] | None:
+    if snapshot is None:
+        return None
+    curve = snapshot["curve"]
+    # Snapshot curve payloads are dict[str, Decimal] by YieldCurveRepository contract.
+    assert isinstance(curve, dict)
+    return curve
+
+
 BENCHMARK_NAMES = {
     "TREASURY_INDEX": "中债国债总指数",
     "CDB_INDEX": "中债国开债总指数",
@@ -429,7 +508,7 @@ def _bond_analytics_api_payload(payload: dict[str, object]) -> dict[str, object]
     return out
 
 
-def _pct_points_numeric_json(value: object, *, sign_aware: bool = True) -> dict[str, object]:
+def _pct_points_numeric_json(value: float | Decimal | int | None, *, sign_aware: bool = True) -> dict[str, object]:
     """Build pct Numeric JSON from a percent-point input (2.38 == 2.38%).
 
     Declares ``raw_scale="percent"`` explicitly so sub-1% values (yields or
@@ -442,7 +521,7 @@ def _pct_points_numeric_json(value: object, *, sign_aware: bool = True) -> dict[
     ).model_dump(mode="json")
 
 
-def _model_payloads(rows: list[dict[str, object]], model_cls: type) -> list:
+def _model_payloads(rows: list[dict[str, object]], model_cls: type[BaseModel]) -> list:
     return [model_cls.model_validate(promote_flat_payload(row, model_cls)) for row in rows]
 
 
@@ -500,13 +579,13 @@ def _build_action_attribution_pnl_by_key(
 
 
 def _overlay_return_decomposition_trading_pnl517(
-    summary: dict[str, object],
+    summary: dict[str, Any],
     *,
     period_type: str,
     period_start: date,
     period_end: date,
     duckdb_path: str,
-) -> tuple[dict[str, object], list[str], list[dict[str, str]]]:
+) -> tuple[dict[str, Any], list[str], list[dict[str, str]]]:
     """Attach ``capital_gain_517`` from formal+nonstd PnL facts to each bond row; re-bucket by class.
 
     MoM uses the period-end report date only. YTD/TTM sum ``capital_gain_517`` over every union
@@ -894,7 +973,7 @@ def _action_attribution_candidate_meta(
     formal_meta,
     report_date: date,
     period_type: str,
-    quality_flag: str | None = None,
+    quality_flag: QualityFlag | None = None,
 ):
     report_date_text = report_date.isoformat()
     return build_analytical_result_meta(
@@ -1149,7 +1228,7 @@ def _fetch_all_curve_pairs(
     report_date: str,
     prior_date: str,
     extra_curve_types: set[str] | None = None,
-) -> dict[str, object]:
+) -> _CurveBundle:
     """Resolve treasury/cdb/aaa_credit current+prior snapshots for the given rows.
 
     Returns a dict with keys:
@@ -1195,12 +1274,12 @@ def _fetch_all_curve_pairs(
         report_date=report_date, prior_date=prior_date,
     )
 
-    treasury_prior = treasury_current.get("_prior_snapshot") if treasury_current else None
-    cdb_prior = cdb_current.get("_prior_snapshot") if cdb_current else None
-    aaa_prior = aaa_current.get("_prior_snapshot") if aaa_current else None
-    treasury_prior_warning = treasury_current.get("_prior_warning") if treasury_current else None
-    cdb_prior_warning = cdb_current.get("_prior_warning") if cdb_current else None
-    aaa_prior_warning = aaa_current.get("_prior_warning") if aaa_current else None
+    treasury_prior = _optional_snapshot(treasury_current.get("_prior_snapshot")) if treasury_current else None
+    cdb_prior = _optional_snapshot(cdb_current.get("_prior_snapshot")) if cdb_current else None
+    aaa_prior = _optional_snapshot(aaa_current.get("_prior_snapshot")) if aaa_current else None
+    treasury_prior_warning = _optional_warning_text(treasury_current.get("_prior_warning")) if treasury_current else None
+    cdb_prior_warning = _optional_warning_text(cdb_current.get("_prior_warning")) if cdb_current else None
+    aaa_prior_warning = _optional_warning_text(aaa_current.get("_prior_warning")) if aaa_current else None
 
     curve_snapshots = [
         s for s in (treasury_current, treasury_prior, cdb_current, cdb_prior, aaa_current, aaa_prior)
@@ -1237,7 +1316,7 @@ def _fetch_all_curve_pairs(
     }
 
 
-def _build_asset_class_breakdown(row: dict[str, object]) -> AssetClassBreakdown:
+def _build_asset_class_breakdown(row: dict[str, Any]) -> AssetClassBreakdown:
     return AssetClassBreakdown.model_validate(
         promote_flat_payload(
             {
@@ -1257,7 +1336,7 @@ def _build_asset_class_breakdown(row: dict[str, object]) -> AssetClassBreakdown:
     )
 
 
-def _build_bond_level_decomposition(row: dict[str, object]) -> BondLevelDecomposition:
+def _build_bond_level_decomposition(row: dict[str, Any]) -> BondLevelDecomposition:
     trading = row.get("trading", ZERO)
     return BondLevelDecomposition.model_validate(
         promote_flat_payload(
@@ -1294,9 +1373,9 @@ def _build_return_decomposition_payload(
     period_type: str,
     period_start: date,
     period_end: date,
-    summary: dict[str, object],
+    summary: dict[str, Any],
     meta,
-    relevant_curve_warnings: list,
+    relevant_curve_warnings: Sequence[str | None],
     fx_current_warning: str | None,
     fx_prior_warning: str | None,
     fx_missing_warnings: list[str],
@@ -1374,7 +1453,7 @@ def _fetch_return_decomposition_inputs(
     curve_repo: YieldCurveRepository,
     report_date: str,
     period_start: str,
-) -> dict[str, object]:
+) -> _ReturnDecompositionInputs:
     """Fetch FX rates and curves for return decomposition."""
     fx_rates_current, fx_current_warning, fx_rates_prior, fx_prior_warning = _fetch_fx_rates(
         curve_repo, current_date=report_date, prior_date=period_start
@@ -1408,9 +1487,9 @@ def _compute_return_decomposition_summary(
     period_start: date,
     period_end: date,
     period_type: str,
-    inputs: dict[str, object],
+    inputs: _ReturnDecompositionInputs,
     duckdb_path: str,
-) -> tuple[dict[str, object], list[str], list[dict[str, str]]]:
+) -> tuple[dict[str, Any], list[str], list[dict[str, str]]]:
     """Compute return decomposition summary with trading overlay."""
     treasury_current = inputs["treasury_current"]
     treasury_prior = inputs["treasury_prior"]
@@ -1423,12 +1502,12 @@ def _compute_return_decomposition_summary(
         rows,
         period_start=period_start,
         period_end=period_end,
-        treasury_curve_current=treasury_current["curve"] if treasury_current else None,
-        treasury_curve_prior=treasury_prior["curve"] if treasury_prior else None,
-        cdb_curve_current=cdb_current["curve"] if cdb_current else None,
-        cdb_curve_prior=cdb_prior["curve"] if cdb_prior else None,
-        aaa_credit_curve_current=aaa_current["curve"] if aaa_current else None,
-        aaa_credit_curve_prior=aaa_prior["curve"] if aaa_prior else None,
+        treasury_curve_current=_snapshot_curve_points(treasury_current),
+        treasury_curve_prior=_snapshot_curve_points(treasury_prior),
+        cdb_curve_current=_snapshot_curve_points(cdb_current),
+        cdb_curve_prior=_snapshot_curve_points(cdb_prior),
+        aaa_credit_curve_current=_snapshot_curve_points(aaa_current),
+        aaa_credit_curve_prior=_snapshot_curve_points(aaa_prior),
         fx_rates_current=inputs["fx_rates_current"],
         fx_rates_prior=inputs["fx_rates_prior"],
     )
@@ -1623,7 +1702,7 @@ def _resolve_curve_for_service(
     )
 
 
-def _ordered_unique_warnings(values: list[str | None]) -> list[str]:
+def _ordered_unique_warnings(values: Sequence[str | None]) -> list[str]:
     """Drop empties, preserve order, remove exact duplicates (stable contract surface)."""
     seen: set[str] = set()
     out: list[str] = []
@@ -1897,7 +1976,7 @@ def _curve_warnings_for_return_rows(
     return selected
 
 
-def _select_benchmark_curve(curves: dict[str, object], curve_type: str) -> tuple:
+def _select_benchmark_curve(curves: _CurveSlots, curve_type: str) -> tuple:
     """Pick the (current, prior, current_warning, prior_warning) for the benchmark curve_type."""
     if curve_type == "treasury":
         return (curves["treasury_current"], curves["treasury_prior"],
@@ -1916,7 +1995,7 @@ def _fetch_benchmark_curves(
     report_date: str,
     prior_date: str,
     benchmark_id: str,
-) -> dict[str, object]:
+) -> _BenchmarkCurveBundle:
     """Fetch all curves needed for benchmark excess, including the benchmark curve itself."""
     curve_type = BENCHMARK_CURVE_TYPES.get(benchmark_id, "cdb")
     curves = _fetch_all_curve_pairs(
@@ -1993,7 +2072,7 @@ def _fetch_benchmark_curves_from_batch(
     report_date: str,
     prior_date: str,
     benchmark_id: str,
-) -> dict[str, object]:
+) -> _BenchmarkCurveBundle:
     curve_type = BENCHMARK_CURVE_TYPES.get(benchmark_id, "cdb")
     required = _required_curve_types_for_return_rows(rows) | {curve_type}
 
@@ -2010,13 +2089,13 @@ def _fetch_benchmark_curves_from_batch(
         report_date=report_date, prior_date=prior_date,
     )
 
-    treasury_prior = treasury_current.get("_prior_snapshot") if treasury_current else None
-    cdb_prior = cdb_current.get("_prior_snapshot") if cdb_current else None
-    aaa_prior = aaa_current.get("_prior_snapshot") if aaa_current else None
-    treasury_prior_warning = treasury_current.get("_prior_warning") if treasury_current else None
-    cdb_prior_warning = cdb_current.get("_prior_warning") if cdb_current else None
-    aaa_prior_warning = aaa_current.get("_prior_warning") if aaa_current else None
-    curves = {
+    treasury_prior = _optional_snapshot(treasury_current.get("_prior_snapshot")) if treasury_current else None
+    cdb_prior = _optional_snapshot(cdb_current.get("_prior_snapshot")) if cdb_current else None
+    aaa_prior = _optional_snapshot(aaa_current.get("_prior_snapshot")) if aaa_current else None
+    treasury_prior_warning = _optional_warning_text(treasury_current.get("_prior_warning")) if treasury_current else None
+    cdb_prior_warning = _optional_warning_text(cdb_current.get("_prior_warning")) if cdb_current else None
+    aaa_prior_warning = _optional_warning_text(aaa_current.get("_prior_warning")) if aaa_current else None
+    curves: _CurveSlots = {
         "treasury_current": treasury_current,
         "treasury_prior": treasury_prior,
         "treasury_current_warning": treasury_current_warning,
@@ -2076,7 +2155,7 @@ def _build_benchmark_excess_payload(
     period_start: date,
     period_end: date,
     benchmark_id: str,
-    summary: dict[str, object],
+    summary: dict[str, Any],
     meta,
     warnings: list[str],
 ) -> BenchmarkExcessResponse:
@@ -2120,8 +2199,8 @@ def _build_benchmark_excess_payload(
 def _build_benchmark_excess_warnings(
     *,
     rows: list[dict[str, object]],
-    summary: dict[str, object],
-    curves: dict[str, object],
+    summary: dict[str, Any],
+    curves: _BenchmarkCurveBundle,
     current_curve,
     prior_curve,
     treasury_current,
@@ -2197,8 +2276,8 @@ def _compute_benchmark_excess_summary(
     period_start: date,
     period_end: date,
     benchmark_id: str,
-    curves: dict[str, object],
-) -> dict[str, object]:
+    curves: _BenchmarkCurveBundle,
+) -> dict[str, Any]:
     """Compute benchmark excess summary from pre-fetched curve data."""
     current_curve = curves["current_curve"]
     prior_curve = curves["prior_curve"]
@@ -2213,14 +2292,14 @@ def _compute_benchmark_excess_summary(
         period_start=period_start,
         period_end=period_end,
         benchmark_id=benchmark_id,
-        benchmark_curve_current=current_curve["curve"] if current_curve and prior_curve else None,
-        benchmark_curve_prior=prior_curve["curve"] if current_curve and prior_curve else None,
-        treasury_curve_current=treasury_current["curve"] if treasury_current and treasury_prior else None,
-        treasury_curve_prior=treasury_prior["curve"] if treasury_current and treasury_prior else None,
-        cdb_curve_current=cdb_current["curve"] if cdb_current and cdb_prior else None,
-        cdb_curve_prior=cdb_prior["curve"] if cdb_current and cdb_prior else None,
-        aaa_credit_curve_current=aaa_current["curve"] if aaa_current and aaa_prior else None,
-        aaa_credit_curve_prior=aaa_prior["curve"] if aaa_current and aaa_prior else None,
+        benchmark_curve_current=_snapshot_curve_points(current_curve) if current_curve and prior_curve else None,
+        benchmark_curve_prior=_snapshot_curve_points(prior_curve) if current_curve and prior_curve else None,
+        treasury_curve_current=_snapshot_curve_points(treasury_current) if treasury_current and treasury_prior else None,
+        treasury_curve_prior=_snapshot_curve_points(treasury_prior) if treasury_current and treasury_prior else None,
+        cdb_curve_current=_snapshot_curve_points(cdb_current) if cdb_current and cdb_prior else None,
+        cdb_curve_prior=_snapshot_curve_points(cdb_prior) if cdb_current and cdb_prior else None,
+        aaa_credit_curve_current=_snapshot_curve_points(aaa_current) if aaa_current and aaa_prior else None,
+        aaa_credit_curve_prior=_snapshot_curve_points(aaa_prior) if aaa_current and aaa_prior else None,
     )
 
 
@@ -2233,7 +2312,7 @@ def _build_benchmark_excess_envelope_from_inputs(
     benchmark_id: str,
     rows: list[dict[str, object]],
     meta,
-    curves: dict[str, object],
+    curves: _BenchmarkCurveBundle,
 ) -> dict[str, object]:
     meta = _apply_vendor_meta_update(
         meta,
@@ -2548,7 +2627,7 @@ def _fetch_credit_curves(
     *,
     curve_repo: YieldCurveRepository,
     trade_date: str,
-) -> dict[str, object]:
+) -> _CreditCurveBundle:
     """Fetch treasury + aaa_credit snapshots for credit spread analysis (single date, no prior needed).
 
     Returns dict with keys:
@@ -2581,7 +2660,7 @@ def _build_credit_spread_payload(
     *,
     report_date: date,
     credit_rows: list[dict[str, object]],
-    summary: dict[str, object],
+    summary: dict[str, Any],
     spread_scenarios: str,
     meta,
     warnings: list[str],
@@ -2658,8 +2737,8 @@ def get_credit_spread_migration(report_date: date, spread_scenarios: str = "10,2
     summary = summarize_credit(
         credit_rows,
         total_rows=all_rows,
-        aaa_credit_curve_current=aaa_current["curve"] if aaa_current else None,
-        treasury_curve_current=treasury_current["curve"] if treasury_current else None,
+        aaa_credit_curve_current=_snapshot_curve_points(aaa_current),
+        treasury_curve_current=_snapshot_curve_points(treasury_current),
     )
     spread_level_incomplete = (
         bool(credit_rows)
@@ -2693,7 +2772,7 @@ def get_credit_spread_migration(report_date: date, spread_scenarios: str = "10,2
     )
 
 
-def _to_concentration_model(payload: dict[str, object] | None) -> ConcentrationMetrics | None:
+def _to_concentration_model(payload: dict[str, Any] | None) -> ConcentrationMetrics | None:
     if payload is None:
         return None
     return ConcentrationMetrics.model_validate(
@@ -2751,7 +2830,7 @@ def _build_portfolio_headlines_empty_response(report_date: date) -> dict:
     )
 
 
-def _compute_portfolio_headlines_metrics(rows: list[dict[str, object]]) -> dict[str, object]:
+def _compute_portfolio_headlines_metrics(rows: list[dict[str, object]]) -> dict[str, Any]:
     """Compute all metrics for portfolio headlines."""
     risk = summarize_portfolio_risk(rows)
     rate_duration_rows = _rate_duration_rows(rows)
@@ -3020,6 +3099,8 @@ def get_dv01_movement(report_date: date, accounting_class: str = "OCI", top_n: i
             rows=[*current_rows, *previous_rows],
         )
 
+    # previous_rows is non-empty past the early return above, which requires previous_date.
+    assert previous_date is not None
     movement_payloads = dv01_core.build_dv01_movement_bond_payloads(
         current_rows=current_rows,
         previous_rows=previous_rows,
@@ -3272,7 +3353,7 @@ def get_dv01_action_plan(
     )
 
 
-def _positive_decimal_or_default(value: str | int | float | Decimal | None, default: Decimal) -> Decimal:
+def _positive_decimal_or_default(value: object, default: Decimal) -> Decimal:
     parsed = safe_decimal(value)
     if parsed <= ZERO:
         return default
@@ -3778,6 +3859,8 @@ def get_position_changes(report_date: date, top_n: int = 5) -> dict:
             result_payload=payload.model_dump(mode="json"),
         )
 
+    # previous_rows is non-empty past the early return above, which requires prev_report_date.
+    assert prev_report_date is not None
     by_current = {str(row.get("instrument_code") or "").strip(): row for row in current_rows}
     by_previous = {str(row.get("instrument_code") or "").strip(): row for row in previous_rows}
     instrument_codes = sorted((set(by_current) | set(by_previous)) - {""})

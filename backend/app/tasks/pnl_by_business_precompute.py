@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from typing import Any, TypedDict
 
 from backend.app.config.product_category_mapping import resolve_product_category_ftp_rate_pct
 from backend.app.core_finance.field_normalization import original_asset_currency_from_instrument_code
@@ -44,6 +46,38 @@ from backend.app.services.pnl_by_business_unallocated import (
 
 TWOPLACES = Decimal("0.01")
 RATIOPLACES = Decimal("0.000001")
+
+
+class _AnalysisDimensionBucket(TypedDict):
+    dimension_key: str
+    dimension_label: str
+    interest_income: Decimal
+    fair_value_change: Decimal
+    capital_gain: Decimal
+    manual_adjustment: Decimal
+    total_pnl: Decimal
+    asset_codes: set[str]
+
+
+class _MonthlyBusinessGroup(TypedDict):
+    row_key: str
+    sort_order: int
+    business_type: str
+    source_note: str
+    interest_income: Decimal
+    fair_value_change: Decimal
+    capital_gain: Decimal
+    manual_adjustment: Decimal
+    total_pnl: Decimal
+    asset_codes: set[str]
+    row_count: int
+
+
+class _AnalysisFtpValues(TypedDict):
+    ftp_rate_pct: Decimal
+    ftp_cost: Decimal | None
+    ftp_net_pnl: Decimal | None
+    ftp_net_annualized_yield_pct: Decimal | None
 PNL_BY_BUSINESS_GLOBAL_ANALYSIS_DIMENSIONS: tuple[PnlByBusinessAnalysisDimension, ...] = (
     "bond_bucket",
     "bond_bucket_monthly",
@@ -360,7 +394,7 @@ def _build_pnl_by_business_analysis_payloads_for_precompute(
     for report_date in sorted(loaded_dates):
         month_end_by_month[str(report_date)[:7]] = str(report_date)
 
-    bucket_maps: dict[tuple[str | None, PnlByBusinessAnalysisDimension], dict[str, dict[str, object]]] = {}
+    bucket_maps: dict[tuple[str | None, PnlByBusinessAnalysisDimension], dict[str, _AnalysisDimensionBucket]] = {}
     avg_sums: dict[tuple[str | None, PnlByBusinessAnalysisDimension, str], Decimal] = {}
     current_sums: dict[tuple[str | None, PnlByBusinessAnalysisDimension, str], Decimal] = {}
     coverage_dates = {_norm_text(row.get("report_date")) for row in balance_rows if _norm_text(row.get("report_date"))}
@@ -374,7 +408,7 @@ def _build_pnl_by_business_analysis_payloads_for_precompute(
     def _bucket_map(
         business_key: str | None,
         dimension: PnlByBusinessAnalysisDimension,
-    ) -> dict[str, dict[str, object]]:
+    ) -> dict[str, _AnalysisDimensionBucket]:
         map_key = (business_key, dimension)
         if map_key not in bucket_maps:
             bucket_maps[map_key] = {}
@@ -563,7 +597,7 @@ def _build_pnl_by_business_analysis_payloads_for_precompute(
 
 def _analysis_rows_from_precompute_buckets(
     *,
-    bucket_map: dict[str, dict[str, object]],
+    bucket_map: dict[str, _AnalysisDimensionBucket],
     avg_sums: dict[tuple[str | None, PnlByBusinessAnalysisDimension, str], Decimal],
     current_sums: dict[tuple[str | None, PnlByBusinessAnalysisDimension, str], Decimal],
     coverage_dates: set[str],
@@ -619,7 +653,7 @@ def _analysis_rows_from_precompute_buckets(
     return rows
 
 def _analysis_dimension_row_sort_key(
-    item: dict[str, object],
+    item: Mapping[str, object],
     dimension: PnlByBusinessAnalysisDimension,
 ) -> tuple[object, ...]:
     if dimension == "monthly":
@@ -693,7 +727,7 @@ def _build_pnl_by_business_monthly_buckets(
     for month_key, month_end in sorted(month_end_by_month.items()):
         month_start = f"{month_key}-01"
         calendar_days = _calendar_days(month_start, month_end)
-        groups: dict[str, dict[str, object]] = {
+        groups: dict[str, _MonthlyBusinessGroup] = {
             str(row_def["row_key"]): _new_monthly_business_group(row_def) for row_def in ZQTZ_ASSET_BOND_ROWS
         }
         source_total_pnl = Decimal("0")
@@ -757,7 +791,7 @@ def _build_pnl_by_business_monthly_buckets(
                     )
 
         denom = len(coverage_dates)
-        item_inputs: list[tuple[dict[str, object], Decimal, Decimal]] = []
+        item_inputs: list[tuple[_MonthlyBusinessGroup, Decimal, Decimal]] = []
         parent_total = Decimal("0")
         for group in sorted(groups.values(), key=lambda item: (int(item["sort_order"]), str(item["row_key"]))):
             row_key = str(group["row_key"])
@@ -831,7 +865,7 @@ def _build_pnl_by_business_monthly_buckets(
         )
     return buckets
 
-def _new_monthly_business_group(row_def: dict[str, object]) -> dict[str, object]:
+def _new_monthly_business_group(row_def: dict[str, Any]) -> _MonthlyBusinessGroup:
     return {
         "row_key": str(row_def["row_key"]),
         "sort_order": int(row_def["sort_order"]),
@@ -847,7 +881,7 @@ def _new_monthly_business_group(row_def: dict[str, object]) -> dict[str, object]
     }
 
 def _merge_monthly_business_pnl_row(
-    groups: dict[str, dict[str, object]],
+    groups: dict[str, _MonthlyBusinessGroup],
     row_def: dict[str, object],
     row: dict[str, object],
 ) -> None:
@@ -865,7 +899,7 @@ def _merge_monthly_business_pnl_row(
 
 def _monthly_business_item_from_group(
     *,
-    group: dict[str, object],
+    group: _MonthlyBusinessGroup,
     avg_balance: Decimal,
     current_balance: Decimal,
     total_pnl_for_proportion: Decimal,
@@ -946,7 +980,7 @@ def _monthly_business_summary_from_items(
 def _is_parent_monthly_business_item(item: PnlByBusinessMonthlyItem) -> bool:
     return is_parent_zqtz_business_row(item.row_key, item.business_type, item.source_note)
 
-def _new_analysis_dimension_bucket(dimension_key: str, dimension_label: str) -> dict[str, object]:
+def _new_analysis_dimension_bucket(dimension_key: str, dimension_label: str) -> _AnalysisDimensionBucket:
     return {
         "dimension_key": dimension_key,
         "dimension_label": dimension_label,
@@ -1211,7 +1245,7 @@ def _analysis_ftp_values(
     annualized_yield_pct: Decimal | None,
     calendar_days: int,
     ftp_rate_pct: Decimal,
-) -> dict[str, Decimal | None]:
+) -> _AnalysisFtpValues:
     yield_ftp = compute_pnl_by_business_yield_and_ftp(
         total_pnl=total_pnl,
         avg_balance=avg_balance,

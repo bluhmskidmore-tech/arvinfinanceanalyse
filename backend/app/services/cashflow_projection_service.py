@@ -4,6 +4,7 @@ import calendar
 import uuid
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
+from typing import TypedDict
 
 from backend.app.core_finance.bond_duration import estimate_duration
 from backend.app.core_finance.cashflow_projection import MonthlyBucket, compute_duration_gap
@@ -31,6 +32,25 @@ DATE_BASIS = "cashflow_projection_report_date"
 ZQTZ_FORMAL_TABLE = "fact_formal_zqtz_balance_daily"
 TYW_FORMAL_TABLE = "fact_formal_tyw_balance_daily"
 TYWL_DEMAND_PRODUCTS = frozenset({"同业存放", "存放同业"})
+
+
+class _MaturingCandidate(TypedDict):
+    instrument_code: str
+    instrument_name: str
+    maturity_date: date
+    face_value: Decimal
+    market_value: Decimal
+    currency_code: str
+
+
+class _QualityDisclosures(TypedDict):
+    floating_rate_proxy_count: int
+    floating_rate_proxy_market_value: Decimal
+    payment_frequency_fallback_count: int
+    payment_frequency_fallback_market_value: Decimal
+    bullet_value_date_fallback_count: int
+    bullet_value_date_fallback_market_value: Decimal
+    warnings: list[str]
 
 
 def get_cashflow_projection(report_date: date) -> dict[str, object]:
@@ -89,30 +109,34 @@ def get_cashflow_projection(report_date: date) -> dict[str, object]:
         source_surface="cashflow",
     )
 
-    response = CashflowProjectionResponse(
-        report_date=report_date,
-        duration_gap=numeric_json(result.duration_gap, "years", True),
-        asset_duration=numeric_json(result.asset_weighted_duration, "years", False),
-        liability_duration=numeric_json(result.liability_weighted_duration, "years", False),
-        equity_duration=numeric_json(result.equity_duration, "years", True),
-        rate_sensitivity_1bp=numeric_json(result.rate_sensitivity_1bp, "yuan", True),
-        reinvestment_risk_12m=_ratio_pct_numeric_json(result.reinvestment_risk_12m),
-        monthly_buckets=[_serialize_monthly_bucket(bucket) for bucket in result.monthly_buckets],
-        top_maturing_assets_12m=_build_top_maturing_assets_12m(zqtz_rows, tyw_rows, report_date),
-        floating_rate_proxy_count=int(quality_disclosures["floating_rate_proxy_count"]),
-        floating_rate_proxy_market_value=numeric_json(
-            Decimal(quality_disclosures["floating_rate_proxy_market_value"]), "yuan", False
-        ),
-        payment_frequency_fallback_count=int(quality_disclosures["payment_frequency_fallback_count"]),
-        payment_frequency_fallback_market_value=numeric_json(
-            Decimal(quality_disclosures["payment_frequency_fallback_market_value"]), "yuan", False
-        ),
-        bullet_value_date_fallback_count=int(quality_disclosures["bullet_value_date_fallback_count"]),
-        bullet_value_date_fallback_market_value=numeric_json(
-            Decimal(quality_disclosures["bullet_value_date_fallback_market_value"]), "yuan", False
-        ),
-        warnings=[*result.warnings, *quality_disclosures["warnings"]],
-        computed_at=meta.generated_at.isoformat(),
+    # model_validate shares the same validation pipeline as __init__ but accepts
+    # the Numeric-JSON dicts that the mode="before" validators are designed for.
+    response = CashflowProjectionResponse.model_validate(
+        {
+            "report_date": report_date,
+            "duration_gap": numeric_json(result.duration_gap, "years", True),
+            "asset_duration": numeric_json(result.asset_weighted_duration, "years", False),
+            "liability_duration": numeric_json(result.liability_weighted_duration, "years", False),
+            "equity_duration": numeric_json(result.equity_duration, "years", True),
+            "rate_sensitivity_1bp": numeric_json(result.rate_sensitivity_1bp, "yuan", True),
+            "reinvestment_risk_12m": _ratio_pct_numeric_json(result.reinvestment_risk_12m),
+            "monthly_buckets": [_serialize_monthly_bucket(bucket) for bucket in result.monthly_buckets],
+            "top_maturing_assets_12m": _build_top_maturing_assets_12m(zqtz_rows, tyw_rows, report_date),
+            "floating_rate_proxy_count": int(quality_disclosures["floating_rate_proxy_count"]),
+            "floating_rate_proxy_market_value": numeric_json(
+                Decimal(quality_disclosures["floating_rate_proxy_market_value"]), "yuan", False
+            ),
+            "payment_frequency_fallback_count": int(quality_disclosures["payment_frequency_fallback_count"]),
+            "payment_frequency_fallback_market_value": numeric_json(
+                Decimal(quality_disclosures["payment_frequency_fallback_market_value"]), "yuan", False
+            ),
+            "bullet_value_date_fallback_count": int(quality_disclosures["bullet_value_date_fallback_count"]),
+            "bullet_value_date_fallback_market_value": numeric_json(
+                Decimal(quality_disclosures["bullet_value_date_fallback_market_value"]), "yuan", False
+            ),
+            "warnings": [*result.warnings, *quality_disclosures["warnings"]],
+            "computed_at": meta.generated_at.isoformat(),
+        }
     )
     return build_formal_result_envelope(
         result_meta=meta,
@@ -153,7 +177,7 @@ def _build_top_maturing_assets_12m(
     report_date: date,
 ) -> list[dict[str, object]]:
     horizon_end = date(report_date.year + 1, report_date.month, report_date.day)
-    candidates: list[dict[str, object]] = []
+    candidates: list[_MaturingCandidate] = []
 
     for row in zqtz_rows:
         if _row_scope(row) != "asset":
@@ -351,7 +375,7 @@ def _materialized_macaulay_duration(value: object) -> Decimal | None:
 
 def _cashflow_projection_quality_disclosures(
     rows: list[dict[str, object]],
-) -> dict[str, object]:
+) -> _QualityDisclosures:
     floating_rows: list[dict[str, object]] = []
     frequency_fallback_rows: list[dict[str, object]] = []
     bullet_value_date_fallback_rows: list[dict[str, object]] = []

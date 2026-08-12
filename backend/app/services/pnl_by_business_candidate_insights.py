@@ -26,6 +26,7 @@ from calendar import monthrange
 from collections.abc import Mapping
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 from backend.app.core_finance.pnl import TWOPLACES
 from backend.app.core_finance.pnl_by_business_insights import (
@@ -43,6 +44,8 @@ from backend.app.schemas.pnl import (
 from backend.app.services import pnl_service
 from backend.app.services.formal_result_runtime import (
     FallbackMode,
+    QualityFlag,
+    ResultBasis,
     VendorStatus,
     build_result_envelope,
 )
@@ -87,12 +90,12 @@ def _parent_rows(items: list[dict[str, object]]) -> list[dict[str, object]]:
     ]
 
 
-def _envelope_meta(envelope: Mapping[str, object]) -> dict[str, object]:
+def _envelope_meta(envelope: Mapping[str, object]) -> dict[str, Any]:
     meta = envelope.get("result_meta")
     return dict(meta) if isinstance(meta, Mapping) else {}
 
 
-def _envelope_result(envelope: Mapping[str, object]) -> dict[str, object]:
+def _envelope_result(envelope: Mapping[str, object]) -> dict[str, Any]:
     result = envelope.get("result")
     return dict(result) if isinstance(result, Mapping) else {}
 
@@ -477,7 +480,7 @@ def _component_evidence(
             if table_name and table_name not in tables_used:
                 tables_used.append(table_name)
     fallback_mode = _normalized_fallback_mode(envelope)
-    evidence = {
+    evidence: dict[str, object] = {
         "component": component,
         "requested_report_date": requested,
         "resolved_report_date": resolved,
@@ -549,7 +552,10 @@ def _component_admission_reason(
         return "unusable_quality"
     if evidence.get("vendor_status") != "ok":
         return "unusable_vendor"
-    tables_used = {str(table) for table in evidence.get("tables_used", [])}
+    tables_used_raw = evidence.get("tables_used", [])
+    # Evidence dicts always carry tables_used as a list (see _component_evidence).
+    assert isinstance(tables_used_raw, list)
+    tables_used = {str(table) for table in tables_used_raw}
     if any(table.startswith(prefix) for table in tables_used for prefix in _NONFORMAL_COMPONENT_TABLE_PREFIXES):
         return "nonformal_source_tables"
     if not _FORMAL_COMPONENT_REQUIRED_TABLES.issubset(tables_used):
@@ -589,7 +595,7 @@ def _build_insights_components(
     governance_dir: str,
     year: int,
     as_of_date: str,
-) -> tuple[dict[str, object], list[dict[str, object]], str, bool]:
+) -> tuple[dict[str, Any], list[dict[str, object]], str, bool]:
     current_envelope = pnl_service.pnl_by_business_ytd_envelope(
         duckdb_path=duckdb_path,
         governance_dir=governance_dir,
@@ -681,19 +687,19 @@ def _build_insights_components(
         )
 
     monthly_envelope_by_component: dict[str, dict[str, object]] = {}
-    for index, monthly_envelope in enumerate(monthly_envelopes, start=1):
-        monthly_meta = _envelope_meta(monthly_envelope)
+    for index, indexed_monthly_envelope in enumerate(monthly_envelopes, start=1):
+        monthly_meta = _envelope_meta(indexed_monthly_envelope)
         monthly_date = str(monthly_meta.get("requested_report_date") or monthly_meta.get("resolved_report_date") or "")
         monthly_suffix = monthly_date[:4] if len(monthly_date) >= 4 else str(index)
         component = f"monthly_{monthly_suffix}"
-        monthly_envelope_by_component[component] = monthly_envelope
+        monthly_envelope_by_component[component] = indexed_monthly_envelope
 
     expected_monthly_years = sorted({int(month_key[:4]) for month_key in window_month_keys})
     current_year = int(resolved_date[:4])
     for monthly_year in expected_monthly_years:
         component = f"monthly_{monthly_year}"
         requested_date = resolved_date if monthly_year == current_year else f"{monthly_year}-12-31"
-        monthly_envelope = monthly_envelope_by_component.pop(component, None)
+        monthly_envelope: dict[str, object] | None = monthly_envelope_by_component.pop(component, None)
         if monthly_envelope is None:
             evidence = _unavailable_component_evidence(
                 component,
@@ -811,7 +817,7 @@ def _insights_quality_flag(
     negative_ftp_available: bool,
     monthly_source_complete: bool,
     reconciliation_available: bool = True,
-) -> str:
+) -> QualityFlag:
     allowed_qualities = {"ok", "warning", "error", "stale"}
     qualities = {str(_envelope_meta(envelope).get("quality_flag") or "error") for envelope in envelopes}
     if "error" in qualities or any(quality not in allowed_qualities for quality in qualities):
@@ -835,7 +841,7 @@ def _insights_quality_flag(
 
 def _build_insights_envelope(
     *,
-    basis: str,
+    basis: ResultBasis,
     result_kind: str,
     cache_version: str,
     rule_version: str,
@@ -938,7 +944,9 @@ def pnl_by_business_candidate_insights_envelope(
         year=year,
         as_of_date=as_of_date,
     )
-    assert envelope["result_meta"]["formal_use_allowed"] is False
+    candidate_meta = envelope["result_meta"]
+    assert isinstance(candidate_meta, dict)
+    assert candidate_meta["formal_use_allowed"] is False
     return envelope
 
 
@@ -961,5 +969,7 @@ def pnl_by_business_insights_envelope(
         year=year,
         as_of_date=as_of_date,
     )
-    assert envelope["result_meta"]["formal_use_allowed"] is True
+    formal_meta = envelope["result_meta"]
+    assert isinstance(formal_meta, dict)
+    assert formal_meta["formal_use_allowed"] is True
     return envelope

@@ -29,7 +29,9 @@ try:
 except ImportError:
     from backend.app.repositories import yield_curve_repo as _yield_curve_repo
 
-    YieldCurveRepository = _yield_curve_repo.YieldCurveRepository
+    # Runtime fallback rebinding of the class name; mypy cannot model
+    # conditional re-assignment of an imported type.
+    YieldCurveRepository = _yield_curve_repo.YieldCurveRepository  # type: ignore[misc]
     YIELD_CURVE_LATEST_FALLBACK_PREFIX = getattr(
         _yield_curve_repo,
         "YIELD_CURVE_LATEST_FALLBACK_PREFIX",
@@ -60,6 +62,9 @@ from backend.app.schemas.pnl_bridge import (
 )
 from backend.app.services.explicit_numeric import promote_flat_payload
 from backend.app.services.formal_result_runtime import (
+    FallbackMode,
+    QualityFlag,
+    VendorStatus,
     build_formal_result_envelope,
     build_formal_result_meta,
 )
@@ -144,9 +149,9 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
         report_date=report_date,
         prior_date=prior_date,
     )
-    treasury_prior = treasury_current.get("_prior_snapshot") if treasury_current else None
-    cdb_prior = cdb_current.get("_prior_snapshot") if cdb_current else None
-    aaa_prior = aaa_current.get("_prior_snapshot") if aaa_current else None
+    treasury_prior = _optional_snapshot(treasury_current.get("_prior_snapshot")) if treasury_current else None
+    cdb_prior = _optional_snapshot(cdb_current.get("_prior_snapshot")) if cdb_current else None
+    aaa_prior = _optional_snapshot(aaa_current.get("_prior_snapshot")) if aaa_current else None
     treasury_prior_warning = _optional_warning(treasury_current, "_prior_warning")
     cdb_prior_warning = _optional_warning(cdb_current, "_prior_warning")
     aaa_prior_warning = _optional_warning(aaa_current, "_prior_warning")
@@ -256,6 +261,8 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
     # Curve trade dates are never promoted to fallback_date.
     resolved_report_date = str(payload.report_date)
     pnl_lineage_fallback = lineage.get("_lineage_fallback_mode") == "latest_snapshot"
+    fallback_mode: FallbackMode
+    vendor_status: VendorStatus
     if curve_unavailable:
         # Mixed vendor_unavailable + latest_snapshot: vendor_status reports unavailable,
         # while quality_flag still merges stale from curve_latest_fallback (intentional).
@@ -304,7 +311,7 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
     )
 
 
-def _merge_bridge_quality_flag(*, summary_quality: str, curve_latest_fallback: bool) -> str:
+def _merge_bridge_quality_flag(*, summary_quality: str, curve_latest_fallback: bool) -> QualityFlag:
     # error > stale > warning > ok; latest_snapshot adds stale; vendor_unavailable does not.
     flags = {summary_quality}
     if curve_latest_fallback:
@@ -325,25 +332,29 @@ def _build_summary(rows: list[PnlBridgeRow]) -> PnlBridgeSummarySchema:
     elif any(row.quality_flag == "warning" for row in rows):
         worst_quality = "warning"
 
-    return PnlBridgeSummarySchema(
-        row_count=len(rows),
-        ok_count=ok_count,
-        warning_count=warning_count,
-        error_count=error_count,
-        total_beginning_dirty_mv=sum((row.beginning_dirty_mv for row in rows), ZERO),
-        total_ending_dirty_mv=sum((row.ending_dirty_mv for row in rows), ZERO),
-        total_carry=sum((row.carry for row in rows), ZERO),
-        total_roll_down=sum((row.roll_down for row in rows), ZERO),
-        total_treasury_curve=sum((row.treasury_curve for row in rows), ZERO),
-        total_credit_spread=sum((row.credit_spread for row in rows), ZERO),
-        total_fx_translation=sum((row.fx_translation for row in rows), ZERO),
-        total_realized_trading=sum((row.realized_trading for row in rows), ZERO),
-        total_unrealized_fv=sum((row.unrealized_fv for row in rows), ZERO),
-        total_manual_adjustment=sum((row.manual_adjustment for row in rows), ZERO),
-        total_explained_pnl=sum((row.explained_pnl for row in rows), ZERO),
-        total_actual_pnl=sum((row.actual_pnl for row in rows), ZERO),
-        total_residual=sum((row.residual for row in rows), ZERO),
-        quality_flag=worst_quality,
+    # model_validate shares the same validation pipeline as __init__ but accepts
+    # the Decimal inputs that the mode="before" coercion validator is designed for.
+    return PnlBridgeSummarySchema.model_validate(
+        {
+            "row_count": len(rows),
+            "ok_count": ok_count,
+            "warning_count": warning_count,
+            "error_count": error_count,
+            "total_beginning_dirty_mv": sum((row.beginning_dirty_mv for row in rows), ZERO),
+            "total_ending_dirty_mv": sum((row.ending_dirty_mv for row in rows), ZERO),
+            "total_carry": sum((row.carry for row in rows), ZERO),
+            "total_roll_down": sum((row.roll_down for row in rows), ZERO),
+            "total_treasury_curve": sum((row.treasury_curve for row in rows), ZERO),
+            "total_credit_spread": sum((row.credit_spread for row in rows), ZERO),
+            "total_fx_translation": sum((row.fx_translation for row in rows), ZERO),
+            "total_realized_trading": sum((row.realized_trading for row in rows), ZERO),
+            "total_unrealized_fv": sum((row.unrealized_fv for row in rows), ZERO),
+            "total_manual_adjustment": sum((row.manual_adjustment for row in rows), ZERO),
+            "total_explained_pnl": sum((row.explained_pnl for row in rows), ZERO),
+            "total_actual_pnl": sum((row.actual_pnl for row in rows), ZERO),
+            "total_residual": sum((row.residual for row in rows), ZERO),
+            "quality_flag": worst_quality,
+        }
     )
 
 
@@ -699,6 +710,11 @@ def _optional_warning(snapshot: dict[str, object] | None, key: str) -> str | Non
 
 def _snapshot_dict(value: object) -> dict[str, object]:
     return value if isinstance(value, dict) else {}
+
+
+def _optional_snapshot(value: object) -> dict[str, object] | None:
+    # "_prior_snapshot" is stored as dict | None by _resolve_curve_pair_if_needed.
+    return value if isinstance(value, dict) else None
 
 
 def _curve_points(snapshot: dict[str, object] | None) -> dict[str, Decimal] | None:

@@ -3,11 +3,15 @@ from __future__ import annotations
 from pathlib import Path
 
 from backend.app.core_finance.balance_analysis import (
+    BalancePositionScope,
+    FormalTywBalanceFactRow,
+    FormalZqtzBalanceFactRow,
     project_tyw_formal_balance_row,
     project_zqtz_formal_balance_row,
 )
 from backend.app.core_finance.module_contracts import FormalComputeModuleDescriptor
 from backend.app.core_finance.module_registry import ensure_formal_module
+from backend.app.governance.locks import LockDefinition
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
 from backend.app.repositories.governance_repo import GovernanceRepository
@@ -42,7 +46,10 @@ BALANCE_ANALYSIS_MODULE = ensure_formal_module(
 )
 BALANCE_ANALYSIS_FORMAL_BASIS = BALANCE_ANALYSIS_MODULE.basis
 CACHE_KEY = BALANCE_ANALYSIS_MODULE.cache_key
-BALANCE_ANALYSIS_LOCK = BALANCE_ANALYSIS_MODULE.lock_definition
+BALANCE_ANALYSIS_LOCK = LockDefinition(
+    key=BALANCE_ANALYSIS_MODULE.lock_key,
+    ttl_seconds=BALANCE_ANALYSIS_MODULE.lock_ttl_seconds,
+)
 RULE_VERSION = BALANCE_ANALYSIS_MODULE.rule_version
 CACHE_VERSION = BALANCE_ANALYSIS_MODULE.cache_version
 _DIRECT_ZQTZ_INVEST_TYPE_LABELS = frozenset(
@@ -186,13 +193,13 @@ def _execute_balance_analysis_materialization(
         ingest_batch_id=tyw_ingest_batch_id,
     )
 
-    zqtz_fact_rows = []
-    tyw_fact_rows = []
+    zqtz_fact_rows: list[FormalZqtzBalanceFactRow] = []
+    tyw_fact_rows: list[FormalTywBalanceFactRow] = []
     source_versions: set[str] = set()
     fx_source_versions: set[str] = set()
 
     for row in zqtz_snapshot_rows:
-        position_scope = "liability" if row.is_issuance_like else "asset"
+        position_scope: BalancePositionScope = "liability" if row.is_issuance_like else "asset"
         invest_type_raw = (
             row.asset_class
             if row.asset_class in _DIRECT_ZQTZ_INVEST_TYPE_LABELS
@@ -226,32 +233,38 @@ def _execute_balance_analysis_materialization(
         if fx_lookup.source_version and fx_lookup.source_version != "sv_fx_identity":
             fx_source_versions.add(fx_lookup.source_version)
 
-    for row in tyw_snapshot_rows:
-        position_scope = row.position_side if row.position_side in {"asset", "liability"} else "all"
-        invest_type_raw = row.product_type or row.account_type
-        native_row = project_tyw_formal_balance_row(
-            row,
+    for tyw_row in tyw_snapshot_rows:
+        # Equivalent to: position_side if position_side in {"asset", "liability"} else "all".
+        if tyw_row.position_side == "asset":
+            position_scope = "asset"
+        elif tyw_row.position_side == "liability":
+            position_scope = "liability"
+        else:
+            position_scope = "all"
+        invest_type_raw = tyw_row.product_type or tyw_row.account_type
+        tyw_native_row = project_tyw_formal_balance_row(
+            tyw_row,
             invest_type_raw=invest_type_raw,
             position_scope=position_scope,
             currency_basis="native",
         )
-        tyw_fact_rows.append(native_row)
-        if native_row.source_version:
-            source_versions.add(native_row.source_version)
+        tyw_fact_rows.append(tyw_native_row)
+        if tyw_native_row.source_version:
+            source_versions.add(tyw_native_row.source_version)
         fx_lookup = repo.lookup_formal_fx_rate(
             report_date=report_date,
-            base_currency=row.currency_code,
+            base_currency=tyw_row.currency_code,
         )
-        cny_row = project_tyw_formal_balance_row(
-            row,
+        tyw_cny_row = project_tyw_formal_balance_row(
+            tyw_row,
             invest_type_raw=invest_type_raw,
             position_scope=position_scope,
             currency_basis="CNY",
             fx_rate=fx_lookup.rate,
         )
-        tyw_fact_rows.append(cny_row)
-        if cny_row.source_version:
-            source_versions.add(cny_row.source_version)
+        tyw_fact_rows.append(tyw_cny_row)
+        if tyw_cny_row.source_version:
+            source_versions.add(tyw_cny_row.source_version)
         if fx_lookup.source_version and fx_lookup.source_version != "sv_fx_identity":
             fx_source_versions.add(fx_lookup.source_version)
 

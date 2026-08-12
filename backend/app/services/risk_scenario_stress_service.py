@@ -24,8 +24,13 @@ def risk_scenario_stress_envelope(
         governance_dir=governance_dir,
         report_date=report_date_text,
     )
-    tensor_result = dict(tensor_envelope["result"])
-    tensor_meta = dict(tensor_envelope["result_meta"])
+    tensor_result_raw = tensor_envelope["result"]
+    tensor_meta_raw = tensor_envelope["result_meta"]
+    # build_formal_result_envelope always stores dict payloads under these keys.
+    assert isinstance(tensor_result_raw, dict)
+    assert isinstance(tensor_meta_raw, dict)
+    tensor_result = dict(tensor_result_raw)
+    tensor_meta = dict(tensor_meta_raw)
     scenarios = _scenario_rows(tensor_result)
     source_warnings = [str(item) for item in tensor_result.get("warnings") or []]
 
@@ -38,8 +43,10 @@ def risk_scenario_stress_envelope(
         rule_version=RULE_VERSION,
         quality_flag="warning",
         vendor_version=str(tensor_meta.get("vendor_version") or "vv_none"),
-        vendor_status=str(tensor_meta.get("vendor_status") or "ok"),
-        fallback_mode=str(tensor_meta.get("fallback_mode") or "none"),
+        # Values come from a validated ResultMeta dump; an out-of-set value would
+        # still fail inside ResultMeta construction downstream (behavior preserved).
+        vendor_status=str(tensor_meta.get("vendor_status") or "ok"),  # type: ignore[arg-type]
+        fallback_mode=str(tensor_meta.get("fallback_mode") or "none"),  # type: ignore[arg-type]
         filters_applied={"report_date": report_date_text},
         tables_used=["fact_formal_risk_tensor_daily"],
         evidence_rows=1,
@@ -91,13 +98,13 @@ def _rate_scenario(tensor_result: dict[str, Any]) -> dict[str, Any]:
         "label": "利率平行上行 10bp",
         "source_field": "regulatory_dv01",
         "shock": numeric_from_raw(
-            raw=shock_bp,
+            raw=float(shock_bp),
             unit="bp",
             precision=0,
             sign_aware=True,
         ).model_dump(mode="json"),
         "estimated_impact": numeric_from_raw(
-            raw=impact,
+            raw=_as_float(impact),
             unit="yuan",
             precision=2,
             sign_aware=True,
@@ -119,9 +126,9 @@ def _credit_scenario(tensor_result: dict[str, Any]) -> dict[str, Any]:
         "scenario_key": "credit_spread_up_10bp",
         "label": "信用利差走阔 10bp",
         "source_field": "cs01",
-        "shock": numeric_from_raw(raw=shock_bp, unit="bp", precision=0, sign_aware=True).model_dump(mode="json"),
+        "shock": numeric_from_raw(raw=float(shock_bp), unit="bp", precision=0, sign_aware=True).model_dump(mode="json"),
         "estimated_impact": numeric_from_raw(
-            raw=impact,
+            raw=_as_float(impact),
             unit="yuan",
             precision=2,
             sign_aware=True,
@@ -174,8 +181,8 @@ def _liquidity_scenario(tensor_result: dict[str, Any]) -> dict[str, Any]:
         "source_field": "asset_cashflow_30d/liability_cashflow_30d/liquidity_gap_30d",
         # shock_pct / gap ratios are decimal ratios (0.10 == 10%); ratios can
         # legitimately exceed 1, so bypass the legacy "auto" rescale heuristic.
-        "shock": numeric_from_raw(raw=shock_pct, unit="pct", precision=1, sign_aware=True, raw_scale="ratio").model_dump(mode="json"),
-        "estimated_impact": numeric_from_raw(raw=impact, unit="yuan", precision=2, sign_aware=True).model_dump(mode="json"),
+        "shock": numeric_from_raw(raw=float(shock_pct), unit="pct", precision=1, sign_aware=True, raw_scale="ratio").model_dump(mode="json"),
+        "estimated_impact": numeric_from_raw(raw=_as_float(impact), unit="yuan", precision=2, sign_aware=True).model_dump(mode="json"),
         "measure": "stressed_30d_liquidity_gap_delta",
         "calculation": (
             "asset_cashflow_30d * (1 - shock_pct) - "
@@ -184,10 +191,10 @@ def _liquidity_scenario(tensor_result: dict[str, Any]) -> dict[str, Any]:
         "interpretation": "现金流压力下的 30 天流动性缺口变化；负值表示缓冲收窄。",
         "data_status": "available" if available else "source_missing",
         "human_review_required": True,
-        "baseline_value": numeric_from_raw(raw=baseline_gap, unit="yuan", precision=2, sign_aware=True).model_dump(mode="json"),
-        "stressed_value": numeric_from_raw(raw=stressed_gap, unit="yuan", precision=2, sign_aware=True).model_dump(mode="json"),
-        "baseline_ratio": numeric_from_raw(raw=baseline_ratio, unit="pct", precision=1, sign_aware=True, raw_scale="ratio").model_dump(mode="json"),
-        "stressed_ratio": numeric_from_raw(raw=stressed_ratio, unit="pct", precision=1, sign_aware=True, raw_scale="ratio").model_dump(mode="json"),
+        "baseline_value": numeric_from_raw(raw=_as_float(baseline_gap), unit="yuan", precision=2, sign_aware=True).model_dump(mode="json"),
+        "stressed_value": numeric_from_raw(raw=_as_float(stressed_gap), unit="yuan", precision=2, sign_aware=True).model_dump(mode="json"),
+        "baseline_ratio": numeric_from_raw(raw=_as_float(baseline_ratio), unit="pct", precision=1, sign_aware=True, raw_scale="ratio").model_dump(mode="json"),
+        "stressed_ratio": numeric_from_raw(raw=_as_float(stressed_ratio), unit="pct", precision=1, sign_aware=True, raw_scale="ratio").model_dump(mode="json"),
     }
 
 
@@ -220,7 +227,7 @@ def _scenario_summary(scenarios: list[dict[str, Any]]) -> dict[str, Any]:
         "available_count": len(available),
         "review_required_count": sum(bool(row.get("human_review_required")) for row in scenarios),
         "worst_estimated_impact": numeric_from_raw(
-            raw=worst_impact,
+            raw=_as_float(worst_impact),
             unit="yuan",
             precision=2,
             sign_aware=True,
@@ -228,6 +235,12 @@ def _scenario_summary(scenarios: list[dict[str, Any]]) -> dict[str, Any]:
         "worst_scenario_key": worst_key,
         "message": "已基于物化风险张量生成标准压力情景；所有结果均需人工复核。",
     }
+
+
+def _as_float(value: Decimal | None) -> float | None:
+    # numeric_from_raw immediately applies float(raw); converting at the call
+    # boundary is bit-for-bit identical.
+    return None if value is None else float(value)
 
 
 def _numeric_raw(value: object) -> Decimal | None:
