@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import io
+import json
 import logging
 import os
 import subprocess
@@ -740,6 +741,145 @@ def _model_chain_final_signal_headline(frame: pd.DataFrame) -> str:
     return " · ".join(f"{value} {count}" for value, count in counts.items())
 
 
+# ---------------------------------------------------------------------------
+# Model chain trend series (optional per-model history line charts)
+# ---------------------------------------------------------------------------
+
+_MODEL_CHAIN_TREND_MAX_POINTS = 120
+_MODEL_CHAIN_TREND_SIGNAL_SYMBOLS = ("TS", "TF", "T", "TL")
+
+
+def _model_chain_trend_column(frame: pd.DataFrame, candidates: Iterable[str]) -> str | None:
+    """列名以历史产物实际表头为准：按候选顺序（中文名优先，英文名兜底）取首个存在列。"""
+    for name in candidates:
+        if str(name) in frame.columns:
+            return str(name)
+    return None
+
+
+def _model_chain_trend_points(
+    frame: pd.DataFrame, date_column: str, value_column: str
+) -> list[list[object]]:
+    """按 CSV 行序提取 [日期原文, float 值] 点；数值不可解析或日期空白的行跳过，仅保留尾部 120 点。"""
+    points: list[list[object]] = []
+    for _, row in frame.iterrows():
+        date_text = _model_chain_cell_text(row.get(date_column))
+        if date_text == _MODEL_CHAIN_NA_TEXT:
+            continue
+        value = _float_or_none(row.get(value_column))
+        if value is None:
+            continue
+        points.append([date_text, value])
+    return points[-_MODEL_CHAIN_TREND_MAX_POINTS:]
+
+
+def _model_chain_merrill_trend_series(frame: pd.DataFrame) -> list[dict[str, object]]:
+    date_column = _model_chain_trend_column(frame, MACRO_TOOLKIT_OUTPUT_DATE_COLUMNS)
+    if date_column is None:
+        return []
+    series: list[dict[str, object]] = []
+    for name, candidates in (
+        ("增长动量", ("增长动量", "growth_momentum", "growth")),
+        ("通胀动量", ("通胀动量", "inflation_momentum", "inflation")),
+        ("流动性动量", ("流动性动量", "liquidity_momentum", "liquidity")),
+    ):
+        column = _model_chain_trend_column(frame, candidates)
+        if column is None:
+            continue
+        series.append(
+            {"name": name, "points": _model_chain_trend_points(frame, date_column, column)}
+        )
+    return series
+
+
+def _model_chain_dcc_trend_series(frame: pd.DataFrame) -> list[dict[str, object]]:
+    date_column = _model_chain_trend_column(frame, MACRO_TOOLKIT_OUTPUT_DATE_COLUMNS)
+    value_column = _model_chain_trend_column(frame, ("平均相关系数", "avg_corr"))
+    if date_column is None or value_column is None:
+        return []
+    return [
+        {
+            "name": "平均相关系数",
+            "points": _model_chain_trend_points(frame, date_column, value_column),
+        }
+    ]
+
+
+def _model_chain_crisis_trend_series(frame: pd.DataFrame) -> list[dict[str, object]]:
+    date_column = _model_chain_trend_column(frame, MACRO_TOOLKIT_OUTPUT_DATE_COLUMNS)
+    value_column = _model_chain_trend_column(frame, ("Crisis Score", "crisis_score"))
+    if date_column is None or value_column is None:
+        return []
+    return [
+        {
+            "name": "Crisis Score",
+            "points": _model_chain_trend_points(frame, date_column, value_column),
+        }
+    ]
+
+
+def _model_chain_signal_trend_value(value: object) -> float | None:
+    """信号文本数值化：含「多」= +1；含「空仓」或「观望」= 0；含「空」（且非空仓）= -1；其他跳过。"""
+    text = _model_chain_cell_text(value)
+    if text == _MODEL_CHAIN_NA_TEXT:
+        return None
+    if "多" in text:
+        return 1.0
+    if "空仓" in text or "观望" in text:
+        return 0.0
+    if "空" in text:
+        return -1.0
+    return None
+
+
+def _model_chain_final_signal_trend_series(frame: pd.DataFrame) -> list[dict[str, object]]:
+    date_column = _model_chain_trend_column(frame, MACRO_TOOLKIT_OUTPUT_DATE_COLUMNS)
+    symbol_column = _model_chain_trend_column(frame, ("品种", "symbol"))
+    signal_column = _model_chain_trend_column(frame, ("最终信号", "final_signal"))
+    if date_column is None or symbol_column is None or signal_column is None:
+        return []
+    series: list[dict[str, object]] = []
+    for symbol in _MODEL_CHAIN_TREND_SIGNAL_SYMBOLS:
+        points: list[list[object]] = []
+        for _, row in frame.iterrows():
+            if _model_chain_cell_text(row.get(symbol_column)) != symbol:
+                continue
+            date_text = _model_chain_cell_text(row.get(date_column))
+            if date_text == _MODEL_CHAIN_NA_TEXT:
+                continue
+            value = _model_chain_signal_trend_value(row.get(signal_column))
+            if value is None:
+                continue
+            points.append([date_text, value])
+        series.append({"name": symbol, "points": points[-_MODEL_CHAIN_TREND_MAX_POINTS:]})
+    return series
+
+
+def _model_chain_trend_payload(
+    model_def: Mapping[str, object],
+    *,
+    output_dir: Path,
+) -> dict[str, object] | None:
+    """构建模型卡 trend 序列；无 trend 数据源 / 历史文件缺失或损坏 / 每条线有效点 <2 → None，不抛错。"""
+    trend_def = model_def.get("trend")
+    if not isinstance(trend_def, Mapping):
+        return None
+    frame = _load_model_chain_frame(output_dir / str(trend_def["artifact"]))
+    if frame is None:
+        return None
+    series_builder = cast(
+        "Callable[[pd.DataFrame], list[dict[str, object]]]", trend_def["series"]
+    )
+    series: list[dict[str, object]] = []
+    for item in series_builder(frame):
+        points = item.get("points")
+        if isinstance(points, list) and len(points) >= 2:
+            series.append(item)
+    if not series:
+        return None
+    return {"label": str(trend_def["label"]), "series": series}
+
+
 _MODEL_CHAIN_STEP_DEFINITIONS: tuple[dict[str, object], ...] = (
     {
         "key": "market_state",
@@ -761,6 +901,11 @@ _MODEL_CHAIN_STEP_DEFINITIONS: tuple[dict[str, object], ...] = (
                     ("bond_direction", "债券方向"),
                 ),
                 "headline": _model_chain_merrill_headline,
+                "trend": {
+                    "artifact": "merrill_clock_history.csv",
+                    "label": "三维动量（月度）",
+                    "series": _model_chain_merrill_trend_series,
+                },
             },
             {
                 "id": "garch",
@@ -784,6 +929,11 @@ _MODEL_CHAIN_STEP_DEFINITIONS: tuple[dict[str, object], ...] = (
                 "artifact": "dcc_latest.csv",
                 "table_mode": "dcc_pairs",
                 "headline": _model_chain_dcc_headline,
+                "trend": {
+                    "artifact": "dcc_results.csv",
+                    "label": "平均相关系数（日度）",
+                    "series": _model_chain_dcc_trend_series,
+                },
             },
             {
                 "id": "regime",
@@ -859,6 +1009,11 @@ _MODEL_CHAIN_STEP_DEFINITIONS: tuple[dict[str, object], ...] = (
                 "artifact": "crisis_score_latest.csv",
                 "table_mode": "all",
                 "headline": _model_chain_crisis_headline,
+                "trend": {
+                    "artifact": "crisis_score_history.csv",
+                    "label": "危机评分（日度）",
+                    "series": _model_chain_crisis_trend_series,
+                },
             },
             {
                 "id": "risk_monitor",
@@ -963,6 +1118,11 @@ _MODEL_CHAIN_STEP_DEFINITIONS: tuple[dict[str, object], ...] = (
                     ("信号说明", "信号说明"),
                 ),
                 "headline": _model_chain_final_signal_headline,
+                "trend": {
+                    "artifact": "final_signal_history.csv",
+                    "label": "信号轨迹（+1 多 / 0 观望 / -1 空）",
+                    "series": _model_chain_final_signal_trend_series,
+                },
             },
         ),
     },
@@ -980,6 +1140,8 @@ def _model_chain_model_payload(
         "label": model_def["label"],
         "script_name": model_def["script_name"],
         "artifact": artifact,
+        # trend 独立于快照产物：全部模型恒有该键（无历史数据源时为 None），保证前端类型统一。
+        "trend": _model_chain_trend_payload(model_def, output_dir=output_dir),
     }
     path = output_dir / artifact
     frame = _load_model_chain_frame(path)
@@ -1015,13 +1177,102 @@ def _model_chain_final_signal_as_of_date(output_dir: Path) -> str | None:
     return _model_chain_latest_date_text(frame)
 
 
-def build_model_chain_results(output_dir: Path | str = OUTPUT_DIR) -> dict[str, object]:
+# ---------------------------------------------------------------------------
+# Model chain scheduler health (Windows scheduled-task receipt summaries)
+# ---------------------------------------------------------------------------
+
+_MODEL_CHAIN_DAILY_CHAIN_RECEIPT_NAME = "macro_toolkit_daily_chain_receipt.json"
+_MODEL_CHAIN_FRESHNESS_RECEIPT_NAME = "macro_toolkit_freshness_refresh_receipt.json"
+
+
+def _model_chain_daily_chain_summary(result: Mapping[str, object]) -> str:
+    """一句话摘要：``链 <result.chain.status> · 链外脚本 <completed>/<total> 完成``。"""
+    chain = result.get("chain")
+    chain_status = _model_chain_cell_text(
+        chain.get("status") if isinstance(chain, Mapping) else None
+    )
+    extra_scripts = result.get("extra_scripts")
+    items = (
+        [item for item in extra_scripts if isinstance(item, Mapping)]
+        if isinstance(extra_scripts, list)
+        else []
+    )
+    completed = sum(1 for item in items if str(item.get("status") or "") == "completed")
+    return f"链 {chain_status} · 链外脚本 {completed}/{len(items)} 完成"
+
+
+def _model_chain_freshness_summary(result: Mapping[str, object]) -> str:
+    """一句话摘要：``步骤 <success> 成功 / <failed> 失败[ / <degraded> 降级]``。"""
+    steps = result.get("steps")
+    items = (
+        [item for item in steps if isinstance(item, Mapping)] if isinstance(steps, list) else []
+    )
+    statuses = [str(item.get("status") or "") for item in items]
+    success = sum(1 for status in statuses if status == "success")
+    failed = sum(1 for status in statuses if status == "failed")
+    degraded = sum(1 for status in statuses if status == "degraded")
+    summary = f"步骤 {success} 成功 / {failed} 失败"
+    if degraded:
+        summary += f" / {degraded} 降级"
+    return summary
+
+
+def _model_chain_receipt_summary(
+    path: Path,
+    summary_builder: Callable[[Mapping[str, object]], str],
+) -> dict[str, object] | None:
+    """读取一个调度回执 JSON 并压缩为 ReceiptSummary；文件缺失/解析失败/非对象 → None，不抛错。"""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError):
+        return None
+    if not isinstance(data, Mapping):
+        return None
+    exit_code = data.get("exit_code")
+    result = data.get("result")
+    return {
+        "task_name": str(data.get("task_name") or ""),
+        "status": str(data.get("status") or ""),
+        "exit_code": exit_code if isinstance(exit_code, int) else None,
+        "generated_at": str(data.get("generated_at") or ""),
+        "run_kind": str(data.get("run_kind") or ""),
+        "summary": summary_builder(result if isinstance(result, Mapping) else {}),
+    }
+
+
+def _model_chain_scheduler_payload(logs_dir: Path) -> dict[str, object]:
+    return {
+        "daily_chain": _model_chain_receipt_summary(
+            logs_dir / _MODEL_CHAIN_DAILY_CHAIN_RECEIPT_NAME,
+            _model_chain_daily_chain_summary,
+        ),
+        "freshness": _model_chain_receipt_summary(
+            logs_dir / _MODEL_CHAIN_FRESHNESS_RECEIPT_NAME,
+            _model_chain_freshness_summary,
+        ),
+    }
+
+
+def build_model_chain_results(
+    output_dir: Path | str = OUTPUT_DIR,
+    logs_dir: Path | str | None = None,
+) -> dict[str, object]:
     """观察口径：把十个模型脚本的最新产物 CSV 按尽调笔记决策链组装为只读结构。
 
     仅做文本透传与 headline 摘要拼装，不含任何业务计算；产物缺失/为空/解析失败时
     对应模型降级为 ``artifact_status="missing"``，不抛异常、不影响其他模型。
+
+    ``logs_dir`` 指向调度回执目录（默认从 ``output_dir`` 推导：
+    ``data/macro_toolkit/output`` → ``data/logs``），用于组装顶层 ``scheduler`` 键；
+    回执缺失/损坏时对应键为 None，顶层 ``scheduler`` 恒存在。
     """
     directory = Path(output_dir)
+    if logs_dir is not None:
+        logs_directory = Path(logs_dir)
+    elif len(directory.parents) >= 2:
+        logs_directory = directory.parents[1] / "logs"
+    else:
+        logs_directory = directory / "logs"
     steps: list[dict[str, object]] = []
     for step_def in _MODEL_CHAIN_STEP_DEFINITIONS:
         models = [
@@ -1040,6 +1291,7 @@ def build_model_chain_results(output_dir: Path | str = OUTPUT_DIR) -> dict[str, 
         "as_of_date": _model_chain_final_signal_as_of_date(directory),
         "observation_only": MACRO_TOOLKIT_OBSERVATION_ONLY,
         "formal_use_allowed": MACRO_TOOLKIT_FORMAL_USE_ALLOWED,
+        "scheduler": _model_chain_scheduler_payload(logs_directory),
         "steps": steps,
     }
 

@@ -5739,3 +5739,106 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Model chain: scheduler health badges (题头调度状态行) */
+.macro-toolkit-model-chain__head-side {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 6px;
+  justify-items: end;
+  min-width: 0;
+}
+
+.macro-toolkit-model-chain__head-side .ant-tag {
+  margin-inline-end: 0;
+}
+
+.macro-toolkit-model-chain__scheduler {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.macro-toolkit-model-chain__scheduler-badge {
+  padding: 2px 8px;
+  border: 1px solid var(--macro-toolkit-border-muted);
+  border-radius: var(--moss-radius-sm);
+  background: var(--macro-toolkit-card-muted);
+  color: var(--moss-color-text-secondary);
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.macro-toolkit-model-chain__scheduler-badge--ok {
+  border-color: color-mix(in srgb, var(--macro-toolkit-success) 38%, var(--macro-toolkit-border-muted));
+  background: var(--macro-toolkit-success-soft);
+  color: var(--macro-toolkit-success);
+}
+
+.macro-toolkit-model-chain__scheduler-badge--failed {
+  border-color: color-mix(in srgb, var(--macro-toolkit-danger) 42%, var(--macro-toolkit-border-muted));
+  background: var(--macro-toolkit-danger-soft);
+  color: var(--macro-toolkit-danger);
+}
+
+.macro-toolkit-model-chain__scheduler-badge--idle {
+  color: var(--moss-color-text-muted);
+}
+
+/* Model chain: trend sparklines (模型卡趋势小图) */
+.macro-toolkit-model-chain__trend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: flex-end;
+  margin: 0;
+  min-width: 0;
+}
+
+.macro-toolkit-model-chain__trend-chart {
+  display: block;
+  flex: 0 1 auto;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--macro-toolkit-border-muted);
+  border-radius: var(--moss-radius-sm);
+  background: var(--macro-toolkit-card);
+}
+
+.macro-toolkit-model-chain__trend-line {
+  fill: none;
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.macro-toolkit-model-chain__trend-line--0 {
+  stroke: var(--macro-toolkit-primary);
+}
+
+.macro-toolkit-model-chain__trend-line--1 {
+  stroke: var(--macro-toolkit-success);
+}
+
+.macro-toolkit-model-chain__trend-line--2 {
+  stroke: var(--macro-toolkit-warning);
+}
+
+.macro-toolkit-model-chain__trend-line--3 {
+  stroke: var(--macro-toolkit-danger);
+}
+
+.macro-toolkit-model-chain__trend-label {
+  flex: 1 1 72px;
+  min-width: 0;
+  color: var(--moss-color-text-muted);
+  font-size: 11px;
+  font-weight: 760;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}

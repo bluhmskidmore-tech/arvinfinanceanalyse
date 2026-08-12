@@ -7,7 +7,9 @@ headline 规则（含 NaN / 缺文件退化），以及 FastAPI 端点的 envelo
 
 from __future__ import annotations
 
+import json
 import re
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
@@ -45,6 +47,8 @@ MODEL_FIELDS = {
     "headline",
     "columns",
     "rows",
+    # trend 契约：全部模型对象恒有该键，无历史数据源时为 None。
+    "trend",
 }
 
 ISO_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -439,3 +443,278 @@ def test_model_chain_results_endpoint_smoke_against_real_output_dir(
         for model in step["models"]:
             assert model["artifact_status"] in {"ok", "missing"}
             assert isinstance(model["headline"], str) and model["headline"]
+
+
+# ---------------------------------------------------------------------------
+# 模型卡 trend 序列（可选历史折线）契约
+# ---------------------------------------------------------------------------
+
+TREND_MODEL_IDS = {"merrill_clock", "dcc_garch", "crisis_score", "final_signal"}
+
+
+def _seed_trend_history_files(directory: Path) -> None:
+    """按真实历史产物的实际表头（英文列名）铺设四个 trend 数据源。"""
+    _write_csv(
+        directory,
+        "merrill_clock_history.csv",
+        "date,growth_momentum,inflation_momentum,liquidity_momentum,regime\n"
+        "2026-05-01,0.11,0.21,-0.31,复苏\n"
+        "2026-06-01,0.12,0.22,-0.32,过热\n"
+        "2026-07-01,0.13,0.23,-0.33,过热\n",
+    )
+    _write_csv(
+        directory,
+        "dcc_results.csv",
+        "date,avg_corr,warning\n"
+        "2026-08-08,0.27,正常\n"
+        "2026-08-09,0.28,正常\n"
+        "2026-08-10,abc,正常\n"
+        "2026-08-11,0.31,正常\n",
+    )
+    _write_csv(
+        directory,
+        "crisis_score_history.csv",
+        "date,crisis_score,equity_vol_z\n2026-08-10,-0.70,-0.70\n2026-08-11,-0.68,-0.68\n",
+    )
+    _write_csv(
+        directory,
+        "final_signal_history.csv",
+        "日期,品种,最终信号,仓位比例,置信度\n"
+        "2026-08-10,TS,多,0.275,3\n"
+        "2026-08-10,TF,空仓,0.0,1\n"
+        "2026-08-10,T,观望,0.0,0\n"
+        "2026-08-10,TL,空,0.238,3\n"
+        "2026-08-11,TS,空,0.238,3\n"
+        "2026-08-11,TF,空仓,0.0,1\n"
+        "2026-08-11,T,多,0.275,3\n"
+        "2026-08-11,TL,空,0.238,3\n",
+    )
+
+
+def test_model_chain_trend_contract_structure(tmp_path: Path) -> None:
+    _seed_full_output_dir(tmp_path)
+    _seed_trend_history_files(tmp_path)
+
+    models = _models_by_id(build_model_chain_results(tmp_path))
+
+    # 全部 13 个模型对象恒有 trend 键；无历史数据源的模型恒为 None。
+    for model_id, model in models.items():
+        assert "trend" in model
+        if model_id not in TREND_MODEL_IDS:
+            assert model["trend"] is None
+
+    merrill = models["merrill_clock"]["trend"]
+    assert merrill["label"] == "三维动量（月度）"
+    assert [series["name"] for series in merrill["series"]] == ["增长动量", "通胀动量", "流动性动量"]
+    assert merrill["series"][0]["points"] == [
+        ["2026-05-01", 0.11],
+        ["2026-06-01", 0.12],
+        ["2026-07-01", 0.13],
+    ]
+    assert merrill["series"][2]["points"][-1] == ["2026-07-01", -0.33]
+
+    dcc = models["dcc_garch"]["trend"]
+    assert dcc["label"] == "平均相关系数（日度）"
+    assert [series["name"] for series in dcc["series"]] == ["平均相关系数"]
+    # 数值无法解析的行（abc）跳过，日期文本保留 CSV 原值。
+    assert dcc["series"][0]["points"] == [
+        ["2026-08-08", 0.27],
+        ["2026-08-09", 0.28],
+        ["2026-08-11", 0.31],
+    ]
+
+    crisis = models["crisis_score"]["trend"]
+    assert crisis["label"] == "危机评分（日度）"
+    assert [series["name"] for series in crisis["series"]] == ["Crisis Score"]
+    assert crisis["series"][0]["points"] == [["2026-08-10", -0.7], ["2026-08-11", -0.68]]
+
+    final = models["final_signal"]["trend"]
+    assert final["label"] == "信号轨迹（+1 多 / 0 观望 / -1 空）"
+    assert [series["name"] for series in final["series"]] == ["TS", "TF", "T", "TL"]
+
+
+def test_model_chain_final_signal_trend_signal_mapping(tmp_path: Path) -> None:
+    _seed_full_output_dir(tmp_path)
+    _write_csv(
+        tmp_path,
+        "final_signal_history.csv",
+        "日期,品种,最终信号,仓位比例,置信度\n"
+        "2026-08-08,TS,多,0.275,3\n"
+        "2026-08-09,TS,空仓,0.0,1\n"
+        "2026-08-10,TS,观望,0.0,0\n"
+        "2026-08-11,TS,空,0.238,3\n"
+        "2026-08-12,TS,未知信号,0.0,0\n"
+        "2026-08-08,TF,多,0.275,3\n"
+        "2026-08-09,TF,多,0.275,3\n"
+        "2026-08-08,T,空,0.238,3\n",
+    )
+
+    trend = _models_by_id(build_model_chain_results(tmp_path))["final_signal"]["trend"]
+
+    by_name = {series["name"]: series["points"] for series in trend["series"]}
+    # 含"多"=+1；含"空仓"/"观望"=0；含"空"（非空仓）=-1；其他（未知信号）跳过。
+    assert by_name["TS"] == [
+        ["2026-08-08", 1.0],
+        ["2026-08-09", 0.0],
+        ["2026-08-10", 0.0],
+        ["2026-08-11", -1.0],
+    ]
+    assert by_name["TF"] == [["2026-08-08", 1.0], ["2026-08-09", 1.0]]
+    # T 仅 1 个有效点、TL 无行：有效点 <2 的线被剔除。
+    assert set(by_name) == {"TS", "TF"}
+
+
+def test_model_chain_trend_degrades_to_null_without_usable_history(tmp_path: Path) -> None:
+    _seed_full_output_dir(tmp_path)
+
+    # 历史文件全部缺失 → 四个 trend 模型均为 None，不抛错。
+    models = _models_by_id(build_model_chain_results(tmp_path))
+    for model_id in TREND_MODEL_IDS:
+        assert models[model_id]["trend"] is None
+
+    # 有效点 <2 / 数值全不可解析 / 文件为空损坏 → 同样退化为 None。
+    _write_csv(tmp_path, "dcc_results.csv", "date,avg_corr\n2026-08-11,0.31\n")
+    _write_csv(
+        tmp_path,
+        "crisis_score_history.csv",
+        "date,crisis_score\n2026-08-10,abc\n2026-08-11,\n",
+    )
+    (tmp_path / "merrill_clock_history.csv").write_bytes(b"")
+
+    models = _models_by_id(build_model_chain_results(tmp_path))
+    assert models["dcc_garch"]["trend"] is None
+    assert models["crisis_score"]["trend"] is None
+    assert models["merrill_clock"]["trend"] is None
+
+
+def test_model_chain_trend_caps_points_at_tail_120(tmp_path: Path) -> None:
+    _seed_full_output_dir(tmp_path)
+    start = date(2026, 1, 1)
+    lines = [
+        f"{(start + timedelta(days=offset)).isoformat()},{0.2 + offset * 0.001:.4f}\n"
+        for offset in range(130)
+    ]
+    _write_csv(tmp_path, "dcc_results.csv", "date,avg_corr\n" + "".join(lines))
+
+    trend = _models_by_id(build_model_chain_results(tmp_path))["dcc_garch"]["trend"]
+
+    points = trend["series"][0]["points"]
+    assert len(points) == 120
+    # 130 个点仅保留尾部 120 个：前 10 个被裁剪。
+    assert points[0] == [(start + timedelta(days=10)).isoformat(), pytest.approx(0.21)]
+    assert points[-1] == [(start + timedelta(days=129)).isoformat(), pytest.approx(0.329)]
+
+
+# ---------------------------------------------------------------------------
+# 调度健康 scheduler payload 契约
+# ---------------------------------------------------------------------------
+
+
+def _write_daily_chain_receipt(logs_dir: Path) -> None:
+    (logs_dir / "macro_toolkit_daily_chain_receipt.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "task_name": "macro_toolkit_daily_chain",
+                "status": "degraded",
+                "exit_code": 0,
+                "generated_at": "2026-08-12T01:04:59+00:00",
+                "run_kind": "scheduled",
+                "invocation_mode": "run_once",
+                "result": {
+                    "chain": {"status": "degraded"},
+                    "extra_scripts": [
+                        {"script": f"script_{index}", "status": "completed"} for index in range(6)
+                    ],
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_freshness_receipt(logs_dir: Path) -> None:
+    (logs_dir / "macro_toolkit_freshness_refresh_receipt.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "task_name": "refresh_macro_toolkit_freshness",
+                "status": "failed",
+                "exit_code": 1,
+                "generated_at": "2026-08-11T11:40:48+00:00",
+                "run_kind": "scheduled",
+                "result": {
+                    "steps": [
+                        {"step": "a", "status": "success"},
+                        {"step": "b", "status": "success"},
+                        {"step": "c", "status": "failed"},
+                        {"step": "d", "status": "failed"},
+                        {"step": "e", "status": "degraded"},
+                    ],
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_model_chain_scheduler_summarizes_both_receipts(tmp_path: Path) -> None:
+    output_dir = tmp_path / "output"
+    _seed_full_output_dir(output_dir)
+    logs_dir = tmp_path / "logs"
+    logs_dir.mkdir()
+    _write_daily_chain_receipt(logs_dir)
+    _write_freshness_receipt(logs_dir)
+
+    scheduler = build_model_chain_results(output_dir, logs_dir=logs_dir)["scheduler"]
+
+    assert scheduler["daily_chain"] == {
+        "task_name": "macro_toolkit_daily_chain",
+        "status": "degraded",
+        "exit_code": 0,
+        "generated_at": "2026-08-12T01:04:59+00:00",
+        "run_kind": "scheduled",
+        "summary": "链 degraded · 链外脚本 6/6 完成",
+    }
+    assert scheduler["freshness"] == {
+        "task_name": "refresh_macro_toolkit_freshness",
+        "status": "failed",
+        "exit_code": 1,
+        "generated_at": "2026-08-11T11:40:48+00:00",
+        "run_kind": "scheduled",
+        "summary": "步骤 2 成功 / 2 失败 / 1 降级",
+    }
+
+
+def test_model_chain_scheduler_degrades_to_null_when_receipts_unreadable(tmp_path: Path) -> None:
+    output_dir = tmp_path / "output"
+    _seed_full_output_dir(output_dir)
+
+    # logs 目录不存在 → 两个键均为 None；顶层 scheduler 恒存在。
+    result = build_model_chain_results(output_dir, logs_dir=tmp_path / "missing-logs")
+    assert result["scheduler"] == {"daily_chain": None, "freshness": None}
+
+    # 回执损坏（非法 JSON / 非对象 JSON）→ 对应键为 None，不抛错。
+    logs_dir = tmp_path / "logs"
+    logs_dir.mkdir()
+    (logs_dir / "macro_toolkit_daily_chain_receipt.json").write_text("{not json", encoding="utf-8")
+    (logs_dir / "macro_toolkit_freshness_refresh_receipt.json").write_text("[1,2]", encoding="utf-8")
+    result = build_model_chain_results(output_dir, logs_dir=logs_dir)
+    assert result["scheduler"] == {"daily_chain": None, "freshness": None}
+
+
+def test_model_chain_scheduler_default_logs_dir_derived_from_output_dir(tmp_path: Path) -> None:
+    """默认 logs_dir 从 output_dir 推导：data/macro_toolkit/output → data/logs。"""
+    output_dir = tmp_path / "data" / "macro_toolkit" / "output"
+    _seed_full_output_dir(output_dir)
+    logs_dir = tmp_path / "data" / "logs"
+    logs_dir.mkdir(parents=True)
+    _write_daily_chain_receipt(logs_dir)
+
+    scheduler = build_model_chain_results(output_dir)["scheduler"]
+
+    assert scheduler["daily_chain"]["task_name"] == "macro_toolkit_daily_chain"
+    assert scheduler["daily_chain"]["summary"] == "链 degraded · 链外脚本 6/6 完成"
+    assert scheduler["freshness"] is None

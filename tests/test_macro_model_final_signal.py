@@ -555,3 +555,108 @@ def test_intraday_monitor_normal_prints_but_writes_no_log(
     assert alerts == []
     assert "监测正常" in capsys.readouterr().out
     assert not risk_monitor_mod.LOG_FILE.exists()
+
+
+# ============================================================
+# signal_aggregator：最终信号历史留痕（final_signal_history.csv）
+# ============================================================
+
+HISTORY_COLUMNS = ["日期", "品种", "最终信号", "仓位比例", "置信度"]
+
+
+def _signal_snapshot_frame(day: str, *, direction: str = "多", position: float = 0.275) -> pd.DataFrame:
+    """构造 main() 落盘 final_signal.csv 前的当日快照 DataFrame（四品种）。"""
+    return pd.DataFrame(
+        [
+            {
+                "品种": symbol,
+                "日期": day,
+                "第一层_方向": direction,
+                "第一层_通过": True,
+                "第二层_通过": True,
+                "第三层_通过": True,
+                "最终信号": direction,
+                "仓位比例": position,
+                "置信度": 3,
+                "信号说明": "测试说明",
+            }
+            for symbol in ("TS", "TF", "T", "TL")
+        ]
+    )
+
+
+def _read_history(path: Path) -> pd.DataFrame:
+    return pd.read_csv(path, encoding="utf-8-sig", dtype=str)
+
+
+def test_history_append_creates_file_and_same_day_rerun_is_idempotent(aggregator, tmp_path):
+    """首跑新建历史文件；同日重跑覆盖旧行（行数不变、内容为最新一跑）。"""
+    history_path = tmp_path / "final_signal_history.csv"
+
+    aggregator.append_final_signal_history(_signal_snapshot_frame("2026-08-11"), history_path)
+    first = _read_history(history_path)
+    assert list(first.columns) == HISTORY_COLUMNS
+    assert len(first) == 4
+    assert first["品种"].tolist() == ["TS", "TF", "T", "TL"]
+    assert set(first["最终信号"]) == {"多"}
+
+    aggregator.append_final_signal_history(
+        _signal_snapshot_frame("2026-08-11", direction="空", position=0.238), history_path
+    )
+    second = _read_history(history_path)
+    assert len(second) == 4
+    assert set(second["最终信号"]) == {"空"}
+    assert set(second["仓位比例"]) == {"0.238"}
+    assert set(second["置信度"]) == {"3"}
+
+
+def test_history_accumulates_across_days_in_ascending_date_order(aggregator, tmp_path):
+    """多日累积：不同日期各保留 4 行；即使乱序写入，文件仍按日期升序且保持品种行序。"""
+    history_path = tmp_path / "final_signal_history.csv"
+
+    aggregator.append_final_signal_history(_signal_snapshot_frame("2026-08-12"), history_path)
+    aggregator.append_final_signal_history(
+        _signal_snapshot_frame("2026-08-11", direction="空", position=0.238), history_path
+    )
+
+    history = _read_history(history_path)
+    assert len(history) == 8
+    assert history["日期"].tolist() == ["2026-08-11"] * 4 + ["2026-08-12"] * 4
+    assert history[history["日期"] == "2026-08-11"]["品种"].tolist() == ["TS", "TF", "T", "TL"]
+    assert history[history["日期"] == "2026-08-11"]["最终信号"].tolist() == ["空"] * 4
+    assert history[history["日期"] == "2026-08-12"]["最终信号"].tolist() == ["多"] * 4
+
+
+def test_history_corrupt_file_is_rebuilt_without_crash(aggregator, tmp_path):
+    """历史文件损坏（非法字节 / 表头不符）时不崩，丢弃旧内容重建为本次快照。"""
+    history_path = tmp_path / "final_signal_history.csv"
+    history_path.write_bytes(b"\xff\xfe\x00broken\x00bytes")
+
+    aggregator.append_final_signal_history(_signal_snapshot_frame("2026-08-11"), history_path)
+    rebuilt = _read_history(history_path)
+    assert list(rebuilt.columns) == HISTORY_COLUMNS
+    assert len(rebuilt) == 4
+
+    # 表头不符（缺"置信度"列）同样重建。
+    history_path.write_text("日期,品种\n2026-08-10,TS\n", encoding="utf-8-sig")
+    aggregator.append_final_signal_history(_signal_snapshot_frame("2026-08-12"), history_path)
+    rebuilt = _read_history(history_path)
+    assert list(rebuilt.columns) == HISTORY_COLUMNS
+    assert rebuilt["日期"].tolist() == ["2026-08-12"] * 4
+
+
+def test_main_writes_snapshot_then_appends_history(aggregator, tmp_path, monkeypatch):
+    """main() 在写 final_signal.csv 之后追加历史留痕；同日重跑幂等（仍 4 行）。"""
+    monkeypatch.setattr(aggregator, "ROOT", tmp_path)
+
+    aggregator.main()
+    aggregator.main()
+
+    snapshot = pd.read_csv(tmp_path / "final_signal.csv", encoding="utf-8-sig")
+    assert snapshot["品种"].tolist() == ["TS", "TF", "T", "TL"]
+
+    history = _read_history(tmp_path / "final_signal_history.csv")
+    assert list(history.columns) == HISTORY_COLUMNS
+    assert len(history) == 4
+    assert history["品种"].tolist() == ["TS", "TF", "T", "TL"]
+    assert history["日期"].tolist() == snapshot["日期"].astype(str).tolist()

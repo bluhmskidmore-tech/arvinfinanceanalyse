@@ -32,6 +32,8 @@ const MODEL_HEADLINES = [
   "空仓 4/4",
 ] as const;
 
+const TREND_MODEL_IDS = ["merrill_clock", "dcc_garch", "crisis_score", "final_signal"] as const;
+
 async function loadMockModelChainResults(): Promise<MacroToolkitModelChainResults> {
   const envelope = await createMockMacroToolkitClient().fetchMacroToolkitModelChainResults();
   return envelope.result;
@@ -57,6 +59,7 @@ const MISSING_ARTIFACT_RESULTS: MacroToolkitModelChainResults = {
           headline: "",
           columns: [],
           rows: [],
+          trend: null,
         },
       ],
     },
@@ -135,5 +138,83 @@ describe("MacroToolkitModelChainPanel", () => {
     );
 
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it("renders trend sparklines only for models that provide trend series", async () => {
+    const results = await loadMockModelChainResults();
+
+    render(<MacroToolkitModelChainPanel results={results} />);
+
+    for (const modelId of TREND_MODEL_IDS) {
+      const card = screen.getByTestId(`macro-toolkit-model-chain-model-${modelId}`);
+      const chart = within(card).getByTestId(`macro-toolkit-model-chain-trend-${modelId}`);
+      expect(chart).toBe(within(card).getByRole("img"));
+      expect(chart.querySelectorAll("polyline").length).toBeGreaterThanOrEqual(1);
+    }
+    expect(screen.getAllByTestId(/^macro-toolkit-model-chain-trend-/)).toHaveLength(4);
+
+    const merrillChart = screen.getByTestId("macro-toolkit-model-chain-trend-merrill_clock");
+    expect(merrillChart.querySelectorAll("polyline")).toHaveLength(3);
+    expect(merrillChart.querySelector("polyline title")).toHaveTextContent(
+      "增长动量 · 2025-07 ~ 2026-06",
+    );
+
+    const finalChart = screen.getByTestId("macro-toolkit-model-chain-trend-final_signal");
+    expect(finalChart.querySelectorAll("polyline")).toHaveLength(4);
+
+    const merrillCard = screen.getByTestId("macro-toolkit-model-chain-model-merrill_clock");
+    expect(within(merrillCard).getByText("近 12 月宏观动量（月度）")).toBeInTheDocument();
+
+    for (const modelId of ["garch", "regime", "cta_trend", "risk_parity", "rebalance"]) {
+      const card = screen.getByTestId(`macro-toolkit-model-chain-model-${modelId}`);
+      expect(within(card).queryByRole("img")).not.toBeInTheDocument();
+    }
+  });
+
+  it("renders scheduler health badges with tone mapping and summary tooltips", async () => {
+    const results = await loadMockModelChainResults();
+
+    render(<MacroToolkitModelChainPanel results={results} />);
+
+    const schedulerRow = screen.getByTestId("macro-toolkit-model-chain-scheduler");
+
+    const dailyBadge = within(schedulerRow).getByTestId(
+      "macro-toolkit-model-chain-scheduler-daily_chain",
+    );
+    expect(dailyBadge).toHaveTextContent("自动重算 08-12 09:04 degraded");
+    expect(dailyBadge).toHaveClass("macro-toolkit-model-chain__scheduler-badge--ok");
+    expect(dailyBadge).not.toHaveClass("macro-toolkit-model-chain__scheduler-badge--failed");
+    expect(dailyBadge).toHaveAttribute("title", "链 degraded · 链外脚本 6/6 完成");
+
+    const freshnessBadge = within(schedulerRow).getByTestId(
+      "macro-toolkit-model-chain-scheduler-freshness",
+    );
+    expect(freshnessBadge).toHaveTextContent("数据刷新 08-11 19:40 failed");
+    expect(freshnessBadge).toHaveClass("macro-toolkit-model-chain__scheduler-badge--failed");
+    expect(freshnessBadge).toHaveAttribute("title", "步骤 2 成功 / 2 失败 / 1 降级");
+  });
+
+  it("shows idle badges when scheduler receipts are null", async () => {
+    const results = await loadMockModelChainResults();
+
+    render(
+      <MacroToolkitModelChainPanel
+        results={{ ...results, scheduler: { daily_chain: null, freshness: null } }}
+      />,
+    );
+
+    const dailyBadge = screen.getByTestId("macro-toolkit-model-chain-scheduler-daily_chain");
+    expect(dailyBadge).toHaveTextContent("自动重算 未运行");
+    expect(dailyBadge).toHaveClass("macro-toolkit-model-chain__scheduler-badge--idle");
+    expect(screen.getByTestId("macro-toolkit-model-chain-scheduler-freshness")).toHaveTextContent(
+      "数据刷新 未运行",
+    );
+  });
+
+  it("omits the scheduler row when the scheduler field is absent", () => {
+    render(<MacroToolkitModelChainPanel results={MISSING_ARTIFACT_RESULTS} />);
+
+    expect(screen.getByTestId("macro-toolkit-model-chain")).toBeInTheDocument();
+    expect(screen.queryByTestId("macro-toolkit-model-chain-scheduler")).not.toBeInTheDocument();
   });
 });

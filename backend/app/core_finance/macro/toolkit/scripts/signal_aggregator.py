@@ -12,7 +12,8 @@
   - 市场状态               ← regime_results.csv（判断趋势/震荡）
 
 输出:
-  final_signal.csv  — 每个品种的最终信号 + 仓位比例 + 置信度
+  final_signal.csv          — 每个品种的最终信号 + 仓位比例 + 置信度（单日快照）
+  final_signal_history.csv  — 逐日累积的信号历史留痕（同"日期+品种"重跑覆盖）
 """
 
 import sys
@@ -327,6 +328,57 @@ def run_three_layer_filter(
 
 
 # ============================================================
+# 最终信号历史留痕
+# ============================================================
+
+HISTORY_FILENAME = 'final_signal_history.csv'
+HISTORY_COLUMNS = ['日期', '品种', '最终信号', '仓位比例', '置信度']
+
+
+def append_final_signal_history(result_df: pd.DataFrame, history_path: Path) -> pd.DataFrame:
+    """把当日各品种最终信号追加到历史留痕 CSV（utf-8-sig），返回重写后的完整历史。
+
+    幂等：同一"日期+品种"重跑覆盖旧行（读旧文件→去重→append 新行→按日期升序整体重写）。
+    历史文件不存在则新建；文件损坏或表头不符时丢弃旧内容重建，不抛异常。
+    """
+    new_rows = result_df[HISTORY_COLUMNS].copy()
+
+    old_rows = None
+    if history_path.exists():
+        try:
+            candidate = pd.read_csv(history_path, encoding='utf-8-sig', dtype=str)
+            if set(HISTORY_COLUMNS).issubset(candidate.columns):
+                old_rows = candidate[HISTORY_COLUMNS]
+            else:
+                print(f"[WARN] {history_path.name} 表头不符，重建历史留痕")
+        except (OSError, UnicodeError, ValueError, pd.errors.ParserError) as exc:
+            print(f"[WARN] {history_path.name} 读取失败，重建历史留痕: {exc}")
+
+    combined = new_rows
+    if old_rows is not None and not old_rows.empty:
+        new_keys = {
+            (date_text, symbol)
+            for date_text, symbol in zip(
+                new_rows['日期'].astype(str), new_rows['品种'].astype(str), strict=True
+            )
+        }
+        keep_mask = [
+            (date_text, symbol) not in new_keys
+            for date_text, symbol in zip(
+                old_rows['日期'].astype(str), old_rows['品种'].astype(str), strict=True
+            )
+        ]
+        remaining = old_rows[keep_mask]
+        if not remaining.empty:
+            combined = pd.concat([remaining, new_rows], ignore_index=True)
+
+    # ISO 日期文本的字符串序即时间序；稳定排序保持同日内品种行序。
+    combined = combined.sort_values('日期', kind='stable', ignore_index=True)
+    combined.to_csv(history_path, index=False, encoding='utf-8-sig')
+    return combined
+
+
+# ============================================================
 # 主流程
 # ============================================================
 
@@ -370,6 +422,10 @@ def main():
     output_path = ROOT / 'final_signal.csv'
     result_df.to_csv(output_path, index=False, encoding='utf-8-sig')
     print(f"\n[输出] {output_path}")
+
+    history_path = ROOT / HISTORY_FILENAME
+    append_final_signal_history(result_df, history_path)
+    print(f"[输出] {history_path} (历史留痕)")
 
     # 摘要
     print("\n" + "=" * 60)

@@ -599,6 +599,16 @@ export type MacroToolkitHasonStrategy = {
   }>;
 };
 
+export type MacroToolkitModelChainTrendSeries = {
+  name: string;
+  points: [string, number][];
+};
+
+export type MacroToolkitModelChainTrend = {
+  label: string;
+  series: MacroToolkitModelChainTrendSeries[];
+};
+
 export type MacroToolkitModelChainModel = {
   id: string;
   label: string;
@@ -609,6 +619,7 @@ export type MacroToolkitModelChainModel = {
   headline: string;
   columns: string[];
   rows: string[][];
+  trend: MacroToolkitModelChainTrend | null;
 };
 
 export type MacroToolkitModelChainStep = {
@@ -618,11 +629,27 @@ export type MacroToolkitModelChainStep = {
   models: MacroToolkitModelChainModel[];
 };
 
+export type MacroToolkitSchedulerReceiptSummary = {
+  task_name: string;
+  status: string;
+  exit_code: number | null;
+  generated_at: string;
+  run_kind: string;
+  summary: string;
+};
+
+export type MacroToolkitModelChainScheduler = {
+  daily_chain: MacroToolkitSchedulerReceiptSummary | null;
+  freshness: MacroToolkitSchedulerReceiptSummary | null;
+};
+
 export type MacroToolkitModelChainResults = {
   as_of_date: string | null;
   observation_only: boolean;
   formal_use_allowed: boolean;
   steps: MacroToolkitModelChainStep[];
+  /** 旧后端可能尚未返回 scheduler 字段，缺失时前端不渲染调度行。 */
+  scheduler?: MacroToolkitModelChainScheduler;
 };
 
 export type MacroToolkitReportBundleArtifact = {
