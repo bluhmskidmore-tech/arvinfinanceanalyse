@@ -255,7 +255,7 @@ describe("ledger-pnl precision: indicator summary panel float display path (2dp)
   // 但 Number("1.005") 的最近 double 略小于 1.005，toFixed(2) 输出 "1.00%"。
   // 同页 candidate comparison 模型的 BigInt 字符串路径无此损失。
   // 首轮红色证据（2026-08-12）：expected "1.01%", received "1.00%"。
-  it.skip("keeps the exact decimal half for x.005 percent input (suspected float-path defect)", async () => {
+  it("keeps the exact decimal half for x.005 percent input", async () => {
     renderProbePanel();
     const row = await screen.findByTestId("ledger-indicator-summary-row-probe.decimal-half");
     const [current] = within(row).getAllByRole("cell");

@@ -18,6 +18,7 @@ import type {
   LedgerPnlCandidateFinancialIndicatorRevalidationRequest,
   LedgerPnlFormalFinancialIndicatorContractPayload,
   LedgerPnlFormalIndicatorRuleChecksPayload,
+  LedgerPnlIndicatorSummaryPayload,
   LedgerPnlSummaryPayload,
   PnlBasis,
   PnlBridgePayload,
@@ -56,6 +57,10 @@ export type PnlCoreClientMethods = {
   getLedgerPnlFormalFinancialIndicators: (
     reportMonth: string,
   ) => Promise<ApiEnvelope<LedgerPnlFormalFinancialIndicatorContractPayload>>;
+  getLedgerPnlFinancialIndicatorSummary: (
+    reportMonth: string,
+    currency?: string,
+  ) => Promise<ApiEnvelope<LedgerPnlIndicatorSummaryPayload>>;
   getLedgerPnlCandidateFinancialIndicators: (
     reportMonth: string,
     options?: { includeLineage?: boolean; metricId?: string },
@@ -203,6 +208,19 @@ export function createRealPnlCoreClient(
         fetchImpl,
         baseUrl,
         `/api/ledger-pnl/formal-financial-indicators?${params.toString()}`,
+      );
+    },
+    getLedgerPnlFinancialIndicatorSummary: (reportMonth: string, currency?: string) => {
+      const params = new URLSearchParams({
+        report_month: reportMonth.trim(),
+      });
+      if (currency?.trim()) {
+        params.set("currency", currency.trim());
+      }
+      return requestJson<LedgerPnlIndicatorSummaryPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/ledger-pnl/financial-indicator-summary?${params.toString()}`,
       );
     },
     getLedgerPnlCandidateFinancialIndicators: (reportMonth, options = {}) => {

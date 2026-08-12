@@ -19,8 +19,8 @@
  *    - render 返回 null/undefined → EM_DASH；返回数字 0 → "0"（?? 不吞 0）。
  *
  * 疑似缺陷登记（不放宽断言，以 it.skip 保留 gate 语义断言，详见专家报告）：
- * - [缺陷A·可达] LedgerPnlWorkbookTables.formatAnalysisValue 对 null/undefined/空串返回连字符 "-"，
- *   违反 "New pages must render missing values as EM_DASH / 禁止字面量 '-'" 规则；工作簿空单元格真实可达。
+ * - [缺陷A·已修复] LedgerPnlWorkbookTables.formatAnalysisValue 曾对 null/undefined/空串返回连字符 "-"；
+ *   已改为 EM_DASH（Page.tsx 的同名重复实现一并修复），对应断言已解除 skip 转为常规契约测试。
  * - [缺陷B·契约外防御缺失] Workbench/Page/Drawer 的 formatMoney 对非空 yi 串直接透传：若上游违约送 yi="NaN"
  *   会渲染 "NaN 亿元"。契约内不可达（后端 fmt_yi 经 to_decimal 把 NaN/Inf 归 0），仅登记防御缺失。
  * - [缺陷C·契约外防御缺失] LedgerPnlDataTable 单元格 `render(row) ?? EM_DASH` 对 render 返回的原始 NaN
@@ -352,7 +352,7 @@ describe("LedgerPnlNullMatrixContract / 疑似缺陷登记（skip 保留 gate �
   // 字面量连字符 "-"，违反 frontend/AGENTS.md（"missing values as EM_DASH；禁止 '-'"）与
   // DESIGN.md §6（format.ts 头注释登记）。总账月度工作簿空单元格真实可达该路径。
   // 解除 skip 的实测输出：expected [..., "—"]，received [..., "-"]。
-  it.skip("[缺陷A] 工作簿空单元格应渲染 EM_DASH，而非连字符 \"-\"", () => {
+  it("工作簿空单元格渲染 EM_DASH，而非连字符 \"-\"", () => {
     const groups = buildLedgerPnlWorkbookGroups({
       财务指标落地状态: {
         title: "财务指标落地状态",

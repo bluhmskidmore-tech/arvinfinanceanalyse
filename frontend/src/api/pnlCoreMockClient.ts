@@ -288,6 +288,36 @@ export function createDemoPnlCoreClient(delay: Delay): PnlCoreClientMethods {
         },
       );
     },
+    async getLedgerPnlFinancialIndicatorSummary(reportMonth: string, currency?: string) {
+      const mocks = await loadLedgerPnlMocks();
+      await delay();
+      const currencyBasis = normalizeMockLedgerPnlCurrencyBasis(mocks, currency);
+      const payload = mocks.buildMockLedgerPnlFinancialIndicatorSummary(
+        reportMonth,
+        currencyBasis,
+      );
+      return buildMockApiEnvelope(
+        "ledger_pnl.financial_indicator_summary",
+        payload,
+        {
+          basis: "ledger",
+          formal_use_allowed: false,
+          source_version: payload.source_files[0]?.source_version ?? "sv_ledger_pnl_mock",
+          rule_version: mocks.MOCK_LEDGER_PNL_INDICATOR_SUMMARY_RULE_VERSION,
+          cache_version: mocks.MOCK_LEDGER_PNL_INDICATOR_SUMMARY_CACHE_VERSION,
+          quality_flag: payload.data_status === "ready" ? "ok" : "warning",
+          date_basis: "ledger_report_month",
+          filters_applied: {
+            report_month: payload.report_month,
+            currency: currencyBasis,
+            currency_basis: currencyBasis,
+            currency_basis_note: mocks.MOCK_LEDGER_PNL_CURRENCY_BASIS_NOTE,
+          },
+          tables_used: ["qdb_gl_ledger_reconciliation_workbook"],
+          evidence_rows: payload.data_status === "ready" ? payload.coverage.row_computed : 0,
+        },
+      );
+    },
     async getLedgerPnlCandidateFinancialIndicators(reportMonth, options = {}) {
       const mocks = await loadLedgerPnlMocks();
       await delay();

@@ -1,0 +1,304 @@
+/*
+ * Generic dark-terminal data table (search + sort + pagination) for the
+ * ledger-pnl workbench. Dark-route component: consumes `--dh-api-*` tokens
+ * only (DESIGN.md §2.2) — never the light `--moss-color-*` scale.
+ */
+
+.ledger-pnl-data-table {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.ledger-pnl-data-table__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--dh-api-line);
+}
+
+.ledger-pnl-data-table__heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ledger-pnl-data-table__title {
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 15px;
+  font-weight: 740;
+  line-height: 1.3;
+}
+
+.ledger-pnl-data-table__caption {
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.ledger-pnl-data-table__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.ledger-pnl-data-table__search {
+  min-width: 200px;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-ink);
+  font: inherit;
+  font-size: 12px;
+}
+
+.ledger-pnl-data-table__search::placeholder {
+  color: var(--dh-api-muted);
+}
+
+.ledger-pnl-data-table__search:focus-visible {
+  outline: 2px solid var(--dh-api-blue);
+  outline-offset: 1px;
+}
+
+.ledger-pnl-data-table__notice {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--dh-api-line);
+  border-left: 3px solid var(--dh-api-amber);
+  background: var(--dh-api-amber-soft);
+  color: var(--dh-api-ink);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.ledger-pnl-data-table__scroll {
+  overflow: auto;
+}
+
+.ledger-pnl-data-table__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.ledger-pnl-data-table__th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--dh-api-line);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.ledger-pnl-data-table__th--right {
+  text-align: right;
+}
+
+.ledger-pnl-data-table__sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+
+.ledger-pnl-data-table__th--right .ledger-pnl-data-table__sort-button {
+  flex-direction: row-reverse;
+}
+
+.ledger-pnl-data-table__sort-button:focus-visible {
+  outline: 2px solid var(--dh-api-blue);
+  outline-offset: 2px;
+}
+
+.ledger-pnl-data-table__sort-icon {
+  color: var(--dh-api-muted);
+  font-size: 10px;
+  line-height: 1;
+}
+
+.ledger-pnl-data-table__sort-icon::after {
+  content: "\21c5";
+}
+
+.ledger-pnl-data-table__sort-icon[data-direction="asc"] {
+  color: var(--dh-api-blue);
+}
+
+.ledger-pnl-data-table__sort-icon[data-direction="asc"]::after {
+  content: "\2191";
+}
+
+.ledger-pnl-data-table__sort-icon[data-direction="desc"] {
+  color: var(--dh-api-blue);
+}
+
+.ledger-pnl-data-table__sort-icon[data-direction="desc"]::after {
+  content: "\2193";
+}
+
+.ledger-pnl-data-table__row {
+  border-top: 1px solid var(--dh-api-line-soft);
+}
+
+.ledger-pnl-data-table__row--clickable {
+  cursor: pointer;
+}
+
+.ledger-pnl-data-table__row--clickable:hover {
+  background: var(--dh-api-blue-soft);
+}
+
+.ledger-pnl-data-table__row--clickable:focus-visible {
+  outline: 2px solid var(--dh-api-blue);
+  outline-offset: -2px;
+}
+
+.ledger-pnl-data-table__td {
+  padding: 9px 12px;
+  color: var(--dh-api-ink);
+  line-height: 1.45;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.ledger-pnl-data-table__td--right {
+  text-align: right;
+}
+
+.ledger-pnl-data-table__td--numeric {
+  font-family: var(--moss-font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ledger-pnl-data-table__state-cell {
+  padding: 28px 16px;
+  color: var(--dh-api-soft);
+  font-size: 13px;
+  text-align: center;
+}
+
+.ledger-pnl-data-table__no-match {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.ledger-pnl-data-table__clear-search {
+  padding: 3px 9px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-blue);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ledger-pnl-data-table__clear-search:hover,
+.ledger-pnl-data-table__clear-search:focus-visible {
+  border-color: var(--dh-api-blue);
+  outline: none;
+}
+
+.ledger-pnl-data-table__pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--dh-api-line);
+  background: var(--dh-api-panel-2);
+}
+
+.ledger-pnl-data-table__range {
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-pnl-data-table__pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ledger-pnl-data-table__page-indicator {
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-pnl-data-table__page-button {
+  min-height: 28px;
+  padding: 4px 10px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-3);
+  color: var(--dh-api-ink);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ledger-pnl-data-table__page-button:hover:not(:disabled) {
+  border-color: var(--dh-api-blue);
+  color: var(--dh-api-blue);
+}
+
+.ledger-pnl-data-table__page-button:focus-visible {
+  outline: 2px solid var(--dh-api-blue);
+  outline-offset: 1px;
+}
+
+.ledger-pnl-data-table__page-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+@media (max-width: 720px) {
+  .ledger-pnl-data-table__toolbar {
+    padding: 12px;
+  }
+
+  .ledger-pnl-data-table__search {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .ledger-pnl-data-table__th,
+  .ledger-pnl-data-table__td {
+    padding: 8px 10px;
+  }
+
+  .ledger-pnl-data-table__pagination {
+    padding: 10px 12px;
+  }
+}
