@@ -22,15 +22,24 @@ from backend.app.core_finance.candidate_history_proxy_backtest import (
     candidate_history_portfolio_price_field_stats,
     cycle_proxy_return_field_stats,
 )
-from backend.app.core_finance.field_normalization import (
-    TRADING_STATUS_SQL_IN_LIST,
-    is_trading_status,
-)
+from backend.app.core_finance.field_normalization import is_trading_status
 from backend.app.core_finance.matched_baseline import (
     MATCHED_BASELINE_TABLE,
     matched_baseline_stats_from_rows,
 )
 from backend.app.core_finance.strategy_policy import POLICY
+from backend.app.repositories.livermore_candidate_history_repo import (
+    CANDIDATE_EXECUTION_SELECT_COLUMNS,
+    CANDIDATE_HISTORY_SELECT_COLUMNS,
+    MATCHED_BASELINE_SELECT_COLUMNS,
+    RELATION_CHOICE_MARKET_SNAPSHOT,
+    RELATION_CHOICE_STOCK_DAILY_OBSERVATION,
+    RELATION_FACT_CHOICE_MACRO_DAILY,
+    RELATION_LIVERMORE_CANDIDATE_EXECUTION_HISTORY,
+    RELATION_LIVERMORE_CANDIDATE_HISTORY,
+    RELATION_STOCK_ADJUSTMENT_FACTOR,
+    LivermoreCandidateHistoryRepository,
+)
 from backend.app.services.formal_result_runtime import (
     FallbackMode,
     QualityFlag,
@@ -71,13 +80,13 @@ CYCLE_PROXY_BACKTEST_CACHE_VERSION = "cv_livermore_cycle_proxy_backtest_v1"
 CANDIDATE_HISTORY_PORTFOLIO_BACKTEST_RESULT_KIND = "market_data.livermore.candidate_history_portfolio_backtest"
 CANDIDATE_HISTORY_PORTFOLIO_BACKTEST_RULE_VERSION = "rv_livermore_candidate_history_portfolio_backtest_v1"
 CANDIDATE_HISTORY_PORTFOLIO_BACKTEST_CACHE_VERSION = "cv_livermore_candidate_history_portfolio_backtest_v1"
-TABLE_HIST = "livermore_candidate_history"
-TABLE_EXECUTION_HIST = "livermore_candidate_execution_history"
-TABLE_OBS = "choice_stock_daily_observation"
-TABLE_ADJ_FACTOR = "stock_adjustment_factor"
+TABLE_HIST = RELATION_LIVERMORE_CANDIDATE_HISTORY
+TABLE_EXECUTION_HIST = RELATION_LIVERMORE_CANDIDATE_EXECUTION_HISTORY
+TABLE_OBS = RELATION_CHOICE_STOCK_DAILY_OBSERVATION
+TABLE_ADJ_FACTOR = RELATION_STOCK_ADJUSTMENT_FACTOR
 BENCHMARK_SERIES_ID = "CA.CSI300"
-TABLE_BENCHMARK_DAILY = "fact_choice_macro_daily"
-TABLE_BENCHMARK_SNAPSHOT = "choice_market_snapshot"
+TABLE_BENCHMARK_DAILY = RELATION_FACT_CHOICE_MACRO_DAILY
+TABLE_BENCHMARK_SNAPSHOT = RELATION_CHOICE_MARKET_SNAPSHOT
 _DEFAULT_SIGNAL_KINDS = ["hybrid_fusion", "stock_candidate", "theme_breakout", "factor_screen", "mean_reversion"]
 _STRATEGY_LABELS = {
     "hybrid_fusion": "融合策略",
@@ -200,85 +209,9 @@ _SAMPLE_GENERATION_ERA_NOTE = (
     "matching CHOICE_NATIVE_ERA_START in scripts/run_portfolio_backtest.py."
 )
 
-_SELECT_COLUMNS = (
-    "snapshot_as_of_date",
-    "stock_code",
-    "stock_name",
-    "candidate_rank",
-    "sector_code",
-    "sector_name",
-    "selection_close",
-    "forward_trade_date_1d",
-    "forward_trade_date_5d",
-    "forward_trade_date_10d",
-    "forward_trade_date_20d",
-    "return_1d",
-    "return_5d",
-    "return_10d",
-    "return_20d",
-    "return_1d_adj",
-    "return_5d_adj",
-    "return_10d_adj",
-    "return_20d_adj",
-    "data_status",
-    "formula_version",
-    "source_version",
-    "vendor_version",
-    "rule_version",
-    "run_id",
-    "signal_kind",
-    "theme_key",
-    "theme_name",
-    "theme_source_kind",
-    "theme_rank",
-    "stock_rank_in_theme",
-    "sector_rank",
-    "market_state",
-    "abnormal_turnover",
-    "gap_norm",
-    "breakout_extension_norm",
-    "breakout_level",
-    "ema10",
-    "ma20",
-    "ma60",
-    "ma120",
-    "strength_pctchange",
-    "strength_turn",
-    "strength_amplitude",
-    "close_strength",
-    "closed_up_limit",
-    "signal_evidence_json",
-)
-_EXECUTION_SELECT_COLUMNS = (
-    "signal_date",
-    "stock_code",
-    "signal_kind",
-    "market_state",
-    "entry_executable",
-    "entry_block_reason",
-    "entry_date",
-    "exit_date_5d",
-    "return_1d_net_adj",
-    "return_5d_gross_adj",
-    "return_5d_net_adj",
-    "return_10d_net_adj",
-    "return_20d_net_adj",
-)
-_MATCHED_BASELINE_SELECT_COLUMNS = (
-    "signal_date",
-    "candidate_stock_code",
-    "signal_kind",
-    "control_stock_code",
-    "control_group",
-    "control_return_1d_net_adj",
-    "control_return_5d_net_adj",
-    "control_return_10d_net_adj",
-    "control_return_20d_net_adj",
-    "control_entry_executable",
-    "seed",
-    "formula_version",
-    "run_id",
-)
+_SELECT_COLUMNS = CANDIDATE_HISTORY_SELECT_COLUMNS
+_EXECUTION_SELECT_COLUMNS = CANDIDATE_EXECUTION_SELECT_COLUMNS
+_MATCHED_BASELINE_SELECT_COLUMNS = MATCHED_BASELINE_SELECT_COLUMNS
 
 
 def livermore_candidate_history_envelope(
@@ -326,9 +259,10 @@ def livermore_candidate_history_envelope(
     if not path.is_file():
         return _wrap_empty_envelope(payload=build_empty_payload())
 
-    conn = duckdb.connect(str(path), read_only=True)
-    try:
-        tables = {r[0] for r in conn.execute("show tables").fetchall()}
+    repository = LivermoreCandidateHistoryRepository(str(path))
+    with repository.scoped_connection() as conn:
+        assert conn is not None
+        tables = repository.list_table_names(conn=conn)
         if TABLE_HIST not in tables:
             return _wrap_empty_envelope(payload=build_empty_payload())
         available_columns = _available_columns(conn)
@@ -343,29 +277,18 @@ def livermore_candidate_history_envelope(
             _safe_optional_date(normalized_snapshot_to) or resolved_evaluation_date,
         )
 
-        where_clauses: list[str] = []
-        bindings: list[object] = []
-        if trimmed_code:
-            where_clauses.append("stock_code = ?")
-            bindings.append(trimmed_code)
-        if normalized_snapshot_from:
-            where_clauses.append("snapshot_as_of_date >= ?")
-            bindings.append(normalized_snapshot_from[:10])
-        where_clauses.append("try_cast(snapshot_as_of_date as date) <= cast(? as date)")
-        bindings.append(effective_snapshot_to)
-        sql_where = f"where {' AND '.join(where_clauses)}" if where_clauses else ""
-        filter_bindings = list(bindings)
-
-        rows = conn.execute(
-            f"""
-            select {_select_list(available_columns)}
-            from {TABLE_HIST}
-            {sql_where}
-            order by snapshot_as_of_date desc, candidate_rank asc
-            limit ?
-            """,
-            [*filter_bindings, limit],
-        ).fetchall()
+        sql_where, filter_bindings = repository.candidate_history_filter(
+            stock_code=trimmed_code,
+            snapshot_from=normalized_snapshot_from,
+            snapshot_to=effective_snapshot_to,
+        )
+        rows = repository.fetch_history_slice_rows(
+            available_columns=available_columns,
+            sql_where=sql_where,
+            filter_bindings=filter_bindings,
+            limit=limit,
+            conn=conn,
+        )
         items = [_normalize_row(row) for row in rows]
         _annotate_forward_maturity(
             conn,
@@ -405,8 +328,6 @@ def livermore_candidate_history_envelope(
         if requested_evaluation_date is not None:
             execution_rows = None
             matched_baseline_rows = None
-    finally:
-        conn.close()
 
     lineage_src = _first_nonempty_source_version(items)
     lineage_vend = _first_nonempty_vendor_version(items)
@@ -537,9 +458,10 @@ def livermore_candidate_history_strategy_score_envelope(
             quality_flag="warning",
         )
 
-    conn = duckdb.connect(str(path), read_only=True)
-    try:
-        tables = {str(row[0]) for row in conn.execute("show tables").fetchall()}
+    repository = LivermoreCandidateHistoryRepository(str(path))
+    with repository.scoped_connection() as conn:
+        assert conn is not None
+        tables = repository.list_table_names(conn=conn)
         if TABLE_HIST not in tables:
             resolved_to = _normalize_date_text(snapshot_to) or date.today().isoformat()
             resolved_from = _normalize_date_text(snapshot_from) or _default_snapshot_from(resolved_to)
@@ -580,8 +502,6 @@ def livermore_candidate_history_strategy_score_envelope(
             snapshot_to=resolved_to,
             row_dates=row_dates,
         )
-    finally:
-        conn.close()
 
     backtest_window_summary = _build_backtest_window_summary_from_rows(
         duckdb_path=duckdb_path,
@@ -650,9 +570,10 @@ def livermore_candidate_history_strategy_optimization_envelope(
             quality_flag="warning",
         )
 
-    conn = duckdb.connect(str(path), read_only=True)
-    try:
-        tables = {str(row[0]) for row in conn.execute("show tables").fetchall()}
+    repository = LivermoreCandidateHistoryRepository(str(path))
+    with repository.scoped_connection() as conn:
+        assert conn is not None
+        tables = repository.list_table_names(conn=conn)
         if TABLE_HIST not in tables:
             resolved_to = _normalize_date_text(snapshot_to) or date.today().isoformat()
             resolved_from = _normalize_date_text(snapshot_from) or _default_snapshot_from(resolved_to)
@@ -693,8 +614,6 @@ def livermore_candidate_history_strategy_optimization_envelope(
             snapshot_to=resolved_to,
             row_dates=row_dates,
         )
-    finally:
-        conn.close()
 
     backtest_window_summary = _build_backtest_window_summary_from_rows(
         duckdb_path=duckdb_path,
@@ -750,9 +669,10 @@ def livermore_candidate_history_cycle_proxy_backtest_envelope(
             quality_flag="warning",
         )
 
-    conn = duckdb.connect(str(path), read_only=True)
-    try:
-        tables = {str(row[0]) for row in conn.execute("show tables").fetchall()}
+    repository = LivermoreCandidateHistoryRepository(str(path))
+    with repository.scoped_connection() as conn:
+        assert conn is not None
+        tables = repository.list_table_names(conn=conn)
         if TABLE_HIST not in tables:
             payload = _build_cycle_proxy_backtest_payload(
                 items=[],
@@ -791,8 +711,6 @@ def livermore_candidate_history_cycle_proxy_backtest_envelope(
             tables=tables,
             nav_series=proxy_nav,
         )
-    finally:
-        conn.close()
 
     payload = _build_cycle_proxy_backtest_payload(
         items=rows,
@@ -844,9 +762,10 @@ def livermore_candidate_history_portfolio_backtest_envelope(
 
     benchmark_rows: list[dict[str, Any]] = []
     benchmark_table: list[str] = []
-    conn = duckdb.connect(str(path), read_only=True)
-    try:
-        tables = {str(row[0]) for row in conn.execute("show tables").fetchall()}
+    repository = LivermoreCandidateHistoryRepository(str(path))
+    with repository.scoped_connection() as conn:
+        assert conn is not None
+        tables = repository.list_table_names(conn=conn)
         if TABLE_HIST not in tables or TABLE_OBS not in tables:
             payload = _build_candidate_history_portfolio_backtest_payload(
                 items=[],
@@ -886,8 +805,6 @@ def livermore_candidate_history_portfolio_backtest_envelope(
             tables=tables,
             nav_series=portfolio_nav,
         )
-    finally:
-        conn.close()
 
     payload = _build_candidate_history_portfolio_backtest_payload(
         items=rows,
@@ -910,19 +827,21 @@ def livermore_candidate_history_portfolio_backtest_envelope(
     )
 
 
+def _candidate_history_repository_for_connection() -> LivermoreCandidateHistoryRepository:
+    """Build a repository facade for an already-open read-only connection."""
+    return LivermoreCandidateHistoryRepository("")
+
+
 def _available_columns(conn: duckdb.DuckDBPyConnection) -> set[str]:
-    return {str(row[1]).lower() for row in conn.execute(f"pragma table_info('{TABLE_HIST}')").fetchall()}
+    return _candidate_history_repository_for_connection().table_columns(TABLE_HIST, conn=conn)
 
 
 def _available_execution_columns(conn: duckdb.DuckDBPyConnection) -> set[str]:
-    return {str(row[1]).lower() for row in conn.execute(f"pragma table_info('{TABLE_EXECUTION_HIST}')").fetchall()}
+    return _candidate_history_repository_for_connection().table_columns(TABLE_EXECUTION_HIST, conn=conn)
 
 
 def _available_matched_baseline_columns(conn: duckdb.DuckDBPyConnection) -> set[str]:
-    return {
-        str(row[1]).lower()
-        for row in conn.execute(f"pragma table_info('{MATCHED_BASELINE_TABLE}')").fetchall()
-    }
+    return _candidate_history_repository_for_connection().table_columns(MATCHED_BASELINE_TABLE, conn=conn)
 
 
 def livermore_candidate_history_backtest_window_summary(
@@ -952,9 +871,10 @@ def livermore_candidate_history_backtest_window_summary(
     if not path.is_file():
         return base_summary
 
-    conn = duckdb.connect(str(path), read_only=True)
-    try:
-        tables = {str(row[0]) for row in conn.execute("show tables").fetchall()}
+    repository = LivermoreCandidateHistoryRepository(str(path))
+    with repository.scoped_connection() as conn:
+        assert conn is not None
+        tables = repository.list_table_names(conn=conn)
         if TABLE_HIST not in tables and TABLE_OBS not in tables:
             return base_summary
         history_table_present = TABLE_HIST in tables
@@ -981,8 +901,6 @@ def livermore_candidate_history_backtest_window_summary(
             snapshot_to=effective_snapshot_to,
             row_dates=row_dates,
         )
-    finally:
-        conn.close()
 
     return _build_backtest_window_summary_from_rows(
         duckdb_path=duckdb_path,
@@ -1093,39 +1011,15 @@ def _build_backtest_window_summary_from_rows(
 
 
 def _select_list(available_columns: set[str]) -> str:
-    parts: list[str] = []
-    for column in _SELECT_COLUMNS:
-        if column.lower() in available_columns:
-            parts.append(column)
-        elif column == "signal_kind":
-            parts.append("'stock_candidate' as signal_kind")
-        else:
-            parts.append(f"null as {column}")
-    return ", ".join(parts)
+    return LivermoreCandidateHistoryRepository.select_list(available_columns)
 
 
 def _execution_select_list(available_columns: set[str]) -> str:
-    parts: list[str] = []
-    for column in _EXECUTION_SELECT_COLUMNS:
-        if column.lower() in available_columns:
-            parts.append(column)
-        elif column == "signal_kind":
-            parts.append("'stock_candidate' as signal_kind")
-        else:
-            parts.append(f"null as {column}")
-    return ", ".join(parts)
+    return LivermoreCandidateHistoryRepository.execution_select_list(available_columns)
 
 
 def _matched_baseline_select_list(available_columns: set[str]) -> str:
-    parts: list[str] = []
-    for column in _MATCHED_BASELINE_SELECT_COLUMNS:
-        if column.lower() in available_columns:
-            parts.append(column)
-        elif column == "signal_kind":
-            parts.append("'stock_candidate' as signal_kind")
-        else:
-            parts.append(f"null as {column}")
-    return ", ".join(parts)
+    return LivermoreCandidateHistoryRepository.matched_baseline_select_list(available_columns)
 
 
 def _load_backtest_window_rows(
@@ -1136,31 +1030,18 @@ def _load_backtest_window_rows(
     snapshot_to: str | None,
     evaluation_as_of_date: str | None = None,
 ) -> list[dict[str, Any]]:
-    tables = {str(row[0]) for row in conn.execute("show tables").fetchall()}
+    repository = _candidate_history_repository_for_connection()
+    tables = repository.list_table_names(conn=conn)
     if TABLE_HIST not in tables:
         return []
     available_columns = _available_columns(conn)
-    where_clauses: list[str] = []
-    bindings: list[object] = []
-    if stock_code:
-        where_clauses.append("stock_code = ?")
-        bindings.append(stock_code)
-    if snapshot_from:
-        where_clauses.append("snapshot_as_of_date >= ?")
-        bindings.append(snapshot_from)
-    if snapshot_to:
-        where_clauses.append("snapshot_as_of_date <= ?")
-        bindings.append(snapshot_to)
-    sql_where = f"where {' AND '.join(where_clauses)}" if where_clauses else ""
-    rows = conn.execute(
-        f"""
-        select {_select_list(available_columns)}
-        from {TABLE_HIST}
-        {sql_where}
-        order by snapshot_as_of_date asc, candidate_rank asc
-        """,
-        bindings,
-    ).fetchall()
+    rows = repository.fetch_history_window_rows(
+        stock_code=stock_code,
+        snapshot_from=snapshot_from,
+        snapshot_to=snapshot_to,
+        available_columns=available_columns,
+        conn=conn,
+    )
     items = [_normalize_row(row) for row in rows]
     if evaluation_as_of_date:
         return items
@@ -1181,28 +1062,15 @@ def _load_execution_window_rows(
     snapshot_from: str | None,
     snapshot_to: str | None,
 ) -> list[dict[str, Any]]:
+    repository = _candidate_history_repository_for_connection()
     available_columns = _available_execution_columns(conn)
-    where_clauses: list[str] = []
-    bindings: list[object] = []
-    if stock_code:
-        where_clauses.append("stock_code = ?")
-        bindings.append(stock_code)
-    if snapshot_from:
-        where_clauses.append("signal_date >= ?")
-        bindings.append(snapshot_from[:10])
-    if snapshot_to:
-        where_clauses.append("signal_date <= ?")
-        bindings.append(snapshot_to[:10])
-    sql_where = f"where {' AND '.join(where_clauses)}" if where_clauses else ""
-    rows = conn.execute(
-        f"""
-        select {_execution_select_list(available_columns)}
-        from {TABLE_EXECUTION_HIST}
-        {sql_where}
-        order by signal_date asc, stock_code asc
-        """,
-        bindings,
-    ).fetchall()
+    rows = repository.fetch_execution_window_rows(
+        stock_code=stock_code,
+        snapshot_from=snapshot_from,
+        snapshot_to=snapshot_to,
+        available_columns=available_columns,
+        conn=conn,
+    )
     return [_normalize_execution_row(row) for row in rows]
 
 
@@ -1213,28 +1081,15 @@ def _load_matched_baseline_window_rows(
     snapshot_from: str | None,
     snapshot_to: str | None,
 ) -> list[dict[str, Any]]:
+    repository = _candidate_history_repository_for_connection()
     available_columns = _available_matched_baseline_columns(conn)
-    where_clauses: list[str] = []
-    bindings: list[object] = []
-    if stock_code:
-        where_clauses.append("candidate_stock_code = ?")
-        bindings.append(stock_code)
-    if snapshot_from:
-        where_clauses.append("signal_date >= ?")
-        bindings.append(snapshot_from[:10])
-    if snapshot_to:
-        where_clauses.append("signal_date <= ?")
-        bindings.append(snapshot_to[:10])
-    sql_where = f"where {' AND '.join(where_clauses)}" if where_clauses else ""
-    rows = conn.execute(
-        f"""
-        select {_matched_baseline_select_list(available_columns)}
-        from {MATCHED_BASELINE_TABLE}
-        {sql_where}
-        order by signal_date asc, candidate_stock_code asc, control_stock_code asc
-        """,
-        bindings,
-    ).fetchall()
+    rows = repository.fetch_matched_baseline_window_rows(
+        stock_code=stock_code,
+        snapshot_from=snapshot_from,
+        snapshot_to=snapshot_to,
+        available_columns=available_columns,
+        conn=conn,
+    )
     return [_normalize_matched_baseline_row(row) for row in rows]
 
 
@@ -1273,18 +1128,14 @@ def _load_observation_trade_dates(
     """Distinct observation trade dates after the earliest snapshot (maturity reference; SELECT only)."""
     if TABLE_OBS not in tables or not min_snapshot_date:
         return []
-    columns = {str(row[1]).lower() for row in conn.execute(f"pragma table_info('{TABLE_OBS}')").fetchall()}
+    repository = _candidate_history_repository_for_connection()
+    columns = repository.table_columns(TABLE_OBS, conn=conn)
     if "close_value" not in columns:
         return []
-    rows = conn.execute(
-        f"""
-        select distinct trade_date
-        from {TABLE_OBS}
-        where trade_date > ?
-          and close_value is not null
-        """,
-        [min_snapshot_date],
-    ).fetchall()
+    rows = repository.fetch_observation_trade_dates_after(
+        min_snapshot_date=min_snapshot_date,
+        conn=conn,
+    )
     return sorted({str(row[0])[:10] for row in rows if str(row[0] or "").strip()})
 
 
@@ -1456,74 +1307,21 @@ def _load_forward_maturity_observations(
     stock_codes = {code for code in stock_codes if code}
     if TABLE_OBS not in tables:
         return {}, [], "observation_table_missing"
-    columns = {str(row[1]).lower() for row in conn.execute(f"pragma table_info('{TABLE_OBS}')").fetchall()}
+    repository = _candidate_history_repository_for_connection()
+    columns = repository.table_columns(TABLE_OBS, conn=conn)
     missing_columns = sorted({"trade_date", "stock_code", "close_value"} - columns)
     if missing_columns:
         return {}, [], f"observation_required_columns_missing:{','.join(missing_columns)}"
     if not min_snapshot_date or not stock_codes:
         return {}, [], None
     has_trade_status = "tradestatus" in columns
-    status_select = "tradestatus" if has_trade_status else "null as tradestatus"
-    valid_status_sql = (
-        f"and lower(trim(cast(tradestatus as varchar))) in {TRADING_STATUS_SQL_IN_LIST}"
-        if has_trade_status
-        else ""
+    rows, market_rows = repository.fetch_forward_maturity_observation_rows(
+        min_snapshot_date=min_snapshot_date,
+        evaluation_as_of_date=evaluation_as_of_date,
+        stock_codes=stock_codes,
+        has_trade_status=has_trade_status,
+        conn=conn,
     )
-    code_placeholders = ", ".join("?" for _ in stock_codes)
-    rows = conn.execute(
-        f"""
-        with latest_revisions as (
-          select
-            trade_date,
-            stock_code,
-            close_value,
-            {status_select},
-            row_number() over (
-              partition by
-                upper(trim(cast(stock_code as varchar))),
-                try_cast(trade_date as date)
-              order by rowid desc
-            ) as revision_rank
-          from {TABLE_OBS}
-          where try_cast(trade_date as date) > cast(? as date)
-            and try_cast(trade_date as date) <= cast(? as date)
-            and upper(trim(cast(stock_code as varchar))) in ({code_placeholders})
-        )
-        select trade_date, stock_code, close_value, tradestatus
-        from latest_revisions
-        where revision_rank = 1
-        order by trade_date, stock_code
-        """,
-        [min_snapshot_date, evaluation_as_of_date, *sorted(stock_codes)],
-    ).fetchall()
-    market_rows = conn.execute(
-        f"""
-        with latest_revisions as (
-          select
-            trade_date,
-            stock_code,
-            close_value,
-            {status_select},
-            row_number() over (
-              partition by
-                upper(trim(cast(stock_code as varchar))),
-                try_cast(trade_date as date)
-              order by rowid desc
-            ) as revision_rank
-          from {TABLE_OBS}
-          where try_cast(trade_date as date) > cast(? as date)
-            and try_cast(trade_date as date) <= cast(? as date)
-        )
-        select distinct try_cast(trade_date as date)
-        from latest_revisions
-        where revision_rank = 1
-          and try_cast(close_value as double) > 0
-          and isfinite(try_cast(close_value as double))
-          {valid_status_sql}
-        order by 1
-        """,
-        [min_snapshot_date, evaluation_as_of_date],
-    ).fetchall()
     observations: dict[str, dict[str, dict[str, Any]]] = {}
     market_dates = {
         normalized
@@ -1702,44 +1500,16 @@ def _all_filtered_forward_maturity_summary(
     filter_bindings: list[object],
     evaluation_as_of_date: str,
 ) -> dict[str, Any]:
-    def date_expr(column: str) -> str:
-        return f"try_cast({column} as date)" if column in available_columns else "cast(null as date)"
-
-    def number_expr(column: str) -> str:
-        return f"try_cast({column} as double)" if column in available_columns else "cast(null as double)"
-
-    stock_expr = (
-        "upper(trim(cast(stock_code as varchar)))"
-        if "stock_code" in available_columns
-        else "cast(null as varchar)"
-    )
-    filtered_sql = f"""
-        select
-          rowid as candidate_rowid,
-          {date_expr("snapshot_as_of_date")} as snapshot_date,
-          {stock_expr} as stock_code,
-          {date_expr("forward_trade_date_1d")} as stored_date_1d,
-          {date_expr("forward_trade_date_5d")} as stored_date_5d,
-          {date_expr("forward_trade_date_10d")} as stored_date_10d,
-          {date_expr("forward_trade_date_20d")} as stored_date_20d,
-          {number_expr("return_1d")} as raw_return_1d,
-          {number_expr("return_5d")} as raw_return_5d,
-          {number_expr("return_10d")} as raw_return_10d,
-          {number_expr("return_20d")} as raw_return_20d,
-          {number_expr("return_1d_adj")} as adjusted_return_1d,
-          {number_expr("return_5d_adj")} as adjusted_return_5d,
-          {number_expr("return_10d_adj")} as adjusted_return_10d,
-          {number_expr("return_20d_adj")} as adjusted_return_20d
-        from {TABLE_HIST}
-        {sql_where}
-    """
+    repository = _candidate_history_repository_for_connection()
     observation_columns = _table_columns_for_service(conn, TABLE_OBS) if TABLE_OBS in tables else set()
     required_observation_columns = {"trade_date", "stock_code", "close_value"}
     if not required_observation_columns.issubset(observation_columns):
-        row = conn.execute(
-            f"with filtered as ({filtered_sql}) select count(*)::bigint, max(snapshot_date) from filtered",
-            filter_bindings,
-        ).fetchone()
+        row = repository.fetch_filtered_maturity_overview(
+            available_columns=available_columns,
+            sql_where=sql_where,
+            filter_bindings=filter_bindings,
+            conn=conn,
+        )
         row_count = int(row[0] or 0) if row else 0
         latest_snapshot = _safe_optional_date(str(row[1] if row else ""))
         missing_observation_columns = sorted(required_observation_columns - observation_columns)
@@ -1755,183 +1525,14 @@ def _all_filtered_forward_maturity_summary(
             source_issue=source_issue,
         )
 
-    has_trade_status = "tradestatus" in observation_columns
-    latest_status_select = (
-        "first(cast(o.tradestatus as varchar) order by o.rowid desc)"
-        if has_trade_status
-        else "cast(null as varchar)"
+    rows = repository.fetch_all_filtered_maturity_rows(
+        available_columns=available_columns,
+        observation_columns=observation_columns,
+        sql_where=sql_where,
+        filter_bindings=filter_bindings,
+        evaluation_as_of_date=evaluation_as_of_date,
+        conn=conn,
     )
-    scoped_valid_status_sql = (
-        f"lower(trim(coalesce(o.trade_status, ''))) in {TRADING_STATUS_SQL_IN_LIST}"
-        if has_trade_status
-        else "true"
-    )
-    market_status_sql = (
-        f"and lower(trim(coalesce(trade_status, ''))) in {TRADING_STATUS_SQL_IN_LIST}"
-        if has_trade_status
-        else ""
-    )
-    explicit_halt_sql = (
-        "trim(coalesce(o.trade_status, '')) <> '' "
-        f"and lower(trim(o.trade_status)) not in {TRADING_STATUS_SQL_IN_LIST}"
-        if has_trade_status
-        else "false"
-    )
-    rows = conn.execute(
-        f"""
-        with filtered as materialized ({filtered_sql}),
-        candidate_bounds as (
-          select min(snapshot_date) as minimum_snapshot_date
-          from filtered
-          where snapshot_date is not null
-        ),
-        candidate_stocks as (
-          select stock_code, min(snapshot_date) as minimum_snapshot_date
-          from filtered
-          where stock_code is not null and snapshot_date is not null
-          group by stock_code
-        ),
-        market_latest_observations as materialized (
-          select
-            upper(trim(cast(o.stock_code as varchar))) as stock_code,
-            try_cast(o.trade_date as date) as trade_date,
-            first(try_cast(o.close_value as double) order by o.rowid desc) as close_value,
-            {latest_status_select} as trade_status
-          from {TABLE_OBS} o
-          cross join candidate_bounds bounds
-          where bounds.minimum_snapshot_date is not null
-            and try_cast(o.trade_date as date) > bounds.minimum_snapshot_date
-            and try_cast(o.trade_date as date) <= cast(? as date)
-          group by 1, 2
-        ),
-        market_dates as (
-          select distinct trade_date
-          from market_latest_observations
-          where close_value > 0
-            and isfinite(close_value)
-            {market_status_sql}
-        ),
-        market_counts as (
-          select f.candidate_rowid, count(m.trade_date)::bigint as market_count
-          from filtered f
-          left join market_dates m
-            on f.snapshot_date is not null and m.trade_date > f.snapshot_date
-          group by f.candidate_rowid
-        ),
-        candidate_observation_revisions as materialized (
-          select
-            upper(trim(cast(o.stock_code as varchar))) as stock_code,
-            try_cast(o.trade_date as date) as trade_date,
-            first(try_cast(o.close_value as double) order by o.rowid desc) as close_value,
-            {latest_status_select} as trade_status
-          from {TABLE_OBS} o
-          join candidate_stocks stocks
-            on stocks.stock_code = upper(trim(cast(o.stock_code as varchar)))
-           and try_cast(o.trade_date as date) > stocks.minimum_snapshot_date
-          where try_cast(o.trade_date as date) is not null
-            and try_cast(o.trade_date as date) <= cast(? as date)
-          group by 1, 2
-        ),
-        candidate_observations as materialized (
-          select
-            o.stock_code,
-            o.trade_date,
-            (
-              o.close_value > 0
-              and isfinite(o.close_value)
-              and {scoped_valid_status_sql}
-            ) as valid_close,
-            ({explicit_halt_sql}) as explicit_halt
-          from candidate_observation_revisions o
-        ),
-        valid_observations as (
-          select
-            f.candidate_rowid,
-            o.trade_date,
-            row_number() over (
-              partition by f.candidate_rowid
-              order by o.trade_date
-            ) as bar_number
-          from filtered f
-          join candidate_observations o
-            on o.stock_code = f.stock_code
-           and f.snapshot_date is not null
-           and o.trade_date > f.snapshot_date
-           and o.valid_close
-          qualify bar_number <= 20
-        ),
-        targets as (
-          select
-            candidate_rowid,
-            count(*)::bigint as stock_valid_bar_count,
-            max(case when bar_number = 1 then trade_date end) as target_1d,
-            max(case when bar_number = 5 then trade_date end) as target_5d,
-            max(case when bar_number = 10 then trade_date end) as target_10d,
-            max(case when bar_number = 20 then trade_date end) as target_20d
-          from valid_observations
-          group by candidate_rowid
-        ),
-        halt_flags as (
-          select
-            f.candidate_rowid,
-             max(case when o.explicit_halt then 1 else 0 end)::integer as explicit_halt
-          from filtered f
-          left join candidate_observations o
-            on o.stock_code = f.stock_code
-           and f.snapshot_date is not null
-           and o.trade_date > f.snapshot_date
-          group by f.candidate_rowid
-        ),
-        horizon_rows as (
-          select
-            f.candidate_rowid,
-            f.snapshot_date,
-            h.horizon,
-            h.bar_count,
-            case h.horizon
-              when '1d' then f.stored_date_1d when '5d' then f.stored_date_5d
-              when '10d' then f.stored_date_10d else f.stored_date_20d end as stored_date,
-            case h.horizon
-              when '1d' then f.raw_return_1d when '5d' then f.raw_return_5d
-              when '10d' then f.raw_return_10d else f.raw_return_20d end as raw_return,
-            case h.horizon
-              when '1d' then f.adjusted_return_1d when '5d' then f.adjusted_return_5d
-              when '10d' then f.adjusted_return_10d else f.adjusted_return_20d end as adjusted_return,
-            case h.horizon
-              when '1d' then t.target_1d when '5d' then t.target_5d
-              when '10d' then t.target_10d else t.target_20d end as expected_target,
-            coalesce(t.stock_valid_bar_count, 0) as stock_valid_bar_count,
-            coalesce(m.market_count, 0) as market_count,
-            coalesce(hf.explicit_halt, 0) as explicit_halt
-          from filtered f
-          cross join (values ('1d', 1), ('5d', 5), ('10d', 10), ('20d', 20)) h(horizon, bar_count)
-          left join targets t on t.candidate_rowid = f.candidate_rowid
-          left join market_counts m on m.candidate_rowid = f.candidate_rowid
-          left join halt_flags hf on hf.candidate_rowid = f.candidate_rowid
-        ),
-        classified as (
-          select
-            horizon,
-            snapshot_date,
-            case
-              when stored_date is not null and stored_date = expected_target
-                   and raw_return is not null and isfinite(raw_return)
-                then case
-                  when adjusted_return is not null and isfinite(adjusted_return) then 'complete'
-                  else 'raw_matured_adjustment_missing' end
-              when market_count < bar_count then 'natural_pending'
-              when explicit_halt = 1 and stock_valid_bar_count < bar_count then 'partial_halt'
-              else 'matured_missing_bar'
-            end as status
-          from horizon_rows
-        )
-        select horizon, status, count(*)::bigint, max(snapshot_date)
-        from classified
-        group by horizon, status
-        order by horizon, status
-        """,
-        [*filter_bindings, evaluation_as_of_date, evaluation_as_of_date],
-    ).fetchall()
     return _all_filtered_summary_from_rows(rows, evaluation_as_of_date=evaluation_as_of_date)
 
 
@@ -2008,7 +1609,7 @@ def _empty_all_filtered_maturity_summary(
 
 
 def _table_columns_for_service(conn: duckdb.DuckDBPyConnection, table_name: str) -> set[str]:
-    return {str(row[1]).lower() for row in conn.execute(f"pragma table_info('{table_name}')").fetchall()}
+    return _candidate_history_repository_for_connection().table_columns(table_name, conn=conn)
 
 
 def _resolve_evaluation_as_of_date(
@@ -2021,20 +1622,15 @@ def _resolve_evaluation_as_of_date(
     if requested_evaluation_as_of_date:
         return requested_evaluation_as_of_date
     if TABLE_OBS in tables:
-        columns = {
-            str(row[1]).lower() for row in conn.execute(f"pragma table_info('{TABLE_OBS}')").fetchall()
-        }
+        repository = _candidate_history_repository_for_connection()
+        columns = repository.table_columns(TABLE_OBS, conn=conn)
         if "trade_date" in columns:
             today = date.today().isoformat()
-            row = conn.execute(
-                f"""
-                select max(try_cast(trade_date as date))
-                from {TABLE_OBS}
-                where try_cast(trade_date as date) <= cast(? as date)
-                """,
-                [today],
-            ).fetchone()
-            resolved = _safe_optional_date(str(row[0] if row else ""))
+            latest_trade_date = repository.latest_observation_trade_date(
+                on_or_before=today,
+                conn=conn,
+            )
+            resolved = _safe_optional_date(str(latest_trade_date or ""))
             if resolved:
                 return resolved
     return _safe_optional_date(fallback_date) or date.today().isoformat()
@@ -2086,26 +1682,14 @@ def _resolve_replay_trade_dates(
     if not snapshot_from and not snapshot_to:
         return row_dates
 
-    where_clauses: list[str] = []
-    bindings: list[object] = []
-    if snapshot_from:
-        where_clauses.append("trade_date >= ?")
-        bindings.append(snapshot_from)
-    if snapshot_to:
-        where_clauses.append("trade_date <= ?")
-        bindings.append(snapshot_to)
-    sql_where = f"where {' AND '.join(where_clauses)}" if where_clauses else ""
+    rows = _candidate_history_repository_for_connection().fetch_replay_trade_dates(
+        snapshot_from=snapshot_from,
+        snapshot_to=snapshot_to,
+        conn=conn,
+    )
     observed = [
         str(row[0])[:10]
-        for row in conn.execute(
-            f"""
-            select distinct trade_date
-            from {TABLE_OBS}
-            {sql_where}
-            order by trade_date asc
-            """,
-            bindings,
-        ).fetchall()
+        for row in rows
         if str(row[0] or "").strip()
     ]
     return observed or row_dates
@@ -3016,51 +2600,13 @@ def _load_candidate_history_portfolio_close_rows(
     if has_adjustment_factor is None:
         has_adjustment_factor = _candidate_history_portfolio_has_adjustment_factor(conn)
     start_date = str(rebalances[0]["date"])
-    placeholders = ", ".join("?" for _ in stock_codes)
-    where_to = "and d.trade_date <= ?" if snapshot_to else ""
-    adj_select = (
-        """
-          case
-            when af.adj_factor is not null and af.adj_factor > 0
-            then d.close_value * af.adj_factor
-            else null
-          end as adj_close_value,
-          af.adj_factor
-        """
-        if has_adjustment_factor
-        else """
-          cast(null as double) as adj_close_value,
-          cast(null as double) as adj_factor
-        """
+    rows = _candidate_history_repository_for_connection().fetch_portfolio_close_rows(
+        stock_codes=stock_codes,
+        start_date=start_date,
+        snapshot_to=snapshot_to,
+        has_adjustment_factor=has_adjustment_factor,
+        conn=conn,
     )
-    adj_join = (
-        f"""
-        left join {TABLE_ADJ_FACTOR} af
-          on af.stock_code = d.stock_code
-         and af.trade_date = d.trade_date
-        """
-        if has_adjustment_factor
-        else ""
-    )
-    bindings: list[object] = [*stock_codes, start_date]
-    if snapshot_to:
-        bindings.append(snapshot_to)
-    rows = conn.execute(
-        f"""
-        select
-          d.trade_date,
-          d.stock_code,
-          d.close_value,
-          {adj_select}
-        from {TABLE_OBS} d
-        {adj_join}
-        where d.stock_code in ({placeholders})
-          and d.trade_date >= ?
-          {where_to}
-        order by d.trade_date asc, d.stock_code asc
-        """,
-        bindings,
-    ).fetchall()
     return [
         {
             "trade_date": str(trade_date)[:10],
@@ -3079,11 +2625,10 @@ def _candidate_history_portfolio_has_adjustment_factor(
     *,
     tables: set[str] | None = None,
 ) -> bool:
-    table_names = tables if tables is not None else {str(row[0]) for row in conn.execute("show tables").fetchall()}
-    if TABLE_ADJ_FACTOR not in table_names:
-        return False
-    columns = {str(row[1]).lower() for row in conn.execute(f"pragma table_info('{TABLE_ADJ_FACTOR}')").fetchall()}
-    return {"stock_code", "trade_date", "adj_factor"}.issubset(columns)
+    return _candidate_history_repository_for_connection().has_adjustment_factor(
+        tables=tables,
+        conn=conn,
+    )
 
 
 def _load_benchmark_rows_for_nav_series(
@@ -3111,18 +2656,13 @@ def _load_benchmark_rows(
     for table in (TABLE_BENCHMARK_SNAPSHOT, TABLE_BENCHMARK_DAILY):
         if table not in tables:
             continue
-        rows = conn.execute(
-            f"""
-            select trade_date, value_numeric
-            from {table}
-            where series_id = ?
-              and value_numeric is not null
-              and cast(trade_date as date) >= ?
-              and cast(trade_date as date) <= ?
-            order by cast(trade_date as date) asc
-            """,
-            [BENCHMARK_SERIES_ID, start_date, end_date],
-        ).fetchall()
+        rows = _candidate_history_repository_for_connection().fetch_benchmark_rows(
+            table_name=table,
+            series_id=BENCHMARK_SERIES_ID,
+            start_date=start_date,
+            end_date=end_date,
+            conn=conn,
+        )
         if not rows:
             continue
         tables_used.append(table)
@@ -4848,10 +4388,8 @@ def _default_snapshot_from(snapshot_to: str) -> str:
 
 
 def _latest_history_snapshot_date(conn: duckdb.DuckDBPyConnection) -> str | None:
-    row = conn.execute(f"select max(snapshot_as_of_date) from {TABLE_HIST}").fetchone()
-    if not row:
-        return None
-    return _normalize_date_text(row[0])
+    value = _candidate_history_repository_for_connection().latest_history_snapshot_date(conn=conn)
+    return _normalize_date_text(value)
 
 
 def _first_nonempty_vendor_version(items: list[dict[str, Any]]) -> str | None:

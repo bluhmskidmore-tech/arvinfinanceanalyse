@@ -32,9 +32,9 @@ from backend.app.core_finance.data_freshness import (
     assess_freshness,
 )
 from backend.app.core_finance.factor_screen_candidates import (
+    attach_factor_screen_breakout_geometry,
     compute_factor_screen_candidates,
 )
-from backend.app.core_finance.field_normalization import TRADING_STATUS_SQL_IN_LIST
 from backend.app.core_finance.fresh_trend_watchlist_candidates import (
     FreshTrendWatchlistSnapshot,
     compute_fresh_trend_watchlist_candidates,
@@ -82,6 +82,10 @@ from backend.app.core_finance.mean_reversion_candidates import (
     MeanReversionSnapshot,
     compute_mean_reversion_candidates,
 )
+from backend.app.core_finance.position_sizing import (
+    build_stock_candidate_position_size_hint,
+)
+from backend.app.core_finance.strategy_policy import POLICY
 from backend.app.core_finance.uptrend_momentum_candidates import (
     UptrendMomentumSnapshot,
     compute_uptrend_momentum_candidates,
@@ -92,12 +96,12 @@ from backend.app.repositories.choice_stock_adapter import (
     choice_stock_readiness_missing,
     load_choice_stock_readiness,
 )
-from backend.app.repositories.choice_stock_units import (
-    amount_rmb_sql,
-    scale_unknown_sql,
-    volume_shares_sql,
-)
 from backend.app.repositories.livermore_gate_supplement_repo import fetch_market_gate_supplement
+from backend.app.repositories.livermore_market_read_repo import (
+    LIVERMORE_STRATEGY_READS,
+    livermore_shared_read_only_connection,
+    open_livermore_read_connection,
+)
 from backend.app.repositories.stock_analysis_theme_overlay_reader import (
     StockAnalysisThemeOverlayReader,
     ThemeOverlayManifestAccessor,
@@ -192,6 +196,9 @@ LIVERMORE_OUTPUT_KEYS: tuple[str, ...] = (
 STOCK_MODULE_FRESHNESS_THRESHOLD_DAYS = 3
 STOCK_MODULE_PRIMARY_COVERAGE_THRESHOLD = 0.8
 STOCK_MODULE_PARTIAL_COVERAGE_THRESHOLD = 0.5
+# factor_screen v3 流动性治理：候选近 20 日均成交额(元)通过率低于该阈值时降级为
+# 观察名单(evidence_only)。阈值口径同 MonitoringThresholds,不另写字面量。
+FACTOR_SCREEN_LIQUIDITY_PASS_THRESHOLD = POLICY.monitoring_thresholds.factor_screen_liquidity_pass_threshold
 # factor_screen_candidates.compute_factor_screen_candidates 在数据/字段/评分池异常时
 # 写入的 coverage_note 均含以下关键词之一（无数据/缺少字段/必填字段缺失或全部未通过筛选
 # 导致评分池为空）；成功路径的 coverage_note 只说明评分池规模，不含这些关键词。
@@ -577,19 +584,8 @@ def _shared_read_only_connection(duckdb_path: str) -> Iterator[duckdb.DuckDBPyCo
     empty result. The connection closes when the ``with`` block exits, keeping
     the file-lock window short for separate writer processes.
     """
-    path = Path(duckdb_path)
-    if not path.exists():
-        yield None
-        return
-    try:
-        conn = duckdb.connect(str(path), read_only=True)
-    except duckdb.Error:
-        yield None
-        return
-    try:
+    with livermore_shared_read_only_connection(duckdb_path) as conn:
         yield conn
-    finally:
-        conn.close()
 
 
 def _load_broad_index_history(
@@ -604,90 +600,29 @@ def _load_broad_index_history(
 
     owns_conn = conn is None
     if owns_conn:
-        try:
-            conn = duckdb.connect(str(duckdb_file), read_only=True)
-        except duckdb.Error:
+        conn = open_livermore_read_connection(str(duckdb_file))
+        if conn is None:
             return [], []
 
     try:
-        tables = {row[0] for row in conn.execute("show tables").fetchall()}
-        queries: list[str] = []
-        params: list[object] = []
+        tables = _list_table_names(conn)
         tables_used: list[str] = []
-        date_filter = "and cast(trade_date as date) <= ?" if as_of_date is not None else ""
-        if "fact_choice_macro_daily" in tables:
+        include_macro_daily = "fact_choice_macro_daily" in tables
+        include_market_snapshot = "choice_market_snapshot" in tables
+        if include_macro_daily:
             tables_used.append("fact_choice_macro_daily")
-            queries.append(
-                f"""
-                select
-                  cast(trade_date as date) as trade_date,
-                  cast(value_numeric as double) as close_value,
-                  coalesce(source_version, '') as source_version,
-                  coalesce(vendor_version, '') as vendor_version,
-                  coalesce(quality_flag, 'ok') as quality_flag,
-                  0 as source_rank
-                from fact_choice_macro_daily
-                where series_id = ?
-                  and value_numeric is not null
-                  {date_filter}
-                """
-            )
-            params.append(BROAD_INDEX_SERIES_ID)
-            if as_of_date is not None:
-                params.append(as_of_date.isoformat())
-        if "choice_market_snapshot" in tables:
+        if include_market_snapshot:
             tables_used.append("choice_market_snapshot")
-            queries.append(
-                f"""
-                select
-                  cast(trade_date as date) as trade_date,
-                  cast(value_numeric as double) as close_value,
-                  coalesce(source_version, '') as source_version,
-                  coalesce(vendor_version, '') as vendor_version,
-                  'ok' as quality_flag,
-                  1 as source_rank
-                from choice_market_snapshot
-                where series_id = ?
-                  and value_numeric is not null
-                  {date_filter}
-                """
-            )
-            params.append(BROAD_INDEX_SERIES_ID)
-            if as_of_date is not None:
-                params.append(as_of_date.isoformat())
-        if not queries:
+        if not tables_used:
             return [], []
-        rows = conn.execute(
-            f"""
-            with unioned as (
-              {" union all ".join(queries)}
-            ),
-            deduped as (
-              select
-                trade_date,
-                close_value,
-                source_version,
-                vendor_version,
-                quality_flag,
-                row_number() over (
-                  partition by trade_date
-                  order by source_rank asc, source_version desc
-                ) as rn
-              from unioned
-            )
-            select
-              trade_date,
-              close_value,
-              source_version,
-              vendor_version,
-              quality_flag
-            from deduped
-            where rn = 1
-            order by trade_date desc
-            limit {HISTORY_LIMIT}
-            """,
-            params,
-        ).fetchall()
+        rows = LIVERMORE_STRATEGY_READS.fetch_broad_index_history_rows(
+            series_id=BROAD_INDEX_SERIES_ID,
+            as_of_date=as_of_date,
+            history_limit=HISTORY_LIMIT,
+            include_macro_daily=include_macro_daily,
+            include_market_snapshot=include_market_snapshot,
+            conn=conn,
+        )
     except duckdb.Error:
         return [], tables_used if "tables_used" in locals() else []
     finally:
@@ -1123,9 +1058,8 @@ def _load_cycle_input_evidence(
         return _CycleInputEvidence()
     owns_conn = conn is None
     if owns_conn:
-        try:
-            conn = duckdb.connect(str(path), read_only=True)
-        except duckdb.Error:
+        conn = open_livermore_read_connection(str(path))
+        if conn is None:
             return _CycleInputEvidence()
     tables_used: list[str] = []
     source_versions: list[str] = []
@@ -1135,48 +1069,22 @@ def _load_cycle_input_evidence(
     pmi_input_evidence = ""
     credit_input_evidence = ""
     try:
-        tables = {str(row[0]) for row in conn.execute("show tables").fetchall()}
+        tables = _list_table_names(conn)
         price_spread_evidence = ""
         pe_value: float | None = None
         cn10y_value: float | None = None
         if "fact_choice_macro_daily" in tables:
-            price_rows = conn.execute(
-                """
-                with ranked as (
-                  select
-                    series_id,
-                    trade_date,
-                    value_numeric,
-                    coalesce(source_version, '') as source_version,
-                    coalesce(vendor_version, '') as vendor_version,
-                    coalesce(rule_version, '') as rule_version,
-                    coalesce(frequency, '') as frequency,
-                    coalesce(unit, '') as unit,
-                    coalesce(quality_flag, '') as quality_flag,
-                    coalesce(run_id, '') as run_id,
-                    row_number() over (
-                      partition by series_id
-                      order by try_cast(trade_date as date) desc
-                    ) as rn
-                  from fact_choice_macro_daily
-                  where series_id in (?, ?, ?, ?, ?)
-                    and try_cast(trade_date as date) <= cast(? as date)
-                    and value_numeric is not null
-                )
-                select series_id, trade_date, value_numeric, source_version, vendor_version, rule_version, frequency, unit, quality_flag, run_id
-                from ranked
-                where rn <= 5
-                order by series_id, try_cast(trade_date as date)
-                """,
-                [
+            price_rows = LIVERMORE_STRATEGY_READS.fetch_cycle_macro_ranked_rows(
+                series_ids=[
                     CSI300_PE_SERIES_ID,
                     CN10Y_SERIES_ID,
                     PMI_SERIES_ID,
                     SOCIAL_FINANCING_YOY_SERIES_ID,
                     M2_YOY_SERIES_ID,
-                    as_of_date.isoformat(),
                 ],
-            ).fetchall()
+                as_of_date=as_of_date.isoformat(),
+                conn=conn,
+            )
             points_by_series: dict[str, list[tuple[str, float]]] = {}
             rejected_by_series: dict[str, list[str]] = {}
             for (
@@ -1303,16 +1211,10 @@ def _load_cycle_input_evidence(
         turnover_ready = False
         turnover_evidence = ""
         if _table_has_columns(conn, "choice_stock_daily_observation", ["trade_date", "stock_code", "turn"]):
-            turnover_row = conn.execute(
-                """
-                select count(*) as row_count, count(distinct stock_code) as stock_count, coalesce(max(source_version), '')
-                from choice_stock_daily_observation
-                where cast(trade_date as date) <= cast(? as date)
-                  and cast(trade_date as date) >= cast(? as date) - interval 20 day
-                  and turn is not null
-                """,
-                [as_of_date.isoformat(), as_of_date.isoformat()],
-            ).fetchone()
+            turnover_row = LIVERMORE_STRATEGY_READS.fetch_turnover_evidence_row(
+                as_of_date=as_of_date.isoformat(),
+                conn=conn,
+            )
             row_count = _safe_int(turnover_row[0]) if turnover_row else 0
             stock_count = _safe_int(turnover_row[1]) if turnover_row else 0
             if row_count and row_count > 0:
@@ -1327,14 +1229,10 @@ def _load_cycle_input_evidence(
                 evidence_rows += int(row_count)
 
         if _table_has_columns(conn, "choice_stock_daily_observation", ["trade_date"]):
-            stock_daily_latest = conn.execute(
-                """
-                select max(cast(trade_date as date))
-                from choice_stock_daily_observation
-                where cast(trade_date as date) <= cast(? as date)
-                """,
-                [as_of_date.isoformat()],
-            ).fetchone()
+            stock_daily_latest = LIVERMORE_STRATEGY_READS.fetch_latest_observation_trade_date_row(
+                as_of_date=as_of_date.isoformat(),
+                conn=conn,
+            )
             if stock_daily_latest and stock_daily_latest[0] is not None:
                 input_business_dates.append(
                     (
@@ -1348,24 +1246,13 @@ def _load_cycle_input_evidence(
         valuation_ready = False
         valuation_evidence = ""
         if _table_has_columns(conn, "choice_stock_factor_snapshot", ["as_of_date", "stock_code", "pe", "pb"]):
-            valuation_source_expr = (
-                "coalesce(max(source_version), '')"
-                if "source_version" in _table_columns(conn, "choice_stock_factor_snapshot")
-                else "''"
+            valuation_row = LIVERMORE_STRATEGY_READS.fetch_valuation_evidence_row(
+                as_of_date=as_of_date.isoformat(),
+                has_source_version=(
+                    "source_version" in _table_columns(conn, "choice_stock_factor_snapshot")
+                ),
+                conn=conn,
             )
-            valuation_row = conn.execute(
-                f"""
-                select as_of_date, count(*) as row_count, {valuation_source_expr}
-                from choice_stock_factor_snapshot
-                where cast(as_of_date as date) <= ?
-                  and pe is not null
-                  and pb is not null
-                group by as_of_date
-                order by cast(as_of_date as date) desc
-                limit 1
-                """,
-                [as_of_date.isoformat()],
-            ).fetchone()
             if valuation_row:
                 if valuation_row[0]:
                     input_business_dates.append(
@@ -1872,6 +1759,14 @@ def _load_choice_stock_outputs_on_conn(
                     include_universe=backfill_mode,
                     policy_name=resolved_stock_candidate_policy,
                 ).payload
+                stock_candidates_payload["position_size_hint"] = (
+                    build_stock_candidate_position_size_hint(
+                        cast(
+                            "list[dict[str, object]]",
+                            stock_candidates_payload.get("items") or [],
+                        )
+                    )
+                )
 
     uptrend_momentum_payload: dict[str, object] | None = None
     if stock_coverage.full_coverage and market_state in {"WARM", "HOT"}:
@@ -1933,8 +1828,30 @@ def _load_choice_stock_outputs_on_conn(
             market_state=market_state,
             rows=factor_load.rows,
         )
+        # 观察位几何：仅对入选候选(<=30 只)装载与 Livermore 候选同源同窗口的
+        # 收盘历史（锚定策略 as_of_date，而非因子快照日），由 core_finance 复用
+        # 既有 breakout 公式补充 close/breakout_level/distance/pattern 字段。
+        factor_candidate_codes = [
+            str(item.get("stock_code") or "")
+            for item in cast(list[dict[str, object]], fs_result.payload.get("items") or [])
+            if isinstance(item, dict)
+        ]
+        factor_geometry_histories, factor_geometry_last_dates, factor_geometry_tables = (
+            _load_factor_candidate_close_histories(
+                duckdb_path=duckdb_path,
+                as_of_date=as_of_date,
+                stock_codes=factor_candidate_codes,
+                conn=stock_conn,
+            )
+        )
+        tables_used.extend(factor_geometry_tables)
         factor_screen_payload = {
-            **fs_result.payload,
+            **attach_factor_screen_breakout_geometry(
+                fs_result.payload,
+                close_history_by_code=factor_geometry_histories,
+                price_as_of_date=as_of_date,
+                last_trade_date_by_code=factor_geometry_last_dates,
+            ),
             "factor_snapshot_as_of_date": factor_load.snapshot_as_of_date,
             "observation_only": True,
             "coverage_count": len(factor_load.rows),
@@ -2058,12 +1975,11 @@ def _load_sector_rank_inputs(
         return [], [], [], []
     owns_conn = conn is None
     if owns_conn:
-        try:
-            conn = duckdb.connect(str(path), read_only=True)
-        except duckdb.Error:
+        conn = open_livermore_read_connection(str(path))
+        if conn is None:
             return [], [], [], []
     try:
-        tables = {row[0] for row in conn.execute("show tables").fetchall()}
+        tables = _list_table_names(conn)
         required_tables = {"choice_stock_sector_membership", "choice_stock_daily_observation"}
         if not required_tables.issubset(tables):
             return [], [], [], []
@@ -2083,47 +1999,12 @@ def _load_sector_rank_inputs(
                 column_name="as_of_date",
                 as_of_date=as_of_date,
             )
-        stock_name_expr = (
-            "coalesce(universe.stock_name, membership.stock_code)"
-            if universe_snapshot_date is not None
-            else "membership.stock_code"
+        rows = LIVERMORE_STRATEGY_READS.fetch_sector_rank_input_rows(
+            as_of_date=as_of_date,
+            membership_snapshot_date=membership_snapshot_date,
+            universe_snapshot_date=universe_snapshot_date,
+            conn=conn,
         )
-        universe_join = (
-            """
-            left join choice_stock_universe universe
-              on universe.stock_code = membership.stock_code
-             and universe.as_of_date = ?
-            """
-            if universe_snapshot_date is not None
-            else ""
-        )
-        params: list[object] = [as_of_date]
-        if universe_snapshot_date is not None:
-            params.append(universe_snapshot_date)
-        params.append(membership_snapshot_date)
-        rows = conn.execute(
-            f"""
-            select
-              membership.stock_code,
-              {stock_name_expr} as stock_name,
-              membership.sw2021code,
-              membership.sw2021,
-              daily.pctchange,
-              daily.turn,
-              daily.amplitude,
-              membership.source_version,
-              membership.vendor_version,
-              daily.source_version,
-              daily.vendor_version
-            from choice_stock_sector_membership membership
-            join choice_stock_daily_observation daily
-              on daily.stock_code = membership.stock_code
-             and cast(daily.trade_date as date) = cast(? as date)
-            {universe_join}
-            where membership.as_of_date = ?
-            """,
-            params,
-        ).fetchall()
     except duckdb.Error:
         return [], ["choice_stock_sector_membership", "choice_stock_daily_observation"], [], []
     finally:
@@ -2176,85 +2057,14 @@ def _load_dual_stock_history_inputs(
     stock_codes = [stock_code for stock_code, _flags in target_items]
     want_candidate_flags = [flags[0] for _stock_code, flags in target_items]
     want_trading_flags = [flags[1] for _stock_code, flags in target_items]
-    params: list[object] = [
-        stock_codes,
-        want_candidate_flags,
-        want_trading_flags,
-        as_of_date,
-        CHOICE_STOCK_HISTORY_WINDOW,
-        CHOICE_STOCK_HISTORY_WINDOW,
-    ]
-    rows = conn.execute(
-        f"""
-        with targets as (
-          select
-            unnest(?::varchar[]) as stock_code,
-            unnest(?::boolean[]) as want_candidate,
-            unnest(?::boolean[]) as want_trading
-        ),
-        base_history as (
-          select
-            daily.stock_code,
-            daily.close_value,
-            daily.turn,
-            {amount_rmb_sql(table_alias="daily", alias="amount")},
-            {volume_shares_sql(table_alias="daily", alias="volume")},
-            targets.want_candidate,
-            targets.want_trading,
-            cast(daily.trade_date as date) as trade_day,
-            lower(trim(coalesce(daily.tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST} as is_trading
-          from choice_stock_daily_observation daily
-          join targets on targets.stock_code = daily.stock_code
-          where cast(daily.trade_date as date) <= cast(? as date)
-        ),
-        ranked_history as (
-          select
-            stock_code,
-            close_value,
-            turn,
-            amount,
-            volume,
-            want_candidate,
-            want_trading,
-            is_trading,
-            row_number() over (
-              partition by stock_code
-              order by trade_day desc
-            ) as candidate_rn,
-            count(*) filter (
-              where is_trading
-            ) over (
-              partition by stock_code
-              order by trade_day desc
-              rows between unbounded preceding and current row
-            ) as trading_rn
-          from base_history
-        ),
-        tagged_history as (
-          select
-            *,
-            want_candidate and candidate_rn <= ? as include_candidate,
-            want_trading and is_trading and trading_rn <= ? as include_trading
-          from ranked_history
-        )
-        select
-          stock_code,
-          list(close_value order by candidate_rn desc)
-            filter (where include_candidate) as candidate_closes,
-          list(turn order by candidate_rn desc)
-            filter (where include_candidate) as candidate_turns,
-          list(close_value order by trading_rn desc)
-            filter (where include_trading) as trading_closes,
-          list(amount order by trading_rn desc)
-            filter (where include_trading) as trading_amounts,
-          list(volume order by trading_rn desc)
-            filter (where include_trading) as trading_volumes
-        from tagged_history
-        where include_candidate or include_trading
-        group by stock_code
-        """,
-        params,
-    ).fetchall()
+    rows = LIVERMORE_STRATEGY_READS.fetch_dual_stock_history_rows(
+        stock_codes=stock_codes,
+        want_candidate_flags=want_candidate_flags,
+        want_trading_flags=want_trading_flags,
+        as_of_date=as_of_date,
+        history_window=CHOICE_STOCK_HISTORY_WINDOW,
+        conn=conn,
+    )
 
     candidate_history_by_code: dict[str, dict[str, list[float]]] = {}
     trading_history_by_code: dict[str, dict[str, list[object]]] = {}
@@ -2327,14 +2137,13 @@ def _load_stock_candidate_snapshots(
         return [], [], [], []
     owns_conn = conn is None
     if owns_conn:
-        try:
-            conn = duckdb.connect(str(path), read_only=True)
-        except duckdb.Error:
+        conn = open_livermore_read_connection(str(path))
+        if conn is None:
             return [], [], [], []
     history_rows: list[tuple[object, ...]] = []
     history_by_code: dict[str, dict[str, list[float]]] | None = None
     try:
-        tables = {row[0] for row in conn.execute("show tables").fetchall()}
+        tables = _list_table_names(conn)
         required_tables = {
             "choice_stock_universe",
             "choice_stock_sector_membership",
@@ -2382,50 +2191,12 @@ def _load_stock_candidate_snapshots(
             "choice_stock_factor_snapshot",
             factor_columns,
         ):
-            latest_factor = conn.execute(
-                """
-                select max(as_of_date)
-                from choice_stock_factor_snapshot
-                where as_of_date <= ?
-                """,
-                [as_of_date],
-            ).fetchone()
+            latest_factor = LIVERMORE_STRATEGY_READS.fetch_latest_factor_snapshot_date(
+                as_of_date=as_of_date,
+                conn=conn,
+            )
             if latest_factor and latest_factor[0]:
                 factor_snapshot_date = str(latest_factor[0])
-        factor_select = (
-            """
-              f.pe,
-              f.pb,
-              f.ps,
-              f.roe,
-              f.gross_margin,
-              f.three_month_return,
-              f.twelve_month_return,
-              f.volatility,
-              f.dividend_yield
-            """
-            if factor_snapshot_date is not None
-            else """
-              null as pe,
-              null as pb,
-              null as ps,
-              null as roe,
-              null as gross_margin,
-              null as three_month_return,
-              null as twelve_month_return,
-              null as volatility,
-              null as dividend_yield
-            """
-        )
-        factor_join = (
-            """
-            left join choice_stock_factor_snapshot f
-              on f.stock_code = universe.stock_code
-             and f.as_of_date = ?
-            """
-            if factor_snapshot_date is not None
-            else ""
-        )
         # amount 两代 vendor 单位口径（契约 docs/data_contracts.md §4.10）经共享
         # helper 归一化为元；vendor_version 为 NULL 时无法定标 fail-closed 输出 NULL。
         # 观察表缺 amount 或 vendor_version 列时同样 fail-closed 输出 NULL，
@@ -2433,96 +2204,29 @@ def _load_stock_candidate_snapshots(
         has_obs_vendor_version = _table_has_columns(
             conn, "choice_stock_daily_observation", ["vendor_version"]
         )
-        daily_amount_select = (
-            amount_rmb_sql(table_alias="daily", alias="amount")
-            if has_obs_vendor_version
-            and _table_has_columns(conn, "choice_stock_daily_observation", ["amount"])
-            else "cast(null as double) as amount"
+        current_rows = LIVERMORE_STRATEGY_READS.fetch_stock_candidate_current_rows(
+            as_of_date=as_of_date,
+            universe_snapshot_date=universe_snapshot_date,
+            membership_snapshot_date=membership_snapshot_date,
+            limit_snapshot_date=limit_snapshot_date,
+            factor_snapshot_date=factor_snapshot_date,
+            has_observation_vendor_version=has_obs_vendor_version,
+            has_observation_amount=_table_has_columns(
+                conn, "choice_stock_daily_observation", ["amount"]
+            ),
+            conn=conn,
         )
-        daily_vendor_select = (
-            "daily.vendor_version" if has_obs_vendor_version else "cast(null as varchar)"
-        )
-        # 告警计数须与 fail-closed 语义一致:仅统计"amount 非空且 vendor_version 为
-        # NULL"(真正无法定标)的行,而非任何 vendor_version 为 NULL 的行。
-        daily_amount_scale_unknown_select = (
-            scale_unknown_sql("amount", table_alias="daily", alias="_amount_scale_unknown")
-            if has_obs_vendor_version
-            and _table_has_columns(conn, "choice_stock_daily_observation", ["amount"])
-            else "false as _amount_scale_unknown"
-        )
-        params: list[object] = [membership_snapshot_date, as_of_date, limit_snapshot_date]
-        if factor_snapshot_date is not None:
-            params.append(factor_snapshot_date)
-        params.append(universe_snapshot_date)
-        current_rows = conn.execute(
-            f"""
-            select
-              universe.stock_code,
-              universe.stock_name,
-              membership.sw2021code,
-              membership.sw2021,
-              daily.open_value,
-              daily.high_value,
-              daily.low_value,
-              daily.close_value,
-              daily.turn,
-              daily.highlimit,
-              daily.lowlimit,
-              limits.issurgedlimit,
-              universe.source_version,
-              universe.vendor_version,
-              membership.source_version,
-              membership.vendor_version,
-              daily.source_version,
-              {daily_vendor_select},
-              limits.source_version,
-              limits.vendor_version,
-              {factor_select},
-              {daily_amount_select},
-              {daily_amount_scale_unknown_select}
-            from choice_stock_universe universe
-            join choice_stock_sector_membership membership
-              on membership.stock_code = universe.stock_code
-             and membership.as_of_date = ?
-            join choice_stock_daily_observation daily
-              on daily.stock_code = universe.stock_code
-             and cast(daily.trade_date as date) = cast(? as date)
-            join choice_stock_limit_quality limits
-              on limits.stock_code = universe.stock_code
-             and limits.as_of_date = ?
-            {factor_join}
-            where universe.as_of_date = ?
-            """,
-            params,
-        ).fetchall()
         stock_codes = [str(row[0]) for row in current_rows if row[0]]
         if not stock_codes:
             return [], list(required_tables), [], []
-        placeholders = ",".join("?" for _ in stock_codes)
         loaded_history = history_loader(stock_codes) if history_loader is not None else None
         if loaded_history is None:
-            history_rows = conn.execute(
-                f"""
-                with ranked_history as (
-                  select
-                    stock_code,
-                    close_value,
-                    turn,
-                    row_number() over (
-                      partition by stock_code
-                      order by cast(trade_date as date) desc
-                    ) as rn
-                  from choice_stock_daily_observation
-                  where stock_code in ({placeholders})
-                    and cast(trade_date as date) <= cast(? as date)
-                )
-                select stock_code, close_value, turn
-                from ranked_history
-                where rn <= ?
-                order by stock_code asc, rn desc
-                """,
-                [*stock_codes, as_of_date, CHOICE_STOCK_HISTORY_WINDOW],
-            ).fetchall()
+            history_rows = LIVERMORE_STRATEGY_READS.fetch_stock_candidate_history_rows(
+                stock_codes=stock_codes,
+                as_of_date=as_of_date,
+                history_window=CHOICE_STOCK_HISTORY_WINDOW,
+                conn=conn,
+            )
         else:
             history_by_code = loaded_history
     except duckdb.Error:
@@ -2665,12 +2369,11 @@ def _load_trading_stock_snapshot_inputs(
         return empty
     owns_conn = conn is None
     if owns_conn:
-        try:
-            conn = duckdb.connect(str(path), read_only=True)
-        except duckdb.Error:
+        conn = open_livermore_read_connection(str(path))
+        if conn is None:
             return empty
     try:
-        tables = {row[0] for row in conn.execute("show tables").fetchall()}
+        tables = _list_table_names(conn)
         required_tables = {
             "choice_stock_universe",
             "choice_stock_sector_membership",
@@ -2697,32 +2400,12 @@ def _load_trading_stock_snapshot_inputs(
         )
         if universe_snapshot_date is None or membership_snapshot_date is None:
             return empty
-        current_raw_rows = conn.execute(
-            f"""
-            select
-              daily.stock_code,
-              coalesce(nullif(trim(universe.stock_name), ''), daily.stock_code) as stock_name,
-              coalesce(nullif(trim(membership.sw2021code), ''), '') as sector_code,
-              coalesce(nullif(trim(membership.sw2021), ''), '') as sector_name,
-              daily.close_value,
-              daily.low_value,
-              daily.high_value,
-              {volume_shares_sql(table_alias="daily", alias="volume")},
-              daily.pctchange,
-              daily.turn,
-              daily.amplitude
-            from choice_stock_daily_observation daily
-            left join choice_stock_universe universe
-              on universe.stock_code = daily.stock_code
-             and universe.as_of_date = ?
-            left join choice_stock_sector_membership membership
-              on membership.stock_code = daily.stock_code
-             and membership.as_of_date = ?
-            where cast(daily.trade_date as date) = cast(? as date)
-              and lower(trim(coalesce(daily.tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
-            """,
-            [universe_snapshot_date, membership_snapshot_date, as_of_date],
-        ).fetchall()
+        current_raw_rows = LIVERMORE_STRATEGY_READS.fetch_trading_stock_current_rows(
+            as_of_date=as_of_date,
+            universe_snapshot_date=universe_snapshot_date,
+            membership_snapshot_date=membership_snapshot_date,
+            conn=conn,
+        )
         stock_codes = [str(row[0] or "") for row in current_raw_rows if row[0]]
         if not stock_codes:
             return _TradingStockSnapshotInputs(
@@ -2732,33 +2415,14 @@ def _load_trading_stock_snapshot_inputs(
                 hlimitedays_by_code={},
                 tables_used=tables_used,
             )
-        placeholders = ",".join("?" for _ in stock_codes)
         history_rows = []
         if load_history:
-            history_rows = conn.execute(
-                f"""
-                with ranked_history as (
-                  select
-                    stock_code,
-                    close_value,
-                    {amount_rmb_sql(alias="amount")},
-                    {volume_shares_sql(alias="volume")},
-                    row_number() over (
-                      partition by stock_code
-                      order by cast(trade_date as date) desc
-                    ) as rn
-                  from choice_stock_daily_observation
-                  where stock_code in ({placeholders})
-                    and cast(trade_date as date) <= cast(? as date)
-                    and lower(trim(coalesce(tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
-                )
-                select stock_code, close_value, amount, volume
-                from ranked_history
-                where rn <= ?
-                order by stock_code asc, rn desc
-                """,
-                [*stock_codes, as_of_date, CHOICE_STOCK_HISTORY_WINDOW],
-            ).fetchall()
+            history_rows = LIVERMORE_STRATEGY_READS.fetch_trading_stock_history_rows(
+                stock_codes=stock_codes,
+                as_of_date=as_of_date,
+                history_window=CHOICE_STOCK_HISTORY_WINDOW,
+                conn=conn,
+            )
         concept_rows: list[tuple[object, object]] = []
         if include_concepts and "choice_stock_concept_membership" in tables:
             concept_snapshot_date = _latest_table_date_on_or_before(
@@ -2768,16 +2432,11 @@ def _load_trading_stock_snapshot_inputs(
                 as_of_date=as_of_date,
             )
             if concept_snapshot_date is not None:
-                concept_rows = conn.execute(
-                    f"""
-                    select stock_code, concept_name
-                    from choice_stock_concept_membership
-                    where stock_code in ({placeholders})
-                      and as_of_date = ?
-                    order by stock_code asc, concept_name asc
-                    """,
-                    [*stock_codes, concept_snapshot_date],
-                ).fetchall()
+                concept_rows = LIVERMORE_STRATEGY_READS.fetch_concept_membership_pairs(
+                    stock_codes=stock_codes,
+                    concept_snapshot_date=concept_snapshot_date,
+                    conn=conn,
+                )
                 tables_used.append("choice_stock_concept_membership")
         limit_rows: list[tuple[object, object]] = []
         if include_limit_quality and "choice_stock_limit_quality" in tables:
@@ -2788,15 +2447,11 @@ def _load_trading_stock_snapshot_inputs(
                 as_of_date=as_of_date,
             )
             if limit_snapshot_date is not None:
-                limit_rows = conn.execute(
-                    f"""
-                    select stock_code, hlimitedays
-                    from choice_stock_limit_quality
-                    where stock_code in ({placeholders})
-                      and as_of_date = ?
-                    """,
-                    [*stock_codes, limit_snapshot_date],
-                ).fetchall()
+                limit_rows = LIVERMORE_STRATEGY_READS.fetch_limit_quality_hlimitedays(
+                    stock_codes=stock_codes,
+                    limit_snapshot_date=limit_snapshot_date,
+                    conn=conn,
+                )
                 tables_used.append("choice_stock_limit_quality")
     except duckdb.Error:
         return empty
@@ -2942,12 +2597,11 @@ def _load_mean_reversion_snapshots(
     path = Path(duckdb_path)
     if not path.exists():
         return []
-    try:
-        conn = duckdb.connect(str(path), read_only=True)
-    except duckdb.Error:
+    conn = open_livermore_read_connection(str(path))
+    if conn is None:
         return []
     try:
-        tables = {row[0] for row in conn.execute("show tables").fetchall()}
+        tables = _list_table_names(conn)
         required_tables = {
             "choice_stock_universe",
             "choice_stock_sector_membership",
@@ -2969,44 +2623,20 @@ def _load_mean_reversion_snapshots(
         )
         if universe_snapshot_date is None or membership_snapshot_date is None:
             return []
-        current_rows = conn.execute(
-            f"""
-            select
-              daily.stock_code,
-              coalesce(nullif(trim(universe.stock_name), ''), daily.stock_code) as stock_name,
-              coalesce(nullif(trim(membership.sw2021code), ''), '') as sector_code,
-              coalesce(nullif(trim(membership.sw2021), ''), '') as sector_name,
-              daily.close_value,
-              daily.low_value,
-              daily.high_value,
-              {volume_shares_sql(table_alias="daily", alias="volume")}
-            from choice_stock_daily_observation daily
-            left join choice_stock_universe universe
-              on universe.stock_code = daily.stock_code
-             and universe.as_of_date = ?
-            left join choice_stock_sector_membership membership
-              on membership.stock_code = daily.stock_code
-             and membership.as_of_date = ?
-            where cast(daily.trade_date as date) = cast(? as date)
-              and lower(trim(coalesce(daily.tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
-            """,
-            [universe_snapshot_date, membership_snapshot_date, as_of_date],
-        ).fetchall()
+        current_rows = LIVERMORE_STRATEGY_READS.fetch_price_volume_current_rows(
+            as_of_date=as_of_date,
+            universe_snapshot_date=universe_snapshot_date,
+            membership_snapshot_date=membership_snapshot_date,
+            conn=conn,
+        )
         stock_codes = [str(row[0] or "") for row in current_rows if row[0]]
         if not stock_codes:
             return []
-        placeholders = ",".join("?" for _ in stock_codes)
-        history_rows = conn.execute(
-            f"""
-            select stock_code, close_value, {volume_shares_sql(alias="volume")}
-            from choice_stock_daily_observation
-            where stock_code in ({placeholders})
-              and cast(trade_date as date) <= cast(? as date)
-              and lower(trim(coalesce(tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
-            order by stock_code asc, cast(trade_date as date) asc
-            """,
-            [*stock_codes, as_of_date],
-        ).fetchall()
+        history_rows = LIVERMORE_STRATEGY_READS.fetch_close_volume_history_rows(
+            stock_codes=stock_codes,
+            as_of_date=as_of_date,
+            conn=conn,
+        )
     except duckdb.Error:
         return []
     finally:
@@ -3059,12 +2689,11 @@ def _load_uptrend_momentum_snapshots(
     path = Path(duckdb_path)
     if not path.exists():
         return []
-    try:
-        conn = duckdb.connect(str(path), read_only=True)
-    except duckdb.Error:
+    conn = open_livermore_read_connection(str(path))
+    if conn is None:
         return []
     try:
-        tables = {row[0] for row in conn.execute("show tables").fetchall()}
+        tables = _list_table_names(conn)
         required_tables = {
             "choice_stock_universe",
             "choice_stock_sector_membership",
@@ -3086,44 +2715,20 @@ def _load_uptrend_momentum_snapshots(
         )
         if universe_snapshot_date is None or membership_snapshot_date is None:
             return []
-        current_rows = conn.execute(
-            f"""
-            select
-              daily.stock_code,
-              coalesce(nullif(trim(universe.stock_name), ''), daily.stock_code) as stock_name,
-              coalesce(nullif(trim(membership.sw2021code), ''), '') as sector_code,
-              coalesce(nullif(trim(membership.sw2021), ''), '') as sector_name,
-              daily.close_value,
-              daily.pctchange,
-              daily.turn,
-              daily.amplitude
-            from choice_stock_daily_observation daily
-            left join choice_stock_universe universe
-              on universe.stock_code = daily.stock_code
-             and universe.as_of_date = ?
-            left join choice_stock_sector_membership membership
-              on membership.stock_code = daily.stock_code
-             and membership.as_of_date = ?
-            where cast(daily.trade_date as date) = cast(? as date)
-              and lower(trim(coalesce(daily.tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
-            """,
-            [universe_snapshot_date, membership_snapshot_date, as_of_date],
-        ).fetchall()
+        current_rows = LIVERMORE_STRATEGY_READS.fetch_price_flow_current_rows(
+            as_of_date=as_of_date,
+            universe_snapshot_date=universe_snapshot_date,
+            membership_snapshot_date=membership_snapshot_date,
+            conn=conn,
+        )
         stock_codes = [str(row[0] or "") for row in current_rows if row[0]]
         if not stock_codes:
             return []
-        placeholders = ",".join("?" for _ in stock_codes)
-        history_rows = conn.execute(
-            f"""
-            select stock_code, close_value, {amount_rmb_sql(alias="amount")}
-            from choice_stock_daily_observation
-            where stock_code in ({placeholders})
-              and cast(trade_date as date) <= cast(? as date)
-              and lower(trim(coalesce(tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
-            order by stock_code asc, cast(trade_date as date) asc
-            """,
-            [*stock_codes, as_of_date],
-        ).fetchall()
+        history_rows = LIVERMORE_STRATEGY_READS.fetch_close_amount_history_rows(
+            stock_codes=stock_codes,
+            as_of_date=as_of_date,
+            conn=conn,
+        )
     except duckdb.Error:
         return []
     finally:
@@ -3176,12 +2781,11 @@ def _load_fresh_trend_watchlist_snapshots(
     path = Path(duckdb_path)
     if not path.exists():
         return _FreshTrendWatchlistLoadResult(snapshots=[], tables_used=[])
-    try:
-        conn = duckdb.connect(str(path), read_only=True)
-    except duckdb.Error:
+    conn = open_livermore_read_connection(str(path))
+    if conn is None:
         return _FreshTrendWatchlistLoadResult(snapshots=[], tables_used=[])
     try:
-        tables = {row[0] for row in conn.execute("show tables").fetchall()}
+        tables = _list_table_names(conn)
         required_tables = {
             "choice_stock_universe",
             "choice_stock_sector_membership",
@@ -3208,44 +2812,20 @@ def _load_fresh_trend_watchlist_snapshots(
         )
         if universe_snapshot_date is None or membership_snapshot_date is None:
             return _FreshTrendWatchlistLoadResult(snapshots=[], tables_used=[])
-        current_rows = conn.execute(
-            f"""
-            select
-              daily.stock_code,
-              coalesce(nullif(trim(universe.stock_name), ''), daily.stock_code) as stock_name,
-              coalesce(nullif(trim(membership.sw2021code), ''), '') as sector_code,
-              coalesce(nullif(trim(membership.sw2021), ''), '') as sector_name,
-              daily.close_value,
-              daily.pctchange,
-              daily.turn,
-              daily.amplitude
-            from choice_stock_daily_observation daily
-            left join choice_stock_universe universe
-              on universe.stock_code = daily.stock_code
-             and universe.as_of_date = ?
-            left join choice_stock_sector_membership membership
-              on membership.stock_code = daily.stock_code
-             and membership.as_of_date = ?
-            where cast(daily.trade_date as date) = cast(? as date)
-              and lower(trim(coalesce(daily.tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
-            """,
-            [universe_snapshot_date, membership_snapshot_date, as_of_date],
-        ).fetchall()
+        current_rows = LIVERMORE_STRATEGY_READS.fetch_price_flow_current_rows(
+            as_of_date=as_of_date,
+            universe_snapshot_date=universe_snapshot_date,
+            membership_snapshot_date=membership_snapshot_date,
+            conn=conn,
+        )
         stock_codes = [str(row[0] or "") for row in current_rows if row[0]]
         if not stock_codes:
             return _FreshTrendWatchlistLoadResult(snapshots=[], tables_used=[])
-        placeholders = ",".join("?" for _ in stock_codes)
-        history_rows = conn.execute(
-            f"""
-            select stock_code, close_value, {amount_rmb_sql(alias="amount")}
-            from choice_stock_daily_observation
-            where stock_code in ({placeholders})
-              and cast(trade_date as date) <= cast(? as date)
-              and lower(trim(coalesce(tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
-            order by stock_code asc, cast(trade_date as date) asc
-            """,
-            [*stock_codes, as_of_date],
-        ).fetchall()
+        history_rows = LIVERMORE_STRATEGY_READS.fetch_close_amount_history_rows(
+            stock_codes=stock_codes,
+            as_of_date=as_of_date,
+            conn=conn,
+        )
         concept_rows: list[tuple[object, object]] = []
         if "choice_stock_concept_membership" in tables:
             concept_snapshot_date = _latest_table_date_on_or_before(
@@ -3255,16 +2835,11 @@ def _load_fresh_trend_watchlist_snapshots(
                 as_of_date=as_of_date,
             )
             if concept_snapshot_date is not None:
-                concept_rows = conn.execute(
-                    f"""
-                    select stock_code, concept_name
-                    from choice_stock_concept_membership
-                    where stock_code in ({placeholders})
-                      and as_of_date = ?
-                    order by stock_code asc, concept_name asc
-                    """,
-                    [*stock_codes, concept_snapshot_date],
-                ).fetchall()
+                concept_rows = LIVERMORE_STRATEGY_READS.fetch_concept_membership_pairs(
+                    stock_codes=stock_codes,
+                    concept_snapshot_date=concept_snapshot_date,
+                    conn=conn,
+                )
                 tables_used.append("choice_stock_concept_membership")
         limit_rows: list[tuple[object, object]] = []
         if "choice_stock_limit_quality" in tables:
@@ -3275,15 +2850,11 @@ def _load_fresh_trend_watchlist_snapshots(
                 as_of_date=as_of_date,
             )
             if limit_snapshot_date is not None:
-                limit_rows = conn.execute(
-                    f"""
-                    select stock_code, hlimitedays
-                    from choice_stock_limit_quality
-                    where stock_code in ({placeholders})
-                      and as_of_date = ?
-                    """,
-                    [*stock_codes, limit_snapshot_date],
-                ).fetchall()
+                limit_rows = LIVERMORE_STRATEGY_READS.fetch_limit_quality_hlimitedays(
+                    stock_codes=stock_codes,
+                    limit_snapshot_date=limit_snapshot_date,
+                    conn=conn,
+                )
                 tables_used.append("choice_stock_limit_quality")
     except duckdb.Error:
         return _FreshTrendWatchlistLoadResult(snapshots=[], tables_used=[])
@@ -3360,9 +2931,8 @@ def _load_factor_screen_rows(
         )
     owns_conn = conn is None
     if owns_conn:
-        try:
-            conn = duckdb.connect(str(path), read_only=True)
-        except duckdb.Error:
+        conn = open_livermore_read_connection(str(path))
+        if conn is None:
             return _FactorScreenLoadResult(
                 rows=[],
                 snapshot_as_of_date=None,
@@ -3370,7 +2940,7 @@ def _load_factor_screen_rows(
                 unavailable_reason="DuckDB file could not be opened; choice_stock_factor_snapshot cannot be read.",
             )
     try:
-        tables = {row[0] for row in conn.execute("show tables").fetchall()}
+        tables = _list_table_names(conn)
         if "choice_stock_factor_snapshot" not in tables:
             return _FactorScreenLoadResult(
                 rows=[],
@@ -3403,13 +2973,10 @@ def _load_factor_screen_rows(
                     f"choice_stock_factor_snapshot is missing required columns: {', '.join(missing_factor_columns)}."
                 ),
             )
-        latest = conn.execute(
-            """
-            SELECT MAX(as_of_date) FROM choice_stock_factor_snapshot
-            WHERE as_of_date <= ?
-        """,
-            [as_of_date],
-        ).fetchone()
+        latest = LIVERMORE_STRATEGY_READS.fetch_latest_factor_snapshot_date(
+            as_of_date=as_of_date,
+            conn=conn,
+        )
         if not latest or not latest[0]:
             return _FactorScreenLoadResult(
                 rows=[],
@@ -3462,56 +3029,29 @@ def _load_factor_screen_rows(
         if has_sector:
             tables_used.append("choice_stock_sector_membership")
 
-        stock_name_expr = "COALESCE(u.stock_name, f.stock_code)" if has_universe else "f.stock_code"
-        universe_join = (
-            """
-            LEFT JOIN (
-                SELECT stock_code, stock_name
-                FROM choice_stock_universe
-                WHERE as_of_date = ?
-            ) u ON f.stock_code = u.stock_code
-            """
-            if has_universe
-            else ""
+        # v3 流动性地板输入：近 20 日均成交额 = 每股截至快照日最近 20 个观测 bar 的
+        # 成交额均值(元)。amount 必须经 choice_stock_units.amount_rmb_sql 按 vendor
+        # 代际归一化为元(契约 §4.10,严禁 raw amount)：tushare 代际(千元)×1000,
+        # choice_native 代际(元)透传；vendor 无法定标的观测日输出 NULL,不计入均值,
+        # 全窗口无可定标观测则均值为 NULL。表/列缺失时同样输出 NULL(不猜单位),
+        # 由 compute_factor_screen_candidates 按 fail-closed 剔除并计数。
+        has_amount_source = _table_has_columns(
+            conn,
+            "choice_stock_daily_observation",
+            ["stock_code", "trade_date", "amount", "vendor_version"],
         )
-        sector_code_expr = "COALESCE(s.sw2021code, '')" if has_sector else "''"
-        sector_name_expr = "COALESCE(s.sw2021, f.industry, '')" if has_sector else "COALESCE(f.industry, '')"
-        sector_join = (
-            """
-            LEFT JOIN (
-                SELECT stock_code, sw2021code, sw2021
-                FROM choice_stock_sector_membership
-                WHERE as_of_date = ?
-            ) s ON f.stock_code = s.stock_code
-            """
-            if has_sector
-            else ""
-        )
-        params: list[object] = []
-        if has_universe:
-            params.append(universe_snapshot_date)
-        if has_sector:
-            params.append(sector_snapshot_date)
-        params.append(snap_date)
+        if has_amount_source:
+            tables_used.append("choice_stock_daily_observation")
 
-        rows = conn.execute(
-            f"""
-            SELECT
-                f.stock_code,
-                {stock_name_expr} AS stock_name,
-                f.pe, f.pb, f.ps, f.roe, f.gross_margin,
-                f.three_month_return, f.twelve_month_return,
-                f.volatility, f.dividend_yield,
-                f.industry,
-                {sector_code_expr} AS sector_code,
-                {sector_name_expr} AS sector_name
-            FROM choice_stock_factor_snapshot f
-            {universe_join}
-            {sector_join}
-            WHERE f.as_of_date = ?
-        """,
-            params,
-        ).fetchall()
+        rows = LIVERMORE_STRATEGY_READS.fetch_factor_screen_rows(
+            snapshot_as_of_date=snap_date,
+            universe_snapshot_date=universe_snapshot_date,
+            sector_snapshot_date=sector_snapshot_date,
+            has_universe=has_universe,
+            has_sector=has_sector,
+            has_amount_source=has_amount_source,
+            conn=conn,
+        )
 
         cols = [
             "stock_code",
@@ -3528,6 +3068,7 @@ def _load_factor_screen_rows(
             "industry",
             "sector_code",
             "sector_name",
+            "avg_amount_20d",
         ]
         mapped_rows = [dict(zip(cols, row, strict=False)) for row in rows]
         if not mapped_rows:
@@ -3556,9 +3097,82 @@ def _load_factor_screen_rows(
             conn.close()
 
 
+def _load_factor_candidate_close_histories(
+    *,
+    duckdb_path: str,
+    as_of_date: str,
+    stock_codes: list[str],
+    conn: duckdb.DuckDBPyConnection | None = None,
+) -> tuple[dict[str, list[float]], dict[str, str], list[str]]:
+    """装载多因子候选的收盘历史，供观察位几何字段推导（只读）。
+
+    口径与 Livermore 候选完全同源：复用 fetch_stock_candidate_history_rows
+    （窗口 CHOICE_STOCK_HISTORY_WINDOW，锚定策略 as_of_date，不过滤 tradestatus），
+    并复用 _load_stock_candidate_snapshots 的行解析规则（close 或 turn 为 None 的
+    观测行剔除），保证同一只股票在两个来源下 breakout 几何数值一致。
+    同时返回每只股票最后一根保留观测行的交易日（last_trade_date_by_code），供
+    attach 层在停牌等"历史末日早于策略日"场景下做 item 级价格锚定日披露。
+    fail-closed：库/表/列缺失或查询失败时返回空映射，由 core_finance attach 层
+    把字段保持 None（不得输出 0 或近似值）。
+    """
+    codes = [str(code or "").strip() for code in stock_codes]
+    codes = [code for code in codes if code]
+    if not codes:
+        return {}, {}, []
+    path = Path(duckdb_path)
+    if not path.exists():
+        return {}, {}, []
+    owns_conn = conn is None
+    if owns_conn:
+        conn = open_livermore_read_connection(str(path))
+        if conn is None:
+            return {}, {}, []
+    try:
+        if not _table_has_columns(
+            conn,
+            "choice_stock_daily_observation",
+            ["stock_code", "trade_date", "close_value", "turn"],
+        ):
+            return {}, {}, []
+        history_rows = LIVERMORE_STRATEGY_READS.fetch_stock_candidate_history_rows(
+            stock_codes=codes,
+            as_of_date=as_of_date,
+            history_window=CHOICE_STOCK_HISTORY_WINDOW,
+            conn=conn,
+        )
+    except duckdb.Error:
+        return {}, {}, []
+    finally:
+        if owns_conn:
+            conn.close()
+
+    close_history_by_code: dict[str, list[float]] = {}
+    last_trade_date_by_code: dict[str, str] = {}
+    for row in history_rows:
+        stock_code = str(row[0] or "")
+        close_value = _safe_float(row[1])
+        turn_value = _safe_float(row[2])
+        # 与 _load_stock_candidate_snapshots 的历史解析同口径：0 值行保留，
+        # 仅 None 行剔除，避免两个来源的收盘日历错位。
+        if not stock_code or close_value is None or turn_value is None:
+            continue
+        close_history_by_code.setdefault(stock_code, []).append(close_value)
+        # 行序为 stock_code asc, rn desc（旧→新），最后一次覆盖即最新保留行。
+        if len(row) > 3 and row[3] is not None:
+            last_trade_date_by_code[stock_code] = str(row[3])[:10]
+    return close_history_by_code, last_trade_date_by_code, ["choice_stock_daily_observation"]
+
+
+def _list_table_names(conn: duckdb.DuckDBPyConnection) -> set[str]:
+    return LIVERMORE_STRATEGY_READS.list_table_names(conn=conn)
+
+
 def _table_has_columns(conn: duckdb.DuckDBPyConnection, table_name: str, columns: list[str]) -> bool:
-    available = _table_columns(conn, table_name)
-    return set(columns).issubset(available)
+    return LIVERMORE_STRATEGY_READS.table_has_columns(
+        table_name=table_name,
+        columns=columns,
+        conn=conn,
+    )
 
 
 def _count_distinct_stock_codes(
@@ -3568,25 +3182,16 @@ def _count_distinct_stock_codes(
     date_column: str,
     as_of_date: str,
 ) -> int:
-    try:
-        row = conn.execute(
-            f"""
-            select count(distinct stock_code)
-            from {table_name}
-            where cast({date_column} as date) = cast(? as date)
-            """,
-            [as_of_date],
-        ).fetchone()
-    except duckdb.Error:
-        return 0
-    return int(row[0]) if row and row[0] is not None else 0
+    return LIVERMORE_STRATEGY_READS.count_distinct_stock_codes(
+        table_name=table_name,
+        date_column=date_column,
+        as_of_date=as_of_date,
+        conn=conn,
+    )
 
 
 def _table_columns(conn: duckdb.DuckDBPyConnection, table_name: str) -> set[str]:
-    try:
-        return {str(row[1]) for row in conn.execute(f"pragma table_info('{table_name}')").fetchall()}
-    except duckdb.Error:
-        return set()
+    return LIVERMORE_STRATEGY_READS.table_columns(table_name=table_name, conn=conn)
 
 
 def _latest_table_date_on_or_before(
@@ -3596,18 +3201,12 @@ def _latest_table_date_on_or_before(
     column_name: str,
     as_of_date: str,
 ) -> str | None:
-    try:
-        row = conn.execute(
-            f"""
-            select max({column_name})
-            from {table_name}
-            where cast({column_name} as date) <= cast(? as date)
-            """,
-            [as_of_date],
-        ).fetchone()
-    except duckdb.Error:
-        return None
-    return str(row[0]) if row and row[0] else None
+    return LIVERMORE_STRATEGY_READS.latest_snapshot_date_on_or_before(
+        table_name=table_name,
+        column_name=column_name,
+        as_of_date=as_of_date,
+        conn=conn,
+    )
 
 
 def _load_theme_breakout_snapshots(
@@ -3623,9 +3222,8 @@ def _load_theme_breakout_snapshots(
         return [], [], [], [], _ThemeBreakoutEvidenceProvenance()
     owns_conn = conn is None
     if owns_conn:
-        try:
-            conn = duckdb.connect(str(path), read_only=True)
-        except duckdb.Error:
+        conn = open_livermore_read_connection(str(path))
+        if conn is None:
             return [], [], [], [], _ThemeBreakoutEvidenceProvenance()
     required_tables = {
         "choice_stock_universe",
@@ -3635,7 +3233,7 @@ def _load_theme_breakout_snapshots(
     concept_rows: list[tuple[object, ...]] = []
     movement_rows: list[tuple[object, ...]] = []
     try:
-        tables = {row[0] for row in conn.execute("show tables").fetchall()}
+        tables = _list_table_names(conn)
         if not required_tables.issubset(tables):
             return [], [], [], [], _ThemeBreakoutEvidenceProvenance()
         has_limit_quality = "choice_stock_limit_quality" in tables
@@ -3666,92 +3264,24 @@ def _load_theme_breakout_snapshots(
             else None
         )
         has_limit_quality = has_limit_quality and limit_snapshot_date is not None
-        limit_select = (
-            "coalesce(cast(limits.issurgedlimit as varchar), '') as issurgedlimit, "
-            "limits.source_version, limits.vendor_version"
-            if has_limit_quality
-            else "'' as issurgedlimit, '' as limit_source_version, '' as limit_vendor_version"
+        rows = LIVERMORE_STRATEGY_READS.fetch_theme_breakout_rows(
+            as_of_date=as_of_date,
+            universe_snapshot_date=universe_snapshot_date,
+            membership_snapshot_date=membership_snapshot_date,
+            limit_snapshot_date=limit_snapshot_date,
+            has_limit_quality=has_limit_quality,
+            conn=conn,
         )
-        limit_join = (
-            """
-            left join choice_stock_limit_quality limits
-              on limits.stock_code = universe.stock_code
-             and limits.as_of_date = ?
-            """
-            if has_limit_quality
-            else ""
-        )
-        params: list[object] = [membership_snapshot_date, as_of_date]
-        if has_limit_quality:
-            params.append(limit_snapshot_date)
-        params.append(universe_snapshot_date)
-        rows = conn.execute(
-            f"""
-            select
-              universe.stock_code,
-              universe.stock_name,
-              membership.sw2021code,
-              membership.sw2021,
-              daily.open_value,
-              daily.high_value,
-              daily.low_value,
-              daily.close_value,
-              daily.pctchange,
-              daily.turn,
-              daily.amplitude,
-              {limit_select},
-              universe.source_version,
-              universe.vendor_version,
-              membership.source_version,
-              membership.vendor_version,
-              daily.source_version,
-              daily.vendor_version
-            from choice_stock_universe universe
-            join choice_stock_sector_membership membership
-              on membership.stock_code = universe.stock_code
-             and membership.as_of_date = ?
-            join choice_stock_daily_observation daily
-              on daily.stock_code = universe.stock_code
-             and cast(daily.trade_date as date) = cast(? as date)
-            {limit_join}
-            where universe.as_of_date = ?
-            order by universe.stock_code asc
-            """,
-            params,
-        ).fetchall()
         if has_concept_membership:
-            concept_rows = conn.execute(
-                """
-                select
-                  stock_code,
-                  concept_code,
-                  concept_name,
-                  concept_source,
-                  source_version,
-                  vendor_version
-                from choice_stock_concept_membership
-                where as_of_date = ?
-                order by stock_code asc, concept_code asc, concept_name asc
-                """,
-                [as_of_date],
-            ).fetchall()
+            concept_rows = LIVERMORE_STRATEGY_READS.fetch_theme_concept_rows(
+                as_of_date=as_of_date,
+                conn=conn,
+            )
         if has_intraday_movement:
-            movement_rows = conn.execute(
-                """
-                select
-                  stock_code,
-                  concept_code,
-                  concept_name,
-                  event_time,
-                  event_title,
-                  source_version,
-                  vendor_version
-                from choice_stock_intraday_movement_event
-                where as_of_date = ?
-                order by stock_code asc, concept_code asc, event_time asc
-                """,
-                [as_of_date],
-            ).fetchall()
+            movement_rows = LIVERMORE_STRATEGY_READS.fetch_intraday_movement_rows(
+                as_of_date=as_of_date,
+                conn=conn,
+            )
     except duckdb.Error:
         return [], sorted(required_tables | {"choice_stock_limit_quality"}), [], [], _ThemeBreakoutEvidenceProvenance()
     finally:
@@ -4089,45 +3619,26 @@ def _load_risk_exit_snapshots(
         return [], [], [], []
     owns_conn = conn is None
     if owns_conn:
-        try:
-            conn = duckdb.connect(str(path), read_only=True)
-        except duckdb.Error:
+        conn = open_livermore_read_connection(str(path))
+        if conn is None:
             return [], [], [], []
     try:
-        tables = {row[0] for row in conn.execute("show tables").fetchall()}
+        tables = _list_table_names(conn)
         required_tables = {"livermore_position_snapshot", "choice_stock_daily_observation"}
         if not required_tables.issubset(tables):
             return [], [], [], []
-        position_rows = conn.execute(
-            """
-            select
-              stock_code,
-              stock_name,
-              entry_cost,
-              bars_since_entry,
-              source_version,
-              vendor_version
-            from livermore_position_snapshot
-            where as_of_date = ?
-              and upper(coalesce(position_status, 'ACTIVE')) = 'ACTIVE'
-            order by stock_code asc
-            """,
-            [as_of_date],
-        ).fetchall()
+        position_rows = LIVERMORE_STRATEGY_READS.fetch_active_position_rows(
+            as_of_date=as_of_date,
+            conn=conn,
+        )
         stock_codes = [str(row[0]) for row in position_rows if row[0]]
         if not stock_codes:
             return [], list(required_tables), [], []
-        placeholders = ",".join("?" for _ in stock_codes)
-        history_rows = conn.execute(
-            f"""
-            select stock_code, close_value, {volume_shares_sql(alias="volume")}, source_version, vendor_version
-            from choice_stock_daily_observation
-            where stock_code in ({placeholders})
-              and cast(trade_date as date) <= cast(? as date)
-            order by stock_code asc, cast(trade_date as date) asc
-            """,
-            [*stock_codes, as_of_date],
-        ).fetchall()
+        history_rows = LIVERMORE_STRATEGY_READS.fetch_position_close_volume_history_rows(
+            stock_codes=stock_codes,
+            as_of_date=as_of_date,
+            conn=conn,
+        )
     except duckdb.Error:
         return [], list(required_tables), [], []
     finally:
@@ -4184,34 +3695,21 @@ def _risk_exit_input_block_reason(
         return "DuckDB database is not available, so Livermore position and close-history inputs are not materialized."
     owns_conn = conn is None
     if owns_conn:
-        try:
-            conn = duckdb.connect(str(path), read_only=True)
-        except duckdb.Error:
+        conn = open_livermore_read_connection(str(path))
+        if conn is None:
             return "DuckDB database is unavailable while checking Livermore position and close-history inputs."
     try:
-        tables = {row[0] for row in conn.execute("show tables").fetchall()}
+        tables = _list_table_names(conn)
         if "livermore_position_snapshot" not in tables:
             return "livermore_position_snapshot table is not materialized for Livermore A-share holdings."
         if "choice_stock_daily_observation" not in tables:
             return "choice_stock_daily_observation close history is not materialized for Livermore risk_exit."
-        total_rows, active_rows = conn.execute(
-            """
-            select
-              count(*)::integer,
-              sum(case when upper(coalesce(position_status, 'ACTIVE')) = 'ACTIVE' then 1 else 0 end)::integer
-            from livermore_position_snapshot
-            where as_of_date = ?
-            """,
-            [as_of_date],
-        ).fetchone()
+        total_rows, active_rows = LIVERMORE_STRATEGY_READS.fetch_position_row_counts(
+            as_of_date=as_of_date,
+            conn=conn,
+        )
         if int(active_rows or 0) <= 0:
-            latest_row = conn.execute(
-                """
-                select max(as_of_date)
-                from livermore_position_snapshot
-                where upper(coalesce(position_status, 'ACTIVE')) = 'ACTIVE'
-                """
-            ).fetchone()
+            latest_row = LIVERMORE_STRATEGY_READS.fetch_latest_active_position_date_row(conn=conn)
             latest_active_date = latest_row[0] if latest_row else None
             if int(total_rows or 0) > 0:
                 return f"livermore_position_snapshot has rows but no ACTIVE A-share rows for as_of_date {as_of_date}."
@@ -4221,19 +3719,10 @@ def _risk_exit_input_block_reason(
                     f"{as_of_date}; latest ACTIVE as_of_date is {latest_active_date}."
                 )
             return f"livermore_position_snapshot has no ACTIVE A-share rows for as_of_date {as_of_date}."
-        close_rows = conn.execute(
-            """
-            select count(*)::integer
-            from choice_stock_daily_observation daily
-            join livermore_position_snapshot position
-              on position.stock_code = daily.stock_code
-            where position.as_of_date = ?
-              and upper(coalesce(position.position_status, 'ACTIVE')) = 'ACTIVE'
-              and cast(daily.trade_date as date) <= cast(? as date)
-              and daily.close_value is not null
-            """,
-            [as_of_date, as_of_date],
-        ).fetchone()[0]
+        close_rows = LIVERMORE_STRATEGY_READS.fetch_active_position_close_history_count_row(
+            as_of_date=as_of_date,
+            conn=conn,
+        )[0]
         if int(close_rows or 0) <= 0:
             return (
                 "livermore_position_snapshot has ACTIVE A-share rows, but choice_stock_daily_observation "
@@ -4463,8 +3952,19 @@ def _build_module_states(
         render_mode = "primary"
         evidence_scope = "primary"
         excludes_from_primary = False
+        factor_screen_inactive_reason = (
+            _payload_text(payload, "coverage_note")
+            if key == "factor_screen_candidates" and _factor_screen_payload_is_inactive(payload)
+            else None
+        )
 
-        if unsupported_reason:
+        if factor_screen_inactive_reason:
+            state = "unsupported"
+            render_mode = "evidence_only"
+            evidence_scope = "detail"
+            excludes_from_primary = True
+            reasons.append(factor_screen_inactive_reason)
+        elif unsupported_reason:
             state = "blocked" if key == "risk_exit" else "unsupported"
             render_mode = "evidence_only"
             evidence_scope = "detail"
@@ -4493,7 +3993,7 @@ def _build_module_states(
                 )
             )
 
-        if reasons and not unsupported_reason:
+        if reasons and not unsupported_reason and not factor_screen_inactive_reason:
             coverage_state = _coverage_state(coverage_denominator=coverage_denominator, coverage_ratio=coverage_ratio)
             state = coverage_state or "degraded"
             render_mode = "evidence_only"
@@ -4667,6 +4167,9 @@ def _factor_screen_degradation_reasons(
 ) -> list[str]:
     if not isinstance(payload, dict):
         return []
+    # 市场门控 inactive 是正常政策结果，不参与覆盖率、新鲜度或流动性降级评估。
+    if _factor_screen_payload_is_inactive(payload):
+        return []
     reasons: list[str] = []
     if threshold_days is not None and lag_days is not None and lag_days > threshold_days:
         reasons.append(
@@ -4683,7 +4186,47 @@ def _factor_screen_degradation_reasons(
     coverage_note = _payload_text(payload, "coverage_note")
     if coverage_note and _is_factor_screen_error_note(coverage_note):
         reasons.append(coverage_note)
+    # v3 自动降级规则(蓝本 P0 选项 d 软形态)之一：候选流动性 pass 率 < 95% 时
+    # 降级为观察名单。v3 宇宙预过滤下按构造应恒为 100%,该规则是防回归绊线
+    # (过滤被绕过/均额数据损坏时触发)。
+    # TODO(P0 蓝本降级规则之二,暂缓): "滚动 3 个月候选每笔 20d 净收益相对评分池
+    # 等权增量 < 0 则降级"需要 livermore_candidate_execution_history 的 20d 回填
+    # 收益与评分池等权基准序列(回测数据),当前服务层实时路径不可得;待执行历史
+    # 回填任务与基准序列物化落地后在此处补充。
+    liquidity_reason = _factor_screen_liquidity_degradation_reason(payload)
+    if liquidity_reason:
+        reasons.append(liquidity_reason)
     return reasons
+
+
+def _factor_screen_liquidity_degradation_reason(payload: dict[str, object]) -> str | None:
+    """候选级流动性 pass 率规则：items 中 avg_amount_20d(元)达到地板的占比。
+
+    均额缺失/非有限值按未通过计(fail-closed)。liquidity_filter 块缺失(legacy v2
+    payload)或无候选时规则不适用,返回 None(空池已由错误型 coverage_note 覆盖)。
+    """
+    items = [item for item in payload.get("items") or [] if isinstance(item, dict)]
+    if not items:
+        return None
+    liquidity_filter = payload.get("liquidity_filter")
+    if not isinstance(liquidity_filter, dict):
+        return None
+    floor = _safe_float(liquidity_filter.get("min_avg_amount_20d"))
+    if floor is None or not math.isfinite(floor):
+        return None
+    pass_count = 0
+    for item in items:
+        amount = _safe_float(item.get("avg_amount_20d"))
+        if amount is not None and math.isfinite(amount) and amount >= floor:
+            pass_count += 1
+    pass_ratio = pass_count / len(items)
+    if pass_ratio >= FACTOR_SCREEN_LIQUIDITY_PASS_THRESHOLD:
+        return None
+    return (
+        f"Factor screen liquidity pass ratio is {pass_ratio * 100:.1f}% "
+        f"({pass_count}/{len(items)} candidates with a 20-day average traded amount at or above "
+        f"{floor:.0f} CNY); degradation threshold is {FACTOR_SCREEN_LIQUIDITY_PASS_THRESHOLD * 100:.0f}%."
+    )
 
 
 def _is_factor_screen_error_note(note: str) -> bool:
@@ -4693,6 +4236,11 @@ def _is_factor_screen_error_note(note: str) -> bool:
     仅用于说明评分池规模，不代表任何降级条件；不应据此把 state 判定为 degraded。
     """
     return any(keyword in note for keyword in FACTOR_SCREEN_ERROR_NOTE_KEYWORDS)
+
+
+def _factor_screen_payload_is_inactive(payload: dict[str, object] | None) -> bool:
+    market_state = _payload_text(payload, "market_state")
+    return bool(market_state and market_state not in POLICY.factor_screen_active_states)
 
 
 def _hybrid_fusion_degradation_reasons(

@@ -6,6 +6,7 @@ from typing import Any
 
 import duckdb
 from backend.app.core_finance.zqtz_asset_bond_category import ZQTZ_ASSET_BOND_ROWS as _ZQTZ_ASSET_ROWS
+from backend.app.repositories.duckdb_repo import read_only_connection
 
 _LEDGER_BUSINESS_ROWS = [
     {
@@ -182,6 +183,50 @@ class AccountingAssetMovementRepository:
             if "conn" in locals():
                 conn.close()
         return [str(row[0]) for row in rows]
+
+    def fetch_missing_control_dates(
+        self,
+        *,
+        report_dates: list[str],
+        currency_basis: str,
+    ) -> list[str]:
+        """report_dates lacking product_category_pnl_canonical_fact control-account rows.
+
+        Fails open (treats every requested date as missing) on any DuckDB error
+        or absent table, so refresh callers retry materialization rather than
+        silently skipping it.
+        """
+        if not report_dates:
+            return []
+        try:
+            with read_only_connection(self.path) as conn:
+                if not self._table_exists(conn, "product_category_pnl_canonical_fact"):
+                    return report_dates
+                rows = conn.execute(
+                    """
+                    select cast(report_date as varchar) as report_date, count(*) as row_count
+                    from product_category_pnl_canonical_fact
+                    where cast(report_date as varchar) in (select unnest(?))
+                      and currency = ?
+                      and (
+                        account_code like '141%'
+                        or account_code like '142%'
+                        or account_code like '143%'
+                        or account_code like '1440101%'
+                      )
+                    group by 1
+                    """,
+                    [report_dates, currency_basis],
+                ).fetchall()
+        except duckdb.Error:
+            return report_dates
+
+        available_dates = {str(row[0]) for row in rows if int(row[1] or 0) > 0}
+        return [
+            current_report_date
+            for current_report_date in report_dates
+            if current_report_date not in available_dates
+        ]
 
     def control_source_versions(
         self,

@@ -51,7 +51,12 @@ from backend.app.core_finance.campisi_decision_grade import (
 )
 from backend.app.core_finance.rate_units import normalize_annual_rate_to_decimal
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
+from backend.app.repositories.choice_macro_series_repo import ChoiceMacroSeriesRepository
+from backend.app.repositories.duckdb_repo import read_only_connection
+from backend.app.repositories.pnl_repo import PnlRepository
+from backend.app.repositories.risk_tensor_repo import RiskTensorRepository
 from backend.app.repositories.yield_curve_repo import YieldCurveRepository
 from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope,
@@ -80,6 +85,15 @@ TABLES_CAMPISI_DECISION_GRADE = [
     "fact_formal_risk_tensor_daily",
 ]
 FORMAL_REPORT_BASIS = "formal_report_pnl_bridge"
+FORMAL_BRIDGE_DECOMPOSITION_BASIS = (
+    "bridge_path: selection_effect is residual after carry, treasury, spread, "
+    "realized_trading, manual_adjustment, and fx_translation; "
+    "model_path: selection_effect is per-bond curve decomposition residual"
+)
+_FORMAL_BRIDGE_DETAIL_KEYS = ("realized_trading", "manual_adjustment", "fx_translation")
+_FORMAL_BRIDGE_ROW_CLOSURE_ABS_TOLERANCE = Decimal("0.000001")
+_FORMAL_BRIDGE_ROW_CLOSURE_REL_TOLERANCE = Decimal("0.000000000001")
+_DECISION_WINDOW_MISMATCH_THRESHOLD_DAYS = 45
 _MATURITY_BUCKET_LABELS = ("0-1Y", "1-3Y", "3-5Y", "5-7Y", "7-10Y", "10Y+")
 
 _TREASURY_TENOR_MAP = {
@@ -107,11 +121,6 @@ _FORMAL_CREDIT_CURVE_TYPES = {
     "AAA": "aaa_credit",
     "AA+": "aa_plus_credit",
     "AA": "aa_credit",
-}
-
-_CHOICE_CREDIT_3Y_SERIES = {
-    "EMM00166657": "AAA",
-    "EMM00166681": "AA",
 }
 
 _POSITION_KEY_FIELDS = (
@@ -401,7 +410,7 @@ def _derive_spreads_from_yield_sources(curve_repo: YieldCurveRepository, trade_d
         credit_3y = _curve_3y_on_or_before(curve_repo, trade_date, curve_type)
         if credit_3y is not None:
             spread[_SPREAD_FIELD_BY_RATING[rating]] = float((credit_3y - treasury_3y) * Decimal("100"))
-    for rating, credit_3y in _choice_credit_3y_yields_on_or_before(curve_repo.path, trade_date).items():
+    for rating, credit_3y in _choice_macro_repo(curve_repo.path).credit_3y_yields_on_or_before(trade_date).items():
         spread[_SPREAD_FIELD_BY_RATING[rating]] = float((credit_3y - treasury_3y) * Decimal("100"))
     return spread
 
@@ -422,98 +431,8 @@ def _curve_3y_on_or_before(
     return None if value is None else Decimal(str(value))
 
 
-def _choice_credit_3y_yields_on_or_before(duckdb_path: str, trade_date: str) -> dict[str, Decimal]:
-    try:
-        conn = duckdb.connect(duckdb_path, read_only=True)
-    except duckdb.Error:
-        return {}
-    try:
-        rows: list[tuple[object, object, object]] = []
-        has_catalog = _relation_exists(conn, "phase1_macro_vendor_catalog")
-        if _relation_exists(conn, "fact_choice_macro_daily"):
-            rows.extend(_choice_rows_for_relation(conn, "fact_choice_macro_daily", "fact", trade_date, has_catalog))
-        if _relation_exists(conn, "choice_market_snapshot"):
-            rows.extend(_choice_rows_for_relation(conn, "choice_market_snapshot", "snap", trade_date, has_catalog))
-    finally:
-        conn.close()
-
-    out: dict[str, Decimal] = {}
-    for series_id, series_name, value in rows:
-        rating = _choice_credit_rating_for_3y(series_id, series_name)
-        if rating is not None:
-            out[rating] = Decimal(str(value))
-    return out
-
-
-def _choice_rows_for_relation(
-    conn: duckdb.DuckDBPyConnection,
-    relation_name: str,
-    alias: str,
-    trade_date: str,
-    has_catalog: bool,
-) -> list[tuple[object, object, object]]:
-    if has_catalog:
-        return conn.execute(
-            f"""
-            select {alias}.series_id, coalesce(nullif(cat.series_name, ''), {alias}.series_name), {alias}.value_numeric
-            from {relation_name} as {alias}
-            left join phase1_macro_vendor_catalog as cat
-              on cat.series_id = {alias}.series_id
-            where {alias}.trade_date = (
-              select max(trade_date)
-              from {relation_name}
-              where trade_date <= ?
-            )
-              and {alias}.value_numeric is not null
-            """,
-            [trade_date],
-        ).fetchall()
-    return conn.execute(
-        f"""
-        select series_id, series_name, value_numeric
-        from {relation_name}
-        where trade_date = (
-          select max(trade_date)
-          from {relation_name}
-          where trade_date <= ?
-        )
-          and value_numeric is not null
-        """,
-        [trade_date],
-    ).fetchall()
-
-
-def _choice_credit_rating_for_3y(series_id: object, series_name: object) -> str | None:
-    rating = _CHOICE_CREDIT_3Y_SERIES.get(str(series_id or "").strip())
-    if rating is not None:
-        return rating
-    text = str(series_name or "").upper().replace(" ", "")
-    if ":3Y" not in text and ":3" not in text:
-        return None
-    if "(AA+)" in text:
-        return "AA+"
-    if "(AAA)" in text:
-        return "AAA"
-    if "(AA)" in text:
-        return "AA"
-    return None
-
-
-def _relation_exists(conn: duckdb.DuckDBPyConnection, relation_name: str) -> bool:
-    row = conn.execute(
-        """
-        select 1
-        from information_schema.tables
-        where table_name = ?
-        union all
-        select 1
-        from information_schema.views
-        where table_name = ?
-        limit 1
-        """,
-        [relation_name, relation_name],
-    ).fetchone()
-    return row is not None
+def _choice_macro_repo(duckdb_path: str) -> ChoiceMacroSeriesRepository:
+    return ChoiceMacroSeriesRepository(duckdb_path)
 
 
 def _position_key(row: dict[str, Any]) -> tuple[str, ...] | None:
@@ -1045,6 +964,109 @@ def _formal_maturity_bucket(position: dict[str, Any] | None, start_date: date) -
     return _MATURITY_BUCKET_LABELS[5]
 
 
+def _assert_formal_bridge_row_closure(
+    *,
+    bridge_row: dict[str, Any],
+    selection: Decimal,
+) -> None:
+    """bridge 路径的 selection 必须等于 pnl_bridge 独立给出的 residual。
+
+    pnl_bridge.build_pnl_bridge_rows 的互斥分解里
+    explained_pnl = carry + roll_down + treasury_curve + credit_spread +
+    fx_translation + realized_trading + manual_adjustment（不含 516/unrealized_fv），
+    residual = actual_pnl − explained_pnl，与本服务重算的 selection 是同一个量。
+    因此用桥行自带的 residual 字段做独立对照；若沿用与 selection 完全相同的减法
+    重算，断言恒为 0，桥接口径漂移无法被发现。
+    """
+    residual_raw = bridge_row.get("residual")
+    if residual_raw is None:
+        raise ValueError(
+            "Formal bridge Campisi row closure failed: 桥行缺少 residual 字段，无独立对照可校验 "
+            f"selection={selection}"
+        )
+    residual = _numeric_raw(residual_raw)
+    difference = selection - residual
+    # 桥行数值经 Numeric.raw（float）出参，分量求和的 float 往返噪音随金额量级增长，
+    # 因此在既有 1e-6 绝对容差上叠加一个远大于 float64 相对误差的量级项。
+    tolerance = _FORMAL_BRIDGE_ROW_CLOSURE_ABS_TOLERANCE + _FORMAL_BRIDGE_ROW_CLOSURE_REL_TOLERANCE * (
+        abs(selection) + abs(residual)
+    )
+    if abs(difference) > tolerance:
+        raise ValueError(
+            "Formal bridge Campisi row closure failed: "
+            f"selection={selection} 与 pnl_bridge residual={residual} 不一致（difference={difference}）"
+        )
+
+
+def _decision_window_declarations(
+    *,
+    anchor_start: str,
+    anchor_end: str,
+) -> tuple[dict[str, str], dict[str, str], int]:
+    num_days = max((date.fromisoformat(anchor_end) - date.fromisoformat(anchor_start)).days, 0)
+    pnl_window = {"start": anchor_end, "end": anchor_end, "kind": "single_day"}
+    curve_window = {"start": anchor_start, "end": anchor_end, "kind": "curve_displacement"}
+    return pnl_window, curve_window, num_days
+
+
+def _decision_window_mismatch_warning(
+    *,
+    anchor_start: str,
+    anchor_end: str,
+    num_days: int,
+) -> str:
+    return (
+        f"口径错配：市场效应按 curve_window（{anchor_start}→{anchor_end}，{num_days} 天）整段曲线位移计算，"
+        f"而 formal PnL 仅取 pnl_window 单日（{anchor_end}）；"
+        "selection_proxy 含窗口错配影响，不得解读为主动管理能力。"
+    )
+
+
+def _decision_window_info_disclosure(
+    *,
+    anchor_start: str,
+    anchor_end: str,
+    num_days: int,
+) -> str:
+    return (
+        f"口径说明：市场效应按 curve_window（{anchor_start}→{anchor_end}，{num_days} 天）整段曲线位移计算，"
+        f"而 formal PnL 仅取 pnl_window 单日（{anchor_end}）；"
+        "selection_proxy 含该窗口跨度影响，解读主动管理能力时需扣除。"
+    )
+
+
+def _decision_window_disclosure(
+    *,
+    anchor_start: str,
+    anchor_end: str,
+    num_days: int,
+) -> dict[str, str] | None:
+    """curve_window 只要长于单日 pnl_window 就必须披露，45 天只决定严重度。
+
+    默认 lookback_days=30，若仅在 >45 天时披露，最常见路径反而落进盲区——而
+    30 天曲线位移对单日 PnL 正是需要披露的失真本身。
+    """
+    if num_days < 1:
+        return None
+    if num_days > _DECISION_WINDOW_MISMATCH_THRESHOLD_DAYS:
+        return {
+            "level": "warning",
+            "message": _decision_window_mismatch_warning(
+                anchor_start=anchor_start,
+                anchor_end=anchor_end,
+                num_days=num_days,
+            ),
+        }
+    return {
+        "level": "info",
+        "message": _decision_window_info_disclosure(
+            anchor_start=anchor_start,
+            anchor_end=anchor_end,
+            num_days=num_days,
+        ),
+    }
+
+
 def _formal_bridge_bond_rows(
     *,
     bridge_envelope: dict[str, Any],
@@ -1059,11 +1081,26 @@ def _formal_bridge_bond_rows(
         income = _numeric_raw(bridge_row.get("carry"))
         treasury = _numeric_raw(bridge_row.get("roll_down")) + _numeric_raw(bridge_row.get("treasury_curve"))
         spread = _numeric_raw(bridge_row.get("credit_spread"))
+        realized_trading = _numeric_raw(bridge_row.get("realized_trading"))
+        manual_adjustment = _numeric_raw(bridge_row.get("manual_adjustment"))
+        fx_translation = _numeric_raw(bridge_row.get("fx_translation"))
         convexity = Decimal("0")
         cross = Decimal("0")
         reinvestment = Decimal("0")
         total = _numeric_raw(bridge_row.get("actual_pnl"))
-        selection = total - income - treasury - spread - convexity - cross - reinvestment
+        selection = (
+            total
+            - income
+            - treasury
+            - spread
+            - realized_trading
+            - manual_adjustment
+            - fx_translation
+            - convexity
+            - cross
+            - reinvestment
+        )
+        _assert_formal_bridge_row_closure(bridge_row=bridge_row, selection=selection)
         record = {
             "bond_code": _text_value(bridge_row.get("instrument_code")),
             "asset_class": _formal_asset_class(bridge_row, position),
@@ -1075,6 +1112,9 @@ def _formal_bridge_bond_rows(
             "income_return": float(income),
             "treasury_effect": float(treasury),
             "spread_effect": float(spread),
+            "realized_trading": float(realized_trading),
+            "manual_adjustment": float(manual_adjustment),
+            "fx_translation": float(fx_translation),
             "selection_effect": float(selection),
             "total_return": float(total),
             "mod_duration": float(_decimal_value((position or {}).get("mod_duration"))),
@@ -1093,7 +1133,7 @@ def _formal_bridge_bond_rows(
 
 
 def _formal_amount_keys(*, enhanced: bool = False) -> list[str]:
-    keys = ["income_return", "treasury_effect", "spread_effect"]
+    keys = ["income_return", "treasury_effect", "spread_effect", *_FORMAL_BRIDGE_DETAIL_KEYS]
     if enhanced:
         keys.extend(["convexity_effect", "cross_effect", "reinvestment_effect"])
     keys.extend(["selection_effect", "total_return"])
@@ -1175,6 +1215,7 @@ def _formal_bridge_to_enhanced_result(
         "by_bond": by_bond,
         "diagnostics": [],
         "basis": FORMAL_REPORT_BASIS,
+        "decomposition_basis": FORMAL_BRIDGE_DECOMPOSITION_BASIS,
     }
 
 
@@ -1367,6 +1408,8 @@ def _result_to_payload(
     }
     if basis is not None:
         payload["basis"] = basis
+    if basis == FORMAL_REPORT_BASIS:
+        payload["decomposition_basis"] = FORMAL_BRIDGE_DECOMPOSITION_BASIS
     if input_quality is not None:
         payload["input_quality"] = input_quality
         warnings = list(input_quality["warnings"])
@@ -1444,6 +1487,14 @@ def _empty_decision_grade_payload(start: str, end: str, warnings: list[str] | No
             "explained_pnl": 0.0,
             "residual_noise": 0.0,
             "components": zero_components,
+            # 前端契约把 closure 声明为必填并直接解引用 difference；空载分支
+            # 无数据可判闭合，按"未取到正式 PnL"给 warning 而不是伪装 closed。
+            "closure": {
+                "status": "warning",
+                "difference": 0.0,
+                "difference_ratio": None,
+                "basis": "fact_formal_pnl_fi.total_pnl",
+            },
         },
         "valuation_oci_view": {
             "total_valuation_change_516": 0.0,
@@ -1467,50 +1518,21 @@ def _empty_decision_grade_payload(start: str, end: str, warnings: list[str] | No
     }
 
 
-def _duckdb_rows(conn: duckdb.DuckDBPyConnection, sql: str, params: list[Any] | tuple[Any, ...] = ()) -> list[dict[str, Any]]:
-    cursor = conn.execute(sql, params)
-    columns = [column[0] for column in cursor.description]
-    return [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
-
-
-def _decision_table_exists(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
-    try:
-        return bool(
-            conn.execute(
-                "select count(*) from information_schema.tables where table_name = ?",
-                [table_name],
-            ).fetchone()[0]
-        )
-    except duckdb.Error:
-        return False
-
-
-def _decision_table_dates(conn: duckdb.DuckDBPyConnection, table_name: str, date_col: str) -> list[str]:
-    if not _decision_table_exists(conn, table_name):
-        return []
-    rows = conn.execute(
-        f"""
-        select distinct cast({date_col} as varchar) as report_date
-        from {table_name}
-        where {date_col} is not null
-        order by report_date desc
-        """
-    ).fetchall()
-    return [str(row[0])[:10] for row in rows]
-
-
 def _resolve_decision_dates(
-    conn: duckdb.DuckDBPyConnection,
     *,
+    pnl_repo: PnlRepository,
+    bond_repo: BondAnalyticsRepository,
+    balance_repo: BalanceAnalysisRepository,
+    conn: duckdb.DuckDBPyConnection,
     start_date: str | None,
     end_date: str | None,
     lookback_days: int,
 ) -> tuple[str | None, str | None, str, str]:
-    pnl_dates = _decision_table_dates(conn, "fact_formal_pnl_fi", "report_date")
+    pnl_dates = pnl_repo.list_campisi_decision_pnl_report_dates(conn=conn)
     position_dates = sorted(
         set(
-            _decision_table_dates(conn, "fact_formal_bond_analytics_daily", "report_date")
-            + _decision_table_dates(conn, "fact_formal_zqtz_balance_daily", "report_date")
+            bond_repo.list_campisi_decision_analytics_report_dates(conn=conn)
+            + balance_repo.list_campisi_decision_zqtz_report_dates(conn=conn)
         ),
         reverse=True,
     )
@@ -1550,128 +1572,6 @@ def _lookup_unique(loose: dict[tuple[str, str, str], list[dict[str, Any]]], row:
     return matches[0] if len(matches) == 1 else None
 
 
-def _fetch_decision_pnl_rows(conn: duckdb.DuckDBPyConnection, report_date: str) -> list[dict[str, Any]]:
-    if not _decision_table_exists(conn, "fact_formal_pnl_fi"):
-        return []
-    return _duckdb_rows(
-        conn,
-        """
-        select
-            instrument_code,
-            portfolio_name,
-            cost_center,
-            max(invest_type_std) as invest_type_std,
-            accounting_basis,
-            currency_basis,
-            sum(coalesce(interest_income_514, 0)) as interest_income_514,
-            sum(coalesce(fair_value_change_516, 0)) as fair_value_change_516,
-            sum(coalesce(capital_gain_517, 0)) as capital_gain_517,
-            sum(coalesce(manual_adjustment, 0)) as manual_adjustment,
-            sum(coalesce(total_pnl, 0)) as total_pnl,
-            count(*) as source_row_count
-        from fact_formal_pnl_fi
-        where cast(report_date as date) = cast(? as date)
-        group by instrument_code, portfolio_name, cost_center, accounting_basis, currency_basis
-        """,
-        [report_date],
-    )
-
-
-def _fetch_decision_analytics_rows(conn: duckdb.DuckDBPyConnection, report_date: str) -> list[dict[str, Any]]:
-    if not _decision_table_exists(conn, "fact_formal_bond_analytics_daily"):
-        return []
-    return _duckdb_rows(
-        conn,
-        """
-        select
-            instrument_code,
-            max(instrument_name) as instrument_name,
-            portfolio_name,
-            cost_center,
-            max(asset_class_std) as asset_class_std,
-            max(bond_type) as bond_type,
-            max(rating) as rating,
-            accounting_class,
-            currency_code,
-            sum(coalesce(face_value, 0)) as face_value,
-            sum(coalesce(market_value, 0)) as market_value,
-            sum(coalesce(amortized_cost, 0)) as amortized_cost,
-            sum(coalesce(accrued_interest, 0)) as accrued_interest,
-            case
-                when sum(abs(coalesce(market_value, 0))) = 0 then avg(coupon_rate)
-                else sum(coalesce(coupon_rate, 0) * abs(coalesce(market_value, 0))) / sum(abs(coalesce(market_value, 0)))
-            end as coupon_rate,
-            case
-                when sum(abs(coalesce(market_value, 0))) = 0 then avg(ytm)
-                else sum(coalesce(ytm, 0) * abs(coalesce(market_value, 0))) / sum(abs(coalesce(market_value, 0)))
-            end as ytm,
-            min(maturity_date) as maturity_date,
-            case
-                when sum(abs(coalesce(market_value, 0))) = 0 then avg(years_to_maturity)
-                else sum(coalesce(years_to_maturity, 0) * abs(coalesce(market_value, 0))) / sum(abs(coalesce(market_value, 0)))
-            end as years_to_maturity,
-            max(tenor_bucket) as tenor_bucket,
-            case
-                when sum(abs(coalesce(market_value, 0))) = 0 then avg(modified_duration)
-                else sum(coalesce(modified_duration, 0) * abs(coalesce(market_value, 0))) / sum(abs(coalesce(market_value, 0)))
-            end as modified_duration,
-            case
-                when sum(abs(coalesce(market_value, 0))) = 0 then avg(convexity)
-                else sum(coalesce(convexity, 0) * abs(coalesce(market_value, 0))) / sum(abs(coalesce(market_value, 0)))
-            end as convexity,
-            sum(coalesce(dv01, 0)) as dv01,
-            max(case when coalesce(is_credit, false) then 1 else 0 end) as is_credit,
-            sum(coalesce(spread_dv01, 0)) as spread_dv01,
-            count(*) as source_row_count
-        from fact_formal_bond_analytics_daily
-        where cast(report_date as date) = cast(? as date)
-        group by instrument_code, portfolio_name, cost_center, accounting_class, currency_code
-        """,
-        [report_date],
-    )
-
-
-def _fetch_decision_balance_rows(conn: duckdb.DuckDBPyConnection, report_date: str) -> list[dict[str, Any]]:
-    if not _decision_table_exists(conn, "fact_formal_zqtz_balance_daily"):
-        return []
-    return _duckdb_rows(
-        conn,
-        """
-        select
-            instrument_code,
-            max(instrument_name) as instrument_name,
-            portfolio_name,
-            cost_center,
-            max(asset_class) as asset_class,
-            max(bond_type) as bond_type,
-            max(rating) as rating,
-            max(invest_type_std) as invest_type_std,
-            accounting_basis,
-            currency_code,
-            sum(coalesce(face_value_amount, 0)) as face_value_amount,
-            sum(coalesce(market_value_amount, 0)) as market_value_amount,
-            sum(coalesce(amortized_cost_amount, 0)) as amortized_cost_amount,
-            sum(coalesce(accrued_interest_amount, 0)) as accrued_interest_amount,
-            case
-                when sum(abs(coalesce(market_value_amount, 0))) = 0 then avg(coupon_rate)
-                else sum(coalesce(coupon_rate, 0) * abs(coalesce(market_value_amount, 0))) / sum(abs(coalesce(market_value_amount, 0)))
-            end as coupon_rate,
-            case
-                when sum(abs(coalesce(market_value_amount, 0))) = 0 then avg(ytm_value)
-                else sum(coalesce(ytm_value, 0) * abs(coalesce(market_value_amount, 0))) / sum(abs(coalesce(market_value_amount, 0)))
-            end as ytm_value,
-            min(maturity_date) as maturity_date,
-            count(*) as source_row_count
-        from fact_formal_zqtz_balance_daily
-        where cast(report_date as date) = cast(? as date)
-          and lower(coalesce(position_scope, 'asset')) = 'asset'
-          and coalesce(is_issuance_like, false) = false
-        group by instrument_code, portfolio_name, cost_center, accounting_basis, currency_code
-        """,
-        [report_date],
-    )
-
-
 def _index_decision_rows(
     rows: list[dict[str, Any]],
     *,
@@ -1687,34 +1587,16 @@ def _index_decision_rows(
 
 
 def _fetch_decision_curve(
-    conn: duckdb.DuckDBPyConnection,
+    curve_repo: YieldCurveRepository,
     *,
+    conn: duckdb.DuckDBPyConnection,
     requested_date: str,
     curve_type: str,
 ) -> tuple[dict[str, Decimal], str | None]:
-    if not _decision_table_exists(conn, "fact_formal_yield_curve_daily"):
-        return {}, None
-    row = conn.execute(
-        """
-        select max(cast(trade_date as date))
-        from fact_formal_yield_curve_daily
-        where curve_type = ?
-          and cast(trade_date as date) <= cast(? as date)
-        """,
-        [curve_type, requested_date],
-    ).fetchone()
-    resolved = str(row[0])[:10] if row and row[0] is not None else None
-    if not resolved:
-        return {}, None
-    records = _duckdb_rows(
-        conn,
-        """
-        select tenor, rate_pct
-        from fact_formal_yield_curve_daily
-        where curve_type = ?
-          and cast(trade_date as date) = cast(? as date)
-        """,
-        [curve_type, resolved],
+    records, resolved = curve_repo.fetch_campisi_decision_curve_points(
+        requested_date=requested_date,
+        curve_type=curve_type,
+        conn=conn,
     )
     curve: dict[str, Decimal] = {}
     for record in records:
@@ -1734,20 +1616,23 @@ def _fetch_decision_curve(
 
 
 def _fetch_decision_curves(
-    conn: duckdb.DuckDBPyConnection,
+    curve_repo: YieldCurveRepository,
     *,
+    conn: duckdb.DuckDBPyConnection,
     anchor_start: str,
     anchor_end: str,
 ) -> tuple[dict[str, Any], list[str], int]:
     warnings: list[str] = []
     fallback_count = 0
     treasury_start, treasury_start_date = _fetch_decision_curve(
-        conn,
+        curve_repo,
+        conn=conn,
         requested_date=anchor_start,
         curve_type="treasury",
     )
     treasury_end, treasury_end_date = _fetch_decision_curve(
-        conn,
+        curve_repo,
+        conn=conn,
         requested_date=anchor_end,
         curve_type="treasury",
     )
@@ -1765,12 +1650,14 @@ def _fetch_decision_curves(
     credit_end_by_rating: dict[str, dict[str, Decimal]] = {}
     for rating, curve_type in _FORMAL_CREDIT_CURVE_TYPES.items():
         start_curve, start_resolved = _fetch_decision_curve(
-            conn,
+            curve_repo,
+            conn=conn,
             requested_date=anchor_start,
             curve_type=curve_type,
         )
         end_curve, end_resolved = _fetch_decision_curve(
-            conn,
+            curve_repo,
+            conn=conn,
             requested_date=anchor_end,
             curve_type=curve_type,
         )
@@ -1799,31 +1686,22 @@ def _fetch_decision_curves(
 
 
 def _fetch_decision_risk_tensor_check(
-    conn: duckdb.DuckDBPyConnection,
+    risk_repo: RiskTensorRepository,
     *,
+    conn: duckdb.DuckDBPyConnection,
     report_date: str,
     component_dv01: Decimal,
     component_cs01: Decimal,
 ) -> dict[str, Any]:
-    if not _decision_table_exists(conn, "fact_formal_risk_tensor_daily"):
+    table_available, rows = risk_repo.fetch_campisi_decision_risk_tensor_aggregate(
+        report_date,
+        conn=conn,
+    )
+    if not table_available:
         return {
             "available": False,
             "message": "fact_formal_risk_tensor_daily 不可用，无法做组合级 DV01/CS01 校验。",
         }
-    rows = _duckdb_rows(
-        conn,
-        """
-        select
-            sum(coalesce(portfolio_dv01, 0)) as portfolio_dv01,
-            sum(coalesce(cs01, 0)) as cs01,
-            sum(coalesce(total_market_value, 0)) as total_market_value,
-            sum(coalesce(bond_count, 0)) as bond_count,
-            max(quality_flag) as quality_flag
-        from fact_formal_risk_tensor_daily
-        where cast(report_date as date) = cast(? as date)
-        """,
-        [report_date],
-    )
     row = rows[0] if rows else {}
     portfolio_dv01 = _decimal_value(row.get("portfolio_dv01"))
     cs01 = _decimal_value(row.get("cs01"))
@@ -1855,6 +1733,71 @@ def _decision_residual_ratio(
     if formal_actual_pnl == Decimal("0"):
         return 0.0 if residual_noise == Decimal("0") else None
     return float(abs(residual_noise) / abs(formal_actual_pnl))
+
+
+def _decision_pnl_closure(
+    *,
+    explained_pnl: Decimal,
+    formal_actual_pnl: Decimal,
+) -> dict[str, Any]:
+    """正式 PnL 真实闭合判定。
+
+    explained_pnl 已排除 selection_proxy/residual_noise 两个平衡项，因此
+    difference = actual - explained 就是未被固定因子解释的缺口，可真实判为未闭合。
+    分级采用绝对阈值 + 相对阈值组合，与项目 quality_flag(ok/warning/error) 的分级理念一致。
+    """
+    difference = formal_actual_pnl - explained_pnl
+    abs_difference = abs(difference)
+    # Human: caliber-formal_scenario_gate-justified -- numeric zero-guard on a PnL
+    # amount (avoids division by zero / misleading 0 ratio); not a basis/view gate.
+    if formal_actual_pnl == Decimal("0"):
+        difference_ratio: float | None = 0.0 if abs_difference == Decimal("0") else None
+    else:
+        difference_ratio = float(abs_difference / abs(formal_actual_pnl))
+
+    if abs_difference <= Decimal("0.01"):
+        status = "closed"
+    elif difference_ratio is not None and difference_ratio <= 0.05:
+        status = "closed"
+    elif difference_ratio is not None and difference_ratio <= 0.10:
+        status = "warning"
+    else:
+        status = "error"
+
+    return {
+        "status": status,
+        "difference": float(difference),
+        "difference_ratio": difference_ratio,
+        "basis": "fact_formal_pnl_fi.total_pnl",
+    }
+
+
+def _decision_closure_warning(closure: dict[str, Any]) -> str:
+    ratio = closure.get("difference_ratio")
+    ratio_text = f"{float(ratio) * 100:.2f}%" if isinstance(ratio, (int, float)) else "无法归一化"
+    return (
+        f"正式 PnL 未闭合（closure={closure.get('status')}）：固定因子未解释缺口 "
+        f"{float(closure.get('difference') or 0.0):.2f} 元，占正式 PnL {ratio_text}；"
+        "缺口已落入 selection_proxy/residual_noise，不得解读为主动管理能力。"
+    )
+
+
+def _decision_quality_flag(
+    *,
+    warnings: list[str],
+    residual_noise: Decimal,
+    closure_status: str,
+) -> str:
+    """closure 分级必须上抛：缺口只落在 selection_proxy 时 residual_noise 仍为 0。
+
+    与 `_result_to_payload`/`_meta_with_quality` 对四效应 formal_closure 的处理同调：
+    closure 未闭合即降级质量信号，error 级不被其他 warning 稀释。
+    """
+    if closure_status == "error":
+        return "error"
+    if warnings or abs(residual_noise) > Decimal("0.01") or closure_status == "warning":
+        return "warning"
+    return "ok"
 
 
 def _decision_effect_rows(components: dict[str, Decimal]) -> list[dict[str, Any]]:
@@ -1950,9 +1893,339 @@ def campisi_decision_grade_envelope(
         "lookback_days": lookback_days,
         "scope": "bond_investment_assets_only",
     }
+    duckdb_path = str(settings.duckdb_path)
+    pnl_repo = PnlRepository(duckdb_path)
+    bond_repo = BondAnalyticsRepository(duckdb_path)
+    balance_repo = BalanceAnalysisRepository(duckdb_path)
+    curve_repo = YieldCurveRepository(duckdb_path)
+    risk_repo = RiskTensorRepository(duckdb_path)
+
     try:
-        conn = duckdb.connect(str(settings.duckdb_path), read_only=True)
-    except Exception as exc:
+        with read_only_connection(duckdb_path) as conn:
+            anchor_start, anchor_end, rd_start, rd_end = _resolve_decision_dates(
+                pnl_repo=pnl_repo,
+                bond_repo=bond_repo,
+                balance_repo=balance_repo,
+                conn=conn,
+                start_date=start_date,
+                end_date=end_date,
+                lookback_days=lookback_days,
+            )
+            filters.update(
+                {
+                    "resolved_start_date": anchor_start,
+                    "resolved_end_date": anchor_end,
+                }
+            )
+            if not anchor_start or not anchor_end:
+                payload = _empty_decision_grade_payload(rd_start, rd_end, ["缺少正式 PnL 或债券持仓/analytics 日期。"])
+                return build_formal_result_envelope(
+                    result_meta=_meta_warn(
+                        "campisi.decision_grade",
+                        filters_applied=filters,
+                        tables_used=TABLES_CAMPISI_DECISION_GRADE,
+                        evidence_rows=0,
+                        as_of_date=anchor_end,
+                    ),
+                    result_payload=payload,
+                )
+
+            # 窗口声明必须在空值守卫之后：anchor_* 为空时 date.fromisoformat 会抛
+            # ValueError，绕过下方的优雅空载分支并冒泡成 HTTP 500。
+            pnl_window, curve_window, window_span_days = _decision_window_declarations(
+                anchor_start=anchor_start,
+                anchor_end=anchor_end,
+            )
+            filters.update({"pnl_window": pnl_window, "curve_window": curve_window})
+
+            pnl_rows = pnl_repo.fetch_campisi_decision_pnl_rows(anchor_end, conn=conn)
+            analytics_rows = bond_repo.fetch_campisi_decision_analytics_rows(anchor_start, conn=conn)
+            balance_rows = balance_repo.fetch_campisi_decision_balance_rows(anchor_start, conn=conn)
+            analytics_by_key, analytics_loose = _index_decision_rows(
+                analytics_rows,
+                accounting_field="accounting_class",
+                currency_field="currency_code",
+            )
+            balance_by_key, balance_loose = _index_decision_rows(
+                balance_rows,
+                accounting_field="accounting_basis",
+                currency_field="currency_code",
+            )
+            curves, curve_warnings, stale_curve_fallback_count = _fetch_decision_curves(
+                curve_repo,
+                conn=conn,
+                anchor_start=anchor_start,
+                anchor_end=anchor_end,
+            )
+
+            computed_rows: list[dict[str, Any]] = []
+            warnings: list[str] = list(curve_warnings)
+            window_disclosure = _decision_window_disclosure(
+                anchor_start=anchor_start,
+                anchor_end=anchor_end,
+                num_days=window_span_days,
+            )
+            if window_disclosure is not None and window_disclosure["level"] == "warning":
+                warnings.append(window_disclosure["message"])
+            out_of_scope_rows = 0
+            dirty_input_rows = 0
+            duplicate_position_keys = 0
+            aggregated_position_groups = 0
+            accounting_matrix: dict[str, dict[str, Any]] = {}
+
+            for pnl_row in pnl_rows:
+                strict_key = _decision_key(
+                    pnl_row,
+                    accounting_field="accounting_basis",
+                    currency_field="currency_basis",
+                )
+                analytics = analytics_by_key.get(strict_key) or _lookup_unique(analytics_loose, pnl_row)
+                balance = balance_by_key.get(strict_key) or _lookup_unique(balance_loose, pnl_row)
+                if analytics is None and balance is None:
+                    out_of_scope_rows += 1
+                    continue
+
+                accounting_basis = normalize_accounting_basis(pnl_row.get("accounting_basis"))
+                try:
+                    row_formal_pnl = _decimal_value(pnl_row.get("total_pnl"))
+                    row_valuation_516 = _decimal_value(pnl_row.get("fair_value_change_516"))
+                    duplicate_key = (
+                        _decimal_value((analytics or {}).get("source_row_count")) > 1
+                        or _decimal_value((balance or {}).get("source_row_count")) > 1
+                    )
+                    market_value = (analytics or {}).get("market_value")
+                    if _is_missing(market_value):
+                        market_value = (balance or {}).get("market_value_amount")
+                    row_input = {
+                        "actual_pnl": pnl_row.get("total_pnl"),
+                        "carry": pnl_row.get("interest_income_514"),
+                        "realized_trading": pnl_row.get("capital_gain_517"),
+                        "manual_adjustment": pnl_row.get("manual_adjustment"),
+                        "market_value": market_value,
+                        "modified_duration": (analytics or {}).get("modified_duration"),
+                        "convexity": (analytics or {}).get("convexity"),
+                        "spread_dv01": (analytics or {}).get("spread_dv01"),
+                        "years_to_maturity": (analytics or balance or {}).get("years_to_maturity"),
+                        "rating": (analytics or balance or {}).get("rating"),
+                        "is_credit": bool((analytics or {}).get("is_credit"))
+                        or "credit" in _text_value((analytics or balance or {}).get("asset_class_std") or (balance or {}).get("asset_class")).lower(),
+                        "duplicate_position_key": duplicate_key,
+                        "duplicate_position_key_is_ambiguous": False,
+                        "missing_analytics": analytics is None,
+                        "include_market_effects_in_formal_pnl": accounting_basis == ACCOUNTING_BASIS_FVTPL,
+                    }
+                    computed = compute_decision_grade_row(
+                        row_input,
+                        treasury_start=curves["treasury_start"],
+                        treasury_end=curves["treasury_end"],
+                        credit_start_by_rating=curves["credit_start_by_rating"],
+                        credit_end_by_rating=curves["credit_end_by_rating"],
+                    )
+                    row_market_value = campisi_decision_decimal(market_value)
+                except DirtyNumericInputError as exc:
+                    # 脏输入行不得静默变 0 计入总额：整行跳过并显式披露。
+                    dirty_input_rows += 1
+                    logger.warning(
+                        "Campisi 决策评级行含脏数值输入，已跳过：instrument=%s portfolio=%s cost_center=%s：%s",
+                        pnl_row.get("instrument_code"),
+                        pnl_row.get("portfolio_name"),
+                        pnl_row.get("cost_center"),
+                        exc,
+                    )
+                    warnings.append(
+                        f"PnL 明细行含脏数值输入，已跳过且不计入决策评级总额"
+                        f"（{_text_value(pnl_row.get('instrument_code')) or 'unknown'}）：{exc}"
+                    )
+                    continue
+
+                if duplicate_key:
+                    aggregated_position_groups += 1
+                matrix_row = accounting_matrix.setdefault(
+                    accounting_basis,
+                    {
+                        "accounting_basis": accounting_basis,
+                        "formal_pnl": Decimal("0"),
+                        "valuation_or_oci_516": Decimal("0"),
+                        "interpretation": _accounting_interpretation(accounting_basis),
+                    },
+                )
+                matrix_row["formal_pnl"] += row_formal_pnl
+                matrix_row["valuation_or_oci_516"] += row_valuation_516
+                computed.update(
+                    {
+                        "instrument_code": pnl_row.get("instrument_code"),
+                        "portfolio_name": pnl_row.get("portfolio_name"),
+                        "cost_center": pnl_row.get("cost_center"),
+                        "accounting_basis": accounting_basis,
+                        "fair_value_change_516": row_valuation_516,
+                        "market_value": row_market_value,
+                    }
+                )
+                warnings.extend(computed.get("diagnostics") or [])
+                computed_rows.append(computed)
+
+            totals = {key: Decimal("0") for key in _DECISION_EFFECT_LABELS}
+            formal_actual_pnl = Decimal("0")
+            explained_pnl = Decimal("0")
+            valuation_total = Decimal("0")
+            fvoci_valuation = Decimal("0")
+            fvtpl_valuation = Decimal("0")
+            component_dv01 = Decimal("0")
+            component_cs01 = Decimal("0")
+            missing_curve_count = 0
+            missing_spread_count = 0
+            for row in computed_rows:
+                formal_actual_pnl += row["actual_pnl"]
+                explained_pnl += row["explained_pnl"]
+                valuation = row["fair_value_change_516"]
+                valuation_total += valuation
+                if row["accounting_basis"] == ACCOUNTING_BASIS_FVOCI:
+                    fvoci_valuation += valuation
+                if row["accounting_basis"] == ACCOUNTING_BASIS_FVTPL:
+                    fvtpl_valuation += valuation
+                for key in totals:
+                    totals[key] += row["components"][key]
+                reasons = set(row.get("residual_reasons") or [])
+                if {"missing_treasury_curve", "missing_convexity_curve"} & reasons:
+                    missing_curve_count += 1
+                if "missing_credit_curve" in reasons:
+                    missing_spread_count += 1
+
+            for row in analytics_rows:
+                try:
+                    row_dv01 = _decimal_value(row.get("dv01"))
+                    row_cs01 = _decimal_value(row.get("spread_dv01"))
+                except DirtyNumericInputError as exc:
+                    logger.warning(
+                        "Campisi 决策评级 analytics 行 DV01/CS01 含脏数值输入，已跳过：instrument=%s：%s",
+                        row.get("instrument_code"),
+                        exc,
+                    )
+                    warnings.append(
+                        f"analytics 行 DV01/CS01 含脏数值输入，已跳过该行贡献"
+                        f"（{_text_value(row.get('instrument_code')) or 'unknown'}）：{exc}"
+                    )
+                    continue
+                component_dv01 += row_dv01
+                component_cs01 += row_cs01
+
+            residual_noise = totals["residual_noise"]
+            residual_ratio = _decision_residual_ratio(
+                formal_actual_pnl=formal_actual_pnl,
+                residual_noise=residual_noise,
+            )
+            pnl_closure = _decision_pnl_closure(
+                explained_pnl=explained_pnl,
+                formal_actual_pnl=formal_actual_pnl,
+            )
+            closure_status = str(pnl_closure["status"])
+            if closure_status != "closed":
+                warnings.append(_decision_closure_warning(pnl_closure))
+            quality_flag = _decision_quality_flag(
+                warnings=warnings,
+                residual_noise=residual_noise,
+                closure_status=closure_status,
+            )
+            risk_tensor_check = _fetch_decision_risk_tensor_check(
+                risk_repo,
+                conn=conn,
+                report_date=anchor_end,
+                component_dv01=component_dv01,
+                component_cs01=component_cs01,
+            )
+
+            rows_by_accounting = []
+            accounting_matrix_json: dict[str, dict[str, Any]] = {}
+            for accounting_basis, row in sorted(accounting_matrix.items()):
+                formatted = {
+                    "accounting_basis": accounting_basis,
+                    "formal_pnl": float(row["formal_pnl"]),
+                    "valuation_or_oci_516": float(row["valuation_or_oci_516"]),
+                    "interpretation": row["interpretation"],
+                }
+                rows_by_accounting.append(formatted)
+                accounting_matrix_json[accounting_basis] = formatted
+
+            payload = {
+                "basis": "campisi_decision_grade_v1",
+                "report_date": anchor_end,
+                "period_start": anchor_start,
+                "period_end": anchor_end,
+                "num_days": window_span_days,
+                "pnl_window": pnl_window,
+                "curve_window": curve_window,
+                "window_disclosure": window_disclosure,
+                "summary": {
+                    "formal_actual_pnl": float(formal_actual_pnl),
+                    "explained_pnl": float(explained_pnl),
+                    "residual_noise": float(residual_noise),
+                    "residual_ratio": residual_ratio,
+                    "valuation_change_516": float(valuation_total),
+                    "fvoci_valuation_change_516": float(fvoci_valuation),
+                    "fvtpl_valuation_change_516": float(fvtpl_valuation),
+                    "main_driver": primary_driver(totals),
+                    "quality_flag": quality_flag,
+                    "bond_scope_row_count": len(computed_rows),
+                    "out_of_scope_pnl_row_count": out_of_scope_rows,
+                },
+                "formal_pnl_view": {
+                    "total_actual_pnl": float(formal_actual_pnl),
+                    "explained_pnl": float(explained_pnl),
+                    "residual_noise": float(residual_noise),
+                    "components": _decision_float_components(totals),
+                    "closure": pnl_closure,
+                },
+                "valuation_oci_view": {
+                    "total_valuation_change_516": float(valuation_total),
+                    "fvoci_valuation_change_516": float(fvoci_valuation),
+                    "fvtpl_valuation_change_516": float(fvtpl_valuation),
+                    "rows_by_accounting_basis": rows_by_accounting,
+                    "reinvestment": {
+                        "implemented": False,
+                        "message": "数据源不足：缺少稳定短端再投资数据，v1 不伪造为 0 贡献。",
+                    },
+                },
+                "effects": _decision_effect_rows(totals),
+                "accounting_matrix": accounting_matrix_json,
+                "ability_matrix": _decision_ability_matrix(computed_rows),
+                "risk_tensor_check": risk_tensor_check,
+                "residual_diagnostics": {
+                    "missing_curve_count": missing_curve_count,
+                    "missing_spread_count": missing_spread_count,
+                    "duplicate_position_keys": duplicate_position_keys,
+                    "aggregated_position_groups": aggregated_position_groups,
+                    "unmatched_pnl_rows": out_of_scope_rows,
+                    "dirty_input_row_count": dirty_input_rows,
+                    "stale_curve_fallback_count": stale_curve_fallback_count,
+                    "warnings": sorted(set(warnings)),
+                },
+                "warnings": sorted(set(warnings)),
+                "method_notes": [
+                    "carry = interest_income_514。",
+                    "FVOCI 的 516 不进入正式 PnL，但进入估值/OCI 解释视图。",
+                    "selection_proxy 是组合/成本中心代理指标，不是实名交易员能力。",
+                    "residual_noise 专门承接缺曲线、重复 key、估值噪音和数据质量问题。",
+                ],
+            }
+            return build_formal_result_envelope(
+                result_meta=build_formal_result_meta(
+                    trace_id=_trace_id(),
+                    result_kind="campisi.decision_grade",
+                    cache_version=CACHE_VERSION,
+                    source_version=SOURCE_VERSION,
+                    rule_version=RULE_VERSION,
+                    quality_flag=quality_flag,
+                    vendor_status="vendor_stale" if stale_curve_fallback_count else "ok",
+                    fallback_mode="latest_snapshot" if stale_curve_fallback_count else "none",
+                    filters_applied=filters,
+                    tables_used=TABLES_CAMPISI_DECISION_GRADE,
+                    evidence_rows=len(pnl_rows) + len(analytics_rows) + len(balance_rows),
+                    source_surface="formal_attribution",
+                    as_of_date=anchor_end,
+                ),
+                result_payload=payload,
+            )
+    except (OSError, duckdb.Error) as exc:
         payload = _empty_decision_grade_payload("", "", [f"DuckDB 只读连接失败：{exc}"])
         return build_formal_result_envelope(
             result_meta=_meta_warn(
@@ -1963,303 +2236,6 @@ def campisi_decision_grade_envelope(
             ),
             result_payload=payload,
         )
-
-    try:
-        anchor_start, anchor_end, rd_start, rd_end = _resolve_decision_dates(
-            conn,
-            start_date=start_date,
-            end_date=end_date,
-            lookback_days=lookback_days,
-        )
-        filters.update(
-            {
-                "resolved_start_date": anchor_start,
-                "resolved_end_date": anchor_end,
-            }
-        )
-        if not anchor_start or not anchor_end:
-            payload = _empty_decision_grade_payload(rd_start, rd_end, ["缺少正式 PnL 或债券持仓/analytics 日期。"])
-            return build_formal_result_envelope(
-                result_meta=_meta_warn(
-                    "campisi.decision_grade",
-                    filters_applied=filters,
-                    tables_used=TABLES_CAMPISI_DECISION_GRADE,
-                    evidence_rows=0,
-                    as_of_date=anchor_end,
-                ),
-                result_payload=payload,
-            )
-
-        pnl_rows = _fetch_decision_pnl_rows(conn, anchor_end)
-        analytics_rows = _fetch_decision_analytics_rows(conn, anchor_start)
-        balance_rows = _fetch_decision_balance_rows(conn, anchor_start)
-        analytics_by_key, analytics_loose = _index_decision_rows(
-            analytics_rows,
-            accounting_field="accounting_class",
-            currency_field="currency_code",
-        )
-        balance_by_key, balance_loose = _index_decision_rows(
-            balance_rows,
-            accounting_field="accounting_basis",
-            currency_field="currency_code",
-        )
-        curves, curve_warnings, stale_curve_fallback_count = _fetch_decision_curves(
-            conn,
-            anchor_start=anchor_start,
-            anchor_end=anchor_end,
-        )
-
-        computed_rows: list[dict[str, Any]] = []
-        warnings: list[str] = list(curve_warnings)
-        out_of_scope_rows = 0
-        dirty_input_rows = 0
-        duplicate_position_keys = 0
-        aggregated_position_groups = 0
-        accounting_matrix: dict[str, dict[str, Any]] = {}
-
-        for pnl_row in pnl_rows:
-            strict_key = _decision_key(
-                pnl_row,
-                accounting_field="accounting_basis",
-                currency_field="currency_basis",
-            )
-            analytics = analytics_by_key.get(strict_key) or _lookup_unique(analytics_loose, pnl_row)
-            balance = balance_by_key.get(strict_key) or _lookup_unique(balance_loose, pnl_row)
-            if analytics is None and balance is None:
-                out_of_scope_rows += 1
-                continue
-
-            accounting_basis = normalize_accounting_basis(pnl_row.get("accounting_basis"))
-            try:
-                row_formal_pnl = _decimal_value(pnl_row.get("total_pnl"))
-                row_valuation_516 = _decimal_value(pnl_row.get("fair_value_change_516"))
-                duplicate_key = (
-                    _decimal_value((analytics or {}).get("source_row_count")) > 1
-                    or _decimal_value((balance or {}).get("source_row_count")) > 1
-                )
-                market_value = (analytics or {}).get("market_value")
-                if _is_missing(market_value):
-                    market_value = (balance or {}).get("market_value_amount")
-                row_input = {
-                    "actual_pnl": pnl_row.get("total_pnl"),
-                    "carry": pnl_row.get("interest_income_514"),
-                    "realized_trading": pnl_row.get("capital_gain_517"),
-                    "manual_adjustment": pnl_row.get("manual_adjustment"),
-                    "market_value": market_value,
-                    "modified_duration": (analytics or {}).get("modified_duration"),
-                    "convexity": (analytics or {}).get("convexity"),
-                    "spread_dv01": (analytics or {}).get("spread_dv01"),
-                    "years_to_maturity": (analytics or balance or {}).get("years_to_maturity"),
-                    "rating": (analytics or balance or {}).get("rating"),
-                    "is_credit": bool((analytics or {}).get("is_credit"))
-                    or "credit" in _text_value((analytics or balance or {}).get("asset_class_std") or (balance or {}).get("asset_class")).lower(),
-                    "duplicate_position_key": duplicate_key,
-                    "duplicate_position_key_is_ambiguous": False,
-                    "missing_analytics": analytics is None,
-                    "include_market_effects_in_formal_pnl": accounting_basis == ACCOUNTING_BASIS_FVTPL,
-                }
-                computed = compute_decision_grade_row(
-                    row_input,
-                    treasury_start=curves["treasury_start"],
-                    treasury_end=curves["treasury_end"],
-                    credit_start_by_rating=curves["credit_start_by_rating"],
-                    credit_end_by_rating=curves["credit_end_by_rating"],
-                )
-                row_market_value = campisi_decision_decimal(market_value)
-            except DirtyNumericInputError as exc:
-                # 脏输入行不得静默变 0 计入总额：整行跳过并显式披露。
-                dirty_input_rows += 1
-                logger.warning(
-                    "Campisi 决策评级行含脏数值输入，已跳过：instrument=%s portfolio=%s cost_center=%s：%s",
-                    pnl_row.get("instrument_code"),
-                    pnl_row.get("portfolio_name"),
-                    pnl_row.get("cost_center"),
-                    exc,
-                )
-                warnings.append(
-                    f"PnL 明细行含脏数值输入，已跳过且不计入决策评级总额"
-                    f"（{_text_value(pnl_row.get('instrument_code')) or 'unknown'}）：{exc}"
-                )
-                continue
-
-            if duplicate_key:
-                aggregated_position_groups += 1
-            matrix_row = accounting_matrix.setdefault(
-                accounting_basis,
-                {
-                    "accounting_basis": accounting_basis,
-                    "formal_pnl": Decimal("0"),
-                    "valuation_or_oci_516": Decimal("0"),
-                    "interpretation": _accounting_interpretation(accounting_basis),
-                },
-            )
-            matrix_row["formal_pnl"] += row_formal_pnl
-            matrix_row["valuation_or_oci_516"] += row_valuation_516
-            computed.update(
-                {
-                    "instrument_code": pnl_row.get("instrument_code"),
-                    "portfolio_name": pnl_row.get("portfolio_name"),
-                    "cost_center": pnl_row.get("cost_center"),
-                    "accounting_basis": accounting_basis,
-                    "fair_value_change_516": row_valuation_516,
-                    "market_value": row_market_value,
-                }
-            )
-            warnings.extend(computed.get("diagnostics") or [])
-            computed_rows.append(computed)
-
-        totals = {key: Decimal("0") for key in _DECISION_EFFECT_LABELS}
-        formal_actual_pnl = Decimal("0")
-        explained_pnl = Decimal("0")
-        valuation_total = Decimal("0")
-        fvoci_valuation = Decimal("0")
-        fvtpl_valuation = Decimal("0")
-        component_dv01 = Decimal("0")
-        component_cs01 = Decimal("0")
-        missing_curve_count = 0
-        missing_spread_count = 0
-        for row in computed_rows:
-            formal_actual_pnl += row["actual_pnl"]
-            explained_pnl += row["explained_pnl"]
-            valuation = row["fair_value_change_516"]
-            valuation_total += valuation
-            if row["accounting_basis"] == ACCOUNTING_BASIS_FVOCI:
-                fvoci_valuation += valuation
-            if row["accounting_basis"] == ACCOUNTING_BASIS_FVTPL:
-                fvtpl_valuation += valuation
-            for key in totals:
-                totals[key] += row["components"][key]
-            reasons = set(row.get("residual_reasons") or [])
-            if {"missing_treasury_curve", "missing_convexity_curve"} & reasons:
-                missing_curve_count += 1
-            if "missing_credit_curve" in reasons:
-                missing_spread_count += 1
-
-        for row in analytics_rows:
-            try:
-                row_dv01 = _decimal_value(row.get("dv01"))
-                row_cs01 = _decimal_value(row.get("spread_dv01"))
-            except DirtyNumericInputError as exc:
-                logger.warning(
-                    "Campisi 决策评级 analytics 行 DV01/CS01 含脏数值输入，已跳过：instrument=%s：%s",
-                    row.get("instrument_code"),
-                    exc,
-                )
-                warnings.append(
-                    f"analytics 行 DV01/CS01 含脏数值输入，已跳过该行贡献"
-                    f"（{_text_value(row.get('instrument_code')) or 'unknown'}）：{exc}"
-                )
-                continue
-            component_dv01 += row_dv01
-            component_cs01 += row_cs01
-
-        residual_noise = totals["residual_noise"]
-        residual_ratio = _decision_residual_ratio(
-            formal_actual_pnl=formal_actual_pnl,
-            residual_noise=residual_noise,
-        )
-        quality_flag = "warning" if warnings or abs(residual_noise) > Decimal("0.01") else "ok"
-        risk_tensor_check = _fetch_decision_risk_tensor_check(
-            conn,
-            report_date=anchor_end,
-            component_dv01=component_dv01,
-            component_cs01=component_cs01,
-        )
-
-        rows_by_accounting = []
-        accounting_matrix_json: dict[str, dict[str, Any]] = {}
-        for accounting_basis, row in sorted(accounting_matrix.items()):
-            formatted = {
-                "accounting_basis": accounting_basis,
-                "formal_pnl": float(row["formal_pnl"]),
-                "valuation_or_oci_516": float(row["valuation_or_oci_516"]),
-                "interpretation": row["interpretation"],
-            }
-            rows_by_accounting.append(formatted)
-            accounting_matrix_json[accounting_basis] = formatted
-
-        payload = {
-            "basis": "campisi_decision_grade_v1",
-            "report_date": anchor_end,
-            "period_start": anchor_start,
-            "period_end": anchor_end,
-            "num_days": max((date.fromisoformat(anchor_end) - date.fromisoformat(anchor_start)).days, 0),
-            "summary": {
-                "formal_actual_pnl": float(formal_actual_pnl),
-                "explained_pnl": float(explained_pnl),
-                "residual_noise": float(residual_noise),
-                "residual_ratio": residual_ratio,
-                "valuation_change_516": float(valuation_total),
-                "fvoci_valuation_change_516": float(fvoci_valuation),
-                "fvtpl_valuation_change_516": float(fvtpl_valuation),
-                "main_driver": primary_driver(totals),
-                "quality_flag": quality_flag,
-                "bond_scope_row_count": len(computed_rows),
-                "out_of_scope_pnl_row_count": out_of_scope_rows,
-            },
-            "formal_pnl_view": {
-                "total_actual_pnl": float(formal_actual_pnl),
-                "explained_pnl": float(explained_pnl),
-                "residual_noise": float(residual_noise),
-                "components": _decision_float_components(totals),
-                "closure": {
-                    "status": "closed" if abs(explained_pnl - formal_actual_pnl) <= Decimal("0.01") else "warning",
-                    "difference": float(explained_pnl - formal_actual_pnl),
-                    "basis": "fact_formal_pnl_fi.total_pnl",
-                },
-            },
-            "valuation_oci_view": {
-                "total_valuation_change_516": float(valuation_total),
-                "fvoci_valuation_change_516": float(fvoci_valuation),
-                "fvtpl_valuation_change_516": float(fvtpl_valuation),
-                "rows_by_accounting_basis": rows_by_accounting,
-                "reinvestment": {
-                    "implemented": False,
-                    "message": "数据源不足：缺少稳定短端再投资数据，v1 不伪造为 0 贡献。",
-                },
-            },
-            "effects": _decision_effect_rows(totals),
-            "accounting_matrix": accounting_matrix_json,
-            "ability_matrix": _decision_ability_matrix(computed_rows),
-            "risk_tensor_check": risk_tensor_check,
-            "residual_diagnostics": {
-                "missing_curve_count": missing_curve_count,
-                "missing_spread_count": missing_spread_count,
-                "duplicate_position_keys": duplicate_position_keys,
-                "aggregated_position_groups": aggregated_position_groups,
-                "unmatched_pnl_rows": out_of_scope_rows,
-                "dirty_input_row_count": dirty_input_rows,
-                "stale_curve_fallback_count": stale_curve_fallback_count,
-                "warnings": sorted(set(warnings)),
-            },
-            "warnings": sorted(set(warnings)),
-            "method_notes": [
-                "carry = interest_income_514。",
-                "FVOCI 的 516 不进入正式 PnL，但进入估值/OCI 解释视图。",
-                "selection_proxy 是组合/成本中心代理指标，不是实名交易员能力。",
-                "residual_noise 专门承接缺曲线、重复 key、估值噪音和数据质量问题。",
-            ],
-        }
-        return build_formal_result_envelope(
-            result_meta=build_formal_result_meta(
-                trace_id=_trace_id(),
-                result_kind="campisi.decision_grade",
-                cache_version=CACHE_VERSION,
-                source_version=SOURCE_VERSION,
-                rule_version=RULE_VERSION,
-                quality_flag=quality_flag,
-                vendor_status="vendor_stale" if stale_curve_fallback_count else "ok",
-                fallback_mode="latest_snapshot" if stale_curve_fallback_count else "none",
-                filters_applied=filters,
-                tables_used=TABLES_CAMPISI_DECISION_GRADE,
-                evidence_rows=len(pnl_rows) + len(analytics_rows) + len(balance_rows),
-                source_surface="formal_attribution",
-                as_of_date=anchor_end,
-            ),
-            result_payload=payload,
-        )
-    finally:
-        conn.close()
 
 
 def campisi_four_effects_envelope(
@@ -2428,6 +2404,38 @@ def campisi_four_effects_envelope(
         },
         settings=settings,
         formal_bridge=formal_bridge,
+    )
+
+
+def _project_campisi_four_effects_summary(envelope: dict[str, object]) -> dict[str, object]:
+    result = envelope.get("result")
+    if not isinstance(result, dict):
+        return envelope
+    return {
+        **envelope,
+        "result": {
+            **result,
+            "by_bond": [],
+        },
+    }
+
+
+def campisi_four_effects_summary_envelope(
+    *,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    lookback_days: int = 30,
+) -> dict[str, object]:
+    """四效应 summary 投影：在完整（可能命中缓存的）envelope 之后置空 by_bond。
+
+    不改动计算逻辑、缓存键或 meta；除 by_bond 外与 full 结果逐字段一致。
+    """
+    return _project_campisi_four_effects_summary(
+        campisi_four_effects_envelope(
+            start_date=start_date,
+            end_date=end_date,
+            lookback_days=lookback_days,
+        )
     )
 
 

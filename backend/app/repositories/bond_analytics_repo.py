@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import Any
 
 import duckdb
 from backend.app.core_finance.bond_analytics.engine import BondAnalyticsRow
@@ -12,7 +13,7 @@ from backend.app.core_finance.bond_analytics.read_models import (
     summarize_portfolio_risk,
 )
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
-from backend.app.repositories.duckdb_repo import catalog_presence_cached
+from backend.app.repositories.duckdb_repo import catalog_presence_cached, read_only_connection
 from backend.app.repositories.task_write_guard import require_repository_task_write_scope
 
 FACT_TABLE = "fact_formal_bond_analytics_daily"
@@ -332,8 +333,10 @@ class BondAnalyticsRepository:
     ) -> None:
         require_repository_task_write_scope("replace_bond_analytics_rows")
         conn = duckdb.connect(self.path, read_only=False)
+        transaction_started = False
         try:
             conn.execute("begin transaction")
+            transaction_started = True
             ensure_bond_analytics_tables(conn)
             conn.execute(
                 f"delete from {FACT_TABLE} where report_date = ?",
@@ -402,8 +405,13 @@ class BondAnalyticsRepository:
                     ],
                 )
             conn.execute("commit")
+            transaction_started = False
         except Exception:
-            conn.execute("rollback")
+            if transaction_started:
+                try:
+                    conn.execute("rollback")
+                except Exception:  # noqa: S110  # 回滚失败不得掩盖随后 raise 的原始写入异常
+                    pass
             raise
         finally:
             conn.close()
@@ -413,8 +421,10 @@ class BondAnalyticsRepository:
 
         require_repository_task_write_scope("invalidate_report_date_facts")
         conn = duckdb.connect(self.path, read_only=False)
+        transaction_started = False
         try:
             conn.execute("begin transaction")
+            transaction_started = True
             if _table_exists(conn, self.path, FACT_TABLE):
                 conn.execute(
                     f"delete from {FACT_TABLE} where report_date = ?",
@@ -426,8 +436,13 @@ class BondAnalyticsRepository:
                     [report_date],
                 )
             conn.execute("commit")
+            transaction_started = False
         except Exception:
-            conn.execute("rollback")
+            if transaction_started:
+                try:
+                    conn.execute("rollback")
+                except Exception:  # noqa: S110  # 回滚失败不得掩盖随后 raise 的原始写入异常
+                    pass
             raise
         finally:
             conn.close()
@@ -1092,6 +1107,133 @@ class BondAnalyticsRepository:
             return _normalize_dashboard_risk_row(dict(zip(_RISK_INDICATORS_KEYS, row, strict=True)))
         finally:
             conn.close()
+
+
+    def list_campisi_decision_analytics_report_dates(
+        self,
+        *,
+        conn: duckdb.DuckDBPyConnection | None = None,
+    ) -> list[str]:
+        if conn is not None:
+            return self._list_campisi_decision_report_dates_impl(conn, FACT_TABLE, "report_date")
+        try:
+            with read_only_connection(self.path) as scoped:
+                return self._list_campisi_decision_report_dates_impl(scoped, FACT_TABLE, "report_date")
+        except (OSError, duckdb.Error):
+            return []
+
+    def fetch_campisi_decision_analytics_rows(
+        self,
+        report_date: str,
+        *,
+        conn: duckdb.DuckDBPyConnection | None = None,
+    ) -> list[dict[str, Any]]:
+        if conn is not None:
+            return self._fetch_campisi_decision_analytics_rows_impl(conn, report_date)
+        try:
+            with read_only_connection(self.path) as scoped:
+                return self._fetch_campisi_decision_analytics_rows_impl(scoped, report_date)
+        except (OSError, duckdb.Error):
+            return []
+
+    def _list_campisi_decision_report_dates_impl(
+        self,
+        conn: duckdb.DuckDBPyConnection,
+        table_name: str,
+        date_col: str,
+    ) -> list[str]:
+        if not _campisi_decision_table_exists(conn, table_name):
+            return []
+        rows = conn.execute(
+            f"""
+            select distinct cast({date_col} as varchar) as report_date
+            from {table_name}
+            where {date_col} is not null
+            order by report_date desc
+            """
+        ).fetchall()
+        return [str(row[0])[:10] for row in rows]
+
+    def _fetch_campisi_decision_analytics_rows_impl(
+        self,
+        conn: duckdb.DuckDBPyConnection,
+        report_date: str,
+    ) -> list[dict[str, Any]]:
+        if not _campisi_decision_table_exists(conn, FACT_TABLE):
+            return []
+        return _campisi_decision_duckdb_rows(
+            conn,
+            """
+            select
+                instrument_code,
+                max(instrument_name) as instrument_name,
+                portfolio_name,
+                cost_center,
+                max(asset_class_std) as asset_class_std,
+                max(bond_type) as bond_type,
+                max(rating) as rating,
+                accounting_class,
+                currency_code,
+                sum(coalesce(face_value, 0)) as face_value,
+                sum(coalesce(market_value, 0)) as market_value,
+                sum(coalesce(amortized_cost, 0)) as amortized_cost,
+                sum(coalesce(accrued_interest, 0)) as accrued_interest,
+                case
+                    when sum(abs(coalesce(market_value, 0))) = 0 then avg(coupon_rate)
+                    else sum(coalesce(coupon_rate, 0) * abs(coalesce(market_value, 0))) / sum(abs(coalesce(market_value, 0)))
+                end as coupon_rate,
+                case
+                    when sum(abs(coalesce(market_value, 0))) = 0 then avg(ytm)
+                    else sum(coalesce(ytm, 0) * abs(coalesce(market_value, 0))) / sum(abs(coalesce(market_value, 0)))
+                end as ytm,
+                min(maturity_date) as maturity_date,
+                case
+                    when sum(abs(coalesce(market_value, 0))) = 0 then avg(years_to_maturity)
+                    else sum(coalesce(years_to_maturity, 0) * abs(coalesce(market_value, 0))) / sum(abs(coalesce(market_value, 0)))
+                end as years_to_maturity,
+                max(tenor_bucket) as tenor_bucket,
+                case
+                    when sum(abs(coalesce(market_value, 0))) = 0 then avg(modified_duration)
+                    else sum(coalesce(modified_duration, 0) * abs(coalesce(market_value, 0))) / sum(abs(coalesce(market_value, 0)))
+                end as modified_duration,
+                case
+                    when sum(abs(coalesce(market_value, 0))) = 0 then avg(convexity)
+                    else sum(coalesce(convexity, 0) * abs(coalesce(market_value, 0))) / sum(abs(coalesce(market_value, 0)))
+                end as convexity,
+                sum(coalesce(dv01, 0)) as dv01,
+                max(case when coalesce(is_credit, false) then 1 else 0 end) as is_credit,
+                sum(coalesce(spread_dv01, 0)) as spread_dv01,
+                count(*) as source_row_count
+            from fact_formal_bond_analytics_daily
+            where cast(report_date as date) = cast(? as date)
+            group by instrument_code, portfolio_name, cost_center, accounting_class, currency_code
+            """,
+            [report_date],
+        )
+
+
+
+
+def _campisi_decision_table_exists(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
+    try:
+        return bool(
+            conn.execute(
+                "select count(*) from information_schema.tables where table_name = ?",
+                [table_name],
+            ).fetchone()[0]
+        )
+    except duckdb.Error:
+        return False
+
+
+def _campisi_decision_duckdb_rows(
+    conn: duckdb.DuckDBPyConnection,
+    sql: str,
+    params: list[Any] | tuple[Any, ...] = (),
+) -> list[dict[str, Any]]:
+    cursor = conn.execute(sql, params)
+    columns = [column[0] for column in cursor.description]
+    return [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
 
 
 def _normalize_dashboard_risk_row(data: dict[str, object]) -> dict[str, object]:

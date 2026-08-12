@@ -27,9 +27,9 @@ from pathlib import Path
 import duckdb
 import numpy as np
 import pandas as pd
+from backend.app.core_finance.macro.toolkit.cffex_member_rank_shared import TABLE_NAME as CFFEX_TABLE_NAME
+from backend.app.core_finance.macro.toolkit.cffex_member_rank_shared import VIEW_NAME as CFFEX_VIEW_NAME
 from backend.app.core_finance.macro.toolkit.system_sources import resolve_system_duckdb_path
-from backend.app.repositories.cffex_member_rank_repo import TABLE_NAME as CFFEX_TABLE_NAME
-from backend.app.repositories.cffex_member_rank_repo import VIEW_NAME as CFFEX_VIEW_NAME
 
 if __package__:
     from backend.app.core_finance.macro.toolkit.paths import OUTPUT_DIR

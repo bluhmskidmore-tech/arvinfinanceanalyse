@@ -3,26 +3,18 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import duckdb
-
 from backend.app.agent.runtime.research_workflow_catalog import get_research_workflow
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
+from backend.app.repositories.market_read_repo import (
+    CHOICE_NEWS_EVENTS_SQL as _CHOICE_NEWS_EVENTS_SQL,
+)
+from backend.app.repositories.market_read_repo import MarketReadRepository
 from backend.app.services.research_radar_compare import build_choice_news_compare_payload
 
 # rule/cache 版本以 research_workflow_catalog 为单一事实来源，避免 handler 与 catalog 漂移。
 _CATALOG_WORKFLOW = get_research_workflow("research_radar_brief")
 RULE_VERSION = _CATALOG_WORKFLOW.rule_version if _CATALOG_WORKFLOW else "rv_research_radar_v1"
 CACHE_VERSION = _CATALOG_WORKFLOW.cache_version if _CATALOG_WORKFLOW else "cv_research_radar_v1"
-
-_CHOICE_NEWS_EVENTS_SQL = """
-            select event_key, received_at, group_id, content_type, serial_id, request_id, error_code,
-                   error_msg, topic_code, item_index, payload_text, payload_json
-            from choice_news_event
-            where coalesce(error_code, 0) = 0
-            order by received_at desc, topic_code asc, item_index asc
-            limit ?
-            """
-
 
 def research_radar_brief_payload(
     request: AgentQueryRequest,
@@ -83,35 +75,7 @@ def _load_choice_news_events(duckdb_path: str, *, limit: int) -> list[dict[str, 
     if not duckdb_file.exists():
         return []
 
-    conn = duckdb.connect(str(duckdb_file), read_only=True)
-    try:
-        tables = {row[0] for row in conn.execute("show tables").fetchall()}
-        if "choice_news_event" not in tables:
-            return []
-        rows = conn.execute(
-            _CHOICE_NEWS_EVENTS_SQL,
-            [limit],
-        ).fetchall()
-    finally:
-        conn.close()
-
-    return [
-        {
-            "event_key": str(event_key),
-            "received_at": str(received_at),
-            "group_id": str(group_id),
-            "content_type": str(content_type),
-            "serial_id": int(serial_id),
-            "request_id": int(request_id),
-            "error_code": int(error_code),
-            "error_msg": str(error_msg),
-            "topic_code": str(topic_code),
-            "item_index": int(item_index),
-            "payload_text": payload_text,
-            "payload_json": payload_json,
-        }
-        for event_key, received_at, group_id, content_type, serial_id, request_id, error_code, error_msg, topic_code, item_index, payload_text, payload_json in rows
-    ]
+    return MarketReadRepository(str(duckdb_file)).fetch_choice_news_events(limit=limit)
 
 
 def _compare_card_rows(compare: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:

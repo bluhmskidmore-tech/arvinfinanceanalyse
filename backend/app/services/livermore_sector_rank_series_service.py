@@ -6,10 +6,11 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, cast
 
-import duckdb
-from backend.app.core_finance.livermore_sector_rank import (
-    SectorRankConstituent,
-    compute_sector_rank,
+from backend.app.core_finance.livermore_sector_rank import compute_sector_rank
+from backend.app.repositories.livermore_market_read_repo import (
+    TABLE_MEMBERSHIP,
+    TABLE_OBS,
+    LivermoreMarketReadRepository,
 )
 from backend.app.services.formal_result_runtime import (
     FallbackMode,
@@ -34,9 +35,6 @@ METRIC_NOTES = (
     "cum_pctchange_window: arithmetic sum of daily avg_pctchange over the window (not compounded)",
 )
 
-TABLE_MEMBERSHIP = "choice_stock_sector_membership"
-TABLE_OBS = "choice_stock_daily_observation"
-
 
 def livermore_sector_rank_series_envelope(
     *,
@@ -57,9 +55,16 @@ def livermore_sector_rank_series_envelope(
             sector_code_filter=sector_filter,
         )
 
-    conn = duckdb.connect(str(path), read_only=True)
-    try:
-        tables = {row[0] for row in conn.execute("show tables").fetchall()}
+    repo = LivermoreMarketReadRepository(str(path))
+    with repo.scoped_connection() as conn:
+        if conn is None:
+            return _missing_envelope(
+                as_of_date_resolved=None,
+                window_days=window_days,
+                top_k=top_k,
+                sector_code_filter=sector_filter,
+            )
+        tables = repo.list_table_names(conn=conn)
         required = {TABLE_MEMBERSHIP, TABLE_OBS}
         if not required.issubset(tables):
             return _missing_envelope(
@@ -69,7 +74,7 @@ def livermore_sector_rank_series_envelope(
                 sector_code_filter=sector_filter,
             )
 
-        end_bound = _resolve_global_end_trade_date(conn, as_of_date=as_of_date)
+        end_bound = repo.resolve_global_end_trade_date(as_of_date=as_of_date, conn=conn)
         if end_bound is None:
             return _missing_envelope(
                 as_of_date_resolved=None,
@@ -80,11 +85,11 @@ def livermore_sector_rank_series_envelope(
 
         cal_span = int(math.ceil(window_days * 1.5))
         cal_start = end_bound - timedelta(days=cal_span)
-        trade_dates = _fetch_trade_dates_in_range(
-            conn,
+        trade_dates = repo.fetch_trade_dates_in_range(
             end_inclusive=end_bound,
             start_inclusive=cal_start,
             limit_last_n=window_days,
+            conn=conn,
         )
         if not trade_dates:
             return _missing_envelope(
@@ -101,7 +106,10 @@ def livermore_sector_rank_series_envelope(
 
         for td in trade_dates:
             iso = td.isoformat()
-            rows, srcs, vends = _load_sector_rank_constituents(conn, as_of_date=iso)
+            rows, srcs, vends = repo.load_sector_rank_constituents(
+                as_of_date=iso,
+                conn=conn,
+            )
             evidence_rows += len(rows)
             source_versions.extend(srcs)
             vendor_versions.extend(vends)
@@ -147,7 +155,6 @@ def livermore_sector_rank_series_envelope(
                 code = str(it.get("sector_code") or "").strip()
                 if code not in selected_codes:
                     continue
-                name = str(it.get("sector_name") or "").strip()
                 by_date_item[(day_td.isoformat(), code)] = it
 
         # cum_pctchange_window is an arithmetic (additive) accumulation of the
@@ -243,8 +250,6 @@ def livermore_sector_rank_series_envelope(
             evidence_rows=evidence_rows,
             result_payload=result_payload,
         )
-    finally:
-        conn.close()
 
 
 def _missing_envelope(
@@ -289,149 +294,6 @@ def _missing_envelope(
         evidence_rows=0,
         result_payload=result_payload,
     )
-
-
-def _resolve_global_end_trade_date(
-    conn: duckdb.DuckDBPyConnection,
-    *,
-    as_of_date: date | None,
-) -> date | None:
-    if as_of_date is not None:
-        row = conn.execute(
-            f"""
-            select max(cast(trade_date as date)) as mx
-            from {TABLE_OBS}
-            where cast(trade_date as date) <= cast(? as date)
-            """,
-            [as_of_date.isoformat()],
-        ).fetchone()
-    else:
-        row = conn.execute(
-            f"""
-            select max(cast(trade_date as date)) as mx
-            from {TABLE_OBS}
-            """,
-        ).fetchone()
-    if row is None or row[0] is None:
-        return None
-    raw = row[0]
-    if hasattr(raw, "isoformat"):
-        return cast(date, raw)
-    text = str(raw).strip()[:10]
-    try:
-        return date.fromisoformat(text)
-    except ValueError:
-        return None
-
-
-def _fetch_trade_dates_in_range(
-    conn: duckdb.DuckDBPyConnection,
-    *,
-    end_inclusive: date,
-    start_inclusive: date,
-    limit_last_n: int,
-) -> list[date]:
-    rows = conn.execute(
-        f"""
-        select distinct cast(trade_date as date) as d
-        from {TABLE_OBS}
-        where cast(trade_date as date) <= ?
-          and cast(trade_date as date) >= ?
-        order by d desc
-        """,
-        [end_inclusive.isoformat(), start_inclusive.isoformat()],
-    ).fetchall()
-    out: list[date] = []
-    for row in rows:
-        if row[0] is None:
-            continue
-        raw = row[0]
-        if hasattr(raw, "isoformat"):
-            d = cast(date, raw)
-        else:
-            try:
-                d = date.fromisoformat(str(raw).strip()[:10])
-            except ValueError:
-                continue
-        out.append(d)
-        if len(out) >= limit_last_n:
-            break
-    return list(reversed(out))
-
-
-def _load_sector_rank_constituents(
-    conn: duckdb.DuckDBPyConnection,
-    *,
-    as_of_date: str,
-) -> tuple[list[SectorRankConstituent], list[str], list[str]]:
-    membership_snapshot_date = _latest_table_date_on_or_before(
-        conn,
-        table_name=TABLE_MEMBERSHIP,
-        column_name="as_of_date",
-        as_of_date=as_of_date,
-    )
-    if membership_snapshot_date is None:
-        return [], [], []
-    try:
-        rows = conn.execute(
-            f"""
-            select
-              membership.stock_code,
-              membership.sw2021code,
-              membership.sw2021,
-              daily.pctchange,
-              daily.turn,
-              daily.amplitude,
-              membership.source_version,
-              membership.vendor_version,
-              daily.source_version,
-              daily.vendor_version
-            from {TABLE_MEMBERSHIP} membership
-            join {TABLE_OBS} daily
-              on daily.stock_code = membership.stock_code
-             and cast(daily.trade_date as date) = cast(? as date)
-            where membership.as_of_date = ?
-            """,
-            [as_of_date, membership_snapshot_date],
-        ).fetchall()
-    except duckdb.Error:
-        return [], [], []
-
-    constituents = [
-        SectorRankConstituent(
-            stock_code=str(row[0] or ""),
-            sector_code=str(row[1] or ""),
-            sector_name=str(row[2] or ""),
-            pctchange=row[3],
-            turn=row[4],
-            amplitude=row[5],
-        )
-        for row in rows
-    ]
-    source_versions = [str(value) for row in rows for value in (row[6], row[8]) if value]
-    vendor_versions = [str(value) for row in rows for value in (row[7], row[9]) if value]
-    return constituents, source_versions, vendor_versions
-
-
-def _latest_table_date_on_or_before(
-    conn: duckdb.DuckDBPyConnection,
-    *,
-    table_name: str,
-    column_name: str,
-    as_of_date: str,
-) -> str | None:
-    try:
-        row = conn.execute(
-            f"""
-            select max({column_name})
-            from {table_name}
-            where cast({column_name} as date) <= cast(? as date)
-            """,
-            [as_of_date],
-        ).fetchone()
-    except duckdb.Error:
-        return None
-    return str(row[0]) if row and row[0] else None
 
 
 def _item_float(value: object) -> float | None:

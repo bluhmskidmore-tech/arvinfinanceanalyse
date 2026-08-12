@@ -24,6 +24,11 @@
 经 ``git mv`` 移入 ``scripts/archive/`` / ``backend/scripts/archive/``，对应条目已移除。
 扫描器同步排除各扫描根下的 ``archive/`` 子目录：归档件（含 tests_archived/ 内随迁的
 配套测试）已冻结、不再属于活跃脚本存量，其历史裸连接以 C5 报告与本注记留痕。
+
+2026-08-12 架构收敛 Ticket B（W1）：``backend/app/services/accounting_asset_movement_service.py``
+的裸 ``duckdb.connect`` 已迁至 ``accounting_asset_movement_repo`` /
+``balance_analysis_repo``（经 ``duckdb_repo.read_only_connection`` 管理连接），
+对应条目已按棘轮规则移除。
 """
 
 from __future__ import annotations
@@ -80,25 +85,17 @@ _SCRIPTS_ALLOWLIST: dict[str, int] = {
 # backend/app/services/ 存量白名单：全部为 read_only=True 直连。
 # 迁移到 duckdb_repo.read_only_connection 属后续"触碰式"工作：本清单只冻结存量。
 _SERVICES_ALLOWLIST: dict[str, int] = {
-    "backend/app/services/accounting_asset_movement_service.py": 1,
-    "backend/app/services/adb_analysis_service.py": 1,
-    "backend/app/services/campisi_attribution_service.py": 2,
-    "backend/app/services/choice_news_service.py": 2,
-    "backend/app/services/dexter_research_context_builder.py": 1,
-    "backend/app/services/external_data_service.py": 2,
-    "backend/app/services/livermore_candidate_history_service.py": 6,
-    "backend/app/services/livermore_gate_supplement_compute_service.py": 2,
-    "backend/app/services/livermore_readiness_probe.py": 2,
-    "backend/app/services/livermore_sector_rank_series_service.py": 1,
-    "backend/app/services/livermore_stock_detail_service.py": 1,
-    "backend/app/services/macro_bond_linkage_service.py": 1,
+    # W1/W2/W3 收敛进度：pnl_attribution / accounting_asset_movement /
+    # campisi_attribution / adb_analysis / macro_bond_linkage /
+    # livermore 小服务四件套 / ncd_proxy / stock_kline / research_radar /
+    # dexter_context / choice_news / external_data 的直连均已迁入对应
+    # repositories，计数归零并从本清单移除。
+    # W3 第二批收敛：market_data_livermore(13→0) 与
+    # livermore_candidate_history(6→0) 已迁入 livermore_market_read_repo /
+    # livermore_candidate_history_repo，计数归零并移除。
+    # 剩余两项为用户协调区（macro_toolkit / macro_vendor，与 B2 路由下沉联动）。
     "backend/app/services/macro_toolkit_service.py": 10,
     "backend/app/services/macro_vendor_service.py": 8,
-    "backend/app/services/market_data_livermore_service.py": 13,
-    "backend/app/services/market_data_ncd_proxy_service.py": 2,
-    "backend/app/services/pnl_attribution_service.py": 2,
-    "backend/app/services/research_radar_service.py": 1,
-    "backend/app/services/stock_kline_analysis_service.py": 1,
 }
 
 # 运行时断言消息使用英文：Windows 控制台（cp936）下 pytest 输出中文会乱码。

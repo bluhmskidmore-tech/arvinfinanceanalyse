@@ -23,8 +23,14 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-import duckdb
 import pandas as pd
+from backend.app.repositories.adb_analysis_repo import (
+    AdbAnalysisRepository,
+    RELATION_FACT_FORMAL_TYW_BALANCE_DAILY,
+    RELATION_FACT_FORMAL_ZQTZ_BALANCE_DAILY,
+    RELATION_TYW_INTERBANK_DAILY_SNAPSHOT,
+    RELATION_ZQTZ_BOND_DAILY_SNAPSHOT,
+)
 from backend.app.core_finance.adb_analytics import (
     aggregate_daily_totals,
     build_comparison_rows,
@@ -56,35 +62,6 @@ IB_ASSET_PRED = (
 ADB_CACHE_VERSION = "cv_adb_analysis_v1"
 ADB_EMPTY_SOURCE_VERSION = "sv_adb_empty"
 ADB_RULE_VERSION = "rv_adb_analysis_v9_formal_only_no_snapshot_adb"
-
-
-def _conn_ro(path: str) -> duckdb.DuckDBPyConnection:
-    return duckdb.connect(path, read_only=True)
-
-
-def _table_exists(conn: duckdb.DuckDBPyConnection, name: str) -> bool:
-    """Detect physical tables reliably (DuckDB ``information_schema`` casing/catalog quirks)."""
-    try:
-        row = conn.execute(
-            """
-            select 1 from duckdb_tables()
-            where lower(table_name) = lower(?)
-            limit 1
-            """,
-            [name],
-        ).fetchone()
-        if row is not None:
-            return True
-    except duckdb.Error:
-        pass
-    row = conn.execute(
-        """
-        select 1 from information_schema.tables
-        where lower(table_name) = lower(?) limit 1
-        """,
-        [name],
-    ).fetchone()
-    return row is not None
 
 
 def _parse_date(s: str) -> date:
@@ -124,15 +101,6 @@ def _issued_mask(bonds_df: pd.DataFrame) -> pd.Series:
     return issued_mask
 
 
-OPTIONAL_ZQTZ_CLASSIFIER_COLUMNS = (
-    "instrument_code",
-    "instrument_name",
-    "business_type_primary",
-    "business_type_final",
-    "sub_type",
-    "currency_code",
-    "accounting_basis",
-)
 ZQTZ_ASSET_CLASSIFIER_KEY_COLUMNS = (
     "sub_type",
     "business_type_final",
@@ -144,67 +112,6 @@ ZQTZ_ASSET_CLASSIFIER_KEY_COLUMNS = (
     "accounting_basis",
     "currency_code",
 )
-
-
-def _column_exists(conn: duckdb.DuckDBPyConnection, table: str, column: str) -> bool:
-    try:
-        row = conn.execute(
-            """
-            select 1 from information_schema.columns
-            where lower(table_name) = lower(?) and lower(column_name) = lower(?)
-            limit 1
-            """,
-            [table, column],
-        ).fetchone()
-        return row is not None
-    except duckdb.Error:
-        return False
-
-
-def _select_list_zqtz_formal(conn: duckdb.DuckDBPyConnection) -> str:
-    table = "fact_formal_zqtz_balance_daily"
-    base = [
-        "report_date",
-        "position_scope",
-        "market_value_amount",
-        "ytm_value",
-        "coupon_rate",
-        "asset_class",
-        "bond_type",
-        "is_issuance_like",
-        "source_version",
-        "rule_version",
-    ]
-    parts = list(base)
-    for col in OPTIONAL_ZQTZ_CLASSIFIER_COLUMNS:
-        if _column_exists(conn, table, col):
-            parts.append(col)
-        else:
-            parts.append(f"cast(null as varchar) as {col}")
-    return ",\n                  ".join(parts)
-
-
-def _select_list_zqtz_snapshot(conn: duckdb.DuckDBPyConnection) -> str:
-    table = "zqtz_bond_daily_snapshot"
-    header = [
-        "report_date",
-        "case when is_issuance_like then 'liability' else 'asset' end as position_scope",
-        "market_value_native as market_value_amount",
-        "ytm_value",
-        "coupon_rate",
-        "asset_class",
-        "bond_type",
-        "is_issuance_like",
-        "source_version",
-        "rule_version",
-    ]
-    parts = list(header)
-    for col in OPTIONAL_ZQTZ_CLASSIFIER_COLUMNS:
-        if _column_exists(conn, table, col):
-            parts.append(col)
-        else:
-            parts.append(f"cast(null as varchar) as {col}")
-    return ",\n                      ".join(parts)
 
 
 def _liability_bond_display_category(row: pd.Series) -> str:
@@ -266,6 +173,20 @@ def _assign_zqtz_bond_categories(bonds_df: pd.DataFrame) -> pd.DataFrame:
     return bd
 
 
+_ADB_SNAPSHOT_TABLES = frozenset({"zqtz_bond_daily_snapshot", "tyw_interbank_daily_snapshot"})
+
+
+def _adb_uses_snapshot_fallback(
+    *,
+    adb_denominator_basis: str | None = None,
+    tables_used: list[str] | None = None,
+) -> bool:
+    """True when ADB actually read snapshot tables (formal 缺日补数或纯快照来源)。"""
+    if not (adb_denominator_basis and "snapshot" in adb_denominator_basis):
+        return False
+    return bool(tables_used and _ADB_SNAPSHOT_TABLES.intersection(tables_used))
+
+
 def _build_analytical_envelope(
     *,
     result_kind: str,
@@ -275,7 +196,12 @@ def _build_analytical_envelope(
     filters_applied: dict[str, object] | None = None,
     tables_used: list[str] | None = None,
     evidence_rows: int | None = None,
+    adb_denominator_basis: str | None = None,
 ) -> dict[str, Any]:
+    uses_snapshot = _adb_uses_snapshot_fallback(
+        adb_denominator_basis=adb_denominator_basis,
+        tables_used=tables_used,
+    )
     return build_result_envelope(
         basis="analytical",
         trace_id=f"tr_{result_kind.replace('.', '_')}",
@@ -283,8 +209,9 @@ def _build_analytical_envelope(
         cache_version=ADB_CACHE_VERSION,
         source_version=_merge_versions(source_versions, ADB_EMPTY_SOURCE_VERSION),
         rule_version=_merge_versions(rule_versions, ADB_RULE_VERSION),
-        quality_flag="ok",
+        quality_flag="warning" if uses_snapshot else "ok",
         vendor_version="vv_none",
+        fallback_mode="latest_snapshot" if uses_snapshot else "none",
         result_payload=result_payload,
         filters_applied=filters_applied,
         tables_used=tables_used,
@@ -427,30 +354,6 @@ def _frame_report_dates(frame: pd.DataFrame) -> set[str]:
     )
 
 
-def _snapshot_report_dates(
-    conn: duckdb.DuckDBPyConnection,
-    *,
-    table_name: str,
-    start_date: date,
-    end_date: date,
-) -> set[str]:
-    if not _table_exists(conn, table_name):
-        return set()
-    rows = conn.execute(
-        f"""
-        select distinct strftime(try_cast(report_date as date), '%Y-%m-%d')
-        from {table_name}
-        where try_cast(report_date as date) between ? and ?
-        """,
-        [start_date, end_date],
-    ).fetchall()
-    return {str(row[0]) for row in rows if row[0]}
-
-
-def _sql_in_placeholders(values: list[str]) -> str:
-    return ", ".join(["?"] * len(values))
-
-
 def _load_adb_raw_data(
     duckdb_path: str,
     start_date: date,
@@ -464,54 +367,33 @@ def _load_adb_raw_data(
     zqtz_src = "none"
     tyw_src = "none"
 
-    conn = _conn_ro(duckdb_path)
-    try:
-        # --- 1. Load from formal tables (primary source) ---
-        if _table_exists(conn, "fact_formal_zqtz_balance_daily"):
-            zqtz_src = "formal"
-            zqtz_df = conn.execute(
-                f"""
-                select
-                  {_select_list_zqtz_formal(conn)}
-                from fact_formal_zqtz_balance_daily
-                where cast(report_date as date) between ? and ?
-                  and currency_basis = 'CNY'
-                """,
-                [start_date, end_date],
-            ).fetchdf()
+    repo = AdbAnalysisRepository(path=duckdb_path)
+    with repo.scoped_connection() as conn:
+        if conn is None:
+            adb_denominator_basis, adb_tables_used = _adb_lineage_sources(zqtz_src, tyw_src)
+            return pd.DataFrame(), pd.DataFrame(), [], [], adb_denominator_basis, adb_tables_used
 
-        if _table_exists(conn, "fact_formal_tyw_balance_daily"):
+        # --- 1. Load from formal tables (primary source) ---
+        if repo.table_exists(conn, RELATION_FACT_FORMAL_ZQTZ_BALANCE_DAILY):
+            zqtz_src = "formal"
+            zqtz_df = repo.fetch_formal_zqtz_df(start_date, end_date, conn=conn)
+
+        if repo.table_exists(conn, RELATION_FACT_FORMAL_TYW_BALANCE_DAILY):
             tyw_src = "formal"
-            tyw_df = conn.execute(
-                """
-                select
-                  report_date,
-                  position_scope,
-                  position_side,
-                  principal_amount,
-                  funding_cost_rate,
-                  product_type,
-                  source_version,
-                  rule_version
-                from fact_formal_tyw_balance_daily
-                where cast(report_date as date) between ? and ?
-                  and currency_basis = 'CNY'
-                """,
-                [start_date, end_date],
-            ).fetchdf()
+            tyw_df = repo.fetch_formal_tyw_df(start_date, end_date, conn=conn)
 
         # --- 2. Snapshot fallback for dates missing from each formal source ---
-        has_zqtz_snap = _table_exists(conn, "zqtz_bond_daily_snapshot")
-        has_tyw_snap = _table_exists(conn, "tyw_interbank_daily_snapshot")
-        has_zqtz_formal = _table_exists(conn, "fact_formal_zqtz_balance_daily")
-        has_tyw_formal = _table_exists(conn, "fact_formal_tyw_balance_daily")
+        has_zqtz_snap = repo.table_exists(conn, RELATION_ZQTZ_BOND_DAILY_SNAPSHOT)
+        has_tyw_snap = repo.table_exists(conn, RELATION_TYW_INTERBANK_DAILY_SNAPSHOT)
+        has_zqtz_formal = repo.table_exists(conn, RELATION_FACT_FORMAL_ZQTZ_BALANCE_DAILY)
+        has_tyw_formal = repo.table_exists(conn, RELATION_FACT_FORMAL_TYW_BALANCE_DAILY)
         zqtz_missing_dates = (
             sorted(
-                _snapshot_report_dates(
-                    conn,
-                    table_name="zqtz_bond_daily_snapshot",
-                    start_date=start_date,
-                    end_date=end_date,
+                repo.snapshot_report_dates(
+                    RELATION_ZQTZ_BOND_DAILY_SNAPSHOT,
+                    start_date,
+                    end_date,
+                    conn=conn,
                 )
                 - _frame_report_dates(zqtz_df)
             )
@@ -520,11 +402,11 @@ def _load_adb_raw_data(
         )
         tyw_missing_dates = (
             sorted(
-                _snapshot_report_dates(
-                    conn,
-                    table_name="tyw_interbank_daily_snapshot",
-                    start_date=start_date,
-                    end_date=end_date,
+                repo.snapshot_report_dates(
+                    RELATION_TYW_INTERBANK_DAILY_SNAPSHOT,
+                    start_date,
+                    end_date,
+                    conn=conn,
                 )
                 - _frame_report_dates(tyw_df)
             )
@@ -541,19 +423,12 @@ def _load_adb_raw_data(
 
             # Supplement ZQTZ from snapshot
             if zqtz_missing_dates:
-                zqtz_snap_sql = (
-                    f"""
-                    select
-                      {_select_list_zqtz_snapshot(conn)}
-                    from zqtz_bond_daily_snapshot
-                    where cast(report_date as date) between ? and ?
-                      and strftime(try_cast(report_date as date), '%Y-%m-%d') in ({_sql_in_placeholders(zqtz_missing_dates)})
-                    """
+                zqtz_snap = repo.fetch_zqtz_snapshot_df(
+                    start_date,
+                    end_date,
+                    zqtz_missing_dates,
+                    conn=conn,
                 )
-                zqtz_snap = conn.execute(
-                    zqtz_snap_sql,
-                    [start_date, end_date, *zqtz_missing_dates],
-                ).fetchdf()
                 if not zqtz_snap.empty:
                     zqtz_df = pd.concat([zqtz_df, zqtz_snap], ignore_index=True) if not zqtz_df.empty else zqtz_snap
                     if zqtz_src == "none":
@@ -563,32 +438,18 @@ def _load_adb_raw_data(
 
             # Supplement TYW from snapshot
             if tyw_missing_dates:
-                tyw_snap_sql = f"""
-                    select
-                      report_date,
-                      coalesce(position_side, 'all') as position_scope,
-                      position_side,
-                      principal_native as principal_amount,
-                      funding_cost_rate,
-                      product_type,
-                      source_version,
-                      rule_version
-                    from tyw_interbank_daily_snapshot
-                    where cast(report_date as date) between ? and ?
-                      and strftime(try_cast(report_date as date), '%Y-%m-%d') in ({_sql_in_placeholders(tyw_missing_dates)})
-                    """
-                tyw_snap = conn.execute(
-                    tyw_snap_sql,
-                    [start_date, end_date, *tyw_missing_dates],
-                ).fetchdf()
+                tyw_snap = repo.fetch_tyw_snapshot_df(
+                    start_date,
+                    end_date,
+                    tyw_missing_dates,
+                    conn=conn,
+                )
                 if not tyw_snap.empty:
                     tyw_df = pd.concat([tyw_df, tyw_snap], ignore_index=True) if not tyw_df.empty else tyw_snap
                     if tyw_src == "none":
                         tyw_src = "snapshot"
                     else:
                         tyw_src = "formal+snapshot"
-    finally:
-        conn.close()
 
     adb_denominator_basis, adb_tables_used = _adb_lineage_sources(zqtz_src, tyw_src)
 
@@ -928,62 +789,6 @@ def _group_frame_by_year_month(frame: pd.DataFrame) -> dict[tuple[int, int], pd.
     gy = sub["report_date"].dt.year
     gm = sub["report_date"].dt.month
     return {(int(y), int(m)): grp for (y, m), grp in sub.groupby([gy, gm], sort=True)}
-
-
-def _fetch_formal_zqtz_rows(
-    conn: duckdb.DuckDBPyConnection,
-    start_date: date,
-    end_date: date,
-) -> list[tuple[list[tuple], tuple]]:
-    cursor = conn.execute(
-        """
-        select
-          report_date,
-          position_scope,
-          currency_basis,
-          market_value_amount,
-          ytm_value,
-          coupon_rate,
-          asset_class,
-          bond_type,
-          is_issuance_like,
-          source_version,
-          rule_version
-        from fact_formal_zqtz_balance_daily
-        where cast(report_date as date) between ? and ?
-          and currency_basis = 'CNY'
-        """,
-        [start_date, end_date],
-    )
-    description = list(cursor.description or [])
-    return [(description, row) for row in cursor.fetchall()]
-
-
-def _fetch_formal_tyw_rows(
-    conn: duckdb.DuckDBPyConnection,
-    start_date: date,
-    end_date: date,
-) -> list[tuple[list[tuple], tuple]]:
-    cursor = conn.execute(
-        """
-        select
-          report_date,
-          position_scope,
-          position_side,
-          currency_basis,
-          principal_amount,
-          funding_cost_rate,
-          product_type,
-          source_version,
-          rule_version
-        from fact_formal_tyw_balance_daily
-        where cast(report_date as date) between ? and ?
-          and currency_basis = 'CNY'
-        """,
-        [start_date, end_date],
-    )
-    description = list(cursor.description or [])
-    return [(description, row) for row in cursor.fetchall()]
 
 
 def _split_rate_frames(
@@ -1733,6 +1538,11 @@ def adb_envelope_for_dates(start_date: str, end_date: str) -> dict[str, Any]:
         rule_versions=rule_versions,
         filters_applied={"start_date": start_date, "end_date": end_date},
         tables_used=tables_for_calibration,
+        adb_denominator_basis=(
+            payload.get("adb_denominator_basis")
+            if isinstance(payload.get("adb_denominator_basis"), str)
+            else None
+        ),
     )
     calibration_meta = build_adb_daily_balance_calibration_meta(tables_for_calibration)
     return {
@@ -1792,6 +1602,7 @@ def _adb_comparison_envelope_uncached(start_date: str, end_date: str, top_n: int
             "end_date": end_date,
         },
         tables_used=tables_for_calibration,
+        adb_denominator_basis=payload.get("adb_denominator_basis"),
     )
     calibration_meta = build_adb_daily_balance_calibration_meta(tables_for_calibration)
     return {
@@ -1817,6 +1628,11 @@ def adb_monthly_envelope(year: int) -> dict[str, Any]:
         rule_versions=rule_versions,
         filters_applied={"year": year},
         tables_used=tables_for_calibration,
+        adb_denominator_basis=(
+            payload.get("adb_denominator_basis")
+            if isinstance(payload.get("adb_denominator_basis"), str)
+            else None
+        ),
     )
     calibration_meta = build_adb_daily_balance_calibration_meta(tables_for_calibration)
     return {
@@ -1833,8 +1649,11 @@ def adb_coverage_diagnostics(start_date: str, end_date: str) -> dict[str, Any]:
 
     parsed_start_date = _parse_date(start_date)
     parsed_end_date = _parse_date(end_date)
-    conn = _conn_ro(duckdb_path)
-    try:
+    repo = AdbAnalysisRepository(path=duckdb_path)
+    with repo.scoped_connection() as conn:
+        if conn is None:
+            raise FileNotFoundError(f"DuckDB not found: {duckdb_path}")
+
         result: dict[str, Any] = {
             "start_date": parsed_start_date.isoformat(),
             "end_date": parsed_end_date.isoformat(),
@@ -1844,26 +1663,26 @@ def adb_coverage_diagnostics(start_date: str, end_date: str) -> dict[str, Any]:
         }
 
         for table, label in (
-            ("zqtz_bond_daily_snapshot", "zqtz_snapshot"),
-            ("tyw_interbank_daily_snapshot", "tyw_snapshot"),
+            (RELATION_ZQTZ_BOND_DAILY_SNAPSHOT, "zqtz_snapshot"),
+            (RELATION_TYW_INTERBANK_DAILY_SNAPSHOT, "tyw_snapshot"),
         ):
-            result["snapshot_tables"][label] = _date_coverage_for_table(
-                conn,
-                table=table,
-                start_date=parsed_start_date,
-                end_date=parsed_end_date,
+            result["snapshot_tables"][label] = repo.date_coverage_for_table(
+                table,
+                parsed_start_date,
+                parsed_end_date,
+                conn=conn,
             )
 
         for table, label in (
-            ("fact_formal_zqtz_balance_daily", "formal_zqtz"),
-            ("fact_formal_tyw_balance_daily", "formal_tyw"),
+            (RELATION_FACT_FORMAL_ZQTZ_BALANCE_DAILY, "formal_zqtz"),
+            (RELATION_FACT_FORMAL_TYW_BALANCE_DAILY, "formal_tyw"),
         ):
-            result["formal_tables"][label] = _date_coverage_for_table(
-                conn,
-                table=table,
-                start_date=parsed_start_date,
-                end_date=parsed_end_date,
+            result["formal_tables"][label] = repo.date_coverage_for_table(
+                table,
+                parsed_start_date,
+                parsed_end_date,
                 currency_basis="CNY",
+                conn=conn,
             )
 
         snapshot_dates = _union_coverage_dates(result["snapshot_tables"].values())
@@ -1875,8 +1694,6 @@ def adb_coverage_diagnostics(start_date: str, end_date: str) -> dict[str, Any]:
         result["missing_count"] = len(missing)
         result["coverage_pct"] = round(len(formal_dates) / max(len(snapshot_dates), 1) * 100, 1)
         return result
-    finally:
-        conn.close()
 
 
 def adb_backfill_candidate_dates(start_date: str, end_date: str) -> dict[str, Any]:
@@ -1887,62 +1704,39 @@ def adb_backfill_candidate_dates(start_date: str, end_date: str) -> dict[str, An
 
     parsed_start_date = _parse_date(start_date)
     parsed_end_date = _parse_date(end_date)
-    conn = _conn_ro(duckdb_path)
-    try:
+    repo = AdbAnalysisRepository(path=duckdb_path)
+    with repo.scoped_connection() as conn:
+        if conn is None:
+            raise FileNotFoundError(f"DuckDB not found: {duckdb_path}")
+
         snapshot_dates: set[str] = set()
-        for table in ("zqtz_bond_daily_snapshot", "tyw_interbank_daily_snapshot"):
+        for table in (RELATION_ZQTZ_BOND_DAILY_SNAPSHOT, RELATION_TYW_INTERBANK_DAILY_SNAPSHOT):
             snapshot_dates.update(
-                _date_coverage_for_table(
-                    conn,
-                    table=table,
-                    start_date=parsed_start_date,
-                    end_date=parsed_end_date,
+                repo.date_coverage_for_table(
+                    table,
+                    parsed_start_date,
+                    parsed_end_date,
+                    conn=conn,
                 ).get("dates", [])
             )
 
         formal_dates: set[str] = set()
-        for table in ("fact_formal_zqtz_balance_daily", "fact_formal_tyw_balance_daily"):
+        for table in (RELATION_FACT_FORMAL_ZQTZ_BALANCE_DAILY, RELATION_FACT_FORMAL_TYW_BALANCE_DAILY):
             formal_dates.update(
-                _date_coverage_for_table(
-                    conn,
-                    table=table,
-                    start_date=parsed_start_date,
-                    end_date=parsed_end_date,
+                repo.date_coverage_for_table(
+                    table,
+                    parsed_start_date,
+                    parsed_end_date,
                     currency_basis="CNY",
+                    conn=conn,
                 ).get("dates", [])
             )
-    finally:
-        conn.close()
 
     return {
         "snapshot_dates": sorted(snapshot_dates),
         "formal_dates": sorted(formal_dates),
         "missing_dates": sorted(snapshot_dates - formal_dates),
     }
-
-
-def _date_coverage_for_table(
-    conn: duckdb.DuckDBPyConnection,
-    *,
-    table: str,
-    start_date: date,
-    end_date: date,
-    currency_basis: str | None = None,
-) -> dict[str, Any]:
-    try:
-        currency_clause = " AND currency_basis = ?" if currency_basis is not None else ""
-        params: list[Any] = [start_date, end_date]
-        if currency_basis is not None:
-            params.append(currency_basis)
-        rows = conn.execute(
-            f"SELECT DISTINCT cast(report_date as varchar) FROM {table} "
-            f"WHERE cast(report_date as date) BETWEEN ? AND ?{currency_clause} ORDER BY 1",
-            params,
-        ).fetchall()
-        dates = [row[0] for row in rows if row[0]]
-        return {"dates_count": len(dates), "dates": dates}
-    except duckdb.Error:
-        return {"dates_count": 0, "dates": [], "error": "table_not_found"}
 
 
 def _union_coverage_dates(items: Any) -> set[str]:

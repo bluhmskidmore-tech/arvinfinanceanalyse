@@ -6,10 +6,14 @@ from decimal import Decimal
 from pathlib import Path
 
 import duckdb
+from backend.app.core_finance.accounting_asset_movement import (
+    build_accounting_asset_movement_summary,
+)
 from backend.app.governance.settings import Settings
 from backend.app.repositories.accounting_asset_movement_repo import (
     AccountingAssetMovementRepository,
 )
+from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
 from backend.app.schemas.accounting_asset_movement import (
     AccountingAssetMovementDatesPayload,
     AccountingAssetMovementPayload,
@@ -45,7 +49,7 @@ from backend.app.services.formal_result_runtime import (
 # 只读导入路径不得触发 backend.app.tasks（dramatiq broker/actor 注册），
 # 因此不在模块级 import tasks；一致性由
 # tests/test_accounting_asset_movement_service.py 的常量对齐测试保障。
-RULE_VERSION = "rv_accounting_asset_movement_v2"
+RULE_VERSION = "rv_accounting_asset_movement_v3"
 CACHE_KEY = "accounting_asset_movement.monthly"
 JOB_NAME = "accounting_asset_movement_refresh"
 PENDING_SOURCE_VERSION = "sv_accounting_asset_movement_pending"
@@ -281,7 +285,10 @@ def _accounting_asset_movement_envelope_unlocked(
         currency_basis=currency_basis,
     )
 
-    summary = _build_summary(rows)
+    summary = AccountingAssetMovementSummaryPayload.model_validate(
+        build_accounting_asset_movement_summary(rows),
+        from_attributes=True,
+    )
     payload = AccountingAssetMovementPayload(
         report_date=report_date,
         currency_basis=currency_basis,
@@ -447,58 +454,17 @@ def _recent_report_dates_for_refresh(
     return sorted({report_date, *report_dates, *missing_upstream_dates})
 
 
-def _connect_for_read_after_refresh(duckdb_path: str) -> duckdb.DuckDBPyConnection:
-    return duckdb.connect(duckdb_path, read_only=True)
-
-
 def _missing_product_category_control_dates(
     duckdb_path: str,
     *,
     report_dates: list[str],
     currency_basis: str,
 ) -> list[str]:
-    if not report_dates:
-        return []
-    try:
-        conn = _connect_for_read_after_refresh(duckdb_path)
-        table_exists = conn.execute(
-            """
-            select 1
-            from information_schema.tables
-            where table_name = 'product_category_pnl_canonical_fact'
-            limit 1
-            """
-        ).fetchone()
-        if table_exists is None:
-            return report_dates
-        rows = conn.execute(
-            """
-            select cast(report_date as varchar) as report_date, count(*) as row_count
-            from product_category_pnl_canonical_fact
-            where cast(report_date as varchar) in (select unnest(?))
-              and currency = ?
-              and (
-                account_code like '141%'
-                or account_code like '142%'
-                or account_code like '143%'
-                or account_code like '1440101%'
-              )
-            group by 1
-            """,
-            [report_dates, currency_basis],
-        ).fetchall()
-    except duckdb.Error:
-        return report_dates
-    finally:
-        if "conn" in locals():
-            conn.close()
-
-    available_dates = {str(row[0]) for row in rows if int(row[1] or 0) > 0}
-    return [
-        current_report_date
-        for current_report_date in report_dates
-        if current_report_date not in available_dates
-    ]
+    repo = AccountingAssetMovementRepository(duckdb_path)
+    return repo.fetch_missing_control_dates(
+        report_dates=report_dates,
+        currency_basis=currency_basis,
+    )
 
 
 def _resolve_refresh_product_category_source_dir(
@@ -592,69 +558,8 @@ def _stale_formal_zqtz_dates(
     *,
     report_dates: list[str],
 ) -> list[str]:
-    if not report_dates:
-        return []
-    try:
-        conn = _connect_for_read_after_refresh(duckdb_path)
-        rows = conn.execute(
-            """
-            select
-              cast(report_date as varchar) as report_date,
-              count(*) as row_count,
-              sum(
-                case
-                  when coalesce(trim(business_type_primary), '') = '' then 1
-                  else 0
-                end
-              ) as empty_business_type_count
-            from fact_formal_zqtz_balance_daily
-            where cast(report_date as varchar) in (select unnest(?))
-              and currency_basis = 'CNY'
-              and position_scope = 'asset'
-            group by 1
-            """,
-            [report_dates],
-        ).fetchall()
-    except duckdb.Error:
-        return report_dates
-    finally:
-        if "conn" in locals():
-            conn.close()
-
-    freshness_by_date = {
-        str(row[0]): {
-            "row_count": int(row[1] or 0),
-            "empty_business_type_count": int(row[2] or 0),
-        }
-        for row in rows
-    }
-    stale_dates: list[str] = []
-    for current_report_date in report_dates:
-        freshness = freshness_by_date.get(current_report_date)
-        if freshness is None:
-            stale_dates.append(current_report_date)
-            continue
-        row_count = freshness["row_count"]
-        if row_count == 0 or freshness["empty_business_type_count"] == row_count:
-            stale_dates.append(current_report_date)
-    return stale_dates
-
-
-def _build_summary(
-    rows: list[AccountingAssetMovementRowPayload],
-) -> AccountingAssetMovementSummaryPayload:
-    return AccountingAssetMovementSummaryPayload(
-        previous_balance_total=sum((row.previous_balance for row in rows), Decimal("0")),
-        current_balance_total=sum((row.current_balance for row in rows), Decimal("0")),
-        balance_change_total=sum((row.balance_change for row in rows), Decimal("0")),
-        zqtz_amount_total=sum((row.zqtz_amount for row in rows), Decimal("0")),
-        reconciliation_diff_total=sum(
-            (row.reconciliation_diff for row in rows),
-            Decimal("0"),
-        ),
-        matched_bucket_count=sum(1 for row in rows if row.reconciliation_status == "matched"),
-        bucket_count=len(rows),
-    )
+    repo = BalanceAnalysisRepository(duckdb_path)
+    return repo.fetch_stale_formal_zqtz_report_dates(report_dates=report_dates)
 
 
 def _build_structure_migration_analysis(

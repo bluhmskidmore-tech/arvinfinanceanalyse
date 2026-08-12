@@ -8,7 +8,6 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Literal
 
-import duckdb
 from backend.app.core_finance.campisi import (
     campisi_attribution as _core_campisi,
 )
@@ -18,6 +17,7 @@ from backend.app.core_finance.campisi import (
 from backend.app.core_finance.pnl_attribution import workbench as pa_wb
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
+from backend.app.repositories.choice_macro_series_repo import ChoiceMacroSeriesRepository
 from backend.app.repositories.pnl_repo import PnlRepository
 from backend.app.repositories.yield_curve_repo import YieldCurveRepository
 from backend.app.schemas.common_numeric import Numeric, NumericUnit, numeric_from_raw
@@ -226,6 +226,11 @@ def _curve_repo() -> YieldCurveRepository:
     return YieldCurveRepository(str(get_settings().duckdb_path))
 
 
+def _choice_macro_repo(duckdb_path: str | None = None) -> ChoiceMacroSeriesRepository:
+    path = duckdb_path or str(get_settings().duckdb_path)
+    return ChoiceMacroSeriesRepository(path)
+
+
 def _prev_month_ym(ym: str) -> str:
     y, m = map(int, ym.split("-", 1))
     if m == 1:
@@ -316,15 +321,6 @@ def _pnl_by_business_snapshot(report_date: str) -> dict[str, Any]:
     }
 
 
-def _prior_bond_date(report_date: str, dates: list[str]) -> str | None:
-    if report_date not in dates:
-        return None
-    idx = dates.index(report_date)
-    if idx + 1 >= len(dates):
-        return None
-    return dates[idx + 1]
-
-
 def _treasury_10y(curve: dict[str, Decimal]) -> float | None:
     for k in ("10Y", "10y", "10"):
         if k in curve:
@@ -370,143 +366,6 @@ def _treasury_10y_on_or_before_many(
         )
         for trade_date, value in values.items()
     }
-
-
-def _relation_exists(conn: duckdb.DuckDBPyConnection, relation_name: str) -> bool:
-    try:
-        row = conn.execute(
-            """
-            select count(*)
-            from information_schema.tables
-            where table_name = ?
-            """,
-            [relation_name],
-        ).fetchone()
-    except duckdb.Error:
-        return False
-    return bool(row and row[0])
-
-
-def _choice_macro_value_on_or_before(
-    *,
-    conn: duckdb.DuckDBPyConnection,
-    relation_name: str,
-    series_id: str,
-    trade_date: str,
-) -> tuple[float | None, str | None]:
-    if not _relation_exists(conn, relation_name):
-        return None, None
-    try:
-        row = conn.execute(
-            f"""
-            select value_numeric, cast(trade_date as varchar)
-            from {relation_name}
-            where series_id = ?
-              and cast(trade_date as varchar) <= ?
-              and value_numeric is not null
-            order by cast(trade_date as varchar) desc
-            limit 1
-            """,
-            [series_id, trade_date],
-        ).fetchone()
-    except duckdb.Error:
-        return None, None
-    if row is None:
-        return None, None
-    return float(row[0]), str(row[1])
-
-
-def _dr007_on_or_before(duckdb_path: str, trade_date: str) -> tuple[float | None, str | None]:
-    try:
-        conn = duckdb.connect(duckdb_path, read_only=True)
-    except duckdb.Error:
-        return None, None
-    try:
-        for relation_name in ("fact_choice_macro_daily", "choice_market_snapshot"):
-            value, resolved_date = _choice_macro_value_on_or_before(
-                conn=conn,
-                relation_name=relation_name,
-                series_id="CA.DR007",
-                trade_date=trade_date,
-            )
-            if value is not None:
-                return value, resolved_date
-    finally:
-        conn.close()
-    return None, None
-
-
-def _choice_macro_values_on_or_before_many(
-    *,
-    conn: duckdb.DuckDBPyConnection,
-    relation_name: str,
-    series_id: str,
-    trade_dates: list[str],
-) -> dict[str, tuple[float | None, str | None]]:
-    requested = [str(trade_date) for trade_date in dict.fromkeys(trade_dates) if str(trade_date or "")]
-    if not requested or not _relation_exists(conn, relation_name):
-        return {}
-    requested_sql = " union all ".join("select ? as requested_trade_date" for _ in requested)
-    try:
-        rows = conn.execute(
-            f"""
-            with requested as (
-              {requested_sql}
-            ), ranked as (
-              select
-                r.requested_trade_date,
-                m.value_numeric,
-                cast(m.trade_date as varchar) as resolved_trade_date,
-                row_number() over (
-                  partition by r.requested_trade_date
-                  order by cast(m.trade_date as varchar) desc
-                ) as row_num
-              from requested r
-              left join {relation_name} m
-                on m.series_id = ?
-               and cast(m.trade_date as varchar) <= r.requested_trade_date
-               and m.value_numeric is not null
-            )
-            select requested_trade_date, value_numeric, resolved_trade_date
-            from ranked
-            where row_num = 1
-            """,
-            [*requested, series_id],
-        ).fetchall()
-    except duckdb.Error:
-        return {}
-    return {
-        str(requested_trade_date): (
-            float(value) if value is not None else None,
-            str(resolved_date) if resolved_date not in (None, "") else None,
-        )
-        for requested_trade_date, value, resolved_date in rows
-    }
-
-
-def _dr007_on_or_before_many(duckdb_path: str, trade_dates: list[str]) -> dict[str, tuple[float | None, str | None]]:
-    requested = [str(trade_date) for trade_date in dict.fromkeys(trade_dates) if str(trade_date or "")]
-    if not requested:
-        return {}
-    out = {trade_date: (None, None) for trade_date in requested}
-    try:
-        conn = duckdb.connect(duckdb_path, read_only=True)
-    except duckdb.Error:
-        return out
-    try:
-        for relation_name in ("fact_choice_macro_daily", "choice_market_snapshot"):
-            values = _choice_macro_values_on_or_before_many(
-                conn=conn,
-                relation_name=relation_name,
-                series_id="CA.DR007",
-                trade_dates=[trade_date for trade_date, value in out.items() if value[0] is None],
-            )
-            for trade_date, value in values.items():
-                if value[0] is not None:
-                    out[trade_date] = value
-    finally:
-        conn.close()
-    return out
 
 
 def _anchor_on_or_before(dates: list[str], day: str) -> str | None:
@@ -750,19 +609,17 @@ def _tpl_market_summary_components(
     treasury_dates = list(snapshots)
     points: list[dict[str, Any]] = []
     prev_tsy: float | None = None
+    prior_snap: str | None = None
     if series:
         prior_ym = _prev_month_ym(series[0])
         prior_snap = _max_date_in_month(dates, prior_ym)
         if prior_snap:
             treasury_dates.insert(0, prior_snap)
     treasury_values = _treasury_10y_on_or_before_many(curve, treasury_dates)
-    if series:
-        prior_ym = _prev_month_ym(series[0])
-        prior_snap = _max_date_in_month(dates, prior_ym)
-        if prior_snap:
-            prev_tsy = treasury_values.get(prior_snap, (None, None))[0]
+    if prior_snap:
+        prev_tsy = treasury_values.get(prior_snap, (None, None))[0]
     curve_path = str(getattr(curve, "path", "") or "")
-    dr007_values = _dr007_on_or_before_many(curve_path, snapshots) if curve_path else {}
+    dr007_values = _choice_macro_repo(curve_path).dr007_on_or_before_many(snapshots) if curve_path else {}
     for ym in series:
         snap = _max_date_in_month(dates, ym)
         if not snap:
@@ -996,7 +853,7 @@ def _tpl_market_correlation_envelope_uncached(
         dtsy = ((tsy - prev_tsy) * 100.0) if tsy is not None and prev_tsy is not None else None
         prev_tsy = tsy if tsy is not None else prev_tsy
         curve_path = str(getattr(curve, "path", "") or "")
-        dr007, _dr007_date = _dr007_on_or_before(curve_path, snap) if curve_path else (None, None)
+        dr007, _dr007_date = _choice_macro_repo(curve_path).dr007_on_or_before(snap) if curve_path else (None, None)
         points.append(
             {
                 "period": ym,

@@ -11,9 +11,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import Any
 
 import duckdb
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
+from backend.app.repositories.duckdb_repo import read_only_connection
 from backend.app.repositories.task_write_guard import require_repository_task_write_scope
 from backend.app.schemas.yield_curve import YieldCurveSnapshot
 
@@ -567,6 +569,83 @@ class YieldCurveRepository:
             raise
         finally:
             conn.close()
+
+
+    def fetch_campisi_decision_curve_points(
+        self,
+        *,
+        requested_date: str,
+        curve_type: str,
+        conn: duckdb.DuckDBPyConnection | None = None,
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        if conn is not None:
+            return self._fetch_campisi_decision_curve_points_impl(conn, requested_date=requested_date, curve_type=curve_type)
+        try:
+            with read_only_connection(self.path) as scoped:
+                return self._fetch_campisi_decision_curve_points_impl(
+                    scoped,
+                    requested_date=requested_date,
+                    curve_type=curve_type,
+                )
+        except (OSError, duckdb.Error):
+            return [], None
+
+    def _fetch_campisi_decision_curve_points_impl(
+        self,
+        conn: duckdb.DuckDBPyConnection,
+        *,
+        requested_date: str,
+        curve_type: str,
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        if not _campisi_decision_table_exists(conn, FORMAL_FACT_TABLE):
+            return [], None
+        row = conn.execute(
+            """
+            select max(cast(trade_date as date))
+            from fact_formal_yield_curve_daily
+            where curve_type = ?
+              and cast(trade_date as date) <= cast(? as date)
+            """,
+            [curve_type, requested_date],
+        ).fetchone()
+        resolved = str(row[0])[:10] if row and row[0] is not None else None
+        if not resolved:
+            return [], None
+        records = _campisi_decision_duckdb_rows(
+            conn,
+            """
+            select tenor, rate_pct
+            from fact_formal_yield_curve_daily
+            where curve_type = ?
+              and cast(trade_date as date) = cast(? as date)
+            """,
+            [curve_type, resolved],
+        )
+        return records, resolved
+
+
+
+
+def _campisi_decision_table_exists(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
+    try:
+        return bool(
+            conn.execute(
+                "select count(*) from information_schema.tables where table_name = ?",
+                [table_name],
+            ).fetchone()[0]
+        )
+    except duckdb.Error:
+        return False
+
+
+def _campisi_decision_duckdb_rows(
+    conn: duckdb.DuckDBPyConnection,
+    sql: str,
+    params: list[Any] | tuple[Any, ...] = (),
+) -> list[dict[str, Any]]:
+    cursor = conn.execute(sql, params)
+    columns = [column[0] for column in cursor.description]
+    return [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
 
 
 def ensure_yield_curve_tables(conn: duckdb.DuckDBPyConnection) -> None:

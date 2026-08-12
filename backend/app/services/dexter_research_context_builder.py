@@ -3,12 +3,17 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import duckdb
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
-from backend.app.repositories.choice_stock_units import (
-    amount_rmb_sql,
-    scale_unknown_sql,
-    volume_shares_sql,
+from backend.app.repositories.market_read_repo import (
+    RELATION_CHOICE_MARKET_SNAPSHOT,
+    RELATION_CHOICE_NEWS_EVENT,
+    RELATION_CHOICE_STOCK_DAILY_OBSERVATION,
+    RELATION_CHOICE_STOCK_FACTOR_SNAPSHOT,
+    RELATION_CHOICE_STOCK_SECTOR_MEMBERSHIP,
+    RELATION_FACT_CHOICE_MACRO_DAILY,
+    RELATION_PHASE1_MACRO_VENDOR_CATALOG,
+    RELATION_VW_EXTERNAL_MACRO_DAILY,
+    MarketReadRepository,
 )
 
 DEFAULT_MACRO_SERIES_IDS = (
@@ -37,21 +42,17 @@ class ResearchContextBuilder:
             )
             return context
 
-        try:
-            conn = duckdb.connect(str(db_path), read_only=True)
-        except duckdb.Error as exc:
-            context["quality_flag"] = "missing"
-            context["limitations"].append(f"DuckDB database could not be opened read-only: {exc}")
-            return context
-
-        try:
-            tables = {str(row[0]) for row in conn.execute("show tables").fetchall()}
+        repo = MarketReadRepository(str(db_path), guard_path_exists=True)
+        with repo.scoped_connection() as conn:
+            if conn is None:
+                context["quality_flag"] = "missing"
+                context["limitations"].append("DuckDB database could not be opened read-only.")
+                return context
+            tables = repo.available_relations(conn=conn)
             if domain == "stock":
-                _build_stock_context(conn=conn, tables=tables, context=context)
+                _build_stock_context(repo=repo, conn=conn, tables=tables, context=context)
             elif domain == "macro":
-                _build_macro_context(conn=conn, tables=tables, context=context)
-        finally:
-            conn.close()
+                _build_macro_context(repo=repo, conn=conn, tables=tables, context=context)
 
         if context["evidence_rows"] <= 0 and context["quality_flag"] == "ok":
             context["quality_flag"] = "missing"
@@ -96,7 +97,8 @@ def _base_context(*, request: AgentQueryRequest, domain: str | None) -> dict[str
 
 def _build_stock_context(
     *,
-    conn: duckdb.DuckDBPyConnection,
+    repo: MarketReadRepository,
+    conn: Any,
     tables: set[str],
     context: dict[str, Any],
 ) -> None:
@@ -107,56 +109,21 @@ def _build_stock_context(
         return
 
     stock: dict[str, Any] = {}
-    if "choice_stock_daily_observation" in tables:
-        context["tables_used"].append("choice_stock_daily_observation")
-        daily_columns = _table_columns(conn, "choice_stock_daily_observation")
-        has_vendor_version = "vendor_version" in daily_columns
-        if has_vendor_version:
-            # docs/data_contracts.md §4.10: Dexter 日线 amount/volume 统一为人民币元/股。
-            volume_projection = volume_shares_sql(alias="volume")
-            amount_projection = amount_rmb_sql(alias="amount")
-            vendor_projection = "vendor_version"
-            volume_unknown_projection = scale_unknown_sql(
-                "volume",
-                alias="_volume_scale_unknown",
-            )
-            amount_unknown_projection = scale_unknown_sql(
-                "amount",
-                alias="_amount_scale_unknown",
-            )
-            volume_unit_projection = "'shares' as volume_unit"
-            amount_unit_projection = "'CNY' as amount_unit"
-        else:
+    if RELATION_CHOICE_STOCK_DAILY_OBSERVATION in tables:
+        context["tables_used"].append(RELATION_CHOICE_STOCK_DAILY_OBSERVATION)
+        row, has_vendor_version = repo.fetch_dexter_stock_daily(
+            stock_code=stock_code,
+            as_of_date=as_of_date,
+            sql_executed=context["sql_executed"],
+            conn=conn,
+        )
+        if not has_vendor_version:
             # docs/data_contracts.md §4.10 fail-closed: 缺失 vendor_version 列时无法定标,
             # amount/volume 一律置空,禁止原始值透传进入 Dexter 语料。
-            volume_projection = "cast(null as double) as volume"
-            amount_projection = "cast(null as double) as amount"
-            vendor_projection = "cast(null as varchar) as vendor_version"
-            volume_unknown_projection = "false as _volume_scale_unknown"
-            amount_unknown_projection = "false as _amount_scale_unknown"
-            volume_unit_projection = "'unknown' as volume_unit"
-            amount_unit_projection = "'unknown' as amount_unit"
             context["limitations"].append(
                 "choice_stock_daily_observation missing vendor_version column; "
                 "amount/volume cannot be calibrated and were set to null (fail-closed)."
             )
-        row = _fetch_one(
-            conn,
-            f"""
-            select trade_date, stock_code, open_value, high_value, low_value, close_value,
-                   {volume_projection}, {amount_projection}, pctchange, turn, amplitude, tradestatus,
-                   highlimit, lowlimit, source_version, {vendor_projection}, rule_version, run_id,
-                   {volume_unit_projection}, {amount_unit_projection},
-                   {volume_unknown_projection}, {amount_unknown_projection}
-            from choice_stock_daily_observation
-            where stock_code = ?
-              and (? = '' or trade_date <= ?)
-            order by trade_date desc
-            limit 1
-            """,
-            [stock_code, as_of_date, as_of_date],
-            sql_executed=context["sql_executed"],
-        )
         if row:
             volume_scale_unknown = bool(row.pop("_volume_scale_unknown", False))
             amount_scale_unknown = bool(row.pop("_amount_scale_unknown", False))
@@ -179,22 +146,13 @@ def _build_stock_context(
     else:
         context["limitations"].append("choice_stock_daily_observation is not landed.")
 
-    if "choice_stock_factor_snapshot" in tables:
-        context["tables_used"].append("choice_stock_factor_snapshot")
-        row = _fetch_one(
-            conn,
-            """
-            select as_of_date, stock_code, pe, pb, ps, roe, gross_margin,
-                   three_month_return, twelve_month_return, volatility, dividend_yield,
-                   industry, source_version, vendor_version, rule_version, run_id
-            from choice_stock_factor_snapshot
-            where stock_code = ?
-              and (? = '' or as_of_date <= ?)
-            order by as_of_date desc
-            limit 1
-            """,
-            [stock_code, as_of_date, as_of_date],
+    if RELATION_CHOICE_STOCK_FACTOR_SNAPSHOT in tables:
+        context["tables_used"].append(RELATION_CHOICE_STOCK_FACTOR_SNAPSHOT)
+        row = repo.fetch_dexter_stock_factor(
+            stock_code=stock_code,
+            as_of_date=as_of_date,
             sql_executed=context["sql_executed"],
+            conn=conn,
         )
         if row:
             stock["factor_snapshot"] = row
@@ -204,21 +162,13 @@ def _build_stock_context(
     else:
         context["limitations"].append("choice_stock_factor_snapshot is not landed.")
 
-    if "choice_stock_sector_membership" in tables:
-        context["tables_used"].append("choice_stock_sector_membership")
-        row = _fetch_one(
-            conn,
-            """
-            select as_of_date, stock_code, sw2021, sw2021code, field_key,
-                   source_version, vendor_version, rule_version, run_id
-            from choice_stock_sector_membership
-            where stock_code = ?
-              and (? = '' or as_of_date <= ?)
-            order by as_of_date desc
-            limit 1
-            """,
-            [stock_code, as_of_date, as_of_date],
+    if RELATION_CHOICE_STOCK_SECTOR_MEMBERSHIP in tables:
+        context["tables_used"].append(RELATION_CHOICE_STOCK_SECTOR_MEMBERSHIP)
+        row = repo.fetch_dexter_stock_sector(
+            stock_code=stock_code,
+            as_of_date=as_of_date,
             sql_executed=context["sql_executed"],
+            conn=conn,
         )
         if row:
             stock["sector_membership"] = row
@@ -228,21 +178,12 @@ def _build_stock_context(
     else:
         context["limitations"].append("choice_stock_sector_membership is not landed.")
 
-    if "choice_news_event" in tables:
-        context["tables_used"].append("choice_news_event")
-        rows = _fetch_all(
-            conn,
-            """
-            select event_key, received_at, group_id, content_type, topic_code,
-                   item_index, payload_text, payload_json, error_code, error_msg
-            from choice_news_event
-            where topic_code = ?
-               or payload_text ilike ?
-            order by received_at desc, item_index asc
-            limit 5
-            """,
-            [stock_code, f"%{stock_code}%"],
+    if RELATION_CHOICE_NEWS_EVENT in tables:
+        context["tables_used"].append(RELATION_CHOICE_NEWS_EVENT)
+        rows = repo.fetch_dexter_stock_news(
+            stock_code=stock_code,
             sql_executed=context["sql_executed"],
+            conn=conn,
         )
         stock["news_events"] = rows
         context["evidence_rows"] += len(rows)
@@ -256,7 +197,8 @@ def _build_stock_context(
 
 def _build_macro_context(
     *,
-    conn: duckdb.DuckDBPyConnection,
+    repo: MarketReadRepository,
+    conn: Any,
     tables: set[str],
     context: dict[str, Any],
 ) -> None:
@@ -264,168 +206,56 @@ def _build_macro_context(
     as_of_date = str(context.get("as_of_date") or "").strip()
     macro: dict[str, Any] = {"series_ids": series_ids}
 
-    if "fact_choice_macro_daily" in tables:
-        context["tables_used"].append("fact_choice_macro_daily")
-        rows = _latest_rows_by_series(
-            conn=conn,
-            table_name="fact_choice_macro_daily",
-            select_columns=(
-                "series_id",
-                "series_name",
-                "trade_date",
-                "value_numeric",
-                "frequency",
-                "unit",
-                "source_version",
-                "vendor_version",
-                "rule_version",
-                "quality_flag",
-                "run_id",
-            ),
+    if RELATION_FACT_CHOICE_MACRO_DAILY in tables:
+        context["tables_used"].append(RELATION_FACT_CHOICE_MACRO_DAILY)
+        rows = repo.fetch_dexter_choice_macro_series(
             series_ids=series_ids,
             as_of_date=as_of_date,
             sql_executed=context["sql_executed"],
+            conn=conn,
         )
         macro["choice_series"] = rows
         context["evidence_rows"] += len(rows)
     else:
         context["limitations"].append("fact_choice_macro_daily is not landed.")
 
-    if "choice_market_snapshot" in tables:
-        context["tables_used"].append("choice_market_snapshot")
-        rows = _latest_rows_by_series(
-            conn=conn,
-            table_name="choice_market_snapshot",
-            select_columns=(
-                "series_id",
-                "series_name",
-                "trade_date",
-                "value_numeric",
-                "frequency",
-                "unit",
-                "source_version",
-                "vendor_version",
-                "rule_version",
-                "run_id",
-            ),
+    if RELATION_CHOICE_MARKET_SNAPSHOT in tables:
+        context["tables_used"].append(RELATION_CHOICE_MARKET_SNAPSHOT)
+        rows = repo.fetch_dexter_choice_market_snapshots(
             series_ids=series_ids,
             as_of_date=as_of_date,
             sql_executed=context["sql_executed"],
+            conn=conn,
         )
         macro["choice_snapshots"] = rows
         context["evidence_rows"] += len(rows)
     else:
         context["limitations"].append("choice_market_snapshot is not landed.")
 
-    if "phase1_macro_vendor_catalog" in tables:
-        context["tables_used"].append("phase1_macro_vendor_catalog")
-        macro["catalog"] = _fetch_macro_catalog(
-            conn=conn,
+    if RELATION_PHASE1_MACRO_VENDOR_CATALOG in tables:
+        context["tables_used"].append(RELATION_PHASE1_MACRO_VENDOR_CATALOG)
+        macro["catalog"] = repo.fetch_dexter_macro_catalog(
             series_ids=series_ids,
             sql_executed=context["sql_executed"],
+            conn=conn,
         )
         context["evidence_rows"] += len(macro["catalog"])
     else:
         context["limitations"].append("phase1_macro_vendor_catalog is not landed.")
 
-    if "vw_external_macro_daily" in tables:
-        context["tables_used"].append("vw_external_macro_daily")
-        macro["tushare_series"] = _latest_rows_by_series(
-            conn=conn,
-            table_name="vw_external_macro_daily",
-            select_columns=(
-                "series_id",
-                "vendor_name",
-                "domain",
-                "trade_date",
-                "value_numeric",
-                "frequency",
-                "unit",
-                "source_version",
-                "vendor_version",
-                "rule_version",
-                "ingest_batch_id",
-                "raw_zone_path",
-            ),
+    if RELATION_VW_EXTERNAL_MACRO_DAILY in tables:
+        context["tables_used"].append(RELATION_VW_EXTERNAL_MACRO_DAILY)
+        macro["tushare_series"] = repo.fetch_dexter_external_macro_series(
             series_ids=series_ids,
             as_of_date=as_of_date,
             sql_executed=context["sql_executed"],
+            conn=conn,
         )
         context["evidence_rows"] += len(macro["tushare_series"])
     else:
         context["limitations"].append("vw_external_macro_daily is not landed.")
 
     context["macro"] = macro
-
-
-def _fetch_macro_catalog(
-    *,
-    conn: duckdb.DuckDBPyConnection,
-    series_ids: list[str],
-    sql_executed: list[str],
-) -> list[dict[str, Any]]:
-    where_sql, params = _series_filter_sql(series_ids)
-    return _fetch_all(
-        conn,
-        f"""
-        select series_id, series_name, vendor_name, vendor_version, frequency, unit,
-               vendor_series_code, catalog_version, theme, is_core, refresh_tier,
-               fetch_mode, fetch_granularity, policy_note
-        from phase1_macro_vendor_catalog
-        {where_sql}
-        order by series_id
-        limit 20
-        """,
-        params,
-        sql_executed=sql_executed,
-    )
-
-
-def _latest_rows_by_series(
-    *,
-    conn: duckdb.DuckDBPyConnection,
-    table_name: str,
-    select_columns: tuple[str, ...],
-    series_ids: list[str],
-    as_of_date: str,
-    sql_executed: list[str],
-) -> list[dict[str, Any]]:
-    where_sql, params = _series_filter_sql(series_ids, as_of_date=as_of_date)
-    columns = ", ".join(select_columns)
-    return _fetch_all(
-        conn,
-        f"""
-        select {columns}
-        from (
-          select {columns},
-                 row_number() over (partition by series_id order by trade_date desc) as rn
-          from {table_name}
-          {where_sql}
-        )
-        where rn = 1
-        order by series_id
-        limit 20
-        """,
-        params,
-        sql_executed=sql_executed,
-    )
-
-
-def _series_filter_sql(series_ids: list[str], *, as_of_date: str = "") -> tuple[str, list[Any]]:
-    conditions: list[str] = []
-    params: list[Any] = []
-    if not series_ids:
-        placeholders = ""
-    else:
-        placeholders = ", ".join(["?"] * len(series_ids))
-        conditions.append(f"series_id in ({placeholders})")
-        params.extend(series_ids)
-    if as_of_date:
-        conditions.append("trade_date <= ?")
-        params.append(as_of_date)
-    if not conditions:
-        return "", []
-    return f"where {' and '.join(conditions)}", params
 
 
 def _resolve_research_domain(request: AgentQueryRequest) -> str | None:
@@ -484,50 +314,3 @@ def _resolve_macro_series_ids(filters: dict[str, Any]) -> list[str]:
 
 def _non_empty_dict(value: dict[str, Any]) -> dict[str, Any]:
     return {key: item for key, item in value.items() if item not in (None, "")}
-
-
-def _fetch_one(
-    conn: duckdb.DuckDBPyConnection,
-    sql: str,
-    params: list[Any],
-    *,
-    sql_executed: list[str] | None = None,
-) -> dict[str, Any] | None:
-    _record_sql_disclosure(sql, sql_executed)
-    cursor = conn.execute(sql, params)
-    row = cursor.fetchone()
-    if row is None:
-        return None
-    columns = [desc[0] for desc in cursor.description]
-    return dict(zip(columns, row, strict=False))
-
-
-def _table_columns(
-    conn: duckdb.DuckDBPyConnection,
-    table_name: str,
-) -> set[str]:
-    return {
-        str(row[1]).lower()
-        for row in conn.execute(f"pragma table_info('{table_name}')").fetchall()
-    }
-
-
-def _fetch_all(
-    conn: duckdb.DuckDBPyConnection,
-    sql: str,
-    params: list[Any],
-    *,
-    sql_executed: list[str] | None = None,
-) -> list[dict[str, Any]]:
-    _record_sql_disclosure(sql, sql_executed)
-    cursor = conn.execute(sql, params)
-    columns = [desc[0] for desc in cursor.description]
-    return [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
-
-
-def _record_sql_disclosure(sql: str, target: list[str] | None) -> None:
-    if target is None:
-        return
-    statement = " ".join(str(sql or "").split())
-    if statement.lower().startswith(("select", "with")):
-        target.append(statement)

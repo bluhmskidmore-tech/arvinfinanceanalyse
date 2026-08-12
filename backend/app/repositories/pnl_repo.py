@@ -5,6 +5,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
+from typing import Any
 
 import duckdb
 from backend.app.core_finance.fx_calendar import is_cfets_fx_non_business_day
@@ -14,6 +15,8 @@ from backend.app.core_finance.pnl_constants import (
     PNL_514_VAT_EFFECTIVE_START_DATE,
     PNL_FORMAL_FACT_RULE_VERSION,
 )
+from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
+from backend.app.repositories.duckdb_repo import read_only_connection
 from backend.app.repositories.task_write_guard import require_repository_task_write_scope
 
 # Shared by `backend.app.tasks.pnl_by_business_precompute` (writer) and
@@ -562,21 +565,7 @@ class PnlRepository:
         in_transaction = False
         try:
             conn = duckdb.connect(self.path, read_only=False)
-            conn.execute(
-                """
-                create table if not exists fact_pnl_by_business_precompute (
-                  year integer,
-                  as_of_date varchar,
-                  result_kind varchar,
-                  dimension varchar,
-                  business_key varchar,
-                  payload_json varchar,
-                  source_version varchar,
-                  rule_version varchar,
-                  generated_at varchar
-                )
-                """
-            )
+            apply_pending_migrations_on_connection(conn)
             conn.execute("begin transaction")
             in_transaction = True
             conn.execute(
@@ -2023,3 +2012,100 @@ class PnlRepository:
             if "conn" in locals():
                 conn.close()
         return [dict(zip(columns, row, strict=True)) for row in rows]
+
+    def list_campisi_decision_pnl_report_dates(
+        self,
+        *,
+        conn: duckdb.DuckDBPyConnection | None = None,
+    ) -> list[str]:
+        if conn is not None:
+            return self._list_campisi_decision_report_dates_impl(conn, "fact_formal_pnl_fi", "report_date")
+        try:
+            with read_only_connection(self.path) as scoped:
+                return self._list_campisi_decision_report_dates_impl(scoped, "fact_formal_pnl_fi", "report_date")
+        except (OSError, duckdb.Error):
+            return []
+
+    def fetch_campisi_decision_pnl_rows(
+        self,
+        report_date: str,
+        *,
+        conn: duckdb.DuckDBPyConnection | None = None,
+    ) -> list[dict[str, Any]]:
+        if conn is not None:
+            return self._fetch_campisi_decision_pnl_rows_impl(conn, report_date)
+        try:
+            with read_only_connection(self.path) as scoped:
+                return self._fetch_campisi_decision_pnl_rows_impl(scoped, report_date)
+        except (OSError, duckdb.Error):
+            return []
+
+    def _list_campisi_decision_report_dates_impl(
+        self,
+        conn: duckdb.DuckDBPyConnection,
+        table_name: str,
+        date_col: str,
+    ) -> list[str]:
+        if not _campisi_decision_table_exists(conn, table_name):
+            return []
+        rows = conn.execute(
+            f"""
+            select distinct cast({date_col} as varchar) as report_date
+            from {table_name}
+            where {date_col} is not null
+            order by report_date desc
+            """
+        ).fetchall()
+        return [str(row[0])[:10] for row in rows]
+
+    def _fetch_campisi_decision_pnl_rows_impl(
+        self,
+        conn: duckdb.DuckDBPyConnection,
+        report_date: str,
+    ) -> list[dict[str, Any]]:
+        if not _campisi_decision_table_exists(conn, "fact_formal_pnl_fi"):
+            return []
+        return _campisi_decision_duckdb_rows(
+            conn,
+            """
+            select
+                instrument_code,
+                portfolio_name,
+                cost_center,
+                max(invest_type_std) as invest_type_std,
+                accounting_basis,
+                currency_basis,
+                sum(coalesce(interest_income_514, 0)) as interest_income_514,
+                sum(coalesce(fair_value_change_516, 0)) as fair_value_change_516,
+                sum(coalesce(capital_gain_517, 0)) as capital_gain_517,
+                sum(coalesce(manual_adjustment, 0)) as manual_adjustment,
+                sum(coalesce(total_pnl, 0)) as total_pnl,
+                count(*) as source_row_count
+            from fact_formal_pnl_fi
+            where cast(report_date as date) = cast(? as date)
+            group by instrument_code, portfolio_name, cost_center, accounting_basis, currency_basis
+            """,
+            [report_date],
+        )
+
+
+def _campisi_decision_table_exists(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
+    try:
+        return bool(
+            conn.execute(
+                "select count(*) from information_schema.tables where table_name = ?",
+                [table_name],
+            ).fetchone()[0]
+        )
+    except duckdb.Error:
+        return False
+
+
+def _campisi_decision_duckdb_rows(
+    conn: duckdb.DuckDBPyConnection,
+    sql: str,
+    params: list[Any] | tuple[Any, ...] = (),
+) -> list[dict[str, Any]]:
+    cursor = conn.execute(sql, params)
+    columns = [column[0] for column in cursor.description]
+    return [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]

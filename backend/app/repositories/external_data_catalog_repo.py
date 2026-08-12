@@ -2,15 +2,43 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime
-from typing import Literal, cast
+from datetime import UTC, date, datetime
+from typing import Literal, TypeVar, cast
 
 import duckdb
+from backend.app.repositories.duckdb_repo import read_only_connection
+from backend.app.repositories.task_write_guard import require_repository_task_write_scope
 from backend.app.schema_registry.duckdb_loader import REGISTRY_DIR, parse_registry_sql_text
 from backend.app.schemas.external_data import ExternalDataCatalogEntry
 
 DomainLiteral = Literal["macro", "news", "yield_curve", "fx", "other"]
+
+T = TypeVar("T")
+
+# Series-read relations allowed for watermark / page helpers (mirrors query-service gate).
+RELATION_STD_EXTERNAL_MACRO_DAILY = "std_external_macro_daily"
+RELATION_STD_EXTERNAL_SUPPLY_AUCTION_CALENDAR = "std_external_supply_auction_calendar"
+RELATION_VW_EXTERNAL_MACRO_DAILY = "vw_external_macro_daily"
+RELATION_VW_EXTERNAL_LEGACY_CHOICE_MACRO = "vw_external_legacy_choice_macro"
+RELATION_VW_EXTERNAL_LEGACY_CHOICE_NEWS = "vw_external_legacy_choice_news"
+RELATION_VW_EXTERNAL_LEGACY_YIELD_CURVE = "vw_external_legacy_yield_curve"
+RELATION_VW_EXTERNAL_LEGACY_FX_MID = "vw_external_legacy_fx_mid"
+RELATION_VW_EXTERNAL_SUPPLY_AUCTION_CALENDAR = "vw_external_supply_auction_calendar"
+
+_EXTERNAL_DATA_SERIES_READ_RELATIONS = frozenset(
+    {
+        RELATION_STD_EXTERNAL_MACRO_DAILY,
+        RELATION_STD_EXTERNAL_SUPPLY_AUCTION_CALENDAR,
+        RELATION_VW_EXTERNAL_MACRO_DAILY,
+        RELATION_VW_EXTERNAL_LEGACY_CHOICE_MACRO,
+        RELATION_VW_EXTERNAL_LEGACY_CHOICE_NEWS,
+        RELATION_VW_EXTERNAL_LEGACY_YIELD_CURVE,
+        RELATION_VW_EXTERNAL_LEGACY_FX_MID,
+        RELATION_VW_EXTERNAL_SUPPLY_AUCTION_CALENDAR,
+    }
+)
 
 
 def ensure_external_data_catalog_schema(conn: duckdb.DuckDBPyConnection) -> None:
@@ -21,7 +49,15 @@ def ensure_external_data_catalog_schema(conn: duckdb.DuckDBPyConnection) -> None
 
 
 class ExternalDataCatalogRepository:
-    """CRUD for ``external_data_catalog``; upsert keyed by ``series_id``."""
+    """CRUD for ``external_data_catalog``; upsert keyed by ``series_id``.
+
+    Also owns read-only series watermark / page connections for the external-data
+    API surface (delegates SQL to ``external_data_query_service`` helpers).
+    Series relation names are gated by ``_EXTERNAL_DATA_SERIES_READ_RELATIONS``
+    (kept in sync with the query-service allow-list).
+    """
+
+    SERIES_READ_RELATIONS = _EXTERNAL_DATA_SERIES_READ_RELATIONS
 
     def __init__(
         self,
@@ -47,6 +83,32 @@ class ExternalDataCatalogRepository:
         finally:
             c.close()
 
+    @contextmanager
+    def _series_read_connection(
+        self,
+        conn: duckdb.DuckDBPyConnection | None = None,
+    ) -> Iterator[duckdb.DuckDBPyConnection]:
+        """Open (or reuse) a read-only connection for series watermark/page queries."""
+        if conn is not None:
+            yield conn
+            return
+        if self._conn is not None:
+            yield self._conn
+            return
+        if self._path is None:
+            msg = "path= or conn= is required for external data series reads"
+            raise RuntimeError(msg)
+        with read_only_connection(self._path) as scoped:
+            yield scoped
+
+    def _run_series_read(
+        self,
+        fn: Callable[[duckdb.DuckDBPyConnection], T],
+        *,
+        conn: duckdb.DuckDBPyConnection | None = None,
+    ) -> T:
+        with self._series_read_connection(conn) as scoped:
+            return fn(scoped)
     @staticmethod
     def _ts_to_iso(value: object) -> str:
         if isinstance(value, datetime):
@@ -94,6 +156,7 @@ class ExternalDataCatalogRepository:
         )
 
     def register(self, entry: ExternalDataCatalogEntry) -> ExternalDataCatalogEntry:
+        require_repository_task_write_scope("ExternalDataCatalogRepository.register")
         sql = """
             insert or replace into external_data_catalog (
               series_id, series_name, vendor_name, source_family, domain,
@@ -165,3 +228,89 @@ class ExternalDataCatalogRepository:
         with self._connection(read_only=True) as conn:
             rows = conn.execute(sql, [domain]).fetchall()
         return [self._row_to_entry(tuple(r)) for r in rows]
+
+    def fetch_series_watermark(
+        self,
+        entry: ExternalDataCatalogEntry,
+        *,
+        as_of_date: date | None = None,
+        conn: duckdb.DuckDBPyConnection | None = None,
+    ):
+        """Read one series watermark via shared read-only connection helpers."""
+        from backend.app.services.external_data_query_service import (
+            fetch_series_watermark as _fetch_series_watermark,
+        )
+
+        return self._run_series_read(
+            lambda scoped: _fetch_series_watermark(scoped, entry, as_of_date=as_of_date),
+            conn=conn,
+        )
+
+    def fetch_series_watermarks(
+        self,
+        entries: list[ExternalDataCatalogEntry],
+        *,
+        as_of_date: date | None = None,
+        conn: duckdb.DuckDBPyConnection | None = None,
+    ) -> list[object]:
+        """Fetch watermarks for many catalog entries on one connection.
+
+        Each result is either a ``SeriesWatermark`` or an exception instance
+        (``duckdb.Error`` / ``ValueError``), matching prior service semantics.
+        """
+        from backend.app.services.external_data_query_service import (
+            fetch_series_watermark as _fetch_series_watermark,
+        )
+
+        def _impl(scoped: duckdb.DuckDBPyConnection) -> list[object]:
+            results: list[object] = []
+            for entry in entries:
+                try:
+                    results.append(
+                        _fetch_series_watermark(scoped, entry, as_of_date=as_of_date)
+                    )
+                except (duckdb.Error, ValueError) as exc:
+                    results.append(exc)
+            return results
+
+        return self._run_series_read(_impl, conn=conn)
+
+    def fetch_series_data_page(
+        self,
+        entry: ExternalDataCatalogEntry,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+        conn: duckdb.DuckDBPyConnection | None = None,
+    ):
+        """Paginated series rows via shared read-only connection helpers."""
+        from backend.app.services.external_data_query_service import (
+            fetch_series_data_page as _fetch_series_data_page,
+        )
+
+        return self._run_series_read(
+            lambda scoped: _fetch_series_data_page(
+                scoped, entry, limit=limit, offset=offset
+            ),
+            conn=conn,
+        )
+
+    def fetch_series_data_recent(
+        self,
+        entry: ExternalDataCatalogEntry,
+        *,
+        days: int = 30,
+        limit: int = 10_000,
+        conn: duckdb.DuckDBPyConnection | None = None,
+    ):
+        """Recent-window series rows via shared read-only connection helpers."""
+        from backend.app.services.external_data_query_service import (
+            fetch_series_data_recent as _fetch_series_data_recent,
+        )
+
+        return self._run_series_read(
+            lambda scoped: _fetch_series_data_recent(
+                scoped, entry, days=days, limit=limit
+            ),
+            conn=conn,
+        )

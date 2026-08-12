@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 from dataclasses import dataclass
 
 import duckdb
@@ -9,6 +10,7 @@ from backend.app.repositories.duckdb_migrations import (
     apply_pending_migrations_on_connection,
     ensure_risk_tensor_legacy_columns,
 )
+from backend.app.repositories.duckdb_repo import read_only_connection
 from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
 from backend.app.repositories.task_write_guard import require_repository_task_write_scope
 
@@ -154,8 +156,10 @@ class RiskTensorRepository:
     ) -> None:
         require_repository_task_write_scope("replace_risk_tensor_row")
         conn = duckdb.connect(self.path, read_only=False)
+        transaction_started = False
         try:
             conn.execute("begin transaction")
+            transaction_started = True
             ensure_risk_tensor_table(conn)
             conn.execute(
                 f"delete from {FACT_TABLE} where report_date = ?",
@@ -266,8 +270,13 @@ class RiskTensorRepository:
                 ],
             )
             conn.execute("commit")
+            transaction_started = False
         except Exception:
-            conn.execute("rollback")
+            if transaction_started:
+                try:
+                    conn.execute("rollback")
+                except Exception:  # noqa: S110  # 回滚失败不得掩盖随后 raise 的原始写入异常
+                    pass
             raise
         finally:
             conn.close()
@@ -529,6 +538,56 @@ class RiskTensorRepository:
             return payload
         finally:
             conn.close()
+
+
+    def fetch_campisi_decision_risk_tensor_aggregate(
+        self,
+        report_date: str,
+        *,
+        conn: duckdb.DuckDBPyConnection | None = None,
+    ) -> tuple[bool, list[dict[str, Any]]]:
+        if conn is not None:
+            return self._fetch_campisi_decision_risk_tensor_aggregate_impl(conn, report_date)
+        try:
+            with read_only_connection(self.path) as scoped:
+                return self._fetch_campisi_decision_risk_tensor_aggregate_impl(scoped, report_date)
+        except (OSError, duckdb.Error):
+            return False, []
+
+    def _fetch_campisi_decision_risk_tensor_aggregate_impl(
+        self,
+        conn: duckdb.DuckDBPyConnection,
+        report_date: str,
+    ) -> tuple[bool, list[dict[str, Any]]]:
+        if not _table_exists(conn, FACT_TABLE):
+            return False, []
+        rows = _campisi_decision_duckdb_rows(
+            conn,
+            """
+            select
+                sum(coalesce(portfolio_dv01, 0)) as portfolio_dv01,
+                sum(coalesce(cs01, 0)) as cs01,
+                sum(coalesce(total_market_value, 0)) as total_market_value,
+                sum(coalesce(bond_count, 0)) as bond_count,
+                max(quality_flag) as quality_flag
+            from fact_formal_risk_tensor_daily
+            where cast(report_date as date) = cast(? as date)
+            """,
+            [report_date],
+        )
+        return True, rows
+
+
+
+
+def _campisi_decision_duckdb_rows(
+    conn: duckdb.DuckDBPyConnection,
+    sql: str,
+    params: list[Any] | tuple[Any, ...] = (),
+) -> list[dict[str, Any]]:
+    cursor = conn.execute(sql, params)
+    columns = [column[0] for column in cursor.description]
+    return [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
 
 
 def ensure_risk_tensor_table(conn: duckdb.DuckDBPyConnection) -> None:

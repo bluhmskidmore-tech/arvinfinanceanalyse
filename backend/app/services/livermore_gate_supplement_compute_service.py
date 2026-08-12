@@ -33,6 +33,9 @@ import duckdb
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
+from backend.app.repositories.livermore_gate_supplement_repo import (
+    LivermoreGateSupplementRepository,
+)
 
 GovernanceRecord: TypeAlias = dict[str, object]
 
@@ -154,8 +157,6 @@ logger = logging.getLogger(__name__)
 
 RULE_VERSION = "rv_livermore_gate_supplement_compute_v1"
 LIVERMORE_GATE_SUPPLEMENT_MATERIALIZE_RULE_VERSION = "rv_livermore_gate_supplement_v1"
-BROAD_INDEX_SERIES_ID = "CA.CSI300"
-PCT_CHG_SERIES_ID = "CA.CSI300_PCT_CHG"
 BREADTH_WINDOW = 5
 # Minimum number of historical daily returns needed to compute supplement.
 MIN_HISTORY_FOR_SUPPLEMENT = BREADTH_WINDOW + 1
@@ -1076,7 +1077,7 @@ def _record_idempotent_refresh(
 
 
 # ---------------------------------------------------------------------------
-# Data loading
+# Data loading (via LivermoreGateSupplementRepository)
 # ---------------------------------------------------------------------------
 
 def _real_market_breadth_dates(duckdb_path: str, trade_dates: list[str]) -> set[str]:
@@ -1088,31 +1089,9 @@ def _real_market_breadth_dates(duckdb_path: str, trade_dates: list[str]) -> set[
     an empty set (never raises) when the table/file is unavailable so the
     existing proxy behavior for genuinely missing data is unaffected.
     """
-    if not trade_dates:
-        return set()
-    duckdb_file = Path(duckdb_path)
-    if not duckdb_file.exists():
-        return set()
-    try:
-        conn = duckdb.connect(str(duckdb_file), read_only=True)
-    except duckdb.Error:
-        return set()
-    try:
-        tables = {row[0] for row in conn.execute("show tables").fetchall()}
-        if "fact_market_breadth_daily" not in tables:
-            return set()
-        placeholders = ", ".join("?" for _ in trade_dates)
-        rows = conn.execute(
-            "select distinct cast(trade_date as varchar) "
-            "from fact_market_breadth_daily "
-            f"where cast(trade_date as varchar) in ({placeholders})",
-            trade_dates,
-        ).fetchall()
-        return {str(row[0]) for row in rows}
-    except duckdb.Error:
-        return set()
-    finally:
-        conn.close()
+    return LivermoreGateSupplementRepository(
+        duckdb_path, guard_path_exists=True
+    ).real_market_breadth_dates(trade_dates)
 
 
 def _load_csi300_daily_returns(
@@ -1126,128 +1105,9 @@ def _load_csi300_daily_returns(
     Returns list of dicts with keys: trade_date (date), close (float),
     pct_chg (float | None).
     """
-    duckdb_file = Path(duckdb_path)
-    if not duckdb_file.exists():
-        return []
-
-    try:
-        conn = duckdb.connect(str(duckdb_file), read_only=True)
-    except duckdb.Error:
-        return []
-
-    try:
-        tables = {row[0] for row in conn.execute("show tables").fetchall()}
-        close_rows = _query_series_history(
-            conn, tables, BROAD_INDEX_SERIES_ID, end_date, lookback_days
-        )
-        pct_chg_rows = _query_series_history(
-            conn, tables, PCT_CHG_SERIES_ID, end_date, lookback_days
-        )
-    except duckdb.Error:
-        return []
-    finally:
-        conn.close()
-
-    # Index pct_chg by date
-    pct_chg_by_date: dict[str, float] = {}
-    for row in pct_chg_rows:
-        pct_chg_by_date[row["trade_date"]] = row["value"]
-
-    # Build merged list, computing pct_chg from close if not available
-    result: list[dict[str, Any]] = []
-    sorted_close = sorted(close_rows, key=lambda r: r["trade_date"])
-    for i, row in enumerate(sorted_close):
-        td = row["trade_date"]
-        pct = pct_chg_by_date.get(td)
-        if pct is None and i > 0:
-            prev_close = sorted_close[i - 1]["value"]
-            if prev_close and prev_close > 0:
-                pct = (row["value"] - prev_close) / prev_close * 100
-        result.append({
-            "trade_date": td,
-            "close": row["value"],
-            "pct_chg": pct,
-        })
-
-    return result
-
-
-def _query_series_history(
-    conn: duckdb.DuckDBPyConnection,
-    tables: set[str],
-    series_id: str,
-    end_date: date,
-    lookback_days: int,
-) -> list[dict[str, Any]]:
-    """Query a single series from fact_choice_macro_daily / choice_market_snapshot."""
-    queries: list[str] = []
-    params: list[object] = []
-
-    lookback_extra = lookback_days + BREADTH_WINDOW + 10  # extra buffer
-
-    if "fact_choice_macro_daily" in tables:
-        queries.append("""
-            select
-              cast(trade_date as date) as trade_date,
-              cast(value_numeric as double) as value_numeric,
-              0 as src_rank
-            from fact_choice_macro_daily
-            where series_id = ?
-              and value_numeric is not null
-              and cast(trade_date as date) <= ?
-              and cast(trade_date as date) >= ?
-        """)
-        params.extend([series_id, end_date.isoformat(),
-                       _offset_date(end_date, lookback_extra)])
-
-    if "choice_market_snapshot" in tables:
-        queries.append("""
-            select
-              cast(trade_date as date) as trade_date,
-              cast(value_numeric as double) as value_numeric,
-              1 as src_rank
-            from choice_market_snapshot
-            where series_id = ?
-              and value_numeric is not null
-              and cast(trade_date as date) <= ?
-              and cast(trade_date as date) >= ?
-        """)
-        params.extend([series_id, end_date.isoformat(),
-                       _offset_date(end_date, lookback_extra)])
-
-    if not queries:
-        return []
-
-    sql = f"""
-        with unioned as (
-          {" union all ".join(queries)}
-        ),
-        deduped as (
-          select
-            trade_date,
-            value_numeric,
-            row_number() over (
-              partition by trade_date
-              order by src_rank asc
-            ) as rn
-          from unioned
-        )
-        select trade_date, value_numeric
-        from deduped
-        where rn = 1
-        order by trade_date asc
-    """
-    rows = conn.execute(sql, params).fetchall()
-    return [
-        {"trade_date": str(row[0]), "value": float(row[1])}
-        for row in rows
-        if row[0] is not None and row[1] is not None
-    ]
-
-
-def _offset_date(d: date, days: int) -> str:
-    from datetime import timedelta
-    return (d - timedelta(days=days)).isoformat()
+    return LivermoreGateSupplementRepository(
+        duckdb_path, guard_path_exists=True
+    ).load_csi300_daily_returns(end_date=end_date, lookback_days=lookback_days)
 
 
 # ---------------------------------------------------------------------------
