@@ -53,6 +53,8 @@ function renderShellAt(path: string, client?: ApiClient) {
           { path: "performance", element: <div>performance home body</div> },
           { path: "bond-analysis", element: <div>bond-analysis body</div> },
           { path: "cross-asset", element: <div>cross-asset body</div> },
+          { path: "macro-toolkit", element: <div>macro-toolkit body</div> },
+          { path: "macro-observation", element: <div>macro-observation body</div> },
           { path: "stock-analysis", element: <div>stock-analysis body</div> },
           { path: "operations-analysis", element: <div>operations body</div> },
           { path: "balance-analysis", element: <div>balance-analysis body</div> },
@@ -519,6 +521,32 @@ describe("WorkbenchShell", () => {
     expect(operatorZone).toHaveTextContent("报表中心");
     expect(operatorZone).toHaveTextContent("中台配置");
   });
+
+  it.each(["/macro-toolkit", "/macro-observation"])(
+    "suppresses the shell terminal bar while keeping the market subnav on %s",
+    async (path) => {
+      renderShellAt(path);
+
+      expect(await screen.findByText(`${path.slice(1)} body`)).toBeInTheDocument();
+      // 页面自带页头是唯一标题带：外壳终端条（大标题 + 报告日 chip + ticker + 工具链接）整块不渲染。
+      expect(screen.queryByTestId("workbench-terminal-bar")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("workbench-page-context")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("workbench-operator-zone")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("workbench-market-ticker")).not.toBeInTheDocument();
+
+      // 组内子导航保留，终端条里的报表中心/中台配置在左栏「支持入口」仍有等价入口。
+      const subnav = screen.getByTestId("workbench-section-subnav");
+      const subnavHrefs = within(subnav)
+        .getAllByRole("link")
+        .map((link) => link.getAttribute("href"));
+      expect(subnavHrefs).toEqual(expect.arrayContaining(["/macro-toolkit", "/macro-observation"]));
+
+      const supportHrefs = within(screen.getByTestId("workbench-support-nav"))
+        .getAllByRole("link")
+        .map((link) => link.getAttribute("href"));
+      expect(supportHrefs).toEqual(expect.arrayContaining(["/reports", "/platform-config"]));
+    },
+  );
 
   it("keeps bond-analysis page-owned by suppressing shell date and ticker endpoints", async () => {
     const client = {

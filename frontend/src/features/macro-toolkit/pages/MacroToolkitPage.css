@@ -31,6 +31,12 @@
   --ib-ink: var(--dh-ink);
   --ib-ink-secondary: var(--dh-ink-2);
   --ib-ink-muted: var(--dh-muted);
+  /* PagePrimitives（PageSectionLead）内联墨字与字号经 --moss-page-* 变量接管（§3 卡片标题 14-16px） */
+  --moss-page-ink: var(--dh-ink);
+  --moss-page-ink-secondary: var(--dh-ink-2);
+  --moss-page-ink-muted: var(--dh-muted);
+  --moss-page-section-title-size: 16px;
+  --moss-page-section-desc-size: 12px;
   --ib-accent: var(--dh-blue);
   --ib-accent-hover: var(--dh-blue-2);
   --ib-accent-surface: var(--dh-blue-soft);
@@ -3849,21 +3855,6 @@
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   letter-spacing: 0;
-}
-
-/* PageSectionLead 以内联样式钉了浅色墨字（#16191d/#5c6370），
-   深底下不可见；仅此处允许以最高优先级反转到页面 token。 */
-.macro-toolkit-section h2 {
-  color: var(--dh-ink) !important;
-  font-size: 16px !important;
-  line-height: 22px;
-}
-
-.macro-toolkit-section > div:first-child > p,
-.macro-toolkit-section > div:first-child > div:first-child > p {
-  color: var(--dh-ink-2) !important;
-  font-size: 12px !important;
-  line-height: 1.5;
 }
 
 .macro-toolkit-section-headline {

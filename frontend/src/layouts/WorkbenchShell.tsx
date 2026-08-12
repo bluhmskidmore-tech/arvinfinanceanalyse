@@ -215,6 +215,13 @@ export function WorkbenchShell() {
   /** 资产负债页以正式内容为主：壳层只保留页面顶栏，不再重复大号标题与市场条。 */
   const isBalanceAnalysisCompactChrome = currentSection.key === "balance-analysis";
   const isStockAnalysisMinimalShell = currentSection.key === "stock-analysis";
+  /**
+   * 宏观工具 / 宏观观察（同一页面组件）：页面自带页头是唯一标题带，
+   * 外壳终端条（大标题 + 报告日 chip + 市场 ticker + 工具链接）整块抑制，
+   * 报表中心 / 中台配置仍可从左栏「支持入口」进入；组内子导航保持渲染。
+   */
+  const isMacroToolkitShell =
+    currentSection.key === "macro-toolkit" || currentSection.key === "macro-observation";
   const useCockpitShellFrame =
     isDashboardCockpitShell ||
     isBondAnalysisMinimalShell ||
@@ -228,6 +235,7 @@ export function WorkbenchShell() {
     !isBondAnalysisMinimalShell &&
     !isStockAnalysisMinimalShell &&
     !isBalanceAnalysisCompactChrome &&
+    !isMacroToolkitShell &&
     currentSection.key !== "balance-movement-analysis" &&
     !isModuleHomePage;
   const showShellMarketTicker = showShellTerminalBar && !isDashboardCockpitShell;

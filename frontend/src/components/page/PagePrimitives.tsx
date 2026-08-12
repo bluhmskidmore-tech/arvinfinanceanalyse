@@ -207,7 +207,7 @@ export function PageSectionLead({
           fontWeight: 700,
           letterSpacing: "0.08em",
           textTransform: "uppercase",
-          color: shellTokens.colorTextMuted,
+          color: `var(--moss-page-ink-muted, ${shellTokens.colorTextMuted})`,
         }}
       >
         {eyebrow}
@@ -215,9 +215,9 @@ export function PageSectionLead({
       <h2
         style={{
           margin: 0,
-          fontSize: 18,
+          fontSize: "var(--moss-page-section-title-size, 18px)",
           fontWeight: 700,
-          color: shellTokens.colorTextPrimary,
+          color: `var(--moss-page-ink, ${shellTokens.colorTextPrimary})`,
         }}
       >
         {title}
@@ -226,8 +226,8 @@ export function PageSectionLead({
         style={{
           margin: 0,
           maxWidth: 860,
-          color: shellTokens.colorTextSecondary,
-          fontSize: 13,
+          color: `var(--moss-page-ink-secondary, ${shellTokens.colorTextSecondary})`,
+          fontSize: "var(--moss-page-section-desc-size, 13px)",
           lineHeight: 1.7,
         }}
       >

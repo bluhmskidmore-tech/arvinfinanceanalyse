@@ -33,7 +33,11 @@ describe("MacroToolkitPage stylesheet budget guard", () => {
     // added ~103 lines of live panel styles after the baseline was cut, bringing
     // the sheet to 5844 lines. Deliberate raise to 5844 + 50 headroom; lowering
     // is still always welcome.
-    expect(lineCount).toBeLessThanOrEqual(5894);
-    expect(importantCount).toBeLessThanOrEqual(11);
+    // Lowered 2026-08-12 again: the PageSectionLead `!important` inversion块被
+    // 根治（PagePrimitives 内联色改为 --moss-page-ink* 变量 + 原值兜底，根块
+    // 变量接管），sheet 回到 5792 lines / 1 `!important`（仅历史遗留的
+    // .macro-toolkit-row--selected）。Budget: 5792 + 50 headroom / 1.
+    expect(lineCount).toBeLessThanOrEqual(5842);
+    expect(importantCount).toBeLessThanOrEqual(1);
   });
 });
