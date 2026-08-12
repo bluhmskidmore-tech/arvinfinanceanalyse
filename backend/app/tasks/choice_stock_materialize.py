@@ -1203,7 +1203,8 @@ def _load_tushare_financial_factors(
                     "roe": _percent_points_to_ratio(_record_float(selected, "roe")),
                     "gross_margin": _percent_points_to_ratio(_record_float(selected, "grossprofit_margin")),
                 }
-            except Exception:
+            except Exception as exc:
+                logger.warning("fina_indicator per-stock fallback failed for %s: %s; skipping", stock_code, exc)
                 continue
 
     return rows

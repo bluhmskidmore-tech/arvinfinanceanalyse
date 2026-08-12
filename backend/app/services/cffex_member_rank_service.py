@@ -238,7 +238,7 @@ def _latest_tushare_product_date(pro: Any, product_code: str) -> str | None:
             kwargs["exchange"] = exchange
         try:
             frame = pro.fut_holding(**kwargs)
-        except Exception:
+        except Exception:  # noqa: S112  # 按 CFFEX/CFE/空 逐个探测 exchange 参数，单个组合被 vendor 拒绝属预期，继续下一组合
             continue
         if frame is None or len(frame) == 0 or "trade_date" not in frame.columns:
             continue

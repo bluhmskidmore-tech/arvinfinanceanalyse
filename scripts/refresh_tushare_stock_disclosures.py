@@ -64,7 +64,7 @@ def _sanitize_error_message(message: str) -> str:
     tokens = {os.getenv(TUSHARE_TOKEN_ENV, "").strip()}
     try:
         tokens.add(str(getattr(get_settings(), "tushare_token", "") or "").strip())
-    except Exception:
+    except Exception:  # noqa: S110  # 脱敏辅助不得因 settings 读取失败中断错误上报；env token 兜底已覆盖
         pass
     for token in tokens:
         if token:

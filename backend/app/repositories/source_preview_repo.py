@@ -1046,7 +1046,7 @@ def _write_preview_tables(
         if transaction_started:
             try:
                 conn.execute("rollback")
-            except Exception:
+            except Exception:  # noqa: S110  # 回滚失败不得掩盖随后 raise 的原始写入异常
                 pass
         raise
     finally:

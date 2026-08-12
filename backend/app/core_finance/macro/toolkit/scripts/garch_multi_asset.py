@@ -161,7 +161,7 @@ def fit_single_asset(returns: pd.Series, asset_name: str) -> dict:
                     best_bic = res.bic
                     best_result = row
 
-            except Exception:
+            except Exception:  # noqa: S110  # 模型选择扫描：单个(模型,分布)组合不收敛属预期，按 BIC 取存活组合最优；全失败时下方显式报告
                 pass
 
     if best_result is None:
@@ -235,7 +235,7 @@ def out_of_sample_test(returns: pd.Series, best_result: dict,
                     dist=dist
                 )
                 cached_res = m.fit(disp='off', show_warning=False)
-            except Exception:
+            except Exception:  # noqa: S110  # 滚动重估失败沿用上次 cached_res 预测；从未成功则该日输出 NaN，失败在结果中可见
                 pass
 
         if cached_res is not None:
