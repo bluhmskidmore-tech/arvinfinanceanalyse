@@ -2727,7 +2727,8 @@ const MOCK_MODEL_CHAIN_RESULTS: MacroToolkitModelChainResults = {
       task_name: "macro_model_chain_daily",
       status: "degraded",
       exit_code: 0,
-      generated_at: "2026-08-12T09:04:12+08:00",
+      // 无时区偏移的本地时间格式：让本地化渲染在任意时区的测试机上都得到同一显示值。
+      generated_at: "2026-08-12T09:04:12",
       run_kind: "scheduled",
       summary: "链 degraded · 链外脚本 6/6 完成",
     },
@@ -2735,7 +2736,7 @@ const MOCK_MODEL_CHAIN_RESULTS: MacroToolkitModelChainResults = {
       task_name: "macro_toolkit_freshness_refresh",
       status: "failed",
       exit_code: 1,
-      generated_at: "2026-08-11T19:40:03+08:00",
+      generated_at: "2026-08-11T19:40:03",
       run_kind: "scheduled",
       summary: "步骤 2 成功 / 2 失败 / 1 降级",
     },
