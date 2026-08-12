@@ -152,13 +152,23 @@ function loadArchetypes() {
       }
     });
   }
-  // TSX 扩展需要非通配锚点类，避免 tone 类桥接出不存在的嵌合体原型
+  // TSX 集合的两种建模，都不允许经由高频基类桥接出嵌合体：
+  // (a) 直接原型：own=T 本身（TSX 声明"这些类可同元素"，按原样建模，零桥接）；
+  // (b) DOM 扩展：仅当共享锚点是低频"身份类"（≤ max(4, 0.5% base)）才把 T 叠加到真实 DOM 原型上，
+  //     以覆盖"隐藏变体挂在真实元素（携带 dhCard 等基类）"的场景。
   const WILD = new Set(cfg.wildcards);
   const baseCount = archs.length;
+  for (const T of tsxSets) {
+    add(null, new Set(T), new Set(T));
+  }
+  const ownFreq = new Map();
+  for (let i = 0; i < baseCount; i++) for (const c of archs[i].own) ownFreq.set(c, (ownFreq.get(c) || 0) + 1);
+  const freqLimit = Math.max(4, Math.round(baseCount * 0.005));
+  const isAnchor = c => !WILD.has(c) && (ownFreq.get(c) || 0) <= freqLimit;
   for (let i = 0; i < baseCount; i++) {
     const A = archs[i];
     for (const T of tsxSets) {
-      if (!T.some(c => A.own.has(c) && !WILD.has(c))) continue;
+      if (!T.some(c => A.own.has(c) && isAnchor(c))) continue;
       add(A.tag, new Set([...A.own, ...T]), new Set([...A.closure, ...T]));
     }
   }
