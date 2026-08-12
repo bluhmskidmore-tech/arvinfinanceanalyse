@@ -192,6 +192,10 @@ LIVERMORE_OUTPUT_KEYS: tuple[str, ...] = (
 STOCK_MODULE_FRESHNESS_THRESHOLD_DAYS = 3
 STOCK_MODULE_PRIMARY_COVERAGE_THRESHOLD = 0.8
 STOCK_MODULE_PARTIAL_COVERAGE_THRESHOLD = 0.5
+# factor_screen_candidates.compute_factor_screen_candidates 在数据/字段/评分池异常时
+# 写入的 coverage_note 均含以下关键词之一（无数据/缺少字段/必填字段缺失或全部未通过筛选
+# 导致评分池为空）；成功路径的 coverage_note 只说明评分池规模，不含这些关键词。
+FACTOR_SCREEN_ERROR_NOTE_KEYWORDS = ("无数据", "缺少", "缺失", "为空", "失败")
 INPUT_FRESHNESS_DEGRADED_DIAGNOSTIC_CODE = "LIVERMORE_INPUT_FRESHNESS_DEGRADED"
 INPUT_FRESHNESS_LOOK_AHEAD_STATUS = "look_ahead"
 INPUT_FRESHNESS_DEGRADED_TIERS = frozenset({FRESHNESS_TIER_STALE, FRESHNESS_TIER_EXPIRED})
@@ -4677,9 +4681,18 @@ def _factor_screen_degradation_reasons(
     if coverage_reason:
         reasons.append(coverage_reason)
     coverage_note = _payload_text(payload, "coverage_note")
-    if coverage_note:
+    if coverage_note and _is_factor_screen_error_note(coverage_note):
         reasons.append(coverage_note)
     return reasons
+
+
+def _is_factor_screen_error_note(note: str) -> bool:
+    """区分 factor_screen_candidates 的错误型 coverage_note 与成功型说明性 coverage_note。
+
+    成功路径（compute_factor_screen_candidates 评分池非空时）也会写一条 coverage_note
+    仅用于说明评分池规模，不代表任何降级条件；不应据此把 state 判定为 degraded。
+    """
+    return any(keyword in note for keyword in FACTOR_SCREEN_ERROR_NOTE_KEYWORDS)
 
 
 def _hybrid_fusion_degradation_reasons(

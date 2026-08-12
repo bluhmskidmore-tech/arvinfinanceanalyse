@@ -400,6 +400,20 @@ def _build_client(
     return TestClient(load_module("backend.app.main", "backend/app/main.py").app)
 
 
+def _live_confluence_service():
+    """Return the livermore_signal_confluence_service module the routes bind.
+
+    ``tests.helpers.load_module`` replaces the ``sys.modules`` entry without
+    refreshing the parent package attribute, so ``from backend.app.services
+    import livermore_signal_confluence_service`` can hand back a stale module
+    object while the routes rebuilt by ``_build_client`` resolve the current
+    one. A patch applied to the stale object would then silently do nothing.
+    """
+    import backend.app.services.livermore_signal_confluence_service  # noqa: F401
+
+    return sys.modules["backend.app.services.livermore_signal_confluence_service"]
+
+
 def _stub_livermore_read_services(monkeypatch) -> None:
     from backend.app.api.routes import market_data_livermore as route_module
 
@@ -2661,6 +2675,295 @@ def test_livermore_api_factor_screen_reports_enrichment_tables_when_used(
     assert not any("coverage" in reason.lower() for reason in factor_state["reasons"])
 
 
+def test_livermore_api_factor_screen_ready_when_aligned_and_covered(
+    tmp_path, monkeypatch
+) -> None:
+    """日期对齐 + coverage>=0.8 + 成功型 coverage_note 时,不应因说明性文案被误判为 degraded。"""
+    from backend.app.services.market_data_livermore_service import (
+        livermore_strategy_envelope,
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_macro_history(
+        str(duckdb_path),
+        start=date(2026, 2, 1),
+        closes=[3200.0 + day * 8 for day in range(110)],
+    )
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table choice_stock_factor_snapshot (
+              as_of_date varchar,
+              stock_code varchar,
+              pe double,
+              pb double,
+              ps double,
+              roe double,
+              gross_margin double,
+              three_month_return double,
+              twelve_month_return double,
+              volatility double,
+              dividend_yield double,
+              industry varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table choice_stock_universe (
+              as_of_date varchar,
+              stock_code varchar,
+              stock_name varchar
+            )
+            """
+        )
+        factor_rows = [
+            (
+                "2026-04-30",
+                f"60002{i}.SH",
+                9.0 + i,
+                1.0 + i * 0.1,
+                0.7 + i * 0.05,
+                0.09 + i * 0.01,
+                0.28 + i * 0.02,
+                0.02 + i * 0.01,
+                0.06 + i * 0.02,
+                0.16 + i * 0.01,
+                0.012 + i * 0.002,
+                "医药",
+            )
+            for i in range(1, 8)
+        ]
+        conn.executemany(
+            "insert into choice_stock_factor_snapshot values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            factor_rows,
+        )
+        conn.executemany(
+            "insert into choice_stock_universe values (?, ?, ?)",
+            [
+                ("2026-04-30", row[1], f"Aligned Name {idx}")
+                for idx, row in enumerate(factor_rows, start=1)
+            ],
+        )
+    finally:
+        conn.close()
+
+    envelope = livermore_strategy_envelope(
+        duckdb_path=str(duckdb_path),
+        as_of_date="2026-04-30",
+        stock_readiness=_ready_choice_stock_readiness(),
+    )
+
+    result = envelope["result"]
+    payload = result["factor_screen_candidates"]
+    assert payload["candidate_count"] >= 1
+    # 成功型 coverage_note 应仍然写入 payload(供前端/证据面板展示评分池规模说明),
+    # 但不应被当作降级原因注入 module_states.reasons。
+    assert "评分池为" in str(payload["coverage_note"])
+
+    module_states = {row["key"]: row for row in result["module_states"]}
+    factor_state = module_states["factor_screen_candidates"]
+    assert factor_state["lag_days"] == 0
+    assert factor_state["coverage_count"] == 7
+    assert factor_state["coverage_denominator"] == 7
+    assert factor_state["coverage_ratio"] == 1.0
+    assert factor_state["state"] == "ready"
+    assert factor_state["render_mode"] == "primary"
+    assert factor_state["reasons"] == []
+    assert factor_state["excludes_from_primary"] is False
+
+
+def test_livermore_api_factor_screen_degrades_on_real_lag_despite_success_note(
+    tmp_path, monkeypatch
+) -> None:
+    """真实滞后(lag_days > threshold_days)时,即便 coverage 充足、note 为成功型,仍应 degraded。"""
+    from backend.app.services.market_data_livermore_service import (
+        livermore_strategy_envelope,
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_macro_history(
+        str(duckdb_path),
+        start=date(2026, 2, 1),
+        closes=[3200.0 + day * 8 for day in range(110)],
+    )
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table choice_stock_factor_snapshot (
+              as_of_date varchar,
+              stock_code varchar,
+              pe double,
+              pb double,
+              ps double,
+              roe double,
+              gross_margin double,
+              three_month_return double,
+              twelve_month_return double,
+              volatility double,
+              dividend_yield double,
+              industry varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table choice_stock_universe (
+              as_of_date varchar,
+              stock_code varchar,
+              stock_name varchar
+            )
+            """
+        )
+        factor_rows = [
+            (
+                "2026-04-30",
+                f"60003{i}.SH",
+                9.0 + i,
+                1.0 + i * 0.1,
+                0.7 + i * 0.05,
+                0.09 + i * 0.01,
+                0.28 + i * 0.02,
+                0.02 + i * 0.01,
+                0.06 + i * 0.02,
+                0.16 + i * 0.01,
+                0.012 + i * 0.002,
+                "食品饮料",
+            )
+            for i in range(1, 8)
+        ]
+        conn.executemany(
+            "insert into choice_stock_factor_snapshot values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            factor_rows,
+        )
+        conn.executemany(
+            "insert into choice_stock_universe values (?, ?, ?)",
+            [
+                ("2026-04-30", row[1], f"Lagged Name {idx}")
+                for idx, row in enumerate(factor_rows, start=1)
+            ],
+        )
+    finally:
+        conn.close()
+
+    envelope = livermore_strategy_envelope(
+        duckdb_path=str(duckdb_path),
+        as_of_date="2026-05-08",
+        stock_readiness=_ready_choice_stock_readiness(),
+    )
+
+    result = envelope["result"]
+    module_states = {row["key"]: row for row in result["module_states"]}
+    factor_state = module_states["factor_screen_candidates"]
+    assert factor_state["coverage_ratio"] == 1.0
+    assert factor_state["lag_days"] > factor_state["threshold_days"]
+    assert factor_state["state"] == "degraded"
+    assert factor_state["excludes_from_primary"] is True
+    assert any(
+        "lags the page as_of_date" in reason for reason in factor_state["reasons"]
+    )
+    # 成功型 coverage_note(评分池规模说明)不应作为独立降级原因出现。
+    assert not any("评分池" in reason for reason in factor_state["reasons"])
+
+
+def test_livermore_api_factor_screen_degrades_on_error_type_coverage_note(
+    tmp_path, monkeypatch
+) -> None:
+    """错误型 coverage_note(评分池为空)即便日期对齐、coverage 充足,仍应 degraded。"""
+    from backend.app.services.market_data_livermore_service import (
+        livermore_strategy_envelope,
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_macro_history(
+        str(duckdb_path),
+        start=date(2026, 2, 1),
+        closes=[3200.0 + day * 8 for day in range(110)],
+    )
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table choice_stock_factor_snapshot (
+              as_of_date varchar,
+              stock_code varchar,
+              pe double,
+              pb double,
+              ps double,
+              roe double,
+              gross_margin double,
+              three_month_return double,
+              twelve_month_return double,
+              volatility double,
+              dividend_yield double,
+              industry varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table choice_stock_universe (
+              as_of_date varchar,
+              stock_code varchar,
+              stock_name varchar
+            )
+            """
+        )
+        # dividend_yield 全部超过 MAX_DIVIDEND_YIELD(0.12),必填字段完整但会被
+        # _filter_factor_screen_universe 全部过滤掉,评分池为空 -> 错误型 coverage_note。
+        factor_rows = [
+            (
+                "2026-04-30",
+                f"60004{i}.SH",
+                9.0 + i,
+                1.0 + i * 0.1,
+                0.7 + i * 0.05,
+                0.09 + i * 0.01,
+                0.28 + i * 0.02,
+                0.02 + i * 0.01,
+                0.06 + i * 0.02,
+                0.16 + i * 0.01,
+                0.5,
+                "钢铁",
+            )
+            for i in range(1, 8)
+        ]
+        conn.executemany(
+            "insert into choice_stock_factor_snapshot values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            factor_rows,
+        )
+        conn.executemany(
+            "insert into choice_stock_universe values (?, ?, ?)",
+            [
+                ("2026-04-30", row[1], f"Filtered Name {idx}")
+                for idx, row in enumerate(factor_rows, start=1)
+            ],
+        )
+    finally:
+        conn.close()
+
+    envelope = livermore_strategy_envelope(
+        duckdb_path=str(duckdb_path),
+        as_of_date="2026-04-30",
+        stock_readiness=_ready_choice_stock_readiness(),
+    )
+
+    result = envelope["result"]
+    payload = result["factor_screen_candidates"]
+    assert payload["candidate_count"] == 0
+    assert "为空" in str(payload["coverage_note"])
+
+    module_states = {row["key"]: row for row in result["module_states"]}
+    factor_state = module_states["factor_screen_candidates"]
+    assert factor_state["lag_days"] == 0
+    assert factor_state["coverage_ratio"] == 1.0
+    assert factor_state["state"] == "degraded"
+    assert factor_state["excludes_from_primary"] is True
+    assert any("为空" in reason for reason in factor_state["reasons"])
+
+
 def test_livermore_sector_rank_loader_attaches_universe_stock_names(tmp_path) -> None:
     from backend.app.services.market_data_livermore_service import (
         _load_sector_rank_inputs,
@@ -2934,9 +3237,7 @@ def test_livermore_signal_confluence_api_returns_analytical_envelope_and_resolve
 ) -> None:
     client = _build_client(tmp_path, monkeypatch)
     from backend.app.api.routes import market_data_livermore as route_module
-    from backend.app.services import (
-        livermore_signal_confluence_service as confluence_service,
-    )
+    confluence_service = _live_confluence_service()
 
     calls: dict[str, object] = {}
     settings = _livermore_route_settings(tmp_path)
@@ -3289,9 +3590,7 @@ def test_livermore_signal_confluence_api_uses_real_service_shape_with_macro_envi
 ) -> None:
     client = _build_client(tmp_path, monkeypatch)
     from backend.app.api.routes import market_data_livermore as route_module
-    from backend.app.services import (
-        livermore_signal_confluence_service as confluence_service,
-    )
+    confluence_service = _live_confluence_service()
     from backend.app.services import macro_adversarial_signal_service
 
     output_dir = tmp_path / "macro_output"
@@ -3389,9 +3688,7 @@ def test_livermore_signal_confluence_api_smoke_loads_real_adversarial_overlay_an
 ) -> None:
     client = _build_client(tmp_path, monkeypatch)
     from backend.app.api.routes import market_data_livermore as route_module
-    from backend.app.services import (
-        livermore_signal_confluence_service as confluence_service,
-    )
+    confluence_service = _live_confluence_service()
     from backend.app.services import macro_adversarial_signal_service
 
     output_dir = tmp_path / "macro_output"
@@ -3534,9 +3831,7 @@ def test_livermore_signal_confluence_replay_evidence_counts_all_rows_while_sampl
 ) -> None:
     client = _build_client(tmp_path, monkeypatch)
     from backend.app.api.routes import market_data_livermore as route_module
-    from backend.app.services import (
-        livermore_signal_confluence_service as confluence_service,
-    )
+    confluence_service = _live_confluence_service()
     from backend.app.services import macro_adversarial_signal_service
 
     output_dir = tmp_path / "macro_output"
@@ -3631,9 +3926,7 @@ def test_livermore_signal_confluence_api_keeps_core_result_meta_when_adversarial
 ) -> None:
     client = _build_client(tmp_path, monkeypatch)
     from backend.app.api.routes import market_data_livermore as route_module
-    from backend.app.services import (
-        livermore_signal_confluence_service as confluence_service,
-    )
+    confluence_service = _live_confluence_service()
     from backend.app.services import macro_adversarial_signal_service
 
     output_dir = tmp_path / "macro_output"
@@ -3758,9 +4051,7 @@ def test_livermore_signal_confluence_api_preserves_stale_lineage(
 ) -> None:
     client = _build_client(tmp_path, monkeypatch)
     from backend.app.api.routes import market_data_livermore as route_module
-    from backend.app.services import (
-        livermore_signal_confluence_service as confluence_service,
-    )
+    confluence_service = _live_confluence_service()
 
     settings = _livermore_route_settings(tmp_path)
     livermore_envelope = {
