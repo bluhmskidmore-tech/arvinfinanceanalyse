@@ -23,6 +23,7 @@ Exit codes:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -57,10 +58,8 @@ def _sample(names: list[str]) -> str:
 
 
 def main() -> int:
-    try:
+    with contextlib.suppress(Exception):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
 
     data_root = _resolve_data_root()
     if not data_root.is_dir():
