@@ -5,7 +5,6 @@
 }
 
 .balance-analysis-page {
-  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   padding: 0;
   gap: var(--dh-space-2, 12px);
   /* PagePrimitives（PageSectionLead）内联墨字浅色兜底在 theme-dh-api 深底不可读，经 --moss-page-* 变量接管 */
@@ -55,7 +54,6 @@
 
 
 .balance-analysis-hero {
-  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   position: relative;
   display: grid;
   grid-template-columns: minmax(360px, 0.75fr) minmax(620px, 1.25fr);
@@ -64,7 +62,10 @@
   margin-bottom: 0;
   padding: 10px 12px 12px;
   border: 1px solid var(--ib-hairline);
+  border-top: 2px solid var(--ib-accent);
   border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
+  box-shadow: var(--ib-shadow);
 }
 
 .balance-analysis-hero__identity {
@@ -74,14 +75,15 @@
 }
 
 .balance-analysis-hero__tab {
-  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   position: absolute;
   top: -1px;
+  left: -1px;
   display: inline-flex;
   align-items: center;
   min-height: 24px;
   padding: 0 12px;
   border-radius: 7px 0 7px 0;
+  background: var(--moss-color-primary-600);
   color: #fff;
   font-size: 12px;
   font-weight: 780;
@@ -97,8 +99,10 @@
 }
 
 .balance-analysis-hero__title-row h1 {
-  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
+  margin: 0;
+  color: var(--moss-color-text-primary);
   font-size: 21px;
+  font-weight: 860;
   line-height: 1.08;
 }
 
@@ -248,8 +252,8 @@
 
 .balance-analysis-control,
 .balance-analysis-action-button {
-  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   min-height: 32px;
+  border-radius: var(--ib-radius, 2px);
   font-weight: 680;
 }
 
@@ -266,13 +270,18 @@
 }
 
 .balance-analysis-action-button {
-  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: var(--moss-space-2) var(--moss-space-3);
   border: 1px solid var(--moss-color-info-200);
+  background: rgba(255, 255, 255, 0.9);
   color: var(--moss-color-info-600);
+  cursor: pointer;
+  transition:
+    transform var(--moss-motion-duration-fast) var(--moss-motion-ease-out),
+    border-color var(--moss-motion-duration-fast) var(--moss-motion-ease-out),
+    box-shadow var(--moss-motion-duration-fast) var(--moss-motion-ease-out);
 }
 
 .balance-analysis-action-button:hover:not(:disabled) {
@@ -292,6 +301,16 @@
 .balance-analysis-action-button:disabled {
   cursor: not-allowed;
   opacity: 0.54;
+}
+
+.balance-analysis-data-status {
+  justify-content: space-between;
+  min-height: 32px;
+  padding-block: 3px;
+  border-color: rgba(147, 197, 253, 0.42);
+  background:
+    linear-gradient(90deg, rgba(239, 246, 255, 0.76), rgba(255, 255, 255, 0.94)),
+    rgba(255, 255, 255, 0.9);
 }
 
 .balance-analysis-status-badge {
@@ -468,7 +487,6 @@
   }
 
   .balance-analysis-hero {
-    /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     grid-template-columns: 1fr;
     gap: 8px;
     padding: 10px;
@@ -501,16 +519,31 @@
 }
 
 .balance-analysis-evidence-details {
-  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
+  overflow: hidden;
   border: 1px solid rgba(147, 197, 253, 0.34);
+  border-radius: var(--ib-radius, 2px);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.94));
+  box-shadow: 0 6px 16px rgba(15, 37, 68, 0.035);
 }
 
 .balance-analysis-evidence-details__summary {
-  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
+  display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   gap: var(--moss-space-2) var(--moss-space-3);
+  align-items: center;
+  min-height: 44px;
   padding: var(--moss-space-2) var(--moss-space-3);
+  cursor: pointer;
   color: var(--moss-color-neutral-800);
+}
+
+.balance-analysis-evidence-details__summary strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--moss-color-primary-800);
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .balance-analysis-evidence-details__summary span:last-child {
@@ -521,7 +554,7 @@
 }
 
 .balance-analysis-evidence-details__eyebrow {
-  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
+  color: var(--moss-color-neutral-500);
   font-size: 11px;
   font-weight: 760;
 }
@@ -1762,13 +1795,11 @@
 }
 
 .balance-analysis-hero__tab {
-  left: -1px;
   background: linear-gradient(135deg, #08213f, var(--moss-color-primary-700));
   box-shadow: 0 8px 18px rgba(8, 33, 63, 0.18);
 }
 
 .balance-analysis-hero__title-row h1 {
-  margin: 0;
   color: var(--balance-ink);
   font-weight: 900;
 }
@@ -1797,8 +1828,6 @@
 }
 
 .balance-analysis-action-button {
-  cursor: pointer;
-  transition: transform var(--moss-motion-duration-fast) var(--moss-motion-ease-out), border-color var(--moss-motion-duration-fast) var(--moss-motion-ease-out), box-shadow var(--moss-motion-duration-fast) var(--moss-motion-ease-out);
   border-color: rgba(37, 99, 235, 0.26);
   background: linear-gradient(180deg, #ffffff, #f4f8ff);
 }
@@ -1811,9 +1840,6 @@
 }
 
 .balance-analysis-data-status {
-  justify-content: space-between;
-  min-height: 32px;
-  padding-block: 3px;
   border-color: rgba(43, 86, 132, 0.14);
   background:
     linear-gradient(90deg, rgba(8, 33, 63, 0.04), rgba(255, 255, 255, 0.96)),
@@ -1822,25 +1848,16 @@
 }
 
 .balance-analysis-evidence-details {
-  overflow: hidden;
-  border-radius: var(--ib-radius, 2px);
   border-color: var(--balance-line);
   background: linear-gradient(180deg, #ffffff, #f8fbff);
   box-shadow: var(--balance-shadow-soft);
 }
 
 .balance-analysis-evidence-details__summary {
-  display: grid;
-  align-items: center;
-  cursor: pointer;
   min-height: 40px;
 }
 
 .balance-analysis-evidence-details__summary strong {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  font-size: 13px;
-  line-height: 1.4;
   color: var(--balance-ink);
 }
 
