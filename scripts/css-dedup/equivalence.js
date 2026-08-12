@@ -224,10 +224,37 @@ const origCss = fs.readFileSync(process.argv[3], 'utf8');
 const candCss = fs.readFileSync(process.argv[4], 'utf8');
 const reportPath = path.join(cfg.workDir, process.argv[5] || 'equivalence-report.txt');
 
-const archs = loadArchetypes();
-console.log('archetypes:', archs.length);
 const fileA = buildFile(origCss);
 const fileB = buildFile(candCss);
+
+const archs = loadArchetypes();
+const preSynth = archs.length;
+{
+  // 免证据合成原型（2026-08-12 三处确认回归的终裁盲区修复）：
+  // (a) 每个选择器一个"精确匹配原型"——匹配该选择器的元素必然存在层叠意义（同名选择器共匹配恒真）；
+  // (b) 每个类名一个单类原型——单类元素不依赖任何 TSX/DOM 证据。
+  const seen = new Set(archs.map(A => A.tag + '§' + [...A.own].sort().join('.') + '§' + [...A.closure].sort().join('.')));
+  const add = (tag, own, closure) => {
+    const key = tag + '§' + [...own].sort().join('.') + '§' + [...closure].sort().join('.');
+    if (seen.has(key)) return;
+    seen.add(key);
+    archs.push({ tag, own, closure });
+  };
+  const classSet = new Set();
+  for (const rules of [fileA, fileB]) {
+    for (const r of rules) {
+      for (const ps of r.parsedSels) {
+        const own = new Set(ps.subj.classes);
+        const closure = new Set(ps.subj.classes);
+        for (const anc of ps.ancestors) for (const c of anc.classes) closure.add(c);
+        for (const c of closure) classSet.add(c);
+        add(ps.subj.tag, own, closure);
+      }
+    }
+  }
+  for (const c of classSet) add(null, new Set([c]), new Set([c]));
+}
+console.log('archetypes:', archs.length, '(synthetic +' + (archs.length - preSynth) + ')');
 console.log('rules: original', fileA.length, ' candidate', fileB.length);
 
 function buildMatchCache(rules) {

@@ -32,6 +32,9 @@ const snapExpr = fs.readFileSync(path.join(__dirname, 'snap-expression.txt'), 'u
       await page.waitForSelector(cfg.waitSelector, { timeout: 30000 });
       await page.waitForTimeout(500);
     }
+    // 等 Web 字体全部就绪，消除字体晚加载导致的文本度量/换行漂移。
+    await page.evaluate('document.fonts.ready.then(() => true)').catch(() => {});
+    await page.waitForTimeout(150);
     for (const w of WIDTHS) {
       await page.setViewportSize({ width: w, height: 1080 });
       await page.waitForTimeout(250);

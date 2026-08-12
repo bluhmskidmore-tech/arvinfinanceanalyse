@@ -426,9 +426,14 @@ function buildAnalysis(cfg) {
         if (r.at.some(a => a.startsWith('@keyframes'))) continue;
         if (r.endOffset <= d.offset || r.braceOffset >= target.endOffset) continue;
         if (!mediaIntersects(myInterval, mediaInterval(r.at))) continue;
-        const rList = splitSelList(normSel(r.selRaw)).map(s => ({ spec: specificity(s), subj: subjectInfo(s) }));
-        const pairOk = myList.some(m => rList.some(t => specEq(m.spec, t.spec) && coMatch(m.subj, t.subj)));
-        const pairSpecOnly = myList.some(m => rList.some(t => specEq(m.spec, t.spec)));
+        const rSelKey = r.selKey || normSel(r.selRaw);
+        // 同名选择器共匹配恒真（同一元素必然同时命中两处），不得要求证据；
+        // 这是 2026-08-12 确认的三处回归（dhApiMobileFoldSummary 等）的根因修复。
+        const myParts = splitSelList(selKey);
+        const identicalSel = rSelKey === selKey || splitSelList(rSelKey).some(p => myParts.includes(p));
+        const rList = splitSelList(rSelKey).map(s => ({ spec: specificity(s), subj: subjectInfo(s) }));
+        const pairOk = identicalSel || myList.some(m => rList.some(t => specEq(m.spec, t.spec) && coMatch(m.subj, t.subj)));
+        const pairSpecOnly = identicalSel || myList.some(m => rList.some(t => specEq(m.spec, t.spec)));
         if (!pairSpecOnly) continue;
         for (const od of r.decls) {
           if (od.offset <= d.offset || od.offset >= target.endOffset) continue;
