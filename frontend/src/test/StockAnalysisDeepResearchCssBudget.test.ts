@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 describe("StockAnalysisDeepResearch CSS budget", () => {
-  // Ratchet baseline: 2,867 lines / 353 `!important`; the review buffer is
+  // Ratchet baseline: 2,222 lines / 295 `!important`; the review buffer is
   // intentionally limited to 50 lines and 10 priority declarations.
   it("keeps the deep-research stylesheet from regrowing override layers", () => {
     const cssPath = resolve(
@@ -17,7 +17,7 @@ describe("StockAnalysisDeepResearch CSS budget", () => {
       .split("\n").length;
     const importantCount = (css.match(/!important/g) ?? []).length;
 
-    expect(lineCount).toBeLessThanOrEqual(2917);
-    expect(importantCount).toBeLessThanOrEqual(363);
+    expect(lineCount).toBeLessThanOrEqual(2272);
+    expect(importantCount).toBeLessThanOrEqual(305);
   });
 });
