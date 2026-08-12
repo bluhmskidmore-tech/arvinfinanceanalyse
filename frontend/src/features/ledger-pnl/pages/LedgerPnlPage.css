@@ -1151,12 +1151,6 @@
     display: grid;
   }
 
-  .ledger-pnl-functional-strip {
-    gap: 8px;
-    padding: 10px;
-    border-radius: var(--dh-api-radius);
-  }
-
   .ledger-pnl-functional-strip__eyebrow {
     font-size: 10px;
     line-height: 1.25;
@@ -1463,6 +1457,9 @@
   }
 
   .ledger-pnl-functional-strip {
+    gap: 8px;
+    padding: 10px;
+    border-radius: var(--dh-api-radius);
     grid-template-columns: 1fr;
   }
 }
