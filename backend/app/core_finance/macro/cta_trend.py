@@ -12,8 +12,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from app.core_finance.macro.helpers import dedupe_preserving_order as _dedupe
-from app.core_finance.macro.helpers import normalize_price_inputs as _normalize_price_inputs
+from backend.app.core_finance.macro.helpers import dedupe_preserving_order as _dedupe
+from backend.app.core_finance.macro.helpers import normalize_price_inputs as _normalize_price_inputs
 
 CTA_TREND_RULE_VERSION = "rv_macro_cta_trend_cn_v1"
 ASSET_LABELS = {

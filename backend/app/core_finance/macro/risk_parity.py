@@ -12,8 +12,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from app.core_finance.macro.helpers import dedupe_preserving_order as _dedupe
-from app.core_finance.macro.helpers import normalize_price_inputs as _normalize_price_inputs
+from backend.app.core_finance.macro.helpers import dedupe_preserving_order as _dedupe
+from backend.app.core_finance.macro.helpers import normalize_price_inputs as _normalize_price_inputs
 
 
 def _minimize(*args: Any, **kwargs: Any) -> Any:

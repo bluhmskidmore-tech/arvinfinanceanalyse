@@ -10,7 +10,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from app.core_finance.macro.helpers import to_decimal_safe as _d
+from backend.app.core_finance.macro.helpers import to_decimal_safe as _d
 
 _M15_SCENARIOS: tuple[dict[str, Any], ...] = (
     {

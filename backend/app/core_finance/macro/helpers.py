@@ -10,7 +10,7 @@ from typing import Any
 
 import pandas as pd
 
-from app.core_finance.safe_decimal import safe_decimal
+from backend.app.core_finance.safe_decimal import safe_decimal
 
 logger = logging.getLogger(__name__)
 

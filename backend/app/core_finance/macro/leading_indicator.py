@@ -12,9 +12,9 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
-from app.core_finance.macro.helpers import coerce_date as _coerce_date
-from app.core_finance.macro.helpers import to_decimal_or_none as _dn
-from app.core_finance.macro.helpers import to_rounded_float as _f
+from backend.app.core_finance.macro.helpers import coerce_date as _coerce_date
+from backend.app.core_finance.macro.helpers import to_decimal_or_none as _dn
+from backend.app.core_finance.macro.helpers import to_rounded_float as _f
 
 # 与 V1 config.M10_* 对齐
 _M10_WEIGHTS = {

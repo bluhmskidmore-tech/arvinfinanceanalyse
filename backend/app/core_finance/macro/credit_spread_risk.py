@@ -6,9 +6,9 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from app.core_finance.macro.helpers import coerce_date as _coerce_date
-from app.core_finance.macro.helpers import get_value as _get_value
-from app.core_finance.safe_decimal import safe_decimal
+from backend.app.core_finance.macro.helpers import coerce_date as _coerce_date
+from backend.app.core_finance.macro.helpers import get_value as _get_value
+from backend.app.core_finance.safe_decimal import safe_decimal
 
 _PREFERRED_TENORS = ("3Y", "5Y", "1Y")
 

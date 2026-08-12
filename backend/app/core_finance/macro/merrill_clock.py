@@ -14,8 +14,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from app.core_finance.macro.helpers import dedupe_preserving_order as _dedupe
-from app.core_finance.macro.helpers import series_from_points as _series_from_points
+from backend.app.core_finance.macro.helpers import dedupe_preserving_order as _dedupe
+from backend.app.core_finance.macro.helpers import series_from_points as _series_from_points
 
 MERRILL_CLOCK_RULE_VERSION = "rv_macro_merrill_clock_cn_v1"
 

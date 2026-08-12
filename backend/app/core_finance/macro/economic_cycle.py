@@ -11,8 +11,8 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from app.core_finance.macro.helpers import to_decimal_safe as _d
-from app.core_finance.macro.helpers import to_rounded_float as _f
+from backend.app.core_finance.macro.helpers import to_decimal_safe as _d
+from backend.app.core_finance.macro.helpers import to_rounded_float as _f
 
 
 def _optional_decimal(value: Any) -> Decimal | None:

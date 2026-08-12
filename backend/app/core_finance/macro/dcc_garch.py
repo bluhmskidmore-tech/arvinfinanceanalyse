@@ -18,8 +18,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from app.core_finance.macro.helpers import dedupe_preserving_order as _dedupe
-from app.core_finance.macro.helpers import normalize_price_inputs as _normalize_price_inputs
+from backend.app.core_finance.macro.helpers import dedupe_preserving_order as _dedupe
+from backend.app.core_finance.macro.helpers import normalize_price_inputs as _normalize_price_inputs
 
 DCC_GARCH_RULE_VERSION = "rv_macro_dcc_garch_cn_v2"
 # DCC 递推参数（尽调笔记"慢速调整"档，与 toolkit/scripts/dcc_garch_cn.py 逐字一致）
