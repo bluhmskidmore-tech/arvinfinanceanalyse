@@ -83,7 +83,7 @@
 | fast（默认） | `tests/test_project_mcp_fast_contracts.py`（`-m mcp_fast`） | 2 | PR 门禁在跑 |
 | full | `tests/test_project_mcp_servers.py` | 172 | 仅手动 `--mcp-profile full`；CI 的 PR 阶段不跑（nightly 全量 pytest 会收集到） |
 
-**PR job 内、套件外补充**：`tests/test_agent_eval_spec.py`（6）+ `tests/test_agent_eval_reward.py`（4）+ `tests/test_agent_eval_collect.py`（14），以独立步骤直跑 pytest，不经过 release suite 的隔离环境。
+**PR job 内、套件外补充**：agent harness 七文件（`tests/test_agent_eval_spec.py` 14、`tests/test_agent_eval_reward.py` 4、`tests/test_agent_eval_collect.py` 23、`tests/test_agent_eval_scoring_integrity.py` 13、`tests/test_agent_eval_replay.py` 6、`tests/test_caliber_gate_mapping.py` 6、`tests/test_mcp_config_consistency.py` 2，合计 68），以独立步骤直跑 pytest，不经过 release suite 的隔离环境；另有 `Caliber path-trigger gate` 步骤（仅 `pull_request`）按 diff 定向触发 caliber 红线测试。
 
 \* 用例数为 AST 静态统计的 `test_*` 函数数（含类方法，不含参数化展开），2026-08-12 快照，仅供体量参考。
 

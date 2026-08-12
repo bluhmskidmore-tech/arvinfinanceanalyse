@@ -52,7 +52,10 @@ jobs:
           tests/test_agent_eval_spec.py
           tests/test_agent_eval_reward.py
           tests/test_agent_eval_collect.py
+          tests/test_agent_eval_scoring_integrity.py
+          tests/test_agent_eval_replay.py
           tests/test_caliber_gate_mapping.py
+          tests/test_mcp_config_consistency.py
 
       # PR diff 触及 caliber 口径源文件时强制运行对应红线测试；
       # 映射表与 fail-closed 语义见 scripts/check_caliber_gate.py
