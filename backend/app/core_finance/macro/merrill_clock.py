@@ -90,7 +90,12 @@ def compute_growth_momentum(df: pd.DataFrame) -> pd.Series:
 
 
 def compute_inflation_momentum(df: pd.DataFrame) -> pd.Series:
-    """合成通胀动量: CPI×0.4 + PPI×0.6（仅一侧可用时退化为单侧）。"""
+    """合成通胀动量: CPI×0.4 + PPI×0.6（仅一侧可用时退化为单侧）。
+
+    口径裁决（2026-08-12，业务确认）：维持 CPI×0.4 + PPI×0.6 作为正式
+    观察口径（尽调笔记原文 CPI×0.6 + PPI×0.4 的中国化调整），与脚本路径
+    toolkit/scripts/merrill_clock_cn.py 保持一致；变更需业务重新裁决并两处同步。
+    """
     cpi_m = compute_momentum(df["cpi_yoy"]) if "cpi_yoy" in df.columns else None
     ppi_m = compute_momentum(df["ppi_yoy"]) if "ppi_yoy" in df.columns else None
     if cpi_m is not None and ppi_m is not None:

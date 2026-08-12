@@ -1,8 +1,10 @@
 """
-DCC-GARCH 动态相关模型（滚动相关矩阵近似）
-==========================================
-用 GARCH 标准化残差 + 滚动窗口相关矩阵近似 DCC-GARCH，
-监测多资产间动态条件相关性，识别相关性危机。
+DCC-GARCH 动态相关模型
+======================
+每资产先做 GARCH(1,1) 过滤得到标准化残差 ε_t，再按 DCC 递推
+    Q_t = (1-α-β)·Q̄ + α·ε_{t-1}·ε'_{t-1} + β·Q_{t-1}
+    R_t = diag(Q_t)^{-1/2}·Q_t·diag(Q_t)^{-1/2}
+估计多资产间动态条件相关性，识别相关性危机。
 
 资产池: 沪深300、中证500、黄金、铜、原油
 数据源: akshare（不依赖 Wind）
@@ -72,7 +74,9 @@ ASSET_LABELS = {
     "crude_oil": "原油",
 }
 
-WINDOW = 60  # 滚动相关窗口（交易日）
+# DCC 递推参数（尽调笔记"慢速调整"档；备选"快速调整"档为 α=0.10, β=0.85）
+DCC_ALPHA = 0.05
+DCC_BETA = 0.93
 
 
 def _require_matplotlib() -> None:
@@ -153,7 +157,7 @@ def load_prices() -> pd.DataFrame:
 
 
 # ============================================================
-# GARCH 标准化 + 滚动相关
+# GARCH 标准化 + DCC 递推
 # ============================================================
 
 def _garch_standardize(series: pd.Series, omega=1e-6, alpha=0.10, beta=0.85) -> pd.Series:
@@ -167,6 +171,14 @@ def _garch_standardize(series: pd.Series, omega=1e-6, alpha=0.10, beta=0.85) -> 
     return pd.Series(r / np.sqrt(sigma2), index=series.dropna().index, name=series.name)
 
 
+def _normalize_corr(q: np.ndarray) -> np.ndarray:
+    """R_t = diag(Q_t)^{-1/2} · Q_t · diag(Q_t)^{-1/2}"""
+    d = np.sqrt(np.clip(np.diag(q), 1e-12, None))
+    r = q / np.outer(d, d)
+    np.fill_diagonal(r, 1.0)
+    return r
+
+
 def compute_dcc(log_ret: pd.DataFrame):
     print("\n[步骤2] GARCH 标准化残差...")
     std_resid = pd.DataFrame(
@@ -174,34 +186,33 @@ def compute_dcc(log_ret: pd.DataFrame):
     ).dropna()
     print(f"  标准化残差矩阵: {std_resid.shape}")
 
-    print(f"[步骤3] 滚动相关矩阵（窗口={WINDOW}日）...")
+    print(f"[步骤3] DCC 递推条件相关矩阵（α={DCC_ALPHA}, β={DCC_BETA}）...")
     cols = std_resid.columns.tolist()
-    pairs = [(cols[i], cols[j]) for i in range(len(cols)) for j in range(i + 1, len(cols))]
+    pairs = [(i, j) for i in range(len(cols)) for j in range(i + 1, len(cols))]
 
-    rolling = std_resid.rolling(window=WINDOW, min_periods=WINDOW // 2).corr()
+    eps = std_resid.values.astype(float)
+    n_obs = len(eps)
+    # Q̄ 用标准化残差的无条件二阶矩 E[εε']，与递推项 ε_{t-1}·ε'_{t-1} 同口径；
+    # R_t 的对角归一化保证输出恒为合法相关系数。
+    q_bar = eps.T @ eps / n_obs
+    q_t = q_bar.copy()
+    corr_path = np.empty((n_obs, len(cols), len(cols)))
+    corr_path[0] = _normalize_corr(q_t)  # Q_0 = Q̄ 初始化
+    for t in range(1, n_obs):
+        e_prev = eps[t - 1]
+        q_t = (1.0 - DCC_ALPHA - DCC_BETA) * q_bar + DCC_ALPHA * np.outer(e_prev, e_prev) + DCC_BETA * q_t
+        corr_path[t] = _normalize_corr(q_t)
 
     pair_series = {}
-    for a, b in pairs:
-        key = f"{a}_{b}"
-        try:
-            s = rolling.loc[(slice(None), a), b]
-            s.index = s.index.droplevel(1)
-            pair_series[key] = s.rename(key)
-        except Exception:
-            pair_series[key] = pd.Series(dtype=float, name=key)
+    for i, j in pairs:
+        key = f"{cols[i]}_{cols[j]}"
+        pair_series[key] = pd.Series(corr_path[:, i, j], index=std_resid.index, name=key)
 
     pair_df = pd.DataFrame(pair_series)
+    # 平均相关系数 = 全部两两配对（上三角）等权平均，不含对角线
     avg_series = pair_df.mean(axis=1)
 
-    # 最新相关矩阵
-    n = len(cols)
-    latest_corr = pd.DataFrame(np.eye(n), index=cols, columns=cols)
-    for a, b in pairs:
-        val = pair_series[f"{a}_{b}"].dropna()
-        if len(val):
-            v = float(val.iloc[-1])
-            latest_corr.loc[a, b] = v
-            latest_corr.loc[b, a] = v
+    latest_corr = pd.DataFrame(corr_path[-1], index=cols, columns=cols)
 
     return pair_series, avg_series, latest_corr
 
@@ -282,12 +293,12 @@ def plot_timeseries(pair_series: dict) -> Path:
     ax.axhline(0.85, color=COLORS["danger"], linestyle="--", linewidth=1.2, alpha=0.8, label="红色预警(0.85)")
     ax.axhline(0, color=COLORS["grid"], linewidth=0.8)
 
-    ax.set_ylabel("滚动相关系数", color=COLORS["text"], fontsize=10)
+    ax.set_ylabel("动态条件相关系数", color=COLORS["text"], fontsize=10)
     ax.set_ylim(-1.05, 1.05)
     ax.legend(loc="upper left", frameon=False, fontsize=8.5, ncol=2)
     ax.text(0.0, 1.08, "关键资产对动态相关性", transform=ax.transAxes,
             fontsize=13, fontweight="bold", color=COLORS["navy"], ha="left")
-    ax.text(0.0, 1.02, f"GARCH 标准化残差滚动 {WINDOW} 日相关，相关性上升意味着分散化效果减弱",
+    ax.text(0.0, 1.02, f"GARCH 标准化残差 DCC(α={DCC_ALPHA}, β={DCC_BETA}) 条件相关，相关性上升意味着分散化效果减弱",
             transform=ax.transAxes, fontsize=8.5, color=COLORS["muted"], ha="left")
 
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
@@ -319,7 +330,7 @@ def main():
 
     # 打印结果
     print(f"\n{'='*60}")
-    print(f"  当前相关矩阵（{latest_date}，滚动{WINDOW}日）")
+    print(f"  当前 DCC 条件相关矩阵（{latest_date}，α={DCC_ALPHA}, β={DCC_BETA}）")
     print(f"{'='*60}")
     display = latest_corr.copy()
     display.index = [ASSET_LABELS.get(c, c) for c in display.index]

@@ -107,6 +107,20 @@ def _fetch_futures(symbol: str, name: str):
         return None
 
 
+def align_prices(prices: pd.DataFrame) -> pd.DataFrame:
+    """对齐多资产交易日历，消除价格面板中的 NaN。
+
+    不同资产在数据源中的可用区间与交易日历不同，直接 concat 的面板存在 NaN：
+    - 中途/尾部缺口（日历错位、个别停牌日）按估值惯例沿用最近收盘价（前值填充）；
+    - 前导缺口（资产序列尚未开始）无法填充，整行丢弃，回测窗口收敛到共同可用区间。
+
+    若不对齐，权重递推 new_val / new_val.sum() 会在首个含 NaN 的交易日整行变 NaN
+    并传播到整个回测期：时间再平衡的换手率变 NaN（总成本/净收益/指标全 NaN），
+    阈值再平衡的偏离比较 NaN > threshold 恒为 False（永不触发）。
+    """
+    return prices.sort_index().ffill().dropna(how="any")
+
+
 def load_prices() -> pd.DataFrame:
     print("\n[步骤1] 拉取资产价格...")
     series = {}
@@ -126,6 +140,16 @@ def load_prices() -> pd.DataFrame:
     prices = pd.concat(series.values(), axis=1).sort_index()
     cutoff = prices.index.max() - pd.DateOffset(years=3)
     prices = prices[prices.index >= cutoff]
+
+    raw_len = len(prices)
+    prices = align_prices(prices)
+    dropped = raw_len - len(prices)
+    if dropped:
+        print(f"  [日历对齐] 丢弃 {dropped} 个前导交易日（该区间内部分资产尚无数据），窗口收敛到共同可用区间")
+    if prices.empty:
+        print("[致命] 资产共同可用区间为空，退出")
+        sys.exit(1)
+
     print(f"\n合并后: {len(prices)} 个交易日，区间: {prices.index[0].date()} ~ {prices.index[-1].date()}")
     return prices
 

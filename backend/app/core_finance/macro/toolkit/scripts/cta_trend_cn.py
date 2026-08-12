@@ -4,6 +4,25 @@ CTA 趋势跟踪模型
 三种信号合成：双均线交叉 + 唐奇安通道突破 + ATR 波动率调整仓位
 资产池: 沪深300、中证500、黄金、铜、原油
 数据源: akshare（不依赖 Wind）
+
+口径说明（相对尽调笔记定义，仅观察口径）：
+- 笔记两条量化风控规则已实现（仅回测层 backtest_with_stops，信号纯函数不变）：
+  1) 单笔止损 2×ATR：执行信号方向翻转或从 0 变非 0 的当日收盘价为进场价；持仓期间
+     收盘价相对进场价的逆向变动幅度 > 2×ATR（取进场日 ATR，比例化为 2×ATR/进场价）
+     时当日按收盘价止损，次日起仓位为 0，直到信号方向变化（翻转或归零再重新出信号）
+     才允许重新进场，多空对称。
+  2) 组合止损（单日回撤>5% 减仓 50%）：策略单日收益 < -5% 的次日起仓位 ×0.5，
+     持续到该资产信号方向变化时复原；本脚本为单资产分别回测，"组合"按单资产
+     策略日收益口径近似。
+  配套观点23（波动急升且无效震荡/资产共振下跌时降仓）为定性规则，不在量化范围。
+- 主表"策略年化收益%/策略夏普比率/买持年化收益%"为含止损口径；stdout 另打印
+  无止损 vs 含止损对照，便于评估止损贡献。
+- ATR 以 14 日对数收益率滚动标准差近似（上游数据源仅提供收盘价，无高低价）；
+  止损阈值沿用该近似（2×ATR ≈ 2×近似日波动×价格）。
+- 回测口径：合成信号滞后一期执行（T-1 信号 × T 日对数收益），连续信号值即仓位
+  权重（非满仓、含负仓位做空），未计交易成本与滑点；对照买持为同窗口满仓持有。
+- 信号纯函数与 backend/app/core_finance/macro/cta_trend.py（rv_macro_cta_trend_cn_v1）
+  保持一致，修改需同步评审该适配器。
 """
 
 import warnings
@@ -209,7 +228,11 @@ def trend_strength(val: float) -> str:
 # ============================================================
 
 def backtest(price: pd.Series, signals: pd.DataFrame, years: int = 2) -> dict:
-    """用合成信号（前一日）× 当日收益率，计算策略绩效"""
+    """用合成信号（前一日）× 当日对数收益率，计算策略绩效（无止损对照口径）。
+
+    无交易成本/滑点假设，不含止损规则；含止损主口径见 backtest_with_stops，
+    本函数保留用于 stdout 的止损贡献对照。
+    """
     cutoff = price.index.max() - pd.DateOffset(years=years)
     p = price[price.index >= cutoff].dropna()
     sig = signals["composite"].reindex(p.index).shift(1).fillna(0)
@@ -231,6 +254,122 @@ def backtest(price: pd.Series, signals: pd.DataFrame, years: int = 2) -> dict:
         "strat_annual_ret": strat_ann * 100,
         "strat_sharpe":     strat_sharpe,
         "bh_annual_ret":    bh_ann * 100,
+    }
+
+
+def backtest_with_stops(
+    price: pd.Series,
+    signals: pd.DataFrame,
+    years: int = 2,
+    atr_window: int = 14,
+    atr_mult: float = 2.0,
+    daily_loss_limit: float = -0.05,
+    deleverage_factor: float = 0.5,
+) -> dict:
+    """含笔记止损规则的回测（主口径）：在 backtest 的滞后一期、无成本口径上叠加两条规则。
+
+    1) 单笔止损 2×ATR：执行信号（T-1 合成信号）方向翻转或从 0 变非 0 的当日收盘价
+       记为进场价，同日 ATR 记为进场 ATR。ATR 沿用收盘价近似（atr_window 日对数收益率
+       滚动标准差，与 signal_atr_position 同式），本身即比例量，故阈值"2×ATR/进场价"
+       直接取 atr_mult×进场ATR。持仓期间收盘价相对进场价的逆向变动幅度（多头=下跌
+       幅度、空头=上涨幅度，多空对称）> 该阈值时，当日按收盘价止损（当日收益仍按
+       原仓位承受），次日起仓位为 0，直到执行信号方向变化（翻转或归零再重新出信号）
+       才允许重新进场。进场日 ATR 缺失（历史不足 atr_window 日）时该持仓段不触发。
+    2) 组合止损（单日回撤>5% 减仓 50%）：策略单日收益 < daily_loss_limit 时，次日起
+       仓位 ×deleverage_factor，持续到该资产执行信号方向变化时复原；减仓期间再次
+       触发不叠加。本脚本为单资产分别回测，"组合"按单资产策略日收益口径实现
+       （单资产近似）。
+    3) 两规则并存时单笔止损优先（仓位为 0）；信号方向变化同时解除两种状态。
+
+    返回 backtest 同名指标（含止损口径）之外，另含：
+    - stop_loss_count:  单笔止损触发次数；
+    - deleverage_days:  组合止损减仓状态生效的交易日数；
+    - daily:            执行仓位与策略日收益明细 DataFrame（测试/诊断用）。
+    """
+    cutoff = price.index.max() - pd.DateOffset(years=years)
+    p = price[price.index >= cutoff].dropna()
+    sig = signals["composite"].reindex(p.index).shift(1).fillna(0)
+
+    log_ret = np.log(p / p.shift(1)).dropna()
+    sig = sig.reindex(log_ret.index)
+    close = p.reindex(log_ret.index)
+    # ATR 近似按全量价格历史计算后取回测窗口值，保证窗口首日即有有效 ATR
+    atr_proxy = np.log(price / price.shift(1)).rolling(atr_window).std().reindex(log_ret.index)
+
+    sig_arr   = sig.to_numpy(dtype=float)
+    ret_arr   = log_ret.to_numpy(dtype=float)
+    close_arr = close.to_numpy(dtype=float)
+    atr_arr   = atr_proxy.to_numpy(dtype=float)
+
+    n = len(ret_arr)
+    pos_arr   = np.zeros(n)
+    strat_arr = np.zeros(n)
+
+    prev_dir = 0
+    entry_price = np.nan
+    entry_atr   = np.nan
+    stopped = False   # 单笔止损锁定：方向变化前禁止重新进场
+    halved  = False   # 组合止损减仓状态
+    stop_count = 0
+    deleverage_days = 0
+
+    for i in range(n):
+        s = sig_arr[i]
+        d = 0 if s == 0.0 else (1 if s > 0.0 else -1)
+
+        if d != prev_dir:
+            # 信号方向变化（翻转或归零/重新出信号）：解除止损锁定、复原减仓、重置进场价
+            stopped = False
+            halved = False
+            if d != 0:
+                entry_price = close_arr[i]
+                entry_atr = atr_arr[i]
+            else:
+                entry_price = np.nan
+                entry_atr = np.nan
+
+        if stopped:
+            pos = 0.0
+        elif halved:
+            pos = s * deleverage_factor
+        else:
+            pos = s
+        pos_arr[i] = pos
+        day_ret = pos * ret_arr[i]
+        strat_arr[i] = day_ret
+        if halved:
+            deleverage_days += 1
+
+        # 收盘后检查单笔止损：当日按收盘价离场（当日收益已承受），次日起仓位为 0
+        if d != 0 and not stopped and np.isfinite(entry_price) and np.isfinite(entry_atr) and entry_price > 0:
+            adverse_frac = d * (entry_price - close_arr[i]) / entry_price
+            if adverse_frac > atr_mult * entry_atr:
+                stop_count += 1
+                stopped = True
+
+        # 收盘后检查组合止损：单日收益 < -5% → 次日起减仓 50%（已减仓则不叠加）
+        if day_ret < daily_loss_limit and not halved:
+            halved = True
+
+        prev_dir = d
+
+    strat_ret = pd.Series(strat_arr, index=log_ret.index)
+    bh_ret    = log_ret
+
+    ann = 252
+    strat_ann = float(strat_ret.mean() * ann)
+    strat_vol = float(strat_ret.std() * np.sqrt(ann))
+    strat_sharpe = (strat_ann - RF) / strat_vol if strat_vol > 0 else np.nan
+
+    bh_ann = float(bh_ret.mean() * ann)
+
+    return {
+        "strat_annual_ret": strat_ann * 100,
+        "strat_sharpe":     strat_sharpe,
+        "bh_annual_ret":    bh_ann * 100,
+        "stop_loss_count":  stop_count,
+        "deleverage_days":  deleverage_days,
+        "daily": pd.DataFrame({"position": pos_arr, "strategy_ret": strat_arr}, index=log_ret.index),
     }
 
 
@@ -303,6 +442,26 @@ def plot_signals(prices: pd.DataFrame, all_signals: dict) -> Path:
 # 主流程
 # ============================================================
 
+def summary_row(asset_label: str, latest: pd.Series, bt_stop: dict) -> dict:
+    """构造主表一行。列名为下游契约（generate_bond_macro_report 按列名消费），
+    既有列全部保留；三个回测列为含止损口径，另附止损统计两列。"""
+    comp = float(latest["composite"]) if not np.isnan(latest["composite"]) else 0.0
+    return {
+        "资产":        asset_label,
+        "均线信号":    int(latest["ma_signal"]) if not np.isnan(latest["ma_signal"]) else 0,
+        "通道信号":    round(float(latest["don_signal"]), 2),
+        "ATR仓位":     round(float(latest["atr_position"]), 3),
+        "合成信号":    round(comp, 3),
+        "趋势强度":    trend_strength(comp),
+        "操作建议":    trend_label(comp),
+        "策略年化收益%": round(bt_stop["strat_annual_ret"], 2),
+        "策略夏普比率": round(bt_stop["strat_sharpe"], 3) if not np.isnan(bt_stop["strat_sharpe"]) else "-",
+        "买持年化收益%": round(bt_stop["bh_annual_ret"], 2),
+        "止损次数":    int(bt_stop["stop_loss_count"]),
+        "减仓天数":    int(bt_stop["deleverage_days"]),
+    }
+
+
 def main():
     print("=" * 60)
     print("  CTA 趋势跟踪模型")
@@ -314,44 +473,48 @@ def main():
     print("\n[步骤2] 计算趋势信号...")
     all_signals = {}
     rows = []
+    compare_rows = []
 
     for asset in prices.columns:
         price = prices[asset].dropna()
         sigs  = compute_composite(price)
         all_signals[asset] = sigs
-        bt    = backtest(price, sigs)
+        bt      = backtest(price, sigs)             # 无止损对照
+        bt_stop = backtest_with_stops(price, sigs)  # 含止损（主口径）
 
         latest = sigs.dropna().iloc[-1] if len(sigs.dropna()) else sigs.iloc[-1]
-        comp   = float(latest["composite"]) if not np.isnan(latest["composite"]) else 0.0
-
-        rows.append({
-            "资产":        ASSET_LABELS.get(asset, asset),
-            "均线信号":    int(latest["ma_signal"]) if not np.isnan(latest["ma_signal"]) else 0,
-            "通道信号":    round(float(latest["don_signal"]), 2),
-            "ATR仓位":     round(float(latest["atr_position"]), 3),
-            "合成信号":    round(comp, 3),
-            "趋势强度":    trend_strength(comp),
-            "操作建议":    trend_label(comp),
-            "策略年化收益%": round(bt["strat_annual_ret"], 2),
-            "策略夏普比率": round(bt["strat_sharpe"], 3) if not np.isnan(bt["strat_sharpe"]) else "-",
-            "买持年化收益%": round(bt["bh_annual_ret"], 2),
-        })
+        label  = ASSET_LABELS.get(asset, asset)
+        rows.append(summary_row(label, latest, bt_stop))
+        compare_rows.append((label, bt, bt_stop))
 
     df = pd.DataFrame(rows)
 
-    print(f"\n{'='*70}")
-    print("  当前趋势信号汇总")
-    print(f"{'='*70}")
-    print(f"  {'资产':<8} {'均线':>5} {'通道':>6} {'ATR仓位':>8} {'合成':>7} {'强度':<6} {'建议':<8} {'策略年化%':>9} {'夏普':>7}")
-    print(f"  {'-'*68}")
+    print(f"\n{'='*80}")
+    print("  当前趋势信号汇总（回测三列为含止损口径）")
+    print(f"{'='*80}")
+    print(f"  {'资产':<8} {'均线':>5} {'通道':>6} {'ATR仓位':>8} {'合成':>7} {'强度':<6} {'建议':<8} "
+          f"{'策略年化%':>9} {'夏普':>7} {'止损':>4} {'减仓':>4}")
+    print(f"  {'-'*78}")
     for _, r in df.iterrows():
         print(f"  {r['资产']:<8} {r['均线信号']:>5} {r['通道信号']:>6.2f} {r['ATR仓位']:>8.3f} "
               f"{r['合成信号']:>7.3f} {r['趋势强度']:<6} {r['操作建议']:<8} "
-              f"{r['策略年化收益%']:>9.2f} {str(r['策略夏普比率']):>7}")
+              f"{r['策略年化收益%']:>9.2f} {str(r['策略夏普比率']):>7} "
+              f"{r['止损次数']:>4d} {r['减仓天数']:>4d}")
+
+    # 止损贡献对照（无止损 vs 含止损）
+    print("\n  止损贡献对照（近2年，年化%/夏普，无止损 → 含止损）:")
+    for label, bt, bt_stop in compare_rows:
+        base_sharpe = f"{bt['strat_sharpe']:.3f}" if not np.isnan(bt["strat_sharpe"]) else "-"
+        stop_sharpe = f"{bt_stop['strat_sharpe']:.3f}" if not np.isnan(bt_stop["strat_sharpe"]) else "-"
+        print(f"    {label:<8} 年化 {bt['strat_annual_ret']:+8.2f}% → {bt_stop['strat_annual_ret']:+8.2f}%   "
+              f"夏普 {base_sharpe:>7} → {stop_sharpe:>7}   "
+              f"止损{bt_stop['stop_loss_count']}次 减仓{bt_stop['deleverage_days']}天")
 
     # 趋势最强
     strongest = df.loc[df["合成信号"].abs().idxmax(), "资产"]
     print(f"\n  趋势最强资产: {strongest}（合成信号 {df.loc[df['合成信号'].abs().idxmax(), '合成信号']:+.3f}）")
+    print("  注: 主表回测为含止损口径（单笔 2×ATR、组合单日回撤>5%减仓50%，单资产近似）；"
+          "信号滞后一期、无成本，ATR 以收盘价收益率标准差近似。")
 
     # 保存 CSV
     out_path = ROOT / "cta_results.csv"

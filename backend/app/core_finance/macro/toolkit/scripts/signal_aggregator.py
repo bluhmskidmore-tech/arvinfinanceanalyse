@@ -211,11 +211,12 @@ def run_three_layer_filter(
         '第三层_通过': False,
         '最终信号':   '空仓',
         '仓位比例':   0.0,
-        '置信度':     0,       # 0~3，通过几层
+        '置信度':     0,       # 0~3，实证通过的层数（数据缺失降级的层不计入）
         '信号说明':   '',
     }
 
     reasons = []
+    verified_layers = 0  # 实证通过的层数（降级通过不计入）
 
     # ── 第一层：宏观方向 ──────────────────────────────────────
     direction = merrill.get('bond_direction', '观望')
@@ -226,6 +227,7 @@ def run_three_layer_filter(
         return result
 
     result['第一层_通过'] = True
+    verified_layers += 1
     reasons.append(f"宏观{direction}({merrill.get('regime', '')})")
 
     # ── 第二层：安全边际 ──────────────────────────────────────
@@ -251,9 +253,11 @@ def run_three_layer_filter(
             margin_note = str(row.get('安全边际说明', ''))
 
             if not ok:
+                result['置信度'] = verified_layers
                 result['信号说明'] = f"第二层拦截：{margin_note}"
                 return result
 
+            verified_layers += 1
             reasons.append(f"安全边际OK({margin_note[:20]})")
 
     # ── 第三层：拥挤度反向过滤 ────────────────────────────────
@@ -275,24 +279,23 @@ def run_three_layer_filter(
             # 拥挤度与方向冲突 → 拦截
             if direction == '多' and crowd_signal in ['做空', '警惕多头']:
                 result['第三层_通过'] = False
+                result['置信度'] = verified_layers
                 result['信号说明'] = f"第三层拦截：多头拥挤({c_pct:.0%})，反向过滤"
                 return result
             elif direction == '空' and crowd_signal in ['做多', '警惕空头']:
                 result['第三层_通过'] = False
+                result['置信度'] = verified_layers
                 result['信号说明'] = f"第三层拦截：空头拥挤({c_pct:.0%})，反向过滤"
                 return result
 
             result['第三层_通过'] = True
+            verified_layers += 1
             crowding_note = str(row.get('说明', ''))
             reasons.append(f"拥挤度OK({crowding_note[:20]})")
 
     # ── 全部通过：计算仓位 ────────────────────────────────────
-    # 置信度 = 通过层数（最高3层）
-    confidence = sum([
-        result['第一层_通过'],
-        result['第二层_通过'],
-        result['第三层_通过'],
-    ])
+    # 置信度 = 实证通过的层数（最高3层；数据缺失降级的层不计入）
+    confidence = verified_layers
     result['置信度'] = confidence
 
     # Crisis Score 风险调整

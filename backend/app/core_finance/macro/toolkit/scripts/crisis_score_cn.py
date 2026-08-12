@@ -270,17 +270,20 @@ def compute_crisis_score(indicators: pd.DataFrame,
 
     z_scores = z_scores.dropna(how='all')
 
-    # 加权求和
+    # 加权求和: Crisis Score = Σ(w_i·z_i) / Σ|w_i|
+    # 分母逐日只累计“当日 z 值可用(非 NaN)”的分项权重：缺失分项（如 credit_spread
+    # 上游断供）不掩 0 计入分子，其权重也必须从当日分母剔除，否则分数会被系统性
+    # 压小（缺一个 0.25 权重分项时整体缩到 0.75 倍）。
+    # 该口径与实时 capability 实现一致（backend/app/core_finance/macro/crisis_score.py）。
     score = pd.Series(0.0, index=z_scores.index)
-    total_weight = 0
+    available_weight = pd.Series(0.0, index=z_scores.index)
     for col in indicators.columns:
         z_col = f'{col}_z'
         if z_col in z_scores.columns and col in weights:
             score += weights[col] * z_scores[z_col].fillna(0)
-            total_weight += weights[col]
+            available_weight += z_scores[z_col].notna().astype(float) * abs(weights[col])
 
-    if total_weight > 0:
-        score = score / total_weight  # 归一化
+    score = score.div(available_weight.where(available_weight > 0))  # 按当日可用权重归一化
 
     result = pd.DataFrame({
         'crisis_score': score,

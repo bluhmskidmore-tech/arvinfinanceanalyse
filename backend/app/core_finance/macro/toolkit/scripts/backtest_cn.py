@@ -129,9 +129,13 @@ def load_prices() -> pd.DataFrame:
                 for i, (_, name) in enumerate(BOND_ETFS):
                     s = pd.Series(data.Data[i], index=dates, name=name, dtype=float)
                     s = s[s.notna()]
+                    if s.empty:
+                        # 空序列不得入池：全NaN列会让风险平价窗口 dropna 后清空，静默退化为等权
+                        print(f"  [警告] {name}({BOND_ETFS[i][0]}) 无有效数据，跳过该资产")
+                        continue
                     series[name] = s
                     print(f"  {name}({BOND_ETFS[i][0]}): {len(s)} 条，最新 {s.index[-1].date()}")
-                wind_ok = True
+                wind_ok = any(name in series for _, name in BOND_ETFS)
             else:
                 print(f"  [警告] WindPy 兼容接口 wsd 返回错误码 {data.ErrorCode}，跳过债券ETF")
         else:
@@ -148,7 +152,11 @@ def load_prices() -> pd.DataFrame:
                                          start_date="20150101", end_date=today, adjust="qfq")
                 df["date"] = pd.to_datetime(df["日期"])
                 df = df.set_index("date").sort_index()
-                series[name] = pd.to_numeric(df["收盘"], errors="coerce")
+                s = pd.to_numeric(df["收盘"], errors="coerce").dropna()
+                if s.empty:
+                    print(f"  [警告] 债券ETF({symbol})备用接口无数据，跳过该资产")
+                    continue
+                series[name] = s
                 print(f"  {name}({symbol}) [akshare备用]: {len(series[name])} 条")
         except Exception:
             print("  [警告] 债券ETF备用接口也失败，将以5资产运行")
@@ -171,6 +179,13 @@ def load_prices() -> pd.DataFrame:
             if col != "bond_gov":
                 # 上市前用 bond_gov 填充（相关性高，近似替代）
                 prices[col] = prices[col].fillna(prices["bond_gov"])
+
+    # 兜底：窗口截取后仍全NaN的列（如历史全部早于回测窗口）必须剔除，
+    # 否则风险平价的滚动窗口 dropna 会整表清空，优化被静默禁用
+    all_nan_cols = [c for c in prices.columns if prices[c].isna().all()]
+    if all_nan_cols:
+        print(f"  [警告] 回测窗口内无数据，剔除资产: {', '.join(all_nan_cols)}")
+        prices = prices.drop(columns=all_nan_cols)
 
     print(f"\n合并后: {len(prices)} 个交易日，{len(prices.columns)} 个资产")
     print(f"  资产: {', '.join(prices.columns)}")

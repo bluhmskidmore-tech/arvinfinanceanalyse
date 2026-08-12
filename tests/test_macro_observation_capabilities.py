@@ -13,6 +13,7 @@ import backend.app.api.routes.macro_toolkit as macro_toolkit_route
 from backend.app.core_finance.macro.cta_trend import compute_cta_trend_payload, compute_composite
 from backend.app.core_finance.macro.dcc_garch import (
     classify_warning,
+    compute_dcc,
     compute_dcc_garch_payload,
     garch_standardize,
 )
@@ -216,6 +217,7 @@ def test_dcc_payload_surfaces_avg_correlation() -> None:
     frame = _correlated_prices(n=300)
     payload = compute_dcc_garch_payload(frame, report_date=frame.index[-1].date(), window=40)
     assert payload["data_status"] == "complete"
+    assert payload["rule_version"] == "rv_macro_dcc_garch_cn_v2"
     assert payload["avg_correlation"] is not None
     assert payload["warning_level"] in {"正常", "黄色预警", "红色预警"}
     assert payload["pair_correlations"]
@@ -367,6 +369,24 @@ def test_dcc_garch_standardize_matches_script_helper() -> None:
     left = garch_standardize(log_ret)
     right = dcc_script._garch_standardize(log_ret)
     pd.testing.assert_series_equal(left, right, check_names=False)
+
+
+def test_dcc_correlation_series_match_script_pointwise() -> None:
+    """库-脚本 parity：同一合成输入下 DCC 递推相关序列逐点一致（atol=1e-10）。"""
+    prices = _correlated_prices(n=300, seed=17)
+    log_ret = np.log(prices / prices.shift(1)).dropna() * 100
+
+    lib_pairs, lib_avg, lib_latest = compute_dcc(log_ret)
+    script_pairs, script_avg, script_latest = dcc_script.compute_dcc(log_ret)
+
+    assert set(lib_pairs) == set(script_pairs)
+    for key in script_pairs:
+        np.testing.assert_allclose(
+            lib_pairs[key].values, script_pairs[key].values, atol=1e-10, err_msg=key
+        )
+    np.testing.assert_allclose(lib_avg.values, script_avg.values, atol=1e-10)
+    np.testing.assert_allclose(lib_latest.values, script_latest.values, atol=1e-10)
+    assert list(lib_latest.index) == list(script_latest.index)
 
 
 def test_dcc_warning_thresholds_match_script() -> None:
