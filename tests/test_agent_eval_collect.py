@@ -1,3 +1,4 @@
+import hashlib
 import json
 import subprocess
 import sys
@@ -11,9 +12,12 @@ from scripts.agent_eval.collect import (
     collect_measured_result,
     compute_task_digest,
     derive_probe_paths,
+    verify_evidence_receipt,
 )
+from scripts.agent_eval.receipts import append_receipt, canonical_json_bytes, digest_params
 from scripts.agent_eval.reward import evaluate_result
 from scripts.agent_eval.spec import validate_measured_result, validate_task_spec
+from scripts.mcp.moss_project_mcp import McpProvider, ProjectMcpServer
 
 TASK = {
     "id": "probe_demo_001",
@@ -395,3 +399,278 @@ def test_protected_paths_merge_manual_and_derived_without_duplicates(git_repo):
     ]
     assert integrity["underivable_probe_commands"] == []
     assert integrity["trusted"] is True
+
+
+# --- Call-receipt cross-checking (opt-in via `evidence_receipt_log`) ---
+
+RECEIPT_TASK = dict(TASK, evidence_receipt_log=".codex-tmp/receipts.jsonl")
+
+_RECEIPT_LINE = json.dumps(
+    {
+        "server": "moss-metric-contracts",
+        "tool": "search_contract_docs",
+        "params_digest": "d0",
+        "response_sha256": "abc123",
+        "recorded_at": "2026-08-12T00:00:00+00:00",
+    }
+)
+
+
+def _write_artifact(repo, payload):
+    artifact = repo / "evidence" / "contracts.json"
+    artifact.parent.mkdir(parents=True, exist_ok=True)
+    artifact.write_text(json.dumps(payload), encoding="utf-8")
+    return artifact
+
+
+def test_task_without_receipt_optin_keeps_minimal_schema_behavior(git_repo):
+    _write_artifact(
+        git_repo,
+        {"source": "moss-metric-contracts", "receipt": {"response_sha256": "never-checked"}},
+    )
+    assert "evidence_receipt_log" not in TASK
+
+    result = collect_measured_result(TASK, repo_root=git_repo, run_command=_runner())
+
+    assert result["evidence"] == ["moss-metric-contracts"]
+    entry = result["measurement"]["evidence_artifacts"][0]
+    assert entry["status"] == "present"
+    assert "receipt_status" not in entry
+
+
+def test_receipt_backed_artifact_is_present_when_log_has_a_matching_record(git_repo):
+    response_bytes = canonical_json_bytes({"content": [{"type": "text", "text": "net_interest"}]})
+    append_receipt(
+        git_repo / ".codex-tmp" / "receipts.jsonl",
+        server="moss-metric-contracts",
+        tool="search_contract_docs",
+        params_digest=digest_params({"query": "net interest"}),
+        response_bytes=response_bytes,
+    )
+    _write_artifact(
+        git_repo,
+        {
+            "source": "moss-metric-contracts",
+            "metric_id": "ledger_pnl_net_interest",
+            "receipt": {"response_sha256": hashlib.sha256(response_bytes).hexdigest()},
+        },
+    )
+
+    result = collect_measured_result(RECEIPT_TASK, repo_root=git_repo, run_command=_runner())
+
+    assert result["evidence"] == ["moss-metric-contracts"]
+    entry = result["measurement"]["evidence_artifacts"][0]
+    assert entry["status"] == "present"
+    assert entry["receipt_status"] == "matched"
+    assert entry["source"] == "moss-metric-contracts"
+
+
+def test_receipt_sha_mismatch_is_recorded_and_not_counted(git_repo):
+    append_receipt(
+        git_repo / ".codex-tmp" / "receipts.jsonl",
+        server="moss-metric-contracts",
+        tool="search_contract_docs",
+        params_digest=digest_params({"query": "net interest"}),
+        response_bytes=b"the real response",
+    )
+    _write_artifact(
+        git_repo,
+        {
+            "source": "moss-metric-contracts",
+            "receipt": {"response_sha256": hashlib.sha256(b"a forged response").hexdigest()},
+        },
+    )
+
+    result = collect_measured_result(RECEIPT_TASK, repo_root=git_repo, run_command=_runner())
+
+    assert result["evidence"] == []
+    entry = result["measurement"]["evidence_artifacts"][0]
+    assert entry["status"] == "receipt_mismatch"
+    assert entry["receipt_status"] == "receipt_mismatch"
+    assert "source" not in entry
+
+
+def test_self_declared_source_without_receipt_no_longer_counts_when_opted_in(git_repo):
+    append_receipt(
+        git_repo / ".codex-tmp" / "receipts.jsonl",
+        server="moss-metric-contracts",
+        tool="search_contract_docs",
+        params_digest=digest_params({"query": "net interest"}),
+        response_bytes=b"a real call happened",
+    )
+    _write_artifact(
+        git_repo,
+        {"source": "moss-metric-contracts", "metric_id": "ledger_pnl_net_interest"},
+    )
+
+    result = collect_measured_result(RECEIPT_TASK, repo_root=git_repo, run_command=_runner())
+
+    assert result["evidence"] == []
+    entry = result["measurement"]["evidence_artifacts"][0]
+    assert entry["status"] == "receipt_mismatch"
+    assert entry["receipt_status"] == "receipt_mismatch"
+
+
+def test_declared_but_missing_receipt_log_fails_all_evidence_closed(git_repo):
+    task = dict(
+        TASK,
+        required_evidence=["moss-metric-contracts", "moss-lineage-evidence"],
+        evidence_probes={"moss-metric-contracts": "evidence/contracts.json"},
+        evidence_receipt_log="receipts/absent.jsonl",
+    )
+    _write_artifact(git_repo, {"source": "moss-metric-contracts"})
+
+    result = collect_measured_result(task, repo_root=git_repo, run_command=_runner())
+
+    assert result["evidence"] == []
+    entries = result["measurement"]["evidence_artifacts"]
+    assert {entry["evidence"]: entry["status"] for entry in entries} == {
+        "moss-metric-contracts": "receipt_log_missing",
+        "moss-lineage-evidence": "receipt_log_missing",
+    }
+    assert all(entry["receipt_log"] == "receipts/absent.jsonl" for entry in entries)
+
+
+@pytest.mark.parametrize(
+    ("payload", "lines", "expected"),
+    [
+        pytest.param(
+            {"source": "moss-metric-contracts", "receipt": {"response_sha256": "abc123"}},
+            [_RECEIPT_LINE],
+            "matched",
+            id="matching-record",
+        ),
+        pytest.param(
+            {"source": "moss-lineage-evidence", "receipt": {"response_sha256": "abc123"}},
+            [_RECEIPT_LINE],
+            "receipt_mismatch",
+            id="log-server-differs-from-source",
+        ),
+        pytest.param(
+            {"source": "moss-metric-contracts", "receipt": {"response_sha256": "other"}},
+            [_RECEIPT_LINE],
+            "receipt_mismatch",
+            id="sha-differs",
+        ),
+        pytest.param(
+            {"source": "moss-metric-contracts"},
+            [_RECEIPT_LINE],
+            "receipt_mismatch",
+            id="artifact-without-receipt",
+        ),
+        pytest.param(
+            {"source": "moss-metric-contracts", "receipt": {"response_sha256": ""}},
+            [_RECEIPT_LINE],
+            "receipt_mismatch",
+            id="empty-sha",
+        ),
+        pytest.param(
+            {"source": "moss-metric-contracts", "receipt": "abc123"},
+            [_RECEIPT_LINE],
+            "receipt_mismatch",
+            id="receipt-not-an-object",
+        ),
+        pytest.param(
+            {"source": "moss-metric-contracts", "receipt": {"response_sha256": "abc123"}},
+            ["not json", "", "[1]", _RECEIPT_LINE],
+            "matched",
+            id="corrupt-and-blank-lines-are-skipped",
+        ),
+        pytest.param(
+            {"source": "moss-metric-contracts", "receipt": {"response_sha256": "abc123"}},
+            [],
+            "receipt_mismatch",
+            id="empty-log",
+        ),
+        pytest.param("not-a-dict", [_RECEIPT_LINE], "receipt_mismatch", id="payload-not-an-object"),
+    ],
+)
+def test_verify_evidence_receipt_matching_rules(payload, lines, expected):
+    assert verify_evidence_receipt(payload, lines) == expected
+
+
+def test_append_receipt_writes_verifiable_jsonl_records(tmp_path):
+    log = tmp_path / "nested" / "receipts.jsonl"
+
+    append_receipt(
+        log,
+        server="moss-metric-contracts",
+        tool="search_contract_docs",
+        params_digest=digest_params({"query": "x"}),
+        response_bytes=b"payload-1",
+    )
+    append_receipt(
+        log,
+        server="moss-lineage-evidence",
+        tool="get_page_lineage",
+        params_digest=digest_params({}),
+        response_bytes=b"payload-2",
+    )
+
+    lines = log.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 2
+    first = json.loads(lines[0])
+    assert first["server"] == "moss-metric-contracts"
+    assert first["tool"] == "search_contract_docs"
+    assert first["params_digest"] == digest_params({"query": "x"})
+    assert first["response_sha256"] == hashlib.sha256(b"payload-1").hexdigest()
+    assert first["recorded_at"].endswith("+00:00")
+    assert json.loads(lines[1])["server"] == "moss-lineage-evidence"
+
+
+class _ReceiptProbeProvider(McpProvider):
+    name = "moss-metric-contracts"
+
+    def call_tool(self, name, arguments):
+        return {
+            "content": [{"type": "text", "text": f"echo:{arguments.get('query')}"}],
+            "isError": False,
+        }
+
+
+def test_mcp_receipt_hook_records_a_receipt_the_evidence_check_can_match(tmp_path, monkeypatch):
+    log_path = tmp_path / "receipts.jsonl"
+    monkeypatch.setenv("MOSS_MCP_RECEIPT_LOG", str(log_path))
+    server = ProjectMcpServer(_ReceiptProbeProvider())
+
+    response = server._handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "tools/call",
+            "params": {"name": "search_contract_docs", "arguments": {"query": "net interest"}},
+        }
+    )
+
+    lines = log_path.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+    record = json.loads(lines[0])
+    assert record["server"] == "moss-metric-contracts"
+    assert record["tool"] == "search_contract_docs"
+    assert record["params_digest"] == digest_params({"query": "net interest"})
+
+    artifact_payload = {
+        "source": "moss-metric-contracts",
+        "receipt": {
+            "response_sha256": hashlib.sha256(canonical_json_bytes(response["result"])).hexdigest()
+        },
+    }
+    assert verify_evidence_receipt(artifact_payload, lines) == "matched"
+
+
+def test_mcp_receipt_hook_is_off_by_default(tmp_path, monkeypatch):
+    monkeypatch.delenv("MOSS_MCP_RECEIPT_LOG", raising=False)
+    server = ProjectMcpServer(_ReceiptProbeProvider())
+
+    response = server._handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 8,
+            "method": "tools/call",
+            "params": {"name": "search_contract_docs", "arguments": {"query": "net interest"}},
+        }
+    )
+
+    assert server._receipt_log is None
+    assert response["result"]["isError"] is False
+    assert list(tmp_path.iterdir()) == []

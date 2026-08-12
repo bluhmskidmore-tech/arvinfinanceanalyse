@@ -19,7 +19,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
 
 from scripts.agent_eval.spec import MEASUREMENT_SCHEMA_VERSION, MEASUREMENT_SOURCE
 
@@ -231,14 +231,35 @@ def _measure_evidence(task: dict[str, Any], repo_root: Path) -> tuple[list[str],
     satisfied: list[str] = []
     detail: list[dict[str, Any]] = []
 
+    receipt_log = _evidence_receipt_log(task)
+    receipt_lines: list[str] | None = None
+    if receipt_log is not None:
+        receipt_path = repo_root / receipt_log
+        if not receipt_path.is_file():
+            # Fail closed: a declared receipt log that is absent means no
+            # evidence for this task can be cross-checked, so none may count.
+            for name in task.get("required_evidence", []):
+                entry = {"evidence": name, "status": "receipt_log_missing", "receipt_log": receipt_log}
+                if name in probes:
+                    entry["artifact"] = probes[name]
+                detail.append(entry)
+            return satisfied, detail
+        receipt_lines = receipt_path.read_text(encoding="utf-8").splitlines()
+
     for name in task.get("required_evidence", []):
         artifact = probes.get(name)
         if not artifact:
             detail.append({"evidence": name, "status": "no_artifact_declared"})
             continue
 
-        status, size, source = _classify_evidence_artifact(repo_root / artifact)
+        status, size, source, payload = _classify_evidence_artifact(repo_root / artifact)
         entry: dict[str, Any] = {"evidence": name, "artifact": artifact, "status": status, "bytes": size}
+        if status == "present" and receipt_lines is not None:
+            receipt_status = verify_evidence_receipt(payload, receipt_lines)
+            entry["receipt_status"] = receipt_status
+            if receipt_status != "matched":
+                status = "receipt_mismatch"
+                entry["status"] = status
         if status == "present":
             satisfied.append(name)
             entry["source"] = source
@@ -247,32 +268,87 @@ def _measure_evidence(task: dict[str, Any], repo_root: Path) -> tuple[list[str],
     return satisfied, detail
 
 
-def _classify_evidence_artifact(path: Path) -> tuple[str, int, str | None]:
+def verify_evidence_receipt(artifact_payload: Any, receipt_lines: Iterable[str]) -> str:
+    """Cross-check one evidence artifact against a trusted call-receipt log.
+
+    Returns "matched" only when the artifact carries a `receipt` object whose
+    `response_sha256` is a non-empty string, and some jsonl record in
+    `receipt_lines` has `server` equal to the artifact's `source` and the same
+    `response_sha256`. Anything else — no `receipt` field, a malformed one, or
+    no matching record — returns "receipt_mismatch". Corrupt log lines are
+    skipped: they can fail to match, never crash the collection.
+
+    Pure function over already-loaded inputs so tests and future runners can
+    reuse the exact matching rule without touching the filesystem.
+    """
+
+    if not isinstance(artifact_payload, dict):
+        return "receipt_mismatch"
+    source = artifact_payload.get("source")
+    receipt = artifact_payload.get("receipt")
+    if not isinstance(source, str) or not source.strip():
+        return "receipt_mismatch"
+    if not isinstance(receipt, dict):
+        return "receipt_mismatch"
+    response_sha256 = receipt.get("response_sha256")
+    if not isinstance(response_sha256, str) or not response_sha256.strip():
+        return "receipt_mismatch"
+
+    for line in receipt_lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            record = json.loads(stripped)
+        except ValueError:
+            continue
+        if not isinstance(record, dict):
+            continue
+        if record.get("server") == source and record.get("response_sha256") == response_sha256:
+            return "matched"
+    return "receipt_mismatch"
+
+
+def _evidence_receipt_log(task: dict[str, Any]) -> str | None:
+    """Return the opt-in `evidence_receipt_log` repo-relative path, if declared.
+
+    Tasks without the field (or with a non-string/blank value, matching how
+    other optional fields are coerced) keep the pre-receipt behavior exactly.
+    """
+
+    value = task.get("evidence_receipt_log")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def _classify_evidence_artifact(path: Path) -> tuple[str, int, str | None, dict[str, Any] | None]:
     """Apply the minimal evidence schema to a declared artifact.
 
     Only "present" counts as evidence: a non-empty file that parses to a JSON
     object whose "source" is a non-empty string naming the MCP server or query
-    tool the evidence came from — the anchor for a future call-receipt check.
+    tool the evidence came from — the anchor for the call-receipt check.
     An artifact that fails the schema is recorded with a dedicated status
     (missing / empty / invalid_json / missing_source) and never satisfies the
-    probe, so a placeholder file cannot buy the verification score.
+    probe, so a placeholder file cannot buy the verification score. The parsed
+    payload is returned for the receipt cross-check on "present" artifacts.
     """
 
     if not path.is_file():
-        return "missing", 0, None
+        return "missing", 0, None, None
     size = path.stat().st_size
     if size == 0:
-        return "empty", 0, None
+        return "empty", 0, None, None
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return "invalid_json", size, None
+        return "invalid_json", size, None, None
     if not isinstance(payload, dict):
-        return "invalid_json", size, None
+        return "invalid_json", size, None, None
     source = payload.get("source")
     if not isinstance(source, str) or not source.strip():
-        return "missing_source", size, None
-    return "present", size, source
+        return "missing_source", size, None, None
+    return "present", size, source, payload
 
 
 def _check_integrity(

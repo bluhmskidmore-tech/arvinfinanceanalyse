@@ -19,7 +19,7 @@
     "maxPageStaticStyleProps": {},
     "protectedMonolithFiles": {
       "scripts/mcp/moss_project_mcp.py": {
-        "maxLines": 12643,
+        "maxLines": 12672,
         "routeHint": "Add provider or domain behavior in a focused scripts/mcp/<domain>_*.py module."
       },
       "tests/test_project_mcp_servers.py": {

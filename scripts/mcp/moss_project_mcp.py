@@ -347,6 +347,10 @@ class ProjectMcpServer:
     def __init__(self, provider: "McpProvider") -> None:
         self._provider = provider
         self._next_request_id = 0
+        # Optional call-receipt hook for the agent-eval harness. Default off:
+        # unless the trusted runner sets MOSS_MCP_RECEIPT_LOG, dispatch
+        # behavior is byte-for-byte unchanged.
+        self._receipt_log = os.environ.get("MOSS_MCP_RECEIPT_LOG") or None
 
     def serve(self) -> None:
         while True:
@@ -400,8 +404,33 @@ class ProjectMcpServer:
         if method == "tools/call":
             name = str(params.get("name") or "")
             arguments = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
-            return self._provider.call_tool(name, arguments)
+            result = self._provider.call_tool(name, arguments)
+            self._record_receipt(name, arguments, result)
+            return result
         raise McpError(-32601, f"Unsupported method: {method}")
+
+    def _record_receipt(self, tool: str, arguments: dict[str, Any], result: dict[str, Any]) -> None:
+        """Append a call receipt when the harness enabled MOSS_MCP_RECEIPT_LOG.
+
+        Only successful tool responses are receipted: evidence can only be
+        built from a response that was actually produced. A receipt write
+        failure propagates as a JSON-RPC error on purpose — when receipts are
+        explicitly requested, an unreceipted response must not flow silently.
+        """
+
+        if not self._receipt_log:
+            return
+        # Lazy import keeps the default (receipts-off) server fully decoupled
+        # from the agent-eval harness modules.
+        from scripts.agent_eval.receipts import append_receipt, canonical_json_bytes, digest_params
+
+        append_receipt(
+            self._receipt_log,
+            server=self._provider.name,
+            tool=tool,
+            params_digest=digest_params(arguments),
+            response_bytes=canonical_json_bytes(result),
+        )
 
     def _read_message(self) -> dict[str, Any] | None:
         header_lines: list[bytes] = []
@@ -627,7 +656,7 @@ class LineageEvidenceProvider(McpProvider):
             "accounting_asset_movement",
             "fact_accounting_asset_movement_monthly",
             "fact_formal_zqtz_balance_daily",
-            "rv_accounting_asset_movement_v2",
+            "rv_accounting_asset_movement_v3",
             "cv_accounting_asset_movement_v1",
             "AccountingAssetMovementPayload",
             "AccountingAssetMovementSummaryPayload",
@@ -3394,7 +3423,7 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "docs/page_contracts.md PAGE-BAL-MOVE-001",
             "docs/page_contracts.md MTR-BMV-001 through MTR-BMV-004",
             "backend/app/schema_registry/duckdb/18_accounting_asset_movement.sql fact_accounting_asset_movement_monthly",
-            "backend/app/tasks/accounting_asset_movement.py rv_accounting_asset_movement_v2",
+            "backend/app/tasks/accounting_asset_movement.py rv_accounting_asset_movement_v3",
             "backend/app/services/accounting_asset_movement_service.py accounting_asset_movement_envelope",
             "AccountingAssetMovementPayload",
             "AccountingAssetMovementSummaryPayload",

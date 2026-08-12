@@ -14,7 +14,7 @@ repository state, not supplied by the agent being evaluated:
 | `changed_files` | `git diff --name-only <base or HEAD>` plus `git ls-files --others --exclude-standard`; diffing against HEAD by default keeps staged-but-uncommitted edits visible, and any git failure aborts the collection instead of reading as "nothing changed" |
 | `checks` | real exit code of each command in `task.checks` |
 | `business_gates` / `page_gates` | real exit code of the command in `task.gate_probes` |
-| `evidence` | the artifact in `task.evidence_probes` parses as a JSON object with a non-empty string `source` |
+| `evidence` | the artifact in `task.evidence_probes` parses as a JSON object with a non-empty string `source`; when the task opts in via `evidence_receipt_log`, the artifact must additionally match a record in the trusted call-receipt log |
 
 **A gate with no declared probe is scored as failed.** An unmeasurable gate must not be assumed to
 pass, otherwise the score only reflects whether the reporter was cooperative. Record why a probe is
@@ -23,9 +23,22 @@ coverage gap stays visible instead of silently reading as a low score.
 
 **Evidence must satisfy a minimal schema, not merely exist.** An artifact counts only when it is a
 non-empty file parsing to a JSON object whose `source` is a non-empty string naming the MCP server
-or query tool it came from — the anchor for a future call-receipt check. Anything weaker is recorded
-in `measurement.evidence_artifacts` as `missing` / `empty` / `invalid_json` / `missing_source` and
-does not satisfy the probe, so a placeholder file cannot buy the verification score.
+or query tool it came from. Anything weaker is recorded in `measurement.evidence_artifacts` as
+`missing` / `empty` / `invalid_json` / `missing_source` and does not satisfy the probe, so a
+placeholder file cannot buy the verification score.
+
+**Call receipts upgrade `source` from self-declaration to cross-checkable (opt-in).** A task may
+declare `evidence_receipt_log`, the repo-relative path of an append-only jsonl written by the
+trusted harness layer — for example the receipt hook in `scripts/mcp/moss_project_mcp.py`, enabled
+per run with `MOSS_MCP_RECEIPT_LOG=<path>`, which records `server`, `tool`, `params_digest`, and
+the `response_sha256` of the canonical JSON response (see `receipts.py`). With the field declared,
+"present" additionally requires the artifact to carry a `receipt` object whose `response_sha256`
+matches a log record whose `server` equals the artifact's `source` (`verify_evidence_receipt` in
+`collect.py` is the exact rule). A schema-valid artifact that fails the cross-check is recorded as
+`receipt_mismatch`; a declared log that does not exist fail-closes every evidence item of the task
+as `receipt_log_missing`. Tasks without the field keep the pre-receipt behavior unchanged. The log
+must stay outside the evaluated agent's writable scope, and the receipt binds the artifact to a
+real call — it does not yet prove the artifact's *content* equals that response.
 
 ## Run A Task
 
@@ -104,7 +117,11 @@ Three hard rules; a run that breaks any of them produces a score that cannot be 
 
 Required: `id`, `required_evidence`, `checks`, `business_gates`, `page_gates`, `allowed_scope`, `forbidden`.
 
-Optional: `page`, `goal`, `gate_probes`, `evidence_probes`, `probe_protected_paths`, `gate_probe_gaps`, `metric_ids`.
+Optional: `page`, `goal`, `gate_probes`, `evidence_probes`, `probe_protected_paths`, `gate_probe_gaps`, `metric_ids`, `evidence_receipt_log`.
+
+`evidence_receipt_log` (string, repo-relative path) is read by the collector only — `spec.py` does
+not validate it, so existing tasks and results are untouched. Declaring it switches every evidence
+item of the task to receipt cross-checking as described above.
 
 Validation is strict where laxity would weaken scoring:
 
