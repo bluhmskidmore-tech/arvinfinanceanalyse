@@ -8,6 +8,7 @@ choice_native 代际 amount=元/volume=股,NULL/空白/未知模式 vendor 无�
 from __future__ import annotations
 
 import duckdb
+import pytest
 
 from backend.app.repositories.choice_stock_units import (
     amount_rmb_sql,
@@ -187,3 +188,12 @@ def test_supplement_tushare_vendor_scales_as_tushare_generation() -> None:
     assert row[0] == 500_000.0  # 千元 -> 元
     assert row[1] == 4_000.0  # 手 -> 股
     assert row[2] is False
+
+
+def test_sql_identifier_inputs_reject_quotes_dots_and_spaces() -> None:
+    with pytest.raises(ValueError, match="table_alias"):
+        amount_rmb_sql(table_alias='daily"')
+    with pytest.raises(ValueError, match="column"):
+        scale_unknown_sql("daily.amount")
+    with pytest.raises(ValueError, match="alias"):
+        volume_shares_sql(alias="daily amount")

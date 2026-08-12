@@ -24,6 +24,8 @@ DAILY_OBSERVATION_VENDOR_VERSION_PATTERNS)与 docs/data_contracts.md §4.10。
 
 from __future__ import annotations
 
+import re
+
 TUSHARE_VENDOR_LIKE = "%tushare%"
 # choice_native 主摄入模式前缀(vv_choice_stock_{yyyymmdd}_{hash});escape 下划线避免
 # LIKE 单字符通配误匹配。
@@ -31,9 +33,19 @@ NATIVE_VENDOR_LIKE = r"vv\_choice\_stock\_%"
 
 _TUSHARE_AMOUNT_MULTIPLIER = "1000.0"  # 千元 -> 元
 _TUSHARE_VOLUME_MULTIPLIER = "100.0"  # 手 -> 股
+_SQL_IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _validate_identifier(value: str | None, *, parameter: str) -> None:
+    if value is None or value == "":
+        return
+    if _SQL_IDENTIFIER_PATTERN.fullmatch(value) is None:
+        raise ValueError(f"{parameter} must be a valid SQL identifier: {value!r}")
 
 
 def _prefixed(column: str, table_alias: str) -> str:
+    _validate_identifier(column, parameter="column")
+    _validate_identifier(table_alias, parameter="table_alias")
     return f"{table_alias}.{column}" if table_alias else column
 
 
@@ -45,6 +57,7 @@ def _vendor_norm_sql(table_alias: str) -> str:
 
 
 def _normalized_sql(column: str, multiplier: str, *, table_alias: str, alias: str | None) -> str:
+    _validate_identifier(alias, parameter="alias")
     value = _prefixed(column, table_alias)
     vendor = _vendor_norm_sql(table_alias)
     expr = (
@@ -75,6 +88,7 @@ def scale_unknown_sql(column: str, *, table_alias: str = "", alias: str | None =
     ``where not <expr>`` 时被错误解析为 ``(not a) and b``。
     """
 
+    _validate_identifier(alias, parameter="alias")
     value = _prefixed(column, table_alias)
     vendor = _vendor_norm_sql(table_alias)
     expr = (
