@@ -709,7 +709,7 @@ requires-dist = [
     { name = "beautifulsoup4", specifier = ">=4.12,<5" },
     { name = "dramatiq", specifier = ">=1.17,<2" },
     { name = "duckdb", specifier = ">=1.2,<2" },
-    { name = "fastapi", specifier = ">=0.115,<1" },
+    { name = "fastapi", specifier = ">=0.115,<0.137" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.28,<1" },
     { name = "minio", specifier = ">=7.2,<8" },
     { name = "numpy", specifier = ">=1.26,<3" },
