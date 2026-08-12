@@ -11,6 +11,7 @@ from backend.app.core_finance.bond_analytics.engine import (
 )
 from backend.app.core_finance.module_contracts import FormalComputeModuleDescriptor
 from backend.app.core_finance.module_registry import ensure_formal_module
+from backend.app.governance.locks import LockDefinition
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
 from backend.app.repositories.task_write_guard import repository_task_write_scope
@@ -35,7 +36,10 @@ BOND_ANALYTICS_MODULE = ensure_formal_module(
 )
 BOND_ANALYTICS_FORMAL_BASIS = BOND_ANALYTICS_MODULE.basis
 CACHE_KEY = BOND_ANALYTICS_MODULE.cache_key
-BOND_ANALYTICS_LOCK = BOND_ANALYTICS_MODULE.lock_definition
+BOND_ANALYTICS_LOCK = LockDefinition(
+    key=BOND_ANALYTICS_MODULE.lock_key,
+    ttl_seconds=BOND_ANALYTICS_MODULE.lock_ttl_seconds,
+)
 RULE_VERSION = BOND_ANALYTICS_MODULE.rule_version
 CACHE_VERSION = BOND_ANALYTICS_MODULE.cache_version
 logger = logging.getLogger(__name__)

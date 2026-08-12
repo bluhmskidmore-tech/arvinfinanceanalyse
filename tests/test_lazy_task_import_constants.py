@@ -48,6 +48,13 @@ def test_bond_analytics_service_identity_constants_match_task_modules() -> None:
     assert service.YIELD_CURVE_CACHE_VERSION == yield_task.CACHE_VERSION
 
 
+def test_bond_dashboard_service_rule_version_matches_task_module() -> None:
+    import backend.app.services.bond_dashboard_service as service
+    import backend.app.tasks.bond_analytics_materialize as bond_task
+
+    assert service.BOND_ANALYTICS_RULE_VERSION == bond_task.RULE_VERSION
+
+
 def test_pnl_service_identity_constants_match_task_module() -> None:
     import backend.app.services.pnl_service as service
     import backend.app.tasks.pnl_materialize as task

@@ -7,6 +7,7 @@ from pathlib import Path
 from backend.app.core_finance.module_contracts import FormalComputeModuleDescriptor
 from backend.app.core_finance.module_registry import ensure_formal_module
 from backend.app.core_finance.risk_tensor import compute_portfolio_risk_tensor
+from backend.app.governance.locks import LockDefinition
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
@@ -38,7 +39,10 @@ RISK_TENSOR_MODULE = ensure_formal_module(
 )
 RISK_TENSOR_FORMAL_BASIS = RISK_TENSOR_MODULE.basis
 CACHE_KEY = RISK_TENSOR_MODULE.cache_key
-RISK_TENSOR_LOCK = RISK_TENSOR_MODULE.lock_definition
+RISK_TENSOR_LOCK = LockDefinition(
+    key=RISK_TENSOR_MODULE.lock_key,
+    ttl_seconds=RISK_TENSOR_MODULE.lock_ttl_seconds,
+)
 RULE_VERSION = RISK_TENSOR_MODULE.rule_version
 CACHE_VERSION = RISK_TENSOR_MODULE.cache_version
 
