@@ -328,6 +328,54 @@ def test_write_refresh_status_services_return_latest_safe_record(
         assert "private" not in str(payload)
 
 
+def test_macro_source_status_keeps_per_series_failure_details(
+    tmp_path: Path,
+) -> None:
+    """blocked/partial 的 source 级失败明细必须透出，且安全白名单其余约束不变。"""
+    governance_path = tmp_path / "gov"
+    repo = GovernanceRepository(base_dir=governance_path)
+    repo.append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            "run_id": "source-blocked-run",
+            "job_name": service.MACRO_SOURCE_BACKFILL_JOB_NAME,
+            "cache_key": service.MACRO_SOURCE_BACKFILL_CACHE_KEY,
+            "status": "blocked",
+            "alias": "m0041813",
+            "series_names": ["SHIBOR:3M"],
+            "sources": ["tushare_macro"],
+            "total_added": 0,
+            "errors": {
+                "SHIBOR:3M": (
+                    "no rows fetched for series_id=NCD.SHIBOR.3M "
+                    "from sources=tushare_macro"
+                )
+            },
+            "duckdb_path": r"C:\private\moss.duckdb",
+            "error_message": "token=secret raw detail",
+            "result": {"private": "worker-only"},
+        },
+    )
+
+    payload = service.macro_source_backfill_refresh_status(
+        governance_path,
+        run_id="source-blocked-run",
+    )
+
+    assert payload["status"] == "blocked"
+    assert payload["errors"] == {
+        "SHIBOR:3M": (
+            "no rows fetched for series_id=NCD.SHIBOR.3M "
+            "from sources=tushare_macro"
+        )
+    }
+    assert "duckdb_path" not in payload
+    assert "error_message" not in payload
+    assert "result" not in payload
+    assert "secret" not in str(payload)
+    assert "private" not in str(payload)
+
+
 def test_write_refresh_status_services_raise_clear_not_found(
     tmp_path: Path,
 ) -> None:
@@ -582,7 +630,11 @@ def test_cffex_worker_invalidates_market_home_cache_after_completed_append(
 
     from backend.app.api.response_cache import market_home_response_cache
 
-    monkeypatch.setattr(GovernanceRepository, "append", fake_append)
+    # Patch the class binding the worker actually uses: earlier tests may have
+    # replaced backend.app.repositories.governance_repo in sys.modules via
+    # tests.helpers.load_module, forking the module-level GovernanceRepository
+    # imported at the top of this file away from task.GovernanceRepository.
+    monkeypatch.setattr(task.GovernanceRepository, "append", fake_append)
     monkeypatch.setattr(market_home_response_cache, "invalidate", fake_invalidate)
 
     result = task.run_cffex_member_rank_refresh(
@@ -625,7 +677,9 @@ def test_cffex_worker_invalidates_market_home_cache_for_partial_write(
 
     from backend.app.api.response_cache import market_home_response_cache
 
-    monkeypatch.setattr(GovernanceRepository, "append", fake_append)
+    # Same rationale as the completed-append test above: patch the class the
+    # worker binds, not this file's import-time GovernanceRepository reference.
+    monkeypatch.setattr(task.GovernanceRepository, "append", fake_append)
     monkeypatch.setattr(market_home_response_cache, "invalidate", fake_invalidate)
 
     result = task.run_cffex_member_rank_refresh(
