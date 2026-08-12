@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import {
   FireOutlined,
   LineChartOutlined,
@@ -5,6 +6,7 @@ import {
   StockOutlined,
 } from "@ant-design/icons";
 
+import type { LivermoreStrategyPayload } from "../../../api/contracts";
 import {
   SA_CARD_TITLE,
   SA_FIRST_CARD,
@@ -12,6 +14,7 @@ import {
   SA_SECTION_EYEBROW,
   SA_SECTION_HEAD,
 } from "../lib/stockAnalysisPageChrome";
+import { buildStockAnalysisKlineRadar } from "../lib/stockAnalysisKlineRadarModel";
 import type {
   StockAnalysisKlineRadarItem,
   StockAnalysisKlineRadarQueueKey,
@@ -22,7 +25,7 @@ import type {
 import { CompactStatusTile } from "./StockAnalysisStatusPrimitives";
 
 type StockAnalysisKlineRadarPanelProps = {
-  summary: StockAnalysisKlineRadarSummary;
+  strategyPayload: LivermoreStrategyPayload | null;
   onOpenRadarItem: (item: StockAnalysisKlineRadarItem) => void;
 };
 
@@ -112,9 +115,10 @@ function queueLeadText(queueItems: StockAnalysisKlineRadarItem[], emptyDetail: s
 }
 
 export function StockAnalysisKlineRadarPanel({
-  summary,
+  strategyPayload,
   onOpenRadarItem,
 }: StockAnalysisKlineRadarPanelProps) {
+  const summary = useMemo(() => buildStockAnalysisKlineRadar(strategyPayload), [strategyPayload]);
   const focusItems = summary.focusItems.slice(0, FOCUS_TABLE_LIMIT);
   const riskUnavailable = summary.riskTriggerCount == null && summary.riskUnavailableReason != null;
   const topology = summary.topology;

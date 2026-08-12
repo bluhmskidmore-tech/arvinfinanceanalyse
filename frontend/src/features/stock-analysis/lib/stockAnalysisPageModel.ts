@@ -167,11 +167,6 @@ export type StockDailyJudgmentStrip = {
   weakestSectorChip: string;
 };
 
-export type StockMetaSegment = {
-  key: string;
-  text: string;
-};
-
 export type StockDecisionSummary = {
   headline: string;
   gateLabel: string;
@@ -281,23 +276,6 @@ export type StockCycleMacroLayerSummary = {
   missingInputs: string[];
   macroGapLabels: string[];
   detailLabel: string;
-};
-
-export type StockAnalysisKpiKey =
-  | "market-state"
-  | "review-queue"
-  | "sector-strength"
-  | "risk-observation"
-  | "closed-loop"
-  | "data-boundary";
-
-export type StockAnalysisKpiItem = {
-  key: StockAnalysisKpiKey;
-  label: string;
-  value: string;
-  detail: string;
-  tone: StockClosedLoopTone;
-  gaugeValue?: number;
 };
 
 export type StockAnalysisEvidenceStatusKey =
@@ -922,7 +900,7 @@ function formatPercent(value: number | null | undefined, digits = 2) {
   return `${value.toFixed(digits)}%`;
 }
 
-function formatRatioAsPercent(value: number | null | undefined, digits = 0) {
+export function formatRatioAsPercent(value: number | null | undefined, digits = 0) {
   if (value == null || !Number.isFinite(value)) {
     return "待补";
   }
@@ -933,7 +911,7 @@ function finiteNumber(value: number | null | undefined): number | null {
   return value == null || !Number.isFinite(value) ? null : value;
 }
 
-function clampRatio(value: number | null | undefined): number | undefined {
+export function clampRatio(value: number | null | undefined): number | undefined {
   if (value == null || !Number.isFinite(value)) return undefined;
   return Math.min(1, Math.max(0, value));
 }
@@ -1382,7 +1360,7 @@ function formatFreshnessLabel(meta: StockViewModelMeta = {}): string {
   return `新鲜度 ${localizeMetaQualityFlag(quality)} / ${localizeMetaVendorStatus(vendor)}${fallback}`;
 }
 
-function localizeMetaQualityFlag(value: string | undefined): string {
+export function localizeMetaQualityFlag(value: string | undefined): string {
   const normalized = (value ?? "pending").trim().toLowerCase();
   const labels: Record<string, string> = {
     ok: "质量正常",
@@ -1394,7 +1372,7 @@ function localizeMetaQualityFlag(value: string | undefined): string {
   return labels[normalized] ?? "质量待确认";
 }
 
-function localizeMetaVendorStatus(value: string | undefined): string {
+export function localizeMetaVendorStatus(value: string | undefined): string {
   const normalized = (value ?? "pending").trim().toLowerCase();
   const labels: Record<string, string> = {
     ok: "供数正常",
@@ -1405,7 +1383,7 @@ function localizeMetaVendorStatus(value: string | undefined): string {
   return labels[normalized] ?? "供数待确认";
 }
 
-function localizeFallbackMode(value: string | undefined): string {
+export function localizeFallbackMode(value: string | undefined): string {
   const normalized = (value ?? "none").trim().toLowerCase();
   if (!normalized || normalized === "none") return "数据正常";
   const labels: Record<string, string> = {
@@ -1488,7 +1466,7 @@ function strategyPrioritySummaryStatus(label: string | null | undefined): {
   return { label: "状态待确认", badgeLabel: "待确认", tone: "warning" };
 }
 
-function localizeDataGapStatus(status: string | null | undefined): string {
+export function localizeDataGapStatus(status: string | null | undefined): string {
   const normalized = (status ?? "").trim().toLowerCase();
   const labels: Record<string, string> = {
     ready: "已就绪",
@@ -1500,7 +1478,7 @@ function localizeDataGapStatus(status: string | null | undefined): string {
   return labels[normalized] ?? (normalized ? "状态待确认" : "待补");
 }
 
-function localizeDiagnosticScope(inputFamily: string | null | undefined): string {
+export function localizeDiagnosticScope(inputFamily: string | null | undefined): string {
   const familyLabel = localizeStockDataFamily(inputFamily);
   return familyLabel === "待补" ? "策略诊断" : `${familyLabel}诊断`;
 }
@@ -1706,42 +1684,12 @@ export function localizeStockBackendText(
     .replace(/_/g, " ");
 }
 
-function localizeBasisLabel(basis: string | null | undefined): string {
+export function localizeBasisLabel(basis: string | null | undefined): string {
   const normalized = (basis ?? "").trim().toLowerCase();
   if (normalized === "analytical") return "分析口径（非交易）";
   if (normalized === "formal") return "正式口径";
   if (!normalized) return "口径待补";
   return "口径待确认";
-}
-
-export type StockAnalysisPagePurpose = {
-  eyebrow: string;
-  title: string;
-  subtitle: string;
-  asOfLine: string;
-  dataStatusLine: string;
-};
-
-export function buildStockAnalysisPagePurpose(
-  payload: LivermoreStrategyPayload,
-  meta: StockViewModelMeta = {},
-): StockAnalysisPagePurpose {
-  const quality = meta.quality_flag ?? "pending";
-  const vendor = meta.vendor_status ?? "pending";
-  const fallback = meta.fallback_mode ?? "none";
-  const aligned = quality === "ok" && vendor === "ok" && fallback === "none";
-  const asOf = payload.as_of_date ?? "日期待补";
-  return {
-    eyebrow: "趋势策略 · 只读复核台",
-    title: "股票策略复核台",
-    subtitle: "只读复核，不生成交易指令",
-    asOfLine: `观察日 ${asOf}`,
-    dataStatusLine: aligned
-      ? `数据状态：已对齐（${asOf}）`
-      : `数据状态：待复核 · ${localizeMetaQualityFlag(quality)} / ${localizeMetaVendorStatus(vendor)}${
-          fallback !== "none" ? ` / ${localizeFallbackMode(fallback)}` : ""
-        }`,
-  };
 }
 
 export type StockReviewQueueEmptyState = {
@@ -1792,27 +1740,6 @@ export function buildDailyJudgmentStrip(payload: LivermoreStrategyPayload): Stoc
   };
 }
 
-export function buildInlineMetaSegments(
-  payload: LivermoreStrategyPayload,
-  extras: Partial<{
-    quality_flag: string;
-    vendor_status: string;
-    source_version: string;
-    rule_version: string;
-    fallback_mode: string;
-  }>,
-): StockMetaSegment[] {
-  const out: StockMetaSegment[] = [
-    { key: "as_of", text: payload.as_of_date ?? "日期待补" },
-    { key: "source_version", text: extras.source_version ?? "待补" },
-    { key: "rule_version", text: extras.rule_version ?? "待补" },
-    { key: "quality_flag", text: extras.quality_flag ? localizeMetaQualityFlag(extras.quality_flag) : "待补" },
-    { key: "vendor_status", text: extras.vendor_status ? localizeMetaVendorStatus(extras.vendor_status) : "待补" },
-    { key: "fallback_mode", text: extras.fallback_mode ? localizeFallbackMode(extras.fallback_mode) : "待补" },
-  ];
-  return out;
-}
-
 function countBoundaryItems(payload: LivermoreStrategyPayload): number {
   return (
     actionableDiagnostics(payload).length +
@@ -1821,7 +1748,7 @@ function countBoundaryItems(payload: LivermoreStrategyPayload): number {
   );
 }
 
-function sectorRankFormulaGovernanceLabel(
+export function sectorRankFormulaGovernanceLabel(
   sectorRank: LivermoreStrategyPayload["sector_rank"] | null | undefined,
 ): string | undefined {
   if (!sectorRank) return undefined;
@@ -1975,7 +1902,7 @@ export function buildDataBoundarySummary(
   };
 }
 
-function isMetaBoundary(meta: StockViewModelMeta = {}): boolean {
+export function isMetaBoundary(meta: StockViewModelMeta = {}): boolean {
   const quality = meta.quality_flag ?? "pending";
   const vendor = meta.vendor_status ?? "pending";
   const fallback = meta.fallback_mode ?? "none";
@@ -2013,74 +1940,6 @@ function eventToneLevel(tone: StockClosedLoopTone): StockAnalysisEventMonitorRow
 
 function detailFromEventEvidence(evidence: string[] | string | null | undefined, fallback: string): string {
   return normalizeEvidence(evidence)[0] ?? fallback;
-}
-
-export function buildStockAnalysisKpiStrip(
-  payload: LivermoreStrategyPayload,
-  confluence: LivermoreSignalConfluencePayload | null,
-  meta: StockViewModelMeta = {},
-): StockAnalysisKpiItem[] {
-  const queue = buildCandidateReviewQueue(payload);
-  const sectors = buildSectorRows(payload);
-  const riskRows = buildRiskExitRows(payload, confluence);
-  const boundarySummary = buildDataBoundarySummary(payload, meta);
-  const closedLoopSummary = buildClosedLoopSummary(payload, confluence, meta);
-  const strongest = sectors[0];
-  const weakest = sectors.length ? sectors[sectors.length - 1] : null;
-  const riskTriggered = riskRows.filter((row) => row.status === "triggered").length;
-  const riskWatch = riskRows.filter((row) => row.status === "watch").length;
-  const hasBoundary = boundarySummary.boundaryCount > 0 || isMetaBoundary(meta);
-
-  return [
-    {
-      key: "market-state",
-      label: "市场状态",
-      value: localizeMarketDataStatus(payload.market_gate.state),
-      detail: `观察暴露 ${formatRatioAsPercent(payload.market_gate.exposure)}`,
-      tone: hasBoundary ? "warning" : "positive",
-      gaugeValue: clampRatio(payload.market_gate.exposure),
-    },
-    {
-      key: "review-queue",
-      label: "复核队列",
-      value: String(queue.length),
-      detail: queue[0] ? `优先 ${queue[0].stockName} / ${queue[0].sectorName}` : "候选待补",
-      tone: queue.length > 0 ? "positive" : "neutral",
-      gaugeValue: clampRatio(queue.length / 6),
-    },
-    {
-      key: "sector-strength",
-      label: "板块强弱",
-      value: strongest ? strongest.sectorName : "待补",
-      detail: weakest ? `弱侧 ${weakest.sectorName} / ${weakest.pctChange}` : "弱侧待补",
-      tone: strongest ? "positive" : "warning",
-      gaugeValue: clampRatio(strongest?.scoreValue),
-    },
-    {
-      key: "risk-observation",
-      label: "风险观察",
-      value: String(riskRows.length),
-      detail: `触发 ${riskTriggered} / 观察 ${riskWatch}`,
-      tone: riskTriggered > 0 ? "negative" : riskWatch > 0 ? "warning" : "positive",
-      gaugeValue: clampRatio(riskRows.length / 4),
-    },
-    {
-      key: "closed-loop",
-      label: "闭环状态",
-      value: closedLoopSummary.referenceRating.label,
-      detail: closedLoopSummary.summaryLabel,
-      tone: closedLoopSummary.referenceRating.tone,
-      gaugeValue: closedLoopSummary.referenceRating.tone === "positive" ? 1 : closedLoopSummary.referenceRating.tone === "warning" ? 0.55 : 0.28,
-    },
-    {
-      key: "data-boundary",
-      label: "数据边界",
-      value: String(boundarySummary.boundaryCount),
-      detail: boundarySummary.detailLabel,
-      tone: boundarySummary.boundaryCount > 0 || isMetaBoundary(meta) ? "warning" : "positive",
-      gaugeValue: clampRatio(boundarySummary.boundaryCount / 6),
-    },
-  ];
 }
 
 export type StockStrategyLensItem = {
@@ -3654,51 +3513,6 @@ export function buildDecisionSummary(
 }
 
 /** @deprecated Stage 1.5 — 已由 inline meta + Drawer 替代正文列表；保留给需要纯文本的诊断导出 */
-export function buildDataBoundaryNotes(payload: LivermoreStrategyPayload): string[] {
-  const notes = [`口径：${localizeBasisLabel(payload.basis)}`, `策略：${payload.strategy_name || "待补"}`];
-  for (const diag of payload.diagnostics) {
-    const severityLabel = diag.severity === "error" ? "错误" : diag.severity === "warning" ? "预警" : "信息";
-    notes.push(
-      `${severityLabel} ${localizeDiagnosticScope(diag.input_family)}：${localizeStockBackendText(
-        diag.message,
-        diag.input_family,
-      )}`,
-    );
-  }
-  if (payload.as_of_date) {
-    notes.push(`数据日期：${payload.as_of_date}`);
-  }
-  if (payload.sector_rank?.formula_version) {
-    notes.push(`板块强弱公式：${payload.sector_rank.formula_version}`);
-    notes.push(`板块强弱规则状态：${sectorRankFormulaGovernanceLabel(payload.sector_rank)}`);
-    if (payload.sector_rank.formula_note) {
-      notes.push(`板块强弱说明：${localizeStockBackendText(payload.sector_rank.formula_note, "sector_strength")}`);
-    }
-  }
-  if (payload.stock_candidates?.formula_version) {
-    notes.push(`趋势候选公式：${payload.stock_candidates.formula_version}`);
-  }
-  if (payload.hybrid_fusion_candidates?.formula_version) {
-    notes.push(`融合池公式：${payload.hybrid_fusion_candidates.formula_version}`);
-  }
-  if (payload.risk_exit?.formula_version) {
-    notes.push(`风险退出公式：${payload.risk_exit.formula_version}`);
-  }
-  for (const gap of payload.data_gaps) {
-    notes.push(
-      `${localizeStockDataFamily(gap.input_family)} ${localizeDataGapStatus(gap.status)}：${localizeStockBackendText(
-        gap.evidence,
-        gap.input_family,
-      )}`,
-    );
-  }
-  for (const output of payload.unsupported_outputs) {
-    notes.push(`${localizeStockDataFamily(output.key)} 阻断：${localizeStockBackendText(output.reason, output.key)}`);
-  }
-  notes.push(`可用输出：${payload.supported_outputs.map(localizeStockDataFamily).join("、") || "无"}`);
-  return notes;
-}
-
 export function buildMarketStateCard(
   payload: LivermoreStrategyPayload,
 ): StockMarketStateCard {
@@ -3922,13 +3736,6 @@ export function buildStockSectorOverviewState<TRow extends StockSectorRow>(
     topBars: rows.slice(0, 5),
     bottomBars: rows.slice(Math.max(rows.length - 5, 0)),
   };
-}
-
-export function buildSectorViewModel(
-  payload: LivermoreStrategyPayload,
-  view: StockSectorViewKind,
-): StockSectorViewRow[] {
-  return buildSectorViewRows(buildSectorRows(payload), view);
 }
 
 export function buildSectorViewRows(

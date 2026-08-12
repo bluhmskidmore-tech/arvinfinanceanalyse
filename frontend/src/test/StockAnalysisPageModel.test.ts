@@ -23,24 +23,19 @@ import {
   buildDataBoundarySummary,
   buildDecisionSummary,
   buildDeepAnalysisGateSummary,
-  buildStockAnalysisPagePurpose,
   buildReviewQueueEmptyState,
   buildReviewQueueSectorFilterView,
   buildStockSectorOverviewState,
   localizeImplementationStage,
   buildDailyJudgmentStrip,
-  buildInlineMetaSegments,
-  buildDataBoundaryNotes,
   buildStockAnalysisEvidenceStatus,
   buildMarketStateCard,
   buildRiskExitRows,
   buildSectorRows,
   buildSectorRowsFromSectorSeries,
   buildSectorFilterSummary,
-  buildSectorViewModel,
   buildSectorViewRows,
   buildStockAnalysisEventMonitorRows,
-  buildStockAnalysisKpiStrip,
   buildWorkbenchDataDigest,
   buildObservationClosureSummary,
   buildStockEndpointEvidenceItems,
@@ -66,6 +61,13 @@ import {
   pickStockFreshnessMeta,
 } from "../features/stock-analysis/lib/stockAnalysisPageModel";
 import type { StockCandidateReviewQueueItem } from "../features/stock-analysis/lib/stockAnalysisPageModel";
+import {
+  buildDataBoundaryNotes,
+  buildInlineMetaSegments,
+  buildSectorViewModel,
+  buildStockAnalysisKpiStrip,
+  buildStockAnalysisPagePurpose,
+} from "../features/stock-analysis/lib/stockAnalysisLegacyPageModel";
 import { buildConsensusSummary } from "../features/stock-analysis/lib/buildConsensusSummary";
 
 const LIVERMORE_OUTPUT_KEYS: LivermoreOutputKey[] = [

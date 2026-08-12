@@ -148,10 +148,7 @@ import {
 } from "../lib/stockAnalysisSectorSeriesModel";
 import { buildStockAnalysisAgentPageContext } from "../lib/buildStockAnalysisAgentPageContext";
 import { buildConsensusSummary, consensusStrategyLabel, lookupStockStrategyRanks } from "../lib/buildConsensusSummary";
-import {
-  buildStockAnalysisKlineRadar,
-  type StockAnalysisKlineRadarItem,
-} from "../lib/stockAnalysisKlineRadarModel";
+import type { StockAnalysisKlineRadarItem } from "../lib/stockAnalysisKlineRadarModel";
 import {
   buildStockAnalysisWorkbenchReviewQueue,
   enrichStockAnalysisWorkbenchReviewQueue,
@@ -733,11 +730,6 @@ export default function StockAnalysisPage() {
   const meanReversionPreviewItems = useMemo(
     () => (meanReversionMarketActive ? meanReversionPayload?.items.slice(0, 8) ?? [] : []),
     [meanReversionMarketActive, meanReversionPayload?.items],
-  );
-
-  const klineRadarSummary = useMemo(
-    () => (shouldMountDeepResearch ? buildStockAnalysisKlineRadar(strategyPayload) : null),
-    [shouldMountDeepResearch, strategyPayload],
   );
 
   function openKlineRadarItem(item: StockAnalysisKlineRadarItem) {
@@ -2880,7 +2872,7 @@ export default function StockAnalysisPage() {
                   />
 
                   <LazyStockAnalysisKlineRadarPanel
-                    summary={klineRadarSummary!}
+                    strategyPayload={strategyPayload}
                     onOpenRadarItem={openKlineRadarItem}
                   />
 
