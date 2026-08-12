@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 from dataclasses import dataclass
 from datetime import date
@@ -19,6 +20,8 @@ from backend.app.schemas.vendor import (
     VendorSnapshot,
 )
 from backend.app.schemas.yield_curve import YieldCurvePoint, YieldCurveSnapshot
+
+logger = logging.getLogger(__name__)
 
 # AkShare `bond_china_yield` curve names. For `aaa_credit`, only this enterprise-AAA family is allowed
 # (no cross-family AAA substitution — matches must equal this string exactly).
@@ -254,8 +257,14 @@ class VendorAdapter(VendorAdapterBase):
             )
             if primary is not None:
                 return primary
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001  # 供应商 SDK 异常面无界；失败记入回退链，全失败时聚合抛出
             primary_error = exc
+            logger.warning(
+                "AkShare primary curve fetch failed curve_type=%s trade_date=%s: %s",
+                normalized_curve_type,
+                normalized_trade_date,
+                exc,
+            )
 
         fallback_error: Exception | None = None
         try:
@@ -265,8 +274,14 @@ class VendorAdapter(VendorAdapterBase):
             )
             if fallback is not None:
                 return fallback
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001  # 供应商 SDK 异常面无界；失败记入回退链，全失败时聚合抛出
             fallback_error = exc
+            logger.warning(
+                "Choice fallback curve fetch failed curve_type=%s trade_date=%s: %s",
+                normalized_curve_type,
+                normalized_trade_date,
+                exc,
+            )
 
         tertiary_error: Exception | None = None
         if normalized_curve_type == "cdb":
@@ -274,8 +289,13 @@ class VendorAdapter(VendorAdapterBase):
                 tertiary = self._fetch_chinabond_gkh_curve(normalized_trade_date)
                 if tertiary is not None:
                     return tertiary
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001  # 供应商 SDK 异常面无界；失败记入回退链，全失败时聚合抛出
                 tertiary_error = exc
+                logger.warning(
+                    "ChinaBond gkh tertiary curve fetch failed trade_date=%s: %s",
+                    normalized_trade_date,
+                    exc,
+                )
 
         errors = []
         if primary_error is not None:
@@ -340,8 +360,13 @@ class VendorAdapter(VendorAdapterBase):
             )
             if primary is not None:
                 return primary
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001  # 供应商 SDK 异常面无界；失败记入回退链，全失败时聚合抛出
             primary_error = exc
+            logger.warning(
+                "Choice primary aaa_credit curve fetch failed trade_date=%s: %s",
+                trade_date,
+                exc,
+            )
 
         fallback_error: Exception | None = None
         try:
@@ -351,8 +376,13 @@ class VendorAdapter(VendorAdapterBase):
             )
             if fallback is not None:
                 return fallback
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001  # 供应商 SDK 异常面无界；失败记入回退链，全失败时聚合抛出
             fallback_error = exc
+            logger.warning(
+                "AkShare fallback aaa_credit curve fetch failed trade_date=%s: %s",
+                trade_date,
+                exc,
+            )
 
         errors = []
         if primary_error is not None:
@@ -539,7 +569,7 @@ class VendorAdapter(VendorAdapterBase):
                     frame = loader(**kwargs)
                 except TypeError:
                     continue
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001  # 逐个探测 akshare loader 变体；最后一个错误聚合进 RuntimeError 再抛出
                     last_error = exc
                     continue
                 if frame is None:

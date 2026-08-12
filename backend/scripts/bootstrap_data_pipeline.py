@@ -82,7 +82,7 @@ def run_pipeline(*, with_crisis_score_inputs: bool = False):
         print(f"  ({_elapsed(t0)})")
         if zqtz_rows == 0 and tyw_rows == 0:
             print("  ⚠ No rows materialized. Check source_manifest.jsonl and archive files.")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001  # CLI 步骤隔离：单步失败打印 traceback 后继续后续步骤
         print(f"  ✗ Failed: {exc}")
         import traceback
         traceback.print_exc()
@@ -99,7 +99,7 @@ def run_pipeline(*, with_crisis_score_inputs: bool = False):
         status = result.get("status", "unknown")
         print(f"  ✓ Source preview: {status}")
         print(f"  ({_elapsed(t0)})")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001  # CLI 步骤隔离：单步失败打印 traceback 后继续后续步骤
         print(f"  ✗ Failed: {exc}")
         import traceback
         traceback.print_exc()
@@ -120,7 +120,7 @@ def run_pipeline(*, with_crisis_score_inputs: bool = False):
         print(f"  ({_elapsed(t0)})")
     except ImportError:
         print("  ✗ Failed: formal_balance_pipeline task is unavailable.")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001  # CLI 步骤隔离：单步失败打印 traceback 后继续后续步骤
         print(f"  ✗ Failed: {exc}")
         import traceback
         traceback.print_exc()
@@ -144,7 +144,7 @@ def run_pipeline(*, with_crisis_score_inputs: bool = False):
             preview = ", ".join(str(item) for item in report_dates[:10])
             print(f"    dates: {preview}{' ...' if len(report_dates) > 10 else ''}")
         print(f"  ({_elapsed(t0)})")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001  # CLI 步骤隔离：单步失败打印 traceback 后继续后续步骤
         print(f"  ✗ Failed: {exc}")
         import traceback
         traceback.print_exc()
@@ -176,10 +176,10 @@ def run_pipeline(*, with_crisis_score_inputs: bool = False):
                     )
                     status = result.get("status", "unknown") if isinstance(result, dict) else "done"
                     print(f"  ✓ {rd}: {status}")
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001  # 单日期物化失败打印后继续其余日期
                     print(f"  ✗ {rd}: {exc}")
             print(f"  ({_elapsed(t0)})")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001  # CLI 步骤隔离：单步失败打印 traceback 后继续后续步骤
         print(f"  ✗ Failed: {exc}")
         import traceback
         traceback.print_exc()
@@ -220,10 +220,10 @@ def run_pipeline(*, with_crisis_score_inputs: bool = False):
                     )
                     status = result.get("status", "unknown") if isinstance(result, dict) else "done"
                     print(f"  ✓ {rd}: {status}")
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001  # 单日期物化失败打印后继续其余日期
                     print(f"  ✗ {rd}: {exc}")
             print(f"  ({_elapsed(t0)})")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001  # CLI 步骤隔离：单步失败打印 traceback 后继续后续步骤
         print(f"  ✗ Failed: {exc}")
         import traceback
         traceback.print_exc()
@@ -245,7 +245,7 @@ def run_pipeline(*, with_crisis_score_inputs: bool = False):
             status = result.get("status", "unknown") if isinstance(result, dict) else "done"
             print(f"  ✓ Product category PnL: {status}")
             print(f"  ({_elapsed(t0)})")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001  # CLI 步骤隔离：单步失败打印 traceback 后继续后续步骤
         print(f"  ✗ Failed: {exc}")
         import traceback
         traceback.print_exc()
@@ -269,7 +269,7 @@ def run_pipeline(*, with_crisis_score_inputs: bool = False):
             )
             print(f"  ✓ Crisis Score inputs: {input_count} series, {completed} completed")
             print(f"  ({_elapsed(t0)})")
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001  # CLI 步骤隔离：可选回填失败打印 traceback 后继续收尾
             print(f"  ✗ Failed: {exc}")
             import traceback
             traceback.print_exc()
@@ -292,8 +292,8 @@ def run_pipeline(*, with_crisis_score_inputs: bool = False):
                 try:
                     count = conn.execute(f"SELECT COUNT(*) FROM \"{name}\"").fetchone()[0]
                     print(f"    {name}: {count} rows")
-                except Exception:
-                    print(f"    {name}: (error reading)")
+                except duckdb.Error as exc:
+                    print(f"    {name}: (error reading: {exc})")
         finally:
             conn.close()
     else:

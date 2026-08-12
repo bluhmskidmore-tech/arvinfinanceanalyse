@@ -86,7 +86,7 @@ def _run_ledger_import_terminal_reconciliation(
             error_message=str(facts.get("error_message") or "") or None,
         )
         return _safe_task_payload(run_id=run_id, status="reconciled")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001  # 终态对账兜底：任何治理后端异常都必须进入重试/outbox 路径，已 error 日志
         logger.error(
             "Ledger import terminal reconciliation attempt failed run_id=%s error_type=%s.",
             run_id,
@@ -113,7 +113,7 @@ def _run_ledger_import_terminal_reconciliation(
                     delay=LEDGER_IMPORT_RETRY_DELAY_MS,
                 )
                 return _safe_task_payload(run_id=run_id, status="retrying")
-            except Exception as enqueue_exc:
+            except Exception as enqueue_exc:  # noqa: BLE001  # broker 入队异常面无界；失败降级为本地 outbox spool，已 error 日志
                 logger.error(
                     "Ledger import terminal reconciliation enqueue failed run_id=%s error_type=%s.",
                     run_id,
@@ -139,7 +139,7 @@ def _run_ledger_import_terminal_reconciliation(
                     )
                     logger.error("Ledger import reconciliation pending local recovery run_id=%s.", run_id)
                     return _safe_task_payload(run_id=run_id, status="pending_reconciliation")
-                except Exception as spool_exc:
+                except Exception as spool_exc:  # noqa: BLE001  # outbox spool 落盘兜底：重试用尽后显式返回 delivery_failed，已 error 日志
                     logger.error(
                         "Ledger import reconciliation local spool failed run_id=%s attempt=%s error_type=%s.",
                         run_id,
@@ -181,7 +181,7 @@ def _run_ledger_import(
             file_name=normalized_file_name,
             status="running",
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001  # 治理后端（jsonl/sql）写入异常面无界；失败走 _retry_or_fail 终态机，已 error 日志
         logger.error(
             "Ledger import running transition failed run_id=%s error_type=%s.",
             run_id,
@@ -238,7 +238,7 @@ def _run_ledger_import(
             run_id=run_id,
             status=_terminal_delivery_status(delivered, terminal_status="failed"),
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001  # 导入处理兜底：ValueError 已单独窄化，其余异常必须落终态并重试，已 error 日志
         logger.error(
             "Ledger import processing attempt failed run_id=%s error_type=%s.",
             run_id,
@@ -297,7 +297,7 @@ def _retry_or_fail(
                 delay=LEDGER_IMPORT_RETRY_DELAY_MS,
             )
             return _safe_task_payload(run_id=run_id, status="retrying")
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001  # broker 入队异常面无界；重试入队失败后直接落 failed 终态，已 error 日志
             logger.error(
                 "Ledger import manual retry enqueue failed run_id=%s error_type=%s.",
                 run_id,
@@ -356,7 +356,7 @@ def _persist_terminal_and_enqueue(
             error_message=error_message,
         )
         return TerminalDelivery.DELIVERED
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001  # 终态主写失败必须降级到 safe enqueue/outbox，actor 不允许崩溃丢终态，已 error 日志
         logger.error(
             "Ledger import terminal primary write failed run_id=%s error_type=%s.",
             run_id,
@@ -383,7 +383,7 @@ def _persist_terminal_and_enqueue(
         try:
             reconcile_ledger_import_terminal.send(**safe_facts)
             return TerminalDelivery.DELIVERED
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001  # safe enqueue 兜底：失败继续尝试本地 outbox spool，已 error 日志
             last_spool_error_type = type(exc).__name__
             logger.error(
                 "Ledger import safe terminal enqueue failed run_id=%s attempt=%s error_type=%s.",
@@ -411,7 +411,7 @@ def _persist_terminal_and_enqueue(
             )
             logger.warning("event=ledger_import_terminal_spooled run_id=%s.", run_id)
             return TerminalDelivery.SPOOLED
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001  # 最后一级 spool 兜底：失败显式返回 DELIVERY_FAILED，已 error 日志
             last_spool_error_type = type(exc).__name__
             logger.error(
                 "Ledger import local terminal spool write failed run_id=%s attempt=%s error_type=%s.",

@@ -11,17 +11,18 @@
 
 | 规则 | 数量 |
 | --- | ---: |
-| BLE001 blind-except | **179** |
+| BLE001 blind-except（冻结基线） | **179** |
+| 批次 1 清偿后全库实测余额（2026-08-12，`py -m ruff check backend --select BLE001 --statistics`，含其他并行批次同步清偿） | **147** |
 
 ## 按文件计数（降序）
 
 | 数量 | 文件 |
 | ---: | --- |
 | 11 | backend/app/api/routes/kpi.py |
-| 11 | backend/scripts/bootstrap_data_pipeline.py |
-| 9 | backend/app/tasks/ledger_import.py |
+| 0（原 11，批次 1 已清偿：1 处窄化 duckdb.Error + 10 处 noqa） | backend/scripts/bootstrap_data_pipeline.py |
+| 0（原 9，批次 1 已清偿：9 处 noqa，终态落账/重试/spool 耐久性边界） | backend/app/tasks/ledger_import.py |
 | 8 | backend/app/tasks/tushare_news_ingest.py |
-| 6 | backend/app/repositories/akshare_adapter.py |
+| 0（原 6，批次 1 已清偿：6 处 noqa，多供应商回退链补 logger.warning） | backend/app/repositories/akshare_adapter.py |
 | 6 | backend/app/services/campisi_attribution_service.py |
 | 6 | backend/app/tasks/choice_stock_materialize.py |
 | 5 | backend/app/services/research_calendar_upstream_fetch_service.py |
@@ -89,7 +90,19 @@
 | 1 | backend/scripts/diagnose_balance_calibration.py |
 | 1 | backend/scripts/diagnose_balance_diff.py |
 
-合计：179 处，72 个文件。
+合计（冻结基线）：179 处，72 个文件。批次 1 清偿 26 处（3 个文件清零）后，全库实测余额 147 处（2026-08-12，差额含其他并行批次同步清偿与代码演进）。
+
+## 清偿记录
+
+### 批次 1（2026-08-12）— 26 处，余额 179 → 147（实测）
+
+| 文件 | 原计数 | 处置 |
+| --- | ---: | --- |
+| backend/scripts/bootstrap_data_pipeline.py | 11 | 1 处窄化为 `duckdb.Error`（汇总表行数读取，错误信息随行打印）；10 处 `noqa: BLE001`（顶层 CLI 步骤/单日期隔离，失败打印 traceback 或错误后继续，fail-visible） |
+| backend/app/tasks/ledger_import.py | 9 | 9 处 `noqa: BLE001`（终态落账/重试入队/outbox spool 耐久性边界，任何异常必须走降级路径且每处已有 `logger.error` 含 error_type） |
+| backend/app/repositories/akshare_adapter.py | 6 | 6 处 `noqa: BLE001`（AkShare/Choice/ChinaBond 多供应商回退链与 loader 探测循环，vendor SDK 异常面无界；错误聚合进最终 RuntimeError，5 处回退点补 `logger.warning` 使部分降级可见） |
+
+验证：三个文件 `ruff --select BLE001` 清零；`py -m py_compile` 通过；配套测试 `test_bootstrap_data_pipeline_script.py`、`test_akshare_adapter_yield_curve.py`、`test_akshare_adapter_fx.py`、`test_ledger_import_flow.py`、`test_ledger_import_worker_e2e.py` 共 71 passed / 2 skipped（既有 skip registry）。
 
 ## 棘轮建议（后续任务用）
 
