@@ -3,7 +3,6 @@ import {
   ClockCircleOutlined,
   DatabaseOutlined,
   LineChartOutlined,
-  SafetyCertificateOutlined,
   ThunderboltOutlined,
   WarningOutlined,
 } from "@ant-design/icons";
@@ -14,6 +13,7 @@ import { flushSync } from "react-dom";
 
 import { useApiClient } from "../../../api/clientContext";
 import type { ApiEnvelope } from "../../../api/contracts";
+import { EM_DASH } from "../../../utils/format";
 import type {
   MacroToolkitAnalysisPayload,
   MacroToolkitScriptRecord,
@@ -97,6 +97,7 @@ import { useMacroToolkitOperationActions } from "./useMacroToolkitOperationActio
 import { ObservationEvidenceTraceSummary } from "../sections/MacroToolkitDataHealthSections";
 import {
   MacroToolkitCommitteeDecisionAction,
+  MacroToolkitDeepEvidenceRailCard,
   MacroToolkitGovernanceGatePanel,
   MacroToolkitInvestmentBriefPanel,
   MacroToolkitOperationsBand,
@@ -499,7 +500,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   const hasRealStrategyData = strategySummaries.some((strategy) => hasRealStrategySource(strategy));
   const strategyDescription =
     strategySupplyState === "loading"
-      ? "策略摘要正在生成，核心信号已先返回；市场踩踏风险和功能结果需打开完整分析后显示。"
+      ? "策略摘要正在生成。"
       : strategySupplyState === "failed"
         ? "策略摘要读取失败，当前不能判断策略供数闭环。"
         : hasRealStrategyData
@@ -724,7 +725,6 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     committeeDecisionAction,
     committeeDecisionBlocker,
     committeeDecisionHref,
-    committeeDecisionStatus,
     committeeFinalGateOutcome,
     committeeFinalPackValue,
     committeeFinalReceiptReviewValue,
@@ -1043,6 +1043,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       isCoreAnalysis={isCoreAnalysis}
     />
   ) : null;
+  // 分析限制全文交给证据区折叠（limitsDetails）；首屏只留 house view 结论区的一句中文摘要。
   const analysisWarningsAlert = analysis?.warnings.length ? (
     <Alert type="warning" showIcon message="分析限制" description={analysis.warnings.join(" ")} />
   ) : null;
@@ -1074,6 +1075,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       missingIndicatorCount={missingIndicatorCount}
       capabilityResults={capabilityResults}
       degradedResultCount={degradedResultCount}
+      limitsDetails={analysisWarningsAlert}
     />
   ) : null;
   const investmentBriefPanel = showOperations ? (
@@ -1183,11 +1185,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
             <span className={`${MT_SHELL_STATUS_PILL} macro-toolkit-page__toolbar-pill`}>
               <ClockCircleOutlined aria-hidden="true" />
               观察日{" "}
-              <span className={MT_SHELL_NUM}>{analysis?.as_of_date ?? "DATE_MISSING"}</span>
-            </span>
-            <span className={`${MT_SHELL_STATUS_PILL} macro-toolkit-page__toolbar-pill`}>
-              <SafetyCertificateOutlined aria-hidden="true" />
-              门禁 {committeeDecisionStatus}
+              <span className={MT_SHELL_NUM}>{analysis?.as_of_date ?? EM_DASH}</span>
             </span>
             <span className={`${MT_SHELL_STATUS_PILL} macro-toolkit-page__toolbar-pill`}>
               <DatabaseOutlined aria-hidden="true" />
@@ -1218,9 +1216,12 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       </header>
 
       <main
-        className={`${MT_SHELL_MAIN} macro-toolkit-page__main`}
+        className={`${MT_SHELL_MAIN} macro-toolkit-page__main${
+          showOperations ? " macro-toolkit-page__main--with-rail" : ""
+        }`}
         onClickCapture={handleDeferredContentLinkClick}
       >
+      <div className="macro-toolkit-page__primary">
       <section
         data-testid="macro-toolkit-tailwind-cockpit"
         className={MACRO_TOOLKIT_HERO_CARD_SLOTS.base({
@@ -1255,6 +1256,14 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
               <p title={analysis?.conclusion.summary}>
                 {analysis?.conclusion.summary ?? "正在从系统数据源生成宏观判断。"}
               </p>
+              {showOperations && analysis?.warnings.length ? (
+                <small
+                  className="macro-toolkit-cockpit__limits"
+                  title={analysis.warnings.join(" ")}
+                >
+                  {analysis.warnings.length} 项输入受限，不影响已展示结论
+                </small>
+              ) : null}
             </div>
             {showOperations ? (
               <div className="macro-toolkit-brief-metrics">
@@ -1265,7 +1274,10 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                   detail={
                     primarySignal?.score == null
                       ? "尚无可排序信号"
-                      : `${primarySignal.evidence.join(" / ")} · ${primarySignal.score.toFixed(1)}`
+                      : `评分 ${primarySignal.score.toFixed(1)}`
+                  }
+                  detailTitle={
+                    primarySignal?.evidence.length ? primarySignal.evidence.join(" / ") : undefined
                   }
                   tone={primarySignal?.tone === "positive" ? "positive" : primarySignal ? "neutral" : "missing"}
                 />
@@ -1280,7 +1292,6 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       {showOperations && analysis ? (
         <div className="macro-toolkit-page__content macro-toolkit-first-screen-flow">
           {signalSection}
-          {analysisWarningsAlert}
         </div>
       ) : null}
 
@@ -1314,28 +1325,31 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
         <>
           {showOperations ? (
             <>
-              {deferredContentStage >= 1 ? indicatorSection : null}
-              {deferredContentStage >= 2 ? (
+              {deferredContentStage >= 1 ? (
                 <>
-                  {capabilityResultsSection}
                   {riskSection}
+                  {indicatorSection}
                 </>
               ) : null}
-              {deferredContentStage >= 3 ? strategySection : null}
-              {deferredContentStage >= 4 ? (
+              {deferredContentStage >= 2 ? capabilityResultsSection : null}
+              {deferredContentStage >= 3 ? (
                 <>
                   {modelSignalMatrixSection}
                   {modelChainSection}
                   {hasonStrategySection}
+                </>
+              ) : null}
+              {deferredContentStage >= 4 ? strategySection : null}
+              {deferredContentStage >= 5 ? (
+                <>
+                  {analysisEvidenceFlow}
                   {crisisEvidenceSection}
                 </>
               ) : null}
-              {deferredContentStage >= 5 ? analysisEvidenceFlow : null}
             </>
           ) : (
             <>
               {analysisEvidenceFlow}
-              {analysisWarningsAlert}
               <div className="macro-toolkit-observation-flow" aria-label="宏观观察阅读顺序">
                 {observationSignalRiskComparisonSection}
                 {modelSignalMatrixSection}
@@ -1352,20 +1366,8 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       </div>
       ) : null}
 
-      {investmentBriefPanel}
-
-      {!showOperations || deferredContentStage >= 6 ? (
-        <>
-          {showOperations ? (
-            <MacroToolkitOperationsBand
-              governanceGatePanel={governanceGatePanel}
-              deepEvidenceQueueItems={deepEvidenceQueueItems}
-              operationsConsolePanel={operationsConsolePanel}
-            />
-          ) : null}
-
-          {analysis ? <MacroToolkitReportBundlePanel bundle={analysis.report_bundle} /> : null}
-        </>
+      {showOperations && deferredContentStage >= 6 ? (
+        <MacroToolkitOperationsBand operationsConsolePanel={operationsConsolePanel} />
       ) : null}
 
       {showOperations &&
@@ -1389,8 +1391,11 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
         />
       ) : null}
 
-      {showOperations &&
+      {!showOperations ||
       deferredContentStage >= MACRO_TOOLKIT_FINAL_DEFERRED_CONTENT_STAGE ? (
+        <>
+          {analysis ? <MacroToolkitReportBundlePanel bundle={analysis.report_bundle} /> : null}
+          {showOperations ? (
         <MacroToolkitExecutionReceiptWorkspace
           analysis={analysis}
           payload={payload}
@@ -1451,6 +1456,20 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
           runResult={runResult}
           chainRunResult={chainRunResult}
         />
+          ) : null}
+        </>
+      ) : null}
+      </div>
+      {showOperations ? (
+        <aside
+          className="macro-toolkit-meta-rail"
+          aria-label="治理与证据栏"
+          data-testid="macro-toolkit-meta-rail"
+        >
+          {investmentBriefPanel}
+          <MacroToolkitDeepEvidenceRailCard deepEvidenceQueueItems={deepEvidenceQueueItems} />
+          {governanceGatePanel}
+        </aside>
       ) : null}
       </main>
     </section>

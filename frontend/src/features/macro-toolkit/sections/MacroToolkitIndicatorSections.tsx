@@ -12,15 +12,16 @@ import type {
   MacroToolkitIndicator,
 } from "../../../api/macroToolkitClient";
 import { PageSectionLead } from "../../../components/page/PagePrimitives";
+import { EM_DASH } from "../../../utils/format";
 import { formatValue } from "../lib/macroToolkitCrisisSupport";
-import { formatChange, latestIndicatorDate } from "../lib/macroToolkitDisplayFormat";
+import { formatChange, groupLabel, latestIndicatorDate } from "../lib/macroToolkitDisplayFormat";
 import { MetricTile } from "../lib/macroToolkitPanelShared";
 
 export function IndicatorValueCell({ item }: { item: MacroToolkitIndicator }) {
   return (
     <div className="macro-toolkit-number-cell">
       <strong>{formatValue(item.latest_value, item.unit)}</strong>
-      <small>{item.row_count.toLocaleString()} rows</small>
+      <small>{item.row_count.toLocaleString()} 行</small>
     </div>
   );
 }
@@ -97,11 +98,8 @@ export function IndicatorObservationSummary({ indicators }: { indicators: MacroT
       <div className="macro-toolkit-indicator-observation__head">
         <div>
           <span>指标证据摘要</span>
-          <strong>数据源已确认，细节留在完整工具页</strong>
+          <strong>数据源已确认</strong>
         </div>
-        <Tag color={missingIndicators > 0 ? "gold" : "green"}>
-          {usableIndicators.length}/{indicators.length || 0} 可用
-        </Tag>
       </div>
       <div className="macro-toolkit-indicator-observation__grid">
         <MetricTile
@@ -116,7 +114,7 @@ export function IndicatorObservationSummary({ indicators }: { indicators: MacroT
           icon={<ClockCircleOutlined />}
           label="最新日期"
           value={latestIndicatorDate(indicators)}
-          detail="用于观察页结论排序，不展示源表审计。"
+          detail=""
           tone="neutral"
           detailMaxLength={40}
         />
@@ -133,11 +131,13 @@ export function IndicatorObservationSummary({ indicators }: { indicators: MacroT
             key={indicator.alias}
           >
             <div>
-              <span>{indicator.label}</span>
+              <span>
+                {groupLabel(indicator.group)} · {indicator.label}
+              </span>
               <strong>{formatValue(indicator.latest_value, indicator.unit)}</strong>
             </div>
             <small>
-              {indicator.group} · {formatChange(indicator.change, indicator.change_pct)} ·{" "}
+              {formatChange(indicator.change, indicator.change_pct)} ·{" "}
               {indicator.latest_date ?? "日期缺失"}
             </small>
           </div>
@@ -164,7 +164,7 @@ const indicatorColumns: ColumnsType<MacroToolkitIndicator> = [
     dataIndex: "group",
     key: "group",
     width: 120,
-    render: (group: string) => <Tag>{group}</Tag>,
+    render: (group: string) => <span className="macro-toolkit-indicator-group">{groupLabel(group)}</span>,
   },
   {
     title: "最新值",
@@ -193,10 +193,8 @@ const indicatorColumns: ColumnsType<MacroToolkitIndicator> = [
     width: 120,
     render: (date: string | null, item) => (
       <div className="macro-toolkit-date-cell">
-        <span>{date ?? "缺失"}</span>
-        <Tag color={item.quality === "ok" ? "green" : "red"}>
-          {item.quality === "ok" ? "可用" : "缺失"}
-        </Tag>
+        <span>{date ?? EM_DASH}</span>
+        {item.quality === "ok" ? null : <Tag color="red">缺失</Tag>}
       </div>
     ),
   },
@@ -222,7 +220,7 @@ export function MacroToolkitIndicatorSection({
   analysis: MacroToolkitAnalysisPayload;
 }) {
   return (
-    <section className="macro-toolkit-section">
+    <section id="macro-toolkit-indicator-matrix" className="macro-toolkit-section">
       <PageSectionLead
         eyebrow="指标"
         title="指标矩阵"

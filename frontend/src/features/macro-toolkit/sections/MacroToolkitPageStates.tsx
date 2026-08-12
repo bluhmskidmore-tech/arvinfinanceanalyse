@@ -114,7 +114,7 @@ export function MacroToolkitInitialAnalysisLoading({
                 <PageSectionLead
                   eyebrow="信号"
                   title="核心信号"
-                  description="等待后端宏观 analysis 结果返回。"
+                  description="等待后端宏观分析结果返回。"
                 />
                 <div className="macro-toolkit-empty-output">核心分析加载中，暂不显示占位结论。</div>
               </section>

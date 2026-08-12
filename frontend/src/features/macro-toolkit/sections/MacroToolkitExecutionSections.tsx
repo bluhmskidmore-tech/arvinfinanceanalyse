@@ -12,6 +12,7 @@ import {
 } from "@ant-design/icons";
 import { Alert, Button, Checkbox, Select, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import { useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 
 import type { ResultMeta } from "../../../api/contracts";
@@ -41,7 +42,6 @@ import {
   formatBusinessEvidenceLabel,
   formatQualityFlagLabel,
   formatSize,
-  formatSourceCheck,
   groupLabel,
   statusTone,
 } from "../lib/macroToolkitDisplayFormat";
@@ -173,17 +173,9 @@ export function MacroToolkitOperationsConsolePanel({
   refreshCommodityFutures,
   commodityRefreshActionLabel,
   scriptsQuery,
-  stockRefreshResult,
-  stockRefreshError,
   refreshResult,
   refreshFeedbackTone,
   refreshError,
-  commodityRefreshResult,
-  commodityRefreshError,
-  chainRunResult,
-  chainRunError,
-  runResult,
-  runError,
 }: {
   selectedScript: MacroToolkitScriptRecord | null;
   scripts: MacroToolkitScriptRecord[];
@@ -344,30 +336,8 @@ export function MacroToolkitOperationsConsolePanel({
         </Button>
       </div>
       {scriptsQuery.isError ? <Alert type="error" showIcon message="脚本注册表加载失败" /> : null}
-      {stockRefreshResult ? <Alert type="success" showIcon message={stockRefreshResult} /> : null}
-      {stockRefreshError ? <Alert type="error" showIcon message={stockRefreshError} /> : null}
       {refreshResult ? <Alert type={refreshFeedbackTone} showIcon message={refreshResult} /> : null}
       {refreshError ? <Alert type="error" showIcon message={refreshError} /> : null}
-      {commodityRefreshResult ? <Alert type="success" showIcon message={commodityRefreshResult} /> : null}
-      {commodityRefreshError ? <Alert type="error" showIcon message={commodityRefreshError} /> : null}
-      {chainRunResult ? (
-        <Alert
-          type={chainRunAlertType(chainRunResult.status)}
-          showIcon
-          message={`模型链：${chainRunResult.status}`}
-          description={`步骤 ${chainRunResult.receipts.length}/${chainRunResult.manifest.length} · 产物支撑 ${chainRunResult.readiness_after.artifact_backed_count}/${chainRunResult.readiness_after.total_count} · 仅观察`}
-        />
-      ) : null}
-      {chainRunError ? <Alert type="error" showIcon message={chainRunError} /> : null}
-      {runResult ? (
-        <Alert
-          type={statusTone(runResult.status)}
-          showIcon
-          message={`脚本运行：${runResult.status}`}
-          description={`输出文件 ${runResult.output_files.length} · 退出码 ${runResult.exit_code ?? "无"}`}
-        />
-      ) : null}
-      {runError ? <Alert type="error" showIcon message={runError} /> : null}
     </div>
   );
 }
@@ -379,18 +349,12 @@ export function MacroToolkitExecutionReceiptWorkspace({
   scripts,
   availableScriptCount,
   executionBusinessEvidence,
-  outputReceiptDetail,
   sourceHitCount,
   sourceChecks,
   selectedEvidenceHref,
   selectedGovernanceFocus,
   cffexStatus,
-  isRefreshingCffex,
-  refreshCffexMemberRank,
   isOperationActionBusy,
-  refreshResult,
-  refreshFeedbackTone,
-  refreshError,
   selectedCommodityProducts,
   setSelectedCommodityProducts,
   setCommoditySuggestedSelection,
@@ -522,13 +486,19 @@ export function MacroToolkitExecutionReceiptWorkspace({
       detail: actionReceipts.length ? "回执队列可复核" : "等待操作回执",
     },
   ];
+  const [dataSourceFoldOpen, setDataSourceFoldOpen] = useState(false);
+  const dataSourceFoldExpanded =
+    dataSourceFoldOpen ||
+    receiptTechnicalDetailsExpanded ||
+    selectedEvidenceHref === "#macro-toolkit-cffex-detail" ||
+    selectedEvidenceHref === "#macro-toolkit-commodity-detail";
   return (
         <section className="macro-toolkit-execution-receipt-workspace" aria-label="执行证据与产物回执区">
           <div className="macro-toolkit-execution-receipt-workspace__head">
             <div>
               <span>执行与产物</span>
-              <strong>执行证据</strong>
-              <small>把可执行脚本、席位和商品刷新先归入证据，再用产物与数据源命中形成回执。</small>
+              <strong>执行闭环总览</strong>
+              <small>脚本状态、数据源刷新与产物回执合并为投委会可复核的执行闭环。</small>
             </div>
           </div>
 
@@ -544,20 +514,6 @@ export function MacroToolkitExecutionReceiptWorkspace({
                 : ""
             }`}
           >
-            <div className="macro-toolkit-section-headline">
-              <PageSectionLead
-                eyebrow="执行"
-                title="执行闭环总览"
-                description="把脚本状态、数据证据和产物回执合并成投委会可复核的执行闭环。"
-              />
-              <Button
-                icon={<ReloadOutlined />}
-                onClick={() => void scriptsQuery.refetch()}
-                loading={scriptsQuery.isFetching}
-              >
-                刷新
-              </Button>
-            </div>
             {scriptsQuery.isFetching && !payload ? (
               <Alert
                 type="info"
@@ -566,47 +522,48 @@ export function MacroToolkitExecutionReceiptWorkspace({
                 description="脚本状态会稍后补上，核心分析已可先查看。"
               />
             ) : null}
-            <div className="macro-toolkit-operations-brief">
-              <MetricTile
-                label="脚本就绪"
-                value={`${availableScriptCount}/${scripts.length}`}
-                detail="可执行能力已归入执行证据"
-                tone={availableScriptCount === scripts.length ? "positive" : "neutral"}
-              />
-              <MetricTile
-                label="业务证据"
-                value={executionBusinessEvidence}
-                detail="底层源名留在审计明细"
-                detailMaxLength={38}
-              />
-              <MetricTile label="产物回执" value={payload?.output_files.length ?? 0} detail={outputReceiptDetail} />
-              <MetricTile
-                label="来源映射"
-                value={`${sourceHitCount}/${sourceChecks.length}`}
-                detail="旧别名已映射到当前业务证据"
-              />
-            </div>
+            {payload ? (
+              <DataStatusStrip className="macro-toolkit-status-strip">
+                <span>证据口径：{formatBusinessEvidenceLabel(scriptsQuery.data?.result_meta.basis)}</span>
+                <span>业务证据：{executionBusinessEvidence}</span>
+                <span>质量状态：{formatQualityFlagLabel(scriptsQuery.data?.result_meta.quality_flag)}</span>
+              </DataStatusStrip>
+            ) : null}
           </section>
 
           {scriptsQuery.isError ? <Alert type="error" showIcon message="宏观工具加载失败" /> : null}
 
-          {payload ? (
-            <DataStatusStrip className="macro-toolkit-status-strip">
-              <span>证据口径：{formatBusinessEvidenceLabel(scriptsQuery.data?.result_meta.basis)}</span>
-              <span>业务证据：{executionBusinessEvidence}</span>
-              <span>质量状态：{formatQualityFlagLabel(scriptsQuery.data?.result_meta.quality_flag)}</span>
-            </DataStatusStrip>
-          ) : null}
-
-          {payload?.warnings.length ? (
-            <Alert
-              type="warning"
-              showIcon
-              message="仍有未落库的数据面"
-              description={payload.warnings.join(" ")}
-            />
-          ) : null}
-
+          <section
+            className={`macro-toolkit-receipt-technical-details ${
+              dataSourceFoldExpanded
+                ? "macro-toolkit-receipt-technical-details--expanded"
+                : "macro-toolkit-receipt-technical-details--collapsed"
+            }`}
+            aria-label="数据源刷新状态"
+          >
+            <div className="macro-toolkit-receipt-technical-details__head">
+              <div>
+                <span>数据源</span>
+                <strong>数据源刷新状态</strong>
+                <small>
+                  席位 {cffexStatus?.latest_trade_date ?? "缺失"} · 商品覆盖 {commodityCoverageValue(commodityStatus)}
+                </small>
+              </div>
+              <Button
+                size="small"
+                icon={dataSourceFoldExpanded ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
+                aria-label={dataSourceFoldExpanded ? "收起数据源状态" : "展开数据源状态"}
+                aria-expanded={dataSourceFoldExpanded}
+                aria-controls="macro-toolkit-datasource-fold-body"
+                onClick={() => setDataSourceFoldOpen((open) => !open)}
+              >
+                {dataSourceFoldExpanded ? "收起数据源状态" : "展开数据源状态"}
+              </Button>
+            </div>
+            <div
+              id="macro-toolkit-datasource-fold-body"
+              className="macro-toolkit-receipt-technical-details__body"
+            >
           <section
             id="macro-toolkit-cffex-detail"
             data-testid="macro-toolkit-cffex-detail"
@@ -617,14 +574,14 @@ export function MacroToolkitExecutionReceiptWorkspace({
             <PageSectionLead
               eyebrow="席位"
               title="CFFEX席位状态"
-              description="crowding_cn 等脚本依赖的中金所席位排名读面。"
+              description="中金所席位排名数据，供拥挤度等宏观脚本使用；刷新入口在操作台。"
             />
             <div className="macro-toolkit-cffex-panel">
               <div className="macro-toolkit-cffex-metrics">
                 <MetricTile
                   label="席位行数"
                   value={cffexStatus?.row_count ?? 0}
-                  detail={cffexStatus?.status ?? "未读取"}
+                  detail={statusLabel(cffexStatus?.status ?? "未读取")}
                 />
                 <MetricTile
                   label="最新交易日"
@@ -638,18 +595,6 @@ export function MacroToolkitExecutionReceiptWorkspace({
                     cffexStatus?.stale_days == null ? "待确认" : `落后 ${cffexStatus.stale_days} 天`
                   }
                 />
-              </div>
-              <div className="macro-toolkit-cffex-actions">
-                <Button
-                  icon={<ReloadOutlined />}
-                  loading={isRefreshingCffex}
-                  disabled={isOperationActionBusy && !isRefreshingCffex}
-                  onClick={() => void refreshCffexMemberRank()}
-                >
-                  刷新席位明细
-                </Button>
-                {refreshResult ? <Alert type={refreshFeedbackTone} showIcon message={refreshResult} /> : null}
-                {refreshError ? <Alert type="error" showIcon message={refreshError} /> : null}
               </div>
             </div>
           </section>
@@ -812,6 +757,8 @@ export function MacroToolkitExecutionReceiptWorkspace({
               {commodityRefreshRun ? <CommodityRefreshResultPanel refresh={commodityRefreshRun} /> : null}
             </div>
           </section>
+            </div>
+          </section>
 
           </div>
 
@@ -845,7 +792,7 @@ export function MacroToolkitExecutionReceiptWorkspace({
                 <div>
                   <span>底稿技术明细</span>
                   <strong>脚本、来源、注册表和日志</strong>
-                  <small>{receiptTechnicalDetailsExpanded ? "已展开" : "默认收起"} · 审计追溯保留在这里</small>
+                  <small>{receiptTechnicalDetailsExpanded ? "已展开" : "默认收起"}</small>
                 </div>
                 <Button
                   size="small"
@@ -876,7 +823,7 @@ export function MacroToolkitExecutionReceiptWorkspace({
                   <PageSectionLead
                     eyebrow="产物"
                     title="脚本产物"
-                    description="运行脚本后自动刷新这里，便于确认 CSV、图片或报告是否生成。"
+                    description="运行脚本后核对 CSV、图片或报告是否生成。"
                   />
                   {payload?.output_files.length ? (
                     <Table
@@ -897,17 +844,14 @@ export function MacroToolkitExecutionReceiptWorkspace({
                   <PageSectionLead
                     eyebrow="来源"
                     title="系统数据源命中"
-                    description="这些旧代码别名已经映射到当前系统的 Choice/Tushare 数据面。"
+                    description={`来源命中 ${sourceHitCount}/${sourceChecks.length}；逐序列来源与行数以指标矩阵为准，此处不再重复。`}
                   />
-                  <div className="macro-toolkit-source-grid">
-                    {sourceChecks.map((check) => (
-                      <div className="macro-toolkit-source-item" key={check.alias}>
-                        <span>{check.alias}</span>
-                        <strong>{check.row_count}</strong>
-                        <small>{formatSourceCheck(check)}</small>
-                      </div>
-                    ))}
-                  </div>
+                  <a
+                    className="macro-toolkit-receipt-technical-details__matrix-link"
+                    href="#macro-toolkit-indicator-matrix"
+                  >
+                    查看指标矩阵
+                  </a>
                 </section>
 
                 {omittedEntries.length ? (
@@ -932,7 +876,7 @@ export function MacroToolkitExecutionReceiptWorkspace({
                   <PageSectionLead
                     eyebrow="脚本"
                     title="脚本注册表"
-                    description="脚本从原 macro_toolkit 聚合到后端宏观模块，前端通过注册表展示。"
+                    description="后端宏观模块的可执行脚本注册表。"
                   />
                   <div className="macro-toolkit-toolbar">
                     <Select
@@ -994,7 +938,7 @@ export function MacroToolkitExecutionReceiptWorkspace({
                       <Alert
                         type={statusTone(runResult.status)}
                         showIcon
-                        message={`状态：${runResult.status}`}
+                        message={`状态：${statusLabel(runResult.status)}`}
                         description={`退出码：${runResult.exit_code ?? "无"} · 输出文件：${runResult.output_files.length}`}
                       />
                     ) : null}
@@ -1002,7 +946,7 @@ export function MacroToolkitExecutionReceiptWorkspace({
                       <Alert
                         type={chainRunAlertType(chainRunResult.status)}
                         showIcon
-                        message={`模型链：${chainRunResult.status}`}
+                        message={`模型链：${statusLabel(chainRunResult.status)}`}
                         description={`步骤：${chainRunResult.receipts.length}/${chainRunResult.manifest.length} · 缺口：${chainRunResult.readiness_after.degraded_count}`}
                       />
                     ) : null}

@@ -229,7 +229,7 @@ export function InvestmentEvidenceSummary({
             <MetricTile
               icon={<DatabaseOutlined />}
               label="数据源已确认"
-              value={`${usableIndicators.length}/${indicators.length || 0}`}
+              value={missingIndicators ? "待补齐" : "已确认"}
               detail={missingIndicators ? `${missingIndicators} 个指标待补齐。` : "当前观察指标均可用。"}
               tone={missingIndicators ? "missing" : "neutral"}
               detailMaxLength={42}
@@ -238,7 +238,7 @@ export function InvestmentEvidenceSummary({
               icon={<ClockCircleOutlined />}
               label="最新日期"
               value={latestIndicatorDate(indicators)}
-              detail="用于观察结论排序，不展示源表审计。"
+              detail="观察指标的最新数据日。"
               tone="neutral"
               detailMaxLength={42}
             />
@@ -299,7 +299,7 @@ export function MacroToolkitInvestmentEvidenceSection({
       <PageSectionLead
         eyebrow="交叉验证"
         title="投研证据摘要"
-        description="合并展示策略链路、影子组合边界和指标覆盖，只保留观察结论。"
+        description="策略链路、影子组合边界与指标覆盖的观察结论。"
       />
       <InvestmentEvidenceSummary
         indicators={analysis.indicators}

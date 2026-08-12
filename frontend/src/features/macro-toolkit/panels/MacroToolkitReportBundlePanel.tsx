@@ -36,7 +36,7 @@ export function MacroToolkitReportBundlePanel({ bundle }: MacroToolkitReportBund
         <div>
           <span>研究材料包</span>
           <strong>{bundle?.title ?? "2026 中国宏观与利率策略"}</strong>
-          <small>经过清单与哈希校验的只读研究材料，不进入正式指标计算链。</small>
+          <small>经清单与哈希校验的只读研究材料；下载前将重新校验清单与哈希。</small>
         </div>
         <div className="macro-toolkit-report-bundle__badges" aria-label="报告资产口径">
           <span>研究级只读</span>
@@ -87,7 +87,7 @@ export function MacroToolkitReportBundlePanel({ bundle }: MacroToolkitReportBund
               >
                 <span>{artifact.label}</span>
                 <strong>{artifact.filename}</strong>
-                <small>{formatAssetSize(artifact.size_bytes)} · 下载前重新校验</small>
+                <small>{formatAssetSize(artifact.size_bytes)}</small>
               </a>
             ))}
           </div>

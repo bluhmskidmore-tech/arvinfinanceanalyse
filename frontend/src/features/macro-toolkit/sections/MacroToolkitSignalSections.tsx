@@ -8,6 +8,7 @@ import { PageSectionLead } from "../../../components/page/PagePrimitives";
 import { formatCrisisTopContributorSummary } from "../lib/crisisScoreDisplay";
 import { isCrisisComponent } from "../lib/macroToolkitCrisisSupport";
 import {
+  formatCrisisComponentSummaryZh,
   formatObservationEvidence,
   formatObservationSignalStance,
   formatObservationSignalTitle,
@@ -55,15 +56,20 @@ export function MacroToolkitSignalSection({
                   const rawComponents = Array.isArray(crisisScoreResult.result?.components)
                     ? crisisScoreResult.result.components.filter(isCrisisComponent)
                     : [];
+                  // 英文组件原串保留在 title；卡面展示中文摘要。
                   const summary = formatCrisisTopContributorSummary(rawComponents);
                   return summary ? (
-                    <small className="macro-toolkit-signal-component-summary" data-testid="macro-toolkit-crisis-signal-component-summary">
-                      {summary}
+                    <small
+                      className="macro-toolkit-signal-component-summary"
+                      data-testid="macro-toolkit-crisis-signal-component-summary"
+                      title={summary}
+                    >
+                      {formatCrisisComponentSummaryZh(rawComponents) ?? summary}
                     </small>
                   ) : null;
                 })()
               : null}
-            <small>{showOperations ? card.evidence.join(" / ") : formatObservationEvidence(card.evidence)}</small>
+            <small title={card.evidence.join(" / ")}>{formatObservationEvidence(card.evidence)}</small>
           </div>
         ))}
       </div>

@@ -97,7 +97,7 @@ export function MacroToolkitRiskSection({
       <PageSectionLead
         eyebrow={showOperations ? "风险" : "预警"}
         title="市场踩踏风险"
-        description="接入宏观分析结果链路的 A股盘后宽度、跌停、成交与回落压力判断。"
+        description="A股盘后宽度、跌停、成交与回落压力判断。"
       />
       <AShareRiskPanel risk={risk} />
     </section>

@@ -3,12 +3,11 @@ import {
   DatabaseOutlined,
   InfoCircleOutlined,
   LineChartOutlined,
-  ReloadOutlined,
   SafetyCertificateOutlined,
   ThunderboltOutlined,
   WarningOutlined,
 } from "@ant-design/icons";
-import { Alert, Button, Tag } from "antd";
+import { Alert, Tag } from "antd";
 
 import type {
   MacroToolkitChoiceStockRefreshStatus,
@@ -17,14 +16,15 @@ import type {
   MacroToolkitStrategySummary,
 } from "../../../api/macroToolkitClient";
 import { PageSectionLead } from "../../../components/page/PagePrimitives";
+import { EM_DASH } from "../../../utils/format";
 import { formatNumberValue } from "../lib/macroToolkitCrisisSupport";
 import { formatQueryError } from "../lib/macroToolkitDisplayFormat";
 import { MetricTile, compactText, statusColor, statusLabel } from "../lib/macroToolkitPanelShared";
 import {
   admissionCriterionText,
+  choiceStockHasRunEvidence,
   choiceStockRefreshDetail,
   choiceStockRefreshValue,
-  choiceStockTableDetail,
   choiceStockTableSummary,
   costResultText,
   dualFrequencyAlignmentText,
@@ -267,6 +267,12 @@ export function DualFrequencyRiskBudgetPanel({
       : "快频状态或慢频上限待确认";
   const qualityDetail = [
     statusText,
+    dataStatus?.usable_row_count != null ? `可用 ${dataStatus.usable_row_count} 行` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const qualityTitle = [
+    statusText,
     history?.status ? `历史 ${dualFrequencyStatusText(history.status)}` : "",
     dataStatus?.usable_row_count != null ? `可用 ${dataStatus.usable_row_count} 行` : "",
   ]
@@ -282,6 +288,10 @@ export function DualFrequencyRiskBudgetPanel({
         <div>
           <span>双频风险预算（候选）</span>
           <strong>{headline}</strong>
+          <small>
+            {fastStateText} · 生存层前 {dualFrequencyRatio(preSurvivalTarget)} · 生存层{survivalText} · 最终目标{" "}
+            {dualFrequencyRatio(finalTarget)}
+          </small>
         </div>
         <div className="macro-toolkit-tag-row">
           <Tag color={boundaryConfirmed ? statusColor(status) : "red"}>{statusText}</Tag>
@@ -293,9 +303,12 @@ export function DualFrequencyRiskBudgetPanel({
           type="error"
           showIcon
           message="只读边界未确认"
-          description="候选目标值已隐藏；确认 observation_only 且执行关闭后才展示。"
+          description="候选目标值已隐藏；确认后端标记为只读观察且执行开关关闭后才展示。"
         />
       ) : null}
+      <details className="macro-toolkit-strategy-collapse">
+        <summary>展开候选明细与口径</summary>
+        <div className="macro-toolkit-strategy-collapse__body">
       <div className="macro-toolkit-strategy-observation__grid">
         <MetricTile
           icon={<ThunderboltOutlined />}
@@ -350,11 +363,7 @@ export function DualFrequencyRiskBudgetPanel({
           icon={<SafetyCertificateOutlined />}
           label="最终目标"
           value={dualFrequencyRatio(finalTarget)}
-          detail={
-            finalTarget == null
-              ? "生存层未完成，最终目标保持为空。"
-              : "完整候选目标，仍不进入下单。"
-          }
+          detail={finalTarget == null ? "生存层未完成，最终目标保持为空。" : "候选目标完整。"}
           tone={finalTarget == null ? "missing" : "neutral"}
           testId="macro-toolkit-dual-final-target"
           detailMaxLength={44}
@@ -373,7 +382,7 @@ export function DualFrequencyRiskBudgetPanel({
           <b>来源</b>
           {sourceText}
         </span>
-        <span>
+        <span title={qualityTitle}>
           <b>质量</b>
           {qualityDetail || "质量未返回"}
         </span>
@@ -403,6 +412,8 @@ export function DualFrequencyRiskBudgetPanel({
         <span>观察用途</span>
         <small>非正式投资信号，不替换正式策略，不进入下单。</small>
       </div>
+        </div>
+      </details>
     </div>
   );
 }
@@ -566,8 +577,13 @@ export function ShadowPortfolioReportPanel({ report }: { report: MacroToolkitSha
           </div>
         ))}
       </div>
-      <ShadowPortfolioReview report={report} />
-      <ShadowPortfolioEvidencePack report={report} />
+      <details className="macro-toolkit-strategy-collapse">
+        <summary>展开审查证据</summary>
+        <div className="macro-toolkit-strategy-collapse__body">
+          <ShadowPortfolioReview report={report} />
+          <ShadowPortfolioEvidencePack report={report} />
+        </div>
+      </details>
     </div>
   );
 }
@@ -606,8 +622,11 @@ export function StrategySummaryCard({ strategy }: { strategy: MacroToolkitStrate
         <span>{metric?.label ?? "状态"}</span>
         <b>{metric ? `${metric.value}${metric.unit}` : statusLabel(strategy.status)}</b>
       </div>
-      <small>{strategy.evidence.slice(0, 2).join(" / ") || "暂无证据"}</small>
-      <div className="macro-toolkit-strategy-trace" aria-label={`${strategy.label}策略追踪`}>
+      {asOfDate ? <small>数据日 {asOfDate}</small> : null}
+      <details className="macro-toolkit-strategy-collapse">
+        <summary>追踪明细</summary>
+        <div className="macro-toolkit-strategy-trace" aria-label={`${strategy.label}策略追踪`}>
+        <small>{strategy.evidence.slice(0, 2).join(" / ") || "暂无证据"}</small>
         <span>
           <b>数据状态</b>
           {statusLabel(dataStatus)} <em>{dataStatus}</em>
@@ -620,12 +639,6 @@ export function StrategySummaryCard({ strategy }: { strategy: MacroToolkitStrate
           <b>因子</b>
           {factorSource}
         </span>
-        {asOfDate ? (
-          <span>
-            <b>行情日</b>
-            {asOfDate}
-          </span>
-        ) : null}
         {factorAsOfDate ? (
           <span>
             <b>因子日</b>
@@ -684,7 +697,8 @@ export function StrategySummaryCard({ strategy }: { strategy: MacroToolkitStrate
             ))}
           </div>
         ) : null}
-      </div>
+        </div>
+      </details>
     </div>
   );
 }
@@ -694,11 +708,6 @@ export function MacroToolkitStrategySection({
   selectedEvidenceHref,
   strategyDescription,
   choiceStockRefresh,
-  isRefreshingChoiceStock,
-  isOperationActionBusy,
-  refreshChoiceStock,
-  stockRefreshResult,
-  stockRefreshError,
   strategySupplyState,
   fullRealStrategyCount,
   partialRealStrategyCount,
@@ -728,6 +737,10 @@ export function MacroToolkitStrategySection({
   strategyQuery: { isFetching: boolean; isError: boolean; error: unknown };
   macroEtfStrategy: MacroToolkitMacroEtfStrategySnapshot | null;
 }) {
+  const refreshRun = choiceStockRefresh?.refresh;
+  const refreshPlainDetail = choiceStockHasRunEvidence(refreshRun)
+    ? `历史 ${refreshRun.history_row_count ?? EM_DASH} 行 / 因子 ${refreshRun.factor_row_count ?? EM_DASH} 行`
+    : "授权明细见悬停提示";
   return (
     <section
       id="macro-toolkit-strategy-detail"
@@ -737,40 +750,6 @@ export function MacroToolkitStrategySection({
       }`}
     >
       <PageSectionLead eyebrow="策略" title="策略展示" description={strategyDescription} />
-      {showOperations ? (
-        <div className="macro-toolkit-stock-refresh-panel">
-          <div className="macro-toolkit-cffex-metrics">
-            <MetricTile
-              label="股票历史"
-              value={choiceStockRefresh?.daily_observation?.stock_count ?? 0}
-              detail={choiceStockTableDetail(choiceStockRefresh?.daily_observation, "latest_trade_date")}
-            />
-            <MetricTile
-              label="完整因子"
-              value={choiceStockRefresh?.factor_snapshot?.stock_count ?? 0}
-              detail={choiceStockTableDetail(choiceStockRefresh?.factor_snapshot, "as_of_date")}
-            />
-            <MetricTile
-              label="刷新状态"
-              value={choiceStockRefreshValue(choiceStockRefresh?.refresh, choiceStockRefresh?.permission)}
-              detail={choiceStockRefreshDetail(choiceStockRefresh?.refresh, choiceStockRefresh?.permission)}
-            />
-          </div>
-          <div className="macro-toolkit-cffex-actions">
-            <Button
-              icon={<ReloadOutlined />}
-              loading={isRefreshingChoiceStock}
-              disabled={isOperationActionBusy && !isRefreshingChoiceStock}
-              onClick={() => void refreshChoiceStock()}
-              aria-label="刷新股票策略明细"
-            >
-              刷新股票策略明细
-            </Button>
-            {stockRefreshResult ? <Alert type="success" showIcon message={stockRefreshResult} /> : null}
-            {stockRefreshError ? <Alert type="error" showIcon message={stockRefreshError} /> : null}
-          </div>
-        </div>
-      ) : null}
       <div className="macro-toolkit-strategy-supply-strip" aria-label="策略供数闭环">
         <span className="macro-toolkit-strategy-supply-label">
           <DatabaseOutlined />
@@ -809,6 +788,14 @@ export function MacroToolkitStrategySection({
           <ClockCircleOutlined />
           因子快照 {choiceStockTableSummary(choiceStockRefresh?.factor_snapshot, "as_of_date")}
         </span>
+        {showOperations ? (
+          <MetricTile
+            label="刷新状态"
+            value={choiceStockRefreshValue(refreshRun, choiceStockRefresh?.permission)}
+            detail={refreshPlainDetail}
+            detailTitle={choiceStockRefreshDetail(refreshRun, choiceStockRefresh?.permission)}
+          />
+        ) : null}
       </div>
       {!showOperations ? (
         <StrategyObservationSummary

@@ -49,14 +49,13 @@ export function GovernanceAuditMap({
             className={`macro-toolkit-governance-link macro-toolkit-governance-link--${item.tone}`}
             aria-current={item.key === selectedKey ? "true" : undefined}
             onClick={() => onSelect(item.key)}
+            title={item.detail}
           >
             <span>
               <MacroStatusIcon tone={item.tone}>{item.icon}</MacroStatusIcon>
               {item.label}
             </span>
-            <strong>{item.value}</strong>
-            <small title={item.detail}>{compactText(item.detail, 34)}</small>
-            <Tag color={governanceStatusColor(item.status)}>{item.status}</Tag>
+            <Tag color={governanceStatusColor(item.status)}>{governanceStatusLabel(item.status)}</Tag>
           </a>
         ))}
       </div>
@@ -69,6 +68,17 @@ function governanceStatusColor(status: string) {
   if (status === "failed") return "red";
   if (status === "data-pending" || status === "core-not-full") return "gold";
   return "default";
+}
+
+function governanceStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    available: "已就绪",
+    failed: "失败",
+    "data-pending": "数据待处理",
+    "core-not-full": "待完整分析",
+    "non-formal": "非正式",
+  };
+  return labels[status] ?? status;
 }
 
 export function ActionReceiptPanel({ receipt }: { receipt: MacroToolkitActionReceipt }) {
@@ -175,7 +185,6 @@ function actionReceiptStatusLabel(status: MacroToolkitActionReceiptStatus) {
 }
 
 export function MacroToolkitInvestmentBriefPanel({
-  analysis,
   committeeFinalSignoffStatus,
   committeeFinalGateOutcome,
   committeeFinalSignoffOwner,
@@ -217,20 +226,19 @@ export function MacroToolkitInvestmentBriefPanel({
     >
       <div className="macro-toolkit-panel-kicker">
         <span>投委会门禁</span>
-        <strong>{analysis?.as_of_date ?? "日期待确认"}</strong>
+        <strong>{committeeFinalGateOutcome}</strong>
       </div>
       <section className="macro-toolkit-submission-cockpit" aria-label="投委会提交门禁">
-        <div className="macro-toolkit-submission-cockpit__verdict">
-          <span>提交判断</span>
-          <strong>{committeeFinalSignoffStatus}</strong>
-          <small>{committeeFinalGateOutcome}</small>
-        </div>
-        <div className="macro-toolkit-submission-cockpit__owner">
-          <span>责任人</span>
-          <strong>{committeeFinalSignoffOwner}</strong>
-          <small>{committeeDecisionBlocker}</small>
-        </div>
         <div className="macro-toolkit-submission-cockpit__metrics">
+          <div className="macro-toolkit-submission-cockpit__verdict">
+            <span>提交判断</span>
+            <strong>{committeeFinalSignoffStatus}</strong>
+          </div>
+          <div className="macro-toolkit-submission-cockpit__owner">
+            <span>责任人</span>
+            <strong>{committeeFinalSignoffOwner}</strong>
+            <small>{committeeDecisionBlocker}</small>
+          </div>
           <div>
             <span>提交包</span>
             <strong>{committeeFinalPackValue}</strong>
@@ -446,40 +454,59 @@ export function MacroToolkitCommitteeDecisionAction({
     );
 }
 
+export function MacroToolkitDeepEvidenceRailCard({
+  deepEvidenceQueueItems,
+}: {
+  deepEvidenceQueueItems: MacroToolkitDeepEvidenceQueueItem[];
+}) {
+  return (
+    <div className="macro-toolkit-committee-workspace__evidence-links">
+      <div className="macro-toolkit-committee-workspace__evidence-head">
+        <span>深度证据入口</span>
+        <strong>{deepEvidenceQueueItems.length} 个追踪面</strong>
+      </div>
+      <div className="macro-toolkit-committee-workspace__evidence-grid" aria-label="深度证据入口">
+        {deepEvidenceQueueItems.map((item) => (
+          <a key={item.key} href={item.href}>
+            <span>{item.label}</span>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function MacroToolkitOperationsBand({
   governanceGatePanel,
   deepEvidenceQueueItems,
   operationsConsolePanel,
 }: {
-  governanceGatePanel: ReactNode;
-  deepEvidenceQueueItems: MacroToolkitDeepEvidenceQueueItem[];
+  governanceGatePanel?: ReactNode;
+  deepEvidenceQueueItems?: MacroToolkitDeepEvidenceQueueItem[];
   operationsConsolePanel: ReactNode;
 }) {
+  // 过渡兜底：E6 在主文件挂载 MacroToolkitDeepEvidenceRailCard 并停传该 prop 前，入口仍由本带渲染。
+  const deepEvidenceCard = deepEvidenceQueueItems?.length ? (
+    <MacroToolkitDeepEvidenceRailCard deepEvidenceQueueItems={deepEvidenceQueueItems} />
+  ) : null;
+  const hasRail = Boolean(governanceGatePanel) || Boolean(deepEvidenceCard);
   return (
-            <section className="macro-toolkit-operations-band" aria-label="宏观工具操作与治理区">
-              <div className="macro-toolkit-committee-workspace">
-                <aside className="macro-toolkit-committee-workspace__rail" aria-label="治理侧栏">
-                  {governanceGatePanel}
-                  <div className="macro-toolkit-committee-workspace__evidence-links">
-                    <div className="macro-toolkit-committee-workspace__evidence-head">
-                      <span>深度证据入口</span>
-                      <strong>{deepEvidenceQueueItems.length} 个追踪面</strong>
-                    </div>
-                    <div className="macro-toolkit-committee-workspace__evidence-grid" aria-label="深度证据入口">
-                      {deepEvidenceQueueItems.map((item) => (
-                        <a key={item.key} href={item.href}>
-                          <span>{item.label}</span>
-                          <strong>{item.value}</strong>
-                          <small>{item.detail}</small>
-                        </a>
-                      ))}
-                    </div>
-                  </div>
-                </aside>
-                <div className="macro-toolkit-committee-workspace__main" aria-label="操作台">
-                  {operationsConsolePanel}
-                </div>
-              </div>
-            </section>
+    <section className="macro-toolkit-operations-band" aria-label="宏观工具操作与治理区">
+      <div
+        className={`macro-toolkit-committee-workspace${
+          hasRail ? "" : " macro-toolkit-committee-workspace--console-only"
+        }`}
+      >
+        {hasRail ? (
+          <aside className="macro-toolkit-committee-workspace__rail" aria-label="治理侧栏">
+            {governanceGatePanel}
+            {deepEvidenceCard}
+          </aside>
+        ) : null}
+        <div className="macro-toolkit-committee-workspace__main" aria-label="操作台">
+          {operationsConsolePanel}
+        </div>
+      </div>
+    </section>
   );
 }

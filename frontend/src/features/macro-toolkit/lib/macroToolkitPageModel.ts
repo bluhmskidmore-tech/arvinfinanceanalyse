@@ -407,9 +407,9 @@ export const MACRO_TOOLKIT_DEFERRED_TARGET_STAGES: Record<
   string,
   MacroToolkitDeferredContentStage
 > = {
-  "#macro-toolkit-strategy-detail": 3,
-  "#macro-toolkit-model-readiness-detail": 4,
-  "#macro-toolkit-crisis-detail": 4,
+  "#macro-toolkit-strategy-detail": 4,
+  "#macro-toolkit-model-readiness-detail": 3,
+  "#macro-toolkit-crisis-detail": 5,
   "#macro-toolkit-analysis-detail": 5,
   "#macro-toolkit-data-health-detail": 5,
   "#macro-toolkit-operations-actions": 6,

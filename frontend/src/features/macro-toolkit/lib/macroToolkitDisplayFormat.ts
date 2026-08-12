@@ -179,6 +179,46 @@ export function formatObservationRecommendation(action: string | null | undefine
   return normalized;
 }
 
+const OBSERVATION_EVIDENCE_KEY_LABELS: Record<string, string> = {
+  score: "评分",
+  regime: "状态",
+  percentile: "历史分位",
+  percentile_1y: "近一年分位",
+  state: "状态",
+  trend: "趋势",
+  stress: "压力",
+  short_gap_ratio: "短期缺口占比",
+  negative_buckets: "负缺口桶数",
+  risk: "风险",
+  bond_fx_corr: "债汇相关",
+  bond_oil_corr: "债商相关",
+  direction: "方向",
+  phase: "周期",
+  growth: "增长",
+  inflation: "通胀",
+  liquidity: "流动性",
+  top: "首选资产",
+  avg: "复合均值",
+  bullish: "多头数",
+  bearish: "空头数",
+  shape: "曲线形态",
+  as_of: "数据日",
+  warning: "预警",
+  avg_corr: "平均相关",
+  assets: "资产数",
+  vol: "波动",
+};
+
+/** 后端证据串里的 `key=value` 英文键映射为中文标签；未知键仅把 = 换成空格。 */
+export function formatObservationEvidenceItem(item: string) {
+  const pair = item.match(/^([A-Za-z0-9][A-Za-z0-9_-]*)=(.+)$/);
+  if (!pair) {
+    return item;
+  }
+  const label = OBSERVATION_EVIDENCE_KEY_LABELS[pair[1]!] ?? pair[1]!;
+  return `${label} ${pair[2]!}`;
+}
+
 export function formatObservationEvidence(evidence: string[] | null | undefined) {
   const items = evidence ?? [];
   const readableItems = items
@@ -189,11 +229,39 @@ export function formatObservationEvidence(evidence: string[] | null | undefined)
         !/final_signal\.csv|signal_aggre|risk_monitor|脚本|Choice\/Tushare|macro_toolkit|analytical|capability_results|source_checks/i.test(
           item,
         ),
-    );
+    )
+    .map(formatObservationEvidenceItem);
   if (readableItems.length) {
     return readableItems.join(" / ");
   }
   return items.length ? `${items.length} 条观察证据已归纳` : "观察证据待补齐";
+}
+
+const CRISIS_COMPONENT_ZH_LABELS: Record<string, string> = {
+  equity_vol: "沪深300波动",
+  credit_spread: "信用利差",
+  fx_vol: "美元兑人民币波动",
+  commodity_vol: "南华商品波动",
+  liquidity_stress: "流动性压力",
+};
+
+/** Crisis Score 首屏卡的组件贡献摘要中文版；英文原串由调用方收进 title。 */
+export function formatCrisisComponentSummaryZh(
+  components: readonly { key: string; label?: string | null; z_score?: number | null }[],
+  limit = 2,
+): string | null {
+  const ranked = components
+    .filter((component) => typeof component.z_score === "number" && Number.isFinite(component.z_score))
+    .sort((left, right) => Math.abs(right.z_score!) - Math.abs(left.z_score!))
+    .slice(0, limit);
+  if (!ranked.length) {
+    return null;
+  }
+  const parts = ranked.map((component) => {
+    const label = CRISIS_COMPONENT_ZH_LABELS[component.key] ?? component.label?.trim() ?? component.key;
+    return `${label} z ${component.z_score!.toFixed(2)}`;
+  });
+  return `主要贡献：${parts.join("；")}`;
 }
 
 export function isObservationOutputSignal(card: MacroToolkitSignalCard) {

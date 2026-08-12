@@ -6,9 +6,18 @@ import type {
   MacroToolkitModelChainResults,
   MacroToolkitModelChainStep,
   MacroToolkitModelChainTrend,
+  MacroToolkitModelReadiness,
   MacroToolkitSchedulerReceiptSummary,
 } from "../../../api/macroToolkitClient";
 import { EM_DASH } from "../../../utils/format";
+import { statusLabel } from "../lib/macroToolkitPanelShared";
+import {
+  modelReadinessStatusColor,
+  modelReadinessStatusLabel,
+  modelSignalMatrixLabel,
+  useModelChainEvidenceBridge,
+} from "./macroToolkitModelEvidenceShared";
+import { ModelSignalDetail } from "./MacroToolkitSignalPanels";
 
 const NUMERIC_CELL_PATTERN = /^-?\d[\d,]*(?:\.\d+)?%?$/;
 
@@ -81,6 +90,11 @@ function ModelChainTrendChart({
 
 const SCHEDULER_HEALTHY_STATUSES = new Set(["completed", "degraded", "success"]);
 
+/** 调度状态词中文化（02-copy §三）；原始状态保留在 title（receipt.summary 已含链状态原文）。 */
+function schedulerStatusLabel(status: string) {
+  return status === "success" ? "成功" : statusLabel(status);
+}
+
 /** ISO 时间 → 本地时区 "MM-dd HH:mm"（回执 generated_at 为 UTC，直接截取会误导本地运维判断）。 */
 function formatReceiptTimestamp(generatedAt: string): string {
   const parsed = new Date(generatedAt);
@@ -123,7 +137,7 @@ function SchedulerBadge({
       data-testid={testId}
       title={receipt.summary}
     >
-      {label} {formatReceiptTimestamp(receipt.generated_at)} {receipt.status}
+      {label} {formatReceiptTimestamp(receipt.generated_at)} {schedulerStatusLabel(receipt.status)}
     </span>
   );
 }
@@ -172,7 +186,17 @@ function ModelChainTable({ model }: { model: MacroToolkitModelChainModel }) {
   );
 }
 
-function ModelChainModelCard({ model }: { model: MacroToolkitModelChainModel }) {
+function ModelChainModelCard({
+  model,
+  readiness,
+  evidenceOpen,
+  onToggleEvidence,
+}: {
+  model: MacroToolkitModelChainModel;
+  readiness: MacroToolkitModelReadiness | null;
+  evidenceOpen: boolean;
+  onToggleEvidence: (() => void) | null;
+}) {
   const [expanded, setExpanded] = useState(false);
   const isMissing = model.artifact_status === "missing";
   const tableId = `macro-toolkit-model-chain-table-${model.id}`;
@@ -183,6 +207,11 @@ function ModelChainModelCard({ model }: { model: MacroToolkitModelChainModel }) 
     >
       <div className="macro-toolkit-model-chain__model-head">
         <span title={`${model.script_name} · ${model.artifact}`}>{model.label}</span>
+        {readiness ? (
+          <Tag color={modelReadinessStatusColor(readiness.readiness)}>
+            {modelReadinessStatusLabel(readiness.readiness)}
+          </Tag>
+        ) : null}
         <small>{model.as_of ?? EM_DASH}</small>
       </div>
       <strong>{model.headline || EM_DASH}</strong>
@@ -208,11 +237,32 @@ function ModelChainModelCard({ model }: { model: MacroToolkitModelChainModel }) 
           ) : null}
         </>
       )}
+      {readiness && onToggleEvidence ? (
+        <button
+          type="button"
+          className="macro-toolkit-model-chain__evidence-button"
+          aria-expanded={evidenceOpen}
+          aria-label={`查看 ${model.label} 模型证据`}
+          onClick={onToggleEvidence}
+        >
+          证据
+        </button>
+      ) : null}
     </article>
   );
 }
 
-function ModelChainStepSection({ step }: { step: MacroToolkitModelChainStep }) {
+function ModelChainStepSection({
+  step,
+  readinessForModel,
+  evidenceKey,
+  onToggleEvidence,
+}: {
+  step: MacroToolkitModelChainStep;
+  readinessForModel: (model: MacroToolkitModelChainModel) => MacroToolkitModelReadiness | null;
+  evidenceKey: string | null;
+  onToggleEvidence: (readinessId: string) => void;
+}) {
   return (
     <section
       className="macro-toolkit-model-chain__step"
@@ -225,9 +275,18 @@ function ModelChainStepSection({ step }: { step: MacroToolkitModelChainStep }) {
         <small>{step.models.length} 个模型</small>
       </div>
       <div className="macro-toolkit-model-chain__step-models">
-        {step.models.map((model) => (
-          <ModelChainModelCard key={model.id} model={model} />
-        ))}
+        {step.models.map((model) => {
+          const readiness = readinessForModel(model);
+          return (
+            <ModelChainModelCard
+              key={model.id}
+              model={model}
+              readiness={readiness}
+              evidenceOpen={readiness != null && evidenceKey === readiness.id}
+              onToggleEvidence={readiness ? () => onToggleEvidence(readiness.id) : null}
+            />
+          );
+        })}
       </div>
     </section>
   );
@@ -238,12 +297,44 @@ export function MacroToolkitModelChainPanel({
 }: {
   results: MacroToolkitModelChainResults;
 }) {
+  const [cardsExpanded, setCardsExpanded] = useState(false);
+  const [evidenceKey, setEvidenceKey] = useState<string | null>(null);
+  // 就绪度角标与证据抽屉的数据来自模型信号摘要（同页兄弟区块）发布的证据桥；
+  // 面板单测或桥未发布时退回纯链视图。
+  const bridge = useModelChainEvidenceBridge();
   if (!results.steps.length) {
     return null;
   }
+  const readinessById = new Map<string, MacroToolkitModelReadiness>();
+  const readinessByScript = new Map<string, MacroToolkitModelReadiness>();
+  for (const entry of bridge?.entries ?? []) {
+    if (!readinessById.has(entry.id)) readinessById.set(entry.id, entry);
+    if (!readinessByScript.has(entry.script_name)) readinessByScript.set(entry.script_name, entry);
+  }
+  const readinessForModel = (model: MacroToolkitModelChainModel) =>
+    readinessById.get(model.id) ?? readinessByScript.get(model.script_name) ?? null;
+  const matchedReadinessIds = new Set<string>();
+  for (const step of results.steps) {
+    for (const model of step.models) {
+      const readiness = readinessForModel(model);
+      if (readiness) matchedReadinessIds.add(readiness.id);
+    }
+  }
+  const offChainEntries = (bridge?.entries ?? []).filter((entry) => !matchedReadinessIds.has(entry.id));
+  const scriptCounts = (bridge?.entries ?? []).reduce<Record<string, number>>((counts, entry) => {
+    counts[entry.script_name] = (counts[entry.script_name] ?? 0) + 1;
+    return counts;
+  }, {});
+  const selectedReadiness = evidenceKey
+    ? (bridge?.entries ?? []).find((entry) => entry.id === evidenceKey) ?? null
+    : null;
+  const toggleEvidence = (readinessId: string) =>
+    setEvidenceKey((current) => (current === readinessId ? null : readinessId));
   return (
     <section
-      className="macro-toolkit-section macro-toolkit-model-chain"
+      className={`macro-toolkit-section macro-toolkit-model-chain${
+        cardsExpanded ? "" : " macro-toolkit-model-chain--cards-collapsed"
+      }`}
       aria-label="模型链结果决策链视图"
       data-testid="macro-toolkit-model-chain"
     >
@@ -251,10 +342,18 @@ export function MacroToolkitModelChainPanel({
         <div>
           <span>模型链</span>
           <strong>模型链结果 · 决策链视图</strong>
-          <small>数据日 {results.as_of_date ?? EM_DASH} · 按决策链七步分组展示模型最新结果</small>
+          <small>数据日 {results.as_of_date ?? EM_DASH}</small>
         </div>
         <div className="macro-toolkit-model-chain__head-side">
           <Tag color="gold">仅观察 · 不入正式口径</Tag>
+          <button
+            type="button"
+            className="macro-toolkit-model-chain__wall-toggle"
+            aria-expanded={cardsExpanded}
+            onClick={() => setCardsExpanded((current) => !current)}
+          >
+            {cardsExpanded ? "收起全部模型卡" : "展开全部模型卡"}
+          </button>
           {results.scheduler ? (
             <div
               className="macro-toolkit-model-chain__scheduler"
@@ -276,8 +375,39 @@ export function MacroToolkitModelChainPanel({
         </div>
       </div>
       {results.steps.map((step) => (
-        <ModelChainStepSection key={step.key} step={step} />
+        <ModelChainStepSection
+          key={step.key}
+          step={step}
+          readinessForModel={readinessForModel}
+          evidenceKey={evidenceKey}
+          onToggleEvidence={toggleEvidence}
+        />
       ))}
+      {offChainEntries.length ? (
+        <div className="macro-toolkit-model-chain__offchain">
+          <span>链外模型证据</span>
+          {offChainEntries.map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              className="macro-toolkit-model-chain__evidence-button"
+              aria-expanded={evidenceKey === entry.id}
+              aria-label={`查看 ${modelSignalMatrixLabel(entry)} 模型证据`}
+              onClick={() => toggleEvidence(entry.id)}
+            >
+              {modelSignalMatrixLabel(entry)}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {selectedReadiness ? (
+        <ModelSignalDetail
+          item={selectedReadiness}
+          chainRunResult={bridge?.chainRunResult ?? null}
+          isSharedScript={(scriptCounts[selectedReadiness.script_name] ?? 0) > 1}
+          showActions={bridge?.showAcceptance ?? false}
+        />
+      ) : null}
     </section>
   );
 }

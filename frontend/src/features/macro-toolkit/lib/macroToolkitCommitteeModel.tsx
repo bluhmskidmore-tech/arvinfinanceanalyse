@@ -141,7 +141,7 @@ export function buildMacroToolkitCommitteeModel({
       : isCoreAnalysis
         ? "查看证据覆盖"
         : "进入操作台";
-  const workflowAnalysisState = isCoreAnalysis ? `core · 待完整分析 ${runtimeSections.length}` : "full · 完整分析";
+  const workflowAnalysisState = isCoreAnalysis ? `核心 · 待完整分析 ${runtimeSections.length}` : "完整";
   const governanceFocusItems: MacroToolkitGovernanceFocusItem[] = [
     {
       key: "evidence",
@@ -149,7 +149,7 @@ export function buildMacroToolkitCommitteeModel({
       focusTitle: "证据覆盖",
       href: "#macro-toolkit-analysis-detail",
       value: formatPercent(analysis?.coverage.hit_rate),
-      detail: `${analysis?.coverage.hit_count ?? 0}/${analysis?.coverage.indicator_count ?? 0} 指标命中`,
+      detail: `${formatPercent(analysis?.coverage.hit_rate)} · ${analysis?.coverage.hit_count ?? 0}/${analysis?.coverage.indicator_count ?? 0} 指标命中`,
       status: analysis ? (analysis.coverage.hit_count === analysis.coverage.indicator_count ? "available" : "core-not-full") : "data-pending",
       tone: analysis?.coverage.hit_rate === 1 ? "positive" : "neutral",
       icon: <SafetyCertificateOutlined />,

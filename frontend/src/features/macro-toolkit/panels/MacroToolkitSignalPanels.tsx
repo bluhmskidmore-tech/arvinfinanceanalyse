@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   InfoCircleOutlined,
   PlayCircleOutlined,
@@ -6,7 +6,7 @@ import {
   ToolOutlined,
   DatabaseOutlined,
 } from "@ant-design/icons";
-import { Button, Tag } from "antd";
+import { Alert, Button, Tag } from "antd";
 import type {
   MacroToolkitHasonStrategy,
   MacroToolkitModelReadiness,
@@ -20,6 +20,13 @@ import {
   statusColor,
   statusLabel,
 } from "../lib/macroToolkitPanelShared";
+import {
+  isArtifactBackedModelReadiness,
+  modelReadinessStatusColor,
+  modelReadinessStatusLabel,
+  modelSignalMatrixLabel,
+  publishModelChainEvidenceBridge,
+} from "./macroToolkitModelEvidenceShared";
 
 export function HasonMacroStrategyPanel({
   strategy,
@@ -30,6 +37,7 @@ export function HasonMacroStrategyPanel({
   modelReadiness?: MacroToolkitModelReadiness[];
   variant?: "detail" | "observation";
 }) {
+  const [auditExpanded, setAuditExpanded] = useState(false);
   const readiness = strategy.readiness;
   const readinessText = `${readiness.ready_modules}/${readiness.total_modules}`;
   const runtimeOutputsCurrent = strategy.runtime_output_status === "current";
@@ -112,8 +120,8 @@ export function HasonMacroStrategyPanel({
             <strong>{readinessHeadline}</strong>
             <small title={readinessDetail}>
               {blockedReadinessEntries.length
-                ? `${blockedReadinessEntries.length} 个模型待复核 · 悬停查看产物明细`
-                : "全部模型仅观察 · 悬停查看清单"}
+                ? `${blockedReadinessEntries.length} 个模型待复核`
+                : "全部模型仅观察"}
             </small>
           </div>
         ) : null}
@@ -121,110 +129,106 @@ export function HasonMacroStrategyPanel({
     );
   }
   return (
-    <section className="macro-toolkit-section macro-toolkit-hason-strategy" data-testid="macro-toolkit-hason-strategy">
+    <section
+      className={`macro-toolkit-section macro-toolkit-hason-strategy${
+        auditExpanded ? "" : " macro-toolkit-hason-strategy--audit-collapsed"
+      }`}
+      data-testid="macro-toolkit-hason-strategy"
+    >
       <div className="macro-toolkit-hason-strategy__head">
         <div>
           <span>Hason 宏观框架</span>
           <strong>{strategy.framework_name}</strong>
-          <small>{strategy.boundary}</small>
+          <small>
+            模块就绪 {readinessText} · 缺失脚本 {readiness.missing_script_count} · 运行输出
+            {runtimeOutputsCurrent
+              ? "已对齐"
+              : `${statusLabel(strategy.runtime_output_status)}${runtimeOutputGaps.length ? ` ${runtimeOutputGaps.length}` : ""}`}
+          </small>
         </div>
         <div className="macro-toolkit-tag-row">
           <Tag color={statusColor(strategy.status)}>{statusLabel(strategy.status)}</Tag>
-          <Tag color="blue">{strategy.basis}</Tag>
           <Tag color={strategy.observation_only ? "gold" : "green"}>
             {strategy.observation_only ? "仅作观察" : "可执行"}
           </Tag>
-          <Tag color={strategy.formal_use_allowed ? "green" : "default"}>
-            {strategy.formal_metric_id ?? "无正式指标"}
-          </Tag>
-        </div>
-      </div>
-
-      <div className="macro-toolkit-hason-strategy__metrics">
-        <MetricTile
-          icon={<SafetyCertificateOutlined />}
-          label="模块就绪"
-          value={readinessText}
-          detail={`模块覆盖 ${formatPercent(readiness.ratio)}`}
-          tone="neutral"
-        />
-        <MetricTile
-          icon={<ToolOutlined />}
-          label="模块缺口"
-          value={`缺失脚本 ${readiness.missing_script_count}`}
-          detail={`部分就绪 ${readiness.partial_modules} · 缺失模块 ${readiness.missing_modules}`}
-          tone="neutral"
-        />
-        <MetricTile
-          icon={<DatabaseOutlined />}
-          label="运行输出"
-          value={runtimeOutputValue}
-          detail={runtimeOutputDetail}
-          tone="neutral"
-        />
-        <MetricTile
-          icon={<ToolOutlined />}
-          label="脚本追踪"
-          value={tracedScripts.length}
-          detail={tracedScriptPreview.map(formatHasonTraceScript).join(" / ") || "暂无可用脚本"}
-          tone="neutral"
-          testId="macro-toolkit-hason-script-trace"
-        />
-      </div>
-
-      <div className="macro-toolkit-hason-module-grid">
-        {strategy.modules.map((module) => (
-          <div
-            className="macro-toolkit-hason-module"
-            data-testid={`macro-toolkit-hason-module-${module.key}`}
-            key={module.key}
+          <button
+            type="button"
+            className="macro-toolkit-hason-strategy__audit-toggle"
+            aria-expanded={auditExpanded}
+            onClick={() => setAuditExpanded((current) => !current)}
           >
-            <div className="macro-toolkit-capability-result-head">
-              <span>{module.key}</span>
-              <Tag color={hasonModuleStatusColor(module.status)}>{hasonModuleStatusLabel(module.status)}</Tag>
-            </div>
-            <strong>{module.label}</strong>
-            <small>可用脚本：{module.available_scripts.join(" / ") || "无"}</small>
-            {module.missing_scripts.length ? (
-              <small className="macro-toolkit-hason-module__missing">
-                缺失脚本：{module.missing_scripts.join(" / ")}
-              </small>
-            ) : null}
-            <div className="macro-toolkit-tag-row">
-              {module.evidence.map((item) => (
-                <Tag color="blue" key={`${module.key}-${item}`}>
-                  {item}
-                </Tag>
-              ))}
-            </div>
-          </div>
-        ))}
+            {auditExpanded ? "收起框架审计" : "框架审计"}
+          </button>
+        </div>
       </div>
 
-      <div className="macro-toolkit-hason-runtime" data-testid="macro-toolkit-hason-runtime-gaps">
-        <span>运行输出 · {statusLabel(strategy.runtime_output_status)}</span>
-        <strong>{runtimeGapText}</strong>
-        {strategy.runtime_outputs.length ? (
-          <small>
-            {strategy.runtime_outputs.map(formatHasonRuntimeOutput).join(" / ")}
-          </small>
-        ) : null}
-      </div>
-      {readinessEntries.length ? (
-        <div
-          id="macro-toolkit-model-readiness-detail"
-          className="macro-toolkit-hason-runtime"
-          data-testid="macro-toolkit-model-readiness-detail"
-        >
-          <span>模型就绪度 · 仅观察</span>
-          <strong>{readinessHeadline}</strong>
-          <small title={readinessDetail}>
-            {blockedReadinessEntries.length
-              ? `${blockedReadinessEntries.length} 个模型待复核 · 悬停查看产物明细`
-              : "全部模型仅观察 · 悬停查看清单"}
-          </small>
+      <div className="macro-toolkit-hason-strategy__audit-body">
+        <small>框架口径 {strategy.basis} · {strategy.formal_metric_id ?? "无正式指标"}</small>
+        <div className="macro-toolkit-hason-strategy__metrics">
+          <MetricTile
+            icon={<SafetyCertificateOutlined />}
+            label="模块就绪"
+            value={readinessText}
+            detail={`模块覆盖 ${formatPercent(readiness.ratio)}`}
+            tone="neutral"
+          />
+          <MetricTile
+            icon={<ToolOutlined />}
+            label="模块缺口"
+            value={`缺失脚本 ${readiness.missing_script_count}`}
+            detail={`部分就绪 ${readiness.partial_modules} · 缺失模块 ${readiness.missing_modules}`}
+            tone="neutral"
+          />
+          <MetricTile
+            icon={<DatabaseOutlined />}
+            label="运行输出"
+            value={runtimeOutputValue}
+            detail={runtimeOutputDetail}
+            tone="neutral"
+          />
+          <MetricTile
+            icon={<ToolOutlined />}
+            label="脚本追踪"
+            value={tracedScripts.length}
+            detail={tracedScriptPreview.map(formatHasonTraceScript).join(" / ") || "暂无可用脚本"}
+            tone="neutral"
+            testId="macro-toolkit-hason-script-trace"
+          />
         </div>
-      ) : null}
+
+        <div className="macro-toolkit-hason-module-grid">
+          {strategy.modules.map((module) => (
+            <div
+              className="macro-toolkit-hason-module"
+              data-testid={`macro-toolkit-hason-module-${module.key}`}
+              key={module.key}
+            >
+              <div className="macro-toolkit-capability-result-head">
+                <span>{module.key}</span>
+                <Tag color={hasonModuleStatusColor(module.status)}>{hasonModuleStatusLabel(module.status)}</Tag>
+              </div>
+              <strong>{module.label}</strong>
+              <small>可用脚本：{module.available_scripts.join(" / ") || "无"}</small>
+              {module.missing_scripts.length ? (
+                <small className="macro-toolkit-hason-module__missing">
+                  缺失脚本：{module.missing_scripts.join(" / ")}
+                </small>
+              ) : null}
+              {module.evidence.length ? <small>覆盖能力：{module.evidence.join(" / ")}</small> : null}
+            </div>
+          ))}
+        </div>
+
+        <div className="macro-toolkit-hason-runtime" data-testid="macro-toolkit-hason-runtime-gaps">
+          <span>运行输出 · {statusLabel(strategy.runtime_output_status)}</span>
+          <strong>{runtimeGapText}</strong>
+          {strategy.runtime_outputs.length ? (
+            <small>
+              {strategy.runtime_outputs.map(formatHasonRuntimeOutput).join(" / ")}
+            </small>
+          ) : null}
+        </div>
+      </div>
     </section>
   );
 }
@@ -251,29 +255,9 @@ const MODEL_SIGNAL_MATRIX_ORDER = [
   "risk_monitor",
 ] as const;
 
-const MODEL_SIGNAL_MATRIX_LABELS: Record<string, string> = {
-  merrill_clock: "美林时钟",
-  crisis_score: "Crisis Score",
-  bond_futures_basis: "国债期货基差 / IRR / 安全边际",
-  bond_futures_four_factor: "国债期货四因子趋势",
-  funding_conditions: "资金面 / 流动性",
-  crowding: "拥挤度",
-  dcc_garch: "DCC-GARCH",
-  cta_trend: "CTA 趋势",
-  final_signal: "最终信号聚合",
-  risk_monitor: "风险监控",
-};
-
 function modelSignalMatrixOrder(item: MacroToolkitModelReadiness) {
   const index = MODEL_SIGNAL_MATRIX_ORDER.indexOf(item.id as (typeof MODEL_SIGNAL_MATRIX_ORDER)[number]);
   return index === -1 ? MODEL_SIGNAL_MATRIX_ORDER.length : index;
-}
-
-function modelReadinessStatusColor(readiness: MacroToolkitModelReadiness["readiness"]) {
-  if (readiness === "artifact_backed") return "green";
-  if (readiness === "stale" || readiness === "degraded" || readiness === "registered_only") return "gold";
-  if (readiness === "missing_output") return "red";
-  return "default";
 }
 
 function modelSignalDateText(item: MacroToolkitModelReadiness) {
@@ -328,45 +312,28 @@ function modelSignalRunReceipt(
   return chainRunResult?.receipts.find((receipt) => receipt.script_name === item.script_name) ?? null;
 }
 
-function ModelSignalDetail({
+export function ModelSignalDetail({
   item,
   chainRunResult,
-  chainRunError,
-  chainRunModelId,
   isSharedScript,
-  isRunningChain,
   showActions,
-  onRunChain,
 }: {
   item: MacroToolkitModelReadiness;
   chainRunResult: MacroToolkitScriptChainRun | null;
-  chainRunError: string | null;
-  chainRunModelId: string | null;
   isSharedScript: boolean;
-  isRunningChain: boolean;
   showActions: boolean;
-  onRunChain: (dryRun: boolean, modelId?: string) => void;
 }) {
   const receipt = item.artifact_receipt;
-  const isLatestChainModel = chainRunModelId === item.id;
-  const runReceipt = isLatestChainModel ? modelSignalRunReceipt(item, chainRunResult) : null;
+  const runReceipt = modelSignalRunReceipt(item, chainRunResult);
   return (
     <aside className="macro-toolkit-model-signal-detail" data-testid="macro-toolkit-model-signal-detail">
       <div className="macro-toolkit-model-signal-detail__head">
         <div>
           <span>模型证据</span>
-          <strong>{MODEL_SIGNAL_MATRIX_LABELS[item.id] ?? item.label}</strong>
-          <small>
-            {item.script_name} · {modelReadinessStatusLabel(item.readiness)} · {modelSignalDateText(item)}
+          <strong>{modelSignalMatrixLabel(item)}</strong>
+          <small title={item.script_name}>
+            {modelReadinessStatusLabel(item.readiness)} · {modelSignalDateText(item)}
           </small>
-        </div>
-        <div className="macro-toolkit-model-signal-matrix__boundary">
-          <Tag color={item.observation_only ? "gold" : "green"}>
-            {item.observation_only ? "仅作观察" : "可执行"}
-          </Tag>
-          <Tag color={item.formal_use_allowed ? "green" : "default"}>
-            {item.formal_use_allowed ? "正式口径" : "非正式口径"}
-          </Tag>
         </div>
       </div>
       <div className="macro-toolkit-model-signal-detail__grid">
@@ -404,53 +371,23 @@ function ModelSignalDetail({
             <small>
               {item.readiness === "artifact_backed"
                 ? "后端就绪度已确认该模型有产物支撑。"
-                : "先预检，再运行模型链，用最新回执对照预期产物。"}
+                : "先预检，再从模型链工具条运行模型链，用最新回执对照预期产物。"}
             </small>
-          </div>
-          <div className="macro-toolkit-model-signal-detail__actions">
-            <Button
-              data-testid="macro-toolkit-model-signal-chain-preflight"
-              icon={<InfoCircleOutlined />}
-              loading={isRunningChain}
-              disabled={isRunningChain}
-              size="small"
-              onClick={() => onRunChain(true, item.id)}
-            >
-              预检模型链
-            </Button>
-            <Button
-              data-testid="macro-toolkit-model-signal-chain-run"
-              icon={<PlayCircleOutlined />}
-              loading={isRunningChain}
-              disabled={isRunningChain}
-              size="small"
-              onClick={() => onRunChain(false, item.id)}
-            >
-              运行模型链
-            </Button>
           </div>
         </div>
       ) : null}
       {runReceipt ? (
         <div className="macro-toolkit-model-signal-detail__receipt">
           <span>最近脚本运行回执</span>
-          <strong>
-            {runReceipt.script_name} · {runReceipt.status}
+          <strong title={`${runReceipt.script_name}${isSharedScript ? " · 共享脚本回执" : ""}`}>
+            {statusLabel(runReceipt.status)}
           </strong>
+          <small>预期 {modelSignalArtifactList(runReceipt.expected_outputs)}</small>
+          <small>产出 {modelSignalArtifactList(runReceipt.produced_outputs)}</small>
           <small>
-            预期 {modelSignalArtifactList(runReceipt.expected_outputs)} · 产出{" "}
-            {modelSignalArtifactList(runReceipt.produced_outputs)} · 缺失{" "}
-            {modelSignalArtifactList(runReceipt.missing_outputs_after)} ·{" "}
-            {isSharedScript ? "共享脚本回执 · " : ""}
+            缺失 {modelSignalArtifactList(runReceipt.missing_outputs_after)} ·{" "}
             {runReceipt.degraded_reason ?? "无降级原因"}
           </small>
-        </div>
-      ) : null}
-      {isLatestChainModel && chainRunError ? (
-        <div className="macro-toolkit-model-signal-detail__receipt macro-toolkit-model-signal-detail__receipt--error">
-          <span>最近运行问题</span>
-          <strong>{chainRunError}</strong>
-          <small>检查执行权限、脚本依赖和模型链运行回执。</small>
         </div>
       ) : null}
       <div className="macro-toolkit-model-signal-detail__links">
@@ -466,7 +403,6 @@ export function ModelSignalMatrix({
   readinessSummary,
   chainRunResult,
   chainRunError,
-  chainRunModelId,
   isRunningChain,
   showActions,
   onRunChain,
@@ -481,23 +417,95 @@ export function ModelSignalMatrix({
   onRunChain: (dryRun: boolean, modelId?: string) => void;
 }) {
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
-  if (!modelReadiness.length) {
+  const rows = useMemo(
+    () =>
+      [...modelReadiness].sort((left, right) => {
+        const byOrder = modelSignalMatrixOrder(left) - modelSignalMatrixOrder(right);
+        return byOrder || left.label.localeCompare(right.label);
+      }),
+    [modelReadiness],
+  );
+  useEffect(() => {
+    if (!showActions || !rows.length) return undefined;
+    publishModelChainEvidenceBridge({ entries: rows, chainRunResult, showAcceptance: true });
+    return () => publishModelChainEvidenceBridge(null);
+  }, [showActions, rows, chainRunResult]);
+  if (!rows.length) {
     return null;
   }
-  const rows = [...modelReadiness].sort((left, right) => {
-    const byOrder = modelSignalMatrixOrder(left) - modelSignalMatrixOrder(right);
-    return byOrder || left.label.localeCompare(right.label);
-  });
-  const selectedModel = rows.find((item) => item.id === selectedModelId) ?? null;
-  const scriptCounts = rows.reduce<Record<string, number>>((counts, item) => {
-    counts[item.script_name] = (counts[item.script_name] ?? 0) + 1;
-    return counts;
-  }, {});
   const boundaryText = readinessSummary
     ? `${readinessSummary.observation_only ? "仅作观察" : "可执行"} · ${
         readinessSummary.formal_use_allowed ? "允许正式使用" : "不入正式口径"
       }`
     : "边界待后端汇总 · 不入正式口径";
+
+  if (showActions) {
+    const blockedEntries = rows.filter((item) => !isArtifactBackedModelReadiness(item.readiness));
+    const readinessHeadline = blockedEntries.length
+      ? blockedEntries.map((item) => `${modelSignalMatrixLabel(item)} ${modelReadinessStatusLabel(item.readiness)}`).join(" / ")
+      : "全部模型仅作观察，无待复核缺口";
+    const readinessDetail = blockedEntries.length
+      ? blockedEntries.map(formatModelReadinessDetail).join(" / ")
+      : rows.map((item) => `${item.label} ${modelReadinessStatusLabel(item.readiness)}`).join(" / ");
+    return (
+      <section
+        className="macro-toolkit-section macro-toolkit-model-signal-matrix"
+        data-testid="macro-toolkit-model-signal-matrix"
+      >
+        <div className="macro-toolkit-model-signal-matrix__head">
+          <div>
+            <span>模型信号</span>
+            <strong>模型就绪度摘要</strong>
+            <small>{modelSignalSummaryText(rows, readinessSummary)}</small>
+            <small>{boundaryText}</small>
+          </div>
+          <div className="macro-toolkit-model-signal-matrix__toolbar">
+            <a href="#macro-toolkit-script-artifact-detail">查看脚本产物证据</a>
+            <Button
+              data-testid="macro-toolkit-model-signal-chain-preflight"
+              icon={<InfoCircleOutlined />}
+              loading={isRunningChain}
+              disabled={isRunningChain}
+              size="small"
+              onClick={() => onRunChain(true)}
+            >
+              预检模型链
+            </Button>
+            <Button
+              data-testid="macro-toolkit-model-signal-chain-run"
+              icon={<PlayCircleOutlined />}
+              loading={isRunningChain}
+              disabled={isRunningChain}
+              size="small"
+              onClick={() => onRunChain(false)}
+            >
+              运行模型链
+            </Button>
+          </div>
+        </div>
+        <div
+          id="macro-toolkit-model-readiness-detail"
+          className="macro-toolkit-model-signal-matrix__readiness"
+          data-testid="macro-toolkit-model-readiness-detail"
+        >
+          <span>模型就绪度 · 仅观察</span>
+          <strong>{readinessHeadline}</strong>
+          <small title={readinessDetail}>
+            {blockedEntries.length ? `${blockedEntries.length} 个模型待复核` : "全部模型仅观察"}
+          </small>
+        </div>
+        {chainRunError ? (
+          <Alert type="error" showIcon message="模型链运行失败" description={chainRunError} />
+        ) : null}
+      </section>
+    );
+  }
+
+  const selectedModel = rows.find((item) => item.id === selectedModelId) ?? null;
+  const scriptCounts = rows.reduce<Record<string, number>>((counts, item) => {
+    counts[item.script_name] = (counts[item.script_name] ?? 0) + 1;
+    return counts;
+  }, {});
 
   return (
     <section className="macro-toolkit-section macro-toolkit-model-signal-matrix" data-testid="macro-toolkit-model-signal-matrix">
@@ -505,37 +513,31 @@ export function ModelSignalMatrix({
         <div>
           <span>模型信号</span>
           <strong>模型信号矩阵</strong>
-          <small>
-            {modelSignalSummaryText(rows, readinessSummary)} · {boundaryText}
-          </small>
+          <small>{modelSignalSummaryText(rows, readinessSummary)}</small>
+          <small>{boundaryText}</small>
         </div>
         <a href="#macro-toolkit-script-artifact-detail">查看脚本产物证据</a>
       </div>
       <div className="macro-toolkit-model-signal-matrix__grid">
         {rows.map((item) => (
-          <article className="macro-toolkit-model-signal-matrix__row" key={`${item.id}-${item.script_name}`}>
+          <article
+            className="macro-toolkit-model-signal-matrix__row"
+            title={item.script_name}
+            key={`${item.id}-${item.script_name}`}
+          >
             <div className="macro-toolkit-model-signal-matrix__title">
-              <span>{MODEL_SIGNAL_MATRIX_LABELS[item.id] ?? item.label}</span>
+              <span>{modelSignalMatrixLabel(item)}</span>
               <Tag color={modelReadinessStatusColor(item.readiness)}>{modelReadinessStatusLabel(item.readiness)}</Tag>
             </div>
             <strong>{modelSignalDateText(item)}</strong>
             <small>{modelSignalThresholdText(item)}</small>
             <div className="macro-toolkit-model-signal-matrix__evidence">
-              <span>{item.script_name}</span>
               <em>{modelSignalEvidenceText(item)}</em>
-            </div>
-            <div className="macro-toolkit-model-signal-matrix__boundary">
-              <Tag color={item.observation_only ? "gold" : "green"}>
-                {item.observation_only ? "仅作观察" : "可执行"}
-              </Tag>
-              <Tag color={item.formal_use_allowed ? "green" : "default"}>
-                {item.formal_use_allowed ? "正式口径" : "非正式口径"}
-              </Tag>
             </div>
             <button
               className="macro-toolkit-model-signal-matrix__detail-button"
               type="button"
-              aria-label={`查看 ${MODEL_SIGNAL_MATRIX_LABELS[item.id] ?? item.label} 模型证据`}
+              aria-label={`查看 ${modelSignalMatrixLabel(item)} 模型证据`}
               aria-expanded={selectedModelId === item.id}
               onClick={() => setSelectedModelId((current) => (current === item.id ? null : item.id))}
             >
@@ -548,12 +550,8 @@ export function ModelSignalMatrix({
         <ModelSignalDetail
           item={selectedModel}
           chainRunResult={chainRunResult}
-          chainRunError={chainRunError}
-          chainRunModelId={chainRunModelId}
           isSharedScript={(scriptCounts[selectedModel.script_name] ?? 0) > 1}
-          isRunningChain={isRunningChain}
-          showActions={showActions}
-          onRunChain={onRunChain}
+          showActions={false}
         />
       ) : null}
     </section>
@@ -581,22 +579,6 @@ export function deriveModelReadinessFromHasonStrategy(strategy: MacroToolkitHaso
     stale_outputs: strategy.stale_runtime_outputs,
     notes: [],
   }));
-}
-
-function isArtifactBackedModelReadiness(readiness: MacroToolkitModelReadiness["readiness"]) {
-  return readiness === "artifact_backed";
-}
-
-function modelReadinessStatusLabel(readiness: MacroToolkitModelReadiness["readiness"]) {
-  const labels: Record<MacroToolkitModelReadiness["readiness"], string> = {
-    artifact_backed: "产物支撑",
-    missing_output: "缺产物",
-    stale: "陈旧",
-    registered_only: "仅注册",
-    degraded: "降级",
-    unknown: "待确认",
-  };
-  return labels[readiness];
 }
 
 function formatModelReadinessDetail(item: MacroToolkitModelReadiness) {

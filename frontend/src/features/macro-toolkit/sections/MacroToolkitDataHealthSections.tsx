@@ -31,14 +31,73 @@ import {
   repairTicketSla,
   repairTicketSubmissionImpact,
   repairTypeLabel,
+  summarizeRepairAction,
 } from "../lib/macroToolkitDataHealthSupport";
 import {
   MacroStatusIcon,
   compactText,
   observationStatusLabel,
-  statusColor,
 } from "../lib/macroToolkitPanelShared";
 import type { MacroToolkitActionReceipt, MacroToolkitRepairItem } from "../lib/macroToolkitPageModel";
+
+const RECEIPT_CHECK_WARNING_PATTERN = /^刷新回执未通过完整性校验[：:]\s*(.+?)(?:，方向性结论已关闭.*)?$/;
+const CFFEX_OPTIONAL_MISSING_PATTERN = /^CFFEX optional step is missing/i;
+const CFFEX_OPTIONAL_REPORTED_PATTERN = /^CFFEX optional step reported\s+(\S+?);/i;
+
+/** 回执校验/CFFEX 可选步骤类告警收成中文摘要；键名清单进 details，原文进 title。 */
+function DataHealthWarningNote({ warning }: { warning: string }) {
+  const receiptMatch = warning.match(RECEIPT_CHECK_WARNING_PATTERN);
+  if (receiptMatch?.[1]) {
+    const checks = receiptMatch[1]
+      .split("、")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    if (checks.length) {
+      return (
+        <details className="macro-toolkit-data-health__warning-note" title={warning}>
+          <summary>
+            刷新回执未通过完整性校验，共 {checks.length} 项检查未过，方向性结论已关闭（查看未过检查项）
+          </summary>
+          <ul>
+            {checks.map((check) => (
+              <li key={check}>{check}</li>
+            ))}
+          </ul>
+        </details>
+      );
+    }
+  }
+  if (CFFEX_OPTIONAL_MISSING_PATTERN.test(warning)) {
+    return (
+      <span className="macro-toolkit-data-health__warning-soft" title={warning}>
+        CFFEX 可选步骤未包含在回执中，必需步骤校验不受影响
+      </span>
+    );
+  }
+  const cffexReported = warning.match(CFFEX_OPTIONAL_REPORTED_PATTERN);
+  if (cffexReported) {
+    return (
+      <span className="macro-toolkit-data-health__warning-soft" title={warning}>
+        CFFEX 可选步骤状态待复核（{cffexReported[1]}），必需步骤校验不受影响
+      </span>
+    );
+  }
+  return <Tag color="red">{warning}</Tag>;
+}
+
+/** 能力缺口修复建议：英文缺口代码清单收进 details，卡面留一句中文摘要；原文同时进 title。 */
+function MacroToolkitRepairActionNote({ action }: { action: string }) {
+  const summary = summarizeRepairAction(action);
+  if (!summary) {
+    return <small title={action}>{compactText(action, 78)}</small>;
+  }
+  return (
+    <details className="macro-toolkit-data-health__repair-note-details">
+      <summary title={action}>{summary}</summary>
+      <small>{action}</small>
+    </details>
+  );
+}
 
 export function MacroToolkitDataHealthSummary({ dataHealth }: { dataHealth: MacroToolkitDataHealth }) {
   const repairItems = dataHealth.repair_items ?? [];
@@ -183,8 +242,6 @@ export function MacroToolkitDataHealthPanel({
   const missingAliases = dataHealth.source_coverage.missing_aliases;
   const missingIndicators = dataHealth.indicator_coverage.missing;
   const repairItems = dataHealth.repair_items ?? [];
-  const visibleRepairItems = repairItems.slice(0, 6);
-  const hiddenRepairItemCount = repairItems.length - visibleRepairItems.length;
   const focusedRepairItem = focusedRepairKey
     ? (repairItems.find((item) => repairItemFocusKey(item) === focusedRepairKey) ?? null)
     : null;
@@ -192,6 +249,22 @@ export function MacroToolkitDataHealthPanel({
   const deferredText = dataHealth.deferred_sections.length
     ? `延后加载：${dataHealth.deferred_sections.map(formatObservationDeferredSectionLabel).join(" / ")}`
     : "完整结果已加载";
+  const blockedActionNotes = plainLanguage
+    ? []
+    : Array.from(
+        new Set(
+          repairItems
+            .filter(
+              (item) =>
+                item.action &&
+                !(
+                  item.action.enabled &&
+                  (item.action.kind === "load_full_analysis" || canRefreshMacroSourceBackfill(item))
+                ),
+            )
+            .map((item) => `${item.action?.label ?? "待处理"}：${item.action?.reason ?? "需要人工确认"}`),
+        ),
+      );
   return (
     <section className="macro-toolkit-data-health" aria-label="数据健康总览">
       <div className="macro-toolkit-data-health__head">
@@ -202,7 +275,7 @@ export function MacroToolkitDataHealthPanel({
           数据健康总览
         </span>
         <Tag color={dataHealth.analysis_scope === "core" ? "gold" : "green"}>
-          {dataHealth.analysis_scope === "core" ? "core 首屏" : "full 完整"}
+          {dataHealth.analysis_scope === "core" ? "首屏口径" : "完整口径"}
         </Tag>
       </div>
       <div className="macro-toolkit-data-health__grid">
@@ -239,20 +312,28 @@ export function MacroToolkitDataHealthPanel({
       </div>
       {(missingIndicators.length || missingAliases.length || dataHealth.warnings.length) ? (
         <div className="macro-toolkit-data-health__notes">
+          {missingIndicators.length ? (
+            <span className="macro-toolkit-data-health__notes-label">
+              以下 {missingIndicators.length} 项缺失：
+            </span>
+          ) : null}
           {missingIndicators.map((item) => (
             <Tag color="gold" key={item.alias ?? item.key ?? item.label}>
-              {item.alias ?? item.key ?? item.label} 缺失
+              {item.alias ?? item.key ?? item.label}
             </Tag>
           ))}
+          {missingAliases.length ? (
+            <span className="macro-toolkit-data-health__notes-label">
+              以下 {missingAliases.length} 项来源未命中：
+            </span>
+          ) : null}
           {missingAliases.map((alias) => (
             <Tag color="red" key={alias}>
-              {alias} 来源未命中
+              {alias}
             </Tag>
           ))}
           {dataHealth.warnings.map((warning) => (
-            <Tag color="red" key={warning}>
-              {warning}
-            </Tag>
+            <DataHealthWarningNote warning={warning} key={warning} />
           ))}
         </div>
       ) : null}
@@ -270,6 +351,14 @@ export function MacroToolkitDataHealthPanel({
               <strong>{observationRepairSummary}</strong>
             </div>
           ) : null}
+          {blockedActionNotes.length ? (
+            <small
+              className="macro-toolkit-data-health__repair-note"
+              title={blockedActionNotes.join("；")}
+            >
+              {blockedActionNotes.join("；")}
+            </small>
+          ) : null}
           {focusedRepairItem ? (
             <MacroToolkitRepairTicket
               item={focusedRepairItem}
@@ -278,7 +367,7 @@ export function MacroToolkitDataHealthPanel({
             />
           ) : null}
           <div className="macro-toolkit-data-health__repair-list">
-            {visibleRepairItems.map((item) => {
+            {repairItems.map((item) => {
               const itemFocusKey = repairItemFocusKey(item);
               const isFocusedRepair = focusedRepairKey === itemFocusKey;
               return (
@@ -292,25 +381,26 @@ export function MacroToolkitDataHealthPanel({
                 >
                 <div className="macro-toolkit-data-health__repair-main">
                   <span>
-                    <Tag color={repairPriorityColor(item.priority)}>{repairPriorityLabel(item.priority)}</Tag>
-                    <Tag color={statusColor(item.type ?? "")}>{repairTypeLabel(item.type)}</Tag>
+                    <Tag color={repairPriorityColor(item.priority)}>
+                      {repairPriorityLabel(item.priority)} · {repairTypeLabel(item.type)}
+                    </Tag>
                     {formatDataHealthRepairLabel(item, plainLanguage)}
                   </span>
-                  <small title={formatDataHealthRepairAction(item, plainLanguage)}>
-                    {compactText(formatDataHealthRepairAction(item, plainLanguage), 78)}
-                  </small>
-                  {!plainLanguage && item.action?.reason ? (
-                    <small title={item.action.reason}>
-                      {item.action.label ? `${item.action.label}：` : ""}
-                      {compactText(item.action.reason, 56)}
-                    </small>
-                  ) : null}
+                  <MacroToolkitRepairActionNote action={formatDataHealthRepairAction(item, plainLanguage)} />
                 </div>
                 <div className="macro-toolkit-data-health__repair-meta">
-                  {item.alias ? <Tag color="default">{item.alias}</Tag> : null}
-                  {item.latest_date ? <Tag color="blue">最新 {item.latest_date}</Tag> : null}
-                  {item.stale_days ? <Tag color="gold">落后 {item.stale_days} 天</Tag> : null}
-                  {item.source_table ? <Tag color="default">{item.source_table}</Tag> : null}
+                  {item.alias ? <small>{item.alias}</small> : null}
+                  {item.source_table ? <small>{item.source_table}</small> : null}
+                  {item.latest_date || item.stale_days ? (
+                    <small>
+                      {[
+                        item.latest_date ? `最新 ${item.latest_date}` : "",
+                        item.stale_days ? `落后 ${item.stale_days} 天` : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </small>
+                  ) : null}
                 </div>
                 {!plainLanguage && item.action ? (
                   <div className="macro-toolkit-data-health__repair-action">
@@ -335,8 +425,8 @@ export function MacroToolkitDataHealthPanel({
                         {item.action.label ?? "需要补齐来源数据"}
                       </Button>
                     ) : (
-                      <small title={item.action.reason ?? ""}>
-                        {item.action.label ?? "待处理"} · {item.action.reason ?? "需要人工确认"}
+                      <small title={item.action.reason ?? "需要人工确认"}>
+                        {item.action.label ?? "待处理"}
                       </small>
                     )}
                   </div>
@@ -345,11 +435,6 @@ export function MacroToolkitDataHealthPanel({
               );
             })}
           </div>
-          {hiddenRepairItemCount > 0 ? (
-            <small className="macro-toolkit-data-health__repair-overflow">
-              还有 {hiddenRepairItemCount} 项未显示；请查看完整分析或后端明细确认。
-            </small>
-          ) : null}
         </div>
       ) : null}
     </section>

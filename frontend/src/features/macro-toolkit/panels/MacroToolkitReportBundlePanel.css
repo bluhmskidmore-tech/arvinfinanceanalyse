@@ -17,7 +17,7 @@
 
 .macro-toolkit-report-bundle__head > div:first-child {
   display: grid;
-  gap: 3px;
+  gap: 4px;
 }
 
 .macro-toolkit-report-bundle__head span,
@@ -60,7 +60,7 @@
 
 .macro-toolkit-report-bundle__metrics > div {
   display: grid;
-  gap: 2px;
+  gap: 4px;
   min-width: 0;
   padding: 10px;
   border-radius: var(--ib-radius, 6px);
@@ -76,7 +76,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px 10px;
-  padding: 9px 10px;
+  padding: 8px 12px;
   border-left: 2px solid var(--macro-toolkit-warning);
   background: var(--macro-toolkit-warning-soft);
   font-size: 12px;
@@ -96,7 +96,7 @@
 
 .macro-toolkit-report-bundle__artifacts a {
   display: grid;
-  gap: 2px;
+  gap: 4px;
   min-width: 0;
   padding: 10px;
   border: 1px solid var(--macro-toolkit-border-soft);
@@ -131,7 +131,7 @@
 
 .macro-toolkit-report-bundle__unavailable {
   display: grid;
-  gap: 3px;
+  gap: 4px;
   padding: 12px;
   border-radius: var(--ib-radius, 6px);
   background: var(--macro-toolkit-card-soft);

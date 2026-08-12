@@ -114,6 +114,16 @@ const {
   MACRO_COMMODITY_SHADOW_RULE_VERSION,
 } = crisisSupport;
 
+const CRISIS_SCOPE_LABELS: Record<string, string> = {
+  supplemental_observation: "旁证观察",
+  commodity_candidates: "商品候选",
+  shadow_only: "仅影子评估",
+};
+
+function crisisScopeLabel(value: string) {
+  return CRISIS_SCOPE_LABELS[value] ?? value;
+}
+
 function buildCrisisScoreHistoryOption(points: crisisSupport.CrisisScoreHistoryPoint[]): EChartsOption {
   return {
     grid: { left: 48, right: 16, top: 18, bottom: 28 },
@@ -384,8 +394,8 @@ function CrisisCommodityShadowDecisionPanel({
             </div>
             <strong>{formatCommodityCoverageIdentifiers(item)}</strong>
             <small>
-              {item.source ?? "source missing"} · {item.series_id ?? "series missing"} ·{" "}
-              {item.used_in_formula ? "已纳入公式" : "当前未计入 Crisis Score"}
+              {item.source ?? "来源缺失"} · {item.series_id ?? "序列缺失"}
+              {item.used_in_formula ? " · 已纳入公式" : ""}
             </small>
             {item.shadow_evaluation ? (
               <>
@@ -408,10 +418,6 @@ function CrisisCommodityShadowDecisionPanel({
           </div>
           <small>规则只用于审批前复核，不改变 Crisis Score 公式</small>
           <small>规则版本 {MACRO_COMMODITY_SHADOW_RULE_VERSION}</small>
-          <small>
-            准入检查：样本&gt;={MACRO_COMMODITY_SHADOW_MIN_SAMPLES} / 危机样本&gt;=
-            {MACRO_COMMODITY_SHADOW_MIN_CRISIS_SAMPLES} / 相关性可读 / 命中率可读
-          </small>
           <small>样本阈值 &gt;={MACRO_COMMODITY_SHADOW_MIN_SAMPLES} 个重叠样本</small>
           <small>
             危机样本阈值 &gt;={MACRO_COMMODITY_SHADOW_MIN_CRISIS_SAMPLES} 个高 Crisis Score 样本
@@ -473,8 +479,9 @@ function CrisisCommodityShadowDecisionPanel({
           {promotionItems.map((item) => (
             <div className="macro-toolkit-crisis-promotion-rule-pack__item" key={item.field}>
               <small>
-                {item.label} · {commodityPromotionRuleStatusLabel(item.status)} · {item.reason}
+                {item.label} · {commodityPromotionRuleStatusLabel(item.status)}
               </small>
+              <small>{item.reason}</small>
               {item.checks.map((check) => (
                 <small key={`${item.field}-${check.name}`}>
                   {item.label} · {check.name} {commodityPromotionRuleCheckStatusLabel(check.status)} {check.value}
@@ -528,12 +535,13 @@ function CrisisCommodityShadowImpactPanel({
         />
         <MetricTile
           icon={<LineChartOutlined />}
-          label="v2 shadow score"
+          label="v2 影子分数"
           value={shadowImpact?.shadow_score ?? "影子分数待公式确认"}
-          detail={
+          detail={shadowImpact ? `差值 ${formatSignedDelta(shadowImpact.delta)}` : "不能直接换算为分数"}
+          detailTitle={
             shadowImpact
-              ? `delta ${formatSignedDelta(shadowImpact.delta)} · ${shadowImpact.formula_version}`
-              : "不能直接换算为分数"
+              ? `差值 ${formatSignedDelta(shadowImpact.delta)} · ${shadowImpact.formula_version}`
+              : undefined
           }
           tone="neutral"
         />
@@ -543,7 +551,7 @@ function CrisisCommodityShadowImpactPanel({
           value={shadowImpact ? commodityShadowImpactDirectionLabel(shadowImpact.direction) : "待公式/权重确认"}
           detail={
             shadowImpact
-              ? `${shadowImpact.scope} · ${formatCommodityShadowImpactWarnings(shadowImpact)}`
+              ? `${crisisScopeLabel(shadowImpact.scope)} · ${formatCommodityShadowImpactWarnings(shadowImpact)}`
               : formatCommodityShadowImpactDirectionDetail(driverCoverageItems)
           }
           tone="neutral"
@@ -578,7 +586,7 @@ function CrisisCommodityShadowImpactPanel({
                   <Tag color="blue">{item.status}</Tag>
                 </div>
                 <small>{formatCommodityShadowContributionDetail(item)}</small>
-                <small>{item.used_in_official_score ? "已纳入正式分数" : "不改变正式 Crisis Score"}</small>
+                {item.used_in_official_score ? <small>已纳入正式分数</small> : null}
               </div>
             ))
           : driverCoverageItems.map((item) => {
@@ -592,7 +600,6 @@ function CrisisCommodityShadowImpactPanel({
                 </Tag>
               </div>
               <small>{formatCommodityShadowImpactDriverDetail(item)}</small>
-              <small>不能直接换算为分数</small>
             </div>
           );
         })}
@@ -629,7 +636,7 @@ function CommodityCandidateReviewConclusion({
               {admission.decision_counts.watch} · 暂不纳入 {admission.decision_counts.do_not_include}
             </strong>
           </div>
-          <small>{admission.rule_version} · {admission.scope}</small>
+          <small>{admission.rule_version} · {crisisScopeLabel(admission.scope)}</small>
           <small>审批前不改变正式 Crisis Score</small>
         </div>
         {admission.warnings.length ? (
@@ -729,8 +736,8 @@ function CommodityCandidateApprovalPackPanel({
           <span>商品候选审批材料</span>
           <strong>{approvalPack.summary}</strong>
         </div>
-        <small>{approvalPack.pack_version} · {approvalPack.scope}</small>
-        <small>shadow delta {formatSignedDeltaFromPack(approvalPack.copy_text)}</small>
+        <small>{approvalPack.pack_version} · {crisisScopeLabel(approvalPack.scope)}</small>
+        <small>影子差值 {formatSignedDeltaFromPack(approvalPack.copy_text)}</small>
       </div>
       <div className="macro-toolkit-tag-row" aria-label="商品候选审批材料警告">
         {approvalPack.warnings.map((warning) => (
@@ -987,7 +994,7 @@ export function CrisisScoreEvidencePanel({
           icon={<SafetyCertificateOutlined />}
           label="分数组件覆盖"
           value={`${availableComponentCount}/${componentCount}`}
-          detail={components.map((component) => component.key).join(" / ") || "components missing"}
+          detail={components.map((component) => component.key).join(" / ") || "组件缺失"}
           tone={result.status === "complete" ? "positive" : "neutral"}
         />
         <MetricTile
@@ -1010,9 +1017,9 @@ export function CrisisScoreEvidencePanel({
       {latestHistoryPoint && scoreHistory.length >= 2 ? (
         <div className="macro-toolkit-crisis-history" aria-label="Crisis Score 走势">
           <div className="macro-toolkit-crisis-history__head">
-            <span>Crisis Score 走势</span>
+            <span>Crisis Score 走势 · 近 {scoreHistory.length} 期</span>
             <strong>
-              近 {scoreHistory.length} 期 · 最新 {formatNumberValue(latestHistoryPoint.crisis_score)} · 历史分位{" "}
+              最新 {formatNumberValue(latestHistoryPoint.crisis_score)} · 历史分位{" "}
               {latestHistoryPoint.percentile === null ? "—" : `${latestHistoryPoint.percentile.toFixed(1)}%`}
             </strong>
           </div>
@@ -1044,7 +1051,9 @@ export function CrisisScoreEvidencePanel({
                 <span>{group.label}</span>
                 {group.items.map((item) => (
                   <small key={`${item.label}-${item.warning}`}>
-                    {item.label} · {item.warning} · {item.detail}
+                    {item.label} · {item.warning}
+                    <br />
+                    {item.detail}
                   </small>
                 ))}
                 <CrisisGapAction
@@ -1072,7 +1081,7 @@ export function CrisisScoreEvidencePanel({
             <span>{component.label}</span>
             <strong>{formatValue(component.z_score, "")}</strong>
             <small>
-              {component.key} · weight {formatCrisisWeight(component.key, weights)} · raw{" "}
+              {component.key} · 权重 {formatCrisisWeight(component.key, weights)} · 原始值{" "}
               {formatValue(component.raw_value, "")}
             </small>
           </div>
@@ -1090,7 +1099,7 @@ export function CrisisScoreEvidencePanel({
           />
           <small className="macro-toolkit-crisis-coverage-note">
             Crisis Score 公式仍仅使用 {commodityCoverage.used_in_crisis_score.join(" / ") || "nanhua"}；本区块为{" "}
-            {commodityCoverage.role}
+            {crisisScopeLabel(commodityCoverage.role)}
           </small>
           <small className="macro-toolkit-crisis-coverage-note">
             候选商品仅做影子评估，当前未计入 Crisis Score 分数。
@@ -1141,7 +1150,7 @@ export function CrisisScoreEvidencePanel({
                 >
                   {shadowEvidenceExpanded ? "收起影子评估证据" : "展开影子评估证据"}
                 </Button>
-                <small>影子影响试算、准入决策与逐品种明细默认收起，审批复核时再展开。</small>
+                <small>审批复核时再展开。</small>
               </div>
               {shadowEvidenceExpanded ? (
                 <>
@@ -1207,24 +1216,24 @@ export function CrisisScoreEvidencePanel({
                     <Tag color={item.available ? "green" : "red"}>{item.available ? "命中" : "缺失"}</Tag>
                   </div>
                   <strong>{formatCommodityCoverageIdentifiers(item)}</strong>
-                  <small>
-                    {item.field} · {formatCrisisRowCount(item.row_count)} · {item.latest_date ?? "日期缺失"} ·{" "}
-                    {formatCommodityCoverageDateStatus(item.date_alignment_status)}
+                  <small title={`${item.field} · ${item.source ?? "来源缺失"} · ${item.series_id ?? "序列缺失"}`}>
+                    {formatCrisisRowCount(item.row_count)} · {item.latest_date ?? "日期缺失"}
                   </small>
                   <small>
-                    {item.source ?? "source missing"} · {item.series_id ?? "series missing"} · matched{" "}
-                    {item.matched_alias ?? "alias missing"} · {item.used_in_formula ? "纳入公式" : "未纳入公式"}
+                    {formatCommodityCoverageDateStatus(item.date_alignment_status)} · matched{" "}
+                    {item.matched_alias ?? "别名缺失"}
                   </small>
+                  <small>{item.used_in_formula ? "纳入公式" : "未纳入公式"}</small>
                   {item.candidate_decision ? (
-                    <small>
-                      {item.candidate_decision.label} · {item.candidate_decision.reason} ·{" "}
-                      {item.candidate_decision.next_step}
+                    <small title={item.candidate_decision.reason}>
+                      {item.candidate_decision.label} · {item.candidate_decision.next_step}
                     </small>
                   ) : null}
                   {item.shadow_evaluation ? (
-                    <small>
-                      {item.shadow_evaluation.label} · {item.shadow_evaluation.summary} ·{" "}
-                      {formatCommodityShadowDetail(item.shadow_evaluation)}
+                    <small
+                      title={`${item.shadow_evaluation.summary} · ${formatCommodityShadowDetail(item.shadow_evaluation)}`}
+                    >
+                      {item.shadow_evaluation.label} · {item.shadow_evaluation.next_step}
                     </small>
                   ) : null}
                 </div>
@@ -1234,34 +1243,10 @@ export function CrisisScoreEvidencePanel({
         </div>
       ) : null}
 
-      <div className="macro-toolkit-crisis-input-grid">
-        {inputEvidence.map((item) => (
-          <div
-            className={[
-              "macro-toolkit-crisis-input",
-              item.available ? "macro-toolkit-crisis-input--available" : "macro-toolkit-crisis-input--missing",
-              item.field === "nanhua" ? "macro-toolkit-crisis-input--commodity" : "",
-            ]
-              .filter(Boolean)
-              .join(" ")}
-            key={`${item.field}-${item.aliases?.join("-") ?? item.label}`}
-          >
-            <div className="macro-toolkit-capability-result-head">
-              <span>{item.label || item.field}</span>
-              <Tag color={item.available ? "green" : "red"}>{item.available ? "命中" : "缺失"}</Tag>
-            </div>
-            <strong>{item.aliases?.join(" / ") || item.series_id || "alias missing"}</strong>
-            <small>
-              {item.field} · {formatCrisisRowCount(item.row_count)} · {item.latest_date ?? "日期缺失"}
-            </small>
-            <small>
-              {item.source ?? "source missing"} · {item.series_id ?? "series missing"} · value{" "}
-              {item.value == null ? "缺失" : formatValue(item.value, "")}
-            </small>
-            {item.warning ? <Tag color={item.available ? "default" : "red"}>{item.warning}</Tag> : null}
-          </div>
-        ))}
-      </div>
+      <small className="macro-toolkit-crisis-coverage-note">
+        源序列命中明细已并入指标矩阵，
+        <a href="#macro-toolkit-indicator-matrix">查看指标矩阵</a>。
+      </small>
     </section>
   );
 }

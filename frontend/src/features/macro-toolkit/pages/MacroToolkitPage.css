@@ -97,7 +97,7 @@
   flex-wrap: nowrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 7px;
+  gap: 8px;
   flex: 0 0 auto;
   margin-left: auto;
   min-width: 0;
@@ -121,10 +121,36 @@
   line-height: 1.55;
 }
 
-.macro-toolkit-page__main {
+.macro-toolkit-page__main,
+.macro-toolkit-page__primary {
   display: grid;
   gap: 16px;
   min-width: 0;
+}
+
+/* E6 右栏骨架：主列 + 治理证据右栏（≥1281 双列，≤1280 折回单列流） */
+.macro-toolkit-meta-rail {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-content: start;
+  min-width: 0;
+}
+
+@media (min-width: 1281px) {
+  .macro-toolkit-page__main--with-rail {
+    grid-template-columns: minmax(0, 1fr) 320px;
+    column-gap: 12px;
+  }
+
+  .macro-toolkit-meta-rail {
+    grid-template-columns: minmax(0, 1fr);
+    position: sticky;
+    top: 12px;
+    max-height: calc(100vh - 24px);
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
 }
 
 .macro-toolkit-cockpit {
@@ -247,7 +273,7 @@
 
 .macro-toolkit-cockpit--observation .macro-toolkit-cockpit__conclusion strong {
   font-family: var(--ib-serif);
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 600;
 }
 
@@ -351,7 +377,7 @@
 
 .macro-toolkit-cockpit__conclusion strong {
   color: var(--moss-color-text-primary);
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 800;
   line-height: 1.12;
   overflow-wrap: anywhere;
@@ -368,22 +394,21 @@
   -webkit-line-clamp: 2;
 }
 
+.macro-toolkit-cockpit__limits {
+  color: var(--macro-toolkit-warning);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .macro-toolkit-cockpit__analysis .macro-toolkit-brief-metrics {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.macro-toolkit-cockpit--observation .macro-toolkit-brief-metrics {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.macro-toolkit-cockpit--observation .macro-toolkit-brief-metrics .macro-toolkit-metric:first-child {
-  grid-column: 1 / -1;
-}
-
 .macro-toolkit-investment-brief {
+  container-type: inline-size;
   align-self: stretch;
   align-content: start;
-  gap: 7px;
+  gap: 8px;
   padding: 12px;
   border: 1px solid var(--macro-toolkit-border-soft);
   border-radius: var(--moss-radius-sm);
@@ -398,13 +423,9 @@
 .macro-toolkit-submission-cockpit {
   order: 2;
   display: grid;
-  grid-template-columns: minmax(148px, 0.62fr) minmax(128px, 0.48fr) minmax(280px, 1.08fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
   min-width: 0;
-  padding: 8px;
-  border: 1px solid var(--macro-toolkit-border);
-  border-radius: var(--moss-radius-sm);
-  background: var(--macro-toolkit-card-muted);
 }
 
 .macro-toolkit-submission-cockpit__verdict,
@@ -415,15 +436,6 @@
   align-content: center;
   gap: 2px;
   min-width: 0;
-  border: 1px solid var(--macro-toolkit-border-muted);
-  border-radius: var(--moss-radius-sm);
-  background: color-mix(in srgb, var(--macro-toolkit-card) 90%, transparent);
-}
-
-.macro-toolkit-submission-cockpit__verdict,
-.macro-toolkit-submission-cockpit__owner {
-  min-height: 92px;
-  padding: 8px;
 }
 
 .macro-toolkit-submission-cockpit__verdict {
@@ -437,27 +449,31 @@
 
 .macro-toolkit-submission-cockpit__metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 5px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 4px;
   min-width: 0;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--macro-toolkit-border-muted);
 }
 
 .macro-toolkit-submission-cockpit__metrics > div {
-  min-height: 42px;
-  padding: 6px;
+  padding: 4px 8px;
+}
+
+.macro-toolkit-submission-cockpit__metrics > div:not(:last-child) {
+  border-right: 1px solid var(--macro-toolkit-border-muted);
 }
 
 .macro-toolkit-submission-cockpit__lanes {
   grid-column: 1 / -1;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 5px;
+  gap: 4px;
   min-width: 0;
 }
 
 .macro-toolkit-submission-cockpit__lane {
-  min-height: 62px;
-  padding: 7px;
+  padding: 8px;
   border-left: 2px solid var(--macro-toolkit-success);
   color: inherit;
   text-decoration: none;
@@ -475,7 +491,6 @@
 
 .macro-toolkit-submission-cockpit__lane:hover,
 .macro-toolkit-submission-cockpit__lane[aria-current="true"] {
-  border-color: color-mix(in srgb, var(--macro-toolkit-primary) 46%, var(--macro-toolkit-border-muted));
   border-left-color: var(--macro-toolkit-primary);
   background: var(--macro-toolkit-primary-soft);
 }
@@ -484,7 +499,7 @@
 .macro-toolkit-submission-cockpit small,
 .macro-toolkit-submission-cockpit em {
   color: var(--moss-color-text-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-style: normal;
   font-weight: 900;
   line-height: 1.2;
@@ -501,8 +516,8 @@
 
 .macro-toolkit-submission-cockpit__verdict strong {
   color: var(--macro-toolkit-danger);
-  font-size: 24px;
-  line-height: 1.08;
+  font-size: 16px;
+  line-height: 1.15;
 }
 
 .macro-toolkit-submission-cockpit__owner strong {
@@ -559,6 +574,21 @@
   border-color: var(--macro-toolkit-primary);
 }
 
+/* 门禁进入 320px 右栏时的窄容器形态：状态条折两列、lane 单列。 */
+@container (max-width: 420px) {
+  .macro-toolkit-submission-cockpit__metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .macro-toolkit-submission-cockpit__metrics > div:not(:last-child) {
+    border-right: 0;
+  }
+
+  .macro-toolkit-submission-cockpit__lanes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .macro-toolkit-observation-boundaries {
   grid-column: 1 / -1;
   display: grid;
@@ -612,10 +642,6 @@
   background: var(--macro-toolkit-warning-soft);
 }
 
-.macro-toolkit-operations-band {
-  grid-template-columns: minmax(360px, 0.9fr) minmax(0, 1.1fr);
-}
-
 /* Second-screen committee submission workspace pass */
 .macro-toolkit-committee-workspace {
   display: grid;
@@ -656,12 +682,10 @@
 
 .macro-toolkit-committee-workspace__evidence-grid a {
   display: grid;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
-  padding: 7px 8px;
-  border: 1px solid var(--macro-toolkit-border-muted);
+  padding: 8px;
   border-left: 2px solid var(--macro-toolkit-info);
-  border-radius: var(--moss-radius-sm);
   background: var(--macro-toolkit-card);
   color: inherit;
   text-decoration: none;
@@ -672,6 +696,10 @@
   display: grid;
   gap: 10px;
   min-width: 0;
+}
+
+.macro-toolkit-committee-workspace--console-only {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .macro-toolkit-committee-workspace__main {
@@ -712,14 +740,13 @@
 
 .macro-toolkit-committee-workspace__evidence-grid a:hover,
 .macro-toolkit-committee-workspace__evidence-grid a[aria-current="true"] {
-  border-color: var(--macro-toolkit-primary);
   border-left-color: var(--macro-toolkit-primary);
   background: var(--macro-toolkit-primary-soft);
 }
 
 .macro-toolkit-governance-gate .macro-toolkit-contract-boundary {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  padding: 9px 10px;
+  padding: 8px 12px;
   background: color-mix(in srgb, var(--macro-toolkit-card) 72%, var(--macro-toolkit-warning-soft));
 }
 
@@ -734,8 +761,8 @@
 
 .macro-toolkit-governance-gate__metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
   min-width: 0;
 }
 
@@ -782,30 +809,20 @@
   overflow-wrap: anywhere;
 }
 
-.macro-toolkit-governance-gate__metrics .macro-toolkit-metric {
-  padding: 8px;
-  background: color-mix(in srgb, var(--macro-toolkit-card) 76%, var(--macro-toolkit-warning-soft));
-}
-
-.macro-toolkit-governance-gate__metrics .macro-toolkit-metric strong {
-  font-size: 17px;
-}
-
-.macro-toolkit-governance-gate__metrics .macro-toolkit-metric small {
-  font-size: 11px;
-}
-
 .macro-toolkit-governance-link {
-  display: grid;
-  gap: 5px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
   min-width: 0;
-  padding: 8px;
-  border: 1px solid var(--macro-toolkit-border-muted);
+  padding: 5px 8px;
   border-left: 2px solid var(--macro-toolkit-info);
-  border-radius: var(--moss-radius-sm);
-  background: color-mix(in srgb, var(--macro-toolkit-card) 76%, var(--macro-toolkit-warning-soft));
   color: inherit;
   text-decoration: none;
+}
+
+.macro-toolkit-governance-link + .macro-toolkit-governance-link {
+  border-top: 1px solid var(--macro-toolkit-border-muted);
 }
 
 .macro-toolkit-governance-link:hover,
@@ -819,25 +836,10 @@
   gap: 6px;
   align-items: center;
   min-width: 0;
-  color: var(--moss-color-text-secondary);
-  font-size: 11px;
+  color: var(--moss-color-text-primary);
+  font-size: 12px;
   font-weight: 850;
   line-height: 1.25;
-}
-
-.macro-toolkit-governance-link strong {
-  color: var(--moss-color-text-primary);
-  font-size: 17px;
-  font-weight: 900;
-  line-height: 1.2;
-  overflow-wrap: anywhere;
-}
-
-.macro-toolkit-governance-link small {
-  color: var(--moss-color-text-secondary);
-  font-size: 11px;
-  line-height: 1.3;
-  overflow-wrap: anywhere;
 }
 
 .macro-toolkit-operations-console {
@@ -949,15 +951,15 @@
 .macro-toolkit-action-receipt__grid {
   display: grid;
   grid-template-columns: 0.58fr 0.58fr minmax(0, 1fr) minmax(0, 1.12fr) minmax(0, 1.12fr);
-  gap: 5px;
+  gap: 4px;
   min-width: 0;
 }
 
 .macro-toolkit-action-receipt__field {
   display: grid;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
-  padding: 6px 7px;
+  padding: 8px;
   border: 1px solid var(--macro-toolkit-border-muted);
   border-radius: var(--moss-radius-sm);
   background: var(--macro-toolkit-card-muted);
@@ -1005,7 +1007,7 @@
 
 .macro-toolkit-action-queue__list {
   display: grid;
-  gap: 5px;
+  gap: 4px;
   min-width: 0;
   margin: 0;
   padding: 0;
@@ -1022,19 +1024,19 @@
 }
 
 .macro-toolkit-action-queue__columns {
-  padding: 0 7px;
+  padding: 0 8px;
 }
 
 .macro-toolkit-action-queue__columns span {
   color: var(--moss-color-text-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 900;
   line-height: 1.2;
   overflow-wrap: anywhere;
 }
 
 .macro-toolkit-action-queue__item {
-  padding: 6px 7px;
+  padding: 8px;
   border-left: 2px solid var(--macro-toolkit-info);
   border-radius: var(--moss-radius-sm);
   background: var(--macro-toolkit-card-muted);
@@ -1043,7 +1045,7 @@
 .macro-toolkit-action-queue__item > div {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
+  gap: 4px;
   align-items: baseline;
   min-width: 0;
 }
@@ -1106,7 +1108,8 @@
 
 .macro-toolkit-anchor-target--active + .macro-toolkit-analysis-stack,
 .macro-toolkit-anchor-target--active .macro-toolkit-data-health,
-.macro-toolkit-section--audit-focus {
+.macro-toolkit-section--audit-focus,
+.macro-toolkit-section:target {
   outline: 2px solid color-mix(in srgb, var(--macro-toolkit-primary) 38%, transparent);
   outline-offset: 3px;
 }
@@ -1120,7 +1123,7 @@
 }
 
 .macro-toolkit-page .moss-page-v2-decision-hero__title {
-  font-size: 28px;
+  font-size: 20px;
   line-height: 1.18;
 }
 
@@ -1171,7 +1174,6 @@
 
 
 .macro-toolkit-metric span,
-.macro-toolkit-source-item span,
 .macro-toolkit-readiness-tile span {
   color: var(--moss-color-text-muted);
   font-size: 11px;
@@ -1180,15 +1182,13 @@
 }
 
 /* 首屏/执行 KPI 横带：标签固定两行高度，防同排数值错位（§3）。 */
-.macro-toolkit-brief-metrics .macro-toolkit-metric > span,
-.macro-toolkit-operations-brief .macro-toolkit-metric > span {
+.macro-toolkit-brief-metrics .macro-toolkit-metric > span {
   min-height: 32px;
   align-items: flex-start;
 }
 
 
 .macro-toolkit-metric small,
-.macro-toolkit-source-item small,
 .macro-toolkit-script-file {
   color: var(--moss-color-text-secondary);
   font-size: 12px;
@@ -1196,16 +1196,11 @@
   overflow-wrap: anywhere;
 }
 
-.macro-toolkit-brief-metrics,
-.macro-toolkit-operations-brief {
+.macro-toolkit-brief-metrics {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   min-width: 0;
-}
-
-.macro-toolkit-operations-brief {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .macro-toolkit-contract-boundary {
@@ -1339,12 +1334,9 @@
 
 .macro-toolkit-metric {
   display: grid;
-  gap: 5px;
+  gap: 4px;
   min-width: 0;
-  padding: 12px;
-  border: 1px solid var(--macro-toolkit-border-soft);
-  border-radius: var(--moss-radius-sm);
-  background: var(--macro-toolkit-card-muted);
+  padding: 6px 0;
 }
 
 .macro-toolkit-metric > span,
@@ -1353,11 +1345,7 @@
 .macro-toolkit-capability-result-head > span {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-}
-
-.macro-toolkit-metric--positive {
-  border-left: 2px solid var(--macro-toolkit-success);
+  gap: 8px;
 }
 
 .macro-toolkit-metric strong {
@@ -1641,7 +1629,7 @@
 
 .macro-toolkit-observation-trace-summary__head strong {
   color: var(--moss-color-text-primary);
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 850;
   line-height: 1.25;
   overflow-wrap: anywhere;
@@ -1666,7 +1654,7 @@
 
 .macro-toolkit-observation-trace-summary__grid strong {
   color: var(--moss-color-text-primary);
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 900;
   line-height: 1.25;
   overflow-wrap: anywhere;
@@ -1785,7 +1773,6 @@
   gap: 5px;
   min-width: 0;
   padding: 10px;
-  border: 1px solid var(--macro-toolkit-border-soft);
   border-left: 2px solid var(--macro-toolkit-info);
   border-radius: var(--moss-radius-sm);
   background: var(--macro-toolkit-card-muted);
@@ -1818,6 +1805,54 @@
   flex-wrap: wrap;
   gap: 6px;
   min-width: 0;
+}
+
+.macro-toolkit-data-health__warning-note {
+  flex: 1 1 100%;
+  min-width: 0;
+  color: var(--macro-toolkit-danger);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.macro-toolkit-data-health__warning-note > summary {
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.macro-toolkit-data-health__warning-note ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  color: var(--moss-color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.macro-toolkit-data-health__warning-soft {
+  flex: 1 1 100%;
+  min-width: 0;
+  color: var(--macro-toolkit-warning);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.macro-toolkit-data-health__repair-note-details {
+  min-width: 0;
+}
+
+.macro-toolkit-data-health__repair-note-details > summary {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.45;
+  cursor: pointer;
+}
+
+.macro-toolkit-data-health__repair-note-details small {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .macro-toolkit-data-health__repairs {
@@ -1868,7 +1903,7 @@
 
 .macro-toolkit-data-health__repair-ticket {
   display: grid;
-  gap: 7px;
+  gap: 8px;
   min-width: 0;
   padding: 10px;
   border: 1px solid color-mix(in srgb, var(--macro-toolkit-primary) 42%, var(--macro-toolkit-border-soft));
@@ -1902,21 +1937,25 @@
   overflow-wrap: anywhere;
 }
 
+/* 处理单六格收成一行发丝线分组（label value | label value）。 */
 .macro-toolkit-data-health__repair-ticket-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  row-gap: 4px;
   min-width: 0;
 }
 
 .macro-toolkit-data-health__repair-ticket-grid > div {
-  display: grid;
-  gap: 3px;
+  display: inline-flex;
+  gap: 6px;
+  align-items: baseline;
   min-width: 0;
-  padding: 7px;
-  border: 1px solid var(--macro-toolkit-border-muted);
-  border-radius: var(--moss-radius-sm);
-  background: var(--macro-toolkit-card);
+  padding-right: 10px;
+}
+
+.macro-toolkit-data-health__repair-ticket-grid > div + div {
+  padding-left: 10px;
+  border-left: 1px solid var(--macro-toolkit-border-soft);
 }
 
 .macro-toolkit-data-health__repair-ticket small {
@@ -1951,7 +1990,7 @@
 
 .macro-toolkit-data-health__repair {
   display: grid;
-  gap: 7px;
+  gap: 8px;
   min-width: 0;
   padding: 10px;
   border: 1px solid var(--macro-toolkit-border-soft);
@@ -1977,7 +2016,7 @@
 
 .macro-toolkit-data-health__repair-main {
   display: grid;
-  gap: 5px;
+  gap: 4px;
   min-width: 0;
 }
 
@@ -1985,7 +2024,7 @@
 .macro-toolkit-data-health__repair-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
+  gap: 4px;
   align-items: center;
   min-width: 0;
   color: var(--moss-color-text-primary);
@@ -1994,9 +2033,14 @@
   overflow-wrap: anywhere;
 }
 
-.macro-toolkit-data-health__repair-main small {
+.macro-toolkit-data-health__repair-main small,
+.macro-toolkit-data-health__repair-meta small,
+.macro-toolkit-data-health__repair-action small,
+.macro-toolkit-data-health__repair-note,
+.macro-toolkit-data-health__notes-label {
   color: var(--moss-color-text-secondary);
   font-size: 12px;
+  font-weight: 600;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
@@ -2007,20 +2051,6 @@
   gap: 6px;
   align-items: center;
   min-width: 0;
-}
-
-.macro-toolkit-data-health__repair-action small {
-  color: var(--moss-color-text-secondary);
-  font-size: 12px;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-}
-
-.macro-toolkit-data-health__repair-overflow {
-  color: var(--moss-color-text-muted);
-  font-size: 12px;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
 }
 
 .macro-toolkit-indicator-observation {
@@ -2044,7 +2074,7 @@
 
 .macro-toolkit-indicator-observation__head > div {
   display: grid;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
 }
 
@@ -2056,7 +2086,7 @@
 
 .macro-toolkit-indicator-observation__head strong {
   color: var(--moss-color-text-primary);
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1.25;
   overflow-wrap: anywhere;
 }
@@ -2066,10 +2096,6 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   min-width: 0;
-}
-
-.macro-toolkit-indicator-observation__grid .macro-toolkit-metric {
-  padding: 9px;
 }
 
 .macro-toolkit-indicator-observation__grid .macro-toolkit-metric strong {
@@ -2085,9 +2111,9 @@
 
 .macro-toolkit-indicator-observation__item {
   display: grid;
-  gap: 5px;
+  gap: 4px;
   min-width: 0;
-  padding: 9px 10px;
+  padding: 8px 12px;
   border: 1px solid var(--macro-toolkit-border-muted);
   border-left: 2px solid var(--macro-toolkit-info);
   border-radius: var(--moss-radius-sm);
@@ -2160,7 +2186,7 @@
 
 .macro-toolkit-investment-evidence__head strong {
   color: var(--moss-color-text-primary);
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 850;
   line-height: 1.25;
   overflow-wrap: anywhere;
@@ -2206,13 +2232,8 @@
   min-width: 0;
 }
 
-.macro-toolkit-investment-evidence__metric-row .macro-toolkit-metric {
-  padding: 9px;
-  background: var(--macro-toolkit-card);
-}
-
 .macro-toolkit-investment-evidence__metric-row .macro-toolkit-metric strong {
-  font-size: 17px;
+  font-size: 16px;
 }
 
 .macro-toolkit-investment-evidence__note,
@@ -2283,7 +2304,7 @@
 
 .macro-toolkit-readiness-tile strong {
   color: var(--moss-color-text-primary);
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 800;
   line-height: 1.2;
   overflow-wrap: anywhere;
@@ -2298,7 +2319,7 @@
 
 .macro-toolkit-signal-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -2315,19 +2336,16 @@
 }
 
 .macro-toolkit-signal-card {
-  min-height: 132px;
   padding: 13px;
   align-content: start;
 }
 
 .macro-toolkit-capability-result {
-  min-height: 170px;
-  padding: 14px;
+  padding: 12px;
   align-content: start;
 }
 
 .macro-toolkit-strategy-card {
-  min-height: 168px;
   padding: 14px;
   border-left-color: var(--macro-toolkit-info);
   align-content: start;
@@ -2408,7 +2426,8 @@
 }
 
 .macro-toolkit-hason-strategy__head span,
-.macro-toolkit-hason-runtime span {
+.macro-toolkit-hason-runtime span,
+.macro-toolkit-model-signal-matrix__readiness span {
   color: var(--moss-color-text-muted);
   font-size: 12px;
   font-weight: 800;
@@ -2423,11 +2442,22 @@
   overflow-wrap: anywhere;
 }
 
-.macro-toolkit-hason-strategy__head small {
+.macro-toolkit-hason-strategy__head small,
+.macro-toolkit-hason-strategy__audit-body > small {
   color: var(--moss-color-text-secondary);
   font-size: 12px;
   line-height: 1.45;
   overflow-wrap: anywhere;
+}
+
+.macro-toolkit-hason-strategy__audit-body {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.macro-toolkit-hason-strategy--audit-collapsed .macro-toolkit-hason-strategy__audit-body {
+  display: none;
 }
 
 .macro-toolkit-hason-strategy__metrics,
@@ -2449,10 +2479,6 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.macro-toolkit-hason-strategy--observation .macro-toolkit-metric {
-  background: color-mix(in srgb, var(--macro-toolkit-card) 78%, var(--macro-toolkit-warning-soft));
-}
-
 .macro-toolkit-hason-module-grid {
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
 }
@@ -2468,7 +2494,8 @@
 }
 
 .macro-toolkit-hason-module strong,
-.macro-toolkit-hason-runtime strong {
+.macro-toolkit-hason-runtime strong,
+.macro-toolkit-model-signal-matrix__readiness strong {
   color: var(--moss-color-text-primary);
   font-size: 14px;
   line-height: 1.25;
@@ -2482,7 +2509,8 @@
   overflow-wrap: anywhere;
 }
 
-.macro-toolkit-hason-runtime {
+.macro-toolkit-hason-runtime,
+.macro-toolkit-model-signal-matrix__readiness {
   display: grid;
   gap: 4px;
   min-width: 0;
@@ -2499,7 +2527,8 @@
   background: var(--macro-toolkit-card);
 }
 
-.macro-toolkit-model-signal-matrix__head {
+.macro-toolkit-model-signal-matrix__head,
+.macro-toolkit-model-chain__head {
   display: flex;
   gap: 12px;
   align-items: flex-start;
@@ -2507,35 +2536,50 @@
   min-width: 0;
 }
 
-.macro-toolkit-model-signal-matrix__head > div {
+.macro-toolkit-model-signal-matrix__head > div,
+.macro-toolkit-model-chain__head > div {
   display: grid;
   gap: 4px;
   min-width: 0;
 }
 
-.macro-toolkit-model-signal-matrix__head span {
+.macro-toolkit-model-signal-matrix__head span,
+.macro-toolkit-model-chain__head span {
   color: var(--moss-color-text-muted);
   font-size: 11px;
   font-weight: 900;
   text-transform: uppercase;
 }
 
-.macro-toolkit-model-signal-matrix__head strong {
+.macro-toolkit-model-signal-matrix__head strong,
+.macro-toolkit-model-chain__head strong {
   color: var(--moss-color-text-primary);
   font-size: 16px;
   font-weight: 900;
   line-height: 1.25;
 }
 
-.macro-toolkit-model-signal-matrix__head small {
+.macro-toolkit-model-signal-matrix__head small,
+.macro-toolkit-model-chain__head small {
   color: var(--moss-color-text-secondary);
   font-size: 12px;
   font-weight: 760;
   line-height: 1.35;
+  font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
 
-.macro-toolkit-model-signal-matrix__head a {
+.macro-toolkit-model-signal-matrix__toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.macro-toolkit-model-signal-matrix__head a,
+.macro-toolkit-model-signal-detail__links a {
   flex: 0 0 auto;
   color: var(--macro-toolkit-primary);
   font-size: 12px;
@@ -2543,7 +2587,8 @@
   text-decoration: none;
 }
 
-.macro-toolkit-model-signal-matrix__head a:hover {
+.macro-toolkit-model-signal-matrix__head a:hover,
+.macro-toolkit-model-signal-detail__links a:hover {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -2557,18 +2602,15 @@
 
 .macro-toolkit-model-signal-matrix__row {
   display: grid;
-  grid-template-rows: auto auto minmax(32px, auto) auto auto;
   gap: 6px;
+  align-content: start;
   min-width: 0;
-  min-height: 146px;
-  padding: 9px;
-  border: 1px solid var(--macro-toolkit-border-muted);
+  padding: 8px 12px;
   border-radius: var(--moss-radius-sm);
   background: var(--macro-toolkit-card-muted);
 }
 
-.macro-toolkit-model-signal-matrix__title,
-.macro-toolkit-model-signal-matrix__boundary {
+.macro-toolkit-model-signal-matrix__title {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -2604,32 +2646,27 @@
 
 .macro-toolkit-model-signal-matrix__evidence {
   display: grid;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
   padding-top: 6px;
   border-top: 1px solid var(--macro-toolkit-border-muted);
 }
 
-.macro-toolkit-model-signal-matrix__evidence span,
 .macro-toolkit-model-signal-matrix__evidence em {
   min-width: 0;
+  color: var(--moss-color-text-muted);
   font-size: 11px;
+  font-style: normal;
+  font-weight: 760;
   line-height: 1.3;
   overflow-wrap: anywhere;
 }
 
-.macro-toolkit-model-signal-matrix__evidence span {
-  color: var(--moss-color-text-primary);
-  font-weight: 850;
-}
-
-.macro-toolkit-model-signal-matrix__evidence em {
-  color: var(--moss-color-text-muted);
-  font-style: normal;
-  font-weight: 760;
-}
-
-.macro-toolkit-model-signal-matrix__detail-button {
+.macro-toolkit-model-signal-matrix__detail-button,
+.macro-toolkit-model-chain__toggle,
+.macro-toolkit-model-chain__evidence-button,
+.macro-toolkit-model-chain__wall-toggle,
+.macro-toolkit-hason-strategy__audit-toggle {
   justify-self: start;
   padding: 4px 8px;
   border: 1px solid var(--macro-toolkit-border-muted);
@@ -2643,9 +2680,21 @@
 }
 
 .macro-toolkit-model-signal-matrix__detail-button:hover,
-.macro-toolkit-model-signal-matrix__detail-button[aria-expanded="true"] {
+.macro-toolkit-model-signal-matrix__detail-button[aria-expanded="true"],
+.macro-toolkit-model-chain__toggle:hover,
+.macro-toolkit-model-chain__toggle[aria-expanded="true"],
+.macro-toolkit-model-chain__evidence-button:hover,
+.macro-toolkit-model-chain__evidence-button[aria-expanded="true"],
+.macro-toolkit-model-chain__wall-toggle:hover,
+.macro-toolkit-model-chain__wall-toggle[aria-expanded="true"],
+.macro-toolkit-hason-strategy__audit-toggle:hover,
+.macro-toolkit-hason-strategy__audit-toggle[aria-expanded="true"] {
   border-color: color-mix(in srgb, var(--macro-toolkit-primary) 52%, var(--macro-toolkit-border-muted));
   background: var(--macro-toolkit-primary-soft);
+}
+
+.macro-toolkit-model-chain__wall-toggle {
+  justify-self: end;
 }
 
 .macro-toolkit-model-signal-detail {
@@ -2681,15 +2730,14 @@
 .macro-toolkit-model-signal-detail__receipt span {
   color: var(--moss-color-text-muted);
   font-size: 11px;
-  font-weight: 900;
-  text-transform: uppercase;
+  font-weight: 800;
 }
 
 .macro-toolkit-model-signal-detail__head strong,
 .macro-toolkit-model-signal-detail__acceptance strong,
 .macro-toolkit-model-signal-detail__receipt strong {
   color: var(--moss-color-text-primary);
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 900;
   line-height: 1.25;
 }
@@ -2716,7 +2764,7 @@
   display: grid;
   gap: 4px;
   min-width: 0;
-  padding: 7px;
+  padding: 8px;
   border: 1px solid var(--macro-toolkit-border-muted);
   border-radius: var(--moss-radius-sm);
   background: var(--macro-toolkit-card);
@@ -2745,32 +2793,8 @@
   min-width: 0;
 }
 
-.macro-toolkit-model-signal-detail__receipt--error {
-  border-color: color-mix(in srgb, var(--macro-toolkit-danger) 42%, var(--macro-toolkit-border-muted));
-  background: var(--macro-toolkit-danger-soft);
-}
-
-.macro-toolkit-model-signal-detail__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-}
-
 .macro-toolkit-model-signal-detail__links {
   justify-content: flex-start;
-}
-
-.macro-toolkit-model-signal-detail__links a {
-  color: var(--macro-toolkit-primary);
-  font-size: 12px;
-  font-weight: 900;
-  text-decoration: none;
-}
-
-.macro-toolkit-model-signal-detail__links a:hover {
-  text-decoration: underline;
-  text-underline-offset: 2px;
 }
 
 .macro-toolkit-score-track {
@@ -2803,13 +2827,13 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 10px;
+  align-items: start;
 }
 
 .macro-toolkit-strategy-metric {
   display: grid;
-  gap: 2px;
+  gap: 4px;
   padding: 10px;
-  border: 1px solid var(--macro-toolkit-border-muted);
   border-radius: var(--moss-radius-sm);
   background: var(--macro-toolkit-card-muted);
 }
@@ -2831,13 +2855,33 @@
   display: grid;
   gap: 6px;
   min-width: 0;
-  padding: 9px 10px;
-  border: 1px solid var(--macro-toolkit-border-muted);
+  padding: 8px 12px;
   border-radius: var(--moss-radius-sm);
   background: var(--macro-toolkit-info-soft);
   color: var(--moss-color-text-secondary);
   font-size: 12px;
   line-height: 1.4;
+}
+
+.macro-toolkit-strategy-collapse > summary,
+.macro-toolkit-evidence-limits > summary {
+  color: var(--macro-toolkit-primary);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.macro-toolkit-strategy-collapse[open] > summary,
+.macro-toolkit-evidence-limits[open] > summary {
+  margin-bottom: 8px;
+}
+
+.macro-toolkit-strategy-collapse__body,
+.macro-toolkit-evidence-limits__body {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
 }
 
 .macro-toolkit-strategy-trace span {
@@ -2932,15 +2976,12 @@
 .macro-toolkit-shadow-holdings {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
+  gap: 4px 12px;
   min-width: 0;
 }
 
+/* 持仓编号列表按首页语法走纯文本流，靠留白分组。 */
 .macro-toolkit-shadow-holdings span {
-  padding: 4px 7px;
-  border: 1px solid var(--macro-toolkit-border-muted);
-  border-radius: var(--moss-radius-xs);
-  background: var(--macro-toolkit-card);
   color: var(--moss-color-text-secondary);
   font-size: 12px;
   line-height: 1.35;
@@ -2973,7 +3014,6 @@
   gap: 3px;
   min-width: 0;
   padding: 8px 10px;
-  border: 1px solid var(--macro-toolkit-border-muted);
   border-radius: var(--moss-radius-sm);
   background: var(--macro-toolkit-card-muted);
   color: var(--moss-color-text-secondary);
@@ -3028,14 +3068,15 @@
 .macro-toolkit-shadow-review__periods {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
+  gap: 4px 12px;
   min-width: 0;
 }
 
-.macro-toolkit-shadow-review__periods span,
-.macro-toolkit-shadow-holdings--diff span {
-  border-color: color-mix(in srgb, var(--macro-toolkit-primary) 34%, var(--macro-toolkit-border-muted));
-  background: var(--macro-toolkit-info-soft);
+.macro-toolkit-shadow-review__periods span {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .macro-toolkit-shadow-evidence {
@@ -3060,7 +3101,6 @@
   gap: 3px;
   min-width: 0;
   padding: 7px 9px;
-  border: 1px solid var(--macro-toolkit-border-muted);
   border-radius: var(--moss-radius-xs);
   background: var(--macro-toolkit-card-muted);
   color: var(--moss-color-text-secondary);
@@ -3083,7 +3123,6 @@
 }
 
 .macro-toolkit-shadow-evidence__warnings span {
-  border-color: color-mix(in srgb, var(--macro-toolkit-warning) 35%, var(--macro-toolkit-border-muted));
   background: color-mix(in srgb, var(--macro-toolkit-warning) 10%, var(--macro-toolkit-card-muted));
 }
 
@@ -3108,7 +3147,7 @@
 .macro-toolkit-a-share-risk__summary strong {
   color: var(--moss-color-text-primary);
   font-variant-numeric: tabular-nums;
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 800;
   line-height: 1;
 }
@@ -3147,10 +3186,9 @@
 
 .macro-toolkit-a-share-risk__list {
   display: grid;
-  gap: 5px;
+  gap: 4px;
   min-width: 0;
   padding: 8px 10px;
-  border: 1px solid var(--macro-toolkit-border-muted);
   border-radius: var(--moss-radius-sm);
   background: var(--macro-toolkit-card-muted);
 }
@@ -3167,6 +3205,13 @@
   min-width: 0;
   padding-top: 6px;
   border-top: 1px solid var(--macro-toolkit-border-muted);
+}
+
+.macro-toolkit-input-evidence summary {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .macro-toolkit-input-evidence span {
@@ -3236,7 +3281,11 @@
   min-width: 0;
 }
 
-.macro-toolkit-crisis-shadow-decision__head span {
+.macro-toolkit-crisis-shadow-decision__head span,
+.macro-toolkit-crisis-shadow-action-queue__item span,
+.macro-toolkit-crisis-shadow-action-queue__next span,
+.macro-toolkit-crisis-shadow-impact__head span,
+.macro-toolkit-crisis-review-conclusion__head span {
   color: var(--moss-color-text-secondary);
   font-size: 12px;
   font-weight: 760;
@@ -3260,17 +3309,10 @@
   display: grid;
   gap: 4px;
   min-width: 0;
-  padding: 8px 9px;
+  padding: 8px;
   border: 1px solid var(--macro-toolkit-border-soft);
   border-radius: var(--moss-radius-sm);
   background: var(--macro-toolkit-card);
-}
-
-.macro-toolkit-crisis-shadow-action-queue__item span,
-.macro-toolkit-crisis-shadow-action-queue__next span {
-  color: var(--moss-color-text-secondary);
-  font-size: 12px;
-  font-weight: 760;
 }
 
 .macro-toolkit-crisis-shadow-action-queue__item strong,
@@ -3282,7 +3324,11 @@
   overflow-wrap: anywhere;
 }
 
-.macro-toolkit-crisis-shadow-action-queue__item small {
+.macro-toolkit-crisis-shadow-action-queue__item small,
+.macro-toolkit-crisis-shadow-impact small,
+.macro-toolkit-crisis-shadow-impact__note,
+.macro-toolkit-crisis-review-conclusion small,
+.macro-toolkit-crisis-shadow-decision__item small {
   color: var(--moss-color-text-secondary);
   font-size: 12px;
   line-height: 1.45;
@@ -3312,12 +3358,6 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
-.macro-toolkit-crisis-shadow-impact__head span {
-  color: var(--moss-color-text-secondary);
-  font-size: 12px;
-  font-weight: 760;
-}
-
 .macro-toolkit-crisis-shadow-impact__head strong {
   color: var(--moss-color-text-primary);
   font-size: 14px;
@@ -3335,26 +3375,17 @@
 }
 
 .macro-toolkit-crisis-shadow-impact__item {
-  padding: 8px 9px;
+  padding: 8px;
   border: 1px solid var(--macro-toolkit-border-soft);
   border-radius: var(--moss-radius-sm);
   background: var(--macro-toolkit-card);
-}
-
-.macro-toolkit-crisis-shadow-impact small,
-.macro-toolkit-crisis-shadow-impact__item small,
-.macro-toolkit-crisis-shadow-impact__note {
-  color: var(--moss-color-text-secondary);
-  font-size: 12px;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
 }
 
 .macro-toolkit-crisis-review-conclusion {
   display: grid;
   gap: 8px;
   min-width: 0;
-  padding: 9px 10px;
+  padding: 8px 12px;
   border: 1px solid var(--macro-toolkit-border-soft);
   border-radius: var(--moss-radius-sm);
   background: var(--macro-toolkit-card-muted);
@@ -3370,12 +3401,6 @@
 
 .macro-toolkit-crisis-review-conclusion__head {
   grid-template-columns: minmax(0, 1fr);
-}
-
-.macro-toolkit-crisis-review-conclusion__head span {
-  color: var(--moss-color-text-secondary);
-  font-size: 12px;
-  font-weight: 760;
 }
 
 .macro-toolkit-crisis-review-conclusion__head strong {
@@ -3394,7 +3419,7 @@
 }
 
 .macro-toolkit-crisis-review-conclusion__item {
-  padding: 8px 9px;
+  padding: 8px;
   border: 1px solid var(--macro-toolkit-border-soft);
   border-radius: var(--moss-radius-sm);
   background: var(--macro-toolkit-card);
@@ -3407,14 +3432,6 @@
   overflow-wrap: anywhere;
 }
 
-.macro-toolkit-crisis-review-conclusion small,
-.macro-toolkit-crisis-review-conclusion__item small {
-  color: var(--moss-color-text-secondary);
-  font-size: 12px;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-}
-
 .macro-toolkit-crisis-shadow-decision__grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
@@ -3423,7 +3440,7 @@
 }
 
 .macro-toolkit-crisis-shadow-decision__item {
-  padding: 9px 10px;
+  padding: 8px 12px;
   border: 1px solid var(--macro-toolkit-border-soft);
   border-radius: var(--moss-radius-sm);
   background: var(--macro-toolkit-card);
@@ -3433,13 +3450,6 @@
   color: var(--moss-color-text-primary);
   font-size: 13px;
   font-weight: 800;
-  overflow-wrap: anywhere;
-}
-
-.macro-toolkit-crisis-shadow-decision__item small {
-  color: var(--moss-color-text-secondary);
-  font-size: 12px;
-  line-height: 1.45;
   overflow-wrap: anywhere;
 }
 
@@ -3721,10 +3731,6 @@
   border-left: 2px solid var(--macro-toolkit-danger);
 }
 
-.macro-toolkit-crisis-input--commodity {
-  background: var(--macro-toolkit-info-soft);
-}
-
 .macro-toolkit-status-strip {
   display: flex;
   flex-wrap: wrap;
@@ -3928,6 +3934,15 @@
   top: 12px;
 }
 
+/* 底稿技术明细展开时通栏渲染：脱离右栏窄柱，消除页尾左侧空白。 */
+.macro-toolkit-execution-receipt-workspace:has(.macro-toolkit-execution-receipt-workspace__receipt .macro-toolkit-receipt-technical-details--expanded) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.macro-toolkit-execution-receipt-workspace:has(.macro-toolkit-execution-receipt-workspace__receipt .macro-toolkit-receipt-technical-details--expanded) .macro-toolkit-execution-receipt-workspace__receipt {
+  position: static;
+}
+
 .macro-toolkit-execution-receipt-workspace__section-label {
   display: inline-flex;
   align-items: center;
@@ -3960,14 +3975,14 @@
 .macro-toolkit-receipt-workpaper__head span,
 .macro-toolkit-receipt-workpaper__item span {
   color: var(--moss-color-text-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 900;
   line-height: 1.2;
 }
 
 .macro-toolkit-receipt-workpaper__head strong {
   color: var(--macro-toolkit-success);
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 900;
   line-height: 1.2;
 }
@@ -3975,7 +3990,7 @@
 .macro-toolkit-receipt-workpaper__head small,
 .macro-toolkit-receipt-workpaper__item small {
   color: var(--moss-color-text-secondary);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.3;
   overflow-wrap: anywhere;
 }
@@ -3988,9 +4003,7 @@
 }
 
 .macro-toolkit-receipt-workpaper__item {
-  padding: 7px 8px;
-  border: 1px solid var(--macro-toolkit-border-muted);
-  border-radius: var(--moss-radius-sm);
+  padding: 8px;
   background: var(--macro-toolkit-card);
 }
 
@@ -4028,7 +4041,7 @@
 
 .macro-toolkit-receipt-technical-details__head span {
   color: var(--moss-color-text-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 900;
   line-height: 1.2;
 }
@@ -4043,9 +4056,18 @@
 
 .macro-toolkit-receipt-technical-details__head small {
   color: var(--moss-color-text-secondary);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.25;
   overflow-wrap: anywhere;
+}
+
+.macro-toolkit-receipt-technical-details__matrix-link {
+  justify-self: start;
+  color: var(--macro-toolkit-primary);
+  font-size: 12px;
+  font-weight: 850;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .macro-toolkit-receipt-technical-details__body {
@@ -4075,14 +4097,7 @@
   background: var(--macro-toolkit-card-soft);
 }
 
-.macro-toolkit-source-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 10px;
-}
-
 .macro-toolkit-cffex-panel,
-.macro-toolkit-stock-refresh-panel,
 .macro-toolkit-run-panel {
   display: grid;
   gap: 10px;
@@ -4295,8 +4310,15 @@
 
 .macro-toolkit-strategy-observation__head strong {
   color: var(--moss-color-text-primary);
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.macro-toolkit-strategy-observation__head small {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
   overflow-wrap: anywhere;
 }
 
@@ -4356,8 +4378,7 @@
   gap: 8px;
 }
 
-.macro-toolkit-omitted-item,
-.macro-toolkit-source-item {
+.macro-toolkit-omitted-item {
   display: grid;
   gap: 4px;
   min-width: 0;
@@ -4377,13 +4398,6 @@
   color: var(--moss-color-text-secondary);
   font-size: 12px;
   line-height: 1.4;
-}
-
-.macro-toolkit-source-item strong {
-  color: var(--macro-toolkit-info);
-  font-variant-numeric: tabular-nums;
-  font-size: 20px;
-  font-weight: 800;
 }
 
 .macro-toolkit-toolbar {
@@ -4407,8 +4421,13 @@
 .macro-toolkit-date-cell,
 .macro-toolkit-source-cell {
   display: grid;
-  gap: 2px;
+  gap: 4px;
   min-width: 0;
+}
+
+.macro-toolkit-indicator-group {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
 }
 
 .macro-toolkit-sparkline {
@@ -4500,7 +4519,7 @@
 
 .macro-toolkit-delta-cell {
   display: inline-flex;
-  gap: 5px;
+  gap: 4px;
   align-items: center;
   color: var(--moss-color-text-secondary);
   font-variant-numeric: tabular-nums;
@@ -4587,9 +4606,10 @@
   background: var(--macro-toolkit-info-soft);
 }
 
-/* antd 预设色收敛到 Nocturne 语义链（§4：深色页禁高饱和预设）。 */
+/* antd 预设色收敛到 Nocturne 语义链（§4：深色页禁高饱和预设）；字号统一 11px 辅助档。 */
 .macro-toolkit-page .ant-tag {
   border-radius: 999px;
+  font-size: 11px;
   line-height: 18px;
 }
 
@@ -4756,7 +4776,6 @@
 
   
   .macro-toolkit-contract-boundary,
-  .macro-toolkit-operations-brief,
   .macro-toolkit-action-receipt__grid {
     grid-template-columns: 1fr 1fr;
   }
@@ -4806,6 +4825,10 @@
     width: 100%;
   }
 
+  .macro-toolkit-meta-rail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .macro-toolkit-cockpit__body {
     display: flex;
     flex-direction: column;
@@ -4850,7 +4873,7 @@
   }
 
   .macro-toolkit-cockpit__conclusion strong {
-    font-size: 24px;
+    font-size: 22px;
   }
 
   .macro-toolkit-cockpit__conclusion p {
@@ -4899,14 +4922,14 @@
   .macro-toolkit-submission-cockpit {
     order: 2;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 3px;
-    padding: 5px;
+    gap: 4px;
+    padding: 0;
   }
 
   .macro-toolkit-submission-cockpit__verdict,
   .macro-toolkit-submission-cockpit__owner {
     min-height: 44px;
-    padding: 5px;
+    padding: 4px 8px;
   }
 
   .macro-toolkit-submission-cockpit__verdict strong {
@@ -4920,7 +4943,7 @@
   .macro-toolkit-submission-cockpit__metrics {
     grid-column: 1 / -1;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 3px;
+    gap: 4px;
   }
 
   .macro-toolkit-submission-cockpit__lanes {
@@ -4930,7 +4953,7 @@
     max-width: 100%;
     overflow-x: auto;
     overscroll-behavior-x: contain;
-    gap: 3px;
+    gap: 4px;
     padding-bottom: 2px;
     scrollbar-width: thin;
   }
@@ -4943,7 +4966,7 @@
   .macro-toolkit-submission-cockpit__lane {
     flex: 0 0 112px;
     min-height: 44px;
-    padding: 5px;
+    padding: 4px 8px;
   }
 
   .macro-toolkit-submission-cockpit__lane small {
@@ -4953,11 +4976,11 @@
   .macro-toolkit-submission-cockpit span,
   .macro-toolkit-submission-cockpit small,
   .macro-toolkit-submission-cockpit em {
-    font-size: 8px;
+    font-size: 11px;
   }
 
   .macro-toolkit-submission-cockpit strong {
-    font-size: 10px;
+    font-size: 11px;
   }
 
   .macro-toolkit-investment-brief .macro-toolkit-panel-kicker {
@@ -4965,7 +4988,7 @@
   }
 
   .macro-toolkit-investment-brief .macro-toolkit-panel-kicker span {
-    font-size: 10px;
+    font-size: 11px;
   }
 
   .macro-toolkit-investment-brief .macro-toolkit-panel-kicker strong {
@@ -5023,27 +5046,18 @@
 
   .macro-toolkit-governance-audit__focus small {
     grid-column: 1 / -1;
-    font-size: 10px;
+    font-size: 11px;
     line-height: 1.2;
   }
 
   .macro-toolkit-governance-link {
-    gap: 3px;
+    gap: 4px;
     padding: 6px;
   }
 
   .macro-toolkit-governance-link span {
     gap: 4px;
-    font-size: 10px;
-  }
-
-  .macro-toolkit-governance-link strong {
-    font-size: 13px;
-  }
-
-  .macro-toolkit-governance-link small {
-    font-size: 10px;
-    line-height: 1.18;
+    font-size: 11px;
   }
 
   .macro-toolkit-observation-trace-summary__grid {
@@ -5123,14 +5137,6 @@
     gap: 4px;
   }
 
-  .macro-toolkit-cockpit--observation .macro-toolkit-brief-metrics {
-    grid-template-columns: 1fr;
-  }
-
-  .macro-toolkit-cockpit--observation .macro-toolkit-brief-metrics .macro-toolkit-metric:first-child {
-    grid-column: auto;
-  }
-
   .macro-toolkit-page .moss-page-v2-decision-hero__top {
     grid-template-columns: 1fr;
   }
@@ -5143,7 +5149,6 @@
 .macro-toolkit-contract-boundary,
 .macro-toolkit-brief-metrics,
 .macro-toolkit-governance-gate__metrics,
-.macro-toolkit-operations-brief,
 .macro-toolkit-action-receipt__grid,
 .macro-toolkit-cffex-metrics,
 .macro-toolkit-signal-grid,
@@ -5173,7 +5178,7 @@
   .macro-toolkit-action-receipt__grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 3px;
+    gap: 4px;
   }
 
   .macro-toolkit-action-receipt__field {
@@ -5183,11 +5188,11 @@
 
   .macro-toolkit-action-receipt__field span,
   .macro-toolkit-action-queue__item span {
-    font-size: 9px;
+    font-size: 11px;
   }
 
   .macro-toolkit-action-receipt__field strong {
-    font-size: 10px;
+    font-size: 11px;
     line-height: 1.18;
   }
 
@@ -5208,13 +5213,13 @@
   .macro-toolkit-action-queue__item {
     flex: 0 0 160px;
     grid-template-columns: 1fr;
-    gap: 3px;
+    gap: 4px;
     min-height: 44px;
-    padding: 5px;
+    padding: 4px 8px;
   }
 
   .macro-toolkit-action-queue__item > div {
-    gap: 3px;
+    gap: 4px;
   }
 
   .macro-toolkit-action-queue__item strong {
@@ -5229,7 +5234,7 @@
     display: inline-flex;
     align-items: center;
     min-height: 44px;
-    font-size: 10px;
+    font-size: 11px;
     line-height: 1.2;
   }
 
@@ -5341,11 +5346,6 @@
     display: inline-flex;
     align-items: center;
     min-height: 44px;
-  }
-
-  .macro-toolkit-data-health__repair-overflow {
-    font-size: 10px;
-    line-height: 1.2;
   }
 
   .macro-toolkit-operations-console__metrics {
@@ -5476,43 +5476,6 @@
   background: var(--macro-toolkit-card);
 }
 
-.macro-toolkit-model-chain__head {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  justify-content: space-between;
-  min-width: 0;
-}
-
-.macro-toolkit-model-chain__head > div {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-
-.macro-toolkit-model-chain__head span {
-  color: var(--moss-color-text-muted);
-  font-size: 11px;
-  font-weight: 900;
-  text-transform: uppercase;
-}
-
-.macro-toolkit-model-chain__head strong {
-  color: var(--moss-color-text-primary);
-  font-size: 16px;
-  font-weight: 900;
-  line-height: 1.25;
-}
-
-.macro-toolkit-model-chain__head small {
-  color: var(--moss-color-text-secondary);
-  font-size: 12px;
-  font-weight: 760;
-  line-height: 1.35;
-  font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
-}
-
 .macro-toolkit-model-chain__step {
   display: grid;
   gap: 8px;
@@ -5543,7 +5506,8 @@
   line-height: 1.25;
 }
 
-.macro-toolkit-model-chain__step-head small {
+.macro-toolkit-model-chain__step-head small,
+.macro-toolkit-model-chain__offchain > span {
   color: var(--moss-color-text-muted);
   font-size: 11px;
   font-weight: 760;
@@ -5552,7 +5516,7 @@
 
 .macro-toolkit-model-chain__step-models {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 8px;
   align-items: start;
   min-width: 0;
@@ -5562,8 +5526,7 @@
   display: grid;
   gap: 6px;
   min-width: 0;
-  padding: 9px;
-  border: 1px solid var(--macro-toolkit-border-muted);
+  padding: 8px 12px;
   border-radius: var(--moss-radius-sm);
   background: var(--macro-toolkit-card-muted);
 }
@@ -5613,23 +5576,21 @@
   font-weight: 850;
 }
 
-.macro-toolkit-model-chain__toggle {
-  justify-self: start;
-  padding: 4px 8px;
-  border: 1px solid var(--macro-toolkit-border-muted);
-  border-radius: var(--moss-radius-sm);
-  background: var(--macro-toolkit-card);
-  color: var(--macro-toolkit-primary);
-  font: inherit;
-  font-size: 11px;
-  font-weight: 900;
-  cursor: pointer;
+/* 卡片墙默认折叠成 headline 行：只做视觉收起，DOM/可访问性结构原样保留
+   （契约：13 卡计数、展开按钮、表格条件渲染、趋势图集合都靠 DOM 存在性钉住）。 */
+.macro-toolkit-model-chain--cards-collapsed .macro-toolkit-model-chain__trend,
+.macro-toolkit-model-chain--cards-collapsed .macro-toolkit-model-chain__toggle,
+.macro-toolkit-model-chain--cards-collapsed .macro-toolkit-model-chain__table-wrap {
+  display: none;
 }
 
-.macro-toolkit-model-chain__toggle:hover,
-.macro-toolkit-model-chain__toggle[aria-expanded="true"] {
-  border-color: color-mix(in srgb, var(--macro-toolkit-primary) 52%, var(--macro-toolkit-border-muted));
-  background: var(--macro-toolkit-primary-soft);
+.macro-toolkit-model-chain__offchain {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding-top: 10px;
+  border-top: 1px solid var(--macro-toolkit-border-muted);
 }
 
 .macro-toolkit-model-chain__table-wrap {
@@ -5694,7 +5655,8 @@
   min-width: 0;
 }
 
-.macro-toolkit-model-chain__head-side .ant-tag {
+.macro-toolkit-model-chain__head-side .ant-tag,
+.macro-toolkit-model-chain__model-head .ant-tag {
   margin-inline-end: 0;
 }
 
@@ -5750,9 +5712,7 @@
   flex: 0 1 auto;
   max-width: 100%;
   height: auto;
-  border: 1px solid var(--macro-toolkit-border-muted);
   border-radius: var(--moss-radius-sm);
-  background: var(--macro-toolkit-card);
 }
 
 .macro-toolkit-model-chain__trend-line {

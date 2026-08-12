@@ -3,14 +3,41 @@ import { Alert, Button, Tag } from "antd";
 
 import type { MacroToolkitCapabilityResult } from "../../../api/macroToolkitClient";
 import { PageSectionLead } from "../../../components/page/PagePrimitives";
+import { EM_DASH } from "../../../utils/format";
 import { formatCrisisTopContributorSummary } from "../lib/crisisScoreDisplay";
 import { isCrisisComponent, normalizeInputEvidence } from "../lib/macroToolkitCrisisSupport";
 import { statusColor, statusLabel } from "../lib/macroToolkitPanelShared";
 import { ScoreTrack } from "./MacroToolkitPrimitives";
 
+/**
+ * 01-ia 决策表 #6：这五张模型能力卡与模型链视图同源但数值口径冲突
+ * （如 Crisis 0.31 vs 链上 -0.068、DCC 0.51 vs 0.2764），结果统一由模型链
+ * 唯一呈现，功能结果区不再复读。
+ */
+const MODEL_CHAIN_CAPABILITY_KEYS = new Set([
+  "merrill_clock_cn",
+  "cta_trend_cn",
+  "dcc_garch_cn",
+  "risk_parity_cn",
+  "crisis_score_cn",
+]);
+const MODEL_CHAIN_CAPABILITY_MODULES = new Set(["Merrill", "CTA", "DCC", "RP", "Crisis"]);
+
+function isModelChainCapabilityResult(result: MacroToolkitCapabilityResult) {
+  return (
+    MODEL_CHAIN_CAPABILITY_KEYS.has(result.key) || MODEL_CHAIN_CAPABILITY_MODULES.has(result.legacy_module)
+  );
+}
+
+/** #6 ②：M16 决策管家卡与 Hason 框架审计重复，整卡下线（观察页决策摘要组件不受影响）。 */
+function isDecisionSummaryCapabilityResult(result: MacroToolkitCapabilityResult) {
+  return result.key === "decision_summary" || result.legacy_module === "M16";
+}
+
+const INSUFFICIENT_DATA_MARK = "数据不足";
+
 export function CapabilityResultCard({ result }: { result: MacroToolkitCapabilityResult }) {
   const metric = result.primary_metric;
-  const evidence = result.evidence.length ? result.evidence : result.warnings;
   const inputEvidence = normalizeInputEvidence(result);
   const rawResult = result.result;
   const crisisComponents =
@@ -19,19 +46,30 @@ export function CapabilityResultCard({ result }: { result: MacroToolkitCapabilit
       : [];
   const componentSummary =
     result.key === "crisis_score_cn" ? formatCrisisTopContributorSummary(crisisComponents) : null;
+  const headline = result.headline ?? "";
+  const headlineHasInsufficiency = headline.includes(INSUFFICIENT_DATA_MARK);
+  // #6 ③：headline 已声明「数据不足」时，结果行与证据行不再复读同一状态（M14 三连去重）。
+  const resultText = metric ? formatMetricDisplay(metric) : result.score ?? EM_DASH;
+  const resultLine =
+    typeof resultText === "string" && headlineHasInsufficiency && resultText.includes(INSUFFICIENT_DATA_MARK)
+      ? EM_DASH
+      : resultText;
+  const evidencePool = result.evidence.length ? result.evidence : result.warnings;
+  const evidence = headlineHasInsufficiency
+    ? evidencePool.filter((item) => !item.includes(INSUFFICIENT_DATA_MARK))
+    : evidencePool;
   return (
     <div
       className={`macro-toolkit-capability-result macro-toolkit-capability-result--${result.tone}`}
+      title={result.legacy_module}
     >
       <div className="macro-toolkit-capability-result-head">
-        <span>
-          {result.legacy_module} · {result.label}
-        </span>
+        <span>{result.label}</span>
         <Tag color={statusColor(result.status)}>{statusLabel(result.status)}</Tag>
       </div>
-      <strong>{metric ? formatMetricDisplay(metric) : result.score ?? statusLabel(result.status)}</strong>
+      <strong>{resultLine}</strong>
       <ScoreTrack score={result.score} />
-      <p>{result.headline}</p>
+      <p>{headline}</p>
       {componentSummary ? (
         <small className="macro-toolkit-crisis-component-summary" data-testid="macro-toolkit-crisis-capability-component-summary">
           {componentSummary}
@@ -39,7 +77,12 @@ export function CapabilityResultCard({ result }: { result: MacroToolkitCapabilit
       ) : null}
       <small>{evidence.slice(0, 3).join(" / ") || "暂无证据"}</small>
       {inputEvidence ? (
-        <div className="macro-toolkit-input-evidence">
+        <details className="macro-toolkit-input-evidence">
+          <summary>
+            {inputEvidence.missingInputs.length
+              ? `输入证据（缺失 ${inputEvidence.missingInputs.length} 项）`
+              : "输入证据"}
+          </summary>
           {inputEvidence.missingInputs.length ? (
             <span>缺失输入：{inputEvidence.missingInputs.join(" / ")}</span>
           ) : null}
@@ -53,7 +96,7 @@ export function CapabilityResultCard({ result }: { result: MacroToolkitCapabilit
                 .join(" / ")}
             </small>
           ) : null}
-        </div>
+        </details>
       ) : null}
     </div>
   );
@@ -74,16 +117,19 @@ export function MacroToolkitCapabilityResultsSection({
   isLoadingFullAnalysis: boolean;
   loadFullAnalysis: () => Promise<unknown>;
 }) {
+  const visibleResults = capabilityResults.filter(
+    (result) => !isModelChainCapabilityResult(result) && !isDecisionSummaryCapabilityResult(result),
+  );
   return (
     <section className="macro-toolkit-section">
       <PageSectionLead
         eyebrow="结果"
         title="功能结果"
-        description="M7-M16 已按现有宏观纯函数和正式事实表输出结果，缺口只保留为数据降级提示。"
+        description="已接入的宏观功能输出结果；缺口按数据降级提示展示。模型类结果统一见模型链视图。"
       />
-      {capabilityResults.length ? (
+      {visibleResults.length ? (
         <div className="macro-toolkit-capability-result-grid">
-          {capabilityResults.map((result) => (
+          {visibleResults.map((result) => (
             <CapabilityResultCard result={result} key={result.key} />
           ))}
         </div>
@@ -91,8 +137,8 @@ export function MacroToolkitCapabilityResultsSection({
         <Alert
           type="info"
           showIcon
-          message="M7-M16 功能结果正在生成"
-          description="核心信号已先返回；市场踩踏风险和功能结果需打开完整分析后显示。"
+          message="功能结果正在生成"
+          description="打开完整分析后显示。"
           action={
             <Button
               aria-label="查看完整分析"
@@ -106,7 +152,7 @@ export function MacroToolkitCapabilityResultsSection({
           }
         />
       ) : (
-        <div className="macro-toolkit-empty-output">暂无 M7-M16 功能结果。</div>
+        <div className="macro-toolkit-empty-output">暂无功能结果。</div>
       )}
     </section>
   );

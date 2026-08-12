@@ -168,14 +168,23 @@ function macroCoreModelReadinessFixtures(): MacroToolkitModelReadinessFixture[] 
   });
 }
 
+// 01#9：模型证据入口迁到模型链卡。链上卡的按钮名用链卡 label（此表映射矩阵中文名→链卡 label），
+// 链外条目（无对应链卡）在链面板底部「链外模型证据」行，按钮名直接用矩阵中文名。
+const MODEL_EVIDENCE_TRIGGER_LABELS: Record<string, string> = {
+  美林时钟: "美林时钟（中国版）",
+  "Crisis Score": "Crisis Score 危机评分",
+  "DCC-GARCH": "DCC-GARCH 动态相关",
+  "CTA 趋势": "CTA 趋势跟踪",
+  风险监控: "导航仪风控",
+};
+
 async function openModelSignalDetail(
-  signalMatrix: HTMLElement,
   user: ReturnType<typeof userEvent.setup>,
   label: string,
 ) {
-  const rowTitle = within(signalMatrix).getByText(label);
-  const row = requireClosestElement(rowTitle.closest("article"), `${label} signal row`);
-  await user.click(within(row).getByRole("button"));
+  await screen.findByTestId("macro-toolkit-model-chain");
+  const triggerLabel = MODEL_EVIDENCE_TRIGGER_LABELS[label] ?? label;
+  await user.click(screen.getByRole("button", { name: `查看 ${triggerLabel} 模型证据` }));
   return screen.findByTestId("macro-toolkit-model-signal-detail");
 }
 
@@ -395,16 +404,16 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
       }
 
       if (stage === 3) {
-        expect(await screen.findByText("策略展示")).toBeInTheDocument();
-        expect(await screen.findByTestId("macro-toolkit-strategy-detail")).toBeInTheDocument();
-        expect(screen.queryByTestId("macro-toolkit-model-readiness-detail")).not.toBeInTheDocument();
-      }
-
-      if (stage === 4) {
         expect(await screen.findByTestId("macro-toolkit-model-readiness-detail")).toHaveAttribute(
           "id",
           "macro-toolkit-model-readiness-detail",
         );
+        expect(screen.queryByTestId("macro-toolkit-strategy-detail")).not.toBeInTheDocument();
+      }
+
+      if (stage === 4) {
+        expect(await screen.findByText("策略展示")).toBeInTheDocument();
+        expect(await screen.findByTestId("macro-toolkit-strategy-detail")).toBeInTheDocument();
         expect(screen.queryByTestId("macro-toolkit-analysis-detail")).not.toBeInTheDocument();
       }
 
@@ -727,9 +736,9 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     const main = within(workspace).getByLabelText("操作台");
     expect(within(main).getByTestId("macro-toolkit-operations-console")).toBeInTheDocument();
 
-    const rail = within(workspace).getByLabelText("治理侧栏");
-    expect(within(rail).getByTestId("macro-toolkit-governance-gate")).toBeInTheDocument();
-    expect(rail).toHaveTextContent("深度证据入口");
+    const metaRail = screen.getByTestId("macro-toolkit-meta-rail");
+    expect(within(metaRail).getByTestId("macro-toolkit-governance-gate")).toBeInTheDocument();
+    expect(metaRail).toHaveTextContent("深度证据入口");
   });
 
   it("keeps the analysis evidence flow single-column without a committee review rail", async () => {
@@ -787,10 +796,12 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     const executionSummary = within(executionLane).getByTestId("macro-toolkit-tool-execution-detail");
 
     await waitFor(() => expect(executionSummary).toHaveTextContent("宏观数据源"));
-    expect(executionSummary).toHaveTextContent("执行闭环总览");
+    // 01#17a：执行闭环总览 tile 组删除，标题并入工作区头部；产物计数权威处为底稿与操作台。
+    const receiptWorkspace = await screen.findByLabelText("执行证据与产物回执区");
+    expect(receiptWorkspace).toHaveTextContent("执行闭环总览");
     expect(executionSummary).toHaveTextContent("行情与因子快照");
     expect(executionSummary).toHaveTextContent("席位排名证据");
-    expect(executionSummary).toHaveTextContent("产物回执");
+    expect(receiptWorkspace).toHaveTextContent("产物回执");
     expect(executionSummary).not.toHaveTextContent("choice + tushare");
     expect(executionSummary).not.toHaveTextContent("fact_choice_macro_daily");
     expect(executionSummary).not.toHaveTextContent("choice_market_snapshot");
@@ -856,7 +867,10 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     expect(executionSummary).toHaveTextContent("汇率中间价证据");
     expect(executionSummary).toHaveTextContent("外部宏观证据");
     expect(executionSummary).toHaveTextContent("席位排名证据");
-    expect(executionSummary).toHaveTextContent("产物回执已归档");
+    // 01#17a/#17d：归档事实由产物审计底稿承载。
+    expect(
+      within(await screen.findByLabelText("产物审计底稿")).getByText("产物归档"),
+    ).toBeInTheDocument();
     expect(executionSummary).not.toHaveTextContent("fx_daily_mid");
     expect(executionSummary).not.toHaveTextContent("fact_formal_yield_curve_daily");
     expect(executionSummary).not.toHaveTextContent("std_external_macro_daily");
@@ -1209,7 +1223,9 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     expect(within(investmentBrief).queryByLabelText("投委会当前处理状态")).not.toBeInTheDocument();
     expect(await screen.findByText("投研观点")).toBeInTheDocument();
     expect(houseView).toHaveTextContent("主信号");
-    expect((await screen.findAllByText("87.5%")).length).toBeGreaterThan(0);
+    expect(screen.getByTestId("macro-toolkit-governance-focus")).toHaveTextContent(
+      "87.5% · 7/8 指标命中",
+    );
     const operationsConsole = await screen.findByTestId("macro-toolkit-operations-console");
     // 首屏驾驶舱只保留结论带；投委会门禁面板下沉到治理段（仍随首屏挂载）。
     expect(cockpit.contains(investmentBrief)).toBe(false);
@@ -1231,8 +1247,8 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     expect(within(operationsConsole).queryByRole("button", { name: /刷新股票数据/ })).not.toBeInTheDocument();
     expect(within(operationsConsole).queryByRole("button", { name: /^reload 刷新席位$/ })).not.toBeInTheDocument();
     expect(within(operationsConsole).queryByRole("button", { name: /预估商品期货/ })).not.toBeInTheDocument();
-    const workspaceRail = await screen.findByLabelText("治理侧栏");
-    const evidenceLinks = within(workspaceRail).getByLabelText("深度证据入口");
+    const metaRail = await screen.findByTestId("macro-toolkit-meta-rail");
+    const evidenceLinks = within(metaRail).getByLabelText("深度证据入口");
     expect(evidenceLinks).toHaveTextContent("策略证据");
     expect(evidenceLinks).toHaveTextContent("Crisis Score");
     expect(evidenceLinks).toHaveTextContent("Hason");
@@ -1251,7 +1267,7 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     expectElementBefore(coreSignalsHeading, dataHealth);
     expectElementBefore(dataHealth, investmentBrief);
     expectElementBefore(investmentBrief, governanceGate);
-    expectElementBefore(governanceGate, operationsConsole);
+    expectElementBefore(operationsConsole, governanceGate);
     expect(dataHealth).toHaveTextContent("指标覆盖");
     expect(dataHealth).toHaveTextContent("7/8");
     expect(dataHealth).toHaveTextContent("来源覆盖");
@@ -1305,9 +1321,7 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     expect(await screen.findByTestId("macro-toolkit-hason-runtime-gaps")).not.toHaveTextContent(
       "csv_content",
     );
-    expect(
-      await screen.findByLabelText("宏观工具投研总览"),
-    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("宏观工具投研总览")).not.toBeInTheDocument();
     expect(
       await screen.findByRole("heading", { level: 2, name: "核心信号" }),
     ).toBeInTheDocument();
@@ -1344,7 +1358,7 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
       screen.getByRole("heading", { level: 2, name: "CFFEX席位状态" }).closest(".macro-toolkit-section") as HTMLElement | null,
       "macro toolkit cffex section",
     );
-    expect(within(cffexSection).getByRole("button", { name: /刷新席位明细/ })).toBeInTheDocument();
+    expect(within(cffexSection).queryByRole("button", { name: /刷新席位明细/ })).not.toBeInTheDocument();
     const receiptTechnicalDetails = await screen.findByLabelText("底稿技术明细");
     expect(
       within(receiptTechnicalDetails).queryByRole("heading", { level: 2, name: "脚本产物" }),
@@ -1390,7 +1404,7 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
       screen.getByRole("heading", { level: 2, name: "策略展示" }).closest(".macro-toolkit-section") as HTMLElement | null,
       "macro toolkit strategy section",
     );
-    expect(within(strategySection).getByRole("button", { name: /刷新股票策略明细/ })).toBeInTheDocument();
+    expect(within(strategySection).queryByRole("button", { name: /刷新股票策略明细/ })).not.toBeInTheDocument();
     const permissionLabel = await screen.findByText("刷新状态");
     const permissionTile = permissionLabel.closest(".macro-toolkit-metric");
     expect(permissionTile).not.toBeNull();
@@ -1400,23 +1414,32 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
       "resource macro_toolkit.choice_stock · mode scoped_refresh · actions history / factor_snapshot · user anonymous",
     );
     expect(await screen.findByText("低拥挤度择时多因子")).toBeInTheDocument();
-    expect((await screen.findAllByText(/M7/)).length).toBeGreaterThan(0);
-    expect((await screen.findAllByText(/M16/)).length).toBeGreaterThan(0);
+    // 01#6：模块编号收进功能卡容器 title（M16 决策管家卡整卡下线，工具路由不再出现）。
+    expect(screen.getAllByTitle("M7").length).toBeGreaterThan(0);
     expect((await screen.findAllByText("signal_aggregator")).length).toBeGreaterThan(0);
     expect((await screen.findAllByText("equity_strategies")).length).toBeGreaterThan(0);
 
-    const capabilitySection = requireClosestElement(
-      screen.getByRole("heading", { level: 2, name: "功能结果" }).closest(".macro-toolkit-section") as HTMLElement | null,
-      "macro toolkit capability results section",
-    );
-    const capabilityHeads = Array.from(
-      capabilitySection.querySelectorAll(".macro-toolkit-capability-result-head"),
-    ).map((node) => node.textContent ?? "");
-    expect(capabilityHeads.some((text) => text.includes("美林时钟（中国版）"))).toBe(true);
-    expect(capabilityHeads.some((text) => text.includes("CTA 趋势跟踪"))).toBe(true);
-    expect(capabilityHeads.some((text) => text.includes("DCC-GARCH 相关"))).toBe(true);
-    expect(capabilityHeads.some((text) => text.includes("风险平价影子"))).toBe(true);
-    expect(within(capabilitySection).getByText("可用模块 9/14")).toBeInTheDocument();
+    // 01#6：Merrill/CTA/DCC/RP 能力卡被过滤，结果唯一呈现处为模型链卡。
+    expect(
+      within(await screen.findByTestId("macro-toolkit-model-chain-model-merrill_clock")).getByText(
+        "美林时钟（中国版）",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("macro-toolkit-model-chain-model-cta_trend")).getByText(
+        "CTA 趋势跟踪",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("macro-toolkit-model-chain-model-dcc_garch")).getByText(
+        "DCC-GARCH 动态相关",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("macro-toolkit-model-chain-model-risk_parity")).getByText(
+        "风险平价 + 风险预算",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("renders macro observation as a read-only analysis route without operations controls", async () => {
@@ -1601,7 +1624,9 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     );
     expect(houseView.contains(decisionSummary)).toBe(true);
     expectElementBefore(decisionSummary, conclusion);
-    expect(decisionSummary).toHaveTextContent("M16 · 宏观决策摘要");
+    // 01#6：模块编号（M16）收进卡容器 title，正文只留中文名。
+    expect(decisionSummary).toHaveTextContent("宏观决策摘要");
+    expect(within(decisionSummary).getByTitle("M16")).toBeInTheDocument();
     expect(decisionSummary).toHaveTextContent("宏观信号偏支持，组合可保留适度久期与高等级信用。");
     expect(decisionSummary).toHaveTextContent(/可用模块 \d+\/\d+/);
     expect(decisionSummary).toHaveTextContent("M7 资金面偏平衡");
@@ -1822,8 +1847,8 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     const focus = await screen.findByTestId("macro-toolkit-governance-focus");
     expect(focus).toHaveTextContent("审计焦点");
     expect(focus).toHaveTextContent("证据覆盖");
-    expect(governanceGate).toHaveTextContent("non-formal");
-    expect(governanceGate).toHaveTextContent("data-pending");
+    expect(governanceGate).toHaveTextContent("非正式");
+    expect(governanceGate).toHaveTextContent("数据待处理");
     const evidenceGate = within(governanceGate).getByRole("link", { name: /证据覆盖/ });
     const dataGate = within(governanceGate).getByRole("link", { name: /待处理数据/ });
     const capabilityGate = within(governanceGate).getByRole("link", { name: /能力闭环/ });
@@ -2215,10 +2240,16 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     const operationsConsole = await screen.findByTestId("macro-toolkit-operations-console");
     await user.click(within(operationsConsole).getByRole("button", { name: /运行模型链/ }));
 
-    const chainRunStatus = await within(operationsConsole).findByText(/degraded/);
-    const chainRunAlert = requireClosestElement(chainRunStatus.closest(".ant-alert"), "model chain alert");
-    expect(chainRunAlert).toHaveClass("ant-alert-warning");
-    expect(chainRunAlert).not.toHaveClass("ant-alert-success");
+    // E9 收敛：操作台裸链运行 Alert 删除，反馈统一走操作回执面板；degraded 映射「需复核」而非「已完成」。
+    await waitFor(() => {
+      expect(within(operationsConsole).getByTestId("macro-toolkit-action-receipt")).toHaveTextContent(
+        "需复核",
+      );
+    });
+    const actionReceipt = within(operationsConsole).getByTestId("macro-toolkit-action-receipt");
+    expect(actionReceipt).toHaveTextContent("运行模型链");
+    expect(actionReceipt).toHaveClass("macro-toolkit-action-receipt--warning");
+    expect(actionReceipt).not.toHaveClass("macro-toolkit-action-receipt--completed");
   });
 
   it("keeps mock execution receipts degraded when expected artifacts stay missing", async () => {
@@ -2883,7 +2914,6 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     expect(crisisEvidence).toHaveTextContent("NH0100.NHF");
     expect(crisisEvidence).toHaveTextContent("commodity_vol");
     expect(crisisEvidence).toHaveTextContent("2026-04-10");
-    expect(crisisEvidence).toHaveTextContent("120 rows");
     expect(crisisEvidence).toHaveTextContent("商品旁证覆盖");
     expect(crisisEvidence).toHaveTextContent("6/6");
     expect(crisisEvidence).toHaveTextContent("supplemental_observation");
@@ -2893,6 +2923,8 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
       within(crisisEvidence).queryByLabelText("候选商品影子评估决策面板"),
     ).not.toBeInTheDocument();
     await user.click(within(crisisEvidence).getByRole("button", { name: "展开影子评估证据" }));
+    // 01#12 + 02§三：源命中 grid 删除后行数只在展开的 coverage 明细卡内，格式改「N 行」。
+    expect(crisisEvidence).toHaveTextContent("120 行");
     expect(crisisEvidence).toHaveTextContent("Copper futures");
     expect(crisisEvidence).toHaveTextContent("CU0 / CU0.SHF");
     expect(crisisEvidence).toHaveTextContent("matched CU0");
@@ -2949,16 +2981,16 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     expect(approvalPack).toHaveTextContent("建议纳入 0");
     expect(approvalPack).toHaveTextContent("继续观察 2");
     expect(approvalPack).toHaveTextContent("暂不纳入 4");
-    expect(approvalPack).toHaveTextContent("shadow delta +0.04");
+    expect(approvalPack).toHaveTextContent("影子差值 +0.04");
     expect(approvalPack).toHaveTextContent("审批前不改变正式 Crisis Score");
     expect(within(approvalPack).getByRole("button", { name: "复制审批材料" })).toBeEnabled();
     const crisisShadowImpact = within(crisisEvidence).getByLabelText("Crisis Score v2 影子影响评估");
     expect(crisisShadowImpact).toHaveTextContent("Crisis Score v2 影子影响评估");
     expect(crisisShadowImpact).toHaveTextContent("正式 Crisis Score");
     expect(crisisShadowImpact).toHaveTextContent("-0.57");
-    expect(crisisShadowImpact).toHaveTextContent("v2 shadow score");
+    expect(crisisShadowImpact).toHaveTextContent("v2 影子分数");
     expect(crisisShadowImpact).toHaveTextContent("-0.53");
-    expect(crisisShadowImpact).toHaveTextContent("delta +0.04");
+    expect(crisisShadowImpact).toHaveTextContent("差值 +0.04");
     expect(crisisShadowImpact).toHaveTextContent("rv_macro_crisis_score_shadow_commodity_v1");
     expect(crisisShadowImpact).toHaveTextContent("影响方向");
     expect(crisisShadowImpact).toHaveTextContent("压力上行");
@@ -2988,7 +3020,6 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     expect(promotionRulePack).toHaveTextContent("规则只用于审批前复核，不改变 Crisis Score 公式");
     expect(promotionRulePack).toHaveTextContent("待人工判断 2");
     expect(promotionRulePack).toHaveTextContent("不建议进入公式 4");
-    expect(promotionRulePack).toHaveTextContent("准入检查：样本>=20 / 危机样本>=5 / 相关性可读 / 命中率可读");
     expect(promotionRulePack).toHaveTextContent("规则版本 shadow_rule_v1");
     expect(promotionRulePack).toHaveTextContent("样本阈值 >=20 个重叠样本");
     expect(promotionRulePack).toHaveTextContent("危机样本阈值 >=5 个高 Crisis Score 样本");
@@ -5447,8 +5478,9 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     expect(readinessDetail).toHaveTextContent("模型就绪度");
     expect(readinessDetail).toHaveTextContent("仅观察");
     expect(readinessDetail).toHaveTextContent("DCC-GARCH 缺产物");
-    expect(readinessDetail).toHaveTextContent("CTA Trend 缺产物");
-    expect(readinessDetail).toHaveTextContent("Risk Monitor 缺产物");
+    // 就绪度行迁入摘要带后 headline 采用矩阵中文名映射。
+    expect(readinessDetail).toHaveTextContent("CTA 趋势 缺产物");
+    expect(readinessDetail).toHaveTextContent("风险监控 缺产物");
     expect(readinessDetail).toHaveTextContent("个模型待复核");
     const readinessDetailTooltip = readinessDetail.querySelector("small");
     expect(readinessDetailTooltip).toHaveAttribute("title", expect.stringContaining("dcc_latest.csv"));
@@ -5495,8 +5527,9 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     expectElementBefore(signalMatrix, artifactDetail);
     expect(signalMatrix).toHaveTextContent("模型信号");
     expect(signalMatrix).toHaveTextContent("产物支撑 2/10");
-    expect(signalMatrix).toHaveTextContent("美林时钟");
-    expect(signalMatrix).toHaveTextContent("Crisis Score");
+    // merrill/crisis 为 artifact_backed，不进摘要带就绪缺口行；结果由模型链卡呈现。
+    expect(await screen.findByTestId("macro-toolkit-model-chain")).toHaveTextContent("美林时钟");
+    expect(screen.getByTestId("macro-toolkit-model-chain")).toHaveTextContent("Crisis Score");
     expect(signalMatrix).toHaveTextContent("国债期货四因子趋势");
     expect(signalMatrix).toHaveTextContent("资金面 / 流动性");
     expect(signalMatrix).toHaveTextContent("拥挤度");
@@ -5532,7 +5565,10 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
 
     renderWorkbenchApp(["/macro-toolkit"], { client });
 
-    const signalMatrix = await screen.findByTestId("macro-toolkit-model-signal-matrix");
+    await screen.findByTestId("macro-toolkit-model-signal-matrix");
+    // 01#9：预检/运行按钮移到模型链工具条，常驻且与选中模型解耦。
+    expect(screen.getByTestId("macro-toolkit-model-signal-chain-preflight")).toBeEnabled();
+    expect(screen.getByTestId("macro-toolkit-model-signal-chain-run")).toBeEnabled();
     const coreModelLabels = [
       "美林时钟",
       "Crisis Score",
@@ -5547,14 +5583,12 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     ];
 
     for (const label of coreModelLabels) {
-      const detail = await openModelSignalDetail(signalMatrix, user, label);
+      const detail = await openModelSignalDetail(user, label);
 
       expect(detail).toHaveTextContent(label);
       expect(detail).toHaveTextContent("预期产物");
       expect(detail).toHaveTextContent("/ui/macro/toolkit/scripts/run-chain");
       expect(detail).toHaveTextContent("产物验收");
-      expect(within(detail).getByTestId("macro-toolkit-model-signal-chain-preflight")).toBeEnabled();
-      expect(within(detail).getByTestId("macro-toolkit-model-signal-chain-run")).toBeEnabled();
     }
   });
 
@@ -5572,27 +5606,20 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
 
     renderWorkbenchApp(["/macro-toolkit"], { client });
 
-    const signalMatrix = await screen.findByTestId("macro-toolkit-model-signal-matrix");
-    let detail = await openModelSignalDetail(signalMatrix, user, "DCC-GARCH");
-    await user.click(within(detail).getByTestId("macro-toolkit-model-signal-chain-preflight"));
+    await screen.findByTestId("macro-toolkit-model-signal-matrix");
+    // 01#9：链运行从工具条全局触发；回执按 script_name 归属到各模型证据抽屉。
+    await user.click(screen.getByTestId("macro-toolkit-model-signal-chain-preflight"));
 
     await waitFor(() => expect(chainCalls).toEqual([{ dryRun: true }]));
-    detail = await screen.findByTestId("macro-toolkit-model-signal-detail");
+    const detail = await openModelSignalDetail(user, "DCC-GARCH");
 
-    expect(detail).toHaveTextContent("最近脚本运行回执");
-    expect(detail).toHaveTextContent("dcc_garch_cn");
+    await waitFor(() => expect(detail).toHaveTextContent("最近脚本运行回执"));
+    // 抽屉头部 small 与回执 strong 的 title 均含脚本名（02§4.1 脚本名收 title）。
+    expect(within(detail).getAllByTitle(/dcc_garch_cn/).length).toBeGreaterThan(0);
     expect(detail).toHaveTextContent("dry_run");
     expect(detail).toHaveTextContent("dcc_latest.csv");
     expect(detail).toHaveTextContent("dcc_results.csv");
     expect(detail).toHaveTextContent("dry_run_not_executed");
-
-    detail = await openModelSignalDetail(signalMatrix, user, "CTA 趋势");
-    expect(detail).toHaveTextContent("CTA 趋势");
-    expect(detail).not.toHaveTextContent("最近脚本运行回执");
-
-    detail = await openModelSignalDetail(signalMatrix, user, "风险监控");
-    expect(detail).toHaveTextContent("风险监控");
-    expect(detail).not.toHaveTextContent("最近脚本运行回执");
   });
 
   it("surfaces model-chain execution blockers inside the selected model evidence", async () => {
@@ -5607,43 +5634,16 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
 
     renderWorkbenchApp(["/macro-toolkit"], { client });
 
-    const signalMatrix = await screen.findByTestId("macro-toolkit-model-signal-matrix");
-    const detail = await openModelSignalDetail(signalMatrix, user, "DCC-GARCH");
-    await user.click(within(detail).getByTestId("macro-toolkit-model-signal-chain-preflight"));
+    // 01#9：链运行错误全局化到摘要带工具条 Alert（message「模型链运行失败」），抽屉不再渲染「最近运行问题」。
+    const matrix = await screen.findByTestId("macro-toolkit-model-signal-matrix");
+    await user.click(screen.getByTestId("macro-toolkit-model-signal-chain-preflight"));
 
     await waitFor(() => {
-      expect(screen.getByTestId("macro-toolkit-model-signal-detail")).toHaveTextContent("最近运行问题");
+      expect(
+        within(matrix).getByText("User is not allowed to execute macro_toolkit.script."),
+      ).toBeInTheDocument();
     });
-    expect(screen.getByTestId("macro-toolkit-model-signal-detail")).toHaveTextContent(
-      "User is not allowed to execute macro_toolkit.script.",
-    );
-  });
-
-  it("keeps model-chain execution blockers scoped to the model that launched them", async () => {
-    const baseClient = createApiClient({ mode: "mock" });
-    const client = {
-      ...baseClient,
-      runMacroToolkitScriptChain: async () => {
-        throw new Error("User is not allowed to execute macro_toolkit.script.");
-      },
-    } as ApiClient;
-    const user = userEvent.setup();
-
-    renderWorkbenchApp(["/macro-toolkit"], { client });
-
-    const signalMatrix = await screen.findByTestId("macro-toolkit-model-signal-matrix");
-    let detail = await openModelSignalDetail(signalMatrix, user, "DCC-GARCH");
-    await user.click(within(detail).getByTestId("macro-toolkit-model-signal-chain-preflight"));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("macro-toolkit-model-signal-detail")).toHaveTextContent("最近运行问题");
-    });
-
-    detail = await openModelSignalDetail(signalMatrix, user, "CTA 趋势");
-
-    expect(detail).toHaveTextContent("CTA 趋势");
-    expect(detail).not.toHaveTextContent("最近运行问题");
-    expect(detail).not.toHaveTextContent("User is not allowed to execute macro_toolkit.script.");
+    expect(within(matrix).getByText("模型链运行失败")).toBeInTheDocument();
   });
 
   it("labels shared-script receipts as script-level evidence instead of model-specific acceptance", async () => {
@@ -5672,18 +5672,18 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
 
     renderWorkbenchApp(["/macro-toolkit"], { client });
 
-    const signalMatrix = await screen.findByTestId("macro-toolkit-model-signal-matrix");
-    let detail = await openModelSignalDetail(signalMatrix, user, "资金面 / 流动性");
-    await user.click(within(detail).getByTestId("macro-toolkit-model-signal-chain-preflight"));
+    await screen.findByTestId("macro-toolkit-model-signal-matrix");
+    await user.click(screen.getByTestId("macro-toolkit-model-signal-chain-preflight"));
+    await openModelSignalDetail(user, "资金面 / 流动性");
 
     await waitFor(() => {
       expect(screen.getByTestId("macro-toolkit-model-signal-detail")).toHaveTextContent("最近脚本运行回执");
     });
-    detail = screen.getByTestId("macro-toolkit-model-signal-detail");
+    const detail = screen.getByTestId("macro-toolkit-model-signal-detail");
 
     expect(detail).toHaveTextContent("资金面 / 流动性");
-    expect(detail).toHaveTextContent("merrill_clock_cn");
-    expect(detail).toHaveTextContent("共享脚本回执");
+    // 02§4.1：脚本名与「共享脚本回执」收进回执 strong 的 title。
+    expect(within(detail).getByTitle("merrill_clock_cn · 共享脚本回执")).toBeInTheDocument();
   });
 
   it("renders the model signal matrix from Hason fallback readiness when backend readiness is absent", async () => {

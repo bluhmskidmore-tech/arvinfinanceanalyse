@@ -70,6 +70,30 @@ export function formatDataHealthRepairAction(item: MacroToolkitRepairItem, plain
     : action;
 }
 
+const REPAIR_ACTION_CODE_PATTERN = /[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+/g;
+
+export function extractRepairActionCodes(action: string) {
+  return Array.from(new Set(action.match(REPAIR_ACTION_CODE_PATTERN) ?? []));
+}
+
+/**
+ * 后端能力缺口的 suggested_action 形如「{label} 当前 unavailable：CODE_A / CODE_B；补齐输入证据后…」。
+ * 仅当该模式命中且包含英文缺口代码时给出中文摘要句；其余修复建议（含单代码中文句）原样展示。
+ */
+export function summarizeRepairAction(action: string) {
+  const statusMatch = action.match(/^(.*?) 当前 (unavailable|degraded)[：:]/);
+  if (!statusMatch) {
+    return null;
+  }
+  const codes = extractRepairActionCodes(action);
+  if (!codes.length) {
+    return null;
+  }
+  return statusMatch[2] === "unavailable"
+    ? `核心输入缺失 ${codes.length} 项，补数后重新运行完整分析。`
+    : `${codes.length} 项输入待补或降级，补齐后重新运行完整分析。`;
+}
+
 export function repairTicketOwner(item: MacroToolkitRepairItem) {
   if (item.action?.kind === "load_full_analysis" || item.type === "deferred" || item.type === "degraded") {
     return "宏观策略负责人";

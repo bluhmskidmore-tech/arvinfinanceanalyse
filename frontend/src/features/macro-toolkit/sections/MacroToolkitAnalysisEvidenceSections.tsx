@@ -66,8 +66,8 @@ export function MacroToolkitAnalysisEvidenceFlow({
   primarySignal,
   dataFreshnessDetail,
   missingIndicatorCount,
-  capabilityResults,
   degradedResultCount,
+  limitsDetails,
 }: {
   analysis: MacroToolkitAnalysisPayload;
   analysisMeta: ResultMeta | undefined;
@@ -95,6 +95,7 @@ export function MacroToolkitAnalysisEvidenceFlow({
   missingIndicatorCount: number;
   capabilityResults: MacroToolkitCapabilityResult[];
   degradedResultCount: number;
+  limitsDetails?: ReactNode;
 }) {
   return (
     <>
@@ -205,6 +206,13 @@ export function MacroToolkitAnalysisEvidenceFlow({
                 ) : null}
               </div>
 
+              {limitsDetails ? (
+                <details className="macro-toolkit-evidence-limits">
+                  <summary>分析限制明细</summary>
+                  <div className="macro-toolkit-evidence-limits__body">{limitsDetails}</div>
+                </details>
+              ) : null}
+
               {analysis.data_health ? (
                 <div
                   id="macro-toolkit-data-health-detail"
@@ -249,39 +257,35 @@ export function MacroToolkitAnalysisEvidenceFlow({
               ) : null}
               {sourceBackfillError ? <Alert type="error" showIcon message={sourceBackfillError} /> : null}
 
-              <div className="macro-toolkit-readiness-strip" aria-label="宏观工具投研总览">
-                <ReadinessTile
-                  icon={<LineChartOutlined />}
-                  label="主信号"
-                  value={
-                    primarySignal
-                      ? showOperations
-                        ? `${primarySignal.title} · ${primarySignal.stance}`
-                        : `${formatObservationSignalTitle(primarySignal)} · ${formatObservationSignalStance(primarySignal)}`
-                      : "缺失"
-                  }
-                  detail={
-                    showOperations
-                      ? (primarySignal?.evidence.join(" / ") ?? "暂无可排序信号")
-                      : formatObservationEvidence(primarySignal?.evidence)
-                  }
-                  tone={primarySignal?.tone ?? "missing"}
-                />
-                <ReadinessTile
-                  icon={<ClockCircleOutlined />}
-                  label="数据新鲜度"
-                  value={analysis.as_of_date ?? "缺失"}
-                  detail={dataFreshnessDetail}
-                  tone={missingIndicatorCount > 0 ? "neutral" : "positive"}
-                />
-                <ReadinessTile
-                  icon={<ThunderboltOutlined />}
-                  label={showOperations ? "模型结果" : "证据边界"}
-                  value={showOperations ? `${capabilityResults.length} 个功能输出` : "已记录"}
-                  detail={showOperations ? `${degradedResultCount} 个降级或不可用结果` : "能力盘点留在证据追踪，不进入投研结论。"}
-                  tone={degradedResultCount > 0 ? "neutral" : "positive"}
-                />
-              </div>
+              {!showOperations ? (
+                <div className="macro-toolkit-readiness-strip" aria-label="宏观工具投研总览">
+                  <ReadinessTile
+                    icon={<LineChartOutlined />}
+                    label="主信号"
+                    value={
+                      primarySignal
+                        ? `${formatObservationSignalTitle(primarySignal)} · ${formatObservationSignalStance(primarySignal)}`
+                        : "缺失"
+                    }
+                    detail={formatObservationEvidence(primarySignal?.evidence)}
+                    tone={primarySignal?.tone ?? "missing"}
+                  />
+                  <ReadinessTile
+                    icon={<ClockCircleOutlined />}
+                    label="数据新鲜度"
+                    value={analysis.as_of_date ?? "缺失"}
+                    detail={dataFreshnessDetail}
+                    tone={missingIndicatorCount > 0 ? "neutral" : "positive"}
+                  />
+                  <ReadinessTile
+                    icon={<ThunderboltOutlined />}
+                    label="证据边界"
+                    value="已记录"
+                    detail="能力盘点留在证据追踪，不进入投研结论。"
+                    tone={degradedResultCount > 0 ? "neutral" : "positive"}
+                  />
+                </div>
+              ) : null}
             </div>
           </section>
         </div>

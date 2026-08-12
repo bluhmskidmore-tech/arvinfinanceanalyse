@@ -555,7 +555,7 @@ export function formatCrisisWeight(key: string, weights: Record<string, unknown>
 }
 
 export function formatCrisisRowCount(rowCount: number | null | undefined) {
-  return typeof rowCount === "number" ? `${rowCount} rows` : "行数缺失";
+  return typeof rowCount === "number" ? `${rowCount} 行` : "行数缺失";
 }
 
 export function formatCommodityCoverageDateStatus(status: string | null | undefined) {
@@ -908,12 +908,16 @@ export function formatSignedDelta(value: number | null | undefined, digits = 2) 
 }
 
 export function formatCommodityShadowImpactWarnings(shadowImpact: CrisisCommodityShadowImpact) {
-  return shadowImpact.warnings.length ? shadowImpact.warnings.join(" / ") : "warnings missing";
+  return shadowImpact.warnings.length ? shadowImpact.warnings.join(" / ") : "无警示信息";
 }
+
+const CANDIDATE_METRIC_LABELS: Record<string, string> = {
+  daily_return: "日收益率",
+};
 
 export function formatCommodityShadowContributionDetail(item: CrisisCommodityShadowContribution) {
   return [
-    `${item.candidate_metric} ${formatSignedDelta(item.candidate_value, 2)}`,
+    `${CANDIDATE_METRIC_LABELS[item.candidate_metric] ?? item.candidate_metric} ${formatSignedDelta(item.candidate_value, 2)}`,
     `贡献 ${formatSignedDelta(item.contribution, 4)}`,
     `权重 ${formatPercent(item.weight)}`,
     `样本 ${item.sample_count ?? "缺失"}`,
@@ -1307,7 +1311,7 @@ export function buildCrisisGapGroups(
     pushItem(crisisGapGroupKey("", warning), {
       label: warning.replace(/_MISSING$/, "").toLowerCase(),
       warning,
-      detail: "输入证据缺失，缺失不按 0 处理",
+      detail: "输入证据缺失",
       identifiers: [warning],
     });
   }
@@ -1415,8 +1419,8 @@ export function crisisGapGroupKey(field: string, warning: string): CrisisGapGrou
 export function crisisGapInputDetail(input: MacroToolkitInputEvidenceItem) {
   const rowText = formatCrisisRowCount(input.row_count);
   const dateText = input.latest_date ?? "日期缺失";
-  const sourceText = input.source ?? "source missing";
-  return `${rowText} · ${dateText} · ${sourceText} · 缺失不按 0 处理`;
+  const sourceText = input.source ?? "来源缺失";
+  return `${rowText} · ${dateText} · ${sourceText}`;
 }
 
 export function crisisGapInputIdentifiers(input: MacroToolkitInputEvidenceItem) {
@@ -1430,7 +1434,7 @@ export function formatCommodityShortfallGapDetail(item: CrisisCommodityShadowSho
       : `${item.sample_count}/${item.minimum_sample_count}`;
   const gapText = item.sample_gap == null ? "缺口待确认" : `还差 ${item.sample_gap}`;
   const dateText = item.latest_date ? `最新 ${item.latest_date}` : "日期缺失";
-  return `${sampleText} · ${gapText} · ${dateText} · 缺失不按 0 处理`;
+  return `${sampleText} · ${gapText} · ${dateText}`;
 }
 
 export function findCrisisGapRepairItem(group: CrisisGapGroup, repairItems: MacroToolkitRepairItem[]) {
@@ -1480,7 +1484,7 @@ export function formatCommodityCoverageIdentifiers(item: CrisisCommodityCoverage
 
 export function formatCrisisInputDetail(input: MacroToolkitInputEvidenceItem | undefined) {
   if (!input) {
-    return "Nanhua commodity index / NH0100.NHF 未命中";
+    return "南华商品指数（NH0100.NHF）未命中";
   }
   return `${input.label || input.field} · ${formatCrisisInputIdentifiers(input)} · ${
     input.latest_date ?? "日期缺失"
