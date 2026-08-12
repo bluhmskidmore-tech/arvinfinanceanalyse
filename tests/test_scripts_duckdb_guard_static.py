@@ -44,13 +44,15 @@ _BARE_CONNECT = re.compile(r"duckdb\.connect\(")
 # 人工写脚本标记：显式 read_only=False 的运维脚本必须在文件头部携带该标记。
 _MANUAL_WRITE_MARKER = "MANUAL WRITE SCRIPT"
 
-# 显式 read_only=False 的人工写脚本（2026-08-12 首批收口，共 3 处）。
+# 显式 read_only=False 的人工写脚本（2026-08-12 首批收口 3 处；同日新增
+# Choice 复权因子回补 1 处，共 4 处）。
 # 均为 argparse 人工回填 CLI，裸 SQL 直写，不经 repository_task_write_scope；
 # 已在各自文件头部添加 MANUAL WRITE SCRIPT 注释，仅限人工执行。
 _MANUAL_WRITE_SCRIPTS = frozenset(
     {
         "scripts/backfill_adjusted_returns.py",
         "scripts/backfill_stock_adjustment_factor.py",
+        "scripts/backfill_stock_adjustment_factor_from_choice.py",
         "backend/scripts/backfill_cross_asset_macro_environment.py",
     }
 )
@@ -61,6 +63,9 @@ _SCRIPTS_ALLOWLIST: dict[str, int] = {
     "scripts/backfill_adjusted_returns.py": 1,
     # MANUAL WRITE SCRIPT：read_only=False 直写 stock_adjustment_factor（自带备份守卫）。
     "scripts/backfill_stock_adjustment_factor.py": 2,
+    # MANUAL WRITE SCRIPT：Choice 后复权推导回补 stock_adjustment_factor
+    # （默认 plan 只读；--execute 写路径自带备份/治理锁守卫）。
+    "scripts/backfill_stock_adjustment_factor_from_choice.py": 2,
     "scripts/copy_choice_stock_asof_from_duckdb.py": 1,  # read_only=bool(dry_run) 写路径
     # MANUAL WRITE SCRIPT：read_only=not execute，--execute 直删执行历史重复行（人工维护窗口）。
     "scripts/dedupe_execution_history_rows.py": 1,
