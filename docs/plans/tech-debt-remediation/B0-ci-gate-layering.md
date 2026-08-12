@@ -10,17 +10,17 @@
 
 | 层 | 触发 | 内容 | 缺口 |
 | --- | --- | --- | --- |
-| PR 门禁 | `pull_request` → main、`push` → main / `codex/**` | `backend` job：`scripts/backend_release_suite.py`（24 个测试文件 + MCP fast 合约）+ agent harness 2 文件（`test_agent_eval_spec.py`、`test_agent_eval_reward.py`） | 覆盖约 24/约 700 个后端测试文件（约 3.4%），无 mypy、无后端 ruff |
+| PR 门禁 | `pull_request` → main、`push` → main / `codex/**` | `backend` job：`scripts/backend_release_suite.py`（30 个测试文件 + MCP fast 合约；2026-08-12 起含 6 个 caliber 口径红线文件）+ agent harness 十文件（见 §1.2 补充段） | 覆盖约 30/约 700 个后端测试文件（约 4.3%），无 mypy、无后端 ruff |
 | 全量兜底 | `schedule`（每日 18:00 UTC）与 push→main | `backend-full-pytest` job：`python -m pytest -q`（collects `tests/` + `backend/tests/`，约 700 个文件） | 失败无通知闭环：不开 issue、不产出摘要工件，红灯依赖有人主动看 Actions |
 | 静态检查 | PR/push | 仅前端（`npm run typecheck`、ESLint、debt:audit）；后端只有 `uv lock --check` | `backend/pyproject.toml` 已有 `[tool.ruff]`、`[tool.mypy]` 配置，但 CI 从不执行；且 ruff/mypy 均不在 `[project.optional-dependencies].dev` 中 |
 
-测试文件量（实测）：`tests/` 顶层 685 个 + 子目录 4 个，`backend/tests/` 11 个；release suite 固定 24 个（清单见 §1，与 `docs/ci-release-suite.md` 同源）。
+测试文件量（实测）：`tests/` 顶层 685 个 + 子目录 4 个，`backend/tests/` 11 个；release suite 固定 30 个（清单见 §1，与 `docs/ci-release-suite.md` 同源）。
 
 ## 1. Release suite 覆盖清单与保护面
 
-权威来源：`scripts/backend_release_suite.py` 的 `RELEASE_SUITE_TESTS`（24 项）+ `GOVERNANCE_MCP_FAST_SUITE_TESTS`。逐文件清单、执行环境与更新规则的可维护版本见 `docs/ci-release-suite.md`（本节按域归类，两处清单必须与脚本常量逐一对得上）。
+权威来源：`scripts/backend_release_suite.py` 的 `RELEASE_SUITE_TESTS`（30 项）+ `GOVERNANCE_MCP_FAST_SUITE_TESTS`。逐文件清单、执行环境与更新规则的可维护版本见 `docs/ci-release-suite.md`（本节按域归类，两处清单必须与脚本常量逐一对得上）。
 
-### 1.1 按域归类（24 文件 + MCP 第二阶段）
+### 1.1 按域归类（30 文件 + MCP 第二阶段）
 
 **A. 平台与配置合约（3）**
 
@@ -76,6 +76,17 @@
 | --- | --- | --- |
 | `tests/test_no_finance_logic_in_frontend.py` | 1 | 前端源码不得出现正式金融计算 token（`frontend -> api -> services -> core_finance` 边界） |
 
+**G. caliber 口径红线（6，2026-08-12 纳入）**
+
+| 文件 | 用例数* | 保护面 |
+| --- | --- | --- |
+| `tests/test_caliber_rule_fx_mid_conversion.py` | 9 | FX 中间价折算口径 |
+| `tests/test_caliber_rule_hat_mapping.py` | 7 | H/A/T 映射口径 |
+| `tests/test_caliber_rule_subject_514_516_517_merge.py` | 5 | 514/516/517 科目合并口径 |
+| `tests/test_caliber_rule_issuance_exclusion.py` | 6 | 发行债排除口径 |
+| `tests/test_caliber_rule_formal_scenario_gate.py` | 10 | Formal-Scenario 门 |
+| `tests/test_caliber_rule_accounting_basis.py` | 5 | 会计口径归一 |
+
 **第二阶段：治理 MCP 合约（同脚本内顺序执行）**
 
 | profile | 文件 | 用例数* | CI 使用 |
@@ -83,7 +94,7 @@
 | fast（默认） | `tests/test_project_mcp_fast_contracts.py`（`-m mcp_fast`） | 2 | PR 门禁在跑 |
 | full | `tests/test_project_mcp_servers.py` | 172 | 仅手动 `--mcp-profile full`；CI 的 PR 阶段不跑（nightly 全量 pytest 会收集到） |
 
-**PR job 内、套件外补充**：agent harness 七文件（`tests/test_agent_eval_spec.py` 14、`tests/test_agent_eval_reward.py` 4、`tests/test_agent_eval_collect.py` 23、`tests/test_agent_eval_scoring_integrity.py` 13、`tests/test_agent_eval_replay.py` 6、`tests/test_caliber_gate_mapping.py` 6、`tests/test_mcp_config_consistency.py` 2，合计 68），以独立步骤直跑 pytest，不经过 release suite 的隔离环境；另有 `Caliber path-trigger gate` 步骤（仅 `pull_request`）按 diff 定向触发 caliber 红线测试。
+**PR job 内、套件外补充**：agent harness 十文件（`tests/test_agent_eval_spec.py`、`tests/test_agent_eval_reward.py`、`tests/test_agent_eval_collect.py`、`tests/test_agent_eval_scoring_integrity.py`、`tests/test_agent_eval_replay.py`、`tests/test_agent_eval_pr_replay.py`、`tests/test_agent_eval_rollout.py`、`tests/test_agent_eval_coverage_report.py`、`tests/test_caliber_gate_mapping.py`、`tests/test_mcp_config_consistency.py`；用例数为动态演进值，以 pytest 收集为准），以独立步骤直跑 pytest，不经过 release suite 的隔离环境；另有 `Caliber path-trigger gate` 步骤（仅 `pull_request`）按 diff 定向触发 caliber 红线测试——2026-08-12 起该六文件同时是 release suite 无条件成员（§1.1 G 组），路径触发为定向快反、套件成员为无条件兜底，互为双保险。
 
 \* 用例数为 AST 静态统计的 `test_*` 函数数（含类方法，不含参数化展开），2026-08-12 快照，仅供体量参考。
 
@@ -91,11 +102,11 @@
 
 ### 1.2 保护面总结与盲区
 
-**保护面**（PR 阶段有防护）：对外 API 合约与响应封套语义、页面契约完备性、治理文档/血缘审计、黄金样本发布门（4 个样本锚点）、前端无金融逻辑边界、依赖分离合约、MCP fast 合约。一句话：**"对外表面"与"发布门锚点"有防护**。
+**保护面**（PR 阶段有防护）：对外 API 合约与响应封套语义、页面契约完备性、治理文档/血缘审计、黄金样本发布门（4 个样本锚点）、caliber 口径红线（六大口径规则，2026-08-12 纳入）、前端无金融逻辑边界、依赖分离合约、MCP fast 合约。一句话：**"对外表面"与"发布门锚点"有防护**。
 
 **盲区**（PR 阶段不设防，仅靠 nightly / main push 全量 pytest 兜底；文件名举例均为 `tests/` 下实际存在文件）：
 
-1. **core_finance 计算引擎深层单测**：Campisi 归因（`test_campisi.py`、`test_campisi_attribution_service.py`、`test_campisi_decision_grade*.py`）、PnL bridge 系列（`test_pnl_bridge_core.py`、`test_pnl_bridge_with_curve.py`、`test_pnl_bridge_curve_effects.py`、`test_pnl_bridge_fx_translation.py` 等）、债券引擎（`test_bond_analytics_engine.py`、`test_bond_analytics_core.py`、`test_bond_analytics_curve_effects.py`）、风险（`test_var_engine.py`、`test_risk_metrics.py`）、宏观模型（`test_macro_model_garch.py`、`test_macro_model_dcc.py`、`test_macro_model_crisis_score.py` 等）、策略（`test_livermore_strategy_core.py`、`test_portfolio_backtest.py`）。**这是最要害的盲区：PR 改数值逻辑时，唯一的数值防线是 4 个黄金样本文件，深度有限。**
+1. **core_finance 计算引擎深层单测**：Campisi 归因（`test_campisi.py`、`test_campisi_attribution_service.py`、`test_campisi_decision_grade*.py`）、PnL bridge 系列（`test_pnl_bridge_core.py`、`test_pnl_bridge_with_curve.py`、`test_pnl_bridge_curve_effects.py`、`test_pnl_bridge_fx_translation.py` 等）、债券引擎（`test_bond_analytics_engine.py`、`test_bond_analytics_core.py`、`test_bond_analytics_curve_effects.py`）、风险（`test_var_engine.py`、`test_risk_metrics.py`）、宏观模型（`test_macro_model_garch.py`、`test_macro_model_dcc.py`、`test_macro_model_crisis_score.py` 等）、策略（`test_livermore_strategy_core.py`、`test_portfolio_backtest.py`）。**这是最要害的盲区：PR 改数值逻辑时，套件内防线是 4 个黄金样本文件加 6 个 caliber 口径红线文件（后者守口径规则与 canonical callsite，不测引擎数值深度），深度有限。**
 2. **services / repositories 层**：`test_bond_analytics_service.py`、`test_risk_tensor_service.py`、`test_balance_analysis_service_boundaries.py`、`test_bond_analytics_repo.py`、`test_duckdb_repo_scoped_connection.py` 等。
 3. **物化与任务流**：`test_snapshot_materialize_flow.py`、`test_balance_analysis_materialize_flow.py`、`test_bond_analytics_materialize_flow.py`、`test_snapshot_materialize_manifest_fail_closed.py`、`test_worker_bootstrap.py`。
 4. **缓存与启动路径**：`test_api_response_cache.py`、`test_home_snapshot_cache.py`、`test_home_endpoint_response_cache.py`、`test_market_home_warmup.py`、`test_main_lifespan.py`。

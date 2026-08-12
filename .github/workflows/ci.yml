@@ -55,6 +55,8 @@ jobs:
           tests/test_agent_eval_scoring_integrity.py
           tests/test_agent_eval_replay.py
           tests/test_agent_eval_pr_replay.py
+          tests/test_agent_eval_rollout.py
+          tests/test_agent_eval_coverage_report.py
           tests/test_caliber_gate_mapping.py
           tests/test_mcp_config_consistency.py
 
@@ -104,7 +106,17 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      # ledger-pnl 任务的 page_loads/no_console_errors 探针是 Playwright spec，
+      # 需要 Chromium 与 mock 数据模式；spec 在非 mock 环境下自动 skip。
+      - name: Install Playwright Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
       - name: Run PR replay evaluation
+        env:
+          VITE_DATA_SOURCE: "mock"
+          MOSS_PLAYWRIGHT_USE_WEB_SERVER: "1"
+          MOSS_PLAYWRIGHT_BASE_URL: "http://127.0.0.1:5888"
         run: |
           git fetch origin "${{ github.base_ref }}"
           python scripts/agent_eval/pr_replay.py --base-ref "origin/${{ github.base_ref }}" \

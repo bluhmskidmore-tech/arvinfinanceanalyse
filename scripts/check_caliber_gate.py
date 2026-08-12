@@ -1,11 +1,12 @@
 """Caliber path-trigger gate for PR CI.
 
-The six caliber red-line tests (tests/test_caliber_rule_*.py) are not part of
-the bounded release suite (scripts/backend_release_suite.py), so a PR could
-change caliber logic under backend/app/core_finance/ and only fail in the
-nightly full pytest run. This gate closes that hole: when the PR diff touches
-a source module that a caliber test imports, the matching test files are run
-as part of the PR-gating backend job.
+The six caliber red-line tests (tests/test_caliber_rule_*.py) are also
+unconditional members of the bounded release suite
+(scripts/backend_release_suite.py, since 2026-08-12). This gate is the
+targeted fast-reaction half of that double insurance: when the PR diff
+touches a source module that a caliber test imports, the matching test files
+are run directly, so a caliber regression is attributed to the exact diff
+that caused it instead of surfacing as a generic suite failure.
 
 ``CALIBER_GATE_MAP`` is derived from the import statements of the six caliber
 test files (including ``importlib.import_module(DESCRIPTOR.canonical_module)``

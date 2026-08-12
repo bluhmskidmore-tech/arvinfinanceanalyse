@@ -47,6 +47,13 @@ RELEASE_SUITE_TESTS = [
     "tests/test_live_route_page_contract_completeness.py",
     "tests/test_backend_dependency_contract.py",
     "tests/test_no_finance_logic_in_frontend.py",
+    # caliber 口径红线（无条件兜底；与 scripts/check_caliber_gate.py 路径触发门禁互为双保险）
+    "tests/test_caliber_rule_fx_mid_conversion.py",
+    "tests/test_caliber_rule_hat_mapping.py",
+    "tests/test_caliber_rule_subject_514_516_517_merge.py",
+    "tests/test_caliber_rule_issuance_exclusion.py",
+    "tests/test_caliber_rule_formal_scenario_gate.py",
+    "tests/test_caliber_rule_accounting_basis.py",
 ]
 GOVERNANCE_MCP_FAST_SUITE_TESTS = ["tests/test_project_mcp_fast_contracts.py"]
 GOVERNANCE_MCP_FULL_SUITE_TESTS = ["tests/test_project_mcp_servers.py"]
