@@ -24,11 +24,11 @@ def test_execution_gap_repair_exposes_a_public_task_entrypoint() -> None:
 def _seed_execution_database(db_path: Path) -> None:
     signal_date = date(2026, 1, 5)
     stocks = (
-        ("000001.SZ", "Raw Gap", "stock_candidate", "fv_livermore_candidate_execution_dual_adjust_v4"),
-        ("000002.SZ", "Pending", "stock_candidate", "fv_livermore_candidate_execution_dual_adjust_v4"),
+        ("000001.SZ", "Raw Gap", "stock_candidate", materialize_task.EXECUTION_FORMULA_VERSION),
+        ("000002.SZ", "Pending", "stock_candidate", materialize_task.EXECUTION_FORMULA_VERSION),
         ("000003.SZ", "Stale Formula", "stock_candidate", "fv_livermore_candidate_forward_close_dual_adjust_v2"),
         ("000004.SZ", "Untouched Theme", "theme_breakout", "fv_livermore_candidate_forward_close_dual_adjust_v2"),
-        ("000005.SZ", "Healthy", "stock_candidate", "fv_livermore_candidate_execution_dual_adjust_v4"),
+        ("000005.SZ", "Healthy", "stock_candidate", materialize_task.EXECUTION_FORMULA_VERSION),
     )
     conn = duckdb.connect(str(db_path), read_only=False)
     try:

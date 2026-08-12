@@ -16,6 +16,7 @@ from backend.app.core_finance.adjusted_returns import (
     factors_changed,
     net_return_after_costs,
 )
+from backend.app.core_finance.field_normalization import is_tradestatus_halted
 from backend.app.core_finance.portfolio_paths import (
     TABLE_LIMIT_PRICE,
     resolve_limit_prices,
@@ -38,7 +39,10 @@ RULE_VERSION = "rv_livermore_candidate_history_v1"
 FORMULA_VERSION = "fv_livermore_candidate_forward_close_dual_adjust_v2"
 # v3: return_*_net_adj uses multiplicative cost netting ((1+r)*(1-c)-1).
 # v4: return_*_net uses the same multiplicative helper (no longer additive r-c).
-EXECUTION_FORMULA_VERSION = "fv_livermore_candidate_execution_dual_adjust_v4"
+# v5: halted 判定统一到共享互补口径（is_tradestatus_halted）——"停牌一天"/
+# "连续停牌"等非空非可交易值判停牌：entry 落停牌值日记 entry_halted，
+# 卖出顺延到首个可卖 bar（旧完整匹配词表把这些日误判可交易）。
+EXECUTION_FORMULA_VERSION = "fv_livermore_candidate_execution_dual_adjust_v5"
 TABLE_HIST = "livermore_candidate_history"
 TABLE_EXECUTION_HIST = "livermore_candidate_execution_history"
 TABLE_STOCK_UNIVERSE = "livermore_stock_candidate_universe_history"
@@ -2336,8 +2340,7 @@ def _first_sellable_bar_at_or_after(
 
 
 def _is_halted(bar: dict[str, object]) -> bool:
-    status = _text(bar.get("tradestatus")).lower()
-    return status in {"0", "false", "halt", "halted", "suspend", "suspended", "停牌"}
+    return is_tradestatus_halted(bar.get("tradestatus"))
 
 
 def _is_limit_down(bar: dict[str, object]) -> bool:

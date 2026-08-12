@@ -5,6 +5,7 @@ from typing import Any
 
 import duckdb
 from backend.app.core_finance.adjusted_returns import net_return_after_costs
+from backend.app.core_finance.field_normalization import is_tradestatus_halted
 
 TABLE_OBS = "choice_stock_daily_observation"
 TABLE_ADJ_FACTOR = "stock_adjustment_factor"
@@ -219,7 +220,7 @@ def _normalize_path_rows(rows: Sequence[tuple[Any, ...]]) -> list[dict[str, obje
             table_down_limit,
         ) = row
         raw_close = _float_or_none(close_value)
-        halted = _is_halted(tradestatus)
+        halted = is_tradestatus_halted(tradestatus)
         close_for_mark = previous_close if halted and previous_close is not None else raw_close
         source_factor = _positive_float(adj_factor)
         adj_factor_missing = source_factor is None
@@ -320,11 +321,6 @@ def resolve_limit_prices(
     return None, None, LIMIT_PRICE_SOURCE_MISSING
 
 
-def _is_halted(tradestatus: object) -> bool:
-    status = str(tradestatus or "").strip().lower()
-    return status in {"0", "false", "halt", "halted", "suspend", "suspended", "\u505c\u724c"}
-
-
 def _is_limit_down(close_value: object, lowlimit: object) -> bool:
     close = _positive_float(close_value)
     low = _positive_float(lowlimit)
@@ -336,7 +332,7 @@ def _first_sellable_path_row_at_or_after(
     start_index: int,
 ) -> Mapping[str, object] | None:
     for row in rows[max(start_index, 0) :]:
-        if _is_halted(row.get("tradestatus")) or bool(row.get("halted")):
+        if is_tradestatus_halted(row.get("tradestatus")) or bool(row.get("halted")):
             continue
         if _is_limit_down(row.get("close") or row.get("close_value"), row.get("lowlimit")) or bool(row.get("limit_down")):
             continue

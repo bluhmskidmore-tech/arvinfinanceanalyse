@@ -30,6 +30,7 @@ __all__ = [
     "TRADING_STATUS_VALUES",
     "derive_accounting_basis_value",
     "is_approved_status",
+    "is_tradestatus_halted",
     "is_tradestatus_tradable",
     "normalize_currency_basis_value",
     "original_asset_currency_from_instrument_code",
@@ -57,6 +58,18 @@ def is_tradestatus_tradable(value: object | None) -> bool:
     if not text:
         return True
     return text.casefold() in TRADABLE_STATUS_VALUES
+
+
+def is_tradestatus_halted(value: object | None) -> bool:
+    """判定 tradestatus 是否为显式停牌/不可交易日：非空且不可交易。
+
+    与 ``is_tradestatus_tradable`` 在非空域互补：空串/None/空白是 choice_native
+    代际的正常交易日（不是停牌）；"停牌一天"/"连续停牌"/"盘中停牌"/"Suspended"
+    等非空非可交易词值判停牌；未知非空值 fail-closed 判停牌（卖出顺延方向保守
+    正确）。SQL 侧同语义请用 ``not tradable_status_sql_condition(...)``。
+    """
+    text = str(value or "").strip()
+    return bool(text) and not is_tradestatus_tradable(text)
 
 
 def tradable_status_sql_condition(column_expr: str) -> str:

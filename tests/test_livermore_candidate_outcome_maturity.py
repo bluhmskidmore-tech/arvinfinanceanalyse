@@ -688,6 +688,43 @@ def _seed_conflicting_stored_target(conn: duckdb.DuckDBPyConnection) -> None:
     )
 
 
+def test_outcome_maturity_records_dedicated_issue_for_matured_missing_bars(tmp_path) -> None:
+    """真实缺 bar（稀疏历史/代际回退缺行）成熟后，除 horizon 计数外必须在 run
+    汇总 issues 里记 `snapshot:stock:horizon:matured_missing_bar` 专属条目，
+    供数据质量跟踪（如 600070.SH 稀疏、600608/600599.SH 历史回退案例）。"""
+    from backend.app.tasks.livermore_candidate_outcome_maturity import (
+        mature_livermore_candidate_outcomes,
+    )
+
+    db_path = tmp_path / "maturity-missing-bar-issue.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        _seed_candidate_history(conn)
+        _seed_observations_and_factors(conn)
+        # 候选股票仅剩 3 个有效 bar（真实稀疏，无显式停牌行）；市场日历由
+        # 另一只股票撑满 20 天 → 5d/10d/20d 成熟但缺 bar。
+        conn.execute(
+            "delete from choice_stock_daily_observation"
+            " where stock_code = '000001.SZ' and trade_date > '2026-01-04'"
+        )
+        conn.executemany(
+            "insert into choice_stock_daily_observation values (?, '000009.SZ', ?, 'Trading')",
+            [(f"2026-01-{day:02d}", 50.0 + day) for day in range(2, 22)],
+        )
+    finally:
+        conn.close()
+
+    result = mature_livermore_candidate_outcomes(
+        str(db_path),
+        evaluation_as_of_date="2026-01-21",
+    )
+
+    for horizon in ("5d", "10d", "20d"):
+        assert result["horizons"][horizon]["counts"]["matured_missing_bar"] == 1
+        assert f"2026-01-01:000001.SZ:{horizon}:matured_missing_bar" in result["issues"]
+    assert "2026-01-01:000001.SZ:1d:matured_missing_bar" not in result["issues"]
+
+
 def test_outcome_maturity_arbitrates_conflicting_stored_target_by_default(tmp_path) -> None:
     from backend.app.tasks.livermore_candidate_outcome_maturity import (
         mature_livermore_candidate_outcomes,
@@ -812,6 +849,8 @@ def test_outcome_maturity_keeps_conflicting_stored_target_when_arbitration_disab
     assert result["arbitrated_conflict_count"] == 0
     assert result["horizons"]["5d"]["counts"]["matured_missing_bar"] == 1
     assert "2026-01-01:000001.SZ:5d:stored_target_conflict" in result["issues"]
+    # 成熟缺 bar 的 horizon 同时记专属数据质量 issue，不再只沉在计数里。
+    assert "2026-01-01:000001.SZ:5d:matured_missing_bar" in result["issues"]
     conn = duckdb.connect(str(db_path), read_only=True)
     try:
         row = conn.execute(

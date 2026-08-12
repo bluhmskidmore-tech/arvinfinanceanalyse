@@ -210,6 +210,66 @@ def test_load_position_price_paths_keeps_delay_buffer_for_blocked_exits() -> Non
     )["exit_date"] == "2026-07-07"
 
 
+def test_halt_word_values_defer_exit_and_carry_previous_close() -> None:
+    """停牌互补口径回归：choice_native 真实词值"停牌一天"/"连续停牌"（bar 带
+    前收陈旧 close）判停牌——horizon 卖出顺延到复牌 bar，停牌行 mark 价 carry
+    前收；未知非空词值 fail-closed 同样顺延。"""
+    conn = duckdb.connect(":memory:")
+    try:
+        conn.execute(_OBS_FLAG_ERA_DDL)
+        conn.executemany(
+            "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?, ?, 1000, 10000, ?, '否', '否')",
+            [
+                # (trade_date, stock_code, open, high, low, close, tradestatus)
+                ("2026-06-01", "000001.SZ", 10.0, 10.5, 9.8, 10.0, "正常交易"),
+                ("2026-06-02", "000001.SZ", 10.0, 10.0, 10.0, 10.0, "停牌一天"),
+                ("2026-06-03", "000001.SZ", 10.0, 10.0, 10.0, 10.0, "连续停牌"),
+                ("2026-06-04", "000001.SZ", 11.0, 11.2, 10.8, 11.0, "复牌"),
+                ("2026-06-05", "000001.SZ", 11.0, 11.6, 11.0, 11.5, "正常交易"),
+                # 第二只：未知非空词值在卖出目标日，fail-closed 顺延
+                ("2026-06-01", "000002.SZ", 20.0, 20.5, 19.8, 20.0, "正常交易"),
+                ("2026-06-02", "000002.SZ", 20.0, 20.0, 20.0, 20.0, "退市整理"),
+                ("2026-06-03", "000002.SZ", 21.0, 21.2, 20.8, 21.0, "正常交易"),
+            ],
+        )
+        paths = load_position_price_paths(
+            conn,
+            [
+                {"stock_code": "000001.SZ", "entry_date": "2026-06-01"},
+                {"stock_code": "000002.SZ", "entry_date": "2026-06-01"},
+            ],
+            max_horizon_days=5,
+        )
+    finally:
+        conn.close()
+
+    rows = paths[position_path_key("000001.SZ", "2026-06-01")]
+    assert [row["halted"] for row in rows] == [False, True, True, False, False]
+    # 停牌行 mark 价 carry 前收（本例供应商陈旧价即前收，值等价）
+    assert rows[1]["close"] == 10.0
+    exit_row = calculate_path_horizon_exit(
+        rows,
+        horizon_days=2,
+        entry_price=10.0,
+        buy_cost_rate=0.0,
+        sell_cost_rate=0.0,
+        slippage_rate=0.0,
+    )
+    assert exit_row["exit_date"] == "2026-06-04"
+    assert exit_row["return_net"] == pytest.approx(0.10)
+
+    unknown_rows = paths[position_path_key("000002.SZ", "2026-06-01")]
+    assert unknown_rows[1]["halted"] is True
+    assert calculate_path_horizon_exit(
+        unknown_rows,
+        horizon_days=2,
+        entry_price=20.0,
+        buy_cost_rate=0.0,
+        sell_cost_rate=0.0,
+        slippage_rate=0.0,
+    )["exit_date"] == "2026-06-03"
+
+
 def test_limit_price_source_three_states_prefer_numeric_table() -> None:
     """三态：新表数值优先 > observation try_cast 回退 > missing 维持 fail-open。"""
     conn = duckdb.connect(":memory:")

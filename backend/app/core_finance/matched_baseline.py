@@ -17,6 +17,7 @@ from backend.app.core_finance.adjusted_returns import (
     net_return_after_costs,
     normalize_duckdb_path,
 )
+from backend.app.core_finance.field_normalization import is_tradestatus_halted
 from backend.app.core_finance.strategy_policy import POLICY
 from backend.app.schema_registry.duckdb_loader import REGISTRY_DIR, parse_registry_sql_text
 
@@ -28,7 +29,10 @@ TABLE_SECTOR = "choice_stock_sector_membership"
 TABLE_UNIVERSE = "choice_stock_universe"
 # v2: control_return_*_net_adj now uses multiplicative cost netting
 # ((1+r)*(1-c)-1) via adjusted_returns.net_return_after_costs.
-FORMULA_VERSION = "fv_livermore_matched_baseline_v2"
+# v3: halted 判定统一到共享互补口径（is_tradestatus_halted）——"停牌一天"/
+# "连续停牌"等非空非可交易值判停牌，控制组入场/卖出在停牌值日顺延到
+# 首个可卖 bar（旧完整匹配词表把这些日误判可交易，卖在停牌陈旧价）。
+FORMULA_VERSION = "fv_livermore_matched_baseline_v3"
 CONTROL_SAMPLE_SIZE = 20
 SAME_SECTOR_CONTROL_GROUP = "same_sector"
 LIQUIDITY_FALLBACK_CONTROL_GROUP = "liquidity_quintile_fallback"
@@ -818,15 +822,7 @@ def _first_sellable_bar_at_or_after(bars: list[dict[str, Any]], start_index: int
 
 
 def _is_halted(bar: dict[str, Any]) -> bool:
-    return str(bar.get("tradestatus") or "").strip().lower() in {
-        "0",
-        "false",
-        "halt",
-        "halted",
-        "suspend",
-        "suspended",
-        "\u505c\u724c",
-    }
+    return is_tradestatus_halted(bar.get("tradestatus"))
 
 
 def _is_limit_down(bar: dict[str, Any]) -> bool:

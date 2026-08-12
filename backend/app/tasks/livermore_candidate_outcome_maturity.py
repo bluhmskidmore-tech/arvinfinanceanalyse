@@ -706,6 +706,10 @@ def _candidate_outcome_updates(
             evaluation_as_of_date=evaluation_as_of_date,
             explicit_halt=explicit_halt,
         )
+        if status == "matured_missing_bar":
+            # 成熟但缺 bar 是数据质量缺口（稀疏历史、供应商代际回退缺行等），
+            # 在 run 汇总 issues 里记专属条目，不再只沉在 horizon 计数里。
+            row_issues.append(f"{snapshot_date}:{stock_code}:{horizon}:matured_missing_bar")
         maturity[horizon] = {
             "status": status,
             "horizon_bars": bar_count,

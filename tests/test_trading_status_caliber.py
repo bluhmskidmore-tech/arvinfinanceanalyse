@@ -1,13 +1,16 @@
 """交易状态判定口径统一（MEDIUM-7）与 candidate_history_service tasks 延迟导入回归。
 
-覆盖三件事：
+覆盖四件事：
 1. 共享 ``is_tradestatus_tradable`` 语义（docs/data_contracts.md §4.10）：
    'Trading'/'trading'/'交易'/'正常交易'/'复牌' 为 True，choice_native 代际
    空串/None/空白视为正常交易日亦为 True，'停牌一天'/'连续停牌'/'Suspended'
    等非空停牌值为 False；SQL 片段与 Python 判定同口径。
-2. market_data_livermore_service 侧：供应商落地中文交易状态时，
+2. 共享 ``is_tradestatus_halted`` 停牌互补口径（非空且不可交易）及卖出顺延
+   消费点回归：matched_baseline / candidate_history_materialize 的 entry
+   block 与首个可卖 bar 在"停牌一天"/"连续停牌"等词值日必须顺延。
+3. market_data_livermore_service 侧：供应商落地中文交易状态时，
    trading 历史与当日快照不得静默取空。
-3. ``import backend.app.services.livermore_candidate_history_service`` 不得把
+4. ``import backend.app.services.livermore_candidate_history_service`` 不得把
    ``backend.app.tasks.*`` 带进 ``sys.modules``。
 """
 
@@ -25,6 +28,7 @@ from backend.app.core_finance.field_normalization import (
     TRADABLE_STATUS_SQL_IN_LIST,
     TRADABLE_STATUS_VALUES,
     TRADING_STATUS_VALUES,
+    is_tradestatus_halted,
     is_tradestatus_tradable,
     tradable_status_sql_condition,
 )
@@ -52,6 +56,8 @@ _NON_TRADABLE_SAMPLES = [
     "停牌",
     "停牌一天",
     "连续停牌",
+    "盘中停牌",
+    "未上市",
     "退市整理",
     "unknown-status",
 ]
@@ -65,6 +71,26 @@ def test_is_tradestatus_tradable_accepts_trading_resumption_and_blank(value: str
 @pytest.mark.parametrize("value", _NON_TRADABLE_SAMPLES)
 def test_is_tradestatus_tradable_rejects_explicit_halt_and_unknown_values(value: str) -> None:
     assert is_tradestatus_tradable(value) is False
+
+
+@pytest.mark.parametrize("value", _NON_TRADABLE_SAMPLES)
+def test_is_tradestatus_halted_flags_all_nonempty_non_tradable_values(value: str) -> None:
+    """生产真实词值"停牌一天"/"连续停牌"/"盘中停牌"及未知非空值均判停牌
+    （fail-closed）；旧完整匹配词表只认"停牌"，漏判这些值导致卖出不顺延。"""
+    assert is_tradestatus_halted(value) is True
+
+
+@pytest.mark.parametrize("value", _TRADABLE_SAMPLES)
+def test_is_tradestatus_halted_keeps_blank_trading_and_resumption_sellable(value: str | None) -> None:
+    assert is_tradestatus_halted(value) is False
+
+
+def test_is_tradestatus_halted_is_complement_of_tradable_on_nonempty_domain() -> None:
+    """互补口径：halted == 非空 and not tradable；空串/None/空白既非可交易黑名单
+    也非停牌（choice_native 正常交易日）。"""
+    for value in (*_TRADABLE_SAMPLES, *_NON_TRADABLE_SAMPLES):
+        text = str(value or "").strip()
+        assert is_tradestatus_halted(value) is (bool(text) and not is_tradestatus_tradable(value)), value
 
 
 def test_tradable_status_sql_in_list_derives_from_word_list() -> None:
@@ -92,6 +118,9 @@ def test_tradable_status_sql_condition_matches_python_semantics() -> None:
     assert len(rows) == len(samples)
     for value, sql_verdict in rows:
         assert bool(sql_verdict) is is_tradestatus_tradable(value), value
+        # SQL 侧停牌判定 = 可交易条件的否定（NULL/空白归一为空串 → 可交易 →
+        # 否定为 False），与 is_tradestatus_halted 完全同口径。
+        assert (not bool(sql_verdict)) is is_tradestatus_halted(value), value
 
 
 def _seed_chinese_status_observation(conn: duckdb.DuckDBPyConnection) -> None:
@@ -199,6 +228,45 @@ def test_trading_snapshot_inputs_accept_chinese_trading_status(tmp_path) -> None
     history = inputs.history_by_code.get("600000.SH")
     assert history is not None
     assert len(history["close"]) == 9
+
+
+def _halt_window_bars() -> list[dict[str, object]]:
+    """对齐生产 688260.SH 形态：停牌 bar 带前收陈旧 close（close 非空不可作可卖依据）。"""
+    return [
+        {"trade_date": "2026-06-25", "open_value": 136.0, "close_value": 144.0, "tradestatus": "正常交易"},
+        {"trade_date": "2026-06-26", "open_value": 144.0, "close_value": 144.0, "tradestatus": "连续停牌"},
+        {"trade_date": "2026-06-29", "open_value": 144.0, "close_value": 144.0, "tradestatus": "停牌一天"},
+        {"trade_date": "2026-07-01", "open_value": 132.0, "close_value": 130.7, "tradestatus": "复牌"},
+    ]
+
+
+def test_matched_baseline_sell_defers_past_real_halt_values() -> None:
+    """matched_baseline 卖出顺延回归：目标 bar 落"连续停牌"时跳过后续停牌值
+    bar，顺延到复牌 bar；entry 落停牌值日记 entry_halted。"""
+    import backend.app.core_finance.matched_baseline as matched_baseline_module
+
+    bars = _halt_window_bars()
+    exit_bar = matched_baseline_module._first_sellable_bar_at_or_after(bars, 1)
+    assert exit_bar is not None
+    assert exit_bar["trade_date"] == "2026-07-01"
+
+    assert matched_baseline_module._entry_block_reason(bars[1], entry_price=144.0) == "entry_halted"
+    assert matched_baseline_module._entry_block_reason(bars[3], entry_price=132.0) == ""
+    blank_bar = {"trade_date": "2026-07-02", "close_value": 130.0, "tradestatus": ""}
+    assert matched_baseline_module._entry_block_reason(blank_bar, entry_price=130.0) == ""
+
+
+def test_execution_materialize_sell_defers_past_real_halt_values() -> None:
+    """execution history 卖出顺延回归：与 matched_baseline 同口径。"""
+    import backend.app.tasks.livermore_candidate_history_materialize as materialize_task
+
+    bars = _halt_window_bars()
+    exit_bar = materialize_task._first_sellable_bar_at_or_after(bars, 1)
+    assert exit_bar is not None
+    assert exit_bar["trade_date"] == "2026-07-01"
+
+    assert materialize_task._entry_block_reason(bars[2], entry_price=144.0) == "entry_halted"
+    assert materialize_task._entry_block_reason(bars[3], entry_price=132.0) == ""
 
 
 def test_candidate_history_service_import_does_not_load_tasks_modules() -> None:

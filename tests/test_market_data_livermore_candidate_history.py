@@ -1033,7 +1033,7 @@ def test_execution_only_backfill_rebuilds_execution_history_from_existing_candid
     assert first["execution_row_count"] == 1
     assert first["skipped_count"] == 1
     assert first["partial_date_count"] == 1
-    assert first["formula_version"] == "fv_livermore_candidate_execution_dual_adjust_v4"
+    assert first["formula_version"] == "fv_livermore_candidate_execution_dual_adjust_v5"
     assert isinstance(first["run_id"], str) and first["run_id"]
     assert first["dates"] == [
         {
@@ -1073,7 +1073,7 @@ def test_execution_only_backfill_rebuilds_execution_history_from_existing_candid
 
     assert candidate_count_after == candidate_count_before
     assert execution_rows == [
-        (snap.isoformat(), valid_stock, "fv_livermore_candidate_execution_dual_adjust_v4"),
+        (snap.isoformat(), valid_stock, "fv_livermore_candidate_execution_dual_adjust_v5"),
     ]
 
 
@@ -1484,7 +1484,7 @@ def test_execution_only_backfill_sparse_range_rebuilds_only_source_dates_and_pre
     assert execution_rows[0][0] == source_date.isoformat()
     assert execution_rows[0][1] == "000001.SZ"
     assert execution_rows[0][2] != "stale-source"
-    assert execution_rows[0][3] == "fv_livermore_candidate_execution_dual_adjust_v4"
+    assert execution_rows[0][3] == "fv_livermore_candidate_execution_dual_adjust_v5"
     assert execution_rows[1] == (
         missing_source_date.isoformat(),
         "000009.SZ",

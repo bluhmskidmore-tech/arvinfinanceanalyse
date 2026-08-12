@@ -247,7 +247,7 @@ def test_matched_baseline_generates_control_returns_and_writes_rows(tmp_path, mo
             [(stock,) for stock in stocks],
         )
         conn.executemany(
-            "insert into choice_stock_daily_observation values ('2026-06-12', ?, 10, 10, ?, '1', 20, 5)",
+            "insert into choice_stock_daily_observation values ('2026-06-12', ?, 10, 10, ?, 'Trading', 20, 5)",
             [(stock, 100.0 + index) for index, stock in enumerate(stocks)],
         )
         future_dates = ["2026-06-15", "2026-06-16", "2026-06-17", "2026-06-18", "2026-06-19"]
@@ -258,7 +258,7 @@ def test_matched_baseline_generates_control_returns_and_writes_rows(tmp_path, mo
             for day_index, trade_date in enumerate(future_dates):
                 highlimit = 10.0 if stock == "000004.SZ" and day_index == 0 else 20.0
                 close_value = 11.0 + day_index
-                obs_rows.append((trade_date, stock, 10.0, close_value, 100.0, "1", highlimit, 5.0))
+                obs_rows.append((trade_date, stock, 10.0, close_value, 100.0, "Trading", highlimit, 5.0))
                 factor_rows.append((stock, trade_date, 1.0, "sv", "run"))
         conn.executemany(
             "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?, ?, ?, ?)",
