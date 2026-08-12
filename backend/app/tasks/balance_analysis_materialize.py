@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import logging
+from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
+import duckdb
 from backend.app.core_finance.balance_analysis import (
     BalancePositionScope,
     FormalTywBalanceFactRow,
@@ -55,6 +59,80 @@ CACHE_VERSION = BALANCE_ANALYSIS_MODULE.cache_version
 _DIRECT_ZQTZ_INVEST_TYPE_LABELS = frozenset(
     {"持有至到期类资产", "可供出售类资产", "交易性资产", "应收投资款项", "发行类债劵", "发行类债券"}
 )
+# snapshot↔fact native 本金合计差异容差（单位：元）。
+TYW_SNAPSHOT_FACT_PRINCIPAL_TOLERANCE = Decimal("0.01")
+
+logger = logging.getLogger(__name__)
+
+
+def _tyw_consistency_entry(row: dict[str, Any], *, tolerance: Decimal) -> dict[str, object]:
+    diff: Decimal = row["principal_native_diff"]
+    status = "drift" if abs(diff) > tolerance else "consistent"
+    return {
+        "report_date": str(row["report_date"]),
+        "status": status,
+        "snapshot_row_count": int(row["snapshot_row_count"]),
+        "fact_native_row_count": int(row["fact_native_row_count"]),
+        "snapshot_principal_native_total": str(row["snapshot_principal_native_total"]),
+        "fact_principal_native_total": str(row["fact_principal_native_total"]),
+        "principal_native_diff": str(diff),
+        "tolerance": str(tolerance),
+    }
+
+
+def check_tyw_snapshot_fact_consistency(
+    *,
+    duckdb_path: str | None = None,
+    report_dates: list[str] | None = None,
+    tolerance: Decimal = TYW_SNAPSHOT_FACT_PRINCIPAL_TOLERANCE,
+) -> list[dict[str, object]]:
+    """批量核对 TYW snapshot 与 formal fact 的 native 本金合计（只读，不改数据）。
+
+    ``report_dates`` 为 None 时覆盖两侧出现过的全部报告日；用于对历史漂移
+    （snapshot↔fact 不一致的报告日）出报告，哪一侧为准由数据 owner 裁决。
+    """
+    resolved_path = str(duckdb_path) if duckdb_path else str(get_settings().duckdb_path)
+    repo = BalanceAnalysisRepository(resolved_path)
+    rows = repo.fetch_tyw_snapshot_fact_native_consistency_rows(report_dates=report_dates)
+    return [_tyw_consistency_entry(row, tolerance=tolerance) for row in rows]
+
+
+def _verify_tyw_snapshot_fact_consistency_after_write(
+    *,
+    repo: BalanceAnalysisRepository,
+    report_date: str,
+    snapshot_ingest_batch_id: str | None,
+) -> dict[str, object]:
+    """物化写入后的只读一致性校验；校验自身失败不回滚、不中断任务。"""
+    try:
+        rows = repo.fetch_tyw_snapshot_fact_native_consistency_rows(
+            report_dates=[report_date],
+            snapshot_ingest_batch_id=snapshot_ingest_batch_id,
+        )
+    except (OSError, duckdb.Error) as exc:
+        logger.warning(
+            "TYW snapshot/fact consistency check failed to run for report_date=%s: %s",
+            report_date,
+            exc,
+        )
+        return {"report_date": report_date, "status": "check_failed", "error": str(exc)}
+    entry = _tyw_consistency_entry(rows[0], tolerance=TYW_SNAPSHOT_FACT_PRINCIPAL_TOLERANCE)
+    if entry["status"] == "drift":
+        logger.warning(
+            "TYW snapshot/fact native principal drift detected: report_date=%s "
+            "snapshot_total=%s fact_total=%s diff=%s tolerance=%s "
+            "(snapshot_rows=%s, fact_native_rows=%s); data owner adjudication required, "
+            "no automatic re-materialization performed.",
+            entry["report_date"],
+            entry["snapshot_principal_native_total"],
+            entry["fact_principal_native_total"],
+            entry["principal_native_diff"],
+            entry["tolerance"],
+            entry["snapshot_row_count"],
+            entry["fact_native_row_count"],
+        )
+    return entry
+
 
 def _resolve_snapshot_ingest_batch_id(
     *,
@@ -282,12 +360,18 @@ def _execute_balance_analysis_materialization(
             vendor_version="vv_none",
             message=str(exc),
         ) from exc
+    tyw_consistency = _verify_tyw_snapshot_fact_consistency_after_write(
+        repo=repo,
+        report_date=report_date,
+        snapshot_ingest_batch_id=tyw_ingest_batch_id,
+    )
     return FormalComputeMaterializeResult(
         source_version=combined_source_version,
         vendor_version="vv_none",
         payload={
             "zqtz_rows": len(zqtz_fact_rows),
             "tyw_rows": len(tyw_fact_rows),
+            "tyw_snapshot_fact_consistency": tyw_consistency,
         },
     )
 
