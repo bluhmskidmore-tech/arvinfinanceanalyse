@@ -1665,11 +1665,10 @@
 }
 
 .balance-movement-concentration-card {
+  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   min-width: 0;
-  padding: 12px;
   border: 1px solid var(--ib-hairline);
   border-radius: var(--ib-radius, 2px);
-  background: var(--ib-surface-muted);
 }
 
 .balance-movement-concentration-card__header {
@@ -1678,12 +1677,6 @@
   gap: 10px;
   align-items: center;
   margin-bottom: 8px;
-}
-
-.balance-movement-concentration-card__header h3 {
-  margin: 0;
-  color: var(--ib-ink);
-  font-size: 14px;
 }
 
 .balance-movement-concentration-card__header span {
@@ -1824,11 +1817,11 @@
 }
 
 .balance-movement-business-summary__top-moves-header {
+  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   display: flex;
   justify-content: space-between;
   gap: 16px;
   align-items: flex-start;
-  margin-bottom: 12px;
 }
 
 .balance-movement-business-summary__top-moves-header span {
@@ -1838,12 +1831,6 @@
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.02em;
-}
-
-.balance-movement-business-summary__top-moves-header h2 {
-  margin: 0;
-  color: var(--ib-ink);
-  font-size: 15px;
 }
 
 .balance-movement-business-summary__top-moves-header > strong {
@@ -1865,28 +1852,26 @@
 }
 
 .balance-movement-top-moves-panel {
+  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   min-width: 0;
   border: 1px solid var(--ib-accent-surface);
   border-radius: var(--ib-radius, 2px);
-  background: var(--ib-surface);
   overflow-x: auto;
   overflow-y: hidden;
 }
 
 .balance-movement-top-moves-panel__title {
+  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
-  padding: 10px 12px;
   border-bottom: 1px solid var(--ib-hairline);
-  background: var(--ib-surface-muted);
 }
 
 .balance-movement-top-moves-panel__title h3 {
+  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   margin: 0;
-  color: var(--ib-ink);
-  font-size: 13px;
 }
 
 .balance-movement-top-moves-panel__title span {
@@ -1897,22 +1882,10 @@
 }
 
 .balance-movement-top-moves-table {
+  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   width: 100%;
-  min-width: 620px;
-  table-layout: fixed;
-  border-collapse: collapse;
   color: var(--ib-ink);
   font-size: 12px;
-}
-
-.balance-movement-top-moves-table th,
-.balance-movement-top-moves-table td {
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--ib-hairline);
-  text-align: right;
-  vertical-align: middle;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
 }
 
 .balance-movement-top-moves-table tr:last-child th,
@@ -1921,11 +1894,10 @@
 }
 
 .balance-movement-top-moves-table thead th {
+  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   color: var(--ib-ink-secondary);
-  background: var(--ib-surface);
   font-size: 10px;
   font-weight: 800;
-  letter-spacing: 0.04em;
 }
 
 .balance-movement-top-moves-table th:nth-child(1),
@@ -2284,7 +2256,12 @@
 }
 .balance-movement-maturity-ladder__value { color: var(--ib-ink-secondary); font-size: 10px; font-variant-numeric: tabular-nums; }
 .balance-movement-maturity-ladder__bar-track { display: flex; align-items: flex-end; justify-content: center; min-height: 0; border-bottom: 1px solid var(--dh-api-line, rgba(103,119,142,.34)); }
-.balance-movement-maturity-ladder__bar { display: block; width: min(40px, 66%); min-height: 3px; border-radius: var(--ib-radius) var(--ib-radius) 0 0; background: var(--ib-accent); }
+.balance-movement-maturity-ladder__bar {
+  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
+  display: block;
+  border-radius: var(--ib-radius) var(--ib-radius) 0 0;
+  background: var(--ib-accent);
+}
 .balance-movement-maturity-ladder__bar--unknown { background: var(--ib-warn); }
 .balance-movement-maturity-ladder__bucket strong { align-self: end; overflow: hidden; color: var(--ib-ink); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .balance-movement-maturity-ladder__bucket small { color: var(--ib-ink-muted); font-size: 9px; font-variant-numeric: tabular-nums; }
@@ -2313,7 +2290,9 @@
 .balance-movement-concentration-layout__secondary { display: grid; gap: 12px; }
 .balance-movement-concentration-card { padding: 14px; border-color: var(--ib-hairline); background: rgba(7, 10, 18, 0.42); }
 .balance-movement-concentration-card__header > div span { color: var(--ib-accent); font-size: 9px; font-weight: 800; letter-spacing: .12em; }
-.balance-movement-concentration-card__header h3 { margin-top: 4px; font-size: 15px; }
+.balance-movement-concentration-card__header h3 {
+  margin: 0;
+  color: var(--ib-ink); margin-top: 4px; font-size: 15px; }
 .balance-movement-concentration-card__header > strong { color: var(--ib-up); font-size: 10px; }
 .balance-movement-concentration-card__metrics { display: flex; flex-wrap: wrap; gap: 12px; margin: 10px 0 8px; padding-bottom: 9px; border-bottom: 1px solid var(--ib-hairline); }
 .balance-movement-concentration-card__metrics span { color: var(--ib-ink-muted); font-size: 10px; }
@@ -2349,22 +2328,39 @@
 
 .balance-movement-business-summary--decision .balance-movement-business-summary__top-moves { padding: 0; border: 0; background: transparent; }
 .balance-movement-business-summary__top-moves-header { margin-bottom: 10px; }
-.balance-movement-business-summary__top-moves-header h2 { margin-top: 3px; font-size: 16px; }
+.balance-movement-business-summary__top-moves-header h2 {
+  margin: 0;
+  color: var(--ib-ink); margin-top: 3px; font-size: 16px; }
 .balance-movement-business-summary__top-moves-header p { margin: 5px 0 0; color: var(--ib-ink-muted); font-size: 10px; }
 .balance-movement-top-moves-panel { border-color: var(--ib-hairline); background: rgba(7,10,18,.42); }
 .balance-movement-top-moves-panel__title { padding: 10px 12px; background: rgba(16,26,42,.72); }
 .balance-movement-top-moves-panel__title > div > span { color: var(--ib-ink-muted); font-size: 9px; letter-spacing: .08em; }
-.balance-movement-top-moves-panel__title h3 { margin-top: 3px; font-size: 13px; }
+.balance-movement-top-moves-panel__title h3 {
+  color: var(--ib-ink); margin-top: 3px; font-size: 13px; }
 .balance-movement-top-moves-panel__title > strong { color: var(--ib-accent); font-family: var(--dh-api-mono, monospace); font-size: 9px; }
-.balance-movement-top-moves-table { min-width: 650px; background: transparent; }
-.balance-movement-top-moves-table thead th { background: transparent; }
+.balance-movement-top-moves-table {
+  table-layout: fixed;
+  border-collapse: collapse; min-width: 650px; background: transparent; }
+.balance-movement-top-moves-table thead th {
+  letter-spacing: 0.04em; background: transparent; }
 .balance-movement-top-moves-table th,
-.balance-movement-top-moves-table td { padding-top: 7px; padding-bottom: 7px; }
+.balance-movement-top-moves-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--ib-hairline);
+  text-align: right;
+  vertical-align: middle;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums; padding-top: 7px; padding-bottom: 7px; }
 .balance-movement-mover-axis { position: relative; height: 4px; margin-top: 5px; background: rgba(133,147,168,.08); overflow: hidden; }
 .balance-movement-mover-axis > i { position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: rgba(169,182,199,.36); }
-.balance-movement-mover-axis__bar { position: absolute; top: 0; height: 100%; }
-.balance-movement-mover-axis__bar--up { left: 50%; background: var(--ib-up); }
-.balance-movement-mover-axis__bar--down { right: 50%; background: var(--ib-down); }
+.balance-movement-mover-axis__bar--up {
+  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
+  background: var(--ib-up);
+}
+.balance-movement-mover-axis__bar--down {
+  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
+  background: var(--ib-down);
+}
 
 .balance-movement-business-summary--decision .balance-movement-business-summary__body { grid-template-columns: minmax(0, 1.15fr) minmax(350px, .85fr); gap: 12px; }
 .balance-movement-driver-chart--band,
@@ -2434,7 +2430,10 @@
 .balance-movement-concentration-list__row--unknown .balance-movement-concentration-list__bar-track progress::-webkit-progress-value { background: var(--ib-warn); }
 .balance-movement-concentration-list__row--other .balance-movement-concentration-list__bar-track progress::-moz-progress-bar,
 .balance-movement-concentration-list__row--other .balance-movement-concentration-list__bar-track progress::-webkit-progress-value { background: var(--ib-ink-muted); }
-.balance-movement-mover-axis__bar { width: 50%; }
+.balance-movement-mover-axis__bar {
+  position: absolute;
+  top: 0;
+  height: 100%; width: 50%; }
 .balance-movement-mover-axis__bar--up { left: 50%; }
 .balance-movement-mover-axis__bar--down { right: 50%; transform: scaleX(-1); }
 .balance-movement-mover-axis__bar--up::-moz-progress-bar,
