@@ -569,6 +569,7 @@ def materialize_livermore_candidate_history(
         elif universe_items:
             skipped.append("universe:missing_observation_table")
 
+        computed_execution_rows = _deduplicate_execution_history_rows(computed_execution_rows)
         with acquire_lock(LIVERMORE_CANDIDATE_HISTORY_LOCK, base_dir=duckdb_file.parent):
             transaction_started = False
             try:
@@ -820,7 +821,6 @@ def backfill_livermore_candidate_execution_history(
                             "run_id": run_id,
                         }
                     )
-                    date_result["execution_row_count"] = _safe_int(date_result.get("execution_row_count"), default=0) + 1
                     continue
 
             dated_skip_reason = f"{snapshot_as_of}:{stock_code or 'unknown'}:{skip_reason}"
@@ -828,6 +828,15 @@ def backfill_livermore_candidate_execution_history(
             cast(list[str], date_result["skipped"]).append(dated_skip_reason)
             date_result["skipped_count"] = _safe_int(date_result.get("skipped_count"), default=0) + 1
             date_result["status"] = "partial"
+
+        execution_rows = _deduplicate_execution_history_rows(execution_rows)
+        for execution_row in execution_rows:
+            execution_date = _text(execution_row.get("signal_date"))
+            date_result = date_results_by_date.get(execution_date)
+            if date_result is not None:
+                date_result["execution_row_count"] = (
+                    _safe_int(date_result.get("execution_row_count"), default=0) + 1
+                )
 
         missing_source_dates = [requested_date for requested_date in requested_dates if requested_date not in source_dates]
         for missing_source_date in missing_source_dates:
@@ -1993,16 +2002,54 @@ def _insert_execution_history_rows(
     conn: duckdb.DuckDBPyConnection,
     rows: list[dict[str, object]],
 ) -> None:
-    if not rows:
+    deduplicated_rows = _deduplicate_execution_history_rows(rows)
+    if not deduplicated_rows:
         return
+    # Keep this enforcement in the shared task writer rather than adding a
+    # table-level PK/unique index: constraining every legacy DuckDB snapshot is
+    # a much wider schema migration, while all governed writes already converge
+    # here and can enforce the execution grain before insertion.
     placeholders = ", ".join("?" for _ in _EXECUTION_INSERT_COLUMNS)
     conn.executemany(
         f"""
         insert into {TABLE_EXECUTION_HIST} ({", ".join(_EXECUTION_INSERT_COLUMNS)})
         values ({placeholders})
         """,
-        [tuple(cast(Any, row[col]) for col in _EXECUTION_INSERT_COLUMNS) for row in rows],
+        [
+            tuple(cast(Any, row[col]) for col in _EXECUTION_INSERT_COLUMNS)
+            for row in deduplicated_rows
+        ],
     )
+
+
+def _deduplicate_execution_history_rows(
+    rows: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    deduplicated: dict[tuple[str, str, str], dict[str, object]] = {}
+    for row in rows:
+        key = (
+            _text(row.get("signal_date")),
+            _text(row.get("stock_code")).upper(),
+            _text(row.get("signal_kind")) or "stock_candidate",
+        )
+        current = deduplicated.get(key)
+        if current is None or _execution_history_row_priority(row) > _execution_history_row_priority(current):
+            deduplicated[key] = row
+    return list(deduplicated.values())
+
+
+def _execution_history_row_priority(row: dict[str, object]) -> tuple[int, int, str]:
+    populated_adjusted_returns = sum(
+        row.get(field) is not None
+        for field in (
+            "return_1d_net_adj",
+            "return_5d_net_adj",
+            "return_10d_net_adj",
+            "return_20d_net_adj",
+        )
+    )
+    candidate_rank = _safe_int(row.get("candidate_rank"), default=999_999)
+    return populated_adjusted_returns, -candidate_rank, _text(row.get("run_id"))
 
 
 def _execution_returns_for_candidate(

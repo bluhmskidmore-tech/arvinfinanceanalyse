@@ -752,6 +752,58 @@ def test_task_writes_execution_history_with_next_open_and_net_returns(monkeypatc
         conn.close()
 
 
+def test_task_execution_write_same_date_replay_keeps_one_logical_row(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "execution-daily-replay.duckdb"
+    snap = date(2026, 1, 6)
+    stock = "000001.SZ"
+    _seed_calendar_observations(str(db_path), stock_code=stock, start=snap, days=3)
+
+    def _mock_load(*args: object, **kwargs: object) -> tuple[dict[str, object], dict[str, object]]:
+        return _fake_payload(
+            as_of_date=snap.isoformat(),
+            items=[
+                {
+                    "rank": 1,
+                    "stock_code": stock,
+                    "stock_name": "Ping",
+                    "sector_code": "S1",
+                    "sector_name": "Bank",
+                }
+            ],
+        )
+
+    monkeypatch.setattr(
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        _mock_load,
+    )
+
+    first = materialize_livermore_candidate_history(str(db_path), as_of_date=snap.isoformat())
+    second = materialize_livermore_candidate_history(str(db_path), as_of_date=snap.isoformat())
+
+    conn = duckdb.connect(str(db_path), read_only=True)
+    try:
+        rows = conn.execute(
+            """
+            select signal_date, stock_code, signal_kind, run_id
+            from livermore_candidate_execution_history
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert first["execution_row_count"] == 1
+    assert second["execution_row_count"] == 1
+    assert first["run_id"] != second["run_id"]
+    assert rows == [
+        (
+            snap.isoformat(),
+            stock,
+            "stock_candidate",
+            second["run_id"],
+        )
+    ]
+
+
 def test_task_marks_execution_entry_ex_div_when_entry_adj_factor_differs_from_signal(monkeypatch, tmp_path) -> None:
     db_path = tmp_path / "execution-entry-ex-div.duckdb"
     snap = date(2026, 1, 6)
@@ -1023,6 +1075,110 @@ def test_execution_only_backfill_rebuilds_execution_history_from_existing_candid
     assert execution_rows == [
         (snap.isoformat(), valid_stock, "fv_livermore_candidate_execution_dual_adjust_v4"),
     ]
+
+
+def test_execution_only_backfill_deduplicates_policy_variant_source_rows_and_replay(tmp_path) -> None:
+    db_path = tmp_path / "execution-only-policy-variants.duckdb"
+    snap = date(2026, 3, 18)
+    stock = "300042.SZ"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table choice_stock_daily_observation (
+              trade_date varchar,
+              stock_code varchar,
+              open_value double,
+              close_value double,
+              tradestatus varchar,
+              highlimit double,
+              lowlimit double
+            )
+            """
+        )
+        conn.executemany(
+            "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?, ?, ?)",
+            [
+                (snap.isoformat(), stock, 100.0, 100.0, "trading", 120.0, 80.0),
+                ((snap + timedelta(days=1)).isoformat(), stock, 101.0, 102.0, "trading", 121.0, 81.0),
+            ],
+        )
+        _ensure_livermore_candidate_history_test_schema(conn)
+        conn.executemany(
+            """
+            insert into livermore_candidate_history (
+              snapshot_as_of_date,
+              stock_code,
+              stock_name,
+              candidate_rank,
+              signal_kind,
+              market_state,
+              run_id
+            ) values (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    snap.isoformat(),
+                    stock,
+                    "Policy Candidate",
+                    1,
+                    "hybrid_fusion",
+                    "WARM",
+                    "livermore_candidate_history:2026-03-18:exp3b:run-a",
+                ),
+                (
+                    snap.isoformat(),
+                    stock,
+                    "Policy Candidate",
+                    2,
+                    "hybrid_fusion",
+                    "WARM",
+                    "livermore_candidate_history:2026-03-18:exp3c_shadow:run-b",
+                ),
+            ],
+        )
+    finally:
+        conn.close()
+
+    first = backfill_livermore_candidate_execution_history(
+        str(db_path),
+        start_date=snap.isoformat(),
+        end_date=snap.isoformat(),
+    )
+    conn = duckdb.connect(str(db_path), read_only=True)
+    try:
+        first_rows = conn.execute(
+            """
+            select signal_date, stock_code, signal_kind, candidate_rank
+            from livermore_candidate_execution_history
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    second = backfill_livermore_candidate_execution_history(
+        str(db_path),
+        start_date=snap.isoformat(),
+        end_date=snap.isoformat(),
+    )
+    conn = duckdb.connect(str(db_path), read_only=True)
+    try:
+        second_rows = conn.execute(
+            """
+            select signal_date, stock_code, signal_kind, candidate_rank
+            from livermore_candidate_execution_history
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert first["source_candidate_row_count"] == 2
+    assert second["source_candidate_row_count"] == 2
+    assert first["execution_row_count"] == 1
+    assert second["execution_row_count"] == 1
+    expected_rows = [(snap.isoformat(), stock, "hybrid_fusion", 1)]
+    assert first_rows == expected_rows
+    assert second_rows == expected_rows
 
 
 def test_execution_only_backfill_empty_source_range_preserves_existing_execution_rows(tmp_path) -> None:
@@ -2106,6 +2262,7 @@ def test_task_materializes_factor_uptrend_and_mean_reversion_signal_rows(monkeyp
     def _mock_load(*args: object, **kwargs: object) -> tuple[dict[str, object], dict[str, object]]:
         payload, meta = _fake_payload(as_of_date=snap.isoformat(), items=[])
         payload["factor_screen_candidates"] = {
+            "formula_version": "rv_factor_screen_candidates_v4",
             "items": [
                 {
                     "rank": 1,
@@ -2119,6 +2276,8 @@ def test_task_materializes_factor_uptrend_and_mean_reversion_signal_rows(monkeyp
                     "pb": 1.1,
                     "roe": 0.15,
                     "gross_margin": 0.3,
+                    "avg_amount_20d": 240_000_000.0,
+                    "formula_version": "rv_factor_screen_candidates_v4",
                 }
             ]
         }
@@ -2161,10 +2320,12 @@ def test_task_materializes_factor_uptrend_and_mean_reversion_signal_rows(monkeyp
                     "pctchange": 0.025,
                     "turn": 1.7,
                     "amplitude": 3.5,
+                    "formula_version": "rv_uptrend_momentum_candidates_v2",
                 }
             ]
         }
         payload["fresh_trend_watchlist"] = {
+            "formula_version": "rv_fresh_trend_watchlist_candidates_v2",
             "items": [
                 {
                     "rank": 1,
@@ -2216,13 +2377,18 @@ def test_task_materializes_factor_uptrend_and_mean_reversion_signal_rows(monkeyp
     by_kind = {row[0]: row for row in rows}
     assert set(by_kind) == {"factor_screen", "fresh_trend_watchlist", "mean_reversion", "uptrend_momentum"}
     assert by_kind["factor_screen"][1:4] == (factor_stock, "Factor A", 1)
-    assert json.loads(by_kind["factor_screen"][7])["score"] == 3.2
+    factor_evidence = json.loads(by_kind["factor_screen"][7])
+    assert factor_evidence["score"] == 3.2
+    # v3 引入的治理字段在 v4 门控断代后仍须落 signal_evidence_json。
+    assert factor_evidence["formula_version"] == "rv_factor_screen_candidates_v4"
+    assert factor_evidence["avg_amount_20d"] == 240_000_000.0
     assert abs(float(by_kind["factor_screen"][8]) - 0.1) < 1e-12
     assert by_kind["fresh_trend_watchlist"][1:4] == (fresh_stock, "Fresh D", 1)
     assert by_kind["fresh_trend_watchlist"][4:7] == (0.045, 1.8, None)
     fresh_evidence = json.loads(by_kind["fresh_trend_watchlist"][7])
     assert fresh_evidence["return_120d"] == 1.2
     assert fresh_evidence["concepts"] == ["Chiplet", "AI hardware"]
+    assert fresh_evidence["formula_version"] == "rv_fresh_trend_watchlist_candidates_v2"
     assert abs(float(by_kind["fresh_trend_watchlist"][8]) - 0.1) < 1e-12
     assert by_kind["mean_reversion"][1:4] == (reversion_stock, "Reversion B", 1)
     assert by_kind["mean_reversion"][4:7] == (-0.22, 2.4, 0.72)
@@ -2234,6 +2400,7 @@ def test_task_materializes_factor_uptrend_and_mean_reversion_signal_rows(monkeyp
     assert uptrend_evidence["return_60d"] == 0.18
     assert uptrend_evidence["ma20"] == 28.4
     assert uptrend_evidence["close_to_ma20"] == 0.056338
+    assert uptrend_evidence["formula_version"] == "rv_uptrend_momentum_candidates_v2"
     assert abs(float(by_kind["uptrend_momentum"][8]) - 0.1) < 1e-12
 
 
