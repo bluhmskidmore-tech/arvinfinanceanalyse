@@ -1311,19 +1311,11 @@
 }
 
 .cross-asset-reference-transmission__steps {
+  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   display: grid;
   gap: 4px;
   margin: 0;
   padding: 0;
-  list-style: none;
-}
-
-.cross-asset-reference-transmission__steps li {
-  display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) auto;
-  gap: 6px;
-  align-items: baseline;
-  min-width: 0;
 }
 
 .cross-asset-reference-transmission__steps em {
@@ -3257,10 +3249,6 @@
 .cross-asset-reference-depth .cross-asset-trend-panel__summary {
   margin-bottom: 8px;
   padding: 7px 9px;
-}
-
-.cross-asset-reference-depth .cross-asset-trend-chart__canvas {
-  height: 300px;
 }
 
 @media (max-width: 1200px) {
@@ -7488,6 +7476,7 @@
 }
 
 .cross-asset-reference-depth .cross-asset-zone-analytics-grid {
+  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   grid-template-columns: minmax(0, 1fr) minmax(250px, 300px);
   gap: 8px;
 }
@@ -7506,19 +7495,9 @@
   padding: 7px 8px;
 }
 
-.cross-asset-reference-depth .ca-waterfall__chart {
-  min-height: 180px;
-  margin: 8px 0 54px;
-}
-
 .cross-asset-reference-depth .ca-waterfall__bar-label {
   max-width: 72px;
   font-size: 0.66rem;
-}
-
-.cross-asset-reference-depth .ca-waterfall__evidence {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
 }
 
 /* Product Design screenshot fidelity pass: keep the reference page from inheriting legacy cockpit chrome. */
@@ -7623,6 +7602,7 @@
 }
 
 .cross-asset-reference-transmission__steps {
+  list-style: none;
   overflow: hidden;
   border: 1px solid var(--ca-border-soft);
   border-radius: var(--moss-radius-sm);
@@ -7630,6 +7610,8 @@
 }
 
 .cross-asset-reference-transmission__steps li {
+  display: grid;
+  min-width: 0;
   grid-template-columns: 20px minmax(0, 1fr) minmax(44px, auto);
   gap: 6px;
   align-items: center;
@@ -7699,6 +7681,7 @@
 }
 
 .cross-asset-reference-depth .ca-waterfall__evidence {
+  gap: 6px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
