@@ -34,6 +34,8 @@ outputs/
 
 ## Data and generated artifacts
 data/
+# data/ 未锚定会连带忽略 docs/data/（受跟踪的数据契约清单目录），显式排除
+!/docs/data/
 backend/data/
 data_input/
 docs/audits/.*.tmp
