@@ -18,6 +18,8 @@ import type {
   StockSectorHeavyweightPreviewSummary,
   StockThemeLeaderPreviewItem,
 } from "../lib/stockAnalysisPageModel";
+import type { StockHeavyweightTrendIndex } from "../lib/stockHeavyweightTrendView";
+import { StockAnalysisTrendSparkline } from "./StockAnalysisTrendSparkline";
 import {
   SA_CARD_TITLE,
   SA_FIRST_CARD,
@@ -34,9 +36,14 @@ export type StockAnalysisDeepSelectionOverviewProps = {
   themeBreakoutBlockerText: string | null;
   sectorHeavyweightPreview: StockSectorHeavyweightPreviewSummary | null;
   sectorHeavyweightRows: StockSectorHeavyweightPreviewRow[];
+  heavyweightTrends?: StockHeavyweightTrendIndex | null;
+  /** Ref for the deferred-visibility gate that enables the trend request. */
+  heavyweightSectionRef?: (node: HTMLElement | null) => void;
   strategyPayload: LivermoreStrategyPayload | null;
   setDetailSelection: Dispatch<SetStateAction<StockDetailSelection | null>>;
 };
+
+const HEAVYWEIGHT_STOCKS_PER_CARD = 3;
 
 export function StockAnalysisDeepSelectionOverview({
   themeBreakoutCount,
@@ -46,6 +53,8 @@ export function StockAnalysisDeepSelectionOverview({
   themeBreakoutBlockerText,
   sectorHeavyweightPreview,
   sectorHeavyweightRows,
+  heavyweightTrends,
+  heavyweightSectionRef,
   strategyPayload,
   setDetailSelection,
 }: StockAnalysisDeepSelectionOverviewProps) {
@@ -136,6 +145,7 @@ export function StockAnalysisDeepSelectionOverview({
                   </section>
 
                   <section
+                    ref={heavyweightSectionRef}
                     className={`${SA_FIRST_CARD} stock-analysis-page__lower-data-band`}
                     id="stock-analysis-sector-heavyweights-first-screen"
                     data-testid="stock-analysis-sector-heavyweights-first-screen"
@@ -209,11 +219,14 @@ export function StockAnalysisDeepSelectionOverview({
                                 </span>
                               </header>
                               <ul className="stock-analysis-page__sector-heavyweight-list">
-                                {sector.stocks.slice(0, 1).map((stock) => (
+                                {sector.stocks.slice(0, HEAVYWEIGHT_STOCKS_PER_CARD).map((stock) => {
+                                  const trend = heavyweightTrends?.byStockCode.get(stock.stockCode);
+                                  return (
                                   <li
                                       key={stock.stockCode}
                                       className="stock-analysis-page__sector-heavyweight-row stock-analysis-page__row--clickable"
                                       data-testid={`sector-heavyweight-row-${sector.sectorCode}-${stock.stockCode}`}
+                                      title={trend?.title}
                                       onClick={() => {
                                         const ranks = lookupStockStrategyRanks(
                                           strategyPayload ?? null,
@@ -253,6 +266,21 @@ export function StockAnalysisDeepSelectionOverview({
                                       <span className="stock-analysis-page__sector-heavyweight-main">
                                         <strong>{stock.stockName}</strong>
                                         <small className="stock-analysis-page__tabular">{stock.stockCode}</small>
+                                        {trend?.plottable ? (
+                                          <span
+                                            className="stock-analysis-page__sector-heavyweight-trend"
+                                            data-tone={trend.tone}
+                                          >
+                                            <StockAnalysisTrendSparkline
+                                              values={trend.values}
+                                              tone={trend.tone}
+                                              title={trend.title}
+                                            />
+                                            <small className="stock-analysis-page__tabular">
+                                              {trend.returnLabel}
+                                            </small>
+                                          </span>
+                                        ) : null}
                                       </span>
                                       <span className="stock-analysis-page__sector-heavyweight-metrics">
                                         <span>{stock.pctChange}</span>
@@ -266,7 +294,8 @@ export function StockAnalysisDeepSelectionOverview({
                                       </span>
                                       <em>{stock.sourceLabel}</em>
                                     </li>
-                                ))}
+                                  );
+                                })}
                               </ul>
                             </article>
                           ))}

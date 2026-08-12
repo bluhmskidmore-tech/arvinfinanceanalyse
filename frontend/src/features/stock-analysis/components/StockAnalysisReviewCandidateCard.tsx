@@ -93,6 +93,16 @@ export function StockAnalysisReviewCandidateCard({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {card.liquidityFloorPass === false ? (
+            <Chip
+              size="sm"
+              variant="flat"
+              color="warning"
+              title={card.dailyAmountLabel ?? "低于 2 亿元日成交门槛"}
+            >
+              低流动
+            </Chip>
+          ) : null}
           <Chip size="sm" variant="flat" color="default" startContent={<SafetyCertificateOutlined />}>
             边界 {card.boundaryEvidence.length}
           </Chip>

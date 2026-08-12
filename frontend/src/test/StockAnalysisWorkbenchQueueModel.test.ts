@@ -194,6 +194,77 @@ describe("buildStockAnalysisWorkbenchReviewQueue", () => {
     expect(candidate.boundaryEvidence).toContain("当前覆盖 · 非时点 · 不可历史使用 · 仅观察");
   });
 
+  it("maps backend breakout geometry onto the pattern and distance columns", () => {
+    const rows = [
+      {
+        stock_code: "601156.SH",
+        stock_name: "东航物流",
+        source_module: "factor_screen_candidates",
+        pattern: "突破（参考）",
+        distance_to_breakout_pct: 1.0585,
+        close: 18.14,
+        breakout_level: 17.95,
+      },
+      {
+        stock_code: "601918.SH",
+        stock_name: "新集能源",
+        source_module: "factor_screen_candidates",
+        pattern: "回踩（参考）",
+        distance_to_breakout_pct: -11.4362,
+        close: 9.99,
+        breakout_level: 11.28,
+      },
+    ] as StockAnalysisWorkbenchPayload["first_screen"]["review_queue"];
+
+    const [breakout, pullback] = buildStockAnalysisWorkbenchReviewQueue(rows);
+
+    expect(breakout.pattern).toBe("突破（参考）");
+    expect(breakout.distanceToBreakoutPct).toBe("1.06%");
+    expect(breakout.patternNote).toBe("收盘 18.14 / 突破位 17.95（观察口径）");
+    expect(breakout.rawFields).toContainEqual({ key: "close", label: "收盘价", value: "18.14" });
+    expect(breakout.rawFields).toContainEqual({ key: "breakout_level", label: "突破位", value: "17.95" });
+    expect(pullback.pattern).toBe("回踩（参考）");
+    expect(pullback.distanceToBreakoutPct).toBe("-11.44%");
+  });
+
+  it("discloses a stale price anchor date for suspended candidates", () => {
+    const rows = [
+      {
+        stock_code: "000006.SZ",
+        stock_name: "停牌样本",
+        source_module: "factor_screen_candidates",
+        pattern: "回踩（参考）",
+        distance_to_breakout_pct: -2.0,
+        close: 98,
+        breakout_level: 100,
+        price_as_of_date: "2026-08-08",
+        price_stale: true,
+      },
+    ] as StockAnalysisWorkbenchPayload["first_screen"]["review_queue"];
+
+    const [candidate] = buildStockAnalysisWorkbenchReviewQueue(rows);
+
+    expect(candidate.patternNote).toBe("收盘 98 / 突破位 100（价格日 2026-08-08，停牌滞后）");
+  });
+
+  it("keeps the placeholder when the backend pattern label is unknown or malformed", () => {
+    const rows = [
+      {
+        stock_code: "000005.SZ",
+        stock_name: "异常标签",
+        source_module: "factor_screen_candidates",
+        pattern: "unknown_label",
+        distance_to_breakout_pct: "not-a-number",
+      },
+    ] as StockAnalysisWorkbenchPayload["first_screen"]["review_queue"];
+
+    const [candidate] = buildStockAnalysisWorkbenchReviewQueue(rows);
+
+    expect(candidate.pattern).toBe("接口未提供");
+    expect(candidate.patternNote).toBe("首屏候选接口未提供形态标签，页面不补算。");
+    expect(candidate.distanceToBreakoutPct).toBe("待复核");
+  });
+
   it("does not invent theme membership evidence when the backend omits it", () => {
     const rows = [
       {

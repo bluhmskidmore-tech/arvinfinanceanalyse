@@ -1,5 +1,5 @@
 import type { StockAnalysisWorkbenchPayload } from "../../../api/contracts";
-import type { StockCandidateReviewQueueItem } from "./stockAnalysisPageModel";
+import type { StockCandidatePattern, StockCandidateReviewQueueItem } from "./stockAnalysisPageModel";
 
 type WorkbenchReviewCandidate = StockAnalysisWorkbenchPayload["first_screen"]["review_queue"][number];
 type CandidateEvidence = StockCandidateReviewQueueItem["primaryEvidence"][number];
@@ -24,6 +24,24 @@ function rankValue(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
+function finiteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/** Labels the backend emits for breakout geometry; anything else falls back to the placeholder. */
+const knownPatternLabels: ReadonlySet<string> = new Set([
+  "突破",
+  "突破（参考）",
+  "回踩（参考）",
+  "缩量盘整（参考）",
+  "待补",
+] satisfies StockCandidatePattern[]);
+
+function patternValue(value: unknown): StockCandidatePattern | null {
+  const text = textValue(value);
+  return text && knownPatternLabels.has(text) ? (text as StockCandidatePattern) : null;
+}
+
 function rawValue(value: unknown): string | null {
   if (typeof value === "number") return Number.isFinite(value) ? String(value) : null;
   if (typeof value === "string") return value.trim() || null;
@@ -37,6 +55,8 @@ function evidenceFields(row: WorkbenchReviewCandidate) {
     ["fusion_score", "融合分"],
     ["pe", "PE 原值"],
     ["pb", "PB 原值"],
+    ["close", "收盘价"],
+    ["breakout_level", "突破位"],
   ] as const;
 
   return definitions.flatMap(([key, label]) => {
@@ -130,6 +150,11 @@ export function buildStockAnalysisWorkbenchReviewQueue(
     const sectorName = textValue(row.sector_name) ?? textValue(row.industry) ?? "接口未提供";
     const sourceModule = textValue(row.source_module) ?? "workbench_review_queue";
     const sourceLabel = sourceLabels[sourceModule] ?? "后端观察队列";
+    const rowPattern = patternValue(row.pattern);
+    const rowDistancePct = finiteNumber(row.distance_to_breakout_pct);
+    const rowClose = finiteNumber(row.close);
+    const rowBreakoutLevel = finiteNumber(row.breakout_level);
+    const rowStalePriceDate = row.price_stale === true ? textValue(row.price_as_of_date) : null;
     const observedFields = evidenceFields(row);
     const membershipEvidence = themeMembershipEvidence(row);
     const sourceEvidence = [
@@ -172,9 +197,16 @@ export function buildStockAnalysisWorkbenchReviewQueue(
         sectorCode,
         sectorName,
         headline: `${sourceLabel} #${rank} · ${stockName}`,
-        pattern: "接口未提供",
-        patternNote: "首屏候选接口未提供形态标签，页面不补算。",
-        distanceToBreakoutPct: "待复核",
+        pattern: rowPattern ?? "接口未提供",
+        patternNote: rowPattern
+          ? rowClose != null && rowBreakoutLevel != null
+            ? rowStalePriceDate
+              ? `收盘 ${rowClose} / 突破位 ${rowBreakoutLevel}（价格日 ${rowStalePriceDate}，停牌滞后）`
+              : `收盘 ${rowClose} / 突破位 ${rowBreakoutLevel}（观察口径）`
+            : "形态标签由接口按突破位几何返回，观察口径。"
+          : "首屏候选接口未提供形态标签，页面不补算。",
+        distanceToBreakoutPct:
+          rowDistancePct != null ? `${rowDistancePct.toFixed(2)}%` : "待复核",
         reviewFocus: [
           stockName,
           sectorName,

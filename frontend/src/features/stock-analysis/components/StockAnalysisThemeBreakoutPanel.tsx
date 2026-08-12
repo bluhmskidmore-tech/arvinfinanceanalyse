@@ -26,7 +26,7 @@ function ThemePill({ children, tone = "neutral", className = "" }: {
           ? "bg-danger/10 text-danger border-danger/20"
           : "bg-default-100 text-default-700 border-default-200";
   return (
-    <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-semibold ${toneClass} ${className}`}>
+    <span className={`inline-flex items-center rounded-[999px] border px-2 py-0.5 text-[11px] font-medium leading-4 whitespace-nowrap ${toneClass} ${className}`}>
       {children}
     </span>
   );
@@ -57,7 +57,7 @@ export function StockAnalysisThemeBreakoutPanel({
             <strong className="text-sm">{evidenceLimited ? "题材证据受限" : "题材证据就绪"}</strong>
             <ThemePill tone={evidenceLimited ? "warning" : "neutral"}>{evidenceRows.length} 项证据</ThemePill>
           </div>
-          <div className="bg-background/40 border border-default-100 shadow-sm rounded-lg overflow-hidden">
+          <div className="bg-background/40 border border-default-100 rounded-md overflow-hidden">
             <ul className="flex flex-col divide-y divide-default-100">
               {evidenceRows.map((row) => (
                 <li key={row.key} className="p-3 flex justify-between items-center hover:bg-default-50/50 transition-colors">
@@ -94,10 +94,10 @@ export function StockAnalysisThemeBreakoutPanel({
 
 function ThemeBreakoutCard({ card }: { card: StockThemeBreakoutCard }) {
   return (
-    <article className="bg-background/60 border border-default-200 rounded-lg overflow-hidden">
+    <article className="bg-background/60 border border-default-200 rounded-md overflow-hidden">
       <header className="flex flex-row justify-between items-start p-4 pb-2">
         <div className="flex flex-col gap-1">
-          <h3 className="text-md font-bold">
+          <h3 className="text-sm font-semibold">
             <span className="text-primary mr-1">#{card.rank}</span>
             {card.themeName}
           </h3>
@@ -112,12 +112,12 @@ function ThemeBreakoutCard({ card }: { card: StockThemeBreakoutCard }) {
       </header>
       <hr className="border-t border-default-200" />
       <div className="p-4 pt-3 flex flex-col gap-3">
-        <div className="flex flex-wrap gap-2 text-xs text-default-600">
-          <span className="bg-default-100 px-2 py-1 rounded">{card.strongCountLabel}</span>
-          <span className="bg-default-100 px-2 py-1 rounded">{card.limitCountLabel}</span>
-          <span className="bg-default-100 px-2 py-1 rounded">{card.advanceRatioLabel}</span>
-          <span className="bg-default-100 px-2 py-1 rounded">{card.avgPctChangeLabel}</span>
-          <span className="bg-default-100 px-2 py-1 rounded">{card.movementLabel}</span>
+        <div className="flex flex-wrap gap-2 text-[11px] text-default-600">
+          <span className="bg-default-100 px-2 py-0.5 rounded-[999px] leading-4">{card.strongCountLabel}</span>
+          <span className="bg-default-100 px-2 py-0.5 rounded-[999px] leading-4">{card.limitCountLabel}</span>
+          <span className="bg-default-100 px-2 py-0.5 rounded-[999px] leading-4">{card.advanceRatioLabel}</span>
+          <span className="bg-default-100 px-2 py-0.5 rounded-[999px] leading-4">{card.avgPctChangeLabel}</span>
+          <span className="bg-default-100 px-2 py-0.5 rounded-[999px] leading-4">{card.movementLabel}</span>
         </div>
 
         <div className="flex flex-col gap-1 text-sm text-default-700">
@@ -134,10 +134,10 @@ function ThemeBreakoutCard({ card }: { card: StockThemeBreakoutCard }) {
 
 function ThemeReviewItem({ item }: { item: StockThemeBreakoutReviewItem }) {
   return (
-    <article className="bg-default-50 border border-default-200 rounded-lg overflow-hidden">
+    <article className="bg-default-50 border border-default-200 rounded-md overflow-hidden">
       <header className="flex flex-row justify-between items-start p-4 pb-2">
         <div className="flex flex-col gap-1">
-          <h3 className="text-md font-bold text-default-700">
+          <h3 className="text-sm font-semibold text-default-700">
             复核 #{item.rank} {item.themeName}
           </h3>
           <p className="text-xs text-default-500">{item.parentSectorLabel}</p>
@@ -149,7 +149,7 @@ function ThemeReviewItem({ item }: { item: StockThemeBreakoutReviewItem }) {
       </header>
       <hr className="border-t border-default-200" />
       <div className="p-4 pt-3 flex flex-col gap-3">
-        <div className="text-xs font-medium text-danger bg-danger/10 px-2 py-1 rounded w-fit">
+        <div className="text-[11px] font-medium text-danger bg-danger/10 px-2 py-0.5 rounded-[999px] leading-4 w-fit">
           {item.failedGateLabel}
         </div>
 
@@ -173,7 +173,7 @@ function ThemeLeaderList({
   return (
     <div className="mt-2 flex flex-col gap-2">
       {leaders.map((leader) => (
-        <div key={leader.stockCode} className="flex justify-between items-center p-2 rounded-lg bg-default-100/50">
+        <div key={leader.stockCode} className="flex justify-between items-center p-2 rounded-md bg-default-100/50">
           <div className="flex flex-col">
             <strong className="text-sm">{leader.stockName}</strong>
           <span className="text-[10px] text-default-500">

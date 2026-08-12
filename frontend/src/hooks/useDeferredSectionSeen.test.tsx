@@ -66,4 +66,19 @@ describe("useDeferredSectionSeen", () => {
     });
     expect(result.current.seen).toBe(true);
   });
+
+  it("marks a section as seen immediately via markSeen without any observer", () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("IntersectionObserver", undefined);
+
+    const { result } = renderHook(() => useDeferredSectionSeen<HTMLDivElement>(true, 5_000));
+
+    expect(result.current.seen).toBe(false);
+
+    act(() => {
+      result.current.markSeen();
+    });
+
+    expect(result.current.seen).toBe(true);
+  });
 });

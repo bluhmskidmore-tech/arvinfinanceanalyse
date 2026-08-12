@@ -16,7 +16,6 @@ import type {
 import { localizeStockBackendText } from "../lib/stockAnalysisPageModel";
 import {
   SA_CARD_TITLE,
-  SA_FIRST_CARD,
   SA_SECTION_HEAD,
 } from "../lib/stockAnalysisPageChrome";
 import {
@@ -80,7 +79,7 @@ export function StockAnalysisBoundaryRail({
   };
 
   return (
-    <section className={SA_FIRST_CARD} data-testid="stock-analysis-boundary-rail">
+    <section data-testid="stock-analysis-boundary-rail">
       <div className={SA_SECTION_HEAD}>
         <h2 className={SA_CARD_TITLE}>数据口径与边界</h2>
       </div>
@@ -176,7 +175,7 @@ export function StockAnalysisBoundaryRail({
         ) : null}
         {strategyPayload ? (
             <>
-              <strong className="text-danger">
+              <strong className="stock-analysis-page__tone-text stock-analysis-page__tone-text--negative">
                 严重
               </strong>
               <ul>
@@ -191,7 +190,7 @@ export function StockAnalysisBoundaryRail({
                   <li>暂无</li>
                 ) : null}
               </ul>
-              <strong className="text-warning">
+              <strong className="stock-analysis-page__tone-text stock-analysis-page__tone-text--warning">
                 警告
               </strong>
               <ul>
@@ -206,7 +205,7 @@ export function StockAnalysisBoundaryRail({
                   <li>暂无</li>
                 ) : null}
               </ul>
-              <strong className="text-default-500">
+              <strong className="stock-analysis-page__dh-muted">
                 信息
               </strong>
               <ul>
@@ -218,7 +217,7 @@ export function StockAnalysisBoundaryRail({
                     </li>
                   ))}
               </ul>
-              <h5 className="text-md font-semibold mt-4 mb-2">数据缺口</h5>
+              <h5>数据缺口</h5>
               <ul>
                 {strategyPayload.data_gaps.map((gap) => {
                   const familyLabel = dataGapFamilyLabel(gap.input_family);
@@ -232,9 +231,9 @@ export function StockAnalysisBoundaryRail({
                   );
                 })}
               </ul>
-              <h5 className="text-md font-semibold mt-4 mb-2">可用输出</h5>
+              <h5>可用输出</h5>
               <p>{strategyPayload.supported_outputs.map(outputKeyLabel).join("、") || "无"}</p>
-              <h5 className="text-md font-semibold mt-4 mb-2">阻断输出</h5>
+              <h5>阻断输出</h5>
               <ul>
                 {strategyPayload.unsupported_outputs.map((unsupported) => (
                   <li key={unsupported.key}>

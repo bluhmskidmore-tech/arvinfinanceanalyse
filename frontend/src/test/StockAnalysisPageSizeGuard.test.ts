@@ -27,4 +27,25 @@ describe("StockAnalysisPage extraction guard", () => {
 
     expect(moduleCount).toBeGreaterThanOrEqual(35);
   });
+
+  // CSS ratchet: the page stylesheet once grew to 21k lines / 2.4k `!important`
+  // by stacking whole layout generations as end-of-file overrides, which is how
+  // stale `grid-template-areas` shells ended up shredding the redesigned first
+  // screen. Budgets may be lowered freely; raising one must be a deliberate,
+  // reviewed decision. Prefer editing or deleting existing rules over appending
+  // a new override pass, and cover layout with the Playwright geometry spec
+  // (tests/playwright/stock-analysis-first-screen-geometry.spec.mjs), not with
+  // CSS source-text pins.
+  it("keeps the page stylesheet from regrowing override layers", () => {
+    const cssPath = resolve(
+      process.cwd(),
+      "src/features/stock-analysis/pages/StockAnalysisPage.css",
+    );
+    const css = readFileSync(cssPath, "utf8");
+    const lineCount = css.replace(/\r\n/g, "\n").trimEnd().split("\n").length;
+    const importantCount = (css.match(/!important/g) ?? []).length;
+
+    expect(lineCount).toBeLessThanOrEqual(13500);
+    expect(importantCount).toBeLessThanOrEqual(1200);
+  });
 });

@@ -38,12 +38,42 @@ type TopologyDisplayNode = {
   label: string;
   detail: string;
   tone: StockAnalysisKlineRadarTone;
+  technicalLabel?: string;
 };
 
 const FOCUS_TABLE_LIMIT = 8;
 
 function compactTopologyNodeId(id: string): string {
   return id.replace(/^(gate|module|queue|stock):/, "");
+}
+
+function topologyRelationLabel(kind: string): string {
+  if (kind === "feeds") return "供给";
+  if (kind === "routes") return "路由";
+  if (kind === "gates") return "门控";
+  return "关联";
+}
+
+function marketGateStateLabel(state: string | null): string {
+  if (!state) return "待确认";
+  const labels: Record<string, string> = {
+    BLOCKED: "受限",
+    HOT: "偏热",
+    OFF: "关闭",
+    ON: "开启",
+    OPEN: "开放",
+    OVERHEAT: "过热",
+    WARM: "温和",
+  };
+  return labels[state.toUpperCase()] ?? "待确认";
+}
+
+function marketGateEdgeLabel(label: string): string {
+  const normalized = label.trim().toLowerCase();
+  if (normalized === "enabled") return "已启用";
+  if (normalized === "disabled") return "未启用";
+  if (normalized === "blocked") return "受限";
+  return "门控关系";
 }
 
 function edgeTone(kind: string): StockAnalysisKlineRadarTone {
@@ -93,13 +123,20 @@ export function StockAnalysisKlineRadarPanel({
     routes: topology.edges.filter((edge) => edge.kind === "routes").length,
     gates: topology.edges.filter((edge) => edge.kind === "gates").length,
   };
-  const topologyNodesById = new Map(topology.nodes.map((node) => [node.id, node]));
+  const topologyNodeLabelsById = new Map(
+    topology.nodes.map((node) => [
+      node.id,
+      node.kind === "gate"
+        ? `市场门控：${marketGateStateLabel(summary.marketGateState)}`
+        : node.label,
+    ] as const),
+  );
   const gateNodes = topology.nodes.filter((node) => node.kind === "gate");
   const gateEdges = topology.edges.filter((edge) => edge.kind === "gates");
   const topologyEdgeRows = topology.edges.map((edge) => ({
     ...edge,
-    fromLabel: topologyNodesById.get(edge.from)?.label ?? compactTopologyNodeId(edge.from),
-    toLabel: topologyNodesById.get(edge.to)?.label ?? compactTopologyNodeId(edge.to),
+    fromLabel: topologyNodeLabelsById.get(edge.from) ?? compactTopologyNodeId(edge.from),
+    toLabel: topologyNodeLabelsById.get(edge.to) ?? compactTopologyNodeId(edge.to),
     tone: edgeTone(edge.kind),
   }));
   const sourceModuleNodes: TopologyDisplayNode[] = topology.nodes
@@ -107,8 +144,9 @@ export function StockAnalysisKlineRadarPanel({
     .map((node) => ({
       id: node.id,
       label: node.label,
-      detail: `${compactTopologyNodeId(node.id)} / ${topology.edges.filter((edge) => edge.from === node.id).length} 边`,
+      detail: `${topology.edges.filter((edge) => edge.from === node.id).length} 条关联`,
       tone: node.tone,
+      technicalLabel: compactTopologyNodeId(node.id),
     }));
   const queueNodes: TopologyDisplayNode[] = summary.queues.map((queue) => {
     const queueNodeId = `queue:${queue.key}`;
@@ -122,6 +160,7 @@ export function StockAnalysisKlineRadarPanel({
           ? `不可用 / ${summary.riskUnavailableReason}`
           : `${queue.count} 条 / 入 ${incoming} / 出 ${outgoing}`,
       tone: queue.tone,
+      technicalLabel: queue.key,
     };
   });
   const stockNodes = topology.nodes.filter((node) => node.kind === "stock");
@@ -137,24 +176,27 @@ export function StockAnalysisKlineRadarPanel({
   const topologyStages = [
     {
       key: "source_module",
-      label: "source_module",
+      label: "来源模块",
+      technicalLabel: "source_module",
       nodes: sourceModuleNodes,
       emptyLabel: "等待模块输出",
     },
     {
       key: "radar_queue",
-      label: "radar_queue",
+      label: "雷达队列",
+      technicalLabel: "radar_queue",
       nodes: queueNodes,
       emptyLabel: "等待队列",
     },
     {
       key: "stock_node",
-      label: "stock_node",
+      label: "股票节点",
+      technicalLabel: "stock_node",
       nodes: stockDisplayNodes,
       emptyLabel: "等待股票节点",
     },
   ];
-  const marketGateState = summary.marketGateState ?? "待确认";
+  const marketGateState = marketGateStateLabel(summary.marketGateState);
   const marketGateTone = gateTone(summary.marketGateState);
   const snapshotLabel = summary.asOfDate ?? "日期待补";
   const riskDecisionLabel = riskUnavailable
@@ -183,14 +225,14 @@ export function StockAnalysisKlineRadarPanel({
           <h2 className={SA_CARD_TITLE}>K线观察队列</h2>
           <div className="stock-analysis-page__lower-signal-strip" aria-label="AI K线雷达状态">
             {summary.queues.map((queue) => (
-              <span
+              <div
                 key={queue.key}
                 className="stock-analysis-page__signal-pill"
                 data-tone={queue.tone}
               >
                 {QUEUE_ICONS[queue.key]} {queue.shortLabel}{" "}
                 {queue.key === "risk_exit" && riskUnavailable ? "不可用" : queue.count}
-              </span>
+              </div>
             ))}
           </div>
         </div>
@@ -458,24 +500,24 @@ export function StockAnalysisKlineRadarPanel({
           >
         <div className="stock-analysis-page__kline-radar-explanation-head">
           <span>解释层：来源与拓扑</span>
-          <strong>模块 -&gt; 队列 -&gt; 股票节点</strong>
+          <strong>模块 → 队列 → 股票节点</strong>
           <p>用于审计信号来源、市场门控和边关系，放在观察复核表之后，不遮挡第一眼信息。</p>
         </div>
         <div className="stock-analysis-page__kline-radar-relation-grid">
           <span>
-            <small>feeds</small>
+            <small title="feeds">供给关系</small>
             <strong>{topologyEdgesByKind.feeds}</strong>
           </span>
           <span>
-            <small>routes</small>
+            <small title="routes">路由关系</small>
             <strong>{topologyEdgesByKind.routes}</strong>
           </span>
           <span>
-            <small>gates</small>
+            <small title="gates">门控关系</small>
             <strong>{topologyEdgesByKind.gates}</strong>
           </span>
           <span>
-            <small>modules</small>
+            <small title="modules">策略模块</small>
             <strong>{topology.moduleCount}</strong>
           </span>
         </div>
@@ -487,7 +529,7 @@ export function StockAnalysisKlineRadarPanel({
         >
           <div className="stock-analysis-page__kline-radar-topology-summary">
             <p>信号拓扑</p>
-            <strong>模块 -&gt; 队列 -&gt; 股票节点</strong>
+            <strong>模块 → 队列 → 股票节点</strong>
             <span>多信号股票和风险退出保留在关系账本中，便于复核来源。</span>
             <div className="stock-analysis-page__kline-radar-topology-metrics">
               <span data-tone="positive">
@@ -512,9 +554,9 @@ export function StockAnalysisKlineRadarPanel({
               </span>
             </div>
             <div className="stock-analysis-page__kline-radar-edge-strip" aria-label="AI K线雷达边类型">
-              <span>feeds {topologyEdgesByKind.feeds}</span>
-              <span>routes {topologyEdgesByKind.routes}</span>
-              <span>gate {topologyEdgesByKind.gates}</span>
+              <span title="feeds">供给 {topologyEdgesByKind.feeds}</span>
+              <span title="routes">路由 {topologyEdgesByKind.routes}</span>
+              <span title="gates">门控 {topologyEdgesByKind.gates}</span>
             </div>
             {gateNodes.length > 0 || gateEdges.length > 0 ? (
               <div
@@ -523,18 +565,18 @@ export function StockAnalysisKlineRadarPanel({
                 aria-label="AI K线雷达市场门控"
               >
                 {gateNodes.map((node) => (
-                  <span key={node.id} data-tone={node.tone}>
-                    <strong>market_gate</strong>
-                    <small>{node.label}</small>
+                  <span key={node.id} data-tone={node.tone} title={node.label}>
+                    <strong title="market_gate">市场门控</strong>
+                    <small>{marketGateStateLabel(summary.marketGateState)}</small>
                   </span>
                 ))}
                 {gateEdges.map((edge) => (
-                  <span key={edge.id} data-tone="warning">
-                    <strong>{edge.label}</strong>
+                  <span key={edge.id} data-tone="warning" title={edge.label}>
+                    <strong>{marketGateEdgeLabel(edge.label)}</strong>
                     <small>
-                      {topologyNodesById.get(edge.from)?.label ?? compactTopologyNodeId(edge.from)}
-                      {" -> "}
-                      {topologyNodesById.get(edge.to)?.label ?? compactTopologyNodeId(edge.to)}
+                      {topologyNodeLabelsById.get(edge.from) ?? compactTopologyNodeId(edge.from)}
+                      {" → "}
+                      {topologyNodeLabelsById.get(edge.to) ?? compactTopologyNodeId(edge.to)}
                     </small>
                   </span>
                 ))}
@@ -549,7 +591,12 @@ export function StockAnalysisKlineRadarPanel({
                 className="stock-analysis-page__kline-radar-topology-stage"
                 data-topology-stage={stage.key}
               >
-                <span className="stock-analysis-page__kline-radar-topology-stage-label">{stage.label}</span>
+                <span
+                  className="stock-analysis-page__kline-radar-topology-stage-label"
+                  title={stage.technicalLabel}
+                >
+                  {stage.label}
+                </span>
                 {(stage.nodes.length > 0
                   ? stage.nodes
                   : [
@@ -566,6 +613,7 @@ export function StockAnalysisKlineRadarPanel({
                     className="stock-analysis-page__kline-radar-topology-node"
                     data-tone={node.tone}
                     data-topology-node-id={node.id}
+                    title={node.technicalLabel}
                   >
                     <strong>{node.label}</strong>
                     <small>{node.detail}</small>
@@ -580,22 +628,28 @@ export function StockAnalysisKlineRadarPanel({
             data-testid="stock-analysis-kline-radar-edge-ledger"
             aria-label="AI K线雷达完整边账本"
           >
-            <span className="stock-analysis-page__kline-radar-edge-ledger-title">关系账本 edge ledger</span>
+            <span className="stock-analysis-page__kline-radar-edge-ledger-title" title="edge ledger">
+              关系账本
+            </span>
             <div className="stock-analysis-page__kline-radar-edge-ledger-list">
               {topologyEdgeRows.length > 0 ? (
                 topologyEdgeRows.map((edge) => (
-                  <span key={edge.id} data-tone={edge.tone}>
-                    <em>{edge.kind}</em>
+                  <span
+                    key={edge.id}
+                    data-tone={edge.tone}
+                    title={`${edge.kind}: ${edge.fromLabel} -> ${edge.toLabel}; ${edge.label}; weight=${edge.weight}`}
+                  >
+                    <em>{topologyRelationLabel(edge.kind)}</em>
                     <strong>{edge.fromLabel}</strong>
                     <small>
-                      {" -> "}
-                      {edge.toLabel} / {edge.label} / w{edge.weight}
+                      {" → "}
+                      {edge.toLabel} / {topologyRelationLabel(edge.kind)} / 权重 {edge.weight}
                     </small>
                   </span>
                 ))
               ) : (
                 <span data-tone="neutral">
-                  <em>empty</em>
+                  <em>暂无</em>
                   <strong>等待边关系</strong>
                   <small>0 条</small>
                 </span>

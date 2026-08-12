@@ -12,7 +12,6 @@ import type { LivermoreUnsupportedOutput } from "../../../api/contracts";
 import type { StockRiskExitRow } from "../lib/stockAnalysisPageModel";
 import {
   SA_CARD_TITLE,
-  SA_FIRST_CARD,
   SA_SECTION_DESC,
   SA_SECTION_HEAD,
 } from "../lib/stockAnalysisPageChrome";
@@ -123,7 +122,7 @@ export function StockAnalysisRiskExitSection({
   const blockedSummary = unsupportedOutput ? riskExitBlockedSummary(unsupportedOutput.reason) : null;
 
   return (
-    <section className={SA_FIRST_CARD} data-testid="stock-analysis-risk-section">
+    <section data-testid="stock-analysis-risk-section">
       <div className={SA_SECTION_HEAD}>
         <div className="stock-analysis-page__min-w-0">
           <h2 className={SA_CARD_TITLE}>风险退出观察</h2>

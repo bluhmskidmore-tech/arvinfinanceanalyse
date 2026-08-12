@@ -3,12 +3,7 @@ import type { ComponentProps } from "react";
 import { StockAnalysisBoundaryRail } from "./StockAnalysisBoundaryRail";
 import { StockAnalysisClosedLoopSummaryRail } from "./StockAnalysisClosedLoopRail";
 import { StockAnalysisRiskExitSection } from "./StockAnalysisRiskExitRows";
-import {
-  SA_SHELL_NUM,
-  SA_SHELL_RAIL,
-  SA_SHELL_REVIEW_RAIL,
-  SA_SHELL_REVIEW_RAIL_HEAD,
-} from "../lib/stockAnalysisPageChrome";
+import { SA_SHELL_NUM } from "../lib/stockAnalysisPageChrome";
 import type { StockEndpointEvidenceItem } from "../lib/stockAnalysisPageModel";
 
 type ClosedLoopRailProps = ComponentProps<typeof StockAnalysisClosedLoopSummaryRail>;
@@ -107,23 +102,23 @@ export function StockAnalysisEvidenceLedgerRail({
 
   return (
     <aside
-      className={`${SA_SHELL_RAIL} stock-analysis-page__decision-rail`}
+      className="stock-analysis-page__decision-rail stock-analysis-page__ev-rail"
       aria-label="风险与数据可信度"
-      data-testid="stock-analysis-first-screen-rail"
+      data-testid="stock-analysis-evidence-ledger-rail"
     >
-      <article className={SA_SHELL_REVIEW_RAIL} data-testid="stock-analysis-evidence-ledger">
-        <div className={SA_SHELL_REVIEW_RAIL_HEAD}>
+      <article className="stock-analysis-page__ev-panel" data-testid="stock-analysis-evidence-ledger">
+        <div className="stock-analysis-page__ev-panel-head">
           <span>
             补证清单
             <span className="stock-analysis-page__visually-hidden">证据账本</span>
-            <small className="stock-analysis-page__evidence-ledger-subtitle">
+            <small className="stock-analysis-page__ev-panel-kicker">
               数据缺口 / 接口证据 / 复核门禁
             </small>
           </span>
           <b className={SA_SHELL_NUM}>{asOfLabel}</b>
         </div>
-        <dl className="stock-analysis-page__home-rail-list" data-testid="stock-analysis-home-rail-decision">
-          <div className="stock-analysis-page__home-rail-list-primary">
+        <dl className="stock-analysis-page__ev-kv" data-testid="stock-analysis-home-rail-decision">
+          <div className="stock-analysis-page__ev-kv-primary">
             <dt>结论</dt>
             <dd>{`${statusLabel}，${gateStatusLabel}`}</dd>
           </div>
@@ -148,12 +143,12 @@ export function StockAnalysisEvidenceLedgerRail({
             <dd>{leadCandidateName ? `先复核${leadCandidateName}` : "等待候选"}</dd>
           </div>
         </dl>
-        <div className="stock-analysis-page__home-rail-data-note" data-testid="stock-analysis-home-rail-data-note">
+        <div className="stock-analysis-page__ev-note" data-testid="stock-analysis-home-rail-data-note">
           <h3>接口口径</h3>
           <p>数据入口：{routeLabel}</p>
           <p>结果口径：{resultKindLabel}</p>
           <p>使用边界：{formalUseAllowed ? "正式口径可用" : "仅供观察"}</p>
-          <p className="stock-analysis-page__home-rail-data-status">
+          <p className="stock-analysis-page__ev-note-status">
             {sourceVersionSummary} · {basisLabel} · {qualityLabel} · {updatedAtLabel}
           </p>
         </div>
@@ -218,7 +213,7 @@ export function StockAnalysisEvidenceLedgerRail({
         ) : null}
         <button
           type="button"
-          className="stock-analysis-page__home-rail-diagnostic-entry"
+          className="stock-analysis-page__ev-diagnostic-entry"
           data-testid="stock-analysis-home-rail-diagnostic-entry"
           aria-expanded={diagnosticsOpen}
           onClick={onOpenDiagnostics}

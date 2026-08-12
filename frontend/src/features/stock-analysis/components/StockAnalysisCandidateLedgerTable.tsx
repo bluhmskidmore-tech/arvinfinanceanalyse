@@ -1,4 +1,5 @@
 import type { StockCandidateReviewQueueItem } from "../lib/stockAnalysisPageModel";
+import { StockAnalysisInlineChip } from "./StockAnalysisStatusPrimitives";
 
 type ReviewTone = "positive" | "neutral" | "warning";
 
@@ -325,6 +326,16 @@ export function StockAnalysisCandidateLedgerTable({
                 <td>
                   <strong>{card.stockName}</strong>
                   <small className="tabular-nums font-mono">{card.stockCode}</small>
+                  {card.liquidityFloorPass === false ? (
+                    <StockAnalysisInlineChip
+                      size="sm"
+                      color="warning"
+                      className="ml-1 stock-analysis-page__candidate-ledger-liquidity-badge"
+                      title={card.dailyAmountLabel ?? "低于 2 亿元日成交门槛"}
+                    >
+                      低流动
+                    </StockAnalysisInlineChip>
+                  ) : null}
                   <small className={CANDIDATE_LEDGER_DETAIL_CLASS} title={stockNarrative.title}>
                     {stockNarrative.preview}
                   </small>

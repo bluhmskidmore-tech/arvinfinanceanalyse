@@ -24,6 +24,7 @@ import type {
 } from "../../../api/contracts";
 import type { ConsensusSummary } from "./buildConsensusSummary";
 import type { StockDetailSource } from "./stockAnalysisDetailSelection";
+import { formatYi } from "../../../utils/format";
 import {
   backtestPendingDateCount,
   backtestSourceGapDateCount,
@@ -97,6 +98,10 @@ export type StockCandidateEvidenceCard = {
   counterEvidence: string[];
   invalidationRules: string[];
   rawFields: { key: string; label: string; value: string }[];
+  /** 流动性口径披露：低流动徽章判据；undefined/null = 后端未提供或数据缺失，不展示徽章。 */
+  liquidityFloorPass?: boolean | null;
+  /** 亿元格式化辅助文案，如"日成交 0.80 亿"；无成交额数据时为 null。 */
+  dailyAmountLabel?: string | null;
 };
 
 export type StockRiskDistanceBucket =
@@ -834,6 +839,10 @@ export type StockCandidateReviewQueueItem = {
   invalidationFocus: string;
   invalidationRules: string[];
   rawFields: { key: string; label: string; value: string }[];
+  /** 流动性口径披露：低流动徽章判据；undefined/null = 后端未提供或数据缺失，不展示徽章。 */
+  liquidityFloorPass?: boolean | null;
+  /** 亿元格式化辅助文案，如"日成交 0.80 亿"；无成交额数据时为 null。 */
+  dailyAmountLabel?: string | null;
 };
 
 export type StockReviewQueueSectorFilterView = {
@@ -3376,6 +3385,8 @@ export function buildCandidateReviewQueue(
     invalidationFocus: card.invalidationRules[0] ?? "失效条件待补。",
     invalidationRules: card.invalidationRules,
     rawFields: card.rawFields,
+    liquidityFloorPass: card.liquidityFloorPass ?? null,
+    dailyAmountLabel: card.dailyAmountLabel ?? null,
   }));
 }
 
@@ -4079,6 +4090,11 @@ export function buildCandidateEvidenceCards(
         "所属行业强度跌出前列需要重新复核。",
         "涨跌停状态、停牌状态或数据质量陈旧/缺失时，不得继续解释为有效观察。",
       ],
+      liquidityFloorPass: item.liquidity_floor_pass ?? null,
+      dailyAmountLabel:
+        item.daily_amount != null && Number.isFinite(item.daily_amount)
+          ? `日成交 ${formatYi(item.daily_amount, false)}`
+          : null,
       rawFields: [
         { key: "ema10", label: "10日均线", value: formatNumber(item.ema10) },
         { key: "ma20", label: "20日均线", value: formatNumber(item.ma20) },

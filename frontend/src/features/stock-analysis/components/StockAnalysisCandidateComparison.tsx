@@ -1,3 +1,4 @@
+import { EM_DASH } from "../../../utils/format";
 import type { StockCandidateReviewQueueItem } from "../lib/stockAnalysisPageModel";
 import { selectStockCandidateThemeEvidence } from "../lib/stockAnalysisWorkbenchQueueModel";
 import "./StockAnalysisCandidateComparison.css";
@@ -6,12 +7,13 @@ type StockAnalysisCandidateComparisonProps = {
   candidates: StockCandidateReviewQueueItem[];
   usesHybridFusion: boolean;
   asOfLabel?: string | null;
+  canReviewCandidates?: boolean;
   visibleCount?: number;
   onReviewCandidate: (card: StockCandidateReviewQueueItem) => void;
 };
 
 type CandidateDecision = {
-  label: "优先复核" | "等待确认" | "降级观察";
+  label: "优先复核" | "等待确认" | "降级观察" | "阻断";
   tone: "positive" | "warning" | "neutral";
   reason: "首位候选" | "边界待核实" | "证据不足" | "融合待确认" | "排队复核";
 };
@@ -21,20 +23,13 @@ type CandidateCardMeta = {
   boundaryCount: number;
   boundaryLabel: string;
   boundaryDetail: string;
-  criteria: CandidateCriterion[];
   decision: CandidateDecision;
   evidenceCount: number;
   priorityReason: string;
   scoreSummary: string | null;
 };
 
-type CandidateCriterion = {
-  label: string;
-  value: string;
-  tone: "positive" | "warning" | "neutral";
-};
-
-const DEFAULT_ALTERNATE_PREVIEW_COUNT = 0;
+const DEFAULT_VISIBLE_CANDIDATE_COUNT = 10;
 
 function normalizeText(value: string | null | undefined): string {
   return value?.replace(/\s+/g, " ").trim() ?? "";
@@ -44,6 +39,22 @@ function compactText(value: string | null | undefined, max = 28, fallback = "待
   const normalized = normalizeText(value);
   if (!normalized) return fallback;
   return normalized.length > max ? `${normalized.slice(0, max - 1)}…` : normalized;
+}
+
+function fullText(value: string | null | undefined, fallback = "待补"): string {
+  return normalizeText(value) || fallback;
+}
+
+const STRUCTURAL_PLACEHOLDERS = new Set(["接口未提供", "待补", "待确认", "待复核", "-", EM_DASH]);
+
+/**
+ * DESIGN §6: when a whole column is structurally absent for the active source,
+ * rows show a quiet dash and the raw disclosure stays in the cell tooltip
+ * instead of repeating "缺 XXX" on every line.
+ */
+function denseCellText(value: string | null | undefined): string {
+  const normalized = normalizeText(value);
+  return !normalized || STRUCTURAL_PLACEHOLDERS.has(normalized) ? EM_DASH : normalized;
 }
 
 function isGeneratedBoundaryFallback(value: string | undefined): boolean {
@@ -117,7 +128,7 @@ function candidatePriorityReason(card: StockCandidateReviewQueueItem, boundaryCo
 
   const pieces = evidencePieces.slice(0, 2);
   const distanceToBreakout = normalizeText(card.distanceToBreakoutPct);
-  if (pieces.length < 2 && distanceToBreakout && !["-", "—"].includes(distanceToBreakout)) {
+  if (pieces.length < 2 && distanceToBreakout && !["-", EM_DASH].includes(distanceToBreakout)) {
     pieces.push(`观察位 ${compactText(distanceToBreakout, 14, "")}`);
   }
 
@@ -172,55 +183,62 @@ function fusionActionDisplayLabel(value: string | null): string {
   return "待确认";
 }
 
-function candidateCriterionTone(label: string): CandidateCriterion["tone"] {
-  if (label === "高" || label === "重点复核" || label === "待复核") return "positive";
-  if (label === "低" || label === "降权观察" || label === "待补" || label === "待确认") return "warning";
-  return "neutral";
+function supportedOutputLabel(key: string): string {
+  const labels: Record<string, string> = {
+    market_gate: "市场门控",
+    sector_rank: "板块强弱",
+    stock_candidates: "趋势候选",
+    uptrend_momentum_candidates: "上升趋势",
+    fresh_trend_watchlist: "新趋势观察",
+    mean_reversion_candidates: "均值回归",
+    factor_screen_candidates: "多因子",
+    theme_breakout: "题材突破",
+    hybrid_fusion: "融合观察",
+    hybrid_fusion_candidates: "融合观察",
+    risk_exit: "风险退出",
+  };
+  return labels[key] ?? "输出待确认";
 }
 
-function buildCandidateCriteria({
-  card,
-  usesHybridFusion,
-  asOfLabel,
-}: {
-  card: StockCandidateReviewQueueItem;
-  usesHybridFusion: boolean;
-  asOfLabel?: string | null;
-}): CandidateCriterion[] {
-  const rankingBasis = usesHybridFusion ? "融合排序" : card.pattern ? compactText(card.pattern, 8) : "候选排序";
-  const baseCriteria: CandidateCriterion[] = [
-    {
-      label: "数据日",
-      value: compactText(asOfLabel, 12, "待确认"),
-      tone: asOfLabel ? "neutral" : "warning",
-    },
-    {
-      label: "口径",
-      value: rankingBasis,
-      tone: usesHybridFusion || card.pattern ? "neutral" : "warning",
-    },
-  ];
-
-  if (!usesHybridFusion) {
-    return baseCriteria;
+function candidateSourceLabel(card: StockCandidateReviewQueueItem): string {
+  const canonicalSource = rawFieldValue(card, "source_module_key");
+  if (canonicalSource) return supportedOutputLabel(canonicalSource.trim());
+  const rawSource =
+    card.rawFields.find((field) => ["source", "source_kind", "strategy", "module"].includes(field.key))?.value ??
+    card.rawFields.find((field) => /source|strategy|module/i.test(`${field.key} ${field.label}`))?.value;
+  if (rawSource?.trim()) {
+    const localizedSource = supportedOutputLabel(rawSource.trim());
+    return localizedSource === "输出待确认" ? compactText(rawSource, 18) : localizedSource;
   }
+  return "来源待确认";
+}
 
-  const confidence = confidenceDisplayLabel(rawFieldValue(card, "confidence"));
-  const action = fusionActionDisplayLabel(rawFieldValue(card, "fusion_action"));
+function candidateSourceSignal(sourceLabel: string): { label: string; tone: "positive" | "warning" } {
+  const normalized = sourceLabel.toLowerCase();
+  if (normalized.includes("hybrid") || normalized.includes("融合")) {
+    return { label: "融合池", tone: "warning" };
+  }
+  if (normalized.includes("factor") || normalized.includes("多因子")) {
+    return { label: "因子池", tone: "warning" };
+  }
+  if (
+    normalized.includes("stock_candidates") ||
+    normalized.includes("趋势候选") ||
+    normalized.includes("fresh_trend") ||
+    normalized.includes("新趋势观察") ||
+    normalized.includes("uptrend") ||
+    normalized.includes("上升趋势")
+  ) {
+    return { label: "主快照", tone: "positive" };
+  }
+  return { label: "来源待确认", tone: "warning" };
+}
 
-  return [
-    ...baseCriteria,
-    {
-      label: "置信度",
-      value: confidence,
-      tone: candidateCriterionTone(confidence),
-    },
-    {
-      label: "动作",
-      value: action,
-      tone: candidateCriterionTone(action),
-    },
-  ];
+function displaySectorCode(value: string): string | null {
+  const normalized = normalizeText(value);
+  if (!normalized) return null;
+  if (/^tushare:[a-z0-9_-]+$/i.test(normalized)) return null;
+  return normalized;
 }
 
 function candidateDecision(
@@ -241,20 +259,17 @@ function buildCandidateCardMeta(
   card: StockCandidateReviewQueueItem,
   usesHybridFusion: boolean,
   index: number,
-  asOfLabel?: string | null,
 ): CandidateCardMeta {
   const boundaries = meaningfulBoundaryEvidence(card);
   const boundaryCount = boundaries.length;
-  const evidenceCount = candidateEvidenceCount(card);
 
   return {
     boundaries,
     boundaryCount,
     boundaryLabel: boundaryCount > 0 ? `待核 ${boundaryCount} 条` : "清晰",
     boundaryDetail: boundaries[0] ?? "新闻/公告事件仍在详情中复核",
-    criteria: buildCandidateCriteria({ card, usesHybridFusion, asOfLabel }),
     decision: candidateDecision(card, usesHybridFusion, index, boundaryCount),
-    evidenceCount,
+    evidenceCount: candidateEvidenceCount(card),
     priorityReason: candidatePriorityReason(card, boundaryCount),
     scoreSummary: usesHybridFusion ? candidateScoreSummary(card) : null,
   };
@@ -264,98 +279,13 @@ export function StockAnalysisCandidateComparison({
   candidates,
   usesHybridFusion,
   asOfLabel,
-  visibleCount = 5,
+  canReviewCandidates = true,
+  visibleCount = DEFAULT_VISIBLE_CANDIDATE_COUNT,
   onReviewCandidate,
 }: StockAnalysisCandidateComparisonProps) {
   const visibleCandidates = candidates.slice(0, visibleCount);
 
   if (visibleCandidates.length === 0) return null;
-
-  const [leadCandidate, ...alternateCandidates] = visibleCandidates;
-  const leadMeta = buildCandidateCardMeta(leadCandidate, usesHybridFusion, 0, asOfLabel);
-  const leadThemeEvidenceSummary = candidateThemeEvidenceSummary(leadCandidate);
-  const visibleAlternateCandidates = alternateCandidates.slice(0, DEFAULT_ALTERNATE_PREVIEW_COUNT);
-  const deferredAlternateCandidates = alternateCandidates.slice(DEFAULT_ALTERNATE_PREVIEW_COUNT);
-
-  const renderAlternateCard = (card: StockCandidateReviewQueueItem, index: number) => {
-    const meta = buildCandidateCardMeta(card, usesHybridFusion, index + 1, asOfLabel);
-    const alternateCriteria = usesHybridFusion ? meta.criteria.slice(1) : [];
-    const themeEvidenceSummary = candidateThemeEvidenceSummary(card);
-
-    return (
-      <article
-        key={card.stockCode}
-        className="stock-analysis-page__candidate-alternate-card"
-        data-testid={`stock-comparison-candidate-row-${card.stockCode}`}
-        data-tone={meta.decision.tone}
-      >
-        <div className="stock-analysis-page__candidate-alternate-head">
-          <span
-            className={`stock-analysis-page__candidate-comparison-decision stock-analysis-page__candidate-comparison-decision--${meta.decision.tone}`}
-          >
-            {meta.decision.label}
-          </span>
-          <small>#{card.rank} · {meta.decision.reason}</small>
-        </div>
-        <strong>{card.stockName}</strong>
-        <small className="stock-analysis-page__tabular">{card.stockCode}</small>
-        <dl>
-          <div>
-            <dt>观察</dt>
-            <dd className="stock-analysis-page__tabular">{card.distanceToBreakoutPct}</dd>
-          </div>
-          <div>
-            <dt>证据</dt>
-            <dd>{meta.evidenceCount} 条</dd>
-          </div>
-          <div>
-            <dt>边界</dt>
-            <dd title={meta.boundaryDetail}>{meta.boundaryLabel}</dd>
-          </div>
-        </dl>
-        <p
-          className="stock-analysis-page__candidate-priority-reason"
-          title={`优先理由：${meta.priorityReason}`}
-        >
-          优先理由：{compactText(meta.priorityReason, 44)}
-        </p>
-        {themeEvidenceSummary ? (
-          <p
-            className="stock-analysis-page__candidate-priority-reason"
-            data-testid={`stock-comparison-candidate-theme-${card.stockCode}`}
-            title={`题材归属：${themeEvidenceSummary}`}
-          >
-            题材归属：{themeEvidenceSummary}
-          </p>
-        ) : null}
-        {alternateCriteria.length > 0 ? (
-          <dl
-            className="stock-analysis-page__candidate-criteria stock-analysis-page__candidate-criteria--compact"
-            data-testid={`stock-candidate-criteria-${card.stockCode}`}
-            aria-label={`${card.stockName} 选股口径校验`}
-          >
-            {alternateCriteria.map((criterion) => (
-              <div key={criterion.label} data-tone={criterion.tone}>
-                <dt>{criterion.label}</dt>
-                <dd className="stock-analysis-page__tabular" title={criterion.value}>
-                  {criterion.value}
-                </dd>
-              </div>
-            ))}
-          </dl>
-        ) : null}
-        <button
-          type="button"
-          className={`stock-analysis-page__candidate-comparison-action stock-analysis-page__candidate-comparison-action--${meta.decision.tone}`}
-          data-testid={`stock-comparison-candidate-review-${card.stockCode}`}
-          data-tone={meta.decision.tone}
-          onClick={() => onReviewCandidate(card)}
-        >
-          复核
-        </button>
-      </article>
-    );
-  };
 
   return (
     <section
@@ -363,123 +293,161 @@ export function StockAnalysisCandidateComparison({
       data-testid="stock-analysis-candidate-comparison"
       aria-label="候选横向比较"
     >
-      <header className="stock-analysis-page__candidate-comparison-head">
-        <div>
-          <strong>候选横向比较</strong>
-          <span>先做取舍，再看单只详情</span>
-        </div>
+      <div
+        className="stock-analysis-page__candidate-comparison-basis"
+        data-testid="stock-analysis-candidate-comparison-basis"
+      >
+        <span className="stock-analysis-page__tabular">数据日 {compactText(asOfLabel, 12, "待确认")}</span>
+        <span>口径 {usesHybridFusion ? "融合排序" : "候选排序"}</span>
         <span
           className="stock-analysis-page__candidate-comparison-rules"
           data-testid="stock-analysis-candidate-comparison-rules"
         >
           口径：首位优先；边界/事件待核实先等待；证据不足降级观察
         </span>
-      </header>
-      <div className="stock-analysis-page__candidate-decision-board">
-        <article
-          className="stock-analysis-page__candidate-lead-card"
-          data-testid={`stock-comparison-candidate-row-${leadCandidate.stockCode}`}
-          data-tone={leadMeta.decision.tone}
+      </div>
+      <div className="stock-analysis-page__candidate-dense-wrap">
+        <table
+          className="stock-analysis-page__candidate-dense-table"
+          data-testid="stock-analysis-candidate-dense-table"
+          data-mode={usesHybridFusion ? "hybrid" : "trend"}
         >
-          <div className="stock-analysis-page__candidate-lead-rank">
-            <span>首选</span>
-            <strong>#{leadCandidate.rank}</strong>
-          </div>
-          <div className="stock-analysis-page__candidate-lead-main">
-            <span
-              className={`stock-analysis-page__candidate-comparison-decision stock-analysis-page__candidate-comparison-decision--${leadMeta.decision.tone}`}
-            >
-              {leadMeta.decision.label} · {leadMeta.decision.reason}
-            </span>
-            <h3>
-              {leadCandidate.stockName}
-              <small className="stock-analysis-page__tabular">{leadCandidate.stockCode}</small>
-            </h3>
-            <p
-              className="stock-analysis-page__candidate-priority-reason"
-              title={`优先理由：${leadMeta.priorityReason}`}
-            >
-              优先理由：{compactText(leadMeta.priorityReason, 70)}
-            </p>
-            {leadThemeEvidenceSummary ? (
-              <p
-                className="stock-analysis-page__candidate-priority-reason"
-                data-testid={`stock-comparison-candidate-theme-${leadCandidate.stockCode}`}
-                title={`题材归属：${leadThemeEvidenceSummary}`}
-              >
-                题材归属：{leadThemeEvidenceSummary}
-              </p>
-            ) : null}
-            <dl className="stock-analysis-page__candidate-lead-metrics">
-              <div>
-                <dt>观察位</dt>
-                <dd className="stock-analysis-page__tabular">{leadCandidate.distanceToBreakoutPct}</dd>
-              </div>
-              <div>
-                <dt>证据</dt>
-                <dd className="stock-analysis-page__tabular">{leadMeta.evidenceCount} 条</dd>
-              </div>
-              <div>
-                <dt>边界</dt>
-                <dd>{leadMeta.boundaryLabel}</dd>
-              </div>
-            </dl>
-            <dl
-              className="stock-analysis-page__candidate-criteria"
-              data-testid={`stock-candidate-criteria-${leadCandidate.stockCode}`}
-              aria-label={`${leadCandidate.stockName} 选股口径校验`}
-            >
-              {leadMeta.criteria.map((criterion) => (
-                <div key={criterion.label} data-tone={criterion.tone}>
-                  <dt>{criterion.label}</dt>
-                  <dd className="stock-analysis-page__tabular" title={criterion.value}>
-                    {criterion.value}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-          <div
-            className="stock-analysis-page__candidate-lead-evidence"
-            data-has-score={leadMeta.scoreSummary ? "true" : "false"}
-          >
-            {leadMeta.scoreSummary ? <span title={leadMeta.scoreSummary}>{leadMeta.scoreSummary}</span> : null}
-            <small title={leadCandidate.invalidationFocus}>
-              失效：{compactText(leadCandidate.invalidationFocus, 30)}
-            </small>
-            <button
-              type="button"
-              className={`stock-analysis-page__candidate-comparison-action stock-analysis-page__candidate-comparison-action--${leadMeta.decision.tone}`}
-              data-testid={`stock-comparison-candidate-review-${leadCandidate.stockCode}`}
-              data-tone={leadMeta.decision.tone}
-              onClick={() => onReviewCandidate(leadCandidate)}
-            >
-              复核
-            </button>
-          </div>
-        </article>
+          <thead>
+            <tr>
+              <th scope="col" className="stock-analysis-page__candidate-dense-num">排名</th>
+              <th scope="col">标的</th>
+              <th scope="col">行业</th>
+              <th scope="col">来源策略</th>
+              <th scope="col">{usesHybridFusion ? "动作" : "形态"}</th>
+              <th scope="col" className="stock-analysis-page__candidate-dense-num">
+                {usesHybridFusion ? "置信度" : "观察位"}
+              </th>
+              <th scope="col" className="stock-analysis-page__candidate-dense-num">证据</th>
+              <th scope="col">边界</th>
+              <th scope="col">优先理由</th>
+              <th scope="col">决策状态</th>
+              <th scope="col">复核</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visibleCandidates.map((card, index) => {
+              const meta = buildCandidateCardMeta(card, usesHybridFusion, index);
+              const decision: CandidateDecision = canReviewCandidates
+                ? meta.decision
+                : { ...meta.decision, label: "阻断", tone: "warning" };
+              const sourceLabel = candidateSourceLabel(card);
+              const sourceSignal = candidateSourceSignal(sourceLabel);
+              const themeEvidenceSummary = candidateThemeEvidenceSummary(card);
+              const sectorCodeDisplay = displaySectorCode(card.sectorCode);
+              const priorityTitle = themeEvidenceSummary
+                ? `优先理由：${meta.priorityReason} · 题材归属：${themeEvidenceSummary}`
+                : `优先理由：${meta.priorityReason}`;
 
-        {alternateCandidates.length > 0 ? (
-          <div className="stock-analysis-page__candidate-alternates" data-testid="stock-analysis-candidate-alternates">
-            {visibleAlternateCandidates.map((card, index) => renderAlternateCard(card, index))}
-            {deferredAlternateCandidates.length > 0 ? (
-              <details
-                className="stock-analysis-page__candidate-more-alternates"
-                data-testid="stock-analysis-candidate-more-alternates"
-              >
-                <summary className="stock-analysis-page__candidate-more-alternates-summary">
-                  <span>更多备选</span>
-                  <small>余 {deferredAlternateCandidates.length} 只</small>
-                </summary>
-                <div className="stock-analysis-page__candidate-more-alternates-grid">
-                  {deferredAlternateCandidates.map((card, index) =>
-                    renderAlternateCard(card, index + DEFAULT_ALTERNATE_PREVIEW_COUNT),
-                  )}
-                </div>
-              </details>
-            ) : null}
-          </div>
-        ) : null}
+              return (
+                <tr
+                  key={`${card.stockCode}:${card.rank}:${index}`}
+                  data-testid={`stock-comparison-candidate-row-${card.stockCode}`}
+                  data-tone={decision.tone}
+                  data-lead={index === 0 ? "true" : undefined}
+                >
+                  <td className="stock-analysis-page__candidate-dense-num stock-analysis-page__tabular">
+                    #{card.rank}
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      className="stock-analysis-page__candidate-dense-stock"
+                      title={`复核焦点：${fullText(card.reviewFocus)}`}
+                      onClick={() => onReviewCandidate(card)}
+                    >
+                      <span>{card.stockName}</span>
+                      <small className="stock-analysis-page__tabular">{card.stockCode}</small>
+                    </button>
+                    {card.liquidityFloorPass === false ? (
+                      <small
+                        className="stock-analysis-page__candidate-dense-liquidity"
+                        title={card.dailyAmountLabel ?? "低于 2 亿元日成交门槛"}
+                      >
+                        低流动
+                      </small>
+                    ) : null}
+                  </td>
+                  <td
+                    className="stock-analysis-page__candidate-dense-muted"
+                    title={sectorCodeDisplay ? `${card.sectorName}（${sectorCodeDisplay}）` : card.sectorName}
+                  >
+                    {card.sectorName}
+                  </td>
+                  <td
+                    className="stock-analysis-page__candidate-dense-source"
+                    data-tone={sourceSignal.tone}
+                    title={`来源信号：${sourceSignal.label}`}
+                  >
+                    {sourceLabel}
+                  </td>
+                  <td
+                    className="stock-analysis-page__candidate-dense-muted"
+                    title={
+                      usesHybridFusion
+                        ? (meta.scoreSummary ?? undefined)
+                        : `形态：${fullText(card.pattern)}｜${fullText(card.patternNote, "")}`.replace(/｜$/, "")
+                    }
+                  >
+                    {usesHybridFusion
+                      ? denseCellText(fusionActionDisplayLabel(rawFieldValue(card, "fusion_action")))
+                      : denseCellText(card.pattern)}
+                  </td>
+                  <td className="stock-analysis-page__candidate-dense-num stock-analysis-page__tabular">
+                    {usesHybridFusion
+                      ? denseCellText(confidenceDisplayLabel(rawFieldValue(card, "confidence")))
+                      : denseCellText(card.distanceToBreakoutPct)}
+                  </td>
+                  <td className="stock-analysis-page__candidate-dense-num stock-analysis-page__tabular">
+                    {meta.evidenceCount} 条
+                  </td>
+                  <td
+                    className="stock-analysis-page__candidate-dense-boundary"
+                    data-tone={meta.boundaryCount > 0 ? "warning" : "neutral"}
+                    title={meta.boundaryDetail}
+                  >
+                    {meta.boundaryLabel}
+                  </td>
+                  <td className="stock-analysis-page__candidate-dense-reason" title={priorityTitle}>
+                    {meta.priorityReason}
+                    {themeEvidenceSummary ? (
+                      <small data-testid={`stock-comparison-candidate-theme-${card.stockCode}`}>
+                        {" 题材归属："}
+                        {themeEvidenceSummary}
+                      </small>
+                    ) : null}
+                  </td>
+                  <td
+                    className="stock-analysis-page__candidate-dense-decision"
+                    title={`失效：${fullText(card.invalidationFocus)}`}
+                  >
+                    <span
+                      className={`stock-analysis-page__candidate-comparison-decision stock-analysis-page__candidate-comparison-decision--${decision.tone}`}
+                    >
+                      {decision.label}
+                    </span>
+                    <small>{decision.reason}</small>
+                  </td>
+                  <td className="stock-analysis-page__candidate-dense-action">
+                    <button
+                      type="button"
+                      className={`stock-analysis-page__candidate-comparison-action stock-analysis-page__candidate-comparison-action--${decision.tone}`}
+                      data-testid={`stock-comparison-candidate-review-${card.stockCode}`}
+                      data-tone={decision.tone}
+                      onClick={() => onReviewCandidate(card)}
+                    >
+                      {canReviewCandidates ? "复核" : "只读"}
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </section>
   );

@@ -66,6 +66,8 @@ export const sectorViewTabs: { key: StockSectorViewKind; label: string }[] = [
   { key: "amplitude", label: "波动振幅" },
 ];
 
+export const SECTOR_STRENGTH_VISIBLE_LIMIT = 10;
+
 export function resolveSectorMetricValue(row: StockSectorRow, view: StockSectorViewKind): number | null {
   if (view === "pctchange") return row.pctChangeValue;
   if (view === "turnover") return row.turnoverValue;
@@ -242,7 +244,8 @@ export function buildSectorStrengthOption({
   view: StockSectorViewKind;
   activeSectorCode: string | null;
 }): EChartsOption {
-  const values = rows.map((row) => resolveSectorMetricValue(row, view) ?? 0);
+  const visibleRows = rows.slice(0, SECTOR_STRENGTH_VISIBLE_LIMIT);
+  const values = visibleRows.map((row) => resolveSectorMetricValue(row, view) ?? 0);
   const absMax = Math.max(...values.map((value) => Math.abs(value)), 0.0001);
   const xMin = view === "pctchange" ? -absMax * 1.08 : 0;
   const xMax =
@@ -271,20 +274,19 @@ export function buildSectorStrengthOption({
     yAxis: {
       type: "category",
       inverse: true,
-      data: rows.map((row) => row.sectorName),
+      data: visibleRows.map((row) => row.sectorName),
       axisLine: { show: false },
       axisTick: { show: false },
       axisLabel: {
         color: stockChartPalette.ink,
-        fontSize: 11,
-        width: 74,
-        overflow: "truncate",
+        fontSize: 10,
+        interval: 0,
       },
     },
     series: [
       {
         type: "bar",
-        data: rows.map((row, index) => ({
+        data: visibleRows.map((row, index) => ({
           value: values[index],
           itemStyle: {
             color:
@@ -294,8 +296,8 @@ export function buildSectorStrengthOption({
             borderRadius: [0, 3, 3, 0],
           },
         })),
-        barWidth: 14,
-        barMaxWidth: 18,
+        barCategoryGap: "18%",
+        barMaxWidth: 12,
         showBackground: true,
         backgroundStyle: { color: stockChartPalette.track, borderRadius: [0, 3, 3, 0] },
         label: {
@@ -306,7 +308,7 @@ export function buildSectorStrengthOption({
           fontWeight: 700,
           padding: [0, 6, 0, 0],
           formatter: (params) => {
-            const row = rows[Number(params.dataIndex ?? 0)];
+            const row = visibleRows[Number(params.dataIndex ?? 0)];
             if (!row) return "";
             if (view === "score") return row.score;
             if (view === "pctchange") return row.pctChange;
@@ -321,7 +323,7 @@ export function buildSectorStrengthOption({
       confine: true,
       formatter: (params) => {
         const item = Array.isArray(params) ? params[0] : params;
-        const row = rows[Number(item?.dataIndex ?? 0)];
+        const row = visibleRows[Number(item?.dataIndex ?? 0)];
         if (!row) return "";
         return `${row.rank}. ${row.sectorName}<br/>${sectorViewLabel(view)}: ${
           view === "score" ? row.score : view === "pctchange" ? row.pctChange : view === "turnover" ? row.turnover : row.amplitude
