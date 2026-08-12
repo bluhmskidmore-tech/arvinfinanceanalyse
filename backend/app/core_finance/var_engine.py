@@ -1,4 +1,6 @@
-"""参数法 VaR 引擎 — 基于 DV01 的利率风险 VaR 计算（自 MOSS-V2 core_finance 迁入）。
+"""DORMANT: 无生产调用方，接线前必须补黄金测试（见 PRD v0.3 B3/FI-P2-09）。
+
+参数法 VaR 引擎 — 基于 DV01 的利率风险 VaR 计算（自 MOSS-V2 core_finance 迁入）。
 
 公式:
   daily_vol_bp = annual_vol_bp / sqrt(252)
