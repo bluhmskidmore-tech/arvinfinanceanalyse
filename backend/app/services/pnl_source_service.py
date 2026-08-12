@@ -14,6 +14,7 @@ from backend.app.core_finance.pnl import FI_CUMULATIVE_REALIZED_517_EVENT_TYPE
 from backend.app.core_finance.source_rules import describe_source_file
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import SOURCE_MANIFEST_STREAM, GovernanceRepository
+from backend.app.services.source_file_hash import sha256_file
 
 SUPPORTED_PNL_SOURCE_FAMILIES = ("pnl", "pnl_514", "pnl_516", "pnl_517")
 MANIFEST_ELIGIBLE_STATUSES = {"completed", "rerun"}
@@ -515,6 +516,7 @@ def _is_processed_path(path: Path) -> bool:
 
 def _build_source_version(path: Path) -> str:
     stat = path.stat()
-    seed = f"{path.name}:{stat.st_size}:{stat.st_mtime_ns}"
+    content_sha256 = sha256_file(path)[:16]
+    seed = f"{path.name}:{stat.st_size}:{stat.st_mtime_ns}:{content_sha256}"
     digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:12]
     return f"sv_pnl_{digest}"

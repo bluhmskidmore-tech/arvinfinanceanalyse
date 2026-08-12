@@ -714,6 +714,11 @@ def test_source_preview_refresh_sync_fallback_dual_writes_job_state_when_configu
     _configure_source_preview_refresh_env(tmp_path, monkeypatch, include_pnl_preview_source=True)
     job_state_path = tmp_path / "job-state.db"
     monkeypatch.setenv("MOSS_JOB_STATE_DSN", f"sqlite:///{job_state_path.as_posix()}")
+    # _configure_source_preview_refresh_env already primed the current settings
+    # cache generation (without MOSS_JOB_STATE_DSN). Bump the shared generation so
+    # the task worker's own get_settings() rebuilds and sees the job-state DSN;
+    # otherwise its stale Settings skips the running/completed job-state writes.
+    get_settings.cache_clear()
     refresh_module = load_module(
         "backend.app.services.source_preview_refresh_service",
         "backend/app/services/source_preview_refresh_service.py",

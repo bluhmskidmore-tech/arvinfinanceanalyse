@@ -13,6 +13,7 @@ from backend.app.schemas.qdb_gl_contract import (
     QdbGlContractFinding,
     QdbGlLineage,
 )
+from backend.app.services.source_file_hash import sha256_file
 
 RULE_VERSION = "rv_qdb_gl_input_contract_v1"
 
@@ -562,7 +563,8 @@ def _build_source_version(path: Path) -> str:
         return f"sv_qdb_gl_{digest}"
 
     stat = path.stat()
-    seed = f"{path.name}:{stat.st_size}:{stat.st_mtime_ns}"
+    content_sha256 = sha256_file(path)[:16]
+    seed = f"{path.name}:{stat.st_size}:{stat.st_mtime_ns}:{content_sha256}"
     digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:12]
     return f"sv_qdb_gl_{digest}"
 

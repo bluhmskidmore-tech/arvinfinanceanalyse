@@ -542,6 +542,35 @@ def _v17_accounting_asset_movement(conn: duckdb.DuckDBPyConnection) -> None:
     _run_sql_slice(conn, "18_accounting_asset_movement.sql")
 
 
+# --- Schema ledger note (three-way alignment; enforced by
+# --- tests/test_schema_registry_consistency.py) -------------------------------
+#
+# Migration version numbers and registry slice file numbers drifted
+# historically and BOTH numbering sequences are now frozen. Do not renumber
+# either side retroactively: existing databases already recorded the current
+# version numbers in _schema_migrations, and v30 was once reused in an
+# existing database (see the recovery note inside _v32_add_table_constraints).
+# Known offsets, for example: _v25 runs slice 24 (cffex member rank), _v26
+# runs slice 25 (pnl by business precompute), _v30 runs slice 32 (fact
+# snapshot indexes), _v31 runs slice 33 (market breadth daily), and slice
+# number 26 was never issued.
+#
+# Lazy-ensure exemptions (slices intentionally NOT registered below):
+#   * slice 30 (stock adjustment factor), ensured lazily by
+#     backend.app.core_finance.adjusted_returns.ensure_stock_adjustment_factor_schema;
+#     production callsites: backend/app/tasks/livermore_candidate_history_materialize.py
+#     and scripts/backfill_stock_adjustment_factor.py.
+#   * slice 31 (livermore matched baseline), ensured lazily by
+#     backend.app.core_finance.matched_baseline.ensure_livermore_matched_baseline_schema;
+#     called inside the matched-baseline generate and materialize paths of
+#     backend/app/core_finance/matched_baseline.py.
+# Reason: the baseline is frozen at v39 and appending new versions solely for
+# registration would mutate production migration history for schemas that
+# every runtime path already ensures. The authoritative exemption records are
+# the lazy_ensure_exempt entries in backend/app/schema_registry/duckdb/manifest.json.
+# ------------------------------------------------------------------------------
+
+
 def register_all(registry: DuckDBSchemaRegistry) -> None:
     registry.register(1, "baseline snapshot tables", _v1_snapshot_tables)
     registry.register(2, "baseline bond analytics", _v2_bond_analytics)

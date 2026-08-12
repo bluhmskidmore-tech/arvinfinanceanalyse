@@ -145,17 +145,58 @@
     {
       "path": "30_stock_adjustment_factor.sql",
       "ensure_module": "backend.app.core_finance.adjusted_returns",
-      "ensure_symbol": "ensure_stock_adjustment_factor_schema"
+      "ensure_symbol": "ensure_stock_adjustment_factor_schema",
+      "lazy_ensure_exempt": true,
+      "lazy_ensure_reason": "Intentionally not wired into duckdb_migrations.register_all: the migration baseline is frozen at v39 with historical version/file-number drift (v30 was once reused in an existing database), so appending a new version solely for registration would mutate production migration history. Runtime schema is guaranteed by lazy ensure calls.",
+      "lazy_ensure_callsites": [
+        "backend/app/tasks/livermore_candidate_history_materialize.py",
+        "scripts/backfill_stock_adjustment_factor.py"
+      ]
     },
     {
       "path": "31_livermore_matched_baseline.sql",
       "ensure_module": "backend.app.core_finance.matched_baseline",
-      "ensure_symbol": "ensure_livermore_matched_baseline_schema"
+      "ensure_symbol": "ensure_livermore_matched_baseline_schema",
+      "lazy_ensure_exempt": true,
+      "lazy_ensure_reason": "Intentionally not wired into duckdb_migrations.register_all for the same frozen-baseline reason as slice 30. Runtime schema is guaranteed by lazy ensure calls inside the matched-baseline generate and materialize paths.",
+      "lazy_ensure_callsites": [
+        "backend/app/core_finance/matched_baseline.py"
+      ]
+    },
+    {
+      "path": "32_fact_snapshot_indexes.sql",
+      "ensure_module": "backend.app.repositories.duckdb_migrations",
+      "ensure_symbol": "_v30_fact_snapshot_indexes"
     },
     {
       "path": "33_market_breadth_daily.sql",
       "ensure_module": "backend.app.tasks.market_breadth_materialize",
       "ensure_symbol": "ensure_market_breadth_daily_schema"
+    },
+    {
+      "path": "34_add_table_constraints.sql",
+      "ensure_module": "backend.app.repositories.duckdb_migrations",
+      "ensure_symbol": "_v32_add_table_constraints"
+    },
+    {
+      "path": "35_risk_tensor_materialized_metrics.sql",
+      "ensure_module": "backend.app.repositories.duckdb_migrations",
+      "ensure_symbol": "_v33_risk_tensor_materialized_metrics"
+    },
+    {
+      "path": "36_pnl_source_classification_metadata.sql",
+      "ensure_module": "backend.app.repositories.duckdb_migrations",
+      "ensure_symbol": "_v34_pnl_source_classification_metadata"
+    },
+    {
+      "path": "37_risk_tensor_projection_quality.sql",
+      "ensure_module": "backend.app.repositories.duckdb_migrations",
+      "ensure_symbol": "_v36_risk_tensor_projection_quality"
+    },
+    {
+      "path": "38_bond_analytics_payment_frequency_provenance.sql",
+      "ensure_module": "backend.app.repositories.duckdb_migrations",
+      "ensure_symbol": "_v37_bond_payment_frequency_fallback_provenance"
     },
     {
       "path": "39_stock_official_disclosure.sql",

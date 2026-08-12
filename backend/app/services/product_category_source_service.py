@@ -13,6 +13,7 @@ from backend.app.core_finance.product_category_pnl import (
     CanonicalFactRow,
     derive_monthly_pnl,
 )
+from backend.app.services.source_file_hash import sha256_file
 
 LEDGER_PREFIX = "\u603b\u8d26\u5bf9\u8d26"
 AVG_PREFIX = "\u65e5\u5747"
@@ -180,7 +181,8 @@ def _build_source_version(ledger_path: Path, avg_path: Path) -> str:
     parts = []
     for path in (ledger_path, avg_path):
         stat = path.stat()
-        parts.append(f"{path.name}:{stat.st_size}:{stat.st_mtime_ns}")
+        content_sha256 = sha256_file(path)[:16]
+        parts.append(f"{path.name}:{stat.st_size}:{stat.st_mtime_ns}:{content_sha256}")
     digest = hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:12]
     return f"sv_product_category_{digest}"
 
