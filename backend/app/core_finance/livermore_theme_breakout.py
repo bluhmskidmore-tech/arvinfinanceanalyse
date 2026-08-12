@@ -5,8 +5,14 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import cast
 
+from backend.app.core_finance.strategy_policy import POLICY, ThemeProxyDefinition
+
 EPS = 1e-12
-FORMULA_VERSION = "rv_livermore_theme_breakout_real_concept_v5"
+# v6：题材 proxy 池从单一 semiconductor_proxy 扩展为 POLICY.theme_proxies 多题材
+# 行业篮子（半导体/算力AI/机器人/军工/新能源/医药/券商），每个题材独立评估并按
+# 题材分组输出，theme 行新增 proxy_code；突破判定门槛与公式（强度阈值/集群/
+# 广度/排序）保持 v5 不变。
+FORMULA_VERSION = "rv_livermore_theme_breakout_multi_proxy_v6"
 STRONG_PCTCHANGE_THRESHOLD = 5.0
 MIN_STRONG_STOCK_COUNT = 3
 MIN_LIMIT_STOCK_COUNT = 2
@@ -52,35 +58,8 @@ class _EvaluatedThemeRow:
     failed_gate_codes: tuple[str, ...]
 
 
-@dataclass(frozen=True)
-class _ThemeDefinition:
-    key: str
-    name: str
-    parent_sector_codes: tuple[str, ...]
-    parent_sector_names: tuple[str, ...]
-    stock_name_keywords: tuple[str, ...]
-
-
-_THEME_DEFINITIONS: tuple[_ThemeDefinition, ...] = (
-    _ThemeDefinition(
-        key="semiconductor_proxy",
-        name="Semiconductor proxy",
-        parent_sector_codes=("801080",),
-        parent_sector_names=("electronic", "electronics", "dianzi", "电子"),
-        stock_name_keywords=(
-            "semiconductor",
-            "chip",
-            "micro",
-            "wafer",
-            "ic",
-            "半导体",
-            "芯",
-            "晶圆",
-            "集成",
-            "微电子",
-        ),
-    ),
-)
+# 声明式题材 proxy 池由 strategy_policy 承载；此处仅别名引用，禁止另写字面量。
+THEME_PROXY_DEFINITIONS = POLICY.theme_proxies
 
 
 def compute_theme_breakout(
@@ -116,7 +95,7 @@ def compute_theme_breakout(
             if row is not None:
                 evaluated_rows.append(row)
     else:
-        for definition in _THEME_DEFINITIONS:
+        for definition in THEME_PROXY_DEFINITIONS:
             candidates = [_stock_row(definition, snapshot) for snapshot in snapshots]
             stock_rows = [row for row in candidates if row is not None]
             if not stock_rows:
@@ -127,6 +106,7 @@ def compute_theme_breakout(
                 theme_key=definition.key,
                 theme_name=definition.name,
                 source_kind="proxy",
+                proxy_code=definition.proxy_code,
                 stock_rows=stock_rows,
             )
             if row is not None:
@@ -153,7 +133,7 @@ def compute_theme_breakout(
 
 
 def _stock_row(
-    definition: _ThemeDefinition | None,
+    definition: ThemeProxyDefinition | None,
     snapshot: ThemeBreakoutSnapshot,
 ) -> dict[str, object] | None:
     if definition is not None and not _matches_theme(definition, snapshot):
@@ -214,6 +194,7 @@ def _evaluate_theme_row(
     theme_name: str,
     source_kind: str,
     stock_rows: list[dict[str, object]],
+    proxy_code: str = "",
 ) -> _EvaluatedThemeRow | None:
     # Cluster strength, leaders, and displayed items stay on the strong/limit-up
     # subset; breadth statistics must cover the full concept membership so a
@@ -255,6 +236,8 @@ def _evaluate_theme_row(
         "theme_key": theme_key,
         "theme_name": theme_name,
         "source_kind": source_kind,
+        # proxy 题材为申万一级行业篮子代码（多行业 "+" 连接）；真实概念路径为空串。
+        "proxy_code": proxy_code,
         "parent_sector_code": str(ordered_items[0]["sector_code"]),
         "parent_sector_name": str(ordered_items[0]["sector_name"]),
         "parent_sector_rank": parent_sector_rank,
@@ -327,7 +310,7 @@ def _review_row(evaluated: _EvaluatedThemeRow) -> dict[str, object]:
     }
 
 
-def _matches_theme(definition: _ThemeDefinition, snapshot: ThemeBreakoutSnapshot) -> bool:
+def _matches_theme(definition: ThemeProxyDefinition, snapshot: ThemeBreakoutSnapshot) -> bool:
     sector_code = str(snapshot.sector_code).strip()
     sector_name = str(snapshot.sector_name).strip().lower()
     stock_name = str(snapshot.stock_name).strip().lower()
@@ -336,6 +319,9 @@ def _matches_theme(definition: _ThemeDefinition, snapshot: ThemeBreakoutSnapshot
     )
     if not in_parent_sector:
         return False
+    # 关键词为空表示整行业篮子；非空表示行业内名称关键词子集。
+    if not definition.stock_name_keywords:
+        return True
     return any(keyword.lower() in stock_name for keyword in definition.stock_name_keywords)
 
 

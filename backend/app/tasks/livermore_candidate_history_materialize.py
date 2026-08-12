@@ -1454,6 +1454,7 @@ def _build_signal_rows(payload: dict[str, object]) -> list[dict[str, object]]:
                                 "market_state": market_state,
                                 "theme_key": theme.get("theme_key"),
                                 "theme_name": theme.get("theme_name"),
+                                "proxy_code": theme.get("proxy_code"),
                                 "source_kind": theme.get("source_kind"),
                                 "theme_source_kind": theme.get("source_kind"),
                                 "theme_rank": theme_rank,

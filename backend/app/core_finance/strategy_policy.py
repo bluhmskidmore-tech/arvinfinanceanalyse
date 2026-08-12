@@ -68,6 +68,27 @@ class BacktestVariantPolicy:
 
 
 @dataclass(frozen=True)
+class ThemeProxyDefinition:
+    """theme_breakout 的题材代理篮子（proxy）定义。
+
+    生产库当前没有题材 ETF/指数日线（fact_choice_macro_daily 仅 CSI300/CSI500
+    收盘序列，choice_stock_daily_observation 仅覆盖股票代码），因此题材 proxy
+    以申万一级(2021)行业成员股票篮子表达，与历史 semiconductor_proxy 同机制；
+    ``proxy_code`` 记录篮子对应的申万一级行业代码（多行业以 ``+`` 连接），
+    ``stock_name_keywords`` 为空表示整行业篮子，非空表示行业内名称关键词子集。
+    """
+
+    key: str
+    #: 题材中文名，进入信号 theme_name 与历史行展示。
+    name: str
+    #: 篮子标的代码：申万一级行业代码，多行业用 "+" 连接。
+    proxy_code: str
+    parent_sector_codes: tuple[str, ...]
+    parent_sector_names: tuple[str, ...]
+    stock_name_keywords: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class SizingPolicy:
     """正式化的实时建议仓位政策（risk_budget sizing，stock_candidate 先行）。
 
@@ -103,6 +124,7 @@ class StrategyPolicy:
     monitoring_thresholds: MonitoringThresholds
     backtest_variants: BacktestVariantPolicy
     sizing: SizingPolicy
+    theme_proxies: tuple[ThemeProxyDefinition, ...]
 
 
 _STOCK_CANDIDATE_POLICIES = (
@@ -141,6 +163,99 @@ _STOCK_CANDIDATE_POLICIES = (
         gap_norm_max=0.45,
         abnormal_turnover_min=1.0,
         abnormal_turnover_max=3.5,
+    ),
+)
+
+
+# theme_breakout 多题材 proxy 池。成员数为 2026-08-12 审计日生产库口径
+# （choice_stock_universe × choice_stock_sector_membership × choice_stock_daily_observation
+# 内连接，快照/交易日 2026-08-11）。历史 Critical 问题：池内仅 semiconductor_proxy
+# 一项，"题材突破"实际退化为单一半导体行业动量（tmp-strategy-reports/
+# theme-breakout-decay-review.md §8）。低空经济类题材因名称关键词仅命中 1 只、
+# 且概念表非时点数据而未纳入。
+_THEME_PROXY_POOL: tuple[ThemeProxyDefinition, ...] = (
+    # 33 只。首项保持与 v5 semiconductor_proxy 完全同义（含旧代码 801080 与
+    # 英文行业别名），保证 theme_key 历史连续。
+    ThemeProxyDefinition(
+        key="semiconductor_proxy",
+        name="半导体",
+        proxy_code="S270000",
+        parent_sector_codes=("S270000", "801080"),
+        parent_sector_names=("electronic", "electronics", "dianzi", "电子"),
+        stock_name_keywords=(
+            "semiconductor",
+            "chip",
+            "micro",
+            "wafer",
+            "ic",
+            "半导体",
+            "芯",
+            "晶圆",
+            "集成",
+            "微电子",
+        ),
+    ),
+    # 456 只（计算机 334 + 通信 122），覆盖服务器/软件/IDC/光模块算力链。
+    ThemeProxyDefinition(
+        key="ai_computing_proxy",
+        name="算力AI",
+        proxy_code="S710000+S730000",
+        parent_sector_codes=("S710000", "S730000"),
+        parent_sector_names=("computer", "telecom", "计算机", "通信"),
+    ),
+    # 63 只：机械设备行业内机器人/数控/激光/自动化名称子集。
+    ThemeProxyDefinition(
+        key="robotics_proxy",
+        name="机器人与智能装备",
+        proxy_code="S640000",
+        parent_sector_codes=("S640000",),
+        parent_sector_names=("machinery", "机械设备"),
+        stock_name_keywords=(
+            "robot",
+            "automation",
+            "机器人",
+            "智能",
+            "数控",
+            "激光",
+            "自动化",
+            "减速",
+            "伺服",
+            "机床",
+            "精工",
+        ),
+    ),
+    # 138 只，整行业篮子。
+    ThemeProxyDefinition(
+        key="defense_proxy",
+        name="国防军工",
+        proxy_code="S650000",
+        parent_sector_codes=("S650000",),
+        parent_sector_names=("defense", "国防军工"),
+    ),
+    # 377 只（电池/光伏/风电/储能/电网设备），整行业篮子。
+    ThemeProxyDefinition(
+        key="new_energy_proxy",
+        name="新能源",
+        proxy_code="S630000",
+        parent_sector_codes=("S630000",),
+        parent_sector_names=("power equipment", "电力设备"),
+    ),
+    # 478 只，整行业篮子。
+    ThemeProxyDefinition(
+        key="pharma_proxy",
+        name="医药",
+        proxy_code="S370000",
+        parent_sector_codes=("S370000",),
+        parent_sector_names=("pharmaceutical", "医药生物"),
+    ),
+    # 35 只：非银金融行业内证券名称子集。
+    ThemeProxyDefinition(
+        key="broker_proxy",
+        name="券商",
+        proxy_code="S490000",
+        parent_sector_codes=("S490000",),
+        parent_sector_names=("non-bank financial", "非银金融"),
+        stock_name_keywords=("securities", "证券"),
     ),
 )
 
@@ -217,4 +332,5 @@ POLICY = StrategyPolicy(
         stop_basis="ema10_stop_ref",
         applies_to=("stock_candidate",),
     ),
+    theme_proxies=_THEME_PROXY_POOL,
 )

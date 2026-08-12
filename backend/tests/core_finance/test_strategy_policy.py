@@ -204,6 +204,7 @@ def test_strategy_formula_versions_match_current_contracts() -> None:
         hybrid_fusion_candidates,
         livermore_risk_exit,
         livermore_stock_candidates,
+        livermore_theme_breakout,
         mean_reversion_candidates,
     )
     from backend.app.tasks import livermore_candidate_history_materialize
@@ -211,6 +212,7 @@ def test_strategy_formula_versions_match_current_contracts() -> None:
     assert mean_reversion_candidates.FORMULA_VERSION == "rv_mean_reversion_candidates_v2"
     assert factor_screen_candidates.FORMULA_VERSION == "rv_factor_screen_candidates_v4"
     assert hybrid_fusion_candidates.FORMULA_VERSION == "rv_hybrid_fusion_candidates_v4"
+    assert livermore_theme_breakout.FORMULA_VERSION == "rv_livermore_theme_breakout_multi_proxy_v6"
     assert livermore_stock_candidates.FORMULA_VERSION == "rv_livermore_stock_candidates_bundle_v7"
     assert livermore_risk_exit.FORMULA_VERSION == "rv_livermore_risk_exit_ema10_volume_obsfallback_v3"
     assert (
@@ -221,6 +223,44 @@ def test_strategy_formula_versions_match_current_contracts() -> None:
         livermore_candidate_history_materialize.EXECUTION_FORMULA_VERSION
         == "fv_livermore_candidate_execution_dual_adjust_v5"
     )
+
+
+def test_theme_proxy_pool_is_declarative_and_multi_theme() -> None:
+    """theme_breakout 题材 proxy 池的声明式契约：多题材、键唯一、中文名与
+    proxy_code 齐备；首项保持 semiconductor_proxy 的 v5 同义定义以延续历史。"""
+    from backend.app.core_finance import livermore_theme_breakout
+    from backend.app.core_finance.strategy_policy import POLICY
+
+    themes = POLICY.theme_proxies
+    assert livermore_theme_breakout.THEME_PROXY_DEFINITIONS is themes
+
+    keys = [theme.key for theme in themes]
+    assert len(keys) == len(set(keys))
+    assert len(themes) >= 7
+    assert {
+        "semiconductor_proxy",
+        "ai_computing_proxy",
+        "robotics_proxy",
+        "defense_proxy",
+        "new_energy_proxy",
+        "pharma_proxy",
+        "broker_proxy",
+    } <= set(keys)
+
+    for theme in themes:
+        assert theme.name.strip(), theme.key
+        assert theme.proxy_code.strip(), theme.key
+        assert theme.parent_sector_codes or theme.parent_sector_names, theme.key
+
+    semiconductor = themes[0]
+    assert semiconductor.key == "semiconductor_proxy"
+    assert semiconductor.name == "半导体"
+    assert "801080" in semiconductor.parent_sector_codes
+    assert "S270000" in semiconductor.parent_sector_codes
+    assert "半导体" in semiconductor.stock_name_keywords
+
+    whole_sector_keys = {theme.key for theme in themes if not theme.stock_name_keywords}
+    assert {"ai_computing_proxy", "defense_proxy", "new_energy_proxy", "pharma_proxy"} <= whole_sector_keys
 
 
 def test_existing_modules_alias_policy_values() -> None:
