@@ -1,15 +1,16 @@
-import { Suspense, lazy, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
-import type { EChartsOption } from "../../../lib/echarts";
-import { SECTOR_STRENGTH_VISIBLE_LIMIT } from "../lib/stockAnalysisChartModel";
-
-const LazyReactECharts = lazy(() => import("../../../lib/echarts"));
+import {
+  SECTOR_STRENGTH_VISIBLE_LIMIT,
+  type SectorStrengthBarRow,
+} from "../lib/stockAnalysisChartModel";
+import "./StockAnalysisSectorStrengthCard.css";
 
 type SectorStrengthCardState = "ready" | "loading" | "empty" | "error";
 
 type StockAnalysisSectorStrengthCardProps = {
   state: SectorStrengthCardState;
-  chartOption: EChartsOption | null;
+  bars: SectorStrengthBarRow[];
   sectorCount: number;
   sourceLabel: string;
   leaderLabel: string | null;
@@ -33,10 +34,18 @@ function CardShell({ children, pill }: { children: ReactNode; pill: ReactNode })
   );
 }
 
-/** First-screen compact sector-strength chart backed by sector snapshot or rank-series support. */
+/**
+ * First-screen compact sector-strength bars backed by sector snapshot or
+ * rank-series support.
+ *
+ * Deliberately not an ECharts instance: this card sits on the settled first
+ * screen, and its eager chart mount was what pulled echarts+zrender (~230 kB
+ * gz) into every first paint. Rows are plain text plus one inline SVG track
+ * per row; colours come from the `--dh-api-*` theme tokens only.
+ */
 export function StockAnalysisSectorStrengthCard({
   state,
-  chartOption,
+  bars,
   sectorCount,
   sourceLabel,
   leaderLabel,
@@ -66,7 +75,7 @@ export function StockAnalysisSectorStrengthCard({
     );
   }
 
-  if (state === "empty" || !chartOption) {
+  if (state === "empty" || bars.length === 0) {
     return (
       <CardShell pill={<span className="stock-analysis-page__fs-card-pill" data-tone="warning">待补</span>}>
         <p
@@ -91,16 +100,49 @@ export function StockAnalysisSectorStrengthCard({
         </span>
       }
     >
-      <div className="stock-analysis-page__fs-sector-chart" data-testid="stock-analysis-sector-strength-first-screen">
-        <Suspense fallback={<div className="stock-analysis-page__fs-sector-placeholder" aria-hidden="true" />}>
-          <LazyReactECharts
-            option={chartOption}
-            className="stock-analysis-page__echart stock-analysis-page__fs-sector-echart"
-            opts={{ renderer: "canvas" }}
-            notMerge
-            lazyUpdate
-          />
-        </Suspense>
+      <div
+        className="stock-analysis-page__fs-sector-chart stock-analysis-sector-bars"
+        data-testid="stock-analysis-sector-strength-first-screen"
+        role="list"
+        aria-label="板块强度排序条形"
+      >
+        {bars.map((bar) => (
+          <div
+            key={bar.key}
+            className="stock-analysis-sector-bars__row"
+            role="listitem"
+            title={bar.title}
+            data-active={bar.active ? "true" : undefined}
+            data-testid={`stock-analysis-sector-strength-bar-${bar.key}`}
+          >
+            <span className="stock-analysis-sector-bars__name">{bar.name}</span>
+            <svg
+              className="stock-analysis-sector-bars__svg"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <rect
+                className="stock-analysis-sector-bars__track"
+                x="0"
+                y="0"
+                width="100%"
+                height="100%"
+                rx="3"
+              />
+              <rect
+                className="stock-analysis-sector-bars__fill"
+                x={`${(bar.barStartFraction * 100).toFixed(3)}%`}
+                y="0"
+                width={`${(bar.barSpanFraction * 100).toFixed(3)}%`}
+                height="100%"
+                rx="3"
+              />
+            </svg>
+            <span className="stock-analysis-sector-bars__value stock-analysis-page__tabular">
+              {bar.valueLabel}
+            </span>
+          </div>
+        ))}
       </div>
       <footer className="stock-analysis-page__fs-card-foot">
         {leaderLabel ? <span>首位 {leaderLabel}</span> : <span>排序按综合得分</span>}

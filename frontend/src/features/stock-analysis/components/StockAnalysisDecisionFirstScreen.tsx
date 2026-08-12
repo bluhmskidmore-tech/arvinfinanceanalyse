@@ -1,5 +1,5 @@
 import type { FactorScreenCandidateItem } from "../../../api/contracts";
-import type { EChartsOption } from "../../../lib/echarts";
+import type { SectorStrengthCardModel } from "../lib/stockAnalysisChartModel";
 import type {
   StockCandidateReviewQueueItem,
   StockMarketStateCard,
@@ -18,8 +18,6 @@ import { StockAnalysisGateConditionsCard } from "./StockAnalysisGateConditionsCa
 import { StockAnalysisMacroCycleCard } from "./StockAnalysisMacroCycleCard";
 import { StockAnalysisSectorStrengthCard } from "./StockAnalysisSectorStrengthCard";
 
-type SectorStrengthCardState = "ready" | "loading" | "empty" | "error";
-
 type StockAnalysisDecisionFirstScreenProps = {
   asOfLabel: string;
   requestedAsOfLabel?: string | null;
@@ -27,15 +25,7 @@ type StockAnalysisDecisionFirstScreenProps = {
   heroModel: StockFirstScreenHeroModel;
   marketState: StockMarketStateCard;
   macroCycleModel: StockMacroCycleCardModel | null;
-  sectorCard: {
-    state: SectorStrengthCardState;
-    chartOption: EChartsOption | null;
-    sectorCount: number;
-    sourceLabel: string;
-    leaderLabel: string | null;
-    emptyReason?: string | null;
-    errorMessage?: string | null;
-  };
+  sectorCard: SectorStrengthCardModel;
   factorModel: StockFactorScreenCardModel | null;
   factorItems: FactorScreenCandidateItem[];
   onOpenFactorDetail: (row: FactorScreenCandidateItem) => void;
@@ -101,7 +91,7 @@ export function StockAnalysisDecisionFirstScreen({
         <StockAnalysisMacroCycleCard model={macroCycleModel} />
         <StockAnalysisSectorStrengthCard
           state={sectorCard.state}
-          chartOption={sectorCard.chartOption}
+          bars={sectorCard.bars}
           sectorCount={sectorCard.sectorCount}
           sourceLabel={sectorCard.sourceLabel}
           leaderLabel={sectorCard.leaderLabel}

@@ -22,7 +22,7 @@ html body .stock-analysis-page.stock-analysis-page--market-shell
   padding: 5px 10px;
   border-bottom: 1px solid var(--dh-api-line-soft);
   color: var(--dh-api-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   line-height: 16px;
 }
@@ -43,9 +43,9 @@ html body .stock-analysis-page.stock-analysis-page--market-shell
   border: 0;
   background: transparent;
   color: var(--dh-api-soft);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 650;
-  line-height: 16px;
+  line-height: 17px;
 }
 
 html body .stock-analysis-page.stock-analysis-page--market-shell
@@ -83,7 +83,7 @@ html body .stock-analysis-page.stock-analysis-page--market-shell
   height: 22px;
   background: var(--dh-api-panel-2);
   color: var(--dh-api-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
 }
 
@@ -225,7 +225,7 @@ html body .stock-analysis-page.stock-analysis-page--market-shell
 html body .stock-analysis-page.stock-analysis-page--market-shell
   .stock-analysis-page__candidate-dense-stock > small {
   color: var(--dh-api-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 650;
 }
 
@@ -241,7 +241,7 @@ html body .stock-analysis-page.stock-analysis-page--market-shell
   border: 1px solid var(--dh-api-amber);
   border-radius: var(--dh-api-radius, 6px);
   color: var(--dh-api-amber);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
 }
 
@@ -253,7 +253,7 @@ html body .stock-analysis-page.stock-analysis-page--market-shell
   border: 1px solid var(--dh-api-line);
   border-radius: var(--dh-api-radius, 6px);
   color: var(--dh-api-blue);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -299,14 +299,14 @@ html body .stock-analysis-page.stock-analysis-page--market-shell
 html body .stock-analysis-page.stock-analysis-page--market-shell
   .stock-analysis-page__candidate-dense-reason > small {
   color: var(--dh-api-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 html body .stock-analysis-page.stock-analysis-page--market-shell
   .stock-analysis-page__candidate-dense-decision > small {
   margin-left: 5px;
   color: var(--dh-api-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 650;
 }
 
@@ -325,7 +325,7 @@ html body .stock-analysis-page.stock-analysis-page--market-shell
   border-radius: 999px;
   background: var(--dh-api-panel-3);
   color: var(--dh-api-soft) !important;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   line-height: 16px;
 }
@@ -361,7 +361,7 @@ html body .stock-analysis-page.stock-analysis-page--market-shell
   background: var(--dh-api-panel-3);
   box-shadow: none;
   color: var(--dh-api-blue);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   line-height: 18px;
   transform: none;
@@ -467,7 +467,7 @@ html body .stock-analysis-page.stock-analysis-page--market-shell
   min-width: 0;
   overflow: hidden;
   color: var(--dh-api-soft);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -494,7 +494,7 @@ html body .stock-analysis-page.stock-analysis-page--market-shell
     .stock-analysis-page__candidate-dense-table th:nth-child(1),
   html body .stock-analysis-page.stock-analysis-page--market-shell
     .stock-analysis-page__candidate-dense-table td:nth-child(1) {
-    width: 34px;
+    width: 38px;
   }
 
   html body .stock-analysis-page.stock-analysis-page--market-shell
@@ -547,10 +547,17 @@ html body .stock-analysis-page.stock-analysis-page--market-shell
   }
 
   html body .stock-analysis-page.stock-analysis-page--market-shell
+    .stock-analysis-page__candidate-dense-table th:nth-child(10),
+  html body .stock-analysis-page.stock-analysis-page--market-shell
+    .stock-analysis-page__candidate-dense-table td:nth-child(10) {
+    width: 122px;
+  }
+
+  html body .stock-analysis-page.stock-analysis-page--market-shell
     .stock-analysis-page__candidate-dense-table th:nth-child(11),
   html body .stock-analysis-page.stock-analysis-page--market-shell
     .stock-analysis-page__candidate-dense-table td:nth-child(11) {
-    width: 52px;
+    width: 66px;
   }
 }
 

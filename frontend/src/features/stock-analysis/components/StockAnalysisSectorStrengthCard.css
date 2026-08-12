@@ -1,0 +1,57 @@
+/*
+ * 首屏「板块强度」内联 SVG 条形（去 ECharts 化）。
+ * 容器边框/底色/最小高度沿用页面级 .stock-analysis-page__fs-sector-chart；
+ * 本文件只负责条形行布局。零新增色值：全部取 --dh-api-* 主题 token。
+ */
+.stock-analysis-sector-bars {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-evenly;
+  gap: 2px;
+  padding: 7px 10px;
+}
+
+.stock-analysis-sector-bars__row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) 56px;
+  gap: 8px;
+  align-items: center;
+  min-height: 0;
+}
+
+.stock-analysis-sector-bars__name {
+  overflow: hidden;
+  color: var(--dh-api-ink);
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.stock-analysis-sector-bars__svg {
+  display: block;
+  width: 100%;
+  height: 10px;
+}
+
+.stock-analysis-sector-bars__track {
+  fill: var(--dh-api-line);
+}
+
+.stock-analysis-sector-bars__fill {
+  fill: var(--dh-api-ink-muted);
+}
+
+.stock-analysis-sector-bars__row[data-active="true"] .stock-analysis-sector-bars__fill {
+  fill: var(--dh-api-blue);
+}
+
+.stock-analysis-sector-bars__value {
+  overflow: hidden;
+  color: var(--dh-api-ink);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  text-align: right;
+}

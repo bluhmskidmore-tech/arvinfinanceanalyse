@@ -235,6 +235,128 @@ export function buildEventSummaryOption(rows: Array<{ label: string; count: numb
   };
 }
 
+/** X 轴范围口径：首屏 SVG 条形与深研 ECharts 图共用，防止两处渲染漂移。 */
+function resolveSectorStrengthScale(
+  values: number[],
+  view: StockSectorViewKind,
+): { xMin: number; xMax: number } {
+  const absMax = Math.max(...values.map((value) => Math.abs(value)), 0.0001);
+  const xMin = view === "pctchange" ? -absMax * 1.08 : 0;
+  const xMax =
+    view === "score"
+      ? 1
+      : view === "pctchange"
+        ? absMax * 1.08
+        : absMax * 1.12;
+  return { xMin, xMax };
+}
+
+/** 当前视角对应的后端格式化文本；不在前端重算业务数值。 */
+function sectorMetricDisplayLabel(row: StockSectorViewRow, view: StockSectorViewKind): string {
+  if (view === "score") return row.score;
+  if (view === "pctchange") return row.pctChange;
+  if (view === "turnover") return row.turnover;
+  return row.amplitude;
+}
+
+export type SectorStrengthBarRow = {
+  key: string;
+  name: string;
+  rank: number;
+  /** 右端数值标签：直接透出后端格式化文本 */
+  valueLabel: string;
+  /** 原生 title 悬停文本，内容对齐 ECharts 版 tooltip */
+  title: string;
+  active: boolean;
+  /** 条形起点，轨道宽度的 0-1 分数（pctchange 负值自零轴向左） */
+  barStartFraction: number;
+  /** 条形跨度，轨道宽度的 0-1 分数 */
+  barSpanFraction: number;
+};
+
+/**
+ * 首屏「板块强度」轻量 SVG 条形的视图模型。
+ * 口径与 buildSectorStrengthOption 完全一致：前 10 行、同一 X 轴范围、
+ * 同一数值标签与 active 高亮语义；仅渲染载体从 ECharts 换成内联 SVG。
+ */
+export function buildSectorStrengthBarRows({
+  rows,
+  view,
+  activeSectorCode,
+}: {
+  rows: StockSectorViewRow[];
+  view: StockSectorViewKind;
+  activeSectorCode: string | null;
+}): SectorStrengthBarRow[] {
+  const visibleRows = rows.slice(0, SECTOR_STRENGTH_VISIBLE_LIMIT);
+  const values = visibleRows.map((row) => resolveSectorMetricValue(row, view) ?? 0);
+  const { xMin, xMax } = resolveSectorStrengthScale(values, view);
+  const range = xMax - xMin;
+  const zeroFraction = (0 - xMin) / range;
+  return visibleRows.map((row, index) => {
+    const value = Math.min(Math.max(values[index] ?? 0, xMin), xMax);
+    const valueFraction = (value - xMin) / range;
+    const valueLabel = sectorMetricDisplayLabel(row, view);
+    return {
+      key: row.sectorCode,
+      name: row.sectorName,
+      rank: row.rank,
+      valueLabel,
+      title: `${row.rank}. ${row.sectorName}\n${sectorViewLabel(view)}: ${valueLabel}\n成分 ${row.constituentCount}`,
+      active: row.sectorCode === activeSectorCode,
+      barStartFraction: Math.min(zeroFraction, valueFraction),
+      barSpanFraction: Math.abs(valueFraction - zeroFraction),
+    };
+  });
+}
+
+export type SectorStrengthCardModel = {
+  state: "ready" | "loading" | "empty" | "error";
+  bars: SectorStrengthBarRow[];
+  sectorCount: number;
+  sourceLabel: string;
+  leaderLabel: string | null;
+  emptyReason: string | null;
+  errorMessage: string | null;
+};
+
+/**
+ * 首屏「板块强度」卡完整视图模型。
+ * 状态优先级沿用页面原有口径：有行即 ready；否则按支撑序列回退查询的
+ * loading / error / empty 判定。空态与错误文案仅在对应状态给出。
+ */
+export function buildSectorStrengthCardModel({
+  rows,
+  view,
+  activeSectorCode,
+  sourceLabel,
+  leaderName,
+  seriesLoading,
+  seriesErrored,
+  seriesErrorMessage,
+}: {
+  rows: StockSectorViewRow[];
+  view: StockSectorViewKind;
+  activeSectorCode: string | null;
+  sourceLabel: string;
+  leaderName: string | null;
+  seriesLoading: boolean;
+  seriesErrored: boolean;
+  seriesErrorMessage: string | null;
+}): SectorStrengthCardModel {
+  const state =
+    rows.length > 0 ? "ready" : seriesLoading ? "loading" : seriesErrored ? "error" : "empty";
+  return {
+    state,
+    bars: state === "ready" ? buildSectorStrengthBarRows({ rows, view, activeSectorCode }) : [],
+    sectorCount: rows.length,
+    sourceLabel,
+    leaderLabel: leaderName,
+    emptyReason: state === "empty" ? "板块强度暂无可用样本，等待快照或支撑序列补全" : null,
+    errorMessage: state === "error" ? seriesErrorMessage : null,
+  };
+}
+
 export function buildSectorStrengthOption({
   rows,
   view,
@@ -246,14 +368,7 @@ export function buildSectorStrengthOption({
 }): EChartsOption {
   const visibleRows = rows.slice(0, SECTOR_STRENGTH_VISIBLE_LIMIT);
   const values = visibleRows.map((row) => resolveSectorMetricValue(row, view) ?? 0);
-  const absMax = Math.max(...values.map((value) => Math.abs(value)), 0.0001);
-  const xMin = view === "pctchange" ? -absMax * 1.08 : 0;
-  const xMax =
-    view === "score"
-      ? 1
-      : view === "pctchange"
-        ? absMax * 1.08
-        : absMax * 1.12;
+  const { xMin, xMax } = resolveSectorStrengthScale(values, view);
   return {
     animation: false,
     grid: { top: 6, right: 12, bottom: 4, left: 78, containLabel: false },
@@ -309,11 +424,7 @@ export function buildSectorStrengthOption({
           padding: [0, 6, 0, 0],
           formatter: (params) => {
             const row = visibleRows[Number(params.dataIndex ?? 0)];
-            if (!row) return "";
-            if (view === "score") return row.score;
-            if (view === "pctchange") return row.pctChange;
-            if (view === "turnover") return row.turnover;
-            return row.amplitude;
+            return row ? sectorMetricDisplayLabel(row, view) : "";
           },
         },
       },
@@ -325,9 +436,7 @@ export function buildSectorStrengthOption({
         const item = Array.isArray(params) ? params[0] : params;
         const row = visibleRows[Number(item?.dataIndex ?? 0)];
         if (!row) return "";
-        return `${row.rank}. ${row.sectorName}<br/>${sectorViewLabel(view)}: ${
-          view === "score" ? row.score : view === "pctchange" ? row.pctChange : view === "turnover" ? row.turnover : row.amplitude
-        }<br/>成分 ${row.constituentCount}`;
+        return `${row.rank}. ${row.sectorName}<br/>${sectorViewLabel(view)}: ${sectorMetricDisplayLabel(row, view)}<br/>成分 ${row.constituentCount}`;
       },
     },
   };

@@ -78,6 +78,7 @@ import type {
   WorkbenchSlowState,
 } from "../lib/stockAnalysisPageModel";
 import {
+  buildSectorStrengthCardModel,
   buildSectorStrengthOption,
   sectorViewTabs,
 } from "../lib/stockAnalysisChartModel";
@@ -2110,14 +2111,22 @@ export default function StockAnalysisPage() {
     strategyPayload,
     workbenchReviewBlocked,
   ]);
-  const sectorCardState =
-    sectorRowsFull.length > 0
-      ? "ready"
-      : sectorRankSeriesQuery.isLoading
-        ? "loading"
-        : sectorRankSeriesQuery.isError
-          ? "error"
-          : "empty";
+  const sectorCard = useMemo(
+    () =>
+      buildSectorStrengthCardModel({
+        rows: sectorViewRows,
+        view: sectorView,
+        activeSectorCode: sectorFilterSectorCode,
+        sourceLabel: sectorRowsSourceLabel,
+        leaderName: sectorLeaderRow ? sectorLeaderRow.sectorName : null,
+        seriesLoading: sectorRankSeriesQuery.isLoading,
+        seriesErrored: sectorRankSeriesQuery.isError,
+        seriesErrorMessage: sectorRankSeriesQuery.isError
+          ? errorMessage(sectorRankSeriesQuery.error)
+          : null,
+      }),
+    [sectorFilterSectorCode, sectorLeaderRow, sectorRankSeriesQuery.error, sectorRankSeriesQuery.isError, sectorRankSeriesQuery.isLoading, sectorRowsSourceLabel, sectorView, sectorViewRows],
+  );
   const evidenceGapReleaseCards = gapReleaseCards.map(({ gap, index, blocksReview }) => ({
     key: `${gap.input_family}-${gap.status}-${index}`,
     label: dataGapFamilyLabel(gap.input_family),
@@ -2445,21 +2454,7 @@ export default function StockAnalysisPage() {
                     heroModel={heroModel}
                     marketState={marketState}
                     macroCycleModel={macroCycleModel}
-                    sectorCard={{
-                      state: sectorCardState,
-                      chartOption: sectorStrengthChartOption,
-                      sectorCount: sectorRowsFull.length,
-                      sourceLabel: sectorRowsSourceLabel,
-                      leaderLabel: sectorLeaderRow ? sectorLeaderRow.sectorName : null,
-                      emptyReason:
-                        sectorCardState === "empty"
-                          ? "板块强度暂无可用样本，等待快照或支撑序列补全"
-                          : null,
-                      errorMessage:
-                        sectorCardState === "error"
-                          ? errorMessage(sectorRankSeriesQuery.error)
-                          : null,
-                    }}
+                    sectorCard={sectorCard}
                     factorModel={factorScreenCard}
                     factorItems={(factorScreenPayload?.items ?? []).slice(0, 15)}
                     onOpenFactorDetail={(row) => {
