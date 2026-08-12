@@ -170,6 +170,23 @@ LIVERMORE_GATE_SUPPLEMENT_IDEMPOTENCY_POLL_MAX_SECONDS = 1.0
 LIVERMORE_GATE_SUPPLEMENT_STATUS_RECONCILE_LOCK_TIMEOUT_SECONDS = 0.5
 _LIVERMORE_REFRESH_IN_FLIGHT_STATUSES = {"queued", "running", "retrying"}
 _LIVERMORE_REFRESH_STALE_AFTER = timedelta(hours=1)
+# Message markers for a transient DuckDB writer-lock conflict (another
+# process/connection holds the file), as opposed to a real data-missing
+# condition. Mirrors the marker set used by
+# backend.app.tasks.macro_toolkit_freshness_refresh._is_duckdb_writer_contention.
+_DUCKDB_LOCK_CONFLICT_MARKERS = (
+    "already open",
+    "another program",
+    "being used",
+    "file is locked",
+    "database is locked",
+    "could not set lock",
+    "conflicting lock",
+    "lock on file",
+    "cannot open file",
+    "另一个程序",
+    "正在使用",
+)
 
 
 class LivermoreGateSupplementRefreshConflictError(RuntimeError):
@@ -759,21 +776,52 @@ def _compute_gate_supplement_payload(
             "idempotency_replay": False,
         }
 
+    # Defense in depth: never let the CSI300 proxy delete+insert over a trade
+    # date that already has a real market_breadth row landed in
+    # fact_market_breadth_daily, regardless of why the real basis path above
+    # returned None (belt-and-braces alongside the lock-conflict guard in
+    # _try_market_breadth_payload).
+    real_dates = _real_market_breadth_dates(
+        duckdb_path,
+        [str(row["trade_date"]) for row in supplement_rows],
+    )
+    proxy_rows = (
+        [row for row in supplement_rows if str(row["trade_date"]) not in real_dates]
+        if real_dates
+        else supplement_rows
+    )
+    if not proxy_rows:
+        return {
+            "status": "skipped_real_rows_present",
+            "basis": "csi300_proxy",
+            "message": (
+                "Every computable CSI300 proxy trade date already has a real "
+                "market_breadth row in fact_market_breadth_daily; proxy write "
+                "was skipped to avoid overwriting real data."
+            ),
+            "computed_rows": 0,
+            "skipped_real_dates": sorted(real_dates),
+            "idempotency_key": idempotency_key,
+            "idempotency_replay": False,
+        }
+
     result = materialize_livermore_gate_supplement_daily(
         duckdb_path=duckdb_path,
-        rows=supplement_rows,
+        rows=proxy_rows,
     )
 
     payload: dict[str, object] = {
         "status": "completed",
         "basis": "csi300_proxy",
-        "computed_rows": len(supplement_rows),
-        "first_date": str(supplement_rows[0]["trade_date"]),
-        "last_date": str(supplement_rows[-1]["trade_date"]),
+        "computed_rows": len(proxy_rows),
+        "first_date": str(proxy_rows[0]["trade_date"]),
+        "last_date": str(proxy_rows[-1]["trade_date"]),
         "materialize_result": result,
         "idempotency_key": idempotency_key,
         "idempotency_replay": False,
     }
+    if real_dates:
+        payload["skipped_real_dates"] = sorted(real_dates)
     if idempotency_key is not None:
         _record_idempotent_refresh(
             as_of_date=target_date_text,
@@ -783,6 +831,23 @@ def _compute_gate_supplement_payload(
             response_payload=payload,
         )
     return payload
+
+
+def _is_duckdb_lock_conflict(exc: BaseException) -> bool:
+    """True when ``exc`` is a transient DuckDB writer-lock conflict.
+
+    DuckDB raises ``duckdb.IOException`` both for a busy/locked file (another
+    process or connection already holds the writer lock) and for unrelated IO
+    failures. Only the former is transient and must not be treated as
+    "real data is missing" -- doing so would trigger the CSI300 proxy
+    fallback and delete+insert proxy rows over previously materialized real
+    data for a condition that will typically clear on the next scheduled
+    refresh.
+    """
+    if not isinstance(exc, duckdb.Error):
+        return False
+    message = str(exc).lower()
+    return any(marker in message for marker in _DUCKDB_LOCK_CONFLICT_MARKERS)
 
 
 def _try_market_breadth_payload(
@@ -808,7 +873,32 @@ def _try_market_breadth_payload(
                 lookback_days=lookback_days,
                 min_observations_per_day=int(min_observations_per_day),
             )
-    except Exception:
+    except Exception as exc:
+        if _is_duckdb_lock_conflict(exc):
+            # Transient writer-lock contention, not a data-missing condition:
+            # skip this refresh attempt and leave whatever is already landed
+            # untouched. Never fall back to the CSI300 proxy here, since that
+            # path would delete+insert proxy rows over real market_breadth
+            # supplement rows.
+            logger.warning(
+                "Market breadth materialization hit a transient DuckDB "
+                "writer-lock conflict; skipping this refresh without "
+                "falling back to the CSI300 proxy.",
+                exc_info=True,
+            )
+            return {
+                "status": "storage_busy",
+                "basis": "market_breadth",
+                "message": (
+                    "DuckDB is locked by another writer (transient "
+                    "contention); existing market_breadth supplement rows "
+                    "are left untouched instead of falling back to the "
+                    "CSI300 proxy."
+                ),
+                "computed_rows": 0,
+                "idempotency_key": idempotency_key,
+                "idempotency_replay": False,
+            }
         logger.warning(
             "Market breadth materialization failed; falling back to CSI300 proxy.",
             exc_info=True,
@@ -988,6 +1078,42 @@ def _record_idempotent_refresh(
 # ---------------------------------------------------------------------------
 # Data loading
 # ---------------------------------------------------------------------------
+
+def _real_market_breadth_dates(duckdb_path: str, trade_dates: list[str]) -> set[str]:
+    """Trade dates among ``trade_dates`` that already have a real row landed
+    in ``fact_market_breadth_daily`` (the all-market advance/decline basis).
+
+    Used to keep the CSI300 proxy fallback from ever deleting+inserting over
+    a date whose real market_breadth data already landed. Read-only; returns
+    an empty set (never raises) when the table/file is unavailable so the
+    existing proxy behavior for genuinely missing data is unaffected.
+    """
+    if not trade_dates:
+        return set()
+    duckdb_file = Path(duckdb_path)
+    if not duckdb_file.exists():
+        return set()
+    try:
+        conn = duckdb.connect(str(duckdb_file), read_only=True)
+    except duckdb.Error:
+        return set()
+    try:
+        tables = {row[0] for row in conn.execute("show tables").fetchall()}
+        if "fact_market_breadth_daily" not in tables:
+            return set()
+        placeholders = ", ".join("?" for _ in trade_dates)
+        rows = conn.execute(
+            "select distinct cast(trade_date as varchar) "
+            "from fact_market_breadth_daily "
+            f"where cast(trade_date as varchar) in ({placeholders})",
+            trade_dates,
+        ).fetchall()
+        return {str(row[0]) for row in rows}
+    except duckdb.Error:
+        return set()
+    finally:
+        conn.close()
+
 
 def _load_csi300_daily_returns(
     *,

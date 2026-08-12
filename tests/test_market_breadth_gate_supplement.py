@@ -10,6 +10,8 @@ Covers:
 
 from __future__ import annotations
 
+import subprocess
+import sys
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -151,7 +153,10 @@ def _expected_counts(spec: dict[str, int]) -> tuple[int, int, int, int]:
     return advancing, declining, spec["sealed"], spec["broken"]
 
 
-def _seed_daily_observation(duckdb_path: Path, specs: list[tuple[str, dict[str, int]]]) -> None:
+def _seed_daily_observation(
+    duckdb_path: Path,
+    specs: list[tuple[str, dict[str, int]]],
+) -> None:
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
         conn.execute(
@@ -210,16 +215,20 @@ def _seed_daily_observation(duckdb_path: Path, specs: list[tuple[str, dict[str, 
                     )
                 )
 
+            # Choice ships HIGHLIMIT as a yes/no flag; sealed boards carry 是.
+            # The derived limit price for these rows is 11.00 (prev_close
+            # 10.00 on the main-board 10% band), so unflagged rows whose high
+            # reaches 11.00 are the broken boards.
             for _ in range(spec["up"]):
-                add(2.5, 10.0, 10.2, "11.00")
+                add(2.5, 10.0, 10.2, "否")
             for _ in range(spec["down"]):
-                add(-1.8, 9.5, 9.8, "11.00")
+                add(-1.8, 9.5, 9.8, "否")
             for _ in range(spec["flat"]):
-                add(0.0, 10.0, 10.0, "11.00")
+                add(0.0, 10.0, 10.0, "否")
             for _ in range(spec["sealed"]):
-                add(10.0, 11.0, 11.0, "11.00")
+                add(10.0, 11.0, 11.0, "是")
             for _ in range(spec["broken"]):
-                add(5.0, 10.5, 11.0, "11.00")
+                add(5.0, 10.5, 11.0, "否")
         conn.executemany(
             "insert into choice_stock_daily_observation values "
             "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -273,26 +282,75 @@ def test_materialize_market_breadth_daily_writes_counts_and_supplement(tmp_path:
     ]
 
 
-def test_materialize_market_breadth_uses_tushare_prices_for_choice_limit_flags(
-    tmp_path: Path,
-) -> None:
-    db = tmp_path / "moss.duckdb"
-    _seed_daily_observation(db, _DAY_SPECS)
-    conn = duckdb.connect(str(db), read_only=False)
+def _make_legacy_numeric_highlimit(duckdb_path: Path) -> None:
+    """Pre-2026 landings carry Tushare limit prices in the flag column."""
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
         conn.execute(
-            "update choice_stock_daily_observation set highlimit = '否', lowlimit = '否'"
+            "update choice_stock_daily_observation set highlimit = '11.00', lowlimit = '9.00'"
         )
     finally:
         conn.close()
 
+
+def test_limit_up_leg_lands_from_flags_without_any_price_source(tmp_path: Path) -> None:
+    """The limit-up leg must not depend on an external price vendor."""
+    db = tmp_path / "moss.duckdb"
+    _seed_daily_observation(db, _DAY_SPECS)
+
+    result = materialize_market_breadth_daily(
+        duckdb_path=str(db),
+        as_of_date=date(2026, 6, 8),
+        lookback_days=30,
+        min_observations_per_day=1,
+    )
+
+    assert result["status"] == "completed"
+    assert result["limit_up_quality_available"] is True
+    assert result["limit_up_basis"] == "choice_highlimit_flag_and_derived_limit_price"
+    assert result["limit_up_sealed_count"] == 1
+    assert result["limit_up_broken_count"] == 4
+    assert result["limit_price_cross_check"] == "not_attempted"
+    assert result["limit_up_sealed_without_derived_touch_count"] == 0
+    assert result["limit_up_st_name_source"] == "choice_stock_universe"
+
+    conn = duckdb.connect(str(db), read_only=True)
+    try:
+        breadth = conn.execute(
+            """
+            select limit_up_sealed_count, limit_up_broken_count, vendor_version, rule_version
+            from fact_market_breadth_daily where trade_date = '2026-06-08'
+            """
+        ).fetchone()
+        supplement = conn.execute(
+            """
+            select breadth_5d, limit_up_quality_ok
+            from fact_livermore_gate_supplement_daily where trade_date = '2026-06-08'
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert breadth is not None
+    assert breadth[:2] == (1, 4)
+    assert "choice_highlimit_flag_20260608" in str(breadth[2])
+    assert breadth[3] == "rv_market_breadth_daily_v3"
+    # nets: -2 + 4 + 0 + 8 + 0 ; sealed 1 < broken 4
+    assert supplement == (10.0, False)
+
+
+def test_limit_price_cross_check_is_evidence_only(tmp_path: Path) -> None:
+    db = tmp_path / "moss.duckdb"
+    _seed_daily_observation(db, _DAY_SPECS)
+
     loaded_dates: list[date] = []
+    complete_prices = {f"{index:06d}.SZ": 11.0 for index in range(1, 14)}
 
     def load_limit_prices(trade_date: date) -> dict[str, float]:
         loaded_dates.append(trade_date)
-        return {f"{index:06d}.SZ": 11.0 for index in range(1, 14)}
+        return complete_prices
 
-    result = materialize_market_breadth_daily(
+    agreed = materialize_market_breadth_daily(
         duckdb_path=str(db),
         as_of_date=date(2026, 6, 8),
         lookback_days=30,
@@ -301,139 +359,261 @@ def test_materialize_market_breadth_uses_tushare_prices_for_choice_limit_flags(
     )
 
     assert loaded_dates == [date(2026, 6, 8)]
-    assert result["limit_price_basis"] == "tushare_stk_limit"
-    assert result["limit_price_matched_count"] == 13
-    assert result["daily_written_row_count"] == 1
-    assert result["supplement_row_count"] == 1
-    assert result["historical_rows_preserved"] == 5
+    assert agreed["limit_price_cross_check"] == "agreed"
+    assert agreed["limit_price_cross_check_matched_count"] == 13
+    assert (agreed["limit_up_sealed_count"], agreed["limit_up_broken_count"]) == (1, 4)
 
+    incomplete = materialize_market_breadth_daily(
+        duckdb_path=str(db),
+        as_of_date=date(2026, 6, 8),
+        lookback_days=30,
+        min_observations_per_day=1,
+        limit_price_loader=lambda _trade_date: dict(list(complete_prices.items())[:-1]),
+    )
+
+    assert incomplete["limit_price_cross_check"] == "incomplete"
+    assert incomplete["limit_up_quality_available"] is True
     conn = duckdb.connect(str(db), read_only=True)
     try:
         breadth = conn.execute(
-            """
-            select limit_up_sealed_count, limit_up_broken_count, vendor_version
-            from fact_market_breadth_daily where trade_date = '2026-06-08'
-            """
-        ).fetchone()
-        supplement = conn.execute(
-            """
-            select limit_up_quality_ok
-            from fact_livermore_gate_supplement_daily where trade_date = '2026-06-08'
-            """
+            "select limit_up_sealed_count, limit_up_broken_count "
+            "from fact_market_breadth_daily where trade_date = '2026-06-08'"
         ).fetchone()
     finally:
         conn.close()
-
-    assert breadth is not None
-    assert breadth[:2] == (1, 4)
-    assert "tushare_stk_limit_20260608" in str(breadth[2])
-    assert supplement == (False,)
+    assert breadth == (1, 4)
 
 
-def test_materialize_loader_error_does_not_overwrite_last_known_good(
-    tmp_path: Path,
-) -> None:
+def test_limit_price_cross_check_failure_does_not_degrade_quality(tmp_path: Path) -> None:
     db = tmp_path / "moss.duckdb"
     _seed_daily_observation(db, _DAY_SPECS)
-    conn = duckdb.connect(str(db), read_only=False)
-    try:
-        conn.execute(
-            "update choice_stock_daily_observation set highlimit = '否', lowlimit = '否'"
-        )
-    finally:
-        conn.close()
 
-    complete_prices = {f"{index:06d}.SZ": 11.0 for index in range(1, 14)}
-    materialize_market_breadth_daily(
-        duckdb_path=str(db),
-        as_of_date=date(2026, 6, 8),
-        lookback_days=30,
-        min_observations_per_day=1,
-        limit_price_loader=lambda _trade_date: complete_prices,
-    )
-
-    def timeout_loader(_trade_date: date) -> dict[str, float]:
+    def unavailable_loader(_trade_date: date) -> dict[str, float]:
         raise TimeoutError("fixture timeout")
 
-    retry = materialize_market_breadth_daily(
+    result = materialize_market_breadth_daily(
         duckdb_path=str(db),
         as_of_date=date(2026, 6, 8),
         lookback_days=30,
         min_observations_per_day=1,
-        limit_price_loader=timeout_loader,
+        limit_price_loader=unavailable_loader,
     )
 
-    assert retry["status"] == "limit_price_unavailable"
-    assert retry["daily_row_count"] == 0
-    assert retry["supplement_row_count"] == 0
+    assert result["limit_price_cross_check"] == "unavailable"
+    assert result["limit_up_quality_available"] is True
     conn = duckdb.connect(str(db), read_only=True)
     try:
-        breadth = conn.execute(
-            """
-            select limit_up_sealed_count, limit_up_broken_count, vendor_version
-            from fact_market_breadth_daily where trade_date = '2026-06-08'
-            """
-        ).fetchone()
         supplement = conn.execute(
-            """
-            select limit_up_quality_ok
-            from fact_livermore_gate_supplement_daily where trade_date = '2026-06-08'
-            """
+            "select limit_up_quality_ok from fact_livermore_gate_supplement_daily "
+            "where trade_date = '2026-06-08'"
         ).fetchone()
     finally:
         conn.close()
-
-    assert breadth is not None
-    assert breadth[:2] == (1, 4)
-    assert "tushare_stk_limit_20260608" in str(breadth[2])
     assert supplement == (False,)
 
 
-def test_materialize_preserves_previous_tushare_counts_on_next_trade_date(
-    tmp_path: Path,
-) -> None:
+def test_materialize_preserves_earlier_dates_and_stays_idempotent(tmp_path: Path) -> None:
     db = tmp_path / "moss.duckdb"
-    specs = [
-        *_DAY_SPECS,
-        ("2026-06-09", {"up": 3, "down": 2, "flat": 0, "sealed": 2, "broken": 1}),
-    ]
-    _seed_daily_observation(db, specs)
-    conn = duckdb.connect(str(db), read_only=False)
-    try:
-        conn.execute(
-            "update choice_stock_daily_observation set highlimit = '否', lowlimit = '否'"
-        )
-    finally:
-        conn.close()
-
-    loaded_dates: list[date] = []
-
-    def load_limit_prices(trade_date: date) -> dict[str, float]:
-        loaded_dates.append(trade_date)
-        return {f"{index:06d}.SZ": 11.0 for index in range(1, 20)}
+    _seed_daily_observation(db, _DAY_SPECS)
 
     first = materialize_market_breadth_daily(
         duckdb_path=str(db),
         as_of_date=date(2026, 6, 8),
         lookback_days=30,
         min_observations_per_day=1,
-        limit_price_loader=load_limit_prices,
+    )
+    second = materialize_market_breadth_daily(
+        duckdb_path=str(db),
+        as_of_date=date(2026, 6, 8),
+        lookback_days=30,
+        min_observations_per_day=1,
+    )
+
+    assert first["daily_written_row_count"] == 6
+    assert first["historical_rows_preserved"] == 0
+    # Re-running only refreshes the latest date; earlier rows are left alone.
+    assert second["daily_written_row_count"] == 1
+    assert second["historical_rows_preserved"] == 5
+
+    conn = duckdb.connect(str(db), read_only=True)
+    try:
+        breadth_rows = conn.execute(
+            "select trade_date, count(*) from fact_market_breadth_daily "
+            "group by trade_date order by trade_date"
+        ).fetchall()
+        supplement_rows = conn.execute(
+            "select trade_date, breadth_5d, limit_up_quality_ok "
+            "from fact_livermore_gate_supplement_daily order by trade_date"
+        ).fetchall()
+    finally:
+        conn.close()
+    assert breadth_rows == [(trade_date, 1) for trade_date, _spec in _DAY_SPECS]
+    assert supplement_rows == [
+        ("2026-06-05", 14.0, True),
+        ("2026-06-08", 10.0, False),
+    ]
+
+
+def test_gate_reaches_all_four_conditions_from_the_flag_basis(tmp_path: Path) -> None:
+    """The flag basis makes the limit-up leg evaluable, lifting the gate to 4/4."""
+    from backend.app.core_finance.livermore_strategy import (
+        BroadIndexObservation,
+        MarketGateSupplement,
+        evaluate_market_gate,
+    )
+
+    db = tmp_path / "moss.duckdb"
+    _seed_daily_observation(db, _DAY_SPECS)
+    materialize_market_breadth_daily(
+        duckdb_path=str(db),
+        as_of_date=date(2026, 6, 5),
+        lookback_days=30,
+        min_observations_per_day=1,
+    )
+
+    conn = duckdb.connect(str(db), read_only=True)
+    try:
+        landed = conn.execute(
+            "select breadth_5d, limit_up_quality_ok "
+            "from fact_livermore_gate_supplement_daily where trade_date = '2026-06-05'"
+        ).fetchone()
+    finally:
+        conn.close()
+    assert landed == (14.0, True)
+
+    latest_trade_date = date(2026, 6, 5)
+    history = [
+        BroadIndexObservation(
+            trade_date=latest_trade_date - timedelta(days=64 - offset),
+            close=3000.0 + offset * 10,
+        )
+        for offset in range(65)
+    ]
+    gate = evaluate_market_gate(
+        history,
+        supplement=MarketGateSupplement(
+            trade_date=latest_trade_date,
+            breadth_5d=float(landed[0]),
+            limit_up_quality_ok=landed[1],
+        ),
+    )
+
+    assert gate["conditions"][2]["key"] == "breadth_5d_positive"
+    assert gate["conditions"][2]["status"] == "pass"
+    assert gate["conditions"][3]["status"] == "pass"
+    assert gate["available_conditions"] == 4
+    assert gate["passed_conditions"] == 4
+    assert gate["exposure"] == 1.0
+    assert gate["state"] == "OVERHEAT"
+
+
+def test_legacy_numeric_highlimit_keeps_last_known_limit_up_leg(tmp_path: Path) -> None:
+    db = tmp_path / "moss.duckdb"
+    _seed_daily_observation(db, _DAY_SPECS)
+    materialize_market_breadth_daily(
+        duckdb_path=str(db),
+        as_of_date=date(2026, 6, 8),
+        lookback_days=30,
+        min_observations_per_day=1,
+    )
+    _make_legacy_numeric_highlimit(db)
+
+    retry = materialize_market_breadth_daily(
+        duckdb_path=str(db),
+        as_of_date=date(2026, 6, 8),
+        lookback_days=30,
+        min_observations_per_day=1,
+    )
+
+    assert retry["status"] == "completed"
+    # Losing the flag basis must not erase an already materialized leg.
+    assert retry["limit_up_quality_available"] is True
+    conn = duckdb.connect(str(db), read_only=True)
+    try:
+        breadth = conn.execute(
+            "select limit_up_sealed_count, limit_up_broken_count "
+            "from fact_market_breadth_daily where trade_date = '2026-06-08'"
+        ).fetchone()
+        supplement = conn.execute(
+            "select limit_up_quality_ok from fact_livermore_gate_supplement_daily "
+            "where trade_date = '2026-06-08'"
+        ).fetchone()
+    finally:
+        conn.close()
+    assert breadth == (1, 4)
+    assert supplement == (False,)
+
+
+def test_legacy_numeric_highlimit_lands_breadth_and_degrades_quality(tmp_path: Path) -> None:
+    """Breadth does not depend on the limit-up leg, so it still lands in full."""
+    db = tmp_path / "moss.duckdb"
+    _seed_daily_observation(db, _DAY_SPECS)
+    _make_legacy_numeric_highlimit(db)
+
+    result = materialize_market_breadth_daily(
+        duckdb_path=str(db),
+        as_of_date=date(2026, 6, 8),
+        lookback_days=30,
+        min_observations_per_day=1,
+    )
+
+    assert result["status"] == "completed"
+    assert result["limit_up_quality_available"] is False
+    assert result["limit_up_flag_basis_available"] is False
+    assert result["limit_up_unclassified_count"] == 13
+    conn = duckdb.connect(str(db), read_only=True)
+    try:
+        breadth = conn.execute(
+            """
+            select advancing_count, declining_count,
+                   limit_up_sealed_count, limit_up_broken_count
+            from fact_market_breadth_daily where trade_date = '2026-06-08'
+            """
+        ).fetchone()
+        supplement = conn.execute(
+            "select breadth_5d, limit_up_quality_ok "
+            "from fact_livermore_gate_supplement_daily where trade_date = '2026-06-08'"
+        ).fetchone()
+    finally:
+        conn.close()
+
+    # advancing counts the sealed/broken movers regardless of the limit-up leg.
+    assert breadth == (6, 6, None, None)
+    assert supplement == (10.0, None)
+
+
+def test_next_trade_date_gets_its_own_leg_without_touching_the_previous_one(
+    tmp_path: Path,
+) -> None:
+    db = tmp_path / "moss.duckdb"
+    _seed_daily_observation(
+        db,
+        [
+            *_DAY_SPECS,
+            ("2026-06-09", {"up": 3, "down": 2, "flat": 0, "sealed": 2, "broken": 1}),
+        ],
+    )
+
+    first = materialize_market_breadth_daily(
+        duckdb_path=str(db),
+        as_of_date=date(2026, 6, 8),
+        lookback_days=30,
+        min_observations_per_day=1,
     )
     second = materialize_market_breadth_daily(
         duckdb_path=str(db),
         as_of_date=date(2026, 6, 9),
         lookback_days=30,
         min_observations_per_day=1,
-        limit_price_loader=load_limit_prices,
     )
 
     assert first["status"] == second["status"] == "completed"
-    assert loaded_dates == [date(2026, 6, 8), date(2026, 6, 9)]
+    assert second["daily_written_row_count"] == 1
     conn = duckdb.connect(str(db), read_only=True)
     try:
         breadth = conn.execute(
             """
-            select trade_date, limit_up_sealed_count, limit_up_broken_count, vendor_version
+            select trade_date, limit_up_sealed_count, limit_up_broken_count
             from fact_market_breadth_daily
             where trade_date in ('2026-06-08', '2026-06-09')
             order by trade_date
@@ -450,67 +630,8 @@ def test_materialize_preserves_previous_tushare_counts_on_next_trade_date(
     finally:
         conn.close()
 
-    assert [(row[0], row[1], row[2]) for row in breadth] == [
-        ("2026-06-08", 1, 4),
-        ("2026-06-09", 2, 1),
-    ]
-    assert all("tushare_stk_limit" in str(row[3]) for row in breadth)
+    assert breadth == [("2026-06-08", 1, 4), ("2026-06-09", 2, 1)]
     assert supplement == [("2026-06-08", False), ("2026-06-09", True)]
-
-
-def test_materialize_incomplete_tushare_prices_do_not_overwrite_last_known_good(
-    tmp_path: Path,
-) -> None:
-    db = tmp_path / "moss.duckdb"
-    _seed_daily_observation(db, _DAY_SPECS)
-    conn = duckdb.connect(str(db), read_only=False)
-    try:
-        conn.execute(
-            "update choice_stock_daily_observation set highlimit = '否', lowlimit = '否'"
-        )
-    finally:
-        conn.close()
-
-    complete_prices = {f"{index:06d}.SZ": 11.0 for index in range(1, 14)}
-    first = materialize_market_breadth_daily(
-        duckdb_path=str(db),
-        as_of_date=date(2026, 6, 8),
-        lookback_days=30,
-        min_observations_per_day=1,
-        limit_price_loader=lambda _trade_date: complete_prices,
-    )
-    second = materialize_market_breadth_daily(
-        duckdb_path=str(db),
-        as_of_date=date(2026, 6, 8),
-        lookback_days=30,
-        min_observations_per_day=1,
-        limit_price_loader=lambda _trade_date: dict(list(complete_prices.items())[:-1]),
-    )
-
-    assert first["status"] == "completed"
-    assert second["status"] == "limit_price_incomplete"
-    assert second["limit_price_matched_count"] == 12
-    conn = duckdb.connect(str(db), read_only=True)
-    try:
-        breadth = conn.execute(
-            """
-            select limit_up_sealed_count, limit_up_broken_count, vendor_version
-            from fact_market_breadth_daily where trade_date = '2026-06-08'
-            """
-        ).fetchone()
-        supplement = conn.execute(
-            """
-            select limit_up_quality_ok
-            from fact_livermore_gate_supplement_daily where trade_date = '2026-06-08'
-            """
-        ).fetchone()
-    finally:
-        conn.close()
-
-    assert breadth is not None
-    assert breadth[:2] == (1, 4)
-    assert "tushare_stk_limit_20260608" in str(breadth[2])
-    assert supplement == (False,)
 
 
 def test_materialize_market_breadth_daily_is_idempotent(tmp_path: Path) -> None:
@@ -641,6 +762,25 @@ def _seed_csi300(duckdb_path: Path, *, start: date, n_days: int) -> None:
         )
     finally:
         conn.close()
+
+
+def _connect_read_only_with_retry(
+    duckdb_path: Path, *, attempts: int = 20, delay_seconds: float = 0.25
+) -> duckdb.DuckDBPyConnection:
+    """Windows can lag briefly between an external process exiting and the
+    OS releasing its DuckDB file lock; retry the verification read instead
+    of flaking on that unrelated timing gap."""
+    import time
+
+    last_error: duckdb.Error | None = None
+    for _ in range(attempts):
+        try:
+            return duckdb.connect(str(duckdb_path), read_only=True)
+        except duckdb.Error as exc:
+            last_error = exc
+            time.sleep(delay_seconds)
+    assert last_error is not None
+    raise last_error
 
 
 @pytest.fixture()
@@ -863,3 +1003,149 @@ def test_service_falls_back_to_csi300_proxy_when_breadth_source_missing(
     assert payload["status"] == "completed"
     assert payload["basis"] == "csi300_proxy"
     assert int(payload["computed_rows"]) > 0
+
+
+# ---------------------------------------------------------------------------
+# transient DuckDB lock conflict must never trigger a CSI300 proxy overwrite
+# ---------------------------------------------------------------------------
+
+
+def test_service_transient_duckdb_lock_conflict_skips_proxy_overwrite(
+    tmp_path: Path,
+    _isolated_settings,
+) -> None:
+    """A real cross-process DuckDB writer-lock conflict (duckdb.IOException,
+    e.g. "Cannot open file ... another program is using this file") is a
+    transient condition, not a data-missing one. It must not fall back to the
+    CSI300 proxy, and any already-landed real supplement rows must survive
+    untouched."""
+    from backend.app.services.livermore_gate_supplement_compute_service import (
+        compute_and_materialize_gate_supplement,
+    )
+
+    db = tmp_path / "moss.duckdb"
+    _seed_daily_observation(db, _DAY_SPECS)
+    # CSI300 history is also landed, so the proxy path *could* compute rows
+    # if the lock-conflict guard failed to short-circuit it.
+    _seed_csi300(db, start=date(2026, 5, 1), n_days=40)
+
+    first = compute_and_materialize_gate_supplement(
+        duckdb_path=str(db),
+        as_of_date=date(2026, 6, 8),
+        lookback_days=30,
+        min_observations_per_day=1,
+    )
+    assert first["basis"] == "market_breadth"
+    assert first["status"] == "completed"
+
+    holder_script = tmp_path / "_hold_duckdb_write_lock.py"
+    holder_script.write_text(
+        "import duckdb, sys, time\n"
+        "conn = duckdb.connect(sys.argv[1], read_only=False)\n"
+        "conn.execute('select 1')\n"
+        "print('locked', flush=True)\n"
+        "time.sleep(float(sys.argv[2]))\n",
+        encoding="utf-8",
+    )
+    holder = subprocess.Popen(
+        [sys.executable, str(holder_script), str(db), "10"],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert holder.stdout is not None
+        assert holder.stdout.readline().strip() == "locked"
+
+        second = compute_and_materialize_gate_supplement(
+            duckdb_path=str(db),
+            as_of_date=date(2026, 6, 8),
+            lookback_days=30,
+            min_observations_per_day=1,
+        )
+    finally:
+        holder.terminate()
+        holder.wait(timeout=10)
+
+    assert second["status"] == "storage_busy"
+    assert second["basis"] == "market_breadth"
+    assert second.get("computed_rows") == 0
+
+    conn = _connect_read_only_with_retry(db)
+    try:
+        supplement_rows = conn.execute(
+            "select trade_date, breadth_5d, limit_up_quality_ok "
+            "from fact_livermore_gate_supplement_daily order by trade_date"
+        ).fetchall()
+    finally:
+        conn.close()
+    # Real rows from the first run survive untouched: no proxy overwrite.
+    assert supplement_rows == [
+        ("2026-06-05", 14.0, True),
+        ("2026-06-08", 10.0, False),
+    ]
+
+
+# ---------------------------------------------------------------------------
+# defense in depth: the proxy write itself must skip dates with a real row
+# ---------------------------------------------------------------------------
+
+
+def test_service_proxy_guard_skips_dates_with_real_breadth_rows(
+    tmp_path: Path,
+    _isolated_settings,
+    monkeypatch,
+) -> None:
+    """Even when the real market_breadth basis attempt fails for a reason
+    other than a lock conflict (any other exception), the CSI300 proxy
+    fallback must never delete+insert over a trade date that already has a
+    real row landed in fact_market_breadth_daily."""
+    from backend.app.repositories.duckdb_migrations import (
+        apply_pending_migrations_on_connection,
+    )
+    from backend.app.services import livermore_gate_supplement_compute_service as service
+
+    db = tmp_path / "moss.duckdb"
+    _seed_csi300(db, start=date(2026, 5, 1), n_days=40)
+
+    conn = duckdb.connect(str(db), read_only=False)
+    try:
+        apply_pending_migrations_on_connection(conn)
+        conn.execute(
+            """
+            insert into fact_market_breadth_daily (
+              trade_date, total_count, advancing_count, declining_count, unchanged_count,
+              limit_up_sealed_count, limit_up_broken_count,
+              source_version, vendor_version, rule_version, run_id
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                "2026-05-30", 5000, 2800, 2200, 0, 30, 5,
+                "sv_real", "vv_real_20260530", "rv_market_breadth_daily_v2", "run_real",
+            ],
+        )
+    finally:
+        conn.close()
+
+    def _fail(**_kwargs: object) -> dict[str, object]:
+        raise RuntimeError("boom: unrelated market_breadth materialization failure")
+
+    monkeypatch.setattr(service, "materialize_market_breadth_daily", _fail)
+
+    payload = service.compute_and_materialize_gate_supplement(
+        duckdb_path=str(db),
+        as_of_date=date(2026, 5, 30),
+        lookback_days=60,
+    )
+
+    assert payload["basis"] == "csi300_proxy"
+    assert "2026-05-30" in payload.get("skipped_real_dates", [])
+
+    conn = duckdb.connect(str(db), read_only=True)
+    try:
+        count = conn.execute(
+            "select count(*) from fact_livermore_gate_supplement_daily "
+            "where trade_date = '2026-05-30'"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    assert int(count) == 0
