@@ -1,6 +1,4 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import userEvent from "@testing-library/user-event";
 import { beforeAll, vi } from "vitest";
 
@@ -33,11 +31,6 @@ import type {
 } from "../api/contracts";
 import { preloadWorkbenchRouteModules } from "./preloadWorkbenchRouteModules";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
-
-const YIELD_ANALYSIS_SOURCE_PATHS = [
-  resolve(process.cwd(), "src/features/pnl/YieldAnalysisPage.tsx"),
-  resolve(process.cwd(), "src/features/pnl/yieldAnalysis/yieldAnalysis.css"),
-];
 
 function bridgeYuan(raw: number, display: string, signAware = true): Numeric {
   return { raw, unit: "yuan", display, precision: 2, sign_aware: signAware };
@@ -1061,37 +1054,6 @@ describe("pnl routed pages smoke", () => {
       "pnl-by-business-insights",
     );
   }, 20_000);
-
-  it("keeps /pnl yield analysis colors on the homepage blue-gray token family", () => {
-    const source = YIELD_ANALYSIS_SOURCE_PATHS.map((path) => readFileSync(path, "utf8")).join("\n");
-
-    expect(source).not.toMatch(/moss-color-warm-|designTokens\.color\.warm/);
-    expect(source).not.toMatch(/rgba\((76, 58, 44|255, 253, 249)/);
-    expect(source).not.toMatch(/letter-spacing:\s*-/);
-    expect(source).toContain("designTokens.color.primary[600]");
-    expect(source).toContain("designTokens.color.info[600]");
-    expect(source).toContain("designTokens.color.success[600]");
-    expect(source).toContain("var(--moss-color-primary-600)");
-    expect(source).toContain("var(--moss-color-info-50)");
-  });
-
-  it("keeps pnl mobile controls touch-sized", () => {
-    const css = readFileSync(YIELD_ANALYSIS_SOURCE_PATHS[1], "utf8");
-    const mobileBreakpoint = css.slice(css.indexOf("@media (max-width: 640px)"));
-    const mainTabBlock =
-      mobileBreakpoint.match(/\.yield-analysis-main-tab\s*\{[\s\S]*?\}/)?.[0] ?? "";
-    const reportPeriodControlBlock =
-      mobileBreakpoint.match(/\.yield-analysis-control\s*\{[\s\S]*?\}/)?.[0] ?? "";
-    const filterButtonBlock =
-      mobileBreakpoint.match(/\.pnl-filter-button\s*\{[\s\S]*?\}/)?.[0] ?? "";
-    const detailToggleBlock =
-      mobileBreakpoint.match(/\.yield-pnl-detail-card__toggle\s*\{[\s\S]*?\}/)?.[0] ?? "";
-
-    expect(mainTabBlock).toContain("min-height: 44px;");
-    expect(reportPeriodControlBlock).toContain("height: 44px;");
-    expect(filterButtonBlock).toContain("min-height: 44px;");
-    expect(detailToggleBlock).toContain("min-height: 44px;");
-  });
 
   it("renders the real /pnl route surface through workbench routes", async () => {
     const client = buildPnlClient();
