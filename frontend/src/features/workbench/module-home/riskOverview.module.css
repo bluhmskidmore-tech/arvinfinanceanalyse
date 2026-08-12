@@ -1636,7 +1636,7 @@ text.roV6CurveEndText.roV6CurveAcc {
   border-color: var(--ro-line-2);
 }
 
-/* 内层：趋势块去边框留淡底；环比/同比小格去独立底色，对齐正文 */
+/* 内层：环比/同比小格去独立底色，对齐正文 */
 
 .roBondComparison {
   align-items: center;

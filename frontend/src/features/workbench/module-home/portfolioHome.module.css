@@ -3466,7 +3466,8 @@
   }
 
   .closureReviewCard {
-    /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
+    /* 刻意保留的死声明：被文件更靠后的 ROOT .closureReviewCard（gap 8px / padding 10px 12px）
+       按源顺序压制，从不生效；若前移会复活并改变宽屏渲染，故留在原位。 */
     gap: 12px;
     padding: 14px;
   }
@@ -3478,9 +3479,6 @@
   .closureReviewCard .detailRow {
     padding: 7px 0;
   }
-}
-
-@media (min-width: 1320px) {
 }
 
 /* Structure workbook as a spacious ledger, matching the reference workbench. */
