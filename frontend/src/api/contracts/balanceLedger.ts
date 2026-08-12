@@ -1703,3 +1703,79 @@ export type LedgerPnlFormalIndicatorRuleChecksPayload = {
   summary: LedgerPnlFormalIndicatorRuleChecksSummary;
   remediation?: LedgerPnlFormalFinancialIndicatorRemediation;
 };
+
+export type LedgerPnlIndicatorSummaryPeriod = {
+  period_id: string;
+  flow_label: string;
+  flow_compare_label: string;
+  point_label: string;
+  point_compare_label: string;
+  current_month: string;
+  flow_compare_month: string;
+  point_compare_month: string;
+  current_available: boolean;
+  flow_compare_available: boolean;
+  point_compare_available: boolean;
+};
+
+export type LedgerPnlIndicatorSummaryCell = {
+  period_id: string;
+  current: string | null;
+  compare: string | null;
+  delta: string | null;
+  delta_pct: string | null;
+};
+
+export type LedgerPnlIndicatorSummaryRow = {
+  row_id: string;
+  name: string;
+  indent: number;
+  basis: "flow" | "point";
+  value_kind: "money_yi" | "percent";
+  availability: "ledger_computed" | "no_system_source";
+  caliber_note: string | null;
+  unavailable_reason: string | null;
+  account_evidence: string | null;
+  values: LedgerPnlIndicatorSummaryCell[];
+};
+
+export type LedgerPnlIndicatorSummarySection = {
+  section_id: "financial" | "business" | "asset_quality";
+  title: string;
+  basis_note: string;
+  rows: LedgerPnlIndicatorSummaryRow[];
+};
+
+export type LedgerPnlIndicatorSummaryQualityCheck = {
+  check_id: string;
+  month: string;
+  passed: boolean;
+  gap_yuan: string | null;
+  message: string;
+};
+
+export type LedgerPnlIndicatorSummarySourceFile = {
+  month: string;
+  file_name: string;
+  source_version: string;
+};
+
+export type LedgerPnlIndicatorSummaryPayload = {
+  contract_version: string;
+  title: string;
+  report_month: string;
+  report_year: number;
+  currency_basis: string;
+  unit: string;
+  data_status: "ready" | "no_data";
+  periods: LedgerPnlIndicatorSummaryPeriod[];
+  sections: LedgerPnlIndicatorSummarySection[];
+  quality_checks: LedgerPnlIndicatorSummaryQualityCheck[];
+  coverage: {
+    row_total: number;
+    row_computed: number;
+    row_unavailable: number;
+  };
+  notes: string[];
+  source_files: LedgerPnlIndicatorSummarySourceFile[];
+};
