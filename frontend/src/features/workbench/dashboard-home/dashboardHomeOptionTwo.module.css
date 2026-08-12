@@ -2716,6 +2716,48 @@
   gap: 8px !important;
 }
 
+/*
+ * 首页外层双滚动条修复：dashboardCockpit.css 尾部 "Homepage-aligned cockpit
+ * shell final layer" 用 !important 给共用 cockpit 壳注入 grid 竖直 padding
+ * 16px/34px、main-column gap 10px（空的 1fr 第二行也触发）、main 竖直 padding
+ * 14px×2，合计 88px，把本页 100vh 的 .page 顶出视口，形成 document 级外层
+ * 滚动条；dashboardHomeShell.module.css 既有的首页清零规则因无 !important
+ * 全部落败。沿用本区域先例：双写类名把特异性抬到 (0,3,0)+ 并带 !important，
+ * 稳定压过 cockpit 层的 (0,1,0)/(0,2,0) !important 声明（含 mock 模式
+ * `.moss-data-mode-ribbon + …` 的 padding-top:28px；该 ribbon 为 fixed 定位
+ * 浮标，不占流式高度，无需预留）。只清竖直分量：水平留白不参与溢出，保持现状。
+ */
+:global(
+  .workbench-shell-grid--cockpit.workbench-shell-grid--cockpit:has(
+      [data-testid="dashboard-home-page"]
+    )
+) {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+:global(
+  .workbench-shell-grid--cockpit.workbench-shell-grid--cockpit:has(
+      [data-testid="dashboard-home-page"]
+    )
+    .workbench-main-column
+) {
+  row-gap: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+:global(
+  .workbench-shell-grid--cockpit.workbench-shell-grid--cockpit:has(
+      [data-testid="dashboard-home-page"]
+    )
+    .workbench-main-column
+    > main
+) {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
 .trustFooter > strong {
   display: flex;
   min-height: 20px;

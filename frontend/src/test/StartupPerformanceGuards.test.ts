@@ -57,21 +57,9 @@ const DASHBOARD_HOME_PAGE_PATH = resolve(
   FRONTEND_ROOT,
   "src/features/workbench/dashboard-home/DashboardHomePage.tsx",
 );
-const TERMINAL_HOME_FIRST_SCREEN_PATH = resolve(
-  FRONTEND_ROOT,
-  "src/features/workbench/dashboard-home/TerminalHomeFirstScreen.tsx",
-);
 const DASHBOARD_HOME_TOOLBAR_PATH = resolve(
   FRONTEND_ROOT,
   "src/features/workbench/dashboard-home/sections/DashboardHomeToolbar.tsx",
-);
-const DASHBOARD_HOME_DECISION_RAIL_PATH = resolve(
-  FRONTEND_ROOT,
-  "src/features/workbench/dashboard-home/sections/DecisionRailSection.tsx",
-);
-const HOME_SPARKLINE_PATH = resolve(
-  FRONTEND_ROOT,
-  "src/features/workbench/dashboard-home/HomeSparkline.tsx",
 );
 const DASHBOARD_HOME_OPTION_TWO_LAYOUT_PATH = resolve(
   FRONTEND_ROOT,
@@ -105,9 +93,9 @@ const HOME_BODY_DATA_PATH = resolve(
   FRONTEND_ROOT,
   "src/features/workbench/dashboard-home/useDashboardHomeBodyData.ts",
 );
-const DASHBOARD_HOME_VIEW_PATH = resolve(
+const DASHBOARD_HOME_FIRST_SCREEN_VIEW_PATH = resolve(
   FRONTEND_ROOT,
-  "src/features/workbench/dashboard-home/dashboardHomeView.ts",
+  "src/features/workbench/dashboard-home/dashboardHomeFirstScreenView.ts",
 );
 
 function escapeRegExp(value: string): string {
@@ -391,15 +379,17 @@ describe("startup performance guards", () => {
     );
     const firstScreenSources = [
       readFileSync(DASHBOARD_HOME_PAGE_PATH, "utf8"),
-      readFileSync(TERMINAL_HOME_FIRST_SCREEN_PATH, "utf8"),
       readFileSync(DASHBOARD_HOME_TOOLBAR_PATH, "utf8"),
-      readFileSync(DASHBOARD_HOME_DECISION_RAIL_PATH, "utf8"),
-      readFileSync(HOME_SPARKLINE_PATH, "utf8"),
       readFileSync(DEFERRED_TERMINAL_HOME_CONTENT_PATH, "utf8"),
     ];
 
     for (const source of firstScreenSources) {
-      expect(source).toContain("dashboardHomeShell.module.css");
+      // First-screen modules must use a sliced stylesheet (shell, or the
+      // option-two sheet since the 9b02a607 nocturne reskin made it the
+      // page-level sheet); the full dashboardHome.module.css stays banned.
+      expect(source).toMatch(
+        /dashboardHome(?:Shell|OptionTwo)\.module\.css/,
+      );
       expect(source).not.toContain("dashboardHome.module.css");
     }
     expect(optionTwoOverviewSource).toContain(
@@ -536,8 +526,11 @@ describe("startup performance guards", () => {
     expect(bodyDataSource).toContain("enabled: loadDatedFormalData");
   });
 
-  it("keeps the active home view model off retired homepage panel adapters", () => {
-    const dashboardHomeViewSource = readFileSync(DASHBOARD_HOME_VIEW_PATH, "utf8");
+  it("keeps the active home view models off retired homepage panel adapters", () => {
+    const activeHomeViewSources = [
+      readFileSync(DASHBOARD_HOME_FIRST_SCREEN_VIEW_PATH, "utf8"),
+      readFileSync(DASHBOARD_HOME_BODY_VIEW_PATH, "utf8"),
+    ];
 
     for (const retiredRuntimeArtifact of [
       "DASHBOARD_ATTRIBUTION_NOTE_MOCK",
@@ -556,7 +549,9 @@ describe("startup performance guards", () => {
       "mapHomeRiskRadar",
       "mapPortfolioComparisonToExposureRows",
     ]) {
-      expect(dashboardHomeViewSource).not.toContain(retiredRuntimeArtifact);
+      for (const activeHomeViewSource of activeHomeViewSources) {
+        expect(activeHomeViewSource).not.toContain(retiredRuntimeArtifact);
+      }
     }
   });
 
@@ -707,6 +702,7 @@ describe("startup performance guards", () => {
     expect(guardSource).toContain("home summary should load after the first-screen window");
     expect(guardSource).toContain("news/calendar should load after the first-screen window");
     expect(guardSource).toContain("income trend should load after the first-screen window");
+    expect(guardSource).toContain("home tracked data requests did not all arrive");
     expect(guardSource).toContain("browser.newContext");
     expect(guardSource).toContain("createIsolatedPage");
     expect(guardSource).toContain('context.route("**/*"');
@@ -735,6 +731,11 @@ describe("startup performance guards", () => {
     expect(guardSource).toContain("/ui/news/choice-events/latest");
     expect(guardSource).toContain("/ui/calendar/supply-auctions");
     expect(guardSource).toContain("ECharts/zrender should stay out of first-screen window");
+    // Locks the batched news waves and the total request budget: without these,
+    // a regression back to 13 per-topic news requests passes every needle above.
+    expect(guardSource).toContain("/ui/news/choice-events/latest-batch");
+    expect(guardSource).toContain("MAX_UI_REQUESTS");
+    expect(guardSource).toContain("tracked home data requests did not all arrive");
   });
 
   it("keeps the live home snapshot profiler source-backed", () => {

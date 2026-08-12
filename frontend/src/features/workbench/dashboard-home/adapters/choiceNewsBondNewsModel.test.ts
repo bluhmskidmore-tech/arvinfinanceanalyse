@@ -88,4 +88,37 @@ describe("ChoiceNews bond news model", () => {
     expect(model.asOfLabel).toBe("最新内容 07-25 · 已剔除未来 1 条");
     expect(model.statusLabel).toBe("来源状态：正常");
   });
+
+  it("explains bond news source returns that do not pass the bond filter", () => {
+    const model = buildHomeBondNewsModel({
+      todayIsoDate: "2026-06-01",
+      events: [
+        event({
+          event_key: "broad-equity",
+          received_at: "2026-06-01T12:00:00+08:00",
+          group_id: "tushare_news",
+          topic_code: "tushare.news.sina",
+          payload_text: "A股市场成交额放大，科技板块走强。",
+          payload_json: null,
+        }),
+        event({
+          event_key: "commodity",
+          received_at: "2026-06-01T11:50:00+08:00",
+          group_id: "tushare_news",
+          topic_code: "tushare.major_news",
+          payload_text: "国际油价震荡上行。",
+          payload_json: null,
+        }),
+      ],
+    });
+
+    expect(model.holdingHits).toHaveLength(0);
+    expect(model.marketNews).toHaveLength(0);
+    expect(model.creditAndIssuanceNews).toHaveLength(0);
+    expect(model.asOfLabel).toBe("已查询事件至 06-01 12:00");
+    expect(model.statusLabel).toBe("来源状态：未命中债券相关内容");
+    expect(model.holdingMessage).toBe("持仓命中：已查询 2 条新闻，未命中当前持仓或发行人。");
+    expect(model.marketMessage).toBe("债券市场：已查询 2 条新闻，未筛出债券市场相关内容。");
+    expect(model.creditMessage).toBe("发行/评级：已查询 2 条新闻，未筛出债券发行或评级内容。");
+  });
 });

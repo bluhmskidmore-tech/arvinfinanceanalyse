@@ -8,7 +8,7 @@ export const liveRouteReadinessContracts = {
   "/": {
     sourceFiles: [
       "src/features/workbench/dashboard-home/DashboardHomePage.tsx",
-      "src/features/workbench/dashboard-home/TerminalHomeFirstScreen.tsx",
+      "src/features/workbench/dashboard-home/DashboardHomeOptionTwoOverview.tsx",
     ],
     sourceAnchors: ["dashboard-home-page", "dashboard-home-hero"],
     verificationFiles: [

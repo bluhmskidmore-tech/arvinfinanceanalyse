@@ -3,10 +3,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 
-import type { DashboardHomeView } from "../dashboardHomeView";
+import { mapToHomeFirstScreenView } from "../dashboardHomeFirstScreenView";
+import type { HomeHeaderStatus } from "../dashboardHomeFirstScreenTypes";
 import { DashboardHomeToolbar } from "./DashboardHomeToolbar";
 
-const headerStatus: DashboardHomeView["headerStatus"] = {
+const headerStatus: HomeHeaderStatus = {
   dataStatusKind: "ok",
   dataUpdatedAt: "09:15",
   marketStatus: "市场同步",
@@ -158,6 +159,34 @@ describe("DashboardHomeToolbar", () => {
       "/risk-overview?tab=limits&report_date=2026-04-30#breaches",
     );
   });
+  it("keeps the toolbar in a loading state without inventing a failure outage", () => {
+    const view = mapToHomeFirstScreenView({
+      reportDate: "2026-04-30",
+      useMockFallback: false,
+      verdict: null,
+      metrics: [],
+      attribution: null,
+      bondHeadline: null,
+      portfolio: null,
+      snapshotMeta: null,
+      alertCount: 0,
+      snapshotUnavailable: false,
+      snapshotStale: false,
+      snapshotLoading: true,
+    });
+    expect(view.headerStatus.dataStatusKind).toBe("loading");
+
+    renderToolbar({
+      headerStatus: view.headerStatus,
+      reportDateInput: view.reportDate,
+      reportDateContext: view.reportDateContext,
+      terminalKpis: view.terminalKpis,
+      decisionActions: view.decisionRail.actions,
+    });
+
+    expect(screen.getByTestId("dashboard-home-data-status")).toHaveTextContent("读取中");
+  });
+
   it("does not invent a report date when no actual data date exists", () => {
     render(
       <MemoryRouter>
