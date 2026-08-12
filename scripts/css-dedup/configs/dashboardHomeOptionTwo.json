@@ -1,0 +1,12 @@
+{
+  "cssPath": "frontend/src/features/workbench/dashboard-home/dashboardHomeOptionTwo.module.css",
+  "tsxFiles": [
+    "frontend/src/features/workbench/dashboard-home/DashboardHomePage.tsx",
+    "frontend/src/features/workbench/dashboard-home/DashboardHomeOptionTwoLayout.tsx",
+    "frontend/src/features/workbench/dashboard-home/DashboardHomeOptionTwoOverview.tsx"
+  ],
+  "wildcards": [],
+  "finalMarker": null,
+  "mockUrl": "http://127.0.0.1:5897/",
+  "realUrl": "http://localhost:5888/"
+}

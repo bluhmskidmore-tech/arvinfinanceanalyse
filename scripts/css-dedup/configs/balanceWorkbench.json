@@ -1,0 +1,33 @@
+{
+  "cssPath": "frontend/src/features/balance-analysis/components/balanceWorkbench.css",
+  "tsxFiles": [
+    "frontend/src/features/balance-analysis/components/BalanceAnalysisWorkbenchLayout.tsx"
+  ],
+  "wildcards": [
+    "balance-workbench__icon-badge--asset",
+    "balance-workbench__icon-badge--liability",
+    "balance-workbench__icon-badge--risk",
+    "balance-workbench__icon-badge--evidence",
+    "balance-workbench__icon-badge--action",
+    "balance-workbench__metric-group--asset",
+    "balance-workbench__metric-group--liability",
+    "balance-workbench__metric-group--evidence",
+    "balance-workbench-card--structure",
+    "balance-workbench-card--attribution",
+    "balance-workbench-card--governance",
+    "balance-workbench-card--basis",
+    "balance-workbench-card--risk",
+    "balance-workbench-card--focus",
+    "balance-workbench-card--details",
+    "balance-workbench-card--span-4",
+    "balance-workbench-card--span-6",
+    "balance-workbench-card--span-8",
+    "balance-workbench-card--span-12",
+    "balance-workbench__endpoint-group--hero",
+    "balance-workbench__portfolio-nav-link--active"
+  ],
+  "evidenceMode": "literal",
+  "finalMarker": null,
+  "mockUrl": "http://127.0.0.1:5897/balance-analysis",
+  "realUrl": "http://localhost:5888/balance-analysis"
+}

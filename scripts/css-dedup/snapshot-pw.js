@@ -27,6 +27,11 @@ const snapExpr = fs.readFileSync(path.join(__dirname, 'snap-expression.txt'), 'u
     await page.goto(URL, { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('networkidle').catch(() => {});
     await page.waitForSelector('main [class]', { timeout: 30000 }).catch(() => {});
+    if (cfg.waitSelector) {
+      // 显式等待关键内容（如延迟挂载区块）进入 DOM，消除首个测量点与挂载的竞态。
+      await page.waitForSelector(cfg.waitSelector, { timeout: 30000 });
+      await page.waitForTimeout(500);
+    }
     for (const w of WIDTHS) {
       await page.setViewportSize({ width: w, height: 1080 });
       await page.waitForTimeout(250);

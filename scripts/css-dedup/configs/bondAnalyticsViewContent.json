@@ -1,0 +1,12 @@
+{
+  "cssPath": "frontend/src/features/bond-analytics/components/BondAnalyticsViewContent.module.css",
+  "tsxFiles": [
+    "frontend/src/features/bond-analytics/components/BondAnalyticsView.tsx",
+    "frontend/src/features/bond-analytics/components/BondAnalyticsViewContent.tsx",
+    "frontend/src/features/bond-analytics/components/BondAnalyticsAgentDrawer.tsx"
+  ],
+  "wildcards": ["toolbarDateDropdown", "agentDrawerBody"],
+  "finalMarker": null,
+  "mockUrl": "http://127.0.0.1:5897/bond-analysis",
+  "realUrl": "http://localhost:5888/bond-analysis"
+}
