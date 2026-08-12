@@ -54,6 +54,9 @@ from backend.app.services.macro_toolkit_service import (  # noqa: E402
     default_choice_stock_refresh_as_of_date,
     latest_choice_stock_inflight_refresh,
 )
+from backend.app.services.supply_freshness_service import (  # noqa: E402
+    build_supply_freshness_report,
+)
 from backend.app.tasks.choice_stock_refresh import run_choice_stock_refresh  # noqa: E402
 from scripts.macro_toolkit_freshness_refresh import (  # noqa: E402
     RECEIPT_SCHEMA_VERSION,
@@ -97,6 +100,16 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--factor-max-stock-count", type=int)
+    parser.add_argument(
+        "--theme-overlay-mode",
+        choices=("off", "archive"),
+        default="archive",
+        help=(
+            "Theme overlay refresh mode for the Choice refresh job (default: archive). "
+            "Overlay failures record archive_failed without failing the main refresh; "
+            "Tushare egress needs --vendor-source-ip on hosts with a TLS-breaking default route."
+        ),
+    )
     return parser
 
 
@@ -292,6 +305,26 @@ def _refresh_position_snapshot(
     return payload, None
 
 
+def _supply_freshness_warnings(report: dict[str, object]) -> list[str]:
+    warnings: list[str] = []
+    series = report.get("series")
+    if not isinstance(series, list):
+        return warnings
+    for item in series:
+        if not isinstance(item, dict):
+            continue
+        status = str(item.get("status") or "")
+        if status not in {"stale", "critical"}:
+            continue
+        warnings.append(
+            f"supply freshness {status}: {item.get('name')} "
+            f"latest_date={item.get('latest_date')} "
+            f"expected_date={item.get('expected_date')} "
+            f"lag_trading_days={item.get('lag_trading_days')}"
+        )
+    return warnings
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
@@ -316,7 +349,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "refresh_history": True,
                 "refresh_factors": True,
                 "factor_max_stock_count": args.factor_max_stock_count,
-                "theme_overlay_mode": "off",
+                "theme_overlay_mode": args.theme_overlay_mode,
             },
         }
     elif weekend_skip:
@@ -363,7 +396,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "refresh_history": True,
                 "refresh_factors": True,
                 "factor_max_stock_count": args.factor_max_stock_count,
-                "theme_overlay_mode": "off",
+                "theme_overlay_mode": args.theme_overlay_mode,
                 "permission": build_choice_stock_refresh_permission_payload(),
             }
             try:
@@ -393,6 +426,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
                 if position_warning:
                     warnings.append(position_warning)
+                supply_freshness = build_supply_freshness_report(
+                    duckdb_path=duckdb_path,
+                    governance_path=governance_path,
+                    as_of_date=as_of_date,
+                )
+                warnings.extend(_supply_freshness_warnings(supply_freshness))
                 result = {
                     "status": "success",
                     "as_of_date": as_of_date,
@@ -400,6 +439,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "refresh": _latest_refresh_record(governance_path),
                     "gate_supplement": gate_supplement,
                     "position_snapshot_rollforward": position_snapshot,
+                    "supply_freshness": supply_freshness,
                 }
 
     status = str(result.get("status") or "failed")

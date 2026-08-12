@@ -51,6 +51,20 @@ def cli_settings(monkeypatch, tmp_path) -> SimpleNamespace:
             "risk_exit_input_status": "ready",
         },
     )
+    monkeypatch.setattr(
+        cli,
+        "build_supply_freshness_report",
+        lambda **_kwargs: {
+            "status": "fresh",
+            "expected_date": "2026-08-11",
+            "thresholds": {
+                "stale_after_trading_days": 1,
+                "critical_after_trading_days": 5,
+            },
+            "calendar": {"holiday_aware": False},
+            "series": [],
+        },
+    )
     monkeypatch.setattr(cli.time, "sleep", lambda _seconds: None)
     return settings
 
@@ -70,6 +84,7 @@ def test_dry_run_reports_plan_without_running_refresh(monkeypatch, cli_settings,
     assert payload["latest_refresh"]["run_id"] == "r-latest"
     assert payload["would_run"]["refresh_history"] is True
     assert payload["would_run"]["refresh_factors"] is True
+    assert payload["would_run"]["theme_overlay_mode"] == "archive"
 
 
 def test_run_once_scheduled_writes_running_then_final_receipt(
@@ -107,7 +122,7 @@ def test_run_once_scheduled_writes_running_then_final_receipt(
     assert kwargs["governance_path"] == str(cli_settings.governance_path)
     assert kwargs["refresh_history"] is True
     assert kwargs["refresh_factors"] is True
-    assert kwargs["theme_overlay_mode"] == "off"
+    assert kwargs["theme_overlay_mode"] == "archive"
     assert str(kwargs["run_id"]).startswith("choice_stock_refresh:2026-08-11:")
 
     receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
@@ -126,6 +141,95 @@ def test_run_once_scheduled_writes_running_then_final_receipt(
     }
     assert receipt["result"]["status"] == "success"
     assert receipt["result"]["refresh"] == {"status": "completed", "run_id": "r-latest"}
+
+
+def test_run_once_appends_supply_freshness_and_warns_stale_items(
+    monkeypatch, cli_settings, tmp_path
+) -> None:
+    receipt_path = tmp_path / "receipt.json"
+    calls: list[dict[str, object]] = []
+    freshness_report = {
+        "status": "critical",
+        "expected_date": "2026-08-11",
+        "thresholds": {
+            "stale_after_trading_days": 1,
+            "critical_after_trading_days": 5,
+        },
+        "calendar": {"holiday_aware": False},
+        "series": [
+            {
+                "name": "csi300_index",
+                "latest_date": "2026-07-24",
+                "expected_date": "2026-08-11",
+                "lag_trading_days": 12,
+                "status": "critical",
+            },
+            {
+                "name": "cn10y_yield",
+                "latest_date": "2026-08-07",
+                "expected_date": "2026-08-11",
+                "lag_trading_days": 2,
+                "status": "stale",
+            },
+            {
+                "name": "choice_stock_daily",
+                "latest_date": None,
+                "expected_date": "2026-08-11",
+                "lag_trading_days": None,
+                "status": "unavailable",
+                "reason": "duckdb_locked",
+            },
+        ],
+    }
+
+    def fake_freshness(**kwargs):
+        calls.append(kwargs)
+        return freshness_report
+
+    monkeypatch.setattr(cli, "run_choice_stock_refresh", lambda **_kwargs: None)
+    monkeypatch.setattr(cli, "build_supply_freshness_report", fake_freshness)
+
+    exit_code = cli.main(
+        ["--run-once", "--as-of-date", "2026-08-11", "--receipt-path", str(receipt_path)]
+    )
+
+    assert exit_code == 0
+    assert calls == [
+        {
+            "duckdb_path": str(cli_settings.duckdb_path),
+            "governance_path": str(cli_settings.governance_path),
+            "as_of_date": "2026-08-11",
+        }
+    ]
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert receipt["result"]["supply_freshness"] == freshness_report
+    assert receipt["warnings"] == [
+        (
+            "supply freshness critical: csi300_index latest_date=2026-07-24 "
+            "expected_date=2026-08-11 lag_trading_days=12"
+        ),
+        (
+            "supply freshness stale: cn10y_yield latest_date=2026-08-07 "
+            "expected_date=2026-08-11 lag_trading_days=2"
+        ),
+    ]
+
+
+def test_run_once_theme_overlay_mode_off_override(monkeypatch, cli_settings) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_run(**kwargs):
+        calls.append(kwargs)
+
+    monkeypatch.setattr(cli, "run_choice_stock_refresh", fake_run)
+
+    exit_code = cli.main(
+        ["--run-once", "--as-of-date", "2026-08-11", "--theme-overlay-mode", "off"]
+    )
+
+    assert exit_code == 0
+    assert len(calls) == 1
+    assert calls[0]["theme_overlay_mode"] == "off"
 
 
 def test_run_once_success_refreshes_gate_supplement(

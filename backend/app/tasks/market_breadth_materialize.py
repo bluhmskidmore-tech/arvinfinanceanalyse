@@ -10,9 +10,10 @@ through the existing gate-supplement materialize task.
 Choice ``HIGHLIMIT`` is a yes/no flag, not a price, so the limit-up leg is
 built on that flag plus a derived limit price (see
 :mod:`backend.app.core_finance.market_breadth`): the flag names sealed boards
-and the derivation finds boards that were touched intraday and lost. ST names
-come from the latest ``choice_stock_universe`` snapshot at or before the trade
-date.
+and the derivation finds boards that were touched intraday and lost. Daily ST
+flags come from ``choice_stock_daily_security_status`` when landed; missing
+stock-days fall back to the latest ``choice_stock_universe`` name snapshot at
+or before the trade date.
 
 The Tushare ``stk_limit`` price basis is kept only as an opt-in cross-check:
 pass ``limit_price_loader`` (for example :func:`_load_tushare_limit_prices`) to
@@ -64,6 +65,7 @@ logger = logging.getLogger(__name__)
 RULE_VERSION = "rv_market_breadth_daily_v3"
 SOURCE_TABLE = "choice_stock_daily_observation"
 UNIVERSE_TABLE = "choice_stock_universe"
+DAILY_SECURITY_STATUS_TABLE = "choice_stock_daily_security_status"
 TABLE_NAME = "fact_market_breadth_daily"
 LIMIT_UP_BASIS = "choice_highlimit_flag_and_derived_limit_price"
 TUSHARE_PRO_API_URL = "https://api.tushare.pro"
@@ -91,6 +93,7 @@ def materialize_market_breadth_daily(
     min_observations_per_day: int = MIN_OBSERVATIONS_PER_DAY_DEFAULT,
     run_id: str | None = None,
     limit_price_loader: LimitPriceLoader | None = None,
+    recompute_trade_dates: frozenset[date] | None = None,
 ) -> dict[str, object]:
     """Aggregate daily breadth counts and derive gate supplement rows.
 
@@ -102,7 +105,8 @@ def materialize_market_breadth_daily(
 
     Only the latest window date and window dates that have no row yet are
     written; rows already materialized under a superseded rule version are
-    left untouched.
+    left untouched. ``recompute_trade_dates`` narrows writes to an explicit
+    landed-date set for bounded backfills.
     """
     target_date = as_of_date or date.today()
     path = Path(duckdb_path)
@@ -135,6 +139,10 @@ def materialize_market_breadth_daily(
             latest_row = daily_rows[-1]
             latest_trade_date = str(latest_row["trade_date"])
             dates_to_write = _resolve_dates_to_write(conn, daily_rows)
+            if recompute_trade_dates is not None:
+                requested_dates = {value.isoformat() for value in recompute_trade_dates}
+                landed_dates = {str(row["trade_date"]) for row in daily_rows}
+                dates_to_write = frozenset(requested_dates & landed_dates)
             limit_up_evidence = _apply_limit_up_legs(
                 conn,
                 daily_rows,
@@ -291,6 +299,27 @@ def _table_exists(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
     )
 
 
+def _table_has_columns(
+    conn: duckdb.DuckDBPyConnection,
+    table_name: str,
+    required_columns: frozenset[str],
+) -> bool:
+    if not _table_exists(conn, table_name):
+        return False
+    columns = {
+        str(row[0])
+        for row in conn.execute(
+            """
+            select column_name
+            from information_schema.columns
+            where table_schema = 'main' and table_name = ?
+            """,
+            [table_name],
+        ).fetchall()
+    }
+    return required_columns.issubset(columns)
+
+
 def _resolve_dates_to_write(
     conn: duckdb.DuckDBPyConnection,
     daily_rows: list[dict[str, object]],
@@ -329,10 +358,16 @@ def _apply_limit_up_legs(
     """
     latest_trade_date = str(daily_rows[-1]["trade_date"])
     st_names_available = _table_exists(conn, UNIVERSE_TABLE)
+    daily_st_flags_available = _table_has_columns(
+        conn,
+        DAILY_SECURITY_STATUS_TABLE,
+        frozenset({"trade_date", "stock_code", "is_st", "listing_date"}),
+    )
     observations_by_date = _load_limit_up_observations(
         conn,
         trade_dates=sorted(dates_to_write),
         st_names_available=st_names_available,
+        daily_st_flags_available=daily_st_flags_available,
     )
     unavailable_dates: list[str] = []
     latest_summary: LimitUpDaySummary | None = None
@@ -356,6 +391,7 @@ def _apply_limit_up_legs(
         latest_summary,
         observations=observations_by_date.get(latest_trade_date, []),
         st_names_available=st_names_available,
+        daily_st_flags_available=daily_st_flags_available,
     )
     evidence["limit_up_unavailable_dates"] = tuple(unavailable_dates)
     return evidence
@@ -366,6 +402,7 @@ def _limit_up_evidence(
     *,
     observations: list[LimitUpObservation],
     st_names_available: bool,
+    daily_st_flags_available: bool,
 ) -> dict[str, object]:
     """Coverage evidence for the latest date, including when it stays unavailable."""
     if summary is None:
@@ -383,32 +420,61 @@ def _limit_up_evidence(
         "limit_up_sealed_without_derived_touch_count": (
             summary.sealed_without_derived_touch_count
         ),
+        "limit_up_st_flag_source": (
+            DAILY_SECURITY_STATUS_TABLE if daily_st_flags_available else "unavailable"
+        ),
+        "limit_up_explicit_st_flag_count": sum(
+            1 for observation in observations if observation.is_st is not None
+        ),
+        "limit_up_explicit_st_count": sum(
+            1 for observation in observations if observation.is_st is True
+        ),
+        "limit_up_listing_date_count": sum(
+            1 for observation in observations if observation.listing_date is not None
+        ),
         "limit_up_st_name_source": UNIVERSE_TABLE if st_names_available else "unavailable",
         "limit_up_st_named_count": sum(
             1 for observation in observations if is_st_name(observation.stock_name)
         ),
-        "limit_up_coverage_note": _limit_up_coverage_note(st_names_available=st_names_available),
+        "limit_up_coverage_note": _limit_up_coverage_note(
+            st_names_available=st_names_available,
+            daily_st_flags_available=daily_st_flags_available,
+        ),
     }
 
 
-def _limit_up_coverage_note(*, st_names_available: bool) -> str:
+def _limit_up_coverage_note(
+    *,
+    st_names_available: bool,
+    daily_st_flags_available: bool,
+) -> str:
     parts = [
         "Sealed boards come from the Choice HIGHLIMIT flag; broken boards are "
         "derived from prev_close = close / (1 + pctchange/100) and the board "
         "limit ratio.",
     ]
+    if daily_st_flags_available:
+        parts.append(
+            "Non-null daily ST flags come from choice_stock_daily_security_status "
+            "and take precedence over stock names."
+        )
+    if st_names_available:
+        parts.append(
+            "A stock-day without an explicit ST flag falls back to the latest "
+            "choice_stock_universe name snapshot at or before the trade date; "
+            "the fallback ST band is dropped when the row's own move is already "
+            "wider than it."
+        )
+    else:
+        parts.append(
+            "choice_stock_universe is not landed, so stock-days without an "
+            "explicit ST flag use the plain main-board band."
+        )
     parts.append(
-        "ST names come from the latest choice_stock_universe snapshot at or "
-        "before the trade date; the ST band is dropped when a row's own move "
-        "is already wider than it."
-        if st_names_available
-        else "choice_stock_universe is not landed, so every main-board code "
-        "uses the plain board band (ST approximated by board band)."
-    )
-    parts.append(
-        "No listing-date field is landed, so first-day new listings are not "
-        "excluded by date; rows whose own move sits outside their board band "
-        "are reported as limit_up_out_of_band_count and left unclassified."
+        "Listing dates are coverage evidence only until the exchange-calendar "
+        "rule for uncapped new-listing windows is defined; rows whose own move "
+        "sits outside their board band are reported as "
+        "limit_up_out_of_band_count and left unclassified."
     )
     return " ".join(parts)
 
@@ -418,6 +484,7 @@ def _load_limit_up_observations(
     *,
     trade_dates: list[str],
     st_names_available: bool,
+    daily_st_flags_available: bool,
 ) -> dict[str, list[LimitUpObservation]]:
     if not trade_dates:
         return {}
@@ -434,6 +501,23 @@ def _load_limit_up_observations(
         if st_names_available
         else "cast(null as varchar)"
     )
+    status_join = (
+        f"""
+        left join {DAILY_SECURITY_STATUS_TABLE} daily_status
+          on cast(daily_status.trade_date as varchar) = cast(o.trade_date as varchar)
+         and daily_status.stock_code = o.stock_code
+        """
+        if daily_st_flags_available
+        else ""
+    )
+    st_flag_expression = (
+        "daily_status.is_st" if daily_st_flags_available else "cast(null as boolean)"
+    )
+    listing_date_expression = (
+        "daily_status.listing_date"
+        if daily_st_flags_available
+        else "cast(null as varchar)"
+    )
     rows = conn.execute(
         f"""
         select
@@ -443,14 +527,27 @@ def _load_limit_up_observations(
           o.pctchange,
           o.close_value,
           o.high_value,
-          {name_expression} as stock_name
+          {name_expression} as stock_name,
+          {st_flag_expression} as is_st,
+          {listing_date_expression} as listing_date
         from {SOURCE_TABLE} o
+        {status_join}
         where cast(o.trade_date as varchar) in ({placeholders})
         """,
         trade_dates,
     ).fetchall()
     observations_by_date: dict[str, list[LimitUpObservation]] = {}
-    for trade_date, stock_code, limit_flag, pctchange, close_value, high_value, stock_name in rows:
+    for (
+        trade_date,
+        stock_code,
+        limit_flag,
+        pctchange,
+        close_value,
+        high_value,
+        stock_name,
+        is_st,
+        listing_date,
+    ) in rows:
         observations_by_date.setdefault(str(trade_date), []).append(
             LimitUpObservation(
                 stock_code=str(stock_code),
@@ -459,6 +556,8 @@ def _load_limit_up_observations(
                 close_value=None if close_value is None else float(close_value),
                 high_value=None if high_value is None else float(high_value),
                 stock_name=None if stock_name is None else str(stock_name),
+                is_st=None if is_st is None else bool(is_st),
+                listing_date=None if listing_date is None else str(listing_date),
             )
         )
     return observations_by_date

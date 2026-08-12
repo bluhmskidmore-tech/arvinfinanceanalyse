@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -339,6 +340,220 @@ def test_choice_stock_materialize_run_main_emits_structured_theme_overlay_failur
     module.main()
 
     assert json.loads(capsys.readouterr().out)["theme_overlay"] == failure
+
+
+def test_choice_stock_materialize_run_main_theme_overlay_only_reuses_committed_lineage(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    module = _load_runner_module()
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_path = tmp_path / "governance"
+    archive_root = tmp_path / "archive"
+    materialization_run_id = "choice_stock_materialize:2026-04-28:committed"
+    observation_calls: list[dict[str, object]] = []
+    overlay_calls: list[dict[str, object]] = []
+
+    def fail_materialize(**_kwargs: object) -> dict[str, object]:
+        raise AssertionError("theme-overlay-only must not re-run Choice materialization")
+
+    monkeypatch.setattr(module, "materialize_choice_stock_inputs", fail_materialize)
+    monkeypatch.setattr(module, "materialize_choice_stock_factor_snapshot", fail_materialize, raising=False)
+    monkeypatch.setattr(
+        module,
+        "resolve_latest_committed_choice_stock_observation",
+        lambda **kwargs: observation_calls.append(dict(kwargs))
+        or SimpleNamespace(
+            report_date="2026-04-28",
+            materialization_run_id=materialization_run_id,
+            daily_observation_row_count=5208,
+            stock_code_count=5208,
+        ),
+    )
+    monkeypatch.setattr(
+        module,
+        "get_settings",
+        lambda: SimpleNamespace(
+            duckdb_path=duckdb_path,
+            governance_path=governance_path,
+            local_archive_path=archive_root,
+        ),
+    )
+    monkeypatch.setattr(
+        module,
+        "refresh_choice_stock_theme_overlay",
+        lambda **kwargs: (
+            overlay_calls.append(dict(kwargs))
+            or {
+                "mode": "archive",
+                "status": "completed",
+                "overlay_status": "completed",
+                "member_count": 4321,
+                "run_id": kwargs["run_id"],
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "choice_stock_materialize_run.py",
+            "--as-of-date",
+            "2026-04-28",
+            "--duckdb-path",
+            str(duckdb_path),
+            "--theme-overlay-only",
+            "--theme-overlay-mode",
+            "archive",
+        ],
+    )
+
+    module.main()
+
+    expected_digest = hashlib.sha256(f"{materialization_run_id}|2026-04-28".encode()).hexdigest()[:16]
+    assert observation_calls == [
+        {"duckdb_path": str(duckdb_path), "expected_report_date": "2026-04-28"},
+    ]
+    assert overlay_calls == [
+        {
+            "mode": "archive",
+            "duckdb_path": str(duckdb_path),
+            "governance_dir": str(governance_path),
+            "archive_root": str(archive_root),
+            "expected_report_date": "2026-04-28",
+            "run_id": f"{materialization_run_id}:theme-overlay",
+            "source_version": f"sv_choice_stock_theme_overlay_{expected_digest}",
+            "vendor_version": "vv_tushare_ths_current_overlay_v1",
+        }
+    ]
+    assert json.loads(capsys.readouterr().out) == {
+        "status": "theme_overlay_only",
+        "as_of_date": "2026-04-28",
+        "run_id": materialization_run_id,
+        "daily_observation_row_count": 5208,
+        "stock_code_count": 5208,
+        "theme_overlay": {
+            "mode": "archive",
+            "status": "completed",
+            "overlay_status": "completed",
+            "member_count": 4321,
+            "run_id": f"{materialization_run_id}:theme-overlay",
+        },
+    }
+
+
+def test_choice_stock_materialize_run_main_theme_overlay_only_binds_source_ip(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    module = _load_runner_module()
+    events: list[str] = []
+
+    @contextmanager
+    def fake_source_network(source_ip: str):
+        events.append(f"enter:{source_ip}")
+        try:
+            yield
+        finally:
+            events.append("exit")
+
+    monkeypatch.setattr(module, "_tushare_source_network", fake_source_network)
+    monkeypatch.setattr(
+        module,
+        "resolve_latest_committed_choice_stock_observation",
+        lambda **_kwargs: SimpleNamespace(
+            report_date="2026-04-28",
+            materialization_run_id="choice_stock_materialize:2026-04-28:committed",
+            daily_observation_row_count=5208,
+            stock_code_count=5208,
+        ),
+    )
+    monkeypatch.setattr(
+        module,
+        "get_settings",
+        lambda: SimpleNamespace(
+            duckdb_path=tmp_path / "moss.duckdb",
+            governance_path=tmp_path / "governance",
+            local_archive_path=tmp_path / "archive",
+        ),
+    )
+    monkeypatch.setattr(
+        module,
+        "refresh_choice_stock_theme_overlay",
+        lambda **_kwargs: events.append("overlay") or {"mode": "archive", "status": "completed"},
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "choice_stock_materialize_run.py",
+            "--as-of-date",
+            "2026-04-28",
+            "--theme-overlay-only",
+            "--theme-overlay-mode",
+            "archive",
+            "--theme-overlay-source-ip",
+            "172.16.115.248",
+        ],
+    )
+
+    module.main()
+
+    assert events == ["enter:172.16.115.248", "overlay", "exit"]
+    assert json.loads(capsys.readouterr().out)["theme_overlay"] == {
+        "mode": "archive",
+        "status": "completed",
+    }
+
+
+def test_choice_stock_materialize_run_main_source_ip_requires_theme_overlay_only(monkeypatch, capsys) -> None:
+    module = _load_runner_module()
+
+    def fail_materialize(**_kwargs: object) -> dict[str, object]:
+        raise AssertionError("argument validation must run before materialization")
+
+    monkeypatch.setattr(module, "materialize_choice_stock_inputs", fail_materialize)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "choice_stock_materialize_run.py",
+            "--as-of-date",
+            "2026-04-28",
+            "--theme-overlay-source-ip",
+            "172.16.115.248",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as excinfo:
+        module.main()
+
+    assert excinfo.value.code == 2
+    assert "--theme-overlay-source-ip requires --theme-overlay-only" in capsys.readouterr().err
+
+
+def test_choice_stock_materialize_run_main_theme_overlay_only_requires_active_mode(monkeypatch, capsys) -> None:
+    module = _load_runner_module()
+
+    def fail_materialize(**_kwargs: object) -> dict[str, object]:
+        raise AssertionError("theme-overlay-only must not re-run Choice materialization")
+
+    monkeypatch.setattr(module, "materialize_choice_stock_inputs", fail_materialize)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["choice_stock_materialize_run.py", "--as-of-date", "2026-04-28", "--theme-overlay-only"],
+    )
+
+    with pytest.raises(SystemExit) as excinfo:
+        module.main()
+
+    assert excinfo.value.code == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "--theme-overlay-only requires --theme-overlay-mode dry_run or archive" in captured.err
 
 
 def test_choice_stock_materialize_run_main_can_run_factor_snapshot(monkeypatch, capsys) -> None:

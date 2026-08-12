@@ -34,6 +34,7 @@ from backend.app.core_finance.market_breadth import (
     resolve_limit_ratio,
     summarize_limit_up_day,
 )
+from backend.app.schema_registry.duckdb_loader import REGISTRY_DIR, parse_registry_sql_text
 from backend.app.tasks.market_breadth_materialize import materialize_market_breadth_daily
 
 # ---------------------------------------------------------------------------
@@ -108,6 +109,7 @@ def _observation(
     close_value: float | None = None,
     high_value: float | None = None,
     stock_name: str | None = None,
+    is_st: bool | None = None,
 ) -> LimitUpObservation:
     return LimitUpObservation(
         stock_code=stock_code,
@@ -116,7 +118,61 @@ def _observation(
         close_value=close_value,
         high_value=high_value,
         stock_name=stock_name,
+        is_st=is_st,
     )
+
+
+def test_explicit_daily_st_flag_takes_precedence_over_stock_name() -> None:
+    explicit_st = _observation(
+        "600107.SH",
+        pctchange=2.0,
+        close_value=10.2,
+        high_value=10.5,
+        stock_name="尔雅家居",
+        is_st=True,
+    )
+    explicit_non_st = _observation(
+        "600107.SH",
+        pctchange=2.0,
+        close_value=10.2,
+        high_value=10.5,
+        stock_name="*ST尔雅",
+        is_st=False,
+    )
+
+    assert (
+        resolve_limit_ratio(
+            explicit_st.stock_code,
+            stock_name=explicit_st.stock_name,
+            is_st=explicit_st.is_st,
+            pctchange=explicit_st.pctchange,
+        )
+        == LIMIT_RATIO_MAIN_BOARD_ST
+    )
+    assert classify_limit_touch(explicit_st) == LIMIT_TOUCH_BROKEN
+    assert (
+        resolve_limit_ratio(
+            explicit_non_st.stock_code,
+            stock_name=explicit_non_st.stock_name,
+            is_st=explicit_non_st.is_st,
+            pctchange=explicit_non_st.pctchange,
+        )
+        == LIMIT_RATIO_MAIN_BOARD
+    )
+    assert classify_limit_touch(explicit_non_st) == LIMIT_TOUCH_NO_TOUCH
+
+
+def test_missing_daily_st_flag_falls_back_to_stock_name_heuristic() -> None:
+    fallback_st = _observation(
+        "600107.SH",
+        pctchange=2.0,
+        close_value=10.2,
+        high_value=10.5,
+        stock_name="*ST尔雅",
+        is_st=None,
+    )
+
+    assert classify_limit_touch(fallback_st) == LIMIT_TOUCH_BROKEN
 
 
 def test_sealed_comes_from_the_vendor_flag() -> None:
@@ -377,3 +433,42 @@ def test_materialize_uses_universe_names_for_the_st_band(tmp_path: Path) -> None
         conn.close()
     # sealed 1 == broken 1 -> a tie is not positive.
     assert supplement == (False,)
+
+
+def test_materialize_prefers_daily_st_status_over_universe_name(tmp_path: Path) -> None:
+    db = tmp_path / "moss.duckdb"
+    _seed_st_scenario(db)
+    conn = duckdb.connect(str(db), read_only=False)
+    try:
+        migration = (
+            REGISTRY_DIR
+            / "proposals"
+            / "41_choice_stock_daily_security_status.sql"
+        ).read_text(encoding="utf-8")
+        for statement in parse_registry_sql_text(migration):
+            conn.execute(statement)
+        conn.execute(
+            """
+            insert into choice_stock_daily_security_status values
+            ('2026-08-11', '600107.SH', false, '1997-06-06',
+             'sv_test', 'vv_test', 'rv_test', 'run_test')
+            """
+        )
+    finally:
+        conn.close()
+
+    result = materialize_market_breadth_daily(
+        duckdb_path=str(db),
+        as_of_date=date(2026, 8, 11),
+        lookback_days=30,
+        min_observations_per_day=1,
+    )
+
+    assert result["status"] == "completed"
+    assert result["limit_up_st_flag_source"] == "choice_stock_daily_security_status"
+    assert result["limit_up_explicit_st_flag_count"] == 1
+    assert result["limit_up_listing_date_count"] == 1
+    # The daily false flag overrides the stale "*ST" universe name, so 10.50
+    # no longer touches this main-board stock's 10% limit.
+    assert result["limit_up_sealed_count"] == 1
+    assert result["limit_up_broken_count"] == 0

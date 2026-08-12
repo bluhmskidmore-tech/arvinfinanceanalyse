@@ -27,10 +27,10 @@ Limit-up classification basis (mainstream A-share convention):
 - Broken boards ("炸板") are derived: ``prev_close = close / (1 + pctchange/100)``
   and ``limit_price = round_half_up(prev_close * (1 + ratio), 2)``. A row whose
   intraday high reached that price without the sealed flag broke its board.
-- ``ratio`` follows the board the code belongs to; a main-board ST name is
-  capped at 5%. ChiNext/STAR ST names keep the 20% board cap. The ST cap is
-  dropped for a row whose own move is already wider than it, because vendor
-  name snapshots lag 戴帽/摘帽.
+- ``ratio`` follows the board the code belongs to; a main-board stock with an
+  explicit daily ST flag is capped at 5%. When that flag is missing, the stock
+  name remains a fallback and its ST cap is dropped when the row's own move is
+  already wider than it, because name snapshots can lag 戴帽/摘帽.
 - A row whose own ``pctchange`` sits outside its board band is not governed by
   that band (new listing with no first-day cap, board transfer, vendor error),
   so it is reported separately instead of being counted as a broken board.
@@ -101,6 +101,8 @@ class LimitUpObservation:
     close_value: float | None = None
     high_value: float | None = None
     stock_name: str | None = None
+    is_st: bool | None = None
+    listing_date: str | None = None
 
 
 @dataclass(frozen=True)
@@ -136,16 +138,16 @@ def resolve_limit_ratio(
     stock_code: str | None,
     *,
     stock_name: str | None = None,
+    is_st: bool | None = None,
     pctchange: float | None = None,
 ) -> float | None:
     """Daily price-limit ratio for a stock, or ``None`` when the code is unusable.
 
-    Board caps take precedence over the ST cap: ChiNext/STAR ST names keep the
-    20% board cap, only main-board ST names drop to 5%.
+    Board caps take precedence over the ST cap: ChiNext/STAR ST rows keep the
+    20% board cap, only main-board ST rows drop to 5%.
 
-    The main-board ST cap is applied only while the row's own move fits inside
-    it. Name snapshots lag 戴帽/摘帽 by days, so a wider move is proof that the
-    row is not under the ST cap and the plain board cap is used instead.
+    A non-null daily ``is_st`` flag is authoritative. The name heuristic and
+    wider-move self-calibration are used only when the daily flag is missing.
     """
     code = _numeric_stock_code(stock_code)
     if not code:
@@ -156,9 +158,10 @@ def resolve_limit_ratio(
         return LIMIT_RATIO_GROWTH_BOARD
     if code[:1] in {"4", "8"} or code[:2] == "92":
         return LIMIT_RATIO_BEIJING
-    if not is_st_name(stock_name):
+    resolved_is_st = is_st if is_st is not None else is_st_name(stock_name)
+    if not resolved_is_st:
         return LIMIT_RATIO_MAIN_BOARD
-    if pctchange is not None and abs(float(pctchange)) > _band_upper_bound_pct(
+    if is_st is None and pctchange is not None and abs(float(pctchange)) > _band_upper_bound_pct(
         LIMIT_RATIO_MAIN_BOARD_ST
     ):
         return LIMIT_RATIO_MAIN_BOARD
@@ -266,6 +269,7 @@ def _derived_touch_state(observation: LimitUpObservation) -> str:
     ratio = resolve_limit_ratio(
         observation.stock_code,
         stock_name=observation.stock_name,
+        is_st=observation.is_st,
         pctchange=observation.pctchange,
     )
     if ratio is None or observation.high_value is None or observation.pctchange is None:
