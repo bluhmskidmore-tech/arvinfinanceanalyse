@@ -391,14 +391,6 @@
   }
 }
 
-.dashboard-command-deck {
-  display: grid;
-  grid-template-columns: minmax(0, 1.58fr) minmax(300px, 0.62fr);
-  gap: 14px;
-  align-items: start;
-  min-width: 0;
-}
-
 .dashboard-command-deck > * {
   min-width: 0;
 }
@@ -415,16 +407,6 @@
   min-height: 0;
 }
 
-.dashboard-command-deck__judgment .dashboard-home-section-header {
-  align-items: center;
-}
-
-.dashboard-command-status {
-  gap: 10px;
-  padding: 14px;
-  border-top: 0;
-}
-
 .dashboard-command-status [data-testid="dashboard-governance-pills"] {
   display: grid !important;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -436,17 +418,6 @@
   justify-content: space-between;
   border-color: rgba(15, 23, 42, 0.04) !important;
   background: rgba(255, 255, 255, 0.4) !important;
-}
-
-.dashboard-command-status__grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.dashboard-command-status__metric {
-  gap: 3px;
-  padding: 10px;
 }
 
 .dashboard-command-status__metric:first-child {
@@ -481,18 +452,6 @@
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.84) inset,
     0 16px 46px rgba(17, 24, 39, 0.028);
-  backdrop-filter: blur(16px);
-}
-
-.dashboard-command-deck__judgment.dashboard-home-panel,
-.dashboard-command-status.dashboard-home-panel {
-  border-color: rgba(15, 23, 42, 0.052);
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.86) 0%, rgba(247, 250, 253, 0.64) 54%, rgba(251, 242, 243, 0.18) 100%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.72) 0%, rgba(244, 248, 251, 0.72) 100%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.88),
-    0 16px 44px rgba(17, 24, 39, 0.035);
   backdrop-filter: blur(16px);
 }
 
@@ -822,26 +781,6 @@
   white-space: nowrap;
 }
 
-.dashboard-cockpit-card {
-  display: grid;
-  gap: 10px;
-  min-width: 0;
-  padding: 12px 14px;
-  border-radius: 8px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: #ffffff;
-  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.035);
-}
-
-.dashboard-cockpit-strip-head,
-.dashboard-cockpit-panel-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-  min-width: 0;
-}
-
 .dashboard-cockpit-eyebrow {
   display: block;
   color: rgba(24, 53, 83, 0.66);
@@ -915,12 +854,6 @@
   cursor: pointer;
 }
 
-.dashboard-cockpit-market-ticker {
-  grid-template-columns: minmax(110px, 148px) minmax(0, 1fr);
-  align-items: center;
-  padding: 10px 12px;
-}
-
 .dashboard-cockpit-market-ticker__grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -935,10 +868,6 @@
   min-height: 58px;
   padding: 8px 9px;
   border-left: 1px solid rgba(15, 23, 42, 0.09);
-}
-
-.dashboard-cockpit-market-ticker__item .dashboard-cockpit-number {
-  font-size: clamp(13px, 0.95vw, 17px);
 }
 
 .dashboard-cockpit-market-ticker__item:first-child {
@@ -969,97 +898,12 @@
   color: var(--moss-color-text-primary);
 }
 
-.dashboard-cockpit-metric-rail {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 0;
-  padding: 10px 12px;
-}
-
-.dashboard-cockpit-metric-rail__item {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-  min-height: 70px;
-  padding: 2px 14px;
-  border-left: 1px solid rgba(15, 23, 42, 0.1);
-}
-
 .dashboard-cockpit-metric-rail__item:first-child {
   border-left: 0;
 }
 
-.dashboard-cockpit-main-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.02fr) minmax(0, 1.24fr) minmax(0, 0.92fr);
-  gap: 10px;
-  align-items: stretch;
-  min-width: 0;
-}
-
-.dashboard-cockpit-panel {
-  align-content: start;
-  min-height: 190px;
-}
-
-.dashboard-cockpit-curve-list,
-.dashboard-cockpit-portfolio-list,
-.dashboard-cockpit-calendar-list,
-.dashboard-cockpit-waterfall__bars {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-}
-
-.dashboard-cockpit-curve-row,
-.dashboard-cockpit-portfolio-row,
-.dashboard-cockpit-calendar-item,
-.dashboard-cockpit-waterfall__bar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: 8px;
-  align-items: center;
-  min-width: 0;
-  min-height: 28px;
-  padding: 6px 8px;
-  border-radius: 7px;
-  background: rgba(248, 251, 255, 0.92);
-  color: rgba(51, 65, 85, 0.9);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
 .dashboard-cockpit-portfolio-row {
   grid-template-columns: 9px minmax(0, 0.76fr) auto minmax(0, 1.18fr);
-}
-
-.dashboard-cockpit-portfolio-body {
-  display: grid;
-  grid-template-columns: 94px minmax(0, 1fr);
-  gap: 10px;
-  align-items: center;
-  min-width: 0;
-}
-
-.dashboard-cockpit-donut {
-  position: relative;
-  display: grid;
-  place-items: center;
-  align-content: center;
-  width: 86px;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  background: var(--donut-gradient);
-  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.06);
-}
-
-.dashboard-cockpit-donut::after {
-  content: "";
-  position: absolute;
-  inset: 18px;
-  border-radius: 50%;
-  background: #ffffff;
-  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.045);
 }
 
 .dashboard-cockpit-donut span,
@@ -1136,23 +980,6 @@
   line-height: 1.35;
 }
 
-.dashboard-cockpit-judgment-cards__grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.dashboard-cockpit-judgment-card {
-  display: grid;
-  gap: 8px;
-  min-width: 0;
-  min-height: 96px;
-  padding: 10px;
-  border-radius: 8px;
-  border: 1px solid rgba(15, 23, 42, 0.07);
-  background: rgba(255, 255, 255, 0.92);
-}
-
 .dashboard-cockpit-judgment-card__head,
 .dashboard-cockpit-judgment-card__foot {
   display: flex;
@@ -1162,25 +989,11 @@
   min-width: 0;
 }
 
-.dashboard-cockpit-judgment-card h3 {
-  margin: 0;
-  color: var(--dashboard-ink);
-  font-size: 13px;
-  font-weight: 700;
-}
-
 .dashboard-cockpit-judgment-card__head span,
 .dashboard-cockpit-judgment-card__foot span {
   color: rgba(71, 85, 105, 0.72);
   font-size: 11px;
   white-space: nowrap;
-}
-
-.dashboard-cockpit-judgment-card p {
-  margin: 0;
-  color: rgba(51, 65, 85, 0.88);
-  font-size: 11px;
-  line-height: 1.4;
 }
 
 .dashboard-cockpit-judgment-card__foot strong {
@@ -1189,47 +1002,10 @@
   font-weight: 750;
 }
 
-.dashboard-cockpit-waterfall__bar {
-  grid-template-columns: minmax(0, 1fr) auto;
-  border-left: 4px solid rgba(36, 71, 111, 0.42);
-}
-
-.dashboard-cockpit-lower-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 0.95fr) minmax(0, 0.95fr) minmax(0, 1.1fr);
-  gap: 10px;
-  align-items: stretch;
-  min-width: 0;
-}
-
-.dashboard-cockpit-risk-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.dashboard-cockpit-risk-item {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-  min-height: 62px;
-  padding: 9px;
-  border-radius: 8px;
-  border: 1px solid rgba(15, 23, 42, 0.07);
-  background: rgba(248, 251, 255, 0.9);
-}
-
 .dashboard-cockpit-risk-item span {
   color: rgba(71, 85, 105, 0.76);
   font-size: 11px;
   font-weight: 650;
-}
-
-.dashboard-cockpit-risk-item strong {
-  color: var(--dashboard-ink);
-  font-size: 16px;
-  font-weight: 750;
-  font-variant-numeric: tabular-nums;
 }
 
 .dashboard-cockpit-watch {
@@ -1243,20 +1019,6 @@
   overflow-x: auto;
   border-radius: 8px;
   border: 1px solid rgba(15, 23, 42, 0.08);
-}
-
-.dashboard-cockpit-watch__row {
-  display: grid;
-  grid-template-columns: 0.72fr minmax(120px, 1.2fr) 0.76fr 0.72fr 0.72fr 0.55fr minmax(180px, 1.4fr);
-  gap: 10px;
-  align-items: center;
-  min-width: 760px;
-  padding: 8px 10px;
-  border-top: 1px solid rgba(15, 23, 42, 0.06);
-  background: #ffffff;
-  color: rgba(51, 65, 85, 0.9);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
 }
 
 .dashboard-cockpit-watch__row:first-child {
@@ -1304,21 +1066,6 @@
 .dashboard-cockpit-status-blocked .dashboard-cockpit-number,
 .dashboard-cockpit-status-blocked strong {
   color: rgba(100, 116, 139, 0.86);
-}
-
-.dashboard-cockpit-business-strip {
-  grid-template-columns: minmax(0, 1.35fr) minmax(360px, 0.9fr);
-}
-
-.dashboard-cockpit-business-strip .dashboard-metric-shell {
-  border-radius: 8px;
-  background: #ffffff;
-  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.035);
-}
-
-.dashboard-cockpit-business-strip .dashboard-core-metrics__grid {
-  gap: 10px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .dashboard-focus-workspace {
@@ -1467,48 +1214,6 @@
   cursor: pointer;
 }
 
-.dashboard-judgment-band {
-  display: grid;
-  gap: 16px;
-  align-items: start;
-}
-
-.dashboard-command-deck__judgment {
-  align-content: start;
-  padding: 18px 20px;
-}
-
-.dashboard-command-deck__judgment .dashboard-home-section-header {
-  max-width: none;
-}
-
-.dashboard-command-deck__judgment .dashboard-home-tone-dot {
-  position: absolute;
-  top: 34px;
-  right: 34px;
-  width: 7px;
-  height: 7px;
-  opacity: 0.7;
-}
-
-.dashboard-judgment-band__conclusion {
-  margin: 0;
-  padding: 0 0 0 16px;
-  border-left: 2px solid rgba(141, 48, 58, 0.72);
-  color: var(--dashboard-ink);
-  font-size: clamp(19px, 1.65vw, 22px);
-  font-weight: 600;
-  line-height: 1.42;
-  letter-spacing: 0;
-  max-width: 780px;
-}
-
-.dashboard-judgment-band__reasons {
-  display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
 .dashboard-judgment-band__reason {
   display: grid;
   grid-template-columns: 12px minmax(0, 1fr);
@@ -1526,14 +1231,6 @@
   grid-template-columns: minmax(132px, 170px) minmax(0, 1fr);
   gap: 12px;
   align-items: stretch;
-}
-
-.dashboard-business-balance-summary {
-  display: grid;
-  gap: 10px;
-  align-items: start;
-  min-width: 0;
-  padding: 14px;
 }
 
 .dashboard-business-balance-summary__header {
@@ -1611,11 +1308,8 @@
 }
 
 .dashboard-detail-drilldown {
-  display: grid;
+  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   gap: 12px;
-  min-width: 0;
-  overflow-x: clip;
-  padding-top: 0;
 }
 
 .dashboard-detail-drilldown__header {
@@ -1804,12 +1498,21 @@
 }
 
 .dashboard-cockpit-card {
+  display: grid;
+  min-width: 0;
+  border-radius: 8px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: #ffffff;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.035);
   gap: 8px;
   padding: 10px 12px;
 }
 
 .dashboard-cockpit-strip-head,
 .dashboard-cockpit-panel-head {
+  display: flex;
+  justify-content: space-between;
+  min-width: 0;
   align-items: center;
   gap: 8px;
 }
@@ -1838,6 +1541,7 @@
 }
 
 .dashboard-cockpit-market-ticker {
+  align-items: center;
   grid-template-columns: minmax(0, 1fr);
   min-height: 64px;
   padding: 0;
@@ -1882,17 +1586,23 @@
 }
 
 .dashboard-command-deck {
+  display: grid;
+  align-items: start;
+  min-width: 0;
   grid-template-columns: minmax(0, 1fr) 276px;
   gap: 8px;
 }
 
 .dashboard-command-deck__judgment.dashboard-home-panel,
 .dashboard-command-status.dashboard-home-panel {
+  border-color: rgba(15, 23, 42, 0.052);
+  backdrop-filter: blur(16px);
   background: #ffffff;
   box-shadow: 0 6px 16px rgba(15, 23, 42, 0.035);
 }
 
 .dashboard-command-deck__judgment {
+  align-content: start;
   position: relative;
   height: 118px;
   min-height: 118px;
@@ -1942,16 +1652,24 @@
 }
 
 .dashboard-judgment-band {
+  display: grid;
+  align-items: start;
   gap: 7px;
 }
 
 .dashboard-command-deck__judgment .dashboard-home-section-header {
+  align-items: center;
+  max-width: none;
   position: relative;
   margin-bottom: -2px;
   z-index: 1;
 }
 
 .dashboard-command-deck__judgment .dashboard-home-tone-dot {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  opacity: 0.7;
   top: 46px;
   right: 44px;
 }
@@ -1961,6 +1679,11 @@
 }
 
 .dashboard-judgment-band__conclusion {
+  margin: 0;
+  padding: 0 0 0 16px;
+  color: var(--dashboard-ink);
+  font-weight: 600;
+  letter-spacing: 0;
   position: relative;
   z-index: 1;
   max-width: none;
@@ -1971,6 +1694,7 @@
 }
 
 .dashboard-judgment-band__reasons {
+  display: grid;
   position: relative;
   z-index: 1;
   gap: 6px;
@@ -2012,6 +1736,7 @@
 }
 
 .dashboard-command-status {
+  border-top: 0;
   height: 118px;
   gap: 7px;
   overflow: hidden;
@@ -2036,10 +1761,13 @@
 }
 
 .dashboard-command-status__grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
   display: none;
 }
 
 .dashboard-command-status__metric {
+  gap: 3px;
   padding: 7px;
   border-radius: 7px;
 }
@@ -2049,10 +1777,16 @@
 }
 
 .dashboard-cockpit-metric-rail {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0;
   padding: 7px 4px;
 }
 
 .dashboard-cockpit-metric-rail__item {
+  display: grid;
+  min-width: 0;
+  border-left: 1px solid rgba(15, 23, 42, 0.1);
   min-height: 54px;
   gap: 3px;
   padding: 1px 12px;
@@ -2073,6 +1807,9 @@
 }
 
 .dashboard-cockpit-main-grid {
+  display: grid;
+  align-items: stretch;
+  min-width: 0;
   grid-template-columns: minmax(0, 1.06fr) minmax(0, 1.18fr) minmax(0, 0.98fr);
   gap: 8px;
 }
@@ -2086,6 +1823,8 @@
 .dashboard-cockpit-portfolio-list,
 .dashboard-cockpit-calendar-list,
 .dashboard-cockpit-waterfall__bars {
+  display: grid;
+  min-width: 0;
   gap: 5px;
 }
 
@@ -2147,6 +1886,13 @@
 .dashboard-cockpit-portfolio-row,
 .dashboard-cockpit-calendar-item,
 .dashboard-cockpit-waterfall__bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  color: rgba(51, 65, 85, 0.9);
+  font-variant-numeric: tabular-nums;
   min-height: 25px;
   padding: 5px 8px;
   border-radius: 5px;
@@ -2155,23 +1901,44 @@
 }
 
 .dashboard-cockpit-portfolio-body {
+  display: grid;
+  align-items: center;
+  min-width: 0;
   grid-template-columns: 86px minmax(0, 1fr);
   gap: 8px;
 }
 
 .dashboard-cockpit-donut {
+  position: relative;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--donut-gradient);
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.06);
   width: 78px;
 }
 
 .dashboard-cockpit-donut::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.045);
   inset: 16px;
 }
 
 .dashboard-cockpit-judgment-cards__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
 }
 
 .dashboard-cockpit-judgment-card {
+  display: grid;
+  min-width: 0;
+  border: 1px solid rgba(15, 23, 42, 0.07);
   min-height: 74px;
   gap: 5px;
   padding: 8px;
@@ -2180,10 +1947,15 @@
 }
 
 .dashboard-cockpit-judgment-card h3 {
+  margin: 0;
+  color: var(--dashboard-ink);
+  font-weight: 700;
   font-size: 12px;
 }
 
 .dashboard-cockpit-judgment-card p {
+  margin: 0;
+  color: rgba(51, 65, 85, 0.88);
   display: -webkit-box;
   overflow: hidden;
   font-size: 11px;
@@ -2193,6 +1965,7 @@
 }
 
 .dashboard-cockpit-waterfall__bar {
+  border-left: 4px solid rgba(36, 71, 111, 0.42);
   position: relative;
   grid-template-columns: minmax(72px, 0.74fr) minmax(0, 1fr) auto;
   overflow: hidden;
@@ -2224,15 +1997,22 @@
 }
 
 .dashboard-cockpit-business-strip .dashboard-metric-shell {
+  border-radius: 8px;
+  background: #ffffff;
   padding: 10px;
   box-shadow: 0 6px 16px rgba(15, 23, 42, 0.03);
 }
 
 .dashboard-cockpit-business-strip .dashboard-core-metrics__grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
 }
 
 .dashboard-cockpit-lower-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 0.95fr) minmax(0, 1.1fr);
+  align-items: stretch;
+  min-width: 0;
   gap: 8px;
 }
 
@@ -2241,29 +2021,56 @@
 }
 
 .dashboard-cockpit-risk-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
 }
 
 .dashboard-cockpit-risk-item {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  background: rgba(248, 251, 255, 0.9);
   min-height: 50px;
   padding: 7px;
   border-radius: 6px;
 }
 
 .dashboard-cockpit-risk-item strong {
+  color: var(--dashboard-ink);
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
   font-size: 15px;
 }
 
 .dashboard-cockpit-watch__row {
+  display: grid;
+  grid-template-columns: 0.72fr minmax(120px, 1.2fr) 0.76fr 0.72fr 0.72fr 0.55fr minmax(180px, 1.4fr);
+  gap: 10px;
+  align-items: center;
+  min-width: 760px;
+  border-top: 1px solid rgba(15, 23, 42, 0.06);
+  background: #ffffff;
+  color: rgba(51, 65, 85, 0.9);
+  font-variant-numeric: tabular-nums;
   padding: 7px 10px;
   font-size: 11px;
 }
 
 .dashboard-business-balance-summary {
+  display: grid;
+  gap: 10px;
+  align-items: start;
+  min-width: 0;
   padding: 10px;
 }
 
 .dashboard-detail-drilldown {
+  display: grid;
+  min-width: 0;
+  overflow-x: clip;
+  padding-top: 0;
   margin-top: 0;
 }
 
