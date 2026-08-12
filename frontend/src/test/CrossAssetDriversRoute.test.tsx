@@ -16,8 +16,12 @@ vi.mock("../lib/echarts", () => ({
 
 describe("CrossAssetDriversRoute", () => {
   beforeAll(async () => {
+    // 预热路由懒加载链（含真正重的 CrossAssetDriversPage 与 ThemedRouteBoundary），
+    // 避免用例内 5s findBy 超时为首个模块转换买单。
     await import("../features/cross-asset/pages/CrossAssetPage");
-  }, 20_000);
+    await import("../features/cross-asset/pages/CrossAssetDriversPage");
+    await import("../app/ThemedRouteBoundary");
+  }, 30_000);
 
   it("renders the cross-asset-drivers compatibility route", async () => {
     renderWorkbenchApp(["/cross-asset-drivers"], { client: createApiClient({ mode: "mock" }) });
@@ -28,7 +32,8 @@ describe("CrossAssetDriversRoute", () => {
     expect(screen.getByTestId("cross-asset-zone-linkage")).toBeInTheDocument();
     expect(screen.getByTestId("cross-asset-zone-transmission")).toBeInTheDocument();
     expect(screen.getByTestId("cross-asset-research-views")).toBeInTheDocument();
-    expect(screen.getByTestId("cross-asset-ncd-proxy")).toBeInTheDocument();
+    // NCD 代理在分阶段挂载的附录末组，需等待阶段跃迁 effect 完成后再断言。
+    expect(await screen.findByTestId("cross-asset-ncd-proxy")).toBeInTheDocument();
   });
 
   it("renders the canonical cross-asset route as the real page after lazy loading", async () => {

@@ -334,7 +334,7 @@ async function sampleHome(page, baseUrl) {
   await page.locator('[data-testid="dashboard-home-scroll-root"]').evaluate((node) => {
     node.scrollTop = node.scrollHeight;
   });
-  await waitForTrackedRequests(
+  const trackedRequestsArrived = await waitForTrackedRequests(
     page,
     requestLog,
     [
@@ -346,6 +346,11 @@ async function sampleHome(page, baseUrl) {
     ],
     HOME_POST_FIRST_SCREEN_MAX_WAIT_MS,
   );
+  if (!trackedRequestsArrived) {
+    addFailure(
+      `home tracked data requests did not all arrive within ${HOME_POST_FIRST_SCREEN_MAX_WAIT_MS}ms.`,
+    );
+  }
 
   const allUrls = requestLog.map((entry) => entry.url);
   const formalNeedles = [

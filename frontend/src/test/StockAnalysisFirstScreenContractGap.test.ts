@@ -126,6 +126,8 @@ describe("stock analysis legacy strategy evidence donor contract", () => {
       "invalidationFocus",
       "invalidationRules",
       "rawFields",
+      "liquidityFloorPass",
+      "dailyAmountLabel",
     ]);
     expect(queue[0]).toMatchObject({
       rank: 1,

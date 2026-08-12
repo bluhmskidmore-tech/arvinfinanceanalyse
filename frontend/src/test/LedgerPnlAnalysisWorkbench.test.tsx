@@ -165,9 +165,8 @@ describe("LedgerPnlAnalysisWorkbench", () => {
     expect(workbench).toHaveTextContent("候选分析");
     expect(workbench).toHaveTextContent("全量损益为正");
     expect(workbench).toHaveTextContent("其他 5* 损益形成支持");
-    expect(within(screen.getByTestId("ledger-pnl-analysis-conclusion")).getByText("3.52 亿元")).toBeVisible();
-
     const bridge = screen.getByTestId("ledger-pnl-analysis-bridge");
+    expect(within(bridge).getByText("3.52 亿元")).toBeVisible();
     expect(bridge).toHaveTextContent("核心损益");
     expect(bridge).toHaveTextContent("其他 5* 损益");
     expect(bridge).toHaveTextContent("闭环残差");
@@ -225,9 +224,12 @@ describe("LedgerPnlAnalysisWorkbench", () => {
       <LedgerPnlAnalysisWorkbench
         envelope={envelope({
           ...READY_RESULT,
-          conclusion: {
-            ...READY_RESULT.conclusion,
-            core_pnl: money("1", "9.91"),
+          pnl_bridge: {
+            ...READY_RESULT.pnl_bridge,
+            components: [
+              { metric_key: "core_pnl", metric_name: "核心损益", amount: money("1", "9.91") },
+              ...READY_RESULT.pnl_bridge.components.slice(1),
+            ],
           },
         })}
         isLoading={false}
@@ -237,7 +239,7 @@ describe("LedgerPnlAnalysisWorkbench", () => {
       />,
     );
 
-    expect(within(screen.getByTestId("ledger-pnl-analysis-conclusion")).getByText("9.91 亿元")).toBeVisible();
+    expect(within(screen.getByTestId("ledger-pnl-analysis-bridge")).getByText("9.91 亿元")).toBeVisible();
   });
 
   it("renders no_data without presenting zero as an analytical conclusion", () => {
