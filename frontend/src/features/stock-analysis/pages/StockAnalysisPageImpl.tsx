@@ -81,6 +81,7 @@ import {
   buildSectorStrengthOption,
   sectorViewTabs,
 } from "../lib/stockAnalysisChartModel";
+import { buildCandidatePositionSizeHintNotice } from "../lib/stockAnalysisPositionSizeHintModel";
 import {
   buildStockAnalysisRailReviewState,
   buildThemeBreakoutBlockerCopy,
@@ -673,6 +674,7 @@ export default function StockAnalysisPage() {
       workbenchQueue,
       strategyQueue,
       strategyQueueSourceModule,
+      strategyPayload?.stock_candidates?.position_size_hint,
     );
   }, [strategyPayload, workbenchPayload]);
 
@@ -2675,6 +2677,7 @@ export default function StockAnalysisPage() {
                     usesHybridFusion={reviewQueueUsesHybridFusion}
                     asOfLabel={decisionSummary?.asOfLabel ?? analyticsAsOf}
                     canReviewCandidates={workbenchCanReviewCandidates}
+                    positionSizeHint={buildCandidatePositionSizeHintNotice(strategyPayload?.stock_candidates?.position_size_hint)}
                     onReviewCandidate={(card) => {
                       const ranks = lookupStockStrategyRanks(strategyPayload ?? null, card.stockCode);
                       setDetailSelection(

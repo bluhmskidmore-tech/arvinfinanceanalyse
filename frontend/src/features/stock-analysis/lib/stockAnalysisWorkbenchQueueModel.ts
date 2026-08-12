@@ -1,5 +1,6 @@
-import type { StockAnalysisWorkbenchPayload } from "../../../api/contracts";
+import type { LivermorePositionSizeHint, StockAnalysisWorkbenchPayload } from "../../../api/contracts";
 import type { StockCandidatePattern, StockCandidateReviewQueueItem } from "./stockAnalysisPageModel";
+import { attachCandidateSizeHintFields } from "./stockAnalysisPositionSizeHintModel";
 
 type WorkbenchReviewCandidate = StockAnalysisWorkbenchPayload["first_screen"]["review_queue"][number];
 type CandidateEvidence = StockCandidateReviewQueueItem["primaryEvidence"][number];
@@ -243,9 +244,15 @@ export function enrichStockAnalysisWorkbenchReviewQueue(
   workbenchQueue: StockCandidateReviewQueueItem[],
   strategyQueue: StockCandidateReviewQueueItem[],
   strategySourceModule: string | null = null,
+  positionSizeHint: LivermorePositionSizeHint | null | undefined = null,
 ): StockCandidateReviewQueueItem[] {
+  // 建议仓位 hint 仅对趋势候选（stock_candidates）有业务含义，其他来源不注入徽章字段。
+  const sizedStrategyQueue =
+    strategySourceModule === "stock_candidates"
+      ? attachCandidateSizeHintFields(strategyQueue, positionSizeHint)
+      : strategyQueue;
   const strategyByIdentity = new Map(
-    strategyQueue.flatMap((candidate) => {
+    sizedStrategyQueue.flatMap((candidate) => {
       const identity = candidateReviewIdentity(candidate, strategySourceModule);
       return identity ? [[identity, candidate] as const] : [];
     }),

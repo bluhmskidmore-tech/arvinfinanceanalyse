@@ -67,4 +67,40 @@ describe("StockAnalysisCandidateLedgerTable", () => {
 
     expect(screen.queryByText("低流动")).not.toBeInTheDocument();
   });
+
+  it("shows the position size hint badge with the disclosure detail as a tooltip", () => {
+    render(
+      <StockAnalysisCandidateLedgerTable
+        candidates={[
+          buildCandidate({
+            sizeHintLabel: "仓位 ≤ 8.4%",
+            sizeHintDetail: "建议仓位为单票权重上限参考（EMA10 止损距离折算）\n样本外验证：仅供参考",
+          }),
+        ]}
+        usesHybridFusion={false}
+        selectedSectorCode={null}
+        onReviewCandidate={vi.fn()}
+      />,
+    );
+
+    const badge = screen.getByText("仓位 ≤ 8.4%");
+    expect(badge).toBeInTheDocument();
+    expect(badge.closest("[title]")).toHaveAttribute(
+      "title",
+      "建议仓位为单票权重上限参考（EMA10 止损距离折算）\n样本外验证：仅供参考",
+    );
+  });
+
+  it("hides the position size hint badge when the backend omits the hint", () => {
+    render(
+      <StockAnalysisCandidateLedgerTable
+        candidates={[buildCandidate({ sizeHintLabel: null, sizeHintDetail: null })]}
+        usesHybridFusion={false}
+        selectedSectorCode={null}
+        onReviewCandidate={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText(/仓位 ≤/)).not.toBeInTheDocument();
+  });
 });

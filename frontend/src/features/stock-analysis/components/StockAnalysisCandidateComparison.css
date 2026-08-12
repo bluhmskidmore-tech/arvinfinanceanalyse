@@ -245,6 +245,32 @@ html body .stock-analysis-page.stock-analysis-page--market-shell
   font-weight: 800;
 }
 
+/* 建议仓位徽章：后端 position_size_hint 透传，参考上限口径，低调蓝而非警示色。 */
+html body .stock-analysis-page.stock-analysis-page--market-shell
+  .stock-analysis-page__candidate-dense-sizehint {
+  margin-left: 5px;
+  padding: 0 4px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius, 6px);
+  color: var(--dh-api-blue);
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 建议仓位口径注记：披露原文收进 title，正文保持一行低调说明。 */
+html body .stock-analysis-page.stock-analysis-page--market-shell
+  .stock-analysis-page__candidate-comparison-sizehint {
+  color: var(--dh-api-soft);
+  font-weight: 650;
+}
+
+html body .stock-analysis-page.stock-analysis-page--market-shell
+  .stock-analysis-page__candidate-comparison-sizehint[data-tone="warning"] {
+  color: var(--dh-api-amber);
+}
+
 html body .stock-analysis-page.stock-analysis-page--market-shell
   .stock-analysis-page__candidate-dense-muted {
   color: var(--dh-api-muted);

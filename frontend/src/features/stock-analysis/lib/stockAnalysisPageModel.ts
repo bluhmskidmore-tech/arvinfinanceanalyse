@@ -843,7 +843,7 @@ export type StockCandidateReviewQueueItem = {
   liquidityFloorPass?: boolean | null;
   /** 亿元格式化辅助文案，如"日成交 0.80 亿"；无成交额数据时为 null。 */
   dailyAmountLabel?: string | null;
-};
+} & { sizeHintLabel?: string | null; sizeHintDetail?: string | null }; // 建议仓位透传：由 stockAnalysisPositionSizeHintModel 在队列富化时注入
 
 export type StockReviewQueueSectorFilterView = {
   sectorOptions: [string, string][];

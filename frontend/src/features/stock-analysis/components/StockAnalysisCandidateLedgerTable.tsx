@@ -336,6 +336,16 @@ export function StockAnalysisCandidateLedgerTable({
                       低流动
                     </StockAnalysisInlineChip>
                   ) : null}
+                  {card.sizeHintLabel ? (
+                    <StockAnalysisInlineChip
+                      size="sm"
+                      color="primary"
+                      className="ml-1 stock-analysis-page__candidate-ledger-sizehint-badge"
+                      title={card.sizeHintDetail ?? undefined}
+                    >
+                      {card.sizeHintLabel}
+                    </StockAnalysisInlineChip>
+                  ) : null}
                   <small className={CANDIDATE_LEDGER_DETAIL_CLASS} title={stockNarrative.title}>
                     {stockNarrative.preview}
                   </small>

@@ -733,6 +733,13 @@ export type LivermorePositionSizeHintItem = {
   capped: boolean;
 };
 
+/** walk-forward 样本外验证披露：status/note/evidence_ref 由后端原文透传，前端必须如实展示、不得弱化。 */
+export type LivermorePositionSizeHintOosValidation = {
+  status?: string | null;
+  note?: string | null;
+  evidence_ref?: string | null;
+};
+
 /** stock_candidate 建议仓位块（sizing_rb_v1）：串联 gate 敞口语义见 gate_exposure_note，等权 shadow 对照说明见 equal_weight_shadow_note。 */
 export type LivermorePositionSizeHint = {
   policy_version: string;
@@ -749,6 +756,8 @@ export type LivermorePositionSizeHint = {
   coverage_warning: string | null;
   gate_exposure_note: string;
   equal_weight_shadow_note: string;
+  /** 老响应（oos 披露上线前）缺失该块；缺失时不渲染样本外验证注记。 */
+  oos_validation?: LivermorePositionSizeHintOosValidation | null;
 };
 
 export type LivermoreStockCandidatesPayload = {

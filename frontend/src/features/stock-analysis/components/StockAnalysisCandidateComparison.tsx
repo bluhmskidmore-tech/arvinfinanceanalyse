@@ -1,5 +1,6 @@
 import { EM_DASH } from "../../../utils/format";
 import type { StockCandidateReviewQueueItem } from "../lib/stockAnalysisPageModel";
+import type { StockCandidatePositionSizeHintNotice } from "../lib/stockAnalysisPositionSizeHintModel";
 import { selectStockCandidateThemeEvidence } from "../lib/stockAnalysisWorkbenchQueueModel";
 import "./StockAnalysisCandidateComparison.css";
 
@@ -9,6 +10,8 @@ type StockAnalysisCandidateComparisonProps = {
   asOfLabel?: string | null;
   canReviewCandidates?: boolean;
   visibleCount?: number;
+  /** 建议仓位口径注记（stock_candidates 模式）；null/undefined 时不渲染。 */
+  positionSizeHint?: StockCandidatePositionSizeHintNotice | null;
   onReviewCandidate: (card: StockCandidateReviewQueueItem) => void;
 };
 
@@ -281,9 +284,15 @@ export function StockAnalysisCandidateComparison({
   asOfLabel,
   canReviewCandidates = true,
   visibleCount = DEFAULT_VISIBLE_CANDIDATE_COUNT,
+  positionSizeHint = null,
   onReviewCandidate,
 }: StockAnalysisCandidateComparisonProps) {
   const visibleCandidates = candidates.slice(0, visibleCount);
+  // 注记与徽章绑定：仅当可见候选确实带建议仓位时展示口径披露，融合/无 hint 队列不渲染。
+  const sizeHintNotice =
+    positionSizeHint && visibleCandidates.some((card) => card.sizeHintLabel)
+      ? positionSizeHint
+      : null;
 
   if (visibleCandidates.length === 0) return null;
 
@@ -299,6 +308,16 @@ export function StockAnalysisCandidateComparison({
       >
         <span className="stock-analysis-page__tabular">数据日 {compactText(asOfLabel, 12, "待确认")}</span>
         <span>口径 {usesHybridFusion ? "融合排序" : "候选排序"}</span>
+        {sizeHintNotice ? (
+          <span
+            className="stock-analysis-page__candidate-comparison-sizehint"
+            data-testid="stock-analysis-candidate-comparison-sizehint"
+            data-tone={sizeHintNotice.tone}
+            title={sizeHintNotice.detail}
+          >
+            {sizeHintNotice.summary}
+          </span>
+        ) : null}
         <span
           className="stock-analysis-page__candidate-comparison-rules"
           data-testid="stock-analysis-candidate-comparison-rules"
@@ -369,6 +388,15 @@ export function StockAnalysisCandidateComparison({
                         title={card.dailyAmountLabel ?? "低于 2 亿元日成交门槛"}
                       >
                         低流动
+                      </small>
+                    ) : null}
+                    {card.sizeHintLabel ? (
+                      <small
+                        className="stock-analysis-page__candidate-dense-sizehint"
+                        data-testid={`stock-comparison-candidate-sizehint-${card.stockCode}`}
+                        title={card.sizeHintDetail ?? undefined}
+                      >
+                        {card.sizeHintLabel}
                       </small>
                     ) : null}
                   </td>
