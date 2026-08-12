@@ -1,86 +1,9 @@
 .dhPage {
-  /* consolidated bare hex — single definition each */
-  --dh-hex-94a3b8: #94a3b8;
-  --dh-hex-64748b: #64748b;
-  --dh-hex-eef6ff: #eef6ff;
-  --dh-hex-f3f8ff: #f3f8ff;
-  --dh-hex-000000: #000000;
-  --dh-hex-0d1a2c: #0d1a2c;
-  --dh-hex-12233a: #12233a;
-  --dh-hex-2e6fd8: #2e6fd8;
-  --dh-hex-46b37b: #46b37b;
-  --dh-hex-9cc4ec: #9cc4ec;
-  --dh-hex-d9a05b: #d9a05b;
-  --dh-hex-e06c5f: #e06c5f;
-  --dh-hex-e2e8f0: #e2e8f0;
-  --dh-hex-eef4ff: #eef4ff;
-  --dh-hex-ffffff: #ffffff;
-
-  --dh-bg: #070b12;
-  --dh-card: #111a28;
-  --dh-card-soft: #16202e;
-  --dh-surface-muted: var(--dh-api-rail);
-  --dh-line: rgba(148, 163, 184, 0.16);
-  --dh-line-soft: rgba(148, 163, 184, 0.1);
-  --dh-line-strong: rgba(148, 163, 184, 0.28);
-  --dh-ink: var(--dh-api-ink);
-  --dh-ink-2: #9aa8bc;
-  --dh-muted: var(--dh-hex-64748b);
-  --dh-muted-2: var(--dh-hex-64748b);
-  --dh-blue: var(--dh-hex-2e6fd8);
-  --dh-blue-2: #3b82f6;
-  --dh-blue-deep: var(--dh-hex-2e6fd8);
-  --dh-blue-soft: rgba(59, 130, 246, 0.12);
-  --dh-navy: #030712;
-  --dh-steel: var(--dh-hex-64748b);
-  --dh-green: var(--dh-hex-46b37b);
-  --dh-green-soft: rgba(70, 179, 123, 0.14);
-  --dh-red: var(--dh-hex-e06c5f);
-  --dh-red-soft: rgba(224, 108, 95, 0.14);
-  --dh-amber: var(--dh-hex-d9a05b);
-  --dh-amber-soft: rgba(217, 160, 91, 0.14);
-  --dh-gold: var(--dh-api-blue);
-  --dh-space-1: 8px;
-  --dh-space-2: 12px;
-  --dh-space-3: 16px;
-  --dh-space-4: 24px;
-  --dh-shadow-card: none;
-  --dh-shadow-hover: none;
-  --dh-radius: 6px;
-  --dh-radius-lg: var(--dh-api-radius, 6px);
-  --dh-font-sans: var(--moss-font-sans);
-  --dh-font-mono: var(--moss-font-mono);
-
-  /* ── IB light-theme overrides for dark dashboard scope ──
-     The --ib-* tokens are defined globally for the light IB theme.
-     Inside this dark page, remap them to dark-friendly values so
-     every descendant rule that references --ib-* renders correctly. */
-  --ib-paper: var(--dh-bg);
-  --ib-surface: var(--dh-card);
-  --ib-surface-muted: var(--dh-card-soft);
-  --ib-hairline: var(--dh-line);
-  --ib-rule-strong: var(--dh-line-strong);
-  --ib-ink: var(--dh-ink);
-  --ib-ink-secondary: var(--dh-ink-2);
-  --ib-ink-muted: var(--dh-muted);
-  --ib-accent: var(--dh-api-blue);
-  --ib-accent-hover: var(--dh-hex-9cc4ec);
-  --ib-accent-surface: rgba(59, 130, 246, 0.12);
-  --ib-up: var(--dh-hex-46b37b);
-  --ib-down: var(--dh-hex-e06c5f);
-  --ib-warn: var(--dh-hex-d9a05b);
-  --ib-gold: var(--dh-gold);
-  /* Dark terminal: no serif (DESIGN.md §3) */
-  --ib-serif: var(--dh-font-sans);
-
+  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   color: var(--dh-ink);
   background-color: var(--dh-bg);
   display: grid;
-  gap: var(--dh-space-4);
   font-family: var(--dh-font-sans);
-  font-feature-settings: "tnum" 1, "ss01" 1;
-  min-width: 0;
-  position: relative;
   width: 100%;
 }
 
@@ -112,11 +35,6 @@
     position: relative;
     z-index: 1;
   }
-}
-
-.dhPage::before,
-.dhPage::after {
-  content: none;
 }
 
 .dhLayout {
@@ -678,23 +596,21 @@
 }
 
 .dhDeferredIndex {
+  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   background: var(--dh-api-panel);
   border: 1px solid var(--dh-api-line-soft);
-  border-radius: var(--dh-api-radius, 6px);
   color: var(--dh-api-ink);
   display: grid;
   gap: 12px;
-  margin-top: 18px;
-  padding: 15px;
 }
 
 .dhDeferredIndexHead {
+  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   align-items: center;
   border-bottom: 1px solid rgba(36, 49, 73, 0.58);
   display: flex;
   gap: 12px;
   justify-content: space-between;
-  min-width: 0;
   padding-bottom: 10px;
 }
 
@@ -718,36 +634,24 @@
 }
 
 .dhDeferredIndexGrid {
+  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   display: grid;
-  gap: 8px;
   grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 
 .dhDeferredIndexItem {
-  background: var(--dh-api-panel-2);
+  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   border: 1px solid rgba(36, 49, 73, 0.5);
-  border-radius: var(--dh-api-radius, 6px);
   display: grid;
   gap: 6px;
-  min-height: 78px;
-  min-width: 0;
   padding: 10px;
 }
 
 .dhDeferredIndexItem span {
+  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   color: var(--dh-api-muted);
-  font-family: var(--dh-font-mono);
   font-size: 11px;
   font-weight: 720;
-  line-height: 1;
-}
-
-.dhDeferredIndexItem strong {
-  color: var(--dh-hex-eef4ff);
-  font-size: 12px;
-  font-weight: 760;
-  line-height: 1.25;
-  min-width: 0;
 }
 
 .dhDeferredIndexItem small {
@@ -1453,14 +1357,6 @@
     width: 100%;
   }
 
-  .dhMetricTable tr {
-    border-bottom: 1px solid var(--dh-line);
-    display: grid;
-    gap: 4px;
-    grid-template-columns: 34px minmax(0, 1fr) auto;
-    padding: 10px 12px;
-  }
-
   .dhMetricTable tr:last-child {
     border-bottom: 0;
   }
@@ -1506,21 +1402,6 @@
 
   .dhSkeletonColumnNarrow {
     display: none;
-  }
-
-  .dhDeferredIndex {
-    margin-top: 12px;
-    padding: 12px;
-  }
-
-  .dhDeferredIndexHead {
-    align-items: start;
-    display: grid;
-    gap: 5px;
-  }
-
-  .dhDeferredIndexGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .dhTerminalRiskGrid {
@@ -1691,7 +1572,7 @@
 
 @media (max-width: 1360px) {
   .dhRail {
-    display: grid;
+    /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     gap: var(--dh-space-2);
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1702,9 +1583,6 @@
 }
 
 @media (max-width: 720px) {
-  .dhPage {
-    gap: var(--dh-space-3);
-  }
 
   .dhLayout,
   .dhMainWorkpaper {
@@ -1722,12 +1600,6 @@
     padding: var(--dh-space-3);
   }
 
-  .dhReportTitleBlock {
-    align-items: flex-start;
-    gap: var(--dh-space-2);
-    min-width: 0;
-  }
-
   .dhMOSSBadge {
     min-width: 54px;
     padding: 6px;
@@ -1735,18 +1607,6 @@
 
   .dhBadgeShield {
     font-size: 18px;
-  }
-
-  .dhReportTitleBlock h2 {
-    font-size: 20px;
-    line-height: 1.28;
-    overflow-wrap: anywhere;
-  }
-
-  .dhReportSubtitleRow {
-    align-items: flex-start;
-    flex-wrap: wrap;
-    gap: 4px 10px;
   }
 
   .dhReportDivider {
@@ -1758,30 +1618,14 @@
     flex-basis: 100%;
   }
 
-  .dhReportSubtitleGold {
-    font-size: 12px;
-  }
-
   .dhReportJudgement {
     line-height: 1.45;
     overflow-wrap: anywhere;
   }
 
-  .dhReportMetadataBlock {
-    gap: 8px;
-    grid-template-columns: 1fr;
-    min-width: 0;
-  }
-
   .dhMetaItem {
     align-items: flex-start;
     gap: var(--dh-space-2);
-  }
-
-  .dhMetaItem strong {
-    min-width: 0;
-    overflow-wrap: anywhere;
-    text-align: right;
   }
 
   .dhClosedLoopMapSection,
@@ -1814,11 +1658,6 @@
     border-right: none;
   }
 
-  .dhKpiLedgerCell {
-    min-height: 104px;
-    padding: 14px 12px;
-  }
-
   .dhKpiLedgerCellHeader,
   .dhKpiLedgerCellFooter {
     align-items: flex-start;
@@ -1827,10 +1666,6 @@
 
   .dhKpiLedgerCellFooter {
     flex-direction: column;
-  }
-
-  .dhKpiLedgerCellValue {
-    font-size: 20px;
   }
 
   .dhDeskWorkspace {
@@ -1874,6 +1709,76 @@
 
 /* Figma layout polish: conclusion-first dashboard home */
 .dhPage {
+  /* consolidated bare hex — single definition each */
+  --dh-hex-94a3b8: #94a3b8;
+  --dh-hex-64748b: #64748b;
+  --dh-hex-eef6ff: #eef6ff;
+  --dh-hex-f3f8ff: #f3f8ff;
+  --dh-hex-000000: #000000;
+  --dh-hex-0d1a2c: #0d1a2c;
+  --dh-hex-12233a: #12233a;
+  --dh-hex-2e6fd8: #2e6fd8;
+  --dh-hex-46b37b: #46b37b;
+  --dh-hex-9cc4ec: #9cc4ec;
+  --dh-hex-d9a05b: #d9a05b;
+  --dh-hex-e06c5f: #e06c5f;
+  --dh-hex-e2e8f0: #e2e8f0;
+  --dh-hex-eef4ff: #eef4ff;
+  --dh-hex-ffffff: #ffffff;
+  --dh-bg: #070b12;
+  --dh-card: #111a28;
+  --dh-card-soft: #16202e;
+  --dh-surface-muted: var(--dh-api-rail);
+  --dh-line: rgba(148, 163, 184, 0.16);
+  --dh-line-soft: rgba(148, 163, 184, 0.1);
+  --dh-line-strong: rgba(148, 163, 184, 0.28);
+  --dh-ink: var(--dh-api-ink);
+  --dh-ink-2: #9aa8bc;
+  --dh-muted: var(--dh-hex-64748b);
+  --dh-muted-2: var(--dh-hex-64748b);
+  --dh-blue: var(--dh-hex-2e6fd8);
+  --dh-blue-2: #3b82f6;
+  --dh-blue-deep: var(--dh-hex-2e6fd8);
+  --dh-blue-soft: rgba(59, 130, 246, 0.12);
+  --dh-navy: #030712;
+  --dh-steel: var(--dh-hex-64748b);
+  --dh-green: var(--dh-hex-46b37b);
+  --dh-green-soft: rgba(70, 179, 123, 0.14);
+  --dh-red: var(--dh-hex-e06c5f);
+  --dh-red-soft: rgba(224, 108, 95, 0.14);
+  --dh-amber: var(--dh-hex-d9a05b);
+  --dh-amber-soft: rgba(217, 160, 91, 0.14);
+  --dh-gold: var(--dh-api-blue);
+  --dh-space-1: 8px;
+  --dh-space-2: 12px;
+  --dh-space-3: 16px;
+  --dh-space-4: 24px;
+  --dh-shadow-card: none;
+  --dh-shadow-hover: none;
+  --dh-radius: 6px;
+  --dh-radius-lg: var(--dh-api-radius, 6px);
+  --dh-font-sans: var(--moss-font-sans);
+  --dh-font-mono: var(--moss-font-mono);
+  --ib-paper: var(--dh-bg);
+  --ib-surface: var(--dh-card);
+  --ib-surface-muted: var(--dh-card-soft);
+  --ib-hairline: var(--dh-line);
+  --ib-rule-strong: var(--dh-line-strong);
+  --ib-ink: var(--dh-ink);
+  --ib-ink-secondary: var(--dh-ink-2);
+  --ib-ink-muted: var(--dh-muted);
+  --ib-accent: var(--dh-api-blue);
+  --ib-accent-hover: var(--dh-hex-9cc4ec);
+  --ib-accent-surface: rgba(59, 130, 246, 0.12);
+  --ib-up: var(--dh-hex-46b37b);
+  --ib-down: var(--dh-hex-e06c5f);
+  --ib-warn: var(--dh-hex-d9a05b);
+  --ib-gold: var(--dh-gold);
+  /* Dark terminal: no serif (DESIGN.md §3) */
+  --ib-serif: var(--dh-font-sans);
+  font-feature-settings: "tnum" 1, "ss01" 1;
+  min-width: 0;
+  position: relative;
   --dh-card-polish: #0b1728;
   --dh-card-polish-2: var(--dh-hex-0d1a2c);
   --dh-card-polish-3: #101f33;
@@ -1889,11 +1794,6 @@
     var(--dh-bg);
   gap: 18px;
   padding-bottom: 48px;
-}
-
-.dhPage::before,
-.dhPage::after {
-  display: none;
 }
 
 .dhMainWorkpaper {
@@ -2008,6 +1908,7 @@
   }
 
   .dhRail {
+    display: grid;
     position: static;
   }
 }
@@ -2038,28 +1939,41 @@
   }
 
   .dhReportTitleBlock {
+    align-items: flex-start;
+    min-width: 0;
     gap: 12px;
   }
 
   .dhReportTitleBlock h2 {
+    overflow-wrap: anywhere;
     font-size: 22px;
     line-height: 1.28;
     margin-bottom: 10px;
   }
 
   .dhReportSubtitleRow {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 4px 10px;
     grid-template-columns: 1fr;
   }
 
   .dhReportSubtitleGold {
+    font-size: 12px;
     width: fit-content;
   }
 
   .dhReportMetadataBlock {
+    gap: 8px;
+    grid-template-columns: 1fr;
+    min-width: 0;
     padding: 10px;
   }
 
   .dhMetaItem strong {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    text-align: right;
     max-width: 180px;
   }
 
@@ -2083,6 +1997,11 @@
   }
 
   .dhMetricTable tr {
+    border-bottom: 1px solid var(--dh-line);
+    display: grid;
+    gap: 4px;
+    grid-template-columns: 34px minmax(0, 1fr) auto;
+    padding: 10px 12px;
     background: var(--dh-card-polish-2);
   }
 
@@ -2103,39 +2022,10 @@
 }
 
 .dhApiBackedHome {
-  --dh-api-line: rgba(103, 119, 142, 0.34);
-  --dh-api-line-soft: rgba(103, 119, 142, 0.22);
-  --dh-api-gold: var(--dh-api-amber);
-  --dh-api-blue-soft: rgba(114, 167, 220, 0.12);
-  --dh-api-green-soft: rgba(102, 185, 139, 0.12);
-  --dh-api-amber-soft: rgba(201, 165, 101, 0.13);
-  --dh-api-red-soft: rgba(212, 122, 114, 0.13);
-  --dh-bg: var(--dh-api-bg);
-  --dh-card: var(--dh-api-panel);
-  --dh-card-soft: var(--dh-api-panel-2);
-  --dh-line: var(--dh-api-line-soft);
-  --dh-line-strong: var(--dh-api-line);
-  --dh-ink: var(--dh-api-ink);
-  --dh-ink-2: #bfccd9;
-  --dh-muted: var(--dh-api-muted);
-  --dh-muted-2: var(--dh-api-soft);
-  --dh-blue: var(--dh-api-blue);
-  --dh-blue-deep: var(--dh-api-blue);
-  --dh-blue-soft: var(--dh-api-blue-soft);
-  --dh-green: var(--dh-api-green);
-  --dh-green-soft: var(--dh-api-green-soft);
-  --dh-red: var(--dh-api-red);
-  --dh-red-soft: var(--dh-api-red-soft);
-  --dh-amber: var(--dh-api-amber);
-  --dh-amber-soft: var(--dh-api-amber-soft);
-  background: var(--dh-api-bg);
+  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   border: 1px solid rgba(15, 23, 42, 0.96);
   gap: 14px;
-  margin: 0;
-  max-width: none;
-  min-height: 100vh;
   padding: 0 0 42px;
-  width: 100%;
 }
 
 .dhApiBackedHome > [data-testid="dashboard-home-toolbar"] {
@@ -2151,11 +2041,9 @@
 }
 
 .dhApiBackedHome .dhTopbar {
-  background: var(--dh-api-rail);
-  border-color: rgba(17, 24, 39, 0.94);
+  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   border-radius: 0;
   margin: 0;
-  min-height: 56px;
   padding: 10px 31px;
 }
 
@@ -2165,15 +2053,8 @@
   font-weight: 700;
 }
 
-.dhApiBackedHome .dhDateSelect,
-.dhApiBackedHome .dhSearch,
-.dhApiBackedHome .dhRefreshBtn {
-  background: #0d1728;
-  border-color: var(--dh-api-line-soft);
-  border-radius: var(--dh-api-radius, 6px);
-}
-
 .dhApiBackedHome .dhLayout {
+  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   gap: 16px;
   grid-template-columns: minmax(0, 1fr) minmax(260px, 300px);
   margin: 0;
@@ -2193,12 +2074,11 @@
 }
 
 .dhApiBackedHome .dhRail {
-  align-self: start;
+  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   display: grid;
   gap: 12px;
   min-width: 0;
   position: sticky;
-  top: 16px;
 }
 
 /* Phase 1.5: dark shell panel elevation off (keep status-dot glow) */
@@ -2210,12 +2090,10 @@
 
 .dhApiBackedHome .dhRailCard,
 .dhApiBackedHome .dhRailSection {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.018), rgba(255, 255, 255, 0)), var(--dh-api-panel-2);
+  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   border: 1px solid var(--dh-api-line-soft);
   border-radius: var(--dh-api-radius, 6px);
-  box-shadow: none;
   color: var(--dh-api-ink);
-  margin-bottom: 0;
   padding: 14px;
 }
 
@@ -2262,25 +2140,6 @@
   display: inline-flex;
   flex: 0 0 auto;
   justify-content: flex-end;
-}
-
-.dhApiBackedHome .dhRailStatusPill {
-  align-items: center;
-  background: rgba(107, 120, 148, 0.1);
-  border: 1px solid rgba(107, 120, 148, 0.24);
-  border-radius: 999px;
-  color: var(--dh-api-muted);
-  display: inline-flex;
-  font-family: var(--dh-font-mono);
-  font-size: 11px;
-  font-weight: 760;
-  gap: 6px;
-  justify-content: center;
-  line-height: 1;
-  min-height: 22px;
-  min-width: 0;
-  padding: 0 8px;
-  white-space: nowrap;
 }
 
 .dhApiBackedHome .dhRailStatusPill i {
@@ -2338,12 +2197,6 @@
   color: var(--dh-api-muted);
   font-size: 11px;
   line-height: 1.45;
-}
-
-.dhApiBackedHome .dhRailMutedNote {
-  border-top: 1px solid rgba(36, 49, 73, 0.58);
-  margin-top: 2px;
-  padding-top: 8px;
 }
 
 .dhApiBackedHome .dhRailMessage {
@@ -2424,26 +2277,6 @@
   justify-content: space-between;
   min-height: 28px;
   padding-bottom: 8px;
-}
-
-.dhApiBackedHome .dhRailEvidenceRows {
-  display: grid;
-  gap: 0;
-}
-
-.dhApiBackedHome .dhRailEvidenceRow {
-  align-items: center;
-  border-bottom: 1px solid rgba(36, 49, 73, 0.58);
-  display: grid;
-  gap: 10px;
-  grid-template-columns: minmax(70px, 0.62fr) minmax(0, 1fr);
-  min-height: 36px;
-  padding: 8px 0;
-}
-
-.dhApiBackedHome .dhRailEvidenceRow:last-child {
-  border-bottom: 0;
-  padding-bottom: 0;
 }
 
 .dhApiBackedHome .dhRailEvidenceRow > span:first-child {
@@ -2646,9 +2479,9 @@ i.dhApiStateMuted {
 
 @media (max-width: 1280px) {
   .dhApiBackedHome .dhRail {
+    /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    position: relative;
   }
 
   .dhApiBackedHome .dhRailSection {
@@ -2676,13 +2509,6 @@ i.dhApiStateMuted {
     display: none;
   }
 
-  .dhApiTopRail {
-    gap: 5px;
-    grid-template-columns: 1fr;
-    min-height: 74px;
-    padding: 10px 12px;
-  }
-
   .dhApiHero {
     border-radius: 0;
     gap: 12px;
@@ -2694,40 +2520,12 @@ i.dhApiStateMuted {
   }
 
   .dhApiBackedHome .dhRail {
-    grid-template-columns: 1fr;
-  }
-
-  .dhApiDecisionBody {
-    align-items: start;
+    /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     grid-template-columns: 1fr;
   }
 
   .dhApiDecisionBody h2 {
     font-size: 23px;
-  }
-
-  .dhApiEvidenceScore {
-    align-items: start;
-    display: flex;
-    justify-content: space-between;
-    justify-items: stretch;
-    padding: 10px;
-    width: 100%;
-  }
-
-  .dhApiKpiGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .dhApiKpiCard {
-    grid-template-areas:
-      "code status"
-      "label label"
-      "delta delta"
-      "value value"
-      "rule rule";
-    min-height: 112px;
-    padding: 13px 12px;
   }
 
   .dhApiKpiDelta {
@@ -2738,10 +2536,6 @@ i.dhApiStateMuted {
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-
-  .dhApiKpiValue {
-    font-size: 21px;
   }
 
   .dhApiKpiCard[data-semantic="ytm"] .dhApiKpiValue {
@@ -2760,11 +2554,9 @@ i.dhApiStateMuted {
    此处不再保留页级 :global 壳层覆盖。 */
 
 .dhApiBackedHome .dhTopbar {
-  background:
-    linear-gradient(180deg, rgba(16, 26, 42, 0.98), rgba(7, 12, 20, 0.98)),
-    var(--dh-api-rail);
+  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
+  background: linear-gradient(180deg, rgba(16, 26, 42, 0.98), rgba(7, 12, 20, 0.98)), var(--dh-api-rail);
   border-color: rgba(126, 157, 194, 0.2);
-  box-shadow: none;
   min-height: 68px;
   padding-bottom: 12px;
   padding-top: 12px;
@@ -2802,16 +2594,13 @@ i.dhApiStateMuted {
 .dhApiBackedHome .dhDateSelect,
 .dhApiBackedHome .dhSearch,
 .dhApiBackedHome .dhRefreshBtn {
+  border-radius: var(--dh-api-radius, 6px);
   background:
     linear-gradient(180deg, rgba(232, 238, 247, 0.035), rgba(232, 238, 247, 0)),
     rgba(13, 23, 40, 0.88);
   border-color: rgba(126, 157, 194, 0.24);
   box-shadow: none;
   height: 34px;
-}
-
-.dhApiBackedHome .dhSearch {
-  width: min(370px, 31vw);
 }
 
 .dhApiBackedHome .dhDateSelect:focus-within,
@@ -2822,10 +2611,10 @@ i.dhApiStateMuted {
 }
 
 .dhApiBackedHome .dhStatusPill {
+  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   background: rgba(107, 120, 148, 0.08);
   border: 1px solid rgba(126, 157, 194, 0.14);
   border-radius: 999px;
-  color: var(--dh-api-soft);
   padding: 4px 9px;
 }
 
@@ -2895,6 +2684,22 @@ i.dhApiStateMuted {
 }
 
 .dhApiBackedHome .dhRailStatusPill {
+  align-items: center;
+  background: rgba(107, 120, 148, 0.1);
+  border: 1px solid rgba(107, 120, 148, 0.24);
+  border-radius: 999px;
+  color: var(--dh-api-muted);
+  display: inline-flex;
+  font-family: var(--dh-font-mono);
+  font-size: 11px;
+  font-weight: 760;
+  gap: 6px;
+  justify-content: center;
+  line-height: 1;
+  min-height: 22px;
+  min-width: 0;
+  padding: 0 8px;
+  white-space: nowrap;
   box-shadow: none;
 }
 
@@ -2930,6 +2735,7 @@ i.dhApiStateMuted {
 }
 
 .dhDeferredIndexHead {
+  min-width: 0;
   border-bottom-color: rgba(126, 157, 194, 0.2);
 }
 
@@ -2949,17 +2755,9 @@ i.dhApiStateMuted {
   z-index: 0;
 }
 
-.dhDeferredIndexItem {
-  background:
-    linear-gradient(180deg, rgba(232, 238, 247, 0.038), rgba(232, 238, 247, 0)),
-    rgba(7, 12, 20, 0.28);
-  border-color: rgba(126, 157, 194, 0.2);
-  min-height: 86px;
-  position: relative;
-  z-index: 1;
-}
-
 .dhDeferredIndexItem span {
+  font-family: var(--dh-font-mono);
+  line-height: 1;
   align-items: center;
   background: rgba(114, 167, 220, 0.12);
   border: 1px solid rgba(114, 167, 220, 0.2);
@@ -2982,10 +2780,6 @@ i.dhApiStateMuted {
 
 .dhApiDecisionBody {
   align-items: stretch;
-}
-
-.dhApiDecisionBody h3 {
-  max-width: 720px;
 }
 
 .dhApiDecisionBody p {
@@ -3025,14 +2819,13 @@ i.dhApiStateMuted {
 
 @media (max-width: 720px) {
   .dhApiBackedHome .dhTopbar {
+    /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     min-height: 0;
-    padding-bottom: 10px;
-    padding-top: 10px;
   }
 
   .dhApiBackedHome .dhTitleBrand {
+    /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     align-items: start;
-    display: grid;
     gap: 2px;
   }
 
@@ -3044,27 +2837,22 @@ i.dhApiStateMuted {
   }
 
   .dhApiBackedHome .dhStatusRow {
-    display: grid;
+    /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     gap: 5px;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .dhApiBackedHome .dhStatusPill {
+    /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     justify-content: center;
     min-width: 0;
-    overflow: hidden;
     padding-left: 6px;
     padding-right: 6px;
-    text-overflow: ellipsis;
   }
 
   .dhApiBackedHome .dhPartialToggle {
+    /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     justify-content: center;
     width: 100%;
-  }
-
-  .dhApiDecisionBody p {
-    padding: 9px 10px;
   }
 
   .dhDeferredIndexGrid::before {
@@ -3074,6 +2862,7 @@ i.dhApiStateMuted {
 
 /* Dashboard home refinement pass: mobile density, evidence scanning, and rail ledgers. */
 .dhApiBackedHome .dhTopbar {
+  box-shadow: none;
   display: grid;
   gap: 10px 14px;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -3119,6 +2908,7 @@ i.dhApiStateMuted {
 }
 
 .dhApiBackedHome .dhStatusPill {
+  color: var(--dh-api-soft);
   height: 24px;
 }
 
@@ -3127,6 +2917,13 @@ i.dhApiStateMuted {
 }
 
 .dhDeferredIndexItem {
+  border-radius: var(--dh-api-radius, 6px);
+  min-width: 0;
+  background: linear-gradient(180deg, rgba(232, 238, 247, 0.038), rgba(232, 238, 247, 0)), rgba(7, 12, 20, 0.28);
+  border-color: rgba(126, 157, 194, 0.2);
+  min-height: 86px;
+  position: relative;
+  z-index: 1;
   box-shadow: none;
   isolation: isolate;
   transition:
@@ -3161,6 +2958,10 @@ i.dhApiStateMuted {
 }
 
 .dhDeferredIndexItem strong {
+  color: var(--dh-hex-eef4ff);
+  font-weight: 760;
+  line-height: 1.25;
+  min-width: 0;
   font-size: 12.5px;
   letter-spacing: 0;
 }
@@ -3183,10 +2984,16 @@ i.dhApiStateMuted {
 }
 
 .dhApiBackedHome .dhRailEvidenceRows {
+  display: grid;
   gap: 6px;
 }
 
 .dhApiBackedHome .dhRailEvidenceRow {
+  align-items: center;
+  border-bottom: 1px solid rgba(36, 49, 73, 0.58);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(70px, 0.62fr) minmax(0, 1fr);
   background: rgba(7, 12, 20, 0.2);
   border: 1px solid rgba(126, 157, 194, 0.1);
   border-radius: var(--dh-api-radius, 6px);
@@ -3195,6 +3002,7 @@ i.dhApiStateMuted {
 }
 
 .dhApiBackedHome .dhRailEvidenceRow:last-child {
+  border-bottom: 0;
   padding-bottom: 7px;
 }
 
@@ -3209,6 +3017,9 @@ i.dhApiStateMuted {
 }
 
 .dhApiBackedHome .dhRailMutedNote {
+  border-top: 1px solid rgba(36, 49, 73, 0.58);
+  margin-top: 2px;
+  padding-top: 8px;
   background: rgba(107, 120, 148, 0.08);
   border: 1px solid rgba(126, 157, 194, 0.1);
   border-radius: var(--dh-api-radius, 6px);
@@ -3232,7 +3043,7 @@ i.dhApiStateMuted {
 
 @media (max-width: 720px) {
   .dhApiBackedHome .dhTopbar {
-    gap: 8px;
+    /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     padding-bottom: 8px;
     padding-top: 8px;
   }
@@ -3249,13 +3060,9 @@ i.dhApiStateMuted {
     width: 100%;
   }
 
-  .dhApiBackedHome .dhTopbarLeft {
-    flex-direction: column;
-  }
-
   .dhApiBackedHome .dhTitleBrand {
+    /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     grid-template-columns: minmax(0, 1fr) auto;
-    width: 100%;
   }
 
   .dhApiBackedHome .dhTitle {
@@ -3263,15 +3070,9 @@ i.dhApiStateMuted {
     min-width: 0;
   }
 
-  .dhApiBackedHome .dhTitleCaption {
-    align-self: end;
-    justify-self: end;
-  }
-
   .dhApiBackedHome .dhToolbarControl {
-    display: grid;
+    /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     gap: 6px;
-    grid-template-columns: auto minmax(0, 1fr);
   }
 
   .dhApiBackedHome .dhDateLabel {
@@ -3285,27 +3086,13 @@ i.dhApiStateMuted {
     height: 31px;
   }
 
-  .dhApiBackedHome .dhSearch {
-    flex: none;
-    min-width: 0;
-    width: 100%;
-  }
-
   .dhApiBackedHome .dhDateSelect input {
     width: 100%;
   }
 
-  .dhApiBackedHome .dhTopbarRight {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  }
-
-  .dhApiBackedHome .dhStatusRow {
-    grid-column: 1 / -1;
-    padding: 2px;
-  }
-
   .dhApiBackedHome .dhStatusPill {
+    overflow: hidden;
+    text-overflow: ellipsis;
     font-size: 11px;
     gap: 4px;
     height: 22px;
@@ -3316,11 +3103,8 @@ i.dhApiStateMuted {
     min-height: 31px;
   }
 
-  .dhApiBackedHome .dhPartialToggle {
-    padding-inline: 8px;
-  }
-
   .dhApiBackedHome .dhRefreshBtn {
+    /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     padding-inline: 10px;
   }
 
@@ -3398,6 +3182,8 @@ i.dhApiStateMuted {
 /* Dashboard home page density normalization: make rail cards match the lower cockpit opacity. */
 .dhApiBackedHome .dhRailCard,
 .dhApiBackedHome .dhRailSection {
+  box-shadow: none;
+  margin-bottom: 0;
   background:
     linear-gradient(145deg, rgba(232, 238, 247, 0.058), rgba(232, 238, 247, 0.012) 45%, rgba(7, 12, 20, 0.18)),
     rgba(13, 23, 40, 0.96);
@@ -3405,6 +3191,36 @@ i.dhApiStateMuted {
 
 /* Dashboard home motion restoration: low-frequency cockpit motion and feedback. */
 .dhApiBackedHome {
+  --dh-api-line: rgba(103, 119, 142, 0.34);
+  --dh-api-line-soft: rgba(103, 119, 142, 0.22);
+  --dh-api-gold: var(--dh-api-amber);
+  --dh-api-blue-soft: rgba(114, 167, 220, 0.12);
+  --dh-api-green-soft: rgba(102, 185, 139, 0.12);
+  --dh-api-amber-soft: rgba(201, 165, 101, 0.13);
+  --dh-api-red-soft: rgba(212, 122, 114, 0.13);
+  --dh-bg: var(--dh-api-bg);
+  --dh-card: var(--dh-api-panel);
+  --dh-card-soft: var(--dh-api-panel-2);
+  --dh-line: var(--dh-api-line-soft);
+  --dh-line-strong: var(--dh-api-line);
+  --dh-ink: var(--dh-api-ink);
+  --dh-ink-2: #bfccd9;
+  --dh-muted: var(--dh-api-muted);
+  --dh-muted-2: var(--dh-api-soft);
+  --dh-blue: var(--dh-api-blue);
+  --dh-blue-deep: var(--dh-api-blue);
+  --dh-blue-soft: var(--dh-api-blue-soft);
+  --dh-green: var(--dh-api-green);
+  --dh-green-soft: var(--dh-api-green-soft);
+  --dh-red: var(--dh-api-red);
+  --dh-red-soft: var(--dh-api-red-soft);
+  --dh-amber: var(--dh-api-amber);
+  --dh-amber-soft: var(--dh-api-amber-soft);
+  background: var(--dh-api-bg);
+  margin: 0;
+  max-width: none;
+  min-height: 100vh;
+  width: 100%;
   --dh-motion-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -3441,10 +3257,6 @@ i.dhApiStateMuted {
 
 .dhApiSourceGate {
   animation-delay: 90ms;
-}
-
-.dhApiKpiGrid {
-  animation-delay: 160ms;
 }
 
 .dhApiKpiCard,
@@ -3520,11 +3332,14 @@ i.dhApiStateMuted {
 }
 
 .dhApiBackedHome .dhRail {
+  align-self: start;
+  top: 16px;
   grid-column: 2;
   grid-row: 1 / span 2;
 }
 
 .dhApiKpiGrid {
+  animation-delay: 160ms;
   gap: 12px;
 }
 
@@ -3558,6 +3373,7 @@ i.dhApiStateMuted {
   }
 
   .dhApiBackedHome .dhRail {
+    position: relative;
     grid-column: 1;
     grid-row: 2;
   }
@@ -3570,19 +3386,15 @@ i.dhApiStateMuted {
 
 @media (max-width: 720px) {
   .dhApiKpiGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
   }
 
   .dhApiKpiCard {
+    grid-template-areas: "code status" "label label" "delta delta" "value value" "rule rule";
+    min-height: 112px;
+    padding: 13px 12px;
     padding-inline: 8px;
-  }
-
-  .dhApiKpiValue {
-    font-size: clamp(16px, 4.6vw, 20px);
-  }
-
-  .dhApiBackedHome .dhStatusRow {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .dhApiBackedHome .dhStatusRow > :last-child:nth-child(odd) {
@@ -3607,6 +3419,7 @@ i.dhApiStateMuted {
 /* ── 1. 移除页面径向渐变光斑（"AI 驾驶舱"感） ── */
 .dhPage::before,
 .dhPage::after {
+  display: none;
   content: none;
   background: none;
 }
@@ -3819,10 +3632,6 @@ i.dhApiStateMuted {
     min-width: 44px;
     min-height: 44px;
   }
-  .dhApiBackedHome .dhApiKpiCard,
-  .dhApiKpiCard {
-    padding: 14px;
-  }
 }
 
 /* ── 14. 可访问性：prefers-reduced-motion 关闭所有非必要动画 ── */
@@ -3871,6 +3680,7 @@ i.dhApiStateMuted {
 }
 
 .dhApiDecisionBody h3 {
+  max-width: 720px;
   color: var(--dh-api-ink);
   font-family: var(--dh-font-sans);
   font-size: 20px;
@@ -3950,31 +3760,11 @@ i.dhApiStateMuted {
 }
 
 @media (max-width: 720px) {
-  .dhApiBackedHome .dhTopbarLeft {
-    align-items: center;
-    display: grid;
-    gap: 6px 8px;
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .dhApiBackedHome .dhTitleBrand {
-    grid-column: 1;
-    width: auto;
-  }
 
   .dhApiBackedHome .dhTitleCaption {
+    align-self: end;
+    justify-self: end;
     display: none;
-  }
-
-  .dhApiBackedHome .dhSearch {
-    grid-column: 2;
-    width: 100%;
-  }
-
-  .dhApiBackedHome .dhToolbarControl {
-    align-items: center;
-    grid-column: 1 / -1;
-    grid-template-columns: auto minmax(0, 1fr) auto;
   }
 
   .dhApiBackedHome .dhDateContext {
@@ -3984,40 +3774,13 @@ i.dhApiStateMuted {
     white-space: nowrap;
   }
 
-  .dhApiBackedHome .dhTopbarRight {
-    gap: 6px;
-  }
-
   .dhApiTopRail {
-    gap: 8px;
-    grid-template-columns: auto minmax(0, 1fr);
-    min-height: 38px;
+    /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     padding: 5px 8px;
   }
 
   .dhApiTopRail > span:last-child {
     grid-column: 2;
-  }
-
-  .dhApiBackedHome .dhApiHero,
-  .dhApiHero {
-    gap: 8px;
-    padding: 10px;
-  }
-
-  .dhApiDecisionBand {
-    gap: 10px;
-    min-height: 0;
-    padding: 12px;
-  }
-
-  .dhApiDecisionBody {
-    gap: 8px;
-  }
-
-  .dhApiDecisionBody h3 {
-    font-size: 17px;
-    margin-bottom: 7px;
   }
 
   .dhApiDecisionBody p {
@@ -4046,41 +3809,16 @@ i.dhApiStateMuted {
     width: 100%;
   }
 
-  .dhApiEvidenceScore {
-    min-height: 34px;
-    min-width: 0;
-    padding: 6px 8px;
-  }
-
   .dhApiSourceGate {
     gap: 7px;
     min-height: 0;
     padding: 10px;
   }
 
-  .dhApiSourceMobileSummary {
-    display: block;
-  }
-
   .dhApiSourceRow:nth-child(n + 3) {
     display: none;
   }
 
-  .dhApiSourceGrid {
-    gap: 5px;
-  }
-
-  .dhApiBackedHome .dhApiKpiCard,
-  .dhApiKpiCard {
-    min-height: 108px;
-    padding: 12px 8px;
-  }
-
-  .dhApiKpiValue,
-  .dhApiKpiCard[data-semantic="ytm"] .dhApiKpiValue {
-    font-size: clamp(15px, 4.2vw, 19px);
-    letter-spacing: -0.02em;
-  }
 }
 
 /* PAGE-DASH contract closure: governed product-category headline and semantic rail titles. */
@@ -4159,10 +3897,6 @@ i.dhApiStateMuted {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.dhApiProductCategoryMetric > small {
-  font-size: 11px;
 }
 
 .dhApiProductCategoryEmpty {
@@ -4255,6 +3989,7 @@ i.dhApiStateMuted {
   }
 
   .dhApiBackedHome .dhTopbarLeft {
+    flex-direction: column;
     align-items: center;
     display: grid;
     gap: 6px 8px;
@@ -4263,12 +3998,15 @@ i.dhApiStateMuted {
   }
 
   .dhApiBackedHome .dhTitleBrand {
+    display: grid;
     grid-column: 1;
     grid-row: 1;
     width: auto;
   }
 
   .dhApiBackedHome .dhSearch {
+    flex: none;
+    min-width: 0;
     grid-column: 2;
     grid-row: 1;
     height: 44px;
@@ -4276,6 +4014,8 @@ i.dhApiStateMuted {
   }
 
   .dhApiBackedHome .dhToolbarControl {
+    display: grid;
+    align-items: center;
     grid-column: 1 / -1;
     grid-row: 2;
     grid-template-columns: auto minmax(0, 1fr) auto;
@@ -4295,6 +4035,7 @@ i.dhApiStateMuted {
   }
 
   .dhApiBackedHome .dhStatusRow {
+    display: grid;
     background: transparent;
     border: 0;
     grid-column: 1;
@@ -4388,54 +4129,10 @@ i.dhApiStateMuted {
 }
 
 @media (max-width: 720px) {
-  .dhApiBackedHome .dhApiHero,
-  .dhApiHero {
-    gap: 6px;
-  }
-
-  .dhApiBackedHome .dhApiSourceGate,
-  .dhApiSourceGate {
-    align-items: center;
-    gap: 6px 8px;
-    grid-template-columns: minmax(0, 1fr) minmax(0, auto);
-    min-height: 0;
-    padding: 8px 10px;
-  }
-
-  .dhApiSourceGate > .dhApiModuleHead {
-    grid-column: 1;
-    min-width: 0;
-  }
-
-  .dhApiSourceMobileSummary {
-    grid-column: 2;
-    max-width: 48vw;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
 
   .dhApiMissingDomains,
   .dhApiSourceGrid {
     grid-column: 1 / -1;
-  }
-
-  .dhApiSourceGrid {
-    display: grid;
-    gap: 6px;
-    grid-auto-columns: minmax(156px, 70vw);
-    grid-auto-flow: column;
-    grid-template-columns: none;
-    overflow-x: auto;
-    overscroll-behavior-inline: contain;
-    padding-bottom: 2px;
-    scroll-snap-type: inline proximity;
-  }
-
-  .dhApiSourceRow,
-  .dhApiSourceRow:nth-child(n + 3) {
-    display: grid;
-    scroll-snap-align: start;
   }
 
   .dhApiKpiGrid,
@@ -4473,6 +4170,9 @@ i.dhApiStateMuted {
 @media (max-width: 720px) {
   .dhApiBackedHome .dhApiSourceGate,
   .dhApiSourceGate {
+    gap: 6px 8px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+    padding: 8px 10px;
     align-items: center;
     display: flex;
     flex-wrap: wrap;
@@ -4480,10 +4180,17 @@ i.dhApiStateMuted {
   }
 
   .dhApiSourceGate > .dhApiModuleHead {
+    grid-column: 1;
+    min-width: 0;
     flex: 1 1 132px;
   }
 
   .dhApiSourceMobileSummary {
+    display: block;
+    grid-column: 2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     flex: 0 1 auto;
     max-width: 44vw;
   }
@@ -4493,6 +4200,12 @@ i.dhApiStateMuted {
   }
 
   .dhApiSourceGrid {
+    grid-auto-columns: minmax(156px, 70vw);
+    grid-auto-flow: column;
+    grid-template-columns: none;
+    overscroll-behavior-inline: contain;
+    padding-bottom: 2px;
+    scroll-snap-type: inline proximity;
     display: flex;
     flex: 1 0 100%;
     gap: 6px;
@@ -4502,45 +4215,22 @@ i.dhApiStateMuted {
 
   .dhApiSourceRow,
   .dhApiSourceRow:nth-child(n + 3) {
+    display: grid;
+    scroll-snap-align: start;
     flex: 0 0 min(70vw, 220px);
     min-height: 28px;
   }
 
-  .dhApiBackedHome .dhApiKpiCard,
-  .dhApiKpiCard {
-    box-sizing: border-box;
-    min-height: 92px;
-    padding: 8px 10px;
-  }
-
   .dhApiKpiRule {
     display: none;
   }
 
-  .dhApiKpiValue,
-  .dhApiKpiCard[data-semantic="ytm"] .dhApiKpiValue {
-    font-size: clamp(15px, 4vw, 18px);
-  }
 }
 
 @media (max-width: 720px) {
-  .dhApiBackedHome .dhApiKpiCard,
-  .dhApiKpiCard {
-    grid-template-areas:
-      "code status"
-      "label label"
-      "value value";
-    grid-template-rows: auto auto minmax(0, 1fr);
-    height: 92px;
-    min-height: 92px;
-  }
-
-  .dhApiKpiDelta,
-  .dhApiKpiRule {
-    display: none;
-  }
 
   .dhApiKpiValue {
+    font-size: clamp(16px, 4.6vw, 20px);
     align-self: end;
   }
 }
@@ -4643,6 +4333,9 @@ i.dhApiStateMuted {
   }
 
   .dhApiTopRail {
+    gap: 8px;
+    grid-template-columns: auto minmax(0, 1fr);
+    min-height: 38px;
     display: none;
   }
 
@@ -4653,10 +4346,13 @@ i.dhApiStateMuted {
   }
 
   .dhApiDecisionBody {
+    align-items: start;
+    grid-template-columns: 1fr;
     gap: 6px;
   }
 
   .dhApiDecisionBody h3 {
+    margin-bottom: 7px;
     font-size: 18px;
     line-height: 1.25;
     margin-block: 4px;
@@ -4683,6 +4379,9 @@ i.dhApiStateMuted {
   }
 
   .dhApiEvidenceScore {
+    display: flex;
+    justify-items: stretch;
+    width: 100%;
     align-items: center;
     gap: 6px;
     grid-auto-flow: column;
@@ -4700,6 +4399,7 @@ i.dhApiStateMuted {
 
   .dhApiBackedHome .dhApiKpiCard,
   .dhApiKpiCard {
+    box-sizing: border-box;
     grid-template-areas:
       "code status"
       "label label"
@@ -4712,6 +4412,7 @@ i.dhApiStateMuted {
 
   .dhApiKpiValue,
   .dhApiKpiCard[data-semantic="ytm"] .dhApiKpiValue {
+    letter-spacing: -0.02em;
     align-self: end;
     font-size: clamp(14px, 3.9vw, 17px);
   }
@@ -5895,24 +5596,12 @@ i.dhApiStateMuted {
 
 @media (max-width: 720px) {
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTopbarLeft {
+    /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     align-items: stretch;
-    flex-wrap: wrap;
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTitleBrand {
-    flex-basis: 100%;
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhToolbarControl {
-    max-width: 100%;
   }
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhDateContext {
     display: none;
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTopbarRight {
-    justify-content: space-between;
   }
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] > .dhApiTopRail {
@@ -5996,53 +5685,38 @@ i.dhApiStateMuted {
 
 
 @media (min-width: 961px) {
-  .dhApiBackedHome[data-testid="dashboard-home-page"] {
-    display: grid;
-    grid-template-rows: 49px minmax(0, 1fr);
-    height: 100vh;
-    min-height: 0;
-    overflow: hidden;
-    background: var(--dh-api-bg);
-  }
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] > .dhApiTopRail {
     display: none;
   }
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTopbar {
-    box-sizing: border-box;
-    display: flex;
-    align-items: center;
+    /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     justify-content: space-between;
     width: 100%;
-    height: 49px;
-    min-height: 49px;
-    padding: 8px;
     border: 0;
     border-bottom: 1px solid var(--dh-api-line-soft);
     border-radius: 0;
     background: var(--dh-api-bg);
-    box-shadow: none;
   }
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTopbarLeft {
-    display: flex;
-    align-items: center;
+    /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     flex: 1 1 auto;
     gap: 18px;
     min-width: 0;
   }
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTopbarRight {
+    /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     display: flex;
     flex-direction: row;
-    align-items: center;
     flex: 0 0 auto;
     gap: 10px;
   }
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTitleBrand {
-    display: block;
+    /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     flex: 0 0 auto;
   }
 
@@ -6065,11 +5739,9 @@ i.dhApiStateMuted {
   }
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhToolbarControl {
+    /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     display: flex;
-    align-items: center;
-    flex: 0 0 auto;
     gap: 8px;
-    min-width: 0;
   }
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhDateLabel,
@@ -6081,16 +5753,10 @@ i.dhApiStateMuted {
   }
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhDateSelect {
+    /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     position: relative;
     display: inline-flex;
-    align-items: center;
-    min-width: 76px;
-    height: 26px;
-    padding: 0 8px;
-    border: 0;
     border-right: 1px solid var(--dh-home-nocturne-rule);
-    border-radius: 0;
-    background: transparent;
   }
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhDateSelectValue {
@@ -6109,19 +5775,13 @@ i.dhApiStateMuted {
   }
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhDateContext {
-    max-width: 190px;
+    /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     overflow: hidden;
-    color: #5bc489;
-    text-overflow: ellipsis;
   }
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhSearch {
-    flex: 0 1 324px;
-    width: min(324px, 31vw);
-    max-width: 324px;
+    /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     min-width: 220px;
-    height: 32px;
-    margin-left: clamp(30px, 13.5vw, 200px);
   }
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhStatusRow {
@@ -6209,24 +5869,6 @@ i.dhApiStateMuted {
 
 
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRail {
-    box-sizing: border-box;
-    position: sticky;
-    top: 5px;
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-    width: 100%;
-    height: 979px;
-    min-height: 979px;
-    padding: 0;
-    overflow: hidden;
-    border: 1px solid var(--dh-home-nocturne-rule);
-    border-radius: var(--dh-home-nocturne-radius);
-    background: #0d1925;
-    box-shadow: none;
-  }
-
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailCard {
     box-sizing: border-box;
     flex: 0 0 auto;
@@ -6248,33 +5890,16 @@ i.dhApiStateMuted {
   }
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailCardBody {
-    min-width: 0;
+    /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     height: 100%;
-    padding: 0 11px 8px;
   }
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailCardHeader {
+    /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     display: flex;
-    align-items: center;
-    justify-content: space-between;
     gap: 8px;
-    min-width: 0;
-    height: 39px;
-    margin: 0;
     padding: 0;
     border-bottom: 1px solid var(--dh-home-nocturne-rule);
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailCardHeader h2 {
-    min-width: 0;
-    margin: 0;
-    overflow: hidden;
-    color: #dbe5eb;
-    font-size: 11.5px;
-    font-weight: 700;
-    line-height: 1;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
 
@@ -6302,10 +5927,9 @@ i.dhApiStateMuted {
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailEvidenceRows,
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailActionList,
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailSuggestionList {
+    /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     display: grid;
     gap: 0;
-    min-width: 0;
-    margin: 0;
     padding: 0;
   }
 
@@ -6314,11 +5938,9 @@ i.dhApiStateMuted {
 
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailActionRow {
+    /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     position: relative;
     display: block;
-    min-width: 0;
-    min-height: 26px;
-    padding: 7px 0 7px 12px;
     border-bottom: 1px solid color-mix(in srgb, var(--dh-home-nocturne-rule) 75%, transparent);
   }
 
@@ -6354,21 +5976,6 @@ i.dhApiStateMuted {
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailSuggestionList {
     list-style: none;
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailSuggestionList li {
-    position: relative;
-    min-width: 0;
-    margin: 0;
-    padding: 9px 0 9px 12px;
-    overflow: hidden;
-    border: 0;
-    border-bottom: 1px solid color-mix(in srgb, var(--dh-home-nocturne-rule) 75%, transparent);
-    color: #bac8d1;
-    font-size: 10.5px;
-    line-height: 1.35;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailSuggestionList li::before {
@@ -6450,17 +6057,6 @@ i.dhApiStateMuted {
     min-width: 0;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhSearch {
-    box-sizing: border-box;
-    align-self: center;
-    width: 100%;
-    max-width: none;
-    min-width: 0;
-    height: 34px;
-    min-height: 34px;
-    margin: 0;
-  }
-
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTitleBrand {
     grid-column: 1;
     grid-row: 1;
@@ -6472,6 +6068,14 @@ i.dhApiStateMuted {
   }
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhSearch {
+    box-sizing: border-box;
+    align-self: center;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    height: 34px;
+    min-height: 34px;
+    margin: 0;
     grid-column: 3;
     grid-row: 1;
   }
@@ -6508,15 +6112,18 @@ i.dhApiStateMuted {
   }
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTopbarLeft {
+    flex-wrap: wrap;
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTitleBrand {
+    flex-basis: 100%;
     grid-column: 1;
     grid-row: 1;
   }
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhToolbarControl {
+    max-width: 100%;
     grid-column: 2;
     grid-row: 1;
   }
@@ -6880,10 +6487,18 @@ i.dhApiStateMuted {
   }
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] {
+    display: grid;
+    height: 100vh;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--dh-api-bg);
     grid-template-rows: 42px minmax(0, 1fr);
   }
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTopbar {
+    box-sizing: border-box;
+    align-items: center;
+    box-shadow: none;
     display: grid;
     grid-template-columns: 300px 300px minmax(0, 1fr);
     gap: 12px;
@@ -6893,6 +6508,7 @@ i.dhApiStateMuted {
   }
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTopbarLeft {
+    align-items: center;
     display: contents;
   }
 
@@ -6901,12 +6517,16 @@ i.dhApiStateMuted {
   }
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhToolbarControl {
+    align-items: center;
+    flex: 0 0 auto;
+    min-width: 0;
     grid-column: 1;
     width: auto;
     max-width: 280px;
   }
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhDateSelect {
+    align-items: center;
     min-width: 84px;
     height: 26px;
     padding: 0 8px;
@@ -6916,10 +6536,15 @@ i.dhApiStateMuted {
   }
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhDateContext {
+    max-width: 190px;
+    color: #5bc489;
+    text-overflow: ellipsis;
     display: none;
   }
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhSearch {
+    flex: 0 1 324px;
+    margin-left: clamp(30px, 13.5vw, 200px);
     grid-column: 2;
     height: 27px;
     min-height: 27px;
@@ -6929,6 +6554,7 @@ i.dhApiStateMuted {
   }
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTopbarRight {
+    align-items: center;
     box-sizing: border-box;
     grid-column: 3;
     width: 100%;
@@ -6942,6 +6568,10 @@ i.dhApiStateMuted {
 
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRail {
+    box-sizing: border-box;
+    top: 5px;
+    flex-direction: column;
+    box-shadow: none;
     position: static;
     display: grid;
     grid-template-columns: minmax(0, 1fr);
@@ -6976,6 +6606,7 @@ i.dhApiStateMuted {
   }
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailCardBody {
+    min-width: 0;
     display: flex;
     flex-direction: column;
     min-height: 0;
@@ -6983,10 +6614,22 @@ i.dhApiStateMuted {
   }
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailCardHeader {
+    align-items: center;
+    justify-content: space-between;
+    min-width: 0;
+    margin: 0;
     height: 28px;
   }
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailCardHeader h2 {
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    color: #dbe5eb;
+    font-weight: 700;
+    line-height: 1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-size: 10px;
   }
 
@@ -6997,6 +6640,8 @@ i.dhApiStateMuted {
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailEvidenceRows,
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailActionList,
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailSuggestionList {
+    min-width: 0;
+    margin: 0;
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
@@ -7019,11 +6664,22 @@ i.dhApiStateMuted {
   }
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailActionRow {
+    min-width: 0;
     min-height: 22px;
     padding: 5px 0 5px 10px;
   }
 
   .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailSuggestionList li {
+    position: relative;
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    border: 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--dh-home-nocturne-rule) 75%, transparent);
+    color: #bac8d1;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     padding: 5px 0 5px 10px;
     font-size: 9.5px;
   }
