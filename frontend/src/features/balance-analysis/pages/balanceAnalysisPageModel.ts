@@ -817,11 +817,14 @@ export function buildBalanceAnalysisPageReadModel(
   input: BalanceAnalysisPageReadModelInput,
 ): BalanceAnalysisPageReadModel {
   const requestedReportDate = input.requestedReportDate || "—";
-  const resolvedReportDate = input.overview?.report_date || requestedReportDate;
+  const overviewReportDate = input.overview?.report_date || "";
+  const resolvedReportDate = overviewReportDate || requestedReportDate;
+  // Without an overview report date there is nothing to compare against; echoing the requested
+  // date back as "matched" would present an unconfirmed date as backend-confirmed.
   const dateStatus =
-    requestedReportDate === "—" || resolvedReportDate === "—"
+    requestedReportDate === "—" || overviewReportDate === ""
       ? "pending"
-      : requestedReportDate === resolvedReportDate
+      : requestedReportDate === overviewReportDate
         ? "matched"
         : "mismatch";
   const positionScope = input.overview?.position_scope ?? input.selectedPositionScope;
@@ -837,6 +840,10 @@ export function buildBalanceAnalysisPageReadModel(
       : input.clientMode === "real"
         ? { key: "source-real", label: "正式业务读面", tone: "success" }
         : { key: "source-mock", label: "本地演示数据", tone: "mock" };
+  // Basis badge reports the basis the read models actually returned (overview first),
+  // instead of asserting "formal" regardless of the payload.
+  const primaryMeta =
+    input.metaSections.find((section) => section.key === "overview")?.meta ?? metas[0] ?? null;
 
   const statusBadges: BalanceAnalysisPageStatusBadge[] = [
     sourceBadge,
@@ -852,7 +859,7 @@ export function buildBalanceAnalysisPageReadModel(
     },
     {
       key: "basis",
-      label: "formal",
+      label: metaBasisLabel(primaryMeta?.basis),
       tone: "info",
     },
   ];
@@ -888,6 +895,13 @@ export function buildBalanceAnalysisPageReadModel(
       variant: "fallback-date",
       title: "报告日不一致",
       description: `请求 ${requestedReportDate}，后端返回 ${resolvedReportDate}，不得静默当作同一报告日。`,
+    },
+    {
+      when: dateStatus === "pending" && requestedReportDate !== "—",
+      key: "date-pending",
+      variant: "neutral",
+      title: "报告日待确认",
+      description: `请求 ${requestedReportDate}，总览读面尚未返回报告日，暂不能视为已核对。`,
     },
     {
       when: hasStale,
@@ -1033,9 +1047,10 @@ export type BalanceStageContributionModel = {
 
 export type BalanceStageBottomModel = {
   maturityCategories: string[];
-  assetSeries: number[];
-  liabilitySeries: number[];
-  gapSeries: number[];
+  /** `null` marks a bucket the workbook did not return; charts must gap it, not plot 0. */
+  assetSeries: (number | null)[];
+  liabilitySeries: (number | null)[];
+  gapSeries: (number | null)[];
   riskMetrics: BalanceStageRiskMetric[];
   calendarItems: BalanceStageCalendarItem[];
 };
@@ -1104,6 +1119,11 @@ function sumFinite(values: readonly (number | null)[]): number | null {
 const BALANCE_RECONCILIATION_WAN_TOLERANCE = 0.01;
 const BALANCE_RECONCILIATION_YUAN_TOLERANCE = 100_000_000;
 const BALANCE_RECONCILIATION_RATIO_TOLERANCE = 0.0005;
+
+/** Rendered into `statusDetail` so the reader sees the thresholds actually in force. */
+const BALANCE_RECONCILIATION_TOLERANCE_TEXT = `绝对差 ≤ ${(
+  BALANCE_RECONCILIATION_YUAN_TOLERANCE / 100_000_000
+).toFixed(2)} 亿元 或 相对差 ≤ ${(BALANCE_RECONCILIATION_RATIO_TOLERANCE * 100).toFixed(2)}%`;
 
 export type BalanceReconciliationLinkStatus = "pending" | "unavailable" | "aligned" | "watch";
 
@@ -1209,37 +1229,52 @@ function movementLikeAmountForBasisRow(row: BalanceAnalysisBasisBreakdownRow): n
   return null;
 }
 
-function buildBridgeComponents(
-  basisRows: readonly BalanceAnalysisBasisBreakdownRow[],
-): BalanceReconciliationBridgeComponent[] {
+function buildBridgeComponents(basisRows: readonly BalanceAnalysisBasisBreakdownRow[]): {
+  components: BalanceReconciliationBridgeComponent[];
+  hasUnreadableRow: boolean;
+} {
   const totals: Record<BalanceMovementBucket, number | null> = {
     AC: null,
     OCI: null,
     TPL: null,
   };
+  // A bucket with an unreadable row must stay null: a partial sum would look like a
+  // complete bridge and let the reconciliation report a false alignment.
+  const unreadableBuckets = new Set<BalanceMovementBucket>();
 
   for (const row of basisRows) {
     if (row.source_family !== "zqtz" || row.position_scope !== "asset") {
       continue;
     }
     const bucket = movementBucketForAccountingBasis(row.accounting_basis);
+    if (bucket === null) {
+      continue;
+    }
     const amount = movementLikeAmountForBasisRow(row);
-    if (bucket === null || amount === null) {
+    if (amount === null) {
+      unreadableBuckets.add(bucket);
       continue;
     }
     totals[bucket] = (totals[bucket] ?? 0) + amount;
   }
 
-  return [
-    { bucket: "AC", label: "AC 摊余", amountYuan: totals.AC },
-    { bucket: "OCI", label: "OCI 市值", amountYuan: totals.OCI },
-    { bucket: "TPL", label: "TPL 市值", amountYuan: totals.TPL },
-  ];
+  const amountFor = (bucket: BalanceMovementBucket): number | null =>
+    unreadableBuckets.has(bucket) ? null : totals[bucket];
+
+  return {
+    components: [
+      { bucket: "AC", label: "AC 摊余", amountYuan: amountFor("AC") },
+      { bucket: "OCI", label: "OCI 市值", amountYuan: amountFor("OCI") },
+      { bucket: "TPL", label: "TPL 市值", amountYuan: amountFor("TPL") },
+    ],
+    hasUnreadableRow: unreadableBuckets.size > 0,
+  };
 }
 
 function statusForReconciliationLink({
   isPending,
   movementAvailableForDate,
+  bridgeHasUnreadableRow,
   formalBridgeYuan,
   movementControlYuan,
   residualYuan,
@@ -1247,11 +1282,19 @@ function statusForReconciliationLink({
 }: {
   isPending: boolean;
   movementAvailableForDate: boolean;
+  bridgeHasUnreadableRow: boolean;
   formalBridgeYuan: number | null;
   movementControlYuan: number | null;
   residualYuan: number | null;
   residualRatio: number | null;
 }): Pick<BalanceReconciliationLinkModel, "status" | "statusLabel" | "statusDetail"> {
+  if (bridgeHasUnreadableRow) {
+    return {
+      status: "pending",
+      statusLabel: "待联动数据",
+      statusDetail: "口径拆解存在无法读数的桥接行，桥接合计不完整，暂不做对账判定。",
+    };
+  }
   if (isPending || formalBridgeYuan === null) {
     return {
       status: "pending",
@@ -1280,13 +1323,13 @@ function statusForReconciliationLink({
     return {
       status: "aligned",
       statusLabel: "可核对",
-      statusDetail: "AC 摊余 + OCI/TPL 市值与 CNX 控制数在容忍阈值内。",
+      statusDetail: `AC 摊余 + OCI/TPL 市值与 CNX 控制数在容忍阈值内（${BALANCE_RECONCILIATION_TOLERANCE_TEXT}）。`,
     };
   }
   return {
     status: "watch",
     statusLabel: "需复核",
-    statusDetail: "桥接口径与 CNX 控制数存在超阈值差异。",
+    statusDetail: `桥接口径与 CNX 控制数存在超阈值差异（生效阈值：${BALANCE_RECONCILIATION_TOLERANCE_TEXT}）。`,
   };
 }
 
@@ -1384,8 +1427,11 @@ export function buildBalanceReconciliationLinkModel({
   const allInternalChecksAligned =
     internalChecks.length > 0 && internalChecks.every((check) => check.aligned);
 
-  const bridgeComponents = buildBridgeComponents(basisRows);
-  const formalBridgeYuan = sumFinite(bridgeComponents.map((component) => component.amountYuan));
+  const { components: bridgeComponents, hasUnreadableRow: bridgeHasUnreadableRow } =
+    buildBridgeComponents(basisRows);
+  const formalBridgeYuan = bridgeHasUnreadableRow
+    ? null
+    : sumFinite(bridgeComponents.map((component) => component.amountYuan));
   const movementControlYuan = finiteNumberFromUnknown(movement?.summary.current_balance_total);
   const residualYuan =
     formalBridgeYuan === null || movementControlYuan === null
@@ -1399,6 +1445,7 @@ export function buildBalanceReconciliationLinkModel({
   const status = statusForReconciliationLink({
     isPending,
     movementAvailableForDate,
+    bridgeHasUnreadableRow,
     formalBridgeYuan,
     movementControlYuan,
     residualYuan,
@@ -1907,11 +1954,15 @@ function buildStageMaturitySeries(
   workbook: BalanceAnalysisWorkbookPayload | null | undefined,
 ): Pick<BalanceStageBottomModel, "maturityCategories" | "assetSeries" | "liabilitySeries" | "gapSeries"> {
   const rows = tableByKey(workbook, "maturity_gap")?.rows ?? [];
+  const wanToYi = (value: unknown): number | null => {
+    const wan = finiteWanValue(value);
+    return wan === null ? null : wan / 10_000;
+  };
   return {
     maturityCategories: rows.map((row) => formatBalanceWorkbookCellDisplay(row.bucket)),
-    assetSeries: rows.map((row) => (finiteWanValue(row.asset_total_amount) ?? 0) / 10_000),
-    liabilitySeries: rows.map((row) => (finiteWanValue(row.full_scope_liability_amount) ?? 0) / 10_000),
-    gapSeries: rows.map((row) => (finiteWanValue(row.full_scope_gap_amount ?? row.gap_amount) ?? 0) / 10_000),
+    assetSeries: rows.map((row) => wanToYi(row.asset_total_amount)),
+    liabilitySeries: rows.map((row) => wanToYi(row.full_scope_liability_amount)),
+    gapSeries: rows.map((row) => wanToYi(row.full_scope_gap_amount ?? row.gap_amount)),
   };
 }
 

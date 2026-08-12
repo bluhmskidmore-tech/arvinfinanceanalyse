@@ -1316,8 +1316,14 @@ export default function BalanceAnalysisPage() {
           },
         ]
       : []),
+    // The date badge is excluded unless it is a real mismatch (already raised above);
+    // a still-unconfirmed report date is a loading/no-data state, not an anomaly.
     ...pageReadModel.statusBadges
-      .filter((badge) => ["danger", "warning"].includes(badge.tone))
+      .filter(
+        (badge) =>
+          ["danger", "warning"].includes(badge.tone) &&
+          (badge.key !== "date" || pageReadModel.dateStatus === "mismatch"),
+      )
       .map((badge): BalanceAttentionReason => ({
         key: `status-badge-${badge.key}`,
         sentinel: badge.key === "stale" ? "stale" : badge.key === "fallback" ? "fallback" : "error",

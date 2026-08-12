@@ -318,6 +318,50 @@ describe("balanceAnalysisPageModel", () => {
       );
     });
 
+    it("stays pending instead of self-confirming when the overview returns no report date", () => {
+      const model = buildBalanceAnalysisPageReadModel({
+        clientMode: "real",
+        requestedReportDate: "2026-04-30",
+        selectedPositionScope: "all",
+        selectedCurrencyBasis: "CNY",
+        overview: null,
+        summary: null,
+        decisionItems: null,
+        metaSections: [{ key: "overview", title: "正式概览", meta: meta() }],
+      });
+
+      expect(model.dateStatus).toBe("pending");
+      const surfaceKeys = model.stateSurfaces.map((item) => item.key);
+      expect(surfaceKeys).not.toContain("date-matched");
+      expect(surfaceKeys).not.toContain("date-mismatch");
+      expect(model.stateSurfaces).toContainEqual(
+        expect.objectContaining({ key: "date-pending", variant: "neutral" }),
+      );
+      expect(model.statusBadges).toContainEqual(
+        expect.objectContaining({ key: "date", label: "报告日待定", tone: "warning" }),
+      );
+    });
+
+    it("labels the basis badge from the returned meta rather than a hard-coded formal basis", () => {
+      const model = buildBalanceAnalysisPageReadModel({
+        clientMode: "mock",
+        requestedReportDate: "2026-04-30",
+        selectedPositionScope: "all",
+        selectedCurrencyBasis: "CNY",
+        overview: overview(),
+        summary: null,
+        decisionItems: null,
+        metaSections: [
+          { key: "overview", title: "正式概览", meta: meta({ basis: "mock" }) },
+          { key: "workbook", title: "工作簿", meta: meta() },
+        ],
+      });
+
+      expect(model.statusBadges).toContainEqual(
+        expect.objectContaining({ key: "basis", label: "模拟口径" }),
+      );
+    });
+
     it("surfaces mock, stale, fallback, and report-date mismatch states without hiding evidence", () => {
       const model = buildBalanceAnalysisPageReadModel({
         clientMode: "mock",
@@ -681,6 +725,116 @@ describe("balanceAnalysisPageModel", () => {
         "/balance-movement-analysis?report_date=2026-03-31&currency_basis=CNX",
       );
     });
+
+    it("keeps the bridge bucket null and the status pending when a basis row amount is unreadable", () => {
+      const basisRow = (
+        overrides: Partial<BalanceAnalysisBasisBreakdownPayload["rows"][number]>,
+      ): BalanceAnalysisBasisBreakdownPayload["rows"][number] => ({
+        source_family: "zqtz",
+        invest_type_std: "H",
+        accounting_basis: "AC",
+        position_scope: "asset",
+        currency_basis: "CNY",
+        detail_row_count: 1,
+        market_value_amount: "0",
+        amortized_cost_amount: "0",
+        accrued_interest_amount: "0",
+        ...overrides,
+      });
+      const movement: BalanceMovementPayload = {
+        report_date: "2026-03-31",
+        currency_basis: "CNX",
+        rows: [],
+        summary: {
+          previous_balance_total: "0",
+          current_balance_total: "336469417748.23000000",
+          balance_change_total: "0",
+          zqtz_amount_total: "336469417748.23000000",
+          reconciliation_diff_total: "0E-8",
+          matched_bucket_count: 1,
+          bucket_count: 1,
+        },
+        trend_months: [],
+        business_trend_months: [],
+        zqtz_calibration_analysis: null,
+        structure_migration_analysis: null,
+        difference_attribution_waterfall: null,
+        basis_movement_decomposition: null,
+        zqtz_maturity_structure: null,
+        zqtz_concentration_analysis: null,
+        accounting_controls: [],
+        excluded_controls: [],
+      };
+
+      const model = buildBalanceReconciliationLinkModel({
+        reportDate: "2026-03-31",
+        workbook: null,
+        basisRows: [
+          basisRow({ amortized_cost_amount: "147935903140.93000022" }),
+          basisRow({ amortized_cost_amount: "" }),
+          basisRow({ accounting_basis: "FVOCI", market_value_amount: "106049923449.13635599" }),
+        ],
+        movement,
+        movementAvailableForDate: true,
+      });
+
+      expect(model.bridgeComponents.find((component) => component.bucket === "AC")?.amountYuan).toBeNull();
+      expect(model.bridgeComponents.find((component) => component.bucket === "OCI")?.amountYuan).toBeCloseTo(
+        106_049_923_449.14,
+        2,
+      );
+      expect(model.formalBridgeYuan).toBeNull();
+      expect(model.status).toBe("pending");
+      expect(model.statusDetail).toContain("无法读数");
+    });
+
+    it("spells out the effective reconciliation tolerances in the status detail", () => {
+      const model = buildBalanceReconciliationLinkModel({
+        reportDate: "2026-03-31",
+        workbook: null,
+        basisRows: [
+          {
+            source_family: "zqtz",
+            invest_type_std: "H",
+            accounting_basis: "AC",
+            position_scope: "asset",
+            currency_basis: "CNY",
+            detail_row_count: 1,
+            market_value_amount: "0",
+            amortized_cost_amount: "100000000000",
+            accrued_interest_amount: "0",
+          },
+        ],
+        movement: {
+          report_date: "2026-03-31",
+          currency_basis: "CNX",
+          rows: [],
+          summary: {
+            previous_balance_total: "0",
+            current_balance_total: "100000000000",
+            balance_change_total: "0",
+            zqtz_amount_total: "100000000000",
+            reconciliation_diff_total: "0E-8",
+            matched_bucket_count: 1,
+            bucket_count: 1,
+          },
+          trend_months: [],
+          business_trend_months: [],
+          zqtz_calibration_analysis: null,
+          structure_migration_analysis: null,
+          difference_attribution_waterfall: null,
+          basis_movement_decomposition: null,
+          zqtz_maturity_structure: null,
+          zqtz_concentration_analysis: null,
+          accounting_controls: [],
+          excluded_controls: [],
+        },
+        movementAvailableForDate: true,
+      });
+
+      expect(model.status).toBe("aligned");
+      expect(model.statusDetail).toContain("绝对差 ≤ 1.00 亿元 或 相对差 ≤ 0.05%");
+    });
   });
 
   describe("stage real-data model", () => {
@@ -837,6 +991,7 @@ describe("balanceAnalysisPageModel", () => {
       expect(model.contribution.watchItems[0].detail).toContain("-2.50 亿元");
       expect(model.bottom.maturityCategories).toEqual(["已到期/逾期", "3-6个月", "1-2年"]);
       expect(model.bottom.gapSeries).toEqual([-1, -2.5, 5]);
+      expect(model.bottom.assetSeries).toEqual([0, 0.5, 6]);
       expect(model.bottom.riskMetrics).toEqual(
         expect.arrayContaining([
           { label: "资产/全口径负债比", value: "4.00x" },
@@ -855,6 +1010,45 @@ describe("balanceAnalysisPageModel", () => {
         amount: "期限缺口分析",
         level: "medium",
       });
+    });
+
+    it("keeps a maturity bucket null when the workbook omits an amount", () => {
+      const model = buildBalanceStageRealDataModel({
+        workbook: {
+          report_date: "2025-12-31",
+          position_scope: "all",
+          currency_basis: "CNY",
+          cards: [],
+          tables: [
+            {
+              key: "maturity_gap",
+              title: "期限缺口分析",
+              section_kind: "table",
+              columns: [],
+              rows: [
+                {
+                  bucket: "已到期/逾期",
+                  asset_total_amount: "",
+                  full_scope_liability_amount: null,
+                  full_scope_gap_amount: "-10000",
+                },
+                {
+                  bucket: "3-6个月",
+                  asset_total_amount: "5000",
+                  full_scope_liability_amount: "30000",
+                  full_scope_gap_amount: null,
+                },
+              ],
+            },
+          ],
+          operational_sections: [],
+        },
+      });
+
+      expect(model.bottom.maturityCategories).toEqual(["已到期/逾期", "3-6个月"]);
+      expect(model.bottom.assetSeries).toEqual([null, 0.5]);
+      expect(model.bottom.liabilitySeries).toEqual([null, 3]);
+      expect(model.bottom.gapSeries).toEqual([-1, null]);
     });
 
     it("uses explicit no-data rows instead of static demonstration numbers", () => {

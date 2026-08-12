@@ -11,10 +11,12 @@ type BalanceBottomRowProps = {
 };
 
 function buildMaturityOption(model: BalanceStageBottomModel, includeTitle: boolean): EChartsOption {
-  const categories = model.maturityCategories.length ? model.maturityCategories : ["无真实数据"];
-  const assetSeries = model.maturityCategories.length ? model.assetSeries : [0];
-  const liabilitySeries = model.maturityCategories.length ? model.liabilitySeries : [0];
-  const gapSeries = model.maturityCategories.length ? model.gapSeries : [0];
+  const hasCategories = model.maturityCategories.length > 0;
+  const categories = hasCategories ? model.maturityCategories : ["无真实数据"];
+  // Missing buckets stay null so ECharts leaves a gap instead of drawing a zero bar.
+  const assetSeries = hasCategories ? model.assetSeries : [null];
+  const liabilitySeries = hasCategories ? model.liabilitySeries : [null];
+  const gapSeries = hasCategories ? model.gapSeries : [null];
   return {
     title: includeTitle
       ? {
@@ -47,7 +49,8 @@ function buildMaturityOption(model: BalanceStageBottomModel, includeTitle: boole
         type: "bar",
         data: gapSeries.map((value) => ({
           value,
-          itemStyle: { color: value < 0 ? "#b76e00" : "#3f8a6a" },
+          itemStyle:
+            value === null ? undefined : { color: value < 0 ? "#b76e00" : "#3f8a6a" },
         })),
       },
     ],
