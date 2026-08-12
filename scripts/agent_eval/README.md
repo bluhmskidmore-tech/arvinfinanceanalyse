@@ -49,6 +49,16 @@ use `python scripts/agent_eval/replay.py --task <task> --worktree <path> --base-
 docstring for the recommended `git worktree` isolation. On Windows, `scripts/agent_eval/run.ps1`
 wraps the CLI with interpreter discovery (uv, then `py -3.11`, then `MOSS_PYTHON`).
 
+## PR Consumer
+
+The `Agent Eval Replay` CI job (pull requests only) is the scorecard's first consumer:
+`pr_replay.py` selects every task whose `allowed_scope` overlaps the PR diff, runs a replay
+evaluation per task, and publishes one Markdown report to the step summary and a marker-updated PR
+comment. The report is informational and never blocks a merge; hard failures are split into *real
+failures* (a probe ran red) and *probe gaps* (fail-closed gates with no probe yet), and a *void*
+verdict means the PR touches the scoring harness or a protected probe, which by design cannot be
+scored by itself. The job goes red only when the orchestration itself breaks.
+
 ## Integrity
 
 The scorecard is void, not merely low, when the run tampered with its own scoring rules. The
