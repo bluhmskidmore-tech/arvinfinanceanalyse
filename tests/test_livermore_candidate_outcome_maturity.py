@@ -3,7 +3,13 @@ from __future__ import annotations
 import json
 
 import duckdb
+
 import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_livermore,
+]
 
 
 def _seed_candidate_history(conn: duckdb.DuckDBPyConnection) -> None:

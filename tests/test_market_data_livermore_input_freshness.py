@@ -16,6 +16,14 @@ from backend.app.services.market_data_livermore_service import (
     livermore_strategy_envelope,
 )
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_livermore,
+]
+
+
 
 def _seed_broad_index_history(conn: duckdb.DuckDBPyConnection, *, start: date, days: int) -> None:
     conn.execute(

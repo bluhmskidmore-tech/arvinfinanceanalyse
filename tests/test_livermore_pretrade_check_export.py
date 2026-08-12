@@ -7,6 +7,14 @@ import duckdb
 
 from tests.helpers import load_module
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_livermore,
+]
+
+
 
 def _load_pretrade_module():
     return load_module(

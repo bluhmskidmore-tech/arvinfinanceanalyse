@@ -8,6 +8,14 @@ from fastapi.testclient import TestClient
 
 from backend.app.api.routes import market_data_livermore as route_module
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_livermore,
+]
+
+
 
 def _client(tmp_path, monkeypatch, *, guard=None, service_fn=None) -> TestClient:
     monkeypatch.setattr(

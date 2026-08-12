@@ -7,6 +7,13 @@ so the tests stay independent from the real scripts/agent_eval/tasks/ content
 
 import json
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_agent_eval,
+]
+
 from scripts.agent_eval.coverage_report import (
     build_report,
     classify_probe_command,

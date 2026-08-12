@@ -7,6 +7,12 @@ import pytest
 
 from tests.helpers import load_module
 
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_livermore,
+]
+
+
 
 def _load_runner_module():
     return load_module(

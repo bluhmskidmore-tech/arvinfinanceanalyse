@@ -14,6 +14,12 @@ import pytest
 import backend.app.tasks.livermore_candidate_history_materialize as materialize_task
 from tests.helpers import load_module
 
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_livermore,
+]
+
+
 
 def test_execution_gap_repair_exposes_a_public_task_entrypoint() -> None:
     repair = getattr(materialize_task, "repair_livermore_candidate_execution_gaps", None)

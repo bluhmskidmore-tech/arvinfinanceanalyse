@@ -15,6 +15,12 @@ from backend.app.repositories.governance_repo import (
 )
 from backend.app.security.auth_context import AuthContext, get_auth_context
 
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_livermore,
+]
+
+
 
 def test_livermore_refresh_route_queues_without_running_sync_compute(tmp_path, monkeypatch) -> None:
     from backend.app.api.routes import market_data_livermore as route

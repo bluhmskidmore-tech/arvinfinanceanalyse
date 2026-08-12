@@ -14,6 +14,12 @@ from backend.app.core_finance.livermore_stock_candidates import (
     diagnose_stock_candidate_filters,
 )
 
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_livermore,
+]
+
+
 
 def test_stock_candidate_valid_int_rejects_non_integral_values() -> None:
     # sector_rank is an ordinal rank: integral values pass through, but a

@@ -3,6 +3,11 @@ import subprocess
 
 import pytest
 
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_agent_eval,
+]
+
 from scripts.agent_eval.pr_replay import (
     COMMENT_MARKER,
     _render_task_section,

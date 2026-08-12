@@ -20,6 +20,12 @@ from backend.app.repositories.choice_client import ChoiceClient
 from backend.app.repositories.choice_stock_adapter import ChoiceStockReadiness
 from tests.helpers import load_module
 
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_livermore,
+]
+
+
 
 def _perf_records(caplog, endpoint: str):
     return [

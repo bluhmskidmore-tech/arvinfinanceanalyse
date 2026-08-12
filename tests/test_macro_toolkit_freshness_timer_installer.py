@@ -2,8 +2,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 INSTALLER = ROOT / "scripts" / "install_macro_toolkit_freshness_timer.ps1"
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_macro_toolkit,
+]
 
 
 def test_installer_writes_scheduled_receipt_flags() -> None:

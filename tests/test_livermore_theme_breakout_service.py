@@ -15,6 +15,14 @@ from backend.app.services.market_data_livermore_service import (
     _ThemeBreakoutEvidenceProvenance,
 )
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_livermore,
+]
+
+
 
 def _write_theme_catalog(
     tmp_path,

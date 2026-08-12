@@ -12,8 +12,14 @@ from __future__ import annotations
 import importlib.util
 
 import pandas as pd
+import pytest
 
 from backend.app.core_finance.macro.toolkit.runner import get_toolkit_script
+
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_macro_toolkit,
+]
 
 
 def _load_script_module(name: str, module_alias: str):

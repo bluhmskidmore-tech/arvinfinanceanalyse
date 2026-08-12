@@ -10,6 +10,14 @@ from backend.app.core_finance.livermore_theme_breakout import (
     compute_theme_breakout,
 )
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_livermore,
+]
+
+
 
 def _snapshot(
     *,

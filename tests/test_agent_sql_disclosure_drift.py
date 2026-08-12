@@ -22,6 +22,13 @@ from backend.app.repositories.risk_tensor_repo import (
 from backend.app.repositories.risk_tensor_repo import RiskTensorRepository
 from backend.app.services import agent_service, macro_vendor_service, pnl_bridge_service
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_agent_mvp,
+]
+
 
 _WRITE_SQL = re.compile(
     r"\b(insert|update|delete|attach|detach|copy|create|drop|alter|truncate|merge)\b",

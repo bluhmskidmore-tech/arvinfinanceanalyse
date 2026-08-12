@@ -18,6 +18,13 @@ from tests.test_agent_api_contract import (
     _seed_agent_scope,
 )
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_agent_mvp,
+]
+
 OWNER_HEADERS = {
     "X-User-Id": "workspace-owner",
     "X-User-Role": "reviewer",

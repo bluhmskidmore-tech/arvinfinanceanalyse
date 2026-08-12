@@ -24,6 +24,11 @@ from backend.app.schemas.macro_vendor import (
     MacroVendorSeries,
 )
 
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_macro_data,
+]
+
 
 def _minimal_series() -> ChoiceMacroSeriesConfig:
     return ChoiceMacroSeriesConfig(

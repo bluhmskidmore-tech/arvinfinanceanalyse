@@ -16,6 +16,11 @@ import subprocess
 
 import pytest
 
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_agent_eval,
+]
+
 from scripts.agent_eval.collect import CommandOutcome, collect_measured_result
 from scripts.agent_eval.reward import DEFAULT_WEIGHTS, PASS_THRESHOLD, evaluate_result
 from scripts.agent_eval.spec import (

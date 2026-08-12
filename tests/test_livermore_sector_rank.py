@@ -12,6 +12,12 @@ from backend.app.core_finance.livermore_sector_rank import (
     compute_sector_rank,
 )
 
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_livermore,
+]
+
+
 
 def test_sector_rank_uses_signed_off_percentile_formula_and_tie_breaks() -> None:
     result = compute_sector_rank(

@@ -10,6 +10,14 @@ from backend.app.services.macro_vendor_service import (
 )
 from backend.app.services.market_data_ncd_proxy_service import ncd_funding_proxy_envelope
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_market_data,
+]
+
+
 
 def _set_temp_duckdb_settings(monkeypatch, duckdb_path) -> None:
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))

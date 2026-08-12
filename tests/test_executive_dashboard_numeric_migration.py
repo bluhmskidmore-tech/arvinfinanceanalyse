@@ -4,6 +4,8 @@ display-only Numeric.
 """
 from __future__ import annotations
 
+import pytest
+
 from backend.app.schemas.common_numeric import Numeric
 from backend.app.schemas.executive_dashboard import (
     AttributionSegment,
@@ -12,6 +14,11 @@ from backend.app.schemas.executive_dashboard import (
     PnlAttributionPayload,
     RiskSignal,
 )
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_executive,
+]
 
 
 class TestExecutiveMetricLegacyStr:

@@ -11,6 +11,14 @@ from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from backend.app.services.livermore_sector_rank_series_service import livermore_sector_rank_series_envelope
 from tests.helpers import load_module
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_livermore,
+]
+
+
 
 def _seed_sector_series_fixture(
     duckdb_path: str,

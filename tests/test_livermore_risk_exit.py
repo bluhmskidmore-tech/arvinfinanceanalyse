@@ -8,6 +8,14 @@ from backend.app.core_finance.livermore_risk_exit import (
     compute_risk_exit,
 )
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_livermore,
+]
+
+
 
 # 21 根 K 线最少；触发日量 > 1.3x 前 20 日均量
 def _high_volume_history(quiet: float = 1_000_000.0, surge_ratio: float = 2.0) -> list[float]:

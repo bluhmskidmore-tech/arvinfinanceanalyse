@@ -13,6 +13,11 @@ from backend.app.governance.settings import get_settings
 from backend.app.repositories.user_scope_repo import UserScopeRepository
 from tests.helpers import load_module
 
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_agent_mvp,
+]
+
 REPORT_DATE = "2026-03-31"
 RISK_TENSOR_PROJECTION_QUALITY_FIELDS = (
     "missing_maturity_market_value",

@@ -12,7 +12,14 @@ import json
 from datetime import date
 from pathlib import Path
 
+import pytest
+
 import backend.app.api.routes.macro_toolkit as macro_toolkit_route
+
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_macro_toolkit,
+]
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _OBSERVATION_KEYS_JSON = _REPO_ROOT / "config" / "macro_decision_observation_keys.json"

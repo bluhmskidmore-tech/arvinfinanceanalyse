@@ -38,6 +38,12 @@ from backend.app.tasks.livermore_gate_supplement import (
 
 _T = date(2026, 6, 8)
 
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_livermore,
+]
+
+
 
 def _seed_benchmark(conn: duckdb.DuckDBPyConnection, *, end: date, n_days: int = 65) -> None:
     """Rising CSI300 closes ending at ``end`` so both trend legs pass."""

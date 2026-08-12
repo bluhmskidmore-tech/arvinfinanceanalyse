@@ -2,6 +2,13 @@ from __future__ import annotations
 
 from tests.helpers import load_module
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_agent_mvp,
+]
+
 
 def _catalog_module():
     return load_module(

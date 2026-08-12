@@ -1,5 +1,10 @@
 import pytest
 
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_agent_eval,
+]
+
 from scripts.agent_eval.reward import evaluate_result
 from scripts.agent_eval.spec import validate_result_spec
 

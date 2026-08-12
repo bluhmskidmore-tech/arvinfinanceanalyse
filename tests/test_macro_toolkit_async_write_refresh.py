@@ -18,6 +18,11 @@ from backend.app.services import macro_toolkit_service as service
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_macro_toolkit,
+]
+
 
 class RecordingActor:
     def __init__(self) -> None:

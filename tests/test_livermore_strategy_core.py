@@ -8,6 +8,14 @@ from backend.app.core_finance.livermore_strategy import (
     evaluate_market_gate,
 )
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_livermore,
+]
+
+
 
 def _history(*, start: date, closes: list[float], quality_flag: str = "ok") -> list[BroadIndexObservation]:
     return [

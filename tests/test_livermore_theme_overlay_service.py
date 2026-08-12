@@ -11,6 +11,14 @@ from backend.app.repositories.stock_analysis_theme_overlay_reader import (
 from backend.app.schemas.stock_analysis_theme_overlay import ThemeOverlayMember
 from backend.app.services import market_data_livermore_service as service
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_livermore,
+]
+
+
 
 def _seed_theme_inputs(path: Path, *, with_choice_concept: bool) -> None:
     conn = duckdb.connect(str(path))

@@ -21,6 +21,11 @@ from tests.helpers import load_module
 # Windows / Py3.14: SQLAlchemy may call platform.machine() during backend imports.
 _platform.machine = lambda: "AMD64"  # type: ignore[method-assign, assignment]
 
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_executive,
+]
+
 
 def _assert_numeric_json_shape(x: object) -> dict[str, object]:
     assert isinstance(x, dict)

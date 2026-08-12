@@ -15,6 +15,13 @@ from backend.app.agent.schemas.agent_response import (
 )
 from tests.helpers import load_module
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_agent_mvp,
+]
+
 
 def _settings(tmp_path: Path, *, bypass: bool) -> SimpleNamespace:
     return SimpleNamespace(

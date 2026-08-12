@@ -17,6 +17,11 @@ import logging
 
 import pytest
 
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_executive,
+]
+
 _LOGGER_NAME = "backend.app.services.executive_service"
 
 

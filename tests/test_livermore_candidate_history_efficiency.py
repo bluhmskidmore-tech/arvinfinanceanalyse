@@ -15,6 +15,14 @@ from backend.app.tasks.livermore_candidate_history_materialize import (
     ensure_livermore_candidate_history_schema,
 )
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_livermore,
+]
+
+
 
 class _CountingRow(dict[str, object]):
     row_scan_count = 0

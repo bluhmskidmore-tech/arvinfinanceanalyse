@@ -13,6 +13,11 @@ from backend.app.core_finance.macro.equity_strategies import (
 )
 from backend.app.services import macro_toolkit_service
 
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_macro_toolkit,
+]
+
 
 def _seed_choice_stock_history(path: str, *, include_vendor_version: bool = True) -> None:
     vendor_column = ", vendor_version varchar" if include_vendor_version else ""

@@ -31,6 +31,11 @@ import pytest
 from backend.app.core_finance.macro.toolkit import get_toolkit_script
 from backend.app.core_finance.macro.toolkit.runner import TOOLKIT_ROOT
 
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_macro_toolkit,
+]
+
 
 def _ensure_scipy_optimize_stub() -> None:
     try:

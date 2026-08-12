@@ -14,6 +14,11 @@ import sys
 
 import pytest
 
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_agent_eval,
+]
+
 from scripts.agent_eval import rollout
 from scripts.agent_eval.collect import CommandOutcome, compute_task_digest
 

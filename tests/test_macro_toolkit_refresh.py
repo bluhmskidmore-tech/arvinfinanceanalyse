@@ -12,6 +12,11 @@ from backend.app.tasks.macro_toolkit_refresh import (
     run_macro_toolkit_allocation_refresh,
 )
 
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_macro_toolkit,
+]
+
 CSI500_REQUIRED_SCRIPTS = {"risk_parity_cn", "backtest_cn", "garch_multi_asset"}
 EXECUTABLE_SCRIPTS = tuple(step.script_name for step in STEPS)
 

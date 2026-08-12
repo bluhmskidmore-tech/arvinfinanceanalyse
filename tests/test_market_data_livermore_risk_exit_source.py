@@ -12,6 +12,14 @@ from backend.app.tasks.livermore_position_snapshot_materialize import (
     ensure_livermore_position_snapshot_schema,
 )
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_livermore,
+]
+
+
 
 def test_market_data_risk_exit_reads_only_active_stock_position_facts(tmp_path) -> None:
     duckdb_path = tmp_path / "moss.duckdb"

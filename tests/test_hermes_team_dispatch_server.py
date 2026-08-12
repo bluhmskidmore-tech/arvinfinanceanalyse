@@ -16,6 +16,11 @@ from scripts.hermes_team_dispatch_server import (
     require_loopback_bind,
 )
 
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_agent_mvp,
+]
+
 
 TOKEN = "unit-dispatch-token"
 AUTH_HEADERS = {"X-Hermes-Dispatch-Token": TOKEN}

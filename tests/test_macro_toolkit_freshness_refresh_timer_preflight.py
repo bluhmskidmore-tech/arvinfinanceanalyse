@@ -3,7 +3,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from scripts.macro_toolkit_freshness_refresh_timer_preflight import run_preflight
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_macro_toolkit,
+]
 
 SCHEDULER_TASK_NAME = "MOSS-MacroToolkitFreshness"
 RECEIPT_TASK_NAME = "refresh_macro_toolkit_freshness"

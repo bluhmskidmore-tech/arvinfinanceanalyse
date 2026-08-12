@@ -18,6 +18,14 @@ from backend.app.services.market_data_livermore_service import (
     _shared_read_only_connection,
 )
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_livermore,
+]
+
+
 
 def _seed_broad_index(conn: duckdb.DuckDBPyConnection, *, start: date, days: int) -> None:
     conn.execute(

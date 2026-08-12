@@ -17,6 +17,11 @@ from tests.helpers import load_module
 # Windows / Py3.14: avoid slow SQLAlchemy platform.machine() probing before dynamic backend imports.
 _platform.machine = lambda: "AMD64"  # type: ignore[method-assign, assignment]
 
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_executive,
+]
+
 
 def _exec_service_module():
     return load_module(

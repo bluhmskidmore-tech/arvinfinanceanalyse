@@ -14,6 +14,12 @@ from backend.app.tasks.livermore_position_snapshot_materialize import (
 )
 from backend.app.services.market_data_livermore_service import livermore_data_version
 
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_livermore,
+]
+
+
 
 def test_livermore_data_version_changes_when_duckdb_file_changes(tmp_path):
     path = tmp_path / "snapshot.duckdb"

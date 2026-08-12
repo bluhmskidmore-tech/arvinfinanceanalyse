@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import duckdb
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -13,6 +14,11 @@ from tests.test_macro_toolkit_scripts import (
     _seed_choice_tushare_macro_db,
     _seed_macro_toolkit_read_scope,
 )
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_macro_toolkit,
+]
 
 
 def test_macro_toolkit_uses_latest_factor_snapshot_not_newer_than_price_date(tmp_path, monkeypatch) -> None:
