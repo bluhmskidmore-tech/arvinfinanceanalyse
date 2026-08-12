@@ -121,6 +121,39 @@ _PUBLIC_HEADLINE_SERIES_META: dict[str, dict[str, object]] = {
         "tags": ["public", "macro", "market", "rates", "chinabond", "cross_asset"],
         "policy_note": "public cross-asset headline supplement via Eastmoney bond_zh_us_rate",
     },
+    "EMM00588704": {
+        "series_name": "中债国债到期收益率:2年",
+        "vendor_name": "public_bond_zh_us_rate",
+        "vendor_series_code": "bond_zh_us_rate:china_2y",
+        "frequency": "daily",
+        "unit": "%",
+        "theme": "macro_market",
+        "is_core": True,
+        "tags": ["public", "macro", "market", "rates", "chinabond", "cross_asset"],
+        "policy_note": "public cross-asset headline supplement via Eastmoney bond_zh_us_rate",
+    },
+    "EMM00166462": {
+        "series_name": "中债国债到期收益率:5年",
+        "vendor_name": "public_bond_zh_us_rate",
+        "vendor_series_code": "bond_zh_us_rate:china_5y",
+        "frequency": "daily",
+        "unit": "%",
+        "theme": "macro_market",
+        "is_core": True,
+        "tags": ["public", "macro", "market", "rates", "chinabond", "cross_asset"],
+        "policy_note": "public cross-asset headline supplement via Eastmoney bond_zh_us_rate",
+    },
+    "EMM00166469": {
+        "series_name": "中债国债到期收益率:30年",
+        "vendor_name": "public_bond_zh_us_rate",
+        "vendor_series_code": "bond_zh_us_rate:china_30y",
+        "frequency": "daily",
+        "unit": "%",
+        "theme": "macro_market",
+        "is_core": True,
+        "tags": ["public", "macro", "market", "rates", "chinabond", "cross_asset"],
+        "policy_note": "public cross-asset headline supplement via Eastmoney bond_zh_us_rate",
+    },
     "E1003238": {
         "series_name": "美国国债收益率:10年",
         "vendor_name": "public_bond_zh_us_rate",
@@ -287,6 +320,18 @@ _PUBLIC_HEADLINE_SERIES_META: dict[str, dict[str, object]] = {
         "policy_note": "cross-asset headline history supplement from local fx_daily_mid materialized table",
     },
 }
+
+PUBLIC_CROSS_ASSET_REQUIRED_SERIES_IDS = frozenset(
+    series_id
+    for series_id, metadata in _PUBLIC_HEADLINE_SERIES_META.items()
+    if metadata.get("is_core") is True
+)
+PUBLIC_CROSS_ASSET_REQUIRED_SOURCE_COUNT = 7
+
+
+class PublicCrossAssetRetryableError(RuntimeError):
+    """All minimum-coverage sources failed for a retryable transport reason."""
+
 
 _CHOICE_SINGLE_PARAMETER_ERROR_UNSUPPORTED_CODES = frozenset({"EM1"})
 
@@ -728,18 +773,52 @@ def refresh_public_cross_asset_headlines(
     duckdb_file.parent.mkdir(parents=True, exist_ok=True)
 
     warnings: list[str] = []
+    source_failures: list[dict[str, object]] = []
     history_rows = _load_public_cross_asset_history_rows(
         duckdb_path=str(duckdb_file),
         report_date=target_date,
         lookback_days=lookback_days,
         warnings=warnings,
+        source_failures=source_failures,
     )
-    if not history_rows:
-        raise RuntimeError("No public cross-asset headline rows were fetched.")
+    run_id = f"public_cross_asset_refresh:{target_date.isoformat()}"
+    loaded_series_ids = {str(row.get("series_id") or "") for row in history_rows}
+    covered_required_series = sorted(
+        PUBLIC_CROSS_ASSET_REQUIRED_SERIES_IDS.intersection(loaded_series_ids)
+    )
+    failed_sources = [str(item["source"]) for item in source_failures]
+    diagnostics: dict[str, object] = {
+        "warnings": warnings,
+        "warning_count": len(warnings),
+        "failed_sources": failed_sources,
+        "source_failures": source_failures,
+        "required_series_count": len(PUBLIC_CROSS_ASSET_REQUIRED_SERIES_IDS),
+        "covered_required_series": covered_required_series,
+        "missing_required_series": sorted(
+            PUBLIC_CROSS_ASSET_REQUIRED_SERIES_IDS.difference(loaded_series_ids)
+        ),
+    }
+    if not covered_required_series:
+        failure_result = {
+            "status": "failed",
+            "run_id": run_id,
+            "series_count": 0,
+            "row_count": 0,
+            **diagnostics,
+        }
+        retryable_failures = [
+            item for item in source_failures if item.get("retryable") is True
+        ]
+        if retryable_failures:
+            retryable_sources = ", ".join(str(item["source"]) for item in retryable_failures)
+            raise PublicCrossAssetRetryableError(
+                f"{PUBLIC_CROSS_ASSET_REQUIRED_SOURCE_COUNT} required sources produced no "
+                f"minimum-coverage series; retryable failures: {retryable_sources}"
+            )
+        return failure_result
 
     latest_rows = _latest_public_cross_asset_rows(history_rows)
     series_ids = sorted({row["series_id"] for row in history_rows})
-    run_id = f"public_cross_asset_refresh:{target_date.isoformat()}"
 
     with acquire_lock(CHOICE_MACRO_LOCK, base_dir=duckdb_file.parent):
         conn = duckdb.connect(str(duckdb_file), read_only=False)
@@ -867,11 +946,11 @@ def refresh_public_cross_asset_headlines(
             conn.close()
 
     return {
-        "status": "completed",
+        "status": "partial" if warnings else "completed",
         "run_id": run_id,
         "series_count": len(latest_rows),
         "row_count": len(history_rows),
-        "warnings": warnings,
+        **diagnostics,
     }
 
 
@@ -1723,12 +1802,56 @@ def _fetch_backfill_snapshots(
     return merged, series_registry
 
 
+def _is_retryable_public_source_error(exc: BaseException) -> bool:
+    if isinstance(
+        exc,
+        (
+            ValueError,
+            TypeError,
+            PermissionError,
+            ImportError,
+            AttributeError,
+            requests.exceptions.InvalidURL,
+            requests.exceptions.InvalidSchema,
+            requests.exceptions.MissingSchema,
+        ),
+    ):
+        return False
+    if isinstance(exc, requests.exceptions.HTTPError):
+        response = exc.response
+        status_code = int(response.status_code) if response is not None else None
+        if status_code is not None and 400 <= status_code < 500:
+            return status_code in {408, 429}
+        return True
+    return isinstance(
+        exc,
+        (
+            ConnectionError,
+            TimeoutError,
+            requests.exceptions.ConnectionError,
+            requests.exceptions.Timeout,
+            requests.exceptions.RequestException,
+        ),
+    )
+
+
+def _public_source_failure(loader_name: str, exc: BaseException) -> dict[str, object]:
+    detail = " ".join(str(exc).split()) or "no error details"
+    return {
+        "source": loader_name,
+        "error_type": type(exc).__name__,
+        "detail": detail[:500],
+        "retryable": _is_retryable_public_source_error(exc),
+    }
+
+
 def _load_public_cross_asset_history_rows(
     *,
     duckdb_path: str,
     report_date: date,
     lookback_days: int,
     warnings: list[str],
+    source_failures: list[dict[str, object]],
 ) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     for loader in (
@@ -1749,7 +1872,11 @@ def _load_public_cross_asset_history_rows(
                 )
             )
         except Exception as exc:
-            warnings.append(f"{loader.__name__}: {exc}")
+            failure = _public_source_failure(loader.__name__, exc)
+            source_failures.append(failure)
+            warnings.append(
+                f"{failure['source']}: {failure['error_type']}: {failure['detail']}"
+            )
     deduped: dict[tuple[str, str], dict[str, object]] = {}
     for row in rows:
         deduped[(str(row["series_id"]), str(row["trade_date"]))] = row
@@ -1779,6 +1906,16 @@ def _fetch_public_bond_zh_us_history_rows(
         if cn10y is not None:
             rows.append(_public_history_row("E1000180", trade_date, cn10y, vendor_version, source_version))
             rows.append(_public_history_row("EMM00166466", trade_date, cn10y, vendor_version, source_version))
+        # 2Y/5Y/30Y 与 10Y 同源同批：公共源代写 choice 序列 ID（与 EMM00166466 模式一致），
+        # 供国债期货基差/信用利差在 choice 断供时兜底（alias 首选候选即这些 ID）。
+        for column, series_id in (
+            ("中国国债收益率2年", "EMM00588704"),
+            ("中国国债收益率5年", "EMM00166462"),
+            ("中国国债收益率30年", "EMM00166469"),
+        ):
+            value = _coerce_public_number(record.get(column))
+            if value is not None:
+                rows.append(_public_history_row(series_id, trade_date, value, vendor_version, source_version))
         if us10y is not None:
             rows.append(_public_history_row("E1003238", trade_date, us10y, vendor_version, source_version))
             rows.append(_public_history_row("EMG00001310", trade_date, us10y, vendor_version, source_version))
