@@ -1211,7 +1211,8 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     expect(houseView).toHaveTextContent("主信号");
     expect((await screen.findAllByText("87.5%")).length).toBeGreaterThan(0);
     const operationsConsole = await screen.findByTestId("macro-toolkit-operations-console");
-    expect(cockpit.contains(investmentBrief)).toBe(true);
+    // 首屏驾驶舱只保留结论带；投委会门禁面板下沉到治理段（仍随首屏挂载）。
+    expect(cockpit.contains(investmentBrief)).toBe(false);
     expect(cockpit.contains(operationsConsole)).toBe(false);
     expect(operationsConsole).toHaveTextContent("操作台");
     expect(within(operationsConsole).queryByTestId("macro-toolkit-committee-work-queue")).not.toBeInTheDocument();
@@ -1246,10 +1247,10 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     );
     const dataHealth = await screen.findByLabelText("数据健康总览");
     const coreSignalsHeading = await screen.findByRole("heading", { level: 2, name: "核心信号" });
-    expectElementBefore(cockpit, investmentBrief);
-    expectElementBefore(investmentBrief, coreSignalsHeading);
+    expectElementBefore(cockpit, coreSignalsHeading);
     expectElementBefore(coreSignalsHeading, dataHealth);
-    expectElementBefore(dataHealth, governanceGate);
+    expectElementBefore(dataHealth, investmentBrief);
+    expectElementBefore(investmentBrief, governanceGate);
     expectElementBefore(governanceGate, operationsConsole);
     expect(dataHealth).toHaveTextContent("指标覆盖");
     expect(dataHealth).toHaveTextContent("7/8");

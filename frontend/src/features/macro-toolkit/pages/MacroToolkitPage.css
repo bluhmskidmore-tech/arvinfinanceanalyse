@@ -145,14 +145,10 @@
 
 .macro-toolkit-cockpit__body {
   display: grid;
-  grid-template-columns: minmax(300px, 0.78fr) minmax(560px, 1.22fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   min-width: 0;
   padding: 12px;
-}
-
-.macro-toolkit-cockpit--observation .macro-toolkit-cockpit__body {
-  grid-template-columns: minmax(0, 1fr);
 }
 
 .macro-toolkit-cockpit__analysis,
@@ -175,21 +171,20 @@
 }
 
 @media (min-width: 1101px) {
-  /* Desktop house view cockpit balance pass */
+  /* Desktop first-screen conclusion band: stance and summary left, primary signal right */
   .macro-toolkit-cockpit--toolkit .macro-toolkit-house-view {
-    align-self: stretch;
-    min-height: 560px;
-    grid-template-rows: auto auto auto auto auto;
+    grid-template-columns: minmax(0, 1.6fr) minmax(300px, 0.9fr);
+    align-items: stretch;
+    column-gap: 14px;
   }
 
-  .macro-toolkit-cockpit--toolkit .macro-toolkit-house-view .macro-toolkit-cockpit__conclusion {
-    align-content: center;
-    min-height: 190px;
+  .macro-toolkit-cockpit--toolkit .macro-toolkit-house-view > .macro-toolkit-panel-kicker {
+    grid-column: 1 / -1;
   }
 
   .macro-toolkit-cockpit--toolkit .macro-toolkit-house-view .macro-toolkit-brief-metrics {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    align-self: end;
+    grid-template-columns: minmax(0, 1fr);
+    align-self: stretch;
   }
 }
 

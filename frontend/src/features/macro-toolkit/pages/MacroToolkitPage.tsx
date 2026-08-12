@@ -1257,41 +1257,32 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
               </p>
             </div>
             {showOperations ? (
-              <>
-                <div className="macro-toolkit-brief-metrics">
-                  <MetricTile
-                    icon={<LineChartOutlined />}
-                    label="主信号"
-                    value={primarySignal ? `${primarySignal.title} · ${primarySignal.stance}` : "缺失"}
-                    detail={
-                      primarySignal?.score == null
-                        ? "尚无可排序信号"
-                        : `${primarySignal.evidence.join(" / ")} · ${primarySignal.score.toFixed(1)}`
-                    }
-                    tone={primarySignal?.tone === "positive" ? "positive" : primarySignal ? "neutral" : "missing"}
-                  />
-                  <MetricTile
-                    icon={<ClockCircleOutlined />}
-                    label="分析日期"
-                    value={analysis?.as_of_date ?? "缺失"}
-                    detail={(analysis?.default_data_sources ?? []).join(" + ") || "choice + tushare"}
-                  />
-                  <MetricTile
-                    icon={<ThunderboltOutlined />}
-                    label="能力闭环"
-                    value={`${readyCapabilityCount}/${capabilityItems.length || 0}`}
-                    detail={`${wiredCapabilityCount} 项已接到页面/API`}
-                  />
-                </div>
-              </>
+              <div className="macro-toolkit-brief-metrics">
+                <MetricTile
+                  icon={<LineChartOutlined />}
+                  label="主信号"
+                  value={primarySignal ? `${primarySignal.title} · ${primarySignal.stance}` : "缺失"}
+                  detail={
+                    primarySignal?.score == null
+                      ? "尚无可排序信号"
+                      : `${primarySignal.evidence.join(" / ")} · ${primarySignal.score.toFixed(1)}`
+                  }
+                  tone={primarySignal?.tone === "positive" ? "positive" : primarySignal ? "neutral" : "missing"}
+                />
+              </div>
             ) : (
               observationFirstScreenLoop
             )}
           </div>
-
-          {investmentBriefPanel}
         </div>
       </section>
+
+      {showOperations && analysis ? (
+        <div className="macro-toolkit-page__content macro-toolkit-first-screen-flow">
+          {signalSection}
+          {analysisWarningsAlert}
+        </div>
+      ) : null}
 
       {showOperations && deferredContentStage === 0 ? (
         <div
@@ -1323,13 +1314,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
         <>
           {showOperations ? (
             <>
-              {deferredContentStage >= 1 ? (
-                <>
-                  {analysisWarningsAlert}
-                  {signalSection}
-                  {indicatorSection}
-                </>
-              ) : null}
+              {deferredContentStage >= 1 ? indicatorSection : null}
               {deferredContentStage >= 2 ? (
                 <>
                   {capabilityResultsSection}
@@ -1366,6 +1351,8 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       ) : null}
       </div>
       ) : null}
+
+      {investmentBriefPanel}
 
       {!showOperations || deferredContentStage >= 6 ? (
         <>
