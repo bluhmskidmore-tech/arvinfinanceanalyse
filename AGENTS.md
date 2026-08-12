@@ -46,14 +46,18 @@ Do not proactively modify these without explicit instruction or direct root-caus
 
 ## GitNexus
 
-The indexed project is `moss-v3-codex-v1`.
+The indexed project for this working tree (`F:\MOSS-V3`) is `moss-v3-main-current-20260809`.
+
+Do not use `moss-v3-codex-v1`: despite the name, that index points at a separate worktree
+(`~/.codex/worktrees/772c/MOSS-V3`) and will return callers and risk levels for a different tree.
 
 - Before changing a function, class, or method, run upstream impact analysis for that symbol and report direct callers, affected processes, and risk.
 - Warn before editing when impact is HIGH or CRITICAL.
 - Use process queries for unfamiliar flows and symbol context for callers/callees.
 - Use semantic rename tooling instead of search-and-replace for symbol renames.
 - Run change detection before committing.
-- If the index is reported stale, run `npx gitnexus analyze --skip-agents-md` so re-indexing does not expand the root instruction files.
+- Treat the index as stale when `.gitnexus/meta.json`'s `lastCommit` differs from `git rev-parse HEAD`. Impact analysis run against a stale index reports callers that no longer exist and misses new ones.
+- When the index is stale, run `npx gitnexus analyze --skip-agents-md` so re-indexing does not expand the root instruction files.
 - Impact analysis is not required for documentation, copy, styles, or configuration edits that do not change code symbols.
 
 Detailed GitNexus workflows live under `.claude/skills/gitnexus/`; load only the workflow needed by the task.
