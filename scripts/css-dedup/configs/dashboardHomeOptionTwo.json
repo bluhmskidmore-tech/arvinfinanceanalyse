@@ -8,5 +8,6 @@
   "wildcards": [],
   "finalMarker": null,
   "mockUrl": "http://127.0.0.1:5897/",
-  "realUrl": "http://localhost:5888/"
+  "realUrl": "http://localhost:5888/",
+  "waitSelector": "[class*=dhBondNews]"
 }

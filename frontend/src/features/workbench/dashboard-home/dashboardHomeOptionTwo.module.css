@@ -1068,25 +1068,6 @@
   min-height: 186px;
 }
 
-.marketResearchPanel {
-  grid-column: 1 / -1;
-  height: 220px;
-  min-height: 220px;
-}
-
-.trustFooter {
-  grid-column: 1 / -1;
-}
-
-.extendedEvidence {
-  display: grid;
-  grid-column: 1 / -1;
-  min-width: 0;
-  align-items: start;
-  grid-template-columns: minmax(340px, 34fr) minmax(0, 66fr);
-  gap: 10px 12px;
-}
-
 .extendedEvidenceHeader {
   display: flex;
   height: 38px;
@@ -1119,14 +1100,6 @@
   color: var(--option-two-ink);
   font-size: 14px;
   line-height: 20px;
-}
-
-.extendedEvidenceHeader small {
-  overflow: hidden;
-  color: var(--option-two-muted);
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .holdingsChanges,
@@ -1676,20 +1649,6 @@
   gap: 6px;
 }
 
-.tabHeader button {
-  position: relative;
-  padding: 0 6px;
-  border: 0;
-  background: transparent;
-  color: var(--option-two-muted);
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.tabHeader button[aria-selected="true"] {
-  color: var(--option-two-blue);
-}
-
 .tabHeader button[aria-selected="true"]::after {
   position: absolute;
   right: 3px;
@@ -1884,15 +1843,8 @@
 
 .marketTape strong,
 .marketTape em {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--option-two-ink);
-  font-family: var(--font-tabular, Consolas, monospace);
+  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   font-size: 12px;
-  font-style: normal;
-  font-variant-numeric: tabular-nums;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .marketTape em {
@@ -1939,11 +1891,6 @@
 
 .researchTableWrap a:hover {
   color: var(--option-two-blue);
-}
-
-.researchTableWrap tbody td {
-  height: 24px;
-  padding-block: 2px;
 }
 
 .marketResearchPanel .researchTableWrap th {
@@ -2005,6 +1952,9 @@
 }
 
 .marketResearchPanel {
+  grid-column: 1 / -1;
+  height: 220px;
+  min-height: 220px;
   display: flex;
   flex-direction: column;
 }
@@ -2043,6 +1993,7 @@
 }
 
 .trustFooter {
+  grid-column: 1 / -1;
   display: grid;
   height: 96px;
   max-height: 96px;
@@ -2061,6 +2012,12 @@
 }
 
 .extendedEvidence {
+  display: grid;
+  grid-column: 1 / -1;
+  min-width: 0;
+  align-items: start;
+  grid-template-columns: minmax(340px, 34fr) minmax(0, 66fr);
+  gap: 10px 12px;
   margin-top: 0;
 }
 
@@ -2847,16 +2804,26 @@
 }
 
 .tabHeader button {
+  position: relative;
+  padding: 0 6px;
+  border: 0;
+  background: transparent;
+  color: var(--option-two-muted);
+  font-size: 11px;
+  cursor: pointer;
   font-weight: 450;
   letter-spacing: 0;
   line-height: 1.35;
 }
 
 .tabHeader button[aria-selected="true"] {
+  color: var(--option-two-blue);
   font-weight: 600;
 }
 
 .researchTableWrap tbody td {
+  height: 24px;
+  padding-block: 2px;
   font-family: var(--option-two-font-ui);
   font-weight: 450;
   line-height: 1.45;
@@ -2869,6 +2836,13 @@
 
 .marketTape strong,
 .marketTape em {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--option-two-ink);
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--option-two-font-data);
   font-weight: 600;
 }
@@ -2890,6 +2864,9 @@
 }
 
 .extendedEvidenceHeader small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: color-mix(in srgb, var(--option-two-muted) 88%, var(--option-two-bg));
   font-size: 10px;
 }
