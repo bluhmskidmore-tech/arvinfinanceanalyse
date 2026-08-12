@@ -19,26 +19,6 @@
   line-height: 1.7;
 }
 
-.fallbackWorkbench {
-  display: grid;
-  gap: 10px;
-  padding: 10px;
-  border: 1px solid var(--moss-color-neutral-200);
-  border-radius: var(--dh-api-radius, 6px);
-  background: var(--moss-color-neutral-50);
-}
-
-.fallbackNotice {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  padding: 12px 14px;
-  border: 1px solid var(--moss-color-warning-200);
-  border-radius: 6px;
-  background: var(--ib-surface);
-}
-
 .fallbackMarketStrip {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -46,14 +26,6 @@
   border-radius: 6px;
   overflow: hidden;
   background: var(--ib-surface);
-}
-
-.fallbackTickerCell {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-  padding: 8px 10px;
-  border-right: 1px solid var(--moss-color-neutral-100);
 }
 
 .fallbackTickerCell:last-child {
@@ -77,16 +49,6 @@
   font-size: 11px;
 }
 
-.fallbackJudgment {
-  display: grid;
-  gap: 4px;
-  padding: 12px 14px;
-  border: 1px solid var(--moss-color-neutral-200);
-  border-left: 4px solid var(--moss-color-primary-700);
-  border-radius: 6px;
-  background: var(--ib-surface);
-}
-
 .fallbackSectionTitle {
   color: var(--moss-color-primary-900);
   font-size: 15px;
@@ -106,17 +68,6 @@
   gap: 10px;
 }
 
-.fallbackPanel {
-  display: grid;
-  gap: 8px;
-  min-height: 116px;
-  align-content: start;
-  padding: 12px;
-  border: 1px solid var(--moss-color-neutral-200);
-  border-radius: 6px;
-  background: var(--ib-surface);
-}
-
 .fallbackPanel span {
   color: var(--moss-color-primary-900);
   font-size: 15px;
@@ -131,16 +82,8 @@
 }
 
 .toolbarSelect {
-  min-width: 120px;
-  height: 28px;
+  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   border: 1px solid var(--moss-color-neutral-300);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.92);
-  color: var(--moss-color-primary-900);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  padding: 0 var(--moss-space-2);
 }
 
 .toolbarSelectWide {
@@ -227,13 +170,6 @@
   color: var(--moss-color-neutral-50);
 }
 
-.refreshButton {
-  min-width: 48px;
-  color: #ffffff;
-  background: #0b4e9e;
-  border-color: #0b4e9e;
-}
-
 .detailFallback {
   color: var(--moss-color-neutral-600);
   font-size: 13px;
@@ -251,13 +187,7 @@
 }
 
 .detailDrilldownSummary {
-  display: grid;
-  grid-template-columns: minmax(220px, 0.5fr) minmax(0, 1fr) auto;
-  gap: 16px;
-  align-items: center;
-  min-height: 58px;
-  padding: 12px 14px;
-  border-radius: 0;
+  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   background: var(--moss-color-card-bg);
 }
 
@@ -450,6 +380,12 @@
 }
 
 .toolbarSelect {
+  min-width: 120px;
+  height: 28px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0 var(--moss-space-2);
   border-color: var(--ib-hairline);
   border-radius: 6px;
   background: rgba(7, 17, 31, 0.78);
@@ -464,6 +400,7 @@
 }
 
 .refreshButton {
+  min-width: 48px;
   border-color: color-mix(in srgb, var(--dh-api-blue) 44%, transparent);
   background: color-mix(in srgb, var(--dh-api-blue) 14%, transparent);
   color: var(--ib-ink);
@@ -548,6 +485,8 @@
 }
 
 .fallbackWorkbench {
+  display: grid;
+  border-radius: var(--dh-api-radius, 6px);
   gap: 12px;
   padding: 0;
   border: 0;
@@ -569,6 +508,12 @@
 }
 
 .fallbackNotice {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  border: 1px solid var(--moss-color-warning-200);
+  background: var(--ib-surface);
   min-height: 74px;
   padding: 14px 16px;
   border-color: rgba(246, 197, 111, 0.38);
@@ -582,17 +527,34 @@
 }
 
 .fallbackTickerCell {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-right: 1px solid var(--moss-color-neutral-100);
   border-right-color: var(--moss-color-neutral-100);
   background: var(--ib-surface);
 }
 
 .fallbackJudgment {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-left: 4px solid var(--moss-color-primary-700);
+  background: var(--ib-surface);
   min-height: 72px;
   border-left-color: var(--ib-accent);
   border-radius: var(--dh-api-radius, 6px);
 }
 
 .fallbackPanel {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  padding: 12px;
+  border: 1px solid var(--moss-color-neutral-200);
+  background: var(--ib-surface);
   min-height: 116px;
   border-radius: var(--dh-api-radius, 6px);
 }
@@ -613,6 +575,12 @@
 }
 
 .detailDrilldownSummary {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.5fr) minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  padding: 12px 14px;
+  border-radius: 0;
   min-height: 62px;
   border: 0;
 }
