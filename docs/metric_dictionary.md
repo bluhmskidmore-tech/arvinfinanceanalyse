@@ -213,7 +213,7 @@ Contract state note:
 | `MTR-BRG-003` | Carry | business | `formal` | `carry` | 行级表、summary 图卡 | 金额 | governed bridge 分解项 | `tests/test_pnl_bridge_core.py` |
 | `MTR-BRG-004` | Roll-down | business | `formal` | `roll_down` | 行级表、summary 图卡 | 金额 | 曲线不可用时可退化，但必须显式 warning/fallback | `tests/test_pnl_bridge_curve_effects.py` |
 | `MTR-BRG-005` | 国债曲线效应 | business | `formal` | `treasury_curve` | 行级表、summary 图卡 | 金额 | 受曲线可用性影响 | `tests/test_pnl_bridge_curve_effects.py` |
-| `MTR-BRG-006` | 信用利差效应 | business | `formal` | `credit_spread` | 行级表、summary 图卡 | 金额 | 受 AAA credit / treasury 曲线可用性影响 | `tests/test_pnl_bridge_with_curve.py` |
+| `MTR-BRG-006` | 信用利差效应 | business | `formal` | `credit_spread` | 行级表、summary 图卡 | 金额 | 人口仅含 `accounting_basis=FVTPL` 行；非 FVTPL 行固定为 0。FVTPL 金额仍受 AAA credit / treasury 曲线可用性影响 | `tests/test_pnl_bridge_with_curve.py` |
 | `MTR-BRG-007` | FX 折算效应 | business | `formal` | `fx_translation` | 行级表、summary 图卡 | 金额 | 有外币债且有 FX 时不应固定为 0 | `tests/test_pnl_bridge_fx_translation.py` |
 | `MTR-BRG-008` | 已实现交易损益 | business | `formal` | `realized_trading` | 行级表、summary 图卡 | 金额 | governed bridge 分解项 | `tests/test_pnl_bridge_core.py` |
 | `MTR-BRG-009` | 未实现公允价值 | business | `formal` | `unrealized_fv` | 行级表、summary 图卡 | 金额 | governed bridge 分解项 | `tests/test_pnl_bridge_core.py` |
@@ -361,6 +361,11 @@ MTR-RSK-001 fixed-income convention note:
 | `MTR-PAT-302` | 国债曲线效应 | business | `formal` | `AdvancedAttributionSummary.treasury_effect_total` / `SpreadAttributionPayload.total_treasury_effect` | advanced | 金额，亿元展示 | advanced strip 必须显示 provenance | `frontend/src/test/AdvancedAttributionChart.test.tsx` |
 | `MTR-PAT-303` | 期限桶收益率变动（诊断） | business | `formal` | `KRDAttributionBucket.yield_change` | advanced 期限桶久期表格 | `Numeric.unit=bp`，页面按 BP 展示；仅作分桶观察，不参与贡献金额 | 起止两期按当前期限规则重分桶；缺失 YTM 同时退出加权分子与分母 | `frontend/src/test/AdvancedAttributionChart.test.tsx` |
 | `MTR-PAT-304` | 当前视图元信息 | quality | `formal` | `result_meta.generated_at / quality_flag / fallback_mode` | volume-rate / tpl-market / composition / advanced | 页面顶部 strip 必显 | 当前页已落地 | `frontend/src/test/PnlAttributionPage.test.tsx` |
+| `MTR-PAT-305` | Campisi 收入效应金额 | business | `formal` | `CampisiResult.totals.income_return` / 行级 `income_return` | `/api/pnl-attribution/campisi/four-effects` | CNY 金额原值，页面可按亿元展示；字段不可为 null | `report_date=period_end`，起止日使用已解析的 formal 快照；空人口返回 0 并伴随 warning，不得解释为真实零贡献；仅由 `core_finance` / formal attribution 服务计算 | `tests/test_campisi_attribution_service.py` |
+| `MTR-PAT-306` | Campisi 国债曲线效应金额 | business | `formal` | `CampisiResult.totals.treasury_effect` / 行级 `treasury_effect` | `/api/pnl-attribution/campisi/four-effects` | CNY 金额原值，页面可按亿元展示；字段不可为 null | 日期边界同 `MTR-PAT-305`；共同期限不足 2 个或久期不可算时退化为 0，并通过 warning / diagnostics 披露；前端不得重算 | `tests/test_campisi_formula_golden.py` |
+| `MTR-PAT-307` | Campisi 信用利差效应金额 | business | `formal` | `CampisiResult.totals.spread_effect` / 行级 `spread_effect` | `/api/pnl-attribution/campisi/four-effects` | CNY 金额原值，页面可按亿元展示；字段不可为 null | 日期边界同 `MTR-PAT-305`；评级对应的期初或期末 3Y 利差不可用时退化为 0 并披露 warning；前端不得重算 | `tests/test_campisi_formula_golden.py` |
+| `MTR-PAT-308` | Campisi 选择效应金额 | business | `formal` | `CampisiResult.totals.selection_effect` / 行级 `selection_effect` | `/api/pnl-attribution/campisi/four-effects` | CNY 金额原值，页面可按亿元展示；字段不可为 null | 日期边界同 `MTR-PAT-305`；按单券总回报减收入、国债曲线和信用利差后的闭合残差计算，AC 人口为 0；前端不得反推 | `tests/test_campisi_formula_golden.py` |
+| `MTR-PAT-309` | Campisi 四效应合计金额 | business | `formal` | `CampisiResult.totals.total_return` / 行级 `total_return` | `/api/pnl-attribution/campisi/four-effects` | CNY 金额原值，页面可按亿元展示；字段不可为 null | `report_date=period_end`，且等于四效应金额之和；空人口返回 0 + warning，formal 闭合状态另见 `formal_closure`，不得以本字段替代正式 PnL | `tests/test_campisi_attribution_service.py` |
 
 ## 12. 当前缺口清单
 
