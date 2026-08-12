@@ -117,7 +117,9 @@ class YieldCurveRepository:
         requested = [str(trade_date) for trade_date in dict.fromkeys(trade_dates) if str(trade_date or "")]
         if not requested:
             return {}
-        empty = {trade_date: (None, None) for trade_date in requested}
+        empty: dict[str, tuple[Decimal | None, str | None]] = {
+            trade_date: (None, None) for trade_date in requested
+        }
         conn = _connect(self.path, read_only=True)
         if conn is None:
             return empty
@@ -465,7 +467,7 @@ class YieldCurveRepository:
         ]
         if not normalized:
             return {}
-        empty = {
+        empty: dict[tuple[str, str], tuple[dict[str, object] | None, str | None]] = {
             key: (None, f"No {key[1]} curve available for requested trade_date={key[0]}.")
             for key in normalized
         }

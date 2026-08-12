@@ -61,6 +61,8 @@ def position_vs_ledger_diff(
                 }
             )
             continue
+        # missing_keys 为空即两侧都已解析成功；assert 仅用于类型收窄，不改变行为。
+        assert pv is not None and lv is not None
         diff = pv - lv
         rows.append(
             {
@@ -96,6 +98,8 @@ def pnl_vs_ledger_diff(
             "breached": True,
             "missing_keys": missing_keys,
         }
+    # missing_keys 为空即两侧都已解析成功；assert 仅用于类型收窄，不改变行为。
+    assert pv is not None and lv is not None
     diff = pv - lv
     return {
         "pnl_total": float(pv),
@@ -127,6 +131,8 @@ def completeness_check(
             "breached": True,
             "missing_keys": missing_keys,
         }
+    # missing_keys 为空即两侧都已解析成功；assert 仅用于类型收窄，不改变行为。
+    assert cv is not None and pv is not None
     diff = cv - pv
     return {
         "product_category_total": float(cv),

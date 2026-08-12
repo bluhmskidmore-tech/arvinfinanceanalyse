@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from decimal import Decimal
+from typing import Any
 
 import duckdb
 from backend.app.core_finance.zqtz_asset_bond_category import ZQTZ_ASSET_BOND_ROWS as _ZQTZ_ASSET_ROWS
@@ -338,7 +339,7 @@ class AccountingAssetMovementRepository:
             return []
         try:
             conn = self._connect()
-            rows: list[dict[str, object]] = []
+            rows: list[dict[str, Any]] = []
             for date_value in report_dates:
                 rows.extend(
                     self._fetch_ledger_business_rows(
@@ -361,11 +362,12 @@ class AccountingAssetMovementRepository:
         finally:
             if "conn" in locals():
                 conn.close()
-        return sorted(
+        ordered: list[dict[str, Any]] = sorted(
             rows,
             key=lambda row: (str(row["report_date"]), -int(row["sort_order"])),
             reverse=True,
         )
+        return ordered
 
     def fetch_zqtz_asset_business_rows(
         self,
@@ -923,7 +925,8 @@ class AccountingAssetMovementRepository:
         *,
         report_date: str,
         currency_basis: str,
-        row_def: dict[str, object],
+        # row_def 来自 ZQTZ_ASSET_BOND_ROWS（声明为 dict[str, Any]），与上游注解对齐。
+        row_def: dict[str, Any],
     ) -> dict[str, object]:
         full_row_def = {**row_def, "side": "asset"}
         source_note = str(row_def.get("source_note", "ZQTZSHOW asset classification"))
@@ -982,7 +985,8 @@ class AccountingAssetMovementRepository:
     def _zqtz_asset_predicate(
         self,
         conn: duckdb.DuckDBPyConnection,
-        row_def: dict[str, object],
+        # row_def 来自 ZQTZ_ASSET_BOND_ROWS（声明为 dict[str, Any]），与上游注解对齐。
+        row_def: dict[str, Any],
     ) -> tuple[str, list[str]]:
         table = "fact_formal_zqtz_balance_daily"
         parts: list[str] = []
@@ -1241,7 +1245,7 @@ class AccountingAssetMovementRepository:
             )
         return f"{standard_amount_expr}{interest_addend}"
 
-    def _ledger_business_predicate(self, row_def: dict[str, object]) -> tuple[str, list[str]]:
+    def _ledger_business_predicate(self, row_def: dict[str, Any]) -> tuple[str, list[str]]:
         parts: list[str] = []
         params: list[str] = []
         exact_codes = tuple(row_def["exact_codes"])
@@ -1437,7 +1441,7 @@ class AccountingAssetMovementRepository:
         *,
         report_date: str,
         currency_basis: str,
-        row_def: dict[str, object],
+        row_def: dict[str, Any],
         current_balance: Decimal,
         source_version: str,
         rule_version: str,

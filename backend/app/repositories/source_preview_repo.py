@@ -5,6 +5,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
+from typing import Any, Literal
 
 import duckdb
 from backend.app.core_finance.source_preview_parsers import (
@@ -270,10 +271,13 @@ def load_source_preview_history_payload(
     where_clause, params = _history_query_parts(source_family)
     try:
         with _source_preview_read_connection(str(duckdb_file)) as conn:
-            total_rows = conn.execute(
+            count_row = conn.execute(
                 f"select count(*) from phase1_source_preview_summary {where_clause}",
                 params,
-            ).fetchone()[0]
+            ).fetchone()
+            # select count(*) 恒返回一行；assert 仅用于类型收窄，不改变行为。
+            assert count_row is not None
+            total_rows = count_row[0]
             rows = conn.execute(
                 f"""
                 select ingest_batch_id, batch_created_at, source_family, report_date, report_start_date, report_end_date,
@@ -502,13 +506,16 @@ def _read_paged_table(
     order_clause: str,
     limit: int,
     offset: int,
-) -> tuple[int, list[tuple[object, ...]], list[str]] | None:
+) -> tuple[int, list[tuple[Any, ...]], list[str]] | None:
     try:
         with _source_preview_read_connection(str(duckdb_file)) as conn:
-            total_rows = conn.execute(
+            count_row = conn.execute(
                 f"select count(*) from {table_name} {where_clause}",
                 params,
-            ).fetchone()[0]
+            ).fetchone()
+            # select count(*) 恒返回一行；assert 仅用于类型收窄，不改变行为。
+            assert count_row is not None
+            total_rows = count_row[0]
             rows = conn.execute(
                 f"""
                 {select_clause}
@@ -650,7 +657,7 @@ def _build_trace_columns(columns: list[str]) -> list[PreviewColumn]:
     ]
 
 
-def _preview_column_type(column: str) -> str:
+def _preview_column_type(column: str) -> Literal["string", "number", "boolean"]:
     if column in {"row_locator", "trace_step"}:
         return "number"
     if column in {"manual_review_needed"}:
@@ -771,7 +778,8 @@ def ensure_source_preview_schema_tables(conn: duckdb.DuckDBPyConnection) -> None
 
 def _write_preview_tables(
     duckdb_path: str,
-    summaries: list[dict[str, object]],
+    # summaries 为内部构造的异构 payload（含嵌套 dict），与仓库既有 dict[str, Any] 口径一致。
+    summaries: list[dict[str, Any]],
     row_records: list[dict[str, object]],
     trace_records: list[dict[str, object]],
 ) -> None:
@@ -1054,16 +1062,17 @@ def _write_preview_tables(
 
 
 def _table_exists(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
-    return bool(
-        conn.execute(
-            """
-            select count(*)
-            from information_schema.tables
-            where table_name = ?
-            """,
-            [table_name],
-        ).fetchone()[0]
-    )
+    count_row = conn.execute(
+        """
+        select count(*)
+        from information_schema.tables
+        where table_name = ?
+        """,
+        [table_name],
+    ).fetchone()
+    # select count(*) 恒返回一行；assert 仅用于类型收窄，不改变行为。
+    assert count_row is not None
+    return bool(count_row[0])
 
 
 def _row_table_name(source_family: str) -> str:

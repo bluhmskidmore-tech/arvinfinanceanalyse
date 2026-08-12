@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 from datetime import date
 from decimal import Decimal
-from typing import Any
+from typing import Any, TypedDict
 
 from backend.app.core_finance.field_normalization import ACCOUNTING_BASIS_AC
 from backend.app.core_finance.rate_units import normalize_annual_rate_to_decimal
@@ -51,6 +51,28 @@ def _annual_rate_decimal(value: Any) -> Decimal:
     return Decimal(str(normalized))
 
 
+class BondFourEffects(TypedDict):
+    """compute_bond_four_effects 的返回结构（仅类型声明，运行时仍为普通 dict）。"""
+
+    income_return: Decimal
+    treasury_effect: Decimal
+    spread_effect: Decimal
+    selection_effect: Decimal
+    total_return: Decimal
+    total_price_change: Decimal
+    mod_duration: Decimal
+    has_accrued_interest: bool
+    diagnostics: list[str]
+
+
+class BondSixEffects(BondFourEffects):
+    """compute_bond_six_effects 的返回结构：四效应 + 二阶项。"""
+
+    convexity_effect: Decimal
+    cross_effect: Decimal
+    reinvestment_effect: Decimal
+
+
 def compute_bond_four_effects(
     bond: dict[str, Any],
     num_days: int,
@@ -58,7 +80,7 @@ def compute_bond_four_effects(
     spread_change: Decimal,
     report_date: date,
     coupon_frequency: int = 2,
-) -> dict[str, Decimal | bool | list[str]]:
+) -> BondFourEffects:
     """
     单券四效应：income / treasury / spread / selection + total_return。
 
@@ -213,7 +235,7 @@ def compute_bond_six_effects(
     spread_change: Decimal,
     report_date: date,
     coupon_frequency: int = 2,
-) -> dict[str, Decimal | bool | list[str]]:
+) -> BondSixEffects:
     """
     六效应（票息 / 利率 / 利差 / 凸性 / 交叉 / 再投资 + 选券残差）。
 

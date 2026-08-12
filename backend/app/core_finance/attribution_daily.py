@@ -56,7 +56,8 @@ def compute_daily_attribution_row(
     """
     num_days = max((report_date - prev_date).days, 1)
     mat = merged_position.get("maturity_date_start")
-    if hasattr(mat, "date"):
+    # None 先行排除与 hasattr 语义等价（hasattr(None, "date") 恒为 False），便于 mypy 收窄。
+    if mat is not None and hasattr(mat, "date"):
         mat_d = mat.date()
     elif isinstance(mat, date):
         mat_d = mat

@@ -47,7 +47,8 @@ def _coerce_percent_curve(m: dict[str, Any] | None) -> dict[str, float]:
     out: dict[str, float] = {}
     for k in _TREASURY_KEYS:
         value = m.get(k)
-        if value in (None, ""):
+        # 与 `value in (None, "")` 等价；拆开写以便 mypy 收窄掉 None。
+        if value is None or value == "":
             continue
         numeric = float(value)
         if numeric > 0:
@@ -184,7 +185,8 @@ def usable_spread_bp(market: dict[str, Any] | None, rating: str) -> float | None
     if not key or not market:
         return None
     value = market.get(key)
-    if value in (None, ""):
+    # 与 `value in (None, "")` 等价；拆开写以便 mypy 收窄掉 None。
+    if value is None or value == "":
         return None
     try:
         numeric = float(value)
@@ -379,7 +381,8 @@ def campisi_attribution(
     bench_change = _build_benchmark_change_evaluator(market_start, market_end)
     for row in positions_merged:
         mat = row.get("maturity_date_start")
-        if hasattr(mat, "date"):
+        # None 先行排除与 hasattr 语义等价（hasattr(None, "date") 恒为 False），便于 mypy 收窄。
+        if mat is not None and hasattr(mat, "date"):
             mat_d = mat.date()
         elif isinstance(mat, date):
             mat_d = mat
@@ -473,7 +476,8 @@ def campisi_enhanced(
     bench_change = _build_benchmark_change_evaluator(market_start, market_end)
     for row in positions_merged:
         mat = row.get("maturity_date_start")
-        if hasattr(mat, "date"):
+        # None 先行排除与 hasattr 语义等价（hasattr(None, "date") 恒为 False），便于 mypy 收窄。
+        if mat is not None and hasattr(mat, "date"):
             mat_d = mat.date()
         elif isinstance(mat, date):
             mat_d = mat

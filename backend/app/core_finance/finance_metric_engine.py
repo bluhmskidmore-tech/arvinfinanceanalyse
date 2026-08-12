@@ -249,6 +249,8 @@ def evaluate_finance_metrics(
     divisor = Decimal(rules["metadata"]["conversion_divisor"])
     overrides = _validated_manual_overrides(rules, manual_overrides)
     results: list[FinanceMetricResult] = []
+    # manual_metrics 分支的 value 可为 None（override 显式置空），提前声明联合类型。
+    value: Decimal | None
     for rule in rules.get("scale_rules", []):
         for basis in rule["available_bases"]:
             terms_by_basis = rule.get("terms_by_basis")
@@ -757,6 +759,12 @@ def _referenced_account_keys(rules: dict[str, Any]) -> tuple[AccountKey, ...]:
     return tuple(dict.fromkeys(keys))
 
 
+def _reconciled_metric_value(metric: FinanceMetricResult) -> Decimal:
+    """类型收窄辅助：调用方已用 unavailable 守卫保证 value 非 None，assert 不改变行为。"""
+    assert metric.value is not None
+    return metric.value
+
+
 def _additivity_outcome(
     metrics: dict[str, FinanceMetricResult],
     total_id: str,
@@ -770,8 +778,8 @@ def _additivity_outcome(
     )
     if unavailable:
         return False, "not_evaluable: required metric is unavailable", None, unavailable
-    delta = metrics[total_id].value - sum(
-        (metrics[metric_id].value for metric_id in component_ids),
+    delta = _reconciled_metric_value(metrics[total_id]) - sum(
+        (_reconciled_metric_value(metrics[metric_id]) for metric_id in component_ids),
         Decimal(0),
     )
     passed = abs(delta) <= RECONCILIATION_TOLERANCE_YI
@@ -824,10 +832,10 @@ def _noninterest_outcome(
         Decimal(0),
     ) / divisor
     expected = -raw_total_yi + sum(
-        (metrics[metric_id].value for metric_id in manual_ids),
+        (_reconciled_metric_value(metrics[metric_id]) for metric_id in manual_ids),
         Decimal(0),
     )
-    delta = metrics[total_id].value - expected
+    delta = _reconciled_metric_value(metrics[total_id]) - expected
     passed = abs(delta) <= RECONCILIATION_TOLERANCE_YI
     return (
         passed,
