@@ -129,7 +129,7 @@ def build_macro_etf_strategy_snapshot(
             "state_status": order_payload["state_status"],
         },
         "provenance": {
-            "source_script": "C:/Users/arvin/Desktop/files.zip/live_macro_strategy.py",
+            "source_script": "desktop:files.zip/live_macro_strategy.py",
             "integration_mode": "ported_read_only_without_modifying_source_script",
             "deferred_controls": [
                 "trend_ma_filter_requires_history_adapter",

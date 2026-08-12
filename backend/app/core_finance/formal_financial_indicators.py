@@ -8,7 +8,10 @@ SAMPLE_ID = "GS-LEDGER-PNL-FIN-IND-202603-B"
 SOURCE_VERSION = "sv_formal_financial_indicators_excel_202603_contract"
 EMPTY_SOURCE_VERSION = "sv_formal_financial_indicators_contract_unavailable"
 RULE_VERSION = "rv_formal_financial_indicators_source_status_v1"
-SOURCE_WORKBOOK = "C:/Users/arvin/Desktop/2026年财务指标表-3月最终(1).xlsx"
+# Default repo-relative reference for the frozen Excel sample supplied by the user.
+# Provenance metadata only (never used for IO); override via settings field
+# formal_financial_indicators_workbook (env MOSS_FORMAL_FINANCIAL_INDICATORS_WORKBOOK).
+SOURCE_WORKBOOK = "sample_data/formal_financial_indicators/2026年财务指标表-3月最终(1).xlsx"
 SOURCE_SHEET = "财务指标-汇总"
 RELEASE_GATE_202603 = {
     "status": "registered_pending_release",
@@ -298,6 +301,13 @@ _METRICS_202603: tuple[dict[str, Any], ...] = (
 )
 
 
+def _resolve_source_workbook() -> str:
+    from backend.app.governance.settings import get_settings  # noqa: PLC0415
+
+    configured = str(get_settings().formal_financial_indicators_workbook or "").strip()
+    return configured or SOURCE_WORKBOOK
+
+
 def build_formal_financial_indicator_contract(*, report_month: str) -> dict[str, Any]:
     normalized_month = str(report_month or "").strip()
     if normalized_month != "202603":
@@ -310,7 +320,7 @@ def build_formal_financial_indicator_contract(*, report_month: str) -> dict[str,
         "surface": "/ledger-pnl formal financial indicator source contract",
         "report_month": "202603",
         "report_date": "2026-03-31",
-        "source_workbook": SOURCE_WORKBOOK,
+        "source_workbook": _resolve_source_workbook(),
         "source_sheet": SOURCE_SHEET,
         "source_basis": "Excel 2026-03 formal financial indicator table supplied by user",
         "source_version": SOURCE_VERSION,

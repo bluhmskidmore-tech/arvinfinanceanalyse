@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
+from backend.app.governance.settings import get_settings
 from backend.app.services import hermes_agent_service as service
 
 
@@ -232,6 +233,25 @@ def test_build_hermes_bridge_command_uses_wsl_env_and_repo_script():
     assert args[args.index("--port") + 1] == "7891"
     assert "--toolsets" in args
     assert args[args.index("--toolsets") + 1] == "evidence,query,research"
+
+
+def test_build_hermes_bridge_command_python_path_is_configurable(monkeypatch):
+    monkeypatch.setenv("MOSS_AGENT_HERMES_PYTHON_PATH", "/opt/hermes/venv/bin/python")
+    get_settings.cache_clear()
+    try:
+        args = service._build_hermes_bridge_command(
+            command="wsl.exe",
+            wsl_distro="HermesUbuntu",
+            hermes_home="",
+            bridge_url="http://127.0.0.1:7891",
+            model="",
+            toolsets="file",
+            max_turns=4,
+        )
+        assert "/opt/hermes/venv/bin/python" in args
+        assert "/home/hermes/hermes-agent/venv/bin/python" not in args
+    finally:
+        get_settings.cache_clear()
 
 
 def test_run_hermes_agent_uses_bridge_transport(monkeypatch):

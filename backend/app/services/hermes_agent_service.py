@@ -728,7 +728,7 @@ def _build_hermes_bridge_command(
         bridge_args.extend(["--model", model])
     bridge_args.extend(["--toolsets", _normalize_toolsets(toolsets)])
 
-    python_path = "/home/hermes/hermes-agent/venv/bin/python"
+    python_path = _hermes_bridge_python_path()
     if _is_wsl_command(command):
         args = [command]
         if wsl_distro:
@@ -742,6 +742,16 @@ def _build_hermes_bridge_command(
         return args
 
     return [python_path, *bridge_args]
+
+
+def _hermes_bridge_python_path() -> str:
+    from backend.app.governance.settings import (  # noqa: PLC0415
+        DEFAULT_AGENT_HERMES_PYTHON_PATH,
+        get_settings,
+    )
+
+    configured = str(get_settings().agent_hermes_python_path or "").strip()
+    return configured or DEFAULT_AGENT_HERMES_PYTHON_PATH
 
 
 def _is_wsl_command(command: str) -> bool:

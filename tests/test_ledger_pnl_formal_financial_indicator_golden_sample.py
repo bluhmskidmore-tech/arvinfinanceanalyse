@@ -142,6 +142,33 @@ def test_formal_financial_indicator_registry_exposes_202603_contract_without_pro
     assert contract_metrics["parent.loan_balance"]["golden_sample_ref"].endswith("#parent.loan_balance")
 
 
+def test_formal_financial_indicator_contract_source_workbook_is_configurable(monkeypatch):
+    registry = load_module(
+        "backend.app.core_finance.formal_financial_indicators",
+        "backend/app/core_finance/formal_financial_indicators.py",
+    )
+
+    monkeypatch.delenv("MOSS_FORMAL_FINANCIAL_INDICATORS_WORKBOOK", raising=False)
+    get_settings.cache_clear()
+    try:
+        contract = registry.build_formal_financial_indicator_contract(report_month="202603")
+        assert contract["source_workbook"] == (
+            "sample_data/formal_financial_indicators/2026年财务指标表-3月最终(1).xlsx"
+        )
+
+        monkeypatch.setenv(
+            "MOSS_FORMAL_FINANCIAL_INDICATORS_WORKBOOK",
+            "data_input/formal_financial_indicators/override.xlsx",
+        )
+        get_settings.cache_clear()
+        contract = registry.build_formal_financial_indicator_contract(report_month="202603")
+        assert contract["source_workbook"] == (
+            "data_input/formal_financial_indicators/override.xlsx"
+        )
+    finally:
+        get_settings.cache_clear()
+
+
 def test_formal_financial_indicator_registry_returns_empty_contract_for_unregistered_month():
     registry = load_module(
         "backend.app.core_finance.formal_financial_indicators",

@@ -16,6 +16,9 @@ _ENV_FILES = (
 )
 DEFAULT_POSTGRES_DSN = "postgresql://moss:moss@localhost:5432/moss"
 DEV_POSTGRES_DSN = "postgresql://moss:moss@127.0.0.1:55432/moss"
+# Default interpreter used inside the Hermes WSL distro; override via
+# MOSS_AGENT_HERMES_PYTHON_PATH without changing existing deployments.
+DEFAULT_AGENT_HERMES_PYTHON_PATH = "/home/hermes/hermes-agent/venv/bin/python"
 _DEV_POSTGRES_CLUSTER_DATA_DIR = Path("tmp-governance") / "pgdev" / "data"
 _SETTINGS_CACHE_STATE_MODULE = "backend.app.governance._settings_cache_state"
 _settings_cache_state_module = sys.modules.setdefault(
@@ -104,6 +107,7 @@ class Settings(BaseSettings):
     agent_hermes_toolsets: str = ""
     agent_hermes_max_turns: int = 20
     agent_hermes_timeout_seconds: float = 180.0
+    agent_hermes_python_path: str = DEFAULT_AGENT_HERMES_PYTHON_PATH
     agent_dexter_command: str = "dexter"
     agent_dexter_transport: str = "cli"
     agent_dexter_bridge_url: str = "http://127.0.0.1:7892"
@@ -143,6 +147,10 @@ class Settings(BaseSettings):
     fx_mid_csv_path: str = ""
     product_category_source_dir: Path = _DEFAULT_PRODUCT_CATEGORY_REL
     ftp_rate_pct: Decimal = Decimal("1.75")
+    #: Provenance-only override for the frozen formal financial indicator workbook
+    #: reference; empty means the contract module default (repo-relative) is used.
+    #: The value is metadata and never participates in IO.
+    formal_financial_indicators_workbook: str = ""
     formal_pnl_enabled: bool = True
     formal_pnl_scope_json: str = '["*"]'
     #: 为 True 时，/api/pnl/by-business-ytd 优先用 fact_formal_pnl_fi + fact_nonstd_pnl_bridge 按年累计聚合（与物化正式口径一致）；为 False 时沿用刷新包 + V1 兼容变换（供契约测试与排障）。
