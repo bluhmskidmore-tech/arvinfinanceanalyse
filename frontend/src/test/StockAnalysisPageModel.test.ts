@@ -9,6 +9,7 @@ import type {
   LivermoreOutputKey,
   LivermoreSectorRankSeriesPayload,
   LivermoreSignalConfluencePayload,
+  LivermoreStockCandidateItem,
   LivermoreStrategyOptimizationPayload,
   LivermoreStrategyScorePayload,
   LivermoreStrategyPayload,
@@ -1011,7 +1012,7 @@ describe("stockAnalysisPageModel", () => {
     expect(missing?.detailLabel).toContain("缺失 PMI、信用脉冲、价差");
     expect(missing?.detailLabel).not.toContain("credit_impulse");
     expect(missing?.detailLabel).not.toContain("(missing)");
-    expect(missing?.formulaVersionLabel).toBe("rv_hybrid_fusion_candidates_v4");
+    expect(missing?.formulaVersionLabel).toBe("rv_hybrid_fusion_candidates_v5");
   });
 
   it("uses hybrid fusion candidates as the primary review queue when present", () => {
@@ -5103,6 +5104,115 @@ describe("stockAnalysisPageModel", () => {
     expect(successDigest.slowFacts.find((fact) => fact.id === "strategy-score")).toMatchObject({
       value: "0 / 0",
       tone: "empty",
+    });
+  });
+
+  describe("候选行流动性披露", () => {
+    function buildLiquidityModuleState(): LivermoreModuleState {
+      return {
+        key: "stock_candidates",
+        state: "ready",
+        render_mode: "primary",
+        source_date: "2026-04-29",
+        lag_days: 0,
+        threshold_days: null,
+        reasons: [],
+        evidence_scope: "primary",
+        excludes_from_primary: false,
+      };
+    }
+
+    function buildLiquidityStrategyPayload(items: LivermoreStockCandidateItem[]): LivermoreStrategyPayload {
+      return {
+        as_of_date: "2026-04-29",
+        requested_as_of_date: null,
+        strategy_name: "Livermore A-Share Defended Trend",
+        basis: "analytical",
+        market_gate: {
+          state: "WARM",
+          exposure: 1,
+          passed_conditions: 4,
+          available_conditions: 4,
+          required_conditions: 4,
+          conditions: [],
+        },
+        rule_readiness: [],
+        diagnostics: [],
+        data_gaps: [],
+        supported_outputs: ["market_gate", "stock_candidates"],
+        unsupported_outputs: [],
+        module_states: [buildLiquidityModuleState()],
+        stock_candidates: {
+          as_of_date: "2026-04-29",
+          formula_version: "rv_livermore_stock_candidates_bundle_v1",
+          market_state: "WARM",
+          input_stock_count: items.length,
+          candidate_count: items.length,
+          excluded_stock_count: 0,
+          insufficient_history_count: 0,
+          items,
+        },
+      };
+    }
+
+    const lowLiquidityItem: LivermoreStockCandidateItem = {
+      rank: 1,
+      stock_code: "000001.SZ",
+      stock_name: "Alpha",
+      sector_code: "801001",
+      sector_name: "AI",
+      sector_rank: 1,
+      close: 21.9,
+      breakout_level: 21.8,
+      ma20: 21.05,
+      ma60: 19.05,
+      ma120: 16.05,
+      close_strength: 0.83,
+      gap_norm: -0.11,
+      abnormal_turnover: 1.38,
+      daily_amount: 80_000_000,
+      liquidity_floor_pass: false,
+    };
+
+    const missingLiquidityItem: LivermoreStockCandidateItem = {
+      rank: 2,
+      stock_code: "000002.SZ",
+      stock_name: "Beta",
+      sector_code: "801002",
+      sector_name: "Bank",
+      sector_rank: 2,
+      close: 12.1,
+      breakout_level: 12.0,
+      ma20: 11.8,
+      ma60: 11.2,
+      ma120: 10.5,
+      close_strength: 0.6,
+      gap_norm: -0.05,
+      abnormal_turnover: 0.9,
+      daily_amount: null,
+      liquidity_floor_pass: null,
+    };
+
+    it("marks the low-liquidity row as failed and formats the daily amount in 亿元", () => {
+      const payload = buildLiquidityStrategyPayload([lowLiquidityItem]);
+      const [card] = buildCandidateEvidenceCards(payload);
+      expect(card.liquidityFloorPass).toBe(false);
+      expect(card.dailyAmountLabel).toBe("日成交 0.80 亿");
+
+      const [queueItem] = buildCandidateReviewQueue(payload);
+      expect(queueItem.liquidityFloorPass).toBe(false);
+      expect(queueItem.dailyAmountLabel).toBe("日成交 0.80 亿");
+    });
+
+    it("treats missing liquidity data as null, not a failure", () => {
+      const payload = buildLiquidityStrategyPayload([missingLiquidityItem]);
+      const [card] = buildCandidateEvidenceCards(payload);
+      expect(card.liquidityFloorPass).toBeNull();
+      expect(card.dailyAmountLabel).toBeNull();
+
+      const [queueItem] = buildCandidateReviewQueue(payload);
+      expect(queueItem.liquidityFloorPass).toBeNull();
+      expect(queueItem.dailyAmountLabel).toBeNull();
     });
   });
 

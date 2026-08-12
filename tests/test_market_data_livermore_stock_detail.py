@@ -11,6 +11,14 @@ from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_livermore,
+]
+
+
 
 def _seed_stock_detail_tables(
     duckdb_path: str,
@@ -259,6 +267,49 @@ def test_stock_detail_null_vendor_row_propagates_none_with_warning(tmp_path) -> 
     assert target["volume"] is None
     assert target["amount"] is None
     assert envelope["result_meta"]["quality_flag"] == "warning"
+
+
+def test_stock_detail_candle_window_skips_mid_window_placeholder_rows(tmp_path) -> None:
+    """native 代际占位行（tradestatus='' 且 close NULL）落在窗口中间时，
+    不得占用 lookback 名额输出空蜡烛：窗口应回溯到更早的有效交易日。"""
+    module = load_module(
+        "backend.app.services.livermore_stock_detail_service",
+        "backend/app/services/livermore_stock_detail_service.py",
+    )
+    db_path = tmp_path / "mid-window-placeholders.duckdb"
+    _seed_stock_detail_tables(str(db_path), n_days=8)
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            update choice_stock_daily_observation
+            set open_value = null, high_value = null, low_value = null,
+                close_value = null, volume = null, amount = null, tradestatus = ''
+            where trade_date in ('2026-04-08', '2026-04-09')
+            """
+        )
+    finally:
+        conn.close()
+
+    envelope = module.livermore_stock_detail_envelope(
+        duckdb_path=str(db_path),
+        stock_code="000001.SZ",
+        as_of_date=date(2026, 4, 12),
+        lookback=5,
+    )
+
+    result = envelope["result"]
+    assert result["as_of_date"] == "2026-04-10"
+    candles = result["candles"]
+    # 旧行为：两根占位行占掉 2 个名额，窗口只回溯到 2026-04-06 且含空蜡烛。
+    assert [candle["trade_date"] for candle in candles] == [
+        "2026-04-04",
+        "2026-04-05",
+        "2026-04-06",
+        "2026-04-07",
+        "2026-04-10",
+    ]
+    assert all(candle["close_value"] is not None for candle in candles)
 
 
 def test_stock_detail_excludes_non_trading_placeholder_rows(tmp_path, monkeypatch) -> None:

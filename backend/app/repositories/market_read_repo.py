@@ -651,6 +651,9 @@ class MarketReadRepository(DuckDBRepository):
         end_trade_date: date,
         lookback: int,
     ) -> tuple[list[dict[str, Any]], list[str]]:
+        # close_value 非空：与锚定日查询同口径，供应商预填的全空占位行
+        # （native 代际 tradestatus='' 且 close NULL）不得占用 lookback
+        # 名额输出空蜡烛。
         def execute(
             volume_projection: str,
             amount_projection: str,
@@ -678,6 +681,7 @@ class MarketReadRepository(DuckDBRepository):
                 from {RELATION_CHOICE_STOCK_DAILY_OBSERVATION}
                 where stock_code = ?
                   and trade_date <= ?
+                  and close_value is not null
                   and {tradable_status_sql_condition('tradestatus')}
                 order by trade_date desc
                 limit ?

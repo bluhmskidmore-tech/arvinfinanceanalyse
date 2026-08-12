@@ -15,6 +15,12 @@ from backend.app.core_finance.candidate_history_proxy_backtest import (
     CYCLE_PROXY_ENTRY_PRICE_WARNING,
     PORTFOLIO_PROXY_ENTRY_PRICE_WARNING,
 )
+from backend.app.core_finance.livermore_theme_breakout import (
+    FORMULA_VERSION as THEME_BREAKOUT_FORMULA_VERSION,
+)
+from backend.app.core_finance.matched_baseline import (
+    FORMULA_VERSION as MATCHED_BASELINE_FORMULA_VERSION,
+)
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.choice_stock_adapter import ChoiceStockReadiness
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
@@ -25,12 +31,19 @@ from backend.app.services.livermore_candidate_history_service import (
     livermore_candidate_history_portfolio_backtest_envelope,
 )
 from backend.app.tasks.livermore_candidate_history_materialize import (
+    EXECUTION_FORMULA_VERSION,
     backfill_livermore_candidate_execution_history,
     backfill_livermore_candidate_history,
     ensure_livermore_candidate_history_schema,
     materialize_livermore_candidate_history,
 )
 from tests.helpers import load_module
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_livermore,
+]
+
 
 _LIVERMORE_CANDIDATE_HISTORY_TASK_MODULE = sys.modules[materialize_livermore_candidate_history.__module__]
 
@@ -2122,6 +2135,7 @@ def test_task_materializes_theme_breakout_signal_rows_with_review_evidence_and_n
     def _mock_load(*args: object, **kwargs: object) -> tuple[dict[str, object], dict[str, object]]:
         payload, meta = _fake_payload(as_of_date=snap.isoformat(), items=[])
         payload["theme_breakout"] = {
+            "formula_version": THEME_BREAKOUT_FORMULA_VERSION,
             "items": [
                 {
                     "rank": 1,
@@ -2231,6 +2245,9 @@ def test_task_materializes_theme_breakout_signal_rows_with_review_evidence_and_n
     assert evidence["latest_event_title"] == "Chiplet intraday surge"
     assert evidence["stock_latest_event_title"] == "Alpha Semiconductor intraday surge"
     assert evidence["evidence_state"]["intraday_movement"]["state"] == "matched_rows"
+    # 治理字段：theme 行 evidence 与 factor_screen/uptrend/fresh_trend 对齐，
+    # 落 theme 源公式版本（payload 级来自 livermore_theme_breakout.FORMULA_VERSION）。
+    assert evidence["formula_version"] == THEME_BREAKOUT_FORMULA_VERSION
 
 
 def test_task_materializes_factor_uptrend_and_mean_reversion_signal_rows(monkeypatch, tmp_path) -> None:
@@ -3910,7 +3927,8 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
                     0.01,
                     True,
                     "seed-b",
-                    "fv_test",
+                    # 当前版本行：验证 stale 披露只计非当前版本行。
+                    MATCHED_BASELINE_FORMULA_VERSION,
                     "run-test",
                 ),
             ],
@@ -4034,6 +4052,22 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
     assert summary["entry_blocked_stats"]["by_reason"]["entry_limit_up_or_one_line"] == {
         "count": 1,
         "share": 0.5,
+    }
+    # 读取端 stale formula 披露（纯加法）：execution 旧 schema 缺
+    # formula_version 列 → 全部归 unknown 并计 stale；matched_baseline
+    # 混合版本时仅非当前版本行计 stale。
+    assert summary["execution_formula_version_disclosure"] == {
+        "current_formula_version": EXECUTION_FORMULA_VERSION,
+        "formula_version_row_counts": {"unknown": 3},
+        "stale_formula_row_count": 3,
+    }
+    assert summary["matched_baseline_formula_version_disclosure"] == {
+        "current_formula_version": MATCHED_BASELINE_FORMULA_VERSION,
+        "formula_version_row_counts": {
+            MATCHED_BASELINE_FORMULA_VERSION: 1,
+            "fv_test": 2,
+        },
+        "stale_formula_row_count": 2,
     }
     matched_t5 = summary["matched_baseline_stats"]["stock_candidate"]["return_5d"]
     assert matched_t5["n"] == 1

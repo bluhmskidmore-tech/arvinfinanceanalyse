@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
@@ -8,6 +9,8 @@ import duckdb
 from backend.app.core_finance.field_normalization import tradable_status_sql_condition
 from backend.app.core_finance.matched_baseline import MATCHED_BASELINE_TABLE
 from backend.app.repositories.duckdb_repo import DuckDBRepository
+
+logger = logging.getLogger(__name__)
 
 RELATION_LIVERMORE_CANDIDATE_HISTORY = "livermore_candidate_history"
 RELATION_LIVERMORE_CANDIDATE_EXECUTION_HISTORY = "livermore_candidate_execution_history"
@@ -92,6 +95,9 @@ CANDIDATE_EXECUTION_SELECT_COLUMNS = (
     "return_5d_net_adj",
     "return_10d_net_adj",
     "return_20d_net_adj",
+    # 读取端 stale formula 披露需要行级版本；缺列的旧 schema 由
+    # execution_select_list 落 null as formula_version。
+    "formula_version",
 )
 
 MATCHED_BASELINE_SELECT_COLUMNS = (
@@ -214,17 +220,32 @@ class LivermoreCandidateHistoryRepository(DuckDBRepository):
     ) -> list[tuple[Any, ...]]:
         with self._connection(conn) as active:
             if active is None:
+                logger.warning(
+                    "livermore_duckdb_query_failed stage=fetch_history_slice_rows "
+                    "tables=%s as_of_date=- error=connection_unavailable",
+                    RELATION_LIVERMORE_CANDIDATE_HISTORY,
+                )
                 return []
-            return active.execute(
-                f"""
-                select {self.select_list(available_columns)}
-                from {RELATION_LIVERMORE_CANDIDATE_HISTORY}
-                {sql_where}
-                order by snapshot_as_of_date desc, candidate_rank asc
-                limit ?
-                """,
-                [*filter_bindings, limit],
-            ).fetchall()
+            try:
+                return active.execute(
+                    f"""
+                    select {self.select_list(available_columns)}
+                    from {RELATION_LIVERMORE_CANDIDATE_HISTORY}
+                    {sql_where}
+                    order by snapshot_as_of_date desc, candidate_rank asc
+                    limit ?
+                    """,
+                    [*filter_bindings, limit],
+                ).fetchall()
+            except duckdb.Error as exc:
+                summary = str(exc).strip().replace("\n", " ")[:300] or exc.__class__.__name__
+                logger.warning(
+                    "livermore_duckdb_query_failed stage=fetch_history_slice_rows "
+                    "tables=%s as_of_date=- error=%s",
+                    RELATION_LIVERMORE_CANDIDATE_HISTORY,
+                    summary,
+                )
+                raise
 
     def fetch_history_window_rows(
         self,
@@ -249,16 +270,33 @@ class LivermoreCandidateHistoryRepository(DuckDBRepository):
         sql_where = f"where {' AND '.join(where_clauses)}" if where_clauses else ""
         with self._connection(conn) as active:
             if active is None:
+                logger.warning(
+                    "livermore_duckdb_query_failed stage=fetch_history_window_rows "
+                    "tables=%s as_of_date=%s error=connection_unavailable",
+                    RELATION_LIVERMORE_CANDIDATE_HISTORY,
+                    snapshot_to or snapshot_from or "-",
+                )
                 return []
-            return active.execute(
-                f"""
-                select {self.select_list(available_columns)}
-                from {RELATION_LIVERMORE_CANDIDATE_HISTORY}
-                {sql_where}
-                order by snapshot_as_of_date asc, candidate_rank asc
-                """,
-                bindings,
-            ).fetchall()
+            try:
+                return active.execute(
+                    f"""
+                    select {self.select_list(available_columns)}
+                    from {RELATION_LIVERMORE_CANDIDATE_HISTORY}
+                    {sql_where}
+                    order by snapshot_as_of_date asc, candidate_rank asc
+                    """,
+                    bindings,
+                ).fetchall()
+            except duckdb.Error as exc:
+                summary = str(exc).strip().replace("\n", " ")[:300] or exc.__class__.__name__
+                logger.warning(
+                    "livermore_duckdb_query_failed stage=fetch_history_window_rows "
+                    "tables=%s as_of_date=%s error=%s",
+                    RELATION_LIVERMORE_CANDIDATE_HISTORY,
+                    snapshot_to or snapshot_from or "-",
+                    summary,
+                )
+                raise
 
     def fetch_execution_window_rows(
         self,

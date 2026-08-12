@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 import uuid
 from bisect import bisect_right
@@ -23,6 +24,9 @@ from backend.app.core_finance.candidate_history_proxy_backtest import (
     cycle_proxy_return_field_stats,
 )
 from backend.app.core_finance.field_normalization import is_tradestatus_tradable
+from backend.app.core_finance.matched_baseline import (
+    FORMULA_VERSION as MATCHED_BASELINE_CURRENT_FORMULA_VERSION,
+)
 from backend.app.core_finance.matched_baseline import (
     MATCHED_BASELINE_TABLE,
     matched_baseline_stats_from_rows,
@@ -401,6 +405,39 @@ def livermore_candidate_history_envelope(
     )
 
 
+logger = logging.getLogger(__name__)
+
+DUCKDB_QUERY_FAILED_PREFIX = "DuckDB query failed"
+
+
+def _warn_duckdb_query_failed(
+    stage: str,
+    *,
+    exc: BaseException,
+    tables: object = None,
+    as_of_date: str | None = None,
+) -> str:
+    if isinstance(tables, (list, tuple, set, frozenset)):
+        table_text = ",".join(str(item) for item in tables) or "-"
+    elif tables:
+        table_text = str(tables)
+    else:
+        table_text = "-"
+    date_text = str(as_of_date) if as_of_date else "-"
+    summary = str(exc).strip().replace("\n", " ")[:300] or exc.__class__.__name__
+    logger.warning(
+        "livermore_duckdb_query_failed stage=%s tables=%s as_of_date=%s error=%s",
+        stage,
+        table_text,
+        date_text,
+        summary,
+    )
+    return (
+        f"{DUCKDB_QUERY_FAILED_PREFIX} stage={stage} tables={table_text} "
+        f"as_of_date={date_text} error={summary}"
+    )
+
+
 def livermore_candidate_history_envelope_or_none(
     *,
     duckdb_path: str,
@@ -408,6 +445,7 @@ def livermore_candidate_history_envelope_or_none(
     snapshot_from: str | None,
     snapshot_to: str | None,
     limit: int,
+    query_failures: list[str] | None = None,
 ) -> dict[str, object] | None:
     try:
         return livermore_candidate_history_envelope(
@@ -417,7 +455,18 @@ def livermore_candidate_history_envelope_or_none(
             snapshot_to=snapshot_to,
             limit=limit,
         )
-    except duckdb.Error:
+    except duckdb.Error as exc:
+        reason = _warn_duckdb_query_failed(
+            "candidate_history_envelope",
+            exc=exc,
+            tables=[
+                RELATION_LIVERMORE_CANDIDATE_HISTORY,
+                RELATION_CHOICE_STOCK_DAILY_OBSERVATION,
+            ],
+            as_of_date=snapshot_to or snapshot_from,
+        )
+        if query_failures is not None:
+            query_failures.append(reason)
         return None
 
 
@@ -1690,6 +1739,46 @@ def _resolve_replay_trade_dates(
     return observed or row_dates
 
 
+_UNKNOWN_FORMULA_VERSION_KEY = "unknown"
+
+
+def _current_execution_formula_version() -> str:
+    """延迟导入 tasks 层常量：只读路径导入本模块时不得触发
+    backend.app.tasks 初始化（与 load_choice_stock_materialization_coverage
+    同一约束）。"""
+    from backend.app.tasks.livermore_candidate_history_materialize import (
+        EXECUTION_FORMULA_VERSION,
+    )
+
+    return EXECUTION_FORMULA_VERSION
+
+
+def _formula_version_disclosure(
+    rows: list[dict[str, Any]],
+    *,
+    current_formula_version: str,
+) -> dict[str, Any]:
+    """窗口行按 formula_version 的行数分布与 stale 计数（纯披露，不过滤不改数）。
+
+    缺失/空白版本归入 "unknown"；stale = 非当前版本行数（unknown 计入：
+    旧 schema 无版本列的存量同样不是当前版本口径）。
+    """
+    version_counts: dict[str, int] = {}
+    stale_count = 0
+    for row in rows:
+        version = str(row.get("formula_version") or "").strip()
+        version_counts[version or _UNKNOWN_FORMULA_VERSION_KEY] = (
+            version_counts.get(version or _UNKNOWN_FORMULA_VERSION_KEY, 0) + 1
+        )
+        if version != current_formula_version:
+            stale_count += 1
+    return {
+        "current_formula_version": current_formula_version,
+        "formula_version_row_counts": dict(sorted(version_counts.items())),
+        "stale_formula_row_count": stale_count,
+    }
+
+
 def _build_summary(
     items: list[dict[str, Any]],
     *,
@@ -1715,6 +1804,19 @@ def _build_summary(
         "by_signal_kind": _count_by_signal_kind(items),
         "by_signal_kind_horizon_stats": _build_signal_kind_horizon_stats(items),
     }
+    # 治理披露（纯加法）：execution / matched_baseline 窗口存量按
+    # formula_version 的行数分布与非当前版本行计数，让消费端在重物化完成
+    # 前能看到窗口内 stale 版本存量；不过滤不改任何统计口径。
+    if execution_rows is not None:
+        summary["execution_formula_version_disclosure"] = _formula_version_disclosure(
+            execution_rows,
+            current_formula_version=_current_execution_formula_version(),
+        )
+    if matched_baseline_rows is not None:
+        summary["matched_baseline_formula_version_disclosure"] = _formula_version_disclosure(
+            matched_baseline_rows,
+            current_formula_version=MATCHED_BASELINE_CURRENT_FORMULA_VERSION,
+        )
     if evaluation_as_of_date:
         summary["forward_maturity"] = _forward_maturity_summary(
             items,

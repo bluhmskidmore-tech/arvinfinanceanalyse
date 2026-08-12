@@ -211,7 +211,7 @@ def test_strategy_formula_versions_match_current_contracts() -> None:
 
     assert mean_reversion_candidates.FORMULA_VERSION == "rv_mean_reversion_candidates_v2"
     assert factor_screen_candidates.FORMULA_VERSION == "rv_factor_screen_candidates_v4"
-    assert hybrid_fusion_candidates.FORMULA_VERSION == "rv_hybrid_fusion_candidates_v4"
+    assert hybrid_fusion_candidates.FORMULA_VERSION == "rv_hybrid_fusion_candidates_v5"
     assert livermore_theme_breakout.FORMULA_VERSION == "rv_livermore_theme_breakout_multi_proxy_v6"
     assert livermore_stock_candidates.FORMULA_VERSION == "rv_livermore_stock_candidates_bundle_v7"
     assert livermore_risk_exit.FORMULA_VERSION == "rv_livermore_risk_exit_ema10_volume_obsfallback_v3"

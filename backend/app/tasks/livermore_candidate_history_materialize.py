@@ -1452,6 +1452,13 @@ def _build_signal_rows(payload: dict[str, object]) -> list[dict[str, object]]:
                             "signal_evidence": {
                                 "signal_kind": "theme_breakout",
                                 "market_state": market_state,
+                                # 治理字段：theme 源公式版本（键名与 factor_screen/
+                                # uptrend/fresh_trend 一致为 formula_version）；theme
+                                # payload 在 payload 级携带 livermore_theme_breakout.
+                                # FORMULA_VERSION，历史 payload 重放按原值断代，缺失
+                                # 时落 None 不回填。
+                                "formula_version": theme.get("formula_version")
+                                or theme_breakout_raw.get("formula_version"),
                                 "theme_key": theme.get("theme_key"),
                                 "theme_name": theme.get("theme_name"),
                                 "proxy_code": theme.get("proxy_code"),

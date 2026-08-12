@@ -62,6 +62,38 @@ TABLE_FACTOR = RELATION_CHOICE_STOCK_FACTOR_SNAPSHOT
 TABLE_MEMBERSHIP = RELATION_CHOICE_STOCK_SECTOR_MEMBERSHIP
 
 
+def _warn_duckdb_query_failed(
+    stage: str,
+    *,
+    exc: BaseException,
+    tables: object = None,
+    as_of_date: str | date | None = None,
+) -> str:
+    if isinstance(tables, (list, tuple, set, frozenset)):
+        table_text = ",".join(str(item) for item in tables) or "-"
+    elif tables:
+        table_text = str(tables)
+    else:
+        table_text = "-"
+    date_text = (
+        as_of_date.isoformat()
+        if isinstance(as_of_date, date)
+        else (str(as_of_date) if as_of_date else "-")
+    )
+    summary = str(exc).strip().replace("\n", " ")[:300] or exc.__class__.__name__
+    logger.warning(
+        "livermore_duckdb_query_failed stage=%s tables=%s as_of_date=%s error=%s",
+        stage,
+        table_text,
+        date_text,
+        summary,
+    )
+    return (
+        f"DuckDB query failed stage={stage} tables={table_text} "
+        f"as_of_date={date_text} error={summary}"
+    )
+
+
 def open_livermore_read_connection(duckdb_path: str) -> duckdb.DuckDBPyConnection | None:
     """Open a read-only DuckDB connection for Livermore reads; ``None`` when unavailable.
 
@@ -70,7 +102,13 @@ def open_livermore_read_connection(duckdb_path: str) -> duckdb.DuckDBPyConnectio
     """
     try:
         return duckdb.connect(str(duckdb_path), read_only=True)
-    except duckdb.Error:
+    except duckdb.Error as exc:
+        _warn_duckdb_query_failed(
+            "open_livermore_read_connection",
+            exc=exc,
+            tables="-",
+            as_of_date=None,
+        )
         return None
 
 
@@ -170,6 +208,9 @@ class LivermoreMarketReadRepository(DuckDBRepository):
             return [], []
         upper = end_trade_date.isoformat()
 
+        # close_value 非空：与锚定日查询同口径，供应商预填的全空占位行
+        # （native 代际 tradestatus='' 且 close NULL）不得占用 lookback
+        # 名额输出空蜡烛。
         def execute(
             volume_projection: str,
             amount_projection: str,
@@ -194,6 +235,7 @@ class LivermoreMarketReadRepository(DuckDBRepository):
                 from {TABLE_OBS}
                 where stock_code = ?
                   and trade_date <= ?
+                  and close_value is not null
                   and {tradable_status_sql_condition('tradestatus')}
                 order by trade_date desc
                 limit ?
@@ -395,7 +437,13 @@ class LivermoreMarketReadRepository(DuckDBRepository):
                 """,
                 [as_of_date, membership_snapshot_date],
             ).fetchall()
-        except duckdb.Error:
+        except duckdb.Error as exc:
+            _warn_duckdb_query_failed(
+                "load_sector_rank_constituents",
+                exc=exc,
+                tables=[TABLE_MEMBERSHIP, TABLE_OBS],
+                as_of_date=as_of_date,
+            )
             return [], [], []
 
         constituents = [
@@ -432,7 +480,13 @@ class LivermoreMarketReadRepository(DuckDBRepository):
                 """,
                 [as_of_date],
             ).fetchone()
-        except duckdb.Error:
+        except duckdb.Error as exc:
+            _warn_duckdb_query_failed(
+                "latest_table_date_on_or_before",
+                exc=exc,
+                tables=table_name,
+                as_of_date=as_of_date,
+            )
             return None
         return str(row[0]) if row and row[0] else None
 
@@ -448,7 +502,12 @@ class LivermoreMarketReadRepository(DuckDBRepository):
         try:
             with read_only_connection(self.path) as scoped:
                 return self._position_active_max_date_impl(scoped)
-        except (OSError, duckdb.Error):
+        except (OSError, duckdb.Error) as exc:
+            _warn_duckdb_query_failed(
+                "position_active_max_date",
+                exc=exc,
+                tables=RELATION_LIVERMORE_POSITION_SNAPSHOT,
+            )
             return None
 
     def _position_active_max_date_impl(
@@ -476,7 +535,12 @@ class LivermoreMarketReadRepository(DuckDBRepository):
                 where upper(coalesce(position_status, 'ACTIVE')) = 'ACTIVE'
                 """
             ).fetchone()
-        except duckdb.Error:
+        except duckdb.Error as exc:
+            _warn_duckdb_query_failed(
+                "position_active_max_date_impl",
+                exc=exc,
+                tables=RELATION_LIVERMORE_POSITION_SNAPSHOT,
+            )
             return None
         if not row or row[0] is None:
             return None
@@ -510,7 +574,12 @@ class LivermoreStrategyReadRepository(DuckDBRepository):
                 str(row[1])
                 for row in conn.execute(f"pragma table_info('{table_name}')").fetchall()
             }
-        except duckdb.Error:
+        except duckdb.Error as exc:
+            _warn_duckdb_query_failed(
+                "table_columns",
+                exc=exc,
+                tables=table_name,
+            )
             return set()
 
     def table_has_columns(
@@ -544,7 +613,13 @@ class LivermoreStrategyReadRepository(DuckDBRepository):
             """,
                 [as_of_date],
             ).fetchone()
-        except duckdb.Error:
+        except duckdb.Error as exc:
+            _warn_duckdb_query_failed(
+                "latest_snapshot_date_on_or_before",
+                exc=exc,
+                tables=table_name,
+                as_of_date=as_of_date,
+            )
             return None
         return str(row[0]) if row and row[0] else None
 
@@ -570,7 +645,13 @@ class LivermoreStrategyReadRepository(DuckDBRepository):
             """,
                 [as_of_date],
             ).fetchone()
-        except duckdb.Error:
+        except duckdb.Error as exc:
+            _warn_duckdb_query_failed(
+                "count_distinct_stock_codes",
+                exc=exc,
+                tables=table_name,
+                as_of_date=as_of_date,
+            )
             return 0
         return int(row[0]) if row and row[0] is not None else 0
 

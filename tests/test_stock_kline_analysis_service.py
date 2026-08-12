@@ -180,7 +180,8 @@ def test_stock_kline_analysis_missing_db_keeps_observational_boundary(tmp_path) 
     assert result["observation_signal"]["risks"] == ["duckdb_missing"]
 
 
-def test_stock_kline_analysis_ignores_null_close_rows_in_tail_metrics(tmp_path) -> None:
+def test_stock_kline_analysis_excludes_null_close_placeholder_rows_from_window(tmp_path) -> None:
+    """native 代际占位行（tradestatus='' 且 close NULL）不得占用 lookback 名额输出空蜡烛。"""
     module = load_module(
         "backend.app.services.stock_kline_analysis_service",
         "backend/app/services/stock_kline_analysis_service.py",
@@ -192,7 +193,7 @@ def test_stock_kline_analysis_ignores_null_close_rows_in_tail_metrics(tmp_path) 
         conn.executemany(
             """
             insert into choice_stock_daily_observation
-            values (?, '000001.SZ', null, null, null, null, null, null, null, null, null, 'Trading', 'sv_placeholder', 'vv_placeholder')
+            values (?, '000001.SZ', null, null, null, null, null, null, null, null, null, '', 'sv_placeholder', 'vv_placeholder')
             """,
             [((date(2026, 1, 31) + timedelta(days=i)).isoformat(),) for i in range(10)],
         )
@@ -244,12 +245,16 @@ def test_stock_kline_analysis_ignores_null_close_rows_in_tail_metrics(tmp_path) 
     closes[28] = 10.0 + 28 * 0.05 - 0.08
     closes[29] = 10.0 + 29 * 0.05 + 0.42
 
-    assert envelope["result_meta"]["evidence_rows"] == 50
+    # 占位行被排除在窗口之外：40 根有效蜡烛全部保留（旧行为把 10 根空蜡烛
+    # 计入 evidence_rows=50 并触发 invalid_ohlc_rows 告警）。
+    assert envelope["result_meta"]["evidence_rows"] == 40
+    assert result["state"] == "ok"
+    assert result["validity"]["bar_count"] == 40
     assert result["as_of_date"] == "2026-02-19"
     assert result["latest_candle"]["trade_date"] == "2026-02-19"
     assert result["indicators"]["ma20"] == pytest.approx(sum(closes[-20:]) / 20)
     assert result["indicators"]["return_20d"] == pytest.approx(closes[-1] / closes[-21] - 1)
-    assert "invalid_ohlc_rows" in result["validity"]["warnings"]
+    assert "invalid_ohlc_rows" not in result["validity"]["warnings"]
 
 
 def test_stock_kline_analysis_normalizes_cross_generation_volume_before_ratio(tmp_path) -> None:

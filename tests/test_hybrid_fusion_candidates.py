@@ -527,8 +527,10 @@ def test_hybrid_fusion_uses_name_from_factor_source_when_trend_source_lacks_it()
     assert item["stock_name"] == "Alpha Semi"
 
 
-def test_hybrid_fusion_formula_version_is_v4_after_lifecourt_normalization() -> None:
-    assert FORMULA_VERSION == "rv_hybrid_fusion_candidates_v4"
+def test_hybrid_fusion_formula_version_is_v5_after_theme_v6_input_break() -> None:
+    # v5 断代原因：theme_breakout v5→v6 七篮子使 theme 输入面从约 33 只扩到
+    # 1500+ 只，同版本号不得跨输入代际聚合。
+    assert FORMULA_VERSION == "rv_hybrid_fusion_candidates_v5"
 
 
 def test_hybrid_fusion_lifecourt_score_is_normalized_to_unit_scale() -> None:

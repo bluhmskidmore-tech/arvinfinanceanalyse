@@ -10,7 +10,11 @@ from backend.app.core_finance.hybrid_fusion_config import (
 )
 from backend.app.core_finance.strategy_policy import POLICY
 
-FORMULA_VERSION = "rv_hybrid_fusion_candidates_v4"
+# v5: 输入面断代（theme_breakout v5→v6 从单一半导体篮子扩为七题材篮子，
+# theme 输入覆盖面约 33 只 → 1500+ 只，theme-only 候选与 consensus/burst/
+# vcov 评分的输入分布换代）；融合公式本身未变，bump 用于按 formula_version
+# 聚合的回测/复盘不把两代输入混在同一版本标签下。
+FORMULA_VERSION = "rv_hybrid_fusion_candidates_v5"
 ACTIVE_MARKET_STATES = POLICY.hybrid_fusion_active_states
 MAX_CANDIDATES = 10
 MACRO_PENDING_BLOCK_REASON = "macro_score_missing"

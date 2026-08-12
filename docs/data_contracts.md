@@ -639,6 +639,7 @@ canonical grain：
 - Tushare 代际行带显式状态（`Trading` 等）；choice_native 代际（2026-01-05 起）**不提供状态字段，落地为空串**。空串/NULL/空白在该代际语义下即**正常交易日**，消费者不得把空状态一刀切判为不可交易（2026-08-12 前的旧词表曾因此把 976 个 20d 视角有行情 bar 的候选误报为 `matured_missing_bar`，K 线服务锚定日回退 2025-12-31）。
 - `复牌` 为**可交易**（复牌当日恢复交易；旧词表曾把复牌日误判为不可交易导致 forward 目标日顺延类冲突）。
 - `停牌一天`/`连续停牌` 等其余非空、不在可交易词表内的值为**不可交易**。
+- 数字/英文布尔式状态码（`"0"`/`"1"`/`"true"`/`"false"`/`"normal"`/`"trade"` 等）**不在两代 vendor 的契约词值内**：当前两代落地值均不含此类编码；若上游未来落入，按"未知非空值 fail-closed 判停牌"处理（卖出顺延方向保守，但踩踏风险 universe 会整体剔空导致指标失真）。运维观察点为**未知非空值占比**——占比异常升高说明上游状态词表换代，应先扩展 `field_normalization` 词表并更新本节，再恢复消费。
 - 唯一判定口径是 `backend/app/core_finance/field_normalization.py` 的 `is_tradestatus_tradable`（Python）与 `tradable_status_sql_condition`（SQL 片段，空串折叠进 IN 列表首项）；停牌方向用互补 helper `is_tradestatus_halted`（非空且不可交易；空串≠停牌；未知非空值 fail-closed 判停牌），SQL 侧用可交易条件的否定。消费点（outcome maturity 任务、candidate history 服务/仓储、K 线与行情读仓储、卖出顺延路径 `portfolio_paths`/`matched_baseline`/execution 物化、踩踏风险 universe、盘前检查导出）不得内联词表（2026-08-12 前旧完整匹配词表只认独词"停牌"，漏判"停牌一天"/"连续停牌"/"盘中停牌"，停牌日被误判可卖、卖出不顺延且卖在停牌陈旧价）。
 
 #### Batch3 治理状态
