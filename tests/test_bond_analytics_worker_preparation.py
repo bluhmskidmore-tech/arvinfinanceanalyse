@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -11,16 +12,24 @@ from backend.app.schemas.formal_compute_runtime import (
 )
 
 
+def _live_bond_analytics_task_module():
+    """Return the bond_analytics_materialize module whose function the actor runs.
+
+    ``register_actor_once`` rebinds the shared actor's ``fn`` to the most recently
+    executed module instance, and ``tests.helpers.load_module`` replaces the
+    ``sys.modules`` entry without refreshing the parent package attribute. Patching
+    a module obtained via ``from backend.app.tasks import ...`` can therefore miss
+    the instance that ``materialize_bond_analytics_facts.fn`` actually executes in.
+    """
+    import backend.app.tasks.bond_analytics_materialize  # noqa: F401
+
+    return sys.modules["backend.app.tasks.bond_analytics_materialize"]
+
+
 def test_bond_refresh_service_only_dispatches_and_does_not_prepare_curves(tmp_path, monkeypatch) -> None:
     from backend.app.services import bond_analytics_service as service
 
     sent: list[dict[str, object]] = []
-    monkeypatch.setattr(
-        service,
-        "_prepare_yield_curve_inputs_for_refresh",
-        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("request path wrote yield curves")),
-        raising=False,
-    )
     monkeypatch.setattr(
         service,
         "materialize_bond_analytics_facts",
@@ -63,7 +72,7 @@ def test_bond_worker_existing_curves_only_skips_prepare_while_default_prepares(
     tmp_path,
     monkeypatch,
 ) -> None:
-    from backend.app.tasks import bond_analytics_materialize as task
+    task = _live_bond_analytics_task_module()
 
     events: list[str] = []
     monkeypatch.setattr(
@@ -120,7 +129,7 @@ def test_bond_worker_curve_prepare_failure_blocks_main_materialization_and_is_tr
     tmp_path,
     monkeypatch,
 ) -> None:
-    from backend.app.tasks import bond_analytics_materialize as task
+    task = _live_bond_analytics_task_module()
 
     main_calls: list[str] = []
     monkeypatch.setattr(
@@ -161,7 +170,7 @@ def test_bond_worker_prepares_curves_before_main_and_invalidates_cache_after_suc
     tmp_path,
     monkeypatch,
 ) -> None:
-    from backend.app.tasks import bond_analytics_materialize as task
+    task = _live_bond_analytics_task_module()
 
     events: list[str] = []
     monkeypatch.setattr(

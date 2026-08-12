@@ -184,14 +184,6 @@ class _MaterializeBondAnalyticsFactsProxy:
 materialize_bond_analytics_facts = _MaterializeBondAnalyticsFactsProxy()
 
 
-def ensure_yield_curve_inputs_on_or_before(*args: object, **kwargs: object) -> object:
-    from backend.app.tasks.yield_curve_materialize import (
-        ensure_yield_curve_inputs_on_or_before as _ensure,
-    )
-
-    return _ensure(*args, **kwargs)
-
-
 logger = logging.getLogger(__name__)
 
 # Backward-compatible module exports used by service tests and legacy route callers.
@@ -1065,16 +1057,6 @@ def refresh_bond_analytics(
         raise BondAnalyticsRefreshConflictError(
             f"Bond analytics refresh already in progress for report_date={report_date}."
         ) from exc
-
-
-def _prepare_yield_curve_inputs_for_refresh(*, settings: Settings, report_date: str) -> None:
-    ensure_yield_curve_inputs_on_or_before(
-        anchor_dates=_yield_curve_anchor_dates_for_refresh(
-            duckdb_path=str(settings.duckdb_path),
-            report_date=report_date,
-        ),
-        duckdb_path=str(settings.duckdb_path),
-    )
 
 
 def _yield_curve_anchor_dates_for_refresh(*, duckdb_path: str, report_date: str) -> tuple[str, ...]:

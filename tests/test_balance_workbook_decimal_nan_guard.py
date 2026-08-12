@@ -1,4 +1,12 @@
-"""共享 M-3：balance workbook Decimal 助手不得传播 NaN。"""
+"""共享 M-3：balance workbook Decimal 助手不得传播 NaN。
+
+测试对象说明（2026-08-12）：生产权威实现是单体 balance_analysis_workbook.py；
+`balance_workbook/` 包（`_utils` 等）是不在生产调用路径上的拆分副本，包级公开入口
+`builder.py` 仅为委托壳。本测试同时钉住两侧的 NaN 防护语义：
+- 单体侧防护入口是 `_decimal_value`（NaN/None → 0）；
+- 副本侧防护入口是 `_utils._to_finite_decimal` / `_utils._sum_decimal`。
+两侧断言都保留，防止休眠副本与权威实现在 NaN 语义上漂移。
+"""
 
 from __future__ import annotations
 

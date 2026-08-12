@@ -94,6 +94,8 @@ __pycache__/
 .tmp-pnl-refresh.json
 
 # Python / pytest (local caches; also reduces Windows permission noise on stray basetemp dirs)
+.mypy_cache/
+.ruff_cache/
 .pytest_cache/
 .pytest-tmp*/
 .pytest-basetemp/
@@ -142,6 +144,7 @@ frontend/scripts/tmp-*.js
 frontend/scripts/tmp-*.cjs
 tmp-*.png
 tmp-*.mjs
+tmp-*.json
 /tmp-*.py
 **/tmp-*-shots/
 /design-qa.md

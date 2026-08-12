@@ -1,6 +1,11 @@
 # 回归（余额 H-1，2026-07-19 审计）：fact_formal_zqtz_balance_daily 的 coupon_rate/ytm_value
 # 落库单位裁决为百分数（2.85 = 2.85%）。Campisi 票息/利差收入必须显式 ÷100；
 # spread_bp 为百分数差 ×100。单体版与包版双实现输出必须一致。
+#
+# 测试对象说明（2026-08-12）：生产权威实现是单体 balance_analysis_workbook.py；
+# `balance_workbook/` 包的 `_analysis_tables` / `_utils` 是不在生产调用路径上的拆分
+# 副本（包级公开入口 builder.py 仅为委托壳）。本文件对包版的直测属于"双实现等价性"
+# 断言，目的是防止休眠副本与权威实现漂移，不代表包版是生产入口。
 from __future__ import annotations
 
 from datetime import date

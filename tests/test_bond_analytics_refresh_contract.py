@@ -91,13 +91,6 @@ def test_bond_analytics_refresh_only_queues_without_preparing_yield_curve_inputs
     queued_messages: list[dict[str, object]] = []
 
     monkeypatch.setattr(
-        service_mod,
-        "_prepare_yield_curve_inputs_for_refresh",
-        lambda **_kwargs: (_ for _ in ()).throw(
-            AssertionError("request path must not prepare yield-curve inputs")
-        ),
-    )
-    monkeypatch.setattr(
         service_mod.materialize_bond_analytics_facts,
         "send",
         lambda **kwargs: queued_messages.append(kwargs),
@@ -119,13 +112,6 @@ def test_bond_analytics_refresh_reuses_run_for_same_idempotency_key(tmp_path, mo
     )
     queued_messages: list[dict[str, object]] = []
 
-    monkeypatch.setattr(
-        service_mod,
-        "_prepare_yield_curve_inputs_for_refresh",
-        lambda **_kwargs: (_ for _ in ()).throw(
-            AssertionError("request path must not prepare yield-curve inputs")
-        ),
-    )
     monkeypatch.setattr(
         service_mod.materialize_bond_analytics_facts,
         "send",

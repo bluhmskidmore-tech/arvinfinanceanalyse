@@ -1,18 +1,20 @@
-"""Balance analysis workbook builder - monolithic implementation.
+"""Balance analysis workbook builder - production authoritative implementation.
 
-REFACTORING NOTE (2026-04-17):
-This 1576-line file contains 29 _build_* table functions with no clear separation.
-Planned refactoring: split into modular structure under balance_workbook/ package:
-  - _utils.py: shared utilities (group_rows, weighted_average, etc.) [DONE]
-  - _cards.py: _build_cards
-  - _bond_tables.py: bond_business_type, maturity_gap, issuer_concentration, etc.
-  - _ifrs9_tables.py: ifrs9_classification, ifrs9_position_scope, ifrs9_source_family
-  - _risk_tables.py: regulatory_limits, overdue_credit_quality, risk_alerts
-  - _analysis_tables.py: campisi, cross_analysis, decision_items, event_calendar
-  - builder.py: main entry point [DONE]
-
-For now, this file remains intact to avoid breaking existing imports.
-New code should import from balance_workbook package instead.
+CANONICAL STATUS (2026-08-12，取代 2026-04-17 的迁移注释；canonical 反转已于
+2026-07-20 修复，见 f9697fe4b):
+- 本模块是 balance workbook 的生产权威编排入口。
+  `build_balance_analysis_workbook_payload` 的正式实现在此维护，
+  `backend/app/core_finance/__init__.py` 的公开导出也委托到这里。
+- `balance_workbook/` 包不再是迁移目标，其角色是：
+  - `builder.py`: 纯委托壳（compatibility shell），公开入口直接委托回本模块，
+    防止包路径与生产实现漂移；
+  - `_utils.py` / `_bond_tables.py` / `_ifrs9_tables.py` / `_risk_tables.py` /
+    `_analysis_tables.py`: 拆分出的子模块副本，不在生产调用路径上，由等价性
+    测试钉住与本模块输出一致（tests/test_balance_workbook_cross_scope.py、
+    tests/test_balance_workbook_campisi_rate.py 等）。
+- 修改 workbook 逻辑时改本模块；若涉及包内副本覆盖的逻辑，需同步维护副本
+  以保持等价性测试通过。新代码 import 本模块或 core_finance 包根即可，
+  不要再把 `balance_workbook/` 包当作"新实现"入口。
 """
 from __future__ import annotations
 

@@ -214,13 +214,6 @@ def _setup_bond_analytics(tmp_path: Path, monkeypatch: Any) -> tuple[TestClient,
         "backend.app.services.bond_analytics_service",
         "backend/app/services/bond_analytics_service.py",
     )
-    monkeypatch.setattr(
-        service_mod,
-        "_prepare_yield_curve_inputs_for_refresh",
-        lambda **_kwargs: (_ for _ in ()).throw(
-            AssertionError("bond analytics request path must not prepare yield curves")
-        ),
-    )
     monkeypatch.setattr(service_mod.materialize_bond_analytics_facts, "send", lambda **kwargs: calls.append(kwargs))
     return _main_client(), calls
 
