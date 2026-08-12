@@ -393,6 +393,62 @@ describe("DashboardHomeOptionTwoBody", () => {
     expect(riskPanel.querySelectorAll("[data-priority]")).toHaveLength(3);
   });
 
+  it("lets pending decision previews take recommendation slots and keeps the count honest", () => {
+    const baseFirstScreenView = createMockHomeFirstScreenView();
+    const seedAction = baseFirstScreenView.decisionRail.actions[0]!;
+    const firstScreenView = {
+      ...baseFirstScreenView,
+      decisionRail: {
+        ...baseFirstScreenView.decisionRail,
+        actions: Array.from({ length: 4 }, (_, index) => ({
+          ...seedAction,
+          id: `risk-review-${index + 1}`,
+        })),
+      },
+    };
+    const baseView = mapToHomeBodyView({
+      reportDate: "2026-06-30",
+      useMockFallback: true,
+    } as MapToHomeBodyViewInput);
+    const view = {
+      ...baseView,
+      decisionItemsPreview: [
+        {
+          id: "gap-review",
+          title: "复核期限缺口",
+          severity: "high" as const,
+          actionLabel: "去复核",
+          reason: "3-5 年缺口扩大",
+        },
+        {
+          id: "concentration-review",
+          title: "关注集中度",
+          severity: "medium" as const,
+          actionLabel: "去复核",
+          reason: "",
+        },
+      ],
+      decisionItemsState: { kind: "ready" as const, label: "2 项待处理" },
+      decisionItemsReportDate: "2026-07-31",
+    };
+
+    render(
+      <MemoryRouter>
+        <DashboardHomeOptionTwoBody firstScreenView={firstScreenView} view={view} />
+      </MemoryRouter>,
+    );
+
+    const riskPanel = screen.getByTestId("dashboard-home-risk-exposure");
+    // 2 条待复核预览挤占建议槽位后仍保持总量 3，计数与可见行一致。
+    expect(screen.getAllByTestId("dashboard-home-decision-preview-row")).toHaveLength(2);
+    expect(riskPanel).toHaveTextContent(/观测 3 · 治理待办/);
+    expect(riskPanel.querySelectorAll("[data-priority]")).toHaveLength(3);
+    // 跨域来源标注只在首行出现一次，第二行显示行级事由。
+    expect(riskPanel).toHaveTextContent("余额分析台账 · 截至 2026-07-31");
+    const previewRows = screen.getAllByTestId("dashboard-home-decision-preview-row");
+    expect(previewRows[1]).not.toHaveTextContent("截至 2026-07-31");
+  });
+
   it("counts loading and empty core modules as attention states", () => {
     const baseView = mapToHomeBodyView({
       reportDate: "2026-06-30",

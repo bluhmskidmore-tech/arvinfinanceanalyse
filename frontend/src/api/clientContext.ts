@@ -84,6 +84,7 @@ const HOME_SUPPLEMENTAL_METHODS = new Set<keyof HomeSupplementalClientMethods>([
   "getBondAnalyticsReturnDecomposition",
   "getPnlCampisiFourEffects",
   "getBondAnalyticsYieldCurveTermStructure",
+  "getBondAnalyticsKrdCurveRisk",
   "getBalanceAnalysisDates",
   "getBalanceAnalysisOverview",
   "getBalanceAnalysisSummary",

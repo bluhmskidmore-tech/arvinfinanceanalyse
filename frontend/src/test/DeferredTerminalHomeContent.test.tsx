@@ -36,6 +36,8 @@ function createHydration(
       maxDragValue: "4.20",
       maxContributionLabel: "carry",
       maxContributionValue: "1.20",
+      hasDrag: true,
+      hasContribution: true,
       keyRisk: "no new risk",
       suggestions: [{ id: "monitor", text: "monitor" }],
       actions: [],

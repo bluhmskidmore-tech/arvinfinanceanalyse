@@ -169,6 +169,8 @@ export type HomeKrdBucketRow = {
   tenor: string;
   dv01Display: string;
   dv01Raw: number | null;
+  /** 相对最大桶的条宽百分比；无数值时为 null（不画条）。 */
+  barWidthPct: number | null;
 };
 
 /** 待复核事项预览（来自 /ui/balance-analysis/decision-items，pending 优先）。 */
@@ -822,7 +824,8 @@ function buildKrdBucketRows(args: {
   if (state.kind !== "ready") {
     return { rows: [], state };
   }
-  const rows = args.payload.krd_buckets
+  // raw 单位为 元/bp，/1e4 转「万元/bp」，与债券分析页 formatDv01Wan 口径一致。
+  const sorted = args.payload.krd_buckets
     .map((bucket, index) => {
       const raw = numericRaw(bucket.dv01);
       return {
@@ -839,7 +842,20 @@ function buildKrdBucketRows(args: {
       };
     })
     .sort((a, b) => krdTenorSortKey(a.tenor) - krdTenorSortKey(b.tenor));
-  return { rows, state };
+  const maxAbs = Math.max(
+    1e-9,
+    ...sorted.map((row) => Math.abs(row.dv01Raw ?? 0)),
+  );
+  return {
+    rows: sorted.map((row) => ({
+      ...row,
+      barWidthPct:
+        row.dv01Raw == null
+          ? null
+          : Math.max(2, (Math.abs(row.dv01Raw) / maxAbs) * 100),
+    })),
+    state,
+  };
 }
 
 /** 期限文本转年限（"6M"→0.5、"10Y"→10），无法解析的排最后。 */
@@ -884,7 +900,8 @@ function buildDecisionItemsPreview(args: {
     .sort(
       (a, b) =>
         DECISION_SEVERITY_ORDER[normalizeDecisionSeverity(a.severity)] -
-        DECISION_SEVERITY_ORDER[normalizeDecisionSeverity(b.severity)],
+          DECISION_SEVERITY_ORDER[normalizeDecisionSeverity(b.severity)] ||
+        a.decision_key.localeCompare(b.decision_key),
     )
     .slice(0, 2)
     .map((row) => ({

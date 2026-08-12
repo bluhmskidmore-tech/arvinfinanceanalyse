@@ -196,34 +196,30 @@ function MarketCurvePanel({ view }: { view: DashboardHomeBodyView }) {
             各期限 DV01
             <small>万元/bp</small>
           </span>
-          {(() => {
-            const buckets = view.krdBuckets.slice(0, 8);
-            const maxAbs = Math.max(
-              1e-9,
-              ...buckets.map((bucket) => Math.abs(bucket.dv01Raw ?? 0)),
-            );
-            return buckets.map((bucket) => (
-              <div
-                key={bucket.id}
-                className={styles.krdRow}
-                title={`${bucket.tenor} DV01 ${bucket.dv01Display}（利率上行 1bp 的估值敏感度）`}
-              >
-                <span>{bucket.tenor}</span>
-                <i aria-hidden="true">
-                  <b
-                    style={{
-                      width: `${Math.max(
-                        2,
-                        (Math.abs(bucket.dv01Raw ?? 0) / maxAbs) * 100,
-                      ).toFixed(1)}%`,
-                    }}
-                  />
-                </i>
-                <strong>{bucket.dv01Display}</strong>
-              </div>
-            ));
-          })()}
+          {view.krdBuckets.map((bucket) => (
+            <div
+              key={bucket.id}
+              className={styles.krdRow}
+              title={`${bucket.tenor} DV01 ${bucket.dv01Display}（利率上行 1bp 的估值敏感度）`}
+            >
+              <span>{bucket.tenor}</span>
+              <i aria-hidden="true">
+                {bucket.barWidthPct != null ? (
+                  <b style={{ width: `${bucket.barWidthPct.toFixed(1)}%` }} />
+                ) : null}
+              </i>
+              <strong>{bucket.dv01Display}</strong>
+            </div>
+          ))}
         </div>
+      ) : view.krdState.kind !== "ready" && view.krdState.kind !== "empty" ? (
+        <p
+          className={styles.krdStripNotice}
+          data-state={view.krdState.kind}
+          role="status"
+        >
+          {view.krdState.label}
+        </p>
       ) : null}
 
       <div className={styles.tableScroller}>

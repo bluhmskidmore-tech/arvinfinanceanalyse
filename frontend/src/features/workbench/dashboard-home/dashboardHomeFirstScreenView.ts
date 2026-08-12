@@ -812,6 +812,8 @@ function attributionExtremes(attribution: HomeSnapshotPnlAttributionVM | null): 
   maxDragValue: string;
   maxContributionLabel: string;
   maxContributionValue: string;
+  hasDrag: boolean;
+  hasContribution: boolean;
 } {
   let drag: { label: string; raw: number; display: string } | null = null;
   let contribution: { label: string; raw: number; display: string } | null = null;
@@ -832,6 +834,8 @@ function attributionExtremes(attribution: HomeSnapshotPnlAttributionVM | null): 
     maxDragValue: drag?.display ?? GAP,
     maxContributionLabel: contribution?.label ?? GAP,
     maxContributionValue: contribution?.display ?? GAP,
+    hasDrag: drag != null,
+    hasContribution: contribution != null,
   };
 }
 

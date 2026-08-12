@@ -292,12 +292,14 @@ export function useDashboardHomeViewModel(
   });
 
   // 待复核事项走余额分析域：日期取该域最新报告日，与债券报告日分属两个口径。
+  const decisionItemsGateOpen =
+    hasDeferredSupplementalReportDate && hasBodyDetailData && hasBodyStructureData;
   const balanceDatesQuery = useQuery({
-    queryKey: ["balance-analysis", "dates"],
+    queryKey: apiQueryKeys.balanceAnalysisDates(dataClient.mode),
     queryFn: () => dataClient.getBalanceAnalysisDates(),
     retry: false,
     staleTime: 60_000,
-    enabled: hasDeferredSupplementalReportDate && hasBodyDetailData && hasBodyStructureData,
+    enabled: decisionItemsGateOpen,
   });
   const latestBalanceReportDate = useMemo(() => {
     const dates = balanceDatesQuery.data?.result?.report_dates ?? [];
@@ -318,7 +320,7 @@ export function useDashboardHomeViewModel(
       }),
     retry: false,
     staleTime: 60_000,
-    enabled: Boolean(latestBalanceReportDate),
+    enabled: decisionItemsGateOpen && Boolean(latestBalanceReportDate),
   });
 
   const { macroReleaseContextQuery } = useDashboardHomeMacroReleaseContextQuery({

@@ -131,6 +131,9 @@ export type HomeDecisionRail = {
   maxDragValue: string;
   maxContributionLabel: string;
   maxContributionValue: string;
+  /** 语义布尔：组件据此判断是否渲染徽标，避免与占位符文本做字面量比较。 */
+  hasDrag: boolean;
+  hasContribution: boolean;
   keyRisk: string;
   suggestions: readonly HomeDecisionSuggestion[];
   actions: readonly HomeDecisionAction[];

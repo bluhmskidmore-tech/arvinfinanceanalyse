@@ -126,6 +126,13 @@ function createRealModeHomeClient(overrides: Partial<ApiClient> = {}): ApiClient
   return {
     ...base,
     getHomeSnapshot: (...args) => mockSnapshotSource.getHomeSnapshot(...args),
+    // 分层门控打开后首页会请求的跨域补充接口：统一走 mock 本地实现，
+    // 避免 jsdom 里发真实 fetch 产生网络错误噪音。
+    getBondAnalyticsKrdCurveRisk: (...args) =>
+      mockSnapshotSource.getBondAnalyticsKrdCurveRisk(...args),
+    getBalanceAnalysisDates: (...args) => mockSnapshotSource.getBalanceAnalysisDates(...args),
+    getBalanceAnalysisDecisionItems: (...args) =>
+      mockSnapshotSource.getBalanceAnalysisDecisionItems(...args),
     ...overrides,
   };
 }
@@ -412,6 +419,8 @@ function createSupplementalHomeSpies(mockSnapshotSource: ApiClient) {
     getBondAnalyticsReturnDecomposition: vi.fn(mockSnapshotSource.getBondAnalyticsReturnDecomposition),
     getPnlCampisiFourEffects: vi.fn(mockSnapshotSource.getPnlCampisiFourEffects),
     getBondAnalyticsYieldCurveTermStructure: vi.fn(mockSnapshotSource.getBondAnalyticsYieldCurveTermStructure),
+    getBondAnalyticsKrdCurveRisk: vi.fn(mockSnapshotSource.getBondAnalyticsKrdCurveRisk),
+    getBalanceAnalysisDates: vi.fn(mockSnapshotSource.getBalanceAnalysisDates),
     getBalanceAnalysisDecisionItems: vi.fn(mockSnapshotSource.getBalanceAnalysisDecisionItems),
     getResearchCalendarEvents: vi.fn(async () => []),
     getChoiceNewsEvents: vi.fn(mockSnapshotSource.getChoiceNewsEvents),

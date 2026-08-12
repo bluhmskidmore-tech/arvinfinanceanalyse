@@ -685,7 +685,7 @@
 
 .attributionHints em {
   font-family: var(--option-two-font-data);
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   font-variant-numeric: tabular-nums;
   font-weight: 600;
@@ -823,7 +823,8 @@
   color: var(--option-two-amber) !important;
 }
 
-.page [data-tone="muted"] {
+.page [data-tone="muted"],
+.page [data-tone="flat"] {
   color: var(--option-two-muted) !important;
 }
 
@@ -3267,6 +3268,12 @@
 
   /* 92px 预算装不下走势线：该断点整体隐藏，保住数值与变动的可读性。 */
   .kpiSparkSlot {
+    display: none;
+  }
+
+  /* 同一 92px 预算下徽标行会把「进入专题页」链接挤出 overflow:hidden 容器，
+     此断点让位给关键动作链接。 */
+  .attributionHints {
     display: none;
   }
 

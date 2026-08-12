@@ -162,6 +162,8 @@ function firstScreenView(
       maxDragValue: "-1.00",
       maxContributionLabel: "carry",
       maxContributionValue: "+0.20",
+      hasDrag: true,
+      hasContribution: true,
       keyRisk: "duration",
       suggestions: [
         {

@@ -304,6 +304,7 @@ export function DashboardHomeOptionTwoBody({
     .slice(0, 3);
   const visibleRiskMetrics = [...riskPrimaryMetrics, ...riskSecondaryMetrics].slice(0, 5);
   // Top5 主体集中度来自首屏快照的风险条（portfolio headlines），风险概览此前未呈现。
+  // 替换与首屏 KPI 带完全重复的 DV01 格（§6 去重），保持 5 格避免窄面板挤压数值。
   const top5Concentration = firstScreenView.keyRiskStrip.find(
     (item) => item.id === "risk-top5",
   );
@@ -311,11 +312,19 @@ export function DashboardHomeOptionTwoBody({
     top5Concentration &&
     !visibleRiskMetrics.some((metric) => metric.id === top5Concentration.id)
   ) {
-    visibleRiskMetrics.push({
+    const duplicateDv01Index = visibleRiskMetrics.findIndex((metric) =>
+      metric.label.toUpperCase().includes("DV01"),
+    );
+    const top5Metric = {
       id: top5Concentration.id,
       label: top5Concentration.label,
       value: top5Concentration.value,
-    });
+    };
+    if (duplicateDv01Index >= 0) {
+      visibleRiskMetrics.splice(duplicateDv01Index, 1, top5Metric);
+    } else if (visibleRiskMetrics.length < 5) {
+      visibleRiskMetrics.push(top5Metric);
+    }
   }
   // 待复核事项预览（余额分析台账 pending 前 2 条）优先占用观测行槽位。
   const decisionPreviewRows = view.decisionItemsPreview.slice(0, 2);
@@ -589,7 +598,17 @@ export function DashboardHomeOptionTwoBody({
           </section>
           <section className={styles.actionList} aria-label="风险观测与建议">
             <h3>风险观测与建议</h3>
-            {decisionPreviewRows.map((item) => (
+            {view.decisionItemsState.kind === "loading" ||
+            view.decisionItemsState.kind === "error" ? (
+              <p
+                data-state={view.decisionItemsState.kind}
+                data-testid="dashboard-home-decision-preview-state"
+                role="status"
+              >
+                {view.decisionItemsState.label}
+              </p>
+            ) : null}
+            {decisionPreviewRows.map((item, index) => (
               <div
                 key={`decision-preview-${item.id}`}
                 data-priority={item.severity === "high" ? "high" : "medium"}
@@ -598,10 +617,16 @@ export function DashboardHomeOptionTwoBody({
                 <span>
                   <LightIcon name={item.severity === "high" ? "alert" : "warning"} />
                   <strong title={item.reason || item.title}>{item.title}</strong>
-                  <small>
-                    {view.decisionItemsReportDate
+                  <small
+                    title={
+                      view.decisionItemsReportDate
+                        ? `余额分析台账 · 截至 ${view.decisionItemsReportDate}`
+                        : "余额分析台账"
+                    }
+                  >
+                    {index === 0 && view.decisionItemsReportDate
                       ? `余额分析台账 · 截至 ${view.decisionItemsReportDate}`
-                      : "余额分析台账"}
+                      : item.reason || "余额分析台账"}
                   </small>
                 </span>
                 <Link
@@ -650,7 +675,10 @@ export function DashboardHomeOptionTwoBody({
                   )}
                 </div>
               ))
-            ) : visibleRiskObservations.length === 0 && decisionPreviewCount === 0 ? (
+            ) : visibleRiskObservations.length === 0 &&
+              decisionPreviewCount === 0 &&
+              view.decisionItemsState.kind !== "loading" &&
+              view.decisionItemsState.kind !== "error" ? (
               <p>
                 {firstScreenView.headerStatus.governanceFeedAvailable === true
                   ? "暂无治理待办或风险观测"

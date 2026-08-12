@@ -141,7 +141,7 @@ export default function DecisionItemsPage() {
   }, [isDashboardRiskReviewQueue, linkedReportDate]);
 
   const datesQuery = useQuery({
-    queryKey: ["balance-analysis", "dates"],
+    queryKey: apiQueryKeys.balanceAnalysisDates(client.mode),
     queryFn: () => client.getBalanceAnalysisDates(),
   });
 

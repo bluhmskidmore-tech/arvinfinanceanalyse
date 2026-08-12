@@ -240,6 +240,8 @@ export const apiQueryKeys = {
       lookbackDays,
       detail,
     ] as const,
+  balanceAnalysisDates: (mode: string) =>
+    ["balance-analysis", "dates", mode] as const,
   balanceAnalysisDecisionItems: (
     mode: string,
     reportDate: string | null | undefined,

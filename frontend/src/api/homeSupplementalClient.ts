@@ -27,6 +27,7 @@ import type {
   Numeric,
   NumericUnit,
   PortfolioComparisonPayload,
+  KRDCurveRiskPayload,
   ReturnDecompositionPayload,
   RiskIndicatorsPayload,
   YieldCurveTermStructurePayload,
@@ -50,6 +51,7 @@ export type HomeSupplementalClientMethods = Pick<
   | "getBondAnalyticsReturnDecomposition"
   | "getPnlCampisiFourEffects"
   | "getBondAnalyticsYieldCurveTermStructure"
+  | "getBondAnalyticsKrdCurveRisk"
   | "getBalanceAnalysisDates"
   | "getBalanceAnalysisOverview"
   | "getBalanceAnalysisSummaryByBasis"
@@ -465,6 +467,20 @@ export function createRealHomeSupplementalClient({
         fetchImpl,
         baseUrl,
         `/api/bond-analytics/yield-curve-term-structure?${params.toString()}`,
+      );
+    },
+    getBondAnalyticsKrdCurveRisk: (
+      reportDate: string,
+      options?: { scenarioSet?: string },
+    ) => {
+      const params = new URLSearchParams({ report_date: reportDate });
+      if (options?.scenarioSet) {
+        params.set("scenario_set", options.scenarioSet);
+      }
+      return requestJson<KRDCurveRiskPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-analytics/krd-curve-risk?${params.toString()}`,
       );
     },
     getBalanceAnalysisDates: () =>

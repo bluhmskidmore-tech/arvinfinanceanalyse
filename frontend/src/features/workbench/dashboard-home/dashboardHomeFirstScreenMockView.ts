@@ -51,6 +51,8 @@ export function createMockHomeFirstScreenView(): DashboardHomeFirstScreenView {
       maxDragValue: "-512.34",
       maxContributionLabel: "信用利差",
       maxContributionValue: "+286.21",
+      hasDrag: true,
+      hasContribution: true,
       keyRisk: "Top5 集中度 41.35%；久期较前期小幅抬升。",
       suggestions: [
         {

@@ -367,13 +367,12 @@ export function DashboardHomeOptionTwoOverview({
             </div>
             <h3>{decisionTitle(view.decisionRail.conclusion)}</h3>
             <p title={decisionReason}>{decisionReason}</p>
-            {view.decisionRail.maxContributionLabel !== "—" ||
-            view.decisionRail.maxDragLabel !== "—" ? (
+            {view.decisionRail.hasContribution || view.decisionRail.hasDrag ? (
               <div
                 className={styles.attributionHints}
                 data-testid="dashboard-home-attribution-hints"
               >
-                {view.decisionRail.maxContributionLabel !== "—" ? (
+                {view.decisionRail.hasContribution ? (
                   <span
                     title={`最大贡献 ${view.decisionRail.maxContributionLabel} ${view.decisionRail.maxContributionValue}（来自快照经营贡献拆解）`}
                   >
@@ -381,7 +380,7 @@ export function DashboardHomeOptionTwoOverview({
                     <em data-tone="up">{view.decisionRail.maxContributionValue}</em>
                   </span>
                 ) : null}
-                {view.decisionRail.maxDragLabel !== "—" ? (
+                {view.decisionRail.hasDrag ? (
                   <span
                     title={`最大拖累 ${view.decisionRail.maxDragLabel} ${view.decisionRail.maxDragValue}（来自快照经营贡献拆解）`}
                   >

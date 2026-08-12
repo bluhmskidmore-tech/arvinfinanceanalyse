@@ -179,10 +179,27 @@
   min-width: 72px;
   color: var(--option-two-ink);
   font-family: var(--option-two-font-data);
-  font-size: 11px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
   font-weight: 500;
   text-align: right;
+}
+
+.krdStripNotice {
+  margin: 0;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--option-two-line);
+  color: var(--option-two-muted);
+  font-size: 10.5px;
+}
+
+.krdStripNotice[data-state="error"] {
+  color: var(--option-two-red);
+}
+
+.krdStripNotice[data-state="stale"],
+.krdStripNotice[data-state="partial"] {
+  color: var(--option-two-amber);
 }
 
 .tableScroller {
