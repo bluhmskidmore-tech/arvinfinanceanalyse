@@ -3885,6 +3885,8 @@ def _macro_output_health_status(
         return "unknown"
     if _is_generation_evidence_artifact(name):
         return _macro_generation_freshness(content_date or modified_date, reference_date)
+    if _is_monthly_cadence_artifact(name):
+        return _macro_monthly_output_freshness(content_date, reference_date)
     if content_date_min and content_date_max and content_date_min != content_date_max:
         if _is_history_artifact(name):
             return _macro_output_freshness(content_date, reference_date)
@@ -3901,6 +3903,36 @@ def _is_history_artifact(name: str) -> bool:
 
 def _is_generation_evidence_artifact(name: str) -> bool:
     return Path(name).name.lower() in {"risk_state.csv", "risk_log.csv"}
+
+
+# 内容为月度频率的产物：新鲜度按月度容差判定（日度精确相等口径会让它们结构性 stale）。
+_MONTHLY_CADENCE_ARTIFACTS = frozenset({"merrill_clock_latest.csv", "merrill_clock_history.csv"})
+
+
+def _is_monthly_cadence_artifact(name: str) -> bool:
+    return Path(name).name.lower() in _MONTHLY_CADENCE_ARTIFACTS
+
+
+def _macro_monthly_output_freshness(output_date: str | None, reference_date: str | None) -> str:
+    """月度产物新鲜度：内容月份不早于基准日上月即 current。
+
+    月度宏观数据（如 CPI/PMI/社融）在次月中上旬才发布，"基准月或上月"的内容
+    即为最新可得；早于上月说明该发布的数据未入库，判 stale。
+    """
+    if not output_date:
+        return "unknown"
+    if not reference_date:
+        return "present"
+    try:
+        output_day = date.fromisoformat(output_date[:10])
+        reference_day = date.fromisoformat(reference_date[:10])
+    except ValueError:
+        return "unknown"
+    output_month = output_day.year * 12 + output_day.month
+    reference_month = reference_day.year * 12 + reference_day.month
+    if output_month > reference_month:
+        return "future"
+    return "current" if output_month >= reference_month - 1 else "stale"
 
 
 def _macro_output_freshness(output_date: str | None, reference_date: str | None) -> str:
