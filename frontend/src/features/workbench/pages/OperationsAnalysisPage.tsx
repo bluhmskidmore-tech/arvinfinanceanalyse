@@ -7,6 +7,7 @@ import type { ApiEnvelope, BalanceAnalysisOverviewPayload, ResultMeta } from "..
 import { AlertList } from "../../../components/AlertList";
 import { CalendarList } from "../../../components/CalendarList";
 import { FilterBar } from "../../../components/FilterBar";
+import { DataSourceBadge } from "../../../components/StatusPill";
 import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
 import {
   PageFilterTray,
@@ -641,6 +642,14 @@ export default function OperationsAnalysisPage() {
             </div>
           </OperationsPanel>
           <OperationsPanel title="本期关注事项（静态示例）">
+            <div>
+              <DataSourceBadge
+                status="mock"
+                label="静态示例数据"
+                testId="operations-watch-static-sample-badge"
+                title="静态占位示例，未接入真实数据源，不作正式判断"
+              />
+            </div>
             <AlertList items={OPERATIONS_WATCH_ITEMS} />
           </OperationsPanel>
         </div>
@@ -673,6 +682,14 @@ export default function OperationsAnalysisPage() {
           />
           <div className="operations-analysis-page__side-stack">
             <OperationsPanel title="近期经营日历（静态示例）">
+              <div>
+                <DataSourceBadge
+                  status="mock"
+                  label="静态示例数据"
+                  testId="operations-calendar-static-sample-badge"
+                  title="静态占位示例，未接入真实数据源，不作正式判断"
+                />
+              </div>
               <CalendarList items={OPERATIONS_CALENDAR_MOCK} />
             </OperationsPanel>
             <ManagementOutput

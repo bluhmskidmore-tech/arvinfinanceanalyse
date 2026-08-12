@@ -805,7 +805,11 @@ function sourceKindLabel(sourceKind: BusinessMomMove["sourceKind"]) {
   return sourceKind === "zqtz" ? "证券投资辅助" : "总账";
 }
 
-function moveDeltaToneClass(value: number) {
+function moveDeltaToneClass(value: number | null) {
+  // 缺失≠零：null 不得套用持平色阶，只有有限数值才有方向/持平色。
+  if (value === null) {
+    return "";
+  }
   if (value > 0) {
     return "balance-movement-top-moves-table__delta balance-movement-top-moves-table__delta--up";
   }
@@ -823,7 +827,8 @@ function sourceNotePreview(sourceNote: string | undefined) {
 }
 
 function movementDirection(value: string | number | null | undefined) {
-  const n = numericValue(value);
+  const n = finiteMetric(value);
+  if (n === null) return EM_DASH;
   if (n > 0) return "增加";
   if (n < 0) return "减少";
   return "持平";
@@ -1423,7 +1428,9 @@ function FigmaDecisionHero({
   reconciliationLabel: string;
   currencyBasis: string;
 }) {
-  const direction = numericValue(balanceChangeTotal) > 0 ? "上升" : numericValue(balanceChangeTotal) < 0 ? "下降" : "持平";
+  const balanceChangeValue = finiteMetric(balanceChangeTotal);
+  const direction =
+    balanceChangeValue === null ? EM_DASH : balanceChangeValue > 0 ? "上升" : balanceChangeValue < 0 ? "下降" : "持平";
   const structureDirection = (topDriver.shareDelta ?? 0) >= 0 ? "抬升" : "回落";
   const tplDriver = movementDrivers.find((driver) => driver.bucket === "TPL");
   const ociDriver = movementDrivers.find((driver) => driver.bucket === "OCI");
@@ -3105,7 +3112,7 @@ function ZqtzMaturityStructurePanel({
               >
                 <div className="balance-movement-maturity-ladder__readout">
                   <strong>{formatYiCell(bucket.current_amount)} · {formatPct(bucket.share_pct)}</strong>
-                  <span className={moveDeltaToneClass(finiteMetric(bucket.delta_amount) ?? 0)}>{formatSignedYiCell(bucket.delta_amount)} 亿</span>
+                  <span className={moveDeltaToneClass(finiteMetric(bucket.delta_amount))}>{formatSignedYiCell(bucket.delta_amount)} 亿</span>
                 </div>
                 <div className="balance-movement-maturity-ladder__bar-track">
                   <svg className="balance-movement-maturity-ladder__bar" viewBox="0 0 40 100" preserveAspectRatio="none" aria-hidden>
@@ -3140,7 +3147,7 @@ function ZqtzMaturityStructurePanel({
                 <th scope="row">{bucket.bucket_label}</th>
                 <td>{formatYiCell(bucket.current_amount)} 亿</td>
                 <td>{formatYiCell(bucket.prior_amount)} 亿</td>
-                <td className={moveDeltaToneClass(finiteMetric(bucket.delta_amount) ?? 0)}>{formatSignedYiCell(bucket.delta_amount)} 亿</td>
+                <td className={moveDeltaToneClass(finiteMetric(bucket.delta_amount))}>{formatSignedYiCell(bucket.delta_amount)} 亿</td>
                 <td>{formatPct(bucket.share_pct)}</td>
                 <td>{bucket.item_count}</td>
               </tr>
@@ -3178,7 +3185,7 @@ function ConcentrationRow({
       <strong title={item.dimension_value}>{item.dimension_value}</strong>
       <progress max={100} value={share} aria-label={`${item.dimension_value} ${formatPct(item.share_pct)}`} />
       <span>{formatYiCell(item.current_amount)}</span>
-      <em className={moveDeltaToneClass(finiteMetric(item.delta_amount) ?? 0)}>
+      <em className={moveDeltaToneClass(finiteMetric(item.delta_amount))}>
         {formatSignedYiCell(item.delta_amount)}
       </em>
       <span>{formatPct(item.share_pct)}</span>

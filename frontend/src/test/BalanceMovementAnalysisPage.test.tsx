@@ -730,6 +730,9 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(screen.getByTestId("balance-movement-analysis-business-summary")).not.toHaveTextContent(
       "持平 0.00 亿",
     );
+    const conclusion = screen.getByTestId("balance-movement-analysis-conclusion");
+    expect(conclusion).toHaveTextContent("余额—");
+    expect(conclusion).not.toHaveTextContent("余额持平");
   });
 
   it("keeps a real zero total balance change as flat zero", async () => {
@@ -755,6 +758,121 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(screen.getByTestId("balance-movement-analysis-business-summary")).toHaveTextContent(
       "本月总余额持平 0.00 亿",
     );
+    expect(screen.getByTestId("balance-movement-analysis-conclusion")).toHaveTextContent(
+      "余额持平",
+    );
+  });
+
+  it("keeps missing zqtz deltas as em dash without any delta tone", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const missingDeltaClient: typeof baseClient = {
+      ...baseClient,
+      async getBalanceMovementAnalysis(options) {
+        const envelope = await baseClient.getBalanceMovementAnalysis(options);
+        const maturity = envelope.result.zqtz_maturity_structure;
+        const concentration = envelope.result.zqtz_concentration_analysis;
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            zqtz_maturity_structure: maturity
+              ? {
+                  ...maturity,
+                  buckets: maturity.buckets.map((bucket) => ({
+                    ...bucket,
+                    delta_amount: null as unknown as string,
+                  })),
+                }
+              : maturity,
+            zqtz_concentration_analysis: concentration
+              ? {
+                  ...concentration,
+                  dimensions: concentration.dimensions.map((dimension) => ({
+                    ...dimension,
+                    items: dimension.items.map((item) => ({ ...item, delta_amount: null })),
+                  })),
+                }
+              : concentration,
+          },
+        };
+      },
+    };
+
+    renderWorkbenchApp(["/balance-movement-analysis"], { client: missingDeltaClient });
+
+    const maturitySection = await screen.findByTestId("balance-movement-analysis-zqtz-maturity");
+    expect(within(maturitySection).getAllByText("— 亿").length).toBeGreaterThan(0);
+    expect(
+      maturitySection.querySelectorAll(".balance-movement-top-moves-table__delta"),
+    ).toHaveLength(0);
+
+    const concentrationSection = screen.getByTestId(
+      "balance-movement-analysis-zqtz-concentration",
+    );
+    const firstConcentrationDelta = concentrationSection.querySelector(
+      ".balance-movement-concentration-row em",
+    );
+    expect(firstConcentrationDelta).toHaveTextContent("—");
+    expect(
+      concentrationSection.querySelectorAll(".balance-movement-top-moves-table__delta"),
+    ).toHaveLength(0);
+  });
+
+  it("keeps real zero zqtz deltas on the flat delta tone", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const zeroDeltaClient: typeof baseClient = {
+      ...baseClient,
+      async getBalanceMovementAnalysis(options) {
+        const envelope = await baseClient.getBalanceMovementAnalysis(options);
+        const maturity = envelope.result.zqtz_maturity_structure;
+        const concentration = envelope.result.zqtz_concentration_analysis;
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            zqtz_maturity_structure: maturity
+              ? {
+                  ...maturity,
+                  buckets: maturity.buckets.map((bucket) => ({ ...bucket, delta_amount: "0" })),
+                }
+              : maturity,
+            zqtz_concentration_analysis: concentration
+              ? {
+                  ...concentration,
+                  dimensions: concentration.dimensions.map((dimension) => ({
+                    ...dimension,
+                    items: dimension.items.map((item) => ({ ...item, delta_amount: "0" })),
+                  })),
+                }
+              : concentration,
+          },
+        };
+      },
+    };
+
+    renderWorkbenchApp(["/balance-movement-analysis"], { client: zeroDeltaClient });
+
+    const maturitySection = await screen.findByTestId("balance-movement-analysis-zqtz-maturity");
+    const flatMaturityDeltas = Array.from(
+      maturitySection.querySelectorAll(".balance-movement-top-moves-table__delta"),
+    );
+    expect(flatMaturityDeltas.length).toBeGreaterThan(0);
+    for (const deltaElement of flatMaturityDeltas) {
+      expect(deltaElement.className).toBe("balance-movement-top-moves-table__delta");
+      expect(deltaElement).toHaveTextContent("0.00 亿");
+    }
+
+    const concentrationSection = screen.getByTestId(
+      "balance-movement-analysis-zqtz-concentration",
+    );
+    const flatConcentrationDeltas = Array.from(
+      concentrationSection.querySelectorAll(".balance-movement-top-moves-table__delta"),
+    );
+    expect(flatConcentrationDeltas.length).toBeGreaterThan(0);
+    for (const deltaElement of flatConcentrationDeltas) {
+      expect(deltaElement.className).toBe("balance-movement-top-moves-table__delta");
+      expect(deltaElement).toHaveTextContent("0.00");
+    }
   });
 
   it.each([
