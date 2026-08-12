@@ -92,7 +92,7 @@ async def import_ledger(
     }
     try:
         run_service.record_ledger_import_transition(status="queued", **transition_args)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001  # 治理后端（jsonl/sql）写入异常面无界；已 error 日志并返回结构化 503
         logger.error(
             "Ledger import queued transition failed run_id=%s error_type=%s.",
             run_id,
@@ -113,7 +113,7 @@ async def import_ledger(
             run_id=run_id,
             governance_dir=str(settings.governance_path),
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001  # broker 入队（vendor SDK）异常面无界；已 error 日志并返回结构化 503
         logger.error(
             "Ledger import queue dispatch failed run_id=%s error_type=%s.",
             run_id,
@@ -126,7 +126,7 @@ async def import_ledger(
                 error_message="Ledger import queue dispatch failed.",
                 **transition_args,
             )
-        except Exception as transition_exc:
+        except Exception as transition_exc:  # noqa: BLE001  # 失败迁移落账属清理路径，不得掩盖原始 503 响应；已 error 日志
             logger.error(
                 "Ledger import dispatch failure transition failed run_id=%s error_type=%s.",
                 run_id,
@@ -199,7 +199,7 @@ def get_ledger_import_status(
             message=str(exc),
             retryable=False,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001  # 端点顶层兜底：治理读取跨后端异常面无界；已 error 日志并返回结构化 503
         logger.error(
             "Ledger import status read failed run_id=%s error_type=%s.",
             str(run_id or "").strip(),

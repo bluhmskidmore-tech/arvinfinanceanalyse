@@ -245,7 +245,7 @@ def _write_prepared_receipt(path: Path, payload: dict[str, Any]) -> None:
                 raise OSError(errno.EIO, "Prepared receipt write returned zero bytes.")
             offset += written
         os.fsync(descriptor)
-    except BaseException as exc:
+    except BaseException as exc:  # noqa: BLE001  # 耐久性写入边界：须捕获含 KeyboardInterrupt 的一切失败以写入败迹回执，随后原样重抛
         failure = exc
     finally:
         os.close(descriptor)

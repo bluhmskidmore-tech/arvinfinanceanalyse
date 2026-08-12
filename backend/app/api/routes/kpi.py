@@ -175,7 +175,7 @@ def list_kpi_metrics(
             year=year,
             is_active=is_active,
         )
-    except Exception as exc:
+    except kpi_workbench_service.KpiWorkbenchError as exc:
         _raise_workbench_http_error(exc)
 
 
@@ -187,7 +187,7 @@ def get_kpi_metric(
     _ensure_kpi_read_allowed(auth)
     try:
         return kpi_workbench_service.get_metric(dsn=_get_dsn(), metric_id=metric_id)
-    except Exception as exc:
+    except kpi_workbench_service.KpiWorkbenchError as exc:
         _raise_workbench_http_error(exc)
 
 
@@ -204,7 +204,7 @@ def create_kpi_metric(
 
     try:
         return kpi_workbench_service.create_metric(dsn=_get_dsn(), data=_body_dict(body))
-    except Exception as exc:
+    except kpi_workbench_service.KpiWorkbenchError as exc:
         _raise_workbench_http_error(exc)
 
 
@@ -222,7 +222,7 @@ def update_kpi_metric(
 
     try:
         return kpi_workbench_service.update_metric(dsn=_get_dsn(), metric_id=metric_id, data=_body_dict(body))
-    except Exception as exc:
+    except kpi_workbench_service.KpiWorkbenchError as exc:
         _raise_workbench_http_error(exc)
 
 
@@ -239,7 +239,7 @@ def delete_kpi_metric(
 
     try:
         kpi_workbench_service.delete_metric(dsn=_get_dsn(), metric_id=metric_id)
-    except Exception as exc:
+    except kpi_workbench_service.KpiWorkbenchError as exc:
         _raise_workbench_http_error(exc)
 
 
@@ -258,7 +258,7 @@ def get_kpi_values(
             as_of_date=as_of_date,
             include_trace=include_trace,
         )
-    except Exception as exc:
+    except kpi_workbench_service.KpiWorkbenchError as exc:
         _raise_workbench_http_error(exc)
 
 
@@ -275,7 +275,7 @@ def create_kpi_value(
 
     try:
         return kpi_workbench_service.create_value(dsn=_get_dsn(), data=_body_dict(body))
-    except Exception as exc:
+    except kpi_workbench_service.KpiWorkbenchError as exc:
         _raise_workbench_http_error(exc)
 
 
@@ -293,7 +293,7 @@ def update_kpi_value(
 
     try:
         return kpi_workbench_service.update_value(dsn=_get_dsn(), value_id=value_id, data=_body_dict(body))
-    except Exception as exc:
+    except kpi_workbench_service.KpiWorkbenchError as exc:
         _raise_workbench_http_error(exc)
 
 
@@ -315,7 +315,7 @@ def batch_update_kpi_values(
             as_of_date=body.as_of_date,
             items=items,
         )
-    except Exception as exc:
+    except kpi_workbench_service.KpiWorkbenchError as exc:
         _raise_workbench_http_error(exc)
 
 
@@ -346,7 +346,7 @@ def fetch_and_recalc_kpi(
             as_of_date=as_of_date,
             metric_ids=body.metric_ids,
         )
-    except Exception as exc:
+    except kpi_workbench_service.KpiWorkbenchError as exc:
         _raise_workbench_http_error(exc)
 
 
@@ -366,7 +366,7 @@ def get_kpi_report(
             owner_id=owner_id,
             as_of_date=as_of_date,
         )
-    except Exception as exc:
+    except kpi_workbench_service.KpiWorkbenchError as exc:
         _raise_workbench_http_error(exc)
 
     if str(format or "").lower() == "csv":

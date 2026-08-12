@@ -132,7 +132,7 @@ def _materialize_cache_view(
                 )
                 try:
                     cleanup_preview_backups(str(duckdb_file))
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001  # 清理路径：备份清理失败不阻断成功构建，已 warning 日志
                     logger.warning("cleanup failed: %s", e)
 
                 return MaterializeBuildPayload(
@@ -143,7 +143,7 @@ def _materialize_cache_view(
                     preview_sources=[str(summary["source_family"]) for summary in preview_summaries],
                     vendor_version=vendor_version,
                 ).model_dump()
-            except Exception:
+            except Exception:  # noqa: BLE001  # 构建失败顶层兜底：落败迹、恢复快照后原样重抛，无吞错
                 original_error = sys.exc_info()[1]
                 conn.execute(
                     "update phase1_materialize_runs set status = ? where run_id = ?",
@@ -161,7 +161,7 @@ def _materialize_cache_view(
                 append_error: Exception | None = None
                 try:
                     repo.append(CACHE_BUILD_RUN_STREAM, failed_run.model_dump())
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001  # 失败证据落账异常先暂存，快照恢复后作为 RuntimeError 重抛，无吞错
                     append_error = exc
                 if snapshot_ready:
                     try:
@@ -170,7 +170,7 @@ def _materialize_cache_view(
                         raise RuntimeError("Failed to restore preview tables after materialize error") from restore_error
                     try:
                         cleanup_preview_backups(str(duckdb_file))
-                    except Exception as e:
+                    except Exception as e:  # noqa: BLE001  # 清理路径：失败恢复后的备份清理不阻断错误上抛，已 warning 日志
                         logger.warning("cleanup failed: %s", e)
                 if append_error is not None:
                     raise RuntimeError("Failed to append failed materialize lineage") from append_error
