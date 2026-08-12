@@ -10,6 +10,7 @@ from typing import Any
 
 import duckdb
 from backend.app.core_finance.adjusted_returns import PRICE_ADJUSTMENT_MODE
+from backend.app.core_finance.field_normalization import tradable_status_sql_condition
 from backend.app.governance.locks import LockDefinition, acquire_lock
 
 TABLE_HIST = "livermore_candidate_history"
@@ -45,8 +46,15 @@ def mature_livermore_candidate_outcomes(
     duckdb_path: str | Path,
     *,
     evaluation_as_of_date: str | None = None,
+    arbitrate_conflicts: bool = True,
 ) -> dict[str, object]:
-    """Fill only missing candidate outcomes using observations available by the evaluation date."""
+    """Fill only missing candidate outcomes using observations available by the evaluation date.
+
+    ``arbitrate_conflicts``：stored target 与当前修订行情重算 target 不一致时，
+    按 revision-current canonical 仲裁——以当前行情覆盖该 horizon 的日期/收益
+    三元组，旧值完整写入 ``signal_evidence_json.outcome_maturity_audit`` 留痕；
+    置 ``False`` 时保持旧保守行为（仅记录 issue、跳过该 horizon 回补）。
+    """
     evaluation_date = _normalize_evaluation_date(evaluation_as_of_date)
     path = Path(duckdb_path)
     if not path.is_file():
@@ -120,10 +128,11 @@ def mature_livermore_candidate_outcomes(
             horizon_items = {horizon: [] for horizon in _HORIZONS}
             updated_rows = 0
             updated_fields = 0
+            arbitrated_conflict_units = 0
             issues: list[str] = []
             blocked_rows: list[dict[str, object]] = []
             for candidate in candidates:
-                updates, maturity, row_issues, blocked_issue = _candidate_outcome_updates(
+                updates, maturity, row_issues, blocked_issue, row_arbitrations = _candidate_outcome_updates(
                     candidate,
                     observation_window=observation_windows.get(
                         int(candidate["_rowid"]),
@@ -134,8 +143,10 @@ def mature_livermore_candidate_outcomes(
                     evaluation_as_of_date=evaluation_date,
                     run_id=run_id,
                     table_present=table_present,
+                    arbitrate_conflicts=arbitrate_conflicts,
                 )
                 issues.extend(row_issues)
+                arbitrated_conflict_units += row_arbitrations
                 if blocked_issue:
                     blocked_rows.append(
                         {
@@ -165,6 +176,8 @@ def mature_livermore_candidate_outcomes(
         "candidate_row_count": len(candidates),
         "updated_row_count": updated_rows,
         "updated_field_count": updated_fields,
+        "arbitrate_conflicts": arbitrate_conflicts,
+        "arbitrated_conflict_count": arbitrated_conflict_units,
         "blocked_row_count": len(blocked_rows),
         "blocked_rows": blocked_rows,
         "loaded_observation_row_count": loaded_observation_row_count,
@@ -240,11 +253,7 @@ def _load_candidate_observation_windows(
 
     has_trade_status = "tradestatus" in observation_columns
     status_expr = "cast(tradestatus as varchar)" if has_trade_status else "cast(null as varchar)"
-    valid_status_sql = (
-        "lower(trim(trade_status)) in ('trading', '交易', '正常交易')"
-        if has_trade_status
-        else "true"
-    )
+    valid_status_sql = tradable_status_sql_condition("trade_status") if has_trade_status else "true"
     lineage_select = ", ".join(
         f"cast({field} as varchar) as {field}"
         if field in observation_columns
@@ -363,11 +372,7 @@ def _load_market_dates(
     has_trade_status: bool,
 ) -> list[str]:
     status_select = "cast(tradestatus as varchar)" if has_trade_status else "cast(null as varchar)"
-    valid_status_sql = (
-        "lower(trim(trade_status)) in ('trading', '交易', '正常交易')"
-        if has_trade_status
-        else "true"
-    )
+    valid_status_sql = tradable_status_sql_condition("trade_status") if has_trade_status else "true"
     rows = conn.execute(
         f"""
         with normalized as (
@@ -411,13 +416,13 @@ def _required_factor_keys(
             continue
         keys.add((stock_code, snapshot_date))
         valid_bars = observation_windows.get(int(candidate["_rowid"]), {}).get("valid_bars", [])
-        for horizon, bar_count in _HORIZONS.items():
+        for _horizon, bar_count in _HORIZONS.items():
             if len(valid_bars) < bar_count:
                 continue
+            # stored 与 computed 冲突时仲裁分支同样需要新目标日因子，
+            # 因此无条件收集 computed 目标日的因子键。
             computed_target_date = str(valid_bars[bar_count - 1]["trade_date"])
-            stored_target_date = _normalize_date_value(candidate.get(f"forward_trade_date_{horizon}"))
-            if stored_target_date is None or stored_target_date == computed_target_date:
-                keys.add((stock_code, computed_target_date))
+            keys.add((stock_code, computed_target_date))
     return keys
 
 
@@ -577,7 +582,8 @@ def _candidate_outcome_updates(
     evaluation_as_of_date: str,
     run_id: str,
     table_present: list[str],
-) -> tuple[dict[str, Any], dict[str, dict[str, Any]], list[str], str | None]:
+    arbitrate_conflicts: bool,
+) -> tuple[dict[str, Any], dict[str, dict[str, Any]], list[str], str | None, int]:
     snapshot_date = _normalize_date_value(candidate.get("snapshot_as_of_date"))
     stock_code = str(candidate.get("stock_code") or "").strip().upper()
     selection_close = _finite_positive_float(candidate.get("selection_close"))
@@ -587,6 +593,7 @@ def _candidate_outcome_updates(
             _invalid_candidate_maturity(snapshot_date),
             [f"{snapshot_date or '?'}:{stock_code or '?'}:invalid_candidate"],
             None,
+            0,
         )
 
     valid_bars = list(observation_window.get("valid_bars", []))
@@ -601,6 +608,7 @@ def _candidate_outcome_updates(
     target_factor_records: dict[str, dict[str, Any]] = {}
     target_observation_lineage: dict[str, dict[str, str]] = {}
     row_issues: list[str] = []
+    arbitrations: list[dict[str, Any]] = []
 
     for horizon, bar_count in _HORIZONS.items():
         date_column = f"forward_trade_date_{horizon}"
@@ -610,6 +618,7 @@ def _candidate_outcome_updates(
         stored_target_date = _normalize_date_value(candidate.get(date_column))
         target_date: str | None = None
         target_close: float | None = None
+        arbitration: dict[str, Any] | None = None
         if (
             stored_target_date
             and computed_target is not None
@@ -618,7 +627,28 @@ def _candidate_outcome_updates(
             target_date = str(computed_target["trade_date"])
             target_close = float(computed_target["close"])
         elif stored_target_date and computed_target is not None:
-            row_issues.append(f"{snapshot_date}:{stock_code}:{horizon}:stored_target_conflict")
+            if arbitrate_conflicts:
+                # revision-current canonical：当前修订行情的第 N 个有效 bar 覆盖
+                # stored 三元组；旧值随本事件完整写入 audit（conflict_arbitrations）。
+                target_date = str(computed_target["trade_date"])
+                target_close = float(computed_target["close"])
+                updates[date_column] = target_date
+                arbitration = {
+                    "type": "stored_target_conflict",
+                    "horizon": horizon,
+                    "decision": "current_revision_wins",
+                    "reason": "current_revision_calendar_mismatch",
+                    "stored": {
+                        "date": stored_target_date,
+                        "raw": _finite_float(candidate.get(raw_column)),
+                        "adj": _finite_float(candidate.get(adjusted_column)),
+                    },
+                }
+                row_issues.append(
+                    f"{snapshot_date}:{stock_code}:{horizon}:stored_target_conflict_arbitrated"
+                )
+            else:
+                row_issues.append(f"{snapshot_date}:{stock_code}:{horizon}:stored_target_conflict")
         elif candidate.get(date_column) is None and computed_target is not None:
             target_date = str(computed_target["trade_date"])
             target_close = float(computed_target["close"])
@@ -628,7 +658,7 @@ def _candidate_outcome_updates(
             target_observation_lineage[horizon] = dict(computed_target.get("lineage") or {})
 
         raw_return = _finite_float(candidate.get(raw_column))
-        if candidate.get(raw_column) is None and target_close is not None:
+        if (candidate.get(raw_column) is None or arbitration is not None) and target_close is not None:
             raw_return = _finite_float(target_close / selection_close - 1.0)
             if raw_return is not None:
                 updates[raw_column] = raw_return
@@ -639,7 +669,24 @@ def _candidate_outcome_updates(
         if target_factor_record is not None:
             target_factor_records[horizon] = target_factor_record
         adjusted_return = _finite_float(candidate.get(adjusted_column))
-        if candidate.get(adjusted_column) is None and target_close is not None:
+        if arbitration is not None and target_close is not None:
+            # 目标日已变：adjusted return 必须按新日期原子重算；新目标日因子
+            # 缺失时置空，禁止沿用旧日期口径的 adjusted return。
+            adjusted_return = _adjusted_return(
+                start_price=selection_close,
+                start_factor=signal_factor,
+                end_price=target_close,
+                end_factor=target_factor,
+            )
+            updates[adjusted_column] = adjusted_return
+            arbitration["computed"] = {
+                "date": target_date,
+                "close": target_close,
+                "raw": raw_return,
+                "adj": adjusted_return,
+            }
+            arbitrations.append(arbitration)
+        elif candidate.get(adjusted_column) is None and target_close is not None:
             adjusted_return = _adjusted_return(
                 start_price=selection_close,
                 start_factor=signal_factor,
@@ -668,7 +715,8 @@ def _candidate_outcome_updates(
             "snapshot_as_of_date": snapshot_date,
         }
 
-    if candidate.get("ex_div_in_window") is None and signal_factor is not None:
+    # 仲裁改变目标日后，ex_div 结论基于旧日期不再可信，可判定时强制重算覆盖。
+    if (candidate.get("ex_div_in_window") is None or arbitrations) and signal_factor is not None:
         comparable_factors = [factor for factor in target_factors.values() if factor is not None]
         if any(abs(factor - signal_factor) > 1e-12 for factor in comparable_factors):
             updates["ex_div_in_window"] = True
@@ -677,8 +725,10 @@ def _candidate_outcome_updates(
 
     aggregate_status = _aggregate_data_status(maturity)
     stored_data_status = str(candidate.get("data_status") or "").strip()
-    if candidate.get("data_status") is None or (
-        stored_data_status == "pending" and aggregate_status == "complete"
+    if (
+        candidate.get("data_status") is None
+        or (stored_data_status == "pending" and aggregate_status == "complete")
+        or (arbitrations and stored_data_status != aggregate_status)
     ):
         updates["data_status"] = aggregate_status
 
@@ -688,7 +738,7 @@ def _candidate_outcome_updates(
         issue = f"{snapshot_date}:{stock_code}:invalid_signal_evidence_json"
         row_issues.append(issue)
         if outcome_fields_changed:
-            return {}, maturity, row_issues, issue
+            return {}, maturity, row_issues, issue, 0
     elif outcome_fields_changed:
         raw_audit = evidence.get("outcome_maturity_audit")
         if raw_audit is None:
@@ -698,7 +748,7 @@ def _candidate_outcome_updates(
         else:
             issue = f"{snapshot_date}:{stock_code}:invalid_outcome_maturity_audit"
             row_issues.append(issue)
-            return {}, maturity, row_issues, issue
+            return {}, maturity, row_issues, issue, 0
         effective_ex_div = (
             candidate.get("ex_div_in_window")
             if candidate.get("ex_div_in_window") is not None
@@ -757,6 +807,8 @@ def _candidate_outcome_updates(
             "observational_only": True,
             "formal_use_allowed": False,
         }
+        if arbitrations:
+            audit_event["conflict_arbitrations"] = arbitrations
         if audit_event not in audit:
             audit.append(audit_event)
         evidence["outcome_maturity_audit"] = audit
@@ -764,7 +816,7 @@ def _candidate_outcome_updates(
         if serialized != str(candidate.get("signal_evidence_json") or ""):
             updates["signal_evidence_json"] = serialized
 
-    return updates, maturity, row_issues, None
+    return updates, maturity, row_issues, None, len(arbitrations)
 
 
 def _horizon_status(
@@ -840,6 +892,8 @@ def _empty_result(
         "candidate_row_count": 0,
         "updated_row_count": 0,
         "updated_field_count": 0,
+        "arbitrate_conflicts": True,
+        "arbitrated_conflict_count": 0,
         "blocked_row_count": 0,
         "blocked_rows": [],
         "loaded_observation_row_count": 0,
@@ -923,10 +977,6 @@ def _adjusted_return(
     if start_factor is None or end_factor is None:
         return None
     return _finite_float((end_price * end_factor) / (start_price * start_factor) - 1.0)
-
-
-def _is_trading_status(value: str) -> bool:
-    return value.strip().casefold() in {"trading", "交易", "正常交易"}
 
 
 def _parse_evidence(value: Any) -> dict[str, Any] | None:

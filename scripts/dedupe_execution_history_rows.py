@@ -1,3 +1,5 @@
+# MANUAL WRITE SCRIPT：默认 dry-run 只读；--execute 时 read_only=False
+# 直删 livermore_candidate_execution_history 重复行（人工维护窗口执行）。
 from __future__ import annotations
 
 import argparse

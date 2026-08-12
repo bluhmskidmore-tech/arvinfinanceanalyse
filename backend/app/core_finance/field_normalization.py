@@ -25,27 +25,47 @@ __all__ = [
     "NormalizedCurrencyBasis",
     "NormalizedInvestTypeStd",
     "OriginalAssetCurrency",
-    "TRADING_STATUS_SQL_IN_LIST",
+    "TRADABLE_STATUS_SQL_IN_LIST",
+    "TRADABLE_STATUS_VALUES",
     "TRADING_STATUS_VALUES",
     "derive_accounting_basis_value",
     "is_approved_status",
-    "is_trading_status",
+    "is_tradestatus_tradable",
     "normalize_currency_basis_value",
     "original_asset_currency_from_instrument_code",
     "resolve_pnl_source_currency",
+    "tradable_status_sql_condition",
 ]
 
-# 供应商 tradestatus 字段的"可交易"取值词表（英文大小写不敏感，已折叠为小写）。
-# 这是 Livermore 相关服务判定个股当日是否处于正常交易状态的唯一口径。
+# 供应商 tradestatus 字段的"明确正常交易"取值词表（英文大小写不敏感，已折叠为小写）。
 TRADING_STATUS_VALUES: tuple[str, ...] = ("trading", "交易", "正常交易")
 
-# 供 SQL 使用的 IN 列表片段，须配合 lower(trim(...)) 归一化后的列表达式使用，
-# 例如: f"lower(trim(coalesce(tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}"
-TRADING_STATUS_SQL_IN_LIST: str = "(" + ", ".join(f"'{value}'" for value in TRADING_STATUS_VALUES) + ")"
+# "可交易"完整词表：明确交易词表 + "复牌"（复牌当日即恢复正常交易，
+# docs/data_contracts.md §4.10；旧词表把复牌日误判为不可交易）。
+TRADABLE_STATUS_VALUES: tuple[str, ...] = (*TRADING_STATUS_VALUES, "复牌")
+
+# choice_stock_daily_observation 的 tradestatus 语义（docs/data_contracts.md §4.10）：
+# choice_native 代际（2026-01-05 起）不提供状态字段，落地为空串；空串/NULL/空白
+# 视为正常交易日。非空值按可交易词表判定（"停牌一天"/"连续停牌"等即不可交易）。
+# SQL IN 列表首项 '' 即空白语义；须配合 lower(trim(coalesce(..., ''))) 归一化使用。
+TRADABLE_STATUS_SQL_IN_LIST: str = "(" + ", ".join(f"'{value}'" for value in ("", *TRADABLE_STATUS_VALUES)) + ")"
 
 
-def is_trading_status(value: object | None) -> bool:
-    return str(value or "").strip().casefold() in TRADING_STATUS_VALUES
+def is_tradestatus_tradable(value: object | None) -> bool:
+    """判定 tradestatus 是否为可交易日：空串/None/空白 → True；非空按词表。"""
+    text = str(value or "").strip()
+    if not text:
+        return True
+    return text.casefold() in TRADABLE_STATUS_VALUES
+
+
+def tradable_status_sql_condition(column_expr: str) -> str:
+    """生成与 ``is_tradestatus_tradable`` 同语义的 SQL 判定片段。
+
+    ``column_expr`` 为 tradestatus 列表达式（可带表别名）；NULL/空白归一化为
+    空串后落入 IN 列表首项，与 Python 侧口径一致。
+    """
+    return f"(lower(trim(coalesce(cast({column_expr} as varchar), ''))) in {TRADABLE_STATUS_SQL_IN_LIST})"
 
 
 def is_approved_status(value: str | None) -> bool:

@@ -22,7 +22,7 @@ from backend.app.core_finance.candidate_history_proxy_backtest import (
     candidate_history_portfolio_price_field_stats,
     cycle_proxy_return_field_stats,
 )
-from backend.app.core_finance.field_normalization import is_trading_status
+from backend.app.core_finance.field_normalization import is_tradestatus_tradable
 from backend.app.core_finance.matched_baseline import (
     MATCHED_BASELINE_TABLE,
     matched_baseline_stats_from_rows,
@@ -1336,7 +1336,7 @@ def _load_forward_maturity_observations(
             continue
         trade_status = str(trade_status_raw or "").strip()
         valid_close = close_value is not None and (
-            not has_trade_status or _maturity_is_trading_status(trade_status)
+            not has_trade_status or is_tradestatus_tradable(trade_status)
         )
         observations.setdefault(stock_code, {})[trade_date] = {
             "close": close_value,
@@ -1393,8 +1393,7 @@ def _derive_forward_maturity(
     explicit_halt = any(
         snapshot_date
         and snapshot_date < trade_date <= evaluation_as_of_date
-        and bool(str(row.get("trade_status") or "").strip())
-        and not _maturity_is_trading_status(str(row.get("trade_status") or ""))
+        and not is_tradestatus_tradable(row.get("trade_status"))
         for trade_date, row in stock_rows.items()
     )
     horizons: dict[str, dict[str, Any]] = {}
@@ -1663,10 +1662,6 @@ def _maturity_finite_float(value: Any) -> float | None:
 def _maturity_positive_float(value: Any) -> float | None:
     number = _maturity_finite_float(value)
     return number if number is not None and number > 0 else None
-
-
-def _maturity_is_trading_status(value: str) -> bool:
-    return is_trading_status(value)
 
 
 def _resolve_replay_trade_dates(

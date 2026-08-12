@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from typing import Any
 
 import duckdb
-from backend.app.core_finance.field_normalization import TRADING_STATUS_SQL_IN_LIST
+from backend.app.core_finance.field_normalization import tradable_status_sql_condition
 from backend.app.core_finance.matched_baseline import MATCHED_BASELINE_TABLE
 from backend.app.repositories.duckdb_repo import DuckDBRepository
 
@@ -358,7 +358,7 @@ class LivermoreCandidateHistoryRepository(DuckDBRepository):
     ) -> tuple[list[tuple[Any, ...]], list[tuple[Any, ...]]]:
         status_select = "tradestatus" if has_trade_status else "null as tradestatus"
         valid_status_sql = (
-            f"and lower(trim(cast(tradestatus as varchar))) in {TRADING_STATUS_SQL_IN_LIST}" if has_trade_status else ""
+            f"and {tradable_status_sql_condition('tradestatus')}" if has_trade_status else ""
         )
         code_placeholders = ", ".join("?" for _ in stock_codes)
         with self._connection(conn) as active:
@@ -497,14 +497,14 @@ class LivermoreCandidateHistoryRepository(DuckDBRepository):
             else "cast(null as varchar)"
         )
         scoped_valid_status_sql = (
-            f"lower(trim(coalesce(o.trade_status, ''))) in {TRADING_STATUS_SQL_IN_LIST}" if has_trade_status else "true"
+            tradable_status_sql_condition("o.trade_status") if has_trade_status else "true"
         )
         market_status_sql = (
-            f"and lower(trim(coalesce(trade_status, ''))) in {TRADING_STATUS_SQL_IN_LIST}" if has_trade_status else ""
+            f"and {tradable_status_sql_condition('trade_status')}" if has_trade_status else ""
         )
         explicit_halt_sql = (
-            "trim(coalesce(o.trade_status, '')) <> '' "
-            f"and lower(trim(o.trade_status)) not in {TRADING_STATUS_SQL_IN_LIST}"
+            # 空串/NULL 在共享语义下视为可交易，因此"非可交易"即显式停牌。
+            f"not {tradable_status_sql_condition('o.trade_status')}"
             if has_trade_status
             else "false"
         )

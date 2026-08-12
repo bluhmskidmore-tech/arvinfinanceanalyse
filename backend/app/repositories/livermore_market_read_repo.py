@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import duckdb
-from backend.app.core_finance.field_normalization import TRADING_STATUS_SQL_IN_LIST
+from backend.app.core_finance.field_normalization import tradable_status_sql_condition
 from backend.app.core_finance.livermore_sector_rank import SectorRankConstituent
 from backend.app.repositories.choice_stock_units import (
     amount_rmb_sql,
@@ -123,6 +123,8 @@ class LivermoreMarketReadRepository(DuckDBRepository):
     ) -> date | None:
         if TABLE_OBS not in _MARKET_READ_RELATIONS:
             return None
+        # close_value 非空：native 空串状态视为可交易后，供应商预填的
+        # 全空占位行不得把锚定日拖向未来。
         if as_of_date is not None:
             row = conn.execute(
                 f"""
@@ -130,7 +132,8 @@ class LivermoreMarketReadRepository(DuckDBRepository):
                 from {TABLE_OBS}
                 where stock_code = ?
                   and trade_date <= ?
-                  and lower(trim(coalesce(tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
+                  and close_value is not null
+                  and {tradable_status_sql_condition('tradestatus')}
                 """,
                 [stock_code, as_of_date.isoformat()],
             ).fetchone()
@@ -140,7 +143,8 @@ class LivermoreMarketReadRepository(DuckDBRepository):
                 select max(trade_date) as mx
                 from {TABLE_OBS}
                 where stock_code = ?
-                  and lower(trim(coalesce(tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
+                  and close_value is not null
+                  and {tradable_status_sql_condition('tradestatus')}
                 """,
                 [stock_code],
             ).fetchone()
@@ -190,7 +194,7 @@ class LivermoreMarketReadRepository(DuckDBRepository):
                 from {TABLE_OBS}
                 where stock_code = ?
                   and trade_date <= ?
-                  and lower(trim(coalesce(tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
+                  and {tradable_status_sql_condition('tradestatus')}
                 order by trade_date desc
                 limit ?
                 """,
@@ -1003,7 +1007,7 @@ class LivermoreStrategyReadRepository(DuckDBRepository):
             targets.want_candidate,
             targets.want_trading,
             cast(daily.trade_date as date) as trade_day,
-            lower(trim(coalesce(daily.tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST} as is_trading
+            {tradable_status_sql_condition('daily.tradestatus')} as is_trading
           from {RELATION_CHOICE_STOCK_DAILY_OBSERVATION} daily
           join targets on targets.stock_code = daily.stock_code
           where cast(daily.trade_date as date) <= cast(? as date)
@@ -1089,7 +1093,7 @@ class LivermoreStrategyReadRepository(DuckDBRepository):
               on membership.stock_code = daily.stock_code
              and membership.as_of_date = ?
             where cast(daily.trade_date as date) = cast(? as date)
-              and lower(trim(coalesce(daily.tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
+              and {tradable_status_sql_condition('daily.tradestatus')}
             """,
             [universe_snapshot_date, membership_snapshot_date, as_of_date],
         ).fetchall()
@@ -1118,7 +1122,7 @@ class LivermoreStrategyReadRepository(DuckDBRepository):
                   from {RELATION_CHOICE_STOCK_DAILY_OBSERVATION}
                   where stock_code in ({placeholders})
                     and cast(trade_date as date) <= cast(? as date)
-                    and lower(trim(coalesce(tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
+                    and {tradable_status_sql_condition('tradestatus')}
                 )
                 select stock_code, close_value, amount, volume
                 from ranked_history
@@ -1194,7 +1198,7 @@ class LivermoreStrategyReadRepository(DuckDBRepository):
               on membership.stock_code = daily.stock_code
              and membership.as_of_date = ?
             where cast(daily.trade_date as date) = cast(? as date)
-              and lower(trim(coalesce(daily.tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
+              and {tradable_status_sql_condition('daily.tradestatus')}
             """,
             [universe_snapshot_date, membership_snapshot_date, as_of_date],
         ).fetchall()
@@ -1213,7 +1217,7 @@ class LivermoreStrategyReadRepository(DuckDBRepository):
             from {RELATION_CHOICE_STOCK_DAILY_OBSERVATION}
             where stock_code in ({placeholders})
               and cast(trade_date as date) <= cast(? as date)
-              and lower(trim(coalesce(tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
+              and {tradable_status_sql_condition('tradestatus')}
             order by stock_code asc, cast(trade_date as date) asc
             """,
             [*stock_codes, as_of_date],
@@ -1249,7 +1253,7 @@ class LivermoreStrategyReadRepository(DuckDBRepository):
             where stock_code in ({placeholders})
               and cast(trade_date as date) >= cast(? as date)
               and cast(trade_date as date) <= cast(? as date)
-              and lower(trim(coalesce(tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
+              and {tradable_status_sql_condition('tradestatus')}
               and close_value is not null
             order by stock_code asc, cast(trade_date as date) asc
             """,
@@ -1283,7 +1287,7 @@ class LivermoreStrategyReadRepository(DuckDBRepository):
               on membership.stock_code = daily.stock_code
              and membership.as_of_date = ?
             where cast(daily.trade_date as date) = cast(? as date)
-              and lower(trim(coalesce(daily.tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
+              and {tradable_status_sql_condition('daily.tradestatus')}
             """,
             [universe_snapshot_date, membership_snapshot_date, as_of_date],
         ).fetchall()
@@ -1302,7 +1306,7 @@ class LivermoreStrategyReadRepository(DuckDBRepository):
             from {RELATION_CHOICE_STOCK_DAILY_OBSERVATION}
             where stock_code in ({placeholders})
               and cast(trade_date as date) <= cast(? as date)
-              and lower(trim(coalesce(tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
+              and {tradable_status_sql_condition('tradestatus')}
             order by stock_code asc, cast(trade_date as date) asc
             """,
             [*stock_codes, as_of_date],

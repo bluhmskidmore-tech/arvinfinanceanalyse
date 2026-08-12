@@ -676,12 +676,119 @@ def test_candidate_history_api_reports_maturity_per_horizon_with_two_clock_diagn
     }
 
 
-def test_outcome_maturity_does_not_compute_from_a_conflicting_stored_target_date(tmp_path) -> None:
+def _seed_conflicting_stored_target(conn: duckdb.DuckDBPyConnection) -> None:
+    """stored 5d 目标与当前行情日历(第 5 个有效 bar=2026-01-06)冲突，且带旧收益值。"""
+    conn.execute(
+        """
+        update livermore_candidate_history
+        set forward_trade_date_5d = '2026-01-05',
+            return_5d = 0.123,
+            return_5d_adj = 0.124
+        """
+    )
+
+
+def test_outcome_maturity_arbitrates_conflicting_stored_target_by_default(tmp_path) -> None:
     from backend.app.tasks.livermore_candidate_outcome_maturity import (
         mature_livermore_candidate_outcomes,
     )
 
-    db_path = tmp_path / "maturity-conflicting-target.duckdb"
+    db_path = tmp_path / "maturity-conflict-arbitrated.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        _seed_candidate_history(conn)
+        _seed_observations_and_factors(conn)
+        _seed_conflicting_stored_target(conn)
+    finally:
+        conn.close()
+
+    result = mature_livermore_candidate_outcomes(
+        str(db_path),
+        evaluation_as_of_date="2026-01-06",
+    )
+
+    assert result["arbitrate_conflicts"] is True
+    assert result["arbitrated_conflict_count"] == 1
+    assert "2026-01-01:000001.SZ:5d:stored_target_conflict_arbitrated" in result["issues"]
+    assert not any(issue.endswith(":stored_target_conflict") for issue in result["issues"])
+    assert result["horizons"]["5d"]["counts"]["complete"] == 1
+    assert result["horizons"]["5d"]["counts"]["matured_missing_bar"] == 0
+
+    conn = duckdb.connect(str(db_path), read_only=True)
+    try:
+        row = conn.execute(
+            """
+            select forward_trade_date_5d, return_5d, return_5d_adj, signal_evidence_json
+            from livermore_candidate_history
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row[0] == "2026-01-06"
+    assert row[1] == pytest.approx(0.05)
+    assert row[2] == pytest.approx(0.05)
+    audit = json.loads(str(row[3]))["outcome_maturity_audit"][-1]
+    arbitrations = audit["conflict_arbitrations"]
+    assert len(arbitrations) == 1
+    entry = arbitrations[0]
+    assert entry["type"] == "stored_target_conflict"
+    assert entry["horizon"] == "5d"
+    assert entry["decision"] == "current_revision_wins"
+    assert entry["stored"] == {"date": "2026-01-05", "raw": 0.123, "adj": 0.124}
+    assert entry["computed"]["date"] == "2026-01-06"
+    assert entry["computed"]["close"] == pytest.approx(105.0)
+    assert entry["computed"]["raw"] == pytest.approx(0.05)
+    assert entry["computed"]["adj"] == pytest.approx(0.05)
+
+
+def test_outcome_maturity_arbitration_clears_stale_adjusted_return_when_new_factor_missing(
+    tmp_path,
+) -> None:
+    from backend.app.tasks.livermore_candidate_outcome_maturity import (
+        mature_livermore_candidate_outcomes,
+    )
+
+    db_path = tmp_path / "maturity-conflict-factor-missing.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        _seed_candidate_history(conn)
+        _seed_observations_and_factors(conn)
+        _seed_conflicting_stored_target(conn)
+        # 抽掉新目标日(2026-01-06)的复权因子：仲裁后 adjusted 必须置空而非沿用旧值。
+        conn.execute("delete from stock_adjustment_factor where trade_date = '2026-01-06'")
+    finally:
+        conn.close()
+
+    result = mature_livermore_candidate_outcomes(
+        str(db_path),
+        evaluation_as_of_date="2026-01-06",
+    )
+
+    assert result["arbitrated_conflict_count"] == 1
+    assert result["horizons"]["5d"]["counts"]["raw_matured_adjustment_missing"] == 1
+    conn = duckdb.connect(str(db_path), read_only=True)
+    try:
+        row = conn.execute(
+            """
+            select forward_trade_date_5d, return_5d, return_5d_adj
+            from livermore_candidate_history
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row[0] == "2026-01-06"
+    assert row[1] == pytest.approx(0.05)
+    assert row[2] is None
+
+
+def test_outcome_maturity_keeps_conflicting_stored_target_when_arbitration_disabled(
+    tmp_path,
+) -> None:
+    from backend.app.tasks.livermore_candidate_outcome_maturity import (
+        mature_livermore_candidate_outcomes,
+    )
+
+    db_path = tmp_path / "maturity-conflict-conservative.duckdb"
     conn = duckdb.connect(str(db_path), read_only=False)
     try:
         _seed_candidate_history(conn)
@@ -698,8 +805,11 @@ def test_outcome_maturity_does_not_compute_from_a_conflicting_stored_target_date
     result = mature_livermore_candidate_outcomes(
         str(db_path),
         evaluation_as_of_date="2026-01-06",
+        arbitrate_conflicts=False,
     )
 
+    assert result["arbitrate_conflicts"] is False
+    assert result["arbitrated_conflict_count"] == 0
     assert result["horizons"]["5d"]["counts"]["matured_missing_bar"] == 1
     assert "2026-01-01:000001.SZ:5d:stored_target_conflict" in result["issues"]
     conn = duckdb.connect(str(db_path), read_only=True)
@@ -1122,15 +1232,90 @@ def test_candidate_history_service_fail_closes_when_observation_source_is_unavai
     assert all_filtered["horizons"]["1d"]["counts"]["matured_missing_bar"] == 1
 
 
-@pytest.mark.parametrize("trade_status", ["Trading", "交易", "正常交易"])
-def test_livermore_maturity_accepts_supported_trading_statuses(trade_status: str) -> None:
-    from backend.app.services.livermore_candidate_history_service import (
-        _maturity_is_trading_status,
-    )
-    from backend.app.tasks.livermore_candidate_outcome_maturity import _is_trading_status
+@pytest.mark.parametrize("trade_status", ["Trading", "交易", "正常交易", "复牌", "", None])
+def test_livermore_maturity_accepts_supported_trading_statuses(trade_status: str | None) -> None:
+    from backend.app.core_finance.field_normalization import is_tradestatus_tradable
 
-    assert _is_trading_status(trade_status)
-    assert _maturity_is_trading_status(trade_status)
+    assert is_tradestatus_tradable(trade_status)
+
+
+def test_outcome_maturity_treats_native_blank_tradestatus_as_tradable(tmp_path) -> None:
+    """choice_native 代际回归：空串 tradestatus 视为正常交易日，不再假 missing_bar。
+
+    同时覆盖 '停牌一天' 剔除与 '复牌' 计入的词表语义。
+    """
+    from backend.app.tasks.livermore_candidate_outcome_maturity import (
+        mature_livermore_candidate_outcomes,
+    )
+
+    db_path = tmp_path / "maturity-native-blank-status.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        _seed_candidate_history(conn)
+        conn.execute(
+            """
+            create table choice_stock_daily_observation (
+              trade_date varchar,
+              stock_code varchar,
+              close_value double,
+              tradestatus varchar
+            )
+            """
+        )
+        # native 代际：状态列为空串；01-06 显式停牌剔除、01-07 复牌计入。
+        def status_for(day: int) -> str:
+            if day == 6:
+                return "停牌一天"
+            if day == 7:
+                return "复牌"
+            return ""
+
+        conn.executemany(
+            "insert into choice_stock_daily_observation values (?, '000001.SZ', ?, ?)",
+            [(f"2026-01-{day:02d}", 99.0 + day, status_for(day)) for day in range(2, 23)],
+        )
+        conn.execute(
+            """
+            create table stock_adjustment_factor (
+              stock_code varchar,
+              trade_date varchar,
+              adj_factor double,
+              source_version varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.executemany(
+            "insert into stock_adjustment_factor values ('000001.SZ', ?, 1.0, 'sv_adj', 'run_adj')",
+            [(f"2026-01-{day:02d}",) for day in range(1, 23)],
+        )
+    finally:
+        conn.close()
+
+    result = mature_livermore_candidate_outcomes(
+        str(db_path),
+        evaluation_as_of_date="2026-01-22",
+    )
+
+    assert result["horizons"]["5d"]["counts"]["complete"] == 1
+    assert result["horizons"]["20d"]["counts"]["complete"] == 1
+    for horizon in ("1d", "5d", "10d", "20d"):
+        assert result["horizons"][horizon]["counts"]["matured_missing_bar"] == 0
+    conn = duckdb.connect(str(db_path), read_only=True)
+    try:
+        row = conn.execute(
+            """
+            select forward_trade_date_5d, return_5d, forward_trade_date_20d, return_20d
+            from livermore_candidate_history
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+    # 01-06 停牌被剔除：第 5 个有效 bar 是 01-07（复牌日计入），第 20 个是 01-22。
+    assert row[0] == "2026-01-07"
+    assert row[1] == pytest.approx(0.06)
+    assert row[2] == "2026-01-22"
+    assert row[3] == pytest.approx(0.21)
 
 
 def test_duplicate_observation_revisions_use_latest_row_consistently_across_maturity_views(

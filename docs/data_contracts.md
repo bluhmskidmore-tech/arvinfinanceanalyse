@@ -632,6 +632,15 @@ canonical grain：
 
 数值涨跌停价以专用表 `stock_limit_price_daily` 另行落地：来源 `tushare.stk_limit`（`up_limit`/`down_limit`/`pre_close`，单位元），schema `backend/app/schema_registry/duckdb/40_stock_limit_price_daily.sql`，写路径仅 `backend/app/tasks/stock_limit_price_ingest.py`（vendor 白名单 `vv_tushare_stk_limit_*`，独立于本表两代单位换算），用途是替代本节标志列语义缺口，供 `portfolio_paths` 价格路径与 execution bars 按"新表优先 → observation try_cast 回退 → missing 维持 fail-open"三态消费（`resolve_limit_prices`）。回填任务已建立（`scripts/backfill_stock_limit_prices.py`，默认 dry-run）；**截至本契约更新，数值价尚未回填**（Tushare 网络恢复后按脚本打印的 runbook 执行），回填前 choice_native 段消费行为与本节缺口描述一致。
 
+#### `tradestatus` 语义（native 空串 = 正常交易日）
+
+该列同属 native 代际字段语义缺口家族（与上节 `highlimit`/`lowlimit` 标志化同源）：
+
+- Tushare 代际行带显式状态（`Trading` 等）；choice_native 代际（2026-01-05 起）**不提供状态字段，落地为空串**。空串/NULL/空白在该代际语义下即**正常交易日**，消费者不得把空状态一刀切判为不可交易（2026-08-12 前的旧词表曾因此把 976 个 20d 视角有行情 bar 的候选误报为 `matured_missing_bar`，K 线服务锚定日回退 2025-12-31）。
+- `复牌` 为**可交易**（复牌当日恢复交易；旧词表曾把复牌日误判为不可交易导致 forward 目标日顺延类冲突）。
+- `停牌一天`/`连续停牌` 等其余非空、不在可交易词表内的值为**不可交易**。
+- 唯一判定口径是 `backend/app/core_finance/field_normalization.py` 的 `is_tradestatus_tradable`（Python）与 `tradable_status_sql_condition`（SQL 片段，空串折叠进 IN 列表首项）；消费点（outcome maturity 任务、candidate history 服务/仓储、K 线与行情读仓储）不得内联词表。
+
 #### Batch3 治理状态
 
 `scripts/run_batch3_stock_strategy_research.py` 先前将该字段标为 `daily_amount_rmb_unconfirmed`，原因是当时仅有本地 pass-through lineage，尚无 vendor 单位证据。现已具备 Tushare 官方接口口径及上述代际交叉校验，可建议将该状态升级为 confirmed；该状态变更及其脚本内落实由 Batch3 维护者负责，不属于本文档变更范围。

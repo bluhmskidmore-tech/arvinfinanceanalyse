@@ -62,6 +62,8 @@ _SCRIPTS_ALLOWLIST: dict[str, int] = {
     # MANUAL WRITE SCRIPT：read_only=False 直写 stock_adjustment_factor（自带备份守卫）。
     "scripts/backfill_stock_adjustment_factor.py": 2,
     "scripts/copy_choice_stock_asof_from_duckdb.py": 1,  # read_only=bool(dry_run) 写路径
+    # MANUAL WRITE SCRIPT：read_only=not execute，--execute 直删执行历史重复行（人工维护窗口）。
+    "scripts/dedupe_execution_history_rows.py": 1,
     "scripts/dev-env.ps1": 1,  # PowerShell 内嵌 Python 只读探活
     "scripts/dev_postgres_cluster.py": 1,
     "scripts/diagnose_overheat_holdings.py": 1,

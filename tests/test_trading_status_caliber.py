@@ -1,8 +1,10 @@
 """交易状态判定口径统一（MEDIUM-7）与 candidate_history_service tasks 延迟导入回归。
 
 覆盖三件事：
-1. 共享 ``is_trading_status`` 词表：'Trading'/'trading'/'交易'/'正常交易' 为 True，
-   'Suspended'/None/'' 为 False。
+1. 共享 ``is_tradestatus_tradable`` 语义（docs/data_contracts.md §4.10）：
+   'Trading'/'trading'/'交易'/'正常交易'/'复牌' 为 True，choice_native 代际
+   空串/None/空白视为正常交易日亦为 True，'停牌一天'/'连续停牌'/'Suspended'
+   等非空停牌值为 False；SQL 片段与 Python 判定同口径。
 2. market_data_livermore_service 侧：供应商落地中文交易状态时，
    trading 历史与当日快照不得静默取空。
 3. ``import backend.app.services.livermore_candidate_history_service`` 不得把
@@ -20,34 +22,76 @@ import duckdb
 import pytest
 
 from backend.app.core_finance.field_normalization import (
-    TRADING_STATUS_SQL_IN_LIST,
+    TRADABLE_STATUS_SQL_IN_LIST,
+    TRADABLE_STATUS_VALUES,
     TRADING_STATUS_VALUES,
-    is_trading_status,
+    is_tradestatus_tradable,
+    tradable_status_sql_condition,
 )
 from backend.app.services import market_data_livermore_service as livermore_service
 
 ROOT = Path(__file__).resolve().parents[1]
 AS_OF_DATE = "2026-06-30"
 
+_TRADABLE_SAMPLES = [
+    "Trading",
+    "trading",
+    "TRADING",
+    " Trading ",
+    "交易",
+    "正常交易",
+    " 正常交易 ",
+    "复牌",
+    " 复牌 ",
+    None,
+    "",
+    "   ",
+]
+_NON_TRADABLE_SAMPLES = [
+    "Suspended",
+    "停牌",
+    "停牌一天",
+    "连续停牌",
+    "退市整理",
+    "unknown-status",
+]
 
-@pytest.mark.parametrize(
-    "value",
-    ["Trading", "trading", "TRADING", " Trading ", "交易", "正常交易", " 正常交易 "],
-)
-def test_is_trading_status_accepts_known_variants(value: str) -> None:
-    assert is_trading_status(value) is True
+
+@pytest.mark.parametrize("value", _TRADABLE_SAMPLES)
+def test_is_tradestatus_tradable_accepts_trading_resumption_and_blank(value: str | None) -> None:
+    assert is_tradestatus_tradable(value) is True
 
 
-@pytest.mark.parametrize("value", ["Suspended", None, "", "   ", "停牌", "退市整理"])
-def test_is_trading_status_rejects_non_trading_values(value: str | None) -> None:
-    assert is_trading_status(value) is False
+@pytest.mark.parametrize("value", _NON_TRADABLE_SAMPLES)
+def test_is_tradestatus_tradable_rejects_explicit_halt_and_unknown_values(value: str) -> None:
+    assert is_tradestatus_tradable(value) is False
 
 
-def test_trading_status_sql_in_list_derives_from_word_list() -> None:
+def test_tradable_status_sql_in_list_derives_from_word_list() -> None:
     assert TRADING_STATUS_VALUES == ("trading", "交易", "正常交易")
-    assert TRADING_STATUS_SQL_IN_LIST == "('trading', '交易', '正常交易')"
-    for value in TRADING_STATUS_VALUES:
-        assert f"'{value}'" in TRADING_STATUS_SQL_IN_LIST
+    assert TRADABLE_STATUS_VALUES == ("trading", "交易", "正常交易", "复牌")
+    assert TRADABLE_STATUS_SQL_IN_LIST == "('', 'trading', '交易', '正常交易', '复牌')"
+    condition = tradable_status_sql_condition("tradestatus")
+    assert condition == (
+        "(lower(trim(coalesce(cast(tradestatus as varchar), ''))) in "
+        "('', 'trading', '交易', '正常交易', '复牌'))"
+    )
+
+
+def test_tradable_status_sql_condition_matches_python_semantics() -> None:
+    conn = duckdb.connect(":memory:")
+    try:
+        conn.execute("create table probe (tradestatus varchar)")
+        samples = [*_TRADABLE_SAMPLES, *_NON_TRADABLE_SAMPLES]
+        conn.executemany("insert into probe values (?)", [(value,) for value in samples])
+        rows = conn.execute(
+            f"select tradestatus, {tradable_status_sql_condition('tradestatus')} from probe"
+        ).fetchall()
+    finally:
+        conn.close()
+    assert len(rows) == len(samples)
+    for value, sql_verdict in rows:
+        assert bool(sql_verdict) is is_tradestatus_tradable(value), value
 
 
 def _seed_chinese_status_observation(conn: duckdb.DuckDBPyConnection) -> None:

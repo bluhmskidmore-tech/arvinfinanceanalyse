@@ -8,7 +8,7 @@ from datetime import date
 from typing import Any
 
 import duckdb
-from backend.app.core_finance.field_normalization import TRADING_STATUS_SQL_IN_LIST
+from backend.app.core_finance.field_normalization import tradable_status_sql_condition
 from backend.app.repositories.choice_stock_units import (
     amount_rmb_sql,
     scale_unknown_sql,
@@ -611,13 +611,16 @@ class MarketReadRepository(DuckDBRepository):
         stock_code: str,
         as_of_date: date | None,
     ) -> date | None:
+        # close_value 非空：native 空串状态视为可交易后，供应商预填的
+        # 全空占位行不得把 K 线锚定日拖向未来。
         if as_of_date is None:
             row = conn.execute(
                 f"""
                 select max(trade_date) as mx
                 from {RELATION_CHOICE_STOCK_DAILY_OBSERVATION}
                 where stock_code = ?
-                  and lower(trim(coalesce(tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
+                  and close_value is not null
+                  and {tradable_status_sql_condition('tradestatus')}
                 """,
                 [stock_code],
             ).fetchone()
@@ -628,7 +631,8 @@ class MarketReadRepository(DuckDBRepository):
                 from {RELATION_CHOICE_STOCK_DAILY_OBSERVATION}
                 where stock_code = ?
                   and trade_date <= ?
-                  and lower(trim(coalesce(tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
+                  and close_value is not null
+                  and {tradable_status_sql_condition('tradestatus')}
                 """,
                 [stock_code, as_of_date.isoformat()],
             ).fetchone()
@@ -674,7 +678,7 @@ class MarketReadRepository(DuckDBRepository):
                 from {RELATION_CHOICE_STOCK_DAILY_OBSERVATION}
                 where stock_code = ?
                   and trade_date <= ?
-                  and lower(trim(coalesce(tradestatus, ''))) in {TRADING_STATUS_SQL_IN_LIST}
+                  and {tradable_status_sql_condition('tradestatus')}
                 order by trade_date desc
                 limit ?
                 """,
