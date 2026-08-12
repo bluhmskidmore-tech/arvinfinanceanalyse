@@ -16,6 +16,78 @@ function addSet(names) {
 }
 
 const cssBase = path.basename(cfg.cssPath);
+const literalMode = cfg.evidenceMode === 'literal';
+
+if (literalMode) {
+  // 非 module 全局 CSS：className 是字符串字面量。提取每个 className 属性中的静态类名集合
+  // （引号字符串与模板字面量的静态段，按空白切分），另加行级与小函数体证据。
+  for (const f of cfg.tsxFiles) {
+    const src = fs.readFileSync(f, 'utf8');
+    const grabNames = txt => {
+      const names = [];
+      for (const q of txt.matchAll(/"([^"]+)"|'([^']+)'/g)) {
+        for (const n of (q[1] || q[2]).split(/\s+/)) if (/^[A-Za-z][\w-]*$/.test(n)) names.push(n);
+      }
+      for (const t of txt.matchAll(/`([^`]*)`/gs)) {
+        for (const seg of t[1].split(/\$\{[^}]*\}/)) {
+          for (const n of seg.split(/\s+/)) if (/^[A-Za-z][\w-]*$/.test(n)) names.push(n);
+        }
+      }
+      return names;
+    };
+    // className="..." 直接字面量
+    for (const m of src.matchAll(/className\s*=\s*("[^"]+"|'[^']+')/g)) addSet(grabNames(m[1]));
+    // className={...} 表达式区间
+    const re = /className=\{/g;
+    let m2;
+    while ((m2 = re.exec(src))) {
+      let depth = 1, i = re.lastIndex;
+      const start = i;
+      while (i < src.length && depth > 0) {
+        const ch = src[i];
+        if (ch === '{') depth++;
+        else if (ch === '}') depth--;
+        else if (ch === '"' || ch === "'" || ch === '`') {
+          const q = ch;
+          i++;
+          while (i < src.length) {
+            if (src[i] === '\\') { i += 2; continue; }
+            if (src[i] === q) break;
+            if (q === '`' && src[i] === '$' && src[i + 1] === '{') {
+              i += 2; let d2 = 1;
+              while (i < src.length && d2 > 0) { if (src[i] === '{') d2++; else if (src[i] === '}') d2--; i++; }
+              continue;
+            }
+            i++;
+          }
+        }
+        i++;
+      }
+      addSet(grabNames(src.slice(start, i - 1)));
+    }
+    // 小函数体（返回类名字符串的 helper）
+    const fnRe = /function\s+[A-Za-z0-9_]+\s*\([^)]*\)[^{]*\{/g;
+    let fm2;
+    while ((fm2 = fnRe.exec(src))) {
+      let depth = 1, i = fnRe.lastIndex;
+      const start = i;
+      while (i < src.length && depth > 0) {
+        if (src[i] === '{') depth++;
+        else if (src[i] === '}') depth--;
+        i++;
+      }
+      const body = src.slice(start, i);
+      if (body.split('\n').length <= 20 && /className|class/i.test(body)) addSet(grabNames(body));
+    }
+  }
+  const out = [...sets].map(s => JSON.parse(s));
+  const outPath = path.join(cfg.workDir, 'tsx-evidence.json');
+  fs.writeFileSync(outPath, JSON.stringify(out, null, 1));
+  console.log(`evidence sets (literal mode, >=2 names): ${out.length} -> ${outPath}`);
+  out.slice(0, 60).forEach(s => console.log('  ' + s.join(' + ')));
+  process.exit(0);
+}
+
 for (const f of cfg.tsxFiles) {
   const src = fs.readFileSync(f, 'utf8');
   // 识别该文件导入目标 CSS module 的标识符（如 styles / marketStyles）；未导入则跳过该文件
