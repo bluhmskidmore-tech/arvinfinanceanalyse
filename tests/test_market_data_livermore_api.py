@@ -82,6 +82,57 @@ def _seed_choice_macro_history(
         conn.close()
 
 
+def _seed_factor_screen_amount_history(
+    duckdb_path: str,
+    stock_codes: list[str],
+    *,
+    end_date: date,
+    days: int = 20,
+    daily_amount: float = 240_000_000.0,
+    vendor_version: str = "vv_choice_stock_20260430_0123456789ab",
+) -> None:
+    """为 factor_screen v3 流动性地板造近 20 日成交额历史。
+
+    默认 choice_native 代际(amount 即元口径);daily_amount 相同则近 20 日均额 =
+    daily_amount。"""
+    conn = duckdb.connect(duckdb_path, read_only=False)
+    try:
+        conn.execute(
+            """
+            create table if not exists choice_stock_daily_observation (
+              trade_date varchar,
+              stock_code varchar,
+              close_value double,
+              amount double,
+              tradestatus varchar,
+              source_version varchar,
+              vendor_version varchar
+            )
+            """
+        )
+        rows = []
+        for offset in range(days):
+            trade_date = (end_date - timedelta(days=offset)).isoformat()
+            for stock_code in stock_codes:
+                rows.append(
+                    (
+                        trade_date,
+                        stock_code,
+                        10.0,
+                        daily_amount,
+                        "交易",
+                        "sv_obs",
+                        vendor_version,
+                    )
+                )
+        conn.executemany(
+            "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?, ?, ?)",
+            rows,
+        )
+    finally:
+        conn.close()
+
+
 def _write_csv(path, content: str) -> None:
     path.write_text(content.strip() + "\n", encoding="utf-8-sig")
 
@@ -308,6 +359,37 @@ def _seed_minimal_factor_snapshot(
             0.19,
             0.015,
             "电子",
+        ],
+    )
+    # v3 流动性地板：factor_screen 评分池要求近 20 日均成交额(元)达到地板,
+    # 均额缺失会被 fail-closed 剔除,这里同步造成交额历史。
+    conn.execute(
+        """
+        create table if not exists choice_stock_daily_observation (
+          trade_date varchar,
+          stock_code varchar,
+          close_value double,
+          amount double,
+          tradestatus varchar,
+          source_version varchar,
+          vendor_version varchar
+        )
+        """
+    )
+    end_date = date.fromisoformat(as_of_date)
+    conn.executemany(
+        "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?, ?, ?)",
+        [
+            (
+                (end_date - timedelta(days=offset)).isoformat(),
+                "688001.SH",
+                10.0,
+                240_000_000.0,
+                "交易",
+                "sv_obs",
+                "vv_choice_stock_20260406_0123456789ab",
+            )
+            for offset in range(20)
         ],
     )
 
@@ -1056,6 +1138,7 @@ def test_livermore_api_marks_landed_cycle_inputs_available_without_fabricating_m
               stock_code varchar,
               close_value double,
               turn double,
+              amount double,
               source_version varchar,
               vendor_version varchar,
               rule_version varchar,
@@ -1064,13 +1147,14 @@ def test_livermore_api_marks_landed_cycle_inputs_available_without_fabricating_m
             """
         )
         conn.executemany(
-            "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?, ?, ?, ?)",
+            "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 (
                     "2026-05-07",
                     "000001.SZ",
                     10.0,
                     1.1,
+                    None,
                     "sv_obs",
                     "vv_obs",
                     "rv_obs",
@@ -1081,11 +1165,31 @@ def test_livermore_api_marks_landed_cycle_inputs_available_without_fabricating_m
                     "000001.SZ",
                     10.2,
                     1.3,
+                    None,
                     "sv_obs",
                     "vv_obs",
                     "rv_obs",
                     "run-obs",
                 ),
+            ],
+        )
+        # v3 流动性地板：为 factor_screen 快照股票造近 20 日成交额(choice_native 代际,元)。
+        conn.executemany(
+            "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (
+                    (date(2026, 5, 8) - timedelta(days=offset)).isoformat(),
+                    f"60000{i}.SH",
+                    10.0,
+                    1.0,
+                    240_000_000.0,
+                    "sv_obs",
+                    "vv_choice_stock_20260508_0123456789ab",
+                    "rv_obs",
+                    "run-obs",
+                )
+                for offset in range(20)
+                for i in range(1, 8)
             ],
         )
         conn.execute(
@@ -2479,6 +2583,11 @@ def test_livermore_api_factor_screen_uses_snapshot_date_and_degrades_without_enr
         )
     finally:
         conn.close()
+    _seed_factor_screen_amount_history(
+        str(duckdb_path),
+        [f"60000{i}.SH" for i in range(1, 8)],
+        end_date=date(2026, 4, 30),
+    )
 
     envelope = livermore_strategy_envelope(
         duckdb_path=str(duckdb_path),
@@ -2649,6 +2758,11 @@ def test_livermore_api_factor_screen_reports_enrichment_tables_when_used(
         )
     finally:
         conn.close()
+    _seed_factor_screen_amount_history(
+        str(duckdb_path),
+        [row[1] for row in factor_rows],
+        end_date=date(2026, 4, 30),
+    )
 
     envelope = livermore_strategy_envelope(
         duckdb_path=str(duckdb_path),
@@ -2748,6 +2862,11 @@ def test_livermore_api_factor_screen_ready_when_aligned_and_covered(
         )
     finally:
         conn.close()
+    _seed_factor_screen_amount_history(
+        str(duckdb_path),
+        [row[1] for row in factor_rows],
+        end_date=date(2026, 4, 30),
+    )
 
     envelope = livermore_strategy_envelope(
         duckdb_path=str(duckdb_path),
@@ -2847,6 +2966,11 @@ def test_livermore_api_factor_screen_degrades_on_real_lag_despite_success_note(
         )
     finally:
         conn.close()
+    _seed_factor_screen_amount_history(
+        str(duckdb_path),
+        [row[1] for row in factor_rows],
+        end_date=date(2026, 4, 30),
+    )
 
     envelope = livermore_strategy_envelope(
         duckdb_path=str(duckdb_path),
@@ -2962,6 +3086,714 @@ def test_livermore_api_factor_screen_degrades_on_error_type_coverage_note(
     assert factor_state["state"] == "degraded"
     assert factor_state["excludes_from_primary"] is True
     assert any("为空" in reason for reason in factor_state["reasons"])
+
+
+def test_livermore_factor_screen_loader_normalizes_avg_amount_by_vendor_generation(
+    tmp_path,
+) -> None:
+    """近 20 日均额输入必须经 amount_rmb_sql 归一化为元(契约 §4.10)：
+    tushare 代际(千元)×1000,choice_native 代际(元)透传,vendor 无法定标 → NULL
+    (fail-closed,由计算端剔除并计数)。"""
+    from backend.app.services.market_data_livermore_service import (
+        _load_factor_screen_rows,
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table choice_stock_factor_snapshot (
+              as_of_date varchar,
+              stock_code varchar,
+              pe double,
+              pb double,
+              ps double,
+              roe double,
+              gross_margin double,
+              three_month_return double,
+              twelve_month_return double,
+              volatility double,
+              dividend_yield double,
+              industry varchar
+            )
+            """
+        )
+        conn.executemany(
+            "insert into choice_stock_factor_snapshot values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                ("2026-04-30", code, 10.0, 1.2, 0.8, 0.09, 0.28, 0.02, 0.06, 0.16, 0.012, "电子")
+                for code in ("600001.SH", "600002.SH", "600003.SH")
+            ],
+        )
+        conn.execute(
+            """
+            create table choice_stock_daily_observation (
+              trade_date varchar,
+              stock_code varchar,
+              close_value double,
+              amount double,
+              tradestatus varchar,
+              source_version varchar,
+              vendor_version varchar
+            )
+            """
+        )
+        observation_rows = []
+        for offset in range(20):
+            trade_date = (date(2026, 4, 30) - timedelta(days=offset)).isoformat()
+            observation_rows.extend(
+                [
+                    # tushare 代际:amount 千元 → ×1000 = 2.5e8 元。
+                    (trade_date, "600001.SH", 10.0, 250_000.0, "交易", "sv_obs", "vv_choice_tushare_stock_20260430_001"),
+                    # choice_native 代际:amount 已是元。
+                    (trade_date, "600002.SH", 10.0, 150_000_000.0, "交易", "sv_obs", "vv_choice_stock_20260430_0123456789ab"),
+                    # vendor 无法定标:禁止猜单位 → NULL。
+                    (trade_date, "600003.SH", 10.0, 300_000_000.0, "交易", "sv_obs", None),
+                ]
+            )
+        conn.executemany(
+            "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?, ?, ?)",
+            observation_rows,
+        )
+    finally:
+        conn.close()
+
+    load = _load_factor_screen_rows(duckdb_path=str(duckdb_path), as_of_date="2026-05-08")
+
+    by_code = {str(row["stock_code"]): row for row in load.rows}
+    assert by_code["600001.SH"]["avg_amount_20d"] == pytest.approx(250_000_000.0)
+    assert by_code["600002.SH"]["avg_amount_20d"] == pytest.approx(150_000_000.0)
+    assert by_code["600003.SH"]["avg_amount_20d"] is None
+    assert "choice_stock_daily_observation" in load.tables_used
+
+
+def test_livermore_factor_screen_loader_missing_amount_source_fails_closed(
+    tmp_path,
+) -> None:
+    """无 choice_stock_daily_observation(或缺 amount/vendor_version 列)时,
+    avg_amount_20d 输出 NULL(不猜单位),由计算端 fail-closed 清空评分池。"""
+    from backend.app.services.market_data_livermore_service import (
+        _load_factor_screen_rows,
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table choice_stock_factor_snapshot (
+              as_of_date varchar,
+              stock_code varchar,
+              pe double,
+              pb double,
+              ps double,
+              roe double,
+              gross_margin double,
+              three_month_return double,
+              twelve_month_return double,
+              volatility double,
+              dividend_yield double,
+              industry varchar
+            )
+            """
+        )
+        conn.execute(
+            "insert into choice_stock_factor_snapshot values ('2026-04-30', '600001.SH', 10.0, 1.2, 0.8, 0.09, 0.28, 0.02, 0.06, 0.16, 0.012, '电子')"
+        )
+    finally:
+        conn.close()
+
+    load = _load_factor_screen_rows(duckdb_path=str(duckdb_path), as_of_date="2026-05-08")
+
+    assert load.rows
+    assert all(row["avg_amount_20d"] is None for row in load.rows)
+    assert "choice_stock_daily_observation" not in load.tables_used
+
+
+def test_livermore_candidate_close_history_loader_matches_livermore_series(
+    tmp_path,
+) -> None:
+    """数据路径一致性锁：观察位几何收盘序列与 Livermore 候选历史装载完全同源
+    (同表、同窗口、同锚定、同一 None 行剔除规则,含停牌/0 值/None 对抗样本)。"""
+    from backend.app.services.market_data_livermore_service import (
+        _load_candidate_close_histories,
+        _load_dual_stock_history_inputs,
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table choice_stock_daily_observation (
+              trade_date varchar,
+              stock_code varchar,
+              close_value double,
+              turn double,
+              amount double,
+              volume double,
+              tradestatus varchar,
+              vendor_version varchar
+            )
+            """
+        )
+        as_of = date(2026, 6, 30)
+        rows: list[tuple[object, ...]] = []
+        for offset in range(70):
+            trade_date = (as_of - timedelta(days=offset)).isoformat()
+            close_value: float | None = 100.0 + offset
+            turn_value: float | None = 1.0
+            tradestatus = "Trading"
+            if offset == 2:
+                close_value = None  # close 缺失行须剔除
+            if offset == 4:
+                turn_value = None  # turn 缺失行须剔除(与 Livermore 同口径)
+            if offset == 6:
+                turn_value = 0.0  # 0 值行保留
+            if offset == 8:
+                tradestatus = "Suspended"  # 候选序列不过滤 tradestatus
+            rows.append(
+                (
+                    trade_date,
+                    "600100.SH",
+                    close_value,
+                    turn_value,
+                    240_000_000.0,
+                    1_000_000.0,
+                    tradestatus,
+                    "vv_choice_stock_20260630_001",
+                )
+            )
+        conn.executemany(
+            "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?, ?, ?, ?)",
+            rows,
+        )
+
+        dual = _load_dual_stock_history_inputs(
+            conn=conn,
+            as_of_date="2026-06-30",
+            candidate_stock_codes=["600100.SH"],
+            trading_stock_codes=[],
+        )
+        histories, last_dates, tables_used = _load_candidate_close_histories(
+            duckdb_path=str(duckdb_path),
+            as_of_date="2026-06-30",
+            stock_codes=["600100.SH"],
+            conn=conn,
+        )
+    finally:
+        conn.close()
+
+    livermore_closes = dual.candidate_history_by_code["600100.SH"]["close"]
+    assert histories["600100.SH"] == livermore_closes
+    # 对抗样本自检：close/turn 缺失的 2 行被剔除,停牌与 0 值行保留。
+    assert len(livermore_closes) == 68
+    # 价格锚定日 = 最后一根保留观测行的交易日（YYYY-MM-DD）。
+    assert last_dates["600100.SH"] == "2026-06-30"
+    assert tables_used == ["choice_stock_daily_observation"]
+
+
+def test_livermore_candidate_close_history_loader_fails_closed(tmp_path) -> None:
+    """观察表缺 turn 列或库文件缺失时返回空映射(字段保持 None),不得抛错或猜口径。"""
+    from backend.app.services.market_data_livermore_service import (
+        _load_candidate_close_histories,
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table choice_stock_daily_observation (
+              trade_date varchar,
+              stock_code varchar,
+              close_value double,
+              amount double,
+              tradestatus varchar,
+              source_version varchar,
+              vendor_version varchar
+            )
+            """
+        )
+        conn.execute(
+            "insert into choice_stock_daily_observation values ('2026-05-08', '600001.SH', 10.0, 240000000.0, '交易', 'sv', 'vv_choice_stock_20260430_0123456789ab')"
+        )
+    finally:
+        conn.close()
+
+    histories, last_dates, tables_used = _load_candidate_close_histories(
+        duckdb_path=str(duckdb_path),
+        as_of_date="2026-05-08",
+        stock_codes=["600001.SH"],
+    )
+    assert histories == {}
+    assert last_dates == {}
+    assert tables_used == []
+
+    missing_histories, missing_last_dates, missing_tables = _load_candidate_close_histories(
+        duckdb_path=str(tmp_path / "missing.duckdb"),
+        as_of_date="2026-05-08",
+        stock_codes=["600001.SH"],
+    )
+    assert missing_histories == {}
+    assert missing_last_dates == {}
+    assert missing_tables == []
+
+    empty_histories, empty_last_dates, empty_tables = _load_candidate_close_histories(
+        duckdb_path=str(duckdb_path),
+        as_of_date="2026-05-08",
+        stock_codes=[],
+    )
+    assert empty_histories == {}
+    assert empty_last_dates == {}
+    assert empty_tables == []
+
+
+def test_livermore_api_factor_screen_items_carry_breakout_geometry(tmp_path) -> None:
+    """端到端：多因子候选在策略 payload 中带 close/breakout_level/
+    distance_to_breakout_pct/pattern,几何锚定策略 as_of_date(而非因子快照日)。"""
+    from backend.app.services.market_data_livermore_service import (
+        livermore_strategy_envelope,
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_macro_history(
+        str(duckdb_path),
+        start=date(2026, 2, 1),
+        closes=[3200.0 + day * 8 for day in range(110)],
+    )
+    factor_codes = [f"60002{i}.SH" for i in range(1, 8)]
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table choice_stock_factor_snapshot (
+              as_of_date varchar,
+              stock_code varchar,
+              pe double,
+              pb double,
+              ps double,
+              roe double,
+              gross_margin double,
+              three_month_return double,
+              twelve_month_return double,
+              volatility double,
+              dividend_yield double,
+              industry varchar
+            )
+            """
+        )
+        conn.executemany(
+            "insert into choice_stock_factor_snapshot values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (
+                    "2026-04-30",
+                    stock_code,
+                    9.0 + i,
+                    1.0 + i * 0.1,
+                    0.7 + i * 0.05,
+                    0.09 + i * 0.01,
+                    0.28 + i * 0.02,
+                    0.02 + i * 0.01,
+                    0.06 + i * 0.02,
+                    0.16 + i * 0.01,
+                    0.012 + i * 0.002,
+                    "电子",
+                )
+                for i, stock_code in enumerate(factor_codes, start=1)
+            ],
+        )
+        # 观察表带 turn 列:130 个自然日收盘史,信号日(2026-05-08)收 103,先导全部 100
+        # -> breakout_level=100, distance=+3.0%, pattern=突破（参考）。
+        # amount 为 choice_native 代际(元),2.4e8 >= 流动性地板 2e8。
+        conn.execute(
+            """
+            create table choice_stock_daily_observation (
+              trade_date varchar,
+              stock_code varchar,
+              close_value double,
+              turn double,
+              amount double,
+              tradestatus varchar,
+              source_version varchar,
+              vendor_version varchar
+            )
+            """
+        )
+        signal_date = date(2026, 5, 8)
+        obs_rows = []
+        for offset in range(130):
+            trade_date = (signal_date - timedelta(days=offset)).isoformat()
+            close_value = 103.0 if offset == 0 else 100.0
+            for stock_code in factor_codes:
+                obs_rows.append(
+                    (
+                        trade_date,
+                        stock_code,
+                        close_value,
+                        1.5,
+                        240_000_000.0,
+                        "交易",
+                        "sv_obs",
+                        "vv_choice_stock_20260430_0123456789ab",
+                    )
+                )
+        conn.executemany(
+            "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?, ?, ?, ?)",
+            obs_rows,
+        )
+    finally:
+        conn.close()
+
+    envelope = livermore_strategy_envelope(
+        duckdb_path=str(duckdb_path),
+        as_of_date="2026-05-08",
+        stock_readiness=_ready_choice_stock_readiness(),
+    )
+
+    result = envelope["result"]
+    payload = result["factor_screen_candidates"]
+    assert payload["as_of_date"] == "2026-04-30"
+    assert payload["factor_snapshot_as_of_date"] == "2026-04-30"
+    geometry = payload["breakout_geometry"]
+    assert geometry["price_as_of_date"] == "2026-05-08"
+    assert geometry["breakout_basis"] == "prior_55d_close_high"
+    items = payload["items"]
+    assert items
+    for item in items:
+        assert item["close"] == 103.0
+        assert item["breakout_level"] == 100.0
+        assert item["distance_to_breakout_pct"] == 3.0
+        assert item["pattern"] == "突破（参考）"
+    assert "choice_stock_daily_observation" in envelope["result_meta"]["tables_used"]
+
+
+def test_livermore_strategy_attaches_breakout_geometry_to_all_observation_sources(
+    monkeypatch,
+) -> None:
+    """服务接线锁：动量/新趋势/超跌/多因子/融合五源共用同一次收盘历史查询
+    (候选码合并去重后单次装载),attach 后各源 items 携带几何字段;
+    源自带的策略日 close 不被覆盖;融合候选与多因子候选同股几何逐位一致;
+    装载失败时 fail-closed(字段 None、close 保留原值)。"""
+    from backend.app.services import market_data_livermore_service as service
+
+    ready_coverage = SimpleNamespace(
+        full_coverage=True,
+        status="ready",
+        message="ready",
+        completed_request_items=[],
+        missing_request_items=[],
+    )
+    monkeypatch.setattr(
+        service,
+        "load_choice_stock_materialization_coverage",
+        lambda **_kwargs: ready_coverage,
+    )
+    monkeypatch.setattr(service, "_load_sector_rank_inputs", lambda **_kwargs: ([], [], [], []))
+    monkeypatch.setattr(
+        service,
+        "compute_sector_rank",
+        lambda **_kwargs: SimpleNamespace(ready=False, payload={}),
+    )
+    monkeypatch.setattr(
+        service,
+        "_load_trading_stock_snapshot_inputs",
+        lambda **_kwargs: _sample_trading_snapshot_inputs(service),
+    )
+    monkeypatch.setattr(
+        service,
+        "_load_theme_breakout_snapshots",
+        lambda **_kwargs: ([], [], [], [], service._ThemeBreakoutEvidenceProvenance()),
+    )
+    monkeypatch.setattr(service, "_load_risk_exit_snapshots", lambda **_kwargs: ([], [], [], []))
+    monkeypatch.setattr(service, "_risk_exit_input_block_reason", lambda **_kwargs: "")
+    monkeypatch.setattr(
+        service,
+        "_load_factor_screen_rows",
+        lambda **_kwargs: service._FactorScreenLoadResult(
+            rows=[
+                {
+                    "stock_code": "600001.SH",
+                    "stock_name": "Factor A",
+                    "pe": 10.0,
+                    "pb": 1.2,
+                    "ps": 0.8,
+                    "roe": 0.09,
+                    "gross_margin": 0.28,
+                    "three_month_return": 0.02,
+                    "twelve_month_return": 0.06,
+                    "volatility": 0.16,
+                    "dividend_yield": 0.012,
+                    "industry": "电子",
+                    "sector_code": "801080",
+                    "sector_name": "电子",
+                    "avg_amount_20d": 2.4e8,
+                }
+            ],
+            snapshot_as_of_date="2026-06-13",
+            tables_used=["choice_stock_factor_snapshot"],
+        ),
+    )
+
+    def _fake_payload(kind: str, item: dict[str, object], **kwargs) -> SimpleNamespace:
+        return SimpleNamespace(
+            payload={
+                "as_of_date": kwargs["as_of_date"],
+                "formula_version": f"rv_{kind}_test",
+                "market_state": kwargs["market_state"],
+                "candidate_count": 1,
+                "items": [item],
+            }
+        )
+
+    monkeypatch.setattr(
+        service,
+        "compute_uptrend_momentum_candidates",
+        lambda **kwargs: _fake_payload(
+            "uptrend",
+            {"rank": 1, "stock_code": "000001.SZ", "stock_name": "Trend A", "close": 160.0},
+            **kwargs,
+        ),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        service,
+        "compute_fresh_trend_watchlist_candidates",
+        lambda **kwargs: _fake_payload(
+            "fresh_trend",
+            {"rank": 1, "stock_code": "300001.SZ", "stock_name": "Fresh A", "close": 50.0},
+            **kwargs,
+        ),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        service,
+        "compute_mean_reversion_candidates",
+        lambda **kwargs: _fake_payload(
+            "mean_reversion",
+            {"rank": 1, "stock_code": "000002.SZ", "stock_name": "Reversion A", "close": 84.52},
+            **kwargs,
+        ),
+        raising=False,
+    )
+
+    loader_calls: list[list[str]] = []
+
+    def fake_close_histories(*, duckdb_path, as_of_date, stock_codes, conn=None):
+        loader_calls.append(list(stock_codes))
+        codes = ("000001.SZ", "000002.SZ", "300001.SZ", "600001.SH")
+        return (
+            {
+                "000001.SZ": [155.0] * 55 + [160.0],
+                "000002.SZ": [100.0] * 55 + [84.52],
+                "300001.SZ": [40.0] * 55 + [50.0],
+                "600001.SH": [100.0] * 55 + [103.0],
+            },
+            {code: "2026-06-18" for code in codes},
+            ["choice_stock_daily_observation"],
+        )
+
+    monkeypatch.setattr(service, "_load_candidate_close_histories", fake_close_histories)
+
+    outputs = service._load_choice_stock_outputs(
+        duckdb_path="unused.duckdb",
+        as_of_date="2026-06-18",
+        market_state="WARM",
+        stock_readiness=_ready_choice_stock_readiness(),
+    )
+
+    # 一次查询覆盖全部源：候选码合并去重升序，仅调用一次。
+    assert loader_calls == [["000001.SZ", "000002.SZ", "300001.SZ", "600001.SH"]]
+
+    momentum_item = outputs.uptrend_momentum_payload["items"][0]
+    assert momentum_item["close"] == 160.0  # 源自带 close 不被覆盖
+    assert momentum_item["breakout_level"] == 155.0
+    assert momentum_item["distance_to_breakout_pct"] == 3.2258
+    assert momentum_item["pattern"] == "突破（参考）"
+
+    fresh_item = outputs.fresh_trend_watchlist_payload["items"][0]
+    assert fresh_item["close"] == 50.0
+    assert fresh_item["breakout_level"] == 40.0
+    assert fresh_item["distance_to_breakout_pct"] == 25.0
+    assert fresh_item["pattern"] == "突破（参考）"
+
+    reversion_item = outputs.mean_reversion_payload["items"][0]
+    assert reversion_item["close"] == 84.52
+    assert reversion_item["breakout_level"] == 100.0
+    assert reversion_item["distance_to_breakout_pct"] == -15.48
+    assert reversion_item["pattern"] == "回踩（参考）"
+
+    factor_item = outputs.factor_screen_payload["items"][0]
+    fusion_item = outputs.hybrid_fusion_payload["items"][0]
+    assert factor_item["stock_code"] == fusion_item["stock_code"] == "600001.SH"
+    for key in ("close", "breakout_level", "distance_to_breakout_pct", "pattern"):
+        assert fusion_item[key] == factor_item[key]
+    assert fusion_item["close"] == 103.0
+    assert fusion_item["breakout_level"] == 100.0
+    assert fusion_item["distance_to_breakout_pct"] == 3.0
+    assert fusion_item["pattern"] == "突破（参考）"
+
+    for payload in (
+        outputs.uptrend_momentum_payload,
+        outputs.fresh_trend_watchlist_payload,
+        outputs.mean_reversion_payload,
+        outputs.factor_screen_payload,
+        outputs.hybrid_fusion_payload,
+    ):
+        assert payload["breakout_geometry"]["price_as_of_date"] == "2026-06-18"
+    assert "choice_stock_daily_observation" in outputs.tables_used
+
+    # 装载失败(库缺失/查询异常)时 fail-closed：几何字段 None,自带 close 保留。
+    monkeypatch.setattr(
+        service,
+        "_load_candidate_close_histories",
+        lambda **_kwargs: ({}, {}, []),
+    )
+    degraded = service._load_choice_stock_outputs(
+        duckdb_path="unused.duckdb",
+        as_of_date="2026-06-18",
+        market_state="WARM",
+        stock_readiness=_ready_choice_stock_readiness(),
+    )
+    degraded_momentum = degraded.uptrend_momentum_payload["items"][0]
+    assert degraded_momentum["close"] == 160.0
+    assert degraded_momentum["breakout_level"] is None
+    assert degraded_momentum["distance_to_breakout_pct"] is None
+    assert degraded_momentum["pattern"] is None
+    degraded_fusion = degraded.hybrid_fusion_payload["items"][0]
+    assert degraded_fusion["close"] is None
+    assert degraded_fusion["pattern"] is None
+
+
+def test_factor_screen_liquidity_degradation_reason_thresholds() -> None:
+    """流动性 pass 率降级规则：<95% 触发;恰 95% 不触发;缺失均额按未通过计;
+    legacy v2 payload(无 liquidity_filter 块)规则不适用。"""
+    from backend.app.services import market_data_livermore_service as service
+
+    def _payload(amounts: list[object]) -> dict[str, object]:
+        return {
+            "liquidity_filter": {"min_avg_amount_20d": 200_000_000.0},
+            "items": [
+                {"stock_code": f"6000{i:02d}.SH", "avg_amount_20d": amount}
+                for i, amount in enumerate(amounts)
+            ],
+        }
+
+    # 全部达标 → 不触发。
+    assert service._factor_screen_liquidity_degradation_reason(_payload([2.4e8] * 10)) is None
+    # 19/20 = 95% 恰在阈值上 → 不触发(规则为 < 95%)。
+    assert (
+        service._factor_screen_liquidity_degradation_reason(_payload([2.4e8] * 19 + [1.0e8]))
+        is None
+    )
+    # 9/10 = 90% < 95% → 触发。
+    reason = service._factor_screen_liquidity_degradation_reason(_payload([2.4e8] * 9 + [1.0e8]))
+    assert reason is not None
+    assert "liquidity pass ratio" in reason
+    assert "90.0%" in reason
+    # 均额缺失按未通过计(fail-closed) → 同样触发。
+    assert (
+        service._factor_screen_liquidity_degradation_reason(_payload([2.4e8] * 9 + [None]))
+        is not None
+    )
+    # legacy v2 payload：无 liquidity_filter 块 → 规则不适用。
+    legacy_payload = {"items": [{"stock_code": "600000.SH", "avg_amount_20d": 1.0}] * 5}
+    assert service._factor_screen_liquidity_degradation_reason(legacy_payload) is None
+    # 空候选 → 规则不适用(空池由错误型 coverage_note 覆盖)。
+    assert service._factor_screen_liquidity_degradation_reason(_payload([])) is None
+
+
+def test_factor_screen_degradation_reasons_include_liquidity_rule() -> None:
+    """pass 率 <95% 时降级原因经 _factor_screen_degradation_reasons 注入(观察名单化);
+    全部达标时无降级原因。"""
+    from backend.app.services import market_data_livermore_service as service
+
+    def _reasons(items: list[dict[str, object]]) -> list[str]:
+        payload = {
+            "coverage_note": "本次多因子评分池为 10 只（必填字段完整、通过基础筛选条件），仅在该评分池内生成观察候选",
+            "liquidity_filter": {"min_avg_amount_20d": 200_000_000.0},
+            "items": items,
+        }
+        return service._factor_screen_degradation_reasons(
+            payload=payload,
+            lag_days=0,
+            threshold_days=3,
+            coverage_count=10,
+            coverage_denominator=10,
+            coverage_ratio=1.0,
+        )
+
+    degraded_items = [
+        {"stock_code": f"6000{i:02d}.SH", "avg_amount_20d": 2.4e8 if i else 1.0e8}
+        for i in range(10)
+    ]
+    reasons = _reasons(degraded_items)
+    assert any("liquidity pass ratio" in reason for reason in reasons)
+
+    healthy_items = [
+        {"stock_code": f"6000{i:02d}.SH", "avg_amount_20d": 2.4e8} for i in range(10)
+    ]
+    assert _reasons(healthy_items) == []
+
+
+def test_factor_screen_inactive_payload_is_policy_unavailable_not_degraded() -> None:
+    """OFF/非活跃态是门控结果，不得被 coverage_note、覆盖率或新鲜度规则误判为数据降级。"""
+    from backend.app.services import market_data_livermore_service as service
+
+    inactive_reason = (
+        "Factor screen inactive for market_state OFF; "
+        "active states are WARM/HOT/OVERHEAT."
+    )
+    payload: dict[str, object] = {
+        "as_of_date": "2026-04-30",
+        "formula_version": "rv_factor_screen_candidates_v4",
+        "market_state": "OFF",
+        "input_stock_count": 10,
+        "filtered_out_count": 10,
+        "candidate_count": 0,
+        "coverage_note": inactive_reason,
+        "liquidity_filter": None,
+        "items": [],
+    }
+
+    assert service._is_factor_screen_error_note(inactive_reason) is False
+    assert (
+        service._factor_screen_degradation_reasons(
+            payload=payload,
+            lag_days=8,
+            threshold_days=3,
+            coverage_count=10,
+            coverage_denominator=None,
+            coverage_ratio=None,
+        )
+        == []
+    )
+
+    stock_outputs = SimpleNamespace(
+        sector_rank_payload=None,
+        stock_candidates_payload=None,
+        uptrend_momentum_payload=None,
+        fresh_trend_watchlist_payload=None,
+        mean_reversion_payload=None,
+        factor_screen_payload=payload,
+        theme_breakout_payload=None,
+        hybrid_fusion_payload=None,
+        risk_exit_payload=None,
+    )
+    states = service._build_module_states(
+        page_as_of_date="2026-05-08",
+        market_dates=[],
+        unsupported_outputs=[],
+        stock_outputs=stock_outputs,
+    )
+    factor_state = next(row for row in states if row["key"] == "factor_screen_candidates")
+
+    assert factor_state["state"] == "unsupported"
+    assert factor_state["render_mode"] == "evidence_only"
+    assert factor_state["reasons"] == [inactive_reason]
+    assert factor_state["evidence_scope"] == "detail"
+    assert factor_state["excludes_from_primary"] is True
 
 
 def test_livermore_sector_rank_loader_attaches_universe_stock_names(tmp_path) -> None:

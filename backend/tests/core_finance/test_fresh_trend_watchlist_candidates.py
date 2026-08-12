@@ -4,6 +4,10 @@ from collections.abc import Sequence
 
 import pytest
 from backend.app.core_finance import fresh_trend_watchlist_candidates as fresh_module
+from backend.app.core_finance.breakout_geometry import (
+    PATTERN_BREAKOUT_LABEL,
+    attach_breakout_geometry,
+)
 from backend.app.core_finance.fresh_trend_watchlist_candidates import (
     FreshTrendWatchlistSnapshot,
     compute_fresh_trend_watchlist_candidates,
@@ -272,3 +276,79 @@ def test_fresh_trend_watchlist_counts_short_history_even_when_board_is_excluded(
     assert result.payload["candidate_count"] == 0
     assert result.payload["excluded_stock_count"] == 1
     assert result.payload["insufficient_history_count"] == 1
+
+
+# ---- 观察位几何（attach_breakout_geometry）golden 样本 -----------------------
+
+
+def _computed_fresh_trend_payload() -> dict[str, object]:
+    """跑真实 compute 生成 2 只成长板候选（同一趋势序列，close 均为 50.0）。"""
+    growth_trend = [20.0 + i * 0.25 for i in range(121)]
+    return compute_fresh_trend_watchlist_candidates(
+        as_of_date="2026-06-18",
+        market_state="WARM",
+        snapshots=[
+            _snapshot("300001.SZ", growth_trend, name="Fresh A"),
+            _snapshot("301001.SZ", list(growth_trend), name="Fresh B"),
+        ],
+    ).payload
+
+
+def test_fresh_trend_watchlist_breakout_geometry_golden_keeps_own_close_and_fills_missing() -> None:
+    """golden：新趋势候选自带策略日 close(50.0)不被覆盖，几何只补
+    breakout_level/distance/pattern；缺 K 线候选三字段保持 None(而非 0)且
+    close 仍保留自身值；原 payload 不被回写。"""
+    payload = _computed_fresh_trend_payload()
+    assert payload["candidate_count"] == 2
+
+    attached = attach_breakout_geometry(
+        payload,
+        close_history_by_code={"300001.SZ": [40.0] * 55 + [50.0]},
+        price_as_of_date="2026-06-18",
+        last_trade_date_by_code={"300001.SZ": "2026-06-18"},
+    )
+    by_code = {str(item["stock_code"]): item for item in attached["items"]}
+
+    geometry_item = by_code["300001.SZ"]
+    assert geometry_item["close"] == 50.0
+    assert geometry_item["breakout_level"] == 40.0
+    assert geometry_item["distance_to_breakout_pct"] == 25.0
+    assert geometry_item["pattern"] == PATTERN_BREAKOUT_LABEL
+    assert "price_as_of_date" not in geometry_item
+    assert "price_stale" not in geometry_item
+
+    missing_item = by_code["301001.SZ"]
+    assert missing_item["close"] == 50.0
+    assert missing_item["breakout_level"] is None
+    assert missing_item["distance_to_breakout_pct"] is None
+    assert missing_item["pattern"] is None
+
+    original_by_code = {str(item["stock_code"]): item for item in payload["items"]}
+    for stock_code, item in by_code.items():
+        assert item["score"] == original_by_code[stock_code]["score"]
+        assert item["concepts"] == original_by_code[stock_code]["concepts"]
+    for original_item in payload["items"]:
+        assert "pattern" not in original_item
+        assert "breakout_level" not in original_item
+    assert "breakout_geometry" not in payload
+    assert attached["breakout_geometry"]["price_as_of_date"] == "2026-06-18"
+
+
+def test_fresh_trend_watchlist_breakout_geometry_golden_fails_closed_on_close_conflict() -> None:
+    """golden：几何 close 与候选自带 close 不等(同股同日不同价)时该行几何
+    fail-closed 保持 None，close 保留原值，不加停牌披露字段。"""
+    payload = _computed_fresh_trend_payload()
+
+    attached = attach_breakout_geometry(
+        payload,
+        close_history_by_code={"300001.SZ": [40.0] * 55 + [49.75]},
+        price_as_of_date="2026-06-18",
+    )
+    item = {str(row["stock_code"]): row for row in attached["items"]}["300001.SZ"]
+
+    assert item["close"] == 50.0
+    assert item["breakout_level"] is None
+    assert item["distance_to_breakout_pct"] is None
+    assert item["pattern"] is None
+    assert "price_as_of_date" not in item
+    assert "price_stale" not in item

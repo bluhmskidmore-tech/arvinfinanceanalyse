@@ -165,7 +165,8 @@ def test_risk_exit_history_keeps_zero_volume_suspension_days(tmp_path) -> None:
                 10.0 + offset,
                 0.0 if offset == 15 else 1_000_000.0 + offset * 1000.0,
                 "sv_daily",
-                "vv_daily",
+                # 消费端按 vendor 显式定标(fail-closed),夹具须用合法 native 模式
+                "vv_choice_stock_20260429_0123456789ab",
             )
             for offset in range(31)
         ]

@@ -4,6 +4,10 @@ from collections.abc import Sequence
 
 import pytest
 from backend.app.core_finance import uptrend_momentum_candidates as uptrend_module
+from backend.app.core_finance.breakout_geometry import (
+    PATTERN_BREAKOUT_LABEL,
+    attach_breakout_geometry,
+)
 from backend.app.core_finance.uptrend_momentum_candidates import (
     UptrendMomentumSnapshot,
     compute_uptrend_momentum_candidates,
@@ -201,3 +205,89 @@ def test_uptrend_momentum_counts_short_history_even_when_st_is_excluded() -> Non
     assert result.payload["candidate_count"] == 0
     assert result.payload["excluded_stock_count"] == 1
     assert result.payload["insufficient_history_count"] == 1
+
+
+# ---- 观察位几何（attach_breakout_geometry）golden 样本 -----------------------
+
+
+def _computed_momentum_payload() -> dict[str, object]:
+    """跑真实 compute 生成 2 只候选（同一上升趋势序列，close 均为 160.0）。"""
+    steady_uptrend = [100.0 + i * 0.5 for i in range(121)]
+    return compute_uptrend_momentum_candidates(
+        as_of_date="2026-06-18",
+        market_state="WARM",
+        snapshots=[
+            _snapshot("000001.SZ", steady_uptrend, name="Trend A"),
+            _snapshot("000002.SZ", list(steady_uptrend), name="Trend B"),
+        ],
+    ).payload
+
+
+def test_uptrend_momentum_breakout_geometry_golden_keeps_own_close_and_fills_missing() -> None:
+    """golden：动量候选自带策略日 close(160.0)不被覆盖，几何只补
+    breakout_level/distance/pattern；缺 K 线候选三字段保持 None(而非 0)且
+    close 仍保留自身值；不加停牌披露字段；原 payload 不被回写。"""
+    payload = _computed_momentum_payload()
+    assert payload["candidate_count"] == 2
+
+    attached = attach_breakout_geometry(
+        payload,
+        close_history_by_code={"000001.SZ": [155.0] * 55 + [160.0]},
+        price_as_of_date="2026-06-18",
+        last_trade_date_by_code={"000001.SZ": "2026-06-18"},
+    )
+    by_code = {str(item["stock_code"]): item for item in attached["items"]}
+
+    geometry_item = by_code["000001.SZ"]
+    assert geometry_item["close"] == 160.0
+    assert geometry_item["breakout_level"] == 155.0
+    assert geometry_item["distance_to_breakout_pct"] == 3.2258
+    assert geometry_item["pattern"] == PATTERN_BREAKOUT_LABEL
+    assert "price_as_of_date" not in geometry_item
+    assert "price_stale" not in geometry_item
+
+    missing_item = by_code["000002.SZ"]
+    assert missing_item["close"] == 160.0
+    assert missing_item["breakout_level"] is None
+    assert missing_item["distance_to_breakout_pct"] is None
+    assert missing_item["pattern"] is None
+
+    original_by_code = {str(item["stock_code"]): item for item in payload["items"]}
+    for stock_code, item in by_code.items():
+        assert item["score"] == original_by_code[stock_code]["score"]
+        assert item["rank"] == original_by_code[stock_code]["rank"]
+    for original_item in payload["items"]:
+        assert "pattern" not in original_item
+        assert "breakout_level" not in original_item
+    assert "breakout_geometry" not in payload
+    assert attached["breakout_geometry"]["price_as_of_date"] == "2026-06-18"
+
+
+def test_uptrend_momentum_breakout_geometry_golden_fails_closed_on_close_conflict() -> None:
+    """golden：几何推导 close 与候选自带 close 冲突(同股同日不同价)、或几何
+    价格锚定日早于策略日(候选 close 已是策略日价)时，该行几何整体 fail-closed
+    保持 None，close 保留原值，不得择一采信，也不得加停牌披露字段。"""
+    payload = _computed_momentum_payload()
+
+    attached = attach_breakout_geometry(
+        payload,
+        close_history_by_code={
+            "000001.SZ": [155.0] * 55 + [159.0],  # 几何 close 159 != 自带 close 160
+            "000002.SZ": [155.0] * 55 + [160.0],  # close 相同但锚定日早于策略日
+        },
+        price_as_of_date="2026-06-18",
+        last_trade_date_by_code={
+            "000001.SZ": "2026-06-18",
+            "000002.SZ": "2026-06-17",
+        },
+    )
+    by_code = {str(item["stock_code"]): item for item in attached["items"]}
+
+    for stock_code in ("000001.SZ", "000002.SZ"):
+        item = by_code[stock_code]
+        assert item["close"] == 160.0
+        assert item["breakout_level"] is None
+        assert item["distance_to_breakout_pct"] is None
+        assert item["pattern"] is None
+        assert "price_as_of_date" not in item
+        assert "price_stale" not in item

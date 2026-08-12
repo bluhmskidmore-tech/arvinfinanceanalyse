@@ -40,6 +40,7 @@ from backend.app.services.stock_analysis_workbench_service import (
     DEFAULT_INCLUDE_KEYS,
     stock_analysis_workbench_envelope,
 )
+from backend.app.services.stock_heavyweight_trend_service import stock_heavyweight_trend_envelope
 from backend.app.services.stock_kline_analysis_service import stock_kline_analysis_envelope
 from backend.app.services.stock_official_evidence_service import stock_official_evidence_envelope
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
@@ -250,6 +251,21 @@ def _livermore_stock_detail_cache_key(
 
 def _stock_kline_analysis_cache_key(*, duckdb_path: str, stock_code: str, as_of_date: str | None, lookback: int) -> str:
     return f"stock-analysis/kline::stock={stock_code}::as_of={as_of_date or ''}::lookback={lookback}::{duckdb_path}"
+
+
+def _stock_heavyweight_trends_cache_key(
+    *,
+    duckdb_path: str,
+    as_of_date: str | None,
+    window_days: int,
+    sector_limit: int,
+    stocks_per_sector: int,
+) -> str:
+    return (
+        f"stock-analysis/heavyweight-trends::as_of={as_of_date or ''}::window_days={window_days}"
+        f"::sector_limit={sector_limit}::stocks_per_sector={stocks_per_sector}"
+        f"::{duckdb_path}::data_version={livermore_data_version(duckdb_path)}"
+    )
 
 
 def _livermore_candidate_history_cache_key(
@@ -675,6 +691,53 @@ def stock_kline_analysis(
             ),
         ),
     )
+
+
+@router.get("/stock-analysis/heavyweight-trends")
+def stock_heavyweight_trends(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    response: Response,
+    as_of_date: str | None = Query(None),
+    window_days: int = Query(default=20, ge=5, le=60),
+    sector_limit: int = Query(default=8, ge=1, le=20),
+    stocks_per_sector: int = Query(default=3, ge=1, le=10),
+) -> dict[str, object]:
+    parsed_as_of: date | None = None
+    if as_of_date is not None:
+        text = as_of_date.strip()
+        if not text:
+            raise HTTPException(status_code=422, detail="Invalid as_of_date. Expected YYYY-MM-DD.")
+        try:
+            parsed_as_of = date.fromisoformat(text)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Invalid as_of_date. Expected YYYY-MM-DD.") from exc
+
+    settings = get_settings()
+    _ensure_livermore_read_allowed(settings=settings, auth=auth)
+    duckdb_path = str(settings.duckdb_path)
+    started_at = time.perf_counter()
+    payload = market_home_response_cache.get_or_build(
+        _stock_heavyweight_trends_cache_key(
+            duckdb_path=duckdb_path,
+            as_of_date=None if parsed_as_of is None else parsed_as_of.isoformat(),
+            window_days=window_days,
+            sector_limit=sector_limit,
+            stocks_per_sector=stocks_per_sector,
+        ),
+        lambda: timed_api_call(
+            "/ui/market-data/stock-analysis/heavyweight-trends",
+            lambda: stock_heavyweight_trend_envelope(
+                duckdb_path=duckdb_path,
+                as_of_date=parsed_as_of,
+                window_days=window_days,
+                sector_limit=sector_limit,
+                stocks_per_sector=stocks_per_sector,
+            ),
+        ),
+    )
+    total_ms = (time.perf_counter() - started_at) * 1000
+    response.headers["Server-Timing"] = f"heavyweight-trends;dur={total_ms:.3f}"
+    return payload
 
 
 @router.get("/stock-analysis/official-evidence")

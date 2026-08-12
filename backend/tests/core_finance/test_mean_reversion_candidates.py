@@ -6,6 +6,10 @@ from typing import Any, cast
 
 import pytest
 from backend.app.core_finance import mean_reversion_candidates as mean_module
+from backend.app.core_finance.breakout_geometry import (
+    PATTERN_PULLBACK_LABEL,
+    attach_breakout_geometry,
+)
 from backend.app.core_finance.mean_reversion_candidates import (
     FORMULA_VERSION,
     MeanReversionSnapshot,
@@ -322,3 +326,89 @@ def test_mean_reversion_normalizes_history_once_for_late_rejection(
     assert result.payload["excluded_stock_count"] == 1
     assert result.payload["insufficient_history_count"] == 0
     assert call_count == 2
+
+
+# ---- 观察位几何（attach_breakout_geometry）golden 样本 -----------------------
+
+
+def _computed_reversion_payload() -> dict[str, Any]:
+    """跑真实 compute 生成 2 只超跌候选（同一序列，close 均为 84.52）。"""
+    first = _base_valid_snapshot()
+    second = replace(first, stock_code="000002.SZ")
+    return cast(
+        dict[str, Any],
+        compute_mean_reversion_candidates(
+            as_of_date="2026-05-09",
+            market_state="WARM",
+            snapshots=[first, second],
+        ).payload,
+    )
+
+
+def test_mean_reversion_breakout_geometry_golden_keeps_own_close_and_fills_missing() -> None:
+    """golden：超跌候选自带策略日 close(84.52)不被覆盖，几何只补
+    breakout_level/distance/pattern(回踩档)；缺 K 线候选三字段保持 None(而非 0)
+    且 close 仍保留自身值；原 payload 不被回写。"""
+    payload = _computed_reversion_payload()
+    assert payload["candidate_count"] == 2
+
+    attached = attach_breakout_geometry(
+        payload,
+        close_history_by_code={"000001.SZ": [100.0] * 55 + [84.52]},
+        price_as_of_date="2026-05-09",
+        last_trade_date_by_code={"000001.SZ": "2026-05-09"},
+    )
+    by_code = {
+        str(item["stock_code"]): item
+        for item in cast(list[dict[str, Any]], attached["items"])
+    }
+
+    geometry_item = by_code["000001.SZ"]
+    assert geometry_item["close"] == 84.52
+    assert geometry_item["breakout_level"] == 100.0
+    assert geometry_item["distance_to_breakout_pct"] == -15.48
+    assert geometry_item["pattern"] == PATTERN_PULLBACK_LABEL
+    assert "price_as_of_date" not in geometry_item
+    assert "price_stale" not in geometry_item
+
+    missing_item = by_code["000002.SZ"]
+    assert missing_item["close"] == 84.52
+    assert missing_item["breakout_level"] is None
+    assert missing_item["distance_to_breakout_pct"] is None
+    assert missing_item["pattern"] is None
+
+    original_by_code = {
+        str(item["stock_code"]): item
+        for item in cast(list[dict[str, Any]], payload["items"])
+    }
+    for stock_code, item in by_code.items():
+        assert item["score"] == original_by_code[stock_code]["score"]
+        assert item["drawdown_20d"] == original_by_code[stock_code]["drawdown_20d"]
+    for original_item in cast(list[dict[str, Any]], payload["items"]):
+        assert "pattern" not in original_item
+        assert "breakout_level" not in original_item
+    assert "breakout_geometry" not in payload
+    assert cast(dict[str, Any], attached["breakout_geometry"])["price_as_of_date"] == "2026-05-09"
+
+
+def test_mean_reversion_breakout_geometry_golden_fails_closed_on_close_conflict() -> None:
+    """golden：几何 close 与候选自带 close 不等(同股同日不同价)时该行几何
+    fail-closed 保持 None，close 保留原值，不加停牌披露字段。"""
+    payload = _computed_reversion_payload()
+
+    attached = attach_breakout_geometry(
+        payload,
+        close_history_by_code={"000001.SZ": [100.0] * 55 + [84.00]},
+        price_as_of_date="2026-05-09",
+    )
+    item = {
+        str(row["stock_code"]): row
+        for row in cast(list[dict[str, Any]], attached["items"])
+    }["000001.SZ"]
+
+    assert item["close"] == 84.52
+    assert item["breakout_level"] is None
+    assert item["distance_to_breakout_pct"] is None
+    assert item["pattern"] is None
+    assert "price_as_of_date" not in item
+    assert "price_stale" not in item

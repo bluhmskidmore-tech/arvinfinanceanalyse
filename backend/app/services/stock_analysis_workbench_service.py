@@ -275,8 +275,58 @@ def _candidate_queue(result: dict[str, object], *, top_k: int) -> list[dict[str,
                 row["theme_memberships"] = memberships
             rows.append(row)
             if len(rows) >= top_k:
-                return rows
-    return rows
+                break
+        if len(rows) >= top_k:
+            break
+    _reserve_theme_queue_slots(rows=rows, theme_rows=theme_rows, top_k=top_k)
+    return rows[:top_k]
+
+
+def _reserve_theme_queue_slots(
+    *,
+    rows: list[dict[str, object]],
+    theme_rows: list[dict[str, object]],
+    top_k: int,
+) -> None:
+    """题材候选保底席位（top_k 的 1/5，封顶 2）。
+
+    题材源排在候选键序最后，top_k 常被前置源占满导致题材候选永远不可见；
+    保底把队尾的非题材行换成尚未入队的题材行（沿用题材榜序）。同码股票已
+    通过其他源入队时不重复占位（题材归属已由 membership 继承合并到该行）。
+    """
+    reserved = min(2, top_k // 5)
+    if reserved <= 0 or not theme_rows:
+        return
+    present_theme = sum(
+        1 for row in rows if str(row.get("source_module") or "") == "theme_breakout"
+    )
+    present_codes = {
+        str(row.get("stock_code") or "").strip()
+        for row in rows
+        if str(row.get("stock_code") or "").strip()
+    }
+    pending = [
+        item
+        for item in theme_rows
+        if str(item.get("stock_code") or "").strip()
+        and str(item.get("stock_code") or "").strip() not in present_codes
+    ]
+    need = min(reserved - present_theme, len(pending))
+    if need <= 0:
+        return
+    overflow = len(rows) + need - top_k
+    if overflow > 0:
+        removable = [
+            index
+            for index in range(len(rows) - 1, -1, -1)
+            if str(rows[index].get("source_module") or "") != "theme_breakout"
+        ]
+        for index in removable[:overflow]:
+            rows.pop(index)
+    for item in pending[:need]:
+        row = dict(item)
+        row["source_module"] = "theme_breakout"
+        rows.append(row)
 
 
 def _theme_breakout_candidate_rows(value: object) -> list[dict[str, object]]:

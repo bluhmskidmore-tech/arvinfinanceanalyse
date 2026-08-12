@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import duckdb
+from backend.app.core_finance.breakout_geometry import attach_breakout_geometry
 from backend.app.core_finance.cycle_macro_score import (
     CN10Y_SERIES_ID,
     CSI300_PE_SERIES_ID,
@@ -32,7 +33,6 @@ from backend.app.core_finance.data_freshness import (
     assess_freshness,
 )
 from backend.app.core_finance.factor_screen_candidates import (
-    attach_factor_screen_breakout_geometry,
     compute_factor_screen_candidates,
 )
 from backend.app.core_finance.fresh_trend_watchlist_candidates import (
@@ -1828,30 +1828,9 @@ def _load_choice_stock_outputs_on_conn(
             market_state=market_state,
             rows=factor_load.rows,
         )
-        # 观察位几何：仅对入选候选(<=30 只)装载与 Livermore 候选同源同窗口的
-        # 收盘历史（锚定策略 as_of_date，而非因子快照日），由 core_finance 复用
-        # 既有 breakout 公式补充 close/breakout_level/distance/pattern 字段。
-        factor_candidate_codes = [
-            str(item.get("stock_code") or "")
-            for item in cast(list[dict[str, object]], fs_result.payload.get("items") or [])
-            if isinstance(item, dict)
-        ]
-        factor_geometry_histories, factor_geometry_last_dates, factor_geometry_tables = (
-            _load_factor_candidate_close_histories(
-                duckdb_path=duckdb_path,
-                as_of_date=as_of_date,
-                stock_codes=factor_candidate_codes,
-                conn=stock_conn,
-            )
-        )
-        tables_used.extend(factor_geometry_tables)
+        # 观察位几何在下方五源合并步骤统一 attach（一次收盘历史查询覆盖全部源）。
         factor_screen_payload = {
-            **attach_factor_screen_breakout_geometry(
-                fs_result.payload,
-                close_history_by_code=factor_geometry_histories,
-                price_as_of_date=as_of_date,
-                last_trade_date_by_code=factor_geometry_last_dates,
-            ),
+            **fs_result.payload,
             "factor_snapshot_as_of_date": factor_load.snapshot_as_of_date,
             "observation_only": True,
             "coverage_count": len(factor_load.rows),
@@ -1916,6 +1895,53 @@ def _load_choice_stock_outputs_on_conn(
             macro_score=macro_score,
             thresholds=load_hybrid_fusion_thresholds(),
         ).payload
+
+    # 观察位几何：五个观察候选源（动量/新趋势/超跌/多因子/融合）共用
+    # core_finance.breakout_geometry 的同一 attach 公式，收盘历史与 Livermore
+    # 候选同源同窗口（锚定策略 as_of_date），一次查询覆盖全部源的候选码。
+    # 各源选股/评分/排序零变化；装载失败或缺 K 线时 attach 层保持字段
+    # None（fail-closed），源自带的 close 等同名键不被覆盖。
+    geometry_target_payloads: list[dict[str, object] | None] = [
+        uptrend_momentum_payload,
+        fresh_trend_watchlist_payload,
+        mean_reversion_payload,
+        factor_screen_payload,
+        hybrid_fusion_payload,
+    ]
+    geometry_codes = sorted(
+        {
+            code
+            for payload in geometry_target_payloads
+            if payload is not None
+            for item in cast("list[object]", payload.get("items") or [])
+            if isinstance(item, dict)
+            for code in (str(item.get("stock_code") or "").strip(),)
+            if code
+        }
+    )
+    geometry_histories, geometry_last_dates, geometry_tables = _load_candidate_close_histories(
+        duckdb_path=duckdb_path,
+        as_of_date=as_of_date,
+        stock_codes=geometry_codes,
+        conn=stock_conn,
+    )
+    tables_used.extend(geometry_tables)
+
+    def _with_breakout_geometry(payload: dict[str, object] | None) -> dict[str, object] | None:
+        if payload is None:
+            return None
+        return attach_breakout_geometry(
+            payload,
+            close_history_by_code=geometry_histories,
+            price_as_of_date=as_of_date,
+            last_trade_date_by_code=geometry_last_dates,
+        )
+
+    uptrend_momentum_payload = _with_breakout_geometry(uptrend_momentum_payload)
+    fresh_trend_watchlist_payload = _with_breakout_geometry(fresh_trend_watchlist_payload)
+    mean_reversion_payload = _with_breakout_geometry(mean_reversion_payload)
+    factor_screen_payload = _with_breakout_geometry(factor_screen_payload)
+    hybrid_fusion_payload = _with_breakout_geometry(hybrid_fusion_payload)
 
     risk_exit_payload: dict[str, object] | None = None
     risk_exit_block_reason = ""
@@ -3097,19 +3123,19 @@ def _load_factor_screen_rows(
             conn.close()
 
 
-def _load_factor_candidate_close_histories(
+def _load_candidate_close_histories(
     *,
     duckdb_path: str,
     as_of_date: str,
     stock_codes: list[str],
     conn: duckdb.DuckDBPyConnection | None = None,
 ) -> tuple[dict[str, list[float]], dict[str, str], list[str]]:
-    """装载多因子候选的收盘历史，供观察位几何字段推导（只读）。
+    """装载观察候选（五源合并去重后的候选码）的收盘历史，供观察位几何推导（只读）。
 
     口径与 Livermore 候选完全同源：复用 fetch_stock_candidate_history_rows
     （窗口 CHOICE_STOCK_HISTORY_WINDOW，锚定策略 as_of_date，不过滤 tradestatus），
     并复用 _load_stock_candidate_snapshots 的行解析规则（close 或 turn 为 None 的
-    观测行剔除），保证同一只股票在两个来源下 breakout 几何数值一致。
+    观测行剔除），保证同一只股票在任意来源下 breakout 几何数值一致。
     同时返回每只股票最后一根保留观测行的交易日（last_trade_date_by_code），供
     attach 层在停牌等"历史末日早于策略日"场景下做 item 级价格锚定日披露。
     fail-closed：库/表/列缺失或查询失败时返回空映射，由 core_finance attach 层

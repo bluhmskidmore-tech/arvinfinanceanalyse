@@ -70,9 +70,9 @@ def _seed_stock_tables(conn: duckdb.DuckDBPyConnection) -> None:
         """
         insert into choice_stock_daily_observation values
           ('2026-06-04', '600000.SH', 9.8, 10.1, 9.7, 10.0, 1.1, 0.5,
-           2.0, 11.0, 9.0, 1000.0, 10000.0, 'Trading', 'sv_d', 'vv_d'),
+           2.0, 11.0, 9.0, 1000.0, 10000.0, 'Trading', 'sv_d', 'vv_choice_stock_20260604_0123456789ab'),
           (?, '600000.SH', 10.0, 10.4, 9.9, 10.2, 1.2, 2.0,
-           3.0, 11.2, 9.2, 1200.0, 12000.0, 'Trading', 'sv_d', 'vv_d')
+           3.0, 11.2, 9.2, 1200.0, 12000.0, 'Trading', 'sv_d', 'vv_choice_stock_20260605_0123456789ab')
         """,
         [_AS_OF_DATE],
     )
@@ -189,7 +189,7 @@ def test_stock_candidate_loader_normalizes_daily_amount_by_vendor_generation(tmp
         )
 
     by_code = {snapshot.stock_code: snapshot for snapshot in snapshots}
-    # 种子行 vendor 'vv_d' 属 choice_native 代际:单位=元,原值透传。
+    # 种子行 vendor(vv_choice_stock_*)属 choice_native 代际:单位=元,原值透传。
     assert by_code["600000.SH"].daily_amount == 12000.0
     # tushare 代际:单位=千元,读取时 ×1000 归一化为元。
     assert by_code["600100.SH"].daily_amount == 300_000_000.0

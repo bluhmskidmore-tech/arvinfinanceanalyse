@@ -124,10 +124,12 @@ def test_official_evidence_route_calls_service_without_cache_and_sets_server_tim
         "/ui/market-data/stock-analysis/official-evidence",
         params={"stock_code": "000001.SZ", "as_of_date": "2026-04-10", "limit_per_type": 7},
     )
+    default_as_of_before = date.today()
     third = client.get(
         "/ui/market-data/stock-analysis/official-evidence",
         params={"stock_code": "000001.SZ"},
     )
+    default_as_of_after = date.today()
 
     assert first.status_code == 200
     assert second.status_code == 200
@@ -136,7 +138,8 @@ def test_official_evidence_route_calls_service_without_cache_and_sets_server_tim
     assert calls[0]["stock_code"] == "000001.SZ"
     assert calls[0]["as_of_date"] == date(2026, 4, 10)
     assert calls[0]["limit_per_type"] == 7
-    assert calls[2]["as_of_date"] == date.today()
+    # 路由默认 as_of=today：用请求前后的日期窗口断言，避免跨午夜双读翻车。
+    assert calls[2]["as_of_date"] in {default_as_of_before, default_as_of_after}
     assert "official-evidence" in first.headers["Server-Timing"]
     assert "query;dur=" in first.headers["Server-Timing"]
 

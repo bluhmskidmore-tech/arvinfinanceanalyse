@@ -232,6 +232,255 @@ def test_candidate_queue_skips_modules_excluded_from_primary() -> None:
     ]
 
 
+def _theme_container(members: list[tuple[int, str, str]]) -> dict[str, object]:
+    return {
+        "items": [
+            {
+                "rank": 1,
+                "theme_key": "concept:T1",
+                "theme_name": "Theme one",
+                "source_kind": "real_concept",
+                "items": [
+                    {"rank": rank, "stock_code": code, "stock_name": name}
+                    for rank, code, name in members
+                ],
+            }
+        ]
+    }
+
+
+def test_candidate_queue_reserves_tail_slots_for_theme_candidates() -> None:
+    """题材保底：top_k 被前置源占满时，队尾 2 席换成题材行（top_k 的 1/5 封顶 2）。"""
+    module = load_module(
+        "backend.app.services.stock_analysis_workbench_service",
+        "backend/app/services/stock_analysis_workbench_service.py",
+    )
+    result = {
+        "factor_screen_candidates": {
+            "items": [
+                {"stock_code": f"6001{i:02d}.SH", "stock_name": f"Factor {i}", "rank": i + 1}
+                for i in range(30)
+            ]
+        },
+        "theme_breakout": _theme_container(
+            [(1, "300001.SZ", "Theme A"), (2, "300002.SZ", "Theme B"), (3, "300003.SZ", "Theme C")]
+        ),
+    }
+
+    rows = module._candidate_queue(result, top_k=10)
+
+    assert len(rows) == 10
+    assert [row["source_module"] for row in rows[:8]] == ["factor_screen_candidates"] * 8
+    assert [row["rank"] for row in rows[:8]] == [1, 2, 3, 4, 5, 6, 7, 8]
+    assert [(row["source_module"], row["stock_code"]) for row in rows[8:]] == [
+        ("theme_breakout", "300001.SZ"),
+        ("theme_breakout", "300002.SZ"),
+    ]
+
+
+def test_candidate_queue_theme_reservation_skips_stocks_already_queued() -> None:
+    """题材成员与已入队股票同码时不重复占位（题材归属走 membership 继承），席位给下一只。"""
+    module = load_module(
+        "backend.app.services.stock_analysis_workbench_service",
+        "backend/app/services/stock_analysis_workbench_service.py",
+    )
+    result = {
+        "factor_screen_candidates": {
+            "items": [
+                {"stock_code": f"6002{i:02d}.SH", "stock_name": f"Factor {i}", "rank": i + 1}
+                for i in range(10)
+            ]
+        },
+        "theme_breakout": _theme_container(
+            [(1, "600200.SH", "Dup with factor"), (2, "300009.SZ", "Theme only")]
+        ),
+    }
+
+    rows = module._candidate_queue(result, top_k=10)
+
+    assert len(rows) == 10
+    codes = [str(row["stock_code"]) for row in rows]
+    assert len(codes) == len(set(codes))
+    assert (rows[-1]["source_module"], rows[-1]["stock_code"]) == ("theme_breakout", "300009.SZ")
+    dup_row = next(row for row in rows if row["stock_code"] == "600200.SH")
+    assert dup_row["source_module"] == "factor_screen_candidates"
+    assert dup_row["theme_memberships"]
+
+
+def test_candidate_queue_small_top_k_skips_theme_reservation() -> None:
+    """top_k < 5 时不保底（top_k // 5 == 0），避免小队列被题材挤占。"""
+    module = load_module(
+        "backend.app.services.stock_analysis_workbench_service",
+        "backend/app/services/stock_analysis_workbench_service.py",
+    )
+    result = {
+        "factor_screen_candidates": {
+            "items": [
+                {"stock_code": f"6003{i:02d}.SH", "stock_name": f"Factor {i}", "rank": i + 1}
+                for i in range(6)
+            ]
+        },
+        "theme_breakout": _theme_container([(1, "300010.SZ", "Theme only")]),
+    }
+
+    rows = module._candidate_queue(result, top_k=4)
+
+    assert [(row["source_module"], row["stock_code"]) for row in rows] == [
+        ("factor_screen_candidates", "600300.SH"),
+        ("factor_screen_candidates", "600301.SH"),
+        ("factor_screen_candidates", "600302.SH"),
+        ("factor_screen_candidates", "600303.SH"),
+    ]
+
+
+def test_candidate_queue_passes_factor_screen_breakout_geometry_fields_through() -> None:
+    """多因子候选的观察位几何字段(pattern/distance_to_breakout_pct/close/
+    breakout_level)必须原样进入 workbench first_screen.review_queue 行;
+    缺 K 线候选的 None 也必须保留(不得被清洗成 0 或删除)。"""
+    module = load_module(
+        "backend.app.services.stock_analysis_workbench_service",
+        "backend/app/services/stock_analysis_workbench_service.py",
+    )
+    result = {
+        "factor_screen_candidates": {
+            "items": [
+                {
+                    "rank": 1,
+                    "stock_code": "600021.SH",
+                    "stock_name": "Geometry",
+                    "score": 0.9,
+                    "close": 103.0,
+                    "breakout_level": 100.0,
+                    "distance_to_breakout_pct": 3.0,
+                    "pattern": "突破（参考）",
+                },
+                {
+                    "rank": 2,
+                    "stock_code": "600022.SH",
+                    "stock_name": "MissingKline",
+                    "score": 0.8,
+                    "close": None,
+                    "breakout_level": None,
+                    "distance_to_breakout_pct": None,
+                    "pattern": None,
+                },
+            ]
+        },
+    }
+
+    rows = module._candidate_queue(result, top_k=10)
+
+    assert [(row["source_module"], row["stock_code"]) for row in rows] == [
+        ("factor_screen_candidates", "600021.SH"),
+        ("factor_screen_candidates", "600022.SH"),
+    ]
+    geometry_row = rows[0]
+    assert geometry_row["pattern"] == "突破（参考）"
+    assert geometry_row["distance_to_breakout_pct"] == 3.0
+    assert geometry_row["close"] == 103.0
+    assert geometry_row["breakout_level"] == 100.0
+    missing_row = rows[1]
+    assert missing_row["pattern"] is None
+    assert missing_row["distance_to_breakout_pct"] is None
+    assert missing_row["close"] is None
+    assert missing_row["breakout_level"] is None
+
+
+def test_candidate_queue_passes_breakout_geometry_fields_through_for_all_observation_sources() -> None:
+    """动量/新趋势/超跌/融合四个扩展源的观察位几何字段(pattern/
+    distance_to_breakout_pct/close/breakout_level)与停牌披露字段
+    (price_as_of_date/price_stale)必须原样进入 review_queue 行;
+    缺 K 线候选的 None 也必须保留(不得被清洗成 0 或删除)。"""
+    module = load_module(
+        "backend.app.services.stock_analysis_workbench_service",
+        "backend/app/services/stock_analysis_workbench_service.py",
+    )
+    result = {
+        "hybrid_fusion_candidates": {
+            "items": [
+                {
+                    "rank": 1,
+                    "stock_code": "600001.SH",
+                    "stock_name": "Fusion Stale",
+                    "fusion_score": 0.8,
+                    "close": 98.0,
+                    "breakout_level": 100.0,
+                    "distance_to_breakout_pct": -2.0,
+                    "pattern": "回踩（参考）",
+                    "price_as_of_date": "2026-06-10",
+                    "price_stale": True,
+                }
+            ]
+        },
+        "uptrend_momentum_candidates": {
+            "items": [
+                {
+                    "rank": 1,
+                    "stock_code": "000001.SZ",
+                    "stock_name": "Momentum Geometry",
+                    "close": 160.0,
+                    "breakout_level": 155.0,
+                    "distance_to_breakout_pct": 3.2258,
+                    "pattern": "突破（参考）",
+                }
+            ]
+        },
+        "fresh_trend_watchlist": {
+            "items": [
+                {
+                    "rank": 1,
+                    "stock_code": "300001.SZ",
+                    "stock_name": "Fresh MissingKline",
+                    "close": 50.0,
+                    "breakout_level": None,
+                    "distance_to_breakout_pct": None,
+                    "pattern": None,
+                }
+            ]
+        },
+        "mean_reversion_candidates": {
+            "items": [
+                {
+                    "rank": 1,
+                    "stock_code": "000002.SZ",
+                    "stock_name": "Reversion Geometry",
+                    "close": 84.52,
+                    "breakout_level": 100.0,
+                    "distance_to_breakout_pct": -15.48,
+                    "pattern": "回踩（参考）",
+                }
+            ]
+        },
+    }
+
+    rows = module._candidate_queue(result, top_k=10)
+    by_source = {str(row["source_module"]): row for row in rows}
+
+    assert set(by_source) == {
+        "hybrid_fusion_candidates",
+        "uptrend_momentum_candidates",
+        "fresh_trend_watchlist",
+        "mean_reversion_candidates",
+    }
+    fusion_row = by_source["hybrid_fusion_candidates"]
+    assert fusion_row["pattern"] == "回踩（参考）"
+    assert fusion_row["distance_to_breakout_pct"] == -2.0
+    assert fusion_row["price_as_of_date"] == "2026-06-10"
+    assert fusion_row["price_stale"] is True
+    momentum_row = by_source["uptrend_momentum_candidates"]
+    assert momentum_row["close"] == 160.0
+    assert momentum_row["breakout_level"] == 155.0
+    assert momentum_row["pattern"] == "突破（参考）"
+    fresh_row = by_source["fresh_trend_watchlist"]
+    assert fresh_row["close"] == 50.0
+    assert fresh_row["breakout_level"] is None
+    assert fresh_row["distance_to_breakout_pct"] is None
+    assert fresh_row["pattern"] is None
+    reversion_row = by_source["mean_reversion_candidates"]
+    assert reversion_row["distance_to_breakout_pct"] == -15.48
+    assert reversion_row["pattern"] == "回踩（参考）"
+
+
 def test_theme_breakout_member_rank_falls_back_to_nested_list_order() -> None:
     module = load_module(
         "backend.app.services.stock_analysis_workbench_service",
