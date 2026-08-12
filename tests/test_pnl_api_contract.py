@@ -7455,7 +7455,8 @@ def test_pnl_bridge_reads_fx_rates_from_duckdb_and_populates_fx_translation(tmp_
     assert response.status_code == 200
     payload = response.json()
     row = payload["result"]["rows"][0]
-    # dirty exposure = market 100 + accrued 2 = 102; 102 * (7.0827 - 7.04135) = 4.2177
+    # 原币脏敞口 = native market 100 + native accrued 2 = 102 USD;
+    # 102 * (7.0827 - 7.04135) = 4.2177（折 CNY 市值 722.44 不得再乘 Δ汇率）
     assert row["fx_translation"]["raw"] == 4.2177
     assert payload["result"]["summary"]["total_fx_translation"]["raw"] == 4.2177
     assert any("currency_basis mismatch" in warning for warning in payload["result"]["warnings"])
@@ -9270,11 +9271,31 @@ def _seed_usd_pnl_bridge_balance_rows(duckdb_path: Path) -> None:
                     "T",
                     "FVTPL",
                     "asset",
-                    "CNY",
+                    "native",
                     "USD",
                     "100.00000000",
                     "99.00000000",
                     "2.00000000",
+                    False,
+                    "sv-z-current-usd",
+                    "rv-z-current-usd",
+                    "ib-z-current-usd",
+                    "trace-z-current-usd-native",
+                ),
+                (
+                    "2025-12-31",
+                    "240001.IB",
+                    "FI Desk",
+                    "CC100",
+                    "T",
+                    "FVTPL",
+                    "asset",
+                    "CNY",
+                    "USD",
+                    # 100 / 99 / 2 USD × 7.0827
+                    "708.27000000",
+                    "701.18730000",
+                    "14.16540000",
                     False,
                     "sv-z-current-usd",
                     "rv-z-current-usd",
@@ -9289,11 +9310,31 @@ def _seed_usd_pnl_bridge_balance_rows(duckdb_path: Path) -> None:
                     "T",
                     "FVTPL",
                     "asset",
-                    "CNY",
+                    "native",
                     "USD",
                     "90.00000000",
                     "89.00000000",
                     "1.00000000",
+                    False,
+                    "sv-z-prior-usd",
+                    "rv-z-prior-usd",
+                    "ib-z-prior-usd",
+                    "trace-z-prior-usd-native",
+                ),
+                (
+                    "2025-10-31",
+                    "240001.IB",
+                    "FI Desk",
+                    "CC100",
+                    "T",
+                    "FVTPL",
+                    "asset",
+                    "CNY",
+                    "USD",
+                    # 90 / 89 / 1 USD × 7.04135
+                    "633.72150000",
+                    "626.68015000",
+                    "7.04135000",
                     False,
                     "sv-z-prior-usd",
                     "rv-z-prior-usd",

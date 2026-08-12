@@ -96,14 +96,14 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
         raise ValueError(f"No pnl bridge data found for report_date={report_date} in fact_formal_pnl_fi.")
 
     pnl_fi_rows = pnl_repo.fetch_formal_fi_rows(report_date)
-    current_balance_rows = _attach_native_face_values(
+    current_balance_rows = _attach_native_exposure_fields(
         balance_repo=balance_repo,
         report_date=report_date,
         balance_rows=balance_repo.fetch_pnl_bridge_zqtz_balance_rows(report_date=report_date),
     )
     prior_date = balance_repo.resolve_prior_pnl_bridge_balance_report_date(report_date=report_date)
     prior_balance_rows = (
-        _attach_native_face_values(
+        _attach_native_exposure_fields(
             balance_repo=balance_repo,
             report_date=prior_date,
             balance_rows=balance_repo.fetch_pnl_bridge_zqtz_balance_rows(report_date=prior_date),
@@ -758,16 +758,44 @@ def _resolve_pnl_lineage(*, governance_dir: str, report_date: str) -> dict[str, 
     )
 
 
-def _attach_native_face_values(
+def _attach_native_exposure_fields(
     *,
     balance_repo: BalanceAnalysisRepository,
     report_date: str,
     balance_rows: list[dict[str, object]],
 ) -> list[dict[str, object]]:
+    """Attach native-currency exposure fields to the CNY-basis bridge balance rows.
+
+    The bridge balance rows are the CNY projection, so their ``market_value_amount`` /
+    ``accrued_interest_amount`` are already FX-converted. ``fx_translation`` needs the
+    native dirty market value, so enrich each row with ``market_value_native`` /
+    ``accrued_interest_native`` from the native-basis formal fact rows (same fact table,
+    ``currency_basis='native'``), plus ``face_value_native`` from the raw snapshot as
+    the legacy fallback base. Enrichment keys mirror the CNY/native projection identity:
+    (instrument_code, portfolio_name, cost_center, currency_code).
+    """
     if not balance_rows:
         return balance_rows
     native_face_values = balance_repo.fetch_zqtz_snapshot_native_face_values(report_date=report_date)
-    if not native_face_values:
+    native_amounts: dict[tuple[str, str, str, str], tuple[object, object]] = {}
+    for native_row in balance_repo.fetch_formal_zqtz_rows(
+        report_date=report_date,
+        position_scope="asset",
+        currency_basis="native",
+    ):
+        native_amounts.setdefault(
+            (
+                str(native_row.get("instrument_code") or ""),
+                str(native_row.get("portfolio_name") or ""),
+                str(native_row.get("cost_center") or ""),
+                str(native_row.get("currency_code") or "").upper(),
+            ),
+            (
+                native_row.get("market_value_amount"),
+                native_row.get("accrued_interest_amount"),
+            ),
+        )
+    if not native_face_values and not native_amounts:
         return balance_rows
     enriched_rows: list[dict[str, object]] = []
     for row in balance_rows:
@@ -777,9 +805,16 @@ def _attach_native_face_values(
             str(row.get("cost_center") or ""),
             str(row.get("currency_code") or "").upper(),
         )
+        enriched = row
         face_value_native = native_face_values.get(key)
-        if face_value_native is None:
-            enriched_rows.append(row)
-            continue
-        enriched_rows.append({**row, "face_value_native": face_value_native})
+        if face_value_native is not None:
+            enriched = {**enriched, "face_value_native": face_value_native}
+        native_amount = native_amounts.get(key)
+        if native_amount is not None:
+            market_value_native, accrued_interest_native = native_amount
+            if market_value_native is not None:
+                enriched = {**enriched, "market_value_native": market_value_native}
+            if accrued_interest_native is not None:
+                enriched = {**enriched, "accrued_interest_native": accrued_interest_native}
+        enriched_rows.append(enriched)
     return enriched_rows
