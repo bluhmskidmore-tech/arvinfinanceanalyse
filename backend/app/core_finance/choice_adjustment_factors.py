@@ -15,6 +15,9 @@ AdjustFlag 1=不复权/2=后复权/3=前复权）：
 
 锚定与一致性：
 - ``scale = median(reference(d) / rel(d))`` 对全部重叠日期取中位数；
+- 重叠日数低于 ``min_anchor_overlap`` 时容差/收益一致性校验退化为空
+  （单日重叠 ``scale_max_rel_deviation ≡ 0``），fail-closed 拒绝锚定并
+  返回 ``insufficient_overlap``，不输出任何因子；
 - 任一重叠日 ``|scale_i / scale - 1|`` 超过容差，即两源在重叠段内的
   复权收益不一致（等价于相邻重叠日收益比偏差），拒绝落表并报差异率。
 """
@@ -27,11 +30,13 @@ from statistics import median
 
 ANCHOR_SCALE_MODE = "median_overlap_ratio"
 DEFAULT_CONSISTENCY_TOLERANCE = 2e-3
+DEFAULT_MIN_ANCHOR_OVERLAP = 3
 
 STATUS_ANCHORED = "anchored"
 STATUS_UNANCHORED = "unanchored"
 STATUS_INCONSISTENT_OVERLAP = "inconsistent_overlap"
 STATUS_INSUFFICIENT_DATA = "insufficient_data"
+STATUS_INSUFFICIENT_OVERLAP = "insufficient_overlap"
 
 
 @dataclass(frozen=True)
@@ -74,13 +79,19 @@ def derive_choice_adjustment_factors(
     requested_dates: list[str],
     consistency_tolerance: float = DEFAULT_CONSISTENCY_TOLERANCE,
     allow_unanchored: bool = False,
+    min_anchor_overlap: int = DEFAULT_MIN_ANCHOR_OVERLAP,
 ) -> ChoiceFactorDerivation:
     """把 Choice 相对因子锚定到 reference（既有 tushare）尺度并输出请求日期的因子。
 
     - ``reference_factors_by_date``：该股票在取数窗口内既有的 ``adj_factor`` 行。
     - ``requested_dates``：需要落表的缺失日期；返回值只包含这些日期。
+    - 重叠日数低于 ``min_anchor_overlap`` 时返回 ``insufficient_overlap``，
+      不输出任何因子（``allow_unanchored`` 不豁免：该股票已有 reference 行，
+      混入 scale=1 相对因子会失义）。
     - 重叠段一致性不达标时返回 ``inconsistent_overlap``，不输出任何因子。
     """
+    if min_anchor_overlap < 1:
+        raise ValueError(f"min_anchor_overlap must be >= 1, got {min_anchor_overlap}")
     relative = derive_relative_factors(raw_close_by_date, adjusted_close_by_date)
     requested_unique = sorted(dict.fromkeys(requested_dates))
     if not relative:
@@ -122,6 +133,18 @@ def derive_choice_adjustment_factors(
         overlap_dates=overlap_dates,
         tolerance=consistency_tolerance,
     )
+
+    if len(overlap_dates) < min_anchor_overlap:
+        # 重叠样本不足时容差校验退化（单日重叠恒为 0），fail-closed 不锚定。
+        return ChoiceFactorDerivation(
+            stock_code=stock_code,
+            status=STATUS_INSUFFICIENT_OVERLAP,
+            missing_requested_dates=tuple(d for d in requested_unique if d not in relative),
+            scale=anchor_scale,
+            anchor_overlap_count=len(overlap_dates),
+            scale_max_rel_deviation=scale_max_rel_deviation,
+            **consistency,
+        )
 
     if scale_max_rel_deviation > consistency_tolerance:
         return ChoiceFactorDerivation(

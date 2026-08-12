@@ -3,12 +3,18 @@
 覆盖：
 - 合成除权场景下 rel=hfq/raw 推导与 tushare 尺度锚定的正确性；
 - 重叠段两源复权收益一致性校验（不一致要拒写并报差异率）；
+- 最小重叠天数门槛（min_anchor_overlap，默认 3）：单日/两日重叠 fail-closed
+  拒绝锚定，报告输出 per-code anchor_overlap_count 与低于门槛清单；
+- 锚定 reference 排除本脚本自推导行（sv_choice_adj_factor_*），防止级联；
+- --execute 与 --allow-unanchored 组合拒绝（scale=1 相对因子不得写入）；
 - 脚本 plan（默认 dry-run）/ verify-only / execute 三模式；
 - 关键验收：混源因子（signal 日 tushare 行 + forward 日 choice 推导行）
   计算的复权收益与全 hfq 口径一致；
 - 既有 tushare 行不可被覆盖、重跑幂等、写守卫必须显式解锁。
 """
 from __future__ import annotations
+
+import json
 
 import duckdb
 import pytest
@@ -18,6 +24,7 @@ from backend.app.core_finance.choice_adjustment_factors import (
     STATUS_ANCHORED,
     STATUS_INCONSISTENT_OVERLAP,
     STATUS_INSUFFICIENT_DATA,
+    STATUS_INSUFFICIENT_OVERLAP,
     STATUS_UNANCHORED,
     derive_choice_adjustment_factors,
     derive_relative_factors,
@@ -126,6 +133,76 @@ def test_inconsistent_overlap_rejected_with_diff_rate() -> None:
     assert derivation.scale_max_rel_deviation > 0.002
     assert derivation.return_consistency_breach_count >= 1
     assert derivation.return_consistency_max_rel_diff == pytest.approx(0.01, rel=0.05)
+
+
+def test_min_anchor_overlap_rejects_single_and_two_day_overlap() -> None:
+    # 单日重叠 scale_max_rel_deviation ≡ 0、收益一致性 pair 数为 0：校验退化，
+    # 默认门槛(3)下必须 fail-closed 拒绝锚定、不输出任何因子。
+    for reference in ({D1: 2.0}, {D1: 2.0, D2: 2.0}):
+        derivation = derive_choice_adjustment_factors(
+            stock_code=A_CODE,
+            raw_close_by_date=A_RAW_CLOSE,
+            adjusted_close_by_date=A_HFQ_CLOSE,
+            reference_factors_by_date=reference,
+            requested_dates=[D6],
+        )
+        assert derivation.status == STATUS_INSUFFICIENT_OVERLAP
+        assert derivation.factors == {}
+        assert derivation.anchor_overlap_count == len(reference)
+
+
+def test_min_anchor_overlap_three_days_pass_default_threshold() -> None:
+    derivation = derive_choice_adjustment_factors(
+        stock_code=A_CODE,
+        raw_close_by_date=A_RAW_CLOSE,
+        adjusted_close_by_date=A_HFQ_CLOSE,
+        reference_factors_by_date={D1: 2.0, D2: 2.0, D3: 2.0},
+        requested_dates=[D6],
+    )
+    assert derivation.status == STATUS_ANCHORED
+    assert derivation.anchor_overlap_count == 3
+    assert derivation.factors[D6] == pytest.approx(2.2)
+
+
+def test_min_anchor_overlap_explicit_one_restores_single_day_anchoring() -> None:
+    derivation = derive_choice_adjustment_factors(
+        stock_code=A_CODE,
+        raw_close_by_date=A_RAW_CLOSE,
+        adjusted_close_by_date=A_HFQ_CLOSE,
+        reference_factors_by_date={D1: 2.0},
+        requested_dates=[D6],
+        min_anchor_overlap=1,
+    )
+    assert derivation.status == STATUS_ANCHORED
+    assert derivation.anchor_overlap_count == 1
+    assert derivation.factors[D6] == pytest.approx(2.2)
+
+
+def test_min_anchor_overlap_must_be_positive() -> None:
+    with pytest.raises(ValueError, match="min_anchor_overlap"):
+        derive_choice_adjustment_factors(
+            stock_code=A_CODE,
+            raw_close_by_date=A_RAW_CLOSE,
+            adjusted_close_by_date=A_HFQ_CLOSE,
+            reference_factors_by_date={D1: 2.0},
+            requested_dates=[D6],
+            min_anchor_overlap=0,
+        )
+
+
+def test_insufficient_overlap_not_bypassed_by_allow_unanchored() -> None:
+    # 该股票已有 reference 行（只是重叠不足）：allow_unanchored 不得把它降级成
+    # scale=1 相对因子输出，否则同表同股票混尺度。
+    derivation = derive_choice_adjustment_factors(
+        stock_code=A_CODE,
+        raw_close_by_date=A_RAW_CLOSE,
+        adjusted_close_by_date=A_HFQ_CLOSE,
+        reference_factors_by_date={D1: 2.0},
+        requested_dates=[D6],
+        allow_unanchored=True,
+    )
+    assert derivation.status == STATUS_INSUFFICIENT_OVERLAP
+    assert derivation.factors == {}
 
 
 def test_unanchored_policy_defaults_to_no_factors() -> None:
@@ -269,6 +346,9 @@ def test_plan_mode_reports_missing_cells_without_choice_calls(tmp_path) -> None:
     assert result["code_count"] == 2
     assert result["era_split"] == {"native_era": 2, "tushare_era": 0}
     assert result["codes_without_anchor"] == []
+    # 锚定来源构成：两只股票窗口内各 3 行 seed reference，无自推导行被排除。
+    assert result["anchor_reference_source_breakdown"] == {"sv_stock_adjustment_factor_seed": 6}
+    assert result["excluded_self_derived_reference_row_count"] == 0
     assert client.calls == []
 
     conn = duckdb.connect(db_path, read_only=True)
@@ -297,6 +377,13 @@ def test_verify_only_reports_consistency_without_writes(tmp_path) -> None:
     assert verification["failed_codes"] == []
     assert verification["missing_vendor_cell_count"] == 0
     assert verification["max_scale_rel_deviation"] == pytest.approx(0.0, abs=1e-12)
+    # 每只成功锚定股票输出 anchor_overlap_count；低于门槛清单为空。
+    assert verification["min_anchor_overlap"] == 3
+    assert verification["anchored_codes"] == [
+        {"stock_code": A_CODE, "anchor_overlap_count": 3},
+        {"stock_code": B_CODE, "anchor_overlap_count": 3},
+    ]
+    assert verification["below_min_overlap_codes"] == []
     assert len(client.calls) == 2  # AdjustFlag=1 + AdjustFlag=2 各一次（单 chunk）
 
     conn = duckdb.connect(db_path, read_only=True)
@@ -419,6 +506,206 @@ def test_execute_requires_backup_or_governance_lock(tmp_path) -> None:
             client=_fake_client(),
             execute=True,
         )
+
+
+def _delete_factor_rows(db_path: str, code: str, dates: list[str]) -> None:
+    conn = duckdb.connect(db_path)
+    try:
+        for trade_date in dates:
+            conn.execute(
+                "delete from stock_adjustment_factor where stock_code = ? and trade_date = ?",
+                [code, trade_date],
+            )
+    finally:
+        conn.close()
+
+
+def test_execute_rejects_stock_below_min_anchor_overlap_and_reports(tmp_path) -> None:
+    # A 只剩单日重叠（D1）：默认门槛 3 下 fail-closed 拒写并单列在报告；
+    # B 三日重叠正常锚定写入。
+    module = _load_script()
+    db_path = str(tmp_path / "moss.duckdb")
+    _create_fixture_db(db_path)
+    _delete_factor_rows(db_path, A_CODE, [D2, D3])
+
+    result = module.backfill_stock_adjustment_factor_from_choice(
+        duckdb_path=db_path,
+        client=_fake_client(),
+        execute=True,
+        governance_lock=True,
+        skip_outcome_maturity=True,
+    )
+
+    assert result["status"] == "partial_completed"
+    assert result["inserted_count"] == 1
+    assert result["unresolved_cell_count"] == 1
+    verification = result["verification"]
+    assert verification["min_anchor_overlap"] == 3
+    assert verification["status_counts"] == {STATUS_ANCHORED: 1, STATUS_INSUFFICIENT_OVERLAP: 1}
+    assert verification["anchored_codes"] == [{"stock_code": B_CODE, "anchor_overlap_count": 3}]
+    assert verification["below_min_overlap_codes"] == [
+        {"stock_code": A_CODE, "anchor_overlap_count": 1}
+    ]
+    failed = verification["failed_codes"]
+    assert len(failed) == 1
+    assert failed[0]["stock_code"] == A_CODE
+    assert failed[0]["status"] == STATUS_INSUFFICIENT_OVERLAP
+    assert failed[0]["anchor_overlap_count"] == 1
+
+    conn = duckdb.connect(db_path, read_only=True)
+    try:
+        written = conn.execute(
+            "select stock_code from stock_adjustment_factor where trade_date = ? order by 1",
+            [D6],
+        ).fetchall()
+    finally:
+        conn.close()
+    assert [row[0] for row in written] == [B_CODE]
+
+    # 门槛透传：显式放宽到 1 后，单日重叠的 A 可锚定并补上剩余 cell。
+    relaxed = module.backfill_stock_adjustment_factor_from_choice(
+        duckdb_path=db_path,
+        client=_fake_client(),
+        execute=True,
+        governance_lock=True,
+        skip_outcome_maturity=True,
+        min_anchor_overlap=1,
+    )
+    assert relaxed["status"] == "completed"
+    assert relaxed["inserted_count"] == 1
+    conn = duckdb.connect(db_path, read_only=True)
+    try:
+        factor = conn.execute(
+            "select adj_factor from stock_adjustment_factor where stock_code = ? and trade_date = ?",
+            [A_CODE, D6],
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    assert factor == pytest.approx(2.2, abs=1e-9)
+
+
+def test_self_derived_reference_rows_are_excluded_from_anchoring(tmp_path) -> None:
+    # 库内混入本脚本此前写入的自推导行（sv_choice_adj_factor_*，值刻意污染）：
+    # 未排除时会把中位数容差校验打爆（拒写级联），排除后按 seed 行正常锚定。
+    module = _load_script()
+    db_path = str(tmp_path / "moss.duckdb")
+    _create_fixture_db(db_path)
+    conn = duckdb.connect(db_path)
+    try:
+        for trade_date in (D4, D5):
+            conn.execute(
+                "insert into stock_adjustment_factor values (?, ?, ?, ?, ?)",
+                [A_CODE, trade_date, 999.0, "sv_choice_adj_factor_prior001", "run-prior"],
+            )
+    finally:
+        conn.close()
+
+    result = module.backfill_stock_adjustment_factor_from_choice(
+        duckdb_path=db_path,
+        client=_fake_client(),
+        execute=True,
+        governance_lock=True,
+        skip_outcome_maturity=True,
+    )
+
+    assert result["status"] == "completed"
+    assert result["excluded_self_derived_reference_row_count"] == 2
+    assert result["anchor_reference_source_breakdown"] == {"sv_stock_adjustment_factor_seed": 6}
+    verification = result["verification"]
+    assert {"stock_code": A_CODE, "anchor_overlap_count": 3} in verification["anchored_codes"]
+
+    conn = duckdb.connect(db_path, read_only=True)
+    try:
+        factor = conn.execute(
+            """
+            select adj_factor from stock_adjustment_factor
+            where stock_code = ? and trade_date = ? and source_version <> 'sv_choice_adj_factor_prior001'
+            """,
+            [A_CODE, D6],
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    assert factor == pytest.approx(2.2, abs=1e-9)
+
+
+def test_execute_with_allow_unanchored_is_refused(tmp_path) -> None:
+    module = _load_script()
+    db_path = str(tmp_path / "moss.duckdb")
+    _create_fixture_db(db_path)
+
+    with pytest.raises(ValueError, match="allow-unanchored cannot be combined with --execute"):
+        module.backfill_stock_adjustment_factor_from_choice(
+            duckdb_path=db_path,
+            client=_fake_client(),
+            execute=True,
+            governance_lock=True,
+            allow_unanchored=True,
+        )
+
+
+def test_cli_rejects_execute_with_allow_unanchored(tmp_path, capsys) -> None:
+    module = _load_script()
+    db_path = str(tmp_path / "moss.duckdb")
+    _create_fixture_db(db_path)
+
+    with pytest.raises(SystemExit) as excinfo:
+        module.main(
+            [
+                "--db-path",
+                db_path,
+                "--execute",
+                "--allow-unanchored",
+                "--governance-lock",
+            ]
+        )
+    assert excinfo.value.code == 2
+    err = capsys.readouterr().err
+    assert "--allow-unanchored cannot be combined with --execute" in err
+
+    conn = duckdb.connect(db_path, read_only=True)
+    try:
+        count = conn.execute("select count(*) from stock_adjustment_factor").fetchone()[0]
+    finally:
+        conn.close()
+    assert count == 6  # 仅 seed 行，未发生写入
+
+
+def test_verify_only_still_allows_allow_unanchored(tmp_path) -> None:
+    # 无锚股票的人工评估路径保留：verify-only + allow-unanchored 可出报告、不写库。
+    module = _load_script()
+    db_path = str(tmp_path / "moss.duckdb")
+    _create_fixture_db(db_path)
+    _delete_factor_rows(db_path, B_CODE, [D1, D2, D3])
+
+    result = module.backfill_stock_adjustment_factor_from_choice(
+        duckdb_path=db_path,
+        client=_fake_client(),
+        verify_only=True,
+        allow_unanchored=True,
+    )
+
+    assert result["status"] == "verified"
+    assert result["verification"]["unanchored_codes"] == [B_CODE]
+
+    conn = duckdb.connect(db_path, read_only=True)
+    try:
+        count = conn.execute("select count(*) from stock_adjustment_factor").fetchone()[0]
+    finally:
+        conn.close()
+    assert count == 3  # 仅 A 的 seed 行
+
+
+def test_cli_accepts_min_anchor_overlap_flag_in_plan_mode(tmp_path, capsys) -> None:
+    module = _load_script()
+    db_path = str(tmp_path / "moss.duckdb")
+    _create_fixture_db(db_path)
+
+    exit_code = module.main(["--db-path", db_path, "--min-anchor-overlap", "2"])
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "dry_run"
+    assert payload["mode"] == "plan"
 
 
 def test_execute_without_skip_triggers_outcome_maturity_wrapper(tmp_path) -> None:

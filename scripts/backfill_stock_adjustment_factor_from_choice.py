@@ -18,6 +18,7 @@ import json
 import math
 import sys
 import uuid
+from collections.abc import Sequence
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,7 +34,9 @@ from backend.app.core_finance.adjusted_returns import (  # noqa: E402
 )
 from backend.app.core_finance.choice_adjustment_factors import (  # noqa: E402
     DEFAULT_CONSISTENCY_TOLERANCE,
+    DEFAULT_MIN_ANCHOR_OVERLAP,
     STATUS_ANCHORED,
+    STATUS_INSUFFICIENT_OVERLAP,
     STATUS_UNANCHORED,
     ChoiceFactorDerivation,
     derive_choice_adjustment_factors,
@@ -58,12 +61,21 @@ def backfill_stock_adjustment_factor_from_choice(
     governance_lock: bool = False,
     consistency_tolerance: float = DEFAULT_CONSISTENCY_TOLERANCE,
     anchor_overlap_days: int = 10,
+    min_anchor_overlap: int = DEFAULT_MIN_ANCHOR_OVERLAP,
     chunk_size: int = 100,
     allow_unanchored: bool = False,
     skip_outcome_maturity: bool = False,
 ) -> dict[str, object]:
     if verify_only and execute:
         raise ValueError("--verify-only and --execute are mutually exclusive")
+    if execute and allow_unanchored:
+        # scale=1 相对因子混入 tushare 尺度表是失义写入；仅 dry-run/verify-only
+        # 允许 allow_unanchored 供人工评估。
+        raise ValueError(
+            "--allow-unanchored cannot be combined with --execute: unanchored scale=1 "
+            "relative factors must not be written into the tushare-scale "
+            "stock_adjustment_factor table. Use dry-run or --verify-only to evaluate."
+        )
     resolved_path = normalize_duckdb_path(duckdb_path)
     if not resolved_path.exists():
         raise FileNotFoundError(f"DuckDB file not found: {resolved_path}")
@@ -81,6 +93,13 @@ def backfill_stock_adjustment_factor_from_choice(
         "code_count": len(plan.codes),
         "era_split": plan.era_split,
         "codes_without_anchor": sorted(plan.codes_without_anchor),
+        # 锚定来源构成：窗口内 reference 因子行按 source_version 的行数分布，
+        # 以及被排除的本脚本自推导（sv_choice_adj_factor_*）行数。
+        "anchor_reference_source_breakdown": {
+            key: plan.reference_source_breakdown[key]
+            for key in sorted(plan.reference_source_breakdown)
+        },
+        "excluded_self_derived_reference_row_count": plan.excluded_self_derived_row_count,
     }
 
     if not verify_only and not execute:
@@ -105,8 +124,13 @@ def backfill_stock_adjustment_factor_from_choice(
         chunk_size=chunk_size,
         consistency_tolerance=consistency_tolerance,
         allow_unanchored=allow_unanchored,
+        min_anchor_overlap=min_anchor_overlap,
     )
-    verification = _verification_report(derivations, tolerance=consistency_tolerance)
+    verification = _verification_report(
+        derivations,
+        tolerance=consistency_tolerance,
+        min_anchor_overlap=min_anchor_overlap,
+    )
 
     if verify_only:
         status = "verified" if not verification["failed_codes"] else "verified_with_issues"
@@ -169,6 +193,8 @@ class _Plan:
         self.fetch_windows: dict[str, tuple[str, str]] = {}
         self.codes_without_anchor: set[str] = set()
         self.era_split: dict[str, int] = {}
+        self.reference_source_breakdown: dict[str, int] = {}
+        self.excluded_self_derived_row_count: int = 0
 
     @property
     def codes(self) -> list[str]:
@@ -322,18 +348,28 @@ def _resolve_fetch_windows(
     for stock_code in plan.codes:
         needed_dates = sorted(d for c, d in plan.missing_cells if c == stock_code)
         max_needed = needed_dates[-1]
-        factor_rows = conn.execute(
+        all_factor_rows = conn.execute(
             f"""
             select substr(cast(trade_date as varchar), 1, 10) as trade_date,
-                   cast(adj_factor as double) as adj_factor
+                   cast(adj_factor as double) as adj_factor,
+                   cast(source_version as varchar) as source_version
             from {STOCK_ADJUSTMENT_FACTOR_TABLE}
             where upper(trim(stock_code)) = ? and adj_factor is not null
             order by 1
             """,
             [stock_code],
         ).fetchall()
-        anchors_before = [str(r[0]) for r in factor_rows if str(r[0]) <= max_needed]
-        anchors_after = [str(r[0]) for r in factor_rows if str(r[0]) > max_needed]
+        # 排除本脚本此前写入的自推导行（sv_choice_adj_factor_*）：推导因子
+        # 不得再作为下一轮锚定基准，否则误差会链式级联且来源不可追。
+        factor_rows: list[tuple[str, float, str]] = []
+        for trade_date, adj_factor, source_version in all_factor_rows:
+            source_text = str(source_version or "").strip()
+            if source_text.startswith(SOURCE_VERSION_PREFIX):
+                plan.excluded_self_derived_row_count += 1
+                continue
+            factor_rows.append((str(trade_date), float(adj_factor), source_text))
+        anchors_before = [r[0] for r in factor_rows if r[0] <= max_needed]
+        anchors_after = [r[0] for r in factor_rows if r[0] > max_needed]
         chosen_anchor_dates = (
             anchors_before[-anchor_overlap_days:]
             if anchors_before
@@ -345,10 +381,14 @@ def _resolve_fetch_windows(
         window_start, window_end = min(window_dates), max(window_dates)
         plan.fetch_windows[stock_code] = (window_start, window_end)
         plan.reference_factors[stock_code] = {
-            str(trade_date): float(adj_factor)
-            for trade_date, adj_factor in factor_rows
-            if window_start <= str(trade_date) <= window_end
+            trade_date: adj_factor
+            for trade_date, adj_factor, _ in factor_rows
+            if window_start <= trade_date <= window_end
         }
+        for trade_date, _, source_text in factor_rows:
+            if window_start <= trade_date <= window_end:
+                key = source_text or "<null>"
+                plan.reference_source_breakdown[key] = plan.reference_source_breakdown.get(key, 0) + 1
 
 
 def _era_split(cells: set[tuple[str, str]]) -> dict[str, int]:
@@ -378,6 +418,7 @@ def _derive_all(
     chunk_size: int,
     consistency_tolerance: float,
     allow_unanchored: bool,
+    min_anchor_overlap: int,
 ) -> tuple[dict[str, ChoiceFactorDerivation], dict[str, object]]:
     codes = plan.codes
     call_count = 0
@@ -411,6 +452,7 @@ def _derive_all(
                 requested_dates=requested,
                 consistency_tolerance=consistency_tolerance,
                 allow_unanchored=allow_unanchored,
+                min_anchor_overlap=min_anchor_overlap,
             )
     fetch_stats = {
         "choice_csd_call_count": call_count,
@@ -474,10 +516,13 @@ def _verification_report(
     derivations: dict[str, ChoiceFactorDerivation],
     *,
     tolerance: float,
+    min_anchor_overlap: int,
 ) -> dict[str, object]:
     status_counts: dict[str, int] = {}
     failed_codes: list[dict[str, object]] = []
     unanchored_codes: list[str] = []
+    anchored_codes: list[dict[str, object]] = []
+    below_min_overlap_codes: list[dict[str, object]] = []
     max_scale_deviation = 0.0
     max_return_diff = 0.0
     event_pairs = 0
@@ -493,11 +538,26 @@ def _verification_report(
         event_matched += derivation.overlap_event_matched_count
         if derivation.status == STATUS_UNANCHORED:
             unanchored_codes.append(stock_code)
+        if derivation.status == STATUS_ANCHORED:
+            anchored_codes.append(
+                {
+                    "stock_code": stock_code,
+                    "anchor_overlap_count": derivation.anchor_overlap_count,
+                }
+            )
+        if derivation.status == STATUS_INSUFFICIENT_OVERLAP:
+            below_min_overlap_codes.append(
+                {
+                    "stock_code": stock_code,
+                    "anchor_overlap_count": derivation.anchor_overlap_count,
+                }
+            )
         if derivation.status not in (STATUS_ANCHORED, STATUS_UNANCHORED):
             failed_codes.append(
                 {
                     "stock_code": stock_code,
                     "status": derivation.status,
+                    "anchor_overlap_count": derivation.anchor_overlap_count,
                     "scale_max_rel_deviation": derivation.scale_max_rel_deviation,
                     "return_consistency_max_rel_diff": derivation.return_consistency_max_rel_diff,
                     "return_consistency_breach_count": derivation.return_consistency_breach_count,
@@ -511,9 +571,12 @@ def _verification_report(
     )
     return {
         "consistency_tolerance": tolerance,
+        "min_anchor_overlap": min_anchor_overlap,
         "status_counts": status_counts,
         "failed_codes": failed_codes,
         "unanchored_codes": unanchored_codes,
+        "anchored_codes": anchored_codes,
+        "below_min_overlap_codes": below_min_overlap_codes,
         "max_scale_rel_deviation": max_scale_deviation,
         "max_return_consistency_rel_diff": max_return_diff,
         "overlap_event_pair_count": event_pairs,
@@ -667,7 +730,7 @@ def _table_columns(conn: duckdb.DuckDBPyConnection, table_name: str) -> set[str]
     return {str(row[1]).lower() for row in conn.execute(f"pragma table_info('{table_name}')").fetchall()}
 
 
-def main() -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Backfill stock_adjustment_factor from Choice csd CLOSE "
@@ -685,10 +748,27 @@ def main() -> int:
     parser.add_argument("--governance-lock", action="store_true", help="Acknowledge external backup/governance lock for writes.")
     parser.add_argument("--consistency-tolerance", type=float, default=DEFAULT_CONSISTENCY_TOLERANCE)
     parser.add_argument("--anchor-overlap-days", type=int, default=10)
+    parser.add_argument(
+        "--min-anchor-overlap",
+        type=int,
+        default=DEFAULT_MIN_ANCHOR_OVERLAP,
+        help=(
+            "Minimum overlap trade dates required to anchor a stock; below this the stock "
+            "is rejected fail-closed as insufficient_overlap (single-day overlap makes the "
+            "tolerance check degenerate)."
+        ),
+    )
     parser.add_argument("--chunk-size", type=int, default=100)
-    parser.add_argument("--allow-unanchored", action="store_true", help="Write scale=1 relative factors for codes without any existing factor row (NOT recommended).")
+    parser.add_argument("--allow-unanchored", action="store_true", help="Report scale=1 relative factors for codes without any existing factor row (dry-run/verify-only evaluation aid; refused with --execute).")
     parser.add_argument("--skip-outcome-maturity", action="store_true")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+
+    if args.execute and args.allow_unanchored:
+        parser.error(
+            "--allow-unanchored cannot be combined with --execute: unanchored scale=1 "
+            "relative factors must not be written into the tushare-scale "
+            "stock_adjustment_factor table. Drop --execute (dry-run/--verify-only) to evaluate."
+        )
 
     codes = [item.strip() for item in args.codes.split(",") if item.strip()]
     try:
@@ -703,6 +783,7 @@ def main() -> int:
             governance_lock=args.governance_lock,
             consistency_tolerance=args.consistency_tolerance,
             anchor_overlap_days=args.anchor_overlap_days,
+            min_anchor_overlap=args.min_anchor_overlap,
             chunk_size=args.chunk_size,
             allow_unanchored=args.allow_unanchored,
             skip_outcome_maturity=args.skip_outcome_maturity,
