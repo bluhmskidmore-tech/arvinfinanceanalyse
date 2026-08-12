@@ -46,19 +46,26 @@
   "gate_probes": {
     "unit_consistency": "npm --prefix frontend run test -- LedgerPnlUnitContract",
     "precision_and_rounding": "npm --prefix frontend run test -- LedgerPnlPrecisionContract",
+    "date_semantics": "npm --prefix frontend run test -- LedgerPnlDateSemanticsContract",
     "null_zero_undefined_handling": "npm --prefix frontend run test -- LedgerPnlNullMatrixContract",
-    "no_frontend_official_metric_recalculation": "python -m pytest tests/test_no_finance_logic_in_frontend.py -q"
+    "no_frontend_official_metric_recalculation": "python -m pytest tests/test_no_finance_logic_in_frontend.py -q",
+    "page_loads": "npm --prefix frontend run test:a11y-smoke -- tests/playwright/ledger-pnl-probe.spec.mjs",
+    "no_console_errors": "npm --prefix frontend run test:a11y-smoke -- tests/playwright/ledger-pnl-probe.spec.mjs",
+    "fallback_or_stale_state_visible_when_applicable": "npm --prefix frontend run test -- LedgerPnlFallbackStateContract"
   },
   "probe_protected_paths": [
     "tests/test_no_finance_logic_in_frontend.py",
     "frontend/src/test/LedgerPnlUnitContract.test.tsx",
     "frontend/src/test/LedgerPnlPrecisionContract.test.tsx",
-    "frontend/src/test/LedgerPnlNullMatrixContract.test.tsx"
+    "frontend/src/test/LedgerPnlDateSemanticsContract.test.tsx",
+    "frontend/src/test/LedgerPnlNullMatrixContract.test.tsx",
+    "frontend/src/test/LedgerPnlFallbackStateContract.test.tsx",
+    "frontend/tests/playwright/ledger-pnl-probe.spec.mjs"
   ],
-  "gate_probe_gaps": {
-    "date_semantics": "LedgerPnlCurrencyBasis covers report-date navigation stability only, not trade-vs-natural date or month-end vs YTD basis.",
-    "page_loads": "Needs a ledger-pnl scoped Playwright spec; test:a11y-smoke is site-wide and does not isolate this page.",
-    "no_console_errors": "Same as page_loads; requires a scoped spec that fails on console errors.",
-    "fallback_or_stale_state_visible_when_applicable": "Needs a fixture that forces a stale/fallback report date and asserts the state surface renders."
+  "gate_probe_gaps": {},
+  "probe_notes": {
+    "date_semantics": "ledger-pnl has no trade-date concept by contract: the only date basis is report_date = exact calendar month-end. The probe pins flow/point label-field binding, month-end semantics (no local date derivation), and YTD-vs-point compare-month arithmetic.",
+    "page_loads": "Playwright probe requires VITE_DATA_SOURCE=mock, MOSS_PLAYWRIGHT_USE_WEB_SERVER=1 and an installed Chromium; the spec self-skips outside mock mode. Runner environments provide these (CI job env / run.ps1 docs).",
+    "fallback_or_stale_state_visible_when_applicable": "Component-level probe covers 5 degradation shapes on the analysis workbench; page-level source-risk segments remain covered only in the ready direction."
   }
 }
