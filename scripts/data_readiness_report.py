@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 import json
@@ -10,6 +11,9 @@ import sys
 from typing import Any, Literal
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 DEFAULT_DUCKDB_PATH = ROOT / "data" / "moss.duckdb"
 ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 DATE_ISSUE_SAMPLE_LIMIT = 10
@@ -262,10 +266,11 @@ def build_data_readiness_report(
         )
         return _report(path, report_as_of, [], [issue])
 
+    stack = ExitStack()
     try:
-        import duckdb
+        from backend.app.repositories.duckdb_repo import read_only_connection
 
-        conn = duckdb.connect(str(path), read_only=True)
+        conn = stack.enter_context(read_only_connection(str(path)))
     except Exception as exc:  # pragma: no cover - exact driver failure varies by platform.
         issue = _issue(
             "duckdb_unavailable",
@@ -276,10 +281,8 @@ def build_data_readiness_report(
         )
         return _report(path, report_as_of, [], [issue])
 
-    try:
+    with stack:
         table_reports = [_inspect_table(conn, spec, report_as_of) for spec in specs]
-    finally:
-        conn.close()
 
     issues = [issue for table in table_reports for issue in table["issues"] if issue["severity"] == "block"]
     return _report(path, report_as_of, table_reports, issues)

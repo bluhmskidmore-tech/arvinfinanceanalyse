@@ -25,6 +25,7 @@ if str(ROOT) not in sys.path:
 from backend.app.core_finance.gate_exposure_series import (  # noqa: E402
     load_gate_exposure_by_date,
 )
+from backend.app.repositories.duckdb_repo import read_only_connection  # noqa: E402
 
 DEFAULT_DB_PATH = ROOT / "data/moss.duckdb"
 DEFAULT_CONTRACT_PATH = ROOT / "docs/stock_analysis_fable_extension_study_contract.json"
@@ -1503,8 +1504,7 @@ def run_extension_study_from_duckdb(
             f"signal_kind {signal_kind!r} does not match frozen contract {expected_signal_kind!r}"
         )
 
-    conn = duckdb.connect(str(db_file), read_only=True)
-    try:
+    with read_only_connection(str(db_file)) as conn:
         rows, loader_metadata = load_extension_study_rows(
             conn,
             signal_kind=signal_kind,
@@ -1521,8 +1521,6 @@ def run_extension_study_from_duckdb(
             signal_dates[0],
             signal_dates[-1],
         )
-    finally:
-        conn.close()
 
     point_source_counts = Counter(
         _point_field(point, "source") or "missing" for point in macro_points.values()

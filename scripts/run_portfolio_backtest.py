@@ -39,6 +39,7 @@ from backend.app.repositories.choice_stock_units import (  # noqa: E402
     amount_rmb_sql,
     scale_unknown_sql,
 )
+from backend.app.repositories.duckdb_repo import read_only_connection  # noqa: E402
 
 TABLE_EXECUTION_HIST = "livermore_candidate_execution_history"
 TABLE_OBS = "choice_stock_daily_observation"
@@ -48,6 +49,8 @@ TABLE_BENCHMARK_SNAPSHOT = "choice_market_snapshot"
 BENCHMARK_SERIES_ID = "CA.CSI300"
 DEFAULT_REPORT_PATH = Path("docs/pnl/2026-07-portfolio-backtest-report.md")
 DEFAULT_HOLD_PROGRESS_MATRIX_PATH = Path("docs/pnl/2026-07-batch2-hold-progress-matrix.md")
+# 语义与 backend/app/tasks/choice_stock_materialize.py 的 CHOICE_NATIVE_ERA_START_DATE 一致
+# (摄入侧代际守卫,契约 docs/data_contracts.md §4.10;各自独立定义)。
 CHOICE_NATIVE_ERA_START = "2026-01-05"
 METRIC_BASIS = (
     "T+1 open execution history, net adjusted horizon returns, daily market_gate exposure when available; "
@@ -86,8 +89,7 @@ def run_portfolio_backtest_from_duckdb(
             _write_hold_progress_matrix_report(Path(hold_progress_report_path), payload)
         return payload
 
-    conn = duckdb.connect(str(db_file), read_only=True)
-    try:
+    with read_only_connection(str(db_file)) as conn:
         tables = _table_names(conn)
         if TABLE_EXECUTION_HIST not in tables:
             payload = _blocked_payload(
@@ -145,8 +147,6 @@ def run_portfolio_backtest_from_duckdb(
             if mode == "path"
             else {}
         )
-    finally:
-        conn.close()
 
     vol_target = _build_vol_target_payload(
         benchmark_rows,

@@ -252,14 +252,15 @@ def _missing_audit_review_summary() -> dict[str, Any]:
 def _balance_movement_read_model_freshness_gate(duckdb_path: Path) -> dict[str, str]:
     import duckdb
 
+    from backend.app.repositories.duckdb_repo import read_only_connection
+
     gate_name = "balance_movement_read_model_freshness"
     path = Path(duckdb_path)
     if not path.exists():
         return _gate(gate_name, False, f"duckdb_missing={path}")
 
     try:
-        conn = duckdb.connect(str(path), read_only=True)
-        try:
+        with read_only_connection(str(path)) as conn:
             movement_latest = _scalar_date(
                 conn,
                 """
@@ -283,8 +284,6 @@ def _balance_movement_read_model_freshness_gate(duckdb_path: Path) -> dict[str, 
                   )
                 """,
             )
-        finally:
-            conn.close()
     except duckdb.Error as exc:
         return _gate(gate_name, False, f"duckdb_read_failed={exc}")
 

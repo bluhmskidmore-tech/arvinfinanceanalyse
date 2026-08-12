@@ -18,11 +18,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import duckdb  # noqa: E402
-
 from backend.app.governance.locks import LockDefinition, acquire_lock  # noqa: E402
 from backend.app.governance.settings import get_settings  # noqa: E402
 from backend.app.repositories.choice_fx_catalog import discover_formal_fx_candidates  # noqa: E402
+from backend.app.repositories.duckdb_repo import read_only_connection  # noqa: E402
 
 
 GLOBAL_REFRESH_RULE_VERSION = "rv_global_core_data_refresh_v1"
@@ -271,8 +270,7 @@ def _verify_report_date(
 ) -> dict[str, object]:
     checks: list[dict[str, object]] = []
     failures: list[str] = []
-    conn = duckdb.connect(duckdb_path, read_only=True)
-    try:
+    with read_only_connection(duckdb_path) as conn:
         existing_tables = {
             str(row[0])
             for row in conn.execute(
@@ -341,8 +339,6 @@ def _verify_report_date(
                 "fx_daily_mid failed completeness/duplicate/lineage checks: "
                 f"missing={missing_bases}, duplicates={duplicate_count}, invalid={invalid_lineage_count}"
             )
-    finally:
-        conn.close()
 
     if failures:
         raise RuntimeError("; ".join(failures))

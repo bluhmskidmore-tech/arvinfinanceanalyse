@@ -15,6 +15,8 @@ if str(ROOT) not in sys.path:
 
 import duckdb  # noqa: E402
 
+from backend.app.repositories.duckdb_repo import read_only_connection  # noqa: E402
+
 
 DEFAULT_OUTPUT_DIR = "test_output/livermore_stock_selection"
 DEFAULT_SAMPLE_STOCK_CODE = "600582.SH"
@@ -373,8 +375,7 @@ def inspect_livermore_daily_refresh_state(
         "position_snapshot": {"ready": False, "row_count": 0},
         "candidate_history": {"ready": False, "row_count": 0},
     }
-    conn = duckdb.connect(str(resolved_path), read_only=True)
-    try:
+    with read_only_connection(str(resolved_path)) as conn:
         tables = {str(row[0]) for row in conn.execute("show tables").fetchall()}
         checks["choice_stock_inputs"] = _choice_stock_input_check(conn, tables=tables, target_date=target_date)
         checks["factor_snapshot"] = _date_count_check(
@@ -392,8 +393,6 @@ def inspect_livermore_daily_refresh_state(
         )
         checks["position_snapshot"] = _position_snapshot_check(conn, tables=tables, target_date=target_date)
         checks["candidate_history"] = _candidate_history_check(conn, tables=tables, target_date=target_date)
-    finally:
-        conn.close()
     missing = [name for name, check in checks.items() if not bool(check["ready"])]
     return {
         "target_date": target_date,

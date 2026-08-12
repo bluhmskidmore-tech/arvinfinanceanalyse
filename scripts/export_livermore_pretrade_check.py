@@ -18,6 +18,7 @@ from backend.app.repositories.choice_stock_units import (  # noqa: E402
     amount_rmb_sql,
     scale_unknown_sql,
 )
+from backend.app.repositories.duckdb_repo import read_only_connection  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -66,8 +67,7 @@ def export_livermore_pretrade_check(
             stock_candidate_policy=stock_candidate_policy,
         )
 
-    conn = duckdb.connect(str(resolved_path), read_only=True)
-    try:
+    with read_only_connection(str(resolved_path)) as conn:
         tables = _table_names(conn)
         if TABLE_HIST not in tables:
             raise ValueError(f"{TABLE_HIST} table not found.")
@@ -90,8 +90,6 @@ def export_livermore_pretrade_check(
             today=today,
             stale_calendar_days=int(stale_calendar_days),
         )
-    finally:
-        conn.close()
 
     sector_distribution = _sector_distribution(enriched_rows)
     portfolio_flags = _portfolio_flags(

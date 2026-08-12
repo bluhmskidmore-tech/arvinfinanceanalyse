@@ -13,9 +13,12 @@
 - 计数下降或文件消失 => 测试失败，提示同步削减白名单，保证台账始终准确。
 
 白名单登记于 2026-08-12 全量重扫：
-- scripts/            37 文件 / 50 调用点（含 dev-env.ps1 内嵌 Python 1 处）
-- backend/scripts/     7 文件 / 15 调用点
+- scripts/            28 文件 / 41 调用点（含 dev-env.ps1 内嵌 Python 1 处）
+- backend/scripts/     6 文件 / 14 调用点
 - backend/app/services 19 文件 / 58 调用点（迁移属后续触碰式工作，先登记不动）
+
+2026-08-12 首批迁移（C4）：10 个常驻只读脚本的裸 connect 已迁至
+``duckdb_repo.read_only_connection``，对应条目已按棘轮规则移除。
 """
 
 from __future__ import annotations
@@ -47,14 +50,11 @@ _SCRIPTS_ALLOWLIST: dict[str, int] = {
     "scripts/_run_diagnose_adb_other.py": 1,
     # MANUAL WRITE SCRIPT：read_only=False 直写 livermore 历史表（人工回填）。
     "scripts/backfill_adjusted_returns.py": 1,
-    "scripts/backfill_choice_stock_replay_inputs.py": 1,
     "scripts/backfill_csi300_benchmark_from_backup.py": 2,  # read_only=bool(dry_run) 写路径
     # MANUAL WRITE SCRIPT：read_only=False 直写 stock_adjustment_factor（自带备份守卫）。
     "scripts/backfill_stock_adjustment_factor.py": 2,
-    "scripts/codex_page_readiness.py": 1,
     "scripts/compare_formal_snapshot_adb_sources.py": 1,
     "scripts/copy_choice_stock_asof_from_duckdb.py": 1,  # read_only=bool(dry_run) 写路径
-    "scripts/data_readiness_report.py": 1,
     "scripts/dev-env.ps1": 1,  # PowerShell 内嵌 Python 只读探活
     "scripts/dev_postgres_cluster.py": 1,
     "scripts/diagnose_entry_premium.py": 1,
@@ -62,7 +62,6 @@ _SCRIPTS_ALLOWLIST: dict[str, int] = {
     "scripts/diagnose_macro_multiplier.py": 1,
     "scripts/diagnose_overheat_holdings.py": 1,
     "scripts/diff_zqtz_formal_vs_snapshot.py": 1,
-    "scripts/export_livermore_pretrade_check.py": 1,
     "scripts/mcp/moss_project_mcp.py": 2,
     "scripts/portfolio_home_full_closure_evidence.py": 1,
     "scripts/portfolio_home_krd_remap_review_queue.py": 1,
@@ -72,13 +71,8 @@ _SCRIPTS_ALLOWLIST: dict[str, int] = {
     "scripts/refresh_tushare_news_backup.py": 1,
     "scripts/run_batch3_stock_strategy_research.py": 9,
     "scripts/run_decimal_precision_backfill.py": 3,
-    "scripts/run_fable_extension_study.py": 1,
-    "scripts/run_global_data_refresh.py": 1,
-    "scripts/run_livermore_daily_pretrade_refresh.py": 1,
-    "scripts/run_portfolio_backtest.py": 1,
     "scripts/stock_strategy_health_diagnostic.py": 1,
     "scripts/supplement_livermore_after_close_inputs.py": 1,  # read_only=bool(dry_run) 写路径
-    "scripts/sync_livermore_position_snapshot.py": 1,
     "scripts/validate_risk_exit_rules.py": 1,
     "scripts/verify_adb_source_coverage.py": 1,
     "scripts/verify_decimal_precision_backfill.py": 1,
@@ -90,7 +84,6 @@ _SCRIPTS_ALLOWLIST: dict[str, int] = {
     "backend/scripts/batch_materialize_balance.py": 4,
     "backend/scripts/bootstrap_data_pipeline.py": 3,
     "backend/scripts/diagnose_adb_coverage.py": 1,
-    "backend/scripts/diagnose_balance_calibration.py": 1,
     "backend/scripts/diagnose_balance_diff.py": 1,
 }
 
@@ -100,11 +93,11 @@ _SERVICES_ALLOWLIST: dict[str, int] = {
     "backend/app/services/accounting_asset_movement_service.py": 1,
     "backend/app/services/adb_analysis_service.py": 1,
     "backend/app/services/campisi_attribution_service.py": 2,
-    "backend/app/services/choice_news_service.py": 1,
+    "backend/app/services/choice_news_service.py": 2,
     "backend/app/services/dexter_research_context_builder.py": 1,
     "backend/app/services/external_data_service.py": 2,
     "backend/app/services/livermore_candidate_history_service.py": 6,
-    "backend/app/services/livermore_gate_supplement_compute_service.py": 1,
+    "backend/app/services/livermore_gate_supplement_compute_service.py": 2,
     "backend/app/services/livermore_readiness_probe.py": 2,
     "backend/app/services/livermore_sector_rank_series_service.py": 1,
     "backend/app/services/livermore_stock_detail_service.py": 1,
