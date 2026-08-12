@@ -35,7 +35,7 @@ def test_strategy_policy_snapshot_values_are_centralized() -> None:
     assert POLICY.entry_observation_states == frozenset({"WARM", "HOT"})
     assert POLICY.mean_reversion_active_states == frozenset({"WARM"})
     assert POLICY.hybrid_fusion_active_states == frozenset({"WARM", "HOT"})
-    assert POLICY.factor_screen_active_states == frozenset({"OFF", "WARM", "HOT", "OVERHEAT"})
+    assert POLICY.factor_screen_active_states == frozenset({"WARM", "HOT", "OVERHEAT"})
     assert dict(POLICY.exposure_by_market_state) == {
         "NO_DATA": (0.0,),
         "STALE": (0.0,),
@@ -208,7 +208,7 @@ def test_strategy_formula_versions_match_current_contracts() -> None:
     from backend.app.tasks import livermore_candidate_history_materialize
 
     assert mean_reversion_candidates.FORMULA_VERSION == "rv_mean_reversion_candidates_v2"
-    assert factor_screen_candidates.FORMULA_VERSION == "rv_factor_screen_candidates_v3"
+    assert factor_screen_candidates.FORMULA_VERSION == "rv_factor_screen_candidates_v4"
     assert hybrid_fusion_candidates.FORMULA_VERSION == "rv_hybrid_fusion_candidates_v4"
     assert livermore_stock_candidates.FORMULA_VERSION == "rv_livermore_stock_candidates_bundle_v7"
     assert livermore_risk_exit.FORMULA_VERSION == "rv_livermore_risk_exit_ema10_volume_obsfallback_v3"

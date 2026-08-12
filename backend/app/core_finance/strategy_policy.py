@@ -148,7 +148,7 @@ POLICY = StrategyPolicy(
     entry_observation_states=frozenset({"WARM", "HOT"}),
     mean_reversion_active_states=frozenset({"WARM"}),
     hybrid_fusion_active_states=frozenset({"WARM", "HOT"}),
-    factor_screen_active_states=frozenset({"OFF", "WARM", "HOT", "OVERHEAT"}),
+    factor_screen_active_states=frozenset({"WARM", "HOT", "OVERHEAT"}),
     exposure_by_market_state=MappingProxyType(
         {
             "NO_DATA": (0.0,),
