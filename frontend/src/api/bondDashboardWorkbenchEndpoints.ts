@@ -1,6 +1,15 @@
 import type { BondAnalyticsClientMethods } from "./bondAnalyticsClient";
 import type { BondBusinessTypeMetricsResult } from "./contracts";
-import { sampleBondBusinessTypeMetricRows } from "../fixtures/dashboardCoreWorkbenchSamples";
+
+type DashboardWorkbenchSamples = typeof import("../fixtures/dashboardCoreWorkbenchSamples");
+
+// Demo-only fixtures load lazily so sample data stays out of the production bundle.
+let dashboardWorkbenchSamplesPromise: Promise<DashboardWorkbenchSamples> | null = null;
+
+function ensureDashboardWorkbenchSamples(): Promise<DashboardWorkbenchSamples> {
+  dashboardWorkbenchSamplesPromise ??= import("../fixtures/dashboardCoreWorkbenchSamples");
+  return dashboardWorkbenchSamplesPromise;
+}
 
 type DelayFn = () => Promise<void>;
 
@@ -30,6 +39,7 @@ export function bondDashboardDemoEndpoints(
   return {
     async getBondBusinessTypeMetrics({ reportDate }) {
       await delay();
+      const { sampleBondBusinessTypeMetricRows } = await ensureDashboardWorkbenchSamples();
       return {
         ...(await ensureBundle()).buildMockApiEnvelope(
           "bond_dashboard.business_type_metrics",

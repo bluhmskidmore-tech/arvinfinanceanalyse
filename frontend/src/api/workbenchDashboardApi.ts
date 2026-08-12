@@ -4,7 +4,16 @@ import type {
   DailyChangesPayload,
   DailyChangesResult,
 } from "./contracts";
-import { sampleCoreMetricsResult, sampleDailyChangesResult } from "../fixtures/dashboardCoreWorkbenchSamples";
+
+type DashboardWorkbenchSamples = typeof import("../fixtures/dashboardCoreWorkbenchSamples");
+
+// Demo-only fixtures load lazily so sample data stays out of the production bundle.
+let dashboardWorkbenchSamplesPromise: Promise<DashboardWorkbenchSamples> | null = null;
+
+function ensureDashboardWorkbenchSamples(): Promise<DashboardWorkbenchSamples> {
+  dashboardWorkbenchSamplesPromise ??= import("../fixtures/dashboardCoreWorkbenchSamples");
+  return dashboardWorkbenchSamplesPromise;
+}
 
 /** ApiClient 延迟函数形状（与 ``client.ts`` 内嵌一致）。 */
 type DelayFn = () => Promise<void>;
@@ -35,6 +44,7 @@ export function dashboardWorkbenchDemoEndpoints(
   return {
     async getCoreMetrics() {
       await delay();
+      const { sampleCoreMetricsResult } = await ensureDashboardWorkbenchSamples();
       return (await ensureBundle()).buildMockApiEnvelope(
         "dashboard.core_metrics",
         sampleCoreMetricsResult(),
@@ -42,6 +52,7 @@ export function dashboardWorkbenchDemoEndpoints(
     },
     async getDailyChanges() {
       await delay();
+      const { sampleDailyChangesResult } = await ensureDashboardWorkbenchSamples();
       return (await ensureBundle()).buildMockApiEnvelope(
         "dashboard.daily_changes",
         sampleDailyChangesResult(),

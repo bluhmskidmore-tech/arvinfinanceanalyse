@@ -24,8 +24,6 @@ import type {
   DailyChangesResult,
   IndustryDistPayload,
   MaturityStructurePayload,
-  Numeric,
-  NumericUnit,
   PortfolioComparisonPayload,
   KRDCurveRiskPayload,
   ReturnDecompositionPayload,
@@ -34,8 +32,7 @@ import type {
 } from "./contracts";
 import type { LiabilityAdbClientMethods } from "./liabilityAdbClient";
 import { readHttpJsonDetail } from "./httpResponseError";
-import { parseNumericOrNull } from "./numeric";
-import { formatRawAsNumeric } from "../utils/format";
+import { normalizeNumeric } from "./numeric";
 
 type FetchLike = typeof fetch;
 
@@ -136,6 +133,7 @@ function buildCampisiQuery(options?: {
   startDate?: string;
   endDate?: string;
   lookbackDays?: number;
+  detail?: "full" | "summary";
 }) {
   const params = new URLSearchParams();
   if (options?.startDate?.trim()) {
@@ -147,38 +145,11 @@ function buildCampisiQuery(options?: {
   if (Number.isFinite(options?.lookbackDays)) {
     params.set("lookback_days", String(options?.lookbackDays));
   }
+  if (options?.detail) {
+    params.set("detail", options.detail);
+  }
   const query = params.toString();
   return query ? `?${query}` : "";
-}
-
-function decimalRaw(value: unknown): number | null {
-  const parsed = parseNumericOrNull(value);
-  if (parsed) {
-    return parsed.raw;
-  }
-  if (value === null || value === undefined || value === "") {
-    return null;
-  }
-  const raw = typeof value === "number" ? value : Number.parseFloat(String(value));
-  return Number.isFinite(raw) ? raw : null;
-}
-
-function normalizeNumeric(
-  value: unknown,
-  unit: NumericUnit,
-  signAware: boolean,
-  precision?: number,
-): Numeric {
-  const parsed = parseNumericOrNull(value);
-  if (parsed) {
-    return parsed;
-  }
-  return formatRawAsNumeric({
-    raw: decimalRaw(value),
-    unit,
-    sign_aware: signAware,
-    precision,
-  });
 }
 
 function normalizeConcentration(

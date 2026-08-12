@@ -30,15 +30,13 @@ import type {
   KRDCurveRiskPayload,
   IndustryDistPayload,
   MaturityStructurePayload,
-  Numeric,
-  NumericUnit,
   PortfolioComparisonPayload,
   ReturnDecompositionPayload,
   RiskIndicatorsPayload,
   SpreadAnalysisPayload,
   YieldDistributionPayload,
 } from "./contracts";
-import { parseNumericOrNull } from "./numeric";
+import { normalizeNumeric } from "./numeric";
 import { formatRawAsNumeric } from "../utils/format";
 import {
   buildMockBondTradingDeskTopHoldings,
@@ -46,8 +44,17 @@ import {
 } from "../mocks/bondTradingDeskDrillFixtures";
 import { mockBondAnalyticsYieldCurveTermStructure } from "./bondAnalyticsYieldCurveTermStructureMock";
 import { buildMockBondDashboardBundleEnvelope } from "./bondDashboardBundleMock";
-import { sampleBondBusinessTypeMetricRows } from "../fixtures/dashboardCoreWorkbenchSamples";
 import type { CashflowClientMethods } from "./cashflowClient";
+
+type DashboardWorkbenchSamples = typeof import("../fixtures/dashboardCoreWorkbenchSamples");
+
+// Demo-only fixtures load lazily so sample data stays out of the production bundle.
+let dashboardWorkbenchSamplesPromise: Promise<DashboardWorkbenchSamples> | null = null;
+
+function ensureDashboardWorkbenchSamples(): Promise<DashboardWorkbenchSamples> {
+  dashboardWorkbenchSamplesPromise ??= import("../fixtures/dashboardCoreWorkbenchSamples");
+  return dashboardWorkbenchSamplesPromise;
+}
 
 type BondAnalyticsCoreSurfaceMethods = {
   refreshBondAnalytics: (reportDate: string) => Promise<BondAnalyticsRefreshPayload>;
@@ -251,36 +258,6 @@ export type BondDashboardClientFactoryOptions = {
 export type BondAnalyticsClientFactoryOptions = BondDashboardClientFactoryOptions & {
   requestActionJson: RequestActionJson;
 };
-
-function decimalRaw(value: unknown): number | null {
-  const parsed = parseNumericOrNull(value);
-  if (parsed) {
-    return parsed.raw;
-  }
-  if (value === null || value === undefined || value === "") {
-    return null;
-  }
-  const raw = typeof value === "number" ? value : Number.parseFloat(String(value));
-  return Number.isFinite(raw) ? raw : null;
-}
-
-function normalizeNumeric(
-  value: unknown,
-  unit: NumericUnit,
-  signAware: boolean,
-  precision?: number,
-): Numeric {
-  const parsed = parseNumericOrNull(value);
-  if (parsed) {
-    return parsed;
-  }
-  return formatRawAsNumeric({
-    raw: decimalRaw(value),
-    unit,
-    sign_aware: signAware,
-    precision,
-  });
-}
 
 function normalizeConcentration(
   value: unknown,
@@ -523,6 +500,7 @@ async function fetchDemoBondDashboardBundleSection(
     return [section, await client.getBondBusinessTypeMetrics({ reportDate: rd })];
   }
 
+  const { sampleBondBusinessTypeMetricRows } = await ensureDashboardWorkbenchSamples();
   return [
     section,
     {
@@ -1205,6 +1183,7 @@ export function createDemoBondDashboardClient(
     },
     async getBondDashboardHomeSummary(reportDate: string) {
       await delay();
+      const { sampleBondBusinessTypeMetricRows } = await ensureDashboardWorkbenchSamples();
       const [
         headline,
         risk,
