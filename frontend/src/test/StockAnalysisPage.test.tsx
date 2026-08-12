@@ -30,7 +30,7 @@ import { StockAnalysisCandidateComparison } from "../features/stock-analysis/com
 import { StockAnalysisCandidateLedgerTable } from "../features/stock-analysis/components/StockAnalysisCandidateLedgerTable";
 import * as stockAnalysisKlineRadarModel from "../features/stock-analysis/lib/stockAnalysisKlineRadarModel";
 import * as stockAnalysisPageModel from "../features/stock-analysis/lib/stockAnalysisPageModel";
-import type { StockCandidateReviewQueueItem, WorkbenchDataDigest } from "../features/stock-analysis/lib/stockAnalysisPageModel";
+import type { StockCandidateReviewQueueItem } from "../features/stock-analysis/lib/stockAnalysisPageModel";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
 const LIVERMORE_OUTPUT_KEYS: LivermoreOutputKey[] = [
@@ -3643,9 +3643,6 @@ describe("StockAnalysisPage", () => {
     expect(narrowKpiCss).toMatch(
       /\[data-testid="stock-analysis-kpi-market-state"\],[\s\S]*?\[data-testid="stock-analysis-kpi-closed-loop"\]\s*\{[\s\S]*?display:\s*none\s*!important/,
     );
-    expect(narrowKpiCss).toMatch(
-      /\.stock-analysis-page__dh-kpi-strip\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
-    );
   });
 
   it("removes repeated rail chrome on narrow screens", () => {
@@ -3943,7 +3940,13 @@ describe("StockAnalysisPage", () => {
     );
     expect(compactCss).toContain("Consensus zero-state background-entry compact pass");
     expect(compactCss).toMatch(
-      /\[data-testid="stock-analysis-consensus-first-screen"\]:has\(\[data-testid="stock-analysis-consensus-empty-scan"\]\)\s*\{[\s\S]*?min-height:\s*0[\s\S]*?max-height:\s*92px[\s\S]*?padding:\s*8px 10px/,
+      /\[data-testid="stock-analysis-consensus-first-screen"\]:has\(\[data-testid="stock-analysis-consensus-empty-scan"\]\)\s*\{[\s\S]*?min-height:\s*0[\s\S]*?padding:\s*8px 10px/,
+    );
+    // The zero-hit panel must stay compact by sizing its own content, not by a
+    // fixed clamp: a 92px cap cut the scan tile values off at the bottom edge
+    // once the tiles grew to 96px.
+    expect(compactCss).not.toMatch(
+      /\[data-testid="stock-analysis-consensus-first-screen"\]:has\(\[data-testid="stock-analysis-consensus-empty-scan"\]\)\s*\{[^}]*max-height:/,
     );
     expect(compactCss).toMatch(
       /\[data-testid="stock-analysis-consensus-first-screen"\]:has\(\[data-testid="stock-analysis-consensus-empty-scan"\]\)\s*>\s*\.stock-analysis-page__dh-section-head\s*\{[\s\S]*?min-height:\s*24px[\s\S]*?border-bottom:\s*0/,
@@ -3955,7 +3958,7 @@ describe("StockAnalysisPage", () => {
       /\[data-testid="stock-analysis-consensus-first-screen"\]:has\(\[data-testid="stock-analysis-consensus-empty-scan"\]\)[\s\S]*?\[data-testid="stock-analysis-consensus-empty-scan"\]\s*\{[\s\S]*?grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)[\s\S]*?min-height:\s*28px/,
     );
     expect(compactCss).toMatch(
-      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*?\[data-testid="stock-analysis-consensus-first-screen"\]:has\(\[data-testid="stock-analysis-consensus-empty-scan"\]\)\s*\{[\s\S]*?max-height:\s*84px/,
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*?\[data-testid="stock-analysis-consensus-first-screen"\]:has\(\[data-testid="stock-analysis-consensus-empty-scan"\]\)\s*\{[\s\S]*?padding:\s*7px 8px/,
     );
   });
 

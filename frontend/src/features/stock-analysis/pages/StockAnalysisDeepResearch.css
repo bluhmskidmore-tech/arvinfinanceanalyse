@@ -9,9 +9,6 @@
   gap: 8px;
   padding: 0;
 }
-.stock-analysis-page__deep-zone-gate-summary[data-tone="warning"] {
-  color: var(--sa-dh-gold);
-}
 .stock-analysis-page__deep-zone-audit-strip {
   display: grid;
   overflow: hidden;
@@ -441,7 +438,6 @@
   > [data-testid="stock-analysis-consensus-first-screen"]:has([data-testid="stock-analysis-consensus-empty-scan"]) {
   gap: 5px !important;
   min-height: 0 !important;
-  max-height: 92px !important;
   padding: 8px 10px !important;
   overflow: hidden !important;
 }
@@ -480,7 +476,6 @@
 @media (max-width: 720px) {
   [data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace
     > [data-testid="stock-analysis-consensus-first-screen"]:has([data-testid="stock-analysis-consensus-empty-scan"]) {
-    max-height: 84px !important;
     padding: 7px 8px !important;
   }
 }
@@ -508,9 +503,7 @@
 [data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace
   > [data-testid="stock-analysis-theme-leaders-first-screen"]:has([data-testid="stock-analysis-theme-leader-empty"])
   .stock-analysis-page__dh-section-head h2 {
-  color: var(--sa-dh-ink);
   overflow: hidden;
-  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -531,7 +524,6 @@
   min-height: 28px !important;
   padding: 4px 7px;
   border: 1px solid var(--ib-hairline);
-  background: var(--ib-paper);
 }
 [data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace
   > [data-testid="stock-analysis-theme-leaders-first-screen"]
@@ -756,10 +748,6 @@
   margin: 0 !important;
   padding: 0 6px !important;
   font-size: 12px !important;
-}
-[data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-sector-heavyweights-first-screen"] .stock-analysis-page__sector-heavyweight-card {
-  display: grid;
-  gap: 2px;
 }
 [data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-sector-heavyweights-first-screen"] .stock-analysis-page__sector-heavyweight-list {
   display: flex;

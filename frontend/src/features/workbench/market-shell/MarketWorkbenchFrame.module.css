@@ -373,7 +373,6 @@
 
 .frame :global([data-testid="market-workbench-metric-grid"] > div),
 .frame :global(.async-section),
-.frame :global(.stock-analysis-page__dh-kpi-strip),
 .frame :global(.stock-analysis-page__decision-rail),
 .frame :global(.stock-analysis-page__dh-card),
 .frame :global(.stock-analysis-page__deep-zone-title),
