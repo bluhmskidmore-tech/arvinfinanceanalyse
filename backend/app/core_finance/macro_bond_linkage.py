@@ -1463,22 +1463,38 @@ def _score_liquidity(
     }
 
 
+# 未季调水平序列的差分阶数（按序列覆盖，默认 1）。
+# "中国:GDP:现价:当季值" 是名义现价水平的季度序列，相邻（lag=1）差分等于
+# 环比：Q1 相对上年 Q4 的季节性回落会把每年一季度的 growth 信号系统性打成
+# 大幅负值。改为同季上年（lag=4，四期差分）消除季节性。
+# 选四期差分而非同比百分比的依据：现有评分结构是"绝对差分 / 差分历史
+# 标准差"的无量纲归一（_normalize_signal + _bounded_score），四期差分可
+# 原样复用 winsorize 与 dispersion 逻辑、不引入除法与量纲切换；而
+# macro_history 的有序 (date, value) 点列结构也天然支持按索引取 lag。
+_SEASONAL_DIFF_LAG_BY_SERIES = {
+    "EMM00619381": 4,
+}
+
+
 def _score_latest_delta(
     series_id: str,
     series_name: str,
     weight: float,
     points: list[tuple[date, float]],
 ) -> dict[str, Any] | None:
+    diff_lag = _SEASONAL_DIFF_LAG_BY_SERIES.get(series_id, 1)
+    if len(points) <= diff_lag:
+        return None
     values = [float(value) for _point_date, value in points]
     winsorized_values, winsorized = _maybe_winsorize_environment_values(values)
-    previous_date, _previous_value = points[-2]
+    previous_date, _previous_value = points[-1 - diff_lag]
     latest_date, _latest_value = points[-1]
-    previous_metric = winsorized_values[-2]
+    previous_metric = winsorized_values[-1 - diff_lag]
     latest_metric = winsorized_values[-1]
     delta = float(latest_metric - previous_metric)
     delta_history = [
-        winsorized_values[index] - winsorized_values[index - 1]
-        for index in range(1, len(winsorized_values))
+        winsorized_values[index] - winsorized_values[index - diff_lag]
+        for index in range(diff_lag, len(winsorized_values))
     ]
     dispersion = max(
         _population_std(delta_history) if len(delta_history) > 1 else 0.0,
@@ -1495,6 +1511,7 @@ def _score_latest_delta(
         "previous_value": previous_metric,
         "latest_value": latest_metric,
         "delta": delta,
+        "diff_lag": diff_lag,
         "score": score,
         "weight": weight,
         "scoring_method": ENVIRONMENT_SCORE_METHOD,

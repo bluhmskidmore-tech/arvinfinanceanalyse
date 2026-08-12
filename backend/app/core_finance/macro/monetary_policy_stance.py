@@ -76,18 +76,16 @@ def _rate_change_bp(
     if len(dates) <= lookback_index:
         return None
 
-    current_values = [
-        rate
+    # 只比较两日均有观测的工具交集：若两日各自独立取可用工具再平均，
+    # 候选集合的差异（例如某一日缺 RRP）会被计成利率变动，产生伪变动。
+    paired_values = [
+        (current_rate, prior_rate)
         for curve_id, tenor in candidates
-        if (rate := get_curve_rate(curves_by_date, dates[0], curve_id, tenor)) is not None
+        if (current_rate := get_curve_rate(curves_by_date, dates[0], curve_id, tenor)) is not None
+        and (prior_rate := get_curve_rate(curves_by_date, dates[lookback_index], curve_id, tenor)) is not None
     ]
-    prior_values = [
-        rate
-        for curve_id, tenor in candidates
-        if (rate := get_curve_rate(curves_by_date, dates[lookback_index], curve_id, tenor)) is not None
-    ]
-    current_avg = _avg(current_values)
-    prior_avg = _avg(prior_values)
+    current_avg = _avg([current_rate for current_rate, _prior_rate in paired_values])
+    prior_avg = _avg([prior_rate for _current_rate, prior_rate in paired_values])
     if current_avg is None or prior_avg is None:
         return None
     return (current_avg - prior_avg) * _ONE_HUNDRED

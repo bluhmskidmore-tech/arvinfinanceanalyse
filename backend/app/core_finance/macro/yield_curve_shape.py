@@ -19,6 +19,20 @@ _TENOR_YEARS: dict[str, Decimal] = {
     "30Y": Decimal("30"),
 }
 
+# percentile_1y 的一年窗口：与模块内既有约定一致 ——
+# rate_turning_point 用 [1:252]（排除当日 + 最多 252 个先前观测），
+# credit_spread_percentile 用日历一年 cutoff（闰日回退 28 日）+ 252 观测上限。
+# 此处取两者合集：日历一年 cutoff 保证稀疏历史下 "1y" 语义成立，252 上限
+# 与交易日一年约定对齐。
+_PERCENTILE_1Y_MAX_OBSERVATIONS = 252
+
+
+def _one_year_cutoff(anchor: date) -> date:
+    try:
+        return date(anchor.year - 1, anchor.month, anchor.day)
+    except ValueError:
+        return date(anchor.year - 1, anchor.month, 28)
+
 
 def _build_curves(
     curve_rows: Iterable[Any],
@@ -129,6 +143,7 @@ def compute_yield_curve_shape(
             "curvature": "neutral",
             "spreads": {},
             "percentile_1y": None,
+            "percentile_1y_window": None,
             "interpretation": "暂无国债收益率曲线数据。",
             "curve": {},
             "warnings": ["NO_GOV_CURVE"],
@@ -147,21 +162,39 @@ def compute_yield_curve_shape(
             "curvature": "neutral",
             "spreads": {},
             "percentile_1y": None,
+            "percentile_1y_window": None,
             "interpretation": "国债曲线缺少必要的 1Y/10Y 节点。",
             "curve": {tenor: float(rate) for tenor, rate in current_curve.items()},
             "warnings": ["GOV_CURVE_MISSING_REQUIRED_TENORS"],
         }
 
+    # 只用当前观测日回看一年内的历史（排除当日自身），避免 "1y" 分位被
+    # 更早年份的利差水平主导；窗口实际覆盖范围随 percentile_1y_window 披露。
+    current_date = available_dates[0]
+    cutoff_1y = _one_year_cutoff(current_date)
     spread_history: list[Decimal] = []
+    history_window_dates: list[date] = []
     for history_date in available_dates[1:]:
+        if history_date < cutoff_1y:
+            break
         history_spread = _spread_bp(curves[history_date], "10Y", "1Y")
         if history_spread is not None:
             spread_history.append(history_spread)
+            history_window_dates.append(history_date)
+        if len(spread_history) >= _PERCENTILE_1Y_MAX_OBSERVATIONS:
+            break
 
     percentile_1y: float | None = None
+    percentile_1y_window: dict[str, Any] | None = None
     if spread_history:
         below = sum(1 for spread in spread_history if spread < spread_10y_1y_bp)
         percentile_1y = round((below / len(spread_history)) * 100, 2)
+        percentile_1y_window = {
+            "cutoff_1y": cutoff_1y.isoformat(),
+            "window_start": min(history_window_dates).isoformat(),
+            "window_end": max(history_window_dates).isoformat(),
+            "observation_count": len(spread_history),
+        }
 
     slope = _linear_slope(current_curve)
     butterfly_spread = _butterfly_spread(current_curve)
@@ -196,6 +229,7 @@ def compute_yield_curve_shape(
         "curvature": curvature,
         "spreads": spreads,
         "percentile_1y": percentile_1y,
+        "percentile_1y_window": percentile_1y_window,
         "interpretation": interpretation,
         "curve": {tenor: float(rate) for tenor, rate in current_curve.items()},
         "warnings": warnings,
