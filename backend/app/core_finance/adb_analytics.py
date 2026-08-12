@@ -98,11 +98,12 @@ def enrich_bonds_liability_frame(bonds_liab_df: pd.DataFrame) -> pd.DataFrame:
     else:
         df["category"] = df["sub_type"].apply(_clean_cat_local)
     df["balance"] = _coerce_numeric_balance_with_warning(df, "market_value", "bonds_liability")
-    normalized = normalize_rate_values(df["coupon_rate"].tolist(), "coupon_rate")
-    df["rate_decimal"] = [
-        rate if coupon not in (None, 0, 0.0) else 0.0
-        for coupon, rate in zip(df["coupon_rate"].tolist(), normalized, strict=True)
-    ]
+    # Keep missing coupon rates nullable; explicit 0 remains 0% for zero-coupon liabilities.
+    df["rate_decimal"] = pd.Series(
+        normalize_rate_values(df["coupon_rate"].tolist(), "coupon_rate"),
+        index=df.index,
+        dtype=object,
+    )
     df["weighted"] = df["balance"] * df["rate_decimal"]
     return df
 
@@ -208,29 +209,37 @@ def build_comparison_rows(
     simulated: bool,
     end_date: date,
     stable_factor_fn: Any,
-) -> list[dict[str, float]]:
+    *,
+    insufficient_window: bool = False,
+) -> list[dict[str, float | None]]:
     """Build per-category spot/period-avg rows; sort by average balance (desc) for classification tables.
 
     When ``top_n`` is None, returns all categories (caller trims for display and totals).
+    When ``insufficient_window`` is True (window too short to support a period average and
+    simulation is not explicitly enabled), ``avg`` / ``deviation`` are None instead of a
+    synthesized or spot-echoing number (fail-visible: missing != zero).
     """
     categories = set(spot_map.keys()) | set(sum_map.keys())
-    rows: list[dict[str, float]] = []
+    rows: list[dict[str, float | None]] = []
     for category in categories:
         clean_key = _clean_cat_local(category)
         spot_value = spot_map.get(clean_key, Decimal("0")) or Decimal("0")
+        avg_value: Decimal | None
         if simulated:
             avg_value = spot_value * stable_factor_fn(f"{side}:{end_date}:{clean_key}")
+        elif insufficient_window:
+            avg_value = None
         else:
             avg_value = (sum_map.get(clean_key, Decimal("0")) or Decimal("0")) / num_days_dec
-        deviation = spot_value - avg_value
-        if spot_value == 0 and avg_value == 0:
+        deviation = spot_value - avg_value if avg_value is not None else None
+        if spot_value == 0 and (avg_value is None or avg_value == 0):
             continue
         rows.append(
             {
                 "category": clean_key,
                 "spot": float(spot_value),
-                "avg": float(avg_value),
-                "deviation": float(deviation),
+                "avg": float(avg_value) if avg_value is not None else None,
+                "deviation": float(deviation) if deviation is not None else None,
             }
         )
     rows.sort(key=lambda r: (r.get("avg") or 0.0, r.get("spot") or 0.0), reverse=True)
@@ -240,23 +249,35 @@ def build_comparison_rows(
 
 
 def enrich_breakdown(
-    rows: list[dict[str, float]],
-    total_avg: float,
+    rows: list[dict[str, float | None]],
+    total_avg: float | None,
     rate_map: dict[str, float | None],
     rate_coverage_map: dict[str, float | None] | None = None,
 ) -> list[dict[str, Any]]:
-    """Attach proportion and weighted_rate to comparison breakdown rows."""
-    return [
-        {
-            "category": row["category"],
-            "spot_balance": float(row["spot"]),
-            "avg_balance": float(row["avg"]),
-            "proportion": round(float(row["avg"]) / total_avg * 100, 2) if total_avg > 0 else 0.0,
-            "weighted_rate": rate_map.get(row["category"]),
-            "rate_coverage_ratio": (rate_coverage_map or {}).get(row["category"]),
-        }
-        for row in rows
-    ]
+    """Attach proportion and weighted_rate to comparison breakdown rows.
+
+    ``avg`` may be None (insufficient window); then avg_balance/proportion stay None.
+    """
+    enriched: list[dict[str, Any]] = []
+    for row in rows:
+        avg = row["avg"]
+        if avg is None:
+            proportion = None
+        elif total_avg is not None and total_avg > 0:
+            proportion = round(float(avg) / total_avg * 100, 2)
+        else:
+            proportion = 0.0
+        enriched.append(
+            {
+                "category": row["category"],
+                "spot_balance": float(row["spot"]),
+                "avg_balance": float(avg) if avg is not None else None,
+                "proportion": proportion,
+                "weighted_rate": rate_map.get(row["category"]),
+                "rate_coverage_ratio": (rate_coverage_map or {}).get(row["category"]),
+            }
+        )
+    return enriched
 
 
 # ---------------------------------------------------------------------------

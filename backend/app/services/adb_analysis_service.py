@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from functools import lru_cache
@@ -32,6 +33,7 @@ from backend.app.core_finance.adb_analytics import (
     compute_mom_changes,
     compute_nim,
     compute_weighted_rate,
+    enrich_bonds_liability_frame,
     enrich_breakdown,
     month_date_range,
 )
@@ -1008,17 +1010,7 @@ def _split_rate_frames(
 
         bonds_liab_df = bonds_df[issued_mask].copy()
         if not bonds_liab_df.empty:
-            bonds_liab_df["category"] = bonds_liab_df["bond_category"].map(_clean_cat)
-            bonds_liab_df["balance"] = pd.to_numeric(bonds_liab_df["market_value"], errors="coerce").fillna(0.0)
-            bonds_liab_df["rate_decimal"] = [
-                rate if coupon not in (None, 0, 0.0) else 0.0
-                for coupon, rate in zip(
-                    bonds_liab_df["coupon_rate"].tolist(),
-                    normalize_rate_values(bonds_liab_df["coupon_rate"].tolist(), "coupon_rate"),
-                    strict=True,
-                )
-            ]
-            bonds_liab_df["weighted"] = bonds_liab_df["balance"] * bonds_liab_df["rate_decimal"]
+            bonds_liab_df = enrich_bonds_liability_frame(bonds_liab_df)
             liability_frames.append(bonds_liab_df[["category", "balance", "rate_decimal", "weighted"]])
 
     ib_assets_df = pd.DataFrame()
@@ -1284,6 +1276,7 @@ def _empty_comparison_response(
         "sample_filled": False,
         "sample_fill_method": "none",
         "simulated": False,
+        "avg_unavailable_reason": None,
         "total_spot_assets": 0.0,
         "total_avg_assets": 0.0,
         "total_spot_liabilities": 0.0,
@@ -1306,10 +1299,10 @@ def _empty_comparison_response(
 def _append_other_row(
     breakdown: list[dict[str, Any]],
     total_spot: float,
-    total_avg: float,
+    total_avg: float | None,
 ) -> list[dict[str, Any]]:
     """Append an '其他（未列示）' catch-all row when breakdown doesn't sum to total."""
-    if not breakdown or total_avg <= 0:
+    if not breakdown or total_avg is None or total_avg <= 0:
         return breakdown
     breakdown_spot_sum = sum(row.get("spot_balance", 0) or 0 for row in breakdown)
     breakdown_avg_sum = sum(row.get("avg_balance", 0) or 0 for row in breakdown)
@@ -1335,7 +1328,7 @@ def get_adb_comparison(
     start_date: date,
     end_date: date,
     top_n: int = 20,
-    simulate_if_single_snapshot: bool = True,
+    simulate_if_single_snapshot: bool = False,
 ) -> tuple[dict[str, Any], list[str], list[str], list[str]]:
     if start_date > end_date:
         start_date, end_date = end_date, start_date
@@ -1379,21 +1372,47 @@ def get_adb_comparison(
         sample_fill_method = "observed_days_scaled_to_calendar"
 
     simulated = bool(simulate_if_single_snapshot and calendar_days_inclusive <= 1)
+    # Single-day window without explicit simulation opt-in: a period average is not
+    # computable from one calendar day, so avg outputs become None (fail-visible).
+    avg_window_insufficient = bool(not simulated and calendar_days_inclusive <= 1)
     denom_dec = calendar_days_dec
     assets_all = build_comparison_rows(
-        "Asset", spot_assets, sum_assets_effective, denom_dec, None, simulated, end_date, _stable_factor
+        "Asset",
+        spot_assets,
+        sum_assets_effective,
+        denom_dec,
+        None,
+        simulated,
+        end_date,
+        _stable_factor,
+        insufficient_window=avg_window_insufficient,
     )
     liabilities_all = build_comparison_rows(
-        "Liability", spot_liabilities, sum_liabilities_effective, denom_dec, None, simulated, end_date, _stable_factor
+        "Liability",
+        spot_liabilities,
+        sum_liabilities_effective,
+        denom_dec,
+        None,
+        simulated,
+        end_date,
+        _stable_factor,
+        insufficient_window=avg_window_insufficient,
     )
     assets = assets_all[: max(int(top_n), 0)]
     liabilities = liabilities_all[: max(int(top_n), 0)]
 
+    total_avg_assets: float | None
+    total_avg_liabilities: float | None
     if simulated:
         total_spot_assets = float(sum(item["spot"] for item in assets_all))
         total_avg_assets = float(sum(item["avg"] for item in assets_all))
         total_spot_liabilities = float(sum(item["spot"] for item in liabilities_all))
         total_avg_liabilities = float(sum(item["avg"] for item in liabilities_all))
+    elif avg_window_insufficient:
+        total_spot_assets = float(sum(spot_assets.values(), start=Decimal("0")))
+        total_avg_assets = None
+        total_spot_liabilities = float(sum(spot_liabilities.values(), start=Decimal("0")))
+        total_avg_liabilities = None
     else:
         total_spot_assets = float(sum(spot_assets.values(), start=Decimal("0")))
         total_avg_assets = float(sum(sum_assets_effective.values(), start=Decimal("0")) / calendar_days_dec)
@@ -1418,6 +1437,7 @@ def get_adb_comparison(
         "sample_filled": sample_filled,
         "sample_fill_method": sample_fill_method,
         "simulated": simulated,
+        "avg_unavailable_reason": "insufficient_window" if avg_window_insufficient else None,
         "total_spot_assets": total_spot_assets,
         "total_avg_assets": total_avg_assets,
         "total_spot_liabilities": total_spot_liabilities,
@@ -1722,11 +1742,25 @@ def adb_envelope_for_dates(start_date: str, end_date: str) -> dict[str, Any]:
 
 
 def adb_comparison_envelope(start_date: str, end_date: str, top_n: int = 20) -> dict[str, Any]:
-    return _cached_adb_comparison_envelope(str(start_date), str(end_date), int(top_n))
+    env_duckdb_path = os.environ.get("MOSS_DUCKDB_PATH")
+    if env_duckdb_path and str(get_settings().duckdb_path) != env_duckdb_path:
+        get_settings.cache_clear()
+    settings = get_settings()
+    return _cached_adb_comparison_envelope(
+        str(start_date),
+        str(end_date),
+        int(top_n),
+        str(settings.duckdb_path),
+    )
 
 
 @lru_cache(maxsize=32)
-def _cached_adb_comparison_envelope(start_date: str, end_date: str, top_n: int) -> dict[str, Any]:
+def _cached_adb_comparison_envelope(
+    start_date: str,
+    end_date: str,
+    top_n: int,
+    _duckdb_path: str,
+) -> dict[str, Any]:
     return _adb_comparison_envelope_uncached(start_date, end_date, top_n)
 
 

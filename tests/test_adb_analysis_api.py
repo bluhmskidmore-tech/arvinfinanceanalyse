@@ -617,12 +617,110 @@ def test_adb_comparison_normalizes_bond_rates_from_percent_inputs(tmp_path: Path
 
     assert response.status_code == 200, response.text
     payload = response.json()["result"]
-    assert payload["simulated"] is True
+    # 单日窗口默认不再仿真日均（A1 治理）：simulated=False 且 reason 可见。
+    assert payload["simulated"] is False
+    assert payload["avg_unavailable_reason"] == "insufficient_window"
     assert payload["assets_breakdown"][0]["category"] == BOND_CORP_ZQTZ_CATEGORY
     assert payload["assets_breakdown"][0]["weighted_rate"] == 2.4
     assert payload["assets_breakdown"][0]["rate_coverage_ratio"] == 0.5
     assert payload["asset_yield"] == 2.4
     assert payload["asset_rate_coverage_ratio"] == 0.5
+
+
+def test_adb_comparison_liability_missing_coupon_excluded_from_rate_coverage(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _seed_adb_read_scope(tmp_path, monkeypatch)
+    db_path = tmp_path / "adb-liability-rate-coverage.duckdb"
+    governance_dir = tmp_path / "governance"
+    conn = duckdb.connect(str(db_path))
+    try:
+        conn.execute(
+            """
+            create table fact_formal_zqtz_balance_daily (
+              report_date date,
+              position_scope varchar,
+              currency_basis varchar,
+              market_value_amount decimal(18, 2),
+              ytm_value decimal(18, 6),
+              coupon_rate decimal(18, 6),
+              asset_class varchar,
+              bond_type varchar,
+              is_issuance_like boolean,
+              source_version varchar,
+              rule_version varchar
+            )
+            """
+        )
+        conn.executemany(
+            """
+            insert into fact_formal_zqtz_balance_daily values (
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+            """,
+            [
+                (
+                    "2025-05-16",
+                    "liability",
+                    "CNY",
+                    Decimal("100000000"),
+                    Decimal("2.40"),
+                    None,
+                    BOND_ASSET_CLASS,
+                    BOND_GOV,
+                    True,
+                    "sv-adb",
+                    "rv-adb",
+                ),
+                (
+                    "2025-05-16",
+                    "liability",
+                    "CNY",
+                    Decimal("100000000"),
+                    Decimal("2.40"),
+                    Decimal("2.00"),
+                    BOND_ASSET_CLASS,
+                    BOND_GOV,
+                    True,
+                    "sv-adb",
+                    "rv-adb",
+                ),
+                (
+                    "2025-05-16",
+                    "liability",
+                    "CNY",
+                    Decimal("50000000"),
+                    Decimal("2.40"),
+                    Decimal("0"),
+                    BOND_ASSET_CLASS,
+                    BOND_GOV,
+                    True,
+                    "sv-adb",
+                    "rv-adb",
+                ),
+            ],
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    main_mod = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_mod.app)
+
+    response = client.get(
+        "/api/analysis/adb/comparison",
+        params={"start_date": "2025-05-16", "end_date": "2025-05-16", "top_n": 5},
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()["result"]
+    assert payload["liability_cost"] == pytest.approx(1.3333)
+    assert payload["liability_rate_coverage_ratio"] == 0.6
+    assert payload["liabilities_breakdown"][0]["weighted_rate"] == pytest.approx(1.3333)
+    assert payload["liabilities_breakdown"][0]["rate_coverage_ratio"] == 0.6
 
 
 def test_adb_monthly_normalizes_rates_and_exposes_new_contract_fields(
@@ -850,7 +948,10 @@ def test_adb_comparison_reads_formal_facts_without_snapshot_tables(tmp_path: Pat
     payload = response.json()
     assert payload["result_meta"]["basis"] == "analytical"
     assert payload["result"]["report_date"] == "2025-12-31"
-    assert payload["result"]["total_avg_assets"] > 0
+    # 单日窗口日均不可得（insufficient_window），但 formal 表时点余额仍出数。
+    assert payload["result"]["total_spot_assets"] > 0
+    assert payload["result"]["total_avg_assets"] is None
+    assert payload["result"]["avg_unavailable_reason"] == "insufficient_window"
 
 
 def test_adb_comparison_ignores_snapshot_when_formal_tables_missing(tmp_path: Path, monkeypatch) -> None:
@@ -963,7 +1064,10 @@ def test_adb_comparison_supplements_missing_snapshot_dates_per_source(
         top_n=10,
     )["result"]
     assert payload["adb_denominator_basis"] == "formal+snapshot_calendar"
-    assert payload["total_avg_assets"] > 0
+    # 单日窗口日均为 None（insufficient_window）；时点余额与同业区间日均仍出数。
+    assert payload["total_spot_assets"] > 0
+    assert payload["total_avg_assets"] is None
+    assert payload["avg_unavailable_reason"] == "insufficient_window"
     assert payload["total_avg_interbank_liabilities"] == pytest.approx(50_000_000.0)
 
 
@@ -1085,4 +1189,93 @@ def test_adb_comparison_liability_falls_back_past_blank_sub_type(tmp_path: Path,
     )
     assert response.status_code == 200, response.text
     rows = response.json()["result"]["liabilities_breakdown"]
-    assert any(r["category"] == BOND_GOV and r["avg_balance"] > 0 for r in rows)
+    # 单日窗口 avg_balance 为 None（insufficient_window），分类回退用时点余额验证。
+    assert any(r["category"] == BOND_GOV and r["spot_balance"] > 0 for r in rows)
+
+
+def test_adb_comparison_single_snapshot_window_returns_null_avg_with_reason(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """A1 治理：单快照窗口默认不再用 MD5 因子合成日均。
+
+    日均输出为 null 语义 + reason="insufficient_window"；时点余额保持真实观测值。
+    """
+    _seed_adb_read_scope(tmp_path, monkeypatch)
+    db_path = tmp_path / "adb_single_snapshot.duckdb"
+    governance_dir = tmp_path / "gov_single_snapshot"
+    spot_value = Decimal("100000000")
+    conn = duckdb.connect(str(db_path))
+    try:
+        _ensure_tables(conn)
+        _insert_zqtz(
+            conn,
+            report_date="2025-06-02",
+            instrument_code="B-SINGLE",
+            bond_type=BOND_GOV,
+            market_value=spot_value,
+            is_issuance_like=False,
+        )
+    finally:
+        conn.close()
+
+    _materialize_balance_analysis(db_path, governance_dir, monkeypatch, report_dates=["2025-06-02"])
+
+    from backend.app.services import adb_analysis_service
+    from datetime import date as date_cls
+
+    payload, *_ = adb_analysis_service.get_adb_comparison(
+        str(db_path), date_cls(2025, 6, 2), date_cls(2025, 6, 2), top_n=20
+    )
+
+    assert payload["simulated"] is False
+    assert payload["avg_unavailable_reason"] == "insufficient_window"
+    assert payload["total_avg_assets"] is None
+    assert payload["total_avg_liabilities"] is None
+    assert payload["total_spot_assets"] == pytest.approx(float(spot_value))
+    assert payload["assets_breakdown"], "spot rows must still be visible"
+    for row in payload["assets_breakdown"]:
+        assert row["avg_balance"] is None
+        assert row["proportion"] is None
+        assert row["spot_balance"] > 0
+
+
+def test_adb_comparison_explicit_simulation_optin_stays_disclosed(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """显式 opt-in（owner 签核路径）仍可仿真，但必须通过 simulated=True 全程披露。"""
+    _seed_adb_read_scope(tmp_path, monkeypatch)
+    db_path = tmp_path / "adb_optin_simulation.duckdb"
+    governance_dir = tmp_path / "gov_optin_simulation"
+    conn = duckdb.connect(str(db_path))
+    try:
+        _ensure_tables(conn)
+        _insert_zqtz(
+            conn,
+            report_date="2025-06-02",
+            instrument_code="B-OPTIN",
+            bond_type=BOND_GOV,
+            market_value=Decimal("100000000"),
+            is_issuance_like=False,
+        )
+    finally:
+        conn.close()
+
+    _materialize_balance_analysis(db_path, governance_dir, monkeypatch, report_dates=["2025-06-02"])
+
+    from backend.app.services import adb_analysis_service
+    from datetime import date as date_cls
+
+    payload, *_ = adb_analysis_service.get_adb_comparison(
+        str(db_path),
+        date_cls(2025, 6, 2),
+        date_cls(2025, 6, 2),
+        top_n=20,
+        simulate_if_single_snapshot=True,
+    )
+
+    assert payload["simulated"] is True
+    assert payload["avg_unavailable_reason"] is None
+    assert payload["total_avg_assets"] is not None and payload["total_avg_assets"] > 0
+    assert all(row["avg_balance"] is not None for row in payload["assets_breakdown"])
