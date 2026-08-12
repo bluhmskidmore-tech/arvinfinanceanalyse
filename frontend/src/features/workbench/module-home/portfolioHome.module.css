@@ -164,13 +164,15 @@
 /* Dark shell reflow (background/rail/nav) is owned by the central
    `.workbench-shell-grid--cockpit:has(.theme-dh-api)` variant in
    src/styles/workbenchShell.css; only layout-scoped overrides remain here. */
+/* 路由容器需撑满工作台列宽；此前的 start 会让页面按内容宽度收缩，
+   页面自身的宽度上限由 .portfolioPage 的 max-width 控制。 */
 :global(.workbench-shell-grid--cockpit:has([data-testid="module-workbench-home"]):has([data-testid="module-home-portfolio-cockpit"]) .workbench-main-surface--minimal) {
-  justify-items: start !important;
+  justify-items: stretch !important;
   padding: 0 !important;
 }
 
 :global(.workbench-shell-grid--cockpit:has([data-testid="module-workbench-home"]):has([data-testid="module-home-portfolio-cockpit"]) .workbench-main-column) {
-  justify-items: start !important;
+  justify-items: stretch !important;
   padding: 0 !important;
 }
 
@@ -293,65 +295,16 @@
   font-variant-numeric: tabular-nums;
 }
 
-.portfolioCockpit {
-  display: grid;
-  gap: 20px;
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.portfolioPrimaryGrid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(304px, 340px);
-  gap: 16px;
-  align-items: stretch;
-  min-width: 0;
-}
-
-.portfolioPrimaryColumn {
-  display: grid;
-  align-content: start;
-  gap: 14px;
-  min-width: 0;
-}
-
-.portfolioReviewBand {
-  display: grid;
-  gap: 20px;
-  min-width: 0;
-}
-
-.portfolioDataWorkbench {
-  display: grid;
-  gap: 0;
-  min-width: 0;
-  overflow: hidden;
-  border: 1px solid var(--dh-line);
-  border-radius: var(--dh-api-radius, 6px);
-  background:
-    linear-gradient(180deg, rgba(16, 31, 51, 0.96), rgba(7, 17, 31, 0.98)),
-    var(--dh-card);
-}
-
-.workbenchMain {
-  display: grid;
-  gap: 14px;
-  min-width: 0;
-  padding: 14px;
-}
-
+/* 区块是分组容器而非卡片：卡片层级留给内部内容，避免 §5 禁止的「格子套格子」。
+   cockpit / reviewBand / primaryGrid / primaryColumn / dataWorkbench / workbenchMain
+   六个壳子已在文末的页面级栅格收口层折叠为 display: contents，不再持有布局。 */
 .workbenchSection {
   display: grid;
   gap: 12px;
   min-width: 0;
-  padding: 12px;
-  border: 1px solid var(--dh-line-soft);
-  border-radius: var(--dh-api-radius, 6px);
-  background: rgba(11, 23, 40, 0.72);
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .workbenchSectionHead {
@@ -390,7 +343,7 @@
   min-width: 0;
   margin: 0;
   color: var(--dh-ink);
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 860;
   line-height: 1.25;
 }
@@ -400,7 +353,7 @@
   max-width: 76ch;
   margin: 0;
   color: var(--dh-muted-2);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   line-height: 1.45;
 }
@@ -515,6 +468,46 @@
   font-size: 11px;
   font-weight: 720;
   line-height: 1.45;
+}
+
+.closureGateReasons {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+.closureGateReasons li {
+  position: relative;
+  min-width: 0;
+  padding-left: 11px;
+  color: var(--dh-muted, var(--ib-ink-muted));
+  font-size: 12px;
+  font-weight: 720;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.closureGateReasons li::before {
+  content: "";
+  position: absolute;
+  top: 7px;
+  left: 0;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--dh-api-amber, var(--dh-amber));
+}
+
+.closureGateReasons li[data-more]::before {
+  background: var(--dh-muted-2);
+}
+
+.closureGateReasons li[data-more] {
+  color: var(--dh-muted-2);
+  font-weight: 700;
 }
 
 .closureGateBadges {
@@ -720,7 +713,7 @@
 
 .sectionHead strong {
   color: var(--dh-blue, var(--ib-accent));
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 850;
 }
 
@@ -851,7 +844,7 @@
   grid-column: 1 / -1;
   height: 7px;
   overflow: hidden;
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 6px);
   background: rgba(114, 167, 220, 0.12);
 }
 
@@ -860,15 +853,15 @@
   width: var(--chart-mini-width);
   height: 100%;
   border-radius: inherit;
-  background: var(--moss-color-info-400);
+  background: var(--dh-api-blue);
 }
 
 .chartMiniFill[data-color-index="1"] {
-  background: var(--moss-color-success-300);
+  background: var(--dh-api-green);
 }
 
 .chartMiniFill[data-color-index="2"] {
-  background: var(--moss-color-warning-400);
+  background: var(--dh-api-amber);
 }
 
 .chartMiniSkeleton span {
@@ -2086,6 +2079,20 @@
   align-items: baseline;
 }
 
+.detailTop[data-value-kind="prose"] {
+  display: grid;
+  gap: 3px;
+}
+
+.detailTop[data-value-kind="prose"] .detailValue {
+  font-family: var(--dh-font-sans, inherit);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
 .detailLabel {
   color: var(--dh-ink-2, var(--ib-ink-secondary));
   font-size: 13px;
@@ -2141,17 +2148,9 @@
   min-width: min(100%, 280px);
 }
 
-.holdingsHeroKicker {
-  color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11px;
-  font-weight: 850;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
 .holdingsHeroHead strong {
   color: var(--dh-ink, var(--ib-ink));
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 850;
   line-height: 1.25;
 }
@@ -2273,14 +2272,6 @@
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.portfolioDataWorkbench {
-  gap: 14px;
-  overflow: visible;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
 }
 
 .workbenchNav {
@@ -2434,14 +2425,10 @@
   }
 }
 
-.workbenchMain {
-  gap: 12px;
-  padding: 0;
-}
-
+/* 复盘摘要区块与其他 workbenchSection 同构：单列（头 + summaryLedgerGrid）。 */
 .sourceWorkbenchSection {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   padding: 0;
   border: 0;
@@ -2461,7 +2448,7 @@
   align-content: start;
   gap: 10px;
   min-width: 0;
-  min-height: 174px;
+  min-height: 0;
   padding: 12px;
   overflow: hidden;
   border: 1px solid var(--dh-line-soft);
@@ -2480,7 +2467,15 @@
   display: none;
 }
 
-.summaryLedgerCard .chartSnapshotGrid,
+.summaryLedgerCard .chartSnapshotGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
 .summaryLedgerCard .briefGrid,
 .summaryLedgerCard .statusGrid {
   display: grid;
@@ -2501,8 +2496,39 @@
   background: var(--dh-card-soft);
 }
 
+.summaryLedgerCard .chartSnapshotCard {
+  gap: 6px;
+  padding: 8px 9px;
+  border: 1px solid var(--dh-line-soft);
+}
+
 .summaryLedgerCard .chartMiniBars {
-  display: none;
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.summaryLedgerCard .chartMiniRow {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 8px;
+}
+
+.summaryLedgerCard .chartMiniTrack {
+  height: 5px;
+  border-radius: var(--dh-api-radius, 6px);
+  background: rgba(114, 167, 220, 0.12);
+}
+
+.summaryLedgerCard .chartMiniFill {
+  background: var(--dh-api-blue, var(--moss-color-info-400));
+}
+
+.summaryLedgerCard .chartMiniFill[data-color-index="1"] {
+  background: var(--dh-api-green, var(--moss-color-success-300));
+}
+
+.summaryLedgerCard .chartMiniFill[data-color-index="2"] {
+  background: var(--dh-api-amber, var(--moss-color-warning-400));
 }
 
 .summaryLedgerCard .briefGrid,
@@ -2801,29 +2827,8 @@
   padding: 0;
 }
 
-.structureTableWorkbench .structureSplit {
-  grid-template-columns: minmax(0, 1fr);
-  position: relative;
-}
-
-.structureTableWorkbench .structureChartCol {
-  position: absolute;
-  inset: 0 auto auto 0;
-  width: 1px;
-  height: 1px;
-  min-height: 1px;
-  padding: 0;
-  overflow: hidden;
-  border: 0;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.structureTableWorkbench .structureChartWrap {
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-}
+/* （2026-08-11）曾在此把 structureChartCol 压成 1px 且 opacity:0 隐藏图表；
+   驾驶舱改版恢复图表展示，布局规则统一收在文件末尾的皮肤层。 */
 
 .structureTableWorkbench .compactList {
   gap: 6px;
@@ -2884,18 +2889,45 @@
   font-size: 11px;
 }
 
-.quickAccessCard em,
-.drillCard em {
+/* 快捷入口为主级：保留说明文字、抬高对比，与明细索引区分层级。 */
+.quickAccessCard {
+  min-height: 46px;
+  padding: 9px 11px;
+  border-color: rgba(114, 167, 220, 0.26);
+  background: rgba(16, 31, 51, 0.72);
+}
+
+.quickAccessCard span {
+  width: 24px;
+  height: 24px;
+  border-color: rgba(114, 167, 220, 0.3);
+  color: var(--dh-api-blue);
+  font-size: 12px;
+}
+
+.quickAccessCard b {
+  font-size: 12px;
+}
+
+.quickAccessCard em {
+  color: var(--dh-muted-2);
+  font-size: 11px;
+  font-weight: 720;
+}
+
+/* 明细入口为索引级：默认就绪不占版面，仅偏离默认时显示状态。 */
+.drillCard[data-readiness="default"] em {
   display: none;
 }
 
-.portfolioPrimaryGrid {
-  grid-template-columns: minmax(0, 1fr) minmax(292px, 306px);
-  gap: 10px;
+.drillCard[data-readiness="note"] em {
+  color: var(--dh-api-amber);
+  font-size: 11px;
+  font-weight: 750;
 }
 
-.portfolioPrimaryColumn {
-  gap: 10px;
+.drillCardCurrent[data-readiness="note"] em {
+  color: var(--dh-api-blue);
 }
 
 .decisionPanel {
@@ -3223,14 +3255,6 @@
     justify-content: flex-start;
   }
 
-  .workbenchMain {
-    padding: 12px;
-  }
-
-  .portfolioPrimaryGrid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .briefGrid {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -3268,12 +3292,7 @@
     justify-content: stretch;
   }
 
-  .portfolioCockpit {
-    padding: 10px;
-  }
-
-  .workbenchMain,
-.workbenchSection {
+  .workbenchSection {
     padding: 10px;
   }
 
@@ -3343,10 +3362,6 @@
 }
 
 @media (max-width: 680px) {
-  .portfolioDataWorkbench {
-    border-radius: 6px;
-  }
-
   .workbenchSectionHead > div:first-child {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -3460,21 +3475,6 @@
     padding: 8px 12px;
   }
 
-  .portfolioTopbar h1 {
-    font-size: 18px;
-  }
-
-  .portfolioReviewBand,
-  .portfolioPrimaryColumn,
-  .workbenchMain {
-    gap: 10px;
-  }
-
-  .portfolioPrimaryGrid {
-    grid-template-columns: minmax(0, 1fr) minmax(318px, 348px);
-    gap: 12px;
-    align-items: start;
-  }
 
   .decisionPanel {
     grid-template-columns: minmax(268px, 0.66fr) minmax(0, 1.34fr);
@@ -3611,11 +3611,6 @@
     padding: 6px 8px;
   }
 
-  .sourceWorkbenchSection {
-    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.26fr) minmax(260px, 0.84fr);
-    gap: 10px;
-  }
-
   .summaryLedgerCard {
     gap: 8px;
     min-height: 126px;
@@ -3679,14 +3674,10 @@
     padding-bottom: 7px;
   }
 
-  .workbenchSectionHead h2 {
-    font-size: 14px;
-  }
-
   .workbenchSectionHead p {
     display: -webkit-box;
     overflow: hidden;
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.34;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 1;
@@ -3841,83 +3832,6 @@
     padding: 16px 16px;
   }
 
-  .portfolioTopbar h1 {
-    font-size: 22px;
-  }
-
-  .portfolioReviewBand {
-    gap: 22px;
-  }
-
-  .portfolioDataWorkbench,
-  .workbenchMain {
-    gap: 22px;
-  }
-
-  .portfolioPrimaryGrid {
-    grid-template-columns: 760px 398px;
-    grid-template-rows: 260px 216px;
-    gap: 20px;
-    row-gap: 26px;
-  }
-
-  .portfolioPrimaryColumn {
-    display: contents;
-  }
-
-  .decisionPanel {
-    box-sizing: border-box;
-    height: 260px;
-    min-height: 260px;
-  }
-
-  .decisionPanel {
-    grid-column: 1;
-    grid-row: 1;
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 124px) minmax(0, 135px);
-    gap: 1px;
-  }
-
-  .decisionLedger {
-    grid-column: 1;
-    grid-row: 1;
-    gap: 5px;
-    padding: 13px 14px 10px;
-  }
-
-  .decisionTitle {
-    max-width: 520px;
-    font-size: 21px;
-    line-height: 1.12;
-  }
-
-  .decisionDetail {
-    max-width: 70ch;
-    font-size: 11px;
-    line-height: 1.32;
-    -webkit-line-clamp: 2;
-  }
-
-  .decisionReadinessBar {
-    min-height: 28px;
-    padding: 4px 7px;
-  }
-
-  .decisionMatrix {
-    display: none;
-  }
-
-  .evidenceConsole {
-    grid-column: 1;
-    grid-row: 2;
-  }
-
-  .evidenceConsole .terminalPanelHead {
-    min-height: 22px;
-    padding: 3px 8px;
-  }
-
   .evidenceConsole .evidenceFactList {
     grid-template-columns: minmax(150px, 0.8fr) minmax(112px, 0.58fr) minmax(0, 1fr);
   }
@@ -3939,13 +3853,6 @@
     display: none;
   }
 
-  .portfolioPrimaryColumn [data-testid="module-home-kpi-strip"] {
-    box-sizing: border-box;
-    grid-column: 1 / -1;
-    grid-row: 2;
-    min-height: 216px;
-  }
-
   .kpiGrid {
     gap: 12px;
   }
@@ -3956,17 +3863,6 @@
 
   .kpiCard {
     min-height: 76px;
-  }
-
-  .sourceWorkbenchSection {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 10px;
-    height: auto;
-    min-height: 0;
-    padding: 0;
-    overflow: visible;
-    border: 0;
-    background: transparent;
   }
 
   .summaryLedgerCard {
@@ -4073,9 +3969,7 @@
   .holdingsHeroBand,
   .exposureWorkbenchSection {
     box-sizing: border-box;
-    height: 204px;
     min-height: 204px;
-    overflow: hidden;
   }
 
   .holdingsHeroBand {
@@ -4163,26 +4057,6 @@
     min-height: 0;
   }
 
-  .holdingsWorkbenchSection {
-    height: 286px;
-    min-height: 286px;
-  }
-
-  .portfolioStructureWorkbench {
-    height: 300px;
-    min-height: 300px;
-  }
-
-  .portfolioClosureBand {
-    height: 260px;
-    min-height: 260px;
-  }
-
-  .actionWorkbenchSection {
-    height: auto;
-    min-height: 244px;
-  }
-
   .structureTableWorkbench .compactList {
     gap: 1px;
     max-height: 148px;
@@ -4260,32 +4134,6 @@
     background: transparent;
   }
 
-  .portfolioTopbar h1 {
-    font-size: 23px;
-  }
-
-  .portfolioPrimaryGrid {
-    display: block;
-  }
-
-  .portfolioPrimaryColumn {
-    display: grid;
-    gap: 22px;
-  }
-
-  .decisionPanel {
-    min-height: 134px;
-    height: auto;
-    grid-template-columns: minmax(0, 1fr) minmax(168px, 230px);
-    grid-template-rows: minmax(0, 1fr) auto;
-    gap: 0 18px;
-    padding: 16px 20px;
-    border-color: rgba(240, 180, 80, 0.34);
-    background:
-      linear-gradient(180deg, rgba(22, 28, 40, 0.92), rgba(15, 22, 34, 0.94)),
-      var(--dh-card);
-  }
-
   .decisionLedger {
     grid-column: 1;
     grid-row: 1;
@@ -4296,19 +4144,6 @@
 
   .decisionLedgerHead {
     justify-content: flex-start;
-  }
-
-  .decisionTitle {
-    max-width: none;
-    font-size: 18px;
-    line-height: 1.22;
-  }
-
-  .decisionDetail {
-    max-width: 88ch;
-    font-size: 12px;
-    line-height: 1.45;
-    -webkit-line-clamp: 2;
   }
 
   .decisionReadinessBar,
@@ -4408,36 +4243,11 @@
     -webkit-line-clamp: 2;
   }
 
-  .holdingsWorkbenchSection {
-    height: 334px;
-    min-height: 334px;
-  }
-
-  .portfolioStructureWorkbench {
-    height: 334px;
-    min-height: 334px;
-  }
-
-  .portfolioClosureBand {
-    height: 242px;
-    min-height: 242px;
-  }
-
-  .sourceWorkbenchSection {
-    height: auto;
-    min-height: 0;
-    overflow: visible;
-  }
-
-  .summaryLedgerCard {
-    height: auto;
-    min-height: 164px;
-    overflow: visible;
-  }
-
+  .sourceWorkbenchSection,
+  .summaryLedgerCard,
   .actionWorkbenchSection {
     height: auto;
-    min-height: 274px;
+    min-height: 0;
     overflow: visible;
   }
 }
@@ -4620,16 +4430,6 @@
 }
 
 @media (min-width: 1101px) {
-  .portfolioClosureBand {
-    min-height: 318px;
-  }
-
-  .closureWorkbenchGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 14px;
-    align-items: stretch;
-  }
-
   .closureGate,
   .closureReviewCard {
     min-height: 206px;
@@ -4650,15 +4450,6 @@
 }
 
 @media (min-width: 1320px) {
-  .portfolioClosureBand {
-    min-height: 334px;
-  }
-
-  .closureWorkbenchGrid {
-    grid-template-columns: minmax(280px, 0.9fr) repeat(3, minmax(220px, 1fr));
-    gap: 14px;
-  }
-
   .closureGate,
   .closureReviewCard {
     min-height: 222px;
@@ -4666,40 +4457,15 @@
 }
 
 /* Structure workbook as a spacious ledger, matching the reference workbench. */
-.portfolioStructureWorkbench {
-  height: auto;
-  min-height: 350px;
-  padding: 16px 20px 18px;
-  border-radius: var(--dh-api-radius, 6px);
-  background:
-    linear-gradient(180deg, rgba(17, 29, 49, 0.94), rgba(12, 23, 39, 0.96)),
-    var(--dh-card);
-}
-
 .portfolioStructureWorkbench .workbenchSectionHead {
   gap: 10px;
   padding-bottom: 0;
   border-bottom: 0;
 }
 
-.portfolioStructureWorkbench .workbenchSectionHead > div:first-child {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
-}
-
-.portfolioStructureWorkbench .workbenchSectionHead > div:first-child > span {
-  display: none;
-}
-
-.portfolioStructureWorkbench .workbenchSectionHead h2 {
-  font-size: 22px;
-  line-height: 1.18;
-}
-
+/* 标题层级与 01/03/04 同级：此区块的「宽松」由容器 padding 承担，不靠放大标题。 */
 .portfolioStructureWorkbench .workbenchSectionHead p {
-  grid-column: 1;
   color: var(--dh-api-muted);
-  font-size: 13px;
   font-weight: 720;
   line-height: 1.32;
 }
@@ -4878,7 +4644,6 @@
 
 @media (max-width: 1320px) {
   .portfolioStructureWorkbench {
-    min-height: 340px;
     padding: 16px 18px;
   }
 
@@ -4897,16 +4662,10 @@
 }
 
 .portfolioStructureWorkbench {
-  min-height: 318px;
   padding: 14px 20px 16px;
 }
 
-.portfolioStructureWorkbench .workbenchSectionHead h2 {
-  font-size: 20px;
-}
-
 .portfolioStructureWorkbench .workbenchSectionHead p {
-  font-size: 12px;
   line-height: 1.25;
 }
 
@@ -5064,14 +4823,20 @@
 }
 
 .dataNoteDisclosure summary strong {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
   min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.dataNoteDisclosure summary strong span {
   overflow: hidden;
   color: var(--dh-muted);
   font-size: 11px;
   font-weight: 760;
-  text-align: right;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .dataNoteBody {
@@ -5092,8 +4857,14 @@
   grid-template-columns: repeat(auto-fit, minmax(136px, 1fr));
 }
 
+/* 明细标签多为 6-12 个汉字；轨道过窄会挤到截断，按 §5「禁止压缩保列数」放宽。 */
 .drillGrid {
-  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+}
+
+/* 仅部分明细卡带状态行；等高网格下内容居中，避免无状态卡底部留白。 */
+.drillCard {
+  align-content: center;
 }
 
 .actionWorkbenchSection .dataNoteDisclosure {
@@ -5564,11 +5335,21 @@
 
 /* KPI tiering: one shared scope note, a primary row and a compact secondary row. */
 .kpiScopeNote {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
   margin: -6px 2px -4px;
-  color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 12px;
-  font-weight: 700;
   line-height: 1.35;
+}
+
+.kpiScopeNote span {
+  padding: 2px 7px;
+  border: 1px solid var(--dh-line-soft);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-card-soft);
+  color: var(--dh-muted, var(--ib-ink-muted));
+  font-size: 11px;
+  font-weight: 720;
 }
 
 .kpiGrid + .kpiGridSecondary {
@@ -5835,15 +5616,14 @@
   font-family: var(--moss-font-mono);
 }
 
-/* ── 审美优先打磨层（2026-07-19，业主确认可不严格遵循 DESIGN.md 锁项）：
-   1) 呼吸感：页级间距与卡片内边距放宽，降低"塞满一屏"的压迫感；
-   2) 软化形状：本页圆角 6px→10px（覆盖 --dh-api-radius 页级变量）；
-   3) 减少框套框：卡内嵌套面板去边框，只留背景递进；
-   4) 活性：状态圆点加缓慢呼吸脉动（呼应业主喜欢的呼吸动效），
-      reduced-motion 下退化为静态。── */
+/* ── 审美打磨层（收敛回 DESIGN.md §2.2 / §5 Shape Lock / §8 Motion）：
+   1) 页级间距与卡片内边距保持呼吸感，降低压迫；
+   2) 圆角回到深色终端 6px（不再覆盖为 10px）；
+   3) 卡内嵌套面板去边框，只留背景递进；
+   4) 状态圆点保持语义色，不做无限循环脉动（§8 仅经营日报 hero 豁免）。── */
 
 .portfolioPage {
-  --dh-api-radius: 10px;
+  --dh-api-radius: 6px;
   gap: 20px;
   padding: 20px;
 }
@@ -5940,21 +5720,708 @@
 }
 
 .decisionActionDot {
-  animation: portfolioDotBreathe 3.2s ease-in-out infinite;
+  opacity: 1;
 }
 
-@keyframes portfolioDotBreathe {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.45;
+/* ── 读数先行视觉重塑（2026-08）：
+   1) DecisionPanel 压成两行状态横幅；
+   2) KPI 主带承接首屏焦点；
+   3) 驾驶舱导航轻量化；
+   4) 章节节奏 24px + 复盘带去重 label；
+   5) 01 区堆叠条加高、02 区表头/行 hover 打磨。── */
+
+.decisionPanel[data-layout="banner"] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.62fr);
+  grid-template-rows: auto auto;
+  gap: 0;
+  align-self: stretch;
+  height: auto;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--portfolio-review-border, rgba(201, 165, 101, 0.34));
+  border-radius: var(--dh-api-radius, 6px);
+  background:
+    linear-gradient(180deg, rgba(201, 165, 101, 0.08), rgba(201, 165, 101, 0.015)),
+    var(--dh-card);
+}
+
+.decisionPanel[data-layout="banner"] .decisionLedger {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.decisionPanel[data-layout="banner"] .decisionMatrix {
+  grid-column: 1;
+  grid-row: 2;
+  border-top: 1px solid var(--dh-line-soft);
+}
+
+.decisionPanel[data-layout="banner"] .evidenceConsole {
+  grid-column: 2;
+  grid-row: 1 / -1;
+  /* 单列纵向：原两列布局会把动作队列压到半宽，标题被截成「来源...」。 */
+  grid-template-columns: minmax(0, 1fr);
+  /* 原规则的 min-height:0 + overflow:hidden 会让右列撑不开而裁掉动作行。 */
+  min-height: auto;
+  overflow: visible;
+  align-content: start;
+  border-left: 1px solid var(--dh-line-soft);
+}
+
+.decisionPanel[data-layout="banner"] .decisionLedger {
+  display: grid;
+  gap: 5px;
+  align-content: center;
+  padding: 10px 14px;
+  background: transparent;
+}
+
+.decisionPanel[data-layout="banner"] .decisionLedgerHead {
+  gap: 8px;
+  justify-content: flex-start;
+}
+
+.decisionStatusDot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dh-amber);
+}
+
+.decisionStatusDot.toneOk {
+  background: var(--dh-api-green, var(--dh-green));
+}
+
+.decisionStatusDot.toneError {
+  background: var(--dh-api-red, var(--dh-red));
+}
+
+.decisionStatusDot.toneMuted {
+  background: var(--dh-muted-2);
+}
+
+.decisionPanel[data-layout="banner"] .decisionTitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 820;
+  line-height: 1.3;
+}
+
+.decisionPanel[data-layout="banner"] .decisionDetail {
+  -webkit-line-clamp: 1;
+  font-size: 11px;
+}
+
+.decisionPanel[data-layout="banner"] .decisionReadinessBar {
+  display: none;
+}
+
+.decisionPanel[data-layout="banner"] .evidenceConsole,
+.decisionPanel[data-layout="banner"] .decisionMatrix {
+  display: grid;
+  align-content: center;
+  min-width: 0;
+  background: transparent;
+}
+
+.decisionPanel[data-layout="banner"] .terminalPanelHead {
+  display: none;
+}
+
+/* 这两块在原布局里被显式定位到不同列，横幅下需回到单列纵向堆叠。 */
+.decisionPanel[data-layout="banner"] .evidenceFactList,
+.decisionPanel[data-layout="banner"] .decisionActionQueue {
+  grid-column: 1 / -1;
+  grid-row: auto;
+  align-self: auto;
+  border-left: 0;
+}
+
+.decisionPanel[data-layout="banner"] .evidenceFactList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: center;
+  padding: 10px 14px;
+  background: transparent;
+}
+
+.decisionPanel[data-layout="banner"] .decisionFactGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  align-items: center;
+  padding: 8px 14px;
+  background: transparent;
+}
+
+.decisionPanel[data-layout="banner"] .decisionFact {
+  display: inline-flex;
+  gap: 6px;
+  align-items: baseline;
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.decisionPanel[data-layout="banner"] .decisionFact span {
+  color: var(--dh-muted-2);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.decisionPanel[data-layout="banner"] .decisionFact strong {
+  color: var(--dh-ink);
+  font-family: var(--moss-font-mono);
+  font-size: 12px;
+  font-weight: 780;
+}
+
+.decisionPanel[data-layout="banner"] .decisionActionQueue {
+  gap: 5px;
+  padding: 6px 12px 8px;
+  border-top: 1px solid var(--dh-line-soft);
+  background: transparent;
+}
+
+/* 动作纵向排列：横排时标题会被压成「来源...」这类截断。 */
+.decisionPanel[data-layout="banner"] .decisionActionList {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 3px;
+}
+
+.decisionPanel[data-layout="banner"] .decisionAction {
+  min-width: 0;
+  min-height: 26px;
+  padding: 3px 8px;
+}
+
+.decisionPanel[data-layout="banner"] .decisionActionText small {
+  display: none;
+}
+
+@media (min-width: 1101px) {
+  .decisionPanel[data-layout="banner"] {
+    height: auto;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 0.58fr);
+    grid-template-rows: auto auto;
+    gap: 0;
+    padding: 0;
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .decisionActionDot {
-    animation: none;
+@media (max-width: 900px) {
+  .decisionPanel[data-layout="banner"] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+  }
+
+  .decisionPanel[data-layout="banner"] .decisionLedger,
+  .decisionPanel[data-layout="banner"] .decisionMatrix,
+  .decisionPanel[data-layout="banner"] .evidenceConsole {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .decisionPanel[data-layout="banner"] .evidenceConsole {
+    border-left: 0;
+    border-top: 1px solid var(--dh-line-soft);
+  }
+}
+
+/* KPI 主带首屏化 */
+.kpiCard.kpiCardPrimary {
+  min-height: 126px;
+  padding: 14px 15px 12px;
+  border-top: 2px solid var(--dh-api-blue, var(--dh-blue));
+  box-shadow: inset 0 1px 0 rgba(114, 167, 220, 0.08);
+}
+
+.kpiCard.kpiCardPrimary .kpiValue {
+  margin-top: 12px;
+  font-size: 24px;
+}
+
+.kpiCard.kpiCardSecondary {
+  min-height: 72px;
+}
+
+@media (min-width: 1101px) {
+  .kpiCard.kpiCardPrimary {
+    min-height: 128px;
+  }
+}
+
+/* 驾驶舱导航轻量化 */
+.workbenchNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  align-items: center;
+  padding: 4px 2px 8px;
+  border: 0;
+  border-bottom: 1px solid var(--dh-line-soft);
+  border-radius: 0;
+  background: transparent;
+}
+
+.workbenchNavTitle,
+.workbenchNav > .workbenchNavTitle {
+  margin-right: 4px;
+  font-size: 13px;
+  font-weight: 820;
+}
+
+.workbenchNav a {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--dh-api-radius, 6px);
+  background: transparent;
+}
+
+.workbenchNav a span {
+  color: var(--dh-api-blue, var(--dh-blue));
+  font-family: var(--moss-font-mono);
+  font-size: 11px;
+  font-weight: 780;
+}
+
+.workbenchNav a strong {
+  color: var(--dh-muted);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.workbenchNav a:hover {
+  border-color: var(--portfolio-info-border-strong, rgba(114, 167, 220, 0.4));
+  background: rgba(114, 167, 220, 0.08);
+}
+
+.workbenchNav a em,
+.workbenchNav > p {
+  display: none;
+}
+
+.workbenchSectionHead {
+  padding-bottom: 8px;
+}
+
+.workbenchSectionHead span {
+  width: 32px;
+  height: 32px;
+  border-width: 1px;
+  font-size: 12px;
+}
+
+.workbenchSectionHead h2 i[data-section-index] {
+  margin-right: 10px;
+  font-size: 12px;
+  font-weight: 820;
+  letter-spacing: 0.1em;
+  opacity: 1;
+}
+
+.sourceWorkbenchSection {
+  gap: 12px;
+}
+
+/* 01 区券种分布色带 */
+.holdingsHeroStackBar {
+  height: 18px;
+  border-radius: 6px;
+}
+
+.holdingsHeroFigure {
+  gap: 12px;
+}
+
+.holdingsHeroBars {
+  gap: 8px;
+}
+
+/* 02 区结构表打磨 */
+.structureTableWorkbench :global(.ant-tabs-tab) {
+  border-radius: var(--dh-api-radius, 6px);
+}
+
+.structureTableWorkbench .compactListHeader {
+  border-bottom: 1px solid rgba(143, 174, 195, 0.28);
+}
+
+.structureTableWorkbench .compactRow:hover {
+  background: rgba(114, 167, 220, 0.055);
+}
+
+/* ═══════════ V3 深蓝终端皮肤（对齐 2026-08-11 用户基准图）═══════════
+   基准特征：藏青蓝底、卡片微蓝渐变 + 蓝光细边、KPI 带迷你走势线、
+   高密度网格、绿色完成态徽标。仅换视觉层，不动数据与 testid。 */
+
+.portfolioPage {
+  /* 深蓝基调：整链路 token 在页面作用域内重定向；卡底与页底拉开半档层次 */
+  --dh-api-bg: rgb(7, 16, 34);
+  --dh-api-panel: rgb(15, 31, 60);
+  --dh-api-panel-2: rgb(17, 35, 67);
+  --dh-api-panel-3: rgb(19, 39, 74);
+  --dh-api-line: rgba(86, 140, 224, 0.3);
+  --dh-api-line-soft: rgba(74, 126, 208, 0.17);
+  --dh-api-blue: rgb(79, 141, 255);
+  --dh-api-blue-soft: rgba(79, 141, 255, 0.14);
+  --dh-api-ink: rgb(234, 241, 251);
+  --dh-api-soft: rgb(183, 199, 226);
+  --dh-api-muted: rgb(126, 147, 184);
+  --dh-line: rgba(86, 140, 224, 0.3);
+  --dh-line-soft: rgba(74, 126, 208, 0.17);
+  --dh-blue: rgb(79, 141, 255);
+  --dh-ink: rgb(234, 241, 251);
+  --dh-muted: rgb(147, 167, 201);
+  --dh-muted-2: rgb(126, 147, 184);
+  background:
+    radial-gradient(1200px 500px at 18% -6%, rgba(38, 84, 178, 0.16), transparent 62%),
+    radial-gradient(900px 420px at 96% 2%, rgba(30, 72, 160, 0.12), transparent 58%),
+    var(--dh-api-bg);
+}
+
+/* 卡片制度：统一微蓝渐变底 + 蓝光边，替代灰边深底 */
+.portfolioPage .kpiCard,
+.portfolioPage .decisionPanel,
+.portfolioPage .closureGate,
+.portfolioPage .closureReviewCard,
+.portfolioPage .summaryLedgerCard,
+.portfolioPage .holdingsHeroBand,
+.portfolioPage .exposureWorkbenchSection,
+.portfolioPage .structureTableWorkbench,
+.portfolioPage .chartSnapshot {
+  border: 1px solid rgba(79, 141, 255, 0.16);
+  background:
+    linear-gradient(180deg, rgba(64, 118, 214, 0.075), rgba(64, 118, 214, 0.012) 46%),
+    var(--dh-api-panel);
+  box-shadow: inset 0 1px 0 rgba(126, 168, 240, 0.07);
+}
+
+.portfolioPage .kpiCard:hover,
+.portfolioPage .closureReviewCard:hover,
+.portfolioPage .summaryLedgerCard:hover {
+  border-color: rgba(79, 141, 255, 0.34);
+}
+
+/* ── KPI 带：紧凑驾驶舱密度（对齐基准图顶带）── */
+.kpiCard.kpiCardPrimary {
+  min-height: 96px;
+  padding: 11px 13px 10px;
+  border-top: 1px solid rgba(79, 141, 255, 0.16);
+}
+
+.kpiCard.kpiCardPrimary .kpiValue {
+  margin-top: 8px;
+}
+
+.kpiLabel {
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.kpiDetail {
+  margin-top: 6px;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+/* 次级 KPI 行恢复分卡（基准图第二行也是卡片） */
+.kpiGridSecondary {
+  gap: 10px;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.kpiCard.kpiCardSecondary,
+.kpiCard.kpiCardSecondary:nth-child(-n + 2),
+.kpiCard.kpiCardSecondary[data-empty="true"] {
+  min-height: 70px;
+  padding: 10px 12px 9px;
+  border: 1px solid rgba(79, 141, 255, 0.12);
+  border-radius: var(--dh-api-radius, 6px);
+  background:
+    linear-gradient(180deg, rgba(64, 118, 214, 0.05), rgba(64, 118, 214, 0.008) 50%),
+    var(--dh-api-panel);
+}
+
+/* ── 决策横幅融入蓝系（语义琥珀仅保留在文字与状态点）── */
+.decisionPanel[data-layout="banner"] {
+  border-color: rgba(226, 178, 100, 0.3);
+  background:
+    linear-gradient(180deg, rgba(201, 160, 92, 0.07), rgba(201, 160, 92, 0.012) 52%),
+    var(--dh-api-panel);
+}
+
+/* ── 分布条形（券种/评级/期限/行业）：标签左、蓝渐变细条、mono 数值右 ── */
+.holdingsHeroStackBar {
+  height: 14px;
+  border-radius: 6px;
+}
+
+.holdingsHeroBarTrack,
+.chartMiniTrack {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(79, 141, 255, 0.1);
+}
+
+.holdingsHeroBarFill,
+.chartMiniFill {
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(79, 141, 255, 0.55), rgb(79, 141, 255));
+}
+
+/* ── 表格：极淡行分隔 + 行 hover 蓝底 + mono 数值 ── */
+.structureTableWorkbench .compactListHeader {
+  border-bottom: 1px solid rgba(79, 141, 255, 0.22);
+  color: var(--dh-api-muted);
+}
+
+.structureTableWorkbench .compactRow {
+  border-bottom: 1px solid rgba(79, 141, 255, 0.07);
+}
+
+.structureTableWorkbench .compactRow:hover {
+  background: rgba(79, 141, 255, 0.07);
+}
+
+.exposureLedgerHeader {
+  background: rgba(79, 141, 255, 0.07);
+}
+
+.exposureLedgerHeader,
+.exposureLedgerRow {
+  border-bottom: 1px solid rgba(79, 141, 255, 0.09);
+}
+
+/* ── 状态徽标语言：完成=绿、分析口径=琥珀、蓝色信息（对齐基准图审计区）── */
+.statusCell b.toneOk,
+.chartSnapshotHead em.toneOk {
+  color: rgb(79, 208, 140);
+}
+
+.terminalStatus {
+  border: 1px solid rgba(79, 141, 255, 0.22);
+  background: rgba(79, 141, 255, 0.08);
+}
+
+/* ── 章节头：蓝色编号 + 白标题，分隔线蓝光 ── */
+.workbenchSectionHead {
+  border-bottom-color: rgba(79, 141, 255, 0.14);
+}
+
+.workbenchSectionHead span {
+  border-color: rgba(79, 141, 255, 0.26);
+  background: rgba(79, 141, 255, 0.1);
+  color: rgb(116, 164, 245);
+}
+
+/* ── 工作入口：基准图快捷入口语言（圆角图标底 + 蓝光 hover）── */
+.quickAccessCard {
+  border: 1px solid rgba(79, 141, 255, 0.14);
+  background:
+    linear-gradient(180deg, rgba(64, 118, 214, 0.06), rgba(64, 118, 214, 0.01) 55%),
+    var(--dh-api-panel);
+}
+
+.quickAccessCard:hover {
+  border-color: rgba(79, 141, 255, 0.4);
+  background: rgba(79, 141, 255, 0.1);
+}
+
+.quickAccessCard > span {
+  border-radius: 6px;
+  background: rgba(79, 141, 255, 0.14);
+  color: rgb(140, 180, 255);
+}
+
+.drillCard {
+  border-color: rgba(79, 141, 255, 0.1);
+  background: rgba(12, 26, 51, 0.55);
+}
+
+.drillCard:hover {
+  border-color: rgba(79, 141, 255, 0.34);
+  background: rgba(79, 141, 255, 0.08);
+}
+
+/* ── 02 区图表解除隐藏：表格全宽在上、图表全宽在下
+   （左右分栏时表格四列 min 宽约 620px，会溢出盖住图表）── */
+.portfolioPage .structureTableWorkbench .structureSplit {
+  position: static;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+.portfolioPage .structureTableWorkbench .structureChartCol {
+  position: static;
+  inset: auto;
+  width: auto;
+  height: auto;
+  min-height: 236px;
+  padding: 8px 12px 6px;
+  overflow: hidden;
+  border: 1px solid rgba(79, 141, 255, 0.14);
+  border-radius: var(--dh-api-radius, 6px);
+  background:
+    linear-gradient(180deg, rgba(64, 118, 214, 0.05), rgba(64, 118, 214, 0.008) 50%),
+    var(--dh-api-panel);
+}
+
+.portfolioPage .structureTableWorkbench .structureChartWrap {
+  width: auto;
+  height: auto;
+  overflow: hidden;
+}
+
+@media (max-width: 1280px) {
+  .portfolioPage .structureTableWorkbench .structureSplit {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ── 03 区归因瀑布：损益变动规模/利率/交叉分解，全宽第二行 ── */
+.attributionWaterfall {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  margin-top: 12px;
+  padding: 10px 12px 6px;
+  overflow: hidden;
+  border: 1px solid rgba(79, 141, 255, 0.14);
+  border-radius: var(--dh-api-radius, 6px);
+  background:
+    linear-gradient(180deg, rgba(64, 118, 214, 0.05), rgba(64, 118, 214, 0.008) 50%),
+    var(--dh-api-panel);
+}
+
+.attributionWaterfallHead {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.attributionWaterfallHead span {
+  color: var(--dh-blue, var(--ib-accent));
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.attributionWaterfallHead em {
+  overflow: hidden;
+  color: var(--dh-muted-2);
+  font-family: var(--moss-font-mono);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 02 结构 tabs：下划线式（基准图），替代药丸按钮 ── */
+.portfolioPage .structureTableWorkbench :global(.ant-tabs-tab),
+.portfolioPage .structureTableWorkbench :global(.ant-tabs-tab:nth-child(2)),
+.portfolioPage .structureTableWorkbench :global(.ant-tabs-tab:nth-child(2):not(.ant-tabs-tab-active)) {
+  min-width: 0;
+  height: 34px;
+  padding: 0 3px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.portfolioPage .structureTableWorkbench :global(.ant-tabs-tab + .ant-tabs-tab) {
+  margin-left: 26px;
+}
+
+.portfolioPage .structureTableWorkbench :global(.ant-tabs-tab-active) {
+  border: 0;
+  background: transparent;
+  box-shadow: inset 0 -2px 0 var(--dh-api-blue);
+}
+
+.portfolioPage .structureTableWorkbench :global(.ant-tabs-nav)::before {
+  border-bottom: 1px solid rgba(79, 141, 255, 0.12);
+}
+
+/* ──────────────────────────────────────────────────────────────
+   页面级栅格收口（最终层）
+
+   此前首屏由 cockpit → reviewBand → primaryGrid → primaryColumn
+   四层壳子嵌套，工作台再套 dataWorkbench → workbenchMain，六层各
+   自持有不同 gap，且 primaryGrid 的两列模板已被 display:block 覆盖
+   成死代码。这里把所有纯传递壳子折叠为 display:contents，让每个业务
+   区块直接成为页面栅格的一行，全站只保留一个纵向节奏变量。
+   ────────────────────────────────────────────────────────────── */
+.portfolioPageMain {
+  --portfolio-band-gap: 16px;
+
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--portfolio-band-gap);
+  align-content: start;
+}
+
+.portfolioCockpit,
+.portfolioReviewBand,
+.portfolioPrimaryGrid,
+.portfolioPrimaryColumn,
+.portfolioDataWorkbench,
+.workbenchMain {
+  display: contents;
+}
+
+/* 壳子折叠后，首屏各区块改为页面栅格自动排布，清除残留的显式定位。 */
+.decisionPanel,
+.portfolioPrimaryColumn [data-testid="module-home-kpi-strip"],
+.workbenchNav,
+.workbenchSection {
+  grid-column: auto;
+  grid-row: auto;
+  min-width: 0;
+}
+
+/* 区块高度一律由内容决定，避免固定高度造成的空白拉伸与内容裁切。 */
+.holdingsWorkbenchSection,
+.portfolioStructureWorkbench,
+.portfolioClosureBand,
+.sourceWorkbenchSection,
+.actionWorkbenchSection {
+  height: auto;
+  min-height: 0;
+}
+
+/* 不等高多列区一律顶端对齐（DESIGN.md 反模式：等高拉伸留白）。 */
+.holdingsPanoramaGrid,
+.closureWorkbenchGrid,
+.summaryLedgerGrid,
+.actionMatrixGrid {
+  align-items: start;
+}
+
+/* 复盘摘要三卡与其他区块共用同一套区块头 + 内容栅格结构。 */
+.summaryLedgerGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+
+@media (min-width: 1101px) {
+  .portfolioPageMain {
+    --portfolio-band-gap: 18px;
   }
 }
