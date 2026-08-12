@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
-import { ReloadOutlined, SearchOutlined } from "@ant-design/icons";
 
 import type { ChoiceNewsEvent, ResultMeta } from "../../../api/contracts";
 import ReactECharts from "../../../lib/echarts";
+import { EM_DASH } from "../../../utils/format";
 import { buildActionQueue } from "./marketActionQueueModel";
+import type { MarketChartPalette } from "./marketChartPalette";
 import {
   buildMarketFinancialChartSections,
   type MarketFinancialChartSection,
@@ -16,9 +17,9 @@ import {
   buildDenseMacroPulseRows,
   buildDenseNewsDensity,
   buildDenseTapeMetrics,
+  formatDenseNewsTopicLabel,
   type DenseMacroPulseRow,
   type DenseNewsDensity,
-  type DenseTapeMetric,
 } from "./marketOverviewDenseModel";
 import type {
   ModuleHomeDetailPanel,
@@ -39,11 +40,9 @@ type MarketOverviewDenseFirstScreenProps = {
   view: ModuleHomeView;
   queries: ModuleHomeSourceQueries;
   latestTradeDate: string;
-  formalTradeDate: string;
-  isRefreshing: boolean;
-  refreshStatus: string;
-  refreshError: string;
-  onRefreshData: () => void | Promise<void>;
+  /** 搜索框已上移到页壳工具栏，这里只消费搜索词做卡片匹配。 */
+  searchValue: string;
+  chartPalette?: MarketChartPalette;
 };
 
 function panelByKey(
@@ -72,8 +71,12 @@ function selectedDenseCharts(
   });
 }
 
-function metricReportDate(metric: DenseTapeMetric) {
-  return metric.title.split(" · ").at(-1) ?? "—";
+/** 仅做展示层拆分：把已格式化的“数值 单位”拆开，避免长单位截断数值。 */
+function splitMetricValue(value: string) {
+  const match = /^(\S+)\s+(.+)$/.exec(value.trim());
+  return match
+    ? { amount: match[1], unit: match[2] }
+    : { amount: value, unit: "" };
 }
 
 function toneBadge(tone: ModuleHomeTone | "up" | "down" | "ok" | "muted") {
@@ -90,8 +93,8 @@ function compactEventTime(value: string) {
 function signalDetail(row: ModuleHomeDetailRow) {
   const detailParts = [row.detail, row.source]
     .map((part) => part?.trim())
-    .filter((part): part is string => Boolean(part && part !== "-"));
-  return detailParts[0] ?? row.tradeDate ?? "—";
+    .filter((part): part is string => Boolean(part && part !== EM_DASH));
+  return detailParts[0] ?? row.tradeDate ?? EM_DASH;
 }
 
 function fallbackLabel(meta: ResultMeta | undefined) {
@@ -169,18 +172,22 @@ function DenseChartCard({
   searchQuery,
   className,
   canvasHeight,
+  readingGuide,
 }: {
   item: DenseChart;
   searchQuery: string;
   className?: string;
   canvasHeight: number;
+  readingGuide?: string;
 }) {
+  const effectiveReadingGuide = readingGuide ?? item.chart.readingGuide;
   const searchableText = `${item.chart.title} ${item.chart.subtitle}`.toLowerCase();
   const isSearchMatch =
     searchQuery.length === 0 || searchableText.includes(searchQuery);
   return (
     <article
       className={[styles.chartCard, className].filter(Boolean).join(" ")}
+      data-has-reading-guide={effectiveReadingGuide ? "true" : "false"}
       data-search-match={isSearchMatch ? "true" : "false"}
       data-testid={`module-home-market-dense-chart-${item.chart.key}`}
     >
@@ -191,6 +198,9 @@ function DenseChartCard({
         </div>
         <span>{item.chart.subtitle}</span>
       </header>
+      {effectiveReadingGuide ? (
+        <p className={styles.chartGuide}>{effectiveReadingGuide}</p>
+      ) : null}
       <div className={styles.chartCanvas}>
         {item.chart.option ? (
           <ReactECharts
@@ -220,7 +230,10 @@ function DenseMacroPulseCard({
   asOfDate: string;
 }) {
   const searchableText = `指标变动雷达 ${rows
-    .map((row) => `${row.label} ${row.source}`)
+    .map(
+      (row) =>
+        `${row.label} ${row.previousValue} ${row.latestValue} ${row.change} ${row.source}`,
+    )
     .join(" ")}`.toLowerCase();
   const isSearchMatch =
     searchQuery.length === 0 || searchableText.includes(searchQuery);
@@ -235,14 +248,13 @@ function DenseMacroPulseCard({
           <span className={styles.cardIndex}>E</span>
           <h3>指标变动表</h3>
         </div>
-        <span>{asOfDate || "—"} · 单位按原始口径</span>
+        <span>各行日期见悬浮 · 单位按原始口径</span>
       </header>
       <div className={`${styles.chartCanvas} ${styles.macroPulse}`}>
         <div className={styles.pulseColumns} aria-hidden="true">
           <span>指标</span>
-          <span>最新</span>
-          <span>变化率</span>
-          <span>信号</span>
+          <span>前值 → 最新值</span>
+          <span>变化（按单位）</span>
         </div>
         <div className={styles.pulseRows}>
           {rows.length > 0 ? (
@@ -250,25 +262,21 @@ function DenseMacroPulseCard({
               <div
                 className={styles.pulseRow}
                 key={row.key}
-                title={`${row.source} · ${row.latestDate}`}
+                title={`最新日期 ${row.latestDate} · 来源 ${row.source}`}
               >
                 <span>{row.label}</span>
-                <strong>{row.value}</strong>
-                <em data-tone={row.tone}>{row.change}</em>
                 <div
-                  className={styles.microHistory}
-                  aria-label={`${row.label}前值与最新值比较`}
+                  className={styles.pulseValueFlow}
+                  aria-label={`${row.label}：前值 ${row.previousValue}，最新值 ${row.latestValue}，${row.changeLabel} ${row.change}；最新日期 ${row.latestDate}；来源 ${row.source}`}
                 >
-                  {[null, null, null, null, ...row.levels].map(
-                    (level, index) => (
-                      <i
-                        data-empty={level == null ? "true" : "false"}
-                        key={`${row.key}-${index}`}
-                        style={level == null ? undefined : { height: `${level}%` }}
-                      />
-                    ),
-                  )}
+                  <span>{row.previousValue}</span>
+                  <i aria-hidden="true">→</i>
+                  <strong>{row.latestValue}</strong>
                 </div>
+                <em>
+                  <small>{row.changeLabel}</small>
+                  <strong>{row.change}</strong>
+                </em>
               </div>
             ))
           ) : (
@@ -276,7 +284,12 @@ function DenseMacroPulseCard({
           )}
         </div>
       </div>
-      <footer>数据截至 {asOfDate || "—"} · change_pct 与原始最新值</footer>
+      <footer
+        title={`分析截至 ${asOfDate || "—"}；各指标最新日期以行内悬浮信息为准。变化列按单位区分绝对变化或百分比，不代表利好或利空。`}
+      >
+        分析截至 {asOfDate || "—"} ·
+        各指标日期见悬浮；变化按单位区分绝对值或百分比
+      </footer>
     </article>
   );
 }
@@ -286,17 +299,23 @@ function DenseNewsDensityCard({
   events,
   searchQuery,
   totalRows,
+  excludedFutureRows,
 }: {
   density: DenseNewsDensity;
   events: ChoiceNewsEvent[];
   searchQuery: string;
   totalRows: number;
+  excludedFutureRows: number;
 }) {
   const searchableText = `事件流入密度 ${events
     .map((event) => `${event.topic_code} ${event.payload_text ?? ""}`)
     .join(" ")}`.toLowerCase();
   const isSearchMatch =
     searchQuery.length === 0 || searchableText.includes(searchQuery);
+  const sampleRangeLabel =
+    density.sampledEvents > 0
+      ? `有效样本区间 ${density.startDate || "—"}–${density.endDate || "—"}`
+      : "无有效样本区间";
   return (
     <article
       className={`${styles.chartCard} ${styles.newsCard}`}
@@ -309,44 +328,65 @@ function DenseNewsDensityCard({
           <h3>事件流入密度</h3>
         </div>
         <span>
-          样本 {density.sampledEvents.toLocaleString("zh-CN")} / 全库{" "}
-          {totalRows.toLocaleString("zh-CN")}
+          最新有效样本 {density.sampledEvents.toLocaleString("zh-CN")} /
+          当前查询总记录 {totalRows.toLocaleString("zh-CN")}
         </span>
       </header>
       <div className={`${styles.chartCanvas} ${styles.newsDensity}`}>
         <div className={styles.heatmapPanel}>
-          <div className={styles.heatmapGrid}>
-            <span />
-            {density.hourLabels.map((hour, index) => (
-              <time
-                data-label={
-                  index === 0 || index === 5 || index === 11 ? "true" : "false"
-                }
-                key={hour}
-              >
-                {hour}
-              </time>
-            ))}
-            {density.rows.map((row) => (
-              <div className={styles.heatmapRow} key={row.key}>
-                <span title={row.key}>{row.label}</span>
-                {row.cells.map((cell, bucketIndex) => (
-                  <i
-                    data-intensity={cell.intensity}
-                    key={cell.key}
-                    title={`${row.label} · ${density.hourLabels[bucketIndex]}时段 · ${cell.count} 条`}
-                  />
+          {density.rows.length > 0 ? (
+            <>
+              <div className={styles.heatmapGrid}>
+                <span />
+                {density.hourLabels.map((hour, index) => (
+                  <time
+                    data-label={
+                      index === 0 || index === 5 || index === 11
+                        ? "true"
+                        : "false"
+                    }
+                    key={hour}
+                  >
+                    {hour}
+                  </time>
+                ))}
+                {density.rows.map((row) => (
+                  <div className={styles.heatmapRow} key={row.key}>
+                    <span title={row.key}>{row.label}</span>
+                    {row.cells.map((cell, bucketIndex) => {
+                      const bucketStart = density.hourLabels[bucketIndex];
+                      const bucketEnd = String(
+                        Number(bucketStart) + 1,
+                      ).padStart(2, "0");
+                      const cellLabel = `${row.label}（原码 ${row.key}）· received_at ${bucketStart}:00–${bucketEnd}:59 · ${cell.count} 条`;
+                      return (
+                        <i
+                          aria-label={cellLabel}
+                          data-intensity={cell.intensity}
+                          key={cell.key}
+                          role="img"
+                          title={cellLabel}
+                        />
+                      );
+                    })}
+                  </div>
                 ))}
               </div>
-            ))}
-          </div>
-          <div className={styles.heatmapLegend}>
-            <span>低</span>
-            {[0, 1, 2, 3, 4].map((intensity) => (
-              <i data-intensity={intensity} key={intensity} />
-            ))}
-            <span>高</span>
-          </div>
+              <div
+                aria-label="颜色图例：无、较少、较多"
+                className={styles.heatmapLegend}
+              >
+                <span>无</span>
+                <i data-intensity={0} />
+                <span>较少</span>
+                <i data-intensity={2} />
+                <span>较多</span>
+                <i data-intensity={4} />
+              </div>
+            </>
+          ) : (
+            <div className={styles.heatmapEmpty}>无可分桶事件</div>
+          )}
         </div>
         <div className={styles.newsMiniFeed}>
           <div className={styles.newsMiniHead}>
@@ -359,7 +399,11 @@ function DenseNewsDensityCard({
               <article key={event.event_key}>
                 <time>{compactEventTime(event.received_at)}</time>
                 <strong>{event.payload_text || event.error_msg || event.event_key}</strong>
-                <em>{event.topic_code || event.group_id || "未分类"}</em>
+                <em title={event.topic_code || event.group_id || "未分类"}>
+                  {formatDenseNewsTopicLabel(
+                    event.topic_code || event.group_id || "未分类",
+                  )}
+                </em>
               </article>
             ))
           ) : (
@@ -367,9 +411,14 @@ function DenseNewsDensityCard({
           )}
         </div>
       </div>
-      <footer>
-        样本区间 {density.startDate || "—"}–{density.endDate || "—"} · 主题 ×
-        两小时桶
+      <footer
+        title={`${sampleRangeLabel}；按 received_at 接收时间两小时分桶；颜色仅代表最新样本内相对接收密度，不代表重要性、情绪或影响${excludedFutureRows > 0 ? `；已排除未来记录 ${excludedFutureRows.toLocaleString("zh-CN")} 条` : ""}`}
+      >
+        {sampleRangeLabel} · 按 received_at 两小时分桶 ·
+        颜色仅代表样本内相对接收密度，不代表重要性、情绪或影响
+        {excludedFutureRows > 0
+          ? ` · 已排除未来记录 ${excludedFutureRows.toLocaleString("zh-CN")} 条`
+          : ""}
       </footer>
     </article>
   );
@@ -379,14 +428,9 @@ export function MarketOverviewDenseFirstScreen({
   view,
   queries,
   latestTradeDate,
-  formalTradeDate,
-  isRefreshing,
-  refreshStatus,
-  refreshError,
-  onRefreshData,
+  searchValue,
+  chartPalette,
 }: MarketOverviewDenseFirstScreenProps) {
-  const [searchValue, setSearchValue] = useState("");
-
   const latest = queries.choiceLatest?.data?.result;
   const rates = queries.marketRates?.data?.result;
   const catalog = queries.marketCatalog?.data?.result;
@@ -406,13 +450,14 @@ export function MarketOverviewDenseFirstScreen({
         macro,
         strategies,
         news,
+        palette: chartPalette,
       }),
-    [catalog, latest, macro, news, rates, strategies],
+    [catalog, chartPalette, latest, macro, news, rates, strategies],
   );
   const charts = useMemo(() => selectedDenseCharts(sections), [sections]);
   const liquidityChart = useMemo(
-    () => buildDenseLiquidityChartSpec(rates),
-    [rates],
+    () => buildDenseLiquidityChartSpec(rates, chartPalette),
+    [chartPalette, rates],
   );
   const macroPulseRows = useMemo(() => buildDenseMacroPulseRows(macro), [macro]);
   const newsDensity = useMemo(() => buildDenseNewsDensity(news), [news]);
@@ -445,10 +490,6 @@ export function MarketOverviewDenseFirstScreen({
     [];
   const signalRows = signalPanel?.rows.slice(0, 6) ?? [];
   const searchQuery = searchValue.trim().toLowerCase();
-  const refreshFeedback =
-    refreshError ||
-    refreshStatus ||
-    `${view.stateLabel} · 行情 ${latestTradeDate || "—"} · 正式序列 ${formalTradeDate || "—"}`;
   const judgmentDate = macro?.as_of_date ?? latestTradeDate ?? "—";
   const macroObservationGate = buildMacroObservationGate(
     macroMeta,
@@ -467,9 +508,6 @@ export function MarketOverviewDenseFirstScreen({
   const judgmentSummary = macro?.conclusion.summary ?? view.summary;
   const judgmentAction =
     macro?.conclusion.recommended_action ?? view.stateDetail ?? "建议动作待返回";
-  const regimeText = [view.stateLabel, view.marketDeskIntel?.curveShapeLabel]
-    .filter(Boolean)
-    .join(" · ");
   const observationTitle =
     macroObservationGate.blocked
       ? "暂停形成今日判断"
@@ -508,69 +546,6 @@ export function MarketOverviewDenseFirstScreen({
       data-testid="module-home-market-dense"
       aria-label="市场工作台分析观察与市场证据"
     >
-      <header className={styles.topRail} data-testid="module-home-toolbar">
-        <nav
-          className={styles.chapterTabs}
-          aria-label="市场总览章节"
-          data-testid="module-home-market-dense-chapter-tabs"
-        >
-          <a
-            aria-label="分析观察"
-            className={styles.activeTab}
-            href="#market-overview-judgment"
-          >
-            分析观察
-          </a>
-          <a href="#market-overview-evidence">市场证据</a>
-          <a href="#market-financial-charts-all">全部图表 12</a>
-          <a href="#market-backend-data-all">数据核验 6</a>
-        </nav>
-        <div
-          className={styles.utilityRail}
-          data-testid="module-home-market-dense-utility"
-        >
-          <div
-            className={styles.marketDate}
-            data-testid="module-home-market-dense-date"
-          >
-            <span>数据日期</span>
-            <strong>{latestTradeDate || "—"}</strong>
-          </div>
-          <span
-            className={styles.updateState}
-            data-testid="module-home-market-dense-status"
-            data-tone={refreshError ? "error" : "ok"}
-            title={regimeText || view.stateDetail}
-          >
-            <i aria-hidden="true" />
-            {isRefreshing ? "刷新中" : view.stateLabel}
-          </span>
-          <label
-            className={styles.searchBox}
-            data-testid="module-home-market-dense-search"
-          >
-            <SearchOutlined aria-hidden="true" />
-            <span className={styles.visuallyHidden}>搜索指标、图表或事件</span>
-            <input
-              value={searchValue}
-              placeholder="搜索指标 / 图表 / 事件 / 代码"
-              onChange={(event) => setSearchValue(event.target.value)}
-            />
-          </label>
-          <button
-            type="button"
-            className={styles.refreshButton}
-            data-testid="module-home-market-dense-refresh"
-            disabled={isRefreshing}
-            title={refreshFeedback}
-            onClick={() => void onRefreshData()}
-          >
-            <ReloadOutlined aria-hidden="true" />
-            刷新
-          </button>
-        </div>
-      </header>
-
       <section
         className={styles.chapterSection}
         id="market-overview-judgment"
@@ -596,6 +571,34 @@ export function MarketOverviewDenseFirstScreen({
             <p data-testid="module-home-market-dense-observation-summary">
               {observationSummary}
             </p>
+            <p
+              className={styles.observationAction}
+              data-testid="module-home-market-dense-observation-action"
+              data-tone={
+                macroObservationGate.blocked ? "watch" : "ok"
+              }
+            >
+              {observationAction}
+            </p>
+          </div>
+          <aside className={styles.decisionAside} aria-label="状态与口径事实">
+            <div className={styles.decisionFacts}>
+              <div>
+                <span>状态</span>
+                <strong>{view.stateLabel}</strong>
+              </div>
+              <div>
+                <span>曲线</span>
+                <strong>{view.marketDeskIntel?.curveShapeLabel ?? "待返回"}</strong>
+              </div>
+              <div>
+                <span>Crisis</span>
+                <strong>
+                  {view.marketCrisisExplain?.crisisScore?.toFixed(2) ?? "—"} ·{" "}
+                  {view.marketCrisisExplain?.regime ?? "待返回"}
+                </strong>
+              </div>
+            </div>
             <div
               className={styles.observationMeta}
               data-testid="module-home-market-dense-observation-meta"
@@ -614,60 +617,46 @@ export function MarketOverviewDenseFirstScreen({
               </article>
               <article className={styles.observationFact}>
                 <span>来源质量</span>
-                <strong data-testid="module-home-market-dense-observation-quality">
+                <strong
+                  data-testid="module-home-market-dense-observation-quality"
+                  title={macroObservationGate.sourceQuality}
+                >
                   {macroObservationGate.sourceQuality}
                 </strong>
               </article>
               <article className={styles.observationFact}>
                 <span>使用边界</span>
-                <strong data-testid="module-home-market-dense-observation-gate">
+                <strong
+                  data-testid="module-home-market-dense-observation-gate"
+                  title={macroObservationGate.gate}
+                >
                   {macroObservationGate.gate}
                 </strong>
               </article>
             </div>
-            <p
-              className={styles.observationAction}
-              data-testid="module-home-market-dense-observation-action"
-              data-tone={
-                macroObservationGate.blocked ? "watch" : "ok"
-              }
-            >
-              {observationAction}
-            </p>
-          </div>
-          <div className={styles.decisionFacts}>
-            <div>
-              <span>状态</span>
-              <strong>{view.stateLabel}</strong>
-            </div>
-            <div>
-              <span>曲线</span>
-              <strong>{view.marketDeskIntel?.curveShapeLabel ?? "待返回"}</strong>
-            </div>
-            <div>
-              <span>Crisis</span>
-              <strong>
-                {view.marketCrisisExplain?.crisisScore?.toFixed(2) ?? "—"} ·{" "}
-                {view.marketCrisisExplain?.regime ?? "待返回"}
-              </strong>
-            </div>
-          </div>
+          </aside>
         </article>
 
         <section className={styles.marketTape} aria-label="市场行情带">
-          {tapeMetrics.map((metric) => (
-            <article
-              className={styles.tapeCell}
-              data-tone={metric.tone}
-              key={metric.key}
-              title={metric.title}
-            >
-              <span>{metric.label}</span>
-              <strong>{metric.value}</strong>
-              <em>{metric.delta}</em>
-              <time>{metricReportDate(metric)}</time>
-            </article>
-          ))}
+          {tapeMetrics.map((metric) => {
+            const { amount, unit } = splitMetricValue(metric.value);
+            return (
+              <article
+                className={styles.tapeCell}
+                data-tone={metric.tone}
+                key={metric.key}
+                title={metric.title}
+              >
+                <span>{metric.label}</span>
+                <strong>
+                  {amount}
+                  {unit ? <small>{unit}</small> : null}
+                </strong>
+                <em>{metric.delta}</em>
+                <time>{metric.tradeDate ?? "—"}</time>
+              </article>
+            );
+          })}
         </section>
 
         <div className={styles.judgmentGrid}>
@@ -696,7 +685,6 @@ export function MarketOverviewDenseFirstScreen({
           <article className={styles.infoPanel} id="market-overview-focus">
             <header className={styles.panelHeader}>
               <h3>焦点解读</h3>
-              <span>利率 / 跨资 / 宏观 / 事件</span>
             </header>
             <div className={styles.focusGrid}>
               {focusItems.map((item) => {
@@ -724,7 +712,6 @@ export function MarketOverviewDenseFirstScreen({
           <article className={styles.infoPanel} id="market-overview-actions">
             <header className={styles.panelHeader}>
               <h3>P0 - P2 核验队列</h3>
-              <span>优先级 / 核验事项 / 证据 / 入口</span>
             </header>
             <div className={styles.queueHead} aria-hidden="true">
               <span>优先级</span>
@@ -771,7 +758,7 @@ export function MarketOverviewDenseFirstScreen({
           <div className={styles.evidencePrimary}>
             {charts.slice(0, 2).map((item) => (
               <DenseChartCard
-                canvasHeight={178}
+                canvasHeight={186}
                 className={styles.primaryChart}
                 item={item}
                 key={`${item.sectionKey}-${item.chart.key}`}
@@ -783,7 +770,7 @@ export function MarketOverviewDenseFirstScreen({
           <div className={styles.evidenceSecondary}>
             {charts.slice(2).map((item) => (
               <DenseChartCard
-                canvasHeight={194}
+                canvasHeight={202}
                 className={styles.secondaryChart}
                 item={item}
                 key={`${item.sectionKey}-${item.chart.key}`}
@@ -791,13 +778,14 @@ export function MarketOverviewDenseFirstScreen({
               />
             ))}
             <DenseChartCard
-              canvasHeight={194}
+              canvasHeight={180}
               className={styles.secondaryChart}
               item={{
                 sectionKey: "rates",
                 indexLabel: "D",
                 chart: liquidityChart,
               }}
+              readingGuide={liquidityChart.readingHint}
               searchQuery={searchQuery}
             />
             <DenseMacroPulseCard
@@ -810,6 +798,7 @@ export function MarketOverviewDenseFirstScreen({
           <DenseNewsDensityCard
             density={newsDensity}
             events={news?.events ?? []}
+            excludedFutureRows={news?.excluded_future_rows ?? 0}
             searchQuery={searchQuery}
             totalRows={news?.total_rows ?? 0}
           />

@@ -2446,7 +2446,7 @@ describe("PortfolioHomePage", () => {
       expect(page).toHaveTextContent("结构拆解工作台");
     });
     const hero = within(page).getByTestId("module-home-portfolio-holdings-hero");
-    expect(hero).toHaveTextContent("持仓结构全景");
+    expect(hero).toHaveTextContent("券种分布");
     const exposureWorkbench = within(page).getByTestId("module-home-portfolio-exposure-workbench");
     expect(within(exposureWorkbench).getByTestId("module-home-portfolio-exposure-ledger")).toHaveTextContent("信用占比");
     expect(exposureWorkbench).toHaveTextContent("关键暴露账本");
@@ -2755,21 +2755,19 @@ describe("MarketHomePage", () => {
     ).not.toHaveAttribute("aria-current");
   });
 
-  it("locks the option-3 navigation rail and search overlay geometry", () => {
+  it("locks the option-3 shell toolbar and sticky chapter nav geometry", () => {
     const css = readFileSync(MARKET_HOME_NOCTURNE_CSS_PATH, "utf8");
 
+    // 章节导航保持 sticky 粘顶（ledger-pnl 语言），锚点留出粘顶滚动余量。
     expect(css).toMatch(
-      /\.chapterNav\s*\{[\s\S]*?grid-template-rows:\s*20px 26px;[\s\S]*?height:\s*46px;/,
+      /\.chapterNav\s*\{[\s\S]*?position:\s*sticky;[\s\S]*?top:\s*0;[\s\S]*?height:\s*45px;/,
     );
-    expect(css).toMatch(
-      /\.subpageNav\s*\{[\s\S]*?height:\s*20px;[\s\S]*?padding:\s*0 76px 0 4px;[\s\S]*?grid-template-columns:\s*repeat\(7, minmax\(0, 1fr\)\);/,
-    );
-    expect(css).toMatch(
-      /\[data-testid="module-home-market-dense-search"\]:focus-within\)\s*\{[\s\S]*?top:\s*48px;[\s\S]*?width:\s*220px;/,
-    );
-    expect(css).toMatch(
-      /@media \(max-width: 720px\)[\s\S]*?\.chapterNav\s*\{[\s\S]*?grid-template-rows:\s*18px 20px;[\s\S]*?height:\s*38px;/,
-    );
+    expect(css).toMatch(/scroll-margin-top:\s*52px;/);
+    // 工具栏控件按首页 30px 语言；搜索/刷新不再做 30px 图标化折叠 hack。
+    expect(css).toMatch(/\.searchBox\s*\{[\s\S]*?height:\s*30px;/);
+    expect(css).toMatch(/\.refreshButton\s*\{[\s\S]*?height:\s*30px;/);
+    expect(css).not.toContain("module-home-market-dense-chapter-tabs");
+    expect(css).not.toContain('[data-testid="module-home-toolbar"]');
     expect(css).not.toContain("> div > div:first-child");
   });
 

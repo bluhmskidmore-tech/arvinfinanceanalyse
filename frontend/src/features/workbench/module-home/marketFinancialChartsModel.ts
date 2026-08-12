@@ -9,40 +9,163 @@ import type {
   MacroToolkitStrategySummariesPayload,
 } from "../../../api/macroToolkitClient";
 import type { EChartsOption } from "../../../lib/echarts";
-import { dhApiTokens } from "../../../theme/designSystem";
+import {
+  MARKET_CHART_STATIC_PALETTE,
+  type MarketChartPalette,
+} from "./marketChartPalette";
 
-const COLORS = {
-  lavender: dhApiTokens.color.blue,
-  risk: dhApiTokens.color.red,
-  contrast: dhApiTokens.color.ink,
-  gold: dhApiTokens.color.amber,
-  coral: dhApiTokens.color.red,
-  green: dhApiTokens.color.green,
-  ink: dhApiTokens.color.inkSoft,
-  muted: dhApiTokens.color.inkMuted,
-  grid: dhApiTokens.color.lineSoft,
-  surface: dhApiTokens.color.panel2,
-} as const;
+type MarketChartColors = {
+  lavender: string;
+  blueDeep: string;
+  risk: string;
+  contrast: string;
+  gold: string;
+  green: string;
+  ink: string;
+  muted: string;
+  grid: string;
+  surface: string;
+  /** 强调色柱面内标签的墨色：取页面底色以保证对比。 */
+  labelOnAccent: string;
+};
 
-const LINE_COLORS = [
-  COLORS.lavender,
-  COLORS.contrast,
-  COLORS.gold,
-  COLORS.green,
-  COLORS.coral,
-] as const;
+type MarketChartTheme = {
+  colors: MarketChartColors;
+  lineColors: readonly string[];
+  axisLabel: { color: string; fontSize: number; fontFamily: string };
+  splitLine: {
+    lineStyle: { color: string; opacity: number; type: "solid" };
+  };
+  axisLine: { lineStyle: { color: string } };
+  tooltip: {
+    trigger: "axis";
+    confine: boolean;
+    backgroundColor: string;
+    borderColor: string;
+    borderWidth: number;
+    textStyle: { color: string; fontSize: number };
+  };
+};
 
-const LINE_TYPES = ["solid", "dashed", "dotted", "dashed", "solid"] as const;
-const SYMBOLS = ["circle", "rect", "diamond", "triangle", "roundRect"] as const;
+/**
+ * 图表配色从调用方注入的 palette 构造（Nocturne scope 下由页根 CSS 变量
+ * 运行时解析），不再固定引用钢蓝静态令牌；未注入时回退 dhApiTokens 静态值。
+ */
+function createMarketChartTheme(palette: MarketChartPalette): MarketChartTheme {
+  const colors: MarketChartColors = {
+    lavender: palette.accent,
+    blueDeep: palette.accentDeep,
+    risk: palette.red,
+    contrast: palette.ink,
+    gold: palette.amber,
+    green: palette.green,
+    ink: palette.inkSoft,
+    muted: palette.inkMuted,
+    grid: palette.lineSoft,
+    surface: palette.panel2,
+    labelOnAccent: palette.canvas,
+  };
+  return {
+    colors,
+    /**
+     * 分类系列不使用 green/red：暗色令牌把它们定义为方向语义色，用来区分资产会让
+     * 「红线上行」这类组合产生误读（参见 DESIGN.md 2026-07-19 久期缺口色决议）。
+     */
+    lineColors: [
+      colors.lavender,
+      colors.gold,
+      colors.contrast,
+      colors.ink,
+      colors.blueDeep,
+    ],
+    axisLabel: {
+      color: colors.muted,
+      fontSize: 10,
+      fontFamily: '"Cascadia Mono", "SFMono-Regular", monospace',
+    },
+    splitLine: {
+      lineStyle: {
+        color: colors.grid,
+        opacity: 0.55,
+        type: "solid" as const,
+      },
+    },
+    axisLine: {
+      lineStyle: {
+        color: colors.grid,
+      },
+    },
+    tooltip: {
+      trigger: "axis" as const,
+      confine: true,
+      backgroundColor: colors.surface,
+      borderColor: colors.grid,
+      borderWidth: 1,
+      textStyle: {
+        color: palette.ink,
+        fontSize: 11,
+      },
+    },
+  };
+}
+
+/**
+ * 线条只用颜色区分系列。虚线在固收语境里表示外推或基准，不能当作装饰性区分手段。
+ */
+const lineSeries = {
+  type: "line" as const,
+  smooth: false,
+  symbol: "none" as const,
+  showSymbol: false,
+  connectNulls: false,
+};
+
+const legend = {
+  top: 0,
+  left: 0,
+  itemWidth: 14,
+  itemHeight: 2,
+  itemGap: 14,
+  icon: "roundRect",
+};
 
 export type MarketFinancialChartSpec = {
   key: string;
   title: string;
   subtitle: string;
   footnote: string;
+  readingGuide?: string;
+  yieldCurveDisplay?: MarketYieldCurveDisplay;
   option: EChartsOption | null;
   height?: number;
 };
+
+export type MarketYieldCurveComparisonRow = {
+  curve: string;
+  tenorLabel: string;
+  tradeDate: string;
+  value: number;
+  unit: "%";
+};
+
+export type MarketYieldCurveDisplay =
+  | {
+      kind: "curve";
+      uniqueTenorCount: number;
+    }
+  | {
+      kind: "single-tenor";
+      message: string;
+      rows: MarketYieldCurveComparisonRow[];
+      tenorLabel: string;
+      uniqueTenorCount: 1;
+    }
+  | {
+      kind: "sparse-tenors";
+      message: string;
+      rows: MarketYieldCurveComparisonRow[];
+      uniqueTenorCount: number;
+    };
 
 export type MarketFinancialChartSection = {
   key: "rates" | "cross" | "macro" | "strategy" | "news" | "coverage";
@@ -59,6 +182,8 @@ export type MarketFinancialChartsInput = {
   macro?: MacroToolkitAnalysisPayload;
   strategies?: MacroToolkitStrategySummariesPayload;
   news?: ChoiceNewsEventsPayload;
+  /** 运行时解析的页面色板；缺省回退 dhApiTokens 静态值（jsdom/测试路径）。 */
+  palette?: MarketChartPalette;
 };
 
 type LineInput = {
@@ -72,37 +197,6 @@ type YieldCurveRow = {
   tenorLabel: string;
   value: number;
   tradeDate: string;
-};
-
-const axisLabel = {
-  color: COLORS.muted,
-  fontSize: 10,
-  fontFamily: '"Cascadia Mono", "SFMono-Regular", monospace',
-};
-
-const splitLine = {
-  lineStyle: {
-    color: COLORS.grid,
-    type: "dashed" as const,
-  },
-};
-
-const axisLine = {
-  lineStyle: {
-    color: COLORS.grid,
-  },
-};
-
-const tooltip = {
-  trigger: "axis" as const,
-  confine: true,
-  backgroundColor: COLORS.surface,
-  borderColor: COLORS.grid,
-  borderWidth: 1,
-  textStyle: {
-    color: dhApiTokens.color.ink,
-    fontSize: 11,
-  },
 };
 
 function finiteNumber(value: unknown): value is number {
@@ -141,14 +235,16 @@ function compactSeriesName(series: ChoiceMacroLatestPoint) {
 }
 
 function buildMultiLineOption(
+  theme: MarketChartTheme,
   lines: LineInput[],
   options: {
     unit: string;
     decimals?: number;
     scale?: boolean;
-    showEndLabel?: boolean;
   },
 ): EChartsOption | null {
+  const { lineColors: LINE_COLORS, axisLabel, axisLine, splitLine, tooltip } =
+    theme;
   if (lines.length === 0) return null;
   const dates = [
     ...new Set(lines.flatMap((line) => [...line.values.keys()])),
@@ -164,17 +260,14 @@ function buildMultiLineOption(
         finiteNumber(value) ? `${value.toFixed(decimals)}${options.unit}` : "—",
     },
     legend: {
-      top: 0,
-      left: 0,
-      itemWidth: 18,
-      itemHeight: 8,
+      ...legend,
       textStyle: axisLabel,
     },
     grid: {
-      left: 48,
-      right: options.showEndLabel ? 78 : 28,
-      top: 38,
-      bottom: 34,
+      left: 0,
+      right: 6,
+      top: 26,
+      bottom: 0,
       containLabel: true,
     },
     xAxis: {
@@ -191,41 +284,24 @@ function buildMultiLineOption(
     yAxis: {
       type: "value",
       scale: options.scale ?? true,
-      name: options.unit,
-      nameTextStyle: axisLabel,
       axisLabel: {
         ...axisLabel,
         formatter: (value: number) => value.toFixed(decimals),
       },
+      axisLine: { show: false },
+      axisTick: { show: false },
       splitLine,
     },
     series: lines.map((line, index) => ({
+      ...lineSeries,
       name: line.name,
-      type: "line",
-      smooth: false,
-      symbol: SYMBOLS[index % SYMBOLS.length],
-      symbolSize: 5,
-      showSymbol: dates.length <= 24,
-      connectNulls: false,
       lineStyle: {
         color: LINE_COLORS[index % LINE_COLORS.length],
-        width: index === 0 ? 2.2 : 1.6,
-        type: LINE_TYPES[index % LINE_TYPES.length],
+        width: index === 0 ? 1.8 : 1.4,
       },
       itemStyle: {
         color: LINE_COLORS[index % LINE_COLORS.length],
-        borderColor: COLORS.surface,
-        borderWidth: 1,
       },
-      endLabel: options.showEndLabel
-        ? {
-            show: true,
-            formatter: line.name,
-            color: LINE_COLORS[index % LINE_COLORS.length],
-            fontSize: 9,
-            distance: 6,
-          }
-        : undefined,
       emphasis: { focus: "series" },
       data: dates.map((date) => line.values.get(date) ?? null),
     })),
@@ -233,15 +309,23 @@ function buildMultiLineOption(
 }
 
 function latestCoherentYieldCurveRows(rows: YieldCurveRow[]) {
-  const countsByDate = new Map<string, number>();
+  const tenorsByDateAndCurve = new Map<string, Map<string, Set<number>>>();
   for (const row of rows) {
-    countsByDate.set(row.tradeDate, (countsByDate.get(row.tradeDate) ?? 0) + 1);
+    const curves = tenorsByDateAndCurve.get(row.tradeDate) ?? new Map();
+    const tenors = curves.get(row.curve) ?? new Set<number>();
+    tenors.add(row.tenor);
+    curves.set(row.curve, tenors);
+    tenorsByDateAndCurve.set(row.tradeDate, curves);
   }
-  const sortedDates = [...countsByDate.keys()].sort((left, right) =>
+  const sortedDates = [...tenorsByDateAndCurve.keys()].sort((left, right) =>
     right.localeCompare(left),
   );
   const selectedDate =
-    sortedDates.find((date) => (countsByDate.get(date) ?? 0) >= 2) ??
+    sortedDates.find((date) =>
+      [...(tenorsByDateAndCurve.get(date)?.values() ?? [])].some(
+        (tenors) => tenors.size >= 2,
+      ),
+    ) ??
     sortedDates[0];
   return {
     selectedDate,
@@ -252,8 +336,10 @@ function latestCoherentYieldCurveRows(rows: YieldCurveRow[]) {
 }
 
 function buildYieldCurveChart(
+  theme: MarketChartTheme,
   rates: ChoiceMacroLatestPayload | undefined,
 ): MarketFinancialChartSpec {
+  const { colors: COLORS, axisLabel, axisLine, splitLine, tooltip } = theme;
   let rows = (rates?.series ?? [])
     .map((series) => {
       const name = series.series_name;
@@ -283,11 +369,116 @@ function buildYieldCurveChart(
   const curves = ["国债", "国开"].filter((curve) =>
     selectedRows.some((row) => row.curve === curve),
   );
+  const comparisonRows = curves.flatMap((curve) =>
+    tenors.flatMap((tenor) => {
+      const row = selectedRows.find(
+        (item) => item.curve === curve && item.tenor === tenor,
+      );
+      return row
+        ? [
+            {
+              curve: row.curve,
+              tenorLabel: row.tenorLabel,
+              tradeDate: row.tradeDate,
+              value: row.value,
+              unit: "%" as const,
+            },
+          ]
+        : [];
+    }),
+  );
+  const hasRenderableCurve = curves.some(
+    (curve) =>
+      new Set(
+        selectedRows
+          .filter((row) => row.curve === curve)
+          .map((row) => row.tenor),
+      ).size >= 2,
+  );
+  const singleTenorMessage = "当前仅返回一个期限，暂不能判断曲线形态。";
+  const sparseTenorsMessage =
+    "当前报价未形成同一条曲线的多个期限，暂不能判断曲线形态。";
+  const yieldCurveDisplay: MarketYieldCurveDisplay | undefined =
+    hasRenderableCurve
+      ? { kind: "curve", uniqueTenorCount: tenors.length }
+      : tenors.length === 1
+        ? {
+            kind: "single-tenor",
+            message: singleTenorMessage,
+            rows: comparisonRows,
+            tenorLabel: `${tenors[0]}Y`,
+            uniqueTenorCount: 1,
+          }
+        : tenors.length >= 2
+          ? {
+              kind: "sparse-tenors",
+              message: sparseTenorsMessage,
+              rows: comparisonRows,
+              uniqueTenorCount: tenors.length,
+            }
+          : undefined;
   const latestDate = selectedDate ??
     [...rows.map((row) => row.tradeDate)].sort().at(-1) ?? "日期未返回";
   const option: EChartsOption | null =
     selectedRows.length === 0
       ? null
+      : !hasRenderableCurve
+        ? {
+            animationDuration: 420,
+            color: [COLORS.lavender],
+            tooltip: {
+              ...tooltip,
+              trigger: "item",
+              valueFormatter: (value: unknown) =>
+                finiteNumber(value) ? `${value.toFixed(3)}%` : "—",
+            },
+            grid: {
+              left: 48,
+              right: 28,
+              top: 16,
+              bottom: 30,
+              containLabel: true,
+            },
+            xAxis: {
+              type: "category",
+              data: comparisonRows.map(
+                (row) => `${row.curve} ${row.tenorLabel}`,
+              ),
+              axisLabel,
+              axisLine,
+              axisTick: { show: false },
+            },
+            yAxis: {
+              type: "value",
+              scale: true,
+              name: "收益率 (%)",
+              nameTextStyle: axisLabel,
+              axisLabel: {
+                ...axisLabel,
+                formatter: (value: number) => value.toFixed(2),
+              },
+              splitLine,
+            },
+            series: [
+              {
+                name: "收益率报价",
+                type: "bar",
+                barMaxWidth: 42,
+                itemStyle: {
+                  color: COLORS.lavender,
+                },
+                label: {
+                  show: true,
+                  position: "top",
+                  color: COLORS.ink,
+                  fontSize: 10,
+                  formatter: ({ value }: { value: unknown }) =>
+                    finiteNumber(value) ? `${value.toFixed(3)}%` : "—",
+                },
+                data: comparisonRows.map((row) => row.value),
+              },
+            ],
+          }
       : {
           animationDuration: 420,
           color: [COLORS.lavender, COLORS.gold],
@@ -297,17 +488,14 @@ function buildYieldCurveChart(
               finiteNumber(value) ? `${value.toFixed(3)}%` : "—",
           },
           legend: {
-            top: 0,
-            left: 0,
-            itemWidth: 18,
-            itemHeight: 8,
+            ...legend,
             textStyle: axisLabel,
           },
           grid: {
-            left: 48,
-            right: 32,
-            top: 38,
-            bottom: 34,
+            left: 0,
+            right: 10,
+            top: 26,
+            bottom: 0,
             containLabel: true,
           },
           xAxis: {
@@ -321,30 +509,27 @@ function buildYieldCurveChart(
           yAxis: {
             type: "value",
             scale: true,
-            name: "收益率 (%)",
-            nameTextStyle: axisLabel,
             axisLabel: {
               ...axisLabel,
               formatter: (value: number) => value.toFixed(2),
             },
+            axisLine: { show: false },
+            axisTick: { show: false },
             splitLine,
           },
           series: curves.map((curve, index) => ({
+            ...lineSeries,
             name: curve,
-            type: "line",
-            smooth: false,
-            symbol: index === 0 ? "circle" : "diamond",
-            symbolSize: 6,
-            connectNulls: false,
+            // 期限缺口处保留断点，但用小圆点标出孤立观测，避免只剩一个悬空的点。
+            symbol: "circle",
+            symbolSize: 4,
+            showSymbol: true,
             lineStyle: {
               color: index === 0 ? COLORS.lavender : COLORS.gold,
-              width: index === 0 ? 2.4 : 1.8,
-              type: index === 0 ? "solid" : "dashed",
+              width: index === 0 ? 1.9 : 1.5,
             },
             itemStyle: {
               color: index === 0 ? COLORS.lavender : COLORS.gold,
-              borderColor: COLORS.surface,
-              borderWidth: 1,
             },
             data: tenors.map(
               (tenor) =>
@@ -357,8 +542,26 @@ function buildYieldCurveChart(
   return {
     key: "yield-curve",
     title: "国债与国开期限结构",
-    subtitle: `${latestDate} · ${rows.length} 个期限点 · 收益率 %`,
-    footnote: "直接绘制后端最新收益率；纵轴采用聚焦刻度以辨识期限结构。",
+    subtitle: `${latestDate} · ${tenors.length} 个唯一期限 · 收益率 %`,
+    footnote:
+      tenors.length === 0
+        ? "后端未返回可用的国债或国开收益率报价。"
+        : tenors.length === 1
+          ? `${singleTenorMessage} 数值直接取自后端最新收益率。`
+          : !hasRenderableCurve && tenors.length >= 2
+            ? `${sparseTenorsMessage} 数值直接取自后端最新收益率。`
+            : "直接绘制后端最新收益率；纵轴采用聚焦刻度以辨识期限结构。",
+    readingGuide:
+      tenors.length === 0
+        ? "等待同一报告日的有效收益率报价；不补点、不插值。"
+        : tenors.length === 1 && comparisonRows.length >= 2
+          ? "比较同一期限的国债与国开收益率，不据此判断曲线陡峭或平坦。"
+          : tenors.length === 1
+            ? "读取当前期限的已返回收益率；缺少其他期限，不能判断期限结构。"
+            : !hasRenderableCurve && tenors.length >= 2
+              ? "逐项核对已返回报价；不同曲线的单个期限不能连成一条曲线。"
+              : "比较同一日期各期限的斜率，以及国债与国开的相对水平。",
+    yieldCurveDisplay,
     option,
     height: 300,
   };
@@ -395,6 +598,7 @@ function pickKeyRateSeries(
 }
 
 function buildKeyRateTrend(
+  theme: MarketChartTheme,
   latest: ChoiceMacroLatestPayload | undefined,
   rates: ChoiceMacroLatestPayload | undefined,
 ): MarketFinancialChartSpec {
@@ -413,10 +617,9 @@ function buildKeyRateTrend(
     title: "关键利率近 20 期走势",
     subtitle: `${timelineRange(selected)} · ${selected.length} 条同单位利率序列 · %`,
     footnote: "仅比较百分比利率原值；不同日期缺口保持为空，不做前端插值。",
-    option: buildMultiLineOption(lines, {
+    option: buildMultiLineOption(theme, lines, {
       unit: "%",
       decimals: 3,
-      showEndLabel: true,
     }),
     height: 300,
   };
@@ -439,6 +642,7 @@ function pickCrossAssetSeries(latest: ChoiceMacroLatestPayload | undefined) {
 }
 
 function buildIndexedCrossAsset(
+  theme: MarketChartTheme,
   latest: ChoiceMacroLatestPayload | undefined,
 ): MarketFinancialChartSpec {
   const selected = pickCrossAssetSeries(latest);
@@ -464,18 +668,19 @@ function buildIndexedCrossAsset(
     subtitle: `${timelineRange(selected)} · ${lines.length} 类资产 · 首个可用观测=100`,
     footnote:
       "观察性归一化：指数=当期后端值÷该序列首个可用值×100；仅用于比较方向，不是正式收益指标。",
-    option: buildMultiLineOption(lines, {
+    option: buildMultiLineOption(theme, lines, {
       unit: "指数",
       decimals: 1,
-      showEndLabel: true,
     }),
     height: 320,
   };
 }
 
 function buildLatestCrossAssetMove(
+  theme: MarketChartTheme,
   latest: ChoiceMacroLatestPayload | undefined,
 ): MarketFinancialChartSpec {
+  const { colors: COLORS, axisLabel, axisLine, splitLine, tooltip } = theme;
   const selected = pickCrossAssetSeries(latest)
     .map((series) => {
       const points = sortedRecentPoints(series);
@@ -566,8 +771,10 @@ function buildLatestCrossAssetMove(
 }
 
 function buildMacroIndicatorChange(
+  theme: MarketChartTheme,
   macro: MacroToolkitAnalysisPayload | undefined,
 ): MarketFinancialChartSpec {
+  const { colors: COLORS, axisLabel, axisLine, splitLine, tooltip } = theme;
   const rows = (macro?.indicators ?? [])
     .filter((indicator) => finiteNumber(indicator.change_pct))
     .map((indicator) => ({
@@ -640,8 +847,10 @@ function buildMacroIndicatorChange(
 }
 
 function buildCapabilityStatus(
+  theme: MarketChartTheme,
   macro: MacroToolkitAnalysisPayload | undefined,
 ): MarketFinancialChartSpec {
+  const { colors: COLORS, axisLabel, axisLine, splitLine, tooltip } = theme;
   const statuses = ["complete", "degraded", "unavailable"] as const;
   const counts = statuses.map(
     (status) =>
@@ -703,7 +912,7 @@ function buildCapabilityStatus(
             label: {
               show: count > 0,
               position: "inside",
-              color: dhApiTokens.color.bg,
+              color: COLORS.labelOnAccent,
               fontSize: 10,
               fontWeight: 700,
               formatter: `${count}`,
@@ -722,6 +931,7 @@ function buildCapabilityStatus(
 }
 
 function buildStrategyPeriodTrend(
+  theme: MarketChartTheme,
   strategies: MacroToolkitStrategySummariesPayload | undefined,
 ): MarketFinancialChartSpec {
   const report = strategies?.shadow_portfolio_report;
@@ -741,19 +951,20 @@ function buildStrategyPeriodTrend(
     title: "影子组合期间超额收益",
     subtitle: `${report?.as_of_date ?? "日期未返回"} · ${report?.period_returns.length ?? 0} 个期间 · %`,
     footnote: "将后端 excess_return 小数比例转换为百分比展示；不做前端累计。",
-    option: buildMultiLineOption(lines, {
+    option: buildMultiLineOption(theme, lines, {
       unit: "%",
       decimals: 2,
       scale: true,
-      showEndLabel: true,
     }),
     height: 310,
   };
 }
 
 function buildStrategyPortfolioComparison(
+  theme: MarketChartTheme,
   strategies: MacroToolkitStrategySummariesPayload | undefined,
 ): MarketFinancialChartSpec {
+  const { colors: COLORS, axisLabel, axisLine, splitLine, tooltip } = theme;
   const portfolios = strategies?.shadow_portfolio_report?.portfolios ?? [];
   const labels = portfolios.map((portfolio) => portfolio.label);
   const measures = [
@@ -841,9 +1052,11 @@ function countBy<T>(items: T[], key: (item: T) => string) {
 }
 
 function buildRankedBar(
+  theme: MarketChartTheme,
   rows: Array<{ name: string; value: number }>,
   color: string,
 ): EChartsOption | null {
+  const { colors: COLORS, axisLabel, axisLine, splitLine, tooltip } = theme;
   const selected = [...rows]
     .sort((left, right) => right.value - left.value)
     .slice(0, 10)
@@ -900,6 +1113,7 @@ function buildRankedBar(
 }
 
 function buildNewsTopicChart(
+  theme: MarketChartTheme,
   news: ChoiceNewsEventsPayload | undefined,
 ): MarketFinancialChartSpec {
   const rows = countBy(
@@ -911,14 +1125,16 @@ function buildNewsTopicChart(
     title: "新闻主题分布",
     subtitle: `最新 ${news?.events.length ?? 0} 条样本 / 全库 ${news?.total_rows.toLocaleString("zh-CN") ?? "—"} 条`,
     footnote: "按事件 topic_code 计数，展示最新样本 Top 10；不外推为全库占比。",
-    option: buildRankedBar(rows, COLORS.lavender),
+    option: buildRankedBar(theme, rows, theme.colors.lavender),
     height: 310,
   };
 }
 
 function buildNewsDateChart(
+  theme: MarketChartTheme,
   news: ChoiceNewsEventsPayload | undefined,
 ): MarketFinancialChartSpec {
+  const { colors: COLORS, axisLabel, axisLine, splitLine, tooltip } = theme;
   const rows = countBy(news?.events ?? [], (event) =>
     event.received_at.slice(0, 10),
   )
@@ -985,6 +1201,7 @@ function buildNewsDateChart(
 }
 
 function buildCatalogVendorChart(
+  theme: MarketChartTheme,
   catalog: MacroVendorPayload | undefined,
 ): MarketFinancialChartSpec {
   const rows = countBy(
@@ -996,12 +1213,13 @@ function buildCatalogVendorChart(
     title: "目录供应商覆盖",
     subtitle: `${catalog?.series.length ?? 0} 条目录序列 · vendor_name`,
     footnote: "按后端目录 vendor_name 计数；同一序列仅计一次。",
-    option: buildRankedBar(rows, COLORS.contrast),
+    option: buildRankedBar(theme, rows, theme.colors.contrast),
     height: 290,
   };
 }
 
 function buildCatalogTierChart(
+  theme: MarketChartTheme,
   catalog: MacroVendorPayload | undefined,
 ): MarketFinancialChartSpec {
   const rows = countBy(
@@ -1013,7 +1231,7 @@ function buildCatalogTierChart(
     title: "刷新层级分布",
     subtitle: `${catalog?.series.length ?? 0} 条目录序列 · refresh_tier`,
     footnote: "stable / fallback / isolated 沿用后端目录定义；未标注单独保留。",
-    option: buildRankedBar(rows, COLORS.gold),
+    option: buildRankedBar(theme, rows, theme.colors.gold),
     height: 290,
   };
 }
@@ -1025,14 +1243,19 @@ export function buildMarketFinancialChartSections({
   macro,
   strategies,
   news,
+  palette,
 }: MarketFinancialChartsInput): MarketFinancialChartSection[] {
+  const theme = createMarketChartTheme(palette ?? MARKET_CHART_STATIC_PALETTE);
   return [
     {
       key: "rates",
       kicker: "RATES / LIQUIDITY",
       title: "利率与流动性",
       description: "期限结构回答曲线形态，关键利率趋势回答资金与长端方向。",
-      charts: [buildYieldCurveChart(rates), buildKeyRateTrend(latest, rates)],
+      charts: [
+        buildYieldCurveChart(theme, rates),
+        buildKeyRateTrend(theme, latest, rates),
+      ],
     },
     {
       key: "cross",
@@ -1041,8 +1264,8 @@ export function buildMarketFinancialChartSections({
       description:
         "用透明的观察性归一化比较不同单位资产的方向，再看最新一期变动。",
       charts: [
-        buildIndexedCrossAsset(latest),
-        buildLatestCrossAssetMove(latest),
+        buildIndexedCrossAsset(theme, latest),
+        buildLatestCrossAssetMove(theme, latest),
       ],
     },
     {
@@ -1050,7 +1273,10 @@ export function buildMarketFinancialChartSections({
       kicker: "MACRO SIGNALS",
       title: "宏观信号",
       description: "后端指标变化与能力状态并列，避免把降级结果包装成完整信号。",
-      charts: [buildMacroIndicatorChange(macro), buildCapabilityStatus(macro)],
+      charts: [
+        buildMacroIndicatorChange(theme, macro),
+        buildCapabilityStatus(theme, macro),
+      ],
     },
     {
       key: "strategy",
@@ -1058,8 +1284,8 @@ export function buildMarketFinancialChartSections({
       title: "策略与风险",
       description: "影子组合期间超额收益、总收益和最大回撤使用同一百分比口径。",
       charts: [
-        buildStrategyPeriodTrend(strategies),
-        buildStrategyPortfolioComparison(strategies),
+        buildStrategyPeriodTrend(theme, strategies),
+        buildStrategyPortfolioComparison(theme, strategies),
       ],
     },
     {
@@ -1068,7 +1294,10 @@ export function buildMarketFinancialChartSections({
       title: "新闻事件",
       description:
         "从最新事件样本查看主题集中度与接收时间密度，同时保留全库总量。",
-      charts: [buildNewsTopicChart(news), buildNewsDateChart(news)],
+      charts: [
+        buildNewsTopicChart(theme, news),
+        buildNewsDateChart(theme, news),
+      ],
     },
     {
       key: "coverage",
@@ -1076,8 +1305,8 @@ export function buildMarketFinancialChartSections({
       title: "数据覆盖",
       description: "目录供应商与刷新层级揭示当前数据可用边界和 fallback 暴露。",
       charts: [
-        buildCatalogVendorChart(catalog),
-        buildCatalogTierChart(catalog),
+        buildCatalogVendorChart(theme, catalog),
+        buildCatalogTierChart(theme, catalog),
       ],
     },
   ];

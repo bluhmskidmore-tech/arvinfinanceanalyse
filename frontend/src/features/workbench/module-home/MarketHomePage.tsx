@@ -12,7 +12,6 @@ import { moduleWorkbenchHomeConfigs } from "./moduleHomeConfig";
 import MarketHomeLayout from "./MarketHomeLayout";
 import { useMarketHomeQueries } from "./useMarketHomeQueries";
 import { refetchAfterMarketRefresh } from "./marketHomeRefresh";
-import dhStyles from "../dashboard-home/dashboardHome.module.css";
 
 function latestTradeDateFromSeries(series: Array<{ trade_date?: string | null }>) {
   return series
@@ -162,7 +161,12 @@ export default function MarketHomePage() {
     latestTradeDate;
 
   return (
-    <section data-testid="module-workbench-home" className={`${dhStyles.dhLightPage} theme-dh-api`}>
+    // 深色 owner 由 ThemedRouteBoundary 独占；页根只声明 Nocturne scope + theme-dh-api。
+    <section
+      data-testid="module-workbench-home"
+      data-moss-theme-scope="market-overview"
+      className="theme-dh-api"
+    >
       <MarketHomeLayout
         view={view}
         config={config}

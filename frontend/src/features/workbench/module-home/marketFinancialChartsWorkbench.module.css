@@ -1,41 +1,42 @@
 .workbench {
-  --market-chart-canvas-height: 117px;
+  --market-chart-canvas-height: 208px;
+  /* 页壳章节导航粘顶 45px，本组内分组导航贴其下沿。 */
+  --market-nav-sticky-top: 45px;
+  --market-nav-block-size: 45px;
+  --market-section-anchor-gap: 8px;
+  --market-section-scroll-offset: calc(
+    var(--market-nav-sticky-top) + var(--market-nav-block-size) +
+      var(--market-section-anchor-gap)
+  );
 
   position: relative;
   display: grid;
-  gap: 6px;
-  padding: 10px 12px;
-  overflow: hidden;
+  overflow: visible;
   border: 1px solid var(--dh-api-line);
   border-radius: var(--dh-api-radius);
   color: var(--dh-api-ink);
-  background:
-    linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--dh-api-panel-3) 38%, transparent),
-      transparent 46%
-    ),
-    var(--dh-api-panel);
+  background: var(--dh-api-panel);
 }
 
-.workbench::before {
-  position: absolute;
-  top: 0;
-  left: 18px;
-  width: 88px;
-  height: 2px;
-  background: var(--dh-api-blue);
-  content: "";
+.workbench[data-view-mode="focus"] {
+  --market-chart-canvas-height: 208px;
+}
+
+.workbench[data-view-mode="focus"]
+  .sectionChapter[data-active="false"] {
+  display: none;
 }
 
 .workbenchHeader {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
   gap: 16px;
-  min-height: 51px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--dh-api-line-soft);
+  min-height: 46px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius) var(--dh-api-radius) 0 0;
+  background: var(--dh-api-panel-2);
 }
 
 .workbenchHeader > div:first-child {
@@ -45,115 +46,175 @@
   min-width: 0;
 }
 
-.workbenchHeader > div:first-child > span,
-.sectionIntro > div:first-child > span {
-  color: var(--dh-api-blue);
+/* 编号分区头对齐首页语言：小号 mono 编号 + 14px 标题。 */
+.workbenchHeader > div:first-child > span {
+  min-width: 22px;
+  color: var(--dh-api-muted);
   font-family: var(--font-family-mono, "Cascadia Mono", monospace);
-  font-size: 16px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
   font-weight: 700;
   letter-spacing: 0;
 }
 
-.sectionIntro > div:first-child > span {
-  font-size: 10px;
-  letter-spacing: 0.16em;
-}
-
 .workbenchHeader h2 {
   margin: 0;
-  font-family: "IBM Plex Sans", "PingFang SC", "Microsoft YaHei UI", sans-serif;
-  font-size: 18px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 20px;
 }
 
 .workbenchHeader p {
   display: none;
 }
 
+.modeToggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(72px, 1fr));
+  justify-self: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.modeButton {
+  min-height: 28px;
+  padding: 4px 14px;
+  border: 1px solid transparent;
+  border-radius: var(--dh-api-radius);
+  color: var(--dh-api-muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1;
+  cursor: pointer;
+  background: transparent;
+  transition:
+    border-color 140ms ease,
+    color 140ms ease,
+    background 140ms ease;
+}
+
+.modeButton:hover {
+  color: var(--dh-api-ink);
+  background: var(--dh-api-panel-3);
+}
+
+.modeButton[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 32%, var(--dh-api-line));
+  color: var(--dh-api-ink);
+  background: color-mix(in srgb, var(--dh-api-blue) 16%, var(--dh-api-panel-3));
+}
+
+.modeButton:focus-visible,
+.sectionNavButton:focus-visible {
+  outline: 2px solid var(--dh-api-blue);
+  outline-offset: 2px;
+}
+
 .headerStatus {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: baseline;
+  justify-self: end;
+  gap: 7px;
   min-width: 0;
   text-align: right;
 }
 
-.headerStatus strong {
-  color: var(--dh-api-blue);
-  font-family: var(--font-family-mono, "Cascadia Mono", monospace);
-  font-size: 20px;
-  line-height: 1;
+.headerStatus > span,
+.headerStatus em {
+  font-size: 12px;
+  line-height: 1.3;
 }
 
 .headerStatus > span {
   color: var(--dh-api-muted);
-  font-size: 10px;
 }
 
 .headerStatus em {
   color: var(--dh-api-ink-soft);
-  font-size: 10px;
+  font-family: var(--font-family-mono, "Cascadia Mono", monospace);
   font-style: normal;
+  font-variant-numeric: tabular-nums;
 }
 
 .sectionNav {
   position: sticky;
-  top: 10px;
-  z-index: 2;
-  display: none;
+  z-index: 3;
+  top: var(--market-nav-sticky-top);
+  display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 4px;
-  padding: 3px;
-  border: 1px solid color-mix(in srgb, var(--dh-api-line) 82%, transparent);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--dh-api-panel) 90%, transparent);
+  border-bottom: 1px solid var(--dh-api-line);
+  background: color-mix(in srgb, var(--dh-api-panel-2) 94%, transparent);
   backdrop-filter: blur(8px);
 }
 
 .sectionNavButton {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 7px 4px;
-  border: 1px solid var(--dh-api-line-soft);
-  border-radius: 6px;
+  justify-content: center;
+  gap: 7px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 7px 8px 6px;
+  border: 0;
+  border-right: 1px solid var(--dh-api-line-soft);
   color: var(--dh-api-ink-soft);
-  text-align: left;
+  text-align: center;
   cursor: pointer;
-  background: color-mix(in srgb, var(--dh-api-panel-2) 84%, transparent);
+  background: transparent;
   transition:
-    border-color 140ms ease,
     color 140ms ease,
-    background 140ms ease,
-    transform 140ms ease;
+    background 140ms ease;
+}
+
+.sectionNavButton:last-child {
+  border-right: 0;
+}
+
+.sectionNavButton::after {
+  position: absolute;
+  right: 10px;
+  bottom: 0;
+  left: 10px;
+  height: 2px;
+  background: transparent;
+  content: "";
 }
 
 .sectionNavButton:hover {
-  border-color: color-mix(in srgb, var(--dh-api-blue) 32%, var(--dh-api-line));
   color: var(--dh-api-ink);
+  background: color-mix(in srgb, var(--dh-api-panel-3) 72%, transparent);
 }
 
 .sectionNavButton[data-active="true"] {
-  border-color: color-mix(in srgb, var(--dh-api-blue) 44%, transparent);
-  box-shadow: inset 0 0 0 1px
-    color-mix(in srgb, var(--dh-api-blue) 22%, transparent);
   color: var(--dh-api-ink);
-  background: color-mix(in srgb, var(--dh-api-panel-3) 74%, transparent);
-  transform: translateY(-1px);
+  background: var(--dh-api-panel-3);
+}
+
+.sectionNavButton[data-active="true"]::after {
+  background: var(--dh-api-blue);
 }
 
 .sectionNavButton span {
+  display: none;
   color: var(--dh-api-blue);
   font-family: var(--font-family-mono, "Cascadia Mono", monospace);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1;
 }
 
 .sectionNavButton strong {
+  overflow: hidden;
   font-size: 12px;
   font-weight: 650;
-  line-height: 1.3;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sectionNavButton em {
@@ -162,181 +223,158 @@
 
 .sectionStack {
   display: grid;
-  gap: 4px;
 }
 
 .sectionChapter {
   position: relative;
   display: grid;
-  grid-template-columns: 74px minmax(0, 1fr);
-  gap: 5px;
-  padding: 5px;
-  border: 1px solid var(--dh-api-line-soft);
-  border-radius: var(--dh-api-radius);
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--dh-api-panel-3) 22%, transparent),
-      transparent 42%
-    ),
-    var(--dh-api-panel-2);
-  scroll-margin-top: 86px;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  border-bottom: 1px solid var(--dh-api-line);
+  background: var(--dh-api-panel-2);
+  scroll-margin-top: var(--market-section-scroll-offset);
+}
+
+.sectionChapter:last-child {
+  border-bottom: 0;
+  border-radius: 0 0 var(--dh-api-radius) var(--dh-api-radius);
 }
 
 .sectionChapter[data-active="true"] {
-  border-color: color-mix(in srgb, var(--dh-api-blue) 24%, var(--dh-api-line));
+  background: color-mix(in srgb, var(--dh-api-panel-3) 28%, var(--dh-api-panel-2));
 }
 
+/* 分组头：编号 / 标题 / 英文标识 / 说明 / 数据状态 / 展开控件，单行排布。 */
 .sectionRail {
   display: grid;
-  align-content: start;
-  gap: 3px;
-  padding: 0 4px 0 0;
-  border-right: 1px solid var(--dh-api-line-soft);
+  grid-template-columns: 22px auto auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 9px 14px;
 }
 
-.sectionRail span {
+.sectionRail > span {
+  display: grid;
+  width: 22px;
+  height: 20px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--dh-api-blue) 34%, var(--dh-api-line));
+  border-radius: var(--dh-api-radius);
   color: var(--dh-api-blue);
   font-family: var(--font-family-mono, "Cascadia Mono", monospace);
-  font-size: 16px;
+  font-size: 12px;
   font-weight: 700;
   line-height: 1;
+  background: color-mix(in srgb, var(--dh-api-blue) 10%, transparent);
 }
 
-.sectionRail strong {
+.sectionRail > strong {
   color: var(--dh-api-ink);
+  font-size: 13.5px;
+  font-weight: 650;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.sectionRail > em {
+  color: var(--dh-api-muted);
+  font-family: var(--font-family-mono, "Cascadia Mono", monospace);
+  font-size: 12px;
+  line-height: 1.3;
+  font-style: normal;
+  white-space: nowrap;
+}
+
+.sectionRail > p {
+  overflow: hidden;
+  margin: 0;
+  color: var(--dh-api-muted);
+  font-size: 13px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sectionBody {
+  display: grid;
+  min-width: 0;
+  gap: 0;
+  padding: 12px;
+}
+
+.sectionToggle {
+  padding: 4px 10px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: transparent;
+  color: color-mix(in srgb, var(--dh-api-blue) 68%, var(--dh-api-ink) 32%);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.sectionToggle:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 46%, var(--dh-api-line));
+  background: color-mix(in srgb, var(--dh-api-blue) 10%, transparent);
+}
+
+/* 重点模式下只有一个分组，展开控件无意义。 */
+.workbench[data-view-mode="focus"] .sectionToggle {
+  display: none;
+}
+
+/* 未展开时只收起图表；分组头在两种状态下形态一致，切换不产生布局跳变。 */
+.workbench[data-view-mode="overview"]
+  .sectionChapter[data-expanded="false"]
+  .sectionBody {
+  display: none;
+}
+
+.sourceBadge {
+  display: grid;
+  grid-auto-flow: column;
+  align-items: center;
+  justify-content: end;
+  gap: 12px;
+  text-align: left;
+}
+
+.sourceBadge strong {
+  color: var(--dh-api-ink-soft);
   font-size: 12px;
   font-weight: 650;
   line-height: 1.25;
 }
 
-.sectionRail em {
-  color: var(--dh-api-muted);
-  font-family: var(--font-family-mono, "Cascadia Mono", monospace);
-  font-size: 8px;
-  line-height: 1.35;
-  font-style: normal;
-}
-
-.sectionBody {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-
-.sectionIntro {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 4px 7px;
-  border-left: 2px solid var(--dh-api-blue);
-  background: color-mix(in srgb, var(--dh-api-panel-3) 48%, transparent);
-}
-
-.sectionIntro > div:first-child {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.sectionIntro p {
-  display: none;
-}
-
-.sourceBadge {
-  display: flex;
-  flex-wrap: wrap;
-  flex: 0 0 auto;
-  gap: 6px;
-  justify-content: flex-end;
-  align-items: center;
-}
-
-.sourceBadge strong {
-  padding: 2px 7px;
-  border: 1px solid var(--dh-api-line);
-  border-radius: 999px;
-  color: var(--dh-api-ink-soft);
-  font-size: 10px;
-}
-
 .sourceBadge strong[data-tone="ok"] {
-  border-color: color-mix(in srgb, var(--dh-api-green) 45%, transparent);
   color: var(--dh-api-green);
 }
 
 .sourceBadge strong[data-tone="watch"] {
-  border-color: color-mix(in srgb, var(--dh-api-amber) 45%, transparent);
   color: var(--dh-api-amber);
 }
 
 .sourceBadge strong[data-tone="error"] {
-  border-color: color-mix(in srgb, var(--dh-api-red) 45%, transparent);
   color: var(--dh-api-red);
 }
 
 .sourceBadge span,
 .sourceBadge em {
+  overflow-wrap: normal;
   color: var(--dh-api-muted);
-  font-size: 9px;
+  font-family: var(--font-family-mono, "Cascadia Mono", monospace);
+  font-size: 12px;
   font-style: normal;
-  line-height: 1.2;
-}
-
-@media (min-width: 1201px) {
-  .sectionIntro {
-    position: absolute;
-    z-index: 1;
-    top: 58px;
-    left: 9px;
-    display: block;
-    width: 60px;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    pointer-events: none;
-  }
-
-  .sectionIntro > div:first-child {
-    display: none;
-  }
-
-  .sourceBadge {
-    display: grid;
-    gap: 2px;
-    justify-content: start;
-  }
-
-  .sourceBadge strong {
-    max-width: 60px;
-    padding: 0;
-    overflow: hidden;
-    border: 0;
-    border-radius: 0;
-    font-size: 8px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .sourceBadge span,
-  .sourceBadge em {
-    display: block;
-    max-width: 60px;
-    overflow: hidden;
-    font-size: 7px;
-    line-height: 1.25;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .chartGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 5px;
+  gap: 12px;
+  min-width: 0;
 }
 
 .chartCard {
@@ -345,53 +383,127 @@
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--dh-api-line-soft);
-  border-radius: 6px;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--dh-api-panel-3) 24%, transparent),
-      transparent 24%
-    ),
-    var(--dh-api-panel);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
 }
 
 .chartCard > header {
-  padding: 3px 7px 2px;
-  border-bottom: 1px solid var(--dh-api-line-soft);
+  padding: 11px 14px 9px;
+  overflow: hidden;
 }
 
 .chartCard h3 {
   margin: 0;
   color: var(--dh-api-ink);
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 650;
-  line-height: 1.25;
-}
-
-.chartCard header p {
-  margin: 2px 0 0;
+  line-height: 1.35;
   overflow: hidden;
-  color: var(--dh-api-muted);
-  font-family: var(--font-family-mono, "Cascadia Mono", monospace);
-  font-size: 8px;
-  line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.chartCard header p {
+  margin: 4px 0 0;
+  color: var(--dh-api-muted);
+  font-family: var(--font-family-mono, "Cascadia Mono", monospace);
+  font-size: 13px;
+  line-height: 1.3;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+
 .chartCanvas {
   display: grid;
+  align-content: start;
   min-width: 0;
   place-items: stretch;
-  padding: 0 2px;
+  padding: 0 14px 12px;
+}
+
+/* 阅读提示是辅助说明，权重必须低于标题与副标题。 */
+.chartReadingGuide {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  margin: 0 0 8px;
+  padding: 0;
+  color: color-mix(in srgb, var(--dh-api-muted) 82%, transparent);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.chartReadingGuide strong {
+  flex: 0 0 auto;
+  color: var(--dh-api-blue);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.yieldQuoteComparison {
+  display: grid;
+  align-content: center;
+  gap: 9px;
+  min-height: calc(var(--market-chart-canvas-height) - 32px);
+  padding: 8px 5px;
+}
+
+.yieldQuoteComparison > p {
+  margin: 0;
+  color: var(--dh-api-amber);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.yieldQuoteComparison dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  gap: 6px;
+  margin: 0;
+}
+
+.yieldQuoteComparison dl > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 7px 9px 6px;
+  border-left: 2px solid var(--dh-api-blue);
+  background: color-mix(in srgb, var(--dh-api-panel-3) 58%, transparent);
+}
+
+.yieldQuoteComparison dt {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.yieldQuoteComparison dd {
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-family: var(--font-family-mono, "Cascadia Mono", monospace);
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.yieldQuoteComparison dd span {
+  margin-left: 3px;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .chartEmpty {
   display: grid;
   min-height: var(--market-chart-canvas-height);
+  padding: 12px;
   place-items: center;
   color: var(--dh-api-muted);
-  font-size: 10px;
+  font-size: 13px;
+  text-align: center;
 }
 
 .chartCard > footer {
@@ -399,62 +511,176 @@
 }
 
 @media (max-width: 1200px) {
+  .workbench {
+    --market-chart-canvas-height: 156px;
+    --market-nav-block-size: 89px;
+  }
+
+  .workbench[data-view-mode="focus"] {
+    --market-chart-canvas-height: 208px;
+  }
+
   .sectionNav {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .sectionChapter {
-    grid-template-columns: 1fr;
+  .sectionNavButton:nth-child(3n) {
+    border-right: 0;
   }
 
-  .sectionRail {
-    grid-template-columns: auto 1fr auto;
-    align-items: center;
-    padding: 0 0 6px;
-    border-right: 0;
+  .sectionNavButton:nth-child(-n + 3) {
     border-bottom: 1px solid var(--dh-api-line-soft);
+  }
+
+  /* 窄屏优先保留标题与数据状态，说明与英文标识让位。 */
+  .sectionRail {
+    grid-template-columns: 22px auto minmax(0, 1fr) auto;
+    gap: 10px;
+    padding: 8px 10px;
+  }
+
+  .sectionRail > em,
+  .sectionRail > p {
+    display: none;
+  }
+
+  .sourceBadge {
+    gap: 10px;
+  }
+
+  .chartGrid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
 @media (max-width: 980px) {
-  .workbench {
-    --market-chart-canvas-height: 148px;
+  .workbenchHeader {
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
-  .chartGrid {
-    grid-template-columns: 1fr;
+  .modeToggle {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: min(100%, 320px);
+    justify-self: start;
+  }
+
+  .headerStatus {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .modeButton {
+    min-height: 36px;
   }
 }
 
 @media (max-width: 720px) {
+  :global(.workbench-shell-root):has(.workbench),
+  :global(.workbench-main-column):has(.workbench) {
+    overflow-x: clip;
+    overflow-y: visible;
+  }
+
   .workbench {
-    padding: 14px;
+    --market-chart-canvas-height: 168px;
+    --market-nav-block-size: 89px;
   }
 
-  .workbenchHeader,
-  .sectionIntro {
-    display: grid;
+  .workbench[data-view-mode="focus"] {
+    --market-chart-canvas-height: 208px;
   }
 
-  .sectionIntro > div:first-child {
-    display: grid;
-    gap: 4px;
+  .workbenchHeader {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    padding: 12px 10px 10px;
   }
 
-  .sectionIntro p {
-    white-space: normal;
+  .workbenchHeader > div:first-child {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .workbenchHeader h2 {
+    font-size: 15px;
+  }
+
+  .modeToggle {
+    grid-column: 1;
+    grid-row: 3;
+    width: 100%;
+  }
+
+  .modeButton {
+    min-height: 44px;
   }
 
   .headerStatus {
-    min-width: 0;
+    grid-column: 1;
+    grid-row: 2;
+    justify-self: start;
     text-align: left;
   }
 
   .sectionNav {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-auto-flow: row;
+    overflow: visible;
+  }
+
+  .sectionNavButton {
+    min-height: 44px;
+    border-right: 1px solid var(--dh-api-line-soft);
+    border-bottom: 0;
+  }
+
+  .sectionNavButton:nth-child(3n) {
+    border-right: 0;
+  }
+
+  .sectionNavButton:nth-child(-n + 3) {
+    border-bottom: 1px solid var(--dh-api-line-soft);
+  }
+
+  .sectionNavButton:last-child {
+    border-right: 0;
+  }
+
+  .sectionRail {
+    grid-template-columns: 22px minmax(0, 1fr) auto;
+    row-gap: 8px;
+    min-width: 0;
   }
 
   .sourceBadge {
-    justify-items: start;
+    grid-column: 1 / -1;
+    justify-content: start;
+    gap: 10px;
+  }
+
+  .chartCard > header {
+    padding: 9px 10px 7px;
+  }
+
+  .chartCard h3 {
+    font-size: 12.5px;
+  }
+
+  .chartCard header p {
+    font-size: 13px;
+    overflow-wrap: anywhere;
+    -webkit-line-clamp: 2;
+  }
+
+  .chartCanvas {
+    padding-inline: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modeButton,
+  .sectionNavButton {
+    transition: none;
   }
 }

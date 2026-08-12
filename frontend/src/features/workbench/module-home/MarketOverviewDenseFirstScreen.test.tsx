@@ -12,11 +12,15 @@ import {
 import type {
   ApiEnvelope,
   ChoiceMacroLatestPayload,
+  ChoiceNewsEvent,
   ChoiceNewsEventsPayload,
   MacroVendorPayload,
   ResultMeta,
 } from "../../../api/contracts";
-import type { MacroToolkitStrategySummariesPayload } from "../../../api/macroToolkitClient";
+import type {
+  MacroToolkitIndicator,
+  MacroToolkitStrategySummariesPayload,
+} from "../../../api/macroToolkitClient";
 import { MarketOverviewDenseFirstScreen } from "./MarketOverviewDenseFirstScreen";
 import type {
   ModuleHomeSourceQueries,
@@ -124,6 +128,47 @@ function macroResult() {
   };
 }
 
+function macroIndicator(
+  overrides: Partial<MacroToolkitIndicator> &
+    Pick<MacroToolkitIndicator, "key" | "label" | "latest_value">,
+): MacroToolkitIndicator {
+  return {
+    alias: overrides.key,
+    group: "macro",
+    unit: "%",
+    row_count: 12,
+    latest_date: "2026-08-03",
+    previous_value: null,
+    change: null,
+    change_pct: null,
+    source: "choice",
+    series_id: overrides.key,
+    quality: "ok",
+    ...overrides,
+  };
+}
+
+function denseNewsEvent(
+  eventKey: string,
+  receivedAt: string,
+  topicCode: string,
+): ChoiceNewsEvent {
+  return {
+    event_key: eventKey,
+    received_at: receivedAt,
+    group_id: "macro",
+    content_type: "news",
+    serial_id: 1,
+    request_id: 1,
+    error_code: 0,
+    error_msg: "",
+    topic_code: topicCode,
+    item_index: 0,
+    payload_text: eventKey,
+    payload_json: null,
+  };
+}
+
 function macroQuery(
   overrides: Partial<NonNullable<ModuleHomeSourceQueries["macroToolkitAnalysis"]>> = {},
 ): ModuleHomeSourceQueries["macroToolkitAnalysis"] {
@@ -202,16 +247,13 @@ describe("MarketOverviewDenseFirstScreen", () => {
         view={baseView()}
         queries={queries}
         latestTradeDate="2026-08-03"
-        formalTradeDate="2026-08-03"
-        isRefreshing={false}
-        refreshStatus=""
-        refreshError=""
-        onRefreshData={() => undefined}
+        searchValue=""
       />,
       client,
     );
 
-    expect(screen.getAllByText("分析观察")).toHaveLength(2);
+    // 章节导航已上移到页壳层，组件内只保留分区头一处标题。
+    expect(screen.getAllByText("分析观察")).toHaveLength(1);
     expect(screen.getByText("仅供复核 · 非正式")).toBeInTheDocument();
     expect(
       screen.getByTestId("module-home-market-dense-observation-title"),
@@ -275,11 +317,7 @@ describe("MarketOverviewDenseFirstScreen", () => {
         view={baseView()}
         queries={queries}
         latestTradeDate="2026-08-03"
-        formalTradeDate="2026-08-03"
-        isRefreshing={false}
-        refreshStatus=""
-        refreshError=""
-        onRefreshData={() => undefined}
+        searchValue=""
       />,
       client,
     );
@@ -324,6 +362,154 @@ describe("MarketOverviewDenseFirstScreen", () => {
     ).not.toHaveTextContent(
       "Reduce intraday duration adds until funding normalizes.",
     );
+  });
+
+  it("explains how to read the E/F evidence and the D liquidity comparison", () => {
+    const client = createApiClient({ mode: "mock" });
+    const macro = {
+      ...macroResult(),
+      indicators: [
+        macroIndicator({
+          key: "pmi",
+          label: "PMI（制造业）",
+          latest_value: 49.3,
+          previous_value: 49.4,
+          change: -0.1,
+          unit: "index",
+        }),
+      ],
+    };
+    const news = newsEnvelope();
+    news.result.total_rows = 11108;
+    news.result.excluded_future_rows = 2;
+    news.result.events = [
+      denseNewsEvent("event-a", "2026-08-03T08:15:00", "major news"),
+      denseNewsEvent("event-b", "2026-08-03T10:15:00", "vendor.topic_1"),
+    ];
+    const queries = {
+      macroToolkitAnalysis: macroQuery({
+        data: { result: macro, result_meta: resultMeta() },
+      }),
+      newsEvents: {
+        data: news,
+        isLoading: false,
+        isFetching: false,
+        isError: false,
+        error: null,
+      },
+    } as unknown as ModuleHomeSourceQueries;
+
+    renderWithProviders(
+      <MarketOverviewDenseFirstScreen
+        view={baseView()}
+        queries={queries}
+        latestTradeDate="2026-08-03"
+        searchValue=""
+      />,
+      client,
+    );
+
+    expect(screen.getByText("前值 → 最新值")).toBeInTheDocument();
+    expect(screen.getByText("49.4 index")).toBeInTheDocument();
+    expect(screen.getByText("49.3 index")).toBeInTheDocument();
+    expect(screen.getByText("-0.1 index")).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("PMI（制造业）前值与最新值比较"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "DR007 看市场资金利率；7D逆回购看政策操作利率；SHIBOR 看期限报价。",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("最新有效样本 2 / 当前查询总记录 11,108"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("等待同一报告日的有效收益率报价；不补点、不插值。"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("颜色图例：无、较少、较多"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(
+        "主要新闻（原码 major news）· received_at 08:00–09:59 · 1 条",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("主要新闻")).not.toHaveLength(0);
+    expect(screen.getAllByText("vendor.topic_1")).not.toHaveLength(0);
+    expect(
+      screen.getByText(
+        "有效样本区间 2026-08-03–2026-08-03 · 按 received_at 两小时分桶 · 颜色仅代表样本内相对接收密度，不代表重要性、情绪或影响 · 已排除未来记录 2 条",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("states when news rows have no valid received_at bucket", () => {
+    const client = createApiClient({ mode: "mock" });
+    const news = newsEnvelope();
+    news.result.events = [
+      denseNewsEvent("event-without-time", "日期未返回", "vendor.topic_1"),
+    ];
+    const queries = {
+      macroToolkitAnalysis: macroQuery(),
+      newsEvents: {
+        data: news,
+        isLoading: false,
+        isFetching: false,
+        isError: false,
+        error: null,
+      },
+    } as unknown as ModuleHomeSourceQueries;
+
+    renderWithProviders(
+      <MarketOverviewDenseFirstScreen
+        view={baseView()}
+        queries={queries}
+        latestTradeDate="2026-08-03"
+        searchValue=""
+      />,
+      client,
+    );
+
+    expect(screen.getByText("无可分桶事件")).toBeInTheDocument();
+  });
+
+  it("renders a dash as the tape report date when a series is missing", () => {
+    const client = createApiClient({ mode: "mock" });
+    const queries = {
+      macroToolkitAnalysis: macroQuery(),
+      newsEvents: {
+        data: newsEnvelope(),
+        isLoading: false,
+        isFetching: false,
+        isError: false,
+        error: null,
+      },
+    } as unknown as ModuleHomeSourceQueries;
+
+    renderWithProviders(
+      <MarketOverviewDenseFirstScreen
+        view={baseView()}
+        queries={queries}
+        latestTradeDate="2026-08-03"
+        searchValue=""
+      />,
+      client,
+    );
+
+    const tape = screen.getByLabelText("市场行情带");
+    const reportDates = [...tape.querySelectorAll("time")].map(
+      (node) => node.textContent,
+    );
+
+    expect(reportDates).toHaveLength(8);
+    expect(reportDates.every((text) => text === "—")).toBe(true);
+    expect(
+      screen.queryByText("10Y国债：后端未返回匹配序列"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByTitle("10Y国债：后端未返回匹配序列"),
+    ).toBeInTheDocument();
   });
 });
 

@@ -42,6 +42,13 @@ test.describe("market overview browser smoke", () => {
     const root = page.getByTestId("module-workbench-home");
     await expect(root).not.toHaveText(suspiciousTextPattern);
 
+    // Nocturne scope 生效：页根声明 scope，--dh-api-bg 解析为 Nocturne 底色。
+    await expect(root).toHaveAttribute("data-moss-theme-scope", "market-overview");
+    const canvasToken = await root.evaluate((node) =>
+      getComputedStyle(node).getPropertyValue("--dh-api-bg").trim(),
+    );
+    expect(canvasToken).toBe("#161826");
+
     const subpageNav = page.getByTestId("module-home-market-subpage-nav");
     const chapterNav = page.getByTestId("module-home-market-chapter-nav");
     const dense = page.getByTestId("module-home-market-dense");
@@ -134,19 +141,16 @@ test.describe("market overview browser smoke", () => {
     await expect(judgment).toBeVisible();
     await expect(judgment).toContainText("DR007");
 
-    const collapsedSearchBox = await search.boundingBox();
-
+    // 工具栏搜索框是常驻控件（不再做 30px 图标化折叠），聚焦不改变几何。
     expectBoxWithinViewport(await subpageNav.boundingBox(), 390, "subpage nav");
     expectBoxWithinViewport(await chapterNav.boundingBox(), 390, "chapter nav");
     expectBoxWithinViewport(await toolbar.boundingBox(), 390, "toolbar");
-    expectBoxWithinViewport(collapsedSearchBox, 390, "search rail");
+    expectBoxWithinViewport(await search.boundingBox(), 390, "search box");
     expectBoxWithinViewport(await refresh.boundingBox(), 390, "refresh button");
 
     await search.locator("input").focus();
     await expect(search.locator("input")).toBeFocused();
-    const expandedSearchBox = await search.boundingBox();
-    expect(expandedSearchBox?.width ?? 0).toBeGreaterThan(collapsedSearchBox?.width ?? 0);
-    expectBoxWithinViewport(expandedSearchBox, 390, "expanded search rail");
+    expectBoxWithinViewport(await search.boundingBox(), 390, "focused search box");
 
     await page.locator("#market-overview-evidence").scrollIntoViewIfNeeded();
     const signalCards = page.locator("#market-overview-signals article");

@@ -3,7 +3,10 @@ import type {
   ChoiceMacroLatestPoint,
 } from "../../../api/contracts";
 import type { EChartsOption } from "../../../lib/echarts";
-import { dhApiTokens } from "../../../theme/designSystem";
+import {
+  MARKET_CHART_STATIC_PALETTE,
+  type MarketChartPalette,
+} from "./marketChartPalette";
 import type { MarketFinancialChartSpec } from "./marketFinancialChartsModel";
 
 export type DenseLiquidityPoint = {
@@ -11,18 +14,52 @@ export type DenseLiquidityPoint = {
   value: number;
 };
 
+export type DenseLiquiditySeriesRole =
+  | "市场资金利率"
+  | "政策操作利率"
+  | "期限报价";
+
+export type DenseLiquiditySeriesStatus =
+  | "ready"
+  | "insufficient-observations";
+
 export type DenseLiquiditySeries = {
   key: string;
   label: string;
+  role: DenseLiquiditySeriesRole;
+  readingHint: string;
+  status: DenseLiquiditySeriesStatus;
   unit: string;
   latestDate: string;
   points: DenseLiquidityPoint[];
+};
+
+export type DenseLiquidityChartStatus =
+  | "ready"
+  | "partial"
+  | "no-data"
+  | "insufficient-observations"
+  | "incompatible-units";
+
+export type DenseLiquiditySeriesRoleItem = Pick<
+  DenseLiquiditySeries,
+  "key" | "label" | "role" | "readingHint" | "status"
+> & {
+  observationCount: number;
+};
+
+export type DenseLiquidityChartSpec = MarketFinancialChartSpec & {
+  status: DenseLiquidityChartStatus;
+  readingHint: string;
+  seriesRoles: DenseLiquiditySeriesRoleItem[];
 };
 
 const LIQUIDITY_SERIES = [
   {
     key: "dr007",
     label: "DR007",
+    role: "市场资金利率",
+    readingHint: "观察 DR007 市场资金利率走势",
     matches: (point: ChoiceMacroLatestPoint) =>
       point.series_id === "CA.DR007" ||
       /\bDR\s*0?07\b/i.test(`${point.series_id} ${point.series_name}`),
@@ -30,6 +67,8 @@ const LIQUIDITY_SERIES = [
   {
     key: "repo-7d",
     label: "7D逆回购",
+    role: "政策操作利率",
+    readingHint: "观察公开市场操作7天中标利率",
     matches: (point: ChoiceMacroLatestPoint) =>
       point.series_id === "EMM00088132" ||
       /逆回购.*7天|7天.*逆回购/i.test(point.series_name),
@@ -37,12 +76,16 @@ const LIQUIDITY_SERIES = [
   {
     key: "shibor-1m",
     label: "SHIBOR 1M",
+    role: "期限报价",
+    readingHint: "观察1个月期限报价",
     matches: (point: ChoiceMacroLatestPoint) =>
       point.series_id === "NCD.SHIBOR.1M",
   },
   {
     key: "shibor-3m",
     label: "SHIBOR 3M",
+    role: "期限报价",
+    readingHint: "观察3个月期限报价",
     matches: (point: ChoiceMacroLatestPoint) =>
       point.series_id === "NCD.SHIBOR.3M",
   },
@@ -75,6 +118,8 @@ function toDenseLiquiditySeries(
   point: ChoiceMacroLatestPoint,
   key: string,
   label: string,
+  role: DenseLiquiditySeriesRole,
+  readingHint: string,
 ): DenseLiquiditySeries {
   const observations = new Map(
     (point.recent_points ?? []).map((recent) => [
@@ -83,14 +128,18 @@ function toDenseLiquiditySeries(
     ]),
   );
   observations.set(point.trade_date, point.value_numeric);
+  const points = [...observations.entries()]
+    .map(([date, value]) => ({ date, value }))
+    .sort((left, right) => left.date.localeCompare(right.date));
   return {
     key,
     label,
+    role,
+    readingHint,
+    status: points.length >= 2 ? "ready" : "insufficient-observations",
     unit: point.unit,
     latestDate: point.trade_date,
-    points: [...observations.entries()]
-      .map(([date, value]) => ({ date, value }))
-      .sort((left, right) => left.date.localeCompare(right.date)),
+    points,
   };
 }
 
@@ -106,6 +155,8 @@ export function buildDenseLiquiditySeries(
             point,
             definition.key,
             definition.label,
+            definition.role,
+            definition.readingHint,
           ),
         ]
       : [];
@@ -114,8 +165,14 @@ export function buildDenseLiquiditySeries(
 
 export function buildDenseLiquidityChartSpec(
   rates: ChoiceMacroLatestPayload | undefined,
-): MarketFinancialChartSpec {
+  palette: MarketChartPalette = MARKET_CHART_STATIC_PALETTE,
+): DenseLiquidityChartSpec {
   const liquiditySeries = buildDenseLiquiditySeries(rates);
+  const plottableSeries = liquiditySeries.filter(
+    (series) => series.status === "ready",
+  );
+  const insufficientSeriesCount =
+    liquiditySeries.length - plottableSeries.length;
   const unit = sharedLiquidityUnit(liquiditySeries);
   const dates = [
     ...new Set(
@@ -125,14 +182,46 @@ export function buildDenseLiquidityChartSpec(
     ),
   ].sort();
   const colors = [
-    dhApiTokens.color.blue,
-    dhApiTokens.color.amber,
-    dhApiTokens.color.green,
-    dhApiTokens.color.red,
+    palette.accent,
+    palette.amber,
+    palette.green,
+    palette.red,
   ];
   const lineTypes = ["solid", "dashed", "solid", "solid"] as const;
+  const status: DenseLiquidityChartStatus =
+    liquiditySeries.length === 0
+      ? "no-data"
+      : unit == null
+        ? "incompatible-units"
+        : plottableSeries.length === 0
+          ? "insufficient-observations"
+          : insufficientSeriesCount > 0
+            ? "partial"
+            : "ready";
+  const dateRange = `${dates[0] ?? "日期未返回"}–${
+    dates.at(-1) ?? "日期未返回"
+  }`;
+  const readingHint =
+    "DR007 看市场资金利率；7D逆回购看政策操作利率；SHIBOR 看期限报价。";
+  const seriesRoles = liquiditySeries.map(
+    ({
+      key,
+      label,
+      role,
+      readingHint: seriesReadingHint,
+      status: seriesStatus,
+      points,
+    }) => ({
+      key,
+      label,
+      role,
+      readingHint: seriesReadingHint,
+      observationCount: points.length,
+      status: seriesStatus,
+    }),
+  );
   const option: EChartsOption | null =
-    dates.length === 0 || unit == null
+    dates.length === 0 || unit == null || plottableSeries.length === 0
       ? null
       : {
           animationDuration: 320,
@@ -140,10 +229,10 @@ export function buildDenseLiquidityChartSpec(
           tooltip: {
             trigger: "axis",
             confine: true,
-            backgroundColor: dhApiTokens.color.panel2,
-            borderColor: dhApiTokens.color.lineSoft,
+            backgroundColor: palette.panel2,
+            borderColor: palette.lineSoft,
             textStyle: {
-              color: dhApiTokens.color.ink,
+              color: palette.ink,
               fontSize: 10,
               fontFamily: '"Cascadia Mono", monospace',
             },
@@ -158,7 +247,7 @@ export function buildDenseLiquidityChartSpec(
             itemWidth: 12,
             itemHeight: 6,
             textStyle: {
-              color: dhApiTokens.color.inkSoft,
+              color: palette.inkSoft,
               fontSize: 8,
             },
           },
@@ -174,14 +263,14 @@ export function buildDenseLiquidityChartSpec(
             boundaryGap: false,
             data: dates,
             axisLabel: {
-              color: dhApiTokens.color.inkMuted,
+              color: palette.inkMuted,
               fontSize: 8,
               hideOverlap: true,
               formatter: (value: string) => value.slice(5),
             },
             axisLine: {
               lineStyle: {
-                color: dhApiTokens.color.lineSoft,
+                color: palette.lineSoft,
               },
             },
             axisTick: { show: false },
@@ -191,11 +280,11 @@ export function buildDenseLiquidityChartSpec(
             scale: true,
             name: unit,
             nameTextStyle: {
-              color: dhApiTokens.color.inkMuted,
+              color: palette.inkMuted,
               fontSize: 8,
             },
             axisLabel: {
-              color: dhApiTokens.color.inkMuted,
+              color: palette.inkMuted,
               fontSize: 8,
               formatter: (value: number) => value.toFixed(2),
             },
@@ -203,26 +292,39 @@ export function buildDenseLiquidityChartSpec(
             axisTick: { show: false },
             splitLine: {
               lineStyle: {
-                color: dhApiTokens.color.lineSoft,
+                color: palette.lineSoft,
                 type: "dashed",
               },
             },
           },
-          series: liquiditySeries.map((series, index) => {
+          series: plottableSeries.map((series) => {
+            const displayIndex = liquiditySeries.findIndex(
+              (candidate) => candidate.key === series.key,
+            );
+            const color = colors[displayIndex] ?? colors[0];
             const byDate = new Map(
               series.points.map((point) => [point.date, point.value]),
+            );
+            const hasVisibleLineSegment = dates.some(
+              (date, dateIndex) =>
+                dateIndex > 0 &&
+                byDate.has(dates[dateIndex - 1]) &&
+                byDate.has(date),
             );
             return {
               name: series.label,
               type: "line",
               connectNulls: false,
-              showSymbol: false,
+              showSymbol: !hasVisibleLineSegment,
               symbol: "circle",
+              symbolSize: 5,
               smooth: false,
               lineStyle: {
                 width: 1.5,
-                type: lineTypes[index] ?? "solid",
+                type: lineTypes[displayIndex] ?? "solid",
+                color,
               },
+              itemStyle: { color },
               emphasis: {
                 focus: "series",
               },
@@ -234,18 +336,27 @@ export function buildDenseLiquidityChartSpec(
     key: "liquidity-tenor",
     title: "流动性期限与资金利率",
     subtitle:
-      unit == null
-        ? `${dates[0] ?? "日期未返回"}–${
-          dates.at(-1) ?? "日期未返回"
-          } · ${liquiditySeries.length} 条正式序列 · 单位缺失或不一致未绘制`
-        : `${dates[0] ?? "日期未返回"}–${
-            dates.at(-1) ?? "日期未返回"
-          } · ${liquiditySeries.length} 条正式序列${unit ? ` · ${unit}` : ""}`,
+      status === "no-data"
+        ? "日期未返回 · 暂无正式序列 · 未绘制"
+        : status === "incompatible-units"
+          ? `${dateRange} · ${liquiditySeries.length} 条正式序列 · 单位缺失或不一致未绘制`
+          : status === "insufficient-observations"
+            ? `${dateRange} · ${liquiditySeries.length} 条正式序列 · 均少于 2 个观测，未绘制趋势`
+            : status === "partial"
+              ? `${dateRange} · ${liquiditySeries.length} 条正式序列 · ${plottableSeries.length} 条已绘制 · ${insufficientSeriesCount} 条观测不足${unit ? ` · ${unit}` : ""}`
+              : `${dateRange} · ${liquiditySeries.length} 条正式序列${unit ? ` · ${unit}` : ""}`,
     footnote:
-      unit == null
-        ? "直接使用正式利率接口 recent_points；若所选流动性序列单位缺失或不一致，则前端不共轴绘制、不推导换算。"
-        : "直接使用正式利率接口 recent_points；不同报告日保留空值，不插值、不派生利差。",
+      status === "incompatible-units"
+        ? "单位缺失或不一致时不共轴绘制、不推导换算。"
+        : status === "insufficient-observations"
+          ? "少于 2 个观测的序列不绘制，避免不可见假线。"
+          : status === "no-data"
+            ? "后端暂未返回可绘制的利率序列。"
+            : "直接使用 recent_points；空值不插值、不派生利差。",
     option,
     height: 232,
+    status,
+    readingHint,
+    seriesRoles,
   };
 }

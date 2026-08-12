@@ -1,7 +1,7 @@
 .workbench {
   display: grid;
-  gap: 8px;
-  padding: 9px 12px;
+  gap: 12px;
+  padding: 12px 14px 14px;
   overflow: hidden;
   border: 1px solid var(--dh-api-line);
   border-radius: var(--dh-api-radius);
@@ -26,17 +26,22 @@
   min-width: 0;
 }
 
+/* 编号分区头对齐首页语言：小号 mono 编号 + 14px 标题。 */
 .workbenchHeader > div:first-child > span {
-  color: var(--dh-api-blue);
-  font-size: 16px;
+  min-width: 22px;
+  color: var(--dh-api-muted);
+  font-family: var(--font-family-mono, "Cascadia Mono", monospace);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
   font-weight: 700;
   letter-spacing: 0;
 }
 
 .workbenchHeader h2 {
   margin: 0;
-  font-size: 16px;
-  line-height: 1.25;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
 }
 
 .workbenchHeader p {
@@ -54,21 +59,14 @@
   text-align: right;
 }
 
-.coverageSummary strong {
-  color: var(--dh-api-blue);
-  font-family: var(--font-family-mono, "Cascadia Mono", monospace);
-  font-size: 24px;
-  line-height: 1;
-}
-
 .coverageSummary > span {
   color: var(--dh-api-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .coverageSummary em {
   color: var(--dh-api-ink-soft);
-  font-size: 10px;
+  font-size: 12px;
   font-style: normal;
 }
 
@@ -129,7 +127,7 @@
 .workbench :global(.ant-select-selector) {
   min-height: 22px !important;
   height: 22px !important;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .workbench :global(.ant-select-selection-item) {
@@ -162,7 +160,7 @@
 
 .envelope {
   display: grid;
-  gap: 6px;
+  gap: 10px;
 }
 
 @media (min-width: 1101px) {
@@ -198,11 +196,11 @@
 }
 
 .envelopeState span {
-  padding: 3px 8px;
+  padding: 3px 9px;
   border: 1px solid var(--dh-api-line);
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius);
   color: var(--dh-api-ink-soft);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .envelopeState span[data-tone="ok"] {
@@ -222,7 +220,7 @@
 
 .envelopeState em {
   color: var(--dh-api-muted);
-  font-size: 10px;
+  font-size: 12px;
   font-style: normal;
 }
 
@@ -253,16 +251,16 @@
 
 .scalarGrid > div {
   display: grid;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
-  min-height: 46px;
-  padding: 6px 8px;
+  min-height: 50px;
+  padding: 7px 9px;
   background: var(--dh-api-panel-2);
 }
 
 .scalarGrid dt {
   color: var(--dh-api-muted);
-  font-size: 9px;
+  font-size: 12px;
   letter-spacing: 0.03em;
 }
 
@@ -271,7 +269,7 @@
   min-width: 0;
   color: var(--dh-api-ink);
   font-family: var(--font-family-mono, "Cascadia Mono", monospace);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
@@ -327,7 +325,7 @@
 .metaPanel > summary em,
 .additionalMeta > summary em {
   color: var(--dh-api-muted);
-  font-size: 10px;
+  font-size: 12px;
   font-style: normal;
 }
 
@@ -358,7 +356,7 @@
 .arraySummary span,
 .arraySummary em {
   color: var(--dh-api-muted);
-  font-size: 10px;
+  font-size: 12px;
   font-style: normal;
 }
 
@@ -376,14 +374,14 @@
 .arrayIndex {
   color: var(--dh-api-blue);
   font-family: var(--font-family-mono, "Cascadia Mono", monospace);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .recordTableSection {
   display: grid;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
-  padding: 8px;
+  padding: 10px;
   border: 1px solid var(--dh-api-line-soft);
   border-radius: var(--dh-api-radius);
   background: var(--dh-api-panel-2);
@@ -408,12 +406,12 @@
   align-items: center;
   gap: 8px;
   color: var(--dh-api-muted);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .searchField input {
   width: 100%;
-  height: 24px;
+  height: 26px;
   padding: 0 9px;
   border: 0;
   border-bottom: 1px solid var(--dh-api-line);
@@ -422,7 +420,7 @@
   color: var(--dh-api-ink);
   background: transparent;
   font-family: var(--font-family-mono, "Cascadia Mono", monospace);
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .searchField input::placeholder {
@@ -442,13 +440,13 @@
 .recordTableSection > header em,
 .newsList > header span {
   color: var(--dh-api-muted);
-  font-size: 10px;
+  font-size: 12px;
   font-style: normal;
 }
 
 .tableScroll {
   max-width: 100%;
-  max-height: 148px;
+  max-height: 244px;
   overflow: auto;
   border: 1px solid var(--dh-api-line-soft);
   scrollbar-color: color-mix(in srgb, var(--dh-api-blue) 38%, transparent)
@@ -460,14 +458,14 @@
   width: max-content;
   min-width: 100%;
   border-collapse: collapse;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .tableScroll th,
 .tableScroll td {
   max-width: 280px;
-  min-height: 22px;
-  padding: 2px 5px;
+  min-height: 26px;
+  padding: 4px 7px;
   border-right: 1px solid var(--dh-api-line-soft);
   border-bottom: 1px solid var(--dh-api-line-soft);
   text-align: left;
@@ -479,7 +477,7 @@
   top: 0;
   z-index: 1;
   color: var(--dh-api-ink-soft);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 650;
   white-space: nowrap;
   background: var(--dh-api-panel-3);
@@ -566,7 +564,7 @@
   background: transparent;
   cursor: pointer;
   font: inherit;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .longValueActions button:hover,
@@ -580,8 +578,8 @@
 
 .metaBody {
   display: grid;
-  gap: 6px;
-  padding: 7px;
+  gap: 8px;
+  padding: 9px;
 }
 
 .additionalMeta {
@@ -605,7 +603,7 @@
   justify-content: flex-start;
   overflow: hidden;
   color: var(--dh-api-ink-soft);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.5;
   text-overflow: ellipsis;
 }
@@ -613,7 +611,7 @@
 .emptyValue,
 .scalarValue {
   color: var(--dh-api-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .emptyValue {
@@ -625,7 +623,7 @@
 .auditSummary {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
+  gap: 10px;
 }
 
 .auditPanel {
@@ -641,19 +639,19 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  min-height: 30px;
-  padding: 5px 8px;
+  min-height: 34px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--dh-api-line-soft);
 }
 
 .auditPanel > header strong {
   color: var(--dh-api-ink);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .auditPanel > header span {
   color: var(--dh-api-muted);
-  font-size: 9px;
+  font-size: 12px;
   white-space: nowrap;
 }
 
@@ -662,23 +660,23 @@
 .sourceChecklist {
   display: grid;
   min-width: 0;
-  padding: 5px 8px;
+  padding: 7px 10px;
 }
 
 .auditTree,
 .auditNews {
-  gap: 3px;
+  gap: 4px;
 }
 
 .auditTree > div,
 .auditNews > div {
   display: grid;
-  grid-template-columns: 54px minmax(0, 1fr) auto;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 6px;
-  min-height: 20px;
+  gap: 8px;
+  min-height: 25px;
   color: var(--dh-api-ink-soft);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .auditTree span,
@@ -717,10 +715,10 @@
 .sourceChecklist > div {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 2px 6px;
+  gap: 3px 8px;
   min-width: 0;
-  min-height: 29px;
-  padding: 4px 6px;
+  min-height: 34px;
+  padding: 5px 8px;
   background: var(--dh-api-panel);
 }
 
@@ -735,20 +733,20 @@
 
 .sourceChecklist span {
   color: var(--dh-api-ink-soft);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .sourceChecklist strong {
   color: var(--dh-api-ink);
   font-family: var(--font-family-mono, "Cascadia Mono", monospace);
-  font-size: 9px;
+  font-size: 12px;
   text-align: right;
 }
 
 .sourceChecklist em {
   grid-column: 1 / -1;
   color: var(--dh-api-green);
-  font-size: 8px;
+  font-size: 12px;
   font-style: normal;
 }
 

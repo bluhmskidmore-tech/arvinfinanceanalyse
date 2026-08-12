@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ResultMeta } from "../../../api/contracts";
 import ReactECharts from "../../../lib/echarts";
+import type { MarketChartPalette } from "./marketChartPalette";
 import {
   buildMarketFinancialChartSections,
   type MarketFinancialChartSpec,
@@ -22,9 +23,11 @@ const SECTION_KEYS = [
 
 type MarketFinancialChartsWorkbenchProps = {
   queries: ModuleHomeSourceQueries;
+  chartPalette?: MarketChartPalette;
 };
 
 type MarketFinancialSectionKey = MarketFinancialChartSection["key"];
+type MarketFinancialViewMode = "focus" | "overview";
 
 type MarketFinancialSectionQuery = {
   data?: { result_meta: ResultMeta };
@@ -52,17 +55,22 @@ function metaStatus(meta: ResultMeta | undefined) {
 function ChartCard({ chart }: { chart: MarketFinancialChartSpec }) {
   const { containerRef, ready, onChartReady } =
     useDeferredChartMount<HTMLDivElement>();
+  const yieldQuoteComparison =
+    chart.yieldCurveDisplay && chart.yieldCurveDisplay.kind !== "curve"
+      ? chart.yieldCurveDisplay
+      : undefined;
 
   return (
     <article
       className={styles.chartCard}
+      data-chart-view={yieldQuoteComparison?.kind ?? "chart"}
       data-testid={`module-home-market-chart-${chart.key}`}
     >
       <header>
         <div>
-          <h3>{chart.title}</h3>
+          <h3 title={chart.title}>{chart.title}</h3>
           <p title={`${chart.subtitle} · ${chart.footnote}`}>
-            {chart.subtitle} · {chart.footnote}
+            {chart.subtitle}
           </p>
         </div>
       </header>
@@ -70,7 +78,38 @@ function ChartCard({ chart }: { chart: MarketFinancialChartSpec }) {
         className={styles.chartCanvas}
         ref={containerRef}
       >
-        {!chart.option ? (
+        {chart.readingGuide ? (
+          <p className={styles.chartReadingGuide} role="note">
+            <strong>怎么看</strong>
+            <span>{chart.readingGuide}</span>
+          </p>
+        ) : null}
+        {yieldQuoteComparison ? (
+          <div
+            className={styles.yieldQuoteComparison}
+            aria-label={
+              yieldQuoteComparison.kind === "single-tenor"
+                ? `${yieldQuoteComparison.tenorLabel} 收益率报价`
+                : `${yieldQuoteComparison.uniqueTenorCount} 个期限收益率报价`
+            }
+            data-testid={`module-home-market-yield-${yieldQuoteComparison.kind}`}
+          >
+            <p>{yieldQuoteComparison.message}</p>
+            <dl>
+              {yieldQuoteComparison.rows.map((row) => (
+                <div key={`${row.curve}-${row.tenorLabel}-${row.tradeDate}`}>
+                  <dt>
+                    {row.curve} {row.tenorLabel}
+                  </dt>
+                  <dd>
+                    {row.value.toFixed(3)}
+                    <span>{row.unit}</span>
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        ) : !chart.option ? (
           <div className={styles.chartEmpty}>
             后端暂未返回足够的可绘制数据。
           </div>
@@ -125,8 +164,16 @@ function sectionAsOf(meta: ResultMeta | undefined) {
 
 export function MarketFinancialChartsWorkbench({
   queries,
+  chartPalette,
 }: MarketFinancialChartsWorkbenchProps) {
   const [activeKey, setActiveKey] = useState<MarketFinancialSectionKey>("rates");
+  const [expandedKeys, setExpandedKeys] = useState<
+    ReadonlySet<MarketFinancialSectionKey>
+  >(() => new Set<MarketFinancialSectionKey>([SECTION_KEYS[0]]));
+  const [viewMode, setViewMode] =
+    useState<MarketFinancialViewMode>("overview");
+  const viewModeRef = useRef<MarketFinancialViewMode>("overview");
+  const sectionNavRef = useRef<HTMLElement | null>(null);
   const sectionRefs = useRef<
     Partial<Record<MarketFinancialSectionKey, HTMLElement | null>>
   >({});
@@ -142,8 +189,10 @@ export function MarketFinancialChartsWorkbench({
         macro: queries.macroToolkitAnalysis?.data?.result,
         strategies: queries.macroToolkitStrategySummaries?.data?.result,
         news: queries.newsEvents?.data?.result,
+        palette: chartPalette,
       }),
     [
+      chartPalette,
       queries.choiceLatest?.data,
       queries.macroToolkitAnalysis?.data,
       queries.macroToolkitStrategySummaries?.data,
@@ -155,24 +204,47 @@ export function MarketFinancialChartsWorkbench({
   const headerAsOf = sectionAsOf(queries.marketRates?.data?.result_meta);
 
   useEffect(() => {
-    if (typeof IntersectionObserver === "undefined") return;
+    if (
+      viewMode !== "overview" ||
+      typeof IntersectionObserver === "undefined"
+    ) {
+      return;
+    }
 
+    let isTracking = true;
     const observer = new IntersectionObserver(
-      (entries) => {
-        const visibleEntry = [...entries]
-          .filter((entry) => entry.isIntersecting)
-          .sort(
-            (left, right) => right.intersectionRatio - left.intersectionRatio,
-          )[0];
-        if (!visibleEntry) return;
-        const key = visibleEntry.target.getAttribute(
-          "data-section-key",
-        ) as MarketFinancialSectionKey | null;
-        if (!key) return;
-        setActiveKey(key);
+      () => {
+        if (!isTracking || viewModeRef.current !== "overview") return;
+
+        const navigationAnchor = Math.max(
+          sectionNavRef.current?.getBoundingClientRect().bottom ?? 0,
+          0,
+        );
+        const viewportBottom =
+          window.innerHeight || document.documentElement.clientHeight;
+        const visibleSection = SECTION_KEYS.flatMap((key) => {
+          const section = sectionRefs.current[key];
+          if (!section) return [];
+
+          const bounds = section.getBoundingClientRect();
+          const intersectsVisibleArea =
+            bounds.bottom > navigationAnchor && bounds.top < viewportBottom;
+
+          return intersectsVisibleArea ? [{ bounds, key }] : [];
+        }).sort((left, right) => {
+          const leftDistance = Math.abs(
+            left.bounds.top - navigationAnchor,
+          );
+          const rightDistance = Math.abs(
+            right.bounds.top - navigationAnchor,
+          );
+          return leftDistance - rightDistance;
+        })[0];
+
+        if (visibleSection) setActiveKey(visibleSection.key);
       },
       {
-        rootMargin: "-72px 0px -42% 0px",
+        rootMargin: "0px",
         threshold: [0.25, 0.5, 0.75],
       },
     );
@@ -182,11 +254,30 @@ export function MarketFinancialChartsWorkbench({
       if (section) observer.observe(section);
     }
 
-    return () => observer.disconnect();
-  }, [sections]);
+    return () => {
+      isTracking = false;
+      observer.disconnect();
+    };
+  }, [sections, viewMode]);
+
+  function handleViewModeChange(nextViewMode: MarketFinancialViewMode) {
+    viewModeRef.current = nextViewMode;
+    setViewMode(nextViewMode);
+  }
+
+  function handleSectionToggle(key: MarketFinancialSectionKey) {
+    setExpandedKeys((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
 
   function handleSectionNav(key: MarketFinancialSectionKey) {
     setActiveKey(key);
+    if (viewMode === "focus") return;
+    setExpandedKeys((current) => new Set(current).add(key));
     const sectionNode = sectionRefs.current[key];
     if (typeof sectionNode?.scrollIntoView === "function") {
       sectionNode.scrollIntoView({
@@ -200,6 +291,7 @@ export function MarketFinancialChartsWorkbench({
     <section
       id="market-financial-charts-all"
       className={styles.workbench}
+      data-view-mode={viewMode}
       data-testid="module-home-market-financial-charts"
     >
       <header className={styles.workbenchHeader}>
@@ -207,8 +299,30 @@ export function MarketFinancialChartsWorkbench({
           <span>03</span>
           <h2>金融图表 · 12 张</h2>
           <p>
-            金融图表工作台保留 6 类金融问题与 12 张原始图表，改成章节化全展开浏览；导航只负责定位，不再隐藏任何一组数据。
+            全览按分组渐进展开：默认打开首个分组，其余收为摘要行，点开即看该组图表；重点模式只聚焦当前分组。
           </p>
+        </div>
+        <div
+          className={styles.modeToggle}
+          role="group"
+          aria-label="金融图表显示模式"
+        >
+          <button
+            type="button"
+            className={styles.modeButton}
+            aria-pressed={viewMode === "focus"}
+            onClick={() => handleViewModeChange("focus")}
+          >
+            重点
+          </button>
+          <button
+            type="button"
+            className={styles.modeButton}
+            aria-pressed={viewMode === "overview"}
+            onClick={() => handleViewModeChange("overview")}
+          >
+            全览
+          </button>
         </div>
         <div className={styles.headerStatus}>
           <span>数据日期</span>
@@ -216,17 +330,23 @@ export function MarketFinancialChartsWorkbench({
         </div>
       </header>
 
-      <div
+      <nav
+        ref={sectionNavRef}
         className={styles.sectionNav}
-        role="tablist"
         aria-label="金融图表分组导航"
       >
         {sections.map((section, index) => (
           <button
             key={section.key}
             type="button"
-            role="tab"
-            aria-selected={section.key === activeKey}
+            aria-current={
+              viewMode === "overview" && section.key === activeKey
+                ? "location"
+                : undefined
+            }
+            aria-pressed={
+              viewMode === "focus" ? section.key === activeKey : undefined
+            }
             aria-controls={`market-financial-section-${section.key}`}
             aria-label={section.title}
             className={styles.sectionNavButton}
@@ -238,13 +358,16 @@ export function MarketFinancialChartsWorkbench({
             <em>{section.charts.length} 张</em>
           </button>
         ))}
-      </div>
+      </nav>
 
       <div className={styles.sectionStack}>
         {sections.map((section, index) => {
           const query = sectionQuery(section.key, queries);
           const meta = query?.data?.result_meta;
           const status = sectionStatus(query);
+          const isExpanded =
+            viewMode === "focus" || expandedKeys.has(section.key);
+          const bodyId = `market-financial-section-body-${section.key}`;
 
           return (
             <article
@@ -253,6 +376,7 @@ export function MarketFinancialChartsWorkbench({
               className={styles.sectionChapter}
               data-section-key={section.key}
               data-active={section.key === activeKey ? "true" : "false"}
+              data-expanded={isExpanded ? "true" : "false"}
               ref={(node) => {
                 sectionRefs.current[section.key] = node;
               }}
@@ -262,30 +386,34 @@ export function MarketFinancialChartsWorkbench({
                 <span>{index + 1}</span>
                 <strong>{section.title}</strong>
                 <em>{section.kicker}</em>
+                <p title={section.description}>{section.description}</p>
+                <div className={styles.sourceBadge}>
+                  <strong
+                    data-tone={status.tone}
+                    data-testid={`module-home-market-section-status-${section.key}`}
+                  >
+                    {status.label}
+                  </strong>
+                  <span>{sectionAsOf(meta)}</span>
+                  {section.key === "news" ? (
+                    <em>最新 {newsSampleSize} 条样本</em>
+                  ) : (
+                    <em>{section.charts.length} 张图表</em>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className={styles.sectionToggle}
+                  aria-controls={bodyId}
+                  aria-expanded={isExpanded}
+                  data-testid={`module-home-market-section-toggle-${section.key}`}
+                  onClick={() => handleSectionToggle(section.key)}
+                >
+                  {isExpanded ? "收起" : "展开"}
+                </button>
               </aside>
 
-              <div className={styles.sectionBody}>
-                <div className={styles.sectionIntro}>
-                  <div>
-                    <span>{section.kicker}</span>
-                    <p>{section.description}</p>
-                  </div>
-                  <div className={styles.sourceBadge}>
-                    <strong
-                      data-tone={status.tone}
-                      data-testid={`module-home-market-section-status-${section.key}`}
-                    >
-                      {status.label}
-                    </strong>
-                    <span>{sectionAsOf(meta)}</span>
-                    {section.key === "news" ? (
-                      <em>最新 {newsSampleSize} 条样本</em>
-                    ) : (
-                      <em>{section.charts.length} 张图表</em>
-                    )}
-                  </div>
-                </div>
-
+              <div className={styles.sectionBody} id={bodyId}>
                 <div className={styles.chartGrid}>
                   {section.charts.map((chart) => (
                     <ChartCard chart={chart} key={chart.key} />
