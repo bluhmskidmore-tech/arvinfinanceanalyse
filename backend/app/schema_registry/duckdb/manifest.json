@@ -202,6 +202,16 @@
       "path": "39_stock_official_disclosure.sql",
       "ensure_module": "backend.app.repositories.stock_official_disclosure_repo",
       "ensure_symbol": "ensure_stock_official_disclosure_tables"
+    },
+    {
+      "path": "40_stock_limit_price_daily.sql",
+      "ensure_module": "backend.app.tasks.stock_limit_price_ingest",
+      "ensure_symbol": "ensure_stock_limit_price_daily_schema"
+    },
+    {
+      "path": "41_livermore_gate_history.sql",
+      "ensure_module": "backend.app.tasks.livermore_gate_history_materialize",
+      "ensure_symbol": "ensure_livermore_gate_history_schema"
     }
   ]
 }

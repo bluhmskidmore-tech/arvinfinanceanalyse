@@ -170,6 +170,49 @@ def _load_generic_persisted_points(
     return points
 
 
+def replay_market_gate_payloads(
+    conn: duckdb.DuckDBPyConnection,
+    start: str | date,
+    end: str | date,
+) -> dict[str, dict[str, object]]:
+    """Full ``evaluate_market_gate`` payloads per replayable date (pure replay).
+
+    Uses exactly the same inputs and evaluation as the replay leg of
+    :func:`load_gate_exposure_by_date` and never reads the persisted exposure
+    tables, so callers can persist realtime gate labels or cross-check stored
+    labels against what the official backtest would replay for those dates.
+    """
+    start_date = _parse_date(start)
+    end_date = _parse_date(end)
+    if end_date < start_date:
+        raise ValueError("end must be on or after start")
+    return _replay_gate_payloads(conn, tables=_table_names(conn), start=start_date, end=end_date)
+
+
+def _replay_gate_payloads(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    tables: set[str],
+    start: date,
+    end: date,
+) -> dict[str, dict[str, object]]:
+    observations = _load_broad_index_observations(conn, tables=tables, end=end)
+    if not observations:
+        return {}
+    supplements = _load_gate_supplements(conn, tables=tables, start=start, end=end)
+    history: list[BroadIndexObservation] = []
+    payloads: dict[str, dict[str, object]] = {}
+    for observation in observations:
+        history.append(observation)
+        if observation.trade_date < start or observation.trade_date > end:
+            continue
+        payloads[observation.trade_date.isoformat()] = evaluate_market_gate(
+            history,
+            supplement=supplements.get(observation.trade_date.isoformat()),
+        )
+    return payloads
+
+
 def _replay_points(
     conn: duckdb.DuckDBPyConnection,
     *,
@@ -177,18 +220,9 @@ def _replay_points(
     start: date,
     end: date,
 ) -> dict[str, ExposurePoint]:
-    observations = _load_broad_index_observations(conn, tables=tables, end=end)
-    if not observations:
-        return {}
-    supplements = _load_gate_supplements(conn, tables=tables, start=start, end=end)
-    history: list[BroadIndexObservation] = []
     points: dict[str, ExposurePoint] = {}
-    for observation in observations:
-        history.append(observation)
-        if observation.trade_date < start or observation.trade_date > end:
-            continue
-        gate = evaluate_market_gate(history, supplement=supplements.get(observation.trade_date.isoformat()))
-        points[observation.trade_date.isoformat()] = ExposurePoint(
+    for date_key, gate in _replay_gate_payloads(conn, tables=tables, start=start, end=end).items():
+        points[date_key] = ExposurePoint(
             exposure=_clamp_exposure(_first_float(gate.get("exposure")) or 0.0),
             state=_text(gate.get("state")) or "UNKNOWN",
             source="replayed",

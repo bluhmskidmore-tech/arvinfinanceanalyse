@@ -11,6 +11,7 @@ from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
 from backend.app.tasks.broker import register_actor_once
+from backend.app.tasks.livermore_gate_history_materialize import persist_livermore_gate_history_for_run
 
 LIVERMORE_GATE_SUPPLEMENT_LOCK = LockDefinition(
     key="lock:duckdb:livermore-gate-supplement",
@@ -44,18 +45,23 @@ def materialize_livermore_gate_supplement_daily(
     path.parent.mkdir(parents=True, exist_ok=True)
     effective_run = run_id or f"livermore_gate_supplement:{uuid.uuid4().hex[:12]}"
 
+    gate_history_result: dict[str, object] | None = None
     with acquire_lock(LIVERMORE_GATE_SUPPLEMENT_LOCK, base_dir=path.parent):
         conn = duckdb.connect(str(path), read_only=False)
         try:
             apply_pending_migrations_on_connection(conn)
             conn.execute("begin transaction")
             dates: list[str] = []
+            vendor_version_by_date: dict[str, str] = {}
             for raw in rows:
                 td = raw.get("trade_date")
                 if hasattr(td, "isoformat"):
                     dates.append(td.isoformat())  # type: ignore[union-attr]
                 else:
                     dates.append(str(td))
+                vendor = str(raw.get("vendor_version") or "").strip()
+                if vendor:
+                    vendor_version_by_date[dates[-1]] = vendor
             for d in sorted(set(dates)):
                 conn.execute(
                     "delete from fact_livermore_gate_supplement_daily where trade_date = ?",
@@ -90,6 +96,18 @@ def materialize_livermore_gate_supplement_daily(
                     ],
                 )
             conn.execute("commit")
+            # The gate inputs (benchmark closes + the supplement rows just
+            # committed) are now all in DuckDB, so this is the earliest point
+            # where the full realtime gate evaluation is available. Persist it
+            # as the label anchor (governance finding G-1); the helper never
+            # raises, so a failure degrades to a payload status + WARN log and
+            # cannot jeopardize the committed supplement write.
+            gate_history_result = persist_livermore_gate_history_for_run(
+                conn,
+                supplement_dates=dates,
+                run_id=effective_run,
+                vendor_version_by_date=vendor_version_by_date,
+            )
         except Exception:
             conn.execute("rollback")
             raise
@@ -101,6 +119,7 @@ def materialize_livermore_gate_supplement_daily(
         "run_id": effective_run,
         "row_count": len(rows),
         "rule_version": RULE_VERSION,
+        "gate_history": gate_history_result,
     }
 
 

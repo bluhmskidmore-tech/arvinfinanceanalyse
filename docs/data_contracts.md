@@ -628,7 +628,9 @@ canonical grain：
 
 #### `highlimit` / `lowlimit` 覆盖缺口（2026 段无数值价格）
 
-该两列为 VARCHAR，且存在字段语义冲突：Choice 上游 `HIGHLIMIT`/`LOWLIMIT` 是**是/否标志而非价格**（见 `config/choice_stock_catalog.json` 的 `daily_limit_flags` 描述）。Tushare 代际行内的数值价格来自权限兜底路径；choice_native 代际（2026-01-05 起）全部 760,368 行**不含可解析的数值价格**（0 行可 `try_cast`）。消费影响：`limit_ratio` 有完整规则兜底、`one_word_board` 用四价相等判定，均未失效；但 `closed_up_limit` 在 2026 段硬失效，`portfolio_paths` 的跌停顺延卖出在 2026 段会把跌停日误判为可卖。消费者不得假设该两列是跨代际可用的数值涨跌停价；数值价格建议以 `tushare.stk_limit` 类专用源另行落地（截至本契约更新，回填任务尚未建立）。
+该两列为 VARCHAR，且存在字段语义冲突：Choice 上游 `HIGHLIMIT`/`LOWLIMIT` 是**是/否标志而非价格**（见 `config/choice_stock_catalog.json` 的 `daily_limit_flags` 描述）。Tushare 代际行内的数值价格来自权限兜底路径；choice_native 代际（2026-01-05 起）全部 760,368 行**不含可解析的数值价格**（0 行可 `try_cast`）。消费影响：`limit_ratio` 有完整规则兜底、`one_word_board` 用四价相等判定，均未失效；但 `closed_up_limit` 在 2026 段硬失效，`portfolio_paths` 的跌停顺延卖出在 2026 段会把跌停日误判为可卖。消费者不得假设该两列是跨代际可用的数值涨跌停价。
+
+数值涨跌停价以专用表 `stock_limit_price_daily` 另行落地：来源 `tushare.stk_limit`（`up_limit`/`down_limit`/`pre_close`，单位元），schema `backend/app/schema_registry/duckdb/40_stock_limit_price_daily.sql`，写路径仅 `backend/app/tasks/stock_limit_price_ingest.py`（vendor 白名单 `vv_tushare_stk_limit_*`，独立于本表两代单位换算），用途是替代本节标志列语义缺口，供 `portfolio_paths` 价格路径与 execution bars 按"新表优先 → observation try_cast 回退 → missing 维持 fail-open"三态消费（`resolve_limit_prices`）。回填任务已建立（`scripts/backfill_stock_limit_prices.py`，默认 dry-run）；**截至本契约更新，数值价尚未回填**（Tushare 网络恢复后按脚本打印的 runbook 执行），回填前 choice_native 段消费行为与本节缺口描述一致。
 
 #### Batch3 治理状态
 

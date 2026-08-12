@@ -8,8 +8,16 @@ from backend.app.core_finance.adjusted_returns import net_return_after_costs
 
 TABLE_OBS = "choice_stock_daily_observation"
 TABLE_ADJ_FACTOR = "stock_adjustment_factor"
+TABLE_LIMIT_PRICE = "stock_limit_price_daily"
 PATH_BASIS_ADJUSTED = "adjusted"
 PATH_BASIS_RAW_FALLBACK = "raw_fallback_missing_adj_factor"
+# 涨跌停数值价三态来源标记（docs/data_contracts.md §4.10 覆盖缺口）：
+# - stk_limit：stock_limit_price_daily 专用表数值价（tushare stk_limit）命中；
+# - observation_cast：新表无行，observation 列 try_cast 出正数值（tushare 代际旧数值）；
+# - missing：两者皆无，维持现状 fail-open（choice_native 段无数值价时跌停判定失效）。
+LIMIT_PRICE_SOURCE_TABLE = "stk_limit"
+LIMIT_PRICE_SOURCE_OBSERVATION = "observation_cast"
+LIMIT_PRICE_SOURCE_MISSING = "missing"
 
 
 def position_path_key(stock_code: object, entry_date: object) -> str:
@@ -33,6 +41,12 @@ def load_position_price_paths(
     has_adj = TABLE_ADJ_FACTOR in tables and {"stock_code", "trade_date", "adj_factor"}.issubset(
         _columns(conn, TABLE_ADJ_FACTOR)
     )
+    has_limit_price = TABLE_LIMIT_PRICE in tables and {
+        "stock_code",
+        "trade_date",
+        "up_limit",
+        "down_limit",
+    }.issubset(_columns(conn, TABLE_LIMIT_PRICE))
 
     entry_keys: list[tuple[str, str]] = []
     for entry in entries:
@@ -49,6 +63,7 @@ def load_position_price_paths(
         stock_codes=sorted({stock_code for stock_code, _entry_date in entry_keys}),
         min_entry_date=min(entry_date for _stock_code, entry_date in entry_keys),
         has_adj=has_adj,
+        has_limit_price=has_limit_price,
     )
     paths: dict[str, list[dict[str, object]]] = {}
     for stock_code, entry_date in entry_keys:
@@ -119,6 +134,7 @@ def _load_raw_bars_by_stock(
     stock_codes: Sequence[str],
     min_entry_date: str,
     has_adj: bool,
+    has_limit_price: bool = False,
 ) -> dict[str, list[tuple[str, tuple[Any, ...]]]]:
     if not stock_codes:
         return {}
@@ -130,6 +146,20 @@ def _load_raw_bars_by_stock(
          and af.trade_date = d.trade_date
         """
         if has_adj
+        else ""
+    )
+    limit_select = (
+        "lp.up_limit, lp.down_limit"
+        if has_limit_price
+        else "cast(null as double) as up_limit, cast(null as double) as down_limit"
+    )
+    limit_join = (
+        f"""
+        left join {TABLE_LIMIT_PRICE} lp
+          on lp.stock_code = d.stock_code
+         and cast(lp.trade_date as varchar) = cast(d.trade_date as varchar)
+        """
+        if has_limit_price
         else ""
     )
     stock_placeholders = ", ".join("?" for _stock_code in stock_codes)
@@ -147,9 +177,11 @@ def _load_raw_bars_by_stock(
           d.tradestatus,
           d.highlimit,
           d.lowlimit,
-          {adj_select}
+          {adj_select},
+          {limit_select}
         from {TABLE_OBS} d
         {adj_join}
+        {limit_join}
         where d.stock_code in ({stock_placeholders})
           and cast(d.trade_date as date) >= cast(? as date)
           and d.close_value is not null
@@ -183,6 +215,8 @@ def _normalize_path_rows(rows: Sequence[tuple[Any, ...]]) -> list[dict[str, obje
             highlimit,
             lowlimit,
             adj_factor,
+            table_up_limit,
+            table_down_limit,
         ) = row
         raw_close = _float_or_none(close_value)
         halted = _is_halted(tradestatus)
@@ -199,6 +233,12 @@ def _normalize_path_rows(rows: Sequence[tuple[Any, ...]]) -> list[dict[str, obje
         }
         if halted and previous_adj_close is not None:
             adjusted = {key: previous_adj_close for key in adjusted}
+        resolved_highlimit, resolved_lowlimit, limit_price_source = resolve_limit_prices(
+            observation_highlimit=highlimit,
+            observation_lowlimit=lowlimit,
+            table_up_limit=table_up_limit,
+            table_down_limit=table_down_limit,
+        )
         out.append(
             {
                 "trade_date": str(trade_date)[:10],
@@ -209,13 +249,14 @@ def _normalize_path_rows(rows: Sequence[tuple[Any, ...]]) -> list[dict[str, obje
                 "volume": _float_or_none(volume),
                 "amount": _float_or_none(amount),
                 "tradestatus": "" if tradestatus is None else str(tradestatus).strip(),
-                "highlimit": _float_or_none(highlimit),
-                "lowlimit": _float_or_none(lowlimit),
+                "highlimit": resolved_highlimit,
+                "lowlimit": resolved_lowlimit,
+                "limit_price_source": limit_price_source,
                 "adj_factor": factor,
                 "adj_factor_missing": adj_factor_missing,
                 "adj_factor_forward_filled": adj_factor_forward_filled,
                 "halted": halted,
-                "limit_down": _is_limit_down(close_for_mark, lowlimit),
+                "limit_down": _is_limit_down(close_for_mark, resolved_lowlimit),
                 **adjusted,
             }
         )
@@ -249,6 +290,34 @@ def _adjust_price(value: object, factor: float | None) -> float | None:
     if factor is None:
         return price
     return price * factor
+
+
+def resolve_limit_prices(
+    *,
+    observation_highlimit: object,
+    observation_lowlimit: object,
+    table_up_limit: object,
+    table_down_limit: object,
+) -> tuple[float | None, float | None, str]:
+    """三态解析涨跌停数值价（单行、单源，不跨源混合）。
+
+    优先 stock_limit_price_daily 数值价，且要求 up/down 两列同时为有效正数才选
+    表来源（半缺失行视为新表不可用，防止摄入异常产生的残行遮蔽 observation
+    回退）；否则回退 observation 列 try_cast（tushare 代际旧数值仍可用）；两者
+    皆无维持 fail-open（missing），与切换前 choice_native 段行为一致，仅多出
+    来源标记。execution bars 消费端
+    （backend/app/tasks/livermore_candidate_history_materialize.py）共享本实现，
+    两处口径保持一致。
+    """
+    resolved_high = _positive_float(table_up_limit)
+    resolved_low = _positive_float(table_down_limit)
+    if resolved_high is not None and resolved_low is not None:
+        return resolved_high, resolved_low, LIMIT_PRICE_SOURCE_TABLE
+    cast_high = _positive_float(observation_highlimit)
+    cast_low = _positive_float(observation_lowlimit)
+    if cast_high is not None or cast_low is not None:
+        return cast_high, cast_low, LIMIT_PRICE_SOURCE_OBSERVATION
+    return None, None, LIMIT_PRICE_SOURCE_MISSING
 
 
 def _is_halted(tradestatus: object) -> bool:

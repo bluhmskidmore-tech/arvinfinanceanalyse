@@ -16,6 +16,10 @@ from backend.app.core_finance.adjusted_returns import (
     factors_changed,
     net_return_after_costs,
 )
+from backend.app.core_finance.portfolio_paths import (
+    TABLE_LIMIT_PRICE,
+    resolve_limit_prices,
+)
 from backend.app.core_finance.strategy_policy import POLICY
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import get_settings
@@ -2107,39 +2111,80 @@ def _execution_bars_for_candidate(
     snapshot_as_of_date: str,
 ) -> list[dict[str, object]]:
     columns = _table_columns(conn, TABLE_OBS)
-    open_expr = "open_value" if "open_value" in columns else "close_value"
-    highlimit_expr = "highlimit" if "highlimit" in columns else "null"
-    lowlimit_expr = "lowlimit" if "lowlimit" in columns else "null"
-    tradestatus_expr = "tradestatus" if "tradestatus" in columns else "null"
+    open_expr = "d.open_value" if "open_value" in columns else "d.close_value"
+    highlimit_expr = "d.highlimit" if "highlimit" in columns else "null"
+    lowlimit_expr = "d.lowlimit" if "lowlimit" in columns else "null"
+    tradestatus_expr = "d.tradestatus" if "tradestatus" in columns else "null"
+    # 涨跌停数值价三态（契约 docs/data_contracts.md §4.10 覆盖缺口）：优先
+    # stock_limit_price_daily 数值价，回退 observation 列 try_cast，皆无维持
+    # fail-open；解析逻辑与 portfolio_paths 共享 resolve_limit_prices，口径一致。
+    has_limit_price = TABLE_LIMIT_PRICE in _table_names(conn) and {
+        "stock_code",
+        "trade_date",
+        "up_limit",
+        "down_limit",
+    } <= _table_columns(conn, TABLE_LIMIT_PRICE)
+    limit_select = (
+        "lp.up_limit, lp.down_limit"
+        if has_limit_price
+        else "cast(null as double) as up_limit, cast(null as double) as down_limit"
+    )
+    limit_join = (
+        f"""
+        left join {TABLE_LIMIT_PRICE} lp
+          on lp.stock_code = d.stock_code
+         and cast(lp.trade_date as varchar) = cast(d.trade_date as varchar)
+        """
+        if has_limit_price
+        else ""
+    )
     rows = conn.execute(
         f"""
-        select trade_date,
+        select d.trade_date,
                {open_expr} as open_value,
-               close_value,
+               d.close_value,
                {highlimit_expr} as highlimit,
                {lowlimit_expr} as lowlimit,
-               {tradestatus_expr} as tradestatus
-        from {TABLE_OBS}
-        where stock_code = ?
-          and cast(trade_date as date) > cast(? as date)
-          and close_value is not null
-        order by trade_date
+               {tradestatus_expr} as tradestatus,
+               {limit_select}
+        from {TABLE_OBS} d
+        {limit_join}
+        where d.stock_code = ?
+          and cast(d.trade_date as date) > cast(? as date)
+          and d.close_value is not null
+        order by d.trade_date
         """,
         [stock_code, snapshot_as_of_date],
     ).fetchall()
     bars: list[dict[str, object]] = []
     has_open = "open_value" in columns
-    for trade_date_raw, open_raw, close_raw, highlimit_raw, lowlimit_raw, tradestatus_raw in rows:
+    for (
+        trade_date_raw,
+        open_raw,
+        close_raw,
+        highlimit_raw,
+        lowlimit_raw,
+        tradestatus_raw,
+        table_up_raw,
+        table_down_raw,
+    ) in rows:
         trade_date = _normalize_trade_date_iso(trade_date_raw)
         if trade_date is None:
             continue
+        resolved_highlimit, resolved_lowlimit, limit_price_source = resolve_limit_prices(
+            observation_highlimit=highlimit_raw,
+            observation_lowlimit=lowlimit_raw,
+            table_up_limit=table_up_raw,
+            table_down_limit=table_down_raw,
+        )
         bars.append(
             {
                 "trade_date": trade_date,
                 "open_value": _safe_float_or_none(open_raw),
                 "close_value": _safe_float_or_none(close_raw),
-                "highlimit": _safe_float_or_none(highlimit_raw),
-                "lowlimit": _safe_float_or_none(lowlimit_raw),
+                "highlimit": resolved_highlimit,
+                "lowlimit": resolved_lowlimit,
+                "limit_price_source": limit_price_source,
                 "tradestatus": _optional_text(tradestatus_raw),
                 "has_open_value": has_open,
             }

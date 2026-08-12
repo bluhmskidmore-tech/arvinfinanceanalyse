@@ -464,6 +464,14 @@ def _v39_stock_official_disclosure_timestamp_tz(conn: duckdb.DuckDBPyConnection)
     _v38_stock_official_disclosure(conn)
 
 
+def _v40_stock_limit_price_daily(conn: duckdb.DuckDBPyConnection) -> None:
+    _run_sql_slice(conn, "40_stock_limit_price_daily.sql")
+
+
+def _v41_livermore_gate_history(conn: duckdb.DuckDBPyConnection) -> None:
+    _run_sql_slice(conn, "41_livermore_gate_history.sql")
+
+
 def _v30_fact_snapshot_indexes(conn: duckdb.DuckDBPyConnection) -> None:
     text = (REGISTRY_DIR / "32_fact_snapshot_indexes.sql").read_text(encoding="utf-8")
     for statement in parse_registry_sql_text(text):
@@ -611,6 +619,8 @@ def register_all(registry: DuckDBSchemaRegistry) -> None:
     registry.register(37, "Preserve bond payment-frequency fallback provenance", _v37_bond_payment_frequency_fallback_provenance)
     registry.register(38, "Stock official disclosure fact + sync status", _v38_stock_official_disclosure)
     registry.register(39, "Repair stock official disclosure timestamp timezone", _v39_stock_official_disclosure_timestamp_tz)
+    registry.register(40, "Numeric daily limit prices from tushare stk_limit", _v40_stock_limit_price_daily)
+    registry.register(41, "Livermore market-gate realtime label anchor", _v41_livermore_gate_history)
 
 
 def apply_pending_migrations_on_connection(conn: duckdb.DuckDBPyConnection) -> None:
