@@ -7,6 +7,7 @@ from decimal import Decimal
 from typing import Any
 
 from backend.app.core_finance.config.classification_rules import infer_invest_type
+from backend.app.core_finance.decimal_utils import to_decimal as shared_to_decimal
 from backend.app.core_finance.rate_units import pct_to_decimal
 
 ZERO = Decimal("0")
@@ -83,9 +84,16 @@ class MonthlyAggregate:
 
 
 def to_decimal(value: object | None) -> Decimal:
+    """负债分析兼容链的宽松转换 = 共享 ``decimal_utils.to_decimal`` + None/"" 静默归 0。
+
+    - None/"" 是源表空单元格的既有口径，静默归 0（共享版对 None 会记 missing 告警，这里不记）。
+    - 其余值委托共享版：NaN/Inf/坏字符串 → 0 并记一次性告警，避免单个 NaN 污染本模块
+      defaultdict 聚合、坏字符串抛未捕获异常。与 ``decimal_utils.to_decimal`` 同名但差异仅在
+      None/"" 的静默处理。
+    """
     if value in (None, ""):
         return ZERO
-    return Decimal(str(value))
+    return shared_to_decimal(value)
 
 
 def to_float(value: Decimal | None) -> float | None:

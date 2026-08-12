@@ -10,6 +10,7 @@ from backend.app.core_finance.config.classification_rules import (
     LEDGER_PNL_ACCOUNT_PREFIXES,
     infer_invest_type,
 )
+from backend.app.core_finance.decimal_utils import to_decimal_strict
 from backend.app.core_finance.field_normalization import (
     ACCOUNTING_BASIS_FVTPL,
     derive_accounting_basis_value,
@@ -544,9 +545,12 @@ def _coerce_date(value: object) -> date:
 
 
 def _coerce_decimal(value: object) -> Decimal:
-    if isinstance(value, Decimal):
-        return value
-    return Decimal(str(value))
+    """正式 PnL 链严格转换：None/NaN/Inf/坏字符串一律 fail-loud，禁止静默流入事实行。"""
+    try:
+        return to_decimal_strict(value)
+    except ArithmeticError as exc:
+        # Decimal("abc") 等坏输入抛 InvalidOperation，默认信息不含原始值，这里补上下文。
+        raise ValueError(f"Formal PnL amount must be a finite number, got {value!r}") from exc
 
 
 def _coerce_optional_text(value: object) -> str:

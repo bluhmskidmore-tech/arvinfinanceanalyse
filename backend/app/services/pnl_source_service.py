@@ -9,6 +9,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import xlrd
+from backend.app.core_finance.decimal_utils import to_decimal_strict
 from backend.app.core_finance.field_normalization import resolve_pnl_source_currency
 from backend.app.core_finance.pnl import FI_CUMULATIVE_REALIZED_517_EVENT_TYPE
 from backend.app.core_finance.source_rules import describe_source_file
@@ -505,9 +506,14 @@ def _cell_text(value: object) -> str:
 
 
 def _to_decimal(value: object) -> Decimal:
+    # 源表空单元格（None/""）按既有口径归 0（调用点显式依赖该语义，如 金额/AMOUNT 回退）；
+    # 其余值严格转换：NaN/Inf/坏字符串 fail-loud，禁止流入正式 PnL 事实行。
     if value in (None, ""):
         return Decimal("0")
-    return Decimal(str(value))
+    try:
+        return to_decimal_strict(value)
+    except ArithmeticError as exc:
+        raise ValueError(f"PnL source cell must be a finite number, got {value!r}") from exc
 
 
 def _is_processed_path(path: Path) -> bool:
