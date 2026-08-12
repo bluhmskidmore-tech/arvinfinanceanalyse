@@ -344,22 +344,24 @@ function curveLabel(curveType: string): string {
   return curveType.trim() || "曲线";
 }
 
+/**
+ * 面板标题只用业务名，vendor 源名（如 akshare）不进 h2（§7 语域），
+ * 溯源信息由来源元数据行与治理台账承担；无曲线时与成功态保持同名，
+ * 避免失败瞬间标题跳变。
+ */
 function curveTableTitle(
   curve: YieldCurveTermStructureCurvePayload | null,
 ): string {
   if (!curve) {
-    return "收益率曲线";
+    return "国债收益率";
   }
-  const curveName =
-    curve.curve_type === "cdb"
-      ? "国开债收益率"
-      : curve.curve_type === "treasury"
-        ? "国债收益率"
-        : curve.curve_type === "aaa_credit"
-          ? "AAA信用收益率"
-          : `${curveLabel(curve.curve_type)}收益率`;
-  const vendorName = curve.vendor_name.trim();
-  return vendorName ? `${curveName}（${vendorName}）` : curveName;
+  return curve.curve_type === "cdb"
+    ? "国开债收益率"
+    : curve.curve_type === "treasury"
+      ? "国债收益率"
+      : curve.curve_type === "aaa_credit"
+        ? "AAA信用收益率"
+        : `${curveLabel(curve.curve_type)}收益率`;
 }
 
 function findCurve(

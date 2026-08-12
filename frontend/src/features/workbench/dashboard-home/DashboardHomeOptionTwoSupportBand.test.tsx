@@ -107,7 +107,7 @@ describe("DashboardHomeOptionTwoSupportBand", () => {
         statusLabel: "来源状态：正式链路有提示",
         refreshLabel: "刷新：随报告日查询自动更新",
         curveTable: {
-          title: "国债收益率（中债）",
+          title: "国债收益率",
           asOfLabel: "2026-04-30",
           emptyMessage: null,
           rows: [
@@ -143,7 +143,7 @@ describe("DashboardHomeOptionTwoSupportBand", () => {
     renderBand(view);
 
     const context = screen.getByTestId("dashboard-home-market-context");
-    expect(context).toHaveTextContent("国债收益率（中债）");
+    expect(context).toHaveTextContent("国债收益率");
     expect(context).toHaveTextContent("2026-04-30");
     expect(context).toHaveTextContent("来源：正式曲线服务");
     expect(context).toHaveTextContent("数据截至 2026-04-30");

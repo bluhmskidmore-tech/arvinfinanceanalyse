@@ -166,6 +166,39 @@ const numeric = (raw: number) => ({
   sign_aware: true,
 });
 
+describe("mapToHomeBodyView income trend missing benchmark", () => {
+  it("renders em dash cells and carries the full gap reason for titles", () => {
+    const view = mapToHomeBodyView({
+      reportDate: "2026-06-30",
+      useMockFallback: false,
+      incomeTrendLoading: false,
+      incomeTrendError: false,
+      incomeTrend: {
+        report_date: "2026-06-30",
+        source_status: "partial",
+        warnings: ["CDB_INDEX yield curve missing"],
+        missing_components: ["benchmark_pnl", "excess_pnl"],
+        points: [
+          {
+            date: "2026-06-30",
+            portfolio_pnl: numeric(90_000_000),
+            benchmark_pnl: null,
+            excess_pnl: null,
+          },
+        ],
+      },
+    } as unknown as MapToHomeBodyViewInput);
+
+    const row = view.incomeTrend[0]!;
+    // 缺值单元格用 em dash（§6），证据码不进窄列。
+    expect(row.benchmarkPnl).toBe("—");
+    expect(row.excessPnl).toBe("—");
+    expect(row.missingReason).toBe("缺 CDB_INDEX 曲线");
+    expect(view.incomeTrendState.kind).toBe("partial");
+    expect(view.incomeTrendState.label).toBe("缺 CDB_INDEX 曲线");
+  });
+});
+
 describe("mapToHomeBodyView krd buckets", () => {
   const mapKrd = (payload: unknown) =>
     mapToHomeBodyView({

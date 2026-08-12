@@ -523,6 +523,12 @@ export function DashboardHomeOptionTwoBody({
               <section className={styles.incomeTrend} data-testid="dashboard-home-income-trend">
                 <h3>
                   <span>收益趋势（组合 / 基准 / 超额）</span>
+                  {view.incomeTrendState.kind === "partial" &&
+                  view.incomeTrend.length > 0 ? (
+                    <small title={view.incomeTrendState.label}>
+                      {view.incomeTrendState.label}
+                    </small>
+                  ) : null}
                   {view.incomeTrendState.kind === "ready" &&
                   view.incomeTrend.length > 1 ? (
                     <OptionTwoSparkline
@@ -548,7 +554,15 @@ export function DashboardHomeOptionTwoBody({
                         <tr key={row.id}>
                           <td>{row.date.slice(0, 7)}</td>
                           <td title={row.portfolioPnl}>{row.portfolioPnl}</td>
-                          <td title={row.benchmarkPnl}>{row.benchmarkPnl}</td>
+                          <td
+                            title={
+                              row.benchmarkRaw == null && row.missingReason
+                                ? row.missingReason
+                                : row.benchmarkPnl
+                            }
+                          >
+                            {row.benchmarkPnl}
+                          </td>
                           <td
                             data-tone={
                               row.excessRaw == null
@@ -559,7 +573,11 @@ export function DashboardHomeOptionTwoBody({
                                     ? "down"
                                     : "flat"
                             }
-                            title={row.excessPnl}
+                            title={
+                              row.excessRaw == null && row.missingReason
+                                ? row.missingReason
+                                : row.excessPnl
+                            }
                           >
                             {row.excessPnl}
                           </td>

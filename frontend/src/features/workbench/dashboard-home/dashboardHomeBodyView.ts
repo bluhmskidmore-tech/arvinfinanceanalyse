@@ -161,6 +161,8 @@ export type HomeIncomeTrendRow = {
   portfolioRaw: number | null;
   benchmarkRaw: number | null;
   excessRaw: number | null;
+  /** 基准/超额缺值时的完整原因（进 title），单元格本身用 em dash。 */
+  missingReason: string | null;
 };
 
 /** 各期限 DV01 敞口（来自 /api/bond-analytics/krd-curve-risk 的 krd_buckets）。 */
@@ -742,19 +744,6 @@ function buildIncomeTrendGapLabel(payload: HomeIncomeTrendPayload): string {
   return "收益趋势部分接入";
 }
 
-function incomeTrendMissingValueLabel(gapLabel: string): string {
-  if (gapLabel.includes("CDB_INDEX")) {
-    return "缺CDB_INDEX";
-  }
-  if (gapLabel.includes("benchmark_return")) {
-    return "缺收益率";
-  }
-  if (gapLabel.includes("基准PnL") || gapLabel.includes("超额PnL")) {
-    return "缺PnL";
-  }
-  return "缺数据";
-}
-
 const INCOME_TREND_UNIT_NOTES = [
   "portfolio_pnl, benchmark_pnl, and excess_pnl are yuan Numeric values; preserve Numeric.display when provided.",
 ] as const;
@@ -777,13 +766,14 @@ function buildIncomeTrendRows(
     };
   }
   const gapLabel = buildIncomeTrendGapLabel(payload);
-  const missingValueLabel = incomeTrendMissingValueLabel(gapLabel);
   const mappedState =
     payload.source_status === "partial"
       ? displayState("partial", gapLabel)
       : displayState("ready", "已接入");
   return {
     state: mappedState,
+    // 缺值单元格统一 em dash（§6），完整原因经 missingReason 进行级 title，
+    // 不再往窄列里塞「缺CDB_INDEX」这类会被截断的证据码。
     rows: payload.points.map((point) => {
       const benchmarkRaw = numericRaw(point.benchmark_pnl);
       const excessRaw = numericRaw(point.excess_pnl);
@@ -791,11 +781,12 @@ function buildIncomeTrendRows(
         id: point.date,
         date: point.date,
         portfolioPnl: numericValueOrGap(point.portfolio_pnl, "yuan"),
-        benchmarkPnl: benchmarkRaw == null ? missingValueLabel : numericValueOrGap(point.benchmark_pnl, "yuan"),
-        excessPnl: excessRaw == null ? missingValueLabel : numericValueOrGap(point.excess_pnl, "yuan"),
+        benchmarkPnl: benchmarkRaw == null ? GAP : numericValueOrGap(point.benchmark_pnl, "yuan"),
+        excessPnl: excessRaw == null ? GAP : numericValueOrGap(point.excess_pnl, "yuan"),
         portfolioRaw: numericRaw(point.portfolio_pnl),
         benchmarkRaw,
         excessRaw,
+        missingReason: benchmarkRaw == null || excessRaw == null ? gapLabel : null,
       };
     }),
   };

@@ -119,6 +119,7 @@ function populatedView(): DashboardHomeBodyView {
         portfolioRaw: 100_000_000,
         benchmarkRaw: 80_000_000,
         excessRaw: 20_000_000,
+        missingReason: null,
       },
       {
         id: "i-2",
@@ -129,6 +130,7 @@ function populatedView(): DashboardHomeBodyView {
         portfolioRaw: 120_000_000,
         benchmarkRaw: 90_000_000,
         excessRaw: 30_000_000,
+        missingReason: null,
       },
     ],
     bondNews: {

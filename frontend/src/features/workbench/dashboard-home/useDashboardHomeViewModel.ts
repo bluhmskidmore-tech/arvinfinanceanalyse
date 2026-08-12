@@ -278,7 +278,11 @@ export function useDashboardHomeViewModel(
   const incomeTrendQuery = useQuery({
     queryKey: apiQueryKeys.homeIncomeTrend(dataClient.mode, supplementalReportDate, 7),
     queryFn: () => dataClient.getHomeIncomeTrend(supplementalReportDate ?? "", 7),
-    retry: false,
+    // 首页最晚发起的延迟查询，最容易撞上后端重启/代理瞬断窗口；
+    // 两次指数退避重试吸收瞬态失败，持续失败仍诚实落错误态。
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1_000 * 2 ** attempt, 8_000),
+    refetchOnWindowFocus: true,
     staleTime: 60_000,
     enabled: hasDeferredIncomeTrendData,
   });

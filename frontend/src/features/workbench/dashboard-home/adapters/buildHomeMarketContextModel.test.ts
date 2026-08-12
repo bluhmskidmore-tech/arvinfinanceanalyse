@@ -60,8 +60,28 @@ describe("buildHomeMarketContextModel yield curve dates", () => {
     );
     expect(curveBlock?.foot).toContain("2026-04-10");
     expect(curveBlock?.foot).toContain("2026-04-09");
-    expect(model.curveTable.title).toBe("国债收益率（test）");
+    expect(model.curveTable.title).toBe("国债收益率");
     expect(model.asOfLabel).not.toContain("2026-04-10");
+  });
+
+  it("keeps the panel title stable when no curve is available", () => {
+    const model = buildHomeMarketContextModel({
+      marketTape: [],
+      marketPoints: null,
+      macroNewsEvents: null,
+      todayIsoDate: "2026-04-10",
+      campisiFourEffects: null,
+      returnDecomposition: null,
+      yieldCurveTermStructure: null,
+      creditSpreadMigration: null,
+      attribution: {
+        maxDragLabel: "",
+        maxContributionLabel: "",
+      },
+    });
+
+    // 失败态与成功态同名，避免标题跳变；vendor 源名不进标题。
+    expect(model.curveTable.title).toBe("国债收益率");
   });
 
   it("exposes governed key-tenor rows for the compact market table", () => {
@@ -140,7 +160,7 @@ describe("buildHomeMarketContextModel yield curve dates", () => {
       },
     });
 
-    expect(model.curveTable.title).toBe("国开债收益率（test）");
+    expect(model.curveTable.title).toBe("国开债收益率");
     expect(model.curveTable.asOfLabel).toBe("2026-04-10");
     expect(model.curveTable.rows).toEqual([
       {
