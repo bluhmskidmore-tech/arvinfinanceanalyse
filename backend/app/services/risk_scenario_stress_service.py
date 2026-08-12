@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
+from decimal import Decimal
 from typing import Any
 
 from backend.app.schemas.common_numeric import numeric_from_raw
@@ -81,7 +82,7 @@ def _scenario_rows(tensor_result: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _rate_scenario(tensor_result: dict[str, Any]) -> dict[str, Any]:
-    shock_bp = 10.0
+    shock_bp = Decimal("10")
     regulatory_dv01 = _numeric_raw(tensor_result.get("regulatory_dv01"))
     impact = None if regulatory_dv01 is None else -regulatory_dv01 * shock_bp
     return {
@@ -110,14 +111,15 @@ def _rate_scenario(tensor_result: dict[str, Any]) -> dict[str, Any]:
 
 
 def _credit_scenario(tensor_result: dict[str, Any]) -> dict[str, Any]:
+    shock_bp = Decimal("10")
     cs01 = _numeric_raw(tensor_result.get("cs01"))
-    impact = None if cs01 is None else -cs01 * 10.0
+    impact = None if cs01 is None else -cs01 * shock_bp
     return {
         "category": "credit",
         "scenario_key": "credit_spread_up_10bp",
         "label": "信用利差走阔 10bp",
         "source_field": "cs01",
-        "shock": numeric_from_raw(raw=10.0, unit="bp", precision=0, sign_aware=True).model_dump(mode="json"),
+        "shock": numeric_from_raw(raw=shock_bp, unit="bp", precision=0, sign_aware=True).model_dump(mode="json"),
         "estimated_impact": numeric_from_raw(
             raw=impact,
             unit="yuan",
@@ -133,7 +135,7 @@ def _credit_scenario(tensor_result: dict[str, Any]) -> dict[str, Any]:
 
 
 def _liquidity_scenario(tensor_result: dict[str, Any]) -> dict[str, Any]:
-    shock_pct = 0.10
+    shock_pct = Decimal("0.10")
     asset_cashflow = _numeric_raw(tensor_result.get("asset_cashflow_30d"))
     liability_cashflow = _numeric_raw(tensor_result.get("liability_cashflow_30d"))
     baseline_gap = _numeric_raw(tensor_result.get("liquidity_gap_30d"))
@@ -147,8 +149,8 @@ def _liquidity_scenario(tensor_result: dict[str, Any]) -> dict[str, Any]:
         stressed_gap = None
     else:
         stressed_gap = (
-            asset_cashflow * (1 - shock_pct)
-            - liability_cashflow * (1 + shock_pct)
+            asset_cashflow * (Decimal("1") - shock_pct)
+            - liability_cashflow * (Decimal("1") + shock_pct)
         )
     impact = stressed_gap - baseline_gap if stressed_gap is not None and baseline_gap is not None else None
     baseline_ratio = (
@@ -228,14 +230,17 @@ def _scenario_summary(scenarios: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _numeric_raw(value: object) -> float | None:
+def _numeric_raw(value: object) -> Decimal | None:
     if not isinstance(value, dict):
         return None
     raw = value.get("raw")
     if raw is None:
         return None
     try:
-        return float(raw)
+        # 先经 float 保持与历史实现一致的解析接受域（上游 raw 本就是 JSON float），
+        # 再以最短精确 repr 转 Decimal；后续冲击损益运算全程 Decimal，
+        # 仅在 numeric_from_raw 输出边界回到 float。
+        return Decimal(str(float(raw)))
     except (TypeError, ValueError, ArithmeticError):
         return None
 

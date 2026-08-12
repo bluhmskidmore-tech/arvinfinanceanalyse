@@ -150,9 +150,11 @@ def _build_benchmark_change_evaluator(
     fitted_end = _fit_percent_curve({k: end_curve[k] for k in _TREASURY_KEYS if k in common_keys})
 
     def _evaluate(maturity_years: float) -> Decimal:
-        y0 = float(_engine_interpolate(fitted_start, float(maturity_years)))
-        y1 = float(_engine_interpolate(fitted_end, float(maturity_years)))
-        return Decimal(str((y1 - y0) / 100.0))
+        # 插值引擎本身返回 Decimal；保持 Decimal 算术，
+        # 避免 float 相减/除 100 后再 Decimal(str(...)) 回转的精度损失。
+        y0 = _engine_interpolate(fitted_start, float(maturity_years))
+        y1 = _engine_interpolate(fitted_end, float(maturity_years))
+        return (y1 - y0) / Decimal("100")
 
     return _evaluate
 
@@ -216,7 +218,8 @@ def credit_spread_change_decimal(
             "present" if s1 is not None else "unavailable",
         )
         return Decimal("0")
-    return Decimal(str((s1 - s0) / 10000.0))
+    # str(float) 是最短精确 repr；先逐值转 Decimal 再减/除，BP 差不再引入 float 误差。
+    return (Decimal(str(s1)) - Decimal(str(s0))) / Decimal("10000")
 
 
 def treasury_tenor_coverage(
