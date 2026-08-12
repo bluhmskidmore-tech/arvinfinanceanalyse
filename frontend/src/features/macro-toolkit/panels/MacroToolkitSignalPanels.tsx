@@ -35,21 +35,21 @@ export function HasonMacroStrategyPanel({
   const runtimeOutputsCurrent = strategy.runtime_output_status === "current";
   const runtimeOutputGaps = strategy.runtime_output_gaps;
   const runtimeOutputValue = runtimeOutputsCurrent
-    ? "current"
-    : `${strategy.runtime_output_status} · ${runtimeOutputGaps.length}`;
+    ? "已对齐"
+    : `${statusLabel(strategy.runtime_output_status)} · ${runtimeOutputGaps.length}`;
   const runtimeOutputDetail = runtimeOutputGaps.length
     ? runtimeOutputGaps.join(" / ")
     : strategy.required_runtime_outputs.join(" / ");
   const runtimeGapText = runtimeOutputGaps.length
     ? runtimeOutputGaps.join(" / ")
     : runtimeOutputsCurrent
-      ? "none"
-      : "freshness not confirmed";
+      ? "无缺口"
+      : "新鲜度未确认";
   const readinessEntries = modelReadiness.length ? modelReadiness : deriveModelReadinessFromHasonStrategy(strategy);
   const blockedReadinessEntries = readinessEntries.filter((item) => !isArtifactBackedModelReadiness(item.readiness));
   const readinessHeadline = blockedReadinessEntries.length
     ? blockedReadinessEntries.map((item) => `${item.label} ${modelReadinessStatusLabel(item.readiness)}`).join(" / ")
-    : "all observed models remain observation-only";
+    : "全部模型仅作观察，无待复核缺口";
   const readinessDetail = blockedReadinessEntries.length
     ? blockedReadinessEntries.map(formatModelReadinessDetail).join(" / ")
     : readinessEntries.map((item) => `${item.label} ${modelReadinessStatusLabel(item.readiness)}`).join(" / ");
@@ -108,9 +108,13 @@ export function HasonMacroStrategyPanel({
             className="macro-toolkit-hason-runtime"
             data-testid="macro-toolkit-model-readiness-detail"
           >
-            <span>model readiness / observation-only</span>
+            <span>模型就绪度 · 仅观察</span>
             <strong>{readinessHeadline}</strong>
-            <small>{readinessDetail}</small>
+            <small title={readinessDetail}>
+              {blockedReadinessEntries.length
+                ? `${blockedReadinessEntries.length} 个模型待复核 · 悬停查看产物明细`
+                : "全部模型仅观察 · 悬停查看清单"}
+            </small>
           </div>
         ) : null}
       </section>
@@ -120,7 +124,7 @@ export function HasonMacroStrategyPanel({
     <section className="macro-toolkit-section macro-toolkit-hason-strategy" data-testid="macro-toolkit-hason-strategy">
       <div className="macro-toolkit-hason-strategy__head">
         <div>
-          <span>Hason macro strategy</span>
+          <span>Hason 宏观框架</span>
           <strong>{strategy.framework_name}</strong>
           <small>{strategy.boundary}</small>
         </div>
@@ -128,10 +132,10 @@ export function HasonMacroStrategyPanel({
           <Tag color={statusColor(strategy.status)}>{statusLabel(strategy.status)}</Tag>
           <Tag color="blue">{strategy.basis}</Tag>
           <Tag color={strategy.observation_only ? "gold" : "green"}>
-            {strategy.observation_only ? "observation-only" : "actionable"}
+            {strategy.observation_only ? "仅作观察" : "可执行"}
           </Tag>
           <Tag color={strategy.formal_use_allowed ? "green" : "default"}>
-            {strategy.formal_metric_id ?? "no formal MTR"}
+            {strategy.formal_metric_id ?? "无正式指标"}
           </Tag>
         </div>
       </div>
@@ -139,30 +143,30 @@ export function HasonMacroStrategyPanel({
       <div className="macro-toolkit-hason-strategy__metrics">
         <MetricTile
           icon={<SafetyCertificateOutlined />}
-          label="Readiness"
+          label="模块就绪"
           value={readinessText}
-          detail={`${formatPercent(readiness.ratio)} module coverage`}
+          detail={`模块覆盖 ${formatPercent(readiness.ratio)}`}
           tone="neutral"
         />
         <MetricTile
           icon={<ToolOutlined />}
-          label="Module gaps"
-          value={`${readiness.missing_script_count} missing script`}
-          detail={`${readiness.partial_modules} partial / ${readiness.missing_modules} missing module`}
+          label="模块缺口"
+          value={`缺失脚本 ${readiness.missing_script_count}`}
+          detail={`部分就绪 ${readiness.partial_modules} · 缺失模块 ${readiness.missing_modules}`}
           tone="neutral"
         />
         <MetricTile
           icon={<DatabaseOutlined />}
-          label="Runtime outputs"
+          label="运行输出"
           value={runtimeOutputValue}
           detail={runtimeOutputDetail}
           tone="neutral"
         />
         <MetricTile
           icon={<ToolOutlined />}
-          label="Script trace"
+          label="脚本追踪"
           value={tracedScripts.length}
-          detail={tracedScriptPreview.map(formatHasonTraceScript).join(" / ") || "no script available"}
+          detail={tracedScriptPreview.map(formatHasonTraceScript).join(" / ") || "暂无可用脚本"}
           tone="neutral"
           testId="macro-toolkit-hason-script-trace"
         />
@@ -198,7 +202,7 @@ export function HasonMacroStrategyPanel({
       </div>
 
       <div className="macro-toolkit-hason-runtime" data-testid="macro-toolkit-hason-runtime-gaps">
-        <span>runtime outputs · {strategy.runtime_output_status}</span>
+        <span>运行输出 · {statusLabel(strategy.runtime_output_status)}</span>
         <strong>{runtimeGapText}</strong>
         {strategy.runtime_outputs.length ? (
           <small>
@@ -212,9 +216,13 @@ export function HasonMacroStrategyPanel({
           className="macro-toolkit-hason-runtime"
           data-testid="macro-toolkit-model-readiness-detail"
         >
-          <span>model readiness / observation-only</span>
+          <span>模型就绪度 · 仅观察</span>
           <strong>{readinessHeadline}</strong>
-          <small>{readinessDetail}</small>
+          <small title={readinessDetail}>
+            {blockedReadinessEntries.length
+              ? `${blockedReadinessEntries.length} 个模型待复核 · 悬停查看产物明细`
+              : "全部模型仅观察 · 悬停查看清单"}
+          </small>
         </div>
       ) : null}
     </section>
@@ -223,10 +231,10 @@ export function HasonMacroStrategyPanel({
 
 function formatHasonRuntimeOutput(item: MacroToolkitHasonStrategy["runtime_outputs"][number]) {
   return (
-    `${item.name}: ${item.freshness_status} ${hasonFreshnessBasisLabel(item.freshness_basis)}` +
+    `${item.name}: ${statusLabel(item.freshness_status)} ${hasonFreshnessBasisLabel(item.freshness_basis)}` +
     `${hasonContentDateText(item)}` +
     `${hasonInvalidDateText(item)}` +
-    `${item.modified_date ? ` file ${item.modified_date}` : ""}`
+    `${item.modified_date ? ` 文件 ${item.modified_date}` : ""}`
   );
 }
 
@@ -244,16 +252,16 @@ const MODEL_SIGNAL_MATRIX_ORDER = [
 ] as const;
 
 const MODEL_SIGNAL_MATRIX_LABELS: Record<string, string> = {
-  merrill_clock: "Merrill Clock",
+  merrill_clock: "美林时钟",
   crisis_score: "Crisis Score",
-  bond_futures_basis: "Bond Futures Basis / IRR / Safety Margin",
-  bond_futures_four_factor: "Bond Futures Four-Factor Trend",
-  funding_conditions: "Funding Conditions / Flow",
-  crowding: "Crowding",
+  bond_futures_basis: "国债期货基差 / IRR / 安全边际",
+  bond_futures_four_factor: "国债期货四因子趋势",
+  funding_conditions: "资金面 / 流动性",
+  crowding: "拥挤度",
   dcc_garch: "DCC-GARCH",
-  cta_trend: "CTA Trend",
-  final_signal: "Final Signal Aggregator",
-  risk_monitor: "Risk Monitor",
+  cta_trend: "CTA 趋势",
+  final_signal: "最终信号聚合",
+  risk_monitor: "风险监控",
 };
 
 function modelSignalMatrixOrder(item: MacroToolkitModelReadiness) {
@@ -269,26 +277,26 @@ function modelReadinessStatusColor(readiness: MacroToolkitModelReadiness["readin
 }
 
 function modelSignalDateText(item: MacroToolkitModelReadiness) {
-  return item.latest_content_date ?? item.artifact_receipt?.data_asof ?? item.latest_modified_at ?? "date pending";
+  return item.latest_content_date ?? item.artifact_receipt?.data_asof ?? item.latest_modified_at ?? "日期待定";
 }
 
 function modelSignalEvidenceText(item: MacroToolkitModelReadiness) {
   const artifacts = item.artifact_receipt?.artifact_paths ?? [];
-  if (artifacts.length) return `artifacts ${artifacts.join(" / ")}`;
-  if (item.missing_outputs.length) return `missing ${item.missing_outputs.join(" / ")}`;
-  if (item.stale_outputs.length) return `stale ${item.stale_outputs.join(" / ")}`;
-  if (item.expected_outputs.length) return `expected ${item.expected_outputs.join(" / ")}`;
-  return item.evidence_level ?? "evidence pending";
+  if (artifacts.length) return `产物 ${artifacts.join(" / ")}`;
+  if (item.missing_outputs.length) return `缺失 ${item.missing_outputs.join(" / ")}`;
+  if (item.stale_outputs.length) return `陈旧 ${item.stale_outputs.join(" / ")}`;
+  if (item.expected_outputs.length) return `预期 ${item.expected_outputs.join(" / ")}`;
+  return item.evidence_level ?? "证据待定";
 }
 
 function modelSignalThresholdText(item: MacroToolkitModelReadiness) {
   const gaps = [
     item.degraded_reason ?? "",
-    item.degraded_outputs?.length ? `degraded ${item.degraded_outputs.join(" / ")}` : "",
-    item.missing_outputs.length ? `missing output ${item.missing_outputs.length}` : "",
-    item.stale_outputs.length ? `stale output ${item.stale_outputs.length}` : "",
+    item.degraded_outputs?.length ? `降级 ${item.degraded_outputs.join(" / ")}` : "",
+    item.missing_outputs.length ? `缺失产物 ${item.missing_outputs.length}` : "",
+    item.stale_outputs.length ? `陈旧产物 ${item.stale_outputs.length}` : "",
   ].filter(Boolean);
-  return gaps.join(" · ") || "threshold clear by current artifacts";
+  return gaps.join(" · ") || "当前产物满足阈值";
 }
 
 function modelSignalSummaryText(
@@ -302,15 +310,15 @@ function modelSignalSummaryText(
   const degraded =
     readinessSummary?.degraded_count ??
     readinessEntries.filter((item) => item.readiness !== "artifact_backed").length;
-  return `artifact-backed ${backed}/${total} · degraded ${degraded}`;
+  return `产物支撑 ${backed}/${total} · 降级 ${degraded}`;
 }
 
-function modelSignalArtifactList(items: string[] | undefined, fallback = "none") {
+function modelSignalArtifactList(items: string[] | undefined, fallback = "无") {
   return items?.length ? items.join(" / ") : fallback;
 }
 
 function modelSignalReceiptRuntime(item: MacroToolkitModelReadiness) {
-  return item.artifact_receipt?.runtime_endpoint ?? "runtime endpoint pending";
+  return item.artifact_receipt?.runtime_endpoint ?? "运行端点待定";
 }
 
 function modelSignalRunReceipt(
@@ -346,44 +354,44 @@ function ModelSignalDetail({
     <aside className="macro-toolkit-model-signal-detail" data-testid="macro-toolkit-model-signal-detail">
       <div className="macro-toolkit-model-signal-detail__head">
         <div>
-          <span>model evidence</span>
+          <span>模型证据</span>
           <strong>{MODEL_SIGNAL_MATRIX_LABELS[item.id] ?? item.label}</strong>
           <small>
-            {item.script_name} 路 {modelReadinessStatusLabel(item.readiness)} 路 {modelSignalDateText(item)}
+            {item.script_name} · {modelReadinessStatusLabel(item.readiness)} · {modelSignalDateText(item)}
           </small>
         </div>
         <div className="macro-toolkit-model-signal-matrix__boundary">
           <Tag color={item.observation_only ? "gold" : "green"}>
-            {item.observation_only ? "observation-only" : "actionable"}
+            {item.observation_only ? "仅作观察" : "可执行"}
           </Tag>
           <Tag color={item.formal_use_allowed ? "green" : "default"}>
-            {item.formal_use_allowed ? "formal" : "non-formal"}
+            {item.formal_use_allowed ? "正式口径" : "非正式口径"}
           </Tag>
         </div>
       </div>
       <div className="macro-toolkit-model-signal-detail__grid">
         <div>
-          <span>Expected outputs</span>
+          <span>预期产物</span>
           <strong>{modelSignalArtifactList(item.expected_outputs)}</strong>
         </div>
         <div>
-          <span>Present artifacts</span>
+          <span>现有产物</span>
           <strong>{modelSignalArtifactList(receipt?.artifact_paths)}</strong>
         </div>
         <div>
-          <span>Missing artifacts</span>
+          <span>缺失产物</span>
           <strong>{modelSignalArtifactList(receipt?.missing_artifacts ?? item.missing_outputs)}</strong>
         </div>
         <div>
-          <span>Stale artifacts</span>
+          <span>陈旧产物</span>
           <strong>{modelSignalArtifactList(item.stale_outputs)}</strong>
         </div>
         <div>
-          <span>Runtime endpoint</span>
+          <span>运行端点</span>
           <strong>{modelSignalReceiptRuntime(item)}</strong>
         </div>
         <div>
-          <span>Threshold note</span>
+          <span>阈值说明</span>
           <strong>{modelSignalThresholdText(item)}</strong>
         </div>
       </div>
@@ -391,12 +399,12 @@ function ModelSignalDetail({
       {showActions ? (
         <div className="macro-toolkit-model-signal-detail__acceptance">
           <div>
-            <span>Artifact-backed acceptance</span>
-            <strong>{item.readiness === "artifact_backed" ? "current artifacts accepted" : "run-chain required"}</strong>
+            <span>产物验收</span>
+            <strong>{item.readiness === "artifact_backed" ? "当前产物已通过" : "需要运行模型链"}</strong>
             <small>
               {item.readiness === "artifact_backed"
-                ? "Current backend readiness marks this model artifact-backed."
-                : "Run preflight first, then run the model chain and compare latest receipt with expected outputs."}
+                ? "后端就绪度已确认该模型有产物支撑。"
+                : "先预检，再运行模型链，用最新回执对照预期产物。"}
             </small>
           </div>
           <div className="macro-toolkit-model-signal-detail__actions">
@@ -408,7 +416,7 @@ function ModelSignalDetail({
               size="small"
               onClick={() => onRunChain(true, item.id)}
             >
-              Preflight chain
+              预检模型链
             </Button>
             <Button
               data-testid="macro-toolkit-model-signal-chain-run"
@@ -418,36 +426,36 @@ function ModelSignalDetail({
               size="small"
               onClick={() => onRunChain(false, item.id)}
             >
-              Run chain
+              运行模型链
             </Button>
           </div>
         </div>
       ) : null}
       {runReceipt ? (
         <div className="macro-toolkit-model-signal-detail__receipt">
-          <span>Latest script run receipt</span>
+          <span>最近脚本运行回执</span>
           <strong>
             {runReceipt.script_name} · {runReceipt.status}
           </strong>
           <small>
-            expected {modelSignalArtifactList(runReceipt.expected_outputs)} · produced{" "}
-            {modelSignalArtifactList(runReceipt.produced_outputs)} · missing{" "}
+            预期 {modelSignalArtifactList(runReceipt.expected_outputs)} · 产出{" "}
+            {modelSignalArtifactList(runReceipt.produced_outputs)} · 缺失{" "}
             {modelSignalArtifactList(runReceipt.missing_outputs_after)} ·{" "}
-            {isSharedScript ? "shared script receipt 路 " : ""}
-            {runReceipt.degraded_reason ?? "no degraded reason"}
+            {isSharedScript ? "共享脚本回执 · " : ""}
+            {runReceipt.degraded_reason ?? "无降级原因"}
           </small>
         </div>
       ) : null}
       {isLatestChainModel && chainRunError ? (
         <div className="macro-toolkit-model-signal-detail__receipt macro-toolkit-model-signal-detail__receipt--error">
-          <span>Latest run issue</span>
+          <span>最近运行问题</span>
           <strong>{chainRunError}</strong>
-          <small>Check execute permission, script dependencies, and run-chain receipt.</small>
+          <small>检查执行权限、脚本依赖和模型链运行回执。</small>
         </div>
       ) : null}
       <div className="macro-toolkit-model-signal-detail__links">
         <a href="#macro-toolkit-script-artifact-detail">查看脚本产物</a>
-        <a href="#macro-toolkit-model-readiness-detail">查看 readiness 摘要</a>
+        <a href="#macro-toolkit-model-readiness-detail">查看就绪度摘要</a>
       </div>
     </aside>
   );
@@ -486,16 +494,16 @@ export function ModelSignalMatrix({
     return counts;
   }, {});
   const boundaryText = readinessSummary
-    ? `${readinessSummary.observation_only ? "observation-only" : "actionable"} · ${
-        readinessSummary.formal_use_allowed ? "formal use allowed" : "formal use blocked"
+    ? `${readinessSummary.observation_only ? "仅作观察" : "可执行"} · ${
+        readinessSummary.formal_use_allowed ? "允许正式使用" : "不入正式口径"
       }`
-    : "boundary pending backend summary · formal use blocked";
+    : "边界待后端汇总 · 不入正式口径";
 
   return (
     <section className="macro-toolkit-section macro-toolkit-model-signal-matrix" data-testid="macro-toolkit-model-signal-matrix">
       <div className="macro-toolkit-model-signal-matrix__head">
         <div>
-          <span>model signals</span>
+          <span>模型信号</span>
           <strong>模型信号矩阵</strong>
           <small>
             {modelSignalSummaryText(rows, readinessSummary)} · {boundaryText}
@@ -518,10 +526,10 @@ export function ModelSignalMatrix({
             </div>
             <div className="macro-toolkit-model-signal-matrix__boundary">
               <Tag color={item.observation_only ? "gold" : "green"}>
-                {item.observation_only ? "observation-only" : "actionable"}
+                {item.observation_only ? "仅作观察" : "可执行"}
               </Tag>
               <Tag color={item.formal_use_allowed ? "green" : "default"}>
-                {item.formal_use_allowed ? "formal" : "non-formal"}
+                {item.formal_use_allowed ? "正式口径" : "非正式口径"}
               </Tag>
             </div>
             <button
@@ -581,52 +589,52 @@ function isArtifactBackedModelReadiness(readiness: MacroToolkitModelReadiness["r
 
 function modelReadinessStatusLabel(readiness: MacroToolkitModelReadiness["readiness"]) {
   const labels: Record<MacroToolkitModelReadiness["readiness"], string> = {
-    artifact_backed: "artifact-backed",
-    missing_output: "missing output",
-    stale: "stale",
-    registered_only: "registered only",
-    degraded: "degraded",
-    unknown: "unknown",
+    artifact_backed: "产物支撑",
+    missing_output: "缺产物",
+    stale: "陈旧",
+    registered_only: "仅注册",
+    degraded: "降级",
+    unknown: "待确认",
   };
   return labels[readiness];
 }
 
 function formatModelReadinessDetail(item: MacroToolkitModelReadiness) {
   const gaps = [
-    item.missing_outputs.length ? `missing ${item.missing_outputs.join(" / ")}` : "",
-    item.stale_outputs.length ? `stale ${item.stale_outputs.join(" / ")}` : "",
-    item.latest_content_date ? `content ${item.latest_content_date}` : "",
+    item.missing_outputs.length ? `缺失 ${item.missing_outputs.join(" / ")}` : "",
+    item.stale_outputs.length ? `陈旧 ${item.stale_outputs.join(" / ")}` : "",
+    item.latest_content_date ? `内容日期 ${item.latest_content_date}` : "",
   ].filter(Boolean);
   return `${item.label} (${item.script_name}) ${modelReadinessStatusLabel(item.readiness)}${
-    item.observation_only ? " · observation-only" : ""
+    item.observation_only ? " · 仅作观察" : ""
   }${gaps.length ? ` · ${gaps.join(" · ")}` : ""}`;
 }
 
 function hasonContentDateText(item: MacroToolkitHasonStrategy["runtime_outputs"][number]) {
   if (item.content_date_min && item.content_date_max && item.content_date_min !== item.content_date_max) {
-    return ` content ${item.content_date_min}..${item.content_date_max}`;
+    return ` 内容 ${item.content_date_min}..${item.content_date_max}`;
   }
-  return item.content_date ? ` content ${item.content_date}` : "";
+  return item.content_date ? ` 内容 ${item.content_date}` : "";
 }
 
 function hasonInvalidDateText(item: MacroToolkitHasonStrategy["runtime_outputs"][number]) {
-  return item.content_date_invalid_count > 0 ? ` ${item.content_date_invalid_count} invalid date` : "";
+  return item.content_date_invalid_count > 0 ? ` ${item.content_date_invalid_count} 个无效日期` : "";
 }
 
 function hasonFreshnessBasisLabel(basis: string) {
   const labels: Record<string, string> = {
-    csv_content: "CSV content date",
-    file_modified_date: "file modified date",
-    missing: "file missing",
+    csv_content: "CSV 内容日期",
+    file_modified_date: "文件修改日期",
+    missing: "文件缺失",
   };
   return labels[basis] ?? basis;
 }
 
 function hasonModuleStatusLabel(status: string) {
   const labels: Record<string, string> = {
-    integrated: "script-chain complete",
-    partial: "script-chain partial",
-    missing: "script-chain missing",
+    integrated: "脚本链完整",
+    partial: "脚本链部分",
+    missing: "脚本链缺失",
   };
   return labels[status] ?? status;
 }
@@ -639,5 +647,5 @@ function hasonModuleStatusColor(status: string) {
 function formatHasonTraceScript(item: MacroToolkitHasonStrategy["source_trace"][number]) {
   const modules = Array.isArray(item.modules) ? item.modules : [];
   const moduleText = modules.length ? `[${modules.join("+")}]` : "";
-  return `${item.script}${moduleText}${item.available ? "" : ":missing"}`;
+  return `${item.script}${moduleText}${item.available ? "" : ":缺失"}`;
 }

@@ -205,6 +205,11 @@ export type MacroToolkitPayload = {
   warnings: string[];
 };
 
+export type MacroToolkitIndicatorPoint = {
+  date: string;
+  value: number;
+};
+
 export type MacroToolkitIndicator = {
   key: string;
   alias: string;
@@ -220,6 +225,7 @@ export type MacroToolkitIndicator = {
   source: string | null;
   series_id: string | null;
   quality: "ok" | "missing";
+  recent_points?: MacroToolkitIndicatorPoint[];
 };
 
 export type MacroToolkitSignalCard = {
@@ -591,6 +597,32 @@ export type MacroToolkitHasonStrategy = {
     available: boolean;
     modules?: string[];
   }>;
+};
+
+export type MacroToolkitModelChainModel = {
+  id: string;
+  label: string;
+  script_name: string;
+  artifact: string;
+  artifact_status: "ok" | "missing";
+  as_of: string | null;
+  headline: string;
+  columns: string[];
+  rows: string[][];
+};
+
+export type MacroToolkitModelChainStep = {
+  key: string;
+  step_no: number;
+  label: string;
+  models: MacroToolkitModelChainModel[];
+};
+
+export type MacroToolkitModelChainResults = {
+  as_of_date: string | null;
+  observation_only: boolean;
+  formal_use_allowed: boolean;
+  steps: MacroToolkitModelChainStep[];
 };
 
 export type MacroToolkitReportBundleArtifact = {
@@ -981,6 +1013,9 @@ export type MacroToolkitClientMethods = {
   getMacroToolkitStrategySummaries: (
     options?: MacroToolkitRequestOptions,
   ) => Promise<ApiEnvelope<MacroToolkitStrategySummariesPayload>>;
+  fetchMacroToolkitModelChainResults: (
+    options?: MacroToolkitRequestOptions,
+  ) => Promise<ApiEnvelope<MacroToolkitModelChainResults>>;
   getMacroToolkitScripts: () => Promise<ApiEnvelope<MacroToolkitPayload>>;
   runMacroToolkitScript: (
     name: string,
@@ -1042,6 +1077,13 @@ export function createRealMacroToolkitClient({
         fetchImpl,
         baseUrl,
         "/ui/macro/toolkit/analysis/strategy-summaries",
+        { signal: options?.signal },
+      ),
+    fetchMacroToolkitModelChainResults: (options) =>
+      requestJson<MacroToolkitModelChainResults>(
+        fetchImpl,
+        baseUrl,
+        "/ui/macro/toolkit/model-chain-results",
         { signal: options?.signal },
       ),
     getMacroToolkitScripts: () =>

@@ -56,12 +56,15 @@ const defaultFetch = (...args: Parameters<typeof fetch>) => fetch(...args);
 const MACRO_TOOLKIT_METHODS = new Set<keyof MacroToolkitClientMethods>([
   "getMacroToolkitAnalysis",
   "getMacroToolkitStrategySummaries",
+  "fetchMacroToolkitModelChainResults",
   "getMacroToolkitScripts",
   "runMacroToolkitScript",
+  "runMacroToolkitScriptChain",
   "refreshCffexMemberRank",
   "getCffexMemberRankRefreshStatus",
   "refreshMacroSourceBackfill",
   "getMacroSourceBackfillRefreshStatus",
+  "refreshCommodityFutures",
   "refreshChoiceStock",
   "getChoiceStockRefreshStatus",
 ]);
@@ -110,6 +113,8 @@ const HOME_MARKET_TICKER_METHODS = new Set<keyof HomeMarketTickerClientMethods>(
   "getChoiceMacroLatest",
   "getMarketDataRates",
   "getChoiceNewsEvents",
+  // Batch path used by dashboard-home to collapse 13 per-topic news reads.
+  "getChoiceNewsEventsBatch",
   "getResearchCalendarEvents",
 ]);
 

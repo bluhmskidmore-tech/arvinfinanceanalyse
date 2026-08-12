@@ -239,6 +239,37 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+export type CrisisScoreHistoryPoint = {
+  date: string;
+  crisis_score: number;
+  percentile: number | null;
+};
+
+/** 从 crisis_score_cn 能力结果里读取后端返回的 score_history（完整分析才携带）。 */
+export function crisisScoreHistoryFromResult(result: unknown): CrisisScoreHistoryPoint[] {
+  if (!isRecord(result) || !Array.isArray(result.score_history)) {
+    return [];
+  }
+  const points: CrisisScoreHistoryPoint[] = [];
+  for (const entry of result.score_history) {
+    if (!isRecord(entry)) {
+      continue;
+    }
+    const date = typeof entry.date === "string" ? entry.date : null;
+    const score = typeof entry.crisis_score === "number" && Number.isFinite(entry.crisis_score)
+      ? entry.crisis_score
+      : null;
+    if (!date || score === null) {
+      continue;
+    }
+    const percentile = typeof entry.percentile === "number" && Number.isFinite(entry.percentile)
+      ? entry.percentile
+      : null;
+    points.push({ date, crisis_score: score, percentile });
+  }
+  return points;
+}
+
 export function isCrisisComponent(value: unknown): value is CrisisComponent {
   if (!isRecord(value)) {
     return false;

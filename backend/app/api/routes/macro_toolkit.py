@@ -755,6 +755,35 @@ def macro_toolkit_adversarial_signal(
     )
 
 
+@router.get("/model-chain-results")
+def macro_toolkit_model_chain_results(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> dict[str, object]:
+    settings = get_settings()
+    _ensure_macro_toolkit_read_allowed(auth, settings)
+    chain_result = macro_toolkit_service.build_model_chain_results(OUTPUT_DIR)
+    return _envelope(
+        "macro_toolkit.model_chain_results",
+        chain_result,
+        quality_flag="ok" if _model_chain_artifacts_all_ok(chain_result) else "warning",
+        fallback_mode="none",
+        as_of_date=chain_result.get("as_of_date"),
+    )
+
+
+def _model_chain_artifacts_all_ok(chain_result: dict[str, object]) -> bool:
+    steps = chain_result.get("steps")
+    if not isinstance(steps, list):
+        return False
+    for step in steps:
+        if not isinstance(step, dict):
+            return False
+        for model in step.get("models") or []:
+            if not isinstance(model, dict) or model.get("artifact_status") != "ok":
+                return False
+    return True
+
+
 @router.post("/cffex-member-rank/refresh", status_code=202)
 def macro_toolkit_refresh_cffex_member_rank(
     auth: Annotated[AuthContext, Depends(get_auth_context)],

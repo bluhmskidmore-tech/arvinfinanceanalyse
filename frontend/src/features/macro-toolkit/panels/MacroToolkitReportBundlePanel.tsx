@@ -34,7 +34,7 @@ export function MacroToolkitReportBundlePanel({ bundle }: MacroToolkitReportBund
     >
       <header className="macro-toolkit-report-bundle__head">
         <div>
-          <span>Research Pack</span>
+          <span>研究材料包</span>
           <strong>{bundle?.title ?? "2026 中国宏观与利率策略"}</strong>
           <small>经过清单与哈希校验的只读研究材料，不进入正式指标计算链。</small>
         </div>

@@ -12,13 +12,16 @@ import {
 } from "@ant-design/icons";
 import { Button, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import type { EChartsOption } from "echarts";
 import type { ResultMeta } from "../../../api/contracts";
 import type {
   MacroToolkitCapabilityResult,
   MacroToolkitCommodityFuturesRefreshRun,
   MacroToolkitDataHealth,
 } from "../../../api/macroToolkitClient";
+import { BaseChart } from "../../../components/charts/BaseChart";
 import { PageSectionLead } from "../../../components/page/PagePrimitives";
+import { dhApiTokens } from "../../../theme/designSystem";
 import { MetricTile } from "../lib/macroToolkitPanelShared";
 import * as crisisSupport from "../lib/macroToolkitCrisisSupport";
 
@@ -41,6 +44,7 @@ type CrisisCommodityCandidateSummary = crisisSupport.CrisisCommodityCandidateSum
 const {
   buildCommodityPromotionAuditPackCopyText,
   buildCrisisGapGroups,
+  crisisScoreHistoryFromResult,
   commodityAdmissionDecisionColor,
   commodityPromotionRuleCheckStatusLabel,
   commodityPromotionRuleItem,
@@ -109,6 +113,48 @@ const {
   MACRO_COMMODITY_SHADOW_MIN_SAMPLES,
   MACRO_COMMODITY_SHADOW_RULE_VERSION,
 } = crisisSupport;
+
+function buildCrisisScoreHistoryOption(points: crisisSupport.CrisisScoreHistoryPoint[]): EChartsOption {
+  return {
+    grid: { left: 48, right: 16, top: 18, bottom: 28 },
+    tooltip: {
+      trigger: "axis",
+      formatter: (params: unknown) => {
+        const first = Array.isArray(params) ? (params[0] as { dataIndex?: number } | undefined) : undefined;
+        const point = points[first?.dataIndex ?? -1];
+        if (!point) {
+          return "";
+        }
+        const percentile = point.percentile === null ? "—" : `${point.percentile.toFixed(1)}%`;
+        return `${point.date}<br/>Crisis Score ${point.crisis_score.toFixed(4)}<br/>历史分位 ${percentile}`;
+      },
+    },
+    xAxis: {
+      type: "category",
+      boundaryGap: false,
+      data: points.map((point) => point.date),
+      axisLabel: { color: dhApiTokens.color.inkMuted, fontSize: 11 },
+      axisLine: { lineStyle: { color: dhApiTokens.color.lineSoft } },
+    },
+    yAxis: {
+      type: "value",
+      scale: true,
+      axisLabel: { color: dhApiTokens.color.inkMuted, fontSize: 11 },
+      splitLine: { lineStyle: { color: dhApiTokens.color.lineSoft } },
+    },
+    series: [
+      {
+        name: "Crisis Score",
+        type: "line",
+        data: points.map((point) => point.crisis_score),
+        showSymbol: false,
+        lineStyle: { color: dhApiTokens.color.blue, width: 1.6 },
+        itemStyle: { color: dhApiTokens.color.blue },
+        areaStyle: { color: dhApiTokens.color.blueSoft },
+      },
+    ],
+  };
+}
 
 function CrisisGapAction({
   group,
@@ -466,7 +512,7 @@ function CrisisCommodityShadowImpactPanel({
       <div className="macro-toolkit-crisis-shadow-impact__head">
         <div>
           <span>Crisis Score v2 影子影响评估</span>
-          <strong>{hasShadowScore ? "shadow score 只读试算" : "影子分数待公式确认"}</strong>
+          <strong>{hasShadowScore ? "影子分数只读试算" : "影子分数待公式确认"}</strong>
         </div>
         <small>
           {shadowImpact?.formula_version ?? "商品候选当前只做影子影响判断"}；不改变正式 Crisis Score。
@@ -898,6 +944,7 @@ export function CrisisScoreEvidencePanel({
   onPreviewCommodityRefreshProducts?: (products: string[]) => void;
   onRefreshCommodityProducts?: (products: string[]) => void;
 }) {
+  const [shadowEvidenceExpanded, setShadowEvidenceExpanded] = useState(false);
   const normalizedEvidence = normalizeInputEvidence(result);
   const inputEvidence = normalizedEvidence?.inputs ?? [];
   const rawResult = result.result;
@@ -920,6 +967,8 @@ export function CrisisScoreEvidencePanel({
   const crisisGapGroups = buildCrisisGapGroups(inputEvidence, warnings, commodityCoverage);
   const crisisGapCount = crisisGapGroups.reduce((total, group) => total + group.items.length, 0);
   const crisisGapDetail = formatCrisisGapSummaryDetail(crisisGapGroups);
+  const scoreHistory = crisisScoreHistoryFromResult(rawResult);
+  const latestHistoryPoint = scoreHistory[scoreHistory.length - 1] ?? null;
 
   return (
     <section
@@ -928,7 +977,7 @@ export function CrisisScoreEvidencePanel({
       aria-label="Crisis Score 数据来源"
     >
       <PageSectionLead
-        eyebrow="crisis evidence"
+        eyebrow="危机证据"
         title="Crisis Score 数据来源"
         description="完整分析返回后展示每个输入、组件权重和缺口；缺失输入保持缺失，不折算为 0。"
       />
@@ -957,6 +1006,23 @@ export function CrisisScoreEvidencePanel({
           tone={crisisGapCount ? "neutral" : "positive"}
         />
       </div>
+
+      {latestHistoryPoint && scoreHistory.length >= 2 ? (
+        <div className="macro-toolkit-crisis-history" aria-label="Crisis Score 走势">
+          <div className="macro-toolkit-crisis-history__head">
+            <span>Crisis Score 走势</span>
+            <strong>
+              近 {scoreHistory.length} 期 · 最新 {formatNumberValue(latestHistoryPoint.crisis_score)} · 历史分位{" "}
+              {latestHistoryPoint.percentile === null ? "—" : `${latestHistoryPoint.percentile.toFixed(1)}%`}
+            </strong>
+          </div>
+          <BaseChart option={buildCrisisScoreHistoryOption(scoreHistory)} height={200} />
+        </div>
+      ) : (
+        <small className="macro-toolkit-crisis-coverage-note">
+          Crisis Score 走势需完整分析返回的历史分数；当前历史点不足，先运行完整分析。
+        </small>
+      )}
 
       {commodityShortfallChanges.length ? (
         <CrisisCommodityClosurePanel
@@ -1065,19 +1131,35 @@ export function CrisisScoreEvidencePanel({
                   tone="neutral"
                 />
               </div>
-              <CrisisCommodityShadowImpactPanel
-                currentScore={result.score}
-                coverage={commodityCoverage}
-                shadowImpact={commodityShadowImpact}
-              />
-              <CrisisCommodityShadowDecisionPanel
-                admission={commodityAdmission}
-                approvalPack={commodityApprovalPack}
-                coverage={commodityCoverage}
-                commodityInput={commodityInput ?? null}
-                analysisMeta={analysisMeta}
-                analysisAsOfDate={analysisAsOfDate}
-              />
+              <div className="macro-toolkit-crisis-shadow-toggle">
+                <Button
+                  size="small"
+                  icon={shadowEvidenceExpanded ? <ArrowUpOutlined /> : <ToolOutlined />}
+                  aria-expanded={shadowEvidenceExpanded}
+                  aria-label={shadowEvidenceExpanded ? "收起影子评估证据" : "展开影子评估证据"}
+                  onClick={() => setShadowEvidenceExpanded((expanded) => !expanded)}
+                >
+                  {shadowEvidenceExpanded ? "收起影子评估证据" : "展开影子评估证据"}
+                </Button>
+                <small>影子影响试算、准入决策与逐品种明细默认收起，审批复核时再展开。</small>
+              </div>
+              {shadowEvidenceExpanded ? (
+                <>
+                  <CrisisCommodityShadowImpactPanel
+                    currentScore={result.score}
+                    coverage={commodityCoverage}
+                    shadowImpact={commodityShadowImpact}
+                  />
+                  <CrisisCommodityShadowDecisionPanel
+                    admission={commodityAdmission}
+                    approvalPack={commodityApprovalPack}
+                    coverage={commodityCoverage}
+                    commodityInput={commodityInput ?? null}
+                    analysisMeta={analysisMeta}
+                    analysisAsOfDate={analysisAsOfDate}
+                  />
+                </>
+              ) : null}
               <small className="macro-toolkit-crisis-coverage-note">
                 {commodityCoverage.candidate_summary.next_step || "商品扩展候选下一步待确认"}
               </small>
@@ -1108,45 +1190,47 @@ export function CrisisScoreEvidencePanel({
               ) : null}
             </>
           ) : null}
-          <div className="macro-toolkit-crisis-input-grid">
-            {commodityCoverage.items.map((item) => (
-              <div
-                className={[
-                  "macro-toolkit-crisis-input",
-                  item.available ? "macro-toolkit-crisis-input--available" : "macro-toolkit-crisis-input--missing",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-                key={item.field}
-              >
-                <div className="macro-toolkit-capability-result-head">
-                  <span>{item.label || item.field}</span>
-                  <Tag color={item.available ? "green" : "red"}>{item.available ? "命中" : "缺失"}</Tag>
+          {shadowEvidenceExpanded ? (
+            <div className="macro-toolkit-crisis-input-grid">
+              {commodityCoverage.items.map((item) => (
+                <div
+                  className={[
+                    "macro-toolkit-crisis-input",
+                    item.available ? "macro-toolkit-crisis-input--available" : "macro-toolkit-crisis-input--missing",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  key={item.field}
+                >
+                  <div className="macro-toolkit-capability-result-head">
+                    <span>{item.label || item.field}</span>
+                    <Tag color={item.available ? "green" : "red"}>{item.available ? "命中" : "缺失"}</Tag>
+                  </div>
+                  <strong>{formatCommodityCoverageIdentifiers(item)}</strong>
+                  <small>
+                    {item.field} · {formatCrisisRowCount(item.row_count)} · {item.latest_date ?? "日期缺失"} ·{" "}
+                    {formatCommodityCoverageDateStatus(item.date_alignment_status)}
+                  </small>
+                  <small>
+                    {item.source ?? "source missing"} · {item.series_id ?? "series missing"} · matched{" "}
+                    {item.matched_alias ?? "alias missing"} · {item.used_in_formula ? "纳入公式" : "未纳入公式"}
+                  </small>
+                  {item.candidate_decision ? (
+                    <small>
+                      {item.candidate_decision.label} · {item.candidate_decision.reason} ·{" "}
+                      {item.candidate_decision.next_step}
+                    </small>
+                  ) : null}
+                  {item.shadow_evaluation ? (
+                    <small>
+                      {item.shadow_evaluation.label} · {item.shadow_evaluation.summary} ·{" "}
+                      {formatCommodityShadowDetail(item.shadow_evaluation)}
+                    </small>
+                  ) : null}
                 </div>
-                <strong>{formatCommodityCoverageIdentifiers(item)}</strong>
-                <small>
-                  {item.field} · {formatCrisisRowCount(item.row_count)} · {item.latest_date ?? "日期缺失"} ·{" "}
-                  {formatCommodityCoverageDateStatus(item.date_alignment_status)}
-                </small>
-                <small>
-                  {item.source ?? "source missing"} · {item.series_id ?? "series missing"} · matched{" "}
-                  {item.matched_alias ?? "alias missing"} · {item.used_in_formula ? "纳入公式" : "未纳入公式"}
-                </small>
-                {item.candidate_decision ? (
-                  <small>
-                    {item.candidate_decision.label} · {item.candidate_decision.reason} ·{" "}
-                    {item.candidate_decision.next_step}
-                  </small>
-                ) : null}
-                {item.shadow_evaluation ? (
-                  <small>
-                    {item.shadow_evaluation.label} · {item.shadow_evaluation.summary} ·{" "}
-                    {formatCommodityShadowDetail(item.shadow_evaluation)}
-                  </small>
-                ) : null}
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
 
