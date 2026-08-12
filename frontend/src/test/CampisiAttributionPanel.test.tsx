@@ -12,7 +12,18 @@ import type {
   CampisiFourEffectsPayload,
   Numeric,
 } from "../api/contracts";
-import { CampisiAttributionPanel } from "../features/pnl-attribution/components/CampisiAttributionPanel";
+import {
+  buildEffectRows,
+  CampisiAttributionPanel,
+  normalizeCampisiData,
+  sumCampisiEffectAmounts,
+} from "../features/pnl-attribution/components/CampisiAttributionPanel";
+import { sumCampisiEnhancedDisplayAmounts } from "../features/pnl-attribution/components/CampisiEnhancedPanel";
+import {
+  mockCampisiEnhanced,
+  mockCampisiFourEffects,
+  mockCampisiFourEffectsModelPath,
+} from "../mocks/campisiMocks";
 
 function numeric(raw: number | null, unit: Numeric["unit"], display = ""): Numeric {
   return {
@@ -129,6 +140,103 @@ describe("CampisiAttributionPanel", () => {
 
     expect(screen.getByTestId("campisi-driver-summary")).toHaveTextContent("75.0%");
     expect(screen.queryByText(/0\.8%/)).not.toBeInTheDocument();
+  });
+
+  it("bridge path effect rows sum to total_return and surface decomposition_basis", () => {
+    // 夹具语义：5+3+3+14=25 会静默丢 10；补齐 realized/manual/fx 后应等于 35。
+    const data: CampisiFourEffectsPayload = {
+      report_date: "2026-04-30",
+      period_start: "2026-03-31",
+      period_end: "2026-04-30",
+      num_days: 30,
+      decomposition_basis:
+        "bridge_path: selection_effect is residual after carry, treasury, spread, realized_trading, manual_adjustment, and fx_translation",
+      totals: {
+        income_return: 5,
+        treasury_effect: 3,
+        spread_effect: 3,
+        realized_trading: 4,
+        manual_adjustment: 3,
+        fx_translation: 3,
+        selection_effect: 14,
+        total_return: 35,
+        market_value_start: 100,
+      },
+      by_asset_class: [
+        {
+          asset_class: "利率债",
+          market_value_start: 100,
+          income_return: 5,
+          treasury_effect: 3,
+          spread_effect: 3,
+          realized_trading: 4,
+          manual_adjustment: 3,
+          fx_translation: 3,
+          selection_effect: 14,
+          total_return: 35,
+        },
+      ],
+      by_bond: [],
+    };
+
+    const normalized = normalizeCampisiData(data);
+    expect(normalized).not.toBeNull();
+    const effects = buildEffectRows(normalized!);
+    expect(effects.map((effect) => effect.key)).toEqual([
+      "income",
+      "treasury",
+      "spread",
+      "realized_trading",
+      "manual_adjustment",
+      "fx_translation",
+      "selection",
+    ]);
+    expect(sumCampisiEffectAmounts(effects)).toBe(data.totals.total_return);
+
+    render(<CampisiAttributionPanel data={data} state={{ kind: "ok" }} onRetry={() => {}} />);
+    expect(screen.getByTestId("campisi-decomposition-basis")).toHaveTextContent(
+      "bridge_path: selection_effect is residual",
+    );
+    expect(screen.getAllByText("已实现交易").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("手工调整").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("汇兑").length).toBeGreaterThan(0);
+  });
+
+  it("model path keeps four effects only and still sums to total_return", () => {
+    const normalized = normalizeCampisiData(mockCampisiFourEffectsModelPath);
+    expect(normalized).not.toBeNull();
+    expect(normalized!.has_bridge_details).toBe(false);
+    const effects = buildEffectRows(normalized!);
+    expect(effects.map((effect) => effect.key)).toEqual([
+      "income",
+      "treasury",
+      "spread",
+      "selection",
+    ]);
+    expect(sumCampisiEffectAmounts(effects)).toBe(
+      mockCampisiFourEffectsModelPath.totals.total_return,
+    );
+
+    render(
+      <CampisiAttributionPanel
+        data={mockCampisiFourEffectsModelPath}
+        state={{ kind: "ok" }}
+        onRetry={() => {}}
+      />,
+    );
+    expect(screen.queryByTestId("campisi-decomposition-basis")).not.toBeInTheDocument();
+    expect(screen.queryByText("已实现交易")).not.toBeInTheDocument();
+    expect(screen.queryByText("手工调整")).not.toBeInTheDocument();
+    expect(screen.queryByText("汇兑")).not.toBeInTheDocument();
+  });
+
+  it("bridge mock payload components sum to total_return via panel effect rows", () => {
+    const normalized = normalizeCampisiData(mockCampisiFourEffects);
+    const effects = buildEffectRows(normalized!);
+    expect(sumCampisiEffectAmounts(effects)).toBe(mockCampisiFourEffects.totals.total_return);
+    expect(sumCampisiEnhancedDisplayAmounts(mockCampisiEnhanced.totals)).toBe(
+      mockCampisiEnhanced.totals.total_return,
+    );
   });
 
   it("keeps missing governed effects as null gaps and em-dash instead of zero", () => {

@@ -2255,7 +2255,7 @@ describe("RiskTensorPage", () => {
     expect(warning).toHaveTextContent("不会在前端补算正式指标");
 
     const kpi = await screen.findByTestId("risk-tensor-kpi-grid");
-    expect(kpi).toHaveTextContent("估值口径 DV01");
+    expect(kpi).toHaveTextContent("面值口径 DV01");
     expect(kpi).toHaveTextContent("—");
     expect(screen.getByTestId("risk-tensor-liquidity-action")).toHaveTextContent("not-a-number");
   });

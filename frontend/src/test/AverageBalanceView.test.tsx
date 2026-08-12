@@ -830,7 +830,7 @@ describe("AverageBalanceView", () => {
           start_date: "2026-01-01",
           end_date: "2026-04-14",
           calendar_days_inclusive: 104,
-          adb_denominator_basis: "formal_calendar" as const,
+          adb_denominator_basis: "formal+snapshot_calendar" as const,
           num_days: 104,
           coverage_days: 104,
           simulated: false,
@@ -862,7 +862,11 @@ describe("AverageBalanceView", () => {
             resolved_report_date: "2026-04-14",
             as_of_date: "2026-04-14",
             date_basis: "adb_comparison_report_date",
-            tables_used: ["fact_formal_zqtz_balance_daily", "fact_formal_tyw_balance_daily"],
+            tables_used: [
+              "fact_formal_zqtz_balance_daily",
+              "fact_formal_tyw_balance_daily",
+              "tyw_interbank_daily_snapshot",
+            ],
             filters_applied: {
               start_date: "2026-01-01",
               end_date: "2026-04-14",
@@ -887,7 +891,13 @@ describe("AverageBalanceView", () => {
     expect(meta).toHaveTextContent("日期基准 adb_comparison_report_date");
     expect(meta).toHaveTextContent("fact_formal_zqtz_balance_daily");
     expect(meta).toHaveTextContent("fact_formal_tyw_balance_daily");
+    expect(meta).toHaveTextContent("tyw_interbank_daily_snapshot");
     expect(meta).toHaveTextContent("证据行 104");
+
+    const snapshotWarning = await screen.findByTestId("adb-snapshot-fallback-warning");
+    expect(snapshotWarning).toHaveTextContent("快照补数降级");
+    expect(snapshotWarning).toHaveTextContent("部分日期由快照补数");
+    expect(snapshotWarning).toHaveTextContent("非正式口径");
   });
 });
 

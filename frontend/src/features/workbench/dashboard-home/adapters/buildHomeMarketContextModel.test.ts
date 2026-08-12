@@ -236,3 +236,83 @@ describe("buildHomeMarketContextModel yield curve dates", () => {
     });
   });
 });
+
+describe("buildHomeMarketContextModel campisi bridge components", () => {
+  it("includes realized trading and fx in contribution/drag candidates", () => {
+    const model = buildHomeMarketContextModel({
+      marketTape: [],
+      marketPoints: null,
+      macroNewsEvents: null,
+      todayIsoDate: "2026-04-10",
+      campisiFourEffects: {
+        report_date: "2026-04-10",
+        period_start: "2026-03-11",
+        period_end: "2026-04-10",
+        num_days: 30,
+        totals: {
+          income_return: 50_000_000,
+          treasury_effect: 30_000_000,
+          spread_effect: 30_000_000,
+          realized_trading: 120_000_000,
+          manual_adjustment: -80_000_000,
+          fx_translation: 60_000_000,
+          selection_effect: 40_000_000,
+          total_return: 250_000_000,
+          market_value_start: 10_000_000_000,
+        },
+        by_asset_class: [],
+        by_bond: [],
+      },
+      returnDecomposition: null,
+      yieldCurveTermStructure: null,
+      creditSpreadMigration: null,
+      attribution: {
+        maxDragLabel: "",
+        maxContributionLabel: "",
+      },
+    });
+
+    const pnl = model.contextBlocks.find((block) => block.id === "pnl");
+    expect(pnl?.title).toContain("已实现交易");
+    expect(pnl?.detail).toContain("手工调整");
+    expect(pnl?.detail).toContain("汇兑");
+    expect(pnl?.detail).toContain("分量");
+  });
+
+  it("keeps model-path four components when bridge detail fields are absent", () => {
+    const model = buildHomeMarketContextModel({
+      marketTape: [],
+      marketPoints: null,
+      macroNewsEvents: null,
+      todayIsoDate: "2026-04-10",
+      campisiFourEffects: {
+        report_date: "2026-04-10",
+        period_start: "2026-03-11",
+        period_end: "2026-04-10",
+        num_days: 30,
+        totals: {
+          income_return: 20,
+          treasury_effect: -3,
+          spread_effect: 4,
+          selection_effect: 9,
+          total_return: 30,
+          market_value_start: 100,
+        },
+        by_asset_class: [],
+        by_bond: [],
+      },
+      returnDecomposition: null,
+      yieldCurveTermStructure: null,
+      creditSpreadMigration: null,
+      attribution: {
+        maxDragLabel: "",
+        maxContributionLabel: "",
+      },
+    });
+
+    const pnl = model.contextBlocks.find((block) => block.id === "pnl");
+    expect(pnl?.title).toContain("Carry/Income");
+    expect(pnl?.detail).not.toContain("已实现交易");
+    expect(pnl?.detail).not.toContain("汇兑");
+  });
+});

@@ -94,6 +94,17 @@ function buildRateCoverageWarning(data: AdbComparisonResponse | null | undefined
   return `加权利率覆盖不足：${warnings.join("，")}。收益率/付息率仅按有利率余额加权，缺失余额已从分母剔除。`;
 }
 
+const ADB_SNAPSHOT_FALLBACK_WARNING =
+  "部分日期由快照补数（原币、未经 FX 中间价转换），非正式口径。";
+
+function shouldShowSnapshotFallbackWarning(
+  adbDenominatorBasis: string | null | undefined,
+  meta: ResultMeta | undefined,
+): boolean {
+  if (adbDenominatorBasis?.includes("snapshot")) return true;
+  return meta?.fallback_mode === "latest_snapshot";
+}
+
 function formatSignedPct(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) return EM_DASH;
   return `${value > 0 ? "+" : ""}${value.toFixed(2)}%`;
@@ -860,6 +871,18 @@ export default function AverageBalanceView() {
                       meta={dailyData.result_meta}
                       testId="adb-daily-result-meta"
                     />
+                    {shouldShowSnapshotFallbackWarning(
+                      dailyData.adb_denominator_basis,
+                      dailyData.result_meta,
+                    ) ? (
+                      <Alert
+                        data-testid="adb-snapshot-fallback-warning"
+                        type="warning"
+                        showIcon
+                        message="快照补数降级"
+                        description={ADB_SNAPSHOT_FALLBACK_WARNING}
+                      />
+                    ) : null}
                     <AdbDenominatorSummary data={dailyData} />
                     <AdbAccountingBasisSection
                       snapshot={dailyData.accounting_basis_daily_avg}
@@ -1103,6 +1126,15 @@ export default function AverageBalanceView() {
                       meta={monthlyData.result_meta}
                       testId="adb-monthly-result-meta"
                     />
+                    {shouldShowSnapshotFallbackWarning(undefined, monthlyData.result_meta) ? (
+                      <Alert
+                        data-testid="adb-monthly-snapshot-fallback-warning"
+                        type="warning"
+                        showIcon
+                        message="快照补数降级"
+                        description={ADB_SNAPSHOT_FALLBACK_WARNING}
+                      />
+                    ) : null}
                     <AdbAccountingBasisSection
                       trend={monthlyData.accounting_basis_daily_avg_trend}
                       titleSuffix={`${monthlyData.year} 月度`}

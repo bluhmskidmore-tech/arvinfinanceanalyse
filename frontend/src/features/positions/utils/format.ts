@@ -3,6 +3,8 @@
  * 后端返回 Decimal string，展示层用 BigInt 做十进制 half-up 舍入。
  */
 
+import { EM_DASH } from "../../../utils/format";
+
 const GROUP = /\B(?=(\d{3})+(?!\d))/g;
 
 function groupInt(s: string): string {
@@ -56,7 +58,7 @@ export function scaledBigIntToDecimalString(x: bigint, scale: number, decimals: 
 }
 
 export function formatAmountYi(amountYuan: string | null | undefined, decimals: number = 2): string {
-  if (!amountYuan) return "-";
+  if (!amountYuan) return EM_DASH;
   const { value, scale } = decimalToIntegerAndScale(amountYuan);
   const yiScaled = divideRoundHalfUp(value * pow10(decimals), 100000000n * pow10(scale));
   const s = scaledBigIntToDecimalString(yiScaled, decimals, decimals);
@@ -64,7 +66,7 @@ export function formatAmountYi(amountYuan: string | null | undefined, decimals: 
 }
 
 export function formatAmountWan(amountYuan: string | null | undefined, decimals: number = 2): string {
-  if (!amountYuan) return "-";
+  if (!amountYuan) return EM_DASH;
   const { value, scale } = decimalToIntegerAndScale(amountYuan);
   const wanScaled = divideRoundHalfUp(value * pow10(decimals), 10000n * pow10(scale));
   const s = scaledBigIntToDecimalString(wanScaled, decimals, decimals);
@@ -73,7 +75,7 @@ export function formatAmountWan(amountYuan: string | null | undefined, decimals:
 
 /** 利率小数（如 0.0255）→ 百分比展示（2.55%） */
 export function formatRatePercent(rateDecimal: string | null | undefined, decimals: number = 2): string {
-  if (!rateDecimal) return "-";
+  if (!rateDecimal) return EM_DASH;
   const { value, scale } = decimalToIntegerAndScale(rateDecimal);
   const pctScaled = divideRoundHalfUp(value * 100n * pow10(decimals), pow10(scale));
   const s = scaledBigIntToDecimalString(pctScaled, decimals, decimals);

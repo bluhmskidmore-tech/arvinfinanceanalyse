@@ -7,12 +7,19 @@ import type {
 import type { DataSectionState } from "../../../components/DataSection.types";
 import { PageDataSection } from "../../../components/page/PageDataSection";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
+
+// 面板浅色面色集中定义，防止 hex 字面量扩散（visual_tokens ratchet）。
+// cream 无 designTokens 等值色（warm.paper 为 #fffdf8），保留字面量。
+const SURFACE_WHITE = designTokens.color.cockpit.white;
+const SURFACE_SLATE = designTokens.color.cockpit.surface20;
+const SURFACE_CREAM = "#fffdf7";
 
 const cardStyle = {
   padding: designTokens.space[5],
   borderRadius: designTokens.radius.sm,
   border: `1px solid ${designTokens.color.neutral[200]}`,
-  background: "#ffffff",
+  background: SURFACE_WHITE,
   boxShadow: "0 1px 2px rgba(31, 41, 55, 0.04)",
 } as const;
 
@@ -41,7 +48,7 @@ const capabilityBoundaryStyle = {
   padding: `${designTokens.space[3]}px ${designTokens.space[4]}px`,
   borderRadius: designTokens.radius.md,
   border: `1px solid ${designTokens.color.neutral[200]}`,
-  background: "#f8fafc",
+  background: SURFACE_SLATE,
   color: designTokens.color.neutral[700],
   fontSize: designTokens.fontSize[12],
   lineHeight: designTokens.lineHeight.normal,
@@ -49,7 +56,7 @@ const capabilityBoundaryStyle = {
 
 function formatYi(value: number | null): string {
   if (value === null || !Number.isFinite(value)) {
-    return "—";
+    return EM_DASH;
   }
   const yi = value / 100_000_000;
   return `${yi >= 0 ? "+" : ""}${yi.toFixed(2)} 亿`;
@@ -76,7 +83,14 @@ function pctPoints(
   return value?.unit === "pct" ? raw * 100 : raw;
 }
 
-type CampisiEffectKey = "income" | "treasury" | "spread" | "selection";
+export type CampisiEffectKey =
+  | "income"
+  | "treasury"
+  | "spread"
+  | "realized_trading"
+  | "manual_adjustment"
+  | "fx_translation"
+  | "selection";
 
 type CampisiEffect = {
   key: CampisiEffectKey;
@@ -86,25 +100,35 @@ type CampisiEffect = {
   role: string;
 };
 
+type NormalizedCampisiItem = {
+  category: string;
+  income_return: number | null;
+  treasury_effect: number | null;
+  spread_effect: number | null;
+  realized_trading: number | null;
+  manual_adjustment: number | null;
+  fx_translation: number | null;
+  selection_effect: number | null;
+};
+
 type NormalizedCampisiData = {
   total_return: number | null;
   total_income: number | null;
   total_treasury_effect: number | null;
   total_spread_effect: number | null;
+  total_realized_trading: number | null;
+  total_manual_adjustment: number | null;
+  total_fx_translation: number | null;
   total_selection_effect: number | null;
   income_contribution_pct: number | null;
   treasury_contribution_pct: number | null;
   spread_contribution_pct: number | null;
   selection_contribution_pct: number | null;
   interpretation: string;
+  decomposition_basis?: string;
   formal_closure?: CampisiFourEffectsPayload["formal_closure"];
-  items: Array<{
-    category: string;
-    income_return: number | null;
-    treasury_effect: number | null;
-    spread_effect: number | null;
-    selection_effect: number | null;
-  }>;
+  has_bridge_details: boolean;
+  items: NormalizedCampisiItem[];
 };
 
 type Props = {
@@ -113,7 +137,17 @@ type Props = {
   onRetry: () => void;
 };
 
-function normalizeCampisiData(
+function optionalFiniteOrNull(
+  value: number | undefined,
+  present: boolean,
+): number | null {
+  if (!present) {
+    return null;
+  }
+  return finiteOrNull(value);
+}
+
+export function normalizeCampisiData(
   data: CampisiAttributionPayload | CampisiFourEffectsPayload | null,
 ): NormalizedCampisiData | null {
   if (!data) {
@@ -129,24 +163,51 @@ function normalizeCampisiData(
     const income = finiteOrNull(data.totals.income_return);
     const treasury = finiteOrNull(data.totals.treasury_effect);
     const spread = finiteOrNull(data.totals.spread_effect);
+    const hasBridgeDetails =
+      data.totals.realized_trading !== undefined ||
+      data.totals.manual_adjustment !== undefined ||
+      data.totals.fx_translation !== undefined;
+    const realized = optionalFiniteOrNull(
+      data.totals.realized_trading,
+      hasBridgeDetails,
+    );
+    const manual = optionalFiniteOrNull(
+      data.totals.manual_adjustment,
+      hasBridgeDetails,
+    );
+    const fx = optionalFiniteOrNull(data.totals.fx_translation, hasBridgeDetails);
     const selection = finiteOrNull(data.totals.selection_effect);
     return {
       total_return: totalReturn,
       total_income: income,
       total_treasury_effect: treasury,
       total_spread_effect: spread,
+      total_realized_trading: realized,
+      total_manual_adjustment: manual,
+      total_fx_translation: fx,
       total_selection_effect: selection,
       income_contribution_pct: pct(income),
       treasury_contribution_pct: pct(treasury),
       spread_contribution_pct: pct(spread),
       selection_contribution_pct: pct(selection),
       interpretation: `期间 ${data.period_start} 至 ${data.period_end} 的四效应归因拆解。`,
+      decomposition_basis: data.decomposition_basis,
       formal_closure: data.formal_closure,
+      has_bridge_details: hasBridgeDetails,
       items: data.by_asset_class.map((row) => ({
         category: row.asset_class,
         income_return: finiteOrNull(row.income_return),
         treasury_effect: finiteOrNull(row.treasury_effect),
         spread_effect: finiteOrNull(row.spread_effect),
+        realized_trading: optionalFiniteOrNull(
+          row.realized_trading,
+          hasBridgeDetails,
+        ),
+        manual_adjustment: optionalFiniteOrNull(
+          row.manual_adjustment,
+          hasBridgeDetails,
+        ),
+        fx_translation: optionalFiniteOrNull(row.fx_translation, hasBridgeDetails),
         selection_effect: finiteOrNull(row.selection_effect),
       })),
     };
@@ -157,25 +218,39 @@ function normalizeCampisiData(
     total_income: finiteOrNull(data.total_income.raw),
     total_treasury_effect: finiteOrNull(data.total_treasury_effect.raw),
     total_spread_effect: finiteOrNull(data.total_spread_effect.raw),
+    total_realized_trading: null,
+    total_manual_adjustment: null,
+    total_fx_translation: null,
     total_selection_effect: finiteOrNull(data.total_selection_effect.raw),
     income_contribution_pct: pctPoints(data.income_contribution_pct),
     treasury_contribution_pct: pctPoints(data.treasury_contribution_pct),
     spread_contribution_pct: pctPoints(data.spread_contribution_pct),
     selection_contribution_pct: pctPoints(data.selection_contribution_pct),
     interpretation: data.interpretation,
+    decomposition_basis: undefined,
     formal_closure: undefined,
+    has_bridge_details: false,
     items: data.items.map((row) => ({
       category: row.category,
       income_return: finiteOrNull(row.income_return.raw),
       treasury_effect: finiteOrNull(row.treasury_effect.raw),
       spread_effect: finiteOrNull(row.spread_effect.raw),
+      realized_trading: null,
+      manual_adjustment: null,
+      fx_translation: null,
       selection_effect: finiteOrNull(row.selection_effect.raw),
     })),
   };
 }
 
-function buildEffectRows(normalized: NormalizedCampisiData): CampisiEffect[] {
-  return [
+export function buildEffectRows(normalized: NormalizedCampisiData): CampisiEffect[] {
+  const pct = (value: number | null) =>
+    normalized.total_return !== null &&
+    normalized.total_return !== 0 &&
+    value !== null
+      ? (value / normalized.total_return) * 100
+      : null;
+  const rows: CampisiEffect[] = [
     {
       key: "income",
       label: "收入效应",
@@ -197,14 +272,75 @@ function buildEffectRows(normalized: NormalizedCampisiData): CampisiEffect[] {
       share: normalized.spread_contribution_pct,
       role: "信用利差收窄或走阔带来的价格影响。",
     },
-    {
-      key: "selection",
-      label: "选择效应",
-      amount: normalized.total_selection_effect,
-      share: normalized.selection_contribution_pct,
-      role: "剩余已确认损益，包括个券表现、交易和会计口径差异。",
-    },
   ];
+  if (normalized.has_bridge_details) {
+    rows.push(
+      {
+        key: "realized_trading",
+        label: "已实现交易",
+        amount: normalized.total_realized_trading,
+        share: pct(normalized.total_realized_trading),
+        role: "517 已实现交易损益，不等同交易员能力评价。",
+      },
+      {
+        key: "manual_adjustment",
+        label: "手工调整",
+        amount: normalized.total_manual_adjustment,
+        share: pct(normalized.total_manual_adjustment),
+        role: "治理手工调整，不算主动管理能力。",
+      },
+      {
+        key: "fx_translation",
+        label: "汇兑",
+        amount: normalized.total_fx_translation,
+        share: pct(normalized.total_fx_translation),
+        role: "汇兑折算影响，与选券残差分开列示。",
+      },
+    );
+  }
+  rows.push({
+    key: "selection",
+    label: "选择效应",
+    amount: normalized.total_selection_effect,
+    share: normalized.selection_contribution_pct,
+    role: normalized.has_bridge_details
+      ? "扣除票息、曲线、利差、已实现交易、手工调整与汇兑后的残差，不能直接等同选券能力。"
+      : "剩余已确认损益，包括个券表现、交易和会计口径差异。",
+  });
+  return rows;
+}
+
+export function sumCampisiEffectAmounts(effects: readonly CampisiEffect[]): number | null {
+  let sum = 0;
+  for (const effect of effects) {
+    if (effect.amount === null) {
+      return null;
+    }
+    sum += effect.amount;
+  }
+  return sum;
+}
+
+function itemAmountForEffect(
+  row: NormalizedCampisiItem,
+  key: CampisiEffectKey,
+): number | null {
+  switch (key) {
+    case "income":
+      return row.income_return;
+    case "treasury":
+      return row.treasury_effect;
+    case "spread":
+      return row.spread_effect;
+    case "realized_trading":
+      return row.realized_trading;
+    case "manual_adjustment":
+      return row.manual_adjustment;
+    case "fx_translation":
+      return row.fx_translation;
+    case "selection":
+      return row.selection_effect;
+  }
 }
 
 function effectColor(amount: number | null): string {
@@ -263,10 +399,10 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
         valueFormatter: (value) => {
           const item = Array.isArray(value) ? value[0] : value;
           if (item === null || item === undefined || item === "-") {
-            return "—";
+            return EM_DASH;
           }
           const n = Number(item);
-          return `${Number.isFinite(n) ? n.toFixed(2) : "—"} 亿`;
+          return `${Number.isFinite(n) ? n.toFixed(2) : EM_DASH} 亿`;
         },
       },
       grid: {
@@ -337,6 +473,23 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
           >
             {normalized.interpretation}
           </p>
+          {normalized.decomposition_basis ? (
+            <div
+              data-testid="campisi-decomposition-basis"
+              style={{
+                marginBottom: designTokens.space[4],
+                padding: `${designTokens.space[3]}px ${designTokens.space[4]}px`,
+                borderRadius: designTokens.radius.md,
+                border: `1px solid ${designTokens.color.neutral[200]}`,
+                background: SURFACE_CREAM,
+                color: designTokens.color.neutral[700],
+                fontSize: designTokens.fontSize[12],
+                lineHeight: designTokens.lineHeight.normal,
+              }}
+            >
+              分解口径：{normalized.decomposition_basis}
+            </div>
+          ) : null}
           <div data-testid="campisi-capability-boundary" style={capabilityBoundaryStyle}>
             当前实现边界：本页已做到正式 PnL 闭合、票息/利率/利差/剩余拆分和到期桶查看；尚未实现交易员能力评价、FVOCI/FVTPL 浮盈浮亏专项解释、曲线形态策略归因、个券跑赢同类基准和估值噪音诊断。
           </div>
@@ -376,7 +529,7 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
           ) : null}
           {primaryEffect ? (
             <div data-testid="campisi-driver-summary" style={summaryGridStyle}>
-              <div style={{ ...insightBoxStyle, background: "#f8fafc" }}>
+              <div style={{ ...insightBoxStyle, background: SURFACE_SLATE }}>
                 <div style={smallLabelStyle}>一眼结论</div>
                 <div
                   style={{
@@ -397,7 +550,7 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
                 >
                   {formatYi(primaryEffect.amount)}，约{" "}
                   {primaryEffect.share === null
-                    ? "—"
+                    ? EM_DASH
                     : Math.abs(primaryEffect.share).toFixed(1)}
                   % 的本期 Campisi PnL 来自这里。{primaryEffect.role}
                 </div>
@@ -405,7 +558,7 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
               <div
                 style={{
                   ...insightBoxStyle,
-                  background: "#fffdf7",
+                  background: SURFACE_CREAM,
                   border: "1px solid #eadfca",
                 }}
               >
@@ -441,7 +594,7 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
                   padding: designTokens.space[3],
                   borderRadius: designTokens.radius.md,
                   border: `1px solid ${designTokens.color.neutral[200]}`,
-                  background: "#ffffff",
+                  background: SURFACE_WHITE,
                 }}
               >
                 <div
@@ -461,7 +614,7 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
                     {displayEffectLabel(effect)}
                   </span>
                   <span style={tabularNumsStyle}>
-                    {effect.share === null ? "—" : `${effect.share.toFixed(1)}%`}
+                    {effect.share === null ? EM_DASH : `${effect.share.toFixed(1)}%`}
                   </span>
                 </div>
                 <div
@@ -549,23 +702,23 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
                       <td style={{ padding: designTokens.space[2] }}>
                         {row.category}
                       </td>
-                      {[
-                        row.income_return,
-                        row.treasury_effect,
-                        row.spread_effect,
-                        row.selection_effect,
-                      ].map((value, valueIndex) => (
-                        <td
-                          key={`${row.category}-${valueIndex}`}
-                          style={{
-                            textAlign: "right",
-                            padding: designTokens.space[2],
-                            ...tabularNumsStyle,
-                          }}
-                        >
-                          {value === null ? "—" : (value / 100_000_000).toFixed(2)}
-                        </td>
-                      ))}
+                      {effectRows.map((effect) => {
+                        const value = itemAmountForEffect(row, effect.key);
+                        return (
+                          <td
+                            key={`${row.category}-${effect.key}`}
+                            style={{
+                              textAlign: "right",
+                              padding: designTokens.space[2],
+                              ...tabularNumsStyle,
+                            }}
+                          >
+                            {value === null
+                              ? EM_DASH
+                              : (value / 100_000_000).toFixed(2)}
+                          </td>
+                        );
+                      })}
                     </tr>
                   ))}
                 </tbody>

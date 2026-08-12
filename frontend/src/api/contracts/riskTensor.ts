@@ -45,6 +45,11 @@ export type AlertsPayload = {
  * `/api/risk/tensor?report_date=` — 数值字段为 governed `Numeric` JSON 或（mock/历史）纯字符串；展示层用 `bondNumericDisplay` 等归一化。
  * 「风险总览」与「风险张量」页面均通过 `getRiskTensor` 消费同一载荷；不在前端补算指标。
  */
+/**
+ * @legacy `string` 分支仅供历史/mock 数据兼容：`bondAnalyticsAdapter.bondNumericRaw`/`bondNumericDisplay`
+ * 仍显式处理 `typeof value === "string"`。正式后端读surface（`/api/risk/tensor`）已统一返回 `Numeric`，
+ * 新增消费方不应依赖该字符串分支。
+ */
 export type RiskTensorScalar = string | Numeric;
 
 export type RiskTensorPayload = {

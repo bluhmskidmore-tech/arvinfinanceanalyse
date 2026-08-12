@@ -17,7 +17,12 @@ export function bondNumericRawOrNull(n: Numeric | string | null | undefined): nu
   return bondNumericRaw(n);
 }
 
-export function finiteNumberOr(value: number | null | undefined, fallback = 0): number {
+/**
+ * 仅用于瀑布图等需要累计求和的堆叠图表填充（如 `returnDecompositionWaterfallRawSteps`）。
+ * 缺失/非有限值在这里退化为 0 只是为了让运行总和继续可算，绝不代表业务上的真实零值。
+ * 禁止用于业务数值显示或聚合统计——那些路径必须保留 null 并走 EM_DASH / 排除缺失项语义。
+ */
+export function chartValueOrZero(value: number | null | undefined, fallback = 0): number {
   return value !== null && value !== undefined && Number.isFinite(value) ? value : fallback;
 }
 
@@ -37,16 +42,16 @@ export function bondChartMagnitude(value: Numeric | string): number | null {
 }
 
 export function returnDecompositionWaterfallRawSteps(d: ReturnDecompositionPayload): number[] {
-  const carry = finiteNumberOr(bondNumericRaw(d.carry));
-  const rollDown = finiteNumberOr(bondNumericRaw(d.roll_down));
-  const rateEffect = finiteNumberOr(bondNumericRaw(d.rate_effect));
-  const spreadEffect = finiteNumberOr(bondNumericRaw(d.spread_effect));
-  const trading = finiteNumberOr(bondNumericRaw(d.trading));
-  const fxEffect = finiteNumberOr(bondNumericRaw(d.fx_effect));
-  const convexityEffect = finiteNumberOr(bondNumericRaw(d.convexity_effect));
-  const explained = finiteNumberOr(bondNumericRaw(d.explained_pnl));
+  const carry = chartValueOrZero(bondNumericRaw(d.carry));
+  const rollDown = chartValueOrZero(bondNumericRaw(d.roll_down));
+  const rateEffect = chartValueOrZero(bondNumericRaw(d.rate_effect));
+  const spreadEffect = chartValueOrZero(bondNumericRaw(d.spread_effect));
+  const trading = chartValueOrZero(bondNumericRaw(d.trading));
+  const fxEffect = chartValueOrZero(bondNumericRaw(d.fx_effect));
+  const convexityEffect = chartValueOrZero(bondNumericRaw(d.convexity_effect));
+  const explained = chartValueOrZero(bondNumericRaw(d.explained_pnl));
   const stepValues = [carry, rollDown, rateEffect, spreadEffect, fxEffect, convexityEffect, trading].map((v) =>
-    finiteNumberOr(v),
+    chartValueOrZero(v),
   );
   return [...stepValues, explained];
 }

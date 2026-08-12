@@ -163,6 +163,7 @@ export type BondPortfolioHeadlinesPayload = {
   issuer_top5_weight: Numeric;
   by_asset_class: AssetClassRiskSummary[];
   warnings: string[];
+  warning_codes?: string[];
   computed_at: string;
 };
 
@@ -816,6 +817,31 @@ export type CarryRollDownPayload = {
   items: CarryRollDownItem[];
 };
 
+export type AttributionRiskCoverageExclusionReason =
+  | "no_maturity"
+  | "missing_maturity"
+  | "matured_or_expired"
+  | "nonpositive_duration";
+
+export type AttributionRiskCoverageExclusion = {
+  reason: AttributionRiskCoverageExclusionReason;
+  row_count: number;
+  market_value: Numeric;
+};
+
+/** 归因口径覆盖率披露：分母/剔除行说明，见 `AttributionRiskCoverage`（后端 pnl_attribution schema）。 */
+export type AttributionRiskCoverage = {
+  total_row_count: number;
+  covered_row_count: number;
+  excluded_row_count: number;
+  total_market_value: Numeric;
+  covered_market_value: Numeric;
+  excluded_market_value: Numeric;
+  coverage_pct: Numeric;
+  excluded_pct: Numeric;
+  exclusions: AttributionRiskCoverageExclusion[];
+};
+
 export type SpreadAttributionItem = {
   category: string;
   category_type: string;
@@ -840,6 +866,7 @@ export type SpreadAttributionPayload = {
   treasury_10y_end: Numeric | null;
   treasury_10y_change: Numeric | null;
   total_market_value: Numeric;
+  risk_coverage: AttributionRiskCoverage;
   portfolio_duration: Numeric;
   total_treasury_effect: Numeric;
   total_spread_effect: Numeric;
@@ -870,6 +897,7 @@ export type KRDAttributionPayload = {
   start_date: string;
   end_date: string;
   total_market_value: Numeric;
+  risk_coverage: AttributionRiskCoverage;
   portfolio_duration: Numeric;
   portfolio_dv01: Numeric;
   total_duration_effect: Numeric;
@@ -930,7 +958,19 @@ export type CampisiAttributionPayload = {
   items: CampisiAttributionItem[];
 };
 
-export type CampisiFourEffectsTotals = {
+export type CampisiDecisionWindowDeclaration = {
+  start: string;
+  end: string;
+  kind: string;
+};
+
+export type CampisiBridgeDetailFields = {
+  realized_trading?: number;
+  manual_adjustment?: number;
+  fx_translation?: number;
+};
+
+export type CampisiFourEffectsTotals = CampisiBridgeDetailFields & {
   income_return: number;
   treasury_effect: number;
   spread_effect: number;
@@ -1020,6 +1060,8 @@ export type CampisiDecisionGradePayload = {
   period_start: string;
   period_end: string;
   num_days: number;
+  pnl_window?: CampisiDecisionWindowDeclaration;
+  curve_window?: CampisiDecisionWindowDeclaration;
   summary: CampisiDecisionGradeSummary;
   formal_pnl_view: {
     total_actual_pnl: number;
@@ -1027,8 +1069,9 @@ export type CampisiDecisionGradePayload = {
     residual_noise: number;
     components: CampisiDecisionComponents;
     closure: {
-      status: "closed" | "warning";
+      status: "closed" | "warning" | "error";
       difference: number;
+      difference_ratio?: number | null;
       basis: string;
     };
   };
@@ -1059,7 +1102,7 @@ export type CampisiDecisionGradePayload = {
   method_notes: string[];
 };
 
-export type CampisiFourEffectsRow = {
+export type CampisiFourEffectsRow = CampisiBridgeDetailFields & {
   asset_class: string;
   market_value_start: number;
   income_return: number;
@@ -1076,7 +1119,7 @@ export type CampisiFourEffectsBondRow = CampisiFourEffectsRow & {
   mod_duration: number;
 };
 
-export type CampisiEnhancedRow = {
+export type CampisiEnhancedRow = CampisiBridgeDetailFields & {
   asset_class: string;
   market_value_start: number;
   income_return: number;
@@ -1105,6 +1148,8 @@ export type CampisiFourEffectsPayload = {
   by_asset_class: CampisiFourEffectsRow[];
   by_bond: CampisiFourEffectsBondRow[];
   formal_closure?: CampisiFormalClosure;
+  basis?: string;
+  decomposition_basis?: string;
   warnings?: string[];
 };
 
@@ -1116,6 +1161,8 @@ export type CampisiEnhancedPayload = {
   totals: CampisiEnhancedTotals;
   by_asset_class: CampisiEnhancedRow[];
   by_bond: CampisiEnhancedBondRow[];
+  basis?: string;
+  decomposition_basis?: string;
 };
 
 export type CampisiMaturityBucketBreakdown = {

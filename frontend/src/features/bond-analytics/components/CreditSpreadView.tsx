@@ -15,6 +15,7 @@ import type {
   CreditSpreadMigrationResponse,
 } from "../types";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
 import { formatDv01Wan, formatWan, formatYi, formatBp } from "../utils/formatters";
 import { SectionLead } from "./SectionLead";
 
@@ -231,18 +232,18 @@ function buildRatingTenorHeatmapData(
 
 function formatPctPoint(value: string | null | undefined): string {
   const num = parseFloat(String(value ?? ""));
-  if (!Number.isFinite(num)) return "-";
+  if (!Number.isFinite(num)) return EM_DASH;
   return `${num.toFixed(2)}%`;
 }
 
 function formatPercentile(value: string | null | undefined): string {
   const num = parseFloat(String(value ?? ""));
-  if (!Number.isFinite(num)) return "-";
+  if (!Number.isFinite(num)) return EM_DASH;
   return `${num.toFixed(1)}%`;
 }
 
 function formatBpOrDash(value: string | null | undefined): string {
-  return value == null ? "-" : formatBp(value);
+  return value == null ? EM_DASH : formatBp(value);
 }
 
 function spreadTermStructureOption(
@@ -628,7 +629,8 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
             return {
               value: v,
               itemStyle: {
-                color: v === null ? dt.color.neutral[300] : v >= 0 ? dt.color.semantic.loss : dt.color.semantic.profit,
+                // tooltip 口径为「损益影响」：正=profit 绿、负=loss 红，token 名与含义一致。
+                color: v === null ? dt.color.neutral[300] : v >= 0 ? dt.color.semantic.profit : dt.color.semantic.loss,
               },
             };
           }),
@@ -685,7 +687,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
   const displayCreditMarketValue = detailData?.total_credit_market_value ?? data.credit_market_value;
   const displayWeightedAvgSpread = detailData
     ? formatBp(detailData.weighted_avg_spread_bps)
-    : "-";
+    : EM_DASH;
   const historicalContext = detailData?.historical_context;
 
   return (

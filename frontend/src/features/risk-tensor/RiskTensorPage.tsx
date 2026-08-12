@@ -28,7 +28,7 @@ import "./RiskTensorPage.css";
 /** 雷达轴顺序与后端字段一一对应；max 仅用于可视化比例，不做前端金融重算。 */
 const RADAR_META = [
   { key: "duration" as const, name: "久期", max: 10 },
-  { key: "dv01" as const, name: "估值DV01", max: "dynamic_dv01" as const },
+  { key: "dv01" as const, name: "面值DV01", max: "dynamic_dv01" as const },
   { key: "convexity" as const, name: "凸性", max: 200 },
   { key: "cs01" as const, name: "CS01", max: "dynamic_cs01" as const },
   { key: "hhi" as const, name: "集中度", max: 1 },
@@ -2238,9 +2238,9 @@ export default function RiskTensorPage() {
 
             <div data-testid="risk-tensor-kpi-grid" className="risk-tensor-summary-grid">
               <KpiCard
-                title="估值口径 DV01"
+                title="面值口径 DV01"
                 value={yuanAsWanDisplay(result.portfolio_dv01)}
-                detail="portfolio_dv01，持仓估值敏感性口径，非监管限额口径。"
+                detail="portfolio_dv01，持仓面值敏感性口径，非监管限额口径。"
                 unit={WAN_YUAN_UNIT}
                 tone={toneFromSignedDisplayString(yuanAsWanDisplay(result.portfolio_dv01))}
                 testId="risk-tensor-portfolio-dv01-kpi"
@@ -2248,7 +2248,7 @@ export default function RiskTensorPage() {
               <KpiCard
                 title="监管口径 DV01"
                 value={regulatoryDv01Display(result.regulatory_dv01)}
-                detail="后端监管/限额口径字段；不得用估值 DV01 替代。"
+                detail="后端监管/限额口径字段；不得用组合 DV01 替代。"
                 unit={amountUnit(result.regulatory_dv01, WAN_YUAN_UNIT)}
                 tone={regulatoryDv01Tone(result.regulatory_dv01)}
                 testId="risk-tensor-regulatory-dv01-kpi"
@@ -2460,7 +2460,7 @@ export default function RiskTensorPage() {
               </div>
               <div className="risk-tensor-chart-column">
                 <h2 className="risk-tensor-section-heading risk-tensor-section-heading--flush">
-                  KRD 分档（估值 DV01）
+                  KRD 分档（面值 DV01）
                 </h2>
               {krdChartOption ? (
                 <ReactECharts

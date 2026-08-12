@@ -123,7 +123,7 @@ function renderScalarCard(card: AgentGenericCard) {
   return (
     <div key={`${card.title}-${card.type}`} className="agent-generic-cards__card">
       <div className="agent-generic-cards__title">{card.title}</div>
-      <div className="agent-generic-cards__scalar">{String(card.value ?? "--")}</div>
+      <div className="agent-generic-cards__scalar">{String(card.value ?? "—")}</div>
       <div className="agent-generic-cards__type">{formatCardType(card.type)}</div>
     </div>
   );

@@ -1,5 +1,6 @@
 import type { PollingTaskPayload } from "../../../app/jobs/polling";
 import { AgentApiError } from "../../../api/agentClient";
+import { EM_DASH } from "../../../utils/format";
 import type {
   AgentConversationContext,
   AgentPageContext,
@@ -748,10 +749,10 @@ export function buildResultMetaEntries(resultMeta: Record<string, unknown>) {
 
 export function formatMetaValue(value: unknown) {
   if (value === null || value === undefined) {
-    return "--";
+    return EM_DASH;
   }
   if (typeof value === "string") {
-    return value.trim().length > 0 ? value : "--";
+    return value.trim().length > 0 ? value : EM_DASH;
   }
   if (typeof value === "number" || typeof value === "boolean") {
     return String(value);
@@ -819,7 +820,7 @@ export function formatManagedRunRestoreQuestion(provider: unknown) {
   return providerLabel ? `恢复上一次 ${providerLabel} 对话` : "恢复上一次托管对话";
 }
 
-export function formatAgentRunStatusLabel(status: AgentRunStatus | undefined, fallback = "--") {
+export function formatAgentRunStatusLabel(status: AgentRunStatus | undefined, fallback = EM_DASH) {
   if (!status) {
     return fallback;
   }
@@ -1091,12 +1092,12 @@ export function buildRuntimeStatus(
   agentRun: AgentRunPayload | null,
 ) {
   const filters = result?.evidence.filters_applied ?? {};
-  const statusLabel = formatAgentRunStatusLabel(agentRun?.status, loading ? "分析中" : "--");
+  const statusLabel = formatAgentRunStatusLabel(agentRun?.status, loading ? "分析中" : EM_DASH);
   return {
     provider: formatProviderLabel(agentRun?.provider ?? filters.provider, loading ? "托管运行时" : "待连接"),
     transport: formatRuntimeLabel(agentRun?.transport ?? filters.transport, loading ? "bridge" : "等待提问"),
-    model: formatRuntimeLabel(agentRun?.model ?? filters.model, "--"),
-    toolsets: formatRuntimeLabel(agentRun?.toolsets ?? filters.toolsets, "--"),
+    model: formatRuntimeLabel(agentRun?.model ?? filters.model, EM_DASH),
+    toolsets: formatRuntimeLabel(agentRun?.toolsets ?? filters.toolsets, EM_DASH),
     quality: formatRuntimeLabel(result?.evidence.quality_flag, statusLabel),
   };
 }

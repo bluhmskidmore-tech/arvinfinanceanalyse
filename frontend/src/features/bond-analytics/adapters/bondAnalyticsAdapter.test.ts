@@ -6,7 +6,7 @@ import {
   bondNumericDisplay,
   bondNumericRaw,
   bondNumericRawOrNull,
-  finiteNumberOr,
+  chartValueOrZero,
   returnDecompositionWaterfallDisplayStrings,
   returnDecompositionWaterfallRawSteps,
 } from "./bondAnalyticsAdapter";
@@ -121,12 +121,23 @@ describe("bondChartMagnitude", () => {
   });
 });
 
-describe("finiteNumberOr", () => {
-  it("keeps finite numbers and uses the explicit fallback for missing chart values", () => {
-    expect(finiteNumberOr(12.5)).toBe(12.5);
-    expect(finiteNumberOr(null)).toBe(0);
-    expect(finiteNumberOr(undefined, -1)).toBe(-1);
-    expect(finiteNumberOr(Number.NaN, 7)).toBe(7);
+// chartValueOrZero 仅供瀑布图等需要累计求和的图表填充使用；null/0 在这里被刻意合并，
+// 不代表业务语义——业务展示与聚合路径必须走 bondNumericDisplay / EM_DASH 或直接排除缺失项。
+describe("chartValueOrZero (chart cumulative-fill only, not for business display/aggregation)", () => {
+  it("passes through finite numbers untouched", () => {
+    expect(chartValueOrZero(12.5)).toBe(12.5);
+  });
+
+  it("substitutes the default 0 fill for missing chart input so the running total stays computable", () => {
+    expect(chartValueOrZero(null)).toBe(0);
+  });
+
+  it("honors an explicit fallback override for missing chart input", () => {
+    expect(chartValueOrZero(undefined, -1)).toBe(-1);
+  });
+
+  it("falls back for non-finite chart input (e.g. NaN)", () => {
+    expect(chartValueOrZero(Number.NaN, 7)).toBe(7);
   });
 });
 

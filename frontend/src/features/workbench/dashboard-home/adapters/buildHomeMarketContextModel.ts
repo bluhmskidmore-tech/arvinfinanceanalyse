@@ -263,7 +263,18 @@ function strongestNegativeMoney(
 function moneyComponentBreakdown(
   components: readonly MoneyComponent[],
 ): string {
-  return `四因子 ${components.map((item) => `${item.label} ${formatYiSigned(item.raw)}`).join(" · ")}`;
+  const prefix = components.length === 4 ? "四因子" : "分量";
+  return `${prefix} ${components.map((item) => `${item.label} ${formatYiSigned(item.raw)}`).join(" · ")}`;
+}
+
+function pushOptionalMoneyComponent(
+  components: MoneyComponent[],
+  label: string,
+  raw: number | undefined,
+): void {
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    components.push({ label, raw });
+  }
 }
 
 function buildPnlBlock(
@@ -277,8 +288,11 @@ function buildPnlBlock(
       { label: "Carry/Income", raw: totals.income_return },
       { label: "利率曲线", raw: totals.treasury_effect },
       { label: "信用利差", raw: totals.spread_effect },
-      { label: "个券选择/残差", raw: totals.selection_effect },
     ];
+    pushOptionalMoneyComponent(components, "已实现交易", totals.realized_trading);
+    pushOptionalMoneyComponent(components, "手工调整", totals.manual_adjustment);
+    pushOptionalMoneyComponent(components, "汇兑", totals.fx_translation);
+    components.push({ label: "个券选择/残差", raw: totals.selection_effect });
     const contribution = strongestPositiveMoney(components);
     const drag = strongestNegativeMoney(components);
     const closure = campisiFourEffects.formal_closure?.status
