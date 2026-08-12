@@ -1978,6 +1978,16 @@
   min-height: 160px;
 }
 
+/*
+ * 研究报告 tab 只有一个列表子元素：铺满整个 tabpanel，
+ * 不沿用市场动态 tab 的 38/62 双列网格（否则挤进左列、右列空置）。
+ */
+.marketResearchPanel > .researchList[role="tabpanel"] {
+  padding: 0;
+  gap: 0;
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .marketResearchPanel .researchTableWrap {
   height: 160px;
   min-height: 160px;
