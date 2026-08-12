@@ -1,0 +1,13 @@
+{
+  "cssPath": "frontend/src/features/<domain>/<page>.module.css",
+  "tsxFiles": [
+    "frontend/src/features/<domain>/<Page>.tsx"
+  ],
+  "wildcards": [
+    "toneOk-等动态类：辅助函数返回或 styles[...] 方括号访问的类名全部列在这里"
+  ],
+  "finalMarker": null,
+  "mockUrl": "http://127.0.0.1:5897/<route>",
+  "realUrl": "http://localhost:5888/<route>",
+  "workDir": null
+}

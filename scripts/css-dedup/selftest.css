@@ -1,0 +1,8 @@
+/* 冲突检测器自测夹具：期望 planall 报 1 个重复组、1 组交错冲突
+ * （color 移动越过 .b/.x；gap 与 @media 内 row-gap 简写重叠）。 */
+.a { color: red; gap: 4px; }
+.b { color: blue; }
+.a { padding: 2px; }
+@media (max-width: 680px) { .a { row-gap: 9px; } }
+.x { color: green; }
+.a { font-size: 12px; }
