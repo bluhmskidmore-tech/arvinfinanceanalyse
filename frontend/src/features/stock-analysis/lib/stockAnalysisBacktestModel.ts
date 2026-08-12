@@ -3,8 +3,48 @@ import type {
   LivermoreCandidateHistoryHorizonKey,
   LivermoreCandidateHistoryHorizonStats,
   LivermoreCandidateHistoryPayload,
+  LivermoreProxyBacktestCaliberDisclosure,
   LivermoreProxyCostBasis,
 } from "../../../api/contracts";
+
+export type StockBacktestCaliberDisclosureModel = {
+  entryPriceWarning: string | null;
+  sampleGenerationLabel: string | null;
+  basisNotes: string[];
+};
+
+/** caliber_disclosure 的两个真实来源（周期代理回测 / 组合代理回测）共用的最小结构。 */
+export type LivermoreProxyBacktestCaliberDisclosureSource = {
+  caliber_disclosure?: LivermoreProxyBacktestCaliberDisclosure | null;
+};
+
+/**
+ * 回测口径披露：整块缺失/为 null，或全部子字段均为空时返回 null，
+ * 调用方据此完全不渲染披露区块（零布局影响）。
+ * 仅 cycle-proxy-backtest 与 candidate-history-portfolio-backtest 两个 payload 携带该字段。
+ */
+export function buildBacktestCaliberDisclosure(
+  payload: LivermoreProxyBacktestCaliberDisclosureSource | null | undefined,
+): StockBacktestCaliberDisclosureModel | null {
+  const disclosure = payload?.caliber_disclosure;
+  if (!disclosure) return null;
+
+  const entryPriceWarning = disclosure.entry_price_warning?.trim() || null;
+  const sampleGeneration = disclosure.sample_generation;
+  const sampleGenerationLabel =
+    sampleGeneration != null
+      ? `样本构成：旧源 ${sampleGeneration.tushare_era_rows} 笔 / 新源 ${sampleGeneration.native_era_rows} 笔`
+      : null;
+  // 后端为保证披露块自足,basis_notes 首条与 entry_price_warning 同文案;
+  // 警示条已单独渲染 warning,notes 里去掉同文案避免重复展示。
+  const basisNotes = (disclosure.basis_notes ?? []).filter(
+    (note) => note.trim().length > 0 && note.trim() !== entryPriceWarning,
+  );
+
+  if (!entryPriceWarning && !sampleGenerationLabel && basisNotes.length === 0) return null;
+
+  return { entryPriceWarning, sampleGenerationLabel, basisNotes };
+}
 
 const historicalSourceGapReasonCodes = new Set([
   "missing_daily_limit_flags",

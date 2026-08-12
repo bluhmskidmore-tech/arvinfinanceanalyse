@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 import type {
   LivermoreCandidateHistoryHorizonStats,
   LivermoreCandidateHistoryPayload,
+  LivermoreProxyBacktestCaliberDisclosure,
 } from "../api/contracts";
 import {
   backtestStatsText,
+  buildBacktestCaliberDisclosure,
   buildStrategyBacktestMarketStateRows,
   buildStrategyBacktestRows,
   formatBacktestPercent,
@@ -435,5 +437,91 @@ describe("stockAnalysisBacktestModel", () => {
     expect(strategyBacktestHorizonLabels.return_5d).toBe("T+5 胜率 / 均值 / 样本");
     expect(strategyBacktestHorizonShortLabels.return_10d).toBe("T+10");
     expect(strategyBacktestHorizonShortLabels.return_20d).toBe("T+20");
+  });
+
+  describe("buildBacktestCaliberDisclosure", () => {
+    // caliber_disclosure 仅出现在 cycle-proxy-backtest 与
+    // candidate-history-portfolio-backtest 两个 payload 上；用共用最小结构模拟两者。
+    function buildDisclosureSource(caliberDisclosure?: LivermoreProxyBacktestCaliberDisclosure | null) {
+      return { caliber_disclosure: caliberDisclosure };
+    }
+
+    it("returns null when the payload is missing entirely", () => {
+      expect(buildBacktestCaliberDisclosure(null)).toBeNull();
+      expect(buildBacktestCaliberDisclosure(undefined)).toBeNull();
+    });
+
+    it("returns null when the payload omits caliber_disclosure (older responses)", () => {
+      expect(buildBacktestCaliberDisclosure(buildDisclosureSource(undefined))).toBeNull();
+    });
+
+    it("returns null when caliber_disclosure is explicitly null", () => {
+      expect(buildBacktestCaliberDisclosure(buildDisclosureSource(null))).toBeNull();
+    });
+
+    it("returns null when every disclosed sub-field is empty", () => {
+      const source = buildDisclosureSource({
+        entry_price_warning: null,
+        return_field_stats: null,
+        sample_generation: null,
+        basis_notes: [],
+      });
+      expect(buildBacktestCaliberDisclosure(source)).toBeNull();
+    });
+
+    it("formats the warning, sample generation split, and basis notes when present (cycle-proxy shape)", () => {
+      const source = buildDisclosureSource({
+        entry_price_warning: "旧代际样本入场价为近似值。",
+        return_field_stats: {
+          return_rows_execution_net_adjusted: 433,
+          return_rows_adjusted: 23,
+          return_rows_adjusted_fallback: 23,
+          return_rows_gross_fallback: 90,
+        },
+        sample_generation: { tushare_era_rows: 12, native_era_rows: 8 },
+        basis_notes: ["旧源按收盘价近似。", "新源按 T+1 开盘价计算。"],
+      });
+
+      expect(buildBacktestCaliberDisclosure(source)).toEqual({
+        entryPriceWarning: "旧代际样本入场价为近似值。",
+        sampleGenerationLabel: "样本构成：旧源 12 笔 / 新源 8 笔",
+        basisNotes: ["旧源按收盘价近似。", "新源按 T+1 开盘价计算。"],
+      });
+    });
+
+    it("formats the warning, sample generation split, and basis notes when present (portfolio-proxy shape)", () => {
+      const source = buildDisclosureSource({
+        entry_price_warning: null,
+        return_field_stats: {
+          price_rows_adjusted: 48,
+          price_rows_raw_fallback: 4,
+        },
+        sample_generation: { tushare_era_rows: 0, native_era_rows: 52 },
+        basis_notes: ["组合回测样本按月度再平衡快照聚合。"],
+      });
+
+      expect(buildBacktestCaliberDisclosure(source)).toEqual({
+        entryPriceWarning: null,
+        sampleGenerationLabel: "样本构成：旧源 0 笔 / 新源 52 笔",
+        basisNotes: ["组合回测样本按月度再平衡快照聚合。"],
+      });
+    });
+
+    it("drops the basis note that duplicates the entry price warning verbatim", () => {
+      // 后端为保证披露块自足,basis_notes 首条与 entry_price_warning 同文案;
+      // 警示条已单独渲染,notes 列表必须去重避免同一文案出现两次。
+      const source = buildDisclosureSource({
+        entry_price_warning: "同日收盘执行假设可能系统性乐观。",
+        return_field_stats: null,
+        sample_generation: null,
+        basis_notes: ["同日收盘执行假设可能系统性乐观。", "净收益口径已含正式交易成本。"],
+      });
+
+      expect(buildBacktestCaliberDisclosure(source)).toEqual({
+        entryPriceWarning: "同日收盘执行假设可能系统性乐观。",
+        sampleGenerationLabel: null,
+        basisNotes: ["净收益口径已含正式交易成本。"],
+      });
+    });
   });
 });
