@@ -34,6 +34,7 @@ from backend.app.api.routes.qdb_gl_monthly_analysis import router as qdb_gl_mont
 from backend.app.api.routes.research_calendar import router as research_calendar_router
 from backend.app.api.routes.risk_tensor import router as risk_tensor_router
 from backend.app.api.routes.source_preview import router as source_preview_router
+from backend.app.api.routes.strategy_reports import router as strategy_reports_router
 from backend.app.governance.settings import get_settings
 from fastapi import APIRouter
 
@@ -140,6 +141,7 @@ ROUTE_REGISTRY: tuple[RouteRegistryEntry, ...] = (
     RouteRegistryEntry("ledger_pnl", ledger_pnl_router, "formal_mainline", ("ledger-pnl",), "Ledger PnL owner"),
     RouteRegistryEntry("risk_tensor", risk_tensor_router, "formal_mainline", ("risk",), "Risk tensor owner"),
     RouteRegistryEntry("source_preview", source_preview_router, "preview", ("preview",), "Reports and data owner"),
+    RouteRegistryEntry("strategy_reports", strategy_reports_router, "macro_market", ("strategy-reports",), "Market data owner"),
 )
 
 if get_settings().agent_enabled:
