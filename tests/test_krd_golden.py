@@ -2,6 +2,8 @@
 Golden-value tests for backend.app.core_finance.krd (B4-KRD).
 
 所有期望常数均为独立手算黄金值：不使用被测函数的任何输出作为期望值。
+重要口径声明：当前实现只是把“市值权重 × 修正久期”按到期桶聚合，没有逐节点
+bump-and-reprice。**这不是标准 KRD，标准化待业务裁决。**
 手算用三条相互独立的数学路径交叉核对（差异 < 1e-26，Decimal 28 位上下文）：
 
   M1 一般闭式:   D_p = (1+y)/y - [1+y+n(c-y)] / [c((1+y)^n - 1) + y]
@@ -50,7 +52,9 @@ from decimal import Decimal
 from backend.app.core_finance.krd import (
     build_krd_position_metrics,
     compute_krd_by_tenor,
+    compute_krd_curve_risk,
 )
+from backend.app.core_finance.risk_tensor import KRD_BUCKET_FALLBACK, _aggregate_krd_values
 
 REPORT_DATE = date(2026, 1, 1)
 
@@ -122,6 +126,7 @@ class TestGoldenBond5Y:
         result = compute_krd_by_tenor([BOND_5Y], report_date=REPORT_DATE)
         by_tenor = {r["tenor"]: r["krd"] for r in result}
         assert abs(by_tenor["5Y"] - Decimal("4.61113300")) < Decimal("0.0001")
+        assert all(value == Decimal("0") for tenor, value in by_tenor.items() if tenor != "5Y")
 
     def test_krd_bucket_dv01_golden(self):
         result = compute_krd_by_tenor([BOND_5Y], report_date=REPORT_DATE)
@@ -215,3 +220,91 @@ class TestGoldenMixedPortfolioKrd:
         by_tenor = {r["tenor"]: r["dv01"] for r in result}
         assert abs(by_tenor["2Y"] - Decimal("193.9062")) < Decimal("0.01")
         assert abs(by_tenor["10Y"] - Decimal("837.6413")) < Decimal("0.01")
+
+
+class TestGoldenKrdClosureAndBoundaries:
+    """锁定当前“到期桶久期贡献”语义；这不是标准 KRD，标准化待业务裁决。"""
+
+    def test_bucket_sums_close_to_portfolio_duration_and_dv01(self):
+        """两券等市值组合的封闭关系（期望值只由上文手算分数推导）。
+
+        D_mod(2Y)  = 19633 / 10125
+        D_mod(10Y) = 85230 / 10175
+        组合修正久期 = 0.5×D_mod(2Y) + 0.5×D_mod(10Y)
+        因两券 face=market=1,000,000：
+        组合 DV01 = Σ(face×D_mod/10000) = 100×[D_mod(2Y)+D_mod(10Y)]。
+        """
+        dmod_2y = Decimal("19633") / Decimal("10125")
+        dmod_10y = Decimal("85230") / Decimal("10175")
+        expected_duration = (dmod_2y + dmod_10y) / Decimal("2")
+        expected_dv01 = Decimal("100") * (dmod_2y + dmod_10y)
+
+        result = compute_krd_curve_risk(
+            [BOND_2Y, BOND_10Y],
+            report_date=REPORT_DATE,
+            scenarios=[],
+        )
+        krd_sum = sum((row["krd"] for row in result["krd_buckets"]), Decimal("0"))
+        bucket_dv01_sum = sum(
+            (row["dv01"] for row in result["krd_buckets"]),
+            Decimal("0"),
+        )
+
+        assert abs(result["portfolio_modified_duration"] - expected_duration) < Decimal("1E-24")
+        assert abs(krd_sum - expected_duration) < Decimal("1E-24")
+        assert abs(result["portfolio_dv01"] - expected_dv01) < Decimal("1E-22")
+        assert abs(bucket_dv01_sum - expected_dv01) < Decimal("1E-22")
+
+    def test_non_standard_2y_tenor_uses_risk_tensor_nearest_bucket_fallback(self):
+        """迁移链路把 krd.py 的 2Y 桶映射到 risk tensor 的 3Y 桶。
+
+        ``krd.py`` 自身保留 2Y；下游正式 risk tensor 只支持
+        1Y/3Y/5Y/7Y/10Y/30Y，因此当前 ``KRD_BUCKET_FALLBACK`` 规定
+        2Y→krd_3y。BOND_2Y 的手算 DV01 = 100×19633/10125。
+        """
+        expected_dv01 = Decimal("100") * Decimal("19633") / Decimal("10125")
+        krd_rows = compute_krd_by_tenor([BOND_2Y], report_date=REPORT_DATE)
+        warnings: list[str] = []
+        tensor_buckets = _aggregate_krd_values(
+            [
+                {"tenor_bucket": row["tenor"], "dv01": row["dv01"]}
+                for row in krd_rows
+            ],
+            warnings,
+        )
+
+        assert KRD_BUCKET_FALLBACK["2Y"] == "krd_3y"
+        assert abs(tensor_buckets["krd_3y"] - expected_dv01) < Decimal("1E-22")
+        assert all(
+            value == Decimal("0")
+            for field, value in tensor_buckets.items()
+            if field != "krd_3y"
+        )
+        assert warnings == ["Non-standard tenor buckets remapped to nearest KRD bucket: 2Y"]
+
+    def test_empty_portfolio_is_exactly_zero(self):
+        result = compute_krd_curve_risk([], report_date=REPORT_DATE, scenarios=[])
+
+        assert result["position_metrics"] == []
+        assert result["total_market_value"] == Decimal("0")
+        assert result["portfolio_duration"] == Decimal("0")
+        assert result["portfolio_modified_duration"] == Decimal("0")
+        assert result["portfolio_dv01"] == Decimal("0")
+        assert result["portfolio_convexity"] == Decimal("0")
+        assert result["by_asset_class"] == []
+        assert result["scenarios"] == []
+        assert [row["tenor"] for row in result["krd_buckets"]] == [
+            "1Y",
+            "2Y",
+            "3Y",
+            "5Y",
+            "7Y",
+            "10Y",
+            "15Y",
+            "20Y",
+            "30Y",
+        ]
+        assert all(
+            row["krd"] == row["dv01"] == row["market_value_weight"] == Decimal("0")
+            for row in result["krd_buckets"]
+        )
