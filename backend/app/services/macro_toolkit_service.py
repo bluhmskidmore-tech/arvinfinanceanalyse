@@ -592,6 +592,10 @@ def _model_chain_table(
             for source, label in declared
             if str(source) in frame.columns
         ]
+    if mode == "tail":
+        # 事件日志类产物随时间累积，仅展示尾部窗口（保持行序，最新在最后）。
+        tail_rows = int(model_def.get("tail_rows") or _MODEL_CHAIN_MONITOR_LOG_TAIL_ROWS)
+        frame = frame.tail(tail_rows)
     columns = [label for _, label in selected]
     rows = [
         [_model_chain_cell_text(row.get(source)) for source, _ in selected]
@@ -670,6 +674,24 @@ def _model_chain_risk_monitor_headline(frame: pd.DataFrame) -> str:
     if cooling == _MODEL_CHAIN_NA_TEXT:
         return "无冷却 · 正常运行"
     return f"冷却至 {cooling}"
+
+
+_MODEL_CHAIN_MONITOR_LOG_TAIL_ROWS = 6
+
+
+def _model_chain_monitor_alerts_headline(frame: pd.DataFrame) -> str:
+    if "event_type" not in frame.columns:
+        return _MODEL_CHAIN_DETAIL_HEADLINE
+    tail = frame.tail(_MODEL_CHAIN_MONITOR_LOG_TAIL_ROWS)
+    alert_counts: dict[str, int] = {}
+    for value in tail["event_type"]:
+        text = _model_chain_cell_text(value)
+        if text.endswith("_ALERT"):
+            alert_counts[text] = alert_counts.get(text, 0) + 1
+    if not alert_counts:
+        return "近 6 条事件无告警"
+    parts = " · ".join(f"{event} {count}" for event, count in alert_counts.items())
+    return f"告警 {sum(alert_counts.values())} 条 · {parts}"
 
 
 def _model_chain_rebalance_headline(frame: pd.DataFrame) -> str:
@@ -797,6 +819,8 @@ _MODEL_CHAIN_STEP_DEFINITIONS: tuple[dict[str, object], ...] = (
                     ("操作建议", "操作建议"),
                     ("策略年化收益%", "策略年化收益%"),
                     ("策略夏普比率", "策略夏普比率"),
+                    ("止损次数", "止损次数"),
+                    ("减仓天数", "减仓天数"),
                 ),
                 "headline": _model_chain_cta_headline,
             },
@@ -843,6 +867,22 @@ _MODEL_CHAIN_STEP_DEFINITIONS: tuple[dict[str, object], ...] = (
                 "artifact": "risk_state.csv",
                 "table_mode": "all",
                 "headline": _model_chain_risk_monitor_headline,
+            },
+            {
+                "id": "monitor_alerts",
+                "label": "导航仪监测告警",
+                "script_name": "risk_monitor",
+                "artifact": "risk_log.csv",
+                # 事件日志随时间累积，只展示尾部窗口。
+                "table_mode": "tail",
+                "tail_rows": _MODEL_CHAIN_MONITOR_LOG_TAIL_ROWS,
+                "columns": (
+                    ("datetime", "时间"),
+                    ("event_type", "事件"),
+                    ("symbol", "对象"),
+                    ("detail", "说明"),
+                ),
+                "headline": _model_chain_monitor_alerts_headline,
             },
         ),
     },

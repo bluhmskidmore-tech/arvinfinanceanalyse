@@ -29,7 +29,7 @@ EXPECTED_STEPS: list[tuple[str, int, str, list[str]]] = [
     ("market_state", 1, "市场状态识别", ["merrill_clock", "garch", "dcc_garch", "regime"]),
     ("strategy_selection", 2, "策略选择", ["cta_trend"]),
     ("allocation", 3, "资产配置", ["risk_parity"]),
-    ("risk_management", 4, "风险管理", ["crisis_score", "risk_monitor"]),
+    ("risk_management", 4, "风险管理", ["crisis_score", "risk_monitor", "monitor_alerts"]),
     ("rebalance", 5, "再平衡", ["rebalance"]),
     ("performance", 6, "绩效评估", ["performance", "backtest"]),
     ("final_signal", 7, "决策链输出", ["final_signal"]),
@@ -107,6 +107,15 @@ def _seed_full_output_dir(directory: Path) -> None:
         directory,
         "risk_state.csv",
         "date,peak_value,cooling_until,entry_prices\n2026-08-12,1000000.0,,{}\n",
+    )
+    _write_csv(
+        directory,
+        "risk_log.csv",
+        "datetime,event_type,symbol,detail,current_value,drawdown_pct\n"
+        "2026-08-10 19:10:00,DAILY_CHECK,ALL,active_positions=0,0.0,0.0\n"
+        "2026-08-11 19:10:00,DAILY_CHECK,ALL,active_positions=0,0.0,0.0\n"
+        "2026-08-12 06:57:11,VOL_ALERT,crude_oil,年化波动率>30%: crude_oil=63.49%,0.0,0.0\n"
+        "2026-08-12 06:57:11,DAILY_CHECK,ALL,active_positions=0,0.0,0.0\n",
     )
     _write_csv(
         directory,
@@ -211,6 +220,7 @@ def test_build_model_chain_results_headline_rules(tmp_path: Path) -> None:
     assert models["risk_parity"]["headline"] == "风险平价最大权重 铜期货 24.6362%"
     assert models["crisis_score"]["headline"] == "-0.068 · 宽松"
     assert models["risk_monitor"]["headline"] == "无冷却 · 正常运行"
+    assert models["monitor_alerts"]["headline"] == "告警 1 条 · VOL_ALERT 1"
     assert models["rebalance"]["headline"] == "最优 阈值触发(5%) · 夏普 1.2084"
     assert models["performance"]["headline"] == "最佳 黄金期货 · 夏普 1.2361"
     assert models["backtest"]["headline"] == "最优 全模型综合 · 夏普 1.767"
@@ -225,6 +235,43 @@ def test_dcc_wide_table_transposed_to_pair_rows(tmp_path: Path) -> None:
     assert dcc["columns"] == ["资产对", "相关系数"]
     assert dcc["rows"] == [["hs300_gold", "0.339"], ["gold_copper", "0.4988"]]
     assert dcc["as_of"] == "2026-08-11"
+
+
+def test_monitor_alerts_tail_window_keeps_latest_events(tmp_path: Path) -> None:
+    _seed_full_output_dir(tmp_path)
+    # 写入 9 行事件：tail 窗口（6 行）应只保留最新 6 行、行序不变。
+    header = "datetime,event_type,symbol,detail,current_value,drawdown_pct\n"
+    lines = [
+        f"2026-08-{day:02d} 19:10:00,DAILY_CHECK,ALL,active_positions=0,0.0,0.0\n"
+        for day in range(1, 9)
+    ]
+    lines.append("2026-08-12 06:57:11,VOL_ALERT,crude_oil,年化波动率>30%,0.0,0.0\n")
+    _write_csv(tmp_path, "risk_log.csv", header + "".join(lines))
+
+    alerts = _models_by_id(build_model_chain_results(tmp_path))["monitor_alerts"]
+
+    assert alerts["columns"] == ["时间", "事件", "对象", "说明"]
+    assert len(alerts["rows"]) == 6
+    assert alerts["rows"][0][0] == "2026-08-04 19:10:00"
+    assert alerts["rows"][-1][1] == "VOL_ALERT"
+    assert alerts["headline"] == "告警 1 条 · VOL_ALERT 1"
+
+
+def test_cta_columns_include_stop_loss_statistics(tmp_path: Path) -> None:
+    _seed_full_output_dir(tmp_path)
+    _write_csv(
+        tmp_path,
+        "cta_results.csv",
+        "资产,合成信号,趋势强度,操作建议,策略年化收益%,策略夏普比率,止损次数,减仓天数\n"
+        "沪深300,-0.604,强趋势,强空头,0.62,-0.095,8,0\n"
+        "原油,0.648,强趋势,强多头,7.92,0.314,3,94\n",
+    )
+
+    cta = _models_by_id(build_model_chain_results(tmp_path))["cta_trend"]
+
+    assert cta["columns"][-2:] == ["止损次数", "减仓天数"]
+    assert cta["rows"][0][-2:] == ["8", "0"]
+    assert cta["rows"][1][-2:] == ["3", "94"]
 
 
 def test_headline_edge_cases_degrade_gracefully(tmp_path: Path) -> None:
@@ -275,7 +322,7 @@ def test_missing_empty_and_unparsable_artifacts_do_not_raise(tmp_path: Path) -> 
 
     assert result["as_of_date"] is None
     models = _models_by_id(result)
-    assert len(models) == 12
+    assert len(models) == 13
     for model in models.values():
         assert model["artifact_status"] == "missing"
         assert model["as_of"] is None

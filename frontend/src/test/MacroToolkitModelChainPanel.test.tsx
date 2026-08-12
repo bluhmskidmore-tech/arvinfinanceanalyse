@@ -25,6 +25,7 @@ const MODEL_HEADLINES = [
   "风险平价最大权重 铜期货 24.6362%",
   "-0.068 · 宽松",
   "无冷却 · 正常运行",
+  "告警 1 条 · VOL_ALERT 1",
   "最优 季度再平衡 · 夏普 1.21",
   "最佳 风险平价组合 · 夏普 1.179",
   "最优 全模型综合 · 夏普 1.767",
@@ -63,7 +64,7 @@ const MISSING_ARTIFACT_RESULTS: MacroToolkitModelChainResults = {
 };
 
 describe("MacroToolkitModelChainPanel", () => {
-  it("renders the seven decision-chain steps and all twelve model headlines", async () => {
+  it("renders the seven decision-chain steps and all thirteen model headlines", async () => {
     const results = await loadMockModelChainResults();
 
     render(<MacroToolkitModelChainPanel results={results} />);
@@ -79,7 +80,7 @@ describe("MacroToolkitModelChainPanel", () => {
     for (const headline of MODEL_HEADLINES) {
       expect(within(panel).getByText(headline)).toBeInTheDocument();
     }
-    expect(screen.getAllByTestId(/^macro-toolkit-model-chain-model-/)).toHaveLength(12);
+    expect(screen.getAllByTestId(/^macro-toolkit-model-chain-model-/)).toHaveLength(13);
   });
 
   it("keeps model tables collapsed by default and expands details on demand", async () => {
@@ -90,7 +91,7 @@ describe("MacroToolkitModelChainPanel", () => {
 
     expect(screen.queryAllByRole("table")).toHaveLength(0);
     const toggles = screen.getAllByRole("button", { name: /^展开 .+ 明细$/ });
-    expect(toggles).toHaveLength(12);
+    expect(toggles).toHaveLength(13);
 
     const merrillCard = screen.getByTestId("macro-toolkit-model-chain-model-merrill_clock");
     const merrillToggle = within(merrillCard).getByRole("button", {
