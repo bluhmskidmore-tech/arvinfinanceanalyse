@@ -4,22 +4,6 @@
   justify-self: center !important;
 }
 
-.portfolioPage {
-  max-width: 1440px;
-}
-
-.holdingsHeroFigure {
-  display: grid;
-  gap: 9px;
-  min-width: 0;
-  padding: 10px;
-  border: 1px solid rgba(114, 167, 220, 0.18);
-  border-radius: 6px;
-  background:
-    linear-gradient(180deg, rgba(114, 167, 220, 0.07), rgba(114, 167, 220, 0.015)),
-    rgba(16, 31, 51, 0.58);
-}
-
 .holdingsHeroFigureHead,
 .holdingsHeroFigureMeta {
   display: flex;
@@ -50,15 +34,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.holdingsHeroStackBar {
-  display: flex;
-  min-width: 0;
-  height: 12px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgba(114, 167, 220, 0.09);
-}
-
 .holdingsHeroStackSegment {
   flex: 0 0 var(--holdings-hero-segment-width);
   border-right: 1px solid var(--dh-api-panel);
@@ -85,79 +60,11 @@
   background: var(--portfolio-chart-red);
 }
 
-/* Page-level dark palette: remap legacy --ib- / --dh- / --moss- consumer vars
-   onto the official --dh-api-* tokens (DESIGN.md §2.2). */
+/* min-height/border/color 留在原位：需被 @media (min-width: 1101px) .portfolioPage 与 tone 类按源顺序覆盖；
+   其余页面级变量与布局声明已并入文件末尾的 V3 深蓝终端皮肤 .portfolioPage 块。 */
 .portfolioPage {
-  --ib-paper: var(--dh-api-bg);
-  --ib-surface: var(--dh-api-panel);
-  --ib-surface-muted: var(--dh-api-panel-2);
-  --ib-hairline: var(--dh-api-line-soft);
-  --ib-rule-strong: var(--dh-api-line);
-  --ib-ink: var(--dh-api-ink);
-  --ib-ink-secondary: var(--dh-api-soft);
-  --ib-ink-muted: var(--dh-api-muted);
-  --ib-accent: var(--dh-api-blue);
-  --ib-accent-hover: color-mix(in srgb, var(--dh-api-blue) 78%, var(--dh-api-ink));
-  --ib-accent-surface: var(--dh-api-blue-soft);
-  --ib-up: var(--dh-api-green);
-  --ib-down: var(--dh-api-red);
-  --ib-warn: var(--dh-api-amber);
-  --ib-gold: var(--dh-api-amber);
-  --ib-radius: var(--dh-api-radius, 6px);
-  --dh-card: var(--dh-api-panel);
-  --dh-card-soft: var(--dh-api-panel-3);
-  --dh-surface-muted: var(--dh-api-panel-2);
-  --dh-line: var(--dh-api-line);
-  --dh-line-soft: var(--dh-api-line-soft);
-  --dh-ink: var(--dh-api-ink);
-  --dh-ink-2: var(--dh-api-ink);
-  --dh-muted: var(--dh-api-soft);
-  --dh-muted-2: var(--dh-api-muted);
-  --dh-blue: var(--dh-api-blue);
-  --dh-blue-deep: var(--dh-api-blue);
-  --dh-blue-soft: var(--dh-api-blue-soft);
-  --dh-green: var(--dh-api-green);
-  --dh-green-soft: var(--dh-api-green-soft);
-  --dh-red: var(--dh-api-red);
-  --dh-red-soft: var(--dh-api-red-soft);
-  --dh-amber: var(--dh-api-amber);
-  --dh-amber-soft: var(--dh-api-amber-soft);
-  --moss-color-card-bg: var(--dh-api-panel);
-  --moss-color-neutral-50: var(--dh-api-panel-3);
-  --moss-color-neutral-100: var(--dh-api-line-soft);
-  --moss-color-neutral-200: var(--dh-api-line);
-  --moss-color-neutral-300: var(--dh-api-line);
-  --moss-color-neutral-600: var(--dh-api-soft);
-  --moss-color-neutral-700: var(--dh-api-ink);
-  --moss-color-neutral-900: var(--dh-api-ink);
-  --moss-color-primary-50: var(--dh-api-blue-soft);
-  --moss-color-primary-100: rgba(114, 167, 220, 0.16);
-  --moss-color-primary-200: rgba(114, 167, 220, 0.28);
-  --moss-color-primary-700: var(--dh-api-blue);
-  --moss-color-primary-900: var(--dh-api-ink);
-  --moss-color-info-100: color-mix(in srgb, var(--dh-api-blue) 30%, var(--dh-api-ink));
-  --moss-color-info-300: color-mix(in srgb, var(--dh-api-blue) 72%, var(--dh-api-ink));
-  --moss-color-info-400: var(--dh-api-blue);
-  --moss-color-info-500: var(--dh-api-blue);
-  --moss-color-success-100: rgba(102, 185, 139, 0.18);
-  --moss-color-success-300: var(--dh-api-green);
-  --moss-color-success-500: var(--dh-api-green);
-  --moss-color-warning-50: var(--dh-api-amber-soft);
-  --moss-color-warning-200: rgba(201, 165, 101, 0.3);
-  --moss-color-warning-300: var(--dh-api-amber);
-  --moss-color-warning-400: var(--dh-api-amber);
-  --moss-color-danger-50: var(--dh-api-red-soft);
-  --moss-color-danger-200: rgba(212, 122, 114, 0.3);
-  --moss-color-danger-500: var(--dh-api-red);
-  gap: 14px;
   min-height: calc(100vh - 32px);
-  width: 100%;
-  padding: 16px;
   border: 1px solid var(--dh-api-line-soft);
-  border-radius: var(--dh-api-radius, 6px);
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--dh-api-panel) 88%, transparent), var(--dh-api-bg) 360px),
-    var(--dh-api-bg);
   color: var(--dh-ink);
 }
 
@@ -174,20 +81,6 @@
 :global(.workbench-shell-grid--cockpit:has([data-testid="module-workbench-home"]):has([data-testid="module-home-portfolio-cockpit"]) .workbench-main-column) {
   justify-items: stretch !important;
   padding: 0 !important;
-}
-
-.portfolioPageMain {
-  --portfolio-chart-blue: var(--dh-api-blue);
-  --portfolio-chart-info: var(--dh-api-ink-soft);
-  --portfolio-chart-green: var(--dh-api-green);
-  --portfolio-chart-amber: var(--dh-api-amber);
-  --portfolio-chart-red: var(--dh-api-red);
-  --portfolio-chart-ink: var(--ib-ink);
-  --portfolio-chart-grid: var(--ib-hairline);
-  display: grid;
-  gap: var(--dh-space-3, 16px);
-  min-width: 0;
-  width: 100%;
 }
 
 .srOnly {
@@ -308,13 +201,9 @@
 }
 
 .workbenchSectionHead {
-  display: grid;
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
-  align-items: start;
-  min-width: 0;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--dh-line-soft);
 }
 
 .workbenchSectionHead > div:first-child {
@@ -325,18 +214,8 @@
 }
 
 .workbenchSectionHead span {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
   grid-row: span 2;
-  display: inline-grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border: 1px solid rgba(114, 167, 220, 0.38);
-  border-radius: 6px;
-  background: rgba(114, 167, 220, 0.1);
-  color: var(--dh-blue);
-  font-family: var(--dh-font-mono, var(--moss-font-mono));
-  font-size: 11px;
-  font-weight: 900;
 }
 
 .workbenchSectionHead h2 {
@@ -393,29 +272,9 @@
   min-width: 0;
 }
 
-.holdingsPanoramaGrid {
-  grid-template-columns: minmax(0, 1.16fr) minmax(300px, 0.84fr);
-  align-items: stretch;
-}
-
 .holdingsPanoramaGrid .chartSnapshot {
   align-content: start;
   height: 100%;
-}
-
-.exposureLedger {
-  grid-template-columns: minmax(0, 0.62fr) minmax(320px, 0.38fr);
-  align-items: stretch;
-}
-
-.closureWorkbenchGrid {
-  grid-template-columns: minmax(236px, 0.34fr) minmax(0, 1fr);
-  align-items: stretch;
-}
-
-.actionMatrixGrid {
-  grid-template-columns: minmax(300px, 0.42fr) minmax(0, 0.58fr);
-  align-items: start;
 }
 
 .portfolioStructureWorkbench,
@@ -423,15 +282,10 @@
   min-width: 0;
 }
 
+/* border-color/background 留在原位：需被紧随其后的 .closureGateBlocked 覆盖 */
 .closureGate {
-  display: grid;
-  gap: 8px;
-  min-width: 0;
-  padding: 11px 12px;
   border-color: var(--dh-line-soft, var(--ib-hairline));
-  border-radius: var(--dh-api-radius, 6px);
   background: var(--dh-card);
-  box-shadow: none;
 }
 
 .closureGateBlocked {
@@ -460,14 +314,6 @@
   font-weight: 850;
   line-height: 1.35;
   overflow-wrap: anywhere;
-}
-
-.closureGateDetail {
-  margin: 0;
-  color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11px;
-  font-weight: 720;
-  line-height: 1.45;
 }
 
 .closureGateReasons {
@@ -510,26 +356,6 @@
   font-weight: 700;
 }
 
-.closureGateBadges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  min-width: 0;
-}
-
-.closureGateBadges span {
-  display: inline-flex;
-  align-items: center;
-  min-height: 24px;
-  padding: 3px 7px;
-  border: 1px solid var(--dh-line-soft, var(--ib-hairline));
-  border-radius: 6px;
-  background: var(--dh-card-soft);
-  color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11px;
-  font-weight: 820;
-}
-
 .sectionBlock {
   display: grid;
   gap: var(--dh-space-2, 12px);
@@ -563,27 +389,6 @@
   font-weight: 800;
 }
 
-.structureGapActions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 8px 10px 0;
-}
-
-.structureGapAction {
-  display: inline-flex;
-  align-items: center;
-  min-height: 26px;
-  padding: 4px 8px;
-  border: 1px solid var(--moss-color-warning-200);
-  border-radius: 6px;
-  background: var(--moss-color-warning-50);
-  color: var(--dh-amber, var(--ib-warn));
-  font-size: 11px;
-  font-weight: 800;
-  text-decoration: none;
-}
-
 .structureGapAction:hover {
   border-color: rgba(162, 102, 2, 0.34);
   text-decoration: none;
@@ -611,58 +416,11 @@
   padding-top: 2px;
 }
 
-.quickAccessGrid,
-.drillGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
-  gap: 8px;
-  min-width: 0;
-}
-
-.quickAccessCard,
-.drillCard {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 8px;
-  align-items: center;
-  min-width: 0;
-  min-height: 54px;
-  padding: 9px 10px;
-  border-color: var(--dh-line-soft, var(--ib-hairline));
-  border-radius: var(--dh-api-radius, 6px);
-  background: var(--dh-card);
-  color: var(--dh-ink, var(--ib-ink));
-  text-decoration: none;
-  box-shadow: none;
-}
-
 .quickAccessCard:hover,
 .drillCard:hover {
   border-color: rgba(114, 167, 220, 0.42);
   background: var(--moss-color-primary-50);
   text-decoration: none;
-}
-
-.quickAccessCard span,
-.drillCard span {
-  display: inline-grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  background: var(--dh-card-soft, var(--ib-paper));
-  color: var(--dh-blue-deep, var(--ib-accent));
-  font-size: 14px;
-}
-
-.quickAccessCard b,
-.drillCard b {
-  overflow: hidden;
-  color: var(--dh-ink, var(--ib-ink));
-  font-size: 12px;
-  font-weight: 850;
-  line-height: 1.25;
-  overflow-wrap: anywhere;
 }
 
 .quickAccessCard em,
@@ -715,20 +473,6 @@
   color: var(--dh-blue, var(--ib-accent));
   font-size: 14px;
   font-weight: 850;
-}
-
-.decisionPanel {
-  display: grid;
-  grid-template-columns: minmax(260px, 0.72fr) minmax(0, 1.28fr);
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 1px;
-  align-items: stretch;
-  align-self: stretch;
-  overflow: hidden;
-  border: 1px solid var(--dh-line);
-  border-radius: var(--dh-api-radius, 6px);
-  background: var(--dh-line-soft);
-  box-shadow: none;
 }
 
 .chartSnapshot {
@@ -864,12 +608,6 @@
   background: var(--dh-api-amber);
 }
 
-.chartMiniSkeleton span {
-  height: 7px;
-  border-radius: var(--dh-api-radius, 6px);
-  background: rgba(226, 239, 255, 0.2);
-}
-
 .chartMiniSkeleton span:nth-child(1) {
   width: 84%;
 }
@@ -890,13 +628,6 @@
   background: var(--dh-card);
 }
 
-.decisionLedger {
-  gap: 6px;
-  align-content: start;
-  padding: 14px 16px;
-  background: var(--dh-card);
-}
-
 .decisionLedgerHead,
 .terminalPanelHead {
   display: flex;
@@ -913,45 +644,11 @@
   background: var(--dh-card-soft);
 }
 
-.terminalPanelHead span {
-  color: var(--dh-blue);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
-}
-
 .terminalPanelHead strong {
   color: var(--dh-muted);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.01em;
-}
-
-.decisionKicker {
-  color: var(--dh-blue, var(--ib-accent));
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.01em;
-}
-
-.decisionTitle {
-  margin: 0;
-  color: var(--dh-ink, var(--ib-ink));
-  font-size: 22px;
-  font-weight: 880;
-  line-height: 1.22;
-}
-
-.decisionDetail {
-  display: -webkit-box;
-  overflow: hidden;
-  margin: 0;
-  color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11.5px;
-  font-weight: 700;
-  line-height: 1.42;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
 }
 
 .decisionReadinessBar {
@@ -984,16 +681,8 @@
 }
 
 .terminalStatus {
-  display: inline-flex;
-  align-items: center;
-  min-height: 22px;
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
   padding: 1px 8px;
-  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
-  border-radius: var(--dh-api-radius, 6px);
-  background: var(--ib-surface);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0;
 }
 
 .decisionMatrix {
@@ -1006,36 +695,6 @@
   gap: 1px;
   overflow: hidden;
   background: var(--dh-line-soft);
-}
-
-.decisionFact {
-  display: grid;
-  gap: 4px;
-  align-content: center;
-  min-width: 0;
-  min-height: 38px;
-  padding: 5px 7px;
-  background: var(--dh-card);
-}
-
-.decisionFact span {
-  overflow: hidden;
-  color: var(--dh-muted, var(--ib-ink-muted));
-  font-size: 11px;
-  font-weight: 750;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.decisionFact strong {
-  overflow-wrap: normal;
-  word-break: normal;
-  color: var(--dh-ink, var(--ib-ink));
-  font-family: var(--dh-font-mono, var(--moss-font-mono));
-  font-size: 12px;
-  font-weight: 850;
-  line-height: 1.35;
-  font-variant-numeric: tabular-nums;
 }
 
 .evidenceConsole {
@@ -1077,32 +736,20 @@
   min-width: 0;
 }
 
+/* gap/min-height/padding/border/border-radius/color 留在原位：需被更晚的 @media (min-width: 1101px) 与 tone 类覆盖 */
 .decisionAction {
-  display: grid;
-  grid-template-columns: 8px minmax(0, 1fr) auto;
   gap: 8px;
-  align-items: center;
-  min-width: 0;
   min-height: 36px;
   padding: 6px 8px;
   border: 1px solid var(--dh-line-soft, var(--ib-hairline));
   border-radius: 6px;
-  background: var(--ib-surface);
   color: inherit;
-  text-decoration: none;
 }
 
-.decisionAction:hover {
-  border-color: rgba(24, 80, 161, 0.28);
-  background: var(--moss-color-primary-50);
-  text-decoration: none;
-}
-
+/* width/height 留在原位：需被更晚的 @media (min-width: 1101px) .decisionActionDot 覆盖 */
 .decisionActionDot {
   width: 8px;
   height: 24px;
-  border-radius: var(--dh-api-radius, 6px);
-  background: currentColor;
 }
 
 .decisionActionText {
@@ -1338,31 +985,6 @@
   line-height: 1.45;
 }
 
-.kpiGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 176px), 1fr));
-  gap: 8px;
-  min-width: 0;
-  width: 100%;
-}
-
-.kpiCard {
-  position: relative;
-  align-content: start;
-  min-height: 118px;
-  min-width: 0;
-  padding: 12px 13px 10px;
-  overflow: hidden;
-  border: 1px solid var(--dh-line-soft);
-  border-radius: var(--dh-api-radius, 6px);
-  background: var(--dh-card);
-  box-shadow: none;
-}
-
-.kpiCard:nth-child(-n + 2) {
-  background: linear-gradient(180deg, rgba(114, 167, 220, 0.08), rgba(114, 167, 220, 0.015)), var(--dh-card);
-}
-
 .kpiCard::before {
   content: "";
   position: absolute;
@@ -1372,13 +994,9 @@
 }
 
 .kpiCard::after {
-  content: "";
-  position: absolute;
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
   inset: 10px 12px auto auto;
   width: 28px;
-  height: 2px;
-  border-radius: 999px;
-  background: rgba(114, 167, 220, 0.22);
 }
 
 .kpiCard[data-tone="ok"]::before {
@@ -1393,37 +1011,10 @@
   background: var(--portfolio-chart-red, var(--ib-down));
 }
 
-.kpiCard:nth-child(5n + 1) {
-  border-color: rgba(114, 167, 220, 0.32);
-}
-
-.kpiCard:hover {
-  border-color: rgba(114, 167, 220, 0.42);
-  box-shadow: none;
-}
-
-.kpiLabel {
-  color: var(--dh-muted);
-  font-size: 12px;
-  font-weight: 850;
-  letter-spacing: 0;
-  line-height: 1.2;
-}
-
 .kpiValue {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  align-items: baseline;
-  min-width: 0;
-  width: 100%;
-  margin-top: 10px;
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
   color: var(--dh-blue);
-  font-family: var(--moss-font-mono);
-  font-size: 22px;
   font-weight: 800;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
 }
 
 .kpiValue span {
@@ -1466,24 +1057,14 @@
   color: var(--dh-amber);
 }
 
-.kpiValue.toneError {
-  color: var(--dh-red);
-}
-
 .kpiValue.toneMuted {
   color: var(--dh-muted);
 }
 
 .kpiDetail {
-  display: -webkit-box;
-  margin-top: 9px;
-  overflow: hidden;
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
   color: var(--dh-muted-2);
-  font-size: 12px;
-  font-weight: 650;
   line-height: 1.35;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
 }
 
 .statusStrip {
@@ -2113,33 +1694,12 @@
   line-height: 1.45;
 }
 
-.holdingsHeroBand {
-  display: grid;
-  gap: 12px;
-  min-width: 0;
-  padding: 12px;
-  overflow: hidden;
-  border: 1px solid var(--dh-line-soft, var(--ib-hairline));
-  border-radius: var(--dh-api-radius, 6px);
-  background: var(--dh-card);
-  box-shadow: none;
-}
-
 .holdingsHeroBand[data-tone="watch"] {
   border-color: var(--moss-color-warning-200);
 }
 
 .holdingsHeroBand[data-tone="error"] {
   border-color: var(--moss-color-danger-200);
-}
-
-.holdingsHeroHead {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 14px;
-  align-items: flex-start;
-  justify-content: space-between;
-  min-width: 0;
 }
 
 .holdingsHeroHead > div:first-child {
@@ -2162,57 +1722,8 @@
   line-height: 1.45;
 }
 
-.holdingsHeroEmpty {
-  margin: 0;
-  color: var(--dh-muted-2, var(--ib-ink-muted));
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.holdingsHeroEmpty {
-  padding: 12px;
-  border: 1px dashed var(--dh-line-soft, var(--ib-hairline));
-  border-radius: var(--dh-api-radius, 6px);
-  background: var(--dh-card-soft, var(--ib-paper));
-}
-
-.holdingsHeroSplit {
-  width: 100%;
-  max-width: 100%;
-  grid-template-columns: minmax(0, 1fr) minmax(200px, 280px);
-}
-
-.holdingsHeroBars {
-  display: grid;
-  align-content: start;
-  gap: 0;
-  min-width: 0;
-  max-height: 318px;
-  margin: 0;
-  padding: 0;
-  overflow: auto;
-  background: var(--moss-color-card-bg);
-  list-style: none;
-}
-
-.holdingsHeroBarRow {
-  display: grid;
-  gap: 5px;
-  min-width: 0;
-  padding: 8px 10px;
-  border-bottom: 1px solid rgba(24, 80, 161, 0.08);
-}
-
 .holdingsHeroBarRow:last-child {
   border-bottom: 0;
-}
-
-.holdingsHeroBarTop {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: baseline;
-  min-width: 0;
 }
 
 .holdingsHeroBarLabel {
@@ -2231,21 +1742,6 @@
   font-weight: 850;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-}
-
-.holdingsHeroBarTrack {
-  height: 7px;
-  overflow: hidden;
-  border-radius: var(--dh-api-radius, 6px);
-  background: rgba(159, 180, 199, 0.14);
-}
-
-.holdingsHeroBarFill {
-  display: block;
-  width: var(--holding-share-width);
-  height: 100%;
-  border-radius: inherit;
-  background: var(--portfolio-chart-blue, var(--ib-accent));
 }
 
 .holdingsHeroBarFill[data-color-index="1"] {
@@ -2275,47 +1771,15 @@
 }
 
 .workbenchNav {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
   position: static;
-  top: 12px;
-  align-self: start;
-  display: grid;
   grid-template-columns: minmax(220px, 1fr) repeat(4, minmax(96px, 128px)) minmax(180px, 1.2fr);
-  gap: 7px;
-  align-items: center;
-  min-width: 0;
-  padding: 10px;
-  border: 1px solid var(--dh-line-soft);
-  border-radius: var(--dh-api-radius, 6px);
-  background: var(--dh-card);
 }
 
 .workbenchNavTitle,
 .workbenchNav > .workbenchNavTitle {
-  min-width: 0;
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
   color: var(--dh-ink);
-  font-size: 14px;
-  font-weight: 860;
-  line-height: 1.3;
-  white-space: normal;
-}
-
-.workbenchNav a {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 2px 7px;
-  min-width: 0;
-  min-height: 26px;
-  padding: 5px 8px;
-  border: 1px solid rgba(159, 180, 199, 0.22);
-  border-radius: var(--dh-api-radius, 6px);
-  background: rgba(16, 31, 51, 0.58);
-  color: var(--dh-muted);
-  text-decoration: none;
-}
-
-.workbenchNav a:hover {
-  border-color: var(--portfolio-info-border-strong);
-  background: var(--portfolio-info-soft);
 }
 
 .workbenchNav a:nth-of-type(2) {
@@ -2427,12 +1891,9 @@
 
 /* 复盘摘要区块与其他 workbenchSection 同构：单列（头 + summaryLedgerGrid）。 */
 .sourceWorkbenchSection {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 12px;
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
   padding: 0;
   border: 0;
-  background: transparent;
 }
 
 .holdingsWorkbenchSection,
@@ -2441,19 +1902,6 @@
   align-content: start;
   gap: 12px;
   min-width: 0;
-}
-
-.summaryLedgerCard {
-  display: grid;
-  align-content: start;
-  gap: 10px;
-  min-width: 0;
-  min-height: 0;
-  padding: 12px;
-  overflow: hidden;
-  border: 1px solid var(--dh-line-soft);
-  border-radius: var(--dh-api-radius, 6px);
-  background: var(--dh-card);
 }
 
 .summaryLedgerCard > .chartSnapshot {
@@ -2476,20 +1924,11 @@
   background: transparent;
 }
 
-.summaryLedgerCard .briefGrid,
-.summaryLedgerCard .statusGrid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 6px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-}
-
+/* padding/border/border-radius/background 留在原位：需被随后的 chartSnapshotCard 与 briefCard* 状态规则覆盖 */
 .summaryLedgerCard .chartSnapshotCard,
 .summaryLedgerCard .briefCard,
 .summaryLedgerCard .statusCell {
-  min-height: 30px;
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
   padding: 7px 9px;
   border: 0;
   border-radius: var(--dh-api-radius, 6px);
@@ -2533,6 +1972,9 @@
 
 .summaryLedgerCard .briefGrid,
 .summaryLedgerCard .statusGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  padding: 0;
   gap: 1px;
   overflow: hidden;
   border: 1px solid var(--dh-line-soft);
@@ -2582,6 +2024,12 @@
 }
 
 .holdingsHeroBand {
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--dh-line-soft, var(--ib-hairline));
+  background: var(--dh-card);
+  box-shadow: none;
   align-content: start;
   gap: 10px;
   min-height: 0;
@@ -2596,6 +2044,12 @@
 }
 
 .holdingsHeroHead {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: flex-start;
+  justify-content: space-between;
+  min-width: 0;
   min-height: 38px;
 }
 
@@ -2607,6 +2061,8 @@
 }
 
 .holdingsHeroSplit {
+  width: 100%;
+  max-width: 100%;
   display: grid;
   grid-template-columns: 132px minmax(0, 1fr);
   gap: 14px;
@@ -2614,13 +2070,13 @@
 }
 
 .holdingsHeroBars {
-  gap: 7px;
-  max-height: none;
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
   overflow: visible;
-  background: transparent;
 }
 
 .holdingsHeroBarRow {
+  display: grid;
+  min-width: 0;
   grid-template-columns: minmax(118px, 0.82fr) minmax(110px, 1fr) minmax(70px, auto);
   gap: 8px;
   align-items: center;
@@ -2629,27 +2085,26 @@
 }
 
 .holdingsHeroBarTop {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  min-width: 0;
   gap: 6px;
 }
 
 .holdingsHeroBarTrack {
+  height: 7px;
+  overflow: hidden;
+  border-radius: var(--dh-api-radius, 6px);
   background: rgba(114, 167, 220, 0.12);
 }
 
 .holdingsHeroBarFill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--portfolio-chart-blue, var(--ib-accent));
   width: var(--holdings-hero-bar-width);
-}
-
-.exposureWorkbenchSection {
-  display: grid;
-  align-content: start;
-  gap: 10px;
-  min-width: 0;
-  min-height: 0;
-  padding: 11px;
-  border: 1px solid var(--dh-line-soft);
-  border-radius: var(--dh-api-radius, 6px);
-  background: var(--dh-card);
 }
 
 .exposureWorkbenchHead {
@@ -2667,12 +2122,8 @@
 }
 
 .exposureWorkbenchHead h2 {
-  grid-column: 1;
-  margin: 0;
-  color: var(--dh-blue);
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
   font-size: 17px;
-  font-weight: 860;
-  line-height: 1.25;
 }
 
 .exposureWorkbenchHead p {
@@ -2688,53 +2139,29 @@
 }
 
 .exposureLedger {
+  grid-template-columns: minmax(0, 0.62fr) minmax(320px, 0.38fr);
+  align-items: stretch;
   display: block;
   min-width: 0;
 }
 
-.exposureLedgerTable {
-  display: grid;
-  gap: 1px;
-  min-width: 0;
-  overflow: hidden;
-  border: 1px solid var(--dh-line-soft);
-  border-radius: var(--dh-api-radius, 6px);
-  background: var(--dh-line-soft);
-}
-
 .exposureLedgerHeader,
 .exposureLedgerRow {
-  display: grid;
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
   grid-template-columns: minmax(100px, 1.1fr) minmax(84px, 0.8fr) minmax(72px, 0.65fr) minmax(96px, 1fr);
-  gap: 1px;
-  align-items: center;
-  min-width: 0;
 }
 
 .exposureLedgerHeader span,
 .exposureLedgerRow span,
 .exposureLedgerRow strong,
 .exposureLedgerRow em {
-  min-width: 0;
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
   padding: 7px 8px;
-  overflow: hidden;
-  background: var(--dh-card-soft);
-  font-size: 12px;
-  line-height: 1.3;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .exposureLedgerHeader span {
   color: var(--dh-muted);
   font-weight: 850;
-}
-
-.exposureLedgerRow strong {
-  color: var(--dh-blue);
-  font-family: var(--dh-font-mono, var(--moss-font-mono));
-  font-weight: 850;
-  font-variant-numeric: tabular-nums;
 }
 
 .exposureLedgerRow em {
@@ -2744,45 +2171,13 @@
 }
 
 .closureWorkbenchGrid {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
 }
 
-.closureGate,
+/* border 留在原位：需被 .closureReviewCardRisk 与后文 border-color 规则覆盖 */
 .closureReviewCard {
-  min-height: 180px;
-  border-radius: var(--dh-api-radius, 6px);
-}
-
-.closureReviewCard {
-  display: grid;
-  align-content: start;
-  gap: 10px;
-  min-width: 0;
-  padding: 12px;
-  overflow: hidden;
   border: 1px solid var(--dh-line-soft);
-  background: var(--dh-card);
-}
-
-.closureReviewCardRisk {
-  border-color: rgba(201, 165, 101, 0.34);
-}
-
-.closureReviewCard .embeddedPanel {
-  padding: 0;
-}
-
-.closureReviewCard .detailList {
-  max-height: 116px;
-  overflow: auto;
-  scrollbar-width: thin;
-}
-
-.structureTableWorkbench {
-  gap: 10px;
-  padding: 12px;
-  border-radius: var(--dh-api-radius, 6px);
 }
 
 .structureTableHead {
@@ -2830,51 +2225,23 @@
 /* （2026-08-11）曾在此把 structureChartCol 压成 1px 且 opacity:0 隐藏图表；
    驾驶舱改版恢复图表展示，布局规则统一收在文件末尾的皮肤层。 */
 
-.structureTableWorkbench .compactList {
-  gap: 6px;
-}
-
+/* grid-template-columns 留在原位：需被更晚的表头/行列表规则与 @media 覆盖 */
 .structureTableWorkbench .compactRow {
   grid-template-columns: minmax(240px, 1.5fr) minmax(160px, 0.8fr);
-  min-height: 34px;
-  padding: 7px 10px;
-  border-bottom: 0;
-  border-radius: var(--dh-api-radius, 6px);
-  background: var(--dh-card-soft);
-}
-
-.structureTableWorkbench .compactValue {
-  color: var(--dh-blue);
-  font-size: 12px;
-  text-align: left;
-}
-
-.actionMatrixGrid {
-  grid-template-columns: minmax(0, 0.48fr) minmax(0, 0.52fr);
-  gap: 14px;
 }
 
 .quickAccessGrid,
 .drillGrid {
+  display: grid;
+  min-width: 0;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 
-.drillGrid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.quickAccessCard,
-.drillCard {
-  min-height: 34px;
-  padding: 7px 9px;
-  border-color: rgba(159, 180, 199, 0.2);
-  border-radius: var(--dh-api-radius, 6px);
-  background: rgba(16, 31, 51, 0.46);
-}
-
 .quickAccessCard span,
 .drillCard span {
+  display: inline-grid;
+  place-items: center;
   width: 20px;
   height: 20px;
   border: 1px solid rgba(159, 180, 199, 0.18);
@@ -2886,15 +2253,19 @@
 
 .quickAccessCard b,
 .drillCard b {
+  overflow: hidden;
+  color: var(--dh-ink, var(--ib-ink));
+  font-weight: 850;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
   font-size: 11px;
 }
 
 /* 快捷入口为主级：保留说明文字、抬高对比，与明细索引区分层级。 */
 .quickAccessCard {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
   min-height: 46px;
   padding: 9px 11px;
-  border-color: rgba(114, 167, 220, 0.26);
-  background: rgba(16, 31, 51, 0.72);
 }
 
 .quickAccessCard span {
@@ -2930,42 +2301,62 @@
   color: var(--dh-api-blue);
 }
 
+/* grid-template-columns 留在原位：需被更晚的 @media .decisionPanel 覆盖 */
 .decisionPanel {
   grid-template-columns: minmax(254px, 0.68fr) minmax(0, 1.32fr);
-  border-color: rgba(114, 167, 220, 0.32);
 }
 
 .decisionLedger {
+  align-content: start;
+  background: var(--dh-card);
   gap: 6px;
   padding: 12px 13px;
 }
 
 .decisionTitle {
+  margin: 0;
+  color: var(--dh-ink, var(--ib-ink));
+  font-weight: 880;
   font-size: 24px;
   line-height: 1.16;
 }
 
 .decisionDetail {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0;
+  color: var(--dh-muted, var(--ib-ink-muted));
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.42;
+  -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
 
 .decisionFact {
+  display: grid;
+  gap: 4px;
+  align-content: center;
+  min-width: 0;
+  background: var(--dh-card);
   min-height: 40px;
   padding: 6px 8px;
 }
 
 .decisionFact strong {
+  overflow-wrap: normal;
+  word-break: normal;
+  color: var(--dh-ink, var(--ib-ink));
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-weight: 850;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
   font-size: 12.5px;
 }
 
+/* grid-template-columns 留在原位：需被更晚出现的 @media (max-width: 900px) .kpiGrid 覆盖 */
 .kpiGrid {
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.kpiCard {
-  min-height: 100px;
-  padding: 10px 11px 9px;
 }
 
 .kpiCard[data-empty="true"] {
@@ -2976,7 +2367,7 @@
 }
 
 .kpiValue {
-  margin-top: 8px;
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
   font-size: 23px;
 }
 
@@ -2992,11 +2383,16 @@
   white-space: nowrap;
 }
 
-.kpiCard[data-empty="true"] .kpiDetail {
-  color: color-mix(in srgb, var(--dh-amber) 72%, var(--dh-muted));
-}
-
 .summaryLedgerCard {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  border: 1px solid var(--dh-line-soft);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-card);
   min-height: 158px;
   border-color: rgba(114, 167, 220, 0.2);
 }
@@ -3004,6 +2400,7 @@
 .summaryLedgerCard .chartSnapshotCard,
 .summaryLedgerCard .briefCard,
 .summaryLedgerCard .statusCell {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
   min-height: 34px;
   border-left: 2px solid rgba(114, 167, 220, 0.28);
 }
@@ -3017,12 +2414,12 @@
   gap: 7px;
 }
 
-.summaryLedgerCard .chartMiniSkeleton span {
-  height: 8px;
-  background: linear-gradient(90deg, rgba(114, 167, 220, 0.28), rgba(114, 167, 220, 0.1));
-}
-
 .holdingsHeroEmpty {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  border: 1px dashed var(--dh-line-soft, var(--ib-hairline));
+  border-radius: var(--dh-api-radius, 6px);
   display: grid;
   align-content: end;
   min-height: 202px;
@@ -3038,10 +2435,23 @@
 }
 
 .exposureWorkbenchSection {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  padding: 11px;
+  border: 1px solid var(--dh-line-soft);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-card);
   border-color: rgba(114, 167, 220, 0.22);
 }
 
 .exposureLedgerRow strong {
+  color: var(--dh-blue);
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
 }
 
@@ -3051,11 +2461,8 @@
 }
 
 .closureReviewCard {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
   border-color: rgba(114, 167, 220, 0.18);
-}
-
-.closureReviewCard .detailRow {
-  padding: 5px 0;
 }
 
 .closureReviewCard .detailValue {
@@ -3063,8 +2470,8 @@
 }
 
 .structureTableWorkbench {
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
   border-color: rgba(114, 167, 220, 0.2);
-  padding: 10px;
 }
 
 .structureTableWorkbench :global(.ant-tabs-tab) {
@@ -3076,11 +2483,6 @@
   margin-bottom: 7px;
 }
 
-.structureTableWorkbench .compactRow {
-  min-height: 30px;
-  padding: 5px 9px;
-}
-
 .quickAccessBlock,
 .drilldownBlock {
   border: 1px solid rgba(114, 167, 220, 0.14);
@@ -3088,16 +2490,19 @@
   background: rgba(16, 31, 51, 0.48);
 }
 
-.quickAccessGrid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.drillGrid {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-}
-
 .quickAccessCard,
 .drillCard {
+  border-color: rgba(159, 180, 199, 0.2);
+  background: rgba(16, 31, 51, 0.46);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  color: var(--dh-ink, var(--ib-ink));
+  text-decoration: none;
+  box-shadow: none;
+  border-radius: var(--dh-api-radius, 6px);
   min-height: 31px;
   padding: 6px 8px;
 }
@@ -3139,6 +2544,7 @@
 }
 
 .structureGapActions {
+  margin: 8px 10px 0;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -3146,21 +2552,6 @@
   min-width: 0;
   margin-top: -2px;
   font-size: 11px;
-}
-
-.structureGapAction {
-  display: inline-flex;
-  gap: 6px;
-  align-items: center;
-  max-width: 100%;
-  min-height: 26px;
-  padding: 4px 8px;
-  border: 1px solid var(--dh-line, var(--ib-hairline));
-  border-radius: var(--dh-api-radius, 6px);
-  background: var(--ib-surface);
-  color: var(--dh-ink, var(--ib-ink));
-  line-height: 1.2;
-  text-decoration: none;
 }
 
 .structureGapAction span,
@@ -3465,37 +2856,7 @@
 }
 
 @media (min-width: 1101px) {
-  .portfolioPage {
-    gap: 12px;
-    padding: 14px;
-  }
 
-  .portfolioTopbar {
-    min-height: 58px;
-    padding: 8px 12px;
-  }
-
-
-  .decisionPanel {
-    grid-template-columns: minmax(268px, 0.66fr) minmax(0, 1.34fr);
-    border-color: rgba(114, 167, 220, 0.38);
-  }
-
-  .decisionLedger {
-    gap: 5px;
-    padding: 10px 12px;
-  }
-
-  .decisionTitle {
-    font-size: 22px;
-    line-height: 1.12;
-  }
-
-  .decisionDetail {
-    font-size: 11px;
-    line-height: 1.35;
-    -webkit-line-clamp: 2;
-  }
 
   .decisionReadinessBar {
     min-height: 28px;
@@ -3526,29 +2887,6 @@
     line-height: 1.25;
   }
 
-  .decisionActionQueue {
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: 8px;
-    align-items: center;
-    padding: 6px 8px;
-  }
-
-  .decisionActionLabel {
-    white-space: nowrap;
-  }
-
-  .decisionActionList {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 5px;
-  }
-
-  .decisionAction {
-    grid-template-columns: 5px minmax(0, 1fr) auto;
-    gap: 6px;
-    min-height: 28px;
-    padding: 4px 6px;
-  }
-
   .decisionActionDot {
     width: 5px;
     height: 18px;
@@ -3558,63 +2896,13 @@
     display: none;
   }
 
-  .decisionActionText strong {
-    font-size: 11px;
-  }
-
-  .decisionActionTarget {
-    font-size: 11px;
-  }
-
   .sectionBlock {
     gap: 7px;
-  }
-
-  .kpiGrid {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 6px;
-  }
-
-  .kpiCard {
-    min-height: 78px;
-    padding: 7px 8px;
-  }
-
-  .kpiLabel {
-    font-size: 12px;
-  }
-
-  .kpiValue,
-  .kpiCard:nth-child(-n + 2) .kpiValue {
-    margin-top: 6px;
-    font-size: clamp(17px, 1.18vw, 21px);
   }
 
   .kpiValue span {
     overflow: visible;
     text-overflow: clip;
-  }
-
-  .kpiValue small,
-  .kpiCard:nth-child(-n + 2) .kpiValue small {
-    font-size: 11px;
-  }
-
-  .kpiDetail {
-    margin-top: 6px;
-    font-size: 12px;
-    line-height: 1.3;
-    -webkit-line-clamp: 1;
-  }
-
-  .portfolioRiskTickerBar {
-    padding: 6px 8px;
-  }
-
-  .summaryLedgerCard {
-    gap: 8px;
-    min-height: 126px;
-    padding: 10px;
   }
 
   .summaryLedgerCard .chartSnapshotCard,
@@ -3627,11 +2915,6 @@
   .summaryLedgerCard .briefGrid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 5px;
-  }
-
-  .summaryLedgerCard .briefCard {
-    align-content: start;
-    min-height: 82px;
   }
 
   .briefTitle {
@@ -3656,14 +2939,6 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .summaryLedgerCard .statusCell {
-    gap: 2px;
-  }
-
-  .summaryLedgerCard .statusCell em {
-    display: none;
-  }
-
   .workbenchSection {
     gap: 10px;
     padding: 10px;
@@ -3686,16 +2961,6 @@
   .workbenchSectionMeta em {
     min-height: 23px;
     padding: 3px 7px;
-  }
-
-  .holdingsPanoramaGrid {
-    grid-template-columns: minmax(0, 0.43fr) minmax(0, 0.57fr);
-    gap: 10px;
-  }
-
-  .holdingsHeroBand,
-  .exposureWorkbenchSection {
-    padding: 9px;
   }
 
   .exposureWorkbenchHead h2 {
@@ -3728,45 +2993,6 @@
     padding: 4px 6px;
   }
 
-  .structureTableWorkbench .compactList {
-    max-height: 214px;
-    overflow: auto;
-    scrollbar-width: thin;
-  }
-
-  .structureTableWorkbench .compactRow {
-    min-height: 28px;
-    padding: 4px 8px;
-  }
-
-  .closureWorkbenchGrid {
-    grid-template-columns: minmax(0, 1.12fr) repeat(3, minmax(0, 1fr));
-    gap: 10px;
-  }
-
-  .closureGate,
-  .closureReviewCard {
-    min-height: 142px;
-  }
-
-  .closureReviewCard {
-    gap: 8px;
-    padding: 10px;
-  }
-
-  .closureReviewCard .detailList {
-    max-height: 76px;
-  }
-
-  .closureReviewCard .detailRow {
-    padding: 4px 0;
-  }
-
-  .actionMatrixGrid {
-    grid-template-columns: minmax(0, 0.44fr) minmax(0, 0.56fr);
-    gap: 10px;
-  }
-
   .quickAccessGrid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 6px;
@@ -3788,11 +3014,6 @@
     font-size: 11px;
   }
 
-  .dataNote {
-    max-height: 52px;
-    overflow: auto;
-    scrollbar-width: thin;
-  }
 }
 
 @media (min-width: 1101px) {
@@ -3825,20 +3046,8 @@
     background: transparent;
   }
 
-  .portfolioTopbar {
-    box-sizing: border-box;
-    min-height: 92px;
-    margin-bottom: 0;
-    padding: 16px 16px;
-  }
-
   .evidenceConsole .evidenceFactList {
     grid-template-columns: minmax(150px, 0.8fr) minmax(112px, 0.58fr) minmax(0, 1fr);
-  }
-
-  .evidenceConsole .decisionFact {
-    min-height: 31px;
-    padding: 4px 7px;
   }
 
   .evidenceConsole .decisionActionQueue {
@@ -3850,22 +3059,12 @@
   }
 
   .portfolioRiskTickerBar {
+    padding: 6px 8px;
     display: none;
   }
 
-  .kpiGrid {
-    gap: 12px;
-  }
-
-  .portfolioPrimaryColumn [data-testid="module-home-kpi-strip"] .kpiGridTape {
-    margin-top: 14px;
-  }
-
-  .kpiCard {
-    min-height: 76px;
-  }
-
   .summaryLedgerCard {
+    gap: 8px;
     box-sizing: border-box;
     height: auto;
     min-height: 152px;
@@ -3892,6 +3091,7 @@
   }
 
   .summaryLedgerCard .briefCard {
+    align-content: start;
     display: grid;
     grid-template-columns: minmax(70px, 0.58fr) minmax(88px, 0.72fr) minmax(0, 1fr);
     gap: 8px;
@@ -3958,6 +3158,7 @@
   }
 
   .holdingsPanoramaGrid {
+    gap: 10px;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -3968,6 +3169,7 @@
 
   .holdingsHeroBand,
   .exposureWorkbenchSection {
+    padding: 9px;
     box-sizing: border-box;
     min-height: 204px;
   }
@@ -4043,21 +3245,13 @@
     border-radius: 999px;
   }
 
-  .closureWorkbenchGrid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-
-  .closureGate,
-  .closureReviewCard {
-    min-height: 164px;
-  }
-
   .quickAccessBlock,
   .drilldownBlock {
     min-height: 0;
   }
 
   .structureTableWorkbench .compactList {
+    scrollbar-width: thin;
     gap: 1px;
     max-height: 148px;
     overflow: hidden;
@@ -4117,34 +3311,19 @@
   }
 
   .actionMatrixGrid {
+    grid-template-columns: minmax(0, 0.44fr) minmax(0, 0.56fr);
+    gap: 10px;
     align-items: start;
   }
 
   .dataNote {
+    overflow: auto;
+    scrollbar-width: thin;
     max-height: 34px;
   }
 }
 
 @media (min-width: 1101px) {
-  .portfolioTopbar {
-    min-height: 70px;
-    padding: 4px 0 14px;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-  }
-
-  .decisionLedger {
-    grid-column: 1;
-    grid-row: 1;
-    gap: 7px;
-    padding: 0;
-    background: transparent;
-  }
-
-  .decisionLedgerHead {
-    justify-content: flex-start;
-  }
 
   .decisionReadinessBar,
   .decisionMatrix,
@@ -4156,23 +3335,6 @@
     display: contents;
   }
 
-  .evidenceFactList {
-    grid-column: 2;
-    grid-row: 1 / span 2;
-    align-self: center;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0;
-    padding-left: 18px;
-    border-left: 1px solid rgba(125, 154, 127, 0.24);
-    background: transparent;
-  }
-
-  .evidenceConsole .decisionFact {
-    min-height: 48px;
-    padding: 0 0 10px;
-    background: transparent;
-  }
-
   .evidenceConsole .decisionFact + .decisionFact {
     padding-top: 9px;
     border-top: 1px solid rgba(125, 154, 127, 0.16);
@@ -4182,65 +3344,14 @@
     font-size: 11px;
   }
 
-  .evidenceConsole .decisionFact strong {
-    font-size: 17px;
-    line-height: 1.2;
-  }
-
-  .decisionActionQueue {
-    grid-column: 1;
-    grid-row: 2;
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: 10px;
-    align-items: center;
-    padding: 6px 0 0;
-    border-top: 0;
-    background: transparent;
-  }
-
   .decisionActionList {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
   }
 
-  .decisionAction {
-    min-height: 30px;
-    padding: 5px 8px;
-    border-color: rgba(74, 126, 190, 0.28);
-    background: rgba(23, 38, 62, 0.72);
-  }
-
   .portfolioPrimaryColumn [data-testid="module-home-kpi-strip"] {
-    grid-column: auto;
-    grid-row: auto;
+    /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
     min-height: 0;
-  }
-
-  .portfolioPrimaryColumn [data-testid="module-home-kpi-strip"] .kpiGridTape {
-    margin-top: 10px;
-  }
-
-  .kpiGrid {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 12px;
-  }
-
-  .kpiCard {
-    min-height: 112px;
-    padding: 16px 17px 14px;
-  }
-
-  .kpiValue,
-  .kpiCard:nth-child(-n + 2) .kpiValue {
-    margin-top: 12px;
-    font-size: 24px;
-  }
-
-  .kpiDetail {
-    margin-top: 10px;
-    font-size: 12px;
-    line-height: 1.36;
-    -webkit-line-clamp: 2;
   }
 
   .sourceWorkbenchSection,
@@ -4252,65 +3363,8 @@
   }
 }
 
-/* Portfolio cockpit color polish: amber carries review, blue carries structure. */
-.portfolioPage {
-  --portfolio-signal-info: var(--dh-api-blue);
-  --portfolio-signal-info-strong: color-mix(in srgb, var(--dh-api-blue) 72%, var(--dh-api-ink));
-  --portfolio-signal-info-muted: var(--dh-api-muted);
-  --portfolio-signal-review: var(--dh-api-amber);
-  --portfolio-signal-ok: var(--dh-api-green);
-  --portfolio-signal-danger: var(--dh-api-red);
-  --portfolio-info-soft: rgba(143, 174, 195, 0.095);
-  --portfolio-info-border: rgba(143, 174, 195, 0.22);
-  --portfolio-info-border-strong: rgba(143, 174, 195, 0.32);
-  --portfolio-review-soft: rgba(228, 179, 99, 0.13);
-  --portfolio-review-border: rgba(228, 179, 99, 0.36);
-  --portfolio-ok-soft: rgba(143, 180, 134, 0.12);
-  --portfolio-ok-border: rgba(143, 180, 134, 0.28);
-  --portfolio-danger-soft: rgba(201, 135, 138, 0.13);
-  --portfolio-danger-border: rgba(201, 135, 138, 0.28);
-  --ib-accent: var(--portfolio-signal-info);
-  --ib-accent-hover: color-mix(in srgb, var(--dh-api-blue) 78%, var(--dh-api-ink));
-  --ib-accent-surface: var(--portfolio-info-soft);
-  --ib-up: var(--portfolio-signal-ok);
-  --ib-down: var(--portfolio-signal-danger);
-  --ib-warn: var(--portfolio-signal-review);
-  --ib-gold: var(--portfolio-signal-review);
-  --dh-blue: var(--portfolio-signal-info);
-  --dh-blue-deep: var(--portfolio-signal-info-strong);
-  --dh-blue-soft: var(--portfolio-info-soft);
-  --dh-green: var(--portfolio-signal-ok);
-  --dh-green-soft: var(--portfolio-ok-soft);
-  --dh-red: var(--portfolio-signal-danger);
-  --dh-red-soft: var(--portfolio-danger-soft);
-  --dh-amber: var(--portfolio-signal-review);
-  --dh-amber-soft: var(--portfolio-review-soft);
-  --moss-color-primary-50: var(--portfolio-info-soft);
-  --moss-color-primary-100: rgba(143, 174, 195, 0.14);
-  --moss-color-primary-200: var(--portfolio-info-border);
-  --moss-color-primary-700: var(--portfolio-signal-info);
-  --moss-color-info-100: color-mix(in srgb, var(--dh-api-blue) 30%, var(--dh-api-ink));
-  --moss-color-info-300: var(--portfolio-signal-info-strong);
-  --moss-color-info-400: var(--portfolio-signal-info);
-  --moss-color-info-500: var(--dh-api-muted);
-  --moss-color-success-100: var(--portfolio-ok-border);
-  --moss-color-success-300: var(--portfolio-signal-ok);
-  --moss-color-success-500: var(--dh-api-green);
-  --moss-color-warning-50: var(--portfolio-review-soft);
-  --moss-color-warning-200: var(--portfolio-review-border);
-  --moss-color-warning-300: var(--portfolio-signal-review);
-  --moss-color-warning-400: var(--dh-api-amber);
-  --moss-color-danger-50: var(--portfolio-danger-soft);
-  --moss-color-danger-200: var(--portfolio-danger-border);
-  --moss-color-danger-500: var(--portfolio-signal-danger);
-  --portfolio-chart-blue: var(--dh-api-blue);
-  --portfolio-chart-info: var(--dh-api-ink-soft);
-  --portfolio-chart-green: var(--dh-api-green);
-  --portfolio-chart-amber: var(--dh-api-amber);
-  --portfolio-chart-red: var(--dh-api-red);
-}
-
 .decisionAction:hover {
+  text-decoration: none;
   border-color: var(--portfolio-info-border-strong);
   background: var(--portfolio-info-soft);
 }
@@ -4323,28 +3377,30 @@
 }
 
 .decisionKicker {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
   color: var(--portfolio-signal-review);
 }
 
 .decisionPanel {
+  border: 1px solid var(--dh-line);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 1px;
+  align-items: stretch;
+  align-self: stretch;
+  overflow: hidden;
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-line-soft);
+  box-shadow: none;
   border-color: var(--portfolio-review-border);
-}
-
-.decisionAction {
-  border-color: rgba(111, 135, 155, 0.26);
-  background: rgba(18, 32, 52, 0.72);
 }
 
 .decisionActionText small,
 .workbenchSectionHead p,
 .workbenchSectionMeta em {
   color: color-mix(in srgb, var(--dh-muted-2) 88%, var(--portfolio-signal-info-muted));
-}
-
-.workbenchSectionHead span {
-  border-color: var(--portfolio-info-border);
-  background: var(--portfolio-info-soft);
-  color: var(--portfolio-signal-info-strong);
 }
 
 .workbenchSection,
@@ -4366,10 +3422,6 @@
 .kpiCard:nth-child(5n + 1),
 .kpiCard:hover {
   border-color: var(--portfolio-info-border);
-}
-
-.kpiCard::after {
-  background: rgba(143, 174, 195, 0.16);
 }
 
 .kpiValue,
@@ -4399,30 +3451,8 @@
 }
 
 .summaryLedgerCard .chartMiniSkeleton span {
+  height: 8px;
   background: linear-gradient(90deg, rgba(143, 174, 195, 0.24), rgba(143, 174, 195, 0.08));
-}
-
-/* Let the analysis closure cards breathe instead of clipping their content. */
-.portfolioClosureBand {
-  height: auto;
-}
-
-.closureReviewCard {
-  overflow: visible;
-}
-
-.closureGate {
-  align-content: start;
-  grid-auto-rows: max-content;
-}
-
-.closureGateBadges {
-  margin-top: 6px;
-}
-
-.closureReviewCard .detailList {
-  max-height: none;
-  overflow: visible;
 }
 
 .closureReviewCard .detailRow > .detailSource {
@@ -4436,6 +3466,7 @@
   }
 
   .closureReviewCard {
+    /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
     gap: 12px;
     padding: 14px;
   }
@@ -4450,10 +3481,6 @@
 }
 
 @media (min-width: 1320px) {
-  .closureGate,
-  .closureReviewCard {
-    min-height: 222px;
-  }
 }
 
 /* Structure workbook as a spacious ledger, matching the reference workbench. */
@@ -4464,11 +3491,6 @@
 }
 
 /* 标题层级与 01/03/04 同级：此区块的「宽松」由容器 padding 承担，不靠放大标题。 */
-.portfolioStructureWorkbench .workbenchSectionHead p {
-  color: var(--dh-api-muted);
-  font-weight: 720;
-  line-height: 1.32;
-}
 
 .portfolioStructureWorkbench .workbenchSectionMeta em {
   min-height: auto;
@@ -4481,14 +3503,6 @@
 
 .portfolioStructureWorkbench .workbenchSectionMeta em::first-letter {
   color: var(--dh-api-green);
-}
-
-.structureTableWorkbench {
-  gap: 0;
-  padding: 8px 0 0;
-  overflow: visible;
-  border: 0;
-  background: transparent;
 }
 
 .structureTableHead,
@@ -4569,15 +3583,6 @@
   align-items: center;
 }
 
-.structureTableWorkbench .compactListHeader {
-  min-height: 24px;
-  padding: 0 12px 7px;
-  border-bottom: 1px solid rgba(143, 174, 195, 0.18);
-  color: var(--dh-api-muted);
-  font-size: 12px;
-  font-weight: 680;
-}
-
 .structureTableWorkbench .compactListHeader span:nth-child(n + 2) {
   text-align: right;
 }
@@ -4590,14 +3595,6 @@
   background: transparent;
 }
 
-.structureTableWorkbench .compactRow {
-  min-height: 36px;
-  padding: 0 12px;
-  border-bottom: 1px solid rgba(143, 174, 195, 0.09);
-  border-radius: 0;
-  background: transparent;
-}
-
 .structureTableWorkbench .compactRow:last-child {
   border-bottom: 0;
 }
@@ -4606,16 +3603,13 @@
   display: block;
 }
 
+/* font-weight 留在原位：需被紧随其后的 .compactLabel / .compactValue 覆盖 */
 .structureTableWorkbench .compactLabel,
 .structureTableWorkbench .compactSource,
 .structureTableWorkbench .compactCount,
 .structureTableWorkbench .compactValue {
-  font-family: var(--moss-font-mono);
-  font-size: 14px;
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
   font-weight: 760;
-  letter-spacing: 0;
-  line-height: 1.2;
-  white-space: nowrap;
 }
 
 .structureTableWorkbench .compactLabel {
@@ -4623,13 +3617,8 @@
   font-weight: 860;
 }
 
-.structureTableWorkbench .compactSource,
-.structureTableWorkbench .compactCount {
-  color: color-mix(in srgb, var(--dh-api-blue) 55%, var(--dh-api-ink));
-  text-align: right;
-}
-
 .structureTableWorkbench .compactValue {
+  font-size: 12px;
   color: var(--dh-ink);
   font-weight: 860;
   text-align: right;
@@ -4666,56 +3655,56 @@
 }
 
 .portfolioStructureWorkbench .workbenchSectionHead p {
+  color: var(--dh-api-muted);
+  font-weight: 720;
   line-height: 1.25;
 }
 
 .structureTableWorkbench {
+  border-radius: var(--dh-api-radius, 6px);
+  gap: 0;
+  padding: 8px 0 0;
+  overflow: visible;
+  border: 0;
+  background: transparent;
   padding-top: 6px;
 }
 
-.structureTableWorkbench .compactListHeader {
-  min-height: 22px;
-  padding: 0 10px 5px;
-}
-
-.structureTableWorkbench .compactRow {
-  min-height: 30px;
-  padding: 0 10px;
-}
-
-.structureTableWorkbench .compactLabel,
-.structureTableWorkbench .compactSource,
-.structureTableWorkbench .compactCount,
-.structureTableWorkbench .compactValue {
-  font-size: 13px;
-}
-
-.kpiDetail {
-  min-height: 15px;
-  -webkit-line-clamp: 1;
-}
-
 .portfolioClosureBand {
+  height: auto;
   min-height: 0;
 }
 
 .closureWorkbenchGrid {
+  gap: 12px;
   align-items: stretch;
 }
 
 .closureGate,
 .closureReviewCard {
+  border-radius: var(--dh-api-radius, 6px);
   min-height: 214px;
   max-height: none;
 }
 
 .closureGate {
+  display: grid;
+  min-width: 0;
+  padding: 11px 12px;
+  border-radius: var(--dh-api-radius, 6px);
+  box-shadow: none;
+  grid-auto-rows: max-content;
   gap: 7px;
   align-content: start;
   overflow: hidden;
 }
 
 .closureGateDetail {
+  margin: 0;
+  color: var(--dh-muted, var(--ib-ink-muted));
+  font-size: 11px;
+  font-weight: 720;
+  line-height: 1.45;
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
@@ -4723,22 +3712,25 @@
 }
 
 .closureGateBadges {
+  display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
   gap: 5px;
   margin-top: 2px;
 }
 
-.closureGateBadges span {
-  min-height: 20px;
-  padding: 2px 6px;
-}
-
 .closureReviewCard {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  background: var(--dh-card);
   gap: 8px;
   padding: 10px 12px;
   overflow: visible;
 }
 
 .closureReviewCard .embeddedPanel {
+  padding: 0;
   gap: 6px;
   min-height: 0;
   overflow: visible;
@@ -4750,6 +3742,7 @@
 }
 
 .closureReviewCard .detailList {
+  scrollbar-width: thin;
   max-height: none;
   padding-right: 4px;
   overflow: visible;
@@ -4849,6 +3842,7 @@
 }
 
 .actionMatrixGrid {
+  align-items: start;
   grid-template-columns: 1fr;
   gap: 16px;
 }
@@ -4860,11 +3854,6 @@
 /* 明细标签多为 6-12 个汉字；轨道过窄会挤到截断，按 §5「禁止压缩保列数」放宽。 */
 .drillGrid {
   grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
-}
-
-/* 仅部分明细卡带状态行；等高网格下内容居中，避免无状态卡底部留白。 */
-.drillCard {
-  align-content: center;
 }
 
 .actionWorkbenchSection .dataNoteDisclosure {
@@ -4947,6 +3936,11 @@
 /* First-screen rhythm pass: align the hero, decision strip, and KPI tape with the reference cadence. */
 @media (min-width: 1101px) {
   .portfolioTopbar {
+    box-sizing: border-box;
+    margin-bottom: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 20px;
@@ -5013,6 +4007,10 @@
   }
 
   .decisionLedger {
+    grid-column: 1;
+    grid-row: 1;
+    padding: 0;
+    background: transparent;
     gap: 7px;
   }
 
@@ -5040,31 +4038,52 @@
   }
 
   .evidenceFactList {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: center;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    border-left: 1px solid rgba(125, 154, 127, 0.24);
+    background: transparent;
     padding-left: 16px;
     border-left-color: rgba(143, 174, 195, 0.22);
   }
 
   .evidenceConsole .decisionFact {
+    background: transparent;
     min-height: 44px;
     padding: 0 0 8px;
   }
 
   .evidenceConsole .decisionFact strong {
+    line-height: 1.2;
     font-size: 16px;
   }
 
   .decisionActionQueue {
+    grid-column: 1;
+    grid-row: 2;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    padding: 6px 0 0;
+    border-top: 0;
+    background: transparent;
     gap: 8px;
     padding-top: 8px;
   }
 
   .decisionActionLabel {
+    white-space: nowrap;
     color: var(--portfolio-signal-review);
     font-size: 11px;
     letter-spacing: 0;
   }
 
   .decisionAction {
+    border-color: rgba(74, 126, 190, 0.28);
+    background: rgba(23, 38, 62, 0.72);
+    grid-template-columns: 5px minmax(0, 1fr) auto;
+    gap: 6px;
     min-height: 31px;
     padding: 5px 8px;
     border-radius: var(--dh-api-radius, 6px);
@@ -5083,6 +4102,8 @@
   }
 
   .portfolioPrimaryColumn [data-testid="module-home-kpi-strip"] {
+    grid-column: auto;
+    grid-row: auto;
     gap: 10px;
   }
 
@@ -5107,6 +4128,7 @@
   }
 
   .kpiGrid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 10px;
   }
 
@@ -5145,6 +4167,7 @@
   }
 
   .kpiDetail {
+    line-height: 1.36;
     margin-top: 9px;
     font-size: 12px;
     -webkit-line-clamp: 1;
@@ -5169,16 +4192,6 @@
   .kpiCard:nth-child(-n + 2) .kpiValue {
     font-size: 21px;
   }
-}
-
-/* Status taxonomy pass: quiet pending/data states, reserve warm color for real review blockers. */
-.portfolioPage {
-  --portfolio-status-idle: var(--dh-api-muted);
-  --portfolio-status-idle-strong: var(--dh-api-ink-soft);
-  --portfolio-status-idle-soft: rgba(127, 147, 167, 0.11);
-  --portfolio-status-idle-border: rgba(127, 147, 167, 0.22);
-  --portfolio-status-review-soft: rgba(203, 161, 92, 0.1);
-  --portfolio-status-review-border: rgba(203, 161, 92, 0.26);
 }
 
 .stateWatch,
@@ -5216,12 +4229,6 @@
 
 .kpiCard[data-empty="true"]::after {
   background: rgba(127, 147, 167, 0.14);
-}
-
-.kpiCard[data-empty="true"] .kpiValue,
-.kpiCard[data-empty="true"] .kpiValue.toneWatch,
-.kpiCard[data-empty="true"] .kpiValue.toneMuted {
-  color: var(--portfolio-status-idle-strong);
 }
 
 .kpiCard[data-empty="true"] .kpiDetail {
@@ -5273,6 +4280,14 @@
 }
 
 .closureGateBadges span {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--dh-line-soft, var(--ib-hairline));
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 820;
+  min-height: 20px;
+  padding: 2px 6px;
   border-color: var(--portfolio-status-idle-border);
   background: rgba(127, 147, 167, 0.08);
   color: var(--portfolio-status-idle-strong);
@@ -5303,6 +4318,19 @@
 }
 
 .structureGapAction {
+  font-size: 11px;
+  font-weight: 800;
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  max-width: 100%;
+  min-height: 26px;
+  padding: 4px 8px;
+  border: 1px solid var(--dh-line, var(--ib-hairline));
+  border-radius: var(--dh-api-radius, 6px);
+  color: var(--dh-ink, var(--ib-ink));
+  line-height: 1.2;
+  text-decoration: none;
   border-color: var(--portfolio-status-idle-border);
   background: rgba(127, 147, 167, 0.07);
 }
@@ -5356,15 +4384,6 @@
   margin-top: 8px;
 }
 
-.kpiCard.kpiCardPrimary .kpiValue {
-  font-size: 24px;
-}
-
-.kpiCard.kpiCardSecondary {
-  min-height: 86px;
-  padding: 9px 11px 8px;
-}
-
 .kpiCard.kpiCardSecondary:nth-child(-n + 2) {
   background: var(--dh-card);
 }
@@ -5384,9 +4403,6 @@
 }
 
 @media (min-width: 1101px) {
-  .kpiCard.kpiCardPrimary {
-    min-height: 112px;
-  }
 
   .kpiCard.kpiCardPrimary .kpiValue {
     font-size: 24px;
@@ -5417,21 +4433,14 @@
 /* ── B-tier visual pass (2026-07-17): editorial section indices, empty-state glyphs,
    row numbering, striped skeletons and hover micro-interactions. Additive only. ── */
 
-/* Section index inside workbench section titles. */
-.workbenchSectionHead h2 i[data-section-index] {
-  margin-right: 9px;
-  color: var(--dh-api-blue, var(--dh-blue));
-  font-family: var(--dh-font-mono, var(--moss-font-mono));
-  font-size: 11px;
-  font-style: normal;
-  font-weight: 760;
-  letter-spacing: 0.08em;
-  opacity: 0.85;
-  vertical-align: 1px;
-}
-
 /* Row numbering on the review action loop. */
 .decisionAction {
+  display: grid;
+  align-items: center;
+  min-width: 0;
+  text-decoration: none;
+  border-color: rgba(111, 135, 155, 0.26);
+  background: rgba(18, 32, 52, 0.72);
   grid-template-columns: auto 8px minmax(0, 1fr) auto;
 }
 
@@ -5468,6 +4477,8 @@
 
 /* Striped skeletons: pending structure reads as hatch, not flat bars. */
 .chartMiniSkeleton span {
+  height: 7px;
+  border-radius: var(--dh-api-radius, 6px);
   background: repeating-linear-gradient(
     135deg,
     rgba(226, 239, 255, 0.16) 0 4px,
@@ -5493,10 +4504,6 @@
   transform: translateY(-1px);
 }
 
-.workbenchNav a:hover {
-  transform: translateX(2px);
-}
-
 .exposureLedgerRow span,
 .exposureLedgerRow strong,
 .exposureLedgerRow em {
@@ -5511,6 +4518,11 @@
 
 /* Decision fact labels read as quiet caps above tabular values. */
 .decisionFact span {
+  overflow: hidden;
+  color: var(--dh-muted, var(--ib-ink-muted));
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 11px;
   letter-spacing: 0.04em;
 }
@@ -5534,21 +4546,14 @@
    3) 状态只由色条与徽标承载，主值不再整体染色（error 保留红）；
    4) 层级靠面板递进与发丝线：去渐变洗底、装饰划线与随机边框强调。── */
 
-.portfolioPage {
-  --dh-font-sans: var(--moss-font-sans);
-  --dh-font-mono: var(--moss-font-mono);
-  background: var(--dh-api-bg);
-}
-
-.kpiValue {
-  font-family: var(--moss-font-mono);
-  letter-spacing: -0.01em;
-}
-
 .structureTableWorkbench .compactLabel,
 .structureTableWorkbench .compactSource,
 .structureTableWorkbench .compactCount,
 .structureTableWorkbench .compactValue {
+  letter-spacing: 0;
+  line-height: 1.2;
+  white-space: nowrap;
+  font-size: 13px;
   font-family: var(--moss-font-mono);
 }
 
@@ -5570,6 +4575,9 @@
 }
 
 .terminalPanelHead span {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
   color: var(--dh-api-muted);
 }
 
@@ -5581,6 +4589,7 @@
 
 .structureTableWorkbench .compactSource,
 .structureTableWorkbench .compactCount {
+  text-align: right;
   color: var(--dh-api-soft);
 }
 
@@ -5591,6 +4600,10 @@
 }
 
 .kpiCard::after {
+  position: absolute;
+  height: 2px;
+  border-radius: 999px;
+  background: rgba(143, 174, 195, 0.16);
   content: none;
 }
 
@@ -5599,14 +4612,15 @@
 }
 
 .kpiCard:hover {
+  box-shadow: none;
   border-color: var(--portfolio-info-border-strong);
 }
 
-.holdingsHeroFigure {
-  background: var(--dh-api-panel-2);
-}
-
 .exposureWorkbenchHead h2 {
+  grid-column: 1;
+  margin: 0;
+  font-weight: 860;
+  line-height: 1.25;
   color: var(--dh-api-ink);
 }
 
@@ -5622,36 +4636,52 @@
    3) 卡内嵌套面板去边框，只留背景递进；
    4) 状态圆点保持语义色，不做无限循环脉动（§8 仅经营日报 hero 豁免）。── */
 
-.portfolioPage {
-  --dh-api-radius: 6px;
-  gap: 20px;
-  padding: 20px;
-}
-
 .portfolioPageMain {
+  --portfolio-chart-blue: var(--dh-api-blue);
+  --portfolio-chart-info: var(--dh-api-ink-soft);
+  --portfolio-chart-green: var(--dh-api-green);
+  --portfolio-chart-amber: var(--dh-api-amber);
+  --portfolio-chart-red: var(--dh-api-red);
+  --portfolio-chart-ink: var(--ib-ink);
+  --portfolio-chart-grid: var(--ib-hairline);
+  display: grid;
+  min-width: 0;
+  width: 100%;
   gap: 20px;
 }
 
 .kpiGrid {
+  display: grid;
+  min-width: 0;
+  width: 100%;
   gap: 12px;
 }
 
 .kpiCard {
+  position: relative;
+  align-content: start;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--dh-line-soft);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-card);
+  box-shadow: none;
   min-height: 118px;
   padding: 16px 17px 14px;
 }
 
-.kpiCard.kpiCardSecondary {
-  padding: 12px 14px 11px;
-}
-
 .kpiValue {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: baseline;
+  min-width: 0;
+  width: 100%;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--moss-font-mono);
+  letter-spacing: -0.01em;
   margin-top: 13px;
-}
-
-.holdingsHeroFigure {
-  border: 0;
-  padding: 12px;
 }
 
 .holdingsHeroBand,
@@ -5661,20 +4691,13 @@
 }
 
 .exposureLedgerTable {
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
   gap: 0;
   border: 0;
   border-radius: 0;
   background: transparent;
-}
-
-.exposureLedgerHeader,
-.exposureLedgerRow {
-  gap: 0;
-  border-bottom: 1px solid var(--dh-line-soft);
-}
-
-.exposureLedgerHeader {
-  background: rgba(114, 167, 220, 0.055);
 }
 
 .exposureLedgerRow:last-child {
@@ -5685,25 +4708,21 @@
 .exposureLedgerRow span,
 .exposureLedgerRow strong,
 .exposureLedgerRow em {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   padding-block: 9px;
   background: transparent;
-}
-
-.kpiGridSecondary {
-  gap: 0;
-  padding-top: 4px;
-  border-top: 1px solid var(--dh-line-soft);
 }
 
 .kpiCard.kpiCardSecondary,
 .kpiCard.kpiCardSecondary:nth-child(-n + 2),
 .kpiCard.kpiCardSecondary[data-empty="true"] {
-  min-height: 74px;
-  padding: 12px 14px 10px;
-  border: 0;
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
   border-right: 1px solid var(--dh-line-soft);
-  border-radius: 0;
-  background: transparent;
 }
 
 .kpiCard.kpiCardSecondary:last-child {
@@ -5720,6 +4739,8 @@
 }
 
 .decisionActionDot {
+  border-radius: var(--dh-api-radius, 6px);
+  background: currentColor;
   opacity: 1;
 }
 
@@ -5730,26 +4751,11 @@
    4) 章节节奏 24px + 复盘带去重 label；
    5) 01 区堆叠条加高、02 区表头/行 hover 打磨。── */
 
+/* grid-template-columns/rows 与 border 留在原位：需被更晚的 @media 覆盖与 .portfolioPage 前缀规则压制 */
 .decisionPanel[data-layout="banner"] {
-  display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(300px, 0.62fr);
   grid-template-rows: auto auto;
-  gap: 0;
-  align-self: stretch;
-  height: auto;
-  min-height: 0;
-  padding: 0;
-  overflow: hidden;
   border: 1px solid var(--portfolio-review-border, rgba(201, 165, 101, 0.34));
-  border-radius: var(--dh-api-radius, 6px);
-  background:
-    linear-gradient(180deg, rgba(201, 165, 101, 0.08), rgba(201, 165, 101, 0.015)),
-    var(--dh-card);
-}
-
-.decisionPanel[data-layout="banner"] .decisionLedger {
-  grid-column: 1;
-  grid-row: 1;
 }
 
 .decisionPanel[data-layout="banner"] .decisionMatrix {
@@ -5771,6 +4777,8 @@
 }
 
 .decisionPanel[data-layout="banner"] .decisionLedger {
+  grid-column: 1;
+  grid-row: 1;
   display: grid;
   gap: 5px;
   align-content: center;
@@ -5936,18 +4944,12 @@
 
 /* KPI 主带首屏化 */
 .kpiCard.kpiCardPrimary {
-  min-height: 126px;
-  padding: 14px 15px 12px;
-  border-top: 2px solid var(--dh-api-blue, var(--dh-blue));
+  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
   box-shadow: inset 0 1px 0 rgba(114, 167, 220, 0.08);
 }
 
-.kpiCard.kpiCardPrimary .kpiValue {
-  margin-top: 12px;
-  font-size: 24px;
-}
-
 .kpiCard.kpiCardSecondary {
+  padding: 12px 14px 11px;
   min-height: 72px;
 }
 
@@ -5959,6 +4961,9 @@
 
 /* 驾驶舱导航轻量化 */
 .workbenchNav {
+  top: 12px;
+  align-self: start;
+  min-width: 0;
   display: flex;
   flex-wrap: wrap;
   gap: 8px 10px;
@@ -5972,12 +4977,19 @@
 
 .workbenchNavTitle,
 .workbenchNav > .workbenchNavTitle {
+  min-width: 0;
+  line-height: 1.3;
+  white-space: normal;
   margin-right: 4px;
   font-size: 13px;
   font-weight: 820;
 }
 
 .workbenchNav a {
+  grid-template-columns: auto minmax(0, 1fr);
+  min-width: 0;
+  color: var(--dh-muted);
+  text-decoration: none;
   display: inline-flex;
   gap: 6px;
   align-items: center;
@@ -6002,6 +5014,7 @@
 }
 
 .workbenchNav a:hover {
+  transform: translateX(2px);
   border-color: var(--portfolio-info-border-strong, rgba(114, 167, 220, 0.4));
   background: rgba(114, 167, 220, 0.08);
 }
@@ -6011,18 +5024,11 @@
   display: none;
 }
 
-.workbenchSectionHead {
-  padding-bottom: 8px;
-}
-
-.workbenchSectionHead span {
-  width: 32px;
-  height: 32px;
-  border-width: 1px;
-  font-size: 12px;
-}
-
 .workbenchSectionHead h2 i[data-section-index] {
+  color: var(--dh-api-blue, var(--dh-blue));
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-style: normal;
+  vertical-align: 1px;
   margin-right: 10px;
   font-size: 12px;
   font-weight: 820;
@@ -6031,20 +5037,31 @@
 }
 
 .sourceWorkbenchSection {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  background: transparent;
   gap: 12px;
 }
 
-/* 01 区券种分布色带 */
-.holdingsHeroStackBar {
-  height: 18px;
-  border-radius: 6px;
-}
-
 .holdingsHeroFigure {
+  display: grid;
+  min-width: 0;
+  border-radius: 6px;
+  background: var(--dh-api-panel-2);
+  border: 0;
+  padding: 12px;
   gap: 12px;
 }
 
 .holdingsHeroBars {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: none;
+  background: transparent;
   gap: 8px;
 }
 
@@ -6053,20 +5070,106 @@
   border-radius: var(--dh-api-radius, 6px);
 }
 
-.structureTableWorkbench .compactListHeader {
-  border-bottom: 1px solid rgba(143, 174, 195, 0.28);
-}
-
-.structureTableWorkbench .compactRow:hover {
-  background: rgba(114, 167, 220, 0.055);
-}
-
 /* ═══════════ V3 深蓝终端皮肤（对齐 2026-08-11 用户基准图）═══════════
    基准特征：藏青蓝底、卡片微蓝渐变 + 蓝光细边、KPI 带迷你走势线、
    高密度网格、绿色完成态徽标。仅换视觉层，不动数据与 testid。 */
 
 .portfolioPage {
-  /* 深蓝基调：整链路 token 在页面作用域内重定向；卡底与页底拉开半档层次 */
+  max-width: 1440px;
+  /* —— 页面级深色重映射：legacy --ib-/--dh-/--moss- 消费变量指向官方 --dh-api-* token（DESIGN.md §2.2）—— */
+  --ib-paper: var(--dh-api-bg);
+  --ib-surface: var(--dh-api-panel);
+  --ib-surface-muted: var(--dh-api-panel-2);
+  --ib-hairline: var(--dh-api-line-soft);
+  --ib-rule-strong: var(--dh-api-line);
+  --ib-ink: var(--dh-api-ink);
+  --ib-ink-secondary: var(--dh-api-soft);
+  --ib-ink-muted: var(--dh-api-muted);
+  --ib-radius: var(--dh-api-radius, 6px);
+  --dh-card: var(--dh-api-panel);
+  --dh-card-soft: var(--dh-api-panel-3);
+  --dh-surface-muted: var(--dh-api-panel-2);
+  --dh-ink-2: var(--dh-api-ink);
+  --moss-color-card-bg: var(--dh-api-panel);
+  --moss-color-neutral-50: var(--dh-api-panel-3);
+  --moss-color-neutral-100: var(--dh-api-line-soft);
+  --moss-color-neutral-200: var(--dh-api-line);
+  --moss-color-neutral-300: var(--dh-api-line);
+  --moss-color-neutral-600: var(--dh-api-soft);
+  --moss-color-neutral-700: var(--dh-api-ink);
+  --moss-color-neutral-900: var(--dh-api-ink);
+  --moss-color-primary-900: var(--dh-api-ink);
+  width: 100%;
+  border-radius: var(--dh-api-radius, 6px);
+  /* —— Portfolio cockpit color polish: amber carries review, blue carries structure. —— */
+  --portfolio-signal-info: var(--dh-api-blue);
+  --portfolio-signal-info-strong: color-mix(in srgb, var(--dh-api-blue) 72%, var(--dh-api-ink));
+  --portfolio-signal-info-muted: var(--dh-api-muted);
+  --portfolio-signal-review: var(--dh-api-amber);
+  --portfolio-signal-ok: var(--dh-api-green);
+  --portfolio-signal-danger: var(--dh-api-red);
+  --portfolio-info-soft: rgba(143, 174, 195, 0.095);
+  --portfolio-info-border: rgba(143, 174, 195, 0.22);
+  --portfolio-info-border-strong: rgba(143, 174, 195, 0.32);
+  --portfolio-review-soft: rgba(228, 179, 99, 0.13);
+  --portfolio-review-border: rgba(228, 179, 99, 0.36);
+  --portfolio-ok-soft: rgba(143, 180, 134, 0.12);
+  --portfolio-ok-border: rgba(143, 180, 134, 0.28);
+  --portfolio-danger-soft: rgba(201, 135, 138, 0.13);
+  --portfolio-danger-border: rgba(201, 135, 138, 0.28);
+  --ib-accent: var(--portfolio-signal-info);
+  --ib-accent-hover: color-mix(in srgb, var(--dh-api-blue) 78%, var(--dh-api-ink));
+  --ib-accent-surface: var(--portfolio-info-soft);
+  --ib-up: var(--portfolio-signal-ok);
+  --ib-down: var(--portfolio-signal-danger);
+  --ib-warn: var(--portfolio-signal-review);
+  --ib-gold: var(--portfolio-signal-review);
+  --dh-blue-deep: var(--portfolio-signal-info-strong);
+  --dh-blue-soft: var(--portfolio-info-soft);
+  --dh-green: var(--portfolio-signal-ok);
+  --dh-green-soft: var(--portfolio-ok-soft);
+  --dh-red: var(--portfolio-signal-danger);
+  --dh-red-soft: var(--portfolio-danger-soft);
+  --dh-amber: var(--portfolio-signal-review);
+  --dh-amber-soft: var(--portfolio-review-soft);
+  --moss-color-primary-50: var(--portfolio-info-soft);
+  --moss-color-primary-100: rgba(143, 174, 195, 0.14);
+  --moss-color-primary-200: var(--portfolio-info-border);
+  --moss-color-primary-700: var(--portfolio-signal-info);
+  --moss-color-info-100: color-mix(in srgb, var(--dh-api-blue) 30%, var(--dh-api-ink));
+  --moss-color-info-300: var(--portfolio-signal-info-strong);
+  --moss-color-info-400: var(--portfolio-signal-info);
+  --moss-color-info-500: var(--dh-api-muted);
+  --moss-color-success-100: var(--portfolio-ok-border);
+  --moss-color-success-300: var(--portfolio-signal-ok);
+  --moss-color-success-500: var(--dh-api-green);
+  --moss-color-warning-50: var(--portfolio-review-soft);
+  --moss-color-warning-200: var(--portfolio-review-border);
+  --moss-color-warning-300: var(--portfolio-signal-review);
+  --moss-color-warning-400: var(--dh-api-amber);
+  --moss-color-danger-50: var(--portfolio-danger-soft);
+  --moss-color-danger-200: var(--portfolio-danger-border);
+  --moss-color-danger-500: var(--portfolio-signal-danger);
+  --portfolio-chart-blue: var(--dh-api-blue);
+  --portfolio-chart-info: var(--dh-api-ink-soft);
+  --portfolio-chart-green: var(--dh-api-green);
+  --portfolio-chart-amber: var(--dh-api-amber);
+  --portfolio-chart-red: var(--dh-api-red);
+  /* —— Status taxonomy pass: quiet pending/data states, reserve warm color for real review blockers. —— */
+  --portfolio-status-idle: var(--dh-api-muted);
+  --portfolio-status-idle-strong: var(--dh-api-ink-soft);
+  --portfolio-status-idle-soft: rgba(127, 147, 167, 0.11);
+  --portfolio-status-idle-border: rgba(127, 147, 167, 0.22);
+  --portfolio-status-review-soft: rgba(203, 161, 92, 0.1);
+  --portfolio-status-review-border: rgba(203, 161, 92, 0.26);
+  /* —— 统一纪律样张层：数字 tabular 等宽声部 —— */
+  --dh-font-sans: var(--moss-font-sans);
+  --dh-font-mono: var(--moss-font-mono);
+  /* —— 审美打磨层：圆角回到深色终端 6px，页级呼吸感 —— */
+  --dh-api-radius: 6px;
+  gap: 20px;
+  padding: 20px;
+  /* —— V3 深蓝终端皮肤：整链路 token 在页面作用域内重定向；卡底与页底拉开半档层次 —— */
   --dh-api-bg: rgb(7, 16, 34);
   --dh-api-panel: rgb(15, 31, 60);
   --dh-api-panel-2: rgb(17, 35, 67);
@@ -6121,16 +5224,24 @@
 }
 
 .kpiCard.kpiCardPrimary .kpiValue {
+  font-size: 24px;
   margin-top: 8px;
 }
 
 .kpiLabel {
+  letter-spacing: 0;
+  line-height: 1.2;
   color: var(--dh-api-soft);
   font-size: 12px;
   font-weight: 720;
 }
 
 .kpiDetail {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  min-height: 15px;
+  -webkit-line-clamp: 1;
   margin-top: 6px;
   font-size: 12.5px;
   font-weight: 700;
@@ -6157,6 +5268,14 @@
 
 /* ── 决策横幅融入蓝系（语义琥珀仅保留在文字与状态点）── */
 .decisionPanel[data-layout="banner"] {
+  display: grid;
+  gap: 0;
+  align-self: stretch;
+  height: auto;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--dh-api-radius, 6px);
   border-color: rgba(226, 178, 100, 0.3);
   background:
     linear-gradient(180deg, rgba(201, 160, 92, 0.07), rgba(201, 160, 92, 0.012) 52%),
@@ -6165,6 +5284,10 @@
 
 /* ── 分布条形（券种/评级/期限/行业）：标签左、蓝渐变细条、mono 数值右 ── */
 .holdingsHeroStackBar {
+  display: flex;
+  min-width: 0;
+  overflow: hidden;
+  background: rgba(114, 167, 220, 0.09);
   height: 14px;
   border-radius: 6px;
 }
@@ -6184,11 +5307,19 @@
 
 /* ── 表格：极淡行分隔 + 行 hover 蓝底 + mono 数值 ── */
 .structureTableWorkbench .compactListHeader {
+  font-size: 12px;
+  font-weight: 680;
+  min-height: 22px;
+  padding: 0 10px 5px;
   border-bottom: 1px solid rgba(79, 141, 255, 0.22);
   color: var(--dh-api-muted);
 }
 
 .structureTableWorkbench .compactRow {
+  border-radius: 0;
+  background: transparent;
+  min-height: 30px;
+  padding: 0 10px;
   border-bottom: 1px solid rgba(79, 141, 255, 0.07);
 }
 
@@ -6202,6 +5333,10 @@
 
 .exposureLedgerHeader,
 .exposureLedgerRow {
+  display: grid;
+  align-items: center;
+  min-width: 0;
+  gap: 0;
   border-bottom: 1px solid rgba(79, 141, 255, 0.09);
 }
 
@@ -6212,16 +5347,38 @@
 }
 
 .terminalStatus {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  border-radius: var(--dh-api-radius, 6px);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
   border: 1px solid rgba(79, 141, 255, 0.22);
   background: rgba(79, 141, 255, 0.08);
 }
 
 /* ── 章节头：蓝色编号 + 白标题，分隔线蓝光 ── */
 .workbenchSectionHead {
+  display: grid;
+  align-items: start;
+  min-width: 0;
+  border-bottom: 1px solid var(--dh-line-soft);
+  padding-bottom: 8px;
   border-bottom-color: rgba(79, 141, 255, 0.14);
 }
 
 .workbenchSectionHead span {
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid rgba(114, 167, 220, 0.38);
+  border-radius: 6px;
+  font-family: var(--dh-font-mono, var(--moss-font-mono));
+  font-weight: 900;
+  width: 32px;
+  height: 32px;
+  border-width: 1px;
+  font-size: 12px;
   border-color: rgba(79, 141, 255, 0.26);
   background: rgba(79, 141, 255, 0.1);
   color: rgb(116, 164, 245);
@@ -6229,6 +5386,7 @@
 
 /* ── 工作入口：基准图快捷入口语言（圆角图标底 + 蓝光 hover）── */
 .quickAccessCard {
+  border-color: rgba(114, 167, 220, 0.26);
   border: 1px solid rgba(79, 141, 255, 0.14);
   background:
     linear-gradient(180deg, rgba(64, 118, 214, 0.06), rgba(64, 118, 214, 0.01) 55%),
@@ -6247,6 +5405,7 @@
 }
 
 .drillCard {
+  align-content: center;
   border-color: rgba(79, 141, 255, 0.1);
   background: rgba(12, 26, 51, 0.55);
 }
