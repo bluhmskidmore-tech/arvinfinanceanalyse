@@ -20,12 +20,16 @@ from typing import Any, Literal
 from backend.app.core_finance.config.classification_rules import (
     LEDGER_PNL_ACCOUNT_PREFIXES,
 )
-from backend.app.core_finance.decimal_utils import fmt_money, to_decimal
+from backend.app.core_finance.decimal_utils import fmt_money, to_decimal, to_decimal_strict
 from backend.app.core_finance.formal_financial_indicator_rules import (
     build_formal_financial_indicator_rule_checks,
 )
 from backend.app.core_finance.formal_financial_indicators import (
     build_formal_financial_indicator_contract,
+)
+from backend.app.core_finance.ledger_financial_indicator_summary import (
+    LedgerAccountBalance,
+    build_ledger_financial_indicator_summary,
 )
 from backend.app.core_finance.ledger_pnl_analysis import (
     build_ledger_pnl_account_detail,
@@ -38,6 +42,7 @@ from backend.app.schemas.ledger_pnl_analysis import (
 from backend.app.services.formal_result_runtime import build_result_envelope
 from backend.app.services.product_category_source_service import (
     build_canonical_facts,
+    build_ledger_only_facts,
     discover_source_pairs,
 )
 
@@ -45,6 +50,8 @@ CACHE_VERSION = "cv_ledger_pnl_v2"
 RULE_VERSION = "rv_ledger_pnl_v2"
 FINANCIAL_INDICATOR_CONTRACT_CACHE_VERSION = "cv_ledger_pnl_financial_indicator_contract_v1"
 FINANCIAL_INDICATOR_RULE_CHECKS_CACHE_VERSION = "cv_ledger_pnl_financial_indicator_rule_checks_v1"
+FINANCIAL_INDICATOR_SUMMARY_CACHE_VERSION = "cv_ledger_pnl_financial_indicator_summary_v1"
+FINANCIAL_INDICATOR_SUMMARY_RULE_VERSION = "rv_ledger_financial_indicator_summary_v1"
 ANALYSIS_CACHE_VERSION = "cv_ledger_pnl_analysis_v1"
 ANALYSIS_RULE_VERSION = "rv_ledger_pnl_analysis_v1"
 ACCOUNT_DETAIL_CACHE_VERSION = "cv_ledger_pnl_account_detail_v1"
@@ -252,19 +259,21 @@ def get_ledger_pnl_by_date(
     items: list[dict[str, Any]] = []
 
     for row in filtered:
-        pnl = to_decimal(row.monthly_pnl)
+        # strict: CanonicalFactRow 金额字段本就非空 Decimal；若上游语义变化引入
+        # None，明细端点必须 fail loud，而不是把"无数据"静默序列化成 "0.00"。
+        pnl = to_decimal_strict(row.monthly_pnl)
         items.append({
             "account_code": row.account_code,
             "account_name": row.account_name,
             "currency": row.currency,
-            "beginning_balance": fmt_money(to_decimal(row.beginning_balance)),
-            "ending_balance": fmt_money(to_decimal(row.ending_balance)),
+            "beginning_balance": fmt_money(to_decimal_strict(row.beginning_balance)),
+            "ending_balance": fmt_money(to_decimal_strict(row.ending_balance)),
             "monthly_pnl": fmt_money(pnl),
-            "daily_avg_balance": fmt_money(to_decimal(row.daily_avg_balance)),
+            "daily_avg_balance": fmt_money(to_decimal_strict(row.daily_avg_balance)),
             "days_in_period": row.days_in_period,
         })
 
-    items.sort(key=lambda x: abs(to_decimal(x["monthly_pnl"]["yuan"])), reverse=True)
+    items.sort(key=lambda x: abs(to_decimal_strict(x["monthly_pnl"]["yuan"])), reverse=True)
 
     return {
         "data_status": "ready" if items else "no_data",
@@ -659,6 +668,136 @@ def ledger_pnl_formal_financial_indicator_contract_envelope(
         as_of_date=str(payload["report_date"]),
         date_basis="report_month_end",
         evidence_rows=len(payload["metrics"]),
+    )
+
+
+# 财务指标汇总需要一次加载多个月份的总账工作簿；按总账文件指纹做进程内缓存，
+# 避免同一请求周期反复解析大 Excel。总账文件替换（mtime/size 变化）自动失效；
+# 指标汇总只消费总账字段，日均文件不参与解析也不影响缓存。
+_FACTS_CACHE_LIMIT = 48
+_FACTS_CACHE: dict[tuple[Any, ...], list[Any]] = {}
+
+
+def _file_fingerprint(path: Path) -> tuple[str, int, int]:
+    stat = path.stat()
+    return (str(path), stat.st_mtime_ns, stat.st_size)
+
+
+def _cached_ledger_only_facts(pair: Any) -> list[Any]:
+    cache_key = _file_fingerprint(Path(pair.ledger_path))
+    cached = _FACTS_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+    facts = build_ledger_only_facts(pair)
+    if len(_FACTS_CACHE) >= _FACTS_CACHE_LIMIT:
+        _FACTS_CACHE.pop(next(iter(_FACTS_CACHE)))
+    _FACTS_CACHE[cache_key] = facts
+    return facts
+
+
+def _validated_summary_report_month(report_month: str) -> tuple[int, int]:
+    normalized = report_month.strip()
+    if len(normalized) != 6 or not normalized.isdigit():
+        raise LedgerPnlRequestError(
+            f"Invalid report_month: {report_month!r}. Expected YYYYMM."
+        )
+    year, month = int(normalized[:4]), int(normalized[4:])
+    if not 1 <= month <= 12:
+        raise LedgerPnlRequestError(
+            f"Invalid report_month: {report_month!r}. Month must be 01-12."
+        )
+    return year, month
+
+
+def ledger_pnl_financial_indicator_summary_envelope(
+    source_dir: str,
+    report_month: str,
+    currency: str | None = None,
+) -> dict[str, Any]:
+    """经营指标情况表（总账口径）：本年各累计期间 + 上年同期/上年末比较。"""
+    currency_basis = _normalize_currency_basis(currency)
+    year, month = _validated_summary_report_month(report_month)
+    normalized_month = f"{year}{month:02d}"
+
+    needed_months = {f"{year}{m:02d}" for m in range(1, month + 1)}
+    needed_months.update(f"{year - 1}{m:02d}" for m in range(1, month + 1))
+    needed_months.add(f"{year - 1}12")
+
+    pairs_by_month = {
+        pair.month_key: pair
+        for pair in discover_source_pairs(Path(source_dir))
+        if pair.month_key in needed_months
+    }
+    balances_by_month: dict[str, list[LedgerAccountBalance]] = {}
+    source_files: list[dict[str, str]] = []
+    for month_key in sorted(pairs_by_month):
+        pair = pairs_by_month[month_key]
+        facts = _cached_ledger_only_facts(pair)
+        balances_by_month[month_key] = [
+            LedgerAccountBalance(
+                account_code=str(row.account_code),
+                ending_balance_yuan=to_decimal(row.ending_balance),
+            )
+            for row in facts
+            if row.currency == currency_basis
+        ]
+        source_files.append({
+            "month": month_key,
+            "file_name": Path(pair.ledger_path).name,
+            "source_version": pair.source_version,
+        })
+
+    payload = build_ledger_financial_indicator_summary(
+        report_month=normalized_month,
+        currency_basis=currency_basis,
+        balances_by_month=balances_by_month,
+    )
+    payload["source_files"] = source_files
+
+    current_pair = pairs_by_month.get(normalized_month)
+    source_version = (
+        current_pair.source_version if current_pair is not None
+        else "sv_ledger_pnl_empty"
+    )
+    resolved_report_date = (
+        current_pair.report_date.isoformat() if current_pair is not None
+        else f"{year}-{month:02d}-01"
+    )
+    evidence_rows = sum(len(rows) for rows in balances_by_month.values())
+    quality_ok = payload["data_status"] == "ready" and all(
+        check["passed"] for check in payload["quality_checks"]
+    )
+    return build_result_envelope(
+        basis="ledger",
+        trace_id="tr_ledger_pnl_financial_indicator_summary",
+        result_kind="ledger_pnl.financial_indicator_summary",
+        cache_version=FINANCIAL_INDICATOR_SUMMARY_CACHE_VERSION,
+        cache_key=_ledger_pnl_cache_key(
+            "ledger_pnl.financial_indicator_summary",
+            normalized_month,
+            currency_basis,
+        ),
+        source_version=source_version,
+        rule_version=FINANCIAL_INDICATOR_SUMMARY_RULE_VERSION,
+        quality_flag="ok" if quality_ok else "warning",
+        vendor_version="vv_none",
+        result_payload=payload,
+        requested_report_date=report_month.strip(),
+        resolved_report_date=resolved_report_date,
+        as_of_date=resolved_report_date,
+        date_basis="ledger_report_month",
+        filters_applied={
+            "report_month": normalized_month,
+            "currency": currency_basis,
+            "currency_basis": currency_basis,
+            "currency_basis_note": CURRENCY_BASIS_NOTE,
+        },
+        tables_used=["qdb_gl_ledger_reconciliation_workbook"],
+        evidence_rows=evidence_rows,
+        next_drill=[] if evidence_rows > 0 else _empty_ledger_next_drill(
+            normalized_month,
+            currency_basis,
+        ),
     )
 
 

@@ -206,6 +206,33 @@ def account_detail(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+@router.get("/ledger-pnl/financial-indicator-summary")
+def financial_indicator_summary(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    report_month: str = Query(
+        ...,
+        pattern=_REPORT_MONTH_PATTERN,
+        description="报告月 YYYYMM；期间组覆盖该年 1 月至该月",
+    ),
+    currency: Literal["CNX", "CNY"] | None = Query(
+        None,
+        description="会计口径 CNX/CNY；省略时使用 CNX",
+    ),
+) -> dict[str, object]:
+    _ensure_ledger_pnl_read_allowed(auth)
+    settings = get_settings()
+    validated_month = _validated_report_month(report_month)
+    service = _svc()
+    try:
+        return service.ledger_pnl_financial_indicator_summary_envelope(
+            source_dir=str(settings.product_category_source_dir),
+            report_month=validated_month,
+            currency=currency,
+        )
+    except service.LedgerPnlRequestError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @router.get("/ledger-pnl/formal-financial-indicators")
 def formal_financial_indicators(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
