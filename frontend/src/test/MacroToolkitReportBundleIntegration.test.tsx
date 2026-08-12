@@ -1,10 +1,14 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createApiClient, type ApiClient } from "../api/client";
 import { ApiClientProvider } from "../api/clientContext";
 import MacroToolkitPage from "../features/macro-toolkit/pages/MacroToolkitPage";
+
+vi.mock("../lib/echarts", () => ({
+  default: () => <div data-testid="macro-toolkit-echarts-stub" />,
+}));
 
 describe("macro report bundle page integration", () => {
   it.each([

@@ -74,6 +74,6 @@ describe("RatingDistributionCard", () => {
 
     expect(await screen.findByText("评级收益率")).toBeInTheDocument();
     expect(await screen.findByText("2 天 / 利率债默认 AAA")).toBeInTheDocument();
-    expect(screen.getByText("-")).toBeInTheDocument();
+    expect(screen.getByText("—")).toBeInTheDocument();
   });
 });

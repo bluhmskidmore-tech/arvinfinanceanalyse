@@ -53,6 +53,9 @@ describe("AppProviders theme boundary", () => {
   });
 
   it("themes a workbench route before mount without resetting child state", () => {
+    // workbenchTheme runs antd darkAlgorithm, so the rendered map token is derived
+    // from the seed; resolve the expectation the same way ThemedRouteBoundary.test does.
+    const resolvedRouteTokens = theme.getDesignToken(workbenchTheme);
     const tree = (
       <AppProviders>
         <ThemedRouteBoundary>
@@ -63,7 +66,7 @@ describe("AppProviders theme boundary", () => {
     const { rerender } = render(tree);
 
     expect(screen.getByTestId("route-color-primary")).toHaveTextContent(
-      String(workbenchTheme.token?.colorPrimary),
+      resolvedRouteTokens.colorPrimary,
     );
     fireEvent.click(screen.getByRole("button", { name: "count:0" }));
     rerender(tree);
