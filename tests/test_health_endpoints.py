@@ -78,6 +78,41 @@ def test_ready_endpoint_returns_200_and_check_payload(monkeypatch: pytest.Monkey
     }
 
 
+def test_ready_endpoint_returns_503_when_a_dependency_is_degraded(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """降级必须体现在状态码上：外部探活只看 HTTP 状态，不会解析 body。"""
+    health_module = load_module(
+        "backend.app.api.routes.health",
+        "backend/app/api/routes/health.py",
+    )
+
+    degraded_payload = {
+        "status": "degraded",
+        "checks": {
+            "postgresql": {"ok": True},
+            "duckdb": {"ok": False, "error": "database is locked"},
+            "redis": {"ok": True},
+            "object_store": {"ok": True},
+        },
+    }
+    monkeypatch.setattr(health_module, "get_settings", lambda: object())
+    monkeypatch.setattr(
+        health_module,
+        "ready_health_payload",
+        lambda _settings: degraded_payload,
+    )
+
+    app = FastAPI()
+    app.include_router(health_module.router)
+    client = TestClient(app)
+
+    response = client.get("/health/ready")
+
+    assert response.status_code == 503
+    assert response.json() == degraded_payload
+
+
 def test_ready_health_payload_keeps_prewarm_out_of_dependency_status(
     monkeypatch: pytest.MonkeyPatch,
 ):
