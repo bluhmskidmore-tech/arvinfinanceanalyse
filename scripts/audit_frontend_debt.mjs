@@ -1,77 +1,75 @@
 #!/usr/bin/env node
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
 
-const baseline = {
-  // 2026-07-19: market-data/macro-toolkit mock factories extracted into
-  // marketDataMockClient.ts / macroToolkitMockClient.ts shrank client.ts imports.
-  apiClientLines: 576,
-  // Phase 4H moves PnL attribution endpoint implementations into pnlAttributionClient.ts.
-  // 2026-07-19: 54 -> 56. The two extra occurrences are the import paths of the
-  // extracted mock modules ("./marketDataMockClient", "./macroToolkitMockClient"),
-  // not new mock payloads inside client.ts.
-  apiClientMockOccurrences: 56,
-  dashboardStyleFiles: {},
-  // 2026-07-07: PnlByBusinessInsightsPage migrated to shared PagePrimitives, removing
-  // one-off page-chrome style={{}} blocks (title/disclaimer/contract-status/section leads).
-  // 2026-07-07: PnL runtime/bridge pages and product-category audit branches migrated
-  // repeated layout style={{}} blocks into page-local CSS modules (PnlRuntimePanels.css,
-  // PnlBridgePage.css, ProductCategoryAuditPages.css); dynamic chart widths and mode chips
-  // remain as allowed single-use inline styles.
-  // 2026-07-19: agent 子组件（AgentRepoMemoryPanel / AgentGenericCardsGrid /
-  // GitNexusResultView）的重复 inline style 迁移到组件同名 CSS，基线随之下调。
-  totalTsxStyleProps: 1541,
-  totalStaticTsxStyleProps: 629,
-  maxPageStyleProps: {
-    "frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx": 8,
-    "frontend/src/features/market-data/pages/MarketDataPage.tsx": 1,
-    "frontend/src/features/workbench/pages/OperationsAnalysisPage.tsx": 0,
-    "frontend/src/layouts/WorkbenchShell.tsx": 0,
-    "frontend/src/features/bond-analytics/components/BondAnalyticsInstitutionalCockpit.tsx": 17,
-    "frontend/src/features/cross-asset/pages/CrossAssetDriversPage.tsx": 0,
-    "frontend/src/features/product-category-pnl/pages/ProductCategoryPnlPage.tsx": 0,
-    "frontend/src/features/risk-overview/RiskOverviewPage.tsx": 0,
-  },
-  maxPageStaticStyleProps: {},
-  protectedMonolithFiles: {
-    "scripts/mcp/moss_project_mcp.py": {
-      maxLines: 12643,
-      routeHint: "Add provider or domain behavior in a focused scripts/mcp/<domain>_*.py module.",
-    },
-    "tests/test_project_mcp_servers.py": {
-      maxLines: 14518,
-      routeHint: "Add coverage in a focused tests/test_project_mcp_<domain>.py module.",
-    },
-    "frontend/src/api/contracts.ts": {
-      // Post LedgerPnl v1-type cleanup actual; 7429 targets a later domain-module split.
-      // 2026-07-19: +9 backend-mirror contract fields only (PnlByBusinessPayload summary
-      // 514/516/517 totals + PnlByBusinessAnalysisPayload.merged_bucket_rows for the
-      // backend-merged "其他" bond bucket); no new endpoints, mocks, or client logic.
-      maxLines: 7519,
-      routeHint: "Put new contracts in the owning domain contract or client module.",
-    },
-    "frontend/src/features/macro-toolkit/pages/MacroToolkitPage.tsx": {
-      maxLines: 11588,
-      routeHint: "Add new logic in a colocated macro-toolkit component or model module and keep the page compositional.",
-    },
-    "frontend/src/features/product-category-pnl/pages/ProductCategoryPnlPage.tsx": {
-      maxLines: 6687,
-      routeHint: "Add a colocated feature component or model and keep the page compositional.",
-    },
-    "frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.ts": {
-      maxLines: 5591,
-      routeHint: "Create a focused productCategory<Surface>Model.ts instead of moving page debt here.",
-    },
-    "backend/app/services/pnl_service.py": {
-      // HEAD actual is 4218; 4203 is a planned cleanup target owned by another batch.
-      maxLines: 4218,
-      routeHint: "Add focused pnl_<domain>.py logic and keep pnl_service.py as orchestration.",
-    },
-  },
-};
+// Debt baselines live in scripts/debt-baselines.json (namespace "frontend").
+// Policy (see the _policy field there): baselines only ratchet DOWN; any
+// increase requires tech-lead sign-off recorded in the PR. Baseline history
+// predating the JSON extraction is preserved in the git log of this file.
+const baselineRelativePath = "scripts/debt-baselines.json";
+const baselinePath = path.join(repoRoot, baselineRelativePath);
+
+// Mirrored by tests/test_development_hygiene_guards.py. The self-test fails
+// when scripts/debt-baselines.json silently drops one of these
+// protectedMonolithFiles entries, so removing a guarded monolith from the
+// baseline file is as loud as raising its limit.
+const requiredProtectedMonolithFiles = [
+  "scripts/mcp/moss_project_mcp.py",
+  "tests/test_project_mcp_servers.py",
+  "frontend/src/api/contracts.ts",
+  "frontend/src/features/macro-toolkit/pages/MacroToolkitPage.tsx",
+  "frontend/src/features/product-category-pnl/pages/ProductCategoryPnlPage.tsx",
+  "frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.ts",
+  "backend/app/services/pnl_service.py",
+];
+
+function fail(message) {
+  console.error(message);
+  process.exit(1);
+}
+
+function isCounterValue(value) {
+  return Number.isInteger(value) && value >= 0;
+}
+
+function loadBaselineDocument() {
+  let raw;
+  try {
+    raw = readFileSync(baselinePath, "utf8");
+  } catch (error) {
+    fail(`Cannot read ${baselineRelativePath}: ${error.message}`);
+  }
+  let document;
+  try {
+    document = JSON.parse(raw);
+  } catch (error) {
+    fail(`Invalid JSON in ${baselineRelativePath}: ${error.message}`);
+  }
+  if (typeof document._policy !== "string" || document._policy.trim() === "") {
+    fail(`${baselineRelativePath} must declare a non-empty _policy field (ratchet-only baselines).`);
+  }
+  const frontend = document.frontend;
+  if (!frontend || typeof frontend !== "object") {
+    fail(`${baselineRelativePath} must contain a "frontend" namespace object.`);
+  }
+  for (const key of ["apiClientLines", "apiClientMockOccurrences", "totalTsxStyleProps", "totalStaticTsxStyleProps"]) {
+    if (!isCounterValue(frontend[key])) {
+      fail(`${baselineRelativePath}: frontend.${key} must be a non-negative integer.`);
+    }
+  }
+  for (const key of ["dashboardStyleFiles", "maxPageStyleProps", "maxPageStaticStyleProps", "protectedMonolithFiles"]) {
+    if (!frontend[key] || typeof frontend[key] !== "object") {
+      fail(`${baselineRelativePath}: frontend.${key} must be an object.`);
+    }
+  }
+  return document;
+}
+
+const baselineDocument = loadBaselineDocument();
+const baseline = baselineDocument.frontend;
 
 function readText(relativePath) {
   return readFileSync(path.join(repoRoot, relativePath), "utf8");
@@ -266,6 +264,14 @@ function runSelfTest() {
   if (countLines("first\nsecond\n") !== 2) {
     throw new Error("line counter must ignore the trailing newline");
   }
+  for (const repoPath of requiredProtectedMonolithFiles) {
+    if (!baseline.protectedMonolithFiles[repoPath]) {
+      throw new Error(
+        `${baselineRelativePath} lost the protected monolith baseline for ${repoPath}; ` +
+          "removing an entry requires tech-lead sign-off and updating requiredProtectedMonolithFiles.",
+      );
+    }
+  }
   for (const [repoPath, policy] of Object.entries(baseline.protectedMonolithFiles)) {
     if (!Number.isInteger(policy.maxLines) || policy.maxLines <= 0) {
       throw new Error(`invalid protected monolith maxLines for ${repoPath}`);
@@ -277,147 +283,237 @@ function runSelfTest() {
   console.log("audit_frontend_debt self-test: ok");
 }
 
+// Measures every governed counter and pairs it with its baseline plus a
+// ratchet setter so the default audit and --ratchet share one measurement pass.
+function collectMeasurements() {
+  const measurements = [];
+
+  const apiClient = readText("frontend/src/api/client.ts");
+  measurements.push({
+    kind: "limit",
+    label: "api/client.ts lines",
+    actual: countLines(apiClient),
+    max: baseline.apiClientLines,
+    hint: "Move endpoint implementation into a domain client instead of growing the monolith.",
+    ratchet: (value) => {
+      baseline.apiClientLines = value;
+    },
+  });
+  measurements.push({
+    kind: "limit",
+    label: "api/client.ts mock occurrences",
+    actual: countMatches(apiClient, /mock/gi),
+    max: baseline.apiClientMockOccurrences,
+    hint: "Move mock payloads out of api/client.ts or reduce existing mock coupling.",
+    ratchet: (value) => {
+      baseline.apiClientMockOccurrences = value;
+    },
+  });
+
+  for (const [repoPath, policy] of Object.entries(baseline.protectedMonolithFiles)) {
+    measurements.push({
+      kind: "limit",
+      label: `${repoPath} lines`,
+      actual: countLines(readText(repoPath)),
+      max: policy.maxLines,
+      hint: policy.routeHint,
+      ratchet: (value) => {
+        policy.maxLines = value;
+      },
+    });
+  }
+
+  for (const [repoPath, limits] of Object.entries(baseline.dashboardStyleFiles)) {
+    const filename = path.basename(repoPath);
+    const debt = countDashboardStyleDebt(readText(repoPath));
+    const dashboardChecks = [
+      ["hardcodedHexes", `${filename} hard-coded hex occurrences`, "Tokenize repeated homepage colors before growing the cockpit style layer."],
+      ["gradients", `${filename} gradient occurrences`, "Reuse existing cockpit/home surfaces instead of adding new gradient treatments."],
+      ["repeatingGradients", `${filename} repeating gradient occurrences`, "Avoid adding repeating gradient treatments; replace decorative patterns with governed surfaces first."],
+      ["important", `${filename} !important occurrences`, "Move ownership-conflicting overrides into the correct homepage layer before adding more !important rules."],
+    ];
+    for (const [metric, label, hint] of dashboardChecks) {
+      measurements.push({
+        kind: "limit",
+        label,
+        actual: debt[metric],
+        max: limits[metric],
+        hint,
+        ratchet: (value) => {
+          limits[metric] = value;
+        },
+      });
+    }
+  }
+
+  const tsxFiles = walkFiles(
+    path.join(repoRoot, "frontend/src"),
+    (filePath) => filePath.endsWith(".tsx"),
+  );
+
+  let totalStyleProps = 0;
+  let totalStaticStyleProps = 0;
+  let totalDynamicStyleProps = 0;
+  const pageStyleCounts = new Map();
+  const pageStaticStyleCounts = new Map();
+
+  for (const filePath of tsxFiles) {
+    const repoPath = toRepoPath(filePath);
+    const styleDebt = countTsxStyleDebt(readFileSync(filePath, "utf8"));
+    totalStyleProps += styleDebt.totalStyleProps;
+    totalStaticStyleProps += styleDebt.staticStyleProps;
+    totalDynamicStyleProps += styleDebt.dynamicStyleProps;
+    if (styleDebt.totalStyleProps > 0) {
+      pageStyleCounts.set(repoPath, styleDebt.totalStyleProps);
+    }
+    if (styleDebt.staticStyleProps > 0) {
+      pageStaticStyleCounts.set(repoPath, styleDebt.staticStyleProps);
+    }
+  }
+
+  measurements.push({
+    kind: "limit",
+    label: "frontend TSX style props",
+    actual: totalStyleProps,
+    max: baseline.totalTsxStyleProps,
+    hint: "Reuse page primitives, tokens, or page-local style modules instead of adding repeated inline styles.",
+    ratchet: (value) => {
+      baseline.totalTsxStyleProps = value;
+    },
+  });
+  measurements.push({
+    kind: "limit",
+    label: "frontend TSX literal static style props",
+    actual: totalStaticStyleProps,
+    max: baseline.totalStaticTsxStyleProps,
+    hint: "Literal static inline style objects should move into CSS classes, page primitives, or style modules.",
+    ratchet: (value) => {
+      baseline.totalStaticTsxStyleProps = value;
+    },
+  });
+  measurements.push({
+    kind: "info",
+    label: "frontend TSX dynamic style props",
+    actual: totalDynamicStyleProps,
+  });
+
+  for (const [repoPath, max] of Object.entries(baseline.maxPageStyleProps)) {
+    measurements.push({
+      kind: "limit",
+      label: `${repoPath} style props`,
+      actual: pageStyleCounts.get(repoPath) ?? 0,
+      max,
+      hint: "Pay down or keep flat when touching this page.",
+      ratchet: (value) => {
+        baseline.maxPageStyleProps[repoPath] = value;
+      },
+    });
+  }
+
+  for (const [repoPath, max] of Object.entries(baseline.maxPageStaticStyleProps)) {
+    measurements.push({
+      kind: "limit",
+      label: `${repoPath} literal static style props`,
+      actual: pageStaticStyleCounts.get(repoPath) ?? 0,
+      max,
+      hint: "Literal static inline style objects should move into CSS classes, page primitives, or style modules.",
+      ratchet: (value) => {
+        baseline.maxPageStaticStyleProps[repoPath] = value;
+      },
+    });
+  }
+
+  return measurements;
+}
+
+function runAudit() {
+  const failures = [];
+  const notes = [];
+
+  for (const measurement of collectMeasurements()) {
+    if (measurement.kind === "info") {
+      notes.push(`${measurement.label}: ${measurement.actual}`);
+      continue;
+    }
+    if (measurement.actual > measurement.max) {
+      failures.push(`${measurement.label}: ${measurement.actual} > baseline ${measurement.max}. ${measurement.hint}`);
+    } else {
+      notes.push(`${measurement.label}: ${measurement.actual}/${measurement.max}`);
+    }
+  }
+
+  if (failures.length > 0) {
+    console.error("Frontend debt audit failed. Current debt may remain, but this change grows it.");
+    for (const failure of failures) {
+      console.error(`- ${failure}`);
+    }
+    console.error("\nPassing checks:");
+    for (const note of notes) {
+      console.error(`- ${note}`);
+    }
+    process.exit(1);
+  }
+
+  console.log("Frontend debt audit passed (no growth over baseline).");
+  for (const note of notes) {
+    console.log(`- ${note}`);
+  }
+}
+
+function runRatchet() {
+  const tightened = [];
+  const blocked = [];
+
+  for (const measurement of collectMeasurements()) {
+    if (measurement.kind !== "limit") continue;
+    if (measurement.actual < measurement.max) {
+      measurement.ratchet(measurement.actual);
+      tightened.push(`${measurement.label}: baseline ${measurement.max} -> ${measurement.actual}`);
+    } else if (measurement.actual > measurement.max) {
+      blocked.push(
+        `${measurement.label}: actual ${measurement.actual} > baseline ${measurement.max}; ` +
+          `--ratchet never raises a baseline. Reduce the debt, or obtain tech-lead sign-off and edit ${baselineRelativePath} manually.`,
+      );
+    }
+  }
+
+  if (tightened.length > 0) {
+    writeFileSync(baselinePath, `${JSON.stringify(baselineDocument, null, 2)}\n`, "utf8");
+  }
+
+  const banner = "!".repeat(78);
+  console.log(banner);
+  console.log("RATCHET MODE: 基线变更需技术负责人签核 (baseline changes require tech-lead sign-off).");
+  console.log("Policy: baselines only ratchet DOWN; this tool never raises a baseline.");
+  console.log(banner);
+
+  if (tightened.length === 0) {
+    console.log(`No baseline lowered; ${baselineRelativePath} left unchanged.`);
+  } else {
+    console.log(`Tightened ${tightened.length} baseline(s) in ${baselineRelativePath}:`);
+    for (const line of tightened) {
+      console.log(`- ${line}`);
+    }
+    console.log("Review the diff and record tech-lead sign-off in the PR before committing.");
+  }
+
+  if (blocked.length > 0) {
+    console.error(`\nRefused to raise ${blocked.length} baseline(s):`);
+    for (const line of blocked) {
+      console.error(`- ${line}`);
+    }
+    process.exit(1);
+  }
+}
+
 if (process.argv.includes("--self-test")) {
   runSelfTest();
   process.exit(0);
 }
 
-const failures = [];
-const notes = [];
-
-function assertNoGrowth(label, actual, max, hint) {
-  if (actual > max) {
-    failures.push(`${label}: ${actual} > baseline ${max}. ${hint}`);
-  } else {
-    notes.push(`${label}: ${actual}/${max}`);
-  }
+if (process.argv.includes("--ratchet")) {
+  runRatchet();
+  process.exit(0);
 }
 
-const apiClient = readText("frontend/src/api/client.ts");
-
-assertNoGrowth(
-  "api/client.ts lines",
-  countLines(apiClient),
-  baseline.apiClientLines,
-  "Move endpoint implementation into a domain client instead of growing the monolith.",
-);
-assertNoGrowth(
-  "api/client.ts mock occurrences",
-  countMatches(apiClient, /mock/gi),
-  baseline.apiClientMockOccurrences,
-  "Move mock payloads out of api/client.ts or reduce existing mock coupling.",
-);
-
-for (const [repoPath, policy] of Object.entries(baseline.protectedMonolithFiles)) {
-  assertNoGrowth(
-    `${repoPath} lines`,
-    countLines(readText(repoPath)),
-    policy.maxLines,
-    policy.routeHint,
-  );
-}
-
-for (const [repoPath, limits] of Object.entries(baseline.dashboardStyleFiles)) {
-  const filename = path.basename(repoPath);
-  const debt = countDashboardStyleDebt(readText(repoPath));
-  assertNoGrowth(
-    `${filename} hard-coded hex occurrences`,
-    debt.hardcodedHexes,
-    limits.hardcodedHexes,
-    "Tokenize repeated homepage colors before growing the cockpit style layer.",
-  );
-  assertNoGrowth(
-    `${filename} gradient occurrences`,
-    debt.gradients,
-    limits.gradients,
-    "Reuse existing cockpit/home surfaces instead of adding new gradient treatments.",
-  );
-  assertNoGrowth(
-    `${filename} repeating gradient occurrences`,
-    debt.repeatingGradients,
-    limits.repeatingGradients,
-    "Avoid adding repeating gradient treatments; replace decorative patterns with governed surfaces first.",
-  );
-  assertNoGrowth(
-    `${filename} !important occurrences`,
-    debt.important,
-    limits.important,
-    "Move ownership-conflicting overrides into the correct homepage layer before adding more !important rules.",
-  );
-}
-
-const tsxFiles = walkFiles(
-  path.join(repoRoot, "frontend/src"),
-  (filePath) => filePath.endsWith(".tsx"),
-);
-
-let totalStyleProps = 0;
-let totalStaticStyleProps = 0;
-let totalDynamicStyleProps = 0;
-const pageStyleCounts = new Map();
-const pageStaticStyleCounts = new Map();
-
-for (const filePath of tsxFiles) {
-  const repoPath = toRepoPath(filePath);
-  const styleDebt = countTsxStyleDebt(readFileSync(filePath, "utf8"));
-  totalStyleProps += styleDebt.totalStyleProps;
-  totalStaticStyleProps += styleDebt.staticStyleProps;
-  totalDynamicStyleProps += styleDebt.dynamicStyleProps;
-  if (styleDebt.totalStyleProps > 0) {
-    pageStyleCounts.set(repoPath, styleDebt.totalStyleProps);
-  }
-  if (styleDebt.staticStyleProps > 0) {
-    pageStaticStyleCounts.set(repoPath, styleDebt.staticStyleProps);
-  }
-}
-
-assertNoGrowth(
-  "frontend TSX style props",
-  totalStyleProps,
-  baseline.totalTsxStyleProps,
-  "Reuse page primitives, tokens, or page-local style modules instead of adding repeated inline styles.",
-);
-assertNoGrowth(
-  "frontend TSX literal static style props",
-  totalStaticStyleProps,
-  baseline.totalStaticTsxStyleProps,
-  "Literal static inline style objects should move into CSS classes, page primitives, or style modules.",
-);
-notes.push(`frontend TSX dynamic style props: ${totalDynamicStyleProps}`);
-
-for (const [repoPath, max] of Object.entries(baseline.maxPageStyleProps)) {
-  const actual = pageStyleCounts.get(repoPath) ?? 0;
-  assertNoGrowth(
-    `${repoPath} style props`,
-    actual,
-    max,
-    "Pay down or keep flat when touching this page.",
-  );
-}
-
-for (const [repoPath, max] of Object.entries(baseline.maxPageStaticStyleProps)) {
-  const actual = pageStaticStyleCounts.get(repoPath) ?? 0;
-  assertNoGrowth(
-    `${repoPath} literal static style props`,
-    actual,
-    max,
-    "Literal static inline style objects should move into CSS classes, page primitives, or style modules.",
-  );
-}
-
-if (failures.length > 0) {
-  console.error("Frontend debt audit failed. Current debt may remain, but this change grows it.");
-  for (const failure of failures) {
-    console.error(`- ${failure}`);
-  }
-  console.error("\nPassing checks:");
-  for (const note of notes) {
-    console.error(`- ${note}`);
-  }
-  process.exit(1);
-}
-
-console.log("Frontend debt audit passed (no growth over baseline).");
-for (const note of notes) {
-  console.log(`- ${note}`);
-}
+runAudit();

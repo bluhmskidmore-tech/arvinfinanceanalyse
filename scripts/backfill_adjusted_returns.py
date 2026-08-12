@@ -1,3 +1,9 @@
+# =============================================================================
+# MANUAL WRITE SCRIPT: 绕过任务写作用域，仅限人工执行。
+# 本脚本以 read_only=False 直连 DuckDB 回填复权收益列，未经
+# repository_task_write_scope / backend.app.tasks 写路径；禁止被 API/services
+# 运行时导入执行。已登记于 tests/test_scripts_duckdb_guard_static.py 白名单。
+# =============================================================================
 from __future__ import annotations
 
 import argparse
