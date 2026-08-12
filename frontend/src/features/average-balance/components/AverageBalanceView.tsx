@@ -733,8 +733,16 @@ export default function AverageBalanceView() {
         ? "日均分析加载失败"
         : null;
 
+  /*
+   * 深色 owner 由外层 ThemedRouteBoundary 的 data-moss-theme="dark" 独占；
+   * 页根只声明换肤 scope，重复声明 owner 会让深色路由校验判定出两个 owner。
+   */
   return (
-    <section data-testid="average-balance-page" className="average-balance-page">
+    <section
+      data-testid="average-balance-page"
+      data-moss-theme-scope="average-balance"
+      className="average-balance-page theme-dh-api"
+    >
       <div className="adb-page-header">
         <div>
           <div className="adb-page-title-row">

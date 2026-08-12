@@ -358,9 +358,19 @@
 [data-moss-theme-scope="dashboard-home"],
 [data-moss-theme-scope="macro-toolkit"],
 [data-moss-theme-scope="ledger-pnl"],
+[data-moss-theme-scope="average-balance"],
+[data-moss-theme-scope="positions"],
+[data-moss-theme-scope="bond-dashboard"],
+[data-moss-theme-scope="liability-analytics"],
+[data-moss-theme-scope="bank-ledger-dashboard"],
 .workbench-shell-grid:has([data-moss-theme-scope="dashboard-home"]),
 .workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"]),
-.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]) {
+.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]),
+.workbench-shell-grid:has([data-moss-theme-scope="average-balance"]),
+.workbench-shell-grid:has([data-moss-theme-scope="positions"]),
+.workbench-shell-grid:has([data-moss-theme-scope="bond-dashboard"]),
+.workbench-shell-grid:has([data-moss-theme-scope="liability-analytics"]),
+.workbench-shell-grid:has([data-moss-theme-scope="bank-ledger-dashboard"]) {
   --nct-bg: #161826;
   --nct-rail: #131522;
   --nct-surface: #232532;
@@ -415,12 +425,40 @@
  * 宏观工具与总账损益路由的外壳铬件补充映射：终端条/纸面渐变在 .theme-dh-api
  * 块里是烘焙死的钢蓝 rgba 渐变，Nocturne scope 翻不动；首页因不渲染这些铬件
  * 而无感。此块仅对渲染外壳铬件的 scope 生效，值全部引用 --nct-*，不新增色值。
+ * 宏观工具路由已由 WorkbenchShell 的 isMacroToolkitShell 抑制终端条，
+ * --moss-shell-terminal-bg 重映射只有仍渲染终端条的总账损益需要；
+ * 纸面渐变（main 主列背景）两个 scope 都还在用，保持共用。
  */
 [data-moss-theme-scope="macro-toolkit"],
 [data-moss-theme-scope="ledger-pnl"],
+[data-moss-theme-scope="average-balance"],
+[data-moss-theme-scope="positions"],
+[data-moss-theme-scope="bond-dashboard"],
+[data-moss-theme-scope="liability-analytics"],
+[data-moss-theme-scope="bank-ledger-dashboard"],
 .workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"]),
-.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]) {
-  --moss-shell-terminal-bg: var(--nct-rail);
+.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]),
+.workbench-shell-grid:has([data-moss-theme-scope="average-balance"]),
+.workbench-shell-grid:has([data-moss-theme-scope="positions"]),
+.workbench-shell-grid:has([data-moss-theme-scope="bond-dashboard"]),
+.workbench-shell-grid:has([data-moss-theme-scope="liability-analytics"]),
+.workbench-shell-grid:has([data-moss-theme-scope="bank-ledger-dashboard"]) {
   --moss-shell-paper-bg: var(--nct-bg);
   --moss-shell-paper-shade: none;
+}
+
+/* 终端条只对 showShellTerminalBar 为真的 scope 重映射（宏观工具已整块抑制）。 */
+[data-moss-theme-scope="ledger-pnl"],
+[data-moss-theme-scope="average-balance"],
+[data-moss-theme-scope="positions"],
+[data-moss-theme-scope="bond-dashboard"],
+[data-moss-theme-scope="liability-analytics"],
+[data-moss-theme-scope="bank-ledger-dashboard"],
+.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]),
+.workbench-shell-grid:has([data-moss-theme-scope="average-balance"]),
+.workbench-shell-grid:has([data-moss-theme-scope="positions"]),
+.workbench-shell-grid:has([data-moss-theme-scope="bond-dashboard"]),
+.workbench-shell-grid:has([data-moss-theme-scope="liability-analytics"]),
+.workbench-shell-grid:has([data-moss-theme-scope="bank-ledger-dashboard"]) {
+  --moss-shell-terminal-bg: var(--nct-rail);
 }

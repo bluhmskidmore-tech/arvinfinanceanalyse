@@ -169,8 +169,16 @@ export default function LedgerDashboardPage() {
     ? ledgerImportPresentation(ledgerImport.run.status)
     : null;
 
+  /*
+   * 深色 owner 由外层 ThemedRouteBoundary 独占，页根只声明 Nocturne scope 与
+   * theme-dh-api：再写一次 data-moss-theme="dark" 会让深色路由校验判定出两个 owner。
+   */
   return (
-    <section className="ledger-dashboard" data-testid="ledger-dashboard-page">
+    <section
+      className="ledger-dashboard theme-dh-api"
+      data-testid="ledger-dashboard-page"
+      data-moss-theme-scope="bank-ledger-dashboard"
+    >
       <header className="ledger-dashboard__header">
         <div>
           <p className="ledger-dashboard__eyebrow">银行台账</p>

@@ -517,53 +517,106 @@
 }
 
 /*
- * Nocturne scope 铬件收敛（宏观工具、总账损益）：这些铬件带浅色字面量
- * （灰蓝描边、白色 chip、primary-50 亮 pill），暗色变量翻转覆盖不到。仅对
- * 列出的 scope 生效，色值全部走 --dh-api-* 链（该 scope 下即 Nocturne）。
+ * Nocturne scope 铬件收敛（总账损益；子导航规则另含宏观工具）：这些铬件带
+ * 浅色字面量（灰蓝描边、白色 chip、primary-50 亮 pill），暗色变量翻转覆盖
+ * 不到。仅对列出的 scope 生效，色值全部走 --dh-api-* 链（该 scope 下即
+ * Nocturne）。宏观工具路由已由 WorkbenchShell 的 isMacroToolkitShell 抑制
+ * 整个终端条，不再需要终端条相关的 scope 规则。
  */
-.workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"]) .workbench-terminal-bar,
-.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]) .workbench-terminal-bar,
-.workbench-shell-grid--desktop-aligned:has([data-moss-theme-scope="macro-toolkit"])
-  [data-testid="workbench-terminal-bar"],
-.workbench-shell-grid--desktop-aligned:has([data-moss-theme-scope="ledger-pnl"])
+.workbench-shell-grid:has(
+    [data-moss-theme-scope="ledger-pnl"],
+    [data-moss-theme-scope="average-balance"],
+    [data-moss-theme-scope="positions"],
+    [data-moss-theme-scope="bond-dashboard"],
+    [data-moss-theme-scope="liability-analytics"],
+    [data-moss-theme-scope="bank-ledger-dashboard"]
+  )
+  .workbench-terminal-bar,
+.workbench-shell-grid--desktop-aligned:has(
+    [data-moss-theme-scope="ledger-pnl"],
+    [data-moss-theme-scope="average-balance"],
+    [data-moss-theme-scope="positions"],
+    [data-moss-theme-scope="bond-dashboard"],
+    [data-moss-theme-scope="liability-analytics"],
+    [data-moss-theme-scope="bank-ledger-dashboard"]
+  )
   [data-testid="workbench-terminal-bar"] {
   box-shadow: none !important;
 }
 
-.workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"]) .workbench-shell-report-chip,
-.workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"]) .workbench-operator-pill-quiet,
-.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]) .workbench-shell-report-chip,
-.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]) .workbench-operator-pill-quiet {
+.workbench-shell-grid:has(
+    [data-moss-theme-scope="ledger-pnl"],
+    [data-moss-theme-scope="average-balance"],
+    [data-moss-theme-scope="positions"],
+    [data-moss-theme-scope="bond-dashboard"],
+    [data-moss-theme-scope="liability-analytics"],
+    [data-moss-theme-scope="bank-ledger-dashboard"]
+  )
+  :is(.workbench-shell-report-chip, .workbench-operator-pill-quiet) {
   background: var(--dh-api-panel-2);
   border-color: var(--dh-api-line-soft);
   color: var(--dh-api-soft);
 }
 
-.workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"])
-  .workbench-terminal-utility-navlink[data-active="true"],
-.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"])
+.workbench-shell-grid:has(
+    [data-moss-theme-scope="ledger-pnl"],
+    [data-moss-theme-scope="average-balance"],
+    [data-moss-theme-scope="positions"],
+    [data-moss-theme-scope="bond-dashboard"],
+    [data-moss-theme-scope="liability-analytics"],
+    [data-moss-theme-scope="bank-ledger-dashboard"]
+  )
   .workbench-terminal-utility-navlink[data-active="true"] {
   border-bottom-color: var(--dh-api-blue);
 }
 
-.workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"]) .workbench-market-ticker-shell,
-.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]) .workbench-market-ticker-shell {
+.workbench-shell-grid:has(
+    [data-moss-theme-scope="ledger-pnl"],
+    [data-moss-theme-scope="average-balance"],
+    [data-moss-theme-scope="positions"],
+    [data-moss-theme-scope="bond-dashboard"],
+    [data-moss-theme-scope="liability-analytics"],
+    [data-moss-theme-scope="bank-ledger-dashboard"]
+  )
+  .workbench-market-ticker-shell {
   border-top-color: var(--dh-api-line-soft);
 }
 
-.workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"]) .workbench-section-subnav,
-.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]) .workbench-section-subnav {
+.workbench-shell-grid:has(
+    [data-moss-theme-scope="macro-toolkit"],
+    [data-moss-theme-scope="ledger-pnl"],
+    [data-moss-theme-scope="average-balance"],
+    [data-moss-theme-scope="positions"],
+    [data-moss-theme-scope="bond-dashboard"],
+    [data-moss-theme-scope="liability-analytics"],
+    [data-moss-theme-scope="bank-ledger-dashboard"]
+  )
+  .workbench-section-subnav {
   border-bottom-color: var(--dh-api-line-soft);
 }
 
-.workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"]) .workbench-section-subnav__link,
-.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]) .workbench-section-subnav__link {
+.workbench-shell-grid:has(
+    [data-moss-theme-scope="macro-toolkit"],
+    [data-moss-theme-scope="ledger-pnl"],
+    [data-moss-theme-scope="average-balance"],
+    [data-moss-theme-scope="positions"],
+    [data-moss-theme-scope="bond-dashboard"],
+    [data-moss-theme-scope="liability-analytics"],
+    [data-moss-theme-scope="bank-ledger-dashboard"]
+  )
+  .workbench-section-subnav__link {
   border-color: var(--dh-api-line-soft);
 }
 
-.workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"])
-  .workbench-section-subnav__link[data-active="true"],
-.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"])
+.workbench-shell-grid:has(
+    [data-moss-theme-scope="macro-toolkit"],
+    [data-moss-theme-scope="ledger-pnl"],
+    [data-moss-theme-scope="average-balance"],
+    [data-moss-theme-scope="positions"],
+    [data-moss-theme-scope="bond-dashboard"],
+    [data-moss-theme-scope="liability-analytics"],
+    [data-moss-theme-scope="bank-ledger-dashboard"]
+  )
   .workbench-section-subnav__link[data-active="true"] {
   border-color: var(--dh-api-blue);
   background: color-mix(in srgb, var(--dh-api-blue) 14%, transparent);

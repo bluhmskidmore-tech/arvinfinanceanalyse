@@ -574,8 +574,16 @@ export default function LiabilityAnalyticsPage() {
     !riskQuery.isLoading &&
     !dailyPrimaryError &&
     !dailyPrimaryEmpty;
+  /*
+   * 深色 owner 由外层 ThemedRouteBoundary 的 data-moss-theme="dark" 承担；
+   * 页根只声明主题 scope，重复声明 owner 会让深色路由校验判定出两个 owner。
+   */
   return (
-    <section data-testid="liability-analytics-page" className="liability-analytics-page">
+    <section
+      data-testid="liability-analytics-page"
+      data-moss-theme-scope="liability-analytics"
+      className="liability-analytics-page theme-dh-api"
+    >
       <PageDecisionHero
         testId="liability-analytics-decision-hero"
         title="负债结构分析"

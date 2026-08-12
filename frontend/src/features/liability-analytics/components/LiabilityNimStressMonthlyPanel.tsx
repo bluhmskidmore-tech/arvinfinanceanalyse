@@ -69,7 +69,7 @@ export function LiabilityNimStressMonthlyPanel({
             >
               {projected === null ? EM_DASH : `${projected.toFixed(2)}%`}
             </div>
-            {/* 有意对齐 DESIGN IB 语义色（涨绿跌红）：冲击下行固定 --ib-down，不再使用旧 A股红涨绿跌。 */}
+            {/* 有意对齐 DESIGN 语义色（涨绿跌红）：冲击下行固定 --dh-api-red，不再使用旧 A股红涨绿跌。 */}
             <div
               className={`liability-metric-delta ${
                 nim === null || nim === undefined

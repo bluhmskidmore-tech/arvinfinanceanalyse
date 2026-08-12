@@ -1,7 +1,7 @@
-/* AverageBalance — IB light workbench layout (DESIGN.md §2.1 / §5) */
+/* AverageBalance — 深色终端 token 版式（DESIGN.md §2.2 / §5） */
 
 .average-balance-page {
-  color: var(--ib-ink);
+  color: var(--dh-api-ink);
 }
 
 .adb-page-header {
@@ -27,7 +27,7 @@
   margin-top: 8px;
   margin-bottom: 0;
   max-width: 920px;
-  color: var(--ib-ink-secondary);
+  color: var(--dh-api-soft);
   font-size: 14px;
   line-height: 1.7;
 }
@@ -46,10 +46,10 @@
   display: inline-flex;
   align-items: center;
   padding: 8px 12px;
-  border: 1px solid var(--ib-hairline);
+  border: 1px solid var(--dh-api-line);
   border-radius: 999px;
-  background: var(--ib-surface-muted);
-  color: var(--ib-ink-secondary);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -57,13 +57,13 @@
 }
 
 .adb-mode-badge[data-mode="real"] {
-  background: color-mix(in srgb, var(--ib-up) 10%, var(--ib-surface));
-  color: var(--ib-up);
+  background: color-mix(in srgb, var(--dh-api-green) 10%, var(--dh-api-panel));
+  color: var(--dh-api-green);
 }
 
 .adb-mode-badge[data-mode="mock"] {
-  background: var(--ib-accent-surface);
-  color: var(--ib-accent);
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-blue);
 }
 
 .adb-stack {
@@ -139,7 +139,7 @@
 }
 
 .adb-danger-icon {
-  color: var(--ib-down);
+  color: var(--dh-api-red);
   font-size: 16px;
 }
 
@@ -198,15 +198,15 @@
 
 .adb-tone--down,
 .adb-tone--down.ant-typography {
-  color: var(--ib-down) !important;
+  color: var(--dh-api-red) !important;
 }
 
 .adb-tone--up,
 .adb-tone--up.ant-typography {
-  color: var(--ib-up) !important;
+  color: var(--dh-api-green) !important;
 }
 
 .adb-tone--ok,
 .adb-tone--ok.ant-typography {
-  color: var(--ib-up) !important;
+  color: var(--dh-api-green) !important;
 }

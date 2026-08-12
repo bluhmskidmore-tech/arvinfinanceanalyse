@@ -976,8 +976,16 @@ export default function PositionsView() {
     meta: currentListEnvelope?.result_meta,
   });
 
+  /*
+   * 深色 owner 由外层 ThemedRouteBoundary 的 data-moss-theme="dark" 独占；
+   * 页根只声明换肤 scope，重复声明 owner 会让深色路由校验判定出两个 owner。
+   */
   return (
-    <section className="positions-view" data-testid="positions-page">
+    <section
+      className="positions-view theme-dh-api"
+      data-testid="positions-page"
+      data-moss-theme-scope="positions"
+    >
       <PageDecisionHero
         testId="positions-decision-hero"
         title="持仓透视"

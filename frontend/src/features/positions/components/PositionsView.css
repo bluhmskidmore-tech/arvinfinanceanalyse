@@ -4,18 +4,18 @@
   justify-content: space-between;
   gap: 16px;
   margin: 16px 0 12px;
-  border-bottom: 1px solid var(--ib-hairline);
+  border-bottom: 1px solid var(--dh-api-line);
 }
 
 .positions-view__eyebrow {
-  color: var(--ib-warn);
+  color: var(--dh-api-amber);
   font-size: 11px;
   font-weight: 760;
 }
 
 .positions-view__workspace-title {
   margin: 2px 0 10px;
-  color: var(--ib-ink);
+  color: var(--dh-api-ink);
   font-family: var(--ib-serif);
   font-size: 20px;
   font-weight: 760;
@@ -79,23 +79,23 @@
 
 .positions-view__summary-tile {
   min-width: 0;
-  border: 1px solid var(--ib-hairline);
-  border-radius: var(--ib-radius, 2px);
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
   padding: 8px;
-  background: var(--ib-surface-muted);
+  background: var(--dh-api-panel-2);
 }
 
 .positions-view__summary-label {
   display: block;
   margin-bottom: 4px;
-  color: var(--ib-ink-muted);
+  color: var(--dh-api-muted);
   font-size: 12px;
 }
 
 .positions-view__summary-value {
   display: block;
   overflow-wrap: anywhere;
-  color: var(--ib-ink);
+  color: var(--dh-api-ink);
   font-size: 16px;
   font-weight: 780;
   line-height: 1.25;
@@ -111,11 +111,11 @@
 }
 
 .positions-view__side-value--asset {
-  color: var(--ib-up);
+  color: var(--dh-api-green);
 }
 
 .positions-view__side-value--liability {
-  color: var(--ib-down);
+  color: var(--dh-api-red);
 }
 
 .positions-view__side-dot {
@@ -128,11 +128,11 @@
 }
 
 .positions-view__side-dot--asset {
-  background: var(--ib-up);
+  background: var(--dh-api-green);
 }
 
 .positions-view__side-dot--liability {
-  background: var(--ib-down);
+  background: var(--dh-api-red);
 }
 
 .positions-view__mode-pill {
@@ -145,14 +145,15 @@
   letter-spacing: 0;
 }
 
+/* --moss-color-*-50/700 是 :root 浅色刻度，深色路由不重映射，会在页头冒白。 */
 .positions-view__mode-pill--real {
-  background: var(--moss-color-success-50);
-  color: var(--moss-color-success-700);
+  background: var(--dh-api-green-soft);
+  color: var(--dh-api-green);
 }
 
 .positions-view__mode-pill--mock {
-  background: var(--moss-color-primary-50);
-  color: var(--moss-color-primary-700);
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-blue);
 }
 
 .positions-view__filter-field {
@@ -192,22 +193,22 @@
 }
 
 .positions-view__quality-item {
-  border: 1px solid var(--ib-hairline);
-  border-radius: var(--ib-radius, 2px);
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
   padding: 8px;
-  background: var(--ib-surface-muted);
+  background: var(--dh-api-panel-2);
 }
 
 .positions-view__quality-label {
   display: block;
   margin-bottom: 4px;
-  color: var(--ib-ink-secondary);
+  color: var(--dh-api-soft);
   font-size: 12px;
 }
 
 .positions-view__quality-value {
   display: block;
-  color: var(--ib-ink);
+  color: var(--dh-api-ink);
   font-size: 13px;
   font-weight: 600;
   word-break: break-word;
@@ -215,7 +216,7 @@
 
 .positions-view__quality-note {
   margin-top: 10px;
-  color: var(--ib-ink-secondary);
+  color: var(--dh-api-soft);
   font-size: 12px;
   line-height: 1.5;
 }

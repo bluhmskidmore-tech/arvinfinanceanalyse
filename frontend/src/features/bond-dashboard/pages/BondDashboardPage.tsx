@@ -35,25 +35,40 @@ import "./BondDashboardPage.css";
 
 type BusinessTypeMetricRow = BondBusinessTypeMetricItem & { key: string };
 
+/**
+ * `Number("")` and `Number(null)` are both 0, so a blank cell would render as a real zero.
+ * Known residual risk: the backend still emits "0.00000000" for some unavailable business-type
+ * metrics, which arrives here as a genuine zero and cannot be told apart on the frontend.
+ */
+function businessTypeMetricNumber(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string" && value.trim() === "") return null;
+  const raw = Number(value);
+  return Number.isFinite(raw) ? raw : null;
+}
+
 const BUSINESS_TYPE_METRIC_COLUMNS: TableColumnsType<BusinessTypeMetricRow> = [
   { title: "业务类型", dataIndex: "name", ellipsis: true },
   {
     title: "市值（亿）",
     dataIndex: "market_value",
     align: "right",
-    render: (v: string) => formatYi(Number(v)),
+    render: (v: string) => formatYi(businessTypeMetricNumber(v)),
   },
   {
     title: "加权 YTM",
     dataIndex: "weighted_avg_ytm_pct",
     align: "right",
-    render: (v: string) => `${formatRatePercent(Number(v) / 100)}%`,
+    render: (v: string) => {
+      const pct = businessTypeMetricNumber(v);
+      return pct === null ? "—" : `${formatRatePercent(pct / 100)}%`;
+    },
   },
   {
     title: "加权久期",
     dataIndex: "weighted_avg_duration",
     align: "right",
-    render: (v: string) => formatYears(Number(v)),
+    render: (v: string) => formatYears(businessTypeMetricNumber(v)),
   },
 ];
 
@@ -229,8 +244,16 @@ export default function BondDashboardPage() {
       : null;
   const datesEmpty = !datesQuery.isLoading && !datesQuery.isError && dateOptions.length === 0;
 
+  /*
+   * 深色 owner 由外层 ThemedRouteBoundary 的 data-moss-theme="dark" 承担；
+   * 页根只声明主题 scope，重复声明 owner 会让深色路由校验判定出两个 owner。
+   */
   return (
-    <div data-testid="bond-dashboard-page" className="bond-dashboard-page">
+    <div
+      data-testid="bond-dashboard-page"
+      data-moss-theme-scope="bond-dashboard"
+      className="bond-dashboard-page theme-dh-api"
+    >
       <div className="bond-dashboard-page__toolbar">
         <div className="bond-dashboard-page__title-row">
           <h2 className="bond-dashboard-page__title">债券总览</h2>
