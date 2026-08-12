@@ -24,6 +24,22 @@ const MACRO_TOOLKIT_PAGE_PATH = resolve(
   process.cwd(),
   "src/features/macro-toolkit/pages/MacroToolkitPage.tsx",
 );
+const MACRO_TOOLKIT_CAPABILITY_CARDS_PATH = resolve(
+  process.cwd(),
+  "src/features/macro-toolkit/sections/MacroToolkitCapabilityCards.tsx",
+);
+const MACRO_TOOLKIT_SIGNAL_SECTIONS_PATH = resolve(
+  process.cwd(),
+  "src/features/macro-toolkit/sections/MacroToolkitSignalSections.tsx",
+);
+const MACRO_TOOLKIT_INDICATOR_SECTIONS_PATH = resolve(
+  process.cwd(),
+  "src/features/macro-toolkit/sections/MacroToolkitIndicatorSections.tsx",
+);
+const MACRO_TOOLKIT_EXECUTION_SECTIONS_PATH = resolve(
+  process.cwd(),
+  "src/features/macro-toolkit/sections/MacroToolkitExecutionSections.tsx",
+);
 
 beforeAll(async () => {
   await preloadWorkbenchRouteModules("macro-toolkit");
@@ -325,12 +341,16 @@ describe("MacroToolkitPage", () => {
 
   it("loads first-screen analysis through the deferred core scope", () => {
     const source = readFileSync(MACRO_TOOLKIT_PAGE_PATH, "utf8");
+    const capabilityCardsSource = readFileSync(MACRO_TOOLKIT_CAPABILITY_CARDS_PATH, "utf8");
+    const signalSectionsSource = readFileSync(MACRO_TOOLKIT_SIGNAL_SECTIONS_PATH, "utf8");
 
     expect(source).toContain('client.getMacroToolkitAnalysis({ detail: "core" })');
     expect(source).toContain("MACRO_TOOLKIT_FULL_PREFETCH_DELAY_MS");
     expect(source).toContain("historyLimit: MACRO_TOOLKIT_CRISIS_SCORE_HISTORY_LIMIT");
-    expect(source).toContain("formatCrisisTopContributorSummary");
-    expect(source).toContain('data-testid="macro-toolkit-crisis-capability-component-summary"');
+    expect(signalSectionsSource).toContain("formatCrisisTopContributorSummary");
+    expect(capabilityCardsSource).toContain(
+      'data-testid="macro-toolkit-crisis-capability-component-summary"',
+    );
   });
 
 it("keeps the toolkit execution workspace unmounted until the below-fold sentinel intersects", async () => {
@@ -1115,11 +1135,12 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
 
   it("contains deep-page tables and committee work queue rows without clipping", () => {
     const css = readFileSync(MACRO_TOOLKIT_CSS_PATH, "utf8");
-    const source = readFileSync(MACRO_TOOLKIT_PAGE_PATH, "utf8");
+    const indicatorSectionsSource = readFileSync(MACRO_TOOLKIT_INDICATOR_SECTIONS_PATH, "utf8");
+    const executionSectionsSource = readFileSync(MACRO_TOOLKIT_EXECUTION_SECTIONS_PATH, "utf8");
 
     expect(css).toContain("Deep-page table containment pass");
-    expect(source).toContain('className="macro-toolkit-table--wide"');
-    expect(source).toContain('className="macro-toolkit-table--receipt"');
+    expect(indicatorSectionsSource).toContain('className="macro-toolkit-table--wide"');
+    expect(executionSectionsSource).toContain('className="macro-toolkit-table--receipt"');
     expect(css).toMatch(
       /\.macro-toolkit-page \.ant-table-wrapper\s*\{[\s\S]*?overflow-x:\s*auto/,
     );
