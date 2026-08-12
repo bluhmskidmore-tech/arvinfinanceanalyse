@@ -72,9 +72,10 @@ async function waitForMonthlyOperatingAnalysisAuditReady() {
 }
 
 describe("ProductCategoryAdjustmentAuditPage", () => {
+  // 与 ProductCategoryPnlPage.test.tsx 同源的重路由预加载，20s 上限在有负载时会稳定超时。
   beforeAll(async () => {
     await preloadWorkbenchRouteModules("product-category-pnl-audit");
-  }, 20_000);
+  }, 60_000);
 
   it("renders the independent audit view with current-state rows and timeline rows", async () => {
     const baseClient = createApiClient({ mode: "mock" });

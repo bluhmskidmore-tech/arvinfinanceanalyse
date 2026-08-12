@@ -3,8 +3,10 @@ import type { EChartsReactProps } from "echarts-for-react/lib/types";
 
 import type { ResultMeta } from "../../../api/contracts";
 import { DataQualityBanner } from "../../../components/page/DataQualityBanner";
-import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
+import type { EChartsOption } from "../../../lib/echarts";
 import { designTokens, dhApiTokens } from "../../../theme/designSystem";
+import { LazyChartMount } from "./LazyChartMount";
+import { LazyReactECharts } from "./LazyReactECharts";
 import {
   formatProductCategoryChartNumberTwoDecimals,
   type ProductCategoryInterestSpreadAttributionSurface,
@@ -1284,13 +1286,18 @@ export function DerivedChartPanel(props: DerivedChartPanelProps) {
         </div>
       ) : null}
       {props.readout}
-      <ReactECharts
-        option={props.option}
-        className="product-category-derived-chart__canvas"
-        notMerge
-        lazyUpdate
-        onEvents={props.onEvents}
-      />
+      <LazyChartMount
+        placeholderClassName="product-category-derived-chart__canvas"
+        placeholderTestId={`${props.testId}-canvas-placeholder`}
+      >
+        <LazyReactECharts
+          option={props.option}
+          className="product-category-derived-chart__canvas"
+          notMerge
+          lazyUpdate
+          onEvents={props.onEvents}
+        />
+      </LazyChartMount>
     </article>
   );
 }
@@ -1315,7 +1322,7 @@ export function ProductCategoryInterestSpreadAttributionPanel(props: {
             后端利差字段归因
           </h3>
           <p className="product-category-interest-spread-attribution__description">
-            {basisLabel} · {props.surface.selected.month}月 ·
+            {basisLabel} {props.surface.selected.month}月 ·{" "}
             使用后端返回的利差字段，不代表已激活正式指标
           </p>
         </div>

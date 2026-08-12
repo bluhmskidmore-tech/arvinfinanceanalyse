@@ -15,10 +15,11 @@ import type {
   DecimalLike,
   ProductCategoryAttributionPayload,
   ProductCategoryManualAdjustmentRequest,
+  ProductCategoryPnlPayload,
   ProductCategoryPnlRow,
   ResultMeta,
 } from "../../../api/contracts";
-import ReactECharts from "../../../lib/echarts";
+import { LazyReactECharts } from "./LazyReactECharts";
 import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
 import {
   DataStatusStrip,
@@ -319,7 +320,7 @@ function ProductCategoryFormalReadinessBand(
             data-testid="product-category-core-metric"
             className="product-category-formal-readiness__metric product-category-formal-readiness__metric--primary"
           >
-            <span>总损益（亿元）</span>
+            <span>FTP后经营净收入（亿元）</span>
             <strong>
               {formatProductCategoryValue(
                 props.grandTotal?.business_net_income,
@@ -432,8 +433,8 @@ function ProductCategoryFormalReadinessBand(
           ) : (
             <p className="product-category-formal-readiness__driver-empty">
               {props.selectedView === "monthly"
-                ? "归因数据加载中，正式总损益仍按当前口径展示。"
-                : "关键驱动仅支持月度视图，汇总视图继续展示正式总损益。"}
+                ? "归因数据加载中，正式FTP后经营净收入仍按当前口径展示。"
+                : "关键驱动仅支持月度视图，汇总视图继续展示正式FTP后经营净收入。"}
             </p>
           )}
         </section>
@@ -460,6 +461,7 @@ function ProductCategoryGovernanceEvidence(
   const vendorLabel = props.resultMeta?.vendor_status ?? "pending";
   const fallbackLabel = props.resultMeta?.fallback_mode ?? "pending";
   const generatedAtLabel = props.resultMeta?.generated_at ?? "pending";
+  const traceIdLabel = props.resultMeta?.trace_id ?? "pending";
   const needsDataStateReview =
     props.resultMeta !== undefined &&
     (props.resultMeta.quality_flag !== "ok" ||
@@ -497,8 +499,9 @@ function ProductCategoryGovernanceEvidence(
           <span>vendor={vendorLabel}</span>
           <span>fallback={fallbackLabel}</span>
           <span>generated_at={generatedAtLabel}</span>
+          <span>trace_id={traceIdLabel}</span>
           {needsDataStateReview ? (
-            <span>data-state-review-required</span>
+            <span>数据状态待复核</span>
           ) : null}
         </div>
       </section>
@@ -508,10 +511,10 @@ function ProductCategoryGovernanceEvidence(
       >
         <h3>审计证据</h3>
         <div className="product-category-formal-readiness__certification-strip">
-          <span>Fresh pre-signature rerun required</span>
-          <span>Unit=亿元</span>
-          <span>Date basis=report_date</span>
-          <span>Source=formal read model</span>
+          <span>签署前需重新运行核算</span>
+          <span>单位：亿元</span>
+          <span>日期基准：report_date</span>
+          <span>数据来源：正式只读模型</span>
         </div>
       </section>
     </div>
@@ -531,11 +534,11 @@ function ProductCategoryOwnerSignableStatus() {
         <small>3项待完成</small>
       </div>
       <div className="product-category-owner-signable-status__fields">
-        <span>Owner-signable=false</span>
-        <span>Certified=false</span>
-        <span>Owner approval pending</span>
-        <span>Golden sample awaiting approval</span>
-        <span>Manual audit partial units=10</span>
+        <span>可签署：否</span>
+        <span>已认证：否</span>
+        <span>待业主审批</span>
+        <span>黄金样本待审批</span>
+        <span>人工抽核未完成：已核 10 个单元</span>
       </div>
     </section>
   );
@@ -720,7 +723,7 @@ function ProductCategoryFormalSelectionContext(props: {
         <h3>{props.row.category_name}</h3>
         <p>
           {formatProductCategoryReportMonthLabel(props.reportDate)} ·{" "}
-          {props.selectedView === "monthly" ? "月度" : "汇总"} ·{" "}
+          {props.selectedView === "monthly" ? "月度" : "汇总"} |{" "}
           {props.sourceLabel}
         </p>
       </div>
@@ -795,6 +798,68 @@ function reportDateYearMonth(
     return null;
   }
   return { year, month };
+}
+
+function uniqueProductCategoryReportDates(
+  points: ReadonlyArray<{ reportDate: string }>,
+): string[] {
+  const seen = new Set<string>();
+  const reportDates: string[] = [];
+  points.forEach((point) => {
+    if (!point.reportDate || seen.has(point.reportDate)) {
+      return;
+    }
+    seen.add(point.reportDate);
+    reportDates.push(point.reportDate);
+  });
+  return reportDates;
+}
+
+/**
+ * Measured against the live read model: a few medium chunks beat both per-period requests
+ * (queue behind the browser's per-host connection limit) and one giant chunk (queues
+ * behind the backend's bounded worker pool).
+ */
+const PRODUCT_CATEGORY_HISTORY_BATCH_SIZE = 10;
+
+const PRODUCT_CATEGORY_TREND_WORKSPACE_STORAGE_KEY =
+  "moss.product-category-pnl.trend-workspace-open";
+
+/**
+ * 图表折叠区位于页面约 1400px 处、与另外几条外观相同的折叠条并列，默认折叠会被读成
+ * "图表不见了"。因此默认展开并记住读者自己的选择；展开成本很低，因为每张图仍要等进入视口才挂载。
+ */
+function readProductCategoryTrendWorkspacePreference(): boolean {
+  try {
+    const stored = globalThis.localStorage?.getItem(
+      PRODUCT_CATEGORY_TREND_WORKSPACE_STORAGE_KEY,
+    );
+    return stored === "0" ? false : true;
+  } catch {
+    return true;
+  }
+}
+
+function persistProductCategoryTrendWorkspacePreference(open: boolean): void {
+  try {
+    globalThis.localStorage?.setItem(
+      PRODUCT_CATEGORY_TREND_WORKSPACE_STORAGE_KEY,
+      open ? "1" : "0",
+    );
+  } catch {
+    // 隐私模式或存储被禁用时忽略：偏好丢失不影响功能。
+  }
+}
+
+function chunkProductCategoryReportDates(
+  reportDates: string[],
+  size = PRODUCT_CATEGORY_HISTORY_BATCH_SIZE,
+): string[][] {
+  const chunks: string[][] = [];
+  for (let index = 0; index < reportDates.length; index += size) {
+    chunks.push(reportDates.slice(index, index + size));
+  }
+  return chunks;
 }
 
 function monthAnchoredInterestSpreadSelection(
@@ -900,7 +965,7 @@ function ProductCategoryApiContractLedger(
       <header className="product-category-api-ledger__header">
         <div>
           <p className="product-category-api-ledger__eyebrow">
-            后端端点与治理闭环 / API CONTRACT LEDGER
+            后端端点与治理闭环
           </p>
           <h2>11 个前端衔接动作</h2>
           <p>
@@ -918,14 +983,14 @@ function ProductCategoryApiContractLedger(
           }`}
           data-testid="product-category-api-contract-runtime"
         >
-          READ INTEGRATED {props.readRows.length}/{props.readRows.length} ·
-          WRITE INTEGRATED {props.writeRows.length}/{props.writeRows.length}
+          读接口已联调 {props.readRows.length}/{props.readRows.length} ·
+          写接口已联调 {props.writeRows.length}/{props.writeRows.length}
         </span>
       </header>
 
       <div className="product-category-api-ledger__columns">
         <section data-testid="product-category-api-read-surfaces">
-          <h3>READ SURFACES</h3>
+          <h3>只读接口</h3>
           <div className="product-category-api-ledger__rows">
             {props.readRows.map((row) => (
               <div
@@ -947,7 +1012,7 @@ function ProductCategoryApiContractLedger(
           </div>
         </section>
         <section data-testid="product-category-api-write-surfaces">
-          <h3>MUTATION + POLLING SURFACES</h3>
+          <h3>写入与轮询接口</h3>
           <div className="product-category-api-ledger__rows">
             {props.writeRows.map((row) => (
               <div
@@ -970,12 +1035,12 @@ function ProductCategoryApiContractLedger(
         <div>
           <h3>手工调整与审计流</h3>
           <strong>
-            {props.adjustmentCount} ACTIVE · {props.eventCount} EVENTS ·{" "}
-            {props.exportedFilename
-              ? `EXPORTED ${props.exportedFilename}`
-              : "EXPORT READY"}
+            {props.adjustmentCount} 项生效 · {props.eventCount} 项事件
           </strong>
           <p>
+            {props.exportedFilename
+              ? `已导出 ${props.exportedFilename}；`
+              : "可导出 CSV；"}
             新增 → 编辑 → 撤销 → 恢复；所有动作写入事件流，刷新状态通过 run_id
             轮询。
           </p>
@@ -1062,7 +1127,10 @@ export default function ProductCategoryPnlPage() {
   const [showManualForm, setShowManualForm] = useState(false);
   const [diagnosticsWorkspaceOpen, setDiagnosticsWorkspaceOpen] =
     useState(false);
-  const [trendWorkspaceOpen, setTrendWorkspaceOpen] = useState(false);
+  const [trendWorkspaceOpen, setTrendWorkspaceOpen] = useState(
+    readProductCategoryTrendWorkspacePreference,
+  );
+  const [backtestWorkspaceOpen, setBacktestWorkspaceOpen] = useState(false);
   const [scenarioSensitivityRequested, setScenarioSensitivityRequested] =
     useState(false);
   const [
@@ -1260,6 +1328,19 @@ export default function ProductCategoryPnlPage() {
   });
 
   const baseline = baselineQuery.data?.result;
+  const dataHealth = buildProductCategoryDataHealth({
+    datesLoading: datesQuery.isLoading,
+    datesError: datesQuery.isError,
+    reportDates: datesQuery.data?.result.report_dates,
+    selectedDate,
+    baselineLoading: baselineQuery.isLoading || baselineQuery.isFetching,
+    baselineError: baselineQuery.isError,
+    baseline,
+    meta: baselineQuery.data?.result_meta,
+  });
+  const canRenderBaselineDerivedAnalysis =
+    Boolean(baseline) &&
+    (dataHealth.state === "ready" || dataHealth.state === "degraded");
   const scenario = scenarioQuery.data?.result;
   const displayedGrandTotal = selectDisplayedProductCategoryGrandTotal(
     scenario?.grand_total,
@@ -1280,6 +1361,23 @@ export default function ProductCategoryPnlPage() {
     () => reportDateYearMonth(selectedDate),
     [selectedDate],
   );
+  // 经营修复监控面板常显在所有折叠区之外，但仅在月度视图、未应用 FTP 场景、
+  // 且选中 6 月末报告期时才会消费 1—6 月连续历史快照（见 selectProductCategoryManagementMonitoringSurface）。
+  // 该面板本身不是折叠区消费方，须显式纳入门控，否则历史数据永远不会为它触发加载。
+  const managementMonitoringConsumesHistory =
+    selectedView === "monthly" &&
+    !managementScenarioDistinct &&
+    selectedYearMonth?.month === 6 &&
+    canRenderBaselineDerivedAnalysis;
+  // 趋势历史快照被趋势、诊断（负债结构核查）、动作回测三个折叠区，以及经营修复监控面板共同消费：
+  // 任一折叠区展开，或经营修复监控处于会消费历史数据的状态，都必须触发历史加载。
+  const trendHistoryConsumerOpen =
+    trendWorkspaceOpen ||
+    diagnosticsWorkspaceOpen ||
+    backtestWorkspaceOpen ||
+    managementMonitoringConsumesHistory;
+  const attributionHistoryConsumerOpen =
+    trendWorkspaceOpen || backtestWorkspaceOpen;
 
   const rowsToRender = useMemo(
     () => selectProductCategoryDetailRows(baseline?.rows, scenario?.rows),
@@ -1583,52 +1681,55 @@ export default function ProductCategoryPnlPage() {
       trendReportPoints.filter((point) => point.reportDate !== selectedDate),
     [selectedDate, trendReportPoints],
   );
+  const trendHistoryReportDates = useMemo(
+    () => uniqueProductCategoryReportDates(trendHistoryPoints),
+    [trendHistoryPoints],
+  );
+  const trendHistoryView = trendHistoryPoints[0]?.view ?? selectedView;
+  const trendHistoryBatches = useMemo(
+    () => chunkProductCategoryReportDates(trendHistoryReportDates),
+    [trendHistoryReportDates],
+  );
   const trendHistoryQueries = useQueries({
-    queries: trendHistoryPoints.map((point) => ({
+    queries: trendHistoryBatches.map((batchReportDates) => ({
       queryKey: [
         "product-category-pnl",
-        "trend-history",
+        "trend-history-batch",
         client.mode,
-        point.reportDate,
-        point.view,
+        batchReportDates.join(","),
+        trendHistoryView,
         appliedScenarioRate,
       ],
       queryFn: () =>
-        client.getProductCategoryPnl({
-          reportDate: point.reportDate,
-          view: point.view,
+        client.getProductCategoryHistory({
+          reportDates: batchReportDates,
+          view: trendHistoryView,
           ...(appliedScenarioRate
             ? { scenarioRatePct: appliedScenarioRate }
             : {}),
         }),
-      enabled: Boolean(
-        trendWorkspaceOpen &&
-        trendDiagnosticsLoaded &&
-        point.reportDate &&
-        point.view,
-      ),
+      enabled: Boolean(trendHistoryConsumerOpen && trendDiagnosticsLoaded),
       retry: false,
     })),
   });
   const trendHistoryAttributionQueries = useQueries({
-    queries: trendHistoryPoints.map((point) => ({
+    queries: trendHistoryBatches.map((batchReportDates) => ({
       queryKey: [
         "product-category-pnl",
-        "trend-history-attribution",
+        "trend-history-attribution-batch",
         client.mode,
-        point.reportDate,
+        batchReportDates.join(","),
         "mom",
       ],
       queryFn: () =>
-        client.getProductCategoryAttribution({
-          reportDate: point.reportDate,
+        client.getProductCategoryAttributionHistory({
+          reportDates: batchReportDates,
           compare: "mom",
         }),
       enabled: Boolean(
-        trendWorkspaceOpen &&
+        attributionHistoryConsumerOpen &&
         trendDiagnosticsLoaded &&
-        selectedView === "monthly" &&
-        point.reportDate,
+        selectedView === "monthly",
       ),
       retry: false,
     })),
@@ -1656,33 +1757,69 @@ export default function ProductCategoryPnlPage() {
       ),
     [interestSpreadComparisonReportPoints, selectedDate],
   );
-  const interestSpreadComparisonQueries = useQueries({
-    queries: interestSpreadComparisonHistoryPoints.map((point) => ({
+  // Only the months the trend batch does not already cover, so the two batches stay disjoint
+  // and opening the diagnostics workspace alone never pulls the wider comparison window.
+  const interestSpreadOnlyReportDates = useMemo(() => {
+    const covered = new Set(trendHistoryReportDates);
+    return uniqueProductCategoryReportDates(
+      interestSpreadComparisonHistoryPoints,
+    ).filter((reportDate) => !covered.has(reportDate));
+  }, [interestSpreadComparisonHistoryPoints, trendHistoryReportDates]);
+  const interestSpreadHistoryView =
+    interestSpreadComparisonHistoryPoints[0]?.view ?? selectedView;
+  const interestSpreadHistoryBatches = useMemo(
+    () => chunkProductCategoryReportDates(interestSpreadOnlyReportDates),
+    [interestSpreadOnlyReportDates],
+  );
+  const interestSpreadHistoryQueries = useQueries({
+    queries: interestSpreadHistoryBatches.map((batchReportDates) => ({
       queryKey: [
         "product-category-pnl",
-        "trend-history",
+        "trend-history-batch",
         client.mode,
-        point.reportDate,
-        point.view,
+        batchReportDates.join(","),
+        interestSpreadHistoryView,
         appliedScenarioRate,
       ],
       queryFn: () =>
-        client.getProductCategoryPnl({
-          reportDate: point.reportDate,
-          view: point.view,
+        client.getProductCategoryHistory({
+          reportDates: batchReportDates,
+          view: interestSpreadHistoryView,
           ...(appliedScenarioRate
             ? { scenarioRatePct: appliedScenarioRate }
             : {}),
         }),
-      enabled: Boolean(
-        trendWorkspaceOpen &&
-        trendDiagnosticsLoaded &&
-        point.reportDate &&
-        point.view,
-      ),
+      enabled: Boolean(trendWorkspaceOpen && trendDiagnosticsLoaded),
       retry: false,
     })),
   });
+  /** Merged period lookup so each consumer resolves its own points regardless of which batch carried them. */
+  const historyPayloadByReportDate = useMemo(() => {
+    const byReportDate = new Map<
+      string,
+      { payload: ProductCategoryPnlPayload; resultMeta: ResultMeta | undefined }
+    >();
+    [...trendHistoryQueries, ...interestSpreadHistoryQueries].forEach(
+      (query) => {
+        query.data?.result.items.forEach((item) => {
+          if (item.status !== "ok" || !item.result) {
+            return;
+          }
+          byReportDate.set(item.report_date, {
+            payload: item.result,
+            resultMeta: item.result_meta ?? undefined,
+          });
+        });
+      },
+    );
+    return byReportDate;
+  }, [interestSpreadHistoryQueries, trendHistoryQueries]);
+  const trendHistoryLoading =
+    trendHistoryQueries.some((query) => query.isLoading) ||
+    interestSpreadHistoryQueries.some((query) => query.isLoading);
+  const trendHistoryErrored =
+    trendHistoryQueries.some((query) => query.isError) ||
+    interestSpreadHistoryQueries.some((query) => query.isError);
   const trendSnapshots = useMemo(
     () =>
       trendDiagnosticsLoaded
@@ -1696,26 +1833,27 @@ export default function ProductCategoryPnlPage() {
                   ),
                 ]
               : []),
-            ...trendHistoryQueries.flatMap((query, index) =>
-              query.data
+            ...trendHistoryPoints.flatMap((point) => {
+              const entry = historyPayloadByReportDate.get(point.reportDate);
+              return entry
                 ? [
                     buildProductCategoryTrendSnapshot(
-                      query.data.result,
-                      trendHistoryPoints[index]?.label,
-                      query.data.result_meta,
+                      entry.payload,
+                      point.label,
+                      entry.resultMeta,
                     ),
                   ]
-                : [],
-            ),
+                : [];
+            }),
           ]
         : [],
     [
       currentSelectedPayload,
       currentSelectedResultMeta,
       currentTrendPoint?.label,
+      historyPayloadByReportDate,
       trendDiagnosticsLoaded,
       trendHistoryPoints,
-      trendHistoryQueries,
     ],
   );
   const operatingActionBacktestPayloads = useMemo(
@@ -1723,14 +1861,20 @@ export default function ProductCategoryPnlPage() {
       trendDiagnosticsLoaded
         ? [
             ...(baseline ? [baseline] : []),
-            ...trendHistoryQueries.flatMap((query) =>
-              query.data?.result ? [query.data.result] : [],
-            ),
+            ...trendHistoryPoints.flatMap((point) => {
+              const entry = historyPayloadByReportDate.get(point.reportDate);
+              return entry ? [entry.payload] : [];
+            }),
           ]
         : baseline
           ? [baseline]
           : [],
-    [baseline, trendDiagnosticsLoaded, trendHistoryQueries],
+    [
+      baseline,
+      historyPayloadByReportDate,
+      trendDiagnosticsLoaded,
+      trendHistoryPoints,
+    ],
   );
   const operatingActionBacktestAttributions = useMemo(() => {
     const byReportDate = new Map<
@@ -1744,9 +1888,11 @@ export default function ProductCategoryPnlPage() {
       );
     }
     trendHistoryAttributionQueries.forEach((query) => {
-      if (query.data?.result) {
-        byReportDate.set(query.data.result.report_date, query.data.result);
-      }
+      query.data?.result.items.forEach((item) => {
+        if (item.status === "ok" && item.result) {
+          byReportDate.set(item.result.report_date, item.result);
+        }
+      });
     });
     return byReportDate;
   }, [
@@ -1790,25 +1936,26 @@ export default function ProductCategoryPnlPage() {
                   ),
                 ]
               : []),
-            ...interestSpreadComparisonQueries.flatMap((query, index) =>
-              query.data
+            ...interestSpreadComparisonHistoryPoints.flatMap((point) => {
+              const entry = historyPayloadByReportDate.get(point.reportDate);
+              return entry
                 ? [
                     buildProductCategoryTrendSnapshot(
-                      query.data.result,
-                      interestSpreadComparisonHistoryPoints[index]?.label,
-                      query.data.result_meta,
+                      entry.payload,
+                      point.label,
+                      entry.resultMeta,
                     ),
                   ]
-                : [],
-            ),
+                : [];
+            }),
           ]
         : [],
     [
       currentSelectedPayload,
       currentSelectedResultMeta,
+      historyPayloadByReportDate,
       interestSpreadComparisonCurrentPoint,
       interestSpreadComparisonHistoryPoints,
-      interestSpreadComparisonQueries,
       trendDiagnosticsLoaded,
     ],
   );
@@ -2267,16 +2414,73 @@ export default function ProductCategoryPnlPage() {
       deltaUnit: "亿元",
       deltaScale: 1,
     });
-  const comparisonHistoryTotal = interestSpreadComparisonQueries.length;
-  const comparisonHistoryLoaded = interestSpreadComparisonQueries.filter(
-    (query) => Boolean(query.data?.result),
-  ).length;
-  const comparisonHistoryFailed = interestSpreadComparisonQueries.filter(
-    (query) => query.isError,
-  ).length;
-  const comparisonHistoryLoading = interestSpreadComparisonQueries.filter(
-    (query) => query.isFetching,
-  ).length;
+  // Per-period load state is still reported one comparison month at a time; each month
+  // resolves against whichever batch carries it, and an unrequested batch counts as neither
+  // loaded nor failed (same as the previously disabled per-period query).
+  const comparisonHistoryStatus = useMemo(() => {
+    const ownerByReportDate = new Map<
+      string,
+      { isError: boolean; isFetching: boolean; hasData: boolean }
+    >();
+    const indexOwners = (
+      batches: string[][],
+      queries: Array<{ isError: boolean; isFetching: boolean; data?: unknown }>,
+    ) => {
+      batches.forEach((batchReportDates, index) => {
+        const query = queries[index];
+        if (!query) {
+          return;
+        }
+        batchReportDates.forEach((reportDate) => {
+          ownerByReportDate.set(reportDate, {
+            isError: query.isError,
+            isFetching: query.isFetching,
+            hasData: Boolean(query.data),
+          });
+        });
+      });
+    };
+    indexOwners(trendHistoryBatches, trendHistoryQueries);
+    indexOwners(interestSpreadHistoryBatches, interestSpreadHistoryQueries);
+
+    let loaded = 0;
+    let failed = 0;
+    let loading = 0;
+    interestSpreadComparisonHistoryPoints.forEach((point) => {
+      if (historyPayloadByReportDate.has(point.reportDate)) {
+        loaded += 1;
+        return;
+      }
+      const owner = ownerByReportDate.get(point.reportDate);
+      if (!owner) {
+        return;
+      }
+      if (owner.isError) {
+        failed += 1;
+      } else if (owner.isFetching) {
+        loading += 1;
+      } else if (owner.hasData) {
+        failed += 1;
+      }
+    });
+    return {
+      total: interestSpreadComparisonHistoryPoints.length,
+      loaded,
+      failed,
+      loading,
+    };
+  }, [
+    historyPayloadByReportDate,
+    interestSpreadComparisonHistoryPoints,
+    interestSpreadHistoryBatches,
+    interestSpreadHistoryQueries,
+    trendHistoryBatches,
+    trendHistoryQueries,
+  ]);
+  const comparisonHistoryTotal = comparisonHistoryStatus.total;
+  const comparisonHistoryLoaded = comparisonHistoryStatus.loaded;
+  const comparisonHistoryFailed = comparisonHistoryStatus.failed;
+  const comparisonHistoryLoading = comparisonHistoryStatus.loading;
   const comparisonPeriodTotal = comparisonHistoryTotal + (selectedDate ? 1 : 0);
   const comparisonPeriodLoaded =
     comparisonHistoryLoaded + (baselineQuery.data?.result ? 1 : 0);
@@ -2300,11 +2504,11 @@ export default function ProductCategoryPnlPage() {
     comparisonPeriodFailed > 0
       ? `失败 ${comparisonPeriodFailed}`
       : comparisonLoadState === "partial"
-        ? "partial"
+        ? "载入不全"
         : null,
   ]
     .filter(Boolean)
-    .join(" · ");
+    .join("；");
   const comparisonComparableMonthCount = selectedYearMonth
     ? countProductCategoryComparableReportMonths(
         interestSpreadComparisonSnapshots,
@@ -2553,14 +2757,14 @@ export default function ProductCategoryPnlPage() {
       ...(selectedView === "monthly"
         ? [attributionQuery.refetch(), managementMomAttributionQuery.refetch()]
         : []),
-      ...(trendWorkspaceOpen
+      ...(trendHistoryConsumerOpen
         ? trendHistoryQueries.map((query) => query.refetch())
         : []),
-      ...(trendWorkspaceOpen && selectedView === "monthly"
+      ...(attributionHistoryConsumerOpen && selectedView === "monthly"
         ? trendHistoryAttributionQueries.map((query) => query.refetch())
         : []),
       ...(trendWorkspaceOpen
-        ? interestSpreadComparisonQueries.map((query) => query.refetch())
+        ? interestSpreadHistoryQueries.map((query) => query.refetch())
         : []),
       ...(scenarioSensitivityRequested
         ? scenarioSensitivityQueries.map((query) => query.refetch())
@@ -2730,19 +2934,6 @@ export default function ProductCategoryPnlPage() {
   const governanceNotices = collectProductCategoryGovernanceNotices(
     baselineQuery.data?.result_meta,
   );
-  const dataHealth = buildProductCategoryDataHealth({
-    datesLoading: datesQuery.isLoading,
-    datesError: datesQuery.isError,
-    reportDates: datesQuery.data?.result.report_dates,
-    selectedDate,
-    baselineLoading: baselineQuery.isLoading || baselineQuery.isFetching,
-    baselineError: baselineQuery.isError,
-    baseline,
-    meta: baselineQuery.data?.result_meta,
-  });
-  const canRenderBaselineDerivedAnalysis =
-    Boolean(baseline) &&
-    (dataHealth.state === "ready" || dataHealth.state === "degraded");
   const formalScenarioDistinct =
     baselineQuery.data?.result_meta && scenarioQuery.data?.result_meta
       ? formatProductCategoryDualMetaDistinctLine(
@@ -2759,7 +2950,7 @@ export default function ProductCategoryPnlPage() {
       <span>当前场景：{currentSceneRate}%</span>
       <span>基准场景：{baselineRate}%</span>
       <span className="product-category-summary__total">
-        合计：
+        FTP后经营净收入：
         {formatProductCategoryValue(displayedGrandTotal?.business_net_income)}
       </span>
     </div>
@@ -2840,7 +3031,7 @@ export default function ProductCategoryPnlPage() {
                   ? "正式口径"
                   : "口径待确认"
               }`}
-              {` · ${selectedView === "monthly" ? "月度视图" : "汇总视图"}`}
+              {` | ${selectedView === "monthly" ? "月度视图" : "汇总视图"}`}
             </span>
           }
           actions={
@@ -3256,41 +3447,10 @@ export default function ProductCategoryPnlPage() {
                 className="product-category-scenario-signing-warning"
                 data-testid="product-category-scenario-signing-warning"
                 role="note"
+                title="formal_use_allowed=false"
               >
                 当前顶部总计来自 FTP {String(scenario.scenario_rate_pct)}%
-                场景预览，
-                formal_use_allowed=false，不可用于签批；下方归因继续使用正式基线响应，二者不得混作同一口径。
-              </div>
-            ) : null}
-            {attributionQuery.data?.result_meta ? (
-              <div
-                className={`product-category-attribution-contract-strip ${
-                  attributionQuery.data.result_meta.quality_flag === "ok" &&
-                  attributionQuery.data.result_meta.vendor_status === "ok" &&
-                  attributionQuery.data.result_meta.fallback_mode === "none"
-                    ? "is-ready"
-                    : "is-degraded"
-                }`}
-                data-testid="product-category-attribution-result-meta"
-              >
-                <strong>ATTRIBUTION RESULT META</strong>
-                <span>basis={attributionQuery.data.result_meta.basis}</span>
-                <span>
-                  quality={attributionQuery.data.result_meta.quality_flag}
-                </span>
-                <span>
-                  vendor={attributionQuery.data.result_meta.vendor_status}
-                </span>
-                <span>
-                  fallback={attributionQuery.data.result_meta.fallback_mode}
-                </span>
-                <span>
-                  formal_use_allowed=
-                  {String(attributionQuery.data.result_meta.formal_use_allowed)}
-                </span>
-                <span>
-                  trace_id={attributionQuery.data.result_meta.trace_id}
-                </span>
+                场景预览，不可用于签批；下方归因继续使用正式基线响应，二者不得混作同一口径。
               </div>
             ) : null}
             <ProductCategoryAttributionPanel
@@ -3328,13 +3488,11 @@ export default function ProductCategoryPnlPage() {
           surface={managementMonitoringSurface}
           isLoading={
             !managementScenarioDistinct &&
-            (managementMomAttributionQuery.isLoading ||
-              trendHistoryQueries.some((query) => query.isLoading))
+            (managementMomAttributionQuery.isLoading || trendHistoryLoading)
           }
           isError={
             !managementScenarioDistinct &&
-            (managementMomAttributionQuery.isError ||
-              trendHistoryQueries.some((query) => query.isError))
+            (managementMomAttributionQuery.isError || trendHistoryErrored)
           }
           onRetry={() => {
             void Promise.all([
@@ -3345,20 +3503,24 @@ export default function ProductCategoryPnlPage() {
         />
       ) : null}
 
-      {canRenderBaselineDerivedAnalysis && selectedView === "monthly" ? (
+      {canRenderBaselineDerivedAnalysis ? (
         <details
           className="product-category-trend-terminal"
           data-testid="product-category-trend-workspace"
-          onToggle={(event) => setTrendWorkspaceOpen(event.currentTarget.open)}
+          open={trendWorkspaceOpen}
+          onToggle={(event) => {
+            const isOpen = event.currentTarget.open;
+            setTrendWorkspaceOpen(isOpen);
+            persistProductCategoryTrendWorkspacePreference(isOpen);
+          }}
         >
           <summary>
             <div className="product-category-trend-terminal__header">
               <div className="product-category-trend-terminal__copy">
-                <span>趋势与利差 / TREND &amp; SPREAD</span>
+                <span>趋势与利差</span>
                 <strong>趋势与利差候选图表</strong>
                 <small>
-                  最近 {trendSnapshots.length || 8} 个报告期 · 正式接口历史 ·
-                  默认折叠
+                  最近 {trendSnapshots.length || 8} 个报告期 · 正式接口历史
                 </small>
               </div>
               <div
@@ -3366,15 +3528,15 @@ export default function ProductCategoryPnlPage() {
                 aria-label="最新趋势读数"
               >
                 <span>
-                  <small>EARNING SCALE</small>
+                  <small>生息规模</small>
                   <strong>{trendHeaderMetrics.earningScale}</strong>
                 </span>
                 <span>
-                  <small>LIABILITY AVG</small>
+                  <small>负债均额</small>
                   <strong>{trendHeaderMetrics.liabilityAverage}</strong>
                 </span>
                 <span>
-                  <small>NET SPREAD</small>
+                  <small>净利差</small>
                   <strong>{trendHeaderMetrics.netSpread}</strong>
                 </span>
               </div>
@@ -3412,25 +3574,25 @@ export default function ProductCategoryPnlPage() {
                   <DerivedChartPanel
                     testId="product-category-derived-chart-interest-earning-income-scale"
                     title="生息资产收入规模趋势图"
-                    description="8 PERIODS · DETAIL HISTORY"
+                    description="跟踪近8个报告期生息资产收入规模的变化趋势。"
                     option={interestEarningIncomeScaleOption}
                   />
                   <DerivedChartPanel
                     testId="product-category-derived-chart-interest-spread"
                     title="资产负债利差趋势图"
-                    description="BACKEND FIELDS · 8 PERIODS"
+                    description="跟踪近8个报告期资产端与负债端利差的变化趋势。"
                     option={interestSpreadOption}
                   />
                   <DerivedChartPanel
                     testId="product-category-derived-chart-interest-earning-spread"
                     title="生息资产负债利差趋势图"
-                    description="EARNING ASSET · FUNDING · SPREAD"
+                    description="对比生息资产收益率、计息负债成本率与利差的变化。"
                     option={interestEarningSpreadOption}
                   />
                   <DerivedChartPanel
                     testId="product-category-derived-chart-interest-earning-asset-liability-scale"
                     title="生息资产和附息负债走势图"
-                    description="AVERAGE BALANCE · 8 PERIODS"
+                    description="跟踪近8个报告期生息资产与附息负债日均余额的变化趋势。"
                     option={interestEarningAssetLiabilityScaleOption}
                   />
                 </div>
@@ -3449,7 +3611,7 @@ export default function ProductCategoryPnlPage() {
                       利差变动归因
                     </h3>
                     <p className="product-category-diagnostics__description">
-                      BACKEND ASSET YIELD − LIABILITY YIELD
+                      资产端收益率 − 负债端付息率
                     </p>
                   </div>
                   <div className="product-category-diagnostics__spread-grid">
@@ -3532,13 +3694,13 @@ export default function ProductCategoryPnlPage() {
                         负债端趋势分析
                       </h3>
                       <p className="product-category-diagnostics__description">
-                        LIABILITY_TOTAL · FORMAL HISTORY
+                        负债总额的正式接口历史走势
                       </p>
                     </div>
                     <a href="#product-category-liabilities">负债侧口径 →</a>
                   </div>
                   {liabilitySideTrendOption ? (
-                    <ReactECharts
+                    <LazyReactECharts
                       option={liabilitySideTrendOption}
                       className="product-category-derived-chart__canvas"
                       data-testid="product-category-trend-liability-chart"
@@ -3931,6 +4093,9 @@ export default function ProductCategoryPnlPage() {
         <details
           className="product-category-secondary-workspace"
           data-testid="product-category-backtest-workspace"
+          onToggle={(event) =>
+            setBacktestWorkspaceOpen(event.currentTarget.open)
+          }
         >
           <summary>
             <span>动作回测候选分析</span>
@@ -3940,7 +4105,7 @@ export default function ProductCategoryPnlPage() {
             surface={operatingActionBacktestSurface}
             isHistoryLoaded={trendDiagnosticsLoaded}
             historyLoading={
-              trendHistoryQueries.some((query) => query.isLoading) ||
+              trendHistoryLoading ||
               trendHistoryAttributionQueries.some((query) => query.isLoading)
             }
             candidateNotice={
@@ -3985,7 +4150,7 @@ export default function ProductCategoryPnlPage() {
             sourceLabel={
               scenario?.scenario_rate_pct == null
                 ? "正式基线归因定位"
-                : `FTP ${String(scenario.scenario_rate_pct)}% 场景 · 正式基线归因定位`
+                : `FTP ${String(scenario.scenario_rate_pct)}% 场景（正式基线归因定位）`
             }
             row={selectedFormalRow}
             onOpenAttributionEvidence={
@@ -4353,6 +4518,11 @@ export default function ProductCategoryPnlPage() {
               title: "场景覆盖",
               meta: scenarioQuery.data?.result_meta,
             },
+            {
+              key: "attribution",
+              title: "归因结果",
+              meta: attributionQuery.data?.result_meta,
+            },
           ]}
         />
       </details>
@@ -4362,7 +4532,7 @@ export default function ProductCategoryPnlPage() {
           data-testid="product-category-footer-total"
           className="product-category-footer-total"
         >
-          全部市场科目 + 投资收益合计：
+          全部市场科目FTP后经营净收入：
           {formatProductCategoryValue(displayedGrandTotal.business_net_income)}
         </div>
       ) : null}
@@ -4382,7 +4552,9 @@ export default function ProductCategoryPnlPage() {
         >
           <summary>
             <span>诊断与负债趋势候选分析</span>
-            <small>经营矩阵、负贡献观察、负债趋势与候选图表</small>
+            <small>
+              经营矩阵、负贡献观察、利差归因与负债结构核查；走势图已移至上方“趋势与利差候选图表”
+            </small>
           </summary>
           {diagnosticsWorkspaceOpen ? (
             <div className="product-category-diagnostics-workspace__body">
@@ -4420,7 +4592,7 @@ export default function ProductCategoryPnlPage() {
                         className="product-category-diagnostics__summary"
                         data-testid="product-category-diagnostics-summary"
                       >
-                        当前总损益 {diagnosticsSurface.headlineTotalLabel}
+                        当前FTP后经营净收入 {diagnosticsSurface.headlineTotalLabel}
                       </span>
                     ) : null}
                   </div>
@@ -4688,7 +4860,7 @@ export default function ProductCategoryPnlPage() {
                   </span>
                 </div>
                 {liabilitySideTrendOption ? (
-                  <ReactECharts
+                  <LazyReactECharts
                     option={liabilitySideTrendOption}
                     className="product-category-derived-chart__canvas"
                     data-testid="product-category-liability-side-trend-chart"

@@ -138,6 +138,47 @@ class ProductCategoryDatesPayload(BaseModel):
     report_dates: list[str]
 
 
+class ProductCategoryHistoryItem(BaseModel):
+    """One report date inside a batch history response.
+
+    A missing report date degrades to status='not_found' for that item only, so a
+    partially materialized history still returns the periods that do exist.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    report_date: str
+    status: Literal["ok", "not_found"]
+    detail: str | None = None
+    result: ProductCategoryPnlPayload | None = None
+    result_meta: dict[str, object] | None = None
+
+
+class ProductCategoryHistoryPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    view: str
+    scenario_rate_pct: float | None = None
+    items: list[ProductCategoryHistoryItem]
+
+
+class ProductCategoryAttributionHistoryItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    report_date: str
+    status: Literal["ok", "not_found"]
+    detail: str | None = None
+    result: ProductCategoryAttributionPayload | None = None
+    result_meta: dict[str, object] | None = None
+
+
+class ProductCategoryAttributionHistoryPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    compare: Literal["mom", "yoy"]
+    items: list[ProductCategoryAttributionHistoryItem]
+
+
 class ProductCategoryManualAdjustmentCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

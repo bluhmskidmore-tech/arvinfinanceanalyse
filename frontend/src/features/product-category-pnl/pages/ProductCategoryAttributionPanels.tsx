@@ -819,7 +819,7 @@ function ProductCategoryAttributionComparisonMobileReadout(props: {
   return (
     <ProductCategoryAttributionMobileReadout
       testId="product-category-attribution-comparison-mobile-readout"
-      eyebrow="Attribution bridge"
+      eyebrow="归因桥接"
       title={"\u79fb\u52a8\u5f52\u56e0\u8bfb\u6570"}
       meta={[
         `${formatProductCategoryReportMonthLabel(props.currentReportDate)}`,
@@ -890,7 +890,7 @@ function ProductCategoryAttributionDetailMobileReadout(props: {
   return (
     <ProductCategoryAttributionMobileReadout
       testId="product-category-attribution-detail-mobile-readout"
-      eyebrow="Point detail"
+      eyebrow="逐项明细"
       title={"\u79fb\u52a8\u660e\u7ec6\u8bfb\u6570"}
       meta={[
         row.category_name,

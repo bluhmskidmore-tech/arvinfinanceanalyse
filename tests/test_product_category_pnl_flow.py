@@ -43,6 +43,14 @@ _PRODUCT_CATEGORY_READ_CASES: tuple[tuple[str, dict[str, str]], ...] = (
     ("/ui/pnl/product-category/dates", {}),
     ("/ui/pnl/product-category", {"report_date": "2026-02-28", "view": "monthly"}),
     ("/ui/pnl/product-category/attribution", {"report_date": "2026-02-28", "compare": "mom"}),
+    (
+        "/ui/pnl/product-category/history",
+        {"report_dates": "2026-02-28,2026-01-31", "view": "monthly"},
+    ),
+    (
+        "/ui/pnl/product-category/attribution/history",
+        {"report_dates": "2026-02-28,2026-01-31", "compare": "mom"},
+    ),
     ("/ui/pnl/product-category/refresh-status", {"run_id": "product-category-run"}),
     ("/ui/pnl/product-category/manual-adjustments", {"report_date": "2026-02-28"}),
     ("/ui/pnl/product-category/manual-adjustments/export", {"report_date": "2026-02-28"}),
@@ -124,6 +132,19 @@ def test_product_category_read_surfaces_require_explicit_read_scope(tmp_path, mo
         route_module,
         "product_category_attribution_envelope",
         lambda *_args, **_kwargs: {"result_meta": {"result_kind": "product_category_pnl.attribution"}, "result": {}},
+    )
+    monkeypatch.setattr(
+        route_module,
+        "product_category_history_envelope",
+        lambda *_args, **_kwargs: {"result_meta": {"result_kind": "product_category_pnl.history"}, "result": {}},
+    )
+    monkeypatch.setattr(
+        route_module,
+        "product_category_attribution_history_envelope",
+        lambda *_args, **_kwargs: {
+            "result_meta": {"result_kind": "product_category_pnl.attribution_history"},
+            "result": {},
+        },
     )
     monkeypatch.setattr(
         route_module.importlib,
@@ -262,6 +283,210 @@ def test_product_category_detail_does_not_mask_unexpected_value_errors(tmp_path,
 def _load_product_category_pnl_service_module():
     """Return the module object used by API code (patch attributes here, not via string paths)."""
     return importlib.import_module("backend.app.services.product_category_pnl_service")
+
+
+def _stub_single_period_envelope(report_date: str, view: str) -> dict[str, object]:
+    """Minimal but schema-valid detail envelope so the batch path exercises real validation."""
+    row = _pnl_row_payload("asset_total", "10").model_dump(mode="json")
+    payload = {
+        "report_date": report_date,
+        "view": view,
+        "available_views": ["monthly"],
+        "scenario_rate_pct": None,
+        "rows": [row],
+        "asset_total": row,
+        "liability_total": _pnl_row_payload("liability_total", "-3").model_dump(mode="json"),
+        "grand_total": _pnl_row_payload("grand_total", "7").model_dump(mode="json"),
+        "interest_spread": {},
+        "interest_earning_spread": {},
+    }
+    return {
+        "result_meta": {
+            "result_kind": "product_category_pnl.detail",
+            "source_version": f"sv_{report_date}",
+            "quality_flag": "warning" if report_date == "2026-01-31" else "ok",
+        },
+        "result": payload,
+    }
+
+
+def test_product_category_history_preserves_per_period_result_meta(monkeypatch):
+    """The trend workspace derives per-period quality badges from each item's own meta."""
+    service = _load_product_category_pnl_service_module()
+    monkeypatch.setattr(
+        service,
+        "product_category_pnl_envelope",
+        lambda _path, *, report_date, view, scenario_rate_pct: _stub_single_period_envelope(
+            report_date, view
+        ),
+    )
+
+    envelope = service.product_category_history_envelope(
+        "unused.duckdb",
+        report_dates=["2026-02-28", "2026-01-31"],
+        view="monthly",
+    )
+
+    items = envelope["result"]["items"]
+    assert [item["report_date"] for item in items] == ["2026-02-28", "2026-01-31"]
+    assert [item["status"] for item in items] == ["ok", "ok"]
+    assert items[0]["result_meta"]["quality_flag"] == "ok"
+    assert items[1]["result_meta"]["quality_flag"] == "warning"
+    assert items[0]["result"]["report_date"] == "2026-02-28"
+    assert envelope["result_meta"]["result_kind"] == "product_category_pnl.history"
+    assert envelope["result_meta"]["quality_flag"] == "ok"
+
+
+def test_product_category_history_degrades_only_the_missing_period(monkeypatch):
+    service = _load_product_category_pnl_service_module()
+
+    def envelope_or_missing(_path, *, report_date, view, scenario_rate_pct):
+        if report_date == "2026-01-31":
+            raise service.ProductCategoryReadModelNotFoundError(
+                f"No product-category read model rows for report_date={report_date} view='{view}'."
+            )
+        return _stub_single_period_envelope(report_date, view)
+
+    monkeypatch.setattr(service, "product_category_pnl_envelope", envelope_or_missing)
+
+    envelope = service.product_category_history_envelope(
+        "unused.duckdb",
+        report_dates=["2026-02-28", "2026-01-31"],
+        view="monthly",
+    )
+
+    items = envelope["result"]["items"]
+    assert [item["status"] for item in items] == ["ok", "not_found"]
+    assert items[1]["result"] is None
+    assert "No product-category read model rows" in items[1]["detail"]
+    assert envelope["result_meta"]["quality_flag"] == "warning"
+
+
+def test_product_category_attribution_history_batches_per_period(monkeypatch):
+    service = _load_product_category_pnl_service_module()
+    monkeypatch.setattr(
+        service,
+        "product_category_attribution_envelope",
+        lambda _path, *, report_date, compare: {
+            "result_meta": {"result_kind": "product_category_pnl.attribution"},
+            "result": {
+                "report_date": report_date,
+                "compare": compare,
+                "current_report_date": report_date,
+                "prior_report_date": "2025-12-31",
+                "state": "complete",
+                "rows": [],
+                "totals": None,
+            },
+        },
+    )
+
+    envelope = service.product_category_attribution_history_envelope(
+        "unused.duckdb",
+        report_dates=["2026-02-28", "2026-01-31"],
+        compare="mom",
+    )
+
+    items = envelope["result"]["items"]
+    assert envelope["result"]["compare"] == "mom"
+    assert [item["result"]["report_date"] for item in items] == ["2026-02-28", "2026-01-31"]
+    assert (
+        envelope["result_meta"]["result_kind"] == "product_category_pnl.attribution_history"
+    )
+
+
+def test_product_category_history_route_dedupes_and_caps_report_dates(tmp_path, monkeypatch):
+    client, _ = _build_product_category_client(tmp_path, monkeypatch)
+    route_module = importlib.import_module("backend.app.api.routes.product_category_pnl")
+    seen: list[list[str]] = []
+
+    monkeypatch.setattr(
+        route_module,
+        "product_category_history_envelope",
+        lambda _path, *, report_dates, view, scenario_rate_pct: (
+            seen.append(list(report_dates)),
+            {"result_meta": {}, "result": {"view": view, "items": []}},
+        )[1],
+    )
+
+    duplicated = client.get(
+        "/ui/pnl/product-category/history",
+        params={"report_dates": "2026-02-28, 2026-01-31 ,2026-02-28", "view": "monthly"},
+    )
+    assert duplicated.status_code == 200
+    assert seen == [["2026-02-28", "2026-01-31"]]
+
+    empty = client.get(
+        "/ui/pnl/product-category/history",
+        params={"report_dates": " , ", "view": "monthly"},
+    )
+    assert empty.status_code == 422
+
+    too_many = client.get(
+        "/ui/pnl/product-category/history",
+        params={
+            "report_dates": ",".join(f"2026-02-{index:02d}" for index in range(1, 40)),
+            "view": "monthly",
+        },
+    )
+    assert too_many.status_code == 422
+    assert "at most" in too_many.json()["detail"]
+    get_settings.cache_clear()
+
+
+def test_product_category_history_rejects_invalid_view(tmp_path, monkeypatch):
+    client, _ = _build_product_category_client(tmp_path, monkeypatch)
+
+    response = client.get(
+        "/ui/pnl/product-category/history",
+        params={"report_dates": "2026-02-28", "view": "weekly"},
+    )
+
+    assert response.status_code == 422
+    assert "Unsupported product-category view='weekly'" in response.json()["detail"]
+    get_settings.cache_clear()
+
+
+def test_product_category_history_returns_200_with_missing_items_when_read_model_is_empty(
+    tmp_path, monkeypatch
+):
+    """A partially materialized history must not fail the whole batch."""
+    client, _ = _build_product_category_client(tmp_path, monkeypatch)
+
+    response = client.get(
+        "/ui/pnl/product-category/history",
+        params={"report_dates": "2026-02-28,2026-01-31", "view": "monthly"},
+    )
+
+    assert response.status_code == 200
+    items = response.json()["result"]["items"]
+    assert [item["status"] for item in items] == ["not_found", "not_found"]
+    get_settings.cache_clear()
+
+
+def test_product_category_history_returns_503_when_read_model_is_locked(tmp_path, monkeypatch):
+    client, _ = _build_product_category_client(tmp_path, monkeypatch)
+    service = _load_product_category_pnl_service_module()
+    storage_error = service.ProductCategoryPnlStorageError
+
+    class LockedAnalysisService:
+        def execute(self, _query):
+            raise storage_error("locked")
+
+    monkeypatch.setattr(
+        service,
+        "build_analysis_service",
+        lambda _duckdb_path: LockedAnalysisService(),
+    )
+
+    response = client.get(
+        "/ui/pnl/product-category/history",
+        params={"report_dates": "2026-02-28", "view": "monthly"},
+    )
+
+    assert response.status_code == 503
+    assert "temporarily unavailable" in response.json()["detail"]
+    get_settings.cache_clear()
 
 
 def test_product_category_materialize_and_api_flow(tmp_path, monkeypatch, seed_wildcard_scope):

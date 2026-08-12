@@ -1,5 +1,5 @@
 /** PnL by-business, PnL bridge, and product-category PnL contracts. */
-import type { ApiQuality, Numeric } from "./core";
+import type { ApiQuality, Numeric, ResultMeta } from "./core";
 
 export type PnlFormalFiRow = {
   report_date: string;
@@ -798,6 +798,34 @@ export type ProductCategoryAttributionPayload = {
     liability_total: ProductCategoryAttributionRow;
     grand_total: ProductCategoryAttributionRow;
   } | null;
+};
+
+/** One report date inside a batch history response; a missing period degrades that item only. */
+export type ProductCategoryHistoryItem = {
+  report_date: string;
+  status: "ok" | "not_found";
+  detail: string | null;
+  result: ProductCategoryPnlPayload | null;
+  result_meta: ResultMeta | null;
+};
+
+export type ProductCategoryHistoryPayload = {
+  view: string;
+  scenario_rate_pct: DecimalLike | null;
+  items: ProductCategoryHistoryItem[];
+};
+
+export type ProductCategoryAttributionHistoryItem = {
+  report_date: string;
+  status: "ok" | "not_found";
+  detail: string | null;
+  result: ProductCategoryAttributionPayload | null;
+  result_meta: ResultMeta | null;
+};
+
+export type ProductCategoryAttributionHistoryPayload = {
+  compare: "mom" | "yoy";
+  items: ProductCategoryAttributionHistoryItem[];
 };
 
 export type ProductCategoryRefreshPayload = {

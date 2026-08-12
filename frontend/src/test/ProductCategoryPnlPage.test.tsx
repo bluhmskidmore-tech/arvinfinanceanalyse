@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeAll, vi } from "vitest";
+import { beforeAll, beforeEach, vi } from "vitest";
 
 import { ActionRequestError, createApiClient } from "../api/client";
 import type {
@@ -64,9 +64,24 @@ vi.mock("../lib/echarts", () => ({
   },
 }));
 
+// 该路由的模块链（页面组件 + 图表/归因/情景面板 + 页面模型）实测预加载约 17–24s，
+// 贴着 20s 上限，在有负载的机器上会稳定超时假失败。与 dashboard-home 同样按重路由放宽。
 beforeAll(async () => {
   await preloadWorkbenchRouteModules("product-category-pnl");
-}, 20_000);
+}, 60_000);
+
+const TREND_WORKSPACE_STORAGE_KEY =
+  "moss.product-category-pnl.trend-workspace-open";
+
+// 趋势折叠区的展开状态会持久化，用例之间必须复位，否则先跑的用例会决定后跑用例的初始状态。
+beforeEach(() => {
+  window.localStorage.removeItem(TREND_WORKSPACE_STORAGE_KEY);
+});
+
+/** 显式选择折叠，用于继续覆盖"消费方关闭时不加载历史"的懒加载契约。 */
+function preferCollapsedTrendWorkspace() {
+  window.localStorage.setItem(TREND_WORKSPACE_STORAGE_KEY, "0");
+}
 
 function renderWorkbenchAppWithClient(
   client: ReturnType<typeof createApiClient>,
@@ -986,6 +1001,7 @@ describe("ProductCategoryPnlPage", () => {
 
   it("mounts all eight reference blocks and five comparison charts from one trend disclosure", async () => {
     const user = userEvent.setup();
+    preferCollapsedTrendWorkspace();
     renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
 
     const diagnosticsWorkspace = await screen.findByTestId(
@@ -1202,7 +1218,7 @@ describe("ProductCategoryPnlPage", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByTestId("product-category-api-contract-runtime"),
-    ).toHaveTextContent("READ INTEGRATED 6/6 · WRITE INTEGRATED 5/5");
+    ).toHaveTextContent("读接口已联调 6/6 · 写接口已联调 5/5");
     expect(ledger).toHaveTextContent("不是服务健康检查");
     await screen.findByTestId("product-category-table");
     expect(
@@ -1360,7 +1376,7 @@ describe("ProductCategoryPnlPage", () => {
     expect(governance).toContainElement(signingStatus);
     expect(signingStatus).toHaveTextContent("签署状态");
     expect(signingStatus).toHaveTextContent("待认证");
-    expect(signingStatus).toHaveTextContent("Owner-signable=false");
+    expect(signingStatus).toHaveTextContent("可签署：否");
   });
 
   it("keeps result metadata collapsed as an evidence layer", async () => {
@@ -1403,7 +1419,7 @@ describe("ProductCategoryPnlPage", () => {
     ).toHaveTextContent("报告月 2026年02月");
     expect(
       screen.getByTestId("product-category-report-date-slot"),
-    ).toHaveTextContent("2026-02-28 · 正式口径 · 月度视图");
+    ).toHaveTextContent("2026-02-28 · 正式口径 | 月度视图");
     expect(screen.getByTestId("product-category-role-badge")).toHaveTextContent(
       "本地离线契约回放",
     );
@@ -1420,17 +1436,20 @@ describe("ProductCategoryPnlPage", () => {
       productCategoryBranch.compareDocumentPosition(ownerStatus) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(ownerStatus).toHaveTextContent("Owner-signable=false");
-    expect(ownerStatus).toHaveTextContent("Certified=false");
-    expect(ownerStatus).toHaveTextContent("Owner approval pending");
-    expect(ownerStatus).toHaveTextContent("Golden sample awaiting approval");
-    expect(ownerStatus).toHaveTextContent("Manual audit partial units=10");
+    expect(ownerStatus).toHaveTextContent("可签署：否");
+    expect(ownerStatus).toHaveTextContent("已认证：否");
+    expect(ownerStatus).toHaveTextContent("待业主审批");
+    expect(ownerStatus).toHaveTextContent("黄金样本待审批");
+    expect(ownerStatus).toHaveTextContent("人工抽核未完成：已核 10 个单元");
     expect(
       screen.getByTestId("product-category-formal-readiness-band"),
     ).toHaveTextContent("本期经营结果");
     expect(
       screen.getByTestId("product-category-formal-headline-copy"),
     ).toHaveTextContent("本期合计经营净收入");
+    expect(
+      screen.getAllByTestId("product-category-core-metric")[0],
+    ).toHaveTextContent("FTP后经营净收入（亿元）");
     expect(
       screen.getByTestId("product-category-formal-readiness-status"),
     ).toHaveTextContent("report_date=2026-02-28");
@@ -1446,19 +1465,15 @@ describe("ProductCategoryPnlPage", () => {
     const certificationBlockers = screen.getByTestId(
       "product-category-certification-blockers",
     );
-    expect(certificationBlockers).toHaveTextContent("Owner approval pending");
+    expect(certificationBlockers).toHaveTextContent("待业主审批");
+    expect(certificationBlockers).toHaveTextContent("黄金样本待审批");
     expect(certificationBlockers).toHaveTextContent(
-      "Golden sample awaiting approval",
+      "人工抽核未完成：已核 10 个单元",
     );
-    expect(certificationBlockers).toHaveTextContent(
-      "Manual audit partial units=10",
-    );
-    expect(certificationBlockers).toHaveTextContent(
-      "Fresh pre-signature rerun required",
-    );
-    expect(certificationBlockers).toHaveTextContent("Unit=亿元");
-    expect(certificationBlockers).toHaveTextContent("Date basis=report_date");
-    expect(certificationBlockers).toHaveTextContent("Source=formal read model");
+    expect(certificationBlockers).toHaveTextContent("签署前需重新运行核算");
+    expect(certificationBlockers).toHaveTextContent("单位：亿元");
+    expect(certificationBlockers).toHaveTextContent("日期基准：report_date");
+    expect(certificationBlockers).toHaveTextContent("数据来源：正式只读模型");
     expect(
       screen.getByTestId("product-category-formal-headline-totals"),
     ).toHaveTextContent("MTR-PCP-001");
@@ -1571,11 +1586,11 @@ describe("ProductCategoryPnlPage", () => {
       "1.75",
     );
     expect(screen.getByTestId("product-category-summary")).toHaveTextContent(
-      "合计：",
+      "FTP后经营净收入：",
     );
     expect(
       screen.getByTestId("product-category-footer-total"),
-    ).toHaveTextContent("全部市场科目 + 投资收益合计：");
+    ).toHaveTextContent("全部市场科目FTP后经营净收入：");
     const metaPanel = screen.getByTestId(
       "product-category-result-meta-baseline",
     );
@@ -1815,7 +1830,7 @@ describe("ProductCategoryPnlPage", () => {
       within(signing).getByRole("heading", { level: 3, name: "签署阻断" }),
     ).toBeInTheDocument();
     expect(signing).toHaveTextContent("签署阻断");
-    expect(signing).toHaveTextContent("Owner approval pending");
+    expect(signing).toHaveTextContent("待业主审批");
 
     const source = within(governance).getByTestId(
       "product-category-governance-source-version",
@@ -1834,8 +1849,8 @@ describe("ProductCategoryPnlPage", () => {
       within(audit).getByRole("heading", { level: 3, name: "审计证据" }),
     ).toBeInTheDocument();
     expect(audit).toHaveTextContent("审计证据");
-    expect(audit).toHaveTextContent("Unit=亿元");
-    expect(audit).toHaveTextContent("Date basis=report_date");
+    expect(audit).toHaveTextContent("单位：亿元");
+    expect(audit).toHaveTextContent("日期基准：report_date");
   });
 
   it("surfaces an explicit no-data state when the selected baseline has no detail rows", async () => {
@@ -2043,7 +2058,7 @@ describe("ProductCategoryPnlPage", () => {
     ).not.toBeInTheDocument();
     expect(
       screen.getByTestId("product-category-report-date-slot"),
-    ).toHaveTextContent("口径待确认 · 汇总视图");
+    ).toHaveTextContent("口径待确认 | 汇总视图");
 
     pendingBaseline.resolve(
       buildMockProductCategoryPnlEnvelope({
@@ -2802,6 +2817,7 @@ describe("ProductCategoryPnlPage", () => {
   });
 
   it("Unit 1: first report_dates entry drives baseline PnL, manual adjustments list, and ledger link", async () => {
+    preferCollapsedTrendWorkspace();
     const baseClient = createApiClient({ mode: "mock" });
     const firstDate = "2026-03-31";
     const pnlSpy = vi.fn(
@@ -4876,6 +4892,7 @@ describe("ProductCategoryPnlPage", () => {
 
   it("builds derived charts on 2025 quarter-end points, 2025 Nov-Dec, and 2026 Jan-Mar with one view basis", async () => {
     const user = userEvent.setup();
+    preferCollapsedTrendWorkspace();
     const baseClient = createApiClient({ mode: "mock" });
     const getProductCategoryPnl = vi.fn(
       async (options: Parameters<typeof baseClient.getProductCategoryPnl>[0]) =>
@@ -5022,7 +5039,330 @@ describe("ProductCategoryPnlPage", () => {
       "2026-02-28:ytd",
       "2026-03-31:ytd",
     ]);
+
+    // 汇总视图下趋势折叠区保持可见，走势图按 ytd 口径重建。
+    expect(
+      screen.getByTestId("product-category-trend-workspace"),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      const ytdTplOption = readChartOption(
+        "product-category-derived-chart-tpl-scale-yield",
+      );
+      expect(
+        (ytdTplOption.xAxis as { data: string[] }).data,
+      ).toHaveLength(8);
+    });
   });
+
+  it("opens the trend workspace by default and remembers the reader's choice", async () => {
+    const user = userEvent.setup();
+    renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
+
+    // 图表折叠区在页面下方、与多条同款折叠条并列，默认折叠会被读成“图表不见了”。
+    const trendWorkspace = await screen.findByTestId(
+      "product-category-trend-workspace",
+    );
+    expect(trendWorkspace).toHaveAttribute("open");
+    await screen.findByTestId("product-category-derived-chart-grid");
+
+    const trendSummary = within(trendWorkspace)
+      .getByText("趋势与利差候选图表", { exact: true })
+      .closest("summary");
+    await user.click(trendSummary!);
+
+    await waitFor(() => {
+      expect(
+        window.localStorage.getItem(TREND_WORKSPACE_STORAGE_KEY),
+      ).toBe("0");
+    });
+    expect(trendWorkspace).not.toHaveAttribute("open");
+    expect(
+      screen.queryByTestId("product-category-derived-chart-grid"),
+    ).not.toBeInTheDocument();
+
+    await user.click(trendSummary!);
+    await waitFor(() => {
+      expect(
+        window.localStorage.getItem(TREND_WORKSPACE_STORAGE_KEY),
+      ).toBe("1");
+    });
+    await screen.findByTestId("product-category-derived-chart-grid");
+  });
+
+  it("honours a stored collapsed preference on the next visit", async () => {
+    preferCollapsedTrendWorkspace();
+    renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
+
+    const trendWorkspace = await screen.findByTestId(
+      "product-category-trend-workspace",
+    );
+    expect(trendWorkspace).not.toHaveAttribute("open");
+    expect(
+      screen.queryByTestId("product-category-derived-chart-grid"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("requests trend history as batches instead of one request per report date", async () => {
+    preferCollapsedTrendWorkspace();
+    const baseClient = createApiClient({ mode: "mock" });
+    const getProductCategoryHistory = vi.fn(baseClient.getProductCategoryHistory);
+    const getProductCategoryAttributionHistory = vi.fn(
+      baseClient.getProductCategoryAttributionHistory,
+    );
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryDates: vi.fn(async () =>
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: [
+            "2026-03-31",
+            "2026-02-28",
+            "2026-01-31",
+            "2025-12-31",
+            "2025-11-30",
+            "2025-10-31",
+            "2025-09-30",
+            "2025-06-30",
+            "2025-03-31",
+          ],
+        }),
+      ),
+      getProductCategoryHistory,
+      getProductCategoryAttributionHistory,
+    });
+
+    await screen.findByTestId("product-category-table");
+    expect(getProductCategoryHistory).not.toHaveBeenCalled();
+
+    await openProductCategoryTrendWorkspace();
+
+    await waitFor(() => {
+      expect(getProductCategoryHistory.mock.calls.length).toBeGreaterThanOrEqual(1);
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("product-category-trend-comparison-status"),
+      ).toHaveTextContent("对比期载入");
+    });
+
+    const historyCalls = getProductCategoryHistory.mock.calls;
+    const batchedDates = historyCalls.flatMap(([options]) => options.reportDates);
+    // Batched, not per period: each request must carry several report dates on average.
+    expect(batchedDates.length / historyCalls.length).toBeGreaterThanOrEqual(2);
+    // Batches stay disjoint so no report date is fetched twice.
+    expect(new Set(batchedDates).size).toBe(batchedDates.length);
+    expect(batchedDates).not.toContain("2026-03-31");
+
+    await waitFor(() => {
+      expect(getProductCategoryAttributionHistory).toHaveBeenCalled();
+    });
+    const attributionDates = getProductCategoryAttributionHistory.mock.calls.flatMap(
+      ([options]) => options.reportDates,
+    );
+    expect(new Set(attributionDates).size).toBe(attributionDates.length);
+    expect(attributionDates).not.toContain("2026-03-31");
+  });
+
+  it("loads trend history when only the diagnostics or backtest workspace opens", async () => {
+    const user = userEvent.setup();
+    preferCollapsedTrendWorkspace();
+    const baseClient = createApiClient({ mode: "mock" });
+    const getProductCategoryPnl = vi.fn(
+      async (options: Parameters<typeof baseClient.getProductCategoryPnl>[0]) =>
+        buildMockProductCategoryPnlEnvelope(options),
+    );
+    const getProductCategoryAttribution = vi.fn(
+      baseClient.getProductCategoryAttribution,
+    );
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryDates: vi.fn(async () =>
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: [
+            "2026-03-31",
+            "2026-02-28",
+            "2026-01-31",
+            "2025-12-31",
+            "2025-11-30",
+            "2025-10-31",
+            "2025-09-30",
+            "2025-06-30",
+            "2025-03-31",
+          ],
+        }),
+      ),
+      getProductCategoryPnl,
+      getProductCategoryAttribution,
+    });
+
+    await screen.findByTestId("product-category-table");
+    await waitFor(() => {
+      expect(getProductCategoryPnl).toHaveBeenCalledWith({
+        reportDate: "2026-03-31",
+        view: "monthly",
+      });
+    });
+    const trendWorkspace = await screen.findByTestId(
+      "product-category-trend-workspace",
+    );
+    expect(trendWorkspace).not.toHaveAttribute("open");
+    expect(getProductCategoryPnl.mock.calls.map((call) => call[0])).toEqual([
+      { reportDate: "2026-03-31", view: "monthly" },
+    ]);
+
+    const diagnosticsWorkspace = await screen.findByTestId(
+      "product-category-diagnostics-workspace",
+    );
+    const diagnosticsSummary = within(diagnosticsWorkspace)
+      .getByText("诊断与负债趋势候选分析", { exact: true })
+      .closest("summary");
+    expect(diagnosticsSummary).not.toBeNull();
+    await user.click(diagnosticsSummary!);
+    await screen.findByTestId("product-category-diagnostics-surface");
+
+    // 诊断折叠区（负债结构核查）消费同一份趋势历史快照：
+    // 不展开趋势折叠区也必须补齐历史期间，矩阵才有“较上期变动”和完整走势。
+    await waitFor(() => {
+      const historyCalls = getProductCategoryPnl.mock.calls
+        .map((call) => call[0])
+        .filter((options) => options.reportDate !== "2026-03-31")
+        .map((options) => `${options.reportDate}:${options.view}`)
+        .sort();
+      expect(historyCalls).toEqual([
+        "2025-03-31:monthly",
+        "2025-06-30:monthly",
+        "2025-09-30:monthly",
+        "2025-11-30:monthly",
+        "2025-12-31:monthly",
+        "2026-01-31:monthly",
+        "2026-02-28:monthly",
+      ]);
+    });
+    expect(trendWorkspace).not.toHaveAttribute("open");
+    const liabilityDisclosure = await screen.findByTestId(
+      "product-category-liability-side-detail-disclosure",
+    );
+    await waitFor(() => {
+      expect(
+        within(liabilityDisclosure).getByText(/8期/),
+      ).toBeInTheDocument();
+    });
+
+    const backtestWorkspace = await screen.findByTestId(
+      "product-category-backtest-workspace",
+    );
+    const backtestSummary = within(backtestWorkspace)
+      .getByText("动作回测候选分析", { exact: true })
+      .closest("summary");
+    expect(backtestSummary).not.toBeNull();
+    await user.click(backtestSummary!);
+
+    // 动作回测折叠区展开后应触发历史归因加载（趋势折叠区仍保持折叠）。
+    await waitFor(() => {
+      expect(
+        getProductCategoryAttribution.mock.calls.filter(
+          (call) => call[0].reportDate !== "2026-03-31",
+        ),
+      ).toHaveLength(7);
+    });
+    expect(trendWorkspace).not.toHaveAttribute("open");
+  });
+
+  it("loads trend history for the management monitor even with every workspace collapsed", async () => {
+    preferCollapsedTrendWorkspace();
+    const baseClient = createApiClient({ mode: "mock" });
+    const getProductCategoryHistory = vi.fn(baseClient.getProductCategoryHistory);
+    const getProductCategoryAttributionHistory = vi.fn(
+      baseClient.getProductCategoryAttributionHistory,
+    );
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryDates: vi.fn(async () =>
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: H1_MANAGEMENT_REPORT_DATES,
+        }),
+      ),
+      getProductCategoryPnl: vi.fn(async (options) =>
+        buildMockProductCategoryPnlEnvelope(options),
+      ),
+      getProductCategoryAttribution: vi.fn(
+        async ({ reportDate, compare = "mom" }) =>
+          buildManagementMonitorAttributionEnvelope(reportDate, compare),
+      ),
+      getProductCategoryHistory,
+      getProductCategoryAttributionHistory,
+    });
+
+    // 经营修复监控面板常显在所有折叠区之外：选中 6 月末报告期时，
+    // 即便一个折叠区都不展开，它也必须能自己拉到 1—6 月历史，而不是停在“数据不足”提示上。
+    const monitor = await screen.findByTestId(
+      "product-category-management-monitor",
+    );
+    await waitFor(() => expect(monitor).toHaveTextContent("6/6 月正式数据"));
+    expect(monitor).not.toHaveTextContent("需要 1—6 月连续");
+    expect(monitor).not.toHaveTextContent("需选择 6 月末");
+
+    const historyDates = getProductCategoryHistory.mock.calls.flatMap(
+      ([options]) => options.reportDates,
+    );
+    expect(historyDates.sort()).toEqual(
+      ["2026-01-31", "2026-02-28", "2026-03-31", "2026-04-30", "2026-05-31"].sort(),
+    );
+
+    // 该面板只消费当前归因（managementMomAttributionQuery），不消费归因历史批量，
+    // 所以修复门控不应该顺带触发归因历史请求。
+    expect(getProductCategoryAttributionHistory).not.toHaveBeenCalled();
+
+    expect(
+      screen.getByTestId("product-category-trend-workspace"),
+    ).not.toHaveAttribute("open");
+    expect(
+      screen.getByTestId("product-category-diagnostics-workspace"),
+    ).not.toHaveAttribute("open");
+    expect(
+      screen.getByTestId("product-category-backtest-workspace"),
+    ).not.toHaveAttribute("open");
+  });
+
+  it("does not request trend history when the selected report date is not June and every workspace stays collapsed", async () => {
+    preferCollapsedTrendWorkspace();
+    const baseClient = createApiClient({ mode: "mock" });
+    const getProductCategoryHistory = vi.fn(baseClient.getProductCategoryHistory);
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryDates: vi.fn(async () =>
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: [
+            "2026-03-31",
+            "2026-02-28",
+            "2026-01-31",
+            "2025-12-31",
+            "2025-11-30",
+            "2025-10-31",
+          ],
+        }),
+      ),
+      getProductCategoryHistory,
+    });
+
+    await screen.findByTestId("product-category-table");
+    const monitor = await screen.findByTestId(
+      "product-category-management-monitor",
+    );
+    // 非 6 月末报告期不需要历史快照，懒加载收益必须保留：不应发出批量历史请求。
+    expect(monitor).toHaveTextContent("需选择 6 月末");
+    expect(getProductCategoryHistory).not.toHaveBeenCalled();
+
+    expect(
+      screen.getByTestId("product-category-trend-workspace"),
+    ).not.toHaveAttribute("open");
+    expect(
+      screen.getByTestId("product-category-diagnostics-workspace"),
+    ).not.toHaveAttribute("open");
+    expect(
+      screen.getByTestId("product-category-backtest-workspace"),
+    ).not.toHaveAttribute("open");
+  });
+
   it("Unit 2: formal detail table renders frozen backend fields in column order without metric_id invention", async () => {
     const user = userEvent.setup();
     const baseClient = createApiClient({ mode: "mock" });
@@ -5229,11 +5569,11 @@ describe("ProductCategoryPnlPage", () => {
     const table = await screen.findByTestId("product-category-table");
     expect(within(table).getByText(uniqueMarker)).toBeInTheDocument();
     expect(screen.getByTestId("product-category-summary")).toHaveTextContent(
-      "合计：",
+      "FTP后经营净收入：",
     );
     expect(
       screen.getByTestId("product-category-footer-total"),
-    ).toHaveTextContent("全部市场科目 + 投资收益合计：");
+    ).toHaveTextContent("全部市场科目FTP后经营净收入：");
 
     denyBaselinePnl = true;
     await user.click(screen.getByTestId("product-category-refresh-button"));
@@ -5404,13 +5744,13 @@ describe("ProductCategoryPnlPage", () => {
       );
       expect(
         screen.getByTestId("product-category-scenario-signing-warning"),
-      ).toHaveTextContent("formal_use_allowed=false");
+      ).toHaveAttribute("title", "formal_use_allowed=false");
       expect(
         screen.getByTestId("product-category-scenario-signing-warning"),
       ).toHaveTextContent("下方归因继续使用正式基线响应");
       expect(
-        screen.getByTestId("product-category-attribution-result-meta"),
-      ).toHaveTextContent("trace_id=mock_product_category_pnl.attribution");
+        screen.getByTestId("product-category-result-meta-attribution"),
+      ).toHaveTextContent("mock_product_category_pnl.attribution");
     });
   });
 
@@ -5445,7 +5785,7 @@ describe("ProductCategoryPnlPage", () => {
     ).toHaveTextContent("fallback=latest_snapshot");
     expect(
       screen.getByTestId("product-category-governance-evidence"),
-    ).toHaveTextContent("data-state-review-required");
+    ).toHaveTextContent("数据状态待复核");
     expect(
       screen.getByTestId("product-category-governance-notice-fallback_mode"),
     ).toHaveTextContent("最新快照降级");

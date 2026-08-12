@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 from calendar import monthrange
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -22,10 +24,14 @@ from backend.app.repositories.product_category_pnl_repo import (
 from backend.app.schemas.analysis_service import AnalysisQuery
 from backend.app.schemas.materialize import CacheBuildRunRecord
 from backend.app.schemas.product_category_pnl import (
+    ProductCategoryAttributionHistoryItem,
+    ProductCategoryAttributionHistoryPayload,
     ProductCategoryAttributionPayload,
     ProductCategoryCurrentSortField,
     ProductCategoryDatesPayload,
     ProductCategoryEventSortField,
+    ProductCategoryHistoryItem,
+    ProductCategoryHistoryPayload,
     ProductCategoryInterestSpreadPayload,
     ProductCategoryManualAdjustmentCreateRequest,
     ProductCategoryManualAdjustmentListPayload,
@@ -708,6 +714,157 @@ def product_category_pnl_envelope(
         result_meta=result_meta,
         result_payload=payload.model_dump(mode="json"),
     )
+
+
+def product_category_history_envelope(
+    duckdb_path: str,
+    report_dates: list[str],
+    view: str,
+    scenario_rate_pct: float | None = None,
+) -> dict[str, object]:
+    """Batch the per-period read that the trend workspace previously issued one HTTP call at a time.
+
+    Each item keeps its own result_meta because the page derives per-period quality
+    and fallback badges from it. A period with no rows degrades that item only.
+    """
+    def read_period(report_date: str) -> dict[str, object]:
+        try:
+            envelope = product_category_pnl_envelope(
+                duckdb_path,
+                report_date=report_date,
+                view=view,
+                scenario_rate_pct=scenario_rate_pct,
+            )
+        except ProductCategoryReadModelNotFoundError as exc:
+            return ProductCategoryHistoryItem(
+                report_date=report_date,
+                status="not_found",
+                detail=str(exc),
+            ).model_dump(mode="json")
+        return {
+            "report_date": report_date,
+            "status": "ok",
+            "detail": None,
+            "result": envelope.get("result"),
+            "result_meta": envelope.get("result_meta"),
+        }
+
+    items = _map_product_category_batch(read_period, report_dates)
+
+    payload = ProductCategoryHistoryPayload(
+        view=view,
+        scenario_rate_pct=scenario_rate_pct,
+        items=[ProductCategoryHistoryItem.model_validate(item) for item in items],
+    )
+    meta = build_formal_result_meta(
+        trace_id="tr_product_category_pnl_history",
+        result_kind="product_category_pnl.history",
+        source_version=_batch_source_version(items),
+        rule_version=RULE_VERSION,
+        cache_version=CACHE_VERSION,
+        quality_flag="warning" if _batch_has_missing(items) else "ok",
+        filters_applied={
+            "report_dates": list(report_dates),
+            "view": view,
+            "scenario_rate_pct": scenario_rate_pct,
+        },
+    )
+    return build_formal_result_envelope(
+        result_meta=meta,
+        result_payload=payload.model_dump(mode="json"),
+    )
+
+
+def product_category_attribution_history_envelope(
+    duckdb_path: str,
+    report_dates: list[str],
+    compare: str = "mom",
+) -> dict[str, object]:
+    """Batch sibling of product_category_attribution_envelope for the trend/backtest history."""
+    if compare not in {"mom", "yoy"}:
+        raise ValueError(
+            f"Unsupported product-category attribution compare={compare!r}; expected 'mom' or 'yoy'"
+        )
+
+    def read_period(report_date: str) -> dict[str, object]:
+        try:
+            envelope = product_category_attribution_envelope(
+                duckdb_path,
+                report_date=report_date,
+                compare=compare,
+            )
+        except ProductCategoryReadModelNotFoundError as exc:
+            return ProductCategoryAttributionHistoryItem(
+                report_date=report_date,
+                status="not_found",
+                detail=str(exc),
+            ).model_dump(mode="json")
+        return {
+            "report_date": report_date,
+            "status": "ok",
+            "detail": None,
+            "result": envelope.get("result"),
+            "result_meta": envelope.get("result_meta"),
+        }
+
+    items = _map_product_category_batch(read_period, report_dates)
+
+    payload = ProductCategoryAttributionHistoryPayload(
+        compare=compare,  # type: ignore[arg-type]
+        items=[
+            ProductCategoryAttributionHistoryItem.model_validate(item) for item in items
+        ],
+    )
+    meta = build_formal_result_meta(
+        trace_id="tr_product_category_pnl_attribution_history",
+        result_kind="product_category_pnl.attribution_history",
+        source_version=_batch_source_version(items),
+        rule_version=RULE_VERSION,
+        cache_version=CACHE_VERSION,
+        quality_flag="warning" if _batch_has_missing(items) else "ok",
+        filters_applied={
+            "report_dates": list(report_dates),
+            "compare": compare,
+        },
+    )
+    return build_formal_result_envelope(
+        result_meta=meta,
+        result_payload=payload.model_dump(mode="json"),
+    )
+
+
+# One read-model connection per period, matching the isolation the page already relied on
+# when it issued these periods as separate concurrent HTTP requests. Reading them serially
+# inside a batch would make the batch slower than the fan-out it replaces.
+PRODUCT_CATEGORY_BATCH_MAX_WORKERS = 6
+
+
+def _map_product_category_batch(
+    read_period: Callable[[str], dict[str, object]],
+    report_dates: list[str],
+) -> list[dict[str, object]]:
+    """Read batch periods concurrently while preserving the requested order."""
+    if len(report_dates) <= 1:
+        return [read_period(report_date) for report_date in report_dates]
+
+    max_workers = min(PRODUCT_CATEGORY_BATCH_MAX_WORKERS, len(report_dates))
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        return list(executor.map(read_period, report_dates))
+
+
+def _batch_has_missing(items: list[dict[str, object]]) -> bool:
+    return any(item.get("status") != "ok" for item in items)
+
+
+def _batch_source_version(items: list[dict[str, object]]) -> str:
+    """Reuse the newest item's source version so the batch stays traceable to the read model."""
+    for item in items:
+        meta = item.get("result_meta")
+        if isinstance(meta, dict):
+            source_version = meta.get("source_version")
+            if isinstance(source_version, str) and source_version:
+                return source_version
+    return "sv_none"
 
 
 def resolve_product_category_ytd_payload_for_home_snapshot(
