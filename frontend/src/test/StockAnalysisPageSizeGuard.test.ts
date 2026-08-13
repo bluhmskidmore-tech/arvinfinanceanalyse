@@ -45,7 +45,7 @@ describe("StockAnalysisPage extraction guard", () => {
     const lineCount = css.replace(/\r\n/g, "\n").trimEnd().split("\n").length;
     const importantCount = (css.match(/!important/g) ?? []).length;
 
-    expect(lineCount).toBeLessThanOrEqual(10893);
-    expect(importantCount).toBeLessThanOrEqual(899);
+    expect(lineCount).toBeLessThanOrEqual(8824);
+    expect(importantCount).toBeLessThanOrEqual(727);
   });
 });
