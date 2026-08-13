@@ -911,3 +911,7 @@ export function useMacroToolkitOperationActions({
     stockRefreshResult,
   };
 }
+
+export type MacroToolkitOperationActionsModel = ReturnType<
+  typeof useMacroToolkitOperationActions
+>;

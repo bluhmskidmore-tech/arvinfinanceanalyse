@@ -33,11 +33,8 @@ import {
   repairTypeLabel,
   summarizeRepairAction,
 } from "../lib/macroToolkitDataHealthSupport";
-import {
-  MacroStatusIcon,
-  compactText,
-  observationStatusLabel,
-} from "../lib/macroToolkitPanelShared";
+import { MacroStatusIcon } from "../lib/MacroToolkitStatusPrimitives";
+import { compactText, observationStatusLabel } from "../lib/macroToolkitPanelShared";
 import type { MacroToolkitActionReceipt, MacroToolkitRepairItem } from "../lib/macroToolkitPageModel";
 
 const RECEIPT_CHECK_WARNING_PATTERN = /^刷新回执未通过完整性校验[：:]\s*(.+?)(?:，方向性结论已关闭.*)?$/;
@@ -394,7 +391,7 @@ export function MacroToolkitDataHealthPanel({
                   {item.latest_date || item.stale_days ? (
                     <small>
                       {[
-                        item.latest_date ? `最新 ${item.latest_date}` : "",
+                        item.latest_date ? `最新值日期 ${item.latest_date}` : "",
                         item.stale_days ? `落后 ${item.stale_days} 天` : "",
                       ]
                         .filter(Boolean)

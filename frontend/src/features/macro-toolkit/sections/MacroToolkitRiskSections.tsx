@@ -3,8 +3,10 @@ import { Tag } from "antd";
 
 import type { MacroToolkitAShareRiskPayload } from "../../../api/macroToolkitClient";
 import { PageSectionLead } from "../../../components/page/PagePrimitives";
+import { EM_DASH } from "../../../utils/format";
 import { formatRiskMetric, riskLevelColor, riskLevelTone } from "../lib/macroToolkitDisplayFormat";
-import { MacroStatusIcon, compactText, statusColor, statusLabel } from "../lib/macroToolkitPanelShared";
+import { MacroStatusIcon } from "../lib/MacroToolkitStatusPrimitives";
+import { compactText, statusColor, statusLabel } from "../lib/macroToolkitPanelShared";
 import { ScoreTrack } from "./MacroToolkitPrimitives";
 
 const A_SHARE_RISK_METRICS: Array<{
@@ -31,7 +33,7 @@ export function AShareRiskPanel({ risk }: { risk?: MacroToolkitAShareRiskPayload
     );
   }
   const tone = riskLevelTone(risk.risk_level);
-  const scoreText = risk.risk_score === null ? "缺失" : risk.risk_score;
+  const scoreText = risk.risk_score === null ? EM_DASH : risk.risk_score;
   return (
     <div className={`macro-toolkit-a-share-risk macro-toolkit-a-share-risk--${tone}`}>
       <div className="macro-toolkit-a-share-risk__summary">
@@ -40,7 +42,7 @@ export function AShareRiskPanel({ risk }: { risk?: MacroToolkitAShareRiskPayload
             <MacroStatusIcon tone={tone}>
               {tone === "negative" ? <WarningOutlined /> : <ClockCircleOutlined />}
             </MacroStatusIcon>
-            {risk.trade_date ?? "日期缺失"}
+            {risk.trade_date ?? EM_DASH}
           </span>
           <div className="macro-toolkit-tag-row">
             <Tag color={statusColor(risk.status)}>{statusLabel(risk.status)}</Tag>

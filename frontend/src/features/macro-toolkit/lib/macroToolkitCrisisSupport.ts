@@ -800,7 +800,7 @@ export function formatCommodityAdmissionMetrics(item: CrisisCommodityAdmissionIt
     `危机样本 ${item.crisis_sample_count ?? "缺失"}`,
     `命中率 ${formatPercent(item.crisis_hit_rate)}`,
     `最大相关 ${formatSignedDecimal(item.max_abs_correlation)}`,
-    item.latest_date ? `最新 ${item.latest_date}` : null,
+    item.latest_date ? `最新值日期 ${item.latest_date}` : null,
     item.source ? `来源 ${item.source}` : null,
     item.series_id ? `series ${item.series_id}` : null,
     item.used_in_official_score ? "已纳入正式 Crisis Score" : "审批前不改变正式 Crisis Score",
@@ -843,7 +843,7 @@ export function formatCommodityReviewConclusionMetrics(item: CrisisCommodityCove
     `危机样本 ${evaluation.crisis_sample_count ?? "缺失"}`,
     `命中率 ${formatPercent(evaluation.crisis_hit_rate)}`,
     `同日相关 ${formatSignedDecimal(evaluation.same_day_correlation)}`,
-    item.latest_date ? `最新 ${item.latest_date}` : null,
+    item.latest_date ? `最新值日期 ${item.latest_date}` : null,
   ]
     .filter((part): part is string => Boolean(part))
     .join(" · ");
@@ -881,7 +881,7 @@ export function formatCommodityShadowImpactDriverDetail(item: CrisisCommodityCov
     `命中率 ${formatPercent(evaluation.crisis_hit_rate)}`,
     `同日相关 ${formatSignedDecimal(evaluation.same_day_correlation)}`,
     `样本 ${evaluation.sample_count ?? "缺失"}`,
-    item.latest_date ? `最新 ${item.latest_date}` : null,
+    item.latest_date ? `最新值日期 ${item.latest_date}` : null,
   ]
     .filter((part): part is string => Boolean(part))
     .join(" · ");
@@ -921,7 +921,7 @@ export function formatCommodityShadowContributionDetail(item: CrisisCommoditySha
     `贡献 ${formatSignedDelta(item.contribution, 4)}`,
     `权重 ${formatPercent(item.weight)}`,
     `样本 ${item.sample_count ?? "缺失"}`,
-    item.latest_date ? `最新 ${item.latest_date}` : null,
+    item.latest_date ? `最新值日期 ${item.latest_date}` : null,
   ]
     .filter((part): part is string => Boolean(part))
     .join(" · ");
@@ -996,8 +996,8 @@ export function formatCommodityAuditSourceLine(item: CrisisCommodityCoverageItem
     `aliases ${item.aliases.length ? item.aliases.join(" / ") : "缺失"}`,
     `matched ${item.matched_alias ?? "缺失"}`,
     item.source ?? "source 缺失",
-    `latest ${item.latest_date ?? "缺失"}`,
-    `report ${item.report_date ?? "缺失"}`,
+    `最新值日期 ${item.latest_date ?? "缺失"}`,
+    `报告日 ${item.report_date ?? "缺失"}`,
     formatCommodityCoverageDateStatus(item.date_alignment_status),
     `rows ${item.row_count ?? "缺失"}`,
     formulaText,
@@ -1012,7 +1012,7 @@ export function formatOfficialCommodityInputAuditLine(input: MacroToolkitInputEv
     `正式商品输入 ${input.label || input.field}`,
     formatCrisisInputIdentifiers(input),
     `source ${input.source ?? "缺失"}`,
-    `latest ${input.latest_date ?? "缺失"}`,
+    `最新值日期 ${input.latest_date ?? "缺失"}`,
     `rows ${input.row_count ?? "缺失"}`,
     `value ${formatValue(input.value ?? null, "")}`,
     "已纳入 Crisis Score 公式",
@@ -1085,7 +1085,7 @@ export function formatCommodityShadowShortfallList(summary: CrisisCommodityCandi
         ? `${item.sample_count}/${item.minimum_sample_count}`
         : "样本缺失";
     const gapText = typeof item.sample_gap === "number" ? `还差 ${item.sample_gap}` : "缺口待确认";
-    const dateText = item.latest_date ? `，最新 ${item.latest_date}` : "";
+    const dateText = item.latest_date ? `，最新值日期 ${item.latest_date}` : "";
     return `${item.label || item.field} ${sampleText}，${gapText}${dateText}`;
   });
   return `样本不足：${items.join("；")}`;
@@ -1433,7 +1433,7 @@ export function formatCommodityShortfallGapDetail(item: CrisisCommodityShadowSho
       ? "样本缺失"
       : `${item.sample_count}/${item.minimum_sample_count}`;
   const gapText = item.sample_gap == null ? "缺口待确认" : `还差 ${item.sample_gap}`;
-  const dateText = item.latest_date ? `最新 ${item.latest_date}` : "日期缺失";
+  const dateText = item.latest_date ? `最新值日期 ${item.latest_date}` : "日期缺失";
   return `${sampleText} · ${gapText} · ${dateText}`;
 }
 
@@ -1664,7 +1664,7 @@ export function commodityRefreshRowDeltaText(summary: NonNullable<MacroToolkitCo
 export function commodityRefreshLatestDateText(summary: NonNullable<MacroToolkitCommodityFuturesRefreshRun["summary"]>) {
   const before = summary.latest_trade_date_before ?? "缺失";
   const after = summary.latest_trade_date_after ?? "缺失";
-  return `最新日期 ${before} → ${after}`;
+  return `最新值日期 ${before} → ${after}`;
 }
 
 export function commodityRefreshCoverageText(summary: NonNullable<MacroToolkitCommodityFuturesRefreshRun["summary"]>) {

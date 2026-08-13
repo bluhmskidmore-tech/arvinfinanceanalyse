@@ -1,9 +1,33 @@
 import { useSyncExternalStore } from "react";
 
 import type {
+  MacroToolkitHasonStrategy,
   MacroToolkitModelReadiness,
   MacroToolkitScriptChainRun,
 } from "../../../api/macroToolkitClient";
+
+export function deriveModelReadinessFromHasonStrategy(strategy: MacroToolkitHasonStrategy): MacroToolkitModelReadiness[] {
+  return strategy.source_trace.map((item) => ({
+    id: item.script,
+    label: item.script,
+    script_name: item.script,
+    expected_outputs: strategy.required_runtime_outputs,
+    readiness: !item.available
+      ? "registered_only"
+      : strategy.missing_runtime_outputs.length
+        ? "missing_output"
+        : strategy.stale_runtime_outputs.length
+          ? "stale"
+          : "unknown",
+    observation_only: strategy.observation_only,
+    formal_use_allowed: strategy.formal_use_allowed,
+    latest_modified_at: null,
+    latest_content_date: null,
+    missing_outputs: strategy.missing_runtime_outputs,
+    stale_outputs: strategy.stale_runtime_outputs,
+    notes: [],
+  }));
+}
 
 /**
  * 模型证据桥：就绪度数据由页面传给 ModelSignalMatrix（工具模式下渲染为模型链

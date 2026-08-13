@@ -882,17 +882,18 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
   it("keeps macro toolkit status strips readable while preserving raw audit titles", async () => {
     renderWorkbenchApp(["/macro-toolkit"]);
 
-    const basisAuditNode = await screen.findByTitle("读取口径：analytical");
+    // mock 客户端信封 basis 为 "mock"：状态条必须显示「模拟口径」而不是伪装成分析口径。
+    const basisAuditNode = await screen.findByTitle("读取口径：mock");
     const statusStrip = requireClosestElement(
       basisAuditNode.closest(".macro-toolkit-status-strip"),
       "macro toolkit status strip",
     );
 
-    expect(statusStrip).toHaveTextContent("分析口径");
+    expect(statusStrip).toHaveTextContent("模拟口径");
     expect(statusStrip).toHaveTextContent("质量可用");
     expect(statusStrip).not.toHaveTextContent("analytical");
     expect(statusStrip).not.toHaveTextContent(" ok ");
-    expect(within(statusStrip).getByTitle("读取口径：analytical")).toBeInTheDocument();
+    expect(within(statusStrip).getByTitle("读取口径：mock")).toBeInTheDocument();
     expect(within(statusStrip).getByTitle("质量：ok")).toBeInTheDocument();
   });
 
@@ -1510,6 +1511,9 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     expect(runtimeStrip).not.toHaveTextContent("capability_results");
     expect(runtimeStrip).not.toHaveTextContent("功能结果");
     expect(runtimeStrip).not.toHaveTextContent("功能补齐方案");
+    // mock 信封（basis="mock"）下观察状态条必须随口径显示「模拟口径」，不得停留在静态“已记录”文案。
+    expect(within(evidencePanel).getByTitle("读取口径：mock")).toHaveTextContent("模拟口径");
+    expect(evidencePanel).not.toHaveTextContent("分析口径已记录");
     expect(evidencePanel).not.toHaveTextContent("analytical");
     expect(evidencePanel).not.toHaveTextContent("final_signal.csv");
     expect(evidencePanel).not.toHaveTextContent("signal_aggre");
@@ -1632,6 +1636,10 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
     expect(decisionSummary).toHaveTextContent("M7 资金面偏平衡");
     expect(decisionSummary).toHaveTextContent("部分降级");
     expect(decisionSummary).toHaveTextContent("部分模块数据降级或不可用");
+    // mock 信封（basis="mock"）驱动的决策摘要必须在观察首屏带显式模拟数据标注。
+    const mockFlag = within(decisionSummary).getByTestId("macro-observation-decision-mock-flag");
+    expect(mockFlag).toHaveTextContent("模拟数据");
+    expect(mockFlag).toHaveTextContent("由前端模拟数据生成");
   });
 
   it("keeps toolkit data-health deferred tickets in committee language", async () => {
@@ -3119,17 +3127,17 @@ it("keeps the toolkit execution workspace unmounted until the below-fold sentine
       );
       expect(writeText).toHaveBeenCalledWith(
         expect.stringContaining(
-          "正式商品输入 Nanhua commodity index · NH0100.NHF / NHCI.NH · source choice · latest 2026-04-10 · rows 120 · value 1075.20 · 已纳入 Crisis Score 公式",
+          "正式商品输入 Nanhua commodity index · NH0100.NHF / NHCI.NH · source choice · 最新值日期 2026-04-10 · rows 120 · value 1075.20 · 已纳入 Crisis Score 公式",
         ),
       );
       expect(writeText).toHaveBeenCalledWith(
         expect.stringContaining(
-          "候选来源 Copper futures · CA.COPPER · aliases CU0 / CU0.SHF · matched CU0 · tushare · latest 2026-04-10 · report 2026-04-10 · 同日 · rows 120 · 当前未计入 Crisis Score",
+          "候选来源 Copper futures · CA.COPPER · aliases CU0 / CU0.SHF · matched CU0 · tushare · 最新值日期 2026-04-10 · 报告日 2026-04-10 · 同日 · rows 120 · 当前未计入 Crisis Score",
         ),
       );
       expect(writeText).toHaveBeenCalledWith(
         expect.stringContaining(
-          "候选来源 Rebar futures · COMMODITY.RB · aliases RB0 / RB0.SHF · matched RB0 · tushare · latest 2026-04-10 · report 2026-04-10 · 同日 · rows 120 · 当前未计入 Crisis Score",
+          "候选来源 Rebar futures · COMMODITY.RB · aliases RB0 / RB0.SHF · matched RB0 · tushare · 最新值日期 2026-04-10 · 报告日 2026-04-10 · 同日 · rows 120 · 当前未计入 Crisis Score",
         ),
       );
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("Copper futures · 待人工判断 · 相关性偏弱，需人工复核"));

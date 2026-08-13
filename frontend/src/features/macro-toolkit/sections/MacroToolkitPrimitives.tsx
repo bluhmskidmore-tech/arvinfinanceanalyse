@@ -8,7 +8,8 @@ import { Button } from "antd";
 import { useCallback, useState, type ReactNode } from "react";
 
 import type { MacroToolkitSignalCard } from "../../../api/macroToolkitClient";
-import { MacroStatusIcon, compactText } from "../lib/macroToolkitPanelShared";
+import { MacroStatusIcon } from "../lib/MacroToolkitStatusPrimitives";
+import { compactText } from "../lib/macroToolkitPanelShared";
 
 function clampScore(score: number | null | undefined) {
   if (score == null) {

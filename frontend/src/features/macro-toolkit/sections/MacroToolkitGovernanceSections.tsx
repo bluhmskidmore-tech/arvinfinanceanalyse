@@ -7,7 +7,8 @@ import type {
   MacroToolkitScriptRecord,
 } from "../../../api/macroToolkitClient";
 
-import { MacroStatusIcon, compactText } from "../lib/macroToolkitPanelShared";
+import { MacroStatusIcon } from "../lib/MacroToolkitStatusPrimitives";
+import { compactText } from "../lib/macroToolkitPanelShared";
 import type {
   MacroToolkitActionReceipt,
   MacroToolkitActionReceiptStatus,

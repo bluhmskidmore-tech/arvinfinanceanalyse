@@ -9,6 +9,7 @@ import { statusLabel } from "./macroToolkitPanelShared";
 
 export const BUSINESS_EVIDENCE_LABELS: Record<string, string> = {
   analytical: "证据口径已归档",
+  mock: "模拟口径",
   choice: "宏观数据源",
   tushare: "行情与因子快照",
   fact_choice_macro_daily: "宏观数据源",

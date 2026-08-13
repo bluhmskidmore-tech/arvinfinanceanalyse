@@ -45,7 +45,8 @@ import {
   groupLabel,
   statusTone,
 } from "../lib/macroToolkitDisplayFormat";
-import { MetricTile, statusLabel } from "../lib/macroToolkitPanelShared";
+import { MetricTile } from "../lib/MacroToolkitStatusPrimitives";
+import { statusLabel } from "../lib/macroToolkitPanelShared";
 import {
   MACRO_COMMODITY_PRODUCT_OPTIONS,
 } from "../lib/macroToolkitPageModel";
@@ -640,7 +641,7 @@ export function MacroToolkitExecutionReceiptWorkspace({
                 />
                 <MetricTile
                   icon={<ClockCircleOutlined />}
-                  label="最新日期"
+                  label="最新值日期"
                   value={commodityLatestDateValue(commodityStatus)}
                   detail={commodityTableStatusDetail(commodityStatus)}
                   tone={commodityStatusTone(commodityStatus)}

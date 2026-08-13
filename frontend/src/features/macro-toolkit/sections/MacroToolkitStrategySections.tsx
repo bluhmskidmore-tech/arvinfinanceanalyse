@@ -19,7 +19,8 @@ import { PageSectionLead } from "../../../components/page/PagePrimitives";
 import { EM_DASH } from "../../../utils/format";
 import { formatNumberValue } from "../lib/macroToolkitCrisisSupport";
 import { formatQueryError } from "../lib/macroToolkitDisplayFormat";
-import { MetricTile, compactText, statusColor, statusLabel } from "../lib/macroToolkitPanelShared";
+import { MetricTile } from "../lib/MacroToolkitStatusPrimitives";
+import { compactText, statusColor, statusLabel } from "../lib/macroToolkitPanelShared";
 import {
   admissionCriterionText,
   choiceStockHasRunEvidence,

@@ -9,6 +9,7 @@ import type {
   MacroToolkitShadowPortfolioReport,
   MacroToolkitStrategySummary,
 } from "../../../api/macroToolkitClient";
+import { EM_DASH } from "../../../utils/format";
 import { formatNumberValue } from "./macroToolkitCrisisSupport";
 import { formatBusinessEvidenceLabel } from "./macroToolkitDisplayFormat";
 import { statusLabel } from "./macroToolkitPanelShared";
@@ -559,17 +560,17 @@ export function dualFrequencyStatusText(status: string) {
 }
 
 export function dualFrequencyRatio(value: number | null | undefined) {
-  return typeof value === "number" && Number.isFinite(value) ? `${(value * 100).toFixed(1)}%` : "—";
+  return typeof value === "number" && Number.isFinite(value) ? `${(value * 100).toFixed(1)}%` : EM_DASH;
 }
 
 export function dualFrequencyMultiplier(value: number | null | undefined) {
-  return typeof value === "number" && Number.isFinite(value) ? `×${value.toFixed(2)}` : "—";
+  return typeof value === "number" && Number.isFinite(value) ? `×${value.toFixed(2)}` : EM_DASH;
 }
 
 export function dualFrequencyCount(value: number | null | undefined) {
   return typeof value === "number" && Number.isFinite(value)
     ? new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value)
-    : "—";
+    : EM_DASH;
 }
 
 export function dualFrequencyHistory(candidate: MacroToolkitDualFrequencyCandidate) {

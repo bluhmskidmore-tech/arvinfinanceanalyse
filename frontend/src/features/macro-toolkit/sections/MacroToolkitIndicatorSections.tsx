@@ -15,7 +15,7 @@ import { PageSectionLead } from "../../../components/page/PagePrimitives";
 import { EM_DASH } from "../../../utils/format";
 import { formatValue } from "../lib/macroToolkitCrisisSupport";
 import { formatChange, groupLabel, latestIndicatorDate } from "../lib/macroToolkitDisplayFormat";
-import { MetricTile } from "../lib/macroToolkitPanelShared";
+import { MetricTile } from "../lib/MacroToolkitStatusPrimitives";
 
 export function IndicatorValueCell({ item }: { item: MacroToolkitIndicator }) {
   return (
@@ -33,7 +33,7 @@ export const INDICATOR_SPARKLINE_PADDING = 2;
 export function IndicatorSparkline({ item }: { item: MacroToolkitIndicator }) {
   const points = item.recent_points ?? [];
   if (points.length < 2) {
-    return <span className="macro-toolkit-sparkline__empty">—</span>;
+    return <span className="macro-toolkit-sparkline__empty">{EM_DASH}</span>;
   }
   const values = points.map((point) => point.value);
   const min = Math.min(...values);
@@ -112,7 +112,7 @@ export function IndicatorObservationSummary({ indicators }: { indicators: MacroT
         />
         <MetricTile
           icon={<ClockCircleOutlined />}
-          label="最新日期"
+          label="最新值日期"
           value={latestIndicatorDate(indicators)}
           detail=""
           tone="neutral"
@@ -138,7 +138,7 @@ export function IndicatorObservationSummary({ indicators }: { indicators: MacroT
             </div>
             <small>
               {formatChange(indicator.change, indicator.change_pct)} ·{" "}
-              {indicator.latest_date ?? "日期缺失"}
+              {indicator.latest_date ?? EM_DASH}
             </small>
           </div>
         ))}
@@ -187,7 +187,7 @@ const indicatorColumns: ColumnsType<MacroToolkitIndicator> = [
     render: (_, item) => <IndicatorSparkline item={item} />,
   },
   {
-    title: "日期",
+    title: "最新值日期",
     dataIndex: "latest_date",
     key: "latest_date",
     width: 120,

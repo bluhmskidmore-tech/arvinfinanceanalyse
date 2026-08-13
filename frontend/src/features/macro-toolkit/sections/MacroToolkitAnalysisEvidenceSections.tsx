@@ -158,8 +158,8 @@ export function MacroToolkitAnalysisEvidenceFlow({
                   </>
                 ) : (
                   <>
-                    <span title="当前观察使用已记录的宏观分析口径。">
-                      <DatabaseOutlined /> 分析口径已记录
+                    <span title={`读取口径：${analysisMeta?.basis ?? "-"}`}>
+                      <DatabaseOutlined /> {formatAnalysisBasisLabel(analysisMeta?.basis)}
                     </span>
                     <span title="数据质量状态已记录，具体诊断保留在宏观工具页。">
                       <SafetyCertificateOutlined /> 质量状态已记录

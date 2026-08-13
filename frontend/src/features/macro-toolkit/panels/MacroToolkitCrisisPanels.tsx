@@ -22,7 +22,8 @@ import type {
 import { BaseChart } from "../../../components/charts/BaseChart";
 import { PageSectionLead } from "../../../components/page/PagePrimitives";
 import { dhApiTokens } from "../../../theme/designSystem";
-import { MetricTile } from "../lib/macroToolkitPanelShared";
+import { EM_DASH } from "../../../utils/format";
+import { MetricTile } from "../lib/MacroToolkitStatusPrimitives";
 import * as crisisSupport from "../lib/macroToolkitCrisisSupport";
 
 type MacroToolkitRepairItem = NonNullable<MacroToolkitDataHealth["repair_items"]>[number];
@@ -135,7 +136,7 @@ function buildCrisisScoreHistoryOption(points: crisisSupport.CrisisScoreHistoryP
         if (!point) {
           return "";
         }
-        const percentile = point.percentile === null ? "—" : `${point.percentile.toFixed(1)}%`;
+        const percentile = point.percentile === null ? EM_DASH : `${point.percentile.toFixed(1)}%`;
         return `${point.date}<br/>Crisis Score ${point.crisis_score.toFixed(4)}<br/>历史分位 ${percentile}`;
       },
     },
@@ -529,7 +530,7 @@ function CrisisCommodityShadowImpactPanel({
         <MetricTile
           icon={<SafetyCertificateOutlined />}
           label="正式 Crisis Score"
-          value={shadowImpact?.current_score ?? currentScore ?? "缺失"}
+          value={shadowImpact?.current_score ?? currentScore ?? EM_DASH}
           detail="不改变正式 Crisis Score"
           tone={(shadowImpact?.current_score ?? currentScore) == null ? "missing" : "neutral"}
         />
@@ -852,7 +853,7 @@ export function CommodityRefreshResultPanel({ refresh }: { refresh: MacroToolkit
       width: 110,
     },
     {
-      title: "最新日期 / 值",
+      title: "最新值日期 / 值",
       dataIndex: "latestDate",
       key: "latestDate",
       render: (_, row) => (
@@ -1020,7 +1021,7 @@ export function CrisisScoreEvidencePanel({
             <span>Crisis Score 走势 · 近 {scoreHistory.length} 期</span>
             <strong>
               最新 {formatNumberValue(latestHistoryPoint.crisis_score)} · 历史分位{" "}
-              {latestHistoryPoint.percentile === null ? "—" : `${latestHistoryPoint.percentile.toFixed(1)}%`}
+              {latestHistoryPoint.percentile === null ? EM_DASH : `${latestHistoryPoint.percentile.toFixed(1)}%`}
             </strong>
           </div>
           <BaseChart option={buildCrisisScoreHistoryOption(scoreHistory)} height={200} />
@@ -1217,7 +1218,7 @@ export function CrisisScoreEvidencePanel({
                   </div>
                   <strong>{formatCommodityCoverageIdentifiers(item)}</strong>
                   <small title={`${item.field} · ${item.source ?? "来源缺失"} · ${item.series_id ?? "序列缺失"}`}>
-                    {formatCrisisRowCount(item.row_count)} · {item.latest_date ?? "日期缺失"}
+                    {formatCrisisRowCount(item.row_count)} · {item.latest_date ?? EM_DASH}
                   </small>
                   <small>
                     {formatCommodityCoverageDateStatus(item.date_alignment_status)} · matched{" "}

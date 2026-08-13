@@ -11,6 +11,7 @@ import type {
   MacroToolkitStrategySummary,
 } from "../../../api/macroToolkitClient";
 import { PageSectionLead } from "../../../components/page/PagePrimitives";
+import { EM_DASH } from "../../../utils/format";
 import { formatValue } from "../lib/macroToolkitCrisisSupport";
 import { CapabilityResultCard } from "./MacroToolkitCapabilityCards";
 import {
@@ -25,7 +26,8 @@ import {
   riskLevelTone,
   toneTagColor,
 } from "../lib/macroToolkitDisplayFormat";
-import { MetricTile, compactText, statusColor, statusLabel } from "../lib/macroToolkitPanelShared";
+import { MetricTile } from "../lib/MacroToolkitStatusPrimitives";
+import { compactText, statusColor, statusLabel } from "../lib/macroToolkitPanelShared";
 import {
   shadowPortfolioObservationText,
   strategyObservationDetail,
@@ -78,7 +80,7 @@ export function ObservationSignalRiskComparison({
   const signal = primarySignal ?? signalCards.find((card) => card.score != null) ?? signalCards[0] ?? null;
   const signalTone = signal?.tone ?? "missing";
   const riskTone = risk ? riskLevelTone(risk.risk_level) : "missing";
-  const riskScore = risk?.risk_score === null || risk?.risk_score === undefined ? "缺失" : risk.risk_score;
+  const riskScore = risk?.risk_score === null || risk?.risk_score === undefined ? EM_DASH : risk.risk_score;
   const riskSummary = risk?.summary || (isLoading ? "观察证据加载中" : "风险摘要待确认。");
   const signalEvidence = signal ? formatObservationEvidence(signal.evidence) : isLoading ? "观察证据加载中" : "主信号证据待确认";
   const riskContent = risk ? (
@@ -236,9 +238,9 @@ export function InvestmentEvidenceSummary({
             />
             <MetricTile
               icon={<ClockCircleOutlined />}
-              label="最新日期"
+              label="最新值日期"
               value={latestIndicatorDate(indicators)}
-              detail="观察指标的最新数据日。"
+              detail="观察指标的最新值日期。"
               tone="neutral"
               detailMaxLength={42}
             />
@@ -248,7 +250,7 @@ export function InvestmentEvidenceSummary({
               <span key={indicator.alias}>
                 <strong>{indicator.label}</strong>
                 <small>
-                  {formatValue(indicator.latest_value, indicator.unit)} · {indicator.latest_date ?? "日期缺失"}
+                  {formatValue(indicator.latest_value, indicator.unit)} · {indicator.latest_date ?? EM_DASH}
                 </small>
               </span>
             ))}
@@ -328,9 +330,11 @@ export function MacroToolkitInvestmentEvidenceSection({
 export function MacroToolkitObservationDecisionSummary({
   decisionSummaryResult,
   isCoreAnalysis,
+  analysisBasis,
 }: {
   decisionSummaryResult: MacroToolkitCapabilityResult | null;
   isCoreAnalysis: boolean;
+  analysisBasis?: string | null;
 }) {
   return (
       <div
@@ -338,6 +342,15 @@ export function MacroToolkitObservationDecisionSummary({
         data-testid="macro-observation-decision-summary"
         aria-label="宏观决策摘要主结论"
       >
+        {analysisBasis === "mock" ? (
+          <Alert
+            type="warning"
+            showIcon
+            data-testid="macro-observation-decision-mock-flag"
+            message="模拟数据"
+            description="当前决策摘要由前端模拟数据生成，仅用于界面演示，不代表宏观分析结论。"
+          />
+        ) : null}
         {decisionSummaryResult ? (
           <>
             <CapabilityResultCard result={decisionSummaryResult} />

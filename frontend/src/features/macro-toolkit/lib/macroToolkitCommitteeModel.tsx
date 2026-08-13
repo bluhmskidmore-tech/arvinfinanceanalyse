@@ -439,3 +439,7 @@ export function buildMacroToolkitCommitteeModel({
     hasDataHealthRepairReceiptPending,
   };
 }
+
+export type MacroToolkitCommitteeModel = ReturnType<
+  typeof buildMacroToolkitCommitteeModel
+>;

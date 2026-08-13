@@ -87,7 +87,7 @@ export function CapabilityResultCard({ result }: { result: MacroToolkitCapabilit
             <span>缺失输入：{inputEvidence.missingInputs.join(" / ")}</span>
           ) : null}
           {inputEvidence.sources.length ? <span>数据源：{inputEvidence.sources.join(" / ")}</span> : null}
-          {inputEvidence.latestDates.length ? <span>最新日期：{inputEvidence.latestDates.join(" / ")}</span> : null}
+          {inputEvidence.latestDates.length ? <span>最新值日期：{inputEvidence.latestDates.join(" / ")}</span> : null}
           {inputEvidence.inputs.length ? (
             <small>
               {inputEvidence.inputs

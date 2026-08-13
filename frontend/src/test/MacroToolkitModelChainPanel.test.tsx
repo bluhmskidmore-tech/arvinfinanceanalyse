@@ -1,10 +1,11 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
-import type { MacroToolkitModelChainResults } from "../api/macroToolkitClient";
+import type { MacroToolkitModelChainResults, MacroToolkitModelReadiness } from "../api/macroToolkitClient";
 import { createMockMacroToolkitClient } from "../api/macroToolkitMockClient";
 import { MacroToolkitModelChainPanel } from "../features/macro-toolkit/panels/MacroToolkitModelChainPanel";
+import { publishModelChainEvidenceBridge } from "../features/macro-toolkit/panels/macroToolkitModelEvidenceShared";
 
 const STEP_LABELS = [
   "市场状态识别",
@@ -66,7 +67,28 @@ const MISSING_ARTIFACT_RESULTS: MacroToolkitModelChainResults = {
   ],
 };
 
+function modelReadinessEntry(
+  overrides: Partial<MacroToolkitModelReadiness> & Pick<MacroToolkitModelReadiness, "id" | "label" | "script_name">,
+): MacroToolkitModelReadiness {
+  return {
+    expected_outputs: [],
+    readiness: "artifact_backed",
+    observation_only: true,
+    formal_use_allowed: false,
+    latest_modified_at: null,
+    latest_content_date: null,
+    missing_outputs: [],
+    stale_outputs: [],
+    notes: [],
+    ...overrides,
+  };
+}
+
 describe("MacroToolkitModelChainPanel", () => {
+  afterEach(() => {
+    publishModelChainEvidenceBridge(null);
+  });
+
   it("renders the seven decision-chain steps and all thirteen model headlines", async () => {
     const results = await loadMockModelChainResults();
 
@@ -181,7 +203,7 @@ describe("MacroToolkitModelChainPanel", () => {
     const dailyBadge = within(schedulerRow).getByTestId(
       "macro-toolkit-model-chain-scheduler-daily_chain",
     );
- 
+    expect(dailyBadge).toHaveTextContent("自动重算 08-12 09:04 部分降级");
     expect(dailyBadge).toHaveClass("macro-toolkit-model-chain__scheduler-badge--ok");
     expect(dailyBadge).not.toHaveClass("macro-toolkit-model-chain__scheduler-badge--failed");
     expect(dailyBadge).toHaveAttribute("title", "链 degraded · 链外脚本 6/6 完成");
@@ -189,7 +211,7 @@ describe("MacroToolkitModelChainPanel", () => {
     const freshnessBadge = within(schedulerRow).getByTestId(
       "macro-toolkit-model-chain-scheduler-freshness",
     );
- 
+    expect(freshnessBadge).toHaveTextContent("数据刷新 08-11 19:40 失败");
     expect(freshnessBadge).toHaveClass("macro-toolkit-model-chain__scheduler-badge--failed");
     expect(freshnessBadge).toHaveAttribute("title", "步骤 2 成功 / 2 失败 / 1 降级");
   });
@@ -216,5 +238,113 @@ describe("MacroToolkitModelChainPanel", () => {
 
     expect(screen.getByTestId("macro-toolkit-model-chain")).toBeInTheDocument();
     expect(screen.queryByTestId("macro-toolkit-model-chain-scheduler")).not.toBeInTheDocument();
+  });
+
+  it("collapses the card wall to headline rows by default while keeping the DOM intact", async () => {
+    const results = await loadMockModelChainResults();
+    const user = userEvent.setup();
+
+    render(<MacroToolkitModelChainPanel results={results} />);
+
+    const panel = screen.getByTestId("macro-toolkit-model-chain");
+    expect(panel).toHaveClass("macro-toolkit-model-chain--cards-collapsed");
+    // 折叠只走 CSS：headline、13 个明细开关和趋势图仍全部在 DOM 里。
+    expect(screen.getAllByRole("button", { name: /^展开 .+ 明细$/ })).toHaveLength(13);
+    expect(screen.getAllByTestId(/^macro-toolkit-model-chain-trend-/)).toHaveLength(4);
+
+    const wallToggle = screen.getByRole("button", { name: "展开全部模型卡" });
+    expect(wallToggle).toHaveAttribute("aria-expanded", "false");
+
+    await user.click(wallToggle);
+    expect(panel).not.toHaveClass("macro-toolkit-model-chain--cards-collapsed");
+    expect(wallToggle).toHaveTextContent("收起全部模型卡");
+    expect(wallToggle).toHaveAttribute("aria-expanded", "true");
+
+    await user.click(wallToggle);
+    expect(panel).toHaveClass("macro-toolkit-model-chain--cards-collapsed");
+  });
+
+  it("badges chain cards with published readiness and opens the evidence drawer from a card", async () => {
+    const results = await loadMockModelChainResults();
+    const user = userEvent.setup();
+    publishModelChainEvidenceBridge({
+      entries: [
+        modelReadinessEntry({
+          id: "final_signal",
+          label: "Final Signal Aggregator",
+          script_name: "signal_aggregator",
+          expected_outputs: ["final_signal.csv"],
+          readiness: "artifact_backed",
+          latest_content_date: "2026-08-08",
+        }),
+        modelReadinessEntry({
+          id: "dcc_garch",
+          label: "DCC-GARCH",
+          script_name: "dcc_garch_cn",
+          expected_outputs: ["dcc_latest.csv", "dcc_results.csv"],
+          readiness: "missing_output",
+          missing_outputs: ["dcc_latest.csv", "dcc_results.csv"],
+        }),
+      ],
+      chainRunResult: null,
+      showAcceptance: true,
+    });
+
+    render(<MacroToolkitModelChainPanel results={results} />);
+
+    const finalCard = screen.getByTestId("macro-toolkit-model-chain-model-final_signal");
+    expect(within(finalCard).getByText("产物支撑")).toBeInTheDocument();
+    const dccCard = screen.getByTestId("macro-toolkit-model-chain-model-dcc_garch");
+    expect(within(dccCard).getByText("缺产物")).toBeInTheDocument();
+    // 未匹配就绪度条目的卡不带角标、不带证据按钮。
+    const garchCard = screen.getByTestId("macro-toolkit-model-chain-model-garch");
+    expect(within(garchCard).queryByRole("button", { name: /模型证据/ })).not.toBeInTheDocument();
+
+    const evidenceButton = within(dccCard).getByRole("button", {
+      name: "查看 DCC-GARCH 动态相关 模型证据",
+    });
+    await user.click(evidenceButton);
+
+    const detail = screen.getByTestId("macro-toolkit-model-signal-detail");
+    expect(detail).toHaveTextContent("DCC-GARCH");
+    expect(detail).toHaveTextContent("预期产物");
+    expect(detail).toHaveTextContent("dcc_latest.csv");
+    expect(detail).toHaveTextContent("产物验收");
+    expect(detail).toHaveTextContent("需要运行模型链");
+    // 预检/运行按钮已移到模型链工具条（模型信号摘要区），抽屉内不再渲染。
+    expect(within(detail).queryByTestId("macro-toolkit-model-signal-chain-preflight")).not.toBeInTheDocument();
+    expect(within(detail).queryByTestId("macro-toolkit-model-signal-chain-run")).not.toBeInTheDocument();
+
+    await user.click(evidenceButton);
+    expect(screen.queryByTestId("macro-toolkit-model-signal-detail")).not.toBeInTheDocument();
+  });
+
+  it("keeps evidence entry points for published readiness models outside the chain", async () => {
+    const results = await loadMockModelChainResults();
+    const user = userEvent.setup();
+    publishModelChainEvidenceBridge({
+      entries: [
+        modelReadinessEntry({
+          id: "crowding",
+          label: "Crowding",
+          script_name: "crowding_cn",
+          expected_outputs: ["crowding_latest.csv"],
+          readiness: "stale",
+          stale_outputs: ["crowding_latest.csv"],
+        }),
+      ],
+      chainRunResult: null,
+      showAcceptance: true,
+    });
+
+    render(<MacroToolkitModelChainPanel results={results} />);
+
+    const offChainButton = screen.getByRole("button", { name: "查看 拥挤度 模型证据" });
+    expect(screen.getByText("链外模型证据")).toBeInTheDocument();
+
+    await user.click(offChainButton);
+    const detail = screen.getByTestId("macro-toolkit-model-signal-detail");
+    expect(detail).toHaveTextContent("拥挤度");
+    expect(detail).toHaveTextContent("陈旧");
   });
 });
