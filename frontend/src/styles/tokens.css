@@ -440,6 +440,34 @@
 }
 
 /*
+ * ThemedRouteBoundary 兜底底色跟随 scope 色板：boundary 自带 theme-dh-api
+ * 类，上方 .theme-dh-api 钢蓝基准块在 boundary 自己身上定义 --dh-api-bg，
+ * 后代页根的 scope 翻转够不到（变量继承不回流），boundary 的
+ * `background: var(--dh-api-bg)` 一直解析为钢蓝 #070a12（frame/卡片
+ * 缝隙处透出）。此块以 :has() 命中含 Nocturne scope 页根的 boundary，
+ * 底色/文字直引 --nct-*（值从外壳 grid 的 :has 块继承；boundary 不在
+ * Nocturne 外壳内时回退钢蓝基准）。0-3-0 胜过基准块 0-2-0，无需
+ * !important。列表与主色板块同构全量（无 boundary 的路由 :has() 不
+ * 命中即零效果），theme.test.ts 有 parity 断言。
+ */
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="dashboard-home"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="macro-toolkit"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="ledger-pnl"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="average-balance"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="positions"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="bond-dashboard"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="liability-analytics"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="bank-ledger-dashboard"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="portfolio-home"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="market-overview"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="market-data"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="stock-analysis"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="risk-overview"]) {
+  color: var(--nct-ink, var(--dh-api-ink));
+  background: var(--nct-bg, var(--dh-api-bg));
+}
+
+/*
  * 外壳铬件（主列纸面渐变）补充映射：纸面渐变在 .theme-dh-api 块里是烘焙死的
  * 钢蓝 rgba 渐变，Nocturne scope 翻不动；首页（dashboard-home）因 cockpit 壳
  * 不渲染主列纸面而不在此列。此块对除首页外全部 Nocturne scope 生效，

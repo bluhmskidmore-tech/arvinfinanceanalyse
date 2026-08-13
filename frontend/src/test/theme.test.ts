@@ -400,11 +400,18 @@ describe("globalCss design token bridge (:root)", () => {
       workbenchDeferredChromeCss,
       "background: var(--nct-rail) !important",
     );
+    const boundaryOverride = nocturneScopeSet(
+      tokensCss,
+      "background: var(--nct-bg, var(--dh-api-bg))",
+    );
 
     // 主色板块（tokens.css）是唯一权威列表；收口层 grid/rail 必须同一份。
     expect(palette.length).toBeGreaterThanOrEqual(10);
     expect(gridOverride).toEqual(palette);
     expect(railOverride).toEqual(palette);
+    // ThemedRouteBoundary 兜底底色块与主色板块同构全量
+    // （无 boundary 的路由 :has() 不命中即零效果）。
+    expect(boundaryOverride).toEqual(palette);
     // rail-mark：dashboard-home / portfolio-home 保持 cockpit 透明制度不入列表；
     // market-overview / risk-overview 虽也走 cockpit 壳，rail-mark 保留兜底行
     // （market-overview 由页内更高特异性块接管）。
