@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+from pathlib import Path
 from typing import Any
 
 import duckdb
@@ -12,6 +13,7 @@ RELATION_FACT_FORMAL_ZQTZ_BALANCE_DAILY = "fact_formal_zqtz_balance_daily"
 RELATION_FACT_FORMAL_TYW_BALANCE_DAILY = "fact_formal_tyw_balance_daily"
 RELATION_ZQTZ_BOND_DAILY_SNAPSHOT = "zqtz_bond_daily_snapshot"
 RELATION_TYW_INTERBANK_DAILY_SNAPSHOT = "tyw_interbank_daily_snapshot"
+RELATION_PRODUCT_CATEGORY_PNL_CANONICAL_FACT = "product_category_pnl_canonical_fact"
 
 _ADB_READ_RELATIONS = frozenset(
     {
@@ -19,8 +21,14 @@ _ADB_READ_RELATIONS = frozenset(
         RELATION_FACT_FORMAL_TYW_BALANCE_DAILY,
         RELATION_ZQTZ_BOND_DAILY_SNAPSHOT,
         RELATION_TYW_INTERBANK_DAILY_SNAPSHOT,
+        RELATION_PRODUCT_CATEGORY_PNL_CANONICAL_FACT,
     }
 )
+
+
+def _dict_from_row(description: list[tuple], row: tuple) -> dict[str, object]:
+    return {str(column[0]): value for column, value in zip(description, row, strict=True)}
+
 
 OPTIONAL_ZQTZ_CLASSIFIER_COLUMNS = (
     "instrument_code",
@@ -225,6 +233,78 @@ class AdbAnalysisRepository(DuckDBRepository):
                 end_date=end_date,
                 currency_basis=currency_basis,
             )
+
+    def fetch_accounting_basis_rows(
+        self,
+        report_date: str,
+        currency: str,
+    ) -> list[dict[str, object]]:
+        """会计计量分桶（141/142/143/1440101/144020 前缀）单快照日行；表或库缺失时返回空。"""
+        if not Path(self.path).exists():
+            return []
+        with read_only_connection(self.path) as conn:
+            if not self.table_exists(conn, RELATION_PRODUCT_CATEGORY_PNL_CANONICAL_FACT):
+                return []
+            cursor = conn.execute(
+                f"""
+                select
+                  account_code,
+                  daily_avg_balance,
+                  source_version,
+                  rule_version
+                from {RELATION_PRODUCT_CATEGORY_PNL_CANONICAL_FACT}
+                where report_date = ?
+                  and currency = ?
+                  and (
+                    account_code like '141%'
+                    or account_code like '142%'
+                    or account_code like '143%'
+                    or account_code like '1440101%'
+                    or account_code like '144020%'
+                  )
+                """,
+                [report_date, currency],
+            )
+            description = list(cursor.description or [])
+            return [_dict_from_row(description, row) for row in cursor.fetchall()]
+
+    def fetch_accounting_basis_trend_rows(
+        self,
+        start_date: str,
+        end_date: str,
+        currency: str,
+    ) -> list[dict[str, object]]:
+        """会计计量分桶区间行（含 report_date 列）；表或库缺失时返回空。"""
+        if not Path(self.path).exists():
+            return []
+        with read_only_connection(self.path) as conn:
+            if not self.table_exists(conn, RELATION_PRODUCT_CATEGORY_PNL_CANONICAL_FACT):
+                return []
+            cursor = conn.execute(
+                f"""
+                select
+                  report_date,
+                  account_code,
+                  daily_avg_balance,
+                  source_version,
+                  rule_version
+                from {RELATION_PRODUCT_CATEGORY_PNL_CANONICAL_FACT}
+                where report_date >= ?
+                  and report_date <= ?
+                  and currency = ?
+                  and (
+                    account_code like '141%'
+                    or account_code like '142%'
+                    or account_code like '143%'
+                    or account_code like '1440101%'
+                    or account_code like '144020%'
+                  )
+                order by report_date, account_code
+                """,
+                [start_date, end_date, currency],
+            )
+            description = list(cursor.description or [])
+            return [_dict_from_row(description, row) for row in cursor.fetchall()]
 
     @classmethod
     def _fetch_formal_zqtz_df_impl(

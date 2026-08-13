@@ -180,6 +180,54 @@ def _ensure_tables(conn: duckdb.DuckDBPyConnection) -> None:
     snapshot_mod.ensure_snapshot_tables(conn)
 
 
+def _ensure_accounting_basis_fact_table(conn: duckdb.DuckDBPyConnection) -> None:
+    """会计计量分桶日均的源表（与 schema_registry/duckdb/08_product_category_pnl.sql 同构）。"""
+    conn.execute(
+        """
+        create table if not exists product_category_pnl_canonical_fact (
+          report_date varchar,
+          account_code varchar,
+          currency varchar,
+          account_name varchar,
+          beginning_balance decimal(24, 8),
+          ending_balance decimal(24, 8),
+          monthly_pnl decimal(24, 8),
+          daily_avg_balance decimal(24, 8),
+          annual_avg_balance decimal(24, 8),
+          days_in_period integer,
+          source_version varchar,
+          rule_version varchar
+        )
+        """
+    )
+
+
+def _insert_daily_average_account(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    report_date: str,
+    account_code: str,
+    daily_avg_balance: Decimal,
+    days_in_period: int = 30,
+    currency: str = "CNX",
+) -> None:
+    conn.execute(
+        """
+        insert into product_category_pnl_canonical_fact values
+        (?, ?, ?, ?, 0, 0, 0, ?, ?, ?, 'sv-daily-avg', 'rv-daily-avg')
+        """,
+        [
+            report_date,
+            account_code,
+            currency,
+            f"Account {account_code}",
+            daily_avg_balance,
+            daily_avg_balance,
+            days_in_period,
+        ],
+    )
+
+
 def _insert_zqtz(
     conn: duckdb.DuckDBPyConnection,
     *,
@@ -465,6 +513,78 @@ def test_adb_endpoints_return_structure(tmp_path: Path, monkeypatch) -> None:
             principal=Decimal("50000000"),
             rate=Decimal("2.5"),
         )
+        _ensure_accounting_basis_fact_table(conn)
+        # 2025-06-02：TPL=1.0亿(141)、AC=1.8亿+0.4亿(142/143)、OCI=1.3亿(1440101)、
+        # 144020 前缀为排除控制项（不得计入任何桶）。
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-02",
+            account_code="14101010001",
+            daily_avg_balance=Decimal("100000000"),
+        )
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-02",
+            account_code="14201010001",
+            daily_avg_balance=Decimal("180000000"),
+        )
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-02",
+            account_code="14301010001",
+            daily_avg_balance=Decimal("40000000"),
+        )
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-02",
+            account_code="14401010001",
+            daily_avg_balance=Decimal("130000000"),
+        )
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-02",
+            account_code="14402010001",
+            daily_avg_balance=Decimal("888888888"),
+        )
+        # 2025-06-03：TPL=1.3亿、AC=2.0亿+0.2亿、OCI=1.5亿；144020 仍排除。
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-03",
+            account_code="14101010001",
+            daily_avg_balance=Decimal("130000000"),
+        )
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-03",
+            account_code="14201010001",
+            daily_avg_balance=Decimal("200000000"),
+        )
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-03",
+            account_code="14301010001",
+            daily_avg_balance=Decimal("20000000"),
+        )
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-03",
+            account_code="14401010001",
+            daily_avg_balance=Decimal("150000000"),
+        )
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-03",
+            account_code="14402010001",
+            daily_avg_balance=Decimal("999999999"),
+        )
+        # 非 CNX 币种干扰行：分桶固定 CNX 口径，不得计入。
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-03",
+            account_code="14101010002",
+            daily_avg_balance=Decimal("77000000"),
+            currency="CNY",
+        )
     finally:
         conn.close()
 
@@ -497,6 +617,10 @@ def test_adb_endpoints_return_structure(tmp_path: Path, monkeypatch) -> None:
     assert payload["result_meta"]["basis"] == "analytical"
     assert payload["result_meta"]["quality_flag"] == "ok"
     assert payload["result_meta"]["fallback_mode"] == "none"
+    assert (
+        payload["result_meta"]["filters_applied"]["accounting_basis_currency"] == "CNX"
+    )
+    assert "product_category_pnl_canonical_fact" in payload["result_meta"]["tables_used"]
     payload = payload["result"]
     assert payload["num_days"] == 2
     assert payload["report_date"] == "2025-06-03"
@@ -512,6 +636,32 @@ def test_adb_endpoints_return_structure(tmp_path: Path, monkeypatch) -> None:
     assert "asset_yield" in payload
     assert "liability_cost" in payload
     assert "net_interest_margin" in payload
+    # 会计计量分桶日均：窗口末日（2025-06-03）口径。
+    basis_payload = payload["accounting_basis_daily_avg"]
+    assert basis_payload["currency_basis"] == "CNX"
+    assert basis_payload["daily_avg_total"] == 500000000
+    basis_rows = {row["basis_bucket"]: row for row in basis_payload["rows"]}
+    assert set(basis_rows) == {"AC", "OCI", "TPL"}
+    assert basis_rows["AC"]["daily_avg_balance"] == 220000000
+    assert basis_rows["AC"]["daily_avg_pct"] == 44
+    assert basis_rows["OCI"]["daily_avg_balance"] == 150000000
+    assert basis_rows["TPL"]["daily_avg_balance"] == 130000000
+    assert basis_rows["TPL"]["source_account_patterns"] == ["141%"]
+    assert set(basis_rows["AC"]["source_account_patterns"]) == {"142%", "143%"}
+    assert basis_rows["OCI"]["source_account_patterns"] == ["1440101%"]
+    assert sum(row["daily_avg_pct"] for row in basis_payload["rows"]) == pytest.approx(100.0)
+    assert basis_payload["excluded_controls"] == ["144020%"]
+    assert "accounting_basis_daily_avg_trend" in payload
+    basis_trend = payload["accounting_basis_daily_avg_trend"]
+    assert len(basis_trend) == 2
+    assert basis_trend[0]["report_date"] == "2025-06-02"
+    assert basis_trend[1]["report_date"] == "2025-06-03"
+    t0 = {row["basis_bucket"]: row for row in basis_trend[0]["rows"]}
+    assert t0["TPL"]["daily_avg_balance"] == 100000000
+    assert t0["AC"]["daily_avg_balance"] == 220000000
+    assert t0["OCI"]["daily_avg_balance"] == 130000000
+    assert basis_trend[0]["daily_avg_total"] == 450000000
+    assert sum(row["daily_avg_pct"] for row in basis_trend[0]["rows"]) == pytest.approx(100.0)
     assert payload["adb_denominator_basis"] == "formal_calendar"
     assert payload["coverage_days"] == 2
     assert payload["sample_filled"] is False
@@ -534,9 +684,14 @@ def test_adb_endpoints_return_structure(tmp_path: Path, monkeypatch) -> None:
     assert monthly_json["result_meta"]["result_kind"] == "adb.monthly"
     assert "filters_applied" in monthly_json["result_meta"]
     assert monthly_json["result_meta"]["filters_applied"].get("year") == 2025
+    assert (
+        monthly_json["result_meta"]["filters_applied"].get("accounting_basis_currency")
+        == "CNX"
+    )
     assert "tables_used" in monthly_json["result_meta"] and set(monthly_json["result_meta"]["tables_used"]) == {
         "fact_formal_zqtz_balance_daily",
         "fact_formal_tyw_balance_daily",
+        "product_category_pnl_canonical_fact",
     }
     monthly_payload = monthly_json["result"]
     assert len(monthly_payload["months"]) == 1
@@ -550,7 +705,153 @@ def test_adb_endpoints_return_structure(tmp_path: Path, monkeypatch) -> None:
     assert "mom_change_pct_liabilities" in monthly_payload["months"][0]
     assert "assets_mom_change" not in monthly_payload["months"][0]
     assert "liabilities_mom_change" not in monthly_payload["months"][0]
-    assert "accounting_basis_daily_avg_trend" not in monthly_payload
+    # f42b8ddca 曾把该断言翻转为 not in；业主拍板恢复分桶产出后翻回。
+    assert "accounting_basis_daily_avg_trend" in monthly_payload
+    assert len(monthly_payload["accounting_basis_daily_avg_trend"]) == 2
+    basis_trend_by_date = {
+        item["report_date"]: item
+        for item in monthly_payload["accounting_basis_daily_avg_trend"]
+    }
+    assert basis_trend_by_date["2025-06-02"]["report_month"] == "2025-06"
+    assert basis_trend_by_date["2025-06-03"]["report_month"] == "2025-06"
+    monthly_basis_rows = {
+        row["basis_bucket"]: row
+        for row in basis_trend_by_date["2025-06-03"]["rows"]
+    }
+    assert monthly_basis_rows["AC"]["daily_avg_balance"] == 220000000
+    assert monthly_basis_rows["OCI"]["daily_avg_balance"] == 150000000
+    assert monthly_basis_rows["TPL"]["daily_avg_balance"] == 130000000
+
+
+def test_adb_accounting_basis_empty_when_source_table_missing(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """product_category_pnl_canonical_fact 缺失时：对比信封分桶为 empty 形态，trend 为空列表。"""
+    _seed_adb_read_scope(tmp_path, monkeypatch)
+    db_path = tmp_path / "adb-basis-empty.duckdb"
+    governance_dir = tmp_path / "governance"
+    conn = duckdb.connect(str(db_path))
+    try:
+        _ensure_tables(conn)
+        _insert_zqtz(
+            conn,
+            report_date="2025-06-02",
+            instrument_code="B-BASIS-EMPTY",
+            bond_type=BOND_GOV,
+            market_value=Decimal("100000000"),
+            is_issuance_like=False,
+        )
+        _insert_zqtz(
+            conn,
+            report_date="2025-06-03",
+            instrument_code="B-BASIS-EMPTY",
+            bond_type=BOND_GOV,
+            market_value=Decimal("200000000"),
+            is_issuance_like=False,
+        )
+    finally:
+        conn.close()
+
+    _materialize_balance_analysis(
+        db_path,
+        governance_dir,
+        monkeypatch,
+        report_dates=["2025-06-02", "2025-06-03"],
+    )
+    main_mod = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_mod.app)
+
+    response = client.get(
+        "/api/analysis/adb/comparison",
+        params={"start_date": "2025-06-02", "end_date": "2025-06-03", "top_n": 5},
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()["result"]
+    basis_payload = payload["accounting_basis_daily_avg"]
+    assert basis_payload["currency_basis"] == "CNX"
+    assert basis_payload["daily_avg_total"] == 0.0
+    assert {row["basis_bucket"] for row in basis_payload["rows"]} == {"AC", "OCI", "TPL"}
+    for row in basis_payload["rows"]:
+        assert row["daily_avg_balance"] == 0.0
+        assert row["daily_avg_pct"] is None
+    assert basis_payload["excluded_controls"] == ["144020%"]
+    assert payload["accounting_basis_daily_avg_trend"] == []
+
+    monthly = client.get("/api/analysis/adb/monthly", params={"year": 2025})
+    assert monthly.status_code == 200, monthly.text
+    monthly_payload = monthly.json()["result"]
+    assert monthly_payload["accounting_basis_daily_avg_trend"] == []
+
+
+def test_adb_accounting_basis_excluded_control_rows_do_not_enter_buckets(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """源表仅有 144020% 排除控制行：不计入任何桶，总额为 0，pct 为 None，trend 为空。"""
+    _seed_adb_read_scope(tmp_path, monkeypatch)
+    db_path = tmp_path / "adb-basis-excluded-only.duckdb"
+    governance_dir = tmp_path / "governance"
+    conn = duckdb.connect(str(db_path))
+    try:
+        _ensure_tables(conn)
+        _ensure_accounting_basis_fact_table(conn)
+        _insert_zqtz(
+            conn,
+            report_date="2025-06-02",
+            instrument_code="B-BASIS-EXCL",
+            bond_type=BOND_GOV,
+            market_value=Decimal("100000000"),
+            is_issuance_like=False,
+        )
+        _insert_zqtz(
+            conn,
+            report_date="2025-06-03",
+            instrument_code="B-BASIS-EXCL",
+            bond_type=BOND_GOV,
+            market_value=Decimal("200000000"),
+            is_issuance_like=False,
+        )
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-02",
+            account_code="14402010001",
+            daily_avg_balance=Decimal("888888888"),
+        )
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-03",
+            account_code="14402010001",
+            daily_avg_balance=Decimal("999999999"),
+        )
+    finally:
+        conn.close()
+
+    _materialize_balance_analysis(
+        db_path,
+        governance_dir,
+        monkeypatch,
+        report_dates=["2025-06-02", "2025-06-03"],
+    )
+    main_mod = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_mod.app)
+
+    response = client.get(
+        "/api/analysis/adb/comparison",
+        params={"start_date": "2025-06-02", "end_date": "2025-06-03", "top_n": 5},
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()["result"]
+    basis_payload = payload["accounting_basis_daily_avg"]
+    assert basis_payload["currency_basis"] == "CNX"
+    assert basis_payload["daily_avg_total"] == 0.0
+    for row in basis_payload["rows"]:
+        assert row["daily_avg_balance"] == 0.0
+        assert row["daily_avg_pct"] is None
+    assert basis_payload["excluded_controls"] == ["144020%"]
+    assert payload["accounting_basis_daily_avg_trend"] == []
 
 
 def test_adb_comparison_returns_500_on_service_error(tmp_path: Path, monkeypatch) -> None:
