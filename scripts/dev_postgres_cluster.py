@@ -40,6 +40,7 @@ RUNTIME_GOVERNANCE_SEED_FILES = (
 DEV_USER_SCOPE_GRANTS = (
     {"user_id": "*", "role": None, "resource": "choice_news.data", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "accounting_asset_movement", "action": "read"},
+    {"user_id": "anonymous", "role": "viewer", "resource": "adb_analysis", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "balance_analysis", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "bond_analytics", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "bond_dashboard", "action": "read"},
