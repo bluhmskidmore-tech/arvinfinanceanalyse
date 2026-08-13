@@ -130,6 +130,56 @@ def test_summary_call_does_not_pollute_cached_full_result(
     )
 
 
+def _stub_four_effects_envelope(by_bond: list[dict[str, object]]) -> dict[str, object]:
+    """路由挂了严格 response_model 之后，桩必须是最小**合法** payload。
+
+    这两个用例验证的是 detail 分发行为，不是 payload 内容；桩只需过校验。
+    """
+    return {
+        "result_meta": {
+            "result_kind": "campisi.four_effects",
+            "trace_id": "stub-trace",
+            "source_version": "sv_stub",
+            "rule_version": "rv_stub",
+            "cache_version": "cv_stub",
+        },
+        "result": {
+            "period_start": "2026-01-01",
+            "period_end": "2026-01-31",
+            "report_date": "2026-01-31",
+            "num_days": 30,
+            "totals": {
+                "market_value_start": 0,
+                "income_return": 0,
+                "treasury_effect": 0,
+                "spread_effect": 0,
+                "selection_effect": 0,
+                "total_return": 0,
+            },
+            "by_asset_class": [],
+            "by_bond": by_bond,
+            "warnings": [],
+        },
+    }
+
+
+_STUB_BOND_ROW: dict[str, object] = {
+    "bond_code": "SUMMARY_BOND",
+    "asset_class": "credit AAA",
+    "maturity_bucket": "1-3Y",
+    "mod_duration": 2.5,
+    "market_value_start": 1000.0,
+    "income_return": 1.0,
+    "treasury_effect": 0.0,
+    "spread_effect": 0.0,
+    "selection_effect": -1.0,
+    "total_return": 0.0,
+    "has_accrued_interest": True,
+    "treasury_effect_available": True,
+    "spread_effect_available": True,
+}
+
+
 def _campisi_route_client_with_read_scope(tmp_path, monkeypatch) -> tuple[TestClient, object]:
     route_module = load_module(
         "backend.app.api.routes.campisi_attribution",
@@ -165,10 +215,7 @@ def test_four_effects_detail_summary_dispatches_to_summary_envelope(tmp_path, mo
     class _StubService:
         def campisi_four_effects_summary_envelope(self, **kwargs):
             called["kwargs"] = kwargs
-            return {
-                "result_meta": {"result_kind": "campisi.four_effects"},
-                "result": {"by_bond": []},
-            }
+            return _stub_four_effects_envelope(by_bond=[])
 
         def campisi_four_effects_envelope(self, **_kwargs):
             raise AssertionError("full detail path should not be used for detail=summary")
@@ -199,10 +246,7 @@ def test_four_effects_default_detail_uses_full_envelope_with_unchanged_kwargs(
     class _StubService:
         def campisi_four_effects_envelope(self, **kwargs):
             called["kwargs"] = kwargs
-            return {
-                "result_meta": {"result_kind": "campisi.four_effects"},
-                "result": {"by_bond": [{"instrument_code": "SUMMARY_BOND"}]},
-            }
+            return _stub_four_effects_envelope(by_bond=[dict(_STUB_BOND_ROW)])
 
         def campisi_four_effects_summary_envelope(self, **_kwargs):
             raise AssertionError("summary path should not be used without detail=summary")
@@ -221,5 +265,5 @@ def test_four_effects_default_detail_uses_full_envelope_with_unchanged_kwargs(
         "end_date": "2026-01-31",
         "lookback_days": 30,
     }
-    assert response.json()["result"]["by_bond"] == [{"instrument_code": "SUMMARY_BOND"}]
+    assert response.json()["result"]["by_bond"] == [_STUB_BOND_ROW]
     get_settings.cache_clear()

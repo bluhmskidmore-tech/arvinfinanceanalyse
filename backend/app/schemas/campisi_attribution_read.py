@@ -146,6 +146,12 @@ class CampisiFourEffectsTotals(_StrictCampisiModel):
     spread_effect: Number
     selection_effect: Number
     total_return: Number
+    # Only the formal-bridge path decomposes these three ledger components
+    # (517 realized trading, manual adjustment, FX translation); the model
+    # path never emits them. See docs/page_contracts.md §F.1.
+    realized_trading: Number | None = None
+    manual_adjustment: Number | None = None
+    fx_translation: Number | None = None
 
 
 class CampisiEnhancedTotals(CampisiFourEffectsTotals):
@@ -161,24 +167,32 @@ class CampisiFourEffectsAssetClassRow(_StrictCampisiModel):
     market_value_start: Number
     weight_pct: Number
     income_return: Number
-    income_return_pct: Number
     treasury_effect: Number
-    treasury_effect_pct: Number
     spread_effect: Number
-    spread_effect_pct: Number
     selection_effect: Number
-    selection_effect_pct: Number
     total_return: Number
+    # The model path emits per-effect percentages; the formal-bridge
+    # aggregation only emits `weight_pct`, so the rest are optional.
+    income_return_pct: Number | None = None
+    treasury_effect_pct: Number | None = None
+    spread_effect_pct: Number | None = None
+    selection_effect_pct: Number | None = None
     total_return_pct: Number | None = None
+    # Bridge-only ledger components (see CampisiFourEffectsTotals).
+    realized_trading: Number | None = None
+    manual_adjustment: Number | None = None
+    fx_translation: Number | None = None
 
 
 class CampisiEnhancedAssetClassRow(CampisiFourEffectsAssetClassRow):
     convexity_effect: Number
-    convexity_effect_pct: Number
     cross_effect: Number
-    cross_effect_pct: Number
     reinvestment_effect: Number
-    reinvestment_effect_pct: Number
+    # Percentages exist on the model path only (bridge publishes the three
+    # amounts as undecomposed zeros without percentage companions).
+    convexity_effect_pct: Number | None = None
+    cross_effect_pct: Number | None = None
+    reinvestment_effect_pct: Number | None = None
 
 
 class CampisiFourEffectsBondRow(_StrictCampisiModel):
@@ -195,6 +209,10 @@ class CampisiFourEffectsBondRow(_StrictCampisiModel):
     has_accrued_interest: bool
     treasury_effect_available: bool
     spread_effect_available: bool
+    # Bridge-only ledger components (see CampisiFourEffectsTotals).
+    realized_trading: Number | None = None
+    manual_adjustment: Number | None = None
+    fx_translation: Number | None = None
 
 
 class CampisiEnhancedBondRow(CampisiFourEffectsBondRow):
@@ -217,6 +235,11 @@ class CampisiFourEffectsPayload(_StrictCampisiModel):
     effect_availability: CampisiEffectAvailability | None = None
     formal_closure: CampisiFormalClosure | None = None
     input_quality: CampisiInputQuality | None = None
+    # Present on the formal-bridge path only: `basis` identifies the
+    # decomposition source (`formal_report_pnl_bridge`) and
+    # `decomposition_basis` states how `selection_effect` must be read.
+    basis: str | None = None
+    decomposition_basis: str | None = None
 
 
 class CampisiFourEffectsReadEnvelope(_StrictCampisiModel):
@@ -236,6 +259,9 @@ class CampisiEnhancedPayload(_StrictCampisiModel):
     diagnostics: list[str] | None = None
     effect_availability: CampisiEffectAvailability | None = None
     input_quality: CampisiInputQuality | None = None
+    # Present on the formal-bridge path only (see CampisiFourEffectsPayload).
+    basis: str | None = None
+    decomposition_basis: str | None = None
 
 
 class CampisiEnhancedEnvelope(_StrictCampisiModel):

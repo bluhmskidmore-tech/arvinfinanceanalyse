@@ -108,6 +108,20 @@ FORMAL_BRIDGE_DECOMPOSITION_BASIS = (
     "model_path: selection_effect is per-bond curve decomposition residual"
 )
 _FORMAL_BRIDGE_DETAIL_KEYS = ("realized_trading", "manual_adjustment", "fx_translation")
+# bridge 的一阶分解框架里根本没有二阶项这一步：convexity / cross / reinvestment
+# 在该路径上是"没有被拆出来"，不是"拆出来等于零"。金额侧维持精确 0（贡献留在
+# selection_effect 里，见 FORMAL_BRIDGE_DECOMPOSITION_BASIS），但必须带状态下发，
+# 否则页面拿到的 0 与真实观测到的 0 无法区分——那正是静默降级。
+EFFECT_STATUS_NOT_DECOMPOSED = "not_decomposed"
+BRIDGE_SECOND_ORDER_NOT_DECOMPOSED_REASON = "bridge_second_order_not_decomposed"
+_BRIDGE_SECOND_ORDER_EFFECT_KEYS = ("convexity_effect", "cross_effect", "reinvestment_effect")
+BRIDGE_SECOND_ORDER_NOT_DECOMPOSED_DIAGNOSTIC = (
+    "bridge_second_order_not_decomposed: convexity_effect / cross_effect / "
+    "reinvestment_effect are not decomposed by the formal-bridge first-order "
+    "framework; they are published as an exact 0 and their contribution stays "
+    "folded into selection_effect — not an observation that second-order terms "
+    "were nil."
+)
 _FORMAL_BRIDGE_ROW_CLOSURE_ABS_TOLERANCE = Decimal("0.000001")
 _FORMAL_BRIDGE_ROW_CLOSURE_REL_TOLERANCE = Decimal("0.000000000001")
 # 显式请求的 curve_window 超过该跨度时，仍按"远超月度期间"的口径错配升级为 warning。
@@ -1222,11 +1236,19 @@ def _bridge_row_has_diagnostic(bridge_row: dict[str, Any], prefixes: tuple[str, 
     return any(str(message).startswith(prefixes) for message in raw)
 
 
-def _formal_bridge_effect_availability(by_bond: list[dict[str, Any]]) -> dict[str, Any]:
+def _formal_bridge_effect_availability(
+    by_bond: list[dict[str, Any]],
+    *,
+    enhanced: bool = False,
+) -> dict[str, Any]:
     """formal-bridge 路径的可用性块，形状与 Campisi 直算路径完全一致。
 
     没有这一块时 ``CampisiResult.effect_availability`` 会退化成空 dict —— 页面看到
     "没有 unavailable 标记"就会当成一切正常，而这正是本次整改要消灭的那种沉默。
+
+    ``enhanced=True`` 时额外产出 convexity / cross / reinvestment 三条
+    ``not_decomposed`` 条目：这三项只出现在 enhanced 形状里，four-effects 形状
+    根本没有对应金额，给它加条目反而是凭空多出一个不存在的效应。
     """
     bonds = len(by_bond)
 
@@ -1249,7 +1271,7 @@ def _formal_bridge_effect_availability(by_bond: list[dict[str, Any]]) -> dict[st
         lambda row: not row.get("has_accrued_interest", False),
         ACCRUED_INTEREST_MISSING_REASON,
     )
-    return {
+    availability: dict[str, Any] = {
         "bonds": bonds,
         "treasury_effect": effect_availability_entry(
             status=treasury_status,
@@ -1271,6 +1293,19 @@ def _formal_bridge_effect_availability(by_bond: list[dict[str, Any]]) -> dict[st
             basis=accrued_interest_basis(accrued_status),
         ),
     }
+    if enhanced:
+        # 未拆分是整期、全人口的框架事实，不是逐券输入缺失，所以覆盖全部债券与市值。
+        total_mv = sum(
+            (_decimal_value(row.get("market_value_start")) for row in by_bond), Decimal("0")
+        )
+        for key in _BRIDGE_SECOND_ORDER_EFFECT_KEYS:
+            availability[key] = effect_availability_entry(
+                status=EFFECT_STATUS_NOT_DECOMPOSED,
+                reason=BRIDGE_SECOND_ORDER_NOT_DECOMPOSED_REASON,
+                unavailable_bonds=bonds,
+                unavailable_market_value_start=total_mv,
+            )
+    return availability
 
 
 def _formal_bridge_bond_rows(
@@ -1439,13 +1474,16 @@ def _formal_bridge_to_enhanced_result(
         start_date=start_date,
         enhanced=True,
     )
-    availability = _formal_bridge_effect_availability(by_bond)
+    availability = _formal_bridge_effect_availability(by_bond, enhanced=True)
     return {
         "num_days": max((end_date - start_date).days, 1),
         "totals": _formal_totals(by_bond, enhanced=True),
         "by_asset_class": _aggregate_formal_rows(by_bond, enhanced=True),
         "by_bond": by_bond,
-        "diagnostics": availability_diagnostics(availability),
+        "diagnostics": [
+            *availability_diagnostics(availability),
+            BRIDGE_SECOND_ORDER_NOT_DECOMPOSED_DIAGNOSTIC,
+        ],
         "effect_availability": availability,
         "basis": FORMAL_REPORT_BASIS,
         "decomposition_basis": FORMAL_BRIDGE_DECOMPOSITION_BASIS,

@@ -359,6 +359,15 @@ export type DV01MovementPayload = {
   computed_at: string;
 };
 
+/**
+ * Values the backend grades DV01 exposure with. The wire field stays a free
+ * string so a newly added level degrades to its raw code instead of breaking
+ * the contract; keep this union in sync so the UI label map stays exhaustive.
+ * `no_limit_configured` means no governed limit exists, so nothing was measured
+ * against a threshold and no breach was graded.
+ */
+export type DV01RiskLevel = "ok" | "watch" | "breach" | "no_data" | "no_limit_configured";
+
 export type DV01ActionScenarioBreach = {
   scenario_name: string;
   shock_bp: Numeric;
@@ -401,7 +410,9 @@ export type DV01ActionBondItem = {
 export type DV01ActionPlanPayload = {
   report_date: string;
   accounting_class: string;
-  risk_level: "ok" | "watch" | "breach" | "no_data";
+  /** Free-form on the wire; see {@link DV01RiskLevel} for the emitted values. */
+  risk_level: string;
+  /** One of `formal_limit`, `page_threshold_fallback`, `no_limit_configured`. */
   policy_basis: string;
   threshold_note: string;
   limit_source: string;
@@ -964,6 +975,11 @@ export type CampisiDecisionWindowDeclaration = {
   kind: string;
 };
 
+export type CampisiDecisionWindowDisclosure = {
+  level: "info" | "warning";
+  message: string;
+};
+
 export type CampisiBridgeDetailFields = {
   realized_trading?: number;
   manual_adjustment?: number;
@@ -1062,6 +1078,7 @@ export type CampisiDecisionGradePayload = {
   num_days: number;
   pnl_window?: CampisiDecisionWindowDeclaration;
   curve_window?: CampisiDecisionWindowDeclaration;
+  window_disclosure?: CampisiDecisionWindowDisclosure | null;
   summary: CampisiDecisionGradeSummary;
   formal_pnl_view: {
     total_actual_pnl: number;
@@ -1139,6 +1156,57 @@ export type CampisiEnhancedBondRow = CampisiEnhancedRow & {
   mod_duration: number;
 };
 
+/**
+ * Campisi 逐效应可用性。`totals.treasury_effect` 等金额不受影响；这里说明那个数
+ * （通常是 0）是被观测出来的还是被缺失输入顶出来的。
+ *
+ * `reason` 区分处置方式完全不同的三种成因：`curve_absent` 要补曲线事实，
+ * `curve_unusable` 要修单位/符号，`insufficient_shared_tenors` 要放宽期限口径；
+ * formal-bridge 路径统一报 `bridge_curve_unavailable`，成因已由桥的行级诊断给出。
+ */
+export type CampisiEffectAvailabilityStatus =
+  | "ok"
+  | "partial"
+  | "unavailable"
+  /**
+   * 该路径的分解框架里没有这一步，所以效应金额是一个"未拆分"的精确 0，贡献留在
+   * `selection_effect` 里。与 `unavailable`（有这一步但输入缺失）不是一回事。
+   */
+  | "not_decomposed";
+
+export type CampisiEffectAvailabilityReason =
+  | "curve_absent"
+  | "curve_unusable"
+  | "insufficient_shared_tenors"
+  | "bridge_curve_unavailable"
+  | "credit_spread_input_missing"
+  | "accrued_interest_missing"
+  | "bridge_second_order_not_decomposed";
+
+export type CampisiEffectAvailabilityEntry = {
+  status: CampisiEffectAvailabilityStatus;
+  reason: CampisiEffectAvailabilityReason | null;
+  unavailable_bonds: number;
+  unavailable_market_value_start: number;
+  shared_positive_tenors?: number;
+  min_required_shared_tenors?: number;
+  basis?: string;
+};
+
+export type CampisiEffectAvailability = {
+  bonds: number;
+  treasury_effect: CampisiEffectAvailabilityEntry;
+  spread_effect: CampisiEffectAvailabilityEntry;
+  accrued_interest: CampisiEffectAvailabilityEntry;
+  /**
+   * 仅 enhanced 形状携带这三项金额，且仅 formal-bridge 路径不拆分它们，因此条目
+   * 是可选的：条目在场（`status="not_decomposed"`）本身就是"这个 0 是框架产物"的标记。
+   */
+  convexity_effect?: CampisiEffectAvailabilityEntry;
+  cross_effect?: CampisiEffectAvailabilityEntry;
+  reinvestment_effect?: CampisiEffectAvailabilityEntry;
+};
+
 export type CampisiFourEffectsPayload = {
   report_date: string;
   period_start: string;
@@ -1151,6 +1219,7 @@ export type CampisiFourEffectsPayload = {
   basis?: string;
   decomposition_basis?: string;
   warnings?: string[];
+  effect_availability?: CampisiEffectAvailability;
 };
 
 export type CampisiEnhancedPayload = {
@@ -1163,6 +1232,7 @@ export type CampisiEnhancedPayload = {
   by_bond: CampisiEnhancedBondRow[];
   basis?: string;
   decomposition_basis?: string;
+  effect_availability?: CampisiEffectAvailability;
 };
 
 export type CampisiMaturityBucketBreakdown = {

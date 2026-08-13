@@ -2,6 +2,10 @@ import { useMemo } from "react";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import type {
   CampisiAttributionPayload,
+  CampisiEffectAvailability,
+  CampisiEffectAvailabilityEntry,
+  CampisiEffectAvailabilityReason,
+  CampisiEffectAvailabilityStatus,
   CampisiFourEffectsPayload,
 } from "../../../api/contracts";
 import type { DataSectionState } from "../../../components/DataSection.types";
@@ -92,12 +96,42 @@ export type CampisiEffectKey =
   | "fx_translation"
   | "selection";
 
+// 后端的 `effect_availability` 说明某个效应的数值（通常是 0）是观测出来的还是被
+// 缺失输入顶出来的。金额本身不变，变的只是允不允许把它当成一个数字发布：
+// `unavailable` 的 0 会被读成"利率没动"，而真相是"没有曲线可比"。
+// Record 按联合类型收口，后端新增取值时编译失败，而不是把英文码泄漏到页面。
+const EFFECT_UNAVAILABLE_TEXT = "不可用";
+
+const CAMPISI_AVAILABILITY_LABELS: Record<CampisiEffectAvailabilityStatus, string> = {
+  ok: "可用",
+  partial: "部分不可用",
+  unavailable: EFFECT_UNAVAILABLE_TEXT,
+  not_decomposed: "该路径不拆分",
+};
+
+const CAMPISI_AVAILABILITY_REASON_LABELS: Record<CampisiEffectAvailabilityReason, string> = {
+  curve_absent: "该交易日没有曲线事实",
+  curve_unusable: "曲线有行但没有可用关键期限",
+  insufficient_shared_tenors: "两端共同期限不足",
+  bridge_curve_unavailable: "正式桥判定该行曲线效应不可用",
+  credit_spread_input_missing: "缺信用利差输入",
+  accrued_interest_missing: "缺应计利息",
+  bridge_second_order_not_decomposed: "bridge 一阶分解框架不拆二阶项，贡献并入选券残差",
+};
+
+function campisiReasonLabel(reason: CampisiEffectAvailabilityReason | null | undefined): string {
+  return reason ? CAMPISI_AVAILABILITY_REASON_LABELS[reason] : "未标注成因";
+}
+
 type CampisiEffect = {
   key: CampisiEffectKey;
   label: string;
   amount: number | null;
   share: number | null;
   role: string;
+  /** 完全不可用：金额不得以数字形式呈现。`partial` 仍是被低估的观测量。 */
+  unavailable: boolean;
+  unavailableReason: CampisiEffectAvailabilityReason | null;
 };
 
 type NormalizedCampisiItem = {
@@ -128,6 +162,9 @@ type NormalizedCampisiData = {
   decomposition_basis?: string;
   formal_closure?: CampisiFourEffectsPayload["formal_closure"];
   has_bridge_details: boolean;
+  effect_availability?: CampisiEffectAvailability;
+  /** true = 占比由前端按 total_return 派生（后端 totals 无占比字段）；false = 消费后端 contribution_pct。 */
+  shares_frontend_derived: boolean;
   items: NormalizedCampisiItem[];
 };
 
@@ -194,6 +231,8 @@ export function normalizeCampisiData(
       decomposition_basis: data.decomposition_basis,
       formal_closure: data.formal_closure,
       has_bridge_details: hasBridgeDetails,
+      effect_availability: data.effect_availability,
+      shares_frontend_derived: true,
       items: data.by_asset_class.map((row) => ({
         category: row.asset_class,
         income_return: finiteOrNull(row.income_return),
@@ -230,6 +269,8 @@ export function normalizeCampisiData(
     decomposition_basis: undefined,
     formal_closure: undefined,
     has_bridge_details: false,
+    effect_availability: undefined,
+    shares_frontend_derived: false,
     items: data.items.map((row) => ({
       category: row.category,
       income_return: finiteOrNull(row.income_return.raw),
@@ -243,6 +284,11 @@ export function normalizeCampisiData(
   };
 }
 
+/** 只有"全部债券都受影响"才允许整列改判；`partial` 仍是被低估的观测量。 */
+function isFullyUnavailable(entry: CampisiEffectAvailabilityEntry | undefined): boolean {
+  return entry?.status === "unavailable";
+}
+
 export function buildEffectRows(normalized: NormalizedCampisiData): CampisiEffect[] {
   const pct = (value: number | null) =>
     normalized.total_return !== null &&
@@ -250,6 +296,10 @@ export function buildEffectRows(normalized: NormalizedCampisiData): CampisiEffec
     value !== null
       ? (value / normalized.total_return) * 100
       : null;
+  const availability = normalized.effect_availability;
+  const treasuryEntry = availability?.treasury_effect;
+  const spreadEntry = availability?.spread_effect;
+  const available = { unavailable: false, unavailableReason: null } as const;
   const rows: CampisiEffect[] = [
     {
       key: "income",
@@ -257,6 +307,7 @@ export function buildEffectRows(normalized: NormalizedCampisiData): CampisiEffec
       amount: normalized.total_income,
       share: normalized.income_contribution_pct,
       role: "票息和持有收益，是债券组合最稳定的收益底盘。",
+      ...available,
     },
     {
       key: "treasury",
@@ -264,6 +315,8 @@ export function buildEffectRows(normalized: NormalizedCampisiData): CampisiEffec
       amount: normalized.total_treasury_effect,
       share: normalized.treasury_contribution_pct,
       role: "无风险利率曲线和 roll-down 带来的估值影响。",
+      unavailable: isFullyUnavailable(treasuryEntry),
+      unavailableReason: treasuryEntry?.reason ?? null,
     },
     {
       key: "spread",
@@ -271,6 +324,8 @@ export function buildEffectRows(normalized: NormalizedCampisiData): CampisiEffec
       amount: normalized.total_spread_effect,
       share: normalized.spread_contribution_pct,
       role: "信用利差收窄或走阔带来的价格影响。",
+      unavailable: isFullyUnavailable(spreadEntry),
+      unavailableReason: spreadEntry?.reason ?? null,
     },
   ];
   if (normalized.has_bridge_details) {
@@ -281,6 +336,7 @@ export function buildEffectRows(normalized: NormalizedCampisiData): CampisiEffec
         amount: normalized.total_realized_trading,
         share: pct(normalized.total_realized_trading),
         role: "517 已实现交易损益，不等同交易员能力评价。",
+        ...available,
       },
       {
         key: "manual_adjustment",
@@ -288,6 +344,7 @@ export function buildEffectRows(normalized: NormalizedCampisiData): CampisiEffec
         amount: normalized.total_manual_adjustment,
         share: pct(normalized.total_manual_adjustment),
         role: "治理手工调整，不算主动管理能力。",
+        ...available,
       },
       {
         key: "fx_translation",
@@ -295,6 +352,7 @@ export function buildEffectRows(normalized: NormalizedCampisiData): CampisiEffec
         amount: normalized.total_fx_translation,
         share: pct(normalized.total_fx_translation),
         role: "汇兑折算影响，与选券残差分开列示。",
+        ...available,
       },
     );
   }
@@ -306,8 +364,52 @@ export function buildEffectRows(normalized: NormalizedCampisiData): CampisiEffec
     role: normalized.has_bridge_details
       ? "扣除票息、曲线、利差、已实现交易、手工调整与汇兑后的残差，不能直接等同选券能力。"
       : "剩余已确认损益，包括个券表现、交易和会计口径差异。",
+    ...available,
   });
   return rows;
+}
+
+/** 不可用效应的金额不进入数字通道：显示"不可用 · 成因"而不是一个 0。 */
+function effectAmountText(effect: CampisiEffect): string {
+  if (effect.unavailable) {
+    return `${EFFECT_UNAVAILABLE_TEXT} · ${campisiReasonLabel(effect.unavailableReason)}`;
+  }
+  return formatYi(effect.amount);
+}
+
+function effectShareText(effect: CampisiEffect): string {
+  if (effect.unavailable || effect.share === null) return EM_DASH;
+  return `${effect.share.toFixed(1)}%`;
+}
+
+/** 参与"主要贡献 / 几乎没有影响"排序的效应：不可用的没有可比金额。 */
+function comparableEffects(effects: readonly CampisiEffect[]): CampisiEffect[] {
+  return effects.filter((effect) => !effect.unavailable && effect.amount !== null);
+}
+
+export type CampisiAvailabilityNotice = { key: string; text: string };
+
+/** 逐效应披露：状态、覆盖面和成因缺一不可，只报"有问题"等于没报。 */
+export function buildCampisiAvailabilityNotices(
+  availability: CampisiEffectAvailability | undefined,
+): CampisiAvailabilityNotice[] {
+  if (!availability) return [];
+  const entries: Array<{ key: string; label: string; entry: CampisiEffectAvailabilityEntry }> = [
+    { key: "treasury_effect", label: "国债曲线效应", entry: availability.treasury_effect },
+    { key: "spread_effect", label: "信用利差效应", entry: availability.spread_effect },
+    { key: "accrued_interest", label: "应计利息口径", entry: availability.accrued_interest },
+  ];
+  return entries
+    .filter(({ entry }) => entry && entry.status !== "ok")
+    .map(({ key, label, entry }) => ({
+      key,
+      text:
+        `${label}${CAMPISI_AVAILABILITY_LABELS[entry.status]}：${campisiReasonLabel(entry.reason)}，` +
+        `影响 ${entry.unavailable_bonds}/${availability.bonds} 只债券。` +
+        (entry.status === "unavailable"
+          ? "该效应本期没有可比输入，页面不以数字形式发布，不能读成“市场没有变动”。"
+          : "受影响债券的该效应缺少输入，合计因此被低估。"),
+    }));
 }
 
 export function sumCampisiEffectAmounts(effects: readonly CampisiEffect[]): number | null {
@@ -359,8 +461,9 @@ function displayEffectLabel(effect: CampisiEffect): string {
 
 function quietEffectLabels(effects: CampisiEffect[], totalReturn: number | null): string {
   const threshold = Math.max(Math.abs(totalReturn ?? 0) * 0.005, 1_000_000);
-  const labels = effects
-    .filter((effect) => effect.amount !== null && Math.abs(effect.amount) <= threshold)
+  // 不可用效应的 0 不是"几乎没有影响"，把它列进这句话正是本次整改要消灭的误读。
+  const labels = comparableEffects(effects)
+    .filter((effect) => Math.abs(effect.amount ?? 0) <= threshold)
     .map((effect) => displayEffectLabel(effect));
   return labels.length ? labels.join("、") : "无";
 }
@@ -371,27 +474,29 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
     () => (normalized ? buildEffectRows(normalized) : []),
     [normalized],
   );
+  const availabilityNotices = useMemo(
+    () => buildCampisiAvailabilityNotices(normalized?.effect_availability),
+    [normalized?.effect_availability],
+  );
   const primaryEffect = useMemo(
     () =>
-      effectRows
-        .filter((effect) => effect.amount !== null)
-        .sort(
-          (left, right) => Math.abs(right.amount ?? 0) - Math.abs(left.amount ?? 0),
-        )[0],
+      comparableEffects(effectRows).sort(
+        (left, right) => Math.abs(right.amount ?? 0) - Math.abs(left.amount ?? 0),
+      )[0],
     [effectRows],
   );
   const maxEffectAbs = Math.max(
     1,
-    ...effectRows.map((effect) => Math.abs(effect.amount ?? 0)),
+    ...comparableEffects(effectRows).map((effect) => Math.abs(effect.amount ?? 0)),
   );
 
   const barOption = useMemo<EChartsOption | null>(() => {
     if (!normalized) {
       return null;
     }
-    // 缺失效应传 null，ECharts 留空不画 0 值柱。
+    // 缺失或不可用的效应传 null，ECharts 留空不画 0 值柱。
     const values = effectRows.map((effect) =>
-      effect.amount === null ? null : effect.amount / 100_000_000,
+      effect.unavailable || effect.amount === null ? null : effect.amount / 100_000_000,
     );
     return {
       tooltip: {
@@ -435,7 +540,7 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
           data: values.map((value, index) => ({
             value,
             itemStyle: {
-              color: effectColor(effectRows[index]?.amount ?? null),
+              color: effectColor(value === null ? null : effectRows[index]?.amount ?? null),
               borderRadius: [
                 0,
                 designTokens.radius.sm,
@@ -488,6 +593,15 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
               }}
             >
               分解口径：{normalized.decomposition_basis}
+            </div>
+          ) : null}
+          {availabilityNotices.length > 0 ? (
+            <div data-testid="campisi-effect-availability" style={capabilityBoundaryStyle}>
+              {availabilityNotices.map((notice) => (
+                <div key={notice.key} data-testid={`campisi-effect-availability-${notice.key}`}>
+                  {notice.text}
+                </div>
+              ))}
             </div>
           ) : null}
           <div data-testid="campisi-capability-boundary" style={capabilityBoundaryStyle}>
@@ -577,6 +691,18 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
               </div>
             </div>
           ) : null}
+          {normalized.shares_frontend_derived ? (
+            <div
+              data-testid="campisi-share-derived-note"
+              style={{
+                marginBottom: designTokens.space[3],
+                fontSize: designTokens.fontSize[12],
+                color: designTokens.color.neutral[600],
+              }}
+            >
+              占比为展示辅助计算（非正式指标）：按各效应金额 / 本期 Campisi 总回报折算。
+            </div>
+          ) : null}
           <div
             style={{
               display: "grid",
@@ -613,19 +739,18 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
                   >
                     {displayEffectLabel(effect)}
                   </span>
-                  <span style={tabularNumsStyle}>
-                    {effect.share === null ? EM_DASH : `${effect.share.toFixed(1)}%`}
-                  </span>
+                  <span style={tabularNumsStyle}>{effectShareText(effect)}</span>
                 </div>
                 <div
+                  data-testid={`campisi-effect-amount-${effect.key}`}
                   style={{
-                    color: effectColor(effect.amount),
+                    color: effectColor(effect.unavailable ? null : effect.amount),
                     fontWeight: 700,
                     marginBottom: designTokens.space[2],
                     ...tabularNumsStyle,
                   }}
                 >
-                  {formatYi(effect.amount)}
+                  {effectAmountText(effect)}
                 </div>
                 <div
                   style={{
@@ -637,10 +762,11 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
                 >
                   <div
                     style={{
-                      width: `${Math.min(
-                        100,
-                        (Math.abs(effect.amount ?? 0) / maxEffectAbs) * 100,
-                      )}%`,
+                      width: `${
+                        effect.unavailable
+                          ? 0
+                          : Math.min(100, (Math.abs(effect.amount ?? 0) / maxEffectAbs) * 100)
+                      }%`,
                       height: "100%",
                       borderRadius: 999,
                       background: effectColor(effect.amount),
@@ -713,9 +839,11 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
                               ...tabularNumsStyle,
                             }}
                           >
-                            {value === null
-                              ? EM_DASH
-                              : (value / 100_000_000).toFixed(2)}
+                            {effect.unavailable
+                              ? EFFECT_UNAVAILABLE_TEXT
+                              : value === null
+                                ? EM_DASH
+                                : (value / 100_000_000).toFixed(2)}
                           </td>
                         );
                       })}
