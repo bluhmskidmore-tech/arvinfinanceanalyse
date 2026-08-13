@@ -1,12 +1,12 @@
 {
   "schema_version": "ci-skip-registry-v1",
-  "description": "受控的环境/数据依赖型 pytest 跳过清单。守卫测试 tests/test_ci_skip_registry.py 会静态扫描 scan_roots 下的 *.py（纯文本、不执行被扫测试），任何未登记的新增依赖型跳过（pytest.mark.skipif / pytest.skip( / pytest.importorskip）都会导致守卫失败；新增跳过必须先在本文件登记并说明原因分类、依赖资产与合成替代情况。",
+  "description": "受控的环境/数据依赖型 pytest 跳过清单。守卫测试 tests/test_ci_skip_registry.py 会静态扫描 scan_roots 下的 *.py（纯文本、不执行被扫测试），任何未登记的新增依赖型跳过（pytest.mark.skipif / pytest.skip( / importorskip，最后一项含 pytest. 前缀与裸用法）都会导致守卫失败；新增跳过必须先在本文件登记并说明原因分类、依赖资产与合成替代情况。",
   "as_of": "2026-08-12",
   "scan_roots": ["tests", "backend/tests"],
   "kinds": {
     "skipif": "pytest.mark.skipif",
     "skip_call": "pytest.skip(",
-    "importorskip": "pytest.importorskip"
+    "importorskip": "importorskip"
   },
   "categories": ["real-data", "redis", "postgres", "symlink", "system-db", "other"],
   "entries": [

@@ -2,7 +2,14 @@ services:
   api:
     image: python:3.11-slim
     working_dir: /workspace
-    command: sh -c "pip install -e ./backend[dev] && python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000"
+    # 安装即 lock：从 backend/uv.lock 导出完整闭包后 --no-deps 安装，容器内不再
+    # 二次解析，装出来的版本与 CI、与 OSV 扫描对象逐字一致。
+    command: >-
+      sh -c "pip install --no-cache-dir uv==0.11.32 &&
+      uv export --frozen --project backend --extra dev --no-hashes --no-emit-project -o /tmp/backend-requirements.txt &&
+      uv pip install --system --no-deps -r /tmp/backend-requirements.txt &&
+      uv pip install --system --no-deps -e ./backend &&
+      python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000"
     volumes:
       - ./:/workspace
     environment:
@@ -28,7 +35,15 @@ services:
   worker:
     image: python:3.11-slim
     working_dir: /workspace
-    command: sh -c "pip install -e ./backend[dev] && python -m dramatiq --processes 1 --threads 8 backend.app.tasks.worker_bootstrap"
+    # 与 api 同源同法。注意：本命令只装 [dev]，不装 [vendor]，因此 akshare /
+    # tushare 摄取任务在本容器内调用时仍会报错——这是既有行为，未在此改动。
+    # 需要真实摄取的部署把 `--extra dev` 换成 `--extra dev --extra vendor`。
+    command: >-
+      sh -c "pip install --no-cache-dir uv==0.11.32 &&
+      uv export --frozen --project backend --extra dev --no-hashes --no-emit-project -o /tmp/backend-requirements.txt &&
+      uv pip install --system --no-deps -r /tmp/backend-requirements.txt &&
+      uv pip install --system --no-deps -e ./backend &&
+      python -m dramatiq --processes 1 --threads 8 backend.app.tasks.worker_bootstrap"
     volumes:
       - ./:/workspace
     environment:

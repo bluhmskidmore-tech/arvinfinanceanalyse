@@ -18,7 +18,12 @@ def test_docker_compose_bootstraps_backend_dependencies_and_uses_container_hosts
     compose_path = ROOT / "docker-compose.yml"
     text = compose_path.read_text(encoding="utf-8")
 
-    assert "pip install -e ./backend" in text
+    # 容器安装必须走 backend/uv.lock 的冻结闭包：`uv export --frozen` + `--no-deps`
+    # 安装，缺任何一段都会退回"容器内二次解析"，装出的版本与 OSV 扫描对象脱钩。
+    assert "uv export --frozen --project backend" in text
+    assert "uv pip install --system --no-deps -r /tmp/backend-requirements.txt" in text
+    assert "uv pip install --system --no-deps -e ./backend" in text
+    assert "pip install -e ./backend[dev]" not in text
     assert "python -m dramatiq --processes 1 --threads 8 backend.app.tasks.worker_bootstrap" in text
     assert (
         "postgresql://${MOSS_POSTGRES_USER:-moss}:${MOSS_POSTGRES_PASSWORD:?Set "

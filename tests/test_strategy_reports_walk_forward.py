@@ -18,6 +18,7 @@ from backend.app.services.strategy_report_service import (
     WALK_FORWARD_REPORT_PATH_ENV,
     build_walk_forward_summary,
     load_walk_forward_report,
+    resolve_walk_forward_report_path,
     walk_forward_summary_envelope,
 )
 from tests.helpers import load_module
@@ -178,14 +179,66 @@ def test_walk_forward_summary_envelope_none_when_missing(tmp_path: Path) -> None
     assert walk_forward_summary_envelope(tmp_path / "absent.json") is None
 
 
+def _walk_forward_report_defect(path: Path) -> str | None:
+    """把 load_walk_forward_report 归一成 None 的各个分支还原成可读的损坏原因。
+
+    service 侧把"缺失/不可解析/顶层非 dict"统一成 None 是路由层要的语义(映射 404)，
+    这里不改它；测试侧自行检查文件状态，好让"已提交工件被截断/损坏/误删"三种情况
+    在失败信息里能区分开。返回 None 表示文件可用。
+    """
+    if not path.exists():
+        return f"文件不存在: {path}"
+    if not path.is_file():
+        return f"路径存在但不是普通文件: {path}"
+    size = path.stat().st_size
+    try:
+        raw_text = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        return f"文件不是合法 UTF-8({exc}); 磁盘 {size} 字节: {path}"
+    except OSError as exc:
+        return f"文件不可读({type(exc).__name__}: {exc}); 磁盘 {size} 字节: {path}"
+    if not raw_text.strip():
+        return f"文件内容为空; 磁盘 {size} 字节: {path}"
+    try:
+        parsed = json.loads(raw_text)
+    except json.JSONDecodeError as exc:
+        return f"JSON 解析失败({exc}); 磁盘 {size} 字节，疑似被截断或损坏: {path}"
+    if not isinstance(parsed, dict):
+        return f"JSON 顶层是 {type(parsed).__name__} 而非 object; 磁盘 {size} 字节: {path}"
+    return None
+
+
 @pytest.mark.unit
 def test_real_report_summary_stays_under_50kb(monkeypatch: pytest.MonkeyPatch) -> None:
+    """真实首跑报告裁剪后的体积锚点(fail-closed)。
+
+    依赖资产 docs/strategy-reports/walk-forward-first-run.json 是随仓库提交的工件
+    (git 已跟踪、非 gitignore、非 LFS)，任何 checkout 都应在场。因此缺失或损坏属于
+    仓库完整性回归，必须报红；这里不留跳过口子。
+    """
     monkeypatch.delenv(WALK_FORWARD_REPORT_PATH_ENV, raising=False)
+    report_path = resolve_walk_forward_report_path()
+
+    defect = _walk_forward_report_defect(report_path)
+    assert defect is None, (
+        f"仓库内已提交的 walk-forward 报告不可用({defect})；"
+        "该文件随仓库提交，缺失/损坏是仓库完整性回归而非环境缺失"
+    )
+
     envelope = walk_forward_summary_envelope()
-    if envelope is None:
-        pytest.skip("walk-forward report is not present in this checkout")
+    assert envelope is not None, f"报告文件自检通过但 envelope 仍为 None，读取/裁剪链路异常: {report_path}"
+
+    result = envelope["result"]
+    assert result["schedules"], f"报告 schedules 为空，工件疑似被清空或改写: {report_path}"
+    assert all(schedule["strategies"] for schedule in result["schedules"]), (
+        f"存在无策略行的 schedule，报告结构疑似退化: {report_path}"
+    )
+
     body = json.dumps(envelope, ensure_ascii=False).encode("utf-8")
-    assert len(body) < 50 * 1024
+    assert len(body) < 50 * 1024, (
+        f"裁剪后 envelope {len(body)} 字节，超出 50KB 展示预算"
+        f"(原始报告 {report_path.stat().st_size} 字节): {report_path}"
+    )
 
 
 def _strategy_reports_client(

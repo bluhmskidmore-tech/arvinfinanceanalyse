@@ -7,6 +7,10 @@ dependencies = [
   "beautifulsoup4>=4.12,<5",
   "anyio>=4.0,<5",
   "fastapi>=0.115,<0.137",
+  # starlette 是 fastapi 的传递依赖，但被直接暴露在 ASGI 中间件/响应链路上。
+  # 不显式约束时它已经从 0.x 静默跨到 1.x major；此处钉住 major，让下一次
+  # 跨代升级必须走显式解析失败而不是悄悄进环境。
+  "starlette>=1.3,<2",
   "uvicorn>=0.34,<1",
   "requests>=2.32,<3",
   "pydantic>=2.10,<3",
@@ -31,6 +35,20 @@ dev = [
   "httpx>=0.28,<1",
   "pytest>=9.0.3,<10",
   "pytest-xdist>=3.6,<4",
+]
+# macro toolkit 脚本经 macro_toolkit_service 以子进程方式在运行时执行；
+# 这些包是那条链路的真实运行依赖，声明在此让它们进 uv.lock 与 OSV 扫描面。
+# 调用点全部带 importlib.util.find_spec 守卫，因此不装本 extra 时功能降级而非崩溃。
+toolkit = [
+  "matplotlib>=3.9,<4",
+  "python-docx>=1.1,<2",
+]
+# 行情/资讯摄取 worker 的 vendor SDK。代码中全部是函数体内惰性 import，
+# 不装本 extra 时对应摄取任务在调用时报错，API 启动与测试收集不受影响。
+# WindPy / EmQuantAPI 由 Wind / Choice 终端捆绑分发，PyPI 无对应包，无法进 lock。
+vendor = [
+  "akshare>=1.18,<2",
+  "tushare>=1.4,<2",
 ]
 otel = [
     "opentelemetry-api>=1.39,<2",
