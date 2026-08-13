@@ -332,22 +332,26 @@ Coupon-frequency authority（2026-07-20）：
 - `bond_four_effects`、`bond_duration` 与 `bond_analytics.common` 的默认参数仅为兼容入口，不构成正式业务口径；正式调用链必须显式传入频率。
 - Campisi 正式归因当前尚未接入该权威：`merge_positions` 未保留 `interest_mode`，`campisi._coupon_freq` 仍按资产类别启发式取 1/2。切换该路径会改变历史归因结果，须经 owner 裁决并安排全期回归/重算；在此之前不得宣称 Campisi 与 Bond Analytics 已统一频率口径。
 
-## Convexity dual-caliber baseline（2026-08-12）
+## Convexity single-caliber baseline（2026-08-12 建立；2026-08-13 口径 B 已收敛）
 
-当前两套凸性实现均以 **Macaulay 久期** `D` 为入参，属于基于久期的近似式，**不是**按现金流对收益率求二阶导得到的标准现金流凸性。标准参照式为
-`C_std = Σ[CF_k × k(k+1) / (1+y/f)^(k+2)] / (P × f²)`。
+仓库内**只保留一套**凸性实现，以 **Macaulay 久期** `D` 为入参，属于基于久期的近似式，**不是**按现金流对收益率求二阶导得到的标准现金流凸性。标准参照式为
+`C_std = Σ[CF_k × k(k+1) / (1+y/f)^(k+2)] / (P × f²)`，可等价写成 `C_std = (D² + D/f + M²) / (1+y/f)²`，其中 `M²` 是现值加权付息时点方差（年²）。
 
-- `bond_analytics/common.py::estimate_convexity`：正收益率分支为 `C_common = D(D+1) / (1+y/f)²`；直接调用方是 `bond_analytics/engine.py::compute_bond_analytics_rows`（正式 Bond Analytics 物化计算链）。`y<=0` 时保留既有 `D²` 兼容回退。
-- `bond_duration.py::estimate_convexity_bond`：正收益率分支为 `C_bond_duration = [D² + D(1+1/f)] / (1+y/f)²`；直接调用方是 `bond_four_effects.py::compute_bond_six_effects` 与 `krd.py::build_krd_position_metrics`，`campisi.py::campisi_enhanced` 经四效应路径间接调用。`y<=0` 与 Wind 覆盖分支保留既有兼容行为。
+- **唯一在用口径**：`bond_analytics/common.py::estimate_convexity`，正收益率分支 `C = D(D+1) / (1+y/f)²`，`y<=0` 时回退 `D²`。它是**零息近似族**：单笔现金流（`M²=0`、`f=1`）时与 `C_std` 精确一致；付息债的系统性低估量即 `M²/(1+y/f)²`。
+- **调用方**：`bond_analytics/engine.py::compute_bond_analytics_rows`（正式 Bond Analytics 物化）直接调用；`bond_duration.py::estimate_convexity_bond` 自 2026-08-13 起是委托本函数的薄封装（保留 Wind 覆盖分支：外部观测凸性优先），其下游为 `bond_four_effects.py::compute_bond_six_effects`（→ `campisi.py::campisi_enhanced`）与 `krd.py::build_krd_position_metrics`（休眠模块，无 API 消费方）。
 
-两式不一致：`f=1` 时 `C_bond_duration` 比 `C_common` 多 `D/(1+y)²`，一般相对高 `1/(D+1)`；仅当 `D=1` 时高 50%，不能把 50% 当作任意久期下的固定差异。
+已下线口径（W-fi-2026-08 P3，**修 bug 性质，非精度升级**）：`bond_duration.py::estimate_convexity_bond` 原有独立实现 `[D² + D(1+1/f)] / (1+y/f)²`（`y<=0` 时另乘 `1.1`）。删除依据：该式相对 `C_std` 等价于强行假设 `M² = D`，无任何教科书近似族与之对应；`1.1` 系数同样无出处。实测偏差（`f=1`，`(近似值-C_std)/C_std`）：0.25Y **+80%**、1Y +50%、5Y +14%、10~12Y 附近过零、30Y **−17%**；`f=2` 短端最高 **+133%**——只在 7~12Y 段巧合接近标准值。
 
-相对标准现金流凸性的既有扫描证据（1Y~30Y × 年付/半年付，偏差定义为 `(近似值-C_std)/C_std`）：
+相对标准现金流凸性的扫描证据（1Y~30Y × 年付/半年付）：
 
-- `C_common`：−26.1% ~ +33.2%。
-- `C_bond_duration`：−23.4% ~ +66.6%。
+- 在用口径 `C = D(D+1)/(1+y/f)²`：−26.1% ~ +33.2%（**尚未解决**）。
+- 已下线口径 `[D² + D(1+1/f)]/(1+y/f)²`：−23.4% ~ +66.6%（仅作历史记录）。
 
-两套现有行为由 `tests/test_convexity_caliber_baseline.py` 冻结；凸性标准化改造待业务批准维护窗口，在批准前不得以“公式对齐”为由修改数值口径、提升规则版本或触发重物化。
+`tests/test_convexity_caliber_baseline.py` 从"冻结两套口径"改为：冻结在用口径的数值与偏差区间、断言两个入口同值（防止第二套口径回流）、显式钉死已下线的 B 式不得复活。
+
+收敛的业务影响（live 库实测，`campisi_enhanced` 核心路径）：`convexity_effect` / `cross_effect` 下降约 4.4%~6.3%，等额反向进入 `selection_effect`，`total_return` 与逐券闭合恒等式不变；不落库、无重物化。
+
+**剩余项**：在用口径相对 `C_std` 的 −26.1% ~ +33.2% 偏差仍待独立的 rule_version 升级 + 全史重述处理；在该升级批准前不得以"公式对齐"为由单独修改本口径数值、提升规则版本或触发重物化。
 
 Credit-spread benchmark tenor（2026-07-20）：
 - 信用利差逐券基准优先按 `years_to_maturity` 在同日国债曲线上线性插值。
