@@ -6,7 +6,7 @@
 
 | 文件 | 说明 |
 | --- | --- |
-| `StockAnalysisThemeGroupedView.tsx` | 分组视图组件 + `buildStockThemeGroups` 分组/排序纯函数 + `POLICY_THEME_ORDER` 7 题材目录 |
+| `StockAnalysisThemeGroupedView.tsx` | 分组视图组件（`buildStockThemeGroups` 分组/排序纯函数与 `POLICY_THEME_ORDER` 7 题材目录已下沉至 `lib/stockAnalysisThemeGroupsModel.ts`） |
 | `StockAnalysisThemeGroupedView.css` | 组件样式，零新增色值，全部 `--dh-api-*` token |
 | `StockAnalysisThemeGroupedView.test.tsx` | 8 个用例：分组/排序/筛选/空态/单题材回退/未知题材/证据复核区块 |
 | `ThemeGroupedView.handoff.md` | 本文件 |
@@ -74,6 +74,6 @@ const LazyStockAnalysisThemeGroupedView = lazy(() =>
 
 ## 遗留与后续建议（域干净后）
 
-1. `buildStockThemeGroups` / `POLICY_THEME_ORDER` 下沉到 `lib/stockAnalysisPageModel.ts`（或独立 lib 模块），消除组件文件的 2 个 react-refresh 警告。
+1. ~~`buildStockThemeGroups` / `POLICY_THEME_ORDER` 下沉到 `lib/stockAnalysisPageModel.ts`（或独立 lib 模块），消除组件文件的 2 个 react-refresh 警告。~~ 已完成（2026-08-13）：下沉至独立模块 `lib/stockAnalysisThemeGroupsModel.ts`。
 2. 题材目录改为由 payload 驱动（后端已返回 `theme_count`，可考虑让 API 直接披露 policy 题材清单），去掉前端硬编码镜像。
 3. 视觉走查后如需与页面其他新组件（如 SectorStrengthCard）统一密度，可在 CSS 内微调 padding，不动 token。

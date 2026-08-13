@@ -6,10 +6,8 @@ import type {
   StockThemeBreakoutReviewItem,
   StockThemeEvidenceStateRow,
 } from "../lib/stockAnalysisPageModel";
-import {
-  buildStockThemeGroups,
-  StockAnalysisThemeGroupedView,
-} from "./StockAnalysisThemeGroupedView";
+import { buildStockThemeGroups } from "../lib/stockAnalysisThemeGroupsModel";
+import { StockAnalysisThemeGroupedView } from "./StockAnalysisThemeGroupedView";
 
 const GROUP_TESTID_PATTERN = /^stock-analysis-theme-group-/;
 
