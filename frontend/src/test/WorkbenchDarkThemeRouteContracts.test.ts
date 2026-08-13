@@ -20,7 +20,11 @@ const macroToolkitCss = readFileSync(
   "utf8",
 );
 
-describe("workbench dark theme route contracts", () => {
+/**
+ * 仅守卫 module-home 与 macro-toolkit 两个页面族对 dh-api 变量的引用。
+ * 37-scope Nocturne / AntD 契约由 theme.test.ts 覆盖，本文件不代表全站路由契约。
+ */
+describe("module-home and macro-toolkit dh-api variable reference guards", () => {
   it("pins module workbench home routes to dh-api page tokens", () => {
     expect(moduleHomePageSource).toContain("theme-dh-api");
     expect(moduleHomeCss).toContain("--mh-page-bg: var(--dh-api-bg);");

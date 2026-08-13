@@ -22,7 +22,8 @@ export const MODULE_HOME_SECTION_KEYS: readonly string[] = [
 ];
 
 /**
- * 宏观工具 / 宏观观察（同一页面组件）：页面自带页头是唯一标题带，
+ * 宏观工具 / 宏观观察（独立页面，共用 macro-toolkit 主题 scope）：
+ * 两页自带页头是唯一标题带，
  * 外壳终端条（大标题 + 报告日 chip + 市场 ticker + 工具链接）整块抑制，
  * 报表中心 / 中台配置仍可从左栏「支持入口」进入；组内子导航保持渲染。
  */
