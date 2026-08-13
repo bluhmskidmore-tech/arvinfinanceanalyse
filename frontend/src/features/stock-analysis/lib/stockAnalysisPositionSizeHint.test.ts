@@ -10,6 +10,8 @@ import { enrichStockAnalysisWorkbenchReviewQueue } from "./stockAnalysisWorkbenc
 
 const OOS_NOTE =
   "walk-forward 样本外验证显示逐窗最优 rpt 在 0.25%~1% 间漂移，固定 0.5% 的全窗口优势在样本外普遍缩水；本建议仅供参考，需结合等权 shadow 对照观察。";
+const EQUAL_WEIGHT_NOTE =
+  "等权仓位为主参考口径：equal_weight = 当日门控敞口 / 候选数，与回测 equal_weight 变体同语义（敞口直接进入权重，无需再叠加 gate 截断）；门控敞口缺失时等权仓位不可计算，仅保留 risk_budget 实验参考。";
 const GATE_NOTE =
   "raw_weight 为单票权重上限建议；实盘按引擎串联口径，建仓金额仍受当日 gate 敞口剩余预算截断，本提示不做实时敞口截断。";
 const SHADOW_NOTE = "等权 shadow 对照仍在回测输出（sizing=equal_weight 变体），用于 drift 监控。";
@@ -54,6 +56,24 @@ function buildPositionSizeHint(
       note: OOS_NOTE,
       evidence_ref: "docs/strategy-reports/walk-forward-first-run.md",
     },
+    ...overrides,
+  };
+}
+
+/** sizing_eqw_v2 风格块：等权主参考（门控敞口 0.4 ÷ 2 票 = 0.2），risk_budget 降为实验参考。 */
+function buildEqualWeightPrimaryHint(
+  overrides: Partial<LivermorePositionSizeHint> = {},
+): LivermorePositionSizeHint {
+  const base = buildPositionSizeHint();
+  return {
+    ...base,
+    policy_version: "sizing_eqw_v2_stock_candidate",
+    primary_basis: "equal_weight",
+    risk_budget_status: "experimental_reference",
+    equal_weight_gate_exposure: 0.4,
+    equal_weight_candidate_count: 2,
+    equal_weight_note: EQUAL_WEIGHT_NOTE,
+    items: base.items.map((item) => ({ ...item, equal_weight: 0.2 })),
     ...overrides,
   };
 }
@@ -140,6 +160,55 @@ function buildPayload(): LivermoreStrategyPayload {
     },
   };
 }
+
+describe("stock candidate position size hint equal-weight primary (sizing_eqw_v2)", () => {
+  it("shows the equal-weight badge and demotes risk_budget to an experimental-reference tooltip line", () => {
+    const queue = attachCandidateSizeHintFields(
+      buildCandidateReviewQueue(buildPayload()),
+      buildEqualWeightPrimaryHint(),
+    );
+
+    expect(queue[0].sizeHintLabel).toBe("等权 20.0%");
+    expect(queue[0].sizeHintDetail).toContain(
+      "建议仓位以等权为主参考（当日门控敞口÷候选数，已含门控敞口）",
+    );
+    expect(queue[0].sizeHintDetail).toContain(
+      "实验参考（样本外未支持）：risk_budget 仓位 ≤ 8.4%（EMA10 止损距离折算）",
+    );
+    expect(queue[0].sizeHintDetail).toContain(`样本外验证：${OOS_NOTE}`);
+    expect(queue[0].sizeHintDetail).toContain(GATE_NOTE);
+
+    // 触 cap 的票：等权主显相同，实验参考行保留 cap 披露。
+    expect(queue[1].sizeHintLabel).toBe("等权 20.0%");
+    expect(queue[1].sizeHintDetail).toContain(
+      "实验参考（样本外未支持）：risk_budget 仓位 ≤ 20.0%（fallback 止损距离折算，已触单票上限）",
+    );
+  });
+
+  it("falls back to the raw_weight badge when equal_weight is unavailable (gate exposure missing)", () => {
+    const hint = buildEqualWeightPrimaryHint({
+      equal_weight_gate_exposure: null,
+      items: buildPositionSizeHint().items.map((item) => ({ ...item, equal_weight: null })),
+    });
+    const queue = attachCandidateSizeHintFields(buildCandidateReviewQueue(buildPayload()), hint);
+
+    expect(queue[0].sizeHintLabel).toBe("仓位 ≤ 8.4%");
+    expect(queue[0].sizeHintDetail).toContain("建议仓位为单票权重上限参考（EMA10 止损距离折算）");
+  });
+
+  it("surfaces the gate-exposure caliber and the demotion in the header notice line", () => {
+    const notice = buildCandidatePositionSizeHintNotice(buildEqualWeightPrimaryHint());
+
+    expect(notice?.summary).toBe(
+      "建议仓位以等权为主参考：当日门控敞口÷候选数（risk_budget 为实验参考；样本外验证未获支持）",
+    );
+    expect(notice?.tone).toBe("neutral");
+    expect(notice?.detail).toContain(EQUAL_WEIGHT_NOTE);
+    expect(notice?.detail).toContain(`样本外验证：${OOS_NOTE}`);
+    expect(notice?.detail).toContain(GATE_NOTE);
+    expect(notice?.detail).toContain(SHADOW_NOTE);
+  });
+});
 
 describe("stock candidate position size hint pass-through", () => {
   it("formats per-candidate hint badges and passes disclosure text into the tooltip detail", () => {

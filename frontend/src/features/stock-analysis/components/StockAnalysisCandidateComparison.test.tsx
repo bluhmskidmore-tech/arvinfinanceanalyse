@@ -48,7 +48,48 @@ describe("StockAnalysisCandidateComparison", () => {
     expect(row).not.toHaveTextContent("优先复核");
   });
 
-  it("renders the position size hint badge and the caliber notice with tooltips", () => {
+  it("renders the equal-weight primary badge and the gate-caliber notice line with tooltips", () => {
+    const candidate = {
+      ...buildBoundaryLeadCandidate(),
+      sizeHintLabel: "等权 20.0%",
+      sizeHintDetail:
+        "建议仓位以等权为主参考（当日门控敞口÷候选数，已含门控敞口）\n实验参考（样本外未支持）：risk_budget 仓位 ≤ 8.4%（EMA10 止损距离折算）",
+    };
+
+    render(
+      <StockAnalysisCandidateComparison
+        candidates={[candidate]}
+        usesHybridFusion={false}
+        asOfLabel="2026-07-16"
+        positionSizeHint={{
+          summary: "建议仓位以等权为主参考：当日门控敞口÷候选数（risk_budget 为实验参考；样本外验证未获支持）",
+          tone: "neutral",
+          oosStatusLabel: "样本外验证未获支持",
+          oosNote: "walk-forward 样本外验证仅供参考",
+          coverageWarning: null,
+          detail: "样本外验证：walk-forward 样本外验证仅供参考",
+        }}
+        onReviewCandidate={vi.fn()}
+      />,
+    );
+
+    const badge = screen.getByTestId(`stock-comparison-candidate-sizehint-${candidate.stockCode}`);
+    expect(badge).toHaveTextContent("等权 20.0%");
+    expect(badge).toHaveAttribute(
+      "title",
+      "建议仓位以等权为主参考（当日门控敞口÷候选数，已含门控敞口）\n实验参考（样本外未支持）：risk_budget 仓位 ≤ 8.4%（EMA10 止损距离折算）",
+    );
+
+    // 门控口径与主次降级合并在表头口径条一行（非仅 tooltip）。
+    const notice = screen.getByTestId("stock-analysis-candidate-comparison-sizehint");
+    expect(notice).toHaveTextContent(
+      "建议仓位以等权为主参考：当日门控敞口÷候选数（risk_budget 为实验参考；样本外验证未获支持）",
+    );
+    expect(notice).toHaveAttribute("data-tone", "neutral");
+    expect(notice).toHaveAttribute("title", "样本外验证：walk-forward 样本外验证仅供参考");
+  });
+
+  it("keeps rendering the legacy raw-weight badge text for pre-primary_basis responses", () => {
     const candidate = {
       ...buildBoundaryLeadCandidate(),
       sizeHintLabel: "仓位 ≤ 8.4%",
@@ -64,9 +105,9 @@ describe("StockAnalysisCandidateComparison", () => {
           summary: "建议仓位为单票上限参考（样本外验证未获支持）",
           tone: "neutral",
           oosStatusLabel: "样本外验证未获支持",
-          oosNote: "walk-forward 样本外验证仅供参考",
+          oosNote: null,
           coverageWarning: null,
-          detail: "样本外验证：walk-forward 样本外验证仅供参考",
+          detail: "样本外验证：仅供参考",
         }}
         onReviewCandidate={vi.fn()}
       />,
@@ -74,15 +115,9 @@ describe("StockAnalysisCandidateComparison", () => {
 
     const badge = screen.getByTestId(`stock-comparison-candidate-sizehint-${candidate.stockCode}`);
     expect(badge).toHaveTextContent("仓位 ≤ 8.4%");
-    expect(badge).toHaveAttribute(
-      "title",
-      "建议仓位为单票权重上限参考（EMA10 止损距离折算）\n样本外验证：仅供参考",
+    expect(screen.getByTestId("stock-analysis-candidate-comparison-sizehint")).toHaveTextContent(
+      "建议仓位为单票上限参考（样本外验证未获支持）",
     );
-
-    const notice = screen.getByTestId("stock-analysis-candidate-comparison-sizehint");
-    expect(notice).toHaveTextContent("建议仓位为单票上限参考（样本外验证未获支持）");
-    expect(notice).toHaveAttribute("data-tone", "neutral");
-    expect(notice).toHaveAttribute("title", "样本外验证：walk-forward 样本外验证仅供参考");
   });
 
   it("stays badge- and notice-free when the backend omits the position size hint", () => {

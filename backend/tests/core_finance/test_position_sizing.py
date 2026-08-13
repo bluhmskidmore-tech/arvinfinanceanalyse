@@ -1,6 +1,7 @@
-﻿"""position_size_hint 黄金样本：公式与回测引擎 risk_budget 变体同款。
+﻿"""position_size_hint 黄金样本：等权主参考 + risk_budget 实验参考。
 
-覆盖：ema10 stop_ref 正常、cap 截断、stop 缺失/非正 fallback、
+覆盖：等权口径（门控敞口/候选数，含单票/多票/敞口边界）、主次声明字段、
+ema10 stop_ref 正常、cap 截断、stop 缺失/非正 fallback、
 覆盖率退化告警钩子、gate 串联语义与等权 shadow 说明文案。
 """
 
@@ -11,10 +12,12 @@ from dataclasses import replace
 import pytest
 from backend.app.core_finance.position_sizing import (
     COVERAGE_DEGRADED_WARNING,
+    EQUAL_WEIGHT_NOTE,
     EQUAL_WEIGHT_SHADOW_NOTE,
     GATE_EXPOSURE_NOTE,
     OOS_VALIDATION_EVIDENCE_REF,
     OOS_VALIDATION_NOTE,
+    RISK_BUDGET_STATUS_EXPERIMENTAL_REFERENCE,
     STOP_BASIS_EMA10,
     STOP_BASIS_FALLBACK,
     build_stock_candidate_position_size_hint,
@@ -118,12 +121,90 @@ def test_hint_stop_distance_matches_backtest_engine() -> None:
         assert (hint["stop_basis"] == STOP_BASIS_FALLBACK) is engine_fallback, (close, ema10)
 
 
+def test_hint_block_primary_basis_equal_weight_single_candidate() -> None:
+    # 单票：等权 = 门控敞口 / 1 = 0.75；主次声明来自 SizingPolicy 单一来源。
+    block = build_stock_candidate_position_size_hint(
+        [_item("600000.SH", close=100.0, ema10=96.0)],
+        market_gate_exposure=0.75,
+    )
+    assert block["primary_basis"] == "equal_weight"
+    assert block["primary_basis"] == POLICY.sizing.primary_basis
+    assert block["risk_budget_status"] == RISK_BUDGET_STATUS_EXPERIMENTAL_REFERENCE
+    assert block["risk_budget_status"] == "experimental_reference"
+    assert block["equal_weight_gate_exposure"] == 0.75
+    assert block["equal_weight_candidate_count"] == 1
+    assert block["equal_weight_note"] == EQUAL_WEIGHT_NOTE
+    assert "门控敞口" in EQUAL_WEIGHT_NOTE
+    assert "候选数" in EQUAL_WEIGHT_NOTE
+    item = block["items"][0]
+    assert item["equal_weight"] == 0.75
+    # risk_budget 实验参考字段保留不删（下游容错）。
+    assert item["raw_weight"] == 0.125
+    assert item["stop_basis"] == STOP_BASIS_EMA10
+
+
+def test_hint_block_equal_weight_multi_candidate_split() -> None:
+    # 多票：等权 = 0.75 / 3 = 0.25，逐票相同；与止损距离无关。
+    block = build_stock_candidate_position_size_hint(
+        [
+            _item("600000.SH", close=100.0, ema10=96.0),
+            _item("000001.SZ", close=100.0, ema10=99.0),
+            _item("600519.SH", close=100.0, ema10=None),
+        ],
+        market_gate_exposure=0.75,
+    )
+    assert block["equal_weight_candidate_count"] == 3
+    assert [item["equal_weight"] for item in block["items"]] == [0.25, 0.25, 0.25]
+    # 各票 risk_budget 实验参考仍逐票不同。
+    assert [item["raw_weight"] for item in block["items"]] == [0.125, 0.25, 0.0625]
+
+
+@pytest.mark.parametrize(
+    ("market_gate_exposure", "expected_exposure", "expected_equal_weight"),
+    [
+        (None, None, None),  # 门控敞口缺失：等权不可计算
+        (float("nan"), None, None),  # 非有限值同缺失
+        (0.0, 0.0, 0.0),  # 门控关闭：等权仓位为 0（当日不建仓）
+        (1.2, 1.0, 0.5),  # 超界截取到 1.0（镜像引擎 [0,1] 口径）
+        (-0.3, 0.0, 0.0),  # 负值截取到 0.0
+    ],
+)
+def test_hint_block_equal_weight_gate_exposure_boundaries(
+    market_gate_exposure: object,
+    expected_exposure: float | None,
+    expected_equal_weight: float | None,
+) -> None:
+    block = build_stock_candidate_position_size_hint(
+        [
+            _item("600000.SH", close=100.0, ema10=96.0),
+            _item("000001.SZ", close=100.0, ema10=99.0),
+        ],
+        market_gate_exposure=market_gate_exposure,
+    )
+    assert block["equal_weight_gate_exposure"] == expected_exposure
+    assert all(item["equal_weight"] == expected_equal_weight for item in block["items"])
+    # 等权不可计算时 risk_budget 实验参考仍在（不删既有字段）。
+    assert block["items"][0]["raw_weight"] == 0.125
+
+
+def test_hint_block_default_call_keeps_equal_weight_null() -> None:
+    # 未传门控敞口（老调用方）：equal_weight 为 None，其余输出不受影响。
+    block = build_stock_candidate_position_size_hint(
+        [_item("600000.SH", close=100.0, ema10=96.0)]
+    )
+    assert block["equal_weight_gate_exposure"] is None
+    assert block["items"][0]["equal_weight"] is None
+    assert block["items"][0]["raw_weight"] == 0.125
+
+
 def test_hint_block_policy_metadata_and_notes() -> None:
     block = build_stock_candidate_position_size_hint(
         [_item("600000.SH", close=100.0, ema10=96.0)]
     )
-    assert block["policy_version"] == "sizing_rb_v1_stock_candidate"
+    assert block["policy_version"] == "sizing_eqw_v2_stock_candidate"
     assert block["sizing_mode"] == "risk_budget"
+    assert block["primary_basis"] == "equal_weight"
+    assert block["risk_budget_status"] == "experimental_reference"
     assert block["signal_kind"] == "stock_candidate"
     assert block["risk_per_trade"] == 0.005
     assert block["single_name_cap"] == 0.25
@@ -184,9 +265,12 @@ def test_hint_block_coverage_degradation_hook() -> None:
 
 
 def test_hint_block_empty_items() -> None:
-    block = build_stock_candidate_position_size_hint([])
+    block = build_stock_candidate_position_size_hint([], market_gate_exposure=0.75)
     assert block["items"] == []
     assert block["stop_ref_fallback_count"] == 0
     assert block["stop_ref_missing_ratio"] == 0.0
     assert block["coverage_degraded"] is False
     assert block["coverage_warning"] is None
+    # 候选数为 0 时不做除法，敞口照实披露。
+    assert block["equal_weight_candidate_count"] == 0
+    assert block["equal_weight_gate_exposure"] == 0.75

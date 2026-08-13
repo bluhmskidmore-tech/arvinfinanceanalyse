@@ -68,7 +68,31 @@ describe("StockAnalysisCandidateLedgerTable", () => {
     expect(screen.queryByText("低流动")).not.toBeInTheDocument();
   });
 
-  it("shows the position size hint badge with the disclosure detail as a tooltip", () => {
+  it("shows the equal-weight primary badge with the demoted risk_budget detail as a tooltip", () => {
+    render(
+      <StockAnalysisCandidateLedgerTable
+        candidates={[
+          buildCandidate({
+            sizeHintLabel: "等权 20.0%",
+            sizeHintDetail:
+              "建议仓位以等权为主参考（当日门控敞口÷候选数，已含门控敞口）\n实验参考（样本外未支持）：risk_budget 仓位 ≤ 8.4%（EMA10 止损距离折算）",
+          }),
+        ]}
+        usesHybridFusion={false}
+        selectedSectorCode={null}
+        onReviewCandidate={vi.fn()}
+      />,
+    );
+
+    const badge = screen.getByText("等权 20.0%");
+    expect(badge).toBeInTheDocument();
+    expect(badge.closest("[title]")).toHaveAttribute(
+      "title",
+      "建议仓位以等权为主参考（当日门控敞口÷候选数，已含门控敞口）\n实验参考（样本外未支持）：risk_budget 仓位 ≤ 8.4%（EMA10 止损距离折算）",
+    );
+  });
+
+  it("keeps rendering the legacy raw-weight badge for pre-primary_basis responses", () => {
     render(
       <StockAnalysisCandidateLedgerTable
         candidates={[

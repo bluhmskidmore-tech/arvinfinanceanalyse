@@ -90,12 +90,18 @@ class ThemeProxyDefinition:
 
 @dataclass(frozen=True)
 class SizingPolicy:
-    """正式化的实时建议仓位政策（risk_budget sizing，stock_candidate 先行）。
+    """正式化的实时建议仓位政策（等权为主参考，risk_budget 降为实验参考）。
 
-    与回测引擎 `portfolio_backtest` 的 risk_budget 变体同款公式：
-    raw_weight = min(risk_per_trade / stop_distance_pct, single_name_cap)。
-    hint 是单票权重上限建议；实盘串联 gate 敞口预算截断由引擎语义约定，
-    实时提示不做敞口截断计算。评估依据见 docs/strategy-reports/risk-budget-promotion.md。
+    walk-forward 样本外验证（docs/strategy-reports/walk-forward-first-run.md）不支持
+    固定 rpt=0.5% 的 risk_budget 优势，等权是更稳健的默认参考，因此 hint 的主参考
+    口径由 ``primary_basis`` 声明（单一来源）：
+
+    - 等权（主参考）：equal_weight = 当日门控敞口 / 候选数，与回测引擎
+      `portfolio_backtest` 的 equal_weight 变体同语义（敞口直接进入权重）；
+    - risk_budget（实验参考）：raw_weight = min(risk_per_trade / stop_distance_pct,
+      single_name_cap)，仍为截断前单票权重上限，实盘串联 gate 敞口预算截断由
+      引擎语义约定，实时提示不做敞口截断计算。
+      历史评估见 docs/strategy-reports/risk-budget-promotion.md。
     """
 
     policy_version: str
@@ -106,6 +112,8 @@ class SizingPolicy:
     stop_basis: str
     applies_to: tuple[str, ...]
     oos_validation_status: str = "not_supported_by_walk_forward"
+    #: hint 主参考口径声明，前端主展示依此切换；risk_budget 输出保留为实验参考。
+    primary_basis: str = "equal_weight"
 
 
 @dataclass(frozen=True)
@@ -324,13 +332,16 @@ POLICY = StrategyPolicy(
         vol_target_window=20,
     ),
     sizing=SizingPolicy(
-        policy_version="sizing_rb_v1_stock_candidate",
+        # v2：主参考切换为等权（walk-forward 样本外不支持固定 rpt=0.5% 优势），
+        # risk_budget 字段保留为实验参考。
+        policy_version="sizing_eqw_v2_stock_candidate",
         sizing_mode="risk_budget",
         risk_per_trade=0.005,
         single_name_cap=0.25,
         fallback_stop_distance_pct=0.08,
         stop_basis="ema10_stop_ref",
         applies_to=("stock_candidate",),
+        primary_basis="equal_weight",
     ),
     theme_proxies=_THEME_PROXY_POOL,
 )

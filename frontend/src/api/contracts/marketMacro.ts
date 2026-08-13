@@ -724,13 +724,19 @@ export type LivermoreStockCandidateItem = {
   liquidity_floor_pass?: boolean | null;
 };
 
-/** risk_budget 建议仓位单票条目：raw_weight 为单票权重上限建议（0-1 小数）。 */
+/**
+ * 建议仓位单票条目：equal_weight 为等权主参考（门控敞口/候选数，0-1 小数，
+ * 老响应或门控敞口缺失时缺失/为 null）；raw_weight 为 risk_budget 实验参考
+ * （截断前单票权重上限，0-1 小数），保留不删。
+ */
 export type LivermorePositionSizeHintItem = {
   stock_code: string;
   raw_weight: number;
   stop_distance_pct: number;
   stop_basis: "ema10_stop_ref" | "fallback" | string;
   capped: boolean;
+  /** 等权主参考仓位（门控敞口/候选数）；老响应缺失，门控敞口缺失时为 null。 */
+  equal_weight?: number | null;
 };
 
 /** walk-forward 样本外验证披露：status/note/evidence_ref 由后端原文透传，前端必须如实展示、不得弱化。 */
@@ -740,10 +746,18 @@ export type LivermorePositionSizeHintOosValidation = {
   evidence_ref?: string | null;
 };
 
-/** stock_candidate 建议仓位块（sizing_rb_v1）：串联 gate 敞口语义见 gate_exposure_note，等权 shadow 对照说明见 equal_weight_shadow_note。 */
+/**
+ * stock_candidate 建议仓位块：sizing_eqw_v2 起以等权为主参考（primary_basis），
+ * risk_budget 输出降为实验参考（risk_budget_status）；串联 gate 敞口语义见
+ * gate_exposure_note，等权 shadow 对照说明见 equal_weight_shadow_note。
+ */
 export type LivermorePositionSizeHint = {
   policy_version: string;
   sizing_mode: string;
+  /** 主参考口径声明（"equal_weight"）；老响应缺失时回退 raw_weight 主显。 */
+  primary_basis?: string | null;
+  /** risk_budget 披露语义（"experimental_reference"）；老响应缺失。 */
+  risk_budget_status?: string | null;
   signal_kind: string;
   risk_per_trade: number;
   single_name_cap: number;
@@ -754,6 +768,12 @@ export type LivermorePositionSizeHint = {
   stop_ref_missing_ratio: number;
   coverage_degraded: boolean;
   coverage_warning: string | null;
+  /** 等权口径使用的当日门控敞口（[0,1]）；老响应缺失，敞口缺失时为 null。 */
+  equal_weight_gate_exposure?: number | null;
+  /** 等权口径的候选数分母；老响应缺失。 */
+  equal_weight_candidate_count?: number | null;
+  /** 等权口径说明原文；老响应缺失。 */
+  equal_weight_note?: string | null;
   gate_exposure_note: string;
   equal_weight_shadow_note: string;
   /** 老响应（oos 披露上线前）缺失该块；缺失时不渲染样本外验证注记。 */
