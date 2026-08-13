@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import type { ChoiceNewsEvent, ResultMeta } from "../../../api/contracts";
 import ReactECharts from "../../../lib/echarts";
 import { EM_DASH } from "../../../utils/format";
+import { summarizeMacroNewsEvent } from "../dashboard-home/adapters/macroNewsPresentation";
 import { buildActionQueue } from "./marketActionQueueModel";
 import type { MarketChartPalette } from "./marketChartPalette";
 import {
@@ -395,17 +396,23 @@ function DenseNewsDensityCard({
             <span>主题</span>
           </div>
           {events.length > 0 ? (
-            events.slice(0, 3).map((event) => (
-              <article key={event.event_key}>
-                <time>{compactEventTime(event.received_at)}</time>
-                <strong>{event.payload_text || event.error_msg || event.event_key}</strong>
-                <em title={event.topic_code || event.group_id || "未分类"}>
-                  {formatDenseNewsTopicLabel(
-                    event.topic_code || event.group_id || "未分类",
-                  )}
-                </em>
-              </article>
-            ))
+            events.slice(0, 3).map((event) => {
+              const eventText =
+                summarizeMacroNewsEvent(event) ||
+                event.error_msg ||
+                event.event_key;
+              return (
+                <article key={event.event_key}>
+                  <time>{compactEventTime(event.received_at)}</time>
+                  <strong title={eventText}>{eventText}</strong>
+                  <em title={event.topic_code || event.group_id || "未分类"}>
+                    {formatDenseNewsTopicLabel(
+                      event.topic_code || event.group_id || "未分类",
+                    )}
+                  </em>
+                </article>
+              );
+            })
           ) : (
             <div className={styles.compactEmpty}>新闻事件暂未返回</div>
           )}

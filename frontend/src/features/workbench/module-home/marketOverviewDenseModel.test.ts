@@ -12,6 +12,7 @@ import {
   buildDenseMacroPulseRows,
   buildDenseNewsDensity,
   buildDenseTapeMetrics,
+  formatDenseNewsTopicLabel,
 } from "./marketOverviewDenseModel";
 import type { ModuleHomeDetailPanel } from "./moduleHomeModel";
 
@@ -176,6 +177,25 @@ describe("marketOverviewDenseModel", () => {
     });
     expect(metrics.some((item) => item.key === "formal")).toBe(false);
     expect(metrics.some((item) => item.key === "news")).toBe(false);
+    expect(metrics.find((item) => item.key === "gov-10y")).toMatchObject({
+      tradeDate: "2026-07-27",
+      title: "中债国债到期收益率:10年 · 1.73% · 2026-07-27",
+    });
+  });
+
+  it("leaves the tape report date unset when the backend returns no matching series", () => {
+    const metric = buildDenseTapeMetrics({
+      latest: payload([]),
+      rates: payload([]),
+    }).find((item) => item.key === "gov-10y");
+
+    expect(metric).toMatchObject({
+      value: "—",
+      delta: "未返回",
+      tone: "muted",
+      title: "10Y国债：后端未返回匹配序列",
+    });
+    expect(metric?.tradeDate).toBeUndefined();
   });
 
   it("fails closed when no Chinese 10Y sovereign series is available", () => {
@@ -326,16 +346,50 @@ describe("marketOverviewDenseModel", () => {
       "social-financing",
     ]);
     expect(rows[0]).toMatchObject({
-      value: "0.3%",
+      previousValue: "0.2%",
+      latestValue: "0.3%",
       change: "+0.1%",
+      changeLabel: "绝对变化",
       tone: "up",
       latestDate: "2026-07-27",
     });
     expect(rows.find((row) => row.key === "pmi")).toMatchObject({
-      value: "49.3 index",
+      previousValue: "49.4 index",
+      latestValue: "49.3 index",
       change: "-0.1 index",
     });
-    expect(rows[0].levels).toEqual([34, 90]);
+
+    const percentageFallback = buildDenseMacroPulseRows({
+      as_of_date: "2026-07-27",
+      indicators: [
+        indicator({
+          key: "cpi",
+          label: "CPI（同比）",
+          latest_value: 0.3,
+          previous_value: 0.2,
+          change: null,
+          change_pct: 50,
+        }),
+      ],
+    });
+    expect(percentageFallback[0]).toMatchObject({
+      change: "+50%",
+      changeLabel: "百分比变化",
+    });
+
+    const missingPrevious = buildDenseMacroPulseRows({
+      as_of_date: "2026-07-27",
+      indicators: [
+        indicator({
+          key: "ppi",
+          label: "PPI（同比）",
+          latest_value: -1.8,
+          previous_value: null,
+          change: -0.2,
+        }),
+      ],
+    });
+    expect(missingPrevious[0]?.previousValue).toBe("—");
   });
 
   it("groups the latest news sample by topic and two-hour bucket", () => {
@@ -349,6 +403,8 @@ describe("marketOverviewDenseModel", () => {
         newsEvent("event-a", "2026-07-27T21:45:00"),
         newsEvent("event-b", "2026-07-27T20:15:00"),
         newsEvent("event-c", "2026-07-26T08:30:00", "policy"),
+        newsEvent("invalid-hour", "2026-07-27T99:15:00"),
+        newsEvent("invalid-date", "2026-02-30T08:30:00"),
       ],
     });
 
@@ -362,5 +418,20 @@ describe("marketOverviewDenseModel", () => {
     expect(density.sampledEvents).toBe(3);
     expect(density.startDate).toBe("2026-07-26");
     expect(density.endDate).toBe("2026-07-27");
+  });
+
+  it("friendly-labels only known news topics and preserves unknown topic codes", () => {
+    expect(formatDenseNewsTopicLabel("major news")).toBe("主要新闻");
+    expect(formatDenseNewsTopicLabel("sina")).toBe("新浪");
+    expect(formatDenseNewsTopicLabel("tushare.major_news")).toBe("主要新闻");
+    expect(formatDenseNewsTopicLabel("tushare_major")).toBe("主要新闻");
+    expect(formatDenseNewsTopicLabel("tushare.news.sina")).toBe("新浪");
+    expect(formatDenseNewsTopicLabel("tushare_news")).toBe("新浪");
+    expect(
+      formatDenseNewsTopicLabel("tushare.research_report.20260712_20260715"),
+    ).toBe("研究报告");
+    expect(formatDenseNewsTopicLabel("vendor.topic_20260712")).toBe(
+      "vendor.topic_20260712",
+    );
   });
 });

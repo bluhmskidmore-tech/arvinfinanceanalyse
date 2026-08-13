@@ -27,6 +27,7 @@ export type DenseTapeMetric = {
   delta: string;
   tone: DenseTapeTone;
   title: string;
+  tradeDate?: string;
 };
 
 export type DenseLedgerRow = {
@@ -51,10 +52,11 @@ export type DenseAuditStats = {
 export type DenseMacroPulseRow = {
   key: string;
   label: string;
-  value: string;
+  previousValue: string;
+  latestValue: string;
   change: string;
+  changeLabel: "绝对变化" | "百分比变化" | "变化未返回";
   tone: DenseTapeTone;
-  levels: [number | null, number | null];
   latestDate: string;
   source: string;
 };
@@ -133,24 +135,6 @@ function formatDenseValue(value: number | null, unit: string) {
   return `${compactNumber(value)}${denseUnitSuffix(unit)}`;
 }
 
-function pulseLevels(
-  previousValue: number | null,
-  latestValue: number | null,
-): [number | null, number | null] {
-  const values = [previousValue, latestValue].filter(
-    (value): value is number => value != null && Number.isFinite(value),
-  );
-  if (values.length === 0) return [null, null];
-  const minimum = Math.min(...values);
-  const maximum = Math.max(...values);
-  const level = (value: number | null) => {
-    if (value == null || !Number.isFinite(value)) return null;
-    if (minimum === maximum) return 62;
-    return Math.round(34 + ((value - minimum) / (maximum - minimum)) * 56);
-  };
-  return [level(previousValue), level(latestValue)];
-}
-
 function indicatorSearchText(indicator: MacroToolkitIndicator) {
   return `${indicator.key} ${indicator.alias} ${indicator.label} ${indicator.series_id ?? ""}`;
 }
@@ -194,25 +178,32 @@ export function buildDenseMacroPulseRows(
     }
   }
   return selected.slice(0, limit).map((indicator) => {
-    const changeValue =
-      indicator.change != null && Number.isFinite(indicator.change)
-        ? indicator.change
-        : indicator.change_pct;
+    const hasAbsoluteChange =
+      indicator.change != null && Number.isFinite(indicator.change);
+    const hasPercentageChange =
+      indicator.change_pct != null && Number.isFinite(indicator.change_pct);
+    const changeValue = hasAbsoluteChange
+      ? indicator.change
+      : hasPercentageChange
+        ? indicator.change_pct
+        : null;
     return {
       key: indicator.key,
       label: indicator.label,
-      value: formatDenseValue(indicator.latest_value, indicator.unit),
+      previousValue: formatDenseValue(indicator.previous_value, indicator.unit),
+      latestValue: formatDenseValue(indicator.latest_value, indicator.unit),
       change:
         changeValue == null || !Number.isFinite(changeValue)
           ? "—"
-          : `${changeValue > 0 ? "+" : ""}${compactNumber(changeValue)}${
-              denseUnitSuffix(indicator.change != null ? indicator.unit : "%")
-            }`,
+          : `${changeValue > 0 ? "+" : ""}${compactNumber(changeValue)}${denseUnitSuffix(
+              hasAbsoluteChange ? indicator.unit : "%",
+            )}`,
+      changeLabel: hasAbsoluteChange
+        ? "绝对变化"
+        : hasPercentageChange
+          ? "百分比变化"
+          : "变化未返回",
       tone: directionTone(changeValue),
-      levels: pulseLevels(
-        indicator.previous_value,
-        indicator.latest_value,
-      ),
       latestDate: indicator.latest_date || macro?.as_of_date || "—",
       source: indicator.source || indicator.series_id || "来源未返回",
     };
@@ -223,27 +214,59 @@ function newsTopicKey(topicCode: string, groupId: string) {
   return topicCode.trim() || groupId.trim() || "未分类";
 }
 
-function compactNewsTopic(value: string) {
-  const segments = value.split(".");
-  const tail = segments.at(-1) || value;
-  return tail.replace(/[_-]+/g, " ");
+const FRIENDLY_NEWS_TOPIC_LABELS: Readonly<Record<string, string>> = {
+  "major news": "主要新闻",
+  sina: "新浪",
+  "tushare.major_news": "主要新闻",
+  tushare_major: "主要新闻",
+  "tushare.news.sina": "新浪",
+  tushare_news: "新浪",
+};
+
+// 形如 tushare.research_report.20260712_20260715 的研报主题按族归并展示。
+const RESEARCH_REPORT_TOPIC_PATTERN = /^tushare\.research_report(?:[._-]|$)/i;
+
+export function formatDenseNewsTopicLabel(value: string) {
+  const rawValue = value.trim() || "未分类";
+  const friendly = FRIENDLY_NEWS_TOPIC_LABELS[rawValue.toLowerCase()];
+  if (friendly) return friendly;
+  if (RESEARCH_REPORT_TOPIC_PATTERN.test(rawValue)) return "研究报告";
+  return rawValue;
+}
+
+function bucketableNewsTime(receivedAt: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T?(\d{2})/.exec(receivedAt);
+  if (!match) return null;
+  const [, yearText, monthText, dayText, hourText] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  if (hour < 0 || hour > 23) return null;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return { date: receivedAt.slice(0, 10), hour };
 }
 
 export function buildDenseNewsDensity(
   news: ChoiceNewsEventsPayload | undefined,
   topicCount = 7,
 ): DenseNewsDensity {
-  const validEvents = (news?.events ?? []).filter((event) =>
-    /^\d{4}-\d{2}-\d{2}T?\d{2}/.test(event.received_at),
-  );
-  const sampledDates = validEvents
-    .map((event) => event.received_at.slice(0, 10))
-    .sort();
+  const validEvents = (news?.events ?? []).flatMap((event) => {
+    const receivedTime = bucketableNewsTime(event.received_at);
+    return receivedTime ? [{ event, receivedTime }] : [];
+  });
+  const sampledDates = validEvents.map(({ receivedTime }) => receivedTime.date).sort();
   const topicTotals = new Map<string, number>();
   const counts = new Map<string, number>();
-  for (const event of validEvents) {
-    const hour = Number(event.received_at.slice(11, 13));
-    if (!Number.isFinite(hour) || hour < 0 || hour > 23) continue;
+  for (const { event, receivedTime } of validEvents) {
+    const { hour } = receivedTime;
     const topic = newsTopicKey(event.topic_code, event.group_id);
     const bucket = Math.floor(hour / 2);
     const key = `${topic}-${bucket}`;
@@ -260,7 +283,7 @@ export function buildDenseNewsDensity(
   const maxCount = Math.max(0, ...counts.values());
   const rows = topics.map((topic) => ({
     key: topic,
-    label: compactNewsTopic(topic),
+    label: formatDenseNewsTopicLabel(topic),
     cells: Array.from({ length: 12 }, (_, bucket) => {
       const key = `${topic}-${bucket}`;
       const count = counts.get(key) ?? 0;
@@ -342,6 +365,7 @@ function pointMetric({
       changePoint?.value_numeric ?? point.latest_change,
     ),
     title: `${point.series_name} · ${formatChoiceMacroValue(point)} · ${point.trade_date}`,
+    tradeDate: point.trade_date,
   };
 }
 

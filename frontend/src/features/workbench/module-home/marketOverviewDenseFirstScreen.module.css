@@ -825,7 +825,7 @@
 
 .heatmapGrid {
   display: grid;
-  grid-template-columns: 62px repeat(12, minmax(0, 1fr));
+  grid-template-columns: 84px repeat(12, minmax(0, 1fr));
   gap: 2px;
 }
 
@@ -844,7 +844,7 @@
 .heatmapRow {
   display: grid;
   grid-column: 1 / -1;
-  grid-template-columns: 62px repeat(12, minmax(0, 1fr));
+  grid-template-columns: 84px repeat(12, minmax(0, 1fr));
   gap: 2px;
   height: 19px;
 }
@@ -909,7 +909,8 @@
 .newsMiniHead,
 .newsMiniFeed article {
   display: grid;
-  grid-template-columns: 60px minmax(0, 1fr) 56px;
+  /* 时间列需完整容纳 "07-15 04:12"（11 位等宽字符）不截断。 */
+  grid-template-columns: 84px minmax(0, 1fr) 64px;
   align-items: center;
   gap: 8px;
 }

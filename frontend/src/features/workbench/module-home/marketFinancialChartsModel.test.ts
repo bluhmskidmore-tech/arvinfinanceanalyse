@@ -135,6 +135,140 @@ describe("marketFinancialChartsModel", () => {
     expect(optionSeries.every((item) => item.connectNulls === false)).toBe(true);
   });
 
+  it("uses a single-tenor comparison instead of presenting one tenor as a curve", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const rates = clonePayload((await client.getMarketDataRates()).result);
+    const sourceRows = rates.series.slice(0, 2);
+
+    expect(sourceRows).toHaveLength(2);
+    rates.series = sourceRows.map((series, index) => ({
+      ...series,
+      series_id: index === 0 ? "single-gov-10y" : "single-cdb-10y",
+      series_name:
+        index === 0
+          ? "中债国债到期收益率:10年"
+          : "中债政策性金融债到期收益率(国开行)10年",
+      trade_date: "2026-07-30",
+      unit: "%",
+      value_numeric: index === 0 ? 1.71 : 1.84,
+    }));
+
+    const sections = buildMarketFinancialChartSections({ rates });
+    const curve = sections.find((section) => section.key === "rates")!.charts[0]!;
+    const optionSeries = curve.option!.series as Array<{
+      data: number[];
+      type: string;
+    }>;
+
+    expect(curve.subtitle).toContain("1 个唯一期限");
+    expect(curve.footnote).toContain(
+      "当前仅返回一个期限，暂不能判断曲线形态。",
+    );
+    expect(curve.yieldCurveDisplay).toEqual({
+      kind: "single-tenor",
+      message: "当前仅返回一个期限，暂不能判断曲线形态。",
+      rows: [
+        {
+          curve: "国债",
+          tenorLabel: "10Y",
+          tradeDate: "2026-07-30",
+          unit: "%",
+          value: 1.71,
+        },
+        {
+          curve: "国开",
+          tenorLabel: "10Y",
+          tradeDate: "2026-07-30",
+          unit: "%",
+          value: 1.84,
+        },
+      ],
+      tenorLabel: "10Y",
+      uniqueTenorCount: 1,
+    });
+    expect(optionSeries).toHaveLength(1);
+    expect(optionSeries[0]).toMatchObject({
+      data: [1.71, 1.84],
+      type: "bar",
+    });
+  });
+
+  it("keeps one returned quote without claiming a two-curve comparison", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const rates = clonePayload((await client.getMarketDataRates()).result);
+    const sourceRow = rates.series[0];
+
+    expect(sourceRow).toBeDefined();
+    rates.series = [
+      {
+        ...sourceRow!,
+        series_id: "single-gov-10y",
+        series_name: "中债国债到期收益率:10年",
+        trade_date: "2026-07-30",
+        unit: "%",
+        value_numeric: 1.71,
+      },
+    ];
+    const singleQuote = buildMarketFinancialChartSections({ rates }).find(
+      (section) => section.key === "rates",
+    )!.charts[0]!;
+
+    expect(singleQuote.yieldCurveDisplay).toMatchObject({
+      kind: "single-tenor",
+      rows: [{ curve: "国债", value: 1.71 }],
+    });
+    expect(singleQuote.readingGuide).toContain("读取当前期限的已返回收益率");
+    expect(singleQuote.readingGuide).not.toContain("国债与国开");
+  });
+
+  it("keeps zero quotes as an explicit no-data state", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const rates = clonePayload((await client.getMarketDataRates()).result);
+    rates.series = [];
+
+    const curve = buildMarketFinancialChartSections({ rates }).find(
+      (section) => section.key === "rates",
+    )!.charts[0]!;
+
+    expect(curve.subtitle).toContain("0 个唯一期限");
+    expect(curve.yieldCurveDisplay).toBeUndefined();
+    expect(curve.option).toBeNull();
+    expect(curve.footnote).toBe("后端未返回可用的国债或国开收益率报价。");
+    expect(curve.readingGuide).toContain("不补点、不插值");
+  });
+
+  it("does not connect sparse tenors that belong to different curves", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const rates = clonePayload((await client.getMarketDataRates()).result);
+    const sourceRows = rates.series.slice(0, 2);
+
+    rates.series = sourceRows.map((series, index) => ({
+      ...series,
+      series_id: index === 0 ? "sparse-gov-2y" : "sparse-cdb-10y",
+      series_name:
+        index === 0
+          ? "中债国债到期收益率:2年"
+          : "中债政策性金融债到期收益率(国开行)10年",
+      trade_date: "2026-07-30",
+      unit: "%",
+      value_numeric: index === 0 ? 1.61 : 1.84,
+    }));
+
+    const curve = buildMarketFinancialChartSections({ rates }).find(
+      (section) => section.key === "rates",
+    )!.charts[0]!;
+    const optionSeries = curve.option!.series as Array<{ type: string }>;
+
+    expect(curve.yieldCurveDisplay).toMatchObject({
+      kind: "sparse-tenors",
+      uniqueTenorCount: 2,
+    });
+    expect(curve.footnote).toContain(
+      "当前报价未形成同一条曲线的多个期限",
+    );
+    expect(optionSeries.every((series) => series.type !== "line")).toBe(true);
+  });
+
   it("keeps the cross-asset normalization transparent and starts each series at 100", async () => {
     const client = createApiClient({ mode: "mock" });
     const latest = clonePayload((await client.getChoiceMacroLatest()).result);

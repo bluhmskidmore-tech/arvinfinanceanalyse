@@ -382,8 +382,24 @@ describe("MarketOverviewDenseFirstScreen", () => {
     const news = newsEnvelope();
     news.result.total_rows = 11108;
     news.result.excluded_future_rows = 2;
+    const titledDirtyEvent = denseNewsEvent(
+      "event-titled-dirty",
+      "2026-08-03T12:15:00",
+      "tushare.major_news",
+    );
+    titledDirtyEvent.payload_text =
+      "华峰测控向不特定对象发行可转债上市公告书 — (sinaads = window.sinaads || []).push({}) 下载新浪财经APP";
+    const separatorLeadingEvent = denseNewsEvent(
+      "event-separator-leading",
+      "2026-08-03T14:15:00",
+      "tushare.news.sina",
+    );
+    separatorLeadingEvent.payload_text =
+      " — 市场消息：以色列总理预计下周访问华盛顿，行程或有变动。";
     news.result.events = [
       denseNewsEvent("event-a", "2026-08-03T08:15:00", "major news"),
+      titledDirtyEvent,
+      separatorLeadingEvent,
       denseNewsEvent("event-b", "2026-08-03T10:15:00", "vendor.topic_1"),
     ];
     const queries = {
@@ -422,8 +438,16 @@ describe("MarketOverviewDenseFirstScreen", () => {
       ),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("最新有效样本 2 / 当前查询总记录 11,108"),
+      screen.getByText("最新有效样本 4 / 当前查询总记录 11,108"),
     ).toBeInTheDocument();
+    // 最新事件列表复用首页新闻口径：只保留标题段并去掉前导分隔符/广告脚本尾巴。
+    expect(
+      screen.getByText("华峰测控向不特定对象发行可转债上市公告书"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("市场消息：以色列总理预计下周访问华盛顿，行程或有变动。"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/sinaads/)).not.toBeInTheDocument();
     expect(
       screen.getByText("等待同一报告日的有效收益率报价；不补点、不插值。"),
     ).toBeInTheDocument();
