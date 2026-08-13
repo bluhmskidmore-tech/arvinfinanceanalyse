@@ -30,6 +30,16 @@ export type CashflowProjectionPayload = {
   reinvestment_risk_12m: Numeric;
   monthly_buckets: CashflowMonthlyBucket[];
   top_maturing_assets_12m: CashflowMaturingAsset[];
+  /**
+   * 质量披露字段：后端 `CashflowProjectionResponse` 始终返回（缺省 0），此处标注为可选以兼容
+   * 现存未提交改动的字面量（`riskHomeAdapter.test.ts` 的 `cashflowFixture`）；缺失时按 0 / 空处理。
+   */
+  floating_rate_proxy_count?: number;
+  floating_rate_proxy_market_value?: Numeric;
+  payment_frequency_fallback_count?: number;
+  payment_frequency_fallback_market_value?: Numeric;
+  bullet_value_date_fallback_count?: number;
+  bullet_value_date_fallback_market_value?: Numeric;
   warnings: string[];
   computed_at: string;
 };
@@ -262,6 +272,7 @@ export type BondDashboardBundleSectionEnvelopeMap = {
 export type BondDashboardBundleSectionStatus = {
   status: "ok" | "error";
   message: string | null;
+  duration_ms: number;
 };
 
 export type BondDashboardBundlePayload = {

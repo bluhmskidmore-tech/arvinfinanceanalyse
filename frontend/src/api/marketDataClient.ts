@@ -1,4 +1,9 @@
-import { readHttpJsonDetail } from "./httpResponseError";
+import {
+  requestActionJson,
+  requestJson as transportRequestJson,
+  requestPlainJson as transportRequestPlainJson,
+  type TransportRequestOptions,
+} from "./transport";
 import type {
   ApiEnvelope,
   ChoiceMacroLatestPayload,
@@ -426,114 +431,6 @@ function buildSnapshotWindowQuery(options?: {
   return q ? `?${q}` : "";
 }
 
-class ActionRequestError extends Error {
-  readonly status: number;
-  readonly runId?: string;
-  readonly errorMessage?: string;
-  readonly detail?: unknown;
-
-  constructor(
-    message: string,
-    opts: {
-      status: number;
-      runId?: string;
-      errorMessage?: string;
-      detail?: unknown;
-    },
-  ) {
-    super(message);
-    this.name = "ActionRequestError";
-    this.status = opts.status;
-    this.runId = opts.runId;
-    this.errorMessage = opts.errorMessage;
-    this.detail = opts.detail;
-  }
-}
-
-function extractApiRunId(payload: unknown): string | undefined {
-  if (!payload || typeof payload !== "object") {
-    return undefined;
-  }
-  const body = payload as Record<string, unknown>;
-  const top = body.run_id;
-  if (typeof top === "string" && top.trim()) {
-    return top;
-  }
-  const detail = body.detail;
-  if (detail && typeof detail === "object" && !Array.isArray(detail)) {
-    const nested = (detail as Record<string, unknown>).run_id;
-    if (typeof nested === "string" && nested.trim()) {
-      return nested;
-    }
-  }
-  return undefined;
-}
-
-function extractTopLevelErrorMessage(payload: unknown): string | undefined {
-  if (!payload || typeof payload !== "object") {
-    return undefined;
-  }
-  const errMsg = (payload as Record<string, unknown>).error_message;
-  if (typeof errMsg === "string" && errMsg.trim()) {
-    return errMsg;
-  }
-  return undefined;
-}
-
-function extractApiErrorDetail(payload: unknown): string | undefined {
-  if (!payload || typeof payload !== "object") {
-    return undefined;
-  }
-  const body = payload as Record<string, unknown>;
-  const errMsg = body.error_message;
-  if (typeof errMsg === "string" && errMsg.trim()) {
-    return errMsg;
-  }
-  const detail = body.detail;
-  if (typeof detail === "string" && detail.trim()) {
-    return detail;
-  }
-  if (detail && typeof detail === "object" && !Array.isArray(detail)) {
-    const nested = detail as Record<string, unknown>;
-    const nestedMsg = nested.error_message;
-    if (typeof nestedMsg === "string" && nestedMsg.trim()) {
-      return nestedMsg;
-    }
-    const nestedDetail = nested.detail;
-    if (typeof nestedDetail === "string" && nestedDetail.trim()) {
-      return nestedDetail;
-    }
-  }
-  if (Array.isArray(detail)) {
-    const parts = detail.map((item) => {
-      if (typeof item === "string") {
-        return item;
-      }
-      if (item && typeof item === "object" && "msg" in item) {
-        return String((item as { msg: unknown }).msg);
-      }
-      try {
-        return JSON.stringify(item);
-      } catch {
-        return String(item);
-      }
-    });
-    const joined = parts.filter((part) => part.trim()).join("; ");
-    return joined || undefined;
-  }
-  return undefined;
-}
-
-function extractRawDetail(payload: unknown): unknown {
-  if (!payload || typeof payload !== "object") {
-    return undefined;
-  }
-  if (!("detail" in (payload as Record<string, unknown>))) {
-    return undefined;
-  }
-  return (payload as Record<string, unknown>).detail;
-}
-
 export function createRealMarketDataClient({
   fetchImpl,
   baseUrl,
@@ -946,74 +843,29 @@ export function createRealMarketDataClient({
   };
 }
 
-async function requestJson<TData>(
+/**
+ * Market-data reads keep their historical transport semantics: FastAPI
+ * `detail`-aware error messages and no timeout (several Livermore backtest /
+ * refresh endpoints legitimately run long). Action requests use the shared
+ * `requestActionJson` (rich `ActionRequestError`), unchanged.
+ */
+const MARKET_DATA_TRANSPORT_OPTIONS: TransportRequestOptions = {
+  timeoutMs: null,
+  errorDetail: "json-detail",
+};
+
+function requestJson<TData>(
   fetchImpl: FetchLike,
   baseUrl: string,
   path: string,
 ): Promise<ApiEnvelope<TData>> {
-  const response = await fetchImpl(`${baseUrl}${path}`, {
-    headers: { Accept: "application/json" },
-  });
-  if (!response.ok) {
-    const detail = await readHttpJsonDetail(response);
-    throw new Error(detail ?? `Request failed: ${path} (${response.status})`);
-  }
-  return (await response.json()) as ApiEnvelope<TData>;
+  return transportRequestJson<TData>(fetchImpl, baseUrl, path, MARKET_DATA_TRANSPORT_OPTIONS);
 }
 
-async function requestPlainJson<TData>(
+function requestPlainJson<TData>(
   fetchImpl: FetchLike,
   baseUrl: string,
   path: string,
 ): Promise<TData> {
-  const response = await fetchImpl(`${baseUrl}${path}`, {
-    headers: { Accept: "application/json" },
-  });
-  if (!response.ok) {
-    const detail = await readHttpJsonDetail(response);
-    throw new Error(detail ?? `Request failed: ${path} (${response.status})`);
-  }
-  return (await response.json()) as TData;
-}
-
-async function requestActionJson<TResponse>(
-  fetchImpl: FetchLike,
-  baseUrl: string,
-  path: string,
-  init?: RequestInit,
-): Promise<TResponse> {
-  const response = await fetchImpl(`${baseUrl}${path}`, {
-    ...init,
-    headers: {
-      Accept: "application/json",
-      ...(init?.headers ?? {}),
-    },
-  });
-  if (!response.ok) {
-    let body: unknown;
-    try {
-      body = await response.json();
-    } catch {
-      body = undefined;
-    }
-    const detailText =
-      extractApiErrorDetail(body) ?? `Request failed: ${path} (${response.status})`;
-    const runId = extractApiRunId(body);
-    const rawDetail = extractRawDetail(body);
-    const topErrorMessage = extractTopLevelErrorMessage(body);
-    const nestedDetail =
-      rawDetail && typeof rawDetail === "object" && !Array.isArray(rawDetail)
-        ? (rawDetail as Record<string, unknown>).error_message
-        : undefined;
-    const errorMessage =
-      topErrorMessage ??
-      (typeof nestedDetail === "string" && nestedDetail.trim() ? nestedDetail : undefined);
-    throw new ActionRequestError(detailText, {
-      status: response.status,
-      runId,
-      errorMessage,
-      detail: rawDetail,
-    });
-  }
-  return (await response.json()) as TResponse;
+  return transportRequestPlainJson<TData>(fetchImpl, baseUrl, path, MARKET_DATA_TRANSPORT_OPTIONS);
 }

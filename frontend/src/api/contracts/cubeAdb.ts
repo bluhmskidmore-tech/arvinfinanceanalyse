@@ -130,9 +130,11 @@ export type AdbPayload = {
 
 export type AdbCategoryItem = {
   category: string;
-  spot_balance: number;
+  /** null 表示上游缺数（与 0 语义区分）；渲染层显示 EM_DASH */
+  spot_balance: number | null;
   avg_balance: number | null;
-  proportion: number;
+  /** null 表示上游缺数（与 0 语义区分）；渲染层显示 EM_DASH */
+  proportion: number | null;
   weighted_rate?: number | null;
   rate_coverage_ratio?: number | null;
 };

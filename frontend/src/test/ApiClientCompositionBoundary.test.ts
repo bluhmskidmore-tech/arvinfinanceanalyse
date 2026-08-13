@@ -1059,7 +1059,7 @@ describe("ApiClient composition boundary", () => {
       reportDate: " 2026 03/31 ",
       compareType: "yoy",
     });
-    await client.getTplMarketCorrelation({ months: 18, reportDate: "ignored" });
+    await client.getTplMarketCorrelation({ months: 18, reportDate: " 2026-03-31 " });
     await client.getPnlCompositionBreakdown({
       reportDate: " 2026 03/31 ",
       includeTrend: false,
@@ -1095,7 +1095,7 @@ describe("ApiClient composition boundary", () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
-      "http://localhost:8000/api/pnl-attribution/tpl-market?months=18",
+      "http://localhost:8000/api/pnl-attribution/tpl-market?months=18&report_date=2026-03-31",
       expect.objectContaining({
         headers: expect.objectContaining({ Accept: "application/json" }),
       }),
@@ -1632,8 +1632,22 @@ describe("ApiClient composition boundary", () => {
     expect(kpiSource).toContain("requestKpiJson");
     expect(kpiSource).toMatch(/async getKpiOwners\(/);
     expect(kpiSource).toMatch(/async fetchAndRecalcKpi\(/);
-    expect(cubeSource).toMatch(/async getCubeDimensions\(/);
-    expect(cubeSource).toMatch(/async executeCubeQuery\(/);
+    expect(cubeSource).toContain("createRealCubeClient");
+    expect(cubeSource).toContain("/api/cube/dimensions/");
+    expect(cubeSource).toContain("/api/cube/query");
+    expect(cubeSource).not.toContain("createMockCubeClient");
+    expect(cubeSource).not.toContain("../mocks/");
+  });
+
+  it("keeps cube mock factory in cubeMockClient.ts", () => {
+    const cubeMockClientSource = readFileSync(
+      resolve(process.cwd(), "src/api/cubeMockClient.ts"),
+      "utf8",
+    );
+    expect(cubeMockClientSource).toContain("createMockCubeClient");
+    expect(cubeMockClientSource).toContain("cube.query");
+    expect(cubeMockClientSource).toMatch(/async getCubeDimensions\(/);
+    expect(cubeMockClientSource).toMatch(/async executeCubeQuery\(/);
   });
 
   it("requires agentClient.ts to own agent query implementations", () => {
@@ -1665,7 +1679,7 @@ describe("ApiClient composition boundary", () => {
   });
 
   it("requires bondAnalyticsClient.ts to own Bond Dashboard API implementations", () => {
-    expect(bondAnalyticsClientSource).toContain("createDemoBondDashboardClient");
+    expect(bondAnalyticsClientSource).not.toContain("createDemoBondDashboardClient");
     expect(bondAnalyticsClientSource).toContain("createRealBondDashboardClient");
     expect(bondAnalyticsClientSource).toContain("/api/bond-dashboard/dates");
     expect(bondAnalyticsClientSource).toContain("/api/bond-dashboard/headline-kpis");
@@ -1677,23 +1691,20 @@ describe("ApiClient composition boundary", () => {
     expect(bondAnalyticsClientSource).toContain("/api/bond-dashboard/maturity-structure");
     expect(bondAnalyticsClientSource).toContain("/api/bond-dashboard/industry-distribution");
     expect(bondAnalyticsClientSource).toContain("/api/bond-dashboard/risk-indicators");
-    expect(bondAnalyticsClientSource).toContain("bond_dashboard.headline_kpis");
-    expect(bondAnalyticsClientSource).toContain("bond_dashboard.home_summary");
-    expect(bondAnalyticsClientSource).toContain("bond_dashboard.risk_indicators");
-    expect(bondAnalyticsClientSource).toMatch(/async getBondDashboardDates\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondDashboardHeadlineKpis\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondDashboardHomeSummary\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondDashboardAssetStructure\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondDashboardYieldDistribution\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondDashboardPortfolioComparison\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondDashboardSpreadAnalysis\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondDashboardMaturityStructure\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondDashboardIndustryDistribution\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondDashboardRiskIndicators\(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondDashboardDates: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondDashboardHeadlineKpis: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondDashboardHomeSummary: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondDashboardAssetStructure: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondDashboardYieldDistribution: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondDashboardPortfolioComparison: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondDashboardSpreadAnalysis: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondDashboardMaturityStructure: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondDashboardIndustryDistribution: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondDashboardRiskIndicators: \(/);
   });
 
   it("requires bondAnalyticsClient.ts to own Bond Analytics API implementations", () => {
-    expect(bondAnalyticsClientSource).toContain("createDemoBondAnalyticsClient");
+    expect(bondAnalyticsClientSource).not.toContain("createDemoBondAnalyticsClient");
     expect(bondAnalyticsClientSource).toContain("createRealBondAnalyticsClient");
     expect(bondAnalyticsClientSource).toContain("/api/bond-analytics/dates");
     expect(bondAnalyticsClientSource).toContain("/api/bond-analytics/refresh");
@@ -1709,22 +1720,20 @@ describe("ApiClient composition boundary", () => {
     expect(bondAnalyticsClientSource).toContain("/api/bond-analytics/top-holdings");
     expect(bondAnalyticsClientSource).toContain("/api/bond-analytics/yield-curve-term-structure");
     expect(bondAnalyticsClientSource).toContain("/api/credit-spread-analysis/detail");
-    expect(bondAnalyticsClientSource).toContain("bond_analytics.return_decomposition");
-    expect(bondAnalyticsClientSource).toContain("bond_analytics.credit_spread_migration");
-    expect(bondAnalyticsClientSource).toMatch(/async refreshBondAnalytics\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsRefreshStatus\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsDates\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsReturnDecomposition\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsBenchmarkExcess\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsKrdCurveRisk\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsDv01Risk\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsActionAttribution\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsAccountingClassAudit\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsCreditSpreadMigration\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsPortfolioHeadlines\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsTopHoldings\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsYieldCurveTermStructure\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getCreditSpreadAnalysisDetail\(/);
+    expect(bondAnalyticsClientSource).toMatch(/refreshBondAnalytics: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondAnalyticsRefreshStatus: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondAnalyticsDates: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondAnalyticsReturnDecomposition: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondAnalyticsBenchmarkExcess: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondAnalyticsKrdCurveRisk: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondAnalyticsDv01Risk: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondAnalyticsActionAttribution: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondAnalyticsAccountingClassAudit: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondAnalyticsCreditSpreadMigration: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondAnalyticsPortfolioHeadlines: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondAnalyticsTopHoldings: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondAnalyticsYieldCurveTermStructure: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getCreditSpreadAnalysisDetail: \(/);
   });
 
   it("requires balanceAnalysisClient.ts to own Balance Analysis API implementations", () => {
@@ -1764,7 +1773,7 @@ describe("ApiClient composition boundary", () => {
   });
 
   it("requires positionsClient.ts to own Positions API implementations", () => {
-    expect(positionsClientSource).toContain("createDemoPositionsClient");
+    expect(positionsClientSource).not.toContain("createDemoPositionsClient");
     expect(positionsClientSource).toContain("createRealPositionsClient");
     expect(positionsClientSource).not.toContain("getLiabilityRiskBuckets");
     expect(positionsClientSource).not.toContain("getAdbComparison");
@@ -1778,18 +1787,16 @@ describe("ApiClient composition boundary", () => {
     expect(positionsClientSource).toContain("/api/positions/stats/industry");
     expect(positionsClientSource).toContain("/api/positions/customer/details");
     expect(positionsClientSource).toContain("/api/positions/customer/trend");
-    expect(positionsClientSource).toContain("positions.bonds.sub_types");
-    expect(positionsClientSource).toContain("positions.counterparty.interbank.split");
-    expect(positionsClientSource).toMatch(/async getPositionsBondSubTypes\(/);
-    expect(positionsClientSource).toMatch(/async getPositionsBondsList\(/);
-    expect(positionsClientSource).toMatch(/async getPositionsCounterpartyBonds\(/);
-    expect(positionsClientSource).toMatch(/async getPositionsInterbankProductTypes\(/);
-    expect(positionsClientSource).toMatch(/async getPositionsInterbankList\(/);
-    expect(positionsClientSource).toMatch(/async getPositionsCounterpartyInterbankSplit\(/);
-    expect(positionsClientSource).toMatch(/async getPositionsStatsRating\(/);
-    expect(positionsClientSource).toMatch(/async getPositionsStatsIndustry\(/);
-    expect(positionsClientSource).toMatch(/async getPositionsCustomerDetails\(/);
-    expect(positionsClientSource).toMatch(/async getPositionsCustomerTrend\(/);
+    expect(positionsClientSource).toMatch(/getPositionsBondSubTypes: \(/);
+    expect(positionsClientSource).toMatch(/getPositionsBondsList: \(/);
+    expect(positionsClientSource).toMatch(/getPositionsCounterpartyBonds: \(/);
+    expect(positionsClientSource).toMatch(/getPositionsInterbankProductTypes: \(/);
+    expect(positionsClientSource).toMatch(/getPositionsInterbankList: \(/);
+    expect(positionsClientSource).toMatch(/getPositionsCounterpartyInterbankSplit: \(/);
+    expect(positionsClientSource).toMatch(/getPositionsStatsRating: \(/);
+    expect(positionsClientSource).toMatch(/getPositionsStatsIndustry: \(/);
+    expect(positionsClientSource).toMatch(/getPositionsCustomerDetails: \(/);
+    expect(positionsClientSource).toMatch(/getPositionsCustomerTrend: \(/);
   });
 
   it("requires liabilityAdbClient.ts to own Liability and ADB API implementations", () => {
@@ -1897,13 +1904,39 @@ describe("ApiClient composition boundary", () => {
   });
 
   it("requires cashflowClient.ts to own Cashflow API implementations", () => {
-    expect(cashflowClientSource).toContain("createDemoCashflowClient");
+    expect(cashflowClientSource).not.toContain("createDemoCashflowClient");
     expect(cashflowClientSource).toContain("createRealCashflowClient");
     expect(cashflowClientSource).toContain("/api/cashflow-projection");
-    expect(cashflowClientSource).toContain("cashflow_projection.overview");
-    expect(cashflowClientSource).toMatch(/async getCashflowProjection\(/);
+    expect(cashflowClientSource).toMatch(/getCashflowProjection: \(/);
     expect(cashflowClientSource).not.toContain("/ui/qdb-gl-monthly-analysis");
     expect(cashflowClientSource).not.toContain("/api/positions/");
+  });
+
+  it("keeps bond, positions, and cashflow demo factories in their mock clients", () => {
+    const bondAnalyticsMockClientSource = readFileSync(
+      resolve(process.cwd(), "src/api/bondAnalyticsMockClient.ts"),
+      "utf8",
+    );
+    const positionsMockClientSource = readFileSync(
+      resolve(process.cwd(), "src/api/positionsMockClient.ts"),
+      "utf8",
+    );
+    const cashflowMockClientSource = readFileSync(
+      resolve(process.cwd(), "src/api/cashflowMockClient.ts"),
+      "utf8",
+    );
+    expect(bondAnalyticsMockClientSource).toContain("createDemoBondAnalyticsClient");
+    expect(bondAnalyticsMockClientSource).toContain("createDemoBondDashboardClient");
+    expect(bondAnalyticsMockClientSource).toContain("bond_dashboard.headline_kpis");
+    expect(bondAnalyticsMockClientSource).toContain("bond_dashboard.home_summary");
+    expect(bondAnalyticsMockClientSource).toContain("bond_dashboard.risk_indicators");
+    expect(bondAnalyticsMockClientSource).toContain("bond_analytics.return_decomposition");
+    expect(bondAnalyticsMockClientSource).toContain("bond_analytics.credit_spread_migration");
+    expect(positionsMockClientSource).toContain("createDemoPositionsClient");
+    expect(positionsMockClientSource).toContain("positions.bonds.sub_types");
+    expect(positionsMockClientSource).toContain("positions.counterparty.interbank.split");
+    expect(cashflowMockClientSource).toContain("createDemoCashflowClient");
+    expect(cashflowMockClientSource).toContain("cashflow_projection.overview");
   });
 
   it("requires pnlCoreClient.ts to own real PnL core API implementations", () => {

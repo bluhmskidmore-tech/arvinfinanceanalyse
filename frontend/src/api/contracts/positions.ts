@@ -204,10 +204,10 @@ export type KpiOwner = {
   owner_id: number;
   owner_name: string;
   org_unit: string;
-  person_name?: string;
+  person_name: string | null;
   year: number;
-  scope_type: KpiScopeType;
-  scope_key?: Record<string, unknown>;
+  scope_type: string;
+  scope_key: Record<string, unknown> | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;

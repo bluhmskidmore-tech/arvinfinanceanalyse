@@ -9,23 +9,23 @@ import { createDemoBalanceAnalysisClient } from "./balanceAnalysisClient";
 import {
   createDemoBondAnalyticsClient,
   createDemoBondDashboardClient,
-} from "./bondAnalyticsClient";
-import { createDemoCashflowClient } from "./cashflowClient";
+} from "./bondAnalyticsMockClient";
+import { createDemoCashflowClient } from "./cashflowMockClient";
 import { createDemoExecutiveClient } from "./executiveClient";
 import { createDemoHealthClient } from "./healthClient";
 import { createDemoLiabilityAdbClient } from "./liabilityAdbClient";
-import { createMockPnlBusinessClient } from "./pnlClient";
+import { createMockPnlBusinessClient } from "./pnlMockClient";
 import { createDemoPnlCoreClient } from "./pnlCoreMockClient";
 import { createDemoPnlAttributionClient } from "./pnlAttributionMockClient";
 import { createDemoProductCategoryClient } from "./productCategoryClient";
 import { createDemoQdbGlMonthlyAnalysisClient } from "./qdbGlMonthlyAnalysisClient";
-import { createDemoPositionsClient } from "./positionsClient";
-import { createMockBalanceMovementClient } from "./balanceMovementClient";
+import { createDemoPositionsClient } from "./positionsMockClient";
+import { createMockBalanceMovementClient } from "./balanceMovementMockClient";
 import { createMockLedgerClient } from "./ledgerClient";
 import { createMockMarketDataClient } from "./marketDataMockClient";
 import { createMockMacroToolkitClient } from "./macroToolkitMockClient";
 import { createMockKpiClient } from "./kpiClient";
-import { createMockCubeClient } from "./cubeClient";
+import { createMockCubeClient } from "./cubeMockClient";
 import { createDemoAgentClient } from "./agentClient";
 import { dashboardWorkbenchDemoEndpoints } from "./workbenchDashboardApi";
 import { bondDashboardDemoEndpoints } from "./bondDashboardWorkbenchEndpoints";

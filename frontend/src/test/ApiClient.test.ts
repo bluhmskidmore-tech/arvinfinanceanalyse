@@ -579,6 +579,88 @@ describe("createApiClient", () => {
     ]);
   });
 
+  it("preserves null comparison spot balance and proportion instead of coercing to zero", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_adb_comparison_null_spot",
+          basis: "analytical",
+          result_kind: "adb.comparison",
+          formal_use_allowed: false,
+          source_version: "sv_adb",
+          vendor_version: "vv_none",
+          rule_version: "rv_adb",
+          cache_version: "cv_adb",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-04-15T09:00:00Z",
+        },
+        result: {
+          report_date: "2025-06-03",
+          start_date: "2025-06-02",
+          end_date: "2025-06-03",
+          num_days: 2,
+          simulated: false,
+          total_spot_assets: 250000000,
+          total_avg_assets: 175000000,
+          total_spot_liabilities: 50000000,
+          total_avg_liabilities: 25000000,
+          total_avg_interbank_assets: 0,
+          total_avg_interbank_liabilities: 0,
+          asset_yield: null,
+          liability_cost: null,
+          net_interest_margin: null,
+          assets_breakdown: [
+            {
+              category: "spot-null",
+              spot_balance: null,
+              avg_balance: 100000000,
+              proportion: null,
+              weighted_rate: null,
+            },
+            {
+              category: "spot-missing",
+              avg_balance: 100000000,
+              weighted_rate: null,
+            },
+            {
+              category: "spot-zero",
+              spot_balance: 0,
+              avg_balance: 0,
+              proportion: 0,
+              weighted_rate: null,
+            },
+          ],
+          liabilities_breakdown: [
+            {
+              category: "liability-spot-null",
+              spot_balance: null,
+              avg_balance: 50000000,
+              proportion: null,
+              weighted_rate: null,
+            },
+          ],
+        },
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const payload = await client.getAdbComparison("2025-06-02", "2025-06-03");
+
+    expect(payload.assets_breakdown.map((item) => item.spot_balance)).toEqual([null, null, 0]);
+    expect(payload.assets_breakdown.map((item) => item.proportion)).toEqual([null, null, 0]);
+    expect(payload.liabilities_breakdown.map((item) => item.spot_balance)).toEqual([null]);
+    expect(payload.liabilities_breakdown.map((item) => item.proportion)).toEqual([null]);
+  });
+
   it("preserves null monthly breakdown average balance instead of coercing to zero", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
@@ -2833,9 +2915,11 @@ describe("createApiClient", () => {
   });
 
   it("passes the historical evaluation cutoff to candidate-history", async () => {
+    // Minimal valid envelope: the shared transport now rejects non-envelope
+    // payloads loudly, and this test only asserts on the request URL.
     const fetchMock = vi.fn(async () => ({
       ok: true,
-      json: async () => ({}),
+      json: async () => ({ result_meta: { basis: "analytical" }, result: {} }),
     }));
     const client = createApiClient({
       mode: "real",

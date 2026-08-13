@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createMockBalanceMovementClient } from "./balanceMovementClient";
+import { createMockBalanceMovementClient } from "./balanceMovementMockClient";
 
 describe("createMockBalanceMovementClient", () => {
   it("uses the governed J4 structured-finance broker label", async () => {

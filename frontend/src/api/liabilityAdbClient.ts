@@ -184,9 +184,9 @@ function normalizeAdbComparisonResponse(
       const row = item as Record<string, unknown>;
       return {
         category: String(row.category ?? ""),
-        spot_balance: Number(row.spot_balance ?? 0),
+        spot_balance: normalizeNullableNumber(row.spot_balance),
         avg_balance: normalizeNullableNumber(row.avg_balance),
-        proportion: Number(row.proportion ?? 0),
+        proportion: normalizeNullableNumber(row.proportion),
         weighted_rate:
           row.weighted_rate === null || row.weighted_rate === undefined
             ? null

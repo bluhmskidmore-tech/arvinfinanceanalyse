@@ -122,6 +122,9 @@ export function createRealPnlAttributionClient({
       if (options?.months !== undefined) {
         params.set("months", String(options.months));
       }
+      if (options?.reportDate?.trim()) {
+        params.set("report_date", options.reportDate.trim());
+      }
       const q = params.toString();
       return requestJson<TPLMarketCorrelationPayload>(
         fetchImpl,

@@ -89,6 +89,20 @@ describe("macroDecisionSummaryMock", () => {
     expect(summary.primary_metric?.unit).toBe("/14");
   });
 
+  it("labels every macro toolkit mock envelope with an explicit mock basis", async () => {
+    const client = createMockMacroToolkitClient();
+    const analysisEnvelope = await client.getMacroToolkitAnalysis();
+    const strategyEnvelope = await client.getMacroToolkitStrategySummaries();
+    const scriptsEnvelope = await client.getMacroToolkitScripts();
+
+    // mock 信封不得伪装成 analytical 口径；UI 依此显示「模拟口径」。
+    expect(analysisEnvelope.result_meta.basis).toBe("mock");
+    expect(strategyEnvelope.result_meta.basis).toBe("mock");
+    expect(scriptsEnvelope.result_meta.basis).toBe("mock");
+    expect(analysisEnvelope.result_meta.formal_use_allowed).toBe(false);
+    expect(analysisEnvelope.result_meta.source_version).toBe("macro_toolkit_mock");
+  });
+
   it("keeps mock analysis decision_summary aligned with shared observation exclusion", async () => {
     const client = createMockMacroToolkitClient();
     const envelope = await client.getMacroToolkitAnalysis();

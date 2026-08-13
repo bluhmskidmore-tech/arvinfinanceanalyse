@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import { dashboardBondHeadlineQueryKey } from "../features/executive-dashboard/components/dashboardBondHeadlineQuery";
 import { apiQueryKeys } from "./queryKeys";
 
 describe("apiQueryKeys", () => {
@@ -11,9 +10,12 @@ describe("apiQueryKeys", () => {
       "real",
       "2026-04-30",
     ]);
-    expect(dashboardBondHeadlineQueryKey("real", "2026-04-30")).toEqual(
-      apiQueryKeys.bondDashboardHeadline("real", "2026-04-30"),
-    );
+    expect(apiQueryKeys.bondDashboardHeadline("real", "2026-04-30")).toEqual([
+      "bond-dashboard",
+      "headline",
+      "real",
+      "2026-04-30",
+    ]);
     expect(apiQueryKeys.bondAnalyticsPortfolioHeadlines("real", "2026-04-30")).toEqual([
       "bond-analytics",
       "portfolio-headlines",

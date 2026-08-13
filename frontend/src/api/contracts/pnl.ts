@@ -639,6 +639,42 @@ export type PnlYearlyBusinessSummaryPayload = {
 
 export type PnlBridgeQuality = "ok" | "warning" | "error";
 
+/**
+ * 曲线类效应的可用性。金额字段不受影响：`treasury_curve` / `credit_spread` 仍是后端
+ * 算出来的数（缺曲线时是 0），`explained_pnl` / `residual` 一分不变。这里回答的是
+ * 另一个问题——那个 0 是"观测到市场没动"还是"没有曲线可比"。二者在页面上必须
+ * 分开呈现，否则 2026-07-31 的"利率效应 0"会被读成"利率没动"。
+ *
+ * - `ok`：效应是算出来的，即使恰好等于 0，也照常显示数字
+ * - `unavailable`：输入缺失顶出来的 0，不得显示为 0
+ * - `not_applicable`：按口径本来就不计这项效应（非 FVTPL 行、利率簿的信用利差）
+ */
+export type PnlBridgeEffectAvailability = "ok" | "unavailable" | "not_applicable";
+
+/** 汇总级多一个 `partial`：部分行不可用时，合计是被低估的观测量而非完全缺失。 */
+export type PnlBridgeEffectCoverage = PnlBridgeEffectAvailability | "partial";
+
+export type PnlBridgeEffectAvailabilityReason =
+  // unavailable：缺输入，需要补数据
+  | "curve_unavailable"
+  | "same_source_curve"
+  | "market_value_base_missing"
+  | "roll_window_missing"
+  | "tenor_outside_curve_support"
+  // not_applicable：这一行本来就不会有这个效应，不需要补数据
+  | "non_fvtpl_basis"
+  | "not_credit_book"
+  | "no_curve_sensitivity"
+  | "balance_row_missing";
+
+export type PnlBridgeEffectAvailabilityBlock = {
+  status: PnlBridgeEffectCoverage;
+  unavailable_rows: number;
+  /** 分母只含可用行；非 FVTPL 行按口径豁免，不计入。 */
+  applicable_rows: number;
+  reasons: PnlBridgeEffectAvailabilityReason[];
+};
+
 export type PnlBridgeRow = {
   report_date?: string;
   instrument_code: string;
@@ -663,6 +699,15 @@ export type PnlBridgeRow = {
   current_balance_found?: boolean;
   prior_balance_found?: boolean;
   balance_diagnostics?: string[];
+  // `balance_diagnostics` 的带前缀诊断仍原样下发；下面六个字段是同一判断的结构化
+  // 通道，页面不必再做字符串前缀匹配。roll_down 单独一组：它只用当期曲线，却额外
+  // 需要一个有效的滚动窗口，可用性与 treasury_curve 并不同步。
+  roll_down_availability?: PnlBridgeEffectAvailability;
+  roll_down_availability_reason?: PnlBridgeEffectAvailabilityReason | null;
+  treasury_curve_availability?: PnlBridgeEffectAvailability;
+  treasury_curve_availability_reason?: PnlBridgeEffectAvailabilityReason | null;
+  credit_spread_availability?: PnlBridgeEffectAvailability;
+  credit_spread_availability_reason?: PnlBridgeEffectAvailabilityReason | null;
 };
 
 export type PnlBridgeSummary = {
@@ -684,6 +729,9 @@ export type PnlBridgeSummary = {
   total_actual_pnl: Numeric;
   total_residual: Numeric;
   quality_flag: PnlBridgeQuality;
+  roll_down_availability?: PnlBridgeEffectAvailabilityBlock;
+  treasury_curve_availability?: PnlBridgeEffectAvailabilityBlock;
+  credit_spread_availability?: PnlBridgeEffectAvailabilityBlock;
 };
 
 export type PnlBridgePayload = {

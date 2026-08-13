@@ -2,7 +2,14 @@
  * Agent API domain client. Keep endpoint ownership here; client.ts only composes it.
  */
 import type {
+  AgentArtifact,
+  AgentArtifactListResponse,
+  AgentConversation,
+  AgentConversationListResponse,
   AgentEnvelope,
+  AgentMessageListResponse,
+  AgentProject,
+  AgentProjectListResponse,
   AgentQueryRequest,
   AgentRunCreateResult,
   AgentRunStatusResponse,
@@ -15,11 +22,23 @@ export type AgentClientFactoryOptions = {
   baseUrl: string;
 };
 
+export type ListAgentProjectsOptions = {
+  includeArchived?: boolean;
+};
+
 export type AgentClientMethods = {
   queryAgent: (request: AgentQueryRequest) => Promise<AgentEnvelope>;
   createAgentRun: (request: AgentQueryRequest) => Promise<AgentRunCreateResult>;
   getAgentRun: (runId: string) => Promise<AgentRunStatusResponse>;
   cancelAgentRun: (runId: string) => Promise<AgentRunStatusResponse>;
+  /** 只读 workspace 端点（backend routes/agent_workspace.py 的 GET 面）。 */
+  listAgentProjects: (options?: ListAgentProjectsOptions) => Promise<AgentProjectListResponse>;
+  getAgentProject: (projectId: string) => Promise<AgentProject>;
+  listAgentConversations: (projectId: string) => Promise<AgentConversationListResponse>;
+  getAgentConversation: (conversationId: string) => Promise<AgentConversation>;
+  listAgentConversationMessages: (conversationId: string) => Promise<AgentMessageListResponse>;
+  listAgentConversationArtifacts: (conversationId: string) => Promise<AgentArtifactListResponse>;
+  getAgentArtifact: (artifactId: string) => Promise<AgentArtifact>;
 };
 
 export type AgentClientDelay = () => Promise<void>;
@@ -120,6 +139,50 @@ function buildDemoAgentRunPayload(
   };
 }
 
+/** Workspace demo 桩数据的固定时间戳；默认口径镜像后端缺省（all / CNY）。 */
+const DEMO_AGENT_WORKSPACE_TIMESTAMP = "2026-01-01T00:00:00Z";
+
+function buildDemoAgentProject(projectId = "agent_project:frontend_mock"): AgentProject {
+  return {
+    project_id: projectId,
+    owner_user_id: "frontend-demo",
+    name: "Demo workspace project",
+    default_scope: "all",
+    default_currency_basis: "CNY",
+    archived_at: null,
+    created_at: DEMO_AGENT_WORKSPACE_TIMESTAMP,
+    updated_at: DEMO_AGENT_WORKSPACE_TIMESTAMP,
+  };
+}
+
+function buildDemoAgentConversation(
+  conversationId = "agent_conversation:frontend_mock",
+): AgentConversation {
+  return {
+    conversation_id: conversationId,
+    project_id: "agent_project:frontend_mock",
+    owner_user_id: "frontend-demo",
+    title: "Demo conversation",
+    last_run_id: "agent_run:frontend_mock",
+    created_at: DEMO_AGENT_WORKSPACE_TIMESTAMP,
+    updated_at: DEMO_AGENT_WORKSPACE_TIMESTAMP,
+  };
+}
+
+function buildDemoAgentArtifact(artifactId = "agent_artifact:frontend_mock"): AgentArtifact {
+  const envelope = buildStableDemoAgentEnvelope();
+  return {
+    artifact_id: artifactId,
+    conversation_id: "agent_conversation:frontend_mock",
+    run_id: "agent_run:frontend_mock",
+    kind: "agent_envelope",
+    title: "Demo artifact",
+    content: envelope,
+    result_meta: envelope.result_meta,
+    created_at: DEMO_AGENT_WORKSPACE_TIMESTAMP,
+  };
+}
+
 export function createDemoAgentClient(delay: AgentClientDelay): AgentClientMethods {
   return {
     async queryAgent(_request: AgentQueryRequest): Promise<AgentEnvelope> {
@@ -141,6 +204,61 @@ export function createDemoAgentClient(delay: AgentClientDelay): AgentClientMetho
         status: "cancelled",
         result: null,
       };
+    },
+    async listAgentProjects(
+      options?: ListAgentProjectsOptions,
+    ): Promise<AgentProjectListResponse> {
+      await delay();
+      const project = buildDemoAgentProject();
+      return {
+        items: options?.includeArchived
+          ? [project, { ...buildDemoAgentProject("agent_project:frontend_mock_archived"), archived_at: DEMO_AGENT_WORKSPACE_TIMESTAMP }]
+          : [project],
+        corrupt_records: 0,
+      };
+    },
+    async getAgentProject(projectId: string): Promise<AgentProject> {
+      await delay();
+      return buildDemoAgentProject(projectId);
+    },
+    async listAgentConversations(_projectId: string): Promise<AgentConversationListResponse> {
+      await delay();
+      return { items: [buildDemoAgentConversation()], corrupt_records: 0 };
+    },
+    async getAgentConversation(conversationId: string): Promise<AgentConversation> {
+      await delay();
+      return buildDemoAgentConversation(conversationId);
+    },
+    async listAgentConversationMessages(
+      conversationId: string,
+    ): Promise<AgentMessageListResponse> {
+      await delay();
+      const envelope = buildStableDemoAgentEnvelope();
+      return {
+        items: [
+          {
+            message_id: "agent_message:frontend_mock",
+            conversation_id: conversationId,
+            role: "assistant",
+            content: envelope.answer,
+            run_id: "agent_run:frontend_mock",
+            artifact_refs: ["agent_artifact:frontend_mock"],
+            created_at: DEMO_AGENT_WORKSPACE_TIMESTAMP,
+            result: envelope,
+          },
+        ],
+        corrupt_records: 0,
+      };
+    },
+    async listAgentConversationArtifacts(
+      _conversationId: string,
+    ): Promise<AgentArtifactListResponse> {
+      await delay();
+      return { items: [buildDemoAgentArtifact()], corrupt_records: 0 };
+    },
+    async getAgentArtifact(artifactId: string): Promise<AgentArtifact> {
+      await delay();
+      return buildDemoAgentArtifact(artifactId);
     },
   };
 }
@@ -214,6 +332,54 @@ export function createRealAgentClient(options: AgentClientFactoryOptions): Agent
       return requestAgentJson<AgentRunStatusResponse>(
         `/api/agent/runs/${encodeURIComponent(runId)}/cancel`,
         { method: "POST" },
+      );
+    },
+    async listAgentProjects(
+      options?: ListAgentProjectsOptions,
+    ): Promise<AgentProjectListResponse> {
+      const query = options?.includeArchived ? "?include_archived=true" : "";
+      return requestAgentJson<AgentProjectListResponse>(`/api/agent/projects${query}`, {
+        method: "GET",
+      });
+    },
+    async getAgentProject(projectId: string): Promise<AgentProject> {
+      return requestAgentJson<AgentProject>(
+        `/api/agent/projects/${encodeURIComponent(projectId)}`,
+        { method: "GET" },
+      );
+    },
+    async listAgentConversations(projectId: string): Promise<AgentConversationListResponse> {
+      return requestAgentJson<AgentConversationListResponse>(
+        `/api/agent/projects/${encodeURIComponent(projectId)}/conversations`,
+        { method: "GET" },
+      );
+    },
+    async getAgentConversation(conversationId: string): Promise<AgentConversation> {
+      return requestAgentJson<AgentConversation>(
+        `/api/agent/conversations/${encodeURIComponent(conversationId)}`,
+        { method: "GET" },
+      );
+    },
+    async listAgentConversationMessages(
+      conversationId: string,
+    ): Promise<AgentMessageListResponse> {
+      return requestAgentJson<AgentMessageListResponse>(
+        `/api/agent/conversations/${encodeURIComponent(conversationId)}/messages`,
+        { method: "GET" },
+      );
+    },
+    async listAgentConversationArtifacts(
+      conversationId: string,
+    ): Promise<AgentArtifactListResponse> {
+      return requestAgentJson<AgentArtifactListResponse>(
+        `/api/agent/conversations/${encodeURIComponent(conversationId)}/artifacts`,
+        { method: "GET" },
+      );
+    },
+    async getAgentArtifact(artifactId: string): Promise<AgentArtifact> {
+      return requestAgentJson<AgentArtifact>(
+        `/api/agent/artifacts/${encodeURIComponent(artifactId)}`,
+        { method: "GET" },
       );
     },
   };

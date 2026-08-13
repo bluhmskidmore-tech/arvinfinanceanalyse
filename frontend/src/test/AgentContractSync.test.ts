@@ -10,8 +10,9 @@
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
+import { createRealAgentClient, type AgentClientMethods } from "../api/agentClient";
 import type {
   AgentArtifact,
   AgentArtifactListResponse,
@@ -395,6 +396,66 @@ describe("Agent 前后端契约防漂移（backend schemas ↔ contracts/agent.t
     expectFieldParity(source, "AgentArtifact", AGENT_ARTIFACT_FIELDS);
     expectFieldParity(source, "AgentArtifactListResponse", AGENT_ARTIFACT_LIST_RESPONSE_FIELDS);
   });
+});
+
+/** 解析 workspace 路由源码中的 GET 路径模板（挂载前缀为 /api/agent，见 agent.py include_router）。 */
+function parseWorkspaceGetRoutePaths(source: string): string[] {
+  return [...source.matchAll(/@router\.get\(\s*"([^"]+)"/g)].map((match) => `/api/agent${match[1]}`);
+}
+
+/**
+ * 只读客户端覆盖清单：key 为后端路由模板；调用时以模板占位符字面量作 id，
+ * 解码请求 URL 后应还原出同一模板（同时锁方法名与路径的映射关系）。
+ */
+const WORKSPACE_READ_CLIENT_CALLS: Record<
+  string,
+  (client: AgentClientMethods) => Promise<unknown>
+> = {
+  "/api/agent/projects": (client) => client.listAgentProjects(),
+  "/api/agent/projects/{project_id}": (client) => client.getAgentProject("{project_id}"),
+  "/api/agent/projects/{project_id}/conversations": (client) =>
+    client.listAgentConversations("{project_id}"),
+  "/api/agent/conversations/{conversation_id}": (client) =>
+    client.getAgentConversation("{conversation_id}"),
+  "/api/agent/conversations/{conversation_id}/messages": (client) =>
+    client.listAgentConversationMessages("{conversation_id}"),
+  "/api/agent/conversations/{conversation_id}/artifacts": (client) =>
+    client.listAgentConversationArtifacts("{conversation_id}"),
+  "/api/agent/artifacts/{artifact_id}": (client) => client.getAgentArtifact("{artifact_id}"),
+};
+
+describe("workspace 只读客户端与后端路由防漂移（agentClient.ts ↔ agent_workspace.py）", () => {
+  it("后端全部 workspace GET 路由都有对应的只读客户端方法", () => {
+    expect(parseWorkspaceGetRoutePaths(BACKEND_ROUTE_SOURCES.agentWorkspace).sort()).toEqual(
+      Object.keys(WORKSPACE_READ_CLIENT_CALLS).sort(),
+    );
+  });
+
+  it.each(Object.entries(WORKSPACE_READ_CLIENT_CALLS))(
+    "客户端方法以 GET 命中路由模板 %s",
+    async (routeTemplate, invoke) => {
+      const fetchImpl = vi.fn(async () =>
+        new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+      const client = createRealAgentClient({
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        baseUrl: "",
+      });
+
+      await invoke(client);
+
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      const [requestUrl, requestInit] = fetchImpl.mock.calls[0] as unknown as [
+        string,
+        RequestInit,
+      ];
+      expect(requestInit.method).toBe("GET");
+      expect(decodeURIComponent(requestUrl)).toBe(routeTemplate);
+    },
+  );
 });
 
 describe("错误响应契约防漂移（backend routes ↔ contracts/agent.ts）", () => {

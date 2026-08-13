@@ -6,7 +6,30 @@ export type AgentRunStreamOptions = {
 
 export type AgentRunEventHandler = (payload: unknown) => boolean | void;
 
+/**
+ * Connection-phase SSE failure: the stream never delivered a usable
+ * event-stream response (fetch rejected, non-2xx status, wrong content type,
+ * or a missing body). Callers should degrade to GET polling immediately
+ * instead of reconnecting — retrying an unsupported or client-rejected
+ * transport cannot succeed. Mid-stream failures (reader errors after the
+ * stream was established) keep their original error type and remain
+ * reconnectable.
+ */
+export class AgentRunStreamConnectionError extends Error {
+  readonly status?: number;
+
+  constructor(message: string, options: { status?: number } = {}) {
+    super(message);
+    this.name = "AgentRunStreamConnectionError";
+    this.status = options.status;
+  }
+}
+
 const defaultFetch = (...args: Parameters<typeof fetch>) => fetch(...args);
+
+function isAbortError(error: unknown) {
+  return error instanceof Error && error.name === "AbortError";
+}
 
 function normalizeBaseUrl(value: string | undefined) {
   return value?.trim().replace(/\/+$/, "") ?? "";
@@ -60,20 +83,35 @@ export async function streamAgentRunEvents(
   const baseUrl =
     options.baseUrl === undefined ? getDefaultBaseUrl() : normalizeBaseUrl(options.baseUrl);
   const path = `/api/agent/runs/${encodeURIComponent(runId)}/events`;
-  const response = await fetchImpl(`${baseUrl}${path}`, {
-    method: "GET",
-    headers: { Accept: "text/event-stream" },
-    signal: options.signal,
-  });
+  let response: Response | undefined;
+  try {
+    response = await fetchImpl(`${baseUrl}${path}`, {
+      method: "GET",
+      headers: { Accept: "text/event-stream" },
+      signal: options.signal,
+    });
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw error;
+    }
+    throw new AgentRunStreamConnectionError(
+      `Agent run SSE connection failed: ${path} (${error instanceof Error ? error.message : "unknown error"})`,
+    );
+  }
 
+  if (!response) {
+    throw new AgentRunStreamConnectionError(`Agent run SSE response is unavailable: ${path}`);
+  }
   if (!response.ok) {
-    throw new Error(`Agent run SSE request failed: ${path} (${response.status})`);
+    throw new AgentRunStreamConnectionError(`Agent run SSE request failed: ${path} (${response.status})`, {
+      status: response.status,
+    });
   }
   if (!response.headers.get("Content-Type")?.toLowerCase().includes("text/event-stream")) {
-    throw new Error("Agent run SSE response has an invalid content type.");
+    throw new AgentRunStreamConnectionError("Agent run SSE response has an invalid content type.");
   }
   if (!response.body) {
-    throw new Error("Agent run SSE response body is unavailable.");
+    throw new AgentRunStreamConnectionError("Agent run SSE response body is unavailable.");
   }
 
   const reader = response.body.getReader();

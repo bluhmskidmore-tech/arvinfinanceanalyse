@@ -4,11 +4,26 @@ import type { DecimalLike } from "./pnl";
 
 export type BalanceMovementBucket = "AC" | "OCI" | "TPL";
 
+/**
+ * `chain_broken` 是对 `matched` 的否决：横截面对得上、但本月期初接不上上月期末。
+ * 后端只降级原本会显示成已对平的行，`mismatch` / `gl_only` 保留信息量更大的判决。
+ */
 export type BalanceMovementReconciliationStatus =
   | "matched"
   | "mismatch"
   | "gl_only"
-  | "zqtz_only";
+  | "zqtz_only"
+  | "chain_broken";
+
+/** `null` = 该行写于控制结论落库之前（未记录），与 `no_prior_month` 不同。 */
+export type BalanceMovementChainStatus = "continuous" | "broken" | "no_prior_month";
+
+/**
+ * `position_source_basis` 的哨兵取值：该报告日两个候选口径都没有资产头寸行。
+ * 此时 `zqtz_amount` / `reconciliation_diff` 是"无对手方"的产物而不是真实差额，
+ * 页面必须按不适用呈现。其余取值是头寸侧实际命中的折算口径（通常是 `CNY`）。
+ */
+export type BalanceMovementPositionSourceUnavailable = "unavailable";
 
 export type BalanceMovementRow = {
   report_date: string;
@@ -29,6 +44,8 @@ export type BalanceMovementRow = {
   reconciliation_status: BalanceMovementReconciliationStatus;
   source_version: string;
   rule_version: string;
+  chain_status: BalanceMovementChainStatus | null;
+  position_source_basis: string | null;
 };
 
 export type BalanceMovementSummary = {

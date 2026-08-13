@@ -290,9 +290,9 @@ async function loadMockClient(): Promise<HomeSupplementalClientMethods> {
   if (!mockClientPromise) {
     mockClientPromise = Promise.all([
       import("./workbenchDashboardApi"),
-      import("./bondAnalyticsClient"),
+      import("./bondAnalyticsMockClient"),
       import("./balanceAnalysisClient"),
-      import("./balanceMovementClient"),
+      import("./balanceMovementMockClient"),
       import("./pnlAttributionMockClient"),
       import("./liabilityAdbClient"),
     ]).then(

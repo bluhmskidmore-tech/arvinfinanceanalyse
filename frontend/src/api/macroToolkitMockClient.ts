@@ -2750,7 +2750,7 @@ export function createMockMacroToolkitClient(): MacroToolkitClientMethods {
   return {
     async getMacroToolkitAnalysis(_options?: MacroToolkitAnalysisRequest) {
       return buildMockApiEnvelope("macro_toolkit.analysis", MOCK_ANALYSIS, {
-        basis: "analytical",
+        basis: "mock",
         formal_use_allowed: false,
         source_version: "macro_toolkit_mock",
         vendor_version: "choice+tushare",
@@ -2768,7 +2768,7 @@ export function createMockMacroToolkitClient(): MacroToolkitClientMethods {
           macro_etf_strategy: MOCK_MACRO_ETF_STRATEGY,
         },
         {
-          basis: "analytical",
+          basis: "mock",
           formal_use_allowed: false,
           source_version: "macro_toolkit_mock",
           vendor_version: "choice+tushare",
@@ -2779,7 +2779,7 @@ export function createMockMacroToolkitClient(): MacroToolkitClientMethods {
     },
     async fetchMacroToolkitModelChainResults() {
       return buildMockApiEnvelope("macro_toolkit.model_chain_results", MOCK_MODEL_CHAIN_RESULTS, {
-        basis: "analytical",
+        basis: "mock",
         formal_use_allowed: false,
         source_version: "macro_toolkit_mock",
         vendor_version: "choice+tushare",
@@ -2789,7 +2789,7 @@ export function createMockMacroToolkitClient(): MacroToolkitClientMethods {
     },
     async getMacroToolkitScripts() {
       return buildMockApiEnvelope("macro_toolkit.scripts", MOCK_PAYLOAD, {
-        basis: "analytical",
+        basis: "mock",
         formal_use_allowed: false,
         source_version: "macro_toolkit_mock",
         vendor_version: "choice+tushare",
@@ -2881,7 +2881,7 @@ export function createMockMacroToolkitClient(): MacroToolkitClientMethods {
           model_readiness: MOCK_MODEL_READINESS,
         },
         {
-          basis: "analytical",
+          basis: "mock",
           formal_use_allowed: false,
           source_version: "macro_toolkit_mock",
           vendor_version: "choice+tushare",
@@ -2915,7 +2915,7 @@ export function createMockMacroToolkitClient(): MacroToolkitClientMethods {
           cffex_member_rank: MOCK_PAYLOAD.cffex_member_rank!,
         },
         {
-          basis: "analytical",
+          basis: "mock",
           formal_use_allowed: false,
           source_version: "macro_toolkit_mock",
           vendor_version: "choice+tushare",
@@ -2950,7 +2950,7 @@ export function createMockMacroToolkitClient(): MacroToolkitClientMethods {
           cffex_member_rank: MOCK_PAYLOAD.cffex_member_rank!,
         },
         {
-          basis: "analytical",
+          basis: "mock",
           formal_use_allowed: false,
           source_version: "macro_toolkit_mock",
           vendor_version: "choice+tushare",
@@ -2989,7 +2989,7 @@ export function createMockMacroToolkitClient(): MacroToolkitClientMethods {
           refresh,
         },
         {
-          basis: "analytical",
+          basis: "mock",
           formal_use_allowed: false,
           source_version: "macro_toolkit_mock",
           vendor_version: "choice+tushare",
@@ -3027,7 +3027,7 @@ export function createMockMacroToolkitClient(): MacroToolkitClientMethods {
         "macro_toolkit.source_backfill_refresh_status",
         { refresh },
         {
-          basis: "analytical",
+          basis: "mock",
           formal_use_allowed: false,
           source_version: "macro_toolkit_mock",
           vendor_version: "tushare_macro",
@@ -3117,7 +3117,7 @@ export function createMockMacroToolkitClient(): MacroToolkitClientMethods {
           },
         },
         {
-          basis: "analytical",
+          basis: "mock",
           formal_use_allowed: false,
           source_version: "macro_toolkit_mock",
           vendor_version: "choice+tushare",
@@ -3139,7 +3139,7 @@ export function createMockMacroToolkitClient(): MacroToolkitClientMethods {
           choice_stock_refresh: MOCK_CHOICE_STOCK_REFRESH,
         },
         {
-          basis: "analytical",
+          basis: "mock",
           formal_use_allowed: false,
           source_version: "macro_toolkit_mock",
           vendor_version: "choice+tushare",
@@ -3163,7 +3163,7 @@ export function createMockMacroToolkitClient(): MacroToolkitClientMethods {
           choice_stock_refresh: MOCK_CHOICE_STOCK_REFRESH,
         },
         {
-          basis: "analytical",
+          basis: "mock",
           formal_use_allowed: false,
           source_version: "macro_toolkit_mock",
           vendor_version: "choice+tushare",
