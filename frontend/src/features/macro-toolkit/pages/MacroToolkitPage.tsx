@@ -46,13 +46,9 @@ import {
 import { deriveModelReadinessFromHasonStrategy } from "../panels/macroToolkitModelEvidenceShared";
 import {
   compareRepairPriority,
-  coverageValue,
   repairItemFocusKey,
 } from "../lib/macroToolkitDataHealthSupport";
 import {
-  formatObservationEvidence,
-  formatObservationRecommendation,
-  formatObservationSignalTitle,
   formatQueryError,
   isMacroToolkitReadForbidden,
   isObservationOutputSignal,
@@ -76,12 +72,6 @@ import {
   MacroToolkitPageErrorState,
 } from "../sections/MacroToolkitPageStates";
 import { useMacroToolkitOperationActions } from "./useMacroToolkitOperationActions";
-import {
-  MacroToolkitObservationComparisonSection,
-  MacroToolkitObservationDecisionSummary,
-} from "../sections/MacroToolkitObservationSections";
-import { MacroToolkitContractBoundary } from "../sections/MacroToolkitPrimitives";
-import { MacroToolkitObservationView } from "./MacroToolkitObservationView";
 import { MacroToolkitOperationsView } from "./MacroToolkitOperationsView";
 import { useMacroToolkitDeferredContent } from "./useMacroToolkitDeferredContent";
 
@@ -91,16 +81,9 @@ const MACRO_TOOLKIT_FULL_PREFETCH_DELAY_MS = 1_500;
 
 const MACRO_TOOLKIT_HERO_CARD_SLOTS = cardVariants({ variant: "default" });
 
-type MacroToolkitPageMode = "toolkit" | "observation";
-
-type MacroToolkitPageProps = {
-  mode?: MacroToolkitPageMode;
-};
-
-export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageProps) {
+export default function MacroToolkitPage() {
   const client = useApiClient();
   const queryClient = useQueryClient();
-  const showOperations = mode === "toolkit";
   const [selectedGroup, setSelectedGroup] = useState("all");
   const [selectedName, setSelectedName] = useState<string | null>(null);
   const [selectedGovernanceFocus, setSelectedGovernanceFocus] =
@@ -116,7 +99,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   const [isLoadingFullAnalysis, setIsLoadingFullAnalysis] = useState(false);
 
   const deferredContent = useMacroToolkitDeferredContent({
-    showOperations,
+    showOperations: true,
     selectedEvidenceHref,
     selectedExecutionHref,
     setSelectedEvidenceHref,
@@ -133,7 +116,6 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   const scriptsQuery = useQuery({
     queryKey: ["macro-toolkit", "scripts"],
     queryFn: () => client.getMacroToolkitScripts(),
-    enabled: showOperations,
     staleTime: MACRO_TOOLKIT_READ_STALE_MS,
   });
 
@@ -146,7 +128,6 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   const modelChainQuery = useQuery({
     queryKey: ["macro-toolkit", "model-chain-results"],
     queryFn: ({ signal }) => client.fetchMacroToolkitModelChainResults({ signal }),
-    enabled: showOperations,
     staleTime: MACRO_TOOLKIT_READ_STALE_MS,
   });
 
@@ -210,7 +191,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     };
   }, [analysisQuery.data?.result.runtime_status?.analysis_scope, fetchFullAnalysis, fullAnalysisEnvelope, queryClient]);
 
-  const payload = showOperations ? scriptsQuery.data?.result : undefined;
+  const payload = scriptsQuery.data?.result;
   const analysisEnvelope = fullAnalysisEnvelope ?? analysisQuery.data;
   const analysis = analysisEnvelope?.result;
   const scripts = payload?.scripts ?? EMPTY_SCRIPTS;
@@ -282,7 +263,6 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     isReadyStatus(item.route_status) && isReadyStatus(item.frontend_status),
   ).length;
   const crisisScoreResult = capabilityResults.find((result) => result.key === "crisis_score_cn") ?? null;
-  const decisionSummaryResult = capabilityResults.find((result) => result.key === "decision_summary") ?? null;
   const degradedResultCount = capabilityResults.filter((result) => result.status !== "complete").length;
   const missingIndicatorCount = analysis?.indicators.filter((indicator) => indicator.quality === "missing").length ?? 0;
   const analysisSignalCards = analysis?.signal_cards ?? [];
@@ -294,7 +274,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       .filter((card) => card.score != null)
       .sort((left, right) => (right.score ?? 0) - (left.score ?? 0))[0] ?? null;
   const isCoreAnalysis = analysis?.runtime_status?.analysis_scope === "core";
-  const queryErrors = [analysisQuery.error, ...(showOperations ? [scriptsQuery.error] : []), strategyQuery.error];
+  const queryErrors = [analysisQuery.error, scriptsQuery.error, strategyQuery.error];
   const queryErrorText = queryErrors
     .filter(Boolean)
     .map(formatQueryError)
@@ -302,10 +282,6 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   const failedReadMessages = queryErrors
     .filter(Boolean)
     .map(formatQueryError);
-  const observationFailedReadMessages = [
-    analysisQuery.isError ? "读取核心分析失败" : "",
-    strategyQuery.isError ? "读取策略摘要失败" : "",
-  ].filter(Boolean);
   const hasReadScopeBlocker = failedReadMessages.some(isMacroToolkitReadForbidden);
   const runtimeSections = analysis?.runtime_status?.deferred_sections ?? [];
   const hasonStrategy = analysis?.hason_strategy ?? null;
@@ -315,11 +291,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       ? `${runtimeSections.length} 项证据延后确认`
       : "等待完整分析确认"
     : "证据已完整读取";
-  const dataFreshnessDetail = showOperations
-    ? `${missingIndicatorCount} 个指标缺失；${sourceHitCount} 个源命中`
-    : analysis?.data_health
-      ? `来源覆盖 ${coverageValue(analysis.data_health.source_coverage)}`
-      : "来源覆盖待确认";
+  const dataFreshnessDetail = `${missingIndicatorCount} 个指标缺失；${sourceHitCount} 个源命中`;
   const repairItems = analysis?.data_health?.repair_items ?? [];
   const repairItemCount = repairItems.length;
   const primaryRepairItem = [...repairItems].sort(compareRepairPriority)[0] ?? null;
@@ -385,7 +357,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   const commodityRefreshDisabled = selectedCommodityProducts.length === 0 || !isCommodityRefreshAllowed;
   const isMacroRefreshing =
     analysisQuery.isFetching ||
-    (showOperations && scriptsQuery.isFetching) ||
+    scriptsQuery.isFetching ||
     strategyQuery.isFetching ||
     isRefreshingCommodity ||
     isLoadingFullAnalysis;
@@ -432,7 +404,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     repairItemCount,
     runtimeSections,
     scripts,
-    showOperations,
+    showOperations: true,
     sourceChecks,
     sourceHitCount,
     strategyDescription,
@@ -446,82 +418,12 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       selectedEvidenceHref ? selectedEvidenceHref === href : governanceKeys.includes(selectedGovernanceFocus),
     [selectedEvidenceHref, selectedGovernanceFocus],
   );
-  const observationBoundaryPanel = !showOperations ? (
-    <div className="macro-toolkit-observation-boundaries">
-      <MacroToolkitContractBoundary
-        formalUseAllowed={analysisMeta?.formal_use_allowed}
-        resultKind={analysisMeta?.result_kind}
-        ruleVersion={analysisMeta?.rule_version}
-        plainLanguage
-      />
-      <Alert
-        type="info"
-        showIcon
-        data-testid="macro-observation-readonly-boundary"
-        message="只读宏观观察"
-        description="本页只展示宏观分析证据；刷新、脚本执行和运营注册表保留在宏观工具页。"
-      />
-    </div>
-  ) : null;
-  const observationDecisionSummary =
-    !showOperations && analysis ? (
-      <MacroToolkitObservationDecisionSummary
-        decisionSummaryResult={decisionSummaryResult}
-        isCoreAnalysis={isCoreAnalysis}
-        analysisBasis={analysisMeta?.basis ?? null}
-      />
-    ) : null;
-  const observationFirstScreenLoop =
-    !showOperations ? (
-      <div
-        className={MACRO_TOOLKIT_HERO_CARD_SLOTS.base({
-          className: "macro-toolkit-observation-loop border border-default-200 bg-content1 text-foreground",
-        })}
-        aria-label="宏观观察首屏闭环"
-        data-slot="card"
-      >
-        <div
-          className={MACRO_TOOLKIT_HERO_CARD_SLOTS.header({ className: "macro-toolkit-observation-loop__head p-0" })}
-          data-slot="card-header"
-        >
-          <span>观察闭环</span>
-          <strong>{analysis?.as_of_date ?? "日期待确认"}</strong>
-        </div>
-        <div
-          className={MACRO_TOOLKIT_HERO_CARD_SLOTS.content({ className: "macro-toolkit-observation-loop__grid p-0" })}
-          data-slot="card-content"
-        >
-          <div>
-            <span>当前判断</span>
-            <strong>{analysis?.conclusion.stance ?? "读取中"}</strong>
-            <small>{formatObservationRecommendation(analysis?.conclusion.recommended_action)}</small>
-          </div>
-          <div>
-            <span>关键证据</span>
-            <strong>{primarySignal ? formatObservationSignalTitle(primarySignal) : "证据待确认"}</strong>
-            <small>
-              {analysis?.default_data_sources?.length
-                ? `已接入 ${analysis.default_data_sources.length} 类系统数据源；`
-                : "来源待确认；"}
-              {primarySignal ? formatObservationEvidence(primarySignal.evidence) : "观察证据待补齐"}
-            </small>
-          </div>
-          <div>
-            <span>使用边界</span>
-            <strong>只读观察</strong>
-            <small>不作为正式投资信号；刷新、脚本和完整审计留在宏观工具页。</small>
-          </div>
-        </div>
-      </div>
-    ) : null;
-
   const cockpitSection = (
     <section
       data-testid="macro-toolkit-tailwind-cockpit"
       className={MACRO_TOOLKIT_HERO_CARD_SLOTS.base({
-        className: `macro-toolkit-cockpit macro-toolkit-cockpit--${
-          showOperations ? "toolkit" : "observation"
-        } border border-default-200 bg-background/95 text-foreground shadow-sm`,
+        className:
+          "macro-toolkit-cockpit macro-toolkit-cockpit--toolkit border border-default-200 bg-background/95 text-foreground shadow-sm",
       })}
       data-slot="card"
     >
@@ -532,13 +434,12 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
         <div
           className="macro-toolkit-cockpit__analysis macro-toolkit-house-view"
           data-testid="macro-toolkit-house-view"
-          aria-label={showOperations ? "宏观工具 House View" : "宏观观察结论"}
+          aria-label="宏观工具 House View"
         >
           <div className="macro-toolkit-panel-kicker">
-            <span>{showOperations ? "投研结论" : "观察结论"}</span>
-            <strong>{showOperations ? "可执行宏观判断" : "只读宏观判断"}</strong>
+            <span>投研结论</span>
+            <strong>可执行宏观判断</strong>
           </div>
-          {observationDecisionSummary}
           <div className="macro-toolkit-cockpit__conclusion">
             <div className="macro-toolkit-cockpit__label">
               <MacroStatusIcon tone={analysis?.conclusion.tone ?? "missing"}>
@@ -550,7 +451,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
             <p title={analysis?.conclusion.summary}>
               {analysis?.conclusion.summary ?? "正在从系统数据源生成宏观判断。"}
             </p>
-            {showOperations && analysis?.warnings.length ? (
+            {analysis?.warnings.length ? (
               <small
                 className="macro-toolkit-cockpit__limits"
                 title={analysis.warnings.join(" ")}
@@ -559,40 +460,30 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
               </small>
             ) : null}
           </div>
-          {showOperations ? (
-            <div className="macro-toolkit-brief-metrics">
-              <MetricTile
-                icon={<LineChartOutlined />}
-                label="主信号"
-                value={primarySignal ? `${primarySignal.title} · ${primarySignal.stance}` : EM_DASH}
-                detail={
-                  primarySignal?.score == null
-                    ? "尚无可排序信号"
-                    : `评分 ${primarySignal.score.toFixed(1)}`
-                }
-                detailTitle={
-                  primarySignal?.evidence.length ? primarySignal.evidence.join(" / ") : undefined
-                }
-                tone={primarySignal?.tone === "positive" ? "positive" : primarySignal ? "neutral" : "missing"}
-              />
-            </div>
-          ) : (
-            observationFirstScreenLoop
-          )}
+          <div className="macro-toolkit-brief-metrics">
+            <MetricTile
+              icon={<LineChartOutlined />}
+              label="主信号"
+              value={primarySignal ? `${primarySignal.title} · ${primarySignal.stance}` : EM_DASH}
+              detail={
+                primarySignal?.score == null
+                  ? "尚无可排序信号"
+                  : `评分 ${primarySignal.score.toFixed(1)}`
+              }
+              detailTitle={
+                primarySignal?.evidence.length ? primarySignal.evidence.join(" / ") : undefined
+              }
+              tone={primarySignal?.tone === "positive" ? "positive" : primarySignal ? "neutral" : "missing"}
+            />
+          </div>
         </div>
       </div>
     </section>
   );
 
   const isAnalysisLoading = analysisQuery.isLoading && !analysis;
-  const observationSignalRiskLoadingSection = !showOperations && !analysis ? (
-    <MacroToolkitObservationComparisonSection signalCards={[]} primarySignal={null} isLoading />
-  ) : null;
   const initialAnalysisLoadingSection = isAnalysisLoading ? (
-    <MacroToolkitInitialAnalysisLoading
-      showOperations={showOperations}
-      observationSignalRiskLoadingSection={observationSignalRiskLoadingSection}
-    />
+    <MacroToolkitInitialAnalysisLoading showOperations observationSignalRiskLoadingSection={null} />
   ) : null;
   const analysisFailedAlert = analysisQuery.isError ? (
     <Alert type="error" showIcon message="宏观分析结果加载失败" />
@@ -651,7 +542,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     <HasonMacroStrategyPanel
       strategy={hasonStrategy}
       modelReadiness={analysis?.model_readiness}
-      variant={showOperations ? "detail" : "observation"}
+      variant="detail"
     />
   ) : null;
   const modelSignalReadiness = analysis?.model_readiness?.length
@@ -667,7 +558,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       chainRunError={chainRunError}
       chainRunModelId={chainRunModelId}
       isRunningChain={isRunningChain}
-      showActions={showOperations}
+      showActions
       onRunChain={runScriptChain}
     />
   ) : null;
@@ -683,9 +574,9 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     <MacroToolkitAnalysisEvidenceFlow
       analysis={analysis}
       analysisMeta={analysisMeta}
-      showOperations={showOperations}
+      showOperations
       isAuditTargetActive={isAuditTargetActive}
-      observationBoundaryPanel={observationBoundaryPanel}
+      observationBoundaryPanel={null}
       runtimeSections={runtimeSections}
       isCoreAnalysis={isCoreAnalysis}
       observationRuntimeSummary={observationRuntimeSummary}
@@ -714,17 +605,17 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     <MacroToolkitReportBundlePanel bundle={analysis.report_bundle} />
   ) : null;
 
-  if (!payload && !analysis && (analysisQuery.isError || (showOperations && scriptsQuery.isError))) {
+  if (!payload && !analysis && (analysisQuery.isError || scriptsQuery.isError)) {
     return (
       <MacroToolkitPageErrorState
-        showOperations={showOperations}
+        showOperations
         queryErrorText={queryErrorText}
         analysisQuery={analysisQuery}
         scriptsQuery={scriptsQuery}
         strategyQuery={strategyQuery}
         hasReadScopeBlocker={hasReadScopeBlocker}
         failedReadMessages={failedReadMessages}
-        observationFailedReadMessages={observationFailedReadMessages}
+        observationFailedReadMessages={[]}
       />
     );
   }
@@ -741,11 +632,9 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       >
         <div className={`${MT_SHELL_TOPBAR_LEFT} macro-toolkit-page__header-main`}>
           <div className={MT_SHELL_TITLE_BRAND}>
-            <h1 className={MT_SHELL_TITLE}>{showOperations ? "宏观工具" : "宏观分析结果"}</h1>
+            <h1 className={MT_SHELL_TITLE}>宏观工具</h1>
           </div>
-          <span className={`${MT_SHELL_STATUS_PILL} macro-toolkit-page__badge`}>
-            {showOperations ? "工具控制台" : "只读观察"}
-          </span>
+          <span className={`${MT_SHELL_STATUS_PILL} macro-toolkit-page__badge`}>工具控制台</span>
           <div className={`${MT_SHELL_STATUS_ROW} macro-toolkit-page__toolbar-info`} aria-label="宏观工具状态">
             <span className={`${MT_SHELL_STATUS_PILL} macro-toolkit-page__toolbar-pill`}>
               <ClockCircleOutlined aria-hidden="true" />
@@ -763,7 +652,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
           </div>
         </div>
         <MacroToolkitHeaderControls
-          showOperations={showOperations}
+          showOperations
           clearFullAnalysisCache={clearFullAnalysisCache}
           analysisQuery={analysisQuery}
           scriptsQuery={scriptsQuery}
@@ -774,102 +663,70 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
           revealAllDeferredContent={deferredContent.revealAllDeferredContent}
         />
         <p className="macro-toolkit-page__header-summary">
-          {showOperations
-            ? "先看结论、信号和指标结果；数据核对与脚本执行收在页面后段。"
-            : "只展示宏观分析证据；刷新、脚本和注册表保留在宏观工具页。"}
+          先看结论、信号和指标结果；数据核对与脚本执行收在页面后段。
         </p>
       </header>
 
-      {showOperations ? (
-        <MacroToolkitOperationsView
-          analysis={analysis}
-          analysisMeta={analysisMeta}
-          payload={payload}
-          scripts={scripts}
-          scriptsQuery={scriptsQuery}
-          strategyQuery={strategyQuery}
-          capabilityResults={capabilityResults}
-          crisisScoreResult={crisisScoreResult}
-          visibleSignalCards={visibleSignalCards}
-          availableScriptCount={availableScriptCount}
-          sourceChecks={sourceChecks}
-          sourceHitCount={sourceHitCount}
-          isCoreAnalysis={isCoreAnalysis}
-          isLoadingFullAnalysis={isLoadingFullAnalysis}
-          loadFullAnalysis={loadFullAnalysis}
-          strategyDescription={strategyDescription}
-          choiceStockRefresh={choiceStockRefresh}
-          strategySupplyState={strategySupplyState}
-          fullRealStrategyCount={fullRealStrategyCount}
-          partialRealStrategyCount={partialRealStrategyCount}
-          degradedStrategyCount={degradedStrategyCount}
-          sampleStrategyCount={sampleStrategyCount}
-          strategySummaries={strategySummaries}
-          shadowPortfolioReport={shadowPortfolioReport}
-          macroEtfStrategy={macroEtfStrategy}
-          hasRealStrategyData={hasRealStrategyData}
-          cffexStatus={cffexStatus}
-          commodityStatus={commodityStatus}
-          omittedEntries={omittedEntries}
-          selectedScript={selectedScript}
-          filteredScripts={filteredScripts}
-          selectedGroup={selectedGroup}
-          setSelectedGroup={setSelectedGroup}
-          setSelectedName={setSelectedName}
-          selectedEvidenceHref={selectedEvidenceHref}
-          setSelectedEvidenceHref={setSelectedEvidenceHref}
-          selectedExecutionHref={selectedExecutionHref}
-          setSelectedExecutionHref={setSelectedExecutionHref}
-          selectedGovernanceFocus={selectedGovernanceFocus}
-          setSelectedGovernanceFocus={setSelectedGovernanceFocus}
-          focusDataHealthRepair={focusDataHealthRepair}
-          isOperationActionBusy={isOperationActionBusy}
-          commodityRefreshDisabled={commodityRefreshDisabled}
-          commodityRefreshActionLabel={commodityRefreshActionLabel}
-          shouldShowCommodityPermissionNotice={shouldShowCommodityPermissionNotice}
-          operationActions={operationActions}
-          committeeModel={committeeModel}
-          deferredContent={deferredContent}
-          cockpitSection={cockpitSection}
-          analysisFailedAlert={analysisFailedAlert}
-          fullAnalysisErrorAlert={fullAnalysisErrorAlert}
-          initialAnalysisLoadingSection={initialAnalysisLoadingSection}
-          analysisEvidenceFlow={analysisEvidenceFlow}
-          crisisEvidenceSection={crisisEvidenceSection}
-          modelSignalMatrixSection={modelSignalMatrixSection}
-          modelChainSection={modelChainSection}
-          hasonStrategySection={hasonStrategySection}
-          reportBundleSection={reportBundleSection}
-        />
-      ) : (
-        <MacroToolkitObservationView
-          analysis={analysis}
-          visibleSignalCards={visibleSignalCards}
-          primarySignal={primarySignal}
-          selectedEvidenceHref={selectedEvidenceHref}
-          strategySummaries={strategySummaries}
-          strategySupplyState={strategySupplyState}
-          fullRealStrategyCount={fullRealStrategyCount}
-          partialRealStrategyCount={partialRealStrategyCount}
-          degradedStrategyCount={degradedStrategyCount}
-          sampleStrategyCount={sampleStrategyCount}
-          shadowPortfolioReport={shadowPortfolioReport}
-          strategyQuery={strategyQuery}
-          capabilityResults={capabilityResults}
-          degradedResultCount={degradedResultCount}
-          hasonStrategy={hasonStrategy}
-          isCoreAnalysis={isCoreAnalysis}
-          handleDeferredContentLinkClick={deferredContent.handleDeferredContentLinkClick}
-          cockpitSection={cockpitSection}
-          analysisFailedAlert={analysisFailedAlert}
-          fullAnalysisErrorAlert={fullAnalysisErrorAlert}
-          initialAnalysisLoadingSection={initialAnalysisLoadingSection}
-          analysisEvidenceFlow={analysisEvidenceFlow}
-          modelSignalMatrixSection={modelSignalMatrixSection}
-          crisisEvidenceSection={crisisEvidenceSection}
-          reportBundleSection={reportBundleSection}
-        />
-      )}
+      <MacroToolkitOperationsView
+        analysis={analysis}
+        analysisMeta={analysisMeta}
+        payload={payload}
+        scripts={scripts}
+        scriptsQuery={scriptsQuery}
+        strategyQuery={strategyQuery}
+        capabilityResults={capabilityResults}
+        crisisScoreResult={crisisScoreResult}
+        visibleSignalCards={visibleSignalCards}
+        availableScriptCount={availableScriptCount}
+        sourceChecks={sourceChecks}
+        sourceHitCount={sourceHitCount}
+        isCoreAnalysis={isCoreAnalysis}
+        isLoadingFullAnalysis={isLoadingFullAnalysis}
+        loadFullAnalysis={loadFullAnalysis}
+        strategyDescription={strategyDescription}
+        choiceStockRefresh={choiceStockRefresh}
+        strategySupplyState={strategySupplyState}
+        fullRealStrategyCount={fullRealStrategyCount}
+        partialRealStrategyCount={partialRealStrategyCount}
+        degradedStrategyCount={degradedStrategyCount}
+        sampleStrategyCount={sampleStrategyCount}
+        strategySummaries={strategySummaries}
+        shadowPortfolioReport={shadowPortfolioReport}
+        macroEtfStrategy={macroEtfStrategy}
+        hasRealStrategyData={hasRealStrategyData}
+        cffexStatus={cffexStatus}
+        commodityStatus={commodityStatus}
+        omittedEntries={omittedEntries}
+        selectedScript={selectedScript}
+        filteredScripts={filteredScripts}
+        selectedGroup={selectedGroup}
+        setSelectedGroup={setSelectedGroup}
+        setSelectedName={setSelectedName}
+        selectedEvidenceHref={selectedEvidenceHref}
+        setSelectedEvidenceHref={setSelectedEvidenceHref}
+        selectedExecutionHref={selectedExecutionHref}
+        setSelectedExecutionHref={setSelectedExecutionHref}
+        selectedGovernanceFocus={selectedGovernanceFocus}
+        setSelectedGovernanceFocus={setSelectedGovernanceFocus}
+        focusDataHealthRepair={focusDataHealthRepair}
+        isOperationActionBusy={isOperationActionBusy}
+        commodityRefreshDisabled={commodityRefreshDisabled}
+        commodityRefreshActionLabel={commodityRefreshActionLabel}
+        shouldShowCommodityPermissionNotice={shouldShowCommodityPermissionNotice}
+        operationActions={operationActions}
+        committeeModel={committeeModel}
+        deferredContent={deferredContent}
+        cockpitSection={cockpitSection}
+        analysisFailedAlert={analysisFailedAlert}
+        fullAnalysisErrorAlert={fullAnalysisErrorAlert}
+        initialAnalysisLoadingSection={initialAnalysisLoadingSection}
+        analysisEvidenceFlow={analysisEvidenceFlow}
+        crisisEvidenceSection={crisisEvidenceSection}
+        modelSignalMatrixSection={modelSignalMatrixSection}
+        modelChainSection={modelChainSection}
+        hasonStrategySection={hasonStrategySection}
+        reportBundleSection={reportBundleSection}
+      />
     </section>
   );
 }

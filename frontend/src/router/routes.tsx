@@ -106,6 +106,9 @@ const MarketDataPage = lazy(
 const MacroToolkitPage = lazy(
   () => import("../features/macro-toolkit/pages/MacroToolkitPage"),
 );
+const MacroObservationPage = lazy(
+  () => import("../features/macro-observation/pages/MacroObservationPage"),
+);
 const CubeQueryPage = lazy(() => import("../features/cube-query/pages/CubeQueryPage"));
 const StockAnalysisPage = lazy(
   () => import("../features/stock-analysis/pages/StockAnalysisPage"),
@@ -325,7 +328,7 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
     if (section.path === "/macro-observation") {
       return {
         path: section.path.slice(1),
-        element: themedRouteElement(<MacroToolkitPage mode="observation" />),
+        element: themedRouteElement(<MacroObservationPage />),
       };
     }
 

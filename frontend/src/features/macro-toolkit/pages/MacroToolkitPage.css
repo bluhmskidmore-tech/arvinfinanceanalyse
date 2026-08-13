@@ -237,124 +237,6 @@
   overflow-wrap: anywhere;
 }
 
-.macro-toolkit-cockpit--observation .macro-toolkit-cockpit__analysis {
-  grid-template-columns: minmax(0, 1fr);
-  align-items: start;
-  gap: 10px;
-}
-
-.macro-toolkit-cockpit--observation .macro-toolkit-house-view {
-  gap: 10px;
-  padding: 12px;
-  background: var(--macro-toolkit-card);
-}
-
-.macro-toolkit-cockpit--observation .macro-toolkit-panel-kicker {
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--macro-toolkit-border-muted);
-}
-
-.macro-toolkit-observation-decision {
-  display: grid;
-  gap: 8px;
-  min-width: 0;
-}
-
-.macro-toolkit-observation-decision .macro-toolkit-capability-result {
-  min-height: 0;
-}
-
-.macro-toolkit-cockpit--observation .macro-toolkit-cockpit__conclusion {
-  align-content: start;
-  padding: 12px 14px;
-  border-left-color: var(--ib-accent);
-  background: var(--macro-toolkit-primary-soft);
-}
-
-.macro-toolkit-cockpit--observation .macro-toolkit-cockpit__conclusion strong {
-  font-family: var(--ib-serif);
-  font-size: 22px;
-  font-weight: 600;
-}
-
-.macro-toolkit-cockpit--observation .macro-toolkit-cockpit__conclusion p {
-  -webkit-line-clamp: 3;
-}
-
-.macro-toolkit-observation-loop {
-  display: grid;
-  gap: 0;
-  min-width: 0;
-  padding: 0;
-  overflow: hidden;
-  border: 1px solid var(--macro-toolkit-border);
-  border-radius: var(--moss-radius-sm);
-  background: var(--macro-toolkit-card);
-}
-
-.macro-toolkit-observation-loop__head {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: baseline;
-  justify-content: space-between;
-  min-width: 0;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--macro-toolkit-border-muted);
-  background: var(--macro-toolkit-card-muted);
-}
-
-.macro-toolkit-observation-loop__head span,
-.macro-toolkit-observation-loop__grid span {
-  color: var(--moss-color-text-muted);
-  font-size: 11px;
-  font-weight: 850;
-  line-height: 1.25;
-}
-
-.macro-toolkit-observation-loop__head strong {
-  color: var(--moss-color-text-primary);
-  font-variant-numeric: tabular-nums;
-  font-size: 13px;
-  font-weight: 900;
-}
-
-.macro-toolkit-observation-loop__grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0;
-  min-width: 0;
-}
-
-.macro-toolkit-observation-loop__grid > div {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-  padding: 10px 12px;
-  border: 0;
-  border-radius: 0;
-  background: var(--macro-toolkit-card);
-}
-
-.macro-toolkit-observation-loop__grid > div + div {
-  border-left: 1px solid var(--macro-toolkit-border-muted);
-}
-
-.macro-toolkit-observation-loop__grid strong {
-  color: var(--moss-color-text-primary);
-  font-size: 14px;
-  font-weight: 900;
-  line-height: 1.25;
-  overflow-wrap: anywhere;
-}
-
-.macro-toolkit-observation-loop__grid small {
-  color: var(--moss-color-text-secondary);
-  font-size: 11px;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
-}
-
 .macro-toolkit-cockpit__conclusion {
   display: grid;
   gap: 8px;
@@ -587,51 +469,6 @@
   .macro-toolkit-submission-cockpit__lanes {
     grid-template-columns: minmax(0, 1fr);
   }
-}
-
-.macro-toolkit-observation-boundaries {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 10px;
-  min-width: 0;
-  align-items: stretch;
-}
-
-.macro-toolkit-observation-boundaries .macro-toolkit-contract-boundary {
-  grid-template-columns: minmax(150px, 0.8fr) minmax(110px, 0.62fr) minmax(220px, 1fr) minmax(220px, 1fr);
-  min-height: 52px;
-}
-
-.macro-toolkit-observation-boundaries .macro-toolkit-contract-boundary small {
-  overflow: visible;
-  text-overflow: clip;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-
-.macro-toolkit-observation-boundaries .ant-alert {
-  min-width: 0;
-  padding: 10px 12px;
-  border-color: var(--macro-toolkit-border);
-  border-radius: var(--moss-radius-sm);
-  background: var(--macro-toolkit-card-soft);
-}
-
-.macro-toolkit-observation-boundaries .ant-alert-icon {
-  color: var(--macro-toolkit-info);
-}
-
-.macro-toolkit-observation-boundaries .ant-alert-message {
-  color: var(--moss-color-text-primary);
-  font-size: 12px;
-  font-weight: 850;
-}
-
-.macro-toolkit-observation-boundaries .ant-alert-description {
-  color: var(--moss-color-text-secondary);
-  font-size: 12px;
-  line-height: 1.45;
 }
 
 .macro-toolkit-governance-gate {
@@ -1453,220 +1290,6 @@
   min-width: 0;
 }
 
-.macro-toolkit-observation-flow,
-.macro-toolkit-observation-evidence-flow {
-  display: grid;
-  min-width: 0;
-}
-
-.macro-toolkit-observation-flow {
-  gap: 14px;
-}
-
-.macro-toolkit-observation-evidence-flow {
-  gap: 12px;
-  padding-top: 2px;
-}
-
-.macro-toolkit-observation-flow + .macro-toolkit-observation-evidence-flow {
-  margin-top: 2px;
-}
-
-.macro-toolkit-observation-signal-risk {
-  display: grid;
-  gap: 10px;
-  min-width: 0;
-  padding: 12px;
-  border: 1px solid var(--macro-toolkit-border-soft);
-  border-radius: var(--moss-radius-sm);
-  background: var(--macro-toolkit-card);
-}
-
-.macro-toolkit-observation-signal-risk__grid {
-  display: grid;
-  grid-template-columns: minmax(0, 0.96fr) minmax(0, 1.04fr);
-  gap: 10px;
-  min-width: 0;
-}
-
-.macro-toolkit-observation-signal-risk__lane {
-  display: grid;
-  gap: 8px;
-  min-width: 0;
-  padding: 12px;
-  border: 1px solid var(--macro-toolkit-border-muted);
-  border-left: 2px solid var(--macro-toolkit-info);
-  border-radius: var(--moss-radius-sm);
-  background: var(--macro-toolkit-card-muted);
-}
-
-.macro-toolkit-observation-signal-risk__lane-head {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-  justify-content: space-between;
-  min-width: 0;
-}
-
-.macro-toolkit-observation-signal-risk__lane-head span,
-.macro-toolkit-observation-signal-risk__note span,
-.macro-toolkit-observation-signal-risk__metrics small {
-  color: var(--moss-color-text-muted);
-  font-size: 12px;
-  font-weight: 850;
-  line-height: 1.25;
-}
-
-.macro-toolkit-observation-signal-risk__lane > strong {
-  color: var(--moss-color-text-primary);
-  font-size: 18px;
-  font-weight: 900;
-  line-height: 1.22;
-  overflow-wrap: anywhere;
-}
-
-.macro-toolkit-observation-signal-risk__lane p,
-.macro-toolkit-observation-signal-risk__lane small,
-.macro-toolkit-observation-signal-risk__note small {
-  margin: 0;
-  color: var(--moss-color-text-secondary);
-  font-size: 12px;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-}
-
-.macro-toolkit-observation-signal-risk__score {
-  display: grid;
-  grid-template-columns: 52px minmax(0, 1fr);
-  gap: 8px;
-  align-items: center;
-  min-width: 0;
-}
-
-.macro-toolkit-observation-signal-risk__score b {
-  color: var(--moss-color-text-primary);
-  font-variant-numeric: tabular-nums;
-  font-size: 20px;
-  font-weight: 900;
-}
-
-.macro-toolkit-observation-signal-risk__metrics {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  min-width: 0;
-}
-
-.macro-toolkit-observation-signal-risk__metrics span {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-  padding: 7px 8px;
-  border: 1px solid var(--macro-toolkit-border-muted);
-  border-radius: var(--moss-radius-sm);
-  background: var(--macro-toolkit-card);
-}
-
-.macro-toolkit-observation-signal-risk__metrics b {
-  color: var(--moss-color-text-primary);
-  font-variant-numeric: tabular-nums;
-  font-size: 14px;
-  font-weight: 900;
-  line-height: 1.2;
-  overflow-wrap: anywhere;
-}
-
-.macro-toolkit-observation-signal-risk__note {
-  display: grid;
-  gap: 5px;
-  min-width: 0;
-  padding: 10px 12px;
-  border: 1px solid var(--macro-toolkit-border-muted);
-  border-radius: var(--moss-radius-sm);
-  background: var(--macro-toolkit-info-soft);
-}
-
-.macro-toolkit-observation-signal-risk__note strong {
-  color: var(--moss-color-text-primary);
-  font-size: 14px;
-  font-weight: 900;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
-}
-
-.macro-toolkit-observation-trace-summary {
-  display: grid;
-  gap: 10px;
-  min-width: 0;
-  padding: 12px;
-  border: 1px solid var(--macro-toolkit-border-soft);
-  border-radius: var(--moss-radius-sm);
-  background: var(--macro-toolkit-card);
-}
-
-.macro-toolkit-observation-trace-summary__head {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  align-items: flex-start;
-  justify-content: space-between;
-  min-width: 0;
-}
-
-.macro-toolkit-observation-trace-summary__head > div {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-
-.macro-toolkit-observation-trace-summary__head span,
-.macro-toolkit-observation-trace-summary__grid span {
-  color: var(--moss-color-text-muted);
-  font-size: 12px;
-  font-weight: 850;
-}
-
-.macro-toolkit-observation-trace-summary__head strong {
-  color: var(--moss-color-text-primary);
-  font-size: 16px;
-  font-weight: 850;
-  line-height: 1.25;
-  overflow-wrap: anywhere;
-}
-
-.macro-toolkit-observation-trace-summary__grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  min-width: 0;
-}
-
-.macro-toolkit-observation-trace-summary__grid > div {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-  padding: 9px 10px;
-  border: 1px solid var(--macro-toolkit-border-muted);
-  border-radius: var(--moss-radius-sm);
-  background: var(--macro-toolkit-card-muted);
-}
-
-.macro-toolkit-observation-trace-summary__grid strong {
-  color: var(--moss-color-text-primary);
-  font-size: 16px;
-  font-weight: 900;
-  line-height: 1.25;
-  overflow-wrap: anywhere;
-}
-
-.macro-toolkit-observation-trace-summary__grid small {
-  color: var(--moss-color-text-secondary);
-  font-size: 12px;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
-}
-
 .macro-toolkit-data-health-summary {
   display: grid;
   gap: 9px;
@@ -2150,139 +1773,6 @@
   font-size: 12px;
   line-height: 1.35;
   overflow-wrap: anywhere;
-}
-
-.macro-toolkit-investment-evidence {
-  display: grid;
-  gap: 12px;
-  min-width: 0;
-  padding: 12px;
-  border: 1px solid var(--macro-toolkit-border-soft);
-  border-radius: var(--moss-radius-sm);
-  background: var(--macro-toolkit-card);
-}
-
-.macro-toolkit-investment-evidence__head {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  align-items: flex-start;
-  justify-content: space-between;
-  min-width: 0;
-}
-
-.macro-toolkit-investment-evidence__head > div {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-
-.macro-toolkit-investment-evidence__head span,
-.macro-toolkit-investment-evidence__lane-head span {
-  color: var(--moss-color-text-muted);
-  font-size: 12px;
-  font-weight: 850;
-}
-
-.macro-toolkit-investment-evidence__head strong {
-  color: var(--moss-color-text-primary);
-  font-size: 16px;
-  font-weight: 850;
-  line-height: 1.25;
-  overflow-wrap: anywhere;
-}
-
-.macro-toolkit-investment-evidence__lanes {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  min-width: 0;
-}
-
-.macro-toolkit-investment-evidence__lane {
-  display: grid;
-  gap: 9px;
-  min-width: 0;
-  padding: 10px;
-  border: 1px solid var(--macro-toolkit-border-muted);
-  border-radius: var(--moss-radius-sm);
-  background: var(--macro-toolkit-card-muted);
-}
-
-.macro-toolkit-investment-evidence__lane-head {
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
-  justify-content: space-between;
-  min-width: 0;
-}
-
-.macro-toolkit-investment-evidence__lane-head strong {
-  color: var(--moss-color-text-primary);
-  font-variant-numeric: tabular-nums;
-  font-size: 18px;
-  font-weight: 900;
-  line-height: 1.15;
-}
-
-.macro-toolkit-investment-evidence__metric-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  min-width: 0;
-}
-
-.macro-toolkit-investment-evidence__metric-row .macro-toolkit-metric strong {
-  font-size: 16px;
-}
-
-.macro-toolkit-investment-evidence__note,
-.macro-toolkit-investment-evidence__indicators {
-  min-width: 0;
-  padding: 8px 10px;
-  border: 1px solid var(--macro-toolkit-border-muted);
-  border-radius: var(--moss-radius-sm);
-  background: var(--macro-toolkit-card);
-}
-
-.macro-toolkit-investment-evidence__note {
-  display: grid;
-  gap: 3px;
-}
-
-.macro-toolkit-investment-evidence__note--boundary {
-  grid-column: 1 / -1;
-  border-left: 2px solid var(--macro-toolkit-warning);
-  background: var(--macro-toolkit-warning-soft);
-}
-
-.macro-toolkit-investment-evidence__note span,
-.macro-toolkit-investment-evidence__indicators strong {
-  color: var(--moss-color-text-primary);
-  font-size: 13px;
-  font-weight: 850;
-  line-height: 1.3;
-  overflow-wrap: anywhere;
-}
-
-.macro-toolkit-investment-evidence__note small,
-.macro-toolkit-investment-evidence__indicators small {
-  color: var(--moss-color-text-secondary);
-  font-size: 12px;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
-}
-
-.macro-toolkit-investment-evidence__indicators {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.macro-toolkit-investment-evidence__indicators span {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
 }
 
 .macro-toolkit-readiness-tile {
@@ -3783,7 +3273,6 @@
 .macro-toolkit-readiness-tile--positive,
 .macro-toolkit-data-health__tile--positive,
 .macro-toolkit-a-share-risk--positive,
-.macro-toolkit-observation-signal-risk__lane--positive,
 .macro-toolkit-action-receipt--completed,
 .macro-toolkit-action-queue__item--completed,
 .macro-toolkit-governance-link--positive,
@@ -3796,7 +3285,6 @@
 .macro-toolkit-strategy-card--negative,
 .macro-toolkit-readiness-tile--negative,
 .macro-toolkit-a-share-risk--negative,
-.macro-toolkit-observation-signal-risk__lane--negative,
 .macro-toolkit-action-receipt--failed,
 .macro-toolkit-action-queue__item--failed,
 .macro-toolkit-governance-link--missing,
@@ -3811,7 +3299,6 @@
 .macro-toolkit-data-health__tile--negative,
 .macro-toolkit-data-health__tile--missing,
 .macro-toolkit-a-share-risk--missing,
-.macro-toolkit-observation-signal-risk__lane--missing,
 .macro-toolkit-action-receipt--warning,
 .macro-toolkit-action-receipt--running,
 .macro-toolkit-action-queue__item--warning,
@@ -4691,31 +4178,6 @@
     grid-template-columns: 1fr;
   }
 
-  .macro-toolkit-cockpit--observation .macro-toolkit-cockpit__analysis {
-    grid-template-columns: 1fr;
-  }
-
-  .macro-toolkit-observation-loop__grid {
-    grid-template-columns: 1fr;
-  }
-
-  .macro-toolkit-observation-loop__grid > div + div {
-    border-top: 1px solid var(--macro-toolkit-border-muted);
-    border-left: 0;
-  }
-
-  .macro-toolkit-observation-boundaries {
-    grid-template-columns: 1fr;
-  }
-
-  .macro-toolkit-observation-boundaries .macro-toolkit-contract-boundary {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .macro-toolkit-observation-signal-risk__grid {
-    grid-template-columns: 1fr;
-  }
-
   .macro-toolkit-model-signal-matrix__grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -4784,7 +4246,6 @@
   .macro-toolkit-a-share-risk,
   .macro-toolkit-a-share-risk__lists,
   .macro-toolkit-hason-strategy__metrics,
-  .macro-toolkit-investment-evidence__lanes,
   .macro-toolkit-strategy-observation__grid,
   .macro-toolkit-data-health-summary__grid,
   .macro-toolkit-data-health__grid,
@@ -4867,8 +4328,7 @@
   }
 
   .macro-toolkit-house-view,
-  .macro-toolkit-cockpit__conclusion,
-  .macro-toolkit-observation-loop {
+  .macro-toolkit-cockpit__conclusion {
     padding: 10px;
   }
 
@@ -4879,10 +4339,6 @@
   .macro-toolkit-cockpit__conclusion p {
     font-size: 13px;
     line-height: 1.45;
-  }
-
-  .macro-toolkit-observation-loop__grid > div {
-    padding: 9px 10px;
   }
 
   .macro-toolkit-cockpit__analysis .macro-toolkit-brief-metrics {
@@ -5060,14 +4516,8 @@
     font-size: 11px;
   }
 
-  .macro-toolkit-observation-trace-summary__grid {
-    grid-template-columns: 1fr;
-  }
-
   .macro-toolkit-strategy-observation__grid,
   .macro-toolkit-indicator-observation__grid,
-  .macro-toolkit-investment-evidence__metric-row,
-  .macro-toolkit-investment-evidence__indicators,
   .macro-toolkit-hason-strategy--observation .macro-toolkit-hason-strategy__metrics {
     grid-template-columns: 1fr;
   }
@@ -5152,7 +4602,6 @@
 .macro-toolkit-action-receipt__grid,
 .macro-toolkit-cffex-metrics,
 .macro-toolkit-signal-grid,
-.macro-toolkit-observation-signal-risk__metrics,
 .macro-toolkit-a-share-risk,
 .macro-toolkit-a-share-risk__metrics,
 .macro-toolkit-a-share-risk__lists,

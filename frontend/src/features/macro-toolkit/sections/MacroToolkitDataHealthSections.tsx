@@ -2,9 +2,7 @@ import { DatabaseOutlined, LineChartOutlined, ReloadOutlined } from "@ant-design
 import { Button, Tag } from "antd";
 
 import type {
-  MacroToolkitCapabilityResult,
   MacroToolkitDataHealth,
-  MacroToolkitHasonStrategy,
   MacroToolkitSignalCard,
 } from "../../../api/macroToolkitClient";
 import {
@@ -15,13 +13,11 @@ import {
   capabilityHealthDetail,
   capabilityIssueCount,
   coverageValue,
-  formatCompactObservationList,
   formatDataHealthRepairAction,
   formatDataHealthRepairLabel,
   formatMissingIndicatorDetail,
   formatObservationDeferredSectionLabel,
   formatObservationRepairSummary,
-  formatObservationRepairTraceItem,
   repairItemFocusKey,
   repairPriorityColor,
   repairPriorityLabel,
@@ -34,7 +30,7 @@ import {
   summarizeRepairAction,
 } from "../lib/macroToolkitDataHealthSupport";
 import { MacroStatusIcon } from "../lib/MacroToolkitStatusPrimitives";
-import { compactText, observationStatusLabel } from "../lib/macroToolkitPanelShared";
+import { compactText } from "../lib/macroToolkitPanelShared";
 import type { MacroToolkitActionReceipt, MacroToolkitRepairItem } from "../lib/macroToolkitPageModel";
 
 const RECEIPT_CHECK_WARNING_PATTERN = /^刷新回执未通过完整性校验[：:]\s*(.+?)(?:，方向性结论已关闭.*)?$/;
@@ -131,84 +127,6 @@ export function MacroToolkitDataHealthSummary({ dataHealth }: { dataHealth: Macr
           <span>观察复核提示</span>
           <strong>{repairItems.length ? `${repairItems.length} 项` : "无"}</strong>
           <small>{repairSummary}</small>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-export function ObservationEvidenceTraceSummary({
-  dataHealth,
-  capabilityResults,
-  degradedResultCount,
-  hasonStrategy,
-  isCoreAnalysis,
-}: {
-  dataHealth?: MacroToolkitDataHealth;
-  capabilityResults: MacroToolkitCapabilityResult[];
-  degradedResultCount: number;
-  hasonStrategy?: MacroToolkitHasonStrategy;
-  isCoreAnalysis: boolean;
-}) {
-  const repairItems = dataHealth?.repair_items ?? [];
-  const missingIndicatorLabels =
-    dataHealth?.indicator_coverage.missing.map((item) => item.label ?? item.alias ?? item.key).filter(Boolean) ?? [];
-  const missingIndicatorDetail = dataHealth
-    ? missingIndicatorLabels.length
-      ? `缺口 ${formatCompactObservationList(missingIndicatorLabels)}。`
-      : "指标全部命中。"
-    : "完整分析后确认数据健康。";
-  const sourceCoverageDetail = dataHealth
-    ? dataHealth.source_coverage.deferred
-      ? "完整分析补充项待确认。"
-      : dataHealth.source_coverage.missing_aliases.length
-        ? `来源待补齐 ${formatCompactObservationList(dataHealth.source_coverage.missing_aliases)}。`
-        : "来源全部命中。"
-    : "来源完整分析后确认。";
-  const repairDetail = repairItems.length
-    ? `${repairItems.length} 项复核提示：${formatCompactObservationList(repairItems.map(formatObservationRepairTraceItem))}；${formatObservationRepairSummary(repairItems)}`
-    : "当前无复核提示。";
-  const indicatorCoverage = dataHealth
-    ? `${dataHealth.indicator_coverage.hit_count}/${dataHealth.indicator_coverage.total_count}`
-    : "待确认";
-  const capabilityValue = capabilityResults.length
-    ? `${capabilityResults.length} 项证据`
-    : "延后确认";
-  const capabilityDetail = degradedResultCount
-    ? `${degradedResultCount} 项证据需复核；不是正式投资信号。`
-    : capabilityResults.length
-      ? "能力证据仅解释覆盖情况，不是正式投资信号。"
-      : "不按 0 处理。";
-  const hasonValue = hasonStrategy ? observationStatusLabel(hasonStrategy.status) : "待确认";
-  const hasonDetail = hasonStrategy
-    ? `${hasonStrategy.readiness.ready_modules}/${hasonStrategy.readiness.total_modules} 覆盖，${hasonStrategy.readiness.missing_modules} 个模块待复核。`
-    : "观察框架完整分析后确认。";
-  return (
-    <section className="macro-toolkit-observation-trace-summary" aria-label="证据追踪摘要">
-      <div className="macro-toolkit-observation-trace-summary__head">
-        <div>
-          <span>证据追踪摘要</span>
-          <strong>{isCoreAnalysis ? "首屏证据已压缩展示" : "完整证据已压缩展示"}</strong>
-        </div>
-        <Tag color={isCoreAnalysis ? "gold" : "green"}>{isCoreAnalysis ? "延后确认" : "完整分析"}</Tag>
-      </div>
-      <div className="macro-toolkit-observation-trace-summary__grid">
-        <div>
-          <span>数据健康</span>
-          <strong>指标覆盖 {indicatorCoverage}</strong>
-          <small>{missingIndicatorDetail}</small>
-          <small>{sourceCoverageDetail}</small>
-          <small>{repairDetail}</small>
-        </div>
-        <div>
-          <span>能力证据</span>
-          <strong>{capabilityValue}</strong>
-          <small>{capabilityDetail}</small>
-        </div>
-        <div>
-          <span>观察框架</span>
-          <strong>{hasonValue}</strong>
-          <small>{hasonDetail}</small>
         </div>
       </div>
     </section>

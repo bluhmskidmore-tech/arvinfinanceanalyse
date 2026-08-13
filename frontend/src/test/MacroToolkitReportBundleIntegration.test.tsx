@@ -11,10 +11,7 @@ vi.mock("../lib/echarts", () => ({
 }));
 
 describe("macro report bundle page integration", () => {
-  it.each([
-    ["toolkit", undefined],
-    ["observation", "observation"],
-  ] as const)("shows the same read-only report asset on the %s surface", async (_label, mode) => {
+  it("shows the read-only report asset on the toolkit surface", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const envelope = await baseClient.getMacroToolkitAnalysis();
     const client = {
@@ -60,7 +57,7 @@ describe("macro report bundle page integration", () => {
       defaultOptions: { queries: { retry: 0, refetchOnWindowFocus: false } },
     });
 
-    render(<MacroToolkitPage mode={mode} />, {
+    render(<MacroToolkitPage />, {
       wrapper: ({ children }) => (
         <ApiClientProvider client={client}>
           <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>

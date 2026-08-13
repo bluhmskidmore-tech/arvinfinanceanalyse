@@ -1,0 +1,568 @@
+/*
+ * 01 当日观察结论 + 02 信号与风险对照的分区专属视觉（角色 6 所有）。
+ * - 骨架段（页头/工具条/分区头/KPI 横带/表格密度）在 MacroObservationPage.css，
+ *   本文件只补两个分区内部的编排与着色，不重复骨架段。
+ * - 颜色一律 var(--dh-api-*) / var(--moss-*) 链，禁止 hex；tone 着色语义对齐
+ *   utils/tone.ts 的 TONE_DH_CSS_VAR（positive→green / warning→amber /
+ *   negative→red / neutral→muted；主读数 neutral 保持 ink 以保首屏层级）。
+ */
+
+/* ============================================ 01 结论主读数 + 决策摘要 */
+
+.macro-observation-conclusion-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr);
+  gap: var(--moss-space-3);
+  /* 不等高双栏必须 start，禁止 stretch 空白（DESIGN.md §5）。 */
+  align-items: start;
+}
+
+.macro-observation-conclusion-main {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.macro-observation-conclusion-stance {
+  color: var(--dh-api-ink);
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.3;
+  word-break: keep-all;
+}
+
+.macro-observation-conclusion-stance[data-tone="positive"] {
+  color: var(--dh-api-green);
+}
+
+.macro-observation-conclusion-stance[data-tone="warning"] {
+  color: var(--dh-api-amber);
+}
+
+.macro-observation-conclusion-stance[data-tone="negative"] {
+  color: var(--dh-api-red);
+}
+
+/* 正文 3 行钳制；全文走 title 悬浮。 */
+.macro-observation-conclusion-summary {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.6;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.macro-observation-conclusion-action {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  min-width: 0;
+}
+
+.macro-observation-conclusion-action-label {
+  flex: 0 0 auto;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.macro-observation-conclusion-action-text {
+  min-width: 0;
+  color: var(--dh-api-ink);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.macro-observation-conclusion-warning-note {
+  margin: 0;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* ---------------------------------------------------------- 决策摘要卡 */
+
+.macro-observation-conclusion-decision {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.macro-observation-conclusion-decision-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.macro-observation-conclusion-decision-title {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* data_status 徽标：complete→绿 / degraded→琥珀 / unavailable→红，soft 底。 */
+.macro-observation-conclusion-decision-badge {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.macro-observation-conclusion-decision-badge[data-status="complete"] {
+  background: var(--dh-api-green-soft);
+  color: var(--dh-api-green);
+}
+
+.macro-observation-conclusion-decision-badge[data-status="degraded"] {
+  background: var(--dh-api-amber-soft);
+  color: var(--dh-api-amber);
+}
+
+.macro-observation-conclusion-decision-badge[data-status="unavailable"] {
+  background: var(--dh-api-red-soft);
+  color: var(--dh-api-red);
+}
+
+/* 可用模块 N/16 大数字格。 */
+.macro-observation-conclusion-decision-metric {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+}
+
+.macro-observation-conclusion-decision-metric-label {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.macro-observation-conclusion-decision-metric-value {
+  color: var(--dh-api-ink);
+  font-family: var(--moss-font-mono);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+.macro-observation-conclusion-decision-metric-value small {
+  margin-left: 2px;
+  color: var(--dh-api-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.macro-observation-conclusion-decision-headline {
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.macro-observation-conclusion-decision-warning,
+.macro-observation-conclusion-decision-empty {
+  margin: 0;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.macro-observation-conclusion-decision-empty {
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* 模拟口径旗标：治理必显，琥珀细左线降权（非大 Alert）。 */
+.macro-observation-conclusion-decision-mock-flag {
+  margin: 0;
+  padding: 2px 0 2px 10px;
+  border-left: 2px solid var(--dh-api-amber);
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.macro-observation-conclusion-decision-mock-flag strong {
+  margin-right: 8px;
+  color: var(--dh-api-amber);
+  font-weight: 600;
+}
+
+@media (max-width: 1280px) {
+  .macro-observation-conclusion-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ================================================ 02 信号与风险对照 */
+
+/* 单一外框：信号横带 + 发丝线 + A股风险块同属一个 02 分区容器。 */
+.macro-observation-signalrisk {
+  overflow: hidden;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+/* 5 卡等宽横带，发丝竖缝语言对齐 KPI 横带（避免卡片套卡片）。 */
+.macro-observation-signalrisk-band {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.macro-observation-signalrisk-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  min-height: 112px;
+  padding: 12px 14px;
+  border-right: 1px solid var(--dh-api-line-soft);
+}
+
+.macro-observation-signalrisk-band > :last-child {
+  border-right: 0;
+}
+
+.macro-observation-signalrisk-cell-title {
+  overflow: hidden;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.macro-observation-signalrisk-cell-stance {
+  color: var(--dh-api-ink);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.35;
+  word-break: keep-all;
+}
+
+.macro-observation-signalrisk-cell[data-tone="positive"] .macro-observation-signalrisk-cell-stance {
+  color: var(--dh-api-green);
+}
+
+.macro-observation-signalrisk-cell[data-tone="warning"] .macro-observation-signalrisk-cell-stance {
+  color: var(--dh-api-amber);
+}
+
+.macro-observation-signalrisk-cell[data-tone="negative"] .macro-observation-signalrisk-cell-stance {
+  color: var(--dh-api-red);
+}
+
+.macro-observation-signalrisk-cell-score {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+}
+
+.macro-observation-signalrisk-cell-score-label {
+  font-weight: 600;
+}
+
+.macro-observation-signalrisk-cell-score strong {
+  color: var(--dh-api-soft);
+  font-family: var(--moss-font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 证据首条 1 行钳制；全文走 title 悬浮。 */
+.macro-observation-signalrisk-cell-evidence {
+  overflow: hidden;
+  margin-top: auto;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 空态一句话（≤120px，不空白不报错）。 */
+.macro-observation-signalrisk-empty {
+  display: flex;
+  align-items: center;
+  min-height: 64px;
+  margin: 0;
+  padding: 12px 14px;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* ------------------------------------------------------- A股风险块 */
+
+/* 与信号横带之间的发丝线分隔。 */
+.macro-observation-signalrisk-risk {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--dh-api-line-soft);
+}
+
+.macro-observation-signalrisk-risk-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.macro-observation-signalrisk-risk-title {
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.macro-observation-signalrisk-risk-status {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+/* trade_date 右上角 11px。 */
+.macro-observation-signalrisk-risk-date {
+  overflow: hidden;
+  margin-left: auto;
+  color: var(--dh-api-muted);
+  font-family: var(--moss-font-mono);
+  font-size: 11px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.macro-observation-signalrisk-risk-readout {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.macro-observation-signalrisk-risk-score {
+  color: var(--dh-api-ink);
+  font-family: var(--moss-font-mono);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+.macro-observation-signalrisk-risk-name {
+  color: var(--dh-api-ink);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  word-break: keep-all;
+}
+
+/* 主读数 tone：模型层按 risk_level 已判定，组件只透传 data-tone。 */
+.macro-observation-signalrisk-risk-readout[data-tone="positive"]
+  .macro-observation-signalrisk-risk-score {
+  color: var(--dh-api-green);
+}
+
+.macro-observation-signalrisk-risk-readout[data-tone="warning"]
+  .macro-observation-signalrisk-risk-score {
+  color: var(--dh-api-amber);
+}
+
+.macro-observation-signalrisk-risk-readout[data-tone="negative"]
+  .macro-observation-signalrisk-risk-score {
+  color: var(--dh-api-red);
+}
+
+/* 摘要 2 行钳制；全文走 title 悬浮。 */
+.macro-observation-signalrisk-risk-summary {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.6;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* 仓位规则独立行（本次重构补展示的 P0 字段），soft 底轻加重。 */
+.macro-observation-signalrisk-risk-rule {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  min-width: 0;
+}
+
+.macro-observation-signalrisk-risk-rule-label {
+  flex: 0 0 auto;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.macro-observation-signalrisk-risk-rule-text {
+  min-width: 0;
+  color: var(--dh-api-ink);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.macro-observation-signalrisk-risk-watch {
+  display: grid;
+  gap: 4px;
+}
+
+.macro-observation-signalrisk-risk-watch-label {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.macro-observation-signalrisk-risk-watch-list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.macro-observation-signalrisk-risk-watch-list li {
+  position: relative;
+  padding-left: 12px;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.macro-observation-signalrisk-risk-watch-list li::before {
+  content: "·";
+  position: absolute;
+  left: 0;
+  color: var(--dh-api-muted);
+}
+
+.macro-observation-signalrisk-risk-watch-more,
+.macro-observation-signalrisk-risk-count {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+/* deferred 诚实态：低饱和占位一句话 + 骨架条，不空白。 */
+.macro-observation-signalrisk-deferred {
+  display: grid;
+  gap: 10px;
+  min-height: 96px;
+  align-content: start;
+}
+
+.macro-observation-signalrisk-deferred-note {
+  margin: 0;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.macro-observation-signalrisk-skeleton {
+  display: grid;
+  gap: 6px;
+}
+
+.macro-observation-signalrisk-skeleton span {
+  height: 10px;
+  border-radius: var(--dh-api-radius);
+  background: color-mix(in srgb, var(--dh-api-muted) 16%, transparent);
+}
+
+.macro-observation-signalrisk-skeleton span:nth-child(1) {
+  width: 42%;
+}
+
+.macro-observation-signalrisk-skeleton span:nth-child(2) {
+  width: 72%;
+}
+
+.macro-observation-signalrisk-skeleton span:nth-child(3) {
+  width: 56%;
+}
+
+/* ---------------------------------------------------------- 响应式 */
+
+@media (max-width: 1280px) {
+  /* 5 卡折 3+2。 */
+  .macro-observation-signalrisk-band {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .macro-observation-signalrisk-band > :nth-child(3n) {
+    border-right: 0;
+  }
+
+  .macro-observation-signalrisk-band > :nth-child(-n + 3) {
+    border-bottom: 1px solid var(--dh-api-line-soft);
+  }
+}
+
+@media (max-width: 720px) {
+  .macro-observation-signalrisk-band {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .macro-observation-signalrisk-cell {
+    min-height: 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--dh-api-line-soft);
+  }
+
+  /* 最后一格与风险块之间由风险块 border-top 承担发丝线，避免双线。 */
+  .macro-observation-signalrisk-band > :last-child {
+    border-bottom: 0;
+  }
+
+  .macro-observation-signalrisk-risk-head {
+    flex-wrap: wrap;
+  }
+
+  .macro-observation-signalrisk-risk-date {
+    margin-left: 0;
+  }
+}

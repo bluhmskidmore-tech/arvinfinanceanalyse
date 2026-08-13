@@ -26,6 +26,7 @@ const routeModulePreloaders = {
   "ledger-pnl": () => import("../features/ledger-pnl/pages/LedgerPnlPage"),
   "liability-analytics": () =>
     import("../features/liability-analytics/pages/LiabilityAnalyticsPage"),
+  "macro-observation": () => import("../features/macro-observation/pages/MacroObservationPage"),
   "macro-toolkit": () => import("../features/macro-toolkit/pages/MacroToolkitPage"),
   "market-overview": () => import("../features/workbench/module-home/MarketHomePage"),
   "module-home": () => import("../features/workbench/module-home/ModuleWorkbenchHomePage"),

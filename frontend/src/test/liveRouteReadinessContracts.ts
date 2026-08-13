@@ -141,9 +141,9 @@ export const liveRouteReadinessContracts = {
     verificationFiles: ["src/test/MarketFinanceWorkbenchPage.test.tsx"],
   },
   "/macro-observation": {
-    sourceFiles: ["src/features/macro-toolkit/pages/MacroToolkitPage.tsx"],
-    sourceAnchors: ["macro-observation-readonly-boundary", "macro-toolkit-page"],
-    verificationFiles: ["src/test/MacroToolkitPage.test.tsx"],
+    sourceFiles: ["src/features/macro-observation/pages/MacroObservationPage.tsx"],
+    sourceAnchors: ["macro-observation-readonly-boundary", "macro-observation-page"],
+    verificationFiles: ["src/test/MacroObservationPage.test.tsx"],
   },
   "/macro-toolkit": {
     sourceFiles: ["src/features/macro-toolkit/pages/MacroToolkitPage.tsx"],
