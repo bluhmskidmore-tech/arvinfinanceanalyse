@@ -43,7 +43,11 @@ from backend.app.services.runtime_cache import InMemoryTTLCache, get_runtime_cac
 LIABILITY_ANALYTICS_CACHE_VERSION = "cv_liability_analytics_v1"
 LIABILITY_ANALYTICS_RULE_VERSION = "rv_liability_analytics_compat_v1"
 LIABILITY_ANALYTICS_EMPTY_SOURCE_VERSION = "sv_liability_analytics_empty"
+# 同一 -50bp 平移口径的两种数值单位表达：
+# 日度 KPI 的 NIM 是小数比率（0.0255 == 2.55%），-50bp 即 -0.005；
+# ADB 月度的 NIM 是百分点（0.9 == 0.9%），-50bp 即 -0.5。
 NIM_STRESS_SHOCK_DECIMAL = Decimal("0.005")
+NIM_STRESS_SHOCK_PERCENT = Decimal("0.5")
 NIM_STRESS_DELTA_BP = Decimal("-50")
 
 _LIABILITY_MONTH_LIST_FIELDS = {
@@ -246,14 +250,25 @@ def _raw_decimal(value: object) -> Decimal | None:
     return out if out.is_finite() else None
 
 
-def _build_nim_stress(nim: object) -> dict[str, float | None]:
+def _build_nim_stress_fields(nim: object, *, shock: Decimal) -> dict[str, float | None]:
+    """-50bp 平移压力的唯一实现；``shock`` 必须与传入 NIM 的数值单位一致。"""
     nim_decimal = _raw_decimal(nim)
     if nim_decimal is None:
         return {"nim_stressed": None, "delta_bp": None}
     return {
-        "nim_stressed": float(nim_decimal - NIM_STRESS_SHOCK_DECIMAL),
+        "nim_stressed": float(nim_decimal - shock),
         "delta_bp": float(NIM_STRESS_DELTA_BP),
     }
+
+
+def _build_nim_stress(nim: object) -> dict[str, float | None]:
+    """日度 KPI 口径：NIM 为小数比率，-50bp 即减 0.005。"""
+    return _build_nim_stress_fields(nim, shock=NIM_STRESS_SHOCK_DECIMAL)
+
+
+def build_nim_stress_percent_points(nim: object) -> dict[str, float | None]:
+    """百分点单位 NIM（ADB 月度）的同口径 -50bp 平移；供 adb_analysis_service 复用。"""
+    return _build_nim_stress_fields(nim, shock=NIM_STRESS_SHOCK_PERCENT)
 
 
 def _build_yield_history_series(

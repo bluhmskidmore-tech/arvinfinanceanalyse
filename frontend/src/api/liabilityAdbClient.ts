@@ -147,6 +147,19 @@ const requestEnvelopeOrPlainJsonWithMeta = async <T>(
 const normalizeNullableNumber = (value: unknown): number | null =>
   value === null || value === undefined ? null : Number(value);
 
+const normalizeMonthlyNimStress = (
+  value: unknown,
+): { nim_stressed: number | null; delta_bp: number | null } | null => {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const raw = value as Record<string, unknown>;
+  return {
+    nim_stressed: normalizeNullableNumber(raw.nim_stressed),
+    delta_bp: normalizeNullableNumber(raw.delta_bp),
+  };
+};
+
 function normalizeAccountingBasisTrendItem(item: unknown): AdbAccountingBasisDailyAvgTrendItem {
   const basis = item as Record<string, unknown>;
   const rows = Array.isArray(basis.rows) ? basis.rows : [];
@@ -333,6 +346,7 @@ function normalizeAdbMonthlyResponse(
           row.net_interest_margin === null || row.net_interest_margin === undefined
             ? null
             : Number(row.net_interest_margin),
+        nim_stress: normalizeMonthlyNimStress(row.nim_stress),
         asset_rate_coverage_ratio: normalizeNullableNumber(row.asset_rate_coverage_ratio),
         liability_rate_coverage_ratio: normalizeNullableNumber(row.liability_rate_coverage_ratio),
         mom_change_assets:

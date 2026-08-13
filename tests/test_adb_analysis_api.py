@@ -805,6 +805,9 @@ def test_adb_monthly_normalizes_rates_and_exposes_new_contract_fields(
     assert first_month["asset_yield"] == 2.4
     assert first_month["liability_cost"] == 1.5
     assert first_month["net_interest_margin"] == 0.9
+    # 月度官方压力口径：NIM（百分点）-50bp 平移，即 0.9 - 0.5。
+    assert first_month["nim_stress"]["nim_stressed"] == pytest.approx(0.4)
+    assert first_month["nim_stress"]["delta_bp"] == -50.0
     assert first_month["month_label"] == MONTH_LABEL_JAN
     assert first_month["mom_change_assets"] is None
     assert first_month["mom_change_pct_assets"] is None
@@ -881,6 +884,28 @@ def test_adb_monthly_excludes_missing_rate_from_denominator_and_reports_coverage
     assert payload["ytd_asset_rate_coverage_ratio"] == 0.5
     assert first_month["breakdown_assets"][0]["weighted_rate"] == 2.4
     assert first_month["breakdown_assets"][0]["rate_coverage_ratio"] == 0.5
+    # 该月只有资产、无负债成本 → NIM 缺失，压力字段必须为 null 而非造数。
+    assert first_month["net_interest_margin"] is None
+    assert first_month["nim_stress"] == {"nim_stressed": None, "delta_bp": None}
+
+
+def test_adb_monthly_nim_stress_matches_daily_official_shift_scale() -> None:
+    """月度（百分点）与日度（小数比率）共用同一 -50bp 平移口径，仅单位换算不同。"""
+    from backend.app.services import liability_analytics_service as liability_svc
+
+    assert (
+        liability_svc.NIM_STRESS_SHOCK_PERCENT
+        == liability_svc.NIM_STRESS_SHOCK_DECIMAL * 100
+    )
+
+    daily = liability_svc._build_nim_stress(0.009)
+    monthly = liability_svc.build_nim_stress_percent_points(0.9)
+    assert daily["delta_bp"] == monthly["delta_bp"] == -50.0
+    assert monthly["nim_stressed"] == pytest.approx(0.4)
+    assert monthly["nim_stressed"] == pytest.approx(daily["nim_stressed"] * 100)
+
+    missing = liability_svc.build_nim_stress_percent_points(None)
+    assert missing == {"nim_stressed": None, "delta_bp": None}
 
 
 def test_adb_comparison_returns_analytical_envelope(tmp_path: Path, monkeypatch) -> None:

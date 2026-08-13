@@ -216,6 +216,12 @@ export type AdbMonthlyBreakdownItem = {
   rate_coverage_ratio?: number | null;
 };
 
+/** 后端正式口径：月度 NIM（百分点）−50bp 平移；缺 NIM 的月份两字段均为 null */
+export type AdbMonthlyNimStress = {
+  nim_stressed: number | null;
+  delta_bp: number | null;
+};
+
 export type AdbMonthlyDataItem = {
   month: string;
   month_label: string;
@@ -225,6 +231,7 @@ export type AdbMonthlyDataItem = {
   asset_yield: number | null;
   liability_cost: number | null;
   net_interest_margin: number | null;
+  nim_stress?: AdbMonthlyNimStress | null;
   asset_rate_coverage_ratio?: number | null;
   liability_rate_coverage_ratio?: number | null;
   mom_change_assets: number | null;

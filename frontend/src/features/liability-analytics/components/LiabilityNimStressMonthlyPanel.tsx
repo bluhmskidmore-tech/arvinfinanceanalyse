@@ -11,28 +11,36 @@ export function LiabilityNimStressMonthlyPanel({
   adbMonth: AdbMonthlyDataItem | null;
 }) {
   const nim = adbMonth?.net_interest_margin;
+  const projectedRaw = adbMonth?.nim_stress?.nim_stressed;
   const projected =
-    nim !== null && nim !== undefined && Number.isFinite(nim) ? nim - 0.5 : null;
+    projectedRaw !== null && projectedRaw !== undefined && Number.isFinite(projectedRaw)
+      ? projectedRaw
+      : null;
+  const deltaBpRaw = adbMonth?.nim_stress?.delta_bp;
+  const deltaBp =
+    deltaBpRaw !== null && deltaBpRaw !== undefined && Number.isFinite(deltaBpRaw)
+      ? deltaBpRaw
+      : null;
   /** 与 V1 月度卡一致：压力后 NIM（百分点）跌破 0 标红，并以 Tag 提示。 */
-  const isCritical = projected !== null && Number.isFinite(projected) && projected < 0;
+  const isCritical = projected !== null && projected < 0;
   const nimNegative = nim !== null && nim !== undefined && nim < 0;
   const projectedNegative = projected !== null && projected < 0;
 
   return (
     <Card
       size="small"
-      title="压力测试：NIM 敏感性（+50bps，非官方预览）"
+      title="压力测试：NIM 敏感性（+50bps）"
       extra={isCritical ? <span className="liability-status-pill">NIM 预警</span> : null}
     >
       <Text type="secondary" className="liability-panel-caption">
         口径：月度日均（月度收益率/付息率；若缺失则仅展示结构）。
       </Text>
       <Text
-        type="warning"
+        type="secondary"
         className="liability-panel-caption--tight"
-        data-testid="liability-nim-monthly-unofficial-note"
+        data-testid="liability-nim-monthly-official-note"
       >
-        非官方预览：压力后 NIM 为前端演算（当前月度 NIM −50bp 平移），后端暂未提供月度压力口径；日度面板压力值来自后端官方字段。
+        压力口径：当前月度 NIM −50bp 平移（后端正式口径，与日度面板一致）；缺 NIM 的月份不展示压力值。
       </Text>
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={6}>
@@ -79,14 +87,14 @@ export function LiabilityNimStressMonthlyPanel({
             {/* 有意对齐 DESIGN 语义色（涨绿跌红）：冲击下行固定 --dh-api-red，不再使用旧 A股红涨绿跌。 */}
             <div
               className={`liability-metric-delta ${
-                nim === null || nim === undefined
+                deltaBp === null
                   ? "liability-metric-delta--muted"
                   : "liability-metric-delta--down"
               }`}
             >
-              {nim === null || nim === undefined
+              {deltaBp === null
                 ? `Δ ${EM_DASH}`
-                : "−50 bp（负债成本 +50bps，NIM 同幅下行）"}
+                : `${deltaBp} bp（负债成本 +50bps，NIM 同幅下行）`}
             </div>
           </Card>
         </Col>

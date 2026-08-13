@@ -52,6 +52,7 @@ from backend.app.core_finance.balance_calibration import (
 from backend.app.core_finance.zqtz_asset_bond_category import classify_zqtz_asset_bond_label
 from backend.app.governance.settings import get_settings
 from backend.app.services.formal_result_runtime import build_result_envelope
+from backend.app.services.liability_analytics_service import build_nim_stress_percent_points
 
 logger = logging.getLogger(__name__)
 
@@ -1371,6 +1372,7 @@ def _process_single_month(
     )
     asset_yield = compute_weighted_rate(total_assets_weighted, total_assets_rate_balance)
     liability_cost = compute_weighted_rate(total_liabilities_weighted, total_liabilities_rate_balance)
+    net_interest_margin = compute_nim(asset_yield, liability_cost)
 
     return {
         "month": f"{month_year}-{month_number:02d}",
@@ -1385,7 +1387,9 @@ def _process_single_month(
         "mom_change_pct_liabilities": liabilities_mom_pct,
         "asset_yield": asset_yield,
         "liability_cost": liability_cost,
-        "net_interest_margin": compute_nim(asset_yield, liability_cost),
+        "net_interest_margin": net_interest_margin,
+        # 与日度 kpi.nim_stress 同一 -50bp 平移口径（月度 NIM 为百分点单位）；缺 NIM 的月份两字段为 null。
+        "nim_stress": build_nim_stress_percent_points(net_interest_margin),
         "asset_rate_coverage_ratio": (
             round(total_assets_rate_balance / total_assets, 4) if total_assets > 0 else None
         ),
