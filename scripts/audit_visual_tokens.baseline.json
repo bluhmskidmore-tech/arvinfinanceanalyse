@@ -324,9 +324,9 @@
     "doubleDash": 0
   },
   "frontend/src/features/workbench/dashboard-home/dashboardHome.module.css": {
-    "hex": 87,
+    "hex": 14,
     "forbidden": 0,
-    "offRadius": 65,
+    "offRadius": 3,
     "doubleDash": 0
   },
   "frontend/src/features/workbench/dashboard-home/dashboardHomeShell.module.css": {
