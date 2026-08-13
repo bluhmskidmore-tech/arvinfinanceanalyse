@@ -55,4 +55,41 @@ describe("StockAnalysisReviewCandidateCard", () => {
     fireEvent.click(screen.getByTestId("stock-candidate-review-chart-000001.SZ"));
     expect(onReviewChart).toHaveBeenCalledWith(candidate);
   });
+
+  it("shows the low-liquidity badge only when liquidityFloorPass is false", () => {
+    render(
+      <StockAnalysisReviewCandidateCard
+        card={{ ...candidate, liquidityFloorPass: false, dailyAmountLabel: "日成交 0.80 亿" }}
+        selectedSectorCode={null}
+        onReviewChart={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("低流动")).toBeInTheDocument();
+    expect(screen.getByText("低流动")).toHaveAttribute("title", "日成交 0.80 亿");
+  });
+
+  it("hides the low-liquidity badge when the row passes the liquidity floor", () => {
+    render(
+      <StockAnalysisReviewCandidateCard
+        card={{ ...candidate, liquidityFloorPass: true, dailyAmountLabel: "日成交 5.00 亿" }}
+        selectedSectorCode={null}
+        onReviewChart={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText("低流动")).not.toBeInTheDocument();
+  });
+
+  it("hides the low-liquidity badge when liquidity data is missing (null)", () => {
+    render(
+      <StockAnalysisReviewCandidateCard
+        card={{ ...candidate, liquidityFloorPass: null, dailyAmountLabel: null }}
+        selectedSectorCode={null}
+        onReviewChart={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText("低流动")).not.toBeInTheDocument();
+  });
 });
