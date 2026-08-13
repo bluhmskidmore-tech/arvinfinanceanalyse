@@ -1,4 +1,31 @@
 .concentration-monitor-page {
+  /*
+   * ib 与 moss-color 系变量在 ThemedRouteBoundary 上已被算成钢蓝字面值再
+   * 继承（ledger-pnl 2026-08-12 结论），页根按 theme-dh-api 语义映射重声明，
+   * 令其在 Nocturne scope 内重新解析（pnl-by-business-insights 同款桥接，
+   * 全 var 引用零字面量）。
+   */
+  --ib-paper: var(--dh-api-bg);
+  --ib-surface: var(--dh-api-panel);
+  --ib-surface-muted: var(--dh-api-panel-2);
+  --ib-hairline: var(--dh-api-line);
+  --ib-ink: var(--dh-api-ink);
+  --ib-ink-secondary: var(--dh-api-soft);
+  --ib-ink-muted: var(--dh-api-muted);
+  --ib-accent: var(--dh-api-blue);
+  --ib-accent-surface: var(--dh-api-blue-soft);
+  --ib-radius: var(--dh-api-radius);
+  --ib-shadow: none;
+  --ib-warn: var(--dh-api-amber);
+  --ib-up: var(--dh-api-green);
+  --ib-down: var(--dh-api-red);
+  --ib-gold: var(--dh-api-gold);
+  --moss-color-danger-50: var(--dh-api-red-soft);
+  --moss-color-neutral-100: var(--dh-api-line-soft);
+  --moss-color-text-primary: var(--dh-api-ink);
+  --moss-color-text-secondary: var(--dh-api-soft);
+  --moss-color-text-muted: var(--dh-api-muted);
+
   min-height: 100%;
   padding: 24px;
   background: var(--ib-paper);

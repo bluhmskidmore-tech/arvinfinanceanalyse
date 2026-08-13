@@ -681,6 +681,14 @@ export function createDemoBondAnalyticsClient(
             top5_concentration: formatRawAsNumeric({ raw: 0.28, unit: "ratio", sign_aware: false }),
             top_items: [],
           },
+          // 展示限额（后端下发，非风控正式限额）；与后端 CONCENTRATION_DISPLAY_LIMITS 过渡口径一致。
+          display_limits: {
+            issuer_single_max: 0.1,
+            issuer_top5_max: 0.4,
+            hhi_warning: 0.15,
+            below_aa_max: 0.2,
+            credit_weight_max: 0.85,
+          },
           oci_credit_exposure: formatRawAsNumeric({ raw: 800_000_000, unit: "yuan", sign_aware: false }),
           oci_spread_dv01: formatRawAsNumeric({ raw: 12_000, unit: "dv01", sign_aware: false }),
           oci_sensitivity_25bp: formatRawAsNumeric({ raw: -300_000, unit: "yuan", sign_aware: true }),

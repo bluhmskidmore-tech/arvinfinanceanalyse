@@ -505,6 +505,18 @@ export type ConcentrationMetrics = {
   top_items: ConcentrationItem[];
 };
 
+/**
+ * 展示限额（后端下发，非风控正式限额）；正式风控限额接入前的过渡口径。
+ * 值为普通比例数（JSON number），不是治理 Numeric 指标。
+ */
+export type ConcentrationDisplayLimits = {
+  issuer_single_max: number;
+  issuer_top5_max: number;
+  hhi_warning: number;
+  below_aa_max: number;
+  credit_weight_max: number;
+};
+
 export type CreditSpreadBondDetailRow = {
   market_value: Numeric;
   rating?: string;
@@ -526,6 +538,8 @@ export type CreditSpreadMigrationPayload = {
   concentration_by_industry?: ConcentrationMetrics;
   concentration_by_rating?: ConcentrationMetrics;
   concentration_by_tenor?: ConcentrationMetrics;
+  /** 展示限额（后端下发，非风控正式限额）；旧响应可能缺失，缺失时页面显示「限额未下发」空态。 */
+  display_limits?: ConcentrationDisplayLimits;
   bond_details?: CreditSpreadBondDetailRow[];
   oci_credit_exposure: Numeric;
   oci_spread_dv01: Numeric;

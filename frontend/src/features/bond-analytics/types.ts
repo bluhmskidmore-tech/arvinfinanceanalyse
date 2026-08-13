@@ -8,6 +8,7 @@ import type {
   AssetClassBreakdown as ApiAssetClassBreakdown,
   BenchmarkExcessPayload as ApiBenchmarkExcessPayload,
   BondLevelDecomposition as ApiBondLevelDecomposition,
+  ConcentrationDisplayLimits as ApiConcentrationDisplayLimits,
   ConcentrationItem as ApiConcentrationItem,
   ConcentrationMetrics as ApiConcentrationMetrics,
   CreditSpreadAnalysisPayload as ApiCreditSpreadAnalysisPayload,
@@ -83,6 +84,8 @@ export type SpreadScenarioResult = ApiSpreadScenarioResult;
 export type MigrationScenarioResult = ApiMigrationScenarioResult;
 export type ConcentrationItem = ApiConcentrationItem;
 export type ConcentrationMetrics = ApiConcentrationMetrics;
+/** 展示限额（后端下发，非风控正式限额）；服务端缺字段时页面显示「限额未下发」空态。 */
+export type ConcentrationDisplayLimits = ApiConcentrationDisplayLimits;
 /** Optional per-bond rows for rating×tenor heatmap; server may omit. */
 export type CreditSpreadBondDetailRow = ApiCreditSpreadBondDetailRow;
 export type CreditSpreadMigrationResponse = ApiCreditSpreadMigrationPayload;

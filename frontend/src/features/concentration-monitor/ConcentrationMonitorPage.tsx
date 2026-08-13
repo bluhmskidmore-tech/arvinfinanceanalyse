@@ -20,19 +20,6 @@ import styles from "./concentrationMonitor.module.css";
 
 import "./ConcentrationMonitorPage.css";
 
-/**
- * 展示限额（前端配置，非风控正式限额）。
- * 后端 /api/bond-analytics/credit-spread-migration（CreditSpreadMigrationResponse）
- * 未下发任何限额字段，本页对照阈值统一收敛在此，仅用于展示对照。
- */
-const LIMITS = {
-  issuer_single_max: 0.1,
-  issuer_top5_max: 0.4,
-  hhi_warning: 0.15,
-  below_aa_max: 0.2,
-  credit_weight_max: 0.85,
-} as const;
-
 const CREDIT_SPREAD_MIGRATION_API = "/api/bond-analytics/credit-spread-migration";
 
 function resultMetaBasisLabel(value: ResultMeta["basis"]): string {
@@ -173,6 +160,8 @@ export default function ConcentrationMonitorPage() {
   const credit = creditQuery.data?.result;
   const creditMeta = creditQuery.data?.result_meta;
   const issuer = credit?.concentration_by_issuer;
+  // 展示限额（后端下发，非风控正式限额）；响应缺字段时显示「限额未下发」空态，不回退前端常量。
+  const displayLimits = credit?.display_limits;
   const maxSingleWeight = parseRatio(issuer?.top_items?.[0]?.weight);
   const top5 = parseRatio(issuer?.top5_concentration);
   const hhi = parseRatio(issuer?.hhi);
@@ -180,28 +169,31 @@ export default function ConcentrationMonitorPage() {
   const belowAaMissing = belowAa === null;
 
   const limitRows = useMemo(() => {
+    if (!displayLimits) {
+      return [];
+    }
     const top1w = issuer?.top_items?.[0]?.weight;
     return [
       {
         label: "单一发行人占比",
         currentDisplay: top1w ? formatConcentrationPercent(top1w) : EM_DASH,
         currentNum: maxSingleWeight,
-        limitDisplay: String(LIMITS.issuer_single_max),
-        tone: limitTone(maxSingleWeight, LIMITS.issuer_single_max),
+        limitDisplay: String(displayLimits.issuer_single_max),
+        tone: limitTone(maxSingleWeight, displayLimits.issuer_single_max),
       },
       {
         label: "发行人前五集中度",
         currentDisplay: formatConcentrationPercent(issuer?.top5_concentration),
         currentNum: top5,
-        limitDisplay: String(LIMITS.issuer_top5_max),
-        tone: limitTone(top5, LIMITS.issuer_top5_max),
+        limitDisplay: String(displayLimits.issuer_top5_max),
+        tone: limitTone(top5, displayLimits.issuer_top5_max),
       },
       {
         label: "发行人 HHI",
         currentDisplay: formatConcentrationPercent(issuer?.hhi),
         currentNum: hhi,
-        limitDisplay: String(LIMITS.hhi_warning),
-        tone: limitTone(hhi, LIMITS.hhi_warning),
+        limitDisplay: String(displayLimits.hhi_warning),
+        tone: limitTone(hhi, displayLimits.hhi_warning),
       },
       {
         label: "评级 AA 及以下占比",
@@ -210,8 +202,8 @@ export default function ConcentrationMonitorPage() {
             ? formatConcentrationPercent(credit.rating_aa_and_below_weight)
             : EM_DASH,
         currentNum: belowAa,
-        limitDisplay: String(LIMITS.below_aa_max),
-        tone: belowAaMissing ? ("ok" as const) : limitTone(belowAa, LIMITS.below_aa_max),
+        limitDisplay: String(displayLimits.below_aa_max),
+        tone: belowAaMissing ? ("ok" as const) : limitTone(belowAa, displayLimits.below_aa_max),
         missingData: belowAaMissing,
       },
     ];
@@ -219,6 +211,7 @@ export default function ConcentrationMonitorPage() {
     belowAa,
     belowAaMissing,
     credit?.rating_aa_and_below_weight,
+    displayLimits,
     hhi,
     issuer?.hhi,
     issuer?.top5_concentration,
@@ -228,7 +221,11 @@ export default function ConcentrationMonitorPage() {
   ]);
 
   return (
-    <section className="concentration-monitor-page" data-testid="concentration-monitor-page">
+    <section
+      className="concentration-monitor-page"
+      data-moss-theme-scope="concentration-monitor"
+      data-testid="concentration-monitor-page"
+    >
       <PageDecisionHero
         testId="concentration-monitor-hero"
         titleTestId="concentration-monitor-page-title"
@@ -243,7 +240,7 @@ export default function ConcentrationMonitorPage() {
             </span>
           ) : null
         }
-        businessQuestion="集中展示信用债发行人、行业、评级与期限的分项集中度，并对照本页展示用限额阈值；浏览器端仅做展示对照，不做组合层面金融重算。"
+        businessQuestion="集中展示信用债发行人、行业、评级与期限的分项集中度，并对照后端下发的展示限额阈值；浏览器端仅做展示对照，不做组合层面金融重算。"
       />
 
       <div className="concentration-monitor-page__control-bar">
@@ -332,7 +329,7 @@ export default function ConcentrationMonitorPage() {
               </div>
             ) : null}
 
-            {belowAaMissing ? (
+            {belowAaMissing && displayLimits ? (
               <p className="concentration-monitor-page__limit-lead">
                 评级 AA 及以下占比暂未返回，限额对照行仅展示阈值。
               </p>
@@ -343,27 +340,43 @@ export default function ConcentrationMonitorPage() {
                 title="发行人 HHI 指数"
                 value={formatConcentrationPercent(issuer?.hhi)}
                 detail="concentration_by_issuer.hhi"
-                tone={limitToneToKpi(limitTone(parseRatio(issuer?.hhi), LIMITS.hhi_warning))}
+                tone={
+                  displayLimits
+                    ? limitToneToKpi(limitTone(parseRatio(issuer?.hhi), displayLimits.hhi_warning))
+                    : "default"
+                }
               />
               <KpiCard
                 title="发行人前五集中度"
                 value={formatConcentrationPercent(issuer?.top5_concentration)}
                 detail="concentration_by_issuer.top5_concentration"
-                tone={limitToneToKpi(limitTone(parseRatio(issuer?.top5_concentration), LIMITS.issuer_top5_max))}
+                tone={
+                  displayLimits
+                    ? limitToneToKpi(
+                        limitTone(parseRatio(issuer?.top5_concentration), displayLimits.issuer_top5_max),
+                      )
+                    : "default"
+                }
               />
               <KpiCard
                 title="信用债占比"
                 value={formatConcentrationPercent(credit.credit_weight)}
                 detail="credit_weight"
-                tone={limitToneToKpi(limitTone(parseRatio(credit.credit_weight), LIMITS.credit_weight_max))}
+                tone={
+                  displayLimits
+                    ? limitToneToKpi(limitTone(parseRatio(credit.credit_weight), displayLimits.credit_weight_max))
+                    : "default"
+                }
               />
               <KpiCard
                 title="评级 AA 及以下占比"
                 value={formatConcentrationPercent(credit.rating_aa_and_below_weight)}
                 detail="rating_aa_and_below_weight"
-                tone={limitToneToKpi(
-                  belowAaMissing ? "ok" : limitTone(belowAa, LIMITS.below_aa_max),
-                )}
+                tone={
+                  displayLimits && !belowAaMissing
+                    ? limitToneToKpi(limitTone(belowAa, displayLimits.below_aa_max))
+                    : "default"
+                }
               />
             </div>
 
@@ -376,52 +389,63 @@ export default function ConcentrationMonitorPage() {
             </div>
 
             <h2 className="concentration-monitor-page__block-title">限额预警（展示对照）</h2>
-            <p
-              className="concentration-monitor-page__limit-lead"
-              data-testid="concentration-monitor-limit-note"
-            >
-              超限标红，达到限额 80% 以上未超限标黄。阈值为展示限额（前端配置，非风控正式限额），非后端下发。
-            </p>
-            <div className={`${styles.tableShell} concentration-monitor-page__limit-table-shell`}>
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th>指标</th>
-                    <th>当前值</th>
-                    <th>限额</th>
-                    <th>状态</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {limitRows.map((row) => {
-                    const missing = "missingData" in row && row.missingData;
-                    const statusText = limitStatusText(row.tone, Boolean(missing));
-                    return (
-                      <tr key={row.label}>
-                        <td>{row.label}</td>
-                        <td
-                          className="concentration-monitor-page__limit-cell concentration-monitor-page__tabular"
-                          data-tone={missing ? undefined : row.tone}
-                          data-missing={missing ? "true" : undefined}
-                        >
-                          {row.currentDisplay}
-                        </td>
-                        <td className="concentration-monitor-page__tabular">
-                          {row.limitDisplay}
-                        </td>
-                        <td
-                          className="concentration-monitor-page__limit-status"
-                          data-tone={missing ? undefined : row.tone}
-                          data-missing={missing ? "true" : undefined}
-                        >
-                          {statusText}
-                        </td>
+            {displayLimits ? (
+              <>
+                <p
+                  className="concentration-monitor-page__limit-lead"
+                  data-testid="concentration-monitor-limit-note"
+                >
+                  超限标红，达到限额 80% 以上未超限标黄。阈值为展示限额（后端下发，非风控正式限额）。
+                </p>
+                <div className={`${styles.tableShell} concentration-monitor-page__limit-table-shell`}>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>指标</th>
+                        <th>当前值</th>
+                        <th>限额</th>
+                        <th>状态</th>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                    </thead>
+                    <tbody>
+                      {limitRows.map((row) => {
+                        const missing = "missingData" in row && row.missingData;
+                        const statusText = limitStatusText(row.tone, Boolean(missing));
+                        return (
+                          <tr key={row.label}>
+                            <td>{row.label}</td>
+                            <td
+                              className="concentration-monitor-page__limit-cell concentration-monitor-page__tabular"
+                              data-tone={missing ? undefined : row.tone}
+                              data-missing={missing ? "true" : undefined}
+                            >
+                              {row.currentDisplay}
+                            </td>
+                            <td className="concentration-monitor-page__tabular">
+                              {row.limitDisplay}
+                            </td>
+                            <td
+                              className="concentration-monitor-page__limit-status"
+                              data-tone={missing ? undefined : row.tone}
+                              data-missing={missing ? "true" : undefined}
+                            >
+                              {statusText}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : (
+              <PageStateSurface
+                variant="empty"
+                testId="concentration-monitor-limits-missing"
+                title="限额未下发。"
+                description="后端响应未携带展示限额（display_limits），本页不回退前端配置阈值，限额对照暂不可用。"
+              />
+            )}
 
             <footer
               className="concentration-monitor-page__evidence-footer"
