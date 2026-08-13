@@ -370,15 +370,33 @@ def apply_scenario_to_rows(rows: list[dict[str, object]], scenario_rate_pct: Dec
     adjusted: list[dict[str, object]] = []
     for row in rows:
         baseline_rate = Decimal(str(row["baseline_ftp_rate_pct"]))
-        ratio = ZERO if baseline_rate == ZERO else scenario_rate_pct / baseline_rate
 
         cny_ftp = Decimal(str(row["cny_ftp"]))
         foreign_ftp = Decimal(str(row["foreign_ftp"]))
         cny_cash = Decimal(str(row["cny_cash"]))
         foreign_cash = Decimal(str(row["foreign_cash"]))
 
-        cny_ftp_new = cny_ftp * ratio
-        foreign_ftp_new = foreign_ftp * ratio
+        if baseline_rate == ZERO:
+            # 零基准行无法按比例缩放（ratio 无定义；旧行为静默保持 FTP=0，
+            # 情景利率被忽略——2026-08 审计 M6）。改按正式口径的 FTP 基线公式
+            # （_calculate_ftp：scale × rate × days/365，与 calculate_read_model
+            # 叶子行一致）以情景利率直接重算；行内 scale 全为 0 的汇总行
+            # （如 grand_total）结果仍为 0，且无需解析日期。
+            cny_scale = Decimal(str(row["cny_scale"]))
+            foreign_scale = Decimal(str(row["foreign_scale"]))
+            if cny_scale == ZERO and foreign_scale == ZERO:
+                cny_ftp_new = ZERO
+                foreign_ftp_new = ZERO
+            else:
+                days = _days_for_view(_parse_report_date(str(row["report_date"])), str(row["view"]))
+                scenario_rate = scenario_rate_pct / Decimal("100")
+                cny_ftp_new = _calculate_ftp(cny_scale, scenario_rate, days)
+                foreign_ftp_new = _calculate_ftp(foreign_scale, scenario_rate, days)
+        else:
+            ratio = scenario_rate_pct / baseline_rate
+            cny_ftp_new = cny_ftp * ratio
+            foreign_ftp_new = foreign_ftp * ratio
+
         cny_net = cny_cash - cny_ftp_new
         foreign_net = foreign_cash - foreign_ftp_new
         business_net_income = cny_net + foreign_net
