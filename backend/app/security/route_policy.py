@@ -67,6 +67,7 @@ POLICY_SCOPE_SEMANTICS: dict[tuple[str, str], RoutePolicySemantics] = {
     ("pnl_by_business.adjustment", "approve"): RoutePolicySemantics("admin", "Business PnL owner"),
     ("pnl_by_business.adjustment", "write"): RoutePolicySemantics("admin", "Business PnL owner"),
     ("positions", "read"): RoutePolicySemantics("internal", "Positions owner"),
+    ("pretrade_checklist", "read"): RoutePolicySemantics("internal", "Market data owner"),
     ("product_category_pnl", "read"): RoutePolicySemantics("internal", "Product category PnL owner"),
     ("product_category_pnl", "refresh"): RoutePolicySemantics("admin", "Product category PnL owner"),
     ("product_category_pnl.adjustment", "write"): RoutePolicySemantics("admin", "Product category PnL owner"),
@@ -77,4 +78,5 @@ POLICY_SCOPE_SEMANTICS: dict[tuple[str, str], RoutePolicySemantics] = {
     ("risk_tensor", "read"): RoutePolicySemantics("internal", "Risk tensor owner"),
     ("source_preview.source_foundation", "read"): RoutePolicySemantics("internal", "Reports and data owner"),
     ("source_preview.source_foundation", "refresh"): RoutePolicySemantics("admin", "Reports and data owner"),
+    ("strategy_reports", "read"): RoutePolicySemantics("internal", "Market data owner"),
 }

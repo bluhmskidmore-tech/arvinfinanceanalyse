@@ -29,6 +29,7 @@ from backend.app.api.routes.market_data_ncd_proxy import router as market_data_n
 from backend.app.api.routes.pnl import router as pnl_router
 from backend.app.api.routes.pnl_attribution import router as pnl_attribution_router
 from backend.app.api.routes.positions import router as positions_router
+from backend.app.api.routes.pretrade_checklist import router as pretrade_checklist_router
 from backend.app.api.routes.product_category_pnl import router as product_category_pnl_router
 from backend.app.api.routes.qdb_gl_monthly_analysis import router as qdb_gl_monthly_analysis_router
 from backend.app.api.routes.research_calendar import router as research_calendar_router
@@ -132,6 +133,7 @@ ROUTE_REGISTRY: tuple[RouteRegistryEntry, ...] = (
     RouteRegistryEntry("pnl", pnl_router, "formal_mainline", ("pnl",), "Formal PnL owner"),
     RouteRegistryEntry("pnl_attribution", pnl_attribution_router, "formal_mainline", ("pnl-attribution",), "PnL attribution owner"),
     RouteRegistryEntry("positions", positions_router, "formal_mainline", ("positions",), "Positions owner"),
+    RouteRegistryEntry("pretrade_checklist", pretrade_checklist_router, "macro_market", ("pretrade-checklist",), "Market data owner"),
     RouteRegistryEntry("product_category_pnl", product_category_pnl_router, "formal_mainline", ("product-category-pnl",), "Product category PnL owner"),
     RouteRegistryEntry("qdb_gl_monthly_analysis", qdb_gl_monthly_analysis_router, "formal_mainline", ("qdb-gl-monthly-analysis",), "QDB GL monthly analysis owner"),
     RouteRegistryEntry("research_calendar", research_calendar_router, "support", ("calendar",), "Research calendar owner"),

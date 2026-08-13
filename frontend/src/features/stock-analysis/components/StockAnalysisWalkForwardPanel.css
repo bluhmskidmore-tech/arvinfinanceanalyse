@@ -9,7 +9,7 @@
   gap: 10px;
   padding: 12px 14px;
   border: 1px solid var(--dh-api-line);
-  border-radius: 8px;
+  border-radius: var(--dh-api-radius, 6px);
 }
 
 .stock-analysis-walk-forward__head {
@@ -73,7 +73,7 @@
   align-items: center;
   padding: 8px 10px;
   border: 1px solid var(--dh-api-line);
-  border-radius: 6px;
+  border-radius: var(--dh-api-radius, 6px);
 }
 
 .stock-analysis-walk-forward__row-head {

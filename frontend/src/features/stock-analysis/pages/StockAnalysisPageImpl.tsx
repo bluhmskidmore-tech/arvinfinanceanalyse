@@ -118,6 +118,7 @@ import { StockAnalysisDecisionFirstScreen } from "../components/StockAnalysisDec
 import { StockAnalysisEvidenceDisclosure } from "../components/StockAnalysisEvidenceDisclosure";
 import { StockAnalysisEvidenceLedgerRail } from "../components/StockAnalysisEvidenceLedgerRail";
 import { StockAnalysisObservationClosurePanel } from "../components/StockAnalysisObservationClosurePanel";
+import { StockAnalysisPretradeChecklist } from "../components/StockAnalysisPretradeChecklist";
 import { StockAnalysisWorkbenchDigest } from "../components/StockAnalysisWorkbenchDigest";
 import { CompactStatusTile } from "../components/StockAnalysisStatusPrimitives";
 import { StockAnalysisWorkbenchActions } from "../components/StockAnalysisWorkbenchActions";
@@ -2001,6 +2002,8 @@ export default function StockAnalysisPage() {
                     gapOverview={gapOverview}
                   />
                 ) : null}
+
+                <StockAnalysisPretradeChecklist />
 
                 <StockAnalysisEvidenceDisclosure
                   contract={workbenchContractSummary}
