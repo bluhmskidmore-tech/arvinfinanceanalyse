@@ -33,6 +33,7 @@ from backend.app.schemas.product_category_pnl import (
     ProductCategoryHistoryItem,
     ProductCategoryHistoryPayload,
     ProductCategoryInterestSpreadPayload,
+    ProductCategoryLiabilityCostDecompositionPayload,
     ProductCategoryManualAdjustmentCreateRequest,
     ProductCategoryManualAdjustmentListPayload,
     ProductCategoryManualAdjustmentPayload,
@@ -703,6 +704,9 @@ def product_category_pnl_envelope(
         ),
         interest_earning_spread=ProductCategoryInterestSpreadPayload.model_validate(
             analysis_envelope.result.summary.get("interest_earning_spread", {})
+        ),
+        liability_cost_decomposition=ProductCategoryLiabilityCostDecompositionPayload.model_validate(
+            analysis_envelope.result.summary.get("liability_cost_decomposition", {})
         ),
     )
     result_meta = (

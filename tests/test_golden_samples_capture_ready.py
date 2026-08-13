@@ -1943,6 +1943,9 @@ def _validate_product_category(actual: dict[str, Any], expected: dict[str, Any])
             ("result", "asset_total"),
             ("result", "liability_total"),
             ("result", "grand_total"),
+            ("result", "interest_spread"),
+            ("result", "interest_earning_spread"),
+            ("result", "liability_cost_decomposition"),
         ],
     )
     assert str(actual["result_meta"]["source_version"]).startswith("sv_product_category_")

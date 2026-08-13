@@ -4,7 +4,7 @@ from calendar import monthrange
 from dataclasses import dataclass, replace
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Mapping
+from typing import Literal, Mapping
 
 from backend.app.core_finance.field_normalization import is_approved_status
 
@@ -18,6 +18,10 @@ ASSET_SCALE_EXCLUSIONS = {
 ASSET_PNL_EXCLUSIONS = {"\u751f\u606f\u8d44\u4ea7"}
 PRODUCT_CATEGORY_RATE_RAW_QUANT = Decimal("0.00000001")
 PRODUCT_CATEGORY_RATE_DISPLAY_QUANT = Decimal("0.01")
+# Percent rates display at 2 decimals, i.e. 1bp resolution. A bp-denominated value
+# rendered at 2 decimals would claim 0.01bp resolution the underlying rates do not
+# have, so bp displays stop at 1 decimal. The 8-decimal raw is kept for audit.
+PRODUCT_CATEGORY_BP_DISPLAY_QUANT = Decimal("0.1")
 
 
 @dataclass(slots=True)
@@ -53,7 +57,16 @@ class ManualAdjustment:
 class ProductCategoryMetricValue:
     raw: Decimal
     display: str
-    unit: str = "percent"
+    unit: Literal["percent", "bp"] = "percent"
+
+
+@dataclass(slots=True)
+class ProductCategoryLiabilityCostDecomposition:
+    liability_yield_pct: ProductCategoryMetricValue | None
+    liability_yield_ex_cln_pct: ProductCategoryMetricValue | None
+    cln_yield_pct: ProductCategoryMetricValue | None
+    cln_drag_bp: ProductCategoryMetricValue | None
+    cln_scale: Decimal | None
 
 
 @dataclass(slots=True)
@@ -100,6 +113,58 @@ def calculate_product_category_interest_spread_metrics(
         cny_spread_pct=_build_product_category_metric_value(
             _subtract_when_present(cny_asset_yield, cny_liability_yield)
         ),
+    )
+
+
+def calculate_product_category_liability_cost_decomposition(
+    *,
+    report_date: date | str,
+    view: str,
+    liability_row: Mapping[str, object],
+    credit_linked_notes_row: Mapping[str, object] | None,
+) -> ProductCategoryLiabilityCostDecomposition:
+    """Split the liability-side cost rate into an ex-CLN base and the CLN drag.
+
+    Liability rows carry negative `cnx_scale` / `cnx_cash`, so the negative-over-negative
+    quotient stays positive and matches the existing `weighted_yield` convention. The
+    decomposition is meaningless without both sides, so a missing CLN row or a zero
+    ex-CLN denominator returns every field as None instead of falling back to 0.
+    """
+    empty = ProductCategoryLiabilityCostDecomposition(
+        liability_yield_pct=None,
+        liability_yield_ex_cln_pct=None,
+        cln_yield_pct=None,
+        cln_drag_bp=None,
+        cln_scale=None,
+    )
+    if credit_linked_notes_row is None:
+        return empty
+
+    liability_scale = _decimal_or_none(liability_row.get("cnx_scale"))
+    liability_cash = _decimal_or_none(liability_row.get("cnx_cash"))
+    cln_scale = _decimal_or_none(credit_linked_notes_row.get("cnx_scale"))
+    cln_cash = _decimal_or_none(credit_linked_notes_row.get("cnx_cash"))
+    if liability_scale is None or liability_cash is None or cln_scale is None or cln_cash is None:
+        return empty
+
+    ex_cln_scale = liability_scale - cln_scale
+    if ex_cln_scale == ZERO:
+        return empty
+
+    days_for_view = _days_for_view(_parse_report_date(report_date), view)
+    liability_yield = _decimal_or_none(liability_row.get("weighted_yield"))
+    cln_yield = _decimal_or_none(credit_linked_notes_row.get("weighted_yield"))
+    ex_cln_yield = _calculate_weighted_yield(liability_cash - cln_cash, ex_cln_scale, days_for_view)
+    drag = _subtract_when_present(liability_yield, ex_cln_yield)
+
+    return ProductCategoryLiabilityCostDecomposition(
+        liability_yield_pct=_build_product_category_metric_value(liability_yield),
+        liability_yield_ex_cln_pct=_build_product_category_metric_value(ex_cln_yield),
+        cln_yield_pct=_build_product_category_metric_value(cln_yield),
+        cln_drag_bp=_build_product_category_bp_metric_value(
+            None if drag is None else drag * Decimal("100")
+        ),
+        cln_scale=cln_scale,
     )
 
 
@@ -593,6 +658,14 @@ def _build_product_category_metric_value(value: Decimal | None) -> ProductCatego
     raw = value.quantize(PRODUCT_CATEGORY_RATE_RAW_QUANT, rounding=ROUND_HALF_UP)
     display = f"{raw.quantize(PRODUCT_CATEGORY_RATE_DISPLAY_QUANT, rounding=ROUND_HALF_UP)}%"
     return ProductCategoryMetricValue(raw=raw, display=display)
+
+
+def _build_product_category_bp_metric_value(value: Decimal | None) -> ProductCategoryMetricValue | None:
+    if value is None:
+        return None
+    raw = value.quantize(PRODUCT_CATEGORY_RATE_RAW_QUANT, rounding=ROUND_HALF_UP)
+    display = f"{raw.quantize(PRODUCT_CATEGORY_BP_DISPLAY_QUANT, rounding=ROUND_HALF_UP)} bp"
+    return ProductCategoryMetricValue(raw=raw, display=display, unit="bp")
 
 
 def _decimal_or_none(value: object) -> Decimal | None:

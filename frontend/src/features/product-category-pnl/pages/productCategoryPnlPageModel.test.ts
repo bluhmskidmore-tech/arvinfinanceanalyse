@@ -419,19 +419,19 @@ describe("productCategoryPnlPageModel", () => {
           key: "prior_month",
           targetPnlLabel: "0.60",
           requiredYieldLabel: "2.51%",
-          liftBpLabel: "+45.6bp",
+          liftBpLabel: "+45.6 bp",
         },
         {
           key: "h1_average",
           targetPnlLabel: "0.78",
           requiredYieldLabel: "2.79%",
-          liftBpLabel: "+73.5bp",
+          liftBpLabel: "+73.5 bp",
         },
         {
           key: "q1_average",
           targetPnlLabel: "1.00",
           requiredYieldLabel: "3.12%",
-          liftBpLabel: "+106.5bp",
+          liftBpLabel: "+106.5 bp",
         },
       ],
     });
@@ -1119,7 +1119,7 @@ describe("productCategoryPnlPageModel", () => {
         signalCount: 1,
         hitRateLabel: "100.0%",
         averageNetIncomeDeltaLabel: "+0.30",
-        averageYieldDeltaBpLabel: "+40.0bp",
+        averageYieldDeltaBpLabel: "+40.0 bp",
         averageScaleDeltaLabel: "-100.00",
       }),
     );
@@ -1127,7 +1127,7 @@ describe("productCategoryPnlPageModel", () => {
       expect.objectContaining({
         actionLabel: "重定价/提效",
         hitRateLabel: "0.0%",
-        averageYieldDeltaBpLabel: "-10.0bp",
+        averageYieldDeltaBpLabel: "-10.0 bp",
       }),
     );
     expect(surface.missReasonRows[0]).toEqual(
@@ -1176,7 +1176,7 @@ describe("productCategoryPnlPageModel", () => {
         riskReasonLabel: "低置信；主因收益率未改善",
         reasonLabel: "历史回测建议收紧触发条件：命中率 0.0%，主因收益率未改善",
         impactLabel:
-          "历史均值：净营收 -0.05 亿元、收益率 -10.0bp、规模 +100.00 亿元",
+          "历史均值：净营收 -0.05 亿元、收益率 -10.0 bp、规模 +100.00 亿元",
         releaseConditionLabel: "放行条件：收益率转正改善且净营收不恶化",
         watchReportDateLabel: "观察月份：2026-03-31",
         observationLabel: "观察口径：下一期收益率改善且净营收不恶化",
@@ -1522,7 +1522,7 @@ describe("productCategoryPnlPageModel", () => {
         key: "ftp_slope",
         label: "FTP 斜率",
         valueLabel: "-0.03",
-        detailLabel: "每 1bp 约影响净营收",
+        detailLabel: "每 1 bp 约影响净营收",
         tone: "negative",
       }),
     ]);
@@ -3892,10 +3892,10 @@ describe("productCategoryPnlPageModel", () => {
       spreadDeltaBp: null,
     });
     expect(surface.incompleteReasons).toEqual([
-      "\u5168\u53e3\u5f84\u5f53\u524d\u6708\u751f\u606f\u8d44\u4ea7\u6536\u76ca\u7387\u4e0d\u53ef\u7528",
-      "\u5168\u53e3\u5f84\u4e0a\u5e74\u540c\u6708\u751f\u606f\u8d44\u4ea7\u6536\u76ca\u7387\u4e0d\u53ef\u7528",
-      "\u5168\u53e3\u5f84\u5f53\u524d\u6708\u8d1f\u503a\u7aef\u6210\u672c\u4e0d\u53ef\u7528",
-      "\u5168\u53e3\u5f84\u4e0a\u5e74\u540c\u6708\u8d1f\u503a\u7aef\u6210\u672c\u4e0d\u53ef\u7528",
+      "全口径当前月资产端收益率（含TPL）不可用",
+      "全口径上年同月资产端收益率（含TPL）不可用",
+      "全口径当前月负债端成本率不可用",
+      "全口径上年同月负债端成本率不可用",
     ]);
     expect(surface.rows.map((item) => item.key)).toEqual([
       "asset_yield",
@@ -4047,10 +4047,10 @@ describe("productCategoryPnlPageModel", () => {
       spreadDeltaBp: null,
     });
     expect(surface.incompleteReasons).toEqual([
-      "\u4eba\u6c11\u5e01\u5f53\u524d\u6708\u751f\u606f\u8d44\u4ea7\u6536\u76ca\u7387\u4e0d\u53ef\u7528",
-      "\u4eba\u6c11\u5e01\u4e0a\u5e74\u540c\u6708\u751f\u606f\u8d44\u4ea7\u6536\u76ca\u7387\u4e0d\u53ef\u7528",
-      "\u4eba\u6c11\u5e01\u5f53\u524d\u6708\u8d1f\u503a\u7aef\u6210\u672c\u4e0d\u53ef\u7528",
-      "\u4eba\u6c11\u5e01\u4e0a\u5e74\u540c\u6708\u8d1f\u503a\u7aef\u6210\u672c\u4e0d\u53ef\u7528",
+      "人民币当前月资产端收益率（含TPL）不可用",
+      "人民币上年同月资产端收益率（含TPL）不可用",
+      "人民币当前月负债端成本率不可用",
+      "人民币上年同月负债端成本率不可用",
     ]);
   });
 
@@ -4208,10 +4208,10 @@ describe("productCategoryPnlPageModel", () => {
       spreadDeltaBp: null,
     });
     expect(surface.incompleteReasons).toEqual([
-      "\u4eba\u6c11\u5e01\u5f53\u524d\u6708\u751f\u606f\u8d44\u4ea7\u6536\u76ca\u7387\u4e0d\u53ef\u7528",
-      "\u4eba\u6c11\u5e01\u4e0a\u5e74\u540c\u6708\u751f\u606f\u8d44\u4ea7\u6536\u76ca\u7387\u4e0d\u53ef\u7528",
-      "\u4eba\u6c11\u5e01\u5f53\u524d\u6708\u8d1f\u503a\u7aef\u6210\u672c\u4e0d\u53ef\u7528",
-      "\u4eba\u6c11\u5e01\u4e0a\u5e74\u540c\u6708\u8d1f\u503a\u7aef\u6210\u672c\u4e0d\u53ef\u7528",
+      "人民币当前月资产端收益率（含TPL）不可用",
+      "人民币上年同月资产端收益率（含TPL）不可用",
+      "人民币当前月负债端成本率不可用",
+      "人民币上年同月负债端成本率不可用",
     ]);
   });
 
@@ -4434,7 +4434,7 @@ describe("productCategoryPnlPageModel", () => {
       latestAmountLabel: "82.00",
       amountDeltaLabel: "+7.00",
       latestRateLabel: "1.30",
-      rateDeltaLabel: "+10bp",
+      rateDeltaLabel: "+10 bp",
       comparisonLabel:
         "日均额：2025年Q1 → 2026年03月；利率：2025年11月 → 2026年03月",
     });
@@ -4510,7 +4510,7 @@ describe("productCategoryPnlPageModel", () => {
       latestAmountLabel: "82.00",
       amountDeltaLabel: "+7.00",
       latestRateLabel: "1.20",
-      rateDeltaLabel: "+10bp",
+      rateDeltaLabel: "+10 bp",
     });
   });
 
@@ -4644,7 +4644,7 @@ describe("productCategoryPnlPageModel", () => {
         { amountLabel: "80.00", rateLabel: "1.20" },
         { amountLabel: "82.00", rateLabel: "1.30" },
       ],
-      movement: { amountLabel: "+2.00", rateLabel: "+10bp" },
+      movement: { amountLabel: "+2.00", rateLabel: "+10 bp" },
     });
     expect(
       matrix.rows.find((item) => item.categoryId === "repo_liabilities"),
@@ -4778,7 +4778,7 @@ describe("productCategoryPnlPageModel", () => {
         { amountLabel: "195.00", rateLabel: "1.30" },
         { amountLabel: "198.00", rateLabel: "1.25" },
       ],
-      movement: { amountLabel: "+3.00", rateLabel: "-5bp" },
+      movement: { amountLabel: "+3.00", rateLabel: "-5 bp" },
     });
     expect(matrix.currencyMatrices.map((item) => item.currencyKey)).toEqual([
       "cny",
@@ -4796,7 +4796,7 @@ describe("productCategoryPnlPageModel", () => {
         { amountLabel: "170.00", rateLabel: "1.30" },
         { amountLabel: "174.00", rateLabel: "1.25" },
       ],
-      movement: { amountLabel: "+4.00", rateLabel: "-5bp" },
+      movement: { amountLabel: "+4.00", rateLabel: "-5 bp" },
     });
     expect(
       cnyMatrix?.rows.find((item) => item.categoryId === "interbank_cds"),
@@ -4805,7 +4805,7 @@ describe("productCategoryPnlPageModel", () => {
         { amountLabel: "110.00", rateLabel: "1.45" },
         { amountLabel: EM_DASH, rateLabel: "1.40" },
       ],
-      movement: { amountLabel: EM_DASH, rateLabel: "-5bp" },
+      movement: { amountLabel: EM_DASH, rateLabel: "-5 bp" },
     });
 
     const foreignMatrix = matrix.currencyMatrices.find(
@@ -4818,7 +4818,7 @@ describe("productCategoryPnlPageModel", () => {
         { amountLabel: "25.00", rateLabel: "1.30" },
         { amountLabel: "24.00", rateLabel: "1.25" },
       ],
-      movement: { amountLabel: "-1.00", rateLabel: "-5bp" },
+      movement: { amountLabel: "-1.00", rateLabel: "-5 bp" },
     });
   });
 
@@ -4913,7 +4913,7 @@ describe("productCategoryPnlPageModel", () => {
         ?.movement,
     ).toEqual({
       amountLabel: EM_DASH,
-      rateLabel: "+10bp",
+      rateLabel: "+10 bp",
     });
   });
 

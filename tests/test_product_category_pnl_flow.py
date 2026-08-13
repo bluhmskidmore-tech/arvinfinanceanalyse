@@ -675,6 +675,30 @@ def test_product_category_materialize_and_api_flow(tmp_path, monkeypatch, seed_w
     )
     feb_spread = feb_monthly_payload["result"]["interest_spread"]
     feb_interest_earning_spread = feb_monthly_payload["result"]["interest_earning_spread"]
+    feb_liability_cost_decomposition = feb_monthly_payload["result"]["liability_cost_decomposition"]
+    feb_credit_linked_notes = next(
+        row
+        for row in feb_monthly_payload["result"]["rows"]
+        if row["category_id"] == "credit_linked_notes"
+    )
+    assert (
+        feb_liability_cost_decomposition["liability_yield_pct"]
+        == feb_spread["all_currency_liability_yield_pct"]
+    )
+    assert feb_liability_cost_decomposition["cln_drag_bp"]["unit"] == "bp"
+    # The drag is derived from the unrounded rates, so reconstructing it from the two
+    # 8-decimal published rates amplifies their rounding by 100x.
+    assert abs(
+        Decimal(feb_liability_cost_decomposition["cln_drag_bp"]["raw"])
+        - (
+            Decimal(feb_liability_cost_decomposition["liability_yield_pct"]["raw"])
+            - Decimal(feb_liability_cost_decomposition["liability_yield_ex_cln_pct"]["raw"])
+        )
+        * Decimal("100")
+    ) <= Decimal("0.000001")
+    assert Decimal(feb_liability_cost_decomposition["cln_scale"]) == Decimal(
+        str(feb_credit_linked_notes["cnx_scale"])
+    )
     assert feb_spread["all_currency_spread_pct"] == {
         "raw": "167.12821433",
         "display": "167.13%",
@@ -738,6 +762,11 @@ def test_product_category_materialize_and_api_flow(tmp_path, monkeypatch, seed_w
     assert (
         scenario_interest_earning_spread["cny_spread_pct"]
         == feb_interest_earning_spread["cny_spread_pct"]
+    )
+    # The FTP scenario overlay only reprices FTP; the CLN cost decomposition must not move.
+    assert (
+        scenario_payload["result"]["liability_cost_decomposition"]
+        == feb_liability_cost_decomposition
     )
     get_settings.cache_clear()
 
@@ -3163,6 +3192,7 @@ def test_resolve_product_category_ytd_payload_canonical_fallback_matches_persist
     ref_grand = float(env["result"]["grand_total"]["business_net_income"])
     ref_interest_spread = env["result"]["interest_spread"]
     ref_interest_earning_spread = env["result"]["interest_earning_spread"]
+    ref_liability_cost_decomposition = env["result"]["liability_cost_decomposition"]
 
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
@@ -3213,5 +3243,23 @@ def test_resolve_product_category_ytd_payload_canonical_fallback_matches_persist
         resolved.interest_earning_spread.cny_spread_pct.display
         == ref_interest_earning_spread["cny_spread_pct"]["display"]
     )
+    # The canonical-facts fallback must publish the CLN decomposition too, otherwise the
+    # degraded home path silently serves all-None where the read-model path serves values.
+    resolved_decomposition = resolved.liability_cost_decomposition.model_dump(mode="json")
+    for field in ("liability_yield_pct", "liability_yield_ex_cln_pct", "cln_yield_pct"):
+        assert resolved_decomposition[field] == ref_liability_cost_decomposition[field]
+    assert resolved_decomposition["cln_scale"] == ref_liability_cost_decomposition["cln_scale"]
+    # cln_drag_bp scales a rate difference by 100, so it also scales the sub-1e-8 gap
+    # between the persisted read model and the canonical recompute by 100. The published
+    # 1-decimal display is identical; only the audit raw drifts, and only past 1e-6 bp.
+    assert resolved_decomposition["cln_drag_bp"]["unit"] == "bp"
+    assert (
+        resolved_decomposition["cln_drag_bp"]["display"]
+        == ref_liability_cost_decomposition["cln_drag_bp"]["display"]
+    )
+    assert abs(
+        Decimal(resolved_decomposition["cln_drag_bp"]["raw"])
+        - Decimal(ref_liability_cost_decomposition["cln_drag_bp"]["raw"])
+    ) <= Decimal("0.000001")
 
     get_settings.cache_clear()

@@ -248,7 +248,7 @@ function signedBpLabelWithOneDecimal(value: number | null): string {
     return EM_DASH;
   }
   const sign = value > 0 ? "+" : value < 0 ? "-" : "";
-  return `${sign}${Math.abs(value).toFixed(1)}bp`;
+  return `${sign}${Math.abs(value).toFixed(1)} bp`;
 }
 
 function interestSpreadAttributionIncompleteReasons(input: {
@@ -276,24 +276,16 @@ function interestSpreadAttributionIncompleteReasons(input: {
     reasons.push("\u7f3a\u5c11\u4e0a\u5e74\u540c\u6708\u6570\u636e");
   }
   if (input.currentMetrics.assetYield === null) {
-    reasons.push(
-      `${prefix}\u5f53\u524d\u6708\u751f\u606f\u8d44\u4ea7\u6536\u76ca\u7387\u4e0d\u53ef\u7528`,
-    );
+    reasons.push(`${prefix}当前月资产端收益率（含TPL）不可用`);
   }
   if (input.priorMetrics.assetYield === null) {
-    reasons.push(
-      `${prefix}\u4e0a\u5e74\u540c\u6708\u751f\u606f\u8d44\u4ea7\u6536\u76ca\u7387\u4e0d\u53ef\u7528`,
-    );
+    reasons.push(`${prefix}上年同月资产端收益率（含TPL）不可用`);
   }
   if (input.currentMetrics.liabilityYield === null) {
-    reasons.push(
-      `${prefix}\u5f53\u524d\u6708\u8d1f\u503a\u7aef\u6210\u672c\u4e0d\u53ef\u7528`,
-    );
+    reasons.push(`${prefix}当前月负债端成本率不可用`);
   }
   if (input.priorMetrics.liabilityYield === null) {
-    reasons.push(
-      `${prefix}\u4e0a\u5e74\u540c\u6708\u8d1f\u503a\u7aef\u6210\u672c\u4e0d\u53ef\u7528`,
-    );
+    reasons.push(`${prefix}上年同月负债端成本率不可用`);
   }
   if (
     input.current &&
@@ -304,9 +296,7 @@ function interestSpreadAttributionIncompleteReasons(input: {
     input.priorMetrics.liabilityYield !== null &&
     (input.currentMetrics.spread === null || input.priorMetrics.spread === null)
   ) {
-    reasons.push(
-      `${prefix}\u5229\u5dee\u6307\u6807\u672a\u7531\u540e\u7aef\u8fd4\u56de`,
-    );
+    reasons.push(`${prefix}资产负债利差（含TPL）未由后端返回`);
   }
   return reasons;
 }

@@ -32,8 +32,9 @@
 - broad `executive.*` 其余路由
 - preview / vendor / analytical-only 扩张面
 - `product-category PnL` 的字段级 truth freeze
-  - `GS-PROD-CAT-PNL-A` 当前以 `docs/pnl/product-category-page-truth-contract.md`、`docs/page_contracts.md -> PAGE-PROD-CAT-PNL-001`、`MTR-PCP-001`~`MTR-PCP-012` 和样本断言为权威
+  - `GS-PROD-CAT-PNL-A` 当前以 `docs/pnl/product-category-page-truth-contract.md`、`docs/page_contracts.md -> PAGE-PROD-CAT-PNL-001`、`MTR-PCP-001`~`MTR-PCP-029` 和样本断言为权威
   - Decision 3C detail metric expansion is dictionary-active for `MTR-PCP-004` through `MTR-PCP-012`; these rows bind only approved `result.rows[]` detail fields and do not promote dimensions or scenario payloads to formal metrics.
+  - 2026-08-13 利差升格：`MTR-PCP-013`~`MTR-PCP-029` 为 payload 段级指标，只绑定 `interest_spread`、`interest_earning_spread`、`liability_cost_decomposition` 三段字段（§12.3.2）。
 
 ## 3. 编制依据
 
@@ -405,7 +406,7 @@ MTR-RSK-001 fixed-income convention note:
 处理方式：
 
 - 后续样本断言如果新增 `MTR-*`，必须同步更新 §12.4。
-- 产品分类 PnL 当前批准三条 headline 字典指标（`MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003`）以及 decision 3C 明细字段指标（`MTR-PCP-004`~`MTR-PCP-012`）；新增明细指标只绑定 `result.rows[]` 字段，不把维度或场景载荷升格为 formal metric。
+- 产品分类 PnL 当前批准三条 headline 字典指标（`MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003`）、decision 3C 明细字段指标（`MTR-PCP-004`~`MTR-PCP-012`），以及 2026-08-13 升格的利差 / CLN 拖累段级指标（`MTR-PCP-013`~`MTR-PCP-029`，见 §12.3.2）；新增明细指标只绑定 `result.rows[]` 字段，段级指标只绑定 `interest_spread` / `interest_earning_spread` / `liability_cost_decomposition` 三段字段，不把维度或场景载荷升格为 formal metric。
 
 ### 12.3.1 Product-category metric promotion guard
 
@@ -434,6 +435,167 @@ Guardrails:
 - scenario outputs remain analytical scenario payloads, not formal dictionary metrics
 - update `docs/pnl/product-category-page-truth-contract.md` and targeted tests before adding any further formal product-category `metric_id`
 
+### 12.3.2 利差与 CLN 拖累指标升格（2026-08-13）
+
+背景：`interest_spread` / `interest_earning_spread` 长期只是 payload 上的分析字段，没有 `metric_id`；
+`liability_cost_decomposition` 为本轮新增。三段读数要进分管行领导正式报告，因此按 formal 治理全套升格。
+
+本节与 §12.3.1 的关系：
+
+- §12.3.1 的守则（「row-level `cnx_scale` … 只在 `MTR-PCP-004`~`MTR-PCP-012` 内 active」）
+  只约束 `result.rows[]` **行级**字段，本节升格的是 payload **段级**汇总读数，不属于 row-level 集合。
+- 本节新增 `MTR-PCP-013`~`MTR-PCP-029`，仍然只绑定后端已产出的字段路径，不新造维度指标，也不把
+  scenario 载荷升格为 formal metric。
+- `docs/metric_dictionary.md` §15（2026-05-10 live headline 补录）是**带日期的历史快照**，不因本次升格回改。
+
+#### 两个利差的口径差异（必须显式区分）
+
+这是本次升格最关键的一条，也是领导会问的第一个问题：**两个利差不是同一个东西，不得互相替代或混用系列名。**
+
+| 维度 | 生息资产口径（`interest_earning_spread`） | 资产端口径（`interest_spread`） |
+| --- | --- | --- |
+| 资产侧取数行 | `result.rows[]` 中 `category_id = interest_earning_assets`（`生息资产`） | `result.asset_total`（`资产端合计`） |
+| 规模科目 | `120`、`121`、`140`(-`14004`/-`14005`)、`142`、`143`(-`14301010001`/-`14301010002`)、`144`；**不含 `141`（TPL）** | 各 level-0 资产行合计（按 `ASSET_SCALE_EXCLUSIONS` 剔除 `生息资产`、`中间业务收入` 后），**含 `141`（TPL）** |
+| 损益科目 | 仅利息类：`50204`、`50208`、`50210`、`51404`、`51401`(-…)、`51403` | 含 TPL 估值与买卖价差（`51402`、`51601`、`517*`）、`汇兑损益及衍生`、`中间业务收入` |
+| 业务含义 | 只看真正生息的资产与负债之间的利差 | 看含交易性损益与中间业务在内的整体资产负债利差 |
+| 负债侧取数行 | `result.liability_total`（两个口径**同一行**） | `result.liability_total`（同上） |
+| 2026-07-31 / `ytd` 已核定读数 | `0.78%`（78BP） | `0.93%`（93BP） |
+
+因此 **78BP 与 93BP 的差额来自资产端口径多计入 TPL / 衍生 / 中间业务**，不是数据错误，也不是两次计算不一致。
+两个口径共用同一条负债线，所以负债端成本率在两段 payload 中数值相同（见下表 `MTR-PCP-014` / `MTR-PCP-020` 的「同源镜像」说明）。
+
+#### 三处叫法对照与报告册别名登记（2026-08-13）
+
+同一个读数在字典条目名、页面用词、报告册用词三处不完全同字面。分管行领导会同时看到页面与报告，
+因此在此登记别名对照。**本表只登记，不改报告与页面的既有用词**：报告册的术语在本轮之前就已存在并全书自洽，
+改它反而破坏报告内部一致性；字典的职责是让三处能对上。任一侧改名都必须回到本表同步，不得各自漂移。
+
+| metric_id | payload 字段 | 指标字典条目名 | 页面用词 | 报告册用词 |
+| --- | --- | --- | --- | --- |
+| `MTR-PCP-021` | `interest_spread.all_currency_spread_pct` | 资产负债利差（含TPL） | 图例「资产负债利差（含TPL）（%）」；读数卡「资产负债利差（含TPL）（bp）」；图表标题「资产负债利差趋势图」 | **「全口径利差」**（完整版 7 处，含 P34 累计条与 P43 口径说明；简版 4 处，含 P01 封面「全口径利差0.64%」与 P10） |
+| `MTR-PCP-015` | `interest_earning_spread.all_currency_spread_pct` | 生息资产利差 | 读数卡「生息资产利差（bp）」；对比卡标题「生息资产利差：今年与上年同月」；**图例「生息资产负债利差（%）」与图表标题「生息资产负债利差趋势图」**（多「负债」二字） | 「生息资产利差」（完整版 3 处、简版 2 处） |
+| `MTR-PCP-019` | `interest_spread.all_currency_asset_yield_pct` | 资产端收益率（含TPL） | 图例「资产端收益率（含TPL）（%）」；读数卡「资产端收益率（含TPL）」 | 「资产端收益率」/ 表内简写「资产收益」 |
+| `MTR-PCP-013` | `interest_earning_spread.all_currency_asset_yield_pct` | 生息资产收益率（综本） | 图例「生息资产收益率（%）」 | 「生息资产收益率」/ 表内简写「生息资产收益」 |
+| `MTR-PCP-014` / `MTR-PCP-020` | 两段各自的 `all_currency_liability_yield_pct` | 负债端成本率（综本，…口径） | 图例「负债端成本率（%）」（两张利差图共用，同源镜像） | 「负债端成本率」/ 表内简写「负债成本」 |
+
+别名守则：
+
+- `MTR-PCP-021` 的字典名与报告名**不同字面、同一读数**。报告册对「全口径」的定义与本节「含TPL」完全一致
+  （报告原文：「生息资产口径不含TPL、衍生与中间业务，全口径含TPL」），故二者可互认。
+- `MTR-PCP-015` 三处叫法**已存在轻微不一致**：字典与报告都叫「生息资产利差」，页面图例与图表标题叫
+  「生息资产负债利差」。同一读数，在此登记为别名；不据此要求页面改名。
+- 2026-08-13 回表同步（守则首次执行）：页面读数卡 bp 后缀统一为小写（「生息资产利差（bp）」
+  「资产负债利差（含TPL）（bp）」「CLN 拖累（bp）」），读数卡备注「全口径」改「本外币合计」；
+  本表「页面用词」列与 `MTR-PCP-028` 条目名已同步到该字面。
+- ⚠️ **「全口径」一词在页面与报告中含义不同，不得互推**：
+  - 报告册：「全口径利差」指**科目维度**的含 TPL 资产端口径（= `MTR-PCP-021`）。
+  - 页面：利差归因面板（`ProductCategoryComparisonChartPanels.tsx`）的「全口径 / 人民币口径」口径标签里，
+    「全口径」指**币种维度**的综本（CNX，含外币），与 `cny_*` 相对，与含不含 TPL 无关。
+  - 读数卡备注原用「生息资产口径 · 全口径」，2026-08-13 已改为「生息资产口径 · 本外币合计」
+    （负债行为「计息负债合计 · 本外币合计」），正是为了避开与报告册科目维度「全口径利差」的字面撞车；
+    读数卡侧不再出现「全口径」。
+  - 同一页 `ProductCategoryPnlPage.tsx` 的「资产负债利差：今年与上年同月」卡片描述又按报告册语义使用
+    「全口径利差」。因此见到「全口径」必须先判断它在说币种维度还是科目维度；把页面币种维度的
+    「全口径」误读成报告的「全口径利差」，正好会把 78BP 与 93BP 弄反。
+
+#### 不属于本节的第三套利差（防误认）
+
+报告册（完整版 P43、简版 P07）另有一项「**资产负债加权利差**」，报告原文标注为
+「MOSS 日均分析口径、分母另算」，2026-07 读数 `0.7163%`（环比 −0.31bp），与之配套的是
+「资产加权收益率」`2.2941%` 与「负债加权成本」`1.5778%`。
+
+- 它与 `MTR-PCP-015` / `MTR-PCP-021` **不是同一口径**（分母另算），**未纳入本节 formal 升格**，
+  也**没有** `MTR-PCP-*` 编号。
+- 报告册自己已写明「三者不可混用」。对账时不得用它替代 `MTR-PCP-021`，也不得反过来把它当作本节指标的
+  校验值；若将来要把它升格，需要走完整的矩阵 / 字典行 / 样本断言 / 测试一套。
+
+#### 共同计算口径
+
+三段读数与 `result.rows[].weighted_yield`（`MTR-PCP-012`）**完全同源**，都走
+`backend/app/core_finance/product_category_pnl.py::_calculate_weighted_yield`：
+
+```
+weighted_yield_pct = cash / days_for_view * 365 / scale * 100
+spread_pct         = asset_yield_pct - liability_yield_pct
+cln_drag_bp        = (liability_yield_pct - liability_yield_ex_cln_pct) * 100
+```
+
+- 年化基数固定 `365`（`DAYS_IN_YEAR`），不按实际年天数切换。
+- `days_for_view` 由 `_days_for_view(report_date, view)` 决定：`monthly` 取所在自然月天数；
+  `qtd` / `ytd` / `year_to_report_month_end` 取对应期间累计天数。**同一报告日的 monthly 与 ytd 利差不同属正常。**
+- `cny_*` 项用 `cny_cash` / `cny_scale` 重算，不是综本项的拆分或残差。
+- 综本（CNX）减人民币（CNY）的残差**不得**被解释为外币口径或美元负债成本（2026-08-13 用户裁决：本轮不做币种拆解）。
+- 分母为 0、`days_for_view <= 0`、或 CLN 行缺失时返回 `null`，**不得回落为 0**。
+- 场景（`basis=scenario`）只改 FTP 与 net 字段，不改 `cash` / `scale` / `weighted_yield`，因此**三段读数在场景态与 formal 基线一致**。
+- 单位与精度：百分比项 `unit="percent"`、`display` 按 `PRODUCT_CATEGORY_RATE_DISPLAY_QUANT`（两位小数）+ `%`；
+  `cln_drag_bp` 为 `unit="bp"`、`display` **一位小数 + ` bp`**（小写、空格分隔），`raw` 仍保留 8 位；
+  `cln_scale` 为裸 `Decimal` 元金额，沿用负债侧负号。
+- bp 项为何只报一位小数（2026-08-13 裁决）：全页费率一律两位小数百分数，分辨率本就是 1bp；在此之上给
+  bp 报两位小数等于宣称 0.01bp 分辨率，属虚假精度。后缀取小写空格分隔的 ` bp`，与全仓共享 `Numeric`
+  类型的既有输出（如 `"+10.00 bp"`）及报告全书的小写 `bp` 保持一致。
+- **bp 项跨路径对账口径**（2026-08-13 实测踩坑）：`cln_drag_bp` 由两个费率相减后 ×100 得到，会把上游
+  持久化往返误差放大 100 倍。B1 实测读模型与回退两条路径下该字段 `raw` 相差约 `3.5e-7`，第二位小数
+  已不稳定。因此跨路径对账**以 `display` 或 `1e-6` 容差为准，不得对 `raw` 做严格相等断言**；
+  同样的放大效应适用于未来任何「费率相减 × 100」的 bp 派生项。
+
+#### 生息资产利差口径 `MTR-PCP-013`~`MTR-PCP-018`
+
+| metric_id | 指标名 | 类型 | basis | 权威来源 | 当前消费面 | 展示规则 | fallback / 时间说明 | 测试锚点 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `MTR-PCP-013` | 生息资产收益率（综本） | business | `formal` | `ProductCategoryPnlPayload.interest_earning_spread.all_currency_asset_yield_pct` | `/product-category-pnl` 主屏利差读数；分管行领导正式报告 | 百分比；两位小数 + `%`；不由前端重算 | `report_date` + `view` 绑定；`monthly` / `ytd` 双口径分别展示；`null` 不得显示为 0 | `tests/test_interest_spread_metric_governance_contract.py`; `tests/test_product_category_formula_boundaries.py`; `tests/golden_samples/GS-PROD-CAT-PNL-A/assertions.md` |
+| `MTR-PCP-014` | 负债端成本率（综本，生息资产利差口径） | business | `formal` | `ProductCategoryPnlPayload.interest_earning_spread.all_currency_liability_yield_pct` | `/product-category-pnl` 主屏利差读数；分管行领导正式报告 | 百分比；两位小数 + `%`；与 `MTR-PCP-020` 为同源镜像（同取 `liability_total`），数值必然相同，不得作为两条独立业务结论 | `report_date` + `view` 绑定；`null` 不得显示为 0 | `tests/test_interest_spread_metric_governance_contract.py`; `tests/test_product_category_formula_boundaries.py`; `tests/golden_samples/GS-PROD-CAT-PNL-A/assertions.md` |
+| `MTR-PCP-015` | 生息资产利差（综本） | business | `formal` | `ProductCategoryPnlPayload.interest_earning_spread.all_currency_spread_pct` | `/product-category-pnl` 主屏利差读数；分管行领导正式报告 | 百分比；两位小数 + `%`；报告中换算 BP 时按 `pct * 100` 且必须标注口径为「生息资产」 | `report_date` + `view` 绑定；不得与 `MTR-PCP-021` 共用系列名 | `tests/test_interest_spread_metric_governance_contract.py`; `tests/test_product_category_formula_boundaries.py`; `tests/golden_samples/GS-PROD-CAT-PNL-A/assertions.md` |
+| `MTR-PCP-016` | 生息资产收益率（人民币） | business | `formal` | `ProductCategoryPnlPayload.interest_earning_spread.cny_asset_yield_pct` | `/product-category-pnl` 主屏利差读数（人民币口径） | 百分比；两位小数 + `%`；由 `cny_cash` / `cny_scale` 独立计算，非综本项拆分 | `report_date` + `view` 绑定；`null` 不得显示为 0 | `tests/test_interest_spread_metric_governance_contract.py`; `tests/golden_samples/GS-PROD-CAT-PNL-A/assertions.md` |
+| `MTR-PCP-017` | 负债端成本率（人民币，生息资产利差口径） | business | `formal` | `ProductCategoryPnlPayload.interest_earning_spread.cny_liability_yield_pct` | `/product-category-pnl` 主屏利差读数（人民币口径） | 百分比；两位小数 + `%`；与 `MTR-PCP-023` 为同源镜像 | `report_date` + `view` 绑定；`null` 不得显示为 0 | `tests/test_interest_spread_metric_governance_contract.py`; `tests/golden_samples/GS-PROD-CAT-PNL-A/assertions.md` |
+| `MTR-PCP-018` | 生息资产利差（人民币） | business | `formal` | `ProductCategoryPnlPayload.interest_earning_spread.cny_spread_pct` | `/product-category-pnl` 主屏利差读数（人民币口径） | 百分比；两位小数 + `%`；与综本项之差**不得**解释为外币利差 | `report_date` + `view` 绑定；`null` 不得显示为 0 | `tests/test_interest_spread_metric_governance_contract.py`; `tests/golden_samples/GS-PROD-CAT-PNL-A/assertions.md` |
+
+#### 资产负债（含 TPL）利差口径 `MTR-PCP-019`~`MTR-PCP-024`
+
+| metric_id | 指标名 | 类型 | basis | 权威来源 | 当前消费面 | 展示规则 | fallback / 时间说明 | 测试锚点 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `MTR-PCP-019` | 资产端收益率（含TPL，综本） | business | `formal` | `ProductCategoryPnlPayload.interest_spread.all_currency_asset_yield_pct` | `/product-category-pnl` 主屏利差读数；分管行领导正式报告 | 百分比；两位小数 + `%`；系列名必须写「资产端收益率（含TPL）」，禁止写成「生息资产收益率」 | `report_date` + `view` 绑定；`null` 不得显示为 0 | `tests/test_interest_spread_metric_governance_contract.py`; `tests/test_product_category_formula_boundaries.py`; `tests/golden_samples/GS-PROD-CAT-PNL-A/assertions.md` |
+| `MTR-PCP-020` | 负债端成本率（综本，资产负债利差口径） | business | `formal` | `ProductCategoryPnlPayload.interest_spread.all_currency_liability_yield_pct` | `/product-category-pnl` 主屏利差读数；分管行领导正式报告 | 百分比；两位小数 + `%`；与 `MTR-PCP-014` 为同源镜像（同取 `liability_total`） | `report_date` + `view` 绑定；`null` 不得显示为 0 | `tests/test_interest_spread_metric_governance_contract.py`; `tests/test_product_category_formula_boundaries.py`; `tests/golden_samples/GS-PROD-CAT-PNL-A/assertions.md` |
+| `MTR-PCP-021` | 资产负债利差（含TPL，综本） | business | `formal` | `ProductCategoryPnlPayload.interest_spread.all_currency_spread_pct` | `/product-category-pnl` 主屏利差读数；分管行领导正式报告 | 百分比；两位小数 + `%`；与 `MTR-PCP-015` 是两个口径，图例与表头必须分别标注，禁止同名 | `report_date` + `view` 绑定；不得与 `MTR-PCP-015` 共用系列名 | `tests/test_interest_spread_metric_governance_contract.py`; `tests/test_product_category_formula_boundaries.py`; `tests/golden_samples/GS-PROD-CAT-PNL-A/assertions.md` |
+| `MTR-PCP-022` | 资产端收益率（含TPL，人民币） | business | `formal` | `ProductCategoryPnlPayload.interest_spread.cny_asset_yield_pct` | `/product-category-pnl` 主屏利差读数（人民币口径） | 百分比；两位小数 + `%`；由 `cny_cash` / `cny_scale` 独立计算 | `report_date` + `view` 绑定；`null` 不得显示为 0 | `tests/test_interest_spread_metric_governance_contract.py`; `tests/golden_samples/GS-PROD-CAT-PNL-A/assertions.md` |
+| `MTR-PCP-023` | 负债端成本率（人民币，资产负债利差口径） | business | `formal` | `ProductCategoryPnlPayload.interest_spread.cny_liability_yield_pct` | `/product-category-pnl` 主屏利差读数（人民币口径） | 百分比；两位小数 + `%`；与 `MTR-PCP-017` 为同源镜像 | `report_date` + `view` 绑定；`null` 不得显示为 0 | `tests/test_interest_spread_metric_governance_contract.py`; `tests/golden_samples/GS-PROD-CAT-PNL-A/assertions.md` |
+| `MTR-PCP-024` | 资产负债利差（含TPL，人民币） | business | `formal` | `ProductCategoryPnlPayload.interest_spread.cny_spread_pct` | `/product-category-pnl` 主屏利差读数（人民币口径） | 百分比；两位小数 + `%`；与综本项之差**不得**解释为外币利差 | `report_date` + `view` 绑定；`null` 不得显示为 0 | `tests/test_interest_spread_metric_governance_contract.py`; `tests/golden_samples/GS-PROD-CAT-PNL-A/assertions.md` |
+
+#### CLN 拖累拆解 `MTR-PCP-025`~`MTR-PCP-029`
+
+口径说明：`ex_cln_cash = liability_total.cnx_cash − credit_linked_notes.cnx_cash`，
+`ex_cln_scale = liability_total.cnx_scale − credit_linked_notes.cnx_scale`，
+再按同一 `days_for_view` / 365 年化。负债行 `cnx_scale` / `cnx_cash` 同为负值，负负相除得正，与 `weighted_yield` 正值口径一致。
+`credit_linked_notes`（`信用联结票据`）行缺失或分母为 0 时五个字段全部返回 `null`。
+
+后端落地状态（治理登记，由 `tests/test_interest_spread_metric_governance_contract.py` 解析）：
+
+- `pending_backend_landing: none`
+- 该登记用于「编号已按 formal 批准、但后端字段尚未落地」的过渡态：把对应 `MTR-PCP-*` 写进上面这行，
+  治理测试即允许该编号暂时解析不到 schema 字段，同时禁止页面或报告把它当作已有读数展示。
+- 登记项在后端落地后**必须删除**，并把对应段补进 `tests/golden_samples/GS-PROD-CAT-PNL-A/response.json`
+  与 `tests/test_golden_samples_capture_ready.py::_validate_product_category` 的比较路径；
+  漏删会被治理测试的 stale-marker 断言直接判失败。
+- 2026-08-13：`liability_cost_decomposition` 段已由 B1 落地，本登记为空。
+
+| metric_id | 指标名 | 类型 | basis | 权威来源 | 当前消费面 | 展示规则 | fallback / 时间说明 | 测试锚点 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `MTR-PCP-025` | 负债端合计成本率 | business | `formal` | `ProductCategoryPnlPayload.liability_cost_decomposition.liability_yield_pct` | `/product-category-pnl` CLN 拖累拆解；分管行领导正式报告 | 百分比；两位小数 + `%`；与 `MTR-PCP-014` / `MTR-PCP-020` 同源镜像（同取 `liability_total.weighted_yield`） | `report_date` + `view` 绑定；`null` 不得显示为 0 | `tests/test_interest_spread_metric_governance_contract.py`; `tests/test_product_category_formula_boundaries.py`; `tests/golden_samples/GS-PROD-CAT-PNL-A/assertions.md` |
+| `MTR-PCP-026` | 剔除 CLN 后负债成本率 | business | `formal` | `ProductCategoryPnlPayload.liability_cost_decomposition.liability_yield_ex_cln_pct` | `/product-category-pnl` CLN 拖累拆解；分管行领导正式报告 | 百分比；两位小数 + `%`；分子分母均为负债合计**减** CLN 行后的余额，不是其余负债行的重新汇总 | `report_date` + `view` 绑定；CLN 行缺失时为 `null`，不得回落为 `MTR-PCP-025` | `tests/test_interest_spread_metric_governance_contract.py`; `tests/test_product_category_formula_boundaries.py`; `tests/golden_samples/GS-PROD-CAT-PNL-A/assertions.md` |
+| `MTR-PCP-027` | CLN 成本率 | business | `formal` | `ProductCategoryPnlPayload.liability_cost_decomposition.cln_yield_pct` | `/product-category-pnl` CLN 拖累拆解；分管行领导正式报告 | 百分比；两位小数 + `%`；仅取 `credit_linked_notes` 单行 | `report_date` + `view` 绑定；`null` 不得显示为 0 | `tests/test_interest_spread_metric_governance_contract.py`; `tests/test_product_category_formula_boundaries.py`; `tests/golden_samples/GS-PROD-CAT-PNL-A/assertions.md` |
+| `MTR-PCP-028` | CLN 拖累（bp） | business | `formal` | `ProductCategoryPnlPayload.liability_cost_decomposition.cln_drag_bp` | `/product-category-pnl` CLN 拖累拆解；分管行领导正式报告 | **`unit="bp"`**（本文件首个非 percent 的 `ProductCategoryMetricValue`）；`display` 一位小数 + ` bp`（小写、空格分隔），`raw` 保留 8 位；正值表示 CLN 抬高负债成本 | `report_date` + `view` 绑定；`null` 不得显示为 0；本项由两费率相减 ×100 得到，会放大上游往返误差 100 倍，跨路径对账以 `display` 或 `1e-6` 容差为准，**不得对 `raw` 做严格相等断言** | `tests/test_interest_spread_metric_governance_contract.py`; `tests/test_product_category_formula_boundaries.py`; `tests/golden_samples/GS-PROD-CAT-PNL-A/assertions.md` |
+| `MTR-PCP-029` | CLN 规模 | business | `formal` | `ProductCategoryPnlPayload.liability_cost_decomposition.cln_scale` | `/product-category-pnl` CLN 拖累拆解；分管行领导正式报告 | 金额；裸 `Decimal` 元，非 `ProductCategoryMetricValue`；沿用负债侧负号，页面展示亿元与符号处理仅限展示层 | `report_date` + `view` 绑定；`null` 不得显示为 0 | `tests/test_interest_spread_metric_governance_contract.py`; `tests/test_product_category_formula_boundaries.py`; `tests/golden_samples/GS-PROD-CAT-PNL-A/assertions.md` |
+
+Guardrails：
+
+- 本节 active 的产品分类 payload 段级指标为 `MTR-PCP-013`~`MTR-PCP-029`；`interest_spread`、
+  `interest_earning_spread`、`liability_cost_decomposition` 三段之外的任何字段都需要新的矩阵 / 字典行 / 样本断言 / 测试。
+- 生息资产口径与资产端口径**必须分别标注**；任何图例、表头、报告文案不得让两个口径共用同一系列名。
+- 综本减人民币的残差不是外币口径，不得据此给出美元负债成本结论。
+- 前端不得重算这三段读数（`CLAUDE.md` 架构边界）；页面只做展示层的符号与单位处理。
+- 字典编号与后端字段的双向一致性由 `tests/test_interest_spread_metric_governance_contract.py` 强制：
+  字典有编号而 schema 无字段（且未登记 `pending_backend_landing`）、schema 有字段而字典无编号、
+  或 `pending_backend_landing` 已过期未删，三种漂移都会失败。
+
 ### 12.4 Capture-ready `sample_scope` 绑定
 
 | sample_id | page_scope / surface | 已有字典真值 `metric_id` | 仅页面 / 样本真值 | 测试入口 |
@@ -461,7 +623,7 @@ Guardrails:
 | `GS-EXEC-OVERVIEW-A` | `PAGE-EXEC-OVERVIEW-001` / `/ui/home/overview` | `MTR-EXEC-001`, `MTR-EXEC-002`, `MTR-EXEC-003`, `MTR-EXEC-004` | `caliber_label` 形状为当前 executive contract truth，不新增指标 | `tests/test_executive_service_contract.py`; `tests/test_executive_dashboard_endpoints.py`; `tests/test_golden_samples_capture_ready.py` |
 | `GS-EXEC-PNL-ATTR-A` | `PAGE-EXEC-PNL-ATTR-001` / `/ui/pnl/attribution` | `MTR-EXEC-101`; `MTR-EXEC-102`~`MTR-EXEC-106` 当前只冻结 segment id presence，不冻结段值 | title 与 segment inventory 为样本结构真值 | `tests/test_executive_service_contract.py`; `tests/test_executive_dashboard_endpoints.py`; `tests/test_golden_samples_capture_ready.py` |
 | `GS-EXEC-SUMMARY-A` | `PAGE-EXEC-SUMMARY-001` / `/ui/home/summary` | 无；本样本为 narrative-only，不进入业务指标字典主表 | `title`、`points.length`、point labels 为 narrative contract truth | `tests/test_executive_service_contract.py`; `tests/test_executive_dashboard_endpoints.py`; `tests/test_golden_samples_capture_ready.py` |
-| `GS-PROD-CAT-PNL-A` | `PAGE-PROD-CAT-PNL-001` / `/ui/pnl/product-category` | `MTR-PCP-001`, `MTR-PCP-002`, `MTR-PCP-003`, `MTR-PCP-004`, `MTR-PCP-005`, `MTR-PCP-006`, `MTR-PCP-007`, `MTR-PCP-008`, `MTR-PCP-009`, `MTR-PCP-010`, `MTR-PCP-011`, `MTR-PCP-012` | category tree, dimensions, `result_meta`, and companion scenario probe remain page/sample truth; 3C detail metric rows bind only approved backend-owned row fields | `tests/test_product_category_pnl_flow.py`; `tests/test_product_category_mapping_contract.py`; `tests/test_golden_samples_capture_ready.py`; `frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.test.ts` |
+| `GS-PROD-CAT-PNL-A` | `PAGE-PROD-CAT-PNL-001` / `/ui/pnl/product-category` | `MTR-PCP-001`, `MTR-PCP-002`, `MTR-PCP-003`, `MTR-PCP-004`, `MTR-PCP-005`, `MTR-PCP-006`, `MTR-PCP-007`, `MTR-PCP-008`, `MTR-PCP-009`, `MTR-PCP-010`, `MTR-PCP-011`, `MTR-PCP-012`, `MTR-PCP-013`~`MTR-PCP-029` | category tree, dimensions, `result_meta`, and companion scenario probe remain page/sample truth; 3C detail metric rows bind only approved backend-owned row fields; `MTR-PCP-013`~`MTR-PCP-029` bind the `interest_spread` / `interest_earning_spread` / `liability_cost_decomposition` payload sections, and the sample's synthetic liability sign profile is structural evidence only, not production caliber certification | `tests/test_product_category_pnl_flow.py`; `tests/test_product_category_mapping_contract.py`; `tests/test_golden_samples_capture_ready.py`; `tests/test_interest_spread_metric_governance_contract.py`; `frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.test.ts` |
 | `GS-PNL-BUSINESS-INSIGHTS-A` | `PAGE-PNL-BY-BUSINESS-001` / `GET /api/pnl/by-business-insights` | `MTR-PNLBIZ-001`~`MTR-PNLBIZ-007` | Approved formal formula/DTO evidence dated `2026-07-15`; Owner=`组合管理/固收业务分析`, Approver=`财务管理/资产负债管理`. The sample verifies the governed derived formulas, field shape, units, minimum-observation rules, component evidence, and diagnostic separation; it is not evidence that the underlying source PnL or balance facts are independently correct. `MTR-PNLBIZ-006` remains diagnostic-only. This approval does not create a concentration limit or a new FTP rate caliber. | `tests/test_pnl_by_business_insights_contract.py`; `tests/test_pnl_by_business_candidate_insights_contract.py`; `tests/test_golden_samples_capture_ready.py`; `tests/golden_samples/GS-PNL-BUSINESS-INSIGHTS-A/approval.md` |
 
 ### 12.5 Wave 1 工作台页面绑定（route → page_id → metric_id → sample_id → 测试）
@@ -493,7 +655,7 @@ Guardrails:
 
 1. 用本文件里的指标集合，先给 6 到 7 个 in-scope 页面写页面契约
 2. 为高风险指标补“页面展示规范”和“fallback 可见性”字段
-3. Keep `GS-PROD-CAT-PNL-A` bound to the approved product-category `MTR-PCP-*` set (`001`~`012`) and require a new matrix / dictionary / sample / test bundle before adding any further detail rows.
+3. Keep `GS-PROD-CAT-PNL-A` bound to the approved product-category `MTR-PCP-*` set (`001`~`012` row/headline, plus `013`~`029` payload-section spread and CLN-drag metrics from §12.3.2) and require a new matrix / dictionary / sample / test bundle before adding any further detail rows.
 
 ## 14. 版本说明
 

@@ -556,6 +556,93 @@
       "is_total": true,
       "children": [],
       "scenario_rate_pct": null
+    },
+    "interest_spread": {
+      "all_currency_asset_yield_pct": {
+        "raw": "114.64979808",
+        "display": "114.65%",
+        "unit": "percent"
+      },
+      "all_currency_liability_yield_pct": {
+        "raw": "-52.47841625",
+        "display": "-52.48%",
+        "unit": "percent"
+      },
+      "all_currency_spread_pct": {
+        "raw": "167.12821433",
+        "display": "167.13%",
+        "unit": "percent"
+      },
+      "cny_asset_yield_pct": {
+        "raw": "113.68561710",
+        "display": "113.69%",
+        "unit": "percent"
+      },
+      "cny_liability_yield_pct": {
+        "raw": "-53.59024321",
+        "display": "-53.59%",
+        "unit": "percent"
+      },
+      "cny_spread_pct": {
+        "raw": "167.27586031",
+        "display": "167.28%",
+        "unit": "percent"
+      }
+    },
+    "interest_earning_spread": {
+      "all_currency_asset_yield_pct": {
+        "raw": "87.65881624",
+        "display": "87.66%",
+        "unit": "percent"
+      },
+      "all_currency_liability_yield_pct": {
+        "raw": "-52.47841625",
+        "display": "-52.48%",
+        "unit": "percent"
+      },
+      "all_currency_spread_pct": {
+        "raw": "140.13723249",
+        "display": "140.14%",
+        "unit": "percent"
+      },
+      "cny_asset_yield_pct": {
+        "raw": "89.63036361",
+        "display": "89.63%",
+        "unit": "percent"
+      },
+      "cny_liability_yield_pct": {
+        "raw": "-53.59024321",
+        "display": "-53.59%",
+        "unit": "percent"
+      },
+      "cny_spread_pct": {
+        "raw": "143.22060681",
+        "display": "143.22%",
+        "unit": "percent"
+      }
+    },
+    "liability_cost_decomposition": {
+      "liability_yield_pct": {
+        "raw": "-52.47841625",
+        "display": "-52.48%",
+        "unit": "percent"
+      },
+      "liability_yield_ex_cln_pct": {
+        "raw": "-54.22510102",
+        "display": "-54.23%",
+        "unit": "percent"
+      },
+      "cln_yield_pct": {
+        "raw": "2.74291726",
+        "display": "2.74%",
+        "unit": "percent"
+      },
+      "cln_drag_bp": {
+        "raw": "174.66847721",
+        "display": "174.7 bp",
+        "unit": "bp"
+      },
+      "cln_scale": "19.01000000"
     }
   }
 }

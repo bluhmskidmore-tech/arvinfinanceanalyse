@@ -147,7 +147,7 @@ export function ProductCategoryInterestSpreadAttributionPanel(props: {
           </h3>
           <p className="product-category-interest-spread-attribution__description">
             {basisLabel} {props.surface.selected.month}月 ·{" "}
-            使用后端返回的利差字段，不代表已激活正式指标
+            使用后端返回的含TPL口径利差字段，不代表已激活正式指标
           </p>
         </div>
         <span className="product-category-interest-spread-attribution__badge">

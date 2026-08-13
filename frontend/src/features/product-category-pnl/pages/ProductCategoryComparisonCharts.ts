@@ -817,7 +817,7 @@ export function buildInterestSpreadYearComparisonChartOption(input: {
             }
             const isDelta = point.seriesName === deltaSeriesName;
             const sign = isDelta && numericValue > 0 ? "+" : "";
-            return `${point.marker ?? ""}${point.seriesName ?? ""}: ${sign}${formatProductCategoryChartNumberTwoDecimals(numericValue)}${isDelta ? "bp" : "%"}`;
+            return `${point.marker ?? ""}${point.seriesName ?? ""}: ${sign}${formatProductCategoryChartNumberTwoDecimals(numericValue)}${isDelta ? " bp" : "%"}`;
           })
           .filter((line): line is string => Boolean(line));
         return [axisLabel, ...lines].join("<br/>");

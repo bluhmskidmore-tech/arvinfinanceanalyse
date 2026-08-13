@@ -2907,7 +2907,7 @@ describe("ProductCategoryPnlPage", () => {
     ).toHaveTextContent("关键变动行排行");
     expect(
       screen.getByTestId("product-category-scenario-sensitivity"),
-    ).toHaveTextContent("每 1bp");
+    ).toHaveTextContent("每 1 bp");
     expect(
       screen.getByTestId("product-category-scenario-sensitivity"),
     ).toHaveTextContent("FTP 压力路径");
@@ -3428,18 +3428,30 @@ describe("ProductCategoryPnlPage", () => {
     const existingInterestSpreadOption = readChartOption(
       "product-category-derived-chart-interest-spread",
     );
+    // 含TPL 口径面板的系列名必须与紧邻的真·生息资产面板区分开（78BP vs 93BP）。
     expect(existingInterestSpreadOption.legend?.data).toEqual([
-      "生息资产收益率（%）",
-      "负债端加权收益率（%）",
-      "生息资产利差（%）",
+      "资产端收益率（含TPL）（%）",
+      "负债端成本率（%）",
+      "资产负债利差（含TPL）（%）",
     ]);
     expect(
       existingInterestSpreadOption.series?.map((series) => series.name),
     ).toEqual([
-      "生息资产收益率（%）",
-      "负债端加权收益率（%）",
-      "生息资产利差（%）",
+      "资产端收益率（含TPL）（%）",
+      "负债端成本率（%）",
+      "资产负债利差（含TPL）（%）",
     ]);
+    const earningSpreadOption = readChartOption(
+      "product-category-derived-chart-interest-earning-spread",
+    );
+    expect(earningSpreadOption.legend?.data).toEqual([
+      "生息资产收益率（%）",
+      "负债端成本率（%）",
+      "生息资产负债利差（%）",
+    ]);
+    expect(existingInterestSpreadOption.legend?.data).not.toContain(
+      "生息资产收益率（%）",
+    );
     expect(
       screen.getByTestId(
         "product-category-derived-chart-interest-earning-spread",
@@ -3869,7 +3881,7 @@ describe("ProductCategoryPnlPage", () => {
     expect(readout).toHaveTextContent("全币种");
     expect(readout).toHaveTextContent("1728.58");
     expect(readout).toHaveTextContent("1.63");
-    expect(readout).toHaveTextContent("+5bp");
+    expect(readout).toHaveTextContent("+5 bp");
     expect(readout).toHaveTextContent("2");
   });
 
@@ -6886,5 +6898,186 @@ describe("ProductCategoryPnlPage", () => {
     await waitFor(() => {
       expect(sensitivityPanel).toHaveTextContent("总净营收");
     });
+  });
+
+  function spreadSectionFixture(input: {
+    asset: string;
+    liability: string;
+    spread: string;
+  }): ProductCategoryInterestSpreadPayload {
+    const percent = (raw: string) => ({
+      raw,
+      display: `${Number(raw).toFixed(2)}%`,
+      unit: "percent" as const,
+    });
+    return {
+      all_currency_asset_yield_pct: percent(input.asset),
+      all_currency_liability_yield_pct: percent(input.liability),
+      all_currency_spread_pct: percent(input.spread),
+      cny_asset_yield_pct: null,
+      cny_liability_yield_pct: null,
+      cny_spread_pct: null,
+    };
+  }
+
+  /**
+   * 用已核定的 2026-07-31 口径覆盖 mock 的利差段，使两个视图返回不同读数。
+   * `liability_cost_decomposition` 由 B1 并行落地，这里按 CONTRACT.md 形状注入以覆盖两条路径。
+   */
+  function createSpreadReadoutClient(options: { withDecomposition: boolean }) {
+    const baseClient = createApiClient({ mode: "mock" });
+    const getProductCategoryPnl = vi.fn(
+      async (
+        request: Parameters<typeof baseClient.getProductCategoryPnl>[0],
+      ) => {
+        const envelope = await baseClient.getProductCategoryPnl(request);
+        const isYtd = request.view === "ytd";
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            interest_earning_spread: spreadSectionFixture(
+              isYtd
+                ? { asset: "2.36", liability: "1.58", spread: "0.78" }
+                : { asset: "2.29", liability: "1.53", spread: "0.76" },
+            ),
+            interest_spread: spreadSectionFixture(
+              isYtd
+                ? { asset: "2.51", liability: "1.58", spread: "0.93" }
+                : { asset: "2.17", liability: "1.53", spread: "0.64" },
+            ),
+            ...(options.withDecomposition
+              ? {
+                  liability_cost_decomposition: {
+                    liability_yield_pct: {
+                      raw: "1.58",
+                      display: "1.58%",
+                      unit: "percent",
+                    },
+                    liability_yield_ex_cln_pct: {
+                      raw: "1.57",
+                      display: "1.57%",
+                      unit: "percent",
+                    },
+                    cln_yield_pct: {
+                      raw: "2.79",
+                      display: "2.79%",
+                      unit: "percent",
+                    },
+                    cln_drag_bp: { raw: "1.4", display: "1.4bp", unit: "bp" },
+                    cln_scale: "-1947000000",
+                  },
+                }
+              : {}),
+          } as typeof envelope.result,
+        };
+      },
+    );
+    return { ...baseClient, getProductCategoryPnl };
+  }
+
+  it("answers the overall spread on the first screen and follows the monthly/summary toggle", async () => {
+    const user = userEvent.setup();
+    renderWorkbenchAppWithClient(
+      createSpreadReadoutClient({ withDecomposition: false }),
+    );
+
+    await screen.findByTestId("product-category-table");
+    const readout = await screen.findByTestId("product-category-spread-readout");
+    expect(
+      within(readout).getByTestId("product-category-spread-readout-view"),
+    ).toHaveTextContent("单月口径");
+    expect(
+      within(readout).getByTestId(
+        "product-category-spread-readout-metric-interest_earning_spread",
+      ),
+    ).toHaveTextContent("76.0 bp");
+    expect(
+      within(readout).getByTestId(
+        "product-category-spread-readout-metric-interest_spread_with_tpl",
+      ),
+    ).toHaveTextContent("64.0 bp");
+    expect(
+      within(readout).getByTestId(
+        "product-category-spread-readout-metric-interest_earning_asset_yield",
+      ),
+    ).toHaveTextContent("2.29%");
+
+    await user.click(screen.getByRole("button", { name: "汇总视图" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId(
+          "product-category-spread-readout-metric-interest_earning_spread",
+        ),
+      ).toHaveTextContent("78.0 bp");
+    });
+    expect(
+      screen.getByTestId(
+        "product-category-spread-readout-metric-interest_spread_with_tpl",
+      ),
+    ).toHaveTextContent("93.0 bp");
+    expect(
+      screen.getByTestId(
+        "product-category-spread-readout-metric-asset_yield_with_tpl",
+      ),
+    ).toHaveTextContent("2.51%");
+    expect(
+      screen.getByTestId("product-category-spread-readout-view"),
+    ).toHaveTextContent("累计口径");
+    expect(
+      screen.getByTestId("product-category-spread-readout-caliber"),
+    ).toHaveTextContent("年初至今累计口径");
+  });
+
+  it("hides the CLN drag block behind a gap notice until the backend returns the decomposition", async () => {
+    renderWorkbenchAppWithClient(
+      createSpreadReadoutClient({ withDecomposition: false }),
+    );
+
+    await screen.findByTestId("product-category-table");
+    const gap = await screen.findByTestId(
+      "product-category-spread-readout-liability-gap",
+    );
+    expect(gap).toHaveTextContent("后端未返回负债成本拆解字段");
+    expect(
+      screen.queryByTestId("product-category-spread-readout-liability"),
+    ).not.toBeInTheDocument();
+    expect(gap).not.toHaveTextContent("NaN");
+    expect(gap).not.toHaveTextContent("0.00");
+  });
+
+  it("renders the CLN drag block once liability_cost_decomposition is returned", async () => {
+    renderWorkbenchAppWithClient(
+      createSpreadReadoutClient({ withDecomposition: true }),
+    );
+
+    await screen.findByTestId("product-category-table");
+    const liability = await screen.findByTestId(
+      "product-category-spread-readout-liability",
+    );
+    expect(
+      within(liability).getByTestId(
+        "product-category-spread-readout-liability-metric-liability_yield_pct",
+      ),
+    ).toHaveTextContent("1.58%");
+    expect(
+      within(liability).getByTestId(
+        "product-category-spread-readout-liability-metric-liability_yield_ex_cln_pct",
+      ),
+    ).toHaveTextContent("1.57%");
+    expect(
+      within(liability).getByTestId(
+        "product-category-spread-readout-liability-metric-cln_drag_bp",
+      ),
+    ).toHaveTextContent("1.4 bp");
+    expect(
+      within(liability).getByTestId(
+        "product-category-spread-readout-liability-metric-cln_yield_pct",
+      ),
+    ).toHaveTextContent("规模 19.47 亿元");
+    expect(
+      screen.queryByTestId("product-category-spread-readout-liability-gap"),
+    ).not.toBeInTheDocument();
   });
 });

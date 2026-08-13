@@ -35,6 +35,8 @@ import MonthlyOperatingAnalysisBranch from "./MonthlyOperatingAnalysisBranch";
 import "./ProductCategoryPnlPage.css";
 import { ProductCategoryFormalReadinessBand } from "./ProductCategoryFormalReadinessBand";
 import { ProductCategoryGovernanceStrip } from "./ProductCategoryGovernanceStrip";
+import { ProductCategorySpreadReadout } from "./ProductCategorySpreadReadout";
+import { selectProductCategorySpreadReadoutSurface } from "./model/productCategoryPnlSpreadReadoutModel";
 import {
   buildDualAxisChartOption,
   buildIncomeYearComparisonChartOption,
@@ -1127,6 +1129,16 @@ export default function ProductCategoryPnlPage() {
   const currentSelectedResultMeta = scenario
     ? scenarioQuery.data?.result_meta
     : baselineQuery.data?.result_meta;
+  // 利差不随 FTP 场景变化（后端口径），因此固定读正式基线 payload。
+  const spreadReadoutSurface = useMemo(
+    () =>
+      selectProductCategorySpreadReadoutSurface({
+        payload: baseline,
+        reportDate: selectedDate,
+        selectedView,
+      }),
+    [baseline, selectedDate, selectedView],
+  );
   const trendDiagnosticsLoaded = Boolean(selectedDate);
   const selectedYearMonth = useMemo(
     () => reportDateYearMonth(selectedDate),
@@ -1974,17 +1986,17 @@ export default function ProductCategoryPnlPage() {
             labels: interestSpreadChart.labels,
             series: [
               {
-                name: "生息资产收益率（%）",
+                name: "资产端收益率（含TPL）（%）",
                 data: interestSpreadChart.assetYield,
                 color: PRODUCT_CATEGORY_DARK_CHART_THEME.green,
               },
               {
-                name: "负债端加权收益率（%）",
+                name: "负债端成本率（%）",
                 data: interestSpreadChart.liabilityYield,
                 color: PRODUCT_CATEGORY_DARK_CHART_THEME.muted,
               },
               {
-                name: "生息资产利差（%）",
+                name: "资产负债利差（含TPL）（%）",
                 data: interestSpreadChart.spread,
                 color: PRODUCT_CATEGORY_DARK_CHART_THEME.red,
               },
@@ -2900,6 +2912,13 @@ export default function ProductCategoryPnlPage() {
         />
       ) : null}
 
+      {canRenderBaselineDerivedAnalysis ? (
+        <ProductCategorySpreadReadout
+          reportDate={selectedDate}
+          surface={spreadReadoutSurface}
+        />
+      ) : null}
+
       <section
         data-testid="product-category-operating-command-rail"
         className="product-category-operating-command-rail"
@@ -3313,7 +3332,7 @@ export default function ProductCategoryPnlPage() {
                   <strong>{trendHeaderMetrics.liabilityAverage}</strong>
                 </span>
                 <span>
-                  <small>净利差</small>
+                  <small>利差（含TPL）</small>
                   <strong>{trendHeaderMetrics.netSpread}</strong>
                 </span>
               </div>
@@ -3357,13 +3376,13 @@ export default function ProductCategoryPnlPage() {
                   <DerivedChartPanel
                     testId="product-category-derived-chart-interest-spread"
                     title="资产负债利差趋势图"
-                    description="跟踪近8个报告期资产端与负债端利差的变化趋势。"
+                    description="资产端为含TPL 口径：跟踪近8个报告期资产端收益率（含TPL）、负债端成本率与资产负债利差（含TPL）的变化趋势。"
                     option={interestSpreadOption}
                   />
                   <DerivedChartPanel
                     testId="product-category-derived-chart-interest-earning-spread"
                     title="生息资产负债利差趋势图"
-                    description="对比生息资产收益率、计息负债成本率与利差的变化。"
+                    description="对比生息资产收益率、负债端成本率与生息资产负债利差的变化。"
                     option={interestEarningSpreadOption}
                   />
                   <DerivedChartPanel
@@ -3388,7 +3407,7 @@ export default function ProductCategoryPnlPage() {
                       利差变动归因
                     </h3>
                     <p className="product-category-diagnostics__description">
-                      资产端收益率 − 负债端付息率
+                      资产端收益率（含TPL）− 负债端成本率
                     </p>
                   </div>
                   <div className="product-category-diagnostics__spread-grid">

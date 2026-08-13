@@ -94,8 +94,13 @@ class ProductCategoryPnlAnalysisAdapter:
         interest_earning_assets = next(row for row in typed_rows if row.category_id == "interest_earning_assets")
         liability_total = next(row for row in typed_rows if row.category_id == "liability_total")
         grand_total = next(row for row in typed_rows if row.category_id == "grand_total")
+        credit_linked_notes = next(
+            (row for row in typed_rows if row.category_id == "credit_linked_notes"),
+            None,
+        )
         from backend.app.core_finance.product_category_pnl import (
             calculate_product_category_interest_spread_metrics,
+            calculate_product_category_liability_cost_decomposition,
         )
 
         interest_spread = calculate_product_category_interest_spread_metrics(
@@ -109,6 +114,14 @@ class ProductCategoryPnlAnalysisAdapter:
             view=view,
             asset_row=interest_earning_assets.model_dump(mode="python"),
             liability_row=liability_total.model_dump(mode="python"),
+        )
+        liability_cost_decomposition = calculate_product_category_liability_cost_decomposition(
+            report_date=query.report_date,
+            view=view,
+            liability_row=liability_total.model_dump(mode="python"),
+            credit_linked_notes_row=(
+                None if credit_linked_notes is None else credit_linked_notes.model_dump(mode="python")
+            ),
         )
 
         result_kind = (
@@ -150,6 +163,7 @@ class ProductCategoryPnlAnalysisAdapter:
                     "grand_total": grand_total.model_dump(mode="json"),
                     "interest_spread": asdict(interest_spread),
                     "interest_earning_spread": asdict(interest_earning_spread),
+                    "liability_cost_decomposition": asdict(liability_cost_decomposition),
                 },
                 rows=[row.model_dump(mode="json") for row in typed_rows],
                 attribution=_build_product_category_attribution(typed_rows, grand_total),

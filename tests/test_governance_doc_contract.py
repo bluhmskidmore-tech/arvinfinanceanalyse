@@ -925,7 +925,7 @@ def test_product_category_p0_metric_approval_is_consistent_across_docs():
     for required in (
         "P0 keeps `MTR-PCP-001` through `MTR-PCP-012` active; decision 3C detail expansion is limited to the approved row-level fields.",
         "Decision 3C detail metric expansion is dictionary-active for `MTR-PCP-004` through `MTR-PCP-012`; these rows bind only approved `result.rows[]` detail fields and do not promote dimensions or scenario payloads to formal metrics.",
-        "Keep `GS-PROD-CAT-PNL-A` bound to the approved product-category `MTR-PCP-*` set (`001`~`012`) and require a new matrix / dictionary / sample / test bundle before adding any further detail rows.",
+        "Keep `GS-PROD-CAT-PNL-A` bound to the approved product-category `MTR-PCP-*` set (`001`~`012` row/headline, plus `013`~`029` payload-section spread and CLN-drag metrics from §12.3.2) and require a new matrix / dictionary / sample / test bundle before adding any further detail rows.",
     ):
         assert required in "\n".join((metric_dictionary, page_contracts, readiness))
 

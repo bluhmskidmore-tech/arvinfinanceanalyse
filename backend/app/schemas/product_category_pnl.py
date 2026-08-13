@@ -39,7 +39,33 @@ class ProductCategoryMetricValue(BaseModel):
 
     raw: Decimal
     display: str
-    unit: Literal["percent"] = "percent"
+    unit: Literal["percent", "bp"] = "percent"
+
+
+class ProductCategoryLiabilityCostDecompositionPayload(BaseModel):
+    """Liability cost rate split into an ex-CLN base and the drag CLN adds on top.
+
+    `cln_scale` keeps the liability-side negative sign of the source `cnx_scale` so it
+    stays reconcilable against the `credit_linked_notes` row; display layers are
+    expected to take the absolute value (e.g. render -1_934_725_622 as "19.35 亿").
+    Rate fields carry `unit="percent"` and display at 2 decimals; `cln_drag_bp` carries
+    `unit="bp"` and displays at 1 decimal (lowercase, space-separated, e.g. "1.4 bp"),
+    since the percent rates it derives from only resolve to 1bp.
+
+    `cln_drag_bp` is a difference of two rates scaled by 100, so it scales any upstream
+    sub-1e-8 drift by 100 too: the persisted read model and the canonical recompute
+    legitimately disagree in `raw` around the 7th decimal while publishing an identical
+    `display`. Compare this field across paths via `display` or a 1e-6 tolerance; do not
+    assert strict `raw` equality.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    liability_yield_pct: ProductCategoryMetricValue | None = None
+    liability_yield_ex_cln_pct: ProductCategoryMetricValue | None = None
+    cln_yield_pct: ProductCategoryMetricValue | None = None
+    cln_drag_bp: ProductCategoryMetricValue | None = None
+    cln_scale: Decimal | None = None
 
 
 class ProductCategoryInterestSpreadPayload(BaseModel):
@@ -69,6 +95,9 @@ class ProductCategoryPnlPayload(BaseModel):
     )
     interest_earning_spread: ProductCategoryInterestSpreadPayload = Field(
         default_factory=ProductCategoryInterestSpreadPayload
+    )
+    liability_cost_decomposition: ProductCategoryLiabilityCostDecompositionPayload = Field(
+        default_factory=ProductCategoryLiabilityCostDecompositionPayload
     )
 
 

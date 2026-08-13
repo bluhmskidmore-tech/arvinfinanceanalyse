@@ -1870,7 +1870,7 @@ function selectProductCategoryScenarioInsightCards(
     key: "ftp_slope",
     label: "FTP 斜率",
     valueLabel: productCategoryYiNumberLabel(slope),
-    detailLabel: "每 1bp 约影响净营收",
+    detailLabel: "每 1 bp 约影响净营收",
     tone: productCategoryDeltaTone(slope),
   });
   return cards;
@@ -3119,16 +3119,16 @@ function signedBpLabel(value: number | null): string {
     return EM_DASH;
   }
   if (value === 0) {
-    return "0bp";
+    return "0 bp";
   }
-  return `${value > 0 ? "+" : "-"}${Math.abs(value).toFixed(1).replace(/\.0$/, "")}bp`;
+  return `${value > 0 ? "+" : "-"}${Math.abs(value).toFixed(1).replace(/\.0$/, "")} bp`;
 }
 
 function bpLabel(value: number | null): string {
   if (value === null || !Number.isFinite(value)) {
     return EM_DASH;
   }
-  return `${value.toFixed(1).replace(/\.0$/, "")}bp`;
+  return `${value.toFixed(1).replace(/\.0$/, "")} bp`;
 }
 
 function signedYiDeltaLabel(value: number | null): string {
@@ -3191,9 +3191,9 @@ function signedProductCategoryBpDeltaLabel(value: number | null): string {
     return EM_DASH;
   }
   if (value === 0) {
-    return "0.0bp";
+    return "0.0 bp";
   }
-  return `${value > 0 ? "+" : "-"}${Math.abs(value).toFixed(1)}bp`;
+  return `${value > 0 ? "+" : "-"}${Math.abs(value).toFixed(1)} bp`;
 }
 
 function productCategoryOutcomeHit(input: {
@@ -5020,21 +5020,21 @@ export function selectProductCategoryInterestSpreadAttributionSurface(
     rows: [
       {
         key: "asset_yield",
-        label: "生息资产收益率",
+        label: "资产端收益率（含TPL）",
         ...surface.rows.assetYield,
-        explanation: "仅展示后端返回的资产端收益率字段，不推导利差贡献",
+        explanation: "仅展示后端返回的资产端收益率（含TPL）字段，不推导利差贡献",
       },
       {
         key: "liability_cost",
-        label: "负债端成本",
+        label: "负债端成本率",
         ...surface.rows.liabilityCost,
-        explanation: "仅展示后端返回的负债端收益率字段，不推导利差贡献",
+        explanation: "仅展示后端返回的负债端成本率字段，不推导利差贡献",
       },
       {
         key: "spread",
-        label: "生息资产利差",
+        label: "资产负债利差（含TPL）",
         ...surface.rows.spread,
-        explanation: "展示后端返回的利差指标变动，不由前端推导",
+        explanation: "展示后端返回的利差指标变动（含TPL口径），不由前端推导",
       },
     ],
     details: [
