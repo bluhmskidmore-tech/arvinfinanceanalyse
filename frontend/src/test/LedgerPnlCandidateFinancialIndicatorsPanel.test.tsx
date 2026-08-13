@@ -1418,7 +1418,7 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
     await user.click(within(companyDeposit).getByRole("button", { name: /查看追溯/ }));
     let dialog = await screen.findByRole("dialog", { name: "指标追溯详情" });
     expect(
-      (await within(dialog).findAllByText("主表 · 时点余额 · 一级科目")).length,
+      (await within(dialog).findAllByText("主表、时点余额、一级科目")).length,
     ).toBeGreaterThan(0);
     await user.keyboard("{Escape}");
 
