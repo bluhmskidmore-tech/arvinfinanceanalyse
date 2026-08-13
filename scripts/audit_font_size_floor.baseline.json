@@ -1,0 +1,212 @@
+{
+  "frontend/src/components/CalendarList.css": {
+    "belowFloor": 1
+  },
+  "frontend/src/components/CalibrationBadge.css": {
+    "belowFloor": 1
+  },
+  "frontend/src/components/page/FormalResultMetaPanel.css": {
+    "belowFloor": 2
+  },
+  "frontend/src/features/agent/AgentPanel.css": {
+    "belowFloor": 4
+  },
+  "frontend/src/features/agent/AgentWorkbenchPage.css": {
+    "belowFloor": 6
+  },
+  "frontend/src/features/agent/components/AgentRepoMemoryPanel.css": {
+    "belowFloor": 1
+  },
+  "frontend/src/features/agent/components/GitNexusResultView.css": {
+    "belowFloor": 2
+  },
+  "frontend/src/features/balance-analysis/cockpit/balanceAnalysisCockpit.module.css": {
+    "belowFloor": 4
+  },
+  "frontend/src/features/balance-analysis/components/balanceAnalysisStageRow.module.css": {
+    "belowFloor": 3
+  },
+  "frontend/src/features/balance-analysis/components/balanceWorkbench.css": {
+    "belowFloor": 54
+  },
+  "frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.css": {
+    "belowFloor": 10
+  },
+  "frontend/src/features/balance-movement-analysis/pages/BalanceMovementAnalysisFigma.css": {
+    "belowFloor": 99
+  },
+  "frontend/src/features/balance-movement-analysis/pages/BalanceMovementAnalysisPage.css": {
+    "belowFloor": 43
+  },
+  "frontend/src/features/bond-analytics/components/BondAnalyticsDecisionRail.module.css": {
+    "belowFloor": 2
+  },
+  "frontend/src/features/bond-analytics/components/BondAnalyticsFilterActionStrip.module.css": {
+    "belowFloor": 1
+  },
+  "frontend/src/features/bond-analytics/components/BondAnalyticsInstitutionalCockpit.module.css": {
+    "belowFloor": 55
+  },
+  "frontend/src/features/bond-analytics/components/BondAnalyticsMarketContextStrip.module.css": {
+    "belowFloor": 2
+  },
+  "frontend/src/features/bond-analytics/components/BondAnalyticsViewContent.module.css": {
+    "belowFloor": 2
+  },
+  "frontend/src/features/bond-analytics/components/BondAnalyticsYieldCurveTermStructureChart.module.css": {
+    "belowFloor": 1
+  },
+  "frontend/src/features/bond-trading-desk/BondTradingDeskPage.module.css": {
+    "belowFloor": 1
+  },
+  "frontend/src/features/concentration-monitor/ConcentrationMonitorPage.css": {
+    "belowFloor": 2
+  },
+  "frontend/src/features/cross-asset/components/CrossAssetKpiBand.css": {
+    "belowFloor": 2
+  },
+  "frontend/src/features/cross-asset/components/EnvScoreFactorDetailPanel.module.css": {
+    "belowFloor": 5
+  },
+  "frontend/src/features/cross-asset/components/LivermoreRankPanels.css": {
+    "belowFloor": 4
+  },
+  "frontend/src/features/cross-asset/components/TransmissionChainGraph.css": {
+    "belowFloor": 7
+  },
+  "frontend/src/features/cross-asset/pages/CrossAssetDriversPage.css": {
+    "belowFloor": 27
+  },
+  "frontend/src/features/cross-asset/pages/crossAssetTerminalTheme.css": {
+    "belowFloor": 2
+  },
+  "frontend/src/features/decision-items/pages/DecisionItemsPage.css": {
+    "belowFloor": 2
+  },
+  "frontend/src/features/kpi-performance/pages/KpiPerformancePage.css": {
+    "belowFloor": 3
+  },
+  "frontend/src/features/ledger-pnl/components/LedgerPnlAccountDetailDrawer.css": {
+    "belowFloor": 11
+  },
+  "frontend/src/features/ledger-pnl/components/LedgerPnlAnalysisWorkbench.css": {
+    "belowFloor": 11
+  },
+  "frontend/src/features/ledger-pnl/components/LedgerPnlCandidateFinancialIndicatorsPanel.css": {
+    "belowFloor": 40
+  },
+  "frontend/src/features/ledger-pnl/components/LedgerPnlCandidatePeriodComparison.css": {
+    "belowFloor": 12
+  },
+  "frontend/src/features/ledger-pnl/components/LedgerPnlDataTable.css": {
+    "belowFloor": 1
+  },
+  "frontend/src/features/ledger-pnl/components/LedgerPnlFinancialIndicatorSummaryPanel.css": {
+    "belowFloor": 7
+  },
+  "frontend/src/features/ledger-pnl/components/LedgerPnlNetInterestComponentDetailDrawer.css": {
+    "belowFloor": 9
+  },
+  "frontend/src/features/ledger-pnl/components/LedgerPnlSectionNav.css": {
+    "belowFloor": 1
+  },
+  "frontend/src/features/ledger-pnl/components/LedgerPnlWorkbookTables.css": {
+    "belowFloor": 1
+  },
+  "frontend/src/features/ledger-pnl/pages/LedgerPnlPage.css": {
+    "belowFloor": 41
+  },
+  "frontend/src/features/liability-analytics/pages/LiabilityAnalyticsPage.css": {
+    "belowFloor": 1
+  },
+  "frontend/src/features/macro-toolkit/pages/MacroToolkitPage.css": {
+    "belowFloor": 51
+  },
+  "frontend/src/features/market-data/components/LiveResultMetaStrip.css": {
+    "belowFloor": 3
+  },
+  "frontend/src/features/market-data/components/LivermoreStrategyPanel.css": {
+    "belowFloor": 3
+  },
+  "frontend/src/features/market-data/pages/MarketDataPage.css": {
+    "belowFloor": 129
+  },
+  "frontend/src/features/market-finance/pages/MarketFinanceWorkbenchPage.css": {
+    "belowFloor": 14
+  },
+  "frontend/src/features/news-events/NewsEventsPage.css": {
+    "belowFloor": 2
+  },
+  "frontend/src/features/pnl-attribution/components/AdvancedAttributionChart.css": {
+    "belowFloor": 2
+  },
+  "frontend/src/features/pnl-attribution/components/PnlAttributionView.css": {
+    "belowFloor": 2
+  },
+  "frontend/src/features/pnl-attribution/components/VolumeRateAnalysisChart.css": {
+    "belowFloor": 1
+  },
+  "frontend/src/features/pnl-business-insights/PnlByBusinessInsightsPage.css": {
+    "belowFloor": 3
+  },
+  "frontend/src/features/pnl/PnlByBusinessInsightsLeadershipPanel.module.css": {
+    "belowFloor": 3
+  },
+  "frontend/src/features/pnl/PnlByBusinessPage.css": {
+    "belowFloor": 11
+  },
+  "frontend/src/features/positions/components/PositionsView.css": {
+    "belowFloor": 1
+  },
+  "frontend/src/features/product-category-pnl/pages/ProductCategoryGovernanceStrip.css": {
+    "belowFloor": 8
+  },
+  "frontend/src/features/risk-tensor/RiskTensorPage.css": {
+    "belowFloor": 4
+  },
+  "frontend/src/features/team-performance/TeamPerformancePage.css": {
+    "belowFloor": 6
+  },
+  "frontend/src/features/workbench/dashboard-home/dashboardHome.module.css": {
+    "belowFloor": 181
+  },
+  "frontend/src/features/workbench/dashboard-home/dashboardHomeHoldingDrawer.module.css": {
+    "belowFloor": 13
+  },
+  "frontend/src/features/workbench/dashboard-home/dashboardHomeOptionTwo.module.css": {
+    "belowFloor": 21
+  },
+  "frontend/src/features/workbench/dashboard-home/dashboardHomeOptionTwoDeferred.module.css": {
+    "belowFloor": 26
+  },
+  "frontend/src/features/workbench/dashboard-home/dashboardHomeOptionTwoGovernanceSection.module.css": {
+    "belowFloor": 1
+  },
+  "frontend/src/features/workbench/dashboard-home/dashboardHomeOptionTwoSupportBand.module.css": {
+    "belowFloor": 3
+  },
+  "frontend/src/features/workbench/dashboard-home/dashboardHomeShell.module.css": {
+    "belowFloor": 31
+  },
+  "frontend/src/features/workbench/market-shell/MarketWorkbenchFrame.module.css": {
+    "belowFloor": 10
+  },
+  "frontend/src/features/workbench/pages/OperationsAnalysisPage.css": {
+    "belowFloor": 2
+  },
+  "frontend/src/features/workbench/shared/institutionalWorkbench.module.css": {
+    "belowFloor": 4
+  },
+  "frontend/src/styles/dashboardCockpit.css": {
+    "belowFloor": 40
+  },
+  "frontend/src/styles/workbenchDeferredChrome.css": {
+    "belowFloor": 11
+  },
+  "frontend/src/styles/workbenchInstitutionalConsole.css": {
+    "belowFloor": 7
+  },
+  "frontend/src/styles/workbenchShell.css": {
+    "belowFloor": 10
+  }
+}

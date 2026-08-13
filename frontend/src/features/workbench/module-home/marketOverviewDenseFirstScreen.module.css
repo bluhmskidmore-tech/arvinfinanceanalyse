@@ -45,7 +45,7 @@
   min-width: 22px;
   color: var(--dh-api-muted);
   font-family: var(--font-family-mono, "Cascadia Mono", monospace);
-  font-size: 11px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   line-height: 1;
@@ -73,7 +73,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--dh-api-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   line-height: 1.4;
   text-overflow: ellipsis;
@@ -83,7 +83,7 @@
 .sectionHeader strong {
   color: var(--dh-api-muted);
   font-family: var(--font-family-mono, "Cascadia Mono", monospace);
-  font-size: 11px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
   font-weight: 600;
   white-space: nowrap;
@@ -117,7 +117,7 @@
 /* 眉标按首页 overviewEyebrow：素文本，不再做描边徽标。 */
 .heroKicker {
   color: var(--dh-api-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0;
 }
@@ -252,7 +252,7 @@
   min-height: 32px;
   overflow: hidden;
   color: var(--dh-api-soft);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 16px;
   -webkit-box-orient: vertical;
@@ -263,7 +263,7 @@
   overflow: hidden;
   color: var(--dh-api-muted);
   font-family: var(--font-family-mono, "Cascadia Mono", monospace);
-  font-size: 11px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -286,7 +286,7 @@
 .tapeCell > strong small {
   overflow: hidden;
   color: var(--dh-api-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   text-overflow: ellipsis;
 }

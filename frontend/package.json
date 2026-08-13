@@ -11,7 +11,7 @@
     "build": "tsc -b && vite build && npm run guard:candidate-financial-indicators",
     "build:fast": "vite build && npm run guard:candidate-financial-indicators",
     "preview": "vite preview",
-    "debt:audit": "node ../scripts/audit_frontend_debt.mjs && node ../scripts/audit_visual_tokens.mjs",
+    "debt:audit": "node ../scripts/audit_frontend_debt.mjs && node ../scripts/audit_visual_tokens.mjs && node ../scripts/audit_font_size_floor.mjs",
     "guard:home-startup": "node scripts/verifyHomeStartupBundle.mjs",
     "guard:balance-startup": "node scripts/verifyBalanceAnalysisStartupRuntime.mjs",
     "guard:balance-startup:runtime": "node scripts/verifyBalanceAnalysisStartupRuntime.mjs --build",
