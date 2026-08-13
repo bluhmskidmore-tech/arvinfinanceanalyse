@@ -35,9 +35,9 @@ import {
 } from "../components/LedgerPnlSectionNav";
 import {
   LedgerPnlWorkbookTables,
-  buildLedgerPnlWorkbookGroups,
   type LedgerPnlWorkbookTableSpec,
 } from "../components/LedgerPnlWorkbookTables";
+import { buildLedgerPnlWorkbookGroups } from "../components/ledgerPnlWorkbookTablesSupport";
 import {
   LedgerPnlAnalysisWorkbench,
   type LedgerPnlContributorSelection,

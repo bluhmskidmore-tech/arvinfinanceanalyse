@@ -12,7 +12,6 @@ import {
   Table,
   Tag,
   Typography,
-  message,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs, { type Dayjs } from "dayjs";
@@ -46,6 +45,9 @@ const AGG_LABELS: Record<(typeof AGG_OPTIONS)[number], string> = {
   min: "最小",
   max: "最大",
 };
+
+/** 与 Pagination pageSizeOptions 上限一致；防止超限 limit/offset 直达后端。 */
+const MAX_PAGE_SIZE = 200;
 
 type MeasureRow = { key: string; agg: string; field: string };
 type FilterRow = { key: string; dimension: string; values: string[] };
@@ -100,6 +102,77 @@ function buildFiltersMap(rows: FilterRow[]): Record<string, string[]> {
   return out;
 }
 
+/**
+ * 提交前用后端 /api/cube/dimensions/* 返回的元数据做白名单校验：
+ * 度量字段/维度/筛选维度/排序字段必须在元数据清单内；
+ * 非法项显式拒绝并列出原因，不静默丢弃。
+ */
+function collectConfigIssues({
+  reportDateValid,
+  measureRows,
+  selectedDimensions,
+  filterRows,
+  orderRows,
+  dimensionList,
+  measureFields,
+}: {
+  reportDateValid: boolean;
+  measureRows: MeasureRow[];
+  selectedDimensions: string[];
+  filterRows: FilterRow[];
+  orderRows: OrderRow[];
+  dimensionList: string[];
+  measureFields: string[];
+}): string[] {
+  const issues = new Set<string>();
+  if (!reportDateValid) {
+    issues.add("请先填写有效的报告日");
+  }
+
+  const aggAllowed = new Set<string>(AGG_OPTIONS);
+  const activeMeasures = measureRows.filter((r) => r.field && r.agg);
+  if (activeMeasures.length === 0) {
+    issues.add("请至少配置一个有效度量");
+  }
+  for (const row of activeMeasures) {
+    if (!aggAllowed.has(row.agg)) {
+      issues.add(`聚合方式「${row.agg}」不受支持`);
+    }
+    if (row.agg !== "count" && !measureFields.includes(row.field)) {
+      issues.add(`度量字段「${row.field}」不在当前事实表可用清单`);
+    }
+  }
+
+  for (const dim of selectedDimensions) {
+    if (!dimensionList.includes(dim)) {
+      issues.add(`维度「${dim}」不在当前事实表可用清单`);
+    }
+  }
+
+  filterRows.forEach((row, index) => {
+    const hasValues = row.values.some((v) => v.trim() !== "");
+    if (!row.dimension) {
+      if (hasValues) {
+        issues.add(`第 ${index + 1} 个筛选条件已填写取值但未选择维度`);
+      }
+      return;
+    }
+    if (!dimensionList.includes(row.dimension)) {
+      issues.add(`筛选维度「${row.dimension}」不在当前事实表可用清单`);
+    }
+  });
+
+  const orderableFields = new Set<string>([...dimensionList, ...measureFields, "count"]);
+  for (const row of orderRows) {
+    const field = row.field.trim();
+    if (field && !orderableFields.has(field)) {
+      issues.add(`排序字段「${field}」不在可用字段清单`);
+    }
+  }
+
+  return [...issues];
+}
+
 export default function CubeQueryPage() {
   const client = useApiClient();
   const [factTable, setFactTable] = useState<string>("bond_analytics");
@@ -111,6 +184,7 @@ export default function CubeQueryPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [lastResult, setLastResult] = useState<CubeQueryResult | null>(null);
+  const [validationIssues, setValidationIssues] = useState<string[]>([]);
 
   const dimensionsQuery = useQuery({
     queryKey: [client.mode, "cube-dimensions", factTable],
@@ -160,6 +234,7 @@ export default function CubeQueryPage() {
       ),
     );
     setPage(1);
+    setValidationIssues([]);
   }, [factTable, dimensionList, measureFields]);
 
   const buildRequest = useCallback(
@@ -175,8 +250,8 @@ export default function CubeQueryPage() {
         return null;
       }
       const rows = overrides?.filterRows ?? filterRows;
-      const p = overrides?.page ?? page;
-      const ps = overrides?.pageSize ?? pageSize;
+      const p = Math.max(1, overrides?.page ?? page);
+      const ps = Math.min(Math.max(1, overrides?.pageSize ?? pageSize), MAX_PAGE_SIZE);
       const measures = measureRows
         .filter((r) => r.field && r.agg)
         .map((r) => (r.agg === "count" ? "count(*)" : `${r.agg}(${r.field})`));
@@ -216,22 +291,43 @@ export default function CubeQueryPage() {
     onSuccess: (data) => {
       setLastResult(data);
     },
-    onError: (err: unknown) => {
-      message.error(err instanceof Error ? err.message : "查询失败");
-    },
   });
 
   const submit = useCallback(
     (overrides?: Partial<{ filterRows: FilterRow[]; page: number; pageSize: number }>) => {
-      const req = buildRequest(overrides);
-      if (!req) {
-        message.warning("请填写报告日并至少配置一个有效度量。");
+      const issues = collectConfigIssues({
+        reportDateValid: Boolean(reportDate?.isValid()),
+        measureRows,
+        selectedDimensions,
+        filterRows: overrides?.filterRows ?? filterRows,
+        orderRows,
+        dimensionList,
+        measureFields,
+      });
+      if (issues.length > 0) {
+        setValidationIssues(issues);
         return false;
       }
+      const req = buildRequest(overrides);
+      if (!req) {
+        setValidationIssues(["查询请求构建失败，请检查报告日与度量配置"]);
+        return false;
+      }
+      setValidationIssues([]);
       executeMutation.mutate(req);
       return true;
     },
-    [buildRequest, executeMutation],
+    [
+      buildRequest,
+      executeMutation,
+      reportDate,
+      measureRows,
+      selectedDimensions,
+      filterRows,
+      orderRows,
+      dimensionList,
+      measureFields,
+    ],
   );
 
   const handleExecute = () => {
@@ -473,6 +569,7 @@ export default function CubeQueryPage() {
               {filterRows.map((row) => (
                 <Space key={row.key} wrap className={styles.stack}>
                   <Select
+                    data-testid="cube-filter-dimension"
                     className={styles.selectMedium}
                     placeholder="维度"
                     value={row.dimension || undefined}
@@ -484,6 +581,7 @@ export default function CubeQueryPage() {
                     }
                   />
                   <Select
+                    data-testid="cube-filter-values"
                     mode="tags"
                     className={styles.selectGrow}
                     placeholder="取值（可输入）"
@@ -561,12 +659,38 @@ export default function CubeQueryPage() {
               ))}
             </Space>
           </div>
+
+          {validationIssues.length > 0 ? (
+            <PageStateSurface
+              variant="error"
+              testId="cube-config-validation-error"
+              title="查询配置未通过校验，已阻止提交"
+              description={validationIssues.join("；")}
+            />
+          ) : null}
         </Space>
       </EvidencePanel>
 
       <Row gutter={16} className={styles.resultsRow}>
         <Col xs={24} lg={17}>
           <EvidencePanel heading="查询结果">
+            {executeMutation.isError ? (
+              <PageStateSurface
+                variant="error"
+                testId="cube-query-error"
+                title="查询执行失败"
+                description={
+                  executeMutation.error instanceof Error && executeMutation.error.message
+                    ? executeMutation.error.message
+                    : "查询失败，请稍后重试。"
+                }
+                actions={
+                  <Button size="small" onClick={() => submit()}>
+                    重试
+                  </Button>
+                }
+              />
+            ) : null}
             <Table<Record<string, unknown>>
               data-testid="cube-results-table"
               size="small"

@@ -1,8 +1,8 @@
 import { act, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { loadReactECharts } from "../features/product-category-pnl/pages/LazyReactECharts";
-import { DerivedChartPanel } from "../features/product-category-pnl/pages/ProductCategoryComparisonCharts";
+import { loadReactECharts } from "../features/product-category-pnl/pages/lazyReactEChartsLoader";
+import { DerivedChartPanel } from "../features/product-category-pnl/pages/ProductCategoryComparisonChartPanels";
 import type { EChartsOption } from "../lib/echarts";
 
 vi.mock("../lib/echarts", () => ({

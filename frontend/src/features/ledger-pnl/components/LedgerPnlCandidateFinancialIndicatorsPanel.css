@@ -989,6 +989,14 @@
   background: var(--candidate-soft);
 }
 
+/*
+ * 证据/目录两个视图互斥显示（displayedView 切换 hidden），可见一方
+ * 独占整行；证据卡在窄列里单列堆叠会留出右半页空白（DESIGN.md §11.2）。
+ */
+.candidate-indicators__evidence {
+  grid-column: 1 / -1;
+}
+
 .candidate-indicators__catalog--full {
   grid-column: 1 / -1;
 }
@@ -999,6 +1007,13 @@
 .candidate-indicators__lineage-list {
   display: grid;
   gap: 6px;
+}
+
+/* 全宽后证据卡按内容自适应两列流铺，不等高卡顶对齐（§5 align-items: start）。 */
+.candidate-indicators__source-list,
+.candidate-indicators__queue {
+  grid-template-columns: repeat(auto-fill, minmax(min(420px, 100%), 1fr));
+  align-items: start;
 }
 
 .candidate-indicators__source-list article,

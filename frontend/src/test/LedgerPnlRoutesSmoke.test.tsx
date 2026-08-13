@@ -181,10 +181,21 @@ function renderLedgerWithRouter(initialEntry: string, client: ApiClient) {
   return router;
 }
 
+// LedgerPnlPage 的抽屉组件与 ThemedRouteBoundary 都引 antd，vitest 下会求值
+// 整个 antd barrel。多文件组合冷启动时 4 个 worker 并发抢 transform/求值，
+// 单个 hook 超时窗口可能不够，所以在模块 collection 阶段就发起预热（不
+// await），两个 beforeAll 按序等待完成，各自保持 30s 超时上限。
+const antdBarrelWarmup = import("antd");
+const ledgerPnlWarmup = antdBarrelWarmup.then(() => preloadWorkbenchRouteModules("ledger-pnl"));
+
 describe("ledger-pnl routed page smoke", () => {
   beforeAll(async () => {
-    await preloadWorkbenchRouteModules("ledger-pnl");
-  }, 20_000);
+    await antdBarrelWarmup;
+  }, 30_000);
+
+  beforeAll(async () => {
+    await ledgerPnlWarmup;
+  }, 30_000);
 
   it("renders the live /ledger-pnl workbench route", async () => {
     renderLedgerWithRouter("/ledger-pnl", buildLedgerClient());

@@ -5350,3 +5350,17 @@ export function formatProductCategoryDualMetaDistinctLine(
 ): string {
   return `正式与情景分开展示：正式口径=${resultMetaBasisLabel(formalMeta.basis)} 追踪编号=${formalMeta.trace_id}；情景口径=${resultMetaBasisLabel(scenarioMeta.basis)} 追踪编号=${scenarioMeta.trace_id}（两路结果元信息分卡展示，不混用）。`;
 }
+
+export function isProductCategoryAttributionTotalRow(
+  row: ProductCategoryAttributionRow,
+): boolean {
+  return (
+    row.category_id.endsWith("_total") || row.category_id === "grand_total"
+  );
+}
+
+export function isProductCategoryAttributionDetailRow(
+  row: ProductCategoryAttributionRow,
+): boolean {
+  return !isProductCategoryAttributionTotalRow(row);
+}

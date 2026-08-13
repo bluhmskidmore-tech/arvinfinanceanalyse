@@ -41,10 +41,8 @@ import {
 } from "../features/ledger-pnl/components/LedgerPnlDataTable";
 import { LedgerPnlAnalysisWorkbench } from "../features/ledger-pnl/components/LedgerPnlAnalysisWorkbench";
 import { LedgerPnlFinancialIndicatorSummaryPanel } from "../features/ledger-pnl/components/LedgerPnlFinancialIndicatorSummaryPanel";
-import {
-  LedgerPnlWorkbookTables,
-  buildLedgerPnlWorkbookGroups,
-} from "../features/ledger-pnl/components/LedgerPnlWorkbookTables";
+import { LedgerPnlWorkbookTables } from "../features/ledger-pnl/components/LedgerPnlWorkbookTables";
+import { buildLedgerPnlWorkbookGroups } from "../features/ledger-pnl/components/ledgerPnlWorkbookTablesSupport";
 import {
   formatCandidateComparisonAmount,
   formatCandidateComparisonRate,

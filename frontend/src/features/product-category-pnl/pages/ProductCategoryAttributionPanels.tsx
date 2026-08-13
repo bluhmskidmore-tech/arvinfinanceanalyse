@@ -19,6 +19,8 @@ import {
   type ProductCategoryLiabilityDetailMatrixRow,
   type ProductCategoryLiabilityDetailTrendRow,
   type ProductCategoryRootCauseSurface,
+  isProductCategoryAttributionDetailRow,
+  isProductCategoryAttributionTotalRow,
   selectProductCategoryClosureErrorSignal,
 } from "./productCategoryPnlPageModel";
 import { EM_DASH } from "../../../utils/format";
@@ -761,20 +763,6 @@ function pickProductCategoryAttributionHeadlineRow(
   return (
     rows.find((row) => row.category_id === "grand_total") ?? rows[0] ?? null
   );
-}
-
-function isProductCategoryAttributionTotalRow(
-  row: ProductCategoryAttributionRow,
-): boolean {
-  return (
-    row.category_id.endsWith("_total") || row.category_id === "grand_total"
-  );
-}
-
-export function isProductCategoryAttributionDetailRow(
-  row: ProductCategoryAttributionRow,
-): boolean {
-  return !isProductCategoryAttributionTotalRow(row);
 }
 
 function pickProductCategoryAttributionDetailRow(
