@@ -70,8 +70,8 @@ describe("home startup deferred client", () => {
       basis: "formal",
       formal_use_allowed: true,
       source_version: "sv_risk_tensor_fact_mock_v3",
-      rule_version: "rv_risk_tensor_formal_materialize_v5",
-      cache_version: "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v5",
+      rule_version: "rv_risk_tensor_formal_materialize_v6",
+      cache_version: "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v6",
     });
   });
 
