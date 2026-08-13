@@ -1,5 +1,7 @@
-import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
+import { BaseChart } from "../../../components/charts/BaseChart";
 import { CalendarList } from "../../../components/CalendarList";
+import { type EChartsOption } from "../../../lib/echarts";
+import { designTokens } from "../../../theme/designSystem";
 import { useBalanceAnalysisThreeColumnGridStyle } from "./balanceAnalysisLayout";
 import { BalanceStageTerminalPanel } from "./BalanceStageTerminalPanel";
 import rowStyles from "./balanceAnalysisStageRow.module.css";
@@ -23,6 +25,7 @@ function buildMaturityOption(model: BalanceStageBottomModel, includeTitle: boole
           text: "期限结构（资产/负债/净缺口）",
           left: 0,
           top: 0,
+          /* 标题墨色/双 bar 主色无同值 token，保留字面量（echarts 读不到 CSS 变量）。 */
           textStyle: { fontSize: 14, fontWeight: 700, color: "#162033" },
         }
       : undefined,
@@ -50,7 +53,10 @@ function buildMaturityOption(model: BalanceStageBottomModel, includeTitle: boole
         data: gapSeries.map((value) => ({
           value,
           itemStyle:
-            value === null ? undefined : { color: value < 0 ? "#b76e00" : "#3f8a6a" },
+            value === null
+              ? undefined
+              : /* 负缺口琥珀取同值 token；正缺口绿无同值 token，保留字面量。 */
+                { color: value < 0 ? designTokens.color.cockpit.amber700 : "#3f8a6a" },
         })),
       },
     ],
@@ -63,11 +69,8 @@ export function BalanceBottomRow({ model, variant = "default" }: BalanceBottomRo
   const maturityOption = buildMaturityOption(model, !isTerminal);
 
   const maturityPanel = (
-    <ReactECharts
-      option={maturityOption}
-      style={{ height: isTerminal ? 260 : 300 }}
-      opts={{ renderer: "canvas" }}
-    />
+    /* opts.renderer=canvas 为 echarts 默认值，迁 BaseChart 后省略等价。 */
+    <BaseChart option={maturityOption} height={isTerminal ? 260 : 300} />
   );
 
   const riskPanel = (

@@ -804,10 +804,10 @@ export default function PortfolioHomeLayout({
           <div className={styles.toolbarMeta}>
             <span className={statePillClass(stateTone)} data-tone={stateTone}>{view.stateLabel}</span>
             <span className={styles.datePill}>
-              资产负债日 <strong>{balanceReportDate || "—"}</strong>
+              资产负债日 <strong>{balanceReportDate || EM_DASH}</strong>
             </span>
             <span className={styles.datePill}>
-              债券总览日 <strong>{bondReportDate || "—"}</strong>
+              债券总览日 <strong>{bondReportDate || EM_DASH}</strong>
             </span>
           </div>
         </div>

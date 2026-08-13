@@ -1,5 +1,6 @@
 import "./AgentGenericCardsGrid.css";
 
+import { EM_DASH } from "../../../utils/format";
 type AgentGenericCard = {
   title: string;
   value?: string | null;
@@ -113,7 +114,7 @@ function renderMarkdownCard(card: AgentGenericCard) {
     >
       <div className="agent-generic-cards__title">{card.title}</div>
       <div className="agent-generic-cards__memo" data-testid="agent-memo-card-body">
-        {text || "—"}
+        {text || EM_DASH}
       </div>
     </div>
   );
@@ -123,7 +124,7 @@ function renderScalarCard(card: AgentGenericCard) {
   return (
     <div key={`${card.title}-${card.type}`} className="agent-generic-cards__card">
       <div className="agent-generic-cards__title">{card.title}</div>
-      <div className="agent-generic-cards__scalar">{String(card.value ?? "—")}</div>
+      <div className="agent-generic-cards__scalar">{String(card.value ?? EM_DASH)}</div>
       <div className="agent-generic-cards__type">{formatCardType(card.type)}</div>
     </div>
   );

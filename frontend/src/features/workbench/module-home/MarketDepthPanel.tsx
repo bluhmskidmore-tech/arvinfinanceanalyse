@@ -105,7 +105,7 @@ function depthTable(panel: ModuleHomeDetailPanel, compact: boolean, compactLadde
               className={`${marketStyles.terminalTableChange} ${dhStyles.dhNum} ${change.className}`}
               data-change={change.direction ?? "flat"}
             >
-              {changeText ?? "—"}
+              {changeText ?? EM_DASH}
             </span>
           </div>
         );

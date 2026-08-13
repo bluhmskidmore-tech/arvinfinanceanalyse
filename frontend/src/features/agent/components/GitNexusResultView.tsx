@@ -4,6 +4,7 @@ import { designTokens, ibTokens } from "../../../theme/designSystem";
 
 import "./GitNexusResultView.css";
 
+import { EM_DASH } from "../../../utils/format";
 type GitNexusResultCard = {
   title: string;
   value?: string | null;
@@ -29,10 +30,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function formatMetaValue(value: unknown) {
   if (value === null || value === undefined) {
-    return "—";
+    return EM_DASH;
   }
   if (typeof value === "string") {
-    return value.trim().length > 0 ? value : "—";
+    return value.trim().length > 0 ? value : EM_DASH;
   }
   if (typeof value === "number" || typeof value === "boolean") {
     return String(value);

@@ -3,7 +3,8 @@ import { useMemo } from "react";
 
 import type { Numeric } from "../../../api/contracts";
 import { ibChartTheme } from "../../../components/charts/chartTheme";
-import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
+import { BaseChart } from "../../../components/charts/BaseChart";
+import { type EChartsOption } from "../../../lib/echarts";
 import { EM_DASH } from "../../../utils/format";
 import { numericToYiNumeric, numericYuanRaw } from "../utils/money";
 
@@ -215,7 +216,7 @@ export function LiabilityCounterpartyBlock({
                 <Spin />
               </div>
             ) : (
-              <ReactECharts option={barOption} style={{ height: 320 }} notMerge lazyUpdate />
+              <BaseChart option={barOption} height={320} />
             )}
           </div>
         </Card>
@@ -231,7 +232,7 @@ export function LiabilityCounterpartyBlock({
                 <Spin />
               </div>
             ) : (
-              <ReactECharts option={pieOption} style={{ height: 280 }} notMerge lazyUpdate />
+              <BaseChart option={pieOption} height={280} />
             )}
           </div>
           <Text type="secondary" className="liability-panel-caption--tight">

@@ -12,6 +12,7 @@ const MARKET_CHANGE_CLASSES = {
 import { MarketPanelSummary } from "./MarketPanelSummary";
 import marketStyles from "./marketHome.module.css";
 
+import { EM_DASH } from "../../../utils/format";
 function toneClass(tone: ModuleHomeTone) {
   if (tone === "watch") return dhStyles.dhMuted;
   if (tone === "error") return dhStyles.dhUpRed;
@@ -62,7 +63,7 @@ export function MarketRateLadder({ panel, viewAllPath = "/market-data" }: Market
                 className={`${marketStyles.rateTableChange} ${dhStyles.dhNum} ${change.className}`}
                 data-change={change.direction ?? "flat"}
               >
-                {row.detail ?? "—"}
+                {row.detail ?? EM_DASH}
               </span>
               <span className={`${marketStyles.rateTableDate} ${dhStyles.dhNum}`}>{row.tradeDate}</span>
             </div>

@@ -1,3 +1,5 @@
+/* 2026-08-13 债务清零：删除 var(--dh-*, #hex) 浅色回退——本模块类只在
+   BalanceAnalysisPage 根（.dhLightPage，恒定义全部 --dh-*）之下渲染，回退从不生效。 */
 .baCockpitStack {
   display: grid;
   gap: var(--dh-space-2, 12px);
@@ -11,11 +13,11 @@
 
 .baOpsKpiRow :global(.dhTerminalKpi) {
   min-height: 88px;
-  background: var(--dh-card-soft, #f7f9fc);
+  background: var(--dh-card-soft);
 }
 
 .baOpsKpiRow :global(.dhTerminalKpiTop) {
-  color: var(--dh-muted, #6b7d95);
+  color: var(--dh-muted);
 }
 
 .baStageSection {
@@ -32,7 +34,7 @@
 }
 
 .baStageSectionHead span {
-  color: var(--dh-muted, #6b7d95);
+  color: var(--dh-muted);
   font-size: 11px;
   font-weight: 750;
   letter-spacing: 0.04em;
@@ -40,7 +42,7 @@
 }
 
 .baStageSectionHead strong {
-  color: var(--dh-blue-deep, #10356a);
+  color: var(--dh-blue-deep);
   font-size: 12px;
   font-weight: 850;
 }
@@ -51,7 +53,7 @@
 }
 
 .baStageStack :global(.dhCard:hover) {
-  border-color: var(--dh-line-soft, #eef2f7);
+  border-color: var(--dh-line-soft);
   box-shadow: var(--dh-shadow-card, 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06));
 }
 
@@ -69,7 +71,7 @@
 
 .baJudgementCompact .baJudgementFoot {
   margin-top: 2px;
-  color: var(--dh-muted, #6b7d95);
+  color: var(--dh-muted);
   font-size: 11px;
   font-weight: 700;
 }
@@ -109,7 +111,7 @@
   align-items: center;
   gap: 6px 8px;
   padding: 5px 0;
-  border-bottom: 1px solid var(--dh-line-soft, #eef2f7);
+  border-bottom: 1px solid var(--dh-line-soft);
   font-size: 12px;
 }
 
@@ -118,7 +120,7 @@
 }
 
 .baMaturityLabel {
-  color: var(--dh-ink-2, #2c3e5a);
+  color: var(--dh-ink-2);
   font-weight: 750;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -129,7 +131,7 @@
   grid-column: 1 / -1;
   height: 5px;
   border-radius: 999px;
-  background: var(--dh-line-soft, #eef2f7);
+  background: var(--dh-line-soft);
   overflow: hidden;
 }
 
@@ -137,15 +139,15 @@
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: var(--dh-dist-blue, #35679b);
+  background: var(--dh-dist-blue);
 }
 
 .baMaturityFillNegative {
-  background: var(--dh-red, #b94743);
+  background: var(--dh-red);
 }
 
 .baMaturityFillNeutral {
-  background: var(--dh-dist-neutral, #b6c1cf);
+  background: var(--dh-dist-neutral);
 }
 
 .baMaturityValue {
@@ -164,7 +166,7 @@
   gap: 1px;
   overflow: hidden;
   border-radius: 8px;
-  background: var(--dh-line-soft, #eef2f7);
+  background: var(--dh-line-soft);
 }
 
 .baTwoCol {
@@ -187,7 +189,7 @@
 
 .baWorkbookNote {
   margin: 10px 0 0;
-  color: var(--dh-muted, #6b7d95);
+  color: var(--dh-muted);
   font-size: 11px;
   line-height: 1.45;
 }

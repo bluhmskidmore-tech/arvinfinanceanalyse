@@ -4,6 +4,7 @@ import { MarketHomeKpiSparkline } from "./MarketHomeKpiSparkline";
 import type { ModuleHomeDetailPanel } from "./moduleHomeModel";
 import styles from "./portfolioHome.module.css";
 
+import { EM_DASH } from "../../../utils/format";
 const TICKER_LIMIT = 7;
 
 type PortfolioRiskTickerBarProps = {
@@ -89,7 +90,7 @@ export function PortfolioRiskTickerBar({
                 )}`}
                 data-change={changeDirection ?? "flat"}
               >
-                {row.source ?? row.detail ?? "—"}
+                {row.source ?? row.detail ?? EM_DASH}
               </em>
             </div>
           );

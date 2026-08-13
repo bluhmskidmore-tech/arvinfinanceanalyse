@@ -13,6 +13,7 @@ import type {
 import { buildBalanceDetailGridRows, buildBalanceDetailSummaryGridRows } from "../pages/balanceAnalysisGridRows";
 import { useBalanceAnalysisFilters } from "./useBalanceAnalysisFilters";
 
+import { EM_DASH } from "../../../utils/format";
 const PAGE_SIZE = 2;
 
 const primaryWorkbookTableKeys = [
@@ -48,7 +49,7 @@ function finiteNumber(value: unknown): number {
 }
 
 function normalizeConcentrationDimensionLabel(value: unknown, kind: "top" | "other" | "unknown") {
-  const label = String(value ?? "").trim() || "—";
+  const label = String(value ?? "").trim() || EM_DASH;
   if (kind === "other" && label.toLowerCase() === "other") {
     return "其他";
   }
@@ -107,7 +108,7 @@ function buildMovementBondBusinessTypeTable(
       { key: "balance_amount", label: "期末余额" },
     ],
     rows: movementRows.map((row) => ({
-      bond_type: String(row.row_label ?? "—"),
+      bond_type: String(row.row_label ?? EM_DASH),
       balance_amount: yuanAmountToWanString(row.current_balance),
       source_note: row.source_note,
     })),

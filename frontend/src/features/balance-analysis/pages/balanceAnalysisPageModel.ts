@@ -16,7 +16,8 @@ import type {
   BalanceMovementPayload,
   ResultMeta,
 } from "../../../api/contracts";
-import { buildStateSurfaces, type StateSurfaceItem } from "../../../pageModel";
+import { EM_DASH, buildStateSurfaces, type StateSurfaceItem } from "../../../pageModel";
+import { designTokens } from "../../../theme/designSystem";
 
 /** Minimum bar width (%) used by workbook distribution / gap panels (matches BalanceAnalysisPage). */
 export const BALANCE_ANALYSIS_MIN_CHART_BAR_WIDTH_PCT = 14;
@@ -127,10 +128,10 @@ export function formatBalanceScopeTotalAmountToYi(
   amountKey: BalanceScopeAmountKey,
 ): string {
   if (!totals.hasRows) {
-    return "—";
+    return EM_DASH;
   }
   const value = totals[amountKey];
-  return value === null ? "—" : formatBalanceAmountToYiFromYuan(value);
+  return value === null ? EM_DASH : formatBalanceAmountToYiFromYuan(value);
 }
 
 /**
@@ -221,7 +222,7 @@ export function gapChartBarWidthPercent(
 /** Workbook cell / label display: null, undefined, empty string → em dash. */
 export function formatBalanceWorkbookCellDisplay(value: unknown): string {
   if (value === null || value === undefined || value === "") {
-    return "—";
+    return EM_DASH;
   }
   return String(value);
 }
@@ -229,7 +230,7 @@ export function formatBalanceWorkbookCellDisplay(value: unknown): string {
 /** Workbook numeric metric (e.g. 加权利率%、加权期限年): zh-CN, 2 fraction digits; missing → em dash; invalid → original string. */
 export function formatBalanceWorkbookMetricTwoDecimals(value: unknown): string {
   if (value === null || value === undefined || value === "") {
-    return "—";
+    return EM_DASH;
   }
   const n = finiteNumberFromUnknown(value);
   if (n === null) {
@@ -250,7 +251,7 @@ const WORKBOOK_OPERATIONAL_SECTION_KEY_LABELS: Record<string, string> = {
 
 export function formatBalanceWorkbookOperationalSectionKeyDisplay(value: unknown): string {
   const raw = formatBalanceWorkbookCellDisplay(value);
-  if (raw === "—") {
+  if (raw === EM_DASH) {
     return raw;
   }
   return WORKBOOK_OPERATIONAL_SECTION_KEY_LABELS[raw] ?? raw;
@@ -286,10 +287,10 @@ export function formatBalanceDecisionWorkflowStatusDisplay(value: unknown): stri
   return formatBalanceWorkbookCellDisplay(value);
 }
 
-/** Overview-style integer grouping; missing → "—"; invalid → original string. */
+/** Overview-style integer grouping; missing → EM_DASH; invalid → original string. */
 export function formatBalanceOverviewNumber(raw: string | number | null | undefined): string {
   if (raw === null || raw === undefined || raw === "") {
-    return "—";
+    return EM_DASH;
   }
   const n = finiteNumberFromOverviewInput(raw);
   if (n === null) {
@@ -301,7 +302,7 @@ export function formatBalanceOverviewNumber(raw: string | number | null | undefi
 /** Yuan → 亿元 display (2 decimals, zh-CN). */
 export function formatBalanceAmountToYiFromYuan(raw: string | number | null | undefined): string {
   if (raw === null || raw === undefined || raw === "") {
-    return "—";
+    return EM_DASH;
   }
   const n = finiteNumberFromOverviewInput(raw);
   if (n === null) {
@@ -316,7 +317,7 @@ export function formatBalanceAmountToYiFromYuan(raw: string | number | null | un
 /** 万元 → 亿元 display (2 decimals, zh-CN). */
 export function formatBalanceAmountToYiFromWan(raw: string | number | null | undefined): string {
   if (raw === null || raw === undefined || raw === "") {
-    return "—";
+    return EM_DASH;
   }
   const n = finiteNumberFromOverviewInput(raw);
   if (n === null) {
@@ -331,7 +332,7 @@ export function formatBalanceAmountToYiFromWan(raw: string | number | null | und
 /** Workbook wan-yuan amount cell display with unit, preserving invalid source text. */
 export function formatBalanceWorkbookWanAmountDisplay(raw: unknown): string {
   if (raw === null || raw === undefined || raw === "") {
-    return "—";
+    return EM_DASH;
   }
   if (typeof raw !== "string" && typeof raw !== "number") {
     return String(raw);
@@ -348,7 +349,7 @@ const WORKBOOK_WAN_YUAN_TEXT_PATTERN = /(-?(?:\d[\d,]*(?:\.\d*)?|\.\d+))\s*(?:wa
 /** Workbook governed prose display: replace embedded wan-yuan amounts with yi-yuan amounts. */
 export function formatBalanceWorkbookWanTextDisplay(value: unknown): string {
   const text = formatBalanceWorkbookCellDisplay(value);
-  if (text === "—") {
+  if (text === EM_DASH) {
     return text;
   }
   return text.replace(WORKBOOK_WAN_YUAN_TEXT_PATTERN, (_match, rawAmount: string) =>
@@ -359,7 +360,7 @@ export function formatBalanceWorkbookWanTextDisplay(value: unknown): string {
 /** Workbook governed prose/title display: keep source values intact, but translate known operator-facing tags. */
 export function formatBalanceBusinessTextDisplay(value: unknown): string {
   let text = formatBalanceWorkbookWanTextDisplay(value).trim();
-  if (text === "—") {
+  if (text === EM_DASH) {
     return text;
   }
 
@@ -411,11 +412,11 @@ export function formatBalanceBusinessTextDisplay(value: unknown): string {
 }
 
 /**
- * Core AG Grid value formatter: null/undefined/"" → "—"; invalid → original string; else zh-CN grouped.
+ * Core AG Grid value formatter: null/undefined/"" → EM_DASH; invalid → original string; else zh-CN grouped.
  */
 export function formatBalanceGridThousandsValue(value: unknown): string {
   if (value === null || value === undefined || value === "") {
-    return "—";
+    return EM_DASH;
   }
   if (typeof value === "number") {
     return Number.isFinite(value) ? value.toLocaleString("zh-CN") : String(value);
@@ -714,14 +715,14 @@ const BALANCE_EVIDENCE_KIND_LABELS: Record<string, string> = {
 
 export function formatBalanceEvidenceKindDisplay(value: unknown): string {
   const text = formatBalanceWorkbookCellDisplay(value);
-  if (text === "—") {
+  if (text === EM_DASH) {
     return text;
   }
   return BALANCE_EVIDENCE_KIND_LABELS[text] ?? text;
 }
 
 function countDisplay(value: number | null | undefined): string {
-  if (value === null || value === undefined) return "—";
+  if (value === null || value === undefined) return EM_DASH;
   return Number.isFinite(value) ? value.toLocaleString("zh-CN") : String(value);
 }
 
@@ -816,13 +817,13 @@ function buildBalanceEvidenceCards(
 export function buildBalanceAnalysisPageReadModel(
   input: BalanceAnalysisPageReadModelInput,
 ): BalanceAnalysisPageReadModel {
-  const requestedReportDate = input.requestedReportDate || "—";
+  const requestedReportDate = input.requestedReportDate || EM_DASH;
   const overviewReportDate = input.overview?.report_date || "";
   const resolvedReportDate = overviewReportDate || requestedReportDate;
   // Without an overview report date there is nothing to compare against; echoing the requested
   // date back as "matched" would present an unconfirmed date as backend-confirmed.
   const dateStatus =
-    requestedReportDate === "—" || overviewReportDate === ""
+    requestedReportDate === EM_DASH || overviewReportDate === ""
       ? "pending"
       : requestedReportDate === overviewReportDate
         ? "matched"
@@ -835,7 +836,7 @@ export function buildBalanceAnalysisPageReadModel(
   const hasStale = metas.some((meta) => meta.quality_flag === "stale");
   const hasQualityError = metas.some((meta) => meta.quality_flag === "error" || meta.quality_flag === "missing");
   const sourceBadge: BalanceAnalysisPageStatusBadge =
-    requestedReportDate === "—"
+    requestedReportDate === EM_DASH
       ? { key: "source-pending", label: "等待业务读面", tone: "neutral" }
       : input.clientMode === "real"
         ? { key: "source-real", label: "正式业务读面", tone: "success" }
@@ -897,7 +898,7 @@ export function buildBalanceAnalysisPageReadModel(
       description: `请求 ${requestedReportDate}，后端返回 ${resolvedReportDate}，不得静默当作同一报告日。`,
     },
     {
-      when: dateStatus === "pending" && requestedReportDate !== "—",
+      when: dateStatus === "pending" && requestedReportDate !== EM_DASH,
       key: "date-pending",
       variant: "neutral",
       title: "报告日待确认",
@@ -1490,7 +1491,7 @@ function formatSignedWanAsYiPlain(value: unknown): string {
 
 function formatRatioPercent(numerator: number | null, denominator: number | null): string {
   if (numerator === null || denominator === null || denominator === 0) {
-    return "—";
+    return EM_DASH;
   }
   return `${((numerator / denominator) * 100).toLocaleString("zh-CN", {
     minimumFractionDigits: 1,
@@ -1501,7 +1502,7 @@ function formatRatioPercent(numerator: number | null, denominator: number | null
 function formatSharePercent(value: unknown): string {
   const n = finiteNumberFromStageValue(value);
   if (n === null) {
-    return "—";
+    return EM_DASH;
   }
   return `${(n * 100).toLocaleString("zh-CN", {
     minimumFractionDigits: 1,
@@ -1549,11 +1550,11 @@ function displayDecisionStatus(row: StageDecisionRow): string | null {
 function stageNoDataRow(): BalanceStageContributionRow {
   return {
     item: "暂无真实数据",
-    assetBal: "—",
-    assetPct: "—",
-    liabBal: "—",
-    liabPct: "—",
-    netGap: "—",
+    assetBal: EM_DASH,
+    assetPct: EM_DASH,
+    liabBal: EM_DASH,
+    liabPct: EM_DASH,
+    netGap: EM_DASH,
     rowKind: "empty",
   };
 }
@@ -1588,8 +1589,8 @@ function buildStageContributionRows(
       item,
       assetBal: formatWanAsYiPlain(value),
       assetPct: formatRatioPercent(value, assetTotal),
-      liabBal: "—",
-      liabPct: "—",
+      liabBal: EM_DASH,
+      liabPct: EM_DASH,
       netGap: formatSignedWanAsYiPlain(value),
       rowKind: "body",
     });
@@ -1601,8 +1602,8 @@ function buildStageContributionRows(
     }
     rows.push({
       item,
-      assetBal: "—",
-      assetPct: "—",
+      assetBal: EM_DASH,
+      assetPct: EM_DASH,
       liabBal: formatWanAsYiPlain(value),
       liabPct: formatRatioPercent(value, liabilityTotal),
       netGap: formatSignedWanAsYiPlain(-value),
@@ -1618,13 +1619,13 @@ function buildStageContributionRows(
   if (assetTotal !== null || liabilityTotal !== null) {
     rows.push({
       item: "合计",
-      assetBal: assetTotal === null ? "—" : formatWanAsYiPlain(assetTotal),
-      assetPct: assetTotal === null ? "—" : "100.0%",
-      liabBal: liabilityTotal === null ? "—" : formatWanAsYiPlain(liabilityTotal),
-      liabPct: liabilityTotal === null ? "—" : "100.0%",
+      assetBal: assetTotal === null ? EM_DASH : formatWanAsYiPlain(assetTotal),
+      assetPct: assetTotal === null ? EM_DASH : "100.0%",
+      liabBal: liabilityTotal === null ? EM_DASH : formatWanAsYiPlain(liabilityTotal),
+      liabPct: liabilityTotal === null ? EM_DASH : "100.0%",
       netGap:
         assetTotal === null && liabilityTotal === null
-          ? "—"
+          ? EM_DASH
           : formatSignedWanAsYiPlain((assetTotal ?? 0) - (liabilityTotal ?? 0)),
       rowKind: "body",
     });
@@ -1638,10 +1639,10 @@ function buildStageContributionRows(
     }
     rows.push({
       item: `${formatBalanceWorkbookCellDisplay(row.bucket)}全口径缺口`,
-      assetBal: "—",
-      assetPct: "—",
-      liabBal: "—",
-      liabPct: "—",
+      assetBal: EM_DASH,
+      assetPct: EM_DASH,
+      liabBal: EM_DASH,
+      liabPct: EM_DASH,
       netGap: formatSignedWanAsYiPlain(gap),
       rowKind: "gap",
     });
@@ -1709,9 +1710,9 @@ function buildStageCalendarItems(
     ? items
     : [
         {
-          date: "—",
+          date: EM_DASH,
           event: "当前报告日未返回事件日历",
-          amount: "—",
+          amount: EM_DASH,
           level: "low",
           note: "事件日历为空，未使用静态日历。",
         },
@@ -1736,22 +1737,22 @@ function buildStageRiskRows({
   const largestGapValue = finiteWanValue(largestGap?.full_scope_gap_amount ?? largestGap?.gap_amount);
   const topRisk = riskAlertRows[0];
   const topDecision = decisionRows[0];
-  const reportDate = overview?.report_date ?? workbook?.report_date ?? "—";
-  const scope = overview?.position_scope ?? workbook?.position_scope ?? "—";
-  const currency = overview?.currency_basis ?? workbook?.currency_basis ?? "—";
+  const reportDate = overview?.report_date ?? workbook?.report_date ?? EM_DASH;
+  const scope = overview?.position_scope ?? workbook?.position_scope ?? EM_DASH;
+  const currency = overview?.currency_basis ?? workbook?.currency_basis ?? EM_DASH;
 
   return [
     {
       dim: "期限缺口",
       current: largestGapValue === null ? "无切片" : largestGapValue < 0 ? "负缺口" : "非负",
-      stress: largestGapValue === null ? "—" : `${formatSignedWanAsYiPlain(largestGapValue)} 亿元`,
+      stress: largestGapValue === null ? EM_DASH : `${formatSignedWanAsYiPlain(largestGapValue)} 亿元`,
       scenario: formatBalanceWorkbookCellDisplay(largestGap?.bucket ?? "期限缺口"),
       level: largestGapValue === null ? "mid" : largestGapValue < 0 ? "high" : "low",
     },
     {
       dim: "风险预警",
       current: `${riskAlertRows.length} 条`,
-      stress: topRisk ? formatBalanceGovernedSeverityDisplay(topRisk.severity) : "—",
+      stress: topRisk ? formatBalanceGovernedSeverityDisplay(topRisk.severity) : EM_DASH,
       scenario: topRisk
         ? formatBalanceWorkbookOperationalSectionKeyDisplay(topRisk.source_section)
         : "风险预警",
@@ -1760,7 +1761,7 @@ function buildStageRiskRows({
     {
       dim: "治理事项",
       current: `${decisionRows.length} 项`,
-      stress: topDecision ? formatBalanceGovernedSeverityDisplay(topDecision.severity) : "—",
+      stress: topDecision ? formatBalanceGovernedSeverityDisplay(topDecision.severity) : EM_DASH,
       scenario: topDecision
         ? formatBalanceWorkbookOperationalSectionKeyDisplay(topDecision.source_section)
         : "治理事项",
@@ -1769,7 +1770,7 @@ function buildStageRiskRows({
     {
       dim: "事件日历",
       current: `${eventCalendarRows.length} 个`,
-      stress: eventCalendarRows[0]?.event_date ?? "—",
+      stress: eventCalendarRows[0]?.event_date ?? EM_DASH,
       scenario: eventCalendarRows[0]
         ? formatBalanceBusinessTextDisplay(eventCalendarRows[0].event_type)
         : "事件日历",
@@ -1816,15 +1817,15 @@ function buildStageRiskMetrics({
               minimumFractionDigits: 2,
               maximumFractionDigits: 2,
             })}x`
-          : "—",
+          : EM_DASH,
     },
     {
       label: "1年内全口径缺口",
-      value: shortGap === null ? "—" : `${formatSignedWanAsYiPlain(shortGap)} 亿`,
+      value: shortGap === null ? EM_DASH : `${formatSignedWanAsYiPlain(shortGap)} 亿`,
     },
     {
       label: "发行类负债",
-      value: issuanceLiabilities === null ? "—" : `${formatWanAsYiPlain(issuanceLiabilities)} 亿`,
+      value: issuanceLiabilities === null ? EM_DASH : `${formatWanAsYiPlain(issuanceLiabilities)} 亿`,
     },
     {
       label: "风险预警条数",
@@ -1931,9 +1932,10 @@ function buildStageAllocationItems(
   workbook: BalanceAnalysisWorkbookPayload | null | undefined,
 ): BalanceStageAllocationItem[] {
   const sourceRows = [
-    { label: "债券资产", value: workbookCardValue(workbook, "bond_assets_excluding_issue"), color: "#2563eb", sign: 1 },
-    { label: "同业资产", value: workbookCardValue(workbook, "interbank_assets"), color: "#3b82f6", sign: 1 },
-    { label: "发行类负债", value: workbookCardValue(workbook, "issuance_liabilities"), color: "#dc2626", sign: -1 },
+    { label: "债券资产", value: workbookCardValue(workbook, "bond_assets_excluding_issue"), color: designTokens.color.info[600], sign: 1 },
+    { label: "同业资产", value: workbookCardValue(workbook, "interbank_assets"), color: designTokens.color.info[500], sign: 1 },
+    { label: "发行类负债", value: workbookCardValue(workbook, "issuance_liabilities"), color: designTokens.color.danger[600], sign: -1 },
+    /* 同业负债的橙色无同值 token，保留字面量（tailwind orange-500）。 */
     { label: "同业负债", value: workbookCardValue(workbook, "interbank_liabilities"), color: "#f97316", sign: -1 },
   ];
   return sourceRows
@@ -1987,14 +1989,16 @@ export function buildBalanceStageRealDataModel({
   const allocationItemsWithFallback =
     allocationItems.length > 0
       ? allocationItems
-      : [
+      : ([
           fallbackAssetValue === null
             ? null
-            : { label: "资产端", value: fallbackAssetValue / 10_000, color: "#2563eb" },
+            : { label: "资产端", value: fallbackAssetValue / 10_000, color: designTokens.color.info[600] },
           fallbackLiabilityValue === null
             ? null
-            : { label: "负债端", value: -(fallbackLiabilityValue / 10_000), color: "#dc2626" },
-        ].filter((row): row is BalanceStageAllocationItem => row !== null);
+            : { label: "负债端", value: -(fallbackLiabilityValue / 10_000), color: designTokens.color.danger[600] },
+        ] as Array<BalanceStageAllocationItem | null>).filter(
+          (row): row is BalanceStageAllocationItem => row !== null,
+        );
   const allocationNet = allocationItemsWithFallback.reduce((total, row) => total + row.value, 0);
   const maturitySeries = buildStageMaturitySeries(workbook);
   const reportDate = overview?.report_date ?? workbook?.report_date ?? "报告日未定";
@@ -2023,7 +2027,7 @@ export function buildBalanceStageRealDataModel({
         { label: formatStageCurrencyBasis(currencyBasis), color: "cyan" },
       ],
       allocationItems: allocationItemsWithFallback,
-      allocationNetValue: allocationItemsWithFallback.length > 0 ? allocationNet.toFixed(2) : "—",
+      allocationNetValue: allocationItemsWithFallback.length > 0 ? allocationNet.toFixed(2) : EM_DASH,
       riskRows: buildStageRiskRows({
         workbook,
         overview,
@@ -2189,7 +2193,7 @@ export function buildBalanceCockpitViewModel({
     {
       key: "net-position",
       label: "净头寸",
-      value: netPositionWan === null ? "—" : formatWanAsYiPlain(netPositionWan),
+      value: netPositionWan === null ? EM_DASH : formatWanAsYiPlain(netPositionWan),
       unit: "亿",
     },
     {
@@ -2213,7 +2217,7 @@ export function buildBalanceCockpitViewModel({
     {
       key: "gap-coverage",
       label: "缺口覆盖率",
-      value: gapCoverage === null ? "—" : gapCoverage.toFixed(1),
+      value: gapCoverage === null ? EM_DASH : gapCoverage.toFixed(1),
       unit: gapCoverage === null ? "" : "%",
       variant: "donut",
       donutPct: gapCoverage ?? 0,
@@ -2227,7 +2231,7 @@ export function buildBalanceCockpitViewModel({
       value:
         overview?.summary_row_count != null
           ? overview.summary_row_count.toLocaleString("zh-CN")
-          : "—",
+          : EM_DASH,
       unit: overview?.summary_row_count != null ? "行" : "",
     },
     {
@@ -2236,7 +2240,7 @@ export function buildBalanceCockpitViewModel({
       value:
         overview?.detail_row_count != null
           ? overview.detail_row_count.toLocaleString("zh-CN")
-          : "—",
+          : EM_DASH,
       unit: overview?.detail_row_count != null ? "行" : "",
     },
     {

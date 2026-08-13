@@ -1,5 +1,7 @@
 import { SummaryBlock } from "../../../components/SummaryBlock";
-import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
+import { BaseChart } from "../../../components/charts/BaseChart";
+import { type EChartsOption } from "../../../lib/echarts";
+import { designTokens } from "../../../theme/designSystem";
 import dhStyles from "../../workbench/dashboard-home/dashboardHome.module.css";
 import type { BalanceStageSummaryModel } from "../pages/balanceAnalysisPageModel";
 import { BalanceStageTerminalPanel } from "./BalanceStageTerminalPanel";
@@ -27,13 +29,14 @@ function buildAllocationChartOption(
 ): EChartsOption {
   const items = model.allocationItems.length
     ? model.allocationItems
-    : [{ label: "无真实数据", value: 0, color: "#94a3b8" }];
+    : [{ label: "无真实数据", value: 0, color: designTokens.color.cockpit.ink450 }];
   return {
     title: includeTitle
       ? {
           text: "资产负债净头寸（真实数据）",
           left: 0,
           top: 0,
+          /* 图表标题墨色无同值 token，保留字面量（echarts 读不到 CSS 变量）。 */
           textStyle: { fontSize: 14, fontWeight: 700, color: "#162033" },
         }
       : undefined,
@@ -74,11 +77,8 @@ export function BalanceSummaryRow({ model, variant = "default" }: BalanceSummary
   const chartBlock = (
     <>
       <div className={isTerminal ? rowStyles.chartPanelTerminal : rowStyles.chartPanel}>
-        <ReactECharts
-          option={allocationChartOption}
-          style={{ height: isTerminal ? 210 : 240 }}
-          opts={{ renderer: "canvas" }}
-        />
+        {/* opts.renderer=canvas 为 echarts 默认值，迁 BaseChart 后省略等价。 */}
+        <BaseChart option={allocationChartOption} height={isTerminal ? 210 : 240} />
       </div>
       <div className={rowStyles.netPositionFoot}>净头寸: {model.allocationNetValue}</div>
     </>

@@ -1,12 +1,12 @@
 import type { KpiCardProps } from "../../../components/KpiCard";
-import { toneFromSignedValue } from "../../../pageModel";
+import { EM_DASH, toneFromSignedValue } from "../../../pageModel";
 
 export type KpiTone = NonNullable<KpiCardProps["tone"]>;
 
 /** 解析卡片上常见的数值字符串（逗号、括号负数、破折号空值）。 */
 export function parseDisplayNumber(value: string): number | null {
   const raw = value.trim();
-  if (!raw || raw === "—" || raw === "-" || raw === "不可用") {
+  if (!raw || raw === EM_DASH || raw === "-" || raw === "不可用") {
     return null;
   }
   let s = raw.replace(/,/g, "").replace(/，/g, "");
@@ -33,7 +33,7 @@ export function toneFromSignedDisplayString(value: string): KpiTone {
 }
 
 /** 将 0–1 或 0–100 比例格式化为百分比展示（不含则按原样返回）。 */
-export function formatRatioAsPercent(valueStr: string | undefined | null, emptyDisplay = "—"): string {
+export function formatRatioAsPercent(valueStr: string | undefined | null, emptyDisplay = EM_DASH): string {
   if (valueStr === undefined || valueStr === null || valueStr === "") {
     return emptyDisplay;
   }

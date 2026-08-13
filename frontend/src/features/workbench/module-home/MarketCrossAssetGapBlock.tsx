@@ -19,6 +19,7 @@ import type {
 } from "./moduleHomeModel";
 import marketStyles from "./marketHome.module.css";
 
+import { EM_DASH } from "../../../utils/format";
 const MARKET_CHANGE_CLASSES = {
   up: dhStyles.dhUpRed,
   down: dhStyles.dhDownGreen,
@@ -70,8 +71,8 @@ function CrisisMiniTrend({ explain }: { explain: MarketCrisisExplainView }) {
   const scoreLabel =
     explain.crisisScore !== null
       ? explain.crisisScore.toFixed(2)
-      : (scoreValues[scoreValues.length - 1]?.toFixed(2) ?? "—");
-  const regimeLabel = explain.regime ?? "—";
+      : (scoreValues[scoreValues.length - 1]?.toFixed(2) ?? EM_DASH);
+  const regimeLabel = explain.regime ?? EM_DASH;
 
   return (
     <section className={marketStyles.crossAssetGapSection} data-testid="module-home-cross-asset-crisis-mini">

@@ -2,7 +2,8 @@ import { Card, Col, Row, Typography } from "antd";
 
 import type { Numeric } from "../../../api/contracts";
 import { mossChartCategoricalPalette } from "../../../components/charts/chartTheme";
-import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
+import { BaseChart } from "../../../components/charts/BaseChart";
+import { type EChartsOption } from "../../../lib/echarts";
 import { numericOrDash, numericRaw } from "../utils/money";
 
 const { Text } = Typography;
@@ -120,7 +121,7 @@ export function LiabilityStructureGrids({
               </Text>
             ) : null}
             <div className="liability-chart-frame liability-chart-frame--structure">
-              <ReactECharts option={pieOption(structure)} style={{ height: 300 }} notMerge lazyUpdate />
+              <BaseChart option={pieOption(structure)} height={300} />
             </div>
             <PieLegend items={structure} />
           </Card>
@@ -131,7 +132,7 @@ export function LiabilityStructureGrids({
               口径：发行债券（asset_class 含“发行类”）+ 同业负债（direction=Liability）。
             </Text>
             <div className="liability-chart-frame liability-chart-frame--structure">
-              <ReactECharts option={barOption(term)} style={{ height: 300 }} notMerge lazyUpdate />
+              <BaseChart option={barOption(term)} height={300} />
             </div>
           </Card>
         </Col>
@@ -141,12 +142,7 @@ export function LiabilityStructureGrids({
         <Col xs={24} lg={12}>
           <Card size="small" title="同业负债业务结构（按产品类型，亿元）">
             <div className="liability-chart-frame liability-chart-frame--structure">
-              <ReactECharts
-                option={pieOption(interbankStructure)}
-                style={{ height: 300 }}
-                notMerge
-                lazyUpdate
-              />
+              <BaseChart option={pieOption(interbankStructure)} height={300} />
             </div>
             <PieLegend items={interbankStructure} />
           </Card>
@@ -154,12 +150,7 @@ export function LiabilityStructureGrids({
         <Col xs={24} lg={12}>
           <Card size="small" title="同业负债期限结构（亿元）">
             <div className="liability-chart-frame liability-chart-frame--structure">
-              <ReactECharts
-                option={barOption(interbankTerm)}
-                style={{ height: 300 }}
-                notMerge
-                lazyUpdate
-              />
+              <BaseChart option={barOption(interbankTerm)} height={300} />
             </div>
           </Card>
         </Col>
@@ -169,12 +160,7 @@ export function LiabilityStructureGrids({
         <Col xs={24} lg={12}>
           <Card size="small" title="发行负债业务结构（按业务种类，亿元）">
             <div className="liability-chart-frame liability-chart-frame--structure">
-              <ReactECharts
-                option={pieOption(issuedStructure)}
-                style={{ height: 300 }}
-                notMerge
-                lazyUpdate
-              />
+              <BaseChart option={pieOption(issuedStructure)} height={300} />
             </div>
             <PieLegend items={issuedStructure} />
           </Card>
@@ -182,7 +168,7 @@ export function LiabilityStructureGrids({
         <Col xs={24} lg={12}>
           <Card size="small" title="发行负债期限结构（亿元）">
             <div className="liability-chart-frame liability-chart-frame--structure">
-              <ReactECharts option={barOption(issuedTerm)} style={{ height: 300 }} notMerge lazyUpdate />
+              <BaseChart option={barOption(issuedTerm)} height={300} />
             </div>
           </Card>
         </Col>

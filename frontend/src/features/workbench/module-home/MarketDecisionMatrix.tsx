@@ -96,7 +96,7 @@ function matrixChangeText(item: MatrixItem) {
   if (item.summaryDetail?.trim()) {
     return item.summaryDetail;
   }
-  return item.summary[0] ?? "—";
+  return item.summary[0] ?? EM_DASH;
 }
 
 function matrixImplication(item: MatrixItem, direction: string | undefined) {

@@ -6,6 +6,7 @@ import type { MarketChangeDirection } from "./marketHomeChangeTone";
 import type { MarketCrisisExplainComponent, MarketCrisisExplainView, MarketCrisisHistoryPoint } from "./moduleHomeModel";
 import marketStyles from "./marketHome.module.css";
 
+import { EM_DASH } from "../../../utils/format";
 type MarketCrisisExplainBandProps = {
   explain: MarketCrisisExplainView | null | undefined;
 };
@@ -53,7 +54,7 @@ function CrisisComponentBar({ component }: { component: MarketCrisisExplainCompo
         />
       </div>
       <strong className={`${dhStyles.dhNum} ${marketStyles.marketCrisisZBarValue}`}>
-        {component.zScore === null ? "—" : component.zScore.toFixed(2)}
+        {component.zScore === null ? EM_DASH : component.zScore.toFixed(2)}
       </strong>
     </div>
   );
@@ -94,8 +95,8 @@ function CrisisTrendPanel({
     .map((point) => point[valueKey])
     .filter((value): value is number => value !== null && Number.isFinite(value));
   const changeDirection = trendChangeDirection(values);
-  const firstDate = history[0]?.date ?? "—";
-  const lastDate = history[history.length - 1]?.date ?? "—";
+  const firstDate = history[0]?.date ?? EM_DASH;
+  const lastDate = history[history.length - 1]?.date ?? EM_DASH;
   const latest = values[values.length - 1];
 
   return (

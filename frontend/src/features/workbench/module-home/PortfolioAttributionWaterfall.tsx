@@ -1,7 +1,7 @@
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import type { Numeric, VolumeRateAttributionPayload } from "../../../api/contracts";
 import { nocturneTokens } from "../../../theme/designSystem";
-import { numericRaw } from "../../../pageModel";
+import { EM_DASH, numericRaw } from "../../../pageModel";
 import { useDeferredChartMount } from "./useDeferredChartMount";
 import styles from "./portfolioHome.module.css";
 
@@ -67,7 +67,7 @@ export function PortfolioAttributionWaterfall({ payload }: PortfolioAttributionW
       padding: [8, 10],
       textStyle: { color: nocturneTokens.color.ink, fontSize: 11, fontWeight: 650 },
       valueFormatter: (value: unknown) =>
-        typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(2)} 亿元` : "—",
+        typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(2)} 亿元` : EM_DASH,
     },
     xAxis: {
       type: "category",

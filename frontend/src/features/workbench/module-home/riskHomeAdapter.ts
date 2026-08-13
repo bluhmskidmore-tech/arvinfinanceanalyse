@@ -870,8 +870,8 @@ export type RiskBondEvidenceInput = {
 function unavailableRiskBondReadout(): RiskBondComparisonReadout {
   return {
     state: "unavailable",
-    absoluteText: "—",
-    percentText: "—",
+    absoluteText: EM_DASH,
+    percentText: EM_DASH,
     basisDate: null,
   };
 }
@@ -1219,7 +1219,7 @@ function riskBondDeltaReadout(
   }
   const percentText =
     key === "modified-duration" || prior === 0
-      ? "—"
+      ? EM_DASH
       : riskBondSigned((delta / Math.abs(prior)) * 100, 2) + "%";
   return {
     state: review || previous.review ? "review" : "ready",
@@ -1603,25 +1603,25 @@ export function buildRiskBondDv01Summary(
     {
       key: "total-face-value",
       label: "总面值（DV01 基数）",
-      value: face === null ? "—" : formatYuanAs(face, RISK_YUAN_PER_YI),
+      value: face === null ? EM_DASH : formatYuanAs(face, RISK_YUAN_PER_YI),
       unit: "亿元",
     },
     {
       key: "total-market-value",
       label: "公允价值（不含应计）",
-      value: market === null ? "—" : formatYuanAs(market, RISK_YUAN_PER_YI),
+      value: market === null ? EM_DASH : formatYuanAs(market, RISK_YUAN_PER_YI),
       unit: "亿元",
     },
     {
       key: "modified-duration",
       label: "面值加权修正久期",
-      value: duration === null ? "—" : riskBondDecimal(duration),
+      value: duration === null ? EM_DASH : riskBondDecimal(duration),
       unit: "年",
     },
     {
       key: "total-dv01",
       label: "正式 DV01（面值基数）",
-      value: dv01 === null ? "—" : formatYuanAs(dv01, RISK_YUAN_PER_WAN),
+      value: dv01 === null ? EM_DASH : formatYuanAs(dv01, RISK_YUAN_PER_WAN),
       unit: "万元/bp",
     },
     {

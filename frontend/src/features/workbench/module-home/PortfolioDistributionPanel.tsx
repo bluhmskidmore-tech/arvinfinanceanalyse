@@ -95,7 +95,7 @@ export function PortfolioDistributionPanel({ panel }: PortfolioDistributionPanel
             ) : null}
             <div className={styles.distChartCenter} aria-hidden="true">
               <span>{panel.totalDisplay ? "合计" : "Top1"}</span>
-              <strong>{panel.totalDisplay ?? (leader ? leader.share : "—")}</strong>
+              <strong>{panel.totalDisplay ?? (leader ? leader.share : EM_DASH)}</strong>
             </div>
           </div>
 

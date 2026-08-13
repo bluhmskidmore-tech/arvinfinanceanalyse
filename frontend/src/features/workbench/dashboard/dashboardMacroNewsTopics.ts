@@ -1,3 +1,4 @@
+import { EM_DASH } from "../../../utils/format";
 export const DASHBOARD_MACRO_NEWS_TOPIC_LIMIT = 6;
 export const DASHBOARD_MACRO_NEWS_FALLBACK_SCAN_LIMIT = 200;
 export const DASHBOARD_BOND_NEWS_TOPIC_LIMIT = 8;
@@ -61,7 +62,7 @@ const DASHBOARD_MACRO_NEWS_FALLBACK_TOPIC_LABELS: ReadonlyMap<string, string> = 
 export function dashboardMacroNewsTopicLabel(topicCode: string, groupId?: string): string {
   const normalized = topicCode.trim();
   const normalizedGroupId = groupId?.trim() ?? "";
-  if (!normalized || normalized === "—") {
+  if (!normalized || normalized === EM_DASH) {
     return DASHBOARD_BOND_NEWS_GROUP_LABELS.get(normalizedGroupId) ?? "宏观新闻";
   }
   const exactLabel = DASHBOARD_MACRO_NEWS_TOPIC_LABELS.get(normalized);
@@ -80,7 +81,7 @@ export function dashboardMacroNewsTopicLabel(topicCode: string, groupId?: string
 
 export function dashboardMacroNewsFallbackTopicLabel(topicCode: string): string {
   const normalized = topicCode.trim();
-  if (!normalized || normalized === "—") {
+  if (!normalized || normalized === EM_DASH) {
     return "市场新闻";
   }
   return DASHBOARD_MACRO_NEWS_FALLBACK_TOPIC_LABELS.get(normalized) ?? "市场新闻";

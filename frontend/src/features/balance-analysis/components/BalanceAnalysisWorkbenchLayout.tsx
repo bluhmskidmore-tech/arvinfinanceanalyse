@@ -47,6 +47,7 @@ import {
 } from "../pages/balanceAnalysisPageModel";
 import "./balanceWorkbench.css";
 
+import { EM_DASH } from "../../../utils/format";
 export type BalanceWorkbenchMetric = {
   key: string;
   label: string;
@@ -199,7 +200,7 @@ function renderEndpointChip(endpoint: BalanceEndpointChip) {
           {formatEndpointStatus(endpoint.status)}
         </em>
       ) : null}
-      <small className="balance-workbench__endpoint-value">{endpoint.value ?? "—"}</small>
+      <small className="balance-workbench__endpoint-value">{endpoint.value ?? EM_DASH}</small>
     </span>
   );
 }
@@ -226,7 +227,7 @@ function formatFormalStatus(meta: ResultMeta | undefined) {
 
 function formatQualityFlag(meta: ResultMeta | undefined): string {
   if (!meta?.quality_flag) {
-    return "—";
+    return EM_DASH;
   }
   if (meta.quality_flag === "ok") {
     return "正常";
@@ -245,7 +246,7 @@ function formatQualityFlag(meta: ResultMeta | undefined): string {
 
 function formatFallbackMode(meta: ResultMeta | undefined): string {
   if (!meta?.fallback_mode) {
-    return "—";
+    return EM_DASH;
   }
   if (meta.fallback_mode === "none") {
     return "未降级";
@@ -258,7 +259,7 @@ function formatFallbackMode(meta: ResultMeta | undefined): string {
 
 function formatFormalAllowed(meta: ResultMeta | undefined): string {
   if (!meta) {
-    return "—";
+    return EM_DASH;
   }
   return meta.formal_use_allowed ? "是" : "否";
 }
@@ -283,12 +284,12 @@ function comparisonWidth(value: number | null, scale: number): string {
 }
 
 function metricValueDisplay(value: string): string {
-  return value === "—" ? "待返回" : value;
+  return value === EM_DASH ? "待返回" : value;
 }
 
 function metricDisplay(metric: BalanceWorkbenchMetric): string {
   const value = metricValueDisplay(metric.value);
-  return metric.unit && metric.value !== "—" ? `${value} ${metric.unit}` : value;
+  return metric.unit && metric.value !== EM_DASH ? `${value} ${metric.unit}` : value;
 }
 
 function renderDeferredVisual(surface: BalanceDeferredSurface) {
@@ -358,7 +359,7 @@ function formatHomepageCurrency(value: string | undefined) {
 }
 
 function workbookCardDisplay(card: BalanceAnalysisWorkbookPayload["cards"][number] | undefined): string {
-  return card ? `${formatBalanceAmountToYiFromWan(card.value)} 亿元` : "—";
+  return card ? `${formatBalanceAmountToYiFromWan(card.value)} 亿元` : EM_DASH;
 }
 
 function findWorkbookCardByKey(workbook: BalanceAnalysisWorkbookPayload | undefined, key: string) {
@@ -546,9 +547,9 @@ function buildCards({
       body: (
         <ul className="balance-workbench-card__list">
           <li className="balance-workbench-card__item">
-            <strong>{formatHomepageCurrency(overview?.currency_basis) ?? "—"}</strong>
+            <strong>{formatHomepageCurrency(overview?.currency_basis) ?? EM_DASH}</strong>
             <span className="balance-workbench-card__item-meta">
-              {formatHomepageScope(overview?.position_scope) ?? "—"} / {formatFormalStatus(formalStatus)}
+              {formatHomepageScope(overview?.position_scope) ?? EM_DASH} / {formatFormalStatus(formalStatus)}
             </span>
           </li>
           <li className="balance-workbench-card__item">
@@ -726,8 +727,8 @@ export default function BalanceAnalysisWorkbenchLayout({
       .filter(Boolean)
       .join(" / ") ||
     "等待筛选结果";
-  const rowCoverageFocus = `${String(overview?.summary_row_count ?? "—")} / ${String(
-    overview?.detail_row_count ?? "—",
+  const rowCoverageFocus = `${String(overview?.summary_row_count ?? EM_DASH)} / ${String(
+    overview?.detail_row_count ?? EM_DASH,
   )}`;
   const governanceQueueFocus = `${decisionRows.length} / ${riskAlerts.length}`;
   const formalStatusWarnings = [
@@ -821,14 +822,14 @@ export default function BalanceAnalysisWorkbenchLayout({
     {
       key: "detail-row-count",
       label: "明细行数",
-      value: String(overview?.detail_row_count ?? "—"),
+      value: String(overview?.detail_row_count ?? EM_DASH),
       unit: "行",
       source: "MTR-BAL-101",
     },
     {
       key: "summary-row-count",
       label: "汇总行数",
-      value: String(overview?.summary_row_count ?? summary?.total_rows ?? "—"),
+      value: String(overview?.summary_row_count ?? summary?.total_rows ?? EM_DASH),
       unit: "行",
       source: "MTR-BAL-102/103",
     },
@@ -899,12 +900,12 @@ export default function BalanceAnalysisWorkbenchLayout({
               <div className="balance-workbench__tape-item balance-workbench__tape-item--asset">
                 <BankOutlined aria-hidden />
                 <span>资产市值</span>
-                <strong>{assetMarketMetric ? metricDisplay(assetMarketMetric) : "—"}</strong>
+                <strong>{assetMarketMetric ? metricDisplay(assetMarketMetric) : EM_DASH}</strong>
               </div>
               <div className="balance-workbench__tape-item balance-workbench__tape-item--liability">
                 <ProfileOutlined aria-hidden />
                 <span>负债市值</span>
-                <strong>{liabilityMarketMetric ? metricDisplay(liabilityMarketMetric) : "—"}</strong>
+                <strong>{liabilityMarketMetric ? metricDisplay(liabilityMarketMetric) : EM_DASH}</strong>
               </div>
               <div className="balance-workbench__tape-item balance-workbench__tape-item--action">
                 <DeploymentUnitOutlined aria-hidden />
@@ -1059,7 +1060,7 @@ export default function BalanceAnalysisWorkbenchLayout({
               <span>{kpi.label}</span>
               <strong>
                 {metricValueDisplay(kpi.value)}
-                {kpi.value === "—" ? null : <small>{kpi.unit}</small>}
+                {kpi.value === EM_DASH ? null : <small>{kpi.unit}</small>}
               </strong>
               <em>{kpi.source}</em>
             </article>
@@ -1334,7 +1335,7 @@ export default function BalanceAnalysisWorkbenchLayout({
                         <span>{metric.label}</span>
                         <strong>
                           {metricValueDisplay(metric.value)}
-                          {metric.unit && metric.value !== "—" ? <small>{metric.unit}</small> : null}
+                          {metric.unit && metric.value !== EM_DASH ? <small>{metric.unit}</small> : null}
                         </strong>
                         {metric.detail ? <em>{metric.detail}</em> : null}
                       </div>

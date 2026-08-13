@@ -99,11 +99,13 @@
   position: relative;
 }
 
+/* 双栏拆分轴统一：hero / 证据板 / 质量血缘共用 1.35fr:1fr，
+   栏距 24（开放编辑区）/ 16（盒面板区），拆分轴中心横向一致。 */
 .roV6HeroGrid {
   display: grid;
-  gap: 30px;
-  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
-  margin-top: 4px;
+  gap: 24px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  margin-top: 0;
 }
 
 .roV6HeroQ {
@@ -228,6 +230,8 @@
   gap: 10px;
   letter-spacing: 0.16em;
   margin: 0;
+  /* 标题字不因右侧长 detail 被挤成两行折字；detail 自身仍走 ellipsis。 */
+  white-space: nowrap;
 }
 
 .roV6Gate h3 span {
@@ -444,7 +448,7 @@
   font-size: 13px;
   letter-spacing: 0.1em;
   margin-top: -12px;
-  padding: 0 2px;
+  padding: 0;
 }
 
 /* ── 02 摘要开放栏 ────────────────────────────────────────────── */
@@ -486,14 +490,14 @@
 /* ── 03 证据板玻璃面板 ────────────────────────────────────────── */
 .roV6Duo {
   display: grid;
-  gap: 16px;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 24px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
   margin-top: 16px;
 }
 
 .roV6Panel {
-  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
-  padding: 18px 20px;
+  /* 深色终端 compact 密度（§5 面板 padding 12-15px 档）。 */
+  padding: 14px 16px;
 }
 
 .roV6CashPanel {
@@ -801,9 +805,9 @@ text.roV6CurveEndText.roV6CurveAcc {
 /* ── 03 字段级明细表（编辑风纯粹表） ──────────────────────────── */
 .roV6Tables {
   display: grid;
-  gap: 30px;
+  gap: 24px;
   grid-template-columns: 1fr 1fr;
-  margin-top: 24px;
+  margin-top: 16px;
 }
 
 .roV6TblHead {
@@ -874,7 +878,7 @@ text.roV6CurveEndText.roV6CurveAcc {
 /* ── 04 数据质量与血缘 ────────────────────────────────────────── */
 .roV6Qual {
   display: grid;
-  gap: 30px;
+  gap: 24px;
   grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
   margin-top: 16px;
 }
@@ -940,15 +944,18 @@ text.roV6CurveEndText.roV6CurveAcc {
 
 /* ── 首屏债券辅助证据 ─────────────────────────────────────────── */
 .roBondEvidence {
-  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
-  padding: 16px 18px 18px;
+  /* 外层盒感已在后续 pass 撤除（透明底 / 无边框），内边距一并归零，
+     使本区左缘与 01-04 编号分区对齐。 */
+  padding: 0;
 }
 
 .roBondEvidenceHead {
   align-items: center;
+  border-bottom: 1px solid var(--ro-line);
   display: flex;
   gap: 18px;
   justify-content: space-between;
+  padding-bottom: 8px;
 }
 
 .roBondEvidenceHead > div {
@@ -989,14 +996,14 @@ text.roV6CurveEndText.roV6CurveAcc {
 }
 
 .roBondBoundary {
-  align-items: center;
+  align-items: baseline;
   background: color-mix(in srgb, var(--dh-api-amber) 7%, transparent);
   border-left: 2px solid var(--ro-amber);
   color: var(--ro-ink-2);
   display: grid;
   font-size: 13px;
-  gap: 8px 12px;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  grid-template-columns: auto minmax(0, 1fr);
   line-height: 1.45;
   padding: 8px 11px;
 }
@@ -1013,9 +1020,11 @@ text.roV6CurveEndText.roV6CurveAcc {
   font-weight: 650;
 }
 
+/* 说明句独占第二行、与主句同列对齐；单栏折行时（-2/-1）自动落回第 1 列。 */
 .roBondBoundary em {
   color: var(--ro-mut);
   font-style: normal;
+  grid-column: -2 / -1;
 }
 
 .roBondPlanState {
@@ -1025,7 +1034,7 @@ text.roV6CurveEndText.roV6CurveAcc {
   display: flex;
   font-size: 12px;
   gap: 12px;
-  padding: 0 2px 9px;
+  padding: 0 0 9px;
 }
 
 .roBondPlanState span {
@@ -1060,7 +1069,7 @@ text.roV6CurveEndText.roV6CurveAcc {
 .roBondCard {
   /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
   border: 1px solid var(--ro-line);
-  padding: 13px 14px;
+  padding: 12px 14px;
 }
 
 .roBondCardreview {
@@ -1216,8 +1225,8 @@ text.roV6CurveEndText.roV6CurveAcc {
 }
 
 .roBondTrend {
-  /* 交错冲突：以下属性保持原位，维持与后续规则的覆盖顺序（详见合并报告） */
-  padding: 8px 9px 7px;
+  /* 趋势块已压平为透明子块（无边框/底），内边距归零对齐卡内正文。 */
+  padding: 0;
 }
 
 .roBondTrendHead,
@@ -1559,7 +1568,8 @@ text.roV6CurveEndText.roV6CurveAcc {
 .roV6Kpi::before {
   border-radius: var(--dh-api-radius, 6px);
   inset: 0;
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  /* mask 只取 alpha 通道，色值无语义；black 关键字与原三位黑 hex 逐位等价。 */
+  -webkit-mask: linear-gradient(black 0 0) content-box, linear-gradient(black 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   padding: 1px;
@@ -1712,7 +1722,7 @@ text.roV6CurveEndText.roV6CurveAcc {
 .roBondEvidence {
   border-radius: var(--dh-api-radius, 6px);
   display: grid;
-  gap: 13px;
+  gap: 12px;
   box-shadow: none;
   background: transparent;
 }
@@ -1720,7 +1730,7 @@ text.roV6CurveEndText.roV6CurveAcc {
 .roBondCard {
   border-radius: var(--dh-api-radius, 6px);
   display: grid;
-  gap: 11px;
+  gap: 12px;
   min-width: 0;
   background: color-mix(in srgb, var(--dh-api-ink) 2%, transparent);
 }
@@ -2026,7 +2036,7 @@ text.roV6CurveEndText.roV6CurveAcc {
   gap: 10px 18px;
   justify-content: space-between;
   min-width: 0;
-  padding: 12px 2px;
+  padding: 12px 0;
 }
 
 .roTopbarLeft {
@@ -2134,8 +2144,9 @@ text.roV6CurveEndText.roV6CurveAcc {
 }
 
 .roBondEvidenceHead h2 {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
+  line-height: 20px;
 }
 
 /* ── KPI 单框横带（首页 kpiRail 语言：外框 + 发丝分割 + 等高分格） ── */
@@ -2145,6 +2156,12 @@ text.roV6CurveEndText.roV6CurveAcc {
   border-radius: var(--dh-api-radius, 6px);
   gap: 1px;
   padding: 0;
+}
+
+/* 空态：横带退掉发丝墙底与外框，只留空态提示框自身（§5 空态收缩）。 */
+.roV6Kpis:has(> .roEmptyState) {
+  background: transparent;
+  border: 0;
 }
 
 .roV6Kpi {

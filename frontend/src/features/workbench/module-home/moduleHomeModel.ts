@@ -523,7 +523,7 @@ function marketDataMeta(
 }
 
 /**
- * 市场首页专用：query 已失败且无历史缓存数据时，KPI 需要显示"—"+error，
+ * 市场首页专用：query 已失败且无历史缓存数据时，KPI 需要显示EM_DASH+error，
  * 不能与"接口成功但真实返回 0 条"混淆展示为裸数字 "0"。
  */
 function marketSeriesCountKpiFields(
@@ -533,7 +533,7 @@ function marketSeriesCountKpiFields(
   failedDetail: string,
 ): Pick<ModuleHomeKpi, "value" | "tone" | "detail"> {
   if (query?.isError && query.data === undefined) {
-    return { value: "—", tone: "error", detail: failedDetail };
+    return { value: EM_DASH, tone: "error", detail: failedDetail };
   }
   return { value: `${count}`, tone: count > 0 ? "ok" : "watch", detail };
 }
@@ -3281,7 +3281,7 @@ function marketView(
               : `choice-events 已注册 ${newsEventsPayload.total_rows} 条事件摘要。`
             : "新闻事件摘要待读取。",
           evidence: newsEventsSnapshotRows.length > 1
-            ? `最近收到 ${newsEventsSnapshotRows[1]?.tradeDate ?? "—"} · 进入 /news-events 查看全文。`
+            ? `最近收到 ${newsEventsSnapshotRows[1]?.tradeDate ?? EM_DASH} · 进入 /news-events 查看全文。`
             : "首页仅展示事件计数与最新标题，完整列表见新闻事件页。",
           tone: newsEventsPayload && newsEventsPayload.total_rows > 0 ? "ok" : "muted",
         },

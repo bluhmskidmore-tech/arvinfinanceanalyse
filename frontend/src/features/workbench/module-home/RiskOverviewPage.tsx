@@ -116,7 +116,7 @@ function BondMetricComparison({
     >
       <span>{label}</span>
       <strong className={styles.roNum}>{absoluteText}</strong>
-      <em className={styles.roNum}>{readout?.percentText ?? "—"}</em>
+      <em className={styles.roNum}>{readout?.percentText ?? EM_DASH}</em>
     </div>
   );
 }
@@ -873,7 +873,7 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
                       hero.dv01Wan === null ? styles.roV6HeroNumVoid : ""
                     }`}
                   >
-                    {hero.dv01Wan ?? "—"}
+                    {hero.dv01Wan ?? EM_DASH}
                     {hero.dv01Wan !== null ? <small> 万元</small> : null}
                   </div>
                   {hero.dv01Wan !== null ? (
@@ -888,8 +888,8 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
                           </b>
                         </>
                       ) : null}
-                      {hero.duration !== null ? ` · 修正久期 ${hero.duration}` : null}
-                      {hero.convexity !== null ? ` · 凸度 ${hero.convexity}` : null}
+                      {hero.duration !== null ? `，修正久期 ${hero.duration}` : null}
+                      {hero.convexity !== null ? `，凸度 ${hero.convexity}` : null}
                     </div>
                   ) : tensor === undefined ? (
                     <div className={styles.roV6HeroSub}>主链数据读取中…</div>
@@ -1002,8 +1002,8 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
           {kpiCards.length > 0 ? (
             history ? (
               <div className={styles.roV6SparkCap} data-testid="risk-overview-sparkcap">
-                走势为近 {history.points.length} 期真实读数 · {history.window.from} →{" "}
-                {history.window.to} · 血缘版本见 04
+                走势为近 {history.points.length} 期真实读数（{history.window.from} →{" "}
+                {history.window.to}）· 血缘版本见 04
               </div>
             ) : (
               <div className={styles.roV6SparkCap} data-testid="risk-overview-sparkcap">

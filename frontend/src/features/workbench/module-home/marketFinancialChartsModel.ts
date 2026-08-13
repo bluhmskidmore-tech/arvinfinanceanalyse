@@ -14,6 +14,7 @@ import {
   type MarketChartPalette,
 } from "./marketChartPalette";
 
+import { EM_DASH } from "../../../utils/format";
 type MarketChartColors = {
   lavender: string;
   blueDeep: string;
@@ -257,7 +258,7 @@ function buildMultiLineOption(
     tooltip: {
       ...tooltip,
       valueFormatter: (value: unknown) =>
-        finiteNumber(value) ? `${value.toFixed(decimals)}${options.unit}` : "—",
+        finiteNumber(value) ? `${value.toFixed(decimals)}${options.unit}` : EM_DASH,
     },
     legend: {
       ...legend,
@@ -430,7 +431,7 @@ function buildYieldCurveChart(
               ...tooltip,
               trigger: "item",
               valueFormatter: (value: unknown) =>
-                finiteNumber(value) ? `${value.toFixed(3)}%` : "—",
+                finiteNumber(value) ? `${value.toFixed(3)}%` : EM_DASH,
             },
             grid: {
               left: 48,
@@ -473,7 +474,7 @@ function buildYieldCurveChart(
                   color: COLORS.ink,
                   fontSize: 10,
                   formatter: ({ value }: { value: unknown }) =>
-                    finiteNumber(value) ? `${value.toFixed(3)}%` : "—",
+                    finiteNumber(value) ? `${value.toFixed(3)}%` : EM_DASH,
                 },
                 data: comparisonRows.map((row) => row.value),
               },
@@ -485,7 +486,7 @@ function buildYieldCurveChart(
           tooltip: {
             ...tooltip,
             valueFormatter: (value: unknown) =>
-              finiteNumber(value) ? `${value.toFixed(3)}%` : "—",
+              finiteNumber(value) ? `${value.toFixed(3)}%` : EM_DASH,
           },
           legend: {
             ...legend,
@@ -708,7 +709,7 @@ function buildLatestCrossAssetMove(
             valueFormatter: (value: unknown) =>
               finiteNumber(value)
                 ? `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`
-                : "—",
+                : EM_DASH,
           },
           grid: {
             left: 82,
@@ -755,7 +756,7 @@ function buildLatestCrossAssetMove(
                 formatter: (params: { value?: unknown }) =>
                   finiteNumber(params.value)
                     ? `${params.value >= 0 ? "+" : ""}${params.value.toFixed(2)}%`
-                    : "—",
+                    : EM_DASH,
               },
             },
           ],
@@ -792,7 +793,7 @@ function buildMacroIndicatorChange(
             valueFormatter: (value: unknown) =>
               finiteNumber(value)
                 ? `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`
-                : "—",
+                : EM_DASH,
           },
           grid: {
             left: 116,
@@ -868,7 +869,7 @@ function buildCapabilityStatus(
           tooltip: {
             ...tooltip,
             valueFormatter: (value: unknown) =>
-              finiteNumber(value) ? `${value} 项` : "—",
+              finiteNumber(value) ? `${value} 项` : EM_DASH,
           },
           legend: {
             top: 0,
@@ -981,7 +982,7 @@ function buildStrategyPortfolioComparison(
           tooltip: {
             ...tooltip,
             valueFormatter: (value: unknown) =>
-              finiteNumber(value) ? `${value.toFixed(2)}%` : "—",
+              finiteNumber(value) ? `${value.toFixed(2)}%` : EM_DASH,
           },
           legend: {
             top: 0,
@@ -1068,7 +1069,7 @@ function buildRankedBar(
     tooltip: {
       ...tooltip,
       valueFormatter: (value: unknown) =>
-        finiteNumber(value) ? `${value.toLocaleString("zh-CN")} 条` : "—",
+        finiteNumber(value) ? `${value.toLocaleString("zh-CN")} 条` : EM_DASH,
     },
     grid: { left: 102, right: 36, top: 14, bottom: 28, containLabel: true },
     xAxis: {
@@ -1123,7 +1124,7 @@ function buildNewsTopicChart(
   return {
     key: "news-topic",
     title: "新闻主题分布",
-    subtitle: `最新 ${news?.events.length ?? 0} 条样本 / 全库 ${news?.total_rows.toLocaleString("zh-CN") ?? "—"} 条`,
+    subtitle: `最新 ${news?.events.length ?? 0} 条样本 / 全库 ${news?.total_rows.toLocaleString("zh-CN") ?? EM_DASH} 条`,
     footnote: "按事件 topic_code 计数，展示最新样本 Top 10；不外推为全库占比。",
     option: buildRankedBar(theme, rows, theme.colors.lavender),
     height: 310,
@@ -1148,7 +1149,7 @@ function buildNewsDateChart(
           tooltip: {
             ...tooltip,
             valueFormatter: (value: unknown) =>
-              finiteNumber(value) ? `${value} 条` : "—",
+              finiteNumber(value) ? `${value} 条` : EM_DASH,
           },
           grid: {
             left: 44,

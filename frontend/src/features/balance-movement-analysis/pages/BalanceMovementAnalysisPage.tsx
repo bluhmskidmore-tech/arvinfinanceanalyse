@@ -36,7 +36,7 @@ import {
   resolveBucketSharePct,
 } from "../lib/balanceMovementShareModel";
 
-import { EM_DASH } from "../../../utils/format";
+import { EM_DASH, formatYuanAmountAsYiPlain } from "../../../utils/format";
 import "./BalanceMovementAnalysisPage.css";
 import "./BalanceMovementAnalysisFigma.css";
 
@@ -63,18 +63,13 @@ function formatPct(value: string | number | null | undefined) {
   return `${n.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
 }
 
-function formatYiFixed(value: string | number | null | undefined, digits = 2) {
-  if (value === null || value === undefined || value === "") {
-    return EM_DASH;
-  }
-  const n = Number(value) / 100000000;
-  if (!Number.isFinite(n)) {
-    return String(value);
-  }
-  return n.toLocaleString("zh-CN", {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  });
+/**
+ * 2026-08-13 债务清零：本地元→亿实现并入共享 formatYuanAmountAsYiPlain
+ * （输出一致：zh-CN 分组、固定 2 位、缺失 EM_DASH、无效串原样透出）。
+ * 全部调用点均为 2 位小数，故收敛为无 digits 参数的委托。
+ */
+function formatYiFixed(value: string | number | null | undefined) {
+  return formatYuanAmountAsYiPlain(value);
 }
 
 function formatSignedYi(value: string | number | null | undefined, digits = 2) {
@@ -166,7 +161,7 @@ function formatTrendMonthLabel(reportMonth: string) {
 }
 
 function formatYiCell(value: string | number | null | undefined) {
-  return formatYiFixed(value, 2);
+  return formatYiFixed(value);
 }
 
 function formatSignedYiCell(value: string | number | null | undefined) {

@@ -1,6 +1,7 @@
 import { EvidencePanel } from "../../../components/page/PagePrimitives";
 import { SummaryBlock } from "../../../components/SummaryBlock";
 
+import { EM_DASH } from "../../../utils/format";
 type BusinessConclusionProps = {
   reportDate?: string;
   view?: string;
@@ -26,7 +27,7 @@ export function BusinessConclusion({
     Boolean(grandBusinessNetIncome);
 
   const content = hasGovernedValues
-    ? `当前经营页首屏已切回产品分类损益正式读模型。报告日 ${reportDate ?? "待确认"}，视图 ${view ?? "月度"}，产品分类行 ${rowCount ?? 0} 行；资产净收入 ${assetBusinessNetIncome ?? "—"}、负债净收入 ${liabilityBusinessNetIncome ?? "—"}、经营净收入 ${grandBusinessNetIncome ?? "—"}。资产负债余额读面降为专题入口，不作为首屏经营口径。`
+    ? `当前经营页首屏已切回产品分类损益正式读模型。报告日 ${reportDate ?? "待确认"}，视图 ${view ?? "月度"}，产品分类行 ${rowCount ?? 0} 行；资产净收入 ${assetBusinessNetIncome ?? EM_DASH}、负债净收入 ${liabilityBusinessNetIncome ?? EM_DASH}、经营净收入 ${grandBusinessNetIncome ?? EM_DASH}。资产负债余额读面降为专题入口，不作为首屏经营口径。`
     : "当前经营页首屏只保留产品分类损益正式读模型和专题分流，不再把资产负债余额读面写成经营判断。";
 
   const tags = hasGovernedValues
