@@ -24,8 +24,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from .bond_duration import infer_accounting_class
-from .bond_four_effects import compute_bond_four_effects
+from .bond_four_effects import compute_bond_four_effects, resolve_accounting_class
 from .campisi import (
     _coupon_freq,
     _years_to_maturity,
@@ -76,6 +75,7 @@ def compute_daily_attribution_row(
         "coupon_rate_start": merged_position.get("coupon_rate_start"),
         "yield_to_maturity_start": merged_position.get("yield_to_maturity_start"),
         "asset_class_start": merged_position.get("asset_class_start"),
+        "accounting_class": merged_position.get("accounting_class"),
         "maturity_date_start": mat_d,
         "accrued_interest_start": merged_position.get("accrued_interest_start"),
         "accrued_interest_end": merged_position.get("accrued_interest_end"),
@@ -90,7 +90,7 @@ def compute_daily_attribution_row(
     curve_dec = fx["treasury_effect"]
     spread_ret_dec = fx["spread_effect"]
     _ZERO = Decimal("0")
-    if infer_accounting_class(merged_position.get("asset_class_start")) == ACCOUNTING_BASIS_AC:
+    if resolve_accounting_class(bond) == ACCOUNTING_BASIS_AC:
         rolldown_dec = _ZERO
     elif not market_end or mat_d is None:
         rolldown_dec = _ZERO

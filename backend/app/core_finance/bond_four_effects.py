@@ -57,6 +57,25 @@ def _get_bond_field(bond: Any, *keys: str, default: Any = 0):
     return default
 
 
+_ACCOUNTING_CLASS_TOKENS = frozenset({"AC", "OCI", "TPL"})
+
+
+def resolve_accounting_class(bond: Any) -> str:
+    """解析该券的会计分类（AC / OCI / TPL）。
+
+    优先取仓库层算好的权威字段 ``accounting_class``；只有在它缺失时才回退到
+    从标签串推断。上游 ``positions_merged`` 的 ``asset_class_start`` 是
+    ``asset_class_std`` + 评级（如 ``credit AAA``），不含会计口径信息，单靠它
+    推断会把全部持仓判成 TPL。
+    """
+    explicit = str(_get_bond_field(bond, "accounting_class", default="") or "").strip().upper()
+    if explicit in _ACCOUNTING_CLASS_TOKENS:
+        return explicit
+    return infer_accounting_class(
+        _get_bond_field(bond, "asset_class_start", "asset_class", default="")
+    )
+
+
 def _annual_rate_decimal(value: Any) -> Decimal:
     normalized = normalize_annual_rate_to_decimal(value)
     if normalized is None:
@@ -112,7 +131,6 @@ def compute_bond_four_effects(
     mv_start = safe_decimal(_get_bond_field(bond, "market_value_start"))
     mv_end = safe_decimal(_get_bond_field(bond, "market_value_end"))
     bond_code = str(_get_bond_field(bond, "bond_code", default=""))
-    asset_class = _get_bond_field(bond, "asset_class_start", "asset_class", default="")
     ytm_raw = _get_bond_field(bond, "yield_to_maturity_start", "yield_to_maturity")
     ytm = _annual_rate_decimal(ytm_raw) if ytm_raw is not None else None
 
@@ -189,7 +207,7 @@ def compute_bond_four_effects(
         total_return = total_price_change + income_return
     selection_effect = total_return - income_return - treasury_effect - spread_effect
 
-    ac_class = infer_accounting_class(asset_class)
+    ac_class = resolve_accounting_class(bond)
     if ac_class == ACCOUNTING_BASIS_AC:
         treasury_effect = Decimal("0")
         spread_effect = Decimal("0")
@@ -270,8 +288,7 @@ def compute_bond_six_effects(
         report_date,
         coupon_frequency=coupon_frequency,
     )
-    asset_class = _get_bond_field(bond, "asset_class_start", "asset_class", default="")
-    if infer_accounting_class(asset_class) == ACCOUNTING_BASIS_AC:
+    if resolve_accounting_class(bond) == ACCOUNTING_BASIS_AC:
         return {
             "income_return": fx["income_return"],
             "treasury_effect": Decimal("0"),
@@ -325,7 +342,22 @@ def compute_bond_six_effects(
         # modified_duration_from_macaulay returns duration unchanged when ytm <= 0,
         # so passing 0 is safe and avoids the arbitrary 0.01 proxy.
         ytm_for_mod = ytm if ytm and ytm > Decimal("0") else coupon if coupon > Decimal("0") else Decimal("0")
-        convexity = estimate_convexity_bond(macaulay, ytm_for_mod, wind_convexity=None, coupon_frequency=coupon_frequency)
+        # W-fi-2026-08 P4：传现金流入参，凸性走标准现金流二阶导而非久期型近似。
+        # years_to_maturity 与 estimate_duration 内部同式（ACT/365F，剩余天数/365）。
+        remaining_days = (mat_date - report_date).days
+        years_to_maturity = (
+            Decimal(str(remaining_days)) / Decimal("365")
+            if remaining_days > 0
+            else Decimal("0")
+        )
+        convexity = estimate_convexity_bond(
+            macaulay,
+            ytm_for_mod,
+            wind_convexity=None,
+            coupon_frequency=coupon_frequency,
+            coupon_rate=coupon,
+            years_to_maturity=years_to_maturity,
+        )
 
     convexity_effect = Decimal("0.5") * convexity * (dy * dy + ds * ds) * mv_start
     cross_effect = convexity * dy * ds * mv_start
