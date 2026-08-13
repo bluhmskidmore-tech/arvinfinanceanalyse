@@ -7,7 +7,7 @@ import {
   buildAssetClassMarketValuePieOption,
   buildKrdDv01BarOption,
 } from "../features/bond-analytics/utils/echartsRiskCharts";
-import { designTokens } from "../theme/designSystem";
+import { nocturneTokens } from "../theme/designSystem";
 import { formatRawAsNumeric } from "../utils/format";
 
 function numeric(
@@ -148,10 +148,11 @@ describe("echartsRiskCharts", () => {
       };
       expect(series?.type).toBe("pie");
       expect(series?.data?.length).toBe(4);
-      expect(series?.data?.[0]?.itemStyle?.color).toBe(designTokens.color.info[500]);
-      expect(series?.data?.[1]?.itemStyle?.color).toBe(designTokens.color.warning[400]);
-      expect(series?.data?.[2]?.itemStyle?.color).toBe(designTokens.color.neutral[500]);
-      expect(series?.data?.[3]?.itemStyle?.color).toBe(designTokens.color.neutral[400]);
+      // Nocturne 换肤（2026-08-13）：ECharts canvas 取色切 nocturneTokens 常量组。
+      expect(series?.data?.[0]?.itemStyle?.color).toBe(nocturneTokens.color.blue);
+      expect(series?.data?.[1]?.itemStyle?.color).toBe(nocturneTokens.color.amber);
+      expect(series?.data?.[2]?.itemStyle?.color).toBe(nocturneTokens.color.inkMuted);
+      expect(series?.data?.[3]?.itemStyle?.color).toBe(nocturneTokens.color.inkSoft);
 
       const tooltip = option?.tooltip as {
         formatter?: (p: {

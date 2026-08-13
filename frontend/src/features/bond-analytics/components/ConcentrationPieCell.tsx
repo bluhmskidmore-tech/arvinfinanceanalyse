@@ -1,5 +1,6 @@
 import { useMemo } from "react";
-import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
+import { type EChartsOption } from "../../../lib/echarts";
+import { BaseChart } from "../../../components/charts/BaseChart";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import type { ConcentrationMetrics } from "../types";
 import { designTokens, nocturneTokens } from "../../../theme/designSystem";
@@ -58,5 +59,5 @@ export function ConcentrationPieCell({ metrics }: { metrics: ConcentrationMetric
     );
   }
 
-  return <ReactECharts option={option} style={{ height: 200 }} />;
+  return <BaseChart option={option} height={200} />;
 }

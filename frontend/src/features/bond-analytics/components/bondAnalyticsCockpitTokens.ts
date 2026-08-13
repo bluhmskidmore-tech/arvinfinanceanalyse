@@ -46,21 +46,20 @@ export const BOND_ANALYTICS_SPREAD_SCENARIO_PRESETS = [
 export const BORDER = color.neutral[100];
 export const SHADOW = shadow.card;
 
+/* 首页降噪制度（DESIGN §3）：眉标是 11px muted 常规体，不再用大写宽字距装饰。 */
 export const EYEBROW: CSSProperties = {
   fontSize: fontSize[11],
   color: "var(--dh-api-muted)",
-  textTransform: "uppercase",
-  letterSpacing: "0.14em",
-  fontWeight: 700,
+  letterSpacing: 0,
+  fontWeight: 400,
 };
 
 export const FIELD: CSSProperties = {
   marginBottom: 6,
   color: color.neutral[700],
   fontSize: fontSize[11],
-  textTransform: "uppercase",
-  letterSpacing: "0.08em",
-  fontWeight: 700,
+  letterSpacing: 0,
+  fontWeight: 500,
 };
 
 export function panelStyle(background?: string): CSSProperties {

@@ -5,7 +5,8 @@ import type { TableColumnsType } from "antd";
 
 import { useApiClient } from "../../../api/client";
 import type { IndustryStatItem } from "../../../api/contracts";
-import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
+import { type EChartsOption } from "../../../lib/echarts";
+import { BaseChart } from "../../../components/charts/BaseChart";
 import { nocturneTokens } from "../../../theme/designSystem";
 import { EM_DASH } from "../../../utils/format";
 import { POSITIONS_QUERY_STALE_TIME_MS } from "../model/positionsPageModel";
@@ -194,14 +195,7 @@ export default function IndustryDistributionCard({ startDate, endDate, subType }
         <p className="positions-view__table-state">行业分布暂不可用</p>
       ) : data && data.items.length > 0 ? (
         <>
-          {chartOption ? (
-            <ReactECharts
-              option={chartOption}
-              className="positions-bonds-dist__chart positions-bonds-dist__chart--industry"
-              notMerge
-              lazyUpdate
-            />
-          ) : null}
+          {chartOption ? <BaseChart option={chartOption} height={220} /> : null}
           <Table
             size="small"
             className="positions-view__table"

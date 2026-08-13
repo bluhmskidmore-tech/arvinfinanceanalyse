@@ -7,7 +7,8 @@ import { Link } from "react-router-dom";
 import { useApiClient } from "../../../api/client";
 import type { CustomerBondDetailItem } from "../../../api/contracts";
 import { buildBondTradingDeskPath } from "../../bond-trading-desk/lib/bondTradingDeskPageModel";
-import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
+import { type EChartsOption } from "../../../lib/echarts";
+import { BaseChart } from "../../../components/charts/BaseChart";
 import { nocturneTokens } from "../../../theme/designSystem";
 import { POSITIONS_QUERY_STALE_TIME_MS } from "../model/positionsPageModel";
 import { formatAmountYi, formatAmountYiNumber, formatRatePercent } from "../utils/format";
@@ -313,12 +314,7 @@ export default function CustomerDetailModal({ open, onClose, customerName, repor
                     </div>
                   ) : null}
                   {chartOption ? (
-                    <ReactECharts
-                      option={chartOption}
-                      className="positions-customer-detail__chart"
-                      notMerge
-                      lazyUpdate
-                    />
+                    <BaseChart option={chartOption} height={280} />
                   ) : (
                     <Typography.Text type="secondary">暂无趋势数据</Typography.Text>
                   )}

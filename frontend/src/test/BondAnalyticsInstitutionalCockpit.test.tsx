@@ -1204,7 +1204,8 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(responsiveBlock.indexOf('"market"')).toBeGreaterThan(responsiveBlock.indexOf('"hero"'));
     expect(heroRule).not.toContain("border-left:");
     expect(heroRule).toContain("background: var(--moss-color-card-bg)");
-    expect(heroRule).toContain("padding: 14px 18px");
+    // 参照首页排版（2026-08-13）：hero 收敛为首页分区面板密度（8px 头带 + 12px 内衬）。
+    expect(heroRule).toContain("padding: 8px 12px 12px");
     expect(heroRule).toContain('grid-template-areas:');
     expect(heroRule).toContain('"identity identity"');
     expect(heroRule).toContain('"main governance"');
@@ -1212,14 +1213,19 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(heroRule).not.toMatch(/box-shadow:/);
     const heroAsideRule = cssRuleBody(".heroAside");
     expect(heroAsideRule).toContain("grid-area: governance");
-    expect(heroGovernanceRule).toContain("border: 1px solid var(--moss-color-neutral-200)");
-    expect(heroMainRule).toContain("grid-template-columns: minmax(360px, 1fr) minmax(520px, 0.62fr)");
-    expect(heroHeadlineRule).toContain("font-size: 20px");
+    // 右侧证据盒对齐首页 overviewStatus：panel-2 平底，无独立描边。
+    expect(heroGovernanceRule).not.toContain("border: 1px solid");
+    expect(heroGovernanceRule).toContain("background: var(--moss-color-neutral-50)");
+    // 左列＝结论面板拉伸补齐 + 底部读数横带（DESIGN §5 齐底制度）。
+    expect(heroMainRule).toContain("grid-template-rows: minmax(0, 1fr) auto");
+    // 结论主句对齐首页结论字级 15px/600。
+    expect(heroHeadlineRule).toContain("font-size: 15px");
     expect(heroHeadlineRule).toContain("-webkit-line-clamp: 2");
     expect(heroDetailRule).toContain("font-size: 12px");
-    expect(heroMetricsRule).toContain("grid-template-columns: repeat(4, minmax(84px, 1fr))");
-    expect(heroMetricsRule).toContain("border-left: 1px solid var(--moss-color-neutral-100)");
-    expect(heroMetricValueRule).toContain("font-size: 24px");
+    // 读数改首页同款单框横带：发丝描边 + 竖分割，不再悬空排列。
+    expect(heroMetricsRule).toContain("grid-template-columns: repeat(4, minmax(0, 1fr))");
+    expect(heroMetricsRule).toContain("border: 1px solid var(--moss-color-neutral-200)");
+    expect(heroMetricValueRule).toContain("font-size: 20px");
     expect(heroMetricValueRule).toContain("white-space: nowrap");
     expect(heroGovernanceRule).not.toContain("border-left:");
     expect(heroVerdictRowRule).toContain("border-top: 1px solid var(--moss-color-neutral-100)");
@@ -1227,22 +1233,24 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(heroVerdictStrongRule).toContain("overflow-wrap: anywhere");
     expect(heroVerdictStrongRule).toContain("-webkit-line-clamp: 2");
     expect(heroVerdictSmallRule).toContain("overflow-wrap: anywhere");
-    expect(heroTitleRule).toContain("font-size: 15px");
+    // 分区头标题对齐首页 overviewSectionHeader：14px/600。
+    expect(heroTitleRule).toContain("font-size: 14px");
     expect(heroRule).not.toMatch(/display:\s*none/);
     expect(marketRule).not.toMatch(/box-shadow:/);
     expect(kpiRailRule).toContain("border-radius: var(--dh-api-radius, 6px)");
     expect(kpiRailRule).not.toContain("background: var(--moss-color-primary-900)");
     expect(kpiGridRule).toContain("grid-template-columns: repeat(7, minmax(108px, 1fr))");
     expect(kpiGridRule).toContain("background: var(--moss-color-neutral-200)");
-    expect(kpiTileRule).toContain("min-height: 52px");
-    expect(kpiTileRule).toContain("padding: 8px 8px");
-    expect(kpiTileRule).toContain("background: var(--moss-color-neutral-50)");
-    expect(kpiPrimaryTileRule).toContain("background: var(--moss-color-card-bg)");
-    expect(kpiPrimaryTileRule).toContain("box-shadow: inset 0 2px 0 var(--moss-color-primary-100)");
-    expect(kpiPrimaryValueRule).toContain("font-size: 16px");
-    expect(kpiGapTileRule).toContain("border-left: 2px solid var(--moss-color-neutral-200)");
-    expect(kpiGapTileRule).toContain("background: var(--moss-color-card-bg)");
-    expect(kpiValueRule).toContain("font-size: 15px");
+    // KPI 瓦片对齐首页 kpiItem：10px/12px 内衬、统一面板底、无优先级装饰阴影。
+    expect(kpiTileRule).toContain("min-height: 68px");
+    expect(kpiTileRule).toContain("padding: 10px 12px");
+    expect(kpiTileRule).toContain("background: var(--ib-surface)");
+    expect(kpiPrimaryTileRule).toContain("background: var(--ib-surface)");
+    expect(kpiPrimaryTileRule).toContain("box-shadow: none");
+    expect(kpiPrimaryValueRule).toContain("font-size: 18px");
+    expect(kpiGapTileRule).not.toContain("border-left:");
+    expect(kpiGapTileRule).toContain("background: var(--ib-surface)");
+    expect(kpiValueRule).toContain("font-size: 18px");
   });
 
   it("keeps the desktop work area as a restrained evidence desk, not decorative hero cards", () => {
@@ -1290,24 +1298,26 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(attributionPanelRule).toContain("grid-template-columns: minmax(210px, 0.75fr) minmax(180px, 0.62fr) minmax(280px, 1fr) minmax(180px, 0.65fr)");
     expect(panelRule).toContain("border: 1px solid var(--moss-color-neutral-200)");
     expect(panelRule).toContain("border-radius: var(--dh-api-radius, 6px)");
-    expect(panelRule).toContain("box-shadow: 0 2px 6px rgba(22, 35, 46, 0.035)");
-    expect(analysisPanelRule).toContain("box-shadow: 0 2px 6px rgba(22, 35, 46, 0.035)");
-    expect(curveBannerRule).toContain("border-left: 4px solid var(--moss-color-primary-700)");
+    // Nocturne 换肤（2026-08-13）：深色页不靠阴影（DESIGN.md §2.2），面板阴影收敛为 none。
+    expect(panelRule).toContain("box-shadow: none");
+    expect(analysisPanelRule).toContain("box-shadow: none");
+    // 首页 panelHeader 语言：2px 中性左沿代替 4px 主色粗条。
+    expect(curveBannerRule).toContain("border-left: 2px solid var(--moss-color-neutral-200)");
     expect(curveBannerRule).toContain("background: var(--moss-color-neutral-50)");
     expect(curveBannerRule).toContain("padding: 8px 12px");
     expect(curveBannerRule).toContain("gap: 8px");
-    expect(curveBannerTextStrongRule).toContain("font-size: 15px");
+    expect(curveBannerTextStrongRule).toContain("font-size: 14px");
     expect(curveBannerStatsRule).toContain("grid-template-columns: repeat(2, minmax(74px, 1fr))");
     expect(curveBannerStatsRule).toContain("gap: 1px");
     expect(curveBannerStatsDivRule).toContain("padding: 4px 8px");
     expect(curveBannerStatsStrongRule).toContain("font-size: 14px");
     expect(curveBannerRule).not.toContain("linear-gradient");
     expect(curveBannerRule).not.toMatch(/box-shadow:/);
-    expect(evidenceNoticeRule).toContain("border-left: 3px solid var(--moss-color-primary-600)");
+    expect(evidenceNoticeRule).toContain("border-left: 2px solid var(--moss-color-neutral-200)");
     expect(judgmentMatrixRule).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))");
     expect(judgmentCardRule).toContain("border: 1px solid var(--moss-color-neutral-200)");
     expect(judgmentCardRule).toContain("border-radius: var(--dh-api-radius, 6px)");
-    expect(judgmentCardRule).toContain("box-shadow: 0 2px 6px rgba(22, 35, 46, 0.035)");
+    expect(judgmentCardRule).toContain("box-shadow: none");
     expect(judgmentCardRule).toContain("min-height: 72px");
     expect(judgmentCardSmallRule).toContain("white-space: normal");
     expect(judgmentCardSmallRule).toContain("overflow-wrap: anywhere");
@@ -1318,7 +1328,7 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(attributionLeadRule).toContain("padding: 4px 8px");
     expect(attributionLeadSmallRule).toContain("overflow-wrap: anywhere");
     expect(attributionLeadSmallRule).not.toContain("white-space: nowrap");
-    expect(attributionLeadStrongRule).toContain("font-size: 17px");
+    expect(attributionLeadStrongRule).toContain("font-size: 16px");
     expect(attributionLedgerRowRule).toContain("padding: 4px 8px");
     expect(attributionGridCellRule).toContain("padding: 4px 8px");
     expect(attributionBoundaryNoteRule).toContain("grid-column: 1 / 4");
@@ -1361,10 +1371,11 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(pointCountRule).toContain("line-height: 1.1");
     expect(valueRule).toContain("font-family: var(--moss-font-mono)");
     expect(valueRule).toContain("text-align: right");
-    expect(evidenceTagRule).toContain("border-left: 3px solid var(--moss-color-primary-600)");
+    expect(evidenceTagRule).toContain("border-left: 2px solid var(--moss-color-neutral-200)");
     expect(curveLayoutRule).toContain("grid-template-columns: minmax(0, 1fr)");
     expect(pendingPanelRule).toContain("min-height: 96px");
-    expect(pendingPanelRule).toContain("border: 1px dashed var(--moss-color-neutral-200)");
+    // 首页空态语言：待返回面收敛为发丝实线安静面板，不再用虚线框。
+    expect(pendingPanelRule).toContain("border: 1px solid var(--moss-color-neutral-100)");
     expect(pendingPanelRule).toContain("border-radius: var(--dh-api-radius, 6px)");
     expect(pendingPanelRule).not.toContain("linear-gradient");
     expect(pendingLedgerRule).toContain("grid-template-columns: repeat(4, minmax(0, 1fr))");
@@ -1461,12 +1472,16 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(footerActionBarRule).toContain("grid-template-columns: minmax(0, 1fr) auto");
     expect(COCKPIT_CSS).toContain(".referenceFooterGrid :global(.ant-card-head)");
     expect(COCKPIT_CSS).toContain("min-height: 32px");
-    expect(footerMetricStrongRule).toContain("font-size: 16px");
+    // 收益证据主值对齐首页 KPI 主值字级 20px。
+    expect(footerMetricStrongRule).toContain("font-size: 20px");
     expect(holdingsStripRule).toContain("grid-template-columns: repeat(3, minmax(0, 1fr))");
     expect(holdingsStripRule).toContain("border-bottom: 1px solid var(--moss-color-neutral-200)");
     expect(holdingsTableRule).toContain("overflow-x: auto");
     expect(holdingsTableRule).toContain("scrollbar-gutter: stable");
-    expect(holdingsTableRule).toContain("box-shadow: inset -18px 0 18px -22px rgba(31, 41, 55, 0.48)");
+    // Nocturne 换肤（2026-08-13）：滚动暗示内阴影色收敛为 --dh-api-bg mix（无裸色值）。
+    expect(holdingsTableRule).toContain(
+      "box-shadow: inset -18px 0 18px -22px color-mix(in srgb, var(--dh-api-bg) 48%, transparent)",
+    );
     expect(holdingsScrollCueRule).toContain("position: sticky");
     expect(holdingsScrollCueRule).toContain("right: 8px");
     expect(holdingsScrollCueRule).toContain("pointer-events: none");
@@ -1478,22 +1493,26 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(COCKPIT_CSS).toContain(".holdingsTableRow {\n  padding: 8px 12px");
     expect(holdingNameCellRule).toContain("position: sticky");
     expect(holdingNameCellRule).toContain("border-right: 1px solid var(--moss-color-neutral-100)");
+    // 首页空态语言（stateMessage）：安静居中 muted 文本，不用虚线框。
     expect(tableEmptyRule).toContain("min-height: 64px");
-    expect(tableEmptyRule).toContain("border: 1px dashed var(--moss-color-neutral-200)");
+    expect(tableEmptyRule).not.toContain("dashed");
+    expect(tableEmptyRule).toContain("text-align: center");
     expect(tableEmptyRule).toContain("background: var(--moss-color-neutral-50)");
     expect(emptyEvidencePanelRule).toContain("min-height: 56px");
-    expect(emptyEvidencePanelRule).toContain("border: 1px dashed var(--moss-color-neutral-200)");
-    expect(moduleNoteRule).toContain("min-height: 32px");
-    expect(moduleNoteRule).toContain("border: 1px dashed var(--moss-color-neutral-200)");
-    expect(pendingReadModelPanelRule).toContain("border: 1px dashed var(--moss-color-neutral-200)");
+    expect(emptyEvidencePanelRule).not.toContain("dashed");
+    expect(emptyEvidencePanelRule).toContain("text-align: center");
+    expect(moduleNoteRule).toContain("min-height: 24px");
+    expect(moduleNoteRule).toContain("border-top: 1px solid var(--moss-color-neutral-100)");
+    expect(pendingReadModelPanelRule).not.toContain("dashed");
+    expect(pendingReadModelPanelRule).toContain("text-align: center");
     expect(riskEvidenceListRule).toContain("border: 1px solid var(--moss-color-neutral-100)");
     expect(riskEvidenceRowRule).toContain("grid-template-columns: minmax(0, 1fr) auto");
     expect(sideStackRule).toContain("gap: 1px");
     expect(sideStackRule).toContain("border: 1px solid var(--moss-color-neutral-200)");
     expect(sideStackCardRule).toContain("box-shadow: none !important");
-    expect(sideHeaderRule).toContain("border-left: 4px solid var(--moss-color-primary-700)");
+    expect(sideHeaderRule).toContain("border-left: 2px solid var(--ib-accent)");
     expect(numericCellRule).toContain("text-align: right");
-    expect(footerEvidenceNoteRule).toContain("border: 1px dashed var(--moss-color-neutral-200)");
+    expect(footerEvidenceNoteRule).not.toContain("dashed");
     expect(footerEvidenceNoteRule).toContain("background: var(--moss-color-neutral-50)");
     expect(COCKPIT_CSS).not.toContain(".footerSparkline");
   });
@@ -1572,6 +1591,7 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(cssRuleBody(".dashboardCard")).toContain("border: 1px solid var(--moss-color-neutral-200)");
     expect(cssRuleBody(".dashboardCard")).toContain("border-radius: var(--dh-api-radius, 6px)");
     expect(source).not.toContain("const restrainedShadow =");
-    expect(cssRuleBody(".dashboardCard")).toContain("box-shadow: 0 2px 6px rgba(22, 35, 46, 0.035)");
+    // Nocturne 换肤（2026-08-13）：深色页不靠阴影（DESIGN.md §2.2）。
+    expect(cssRuleBody(".dashboardCard")).toContain("box-shadow: none");
   });
 });

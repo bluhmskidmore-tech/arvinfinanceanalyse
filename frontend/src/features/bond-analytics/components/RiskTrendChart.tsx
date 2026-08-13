@@ -17,24 +17,28 @@ export function RiskTrendChart() {
         boxShadow: "none",
       }}
     >
+      {/* 空态收缩（DESIGN §5）：无数据分组收缩到消息框自身高度，居中一句话说明。 */}
       <div
         role="status"
         aria-live="polite"
         style={{
-          minHeight: 220,
+          minHeight: 88,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          padding: `${dt.space[4]}px ${dt.space[3]}px`,
+          padding: `${dt.space[3]}px ${dt.space[3]}px`,
           textAlign: "center",
-          color: dt.color.neutral[600],
-          fontSize: dt.fontSize[13],
+          color: "var(--ib-ink-muted)",
+          fontSize: dt.fontSize[12],
           lineHeight: dt.lineHeight.relaxed,
         }}
       >
         周频净敞口、负债比与对手方集中度序列暂无可用接口；上方 KPI 与明细区仍走真实报表数据。
       </div>
-      <Paragraph type="secondary" style={{ marginTop: dt.space[1], marginBottom: 0, fontSize: dt.fontSize[12] }}>
+      <Paragraph
+        type="secondary"
+        style={{ marginTop: 0, marginBottom: 0, fontSize: dt.fontSize[11], textAlign: "center" }}
+      >
         接口就绪后可在此挂载 ECharts 序列，不再使用前端合成曲线。
       </Paragraph>
     </EvidencePanel>

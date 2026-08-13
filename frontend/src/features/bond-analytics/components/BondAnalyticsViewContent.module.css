@@ -134,11 +134,11 @@
   min-width: 120px;
   height: 28px;
   border: 1px solid var(--moss-color-neutral-300);
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 6px);
   color: var(--moss-color-primary-900);
   font: inherit;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 500;
   padding: 0 var(--moss-space-2);
 }
 
@@ -151,7 +151,7 @@
   font: inherit;
   font-family: var(--moss-font-mono);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .toolbarDateSelect :global(.ant-select-selector) {
@@ -171,7 +171,7 @@
   color: var(--dashboard-blue-700) !important;
   font-family: var(--moss-font-mono);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .toolbarDateSelect :global(.ant-select-selection-item) {
@@ -380,19 +380,16 @@
   display: grid;
   align-content: start;
   grid-auto-rows: max-content;
-  gap: 14px;
-  width: min(100%, 1178px);
-  max-width: 1178px;
+  gap: 12px;
+  /* 参照首页（dashboardHomeOptionTwo .layout）：满幅平底，不再使用 1178px 工作纸容器。 */
+  width: 100%;
   min-height: calc(100vh - 48px);
-  padding: 16px;
-  border: 1px solid var(--dh-api-line);
-  border-radius: var(--dh-api-radius, 6px);
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--dh-api-panel-2) 98%, transparent), var(--ib-paper) 360px),
-    var(--ib-paper);
+  padding: 14px 18px 16px;
+  background: var(--ib-paper);
   color: var(--ib-ink);
   font-family: var(--moss-font-sans);
   font-feature-settings: "tnum" 1, "ss01" 1;
+  font-variant-numeric: tabular-nums lining-nums;
 }
 
 /* 外壳网格底与 rail 的钢蓝烘焙已删除：Nocturne scope 接入后由
@@ -403,38 +400,11 @@
   justify-items: start !important;
 }
 
+/* 首页平卡语言：发丝描边 + 面板平底，去掉渐变洗底与左侧强调渐变条。 */
 .bondWorkbenchPage [data-testid="bond-analysis-reference-topbar"] {
-  position: relative;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--dh-api-blue) 16%, transparent);
-  background:
-    linear-gradient(
-      112deg,
-      color-mix(in srgb, var(--dh-api-blue) 6%, transparent),
-      transparent 38%
-    ),
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--dh-api-panel) 98%, transparent),
-      color-mix(in srgb, var(--dh-api-panel-2) 96%, transparent)
-    );
+  border: 1px solid var(--ib-hairline);
+  background: var(--ib-surface);
   box-shadow: none;
-}
-
-.bondWorkbenchPage [data-testid="bond-analysis-reference-topbar"]::before {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 3px;
-  background: linear-gradient(
-    180deg,
-    var(--ib-accent),
-    color-mix(in srgb, var(--dh-api-amber) 74%, transparent)
-  );
-  content: "";
-}
-
-.bondWorkbenchPage [data-testid="bond-analysis-reference-topbar"] > * {
-  position: relative;
 }
 
 .bondWorkbenchPage [data-testid="bond-analysis-market-ticker"],
@@ -498,8 +468,20 @@
 }
 
 .bondWorkbenchPage :global(.ant-card-head) {
+  position: relative;
   border-bottom-color: var(--dh-api-line-soft) !important;
   background: transparent !important;
+}
+
+/* 首页 panelHeader 签名：卡头左沿 2px 强调条（top/bottom 7px 内缩）。 */
+.bondWorkbenchPage :global(.ant-card-head)::before {
+  position: absolute;
+  top: 7px;
+  bottom: 7px;
+  left: 0;
+  width: 2px;
+  background: var(--ib-accent);
+  content: "";
 }
 
 .bondWorkbenchPage :global(.ant-btn) {
@@ -513,39 +495,11 @@
   color: var(--ib-accent) !important;
 }
 
-.bondWorkbenchPage [data-testid="bond-analysis-cockpit-conclusion"] {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 12px;
-}
-
-.bondWorkbenchPage [data-testid="bond-analysis-cockpit-conclusion"] > div:first-child > strong {
-  font-size: 22px;
-  line-height: 1.18;
-  text-wrap: balance;
-}
-
-.bondWorkbenchPage [data-testid="bond-analysis-cockpit-conclusion"] > div:nth-child(2) {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  padding-top: 12px;
-  padding-left: 0;
-  border-top: 1px solid var(--dh-api-line-soft);
-  border-left: 0;
-}
-
-.bondWorkbenchPage [data-testid="bond-analysis-cockpit-conclusion"] > div:nth-child(2) strong {
-  font-size: clamp(21px, 1.75vw, 25px);
-}
-
+/* 口径说明降噪为安静脚注行：发丝顶线 + muted 11px，不再用蓝色渐变洗底。 */
 .bondWorkbenchPage [data-testid="bond-analysis-currency-basis-banner"] {
   border-top-color: var(--dh-api-line-soft);
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--dh-api-blue) 9%, transparent),
-      color-mix(in srgb, var(--dh-api-blue) 4%, transparent)
-    ),
-    var(--ib-surface);
-  color: var(--ib-ink-secondary);
+  background: transparent;
+  color: var(--ib-ink-muted);
 }
 
 .fallbackWorkbench {
@@ -622,7 +576,15 @@
   border: 0;
 }
 
-.bondWorkbenchPage :global(.dashboard-home-section-eyebrow),
+/* 眉标不可点击，走 muted（accent 只留给可点击元素）；「展开」提示可点击保留 accent。 */
+.bondWorkbenchPage :global(.dashboard-home-section-eyebrow) {
+  color: var(--ib-ink-muted);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
 .bondWorkbenchPage :global(.dashboard-progressive-disclosure__cue) {
   color: var(--ib-accent);
 }
@@ -662,15 +624,6 @@
   .bondWorkbenchPage {
     min-height: 0;
     padding: 12px;
-  }
-
-  .bondWorkbenchPage [data-testid="bond-analysis-cockpit-conclusion"] > div:nth-child(2) {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px 16px;
-  }
-
-  .bondWorkbenchPage [data-testid="bond-analysis-cockpit-conclusion"] > div:nth-child(2) strong {
-    font-size: clamp(20px, 6vw, 23px);
   }
 
   .detailDrilldownSummary {

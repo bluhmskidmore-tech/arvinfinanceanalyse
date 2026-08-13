@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 
 import ReactECharts, { type EChartsOption } from "../../lib/echarts";
+import { BaseChart } from "../../components/charts/BaseChart";
 import { useApiClient } from "../../api/client";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
 import { PageAsyncSection } from "../../components/page/PageAsyncSection";
@@ -2421,10 +2422,7 @@ export default function RiskTensorPage() {
                     风险张量雷达
                   </div>
                   {radarChartOption ? (
-                    <ReactECharts
-                      option={radarChartOption}
-                      className="risk-tensor-chart risk-tensor-chart--radar"
-                    />
+                    <BaseChart option={radarChartOption} height={400} />
                   ) : null}
                   {invalidRadarRows.length > 0 ? (
                     <div className="risk-tensor-radar-quality" data-testid="risk-tensor-radar-quality-note">

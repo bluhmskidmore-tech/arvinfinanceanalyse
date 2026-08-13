@@ -4,7 +4,7 @@ import { Card } from "antd";
 import type { Numeric, YieldCurveTermStructureCurvePayload } from "../../../api/contracts";
 import { bondNumericRawOrNull } from "../adapters/bondAnalyticsAdapter";
 import { buildYieldCurveTermStructureChartOption } from "../lib/yieldCurveTermStructureChartOption";
-import ReactECharts from "../../../lib/echarts";
+import { BaseChart } from "../../../components/charts/BaseChart";
 import { nocturneTokens } from "../../../theme/designSystem";
 import { EM_DASH } from "../../../utils/format";
 import {
@@ -194,7 +194,7 @@ function ReferenceCurveCompactChart({
       className={styles.curveCompactChart}
       aria-label="正式收益率曲线折线图"
     >
-      <ReactECharts option={option} opts={{ renderer: "canvas" }} />
+      <BaseChart option={option} height={132} />
     </div>
   );
 }

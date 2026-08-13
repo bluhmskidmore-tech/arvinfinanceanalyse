@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Card, Statistic, Row, Col, Alert, Spin, Select, Space } from "antd";
-import ReactECharts from "../../../lib/echarts";
+import { type EChartsOption } from "../../../lib/echarts";
+import { BaseChart } from "../../../components/charts/BaseChart";
 import { FilterBar } from "../../../components/FilterBar";
 import { useApiClient } from "../../../api/client";
 import type { Numeric } from "../../../api/contracts";
@@ -53,7 +54,7 @@ function hasDisplayMetric(value: Numeric | null | undefined): value is Numeric {
   return value != null && value.display !== "";
 }
 
-function buildBenchmarkExcessWaterfallOption(d: BenchmarkExcessResponse) {
+function buildBenchmarkExcessWaterfallOption(d: BenchmarkExcessResponse): EChartsOption {
   const durationEffect = bondNumericRaw(d.duration_effect);
   const curveEffect = bondNumericRaw(d.curve_effect);
   const spreadEffect = bondNumericRaw(d.spread_effect);
@@ -332,11 +333,7 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
         </div>
         {waterfallOption && (
           <div style={{ marginTop: designTokens.space[4] }}>
-            <ReactECharts
-              option={waterfallOption}
-              style={{ height: 280, width: "100%" }}
-              opts={{ renderer: "canvas" }}
-            />
+            <BaseChart option={waterfallOption} height={280} />
           </div>
         )}
       </Card>

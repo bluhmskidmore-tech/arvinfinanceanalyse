@@ -6,12 +6,12 @@
 }
 
 .railCard :global(.ant-card-body) {
-  padding: 12px !important;
+  padding: 10px 12px !important;
 }
 
 .railBody {
   display: grid;
-  gap: 12px;
+  gap: 8px;
 }
 
 .railHeader {
@@ -29,35 +29,34 @@
 }
 
 .railModuleTitle {
-  color: var(--moss-color-primary-900);
-  font-size: 15px;
-  font-weight: 700;
-  line-height: 1.25;
+  color: var(--moss-color-neutral-900);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
 }
 
 .trustPanel {
   display: grid;
-  gap: 6px;
-  padding: 10px 12px;
-  border-radius: 6px;
+  gap: 4px;
+  padding: 9px 12px;
+  border-radius: var(--dh-api-radius, 6px);
 }
 
 .trustKicker {
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-weight: 400;
+  letter-spacing: 0;
 }
 
 .trustDescription {
-  color: var(--moss-color-primary-900);
-  font-size: 13px;
-  line-height: 1.55;
+  color: var(--moss-color-neutral-900);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .trustReason {
   font-size: 12px;
-  line-height: 1.55;
+  line-height: 1.5;
 }
 
 .watchlist {
@@ -66,17 +65,16 @@
 }
 
 .watchlistKicker {
-  color: var(--moss-color-neutral-600);
+  color: var(--moss-color-neutral-500);
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-weight: 400;
+  letter-spacing: 0;
 }
 
 .watchlistItem {
   display: grid;
   gap: 2px;
-  padding-bottom: 8px;
+  padding-bottom: 6px;
   border-bottom: 1px solid var(--moss-color-neutral-100);
 }
 
@@ -86,9 +84,9 @@
 }
 
 .watchlistLabel {
-  color: var(--moss-color-primary-900);
-  font-size: 13px;
-  font-weight: 700;
+  color: var(--moss-color-neutral-900);
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .watchlistReason {

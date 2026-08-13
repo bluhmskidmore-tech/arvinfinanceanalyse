@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Card, Statistic, Row, Col, Table, Alert, Spin } from "antd";
-import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
+import { type EChartsOption } from "../../../lib/echarts";
+import { BaseChart } from "../../../components/charts/BaseChart";
 import { useApiClient } from "../../../api/client";
 import type { KRDScenarioResult, Numeric } from "../../../api/contracts";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
@@ -174,10 +175,10 @@ function sliceColorForAssetClass(assetClass: string): string {
   return ASSET_CLASS_SLICE_COLORS[key] ?? DEFAULT_SLICE_COLOR;
 }
 
-function buildAssetStructurePieOption(rows: AssetClassRiskSummary[]) {
+function buildAssetStructurePieOption(rows: AssetClassRiskSummary[]): EChartsOption {
   const pieData = rows.map((row) => ({
     name: row.asset_class,
-    value: bondNumericRaw(row.market_value),
+    value: bondNumericRaw(row.market_value) ?? undefined,
     marketValueRaw: row.market_value,
     weight: row.weight,
     itemStyle: { color: sliceColorForAssetClass(row.asset_class) },
@@ -186,10 +187,10 @@ function buildAssetStructurePieOption(rows: AssetClassRiskSummary[]) {
   return {
     tooltip: {
       trigger: "item" as const,
-      formatter: (params: {
-        data?: { name: string; marketValueRaw: Numeric; weight: Numeric };
-      }) => {
-        const d = params.data;
+      formatter: (params: unknown) => {
+        const d = (params as { data?: unknown }).data as
+          | { name: string; marketValueRaw: Numeric; weight: Numeric }
+          | undefined;
         if (!d) return "";
         return `${d.name}<br/>市值：${formatYi(d.marketValueRaw)}<br/>权重：${d.weight.display}`;
       },
@@ -201,8 +202,9 @@ function buildAssetStructurePieOption(rows: AssetClassRiskSummary[]) {
           left: "center",
           top: "center",
           style: {
+            // textAlign 非 echarts graphic 类型属性；元素级 left:"center" 已负责居中
+            // （与 creditSpreadViewSupport.buildIssuerConcentrationPieOption 同款）。
             text: "资产结构",
-            textAlign: "center" as const,
             fill: nocturneTokens.color.ink,
             fontSize: 14,
             fontWeight: 500,
@@ -384,11 +386,7 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
       />
       {data.krd_buckets.length > 0 && krdChartOption && (
         <Card title="期限桶平均修正久期" size="small" data-testid="krd-avg-md-distribution">
-          <ReactECharts
-            option={krdChartOption}
-            style={{ width: "100%", height: 240 }}
-            opts={{ renderer: "canvas" }}
-          />
+          <BaseChart option={krdChartOption} height={240} />
         </Card>
       )}
 
@@ -415,11 +413,7 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
       />
       {data.by_asset_class.length > 0 && (
         <Card title="按资产类别拆分" size="small">
-          <ReactECharts
-            option={assetStructurePieOption}
-            style={{ height: 220, width: "100%" }}
-            opts={{ renderer: "canvas" }}
-          />
+          <BaseChart option={assetStructurePieOption} height={220} />
           <Table
             dataSource={data.by_asset_class}
             columns={assetClassColumns}

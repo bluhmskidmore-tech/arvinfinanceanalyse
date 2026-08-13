@@ -1,9 +1,10 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, Statistic, Row, Col, Table, Alert, Spin } from "antd";
-import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
+import { type EChartsOption } from "../../../lib/echarts";
 import { useApiClient } from "../../../api/client";
 import { apiQueryKeys } from "../../../api/queryKeys";
+import { BaseChart } from "../../../components/charts/BaseChart";
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import type { CreditSpreadDetailBondRow } from "../types";
@@ -250,11 +251,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
         <Card title="利差情景冲击" size="small">
           {spreadChartOption && (
             <div style={{ marginBottom: dt.space[4] }}>
-              <ReactECharts
-                option={spreadChartOption}
-                style={{ height: 280, width: "100%" }}
-                opts={{ renderer: "canvas" }}
-              />
+              <BaseChart option={spreadChartOption} height={280} />
             </div>
           )}
           <Table
@@ -270,11 +267,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
 
       <Card title="信用债分布" size="small">
         {creditDistributionView.kind === "heatmap" && (
-          <ReactECharts
-            option={creditDistributionView.option}
-            style={{ height: 400, width: "100%" }}
-            opts={{ renderer: "canvas" }}
-          />
+          <BaseChart option={creditDistributionView.option} height={400} />
         )}
         {creditDistributionView.kind === "bars" && (
           <Row gutter={16}>
@@ -290,11 +283,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
                 {data.concentration_by_rating?.dimension ?? "评级"}（前列市值）
               </div>
               {creditDistributionView.ratingOption ? (
-                <ReactECharts
-                  option={creditDistributionView.ratingOption}
-                  style={{ height: 300, width: "100%" }}
-                  opts={{ renderer: "canvas" }}
-                />
+                <BaseChart option={creditDistributionView.ratingOption} height={300} />
               ) : (
                 <div
                   style={{
@@ -321,11 +310,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
                 {data.concentration_by_tenor?.dimension ?? "期限"}（前列市值）
               </div>
               {creditDistributionView.tenorOption ? (
-                <ReactECharts
-                  option={creditDistributionView.tenorOption}
-                  style={{ height: 300, width: "100%" }}
-                  opts={{ renderer: "canvas" }}
-                />
+                <BaseChart option={creditDistributionView.tenorOption} height={300} />
               ) : (
                 <div
                   style={{
@@ -367,11 +352,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
         <>
           <Card title="利差期限结构" size="small">
             {termStructureOption ? (
-              <ReactECharts
-                option={termStructureOption}
-                style={{ height: 320, width: "100%" }}
-                opts={{ renderer: "canvas" }}
-              />
+              <BaseChart option={termStructureOption} height={320} />
             ) : (
               <div
                 style={{
@@ -476,11 +457,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
                     <Col xs={24} md={12}>
                       {issuerConcentrationPieOption && (
                         <div style={{ marginTop: dt.space[4] }}>
-                          <ReactECharts
-                            option={issuerConcentrationPieOption}
-                            style={{ height: 280, width: "100%" }}
-                            opts={{ renderer: "canvas" }}
-                          />
+                          <BaseChart option={issuerConcentrationPieOption} height={280} />
                         </div>
                       )}
                     </Col>

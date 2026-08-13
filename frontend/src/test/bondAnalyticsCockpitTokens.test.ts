@@ -10,8 +10,7 @@ import {
   readinessTagColor,
   toneColor,
 } from "../features/bond-analytics/components/bondAnalyticsCockpitTokens";
-import { designTokens, dhApiTokens } from "../theme/designSystem";
-import { displayTokens } from "../theme/displayTokens";
+import { dhApiTokens } from "../theme/designSystem";
 
 describe("bondAnalyticsCockpitTokens", () => {
   it("orders PERIOD_OPTIONS as MoM, YTD, TTM", () => {
@@ -28,11 +27,15 @@ describe("bondAnalyticsCockpitTokens", () => {
   });
 
   it("toneColor covers success, warning, danger, and default neutral", () => {
-    expect(toneColor("success").color).toBe(designTokens.color.success[800]);
-    expect(toneColor("warning").color).toBe(designTokens.color.warning[800]);
-    expect(toneColor("danger").color).toBe(designTokens.color.danger[800]);
-    expect(toneColor("neutral").color).toBe(designTokens.color.neutral[700]);
-    expect(toneColor("neutral").background).toBe(displayTokens.surface.section);
+    // Nocturne 换肤（2026-08-13）：tone 面走 --dh-api-* 语义链（DOM style 消费）。
+    expect(toneColor("success").color).toBe("var(--dh-api-green)");
+    expect(toneColor("warning").color).toBe("var(--dh-api-amber)");
+    expect(toneColor("danger").color).toBe("var(--dh-api-red)");
+    expect(toneColor("neutral").color).toBe("var(--dh-api-soft)");
+    expect(toneColor("neutral").background).toBe("var(--dh-api-panel-2)");
+    expect(toneColor("success").background).toBe(
+      "color-mix(in srgb, var(--dh-api-green) 12%, var(--dh-api-panel))",
+    );
   });
 
   it("readinessTagColor maps status labels to ant tag colors", () => {
@@ -48,11 +51,12 @@ describe("bondAnalyticsCockpitTokens", () => {
   });
 
   it("readinessSurface maps status labels to surface tokens", () => {
-    expect(readinessSurface("eligible").accent).toBe(designTokens.color.success[500]);
-    expect(readinessSurface("request-error").accent).toBe(designTokens.color.danger[600]);
-    expect(readinessSurface("placeholder-blocked").accent).toBe(designTokens.color.warning[600]);
-    expect(readinessSurface("warning").text).toBe(designTokens.color.warning[800]);
-    expect(readinessSurface("default").borderColor).toBe(designTokens.color.neutral[200]);
+    // Nocturne 换肤（2026-08-13）：就绪面与 toneColor 同走 --dh-api-* 语义链。
+    expect(readinessSurface("eligible").accent).toBe("var(--dh-api-green)");
+    expect(readinessSurface("request-error").accent).toBe("var(--dh-api-red)");
+    expect(readinessSurface("placeholder-blocked").accent).toBe("var(--dh-api-amber)");
+    expect(readinessSurface("warning").text).toBe("var(--dh-api-amber)");
+    expect(readinessSurface("default").borderColor).toBe("var(--dh-api-line-soft)");
   });
 
   it("promotionLabel maps destinations to stable Chinese labels", () => {

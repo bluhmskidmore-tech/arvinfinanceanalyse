@@ -5,7 +5,7 @@ import { Alert, Card, Spin } from "antd";
 import { useApiClient } from "../../../api/client";
 import type { ApiEnvelope, YieldCurveTermStructurePayload } from "../../../api/contracts";
 import { apiQueryKeys } from "../../../api/queryKeys";
-import ReactECharts from "../../../lib/echarts";
+import { BaseChart } from "../../../components/charts/BaseChart";
 import {
   formatYieldCurveDateSummary,
   summarizeYieldCurveDates,
@@ -90,7 +90,7 @@ export function BondAnalyticsYieldCurveTermStructureChart({
         </div>
       ) : option && (q.data?.result.curves.length ?? 0) > 0 ? (
         <div className={styles.chart}>
-          <ReactECharts option={option} opts={{ renderer: "canvas" }} />
+          <BaseChart option={option} height={280} />
         </div>
       ) : (
         <div className={styles.empty}>暂无正式曲线截面（或全部期限缺失）</div>

@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, Spin } from "antd";
 
 import { useApiClient } from "../../../api/client";
-import ReactECharts from "../../../lib/echarts";
+import { BaseChart } from "../../../components/charts/BaseChart";
 import { designTokens, dhApiTokens } from "../../../theme/designSystem";
 import { buildBondAnalyticsOverviewRateChartOption } from "../lib/bondAnalyticsRateChartOption";
 import { bondAnalyticsQueryKeyRoot } from "../lib/bondAnalyticsQueryKeys";
@@ -46,7 +46,7 @@ export function BondAnalyticsOverviewRateChart() {
           <Spin />
         </div>
       ) : option ? (
-        <ReactECharts option={option} style={{ height: 280, width: "100%" }} opts={{ renderer: "canvas" }} />
+        <BaseChart option={option} height={280} />
       ) : (
         <div
           style={{

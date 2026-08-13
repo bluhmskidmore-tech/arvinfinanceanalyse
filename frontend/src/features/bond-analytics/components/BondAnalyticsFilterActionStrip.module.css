@@ -34,9 +34,10 @@
 }
 
 .commandIntro strong {
-  color: var(--moss-color-primary-900);
-  font-size: 15px;
-  line-height: 1.25;
+  color: var(--moss-color-neutral-900);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
 }
 
 .commandIntro p {
@@ -47,12 +48,11 @@
 }
 
 .fieldLabel {
-  color: var(--moss-color-neutral-600);
+  color: var(--moss-color-neutral-500);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 400;
   letter-spacing: 0;
   line-height: 1.2;
-  text-transform: uppercase;
 }
 
 .refreshState {
@@ -62,8 +62,9 @@
 
 .refreshState strong {
   overflow: hidden;
-  color: var(--moss-color-primary-900);
-  font-size: 13px;
+  color: var(--moss-color-neutral-900);
+  font-size: 12px;
+  font-weight: 500;
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -104,13 +105,12 @@
   padding: 9px 12px;
   border-top: 1px solid var(--moss-color-neutral-100);
   background: var(--moss-color-neutral-50);
-  color: var(--moss-color-primary-800);
+  color: var(--moss-color-neutral-600);
   cursor: pointer;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 500;
   letter-spacing: 0;
   list-style: none;
-  text-transform: uppercase;
 }
 
 .advancedSummary::-webkit-details-marker {

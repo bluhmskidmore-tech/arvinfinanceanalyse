@@ -18,6 +18,7 @@ import type {
 import type { BondAnalyticsModuleKey } from "../lib/bondAnalyticsModuleRegistry";
 import { buildBondAnalyticsOverviewModel } from "../lib/bondAnalyticsOverviewModel";
 import { bondAnalyticsQueryKeyRoot } from "../lib/bondAnalyticsQueryKeys";
+import { EM_DASH } from "../../../utils/format";
 import { PERIOD_OPTIONS } from "./bondAnalyticsCockpitTokens";
 import styles from "./BondAnalyticsViewContent.module.css";
 
@@ -79,7 +80,7 @@ function BondAnalyticsDateFallbackWorkbench({
           (label) => (
             <div key={label} className={styles.fallbackTickerCell}>
               <span>{label}</span>
-              <strong>—</strong>
+              <strong>{EM_DASH}</strong>
               <small>待读取</small>
             </div>
           ),
@@ -295,7 +296,7 @@ export function BondAnalyticsViewContent() {
         <div className="dashboard-home-toolbar__identity">
           <h1 className="dashboard-home-toolbar__title">债券分析</h1>
           <span className="dashboard-home-toolbar__eyebrow">
-            报告日 {effectiveReportDate || "待确认"}
+            组合读面先看结论，再核证据与下钻参数
           </span>
         </div>
         <div className="dashboard-home-actions">

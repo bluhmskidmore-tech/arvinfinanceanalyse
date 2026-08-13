@@ -398,7 +398,6 @@ export function BondAnalyticsInstitutionalCockpit({
       <section data-testid="bond-analysis-reference-dashboard" className={styles.referenceDashboard}>
         <section data-testid="bond-analysis-reference-topbar" className={styles.heroSection}>
           <div className={styles.heroIdentity}>
-            <div className={styles.holdingsKicker}>债券分析</div>
             <h2 className={styles.heroTitle}>固定收益交易台</h2>
             <span className={styles.heroReportDate}>报告日 {topbarReportDate}</span>
           </div>
@@ -478,14 +477,15 @@ export function BondAnalyticsInstitutionalCockpit({
         <ReferenceMarketTicker series={macroSeries} unavailable={macroUnavailable} />
 
         <div className={styles.holdingsKpiRail}>
+          {/* 常态零徽标（首页 2026-08-13 降噪制度）：就绪读数不再挂「已读」，仅缺口/待读面发声。 */}
           <InstitutionalKpiRail testId="bond-analysis-kpi-ribbon" columns={7} flush>
-            <InstitutionalKpiTile label="久期" value={durationDisplay} detail={leadMaturity ? `最重期限桶 ${leadMaturity.label}` : "期限结构待读面"} status={Number.isFinite(dur) ? "已读" : "待读面"} priority="primary" />
-            <InstitutionalKpiTile label="组合到期收益率" value={k ? formatPct(k.weighted_ytm) : EM_DASH} detail={previousK ? `上期 ${formatPct(previousK.weighted_ytm)}` : "收益率待读面"} status={k ? "已读" : "待读面"} priority="primary" />
-            <InstitutionalKpiTile label="信用利差" value={formatSpreadBpDisplay(spreadMedian)} detail="信用利差中位数" status={Number.isFinite(spreadMedianBp) ? "已读" : "待读面"} priority="primary" />
-            <InstitutionalKpiTile label="DV01" value={dv01Display} detail="风险指标读面" status={hasDv01Readout ? "已读" : "待读面"} priority="primary" />
+            <InstitutionalKpiTile label="久期" value={durationDisplay} detail={leadMaturity ? `最重期限桶 ${leadMaturity.label}` : "期限结构待读面"} status={Number.isFinite(dur) ? undefined : "待读面"} priority="primary" />
+            <InstitutionalKpiTile label="组合到期收益率" value={k ? formatPct(k.weighted_ytm) : EM_DASH} detail={previousK ? `上期 ${formatPct(previousK.weighted_ytm)}` : "收益率待读面"} status={k ? undefined : "待读面"} priority="primary" />
+            <InstitutionalKpiTile label="信用利差" value={formatSpreadBpDisplay(spreadMedian)} detail="信用利差中位数" status={Number.isFinite(spreadMedianBp) ? undefined : "待读面"} priority="primary" />
+            <InstitutionalKpiTile label="DV01" value={dv01Display} detail="风险指标读面" status={hasDv01Readout ? undefined : "待读面"} priority="primary" />
             <InstitutionalKpiTile label="Carry+Roll" value={EM_DASH} detail="接口未返回 / 待读面" status="缺口" priority="gap" />
-            <InstitutionalKpiTile label="月度收益" value={actionPnlDisplay} detail={actionAttribution ? `${actionAttribution.total_actions} 笔动作` : "动作归因待读面"} status={actionAttribution ? "已读" : "待读面"} tone={actionPnlTone} />
-            <InstitutionalKpiTile label="总收益" value={unrealizedPnlDisplay} detail={`较上期 ${formatSignedPct(unrealizedPnlMomPct)}`} status={k ? "已读" : "待读面"} tone={unrealizedPnlTone} />
+            <InstitutionalKpiTile label="月度收益" value={actionPnlDisplay} detail={actionAttribution ? `${actionAttribution.total_actions} 笔动作` : "动作归因待读面"} status={actionAttribution ? undefined : "待读面"} tone={actionPnlTone} />
+            <InstitutionalKpiTile label="总收益" value={unrealizedPnlDisplay} detail={`较上期 ${formatSignedPct(unrealizedPnlMomPct)}`} status={k ? undefined : "待读面"} tone={unrealizedPnlTone} />
           </InstitutionalKpiRail>
           <div
             data-testid="bond-analysis-currency-basis-banner"

@@ -18,14 +18,14 @@ interface Props {
 }
 
 const ACTION_COLORS: Record<string, string> = {
-  ADD_DURATION: "#1890ff",
-  REDUCE_DURATION: "#faad14",
+  ADD_DURATION: designTokens.color.info[500], // 近似映射，原值 #1890ff。
+  REDUCE_DURATION: designTokens.color.warning[400], // 近似映射，原值 #faad14。
   SWITCH: designTokens.color.primary[800],
   CREDIT_DOWN: designTokens.color.warm.burgundy,
-  CREDIT_UP: "#52c41a",
-  TIMING_BUY: "#13c2c2",
-  TIMING_SELL: "#fa541c",
-  HEDGE: "#8c8c8c",
+  CREDIT_UP: designTokens.color.success[400], // 近似映射，原值 #52c41a。
+  TIMING_BUY: designTokens.color.institutional.accentCyan, // 近似映射，原值 #13c2c2。
+  TIMING_SELL: designTokens.color.warm.terracotta, // 近似映射，原值 #fa541c。
+  HEDGE: designTokens.color.neutral[500], // 近似映射，原值 #8c8c8c。
 };
 
 function metaQualityLabel(value: ResultMeta["quality_flag"]): string {
@@ -294,7 +294,7 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
                       style={{
                         height: "100%",
                         width: `${Math.min(Math.abs(pct), 100)}%`,
-                        background: ACTION_COLORS[item.action_type] || "#8c8c8c",
+                        background: ACTION_COLORS[item.action_type] || designTokens.color.neutral[500], // 近似映射，原值 #8c8c8c。
                         borderRadius: 4,
                       }}
                     />
