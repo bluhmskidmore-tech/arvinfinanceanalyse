@@ -37,6 +37,7 @@ export function BondAnalyticsAgentDrawer({
       open={open}
       onClose={onClose}
       data-testid="bond-analysis-agent-drawer"
+      data-moss-theme-scope="bond-analysis"
       title="复核助手"
       extra={
         <AntButton type="text" onClick={onClose} aria-label="关闭抽屉">
@@ -44,7 +45,7 @@ export function BondAnalyticsAgentDrawer({
         </AntButton>
       }
     >
-      <div className={styles.agentDrawerBody}>
+      <div className={styles.agentDrawerBody} data-moss-theme-scope="bond-analysis">
         {open ? (
           <Suspense fallback={null}>
             <LazyAgentPanel

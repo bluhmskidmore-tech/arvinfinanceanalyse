@@ -1,5 +1,5 @@
 import type { Numeric, ReturnDecompositionPayload } from "../../../api/contracts";
-import { numericRaw } from "../../../pageModel";
+import { EM_DASH, numericRaw } from "../../../pageModel";
 
 /** Raw scalar for charts / sorting; governed Numeric or legacy string. */
 export function bondNumericRaw(n: Numeric | string | null | undefined): number | null {
@@ -28,12 +28,12 @@ export function chartValueOrZero(value: number | null | undefined, fallback = 0)
 
 export function bondNumericDisplay(n: Numeric | string | null | undefined): string {
   if (n === null || n === undefined) {
-    return "—";
+    return EM_DASH;
   }
   if (typeof n === "string") {
-    return n === "" || n === "undefined" ? "—" : n;
+    return n === "" || n === "undefined" ? EM_DASH : n;
   }
-  return !n.display || n.display === "undefined" ? "—" : n.display;
+  return !n.display || n.display === "undefined" ? EM_DASH : n.display;
 }
 
 /** ECharts / table magnitude from risk tensor string or bond-analytics Numeric. */

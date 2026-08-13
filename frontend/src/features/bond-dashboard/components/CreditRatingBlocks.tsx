@@ -2,6 +2,7 @@ import { Button, Card } from "antd";
 
 import type { AssetStructurePayload } from "../../../api/contracts";
 import { ibChartTheme } from "../../../components/charts/chartTheme";
+import { EM_DASH } from "../../../pageModel";
 import { ibTokens } from "../../../theme/designSystem";
 import styles from "../bondDashboard.module.css";
 import { formatRatePercent, formatYi, nativeToNumber } from "../utils/format";
@@ -79,7 +80,7 @@ export function CreditRatingBlocks({
     >
       <div className={styles.ratingStrip}>
         {items.length === 0 ? (
-          <div className={styles.ratingEmpty}>—</div>
+          <div className={styles.ratingEmpty}>{EM_DASH}</div>
         ) : (
           items.map((it, index) => {
             const rawMarketValue = nativeToNumber(it.total_market_value);
@@ -95,10 +96,10 @@ export function CreditRatingBlocks({
                   background: bg,
                 }}
               >
-                <div className={styles.ratingBlockCategory}>{it.category || "—"}</div>
+                <div className={styles.ratingBlockCategory}>{it.category || EM_DASH}</div>
                 <div className={styles.ratingBlockAmount}>{formatYi(it.total_market_value)} 亿</div>
                 <div className={styles.ratingBlockPct}>
-                  {percentage === "—" ? "—" : `${percentage}%`}
+                  {percentage === EM_DASH ? EM_DASH : `${percentage}%`}
                 </div>
               </div>
             );

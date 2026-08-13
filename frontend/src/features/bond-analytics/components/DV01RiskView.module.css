@@ -13,7 +13,7 @@
   padding: var(--moss-space-3);
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: var(--moss-radius-sm);
-  background: #f8fbff;
+  background: var(--moss-color-neutral-50);
 }
 
 .controlGroup {
@@ -34,7 +34,7 @@
   height: 32px;
   border: 1px solid var(--moss-color-neutral-300);
   border-radius: var(--moss-radius-sm);
-  background: #ffffff;
+  background: var(--moss-color-card-bg);
   color: var(--moss-color-neutral-900);
   font-size: 13px;
 }
@@ -52,7 +52,7 @@
   padding: var(--moss-space-3);
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: var(--moss-radius-sm);
-  background: #ffffff;
+  background: var(--moss-color-card-bg);
 }
 
 .kpiLabel {
@@ -76,7 +76,7 @@
   padding: var(--moss-space-3);
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: var(--moss-radius-sm);
-  background: #ffffff;
+  background: var(--moss-color-card-bg);
 }
 
 .panelTitle {
@@ -125,7 +125,7 @@
   padding: var(--moss-space-2);
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: var(--moss-radius-sm);
-  background: #f8fbff;
+  background: var(--moss-color-neutral-50);
 }
 
 .operatorLabel {
@@ -172,7 +172,7 @@
   padding: 0 10px;
   border: 1px solid var(--moss-color-neutral-300);
   border-radius: var(--moss-radius-sm);
-  background: #ffffff;
+  background: var(--moss-color-card-bg);
   color: var(--moss-color-neutral-900);
   font-size: 13px;
 }
@@ -187,9 +187,9 @@
   display: grid;
   min-height: 128px;
   place-items: center;
-  border: 1px dashed #cfe0f5;
+  border: 1px dashed var(--moss-color-neutral-200);
   border-radius: var(--moss-radius-sm);
-  background: #f8fbff;
+  background: var(--moss-color-neutral-50);
   color: var(--moss-color-neutral-600);
   font-size: 13px;
 }

@@ -288,6 +288,7 @@ export function BondAnalyticsViewContent() {
   return (
     <section
       data-testid="bond-analysis-overview"
+      data-moss-theme-scope="bond-analysis"
       className={`dashboard-home-shell ${styles.bondWorkbenchPage}`}
     >
       <header data-testid="bond-analysis-toolbar" className="dashboard-home-toolbar">

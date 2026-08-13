@@ -3,6 +3,7 @@ import { Alert, Card, Col, Row, Spin, Statistic, Table } from "antd";
 import type { BondPortfolioHeadlinesPayload, Numeric } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
 import { apiQueryKeys } from "../../../api/queryKeys";
+import { EM_DASH } from "../../../utils/format";
 import { formatPct, formatYi } from "../utils/formatters";
 
 interface Props {
@@ -34,7 +35,7 @@ const assetClassColumns = [
 
 function formatHhi(value: import("../../../api/contracts").Numeric | string): string {
   const n = typeof value === "string" ? Number.parseFloat(value) : (value.raw ?? Number.NaN);
-  if (Number.isNaN(n)) return "-";
+  if (Number.isNaN(n)) return EM_DASH;
   return n.toFixed(4);
 }
 

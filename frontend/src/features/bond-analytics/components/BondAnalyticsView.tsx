@@ -11,6 +11,7 @@ export function BondAnalyticsView() {
         <div
           className={`${styles.bondWorkbenchPage} ${styles.pageSkeleton}`}
           data-testid="bond-analysis-page-skeleton"
+          data-moss-theme-scope="bond-analysis"
           aria-hidden="true"
         />
       }

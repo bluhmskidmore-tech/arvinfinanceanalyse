@@ -3,6 +3,7 @@ import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 
 import type { AssetStructurePayload } from "../../../api/contracts";
 import { ibChartTheme } from "../../../components/charts/chartTheme";
+import { EM_DASH } from "../../../pageModel";
 import styles from "../bondDashboard.module.css";
 import { formatYi, nativeToNumber } from "../utils/format";
 
@@ -27,7 +28,7 @@ export function AssetStructurePie({
   onGroupByChange: (g: AssetGroupBy) => void;
 }) {
   const items = data?.items ?? [];
-  const totalYi = data ? formatYi(data.total_market_value) : "—";
+  const totalYi = data ? formatYi(data.total_market_value) : EM_DASH;
 
   const option: EChartsOption = ibChartTheme.createBaseChartOption({
     legend: {
@@ -51,7 +52,7 @@ export function AssetStructurePie({
         avoidLabelOverlap: true,
         label: { show: false },
         data: items.map((it, index) => ({
-          name: it.category || "—",
+          name: it.category || EM_DASH,
           value: nativeToNumber(it.total_market_value) ?? undefined,
           itemStyle: {
             color: ibChartTheme.categoricalPalette[index % ibChartTheme.categoricalPalette.length],

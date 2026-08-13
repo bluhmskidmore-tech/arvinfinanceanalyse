@@ -2,13 +2,15 @@ import { ArrowDownOutlined, ArrowUpOutlined } from "@ant-design/icons";
 import { Col, Row, Spin } from "antd";
 
 import type { BondDashboardHeadlinePayload, Numeric } from "../../../api/contracts";
+import { EM_DASH } from "../../../pageModel";
 import styles from "../bondDashboard.module.css";
 import {
   formatDv01Wan,
-  formatMomRatio,
+  formatMomChange,
   formatRatePercent,
   formatYears,
   formatYi,
+  type BondKpiMomKind,
 } from "../utils/format";
 
 type KpiKey =
@@ -25,14 +27,21 @@ const KPI_DEFS: {
   label: string;
   unit: string;
   format: (v: Numeric | null | undefined) => string;
+  momKind: BondKpiMomKind;
 }[] = [
-  { key: "total_market_value", label: "债券持仓规模", unit: "亿", format: formatYi },
-  { key: "unrealized_pnl", label: "未实现损益", unit: "亿", format: formatYi },
-  { key: "weighted_ytm", label: "加权到期收益率", unit: "%", format: formatRatePercent },
-  { key: "weighted_duration", label: "加权久期", unit: "年", format: formatYears },
-  { key: "weighted_coupon", label: "加权票息率", unit: "%", format: formatRatePercent },
-  { key: "credit_spread_median", label: "信用利差(中位数)", unit: "%", format: formatRatePercent },
-  { key: "total_dv01", label: "DV01合计", unit: "万元", format: formatDv01Wan },
+  { key: "total_market_value", label: "债券持仓规模", unit: "亿", format: formatYi, momKind: "percent" },
+  { key: "unrealized_pnl", label: "未实现损益", unit: "亿", format: formatYi, momKind: "amountYi" },
+  { key: "weighted_ytm", label: "加权到期收益率", unit: "%", format: formatRatePercent, momKind: "rateBp" },
+  { key: "weighted_duration", label: "加权久期", unit: "年", format: formatYears, momKind: "percent" },
+  { key: "weighted_coupon", label: "加权票息率", unit: "%", format: formatRatePercent, momKind: "rateBp" },
+  {
+    key: "credit_spread_median",
+    label: "信用利差(中位数)",
+    unit: "%",
+    format: formatRatePercent,
+    momKind: "rateBp",
+  },
+  { key: "total_dv01", label: "DV01合计", unit: "万元", format: formatDv01Wan, momKind: "percent" },
 ];
 
 export function HeadlineKpis({
@@ -59,7 +68,7 @@ export function HeadlineKpis({
         const raw = kpis[def.key];
         const prevRaw = prev_kpis?.[def.key];
         const display = def.format(raw);
-        const mom = formatMomRatio(raw, prevRaw);
+        const mom = formatMomChange(def.momKind, raw, prevRaw);
         const up = mom !== null && mom.startsWith("+");
         const down = mom !== null && mom.startsWith("-");
         const momTone = mom === null ? "none" : up ? "up" : down ? "down" : "flat";
@@ -78,7 +87,7 @@ export function HeadlineKpis({
               <div className={styles.kpiLabel}>{def.label}</div>
               <div className={styles.kpiValue}>
                 {display}
-                {display === "—" ? null : <span className={styles.kpiUnit}>{def.unit}</span>}
+                {display === EM_DASH ? null : <span className={styles.kpiUnit}>{def.unit}</span>}
               </div>
               <div className={styles.kpiMom} data-tone={momTone}>
                 {mom ? (
@@ -87,7 +96,7 @@ export function HeadlineKpis({
                     <span>环比 {mom}</span>
                   </>
                 ) : (
-                  <span>环比 —</span>
+                  <span>环比 {EM_DASH}</span>
                 )}
               </div>
             </div>

@@ -1,15 +1,17 @@
 import type { EChartsOption } from "../../../lib/echarts";
-import { designTokens } from "../../../theme/designSystem";
+import { designTokens, nocturneTokens } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
 import type { ReturnDecompositionResponse } from "../types";
 import {
   returnDecompositionWaterfallDisplayStrings,
   returnDecompositionWaterfallRawSteps,
 } from "../adapters/bondAnalyticsAdapter";
 
-const CN_MARKET_UP = designTokens.color.danger[500];
-const CN_MARKET_DOWN = designTokens.color.success[600];
-const CHART_ACCENT = designTokens.color.info[500];
-const CHART_AXIS = { color: designTokens.color.neutral[700], fontSize: designTokens.fontSize[11] };
+/* 中国市场惯例方向不变（红涨绿跌），色值收敛到 Nocturne 去饱和语义常量（§2.2）。 */
+const CN_MARKET_UP = nocturneTokens.color.red;
+const CN_MARKET_DOWN = nocturneTokens.color.green;
+const CHART_ACCENT = nocturneTokens.color.blue;
+const CHART_AXIS = { color: nocturneTokens.color.inkSoft, fontSize: designTokens.fontSize[11] };
 
 const TRANSPARENT_BAR = {
   borderColor: "transparent",
@@ -67,7 +69,7 @@ export function buildReturnDecompositionWaterfallOption(d: ReturnDecompositionRe
 
   return {
     backgroundColor: "transparent",
-    textStyle: { color: designTokens.color.neutral[700] },
+    textStyle: { color: nocturneTokens.color.inkSoft },
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "shadow" },
@@ -76,7 +78,7 @@ export function buildReturnDecompositionWaterfallOption(d: ReturnDecompositionRe
         const bar = list.find((x: { seriesName?: string }) => x.seriesName === "效应");
         const idx = (bar as { dataIndex?: number })?.dataIndex ?? 0;
         const label = categoryLabels[idx];
-        return `${label}<br/>${displayStrings[idx] ?? "-"}`;
+        return `${label}<br/>${displayStrings[idx] ?? EM_DASH}`;
       },
     },
     grid: { left: 48, right: 24, top: 24, bottom: 32, containLabel: true },
@@ -84,12 +86,12 @@ export function buildReturnDecompositionWaterfallOption(d: ReturnDecompositionRe
       type: "category",
       data: categoryLabels,
       axisLabel: { interval: 0, rotate: 0, ...CHART_AXIS },
-      axisLine: { lineStyle: { color: designTokens.color.neutral[200] } },
+      axisLine: { lineStyle: { color: nocturneTokens.color.lineSoft } },
     },
     yAxis: {
       type: "value",
       axisLabel: CHART_AXIS,
-      splitLine: { lineStyle: { color: designTokens.color.neutral[200], type: "dashed" } },
+      splitLine: { lineStyle: { color: nocturneTokens.color.lineSoft, type: "dashed" } },
     },
     series: [
       {

@@ -5,6 +5,7 @@ import type { BondDashboardHeadlinePayload, Numeric } from "../api/contracts";
 import { BondKpiRow } from "../features/bond-analytics/components/BondKpiRow";
 import { computeBpDelta } from "../features/bond-analytics/lib/bondAnalyticsHomeCalculations";
 import { formatDv01Wan, formatPct } from "../features/bond-analytics/utils/formatters";
+import { EM_DASH } from "../utils/format";
 
 function numeric(raw: number | null, unit: Numeric["unit"], display?: string): Numeric {
   return {
@@ -51,9 +52,9 @@ describe("bond-analysis unit contract (duration years / DV01 万元/bp / yield %
   });
 
   it("formatDv01Wan keeps null semantics as dash instead of 0", () => {
-    expect(formatDv01Wan(null)).toBe("-");
-    expect(formatDv01Wan(undefined)).toBe("-");
-    expect(formatDv01Wan(numeric(null, "dv01"))).toBe("-");
+    expect(formatDv01Wan(null)).toBe(EM_DASH);
+    expect(formatDv01Wan(undefined)).toBe(EM_DASH);
+    expect(formatDv01Wan(numeric(null, "dv01"))).toBe(EM_DASH);
   });
 
   it("renders weighted duration as raw years with 2 decimals, no unit rescaling", () => {

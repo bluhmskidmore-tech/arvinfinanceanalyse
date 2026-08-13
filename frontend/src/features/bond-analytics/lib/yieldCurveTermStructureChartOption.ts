@@ -1,7 +1,7 @@
 import type { EChartsOption } from "../../../lib/echarts";
 import type { Numeric, YieldCurveTermStructureCurvePayload } from "../../../api/contracts";
 import { mossChartCategoricalPalette } from "../../../components/charts/chartTheme";
-import { ibTokens } from "../../../theme/designSystem";
+import { nocturneTokens } from "../../../theme/designSystem";
 
 const CURVE_LABEL: Record<string, string> = {
   treasury: "国债",
@@ -9,13 +9,15 @@ const CURVE_LABEL: Record<string, string> = {
   aaa_credit: "AAA 信用",
 };
 
+/* ECharts canvas 不消费 CSS 变量：主线取 Nocturne accent 常量（与页面 scope 同源），
+   第 2/3 条曲线保留共享分类板做区分色。 */
 const YIELD_CURVE_PALETTE = [
-  ibTokens.color.accent,
+  nocturneTokens.color.blue,
   mossChartCategoricalPalette[2],
   mossChartCategoricalPalette[3],
 ] as const;
-const IB_GRID = ibTokens.color.hairline;
-const IB_AXIS = ibTokens.color.inkMuted;
+const IB_GRID = nocturneTokens.color.lineSoft;
+const IB_AXIS = nocturneTokens.color.inkMuted;
 
 /**
  * 后端契约（common_numeric._normalize_numeric_raw）保证 unit="pct" 时 raw 为小数比率

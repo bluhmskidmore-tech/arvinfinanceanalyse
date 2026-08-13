@@ -1,9 +1,9 @@
 import type { EChartsOption } from "../../../lib/echarts";
 import type { ChoiceMacroLatestPoint } from "../../../api/contracts";
-import { designTokens } from "../../../theme/designSystem";
+import { nocturneTokens } from "../../../theme/designSystem";
 import { BOND_ANALYTICS_OVERVIEW_RATE_CHART_SERIES } from "./bondAnalyticsMacroSeries";
 
-const c = designTokens.color;
+const nct = nocturneTokens.color;
 
 function recentValueMap(point: ChoiceMacroLatestPoint | undefined) {
   const map = new Map<string, number>();
@@ -47,7 +47,8 @@ export function buildBondAnalyticsOverviewRateChartOption(
     data: categories.map((d) => timelines[i]!.get(d) ?? null),
   }));
   return {
-    color: [c.info[500], c.danger[400], c.primary[500]],
+    /* 三条宏观利率线区分色：ECharts canvas 走 Nocturne 常量（accent / red / amber）。 */
+    color: [nct.blue, nct.red, nct.amber],
     tooltip: { trigger: "axis" },
     legend: { bottom: 0 },
     grid: { left: 52, right: 20, top: 28, bottom: 52 },

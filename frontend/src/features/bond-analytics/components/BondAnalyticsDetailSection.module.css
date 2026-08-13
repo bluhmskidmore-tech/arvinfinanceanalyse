@@ -6,7 +6,11 @@
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: var(--moss-radius-sm);
   background:
-    linear-gradient(180deg, rgba(232, 238, 247, 0.024), rgba(232, 238, 247, 0.004)),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--dh-api-ink) 2.4%, transparent),
+      color-mix(in srgb, var(--dh-api-ink) 0.4%, transparent)
+    ),
     var(--moss-color-card-bg);
   box-shadow: var(--moss-shadow-card);
 }

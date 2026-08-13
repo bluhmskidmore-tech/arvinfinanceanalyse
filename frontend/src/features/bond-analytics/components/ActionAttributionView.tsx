@@ -7,6 +7,7 @@ import { bondNumericDisplay, bondNumericRaw } from "../adapters/bondAnalyticsAda
 import type { PeriodType, ActionAttributionResponse } from "../types";
 import { ACTION_TYPE_NAMES } from "../types";
 import { designTokens } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
 import { formatWan } from "../utils/formatters";
 import { bondAnalyticsQueryKeyRoot } from "../lib/bondAnalyticsQueryKeys";
 import { SectionLead } from "./SectionLead";
@@ -78,7 +79,7 @@ const detailColumns = [
     width: 120,
     render: (v: Numeric) => {
       const num = bondNumericRaw(v);
-      const color = num === null ? undefined : num >= 0 ? "#cf1322" : "#3f8600";
+      const color = num === null ? undefined : num >= 0 ? "var(--dh-api-red)" : "var(--dh-api-green)";
       return <span style={{ color, fontVariantNumeric: "tabular-nums" }}>{formatWan(v)}</span>;
     },
   },
@@ -96,7 +97,7 @@ const detailColumns = [
     width: 110,
     render: (v: Numeric) => {
       const num = bondNumericRaw(v);
-      const color = num === null ? undefined : num >= 0 ? "#cf1322" : "#3f8600";
+      const color = num === null ? undefined : num >= 0 ? "var(--dh-api-red)" : "var(--dh-api-green)";
       return <span style={{ color, fontVariantNumeric: "tabular-nums" }}>{formatWan(v)}</span>;
     },
   },
@@ -119,14 +120,14 @@ const detailColumns = [
     dataIndex: "bonds_involved",
     key: "bonds_involved",
     width: 120,
-    render: (codes: string[]) => (codes?.length ? codes.join(", ") : "-"),
+    render: (codes: string[]) => (codes?.length ? codes.join(", ") : EM_DASH),
   },
   {
     title: "机会成本",
     key: "opportunity_cost",
     width: 100,
     render: (_: unknown, row: { opportunity_cost?: Numeric }) =>
-      row.opportunity_cost ? formatWan(row.opportunity_cost) : "-",
+      row.opportunity_cost ? formatWan(row.opportunity_cost) : EM_DASH,
   },
   {
     title: "机会成本口径",
@@ -134,7 +135,7 @@ const detailColumns = [
     width: 110,
     ellipsis: true,
     render: (_: unknown, row: { opportunity_cost_method?: string }) =>
-      row.opportunity_cost_method?.trim() ? row.opportunity_cost_method : "-",
+      row.opportunity_cost_method?.trim() ? row.opportunity_cost_method : EM_DASH,
   },
 ];
 
@@ -180,7 +181,7 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
         testId="action-attribution-shell-lead"
       />
       <div
-        style={{ fontSize: 12, color: "#8090a8", lineHeight: 1.65 }}
+        style={{ fontSize: 12, color: "var(--dh-api-muted)", lineHeight: 1.65 }}
         data-testid="action-attribution-meta"
       >
         <span>报告日 {data.report_date}</span>
@@ -270,16 +271,25 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
               const pnl = bondNumericRaw(item.total_pnl_economic);
               const totalPnl = bondNumericRaw(data.total_pnl_from_actions);
               const pct = pnl !== null && totalPnl !== null && totalPnl !== 0 ? (pnl / totalPnl) * 100 : 0;
-              const pnlColor = pnl === null ? "#5c6b82" : pnl >= 0 ? "#cf1322" : "#3f8600";
+              const pnlColor =
+                pnl === null ? "var(--dh-api-muted)" : pnl >= 0 ? "var(--dh-api-red)" : "var(--dh-api-green)";
               return (
                 <div key={item.action_type} style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <Tag color={ACTION_COLORS[item.action_type] || "default"} style={{ width: 80, textAlign: "center" }}>
                     {item.action_type_name}
                   </Tag>
-                  <span style={{ width: 50, textAlign: "right", fontSize: 12, color: "#5c6b82" }}>
+                  <span style={{ width: 50, textAlign: "right", fontSize: 12, color: "var(--dh-api-muted)" }}>
                     {item.action_count}次
                   </span>
-                  <div style={{ flex: 1, height: 20, background: "#f0f0f0", borderRadius: 4, overflow: "hidden" }}>
+                  <div
+                    style={{
+                      flex: 1,
+                      height: 20,
+                      background: "var(--dh-api-panel-2)",
+                      borderRadius: 4,
+                      overflow: "hidden",
+                    }}
+                  >
                     <div
                       style={{
                         height: "100%",
@@ -294,7 +304,7 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
                       width: 200,
                       textAlign: "right",
                       fontSize: 12,
-                      color: "#5c6b82",
+                      color: "var(--dh-api-muted)",
                       lineHeight: 1.4,
                     }}
                   >

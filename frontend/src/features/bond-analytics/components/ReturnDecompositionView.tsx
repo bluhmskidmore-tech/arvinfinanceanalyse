@@ -10,14 +10,16 @@ import type {
   ReturnDecompositionResponse,
 } from "../types";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
-import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import { designTokens, nocturneTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
 import { formatWan, formatYi } from "../utils/formatters";
 import { buildReturnDecompositionWaterfallOption } from "../lib/returnDecompositionWaterfallOption";
 import { SectionLead } from "./SectionLead";
 import { ReturnDecompositionWaterfallChart } from "./ReturnDecompositionWaterfallChart";
 
-const CN_MARKET_UP = designTokens.color.danger[500];
-const CN_MARKET_DOWN = designTokens.color.success[600];
+/* 中国市场惯例方向不变（红涨绿跌），色值收敛到 Nocturne 去饱和语义常量（§2.2）。 */
+const CN_MARKET_UP = nocturneTokens.color.red;
+const CN_MARKET_DOWN = nocturneTokens.color.green;
 
 function metaQualityLabel(value: ResultMeta["quality_flag"]): string {
   if (value === "ok") return "正常";
@@ -67,7 +69,7 @@ const effectColumns = [
     dataIndex: "convexity_effect",
     key: "convexity_effect",
     render: (v: ReturnDecompositionResponse["by_asset_class"][number]["convexity_effect"]) =>
-      v ? formatWan(v) : "-",
+      v ? formatWan(v) : EM_DASH,
   },
   { title: "交易", dataIndex: "trading", key: "trading", render: formatWan },
   { title: "合计", dataIndex: "total", key: "total", render: formatWan },
@@ -84,7 +86,7 @@ const bondDetailColumns = [
     title: "债券名称",
     dataIndex: "bond_name",
     key: "bond_name",
-    render: (v: string | null) => v ?? "-",
+    render: (v: string | null) => v ?? EM_DASH,
   },
   { title: "资产类别", dataIndex: "asset_class", key: "asset_class" },
   { title: "会计分类", dataIndex: "accounting_class", key: "accounting_class" },
@@ -98,7 +100,7 @@ const bondDetailColumns = [
     dataIndex: "convexity_effect",
     key: "convexity_effect",
     render: (v: ReturnDecompositionResponse["bond_details"][number]["convexity_effect"]) =>
-      v ? formatWan(v) : "-",
+      v ? formatWan(v) : EM_DASH,
   },
   { title: "交易", dataIndex: "trading", key: "trading", render: formatWan },
   { title: "合计", dataIndex: "total", key: "total", render: formatWan },
@@ -192,12 +194,12 @@ export function ReturnDecompositionView({
         testId="return-decomposition-shell-lead"
       />
       <Card size="small" title="报告期间" data-testid="return-decomposition-period">
-        <div style={{ fontSize: designTokens.fontSize[13], color: designTokens.color.neutral[700] }}>{periodLabel}</div>
+        <div style={{ fontSize: designTokens.fontSize[13], color: "var(--dh-api-soft)" }}>{periodLabel}</div>
         {data.computed_at ? (
           <div
             style={{
               fontSize: designTokens.fontSize[12],
-              color: designTokens.color.neutral[600],
+              color: "var(--dh-api-muted)",
               marginTop: designTokens.space[2],
             }}
             data-testid="return-decomposition-computed-at"
@@ -255,10 +257,10 @@ export function ReturnDecompositionView({
         <div style={{ display: "flex", gap: designTokens.space[3], flexWrap: "wrap" }}>
           {effects.map((e) => {
             const num = bondNumericRaw(e.value);
-            const color = num === null ? designTokens.color.neutral[900] : num >= 0 ? CN_MARKET_UP : CN_MARKET_DOWN;
+            const color = num === null ? nocturneTokens.color.ink : num >= 0 ? CN_MARKET_UP : CN_MARKET_DOWN;
             return (
               <div key={e.label} style={{ textAlign: "center", minWidth: 100 }}>
-                <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.neutral[600] }}>{e.label}</div>
+                <div style={{ fontSize: designTokens.fontSize[12], color: "var(--dh-api-muted)" }}>{e.label}</div>
                 <div style={{ fontSize: designTokens.fontSize[18], fontWeight: 600, color, ...tabularNumsStyle }}>
                   {formatWan(e.value)}
                 </div>

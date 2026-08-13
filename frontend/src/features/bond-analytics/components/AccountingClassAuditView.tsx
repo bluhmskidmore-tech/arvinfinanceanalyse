@@ -3,12 +3,13 @@ import { Card, Statistic, Row, Col, Table, Tag, Alert, Spin } from "antd";
 import { useApiClient } from "../../../api/client";
 import type { Numeric } from "../../../api/contracts";
 import type { AccountingClassAuditResponse } from "../types";
+import { EM_DASH } from "../../../utils/format";
 import { formatPct, formatYi } from "../utils/formatters";
 import { SectionLead } from "./SectionLead";
 
 function matchLabel(raw: string | null): string {
   if (raw === null || raw === undefined || raw === "") {
-    return "—";
+    return EM_DASH;
   }
   const m: Record<string, string> = {
     exact: "精确匹配",
@@ -106,7 +107,7 @@ export function AccountingClassAuditView({ reportDate }: Props) {
         testId="accounting-class-audit-shell-lead"
       />
       {data.computed_at ? (
-        <div style={{ fontSize: 12, color: "#8090a8" }} data-testid="accounting-class-audit-computed-at">
+        <div style={{ fontSize: 12, color: "var(--dh-api-muted)" }} data-testid="accounting-class-audit-computed-at">
           计算时间：{data.computed_at}
         </div>
       ) : null}
@@ -121,7 +122,7 @@ export function AccountingClassAuditView({ reportDate }: Props) {
             <Statistic
               title="分歧分类"
               value={data.divergent_asset_classes}
-              valueStyle={data.divergent_asset_classes > 0 ? { color: "#cf1322" } : undefined}
+              valueStyle={data.divergent_asset_classes > 0 ? { color: "var(--dh-api-red)" } : undefined}
             />
           </Card>
         </Col>
@@ -130,7 +131,7 @@ export function AccountingClassAuditView({ reportDate }: Props) {
             <Statistic
               title="映射为其他（other）"
               value={data.map_unclassified_asset_classes}
-              valueStyle={data.map_unclassified_asset_classes > 0 ? { color: "#faad14" } : undefined}
+              valueStyle={data.map_unclassified_asset_classes > 0 ? { color: "var(--dh-api-amber)" } : undefined}
             />
           </Card>
         </Col>
@@ -151,7 +152,7 @@ export function AccountingClassAuditView({ reportDate }: Props) {
             <Statistic
               title="分歧持仓数"
               value={data.divergent_position_count}
-              valueStyle={data.divergent_position_count > 0 ? { color: "#cf1322" } : undefined}
+              valueStyle={data.divergent_position_count > 0 ? { color: "var(--dh-api-red)" } : undefined}
             />
           </Card>
         </Col>
@@ -161,7 +162,7 @@ export function AccountingClassAuditView({ reportDate }: Props) {
               title="分歧持仓市值"
               value={formatYi(data.divergent_market_value)}
               valueStyle={
-                Number(data.divergent_market_value.raw) !== 0 ? { color: "#cf1322" } : undefined
+                Number(data.divergent_market_value.raw) !== 0 ? { color: "var(--dh-api-red)" } : undefined
               }
             />
           </Card>
@@ -173,7 +174,7 @@ export function AccountingClassAuditView({ reportDate }: Props) {
             <Statistic
               title="映射未分类持仓数"
               value={data.map_unclassified_position_count}
-              valueStyle={data.map_unclassified_position_count > 0 ? { color: "#faad14" } : undefined}
+              valueStyle={data.map_unclassified_position_count > 0 ? { color: "var(--dh-api-amber)" } : undefined}
             />
           </Card>
         </Col>
@@ -183,7 +184,7 @@ export function AccountingClassAuditView({ reportDate }: Props) {
               title="映射未分类市值"
               value={formatYi(data.map_unclassified_market_value)}
               valueStyle={
-                Number(data.map_unclassified_market_value.raw) !== 0 ? { color: "#faad14" } : undefined
+                Number(data.map_unclassified_market_value.raw) !== 0 ? { color: "var(--dh-api-amber)" } : undefined
               }
             />
           </Card>
@@ -197,7 +198,7 @@ export function AccountingClassAuditView({ reportDate }: Props) {
         testId="accounting-class-audit-rules-lead"
       />
       <Card size="small">
-        <div style={{ fontSize: 13, color: "#5c6b82", marginBottom: 12 }}>
+        <div style={{ fontSize: 13, color: "var(--dh-api-muted)", marginBottom: 12 }}>
           <p style={{ margin: "0 0 8px" }}>
             本审计对比两条会计分类路径：
           </p>

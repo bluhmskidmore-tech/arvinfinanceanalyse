@@ -5,14 +5,15 @@ import { useApiClient } from "../../../api/client";
 import type { KRDScenarioResult, Numeric } from "../../../api/contracts";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import type { AssetClassRiskSummary, BondAnalyticsScenarioSetFilter, KRDCurveRiskResponse } from "../types";
-import { designTokens } from "../../../theme/designSystem";
+import { nocturneTokens } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
 import { formatDv01Wan, formatWan, formatYi } from "../utils/formatters";
 import { SectionLead } from "./SectionLead";
 
 function formatScenarioShocks(shocks: Record<string, number>): string {
   const entries = Object.entries(shocks ?? {});
   if (entries.length === 0) {
-    return "—";
+    return EM_DASH;
   }
   return entries.map(([k, v]) => `${k} ${v}`).join(" · ");
 }
@@ -86,30 +87,30 @@ function renderScenarioAssetClassBreakdown(record: KRDScenarioResult) {
       title: "经济口径",
       dataIndex: "pnl_economic",
       key: "pnl_economic",
-      render: (v: Numeric | undefined) => (v ? formatWan(v) : "—"),
+      render: (v: Numeric | undefined) => (v ? formatWan(v) : EM_DASH),
     },
     {
       title: "OCI 影响",
       dataIndex: "pnl_oci",
       key: "pnl_oci",
-      render: (v: Numeric | undefined) => (v ? formatWan(v) : "—"),
+      render: (v: Numeric | undefined) => (v ? formatWan(v) : EM_DASH),
     },
     {
       title: "TPL 影响",
       dataIndex: "pnl_tpl",
       key: "pnl_tpl",
-      render: (v: Numeric | undefined) => (v ? formatWan(v) : "—"),
+      render: (v: Numeric | undefined) => (v ? formatWan(v) : EM_DASH),
     },
     ...extraKeys.map((ek) => ({
       title: ek,
       dataIndex: ek,
       key: ek,
-      render: (v: Numeric | undefined) => (v ? formatWan(v) : "—"),
+      render: (v: Numeric | undefined) => (v ? formatWan(v) : EM_DASH),
     })),
   ];
   if (rows.length === 0) {
     return (
-      <div style={{ color: "#8090a8", fontSize: 12 }} data-testid="krd-scenario-by-asset-class-empty">
+      <div style={{ color: "var(--dh-api-muted)", fontSize: 12 }} data-testid="krd-scenario-by-asset-class-empty">
         暂无按资产类别的情景拆分
       </div>
     );
@@ -118,7 +119,7 @@ function renderScenarioAssetClassBreakdown(record: KRDScenarioResult) {
     <div data-testid="krd-scenario-by-asset-class">
       {extraKeys.length > 0 ? (
         <div
-          style={{ fontSize: 11, color: "#8090a8", marginBottom: 8 }}
+          style={{ fontSize: 11, color: "var(--dh-api-muted)", marginBottom: 8 }}
           data-testid="krd-scenario-by-asset-class-extra-keys"
         >
           额外口径键：{extraKeys.join("、")}
@@ -159,13 +160,14 @@ const assetClassColumns = [
   },
 ];
 
+/* ECharts canvas 不消费 CSS 变量：切片色取 Nocturne 常量组（与页面 scope 同源）。 */
 const ASSET_CLASS_SLICE_COLORS: Record<string, string> = {
-  rate: designTokens.color.primary[600],
-  credit: designTokens.color.warning[500],
-  other: designTokens.color.neutral[500],
+  rate: nocturneTokens.color.blue,
+  credit: nocturneTokens.color.amber,
+  other: nocturneTokens.color.inkMuted,
 };
 
-const DEFAULT_SLICE_COLOR = designTokens.color.neutral[400];
+const DEFAULT_SLICE_COLOR = nocturneTokens.color.inkSoft;
 
 function sliceColorForAssetClass(assetClass: string): string {
   const key = assetClass.trim().toLowerCase();
@@ -201,7 +203,7 @@ function buildAssetStructurePieOption(rows: AssetClassRiskSummary[]) {
           style: {
             text: "资产结构",
             textAlign: "center" as const,
-            fill: designTokens.color.neutral[900],
+            fill: nocturneTokens.color.ink,
             fontSize: 14,
             fontWeight: 500,
           },
@@ -284,14 +286,14 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
       xAxis: {
         type: "category",
         data: buckets.map((b) => b.tenor),
-        axisLabel: { color: designTokens.color.neutral[600], fontSize: 11 },
+        axisLabel: { color: nocturneTokens.color.inkMuted, fontSize: 11 },
         axisTick: { alignWithLabel: true },
       },
       yAxis: {
         type: "value",
         name: "平均修正久期",
         axisLabel: {
-          color: designTokens.color.neutral[600],
+          color: nocturneTokens.color.inkMuted,
           fontSize: 11,
           formatter: (v: number) => v.toFixed(3),
         },
@@ -306,18 +308,19 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
             const md = mdField ? bondNumericRaw(mdField) : null;
             const color =
               md === null
-                ? designTokens.color.neutral[400]
+                ? nocturneTokens.color.inkMuted
                 : md >= 0
-                  ? designTokens.color.primary[600]
-                  : designTokens.color.semantic.loss;
+                  ? nocturneTokens.color.blue
+                  // ECharts canvas 读不到 CSS 变量：负值 loss 红走 Nocturne TS 镜像 token。
+                  : nocturneTokens.color.red;
             return {
               value: md,
               itemStyle: { color },
               label: {
                 show: true,
                 position: md === null || md >= 0 ? "top" : "bottom",
-                formatter: md === null ? (mdField?.display ?? "—") : md.toFixed(3),
-                color: designTokens.color.neutral[800],
+                formatter: md === null ? (mdField?.display ?? EM_DASH) : md.toFixed(3),
+                color: nocturneTokens.color.inkSoft,
                 fontSize: 11,
                 fontVariantNumeric: "tabular-nums",
               },
@@ -346,7 +349,7 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
         testId="krd-curve-risk-shell-lead"
       />
       {data.computed_at ? (
-        <div style={{ fontSize: 12, color: "#8090a8" }} data-testid="krd-computed-at">
+        <div style={{ fontSize: 12, color: "var(--dh-api-muted)" }} data-testid="krd-computed-at">
           计算时间：{data.computed_at}
         </div>
       ) : null}

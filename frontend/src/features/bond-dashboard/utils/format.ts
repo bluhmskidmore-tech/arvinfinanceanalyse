@@ -1,5 +1,5 @@
 import type { Numeric } from "../../../api/contracts";
-import { numericRaw } from "../../../pageModel";
+import { EM_DASH, numericRaw } from "../../../pageModel";
 
 type NumericLike = Numeric | number | null | undefined;
 
@@ -14,7 +14,7 @@ export function nativeToNumber(value: NumericLike): number | null {
 /** Governed yuan field -> yi display for cards/tables. */
 export function formatYi(value: NumericLike, digits = 2): string {
   const raw = nativeToNumber(value);
-  if (raw === null) return "—";
+  if (raw === null) return EM_DASH;
   return (raw / 1e8).toLocaleString("zh-CN", {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
@@ -24,7 +24,7 @@ export function formatYi(value: NumericLike, digits = 2): string {
 /** Governed ratio/pct field -> percent display. */
 export function formatRatePercent(value: NumericLike, digits = 2): string {
   const raw = nativeToNumber(value);
-  if (raw === null) return "—";
+  if (raw === null) return EM_DASH;
   return (raw * 100).toLocaleString("zh-CN", {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
@@ -34,7 +34,7 @@ export function formatRatePercent(value: NumericLike, digits = 2): string {
 /** Governed bp field -> plain bp number display for callers that add the unit. */
 export function formatBp(value: NumericLike, digits = 1): string {
   const raw = nativeToNumber(value);
-  if (raw === null) return "—";
+  if (raw === null) return EM_DASH;
   return raw.toLocaleString("zh-CN", {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
@@ -44,7 +44,7 @@ export function formatBp(value: NumericLike, digits = 1): string {
 /** Governed DV01 yuan field -> wan-yuan display. */
 export function formatDv01Wan(value: NumericLike, digits = 2): string {
   const raw = nativeToNumber(value);
-  if (raw === null) return "—";
+  if (raw === null) return EM_DASH;
   return (raw / 1e4).toLocaleString("zh-CN", {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
@@ -53,7 +53,7 @@ export function formatDv01Wan(value: NumericLike, digits = 2): string {
 
 export function formatYears(value: NumericLike, digits = 2): string {
   const raw = nativeToNumber(value);
-  if (raw === null) return "—";
+  if (raw === null) return EM_DASH;
   return raw.toLocaleString("zh-CN", {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
@@ -67,4 +67,38 @@ export function formatMomRatio(cur: Numeric | null | undefined, prev: Numeric | 
   if (current === null || previous === null || previous === 0) return null;
   const pct = ((current - previous) / Math.abs(previous)) * 100;
   return `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`;
+}
+
+/**
+ * How a KPI's month-over-month change must be expressed.
+ * - `percent`: level amounts, where a relative change is meaningful
+ * - `rateBp`: yields/coupons/spreads, where the market convention is a bp difference
+ *   (2.50% -> 2.60% is +10.0bp, not +4.00%)
+ * - `amountYi`: sign-variable P&L, where a ratio over a possibly negative base misleads
+ */
+export type BondKpiMomKind = "percent" | "rateBp" | "amountYi";
+
+function momSignPrefix(delta: number): string {
+  return delta > 0 ? "+" : "";
+}
+
+export function formatMomChange(
+  kind: BondKpiMomKind,
+  cur: Numeric | null | undefined,
+  prev: Numeric | null | undefined,
+): string | null {
+  if (kind === "percent") return formatMomRatio(cur, prev);
+  if (!cur || !prev) return null;
+  const current = nativeToNumber(cur);
+  const previous = nativeToNumber(prev);
+  if (current === null || previous === null) return null;
+  if (kind === "rateBp") {
+    // Spread KPIs arrive either as a decimal ratio or already in bp; comparing across
+    // the two bases would silently scale the delta by 10,000.
+    if (cur.unit !== prev.unit) return null;
+    const deltaBp = (current - previous) * (cur.unit === "bp" ? 1 : 10_000);
+    return `${momSignPrefix(deltaBp)}${deltaBp.toFixed(1)}bp`;
+  }
+  const deltaYi = (current - previous) / 1e8;
+  return `${momSignPrefix(deltaYi)}${deltaYi.toFixed(2)} 亿`;
 }

@@ -6,13 +6,16 @@ import { useApiClient } from "../../../api/client";
 import type { Numeric } from "../../../api/contracts";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import type { PeriodType, BenchmarkExcessResponse } from "../types";
-import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import { designTokens, nocturneTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
 import { formatBp, formatPct } from "../utils/formatters";
 import { SectionLead } from "./SectionLead";
 
-const CN_MARKET_UP = designTokens.color.danger[500];
-const CN_MARKET_DOWN = designTokens.color.success[600];
-const CHART_ACCENT = designTokens.color.info[500];
+/* 中国市场惯例方向不变（红涨绿跌），色值收敛到 Nocturne 去饱和语义常量（§2.2）；
+   常量同时喂 ECharts canvas 与 DOM style，统一走 TS 镜像 token。 */
+const CN_MARKET_UP = nocturneTokens.color.red;
+const CN_MARKET_DOWN = nocturneTokens.color.green;
+const CHART_ACCENT = nocturneTokens.color.blue;
 
 interface Props {
   reportDate: string;
@@ -34,7 +37,7 @@ const WATERFALL_CATEGORIES = [
   "超额收益",
 ] as const;
 
-const CHART_TEXT = { fontSize: designTokens.fontSize[13], color: designTokens.color.neutral[700] } as const;
+const CHART_TEXT = { fontSize: designTokens.fontSize[13], color: nocturneTokens.color.inkSoft } as const;
 
 const TRANSPARENT_BAR = {
   borderColor: "transparent",
@@ -109,7 +112,7 @@ function buildBenchmarkExcessWaterfallOption(d: BenchmarkExcessResponse) {
         const bar = list.find((x: { seriesName?: string }) => x.seriesName === "效应");
         const idx = (bar as { dataIndex?: number })?.dataIndex ?? 0;
         const label = WATERFALL_CATEGORIES[idx];
-        return `${label}<br/>${displayStrings[idx] ?? "—"}`;
+        return `${label}<br/>${displayStrings[idx] ?? EM_DASH}`;
       },
     },
     grid: { left: 48, right: 24, top: 24, bottom: 32, containLabel: true },
@@ -186,7 +189,7 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
   if (!data) return null;
 
   const excessNum = bondNumericRaw(data.excess_return);
-  const excessColor = excessNum === null ? designTokens.color.neutral[900] : excessNum >= 0 ? CN_MARKET_UP : CN_MARKET_DOWN;
+  const excessColor = excessNum === null ? nocturneTokens.color.ink : excessNum >= 0 ? CN_MARKET_UP : CN_MARKET_DOWN;
 
   const decomp = [
     { label: "久期效应", value: data.duration_effect },
@@ -218,15 +221,15 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
             description="按报告日、期间和基准指数读取后端归因结果；页面只展示基准超额读模型，不在前端重算超额收益。"
             testId="benchmark-excess-shell-lead"
           />
-          <span style={{ color: designTokens.color.neutral[700], fontSize: designTokens.fontSize[13] }}>
+          <span style={{ color: "var(--dh-api-soft)", fontSize: designTokens.fontSize[13] }}>
             {data.benchmark_name ? `基准：${data.benchmark_name}` : null}
           </span>
-          <span style={{ color: designTokens.color.neutral[600], fontSize: designTokens.fontSize[12] }}>
+          <span style={{ color: "var(--dh-api-muted)", fontSize: designTokens.fontSize[12] }}>
             区间 {data.period_start} — {data.period_end} · 报表日 {data.report_date}
           </span>
         </Space>
         <FilterBar>
-          <span style={{ color: designTokens.color.neutral[700], fontSize: designTokens.fontSize[13] }}>切换基准</span>
+          <span style={{ color: "var(--dh-api-soft)", fontSize: designTokens.fontSize[13] }}>切换基准</span>
           <Select
             value={benchmarkId}
             onChange={setBenchmarkId}
@@ -309,10 +312,10 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
         <div style={{ display: "flex", gap: designTokens.space[3], flexWrap: "wrap" }}>
           {decomp.map((d) => {
             const num = bondNumericRaw(d.value);
-            const color = num === null ? designTokens.color.neutral[900] : num >= 0 ? CN_MARKET_UP : CN_MARKET_DOWN;
+            const color = num === null ? nocturneTokens.color.ink : num >= 0 ? CN_MARKET_UP : CN_MARKET_DOWN;
             return (
               <div key={d.label} style={{ textAlign: "center", minWidth: 100 }}>
-                <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.neutral[600] }}>{d.label}</div>
+                <div style={{ fontSize: designTokens.fontSize[12], color: "var(--dh-api-muted)" }}>{d.label}</div>
                 <div
                   style={{
                     fontSize: designTokens.fontSize[18],
@@ -359,7 +362,7 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
                 flexDirection: "column",
                 gap: 4,
                 padding: "8px 0",
-                borderBottom: `1px solid ${designTokens.color.neutral[200]}`,
+                borderBottom: "1px solid var(--dh-api-line-soft)",
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
@@ -367,7 +370,7 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
                 <span style={{ fontVariantNumeric: "tabular-nums" }}>{formatBp(s.contribution)}</span>
               </div>
               {s.description ? (
-                <span style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.neutral[600] }}>
+                <span style={{ fontSize: designTokens.fontSize[12], color: "var(--dh-api-muted)" }}>
                   {s.description}
                 </span>
               ) : null}
@@ -388,7 +391,7 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
       )}
 
       {data.computed_at ? (
-        <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.neutral[600] }}>
+        <div style={{ fontSize: designTokens.fontSize[12], color: "var(--dh-api-muted)" }}>
           计算时间：{data.computed_at}
         </div>
       ) : null}

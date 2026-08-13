@@ -1,17 +1,18 @@
 import { Button, Card } from "antd";
 
 import type { Numeric, RiskIndicatorsPayload } from "../../../api/contracts";
+import { EM_DASH } from "../../../pageModel";
 import styles from "../bondDashboard.module.css";
 import { formatDv01Wan, formatRatePercent, formatYears, formatYi, nativeToNumber } from "../utils/format";
 
 function withUnit(value: string, unit: string): string {
   const separator = unit === "%" ? "" : " ";
-  return value === "—" ? "—" : `${value}${separator}${unit}`;
+  return value === EM_DASH ? EM_DASH : `${value}${separator}${unit}`;
 }
 
 function formatConvexity(value: Numeric | null | undefined): string {
   const raw = nativeToNumber(value);
-  return raw === null ? "—" : raw.toFixed(4);
+  return raw === null ? EM_DASH : raw.toFixed(4);
 }
 
 const ROWS: {
@@ -52,7 +53,7 @@ export function RiskIndicatorsPanel({
           >
             <span className={styles.riskRowLabel}>{r.label}</span>
             <span className={styles.riskRowValue}>
-              {data ? r.format(data[r.key] as Numeric | null | undefined) : "—"}
+              {data ? r.format(data[r.key] as Numeric | null | undefined) : EM_DASH}
             </span>
           </div>
         ))}

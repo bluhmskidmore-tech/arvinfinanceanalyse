@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Numeric } from "../../../api/contracts";
 import {
   formatDv01Wan,
+  formatMomChange,
   formatMomRatio,
   formatRatePercent,
   formatYears,
@@ -10,10 +11,10 @@ import {
   nativeToNumber,
 } from "./format";
 
-function num(raw: number | null): Numeric {
+function num(raw: number | null, unit: Numeric["unit"] = "ratio"): Numeric {
   return {
     raw,
-    unit: "ratio",
+    unit,
     display: raw === null ? "—" : String(raw),
     precision: 2,
     sign_aware: false,
@@ -46,5 +47,40 @@ describe("bond dashboard numeric formatters", () => {
     expect(formatMomRatio(num(100), num(0))).toBeNull();
     expect(formatMomRatio(null, num(-100))).toBeNull();
     expect(formatMomRatio(num(null), num(-100))).toBeNull();
+  });
+});
+
+describe("bond dashboard month-over-month change by KPI kind", () => {
+  it("reports rate and spread moves as a basis-point difference", () => {
+    expect(formatMomChange("rateBp", num(0.026), num(0.025))).toBe("+10.0bp");
+    expect(formatMomChange("rateBp", num(0.024), num(0.025))).toBe("-10.0bp");
+    expect(formatMomChange("rateBp", num(0.025), num(0.025))).toBe("0.0bp");
+    // A rate baseline of zero is a valid starting point, unlike a ratio denominator.
+    expect(formatMomChange("rateBp", num(0.0125), num(0))).toBe("+125.0bp");
+  });
+
+  it("respects the declared unit when a spread already arrives in bp", () => {
+    expect(formatMomChange("rateBp", num(72, "bp"), num(69, "bp"))).toBe("+3.0bp");
+    // Mixed bases cannot be differenced without silently rescaling by 10,000.
+    expect(formatMomChange("rateBp", num(72, "bp"), num(0.0069, "pct"))).toBeNull();
+  });
+
+  it("reports sign-variable P&L as an absolute yi difference", () => {
+    expect(formatMomChange("amountYi", num(35_000_000), num(0))).toBe("+0.35 亿");
+    expect(formatMomChange("amountYi", num(-20_000_000), num(15_000_000))).toBe("-0.35 亿");
+    expect(formatMomChange("amountYi", num(15_000_000), num(15_000_000))).toBe("0.00 亿");
+  });
+
+  it("keeps level amounts on the relative percent change", () => {
+    expect(formatMomChange("percent", num(120), num(100))).toBe("+20.00%");
+    expect(formatMomChange("percent", num(100), num(0))).toBeNull();
+  });
+
+  it("returns null for every kind when a side is missing", () => {
+    expect(formatMomChange("rateBp", num(null), num(0.025))).toBeNull();
+    expect(formatMomChange("rateBp", num(0.025), num(null))).toBeNull();
+    expect(formatMomChange("rateBp", num(0.025), null)).toBeNull();
+    expect(formatMomChange("amountYi", num(null), num(100))).toBeNull();
+    expect(formatMomChange("amountYi", num(100), undefined)).toBeNull();
   });
 });

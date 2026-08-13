@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import { designTokens } from "../theme/designSystem";
 import {
   formatBp,
   formatPct,
@@ -8,6 +7,8 @@ import {
   formatYi,
   toneColor,
 } from "../features/bond-analytics/utils/formatters";
+import { EM_DASH } from "../utils/format";
+import { TONE_CSS_VAR } from "../utils/tone";
 
 describe("bond analytics formatters", () => {
   describe("formatYi", () => {
@@ -16,12 +17,12 @@ describe("bond analytics formatters", () => {
     });
 
     it("returns dash for invalid input", () => {
-      expect(formatYi("not-a-number")).toBe("-");
+      expect(formatYi("not-a-number")).toBe(EM_DASH);
     });
 
     it("returns dash for nullish input", () => {
-      expect(formatYi(null)).toBe("-");
-      expect(formatYi(undefined)).toBe("-");
+      expect(formatYi(null)).toBe(EM_DASH);
+      expect(formatYi(undefined)).toBe(EM_DASH);
     });
   });
 
@@ -31,12 +32,12 @@ describe("bond analytics formatters", () => {
     });
 
     it("returns dash for invalid input", () => {
-      expect(formatWan("x")).toBe("-");
+      expect(formatWan("x")).toBe(EM_DASH);
     });
 
     it("returns dash for nullish input", () => {
-      expect(formatWan(null)).toBe("-");
-      expect(formatWan(undefined)).toBe("-");
+      expect(formatWan(null)).toBe(EM_DASH);
+      expect(formatWan(undefined)).toBe(EM_DASH);
     });
   });
 
@@ -46,12 +47,12 @@ describe("bond analytics formatters", () => {
     });
 
     it("returns dash for invalid input", () => {
-      expect(formatPct("")).toBe("-");
+      expect(formatPct("")).toBe(EM_DASH);
     });
 
     it("returns dash for nullish input", () => {
-      expect(formatPct(null)).toBe("-");
-      expect(formatPct(undefined)).toBe("-");
+      expect(formatPct(null)).toBe(EM_DASH);
+      expect(formatPct(undefined)).toBe(EM_DASH);
     });
   });
 
@@ -61,20 +62,20 @@ describe("bond analytics formatters", () => {
     });
 
     it("returns dash for invalid input", () => {
-      expect(formatBp("bad")).toBe("-");
+      expect(formatBp("bad")).toBe(EM_DASH);
     });
 
     it("returns dash for nullish input", () => {
-      expect(formatBp(null)).toBe("-");
-      expect(formatBp(undefined)).toBe("-");
+      expect(formatBp(null)).toBe(EM_DASH);
+      expect(formatBp(undefined)).toBe(EM_DASH);
     });
   });
 
   describe("toneColor", () => {
-    it("uses China convention: nonnegative red, negative green", () => {
-      expect(toneColor(0)).toBe(designTokens.color.danger[500]);
-      expect(toneColor(1)).toBe(designTokens.color.danger[500]);
-      expect(toneColor(-0.01)).toBe(designTokens.color.success[600]);
+    it("uses China convention via theme-aware CSS vars: nonnegative red, negative green", () => {
+      expect(toneColor(0)).toBe(TONE_CSS_VAR.negative);
+      expect(toneColor(1)).toBe(TONE_CSS_VAR.negative);
+      expect(toneColor(-0.01)).toBe(TONE_CSS_VAR.positive);
     });
   });
 });

@@ -2,6 +2,7 @@ import { Button, Card, Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
 import type { BondDashboardHeadlinePayload, Numeric, PortfolioComparisonItem, PortfolioComparisonPayload } from "../../../api/contracts";
+import { EM_DASH } from "../../../pageModel";
 import styles from "../bondDashboard.module.css";
 import { formatDv01Wan, formatRatePercent, formatYears, formatYi, nativeToNumber } from "../utils/format";
 
@@ -88,12 +89,12 @@ export function PortfolioTable({
               </Table.Summary.Cell>
               <Table.Summary.Cell index={2} align="right">
                 <strong data-testid="bond-dashboard-portfolio-summary-ytm">
-                  {headline ? formatRatePercent(headline.kpis.weighted_ytm) : "—"}
+                  {headline ? formatRatePercent(headline.kpis.weighted_ytm) : EM_DASH}
                 </strong>
               </Table.Summary.Cell>
               <Table.Summary.Cell index={3} align="right">
                 <strong data-testid="bond-dashboard-portfolio-summary-duration">
-                  {headline ? formatYears(headline.kpis.weighted_duration) : "—"}
+                  {headline ? formatYears(headline.kpis.weighted_duration) : EM_DASH}
                 </strong>
               </Table.Summary.Cell>
               <Table.Summary.Cell index={4} align="right">

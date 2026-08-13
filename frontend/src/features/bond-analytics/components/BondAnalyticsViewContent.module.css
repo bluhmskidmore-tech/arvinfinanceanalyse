@@ -135,7 +135,6 @@
   height: 28px;
   border: 1px solid var(--moss-color-neutral-300);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.92);
   color: var(--moss-color-primary-900);
   font: inherit;
   font-size: 12px;
@@ -161,7 +160,7 @@
   padding: 0 var(--moss-space-2) !important;
   border: 1px solid var(--moss-color-neutral-400) !important;
   border-radius: 6px !important;
-  background: rgba(7, 17, 31, 0.78) !important;
+  background: color-mix(in srgb, var(--dh-api-panel-2) 78%, transparent) !important;
   color: var(--dashboard-blue-700) !important;
   box-shadow: none !important;
 }
@@ -229,9 +228,6 @@
 
 .refreshButton {
   min-width: 48px;
-  color: #ffffff;
-  background: #0b4e9e;
-  border-color: #0b4e9e;
 }
 
 .detailFallback {
@@ -325,24 +321,24 @@
   --dashboard-blue-100: color-mix(in srgb, var(--dh-api-blue) 16%, transparent);
   --dashboard-blue-200: color-mix(in srgb, var(--dh-api-blue) 28%, transparent);
   --dashboard-blue-600: var(--ib-accent);
-  --dashboard-blue-700: #eaf6ff;
-  --dashboard-red-25: rgba(242, 160, 160, 0.08);
-  --dashboard-red-50: rgba(242, 160, 160, 0.12);
-  --dashboard-red-100: rgba(242, 160, 160, 0.16);
-  --dashboard-red-200: rgba(242, 160, 160, 0.3);
+  --dashboard-blue-700: var(--dh-api-ink);
+  --dashboard-red-25: color-mix(in srgb, var(--dh-api-red) 8%, transparent);
+  --dashboard-red-50: color-mix(in srgb, var(--dh-api-red) 12%, transparent);
+  --dashboard-red-100: color-mix(in srgb, var(--dh-api-red) 16%, transparent);
+  --dashboard-red-200: color-mix(in srgb, var(--dh-api-red) 30%, transparent);
   --dashboard-red-600: var(--ib-down);
-  --dashboard-red-700: #ffd0d0;
+  --dashboard-red-700: color-mix(in srgb, var(--dh-api-red) 45%, var(--dh-api-ink));
   --dashboard-ink: var(--ib-ink);
   --moss-color-card-bg: var(--ib-surface);
   --moss-color-neutral-50: var(--ib-surface-muted);
-  --moss-color-neutral-100: #1e3148;
+  --moss-color-neutral-100: color-mix(in srgb, var(--dh-api-line) 60%, var(--dh-api-panel));
   --moss-color-neutral-200: var(--ib-hairline);
   --moss-color-neutral-300: var(--ib-rule-strong);
-  --moss-color-neutral-400: #59708d;
+  --moss-color-neutral-400: color-mix(in srgb, var(--dh-api-muted) 60%, var(--dh-api-line));
   --moss-color-neutral-500: var(--ib-ink-muted);
   --moss-color-neutral-600: var(--ib-ink-secondary);
-  --moss-color-neutral-700: #d7e3f5;
-  --moss-color-neutral-800: #e6eef9;
+  --moss-color-neutral-700: color-mix(in srgb, var(--dh-api-ink) 60%, var(--dh-api-soft));
+  --moss-color-neutral-800: color-mix(in srgb, var(--dh-api-ink) 85%, var(--dh-api-soft));
   --moss-color-neutral-900: var(--ib-ink);
   --moss-color-primary-50: var(--ib-accent-surface);
   --moss-color-primary-100: color-mix(in srgb, var(--dh-api-blue) 16%, transparent);
@@ -357,20 +353,20 @@
   --moss-color-info-500: var(--dh-api-blue);
   --moss-color-info-700: var(--ib-accent-hover);
   --moss-color-info-900: var(--dashboard-blue-700);
-  --moss-color-success-100: rgba(183, 224, 138, 0.18);
+  --moss-color-success-100: color-mix(in srgb, var(--dh-api-green) 18%, transparent);
   --moss-color-success-300: var(--ib-up);
-  --moss-color-success-500: #86d58f;
+  --moss-color-success-500: var(--ib-up);
   --moss-color-success-600: var(--moss-color-success-500);
   --moss-color-success-700: var(--ib-up);
-  --moss-color-warning-50: rgba(246, 197, 111, 0.12);
-  --moss-color-warning-200: rgba(246, 197, 111, 0.3);
+  --moss-color-warning-50: color-mix(in srgb, var(--dh-api-amber) 12%, transparent);
+  --moss-color-warning-200: color-mix(in srgb, var(--dh-api-amber) 30%, transparent);
   --moss-color-warning-300: var(--ib-warn);
-  --moss-color-warning-400: #f2a93b;
+  --moss-color-warning-400: var(--ib-warn);
   --moss-color-warning-600: var(--ib-warn);
-  --moss-color-warning-800: #ffe1a3;
-  --moss-color-danger-50: rgba(242, 160, 160, 0.12);
-  --moss-color-danger-100: rgba(242, 160, 160, 0.16);
-  --moss-color-danger-200: rgba(242, 160, 160, 0.3);
+  --moss-color-warning-800: color-mix(in srgb, var(--dh-api-amber) 45%, var(--dh-api-ink));
+  --moss-color-danger-50: color-mix(in srgb, var(--dh-api-red) 12%, transparent);
+  --moss-color-danger-100: color-mix(in srgb, var(--dh-api-red) 16%, transparent);
+  --moss-color-danger-200: color-mix(in srgb, var(--dh-api-red) 30%, transparent);
   --moss-color-danger-500: var(--ib-down);
   --moss-color-danger-600: var(--ib-down);
   --moss-color-danger-800: var(--dashboard-red-700);
@@ -389,33 +385,22 @@
   max-width: 1178px;
   min-height: calc(100vh - 48px);
   padding: 16px;
-  border: 1px solid #132a44;
+  border: 1px solid var(--dh-api-line);
   border-radius: var(--dh-api-radius, 6px);
   background:
-    linear-gradient(180deg, rgba(12, 23, 39, 0.98), var(--ib-paper) 360px),
+    linear-gradient(180deg, color-mix(in srgb, var(--dh-api-panel-2) 98%, transparent), var(--ib-paper) 360px),
     var(--ib-paper);
   color: var(--ib-ink);
   font-family: var(--moss-font-sans);
   font-feature-settings: "tnum" 1, "ss01" 1;
 }
 
-:global(.workbench-shell-grid--bond-analysis) {
-  background:
-    linear-gradient(180deg, rgba(9, 17, 29, 0.98), #070b12 420px),
-    #070b12 !important;
-}
-
+/* 外壳网格底与 rail 的钢蓝烘焙已删除：Nocturne scope 接入后由
+   workbenchShell.css 末尾收口终层（grid/rail 列表含 bond-analysis 行，
+   0-3-0/0-4-0 !important）统一接管，页内 0-1-0/0-2-0 覆盖永远打不赢。 */
 :global(.workbench-shell-grid--bond-analysis .workbench-main-column),
 :global(.workbench-shell-grid--bond-analysis .workbench-main-column > main) {
   justify-items: start !important;
-}
-
-:global(.workbench-shell-grid--bond-analysis .workbench-shell-aside) {
-  border-right: 1px solid rgba(126, 157, 194, 0.18) !important;
-  background:
-    linear-gradient(180deg, rgba(17, 27, 42, 0.98), rgba(8, 13, 22, 0.98)),
-    var(--dh-api-rail) !important;
-  box-shadow: none !important;
 }
 
 .bondWorkbenchPage [data-testid="bond-analysis-reference-topbar"] {
@@ -428,7 +413,11 @@
       color-mix(in srgb, var(--dh-api-blue) 6%, transparent),
       transparent 38%
     ),
-    linear-gradient(180deg, rgba(15, 31, 52, 0.98), rgba(8, 18, 32, 0.96));
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--dh-api-panel) 98%, transparent),
+      color-mix(in srgb, var(--dh-api-panel-2) 96%, transparent)
+    );
   box-shadow: none;
 }
 
@@ -436,7 +425,11 @@
   position: absolute;
   inset: 0 auto 0 0;
   width: 3px;
-  background: linear-gradient(180deg, var(--ib-accent), rgba(246, 197, 111, 0.74));
+  background: linear-gradient(
+    180deg,
+    var(--ib-accent),
+    color-mix(in srgb, var(--dh-api-amber) 74%, transparent)
+  );
   content: "";
 }
 
@@ -452,7 +445,7 @@
 .toolbarSelect {
   border-color: var(--ib-hairline);
   border-radius: 6px;
-  background: rgba(7, 17, 31, 0.78);
+  background: color-mix(in srgb, var(--dh-api-panel-2) 78%, transparent);
   color: var(--ib-ink);
   font-family: var(--moss-font-mono);
 }
@@ -470,10 +463,14 @@
 }
 
 .bondWorkbenchPage :global(.ant-alert) {
-  border-color: rgba(246, 197, 111, 0.34) !important;
+  border-color: color-mix(in srgb, var(--dh-api-amber) 34%, transparent) !important;
   border-radius: var(--dh-api-radius, 6px) !important;
   background:
-    linear-gradient(180deg, rgba(246, 197, 111, 0.1), rgba(246, 197, 111, 0.035)),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--dh-api-amber) 10%, transparent),
+      color-mix(in srgb, var(--dh-api-amber) 3.5%, transparent)
+    ),
     var(--ib-surface) !important;
   color: var(--ib-ink) !important;
 }
@@ -490,14 +487,18 @@
   border-color: var(--ib-hairline) !important;
   border-radius: var(--dh-api-radius, 6px) !important;
   background:
-    linear-gradient(180deg, rgba(232, 238, 247, 0.024), rgba(232, 238, 247, 0.004)),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--dh-api-ink) 2.4%, transparent),
+      color-mix(in srgb, var(--dh-api-ink) 0.4%, transparent)
+    ),
     var(--ib-surface) !important;
   box-shadow: none !important;
   color: var(--ib-ink);
 }
 
 .bondWorkbenchPage :global(.ant-card-head) {
-  border-bottom-color: rgba(126, 157, 194, 0.2) !important;
+  border-bottom-color: var(--dh-api-line-soft) !important;
   background: transparent !important;
 }
 
@@ -527,7 +528,7 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
   padding-top: 12px;
   padding-left: 0;
-  border-top: 1px solid rgba(126, 157, 194, 0.18);
+  border-top: 1px solid var(--dh-api-line-soft);
   border-left: 0;
 }
 
@@ -536,7 +537,7 @@
 }
 
 .bondWorkbenchPage [data-testid="bond-analysis-currency-basis-banner"] {
-  border-top-color: rgba(126, 157, 194, 0.18);
+  border-top-color: var(--dh-api-line-soft);
   background:
     linear-gradient(
       180deg,
@@ -562,7 +563,11 @@
 .detailDrilldownSummary {
   border-color: var(--ib-hairline);
   background:
-    linear-gradient(180deg, rgba(232, 238, 247, 0.024), rgba(232, 238, 247, 0.004)),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--dh-api-ink) 2.4%, transparent),
+      color-mix(in srgb, var(--dh-api-ink) 0.4%, transparent)
+    ),
     var(--ib-surface);
   color: var(--ib-ink);
   box-shadow: none;
@@ -571,7 +576,7 @@
 .fallbackNotice {
   min-height: 74px;
   padding: 14px 16px;
-  border-color: rgba(246, 197, 111, 0.38);
+  border-color: color-mix(in srgb, var(--dh-api-amber) 38%, transparent);
   border-radius: var(--dh-api-radius, 6px);
 }
 

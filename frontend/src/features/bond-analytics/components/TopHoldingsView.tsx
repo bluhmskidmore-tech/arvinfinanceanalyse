@@ -6,6 +6,7 @@ import { useApiClient } from "../../../api/client";
 import { buildBondTradingDeskPath } from "../../bond-trading-desk/lib/bondTradingDeskPageModel";
 import { designTokens } from "../../../theme/designSystem";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
+import { EM_DASH } from "../../../utils/format";
 import { formatPct, formatYi } from "../utils/formatters";
 
 interface Props {
@@ -104,7 +105,7 @@ export function TopHoldingsView({ reportDate }: Props) {
       style={{ display: "flex", flexDirection: "column", gap: designTokens.space[3] }}
     >
       <Space align="center" wrap data-testid="bond-analytics-top-holdings-toolbar">
-        <span style={{ color: designTokens.color.neutral[600] }}>展示条数</span>
+        <span style={{ color: "var(--dh-api-muted)" }}>展示条数</span>
         <select
           aria-label="bond-analytics-top-holdings-topn"
           data-testid="bond-analytics-top-holdings-topn"
@@ -113,10 +114,10 @@ export function TopHoldingsView({ reportDate }: Props) {
           style={{
             minWidth: 88,
             height: 32,
-            border: `1px solid ${designTokens.color.neutral[300]}`,
+            border: "1px solid var(--dh-api-line)",
             borderRadius: designTokens.radius.sm,
-            background: designTokens.color.neutral[50],
-            color: designTokens.color.neutral[900],
+            background: "var(--dh-api-panel-2)",
+            color: "var(--dh-api-ink)",
             fontSize: designTokens.fontSize[14],
           }}
         >
@@ -143,7 +144,7 @@ export function TopHoldingsView({ reportDate }: Props) {
               title={`Top ${data.top_n} 合计市值占比（相对组合总市值）`}
               value={
                 topWeightSum === null
-                  ? "—"
+                  ? EM_DASH
                   : formatPct({
                       raw: topWeightSum,
                       unit: "ratio",

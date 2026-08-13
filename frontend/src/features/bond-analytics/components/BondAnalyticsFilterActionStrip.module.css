@@ -3,7 +3,7 @@
   border: 1px solid var(--moss-color-neutral-200) !important;
   border-radius: 6px !important;
   background: var(--moss-color-neutral-200) !important;
-  box-shadow: 0 2px 6px rgba(22, 35, 46, 0.035) !important;
+  box-shadow: none !important;
 }
 
 .actionStrip :global(.ant-card-body) {

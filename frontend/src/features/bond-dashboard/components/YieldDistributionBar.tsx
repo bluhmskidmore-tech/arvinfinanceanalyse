@@ -4,6 +4,7 @@ import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 
 import type { AssetStructurePayload, YieldDistributionPayload } from "../../../api/contracts";
 import { ibChartTheme } from "../../../components/charts/chartTheme";
+import { EM_DASH } from "../../../pageModel";
 import styles from "../bondDashboard.module.css";
 import { nativeToNumber } from "../utils/format";
 
@@ -22,7 +23,7 @@ export function YieldDistributionBar({
 
   const loading = mode === "yield" ? loadingYield : loadingTenor;
   const weightedYtm = yieldData ? nativeToNumber(yieldData.weighted_ytm) : null;
-  const weightedLabel = weightedYtm === null ? "—" : `${(weightedYtm * 100).toFixed(2)}%`;
+  const weightedLabel = weightedYtm === null ? EM_DASH : `${(weightedYtm * 100).toFixed(2)}%`;
 
   const categories =
     mode === "yield"

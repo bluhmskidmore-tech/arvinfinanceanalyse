@@ -14,7 +14,7 @@ import type {
 } from "../../../api/contracts";
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
 import { EvidencePanel, PageStateSurface } from "../../../components/page/PagePrimitives";
-import { numericRaw } from "../../../pageModel";
+import { EM_DASH, numericRaw } from "../../../pageModel";
 import {
   BOND_DASHBOARD_PAGE_BUNDLE_SECTIONS,
   bondDashboardAssetSectionForGroup,
@@ -61,7 +61,7 @@ const BUSINESS_TYPE_METRIC_COLUMNS: TableColumnsType<BusinessTypeMetricRow> = [
     align: "right",
     render: (v: string) => {
       const pct = businessTypeMetricNumber(v);
-      return pct === null ? "—" : `${formatRatePercent(pct / 100)}%`;
+      return pct === null ? EM_DASH : `${formatRatePercent(pct / 100)}%`;
     },
   },
   {
@@ -73,16 +73,16 @@ const BUSINESS_TYPE_METRIC_COLUMNS: TableColumnsType<BusinessTypeMetricRow> = [
 ];
 
 function formatYiOrNoData(value: Numeric | null | undefined): string {
-  return numericRaw(value) === null ? "—" : formatYi(value);
+  return numericRaw(value) === null ? EM_DASH : formatYi(value);
 }
 
 function formatYearsOrNoData(value: Numeric | null | undefined): string {
-  return numericRaw(value) === null ? "—" : formatYears(value);
+  return numericRaw(value) === null ? EM_DASH : formatYears(value);
 }
 
 function formatCreditRatioDetail(value: Numeric | null | undefined): string {
   return numericRaw(value) === null
-    ? "当前信用占比 —"
+    ? `当前信用占比 ${EM_DASH}`
     : `当前信用占比 ${formatRatePercent(value, 1)}%`;
 }
 
