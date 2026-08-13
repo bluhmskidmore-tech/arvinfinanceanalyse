@@ -581,7 +581,7 @@
 .cross-asset-reference-toolbar__export {
   border-color: var(--ca-border-soft) !important;
   background: var(--ca-card) !important;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+  box-shadow: var(--ca-shadow);
 }
 
 .cross-asset-reference-market-tape {
@@ -606,7 +606,7 @@
   border: 1px solid var(--ca-border-soft);
   border-radius: var(--moss-radius-sm);
   background: var(--ca-card);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  box-shadow: var(--ca-shadow);
 }
 
 .cross-asset-reference-summary > * {
@@ -633,9 +633,9 @@
   width: 29px;
   height: 29px;
   margin-top: 1px;
-  border: 2px solid rgba(217, 155, 36, 0.62);
+  border: 2px solid color-mix(in srgb, var(--ca-warning-fill) 62%, transparent);
   border-radius: 50%;
-  background: rgba(217, 155, 36, 0.06);
+  background: color-mix(in srgb, var(--ca-warning-fill) 6%, transparent);
   color: var(--ca-warning-text);
   font-size: 16px;
 }
@@ -888,7 +888,7 @@
   border: 1px solid var(--ca-border-soft);
   border-radius: var(--moss-radius-sm);
   background: var(--ca-card);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  box-shadow: var(--ca-shadow);
 }
 
 .cross-asset-reference-card__head {
@@ -1467,12 +1467,12 @@
       to bottom,
       transparent 0,
       transparent 15px,
-      rgba(80, 112, 151, 0.14) 16px
+      color-mix(in srgb, var(--ca-slate) 14%, transparent) 16px
     );
 }
 
 .cross-asset-reference-trend-card__chart svg {
-  border-bottom: 1px solid rgba(80, 112, 151, 0.24);
+  border-bottom: 1px solid color-mix(in srgb, var(--ca-slate) 24%, transparent);
 }
 
 .cross-asset-reference-trend-card__chart polyline {
@@ -1704,7 +1704,7 @@
   align-items: center;
   padding: 5px 7px;
   border: 1px solid var(--ca-border-soft);
-  border-left: 3px solid rgba(24, 80, 161, 0.35);
+  border-left: 3px solid color-mix(in srgb, var(--ca-accent) 35%, transparent);
   border-radius: var(--ca-radius);
   background: color-mix(in srgb, var(--ca-card) 88%, var(--ca-card-mute));
   box-shadow: none;
@@ -1956,7 +1956,7 @@
   min-width: 0;
   min-height: 33px;
   padding: 3px 6px;
-  background: rgba(255, 255, 255, 0.78);
+  background: color-mix(in srgb, var(--ca-card) 78%, transparent);
   color: var(--ca-text);
 }
 
@@ -4136,7 +4136,7 @@
 }
 
 .cross-asset-drivers-page__panel:hover {
-  border-color: rgba(24, 80, 161, 0.28);
+  border-color: color-mix(in srgb, var(--ca-accent) 28%, transparent);
   box-shadow: var(--ca-shadow-hover);
 }
 
@@ -5232,7 +5232,7 @@
 .ca-correlation__cell:hover {
   transform: scale(1.08);
   z-index: 1;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--ca-shadow-hover);
 }
 
 .ca-correlation__cell--header {
@@ -5537,7 +5537,7 @@
 
 .ca-waterfall__bar:hover {
   transform: scaleX(1.08);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--ca-shadow-hover);
 }
 
 .ca-waterfall__bar--negative {
@@ -5547,7 +5547,7 @@
 
 .ca-waterfall__bar--total {
   border-radius: var(--ib-radius, 2px);
-  border: 2px solid rgba(0, 0, 0, 0.12);
+  border: 2px solid var(--ca-border-soft);
 }
 
 .ca-waterfall__bar-value {

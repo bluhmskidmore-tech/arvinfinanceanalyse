@@ -13,6 +13,12 @@
   --ib-down: var(--dh-api-red);
   --ib-warn: var(--dh-api-amber);
   --ib-radius: var(--dh-api-radius);
+  /* Nocturne scope 收尾补行：PageStateSurface 的 definition-pending 左沿
+     （--ib-gold）与标题/描述墨色（--moss-color-text-*）此前继承 boundary
+     钢蓝替换值，页根重代入随 scope 翻转（risk-tensor 同款先例）。 */
+  --ib-gold: var(--dh-api-amber);
+  --moss-color-text-primary: var(--dh-api-ink);
+  --moss-color-text-secondary: var(--dh-api-soft);
 }
 
 .market-finance-workbench {

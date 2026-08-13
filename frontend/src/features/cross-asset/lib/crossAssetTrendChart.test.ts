@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ChoiceMacroLatestPoint } from "../../../api/contracts";
-import { dhApiTokens, ibTokens } from "../../../theme/designSystem";
+import { ibTokens, nocturneTokens } from "../../../theme/designSystem";
 
 import {
   CROSS_ASSET_TREND_WINDOW_DAYS,
@@ -108,15 +108,15 @@ describe("buildCrossAssetTrendOption", () => {
       "terminal",
     );
     const tooltip = opt!.tooltip as { backgroundColor: string; borderColor: string; textStyle: { color: string } };
-    expect(tooltip.backgroundColor).toBe(dhApiTokens.color.panel2);
-    expect(tooltip.borderColor).toBe(dhApiTokens.color.line);
-    expect(tooltip.textStyle.color).toBe(dhApiTokens.color.ink);
+    expect(tooltip.backgroundColor).toBe(nocturneTokens.color.panel2);
+    expect(tooltip.borderColor).toBe(nocturneTokens.color.line);
+    expect(tooltip.textStyle.color).toBe(nocturneTokens.color.ink);
     const xAxis = opt!.xAxis as { axisLabel: { color: string }; axisLine: { lineStyle: { color: string } } };
-    expect(xAxis.axisLabel.color).toBe(dhApiTokens.color.inkMuted);
-    expect(xAxis.axisLine.lineStyle.color).toBe(dhApiTokens.color.line);
+    expect(xAxis.axisLabel.color).toBe(nocturneTokens.color.inkMuted);
+    expect(xAxis.axisLine.lineStyle.color).toBe(nocturneTokens.color.line);
     const yAxis = opt!.yAxis as { splitLine: { lineStyle: { color: string } } };
-    expect(yAxis.splitLine.lineStyle.color).toBe(dhApiTokens.color.lineSoft);
+    expect(yAxis.splitLine.lineStyle.color).toBe(nocturneTokens.color.lineSoft);
     const s = (opt!.series as { lineStyle: { color: string } }[])[0]!;
-    expect(s.lineStyle.color).toBe(dhApiTokens.color.blue);
+    expect(s.lineStyle.color).toBe(nocturneTokens.color.blue);
   });
 });

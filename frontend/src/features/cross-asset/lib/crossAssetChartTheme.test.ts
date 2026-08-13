@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { dhApiTokens, ibTokens } from "../../../theme/designSystem";
+import { ibTokens, nocturneTokens } from "../../../theme/designSystem";
 
 import {
   heatmapColorFor,
@@ -8,7 +8,7 @@ import {
   waterfallBarColorFor,
 } from "./crossAssetChartTheme";
 
-const dh = dhApiTokens.color;
+const nct = nocturneTokens.color;
 
 describe("resolveCrossAssetChartPalette", () => {
   it("defaults to the light theme and preserves the historical IB colors", () => {
@@ -22,18 +22,18 @@ describe("resolveCrossAssetChartPalette", () => {
     expect(resolveCrossAssetChartPalette("light")).toEqual(palette);
   });
 
-  it("resolves the terminal theme from the dh-api dark token values", () => {
+  it("resolves the terminal theme from the nocturne dark token values", () => {
     const palette = resolveCrossAssetChartPalette("terminal");
-    expect(palette.text).toBe(dh.ink);
-    expect(palette.textSoft).toBe(dh.inkSoft);
-    expect(palette.textMuted).toBe(dh.inkMuted);
-    expect(palette.axisLine).toBe(dh.line);
-    expect(palette.splitLine).toBe(dh.lineSoft);
-    expect(palette.tooltipBg).toBe(dh.panel2);
-    expect(palette.tooltipBorder).toBe(dh.line);
-    expect(palette.series.slice(0, 4)).toEqual([dh.blue, dh.green, dh.amber, dh.red]);
-    expect(palette.up).toBe(dh.red);
-    expect(palette.down).toBe(dh.green);
+    expect(palette.text).toBe(nct.ink);
+    expect(palette.textSoft).toBe(nct.inkSoft);
+    expect(palette.textMuted).toBe(nct.inkMuted);
+    expect(palette.axisLine).toBe(nct.line);
+    expect(palette.splitLine).toBe(nct.lineSoft);
+    expect(palette.tooltipBg).toBe(nct.panel2);
+    expect(palette.tooltipBorder).toBe(nct.line);
+    expect(palette.series.slice(0, 4)).toEqual([nct.blue, nct.green, nct.amber, nct.red]);
+    expect(palette.up).toBe(nct.red);
+    expect(palette.down).toBe(nct.green);
   });
 });
 
@@ -41,11 +41,11 @@ describe("heatmapColorFor", () => {
   const terminal = resolveCrossAssetChartPalette("terminal");
 
   it("ramps the green base for positive correlation on terminal", () => {
-    expect(heatmapColorFor(0.8, terminal)).toBe("rgba(102, 185, 139, 0.62)");
+    expect(heatmapColorFor(0.8, terminal)).toBe("rgba(90, 189, 153, 0.62)");
   });
 
   it("ramps the red base for negative correlation on terminal", () => {
-    expect(heatmapColorFor(-0.7, terminal)).toBe("rgba(212, 122, 114, 0.55)");
+    expect(heatmapColorFor(-0.7, terminal)).toBe("rgba(217, 123, 108, 0.55)");
   });
 
   it("returns the mid fill verbatim for missing values", () => {
@@ -57,8 +57,8 @@ describe("waterfallBarColorFor", () => {
   const terminal = resolveCrossAssetChartPalette("terminal");
 
   it("keeps the ±0.05 business thresholds with terminal hues", () => {
-    expect(waterfallBarColorFor(0.12, "factor", terminal)).toBe(dh.red);
-    expect(waterfallBarColorFor(-0.12, "factor", terminal)).toBe(dh.green);
+    expect(waterfallBarColorFor(0.12, "factor", terminal)).toBe(nct.red);
+    expect(waterfallBarColorFor(-0.12, "factor", terminal)).toBe(nct.green);
     expect(waterfallBarColorFor(0, "total", terminal)).toBe(terminal.neutral);
     expect(waterfallBarColorFor(0.02, "factor", terminal)).toBe(terminal.neutralSoft);
   });

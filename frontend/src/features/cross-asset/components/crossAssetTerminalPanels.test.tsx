@@ -36,7 +36,7 @@ describe("CorrelationHeatmapPanel terminal theme", () => {
 
     const { container: dark } = render(<CorrelationHeatmapPanel matrix={MATRIX} theme="terminal" />);
     const darkCell = dark.querySelector<HTMLElement>('[title="沪深300 × 10Y国债: 0.80"]')!;
-    expect(darkCell.style.background).toContain("102, 185, 139");
+    expect(darkCell.style.background).toContain("90, 189, 153");
   });
 });
 
@@ -48,8 +48,8 @@ describe("DriverWaterfallPanel terminal theme", () => {
 
     const { container: dark } = render(<DriverWaterfallPanel bars={BARS} env={{}} theme="terminal" />);
     const darkBars = dark.querySelectorAll<HTMLElement>(".ca-waterfall__bar");
-    expect(darkBars[0]!.style.background).toBe("rgb(212, 122, 114)");
-    expect(darkBars[1]!.style.background).toBe("rgb(102, 185, 139)");
-    expect(darkBars[2]!.style.background).toBe("rgb(212, 122, 114)");
+    expect(darkBars[0]!.style.background).toBe("rgb(217, 123, 108)");
+    expect(darkBars[1]!.style.background).toBe("rgb(90, 189, 153)");
+    expect(darkBars[2]!.style.background).toBe("rgb(217, 123, 108)");
   });
 });

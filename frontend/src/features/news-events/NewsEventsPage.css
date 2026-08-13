@@ -1,3 +1,27 @@
+/*
+ * Nocturne 页根重映射（risk-tensor / ledger-pnl 同款先例）：boundary 层的
+ * --ib-* 深色替换在 boundary 元素上按钢蓝 --dh-api-* 取值后向下继承，页根
+ * scope 翻转够不到（变量继承不回流），须在 scope 元素上重代入一次；
+ * --moss-color-text-primary 供 PageAsyncSection 标题。仅换色，不动版式。
+ */
+.news-events-page {
+  --ib-paper: var(--dh-api-bg);
+  --ib-surface: var(--dh-api-panel);
+  --ib-surface-muted: var(--dh-api-panel-2);
+  --ib-hairline: var(--dh-api-line-soft);
+  --ib-ink: var(--dh-api-ink);
+  --ib-ink-secondary: var(--dh-api-soft);
+  --ib-ink-muted: var(--dh-api-muted);
+  --ib-accent: var(--dh-api-blue);
+  --ib-accent-surface: var(--dh-api-blue-soft);
+  --ib-radius: var(--dh-api-radius);
+  --ib-shadow: none;
+  --ib-up: var(--dh-api-green);
+  --ib-down: var(--dh-api-red);
+  --ib-warn: var(--dh-api-amber);
+  --moss-color-text-primary: var(--dh-api-ink);
+}
+
 .news-events-page {
   min-height: 100%;
   padding: 24px;

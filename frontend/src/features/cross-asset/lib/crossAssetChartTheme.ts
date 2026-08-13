@@ -7,15 +7,16 @@
  *
  *   - "light"    : the historical hard-coded values, referenced through
  *                  designTokens/ibTokens so they stay token-equal.
- *   - "terminal" : the --dh-api-* dark palette (mirrors tokens.css §dh-api
- *                  and dhApiTokens in theme/designSystem).
+ *   - "terminal" : the Nocturne dark palette (mirrors the tokens.css
+ *                  Nocturne scope and nocturneTokens in theme/designSystem;
+ *                  2026-08-13 换肤自 dhApiTokens 钢蓝切换，股票分析先例).
  *
  * Builders take an optional `theme` param defaulting to "light" so existing
  * light consumers and tests are unaffected.
  */
 
 import { mossChartCategoricalPalette } from "../../../components/charts/chartTheme";
-import { designTokens, dhApiTokens, ibTokens } from "../../../theme/designSystem";
+import { designTokens, ibTokens, nocturneTokens } from "../../../theme/designSystem";
 
 export type CrossAssetChartTheme = "light" | "terminal";
 
@@ -59,7 +60,7 @@ export type CrossAssetChartPalette = {
 };
 
 const ib = ibTokens.color;
-const dh = dhApiTokens.color;
+const nct = nocturneTokens.color;
 
 /** Historical light categorical ladder, identical to crossAssetTrendChart.CHART_COLORS. */
 const LIGHT_SERIES: string[] = [
@@ -73,23 +74,23 @@ const LIGHT_SERIES: string[] = [
 ];
 
 /**
- * Terminal categorical ladder: dh-api blue/green/amber/red first, then muted
- * variants so up to 12 lines stay distinguishable on the dark panel.
- * Alpha variants derive from dh token hues (audit: no new bare hex hues).
+ * Terminal categorical ladder: Nocturne accent/green/amber/red first, then
+ * muted variants so up to 12 lines stay distinguishable on the dark panel.
+ * Alpha variants derive from nocturne token hues (audit: no new bare hex hues).
  */
 const TERMINAL_SERIES: string[] = [
-  dh.blue,
-  dh.green,
-  dh.amber,
-  dh.red,
-  dh.inkSoft,
-  dh.inkMuted,
-  "rgba(114, 167, 220, 0.55)",
-  "rgba(102, 185, 139, 0.55)",
-  "rgba(201, 165, 101, 0.55)",
-  "rgba(212, 122, 114, 0.55)",
-  "rgba(169, 182, 199, 0.75)",
-  "rgba(133, 147, 168, 0.6)",
+  nct.blue,
+  nct.green,
+  nct.amber,
+  nct.red,
+  nct.inkSoft,
+  nct.inkMuted,
+  "rgba(145, 132, 217, 0.55)",
+  "rgba(90, 189, 153, 0.55)",
+  "rgba(213, 178, 110, 0.55)",
+  "rgba(217, 123, 108, 0.55)",
+  "rgba(178, 182, 202, 0.75)",
+  "rgba(147, 151, 171, 0.6)",
 ];
 
 const LIGHT_PALETTE: CrossAssetChartPalette = {
@@ -115,25 +116,25 @@ const LIGHT_PALETTE: CrossAssetChartPalette = {
 };
 
 const TERMINAL_PALETTE: CrossAssetChartPalette = {
-  text: dh.ink,
-  textSoft: dh.inkSoft,
-  textMuted: dh.inkMuted,
-  axisLine: dh.line,
-  splitLine: dh.lineSoft,
-  axisPointerLabelBg: dh.ink,
-  axisPointerLabelText: dh.panel,
-  tooltipBg: dh.panel2,
-  tooltipBorder: dh.line,
-  legendInactive: "rgba(133, 147, 168, 0.4)",
-  emphasisBorder: dh.panel,
+  text: nct.ink,
+  textSoft: nct.inkSoft,
+  textMuted: nct.inkMuted,
+  axisLine: nct.line,
+  splitLine: nct.lineSoft,
+  axisPointerLabelBg: nct.ink,
+  axisPointerLabelText: nct.panel,
+  tooltipBg: nct.panel2,
+  tooltipBorder: nct.line,
+  legendInactive: "rgba(147, 151, 171, 0.4)",
+  emphasisBorder: nct.panel,
   series: TERMINAL_SERIES,
-  up: dh.red,
-  down: dh.green,
-  neutral: dh.inkMuted,
-  neutralSoft: "rgba(133, 147, 168, 0.55)",
-  heatmapLow: dh.red,
-  heatmapMid: "rgba(133, 147, 168, 0.16)",
-  heatmapHigh: dh.green,
+  up: nct.red,
+  down: nct.green,
+  neutral: nct.inkMuted,
+  neutralSoft: "rgba(147, 151, 171, 0.55)",
+  heatmapLow: nct.red,
+  heatmapMid: "rgba(147, 151, 171, 0.16)",
+  heatmapHigh: nct.green,
 };
 
 /** Resolve the chart palette for a theme; defaults to the historical light look. */

@@ -231,7 +231,7 @@ export default function NewsEventsPage() {
   const pageLabel = `${currentPage(offset, NEWS_EVENTS_PAGE_SIZE)} / ${totalPages(totalRows, NEWS_EVENTS_PAGE_SIZE)}`;
 
   return (
-    <section className="news-events-page">
+    <section className="news-events-page" data-moss-theme-scope="news-events">
       <div className="news-events-page__header">
         <div>
           <h1 data-testid="news-events-page-title" className="news-events-page__title">

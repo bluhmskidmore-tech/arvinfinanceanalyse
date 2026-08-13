@@ -180,7 +180,11 @@ export default function BondTradingDeskPage() {
   };
 
   return (
-    <PageV2Shell testId="bond-trading-desk-page" style={{ paddingBottom: 24 }}>
+    <PageV2Shell
+      testId="bond-trading-desk-page"
+      themeScope="bond-trading-desk"
+      style={{ paddingBottom: 24 }}
+    >
       <PageHeader
         testId="bond-trading-desk-header"
         eyebrow="组合工作台"

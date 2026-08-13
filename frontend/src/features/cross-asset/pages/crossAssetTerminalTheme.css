@@ -46,6 +46,9 @@
   --ib-gold: var(--dh-api-amber);
   --ib-radius: var(--dh-api-radius);
   --ib-shadow: none;
+  /* Nocturne 偏格圆角归一：页面卡面大量直用全局 --moss-radius-sm（2px），
+     页 scope 内跟随 --dh-api-radius（Nocturne 8px），不动布局几何。 */
+  --moss-radius-sm: var(--dh-api-radius);
 
   /* 基底 / 面板 */
   --ca-paper: var(--dh-api-bg);

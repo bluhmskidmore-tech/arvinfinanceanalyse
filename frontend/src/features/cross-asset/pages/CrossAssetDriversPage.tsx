@@ -273,6 +273,7 @@ export default function CrossAssetDriversPage() {
   return (
       <section
         className="cross-asset-drivers-page cross-asset-drivers-page--terminal theme-dh-api"
+        data-moss-theme-scope="cross-asset"
         data-testid="cross-asset-drivers-page"
       >
         <div data-testid="cross-asset-page" className="cross-asset-drivers-page__shell">

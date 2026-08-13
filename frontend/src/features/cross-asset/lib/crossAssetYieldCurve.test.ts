@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ChoiceMacroLatestPoint } from "../../../api/contracts";
-import { dhApiTokens, ibTokens } from "../../../theme/designSystem";
+import { ibTokens, nocturneTokens } from "../../../theme/designSystem";
 
 import {
   YIELD_CURVE_TENOR_LABELS,
@@ -152,11 +152,11 @@ describe("buildYieldCurveOption", () => {
       "terminal",
     );
     const series = option!.series as Array<{ name: string; lineStyle: { color: string } }>;
-    expect(series.find((s) => s.name === "国债")!.lineStyle.color).toBe(dhApiTokens.color.blue);
-    expect(series.find((s) => s.name === "AAA 企业债")!.lineStyle.color).toBe(dhApiTokens.color.amber);
+    expect(series.find((s) => s.name === "国债")!.lineStyle.color).toBe(nocturneTokens.color.blue);
+    expect(series.find((s) => s.name === "AAA 企业债")!.lineStyle.color).toBe(nocturneTokens.color.amber);
     const legend = option!.legend as { textStyle: { color: string } };
-    expect(legend.textStyle.color).toBe(dhApiTokens.color.inkSoft);
+    expect(legend.textStyle.color).toBe(nocturneTokens.color.inkSoft);
     const yAxis = option!.yAxis as { splitLine: { lineStyle: { color: string } } };
-    expect(yAxis.splitLine.lineStyle.color).toBe(dhApiTokens.color.lineSoft);
+    expect(yAxis.splitLine.lineStyle.color).toBe(nocturneTokens.color.lineSoft);
   });
 });
