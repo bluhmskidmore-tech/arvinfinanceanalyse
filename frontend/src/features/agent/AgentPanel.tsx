@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 
 import type { AgentPageContext } from "../../api/contracts";
-import { isAgentFrontendEnabled } from "../../mocks/navigation";
+import { isAgentFrontendEnabled } from "../../app/navigation";
 import { EmbeddedAgentCopilot } from "./AgentWorkbenchPage";
 
 import "./AgentPanel.css";

@@ -1,4 +1,4 @@
-import { visibleWorkbenchNavigation } from "../../../mocks/navigation";
+import { visibleWorkbenchNavigation } from "../../../app/navigation";
 import type {
   HomeDecisionAction,
   HomeTerminalKpi,
@@ -8,7 +8,7 @@ import type {
  * 首页搜索索引构建模块。
  *
  * 搜索对象仅来自现有可信来源，不新增虚假页面或后端接口：
- * - 页面：`mocks/navigation.ts` 的 visibleWorkbenchNavigation（真实路由 + 标签 + 描述）
+ * - 页面：`app/navigation.ts` 的 visibleWorkbenchNavigation（真实路由 + 标签 + 描述）
  * - 指标：当前首屏 terminalKpis（真实展示的 KPI）
  * - 动作：当前决策栏 actions（真实可执行动作，带 to 链接）
  *

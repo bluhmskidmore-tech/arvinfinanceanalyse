@@ -7,7 +7,7 @@ import type { ApiEnvelope } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
 import { runPollingTask } from "../../../app/jobs/polling";
 import { mapResearchCalendarEventToCalendarItem } from "../../../lib/researchCalendarToCalendarItem";
-import { isAgentFrontendEnabled } from "../../../mocks/navigation";
+import { isAgentFrontendEnabled } from "../../../app/navigation";
 import type {
   ActionAttributionResponse,
   BondAnalyticsAccountingClassFilter,

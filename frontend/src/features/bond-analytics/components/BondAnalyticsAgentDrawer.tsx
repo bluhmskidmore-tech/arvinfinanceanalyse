@@ -2,7 +2,7 @@ import { lazy, Suspense } from "react";
 
 import { Button as AntButton, Drawer as AntDrawer } from "antd";
 
-import { isAgentFrontendEnabled } from "../../../mocks/navigation";
+import { isAgentFrontendEnabled } from "../../../app/navigation";
 import styles from "./BondAnalyticsViewContent.module.css";
 
 const LazyAgentPanel = lazy(() =>

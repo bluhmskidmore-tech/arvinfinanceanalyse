@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { primaryWorkbenchNavigation, workbenchNavigation } from "../mocks/navigation";
+import { primaryWorkbenchNavigation, workbenchNavigation } from "../app/navigation";
 import { liveRouteReadinessContracts } from "./liveRouteReadinessContracts";
 
 describe("live workbench route readiness contracts", () => {

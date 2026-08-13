@@ -1,6 +1,6 @@
 import { lazy } from "react";
 
-import { isAgentFrontendEnabled } from "../mocks/navigation";
+import { isAgentFrontendEnabled } from "../app/navigation";
 import { WorkbenchNotFoundPage } from "./WorkbenchRouteStatusPages";
 
 const AgentWorkbenchPage = lazy(() => import("../features/agent/AgentWorkbenchPage"));

@@ -7,7 +7,7 @@ import {
   primaryWorkbenchNavigation,
   workbenchNavigation,
   type WorkbenchSection,
-} from "../mocks/navigation";
+} from "../app/navigation";
 import { AgentWorkbenchRoute } from "./AgentWorkbenchRoute";
 import { WorkbenchRouteFallback } from "./WorkbenchRouteFallback";
 import { WorkbenchNotFoundPage, WorkbenchRouteErrorBoundary } from "./WorkbenchRouteStatusPages";

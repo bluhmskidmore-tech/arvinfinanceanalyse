@@ -4,7 +4,7 @@ import { useLocation } from "react-router-dom";
 import { useApiClient } from "../../../api/client";
 import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
 import { PlaceholderCard } from "../components/PlaceholderCard";
-import { workbenchNavigation } from "../../../mocks/navigation";
+import { workbenchNavigation } from "../../../app/navigation";
 
 export default function WorkbenchPlaceholderPage() {
   const client = useApiClient();

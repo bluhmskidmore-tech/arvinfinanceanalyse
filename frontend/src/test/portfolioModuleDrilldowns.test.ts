@@ -4,7 +4,7 @@ import {
   primaryWorkbenchNavigation,
   primaryWorkbenchNavigationGroups,
   resolveWorkbenchGroupKey,
-} from "../mocks/navigation";
+} from "../app/navigation";
 import {
   getPortfolioModuleDrilldowns,
   PORTFOLIO_MODULE_DRILLDOWN_COUNT,

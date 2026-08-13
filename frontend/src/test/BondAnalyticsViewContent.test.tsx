@@ -11,8 +11,8 @@ import type { Numeric, ResultMeta } from "../api/contracts";
 import type { ActionAttributionResponse } from "../features/bond-analytics/types";
 import { formatRawAsNumeric } from "../utils/format";
 
-vi.mock("../mocks/navigation", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../mocks/navigation")>()),
+vi.mock("../app/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../app/navigation")>()),
   isAgentFrontendEnabled: () => true,
 }));
 

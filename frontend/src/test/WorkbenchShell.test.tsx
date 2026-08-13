@@ -10,7 +10,7 @@ import {
   primaryWorkbenchNavigation,
   primaryWorkbenchNavigationGroups,
   secondaryWorkbenchNavigation,
-} from "../mocks/navigation";
+} from "../app/navigation";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
 const WORKBENCH_INSTITUTIONAL_CONSOLE_CSS_PATH = resolve(

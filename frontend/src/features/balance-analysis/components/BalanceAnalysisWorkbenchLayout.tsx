@@ -35,7 +35,7 @@ import type {
   BalanceAnalysisWorkbookPayload,
   ResultMeta,
 } from "../../../api/contracts";
-import { primaryWorkbenchNavigationGroups } from "../../../mocks/navigation";
+import { primaryWorkbenchNavigationGroups } from "../../../app/navigation";
 import {
   formatBalanceAmountToYiFromWan,
   formatBalanceAmountToYiFromYuan,

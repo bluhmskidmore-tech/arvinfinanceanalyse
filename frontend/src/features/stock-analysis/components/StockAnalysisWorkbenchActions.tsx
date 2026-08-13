@@ -1,7 +1,7 @@
 import { ClockCircleOutlined, ReloadOutlined, SafetyCertificateOutlined, SearchOutlined } from "@ant-design/icons";
 import { Button as AntButton } from "antd";
 
-import { isAgentFrontendEnabled } from "../../../mocks/navigation";
+import { isAgentFrontendEnabled } from "../../../app/navigation";
 import { formatGeneratedAtLabel } from "../lib/stockAnalysisPageCopy";
 import { SA_SHELL_NUM } from "../lib/stockAnalysisPageChrome";
 

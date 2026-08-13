@@ -4,7 +4,7 @@ import { Outlet } from "react-router-dom";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { createApiClient } from "../api/client";
-import { primaryWorkbenchNavigation } from "../mocks/navigation";
+import { primaryWorkbenchNavigation } from "../app/navigation";
 import { workbenchRoutes, workbenchSections } from "../router/routes";
 import { preloadWorkbenchRouteModules } from "./preloadWorkbenchRouteModules";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";

@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 
 import { LightIcon } from "../../../../components/LightIcon";
-import { isAgentFrontendEnabled } from "../../../../mocks/navigation";
+import { isAgentFrontendEnabled } from "../../../../app/navigation";
 import { HomeSearchBox } from "../HomeSearchBox";
 import type {
   HomeDecisionAction,

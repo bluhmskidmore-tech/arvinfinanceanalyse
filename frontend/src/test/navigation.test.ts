@@ -10,7 +10,7 @@ import {
   secondaryWorkbenchNavigation,
   workbenchNavigation,
   workbenchPathAliases,
-} from "../mocks/navigation";
+} from "../app/navigation";
 
 describe("workbench navigation mocks", () => {
   it("has unique keys and unique paths", () => {

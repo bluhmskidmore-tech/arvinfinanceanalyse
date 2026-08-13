@@ -13,7 +13,7 @@ import {
   type WorkbenchSection,
   visibleWorkbenchNavigation,
   workbenchNavigation,
-} from "../mocks/navigation";
+} from "../app/navigation";
 import { DataModeRibbon } from "../components/DataModeRibbon";
 
 const WorkbenchShellMarketTicker = lazy(() => import("./WorkbenchShellMarketTicker"));

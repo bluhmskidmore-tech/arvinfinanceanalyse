@@ -5,8 +5,8 @@ vi.mock("../lib/echarts", () => ({
   default: () => <div data-testid="dashboard-echarts-stub" />,
 }));
 
-vi.mock("../mocks/navigation", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../mocks/navigation")>()),
+vi.mock("../app/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../app/navigation")>()),
   isAgentFrontendEnabled: () => true,
 }));
 

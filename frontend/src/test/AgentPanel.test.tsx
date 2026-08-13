@@ -6,8 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiClientProvider } from "../api/clientContext";
 import { AgentPanel } from "../features/agent/AgentPanel";
 
-vi.mock("../mocks/navigation", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../mocks/navigation")>()),
+vi.mock("../app/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../app/navigation")>()),
   isAgentFrontendEnabled: () => true,
 }));
 
