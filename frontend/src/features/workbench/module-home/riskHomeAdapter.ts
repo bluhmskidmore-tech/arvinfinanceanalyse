@@ -14,6 +14,7 @@ import {
 } from "../../../lib/yieldCurveDateSummary";
 
 import { bondNumericDisplay, bondNumericRawOrNull } from "../../bond-analytics/adapters/bondAnalyticsAdapter";
+import { EM_DASH } from "../../../utils/format";
 import type {
   ModuleHomeDetailChart,
 } from "./moduleHomeModel";
@@ -243,7 +244,7 @@ function seriesLastTwo(series: readonly number[]): { current: number | null; pre
 export type RiskV6KpiCard = {
   key: string;
   label: string;
-  /** 大数字部分（"-" 表示缺失，页面显式呈现待接入）。 */
+  /** 大数字部分（EM_DASH 表示缺失，页面显式呈现待接入）。 */
   amount: string;
   /** 跟在数字后的小字单位（万元/亿元/%），无单位时为 null。 */
   unit: string | null;
@@ -273,7 +274,7 @@ function buildKpiCard(args: KpiBuildArgs): RiskV6KpiCard {
   return {
     key: args.key,
     label: args.label,
-    amount: args.amount ?? "-",
+    amount: args.amount ?? EM_DASH,
     unit: valuePresent ? args.unit : null,
     alert: args.alert ?? false,
     valuePresent,

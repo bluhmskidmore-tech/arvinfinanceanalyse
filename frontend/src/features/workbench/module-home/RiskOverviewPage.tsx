@@ -4,7 +4,8 @@ import { Link } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
 import { apiQueryKeys } from "../../../api/queryKeys";
-import { isAgentFrontendEnabled } from "../../../mocks/navigation";
+import { isAgentFrontendEnabled } from "../../../app/navigation";
+import { EM_DASH } from "../../../utils/format";
 import {
   formatYieldCurveDateSummary,
   summarizeYieldCurveDates,
@@ -319,7 +320,7 @@ function BondEvidenceCard({
       />
       <div className={styles.roBondMeta}>
         <span>报告日</span>
-        <b className={styles.roNum}>{summary.reportDate ?? "—"}</b>
+        <b className={styles.roNum}>{summary.reportDate ?? EM_DASH}</b>
       </div>
       {summary.notices.length > 0 ? (
         <div className={styles.roBondNotices}>
@@ -343,7 +344,9 @@ function V6KpiCardView({ card }: { card: RiskV6KpiCard }) {
       data-testid={`risk-overview-kpi-${card.key}`}
     >
       <div className={styles.roV6KpiCap}>
-        {card.label}
+        <span className={styles.roV6KpiCapText} title={card.label}>
+          {card.label}
+        </span>
         <i className={card.alert ? styles.roV6CapDotBad : styles.roV6CapDot} aria-hidden="true" />
       </div>
       <div
@@ -728,7 +731,7 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
     });
   };
 
-  const reportDate = view.decision?.facts.find((fact) => fact.label === "报告日")?.value ?? "-";
+  const reportDate = view.decision?.facts.find((fact) => fact.label === "报告日")?.value ?? EM_DASH;
   const agentPanelFilters = useMemo(
     () => ({
       kind,
@@ -771,6 +774,7 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
   return (
     <section
       className={`theme-dh-api ${dh.dhPage} ${dh.dhApiBackedHome} ${styles.roV6Scope}`}
+      data-moss-theme-scope="risk-overview"
       data-testid="risk-overview-page"
     >
       <div
@@ -781,22 +785,35 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
           className={`${dh.dhMain} ${styles.roMain}`}
           data-testid="risk-overview-main"
         >
-          {/* Top rail — report identity + state + refresh */}
-          <div className={`${dh.dhApiTopRail} ${styles.roTopRail}`}>
-            <h1>MOSS 利率风险总览</h1>
-            <span>
-              {reportDate !== "-" ? `报告日 ${reportDate}` : "暂无数据日"}
-              {view.question ? ` · ${view.question}` : ""}
-            </span>
-            <span>
-              <i
-                className={`${dhStateClass(stateTone)} ${styles.roStateDot}`}
-                aria-hidden="true"
-              />
-              {view.stateLabel}
+          {/* 工具栏 — 首页 dhTopbar 语言：左标题+报告日，右状态胶囊+刷新 */}
+          <header className={styles.roTopbar} data-testid="risk-overview-toolbar">
+            <div className={styles.roTopbarLeft}>
+              <h1 className={styles.roPageTitle}>MOSS 利率风险总览</h1>
+              <div className={styles.roTopbarMeta}>
+                <span>
+                  {reportDate !== EM_DASH ? (
+                    <>
+                      报告日 <strong className={styles.roNum}>{reportDate}</strong>
+                    </>
+                  ) : (
+                    "暂无数据日"
+                  )}
+                </span>
+                {view.question ? <span title={view.question}>{view.question}</span> : null}
+              </div>
+            </div>
+            <div className={styles.roTopbarRight}>
+              <span
+                className={styles.roStatusPill}
+                data-tone={stateTone}
+                title={view.stateDetail}
+              >
+                <i className={dhStateClass(stateTone)} aria-hidden="true" />
+                {view.stateLabel}
+              </span>
               <button
                 type="button"
-                className={`${dh.dhRefreshBtn} ${styles.roRefreshBtn}`}
+                className={`${dh.dhRefreshBtn} ${styles.roShellBtn}`}
                 onClick={refreshAll}
                 disabled={isFetching}
               >
@@ -805,7 +822,7 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
               {isAgentFrontendEnabled() ? (
                 <button
                   type="button"
-                  className={`${dh.dhRefreshBtn} ${styles.roAgentEntryBtn}`}
+                  className={`${dh.dhRefreshBtn} ${styles.roShellBtn}`}
                   data-testid="risk-overview-agent-open"
                   onClick={openAgentPanel}
                   aria-label="打开复核助手"
@@ -813,8 +830,8 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
                   复核助手
                 </button>
               ) : null}
-            </span>
-          </div>
+            </div>
+          </header>
 
           {/* 质量警示横幅 — 规则版本拦截的报告日 */}
           {blockedReportDates.length > 0 ? (
@@ -828,9 +845,7 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
                   {blockedReportDates.length} 个报告日被规则版本拦截
                   {latestBlocked ? `，最新 ${latestBlocked.report_date}` : ""}
                 </strong>
-                <span title={latestBlocked?.reason}>
-                  {latestBlocked?.reason ?? "需重新物化后恢复风险张量读取。"}
-                </span>
+                <span>{latestBlocked?.reason ?? "需重新物化后恢复风险张量读取。"}</span>
               </div>
               <Link className={styles.roBlockedLink} to="/risk-tensor">
                 前往风险张量页 →
@@ -1020,7 +1035,7 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
             <div className={styles.roSecHead}>
               <i>03</i>
               <h2>风险证据板</h2>
-              <span>KRD · 收益率曲线 · 现金流窗口 · 字段级明细</span>
+              <span>KRD / 收益率曲线 / 现金流窗口 / 字段级明细</span>
             </div>
             <div className={styles.roV6Duo}>
               <div className={styles.roV6Panel} data-testid="risk-overview-krd-panel">
@@ -1326,7 +1341,7 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
               </div>
               <div data-testid="risk-overview-lineage">
                 <div className={styles.roV6TblHead}>
-                  血缘 · LINEAGE
+                  血缘追溯
                   <span>报告日 {tensor?.report_date ?? reportDate}</span>
                 </div>
                 {lineageRows.length > 0 ? (
@@ -1350,10 +1365,9 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
           className={`${dh.dhRail} ${styles.roRail}`}
           data-testid="risk-overview-rail"
         >
-          <section className={dh.dhRailCard} data-testid="risk-overview-drilldowns">
+          <section className={`${dh.dhRailCard} ${styles.roRailCard}`} data-testid="risk-overview-drilldowns">
             <div className={dh.dhRailCardHeader}>
               <span>下钻入口</span>
-              <span className={dh.dhRailCardKicker}>Drill-down</span>
             </div>
             <div className={dh.dhRailCardBody}>
               <nav className={styles.roSectionNav} aria-label="风险总览页内章节">
@@ -1387,7 +1401,7 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
             </div>
           </section>
 
-          <section className={dh.dhRailCard} data-testid="risk-overview-data-note">
+          <section className={`${dh.dhRailCard} ${styles.roRailCard}`} data-testid="risk-overview-data-note">
             <div className={dh.dhRailCardHeader}>
               <span>{view.dataNote.title}</span>
             </div>

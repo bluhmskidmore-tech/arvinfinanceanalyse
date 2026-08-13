@@ -872,6 +872,9 @@ describe("ModuleWorkbenchHomePage", () => {
 
     const page = await screen.findByTestId("risk-overview-page", {}, { timeout: 10000 });
     expect(page).toHaveTextContent("MOSS 利率风险总览");
+    // Nocturne scope 声明与首页语言工具栏是本页主题接入契约（DESIGN.md 2026-08-13）。
+    expect(page).toHaveAttribute("data-moss-theme-scope", "risk-overview");
+    expect(within(page).getByTestId("risk-overview-toolbar")).toBeInTheDocument();
     await waitFor(() => {
       expect(within(page).getByTestId("risk-overview-kpi-strip")).toBeInTheDocument();
       expect(within(page).getByTestId("risk-overview-status-strip")).toBeInTheDocument();
