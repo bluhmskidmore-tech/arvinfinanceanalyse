@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -22,15 +23,60 @@ from backend.app.agent.schemas.agent_workspace import (
 )
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.repositories.agent_workspace_repo import AgentWorkspaceRepository
+from pydantic import ValidationError
 
 AGENT_WORKSPACE_LIFECYCLE_LOCK = LockDefinition(
     key="lock:agent-workspace:lifecycle",
     ttl_seconds=30,
 )
 
+_LOGGER = logging.getLogger(__name__)
+
 
 class AgentWorkspaceStateConflict(RuntimeError):
     """Raised when a Workspace write conflicts with the current lifecycle state."""
+
+
+class AgentWorkspaceRecordCorrupt(RuntimeError):
+    """Raised when a stored Workspace record exists but can no longer be deserialized.
+
+    Deliberately not a ValueError: the API layer maps ValueError to 404, and a
+    corrupt-but-present record must not be reported as missing.
+    """
+
+
+def _corrupt_reason(exc: Exception) -> str:
+    """Compact reason string for logs; never includes stored field values."""
+    if isinstance(exc, ValidationError):
+        parts = [
+            f"{'.'.join(str(part) for part in error.get('loc', ())) or '<root>'}"
+            f":{error.get('type', 'invalid')}"
+            for error in exc.errors()
+        ]
+        return "; ".join(parts) or "validation_error"
+    return type(exc).__name__
+
+
+def _log_corrupt_record(*, kind: str, identifier: str, reason: str) -> None:
+    _LOGGER.warning(
+        "Corrupt agent workspace record kind=%s identifier=%s reason=%s",
+        kind,
+        identifier or "<unknown>",
+        reason,
+    )
+
+
+def _corrupt_record_error(
+    *,
+    kind: str,
+    identifier: str,
+    reason: str,
+) -> AgentWorkspaceRecordCorrupt:
+    _log_corrupt_record(kind=kind, identifier=identifier, reason=reason)
+    return AgentWorkspaceRecordCorrupt(
+        f"Agent workspace {kind} record {identifier or '<unknown>'} is corrupt "
+        "and cannot be read."
+    )
 
 
 @contextmanager
@@ -76,14 +122,28 @@ def list_projects(
     include_archived: bool = False,
 ) -> AgentProjectListResponse:
     owner = _required_owner(owner_user_id)
-    projects = [
-        AgentProject.model_validate(record)
+    # Ownership is decided on the raw record before validation so corrupt
+    # records are never surfaced (or counted) across users.
+    owned_records = [
+        record
         for record in _repository(settings).list_latest_projects()
         if str(record.get("owner_user_id") or "").strip() == owner
         and (include_archived or not record.get("archived_at"))
     ]
+    projects: list[AgentProject] = []
+    corrupt_records = 0
+    for record in owned_records:
+        try:
+            projects.append(AgentProject.model_validate(record))
+        except ValidationError as exc:
+            corrupt_records += 1
+            _log_corrupt_record(
+                kind="project",
+                identifier=str(record.get("project_id") or ""),
+                reason=_corrupt_reason(exc),
+            )
     projects.sort(key=lambda project: _parse_utc(project.updated_at), reverse=True)
-    return AgentProjectListResponse(items=projects)
+    return AgentProjectListResponse(items=projects, corrupt_records=corrupt_records)
 
 
 def get_project(
@@ -98,7 +158,14 @@ def get_project(
         raise ValueError(f"Unknown agent project_id={project_id}")
     if str(record.get("owner_user_id") or "").strip() != owner:
         raise PermissionError(f"Agent project {project_id} is owned by another user.")
-    return AgentProject.model_validate(record)
+    try:
+        return AgentProject.model_validate(record)
+    except ValidationError as exc:
+        raise _corrupt_record_error(
+            kind="project",
+            identifier=project_id,
+            reason=_corrupt_reason(exc),
+        ) from exc
 
 
 def update_project(
@@ -180,12 +247,26 @@ def list_conversations(
         project_id=project_id,
     )
     repository = _repository(settings)
-    conversations = [
-        AgentConversation.model_validate(record)
+    # Ownership/project scoping is decided on the raw record before validation
+    # so corrupt records are never surfaced (or counted) across users.
+    scoped_records = [
+        record
         for record in repository.list_latest_conversations()
         if str(record.get("project_id") or "").strip() == project.project_id
         and str(record.get("owner_user_id") or "").strip() == project.owner_user_id
     ]
+    conversations: list[AgentConversation] = []
+    corrupt_records = 0
+    for record in scoped_records:
+        try:
+            conversations.append(AgentConversation.model_validate(record))
+        except ValidationError as exc:
+            corrupt_records += 1
+            _log_corrupt_record(
+                kind="conversation",
+                identifier=str(record.get("conversation_id") or ""),
+                reason=_corrupt_reason(exc),
+            )
     runs = repository.list_latest_run_records()
     projected = [
         _with_latest_run(conversation=conversation, runs=runs)
@@ -195,7 +276,10 @@ def list_conversations(
         key=lambda conversation: _parse_utc(conversation.updated_at),
         reverse=True,
     )
-    return AgentConversationListResponse(items=projected)
+    return AgentConversationListResponse(
+        items=projected,
+        corrupt_records=corrupt_records,
+    )
 
 
 def get_conversation(
@@ -213,7 +297,14 @@ def get_conversation(
         raise PermissionError(
             f"Agent conversation {conversation_id} is owned by another user."
         )
-    conversation = AgentConversation.model_validate(record)
+    try:
+        conversation = AgentConversation.model_validate(record)
+    except ValidationError as exc:
+        raise _corrupt_record_error(
+            kind="conversation",
+            identifier=conversation_id,
+            reason=_corrupt_reason(exc),
+        ) from exc
     get_project(
         settings=settings,
         owner_user_id=owner,
@@ -267,6 +358,7 @@ def list_conversation_messages(
         conversation_id=conversation.conversation_id,
     )
     messages: list[AgentMessage] = []
+    corrupt_records = 0
     for run in runs:
         run_id = str(run.get("run_id") or "").strip()
         question = _run_question(run)
@@ -283,21 +375,25 @@ def list_conversation_messages(
         )
 
         status = str(run.get("status") or "").strip()
-        envelope = _run_envelope(run)
-        if status == "completed" and envelope is not None:
-            artifact_id = _artifact_id(run_id)
-            messages.append(
-                AgentMessage(
-                    message_id=f"message:{run_id}:assistant",
-                    conversation_id=conversation.conversation_id,
-                    role="assistant",
-                    content=envelope.answer,
-                    run_id=run_id,
-                    artifact_refs=[artifact_id],
-                    created_at=_run_updated_at(run),
-                    result=envelope,
+        if status == "completed":
+            try:
+                envelope = _validated_run_envelope(run)
+            except AgentWorkspaceRecordCorrupt:
+                corrupt_records += 1
+            else:
+                artifact_id = _artifact_id(run_id)
+                messages.append(
+                    AgentMessage(
+                        message_id=f"message:{run_id}:assistant",
+                        conversation_id=conversation.conversation_id,
+                        role="assistant",
+                        content=envelope.answer,
+                        run_id=run_id,
+                        artifact_refs=[artifact_id],
+                        created_at=_run_updated_at(run),
+                        result=envelope,
+                    )
                 )
-            )
         elif status in {"failed", "cancelled"}:
             messages.append(
                 AgentMessage(
@@ -310,7 +406,7 @@ def list_conversation_messages(
                 )
             )
     messages.sort(key=lambda message: _parse_utc(message.created_at))
-    return AgentMessageListResponse(items=messages)
+    return AgentMessageListResponse(items=messages, corrupt_records=corrupt_records)
 
 
 def list_conversation_artifacts(
@@ -329,14 +425,18 @@ def list_conversation_artifacts(
         owner_user_id=conversation.owner_user_id,
         conversation_id=conversation.conversation_id,
     )
-    artifacts = [
-        artifact
-        for run in runs
-        if (artifact := _artifact_from_run(run, conversation.conversation_id))
-        is not None
-    ]
+    artifacts: list[AgentArtifact] = []
+    corrupt_records = 0
+    for run in runs:
+        try:
+            artifact = _artifact_from_run(run, conversation.conversation_id)
+        except AgentWorkspaceRecordCorrupt:
+            corrupt_records += 1
+            continue
+        if artifact is not None:
+            artifacts.append(artifact)
     artifacts.sort(key=lambda artifact: _parse_utc(artifact.created_at))
-    return AgentArtifactListResponse(items=artifacts)
+    return AgentArtifactListResponse(items=artifacts, corrupt_records=corrupt_records)
 
 
 def get_artifact(
@@ -457,25 +557,45 @@ def _run_question(run: dict[str, object]) -> str:
     return "Agent request"
 
 
-def _run_envelope(run: dict[str, object]) -> AgentEnvelope | None:
+def _validated_run_envelope(run: dict[str, object]) -> AgentEnvelope:
+    """Envelope of a completed run.
+
+    Raises AgentWorkspaceRecordCorrupt when the stored result is missing or no
+    longer satisfies the current envelope contract.
+    """
+    run_id = str(run.get("run_id") or "").strip()
     result = run.get("result")
     if not isinstance(result, dict):
-        return None
-    return AgentEnvelope.model_validate(result)
+        raise _corrupt_record_error(
+            kind="run_result",
+            identifier=run_id,
+            reason="missing_result",
+        )
+    try:
+        return AgentEnvelope.model_validate(result)
+    except ValidationError as exc:
+        raise _corrupt_record_error(
+            kind="run_result",
+            identifier=run_id,
+            reason=_corrupt_reason(exc),
+        ) from exc
 
 
 def _artifact_from_run(
     run: dict[str, object],
     conversation_id: str,
 ) -> AgentArtifact | None:
+    """Return None when the run yields no artifact.
+
+    Raises AgentWorkspaceRecordCorrupt when a completed run's stored result is
+    unreadable, so callers can distinguish "no artifact" from "broken record".
+    """
     if str(run.get("status") or "").strip() != "completed":
-        return None
-    envelope = _run_envelope(run)
-    if envelope is None:
         return None
     run_id = str(run.get("run_id") or "").strip()
     if not run_id:
         return None
+    envelope = _validated_run_envelope(run)
     return AgentArtifact(
         artifact_id=_artifact_id(run_id),
         conversation_id=conversation_id,

@@ -46,7 +46,10 @@ class AgentProjectUpdateRequest(_StrictWorkspaceRequest):
 
 
 class AgentProject(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    # Persisted entity: tolerate unknown fields so records written by newer
+    # code versions stay readable after a rollback. Request DTOs above keep
+    # extra="forbid" to reject owner spoofing.
+    model_config = ConfigDict(extra="ignore")
 
     project_id: str
     owner_user_id: str
@@ -60,6 +63,7 @@ class AgentProject(BaseModel):
 
 class AgentProjectListResponse(BaseModel):
     items: list[AgentProject] = Field(default_factory=list)
+    corrupt_records: int = Field(default=0, ge=0)
 
 
 class AgentConversationCreateRequest(_StrictWorkspaceRequest):
@@ -75,7 +79,8 @@ class AgentConversationCreateRequest(_StrictWorkspaceRequest):
 
 
 class AgentConversation(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    # Persisted entity: tolerate unknown fields (see AgentProject).
+    model_config = ConfigDict(extra="ignore")
 
     conversation_id: str
     project_id: str
@@ -88,6 +93,7 @@ class AgentConversation(BaseModel):
 
 class AgentConversationListResponse(BaseModel):
     items: list[AgentConversation] = Field(default_factory=list)
+    corrupt_records: int = Field(default=0, ge=0)
 
 
 AgentMessageRole = Literal["user", "assistant", "system_notice"]
@@ -108,6 +114,7 @@ class AgentMessage(BaseModel):
 
 class AgentMessageListResponse(BaseModel):
     items: list[AgentMessage] = Field(default_factory=list)
+    corrupt_records: int = Field(default=0, ge=0)
 
 
 class AgentArtifact(BaseModel):
@@ -125,3 +132,4 @@ class AgentArtifact(BaseModel):
 
 class AgentArtifactListResponse(BaseModel):
     items: list[AgentArtifact] = Field(default_factory=list)
+    corrupt_records: int = Field(default=0, ge=0)
