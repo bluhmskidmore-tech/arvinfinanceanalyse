@@ -19,7 +19,11 @@ import type {
   ProductCategoryPnlRow,
   ResultMeta,
 } from "../../../api/contracts";
-import { LazyReactECharts } from "./LazyReactECharts";
+import {
+  LazyReactECharts,
+  loadReactECharts,
+  prefetchReactEChartsWhenIdle,
+} from "./LazyReactECharts";
 import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
 import {
   DataStatusStrip,
@@ -1198,6 +1202,10 @@ export default function ProductCategoryPnlPage() {
       report_date: selectedDate,
     }));
   }, [selectedDate]);
+
+  useEffect(() => {
+    prefetchReactEChartsWhenIdle();
+  }, []);
 
   useEffect(() => {
     if (!selectedDate || scenarioRateTouched) {
@@ -3514,7 +3522,7 @@ export default function ProductCategoryPnlPage() {
             persistProductCategoryTrendWorkspacePreference(isOpen);
           }}
         >
-          <summary>
+          <summary onPointerEnter={() => void loadReactECharts()}>
             <div className="product-category-trend-terminal__header">
               <div className="product-category-trend-terminal__copy">
                 <span>趋势与利差</span>
@@ -3749,7 +3757,7 @@ export default function ProductCategoryPnlPage() {
                 <header>
                   <span>同比趋势与后端字段归因</span>
                   <small>
-                    {comparisonPriorPeriodLabel} ·{" "}
+                    {comparisonPriorPeriodLabel} →{" "}
                     {comparisonCurrentPeriodLabel}
                     {" · "}日期覆盖 {comparisonComparableMonthCount}/12
                   </small>

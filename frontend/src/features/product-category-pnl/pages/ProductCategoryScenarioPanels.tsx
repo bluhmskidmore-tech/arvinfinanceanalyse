@@ -733,7 +733,7 @@ export function ProductCategoryFinancialAnalysisPanel(props: {
                             <span>{row.priorityLabel}</span>
                             <strong>{row.categoryLabel}</strong>
                             <small>
-                              {row.sideLabel} · {row.triggerRateLabel} ·{" "}
+                              {row.sideLabel} {row.triggerRateLabel} ·{" "}
                               {row.actionLabel}
                             </small>
                             <b className={`is-${row.tone}`}>{row.deltaLabel}</b>

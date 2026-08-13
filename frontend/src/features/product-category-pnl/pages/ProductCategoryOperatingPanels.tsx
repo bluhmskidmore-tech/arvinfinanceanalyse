@@ -407,9 +407,9 @@ export function ProductCategoryOperatingAnalysisPanel(props: {
                       >
                         <strong>{row.categoryLabel}</strong>
                         <span>
-                          {row.scaleLabel} 亿元 · {row.yieldLabel}% · 净营收{" "}
-                          {row.netIncomeLabel}
+                          规模 {row.scaleLabel} 亿元 · 收益率 {row.yieldLabel}%
                         </span>
+                        <b>净营收 {row.netIncomeLabel}</b>
                       </div>
                     ))}
                   </div>
@@ -585,8 +585,8 @@ export function ProductCategoryOperatingActionBacktestPanel(props: {
             >
               <span>补样本任务</span>
               <strong>{props.surface.summary.sampleRepairLabel}</strong>
+              <small>{props.surface.summary.sampleRepairDetailLabel}</small>
               <small>
-                {props.surface.summary.sampleRepairDetailLabel} ·{" "}
                 {props.surface.summary.sampleRepairDateLabel} ·{" "}
                 {props.surface.summary.sampleRepairReviewLabel}
               </small>
@@ -657,7 +657,7 @@ export function ProductCategoryOperatingActionBacktestPanel(props: {
                           (reason) =>
                             `${reason.reasonLabel} ${reason.sampleShareLabel}`,
                         )
-                        .join(" · ")}
+                        .join("、")}
                     </small>
                   </div>
                 ))}
@@ -679,9 +679,9 @@ export function ProductCategoryOperatingActionBacktestPanel(props: {
                     </div>
                     <b>{row.recommendationLabel}</b>
                     <small>
-                      {row.confidenceLabel} · {row.confidenceDetailLabel} ·{" "}
-                      {row.evidenceLabel}
+                      {row.confidenceLabel} · {row.confidenceDetailLabel}
                     </small>
+                    <small>{row.evidenceLabel}</small>
                   </div>
                 ))}
               </div>
@@ -705,18 +705,17 @@ export function ProductCategoryOperatingActionBacktestPanel(props: {
                     <b>
                       {row.reviewLabel} · {row.riskRankLabel}
                     </b>
+                    <small>{row.riskReasonLabel}</small>
+                    <small>{row.impactLabel}</small>
+                    <small>{row.evidenceLabel}</small>
                     <small>
-                      {row.riskReasonLabel} · {row.impactLabel} ·{" "}
-                      {row.evidenceLabel}
-                    </small>
-                    <small>
-                      当前证据：{row.currentEvidenceItems.join(" · ")}
+                      当前证据：{row.currentEvidenceItems.join("、")}
                     </small>
                     <small>{row.watchReportDateLabel}</small>
                     <small>{row.observationLabel}</small>
                     <small>{row.gapLabel}</small>
                     <small>{row.releaseConditionLabel}</small>
-                    <small>{row.checkItems.join(" · ")}</small>
+                    <small>{row.checkItems.join("、")}</small>
                   </div>
                 ))}
               </div>
@@ -768,11 +767,11 @@ export function ProductCategoryOperatingActionBacktestPanel(props: {
                       </span>
                     </div>
                     <b>{example.outcomeLabel}</b>
-                    <small>
-                      净营收 {example.netIncomeDeltaLabel} 亿元 · 收益率{" "}
-                      {example.yieldDeltaBpLabel} · 规模{" "}
-                      {example.scaleDeltaLabel} 亿元
-                    </small>
+                    <span className="product-category-action-backtest__example-metrics">
+                      <small>净营收 {example.netIncomeDeltaLabel} 亿元</small>
+                      <small>收益率 {example.yieldDeltaBpLabel}</small>
+                      <small>规模 {example.scaleDeltaLabel} 亿元</small>
+                    </span>
                   </div>
                 ))}
               </div>

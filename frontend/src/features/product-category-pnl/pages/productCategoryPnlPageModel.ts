@@ -3553,13 +3553,13 @@ function productCategoryBacktestLatestReviewRows(input: {
         riskReasonLabel: `${calibration.confidenceLabel}；${calibration.reasonLabel.replace(/^命中率 [^，]+，/, "")}`,
         reasonLabel: `历史回测建议${calibration.recommendationLabel}：${calibration.reasonLabel}`,
         impactLabel: actionRow
-          ? `历史均值：净营收 ${actionRow.averageNetIncomeDeltaLabel} 亿元 · 收益率 ${actionRow.averageYieldDeltaBpLabel} · 规模 ${actionRow.averageScaleDeltaLabel} 亿元`
+          ? `历史均值：净营收 ${actionRow.averageNetIncomeDeltaLabel} 亿元、收益率 ${actionRow.averageYieldDeltaBpLabel}、规模 ${actionRow.averageScaleDeltaLabel} 亿元`
           : `历史均值：${EM_DASH}`,
         watchReportDateLabel: `观察月份：${watchReportDate ?? EM_DASH}`,
         releaseConditionLabel: releaseConditionForAction(row.actionKind),
         observationLabel: observationForAction(row.actionKind),
         gapLabel: gapForAction(row),
-        evidenceLabel: `${row.triggerLabel} · ${calibration.confidenceLabel} · ${calibration.evidenceLabel}`,
+        evidenceLabel: `${row.triggerLabel}；${calibration.confidenceLabel}，${calibration.evidenceLabel}`,
         currentEvidenceItems: row.evidenceItems,
         checkItems: checkItemsForAction(row.actionKind),
         tone: "negative" as const,

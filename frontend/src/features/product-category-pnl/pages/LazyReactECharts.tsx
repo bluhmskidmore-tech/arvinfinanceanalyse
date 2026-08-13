@@ -21,6 +21,22 @@ export function loadReactECharts(): Promise<ReactEChartsComponent> {
   return reactEChartsRequest;
 }
 
+/**
+ * 页面挂载后在浏览器空闲时预热 ECharts chunk，让用户首次展开图表工作区时
+ * 无需现场下载约 230KB gzip。空闲预取不与首屏数据请求争带宽；
+ * 不支持 requestIdleCallback 的环境（Safari/jsdom）退化为短延时。
+ */
+export function prefetchReactEChartsWhenIdle(): void {
+  if (reactEChartsRequest || typeof window === "undefined") {
+    return;
+  }
+  if (typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(() => void loadReactECharts(), { timeout: 3000 });
+  } else {
+    window.setTimeout(() => void loadReactECharts(), 1500);
+  }
+}
+
 // 组件测试在 render 之后同步读取图表内容，异步首帧会把断言读空。测试构建里在模块求值
 // 阶段就发起预取，等测试体开始执行时缓存已就绪，首帧即可同步渲染。生产构建中
 // `import.meta.env.MODE` 被替换成字面量 "production"，整个分支被摇掉。

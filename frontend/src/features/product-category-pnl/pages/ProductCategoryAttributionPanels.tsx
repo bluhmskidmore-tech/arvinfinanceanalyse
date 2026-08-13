@@ -207,12 +207,12 @@ export function ProductCategoryAttributionPanel(props: {
             本期{" "}
             {formatProductCategoryReportMonthLabel(
               props.payload.current_report_date,
-            )}{" "}
-            · 对比期{" "}
+            )}
+            ，对比期{" "}
             {formatProductCategoryReportMonthLabel(
               props.payload.prior_report_date,
-            )}{" "}
-            · {props.compare === "yoy" ? "同比" : "月环比"}正式基线归因，不解释
+            )}
+            ，{props.compare === "yoy" ? "同比" : "月环比"}正式基线归因，不解释
             FTP 场景差异。
           </p>
         </div>
