@@ -5022,12 +5022,8 @@
 
 .product-category-formal-readiness__driver-header {
   display: flex;
-  align-items: center;
   justify-content: space-between;
   gap: 10px;
-}
-
-.product-category-formal-readiness__driver-header {
   align-items: flex-start;
   padding-right: 10px;
   border-right: 1px solid var(--moss-color-neutral-200);
