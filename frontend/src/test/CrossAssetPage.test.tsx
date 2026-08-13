@@ -158,6 +158,12 @@ function stubAnimationFrames() {
   };
 }
 
+beforeAll(async () => {
+  // 预热 CrossAssetPage 内部懒加载的 CrossAssetDriversPage（重模块），
+  // 避免文件内首个用例的 5s findBy 超时为冷转换买单。
+  await import("../features/cross-asset/pages/CrossAssetDriversPage");
+}, 30_000);
+
 describe("CrossAssetPage", () => {
   it("mounts below-fold evidence, observation, and appendix bodies one stage at a time", async () => {
     const observer = stubIntersectionObserver();
@@ -545,7 +551,6 @@ describe("CrossAssetPage", () => {
   it("keeps shared shell compression out of page-local styles", () => {
     const css = readFileSync(CROSS_ASSET_DRIVERS_CSS_PATH, "utf8");
 
-    expect(css).toContain(".cross-asset-first-screen-grid");
     expect(css).not.toContain(".workbench-shell-grid--cross-asset");
     expect(css).not.toContain(".workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset");
     expect(css).not.toContain('[data-testid="workbench-section-subnav"]');
@@ -596,7 +601,6 @@ describe("CrossAssetPage", () => {
     const css = readFileSync(CROSS_ASSET_DRIVERS_CSS_PATH, "utf8");
     const toolbarBlock = css.match(/\.cross-asset-reference-toolbar \{[\s\S]*?\n\}/)?.[0] ?? "";
     const summaryBlock = css.match(/\.cross-asset-reference-summary \{[\s\S]*?\n\}/)?.[0] ?? "";
-    const fusionLayoutBlock = css.match(/\.cross-asset-reference-fusion-layout\.cross-asset-fusion-layout \{[\s\S]*?\n\}/)?.[0] ?? "";
     const lowerGridBlock = css.match(/\.cross-asset-reference-lower-grid \{[\s\S]*?\n\}/)?.[0] ?? "";
     const correlationMatrixBlock = css.match(/\.cross-asset-reference-correlation__matrix \{[\s\S]*?\n\}/)?.[0] ?? "";
     const correlationCellBlock =
@@ -611,8 +615,6 @@ describe("CrossAssetPage", () => {
     expect(css).toContain(".cross-asset-first-screen {");
     expect(toolbarBlock).toContain("justify-content: space-between;");
     expect(summaryBlock).toContain("grid-template-columns:");
-    expect(fusionLayoutBlock).toContain("grid-template-columns: minmax(0, 1.62fr) minmax(360px, 0.9fr);");
-    expect(fusionLayoutBlock).toContain('grid-template-areas: "evidence rail";');
     expect(lowerGridBlock).toContain("grid-template-columns: minmax(540px, 1.35fr) minmax(320px, 0.82fr) minmax(380px, 0.98fr);");
     expect(correlationMatrixBlock).toContain("grid-template-columns: 76px repeat(5, minmax(0, 1fr));");
     expect(correlationCellBlock).toContain("font-size: 12px;");
@@ -633,8 +635,6 @@ describe("CrossAssetPage", () => {
     expect(railSummaryBlock).toContain("border-bottom: 1px solid var(--ca-border-muted);");
     expect(css).toContain(".cross-asset-action-rail__metrics {");
     expect(css).toContain("grid-template-columns: minmax(72px, auto) minmax(0, 1fr);");
-    expect(css).toContain(".cross-asset-transmission-canvas .cross-asset-research-views__evidence");
-    expect(css).toContain("line-clamp: 1;");
   });
 
   it("renders the hero first screen with transmission canvas and evidence side panel in their zones", async () => {
@@ -741,10 +741,6 @@ describe("CrossAssetPage", () => {
     const css = readFileSync(CROSS_ASSET_DRIVERS_CSS_PATH, "utf8");
     const decisionHeaderBlock = css.match(/\.cross-asset-decision-header \{[\s\S]*?\n\}/)?.[0] ?? "";
     const marketStateBlock = css.match(/\.cross-asset-market-state-strip \{[\s\S]*?\n\}/)?.[0] ?? "";
-    const commandCenterBlock = css.match(/^\.cross-asset-command-center \{[\s\S]*?\n\}/m)?.[0] ?? "";
-    const fusionLayoutBlock = css.match(/\.cross-asset-reference-fusion-layout\.cross-asset-fusion-layout \{[\s\S]*?\n\}/)?.[0] ?? "";
-    const referenceEvidenceBlock =
-      css.match(/\.cross-asset-reference-evidence-grid\.cross-asset-command-center \{[\s\S]*?\n\}/)?.[0] ?? "";
     const reviewQueueBlock = css.match(/^\.cross-asset-review-queue \{[\s\S]*?\n\}/m)?.[0] ?? "";
     const transmissionCanvasBlock = css.match(/\.cross-asset-transmission-canvas \{[\s\S]*?\n\}/)?.[0] ?? "";
 
@@ -752,16 +748,10 @@ describe("CrossAssetPage", () => {
     expect(decisionHeaderBlock).not.toContain("box-shadow: var(--ca-shadow-hero);");
     expect(decisionHeaderBlock).toContain("background: var(--ca-card);");
     expect(marketStateBlock).toContain("grid-template-columns:");
-    expect(commandCenterBlock).toContain("display: block;");
-    expect(fusionLayoutBlock).toContain('"evidence rail"');
-    expect(referenceEvidenceBlock).toContain("background: transparent;");
     expect(reviewQueueBlock).toContain("border-left: 3px solid");
     expect(transmissionCanvasBlock).toContain("display: grid;");
     expect(css).toContain(".cross-asset-action-rail {");
     expect(css).toContain("@media (max-width: 1320px)");
-    expect(css).toContain("grid-template-columns: minmax(0, 1fr) minmax(246px, 0.32fr);");
-    expect(css).toContain(".cross-asset-transmission-map__step strong");
-    expect(css).toContain("white-space: normal;");
     expect(css).not.toContain(".cross-asset-terminal-command-strip");
     expect(css).not.toContain(".cross-asset-desktop-transmission-workbench");
   });
@@ -823,10 +813,6 @@ describe("CrossAssetPage", () => {
       css.match(
         /\.cross-asset-status-region--compact \.cross-asset-data-status-strip__flag > span:last-child \{[\s\S]*?\n\}/,
       )?.[0] ?? "";
-    const marketStateTagRowBlock =
-      css.match(/\.cross-asset-market-state-strip__tag-row \{[\s\S]*?\n\}/)?.[0] ?? "";
-    const transmissionStepsBlock = css.match(/\.cross-asset-transmission-map__steps \{[\s\S]*?\n\}/)?.[0] ?? "";
-
     expect(trustPanelBlock).toContain("display: grid;");
     expect(trustPanelBlock).toContain("min-height: 100%;");
     expect(trustSummaryBlock).toContain("grid-template-columns: minmax(0, 1fr) auto;");
@@ -845,16 +831,12 @@ describe("CrossAssetPage", () => {
     expect(compactFlagDetailBlock).toContain("display: -webkit-box;");
     expect(compactFlagDetailBlock).toContain("-webkit-line-clamp: 1;");
     expect(compactFlagDetailBlock).toContain("white-space: normal;");
-    expect(marketStateTagRowBlock).toContain("grid-template-columns: 42px minmax(0, 1fr);");
-    expect(transmissionStepsBlock).toContain("grid-auto-rows: 1fr;");
-    expect(transmissionStepsBlock).toContain("align-items: stretch;");
   });
 
   it("keeps the deep evidence board visually secondary to the first-screen decision block", () => {
     const css = readFileSync(CROSS_ASSET_DRIVERS_CSS_PATH, "utf8");
     const decisionBoardBlock = css.match(/\.cross-asset-decision-board \{[\s\S]*?\n\}/)?.[0] ?? "";
     const decisionZoneTitleBlock = css.match(/^\.cross-asset-decision-zone__title \{[\s\S]*?\n\}/m)?.[0] ?? "";
-    const evidenceDigestBlock = css.match(/\.cross-asset-evidence-digest \{[\s\S]*?\n\}/)?.[0] ?? "";
     const evidenceDetailsBlock = css.match(/\.cross-asset-evidence-details \{[\s\S]*?\n\}/)?.[0] ?? "";
     const evidenceLedgerLayoutBlock =
       css.match(/\.cross-asset-reference-depth \.cross-asset-evidence-ledger__matrix-grid \{[\s\S]*?\n\}/)?.[0] ?? "";
@@ -867,7 +849,6 @@ describe("CrossAssetPage", () => {
     expect(decisionBoardBlock).toContain("box-shadow: none;");
     expect(decisionZoneTitleBlock).toContain("font-size: 0.74rem;");
     expect(decisionZoneTitleBlock).toContain("text-transform: none;");
-    expect(evidenceDigestBlock).toContain("grid-template-columns: repeat(4, minmax(0, 1fr));");
     expect(evidenceDetailsBlock).toContain("background: transparent;");
     expect(evidenceLedgerLayoutBlock).toContain("grid-template-columns: repeat(4, minmax(0, 1fr));");
     expect(evidenceLedgerTableBlock).toContain("table-layout: fixed;");
@@ -879,14 +860,10 @@ describe("CrossAssetPage", () => {
   it("keeps the desktop digest terse and decision oriented", () => {
     const css = readFileSync(CROSS_ASSET_DRIVERS_CSS_PATH, "utf8");
     const heroBlock = css.match(/\.cross-asset-decision-hero\.moss-page-v2-decision-hero \{[\s\S]*?\n\}/)?.[0] ?? "";
-    const digestBodyBlock = css.match(/\.cross-asset-evidence-digest__body \{[\s\S]*?\n\}/)?.[0] ?? "";
-    const digestMetricBlock = css.match(/\.cross-asset-evidence-digest__metric \{[\s\S]*?\n\}/)?.[0] ?? "";
     const evidenceSummaryFocusBlock =
       css.match(/\.cross-asset-evidence-details > summary:focus-visible \{[\s\S]*?\n\}/)?.[0] ?? "";
 
     expect(heroBlock).not.toContain("radial-gradient");
-    expect(digestBodyBlock).toContain("-webkit-line-clamp: 1;");
-    expect(digestMetricBlock).toContain("grid-template-columns: minmax(0, 1fr) auto;");
     expect(evidenceSummaryFocusBlock).toContain("outline:");
     expect(evidenceSummaryFocusBlock).toContain("outline-offset:");
   });
@@ -900,10 +877,6 @@ describe("CrossAssetPage", () => {
       desktopCss.match(/\.cross-asset-action-rail__action \{[\s\S]*?\n  \}/)?.[0] ?? "";
     const actionStrongDesktopBlock =
       desktopCss.match(/\.cross-asset-action-rail__action strong \{[\s\S]*?\n  \}/)?.[0] ?? "";
-    const firstEvidenceDesktopBlock =
-      desktopCss.match(/\.cross-asset-evidence-digest__item:first-child \{[\s\S]*?\n  \}/)?.[0] ?? "";
-    const nonFirstEvidenceDesktopBlock =
-      desktopCss.match(/\.cross-asset-evidence-digest__item:not\(:first-child\) \{[\s\S]*?\n  \}/)?.[0] ?? "";
 
     expect(railDesktopBlock).toContain("grid-template-rows: auto auto auto minmax(0, 1fr);");
     expect(railDesktopBlock).toContain("border-left-width: 3px;");
@@ -912,40 +885,6 @@ describe("CrossAssetPage", () => {
     expect(actionDesktopBlock).toContain("background: transparent;");
     expect(actionStrongDesktopBlock).toContain("font-size: 0.9rem;");
     expect(actionStrongDesktopBlock).toContain("color: var(--ca-slate);");
-    expect(firstEvidenceDesktopBlock).toContain("border-left-width: 4px;");
-    expect(firstEvidenceDesktopBlock).toContain("background: var(--ca-card);");
-    expect(firstEvidenceDesktopBlock).toContain("box-shadow: none;");
-    expect(nonFirstEvidenceDesktopBlock).toContain("border-left-color: color-mix(in srgb, var(--ca-accent) 48%, var(--ib-surface));");
-    expect(nonFirstEvidenceDesktopBlock).toContain("background: rgba(255, 255, 255, 0.72);");
-  });
-
-  it("makes the desktop primary research judgment read as the active transmission lane", () => {
-    const css = readFileSync(CROSS_ASSET_DRIVERS_CSS_PATH, "utf8");
-    const desktopCss = css.slice(css.lastIndexOf("@media (min-width: 901px)"));
-    const primaryResearchCardBlock =
-      desktopCss.match(/\.cross-asset-transmission-canvas \.cross-asset-research-views__card:first-child \{[\s\S]*?\n  \}/)?.[0] ??
-      "";
-    const primaryLabelBlock =
-      desktopCss.match(
-        /\.cross-asset-transmission-canvas \.cross-asset-research-views__card:first-child \.cross-asset-research-views__label \{[\s\S]*?\n  \}/,
-      )?.[0] ?? "";
-    const primarySummaryBlock =
-      desktopCss.match(
-        /\.cross-asset-transmission-canvas \.cross-asset-research-views__card:first-child \.cross-asset-research-views__summary \{[\s\S]*?\n  \}/,
-      )?.[0] ?? "";
-    const secondaryResearchCardBlock =
-      desktopCss.match(
-        /\.cross-asset-transmission-canvas \.cross-asset-research-views__card:not\(:first-child\) \{[\s\S]*?\n  \}/,
-      )?.[0] ?? "";
-
-    expect(primaryResearchCardBlock).toContain("border-left: 0;");
-    expect(primaryResearchCardBlock).toContain("background: var(--ca-card);");
-    expect(primaryResearchCardBlock).toContain("box-shadow: none;");
-    expect(primaryLabelBlock).toContain("color: var(--ca-slate);");
-    expect(primaryLabelBlock).toContain("font-size: 0.92rem;");
-    expect(primarySummaryBlock).toContain("-webkit-line-clamp: 1;");
-    expect(secondaryResearchCardBlock).toContain("border-left: 0;");
-    expect(secondaryResearchCardBlock).toContain("background: var(--ca-card);");
   });
 
   it("keeps the 520px mobile fallback scoped out of the desktop workbench redesign", () => {
@@ -980,7 +919,6 @@ describe("CrossAssetPage", () => {
     const css = readFileSync(CROSS_ASSET_DRIVERS_CSS_PATH, "utf8");
 
     expect(css).toContain("@media (max-width: 900px)");
-    expect(css).toContain(".cross-asset-first-screen-grid,");
     expect(css).toContain(".cross-asset-evidence-groups__grid,");
     expect(css).toContain(".cross-asset-evidence-ledger__matrix-grid,");
     expect(css).toContain(".cross-asset-reference-depth .cross-asset-evidence-ledger__matrix-grid,");
@@ -1239,14 +1177,12 @@ describe("CrossAssetPage", () => {
 
   it("keeps the attribution and risk diagnostics in a controlled desktop rhythm", async () => {
     const css = readFileSync(CROSS_ASSET_DRIVERS_CSS_PATH, "utf8");
-    const analyticsBlock = css.match(/\.cross-asset-zone-analytics-grid \{[\s\S]*?\n\}/)?.[0] ?? "";
     const riskBlock = css.match(/^\.cross-asset-risk-snapshot-grid \{[\s\S]*?\n\}/m)?.[0] ?? "";
     const volBarsBlock = css.match(/\.ca-vol-alert__bars \{[\s\S]*?\n\}/)?.[0] ?? "";
     const observationDesktopBlock =
       css.match(/@media \(min-width: 1000px\) \{[\s\S]*?\.cross-asset-observation-support-grid \{[\s\S]*?\n  \}/)?.[0] ??
       "";
 
-    expect(analyticsBlock).toContain("grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);");
     expect(riskBlock).toContain("grid-template-columns: minmax(0, 1fr);");
     expect(volBarsBlock).toContain("grid-template-columns: repeat(2, minmax(0, 1fr));");
     expect(css).toContain(".ca-waterfall__decision");
@@ -1424,7 +1360,6 @@ describe("CrossAssetPage", () => {
     expect(css).toContain(".cross-asset-candidate-actions__item::before");
     expect(lastOddBlock).toContain("grid-column: auto;");
     expect(rankBlock).toContain("display: inline-grid;");
-    expect(css).toContain(".cross-asset-candidate-actions__columns");
     expect(actionBlock).toContain("font-weight: 800;");
     expect(reasonBlock).toContain("text-overflow: ellipsis;");
     expect(evidenceBlock).toContain("text-overflow: ellipsis;");
