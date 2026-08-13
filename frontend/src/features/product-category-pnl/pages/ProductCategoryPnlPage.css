@@ -6822,8 +6822,9 @@
  * 无 .product-category-page-shell 类，下方 0-2-0 重映射块够不到它，分支内
  * ProductCategoryAuditPages.css 的 --moss-color-neutral-* / --ib-radius 会
  * 回退到浅色字面量。此块按 0-1-0 补齐同一组重映射：主分支根同元素上被
- * 0-2-0 类块按特异度覆盖（零影响），独立审计路由（/audit）无 scope 属性
- * 不受影响。变量清单与下方类块保持同构子集（分支实际消费面）。
+ * 0-2-0 类块按特异度覆盖（零影响）；独立审计路由的两个实际根也声明同一
+ * scope，因而复用本块重映射及外壳 :has(scope) 契约。变量清单与下方类块
+ * 保持同构子集（分支实际消费面）。
  */
 [data-moss-theme-scope="product-category-pnl"] {
   --ib-surface: var(--dh-api-panel);

@@ -44,8 +44,11 @@ describe("buildProductCategoryAuditListExportQuery", () => {
     );
   });
 });
-function renderAuditPageWithClient(client: ReturnType<typeof createApiClient>) {
-  const router = createWorkbenchMemoryRouter(["/product-category-pnl/audit"]);
+function renderAuditPageWithClient(
+  client: ReturnType<typeof createApiClient>,
+  initialEntry = "/product-category-pnl/audit",
+) {
+  const router = createWorkbenchMemoryRouter([initialEntry]);
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
@@ -76,6 +79,30 @@ describe("ProductCategoryAdjustmentAuditPage", () => {
   beforeAll(async () => {
     await preloadWorkbenchRouteModules("product-category-pnl-audit");
   }, 60_000);
+
+  it.each([
+    {
+      route: "/product-category-pnl/audit",
+      rootTestId: "product-category-audit-page",
+      expectedScope: "product-category-pnl",
+    },
+    {
+      route: "/product-category-pnl/audit?branch=monthly_operating_analysis",
+      rootTestId: "monthly-operating-analysis-audit-page",
+      expectedScope: "product-category-pnl",
+    },
+  ])("declares the canonical Nocturne scope for $route", async ({
+    route,
+    rootTestId,
+    expectedScope,
+  }) => {
+    renderAuditPageWithClient(createApiClient({ mode: "mock" }), route);
+
+    expect(await screen.findByTestId(rootTestId)).toHaveAttribute(
+      "data-moss-theme-scope",
+      expectedScope,
+    );
+  });
 
   it("renders the independent audit view with current-state rows and timeline rows", async () => {
     const baseClient = createApiClient({ mode: "mock" });

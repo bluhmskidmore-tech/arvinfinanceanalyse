@@ -435,7 +435,10 @@ export default function MonthlyOperatingAnalysisAuditPage() {
   }
 
   return (
-    <section data-testid="monthly-operating-analysis-audit-page">
+    <section
+      data-testid="monthly-operating-analysis-audit-page"
+      data-moss-theme-scope="product-category-pnl"
+    >
       <div className="product-category-audit-page-header">
         <div>
           <h1 data-testid="monthly-operating-analysis-audit-title" className="product-category-audit-page-title">

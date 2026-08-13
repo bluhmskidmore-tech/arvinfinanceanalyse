@@ -364,7 +364,10 @@ function LegacyProductCategoryAdjustmentAuditBody() {
   }
 
   return (
-    <section data-testid="product-category-audit-page">
+    <section
+      data-testid="product-category-audit-page"
+      data-moss-theme-scope="product-category-pnl"
+    >
       <div className="product-category-audit-page-header">
         <div>
           <h1 data-testid="product-category-audit-page-title" className="product-category-audit-page-title">
