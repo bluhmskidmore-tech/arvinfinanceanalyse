@@ -486,7 +486,7 @@ export function PnlAttributionView({ reportDate }: Props) {
     try {
       const [businessDatesEnvelope, productCategoryDatesEnvelope] =
         await Promise.all([
-          client.getFormalPnlDates("formal"),
+          client.getFormalPnlDates(),
           client.getProductCategoryDates(),
         ]);
       const businessDates = businessDatesEnvelope.result.formal_fi_report_dates

@@ -118,9 +118,10 @@ export default function FormalPnlV1Page() {
 
   const v1DetailColDefs = useMemo(() => withNumericFormatters(v1DetailColumnDefs), []);
 
+  // /api/pnl/dates 与 /api/pnl/overview 仅正式口径读模型（后端不消费 basis 参数），不再发送 basis。
   const datesQuery = useQuery({
-    queryKey: ["pnl", "dates", client.mode, basis],
-    queryFn: () => client.getFormalPnlDates(basis),
+    queryKey: ["pnl", "dates", client.mode],
+    queryFn: () => client.getFormalPnlDates(),
     retry: false,
   });
 
@@ -150,9 +151,9 @@ export default function FormalPnlV1Page() {
   });
 
   const overviewQuery = useQuery({
-    queryKey: ["pnl", "overview", client.mode, basis, selectedReportDate],
+    queryKey: ["pnl", "overview", client.mode, selectedReportDate],
     enabled: Boolean(selectedReportDate),
-    queryFn: () => client.getFormalPnlOverview(selectedReportDate, basis),
+    queryFn: () => client.getFormalPnlOverview(selectedReportDate),
     retry: false,
   });
 
@@ -325,11 +326,15 @@ export default function FormalPnlV1Page() {
             <button
               type="button"
               className={tabButtonClassName(basis === "analytical")}
-              onClick={() => setBasis("analytical")}
+              disabled
+              title="分析口径读模型未建，后端 /api/pnl/dates、/api/pnl/overview、/api/pnl/v1-data 均不消费 basis 参数。"
             >
               分析口径
             </button>
           </div>
+          <p data-testid="pnl-basis-formal-only-note" className="formal-pnl-v1-basis-inline-note">
+            当前仅正式口径；分析口径读模型未建。
+          </p>
         </div>
         <label>
           <span className="formal-pnl-v1-filter-label">报告日</span>

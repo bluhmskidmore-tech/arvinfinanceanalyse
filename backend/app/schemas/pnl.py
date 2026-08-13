@@ -196,7 +196,8 @@ class PnlByBusinessYtdItem(BaseModel):
     capital_gain: Decimal
     manual_adjustment: Decimal
     total_pnl: Decimal
-    avg_balance: Decimal
+    # None 表示该业务行未匹配到日均余额数据（区别于真零 0）。
+    avg_balance: Decimal | None
     current_balance: Decimal
     balance_yield_pct: Decimal | None
     annualized_yield_pct: Decimal | None

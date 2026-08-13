@@ -309,17 +309,20 @@ function formatYuanAsYiCell(raw: string | number | null | undefined): string {
   return (value / YUAN_PER_YI).toFixed(2);
 }
 
+/** avg_balance=null（后端未匹配到日均数据）时的展示文案；真零显示 "0.00"。 */
+export const AVG_BALANCE_MISSING_DISPLAY = `${EM_DASH}（日均缺失）`;
+
 export function formatAvgBalanceYi(raw: string | number | null | undefined): string {
   const value = numeric(raw);
   if (value === null) {
-    return "日均缺失";
+    return AVG_BALANCE_MISSING_DISPLAY;
   }
   return formatYuanAsYiCell(value);
 }
 
 export function formatAvgBalanceYiMetric(raw: string | number | null | undefined): string {
   const display = formatAvgBalanceYi(raw);
-  return display === "日均缺失" ? display : `${display} 亿元`;
+  return display === AVG_BALANCE_MISSING_DISPLAY ? display : `${display} 亿元`;
 }
 
 export function formatAnalysisYieldPct(raw: string | number | null | undefined): string {
@@ -1102,15 +1105,15 @@ function buildYtdDrilldownRecommendation(input: {
       dimensionLabel: "日均分母",
       actionLabel:
         input.adbEvidenceStatus === "ytd_fallback"
-          ? "ADB 对照不可用，先确认 YTD 零值；收益率/FTP 暂不计算"
+          ? "YTD 日均为真实零（缺数已单列日均缺失）；收益率/FTP 暂不计算"
           : "先确认 ADB 为真实零，再查看损益贡献；收益率/FTP 暂不计算",
       evidenceLabel:
         input.adbEvidenceStatus === "ytd_fallback"
-          ? `YTD 日均为0 ${input.zeroAdbCount} 项（待复核）`
+          ? `YTD 日均为0 ${input.zeroAdbCount} 项（源数据真零）`
           : `日均为0 ${input.zeroAdbCount} 项`,
       reasonLabel:
         input.adbEvidenceStatus === "ytd_fallback"
-          ? "YTD 主端点返回零分母，但 ADB comparison 不可用，当前无法独立区分真实零与未映射；年化收益率和 FTP 后收益不作为决策结论。"
+          ? "YTD 主端点已区分日均缺失（null）与真实零，当前零分母为源数据真零；ADB comparison 补充复核不可用，年化收益率和 FTP 后收益不作为决策结论。"
           : "ADB 已返回但存在零分母；可展示真实日均为 0，但年化收益率和 FTP 后收益不作为决策结论。",
     };
   }
@@ -1304,7 +1307,7 @@ function buildPnlByBusinessInsight(input: {
         ? "先补齐日均映射，再判断年化收益率和 FTP 后收益。"
         : zeroAdbCount > 0
           ? adbEvidenceStatus === "ytd_fallback"
-            ? "ADB 补充复核不可用，先确认 YTD 日均零值是否为真实零，再判断收益率和 FTP。"
+            ? "YTD 日均为源数据真零（缺数行已单列日均缺失）；ADB 补充复核不可用，收益率和 FTP 暂不作结论。"
             : "先确认日均为真实零，再判断该业务的收益率和 FTP 结论。"
           : missingFtpFieldCount > 0
             ? "先核对 YTD FTP 成本与 FTP 后损益返回字段，再进入收益归因。"

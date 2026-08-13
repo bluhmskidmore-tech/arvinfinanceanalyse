@@ -36,18 +36,21 @@ export type PnlNonStdBridgeRow = {
   trace_id: string;
 };
 
+/** GET /api/pnl/dates：仅正式口径读模型；后端不消费 basis 查询参数（分析口径读模型未建）。 */
 export type PnlDatesPayload = {
   report_dates: string[];
   formal_fi_report_dates: string[];
   nonstd_bridge_report_dates: string[];
 };
 
+/** GET /api/pnl/data：仅正式口径读模型；后端不消费 basis 查询参数。 */
 export type PnlDataPayload = {
   report_date: string;
   formal_fi_rows: PnlFormalFiRow[];
   nonstd_bridge_rows: PnlNonStdBridgeRow[];
 };
 
+/** GET /api/pnl/overview：仅正式口径读模型；后端不消费 basis 查询参数（分析口径读模型未建）。 */
 export type PnlOverviewPayload = {
   report_date: string;
   formal_fi_row_count: number;
@@ -76,6 +79,7 @@ export type PnlV1DetailRow = {
   trace_id: string;
 };
 
+/** GET /api/pnl/v1-data：仅正式口径读模型；后端不消费 basis 查询参数。 */
 export type PnlV1DataPayload = {
   report_date: string;
   source_tables: string[];
@@ -134,7 +138,8 @@ export type PnlByBusinessYtdItem = {
   capital_gain: string;
   manual_adjustment: string;
   total_pnl: string;
-  avg_balance: string;
+  /** null=该业务行未匹配到日均余额数据（日均缺失）；真零返回 "0.00"。 */
+  avg_balance: string | null;
   current_balance: string;
   balance_yield_pct: string | null;
   annualized_yield_pct: string | null;
@@ -775,7 +780,15 @@ export type ProductCategoryDatesPayload = {
 export type ProductCategoryMetricValue = {
   raw: DecimalLike;
   display: string;
-  unit: "percent";
+  unit: "percent" | "bp";
+};
+
+export type ProductCategoryLiabilityCostDecomposition = {
+  liability_yield_pct: ProductCategoryMetricValue | null;
+  liability_yield_ex_cln_pct: ProductCategoryMetricValue | null;
+  cln_yield_pct: ProductCategoryMetricValue | null;
+  cln_drag_bp: ProductCategoryMetricValue | null;
+  cln_scale: string | null;
 };
 
 export type ProductCategoryInterestSpreadPayload = {
@@ -798,6 +811,7 @@ export type ProductCategoryPnlPayload = {
   grand_total: ProductCategoryPnlRow;
   interest_spread: ProductCategoryInterestSpreadPayload | null;
   interest_earning_spread?: ProductCategoryInterestSpreadPayload | null;
+  liability_cost_decomposition?: ProductCategoryLiabilityCostDecomposition | null;
 };
 
 export type ProductCategoryAttributionPoint = {

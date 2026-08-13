@@ -1066,7 +1066,7 @@ describe("pnl routed pages smoke", () => {
       expect(screen.getByLabelText("pnl-report-date")).toHaveValue("2025-12-31");
     });
     await waitFor(() => {
-      expect(client.getFormalPnlOverview).toHaveBeenCalledWith("2025-12-31", "formal");
+      expect(client.getFormalPnlOverview).toHaveBeenCalledWith("2025-12-31");
       expect(client.getPnlV1Data).toHaveBeenCalledWith("2025-12-31");
     });
     expect(await screen.findByTestId("pnl-overview-cards")).toHaveTextContent("损益合计");

@@ -207,7 +207,7 @@ function PnlByBusinessInsightStrip({
               : "FTP 可分析"
           : insight.zeroAdbCount > 0
             ? insight.adbEvidenceStatus === "ytd_fallback"
-              ? `${insight.zeroAdbCount} 项日均为0（待复核）`
+              ? `${insight.zeroAdbCount} 项日均为0（源数据真零）`
               : `${insight.zeroAdbCount} 项日均为0`
             : insight.missingAdbCount > 0
               ? `${insight.missingAdbCount} 项缺日均`
@@ -2030,7 +2030,7 @@ export default function PnlByBusinessPage() {
 
   const datesQuery = useQuery({
     queryKey: ["pnl-by-business", "dates", client.mode],
-    queryFn: () => client.getFormalPnlDates("formal"),
+    queryFn: () => client.getFormalPnlDates(),
     retry: false,
   });
 

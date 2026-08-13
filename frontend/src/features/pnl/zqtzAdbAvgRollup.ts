@@ -3,6 +3,7 @@
  * 「非底层投资资产」「证券业资管计划」在该明细里没有单独一行。父级日均不再由前端对
  * 子类求和拼合（子类含「其中：」项，非完备分区，求和不是日均口径）；后端
  * /api/pnl/by-business-ytd 已在父级行返回 avg_balance（元），未命中证据 map 时消费该字段。
+ * 后端已区分语义：未匹配到日均数据时 avg_balance 为 null（走缺失路径），真零返回 "0.00"。
  */
 export type AdbAvgResolution = {
   valueYuan: number;

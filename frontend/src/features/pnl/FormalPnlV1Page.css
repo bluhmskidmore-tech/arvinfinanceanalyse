@@ -103,6 +103,18 @@
   color: var(--ib-accent);
 }
 
+.formal-pnl-v1-tab-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.formal-pnl-v1-basis-inline-note {
+  margin: 0 0 var(--moss-space-2);
+  color: var(--ib-ink-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 .formal-pnl-v1-control {
   min-width: 180px;
   padding: 10px 12px;

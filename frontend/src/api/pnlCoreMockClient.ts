@@ -79,7 +79,8 @@ function buildMockCandidateFinancialIndicatorsEnvelope(
 
 export function createDemoPnlCoreClient(delay: Delay): PnlCoreClientMethods {
   return {
-    async getFormalPnlDates(basis = "formal") {
+    // dates/data/overview 与真实端点一致，仅提供正式口径读模型（后端不消费 basis 参数）。
+    async getFormalPnlDates() {
       await delay();
       return buildMockApiEnvelope(
         "pnl.dates",
@@ -88,10 +89,10 @@ export function createDemoPnlCoreClient(delay: Delay): PnlCoreClientMethods {
           formal_fi_report_dates: [],
           nonstd_bridge_report_dates: [],
         },
-        { basis, formal_use_allowed: basis === "formal" },
+        { basis: "formal", formal_use_allowed: true },
       );
     },
-    async getFormalPnlData(date: string, basis = "formal") {
+    async getFormalPnlData(date: string) {
       await delay();
       return buildMockApiEnvelope(
         "pnl.data",
@@ -100,10 +101,10 @@ export function createDemoPnlCoreClient(delay: Delay): PnlCoreClientMethods {
           formal_fi_rows: [],
           nonstd_bridge_rows: [],
         },
-        { basis, formal_use_allowed: basis === "formal" },
+        { basis: "formal", formal_use_allowed: true },
       );
     },
-    async getFormalPnlOverview(reportDate: string, basis = "formal") {
+    async getFormalPnlOverview(reportDate: string) {
       await delay();
       return buildMockApiEnvelope(
         "pnl.overview",
@@ -117,7 +118,7 @@ export function createDemoPnlCoreClient(delay: Delay): PnlCoreClientMethods {
           manual_adjustment: "0.00",
           total_pnl: "0.00",
         },
-        { basis, formal_use_allowed: basis === "formal" },
+        { basis: "formal", formal_use_allowed: true },
       );
     },
     async getLedgerPnlDates() {

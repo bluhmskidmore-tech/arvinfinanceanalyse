@@ -381,7 +381,9 @@ describe("pnlByBusinessPageModel", () => {
 
   it("keeps zero average balance present and filters ZQTZ parent rows without changing totals", () => {
     expect(formatAvgBalanceYi(0)).toBe("0.00");
-    expect(formatAvgBalanceYi("abc")).toBe("日均缺失");
+    // 后端未匹配日均数据时返回 null：展示 EM_DASH+「日均缺失」，与真零 "0.00" 区分。
+    expect(formatAvgBalanceYi(null)).toBe("—（日均缺失）");
+    expect(formatAvgBalanceYi("abc")).toBe("—（日均缺失）");
 
     const payload = ytdPayload();
     expect(payload.items.map(isParentZqtzBusinessRow)).toEqual([true, true, false]);
@@ -1064,7 +1066,40 @@ describe("pnlByBusinessPageModel", () => {
       adbEvidenceStatus: "ytd_fallback",
     });
     expect(model.insight.recommendedDrilldown).toMatchObject({
-      evidenceLabel: "YTD 日均为0 1 项（待复核）",
+      evidenceLabel: "YTD 日均为0 1 项（源数据真零）",
+    });
+  });
+
+  it("treats backend null avg_balance as missing ADB instead of true zero", () => {
+    const basePayload = ytdPayload();
+    const model = buildPnlByBusinessPageModel({
+      viewMode: "ytd",
+      selectedReportDate: "2026-04-30",
+      selectedYear: 2026,
+      selectedBusinessKey: null,
+      adbAvgByBusinessType: new Map([["债券投资", 100_000_000]]),
+      adbEvidenceStatus: "ytd_fallback",
+      datesState: { isLoading: false, isError: false },
+      monthlyState: { isLoading: false, isError: false },
+      ytdState: { isLoading: false, isError: false },
+      formalState: { isLoading: false, isError: false },
+      ytdResult: ytdPayload({
+        items: basePayload.items.map((row) =>
+          row.row_key === "asset_zqtz_parent_b" ? { ...row, avg_balance: null } : row,
+        ),
+      }),
+      ytdMeta: meta({ quality_flag: "ok" }),
+    });
+
+    expect(model.insight).toMatchObject({
+      confidenceLabel: "缺日均",
+      missingAdbCount: 1,
+      zeroAdbCount: 0,
+      ftpAvailable: false,
+    });
+    expect(model.insight.recommendedDrilldown).toMatchObject({
+      priorityLabel: "补日均",
+      evidenceLabel: "缺日均 1 项",
     });
   });
 

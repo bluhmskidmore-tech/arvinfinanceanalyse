@@ -364,7 +364,7 @@ export default function PnlByBusinessInsightsPage() {
 
   const datesQuery = useQuery({
     queryKey: ["pnl-by-business-insights", "dates", client.mode],
-    queryFn: () => client.getFormalPnlDates("formal"),
+    queryFn: () => client.getFormalPnlDates(),
     retry: false,
   });
   const reportDates = useMemo(

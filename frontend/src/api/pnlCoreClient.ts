@@ -20,7 +20,6 @@ import type {
   LedgerPnlFormalIndicatorRuleChecksPayload,
   LedgerPnlIndicatorSummaryPayload,
   LedgerPnlSummaryPayload,
-  PnlBasis,
   PnlBridgePayload,
   PnlDataPayload,
   PnlDatesPayload,
@@ -30,12 +29,11 @@ import type {
 } from "./contracts";
 
 export type PnlCoreClientMethods = {
-  getFormalPnlDates: (basis?: PnlBasis) => Promise<ApiEnvelope<PnlDatesPayload>>;
-  getFormalPnlData: (date: string, basis?: PnlBasis) => Promise<ApiEnvelope<PnlDataPayload>>;
-  getFormalPnlOverview: (
-    reportDate: string,
-    basis?: PnlBasis,
-  ) => Promise<ApiEnvelope<PnlOverviewPayload>>;
+  // /api/pnl/dates、/api/pnl/data、/api/pnl/overview 仅提供正式口径读模型：
+  // 后端路由与服务不消费 basis 查询参数（分析口径读模型未建），前端不再发送该参数。
+  getFormalPnlDates: () => Promise<ApiEnvelope<PnlDatesPayload>>;
+  getFormalPnlData: (date: string) => Promise<ApiEnvelope<PnlDataPayload>>;
+  getFormalPnlOverview: (reportDate: string) => Promise<ApiEnvelope<PnlOverviewPayload>>;
   getLedgerPnlDates: () => Promise<ApiEnvelope<LedgerPnlDatesPayload>>;
   getLedgerPnlData: (
     reportDate: string,
@@ -113,33 +111,25 @@ export type PnlCoreClientFactoryOptions = {
   requestActionJson: RequestActionJson;
 };
 
-function buildPnlBasisQuerySegment(basis?: PnlBasis) {
-  return basis && basis !== "formal" ? `&basis=${encodeURIComponent(basis)}` : "";
-}
-
 export function createRealPnlCoreClient(
   options: PnlCoreClientFactoryOptions,
 ): PnlCoreClientMethods {
   const { fetchImpl, baseUrl, requestJson, requestActionJson } = options;
 
   return {
-    getFormalPnlDates: (basis = "formal") =>
-      requestJson<PnlDatesPayload>(
-        fetchImpl,
-        baseUrl,
-        `/api/pnl/dates${basis !== "formal" ? `?basis=${encodeURIComponent(basis)}` : ""}`,
-      ),
-    getFormalPnlData: (date: string, basis = "formal") =>
+    getFormalPnlDates: () =>
+      requestJson<PnlDatesPayload>(fetchImpl, baseUrl, "/api/pnl/dates"),
+    getFormalPnlData: (date: string) =>
       requestJson<PnlDataPayload>(
         fetchImpl,
         baseUrl,
-        `/api/pnl/data?date=${encodeURIComponent(date)}${buildPnlBasisQuerySegment(basis)}`,
+        `/api/pnl/data?date=${encodeURIComponent(date)}`,
       ),
-    getFormalPnlOverview: (reportDate: string, basis = "formal") =>
+    getFormalPnlOverview: (reportDate: string) =>
       requestJson<PnlOverviewPayload>(
         fetchImpl,
         baseUrl,
-        `/api/pnl/overview?report_date=${encodeURIComponent(reportDate)}${buildPnlBasisQuerySegment(basis)}`,
+        `/api/pnl/overview?report_date=${encodeURIComponent(reportDate)}`,
       ),
     getLedgerPnlDates: () =>
       requestJson<LedgerPnlDatesPayload>(fetchImpl, baseUrl, "/api/ledger-pnl/dates"),
