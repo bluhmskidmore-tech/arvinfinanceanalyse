@@ -66,7 +66,8 @@ export function PortfolioHoldingsHeroBand({
   }
 
   const heroTone = panel?.tone ?? portfolioComparisonPanel?.tone ?? "muted";
-  const heroTitle = "持仓结构全景";
+  // 用面板自身口径命名；外层区块头已经是「持仓结构全景」，此处再重复一次会撞名。
+  const heroTitle = panel?.title ?? portfolioComparisonPanel?.title ?? "券种分布";
   const heroMeta = panel?.meta ?? portfolioComparisonPanel?.meta ?? "";
   const leadingRow = assetRows[0];
   const comparisonTable = hasPortfolioData ? (
