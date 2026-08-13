@@ -169,6 +169,12 @@ export function MetricManageModal({
   return (
     <Modal
       rootClassName="kpi-modal-v2 kpi-modal-v2--manage"
+      /* portal 主题逃逸：同 MetricEditModal，modalRender 包 Nocturne scope 容器。 */
+      modalRender={(node) => (
+        <div className="theme-dh-api" data-moss-theme-scope="kpi">
+          {node}
+        </div>
+      )}
       title={mode === "create" ? "新增指标" : "编辑指标"}
       open={open}
       onCancel={onClose}

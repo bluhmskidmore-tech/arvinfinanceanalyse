@@ -4,6 +4,7 @@ import { Alert, Button, Input, Modal, Table, Tag, Typography } from "antd";
 
 import type { KpiMetricWithValue, KpiOwner } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
+import { EM_DASH } from "../../../utils/format";
 
 const { Paragraph, Text } = Typography;
 
@@ -175,6 +176,12 @@ export function BatchPasteModal({
   return (
     <Modal
       rootClassName="kpi-modal-v2 kpi-modal-v2--batch"
+      /* portal 主题逃逸：同 MetricEditModal，modalRender 包 Nocturne scope 容器。 */
+      modalRender={(node) => (
+        <div className="theme-dh-api" data-moss-theme-scope="kpi">
+          {node}
+        </div>
+      )}
       title={
         <span className="kpi-modal-v2__title-inline">
           <InboxOutlined className="kpi-modal-v2__title-icon" />
@@ -260,19 +267,19 @@ export function BatchPasteModal({
               {
                 title: "指标名称",
                 dataIndex: "metric",
-                render: (_: unknown, row: ParsedRow) => row.metric?.metric_name || "-",
+                render: (_: unknown, row: ParsedRow) => row.metric?.metric_name || EM_DASH,
               },
               {
                 title: "实际值",
                 dataIndex: "actualValue",
                 align: "right",
-                render: (t: string) => t || "-",
+                render: (t: string) => t || EM_DASH,
               },
               {
                 title: "序时进度",
                 dataIndex: "progressPct",
                 align: "right",
-                render: (t: string) => (t ? `${t}%` : "-"),
+                render: (t: string) => (t ? `${t}%` : EM_DASH),
               },
               {
                 title: "状态",

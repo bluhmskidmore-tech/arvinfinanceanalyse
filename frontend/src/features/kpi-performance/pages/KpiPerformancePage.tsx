@@ -274,7 +274,11 @@ export default function KpiPerformancePage() {
     : "未选择考核对象";
 
   return (
-    <div className="moss-page-v2-shell kpi-performance-page" data-testid="kpi-performance-page">
+    <div
+      className="moss-page-v2-shell kpi-performance-page"
+      data-moss-theme-scope="kpi"
+      data-testid="kpi-performance-page"
+    >
       <PageDecisionHero
         testId="kpi-performance-header"
         className="kpi-performance-page__header"

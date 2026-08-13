@@ -128,7 +128,7 @@ export default function PlatformConfigPage() {
   const summaryProbe = healthProbeDisplay(healthSummaryQuery);
 
   return (
-    <section className={styles.page}>
+    <section className={styles.page} data-moss-theme-scope="platform-config">
       <PageHeader
         eyebrow="报表与数据"
         title="中台配置"

@@ -384,7 +384,11 @@ export default function TeamPerformancePage() {
   );
 
   return (
-    <section data-testid="team-performance-page" className="team-performance-page">
+    <section
+      data-testid="team-performance-page"
+      data-moss-theme-scope="team-performance"
+      className="team-performance-page"
+    >
       <div className="team-performance-page__hero">
         <div className="team-performance-page__hero-copy">
           <h1 data-testid="team-performance-page-title" className="team-performance-page__title">

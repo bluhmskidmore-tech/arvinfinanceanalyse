@@ -4,6 +4,7 @@ import { Alert, Button, Input, Modal, Typography } from "antd";
 
 import type { KpiMetricWithValue } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
+import { EM_DASH } from "../../../utils/format";
 
 const { Text } = Typography;
 
@@ -64,6 +65,16 @@ export function MetricEditModal({
   return (
     <Modal
       rootClassName="kpi-modal-v2 kpi-modal-v2--edit"
+      /*
+       * antd Modal 挂 body，不继承页根 scope（portal 主题逃逸）。照 positions
+       * CustomerDetailModal 先例用 modalRender 包一层 Nocturne scope 容器，
+       * 弹窗内 --ib-* 与 --dh-api-* 才解析为 scope 色板值。
+       */
+      modalRender={(node) => (
+        <div className="theme-dh-api" data-moss-theme-scope="kpi">
+          {node}
+        </div>
+      )}
       title={
         <div className="kpi-modal-v2__title">
           <div className="kpi-modal-v2__title-main">编辑指标完成情况</div>
@@ -91,7 +102,7 @@ export function MetricEditModal({
         </div>
         <div className="kpi-modal-v2__summary-row">
           <Text type="secondary">单位 </Text>
-          {metric.unit || "-"}
+          {metric.unit || EM_DASH}
         </div>
         <div className="kpi-modal-v2__summary-row">
           <Text type="secondary">数据来源 </Text>

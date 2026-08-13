@@ -1,3 +1,79 @@
+/*
+ * Nocturne 接入桥（scope=kpi）：本页与弹窗子树消费 --ib-* / --moss-color-*，
+ * 两者在 ThemedRouteBoundary 的 .theme-dh-api 块上即被算成钢蓝/浅色字面值
+ * 再继承，页根 scope 对 --dh-api-* 的翻转够不到（ledger-pnl 2026-08-12 结论、
+ * pnl-by-business-insights 页根重声明先例）。绑定在 scope 属性选择器上，
+ * 让 antd Modal 的 modalRender scope 容器（portal 逃逸页根）同样命中；
+ * 全部走 var 引用，不落字面色值。
+ */
+[data-moss-theme-scope="kpi"] {
+  --ib-paper: var(--dh-api-bg);
+  --ib-surface: var(--dh-api-panel);
+  --ib-surface-muted: var(--dh-api-panel-2);
+  --ib-hairline: var(--dh-api-line);
+  --ib-rule-strong: var(--dh-api-line);
+  --ib-ink: var(--dh-api-ink);
+  --ib-ink-muted: var(--dh-api-muted);
+  --ib-accent: var(--dh-api-blue);
+  --ib-gold: var(--dh-api-amber);
+  --ib-up: var(--dh-api-green);
+  --ib-down: var(--dh-api-red);
+  --ib-warn: var(--dh-api-amber);
+  --ib-radius: var(--dh-api-radius);
+  --moss-color-text-primary: var(--dh-api-ink);
+  --moss-color-text-secondary: var(--dh-api-soft);
+  --moss-color-text-muted: var(--dh-api-muted);
+  --moss-color-info-100: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+  --moss-color-neutral-50: var(--dh-api-panel-2);
+  --moss-color-neutral-100: var(--dh-api-line-soft);
+  --moss-color-neutral-300: var(--dh-api-line);
+  --moss-color-neutral-400: var(--dh-api-muted);
+  --moss-color-neutral-600: var(--dh-api-soft);
+  --moss-color-neutral-700: var(--dh-api-soft);
+  --moss-color-neutral-900: var(--dh-api-ink);
+  --moss-color-success-500: var(--dh-api-green);
+}
+
+/*
+ * antd 强调色页内收敛（macro-toolkit 先例）：cssinjs 钢蓝 colorPrimary
+ * 在 scope 内压为 accent 链；:not(disabled) 保留 antd 禁用态皮肤。
+ * Select/Picker/Table 等控件骨架维持 antd 基础皮肤（2026-08-13 摩擦源
+ * 条目既定例外，bond-analysis 同款）。
+ */
+[data-moss-theme-scope="kpi"] .ant-btn-primary:not(:disabled):not(.ant-btn-disabled) {
+  border-color: var(--dh-api-blue);
+  background: var(--dh-api-blue);
+}
+
+[data-moss-theme-scope="kpi"] .ant-btn-primary:not(:disabled):not(.ant-btn-disabled):hover {
+  border-color: var(--nct-accent-400, var(--dh-api-blue));
+  background: var(--nct-accent-400, var(--dh-api-blue));
+}
+
+[data-moss-theme-scope="kpi"] .ant-btn-default:not(:disabled):not(.ant-btn-disabled) {
+  border-color: var(--dh-api-line);
+  background: transparent;
+}
+
+/* antd 预设 Tag（success/error/blue）收敛到 Nocturne 语义链（macro-toolkit 公式）。 */
+[data-moss-theme-scope="kpi"] .ant-tag-success {
+  border-color: color-mix(in srgb, var(--dh-api-green) 42%, transparent);
+  background: var(--dh-api-green-soft);
+  color: var(--dh-api-green);
+}
+
+[data-moss-theme-scope="kpi"] .ant-tag-error {
+  border-color: color-mix(in srgb, var(--dh-api-red) 42%, transparent);
+  background: var(--dh-api-red-soft);
+  color: var(--dh-api-red);
+}
+
+[data-moss-theme-scope="kpi"] .ant-tag-blue {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 42%, transparent);
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-blue);
+}
+
 .kpi-performance-page {
   display: grid;
   gap: var(--moss-space-5);
@@ -649,6 +725,11 @@
 .kpi-modal-v2 .ant-modal-header,
 .kpi-modal-v2 .ant-modal-footer {
   border-color: var(--ib-hairline);
+}
+
+/* 头部底色随弹窗面板走（antd cssinjs colorBgElevated 是钢蓝字面量，scope 内拉回面板链）。 */
+.kpi-modal-v2 .ant-modal-header {
+  background: var(--ib-surface);
 }
 
 .kpi-modal-v2__title {

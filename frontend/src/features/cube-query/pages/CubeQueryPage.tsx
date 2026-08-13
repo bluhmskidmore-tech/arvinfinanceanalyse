@@ -428,7 +428,7 @@ export default function CubeQueryPage() {
   }, [selectedDimensions, measureRows]);
 
   return (
-    <div className={styles.page} data-testid="cube-query-page">
+    <div className={styles.page} data-moss-theme-scope="cube-query" data-testid="cube-query-page">
       <PageHeader
         eyebrow="报表与数据"
         title="多维查询"

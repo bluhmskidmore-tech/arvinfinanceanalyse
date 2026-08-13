@@ -1,6 +1,87 @@
 .team-performance-page {
+  /*
+   * Nocturne 接入桥（scope=team-performance）：本页与 KpiCard / StatusPill /
+   * DataQualityBanner / FormalResultMetaPanel 子树消费 --ib-* / --moss-color-*，
+   * 两者在 ThemedRouteBoundary 的 .theme-dh-api 块上即被算成钢蓝/浅色字面值
+   * 再继承，页根 scope 对 --dh-api-* 的翻转够不到（ledger-pnl 2026-08-12 结论、
+   * pnl-by-business-insights 页根重声明先例）。全部走 var 引用，不落字面色值。
+   */
+  --ib-paper: var(--dh-api-bg);
+  --ib-surface: var(--dh-api-panel);
+  --ib-surface-muted: var(--dh-api-panel-2);
+  --ib-hairline: var(--dh-api-line);
+  --ib-rule-strong: var(--dh-api-line);
+  --ib-ink: var(--dh-api-ink);
+  --ib-ink-secondary: var(--dh-api-soft);
+  --ib-ink-muted: var(--dh-api-muted);
+  --ib-accent: var(--dh-api-blue);
+  --ib-accent-surface: var(--dh-api-blue-soft);
+  --ib-up: var(--dh-api-green);
+  --ib-down: var(--dh-api-red);
+  --ib-warn: var(--dh-api-amber);
+  --ib-radius: var(--dh-api-radius);
+  --moss-color-border-default: var(--dh-api-line);
+  --moss-color-card-bg: var(--dh-api-panel);
+  --moss-color-text-primary: var(--dh-api-ink);
+  --moss-color-text-secondary: var(--dh-api-soft);
+  --moss-color-text-muted: var(--dh-api-muted);
+  --moss-color-primary-200: color-mix(in srgb, var(--dh-api-blue) 42%, transparent);
+  --moss-color-success-50: var(--dh-api-green-soft);
+  --moss-color-success-200: var(--dh-api-line);
+  --moss-color-success-600: var(--dh-api-green);
+  --moss-color-warning-50: var(--dh-api-amber-soft);
+  --moss-color-warning-200: var(--dh-api-line);
+  --moss-color-warning-300: var(--dh-api-line-soft);
+  --moss-color-warning-600: var(--dh-api-amber);
+  --moss-color-warning-700: var(--dh-api-amber);
+  --moss-color-warning-900: var(--dh-api-amber);
+  --moss-color-danger-50: var(--dh-api-red-soft);
+  --moss-color-danger-200: var(--dh-api-line);
+  --moss-color-danger-600: var(--dh-api-red);
+  --moss-color-danger-800: var(--dh-api-red);
+  --moss-color-neutral-50: var(--dh-api-panel-2);
+  --moss-color-neutral-200: var(--dh-api-line);
+  --moss-color-neutral-500: var(--dh-api-muted);
+  --moss-color-neutral-600: var(--dh-api-soft);
+  --moss-color-neutral-900: var(--dh-api-ink);
+
   display: grid;
   gap: 20px;
+}
+
+/*
+ * 共享 SectionLead 的内联浅色字面量（标题 primary-900 深墨）在深色页不可读，
+ * 页内 !important 压制（内联恒胜；pnl-by-business-insights 内联压制先例）。
+ * 本页内联样式 h2 仅 SectionLead 渲染，:has()/相邻选择器锁定其结构。
+ */
+.team-performance-page div[style] > h2[style] {
+  color: var(--dh-api-ink) !important;
+}
+
+.team-performance-page div[style] > h2[style] + p[style] {
+  color: var(--dh-api-soft) !important;
+}
+
+.team-performance-page div[style] > span[style]:has(+ h2[style]) {
+  color: var(--dh-api-muted) !important;
+}
+
+/*
+ * 共享溯源面板（FormalResultMetaPanel）徽章 tone 的 Nocturne 收敛：
+ * 徽章色经组件 --formal-meta-badge-* 变量出口（回退值为浅色字面量），
+ * 页 scope 内拉回 --dh-api-* 链（risk-tensor / ledger-pnl / positions 同款）。
+ */
+.team-performance-page .formal-result-meta-panel {
+  --formal-result-meta-border-soft: var(--dh-api-line-soft);
+  --formal-meta-badge-ok-bg: var(--dh-api-green-soft);
+  --formal-meta-badge-ok-ink: var(--dh-api-green);
+  --formal-meta-badge-ok-line: color-mix(in srgb, var(--dh-api-green) 34%, transparent);
+  --formal-meta-badge-warn-bg: var(--dh-api-amber-soft);
+  --formal-meta-badge-warn-ink: var(--dh-api-amber);
+  --formal-meta-badge-warn-line: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
+  --formal-meta-badge-danger-bg: var(--dh-api-red-soft);
+  --formal-meta-badge-danger-ink: var(--dh-api-red);
+  --formal-meta-badge-danger-line: color-mix(in srgb, var(--dh-api-red) 34%, transparent);
 }
 
 .team-performance-page__hero {
@@ -269,7 +350,8 @@
 }
 
 .team-performance-page__table-shell--matrix {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  /* 浅色内高光在深色页无语义（§2.2 深色不靠阴影），收敛共享阴影 token（深色链为 none）。 */
+  box-shadow: var(--moss-shadow-card);
 }
 
 .team-performance-page__matrix-cards {
@@ -1588,7 +1670,7 @@
   .team-performance-page__matrix-card--active {
     border-color: var(--moss-color-primary-200);
     background: var(--ib-accent-surface);
-    box-shadow: 0 0 0 1px rgba(var(--moss-color-primary-rgb), 0.12);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--dh-api-blue) 12%, transparent);
   }
 
   .team-performance-page__matrix-card-button {
