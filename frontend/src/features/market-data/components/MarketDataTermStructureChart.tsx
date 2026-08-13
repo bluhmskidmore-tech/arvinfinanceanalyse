@@ -34,6 +34,8 @@ export function MarketDataTermStructureChart({
   variant = "default",
 }: MarketDataTermStructureChartProps) {
   const filteredRows = filterRateQuoteRows(model.rows, curveFilter, sourceFilter, catalogVendorNames);
+  // 首屏主图（default 变体）最低 240px，避免调用方传入的紧凑高度压扁曲线与 Δbp 柱；sheet 变体跟随调用方。
+  const resolvedHeight = variant === "sheet" ? height : Math.max(height, 240);
   const option = useMemo(() => {
     const curves = adaptRateQuoteRowsToTermStructureCurves(filteredRows, model.source, activeCurve);
     return buildMarketDataTermStructureChartOption(curves, { variant });
@@ -52,7 +54,7 @@ export function MarketDataTermStructureChart({
   return (
     <MarketDataChartShell
       option={option}
-      height={height}
+      height={resolvedHeight}
       testId={testId}
       emptyMessage="当前筛选下缺少可绘制的期限结构点位。"
     />

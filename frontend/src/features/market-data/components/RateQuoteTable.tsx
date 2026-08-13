@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Segmented, Table, Tabs } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
-import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import { tabularNumsStyle } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
+import { TONE_CSS_VAR } from "../../../utils/tone";
 import type {
   MarketCurveFilter,
   MarketDataRateQuoteRow,
@@ -17,14 +19,16 @@ import { marketDataBlockTitleStyle, marketDataPanelStyle } from "./marketDataPan
 
 type RateQuoteViewMode = "both" | "table" | "curve";
 
+// 利率下行=偏多（positive）、上行=偏空（negative）；主题感知色走 TONE_CSS_VAR，
+// 深色路由（theme-dh-api）由 tokens.css 重映射 --ib-up/--ib-down。
 function deltaTextColor(value: string) {
   if (value.startsWith("-")) {
-    return designTokens.color.semantic.up;
+    return TONE_CSS_VAR.positive;
   }
   if (value.startsWith("+")) {
-    return designTokens.color.semantic.loss;
+    return TONE_CSS_VAR.negative;
   }
-  return designTokens.color.neutral[800];
+  return TONE_CSS_VAR.neutral;
 }
 
 function sourceSummary(model: MarketDataRateQuoteSection) {
@@ -136,7 +140,7 @@ export function RateQuoteTable({
               variant="ticker"
             />
           ) : (
-            "—"
+            EM_DASH
           ),
       },
       { title: "交易日", dataIndex: "tradeDate", key: "tradeDate", width: 86 },

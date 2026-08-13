@@ -42,7 +42,7 @@ function LinkageSpreadsAuditBridge({
   return (
     <section
       data-testid="market-data-linkage-spreads-audit"
-      className="market-data-detail-panel market-data-detail-panel--accent market-data-linkage-spreads-audit"
+      className="market-data-linkage-spreads-audit"
     >
       <h2 className="market-data-linkage-panel-title">信用利差维度审计</h2>
       <p className="market-data-linkage-panel-lede">
@@ -81,43 +81,42 @@ function LinkageSpreadsAuditBridge({
   );
 }
 
-function renderCorrelationCard(point: MacroBondLinkageTopCorrelation) {
+function correlationTone(value: number | null | undefined): "up" | "down" | "neutral" {
+  if (value == null || Number.isNaN(value) || value === 0) {
+    return "neutral";
+  }
+  return value > 0 ? "up" : "down";
+}
+
+function renderCorrelationValue(value: number | null | undefined) {
+  return (
+    <span className="market-data-linkage-correlation-value" data-tone={correlationTone(value)}>
+      {formatCorrelation(value)}
+    </span>
+  );
+}
+
+function renderCorrelationRow(point: MacroBondLinkageTopCorrelation) {
+  const dimension = `${familyLabel(point.target_family)} / ${point.target_tenor ?? "期限不可用"}`;
   return (
     <div
       key={`${point.series_id}:${point.target_family}:${point.target_tenor ?? "none"}`}
-      className="market-data-inset-card market-data-inset-card--surface market-data-linkage-corr-card"
+      className="market-data-linkage-correlation-row"
     >
-      <div className="market-data-corr-card-header">
-        <div>
-          <div className="market-data-series-title">{point.series_name}</div>
-          <div className="market-data-dim-label">{point.series_id}</div>
-        </div>
-        <LinkageDirectionPill direction={point.direction} />
-      </div>
-
-      <div className="market-data-body-line">
-        目标维度：{familyLabel(point.target_family)}
-        {point.target_tenor ? ` / ${point.target_tenor}` : " / 期限不可用"}
-      </div>
-
-      <div className="market-data-corr-grid-inner">
-        <div>
-          <div className="market-data-dim-label">3月相关</div>
-          <div className="market-data-tabular">{formatCorrelation(point.correlation_3m)}</div>
-        </div>
-        <div>
-          <div className="market-data-dim-label">6月相关</div>
-          <div className="market-data-tabular">{formatCorrelation(point.correlation_6m)}</div>
-        </div>
-        <div>
-          <div className="market-data-dim-label">1年相关</div>
-          <div className="market-data-tabular">{formatCorrelation(point.correlation_1y)}</div>
-        </div>
-        <div>
-          <div className="market-data-dim-label">领先/滞后</div>
-          <div className="market-data-tabular">{`${point.lead_lag_days} 天`}</div>
-        </div>
-      </div>
+      <span
+        className="market-data-linkage-correlation-name"
+        title={`${point.series_name}（${point.series_id}）· ${dimension}`}
+      >
+        {point.series_name}
+        <span className="market-data-dim-label"> {dimension}</span>
+      </span>
+      {renderCorrelationValue(point.correlation_3m)}
+      {renderCorrelationValue(point.correlation_6m)}
+      {renderCorrelationValue(point.correlation_1y)}
+      <span className="market-data-linkage-correlation-value" data-tone="neutral">
+        {`${point.lead_lag_days} 天`}
+      </span>
+      <LinkageDirectionPill direction={point.direction} />
     </div>
   );
 }
@@ -149,6 +148,7 @@ export function MarketDataLinkageSection({
   return (
     <section className="market-data-section-block">
       <Collapse
+        className="market-data-linkage-collapse"
         data-testid="market-data-linkage-collapse"
         bordered={false}
         activeKey={activeKeys}
@@ -161,10 +161,16 @@ export function MarketDataLinkageSection({
         items={[
           {
             key: "macro-linkage",
-            label: "宏观-债市联动（分析口径，点击展开）",
+            label: (
+              <span className="market-data-linkage-collapse-label">
+                <span>宏观-债市联动</span>
+                <span className="market-data-linkage-collapse-label__badge">分析口径</span>
+              </span>
+            ),
             children: expanded ? (
               <PageAsyncSection
                 title="宏观-债市联动"
+                hideHeading
                 isLoading={macroBondLinkageQuery.isLoading}
                 isError={macroBondLinkageQuery.isError}
                 isEmpty={
@@ -177,12 +183,8 @@ export function MarketDataLinkageSection({
               >
                 <div className="market-data-stack-gap-5">
                   <section data-testid="market-data-linkage-caveat" className="market-data-linkage-caveat">
-                    <div className="market-data-linkage-caveat-tags">
-                      <span className="market-data-pill-tag market-data-pill-tag--info">分析口径</span>
-                      <span className="market-data-pill-tag market-data-pill-tag--warn">非正式口径</span>
-                    </div>
                     <div className="market-data-linkage-caveat-body">
-                      本区为宏观联动分析口径。组合影响仅用于研究和配置讨论，属于分析估算，不代表账本口径下的损益（PnL）、
+                      本区为宏观联动分析口径（非正式口径）。组合影响仅用于研究和配置讨论，属于分析估算，不代表账本口径下的损益（PnL）、
                       不代表正式估值归因，也不替代债券分析的正式读面。
                     </div>
                     {macroBondLinkageWarnings.length > 0 ? (
@@ -271,9 +273,9 @@ export function MarketDataLinkageSection({
                     </div>
                   </div>
 
-                  <section data-testid="market-data-linkage-portfolio-impact" className="market-data-detail-panel">
+                  <section data-testid="market-data-linkage-portfolio-impact">
                     <h2 className="market-data-linkage-panel-title">组合影响估算</h2>
-                    <p className="market-data-linkage-panel-lede">
+                    <p className="market-data-linkage-section-note">
                       以下数值为分析口径估算，基于宏观环境评分与组合在利率、利差维度上的敏感度静态映射，不代表正式损益。
                     </p>
                     {hasPortfolioImpact ? (
@@ -327,11 +329,19 @@ export function MarketDataLinkageSection({
 
                   <LinkageSpreadsAuditBridge spreadSlots={spreadSlots} onOpenSpreads={onOpenSpreads} />
 
-                  <section data-testid="market-data-linkage-top-correlations" className="market-data-detail-panel">
+                  <section data-testid="market-data-linkage-top-correlations">
                     <h2 className="market-data-linkage-panel-title">相关性前十</h2>
                     {nonSpreadTopCorrelations.length > 0 || spreadSlots.some((slot) => slot.point !== null) ? (
-                      <div className="market-data-linkage-corr-grid">
-                        {(macroBondLinkage.top_correlations ?? []).map((point) => renderCorrelationCard(point))}
+                      <div className="market-data-linkage-correlation-list">
+                        <div className="market-data-linkage-correlation-row market-data-linkage-correlation-head">
+                          <span>序列 / 目标维度</span>
+                          <span>3月</span>
+                          <span>6月</span>
+                          <span>1年</span>
+                          <span>领先/滞后</span>
+                          <span>方向</span>
+                        </div>
+                        {(macroBondLinkage.top_correlations ?? []).map((point) => renderCorrelationRow(point))}
                       </div>
                     ) : (
                       <div className="market-data-corr-empty">当前无可展示的结构化相关性结果。</div>

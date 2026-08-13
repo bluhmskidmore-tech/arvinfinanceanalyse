@@ -6,11 +6,28 @@ import {
   type VolatilityAlert,
 } from "../lib/crossAssetAnalytics";
 
+/**
+ * 相关矩阵 / 动量 / ERP 由前端基于已加载行情序列派生（crossAssetAnalytics），
+ * 属分析口径展示辅助，不替代正式指标；对应展示区必须携带本标注。
+ */
+export function FrontendAnalyticsChip() {
+  return (
+    <span
+      className="ca-term-chip ca-term-chip--info"
+      data-testid="cross-asset-frontend-analytics-chip"
+      title="本区数值由前端基于已加载行情序列计算，属分析口径，不替代正式指标。"
+    >
+      分析口径 · 前端计算（非正式指标）
+    </span>
+  );
+}
+
 export function MomentumScoreboardPanel({ rows }: { rows: MomentumRow[] }) {
   return (
     <section className="ca-momentum" data-testid="cross-asset-momentum-scoreboard">
       <header>
         <span>动量</span>
+        <FrontendAnalyticsChip />
         <strong>{rows.length} 项</strong>
       </header>
       <div className="cross-asset-momentum-table-wrap" data-testid="cross-asset-momentum-table-wrap">
@@ -95,7 +112,9 @@ export function VolatilityClusteringPanel({ alert }: { alert: VolatilityAlert })
 export function EquityBondERPPanel({ erp }: { erp: EquityBondERP }) {
   return (
     <section className="ca-erp-panel" data-testid="cross-asset-equity-bond-erp">
-      <span>股债 ERP</span>
+      <span>
+        股债 ERP <FrontendAnalyticsChip />
+      </span>
       <strong>{erp.verdictLabel}</strong>
       <p>{erp.verdictDescription}</p>
     </section>

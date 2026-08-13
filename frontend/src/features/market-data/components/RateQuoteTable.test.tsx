@@ -54,6 +54,16 @@ describe("RateQuoteTable", () => {
     expect(sourceChip.textContent?.length ?? 0).toBeLessThan(40);
     expect(seriesChip).toHaveTextContent("EMM00166466");
   });
+
+  it("colors rate deltas with theme-aware CSS variables instead of light semantic hex", () => {
+    render(<RateQuoteTable model={model} curveFilter="treasury" sourceFilter="all" embedded />);
+
+    // 页面处于 ThemedRouteBoundary 暗色边界内：着色必须走 --ib-* CSS 变量，
+    // 由 tokens.css 在 theme-dh-api 下重映射，禁止浅色 semantic.profit/loss 直灌。
+    const delta = screen.getByText("-1bp");
+    expect(delta.style.color).toBe("var(--ib-up)");
+    expect(delta.style.color).not.toMatch(/#[0-9a-fA-F]{3,8}/);
+  });
 });
 
 const moneyModel: MarketDataMoneyMarketSection = {
@@ -109,6 +119,14 @@ describe("MoneyMarketTable", () => {
       "当前来源筛选下无资金利率序列。",
     );
     expect(screen.queryByText("CA.DR007")).not.toBeInTheDocument();
+  });
+
+  it("colors money-market deltas with theme-aware CSS variables instead of light semantic hex", () => {
+    render(<MoneyMarketTable model={moneyModel} sourceFilter="all" embedded />);
+
+    const delta = screen.getByText("-0.6bp");
+    expect(delta.style.color).toBe("var(--ib-up)");
+    expect(delta.style.color).not.toMatch(/#[0-9a-fA-F]{3,8}/);
   });
 });
 

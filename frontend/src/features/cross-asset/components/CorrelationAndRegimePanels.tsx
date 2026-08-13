@@ -1,4 +1,5 @@
 import { correlationColor, formatCorrelation, type CorrelationMatrix } from "../lib/crossAssetAnalytics";
+import { FrontendAnalyticsChip } from "./MomentumAndVolatilityPanels";
 import {
   heatmapColorFor,
   resolveCrossAssetChartPalette,
@@ -92,7 +93,9 @@ export function CorrelationHeatmapPanel({
   const summaryCards = buildCorrelationSummaryCards(matrix);
   return (
     <section className="ca-correlation" data-testid="cross-asset-correlation-heatmap">
-      <h2 className="ca-correlation__title">资产相关性矩阵</h2>
+      <h2 className="ca-correlation__title">
+        资产相关性矩阵 <FrontendAnalyticsChip />
+      </h2>
       <p className="ca-correlation__subtitle">
         基于 sparkline 窗口滚动 Pearson 相关系数，一眼看清哪些资产在共振或背离。
       </p>

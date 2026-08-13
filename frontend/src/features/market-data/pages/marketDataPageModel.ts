@@ -13,8 +13,11 @@ import type {
   ResultMeta,
 } from "../../../api/contracts";
 import type { EChartsOption } from "../../../lib/echarts";
-import { mossChartCategoricalPalette } from "../../../components/charts/chartTheme";
-import { ibTokens } from "../../../theme/designSystem";
+import { nocturneTokens } from "../../../theme/designSystem";
+import {
+  buildMarketDataChartTooltip,
+  marketDataChartTheme,
+} from "../lib/charts/marketDataChartTheme";
 import type { MarketOverviewMetric } from "./MarketDataHeroSection";
 import { RATE_TREND_DEFINITIONS } from "./marketDataMacroConstants";
 import {
@@ -114,6 +117,13 @@ function recentTimelineForMacroPoint(point: ChoiceMacroLatestPoint | undefined) 
   return map;
 }
 
+/** 走势线取色与期限结构图对齐：国债=蓝紫 accent、国开=绿、SHIBOR=琥珀。 */
+const RATE_TREND_SERIES_COLORS = [
+  nocturneTokens.color.blue,
+  nocturneTokens.color.green,
+  nocturneTokens.color.amber,
+] as const;
+
 export function buildMarketDataRateTrendChartOption(
   series: ChoiceMacroLatestPoint[],
 ): EChartsOption | null {
@@ -138,32 +148,66 @@ export function buildMarketDataRateTrendChartOption(
     }
   }
   const categories = [...dateSet].sort((a, b) => a.localeCompare(b));
-  const lineSeries = RATE_TREND_DEFINITIONS.map((def, i) => ({
-    name: def.name,
-    type: "line" as const,
-    smooth: true,
-    showSymbol: categories.length <= 36,
-    connectNulls: true,
-    data: categories.map((d) => maps[i].get(d) ?? null),
-  }));
+  const lineSeries = RATE_TREND_DEFINITIONS.map((def, i) => {
+    const color = RATE_TREND_SERIES_COLORS[i] ?? nocturneTokens.color.accent400;
+    return {
+      name: def.name,
+      type: "line" as const,
+      smooth: true,
+      symbol: "circle" as const,
+      symbolSize: 4,
+      showSymbol: categories.length <= 36,
+      connectNulls: true,
+      itemStyle: { color },
+      lineStyle: { color, width: i === 0 ? 2 : 1.5 },
+      areaStyle:
+        i === 0
+          ? {
+              color: {
+                type: "linear" as const,
+                x: 0,
+                y: 0,
+                x2: 0,
+                y2: 1,
+                colorStops: [
+                  { offset: 0, color: nocturneTokens.color.blueSoft },
+                  { offset: 1, color: `${nocturneTokens.color.blue}00` },
+                ],
+              },
+            }
+          : undefined,
+      data: categories.map((d) => maps[i].get(d) ?? null),
+    };
+  });
   return {
-    color: [ibTokens.color.accent, mossChartCategoricalPalette[2], ibTokens.color.gold],
-    tooltip: { trigger: "axis" },
-    legend: { bottom: 0, textStyle: { color: ibTokens.color.inkMuted } },
+    color: [...RATE_TREND_SERIES_COLORS],
+    tooltip: buildMarketDataChartTooltip({
+      trigger: "axis",
+      axisPointer: marketDataChartTheme.axisPointerLine,
+    }),
+    legend: {
+      bottom: 0,
+      type: "plain" as const,
+      itemWidth: 14,
+      itemHeight: 8,
+      textStyle: { ...marketDataChartTheme.axisLabel, color: nocturneTokens.color.inkSoft },
+    },
     grid: { left: 52, right: 20, top: 28, bottom: 52 },
     xAxis: {
       type: "category",
       boundaryGap: false,
       data: categories,
-      axisLabel: { color: ibTokens.color.inkMuted },
-      axisLine: { lineStyle: { color: ibTokens.color.hairline } },
+      axisLabel: marketDataChartTheme.axisLabel,
+      axisLine: marketDataChartTheme.axisLine,
     },
     yAxis: {
       type: "value",
       scale: true,
       name: unit || undefined,
-      axisLabel: { formatter: "{value}", color: ibTokens.color.inkMuted },
-      splitLine: { lineStyle: { color: ibTokens.color.hairline } },
+      splitNumber: 4,
+      nameTextStyle: marketDataChartTheme.axisLabel,
+      axisLabel: { ...marketDataChartTheme.axisLabel, formatter: "{value}" },
+      splitLine: marketDataChartTheme.splitLine,
     },
     series: lineSeries,
   };
@@ -313,13 +357,13 @@ export function buildFxFormalStatusCollapseLabel(input: {
     return "正式外汇中间价（加载中…）";
   }
   if (input.isError) {
-    return "正式外汇中间价（加载失败，点击展开）";
+    return "正式外汇中间价（加载失败）";
   }
   const payload = input.payload;
   if (!payload) {
-    return "正式外汇中间价（点击展开）";
+    return "正式外汇中间价";
   }
-  return `正式外汇中间价 · 物化 ${payload.materialized_count}/${payload.candidate_count} · 沿用 ${payload.carry_forward_count}（点击展开）`;
+  return `正式外汇中间价 · 物化 ${payload.materialized_count}/${payload.candidate_count}（沿用 ${payload.carry_forward_count}）`;
 }
 
 function buildPipelineOverviewMetrics(input: {

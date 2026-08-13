@@ -2,11 +2,11 @@ import { useEffect, useMemo, useState, type HTMLAttributes } from "react";
 import { Table, Tooltip } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
-import { designTokens } from "../../../theme/designSystem";
 import {
   formatChoiceMacroDelta,
   formatChoiceMacroValueParts,
 } from "../../../utils/choiceMacroFormat";
+import { EM_DASH } from "../../../utils/format";
 import type { ChoiceMacroRecentPoint } from "../../../api/contracts";
 import {
   marketSeriesRefreshTier,
@@ -19,18 +19,10 @@ export type MarketDataSeriesCompactRow = MarketObservationPoint & {
   tierLabel?: string;
 };
 
-const PLACEHOLDER = "—";
+const PLACEHOLDER = EM_DASH;
 
-function deltaColor(value: string) {
-  if (value.startsWith("-")) {
-    return designTokens.color.semantic.profit;
-  }
-  if (value.startsWith("+")) {
-    return designTokens.color.semantic.loss;
-  }
-  return designTokens.color.neutral[700];
-}
-
+// 序列上行=偏空、下行=偏多；着色复用页面 ticker 的 data-tone 语义类
+// （MarketDataPage.css：up=红、down=绿、flat=muted），不再使用内联色值。
 function sparkToneFromDelta(delta: string): "up" | "down" | "flat" {
   if (delta.startsWith("-")) {
     return "down";
@@ -183,7 +175,10 @@ export function MarketDataSeriesCompactTable({
             return <CompactPlaceholder />;
           }
           return (
-            <span className="market-data-tabular market-data-series-compact-delta" style={{ color: deltaColor(delta) }}>
+            <span
+              className="market-data-terminal-ticker-delta market-data-series-compact-delta"
+              data-tone={sparkToneFromDelta(delta)}
+            >
               {delta}
             </span>
           );

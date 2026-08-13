@@ -43,7 +43,7 @@ export function MarketTerminalTicker({
         </div>
       ) : null}
       <div className="market-data-terminal-ticker-grid">
-        {items.map((item, index) => (
+        {items.map((item) => (
           <div
             key={item.key}
             data-testid={`market-data-terminal-ticker-${item.key}`}
@@ -68,7 +68,6 @@ export function MarketTerminalTicker({
               {item.delta}
             </span>
             {!compact ? <span className="market-data-terminal-ticker-date">{item.tradeDate}</span> : null}
-            {index < items.length - 1 ? <span className="market-data-terminal-ticker-rule" aria-hidden /> : null}
           </div>
         ))}
         {compact ? (

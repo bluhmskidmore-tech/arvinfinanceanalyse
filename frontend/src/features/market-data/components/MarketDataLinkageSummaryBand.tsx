@@ -28,13 +28,20 @@ export function MarketDataLinkageSummaryBand({
           <span className="market-data-dim-label">环境综合分</span>
           <strong className="market-data-linkage-summary-score">{scoreText}</strong>
           {compositeDetail ? (
-            <span className="market-data-linkage-summary-detail">{compositeDetail}</span>
+            <span className="market-data-linkage-summary-detail" title={compositeDetail}>
+              {compositeDetail}
+            </span>
           ) : null}
         </div>
         {topCorrelation ? (
           <div>
             <span className="market-data-dim-label">Top 相关</span>
-            <strong className="market-data-linkage-summary-score">{topCorrelation.series_name}</strong>
+            <strong
+              className="market-data-linkage-summary-score"
+              title={topCorrelation.series_name}
+            >
+              {topCorrelation.series_name}
+            </strong>
             <span className="market-data-linkage-summary-detail">
               1Y {formatCorrelation(topCorrelation.correlation_1y)} · lag {topCorrelation.lead_lag_days}d
             </span>

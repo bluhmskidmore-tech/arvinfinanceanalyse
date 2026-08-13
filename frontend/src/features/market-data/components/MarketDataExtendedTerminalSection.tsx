@@ -6,10 +6,18 @@ type MarketDataExtendedTerminalSectionProps = {
   children: ReactNode;
 };
 
+// 区块头走眉标语言（muted 11px 眉标 + ink 标题 + muted 计数徽标）；
+// 未接入明细清单只在体内摘要行出现一次（DESIGN §6 状态去重），展开提示交给 Collapse 箭头。
 function extendedTerminalLabel(sourcePendingCount: number) {
-  const pendingHint =
-    sourcePendingCount > 0 ? ` · ${sourcePendingCount} 项未接入` : "";
-  return `未接入数据源（期货·成交）${pendingHint} · 点击展开`;
+  return (
+    <span className="market-data-extended-terminal-label">
+      <span className="market-data-extended-terminal-label__kicker">扩展终端</span>
+      <strong>国债期货 / 现券成交 / 信用成交</strong>
+      {sourcePendingCount > 0 ? (
+        <span className="market-data-extended-terminal-label__count">未接入 {sourcePendingCount}</span>
+      ) : null}
+    </span>
+  );
 }
 
 export function MarketDataExtendedTerminalSection({

@@ -13,11 +13,13 @@ import type {
   MacroVendorSeries,
   ResultMeta,
 } from "../../../api/contracts";
+import { nocturneTokens } from "../../../theme/designSystem";
 import {
   buildBridgeKpiMetrics,
   buildFxFormalStatusCollapseLabel,
   buildMarketDataBasisChipLabel,
   buildMarketDataPageModel,
+  buildMarketDataRateTrendChartOption,
   buildSpreadSlots,
   formatMarketWorkbenchSourceSummary,
   pickRailHighlightMetric,
@@ -655,6 +657,57 @@ describe("marketDataPageModel", () => {
     expect(buildSpreadSlots(correlations, "urban").find((slot) => slot.tenor === "5Y")?.point?.series_id).toBe(
       "URBAN_5Y",
     );
+  });
+});
+
+describe("buildMarketDataRateTrendChartOption", () => {
+  it("renders nocturne series colors with a plain bottom legend and no data recomputation", () => {
+    const option = buildMarketDataRateTrendChartOption([
+      latestPoint("EMM00166466", "2026-04-10", "stable", {
+        recent_points: [
+          {
+            trade_date: "2026-04-09",
+            value_numeric: 1.74,
+            source_version: "sv_latest",
+            vendor_version: "vv_2026-04-09",
+            quality_flag: "ok",
+          },
+          {
+            trade_date: "2026-04-10",
+            value_numeric: 1.75,
+            source_version: "sv_latest",
+            vendor_version: "vv_2026-04-10",
+            quality_flag: "ok",
+          },
+        ],
+      }),
+    ]);
+
+    expect(option).not.toBeNull();
+    expect(option?.color).toEqual([
+      nocturneTokens.color.blue,
+      nocturneTokens.color.green,
+      nocturneTokens.color.amber,
+    ]);
+    expect(option?.legend).toMatchObject({
+      type: "plain",
+      itemWidth: 14,
+      textStyle: { color: nocturneTokens.color.inkSoft },
+    });
+
+    const series = option?.series as Array<{
+      name?: string;
+      lineStyle?: { color?: string; width?: number };
+      areaStyle?: unknown;
+      data?: Array<number | null>;
+    }>;
+    expect(series.map((item) => item.name)).toEqual(["国债 10Y", "国开 5Y", "SHIBOR 隔夜"]);
+    expect(series[0]?.lineStyle).toMatchObject({ color: nocturneTokens.color.blue, width: 2 });
+    expect(series[0]?.areaStyle).toBeDefined();
+    expect(series[1]?.lineStyle).toMatchObject({ color: nocturneTokens.color.green, width: 1.5 });
+    expect(series[2]?.lineStyle).toMatchObject({ color: nocturneTokens.color.amber, width: 1.5 });
+    expect(series[0]?.data).toEqual([1.74, 1.75]);
+    expect(series[1]?.data).toEqual([null, null]);
   });
 });
 

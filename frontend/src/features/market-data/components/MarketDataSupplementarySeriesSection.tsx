@@ -41,10 +41,17 @@ export function MarketDataSupplementarySeriesSection({
   missingStableDeck,
   showFxSection = true,
 }: MarketDataSupplementarySeriesSectionProps) {
-  const tierSummary = [
-    stableSeriesCount > 0 ? `稳定 ${stableSeriesCount}` : null,
-    fallbackSeriesCount > 0 ? `降级 ${fallbackSeriesCount}` : null,
+  const tierSummaryParts = [
+    stableSeriesCount > 0 ? `稳定 ${stableSeriesCount} 条` : null,
+    fallbackSeriesCount > 0 ? `降级 ${fallbackSeriesCount} 条` : null,
+  ].filter(Boolean);
+  // §7「·」配额：可见元信息最多 1 个分隔符；外汇组数在下方外汇轨已有（§6 去重），
+  // 其余字段收进 title 全文。
+  const tierSummary = tierSummaryParts.join(" · ");
+  const summaryDetail = [
+    ...tierSummaryParts,
     showFxSection && fxGroupCount > 0 ? `外汇 ${fxGroupCount} 组` : null,
+    "正式利率见上方核心观察",
   ]
     .filter(Boolean)
     .join(" · ");
@@ -58,11 +65,10 @@ export function MarketDataSupplementarySeriesSection({
       <div className="market-data-supplementary-head">
         <div>
           <span className="market-data-supplementary-kicker">更多读数</span>
-          <h2 className="market-data-supplementary-title">宏观与外汇序列</h2>
+          <h2 className="market-data-supplementary-title">04 宏观与外汇序列</h2>
         </div>
-        <p className="market-data-supplementary-summary">
+        <p className="market-data-supplementary-summary" title={summaryDetail}>
           {tierSummary || `分析口径 · ${macroSeriesCount} 条序列`}
-          {tierSummary ? " · 正式利率见上方核心观察" : null}
         </p>
       </div>
 

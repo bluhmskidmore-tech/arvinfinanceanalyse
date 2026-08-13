@@ -49,10 +49,18 @@ export function MarketDataSeriesCategoryCard({
       <header className="market-data-series-category-card__head">
         <div className="market-data-series-category-card__titles">
           {showLinkTierTag ? (
-            <span className="market-data-pill-tag market-data-pill-tag--info">{TONE_TAG[tone]}</span>
+            <span
+              className={`market-data-series-category-card__kicker market-data-series-category-card__kicker--${tone}`}
+            >
+              {TONE_TAG[tone]}
+            </span>
           ) : null}
           <h3 className="market-data-series-category-card__title">{title}</h3>
-          {caption ? <p className="market-data-series-category-card__caption">{caption}</p> : null}
+          {caption ? (
+            <p className="market-data-series-category-card__caption" title={caption}>
+              {caption}
+            </p>
+          ) : null}
         </div>
         <div className="market-data-series-category-card__head-side">
           {headerActions ? (

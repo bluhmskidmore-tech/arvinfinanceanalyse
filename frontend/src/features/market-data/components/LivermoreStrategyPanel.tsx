@@ -402,7 +402,8 @@ export function LivermoreStrategyPanel({
                 <li className="livermore-strategy-panel__row" key={`${item.rank}:${item.sectorCode}`}>
                   <span className="livermore-strategy-panel__row-main">
                     <span className="livermore-strategy-panel__row-title">
-                      #{item.rank} {item.sectorName} · {item.sectorCode}
+                      <span className="livermore-strategy-panel__row-rank">#{item.rank}</span>{" "}
+                      {item.sectorName} · {item.sectorCode}
                     </span>
                     <span className="livermore-strategy-panel__row-detail">
                       分数 {item.score} · 成分股 {item.constituentCount}
@@ -424,12 +425,27 @@ export function LivermoreStrategyPanel({
                 ? ` · 缺 ${stockCandidates.factorMissingCount} 个因子`
                 : ""}
             </div>
+            {stockCandidates.positionSizeHint ? (
+              <div
+                className="livermore-strategy-panel__row-detail"
+                data-testid="livermore-position-size-hint-policy"
+              >
+                建议仓位政策 {stockCandidates.positionSizeHint.policyVersion} ·{" "}
+                {stockCandidates.positionSizeHint.gateExposureNote}{" "}
+                {stockCandidates.positionSizeHint.shadowNote}
+                {stockCandidates.positionSizeHint.coverageDegraded &&
+                stockCandidates.positionSizeHint.coverageWarning
+                  ? ` · ${stockCandidates.positionSizeHint.coverageWarning}`
+                  : ""}
+              </div>
+            ) : null}
             <ul className="livermore-strategy-panel__list">
               {stockCandidates.items.map((item) => (
                 <li className="livermore-strategy-panel__row" key={`${item.rank}:${item.stockCode}`}>
                   <span className="livermore-strategy-panel__row-main">
                     <span className="livermore-strategy-panel__row-title">
-                      #{item.rank} {item.stockName} · {item.stockCode}
+                      <span className="livermore-strategy-panel__row-rank">#{item.rank}</span>{" "}
+                      {item.stockName} · {item.stockCode}
                     </span>
                     <span className="livermore-strategy-panel__row-detail">
                       {item.sectorName} · 板块第 {item.sectorRank} 名 · 现价 {item.close}
@@ -440,6 +456,11 @@ export function LivermoreStrategyPanel({
                     <span className="livermore-strategy-panel__row-detail">
                       CLV {item.closeStrength} · gap {item.gapNorm} · 异常换手 {item.abnormalTurnover}
                     </span>
+                    {item.sizeHint ? (
+                      <span className="livermore-strategy-panel__row-detail">
+                        建议仓位 {item.sizeHint}
+                      </span>
+                    ) : null}
                   </span>
                   <span className="livermore-strategy-panel__row-actions">
                     <span className={statusClass("ready")}>{stockCandidates.marketState}</span>
@@ -462,7 +483,7 @@ export function LivermoreStrategyPanel({
           <div className="livermore-strategy-panel__block" data-testid="livermore-watch-pool">
             <h3 className="livermore-strategy-panel__block-title">观察池</h3>
             <div className="livermore-strategy-panel__row-detail">
-              本地观察池仅记录策略触发价位，不生成交易指令。
+              本地观察池仅记录策略触发价位。
             </div>
             {watchPool.length > 0 ? (
               <ul className="livermore-strategy-panel__list">
@@ -506,7 +527,8 @@ export function LivermoreStrategyPanel({
                 <li className="livermore-strategy-panel__row" key={`${item.rank}:${item.stockCode}`}>
                   <span className="livermore-strategy-panel__row-main">
                     <span className="livermore-strategy-panel__row-title">
-                      #{item.rank} {item.stockName} | {item.stockCode}
+                      <span className="livermore-strategy-panel__row-rank">#{item.rank}</span>{" "}
+                      {item.stockName} | {item.stockCode}
                     </span>
                     <span className="livermore-strategy-panel__row-detail">
                       {item.sectorName} | close {item.close} | score {item.score}
@@ -530,7 +552,8 @@ export function LivermoreStrategyPanel({
                 <li className="livermore-strategy-panel__row" key={`${item.rank}:${item.stockCode}`}>
                   <span className="livermore-strategy-panel__row-main">
                     <span className="livermore-strategy-panel__row-title">
-                      #{item.rank} {item.stockName} | {item.stockCode}
+                      <span className="livermore-strategy-panel__row-rank">#{item.rank}</span>{" "}
+                      {item.stockName} | {item.stockCode}
                     </span>
                     <span className="livermore-strategy-panel__row-detail">
                       {item.sectorName} | factor score {item.score}
@@ -554,7 +577,8 @@ export function LivermoreStrategyPanel({
                 <li className="livermore-strategy-panel__row" key={`${item.rank}:${item.themeName}`}>
                   <span className="livermore-strategy-panel__row-main">
                     <span className="livermore-strategy-panel__row-title">
-                      #{item.rank} {item.themeName}
+                      <span className="livermore-strategy-panel__row-rank">#{item.rank}</span>{" "}
+                      {item.themeName}
                     </span>
                     <span className="livermore-strategy-panel__row-detail">
                       {item.parentSectorName} | {item.reason}

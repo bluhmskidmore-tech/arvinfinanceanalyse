@@ -16,6 +16,7 @@ import {
   PageDecisionHero,
 } from "../../../components/page/PagePrimitives";
 import { designTokens } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
 import type {
   FxAnalyticalPayload,
   MarketDataCoverageSection,
@@ -119,7 +120,7 @@ function marketDataBasisLabel(value: string | null | undefined): string {
   if (normalized.includes("mock")) return "演示数据";
   if (normalized.includes("source-pending")) return "未接入";
   if (normalized === "unknown" || normalized === "pending") return "待确认";
-  return normalized || "--";
+  return normalized || EM_DASH;
 }
 
 function marketDataSourceLabel(value: string | null | undefined): string {
@@ -265,12 +266,12 @@ function MarketDataSupplyEvidenceRail({
         </div>
         <div>
           <span>生成时间</span>
-          <strong>{summary?.generated_at?.replace("T", " ").slice(0, 19) ?? "--"}</strong>
+          <strong>{summary?.generated_at?.replace("T", " ").slice(0, 19) ?? EM_DASH}</strong>
         </div>
       </section>
       <section className="market-data-supply-panel">
         <header className="market-data-panel-head">
-          <span>下一步行动</span>
+          <span>供给缺口</span>
           <strong>下一步动作</strong>
         </header>
         <ol className="market-data-next-action-list">
@@ -317,7 +318,7 @@ function MarketDataFormalRatesBoard({
       <header className="market-data-formal-rates-head">
         <div>
           <span>利率行情</span>
-          <h2>正式利率</h2>
+          <h2>01 正式利率</h2>
           <small>利率曲线与宏观深度</small>
         </div>
         <a href="#market-data-evidence-gate">查看完整曲线</a>
@@ -394,8 +395,8 @@ function MarketDataFormalRatesBoard({
             {keyMetrics.slice(0, 7).map((metric) => (
               <article key={metric.testId} data-testid={`market-data-key-rate-${metric.testId}`}>
                 <span>{metric.title}</span>
-                <strong>{metric.value}</strong>
                 <em>{metric.detail.split(" · ")[0]}</em>
+                <strong>{metric.value}</strong>
               </article>
             ))}
           </div>
@@ -864,6 +865,7 @@ export default function MarketDataPage() {
       status={marketWorkbenchStatus}
       metaItems={marketWorkbenchMetaItems}
       navDensity="compact"
+      themeScope="market-data"
       auditContent={
         <div className="market-data-macro-evidence-rail">
           <span>{marketDataEvidenceLineLabel(evidenceLines.formalRates)}</span>
@@ -886,27 +888,17 @@ export default function MarketDataPage() {
           title="市场数据"
           businessQuestion="当前市场利率、资金面、外汇状况如何？"
           eyebrow="市场数据终端"
+          className="market-data-page__decision-hero-shell"
           testId="market-data-hero"
-          reportDateSlot={
-            <div className="market-data-hero-date-slot">
-              <input
-                type="date"
-                value={watchDate}
-                onChange={(e) => setWatchDate(e.target.value)}
-                className="market-data-hero-date-input"
-                data-testid="market-data-date-picker"
-                aria-label="市场数据观察日期"
-              />
-              <span className="market-data-hero-date-note">
-                {tickerStatusDate ? `数据日期 ${tickerStatusDate}` : ""}
-              </span>
-            </div>
-          }
           conclusion={
             <DataStatusStrip testId="market-data-status-strip">
               <span>{statusBadges.readinessVerdict}</span>
-              <span aria-hidden="true">·</span>
-              <span>{statusBadges.overviewReadinessLabel}</span>
+              {statusBadges.overviewReadinessLabel !== statusBadges.readinessVerdict ? (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span>{statusBadges.overviewReadinessLabel}</span>
+                </>
+              ) : null}
               {formalUseBlocked ? (
                 <>
                   <span aria-hidden="true">·</span>
@@ -929,12 +921,23 @@ export default function MarketDataPage() {
           }
           actions={
             <div className="market-data-hero-actions">
+              <span className="market-data-hero-date-note">
+                {tickerStatusDate ? `数据日期 ${tickerStatusDate}` : ""}
+              </span>
+              <input
+                type="date"
+                value={watchDate}
+                onChange={(e) => setWatchDate(e.target.value)}
+                className="market-data-hero-date-input"
+                data-testid="market-data-date-picker"
+                aria-label="市场数据观察日期"
+              />
               <Select
-                size="small"
                 value={curveFilter}
                 onChange={setCurveFilter}
                 className="market-data-hero-select market-data-hero-select--curve"
                 aria-label="利率曲线筛选"
+                getPopupContainer={(trigger) => trigger.parentElement ?? document.body}
                 options={[
                   { value: "both", label: "国债+国开" },
                   { value: "treasury", label: "国债" },
@@ -943,11 +946,11 @@ export default function MarketDataPage() {
                 data-testid="market-data-curve-filter"
               />
               <Select
-                size="small"
                 value={sourceFilter}
                 onChange={setSourceFilter}
                 className="market-data-hero-select market-data-hero-select--source"
                 aria-label="数据来源筛选"
+                getPopupContainer={(trigger) => trigger.parentElement ?? document.body}
                 options={[
                   { value: "all", label: "全部来源" },
                   { value: "choice", label: "Choice" },
@@ -1009,7 +1012,7 @@ export default function MarketDataPage() {
             />
 
             <MarketDataSeriesCategoryCard
-              title="宏观深度读面"
+              title="02 宏观深度读面"
               caption="曲线走势、信用利差与压力背景均为分析口径观察，不替代正式指标。"
               tone="analytical"
               testId="market-data-macro-depth-card"
@@ -1033,7 +1036,7 @@ export default function MarketDataPage() {
                 <MarketSectionLead
                   flushTop
                   eyebrow="资金读数"
-                  title="资金市场与存单"
+                  title="03 资金市场与存单"
                   description="DR007、回购与 Shibor 代理矩阵；正式口径摘要见右侧源门禁。"
                 />
               </div>
@@ -1133,7 +1136,7 @@ export default function MarketDataPage() {
                         items={[
                           {
                             key: "missing",
-                            label: `待补齐稳定链路（${missingStableSeries.length}）· 点击展开`,
+                            label: `待补齐稳定链路（${missingStableSeries.length}）`,
                             children: (
                               <section data-testid="market-data-missing-stable-section">
                                 <div className="market-data-stack-gap-3">
@@ -1201,7 +1204,12 @@ export default function MarketDataPage() {
               items={[
                 {
                   key: "tushare",
-                  label: "Tushare 补充数据 · 点击展开",
+                  label: (
+                    <span className="market-data-tushare-collapse-label">
+                      <span>补充数据</span>
+                      <span className="market-data-tushare-collapse-label__badge">Tushare</span>
+                    </span>
+                  ),
                   children: (
                     <div className="market-data-lower-deck-section">
                       <MarketDataTushareSupplementSection />

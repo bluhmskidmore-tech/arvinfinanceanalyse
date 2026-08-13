@@ -19,13 +19,14 @@ import {
   formatChoiceMacroDelta,
   formatChoiceMacroValue,
 } from "../../../utils/choiceMacroFormat";
+import { EM_DASH } from "../../../utils/format";
 import { formatBalanceAmountToYiFromYuan } from "../../balance-analysis/pages/balanceAnalysisPageModel";
 import { formatProductCategoryValue } from "../../product-category-pnl/pages/productCategoryPnlPageModel";
 import { pickRepresentativeSeries } from "./marketFinanceModel";
 
 import "./MarketFinanceWorkbenchPage.css";
 
-const MISSING_VALUE = "—";
+const MISSING_VALUE = EM_DASH;
 const MARKET_REPRESENTATIVE_BOUNDARY_NOTE =
   "这是页面配置白名单展示，不等于独立 PAGE contract、跨域正式结论或 owner signoff。";
 const PRODUCT_CATEGORY_VIEW = "monthly";

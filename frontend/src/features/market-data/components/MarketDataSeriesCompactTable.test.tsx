@@ -37,6 +37,12 @@ describe("MarketDataSeriesCompactTable", () => {
     expect(row).toHaveTextContent("CNY/t");
     expect(row).toHaveTextContent("06-10 23905");
     expect(row).not.toHaveTextContent("2026-06-09 23800 · 2026-06-10 23905");
+
+    // 变动列走页面语义 tone 类（up=红/down=绿由 MarketDataPage.css 决定），不再内联色值。
+    const delta = row.querySelector(".market-data-terminal-ticker-delta");
+    expect(delta).not.toBeNull();
+    expect(delta).toHaveAttribute("data-tone", "up");
+    expect(delta?.getAttribute("style")).toBeNull();
   });
 
   it("expands inline chart when 走势 is clicked", () => {

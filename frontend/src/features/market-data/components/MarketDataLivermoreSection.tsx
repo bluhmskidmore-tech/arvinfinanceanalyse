@@ -1,9 +1,11 @@
 import { useState } from "react";
+import type { ReactNode } from "react";
 import { Collapse } from "antd";
 
 import type { LivermoreGateSupplementRefreshAcceptance } from "../../../api/marketDataClient";
 import type { LivermoreStrategyModel } from "../lib/livermoreStrategyModel";
 import { LivermoreStrategyPanel } from "./LivermoreStrategyPanel";
+import "./LivermoreStrategyPanel.css";
 
 type MarketDataLivermoreSectionProps = {
   model: LivermoreStrategyModel | null;
@@ -15,14 +17,38 @@ type MarketDataLivermoreSectionProps = {
   onExpandedChange: (expanded: boolean) => void;
 };
 
-function livermoreCollapseLabel(model: LivermoreStrategyModel | null, isLoading: boolean): string {
-  if (isLoading) {
-    return "Livermore 趋势门控（加载中…）";
+type GateStateTone = "green" | "amber" | "red" | "muted";
+
+function gateStateTone(state: LivermoreStrategyModel["marketGate"]["state"]): GateStateTone {
+  if (state === "HOT") {
+    return "green";
   }
-  if (model?.marketGate.state) {
-    return `Livermore 趋势门控 · 门控 ${model.marketGate.state}（点击展开）`;
+  if (state === "WARM" || state === "OVERHEAT" || state === "STALE") {
+    return "amber";
   }
-  return "Livermore 趋势门控（A股防守策略，点击展开）";
+  if (state === "OFF") {
+    return "red";
+  }
+  return "muted";
+}
+
+function livermoreCollapseLabel(
+  model: LivermoreStrategyModel | null,
+  isLoading: boolean,
+): ReactNode {
+  const state = model?.marketGate.state ?? null;
+  const hint = isLoading ? "加载中…" : "A股防守策略";
+  return (
+    <span className="livermore-collapse-label">
+      <span className="livermore-collapse-label__title">Livermore 趋势门控</span>
+      {state ? (
+        <span className="livermore-collapse-label__state" data-tone={gateStateTone(state)}>
+          门控 {state}
+        </span>
+      ) : null}
+      <span className="livermore-collapse-label__hint">{hint}</span>
+    </span>
+  );
 }
 
 export function MarketDataLivermoreSection({

@@ -1,10 +1,15 @@
+/*
+ * Livermore 趋势门控面板 · Nocturne。
+ * 仅消费 market-data 页 scope 内解析的 --dh-api-* 变量，禁止 hex 字面量。
+ * 卡面 chrome（边框/底色）由折叠区容器提供，面板自身保持平卡无阴影。
+ */
+
 .livermore-strategy-panel {
   display: grid;
   gap: var(--moss-space-3);
-  padding: var(--moss-space-3);
-  border: 1px solid var(--ib-hairline);
-  border-radius: var(--ib-radius, 2px);
-  background: var(--ib-surface);
+  padding: 0;
+  border: 0;
+  background: transparent;
   box-shadow: none;
   min-width: 0;
 }
@@ -15,6 +20,8 @@
   justify-content: space-between;
   gap: var(--moss-space-3);
   flex-wrap: wrap;
+  padding-bottom: var(--moss-space-2);
+  border-bottom: 1px solid var(--dh-api-line-soft);
 }
 
 .livermore-strategy-panel__title {
@@ -25,42 +32,43 @@
 
 .livermore-strategy-panel__name {
   margin: 0;
-  color: var(--moss-color-text);
-  font-size: 16px;
+  color: var(--dh-api-ink);
+  font-size: 14px;
   font-weight: 700;
   line-height: 1.25;
 }
 
 .livermore-strategy-panel__meta {
-  color: var(--moss-color-text-secondary);
-  font-size: 12px;
-  font-weight: 600;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 500;
   line-height: 1.35;
+  font-variant-numeric: tabular-nums;
 }
 
+/* 合规说明（分析口径）：全面板仅此一处，安静 muted 呈现，不做强调徽标。 */
 .livermore-strategy-panel__badge {
   display: inline-flex;
   align-items: center;
-  min-height: 24px;
+  min-height: 22px;
   padding: 2px 8px;
-  border: 1px solid var(--ib-hairline);
-  border-radius: var(--ib-radius, 2px);
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
   background: transparent;
-  color: var(--ib-accent);
+  color: var(--dh-api-muted);
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: var(--ib-kicker-letter-spacing, 0.08em);
+  font-weight: 600;
   white-space: nowrap;
 }
 
 .livermore-strategy-panel__notes {
   display: grid;
   gap: var(--moss-space-2);
-  padding: var(--moss-space-3);
-  border: 1px solid #f1d7a7;
-  border-radius: var(--moss-radius-sm);
-  background: #fff8ea;
-  color: #8a5b16;
+  padding: var(--moss-space-2) var(--moss-space-3);
+  border: 1px solid color-mix(in srgb, var(--dh-api-amber) 30%, transparent);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-amber-soft);
+  color: var(--dh-api-amber);
   font-size: 12px;
   line-height: 1.4;
 }
@@ -69,6 +77,7 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--moss-space-2);
+  align-items: start;
 }
 
 .livermore-strategy-panel__metric {
@@ -76,29 +85,30 @@
   gap: var(--moss-space-1);
   min-height: 74px;
   padding: var(--moss-space-3);
-  border: 1px solid var(--moss-color-neutral-200);
-  border-radius: var(--moss-radius-sm);
-  background: #f9fbfd;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
 }
 
 .livermore-strategy-panel__metric-label {
-  color: var(--moss-color-text-muted);
-  font-size: 12px;
-  font-weight: 700;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
   line-height: 1.25;
 }
 
 .livermore-strategy-panel__metric-value {
-  color: var(--moss-color-text);
+  color: var(--dh-api-ink);
   font-size: 18px;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1.15;
+  font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
 
 .livermore-strategy-panel__metric-detail {
-  color: var(--moss-color-text-secondary);
-  font-size: 12px;
+  color: var(--dh-api-soft);
+  font-size: 11px;
   line-height: 1.3;
   overflow-wrap: anywhere;
 }
@@ -107,7 +117,7 @@
   display: grid;
   gap: 2px;
   margin-top: 2px;
-  color: var(--moss-color-text-secondary);
+  color: var(--dh-api-muted);
   font-size: 11px;
   line-height: 1.35;
 }
@@ -124,16 +134,16 @@
   align-items: center;
   min-height: 18px;
   padding: 0 6px;
-  border: 1px solid var(--ib-hairline);
-  border-radius: var(--ib-radius, 2px);
-  background: var(--ib-surface, #fff);
-  color: var(--ib-accent);
+  border: 0;
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-blue);
   font-size: 10px;
   font-weight: 700;
 }
 
 .livermore-strategy-panel__macro-status-marker {
-  color: #8a5b16;
+  color: var(--dh-api-amber);
   font-weight: 600;
 }
 
@@ -141,24 +151,31 @@
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
   gap: var(--moss-space-3);
+  align-items: start;
 }
 
 .livermore-strategy-panel__block {
   display: grid;
   gap: var(--moss-space-2);
   min-width: 0;
+  align-content: start;
 }
 
+/* 眉标 + 发丝线区头：子区块标题走 11px muted 眉标语言。 */
 .livermore-strategy-panel__block-title {
   margin: 0;
-  color: var(--moss-color-text);
-  font-size: 13px;
-  font-weight: 700;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .livermore-strategy-panel__list {
   display: grid;
-  gap: var(--moss-space-2);
+  gap: 0;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -169,10 +186,18 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--moss-space-2);
   align-items: start;
-  padding: var(--moss-space-2);
-  border: 1px solid var(--moss-color-neutral-200);
-  border-radius: var(--moss-radius-sm);
-  background: #ffffff;
+  padding: 6px 2px;
+  border: 0;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  background: transparent;
+}
+
+.livermore-strategy-panel__row:last-child {
+  border-bottom: 0;
+}
+
+.livermore-strategy-panel__row:hover {
+  background: var(--dh-api-blue-soft);
 }
 
 .livermore-strategy-panel__row-main {
@@ -182,16 +207,23 @@
 }
 
 .livermore-strategy-panel__row-title {
-  color: var(--moss-color-text);
+  color: var(--dh-api-ink);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.3;
 }
 
+.livermore-strategy-panel__row-rank {
+  color: var(--dh-api-muted);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 .livermore-strategy-panel__row-detail {
-  color: var(--moss-color-text-secondary);
+  color: var(--dh-api-soft);
   font-size: 12px;
   line-height: 1.35;
+  font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
 
@@ -199,23 +231,18 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 22px;
-  padding: 2px 7px;
-  border-radius: var(--moss-radius-sm);
-  font-size: 12px;
-  font-weight: 800;
+  min-height: 20px;
+  padding: 1px 7px;
+  border-radius: var(--dh-api-radius);
+  font-size: 11px;
+  font-weight: 700;
   white-space: nowrap;
 }
 
 .livermore-strategy-panel__status--pass,
 .livermore-strategy-panel__status--ready {
-  background: #edf9f3;
-  color: var(--moss-color-success-500);
-}
-
-.livermore-strategy-panel__status--fail {
-  background: #fff1f1;
-  color: #d92d20;
+  background: var(--dh-api-green-soft);
+  color: var(--dh-api-green);
 }
 
 .livermore-strategy-panel__status--missing,
@@ -224,19 +251,19 @@
 .livermore-strategy-panel__status--stale,
 .livermore-strategy-panel__status--look_ahead,
 .livermore-strategy-panel__status--blocked {
-  background: #fff7e8;
-  color: #b45309;
+  background: var(--dh-api-amber-soft);
+  color: var(--dh-api-amber);
 }
 
 .livermore-strategy-panel__status--error,
 .livermore-strategy-panel__status--fail {
-  background: #fff1f1;
-  color: #d92d20;
+  background: var(--dh-api-red-soft);
+  color: var(--dh-api-red);
 }
 
 .livermore-strategy-panel__status--info {
-  background: #edf5ff;
-  color: var(--moss-color-primary-600);
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-blue);
 }
 
 .livermore-strategy-panel__row-actions {
@@ -249,40 +276,41 @@
 
 .livermore-strategy-panel__watch-btn {
   min-height: 24px;
-  border: 1px solid var(--ib-hairline);
-  border-radius: var(--ib-radius, 2px);
-  background: var(--ib-surface);
-  color: var(--ib-accent);
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-ink);
   padding: 2px 8px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
 }
 
 .livermore-strategy-panel__watch-btn:hover:not(:disabled) {
-  background: var(--ib-surface);
-  border-color: var(--ib-accent);
+  border-color: var(--dh-api-blue);
+  color: var(--dh-api-blue);
 }
 
 .livermore-strategy-panel__watch-btn:disabled {
-  background: #f3f6fa;
-  color: var(--moss-color-text-muted);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-muted);
   cursor: not-allowed;
 }
 
 .livermore-strategy-panel__gap {
-  color: var(--moss-color-text-secondary);
+  color: var(--dh-api-soft);
   font-size: 12px;
   line-height: 1.4;
 }
 
 .livermore-strategy-panel__state {
   padding: var(--moss-space-3);
-  border: 1px dashed #d8e1eb;
-  border-radius: var(--moss-radius-sm);
-  color: var(--moss-color-text-secondary);
-  font-size: 13px;
+  border: 1px dashed var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
+  font-size: 12px;
   line-height: 1.4;
 }
 
@@ -292,20 +320,25 @@
   justify-content: space-between;
   gap: var(--moss-space-3);
   border-style: solid;
-  border-color: #f3b9b3;
-  background: #fff7f6;
-  color: #b42318;
+  border-color: color-mix(in srgb, var(--dh-api-red) 36%, transparent);
+  background: var(--dh-api-red-soft);
+  color: var(--dh-api-red);
 }
 
 .livermore-strategy-panel__retry {
-  border: 1px solid var(--ib-hairline);
-  border-radius: var(--ib-radius, 2px);
-  background: var(--ib-surface);
-  color: var(--ib-accent);
-  padding: var(--moss-space-2) var(--moss-space-3);
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-ink);
+  padding: var(--moss-space-1) var(--moss-space-3);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
+}
+
+.livermore-strategy-panel__retry:hover {
+  border-color: var(--dh-api-blue);
+  color: var(--dh-api-blue);
 }
 
 .livermore-strategy-panel__actions {
@@ -316,21 +349,21 @@
 }
 
 .livermore-strategy-panel__refresh-btn {
-  border: 1px solid var(--ib-hairline);
-  border-radius: var(--ib-radius, 2px);
-  background: var(--ib-surface);
-  color: var(--ib-accent);
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-ink);
   padding: 4px 12px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
   transition: border-color 0.15s;
 }
 
 .livermore-strategy-panel__refresh-btn:hover:not(:disabled) {
-  background: var(--ib-surface);
-  border-color: var(--ib-accent);
+  border-color: var(--dh-api-blue);
+  color: var(--dh-api-blue);
 }
 
 .livermore-strategy-panel__refresh-btn:disabled {
@@ -341,9 +374,73 @@
 .livermore-strategy-panel__refresh-result {
   font-size: 12px;
   font-weight: 600;
-  color: var(--moss-color-success-500, #12a150);
+  color: var(--dh-api-green);
   padding: 2px 6px;
   white-space: nowrap;
+}
+
+/* 折叠头：标题 + 门控状态徽标 + 展开提示（由 MarketDataLivermoreSection 渲染）。
+   antd darkAlgorithm 的 header 色是钢蓝 ink，这里以 0-4-0 特异度压到页面 Nocturne ink；
+   borderless item 自带的 colorBorder 底线与容器描边重叠，一并去除。 */
+.market-data-livermore-collapse.ant-collapse > .ant-collapse-item > .ant-collapse-header {
+  color: var(--dh-api-ink);
+}
+
+.market-data-livermore-collapse.ant-collapse > .ant-collapse-item {
+  border-bottom: 0;
+}
+
+.livermore-collapse-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.livermore-collapse-label__title {
+  color: var(--dh-api-ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.livermore-collapse-label__state {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 0 7px;
+  border-radius: var(--dh-api-radius);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.livermore-collapse-label__state[data-tone="green"] {
+  background: var(--dh-api-green-soft);
+  color: var(--dh-api-green);
+}
+
+.livermore-collapse-label__state[data-tone="amber"] {
+  background: var(--dh-api-amber-soft);
+  color: var(--dh-api-amber);
+}
+
+.livermore-collapse-label__state[data-tone="red"] {
+  background: var(--dh-api-red-soft);
+  color: var(--dh-api-red);
+}
+
+.livermore-collapse-label__state[data-tone="muted"] {
+  background: var(--dh-api-panel-3);
+  color: var(--dh-api-muted);
+}
+
+.livermore-collapse-label__hint {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 500;
 }
 
 @media (max-width: 1180px) {

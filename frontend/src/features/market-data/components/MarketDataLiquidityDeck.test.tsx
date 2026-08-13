@@ -19,5 +19,7 @@ describe("MarketDataLiquidityDeck", () => {
     expect(screen.getByTestId("market-data-ncd-card")).toBeInTheDocument();
     expect(screen.getByTestId("money-slot")).toBeInTheDocument();
     expect(screen.getByTestId("ncd-slot")).toBeInTheDocument();
+    expect(screen.getByText("2 条")).toBeInTheDocument();
+    expect(screen.getByText("4 条")).toBeInTheDocument();
   });
 });

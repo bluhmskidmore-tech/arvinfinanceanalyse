@@ -21,7 +21,10 @@ function qualityTone(quality: ResultMeta["quality_flag"]): "ok" | "warn" | "erro
   return "neutral";
 }
 
-/** 紧贴主读面展示质量 / 供应商 / 降级，对应 contracts.ResultMeta（无额外 inline style=）。 */
+/**
+ * 行内来源/口径元信息条（DESIGN.md §6）：正文只保留口径 / 正式可用 / 质量 / 报告日，
+ * 供应商与降级仅在异常时占正文；版本、追踪编号等证据细节收进 title。
+ */
 export function LiveResultMetaStrip({ meta, testId, lead }: LiveResultMetaStripProps) {
   if (!meta) {
     return null;
@@ -59,45 +62,35 @@ export function LiveResultMetaStrip({ meta, testId, lead }: LiveResultMetaStripP
     { label: `口径=${basisLabel[meta.basis] ?? meta.basis}`, tone: "neutral" as const },
     { label: `正式可用=${formalUseAllowedLabel}`, tone: meta.formal_use_allowed ? ("ok" as const) : ("warn" as const) },
     { label: `质量=${qualityLabel[meta.quality_flag] ?? meta.quality_flag}`, tone: qualityTone(meta.quality_flag) },
-    { label: `供应商=${vendorLabel[meta.vendor_status] ?? meta.vendor_status}`, tone: "neutral" as const },
-    { label: `降级=${fallbackLabel}`, tone: meta.fallback_mode === "none" ? ("ok" as const) : ("warn" as const) },
     { label: `报告日=${displayValue(reportDate)}`, tone: "neutral" as const },
-    { label: `截至=${displayValue(meta.as_of_date)}`, tone: "neutral" as const },
+    ...(meta.vendor_status !== "ok"
+      ? [{ label: `供应商=${vendorLabel[meta.vendor_status] ?? meta.vendor_status}`, tone: "warn" as const }]
+      : []),
+    ...(meta.fallback_mode !== "none" ? [{ label: `降级=${fallbackLabel}`, tone: "warn" as const }] : []),
   ];
-  const versionDetailItems = [
-    { label: `供应商版本=${meta.vendor_version}` },
-    { label: `来源版本=${meta.source_version}` },
-    { label: `追踪编号=${meta.trace_id}` },
-  ];
+  const detailTitle = [
+    `供应商=${vendorLabel[meta.vendor_status] ?? meta.vendor_status}`,
+    `降级=${fallbackLabel}`,
+    `截至=${displayValue(meta.as_of_date)}`,
+    `供应商版本=${meta.vendor_version}`,
+    `来源版本=${meta.source_version}`,
+    `追踪编号=${meta.trace_id}`,
+  ].join("；");
 
   return (
-    <div className="live-result-meta-strip" data-testid={testId} role="status" aria-live="polite">
-      <div className="live-result-meta-strip__head">
-        <span className="live-result-meta-strip__lead">{lead}</span>
-      </div>
-      <div className="live-result-meta-strip__body">
-        <div className="live-result-meta-strip__items live-result-meta-strip__items--summary">
-          {summaryItems.map((item) => (
-            <span className="live-result-meta-strip__pill" data-tone={item.tone} key={item.label}>
-              {item.label}
-            </span>
-          ))}
-        </div>
-        <details className="live-result-meta-strip__version-details">
-          <summary>来源版本明细</summary>
-          <span className="live-result-meta-strip__items live-result-meta-strip__items--version">
-            {versionDetailItems.map((item) => (
-              <span
-                className="live-result-meta-strip__item live-result-meta-strip__item--long"
-                key={item.label}
-                title={item.label}
-              >
-                {item.label}
-              </span>
-            ))}
-          </span>
-        </details>
-      </div>
-    </div>
+    <p
+      className="live-result-meta-strip"
+      data-testid={testId}
+      role="status"
+      aria-live="polite"
+      title={detailTitle}
+    >
+      <span className="live-result-meta-strip__lead">{lead}</span>
+      {summaryItems.map((item) => (
+        <span className="live-result-meta-strip__item" data-tone={item.tone} key={item.label}>
+          {item.label}
+        </span>
+      ))}
+    </p>
   );
 }

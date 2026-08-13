@@ -209,6 +209,14 @@ function classifyQueryFailure(error: unknown): { kind: QueryFailureKind; message
   return { kind: "unknown", message: "Tushare 补充数据加载失败，请稍后重试。" };
 }
 
+function momTone(value: number | null | undefined): "up" | "down" | undefined {
+  const finite = toFiniteNumber(value);
+  if (finite == null || finite === 0) {
+    return undefined;
+  }
+  return finite > 0 ? "up" : "down";
+}
+
 function MoneySupplyTable({ rows }: { rows: readonly TushareMoneySupplyRow[] }) {
   return (
     <div className="market-data-tushare-table-wrap">
@@ -230,8 +238,12 @@ function MoneySupplyTable({ rows }: { rows: readonly TushareMoneySupplyRow[] }) 
               <td style={tabularNumsStyle}>{formatPct(row.m0_yoy)}</td>
               <td style={tabularNumsStyle}>{formatPct(row.m1_yoy)}</td>
               <td style={tabularNumsStyle}>{formatPct(row.m2_yoy)}</td>
-              <td style={tabularNumsStyle}>{formatPct(row.m1_mom)}</td>
-              <td style={tabularNumsStyle}>{formatPct(row.m2_mom)}</td>
+              <td style={tabularNumsStyle} data-tone={momTone(row.m1_mom)}>
+                {formatPct(row.m1_mom)}
+              </td>
+              <td style={tabularNumsStyle} data-tone={momTone(row.m2_mom)}>
+                {formatPct(row.m2_mom)}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -533,7 +545,7 @@ export function MarketDataTushareSupplementSection() {
         </div>
       )}
       {warnings.length > 0 ? (
-        <p data-testid="market-data-tushare-supplement-warnings" className="market-data-tushare-empty-hint">
+        <p data-testid="market-data-tushare-supplement-warnings" className="market-data-tushare-warning-hint">
           {warnings.join(" ")}
         </p>
       ) : null}

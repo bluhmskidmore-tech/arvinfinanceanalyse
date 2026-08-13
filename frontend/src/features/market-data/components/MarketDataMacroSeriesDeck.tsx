@@ -114,12 +114,12 @@ export function MarketDataMacroSeriesDeck({
       {stableCards.length > 0 ? (
         <>
           <div className="market-data-supplementary-tier-rail" data-testid="market-data-macro-stable-tier-rail">
-            稳定链路 · {stableSeries.length} 条 · {stableCards.length} 组
+            稳定链路 {stableSeries.length} 条 · {stableCards.length} 组
           </div>
           {renderThemeGrid(stableCards, "stable")}
         </>
       ) : (
-        <div className="market-data-series-compact-empty" data-testid="market-data-macro-stable-theme-empty">
+        <div className="market-data-supplementary-empty" data-testid="market-data-macro-stable-theme-empty">
           当前无稳定链路宏观序列。
         </div>
       )}
@@ -133,7 +133,7 @@ export function MarketDataMacroSeriesDeck({
           items={[
             {
               key: "fallback",
-              label: `降级链路 · ${fallbackSeries.length} 条 · ${fallbackCards.length} 组`,
+              label: `降级链路 ${fallbackSeries.length} 条 · ${fallbackCards.length} 组`,
               children: renderThemeGrid(fallbackCards, "fallback"),
             },
           ]}

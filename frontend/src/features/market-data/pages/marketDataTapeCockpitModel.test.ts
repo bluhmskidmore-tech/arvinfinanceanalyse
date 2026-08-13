@@ -889,4 +889,17 @@ describe("buildMarketDataTapeCockpitModel", () => {
       ]),
     );
   });
+
+  it("uses the canonical em dash for missing cockpit values", () => {
+    const model = buildMarketDataTapeCockpitModel(baseInput({
+      latestSeries: [macroPoint({ series_id: "macro-stable", latest_change: undefined })],
+    }));
+
+    expect(model.topbarUpdatedAt).toBe("—");
+    expect(model.macroLatestRows[0]?.deltaText).toBe("—");
+    expect(model.keyRateTiles.find((tile) => tile.key === "cgb10y")).toMatchObject({
+      value: "—",
+      delta: "—",
+    });
+  });
 });

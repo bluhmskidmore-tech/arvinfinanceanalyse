@@ -1,14 +1,18 @@
 import { EvidencePanel } from "../../../components/page/PagePrimitives";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import { TONE_CSS_VAR } from "../../../utils/tone";
 import type { CrossAssetWatchRow } from "../lib/crossAssetDriversPageModel";
 
 const t = designTokens;
 
-/** Token-colored dots; avoids emoji blocks that clash with antd + tabular UI. */
+/**
+ * Token-colored dots; avoids emoji blocks that clash with antd + tabular UI.
+ * 信号点着色走主题感知 CSS 变量（暗色路由由 tokens.css 重映射 --ib-*）。
+ */
 const SIGNAL_DOT: Record<CrossAssetWatchRow["signal"], { bg: string; hint: string }> = {
-  green: { bg: t.color.semantic.profit, hint: "偏多" },
-  yellow: { bg: t.color.warning[500], hint: "待确认" },
-  red: { bg: t.color.semantic.loss, hint: "偏空" },
+  green: { bg: TONE_CSS_VAR.positive, hint: "偏多" },
+  yellow: { bg: TONE_CSS_VAR.warning, hint: "待确认" },
+  red: { bg: TONE_CSS_VAR.negative, hint: "偏空" },
 };
 
 export type WatchListProps = {

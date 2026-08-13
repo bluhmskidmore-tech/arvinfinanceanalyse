@@ -1815,6 +1815,25 @@ describe("CrossAssetPage", () => {
     expect(Boolean(summary.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
   });
 
+  it("labels frontend-computed correlation/momentum/ERP sections as analytical, non-official", async () => {
+    renderPage(createApiClient({ mode: "mock" }));
+
+    const analyticsBadgeText = "分析口径 · 前端计算（非正式指标）";
+    const momentumScoreboard = await screen.findByTestId("cross-asset-momentum-scoreboard");
+    const correlationHeatmap = await screen.findByTestId("cross-asset-correlation-heatmap");
+    const erpPanel = await screen.findByTestId("cross-asset-equity-bond-erp");
+
+    expect(within(momentumScoreboard).getByTestId("cross-asset-frontend-analytics-chip")).toHaveTextContent(
+      analyticsBadgeText,
+    );
+    expect(within(correlationHeatmap).getByTestId("cross-asset-frontend-analytics-chip")).toHaveTextContent(
+      analyticsBadgeText,
+    );
+    expect(within(erpPanel).getByTestId("cross-asset-frontend-analytics-chip")).toHaveTextContent(
+      analyticsBadgeText,
+    );
+  });
+
   it("uses compact correlation matrix columns so desktop can inspect it without page spill", async () => {
     renderPage(createApiClient({ mode: "mock" }));
 

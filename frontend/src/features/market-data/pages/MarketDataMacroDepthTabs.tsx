@@ -52,10 +52,11 @@ export type MarketDataMacroDepthTabsProps = {
   embedded?: boolean;
 };
 
-const macroDepthTabLabels: Array<{ key: MacroDepthTabKey; label: string }> = [
-  { key: "curve", label: "曲线（M8）" },
+/** 技术模块标记（M8/M11/M15）按 DESIGN §7 收进 title，不进业务叙述位。 */
+const macroDepthTabLabels: Array<{ key: MacroDepthTabKey; label: string; title?: string }> = [
+  { key: "curve", label: "曲线", title: "曲线 · M8" },
   { key: "spreads", label: "信用利差" },
-  { key: "linkage", label: "压力与情景（M11/M15）" },
+  { key: "linkage", label: "压力与情景", title: "压力与情景 · M11/M15" },
 ];
 
 function scrollToAnchor(id: string) {
@@ -161,6 +162,7 @@ export function MarketDataMacroDepthTabs({
               role="tab"
               aria-selected={active}
               aria-controls={`market-data-macro-tab-${tab.key}`}
+              title={tab.title}
               onClick={() => onMacroDepthTabChange(tab.key)}
             >
               {tab.label}

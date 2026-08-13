@@ -109,6 +109,10 @@ export function NcdMatrix({
     [payload?.rows],
   );
 
+  const hasRows = dataSource.length > 0;
+  // 0 行成功态收缩为一句话空态（DESIGN §6），不再渲染空表格与空热力占满等高格。
+  const hasBody = hasRows || isLoading;
+
   return (
     <section
       data-testid="market-data-ncd-matrix"
@@ -142,14 +146,7 @@ export function NcdMatrix({
         />
       ) : null}
       {payload?.warnings?.length ? (
-        <div
-          style={{
-            marginBottom: designTokens.space[3],
-            color: designTokens.color.warning[700],
-            fontSize: designTokens.fontSize[12],
-            lineHeight: designTokens.lineHeight.normal,
-          }}
-        >
+        <div className="market-data-ncd-proxy-warning">
           {payload.warnings.map(formatNcdWarning).join(" ")}
         </div>
       ) : null}
@@ -163,7 +160,7 @@ export function NcdMatrix({
         >
           <div
             style={{
-              color: designTokens.color.danger[600],
+              color: "var(--dh-api-red)",
               fontSize: designTokens.fontSize[12],
             }}
           >
@@ -176,7 +173,12 @@ export function NcdMatrix({
           ) : null}
         </div>
       ) : null}
-      {viewMode === "both" || viewMode === "table" ? (
+      {!isLoading && !isError && !hasRows ? (
+        <div data-testid="market-data-ncd-empty" className="market-data-terminal-empty">
+          当前未返回存单 proxy 数据。
+        </div>
+      ) : null}
+      {hasBody && (viewMode === "both" || viewMode === "table") ? (
         <Table<MatrixRow>
           size="small"
           loading={isLoading}
@@ -190,7 +192,7 @@ export function NcdMatrix({
           }}
         />
       ) : null}
-      {viewMode === "both" || viewMode === "heatmap" ? (
+      {hasBody && (viewMode === "both" || viewMode === "heatmap") ? (
         <div className="market-data-rate-quote-chart-block">
           {viewMode === "both" ? <h3 className="market-data-chart-block-title">矩阵热力</h3> : null}
           <MarketDataNcdHeatmap

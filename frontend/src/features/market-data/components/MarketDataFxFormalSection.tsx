@@ -55,7 +55,14 @@ export function MarketDataFxFormalSection({
         dataIndex: "status",
         key: "status",
         width: 72,
-        render: (value: FxFormalStatusRow["status"]) => (value === "missing" ? "缺失" : "就绪"),
+        render: (value: FxFormalStatusRow["status"]) =>
+          value === "missing" ? (
+            <span className="market-data-fx-formal-status market-data-fx-formal-status--missing">
+              缺失
+            </span>
+          ) : (
+            <span className="market-data-fx-formal-status">就绪</span>
+          ),
       },
     ],
     [],
@@ -75,7 +82,12 @@ export function MarketDataFxFormalSection({
         items={[
           {
             key: "fx-formal",
-            label: buildFxFormalStatusCollapseLabel({ payload, isLoading, isError }),
+            label: (
+              <span className="market-data-fx-formal-label">
+                <span className="market-data-fx-formal-label__badge">正式口径</span>
+                {buildFxFormalStatusCollapseLabel({ payload, isLoading, isError })}
+              </span>
+            ),
             children: expanded ? (
               <div data-testid="market-data-fx-formal-panel" className="market-data-fx-formal-panel">
                 <PageAsyncSection

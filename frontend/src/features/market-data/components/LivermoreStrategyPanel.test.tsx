@@ -44,6 +44,7 @@ function makeModel(): LivermoreStrategyModel {
       formulaVersion: "rv_livermore_stock_candidates_bundle_v1",
       marketState: "HOT",
       factorMissingCount: null,
+      positionSizeHint: null,
       items: [
         {
           rank: 1,
@@ -62,6 +63,7 @@ function makeModel(): LivermoreStrategyModel {
           entryTrigger: "21.800",
           pullbackWatch: "20.500",
           defenseLine: "19.800",
+          sizeHint: null,
         },
       ],
     },
@@ -109,6 +111,56 @@ describe("LivermoreStrategyPanel", () => {
 
     fireEvent.click(within(pool).getByRole("button", { name: "移出" }));
     expect(pool).toHaveTextContent("尚未选中候选股");
+  });
+
+  it("renders the risk_budget position size hint with policy version when present", () => {
+    const model = makeModel();
+    model.stockCandidates = {
+      ...model.stockCandidates!,
+      positionSizeHint: {
+        policyVersion: "sizing_rb_v1_stock_candidate",
+        coverageDegraded: true,
+        coverageWarning: "ema10 stop_ref 缺失率超过 10%，建议仓位提示已降级。",
+        gateExposureNote: "raw_weight 为单票权重上限建议；串联 gate 敞口截断由引擎执行。",
+        shadowNote: "等权 shadow 对照仍在回测输出。",
+      },
+      items: model.stockCandidates!.items.map((item) => ({
+        ...item,
+        sizeHint: "≤ 12.5% · EMA10止损",
+      })),
+    };
+
+    render(
+      <LivermoreStrategyPanel
+        model={model}
+        isLoading={false}
+        isError={false}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    const policyLine = screen.getByTestId("livermore-position-size-hint-policy");
+    expect(policyLine).toHaveTextContent("建议仓位政策 sizing_rb_v1_stock_candidate");
+    expect(policyLine).toHaveTextContent("串联 gate 敞口截断由引擎执行");
+    expect(policyLine).toHaveTextContent("等权 shadow 对照仍在回测输出");
+    expect(policyLine).toHaveTextContent("建议仓位提示已降级");
+    expect(screen.getByTestId("livermore-stock-candidates")).toHaveTextContent(
+      "建议仓位 ≤ 12.5% · EMA10止损",
+    );
+  });
+
+  it("hides the position size hint for legacy models without the block", () => {
+    render(
+      <LivermoreStrategyPanel
+        model={makeModel()}
+        isLoading={false}
+        isError={false}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId("livermore-position-size-hint-policy")).toBeNull();
+    expect(screen.getByTestId("livermore-stock-candidates")).not.toHaveTextContent("建议仓位");
   });
 
   it("shows input freshness and degraded quality notes in data gaps", () => {

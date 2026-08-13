@@ -1,4 +1,4 @@
-import { ibTokens } from "../../../theme/designSystem";
+import { nocturneTokens } from "../../../theme/designSystem";
 import { buildSparkPath } from "../../workbench/dashboard/sparklinePath";
 
 type MarketTerminalSparklineProps = {
@@ -7,10 +7,11 @@ type MarketTerminalSparklineProps = {
   variant?: "kpi" | "ticker";
 };
 
+// 与页面 ticker delta 的 data-tone 配色语义一致（绿涨红跌，DESIGN 2026-08-11 决策），中性走蓝紫。
 function sparkStroke(tone: MarketTerminalSparklineProps["tone"]) {
-  if (tone === "up") return ibTokens.color.down;
-  if (tone === "down") return ibTokens.color.up;
-  return ibTokens.color.accent;
+  if (tone === "up") return nocturneTokens.color.green;
+  if (tone === "down") return nocturneTokens.color.red;
+  return nocturneTokens.color.blue;
 }
 
 export function MarketTerminalSparkline({
@@ -25,9 +26,7 @@ export function MarketTerminalSparkline({
     return null;
   }
 
-  const stroke = sparkStroke(tone);
   const linePath = buildSparkPath(values, width, height);
-  const areaPath = `${linePath} L ${width},${height} L 0,${height} Z`;
 
   return (
     <svg
@@ -40,12 +39,11 @@ export function MarketTerminalSparkline({
       preserveAspectRatio="none"
       aria-hidden="true"
     >
-      <path d={areaPath} fill={stroke} fillOpacity="0.06" stroke="none" />
       <path
         d={linePath}
         fill="none"
-        stroke={stroke}
-        strokeWidth="2"
+        stroke={sparkStroke(tone)}
+        strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
         vectorEffect="non-scaling-stroke"

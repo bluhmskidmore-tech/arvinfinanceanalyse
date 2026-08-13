@@ -204,22 +204,6 @@ describe("MarketDataPage", () => {
       .filter((line) => !/box-shadow\s*:\s*(?:none|var\()/.test(line));
 
     expect(privateShadowLines).toEqual([]);
-    const externalMapStatusRule = css.match(/\.market-data-overview-external-map__rows b\s*{(?<body>[^}]*)}/)
-      ?.groups?.body;
-    expect(externalMapStatusRule).toContain("white-space: normal");
-    expect(externalMapStatusRule).toContain("overflow: visible");
-    expect(externalMapStatusRule).not.toContain("text-overflow: ellipsis");
-
-    const endpointStatusRule = css.match(
-      /\.market-data-overview-board\[data-variant="data-overview"\] \.market-data-overview-api-surface article b\s*{(?<body>[^}]*)}/,
-    )?.groups?.body;
-    expect(endpointStatusRule).toContain("white-space: normal");
-    expect(endpointStatusRule).toContain("overflow: visible");
-    expect(endpointStatusRule).not.toContain("text-overflow: ellipsis");
-    const endpointNoteRule = css.match(
-      /\.market-data-overview-board\[data-variant="data-overview"\] \.market-data-overview-api-surface article p\s*{(?<body>[^}]*)}/,
-    )?.groups?.body;
-    expect(endpointNoteRule).toContain("display: block");
   });
 
   it("renders the market data page as an institutional terminal cockpit", async () => {
@@ -238,7 +222,7 @@ describe("MarketDataPage", () => {
     const supplyEvidence = screen.getByTestId("market-data-supply-evidence-rail");
     expect(within(supplyEvidence).getByText("供给证据")).toBeInTheDocument();
     expect(within(supplyEvidence).getByText("下一步动作")).toBeInTheDocument();
-    expect(within(formalRatesBoard).getByText("正式利率")).toBeInTheDocument();
+    expect(within(formalRatesBoard).getByText("01 正式利率")).toBeInTheDocument();
     expect(screen.getByTestId("market-data-formal-rates-table")).toBeInTheDocument();
     expect(screen.getByTestId("market-data-formal-rates-curve")).toBeInTheDocument();
     expect(screen.getByTestId("market-data-key-rate-list")).toBeInTheDocument();
@@ -1768,7 +1752,7 @@ describe("MarketDataPage", () => {
     fireEvent.click(await screen.findByTestId("market-data-macro-tab-trigger-spreads"));
     expect(await screen.findByTestId("market-data-spreads-live-meta")).toHaveTextContent("联动读面");
 
-    fireEvent.click(screen.getByText("宏观-债市联动（分析口径，点击展开）"));
+    fireEvent.click(screen.getByText("宏观-债市联动"));
     expect(await screen.findByTestId("market-data-linkage-caveat")).toBeInTheDocument();
     expect(screen.getByTestId("market-data-linkage-caveat")).toHaveTextContent("分析口径");
     expect(screen.getByTestId("market-data-linkage-caveat")).toHaveTextContent("非正式口径");

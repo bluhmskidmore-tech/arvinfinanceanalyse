@@ -5,6 +5,7 @@ import type {
   LivermoreDiagnosticSeverity,
   LivermoreMarketGate,
   LivermoreOutputKey,
+  LivermorePositionSizeHintItem,
   LivermoreRuleReadinessKey,
   LivermoreRuleReadinessStatus,
   LivermoreStrategyPayload,
@@ -192,6 +193,13 @@ export type LivermoreStrategyModel = {
     formulaVersion: string;
     marketState: LivermoreStrategyPayload["market_gate"]["state"];
     factorMissingCount: number | null;
+    positionSizeHint: null | {
+      policyVersion: string;
+      coverageDegraded: boolean;
+      coverageWarning: string | null;
+      gateExposureNote: string;
+      shadowNote: string;
+    };
     items: Array<{
       rank: number;
       stockCode: string;
@@ -209,6 +217,7 @@ export type LivermoreStrategyModel = {
       closeStrength: string;
       gapNorm: string;
       abnormalTurnover: string;
+      sizeHint: string | null;
     }>;
   };
   meanReversionCandidates: null | {
@@ -354,6 +363,20 @@ function formatMetric(value: number | null | undefined, digits = 3) {
   return value == null ? "—" : value.toFixed(digits);
 }
 
+function formatPositionSizeHintLabel(
+  hint: LivermorePositionSizeHintItem | undefined,
+): string | null {
+  if (!hint || typeof hint.raw_weight !== "number" || !Number.isFinite(hint.raw_weight)) {
+    return null;
+  }
+  const parts = [`≤ ${(hint.raw_weight * 100).toFixed(1)}%`];
+  parts.push(hint.stop_basis === "fallback" ? "fallback止损" : "EMA10止损");
+  if (hint.capped) {
+    parts.push("已触单票上限");
+  }
+  return parts.join(" · ");
+}
+
 function formatFreshnessLabel(gap: LivermoreStrategyPayload["data_gaps"][number]) {
   const hasFreshness =
     gap.input != null ||
@@ -446,29 +469,46 @@ export function buildLivermoreStrategyModel(input: {
         }
       : null,
     stockCandidates: payload.stock_candidates
-      ? {
-          formulaVersion: payload.stock_candidates.formula_version,
-          marketState: payload.stock_candidates.market_state,
-          factorMissingCount: payload.stock_candidates.fundamental_overlay?.factor_missing_count ?? null,
-          items: payload.stock_candidates.items.map((item) => ({
-            rank: item.rank,
-            stockCode: item.stock_code,
-            stockName: item.stock_name,
-            sectorName: item.sector_name,
-            sectorRank: item.sector_rank,
-            close: formatMetric(item.close),
-            breakoutLevel: formatMetric(item.breakout_level),
-            ma20: formatMetric(item.ma20),
-            ma60: formatMetric(item.ma60),
-            ma120: formatMetric(item.ma120),
-            entryTrigger: formatMetric(item.breakout_level),
-            pullbackWatch: formatMetric(item.ma20),
-            defenseLine: formatMetric(item.ma60),
-            closeStrength: formatMetric(item.close_strength),
-            gapNorm: formatMetric(item.gap_norm),
-            abnormalTurnover: formatMetric(item.abnormal_turnover),
-          })),
-        }
+      ? (() => {
+          const rawHint = payload.stock_candidates.position_size_hint ?? null;
+          const hintByStockCode = new Map(
+            (rawHint?.items ?? []).map((item) => [item.stock_code, item]),
+          );
+          return {
+            formulaVersion: payload.stock_candidates.formula_version,
+            marketState: payload.stock_candidates.market_state,
+            factorMissingCount:
+              payload.stock_candidates.fundamental_overlay?.factor_missing_count ?? null,
+            positionSizeHint: rawHint
+              ? {
+                  policyVersion: rawHint.policy_version,
+                  coverageDegraded: rawHint.coverage_degraded === true,
+                  coverageWarning: rawHint.coverage_warning ?? null,
+                  gateExposureNote: rawHint.gate_exposure_note,
+                  shadowNote: rawHint.equal_weight_shadow_note,
+                }
+              : null,
+            items: payload.stock_candidates.items.map((item) => ({
+              rank: item.rank,
+              stockCode: item.stock_code,
+              stockName: item.stock_name,
+              sectorName: item.sector_name,
+              sectorRank: item.sector_rank,
+              close: formatMetric(item.close),
+              breakoutLevel: formatMetric(item.breakout_level),
+              ma20: formatMetric(item.ma20),
+              ma60: formatMetric(item.ma60),
+              ma120: formatMetric(item.ma120),
+              entryTrigger: formatMetric(item.breakout_level),
+              pullbackWatch: formatMetric(item.ma20),
+              defenseLine: formatMetric(item.ma60),
+              closeStrength: formatMetric(item.close_strength),
+              gapNorm: formatMetric(item.gap_norm),
+              abnormalTurnover: formatMetric(item.abnormal_turnover),
+              sizeHint: formatPositionSizeHintLabel(hintByStockCode.get(item.stock_code)),
+            })),
+          };
+        })()
       : null,
     meanReversionCandidates: payload.mean_reversion_candidates
       ? {

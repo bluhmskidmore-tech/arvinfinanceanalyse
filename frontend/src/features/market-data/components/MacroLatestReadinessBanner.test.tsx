@@ -145,4 +145,34 @@ describe("MacroLatestReadinessBanner", () => {
     expect(banner).not.toHaveTextContent("USD/CNH offshore");
     expect(banner).not.toHaveTextContent("Macro series outside latest response");
   });
+
+  it("renders as a quiet single-line strip with tone attributes instead of an antd alert", () => {
+    render(
+      <MacroLatestReadinessBanner
+        testId="macro-readiness-notice"
+        isLoading={false}
+        isError={false}
+        hasSeries
+        meta={makeMeta()}
+        watermarkLedger={makeLedger()}
+      />,
+    );
+    const notice = screen.getByTestId("macro-readiness-notice");
+    expect(notice).toHaveAttribute("data-tone", "notice");
+    expect(notice).toHaveClass("market-data-macro-readiness-banner");
+    expect(notice.className).not.toContain("ant-alert");
+    // 单行收敛：完整文案收进 title，供 hover 查看。
+    expect(notice).toHaveAttribute("title", notice.textContent ?? "");
+
+    render(
+      <MacroLatestReadinessBanner
+        testId="macro-readiness-error"
+        isLoading={false}
+        isError
+        hasSeries={false}
+        meta={undefined}
+      />,
+    );
+    expect(screen.getByTestId("macro-readiness-error")).toHaveAttribute("data-tone", "error");
+  });
 });

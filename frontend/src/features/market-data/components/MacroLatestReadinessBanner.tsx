@@ -1,5 +1,3 @@
-import { Alert } from "antd";
-
 import type {
   ExternalDataWatermarkEntry,
   ExternalDataWatermarkLedger,
@@ -40,24 +38,6 @@ function qualityLabel(value: ResultMeta["quality_flag"]) {
   if (value === "error") return "错误";
   if (value === "stale") return "陈旧";
   return value;
-}
-
-function alertType(
-  tone: "loading" | "error" | "empty" | "warn" | "ok",
-): "info" | "error" | "warning" | "success" {
-  if (tone === "error") {
-    return "error";
-  }
-  if (tone === "warn") {
-    return "warning";
-  }
-  if (tone === "empty") {
-    return "warning";
-  }
-  if (tone === "loading") {
-    return "info";
-  }
-  return "success";
 }
 
 function isLaggingTier(entry: ExternalDataWatermarkEntry) {
@@ -160,12 +140,16 @@ export function MacroLatestReadinessBanner({
     );
   }
 
+  const message = parts.join(" ");
   return (
-    <Alert
+    <p
       data-testid={testId}
-      type={alertType(tone)}
-      showIcon
-      message={parts.join(" ")}
-    />
+      className="market-data-macro-readiness-banner"
+      data-tone={tone === "error" ? "error" : "notice"}
+      role="status"
+      title={message}
+    >
+      {message}
+    </p>
   );
 }

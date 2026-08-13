@@ -75,6 +75,8 @@ describe("MarketDataMacroSeriesDeck", () => {
     expect(screen.getByTestId("market-data-macro-theme-fallback-equity")).toBeInTheDocument();
     expect(screen.getByTestId("market-data-series-stable-rates-M001")).toHaveTextContent("DR007");
     expect(screen.getByTestId("market-data-macro-stable-tier-rail")).toHaveTextContent("稳定链路");
-    expect(screen.getByText("稳定链路", { selector: ".market-data-pill-tag" })).toBeInTheDocument();
+    expect(
+      screen.getByText("稳定链路", { selector: ".market-data-series-category-card__kicker" }),
+    ).toBeInTheDocument();
   });
 });

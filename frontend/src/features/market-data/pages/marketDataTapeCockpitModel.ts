@@ -23,6 +23,7 @@ import { marketCatalogRefreshTier, marketSeriesRefreshTier } from "../lib/market
 import type { LivermoreStrategyModel } from "../lib/livermoreStrategyModel";
 import type { MarketDataTerminalModel } from "../lib/marketDataTerminalModel";
 import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../../../utils/choiceMacroFormat";
+import { EM_DASH } from "../../../utils/format";
 
 type Tone = "formal" | "analytical" | "proxy" | "gap" | "neutral";
 
@@ -283,7 +284,7 @@ function marketDataBasisLabel(value: string | null | undefined): string {
   if (normalized.includes("mock")) return "演示数据";
   if (normalized.includes("source-pending")) return "未接入";
   if (normalized === "unknown" || normalized === "pending") return "待确认";
-  return normalized || "--";
+  return normalized || EM_DASH;
 }
 
 function marketDataStatusLabel(value: string | null | undefined): string {
@@ -306,7 +307,7 @@ function marketDataStatusLabel(value: string | null | undefined): string {
     unknown: "待确认",
     vendor_unavailable: "技术异常",
   };
-  return labels[value ?? ""] ?? value ?? "--";
+  return labels[value ?? ""] ?? value ?? EM_DASH;
 }
 
 function formalUseAllowedText(value: boolean | undefined): string {
@@ -321,30 +322,30 @@ function resultMetaFallbackLabel(value: ResultMeta["fallback_mode"] | undefined)
 }
 
 function resultMetaBusinessDate(meta: ResultMeta | undefined): string {
-  return meta?.resolved_report_date ?? meta?.as_of_date ?? meta?.fallback_date ?? meta?.requested_report_date ?? "--";
+  return meta?.resolved_report_date ?? meta?.as_of_date ?? meta?.fallback_date ?? meta?.requested_report_date ?? EM_DASH;
 }
 
 function formatGeneratedAt(value: string | null | undefined): string {
-  return value ? value.replace("T", " ").slice(0, 16) : "--";
+  return value ? value.replace("T", " ").slice(0, 16) : EM_DASH;
 }
 
 function formatFxPreviewRate(value: number | null | undefined) {
-  if (value == null || Number.isNaN(value)) return "--";
+  if (value == null || Number.isNaN(value)) return EM_DASH;
   return value.toFixed(4);
 }
 
 function formatNcdProxyRate(value: number | null | undefined): string {
-  if (value == null || Number.isNaN(value)) return "--";
+  if (value == null || Number.isNaN(value)) return EM_DASH;
   return value.toFixed(3);
 }
 
 function formatTusharePct(value: number | null | undefined): string {
-  if (value == null || Number.isNaN(value)) return "--";
+  if (value == null || Number.isNaN(value)) return EM_DASH;
   return `${value.toFixed(2)}%`;
 }
 
 function formatTusharePp(value: number | null | undefined): string {
-  if (value == null || Number.isNaN(value)) return "--";
+  if (value == null || Number.isNaN(value)) return EM_DASH;
   const sign = value > 0 ? "+" : "";
   return `${sign}${value.toFixed(2)}pp`;
 }
@@ -456,7 +457,7 @@ function summarizeChoiceNewsEvent(event: ChoiceNewsEvent): string {
 }
 
 function formatPreviewTime(value: string | null | undefined): string {
-  if (!value) return "--";
+  if (!value) return EM_DASH;
   try {
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return value.slice(0, 16);
@@ -488,7 +489,7 @@ function latestTradeDate(series: ChoiceMacroLatestPoint[], fallback: string): st
   return dates.length > 0 ? dates.sort((left, right) => left.localeCompare(right))[dates.length - 1] : fallback;
 }
 
-function latestDateText(values: Array<string | null | undefined>, fallback = "--"): string {
+function latestDateText(values: Array<string | null | undefined>, fallback = EM_DASH): string {
   const dates = values.filter((value): value is string => Boolean(value));
   return dates.length > 0 ? dates.sort((left, right) => left.localeCompare(right))[dates.length - 1] : fallback;
 }
@@ -503,7 +504,7 @@ function normalizeCompactDate(value: string | null | undefined): string | null {
 
 function normalizeCompactMonth(value: string | null | undefined): string {
   const normalized = normalizeCompactDate(value);
-  return normalized ? normalized.slice(0, 7) : "--";
+  return normalized ? normalized.slice(0, 7) : EM_DASH;
 }
 
 function fxAnalyticalObservationCount(groups: FxAnalyticalPayload["groups"]): number {
@@ -544,7 +545,7 @@ export function buildMarketDataTapeCockpitModel(input: BuildMarketDataTapeCockpi
   const analyticalUseCount = 3 + input.fxAnalyticalGroups.length + (input.latestSeries.length > 0 ? 1 : 0) + 1;
   const formalRatesBusinessDate = resultMetaBusinessDate(input.formalRatesMeta);
   const formalRatesDisplayDate =
-    formalRatesBusinessDate === "--" ? input.watchDate || "--" : formalRatesBusinessDate;
+    formalRatesBusinessDate === EM_DASH ? input.watchDate || EM_DASH : formalRatesBusinessDate;
   const dataLatestDate = latestTradeDate(input.formalRateSeries, input.watchDate || formalRatesDisplayDate);
   const topbarUpdatedAt = formatGeneratedAt(
     input.formalRatesMeta?.generated_at ??
@@ -594,7 +595,7 @@ export function buildMarketDataTapeCockpitModel(input: BuildMarketDataTapeCockpi
     pairLabel: row.pair_label,
     rateText: formatFxPreviewRate(row.mid_rate),
     statusText: row.is_carry_forward ? "数据延迟" : marketDataStatusLabel(row.status),
-    dateText: row.trade_date ?? row.observed_trade_date ?? "--",
+    dateText: row.trade_date ?? row.observed_trade_date ?? EM_DASH,
   }));
   const macroLatestRows = input.latestSeries
     .filter((point) => marketSeriesRefreshTier(point) !== "isolated")
@@ -603,7 +604,7 @@ export function buildMarketDataTapeCockpitModel(input: BuildMarketDataTapeCockpi
       key: point.series_id,
       name: compactLatestSeriesLabel(point),
       valueText: formatChoiceMacroValue(point, { spaceBeforeUnit: false }),
-      deltaText: formatChoiceMacroDelta(point, { spaceBeforeUnit: false, emptyDisplay: "--" }),
+      deltaText: formatChoiceMacroDelta(point, { spaceBeforeUnit: false, emptyDisplay: EM_DASH }),
       dateText: point.trade_date,
       tierText: refreshTierLabel(marketSeriesRefreshTier(point)),
     }));
@@ -612,7 +613,7 @@ export function buildMarketDataTapeCockpitModel(input: BuildMarketDataTapeCockpi
     label: row.label,
     threeMonthText: formatNcdProxyRate(row["3M"]),
     oneYearText: formatNcdProxyRate(row["1Y"]),
-    quoteCountText: row.quote_count == null ? "--" : String(row.quote_count),
+    quoteCountText: row.quote_count == null ? EM_DASH : String(row.quote_count),
   }));
   const livermoreSignalObservationCount =
     (input.livermoreSignalConfluence?.entry_observations.length ?? 0) +
@@ -745,7 +746,7 @@ export function buildMarketDataTapeCockpitModel(input: BuildMarketDataTapeCockpi
   const macroToolkitHitCount = macroToolkitCoverage?.hit_count ?? 0;
   const macroToolkitSignalCardCount = input.macroToolkitAnalysis?.signal_cards.length ?? 0;
   const macroToolkitHitRateText =
-    macroToolkitCoverage == null ? "--" : `${Math.round(macroToolkitCoverage.hit_rate * 100)}%`;
+    macroToolkitCoverage == null ? EM_DASH : `${Math.round(macroToolkitCoverage.hit_rate * 100)}%`;
   const supplementalEndpointReadCount = [
     input.tushareSupplement,
     input.macroToolkitAnalysis,
@@ -805,7 +806,7 @@ export function buildMarketDataTapeCockpitModel(input: BuildMarketDataTapeCockpi
       label: "Eco Calendar",
       value: `${tushareEcoRows}`,
       detail: latestTushareEcoRow
-        ? `${normalizeCompactDate(latestTushareEcoRow.event_date) ?? "--"} ${latestTushareEcoRow.currency ?? "event"}`
+        ? `${normalizeCompactDate(latestTushareEcoRow.event_date) ?? EM_DASH} ${latestTushareEcoRow.currency ?? "event"}`
         : "no event rows",
     },
     {
@@ -890,7 +891,7 @@ export function buildMarketDataTapeCockpitModel(input: BuildMarketDataTapeCockpi
     ...((input.tushareSupplement?.eco_cal_rows ?? []).map((row) => normalizeCompactDate(row.event_date))),
     ...input.calendarRows.map((row) => row.date),
     ...(input.newsPayload?.events.map((event) => event.received_at.slice(0, 10)) ?? []),
-  ], "--");
+  ], EM_DASH);
   const externalComparisonPlacements: MarketDataExternalComparisonPlacementRow[] = [
     {
       key: "macro-rates",
@@ -914,7 +915,7 @@ export function buildMarketDataTapeCockpitModel(input: BuildMarketDataTapeCockpi
       targetSurface: "/stock-analysis",
       compareWith: "CSI300, valuation, breadth, limit flags, concept membership",
       evidence: equityComparisonEvidence.length > 0 ? equityComparisonEvidence.join(" / ") : "pending equity source",
-      dateText: latestDateText([csi300Point?.trade_date, csi300PePoint?.trade_date], "--"),
+      dateText: latestDateText([csi300Point?.trade_date, csi300PePoint?.trade_date], EM_DASH),
       statusText: equityPlacementStatus.statusText,
     },
     {
@@ -924,7 +925,7 @@ export function buildMarketDataTapeCockpitModel(input: BuildMarketDataTapeCockpi
       targetSurface: "/cross-asset + /risk-tensor",
       compareWith: "Copper/aluminum vs PMI/PPI, rates, and equity sectors",
       evidence: formatLatestSeriesEvidence(commodityPoint),
-      dateText: commodityPoint?.trade_date ?? "--",
+      dateText: commodityPoint?.trade_date ?? EM_DASH,
       statusText: commodityPlacementStatus.statusText,
     },
     {
@@ -1368,10 +1369,10 @@ export function buildMarketDataTapeCockpitModel(input: BuildMarketDataTapeCockpi
       { key: "date", tone: "neutral", label: "数据最新", value: dataLatestDate, unit: "多数组度", detail: "" },
     ],
     keyRateTiles: [
-      { key: "cgb10y", label: "10Y 国债", value: cgb10y?.rateText ?? "--", delta: cgb10y?.deltaText ?? "--" },
-      { key: "cgb5y", label: "5Y 国债", value: cgb5y?.rateText ?? "--", delta: cgb5y?.deltaText ?? "--" },
-      { key: "dr007", label: "DR007", value: dr007?.rateText ?? "--", delta: dr007?.deltaText ?? "--" },
-      { key: "shibor3m", label: "SHIBOR 3M", value: shibor3m?.rateText ?? "--", delta: shibor3m?.deltaText ?? "--" },
+      { key: "cgb10y", label: "10Y 国债", value: cgb10y?.rateText ?? EM_DASH, delta: cgb10y?.deltaText ?? EM_DASH },
+      { key: "cgb5y", label: "5Y 国债", value: cgb5y?.rateText ?? EM_DASH, delta: cgb5y?.deltaText ?? EM_DASH },
+      { key: "dr007", label: "DR007", value: dr007?.rateText ?? EM_DASH, delta: dr007?.deltaText ?? EM_DASH },
+      { key: "shibor3m", label: "SHIBOR 3M", value: shibor3m?.rateText ?? EM_DASH, delta: shibor3m?.deltaText ?? EM_DASH },
     ],
     moneyRows: input.terminalModel.moneyMarket.rows.slice(0, 4),
     fundingCurveSeries,

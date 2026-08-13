@@ -3,7 +3,8 @@ import { Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
 import type { ChoiceMacroLatestPoint } from "../../../api/contracts";
-import { designTokens } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
+import { TONE_CSS_VAR } from "../../../utils/tone";
 import type {
   MarketDataMoneyMarketRow,
   MarketDataMoneyMarketSection,
@@ -14,14 +15,15 @@ import { MarketDataSeriesTimeChart } from "./MarketDataSeriesTimeChart";
 import { MarketTerminalSparkline } from "./MarketTerminalSparkline";
 import { marketDataBlockTitleStyle, marketDataPanelStyle } from "./marketDataPanelStyle";
 
+// 资金利率下行=偏多（positive）、上行=偏空（negative）；着色走主题感知 CSS 变量。
 function deltaTextColor(value: string) {
   if (value.startsWith("-")) {
-    return designTokens.color.semantic.profit;
+    return TONE_CSS_VAR.positive;
   }
   if (value.startsWith("+")) {
-    return designTokens.color.semantic.loss;
+    return TONE_CSS_VAR.negative;
   }
-  return designTokens.color.neutral[700];
+  return TONE_CSS_VAR.neutral;
 }
 
 function sparkToneFromDelta(delta: string): "up" | "down" | "flat" {
@@ -112,7 +114,7 @@ export function MoneyMarketTable({
               variant="ticker"
             />
           ) : (
-            "—"
+            EM_DASH
           ),
       },
       { title: "交易日", dataIndex: "tradeDate", key: "tradeDate", width: 86 },

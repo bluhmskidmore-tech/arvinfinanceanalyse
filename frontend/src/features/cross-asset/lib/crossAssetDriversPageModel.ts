@@ -11,6 +11,7 @@ import type {
 } from "../../../api/contracts";
 import type { CalendarItem } from "../../../components/CalendarList";
 import { mapResearchCalendarEventToCalendarItem } from "../../../lib/researchCalendarToCalendarItem";
+import { EM_DASH } from "../../../utils/format";
 import type { ResolvedCrossAssetKpi } from "./crossAssetKpiModel";
 import {
   linkageUnavailableEvidence,
@@ -1122,7 +1123,7 @@ function hasUsableKpi(kpi: ResolvedCrossAssetKpi | undefined): kpi is ResolvedCr
     return false;
   }
   // A landed latest value is usable even when change/sparkline history is temporarily thin.
-  return kpi.valueLabel !== "—";
+  return kpi.valueLabel !== EM_DASH;
 }
 
 function kpiDateSuffix(kpi: ResolvedCrossAssetKpi) {
@@ -1236,7 +1237,7 @@ const CROSS_ASSET_EVIDENCE_UNIT_ZH: Record<string, string> = {
 function formatCrossAssetEvidenceUnitLabel(unit: string | null | undefined, fallback: string) {
   const raw = unit?.trim() || fallback.trim();
   if (!raw) {
-    return "—";
+    return EM_DASH;
   }
   return CROSS_ASSET_EVIDENCE_UNIT_ZH[raw.toLowerCase()] ?? raw;
 }
@@ -1274,8 +1275,8 @@ export function buildCrossAssetEquityEvidenceItems(
       key: definition.key,
       label: definition.label,
       status: equityEvidenceStatusFromKpi(kpi, latestMeta),
-      valueLabel: kpi?.valueLabel ?? "—",
-      changeLabel: kpi?.changeLabel ?? "—",
+      valueLabel: kpi?.valueLabel ?? EM_DASH,
+      changeLabel: kpi?.changeLabel ?? EM_DASH,
       unitLabel: unitLabelFromKpi(kpi, definition.unitFallback),
       tradeDate: kpi?.tradeDate ?? null,
       sourceLabel: sourceLabelFromKpi(kpi, definition.sourceFallback),

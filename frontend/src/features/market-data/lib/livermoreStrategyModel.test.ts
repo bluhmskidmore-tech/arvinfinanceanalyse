@@ -500,6 +500,218 @@ describe("livermoreStrategyModel", () => {
     expect(model.stockCandidates?.factorMissingCount).toBeNull();
   });
 
+  it("maps the risk_budget position_size_hint onto candidates when the backend provides it", () => {
+    const model = buildLivermoreStrategyModel({
+      envelope: makeEnvelope({
+        supported_outputs: ["market_gate", "sector_rank", "stock_candidates"],
+        stock_candidates: {
+          as_of_date: "2026-04-30",
+          formula_version: "rv_livermore_stock_candidates_bundle_v7",
+          market_state: "HOT",
+          input_stock_count: 2,
+          candidate_count: 2,
+          excluded_stock_count: 0,
+          insufficient_history_count: 0,
+          items: [
+            {
+              rank: 1,
+              stock_code: "000001.SZ",
+              stock_name: "Alpha",
+              sector_code: "S270000",
+              sector_name: "电子",
+              sector_rank: 1,
+              close: 22,
+              breakout_level: 21.8,
+              ma20: 20.5,
+              ma60: 19.8,
+              ma120: 18.2,
+              close_strength: 0.83,
+              gap_norm: -0.12,
+              abnormal_turnover: 1.39,
+            },
+            {
+              rank: 2,
+              stock_code: "600000.SH",
+              stock_name: "Beta",
+              sector_code: "S480000",
+              sector_name: "银行",
+              sector_rank: 2,
+              close: 10,
+              breakout_level: 9.8,
+              ma20: 9.5,
+              ma60: 9.2,
+              ma120: 8.9,
+              close_strength: 0.91,
+              gap_norm: 0.05,
+              abnormal_turnover: 1.5,
+            },
+          ],
+          position_size_hint: {
+            policy_version: "sizing_rb_v1_stock_candidate",
+            sizing_mode: "risk_budget",
+            signal_kind: "stock_candidate",
+            risk_per_trade: 0.005,
+            single_name_cap: 0.25,
+            fallback_stop_distance_pct: 0.08,
+            stop_basis: "ema10_stop_ref",
+            items: [
+              {
+                stock_code: "000001.SZ",
+                raw_weight: 0.125,
+                stop_distance_pct: 0.04,
+                stop_basis: "ema10_stop_ref",
+                capped: false,
+              },
+              {
+                stock_code: "600000.SH",
+                raw_weight: 0.0625,
+                stop_distance_pct: 0.08,
+                stop_basis: "fallback",
+                capped: false,
+              },
+            ],
+            stop_ref_fallback_count: 1,
+            stop_ref_missing_ratio: 0.5,
+            coverage_degraded: true,
+            coverage_warning: "ema10 stop_ref 缺失率超过 10%，建议仓位提示已降级。",
+            gate_exposure_note: "raw_weight 为单票权重上限建议；串联 gate 敞口截断由引擎执行。",
+            equal_weight_shadow_note: "等权 shadow 对照仍在回测输出。",
+          },
+        },
+      }),
+    });
+
+    expect(model.stockCandidates?.positionSizeHint).toEqual({
+      policyVersion: "sizing_rb_v1_stock_candidate",
+      coverageDegraded: true,
+      coverageWarning: "ema10 stop_ref 缺失率超过 10%，建议仓位提示已降级。",
+      gateExposureNote: "raw_weight 为单票权重上限建议；串联 gate 敞口截断由引擎执行。",
+      shadowNote: "等权 shadow 对照仍在回测输出。",
+    });
+    expect(model.stockCandidates?.items[0]?.sizeHint).toBe("≤ 12.5% · EMA10止损");
+    expect(model.stockCandidates?.items[1]?.sizeHint).toBe("≤ 6.3% · fallback止损");
+  });
+
+  it("marks capped hints and leaves candidates without a hint entry as null", () => {
+    const model = buildLivermoreStrategyModel({
+      envelope: makeEnvelope({
+        supported_outputs: ["market_gate", "sector_rank", "stock_candidates"],
+        stock_candidates: {
+          as_of_date: "2026-04-30",
+          formula_version: "rv_livermore_stock_candidates_bundle_v7",
+          market_state: "HOT",
+          input_stock_count: 2,
+          candidate_count: 2,
+          excluded_stock_count: 0,
+          insufficient_history_count: 0,
+          items: [
+            {
+              rank: 1,
+              stock_code: "000001.SZ",
+              stock_name: "Alpha",
+              sector_code: "S270000",
+              sector_name: "电子",
+              sector_rank: 1,
+              close: 22,
+              breakout_level: 21.8,
+              ma20: 20.5,
+              ma60: 19.8,
+              ma120: 18.2,
+              close_strength: 0.83,
+              gap_norm: -0.12,
+              abnormal_turnover: 1.39,
+            },
+            {
+              rank: 2,
+              stock_code: "600000.SH",
+              stock_name: "Beta",
+              sector_code: "S480000",
+              sector_name: "银行",
+              sector_rank: 2,
+              close: 10,
+              breakout_level: 9.8,
+              ma20: 9.5,
+              ma60: 9.2,
+              ma120: 8.9,
+              close_strength: 0.91,
+              gap_norm: 0.05,
+              abnormal_turnover: 1.5,
+            },
+          ],
+          position_size_hint: {
+            policy_version: "sizing_rb_v1_stock_candidate",
+            sizing_mode: "risk_budget",
+            signal_kind: "stock_candidate",
+            risk_per_trade: 0.005,
+            single_name_cap: 0.25,
+            fallback_stop_distance_pct: 0.08,
+            stop_basis: "ema10_stop_ref",
+            items: [
+              {
+                stock_code: "000001.SZ",
+                raw_weight: 0.25,
+                stop_distance_pct: 0.01,
+                stop_basis: "ema10_stop_ref",
+                capped: true,
+              },
+            ],
+            stop_ref_fallback_count: 0,
+            stop_ref_missing_ratio: 0,
+            coverage_degraded: false,
+            coverage_warning: null,
+            gate_exposure_note: "raw_weight 为单票权重上限建议；串联 gate 敞口截断由引擎执行。",
+            equal_weight_shadow_note: "等权 shadow 对照仍在回测输出。",
+          },
+        },
+      }),
+    });
+
+    expect(model.stockCandidates?.positionSizeHint?.coverageDegraded).toBe(false);
+    expect(model.stockCandidates?.positionSizeHint?.coverageWarning).toBeNull();
+    expect(model.stockCandidates?.items[0]?.sizeHint).toBe(
+      "≤ 25.0% · EMA10止损 · 已触单票上限",
+    );
+    expect(model.stockCandidates?.items[1]?.sizeHint).toBeNull();
+  });
+
+  it("keeps position_size_hint null for legacy stock_candidates payloads without the block", () => {
+    const model = buildLivermoreStrategyModel({
+      envelope: makeEnvelope({
+        supported_outputs: ["market_gate", "sector_rank", "stock_candidates"],
+        stock_candidates: {
+          as_of_date: "2026-04-30",
+          formula_version: "rv_livermore_stock_candidates_bundle_v1",
+          market_state: "HOT",
+          input_stock_count: 1,
+          candidate_count: 1,
+          excluded_stock_count: 0,
+          insufficient_history_count: 0,
+          items: [
+            {
+              rank: 1,
+              stock_code: "000001.SZ",
+              stock_name: "Alpha",
+              sector_code: "S270000",
+              sector_name: "电子",
+              sector_rank: 1,
+              close: 22,
+              breakout_level: 21.8,
+              ma20: 20.5,
+              ma60: 19.8,
+              ma120: 18.2,
+              close_strength: 0.83,
+              gap_norm: -0.12,
+              abnormal_turnover: 1.39,
+            },
+          ],
+        },
+      }),
+    });
+
+    expect(model.stockCandidates?.positionSizeHint).toBeNull();
+    expect(model.stockCandidates?.items[0]?.sizeHint).toBeNull();
+  });
+
   it("derives entryCostAvailable for risk-exit items, defaulting to true for legacy payloads without the flag", () => {
     const modelWithMissingCost = buildLivermoreStrategyModel({
       envelope: makeEnvelope({
