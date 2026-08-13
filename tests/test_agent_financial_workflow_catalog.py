@@ -112,3 +112,150 @@ def test_unknown_workflow_returns_none():
         )
         is None
     )
+
+
+# —— envelope 形状用例：确保切片验证命令能直接覆盖 plan/execute 契约 ——
+
+# 与目录条目一致的 (workflow_id, slash 命令, mapped_intents)；目录调整后必须同步。
+_WORKFLOW_CASES = [
+    (
+        "portfolio_review",
+        "/portfolio-review",
+        ["portfolio_overview", "duration_risk", "credit_exposure"],
+    ),
+    ("pnl_review", "/pnl-review", ["pnl_summary", "pnl_bridge", "product_pnl"]),
+    ("risk_memo", "/risk-memo", ["duration_risk", "credit_exposure", "risk_tensor"]),
+    ("market_brief", "/market-brief", ["market_data", "news"]),
+]
+
+
+def _tool_module():
+    return load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+
+
+def _request_module():
+    return load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+
+def _stub_intent_handler(intent: str, calls: list[str]):
+    def _handler(request):
+        calls.append(intent)
+        return {
+            "answer": f"{intent} result",
+            "basis": "formal",
+            "result_kind": f"agent.{intent}",
+            "formal_use_allowed": True,
+            "source_version": f"sv_{intent}",
+            "quality_flag": "ok",
+            "row_count": 2,
+            "tables_used": [f"fact_{intent}"],
+            "cards": [{"type": "metric", "title": intent, "value": "2"}],
+        }
+
+    return _handler
+
+
+def _build_tool(tmp_path, mapped_intents: list[str], calls: list[str]):
+    return _tool_module().AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers={
+            intent: _stub_intent_handler(intent, calls) for intent in mapped_intents
+        },
+    )
+
+
+@pytest.mark.parametrize(("workflow_id", "slash_command", "mapped_intents"), _WORKFLOW_CASES)
+def test_plan_envelope_shape_for_each_financial_workflow(
+    tmp_path, workflow_id, slash_command, mapped_intents
+):
+    request_module = _request_module()
+    calls: list[str] = []
+    tool = _build_tool(tmp_path, mapped_intents, calls)
+
+    envelope = tool.execute(request_module.AgentQueryRequest(question=slash_command))
+
+    assert calls == []
+    assert envelope.result_meta.result_kind == f"agent.workflow.{workflow_id}"
+    assert envelope.result_meta.formal_use_allowed is False
+    assert envelope.result_meta.source_version == "sv_anthropic_financial_workflow_reference"
+    assert envelope.result_meta.rule_version == "rv_agent_financial_workflow_catalog_v1"
+    assert envelope.evidence.evidence_rows == 0
+    assert envelope.evidence.quality_flag == "warning"
+    assert [card.title for card in envelope.cards] == [
+        "Workflow Plan",
+        "Mapped MOSS Intents",
+        "Governance Notes",
+    ]
+    assert envelope.cards[1].data == [
+        {"order": index, "intent": intent}
+        for index, intent in enumerate(mapped_intents, start=1)
+    ]
+    action = envelope.suggested_actions[0]
+    assert action.type == "execute_intent"
+    assert action.requires_confirmation is True
+    assert action.confirmation_token
+    assert action.payload["intent"] == mapped_intents[0]
+    # payload 契约：不携带 workflow_id，回传 context 后不会再次命中 workflow 解析。
+    assert "workflow_id" not in action.payload
+    assert "workflow_mode" not in action.payload
+
+
+@pytest.mark.parametrize(("workflow_id", "slash_command", "mapped_intents"), _WORKFLOW_CASES)
+def test_execute_envelope_shape_for_each_financial_workflow(
+    tmp_path, workflow_id, slash_command, mapped_intents
+):
+    request_module = _request_module()
+    calls: list[str] = []
+    tool = _build_tool(tmp_path, mapped_intents, calls)
+
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question=slash_command,
+            context={"workflow_mode": "execute"},
+        )
+    )
+
+    assert calls == mapped_intents
+    assert envelope.result_meta.result_kind == f"agent.workflow.{workflow_id}"
+    assert envelope.result_meta.formal_use_allowed is False
+    assert envelope.result_meta.quality_flag == "ok"
+    assert envelope.evidence.evidence_rows == 2 * len(mapped_intents)
+    assert envelope.evidence.tables_used == [f"fact_{intent}" for intent in mapped_intents]
+    assert [card.title for card in envelope.cards] == [
+        "Workflow Memo",
+        "Workflow Execution Steps",
+        "Mapped Intent Results",
+        "Governance Notes",
+    ]
+    assert envelope.suggested_actions == []
+
+
+def test_plan_action_payload_echoed_into_context_executes_first_intent(tmp_path):
+    """回归：payload 回传 context 后应直接执行第一个 mapped intent，而非再次返回 plan 卡。"""
+    request_module = _request_module()
+    calls: list[str] = []
+    tool = _build_tool(
+        tmp_path,
+        ["portfolio_overview", "duration_risk", "credit_exposure"],
+        calls,
+    )
+
+    plan = tool.execute(request_module.AgentQueryRequest(question="/portfolio-review"))
+    payload = dict(plan.suggested_actions[0].payload)
+
+    follow_up = tool.execute(
+        request_module.AgentQueryRequest(
+            question="Execute suggested action",
+            context=payload,
+        )
+    )
+
+    assert calls == ["portfolio_overview"]
+    assert follow_up.result_meta.result_kind == "agent.portfolio_overview"

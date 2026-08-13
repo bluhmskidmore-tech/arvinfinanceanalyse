@@ -46,52 +46,8 @@ _HELP_ITEMS = [
     "cube query",
 ]
 
-_INTENT_PATTERNS: list[tuple[str, tuple[str, ...]]] = [
-    ("gitnexus_status", ("gitnexus", "仓库图谱", "代码图谱", "repo graph", "code graph", "影响分析", "context", "processes")),
-    ("product_pnl", ("产品损益", "ftp")),
-    ("pnl_bridge", ("桥接", "归因", "拆解", "bridge", "attribution")),
-    ("risk_tensor", ("风险张量", "krd")),
-    ("duration_risk", ("久期", "dv01", "duration")),
-    ("credit_exposure", ("信用", "利差", "集中度", "credit", "spread", "concentration")),
-    ("portfolio_overview", ("组合概览", "资产规模", "总览", "portfolio overview", "market value", "portfolio value", "asset size")),
-    ("pnl_summary", ("损益", "收益", "pnl")),
-    ("market_data", ("宏观", "利率", "市场数据", "macro", "market data", "macro data", "rates data")),
-    ("news", ("新闻", "事件", "news", "headline", "latest news")),
-]
-
-_PAGE_DEFAULT_INTENTS = {
-    "dashboard": "portfolio_overview",
-    "bond-dashboard": "portfolio_overview",
-    "balance-analysis": "portfolio_overview",
-    "pnl-attribution": "pnl_bridge",
-    "product-category-pnl": "product_pnl",
-    "risk-tensor": "risk_tensor",
-    "bond-analytics": "duration_risk",
-    "market-data": "market_data",
-    "stock-analysis": "market_data",
-}
-
-_ANALYSIS_CHAT_PATTERNS = (
-    "analysis",
-    "analyze",
-    "explain",
-    "summarize",
-    "summary",
-    "judge",
-    "risk",
-    "what does this mean",
-    "continue",
-    "follow up",
-    "\u5206\u6790",
-    "\u89e3\u91ca",
-    "\u603b\u7ed3",
-    "\u5224\u65ad",
-    "\u98ce\u9669",
-    "\u7ed3\u8bba",
-    "\u8bf4\u660e",
-    "\u7ee7\u7eed",
-    "\u8ffd\u95ee",
-)
+# 意图/页面/分析话术模式表的唯一权威来源是
+# backend/app/agent/runtime/local_request_resolution.py；本文件不再持有副本。
 
 _GOVERNED_PATHS = (
     ("portfolio_overview", "Portfolio overview"),
@@ -147,12 +103,23 @@ class AnalysisViewTool:
         intent_handlers: dict[str, Callable[[AgentQueryRequest], dict[str, Any]]] | None = None,
     ) -> None:
         self._duckdb_path = duckdb_path
+        # governance_dir 仅为构造兼容保留；audit 挂接发生在 service 层。
         self._governance_dir = governance_dir or ""
         self._cube_query_service = cube_query_service or CubeQueryService()
         self._intent_handlers = dict(intent_handlers or {})
         self._evidence = EvidenceTool()
+        # 当前请求的确认 token 作用域（user/run），在每次 execute 开头刷新。
+        self._action_scope: dict[str, str] | None = None
 
     def execute(self, request: AgentQueryRequest) -> AgentEnvelope:
+        self._action_scope = self._confirmation_scope(request)
+        scope_violation = self._suggested_action_scope_violation(request)
+        if scope_violation is not None:
+            return self._error_envelope(
+                request=request,
+                intent="action_scope",
+                detail=scope_violation,
+            )
         resolution = resolve_local_request(request)
         workflow = resolution.financial_workflow
         if workflow is not None:
@@ -187,81 +154,6 @@ class AnalysisViewTool:
             )
         except Exception as exc:
             return self._error_envelope(request=request, intent=intent, detail=str(exc))
-
-    def _resolve_intent(self, request: AgentQueryRequest) -> str:
-        explicit_intent = str(request.context.get("intent") or "").strip().lower()
-        if explicit_intent == "cube_query" or "cube_query" in request.context:
-            return "cube_query"
-        if explicit_intent in self._intent_handlers:
-            return explicit_intent
-
-        normalized = str(request.question or "").strip().lower()
-        for intent, keywords in _INTENT_PATTERNS:
-            if intent in self._intent_handlers and any(keyword.lower() in normalized for keyword in keywords):
-                return intent
-        follow_up_intent = self._conversation_intent(request)
-        if follow_up_intent is not None:
-            return follow_up_intent
-        if self._is_page_context_question(normalized):
-            page_intent = self._page_default_intent(request)
-            if page_intent is not None:
-                return page_intent
-        if self._is_analysis_chat_question(normalized):
-            return "analysis_chat"
-        return "unknown"
-
-    def _conversation_intent(self, request: AgentQueryRequest) -> str | None:
-        conversation = request.context.get("conversation")
-        if not isinstance(conversation, dict):
-            return None
-        turns = conversation.get("recent_turns")
-        if not isinstance(turns, list):
-            return None
-        for turn in reversed(turns):
-            if not isinstance(turn, dict):
-                continue
-            for value in (turn.get("result_kind"), turn.get("trace_id"), turn.get("answer")):
-                intent = self._intent_from_text(value)
-                if intent is not None:
-                    return intent
-        return None
-
-    def _intent_from_text(self, value: Any) -> str | None:
-        text = str(value or "").strip().lower()
-        if not text:
-            return None
-        for intent in self._intent_handlers:
-            if f"agent.{intent}" in text:
-                return intent
-        return None
-
-    def _page_default_intent(self, request: AgentQueryRequest) -> str | None:
-        if request.page_context is None:
-            return None
-        page_id = request.page_context.page_id.strip().lower()
-        intent = _PAGE_DEFAULT_INTENTS.get(page_id)
-        if intent in self._intent_handlers:
-            return intent
-        return None
-
-    def _is_page_context_question(self, normalized_question: str) -> bool:
-        if not normalized_question:
-            return False
-        return any(
-            token in normalized_question
-            for token in (
-                "当前页",
-                "当前页面",
-                "这个页面",
-                "本页",
-                "页面",
-                "current page",
-                "this page",
-            )
-        )
-
-    def _is_analysis_chat_question(self, normalized_question: str) -> bool:
-        return is_plain_analysis_chat_question(normalized_question)
 
     def _workflow_envelope(
         self,
@@ -324,10 +216,10 @@ class AnalysisViewTool:
         ]
         suggested_actions = []
         if next_intent:
-            payload = {
-                "intent": next_intent,
-                "workflow_id": workflow.workflow_id,
-            }
+            # payload 契约：仅携带 intent。回传 context 时走 explicit intent 路径直接执行
+            # 第一个 mapped intent；不携带 workflow_id，避免回传后再次命中 workflow 解析
+            # 而返回 plan 卡（与动作标签 "Execute first mapped intent" 语义一致）。
+            payload = {"intent": next_intent}
             suggested_actions.append(
                 self._suggested_action(
                     action_type="execute_intent",
@@ -1151,16 +1043,57 @@ class AnalysisViewTool:
             )
         )
 
+    def _confirmation_scope(self, request: AgentQueryRequest) -> dict[str, str] | None:
+        """从服务端注入的 context 提取 token 作用域（客户端提交的 run_id 已在 API 层剥离）。"""
+        scope: dict[str, str] = {}
+        user_id = str(request.context.get("user_id") or "").strip()
+        if user_id:
+            scope["user_id"] = user_id
+        run_id = str(request.context.get("run_id") or "").strip()
+        if run_id:
+            scope["run_id"] = run_id
+        return scope or None
+
+    def _suggested_action_scope_violation(self, request: AgentQueryRequest) -> str | None:
+        """user 维度强制校验；run_id 仅随 scope 记录供审计追溯（确认发生在新请求/新 run 中）。
+
+        scope 位于 action payload 内，受既有确认 token HMAC 保护，客户端无法篡改；
+        无 confirmation_scope 的历史动作保持原行为（向后兼容）。
+        """
+        action = request.context.get("suggested_action")
+        if not isinstance(action, dict):
+            return None
+        payload = action.get("payload")
+        if not isinstance(payload, dict):
+            return None
+        scope = payload.get("confirmation_scope")
+        if not isinstance(scope, dict):
+            return None
+        issued_user = str(scope.get("user_id") or "").strip()
+        if not issued_user:
+            return None
+        current_user = str(request.context.get("user_id") or "").strip()
+        if issued_user == current_user:
+            return None
+        return (
+            "Suggested action confirmation is bound to user scope "
+            f"'{issued_user}' and cannot be executed as '{current_user or 'unknown'}'."
+        )
+
     def _ensure_action_confirmation_token(self, action: AgentSuggestedAction) -> AgentSuggestedAction:
         if not action.requires_confirmation or action.confirmation_token:
             return action
+        payload = dict(action.payload)
+        if self._action_scope and "confirmation_scope" not in payload:
+            payload["confirmation_scope"] = dict(self._action_scope)
         return action.model_copy(
             update={
+                "payload": payload,
                 "confirmation_token": self._confirmation_token_for_action(
                     action_type=action.type,
                     label=action.label,
-                    payload=action.payload,
-                )
+                    payload=payload,
+                ),
             }
         )
 

@@ -12,6 +12,10 @@ from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.agent.schemas.agent_response import AgentDisabledResponse, AgentEnvelope
 from backend.app.governance.agent_audit import AgentAuditPayload, append_agent_audit
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
+from backend.app.repositories.choice_news_repo import (
+    choice_news_filters,
+    choice_news_latest_events_sql,
+)
 from backend.app.repositories.governance_repo import GovernanceRepository
 from backend.app.repositories.pnl_repo import PnlRepository
 from backend.app.repositories.product_category_pnl_repo import (
@@ -139,6 +143,20 @@ _MARKET_DATA_SQL_DISCLOSURE = [
 ]
 
 
+# news 披露主干：静态 SQL 模板部分（与 choice_news_repo 执行链路同源渲染，
+# `{where_clause}` 为唯一运行期槽位）。运行期由同源 choice_news_filters 按本次
+# 过滤条件填充 where 子句，过滤值一律保持 `?` 绑定占位，仅披露不执行。
+# 常量名 `_NEWS_SQL_DISCLOSURE` 是与 Eval 静态 drift 护栏的双方契约，勿改名。
+_NEWS_SQL_DISCLOSURE: list[str] = [
+    " ".join(
+        choice_news_latest_events_sql(
+            where_clause="{where_clause}",
+            include_payload_json=True,
+        ).split()
+    ),
+]
+
+
 def phase1_disabled_response() -> AgentDisabledResponse:
     return AgentDisabledResponse()
 
@@ -153,7 +171,12 @@ def execute_agent_query(
         governance_dir,
         intent_handlers=_build_intent_handlers(duckdb_path, governance_dir),
     )
-    envelope = registry.execute_query(request)
+    try:
+        envelope = registry.execute_query(request)
+    except Exception as exc:
+        # 合规底线：失败的查询同样必须留下审计痕迹，审计后原样上抛。
+        _append_failed_query_audit(request, governance_dir, error=exc)
+        raise
     _append_envelope_audit(request, governance_dir, envelope)
     return envelope
 
@@ -489,11 +512,22 @@ def _pnl_summary_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[s
     rd_mode: Literal["explicit", "latest_default"] = (
         "explicit" if _requested_report_date(request) else "latest_default"
     )
+    formal_fi_row_count = int(overview["formal_fi_row_count"])
+    nonstd_bridge_row_count = int(overview["nonstd_bridge_row_count"])
+    # fail-closed：没有正式 FI 明细时（仅剩非标桥接行），不得宣称正式口径。
+    formal_use_allowed = formal_fi_row_count > 0
+    quality_flag: Literal["ok", "warning"] = "ok" if formal_use_allowed else "warning"
+    answer = (
+        f"{report_date} 的损益汇总已返回，正式 FI {formal_fi_row_count} 行，"
+        f"非标桥接 {nonstd_bridge_row_count} 行，总损益 {overview['total_pnl']}。"
+    )
+    if not formal_use_allowed:
+        answer += (
+            "当前日期没有正式 FI 明细，汇总仅由非标桥接数据构成；"
+            "系统已 fail-closed，本结果按非正式口径返回（formal_use_allowed=false）。"
+        )
     return {
-        "answer": (
-            f"{report_date} 的损益汇总已返回，正式 FI {overview['formal_fi_row_count']} 行，"
-            f"非标桥接 {overview['nonstd_bridge_row_count']} 行，总损益 {overview['total_pnl']}。"
-        ),
+        "answer": answer,
         "cards": [
             {"type": "metric", "title": "Total PnL", "value": str(overview["total_pnl"])},
             {"type": "metric", "title": "Interest 514", "value": str(overview["interest_income_514"])},
@@ -502,11 +536,11 @@ def _pnl_summary_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[s
         ],
         "tables_used": ["fact_formal_pnl_fi", "fact_nonstd_pnl_bridge"],
         "filters_applied": _audit_filters(request, report_date, resolution=rd_mode),
-        "row_count": int(overview["formal_fi_row_count"]) + int(overview["nonstd_bridge_row_count"]),
+        "row_count": formal_fi_row_count + nonstd_bridge_row_count,
         "sql_executed": _PNL_SUMMARY_SQL_DISCLOSURE,
-        "quality_flag": "ok",
+        "quality_flag": quality_flag,
         "basis": "formal",
-        "formal_use_allowed": True,
+        "formal_use_allowed": formal_use_allowed,
         "scenario_flag": False,
         "source_version": "sv_agent_pnl_summary",
         "rule_version": RULE_VERSION,
@@ -557,8 +591,9 @@ def _duration_risk_payload(
     requested_currency_basis = _balance_analysis_currency_basis(request)
     cny_risk_contract = requested_currency_basis == "CNY"
     bond_count = int(result.get("bond_count") or 0)
+    # Risk Tensor duration unit contract now reports modified duration in years.
     required_numeric_fields = {
-        "portfolio_modified_duration": "ratio",
+        "portfolio_modified_duration": "years",
         "portfolio_dv01": "dv01",
         "portfolio_convexity": "ratio",
         "rate_risk_market_value": "yuan",
@@ -830,11 +865,32 @@ def _credit_exposure_payload(request: AgentQueryRequest, duckdb_path: str) -> di
     rd_mode: Literal["explicit", "latest_default"] = (
         "explicit" if _requested_report_date(request) else "latest_default"
     )
-    return {
-        "answer": (
-            f"{report_date} 的信用暴露摘要已返回，信用债 {summary['credit_bond_count']} 只，"
+    credit_bond_count = int(summary.get("credit_bond_count") or 0)
+    # fail-closed：无信用债敞口行或汇总字段缺失（SQL 空集聚合返回 NULL）时，
+    # 不得宣称正式口径。
+    summary_values_complete = all(
+        summary.get(field) is not None
+        for field in ("credit_market_value", "spread_dv01", "oci_credit_exposure")
+    )
+    formal_use_allowed = credit_bond_count > 0 and summary_values_complete
+    quality_flag: Literal["ok", "warning"] = "ok" if formal_use_allowed else "warning"
+    if credit_bond_count <= 0:
+        answer = (
+            f"{report_date} 没有受治理的信用债敞口记录；"
+            "未生成正式信用暴露指标，本结果按非正式口径返回（formal_use_allowed=false）。"
+        )
+    elif not summary_values_complete:
+        answer = (
+            f"{report_date} 的信用暴露汇总字段不完整；"
+            "系统已 fail-closed，本结果按非正式口径返回（formal_use_allowed=false）。"
+        )
+    else:
+        answer = (
+            f"{report_date} 的信用暴露摘要已返回，信用债 {credit_bond_count} 只，"
             f"信用市值 {summary['credit_market_value']}。"
-        ),
+        )
+    return {
+        "answer": answer,
         "cards": [
             {"type": "metric", "title": "Credit Bond Count", "value": str(summary["credit_bond_count"])},
             {"type": "metric", "title": "Credit Market Value", "value": str(summary["credit_market_value"])},
@@ -843,11 +899,11 @@ def _credit_exposure_payload(request: AgentQueryRequest, duckdb_path: str) -> di
         ],
         "tables_used": ["fact_formal_bond_analytics_daily"],
         "filters_applied": _audit_filters(request, report_date, resolution=rd_mode),
-        "row_count": int(summary.get("credit_bond_count", 0)),
+        "row_count": credit_bond_count,
         "sql_executed": _CREDIT_EXPOSURE_SQL_DISCLOSURE,
-        "quality_flag": "ok",
+        "quality_flag": quality_flag,
         "basis": "formal",
-        "formal_use_allowed": True,
+        "formal_use_allowed": formal_use_allowed,
         "scenario_flag": False,
         "source_version": "sv_agent_credit_exposure",
         "rule_version": RULE_VERSION,
@@ -871,7 +927,12 @@ def _product_pnl_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[s
     rows = repo.fetch_rows(report_date, view)
     if not rows:
         raise ValueError(f"No product-category rows for report_date={report_date} view={view}.")
-    grand_total = next((row for row in rows if str(row.get("category_id")) == "grand_total"), rows[0])
+    # fail-closed：grand_total 行缺失时不得静默用首行冒充总计。
+    grand_total_row: dict[str, Any] | None = next(
+        (row for row in rows if str(row.get("category_id")) == "grand_total"),
+        None,
+    )
+    grand_total: dict[str, Any] = grand_total_row or {}
     asset_total: dict[str, Any] = next(
         (row for row in rows if str(row.get("category_id")) == "asset_total"),
         {},
@@ -883,8 +944,25 @@ def _product_pnl_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[s
     rd_mode: Literal["explicit", "latest_default"] = (
         "explicit" if _requested_report_date(request) else "latest_default"
     )
+    source_version = (
+        str(rows[0].get("source_version") or "").strip()
+        or str(repo.latest_source_version() or "").strip()
+    )
+    formal_use_allowed = grand_total_row is not None and bool(source_version)
+    quality_flag: Literal["ok", "warning"] = "ok" if formal_use_allowed else "warning"
+    answer = f"{report_date} 的产品损益视图已返回，当前 view={view}。"
+    if grand_total_row is None:
+        answer += (
+            "读模型缺少 grand_total 汇总行；"
+            "系统已 fail-closed，未生成正式总计指标（formal_use_allowed=false）。"
+        )
+    elif not source_version:
+        answer += (
+            "受治理 lineage 缺少 source_version；"
+            "系统已 fail-closed，本结果按非正式口径返回（formal_use_allowed=false）。"
+        )
     return {
-        "answer": f"{report_date} 的产品损益视图已返回，当前 view={view}。",
+        "answer": answer,
         "cards": [
             {"type": "metric", "title": "Grand Total", "value": str(grand_total.get("business_net_income", ""))},
             {"type": "metric", "title": "Asset Total", "value": str(asset_total.get("business_net_income", ""))},
@@ -904,11 +982,11 @@ def _product_pnl_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[s
         ),
         "row_count": len(rows),
         "sql_executed": _PRODUCT_PNL_SQL_DISCLOSURE,
-        "quality_flag": "ok",
+        "quality_flag": quality_flag,
         "basis": "formal",
-        "formal_use_allowed": True,
+        "formal_use_allowed": formal_use_allowed,
         "scenario_flag": False,
-        "source_version": str(rows[0].get("source_version") or repo.latest_source_version()),
+        "source_version": source_version or "sv_product_pnl_lineage_unavailable",
         "rule_version": str(rows[0].get("rule_version") or RULE_VERSION),
         "cache_version": "cv_agent_product_pnl_v1",
         "result_kind": "agent.product_pnl",
@@ -942,8 +1020,23 @@ def _pnl_bridge_payload(
     )
     base_filters = _audit_filters(request, report_date, resolution=rd_mode)
     quality_flag = str(meta.get("quality_flag") or "warning")
+    # fail-closed：上游 result_meta 缺 formal_use_allowed 口径标记时默认拒绝而非放行。
+    formal_marker_missing = "formal_use_allowed" not in meta
+    formal_use_allowed = bool(meta.get("formal_use_allowed", False)) and quality_flag != "error"
+    if formal_marker_missing and quality_flag == "ok":
+        quality_flag = "warning"
+    answer = f"{report_date} 的 PnL bridge 已返回。"
+    # Human: caliber-formal_scenario_gate-justified -- fail-closed disclosure
+    # branch: when upstream result_meta lacks the formal_use_allowed marker we
+    # refuse formal use (formal_use_allowed=False) and say so in the answer;
+    # this cannot authorize formal or scenario use.
+    if formal_marker_missing:
+        answer += (
+            "上游 result_meta 缺少 formal_use_allowed 口径标记；"
+            "系统已 fail-closed，本结果按非正式口径返回（formal_use_allowed=false）。"
+        )
     return {
-        "answer": f"{report_date} 的 PnL bridge 已返回。",
+        "answer": answer,
         "cards": [
             _agent_metric_card("Explained PnL", summary.get("total_explained_pnl")),
             _agent_metric_card("Actual PnL", summary.get("total_actual_pnl")),
@@ -955,7 +1048,7 @@ def _pnl_bridge_payload(
         "sql_executed": _PNL_BRIDGE_SQL_DISCLOSURE,
         "quality_flag": quality_flag,
         "basis": str(meta.get("basis") or "formal"),
-        "formal_use_allowed": bool(meta.get("formal_use_allowed", True)) and quality_flag != "error",
+        "formal_use_allowed": formal_use_allowed,
         "scenario_flag": bool(meta.get("scenario_flag", False)),
         "source_version": str(meta.get("source_version") or "sv_agent_pnl_bridge"),
         "vendor_version": str(meta.get("vendor_version") or "vv_none"),
@@ -1006,8 +1099,24 @@ def _risk_tensor_payload(
     rd_mode: Literal["explicit", "latest_default"] = (
         "explicit" if _requested_report_date(request) else "latest_default"
     )
+    quality_flag = str(meta.get("quality_flag") or "warning")
+    # fail-closed：上游 result_meta 缺 formal_use_allowed 口径标记时默认拒绝而非放行。
+    formal_marker_missing = "formal_use_allowed" not in meta
+    formal_use_allowed = bool(meta.get("formal_use_allowed", False))
+    if formal_marker_missing and quality_flag == "ok":
+        quality_flag = "warning"
+    answer = f"{report_date} 的风险张量已返回。"
+    # Human: caliber-formal_scenario_gate-justified -- fail-closed disclosure
+    # branch: when upstream result_meta lacks the formal_use_allowed marker we
+    # refuse formal use (formal_use_allowed=False) and say so in the answer;
+    # this cannot authorize formal or scenario use.
+    if formal_marker_missing:
+        answer += (
+            "上游 result_meta 缺少 formal_use_allowed 口径标记；"
+            "系统已 fail-closed，本结果按非正式口径返回（formal_use_allowed=false）。"
+        )
     return {
-        "answer": f"{report_date} 的风险张量已返回。",
+        "answer": answer,
         "cards": [
             {"type": "metric", "title": "Portfolio DV01", "value": str(result.get("portfolio_dv01", ""))},
             {"type": "metric", "title": "CS01", "value": str(result.get("cs01", ""))},
@@ -1017,9 +1126,9 @@ def _risk_tensor_payload(
         "filters_applied": _audit_filters(request, report_date, resolution=rd_mode),
         "row_count": int(result.get("bond_count", 0)),
         "sql_executed": _RISK_TENSOR_SQL_DISCLOSURE,
-        "quality_flag": str(meta.get("quality_flag") or "warning"),
+        "quality_flag": quality_flag,
         "basis": str(meta.get("basis") or "formal"),
-        "formal_use_allowed": bool(meta.get("formal_use_allowed", True)),
+        "formal_use_allowed": formal_use_allowed,
         "scenario_flag": bool(meta.get("scenario_flag", False)),
         "source_version": str(meta.get("source_version") or "sv_agent_risk_tensor"),
         "vendor_version": str(meta.get("vendor_version") or "vv_none"),
@@ -1095,11 +1204,9 @@ def _market_data_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[s
 
 
 def _news_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[str, Any]:
-    # sql_executed：由 choice_news_service 按本次相同过滤条件从执行同源模板生成主干只读语句，仅披露不执行。
-    from backend.app.services.choice_news_service import (
-        choice_news_latest_envelope,
-        choice_news_latest_sql_disclosure,
-    )
+    # sql_executed：静态模板部分固化在 _NEWS_SQL_DISCLOSURE，运行期仅按本次相同
+    # 过滤条件填充 where 子句（choice_news_filters 与执行链路同源），仅披露不执行。
+    from backend.app.services.choice_news_service import choice_news_latest_envelope
 
     limit = int(request.filters.get("limit") or 20)
     upstream = choice_news_latest_envelope(
@@ -1112,13 +1219,21 @@ def _news_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[str, Any
         received_from=request.filters.get("received_from"),
         received_to=request.filters.get("received_to"),
     )
-    sql_disclosure = choice_news_latest_sql_disclosure(
+    # 与 choice_news_latest_sql_disclosure 的既有默认一致：received_to 缺省回落当日，
+    # 过滤值全部保持 `?` 绑定占位，不进入披露文本。
+    where_clause, _params = choice_news_filters(
         group_id=request.filters.get("group_id"),
         topic_code=request.filters.get("topic_code"),
+        stock_filter_tokens=[],
+        stock_match_mode="best_effort",
         error_only=bool(request.filters.get("error_only", False)),
         received_from=request.filters.get("received_from"),
-        received_to=request.filters.get("received_to"),
+        received_to=request.filters.get("received_to") or date.today().isoformat(),
     )
+    sql_disclosure = [
+        statement.format(where_clause=where_clause)
+        for statement in _NEWS_SQL_DISCLOSURE
+    ]
     meta = dict(upstream.get("result_meta", {}))
     result = dict(upstream.get("result", {}))
     events = list(result.get("events", []))
@@ -1160,6 +1275,44 @@ def _append_envelope_audit(
         tables_used=list(envelope.evidence.tables_used),
         filters_applied=dict(envelope.evidence.filters_applied),
         result_meta=envelope.result_meta.model_dump(mode="json"),
+    )
+
+
+def _append_failed_query_audit(
+    request: AgentQueryRequest,
+    governance_dir: str,
+    *,
+    error: BaseException,
+) -> None:
+    """本地查询失败审计：与 agent_run_service._build_failed_run_audit_payload 同契约。
+
+    只记录异常类型（error_type），不复制可能含敏感信息的原始错误正文。
+    """
+    trace_id = f"tr_agent_query_failed_{uuid4().hex[:12]}"
+    _append_audit(
+        request=request,
+        governance_dir=governance_dir,
+        trace_id=trace_id,
+        tools_used=["agent_query", "provider:local", "status:failed"],
+        tables_used=[],
+        filters_applied={
+            key: value
+            for key, value in request.filters.items()
+            if value not in (None, "", False)
+        },
+        result_meta={
+            "trace_id": trace_id,
+            "basis": request.basis,
+            "result_kind": "agent.query_failed",
+            "formal_use_allowed": False,
+            "quality_flag": "error",
+            # Human: caliber-formal_scenario_gate-justified -- this only discloses
+            # the already-selected request basis in failed-query metadata; it
+            # cannot authorize formal or scenario use.
+            "scenario_flag": request.basis == "scenario",
+            "provider": "local",
+            "error_type": error.__class__.__name__,
+        },
     )
 
 

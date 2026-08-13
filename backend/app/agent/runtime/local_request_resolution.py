@@ -25,14 +25,17 @@ _INTENT_PATTERNS: list[tuple[str, tuple[str, ...]]] = [
     ("product_pnl", ("产品损益", "ftp")),
     ("pnl_bridge", ("桥接", "归因", "拆解", "bridge", "attribution")),
     ("risk_tensor", ("风险张量", "krd")),
-    ("duration_risk", ("久期", "dv01")),
+    ("duration_risk", ("久期", "dv01", "利率风险")),
     ("credit_exposure", ("信用", "利差", "集中度", "credit", "spread", "concentration")),
     (
         "portfolio_overview",
         ("组合概览", "资产规模", "总览", "portfolio overview", "portfolio value", "asset size"),
     ),
-    ("pnl_summary", ("损益", "收益", "pnl")),
-    ("market_data", ("宏观", "利率", "市场数据", "macro", "market data", "macro data", "rates data")),
+    # 中文歧义词守卫：裸词「收益」不入表，避免「收益率」（曲线/市场问法）误路由到
+    # pnl_summary；非「收益率」的「收益」问法由 _CHINESE_PNL_RETURN_PATTERN 在同一
+    # 优先级位置兜住（见 _intent_from_question）。
+    ("pnl_summary", ("损益", "pnl")),
+    ("market_data", ("宏观", "利率", "收益率", "市场数据", "macro", "market data", "macro data", "rates data")),
     ("news", ("新闻", "事件", "news", "headline", "latest news")),
 ]
 
@@ -132,6 +135,8 @@ _DURATION_DOMAIN_TERMS = (
     "rate risk",
     "risk",
 )
+# 「收益」仅在不是「收益率」的一部分时才算 PnL 语义（如「今日收益」「投资收益」）。
+_CHINESE_PNL_RETURN_PATTERN = re.compile(r"收益(?!率)")
 _MARKET_VALUE_DOMAIN_TERMS = (
     "account",
     "asset",
@@ -328,6 +333,10 @@ def _intent_from_question(
         return None
     for intent, keywords in _INTENT_PATTERNS:
         if any(keyword.lower() in normalized_question for keyword in keywords):
+            return intent
+        # 在 pnl_summary 原有优先级位置评估「收益(非收益率)」守卫，
+        # 保持它先于 market_data、后于 product_pnl / pnl_bridge 的既有顺序。
+        if intent == "pnl_summary" and _CHINESE_PNL_RETURN_PATTERN.search(normalized_question):
             return intent
     if _matches_domain_combination(
         normalized_question,

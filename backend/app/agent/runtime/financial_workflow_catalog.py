@@ -61,7 +61,7 @@ _WORKFLOWS: tuple[FinancialWorkflow, ...] = (
         output_kind="workflow_plan",
         governance_notes=[
             "Uses MOSS duration, credit exposure, and risk tensor evidence paths when executed later.",
-            "Current response is non-formal and has no evidence rows.",
+            "Plan responses are non-formal with no evidence rows; execute mode aggregates evidence from the mapped MOSS intents.",
             "External agents cannot bypass MOSS result_meta, lineage, or audit contracts.",
         ],
     ),

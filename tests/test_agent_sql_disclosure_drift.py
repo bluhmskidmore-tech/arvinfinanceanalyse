@@ -10,17 +10,32 @@ import inspect
 import re
 from collections.abc import Callable
 
+from backend.app.repositories import choice_news_repo
 from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
 from backend.app.repositories.bond_analytics_repo import (
     FACT_TABLE as BOND_ANALYTICS_FACT_TABLE,
 )
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
+from backend.app.repositories.market_read_repo import (
+    CHOICE_NEWS_EVENTS_SQL as RESEARCH_RADAR_NEWS_SQL,
+)
+from backend.app.repositories.market_read_repo import MarketReadRepository
 from backend.app.repositories.pnl_repo import PnlRepository
+from backend.app.repositories.product_category_pnl_repo import (
+    PRODUCT_CATEGORY_PNL_ROWS_SQL,
+    ProductCategoryPnlRepository,
+)
 from backend.app.repositories.risk_tensor_repo import (
     FACT_TABLE as RISK_TENSOR_FACT_TABLE,
 )
 from backend.app.repositories.risk_tensor_repo import RiskTensorRepository
-from backend.app.services import agent_service, macro_vendor_service, pnl_bridge_service
+from backend.app.services import (
+    agent_service,
+    choice_news_service,
+    macro_vendor_service,
+    pnl_bridge_service,
+    research_radar_service,
+)
 
 import pytest
 
@@ -79,6 +94,9 @@ def test_agent_sql_disclosures_remain_read_only_parameterized_templates():
         *agent_service._RISK_TENSOR_SQL_DISCLOSURE,
         *agent_service._PNL_BRIDGE_SQL_DISCLOSURE,
         *agent_service._MARKET_DATA_SQL_DISCLOSURE,
+        *agent_service._PRODUCT_PNL_SQL_DISCLOSURE,
+        *agent_service._NEWS_SQL_DISCLOSURE,
+        RESEARCH_RADAR_NEWS_SQL,
     ]
 
     assert disclosures
@@ -173,3 +191,57 @@ def test_market_data_disclosure_tracks_macro_and_formal_fx_read_paths():
     assert "fx_daily_mid" in disclosed
     assert "upper(quote_currency) = 'cny'" in fx_source
     assert "upper(quote_currency) = 'cny'" in disclosed
+
+
+def test_product_pnl_disclosure_is_the_repository_execution_template():
+    # 披露与执行共用同一常量：任一侧改模板另一侧必然同步，否则此断言先红。
+    assert agent_service._PRODUCT_PNL_SQL_DISCLOSURE == [PRODUCT_CATEGORY_PNL_ROWS_SQL]
+    assert "product_category_pnl_rows_sql" in _source(ProductCategoryPnlRepository.fetch_rows)
+
+    disclosed = _disclosure(*agent_service._PRODUCT_PNL_SQL_DISCLOSURE)
+    assert "from product_category_pnl_formal_read_model" in disclosed
+    assert "report_date = ?" in disclosed
+    assert "view = ?" in disclosed
+
+
+def test_news_disclosure_tracks_choice_news_execution_template_and_filters():
+    # 静态披露常量与执行链路模板同源渲染：repo 模板或常量任一侧漂移都在此变红。
+    assert agent_service._NEWS_SQL_DISCLOSURE == [
+        " ".join(
+            choice_news_repo.choice_news_latest_events_sql(
+                where_clause="{where_clause}",
+                include_payload_json=True,
+            ).split()
+        )
+    ]
+    # service 层披露函数同样转发 repo 的执行同源模板函数（同模板、不执行）。
+    assert "choice_news_latest_sql_text" in _source(
+        choice_news_service.choice_news_latest_sql_disclosure
+    )
+    # 意图 payload 披露受护常量，唯一运行期槽位由执行同源 choice_news_filters 填充。
+    news_source = _source(agent_service._news_payload)
+    assert "_news_sql_disclosure" in news_source
+    assert "choice_news_filters" in news_source
+
+    assert choice_news_repo.RELATION_CHOICE_NEWS_EVENT == "choice_news_event"
+    disclosed = _disclosure(*agent_service._NEWS_SQL_DISCLOSURE)
+    assert "from choice_news_event {where_clause}" in disclosed
+    assert "order by received_at desc" in disclosed
+    assert "limit ? offset ?" in disclosed
+    # 运行期 where 槽位的同源生成器只产出 `?` 绑定的过滤子句，过滤值不进披露文本。
+    filters_source = _source(choice_news_repo.choice_news_filters)
+    for clause in ("group_id = ?", "topic_code = ?", "received_at >= ?", "received_at <= ?"):
+        assert clause in filters_source
+
+
+def test_research_radar_disclosure_is_the_market_read_execution_template():
+    # 披露与执行共用 market_read_repo 的同一常量（import 别名，不是复制品）。
+    assert research_radar_service._CHOICE_NEWS_EVENTS_SQL is RESEARCH_RADAR_NEWS_SQL
+    assert "_choice_news_events_sql" in _source(research_radar_service.research_radar_brief_payload)
+    assert "choice_news_events_sql" in _source(MarketReadRepository.fetch_choice_news_events)
+
+    disclosed = _disclosure(RESEARCH_RADAR_NEWS_SQL)
+    assert "from choice_news_event" in disclosed
+    assert "coalesce(error_code, 0) = 0" in disclosed
+    assert "order by received_at desc" in disclosed
+    assert "limit ?" in disclosed

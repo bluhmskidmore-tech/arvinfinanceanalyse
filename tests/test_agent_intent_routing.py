@@ -9,6 +9,11 @@ import pytest
 from tests.helpers import load_module
 from backend.app.agent.runtime.action_token import agent_action_confirmation_token_matches
 
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_agent_mvp,
+]
+
 
 def test_portfolio_overview_intent_routes_to_balance_analysis_repo(tmp_path, monkeypatch):
     service_module = load_module(
@@ -1161,7 +1166,7 @@ def _duration_risk_upstream(
     return {
         "result": {
             "report_date": report_date,
-            "portfolio_modified_duration": numeric(4.1, "ratio", "4.10"),
+            "portfolio_modified_duration": numeric(4.1, "years", "4.10"),
             "portfolio_dv01": numeric(12.34, "dv01", "12.34"),
             "portfolio_convexity": numeric(0.88, "ratio", "0.88"),
             "rate_risk_market_value": numeric(900.0, "yuan", "900.00"),
@@ -1257,11 +1262,11 @@ def test_duration_risk_intent_routes_to_formal_risk_tensor(tmp_path, monkeypatch
         "metric_id": "MTR-RSK-010",
         "source_field": "portfolio_modified_duration",
         "raw_value": "4.1",
-        "raw_unit": "ratio",
+        "raw_unit": "years",
         "raw_precision": 2,
         "numeric": {
             "raw": 4.1,
-            "unit": "ratio",
+            "unit": "years",
             "display": "4.10",
             "precision": 2,
             "sign_aware": False,
@@ -2632,3 +2637,449 @@ def test_audit_log_is_appended(tmp_path, monkeypatch):
     assert payload["tools_used"] == ["analysis_view_tool", "evidence_tool", "intent:pnl_summary"]
     assert payload["tables_used"] == ["fact_formal_pnl_fi"]
     assert payload["trace_id"] == "tr_agent_audit"
+
+
+@pytest.mark.parametrize(
+    ("question", "expected_route", "expected_intent"),
+    [
+        # 「收益率」是市场/曲线语义，不得因包含「收益」误入 pnl_summary。
+        ("国债收益率曲线怎么走", "local", "market_data"),
+        ("最新收益率水平如何", "local", "market_data"),
+        # 「利率风险」是利率风险语义，不得因包含「利率」误入 market_data。
+        ("利率风险敞口有多大", "local", "duration_risk"),
+        # 非「收益率」的「收益」仍保持 pnl_summary 既有优先级。
+        ("请汇总今日收益", "local", "pnl_summary"),
+        ("投资收益怎么样", "local", "pnl_summary"),
+        # 普通利率问法仍归 market_data。
+        ("今天的利率怎么样", "local", "market_data"),
+    ],
+)
+def test_chinese_ambiguous_finance_terms_route_with_domain_guards(
+    question,
+    expected_route,
+    expected_intent,
+):
+    resolution_module = load_module(
+        "backend.app.agent.runtime.local_request_resolution",
+        "backend/app/agent/runtime/local_request_resolution.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    resolution = resolution_module.resolve_local_request(
+        request_module.AgentQueryRequest(question=question)
+    )
+
+    assert resolution.route == expected_route
+    assert resolution.intent == expected_intent
+
+
+def test_risk_tensor_missing_formal_marker_fails_closed(tmp_path, monkeypatch):
+    service_module = load_module(
+        "backend.app.services.agent_service",
+        "backend/app/services/agent_service.py",
+    )
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    class StubBondAnalyticsRepository:
+        def __init__(self, path: str):
+            assert path == "test.duckdb"
+
+        def list_report_dates(self) -> list[str]:
+            return ["2026-03-31"]
+
+    def fake_risk_tensor_envelope(*, report_date: str, **_: object) -> dict[str, object]:
+        upstream = _duration_risk_upstream(report_date, quality_flag="ok")
+        upstream["result_meta"].pop("formal_use_allowed")
+        return upstream
+
+    risk_service_module = load_module(
+        "backend.app.services.risk_tensor_service",
+        "backend/app/services/risk_tensor_service.py",
+    )
+    monkeypatch.setattr(service_module, "BondAnalyticsRepository", StubBondAnalyticsRepository)
+    monkeypatch.setattr(risk_service_module, "risk_tensor_envelope", fake_risk_tensor_envelope)
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
+    )
+    envelope = tool.execute(request_module.AgentQueryRequest(question="风险张量怎么样"))
+
+    assert envelope.result_meta.result_kind == "agent.risk_tensor"
+    assert envelope.result_meta.formal_use_allowed is False
+    assert envelope.result_meta.quality_flag == "warning"
+    assert "缺少 formal_use_allowed" in envelope.answer
+    assert "fail-closed" in envelope.answer
+
+
+def test_pnl_bridge_missing_formal_marker_fails_closed(tmp_path, monkeypatch):
+    service_module = load_module(
+        "backend.app.services.agent_service",
+        "backend/app/services/agent_service.py",
+    )
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    class StubPnlRepository:
+        def __init__(self, path: str):
+            assert path == "test.duckdb"
+
+        def list_formal_fi_report_dates(self) -> list[str]:
+            return ["2026-03-31"]
+
+    def fake_pnl_bridge_envelope(*, report_date: str, **_: object) -> dict[str, object]:
+        return {
+            "result": {"summary": {"row_count": 3}},
+            "result_meta": {
+                "basis": "formal",
+                "quality_flag": "ok",
+                "source_version": "sv_bridge_test",
+            },
+        }
+
+    bridge_service_module = load_module(
+        "backend.app.services.pnl_bridge_service",
+        "backend/app/services/pnl_bridge_service.py",
+    )
+    monkeypatch.setattr(service_module, "PnlRepository", StubPnlRepository)
+    monkeypatch.setattr(bridge_service_module, "pnl_bridge_envelope", fake_pnl_bridge_envelope)
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
+    )
+    envelope = tool.execute(request_module.AgentQueryRequest(question="请做归因拆解"))
+
+    assert envelope.result_meta.result_kind == "agent.pnl_bridge"
+    assert envelope.result_meta.formal_use_allowed is False
+    assert envelope.result_meta.quality_flag == "warning"
+    assert "缺少 formal_use_allowed" in envelope.answer
+    assert "fail-closed" in envelope.answer
+
+
+def test_pnl_summary_without_formal_fi_rows_fails_closed(tmp_path, monkeypatch):
+    service_module = load_module(
+        "backend.app.services.agent_service",
+        "backend/app/services/agent_service.py",
+    )
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    class StubPnlRepository:
+        def __init__(self, path: str):
+            assert path == "test.duckdb"
+
+        def list_union_report_dates(self) -> list[str]:
+            return ["2026-03-31"]
+
+        def overview_totals(self, report_date: str) -> dict[str, object]:
+            return {
+                "formal_fi_row_count": 0,
+                "nonstd_bridge_row_count": 3,
+                "interest_income_514": 10,
+                "fair_value_change_516": 20,
+                "capital_gain_517": 30,
+                "manual_adjustment": 0,
+                "total_pnl": 60,
+            }
+
+    monkeypatch.setattr(service_module, "PnlRepository", StubPnlRepository)
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
+    )
+    envelope = tool.execute(request_module.AgentQueryRequest(question="请汇总今日损益"))
+
+    assert envelope.result_meta.result_kind == "agent.pnl_summary"
+    assert envelope.result_meta.formal_use_allowed is False
+    assert envelope.result_meta.quality_flag == "warning"
+    assert "没有正式 FI 明细" in envelope.answer
+
+
+def test_credit_exposure_without_credit_rows_fails_closed(tmp_path, monkeypatch):
+    service_module = load_module(
+        "backend.app.services.agent_service",
+        "backend/app/services/agent_service.py",
+    )
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    class StubBondAnalyticsRepository:
+        def __init__(self, path: str):
+            assert path == "test.duckdb"
+
+        def list_report_dates(self) -> list[str]:
+            return ["2026-03-31"]
+
+        def fetch_credit_summary(self, *, report_date: str) -> dict[str, object]:
+            return {
+                "credit_bond_count": 0,
+                "credit_market_value": None,
+                "spread_dv01": None,
+                "oci_credit_exposure": None,
+            }
+
+    monkeypatch.setattr(service_module, "BondAnalyticsRepository", StubBondAnalyticsRepository)
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
+    )
+    envelope = tool.execute(request_module.AgentQueryRequest(question="信用暴露情况如何"))
+
+    assert envelope.result_meta.result_kind == "agent.credit_exposure"
+    assert envelope.result_meta.formal_use_allowed is False
+    assert envelope.result_meta.quality_flag == "warning"
+    assert "没有受治理的信用债敞口记录" in envelope.answer
+
+
+def test_product_pnl_missing_grand_total_row_fails_closed(tmp_path, monkeypatch):
+    service_module = load_module(
+        "backend.app.services.agent_service",
+        "backend/app/services/agent_service.py",
+    )
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    class StubProductCategoryPnlRepository:
+        def __init__(self, path: str):
+            assert path == "test.duckdb"
+
+        def list_report_dates(self) -> list[str]:
+            return ["2026-03-31"]
+
+        def fetch_rows(self, report_date: str, view: str) -> list[dict[str, object]]:
+            return [
+                {
+                    "category_id": "asset_total",
+                    "business_net_income": "120.5",
+                    "source_version": "sv_product_test",
+                    "rule_version": "rv_product_test",
+                }
+            ]
+
+        def latest_source_version(self) -> str:
+            return "sv_product_test"
+
+    monkeypatch.setattr(
+        service_module,
+        "ProductCategoryPnlRepository",
+        StubProductCategoryPnlRepository,
+    )
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
+    )
+    envelope = tool.execute(request_module.AgentQueryRequest(question="产品损益视图"))
+
+    assert envelope.result_meta.result_kind == "agent.product_pnl"
+    assert envelope.result_meta.formal_use_allowed is False
+    assert envelope.result_meta.quality_flag == "warning"
+    assert "缺少 grand_total 汇总行" in envelope.answer
+    grand_total_card = next(card for card in envelope.cards if card.title == "Grand Total")
+    assert grand_total_card.value == ""
+
+
+def _scope_test_handler(calls: list[str]):
+    def handler(request):
+        calls.append(request.question)
+        return {
+            "answer": "pnl ok",
+            "basis": "formal",
+            "result_kind": "agent.pnl_summary",
+            "formal_use_allowed": True,
+            "source_version": "sv_test",
+            "quality_flag": "ok",
+            "row_count": 1,
+            "cards": [],
+            "next_drill": [{"dimension": "portfolio", "label": "按组合查看"}],
+        }
+
+    return handler
+
+
+def test_confirmation_token_issuance_binds_user_and_run_scope(tmp_path):
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    calls: list[str] = []
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers={"pnl_summary": _scope_test_handler(calls)},
+    )
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="请汇总今日损益",
+            context={"user_id": "user_a", "run_id": "run_001"},
+        )
+    )
+
+    assert calls == ["请汇总今日损益"]
+    assert envelope.suggested_actions
+    action = envelope.suggested_actions[0]
+    assert action.payload["confirmation_scope"] == {
+        "user_id": "user_a",
+        "run_id": "run_001",
+    }
+    assert action.confirmation_token
+    # scope 位于 payload 内，既有校验端无需改动即可覆盖 HMAC 完整性。
+    assert agent_action_confirmation_token_matches(
+        token=action.confirmation_token,
+        action_type=action.type,
+        label=action.label,
+        payload=action.payload,
+    )
+
+
+def test_confirmation_token_issuance_without_user_context_stays_scope_less(tmp_path):
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    calls: list[str] = []
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers={"pnl_summary": _scope_test_handler(calls)},
+    )
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(question="请汇总今日损益")
+    )
+
+    action = envelope.suggested_actions[0]
+    assert "confirmation_scope" not in action.payload
+    assert agent_action_confirmation_token_matches(
+        token=action.confirmation_token,
+        action_type=action.type,
+        label=action.label,
+        payload=action.payload,
+    )
+
+
+def test_scope_bound_action_is_rejected_for_other_user(tmp_path):
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    calls: list[str] = []
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers={"pnl_summary": _scope_test_handler(calls)},
+    )
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="请汇总今日损益",
+            context={
+                "user_id": "user_b",
+                "intent": "pnl_summary",
+                "suggested_action": {
+                    "type": "execute_intent",
+                    "label": "Execute PnL summary",
+                    "payload": {
+                        "intent": "pnl_summary",
+                        "confirmation_scope": {"user_id": "user_a", "run_id": "run_001"},
+                    },
+                },
+            },
+        )
+    )
+
+    assert calls == []
+    assert envelope.result_meta.result_kind == "agent.action_scope"
+    assert envelope.result_meta.quality_flag == "error"
+    assert envelope.result_meta.formal_use_allowed is False
+    assert "user scope" in envelope.answer
+
+
+def test_scope_less_legacy_action_still_executes_for_any_user(tmp_path):
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    calls: list[str] = []
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers={"pnl_summary": _scope_test_handler(calls)},
+    )
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="请汇总今日损益",
+            context={
+                "user_id": "user_b",
+                "intent": "pnl_summary",
+                "suggested_action": {
+                    "type": "execute_intent",
+                    "label": "Execute PnL summary",
+                    "payload": {"intent": "pnl_summary"},
+                },
+            },
+        )
+    )
+
+    assert calls == ["请汇总今日损益"]
+    assert envelope.result_meta.result_kind == "agent.pnl_summary"

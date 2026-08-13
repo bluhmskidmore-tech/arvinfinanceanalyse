@@ -43,9 +43,9 @@ The workflow envelope uses:
 - `evidence.evidence_rows`: `0`
 - `evidence.quality_flag`: `warning`
 
-The first suggested action points to the first mapped MOSS intent and requires confirmation. The catalog does not write data, does not trigger side effects, and does not let any external agent bypass MOSS metric definitions, lineage, `result_meta`, or audit contracts.
+The first suggested action points to the first mapped MOSS intent and requires confirmation. Its `payload` contains only the target `intent` (plus the server-injected `confirmation_scope`); it intentionally does not repeat `workflow_id`, so merging the payload into the follow-up request `context` executes that intent directly. (The payload previously also carried `workflow_id`, which made an echoed payload resolve back to the workflow and return the plan card again instead of executing.) The research workflow plan action keeps `workflow_id` plus `workflow_mode="execute"` in its payload because its action executes the whole single-intent workflow. The catalog does not write data, does not trigger side effects, and does not let any external agent bypass MOSS metric definitions, lineage, `result_meta`, or audit contracts.
 
-Note: the `pnl_review` governance note previously said "plan card only"; that wording was stale. All four workflows support the explicit execute mode described below, and the catalog note now reads "Plan card is the default; multi-intent execution requires explicit `context.workflow_mode=execute`."
+Note: the `pnl_review` governance note previously said "plan card only", and the `risk_memo` note previously said the response "has no evidence rows"; both wordings were stale once execute mode landed. All four workflows support the explicit execute mode described below. The `pnl_review` note now reads "Plan card is the default; multi-intent execution requires explicit `context.workflow_mode=execute`." and the `risk_memo` note now reads "Plan responses are non-formal with no evidence rows; execute mode aggregates evidence from the mapped MOSS intents."
 
 The research workflow `research_radar_brief` (`/research-radar`, keywords 「研究速读」/「研究雷达」) follows the same plan-default / execute-on-request contract; see `docs/AGENT_MVP_RUNBOOK.md`.
 
