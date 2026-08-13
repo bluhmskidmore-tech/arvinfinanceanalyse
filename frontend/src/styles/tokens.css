@@ -372,6 +372,7 @@
 [data-moss-theme-scope="market-data"],
 [data-moss-theme-scope="stock-analysis"],
 [data-moss-theme-scope="risk-overview"],
+[data-moss-theme-scope="pnl-by-business"],
 /* 深色 owner 是 ThemedRouteBoundary 的路由（除首页外全部 scope）：钢蓝基准块以
    .workbench-shell-grid:has(.themed-route-boundary.theme-dh-api)（0-3-0）
    在外壳上定义 --dh-api-*，外壳别名须统一双写类名同权后置才能翻转
@@ -388,7 +389,8 @@
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-overview"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-data"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="stock-analysis"]),
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-overview"]) {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-overview"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business"]) {
   --nct-bg: #161826;
   --nct-rail: #131522;
   --nct-surface: #232532;
@@ -432,6 +434,10 @@
   --moss-shell-rail-active-border: var(--nct-accent);
   --moss-shadow-institutional-active: inset 2px 0 0 var(--nct-accent);
   --moss-institutional-focus-ring: color-mix(in srgb, var(--nct-accent) 34%, transparent);
+  /* boundary 深色重映射块的两个钢蓝字面量（accent-hover 亮阶与行 hover 8%）
+     在 Nocturne scope 下补齐：链接 hover 亮阶与 institutional 表格行 hover。 */
+  --ib-accent-hover: var(--nct-accent-400);
+  --moss-institutional-row-hover: color-mix(in srgb, var(--nct-accent) 8%, transparent);
   --ib-rail-text-active: var(--nct-accent-300);
   /* 旧的 dh-home-nocturne-* 雏形变量并入同一色源，避免第二套 Nocturne 值漂移。 */
   --dh-home-nocturne-ink: var(--nct-ink);
@@ -462,7 +468,8 @@
 .themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="market-overview"]),
 .themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="market-data"]),
 .themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="stock-analysis"]),
-.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="risk-overview"]) {
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="risk-overview"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="pnl-by-business"]) {
   color: var(--nct-ink, var(--dh-api-ink));
   background: var(--nct-bg, var(--dh-api-bg));
 }
@@ -485,6 +492,7 @@
 [data-moss-theme-scope="market-data"],
 [data-moss-theme-scope="stock-analysis"],
 [data-moss-theme-scope="risk-overview"],
+[data-moss-theme-scope="pnl-by-business"],
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="average-balance"]),
@@ -496,7 +504,8 @@
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-overview"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-data"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="stock-analysis"]),
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-overview"]) {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-overview"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business"]) {
   --moss-shell-paper-bg: var(--nct-bg);
   --moss-shell-paper-shade: none;
 }
@@ -509,12 +518,14 @@
 [data-moss-theme-scope="liability-analytics"],
 [data-moss-theme-scope="bank-ledger-dashboard"],
 [data-moss-theme-scope="market-data"],
+[data-moss-theme-scope="pnl-by-business"],
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="average-balance"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="positions"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-dashboard"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="liability-analytics"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bank-ledger-dashboard"]),
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-data"]) {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-data"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business"]) {
   --moss-shell-terminal-bg: var(--nct-rail);
 }

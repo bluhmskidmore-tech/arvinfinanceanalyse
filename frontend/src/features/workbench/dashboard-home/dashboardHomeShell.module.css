@@ -16,9 +16,13 @@
 
   .dhApiBackedHome .dhRail::before {
     background:
-      linear-gradient(180deg, rgba(8, 14, 24, 0.97), rgba(8, 14, 24, 0.93)),
-      rgba(8, 14, 24, 0.94);
-    border-left: 1px solid rgba(126, 157, 194, 0.08);
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--dh-api-bg) 97%, transparent),
+        color-mix(in srgb, var(--dh-api-bg) 93%, transparent)
+      ),
+      color-mix(in srgb, var(--dh-api-bg) 94%, transparent);
+    border-left: 1px solid color-mix(in srgb, var(--dh-api-soft) 8%, transparent);
     border-radius: var(--dh-api-radius, 6px);
     bottom: -18px;
     box-shadow: none;
@@ -64,7 +68,7 @@
 }
 
 .dhCard:hover {
-  border-color: rgba(114, 167, 220, 0.25);
+  border-color: color-mix(in srgb, var(--dh-api-blue) 25%, transparent);
   box-shadow: none;
 }
 
@@ -532,7 +536,7 @@
 .dhDeferredIndexHead {
   /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   align-items: center;
-  border-bottom: 1px solid rgba(36, 49, 73, 0.58);
+  border-bottom: 1px solid var(--dh-api-line-soft);
   display: flex;
   gap: 12px;
   justify-content: space-between;
@@ -566,7 +570,7 @@
 
 .dhDeferredIndexItem {
   /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
-  border: 1px solid rgba(36, 49, 73, 0.5);
+  border: 1px solid var(--dh-api-line-soft);
   display: grid;
   gap: 6px;
   padding: 10px;
@@ -977,10 +981,12 @@
 /* Page-local Nocturne palette shared by the dashboard root and its enclosing rail. */
 .dhApiBackedHome,
 :global(.workbench-shell-grid--cockpit:has([data-testid="dashboard-home-page"])) {
-  --dh-home-nocturne-ink: #e9e9ed;
-  --dh-home-nocturne-muted: #75798c;
+  /* 雏形字面量并入 tokens.css 的 --nct-* 单一色源（fallback 保留旧值，
+     供无 Nocturne scope 的上下文兜底），消除第二套 Nocturne 值漂移。 */
+  --dh-home-nocturne-ink: var(--nct-ink, #e9e9ed);
+  --dh-home-nocturne-muted: var(--nct-muted, #75798c);
   --dh-home-nocturne-radius: 8px;
-  --dh-home-nocturne-rule: #1a2a38;
+  --dh-home-nocturne-rule: var(--nct-ring, #1a2a38);
 }
 
 .dhApiBackedHome {
@@ -1050,7 +1056,7 @@
 }
 
 .dhApiBackedHome .dhRailCard:hover {
-  border-color: rgba(87, 166, 216, 0.34);
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
   transform: none;
 }
 
@@ -1062,7 +1068,7 @@
 
 .dhApiBackedHome .dhRailCardHeader {
   align-items: center;
-  border-bottom: 1px solid rgba(36, 49, 73, 0.58);
+  border-bottom: 1px solid var(--dh-api-line-soft);
   display: flex;
   gap: 10px;
   justify-content: space-between;
@@ -1092,7 +1098,7 @@
 }
 
 .dhApiBackedHome .dhRailActionRow {
-  border-top: 1px solid rgba(36, 49, 73, 0.58);
+  border-top: 1px solid var(--dh-api-line-soft);
   display: grid;
   gap: 3px;
   margin-top: 0;
@@ -1743,24 +1749,24 @@ i.dhApiStateMuted {
   }
 }
 
-/* Dashboard home page density normalization: make rail cards match the lower cockpit opacity. */
+/* Dashboard home page density normalization: make rail cards match the lower cockpit opacity.
+   钢蓝渐变字面量收敛为平卡（对齐 Nocturne 平卡语言；消费方仅首页与
+   risk-overview，均为 Nocturne 路由）。 */
 .dhApiBackedHome .dhRailCard {
   box-shadow: none;
   margin-bottom: 0;
-  background:
-    linear-gradient(145deg, rgba(232, 238, 247, 0.058), rgba(232, 238, 247, 0.012) 45%, rgba(7, 12, 20, 0.18)),
-    rgba(13, 23, 40, 0.96);
+  background: var(--dh-api-panel);
 }
 
-/* Dashboard home motion restoration: low-frequency cockpit motion and feedback. */
+/* Dashboard home motion restoration: low-frequency cockpit motion and feedback.
+   此前此块以钢蓝字面量快照重写 --dh-api-line/line-soft 与四个 -soft
+   变量，把 tokens.css 的 Nocturne scope 别名压掉（同特异性、module 注入
+   靠后源序赢），risk-overview 曾被迫以页内 .roV6Scope 三写拉回（见
+   DESIGN.md 2026-08-13 条目）。字面量与全局 .theme-dh-api 基准值完全
+   相同、属冗余快照，删除后由全局链接管：钢蓝上下文取值不变，Nocturne
+   scope 自动翻转。 */
 .dhApiBackedHome {
-  --dh-api-line: rgba(103, 119, 142, 0.34);
-  --dh-api-line-soft: rgba(103, 119, 142, 0.22);
   --dh-api-gold: var(--dh-api-amber);
-  --dh-api-blue-soft: rgba(114, 167, 220, 0.12);
-  --dh-api-green-soft: rgba(102, 185, 139, 0.12);
-  --dh-api-amber-soft: rgba(201, 165, 101, 0.13);
-  --dh-api-red-soft: rgba(212, 122, 114, 0.13);
   --dh-bg: var(--dh-api-bg);
   --dh-card: var(--dh-api-panel);
   --dh-card-soft: var(--dh-api-panel-2);
