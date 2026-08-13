@@ -13,7 +13,13 @@ router = APIRouter(prefix="/api/strategy-reports", tags=["strategy-reports"])
 
 
 def _ensure_strategy_reports_read_allowed(auth: AuthContext) -> None:
-    ensure_read_allowed(auth, "strategy_reports", settings=get_settings(), authorize=ensure_user_allowed)
+    ensure_read_allowed(
+        auth,
+        "strategy_reports",
+        settings=get_settings(),
+        allow_dev_fallback=True,
+        authorize=ensure_user_allowed,
+    )
 
 
 @router.get("/walk-forward")

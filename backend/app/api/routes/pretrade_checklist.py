@@ -13,7 +13,13 @@ router = APIRouter(prefix="/api/pretrade-checklist", tags=["pretrade-checklist"]
 
 
 def _ensure_pretrade_checklist_read_allowed(auth: AuthContext) -> None:
-    ensure_read_allowed(auth, "pretrade_checklist", settings=get_settings(), authorize=ensure_user_allowed)
+    ensure_read_allowed(
+        auth,
+        "pretrade_checklist",
+        settings=get_settings(),
+        allow_dev_fallback=True,
+        authorize=ensure_user_allowed,
+    )
 
 
 @router.get("")
