@@ -529,7 +529,8 @@
     [data-moss-theme-scope="positions"],
     [data-moss-theme-scope="bond-dashboard"],
     [data-moss-theme-scope="liability-analytics"],
-    [data-moss-theme-scope="bank-ledger-dashboard"]
+    [data-moss-theme-scope="bank-ledger-dashboard"],
+    [data-moss-theme-scope="risk-tensor"]
   )
   .workbench-terminal-bar,
 .workbench-shell-grid--desktop-aligned:has(
@@ -538,7 +539,8 @@
     [data-moss-theme-scope="positions"],
     [data-moss-theme-scope="bond-dashboard"],
     [data-moss-theme-scope="liability-analytics"],
-    [data-moss-theme-scope="bank-ledger-dashboard"]
+    [data-moss-theme-scope="bank-ledger-dashboard"],
+    [data-moss-theme-scope="risk-tensor"]
   )
   [data-testid="workbench-terminal-bar"] {
   box-shadow: none !important;
@@ -550,7 +552,8 @@
     [data-moss-theme-scope="positions"],
     [data-moss-theme-scope="bond-dashboard"],
     [data-moss-theme-scope="liability-analytics"],
-    [data-moss-theme-scope="bank-ledger-dashboard"]
+    [data-moss-theme-scope="bank-ledger-dashboard"],
+    [data-moss-theme-scope="risk-tensor"]
   )
   :is(.workbench-shell-report-chip, .workbench-operator-pill-quiet) {
   background: var(--dh-api-panel-2);
@@ -564,7 +567,8 @@
     [data-moss-theme-scope="positions"],
     [data-moss-theme-scope="bond-dashboard"],
     [data-moss-theme-scope="liability-analytics"],
-    [data-moss-theme-scope="bank-ledger-dashboard"]
+    [data-moss-theme-scope="bank-ledger-dashboard"],
+    [data-moss-theme-scope="risk-tensor"]
   )
   .workbench-terminal-utility-navlink[data-active="true"] {
   border-bottom-color: var(--dh-api-blue);
@@ -576,7 +580,8 @@
     [data-moss-theme-scope="positions"],
     [data-moss-theme-scope="bond-dashboard"],
     [data-moss-theme-scope="liability-analytics"],
-    [data-moss-theme-scope="bank-ledger-dashboard"]
+    [data-moss-theme-scope="bank-ledger-dashboard"],
+    [data-moss-theme-scope="risk-tensor"]
   )
   .workbench-market-ticker-shell {
   border-top-color: var(--dh-api-line-soft);
@@ -589,7 +594,8 @@
     [data-moss-theme-scope="positions"],
     [data-moss-theme-scope="bond-dashboard"],
     [data-moss-theme-scope="liability-analytics"],
-    [data-moss-theme-scope="bank-ledger-dashboard"]
+    [data-moss-theme-scope="bank-ledger-dashboard"],
+    [data-moss-theme-scope="risk-tensor"]
   )
   .workbench-section-subnav {
   border-bottom-color: var(--dh-api-line-soft);
@@ -602,7 +608,8 @@
     [data-moss-theme-scope="positions"],
     [data-moss-theme-scope="bond-dashboard"],
     [data-moss-theme-scope="liability-analytics"],
-    [data-moss-theme-scope="bank-ledger-dashboard"]
+    [data-moss-theme-scope="bank-ledger-dashboard"],
+    [data-moss-theme-scope="risk-tensor"]
   )
   .workbench-section-subnav__link {
   border-color: var(--dh-api-line-soft);
@@ -615,7 +622,8 @@
     [data-moss-theme-scope="positions"],
     [data-moss-theme-scope="bond-dashboard"],
     [data-moss-theme-scope="liability-analytics"],
-    [data-moss-theme-scope="bank-ledger-dashboard"]
+    [data-moss-theme-scope="bank-ledger-dashboard"],
+    [data-moss-theme-scope="risk-tensor"]
   )
   .workbench-section-subnav__link[data-active="true"] {
   border-color: var(--dh-api-blue);
@@ -948,6 +956,7 @@
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-data"]) .workbench-terminal-bar,
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business"]) .workbench-terminal-bar,
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-attribution"]) .workbench-terminal-bar,
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business-insights"]) .workbench-terminal-bar {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business-insights"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-tensor"]) .workbench-terminal-bar {
   background: var(--nct-rail) !important;
 }

@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 
 import type { EChartsOption } from "../../lib/echarts";
-import { designTokens, dhApiTokens, ibTokens } from "../../theme/designSystem";
+import { designTokens, dhApiTokens, ibTokens, nocturneTokens } from "../../theme/designSystem";
 
 type PlainObject = Record<string, unknown>;
 
@@ -75,6 +75,34 @@ const dhApiThemeColors: ChartThemeColors = {
   accentPointer: dhApiTokens.color.amber,
   emptyRadius: dhApiTokens.radius,
   loadingMaskBase: dhApiTokens.color.panel,
+};
+
+/* Nocturne（首页色系）scope 页面的 canvas 取色：与 dhApiThemeColors 同构、
+ * 仅换 nocturneTokens 常量组（canvas 不消费 CSS 变量，组合工作台先例）。 */
+const nocturneThemeColors: ChartThemeColors = {
+  palette: [
+    nocturneTokens.color.blue,
+    nocturneTokens.color.green,
+    nocturneTokens.color.amber,
+    nocturneTokens.color.red,
+    nocturneTokens.color.inkSoft,
+    nocturneTokens.color.inkMuted,
+  ],
+  categoricalPalette: [
+    nocturneTokens.color.blue,
+    nocturneTokens.color.inkSoft,
+    nocturneTokens.color.amber,
+    nocturneTokens.color.green,
+    nocturneTokens.color.inkMuted,
+    nocturneTokens.color.red,
+  ],
+  ink: nocturneTokens.color.ink,
+  inkMuted: nocturneTokens.color.inkMuted,
+  hairline: nocturneTokens.color.lineSoft,
+  surface: nocturneTokens.color.panel2,
+  accentPointer: nocturneTokens.color.amber,
+  emptyRadius: nocturneTokens.radius,
+  loadingMaskBase: nocturneTokens.color.panel,
 };
 
 function buildChartTheme(colors: ChartThemeColors) {
@@ -274,6 +302,9 @@ export const ibChartTheme = buildChartTheme(ibThemeColors);
 
 /** Dark terminal (Decision Desk) chart theme for `theme-dh-api` pages. */
 export const dhApiChartTheme = buildChartTheme(dhApiThemeColors);
+
+/** Nocturne chart theme for pages under a Nocturne `data-moss-theme-scope`. */
+export const nocturneChartTheme = buildChartTheme(nocturneThemeColors);
 
 // ---- Legacy named exports (IB light) — kept for existing consumers -------
 

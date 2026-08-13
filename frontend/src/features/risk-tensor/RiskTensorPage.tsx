@@ -6,7 +6,7 @@ import ReactECharts, { type EChartsOption } from "../../lib/echarts";
 import { useApiClient } from "../../api/client";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
 import { PageAsyncSection } from "../../components/page/PageAsyncSection";
-import { ibChartTheme } from "../../components/charts/chartTheme";
+import { nocturneChartTheme } from "../../components/charts/chartTheme";
 import { KpiCard } from "../../components/KpiCard";
 import type {
   ResultMeta,
@@ -759,7 +759,7 @@ export default function RiskTensorPage() {
     }
     const labels = KRD_FIELDS.map((item) => item.tenor);
     const data = KRD_FIELDS.map((item) => yuanAsWanMagnitudeOrNull(result[item.key]));
-    return ibChartTheme.createBarChartOption({
+    return nocturneChartTheme.createBarChartOption({
       grid: { left: 52, right: 16, top: 36, bottom: 28 },
       legend: { show: false },
       xAxis: {
@@ -773,7 +773,7 @@ export default function RiskTensorPage() {
         {
           type: "bar",
           data,
-          itemStyle: { color: ibChartTheme.palette[0], borderRadius: [2, 2, 0, 0] },
+          itemStyle: { color: nocturneChartTheme.palette[0], borderRadius: [2, 2, 0, 0] },
         },
       ],
     });
@@ -1641,40 +1641,40 @@ export default function RiskTensorPage() {
 
     const radarValues = [duration, dv01, convexity, cs01, hhi, liqRatio];
 
-    return ibChartTheme.createBaseChartOption({
+    return nocturneChartTheme.createBaseChartOption({
       legend: { show: false },
       grid: undefined,
       tooltip: {
         trigger: "item",
-        borderColor: ibChartTheme.axisLine.lineStyle.color,
-        textStyle: { color: ibChartTheme.axisLabel.color, fontSize: 13 },
+        borderColor: nocturneChartTheme.axisLine.lineStyle.color,
+        textStyle: { color: nocturneChartTheme.axisLabel.color, fontSize: 13 },
       },
       radar: {
         indicator,
         radius: "66%",
         center: ["50%", "54%"],
         axisName: {
-          color: ibChartTheme.axisLabel.color,
+          color: nocturneChartTheme.axisLabel.color,
           fontSize: 12,
         },
         splitLine: {
-          lineStyle: { color: ibChartTheme.splitLine.lineStyle.color },
+          lineStyle: { color: nocturneChartTheme.splitLine.lineStyle.color },
         },
         splitArea: { show: false },
-        axisLine: { lineStyle: { color: ibChartTheme.axisLine.lineStyle.color } },
+        axisLine: { lineStyle: { color: nocturneChartTheme.axisLine.lineStyle.color } },
       },
       series: [
         {
           type: "radar",
           symbolSize: 5,
-          lineStyle: { width: 1.5, color: ibChartTheme.palette[0] },
+          lineStyle: { width: 1.5, color: nocturneChartTheme.palette[0] },
           areaStyle: {
-            color: ibChartTheme.palette[0],
+            color: nocturneChartTheme.palette[0],
             opacity: 0.15,
           },
           itemStyle: {
-            color: ibChartTheme.palette[0],
-            borderColor: ibChartTheme.palette[0],
+            color: nocturneChartTheme.palette[0],
+            borderColor: nocturneChartTheme.palette[0],
           },
           data: [
             {
@@ -1702,7 +1702,11 @@ export default function RiskTensorPage() {
     ) : null;
 
   return (
-    <section className="risk-tensor-page theme-dh-api" data-testid="risk-tensor-page">
+    <section
+      className="risk-tensor-page theme-dh-api"
+      data-moss-theme-scope="risk-tensor"
+      data-testid="risk-tensor-page"
+    >
       <div className="risk-tensor-page__hero">
         <h1>风险张量</h1>
         <p>

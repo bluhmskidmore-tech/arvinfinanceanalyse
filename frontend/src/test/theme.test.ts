@@ -421,13 +421,15 @@ describe("globalCss design token bridge (:root)", () => {
     // page-v2 面板压制（背景 + 结论左边线）与 grid/rail 同构全量列表。
     expect(pageV2Override).toEqual(palette);
     expect(conclusionOverride).toEqual(palette);
-    // cockpit 壳 rail hover/active：六个 cockpit scope 全列（终层兜底）；
+    // cockpit 壳 rail hover/active：七个 cockpit scope 全列（终层兜底）；
     // dashboard-home / market-overview 由页内更高特异性块等值接管，
-    // 实际生效于 portfolio-home、risk-overview、stock-analysis 与 bond-analysis。
+    // 实际生效于 portfolio-home、risk-overview、module-workbench-home
+    // （/performance 与 /reports 双路由共用）、stock-analysis 与 bond-analysis。
     expect(cockpitHoverOverride).toEqual([
       "bond-analysis",
       "dashboard-home",
       "market-overview",
+      "module-workbench-home",
       "portfolio-home",
       "risk-overview",
       "stock-analysis",
@@ -436,6 +438,7 @@ describe("globalCss design token bridge (:root)", () => {
       "bond-analysis",
       "dashboard-home",
       "market-overview",
+      "module-workbench-home",
       "portfolio-home",
       "risk-overview",
       "stock-analysis",

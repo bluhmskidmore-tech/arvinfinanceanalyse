@@ -48,27 +48,14 @@ function currentYear() {
   return new Date().getFullYear();
 }
 
-function riskDetailPanelTestId(panelKey: string) {
-  if (panelKey === "risk-tensor-detail") {
-    return "module-home-risk-tensor";
-  }
-  if (panelKey === "cashflow-projection-detail") {
-    return "module-home-cashflow";
-  }
-  return "module-home-detail-panels";
-}
-
-function performanceDetailPanelTestId(panelKey: string) {
+/** detail panel key → 页面既有 testid（kind 无关映射，/performance 与 /reports 共用）。 */
+function detailPanelTestId(panelKey: string) {
   if (panelKey === "kpi-metric-detail") {
     return "module-home-kpi-detail";
   }
   if (panelKey === "business-pnl-detail") {
     return "module-home-business-pnl";
   }
-  return "module-home-detail-panels";
-}
-
-function governanceDetailPanelTestId(panelKey: string) {
   if (panelKey === "source-status") {
     return "module-home-source-status";
   }
@@ -81,96 +68,103 @@ function governanceDetailPanelTestId(panelKey: string) {
   return "module-home-detail-panels";
 }
 
-function normalizedDetailSectionTitle(title: string) {
-  if (title === "KRD 明细") {
-    return "KRD 分布";
-  }
-  if (title === "会计分类 DV01") {
-    return "DV01 构成";
-  }
-  if (title === "现金流预测") {
-    return "久期与敏感度";
-  }
-  return title;
+/**
+ * 长读数降号防截断（首页 compact 先例的长度判据）：nowrap + ellipsis 下
+ * 被截断的数字会被读成另一个数字，比降号更危险。中文状态词（读取失败等）
+ * 通常 ≤6 字不触发，保持 §3 主值 20px 下限。
+ */
+function isCompactKpiValue(value: string) {
+  return value.length >= 9;
 }
 
-function normalizedDetailPanelTitle(title: string) {
-  if (title === "现金流与缺口") {
-    return "现金流预测";
-  }
-  return title;
+function sectionIndexLabel(index: number) {
+  return String(index).padStart(2, "0");
 }
 
-function DetailRows({ rows }: { rows: ModuleHomeDetailPanel["rows"] }) {
+/** 编号节题（首页 01/02… 语言：编号 muted mono + 标题 + 右侧状态与口径 meta）。 */
+function SectionHead({
+  index,
+  title,
+  stateLabel,
+  stateTone,
+  meta,
+}: {
+  index: number;
+  title: string;
+  stateLabel?: string;
+  stateTone?: ModuleHomeTone;
+  meta?: string;
+}) {
   return (
-    <ul className={styles.detailList}>
-      {rows.map((row) => (
-        <li className={styles.detailRow} key={row.key}>
-          <div className={styles.detailRowTop}>
-            <span className={styles.detailLabel}>{row.label}</span>
-            <span className={`${styles.detailValue} ${styles.num} ${toneClassName(row.tone)}`}>
-              {row.value}
-            </span>
-            <span className={`${styles.detailDate} ${styles.num}`}>{row.tradeDate}</span>
-          </div>
-          <span className={styles.detailSource}>{row.source}</span>
-        </li>
-      ))}
-    </ul>
+    <div className={styles.secHead}>
+      <i aria-hidden="true">{sectionIndexLabel(index)}</i>
+      <h2>{title}</h2>
+      {stateLabel ? (
+        <span className={`${styles.secState} ${toneClassName(stateTone ?? "muted")}`}>
+          {stateLabel}
+        </span>
+      ) : null}
+      {meta ? (
+        <span className={styles.secMeta} title={meta}>
+          {meta}
+        </span>
+      ) : null}
+    </div>
   );
 }
 
-function DetailPanelBody({
-  panel,
-  variant = "nested",
-}: {
-  panel: ModuleHomeDetailPanel;
-  variant?: "nested" | "standalone";
-}) {
-  const sections = panel.sections?.filter((section) => section.rows.length > 0) ?? [];
-  const hasSections = sections.length > 0;
-
+function DetailRowsTable({ rows }: { rows: ModuleHomeDetailPanel["rows"] }) {
   return (
-    <article className={styles.detailPanel}>
-      {variant === "nested" ? (
-        <>
-          <div className={styles.detailHead}>
-            <span className={styles.detailTitle}>{normalizedDetailPanelTitle(panel.title)}</span>
-            <span className={`${styles.detailState} ${toneClassName(panel.tone)}`}>
-              {panel.stateLabel}
-            </span>
-          </div>
-          <span className={styles.detailMeta}>{panel.meta}</span>
-        </>
-      ) : (
-        <div className={styles.detailHead}>
-          <span className={`${styles.detailState} ${toneClassName(panel.tone)}`}>
-            {panel.stateLabel}
-          </span>
-        </div>
-      )}
-      {hasSections ? (
-        <div className={styles.detailSections}>
-          {sections.map((section) => (
-            <section className={styles.detailSection} key={section.key}>
-              <div className={styles.detailSectionHeader}>
-                <span className={styles.detailTitle}>
-                  {normalizedDetailSectionTitle(section.title)}
-                </span>
-                {section.subtitle ? (
-                  <span className={styles.detailMeta}>{section.subtitle}</span>
-                ) : null}
-              </div>
-              <DetailRows rows={section.rows} />
-            </section>
-          ))}
-        </div>
-      ) : panel.rows.length > 0 ? (
-        <DetailRows rows={panel.rows} />
-      ) : (
-        <p className={`${styles.detailEmpty} ${toneClassName(panel.tone)}`}>{panel.stateDetail}</p>
-      )}
-    </article>
+    <table className={styles.detailTable}>
+      <thead>
+        <tr>
+          <th>字段</th>
+          <th className={styles.detailValueHead}>读数</th>
+          <th className={styles.detailDateHead}>日期</th>
+          <th>来源</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row) => (
+          <tr key={row.key}>
+            <td className={styles.detailLabel}>{row.label}</td>
+            <td className={`${styles.detailValue} ${styles.num} ${toneClassName(row.tone)}`}>
+              {row.value}
+            </td>
+            <td className={`${styles.detailDate} ${styles.num}`}>{row.tradeDate}</td>
+            <td className={styles.detailSource}>{row.source}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function DetailPanelBody({ panel }: { panel: ModuleHomeDetailPanel }) {
+  const sections = panel.sections?.filter((section) => section.rows.length > 0) ?? [];
+
+  if (sections.length > 0) {
+    return (
+      <div className={styles.detailSections}>
+        {sections.map((section) => (
+          <section className={styles.detailSection} key={section.key}>
+            <div className={styles.detailSectionHeader}>
+              <span className={styles.detailSectionTitle}>{section.title}</span>
+              {section.subtitle ? (
+                <span className={styles.detailSectionMeta}>{section.subtitle}</span>
+              ) : null}
+            </div>
+            <DetailRowsTable rows={section.rows} />
+          </section>
+        ))}
+      </div>
+    );
+  }
+  if (panel.rows.length > 0) {
+    return <DetailRowsTable rows={panel.rows} />;
+  }
+  return (
+    <p className={`${styles.detailEmpty} ${toneClassName(panel.tone)}`}>{panel.stateDetail}</p>
   );
 }
 
@@ -321,57 +315,7 @@ export default function ModuleWorkbenchHomePage({
     () => buildModuleHomeView(kind, client, queries),
     [kind, client, queries],
   );
-  const isRiskView = view.kind === "risk";
-  const decisionBand = view.decision ? (
-    <section className={styles.decisionBand} data-testid="module-home-decision">
-      <div className={styles.decisionMain}>
-        <span className={`${styles.decisionKicker} ${toneClassName(view.decision.tone)}`}>
-          {view.decision.title}
-        </span>
-        <strong className={`${styles.decisionConclusion} ${toneClassName(view.decision.tone)}`}>
-          {view.decision.conclusion}
-        </strong>
-        <span className={styles.decisionDetail}>{view.decision.detail}</span>
-      </div>
-      <div className={styles.decisionFacts}>
-        {view.decision.facts.map((fact) => (
-          <span className={styles.decisionFact} key={fact.label}>
-            <span>{fact.label}</span>
-            <strong className={`${styles.num} ${toneClassName(fact.tone)}`}>{fact.value}</strong>
-          </span>
-        ))}
-      </div>
-    </section>
-  ) : null;
-  const kpiStrip = (
-    <section className={styles.kpiStrip} data-testid="module-home-kpi-strip">
-      {view.kpis.map((item) => (
-        <article className={styles.kpi} key={item.key}>
-          <span className={styles.kpiLabel}>{item.label}</span>
-          <strong className={`${styles.kpiValue} ${styles.num} ${toneClassName(item.tone)}`}>
-            {item.value}
-          </strong>
-          <span className={styles.kpiDetail}>{item.detail}</span>
-        </article>
-      ))}
-    </section>
-  );
-  const statusStrip = (
-    <section className={styles.statusStrip} data-testid="module-home-status-strip">
-      {view.statuses.map((item) => (
-        <article className={styles.statusItem} key={item.key}>
-          <div className={styles.statusTop}>
-            <span className={styles.statusLabel}>{item.label}</span>
-            <strong className={`${styles.statusValue} ${styles.num} ${toneClassName(item.tone)}`}>
-              {item.value}
-            </strong>
-          </div>
-          <span className={styles.statusDetail}>{item.detail}</span>
-        </article>
-      ))}
-    </section>
-  );
-  const stateTone =
+  const stateTone: ModuleHomeTone =
     view.stateLabel === "读取失败"
       ? "error"
       : view.stateLabel === "部分失败"
@@ -381,60 +325,86 @@ export default function ModuleWorkbenchHomePage({
         : "ok";
 
   return (
-    <section className={`${styles.moduleHome} theme-dh-api`} data-testid="module-workbench-home">
-      <header className={styles.topbar}>
-        <div className={styles.titleBlock}>
-          <div className={styles.titleRow}>
-            <span className={styles.titleBar} aria-hidden="true" />
-            <h1 className={styles.title}>{view.title}</h1>
-            <span className={statePillClassName(stateTone)}>{view.stateLabel}</span>
+    <section
+      className={`${styles.moduleHome} theme-dh-api`}
+      data-moss-theme-scope="module-workbench-home"
+      data-testid="module-workbench-home"
+    >
+      {/* 工具栏 — 首页 dhTopbar 语言：左标题 + 一问副题与状态说明，右来源/状态胶囊 */}
+      <header className={styles.topbar} data-testid="module-home-toolbar">
+        <div className={styles.topbarLeft}>
+          <h1 className={styles.pageTitle}>{view.title}</h1>
+          <div className={styles.topbarMeta}>
+            <span title={view.question}>{view.question}</span>
+            <span title={view.stateDetail}>{view.stateDetail}</span>
+            {/* 口径边界声明是业务文案（§6），保持可见，不收进 tooltip。 */}
+            <span title={view.summary}>{view.summary}</span>
           </div>
-          <p className={styles.question}>{view.question}</p>
-          <p className={styles.summary}>{view.summary}</p>
         </div>
-        <div className={styles.topMeta}>
-          <div className={styles.credibilityStrip}>
-            <span className={styles.credibilityLabel}>来源</span>
-            <span className={styles.pill}>{view.sourceScope}</span>
-          </div>
-          <div className={styles.credibilityStrip}>
-            <span className={styles.credibilityLabel}>状态</span>
-            <span className={statePillClassName(stateTone)}>{view.stateDetail}</span>
-          </div>
+        <div className={styles.topbarRight}>
+          <span className={styles.pill} title={view.sourceScope}>
+            来源 {view.sourceScope}
+          </span>
+          <span className={statePillClassName(stateTone)} title={view.stateDetail}>
+            <i aria-hidden="true" />
+            {view.stateLabel}
+          </span>
         </div>
       </header>
 
-      {isRiskView ? (
-        <div className={styles.riskReviewDesk} data-testid="module-home-risk-review-desk">
-          {decisionBand ? (
-            <div data-testid="module-home-risk-decision-zone">{decisionBand}</div>
-          ) : null}
-          <div className={styles.riskReadoutBand} data-testid="module-home-risk-readout-band">
-            <div data-testid="module-home-risk-summary-cards">{kpiStrip}</div>
-            {statusStrip}
-          </div>
-        </div>
-      ) : (
-        decisionBand
-      )}
-
       <div className={styles.layout}>
         <main className={styles.main}>
-          {isRiskView ? null : kpiStrip}
+          {/* KPI 单框横带（首页 kpiRail 语言：等高分格 + 发丝竖缝 + 等宽数字） */}
+          <section className={styles.kpiStrip} data-testid="module-home-kpi-strip">
+            {view.kpis.map((item) => (
+              <article
+                className={styles.kpi}
+                data-compact-value={isCompactKpiValue(item.value) ? "true" : undefined}
+                key={item.key}
+              >
+                <span className={styles.kpiLabel} title={item.label}>
+                  {item.label}
+                </span>
+                <strong
+                  className={`${styles.kpiValue} ${styles.num} ${toneClassName(item.tone)}`}
+                  title={item.value}
+                >
+                  {item.value}
+                </strong>
+                <span className={styles.kpiDetail} title={item.detail}>
+                  {item.detail}
+                </span>
+              </article>
+            ))}
+          </section>
 
-          {isRiskView ? null : statusStrip}
+          {/* 读链路状态条带（首页产品分类摘要条语言：单框分格 + 语义状态位） */}
+          <section className={styles.statusStrip} data-testid="module-home-status-strip">
+            {view.statuses.map((item) => (
+              <article className={styles.statusItem} key={item.key}>
+                <div className={styles.statusTop}>
+                  <span className={styles.statusLabel}>{item.label}</span>
+                  <strong
+                    className={`${styles.statusValue} ${styles.num} ${toneClassName(item.tone)}`}
+                  >
+                    {item.value}
+                  </strong>
+                </div>
+                <span className={styles.statusDetail} title={item.detail}>
+                  {item.detail}
+                </span>
+              </article>
+            ))}
+          </section>
 
+          {/* 01 主结论区 */}
           <section className={styles.card} data-testid="module-home-briefing">
-            <div className={styles.sectionTitle}>
-              <span>主结论区</span>
-            </div>
+            <SectionHead index={1} title="主结论区" />
             <div className={styles.briefGrid}>
               {view.briefings.map((item) => (
                 <article className={styles.brief} key={item.title}>
                   <span className={styles.briefTitle}>{item.title}</span>
-                  <strong
-                    className={`${styles.briefConclusion} ${styles.num} ${toneClassName(item.tone)}`}
-                  >
+                  <strong className={`${styles.briefConclusion} ${toneClassName(item.tone)}`}>
                     {item.conclusion}
                   </strong>
                   <span className={styles.briefEvidence}>{item.evidence}</span>
@@ -443,151 +413,60 @@ export default function ModuleWorkbenchHomePage({
             </div>
           </section>
 
-          {view.distributionPanels && view.distributionPanels.length > 0 ? (
-            <section className={styles.card} data-testid="module-home-holdings-structure">
-              <div className={styles.sectionTitle}>
-                <span>持仓结构</span>
-                <span className={styles.sectionMeta}>{view.distributionPanels[0]?.meta}</span>
-              </div>
-              <div className={styles.distributionGrid}>
-                {view.distributionPanels.map((panel) => (
-                  <article className={styles.distributionPanel} key={panel.key}>
-                    <div className={styles.distributionHead}>
-                      <span className={styles.distributionTitle}>{panel.title}</span>
-                      <span className={`${styles.distributionState} ${toneClassName(panel.tone)}`}>
-                        {panel.stateLabel}
-                      </span>
-                    </div>
-                    <span className={styles.distributionMeta}>{panel.meta}</span>
-                    {panel.rows.length > 0 ? (
-                      <ul className={styles.distributionList}>
-                        {panel.rows.map((row) => (
-                          <li className={styles.distributionRow} key={row.key}>
-                            <div className={styles.distributionRowTop}>
-                              <span className={styles.distributionLabel}>{row.label}</span>
-                              <span className={`${styles.distributionValue} ${styles.num}`}>
-                                {row.marketValue}
-                              </span>
-                              <span className={`${styles.distributionShare} ${styles.num}`}>
-                                {row.share}
-                              </span>
-                            </div>
-                            <div className={styles.distBarTrack} aria-hidden="true">
-                              <div
-                                className={styles.distBarFill}
-                                style={{ width: `${row.barPct}%` }}
-                              />
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className={`${styles.distributionEmpty} ${toneClassName(panel.tone)}`}>
-                        {panel.stateDetail}
-                      </p>
-                    )}
-                  </article>
-                ))}
-              </div>
+          {/* 02+ 明细区块（performance：KPI 指标明细 / 业务种类损益；
+              governance：数据源状态 / Cube 维度与度量 / 健康检查明细） */}
+          {(view.detailPanels ?? []).map((panel, index) => (
+            <section
+              className={styles.card}
+              data-testid={detailPanelTestId(panel.key)}
+              key={panel.key}
+            >
+              <SectionHead
+                index={index + 2}
+                title={panel.title}
+                stateLabel={panel.stateLabel}
+                stateTone={panel.tone}
+                meta={panel.meta}
+              />
+              <DetailPanelBody panel={panel} />
             </section>
-          ) : null}
-
-          {view.detailPanels && view.detailPanels.length > 0 ? (
-            view.kind === "risk" ? (
-              <section className={styles.card} data-testid="module-home-risk-evidence">
-                <div className={styles.sectionTitle}>
-                  <span data-testid="module-home-risk-evidence-heading">
-                    风险证据板
-                  </span>
-                  <span className={styles.sectionMeta}>字段级读数，不在首页补算</span>
-                </div>
-                <div className={styles.detailGrid}>
-                  {view.detailPanels.map((panel) => (
-                    <div data-testid={riskDetailPanelTestId(panel.key)} key={panel.key}>
-                      <DetailPanelBody panel={panel} />
-                    </div>
-                  ))}
-                </div>
-              </section>
-            ) : view.kind === "performance" ? (
-              view.detailPanels.map((panel) => (
-                <section
-                  className={styles.card}
-                  data-testid={performanceDetailPanelTestId(panel.key)}
-                  key={panel.key}
-                >
-                  <div className={styles.sectionTitle}>
-                    <span>{panel.title}</span>
-                    <span className={styles.sectionMeta}>{panel.meta}</span>
-                  </div>
-                  <DetailPanelBody panel={panel} variant="standalone" />
-                </section>
-              ))
-            ) : view.kind === "governance" ? (
-              view.detailPanels.map((panel) => (
-                <section
-                  className={styles.card}
-                  data-testid={governanceDetailPanelTestId(panel.key)}
-                  key={panel.key}
-                >
-                  <div className={styles.sectionTitle}>
-                    <span>{panel.title}</span>
-                    <span className={styles.sectionMeta}>{panel.meta}</span>
-                  </div>
-                  <DetailPanelBody panel={panel} variant="standalone" />
-                </section>
-              ))
-            ) : (
-              <section
-                className={styles.card}
-                data-testid={
-                  view.kind === "market" ? "module-home-rate-snapshot" : "module-home-detail-panels"
-                }
-              >
-                <div className={styles.sectionTitle}>
-                  <span>市场数据</span>
-                  <span className={styles.sectionMeta}>{view.detailPanels[0]?.meta}</span>
-                </div>
-                <div className={styles.detailGrid}>
-                  {view.detailPanels.map((panel) => (
-                    <DetailPanelBody panel={panel} key={panel.key} />
-                  ))}
-                </div>
-              </section>
-            )
-          ) : null}
+          ))}
         </main>
 
         <aside className={styles.rail}>
           <section className={styles.railCard} data-testid="module-home-drilldowns">
-            <div className={styles.sectionTitle}>
+            <div className={styles.railCardHeader}>
               <span>下钻入口</span>
             </div>
-            <p className={styles.railLead}>
-              首页只做摘要和状态聚合，明细解释进入对应页面继续看。
-            </p>
-            <div className={styles.drillList}>
-              {config.drilldowns.map((item) => (
-                <Link className={styles.drill} to={item.path} key={item.key}>
-                  <span className={styles.drillHead}>
-                    <strong className={styles.drillTitle}>{item.label}</strong>
-                    <span className={styles.drillBadge}>{item.statusLabel}</span>
-                  </span>
-                  <span className={styles.drillDesc}>{item.description}</span>
-                </Link>
-              ))}
+            <div className={styles.railCardBody}>
+              <p className={styles.railLead}>
+                首页只做摘要和状态聚合，明细解释进入对应页面继续看。
+              </p>
+              <div className={styles.drillList}>
+                {config.drilldowns.map((item) => (
+                  <Link className={styles.drill} to={item.path} key={item.key}>
+                    <span className={styles.drillHead}>
+                      <strong className={styles.drillTitle}>{item.label}</strong>
+                      <span className={styles.drillBadge}>{item.statusLabel}</span>
+                    </span>
+                    <span className={styles.drillDesc}>{item.description}</span>
+                  </Link>
+                ))}
+              </div>
             </div>
           </section>
 
           <section className={styles.railCard} data-testid="module-home-data-note">
-            <div className={styles.sectionTitle}>
+            <div className={styles.railCardHeader}>
               <span>{view.dataNote.title}</span>
             </div>
-            <ul className={styles.dataNote}>
-              {view.dataNote.lines.map((line) => (
-                <li key={line}>{line}</li>
-              ))}
-            </ul>
+            <div className={styles.railCardBody}>
+              <ul className={styles.dataNote}>
+                {view.dataNote.lines.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            </div>
           </section>
         </aside>
       </div>

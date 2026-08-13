@@ -200,8 +200,8 @@ export const liveRouteReadinessContracts = {
     verificationFiles: ["src/test/LedgerDashboardPage.test.tsx"],
   },
   "/risk-overview": {
-    sourceFiles: ["src/features/workbench/module-home/ModuleWorkbenchHomePage.tsx"],
-    sourceAnchors: ["module-workbench-home", "module-home-risk-evidence"],
+    sourceFiles: ["src/features/workbench/module-home/RiskOverviewPage.tsx"],
+    sourceAnchors: ["risk-overview-page", "risk-overview-evidence"],
     verificationFiles: ["src/test/ModuleWorkbenchHomePage.test.tsx"],
   },
   "/risk-tensor": {

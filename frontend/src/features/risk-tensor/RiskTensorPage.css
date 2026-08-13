@@ -11,6 +11,8 @@
   --ib-radius: var(--dh-api-radius);
   --ib-shadow: none;
   --ib-warn: var(--dh-api-amber);
+  --ib-up: var(--dh-api-green);
+  --ib-down: var(--dh-api-red);
   --moss-color-border-default: var(--dh-api-line);
   --moss-color-card-bg: var(--dh-api-panel);
   --moss-color-danger-200: var(--dh-api-line);
@@ -22,6 +24,9 @@
   --moss-color-info-600: var(--dh-api-blue);
   --moss-color-neutral-200: var(--dh-api-line);
   --moss-color-neutral-50: var(--dh-api-panel-2);
+  --moss-color-neutral-500: var(--dh-api-muted);
+  --moss-color-neutral-600: var(--dh-api-soft);
+  --moss-color-neutral-900: var(--dh-api-ink);
   --moss-color-success-200: var(--dh-api-line);
   --moss-color-success-50: var(--dh-api-green-soft);
   --moss-color-success-600: var(--dh-api-green);
@@ -38,6 +43,25 @@
   min-height: 100%;
   background: var(--dh-api-bg);
   color: var(--dh-api-ink);
+}
+
+/*
+ * 共享溯源面板（FormalResultMetaPanel）徽章 tone 在本页的 Nocturne 收敛：
+ * 徽章色经组件的 --formal-meta-badge-* 变量出口（回退值为浅色字面量），
+ * 页 scope 内拉回 --dh-api-* 链（ledger-pnl / positions 同款先例）；
+ * 面板文字墨色由页根 neutral-900/600/500 重映射兜底。
+ */
+.risk-tensor-page .formal-result-meta-panel {
+  --formal-result-meta-border-soft: var(--dh-api-line-soft);
+  --formal-meta-badge-ok-bg: var(--dh-api-green-soft);
+  --formal-meta-badge-ok-ink: var(--dh-api-green);
+  --formal-meta-badge-ok-line: color-mix(in srgb, var(--dh-api-green) 34%, transparent);
+  --formal-meta-badge-warn-bg: var(--dh-api-amber-soft);
+  --formal-meta-badge-warn-ink: var(--dh-api-amber);
+  --formal-meta-badge-warn-line: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
+  --formal-meta-badge-danger-bg: var(--dh-api-red-soft);
+  --formal-meta-badge-danger-ink: var(--dh-api-red);
+  --formal-meta-badge-danger-line: color-mix(in srgb, var(--dh-api-red) 34%, transparent);
 }
 
 .risk-tensor-brief {
@@ -1021,7 +1045,7 @@ button.risk-tensor-prior-change__metric:focus-visible {
   background:
     linear-gradient(180deg, var(--moss-color-card-bg), var(--moss-color-neutral-50)),
     var(--moss-color-card-bg);
-  box-shadow: 0 10px 24px rgba(22, 35, 46, 0.06);
+  box-shadow: var(--moss-shadow-card);
 }
 
 .risk-tensor-dv01-controls__header {
@@ -1237,7 +1261,7 @@ button.risk-tensor-prior-change__metric:focus-visible {
   border: 1px solid var(--moss-color-border-default);
   border-radius: var(--ib-radius, 2px);
   background: var(--moss-color-card-bg);
-  box-shadow: 0 10px 24px rgba(22, 35, 46, 0.05);
+  box-shadow: var(--moss-shadow-card);
 }
 
 .risk-tensor-scenario-stress__header {
