@@ -1163,3 +1163,66 @@ select {
     min-width: 0;
   }
 }
+
+/* ══════════════════════════════════════════════════════════════
+   Nocturne 外壳统一收口（2026-08-12，见 DESIGN.md Decisions Log）。
+   tokens.css 的 scope 别名（已升权 0-3-0）负责在外壳网格上翻转
+   --dh-api-* / --moss-shell-* 变量；此层压制变量翻转触不到的
+   「烘焙死」声明：本文件 §Dark terminal 与 cockpit 变体、
+   workbenchInstitutionalConsole.css 以 !important 直写的钢蓝渐变
+   与金蓝装饰。值全部引用 --nct-*（仅 Nocturne scope 网格上有定义、
+   无竞争声明），不新增色值；特异性与 !important 对齐烘焙规则并后置，
+   不依赖动态 import 的注入顺序。
+   页内既有压制块（portfolio-home / market-overview 为 0-4-0/0-5-0）
+   特异性更高且取值等价，保留不冲突；dashboard-home 页内块（0-3-0
+   无 !important）由本层接管，取值同为 Nocturne 色板。
+   rail-mark 一条对非 cockpit 路由是把 transparent 基线改为 Nocturne
+   实面的视觉决定（对齐 market-overview 验收观感），并非压制烘焙；
+   cockpit 外壳（dashboard-home / portfolio-home）的 rail-mark 制度
+   是透明底 + 结构选择器 0-4-3 !important（dashboardCockpit.css），
+   不入该列表。终端条分册按启动性能守卫住 workbenchDeferredChrome.css
+   末尾。新增 Nocturne scope 时共四处：tokens.css 别名三块列表、
+   本层三条选择器列表各加一行；若该路由渲染终端条
+   （WorkbenchShell 的 showShellTerminalBar），tokens.css 终端条块
+   与 workbenchDeferredChrome.css 分册再各加一行。
+   已知残留：page-v2 面板烘焙（本文件 §83-94）不在本层范围，
+   /positions 首屏结论块仍为钢蓝渐变，待后续收口。
+   ══════════════════════════════════════════════════════════════ */
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="dashboard-home"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="average-balance"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="positions"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-dashboard"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="liability-analytics"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bank-ledger-dashboard"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="portfolio-home"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-overview"]) {
+  background: var(--nct-bg) !important;
+}
+
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="dashboard-home"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="average-balance"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="positions"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-dashboard"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="liability-analytics"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bank-ledger-dashboard"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="portfolio-home"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-overview"]) .workbench-shell-rail {
+  background: var(--nct-rail) !important;
+}
+
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="average-balance"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="positions"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-dashboard"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="liability-analytics"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bank-ledger-dashboard"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-overview"]) .workbench-shell-rail-mark {
+  background: var(--nct-surface) !important;
+  border-color: var(--nct-ring) !important;
+  box-shadow: none !important;
+}

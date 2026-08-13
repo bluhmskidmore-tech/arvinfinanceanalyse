@@ -865,3 +865,18 @@
     white-space: nowrap;
   }
 }
+
+/* Nocturne 外壳统一收口的终端条分册（2026-08-12，主块见 workbenchShell.css 末尾；
+   终端条铬件样式按启动性能守卫只允许住本延迟文件）：
+   workbenchInstitutionalConsole.css 以 !important 在终端条卡面上叠钢青装饰渐层
+   （ledger-pnl 命中），其余 5 个 scope 走 --moss-shell-terminal-bg 变量即可
+   （tokens.css 已重映射），列在此处属冗余对齐——保持与 tokens.css 终端条块
+   同一份 scope 列表，避免两处漂移。值引用 --nct-*，不新增色值。 */
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="average-balance"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="positions"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-dashboard"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="liability-analytics"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bank-ledger-dashboard"]) .workbench-terminal-bar {
+  background: var(--nct-rail) !important;
+}

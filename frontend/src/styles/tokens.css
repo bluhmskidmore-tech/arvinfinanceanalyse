@@ -367,20 +367,20 @@
 [data-moss-theme-scope="bank-ledger-dashboard"],
 [data-moss-theme-scope="portfolio-home"],
 [data-moss-theme-scope="market-overview"],
-.workbench-shell-grid:has([data-moss-theme-scope="dashboard-home"]),
-.workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"]),
-.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]),
-.workbench-shell-grid:has([data-moss-theme-scope="average-balance"]),
-.workbench-shell-grid:has([data-moss-theme-scope="positions"]),
-.workbench-shell-grid:has([data-moss-theme-scope="bond-dashboard"]),
-.workbench-shell-grid:has([data-moss-theme-scope="liability-analytics"]),
-.workbench-shell-grid:has([data-moss-theme-scope="bank-ledger-dashboard"]),
-.workbench-shell-grid:has([data-moss-theme-scope="portfolio-home"]),
-/* 组合页深色 owner 是 ThemedRouteBoundary：钢蓝基准块以
+/* 深色 owner 是 ThemedRouteBoundary 的路由（除首页外全部 scope）：钢蓝基准块以
    .workbench-shell-grid:has(.themed-route-boundary.theme-dh-api)（0-3-0）
-   在外壳上定义 --dh-api-*，需同权后置别名才能翻转外壳。 */
+   在外壳上定义 --dh-api-*，外壳别名须统一双写类名同权后置才能翻转
+   （portfolio-home 2026-08-12 先例推广到全部 scope，见 DESIGN.md Decisions Log）。 */
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="dashboard-home"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="average-balance"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="positions"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-dashboard"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="liability-analytics"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bank-ledger-dashboard"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="portfolio-home"]),
-.workbench-shell-grid:has([data-moss-theme-scope="market-overview"]) {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-overview"]) {
   --nct-bg: #161826;
   --nct-rail: #131522;
   --nct-surface: #232532;
@@ -432,12 +432,10 @@
 }
 
 /*
- * 宏观工具与总账损益路由的外壳铬件补充映射：终端条/纸面渐变在 .theme-dh-api
- * 块里是烘焙死的钢蓝 rgba 渐变，Nocturne scope 翻不动；首页因不渲染这些铬件
- * 而无感。此块仅对渲染外壳铬件的 scope 生效，值全部引用 --nct-*，不新增色值。
- * 宏观工具路由已由 WorkbenchShell 的 isMacroToolkitShell 抑制终端条，
- * --moss-shell-terminal-bg 重映射只有仍渲染终端条的总账损益需要；
- * 纸面渐变（main 主列背景）两个 scope 都还在用，保持共用。
+ * 外壳铬件（主列纸面渐变）补充映射：纸面渐变在 .theme-dh-api 块里是烘焙死的
+ * 钢蓝 rgba 渐变，Nocturne scope 翻不动；首页（dashboard-home）因 cockpit 壳
+ * 不渲染主列纸面而不在此列。此块对除首页外全部 Nocturne scope 生效，
+ * 值全部引用 --nct-*，不新增色值。
  */
 [data-moss-theme-scope="macro-toolkit"],
 [data-moss-theme-scope="ledger-pnl"],
@@ -448,16 +446,15 @@
 [data-moss-theme-scope="bank-ledger-dashboard"],
 [data-moss-theme-scope="portfolio-home"],
 [data-moss-theme-scope="market-overview"],
-.workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"]),
-.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]),
-.workbench-shell-grid:has([data-moss-theme-scope="average-balance"]),
-.workbench-shell-grid:has([data-moss-theme-scope="positions"]),
-.workbench-shell-grid:has([data-moss-theme-scope="bond-dashboard"]),
-.workbench-shell-grid:has([data-moss-theme-scope="liability-analytics"]),
-.workbench-shell-grid:has([data-moss-theme-scope="bank-ledger-dashboard"]),
-.workbench-shell-grid:has([data-moss-theme-scope="portfolio-home"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="average-balance"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="positions"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-dashboard"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="liability-analytics"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bank-ledger-dashboard"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="portfolio-home"]),
-.workbench-shell-grid:has([data-moss-theme-scope="market-overview"]) {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-overview"]) {
   --moss-shell-paper-bg: var(--nct-bg);
   --moss-shell-paper-shade: none;
 }
@@ -469,11 +466,11 @@
 [data-moss-theme-scope="bond-dashboard"],
 [data-moss-theme-scope="liability-analytics"],
 [data-moss-theme-scope="bank-ledger-dashboard"],
-.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]),
-.workbench-shell-grid:has([data-moss-theme-scope="average-balance"]),
-.workbench-shell-grid:has([data-moss-theme-scope="positions"]),
-.workbench-shell-grid:has([data-moss-theme-scope="bond-dashboard"]),
-.workbench-shell-grid:has([data-moss-theme-scope="liability-analytics"]),
-.workbench-shell-grid:has([data-moss-theme-scope="bank-ledger-dashboard"]) {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="average-balance"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="positions"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-dashboard"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="liability-analytics"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bank-ledger-dashboard"]) {
   --moss-shell-terminal-bg: var(--nct-rail);
 }

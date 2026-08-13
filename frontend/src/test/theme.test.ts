@@ -21,6 +21,8 @@ const AG_GRID_INSTITUTIONAL_CSS_PATH = resolve(
   process.cwd(),
   "src/styles/agGridInstitutional.css",
 );
+const TOKENS_CSS_PATH = resolve(process.cwd(), "src/styles/tokens.css");
+const WORKBENCH_SHELL_CSS_PATH = resolve(process.cwd(), "src/styles/workbenchShell.css");
 
 function readCssWithLocalImports(filePath: string, seen = new Set<string>()): string {
   if (seen.has(filePath)) {
@@ -37,6 +39,27 @@ function readCssWithLocalImports(filePath: string, seen = new Set<string>()): st
 
 function stripCssComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, "");
+}
+
+/**
+ * Nocturne 外壳收口的 scope 列表提取：收集 body 含指定声明片段的规则里
+ * 出现的全部 data-moss-theme-scope 值（去重排序）。嵌套在 @media 里的
+ * 规则同样能被逐条抓到（正则不跨花括号，外层壳被跳过）。
+ */
+function nocturneScopeSet(css: string, bodyMarker: string): string[] {
+  const cleaned = stripCssComments(css);
+  const scopes = new Set<string>();
+  const ruleRe = /([^{}]+)\{([^{}]*)\}/g;
+  let rule: RegExpExecArray | null;
+  while ((rule = ruleRe.exec(cleaned)) !== null) {
+    if (!rule[2].includes(bodyMarker)) continue;
+    const scopeRe = /data-moss-theme-scope="([a-z0-9-]+)"/g;
+    let scope: RegExpExecArray | null;
+    while ((scope = scopeRe.exec(rule[1])) !== null) {
+      scopes.add(scope[1]);
+    }
+  }
+  return [...scopes].sort();
 }
 
 function extractRootCssBlock(css: string): string {
@@ -336,6 +359,36 @@ describe("globalCss design token bridge (:root)", () => {
     }
     expect(fullGlobalCss).toContain(".workbench-shell-grid--cockpit");
     expect(fullGlobalCss).toContain(".dashboard-home-shell");
+  });
+
+  it("keeps Nocturne shell override scope lists in parity across tokens/shell/deferred chrome", () => {
+    const tokensCss = readFileSync(TOKENS_CSS_PATH, "utf8");
+    const shellCss = readFileSync(WORKBENCH_SHELL_CSS_PATH, "utf8");
+
+    const palette = nocturneScopeSet(tokensCss, "--nct-bg: #161826");
+    const paper = nocturneScopeSet(tokensCss, "--moss-shell-paper-bg: var(--nct-bg)");
+    const terminalVars = nocturneScopeSet(tokensCss, "--moss-shell-terminal-bg: var(--nct-rail)");
+    const gridOverride = nocturneScopeSet(shellCss, "background: var(--nct-bg) !important");
+    const railOverride = nocturneScopeSet(shellCss, "background: var(--nct-rail) !important");
+    const railMarkOverride = nocturneScopeSet(shellCss, "background: var(--nct-surface) !important");
+    const terminalOverride = nocturneScopeSet(
+      workbenchDeferredChromeCss,
+      "background: var(--nct-rail) !important",
+    );
+
+    // 主色板块（tokens.css）是唯一权威列表；收口层 grid/rail 必须同一份。
+    expect(palette.length).toBeGreaterThanOrEqual(10);
+    expect(gridOverride).toEqual(palette);
+    expect(railOverride).toEqual(palette);
+    // cockpit 壳（dashboard-home / portfolio-home）的 rail-mark 保持透明制度，不入收口列表。
+    expect(railMarkOverride).toEqual(
+      palette.filter((scope) => scope !== "dashboard-home" && scope !== "portfolio-home"),
+    );
+    // 首页 cockpit 壳不渲染主列纸面。
+    expect(paper).toEqual(palette.filter((scope) => scope !== "dashboard-home"));
+    // 渲染终端条的 scope：tokens.css 终端条块与延迟分册必须同一份列表。
+    expect(terminalVars.length).toBeGreaterThan(0);
+    expect(terminalOverride).toEqual(terminalVars);
   });
 
   it("keeps AG Grid theme aliases out of the eager global stylesheet", () => {
