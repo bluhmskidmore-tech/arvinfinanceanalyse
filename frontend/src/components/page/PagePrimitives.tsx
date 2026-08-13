@@ -105,6 +105,11 @@ export type PageV2ShellProps = {
   children: ReactNode;
   testId?: string;
   style?: CSSProperties;
+  /**
+   * Nocturne 换肤 scope 透传（MarketWorkbenchFrame themeScope 同款先例）：
+   * PageV2Shell 即页根时 scope 须落在 shell 根元素；不传时零影响。
+   */
+  themeScope?: string;
 };
 
 export type PageV2SurfacePanelProps = {
@@ -163,9 +168,14 @@ export function PageSurfacePanel({
   );
 }
 
-export function PageV2Shell({ children, testId, style }: PageV2ShellProps) {
+export function PageV2Shell({ children, testId, style, themeScope }: PageV2ShellProps) {
   return (
-    <div data-testid={testId} className="moss-page-v2-shell" style={style}>
+    <div
+      data-testid={testId}
+      data-moss-theme-scope={themeScope}
+      className="moss-page-v2-shell"
+      style={style}
+    >
       {children}
     </div>
   );
