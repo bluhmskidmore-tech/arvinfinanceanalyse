@@ -89,7 +89,15 @@ def _raise_workbench_http_error(exc: Exception) -> None:
 
 
 def _ensure_kpi_read_allowed(auth: AuthContext) -> None:
-    ensure_read_allowed(auth, "kpi", settings=get_settings(), authorize=ensure_user_allowed)
+    # allow_dev_fallback 与 positions/team_performance/balance_analysis 读路由对齐：
+    # 仅在 development 环境且身份为匿名 viewer 回退时放行，显式身份缺 scope 仍 403。
+    ensure_read_allowed(
+        auth,
+        "kpi",
+        settings=get_settings(),
+        allow_dev_fallback=True,
+        authorize=ensure_user_allowed,
+    )
 
 
 def _render_report_csv(*, rows: list[dict[str, object]], year: int, as_of_date: str | None) -> PlainTextResponse:

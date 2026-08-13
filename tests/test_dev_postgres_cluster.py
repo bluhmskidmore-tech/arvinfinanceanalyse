@@ -17,6 +17,7 @@ EXPECTED_DEV_USER_SCOPE_GRANTS = {
     ("anonymous", "viewer", "dashboard", "read"),
     ("anonymous", "viewer", "executive", "read"),
     ("anonymous", "viewer", "agent", "read"),
+    ("anonymous", "viewer", "kpi", "read"),
     ("anonymous", "viewer", "ledger_pnl", "read"),
     ("anonymous", "viewer", "macro_bond_linkage", "read"),
     ("anonymous", "viewer", "macro_toolkit", "read"),

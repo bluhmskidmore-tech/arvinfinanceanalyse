@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from backend.app.repositories.kpi_repo import KpiOwnerRow, KpiPeriodSummaryRow, KpiRepository
 from backend.app.schemas.kpi import (
+    KpiOwnerAuthorityMeta,
     KpiOwnerListPayload,
     KpiOwnerPayload,
     KpiPeriodMetricSummaryPayload,
@@ -87,6 +88,21 @@ def kpi_owners_payload(
     if is_active is not False:
         gate = resolve_kpi_authority_gate(dsn=dsn, year=year)
         if gate["status"] != "available":
+            if gate["reason"] == "no-active-owners":
+                # Unmaterialized KPI data is not a service failure: disclose the
+                # blocked authority gate on a structured empty state instead of
+                # failing the whole owners read surface.
+                gate_year = gate.get("year")
+                return KpiOwnerListPayload(
+                    owners=[],
+                    total=0,
+                    meta=KpiOwnerAuthorityMeta(
+                        authority_status=str(gate["status"]),
+                        reason=str(gate["reason"]),
+                        owner_count=0,
+                        year=gate_year if isinstance(gate_year, int) else None,
+                    ),
+                ).model_dump(mode="json")
             raise KpiAuthorityBlockedError(
                 f"KPI authority unavailable: {gate['reason']}. "
                 "Load an authoritative KPI source before treating this surface as governed."
