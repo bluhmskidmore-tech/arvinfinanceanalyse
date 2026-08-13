@@ -74,6 +74,7 @@ describe("ApiClient composition boundary", () => {
     expect(typeof client.getResearchCalendarEvents).toBe("function");
     expect(typeof client.getKpiOwners).toBe("function");
     expect(typeof client.fetchAndRecalcKpi).toBe("function");
+    expect(typeof client.getTeamPerformanceAssessmentWorkbook).toBe("function");
     expect(typeof client.getCubeDimensions).toBe("function");
     expect(typeof client.executeCubeQuery).toBe("function");
   });
@@ -765,9 +766,10 @@ describe("ApiClient composition boundary", () => {
       fetchImpl: fetchMock as unknown as typeof fetch,
     });
 
-    await client.getFormalPnlDates("analytical");
-    await client.getFormalPnlData("2026 02/28", "analytical");
-    await client.getFormalPnlOverview("2026 02/28", "analytical");
+    // /api/pnl/dates、/api/pnl/data、/api/pnl/overview 仅正式口径：请求不携带 basis 查询参数。
+    await client.getFormalPnlDates();
+    await client.getFormalPnlData("2026 02/28");
+    await client.getFormalPnlOverview("2026 02/28");
     await client.getLedgerPnlDates();
     await client.getLedgerPnlData("2026 02/28", " CNX ");
     await client.getLedgerPnlSummary("2026 02/28", " CNX ");
@@ -778,21 +780,21 @@ describe("ApiClient composition boundary", () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      "http://localhost:8000/api/pnl/dates?basis=analytical",
+      "http://localhost:8000/api/pnl/dates",
       expect.objectContaining({
         headers: expect.objectContaining({ Accept: "application/json" }),
       }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      "http://localhost:8000/api/pnl/data?date=2026%2002%2F28&basis=analytical",
+      "http://localhost:8000/api/pnl/data?date=2026%2002%2F28",
       expect.objectContaining({
         headers: expect.objectContaining({ Accept: "application/json" }),
       }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
-      "http://localhost:8000/api/pnl/overview?report_date=2026%2002%2F28&basis=analytical",
+      "http://localhost:8000/api/pnl/overview?report_date=2026%2002%2F28",
       expect.objectContaining({
         headers: expect.objectContaining({ Accept: "application/json" }),
       }),
@@ -945,11 +947,11 @@ describe("ApiClient composition boundary", () => {
   it("keeps PnL core mock envelope shapes after extraction", async () => {
     const client = createApiClient({ mode: "mock" });
 
-    await expect(client.getFormalPnlDates("analytical")).resolves.toMatchObject({
+    await expect(client.getFormalPnlDates()).resolves.toMatchObject({
       result_meta: {
         result_kind: "pnl.dates",
-        basis: "analytical",
-        formal_use_allowed: false,
+        basis: "formal",
+        formal_use_allowed: true,
       },
       result: {
         report_dates: [],
@@ -1491,6 +1493,7 @@ describe("ApiClient composition boundary", () => {
     expect(clientSource).not.toMatch(/async ingestTushareNprNews\(/);
     expect(clientSource).not.toMatch(/async getKpiOwners\(/);
     expect(clientSource).not.toMatch(/async fetchAndRecalcKpi\(/);
+    expect(clientSource).not.toMatch(/async getTeamPerformanceAssessmentWorkbook\(/);
     expect(clientSource).not.toMatch(/async getCubeDimensions\(/);
     expect(clientSource).not.toMatch(/async executeCubeQuery\(/);
     expect(clientSource).not.toMatch(/async queryAgent\(/);
@@ -1648,6 +1651,23 @@ describe("ApiClient composition boundary", () => {
     expect(cubeMockClientSource).toContain("cube.query");
     expect(cubeMockClientSource).toMatch(/async getCubeDimensions\(/);
     expect(cubeMockClientSource).toMatch(/async executeCubeQuery\(/);
+  });
+
+  it("keeps team performance workbook client and mock factory in their domain modules", () => {
+    const teamPerformanceClientSource = readFileSync(
+      resolve(process.cwd(), "src/api/teamPerformanceClient.ts"),
+      "utf8",
+    );
+    const teamPerformanceMockClientSource = readFileSync(
+      resolve(process.cwd(), "src/api/teamPerformanceMockClient.ts"),
+      "utf8",
+    );
+    expect(teamPerformanceClientSource).toContain("createRealTeamPerformanceClient");
+    expect(teamPerformanceClientSource).toContain("/api/team-performance/assessment-workbook");
+    expect(teamPerformanceClientSource).not.toContain("../mocks/");
+    expect(teamPerformanceMockClientSource).toContain("createMockTeamPerformanceClient");
+    expect(teamPerformanceMockClientSource).toMatch(/async getTeamPerformanceAssessmentWorkbook\(/);
+    expect(teamPerformanceMockClientSource).toContain("team_performance.assessment_workbook");
   });
 
   it("requires agentClient.ts to own agent query implementations", () => {

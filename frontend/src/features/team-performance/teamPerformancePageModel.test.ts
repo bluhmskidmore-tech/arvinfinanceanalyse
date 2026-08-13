@@ -5,11 +5,13 @@ import type {
   PnlByBusinessMonthlyPayload,
   PnlByBusinessYtdItem,
   ProductCategoryPnlRow,
+  TeamPerformanceAssessmentIndicator,
+  TeamPerformanceAssessmentWorkbookPayload,
 } from "../../api/contracts";
+import { buildMockTeamPerformanceAssessmentWorkbookPayload } from "../../api/teamPerformanceMockClient";
 import {
   type AssessmentIndicator2025,
   type CenterPnlMapping2025,
-  CENTER_PNL_MAPPINGS_2025,
   Q1_CENTER_CALIBER_RULES,
   buildTeamPerformanceQ1CaliberModel,
   buildTeamPerformanceViewModel,
@@ -44,6 +46,68 @@ function assessmentIndicator(
     score: partial.score ?? null,
     sourceRow: partial.sourceRow,
     blockLabel: partial.blockLabel,
+  };
+}
+
+/** 模拟后端 `_build_center_summaries`：把 camelCase 底稿行转成后端下发的 workbook payload。 */
+function workbookFromIndicators(
+  indicators: AssessmentIndicator2025[],
+  mappings: CenterPnlMapping2025[] = [],
+): TeamPerformanceAssessmentWorkbookPayload {
+  const toBackendIndicator = (
+    item: AssessmentIndicator2025,
+  ): TeamPerformanceAssessmentIndicator => ({
+    center_id: item.centerId,
+    center_name: item.centerName,
+    indicator_category: item.indicatorCategory,
+    metric: item.metric,
+    target: item.target,
+    weight: item.weight,
+    scoring_text: item.scoringText,
+    actual: item.actual,
+    progress: item.progress,
+    score: item.score,
+    source_row: item.sourceRow,
+    block_label: item.blockLabel ?? null,
+  });
+  const centerIds: string[] = [];
+  for (const item of indicators) {
+    if (!centerIds.includes(item.centerId)) {
+      centerIds.push(item.centerId);
+    }
+  }
+  const centers = centerIds.map((centerId) => {
+    const centerIndicators = indicators.filter((item) => item.centerId === centerId);
+    const weightTotal = centerIndicators.reduce((sum, item) => sum + item.weight, 0);
+    const workbookScore = centerIndicators.reduce((sum, item) => sum + (item.score ?? 0), 0);
+    return {
+      center_id: centerId,
+      center_name: centerIndicators[0].centerName,
+      weight_total: weightTotal,
+      workbook_score: workbookScore,
+      has_pending_score: centerIndicators.some((item) => item.score === null),
+      score_rate: weightTotal > 0 ? workbookScore / weightTotal : null,
+      indicators: centerIndicators.map(toBackendIndicator),
+    };
+  });
+  return {
+    assessment_year: 2025,
+    caliber_label: "静态底稿·非正式口径（后端下发）",
+    caliber_note: "测试用底稿。",
+    source_label: "测试用底稿。",
+    centers,
+    mappings: mappings.map((mapping) => ({
+      center_id: mapping.centerId,
+      endpoint: mapping.endpoint,
+      row_id: mapping.rowId,
+      pnl_field: mapping.pnlField ?? null,
+      scale_field: mapping.scaleField ?? null,
+      confidence: mapping.confidence,
+      note: mapping.note ?? null,
+      additive: mapping.additive ?? null,
+    })),
+    total_workbook_score: centers.reduce((sum, center) => sum + center.workbook_score, 0),
+    total_center_count: centers.length,
   };
 }
 
@@ -164,7 +228,7 @@ function productRow(
 }
 
 describe("teamPerformancePageModel", () => {
-  it("sums workbook scores while preserving pending-score flags", () => {
+  it("consumes backend-aggregated workbook scores while preserving pending-score flags", () => {
     const indicators: AssessmentIndicator2025[] = [
       assessmentIndicator({
         centerId: "demo-center",
@@ -194,7 +258,9 @@ describe("teamPerformancePageModel", () => {
       }),
     ];
 
-    const viewModel = buildTeamPerformanceViewModel({ indicators });
+    const viewModel = buildTeamPerformanceViewModel({
+      workbook: workbookFromIndicators(indicators),
+    });
 
     expect(viewModel.totalWorkbookScore).toBe(9);
     expect(viewModel.centers).toHaveLength(1);
@@ -202,11 +268,22 @@ describe("teamPerformancePageModel", () => {
       weightTotal: 15,
       workbookScore: 9,
       hasPendingScore: true,
+      scoreRate: 9 / 15,
     });
+  });
+
+  it("returns an empty pending model when the backend workbook is not loaded", () => {
+    const viewModel = buildTeamPerformanceViewModel();
+
+    expect(viewModel.centers).toHaveLength(0);
+    expect(viewModel.totalWorkbookScore).toBe(0);
+    expect(viewModel.totalCenterCount).toBe(0);
+    expect(viewModel.warnings.join(" ")).toContain("考核底稿尚未从后端加载");
   });
 
   it("builds mapped pnl and scale totals from by-business and product-category evidence", () => {
     const viewModel = buildTeamPerformanceViewModel({
+      workbook: buildMockTeamPerformanceAssessmentWorkbookPayload(),
       byBusinessItems: [
         byBusinessRow({
           row_key: "asset_zqtz_detail_structured_finance_broker",
@@ -283,8 +360,7 @@ describe("teamPerformancePageModel", () => {
     ];
 
     const viewModel = buildTeamPerformanceViewModel({
-      indicators,
-      mappings,
+      workbook: workbookFromIndicators(indicators, mappings),
       productCategoryRows: [
         productRow({
           category_id: "intermediate_business_income",
@@ -330,8 +406,7 @@ describe("teamPerformancePageModel", () => {
     ];
 
     const viewModel = buildTeamPerformanceViewModel({
-      indicators,
-      mappings,
+      workbook: workbookFromIndicators(indicators, mappings),
       productCategoryRows: [
         productRow({
           category_id: "intermediate_business_income",
@@ -354,7 +429,9 @@ describe("teamPerformancePageModel", () => {
   });
 
   it("surfaces unmapped metrics in center coverage warnings", () => {
-    const viewModel = buildTeamPerformanceViewModel();
+    const viewModel = buildTeamPerformanceViewModel({
+      workbook: buildMockTeamPerformanceAssessmentWorkbookPayload(),
+    });
 
     const productAndMarketCenter = viewModel.centers.find(
       (center) => center.centerId === "product-market",
@@ -636,8 +713,8 @@ describe("teamPerformancePageModel", () => {
       amountYuan: 70000000,
       contributionYuan: 70000000,
     });
-    expect(CENTER_PNL_MAPPINGS_2025.find(
-      (mapping) => mapping.rowId === "asset_zqtz_detail_structured_finance_broker",
+    expect(buildMockTeamPerformanceAssessmentWorkbookPayload().mappings.find(
+      (mapping) => mapping.row_id === "asset_zqtz_detail_structured_finance_broker",
     )?.note).toContain("结构化产业基金（产业基金部分）");
   });
 

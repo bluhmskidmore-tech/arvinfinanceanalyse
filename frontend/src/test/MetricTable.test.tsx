@@ -7,7 +7,11 @@ import type { KpiMetricWithValue } from "../api/contracts";
 import { MetricTable } from "../features/kpi-performance/components/MetricTable";
 import { EM_DASH } from "../utils/format";
 
-function renderTable(client: ApiClient, metrics: KpiMetricWithValue[]) {
+function renderTable(
+  client: ApiClient,
+  metrics: KpiMetricWithValue[],
+  backendSummary: { totalWeight: string; totalScore: string } | null = null,
+) {
   function Wrapper({ children }: { children: ReactNode }) {
     const [queryClient] = useState(() => new QueryClient());
     return (
@@ -19,7 +23,7 @@ function renderTable(client: ApiClient, metrics: KpiMetricWithValue[]) {
 
   return render(
     <Wrapper>
-      <MetricTable metrics={metrics} valueAsOfDate="2025-12-31" />
+      <MetricTable metrics={metrics} valueAsOfDate="2025-12-31" backendSummary={backendSummary} />
     </Wrapper>,
   );
 }
@@ -52,5 +56,18 @@ describe("kpi MetricTable missing values and local summary", () => {
     expect(screen.queryByText("-")).not.toBeInTheDocument();
 
     expect(screen.getByText("合计（前端本地加总·非官方口径）")).toBeInTheDocument();
+  });
+
+  it("prefers the backend summary totals over frontend re-aggregation when provided", () => {
+    renderTable(
+      createApiClient({ mode: "mock" }),
+      [metricFixture({ score_value: "12.30" })],
+      { totalWeight: "100.00", totalScore: "87.65" },
+    );
+
+    expect(screen.getByText("合计（后端汇总口径）")).toBeInTheDocument();
+    expect(screen.queryByText("合计（前端本地加总·非官方口径）")).not.toBeInTheDocument();
+    expect(screen.getByText("100")).toBeInTheDocument();
+    expect(screen.getByText("87.65")).toBeInTheDocument();
   });
 });

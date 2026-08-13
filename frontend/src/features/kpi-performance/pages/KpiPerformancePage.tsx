@@ -465,6 +465,14 @@ export default function KpiPerformancePage() {
                 onEditMetricDef={handleEditMetricDef}
                 valueAsOfDate={formatDate(asOfDate)}
                 onFullEdit={handleOpenEditModal}
+                backendSummary={
+                  periodSummary
+                    ? {
+                        totalWeight: periodSummary.total_weight,
+                        totalScore: periodSummary.total_score,
+                      }
+                    : null
+                }
               />
             </>
           ) : (

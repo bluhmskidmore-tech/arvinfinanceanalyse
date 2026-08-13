@@ -500,14 +500,17 @@ describe("TeamPerformancePage", () => {
     expect(screen.getByLabelText("team-performance-report-date")).toHaveValue("2025-12-31");
 
     const summary = await screen.findByTestId("team-performance-summary-cards");
-    expect(summary).toHaveTextContent("409.28");
+    await waitFor(() => {
+      expect(summary).toHaveTextContent("409.28");
+    });
     expect(summary).toHaveTextContent("8");
-    expect(summary).toHaveTextContent("前端演示数据·非正式口径");
+    expect(summary).toHaveTextContent("静态底稿·非正式口径（后端下发）");
+    expect(summary).not.toHaveTextContent("前端演示数据");
     expect(screen.getByTestId("team-performance-demo-score-badge")).toHaveTextContent(
-      "考核得分：前端演示数据·非正式口径",
+      "考核得分：静态底稿·非正式口径（后端下发）",
     );
     expect(screen.getByTestId("team-performance-matrix-demo-badge")).toHaveTextContent(
-      "权重/得分列：前端演示数据·非正式口径",
+      "权重/得分列：静态底稿·非正式口径（后端下发）",
     );
 
     expect(await screen.findByTestId("team-performance-warning-banner")).toHaveTextContent(
@@ -542,6 +545,7 @@ describe("TeamPerformancePage", () => {
     );
 
     const meta = await screen.findByTestId("team-performance-result-meta");
+    expect(meta).toHaveTextContent("team_performance.assessment_workbook");
     expect(meta).toHaveTextContent("pnl.by_business_ytd");
     expect(meta).toHaveTextContent("product_category_pnl.detail");
 
@@ -663,8 +667,54 @@ describe("TeamPerformancePage", () => {
     });
 
     expect(await screen.findByTestId("team-performance-error")).toHaveTextContent(
-      "2025 工作损益证据加载失败",
+      "2025 考核底稿或工作损益证据加载失败",
     );
     expect(screen.getByRole("button", { name: "重试" })).toBeInTheDocument();
+  });
+
+  it("renders an error state when the backend assessment workbook cannot be loaded", async () => {
+    const base = createApiClient({ mode: "mock" });
+
+    const getTeamPerformanceAssessmentWorkbook = vi.fn(async () => {
+      throw new Error("workbook failed");
+    });
+    const getFormalPnlDates = vi.fn(async () => ({
+      result_meta: buildMeta("pnl.dates", "trace-dates-workbook-error"),
+      result: {
+        report_dates: ["2025-12-31"],
+        formal_fi_report_dates: ["2025-12-31"],
+        nonstd_bridge_report_dates: ["2025-12-31"],
+      } satisfies PnlDatesPayload,
+    }));
+    const getPnlByBusinessYtd = vi.fn(async () => ({
+      result_meta: buildMeta("pnl.by_business_ytd", "trace-by-business-workbook-error"),
+      result: {
+        year: 2025,
+        period_type: "yearly",
+        period_label: "2025 年累计",
+        period_start_date: "2025-01-01",
+        period_end_date: "2025-12-31",
+        total_pnl: "0",
+        source_tables: ["fact_formal_pnl_fi"],
+        items: [],
+      } satisfies PnlByBusinessYtdPayload,
+    }));
+    const getProductCategoryPnl = vi.fn(async () => ({
+      result_meta: buildMeta("product_category_pnl.detail", "trace-product-workbook-error"),
+      result: emptyProductPayload(),
+    }));
+
+    renderTeamPerformance({
+      ...base,
+      getTeamPerformanceAssessmentWorkbook,
+      getFormalPnlDates,
+      getPnlByBusinessYtd,
+      getProductCategoryPnl,
+    });
+
+    expect(await screen.findByTestId("team-performance-error")).toHaveTextContent(
+      "2025 考核底稿或工作损益证据加载失败",
+    );
+    expect(getTeamPerformanceAssessmentWorkbook).toHaveBeenCalled();
   });
 });

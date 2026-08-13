@@ -14,5 +14,6 @@ export * from "./contracts/pnl";
 export * from "./contracts/balanceLedger";
 export * from "./contracts/agent";
 export * from "./contracts/positions";
+export * from "./contracts/teamPerformance";
 export * from "./contracts/bondDashboard";
 export * from "./contracts/cubeAdb";

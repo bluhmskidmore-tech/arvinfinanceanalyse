@@ -71,6 +71,10 @@ import {
   type KpiClientMethods,
 } from "./kpiClient";
 import {
+  createRealTeamPerformanceClient,
+  type TeamPerformanceClientMethods,
+} from "./teamPerformanceClient";
+import {
   createRealCubeClient,
   type CubeClientMethods,
 } from "./cubeClient";
@@ -106,6 +110,7 @@ export type { QdbGlMonthlyAnalysisClientMethods } from "./qdbGlMonthlyAnalysisCl
 export type { PositionsClientMethods } from "./positionsClient";
 export type { LedgerClientMethods } from "./ledgerClient";
 export type { KpiClientMethods } from "./kpiClient";
+export type { TeamPerformanceClientMethods } from "./teamPerformanceClient";
 export type { CubeClientMethods } from "./cubeClient";
 export type { AgentClientMethods } from "./agentClient";
 export type { HealthClientMethods } from "./healthClient";
@@ -130,6 +135,7 @@ export type ApiClient = {
   & MacroToolkitClientMethods
   & LedgerClientMethods
   & KpiClientMethods
+  & TeamPerformanceClientMethods
   & CubeClientMethods
   & AgentClientMethods;
 
@@ -260,6 +266,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     ...createRealMarketDataClient({ fetchImpl, baseUrl }),
     ...createRealMacroToolkitClient({ fetchImpl, baseUrl }),
     ...createRealKpiClient({ fetchImpl, baseUrl }),
+    ...createRealTeamPerformanceClient({ fetchImpl, baseUrl }),
     ...createRealCubeClient({ fetchImpl, baseUrl }),
     ...createRealPnlBusinessClient({ fetchImpl, baseUrl }),
     ...createRealAgentClient({ fetchImpl, baseUrl }),

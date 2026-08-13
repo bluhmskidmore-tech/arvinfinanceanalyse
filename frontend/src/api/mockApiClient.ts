@@ -25,6 +25,7 @@ import { createMockLedgerClient } from "./ledgerClient";
 import { createMockMarketDataClient } from "./marketDataMockClient";
 import { createMockMacroToolkitClient } from "./macroToolkitMockClient";
 import { createMockKpiClient } from "./kpiClient";
+import { createMockTeamPerformanceClient } from "./teamPerformanceMockClient";
 import { createMockCubeClient } from "./cubeMockClient";
 import { createDemoAgentClient } from "./agentClient";
 import { dashboardWorkbenchDemoEndpoints } from "./workbenchDashboardApi";
@@ -52,6 +53,7 @@ export function createMockApiClient(
     ...createMockMarketDataClient(),
     ...createMockMacroToolkitClient(),
     ...createMockKpiClient(),
+    ...createMockTeamPerformanceClient(),
     ...createMockCubeClient(),
     ...createMockPnlBusinessClient(),
     ...createDemoAgentClient(delay),

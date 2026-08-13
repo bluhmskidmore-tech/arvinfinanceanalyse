@@ -12,7 +12,6 @@ import { PageAsyncSection } from "../../components/page/PageAsyncSection";
 import { SectionLead } from "../../components/page/SectionLead";
 import { EM_DASH } from "../../utils/format";
 import {
-  ASSESSMENT_CENTERS_2025,
   buildTeamPerformanceQ1CaliberModel,
   buildTeamPerformanceViewModel,
   formatConfidenceLabel,
@@ -30,7 +29,8 @@ const DEFAULT_AS_OF_DATE = "2025-12-31";
 const Q1_CALIBER_YEAR = 2026;
 const Q1_CALIBER_AS_OF_DATE = "2026-03-31";
 
-type CenterId = (typeof ASSESSMENT_CENTERS_2025)[number]["centerId"];
+/** 兜底口径标注：正常情况下以后端下发的 caliber_label 为准。 */
+const WORKBOOK_CALIBER_LABEL_FALLBACK = "静态底稿·非正式口径（后端下发）";
 
 function scoreTone(scoreRate: number | null) {
   if (scoreRate === null) {
@@ -229,7 +229,13 @@ export default function TeamPerformancePage() {
   const client = useApiClient();
   const [selectedYear] = useState(DEFAULT_YEAR);
   const [selectedDate, setSelectedDate] = useState("");
-  const [selectedCenterId, setSelectedCenterId] = useState<CenterId>("product-market");
+  const [selectedCenterId, setSelectedCenterId] = useState<string>("product-market");
+
+  const workbookQuery = useQuery({
+    queryKey: ["team-performance", "assessment-workbook", client.mode],
+    queryFn: () => client.getTeamPerformanceAssessmentWorkbook(),
+    retry: false,
+  });
 
   const datesQuery = useQuery({
     queryKey: ["team-performance", "formal-dates", client.mode],
@@ -303,15 +309,19 @@ export default function TeamPerformancePage() {
     retry: false,
   });
 
+  const workbook = workbookQuery.data?.result ?? null;
+  const workbookCaliberLabel = workbook?.caliber_label ?? WORKBOOK_CALIBER_LABEL_FALLBACK;
+
   const viewModel = useMemo(
     () =>
       buildTeamPerformanceViewModel({
+        workbook,
         byBusinessItems: byBusinessQuery.data?.result.items,
         productCategoryRows: productCategoryQuery.data?.result.rows,
         byBusinessMeta: byBusinessQuery.data?.result_meta ?? null,
         productCategoryMeta: productCategoryQuery.data?.result_meta ?? null,
       }),
-    [byBusinessQuery.data, productCategoryQuery.data],
+    [workbook, byBusinessQuery.data, productCategoryQuery.data],
   );
 
   const q1CaliberModel = useMemo(
@@ -337,10 +347,13 @@ export default function TeamPerformancePage() {
   }));
 
   const loading =
+    workbookQuery.isLoading ||
     datesQuery.isLoading ||
     (canLoadEvidence && (byBusinessQuery.isLoading || productCategoryQuery.isLoading));
   const error =
-    datesQuery.isError || (canLoadEvidence && (byBusinessQuery.isError || productCategoryQuery.isError));
+    workbookQuery.isError ||
+    datesQuery.isError ||
+    (canLoadEvidence && (byBusinessQuery.isError || productCategoryQuery.isError));
   const showNoSubstitution = !datesQuery.isLoading && !hasDefaultDate;
   const noMappedEvidence = canLoadEvidence && !loading && !error && viewModel.mappedCenterCount === 0;
   const q1CaliberLoading =
@@ -350,6 +363,11 @@ export default function TeamPerformancePage() {
     canLoadQ1CaliberEvidence &&
     (q1ByBusinessMonthlyQuery.isError || q1ProductCategoryQuery.isError);
   const resultMetaSections = [
+    {
+      key: "assessment-workbook",
+      title: "考核底稿（静态·非正式）",
+      meta: workbookQuery.data?.result_meta,
+    },
     {
       key: "by-business-ytd",
       title: "业务种类损益 YTD",
@@ -373,8 +391,8 @@ export default function TeamPerformancePage() {
             团队绩效工作损益分析
           </h1>
           <p className="team-performance-page__subtitle">
-            聚焦回答“2025 年各部室考核得分如何，相关工作损益证据是多少”。Excel
-            仍是方案底稿，页面只并排展示正式接口中可见的 YTD 损益证据。
+            聚焦回答“2025 年各部室考核得分如何，相关工作损益证据是多少”。考核底稿与汇总分
+            由后端静态下发（非正式口径），页面并排展示正式接口中可见的 YTD 损益证据。
           </p>
         </div>
         <span
@@ -423,10 +441,13 @@ export default function TeamPerformancePage() {
 
       <div>
         <DataSourceBadge
-          status="mock"
-          label="考核得分：前端演示数据·非正式口径"
+          status="analysis"
+          label={`考核得分：${workbookCaliberLabel}`}
           testId="team-performance-demo-score-badge"
-          title="2025 部室考核得分与汇总来自前端底稿常量（ASSESSMENT_CENTERS_2025），未接入正式绩效考核读接口，不作正式口径"
+          title={
+            workbook?.caliber_note ??
+            "2025 部室考核底稿与汇总分由后端静态底稿服务下发，未接入正式绩效考核读模型，不作正式口径"
+          }
         />
       </div>
 
@@ -435,7 +456,7 @@ export default function TeamPerformancePage() {
           label="工作簿总得分"
           value={viewModel.totalWorkbookScore.toFixed(2)}
           unit="分"
-          detail="前端演示数据·非正式口径：本行为前端本地汇总 Excel 底稿已有得分，不重算评分规则。"
+          detail={`${workbookCaliberLabel}：汇总分由后端按 Excel 底稿已有得分算好下发，不重算评分规则。`}
           tone="positive"
         />
         <KpiCard
@@ -661,23 +682,28 @@ export default function TeamPerformancePage() {
           testId="team-performance-error"
           tone="error"
           badge="链路异常"
-          title="2025 工作损益证据加载失败"
-          description="请先恢复 `getPnlByBusinessYtd` 与 `getProductCategoryPnl` 的正式读链路，再查看部室映射分析。"
+          title="2025 考核底稿或工作损益证据加载失败"
+          description="请先恢复 `getTeamPerformanceAssessmentWorkbook`（考核底稿）、`getPnlByBusinessYtd` 与 `getProductCategoryPnl` 读链路，再查看部室矩阵与映射分析。"
           facts={[
-            { label: "失败范围", value: "正式 YTD 证据接口" },
+            { label: "失败范围", value: "考核底稿或正式 YTD 证据接口" },
             { label: "目标日期", value: selectedDate || DEFAULT_AS_OF_DATE },
-            { label: "页面策略", value: "保留底稿，不形成映射结论" },
+            { label: "页面策略", value: "不本地兜底底稿，不形成映射结论" },
           ]}
           impacts={[
-            "工作簿得分和指标底稿仍可继续查看。",
-            "重试成功后会按同一日期重新拉取两条证据链路。",
+            "考核底稿改由后端下发，底稿链路失败时矩阵与明细暂不可用。",
+            "重试成功后会重新拉取考核底稿与两条证据链路。",
           ]}
           action={
             <button
               type="button"
               className="team-performance-page__retry-button"
               onClick={() => {
-                void Promise.all([datesQuery.refetch(), byBusinessQuery.refetch(), productCategoryQuery.refetch()]);
+                void Promise.all([
+                  workbookQuery.refetch(),
+                  datesQuery.refetch(),
+                  byBusinessQuery.refetch(),
+                  productCategoryQuery.refetch(),
+                ]);
               }}
             >
               重试
@@ -712,9 +738,15 @@ export default function TeamPerformancePage() {
         isEmpty={false}
         fillHeight={false}
         onRetry={() => {
-          void Promise.all([datesQuery.refetch(), byBusinessQuery.refetch(), productCategoryQuery.refetch()]);
+          void Promise.all([
+            workbookQuery.refetch(),
+            datesQuery.refetch(),
+            byBusinessQuery.refetch(),
+            productCategoryQuery.refetch(),
+          ]);
         }}
       >
+        {selectedCenter ? (
         <div className="team-performance-page__section-stack">
           <section className="team-performance-page__panel">
             <SectionLead
@@ -725,10 +757,10 @@ export default function TeamPerformancePage() {
 
             <div>
               <DataSourceBadge
-                status="mock"
-                label="权重/得分列：前端演示数据·非正式口径"
+                status="analysis"
+                label={`权重/得分列：${workbookCaliberLabel}`}
                 testId="team-performance-matrix-demo-badge"
-                title="矩阵中的权重、工作簿得分与得分率来自前端底稿常量，未接入正式绩效考核读接口"
+                title="矩阵中的权重、工作簿得分与得分率来自后端下发的静态考核底稿，未接入正式绩效考核读模型"
               />
             </div>
 
@@ -758,7 +790,7 @@ export default function TeamPerformancePage() {
                             type="button"
                             className="team-performance-page__matrix-button"
                             aria-label={center.centerName}
-                            onClick={() => setSelectedCenterId(center.centerId as CenterId)}
+                            onClick={() => setSelectedCenterId(center.centerId)}
                           >
                             <span className="team-performance-page__matrix-button-name">{center.centerName}</span>
                             <span className="team-performance-page__matrix-button-meta" aria-hidden="true">
@@ -805,7 +837,7 @@ export default function TeamPerformancePage() {
                       type="button"
                       className="team-performance-page__matrix-card-button"
                       aria-label={center.centerName}
-                      onClick={() => setSelectedCenterId(center.centerId as CenterId)}
+                      onClick={() => setSelectedCenterId(center.centerId)}
                     >
                       <div className="team-performance-page__matrix-card-header">
                         <div>
@@ -1063,6 +1095,7 @@ export default function TeamPerformancePage() {
             </div>
           </section>
         </div>
+        ) : null}
 
         {visibleResultMetaSections.length > 0 ? (
           <section data-testid="team-performance-result-meta" className="team-performance-page__meta-shell">
@@ -1072,7 +1105,7 @@ export default function TeamPerformancePage() {
                 <h3 className="team-performance-page__meta-title">结果元信息摘要</h3>
               </div>
               <p className="team-performance-page__meta-copy">
-                先看两条正式读链路的质量、降级和更新时间；完整口径、版本和追踪编号收在下方折叠区。
+                先看考核底稿（静态·非正式）与两条正式读链路的质量、降级和更新时间；完整口径、版本和追踪编号收在下方折叠区。
               </p>
             </div>
 
@@ -1081,7 +1114,9 @@ export default function TeamPerformancePage() {
                 <article key={section.key} className="team-performance-page__meta-card">
                   <div className="team-performance-page__meta-card-header">
                     <div>
-                      <div className="team-performance-page__meta-card-label">正式证据链路</div>
+                      <div className="team-performance-page__meta-card-label">
+                        {section.meta.basis === "formal" ? "正式证据链路" : "分析链路（非正式）"}
+                      </div>
                       <h4 className="team-performance-page__meta-card-title">{section.title}</h4>
                     </div>
                     <span

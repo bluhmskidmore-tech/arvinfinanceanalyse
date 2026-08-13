@@ -27,6 +27,11 @@ export type MetricTableProps = {
   valueAsOfDate: string;
   /** 打开完整表单编辑（与行内编辑并存） */
   onFullEdit?: (metric: KpiMetricWithValue) => void;
+  /**
+   * 后端下发的汇总合计（如 /api/kpi/values/summary 的 total_weight / total_score）。
+   * 提供时合计行直接展示后端值；缺省时回落到前端本地加总并保持“非官方口径”标注。
+   */
+  backendSummary?: { totalWeight: string; totalScore: string } | null;
 };
 
 type EditableField = "target_value" | "actual_value" | "progress_pct" | "score_value";
@@ -71,6 +76,7 @@ export function MetricTable({
   onEditMetricDef,
   valueAsOfDate,
   onFullEdit,
+  backendSummary = null,
 }: MetricTableProps) {
   const client = useApiClient();
   const [expandedMetricId, setExpandedMetricId] = React.useState<number | null>(null);
@@ -412,14 +418,20 @@ export function MetricTable({
             ))}
             <tr className="kpi-metric-table__summary-row">
               <td colSpan={4} className="kpi-metric-table__summary-label">
-                合计（前端本地加总·非官方口径）
+                {backendSummary
+                  ? "合计（后端汇总口径）"
+                  : "合计（前端本地加总·非官方口径）"}
               </td>
               <td className="kpi-metric-table__summary-number">
-                {summary.totalWeight.toFixed(0)}
+                {backendSummary
+                  ? formatDecimal(backendSummary.totalWeight, 0)
+                  : summary.totalWeight.toFixed(0)}
               </td>
               <td colSpan={3} />
               <td className="kpi-metric-table__summary-number kpi-metric-table__summary-number--score">
-                {summary.totalScore.toFixed(2)}
+                {backendSummary
+                  ? formatDecimal(backendSummary.totalScore, 2)
+                  : summary.totalScore.toFixed(2)}
               </td>
             </tr>
           </tbody>
