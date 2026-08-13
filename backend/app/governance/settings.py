@@ -114,6 +114,14 @@ class Settings(BaseSettings):
     agent_dexter_model: str = ""
     agent_dexter_toolsets: str = ""
     agent_dexter_timeout_seconds: float = 180.0
+    # queued 状态的 run 超过该秒数未被执行时，读取状态会收敛为 failed
+    # （error_type=StaleQueuedAgentRun）。缺省 600 与
+    # agent_run_service.AGENT_RUN_QUEUED_STALE_SECONDS 保持一致。
+    agent_run_queued_timeout_seconds: float = 600.0
+    # suggested action 确认 token 的 HMAC secret。多进程部署（API 进程 +
+    # worker 进程）必须显式配置同一值，否则跨进程签发/校验会失败；
+    # 为空时回退进程本地随机 secret（仅单进程可用）。
+    agent_action_token_secret: str = ""
     postgres_dsn: str = DEFAULT_POSTGRES_DSN
     governance_sql_dsn: str = ""
     governance_backend: str = "jsonl"

@@ -1,3 +1,5 @@
+import json
+
 from backend.app.governance.agent_audit import (
     AGENT_AUDIT_STREAM,
     AgentAuditPayload,
@@ -11,6 +13,13 @@ from backend.app.agent.schemas.agent_response import (
     AgentResultMeta,
 )
 from backend.app.services.agent_service import _append_audit, _envelope_tools_used
+
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_regression,
+    pytest.mark.surface_agent_mvp,
+]
 
 
 def test_agent_audit_stream_name_is_stable():
@@ -103,3 +112,74 @@ def test_local_audit_tools_used_records_workflow_and_unknown_kinds():
         "analysis_view_tool",
         "evidence_tool",
     ]
+
+
+class _FailingRegistry:
+    """Stub ToolRegistry whose execute_query always raises."""
+
+    error: Exception = ValueError("no report_date available for demo repository")
+
+    def __init__(self, *_args, **_kwargs) -> None:
+        pass
+
+    def execute_query(self, _request):
+        raise self.error
+
+
+def test_local_query_failure_appends_failed_audit_with_error_type_only(tmp_path, monkeypatch):
+    """失败审计契约：与 run 链路 _build_failed_run_audit_payload 同形态。
+
+    - tools_used 携带 "status:failed" 与 "provider:local" 标记
+    - result_meta 携带 result_kind="agent.query_failed"、quality_flag="error"、error_type=异常类名
+    - 只记录异常类型，不复制可能含敏感信息的原始错误正文
+    """
+    from backend.app.services import agent_service
+
+    monkeypatch.setattr(agent_service, "ToolRegistry", _FailingRegistry)
+
+    with pytest.raises(ValueError):
+        agent_service.execute_agent_query(
+            request=AgentQueryRequest(
+                question="组合概览",
+                context={"user_id": "u_demo", "run_id": "agent_run:local-query-failed"},
+            ),
+            duckdb_path=str(tmp_path / "moss.duckdb"),
+            governance_dir=str(tmp_path),
+        )
+
+    records = GovernanceRepository(base_dir=tmp_path).read_all(AGENT_AUDIT_STREAM)
+    assert len(records) == 1
+    payload = records[0]
+    assert payload["user_id"] == "u_demo"
+    assert payload["run_id"] == "agent_run:local-query-failed"
+    assert payload["query_text"] == "组合概览"
+    assert "status:failed" in payload["tools_used"]
+    assert "provider:local" in payload["tools_used"]
+    assert payload["tables_used"] == []
+    assert payload["trace_id"].startswith("tr_agent_query_failed_")
+    assert payload["result_meta"]["result_kind"] == "agent.query_failed"
+    assert payload["result_meta"]["quality_flag"] == "error"
+    assert payload["result_meta"]["formal_use_allowed"] is False
+    assert payload["result_meta"]["error_type"] == "ValueError"
+    assert "no report_date available" not in json.dumps(payload, ensure_ascii=False)
+
+
+def test_local_query_failure_audit_covers_runtime_error(tmp_path, monkeypatch):
+    from backend.app.services import agent_service
+
+    class _RuntimeFailingRegistry(_FailingRegistry):
+        error = RuntimeError("duckdb connection refused at /secret/path")
+
+    monkeypatch.setattr(agent_service, "ToolRegistry", _RuntimeFailingRegistry)
+
+    with pytest.raises(RuntimeError):
+        agent_service.execute_agent_query(
+            request=AgentQueryRequest(question="pnl summary"),
+            duckdb_path=str(tmp_path / "moss.duckdb"),
+            governance_dir=str(tmp_path),
+        )
+
+    payload = GovernanceRepository(base_dir=tmp_path).read_all(AGENT_AUDIT_STREAM)[-1]
+    assert payload["result_meta"]["error_type"] == "RuntimeError"
+    assert "status:failed" in payload["tools_used"]
+    assert "/secret/path" not in json.dumps(payload, ensure_ascii=False)

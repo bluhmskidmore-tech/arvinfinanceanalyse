@@ -44,6 +44,8 @@ def test_settings_defaults(monkeypatch):
     assert s.agent_dexter_model == ""
     assert s.agent_dexter_toolsets == ""
     assert s.agent_dexter_timeout_seconds == 180.0
+    assert s.agent_run_queued_timeout_seconds == 600.0
+    assert s.agent_action_token_secret == ""
     assert s.governance_backend == "jsonl"
     assert s.object_store_mode == "local"
     assert s.ftp_rate_pct == Decimal("1.75")
@@ -73,6 +75,8 @@ def test_settings_env_overrides(monkeypatch):
     monkeypatch.setenv("MOSS_AGENT_DEXTER_MODEL", "dexter-test")
     monkeypatch.setenv("MOSS_AGENT_DEXTER_TOOLSETS", "sql,files")
     monkeypatch.setenv("MOSS_AGENT_DEXTER_TIMEOUT_SECONDS", "22.5")
+    monkeypatch.setenv("MOSS_AGENT_RUN_QUEUED_TIMEOUT_SECONDS", "45.5")
+    monkeypatch.setenv("MOSS_AGENT_ACTION_TOKEN_SECRET", "contract-test-secret")
     monkeypatch.setenv("MOSS_GOVERNANCE_BACKEND", "sql-authority")
     monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "minio")
     monkeypatch.setenv("MOSS_FTP_RATE_PCT", "2.5")
@@ -99,12 +103,25 @@ def test_settings_env_overrides(monkeypatch):
     assert s.agent_dexter_model == "dexter-test"
     assert s.agent_dexter_toolsets == "sql,files"
     assert s.agent_dexter_timeout_seconds == 22.5
+    assert s.agent_run_queued_timeout_seconds == 45.5
+    assert s.agent_action_token_secret == "contract-test-secret"
     assert s.governance_backend == "sql-authority"
     assert s.object_store_mode == "minio"
     assert s.ftp_rate_pct == Decimal("2.5")
     assert s.governance_path == (repo_root / "custom" / "gov").resolve()
     assert s.data_input_root == (repo_root / "custom" / "in").resolve()
     assert s.local_archive_path == (repo_root / "custom" / "archive").resolve()
+
+
+def test_agent_run_queued_timeout_default_matches_run_service_constant(monkeypatch):
+    """防漂移：settings 正式缺省值必须与 run 切片的 getattr 回退常量一致。"""
+    from backend.app.services.agent_run_service import AGENT_RUN_QUEUED_STALE_SECONDS
+
+    _clear_moss_env(monkeypatch)
+
+    assert Settings(_env_file=None).agent_run_queued_timeout_seconds == (
+        AGENT_RUN_QUEUED_STALE_SECONDS
+    )
 
 
 def test_home_snapshot_prewarm_can_be_disabled_by_env(monkeypatch):

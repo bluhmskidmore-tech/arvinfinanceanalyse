@@ -20,13 +20,18 @@ Hermes 模式（`MOSS_AGENT_PROVIDER=hermes`）走 **`backend/app/services/herme
 1. 环境变量前缀为 **`MOSS_`**（见 `backend/app/governance/settings.py`）。
 2. 启用 Agent API：
    - `MOSS_AGENT_ENABLED=true`
-3. 可选：`MOSS_AGENT_PROVIDER` —— `local`（默认，工具链路）或 `hermes`。
+3. 可选：`MOSS_AGENT_PROVIDER` —— `local`（默认，工具链路）、`hermes` 或 `dexter`。
+4. 可选：`MOSS_AGENT_RUN_QUEUED_TIMEOUT_SECONDS` —— `queued` 状态 run 的超时秒数（缺省 600，正式 settings 字段 `agent_run_queued_timeout_seconds`），超时后读取状态会收敛为 `failed`（见下文 runs 端点）。
+5. **多进程部署必须设置** `MOSS_AGENT_ACTION_TOKEN_SECRET`（settings 字段 `agent_action_token_secret`）：suggested action 确认 token 的 HMAC secret。未配置时回退进程本地随机值，API 进程与 worker 进程各自持有不同 secret，`/runs` 链路签发的确认 token 将无法在 API 进程校验通过。单进程本地开发可不配置。
+6. 生产部署必须显式设置 `MOSS_ENVIRONMENT=production`：`environment` 缺省值为 `development`，该值同时参与 dev bypass 守卫判定（见下）。
 
 ### Agent 开发完整栈
 
 使用 `scripts\\dev-agent-up.ps1`（或双击 `scripts\\dev-agent-up.cmd`）启动 Agent-enabled API、worker 和 frontend。该入口显式设置 `MOSS_AGENT_ENABLED=true`、`MOSS_AGENT_DEV_SCOPE_BYPASS=true`、`MOSS_DEV_API_SCRIPT=dev-agent-api.ps1` 和 `VITE_MOSS_AGENT_FRONTEND_ENABLED=true`，然后复用 `dev-up.ps1` 的 Postgres、health/readiness、worker heartbeat、frontend 和重复进程保护。
 
 普通 `scripts\\dev-up.ps1` 保持 `dev-api.ps1` 默认值，不会自动开启 Agent。为避免把任意脚本名传入后台启动器，`MOSS_DEV_API_SCRIPT` 仅允许 `dev-api.ps1` 或 `dev-agent-api.ps1`。
+
+**dev bypass 生效条件（三重守卫）**：`MOSS_AGENT_DEV_SCOPE_BYPASS=true` 仅在 `environment=development` **且**请求来自 loopback 客户端（127.0.0.1/::1）时跳过 agent 资源的 scope 鉴权；bypass 开启时非 loopback 请求一律 403 并记录警告日志，不会回落到 scope 鉴权。生产环境显式设置 `MOSS_ENVIRONMENT=production` 后该开关整体失效。
 
 禁用或未启用时，Agent URL 不注册，`POST /api/agent/query` 返回 **HTTP 404**，OpenAPI 也不包含 `/api/agent*`。
 
@@ -39,6 +44,7 @@ Hermes 模式（`MOSS_AGENT_PROVIDER=hermes`）走 **`backend/app/services/herme
 - Content-Type: `application/json`
 - 请求体：见后端 **`backend/app/agent/schemas/agent_request.py::AgentQueryRequest`**
 - 成功：**HTTP 200**，正文 **`AgentEnvelope`**
+- **失败也留审计**：local 工具链路执行失败（如无可用 `report_date` 的 ValueError）会先写入 `agent_audit`（`result_kind=agent.query_failed`、`quality_flag=error`、`tools_used` 含 `status:failed` 与 `provider:local`）再返回 404/503；只记录异常类型（`error_type`），不复制可能含敏感信息的原始错误正文。Hermes/Dexter 链路的成功、fallback 与失败路径同样各自写审计。
 
 `POST /api/agent/runs`（异步）
 
@@ -52,7 +58,28 @@ Hermes 模式（`MOSS_AGENT_PROVIDER=hermes`）走 **`backend/app/services/herme
 
 - 返回 **`AgentRunStatusResponse`**：`queued / starting / running / completed / failed` 与最终 `AgentEnvelope`（completed 时）。
 - 仅 run 的发起用户可查询（owner 校验）。
-- `starting / running` 超过对应 Hermes/Dexter 运行超时再加 30 秒宽限期仍未进入终态时，读取状态会以条件追加方式写入 `failed` 终态与关联审计；跨线程/进程使用同一治理目录锁，`completed / failed` 均为不可逆终态。`local` 没有外部 provider 超时，不套用该阈值；`queued` 可能正等待进程内串行执行，也不按该阈值误判。
+- `starting / running` 超过对应 Hermes/Dexter 运行超时再加 30 秒宽限期仍未进入终态时，读取状态会以条件追加方式写入 `failed` 终态与关联审计；跨线程/进程使用同一治理目录锁，`completed / failed / cancelled` 均为不可逆终态。`local` 没有外部 provider 超时，不套用该阈值。
+- **queued 超时收敛**：`queued` 状态超过 `agent_run_queued_timeout_seconds`（缺省 600 秒）仍未开始执行时，读取状态会条件追加 `failed` 终态与关联审计（`error_type=StaleQueuedAgentRun`），避免排队 run 永久悬挂。
+
+`GET /api/agent/runs`
+
+- 返回当前用户的 run 列表（`limit` 1-100，缺省 20；可按 `conversation_id` 过滤，会话须归属当前用户）。
+
+`POST /api/agent/runs/{run_id}/cancel`
+
+- 仅 owner 可取消；`queued / starting / running` 可取消为 `cancelled`（不可逆终态），其他状态返回 409。
+- **取消释放执行槽**：执行监督循环每 0.5 秒轮询 run 终态，观察到 `cancelled` 后立即返回并释放 worker 执行槽；仍在途的外部 provider 调用在守护线程中自然收尾，不再占用执行资源。
+
+`POST /api/agent/runs/{run_id}/retry`
+
+- 仅 owner 可重试；仅 `failed / cancelled` 终态可重试（生成新 `run_id`），其他状态返回 409。
+
+`GET /api/agent/runs/{run_id}/events`（SSE）
+
+- 以 `text/event-stream` 推送 run 状态快照，进入终态后结束。
+- **keepalive 心跳**：快照无变化时每 15 秒发送一条 SSE 注释帧（`: keepalive`），防止空闲代理断开连接；EventSource 类解析器原生忽略注释帧，不影响事件契约。
+
+工作台端点：`/api/agent/projects`、`/api/agent/projects/{id}/conversations` 等 workspace 端点与 agent 路由同挂载、同受 `MOSS_AGENT_ENABLED` 与 agent scope 鉴权（读 `agent:read`、写 `agent:write`）约束。
 
 认证与安全上下文：后端会通过 **`AuthContext`** 合并 **`context`**（如 `user_id`、`user_role`）；`run_id` 是服务端保留字段，客户端提交的同名值会在 API 边界移除，再由 `/runs` 托管链路注入。不要把 Agent 当作绕过权限或伪造审计关联的渠道。
 
@@ -157,16 +184,27 @@ Hermes 模式（`MOSS_AGENT_PROVIDER=hermes`）走 **`backend/app/services/herme
   "next_drill": [],
   "suggested_actions": [
     {
-      "type": "inspect_lineage",
-      "label": "查看来源",
-      "payload": {},
-      "requires_confirmation": true
+      "type": "execute_intent",
+      "label": "Execute first mapped intent: pnl_summary",
+      "payload": { "intent": "pnl_summary" },
+      "requires_confirmation": true,
+      "confirmation_token": "agent_action:v1:<expires_at>:<hmac_sha256_hex>"
     }
   ]
 }
 ```
 
-说明：`result_meta` 继承通用 **`ResultMeta`**，具体字段以运行时 JSON 为准。
+说明：`result_meta` 继承通用 **`ResultMeta`**，具体字段以运行时 JSON 为准。当前实际签发的 suggested action type 为 `execute_intent`、`inspect_drill`、`inspect_news_events`。
+
+---
+
+## Suggested action 确认（服务端强制）
+
+- 需确认的动作由服务端签发 **`confirmation_token`**（HMAC-SHA256，绑定 type/label/payload/过期时间，TTL 15 分钟）。
+- 客户端确认执行时，把动作原样连同 token 提交回 `/query`（或 `/runs`）：`context.suggested_action` + `context.suggested_action_confirmation_token`。
+- **确认要求由服务端目录决定**（`backend/app/agent/runtime/action_token.py::CONFIRMATION_REQUIRED_ACTION_TYPES`，当前为 `execute_intent` / `inspect_drill` / `inspect_news_events`）：命中目录的动作即使客户端剥离 `requires_confirmation` 声明也必须携带有效 token，缺失/伪造/过期/与动作不匹配一律 403。目录只允许收紧。
+- 动作 payload 可内嵌 **`confirmation_scope`**（如 `user_id` / `run_id`）：scope 属于 payload，由同一 HMAC 保护，篡改 scope 即校验失败。
+- token secret 来源：`agent_action_token_secret`（settings，经 `MOSS_AGENT_ACTION_TOKEN_SECRET` 环境变量注入）；未配置时回退进程本地随机值，**跨进程校验会失败**（见「本地启用」第 5 条）。
 
 ---
 
@@ -175,6 +213,8 @@ Hermes 模式（`MOSS_AGENT_PROVIDER=hermes`）走 **`backend/app/services/herme
 - **只读**：Agent MVP 设计为从已有 DuckDB / 治理链路读取并组装答案，不在浏览器端执行任意 SQL。
 - **不执行客户端传来的 SQL**：前端与请求体均不应携带可执行 SQL 并由服务端直接执行（服务端工具链内部生成的审计字段 `sql_executed` 仅用于披露）。
 - **不通过本接口触发 refresh / 写入任务**：驾驶舱 **`AgentPanel`** 仅展示建议动作 chip，不触发写入副作用。
+- **审计全覆盖**：成功、失败、disabled、run 终态均写 `agent_audit`（唯一正式入口 `append_agent_audit`；run 终态为保证原子性与终态同锁追加，payload 契约一致）；失败记录只含异常类型，不含原始错误正文。
+- **确认边界在服务端**：需确认的 suggested action 以服务端目录 + HMAC token 强制，客户端声明不再是控制边界（见上节）。
 - **禁用模式**：`MOSS_AGENT_ENABLED=false` 时 router 不注册，Agent URL 返回 404 且不进入 OpenAPI；路由级 503/audit 仅是显式挂载场景的二次防线。
 
 ---
@@ -185,6 +225,14 @@ Hermes 模式（`MOSS_AGENT_PROVIDER=hermes`）走 **`backend/app/services/herme
 
 ---
 
+## Agent run 流压缩（手动运维动作）
+
+用途：控制 `data/governance/agent_run.jsonl` 与 `agent_run_dispatch.jsonl` 体积。终态且最后写入超过保留窗口（默认 7 天，可用 `agent_run_stream_retention_days` 覆盖）的 run 仅保留最后终态快照，删除行归档至同目录 `<stream>.archive.jsonl`，不丢数据。
+
+- 触发：`python -c "from backend.app.governance.settings import get_settings; from backend.app.tasks.agent_run_stream_compaction import compact_agent_run_streams; print(compact_agent_run_streams(settings=get_settings()))"`；或经 broker 派发 actor `compact_agent_run_streams`（`worker_bootstrap` 已注册）。
+- 验证：命令输出/日志中的 `runs_compacted` 与 `*_archived` 计数；`agent_run_compaction.jsonl` 追加了对应统计事件；抽查任一被压缩 run 的 `GET /api/agent/runs/{run_id}` 仍返回终态快照。
+- 安全性：压缩幂等可重跑；执行期间持有 run 状态迁移锁，进行中的 run 写入会短暂等待；归档文件只增不删，如需彻底清理由治理流程另行决定。建议在低峰执行。
+
 ## 故障排查
 
 | 现象 | 可能原因 | 建议 |
@@ -194,6 +242,9 @@ Hermes 模式（`MOSS_AGENT_PROVIDER=hermes`）走 **`backend/app/services/herme
 | 返回「无报告日期」类 **ValueError** | 某仓库无可用 `report_date` | 确认 DuckDB 批次与日期列表接口 |
 | `result_kind` 为 **`agent.unknown`** | 问题未匹配任一关键字且未指定 `context.intent` | 调整提问措辞或显式 intent |
 | **`quality_flag` 为 stale / warning** | 数据陈旧或治理降级 | 对照 `result_meta` 与 evidence，勿当作正式发布的唯一依据 |
+| run 长期停在 `queued` 后变 `failed`（`StaleQueuedAgentRun`） | worker 未消费或排队超过 `agent_run_queued_timeout_seconds`（缺省 600 秒） | 检查 worker 进程/心跳；确需更长排队时间时调大该配置 |
+| 确认 suggested action 返回 403（`confirmation token`） | token 缺失/过期（15 分钟）/与动作不匹配；或多进程部署未配置统一 `MOSS_AGENT_ACTION_TOKEN_SECRET` | 重新获取动作与 token；多进程部署为 API 与 worker 配置同一 secret 并重启 |
+| bridge 模式 Hermes 持续降级，日志出现 `Hermes bridge at ... rejects this process's token` | 后端曾非优雅退出（kill -9/崩溃），上一进程的孤儿 bridge 仍占用端口并持旧一次性 token；新进程令牌不匹配被 403 | 按 bridge 端口找到孤儿进程并停掉（正常重启已由 lifespan 自动关停托管 bridge）；长期自管的外部 bridge 应配置固定 `HERMES_BRIDGE_TOKEN` 供各后端进程共用 |
 
 ---
 
@@ -201,6 +252,12 @@ Hermes 模式（`MOSS_AGENT_PROVIDER=hermes`）走 **`backend/app/services/herme
 
 ```bash
 uv run --project backend python -m pytest tests/test_agent_api_contract.py tests/test_agent_intent_routing.py -q
+```
+
+治理与安全侧（审计契约、白名单、bypass 守卫、确认 token、settings 契约）：
+
+```bash
+uv run --project backend python -m pytest tests/test_agent_audit_log_contract.py tests/test_agent_toolset_policy.py tests/test_agent_dev_bypass_guard.py tests/test_agent_action_token.py tests/test_agent_api.py tests/test_settings_contract.py -q
 ```
 
 期望：现有契约与路由测试全部通过。
