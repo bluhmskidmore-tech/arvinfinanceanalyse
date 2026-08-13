@@ -5,11 +5,15 @@
  *
  * Per-file no-growth audit over frontend/src:
  *  - CSS (including .module.css): count `font-size:` declarations whose value
- *    is a px literal below 12px; rem/em/var()/calc()/other non-px are a
+ *    is a px literal below 11px; rem/em/var()/calc()/other non-px are a
  *    coverage gap (not judged)
  *  - TS/TSX inline: count `fontSize:` assignments whose value is a judged px
- *    below 12 (bare number, "Npx" / 'Npx', or fontSize[N] / alias[N] token
+ *    below 11 (bare number, "Npx" / 'Npx', or fontSize[N] / alias[N] token
  *    index). Unrecognized expressions are a coverage gap (not judged).
+ *
+ * Policy (2026-08 sign-off): DESIGN.md §3 allows 11-12px for auxiliary text,
+ * so the hard floor is 11px (10px and below are violations). Data rows should
+ * still be >=12px, but that distinction is enforced in review, not here.
  *
  * Baseline lives in scripts/audit_font_size_floor.baseline.json
  * (namespaces `css` and `inline`). Tighten after paying down debt with:
@@ -26,7 +30,7 @@ const baselineRelativePath = "scripts/audit_font_size_floor.baseline.json";
 const baselinePath = path.join(repoRoot, baselineRelativePath);
 const scanRoot = path.join(repoRoot, "frontend", "src");
 
-const FLOOR_PX = 12;
+const FLOOR_PX = 11;
 const SKIP_DIR_NAMES = new Set(["node_modules", "dist", "build", "coverage", ".git"]);
 const FONT_SIZE_DECL = /(?<![\w-])font-size\s*:\s*([^;}]+)/gi;
 const DESIGN_SYSTEM_REPO_PATH = "frontend/src/theme/designSystem.ts";
@@ -413,7 +417,7 @@ function printCoverage(coverage) {
       `type-only skipped ${coverage.inline.typeOnly}`,
   );
   console.log(
-    `- inline below-12px by shape: bare ${coverage.inline.shapesBelow.bare}; ` +
+    `- inline below-${FLOOR_PX}px by shape: bare ${coverage.inline.shapesBelow.bare}; ` +
       `string ${coverage.inline.shapesBelow.string}; token ${coverage.inline.shapesBelow.token}`,
   );
 }
@@ -428,7 +432,7 @@ function compareNamespace(label, results, baselineMap) {
     if (actual > allowed) {
       failures.push(
         `${repoPath} ${label} belowFloor: ${actual} > baseline ${allowed}. ` +
-          "DESIGN.md §3: data-row minimum 12px.",
+          `DESIGN.md §3: hard floor ${FLOOR_PX}px (auxiliary text may use 11-12px; below that is a violation).`,
       );
     } else if (actual < allowed) {
       tightenHints.push(`${repoPath}: ${allowed} -> ${actual}`);
@@ -474,7 +478,7 @@ function runSelfTest() {
   const sample = [
     ".a { font-size: 10px; }",
     ".b { font-size: 12px; }",
-    ".c { font-size: 11.5px !important; }",
+    ".c { font-size: 10.5px !important; }",
     ".d { font-size: 0.75rem; }",
     ".e { font-size: var(--x); }",
     ".f { font-size: calc(1em + 2px); }",
@@ -496,7 +500,7 @@ function runSelfTest() {
     "const f = { fontSize: dt.fontSize[11] };",
     "const g = { fontSize: fs[11] };",
     "const h = { fontSize: t.fontSize[11] };",
-    "const i = { fontSize: fontSize[11] };",
+    "const i = { fontSize: fontSize[10] };",
     "const jsx = <span style={{ fontSize: 9 }} />;",
     "// fontSize: 8",
     "/* fontSize: 8 */",
@@ -513,13 +517,13 @@ function runSelfTest() {
   ].join("\n");
   const inlineActual = auditInlineText(inlineSample);
   if (
-    inlineActual.belowFloor !== 12 ||
+    inlineActual.belowFloor !== 5 ||
     inlineActual.pxTotal !== 13 ||
     inlineActual.unrecognized !== 2 ||
     inlineActual.typeOnly !== 1 ||
-    inlineActual.shapesBelow.bare !== 5 ||
-    inlineActual.shapesBelow.string !== 2 ||
-    inlineActual.shapesBelow.token !== 5
+    inlineActual.shapesBelow.bare !== 3 ||
+    inlineActual.shapesBelow.string !== 1 ||
+    inlineActual.shapesBelow.token !== 1
   ) {
     throw new Error(`inline fontSize counters mismatch: ${JSON.stringify(inlineActual)}`);
   }
@@ -533,8 +537,8 @@ function runRatchet() {
     writeBaseline(cssResults, inlineResults);
     console.log(
       `Baseline seeded: css ${Object.keys(cssResults).length} files ` +
-        `(below-12px=${coverage.css.belowFloor}); inline ${Object.keys(inlineResults).length} files ` +
-        `(below-12px=${coverage.inline.belowFloor}) -> ${baselineRelativePath}`,
+        `(below-${FLOOR_PX}px=${coverage.css.belowFloor}); inline ${Object.keys(inlineResults).length} files ` +
+        `(below-${FLOOR_PX}px=${coverage.inline.belowFloor}) -> ${baselineRelativePath}`,
     );
     printCoverage(coverage);
     return;
@@ -610,10 +614,10 @@ function runAudit() {
 
   console.log("Font size floor audit passed (no growth over baseline).");
   console.log(
-    `- css totals: below-12px ${cssCmp.currentSum}/${cssCmp.baselineSum} across ${cssCmp.currentFiles}/${cssCmp.baselineFiles} files`,
+    `- css totals: below-${FLOOR_PX}px ${cssCmp.currentSum}/${cssCmp.baselineSum} across ${cssCmp.currentFiles}/${cssCmp.baselineFiles} files`,
   );
   console.log(
-    `- inline totals: below-12px ${inlineCmp.currentSum}/${inlineCmp.baselineSum} across ${inlineCmp.currentFiles}/${inlineCmp.baselineFiles} files`,
+    `- inline totals: below-${FLOOR_PX}px ${inlineCmp.currentSum}/${inlineCmp.baselineSum} across ${inlineCmp.currentFiles}/${inlineCmp.baselineFiles} files`,
   );
   printCoverage(coverage);
   if (tightenHints.length > 0) {
