@@ -166,6 +166,34 @@ export function fixedOrDash(value: number | null | undefined, digits: number): s
   return value.toFixed(digits);
 }
 
+/**
+ * `value.toFixed(digits) + "%"`, or `EM_DASH` when the value is null/undefined
+ * or not finite. Extracted because the shape repeats across 26+ page models
+ * (2026-08-13 audit); adopt only where the local semantics are identical
+ * (no `—%` suffix-on-missing variants).
+ */
+export function pctOrDash(value: number | null | undefined, digits: number): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return EM_DASH;
+  }
+  return `${value.toFixed(digits)}%`;
+}
+
+/**
+ * Signed `toFixed` display: strictly-positive values get a `+` prefix, zero
+ * and negative keep the native sign; `EM_DASH` when missing/not finite.
+ */
+export function signedFixedOrDash(
+  value: number | null | undefined,
+  digits: number,
+): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return EM_DASH;
+  }
+  const fixed = value.toFixed(digits);
+  return value > 0 ? `+${fixed}` : fixed;
+}
+
 // ---------------------------------------------------------------------------
 // Numeric (governed value) helpers
 // ---------------------------------------------------------------------------

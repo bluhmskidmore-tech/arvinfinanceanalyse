@@ -10,6 +10,8 @@ import {
   fixedOrDash,
   numericRaw,
   numericRawOrZero,
+  pctOrDash,
+  signedFixedOrDash,
   textOrDash,
   toneFromSignedValue,
   type MetricTone,
@@ -86,6 +88,36 @@ describe("fixedOrDash", () => {
     expect(fixedOrDash(12.345, 2)).toBe("12.35");
     expect(fixedOrDash(5.6, 0)).toBe("6");
     expect(fixedOrDash(0, 2)).toBe("0.00");
+  });
+});
+
+describe("pctOrDash", () => {
+  it("renders missing or non-finite numbers as EM_DASH without a % suffix", () => {
+    expect(pctOrDash(null, 2)).toBe(EM_DASH);
+    expect(pctOrDash(undefined, 1)).toBe(EM_DASH);
+    expect(pctOrDash(Number.NaN, 2)).toBe(EM_DASH);
+    expect(pctOrDash(Number.NEGATIVE_INFINITY, 2)).toBe(EM_DASH);
+  });
+
+  it("formats finite numbers with the requested precision plus %", () => {
+    expect(pctOrDash(53.125, 2)).toBe("53.13%");
+    expect(pctOrDash(0, 2)).toBe("0.00%");
+    expect(pctOrDash(-1.5, 1)).toBe("-1.5%");
+  });
+});
+
+describe("signedFixedOrDash", () => {
+  it("renders missing or non-finite numbers as EM_DASH", () => {
+    expect(signedFixedOrDash(null, 2)).toBe(EM_DASH);
+    expect(signedFixedOrDash(undefined, 2)).toBe(EM_DASH);
+    expect(signedFixedOrDash(Number.NaN, 2)).toBe(EM_DASH);
+  });
+
+  it("prefixes + only for strictly positive values", () => {
+    expect(signedFixedOrDash(1.234, 2)).toBe("+1.23");
+    expect(signedFixedOrDash(-1.234, 2)).toBe("-1.23");
+    expect(signedFixedOrDash(0, 2)).toBe("0.00");
+    expect(signedFixedOrDash(-0, 2)).toBe("0.00");
   });
 });
 
