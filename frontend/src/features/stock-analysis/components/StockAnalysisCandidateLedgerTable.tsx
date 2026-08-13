@@ -292,7 +292,7 @@ export function StockAnalysisCandidateLedgerTable({
           </tr>
         </thead>
         <tbody>
-          {visibleCandidates.map((card) => {
+          {visibleCandidates.map((card, index) => {
             const fusionActionLabel = fusionActionDisplayLabel(candidateEvidenceValue(card, "fusion_action"));
             const meaningfulBoundaryCount = meaningfulBoundaryEvidence(card).length;
             const status = rowStatus(card, usesHybridFusion, fusionActionLabel, meaningfulBoundaryCount);
@@ -315,7 +315,10 @@ export function StockAnalysisCandidateLedgerTable({
 
             return (
               <tr
-                key={card.stockCode}
+                // 后端 review_queue 按 (source_module, stock_code) 去重：同一股票可以
+                // 来自多个来源模块各占一行，且 rank 是模块内排名，因此裸 stockCode
+                // （甚至 stockCode+rank）都会撞 key，需补 index 兜底。
+                key={`${card.stockCode}:${card.rank}:${index}`}
                 className="group"
                 data-testid={`stock-candidate-${card.stockCode}`}
                 data-selected-sector={

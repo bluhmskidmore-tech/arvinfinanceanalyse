@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { StockCandidateReviewQueueItem } from "../lib/stockAnalysisPageModel";
 import { StockAnalysisCandidateLedgerTable } from "./StockAnalysisCandidateLedgerTable";
@@ -27,6 +27,39 @@ function buildCandidate(overrides: Partial<StockCandidateReviewQueueItem> = {}):
 }
 
 describe("StockAnalysisCandidateLedgerTable", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("renders the same stock from two source modules without duplicate React keys", () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    // 后端 review_queue 按 (source_module, stock_code) 去重：同一股票可在
+    // 趋势候选与多因子候选各占一行，且都携带模块内 rank=1。
+    const candidates = [
+      buildCandidate({ headline: "趋势候选 #1 · Alpha" }),
+      buildCandidate({ headline: "多因子候选 #1 · Alpha" }),
+    ];
+
+    render(
+      <StockAnalysisCandidateLedgerTable
+        candidates={candidates}
+        usesHybridFusion={false}
+        selectedSectorCode={null}
+        onReviewCandidate={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByTestId("stock-candidate-000001.SZ")).toHaveLength(2);
+
+    const duplicateKeyWarnings = consoleError.mock.calls.filter((call) =>
+      call.some(
+        (arg) =>
+          typeof arg === "string" && arg.includes("Encountered two children with the same key"),
+      ),
+    );
+    expect(duplicateKeyWarnings).toEqual([]);
+  });
+
   it("shows the low-liquidity badge with the daily amount as a tooltip when liquidityFloorPass is false", () => {
     render(
       <StockAnalysisCandidateLedgerTable
