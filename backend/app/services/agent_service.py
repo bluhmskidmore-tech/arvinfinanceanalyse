@@ -4,6 +4,7 @@ import importlib
 from collections.abc import Callable
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
+from pathlib import Path
 from typing import Any, Literal
 from uuid import uuid4
 
@@ -157,6 +158,63 @@ _NEWS_SQL_DISCLOSURE: list[str] = [
 ]
 
 
+# pretrade_checklist 披露主干只读拉取：候选历史 + 观测行情 + 涨跌停价 + 复权因子
+# （与 pretrade_checklist_service 的执行语句同构）。amount 列运行期由
+# docs/data_contracts.md §4.10 的 amount_rmb_sql 归一为人民币元（缺 vendor_version
+# 定标时降级 cast(null as double)）；`stock_code in (?)` 的占位符数量运行期按候选
+# 代码数展开；门控敞口轻读（core_finance.gate_exposure_series）不在此展开。
+_PRETRADE_CHECKLIST_SQL_DISCLOSURE = [
+    "select max(snapshot_as_of_date) from livermore_candidate_history where signal_kind = ?",
+    (
+        "select candidate_rank, stock_code, stock_name, sector_name, selection_close, ema10, "
+        "market_state, data_status, closed_up_limit "
+        "from livermore_candidate_history "
+        "where snapshot_as_of_date = ? and signal_kind = ? "
+        "order by candidate_rank nulls last, stock_code"
+    ),
+    (
+        "select stock_code, close_value, amount, tradestatus, highlimit, lowlimit "
+        "from choice_stock_daily_observation "
+        "where trade_date = ? and stock_code in (?)"
+    ),
+    (
+        "select stock_code, up_limit, down_limit "
+        "from stock_limit_price_daily "
+        "where trade_date = ? and stock_code in (?)"
+    ),
+    (
+        "select distinct stock_code "
+        "from stock_adjustment_factor "
+        "where trade_date = ? and stock_code in (?) and adj_factor is not null"
+    ),
+]
+
+# 盘前清单可买状态与拦截原因的展示标签；未知代码回退原值，不吞信息。
+_PRETRADE_STATUS_LABELS = {
+    "buyable": "可买",
+    "blocked_suspended": "停牌拦截",
+    "blocked_limit": "涨跌停拦截",
+    "review": "需复核",
+    "data_missing": "数据缺失",
+}
+_PRETRADE_BLOCK_REASON_LABELS = {
+    "suspended": "停牌",
+    "limit_up": "涨停",
+    "limit_down": "跌停",
+    "missing_daily_observation": "缺当日观测行情",
+    "missing_amount": "成交额缺失",
+    "non_positive_amount": "成交额非正",
+    "low_liquidity": "流动性低于门槛",
+}
+
+# walk_forward_verdict 判定标签与 strategy_report_service 的 verdict 契约对齐。
+_WALK_FORWARD_VERDICT_LABELS = {
+    "oos_supported": "样本外支持",
+    "oos_weakened": "样本外衰减",
+    "insufficient_windows": "样本不足",
+}
+
+
 def phase1_disabled_response() -> AgentDisabledResponse:
     return AgentDisabledResponse()
 
@@ -229,6 +287,9 @@ def _build_intent_handlers(
         "risk_tensor": lambda request: _risk_tensor_payload(request, duckdb_path, governance_dir),
         "market_data": lambda request: _market_data_payload(request, duckdb_path),
         "news": lambda request: _news_payload(request, duckdb_path),
+        "pretrade_checklist": lambda request: _pretrade_checklist_payload(request, duckdb_path),
+        # walk_forward_verdict 读取落盘 JSON 报告（strategy_report_service），不触 DuckDB。
+        "walk_forward_verdict": lambda request: _walk_forward_verdict_payload(request),
     }
 
 
@@ -1260,6 +1321,426 @@ def _news_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[str, Any
         "result_kind": "agent.news",
         "next_drill": [{"dimension": "topic_code", "label": "按主题查看"}],
     }
+
+
+def _pretrade_checklist_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[str, Any]:
+    """盘前操作清单意图：只读转发 pretrade_checklist_service，观察面输出。
+
+    sql_executed 披露主干只读模板（_PRETRADE_CHECKLIST_SQL_DISCLOSURE）；
+    门控敞口轻读不在披露中展开。服务返回 None（库/候选历史表缺失、无信号日）
+    时降级为「数据未生成」文案，不抛错、不编造清单。
+    """
+    from backend.app.services.pretrade_checklist_service import pretrade_checklist_envelope
+
+    raw_as_of = str(request.filters.get("as_of_date") or "").strip()
+    requested_as_of = raw_as_of or _requested_report_date(request)
+    rd_mode: Literal["explicit", "latest_default"] = (
+        "explicit" if requested_as_of else "latest_default"
+    )
+    upstream = pretrade_checklist_envelope(
+        duckdb_path=duckdb_path,
+        as_of_date=requested_as_of,
+    )
+    if upstream is None:
+        return {
+            "answer": (
+                "盘前操作清单数据未生成：当前库中没有可用的因子筛选候选信号日"
+                "（或候选历史表缺失），本轮未产出可买/拦截判定。"
+            ),
+            "cards": [
+                {
+                    "type": "status",
+                    "title": "Pretrade Checklist Unavailable",
+                    "value": "livermore_candidate_history 无 factor_screen 信号日或数据面不可用。",
+                }
+            ],
+            "tables_used": ["livermore_candidate_history"],
+            "filters_applied": _audit_filters(
+                request,
+                requested_as_of,
+                resolution=rd_mode,
+                extra={"signal_kind": "factor_screen"},
+            ),
+            "row_count": 0,
+            "sql_executed": _PRETRADE_CHECKLIST_SQL_DISCLOSURE,
+            "quality_flag": "warning",
+            "basis": "analytical",
+            "formal_use_allowed": False,
+            "scenario_flag": False,
+            "source_version": "sv_pretrade_checklist_unavailable",
+            "rule_version": "rv_pretrade_checklist_v1",
+            "cache_version": "cv_agent_pretrade_checklist_v1",
+            "result_kind": "agent.pretrade_checklist",
+            "vendor_status": "ok",
+            "fallback_mode": "none",
+            "next_drill": [],
+        }
+
+    result = dict(upstream.get("result", {}))
+    meta = dict(upstream.get("result_meta", {}))
+    items = [item for item in result.get("items", []) if isinstance(item, dict)]
+    summary = dict(result.get("summary", {}))
+    staleness = dict(result.get("staleness", {}))
+    gate = dict(result.get("gate", {}))
+    as_of = str(result.get("as_of_date") or "")
+    checklist_status = str(result.get("checklist_status") or "empty")
+
+    buyable_items = [item for item in items if str(item.get("buyable_status")) == "buyable"]
+    blocked_items = [
+        item
+        for item in items
+        if str(item.get("buyable_status")) in {"blocked_suspended", "blocked_limit"}
+    ]
+    attention_items = [
+        item
+        for item in items
+        if str(item.get("buyable_status")) in {"review", "data_missing"}
+    ]
+    buyable_count = int(summary.get("buyable_count", len(buyable_items)))
+    blocked_count = int(summary.get("blocked_count", len(blocked_items)))
+
+    answer_parts = [
+        f"{as_of} 盘前操作清单已返回：候选 {len(items)} 只，可买 {buyable_count} 只，"
+        f"拦截 {blocked_count} 只，复核/数据缺失 {len(attention_items)} 只。"
+    ]
+    if checklist_status == "stale":
+        answer_parts.append(
+            f"注意：信号日距今天 {staleness.get('calendar_gap_days')} 个自然日，"
+            f"已超过 stale 阈值 {staleness.get('stale_calendar_days')} 天，"
+            "候选可能过期，执行前请先刷新信号。"
+        )
+    elif checklist_status == "empty":
+        answer_parts.append("该信号日没有候选行（无候选），本轮无可买判定。")
+    if buyable_items:
+        buyable_text = "、".join(_pretrade_item_label(item) for item in buyable_items[:10])
+        suffix = " 等" if len(buyable_items) > 10 else ""
+        answer_parts.append(f"可买：{buyable_text}{suffix}。")
+    if blocked_items:
+        blocked_text = "；".join(
+            f"{_pretrade_item_label(item)}（{_pretrade_reasons_text(item)}）"
+            for item in blocked_items[:10]
+        )
+        answer_parts.append(f"拦截：{blocked_text}。")
+    if gate.get("status") != "available":
+        answer_parts.append(str(gate.get("note") or "门控敞口不可用，字段缺省，不代表门控放行。"))
+    answer_parts.append(str(result.get("disclaimer") or ""))
+
+    cards: list[dict[str, Any]] = [
+        {"type": "metric", "title": "Signal Date", "value": as_of},
+        {"type": "metric", "title": "Checklist Status", "value": checklist_status},
+        {"type": "metric", "title": "Buyable Count", "value": str(buyable_count)},
+        {"type": "metric", "title": "Blocked Count", "value": str(blocked_count)},
+    ]
+    if checklist_status == "stale":
+        cards.append(
+            {
+                "type": "status",
+                "title": "Stale Signal Warning",
+                "value": (
+                    f"信号日 {as_of} 距 {staleness.get('today')} 已 "
+                    f"{staleness.get('calendar_gap_days')} 个自然日"
+                    f"（阈值 {staleness.get('stale_calendar_days')} 天），候选可能过期。"
+                ),
+            }
+        )
+    if gate.get("status") == "available":
+        cards.append(
+            {
+                "type": "metric",
+                "title": "Gate Exposure",
+                "value": f"{gate.get('state')} / {gate.get('exposure')}",
+            }
+        )
+    else:
+        cards.append(
+            {
+                "type": "status",
+                "title": "Gate Exposure Degraded",
+                "value": str(gate.get("note") or "门控敞口不可用，字段缺省。"),
+            }
+        )
+    if buyable_items:
+        cards.append(
+            {
+                "type": "table",
+                "title": "Buyable Candidates",
+                "data": [_pretrade_item_row(item) for item in buyable_items[:10]],
+            }
+        )
+    if blocked_items or attention_items:
+        cards.append(
+            {
+                "type": "table",
+                "title": "Blocked / Review Candidates",
+                "data": [
+                    _pretrade_item_row(item)
+                    for item in (blocked_items + attention_items)[:10]
+                ],
+            }
+        )
+    cards.append(
+        {
+            "type": "status",
+            "title": "Disclaimer",
+            "value": str(result.get("disclaimer") or "观察面输出：盘前检查仅供复核参考，不构成交易指令。"),
+        }
+    )
+
+    return {
+        "answer": "".join(part for part in answer_parts if part),
+        "cards": cards,
+        "tables_used": list(
+            meta.get("tables_used")
+            or [
+                "livermore_candidate_history",
+                "choice_stock_daily_observation",
+                "stock_limit_price_daily",
+                "stock_adjustment_factor",
+            ]
+        ),
+        "filters_applied": _audit_filters(
+            request,
+            as_of or None,
+            resolution=rd_mode,
+            extra={
+                "signal_kind": result.get("signal_kind"),
+                "top_n": result.get("top_n"),
+                "checklist_status": checklist_status,
+            },
+        ),
+        "row_count": len(items),
+        "sql_executed": _PRETRADE_CHECKLIST_SQL_DISCLOSURE,
+        "quality_flag": str(meta.get("quality_flag") or "warning"),
+        "basis": str(meta.get("basis") or "analytical"),
+        "formal_use_allowed": bool(meta.get("formal_use_allowed", False)),
+        "scenario_flag": False,
+        "source_version": str(meta.get("source_version") or "sv_pretrade_checklist_unavailable"),
+        "vendor_version": str(meta.get("vendor_version") or "vv_none"),
+        "rule_version": str(meta.get("rule_version") or "rv_pretrade_checklist_v1"),
+        "cache_version": str(meta.get("cache_version") or "cv_agent_pretrade_checklist_v1"),
+        "result_kind": "agent.pretrade_checklist",
+        "vendor_status": str(meta.get("vendor_status") or "ok"),
+        "fallback_mode": str(meta.get("fallback_mode") or "none"),
+        "requested_report_date": requested_as_of,
+        "resolved_report_date": as_of or None,
+        "as_of_date": str(meta.get("as_of_date") or as_of or "") or None,
+        "date_basis": "livermore_signal_snapshot_as_of_date",
+        "next_drill": [],
+    }
+
+
+def _pretrade_item_label(item: dict[str, Any]) -> str:
+    code = str(item.get("stock_code") or "").strip()
+    name = str(item.get("stock_name") or "").strip()
+    return f"{code} {name}".strip() or "未知候选"
+
+
+def _pretrade_reasons_text(item: dict[str, Any]) -> str:
+    reasons = item.get("block_reasons")
+    if not isinstance(reasons, list) or not reasons:
+        return "无拦截原因"
+    return "、".join(
+        _PRETRADE_BLOCK_REASON_LABELS.get(str(reason), str(reason)) for reason in reasons
+    )
+
+
+def _pretrade_item_row(item: dict[str, Any]) -> dict[str, Any]:
+    limit_check = item.get("limit_check") if isinstance(item.get("limit_check"), dict) else {}
+    position_hint = (
+        item.get("position_hint") if isinstance(item.get("position_hint"), dict) else None
+    )
+    status = str(item.get("buyable_status") or "")
+    return {
+        "candidate_rank": item.get("candidate_rank"),
+        "stock_code": item.get("stock_code"),
+        "stock_name": item.get("stock_name"),
+        "sector_name": item.get("sector_name"),
+        "buyable_status": status,
+        "status_label": _PRETRADE_STATUS_LABELS.get(status, status),
+        "block_reasons": _pretrade_reasons_text(item) if item.get("block_reasons") else "",
+        "close_value": item.get("close_value"),
+        "amount_rmb": item.get("amount_rmb"),
+        "limit_status": limit_check.get("status"),
+        "position_hint": position_hint,
+    }
+
+
+def _walk_forward_verdict_payload(request: AgentQueryRequest) -> dict[str, Any]:
+    """策略样本外验证判定意图：只读转发 strategy_report_service 的展示裁剪。
+
+    数据源是落盘 walk-forward JSON 报告（非 DuckDB 查询），sql_executed 保持 []；
+    报告路径作为证据引用写入 tables_used 与 filters_applied。报告缺失/不可解析
+    时降级为「报告未生成」文案，不抛错、不重算指标。
+    """
+    from backend.app.services.strategy_report_service import (
+        resolve_walk_forward_report_path,
+        walk_forward_summary_envelope,
+    )
+
+    report_ref = _walk_forward_report_reference(resolve_walk_forward_report_path())
+    upstream = walk_forward_summary_envelope()
+    if upstream is None:
+        return {
+            "answer": (
+                f"策略样本外验证报告未生成：{report_ref} 缺失或不可解析，"
+                "本轮没有可引用的 walk-forward 判定，也未重算任何指标。"
+            ),
+            "cards": [
+                {
+                    "type": "status",
+                    "title": "Walk-Forward Report Unavailable",
+                    "value": "落盘报告缺失或不可解析，请先运行 walk-forward 验证脚本生成报告。",
+                },
+                {"type": "resource", "title": "Walk-Forward Report", "value": report_ref},
+            ],
+            "tables_used": [report_ref],
+            "filters_applied": _audit_filters(
+                request,
+                None,
+                resolution="not_applicable",
+                extra={"report_path": report_ref},
+            ),
+            "row_count": 0,
+            "sql_executed": [],
+            "quality_flag": "warning",
+            "basis": "analytical",
+            "formal_use_allowed": False,
+            "scenario_flag": False,
+            "source_version": "sv_walk_forward_report_unavailable",
+            "rule_version": "rv_walk_forward_display_trim_v1",
+            "cache_version": "cv_agent_walk_forward_verdict_v1",
+            "result_kind": "agent.walk_forward_verdict",
+            "vendor_status": "ok",
+            "fallback_mode": "none",
+            "next_drill": [],
+        }
+
+    summary = dict(upstream.get("result", {}))
+    meta = dict(upstream.get("result_meta", {}))
+    rows: list[dict[str, Any]] = []
+    schedules = summary.get("schedules")
+    for schedule in schedules if isinstance(schedules, list) else []:
+        if not isinstance(schedule, dict):
+            continue
+        label = schedule.get("label")
+        strategies = schedule.get("strategies")
+        for strategy in strategies if isinstance(strategies, list) else []:
+            if not isinstance(strategy, dict):
+                continue
+            sign = strategy.get("excess_sign_consistency")
+            sign = sign if isinstance(sign, dict) else {}
+            risk_budget = strategy.get("risk_budget")
+            risk_budget = risk_budget if isinstance(risk_budget, dict) else {}
+            rows.append(
+                {
+                    "schedule": label,
+                    "strategy": strategy.get("strategy"),
+                    "verdict": strategy.get("verdict"),
+                    "verdict_label": _walk_forward_verdict_label(strategy.get("verdict")),
+                    "verdict_reason": strategy.get("verdict_reason"),
+                    "oos_window_count": strategy.get("oos_window_count"),
+                    "in_sample_excess": strategy.get("in_sample_excess"),
+                    "oos_excess_median": strategy.get("oos_excess_median"),
+                    "oos_chain_excess": strategy.get("oos_chain_excess"),
+                    "positive_ratio": sign.get("positive_ratio"),
+                    "decay_status": strategy.get("decay_cumulative_status"),
+                    "rpt_switch_rate": risk_budget.get("switch_rate"),
+                }
+            )
+
+    verdict_counts = {"oos_supported": 0, "oos_weakened": 0, "insufficient_windows": 0}
+    for row in rows:
+        verdict = str(row.get("verdict") or "")
+        if verdict in verdict_counts:
+            verdict_counts[verdict] += 1
+    answer_parts = [
+        f"策略样本外验证判定已返回：共 {len(rows)} 条策略×周期判定"
+        f"（样本外支持 {verdict_counts['oos_supported']}、"
+        f"样本外衰减 {verdict_counts['oos_weakened']}、"
+        f"样本不足 {verdict_counts['insufficient_windows']}）。"
+    ]
+    if not rows:
+        answer_parts.append("报告已读取，但未包含任何策略判定（无候选策略）。")
+    else:
+        lines = [
+            (
+                f"{row.get('strategy')}[{row.get('schedule')}]：{row.get('verdict_label')}"
+                f"（样本内超额 {_walk_forward_number(row.get('in_sample_excess'))}，"
+                f"样本外链式超额 {_walk_forward_number(row.get('oos_chain_excess'))}，"
+                f"正超额窗口占比 {_walk_forward_number(row.get('positive_ratio'))}，"
+                f"窗口数 {_walk_forward_number(row.get('oos_window_count'))}）"
+            )
+            for row in rows[:8]
+        ]
+        answer_parts.append("；".join(lines) + "。")
+        if len(rows) > 8:
+            answer_parts.append(f"其余 {len(rows) - 8} 条见判定明细表。")
+    answer_parts.append("判定与数字均来自落盘 walk-forward 报告，未重算任何指标。")
+
+    quality_flag = "warning" if not rows else str(meta.get("quality_flag") or "warning")
+    cards: list[dict[str, Any]] = [
+        {"type": "metric", "title": "Strategy Verdicts", "value": str(len(rows))},
+        {"type": "metric", "title": "Generated At", "value": str(summary.get("generated_at") or "unknown")},
+        {"type": "metric", "title": "Engine Version", "value": str(summary.get("engine_version") or "unknown")},
+        {"type": "metric", "title": "Report Issues", "value": str(summary.get("issue_count", 0))},
+    ]
+    if rows:
+        cards.append(
+            {
+                "type": "table",
+                "title": "Walk-Forward Strategy Verdicts",
+                "data": rows[:50],
+            }
+        )
+    cards.append({"type": "resource", "title": "Walk-Forward Report", "value": report_ref})
+
+    return {
+        "answer": "".join(answer_parts),
+        "cards": cards,
+        "tables_used": [report_ref],
+        "filters_applied": _audit_filters(
+            request,
+            None,
+            resolution="not_applicable",
+            extra={
+                "report_path": report_ref,
+                "generated_at": summary.get("generated_at"),
+            },
+        ),
+        "row_count": len(rows),
+        "sql_executed": [],
+        "quality_flag": quality_flag,
+        "basis": str(meta.get("basis") or "analytical"),
+        "formal_use_allowed": bool(meta.get("formal_use_allowed", False)),
+        "scenario_flag": False,
+        "source_version": str(meta.get("source_version") or "sv_walk_forward_report_unknown"),
+        "vendor_version": str(meta.get("vendor_version") or "vv_none"),
+        "rule_version": str(meta.get("rule_version") or "rv_walk_forward_display_trim_v1"),
+        "cache_version": str(meta.get("cache_version") or "cv_agent_walk_forward_verdict_v1"),
+        "result_kind": "agent.walk_forward_verdict",
+        "vendor_status": str(meta.get("vendor_status") or "ok"),
+        "fallback_mode": str(meta.get("fallback_mode") or "none"),
+        "next_drill": [],
+    }
+
+
+def _walk_forward_verdict_label(verdict: Any) -> str:
+    text = str(verdict or "").strip()
+    return _WALK_FORWARD_VERDICT_LABELS.get(text, text or "未知判定")
+
+
+def _walk_forward_number(value: Any) -> str:
+    if value is None:
+        return "—"
+    return str(value)
+
+
+def _walk_forward_report_reference(report_path: Path) -> str:
+    repo_root = Path(__file__).resolve().parents[3]
+    try:
+        return report_path.resolve().relative_to(repo_root).as_posix()
+    except (OSError, ValueError):
+        return str(report_path)
 
 
 def _append_envelope_audit(

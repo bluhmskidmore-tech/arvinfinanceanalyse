@@ -22,6 +22,41 @@ _INTENT_PATTERNS: list[tuple[str, tuple[str, ...]]] = [
         "gitnexus_status",
         ("gitnexus", "仓库图谱", "代码图谱", "repo graph", "code graph", "影响分析"),
     ),
+    # 两个观察面意图放在宽泛金融词表之前：「盘前…损益」「策略样本外…收益」等
+    # 问法应命中更具体的盘前清单 / walk-forward 判定，而不是被 pnl_summary、
+    # market_data 等通用词表截走。
+    (
+        "pretrade_checklist",
+        (
+            "盘前",
+            "操作清单",
+            "开盘检查",
+            "开盘清单",
+            "开盘checklist",
+            "开盘 checklist",
+            "买什么",
+            "可以买",
+            "可买",
+            "pretrade",
+            "pre-trade",
+        ),
+    ),
+    (
+        "walk_forward_verdict",
+        (
+            "样本外",
+            "样本内外",
+            "walk-forward",
+            "walk forward",
+            "walkforward",
+            "策略靠谱",
+            "回测验证",
+            "策略回测",
+            "策略验证",
+            "out-of-sample",
+            "out of sample",
+        ),
+    ),
     ("product_pnl", ("产品损益", "ftp")),
     ("pnl_bridge", ("桥接", "归因", "拆解", "bridge", "attribution")),
     ("risk_tensor", ("风险张量", "krd")),
