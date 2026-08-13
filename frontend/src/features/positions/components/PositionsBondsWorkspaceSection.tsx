@@ -68,9 +68,17 @@ export default function PositionsBondsWorkspaceSection({
       { title: "代码", dataIndex: "bond_code", className: "positions-view__num-cell" },
       { title: "授信主体", dataIndex: "credit_name", render: (v: string | null) => v || EM_DASH },
       { title: "业务种类", dataIndex: "sub_type", render: (v: string | null) => v || EM_DASH },
+      { title: "资产分类", dataIndex: "asset_class", render: (v: string | null) => v || EM_DASH },
       {
         title: "市值",
         dataIndex: "market_value",
+        align: "right",
+        className: "positions-view__num-cell",
+        render: (v: string | null) => formatAmountYi(v),
+      },
+      {
+        title: "面值",
+        dataIndex: "face_value",
         align: "right",
         className: "positions-view__num-cell",
         render: (v: string | null) => formatAmountYi(v),

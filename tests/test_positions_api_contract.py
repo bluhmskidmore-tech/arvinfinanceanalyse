@@ -7,6 +7,7 @@ from typing import Any
 
 import duckdb
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
@@ -315,6 +316,88 @@ def test_positions_read_surfaces_require_explicit_read_scope(tmp_path, monkeypat
     for path, params in read_requests:
         response = client.get(path, params=params, headers=POSITIONS_READ_HEADERS)
         assert response.status_code == 403, f"{path}: {response.status_code} {response.text}"
+
+
+def test_positions_envelope_runtime_cache_reuses_result_with_fresh_trace(
+    tmp_path, monkeypatch
+) -> None:
+    """同参重复调用只算一次（TTL 缓存命中），但每次响应刷新 trace_id。
+
+    与 balance_analysis.read_models 同款：键含 DuckDB 文件身份，文件变更自然失效。
+    """
+    from backend.app.services.runtime_cache import clear_runtime_cache
+
+    svc = load_module(
+        "backend.app.services.positions_service",
+        "backend/app/services/positions_service.py",
+    )
+    clear_runtime_cache("positions.read_models")
+    db = tmp_path / "positions-cache.duckdb"
+    db.write_bytes(b"")
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db))
+    get_settings.cache_clear()
+
+    calls = {"n": 0}
+
+    class _StubRepo:
+        def list_bond_sub_types(self, report_date: str) -> list[str]:
+            calls["n"] += 1
+            return ["利率债"]
+
+        def collect_lineage_versions(self, **_kwargs: object) -> tuple[list[str], list[str]]:
+            return (["sv_stub"], ["rv_stub"])
+
+    monkeypatch.setattr(svc, "_repo", lambda: _StubRepo())
+
+    first = svc.bond_sub_types_envelope("2026-01-10")
+    second = svc.bond_sub_types_envelope("2026-01-10")
+    assert calls["n"] == 1, "同参第二次调用应命中缓存，不再触发仓储查询"
+    assert first["result"] == second["result"]
+    assert first["result_meta"]["trace_id"] != second["result_meta"]["trace_id"]
+    meta_first = {k: v for k, v in first["result_meta"].items() if k != "trace_id"}
+    meta_second = {k: v for k, v in second["result_meta"].items() if k != "trace_id"}
+    assert meta_first == meta_second
+
+    svc.bond_sub_types_envelope("2026-01-11")
+    assert calls["n"] == 2, "不同参数是不同缓存键"
+    clear_runtime_cache("positions.read_models")
+
+
+def test_positions_read_surface_allows_development_fallback_without_explicit_scope(
+    tmp_path, monkeypatch
+) -> None:
+    """development 环境 + 匿名 viewer 回退身份可读（与 balance_analysis 读路由对齐）。
+
+    显式头部身份缺 scope 时仍 403，由上面的契约测试锁定。
+    """
+    route_mod = load_module(
+        "backend.app.api.routes.positions",
+        "backend/app/api/routes/positions.py",
+    )
+    monkeypatch.setattr(
+        route_mod.positions_service,
+        "bond_sub_types_envelope",
+        lambda report_date: {
+            "result_meta": {"result_kind": "positions.bonds.sub_types"},
+            "result": {"sub_types": []},
+        },
+    )
+    sqlite_path = tmp_path / "positions-dev-fallback.db"
+    monkeypatch.setenv("MOSS_ENVIRONMENT", "development")
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", "")
+    monkeypatch.delenv("MOSS_USER_ID", raising=False)
+    monkeypatch.delenv("MOSS_USER_ROLE", raising=False)
+    monkeypatch.delenv(ROLE_HEADER_TRUST_ENV, raising=False)
+    get_settings.cache_clear()
+    app = FastAPI()
+    app.include_router(route_mod.router)
+    client = TestClient(app)
+
+    response = client.get("/api/positions/bonds/sub_types")
+
+    assert response.status_code == 200
+    assert response.json()["result_meta"]["result_kind"] == "positions.bonds.sub_types"
 
 
 def test_positions_endpoints_envelope_and_empty_db(tmp_path, monkeypatch) -> None:

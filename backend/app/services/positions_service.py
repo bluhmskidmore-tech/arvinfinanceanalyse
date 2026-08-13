@@ -2,10 +2,14 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
+from copy import deepcopy
 from datetime import date, timedelta
+from pathlib import Path
 
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.positions_repo import PositionsRepository
+from backend.app.services.runtime_cache import get_runtime_cache
 from backend.app.schemas.positions import (
     BondPositionItem,
     BondPositionsPageResponse,
@@ -32,6 +36,53 @@ EMPTY_SOURCE_VERSION = "sv_positions_snapshot_empty"
 POSITIONS_DATE_BASIS = "positions_snapshot_report_date"
 ZQTZ_SNAPSHOT_TABLE = "zqtz_bond_daily_snapshot"
 TYW_SNAPSHOT_TABLE = "tyw_interbank_daily_snapshot"
+
+# 区间聚合（对手方/评级/行业）在 DuckDB 上是秒级重查询且每次请求都会重跑；
+# 与 balance_analysis.read_models 同款进程内 TTL 缓存：键含 DuckDB 文件身份
+# （mtime+size），写端物化 checkpoint 后自然失效；响应前刷新 trace_id。
+_POSITIONS_CACHE_TTL_SECONDS = 300.0
+_POSITIONS_CACHE = get_runtime_cache(
+    "positions.read_models",
+    ttl_seconds=_POSITIONS_CACHE_TTL_SECONDS,
+)
+
+
+def _duckdb_storage_identity(duckdb_path: str) -> tuple[str, int, int] | None:
+    path = Path(duckdb_path)
+    if not path.exists():
+        return None
+    try:
+        stat = path.stat()
+        return (str(path.resolve()), stat.st_mtime_ns, stat.st_size)
+    except OSError:
+        return None
+
+
+def _positions_cache_key(endpoint: str, *parts: object) -> tuple[object, ...] | None:
+    storage = _duckdb_storage_identity(str(get_settings().duckdb_path))
+    if storage is None:
+        return None
+    resolved_path, mtime_ns, size = storage
+    return (endpoint, resolved_path, mtime_ns, size, RULE_VERSION, CACHE_VERSION, *parts)
+
+
+def _with_fresh_trace(envelope: dict[str, object]) -> dict[str, object]:
+    response = deepcopy(envelope)
+    meta = response.get("result_meta")
+    if isinstance(meta, dict):
+        meta["trace_id"] = _trace_id()
+    return response
+
+
+def _cached_positions_envelope(
+    endpoint: str,
+    parts: tuple[object, ...],
+    build_envelope: Callable[[], dict[str, object]],
+) -> dict[str, object]:
+    cache_key = _positions_cache_key(endpoint, *parts)
+    if cache_key is None:
+        return build_envelope()
+    return _with_fresh_trace(_POSITIONS_CACHE.get_or_set(cache_key, build_envelope))
 
 
 def _trace_id() -> str:
@@ -92,6 +143,14 @@ def _candidate_list_meta(
 
 
 def bond_sub_types_envelope(report_date: str) -> dict[str, object]:
+    return _cached_positions_envelope(
+        "bonds.sub_types",
+        (report_date,),
+        lambda: _bond_sub_types_envelope_uncached(report_date),
+    )
+
+
+def _bond_sub_types_envelope_uncached(report_date: str) -> dict[str, object]:
     repo = _repo()
     resolved_report_date = _resolve_report_date(repo, report_date)
     sub_types = repo.list_bond_sub_types(resolved_report_date)
@@ -109,6 +168,27 @@ def bond_sub_types_envelope(report_date: str) -> dict[str, object]:
 
 
 def bonds_list_envelope(
+    *,
+    report_date: str,
+    sub_type: str | None,
+    page: int,
+    page_size: int,
+    include_issued: bool,
+) -> dict[str, object]:
+    return _cached_positions_envelope(
+        "bonds.list",
+        (report_date, sub_type, page, page_size, include_issued),
+        lambda: _bonds_list_envelope_uncached(
+            report_date=report_date,
+            sub_type=sub_type,
+            page=page,
+            page_size=page_size,
+            include_issued=include_issued,
+        ),
+    )
+
+
+def _bonds_list_envelope_uncached(
     *,
     report_date: str,
     sub_type: str | None,
@@ -159,6 +239,29 @@ def counterparty_bonds_envelope(
     page: int,
     page_size: int,
 ) -> dict[str, object]:
+    return _cached_positions_envelope(
+        "counterparty.bonds",
+        (start_date, end_date, sub_type, top_n, page, page_size),
+        lambda: _counterparty_bonds_envelope_uncached(
+            start_date=start_date,
+            end_date=end_date,
+            sub_type=sub_type,
+            top_n=top_n,
+            page=page,
+            page_size=page_size,
+        ),
+    )
+
+
+def _counterparty_bonds_envelope_uncached(
+    *,
+    start_date: str,
+    end_date: str,
+    sub_type: str | None,
+    top_n: int | None,
+    page: int,
+    page_size: int,
+) -> dict[str, object]:
     repo = _repo()
     raw = repo.aggregate_counterparty_bonds(start_date, end_date, sub_type, top_n, page, page_size)
     src, rule = repo.collect_lineage_versions(
@@ -175,6 +278,14 @@ def counterparty_bonds_envelope(
 
 
 def interbank_product_types_envelope(report_date: str) -> dict[str, object]:
+    return _cached_positions_envelope(
+        "interbank.product_types",
+        (report_date,),
+        lambda: _interbank_product_types_envelope_uncached(report_date),
+    )
+
+
+def _interbank_product_types_envelope_uncached(report_date: str) -> dict[str, object]:
     repo = _repo()
     resolved_report_date = _resolve_report_date(repo, report_date)
     types_list = repo.list_interbank_product_types(resolved_report_date)
@@ -192,6 +303,27 @@ def interbank_product_types_envelope(report_date: str) -> dict[str, object]:
 
 
 def interbank_list_envelope(
+    *,
+    report_date: str,
+    product_type: str | None,
+    direction: str | None,
+    page: int,
+    page_size: int,
+) -> dict[str, object]:
+    return _cached_positions_envelope(
+        "interbank.list",
+        (report_date, product_type, direction, page, page_size),
+        lambda: _interbank_list_envelope_uncached(
+            report_date=report_date,
+            product_type=product_type,
+            direction=direction,
+            page=page,
+            page_size=page_size,
+        ),
+    )
+
+
+def _interbank_list_envelope_uncached(
     *,
     report_date: str,
     product_type: str | None,
@@ -240,6 +372,25 @@ def counterparty_interbank_split_envelope(
     product_type: str | None,
     top_n: int | None,
 ) -> dict[str, object]:
+    return _cached_positions_envelope(
+        "counterparty.interbank.split",
+        (start_date, end_date, product_type, top_n),
+        lambda: _counterparty_interbank_split_envelope_uncached(
+            start_date=start_date,
+            end_date=end_date,
+            product_type=product_type,
+            top_n=top_n,
+        ),
+    )
+
+
+def _counterparty_interbank_split_envelope_uncached(
+    *,
+    start_date: str,
+    end_date: str,
+    product_type: str | None,
+    top_n: int | None,
+) -> dict[str, object]:
     repo = _repo()
     raw = repo.aggregate_counterparty_interbank_split(start_date, end_date, product_type, top_n)
     src, rule = repo.collect_lineage_versions(
@@ -256,6 +407,20 @@ def counterparty_interbank_split_envelope(
 
 
 def stats_rating_envelope(*, start_date: str, end_date: str, sub_type: str | None) -> dict[str, object]:
+    return _cached_positions_envelope(
+        "stats.rating",
+        (start_date, end_date, sub_type),
+        lambda: _stats_rating_envelope_uncached(
+            start_date=start_date,
+            end_date=end_date,
+            sub_type=sub_type,
+        ),
+    )
+
+
+def _stats_rating_envelope_uncached(
+    *, start_date: str, end_date: str, sub_type: str | None
+) -> dict[str, object]:
     repo = _repo()
     raw = repo.aggregate_rating_stats(start_date, end_date, sub_type)
     src, rule = repo.collect_lineage_versions(
@@ -274,6 +439,21 @@ def stats_rating_envelope(*, start_date: str, end_date: str, sub_type: str | Non
 def stats_industry_envelope(
     *, start_date: str, end_date: str, sub_type: str | None, top_n: int | None
 ) -> dict[str, object]:
+    return _cached_positions_envelope(
+        "stats.industry",
+        (start_date, end_date, sub_type, top_n),
+        lambda: _stats_industry_envelope_uncached(
+            start_date=start_date,
+            end_date=end_date,
+            sub_type=sub_type,
+            top_n=top_n,
+        ),
+    )
+
+
+def _stats_industry_envelope_uncached(
+    *, start_date: str, end_date: str, sub_type: str | None, top_n: int | None
+) -> dict[str, object]:
     repo = _repo()
     raw = repo.aggregate_industry_stats(start_date, end_date, sub_type, top_n)
     src, rule = repo.collect_lineage_versions(
@@ -290,6 +470,19 @@ def stats_industry_envelope(
 
 
 def customer_details_envelope(*, customer_name: str, report_date: str) -> dict[str, object]:
+    return _cached_positions_envelope(
+        "customer.details",
+        (customer_name, report_date),
+        lambda: _customer_details_envelope_uncached(
+            customer_name=customer_name,
+            report_date=report_date,
+        ),
+    )
+
+
+def _customer_details_envelope_uncached(
+    *, customer_name: str, report_date: str
+) -> dict[str, object]:
     repo = _repo()
     resolved_report_date = _resolve_report_date(repo, report_date)
     raw = repo.get_customer_bond_details(customer_name, resolved_report_date)
@@ -307,6 +500,20 @@ def customer_details_envelope(*, customer_name: str, report_date: str) -> dict[s
 
 
 def customer_trend_envelope(*, customer_name: str, end_date: str, days: int) -> dict[str, object]:
+    return _cached_positions_envelope(
+        "customer.trend",
+        (customer_name, end_date, days),
+        lambda: _customer_trend_envelope_uncached(
+            customer_name=customer_name,
+            end_date=end_date,
+            days=days,
+        ),
+    )
+
+
+def _customer_trend_envelope_uncached(
+    *, customer_name: str, end_date: str, days: int
+) -> dict[str, object]:
     repo = _repo()
     raw = repo.get_customer_balance_trend(customer_name, end_date, days)
     d = max(days, 1)

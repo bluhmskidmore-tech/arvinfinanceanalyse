@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -103,5 +103,19 @@ describe("CustomerDetailModal", () => {
     );
     expect(screen.getByText("2.00 亿元")).toBeInTheDocument();
     expect(screen.getByText("1.00 亿元")).toBeInTheDocument();
+
+    // 后端已返回未用字段补展示：资产分类列（枚举值原样透出，null→EM_DASH）。
+    // scroll.y 下 rc-table 会渲染隐藏测量行复制表头文字，故用 getAllByText。
+    expect(screen.getAllByText("资产分类").length).toBeGreaterThan(0);
+    expect(screen.getByText("credit")).toBeInTheDocument();
+
+    // portal 主题逃逸修复：modalRender 包的 Nocturne scope 容器必须罩住弹窗内容。
+    const scopeHost = screen.getByTestId("positions-customer-detail-scope");
+    expect(scopeHost).toHaveAttribute("data-moss-theme-scope", "positions");
+    expect(scopeHost.contains(link)).toBe(true);
+
+    // 趋势响应真实窗口原样透出在趋势 tab 头（mock 语义缺陷不在前端修饰）。
+    fireEvent.click(screen.getByText("余额趋势"));
+    expect(await screen.findByText("窗口 2026-03-01 ~ 2026-03-31")).toBeInTheDocument();
   });
 });

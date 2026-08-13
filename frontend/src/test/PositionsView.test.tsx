@@ -635,11 +635,16 @@ describe("PositionsView", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "下一页" }));
 
+    /*
+     * 第 2 页空但 total>0 时回退第一页。staleTime 生效后第 1 页直接吃
+     * 5 分钟内的查询缓存，不再发第三次请求（请求序列 [1,2]），行为契约
+     * 以「回到第一页且明细可见」为准。
+     */
     await waitFor(() =>
-      expect(bondsListMock.mock.calls.map(([options]) => options.page).slice(0, 3)).toEqual([
-        1, 2, 1,
-      ]),
+      expect(bondsListMock.mock.calls.map(([options]) => options.page)).toEqual([1, 2]),
     );
+    expect(await screen.findByText("RESET-PAGE-1")).toBeInTheDocument();
+    expect(screen.getByText(/第 1\/2 页/)).toBeInTheDocument();
     expect(screen.queryByTestId("positions-bonds-list-empty")).not.toBeInTheDocument();
   });
 

@@ -1,0 +1,53 @@
+/*
+ * /positions 同业分区专属样式（02' 同业持仓工作区 + 03' 资产负债结构）。
+ * 通用骨架类（workspace/panel/table-state/pager/side-metric）复用 PositionsView.css，
+ * 这里只放同业侧新增件：方向内联筛选、三格读数容器、语义圆点、分母说明。
+ * 颜色一律走 var(--dh-api-*)；圆角走 var(--dh-api-radius)（语义圆点 50% 豁免）。
+ */
+
+.positions-interbank__direction-select {
+  min-width: 120px;
+}
+
+/* 分母说明与 32px 控件行基线对齐（同 filters-note 语言），全分区仅此一处。 */
+.positions-interbank__split-note {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  margin: 0 0 0 auto;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+/* 语义圆点：绿=资产端我行收取利息，红=负债端我行支付利息（§6 语义圆点）。 */
+.positions-interbank__side-dot {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+
+.positions-interbank__side-dot--asset {
+  background: var(--dh-api-green);
+}
+
+.positions-interbank__side-dot--liability {
+  background: var(--dh-api-red);
+}
+
+/* 三格小 KPI（区间累计 / 日均余额 / 加权利率），格子语言复用 side-metric。 */
+.positions-interbank__side-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+@media (max-width: 560px) {
+  .positions-interbank__side-metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

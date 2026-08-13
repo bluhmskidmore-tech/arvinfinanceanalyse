@@ -3,10 +3,10 @@
  *
  * - 只做映射与展示格式化；金额/利率沿用后端 Decimal string 经
  *   `formatAmountYi` / `formatRatePercent` 格式化，不做任何正式金融计算。
- * - `formatCoverageSummary` … `topRatingItem` 等迁移函数与
- *   `components/PositionsView.tsx` 中现存实现逐字一致（文案与判定顺序被
- *   PositionsView 系列 Vitest 精确锁定）；角色 5 重写视图时删除旧实现并
- *   改从本模块 import。
+ * - `normalizePositionsPrimaryListEnvelope` … `topRatingItem` 等迁移函数与
+ *   重构前 `components/PositionsView.tsx` 实现行为一致（文案与判定顺序被
+ *   PositionsView 系列 Vitest 精确锁定）。展示层例外：覆盖率精度收敛为
+ *   两位并拆成「主值+小注」两段（视觉整洁性修正，不改口径）。
  * - 缺失值一律 `EM_DASH`；`"0"` 是真实零，必须保留为 `0.00 亿元` / `0.00%`。
  */
 import type {
@@ -17,24 +17,41 @@ import type {
   ResultMeta,
 } from "../../../api/contracts";
 import { EM_DASH, type LabeledValue } from "../../../pageModel";
-import { formatAmountYi, formatRatePercent } from "../utils/format";
+import { formatAmountYi, formatPercentValue, formatRatePercent } from "../utils/format";
 
 /** 页面主 Tab：债券持仓 / 同业持仓。 */
 export type PositionsTabKey = "bonds" | "interbank";
+
+/**
+ * 本页只读查询的 staleTime：快照数据只随报告日/筛选参数变化（参数都在
+ * queryKey 里），5 分钟内的重挂载与 tab 往返直接吃缓存，与后端
+ * positions.read_models 运行时缓存 TTL 对齐。
+ */
+export const POSITIONS_QUERY_STALE_TIME_MS = 5 * 60_000;
 
 // ---------------------------------------------------------------------------
 // 展示格式化（迁移自 PositionsView.tsx，行为逐字一致）
 // ---------------------------------------------------------------------------
 
-export function formatCoverageSummary(coverage: RateCoverage | null | undefined): string {
+/**
+ * 覆盖率格子的两段式展示：主值只留两位百分比，缺口明细降为小注
+ * （与 KPI 带同构的「标签/主值/小注」节奏，避免格内三行长句）。
+ * 覆盖率后端返回原始精度（如 "84.48287107"），展示收敛为两位。
+ */
+export function coverageQualityDisplay(
+  coverage: RateCoverage | null | undefined,
+): { value: string; note?: string } {
   if (!coverage) {
-    return EM_DASH;
+    return { value: EM_DASH };
   }
-  const missing =
-    coverage.missing_count > 0
-      ? `，缺 ${coverage.missing_count} 笔 / ${formatAmountYi(coverage.missing_amount)}`
-      : "";
-  return `${coverage.coverage_ratio}%${missing}`;
+  const value = formatPercentValue(coverage.coverage_ratio);
+  if (coverage.missing_count > 0) {
+    return {
+      value,
+      note: `缺 ${coverage.missing_count} 笔 / ${formatAmountYi(coverage.missing_amount)}`,
+    };
+  }
+  return { value };
 }
 
 export function rateCoveragePolicyLabel(policy: string | null | undefined): string {
@@ -44,19 +61,10 @@ export function rateCoveragePolicyLabel(policy: string | null | undefined): stri
   return policy || EM_DASH;
 }
 
-export function compactVersion(value: string | null | undefined): string {
-  if (!value) {
-    return EM_DASH;
-  }
-  return value.length > 18 ? `${value.slice(0, 15)}…` : value;
-}
-
-export function metaSummary(meta: ResultMeta | null | undefined): string {
-  if (!meta) {
-    return EM_DASH;
-  }
-  return `${meta.quality_flag} / ${compactVersion(meta.source_version)} / ${compactVersion(meta.rule_version)}`;
-}
+/*
+ * 质量/来源/规则版本摘要（compactVersion/metaSummary）已删除：截断的哈希串
+ * 在质量带底部是版式噪音，且与「证据与口径」分区的完整信封展示重复（§6 去重）。
+ */
 
 // ---------------------------------------------------------------------------
 // 主列表信封归一化与首屏状态（迁移自 PositionsView.tsx，行为逐字一致）
@@ -454,6 +462,10 @@ export function buildPositionsInterbankKpiBand(input: {
 /**
  * 首屏口径行条目（顺序固定）。「当前：债券持仓」等字符串被现有
  * data-status 契约测试锁定，不得改动。
+ *
+ * 只保留口径事实（报表日/区间/来源/当前读面/主筛选）；「未输入客户」等
+ * 筛选回显与「日均分母」技术说明不入口径行——前者控件区自明，后者已在
+ * KPI 日均格的 note 上（§6 状态信息去重）。
  */
 export function buildPositionsCaliberItems(input: {
   tab: PositionsTabKey;
@@ -461,15 +473,12 @@ export function buildPositionsCaliberItems(input: {
   startDate: string | null;
   endDate: string | null;
   scopeLabel: string;
-  peerFilterLabel: string;
 }): string[] {
   return [
     `报表日：${input.reportDate || EM_DASH}`,
     `区间：${input.startDate || EM_DASH} ~ ${input.endDate || EM_DASH}`,
     "数据来源：ZQTZ + TYWL",
-    "日均分母=有数据 report_date 数",
     input.tab === "bonds" ? "当前：债券持仓" : "当前：同业持仓",
     input.scopeLabel,
-    input.peerFilterLabel,
   ];
 }

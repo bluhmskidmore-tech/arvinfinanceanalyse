@@ -226,14 +226,17 @@
   -webkit-line-clamp: 2;
 }
 
+/* 主值下限 20px（§3；1280 断点不降号，risk-overview 先例）。 */
 .positions-view__kpi-value {
   color: var(--dh-api-ink);
   font-family: var(--moss-font-mono);
-  font-size: clamp(19px, 1.5vw, 22px);
+  font-size: clamp(20px, 1.5vw, 22px);
   font-weight: 700;
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
+  /* keep-all：长数值只在数字与单位间的空格处折行，禁止把「亿元」拆成两行。 */
+  overflow-wrap: normal;
+  word-break: keep-all;
 }
 
 .positions-view__kpi-cell[data-status="loading"] .positions-view__kpi-value {
@@ -303,27 +306,20 @@
   border-left: 0;
 }
 
-/* 指标边界属证据层：保留在 DOM 供治理核验，视觉降权重。 */
-.positions-view__candidate-boundary.ant-alert {
-  padding: 8px 12px;
-  border-color: var(--dh-api-line-soft);
-  background: var(--dh-api-panel);
-}
-
-.positions-view__candidate-boundary .ant-alert-message {
-  color: var(--dh-api-soft);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.positions-view__candidate-boundary .ant-alert-description {
+/* 指标边界属证据层：治理必显，视觉降权为一行说明（琥珀细左线示口径警示）。 */
+.positions-view__candidate-boundary {
+  margin: 0;
+  padding: 2px 0 2px 10px;
+  border-left: 2px solid var(--dh-api-amber);
   color: var(--dh-api-muted);
   font-size: 11px;
-  line-height: 1.5;
+  line-height: 1.6;
 }
 
-.positions-view__candidate-boundary .ant-alert-icon {
-  color: var(--dh-api-amber);
+.positions-view__candidate-boundary strong {
+  margin-right: 8px;
+  color: var(--dh-api-soft);
+  font-weight: 600;
 }
 
 .positions-view .ant-alert {
@@ -370,10 +366,6 @@
   max-width: 320px;
 }
 
-.positions-view__filter-button {
-  align-self: end;
-}
-
 .positions-view__panel {
   display: grid;
   gap: 10px;
@@ -404,6 +396,12 @@
   color: var(--dh-api-muted);
   font-size: 11px;
   line-height: 1.4;
+}
+
+.positions-view__stack {
+  display: grid;
+  gap: var(--moss-space-3);
+  min-width: 0;
 }
 
 .positions-view__split-grid {
@@ -470,14 +468,16 @@
 
 /* ------------------------------------------------- 质量与结构读数面板 */
 
+/* 六格横带（与 KPI 带同语言）：满宽一行摆平，杜绝右栏空洞。 */
 .positions-view__quality-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
 }
 
 .positions-view__quality-item {
   min-width: 0;
+  min-height: 64px;
   padding: 8px;
   border: 1px solid var(--dh-api-line-soft);
   border-radius: var(--dh-api-radius);
@@ -498,7 +498,22 @@
   font-family: var(--moss-font-mono);
   font-size: 12px;
   font-weight: 600;
-  word-break: break-word;
+  /* keep-all：覆盖率长句在空格/标点处折行，不把「亿元」等 CJK 词组拆散。 */
+  word-break: keep-all;
+  overflow-wrap: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 格内小注：单行省略，全文进 title（缺口明细属次级信息，不挤主值）。 */
+.positions-view__quality-item-note {
+  display: block;
+  overflow: hidden;
+  margin-top: 2px;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 
@@ -525,7 +540,8 @@
 
 .positions-view__side-value {
   display: block;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
+  word-break: keep-all;
   font-family: var(--moss-font-mono);
   font-size: 16px;
   font-weight: 700;
@@ -589,6 +605,18 @@
 }
 
 /* ---------------------------------------------------- antd Tabs 重皮 */
+
+/*
+ * 全局 antdOverrides.css 给 .workbench-main-column .ant-tabs-nav-wrap 设了
+ * contain: inline-size（防 Tabs 撑宽主列）。本页 Tabs 放在分区头的内容
+ * 自适应 auto 列里，inline-size containment 把 wrap 的内在宽度算成 0，
+ * rc-tabs 量到 wrap=0 便把全部 tab 收进「更多」溢出菜单（1440 宽也只剩
+ * … 按钮，tab 不可点）。页内恢复内在尺寸：本页 tab 固定两枚（约 144px），
+ * 不会撑宽主列；三连类保证覆盖与导入顺序无关。
+ */
+.positions-view .positions-view__tabs .ant-tabs-nav-wrap {
+  contain: none;
+}
 
 .positions-view__tabs .ant-tabs-nav {
   margin: 0;
@@ -669,20 +697,25 @@
   line-height: 1.5;
 }
 
-/* ------------------------------------------------ Modal（portal 层） */
-
-.positions-view__modal-select {
-  width: 100%;
-  margin-top: 8px;
-}
-
 /* ---------------------------------------------------------- 响应式 */
+
+@media (max-width: 1280px) {
+  .positions-view__quality-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
 
 @media (max-width: 1024px) {
   .positions-view__split-grid,
   .positions-view__split-grid--even,
   .positions-view__dist-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .positions-view__quality-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

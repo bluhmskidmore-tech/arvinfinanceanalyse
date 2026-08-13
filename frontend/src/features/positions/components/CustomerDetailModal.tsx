@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Modal, Spin, Table, Tabs, Typography } from "antd";
 import type { TableColumnsType } from "antd";
@@ -8,7 +8,8 @@ import { useApiClient } from "../../../api/client";
 import type { CustomerBondDetailItem } from "../../../api/contracts";
 import { buildBondTradingDeskPath } from "../../bond-trading-desk/lib/bondTradingDeskPageModel";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
-import { ibTokens } from "../../../theme/designSystem";
+import { nocturneTokens } from "../../../theme/designSystem";
+import { POSITIONS_QUERY_STALE_TIME_MS } from "../model/positionsPageModel";
 import { formatAmountYi, formatRatePercent } from "../utils/format";
 import { EM_DASH } from "../../../utils/format";
 import "./CustomerDetailModal.css";
@@ -22,7 +23,14 @@ type Props = {
   reportDate?: string | null;
 };
 
-type CnEquityColors = { up: string; down: string };
+/*
+ * CN equity convention（A 股红涨绿跌）：本弹窗余额趋势线的既定页面级例外，
+ * 禁止映射 --ib-up/--ib-down（IB 是绿涨红跌）。canvas 不能消费 CSS 变量，
+ * 取色走 nocturneTokens 常量（数值源 = tokens.css Nocturne scope 的去饱和
+ * 红/绿），与 CustomerDetailModal.css 的 --cn-equity-* 语义锚点同源。
+ */
+const CN_EQUITY_UP = nocturneTokens.color.red;
+const CN_EQUITY_DOWN = nocturneTokens.color.green;
 
 function ratingToneClass(rating: string): string {
   if (rating === "AAA") {
@@ -37,17 +45,8 @@ function ratingToneClass(rating: string): string {
   return "positions-customer-detail__rating--other";
 }
 
-function readCssVar(host: Element | null, name: string): string {
-  if (!host) {
-    return "";
-  }
-  return getComputedStyle(host).getPropertyValue(name).trim();
-}
-
 export default function CustomerDetailModal({ open, onClose, customerName, reportDate }: Props) {
   const client = useApiClient();
-  const hostRef = useRef<HTMLDivElement>(null);
-  const [cnEquityColors, setCnEquityColors] = useState<CnEquityColors>({ up: "", down: "" });
 
   const detailsQuery = useQuery({
     queryKey: ["positions", "customer-details", client.mode, customerName, reportDate ?? ""],
@@ -62,6 +61,7 @@ export default function CustomerDetailModal({ open, onClose, customerName, repor
       return envelope.result;
     },
     enabled: open && Boolean(customerName),
+    staleTime: POSITIONS_QUERY_STALE_TIME_MS,
     retry: false,
   });
 
@@ -79,22 +79,12 @@ export default function CustomerDetailModal({ open, onClose, customerName, repor
       return envelope.result;
     },
     enabled: open && Boolean(customerName),
+    staleTime: POSITIONS_QUERY_STALE_TIME_MS,
     retry: false,
   });
 
   const details = detailsQuery.data;
   const trend = trendQuery.data;
-
-  useLayoutEffect(() => {
-    if (!open) {
-      return;
-    }
-    const host = hostRef.current;
-    setCnEquityColors({
-      up: readCssVar(host, "--cn-equity-up"),
-      down: readCssVar(host, "--cn-equity-down"),
-    });
-  }, [open, trend?.items]);
 
   const detailRows = useMemo<CustomerBondDetailRow[]>(
     () => (details?.items ?? []).map((row) => ({ key: row.bond_code, ...row })),
@@ -121,6 +111,12 @@ export default function CustomerDetailModal({ open, onClose, customerName, repor
       },
       { title: "券种", dataIndex: "sub_type", render: (v: string | null) => v || EM_DASH },
       {
+        // 后端已返回未用字段补展示：枚举值属证据引用，原样透出。
+        title: "资产分类",
+        dataIndex: "asset_class",
+        render: (v: string | null) => v || EM_DASH,
+      },
+      {
         title: "评级",
         dataIndex: "rating",
         render: (r: string) => (
@@ -138,18 +134,21 @@ export default function CustomerDetailModal({ open, onClose, customerName, repor
         title: "市值(亿元)",
         dataIndex: "market_value",
         align: "right",
+        className: "positions-customer-detail__num-cell",
         render: (v: string) => formatAmountYi(v),
       },
       {
         title: "收益率",
         dataIndex: "yield_rate",
         align: "right",
+        className: "positions-customer-detail__num-cell",
         render: (v: string | null) => formatRatePercent(v),
       },
       {
         title: "到期日",
         dataIndex: "maturity_date",
         align: "right",
+        className: "positions-customer-detail__num-cell",
         render: (v: string | null) => v || EM_DASH,
       },
     ],
@@ -164,8 +163,7 @@ export default function CustomerDetailModal({ open, onClose, customerName, repor
     const balances = items.map((it) => parseFloat(it.balance));
     const first = balances[0] ?? 0;
     const last = balances[balances.length - 1] ?? 0;
-    // Page-local --cn-equity-* (A-share 红涨绿跌). Do NOT use --ib-up/--ib-down.
-    const stroke = last >= first ? cnEquityColors.up : cnEquityColors.down;
+    const stroke = last >= first ? CN_EQUITY_UP : CN_EQUITY_DOWN;
 
     const dates = items.map((it) => it.date.slice(5));
     const yi = items.map((it) => parseFloat(it.balance) / 1e8);
@@ -174,6 +172,9 @@ export default function CustomerDetailModal({ open, onClose, customerName, repor
       grid: { left: 48, right: 16, top: 16, bottom: 28 },
       tooltip: {
         trigger: "axis",
+        backgroundColor: nocturneTokens.color.panel2,
+        borderColor: nocturneTokens.color.line,
+        textStyle: { color: nocturneTokens.color.ink, fontSize: 12 },
         formatter: (params: unknown) => {
           const list = Array.isArray(params) ? params : [params];
           const p = list[0] as { axisValue?: string; data?: number; dataIndex?: number };
@@ -186,12 +187,17 @@ export default function CustomerDetailModal({ open, onClose, customerName, repor
       xAxis: {
         type: "category",
         data: dates,
-        axisLabel: { fontSize: 11 },
+        axisLine: { lineStyle: { color: nocturneTokens.color.lineSoft } },
+        axisLabel: { fontSize: 11, color: nocturneTokens.color.inkMuted },
       },
       yAxis: {
         type: "value",
-        axisLabel: { formatter: (v: number) => `${v.toFixed(1)}亿` },
-        splitLine: { lineStyle: { color: ibTokens.color.hairline } },
+        axisLabel: {
+          formatter: (v: number) => `${v.toFixed(1)}亿`,
+          fontSize: 11,
+          color: nocturneTokens.color.inkMuted,
+        },
+        splitLine: { lineStyle: { color: nocturneTokens.color.lineSoft } },
       },
       series: [
         {
@@ -206,11 +212,26 @@ export default function CustomerDetailModal({ open, onClose, customerName, repor
         },
       ],
     };
-  }, [trend?.items, cnEquityColors.up, cnEquityColors.down]);
+  }, [trend?.items]);
 
   return (
     <Modal
       rootClassName="positions-customer-detail"
+      /*
+       * antd Modal 挂 body，不继承页根 scope（portal 主题逃逸）。照
+       * ledger-pnl 抽屉补 scope 的先例，用 modalRender 在 .ant-modal-content
+       * 外包一层 Nocturne scope 容器（覆盖 header/body 全部弹窗内容），
+       * 弹窗内 --dh-api-* 才解析为 Nocturne 值。
+       */
+      modalRender={(node) => (
+        <div
+          className="theme-dh-api positions-customer-detail__scope"
+          data-moss-theme-scope="positions"
+          data-testid="positions-customer-detail-scope"
+        >
+          {node}
+        </div>
+      )}
       title={
         <div>
           <Typography.Title level={4} className="positions-customer-detail__title">
@@ -227,7 +248,7 @@ export default function CustomerDetailModal({ open, onClose, customerName, repor
       width={920}
       destroyOnHidden
     >
-      <div ref={hostRef} className="positions-customer-detail">
+      <div className="positions-customer-detail">
         {details ? (
           <div className="positions-customer-detail__kpi-row">
             <div>
@@ -275,15 +296,27 @@ export default function CustomerDetailModal({ open, onClose, customerName, repor
                 <div className="positions-customer-detail__loading">
                   <Spin />
                 </div>
-              ) : chartOption ? (
-                <ReactECharts
-                  option={chartOption}
-                  className="positions-customer-detail__chart"
-                  notMerge
-                  lazyUpdate
-                />
               ) : (
-                <Typography.Text type="secondary">暂无趋势数据</Typography.Text>
+                <>
+                  {trend?.start_date && trend?.end_date ? (
+                    <div className="positions-customer-detail__trend-head">
+                      {/* 后端返回的真实窗口原样透出（mock 语义缺陷不在前端修饰）。 */}
+                      <span className="positions-customer-detail__trend-window">
+                        {`窗口 ${trend.start_date} ~ ${trend.end_date}`}
+                      </span>
+                    </div>
+                  ) : null}
+                  {chartOption ? (
+                    <ReactECharts
+                      option={chartOption}
+                      className="positions-customer-detail__chart"
+                      notMerge
+                      lazyUpdate
+                    />
+                  ) : (
+                    <Typography.Text type="secondary">暂无趋势数据</Typography.Text>
+                  )}
+                </>
               ),
             },
           ]}

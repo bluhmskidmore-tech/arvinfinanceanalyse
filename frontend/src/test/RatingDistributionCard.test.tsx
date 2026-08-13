@@ -69,6 +69,18 @@ describe("RatingDistributionCard", () => {
     expect(await screen.findByText("3.25%")).toBeInTheDocument();
   });
 
+  it("renders the bond_count column with row values in column order", async () => {
+    renderCard("0.0325");
+
+    // scroll={{ x }} 会渲染隐藏测量行，表头文案会出现两次，用 AllBy 断言存在。
+    expect((await screen.findAllByText("只数")).length).toBeGreaterThan(0);
+    const row = (await screen.findByText("AAA")).closest("tr");
+    expect(row).not.toBeNull();
+    const cells = Array.from(row!.querySelectorAll("td")).map((td) => td.textContent);
+    // 评级 / 日均 / 占比 / 只数 / 收益率；占比后端原始精度收敛为两位展示
+    expect(cells).toEqual(["AAA", "1.00 亿元", "100.00%", "1", "3.25%"]);
+  });
+
   it("keeps missing rating yield visually distinct from zero", async () => {
     renderCard(null);
 

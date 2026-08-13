@@ -28,7 +28,15 @@ def _validated_date_range(start_date: date, end_date: date) -> tuple[str, str]:
 
 
 def _ensure_positions_read_allowed(auth: AuthContext) -> None:
-    ensure_read_allowed(auth, "positions", settings=get_settings(), authorize=ensure_user_allowed)
+    # allow_dev_fallback 与 balance_analysis 等读路由对齐：仅在 development 环境
+    # 且身份为匿名 viewer 回退时放行，显式身份缺 scope 仍 403（契约测试锁定）。
+    ensure_read_allowed(
+        auth,
+        "positions",
+        settings=get_settings(),
+        allow_dev_fallback=True,
+        authorize=ensure_user_allowed,
+    )
 
 
 @router.get("/bonds/sub_types")

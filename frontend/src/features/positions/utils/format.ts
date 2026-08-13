@@ -81,3 +81,12 @@ export function formatRatePercent(rateDecimal: string | null | undefined, decima
   const s = scaledBigIntToDecimalString(pctScaled, decimals, decimals);
   return `${s}%`;
 }
+
+/** 已是百分数的字符串（如 "84.48287107"）→ 定精度展示（84.48%）；后端原始精度不直出。 */
+export function formatPercentValue(percent: string | null | undefined, decimals: number = 2): string {
+  if (!percent) return EM_DASH;
+  const { value, scale } = decimalToIntegerAndScale(percent);
+  const scaled = divideRoundHalfUp(value * pow10(decimals), pow10(scale));
+  const s = scaledBigIntToDecimalString(scaled, decimals, decimals);
+  return `${s}%`;
+}

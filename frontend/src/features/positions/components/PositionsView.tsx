@@ -13,6 +13,7 @@ import {
   buildPositionsInterbankKpiBand,
   buildPositionsPrimaryListTableState,
   normalizePositionsPrimaryListEnvelope,
+  POSITIONS_QUERY_STALE_TIME_MS,
   type PositionsTabKey,
 } from "../model/positionsPageModel";
 import CustomerDetailModal from "./CustomerDetailModal";
@@ -55,6 +56,7 @@ export default function PositionsView() {
   const datesQuery = useQuery({
     queryKey: ["positions", "balance-analysis-dates", client.mode],
     queryFn: () => client.getBalanceAnalysisDates(),
+    staleTime: POSITIONS_QUERY_STALE_TIME_MS,
     retry: false,
   });
 
@@ -100,7 +102,6 @@ export default function PositionsView() {
   const [selectedSubType, setSelectedSubType] = useState("");
   const [selectedProductType, setSelectedProductType] = useState("");
   const [direction, setDirection] = useState<InterbankDirectionFilter>("ALL");
-  const [interbankFilterOpen, setInterbankFilterOpen] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [page, setPage] = useState(1);
 
@@ -150,6 +151,7 @@ export default function PositionsView() {
       return envelope.result.sub_types;
     },
     enabled: tab === "bonds" && Boolean(reportDate),
+    staleTime: POSITIONS_QUERY_STALE_TIME_MS,
     retry: false,
   });
 
@@ -160,6 +162,7 @@ export default function PositionsView() {
       return envelope.result.product_types;
     },
     enabled: tab === "interbank" && Boolean(reportDate),
+    staleTime: POSITIONS_QUERY_STALE_TIME_MS,
     retry: false,
   });
 
@@ -181,6 +184,7 @@ export default function PositionsView() {
         includeIssued: false,
       }),
     enabled: tab === "bonds" && Boolean(reportDate),
+    staleTime: POSITIONS_QUERY_STALE_TIME_MS,
     retry: false,
   });
 
@@ -203,6 +207,7 @@ export default function PositionsView() {
         pageSize: PAGE_SIZE,
       }),
     enabled: tab === "interbank" && Boolean(reportDate),
+    staleTime: POSITIONS_QUERY_STALE_TIME_MS,
     retry: false,
   });
 
@@ -222,6 +227,7 @@ export default function PositionsView() {
         pageSize: 50,
       }),
     enabled: tab === "bonds" && Boolean(startDate && endDate),
+    staleTime: POSITIONS_QUERY_STALE_TIME_MS,
     retry: false,
   });
 
@@ -235,6 +241,7 @@ export default function PositionsView() {
         topN: 50,
       }),
     enabled: tab === "interbank" && Boolean(startDate && endDate),
+    staleTime: POSITIONS_QUERY_STALE_TIME_MS,
     retry: false,
   });
 
@@ -292,12 +299,6 @@ export default function PositionsView() {
     tab === "bonds"
       ? selectedSubType || "全部业务种类"
       : selectedProductType || "全部产品类型";
-  const activePeerFilterLabel =
-    tab === "bonds"
-      ? searchText || "未输入客户"
-      : `${direction === "ALL" ? "全部方向" : direction === "Asset" ? "资产端" : "负债端"} / ${
-          searchText || "未输入对手方"
-        }`;
   const firstScreenStatus = buildPositionsFirstScreenStatus({
     tab,
     datesError: datesBlockingError,
@@ -324,7 +325,6 @@ export default function PositionsView() {
     startDate,
     endDate,
     scopeLabel: activeScopeLabel,
-    peerFilterLabel: activePeerFilterLabel,
   });
 
   const aggregateQuery = tab === "bonds" ? bondsCpQuery : interbankSplitQuery;
@@ -428,15 +428,12 @@ export default function PositionsView() {
             description={firstScreenStatus.description}
           />
         ) : null}
-        <Alert
-          data-testid="positions-list-candidate-boundary"
-          className="positions-view__candidate-boundary"
-          type="warning"
-          showIcon
-          message="持仓列表指标边界"
-          description="GAP-POS-LIST 尚未关闭；MTR-POS-001、MTR-POS-002 仍为 candidate，pending_confirmation=true，bound_sample_id=none。"
-        />
         <PositionsKpiBand testId="positions-kpi-band" items={kpiItems} />
+        {/* 指标边界属证据层：治理必显但视觉降权为一行说明，不做告警盒（§6 溯源分层）。 */}
+        <p data-testid="positions-list-candidate-boundary" className="positions-view__candidate-boundary">
+          <strong>持仓列表指标边界</strong>
+          GAP-POS-LIST 尚未关闭；MTR-POS-001、MTR-POS-002 仍为 candidate，pending_confirmation=true，bound_sample_id=none。
+        </p>
         <div data-testid="positions-data-status" className="positions-view__caliber">
           {caliberItems.map((item, index) => (
             <span key={`${index}-${item}`} className="positions-view__caliber-item">
@@ -487,8 +484,6 @@ export default function PositionsView() {
             onProductTypeChange={handleInterbankProductTypeChange}
             direction={direction}
             onDirectionChange={handleDirectionChange}
-            filterOpen={interbankFilterOpen}
-            onFilterOpenChange={setInterbankFilterOpen}
             listState={listTableState}
             items={interbankList?.items ?? []}
             total={currentList?.total}

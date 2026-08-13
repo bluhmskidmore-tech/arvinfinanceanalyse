@@ -1,16 +1,76 @@
 /*
+ * 客户明细弹窗（portal 层）。antd Modal 挂 body 逃逸页根 scope，TSX 的
+ * modalRender 已在 .ant-modal-content 外包一层
+ * [data-moss-theme-scope="positions"] 容器，本文件内 --dh-api-* 在弹窗内
+ * 解析为 Nocturne 值；antd 铬件按 PositionsView.css 页内同配方收敛
+ * （12/11 密度、发丝底边、等宽数字、行 hover accent 混色）。
+ */
+
+/*
  * CN equity convention (A-share 红涨绿跌): intentional page-local exception.
  * Do NOT map these to --ib-up/--ib-down (IB is 绿涨红跌).
- * Used only for customer balance trend up/down stroke in this modal.
+ * 语义锚点收敛为深色去饱和链（原浅色高饱和红绿字面量已删除）；趋势线
+ * canvas 取色走 nocturneTokens 常量，与本链数值同源。
  */
 .positions-customer-detail {
-  --cn-equity-up: #cf1322;
-  --cn-equity-down: #389e0d;
+  --cn-equity-up: var(--dh-api-red);
+  --cn-equity-down: var(--dh-api-green);
 }
 
-.positions-customer-detail__title {
-  margin: 0;
+/* ---------------------------------------------------- Modal 铬件收敛 */
+
+/* §2.2：深色底不靠阴影，分离感由遮罩 + 发丝边线表达。 */
+.positions-customer-detail .ant-modal .ant-modal-content {
+  padding: 16px 20px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+  box-shadow: none;
 }
+
+.positions-customer-detail .ant-modal .ant-modal-header {
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  background: transparent;
+}
+
+.positions-customer-detail .ant-modal .ant-modal-close {
+  color: var(--dh-api-muted);
+}
+
+.positions-customer-detail .ant-modal .ant-modal-close:hover {
+  color: var(--dh-api-ink);
+  background: var(--dh-api-panel-3);
+}
+
+/* ------------------------------------------------------- 文字与链接 */
+
+.positions-customer-detail .ant-typography {
+  color: var(--dh-api-ink);
+}
+
+.positions-customer-detail .ant-typography.ant-typography-secondary {
+  color: var(--dh-api-muted);
+}
+
+.positions-customer-detail .positions-customer-detail__title {
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.positions-customer-detail a {
+  color: var(--dh-api-blue);
+}
+
+.positions-customer-detail a:hover {
+  color: var(--ib-accent-hover, var(--dh-api-blue));
+}
+
+/* ------------------------------------------------------------- KPI */
 
 .positions-customer-detail__kpi-row {
   display: flex;
@@ -19,42 +79,160 @@
   margin-bottom: 16px;
 }
 
+.positions-customer-detail__kpi-row .ant-typography.ant-typography-secondary {
+  font-size: 12px;
+}
+
 .positions-customer-detail__kpi-value {
+  margin-top: 2px;
+  color: var(--dh-api-ink);
   font-size: 20px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
-.positions-customer-detail__loading {
-  padding: 32px;
-  text-align: center;
+/* ---------------------------------------------------- antd Tabs 重皮 */
+
+.positions-customer-detail .ant-tabs .ant-tabs-nav {
+  margin-bottom: 12px;
 }
 
-.positions-customer-detail__chart {
-  height: 280px;
+.positions-customer-detail .ant-tabs .ant-tabs-nav::before {
+  border-bottom: 1px solid var(--dh-api-line-soft);
 }
 
-.positions-customer-detail__rating {
+.positions-customer-detail .ant-tabs .ant-tabs-tab {
+  padding: 4px 2px;
+  font-size: 13px;
+}
+
+.positions-customer-detail .ant-tabs .ant-tabs-tab-btn {
+  color: var(--dh-api-soft);
+}
+
+.positions-customer-detail .ant-tabs .ant-tabs-tab:hover .ant-tabs-tab-btn,
+.positions-customer-detail .ant-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--dh-api-blue);
+}
+
+.positions-customer-detail .ant-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
+  font-weight: 600;
+}
+
+/* 页内制度一致：激活态靠文字色表达，不用 ink-bar。 */
+.positions-customer-detail .ant-tabs .ant-tabs-ink-bar {
+  display: none;
+}
+
+/* -------------------------------------------------- antd Table 密度 */
+
+.positions-customer-detail .ant-table {
+  background: transparent;
+  font-size: 12px;
+}
+
+.positions-customer-detail .ant-table .ant-table-thead > tr > th {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.positions-customer-detail .ant-table .ant-table-tbody > tr > td {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  color: var(--dh-api-ink);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+/* 行 hover 用 accent 比例混色，禁止硬编码 rgba。 */
+.positions-customer-detail .ant-table .ant-table-tbody > tr > td.ant-table-cell-row-hover,
+.positions-customer-detail .ant-table .ant-table-tbody > tr:hover > td {
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, transparent);
+}
+
+/* 固定列自带 colorBgContainer 钢蓝实底，压回弹窗面板底。 */
+.positions-customer-detail .ant-table .ant-table-cell-fix-left,
+.positions-customer-detail .ant-table .ant-table-cell-fix-right {
+  background: var(--dh-api-panel);
+}
+
+/* 数值列：右对齐由列定义出 align，字体走等宽栈 + tabular。 */
+.positions-customer-detail .ant-table .positions-customer-detail__num-cell {
+  font-family: var(--moss-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------- 评级徽标 */
+
+/* 胶囊圆角随页面圆角制度（非语义圆点，不保留 50%/999px）。 */
+.positions-customer-detail .positions-customer-detail__rating {
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius);
+  font-size: 12px;
 }
 
-.positions-customer-detail__rating--aaa {
-  background: var(--moss-color-success-50);
-  color: var(--moss-color-success-700);
+.positions-customer-detail .positions-customer-detail__rating--aaa {
+  background: var(--dh-api-green-soft);
+  color: var(--dh-api-green);
 }
 
-.positions-customer-detail__rating--aa {
-  background: var(--moss-color-warning-50);
-  color: var(--moss-color-warning-700);
+.positions-customer-detail .positions-customer-detail__rating--aa {
+  background: var(--dh-api-amber-soft);
+  color: var(--dh-api-amber);
 }
 
-.positions-customer-detail__rating--unrated {
-  background: var(--moss-color-neutral-50);
-  color: var(--moss-color-neutral-600);
+.positions-customer-detail .positions-customer-detail__rating--unrated {
+  background: var(--dh-api-panel-3);
+  color: var(--dh-api-muted);
 }
 
-.positions-customer-detail__rating--other {
-  background: var(--moss-color-warning-100);
-  color: var(--moss-color-warning-800);
+.positions-customer-detail .positions-customer-detail__rating--other {
+  background: color-mix(in srgb, var(--dh-api-amber) 22%, transparent);
+  color: var(--dh-api-amber);
+}
+
+/* ------------------------------------------------- 趋势与状态占位 */
+
+.positions-customer-detail__trend-head {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: 6px;
+}
+
+.positions-customer-detail__trend-window {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+
+/* echarts-for-react 无 style 时注入 inline height:300px，需 !important 收敛
+   到设计高度（PositionsBondsSections.css 分布卡同款先例）。 */
+.positions-customer-detail__chart {
+  height: 280px !important;
+}
+
+/* loading 占位带背板 + 接近真实内容高，防内容到达时 1px 重排（§6）。 */
+.positions-customer-detail__loading {
+  display: grid;
+  place-items: center;
+  min-height: 240px;
+  padding: 12px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+}
+
+/* Spin 走弹窗强调链（antd 主题常量仍是钢蓝）。 */
+.positions-customer-detail .ant-spin {
+  color: var(--dh-api-blue);
+}
+
+.positions-customer-detail .ant-spin .ant-spin-dot-item {
+  background-color: var(--dh-api-blue);
 }

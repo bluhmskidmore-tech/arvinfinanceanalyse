@@ -5,7 +5,6 @@ import type {
   InterbankCounterpartySplitResponse,
   RateCoverage,
   RatingStatsResponse,
-  ResultMeta,
 } from "../../../api/contracts";
 import { EM_DASH } from "../../../pageModel";
 import {
@@ -14,9 +13,7 @@ import {
   buildPositionsFirstScreenStatus,
   buildPositionsInterbankKpiBand,
   buildPositionsPrimaryListTableState,
-  compactVersion,
-  formatCoverageSummary,
-  metaSummary,
+  coverageQualityDisplay,
   normalizePositionsPrimaryListEnvelope,
   rateCoveragePolicyLabel,
   topRatingItem,
@@ -143,25 +140,6 @@ function coverage(overrides: Partial<RateCoverage> = {}): RateCoverage {
     missing_amount: "0",
     missing_count: 0,
     coverage_ratio: "100.00",
-    ...overrides,
-  };
-}
-
-function resultMeta(overrides: Partial<ResultMeta> = {}): ResultMeta {
-  return {
-    trace_id: "tr_test",
-    basis: "formal",
-    result_kind: "positions.test",
-    formal_use_allowed: true,
-    source_version: "sv_test",
-    vendor_version: "vv_none",
-    rule_version: "rv_test",
-    cache_version: "cv_test",
-    quality_flag: "ok",
-    vendor_status: "ok",
-    fallback_mode: "none",
-    scenario_flag: false,
-    generated_at: "2026-01-02T00:00:00Z",
     ...overrides,
   };
 }
@@ -624,16 +602,13 @@ describe("buildPositionsCaliberItems", () => {
         startDate: "2026-04-01",
         endDate: "2026-04-30",
         scopeLabel: "Gov",
-        peerFilterLabel: "未输入客户",
       }),
     ).toEqual([
       "报表日：2026-04-30",
       "区间：2026-04-01 ~ 2026-04-30",
       "数据来源：ZQTZ + TYWL",
-      "日均分母=有数据 report_date 数",
       "当前：债券持仓",
       "Gov",
-      "未输入客户",
     ]);
   });
 
@@ -645,36 +620,43 @@ describe("buildPositionsCaliberItems", () => {
         startDate: null,
         endDate: null,
         scopeLabel: "全部产品类型",
-        peerFilterLabel: "全部方向 / 未输入对手方",
       }),
     ).toEqual([
       `报表日：${EM_DASH}`,
       `区间：${EM_DASH} ~ ${EM_DASH}`,
       "数据来源：ZQTZ + TYWL",
-      "日均分母=有数据 report_date 数",
       "当前：同业持仓",
       "全部产品类型",
-      "全部方向 / 未输入对手方",
     ]);
   });
 });
 
-describe("formatCoverageSummary", () => {
-  it("returns EM_DASH for missing coverage", () => {
-    expect(formatCoverageSummary(null)).toBe(EM_DASH);
-    expect(formatCoverageSummary(undefined)).toBe(EM_DASH);
+describe("coverageQualityDisplay", () => {
+  it("returns EM_DASH value without note for missing coverage", () => {
+    expect(coverageQualityDisplay(null)).toEqual({ value: EM_DASH });
+    expect(coverageQualityDisplay(undefined)).toEqual({ value: EM_DASH });
   });
 
   it("shows only the ratio when nothing is missing", () => {
-    expect(formatCoverageSummary(coverage({ coverage_ratio: "98.50" }))).toBe("98.50%");
+    expect(coverageQualityDisplay(coverage({ coverage_ratio: "98.50" }))).toEqual({
+      value: "98.50%",
+    });
   });
 
-  it("appends missing count and amount when rates are missing", () => {
+  it("moves the missing detail into the note", () => {
     expect(
-      formatCoverageSummary(
+      coverageQualityDisplay(
         coverage({ missing_count: 2, missing_amount: "150000000", coverage_ratio: "97.00" }),
       ),
-    ).toBe("97.00%，缺 2 笔 / 1.50 亿元");
+    ).toEqual({ value: "97.00%", note: "缺 2 笔 / 1.50 亿元" });
+  });
+
+  it("rounds raw-precision coverage ratios to two decimals for display", () => {
+    expect(
+      coverageQualityDisplay(
+        coverage({ missing_count: 37018, missing_amount: "11068895000000", coverage_ratio: "84.48287107" }),
+      ),
+    ).toEqual({ value: "84.48%", note: "缺 37018 笔 / 110,688.95 亿元" });
   });
 });
 
@@ -689,23 +671,6 @@ describe("rateCoveragePolicyLabel", () => {
     expect(rateCoveragePolicyLabel("some_other_policy")).toBe("some_other_policy");
     expect(rateCoveragePolicyLabel(null)).toBe(EM_DASH);
     expect(rateCoveragePolicyLabel("")).toBe(EM_DASH);
-  });
-});
-
-describe("compactVersion / metaSummary", () => {
-  it("truncates versions longer than 18 characters", () => {
-    expect(compactVersion("sv_20260101_abcdefgh")).toBe("sv_20260101_abc…");
-    expect(compactVersion("short")).toBe("short");
-    expect(compactVersion(null)).toBe(EM_DASH);
-  });
-
-  it("summarizes quality flag and compacted versions", () => {
-    expect(metaSummary(resultMeta())).toBe("ok / sv_test / rv_test");
-    expect(
-      metaSummary(resultMeta({ source_version: "sv_20260101_abcdefgh" })),
-    ).toBe("ok / sv_20260101_abc… / rv_test");
-    expect(metaSummary(null)).toBe(EM_DASH);
-    expect(metaSummary(undefined)).toBe(EM_DASH);
   });
 });
 

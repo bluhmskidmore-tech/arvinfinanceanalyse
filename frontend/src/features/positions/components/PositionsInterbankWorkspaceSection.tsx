@@ -1,15 +1,22 @@
 import { useMemo } from "react";
-import { Button, Modal, Select, Spin, Table } from "antd";
+import { Button, Select, Spin, Table } from "antd";
 import type { TableColumnsType } from "antd";
 
 import type { InterbankPositionItem, PositionDirection } from "../../../api/contracts";
 import type { PositionsPrimaryListTableState } from "../model/positionsPageModel";
 import { EM_DASH } from "../../../utils/format";
 import { formatAmountYi, formatRatePercent } from "../utils/format";
+import "./PositionsInterbankSections.css";
 
 const ALL_INTERBANK_PRODUCT = "__all_interbank_products__";
 
 export type InterbankDirectionFilter = PositionDirection | "ALL";
+
+const DIRECTION_OPTIONS: { value: InterbankDirectionFilter; label: string }[] = [
+  { value: "ALL", label: "全部" },
+  { value: "Asset", label: "资产" },
+  { value: "Liability", label: "负债" },
+];
 
 type InterbankListRow = InterbankPositionItem & { key: string };
 
@@ -47,8 +54,8 @@ const INTERBANK_LIST_COLUMNS: TableColumnsType<InterbankListRow> = [
 ];
 
 /**
- * 02' 同业持仓工作区：产品类型主筛选 + 方向筛选 Modal（现状迁入，
- * 角色 7 再改内联）+ 明细表 + 分页。
+ * 02' 同业持仓工作区：产品类型 + 方向双内联筛选（无弹层）+ 明细表 + 分页。
+ * 方向切换沿用根组件 handleDirectionChange 的重置分页语义。
  */
 export default function PositionsInterbankWorkspaceSection({
   reportDate,
@@ -58,8 +65,6 @@ export default function PositionsInterbankWorkspaceSection({
   onProductTypeChange,
   direction,
   onDirectionChange,
-  filterOpen,
-  onFilterOpenChange,
   listState,
   items,
   total,
@@ -77,8 +82,6 @@ export default function PositionsInterbankWorkspaceSection({
   onProductTypeChange: (nextProductType: string) => void;
   direction: InterbankDirectionFilter;
   onDirectionChange: (nextDirection: InterbankDirectionFilter) => void;
-  filterOpen: boolean;
-  onFilterOpenChange: (open: boolean) => void;
   listState: PositionsPrimaryListTableState;
   items: InterbankPositionItem[];
   total: number | undefined;
@@ -123,9 +126,16 @@ export default function PositionsInterbankWorkspaceSection({
             }
           />
         </label>
-        <Button className="positions-view__filter-button" onClick={() => onFilterOpenChange(true)}>
-          筛选
-        </Button>
+        <label className="positions-view__field">
+          <span className="positions-view__field-label">方向</span>
+          <Select
+            aria-label="positions-interbank-direction"
+            className="positions-interbank__direction-select"
+            value={direction}
+            options={DIRECTION_OPTIONS}
+            onChange={(v) => onDirectionChange(v as InterbankDirectionFilter)}
+          />
+        </label>
       </div>
 
       {listState === "loading" ? (
@@ -178,37 +188,6 @@ export default function PositionsInterbankWorkspaceSection({
             : "请先选择可用报告日"}
         </p>
       )}
-
-      <Modal
-        title="同业筛选"
-        open={filterOpen}
-        onCancel={() => onFilterOpenChange(false)}
-        footer={[
-          <Button
-            key="reset"
-            onClick={() => {
-              onDirectionChange("ALL");
-            }}
-          >
-            重置
-          </Button>,
-          <Button key="ok" type="primary" onClick={() => onFilterOpenChange(false)}>
-            应用
-          </Button>,
-        ]}
-      >
-        <span className="positions-view__field-label">方向</span>
-        <Select
-          className="positions-view__modal-select"
-          value={direction}
-          options={[
-            { value: "ALL", label: "全部" },
-            { value: "Asset", label: "资产" },
-            { value: "Liability", label: "负债" },
-          ]}
-          onChange={(v) => onDirectionChange(v as InterbankDirectionFilter)}
-        />
-      </Modal>
     </div>
   );
 }
