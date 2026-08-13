@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { TONE_COLOR, TONE_CSS_VAR, toneForStatus, toneFromNumeric, type Tone } from "../utils/tone";
+import {
+  TONE_COLOR,
+  TONE_CSS_VAR,
+  TONE_DH_CSS_VAR,
+  toneForStatus,
+  toneFromNumeric,
+  type Tone,
+} from "../utils/tone";
 import type { Numeric } from "../api/contracts";
 import { designTokens } from "../theme/designSystem";
 
@@ -32,6 +39,23 @@ describe("TONE_CSS_VAR", () => {
     expect(Object.keys(TONE_CSS_VAR).sort()).toEqual([...tones].sort());
     for (const t of tones) {
       expect(TONE_CSS_VAR[t]).toMatch(/^var\(--ib-[a-z-]+\)$/);
+    }
+  });
+});
+
+describe("TONE_DH_CSS_VAR", () => {
+  it("maps all 4 tones to --dh-api-* variables for Nocturne scopes (not swapped!)", () => {
+    expect(TONE_DH_CSS_VAR.positive).toBe("var(--dh-api-green)");
+    expect(TONE_DH_CSS_VAR.negative).toBe("var(--dh-api-red)");
+    expect(TONE_DH_CSS_VAR.warning).toBe("var(--dh-api-amber)");
+    expect(TONE_DH_CSS_VAR.neutral).toBe("var(--dh-api-muted)");
+  });
+
+  it("covers every Tone with a var(--dh-api-*) reference (no raw hex leaks)", () => {
+    const tones: Tone[] = ["positive", "neutral", "warning", "negative"];
+    expect(Object.keys(TONE_DH_CSS_VAR).sort()).toEqual([...tones].sort());
+    for (const t of tones) {
+      expect(TONE_DH_CSS_VAR[t]).toMatch(/^var\(--dh-api-[a-z-]+\)$/);
     }
   });
 });

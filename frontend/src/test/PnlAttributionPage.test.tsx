@@ -164,14 +164,16 @@ describe("PnlAttributionPage", () => {
 
     expect(source).not.toMatch(/designTokens\.color\.warm|moss-color-warm-/);
     expect(source).not.toMatch(/#ded6ca|#ece6dd|#665f58/);
-    // 暗色路由面色/文字/盈亏/强调着色走主题感知入口（TONE_CSS_VAR / --dh-api-*，
-    // Nocturne scope 下 --ib-* 在路由边界被算成钢蓝字面值故不得引用）；
-    // ECharts canvas 读不到 CSS 变量，图表色走 dhApiTokens 暗色镜像（仍是
-    // 蓝灰族），不再直灌浅色 designTokens.color.*（neutral[900]、primary[600]、
-    // info[600] 等）。
+    // 页面挂 Nocturne scope（pnl-attribution）：面色/文字/盈亏/强调着色走
+    // --dh-api-* 家族（scope 内解析为 --nct-*），盈亏 tone 走 TONE_DH_CSS_VAR
+    // （--ib-* 在路由边界被算成钢蓝字面值故不得引用）；ECharts canvas 读不到
+    // CSS 变量，图表色走 nocturneTokens 静态镜像，钢蓝 dhApiTokens 镜像与浅色
+    // designTokens.color.*（neutral[900]、primary[600]、info[600] 等）均不得回归。
     expect(source).not.toMatch(/designTokens\.color\./);
-    expect(source).toContain("dhApiTokens.color.");
-    expect(source).toContain("TONE_CSS_VAR");
+    expect(source).not.toContain("dhApiTokens.color.");
+    expect(source).toContain("nocturneTokens.color.");
+    expect(source).toContain("TONE_DH_CSS_VAR");
+    expect(source).not.toMatch(/\bTONE_CSS_VAR\b/);
     expect(source).toContain("var(--dh-api-");
   });
 

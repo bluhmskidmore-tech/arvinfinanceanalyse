@@ -37,6 +37,27 @@ const productCategoryEffectColumns: Array<
   ["closure_error", "闭合"],
 ];
 
+/** 后端归因状态枚举中文化；未登记枚举原样透出（ledger-pnl 先例）。 */
+const productCategoryAttributionStateLabels: Record<string, string> = {
+  complete: "闭合完整",
+  incomplete: "闭合不完整",
+};
+
+const productCategoryRowStateLabels: Record<string, string> = {
+  complete: "完整",
+  partial: "部分",
+};
+
+function productCategoryStateLabel(
+  labels: Record<string, string>,
+  state: string | null | undefined,
+): string {
+  if (!state) {
+    return EM_DASH;
+  }
+  return labels[state] ?? state;
+}
+
 function ProductCategoryMobileReadoutField(props: {
   label: string;
   value: string;
@@ -148,7 +169,7 @@ function ProductCategoryAttributionMobileReadout(props: {
         },
         {
           label: "状态",
-          value: row.state,
+          value: productCategoryStateLabel(productCategoryRowStateLabels, row.state),
         },
       ]}
     />
@@ -440,7 +461,10 @@ function ProductCategoryAttributionWorkbench(props: {
         <ProductCategorySummaryCard
           label="未解释差异"
           value={`${formatProductCategoryAttributionEffect(headline?.unexplained_effect)} 亿元`}
-          subLabel={props.attributionData?.state ?? EM_DASH}
+          subLabel={productCategoryStateLabel(
+            productCategoryAttributionStateLabels,
+            props.attributionData?.state,
+          )}
         />
       </div>
       <div className="pnl-attribution-panel pnl-attribution-panel--compact">
@@ -510,14 +534,6 @@ export function ProductCategoryTabPanels(props: {
 
   return (
     <>
-      <FormalResultMetaPanel
-        testId="pnl-attribution-product-category-view-meta"
-        title="产品分类来源元信息"
-        emptyText={
-          props.isLoading ? "加载中..." : "当前还没有可展示的产品分类来源元信息。"
-        }
-        sections={productCategoryMetaSections}
-      />
       <ProductCategoryAttributionWorkbench
         monthlyData={props.monthlyData}
         ytdData={props.ytdData}
@@ -529,6 +545,15 @@ export function ProductCategoryTabPanels(props: {
             : null
         }
         onRetry={props.onRetry}
+      />
+      {/* 证据层收尾：3 张溯源卡放在 KPI 横带与明细表之后（§6 先结论后证据）。 */}
+      <FormalResultMetaPanel
+        testId="pnl-attribution-product-category-view-meta"
+        title="产品分类来源元信息"
+        emptyText={
+          props.isLoading ? "加载中..." : "当前还没有可展示的产品分类来源元信息。"
+        }
+        sections={productCategoryMetaSections}
       />
     </>
   );

@@ -106,14 +106,6 @@ export function AdvancedAttributionTabPanels(props: {
 
   return (
     <>
-      <FormalResultMetaPanel
-        testId="pnl-attribution-advanced-view-meta"
-        title="高级归因结果元信息"
-        emptyText={
-          props.isLoading ? "加载中…" : "当前还没有可展示的高级归因元信息。"
-        }
-        sections={advancedMetaSections}
-      />
       <CampisiDecisionGradePanel
         data={props.campisiDecisionGrade}
         state={campisiDecisionGradeState}
@@ -141,6 +133,15 @@ export function AdvancedAttributionTabPanels(props: {
         summaryData={props.summaryData}
         state={advancedCarryState}
         onRetry={props.onRetry}
+      />
+      {/* 证据层收尾：8 张溯源卡约 2.5 屏，放在业务面板之后（§6 先结论后证据）。 */}
+      <FormalResultMetaPanel
+        testId="pnl-attribution-advanced-view-meta"
+        title="高级归因结果元信息"
+        emptyText={
+          props.isLoading ? "加载中…" : "当前还没有可展示的高级归因元信息。"
+        }
+        sections={advancedMetaSections}
       />
     </>
   );
