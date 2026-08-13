@@ -3634,17 +3634,7 @@
 
   /* Heavyweight cards carry per-stock trend rows now: no height clamp, all sectors visible. */
 
-  [data-testid="stock-analysis-observation-preview"] .stock-analysis-page__table thead,
-  [data-testid="stock-analysis-theme-leaders-first-screen"] .stock-analysis-page__table thead {
-    display: none;
-  }
-
-  [data-testid="stock-analysis-theme-leaders-first-screen"] .stock-analysis-page__theme-leaders-table th:nth-child(n + 4),
-  [data-testid="stock-analysis-theme-leaders-first-screen"] .stock-analysis-page__theme-leaders-table td:nth-child(n + 4) {
-    display: none;
-  }
-
-  [data-testid="stock-analysis-theme-leaders-first-screen"] .stock-analysis-page__table tbody tr:nth-child(n + 4) {
+  [data-testid="stock-analysis-observation-preview"] .stock-analysis-page__table thead {
     display: none;
   }
 
@@ -3922,14 +3912,11 @@
     font-weight: 760;
   }
 
-  [data-testid="stock-analysis-observation-preview"] .stock-analysis-page__lower-signal-strip,
-  [data-testid="stock-analysis-theme-leaders-first-screen"] .stock-analysis-page__lower-signal-strip,
-  [data-testid="stock-analysis-sector-heavyweights-first-screen"] .stock-analysis-page__lower-signal-strip {
+  [data-testid="stock-analysis-observation-preview"] .stock-analysis-page__lower-signal-strip {
     display: none;
   }
 
-  [data-testid="stock-analysis-observation-preview"] .stock-analysis-page__footnote,
-  [data-testid="stock-analysis-theme-leaders-first-screen"] .stock-analysis-page__table-wrap {
+  [data-testid="stock-analysis-observation-preview"] .stock-analysis-page__footnote {
     display: none !important;
   }
 
