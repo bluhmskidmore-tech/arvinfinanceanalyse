@@ -357,32 +357,9 @@
   color: var(--dh-api-ink);
 }
 
-/* 共享 pageStyles 的三张内联表格仍烘焙浅色字面量（白底 / 浅灰边 / 深墨字），
-   内联样式变量翻转够不到，路由内以 !important 校正到 Nocturne 链；
-   待共享基元主题化后移除（姊妹页 pnl-by-business 同款先例）。 */
-.pnl-by-business-insights-page [data-testid="pnl-by-business-insights-concentration-table"],
-.pnl-by-business-insights-page [data-testid="pnl-by-business-insights-negative-ftp-table"],
-.pnl-by-business-insights-page [data-testid="pnl-by-business-insights-share-drift-table"] {
-  border-color: var(--dh-api-line-soft) !important;
-  border-radius: var(--dh-api-radius) !important;
-  background: var(--dh-api-panel) !important;
-}
-
-.pnl-by-business-insights-page [data-testid="pnl-by-business-insights-concentration-table"] th,
-.pnl-by-business-insights-page [data-testid="pnl-by-business-insights-negative-ftp-table"] th,
-.pnl-by-business-insights-page [data-testid="pnl-by-business-insights-share-drift-table"] th {
-  border-bottom-color: var(--dh-api-line) !important;
-  color: var(--dh-api-muted) !important;
-}
-
-.pnl-by-business-insights-page [data-testid="pnl-by-business-insights-concentration-table"] td,
-.pnl-by-business-insights-page [data-testid="pnl-by-business-insights-negative-ftp-table"] td,
-.pnl-by-business-insights-page [data-testid="pnl-by-business-insights-share-drift-table"] td {
-  border-bottom-color: var(--dh-api-line-soft) !important;
-  color: var(--dh-api-ink) !important;
-}
-
-/* 负FTP持续性达到提示条件的单元格：数据属性钩子保住警示琥珀（源序后置压过上行通配 td）。 */
+/* 三张分析表由共享 pageStyles 渲染，其色值已走 --ib-* 变量链并由本页页根桥接
+   翻转，无需路由内校正层。仅警示单元格需压过 tdStyle 的内联 ink 色，保留
+   !important 琥珀钩子。 */
 .pnl-by-business-insights-page
   [data-testid="pnl-by-business-insights-negative-ftp-table"]
   td[data-warning="true"] {
