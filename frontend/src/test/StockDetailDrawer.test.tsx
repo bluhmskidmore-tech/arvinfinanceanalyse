@@ -18,7 +18,7 @@ import type {
 } from "../api/contracts";
 import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
 import { StockDetailDrawer } from "../features/stock-analysis/components/StockDetailDrawer";
-import { dhApiTokens } from "../theme/designSystem";
+import { nocturneTokens } from "../theme/designSystem";
 
 vi.mock("../components/charts/BaseChart", () => ({
   BaseChart: function MockBaseChart({
@@ -444,18 +444,18 @@ describe("StockDetailDrawer", () => {
       expect(option.xAxis?.[0]?.data).toEqual(["2026-04-26"]);
       expect(option.series?.[0]?.data).toEqual([[10.2, 10.6, 10, 10.8]]);
       expect(option.series?.[1]?.data).toEqual([null]);
-      expect(option.textStyle?.color).toBe(dhApiTokens.color.inkMuted);
+      expect(option.textStyle?.color).toBe(nocturneTokens.color.inkMuted);
       expect(option.yAxis?.[0]?.splitLine?.lineStyle?.color).toBe(
-        dhApiTokens.color.lineSoft,
+        nocturneTokens.color.lineSoft,
       );
       expect(option.series?.[0]?.itemStyle).toMatchObject({
-        color: dhApiTokens.color.red,
-        color0: dhApiTokens.color.green,
-        borderColor: dhApiTokens.color.red,
-        borderColor0: dhApiTokens.color.green,
+        color: nocturneTokens.color.red,
+        color0: nocturneTokens.color.green,
+        borderColor: nocturneTokens.color.red,
+        borderColor0: nocturneTokens.color.green,
       });
       expect(option.series?.[1]?.itemStyle?.color).toBe(
-        dhApiTokens.color.blue,
+        nocturneTokens.color.blue,
       );
     });
   });

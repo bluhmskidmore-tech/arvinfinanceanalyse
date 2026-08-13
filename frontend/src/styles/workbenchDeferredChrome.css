@@ -877,6 +877,7 @@
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="positions"]) .workbench-terminal-bar,
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-dashboard"]) .workbench-terminal-bar,
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="liability-analytics"]) .workbench-terminal-bar,
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bank-ledger-dashboard"]) .workbench-terminal-bar {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bank-ledger-dashboard"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-data"]) .workbench-terminal-bar {
   background: var(--nct-rail) !important;
 }

@@ -19,7 +19,7 @@ import type {
   StockAnalysisWorkbenchDataGap,
   StockAnalysisWorkbenchPayload,
 } from "../../../api/contracts";
-import { isAgentFrontendEnabled } from "../../../mocks/navigation";
+import { isAgentFrontendEnabled } from "../../../app/navigation";
 import {
   buildCandidateReviewQueue,
   buildClosedLoopSummary,
@@ -1870,6 +1870,7 @@ export default function StockAnalysisPage() {
   return (
     <MarketWorkbenchFrame
       pageKey="stock-analysis"
+      themeScope="stock-analysis"
       title="股票分析门禁"
       question="A 股观察工作台 / 后端口径复核"
       status={stockWorkbenchStatus}
@@ -1889,6 +1890,7 @@ export default function StockAnalysisPage() {
       <section
         data-testid="stock-analysis-page"
         className={`${SA_SHELL_PAGE} theme-dh-api stock-analysis-page stock-analysis-page--market-shell dark text-foreground`}
+        data-moss-theme-scope="stock-analysis"
         data-layout-rev="2026-05-31e"
         data-data-viz-rev="2026-05-31e"
         style={stockAnalysisPageCssVars}
@@ -2424,6 +2426,7 @@ export default function StockAnalysisPage() {
             onClose={() => setAgentDrawerOpen(false)}
             className="stock-analysis-page__agent-drawer"
             data-testid="stock-analysis-agent-drawer"
+            data-moss-theme-scope="stock-analysis"
             title="复核助手"
             extra={
               <AntButton
@@ -2435,7 +2438,11 @@ export default function StockAnalysisPage() {
               </AntButton>
             }
           >
-            <div style={stockAnalysisPageCssVars} className="theme-dh-api stock-analysis-page__agent-drawer-body">
+            <div
+              style={stockAnalysisPageCssVars}
+              className="theme-dh-api stock-analysis-page__agent-drawer-body"
+              data-moss-theme-scope="stock-analysis"
+            >
               {agentDrawerOpen ? (
                 <Suspense fallback={<TextSkeleton className="w-full" />}>
                   <LazyAgentPanel

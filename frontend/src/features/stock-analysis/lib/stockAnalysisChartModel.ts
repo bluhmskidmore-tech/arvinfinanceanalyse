@@ -1,5 +1,5 @@
 import type { EChartsOption } from "../../../lib/echarts";
-import { dhApiTokens } from "../../../theme/designSystem";
+import { nocturneTokens } from "../../../theme/designSystem";
 import type {
   StockSectorRow,
   StockSectorViewKind,
@@ -45,18 +45,23 @@ export type SectorSortKey =
   | "amplitude"
   | "constituentCount";
 
+/**
+ * ECharts（canvas）取色走 nocturneTokens 常量组（数值源 = tokens.css 的
+ * Nocturne scope 色板；页面 DOM 侧由 data-moss-theme-scope="stock-analysis"
+ * 翻转，canvas 无法消费 CSS 变量故取常量镜像，先例见组合工作台）。
+ */
 export const stockChartPalette = {
-  ink: dhApiTokens.color.ink,
-  muted: dhApiTokens.color.inkMuted,
-  grid: dhApiTokens.color.lineSoft,
-  track: dhApiTokens.color.line,
-  primary: dhApiTokens.color.blue,
-  primaryLight: dhApiTokens.color.inkMuted,
-  accent: dhApiTokens.color.inkSoft,
-  success: dhApiTokens.color.green,
-  successLight: dhApiTokens.color.greenSoft,
-  danger: dhApiTokens.color.red,
-  gold: dhApiTokens.color.amber,
+  ink: nocturneTokens.color.ink,
+  muted: nocturneTokens.color.inkMuted,
+  grid: nocturneTokens.color.lineSoft,
+  track: nocturneTokens.color.line,
+  primary: nocturneTokens.color.blue,
+  primaryLight: nocturneTokens.color.inkMuted,
+  accent: nocturneTokens.color.inkSoft,
+  success: nocturneTokens.color.green,
+  successLight: nocturneTokens.color.greenSoft,
+  danger: nocturneTokens.color.red,
+  gold: nocturneTokens.color.amber,
 } as const;
 
 export const sectorViewTabs: { key: StockSectorViewKind; label: string }[] = [

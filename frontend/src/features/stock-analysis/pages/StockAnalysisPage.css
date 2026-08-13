@@ -52,9 +52,6 @@
 }
 
 .stock-analysis-page.stock-analysis-page--market-shell {
-  /* 压平共享骨架 .dhPage 的钢蓝渐变背景（该渐变前层是字面量，变量翻不动）。 */
-  background: var(--dh-api-bg);
-
   /* Shared dashboard-home chrome still consumes legacy --dh-* names.
      Remap only its visual aliases at the stock page root. */
   --dh-bg: var(--dh-api-bg);

@@ -20,8 +20,8 @@ import type {
   StockAnalysisWorkbenchPayload,
 } from "../api/contracts";
 
-vi.mock("../mocks/navigation", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../mocks/navigation")>()),
+vi.mock("../app/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../app/navigation")>()),
   isAgentFrontendEnabled: () => true,
 }));
 

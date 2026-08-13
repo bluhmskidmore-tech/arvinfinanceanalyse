@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { StockSectorViewRow } from "../features/stock-analysis/lib/stockAnalysisPageModel";
-import { dhApiTokens } from "../theme/designSystem";
+import { nocturneTokens } from "../theme/designSystem";
 import {
   buildCompactBarOption,
   buildEventSummaryOption,
@@ -58,19 +58,19 @@ const sectorRow: StockSectorViewRow = {
 };
 
 describe("stockAnalysisChartModel", () => {
-  it("sources the chart palette from canonical Decision Desk tokens", () => {
+  it("sources the chart palette from canonical Nocturne tokens", () => {
     expect(stockChartPalette).toEqual({
-      ink: dhApiTokens.color.ink,
-      muted: dhApiTokens.color.inkMuted,
-      grid: dhApiTokens.color.lineSoft,
-      track: dhApiTokens.color.line,
-      primary: dhApiTokens.color.blue,
-      primaryLight: dhApiTokens.color.inkMuted,
-      accent: dhApiTokens.color.inkSoft,
-      success: dhApiTokens.color.green,
-      successLight: dhApiTokens.color.greenSoft,
-      danger: dhApiTokens.color.red,
-      gold: dhApiTokens.color.amber,
+      ink: nocturneTokens.color.ink,
+      muted: nocturneTokens.color.inkMuted,
+      grid: nocturneTokens.color.lineSoft,
+      track: nocturneTokens.color.line,
+      primary: nocturneTokens.color.blue,
+      primaryLight: nocturneTokens.color.inkMuted,
+      accent: nocturneTokens.color.inkSoft,
+      success: nocturneTokens.color.green,
+      successLight: nocturneTokens.color.greenSoft,
+      danger: nocturneTokens.color.red,
+      gold: nocturneTokens.color.amber,
     });
   });
 

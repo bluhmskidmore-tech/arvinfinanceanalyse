@@ -11,7 +11,7 @@ import type {
   StockKlineAnalysisPayload,
 } from "../../../api/contracts";
 import { BaseChart } from "../../../components/charts/BaseChart";
-import { dhApiTokens } from "../../../theme/designSystem";
+import { nocturneTokens } from "../../../theme/designSystem";
 import { localizeStrategyPanelErrorDetail } from "../lib/stockAnalysisPageModel";
 import { normalizeIsoCalendarDate } from "../lib/stockAnalysisDate";
 import type { StockDetailReviewThesis } from "../lib/stockAnalysisDetailSelection";
@@ -57,10 +57,10 @@ function buildCandleVolumeOption(
   const dates = chartCandles.map((candle) => candle.tradeDate);
   const ohlc = chartCandles.map((candle) => candle.ohlc);
   const volumes = chartCandles.map((candle) => candle.volume);
-  const up = dhApiTokens.color.green;
-  const down = dhApiTokens.color.red;
-  const muted = dhApiTokens.color.inkMuted;
-  const gridLine = dhApiTokens.color.lineSoft;
+  const up = nocturneTokens.color.green;
+  const down = nocturneTokens.color.red;
+  const muted = nocturneTokens.color.inkMuted;
+  const gridLine = nocturneTokens.color.lineSoft;
 
   return {
     backgroundColor: "transparent",
@@ -113,7 +113,7 @@ function buildCandleVolumeOption(
         xAxisIndex: 1,
         yAxisIndex: 1,
         data: volumes,
-        itemStyle: { color: dhApiTokens.color.blue },
+        itemStyle: { color: nocturneTokens.color.blue },
       },
     ],
   };
@@ -740,6 +740,7 @@ export function StockDetailDrawer({
       rootStyle={stockAnalysisPageCssVars}
       className="stock-detail-drawer"
       data-testid="stock-detail-drawer"
+      data-moss-theme-scope="stock-analysis"
       title="个股复核"
       extra={
         <AntButton type="text" onClick={handleDrawerClose} aria-label="关闭抽屉">

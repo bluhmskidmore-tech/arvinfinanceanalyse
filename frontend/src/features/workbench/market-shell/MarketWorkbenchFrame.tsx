@@ -38,6 +38,7 @@ export function MarketWorkbenchFrame({
   actions,
   children,
   auditContent,
+  themeScope,
 }: MarketWorkbenchFrameProps) {
   const inRouter = useInRouterContext();
   const navItems = getMarketWorkbenchNav();
@@ -45,7 +46,12 @@ export function MarketWorkbenchFrame({
   const isCompactNav = navDensity === "compact";
 
   return (
-    <section className={styles.frame} data-testid="market-workbench-frame" data-page-key={pageKey}>
+    <section
+      className={styles.frame}
+      data-testid="market-workbench-frame"
+      data-page-key={pageKey}
+      data-moss-theme-scope={themeScope}
+    >
       <header className={styles.topbar} data-testid="market-workbench-topbar">
         <div className={styles.topbarMain}>
           <div className={styles.titleRow}>

@@ -406,17 +406,31 @@ describe("globalCss design token bridge (:root)", () => {
     expect(gridOverride).toEqual(palette);
     expect(railOverride).toEqual(palette);
     // rail-mark：dashboard-home / portfolio-home 保持 cockpit 透明制度不入列表；
-    // market-overview 虽也走 cockpit 壳，但其 rail-mark 由页内更高特异性块接管，保留兜底行。
+    // market-overview / risk-overview 虽也走 cockpit 壳，rail-mark 保留兜底行
+    // （market-overview 由页内更高特异性块接管）。
     expect(railMarkOverride).toEqual(
       palette.filter((scope) => scope !== "dashboard-home" && scope !== "portfolio-home"),
     );
     // page-v2 面板压制（背景 + 结论左边线）与 grid/rail 同构全量列表。
     expect(pageV2Override).toEqual(palette);
     expect(conclusionOverride).toEqual(palette);
-    // cockpit 壳 rail hover/active：三个 cockpit scope 全列（终层兜底）；
-    // dashboard-home / market-overview 由页内更高特异性块等值接管，实际生效于 portfolio-home。
-    expect(cockpitHoverOverride).toEqual(["dashboard-home", "market-overview", "portfolio-home"]);
-    expect(cockpitActiveOverride).toEqual(["dashboard-home", "market-overview", "portfolio-home"]);
+    // cockpit 壳 rail hover/active：五个 cockpit scope 全列（终层兜底）；
+    // dashboard-home / market-overview 由页内更高特异性块等值接管，
+    // 实际生效于 portfolio-home、risk-overview 与 stock-analysis。
+    expect(cockpitHoverOverride).toEqual([
+      "dashboard-home",
+      "market-overview",
+      "portfolio-home",
+      "risk-overview",
+      "stock-analysis",
+    ]);
+    expect(cockpitActiveOverride).toEqual([
+      "dashboard-home",
+      "market-overview",
+      "portfolio-home",
+      "risk-overview",
+      "stock-analysis",
+    ]);
     // 首页 cockpit 壳不渲染主列纸面。
     expect(paper).toEqual(palette.filter((scope) => scope !== "dashboard-home"));
     // 渲染终端条的 scope：tokens.css 终端条块与延迟分册必须同一份列表。

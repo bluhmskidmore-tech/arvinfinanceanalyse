@@ -32,4 +32,10 @@ export type MarketWorkbenchFrameProps = {
   actions?: ReactNode;
   children: ReactNode;
   auditContent?: ReactNode;
+  /**
+   * 页面主题 scope（tokens.css 的 data-moss-theme-scope 选择器）。
+   * frame 顶栏/子导航不在页根子树内，scope 须声明在 frame 根上
+   * 才能让整个框架跟随页面色板（如 stock-analysis 的 Nocturne 换肤）。
+   */
+  themeScope?: string;
 };

@@ -150,7 +150,7 @@ select {
 
 .workbench-shell-grid {
   display: grid;
-  grid-template-columns: minmax(188px, 212px) minmax(0, 1fr);
+  grid-template-columns: 216px minmax(0, 1fr);
   gap: var(--moss-shell-gap);
   align-items: start;
 }
@@ -522,6 +522,9 @@ select {
   box-shadow: var(--moss-shadow-institutional-active);
 }
 
+/* 本块 grid-template-columns/gap/padding 与文件末尾统一层（≥1181px）同值冗余，
+   但本块在 ≤1180 仍生效（塌缩规则在 dashboardCockpit.css，加载顺序不保证），保留不删；
+   壳层几何改动请去文件末尾的统一层。 */
 .workbench-shell-grid--desktop-aligned {
   grid-template-columns: 216px minmax(0, 1fr);
   gap: 0;
@@ -1047,7 +1050,6 @@ select {
     "Segoe UI",
     sans-serif;
   --moss-font-sans: var(--balance-movement-font-ui);
-  grid-template-columns: 208px minmax(0, 1fr) !important;
   gap: 0 !important;
   align-items: stretch;
   min-height: 100vh;
@@ -1059,7 +1061,6 @@ select {
 .workbench-shell-grid--balance-movement .workbench-shell-aside {
   position: sticky !important;
   top: 0 !important;
-  width: 208px;
   height: 100vh;
   min-height: 100vh;
   overflow-y: auto;
@@ -1121,7 +1122,6 @@ select {
 /* Dashboard cockpit styles are loaded after this file in some entry points;
  * the compound route selector keeps the Figma shell authoritative. */
 .workbench-shell-grid.workbench-shell-grid--cockpit.workbench-shell-grid--balance-movement {
-  grid-template-columns: 208px minmax(0, 1fr) !important;
   gap: 0 !important;
   padding: 0 !important;
 }
@@ -1161,6 +1161,49 @@ select {
     grid-column: 1;
     width: 100%;
     min-width: 0;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   全系统侧边栏统一（桌面 ≥1181px）：216px、贴窗口边、通栏侧栏、主列无缝。
+   此前 20 条路由存在 5 种侧栏宽度（129/188/208/216/224）与两种落位，
+   本层是宽度与落位的唯一权威；各壳层变体只保留配色与内饰，
+   变体内残留的列宽/外边距声明一律被本层压制，新页面不要再写私有宽度。
+   窄屏（≤1180 / ≤720）的单列塌缩行为保持原样，本层不介入。
+   ══════════════════════════════════════════════════════════════ */
+@media (min-width: 1181px) {
+  .workbench-shell-root.workbench-shell-grid {
+    grid-template-columns: 216px minmax(0, 1fr) !important;
+    column-gap: 0 !important;
+    align-items: stretch !important;
+    padding: 0 !important;
+  }
+
+  .workbench-shell-root.workbench-shell-grid > .workbench-shell-aside {
+    position: sticky !important;
+    top: 0 !important;
+    width: auto !important;
+    height: 100vh !important;
+    min-height: 100vh !important;
+    overflow-y: auto;
+    grid-template-columns: minmax(0, 1fr) !important;
+    border: 0 !important;
+    border-right: 1px solid var(--moss-shell-rail-border) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  /* 顶部数据模式横幅是 fixed 定位，需用内边距让出其高度。
+     横幅与外壳网格之间隔着 .workbench-skip-link，必须用通用兄弟 ~
+     （相邻兄弟 + 只会选中 skip link，规则永不生效）。 */
+  .moss-data-mode-ribbon ~ .workbench-shell-root.workbench-shell-grid {
+    padding-top: 28px !important;
+  }
+
+  .moss-data-mode-ribbon ~ .workbench-shell-root.workbench-shell-grid > .workbench-shell-aside {
+    top: 28px !important;
+    height: calc(100vh - 28px) !important;
+    min-height: calc(100vh - 28px) !important;
   }
 }
 
@@ -1209,7 +1252,10 @@ select {
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="liability-analytics"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bank-ledger-dashboard"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="portfolio-home"]),
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-overview"]) {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-overview"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="stock-analysis"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-data"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-overview"]) {
   background: var(--nct-bg) !important;
 }
 
@@ -1222,7 +1268,10 @@ select {
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="liability-analytics"]) .workbench-shell-rail,
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bank-ledger-dashboard"]) .workbench-shell-rail,
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="portfolio-home"]) .workbench-shell-rail,
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-overview"]) .workbench-shell-rail {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-overview"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="stock-analysis"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-data"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-overview"]) .workbench-shell-rail {
   background: var(--nct-rail) !important;
 }
 
@@ -1233,14 +1282,17 @@ select {
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-dashboard"]) .workbench-shell-rail-mark,
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="liability-analytics"]) .workbench-shell-rail-mark,
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bank-ledger-dashboard"]) .workbench-shell-rail-mark,
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-overview"]) .workbench-shell-rail-mark {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-overview"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="stock-analysis"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-data"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-overview"]) .workbench-shell-rail-mark {
   background: var(--nct-surface) !important;
   border-color: var(--nct-ring) !important;
   box-shadow: none !important;
 }
 
 /* page-v2 面板（§83-94 烘焙 0-4-0；:is() 取最高实参 0-1-0，本组同权后置）。
-   列表与 grid/rail 同构全量 10 scope：未渲染 page-v2 类的路由 :has() 命中
+   列表与 grid/rail 同构 palette 全量：未渲染 page-v2 类的路由 :has() 命中
    但无目标元素、零效果，保持 parity 可断言。 */
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="dashboard-home"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
@@ -1251,7 +1303,10 @@ select {
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="liability-analytics"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bank-ledger-dashboard"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="portfolio-home"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-overview"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion) {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-overview"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="stock-analysis"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-data"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-overview"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion) {
   background: var(--nct-surface) !important;
 }
 
@@ -1264,17 +1319,22 @@ select {
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="liability-analytics"]) .moss-page-v2-decision-hero__conclusion,
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bank-ledger-dashboard"]) .moss-page-v2-decision-hero__conclusion,
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="portfolio-home"]) .moss-page-v2-decision-hero__conclusion,
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-overview"]) .moss-page-v2-decision-hero__conclusion {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-overview"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="stock-analysis"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-data"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-overview"]) .moss-page-v2-decision-hero__conclusion {
   border-left-color: var(--nct-accent) !important;
 }
 
 /* cockpit 壳 rail hover/active（§cockpit 烘焙 0-4-0；选择器不双写以对齐烘焙
-   同权后置）。走 --cockpit 变体的 Nocturne scope 共三个：dashboard-home /
-   portfolio-home（isDashboardCockpitShell）与 market-overview
-   （isModuleHomePage 亦走 useCockpitShellFrame）。dashboard-home 页内
+   同权后置）。走 --cockpit 变体的 Nocturne scope 共五个：dashboard-home /
+   portfolio-home（isDashboardCockpitShell）、market-overview 与
+   risk-overview（isModuleHomePage 亦走 useCockpitShellFrame）与
+   stock-analysis（isStockAnalysisMinimalShell）。dashboard-home 页内
    0-5-0 块、market-overview 页内 0-6-0 块取值等价并继续接管，列入此处
-   仅作终层兜底；实际生效目标是无页内块的 portfolio-home。取值：
-   hover 9%/22% 与 active 14% + inset 2px 对齐 tokens.css
+   仅作终层兜底；实际生效目标是无页内块的 portfolio-home、stock-analysis
+   与 risk-overview。
+   取值：hover 9%/22% 与 active 14% + inset 2px 对齐 tokens.css
    --moss-shell-rail-active-bg / --moss-shadow-institutional-active 语义，
    active 边线 30% mix 沿用 market-overview 验收块先例。 */
 .workbench-shell-grid--cockpit:has([data-moss-theme-scope="dashboard-home"]) .workbench-shell-group-link:hover,
@@ -1285,14 +1345,22 @@ select {
 .workbench-shell-grid--cockpit:has([data-moss-theme-scope="portfolio-home"]) .workbench-shell-support-link:hover,
 .workbench-shell-grid--cockpit:has([data-moss-theme-scope="market-overview"]) .workbench-shell-group-link:hover,
 .workbench-shell-grid--cockpit:has([data-moss-theme-scope="market-overview"]) .workbench-shell-agent-nav__link:hover,
-.workbench-shell-grid--cockpit:has([data-moss-theme-scope="market-overview"]) .workbench-shell-support-link:hover {
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="market-overview"]) .workbench-shell-support-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="stock-analysis"]) .workbench-shell-group-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="stock-analysis"]) .workbench-shell-agent-nav__link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="stock-analysis"]) .workbench-shell-support-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="risk-overview"]) .workbench-shell-group-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="risk-overview"]) .workbench-shell-agent-nav__link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="risk-overview"]) .workbench-shell-support-link:hover {
   background: color-mix(in srgb, var(--nct-accent) 9%, transparent) !important;
   border-color: color-mix(in srgb, var(--nct-accent) 22%, transparent) !important;
 }
 
 .workbench-shell-grid--cockpit:has([data-moss-theme-scope="dashboard-home"]) .workbench-shell-group-link[data-active="true"],
 .workbench-shell-grid--cockpit:has([data-moss-theme-scope="portfolio-home"]) .workbench-shell-group-link[data-active="true"],
-.workbench-shell-grid--cockpit:has([data-moss-theme-scope="market-overview"]) .workbench-shell-group-link[data-active="true"] {
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="market-overview"]) .workbench-shell-group-link[data-active="true"],
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="stock-analysis"]) .workbench-shell-group-link[data-active="true"],
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="risk-overview"]) .workbench-shell-group-link[data-active="true"] {
   background: color-mix(in srgb, var(--nct-accent) 14%, transparent) !important;
   border-color: color-mix(in srgb, var(--nct-accent) 30%, transparent) !important;
   box-shadow: inset 2px 0 0 var(--nct-accent) !important;
