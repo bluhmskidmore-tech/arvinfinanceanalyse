@@ -1,5 +1,5 @@
 import type { ChoiceMacroLatestPoint, ChoiceMacroRecentPoint } from "../../../api/contracts";
-import { EM_DASH } from "../../../utils/format";
+import { EM_DASH, fixedOrDash, pctOrDash, signedFixedOrDash } from "../../../pageModel";
 
 export type CrossAssetKpiFormat = "percent" | "bp" | "index" | "fx" | "plain";
 
@@ -227,19 +227,6 @@ function latestTradeDate(points: Array<ChoiceMacroLatestPoint | undefined>) {
   return dates.length > 0 ? dates.sort((left, right) => right.localeCompare(left))[0] : null;
 }
 
-function formatPercent(n: number) {
-  return `${n.toFixed(2)}%`;
-}
-
-function formatBpFromNumber(n: number) {
-  const sign = n > 0 ? "+" : "";
-  return `${sign}${n.toFixed(1)}bp`;
-}
-
-function formatFx(n: number) {
-  return n.toFixed(4);
-}
-
 function sparklinePointsFromPoint(point: ChoiceMacroLatestPoint | undefined): CrossAssetDatedValue[] {
   if (!point?.recent_points?.length) {
     return [];
@@ -331,12 +318,11 @@ function changeLabelForSlot(
     return EM_DASH;
   }
   if (format === "percent") {
-    const sign = delta > 0 ? "+" : "";
-    const bp = delta * 100;
-    return `${sign}${bp.toFixed(1)}bp`;
+    // 收益率日变动以 bp 展示；delta 与 delta*100 同号，"+" 边界（严格正）不变。
+    return `${signedFixedOrDash(delta * 100, 1)}bp`;
   }
   if (format === "bp") {
-    return formatBpFromNumber(delta);
+    return `${signedFixedOrDash(delta, 1)}bp`;
   }
   if (format === "index") {
     const sign = delta > 0 ? "+" : "";
@@ -347,8 +333,7 @@ function changeLabelForSlot(
     return `${sign}${delta.toLocaleString("zh-CN", { maximumFractionDigits: 2 })}`;
   }
   if (format === "fx") {
-    const sign = delta > 0 ? "+" : "";
-    return `${sign}${delta.toFixed(4)}`;
+    return signedFixedOrDash(delta, 4);
   }
   return String(delta);
 }
@@ -361,13 +346,13 @@ function valueLabelForSlot(
     return EM_DASH;
   }
   if (format === "percent") {
-    return formatPercent(value);
+    return pctOrDash(value, 2);
   }
   if (format === "bp") {
     return `${value.toFixed(0)}bp`;
   }
   if (format === "fx") {
-    return formatFx(value);
+    return fixedOrDash(value, 4);
   }
   if (format === "index") {
     return `${value.toFixed(1)}点`;

@@ -469,6 +469,34 @@ describe("buildPnlByBusinessInsightsLeadershipModel", () => {
     expect(model.items[1].value).not.toContain("未发现达到预警阈值");
   });
 
+  it("keeps the strictly-positive plus prefix boundary on share-drift pp labels", () => {
+    const driftEnvelope = (driftPp: string) =>
+      envelope({}, {
+        share_drift: {
+          ...payload.share_drift,
+          rows: [{ ...payload.share_drift.rows[0], drift_pp: driftPp }],
+        },
+      });
+
+    const positive = buildPnlByBusinessInsightsLeadershipModel({
+      requestedDate: "2026-06-30",
+      envelope: driftEnvelope("1.25"),
+      isLoading: false,
+      isError: false,
+    });
+    expect(positive.status).toBe("ready");
+    expect(positive.items[2].value).toContain("公募基金 +1.25pp");
+
+    const zero = buildPnlByBusinessInsightsLeadershipModel({
+      requestedDate: "2026-06-30",
+      envelope: driftEnvelope("0.00"),
+      isLoading: false,
+      isError: false,
+    });
+    expect(zero.items[2].value).toContain("公募基金 0.00pp");
+    expect(zero.items[2].value).not.toContain("+");
+  });
+
   it("keeps an insights request failure separate from the main PnL result", () => {
     const model = buildPnlByBusinessInsightsLeadershipModel({
       requestedDate: "2026-06-30",

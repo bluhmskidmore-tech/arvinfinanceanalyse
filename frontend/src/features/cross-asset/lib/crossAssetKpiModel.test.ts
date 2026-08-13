@@ -177,6 +177,30 @@ describe("crossAssetKpiModel", () => {
     expect(kpis.find((k) => k.key === "csi300_pe")?.changeLabel).toBe("+0.22");
   });
 
+  it("keeps the strictly-positive plus prefix boundary on signed change labels", () => {
+    const kpis = resolveCrossAssetKpis([
+      macroPoint("E1000180", 1.88, [
+        ["2026-02-28", 1.9],
+        ["2026-03-01", 1.88],
+      ]),
+      macroPoint("E1003238", 3.95, [
+        ["2026-02-28", 3.96],
+        ["2026-03-01", 3.95],
+      ], { latest_change: 0 }),
+      macroPoint("CA.USDCNY", 7.1235, [
+        ["2026-02-28", 7.1112],
+        ["2026-03-01", 7.1235],
+      ], { latest_change: 0.0123 }),
+    ]);
+
+    // percent 日变动折算 bp：严格正才带 "+"，零不带符号。
+    expect(kpis.find((k) => k.key === "cn_gov_10y")?.changeLabel).toBe("+1.0bp");
+    expect(kpis.find((k) => k.key === "us_gov_10y")?.changeLabel).toBe("0.0bp");
+    const fx = kpis.find((k) => k.key === "usdcny");
+    expect(fx?.valueLabel).toBe("7.1235");
+    expect(fx?.changeLabel).toBe("+0.0123");
+  });
+
   it("prefers E1003238 over EMG for US 10Y", () => {
     const series = [
       macroPoint("EMG00001310", 4.1, [

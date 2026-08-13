@@ -9,6 +9,7 @@ import type {
 } from "../../../api/contracts";
 import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../../../utils/choiceMacroFormat";
 import { EM_DASH } from "../../../utils/format";
+import type { LabeledValue } from "../../../pageModel";
 
 export type MarketDataTerminalStatus = "ready" | "empty" | "source-pending";
 export type MarketDataConnectedStatus = Exclude<MarketDataTerminalStatus, "source-pending">;
@@ -133,16 +134,18 @@ export function formatTerminalSourceSummary(source: MarketDataTerminalSource | n
   return `口径 ${basis} · 质量 ${quality} · 降级 ${fallback}`;
 }
 
-export type MarketTerminalTickerItem = {
-  key: string;
-  label: string;
-  value: string;
-  delta: string;
-  tone: "up" | "down" | "flat";
-  tradeDate: string;
-  seriesId: string;
-  sparklineValues: number[];
-};
+/**
+ * 行情条目复用共享 `LabeledValue` 词汇（key/label/value/delta）；行情条必有涨跌
+ * 展示，故 `delta` 收敛为必填。`tone` 是行情涨跌方向词汇（up/down/flat），不是
+ * `MetricTone` 质量语气，保留在本模型。
+ */
+export type MarketTerminalTickerItem = Pick<LabeledValue, "key" | "label" | "value"> &
+  Required<Pick<LabeledValue, "delta">> & {
+    tone: "up" | "down" | "flat";
+    tradeDate: string;
+    seriesId: string;
+    sparklineValues: number[];
+  };
 
 export type MarketCurveFilter = "treasury" | "cdb" | "both";
 export type MarketSourceFilter = "all" | "choice" | "internal";
@@ -482,6 +485,10 @@ function bondFuturesSource(envelope?: ApiEnvelope<MarketDataBondFuturesRankingsP
   return envelope ? terminalSource(envelope.result_meta) : null;
 }
 
+/**
+ * 席位排行的手数/持仓输出千分位（Intl，如 "12,345"），与 `fixedOrDash` /
+ * `signedFixedOrDash` 的 toFixed 拼接形状不同，保留本地实现，勿迁 pageModel。
+ */
 function formatRankNumber(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) {
     return EM_DASH;

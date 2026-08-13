@@ -14,7 +14,7 @@ import type {
 } from "../../../api/contracts";
 import type { EChartsOption } from "../../../lib/echarts";
 import { nocturneTokens } from "../../../theme/designSystem";
-import { EM_DASH } from "../../../utils/format";
+import { EM_DASH, textOrDash } from "../../../pageModel";
 import {
   buildMarketDataChartTooltip,
   marketDataChartTheme,
@@ -443,7 +443,7 @@ function buildPipelineOverviewMetrics(input: {
     {
       testId: "market-data-linkage-report-date",
       title: "联动报告日",
-      value: categoryStore.linkageReportDate || EM_DASH,
+      value: textOrDash(categoryStore.linkageReportDate),
       detail: "宏观-债市联动分析使用的报告日期。",
       valueVariant: "text",
       tone: categoryStore.linkageReportDate ? "default" : "warning",

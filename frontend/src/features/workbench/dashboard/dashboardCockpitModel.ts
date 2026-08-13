@@ -1,6 +1,10 @@
 import type { BondPortfolioHeadlinesPayload, Numeric } from "../../../api/contracts";
-import { EM_DASH } from "../../../utils/format";
+import { EM_DASH, type LabeledValue, type MetricTone } from "../../../pageModel";
 
+/**
+ * 刻意不用共享 `SectionStatus`：本页含 supplemental/reserved/demo 成员，
+ * 与共享词汇（loading/empty/error）不同。
+ */
 export type DashboardCockpitSectionStatus =
   | "landed"
   | "supplemental"
@@ -9,13 +13,16 @@ export type DashboardCockpitSectionStatus =
   | "reserved"
   | "demo";
 
-export type DashboardCockpitTone = "positive" | "negative" | "neutral" | "warning";
+/** 与共享 `MetricTone` 同形；保留页面导出名以稳住消费方。 */
+export type DashboardCockpitTone = MetricTone;
 
-/** Risk-radar row shared by dashboard-home adapters. */
-export type DashboardCockpitRiskItem = {
+/**
+ * Risk-radar row shared by dashboard-home adapters.
+ * 复用共享 `LabeledValue` 词汇；`id`/`hint` 语义等同 `key`/`detail`，
+ * 消费方字段名暂保持，待批量迁移阶段收敛。
+ */
+export type DashboardCockpitRiskItem = Pick<LabeledValue, "label" | "value"> & {
   id: string;
-  label: string;
-  value: string;
   hint: string;
   level: number;
   status: DashboardCockpitSectionStatus;
@@ -23,8 +30,6 @@ export type DashboardCockpitRiskItem = {
 };
 
 type NumericLike = Numeric | string | number | null | undefined;
-
-const EMPTY_DISPLAY = EM_DASH;
 
 function cleanDate(value: string | null | undefined): string {
   return value?.trim() ?? "";
@@ -43,6 +48,8 @@ function numericObject(value: NumericLike): Numeric | null {
   return value;
 }
 
+// 刻意不用共享 `numericRaw(Numeric)`：本页输入为 NumericLike（标量 string/number
+// 及带千分位逗号的 string raw），语义更宽，不等价。
 function numericRaw(value: NumericLike): number | null {
   if (value == null) {
     return null;
@@ -74,21 +81,21 @@ function formatWithCommas(value: number, digits: number): string {
   });
 }
 
-function percentDisplay(value: NumericLike, fallback = EMPTY_DISPLAY): string {
+function percentDisplay(value: NumericLike, fallback = EM_DASH): string {
   const display = formattedDisplay(value);
   if (display) return display;
   const raw = numericRaw(value);
   return raw == null ? fallback : `${formatWithCommas(raw * 100, 2)}%`;
 }
 
-function durationDisplay(value: NumericLike, fallback = EMPTY_DISPLAY): string {
+function durationDisplay(value: NumericLike, fallback = EM_DASH): string {
   const display = formattedDisplay(value);
   if (display) return display;
   const raw = numericRaw(value);
   return raw == null ? fallback : formatWithCommas(raw, 2);
 }
 
-function dv01Display(value: NumericLike, fallback = EMPTY_DISPLAY): string {
+function dv01Display(value: NumericLike, fallback = EM_DASH): string {
   const raw = numericRaw(value);
   if (raw != null) {
     return `${formatWithCommas(raw / 10_000, 2)} 万`;
@@ -132,7 +139,7 @@ export function buildRiskItems(
       {
         id: "portfolio-risk-blocked",
         label: "风险摘要",
-        value: EMPTY_DISPLAY,
+        value: EM_DASH,
         hint: "风险读面报告日不一致或未返回。",
         level: 0,
         status: "blocked",
@@ -153,7 +160,7 @@ export function buildRiskItems(
       {
         id: "portfolio-risk-empty",
         label: "风险摘要",
-        value: EMPTY_DISPLAY,
+        value: EM_DASH,
         hint: "同日报告日已返回，但风险字段缺少可展示数值。",
         level: 0,
         status: "blocked",

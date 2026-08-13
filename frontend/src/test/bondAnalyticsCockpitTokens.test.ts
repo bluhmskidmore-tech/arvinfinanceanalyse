@@ -26,14 +26,15 @@ describe("bondAnalyticsCockpitTokens", () => {
     expect(style.background).toBe(bg);
   });
 
-  it("toneColor covers success, warning, danger, and default neutral", () => {
+  it("toneColor covers positive, warning, negative, and default neutral", () => {
     // Nocturne 换肤（2026-08-13）：tone 面走 --dh-api-* 语义链（DOM style 消费）。
-    expect(toneColor("success").color).toBe("var(--dh-api-green)");
+    // pageModel 迁移：tone 词汇随 MetricTone（success→positive、danger→negative），色面不变。
+    expect(toneColor("positive").color).toBe("var(--dh-api-green)");
     expect(toneColor("warning").color).toBe("var(--dh-api-amber)");
-    expect(toneColor("danger").color).toBe("var(--dh-api-red)");
+    expect(toneColor("negative").color).toBe("var(--dh-api-red)");
     expect(toneColor("neutral").color).toBe("var(--dh-api-soft)");
     expect(toneColor("neutral").background).toBe("var(--dh-api-panel-2)");
-    expect(toneColor("success").background).toBe(
+    expect(toneColor("positive").background).toBe(
       "color-mix(in srgb, var(--dh-api-green) 12%, var(--dh-api-panel))",
     );
   });

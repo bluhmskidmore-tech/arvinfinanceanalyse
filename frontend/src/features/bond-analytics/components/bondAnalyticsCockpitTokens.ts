@@ -69,7 +69,7 @@ export function panelStyle(background?: string): CSSProperties {
 
 /** 语义 tone 面（DOM style 消费）：深色页走 --dh-api-* 语义链的暗底软色（DESIGN.md §2.2）。 */
 export function toneColor(tone: BondAnalyticsTruthTone) {
-  if (tone === "success") {
+  if (tone === "positive") {
     return {
       background: "color-mix(in srgb, var(--dh-api-green) 12%, var(--dh-api-panel))",
       color: "var(--dh-api-green)",
@@ -85,7 +85,7 @@ export function toneColor(tone: BondAnalyticsTruthTone) {
       accent: "var(--dh-api-amber)",
     };
   }
-  if (tone === "danger") {
+  if (tone === "negative") {
     return {
       background: "color-mix(in srgb, var(--dh-api-red) 12%, var(--dh-api-panel))",
       color: "var(--dh-api-red)",

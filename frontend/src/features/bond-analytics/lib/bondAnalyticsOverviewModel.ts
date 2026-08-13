@@ -1,4 +1,5 @@
 import type { ApiEnvelope, ResultMeta } from "../../../api/contracts";
+import type { LabeledValue, MetricTone } from "../../../pageModel";
 import type { PeriodType } from "../types";
 import type { ActionAttributionResponse } from "../types";
 import {
@@ -17,31 +18,35 @@ export type BondAnalyticsPromotionDestination =
   | "main-rail"
   | "readiness-only";
 
-export type BondAnalyticsTruthTone =
-  | "neutral"
-  | "success"
-  | "warning"
-  | "danger";
+/**
+ * 真值条 tone 直接采用共享 `MetricTone` 词汇（原本地 success/danger 已随迁为
+ * positive/negative，`bondAnalyticsCockpitTokens.toneColor` 的色面映射同步，
+ * 渲染不变）。保留导出名以兼容既有消费方 import。
+ */
+export type BondAnalyticsTruthTone = MetricTone;
 
-export interface BondAnalyticsTruthStripItem {
+/** 真值条条目复用共享 `LabeledValue` 词汇；`key` 收窄为本页真值面固定四槽。 */
+export type BondAnalyticsTruthStripItem = Required<
+  Pick<LabeledValue, "label" | "value" | "tone">
+> & {
   key: "basis" | "freshness" | "quality" | "coverage";
-  label: string;
-  value: string;
-  tone: BondAnalyticsTruthTone;
-}
+};
 
 export interface BondAnalyticsTruthStrip {
   title: string;
   items: BondAnalyticsTruthStripItem[];
 }
 
-export interface BondAnalyticsHeadlineTile {
+/**
+ * 头条瓦片复用共享 `LabeledValue` 词汇（`detail` 为次要说明行）；`caption`
+ * 是主值下方标签，`LabeledValue` 无对应槽位，同 bondTradingDesk 试点保留局部字段。
+ */
+export type BondAnalyticsHeadlineTile = Required<
+  Pick<LabeledValue, "label" | "value" | "detail">
+> & {
   key: BondAnalyticsModuleKey;
-  label: string;
-  value: string;
   caption: string;
-  detail: string;
-}
+};
 
 export interface BondAnalyticsReadinessItem {
   key: BondAnalyticsModuleKey;
@@ -188,10 +193,10 @@ function buildTruthStrip(
     meta?.quality_flag === "stale" ? "warning" : "neutral";
   const qualityTone =
     meta?.quality_flag === "ok" && meta?.fallback_mode === "none"
-      ? "success"
+      ? "positive"
       : meta
         ? "warning"
-        : "danger";
+        : "negative";
 
   return {
     title: "真值与证据",
@@ -200,7 +205,7 @@ function buildTruthStrip(
         key: "basis",
         label: "口径",
         value: formatBasis(meta),
-        tone: meta?.basis === "formal" ? "success" : "warning",
+        tone: meta?.basis === "formal" ? "positive" : "warning",
       },
       {
         key: "freshness",

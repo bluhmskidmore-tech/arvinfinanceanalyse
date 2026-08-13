@@ -1,12 +1,14 @@
 import type { ApiEnvelope, PnlByBusinessInsightsPayload } from "../../api/contracts";
-import { EM_DASH } from "../../utils/format";
+import { EM_DASH, pctOrDash, signedFixedOrDash, type LabeledValue } from "../../pageModel";
 
 export type PnlByBusinessInsightsLeadershipStatus = "loading" | "ready" | "review";
 
-export type PnlByBusinessInsightsLeadershipItem = {
+/**
+ * 领导结论条目复用共享 `LabeledValue` 词汇；`key` 收窄为本页四个固定事实位，
+ * `detail` 为必填，`rowKey`（下钻行锚点）是页面特有字段。
+ */
+export type PnlByBusinessInsightsLeadershipItem = Pick<LabeledValue, "label" | "value"> & {
   key: "concentration" | "negative_ftp" | "share_drift" | "scale_yield";
-  label: string;
-  value: string;
   detail: string;
   rowKey: string | null;
 };
@@ -36,16 +38,13 @@ function numberValue(value: string | null | undefined): number | null {
 }
 
 function pct(value: string | null | undefined, digits = 2): string {
-  const parsed = numberValue(value);
-  return parsed === null ? EM_DASH : `${parsed.toFixed(digits)}%`;
+  return pctOrDash(numberValue(value), digits);
 }
 
 function signedPp(value: string | null | undefined): string {
   const parsed = numberValue(value);
-  if (parsed === null) {
-    return EM_DASH;
-  }
-  return `${parsed > 0 ? "+" : ""}${parsed.toFixed(2)}pp`;
+  // 缺失时返回裸 EM_DASH（不是 "—pp"），故 null 守卫留在本包装内。
+  return parsed === null ? EM_DASH : `${signedFixedOrDash(parsed, 2)}pp`;
 }
 
 function reviewModel(reason: string, resolvedDate: string | null = null): PnlByBusinessInsightsLeadershipModel {

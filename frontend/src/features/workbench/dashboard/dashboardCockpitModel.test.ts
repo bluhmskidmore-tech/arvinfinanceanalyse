@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { BondPortfolioHeadlinesPayload, Numeric } from "../../../api/contracts";
+import { EM_DASH } from "../../../pageModel";
 import { buildRiskItems } from "./dashboardCockpitModel";
 
 function numeric(display: string, raw = 1): Numeric {
@@ -102,7 +103,7 @@ describe("buildRiskItems", () => {
       expect.objectContaining({
         id: "portfolio-risk-blocked",
         status: "blocked",
-        value: "—",
+        value: EM_DASH,
       }),
     ]);
   });
@@ -123,7 +124,7 @@ describe("buildRiskItems", () => {
       expect.objectContaining({
         id: "portfolio-risk-empty",
         status: "blocked",
-        value: "—",
+        value: EM_DASH,
       }),
     ]);
   });

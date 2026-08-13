@@ -8,7 +8,7 @@ function createTruthStrip(): BondAnalyticsTruthStrip {
   return {
     title: "真值与证据",
     items: [
-      { key: "basis", label: "口径", value: "正式口径", tone: "success" },
+      { key: "basis", label: "口径", value: "正式口径", tone: "positive" },
       { key: "freshness", label: "新鲜度", value: "2026-04-10 12:00", tone: "neutral" },
     ],
   };

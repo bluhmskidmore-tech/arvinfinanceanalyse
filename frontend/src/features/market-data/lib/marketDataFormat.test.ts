@@ -25,5 +25,7 @@ describe("formatPct", () => {
     expect(formatPct(null)).toBe(EM_DASH);
     expect(formatPct(undefined)).toBe(EM_DASH);
     expect(formatPct(Number.NaN)).toBe(EM_DASH);
+    // 委托 pageModel pctOrDash 后与共享基元对齐：非有限数也回退 EM_DASH。
+    expect(formatPct(Number.POSITIVE_INFINITY)).toBe(EM_DASH);
   });
 });

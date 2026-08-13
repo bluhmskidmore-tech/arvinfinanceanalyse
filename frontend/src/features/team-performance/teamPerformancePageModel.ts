@@ -8,7 +8,7 @@ import type {
   TeamPerformanceAssessmentWorkbookPayload,
   TeamPerformanceCenterPnlMapping,
 } from "../../api/contracts";
-import { EM_DASH } from "../../utils/format";
+import { EM_DASH } from "../../pageModel";
 
 const YUAN_PER_WAN = 10_000;
 const YUAN_PER_YI = 100_000_000;
@@ -160,6 +160,9 @@ function toNumber(value: string | number | null | undefined): number | null {
   return Number.isFinite(number) ? number : null;
 }
 
+// 本页金额/百分比展示为 zh-CN locale 语义（千分位分隔 + 去尾零，如 "12,345.68"、"60%"），
+// 与 `src/pageModel` 的 `fixedOrDash`/`pctOrDash`（toFixed，恒定小数位）语义不同，
+// 不能互换；缺失值语义（null → EM_DASH）由 teamPerformancePageModel.test.ts 锁定。
 function formatNumber(value: number | null, maximumFractionDigits = 2): string {
   if (value === null) {
     return EM_DASH;

@@ -9,12 +9,17 @@ import type {
   TeamPerformanceAssessmentWorkbookPayload,
 } from "../../api/contracts";
 import { buildMockTeamPerformanceAssessmentWorkbookPayload } from "../../api/teamPerformanceMockClient";
+import { EM_DASH } from "../../pageModel";
 import {
   type AssessmentIndicator2025,
   type CenterPnlMapping2025,
   Q1_CENTER_CALIBER_RULES,
   buildTeamPerformanceQ1CaliberModel,
   buildTeamPerformanceViewModel,
+  formatRatePct,
+  formatScore,
+  formatWanFromYuan,
+  formatYiFromYuan,
 } from "./teamPerformancePageModel";
 
 function assessmentIndicator(
@@ -745,5 +750,29 @@ describe("teamPerformancePageModel", () => {
     const labels = Q1_CENTER_CALIBER_RULES.map((rule) => rule.businessLabel);
 
     expect(labels).not.toEqual(expect.arrayContaining(["营收", "线性外推合计", "全年预测"]));
+  });
+});
+
+// 锁定本页格式化器的 zh-CN locale 语义（千分位 + 去尾零）与缺失值占位：
+// 这是它们不能替换为共享 `fixedOrDash`/`pctOrDash`（toFixed，恒定小数位）的原因。
+describe("teamPerformancePageModel display formatters", () => {
+  it("formats wan/yi amounts with zh-CN grouping and trimmed trailing zeros", () => {
+    expect(formatWanFromYuan(123_456_789)).toBe("12,345.68 万元");
+    expect(formatWanFromYuan(5_300_000)).toBe("530 万元");
+    expect(formatYiFromYuan(123_456_789)).toBe("1.23 亿元");
+    expect(formatYiFromYuan(800_000_000)).toBe("8 亿元");
+  });
+
+  it("renders missing amounts and rates as a bare em dash without unit suffix", () => {
+    expect(formatWanFromYuan(null)).toBe(EM_DASH);
+    expect(formatYiFromYuan(null)).toBe(EM_DASH);
+    expect(formatRatePct(null)).toBe(EM_DASH);
+  });
+
+  it("formats score rate as trimmed percentage and pending score with its own placeholder", () => {
+    expect(formatRatePct(0.6)).toBe("60%");
+    expect(formatRatePct(0.8567)).toBe("85.67%");
+    expect(formatScore(9)).toBe("9 分");
+    expect(formatScore(null)).toBe("待补分");
   });
 });

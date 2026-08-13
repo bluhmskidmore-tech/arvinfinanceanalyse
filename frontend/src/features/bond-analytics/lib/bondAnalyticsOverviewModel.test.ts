@@ -105,9 +105,28 @@ describe("buildBondAnalyticsOverviewModel", () => {
     expect(model.truthStrip.items.find((item) => item.key === "basis")?.value).toBe(
       "正式口径",
     );
+    expect(model.truthStrip.items.find((item) => item.key === "basis")?.tone).toBe(
+      "positive",
+    );
+    expect(
+      model.truthStrip.items.find((item) => item.key === "freshness")?.value,
+    ).toBe("2026-04-10 00:00");
+    expect(
+      model.truthStrip.items.find((item) => item.key === "quality")?.value,
+    ).toBe("正常");
+    expect(
+      model.truthStrip.items.find((item) => item.key === "quality")?.tone,
+    ).toBe("positive");
+    expect(
+      model.truthStrip.items.find((item) => item.key === "coverage")?.value,
+    ).toBe("仅动作归因");
     expect(model.headlineTiles).toHaveLength(1);
     expect(model.headlineTiles[0]?.key).toBe("action-attribution");
     expect(model.headlineTiles[0]?.value).toBe("4");
+    expect(model.headlineTiles[0]?.caption).toBe("动作数量");
+    expect(model.headlineTiles[0]?.detail).toBe(
+      `动作损益 ${yuan(1500000).display}`,
+    );
     expect(model.readinessItems).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -154,6 +173,9 @@ describe("buildBondAnalyticsOverviewModel", () => {
     });
 
     expect(model.headlineTiles).toHaveLength(0);
+    expect(
+      model.truthStrip.items.find((item) => item.key === "quality"),
+    ).toMatchObject({ value: "预警 / 降级", tone: "warning" });
     expect(model.readinessItems).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -166,7 +188,62 @@ describe("buildBondAnalyticsOverviewModel", () => {
     expect(model.topAnomalies).toEqual(
       expect.arrayContaining([
         expect.stringMatching(/最新快照降级/),
+        expect.stringMatching(/质量标记为预警/),
       ]),
+    );
+  });
+
+  it("locks the loading truth strip and loading readiness state", () => {
+    const model = buildBondAnalyticsOverviewModel({
+      reportDate: "2026-03-31",
+      periodType: "MoM",
+      activeModuleKey: "action-attribution",
+      actionAttributionLoading: true,
+    });
+
+    expect(model.truthStrip.items).toEqual([
+      { key: "basis", label: "口径", value: "加载中", tone: "neutral" },
+      { key: "freshness", label: "新鲜度", value: "加载中", tone: "neutral" },
+      { key: "quality", label: "质量", value: "加载中", tone: "neutral" },
+      { key: "coverage", label: "覆盖", value: "总览收窄", tone: "neutral" },
+    ]);
+    expect(model.headlineTiles).toHaveLength(0);
+    expect(model.topAnomalies).toEqual([]);
+    expect(model.readinessItems[0]).toMatchObject({
+      key: "action-attribution",
+      statusLabel: "loading",
+    });
+  });
+
+  it("marks quality as negative when no envelope evidence exists yet", () => {
+    const model = buildBondAnalyticsOverviewModel({
+      reportDate: "2026-03-31",
+      periodType: "MoM",
+      activeModuleKey: "action-attribution",
+      actionAttributionEnvelope: null,
+    });
+
+    expect(
+      model.truthStrip.items.find((item) => item.key === "quality"),
+    ).toMatchObject({ value: "未知", tone: "negative" });
+  });
+
+  it("locks vendor anomaly text and unknown-freshness fallback", () => {
+    const model = buildBondAnalyticsOverviewModel({
+      reportDate: "2026-03-31",
+      periodType: "MoM",
+      activeModuleKey: "action-attribution",
+      actionAttributionEnvelope: createActionAttributionEnvelope(
+        {},
+        { vendor_status: "vendor_stale", generated_at: "" },
+      ),
+    });
+
+    expect(
+      model.truthStrip.items.find((item) => item.key === "freshness")?.value,
+    ).toBe("未知");
+    expect(model.topAnomalies).toEqual(
+      expect.arrayContaining(["供应商状态为供应商数据陈旧。"]),
     );
   });
 

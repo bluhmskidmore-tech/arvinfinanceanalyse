@@ -7,18 +7,20 @@ import type {
   LedgerResponseMetadata,
   LedgerResponseTrace,
 } from "../../../api/ledgerClient";
-import { EM_DASH } from "../../../utils/format";
+import { EM_DASH, type LabeledValue } from "../../../pageModel";
 
 export type LedgerDirectionFilter = "ALL" | LedgerDirection;
 
-export type LedgerKpiCardModel = {
+/**
+ * KPI 卡复用共享 `LabeledValue` 词汇（本页 `detail` 必填）；
+ * `key` 收窄为本页三张卡的字面量，`direction` 为页面筛选联动字段。
+ */
+export type LedgerKpiCardModel = Required<Pick<LabeledValue, "label" | "value" | "detail">> & {
   key: "asset" | "liability" | "net";
-  label: string;
-  value: string;
-  detail: string;
   direction: LedgerDirectionFilter;
 };
 
+/** `tone` 是导入工作流状态词汇，不是共享 `MetricTone`（语义不同，勿迁）。 */
 export type LedgerImportPresentation = {
   label: string;
   tone: "pending" | "success" | "duplicate" | "failure";
@@ -40,6 +42,8 @@ export function ledgerImportStatusIsTerminal(status: LedgerImportStatus): boolea
   return status === "succeeded" || status === "duplicate" || status === "failed";
 }
 
+// 下面两个金额格式化器刻意不用共享 `fixedOrDash`：缺失时返回不带币种后缀的
+// 裸 EM_DASH（后缀条件化），且 formatLedgerYuanAmount 需要 Intl 千分位。
 export function formatLedgerYiAmount(value: number | null | undefined, currency: string): string {
   if (value === null || value === undefined || Number.isNaN(value)) {
     return EM_DASH;
