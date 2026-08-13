@@ -179,7 +179,10 @@ describe("PositionsView", () => {
     expect(boundary).toHaveTextContent("MTR-POS-001");
     expect(boundary).toHaveTextContent("MTR-POS-002");
     expect(boundary).toHaveTextContent("pending_confirmation=true");
-    expect(boundary).toHaveTextContent("bound_sample_id=none");
+    expect(boundary).toHaveTextContent(
+      "bound_sample_id=GS-POSITIONS-BONDS-LIST-A / GS-POSITIONS-INTERBANK-LIST-A",
+    );
+    expect(boundary).not.toHaveTextContent("bound_sample_id=none");
   });
 
   it("renders duplicate bond codes without duplicate React row-key warnings", async () => {

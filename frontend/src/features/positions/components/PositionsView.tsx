@@ -432,7 +432,7 @@ export default function PositionsView() {
         {/* 指标边界属证据层：治理必显但视觉降权为一行说明，不做告警盒（§6 溯源分层）。 */}
         <p data-testid="positions-list-candidate-boundary" className="positions-view__candidate-boundary">
           <strong>持仓列表指标边界</strong>
-          GAP-POS-LIST 尚未关闭；MTR-POS-001、MTR-POS-002 仍为 candidate，pending_confirmation=true，bound_sample_id=none。
+          GAP-POS-LIST 尚未关闭；MTR-POS-001、MTR-POS-002 仍为 candidate，pending_confirmation=true，bound_sample_id=GS-POSITIONS-BONDS-LIST-A / GS-POSITIONS-INTERBANK-LIST-A（capture-ready，待业主审批）。
         </p>
         <div data-testid="positions-data-status" className="positions-view__caliber">
           {caliberItems.map((item, index) => (

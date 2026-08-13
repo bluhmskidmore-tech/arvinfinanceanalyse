@@ -34,6 +34,8 @@ LEDGER_PNL_SAMPLE_PATHS = {"/api/ledger-pnl/summary"}
 LEDGER_PNL_READ_HEADERS = {"X-User-Id": "ledger-pnl-read-user", "X-User-Role": "viewer"}
 CASHFLOW_PROJECTION_SAMPLE_PATHS = {"/api/cashflow-projection"}
 CASHFLOW_PROJECTION_READ_HEADERS = {"X-User-Id": "cashflow-projection-read-user", "X-User-Role": "viewer"}
+POSITIONS_SAMPLE_PATHS = {"/api/positions/bonds", "/api/positions/interbank"}
+POSITIONS_READ_HEADERS = {"X-User-Id": "positions-read-user", "X-User-Role": "viewer"}
 PNL_SAMPLE_PATHS = {"/api/pnl/bridge", "/api/pnl/data", "/api/pnl/overview"}
 PNL_READ_HEADERS = {"X-User-Id": "pnl-read-user", "X-User-Role": "viewer"}
 PNL_BUSINESS_INSIGHTS_SAMPLE_PATHS = {
@@ -101,6 +103,7 @@ def _clear_runtime_modules() -> None:
         "backend.app.api.routes.balance_analysis",
         "backend.app.api.routes.executive",
         "backend.app.api.routes.pnl",
+        "backend.app.api.routes.positions",
         "backend.app.api.routes.product_category_pnl",
         "backend.app.api.routes.risk_tensor",
         "backend.app.services.balance_analysis_service",
@@ -108,6 +111,7 @@ def _clear_runtime_modules() -> None:
         "backend.app.services.pnl_service",
         "backend.app.services.pnl_bridge_service",
         "backend.app.services.pnl_by_business_candidate_insights",
+        "backend.app.services.positions_service",
         "backend.app.services.product_category_pnl_service",
         "backend.app.services.risk_tensor_service",
         "backend.app.tasks.product_category_pnl",
@@ -1569,6 +1573,17 @@ def _setup_cashflow_projection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     )
 
 
+def _setup_positions_lists(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    contract_mod = load_module(
+        "tests._golden_positions_api",
+        "tests/test_positions_api_contract.py",
+    )
+    duckdb_path = tmp_path / "positions-golden.duckdb"
+    contract_mod._seed_positions_db(duckdb_path)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+
 def _run_sample_request(sample_id: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     request = _load_json(sample_id, "request.json")
     if sample_id == "GS-BOND-ANALYSIS-ACTION-ATTR-A":
@@ -1735,6 +1750,14 @@ def _run_request_payload(
             resource="cashflow_projection",
         )
         headers = CASHFLOW_PROJECTION_READ_HEADERS
+    elif request["path"] in POSITIONS_SAMPLE_PATHS:
+        _grant_sample_read_scope(
+            tmp_path,
+            monkeypatch,
+            db_name="positions-read-scope.db",
+            resource="positions",
+        )
+        headers = POSITIONS_READ_HEADERS
     elif request["path"] in PNL_SAMPLE_PATHS:
         _grant_sample_read_scope(
             tmp_path,
@@ -2616,6 +2639,39 @@ def _validate_pnl_business_insights(actual: dict[str, Any], expected: dict[str, 
     )
 
 
+def _validate_positions_list(actual: dict[str, Any], expected: dict[str, Any]) -> None:
+    _assert_paths_equal(
+        actual,
+        expected,
+        [
+            ("result_meta", "basis"),
+            ("result_meta", "result_kind"),
+            ("result_meta", "formal_use_allowed"),
+            ("result_meta", "source_version"),
+            ("result_meta", "vendor_version"),
+            ("result_meta", "rule_version"),
+            ("result_meta", "cache_version"),
+            ("result_meta", "quality_flag"),
+            ("result_meta", "vendor_status"),
+            ("result_meta", "fallback_mode"),
+            ("result_meta", "scenario_flag"),
+            ("result_meta", "requested_report_date"),
+            ("result_meta", "resolved_report_date"),
+            ("result_meta", "as_of_date"),
+            ("result_meta", "date_basis"),
+            ("result_meta", "filters_applied"),
+            ("result_meta", "tables_used"),
+            ("result_meta", "evidence_rows"),
+            ("result", "items"),
+            ("result", "total"),
+            ("result", "page"),
+            ("result", "page_size"),
+        ],
+    )
+    # MTR-POS-001 / MTR-POS-002 record-count anchor: evidence_rows == total.
+    assert actual["result_meta"]["evidence_rows"] == actual["result"]["total"]
+
+
 @dataclass(frozen=True)
 class CaptureReadyCase:
     setup: Any
@@ -2676,6 +2732,14 @@ CAPTURE_READY_CASES: dict[str, CaptureReadyCase] = {
     "GS-PNL-BUSINESS-INSIGHTS-A": CaptureReadyCase(
         setup=_setup_pnl_business_insights,
         validator=_validate_pnl_business_insights,
+    ),
+    "GS-POSITIONS-BONDS-LIST-A": CaptureReadyCase(
+        setup=_setup_positions_lists,
+        validator=_validate_positions_list,
+    ),
+    "GS-POSITIONS-INTERBANK-LIST-A": CaptureReadyCase(
+        setup=_setup_positions_lists,
+        validator=_validate_positions_list,
     ),
 }
 

@@ -249,7 +249,7 @@ Contract state note:
 | `MTR-RSK-006` | KRD 10Y | business | `formal` | `krd_10y` | `/risk-tensor` | 数值字符串 | 同上 | `tests/test_risk_tensor_api.py` |
 | `MTR-RSK-007` | KRD 30Y | business | `formal` | `krd_30y` | `/risk-tensor` | 数值字符串 | 同上 | `tests/test_risk_tensor_api.py` |
 | `MTR-RSK-008` | CS01 | business | `formal` | `cs01` | `/risk-tensor` | 数值字符串 | 同上 | `tests/test_risk_tensor_api.py` |
-| `MTR-RSK-009` | 组合凸性 | business | `formal` | `portfolio_convexity` | `/risk-tensor` | 数值字符串 | 同上 | `tests/test_risk_tensor_api.py` |
+| `MTR-RSK-009` | 组合凸性 | business | `formal` | `portfolio_convexity`；上游 `fact_formal_bond_analytics_daily.convexity`，按 duration 分母行做市值加权 | `/risk-tensor` | 数值字符串；单位年² | 同上；口径自 `rv_risk_tensor_formal_materialize_v6` / `rv_bond_analytics_formal_materialize_v2`（W-fi-2026-08 P4）起为**标准现金流凸性** `C = Σ[CF_k·k(k+1)/(1+y/f)^(k+2)]/(P·f²)`，折现按付息频率复利；此前为久期型近似 `D(D+1)/(1+y/f)²`（`y<=0` 特判 `D²`），live 组合层 +10.19%。详见 `docs/calc_rules.md` "Convexity single-caliber baseline" | `tests/test_risk_tensor_api.py`; `tests/test_convexity_caliber_baseline.py` |
 | `MTR-RSK-010` | 修正久期 | business | `formal` | `portfolio_modified_duration` | `/risk-tensor` | 数值字符串 | 同上 | `tests/test_risk_tensor_api.py` |
 | `MTR-RSK-011` | 发行人集中度 HHI | business | `formal` | `issuer_concentration_hhi` | `/risk-tensor` | 数值字符串 | 同上 | `tests/test_risk_tensor_liquidity.py` |
 | `MTR-RSK-012` | 前五发行人占比 | business | `formal` | `issuer_top5_weight` | `/risk-tensor` | 比率型字符串 | 同上 | `tests/test_risk_tensor_liquidity.py` |
@@ -365,8 +365,9 @@ MTR-RSK-001 fixed-income convention note:
 | `MTR-PAT-305` | Campisi 收入效应金额 | business | `formal` | `CampisiResult.totals.income_return` / 行级 `income_return` | `/api/pnl-attribution/campisi/four-effects` | CNY 金额原值，页面可按亿元展示；字段不可为 null | `report_date=period_end`，起止日使用已解析的 formal 快照；空人口返回 0 并伴随 warning，不得解释为真实零贡献；仅由 `core_finance` / formal attribution 服务计算 | `tests/test_campisi_attribution_service.py` |
 | `MTR-PAT-306` | Campisi 国债曲线效应金额 | business | `formal` | `CampisiResult.totals.treasury_effect` / 行级 `treasury_effect` | `/api/pnl-attribution/campisi/four-effects` | CNY 金额原值，页面可按亿元展示；字段不可为 null | 日期边界同 `MTR-PAT-305`；共同期限不足 2 个或久期不可算时退化为 0，并通过 warning / diagnostics 披露；前端不得重算 | `tests/test_campisi_formula_golden.py` |
 | `MTR-PAT-307` | Campisi 信用利差效应金额 | business | `formal` | `CampisiResult.totals.spread_effect` / 行级 `spread_effect` | `/api/pnl-attribution/campisi/four-effects` | CNY 金额原值，页面可按亿元展示；字段不可为 null | 日期边界同 `MTR-PAT-305`；评级对应的期初或期末 3Y 利差不可用时退化为 0 并披露 warning；前端不得重算 | `tests/test_campisi_formula_golden.py` |
-| `MTR-PAT-308` | Campisi 选择效应金额 | business | `formal` | `CampisiResult.totals.selection_effect` / 行级 `selection_effect` | `/api/pnl-attribution/campisi/four-effects` | CNY 金额原值，页面可按亿元展示；字段不可为 null | 日期边界同 `MTR-PAT-305`；按单券总回报减收入、国债曲线和信用利差后的闭合残差计算，AC 人口为 0；前端不得反推 | `tests/test_campisi_formula_golden.py` |
-| `MTR-PAT-309` | Campisi 四效应合计金额 | business | `formal` | `CampisiResult.totals.total_return` / 行级 `total_return` | `/api/pnl-attribution/campisi/four-effects` | CNY 金额原值，页面可按亿元展示；字段不可为 null | `report_date=period_end`，且等于四效应金额之和；空人口返回 0 + warning，formal 闭合状态另见 `formal_closure`，不得以本字段替代正式 PnL | `tests/test_campisi_attribution_service.py` |
+| `MTR-PAT-308` | Campisi 选择效应金额 | business | `formal` | `CampisiResult.totals.selection_effect` / 行级 `selection_effect` | `/api/pnl-attribution/campisi/four-effects` | CNY 金额原值，页面可按亿元展示；字段不可为 null | 日期边界同 `MTR-PAT-305`；**model 路径**：单券 `total_return` 减 `income_return / treasury_effect / spread_effect` 的曲线分解闭合残差；**formal-bridge 路径**（`basis=formal_report_pnl_bridge`）：`total_return` 减 income、treasury、spread、`realized_trading`、`manual_adjustment`、`fx_translation`（enhanced 再减 convexity/cross/reinvestment，但 bridge 一阶分解框架不拆这三项，它们恒为未拆分的 0，其贡献留在本字段内，并由 `effect_availability` 的 `status="not_decomposed"` 条目显式披露）后的 bridge 残差，与 pnl_bridge `residual` 同口径；AC 人口为 0；语义差异见 payload `decomposition_basis`；前端不得反推 | `tests/test_campisi_formula_golden.py`、`tests/test_campisi_attribution_service.py` |
+| `MTR-PAT-309` | Campisi 合计回报金额 | business | `formal` | `CampisiResult.totals.total_return` / 行级 `total_return` | `/api/pnl-attribution/campisi/four-effects` | CNY 金额原值，页面可按亿元展示；字段不可为 null | `report_date=period_end`；**model 路径**：等于四效应（enhanced 为六效应）金额之和；**formal-bridge 路径**：等于七项金额之和（income + treasury + spread + realized_trading + manual_adjustment + fx_translation + selection；enhanced 再加 convexity/cross/reinvestment，该路径这三项恒为未拆分的 0，不改变合计）；空人口返回 0 + warning，formal 闭合状态另见 `formal_closure`，不得以本字段替代正式 PnL | `tests/test_campisi_attribution_service.py` |
+| `MTR-PAT-310` | Campisi 决策级窗口口径 | quality | `formal` | `CampisiDecisionGradePayload.pnl_window / curve_window / window_disclosure`，`residual_diagnostics.stale_curve_fallback_count / stale_curve_discarded_count` | `/api/pnl-attribution/campisi/decision-grade` | `pnl_window.kind="monthly_period"`（`fact_formal_pnl_fi` 一行是 `anchor_end` 报告月的**月度期间流量**，`start` = 报告月首日，不是单日流量）；`curve_window.kind="curve_displacement"` | **窗口对齐**：默认路径（无 `start_date`）期初锚定 `anchor_end` 报告月**上月末**距离最近的持仓观测日，曲线请求日随之；`lookback_days` 已废弃、不参与推导；显式传 `start_date/end_date` 时解析语义与历史一致。**曲线陈旧守卫**：解析出的曲线日期偏离窗口目标端点 **>7 天**时该侧曲线按缺失处理（进入 `residual_noise` 并显式披露，不静默采用）；7 天依据：月末曲线观测常提前 1-2 个交易日（如 08-29 代 08-31）属正常，而跳月错位至少偏约一个月（≥28 天）必被拦截。**披露分级**：曲线陈旧弃用 / 国债曲线整侧缺失 / `curve_window` 跨度 >45 天任一触发 `warning`，否则 `info`；分级不再仅由窗口天数驱动 | `tests/test_campisi_decision_grade_window_disclosure.py` |
 
 ## 12. 当前缺口清单
 
@@ -399,7 +400,7 @@ MTR-RSK-001 fixed-income convention note:
 
 当前状态：
 
-- §12.4 已补首版 `sample_scope` 矩阵，覆盖当前 25 个 capture-ready 样本包。
+- §12.4 已补首版 `sample_scope` 矩阵，覆盖当前 27 个 capture-ready 样本包。
 - 该矩阵只使用本文件已有 `metric_id`，不新增或猜测产品分类指标。
 - 仍有部分样本是结构 / warning / narrative freeze，不等同于完整指标字典冻结。
 
@@ -625,6 +626,8 @@ Guardrails：
 | `GS-EXEC-SUMMARY-A` | `PAGE-EXEC-SUMMARY-001` / `/ui/home/summary` | 无；本样本为 narrative-only，不进入业务指标字典主表 | `title`、`points.length`、point labels 为 narrative contract truth | `tests/test_executive_service_contract.py`; `tests/test_executive_dashboard_endpoints.py`; `tests/test_golden_samples_capture_ready.py` |
 | `GS-PROD-CAT-PNL-A` | `PAGE-PROD-CAT-PNL-001` / `/ui/pnl/product-category` | `MTR-PCP-001`, `MTR-PCP-002`, `MTR-PCP-003`, `MTR-PCP-004`, `MTR-PCP-005`, `MTR-PCP-006`, `MTR-PCP-007`, `MTR-PCP-008`, `MTR-PCP-009`, `MTR-PCP-010`, `MTR-PCP-011`, `MTR-PCP-012`, `MTR-PCP-013`~`MTR-PCP-029` | category tree, dimensions, `result_meta`, and companion scenario probe remain page/sample truth; 3C detail metric rows bind only approved backend-owned row fields; `MTR-PCP-013`~`MTR-PCP-029` bind the `interest_spread` / `interest_earning_spread` / `liability_cost_decomposition` payload sections, and the sample's synthetic liability sign profile is structural evidence only, not production caliber certification | `tests/test_product_category_pnl_flow.py`; `tests/test_product_category_mapping_contract.py`; `tests/test_golden_samples_capture_ready.py`; `tests/test_interest_spread_metric_governance_contract.py`; `frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.test.ts` |
 | `GS-PNL-BUSINESS-INSIGHTS-A` | `PAGE-PNL-BY-BUSINESS-001` / `GET /api/pnl/by-business-insights` | `MTR-PNLBIZ-001`~`MTR-PNLBIZ-007` | Approved formal formula/DTO evidence dated `2026-07-15`; Owner=`组合管理/固收业务分析`, Approver=`财务管理/资产负债管理`. The sample verifies the governed derived formulas, field shape, units, minimum-observation rules, component evidence, and diagnostic separation; it is not evidence that the underlying source PnL or balance facts are independently correct. `MTR-PNLBIZ-006` remains diagnostic-only. This approval does not create a concentration limit or a new FTP rate caliber. | `tests/test_pnl_by_business_insights_contract.py`; `tests/test_pnl_by_business_candidate_insights_contract.py`; `tests/test_golden_samples_capture_ready.py`; `tests/golden_samples/GS-PNL-BUSINESS-INSIGHTS-A/approval.md` |
+| `GS-POSITIONS-BONDS-LIST-A` | `PAGE-POS-001` / `GET /api/positions/bonds` | `MTR-POS-001` | Positions bonds candidate list DTO, analytical `result_meta`, report-date binding, default `include_issued=false` issuance-like exclusion, and `total==evidence_rows` record-count anchor are sample truth; `formal_use_allowed=false` retained; it does not close `GAP-POS-LIST` or approve formal balance/PnL/risk truth, governance closure, manual audit, or owner approval | `tests/test_positions_api_contract.py`; `tests/test_golden_samples_capture_ready.py`; `frontend/src/test/PositionsView.test.tsx` |
+| `GS-POSITIONS-INTERBANK-LIST-A` | `PAGE-POS-001` / `GET /api/positions/interbank` | `MTR-POS-002` | Positions interbank candidate list DTO, analytical `result_meta`, single-report-date slice semantics, and `total==evidence_rows` record-count anchor are sample truth; `formal_use_allowed=false` retained; it does not close `GAP-POS-LIST` or approve formal balance/liability/PnL/risk truth, governance closure, manual audit, or owner approval | `tests/test_positions_api_contract.py`; `tests/test_golden_samples_capture_ready.py`; `frontend/src/test/PositionsView.test.tsx` |
 
 ### 12.5 Wave 1 工作台页面绑定（route → page_id → metric_id → sample_id → 测试）
 
@@ -672,14 +675,14 @@ Guardrails：
 - 本次会话未提供 `moss-metric-contracts`、`moss-lineage-evidence`、`moss-data-catalog` MCP；以下条目仅依据仓库内可读证据：`docs/page_contracts.md`、`docs/calc_rules.md`、`docs/data_contracts.md`、页面 `pages/*.tsx` / adapter / client、`backend/app/schemas/*.py`、相关 route。
 - `status=candidate` 表示页面首屏已显示、字段可追溯到 live endpoint，但 page contract / golden sample / 业务审批闭环仍未完成；因此统一保留 `pending_confirmation=true`。
 - `status=excluded` 表示当前页面虽展示该卡片，但它是过滤上下文、文本状态、workbook-local 汇总、或 analytical-only / mixed-source 说明面，不在本次补录中升格为正式 `MTR-*`。
-- This section must not treat capture-ready samples as formal approval; besides `GS-BOND-HEADLINE-A`, `GS-AVERAGE-BALANCE-A`, `GS-AVERAGE-BALANCE-MONTHLY-A`, `GS-LEDGER-PNL-SUMMARY-A`, `GS-CASHFLOW-PROJECTION-A`, `GS-CONCENTRATION-MONITOR-A`, `GS-PNL-BUSINESS-INSIGHTS-A`, and existing `GS-PROD-CAT-PNL-A`, no additional `bound_sample_id` is added.
+- This section must not treat capture-ready samples as formal approval; besides `GS-BOND-HEADLINE-A`, `GS-AVERAGE-BALANCE-A`, `GS-AVERAGE-BALANCE-MONTHLY-A`, `GS-LEDGER-PNL-SUMMARY-A`, `GS-CASHFLOW-PROJECTION-A`, `GS-CONCENTRATION-MONITOR-A`, `GS-PNL-BUSINESS-INSIGHTS-A`, `GS-POSITIONS-BONDS-LIST-A`, `GS-POSITIONS-INTERBANK-LIST-A`, and existing `GS-PROD-CAT-PNL-A`, no additional `bound_sample_id` is added.
 
 ### 15.1 页面覆盖矩阵
 
 | page | headline 处理方式 | route / bound page | sample 绑定 | 备注 |
 | --- | --- | --- | --- | --- |
 | `bond-dashboard` | 新增 4 条 `candidate`：`MTR-BOND-001`~`MTR-BOND-004` | `PAGE-BOND-001` | `GS-BOND-HEADLINE-A` | 页面 headline DTO 已 freeze，但 §12.5 仍将字典级批准视为 gap，因此保留 `pending_confirmation=true` |
-| `positions` | 新增 2 条 `candidate`：`MTR-POS-001`~`MTR-POS-002` | `PAGE-POS-001` | `none` | 首屏当前是筛选上下文；本次只登记两个列表总数指标 |
+| `positions` | 新增 2 条 `candidate`：`MTR-POS-001`~`MTR-POS-002` | `PAGE-POS-001` | `MTR-POS-001` -> `GS-POSITIONS-BONDS-LIST-A`; `MTR-POS-002` -> `GS-POSITIONS-INTERBANK-LIST-A` | 两个列表 DTO 样本已 capture-ready 但未审批；两条记录数指标仍为 candidate，`GAP-POS-LIST` 保持开放直至业主审批 |
 | `average-balance` | 3 candidate rows: `MTR-ADB-001`~`MTR-ADB-003` | `PAGE-ADB-001` | `MTR-ADB-001`/`MTR-ADB-002` -> `GS-AVERAGE-BALANCE-A`; `MTR-ADB-003` -> `GS-AVERAGE-BALANCE-MONTHLY-A` | daily and monthly DTO samples are capture-ready but not approved; all ADB metrics remain candidate and must not be promoted to formal use |
 | `ledger-pnl` | 新增 3 条 `candidate`：`MTR-LPN-001`~`MTR-LPN-003` | `PAGE-LEDGER-PNL-001` | `GS-LEDGER-PNL-SUMMARY-A` | dedicated summary DTO 已 capture-ready 但未审批；三条 summary 卡仍为 candidate，不能替代 formal PnL 或 product-category PnL |
 | `market-data` | 新增 1 条 `candidate`：`MTR-MKT-001` | `PAGE-MKT-001` | `none` | 仅登记宏观目录数 candidate；formal rates 片段不在本表升格为新的 formal `MTR-*` |
@@ -703,8 +706,8 @@ Guardrails：
 
 #### 15.2.2 `positions`
 
-- `MTR-POS-001` 债券持仓记录数: `status=candidate`; `display_unit=条`; `precision=0`; `sign_rule=unsigned integer count`; `null_rule=null -> --`; `source_endpoint=GET /api/positions/bonds`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-POS-001`; `bound_sample_id=none`; `pending_confirmation=true`.
-- `MTR-POS-002` 同业持仓记录数: `status=candidate`; `display_unit=条`; `precision=0`; `sign_rule=unsigned integer count`; `null_rule=null -> --`; `source_endpoint=GET /api/positions/interbank`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-POS-001`; `bound_sample_id=none`; `pending_confirmation=true`.
+- `MTR-POS-001` 债券持仓记录数: `status=candidate`; `display_unit=条`; `precision=0`; `sign_rule=unsigned integer count`; `null_rule=null -> --`; `source_endpoint=GET /api/positions/bonds`; `owner=TBD`; `last_reviewed=2026-08-13`; `bound_page_id=PAGE-POS-001`; `bound_sample_id=GS-POSITIONS-BONDS-LIST-A`; `pending_confirmation=true`.
+- `MTR-POS-002` 同业持仓记录数: `status=candidate`; `display_unit=条`; `precision=0`; `sign_rule=unsigned integer count`; `null_rule=null -> --`; `source_endpoint=GET /api/positions/interbank`; `owner=TBD`; `last_reviewed=2026-08-13`; `bound_page_id=PAGE-POS-001`; `bound_sample_id=GS-POSITIONS-INTERBANK-LIST-A`; `pending_confirmation=true`.
 
 #### 15.2.3 `average-balance`
 

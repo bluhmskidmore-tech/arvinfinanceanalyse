@@ -1131,7 +1131,7 @@ def test_metric_contracts_mcp_exposes_contract_docs() -> None:
             "backend/app/services/positions_service.py",
             "frontend/src/features/positions/components/PositionsView.tsx",
             "tests/test_positions_api_contract.py",
-            "NO_DEDICATED_GOLDEN_SAMPLE",
+            "tests/golden_samples/GS-POSITIONS-BONDS-LIST-A",
             "GAP-POS-LIST",
             "PAGE-POS-001",
         ),
@@ -1844,7 +1844,7 @@ def test_balance_movement_trace_bundle_preserves_movement_explanation_boundaries
         assert any("MTR-BMV-001" in item for item in payload["truth_chain"])
         assert any("MTR-BMV-004" in item for item in payload["truth_chain"])
         assert any("AccountingAssetMovementPayload" in item for item in payload["truth_chain"])
-        assert any("rv_accounting_asset_movement_v2" in item for item in payload["truth_chain"])
+        assert any("rv_accounting_asset_movement_v3" in item for item in payload["truth_chain"])
         assert any("formal balance truth" in item for item in payload["guardrails"])
         assert any("selected report dates" in item for item in payload["guardrails"])
         assert any("demo rows" in item for item in payload["guardrails"])
@@ -2047,14 +2047,20 @@ def test_positions_trace_bundle_preserves_list_candidate_and_dual_date_boundarie
         assert "/api/positions/stats/rating" in payload["supporting_apis"]
         assert "/api/positions/customer/details" in payload["supporting_apis"]
         assert "GET /ui/balance-analysis/dates" in payload["truth_chain"]
-        assert payload["golden_samples"] == []
+        assert payload["golden_samples"] == [
+            "tests/golden_samples/GS-POSITIONS-BONDS-LIST-A",
+            "tests/golden_samples/GS-POSITIONS-INTERBANK-LIST-A",
+        ]
         assert any("MTR-POS-001" in item for item in payload["truth_chain"])
         assert any("MTR-POS-002" in item for item in payload["truth_chain"])
         assert any("GAP-POS-LIST" in item for item in payload["truth_chain"])
+        assert any("GS-POSITIONS-BONDS-LIST-A" in item for item in payload["truth_chain"])
+        assert any("GS-POSITIONS-INTERBANK-LIST-A" in item for item in payload["truth_chain"])
         assert any("BondPositionsPageResponse" in item for item in payload["truth_chain"])
         assert any("InterbankPositionsPageResponse" in item for item in payload["truth_chain"])
         assert any("pending_confirmation=true" in item for item in payload["guardrails"])
-        assert any("bound_sample_id=none" in item for item in payload["guardrails"])
+        assert any("captured-awaiting-approval" in item for item in payload["guardrails"])
+        assert not any("bound_sample_id=none" in item for item in payload["guardrails"])
         assert any("balance-analysis dates" in item for item in payload["guardrails"])
         assert any("formal PnL" in item for item in payload["guardrails"])
         assert any("frontend" in item for item in payload["guardrails"])
@@ -2338,10 +2344,13 @@ def test_metric_contracts_evidence_readiness_matrix_flags_candidate_pages_withou
 
         positions = rows["PAGE-POS-001"]
         assert positions["formal_use_allowed"] is False
-        assert positions["checks"]["golden_sample"]["status"] == "missing"
+        assert positions["approval_status"] == "candidate_or_pending"
+        assert positions["checks"]["golden_sample"]["status"] == "page_dto_only"
+        assert "tests/golden_samples/GS-POSITIONS-BONDS-LIST-A" in positions["checks"]["golden_sample"]["anchors"]
+        assert "tests/golden_samples/GS-POSITIONS-INTERBANK-LIST-A" in positions["checks"]["golden_sample"]["anchors"]
         assert any("MTR-POS-001" in anchor for anchor in positions["checks"]["lineage_mapping"]["anchors"])
         assert any("zqtz_bond_daily_snapshot" in anchor for anchor in positions["checks"]["catalog_date"]["anchors"])
-        assert any("dedicated golden sample" in gap for gap in positions["residual_gaps"])
+        assert any("dictionary-level approval" in gap for gap in positions["residual_gaps"])
 
         market = rows["PAGE-MKT-001"]
         assert market["formal_use_allowed"] is False
@@ -9665,7 +9674,7 @@ def test_lineage_evidence_mcp_maps_balance_movement_page_to_movement_records(tmp
                 "cache_version": "cv_accounting_asset_movement_v1",
                 "result_kind_family": "balance-analysis.movement",
                 "module_name": "accounting_asset_movement",
-                "rule_version": "rv_accounting_asset_movement_v2",
+                "rule_version": "rv_accounting_asset_movement_v3",
                 "fact_tables": ["fact_accounting_asset_movement_monthly"],
                 "input_sources": ["fact_formal_zqtz_balance_daily"],
                 "created_at": "2026-04-12T14:31:38.517141Z",
@@ -9694,7 +9703,7 @@ def test_lineage_evidence_mcp_maps_balance_movement_page_to_movement_records(tmp
         assert "accounting_asset_movement" in found_payload["expanded_queries"]
         assert "fact_accounting_asset_movement_monthly" in found_payload["expanded_queries"]
         assert "fact_formal_zqtz_balance_daily" in found_payload["expanded_queries"]
-        assert "rv_accounting_asset_movement_v2" in found_payload["expanded_queries"]
+        assert "rv_accounting_asset_movement_v3" in found_payload["expanded_queries"]
         assert "AccountingAssetMovementPayload" in found_payload["expanded_queries"]
         assert "MTR-BMV-001" in found_payload["expanded_queries"]
         assert "MTR-BMV-004" in found_payload["expanded_queries"]
@@ -9794,8 +9803,8 @@ def test_lineage_evidence_mcp_maps_bond_dashboard_page_to_candidate_bond_analyti
                 "basis": "analytical",
                 "tables_used": ["fact_formal_bond_analytics_daily"],
                 "golden_sample": "GS-BOND-HEADLINE-A",
-                "rule_version": "rv_bond_analytics_formal_materialize_v1",
-                "cache_version": "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v1",
+                "rule_version": "rv_bond_analytics_formal_materialize_v2",
+                "cache_version": "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v2",
                 "created_at": "2026-04-12T14:31:38.517141Z",
             }
         )

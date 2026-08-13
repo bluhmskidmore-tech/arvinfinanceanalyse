@@ -18,7 +18,7 @@
 ## 2.1 已经具备的样本基础
 
 - `tests/test_golden_samples_capture_ready.py` 已经存在，并且会校验每个样本目录下的 `request.json`、`response.json`、`assertions.md`、`approval.md`。
-- `tests/golden_samples/` 已经存在 **26** 个样本包（其中 24 个使用通用 endpoint replay、1 个使用专用复合快照 replay、1 个为 supporting-only）：
+- `tests/golden_samples/` 已经存在 **28** 个样本包（其中 26 个使用通用 endpoint replay、1 个使用专用复合快照 replay、1 个为 supporting-only）：
   - `GS-BAL-OVERVIEW-A`
   - `GS-BAL-WORKBOOK-A`
   - `GS-PNL-OVERVIEW-A`
@@ -44,6 +44,8 @@
   - `GS-BANK-LEDGER-CLASSIFICATION-A`
   - `GS-CASHFLOW-PROJECTION-A`
   - `GS-PNL-BUSINESS-INSIGHTS-A`
+  - `GS-POSITIONS-BONDS-LIST-A`
+  - `GS-POSITIONS-INTERBANK-LIST-A`
   - `GS-PORTFOLIO-HOME-A`（supporting-only，不进入 capture-ready 矩阵）
 - `scripts/backend_release_suite.py` 已经把 `tests/test_golden_samples_capture_ready.py` 纳入固定 release suite。
 
@@ -110,6 +112,8 @@
 | `GS-LEDGER-PNL-NET-INTEREST-202606-A` | `GET period-comparison` + four component-detail reads | 已有样本包 | `tests/test_ledger_pnl_net_interest_golden_sample.py` + `tests/test_golden_samples_capture_ready.py` + synthetic replay fixture + 样本目录 | 冻结三期总账源锁、净息四类贡献、11 位科目行集指纹与勾稽；clean CI 必跑 synthetic production-chain replay，真实工作簿 replay 为附加检查；保持 candidate-only / `formal_use_allowed=false` / awaiting owner approval |
 | `GS-BANK-LEDGER-CLASSIFICATION-A` | `GET /api/ledger/dashboard` | 已有样本包 | `tests/test_golden_samples_capture_ready.py` + 样本目录 | 冻结 Bank Ledger v2 分类矩阵、亿元单位、覆盖率和日期元数据；保持 `formal_use_allowed=false` / pending owner approval |
 | `GS-PNL-BUSINESS-INSIGHTS-A` | `GET /api/pnl/by-business-insights` | 已有样本包 | `tests/test_pnl_by_business_insights_contract.py` + `tests/test_golden_samples_capture_ready.py` + 样本目录 | 冻结已批准的正式 business-insights DTO；`formal_use_allowed=true`，并保留精确日期、质量、fallback、正式源准入与诊断可用性的失效关闭约束 |
+| `GS-POSITIONS-BONDS-LIST-A` | `GET /api/positions/bonds` | 已有样本包 | `tests/test_positions_api_contract.py` + `tests/test_golden_samples_capture_ready.py` + `tests/golden_samples/GS-POSITIONS-BONDS-LIST-A/` + capture-ready | 冻结 `/positions` 债券持仓 candidate list DTO 与 `MTR-POS-001` 记录数锚点（`total==evidence_rows`）；保持 candidate-only / `formal_use_allowed=false`，不关闭 `GAP-POS-LIST` |
+| `GS-POSITIONS-INTERBANK-LIST-A` | `GET /api/positions/interbank` | 已有样本包 | `tests/test_positions_api_contract.py` + `tests/test_golden_samples_capture_ready.py` + `tests/golden_samples/GS-POSITIONS-INTERBANK-LIST-A/` + capture-ready | 冻结 `/positions` 同业持仓 candidate list DTO 与 `MTR-POS-002` 记录数锚点（`total==evidence_rows`）；保持 candidate-only / `formal_use_allowed=false`，不关闭 `GAP-POS-LIST` |
 
 补充说明：
 
