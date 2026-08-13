@@ -272,6 +272,12 @@
   line-height: 1.6;
 }
 
+.contractStatusNote {
+  color: var(--cf-subtle);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 .rail {
   grid-column: 1 / -1;
   display: grid;
@@ -314,6 +320,16 @@
 
 .railBar_neutral {
   background: var(--cf-muted);
+}
+
+/* Missing month: hatched so it never reads as a flat zero month. */
+.railBar_missing {
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--cf-muted) 55%, transparent) 0 2px,
+    transparent 2px 4px
+  );
+  border: 1px dashed color-mix(in srgb, var(--cf-muted) 70%, transparent);
 }
 
 .panel,
@@ -469,6 +485,10 @@
 
 .sidePanel_warning {
   border-left-color: var(--cf-accent);
+}
+
+.sidePanel_neutral {
+  border-left-color: var(--cf-muted);
 }
 
 .sideMetric {

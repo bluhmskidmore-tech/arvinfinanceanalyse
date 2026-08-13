@@ -3,7 +3,7 @@ import { Card, Col, Row, Typography } from "antd";
 import type { Numeric } from "../../../api/contracts";
 import { mossChartCategoricalPalette } from "../../../components/charts/chartTheme";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
-import { numericOrDash } from "../utils/money";
+import { numericOrDash, numericRaw } from "../utils/money";
 
 const { Text } = Typography;
 
@@ -33,11 +33,14 @@ function pieOption(items: NamedYi[]): EChartsOption {
       {
         type: "pie",
         radius: ["42%", "68%"],
-        data: items.map((item) => ({
-          name: item.name,
-          value: item.amountYi?.raw ?? 0,
-          amountYi: item.amountYi,
-        })),
+        // 缺数（null）不入饼图系列，避免画出假 0 扇区；图例仍以 EM_DASH 展示缺数项。
+        data: items
+          .filter((item) => numericRaw(item.amountYi) !== null)
+          .map((item) => ({
+            name: item.name,
+            value: numericRaw(item.amountYi) as number,
+            amountYi: item.amountYi,
+          })),
         label: { show: false },
       },
     ],
@@ -62,8 +65,9 @@ function barOption(items: BucketYi[]): EChartsOption {
     series: [
       {
         type: "bar",
+        // 缺数（null）保留类目但不画柱；tooltip 经 numericOrDash 显示 EM_DASH。
         data: items.map((item) => ({
-          value: item.amountYi?.raw ?? 0,
+          value: numericRaw(item.amountYi),
           amountYi: item.amountYi,
         })),
         barMaxWidth: 48,

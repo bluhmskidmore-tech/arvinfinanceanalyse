@@ -1379,11 +1379,23 @@
   text-align: left;
 }
 
-.balance-movement-detail-table__status--matched {
+/* 四种色阶对应四类结论：对得上 / 对不平 / 没有对手方可比 / 跨月接不上。
+   "没有对手方"刻意用中性灰而不是告警色——它不是差异，是覆盖缺口。 */
+.balance-movement-detail-table__status--ok {
   color: var(--ib-up);
 }
 
-.balance-movement-detail-table__status--review {
+.balance-movement-detail-table__status--mismatch {
+  color: var(--ib-down);
+}
+
+.balance-movement-detail-table__status--no-counterparty {
+  color: var(--ib-ink-muted);
+  font-weight: 500;
+  font-style: italic;
+}
+
+.balance-movement-detail-table__status--chain-broken {
   color: var(--ib-warn);
 }
 

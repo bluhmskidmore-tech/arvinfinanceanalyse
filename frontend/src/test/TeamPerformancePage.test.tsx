@@ -502,6 +502,13 @@ describe("TeamPerformancePage", () => {
     const summary = await screen.findByTestId("team-performance-summary-cards");
     expect(summary).toHaveTextContent("409.28");
     expect(summary).toHaveTextContent("8");
+    expect(summary).toHaveTextContent("前端演示数据·非正式口径");
+    expect(screen.getByTestId("team-performance-demo-score-badge")).toHaveTextContent(
+      "考核得分：前端演示数据·非正式口径",
+    );
+    expect(screen.getByTestId("team-performance-matrix-demo-badge")).toHaveTextContent(
+      "权重/得分列：前端演示数据·非正式口径",
+    );
 
     expect(await screen.findByTestId("team-performance-warning-banner")).toHaveTextContent(
       "映射分析不代表正式中心归属",

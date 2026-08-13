@@ -22,6 +22,15 @@ import type { AccountingBasisStackedSharePoint } from "../../../components/chart
 import { DataQualityBanner } from "../../../components/page/DataQualityBanner";
 
 import { formatBalanceAmountToYiFromYuan } from "../../balance-analysis/pages/balanceAnalysisPageModel";
+import { ReconciliationStatusTag } from "../components/ReconciliationStatusTag";
+import {
+  chainStatusLabel,
+  counterpartyAmountText,
+  countReconciliationStatuses,
+  reconciliationConcernLabel,
+  reconciliationTieoutSummary,
+  statusToneClass,
+} from "../lib/balanceMovementReconciliationModel";
 import {
   nullableNumber,
   resolveBucketSharePct,
@@ -323,23 +332,10 @@ function compareBusinessMatrixCellToFirst(
   );
 }
 
-const reconciliationStatusLabels: Record<BalanceMovementRow["reconciliation_status"], string> = {
-  matched: "一致",
-  mismatch: "不一致",
-  gl_only: "仅总账",
-  zqtz_only: "仅辅助",
-};
-
 function aggregateBucketReconciliation(rows: BalanceMovementRow[]) {
-  const counts: Record<BalanceMovementRow["reconciliation_status"], number> = {
-    matched: 0,
-    mismatch: 0,
-    gl_only: 0,
-    zqtz_only: 0,
-  };
+  const counts = countReconciliationStatuses(rows);
   const bucketCounts = new Map<BalanceMovementRow["basis_bucket"], number>();
   for (const row of rows) {
-    counts[row.reconciliation_status] += 1;
     bucketCounts.set(row.basis_bucket, (bucketCounts.get(row.basis_bucket) ?? 0) + 1);
   }
   const hasExactBuckets =
@@ -762,12 +758,6 @@ function isPreviousCalendarMonth(currentReportDate: string, previousReportDate: 
   return previousYear * 12 + previousMonth === currentYear * 12 + currentMonth - 1;
 }
 
-function statusToneClass(status: BalanceMovementRow["reconciliation_status"]) {
-  return status === "matched"
-    ? "balance-movement-detail-table__status balance-movement-detail-table__status--matched"
-    : "balance-movement-detail-table__status balance-movement-detail-table__status--review";
-}
-
 type BalanceMovementDriver = {
   bucket: BalanceMovementRow["basis_bucket"];
   balanceChange: number;
@@ -995,6 +985,8 @@ function buildBalanceMovementCsv(options: {
       "balance_change_yi",
       "contribution_pct",
       "reconciliation_status",
+      "chain_status",
+      "position_source_basis",
     ],
     ...result.rows.map((row) => [
       row.basis_bucket,
@@ -1003,6 +995,8 @@ function buildBalanceMovementCsv(options: {
       formatSignedYiCell(row.balance_change),
       formatPct(row.contribution_pct),
       row.reconciliation_status,
+      row.chain_status ?? "",
+      row.position_source_basis ?? "",
     ]),
     [],
     ["waterfall_component", "label", "value", "note"],
@@ -1435,7 +1429,7 @@ function FigmaDecisionHero({
   const tplDriver = movementDrivers.find((driver) => driver.bucket === "TPL");
   const ociDriver = movementDrivers.find((driver) => driver.bucket === "OCI");
   const reconciliationHeadline =
-    reconciliationLabel === "三桶一致" ? "对账完整" : "ZQTZ 分桶对账需关注";
+    reconciliationLabel === "三桶一致" ? "对账完整" : reconciliationLabel;
   return (
     <section
       className="balance-movement-decision-layout"
@@ -2066,7 +2060,7 @@ function FigmaAccountingBuckets({ rows }: { rows: BalanceMovementRow[] }) {
                 <td>{formatSignedYi(row.balance_change)}</td>
                 <td>{formatPct(row.current_balance_pct)}</td>
                 <td>{formatPct(row.contribution_pct)}</td>
-                <td><span data-status={row.reconciliation_status}>{reconciliationStatusLabels[row.reconciliation_status]}</span></td>
+                <td><ReconciliationStatusTag status={row.reconciliation_status} /></td>
               </tr>
             ))}
           </tbody>
@@ -2392,6 +2386,7 @@ function BusinessBalanceMatrixSection({
                 <th>变动贡献</th>
                 <th>ZQTZ辅助(亿)</th>
                 <th>ZQTZ诊断差异(亿)</th>
+                <th>跨月勾稽</th>
                 <th>状态</th>
               </tr>
             </thead>
@@ -2407,10 +2402,11 @@ function BusinessBalanceMatrixSection({
                   <td>{formatBalanceAmountToYiFromYuan(row.balance_change)}</td>
                   <td>{formatPct(row.change_pct)}</td>
                   <td>{formatPct(row.contribution_pct)}</td>
-                  <td>{formatBalanceAmountToYiFromYuan(row.zqtz_amount)}</td>
-                  <td>{formatBalanceAmountToYiFromYuan(row.reconciliation_diff)}</td>
+                  <td>{counterpartyAmountText(row, formatBalanceAmountToYiFromYuan(row.zqtz_amount))}</td>
+                  <td>{counterpartyAmountText(row, formatBalanceAmountToYiFromYuan(row.reconciliation_diff))}</td>
+                  <td>{chainStatusLabel(row.chain_status)}</td>
                   <td className={statusToneClass(row.reconciliation_status)}>
-                    {row.reconciliation_status}
+                    <ReconciliationStatusTag status={row.reconciliation_status} />
                   </td>
                 </tr>
               ))}
@@ -2420,7 +2416,7 @@ function BusinessBalanceMatrixSection({
       </div>
 
       <div className="balance-movement-business-matrix__tieout">
-        reconciliation_difference 0.00 亿 · 3 / 3 matched · quality ok · fallback_mode none
+        {reconciliationTieoutSummary(balanceRows, formatSignedYiNumber)}
       </div>
     </section>
   );
@@ -3684,7 +3680,7 @@ export default function BalanceMovementAnalysisPage() {
         ? "分桶不完整"
         : reconAggregate.allMatched && summaryAllBucketsMatched
           ? "三桶一致"
-          : "需关注";
+          : reconciliationConcernLabel(reconAggregate.counts);
   const previousBalanceTotal = finiteMetric(summary?.previous_balance_total);
   const balanceChangeValue = finiteMetric(balanceChangeTotal);
   const balanceChangePct =

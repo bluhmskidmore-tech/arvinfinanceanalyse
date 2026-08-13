@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { AgentRunStreamConnectionError } from "../api/agentRunStream";
 import {
   pollAgentRunUntilTerminal,
   waitForAgentRunTerminal,
@@ -45,6 +46,10 @@ function buildRun(
 }
 
 describe("waitForAgentRunTerminal", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("uses valid SSE snapshots, removes exact duplicates, and returns the terminal payload", async () => {
     const running = buildRun("running", { elapsed_seconds: 1 });
     const completed = buildRun("completed", { result: buildResult("stream result") });
@@ -73,13 +78,15 @@ describe("waitForAgentRunTerminal", () => {
     expect(onRunUpdate).toHaveBeenCalledTimes(2);
   });
 
-  it.each([
-    ["invalid payload", async (_runId: string, onEvent: (payload: unknown) => unknown) => {
-      onEvent({ run_id: "agent_run:test", status: "unknown" });
-    }],
-    ["premature EOF", async () => undefined],
-  ])("falls back to GET after SSE %s", async (_label, streamAgentRunEvents) => {
+  it("falls back to GET without reconnecting after an invalid SSE payload", async () => {
+    // 假计时器下若误入退避睡眠，本用例会因 promise 无法结算而超时失败。
+    vi.useFakeTimers();
     const completed = buildRun("completed", { result: buildResult("fallback result") });
+    const streamAgentRunEvents = vi.fn(
+      async (_runId: string, onEvent: (payload: unknown) => unknown) => {
+        onEvent({ run_id: "agent_run:test", status: "unknown" });
+      },
+    );
     const fetchAgentRunStatus = vi.fn(async () => completed);
 
     const payload = await waitForAgentRunTerminal({
@@ -92,8 +99,137 @@ describe("waitForAgentRunTerminal", () => {
     });
 
     expect(payload).toEqual(completed);
+    expect(streamAgentRunEvents).toHaveBeenCalledTimes(1);
     expect(fetchAgentRunStatus).toHaveBeenCalledOnce();
     expect(fetchAgentRunStatus).toHaveBeenCalledWith("agent_run:test");
+  });
+
+  it("falls back to GET immediately without reconnecting on a connection-phase SSE failure (4xx)", async () => {
+    vi.useFakeTimers();
+    const completed = buildRun("completed", { result: buildResult("degraded result") });
+    const streamAgentRunEvents = vi.fn(async () => {
+      throw new AgentRunStreamConnectionError("Agent run SSE request failed: /events (404)", {
+        status: 404,
+      });
+    });
+    const fetchAgentRunStatus = vi.fn(async () => completed);
+
+    const payload = await waitForAgentRunTerminal({
+      runId: "agent_run:test",
+      initialPayload: buildRun("queued"),
+      streamAgentRunEvents,
+      fetchAgentRunStatus,
+      canCommit: () => true,
+      onRunUpdate: vi.fn(),
+    });
+
+    expect(payload).toEqual(completed);
+    expect(streamAgentRunEvents).toHaveBeenCalledTimes(1);
+    expect(fetchAgentRunStatus).toHaveBeenCalledOnce();
+  });
+
+  it("reconnects after a mid-stream failure and finishes over SSE without polling", async () => {
+    vi.useFakeTimers();
+    const running = buildRun("running", { elapsed_seconds: 1 });
+    const completed = buildRun("completed", { result: buildResult("reconnected result") });
+    let attempt = 0;
+    const streamAgentRunEvents = vi.fn(
+      async (_runId: string, onEvent: (payload: unknown) => boolean | void) => {
+        attempt += 1;
+        if (attempt === 1) {
+          onEvent(running);
+          throw new Error("stream reset");
+        }
+        // 重连后服务端先重放当前快照，再推进到终态。
+        onEvent(running);
+        onEvent(completed);
+      },
+    );
+    const fetchAgentRunStatus = vi.fn();
+    const onRunUpdate = vi.fn();
+
+    const promise = waitForAgentRunTerminal({
+      runId: "agent_run:test",
+      initialPayload: buildRun("queued"),
+      streamAgentRunEvents,
+      fetchAgentRunStatus,
+      canCommit: () => true,
+      onRunUpdate,
+    });
+    const settled = expect(promise).resolves.toEqual(completed);
+    await vi.advanceTimersByTimeAsync(1000);
+    await settled;
+
+    expect(streamAgentRunEvents).toHaveBeenCalledTimes(2);
+    expect(fetchAgentRunStatus).not.toHaveBeenCalled();
+    // 重连重放的 running 快照被去重：running / completed 各只发布一次。
+    expect(onRunUpdate).toHaveBeenNthCalledWith(1, running);
+    expect(onRunUpdate).toHaveBeenNthCalledWith(2, completed);
+    expect(onRunUpdate).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    [
+      "mid-stream failures",
+      async () => {
+        throw new Error("stream reset");
+      },
+    ],
+    ["EOF before a terminal snapshot", async () => undefined],
+  ])("degrades to GET polling after two failed reconnects (%s)", async (_label, streamImpl) => {
+    vi.useFakeTimers();
+    const completed = buildRun("completed", { result: buildResult("polled result") });
+    const streamAgentRunEvents = vi.fn(streamImpl);
+    const fetchAgentRunStatus = vi.fn(async () => completed);
+
+    const promise = waitForAgentRunTerminal({
+      runId: "agent_run:test",
+      initialPayload: buildRun("queued"),
+      streamAgentRunEvents,
+      fetchAgentRunStatus,
+      canCommit: () => true,
+      onRunUpdate: vi.fn(),
+    });
+    const settled = expect(promise).resolves.toEqual(completed);
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(streamAgentRunEvents).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1000);
+    // 第二次退避为 3s：仅推进 2s 时不应触发第三次连接，也不应提前降级轮询。
+    expect(streamAgentRunEvents).toHaveBeenCalledTimes(2);
+    expect(fetchAgentRunStatus).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(2000);
+    await settled;
+
+    expect(streamAgentRunEvents).toHaveBeenCalledTimes(3);
+    expect(fetchAgentRunStatus).toHaveBeenCalledOnce();
+    expect(fetchAgentRunStatus).toHaveBeenCalledWith("agent_run:test");
+  });
+
+  it("does not reconnect once the signal aborts during the reconnect backoff", async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const streamAgentRunEvents = vi.fn(async () => {
+      throw new Error("stream reset");
+    });
+    const fetchAgentRunStatus = vi.fn();
+
+    const promise = waitForAgentRunTerminal({
+      runId: "agent_run:test",
+      initialPayload: buildRun("queued"),
+      streamAgentRunEvents,
+      fetchAgentRunStatus,
+      canCommit: () => true,
+      onRunUpdate: vi.fn(),
+      signal: controller.signal,
+    });
+    const settled = expect(promise).rejects.toMatchObject({ name: "AbortError" });
+    await vi.advanceTimersByTimeAsync(0);
+    controller.abort();
+    await settled;
+
+    expect(streamAgentRunEvents).toHaveBeenCalledTimes(1);
+    expect(fetchAgentRunStatus).not.toHaveBeenCalled();
   });
 
   it("does not publish late SSE snapshots when canCommit is false", async () => {
@@ -123,7 +259,10 @@ describe("waitForAgentRunTerminal", () => {
     const payload = await waitForAgentRunTerminal({
       runId: "agent_run:test",
       initialPayload: buildRun("queued"),
-      streamAgentRunEvents: async () => undefined,
+      // 连接期失败：不重连，立即降级 GET 轮询。
+      streamAgentRunEvents: async () => {
+        throw new AgentRunStreamConnectionError("sse unavailable");
+      },
       fetchAgentRunStatus,
       canCommit: () => true,
       onRunUpdate: vi.fn(),

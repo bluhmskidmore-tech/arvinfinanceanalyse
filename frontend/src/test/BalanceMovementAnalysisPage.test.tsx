@@ -1491,19 +1491,141 @@ describe("BalanceMovementAnalysisPage", () => {
 
     const compactBuckets = await screen.findByTestId("balance-movement-analysis-accounting-buckets");
     const conclusion = screen.getByTestId("balance-movement-analysis-conclusion");
-    expect(conclusion).toHaveTextContent("对账需关注");
+    expect(conclusion).toHaveTextContent("分桶对不平");
     expect(screen.getByTestId("balance-movement-analysis-freshness")).toHaveTextContent(
-      "Reconciliation需关注",
+      "Reconciliation分桶对不平",
     );
     expect(screen.getByTestId("balance-movement-analysis-summary")).toHaveTextContent(
-      "对账状态需关注",
+      "对账状态分桶对不平",
     );
     const reconciliationSignal = within(
       screen.getByTestId("balance-movement-analysis-summary"),
     ).getAllByTestId("balance-movement-kpi-signal")[3];
     expect(reconciliationSignal).toHaveAttribute("data-state", "review");
     expect(reconciliationSignal).not.toHaveAttribute("data-state", "matched");
-    expect(within(compactBuckets).getByRole("row", { name: /AC/ })).toHaveTextContent("不一致");
+    expect(within(compactBuckets).getByRole("row", { name: /AC/ })).toHaveTextContent("对不平");
+  });
+
+  describe("对账结论三态区分", () => {
+    function threeStateClient() {
+      const baseClient = createApiClient({ mode: "mock" });
+      const getBalanceMovementAnalysis = baseClient.getBalanceMovementAnalysis;
+      return {
+        ...baseClient,
+        async getBalanceMovementAnalysis(
+          options: Parameters<typeof getBalanceMovementAnalysis>[0],
+        ) {
+          const envelope = await getBalanceMovementAnalysis(options);
+          const [acRow, ociRow, tplRow] = envelope.result.rows;
+          return {
+            ...envelope,
+            result: {
+              ...envelope.result,
+              summary: { ...envelope.result.summary, matched_bucket_count: 0 },
+              rows: [
+                // 两侧都有余额但金额不符。
+                {
+                  ...acRow,
+                  reconciliation_status: "mismatch" as const,
+                  reconciliation_diff: "100000000",
+                  chain_status: "continuous" as const,
+                },
+                // 头寸源当期整体缺失：没有对手方可比。
+                {
+                  ...ociRow,
+                  reconciliation_status: "gl_only" as const,
+                  zqtz_amount: "0",
+                  reconciliation_diff: "-105781745231.25",
+                  chain_status: "continuous" as const,
+                  position_source_basis: "unavailable",
+                },
+                // 横截面对得上，但本月期初接不上上月期末。
+                {
+                  ...tplRow,
+                  reconciliation_status: "chain_broken" as const,
+                  chain_status: "broken" as const,
+                },
+              ],
+            },
+          };
+        },
+      };
+    }
+
+    it("labels gl_only, mismatch and chain_broken as three different states", async () => {
+      renderWorkbenchApp(["/balance-movement-analysis"], { client: threeStateClient() });
+
+      const buckets = await screen.findByTestId("balance-movement-analysis-accounting-buckets");
+      const statusCells = within(buckets)
+        .getAllByTitle(/./)
+        .map((node) => ({
+          text: node.textContent,
+          status: node.getAttribute("data-status"),
+          tone: node.getAttribute("data-tone"),
+        }));
+
+      expect(statusCells).toEqual([
+        { text: "对不平", status: "mismatch", tone: "mismatch" },
+        { text: "无头寸对手方", status: "gl_only", tone: "no-counterparty" },
+        { text: "跨月断裂", status: "chain_broken", tone: "chain-broken" },
+      ]);
+      // 三个结论必须落在三种色阶上，不能塌成"匹配 / 不匹配"两态。
+      expect(new Set(statusCells.map((cell) => cell.tone)).size).toBe(3);
+    });
+
+    it("shows 不适用 instead of a fabricated diff when there is no position counterparty", async () => {
+      renderWorkbenchApp(["/balance-movement-analysis"], { client: threeStateClient() });
+
+      const table = await screen.findByTestId("balance-movement-analysis-table");
+      const ociCells = within(table)
+        .getAllByRole("row")
+        .map((row) => Array.from(row.querySelectorAll("td")).map((cell) => cell.textContent))
+        .find((cells) => cells[0]?.includes("OCI"));
+
+      // ZQTZ辅助 与 ZQTZ诊断差异 两列：印 0 会被读成"辅助账为零"，
+      // 印 -1057.82 亿 会被读成真实缺口，两者都不是这行的事实。
+      expect(ociCells?.slice(9, 11)).toEqual(["不适用", "不适用"]);
+      expect(ociCells).not.toContain("-1,057.82");
+    });
+
+    it("reports the real tie-out counts instead of a hardcoded 3 / 3 matched", async () => {
+      renderWorkbenchApp(["/balance-movement-analysis"], { client: threeStateClient() });
+
+      await screen.findByTestId("balance-movement-analysis-table");
+      const tieout = document.querySelector(".balance-movement-business-matrix__tieout");
+
+      expect(tieout).toHaveTextContent("0 / 3 一致");
+      expect(tieout).toHaveTextContent("对不平 1");
+      expect(tieout).toHaveTextContent("无头寸对手方 1");
+      expect(tieout).toHaveTextContent("跨月断裂 1");
+      expect(tieout).toHaveTextContent("跨月勾稽 衔接 2 · 断裂 1");
+      expect(tieout).not.toHaveTextContent("3 / 3 matched");
+    });
+
+    it("keeps an unrecorded chain status distinct from a judged one", async () => {
+      const baseClient = createApiClient({ mode: "mock" });
+      const getBalanceMovementAnalysis = baseClient.getBalanceMovementAnalysis;
+      const legacyClient: typeof baseClient = {
+        ...baseClient,
+        async getBalanceMovementAnalysis(options) {
+          const envelope = await getBalanceMovementAnalysis(options);
+          return {
+            ...envelope,
+            result: {
+              ...envelope.result,
+              rows: envelope.result.rows.map((row) => ({ ...row, chain_status: null })),
+            },
+          };
+        },
+      };
+
+      renderWorkbenchApp(["/balance-movement-analysis"], { client: legacyClient });
+
+      const table = await screen.findByTestId("balance-movement-analysis-table");
+      // 迁移落地前写入的行没有判定过跨月勾稽，不能显示成"无上月基准"。
+      expect(within(table).getAllByText("未记录")).toHaveLength(3);
+      expect(within(table).queryByText("无上月基准")).not.toBeInTheDocument();
+    });
   });
 
   it("flags incomplete bucket payloads instead of presenting 3 / 3 matched", async () => {

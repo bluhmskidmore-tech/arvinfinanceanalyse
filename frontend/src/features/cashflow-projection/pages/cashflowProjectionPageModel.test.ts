@@ -74,7 +74,7 @@ describe("selectCashflowMonthlyProjectionSeries", () => {
     });
   });
 
-  it("treats missing or non-finite raw values as zero for chart safety", () => {
+  it("keeps missing or non-finite raw values as null so the chart breaks instead of plotting zero", () => {
     const series = selectCashflowMonthlyProjectionSeries(
       makeVM({
         monthlyBuckets: [
@@ -85,13 +85,20 @@ describe("selectCashflowMonthlyProjectionSeries", () => {
             netCashflow: n({ raw: null }),
             cumulativeNet: n({ raw: Number.POSITIVE_INFINITY }),
           },
+          {
+            yearMonth: "2026-05",
+            assetInflow: n({ raw: 0 }),
+            liabilityOutflow: n({ raw: 0 }),
+            netCashflow: n({ raw: 0 }),
+            cumulativeNet: n({ raw: 0 }),
+          },
         ],
       }),
     );
 
-    expect(series?.assetInflow).toEqual([0]);
-    expect(series?.liabilityOutflow).toEqual([0]);
-    expect(series?.cumulativeNet).toEqual([0]);
+    expect(series?.assetInflow).toEqual([null, 0]);
+    expect(series?.liabilityOutflow).toEqual([null, 0]);
+    expect(series?.cumulativeNet).toEqual([null, 0]);
   });
 });
 
@@ -156,8 +163,101 @@ describe("selectCashflowProjectionRiskReadout", () => {
       tone: "positive",
       summary: "未见累计净现金流为负月份",
       negativeCumulativeMonths: 0,
+      missingCumulativeMonths: 0,
       worstCumulativeMonth: "2026-04",
       finalCumulativeDisplay: "60.00",
+    });
+  });
+
+  it("never reads positive while cumulative months are missing", () => {
+    const readout = selectCashflowProjectionRiskReadout(
+      makeVM({
+        monthlyBuckets: [
+          {
+            yearMonth: "2026-04",
+            assetInflow: n({ raw: 100, display: "100.00" }),
+            liabilityOutflow: n({ raw: 40, display: "40.00" }),
+            netCashflow: n({ raw: 60, display: "60.00" }),
+            cumulativeNet: n({ raw: 60, display: "60.00" }),
+          },
+          {
+            yearMonth: "2026-05",
+            assetInflow: n({ raw: null, display: "—" }),
+            liabilityOutflow: n({ raw: null, display: "—" }),
+            netCashflow: n({ raw: null, display: "—" }),
+            cumulativeNet: n({ raw: null, display: "—" }),
+          },
+        ],
+      }),
+    );
+
+    expect(readout).toMatchObject({
+      tone: "neutral",
+      summary: "1 个月累计净现金流缺数",
+      negativeCumulativeMonths: 0,
+      missingCumulativeMonths: 1,
+      // Missing buckets must not win the worst/largest reduce.
+      worstCumulativeMonth: "2026-04",
+      worstCumulativeDisplay: "60.00",
+      largestOutflowMonth: "2026-04",
+      largestOutflowDisplay: "40.00",
+      finalCumulativeDisplay: "—",
+    });
+  });
+
+  it("reports negative and missing months together and stays on warning", () => {
+    const readout = selectCashflowProjectionRiskReadout(
+      makeVM({
+        monthlyBuckets: [
+          {
+            yearMonth: "2026-04",
+            assetInflow: n({ raw: 10, display: "10.00" }),
+            liabilityOutflow: n({ raw: 90, display: "90.00" }),
+            netCashflow: n({ raw: -80, display: "-80.00" }),
+            cumulativeNet: n({ raw: -80, display: "-80.00" }),
+          },
+          {
+            yearMonth: "2026-05",
+            assetInflow: n({ raw: null, display: "—" }),
+            liabilityOutflow: n({ raw: null, display: "—" }),
+            netCashflow: n({ raw: null, display: "—" }),
+            cumulativeNet: n({ raw: null, display: "—" }),
+          },
+        ],
+      }),
+    );
+
+    expect(readout).toMatchObject({
+      tone: "warning",
+      summary: "1 个月累计净现金流为负 · 1 个月累计净现金流缺数",
+      negativeCumulativeMonths: 1,
+      missingCumulativeMonths: 1,
+    });
+  });
+
+  it("falls back to the em dash when every bucket value is missing", () => {
+    const readout = selectCashflowProjectionRiskReadout(
+      makeVM({
+        monthlyBuckets: [
+          {
+            yearMonth: "2026-04",
+            assetInflow: n({ raw: null, display: "—" }),
+            liabilityOutflow: n({ raw: null, display: "—" }),
+            netCashflow: n({ raw: null, display: "—" }),
+            cumulativeNet: n({ raw: null, display: "—" }),
+          },
+        ],
+      }),
+    );
+
+    expect(readout).toMatchObject({
+      tone: "neutral",
+      negativeCumulativeMonths: 0,
+      missingCumulativeMonths: 1,
+      worstCumulativeMonth: "—",
+      worstCumulativeDisplay: "—",
+      largestOutflowMonth: "—",
+      largestOutflowDisplay: "—",
     });
   });
 });

@@ -14,17 +14,23 @@ import {
 import { SkeletonBarStack } from "../../components/SkeletonBars";
 import type { CreditSpreadMigrationResponse } from "../bond-analytics/types";
 import { limitTone, limitToneToKpi, type LimitTone } from "../workbench/components/kpiFormat";
+import { EM_DASH } from "../../utils/format";
 import { displayStr, formatConcentrationPercent, parseRatio } from "./concentrationFormat";
 import styles from "./concentrationMonitor.module.css";
 
 import "./ConcentrationMonitorPage.css";
 
-/** 前端展示用限额常量；与后端口径无关。 */
+/**
+ * 展示限额（前端配置，非风控正式限额）。
+ * 后端 /api/bond-analytics/credit-spread-migration（CreditSpreadMigrationResponse）
+ * 未下发任何限额字段，本页对照阈值统一收敛在此，仅用于展示对照。
+ */
 const LIMITS = {
   issuer_single_max: 0.1,
   issuer_top5_max: 0.4,
   hhi_warning: 0.15,
   below_aa_max: 0.2,
+  credit_weight_max: 0.85,
 } as const;
 
 const CREDIT_SPREAD_MIGRATION_API = "/api/bond-analytics/credit-spread-migration";
@@ -178,7 +184,7 @@ export default function ConcentrationMonitorPage() {
     return [
       {
         label: "单一发行人占比",
-        currentDisplay: top1w ? formatConcentrationPercent(top1w) : "—",
+        currentDisplay: top1w ? formatConcentrationPercent(top1w) : EM_DASH,
         currentNum: maxSingleWeight,
         limitDisplay: String(LIMITS.issuer_single_max),
         tone: limitTone(maxSingleWeight, LIMITS.issuer_single_max),
@@ -202,7 +208,7 @@ export default function ConcentrationMonitorPage() {
         currentDisplay:
           credit?.rating_aa_and_below_weight !== undefined && credit.rating_aa_and_below_weight != null
             ? formatConcentrationPercent(credit.rating_aa_and_below_weight)
-            : "—",
+            : EM_DASH,
         currentNum: belowAa,
         limitDisplay: String(LIMITS.below_aa_max),
         tone: belowAaMissing ? ("ok" as const) : limitTone(belowAa, LIMITS.below_aa_max),
@@ -251,7 +257,7 @@ export default function ConcentrationMonitorPage() {
             disabled={Boolean(explicitReportDate)}
           >
             {dateOptions.length === 0 ? (
-              <option value="">—</option>
+              <option value="">{EM_DASH}</option>
             ) : (
               dateOptions.map((d) => (
                 <option key={d} value={d}>
@@ -319,9 +325,9 @@ export default function ConcentrationMonitorPage() {
                   <span>口径：{resultMetaBasisLabel(creditMeta.basis)}</span>
                   <span>质量：{resultMetaQualityLabel(creditMeta.quality_flag)}</span>
                   <span>结果类型：{creditMeta.result_kind}</span>
-                  <span>日期基准：{creditMeta.date_basis ?? "—"}</span>
-                  <span>使用表：{creditMeta.tables_used?.join(", ") || "—"}</span>
-                  <span>证据行：{creditMeta.evidence_rows ?? "—"}</span>
+                  <span>日期基准：{creditMeta.date_basis ?? EM_DASH}</span>
+                  <span>使用表：{creditMeta.tables_used?.join(", ") || EM_DASH}</span>
+                  <span>证据行：{creditMeta.evidence_rows ?? EM_DASH}</span>
                 </div>
               </div>
             ) : null}
@@ -349,7 +355,7 @@ export default function ConcentrationMonitorPage() {
                 title="信用债占比"
                 value={formatConcentrationPercent(credit.credit_weight)}
                 detail="credit_weight"
-                tone={limitToneToKpi(limitTone(parseRatio(credit.credit_weight), 0.85))}
+                tone={limitToneToKpi(limitTone(parseRatio(credit.credit_weight), LIMITS.credit_weight_max))}
               />
               <KpiCard
                 title="评级 AA 及以下占比"
@@ -370,8 +376,11 @@ export default function ConcentrationMonitorPage() {
             </div>
 
             <h2 className="concentration-monitor-page__block-title">限额预警（展示对照）</h2>
-            <p className="concentration-monitor-page__limit-lead">
-              超限标红，达到限额 80% 以上未超限标黄。阈值为本页常量，非后端下发。
+            <p
+              className="concentration-monitor-page__limit-lead"
+              data-testid="concentration-monitor-limit-note"
+            >
+              超限标红，达到限额 80% 以上未超限标黄。阈值为展示限额（前端配置，非风控正式限额），非后端下发。
             </p>
             <div className={`${styles.tableShell} concentration-monitor-page__limit-table-shell`}>
               <table className={styles.table}>

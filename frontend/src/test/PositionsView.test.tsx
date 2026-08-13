@@ -13,6 +13,7 @@ import type {
   SubTypesResponse,
 } from "../api/contracts";
 import PositionsView from "../features/positions/components/PositionsView";
+import { EM_DASH } from "../utils/format";
 
 vi.mock("../lib/echarts", () => ({
   default: () => <div data-testid="positions-echarts-stub" />,
@@ -146,7 +147,7 @@ describe("PositionsView", () => {
       "数据来源：ZQTZ + TYWL",
     );
     expect(screen.getByTestId("positions-data-status")).toHaveTextContent("当前：债券持仓");
-    expect(screen.getByTestId("positions-kpi-band")).toHaveTextContent("业务种类");
+    expect(screen.getByTestId("positions-kpi-band")).toHaveTextContent("日均合计");
     expect(screen.getByTestId("positions-filter-tray")).toBeInTheDocument();
     expect(screen.getByText("持仓工作区")).toBeInTheDocument();
     expect(
@@ -295,6 +296,41 @@ describe("PositionsView", () => {
       "href",
       "/bond-trading-desk?bond_code=POS001.IB&report_date=2026-04-30",
     );
+  });
+
+  it("renders the EM_DASH primitive for missing bond list fields", async () => {
+    const client = createApiClient({ mode: "mock" });
+    client.getBalanceAnalysisDates = vi.fn(async () =>
+      envelope("balance_analysis.dates", { report_dates: ["2026-04-30"] }),
+    );
+    client.getPositionsBondsList = vi.fn(async () =>
+      envelope(
+        "positions.bonds.list",
+        bondPage([
+          {
+            bond_code: "MISSING-001",
+            credit_name: null,
+            sub_type: null,
+            asset_class: null,
+            market_value: "100000000.00000000",
+            face_value: "100000000.00000000",
+            valuation_net_price: null,
+            yield_rate: "0.03000000",
+          },
+        ]),
+      ),
+    );
+
+    renderPositionsWithClient(client);
+
+    const codeCell = await screen.findByText("MISSING-001");
+    const row = codeCell.closest("tr");
+    expect(row).not.toBeNull();
+    const dashCells = Array.from(row!.querySelectorAll("td")).filter(
+      (td) => td.textContent === EM_DASH,
+    );
+    // credit_name / sub_type / valuation_net_price 三个缺失字段均走 EM_DASH 基元。
+    expect(dashCells.length).toBeGreaterThanOrEqual(3);
   });
 
   it("uses the active list envelope metadata and shows fallback dates after tab switch", async () => {

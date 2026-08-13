@@ -2240,7 +2240,7 @@ export default function RiskTensorPage() {
               <KpiCard
                 title="面值口径 DV01"
                 value={yuanAsWanDisplay(result.portfolio_dv01)}
-                detail="portfolio_dv01，持仓面值敏感性口径，非监管限额口径。"
+                detail="portfolio_dv01，持仓面值敏感性口径，非监管限额口径；单位口径 万元/bp（后端 CNY_per_1bp，见 MTR-RSK-001）。"
                 unit={WAN_YUAN_UNIT}
                 tone={toneFromSignedDisplayString(yuanAsWanDisplay(result.portfolio_dv01))}
                 testId="risk-tensor-portfolio-dv01-kpi"
@@ -2248,7 +2248,7 @@ export default function RiskTensorPage() {
               <KpiCard
                 title="监管口径 DV01"
                 value={regulatoryDv01Display(result.regulatory_dv01)}
-                detail="后端监管/限额口径字段；不得用组合 DV01 替代。"
+                detail="后端监管/限额口径字段；不得用组合 DV01 替代；单位口径 万元/bp。"
                 unit={amountUnit(result.regulatory_dv01, WAN_YUAN_UNIT)}
                 tone={regulatoryDv01Tone(result.regulatory_dv01)}
                 testId="risk-tensor-regulatory-dv01-kpi"
@@ -2263,7 +2263,7 @@ export default function RiskTensorPage() {
               <KpiCard
                 title="CS01"
                 value={yuanAsWanDisplay(result.cs01)}
-                detail="cs01（信用 spread DV01 聚合）。"
+                detail="cs01（信用 spread DV01 聚合）；单位口径 万元/bp。"
                 unit={WAN_YUAN_UNIT}
                 tone={toneFromSignedDisplayString(yuanAsWanDisplay(result.cs01))}
                 testId="risk-tensor-cs01-kpi"
@@ -2322,7 +2322,7 @@ export default function RiskTensorPage() {
                   <KpiCard
                     title="利率风险 DV01"
                     value={yuanAsWanDisplay(result.rate_risk_dv01)}
-                    detail="rate_risk_dv01；进入久期分母的 DV01。"
+                    detail="rate_risk_dv01；进入久期分母的 DV01；单位口径 万元/bp。"
                     unit={amountUnit(result.rate_risk_dv01, WAN_YUAN_UNIT)}
                     tone={toneFromSignedDisplayString(yuanAsWanDisplay(result.rate_risk_dv01))}
                   />
@@ -2460,7 +2460,7 @@ export default function RiskTensorPage() {
               </div>
               <div className="risk-tensor-chart-column">
                 <h2 className="risk-tensor-section-heading risk-tensor-section-heading--flush">
-                  KRD 分档（面值 DV01）
+                  KRD 分档（面值 DV01，万元/bp）
                 </h2>
               {krdChartOption ? (
                 <ReactECharts

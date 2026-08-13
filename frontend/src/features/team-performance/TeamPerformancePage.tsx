@@ -7,6 +7,7 @@ import { DataQualityBanner } from "../../components/page/DataQualityBanner";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
 import { FilterBar } from "../../components/FilterBar";
 import { KpiCard } from "../../components/KpiCard";
+import { DataSourceBadge } from "../../components/StatusPill";
 import { PageAsyncSection } from "../../components/page/PageAsyncSection";
 import { SectionLead } from "../../components/page/SectionLead";
 import { EM_DASH } from "../../utils/format";
@@ -420,12 +421,21 @@ export default function TeamPerformancePage() {
         description="首屏先看各部室总分、映射证据覆盖情况和正式读链路状态。所有损益都明确标为“映射分析”，不替代正式中心归属口径。"
       />
 
+      <div>
+        <DataSourceBadge
+          status="mock"
+          label="考核得分：前端演示数据·非正式口径"
+          testId="team-performance-demo-score-badge"
+          title="2025 部室考核得分与汇总来自前端底稿常量（ASSESSMENT_CENTERS_2025），未接入正式绩效考核读接口，不作正式口径"
+        />
+      </div>
+
       <div data-testid="team-performance-summary-cards" className="team-performance-page__summary-grid">
         <KpiCard
           label="工作簿总得分"
           value={viewModel.totalWorkbookScore.toFixed(2)}
           unit="分"
-          detail="直接汇总 Excel 底稿已有得分，不重算评分规则。"
+          detail="前端演示数据·非正式口径：本行为前端本地汇总 Excel 底稿已有得分，不重算评分规则。"
           tone="positive"
         />
         <KpiCard
@@ -712,6 +722,15 @@ export default function TeamPerformancePage() {
               title="部室矩阵"
               description="按部室汇总显示 Excel 得分、映射损益、映射规模和覆盖状态。点击任一部室，下方查看对应的底稿指标和映射证据。"
             />
+
+            <div>
+              <DataSourceBadge
+                status="mock"
+                label="权重/得分列：前端演示数据·非正式口径"
+                testId="team-performance-matrix-demo-badge"
+                title="矩阵中的权重、工作簿得分与得分率来自前端底稿常量，未接入正式绩效考核读接口"
+              />
+            </div>
 
             <div className="team-performance-page__table-shell team-performance-page__table-shell--matrix">
               <table data-testid="team-performance-center-matrix" className="team-performance-page__table">

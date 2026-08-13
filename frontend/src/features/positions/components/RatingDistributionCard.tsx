@@ -7,6 +7,7 @@ import type { RatingStatsResponse } from "../../../api/contracts";
 import { mossChartCategoricalPalette } from "../../../components/charts/chartTheme";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { ibTokens } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
 import { formatAmountYi, formatRatePercent } from "../utils/format";
 
 const IB_CHART_PALETTE = mossChartCategoricalPalette;
@@ -89,7 +90,7 @@ export default function RatingDistributionCard({ startDate, endDate, subType }: 
       title="评级收益率"
       extra={
         <Typography.Text type="secondary">
-          {data?.num_days != null ? `${data.num_days} 天` : "—"} / 利率债默认 AAA
+          {data?.num_days != null ? `${data.num_days} 天` : EM_DASH} / 利率债默认 AAA
         </Typography.Text>
       }
     >

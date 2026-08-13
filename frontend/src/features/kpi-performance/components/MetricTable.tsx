@@ -13,6 +13,7 @@ import { Button, Card, Input, Spin, Tag } from "antd";
 import type { KpiDecimalString, KpiMetricWithValue } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
 import { PageStateSurface } from "../../../components/page/PagePrimitives";
+import { EM_DASH } from "../../../utils/format";
 
 import { TracePanel } from "./TracePanel";
 
@@ -39,7 +40,7 @@ type EditingState = {
 type ScoreTone = "muted" | "positive" | "neutral" | "warning" | "negative";
 
 function formatDecimal(value: KpiDecimalString, decimals = 2): string {
-  if (value === null || value === undefined || value === "") return "-";
+  if (value === null || value === undefined || value === "") return EM_DASH;
   const num = parseFloat(value);
   if (Number.isNaN(num)) return String(value);
   return num.toLocaleString("zh-CN", {
@@ -178,7 +179,7 @@ export function MetricTable({
       >
         <span>
           {displayValue}
-          {suffix && displayValue !== "-" ? suffix : ""}
+          {suffix && displayValue !== EM_DASH ? suffix : ""}
         </span>
         <EditOutlined className="kpi-metric-table__edit-icon" />
       </div>
@@ -288,7 +289,7 @@ export function MetricTable({
                           {isExpanded ? <DownOutlined /> : <RightOutlined />}
                         </td>
                         <td className="kpi-metric-table__cell kpi-metric-table__cell--indicator">
-                          {metric.indicator_category || "-"}
+                          {metric.indicator_category || EM_DASH}
                         </td>
                         <td className="kpi-metric-table__cell">
                           <div className="kpi-metric-table__metric-name-wrap">
@@ -317,7 +318,7 @@ export function MetricTable({
                             className="kpi-metric-table__scoring-text"
                             title={metric.scoring_text || ""}
                           >
-                            {metric.scoring_text || "-"}
+                            {metric.scoring_text || EM_DASH}
                           </div>
                         </td>
                         <td className="kpi-metric-table__cell kpi-metric-table__cell--number">
@@ -411,7 +412,7 @@ export function MetricTable({
             ))}
             <tr className="kpi-metric-table__summary-row">
               <td colSpan={4} className="kpi-metric-table__summary-label">
-                合计
+                合计（前端本地加总·非官方口径）
               </td>
               <td className="kpi-metric-table__summary-number">
                 {summary.totalWeight.toFixed(0)}

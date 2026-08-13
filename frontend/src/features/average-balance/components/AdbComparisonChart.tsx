@@ -8,7 +8,8 @@ const SERIES_AVG = "区间日均";
 
 export type AdbComparisonChartRow = {
   label: string;
-  spot: number;
+  /** null 表示缺数：系列不画柱，tooltip 显示 EM_DASH */
+  spot: number | null;
   avg: number | null;
   deviationPct: number | null;
 };
@@ -34,7 +35,7 @@ function buildComparisonOption(rows: AdbComparisonChartRow[]) {
         const row = rows[items[0].dataIndex];
         return [
           row.label,
-          `${SERIES_SPOT}：${(row.spot / YI).toFixed(2)} 亿元`,
+          `${SERIES_SPOT}：${formatYiValue(row.spot)} 亿元`,
           `${SERIES_AVG}：${formatYiValue(row.avg)} 亿元`,
           `偏离度：${formatSignedPct(row.deviationPct)}`,
         ].join("<br/>");

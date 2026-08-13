@@ -1215,8 +1215,22 @@
   font-size: 11px;
 }
 
-.balance-movement-accounting-buckets [data-status="matched"] {
+.balance-movement-accounting-buckets [data-tone="ok"] {
   color: var(--dh-api-green);
+}
+
+.balance-movement-accounting-buckets [data-tone="mismatch"] {
+  color: var(--dh-api-red);
+}
+
+/* 无对手方是覆盖缺口不是差异：用中性色，避免和"真的对不平"抢同一个红。 */
+.balance-movement-accounting-buckets [data-tone="no-counterparty"] {
+  color: var(--dh-api-ink-muted);
+  font-style: italic;
+}
+
+.balance-movement-accounting-buckets [data-tone="chain-broken"] {
+  color: var(--dh-api-amber);
 }
 
 .balance-movement-figma-panel {

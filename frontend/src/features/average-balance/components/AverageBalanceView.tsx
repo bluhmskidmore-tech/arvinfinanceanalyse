@@ -230,9 +230,9 @@ function buildYoYAmountColumns(): ColumnsType<AdbYoYAmountRow> {
 function buildDetailColumns(kind: BreakdownKind): ColumnsType<AdbCategoryItem> {
   return [
     { title: "分类", dataIndex: "category", key: "category" },
-    { title: "期末时点（亿元）", dataIndex: "spot_balance", key: "spot_balance", align: "right", render: (value: number) => (value / YI).toFixed(2) },
+    { title: "期末时点（亿元）", dataIndex: "spot_balance", key: "spot_balance", align: "right", render: (value: number | null) => (value === null ? EM_DASH : (value / YI).toFixed(2)) },
     { title: "日均(亿元)", dataIndex: "avg_balance", key: "avg_balance", align: "right", render: (value: number | null) => (value === null ? EM_DASH : (value / YI).toFixed(2)) },
-    { title: "占比(%)", dataIndex: "proportion", key: "proportion", align: "right", render: (value: number) => value.toFixed(2) },
+    { title: "占比(%)", dataIndex: "proportion", key: "proportion", align: "right", render: (value: number | null) => (value === null ? EM_DASH : value.toFixed(2)) },
     { title: kind === "asset" ? "收益率(%)" : "付息率(%)", dataIndex: "weighted_rate", key: "weighted_rate", align: "right", render: (value: number | null | undefined) => formatPct(value) },
     { title: "利率覆盖(%)", dataIndex: "rate_coverage_ratio", key: "rate_coverage_ratio", align: "right", render: (value: number | null | undefined) => formatRatioPercent(value) },
   ];

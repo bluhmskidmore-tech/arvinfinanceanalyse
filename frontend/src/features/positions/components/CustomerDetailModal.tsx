@@ -10,6 +10,7 @@ import { buildBondTradingDeskPath } from "../../bond-trading-desk/lib/bondTradin
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { ibTokens } from "../../../theme/designSystem";
 import { formatAmountYi, formatRatePercent } from "../utils/format";
+import { EM_DASH } from "../../../utils/format";
 import "./CustomerDetailModal.css";
 
 type CustomerBondDetailRow = CustomerBondDetailItem & { key: string };
@@ -115,10 +116,10 @@ export default function CustomerDetailModal({ open, onClose, customerName, repor
               {bondCode}
             </Link>
           ) : (
-            bondCode || "—"
+            bondCode || EM_DASH
           ),
       },
-      { title: "券种", dataIndex: "sub_type", render: (v: string | null) => v || "—" },
+      { title: "券种", dataIndex: "sub_type", render: (v: string | null) => v || EM_DASH },
       {
         title: "评级",
         dataIndex: "rating",
@@ -149,7 +150,7 @@ export default function CustomerDetailModal({ open, onClose, customerName, repor
         title: "到期日",
         dataIndex: "maturity_date",
         align: "right",
-        render: (v: string | null) => v || "—",
+        render: (v: string | null) => v || EM_DASH,
       },
     ],
     [reportDate],
@@ -216,7 +217,7 @@ export default function CustomerDetailModal({ open, onClose, customerName, repor
             {customerName ?? "客户明细"}
           </Typography.Title>
           <Typography.Text type="secondary">
-            报告日：{details?.report_date || reportDate || "—"}
+            报告日：{details?.report_date || reportDate || EM_DASH}
           </Typography.Text>
         </div>
       }

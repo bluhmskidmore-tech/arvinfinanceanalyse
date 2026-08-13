@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import type { Numeric } from "../../../api/contracts";
+import { EM_DASH } from "../../../pageModel";
 import { formatRawAsNumeric } from "../../../utils/format";
 import {
   bucketAmountToYi,
   bucketAmountToYiNumeric,
   nameAmountToYi,
   nameAmountToYiNumeric,
+  numericOrDash,
+  numericRaw,
   numericToYi,
   numericToYiNumeric,
   numericYuanRaw,
@@ -23,6 +26,32 @@ function unsupportedUnit(raw: number): Numeric {
 }
 
 describe("liability money helpers", () => {
+  it("delegates numericRaw to pageModel and maps NaN/Infinity to null", () => {
+    const nanNumeric: Numeric = {
+      raw: Number.NaN,
+      unit: "yuan",
+      display: "",
+      precision: 2,
+      sign_aware: false,
+    };
+    const infNumeric: Numeric = {
+      raw: Number.POSITIVE_INFINITY,
+      unit: "yuan",
+      display: "",
+      precision: 2,
+      sign_aware: false,
+    };
+    expect(numericRaw(nanNumeric)).toBeNull();
+    expect(numericRaw(infNumeric)).toBeNull();
+    expect(numericRaw(governed(1.25, "yuan"))).toBe(1.25);
+  });
+
+  it("uses EM_DASH for missing display via numericOrDash", () => {
+    expect(numericOrDash(null)).toBe(EM_DASH);
+    expect(numericOrDash(undefined)).toBe(EM_DASH);
+    expect(numericOrDash(governed(1, "yi"))).toBe(governed(1, "yi").display);
+  });
+
   it("converts yuan numerics to yi numerics without flattening to plain numbers", () => {
     const out = numericToYiNumeric(governed(250_000_000, "yuan"));
 

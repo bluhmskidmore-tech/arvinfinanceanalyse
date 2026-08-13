@@ -1,12 +1,13 @@
 import type { Numeric } from "../../api/contracts";
 import { numericRaw } from "../../pageModel";
+import { EM_DASH } from "../../utils/format";
 
 export function displayStr(value: string | Numeric | undefined) {
   if (value === undefined || value === "") {
-    return "—";
+    return EM_DASH;
   }
   if (typeof value === "object" && value !== null && "display" in value) {
-    return value.display || "—";
+    return value.display || EM_DASH;
   }
   return String(value);
 }

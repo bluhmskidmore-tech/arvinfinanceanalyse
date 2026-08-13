@@ -299,5 +299,9 @@ describe("CashflowProjectionPage", () => {
     expect(contractPanel).toHaveTextContent("fact_formal_zqtz_balance_daily");
     expect(contractPanel).toHaveTextContent("fact_formal_tyw_balance_daily");
     expect(contractPanel).toHaveTextContent("证据行 0");
+
+    const dateSourceNote = screen.getByTestId("cashflow-date-source-note");
+    expect(dateSourceNote).toHaveTextContent("报告日取自资产负债分析可用日期");
+    expect(dateSourceNote).toHaveTextContent("date_basis");
   });
 });

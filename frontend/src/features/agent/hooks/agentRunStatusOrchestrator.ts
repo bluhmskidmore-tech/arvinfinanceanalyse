@@ -1,4 +1,5 @@
 import {
+  AgentRunStreamConnectionError,
   streamAgentRunEvents as defaultStreamAgentRunEvents,
   type AgentRunEventHandler,
   type AgentRunStreamOptions,
@@ -21,6 +22,26 @@ export type StreamAgentRunEvents = (
   onEvent: AgentRunEventHandler,
   options?: AgentRunStreamOptions,
 ) => Promise<void>;
+
+/** SSE 断开后允许的最大重连次数；预算耗尽才降级 GET 轮询。 */
+export const AGENT_RUN_SSE_RECONNECT_LIMIT = 2;
+
+/** SSE 重连退避：第 1 次 1s，第 2 次起 3s（reconnectAttempt 从 1 起）。 */
+export function getAgentRunSseReconnectDelayMs(reconnectAttempt: number) {
+  return reconnectAttempt <= 1 ? 1000 : 3000;
+}
+
+/**
+ * 连接期失败（4xx/5xx、不支持 event-stream、fetch 拒绝）说明该环境下 SSE 无法
+ * 建立，重试没有意义，直接降级轮询；只有“已建立后断开”（中流错误 / 终态前
+ * EOF）才值得有限重连。abort 不属于可重连失败，由调用方按中止语义处理。
+ */
+function isReconnectableStreamFailure(error: unknown) {
+  if (isAbortError(error)) {
+    return false;
+  }
+  return !(error instanceof AgentRunStreamConnectionError);
+}
 
 type WaitForAgentRunTerminalOptions = {
   runId: string;
@@ -65,8 +86,8 @@ export async function waitForAgentRunTerminal(
   }
 
   let streamPayloadInvalid = false;
-  try {
-    await streamAgentRunEvents(
+  const streamOnce = () =>
+    streamAgentRunEvents(
       runId,
       (value) => {
         if (!isAgentRunPayload(value) || value.run_id !== runId) {
@@ -83,14 +104,38 @@ export async function waitForAgentRunTerminal(
       },
       { signal },
     );
-  } catch {
-    // A disconnected or unsupported SSE path falls through to GET polling.
-  }
 
-  if (terminalPayload) {
-    return terminalPayload;
+  // SSE 有限重连：后端在终态前不会正常关流（服务端只在终态后 return），因此
+  // “中流失败 / 终态前 EOF”视为断开，按 1s/3s 退避重连（每个 run_update 都是
+  // 全量快照，publishSnapshot 以 JSON 去重，重连不丢事件也不重复发布）。
+  // 连接期失败与无效载荷保持原行为：立即降级 GET 轮询。
+  let reconnectAttempt = 0;
+  while (true) {
+    let streamThrew = false;
+    let streamFailure: unknown;
+    try {
+      await streamOnce();
+    } catch (error) {
+      streamThrew = true;
+      streamFailure = error;
+    }
+
+    if (terminalPayload) {
+      return terminalPayload;
+    }
+    throwIfAborted(signal);
+    if (streamPayloadInvalid) {
+      break;
+    }
+    if (streamThrew && !isReconnectableStreamFailure(streamFailure)) {
+      break;
+    }
+    if (reconnectAttempt >= AGENT_RUN_SSE_RECONNECT_LIMIT) {
+      break;
+    }
+    reconnectAttempt += 1;
+    await sleepWithAbort(getAgentRunSseReconnectDelayMs(reconnectAttempt), signal);
   }
-  throwIfAborted(signal);
 
   const fallbackPayload = await pollAgentRunUntilTerminal({
     runId,

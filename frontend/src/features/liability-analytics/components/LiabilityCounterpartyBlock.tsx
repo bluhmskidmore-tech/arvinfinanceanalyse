@@ -34,7 +34,8 @@ function truncateName(value: string, max = 10): string {
   return value.length > max ? `${value.slice(0, max)}...` : value;
 }
 
-function rawYuanForChart(value: Numeric | null | undefined): number {
+/** 仅用于排序键；缺数按 0 参与排序，不进入图表系列（系列缺数保留 null）。 */
+function yuanSortValue(value: Numeric | null | undefined): number {
   return numericYuanRaw(value) ?? 0;
 }
 
@@ -49,16 +50,17 @@ function populationSummary(populationCount: number | null | undefined, isTruncat
 }
 
 function bankNonBankFromByType(rows: LiabilityTypeRow[]): { name: string; value: number }[] {
-  const bankRow = rows.find((row) => row.name === "Bank");
-  const bank = rawYuanForChart(bankRow?.value);
-  const nonBank = rows.reduce(
-    (sum, row) => (row.name === "Bank" ? sum : sum + rawYuanForChart(row.value)),
-    0,
-  );
+  const bank = numericYuanRaw(rows.find((row) => row.name === "Bank")?.value);
+  const nonBankValues = rows
+    .filter((row) => row.name !== "Bank")
+    .map((row) => numericYuanRaw(row.value))
+    .filter((value): value is number => value !== null);
+  const nonBank = nonBankValues.length > 0 ? nonBankValues.reduce((sum, value) => sum + value, 0) : null;
+  // 缺数（null）不入饼图系列，避免画出假 0 扇区；两侧都缺时呈空态。
   return [
     { name: "银行", value: bank },
     { name: "非银行", value: nonBank },
-  ];
+  ].filter((item): item is { name: string; value: number } => item.value !== null);
 }
 
 export function LiabilityCounterpartyBlock({
@@ -89,7 +91,7 @@ export function LiabilityCounterpartyBlock({
   errorText: string | null;
 }) {
   const ranked = useMemo(
-    () => [...counterpartyRows].sort((a, b) => rawYuanForChart(b.value) - rawYuanForChart(a.value)),
+    () => [...counterpartyRows].sort((a, b) => yuanSortValue(b.value) - yuanSortValue(a.value)),
     [counterpartyRows],
   );
 
@@ -128,8 +130,9 @@ export function LiabilityCounterpartyBlock({
       series: [
         {
           type: "bar",
+          // 缺数（null）保留类目但不画柱；tooltip 分支已用 EM_DASH 兜底。
           data: reversedTop10.map((row) => ({
-            value: numericToYiNumeric(row.value)?.raw ?? 0,
+            value: numericToYiNumeric(row.value)?.raw ?? null,
             row,
           })),
           itemStyle: { color: BAR_COLOR, borderRadius: [0, 2, 2, 0] },
@@ -160,9 +163,10 @@ export function LiabilityCounterpartyBlock({
           data: donut.map((item, index) => ({
             ...item,
             itemStyle: {
+              // 按名称取色：银行扇区可能因缺数被过滤，索引不再可靠。
               color:
                 donut.length <= 2
-                  ? index === 0
+                  ? item.name === "银行"
                     ? PIE_BANK
                     : PIE_NONBANK
                   : PIE_EXTRA[index % PIE_EXTRA.length],

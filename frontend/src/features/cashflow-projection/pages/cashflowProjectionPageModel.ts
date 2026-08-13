@@ -1,18 +1,21 @@
 import type { Numeric } from "../../../api/contracts";
-import { numericRaw, numericRawOrZero, type MetricTone } from "../../../pageModel";
-import type { CashflowProjectionVM } from "../adapters/cashflowProjectionAdapter";
+import { numericRaw, type MetricTone } from "../../../pageModel";
+import { EM_DASH } from "../../../utils/format";
+import type { CashflowBucketVM, CashflowProjectionVM } from "../adapters/cashflowProjectionAdapter";
 
 export type CashflowMonthlyProjectionSeries = {
   categories: string[];
-  assetInflow: number[];
-  liabilityOutflow: number[];
-  cumulativeNet: number[];
+  /** `null` marks a missing bucket value; ECharts must render it as a gap, not as 0. */
+  assetInflow: (number | null)[];
+  liabilityOutflow: (number | null)[];
+  cumulativeNet: (number | null)[];
 };
 
 export type CashflowProjectionRiskReadout = {
   tone: Extract<MetricTone, "positive" | "warning" | "neutral">;
   summary: string;
   negativeCumulativeMonths: number;
+  missingCumulativeMonths: number;
   worstCumulativeMonth: string;
   worstCumulativeDisplay: string;
   largestOutflowMonth: string;
@@ -81,10 +84,27 @@ export function selectCashflowMonthlyProjectionSeries(
 
   return {
     categories: buckets.map((bucket) => bucket.yearMonth),
-    assetInflow: buckets.map((bucket) => numericRawOrZero(bucket.assetInflow)),
-    liabilityOutflow: buckets.map((bucket) => numericRawOrZero(bucket.liabilityOutflow)),
-    cumulativeNet: buckets.map((bucket) => numericRawOrZero(bucket.cumulativeNet)),
+    assetInflow: buckets.map((bucket) => numericRaw(bucket.assetInflow)),
+    liabilityOutflow: buckets.map((bucket) => numericRaw(bucket.liabilityOutflow)),
+    cumulativeNet: buckets.map((bucket) => numericRaw(bucket.cumulativeNet)),
   };
+}
+
+/** Pick the extreme bucket across readable values only; a missing bucket never wins. */
+function pickExtremeBucket(
+  buckets: CashflowBucketVM[],
+  read: (bucket: CashflowBucketVM) => number | null,
+  isBetter: (candidate: number, incumbent: number) => boolean,
+): CashflowBucketVM | null {
+  let best: { bucket: CashflowBucketVM; value: number } | null = null;
+  for (const bucket of buckets) {
+    const value = read(bucket);
+    if (value === null) continue;
+    if (best === null || isBetter(value, best.value)) {
+      best = { bucket, value };
+    }
+  }
+  return best?.bucket ?? null;
 }
 
 export function selectCashflowProjectionRiskReadout(
@@ -93,28 +113,45 @@ export function selectCashflowProjectionRiskReadout(
   const buckets = vm?.monthlyBuckets ?? [];
   if (buckets.length === 0) return null;
 
-  const negativeCumulativeMonths = buckets.filter(
-    (bucket) => numericRawOrZero(bucket.cumulativeNet) < 0,
-  ).length;
-  const worstCumulative = buckets.reduce((worst, bucket) =>
-    numericRawOrZero(bucket.cumulativeNet) < numericRawOrZero(worst.cumulativeNet) ? bucket : worst,
+  const cumulativeRaws = buckets.map((bucket) => numericRaw(bucket.cumulativeNet));
+  const negativeCumulativeMonths = cumulativeRaws.filter((raw) => raw !== null && raw < 0).length;
+  const missingCumulativeMonths = cumulativeRaws.filter((raw) => raw === null).length;
+
+  const worstCumulative = pickExtremeBucket(
+    buckets,
+    (bucket) => numericRaw(bucket.cumulativeNet),
+    (candidate, incumbent) => candidate < incumbent,
   );
-  const largestOutflow = buckets.reduce((largest, bucket) =>
-    numericRawOrZero(bucket.liabilityOutflow) > numericRawOrZero(largest.liabilityOutflow) ? bucket : largest,
+  const largestOutflow = pickExtremeBucket(
+    buckets,
+    (bucket) => numericRaw(bucket.liabilityOutflow),
+    (candidate, incumbent) => candidate > incumbent,
   );
   const finalBucket = buckets[buckets.length - 1];
 
+  const summaryParts: string[] = [];
+  if (negativeCumulativeMonths > 0) {
+    summaryParts.push(`${negativeCumulativeMonths} 个月累计净现金流为负`);
+  }
+  if (missingCumulativeMonths > 0) {
+    summaryParts.push(`${missingCumulativeMonths} 个月累计净现金流缺数`);
+  }
+
   return {
-    tone: negativeCumulativeMonths > 0 ? "warning" : "positive",
-    summary:
+    // A missing month can hide a negative month, so the readout must never claim "positive".
+    tone:
       negativeCumulativeMonths > 0
-        ? `${negativeCumulativeMonths} 个月累计净现金流为负`
-        : "未见累计净现金流为负月份",
+        ? "warning"
+        : missingCumulativeMonths > 0
+          ? "neutral"
+          : "positive",
+    summary: summaryParts.length > 0 ? summaryParts.join(" · ") : "未见累计净现金流为负月份",
     negativeCumulativeMonths,
-    worstCumulativeMonth: worstCumulative.yearMonth,
-    worstCumulativeDisplay: worstCumulative.cumulativeNet.display,
-    largestOutflowMonth: largestOutflow.yearMonth,
-    largestOutflowDisplay: largestOutflow.liabilityOutflow.display,
+    missingCumulativeMonths,
+    worstCumulativeMonth: worstCumulative?.yearMonth ?? EM_DASH,
+    worstCumulativeDisplay: worstCumulative?.cumulativeNet.display ?? EM_DASH,
+    largestOutflowMonth: largestOutflow?.yearMonth ?? EM_DASH,
+    largestOutflowDisplay: largestOutflow?.liabilityOutflow.display ?? EM_DASH,
     finalCumulativeDisplay: finalBucket.cumulativeNet.display,
   };
 }

@@ -4,8 +4,8 @@ import { Alert, Select, Spin, Table, Typography } from "antd";
 
 import type { Numeric } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
-import { DataSection } from "../../../components/DataSection";
 import type { DataSectionState } from "../../../components/DataSection.types";
+import { PageDataSection } from "../../../components/page/PageDataSection";
 import { modeBadgeStyle } from "../../../components/page/pageStyles";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { designTokens } from "../../../theme/designSystem";
@@ -42,7 +42,7 @@ type KpiSpec = {
 type RailPoint = {
   label: string;
   height: number;
-  tone: "positive" | "negative" | "neutral";
+  tone: "positive" | "negative" | "neutral" | "missing";
 };
 
 function buildConclusion(durationGap: Numeric | undefined): Conclusion {
@@ -92,9 +92,12 @@ function axisYiLabel(value: number): string {
   return `${toYi(value).toFixed(1)}亿`;
 }
 
-function tooltipYi(value: number): string {
-  if (!Number.isFinite(value)) return EM_DASH;
-  return `${toYi(value).toLocaleString("zh-CN", {
+function tooltipYi(value: unknown): string {
+  // Series carry `null` for missing buckets; `Number(null)`/`Number("")` would print 0.00 亿.
+  if (value === null || value === undefined || value === "") return EM_DASH;
+  const raw = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(raw)) return EM_DASH;
+  return `${toYi(raw).toLocaleString("zh-CN", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })} 亿`;
@@ -118,12 +121,18 @@ function buildProjectionRail(
 ): RailPoint[] {
   if (!monthlySeries) return [];
   const values = monthlySeries.cumulativeNet.slice(0, 24);
-  const maxAbs = Math.max(1, ...values.map((value) => Math.abs(value)));
-  return values.map((value, index) => ({
-    label: monthlySeries.categories[index] ?? "",
-    height: Math.max(10, Math.round((Math.abs(value) / maxAbs) * 42)),
-    tone: value > 0 ? "positive" : value < 0 ? "negative" : "neutral",
-  }));
+  const maxAbs = Math.max(1, ...values.map((value) => (value === null ? 0 : Math.abs(value))));
+  return values.map((value, index) => {
+    const label = monthlySeries.categories[index] ?? "";
+    if (value === null) {
+      return { label: `${label} · 缺数`, height: 10, tone: "missing" };
+    }
+    return {
+      label,
+      height: Math.max(10, Math.round((Math.abs(value) / maxAbs) * 42)),
+      tone: value > 0 ? "positive" : value < 0 ? "negative" : "neutral",
+    };
+  });
 }
 
 export default function CashflowProjectionPage() {
@@ -354,7 +363,7 @@ export default function CashflowProjectionPage() {
         </div>
       </div>
 
-      <DataSection
+      <PageDataSection
         title=""
         state={sectionState}
         onRetry={() => {
@@ -434,6 +443,9 @@ export default function CashflowProjectionPage() {
                   <span>使用表 {projectionMeta.tables_used?.join(", ") || EM_DASH}</span>
                   <span>证据行 {projectionMeta.evidence_rows ?? EM_DASH}</span>
                 </div>
+                <div className={styles.contractStatusNote} data-testid="cashflow-date-source-note">
+                  报告日取自资产负债分析可用日期（/api/balance-analysis/dates）；现金流桶按后端 date_basis 口径展示，前端不改数据逻辑。
+                </div>
               </section>
             ) : null}
 
@@ -505,7 +517,12 @@ export default function CashflowProjectionPage() {
                       <div className={styles.riskRow}>
                         <span>期末累计净流</span>
                         <strong>{riskReadout.finalCumulativeDisplay}</strong>
-                        <em>{riskReadout.negativeCumulativeMonths} 个负值月</em>
+                        <em>
+                          {riskReadout.negativeCumulativeMonths} 个负值月
+                          {riskReadout.missingCumulativeMonths > 0
+                            ? ` · ${riskReadout.missingCumulativeMonths} 个缺数月（未参与判定）`
+                            : ""}
+                        </em>
                       </div>
                     </div>
                   </>
@@ -569,7 +586,7 @@ export default function CashflowProjectionPage() {
             ) : null}
           </div>
         ) : null}
-      </DataSection>
+      </PageDataSection>
     </section>
   );
 }

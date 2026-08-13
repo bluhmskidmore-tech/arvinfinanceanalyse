@@ -21,11 +21,18 @@ export function LiabilityNimStressMonthlyPanel({
   return (
     <Card
       size="small"
-      title="压力测试：NIM 敏感性（+50bps）"
+      title="压力测试：NIM 敏感性（+50bps，非官方预览）"
       extra={isCritical ? <span className="liability-status-pill">NIM 预警</span> : null}
     >
       <Text type="secondary" className="liability-panel-caption">
         口径：月度日均（月度收益率/付息率；若缺失则仅展示结构）。
+      </Text>
+      <Text
+        type="warning"
+        className="liability-panel-caption--tight"
+        data-testid="liability-nim-monthly-unofficial-note"
+      >
+        非官方预览：压力后 NIM 为前端演算（当前月度 NIM −50bp 平移），后端暂未提供月度压力口径；日度面板压力值来自后端官方字段。
       </Text>
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={6}>
