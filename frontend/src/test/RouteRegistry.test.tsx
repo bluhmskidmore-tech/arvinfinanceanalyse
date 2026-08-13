@@ -271,9 +271,33 @@ vi.mock("../app/ThemedRouteBoundary", () => ({
   default: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
+// 预热本文件未被 vi.mock 的懒加载路由重链：/cross-asset（双层懒链，重头是
+// CrossAssetDriversPage）、/bank-ledger-dashboard、/operations-analysis、
+// /risk-overview、/source-preview（占位页）。原清单里的 agent/dashboard-home/
+// decision-items/news-events 均已被 mock，预热只会加载 mock，等于没预热；
+// 未预热的重链会在首个触碰它的用例内冷加载，高负载下饿死后续用例的 5s findBy。
+// 其中最大单体是 RiskOverviewPage 链上的 antd barrel（vitest 下整体求值）。
+// 多文件组合冷启动时 4 个 worker 并发抢 transform/求值，单个 30s hook 可能
+// 不够，所以在模块 collection 阶段就发起预热（不 await），两个 beforeAll 按
+// 序等待完成，各自保持 30s 超时上限。
+const antdBarrelWarmup = import("antd");
+const routeModulesWarmup = antdBarrelWarmup.then(() =>
+  preloadWorkbenchRouteModules(
+    "bank-ledger-dashboard",
+    "cross-asset",
+    "operations-analysis",
+    "risk-overview",
+    "workbench-placeholder",
+  ),
+);
+
 beforeAll(async () => {
-  await preloadWorkbenchRouteModules("agent", "dashboard-home", "decision-items", "news-events");
-}, 20_000);
+  await antdBarrelWarmup;
+}, 30_000);
+
+beforeAll(async () => {
+  await routeModulesWarmup;
+}, 30_000);
 
 function ThrowingRoute(): ReactElement {
   throw new Error("route exploded");
@@ -444,11 +468,31 @@ describe("RouteRegistry", () => {
     ).toBeInTheDocument();
   });
 
-  it("routes the policy funding direct Chinese path to the dashboard home", async () => {
+  it("redirects the policy funding direct Chinese path to the canonical dashboard home", async () => {
     renderWorkbenchApp(["/政策与资金面"], { client: mockClient });
 
     expect(await screen.findByTestId("dashboard-home-page")).toBeInTheDocument();
     expect(await screen.findByTestId("dashboard-home-hero")).toBeInTheDocument();
+
+    // 重定向到 canonical "/" 后，壳层应识别经营日报组，而不是落入「未知页面」。
+    const overviewGroupLink = within(await screen.findByTestId("workbench-group-nav")).getByRole(
+      "link",
+      { name: /经营日报/ },
+    );
+    expect(overviewGroupLink).toHaveAttribute("data-active", "true");
+  });
+
+  it("redirects legacy /cross-asset-drivers to the canonical cross-asset page", async () => {
+    renderWorkbenchApp(["/cross-asset-drivers"], { client: mockClient });
+
+    expect(await screen.findByTestId("cross-asset-drivers-page")).toBeInTheDocument();
+
+    // 重定向到 canonical /cross-asset 后，壳层应识别市场工作台组，而不是落入「未知页面」。
+    const marketGroupLink = within(await screen.findByTestId("workbench-group-nav")).getByRole(
+      "link",
+      { name: /市场工作台/ },
+    );
+    expect(marketGroupLink).toHaveAttribute("data-active", "true");
   });
 
   it("renders the positions route", async () => {

@@ -19,6 +19,33 @@ export const TONE_COLOR: Record<Tone, string> = {
 };
 
 /**
+ * 主题感知 tone 色（CSS 变量入口）。深色路由（`.theme-dh-api` 等）会在
+ * `src/styles/tokens.css` 里重映射 `--ib-*`，因此深色页的盈亏着色必须走本入口，
+ * 禁止把浅色 `semantic.profit/loss` 十六进制直灌深色页。
+ * 仅适用于能解析 CSS 变量的场景（DOM style / CSS）；canvas/ECharts 等无法解析
+ * CSS 变量的代码仍使用 `TONE_COLOR` 或页面主题 TS 镜像 token。
+ */
+export const TONE_CSS_VAR: Record<Tone, string> = {
+  positive: "var(--ib-up)",
+  neutral: "var(--ib-ink-muted)",
+  warning: "var(--ib-warn)",
+  negative: "var(--ib-down)",
+};
+
+/**
+ * Nocturne scope 页面的 tone 入口。`--ib-*` 在 ThemedRouteBoundary 上被算成
+ * dh-api 钢蓝字面值再继承，页根的 Nocturne scope 翻不动它们；挂了
+ * `data-moss-theme-scope` Nocturne 别名的页面必须走 `--dh-api-*` 家族，
+ * scope 内会解析为 `--nct-*` 色板（避免同页同语义出现两种绿/红，DESIGN.md §4）。
+ */
+export const TONE_DH_CSS_VAR: Record<Tone, string> = {
+  positive: "var(--dh-api-green)",
+  neutral: "var(--dh-api-muted)",
+  warning: "var(--dh-api-amber)",
+  negative: "var(--dh-api-red)",
+};
+
+/**
  * Derive a tone from a Numeric's sign. Returns ``neutral`` for ``raw=null``,
  * zero, or ``sign_aware=false`` values (the latter are absolute-valued by
  * design and must not be colored by sign).

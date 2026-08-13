@@ -8,8 +8,9 @@
  *
  * Rules:
  * - Display-only. No official finance calculation lives here.
- * - Formatting delegates to `utils/format.ts`; tone delegates to
- *   `utils/tone.ts`. Do not fork their logic.
+ * - `textOrDash` / `fixedOrDash` are shared implementations owned here;
+ *   `EM_DASH` is re-exported from `utils/format.ts`. Tone helpers delegate
+ *   to `utils/tone.ts`. Do not fork their logic.
  * - Keep this module small: only add a type/helper once it is repeated
  *   across several page models, not for a single page's convenience.
  */

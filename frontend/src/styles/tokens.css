@@ -352,7 +352,9 @@
  * + 市场总览 /market-overview（业主 2026-08-12 指示按首页排版布局重做，
  * 同样只加选择器别名，不新增色值）
  * + 利率风险总览 /risk-overview（业主 2026-08-13 指示按首页排版标准重做，
- * 同样只加选择器别名，不新增色值）。
+ * 同样只加选择器别名，不新增色值）
+ * + 债券分析 /bond-analysis（业主 2026-08-13 指示按首页 Nocturne 色系换肤，
+ * 仅换色不动版式，同样只加选择器别名，不新增色值）。
  * 色板源自设计交接包「三个布局方向设计评审」的 tokens/nocturne-styles.css：
  * 单一蓝紫 accent、低饱和绿涨红跌、8px 卡片圆角（--dh-api-radius）。
  * 作用域限定以上页面根及其所在工作台外壳，其余深色页面仍走 §2.2 的
@@ -373,6 +375,9 @@
 [data-moss-theme-scope="stock-analysis"],
 [data-moss-theme-scope="risk-overview"],
 [data-moss-theme-scope="pnl-by-business"],
+[data-moss-theme-scope="pnl-attribution"],
+[data-moss-theme-scope="pnl-by-business-insights"],
+[data-moss-theme-scope="bond-analysis"],
 /* 深色 owner 是 ThemedRouteBoundary 的路由（除首页外全部 scope）：钢蓝基准块以
    .workbench-shell-grid:has(.themed-route-boundary.theme-dh-api)（0-3-0）
    在外壳上定义 --dh-api-*，外壳别名须统一双写类名同权后置才能翻转
@@ -390,7 +395,10 @@
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-data"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="stock-analysis"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-overview"]),
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business"]) {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-attribution"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business-insights"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-analysis"]) {
   --nct-bg: #161826;
   --nct-rail: #131522;
   --nct-surface: #232532;
@@ -469,7 +477,10 @@
 .themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="market-data"]),
 .themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="stock-analysis"]),
 .themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="risk-overview"]),
-.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="pnl-by-business"]) {
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="pnl-by-business"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="pnl-attribution"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="pnl-by-business-insights"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="bond-analysis"]) {
   color: var(--nct-ink, var(--dh-api-ink));
   background: var(--nct-bg, var(--dh-api-bg));
 }
@@ -493,6 +504,9 @@
 [data-moss-theme-scope="stock-analysis"],
 [data-moss-theme-scope="risk-overview"],
 [data-moss-theme-scope="pnl-by-business"],
+[data-moss-theme-scope="pnl-attribution"],
+[data-moss-theme-scope="pnl-by-business-insights"],
+[data-moss-theme-scope="bond-analysis"],
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="average-balance"]),
@@ -505,7 +519,10 @@
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-data"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="stock-analysis"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-overview"]),
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business"]) {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-attribution"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business-insights"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-analysis"]) {
   --moss-shell-paper-bg: var(--nct-bg);
   --moss-shell-paper-shade: none;
 }
@@ -519,6 +536,8 @@
 [data-moss-theme-scope="bank-ledger-dashboard"],
 [data-moss-theme-scope="market-data"],
 [data-moss-theme-scope="pnl-by-business"],
+[data-moss-theme-scope="pnl-attribution"],
+[data-moss-theme-scope="pnl-by-business-insights"],
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="average-balance"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="positions"]),
@@ -526,6 +545,8 @@
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="liability-analytics"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bank-ledger-dashboard"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-data"]),
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business"]) {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-attribution"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business-insights"]) {
   --moss-shell-terminal-bg: var(--nct-rail);
 }

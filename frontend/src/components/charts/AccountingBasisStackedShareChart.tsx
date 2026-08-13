@@ -1,5 +1,7 @@
-import ReactECharts, { type EChartsOption } from "../../lib/echarts";
+import type { EChartsOption } from "../../lib/echarts";
 import { designTokens, ibTokens } from "../../theme/designSystem";
+import { EM_DASH } from "../../utils/format";
+import { BaseChart } from "./BaseChart";
 
 export type AccountingBasisStackedSharePoint = {
   monthLabel: string;
@@ -23,7 +25,7 @@ function formatPct(value: number) {
 }
 
 function formatYi(value: number | undefined) {
-  return value === undefined || Number.isNaN(value) ? "-" : `${value.toFixed(2)} 亿`;
+  return value === undefined || Number.isNaN(value) ? EM_DASH : `${value.toFixed(2)} 亿`;
 }
 
 function dataIndexFromTooltip(params: unknown) {
@@ -120,12 +122,7 @@ export default function AccountingBasisStackedShareChart({
   title,
   height = 390,
 }: AccountingBasisStackedShareChartProps) {
-  return (
-    <ReactECharts
-      option={buildOption(rows, title)}
-      style={{ height, width: "100%" }}
-      notMerge
-      lazyUpdate
-    />
-  );
+  // 复用 BaseChart 壳层：同一 lib/echarts 包装（notMerge / lazyUpdate / 同主题）
+  // 之上补齐 ResizeObserver 自适应，容器尺寸变化时图表跟随重算。
+  return <BaseChart option={buildOption(rows, title)} height={height} />;
 }

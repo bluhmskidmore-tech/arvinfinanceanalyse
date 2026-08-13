@@ -661,6 +661,73 @@
   font-size: 13px;
 }
 
+/*
+ * 治理横幅（临时例外）的 Nocturne scope 收敛：基础样式是浅色 cream
+ * （warning-50/200 浅字面量），且 Nocturne 外壳翻转后标题/正文继承近白
+ * ink，落在浅底上不可读。仅对列出的 scope 生效，色值全部走 --dh-api-*
+ * 链（该 scope 下即 Nocturne），密度对齐首页面板（12-14px padding、
+ * 12px 正文、--dh-api-radius 圆角）。
+ */
+.workbench-shell-grid:has(
+    [data-moss-theme-scope="ledger-pnl"],
+    [data-moss-theme-scope="average-balance"],
+    [data-moss-theme-scope="positions"],
+    [data-moss-theme-scope="bond-dashboard"],
+    [data-moss-theme-scope="liability-analytics"],
+    [data-moss-theme-scope="bank-ledger-dashboard"]
+  )
+  .workbench-notice[data-notice-tone="governance"] {
+  gap: 4px;
+  padding: 12px 14px;
+  border-color: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
+  /* !important 对齐上方 desktop-aligned 层的 2px 锐角烘焙（本文件 §readiness/governance banner）。 */
+  border-radius: var(--dh-api-radius) !important;
+  background: var(--dh-api-amber-soft);
+  color: var(--dh-api-soft);
+}
+
+.workbench-shell-grid:has(
+    [data-moss-theme-scope="ledger-pnl"],
+    [data-moss-theme-scope="average-balance"],
+    [data-moss-theme-scope="positions"],
+    [data-moss-theme-scope="bond-dashboard"],
+    [data-moss-theme-scope="liability-analytics"],
+    [data-moss-theme-scope="bank-ledger-dashboard"]
+  )
+  .workbench-notice[data-notice-tone="governance"]
+  .workbench-notice__title {
+  color: var(--dh-api-amber);
+  font-size: 12px;
+}
+
+.workbench-shell-grid:has(
+    [data-moss-theme-scope="ledger-pnl"],
+    [data-moss-theme-scope="average-balance"],
+    [data-moss-theme-scope="positions"],
+    [data-moss-theme-scope="bond-dashboard"],
+    [data-moss-theme-scope="liability-analytics"],
+    [data-moss-theme-scope="bank-ledger-dashboard"]
+  )
+  .workbench-notice[data-notice-tone="governance"]
+  .workbench-notice__body {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.workbench-shell-grid:has(
+    [data-moss-theme-scope="ledger-pnl"],
+    [data-moss-theme-scope="average-balance"],
+    [data-moss-theme-scope="positions"],
+    [data-moss-theme-scope="bond-dashboard"],
+    [data-moss-theme-scope="liability-analytics"],
+    [data-moss-theme-scope="bank-ledger-dashboard"]
+  )
+  .workbench-notice[data-notice-tone="governance"]
+  .workbench-notice__hint {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+}
+
 .portfolio-workbench-lead {
   display: grid;
   flex: 1 1 0;
@@ -879,6 +946,8 @@
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="liability-analytics"]) .workbench-terminal-bar,
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bank-ledger-dashboard"]) .workbench-terminal-bar,
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-data"]) .workbench-terminal-bar,
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business"]) .workbench-terminal-bar {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-attribution"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business-insights"]) .workbench-terminal-bar {
   background: var(--nct-rail) !important;
 }

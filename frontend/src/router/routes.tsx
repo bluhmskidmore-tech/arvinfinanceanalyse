@@ -110,9 +110,6 @@ const CubeQueryPage = lazy(() => import("../features/cube-query/pages/CubeQueryP
 const StockAnalysisPage = lazy(
   () => import("../features/stock-analysis/pages/StockAnalysisPage"),
 );
-const EquityCockpitPrototypePage = lazy(
-  () => import("../features/prototype/EquityCockpitPrototypePage"),
-);
 const DecisionItemsPage = lazy(
   () => import("../features/decision-items/pages/DecisionItemsPage"),
 );
@@ -129,14 +126,6 @@ function routeElement(element: ReactNode) {
 function themedRouteElement(element: ReactNode) {
   return routeElement(<ThemedRouteBoundary>{element}</ThemedRouteBoundary>);
 }
-
-function parseEnvDataSourceMode() {
-  const raw = import.meta.env.VITE_DATA_SOURCE;
-  return typeof raw === "string" ? raw.trim().toLowerCase() : "";
-}
-
-const equityPrototypeRouteEnabled =
-  import.meta.env.DEV === true && parseEnvDataSourceMode() === "mock";
 
 function placeholderRoute(section: WorkbenchSection): RouteObject {
   return {
@@ -469,7 +458,7 @@ export const workbenchRoutes: RouteObject[] = [
       },
       {
         path: "cross-asset-drivers",
-        element: themedRouteElement(<CrossAssetPage />),
+        element: <Navigate to="/cross-asset" replace />,
       },
       {
         path: "assets",
@@ -482,7 +471,7 @@ export const workbenchRoutes: RouteObject[] = [
       },
       {
         path: "政策与资金面",
-        element: routeElement(<DashboardHomePage />),
+        element: <Navigate to="/" replace />,
       },
       {
         path: "product-category-pnl/audit",
@@ -494,12 +483,4 @@ export const workbenchRoutes: RouteObject[] = [
       },
     ],
   },
-  ...(equityPrototypeRouteEnabled
-    ? [
-        {
-          path: "/prototype/equity-cockpit",
-          element: themedRouteElement(<EquityCockpitPrototypePage />),
-        } satisfies RouteObject,
-      ]
-    : []),
 ];

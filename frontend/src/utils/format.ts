@@ -1,6 +1,7 @@
 // 共享格式化层（单文件双轨，2026-08-12 登记）：
-// - 治理 API（"Governed Numeric helpers" 分节起）：EM_DASH / formatYi / formatPercent /
-//   formatBp / formatNumeric / formatRawAsNumeric 及 *AsYiPlain 系列。
+// - 治理 API（"Governed Numeric helpers" 分节起）：EM_DASH / formatYi / formatWan /
+//   formatPercent / formatBp / formatNumeric / formatRawAsNumeric 及
+//   *AsYiPlain / *AsWanPlain 系列（万元系 2026-08-13 增补，与亿元系对称）。
 //   缺省值语义：null/undefined/NaN 一律显示 EM_DASH（"—"）；真零显示 "0.00"，
 //   与缺失必须不同形；空串输入不得经 Number("") 变 0。语义由 format.test.ts 固化。
 // - legacy fmt* 双轨（fmtYi/fmtBp/fmtPct/fmtChange/fmtRate/fmtCount）：
@@ -63,6 +64,17 @@ export function formatYi(raw: number | null | undefined, signed: boolean): strin
   if (raw === null || raw === undefined || Number.isNaN(raw)) return NULL_DISPLAY;
   const yi = raw / 100_000_000;
   return `${signPrefix(yi, signed)}${yi.toFixed(2)} 亿`;
+}
+
+/**
+ * Null-tolerant yuan-in-wan formatter（与 ``formatYi`` 对称的万元系入口）。
+ * Converts ``raw`` (yuan) to a "XX.XX 万" display string with optional leading ``+``.
+ * ``null``/``undefined``/``NaN`` render as ``EM_DASH``.
+ */
+export function formatWan(raw: number | null | undefined, signed: boolean): string {
+  if (raw === null || raw === undefined || Number.isNaN(raw)) return NULL_DISPLAY;
+  const wan = raw / 10_000;
+  return `${signPrefix(wan, signed)}${wan.toFixed(2)} 万`;
 }
 
 /**
@@ -182,6 +194,23 @@ export function formatYuanAmountAsYiPlain(raw: string | number | null | undefine
   const n = Number.parseFloat(String(raw).replace(/,/g, ""));
   if (!Number.isFinite(n)) return String(raw);
   return (n / YUAN_PER_YI).toLocaleString("zh-CN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+const YUAN_PER_WAN = 10_000;
+
+/**
+ * 人民币元 → 万元数值串（不含“万”后缀），与 ``formatYuanAmountAsYiPlain`` 对称，
+ * 供 KpiCard 等以 `unit="万元"` 展示的场景使用。
+ */
+export function formatYuanAmountAsWanPlain(raw: string | number | null | undefined): string {
+  if (raw === null || raw === undefined || raw === "") return NULL_DISPLAY;
+  if (typeof raw === "number" && !Number.isFinite(raw)) return NULL_DISPLAY;
+  const n = Number.parseFloat(String(raw).replace(/,/g, ""));
+  if (!Number.isFinite(n)) return String(raw);
+  return (n / YUAN_PER_WAN).toLocaleString("zh-CN", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });

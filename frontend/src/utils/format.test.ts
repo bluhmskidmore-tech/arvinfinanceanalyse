@@ -5,8 +5,10 @@ import {
   formatBp,
   formatPercent,
   formatRawAsNumeric,
+  formatWan,
   formatWanAmountAsYiPlain,
   formatYi,
+  formatYuanAmountAsWanPlain,
   formatYuanAmountAsYiPlain,
 } from "./format";
 
@@ -73,6 +75,35 @@ describe("true zero is distinct from missing", () => {
     expect(
       formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: false }).display,
     ).toBe("0.00 亿");
+  });
+});
+
+describe("万元系（2026-08-13 增补，与亿元系对称）", () => {
+  it("formatWan maps null/undefined/NaN to EM_DASH", () => {
+    expect(formatWan(null, false)).toBe(EM_DASH);
+    expect(formatWan(undefined, true)).toBe(EM_DASH);
+    expect(formatWan(Number.NaN, false)).toBe(EM_DASH);
+  });
+
+  it("formatWan converts yuan to 万 with sign-aware prefix", () => {
+    expect(formatWan(123_400, true)).toBe("+12.34 万");
+    expect(formatWan(-50_000, true)).toBe("-5.00 万");
+    expect(formatWan(123_400, false)).toBe("12.34 万");
+    expect(formatWan(0, false)).toBe("0.00 万");
+  });
+
+  it("formatYuanAmountAsWanPlain maps missing to EM_DASH, true zero to 0.00", () => {
+    expect(formatYuanAmountAsWanPlain(null)).toBe(EM_DASH);
+    expect(formatYuanAmountAsWanPlain(undefined)).toBe(EM_DASH);
+    expect(formatYuanAmountAsWanPlain("")).toBe(EM_DASH);
+    expect(formatYuanAmountAsWanPlain(Number.NaN)).toBe(EM_DASH);
+    expect(formatYuanAmountAsWanPlain(Number.POSITIVE_INFINITY)).toBe(EM_DASH);
+    expect(formatYuanAmountAsWanPlain(0)).toBe("0.00");
+  });
+
+  it("formatYuanAmountAsWanPlain keeps thousands separators and parses comma-grouped strings", () => {
+    expect(formatYuanAmountAsWanPlain(-12_345_600)).toBe("-1,234.56");
+    expect(formatYuanAmountAsWanPlain("12,345,600")).toBe("1,234.56");
   });
 });
 

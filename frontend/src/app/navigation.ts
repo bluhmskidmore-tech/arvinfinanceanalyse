@@ -226,7 +226,8 @@ export const workbenchNavigation: WorkbenchSection[] = [
     readiness: "live",
     readinessLabel: "临时开放",
     governanceStatus: "temporary-exception",
-    readinessNote: "已接统一接口客户端读链路。",
+    readinessNote:
+      "PnL 证据走真实读链路；考核目标分为前端内置演示数据，正式绩效口径待后端读模型接入。",
   },
   {
     key: "decision-items",

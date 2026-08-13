@@ -180,24 +180,11 @@
   min-width: 0;
 }
 
-.workbench-shell-grid--cockpit {
-  grid-template-columns: minmax(188px, 212px) minmax(0, 1fr);
-  gap: clamp(14px, 1.8vw, 22px);
-  padding: 18px clamp(16px, 2vw, 28px) 48px !important;
-  background: var(--moss-institutional-bg) !important;
-}
-
 .workbench-shell-grid--cockpit .workbench-main-column,
 .workbench-shell-grid--cockpit .workbench-main-column > main {
   width: 100%;
   min-width: 0;
   justify-self: stretch;
-}
-
-.workbench-shell-grid--cockpit .workbench-shell-aside {
-  border-color: var(--moss-shell-rail-border) !important;
-  background: var(--moss-shell-rail-bg) !important;
-  box-shadow: none !important;
 }
 
 .workbench-shell-grid--cockpit [data-testid="workbench-terminal-bar"] {
@@ -215,7 +202,7 @@
   margin: 0;
   padding: 0 0 8px;
   border: 0;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+  border-bottom: 1px solid var(--dh-api-line-soft);
   border-radius: 0;
   background: transparent;
   box-shadow: none;
@@ -230,7 +217,7 @@
 }
 
 :where([data-testid="bond-analysis-overview"]) .dashboard-home-toolbar__eyebrow {
-  color: rgba(71, 85, 105, 0.74);
+  color: var(--dh-api-muted);
   font-size: 10px;
   font-weight: 640;
   letter-spacing: 0.04em;
@@ -318,7 +305,7 @@
 :where([data-testid="bond-analysis-overview"]) .dashboard-home-actions__divider {
   width: 1px;
   height: 14px;
-  background: rgba(15, 23, 42, 0.08);
+  background: var(--dh-api-line-soft);
   margin: 0 2px;
 }
 
@@ -1429,55 +1416,9 @@
 }
 
 /* Dashboard cockpit visual pass: reference-like density and shell treatment. */
-.workbench-shell-grid--cockpit {
-  grid-template-columns: 216px minmax(0, 1fr);
-  gap: 0;
-  align-items: stretch;
-  min-height: 100vh !important;
-  padding: 0 !important;
-  background: var(--moss-institutional-bg) !important;
-}
-
 .workbench-shell-grid--cockpit,
 .workbench-shell-grid--cockpit * {
   letter-spacing: 0 !important;
-}
-
-.workbench-shell-grid--cockpit .workbench-main-column {
-  gap: 8px;
-  align-self: stretch;
-  padding: 14px 20px 24px;
-}
-
-.workbench-shell-grid--cockpit .workbench-main-column > main {
-  display: grid;
-  width: 100%;
-}
-
-.workbench-shell-grid--cockpit .workbench-shell-aside {
-  position: sticky !important;
-  top: 0 !important;
-  height: 100vh !important;
-  min-height: 100vh !important;
-  gap: 16px !important;
-  overflow-y: auto;
-  padding: 26px 16px 18px !important;
-  border: 0 !important;
-  border-right: 1px solid var(--moss-shell-rail-border) !important;
-  border-radius: 0 !important;
-  background: var(--moss-shell-rail-bg) !important;
-  box-shadow: none !important;
-}
-
-.moss-data-mode-ribbon + .workbench-shell-grid--cockpit {
-  min-height: calc(100vh - 28px) !important;
-  padding-top: 28px !important;
-}
-
-.moss-data-mode-ribbon + .workbench-shell-grid--cockpit .workbench-shell-aside {
-  top: 28px !important;
-  height: calc(100vh - 28px) !important;
-  min-height: calc(100vh - 28px) !important;
 }
 
 .workbench-shell-grid--cockpit [data-testid="workbench-group-nav"] {
@@ -2706,39 +2647,25 @@
   }
 }
 
-/* Homepage-aligned cockpit shell final layer. Placed after legacy cockpit rules on purpose. */
+/* Homepage-aligned cockpit shell final layer. Placed after legacy cockpit rules on purpose.
+   桌面（≥1181px）列宽/贴边/侧栏落位由 workbenchShell.css 末尾统一层负责，此处只留配色与内饰。 */
 .workbench-shell-grid--cockpit {
-  grid-template-columns: minmax(184px, 208px) minmax(0, 1fr);
-  gap: clamp(12px, 1.5vw, 20px);
   align-items: stretch;
   min-height: 100vh !important;
-  padding: 16px clamp(14px, 1.8vw, 26px) 34px !important;
   background: var(--moss-institutional-bg) !important;
 }
 
 .workbench-shell-grid--cockpit .workbench-shell-aside {
-  position: sticky !important;
-  top: 16px !important;
   align-self: start;
-  height: calc(100vh - 32px) !important;
-  min-height: 0 !important;
   gap: 14px !important;
   overflow-y: auto;
   padding: 18px 14px !important;
-  border: 1px solid var(--moss-shell-rail-border) !important;
-  border-radius: 2px !important;
   background: var(--moss-shell-rail-bg) !important;
-  box-shadow: none !important;
 }
 
 .moss-data-mode-ribbon + .workbench-shell-grid--cockpit {
   min-height: calc(100vh - 28px) !important;
   padding-top: 30px !important;
-}
-
-.moss-data-mode-ribbon + .workbench-shell-grid--cockpit .workbench-shell-aside {
-  top: 30px !important;
-  height: calc(100vh - 46px) !important;
 }
 
 .workbench-shell-grid--cockpit .workbench-shell-aside > div:first-child {
@@ -2859,20 +2786,7 @@
   box-shadow: var(--moss-shadow-card) !important;
 }
 
-.workbench-shell-grid--bond-analysis {
-  /* 188px keeps homepage-first rail labels like「组合工作台 首页」on one line. */
-  grid-template-columns: 188px minmax(0, 1fr) !important;
-  gap: 14px !important;
-  padding: 30px 16px 18px !important;
-}
-
-.moss-data-mode-ribbon + .workbench-shell-grid--bond-analysis {
-  padding-top: 30px !important;
-}
-
 .workbench-shell-grid--bond-analysis .workbench-shell-aside {
-  top: 30px !important;
-  height: calc(100vh - 46px) !important;
   padding: 14px 10px !important;
 }
 
@@ -2920,12 +2834,6 @@
 .moss-data-mode-ribbon--cockpit + .workbench-shell-grid--cockpit {
   min-height: 100vh !important;
   padding-top: 14px !important;
-}
-
-.moss-data-mode-ribbon--cockpit + .workbench-shell-grid--cockpit .workbench-shell-aside {
-  top: 0 !important;
-  height: 100vh !important;
-  min-height: 100vh !important;
 }
 
 @media (max-width: 760px) {

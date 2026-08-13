@@ -109,38 +109,53 @@ function hasEvidence(meta: ResultMeta) {
   );
 }
 
+/**
+ * 徽章色经 CSS 变量出口（回退值 = 原浅色字面量，浅色页面零变化），
+ * 深色页面可在自身 scope 内重定义 --formal-meta-badge-* 完成换肤。
+ */
+const badgeToneFallbacks = {
+  ok: {
+    bg: t.colorBgSuccessSoft,
+    ink: dt.color.success[700],
+    line: dt.color.success[200],
+  },
+  warn: {
+    bg: t.colorBgWarningSoft,
+    ink: t.colorTextWarning,
+    line: t.colorBorderWarning,
+  },
+  danger: {
+    bg: t.colorBgDangerSoft,
+    ink: dt.color.danger[700],
+    line: dt.color.danger[200],
+  },
+} as const;
+
+function toneStyle(tone: keyof typeof badgeToneFallbacks) {
+  const fallback = badgeToneFallbacks[tone];
+  return {
+    background: `var(--formal-meta-badge-${tone}-bg, ${fallback.bg})`,
+    color: `var(--formal-meta-badge-${tone}-ink, ${fallback.ink})`,
+    borderColor: `var(--formal-meta-badge-${tone}-line, ${fallback.line})`,
+  };
+}
+
 function badgeTone(
   kind: "vendor_status" | "fallback_mode",
   value: string | undefined,
 ) {
   if (kind === "vendor_status") {
     if (value === "vendor_stale") {
-      return {
-        background: t.colorBgWarningSoft,
-        color: t.colorTextWarning,
-        borderColor: t.colorBorderWarning,
-      };
+      return toneStyle("warn");
     }
     if (value === "vendor_unavailable") {
-      return {
-        background: t.colorBgDangerSoft,
-        color: dt.color.danger[700],
-        borderColor: dt.color.danger[200],
-      };
+      return toneStyle("danger");
     }
   }
   if (kind === "fallback_mode" && value === "latest_snapshot") {
-    return {
-      background: t.colorBgWarningSoft,
-      color: t.colorTextWarning,
-      borderColor: t.colorBorderWarning,
-    };
+    return toneStyle("warn");
   }
-  return {
-    background: t.colorBgSuccessSoft,
-    color: dt.color.success[700],
-    borderColor: dt.color.success[200],
-  };
+  return toneStyle("ok");
 }
 
 function buildBadges(section: FormalResultMetaSection) {

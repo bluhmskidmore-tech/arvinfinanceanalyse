@@ -1256,7 +1256,10 @@ select {
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="stock-analysis"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-data"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-overview"]),
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business"]) {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-attribution"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business-insights"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-analysis"]) {
   background: var(--nct-bg) !important;
 }
 
@@ -1273,7 +1276,10 @@ select {
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="stock-analysis"]) .workbench-shell-rail,
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-data"]) .workbench-shell-rail,
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-overview"]) .workbench-shell-rail,
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business"]) .workbench-shell-rail {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-attribution"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business-insights"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-analysis"]) .workbench-shell-rail {
   background: var(--nct-rail) !important;
 }
 
@@ -1288,7 +1294,10 @@ select {
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="stock-analysis"]) .workbench-shell-rail-mark,
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-data"]) .workbench-shell-rail-mark,
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-overview"]) .workbench-shell-rail-mark,
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business"]) .workbench-shell-rail-mark {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-attribution"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business-insights"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-analysis"]) .workbench-shell-rail-mark {
   background: var(--nct-surface) !important;
   border-color: var(--nct-ring) !important;
   box-shadow: none !important;
@@ -1310,7 +1319,10 @@ select {
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="stock-analysis"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-data"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-overview"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion) {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-attribution"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business-insights"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-analysis"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion) {
   background: var(--nct-surface) !important;
 }
 
@@ -1327,18 +1339,22 @@ select {
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="stock-analysis"]) .moss-page-v2-decision-hero__conclusion,
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-data"]) .moss-page-v2-decision-hero__conclusion,
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-overview"]) .moss-page-v2-decision-hero__conclusion,
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business"]) .moss-page-v2-decision-hero__conclusion {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-attribution"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business-insights"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-analysis"]) .moss-page-v2-decision-hero__conclusion {
   border-left-color: var(--nct-accent) !important;
 }
 
 /* cockpit 壳 rail hover/active（§cockpit 烘焙 0-4-0；选择器不双写以对齐烘焙
-   同权后置）。走 --cockpit 变体的 Nocturne scope 共五个：dashboard-home /
+   同权后置）。走 --cockpit 变体的 Nocturne scope 共六个：dashboard-home /
    portfolio-home（isDashboardCockpitShell）、market-overview 与
-   risk-overview（isModuleHomePage 亦走 useCockpitShellFrame）与
-   stock-analysis（isStockAnalysisMinimalShell）。dashboard-home 页内
-   0-5-0 块、market-overview 页内 0-6-0 块取值等价并继续接管，列入此处
-   仅作终层兜底；实际生效目标是无页内块的 portfolio-home、stock-analysis
-   与 risk-overview。
+   risk-overview（isModuleHomePage 亦走 useCockpitShellFrame）、
+   stock-analysis（isStockAnalysisMinimalShell）与 bond-analysis
+   （isBondAnalysisMinimalShell）。dashboard-home 页内 0-5-0 块、
+   market-overview 页内 0-6-0 块取值等价并继续接管，列入此处仅作终层兜底；
+   实际生效目标是无页内块的 portfolio-home、stock-analysis、risk-overview
+   与 bond-analysis。
    取值：hover 9%/22% 与 active 14% + inset 2px 对齐 tokens.css
    --moss-shell-rail-active-bg / --moss-shadow-institutional-active 语义，
    active 边线 30% mix 沿用 market-overview 验收块先例。 */
@@ -1356,7 +1372,10 @@ select {
 .workbench-shell-grid--cockpit:has([data-moss-theme-scope="stock-analysis"]) .workbench-shell-support-link:hover,
 .workbench-shell-grid--cockpit:has([data-moss-theme-scope="risk-overview"]) .workbench-shell-group-link:hover,
 .workbench-shell-grid--cockpit:has([data-moss-theme-scope="risk-overview"]) .workbench-shell-agent-nav__link:hover,
-.workbench-shell-grid--cockpit:has([data-moss-theme-scope="risk-overview"]) .workbench-shell-support-link:hover {
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="risk-overview"]) .workbench-shell-support-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="bond-analysis"]) .workbench-shell-group-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="bond-analysis"]) .workbench-shell-agent-nav__link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="bond-analysis"]) .workbench-shell-support-link:hover {
   background: color-mix(in srgb, var(--nct-accent) 9%, transparent) !important;
   border-color: color-mix(in srgb, var(--nct-accent) 22%, transparent) !important;
 }
@@ -1365,7 +1384,8 @@ select {
 .workbench-shell-grid--cockpit:has([data-moss-theme-scope="portfolio-home"]) .workbench-shell-group-link[data-active="true"],
 .workbench-shell-grid--cockpit:has([data-moss-theme-scope="market-overview"]) .workbench-shell-group-link[data-active="true"],
 .workbench-shell-grid--cockpit:has([data-moss-theme-scope="stock-analysis"]) .workbench-shell-group-link[data-active="true"],
-.workbench-shell-grid--cockpit:has([data-moss-theme-scope="risk-overview"]) .workbench-shell-group-link[data-active="true"] {
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="risk-overview"]) .workbench-shell-group-link[data-active="true"],
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="bond-analysis"]) .workbench-shell-group-link[data-active="true"] {
   background: color-mix(in srgb, var(--nct-accent) 14%, transparent) !important;
   border-color: color-mix(in srgb, var(--nct-accent) 30%, transparent) !important;
   box-shadow: inset 2px 0 0 var(--nct-accent) !important;
