@@ -37,6 +37,7 @@ POLICY_SCOPE_SEMANTICS: dict[tuple[str, str], RoutePolicySemantics] = {
     ("credit_spread_analysis", "read"): RoutePolicySemantics("internal", "Bond analytics owner"),
     ("cube", "read"): RoutePolicySemantics("internal", "Query surface owner"),
     ("dashboard", "read"): RoutePolicySemantics("internal", "Executive cockpit owner"),
+    ("data_health", "read"): RoutePolicySemantics("internal", "Platform health owner"),
     ("executive", "read"): RoutePolicySemantics("internal", "Executive cockpit owner"),
     ("external_data", "read"): RoutePolicySemantics("internal", "Market data owner"),
     ("formal_pnl", "refresh"): RoutePolicySemantics("admin", "Formal PnL owner"),

@@ -109,6 +109,7 @@ import {
 } from "../components/StockAnalysisBoundaryWorkbenches";
 import { StockAnalysisCandidateLedgerTable } from "../components/StockAnalysisCandidateLedgerTable";
 import { StockAnalysisCandidateComparison } from "../components/StockAnalysisCandidateComparison";
+import { StockAnalysisDataHealthCard } from "../components/StockAnalysisDataHealthCard";
 import { StockAnalysisDecisionFirstScreen } from "../components/StockAnalysisDecisionFirstScreen";
 import { StockAnalysisEvidenceDisclosure } from "../components/StockAnalysisEvidenceDisclosure";
 import { StockAnalysisEvidenceLedgerRail } from "../components/StockAnalysisEvidenceLedgerRail";
@@ -1975,6 +1976,8 @@ export default function StockAnalysisPage() {
                 ) : null}
 
                 <StockAnalysisPretradeChecklist />
+
+                <StockAnalysisDataHealthCard />
 
                 <StockAnalysisEvidenceDisclosure
                   contract={workbenchContractSummary}

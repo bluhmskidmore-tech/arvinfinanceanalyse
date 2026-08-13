@@ -13,6 +13,7 @@ from backend.app.api.routes.choice_news import router_api_news as choice_news_ap
 from backend.app.api.routes.credit_spread_analysis import router as credit_spread_analysis_router
 from backend.app.api.routes.cube_query import router as cube_query_router
 from backend.app.api.routes.dashboard import router as dashboard_router
+from backend.app.api.routes.data_health import router as data_health_router
 from backend.app.api.routes.executive import router as executive_router
 from backend.app.api.routes.external_data import router as external_data_router
 from backend.app.api.routes.health import router as health_router
@@ -120,6 +121,7 @@ ROUTE_REGISTRY: tuple[RouteRegistryEntry, ...] = (
     RouteRegistryEntry("credit_spread_analysis", credit_spread_analysis_router, "formal_mainline", ("credit-spread",), "Bond analytics owner"),
     RouteRegistryEntry("cube_query", cube_query_router, "support", ("cube",), "Query surface owner"),
     RouteRegistryEntry("dashboard", dashboard_router, "support", ("dashboard",), "Executive cockpit owner"),
+    RouteRegistryEntry("data_health", data_health_router, "support", ("data-health",), "Platform health owner"),
     RouteRegistryEntry("health", health_router, "support", ("health",), "Platform health owner"),
     RouteRegistryEntry("liability_analytics", liability_analytics_router, "analytical_compatibility", ("liability-analytics",), "Liability analytics owner"),
     RouteRegistryEntry("macro_vendor", macro_vendor_router, "macro_market", ("macro-preview",), "Macro observation owner"),
