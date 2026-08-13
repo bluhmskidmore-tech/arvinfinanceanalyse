@@ -199,7 +199,7 @@
 
 .tcg-node__sub {
   fill: var(--dh-api-soft, var(--ca-sub));
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .tcg-node--dim {

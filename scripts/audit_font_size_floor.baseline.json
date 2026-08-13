@@ -1,8 +1,5 @@
 {
   "css": {
-    "frontend/src/features/agent/AgentWorkbenchPage.css": {
-      "belowFloor": 1
-    },
     "frontend/src/features/balance-movement-analysis/pages/BalanceMovementAnalysisFigma.css": {
       "belowFloor": 84
     },
@@ -11,12 +8,6 @@
     },
     "frontend/src/features/bond-analytics/components/BondAnalyticsInstitutionalCockpit.module.css": {
       "belowFloor": 17
-    },
-    "frontend/src/features/cross-asset/components/TransmissionChainGraph.css": {
-      "belowFloor": 1
-    },
-    "frontend/src/features/cross-asset/pages/CrossAssetDriversPage.css": {
-      "belowFloor": 1
     },
     "frontend/src/features/market-data/components/LivermoreStrategyPanel.css": {
       "belowFloor": 1
@@ -70,9 +61,6 @@
     },
     "frontend/src/features/market-data/lib/charts/ncdProxyHeatmapChartOption.ts": {
       "belowFloor": 1
-    },
-    "frontend/src/features/product-category-pnl/pages/ProductCategoryComparisonCharts.tsx": {
-      "belowFloor": 11
     },
     "frontend/src/features/prototype/EquityCockpitPrototypePage.tsx": {
       "belowFloor": 4

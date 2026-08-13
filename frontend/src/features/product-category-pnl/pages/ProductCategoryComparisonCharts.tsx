@@ -62,7 +62,7 @@ function buildDarkChartLegend(seriesNames: string[]): EChartsOption["legend"] {
     textStyle: {
       color: PRODUCT_CATEGORY_DARK_CHART_THEME.muted,
       fontFamily: designTokens.fontFamily.tabular,
-      fontSize: 10,
+      fontSize: 11,
     },
   };
 }
@@ -280,7 +280,7 @@ export function buildInterestEarningAssetLiabilityScaleChartOption(input: {
       itemHeight: 10,
       textStyle: {
         color: PRODUCT_CATEGORY_DARK_CHART_THEME.muted,
-        fontSize: 10,
+        fontSize: 11,
       },
     },
     grid: { left: 18, right: 16, top: 46, bottom: 18, containLabel: true },
@@ -293,7 +293,7 @@ export function buildInterestEarningAssetLiabilityScaleChartOption(input: {
         rotate: input.labels.length > 6 ? 24 : 0,
         color: PRODUCT_CATEGORY_DARK_CHART_THEME.muted,
         fontFamily: designTokens.fontFamily.tabular,
-        fontSize: 10,
+        fontSize: 11,
       },
       axisLine: {
         lineStyle: { color: PRODUCT_CATEGORY_DARK_CHART_THEME.border },
@@ -306,14 +306,14 @@ export function buildInterestEarningAssetLiabilityScaleChartOption(input: {
       splitNumber: 4,
       nameTextStyle: {
         color: PRODUCT_CATEGORY_DARK_CHART_THEME.muted,
-        fontSize: 10,
+        fontSize: 11,
         padding: [0, 0, 0, -18],
       },
       axisLabel: {
         formatter: buildAxisLabelFormatter(),
         color: PRODUCT_CATEGORY_DARK_CHART_THEME.muted,
         fontFamily: designTokens.fontFamily.tabular,
-        fontSize: 10,
+        fontSize: 11,
       },
       splitLine: {
         lineStyle: {
@@ -705,7 +705,7 @@ export function buildInterestSpreadYearComparisonChartOption(input: {
           show: true,
           formatter: `上年参考 ${input.labels[referenceStartIndex]}–${input.labels[input.labels.length - 1]}`,
           color: PRODUCT_CATEGORY_DARK_CHART_THEME.muted,
-          fontSize: 9,
+          fontSize: 11,
           position: "insideTop",
         },
         data: [
@@ -883,12 +883,12 @@ export function buildInterestSpreadYearComparisonChartOption(input: {
         nameGap: 8,
         nameTextStyle: {
           color: PRODUCT_CATEGORY_DARK_CHART_THEME.muted,
-          fontSize: 9,
+          fontSize: 11,
         },
         axisLabel: {
           formatter: buildAxisLabelFormatter("%"),
           color: PRODUCT_CATEGORY_DARK_CHART_THEME.muted,
-          fontSize: 9,
+          fontSize: 11,
         },
         splitLine: {
           lineStyle: {
@@ -907,7 +907,7 @@ export function buildInterestSpreadYearComparisonChartOption(input: {
         nameGap: 8,
         nameTextStyle: {
           color: PRODUCT_CATEGORY_DARK_CHART_THEME.muted,
-          fontSize: 9,
+          fontSize: 11,
         },
         axisTick: { show: false },
         axisLine: { show: false },
@@ -1050,7 +1050,7 @@ export function buildIncomeYearComparisonChartOption(input: {
                           show: true,
                           formatter: `截至 ${input.labels[currentCutoffIndex] ?? ""}`,
                           color: PRODUCT_CATEGORY_DARK_CHART_THEME.muted,
-                          fontSize: 9,
+                          fontSize: 11,
                           position: "insideEndTop" as const,
                         },
                         lineStyle: { type: "dashed" as const },
@@ -1069,7 +1069,7 @@ export function buildIncomeYearComparisonChartOption(input: {
                   show: true,
                   formatter: "上年参考区",
                   color: PRODUCT_CATEGORY_DARK_CHART_THEME.muted,
-                  fontSize: 9,
+                  fontSize: 11,
                   position: "insideTop",
                 },
                 data: [
