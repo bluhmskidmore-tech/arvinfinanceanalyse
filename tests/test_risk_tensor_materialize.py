@@ -111,8 +111,8 @@ def _execute_risk_tensor_with_rows(monkeypatch, rows):
         "load_latest_bond_analytics_lineage",
         lambda **_kwargs: {
             "source_version": "sv_bond_snap_1",
-            "rule_version": "rv_bond_analytics_formal_materialize_v1",
-            "cache_version": "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v1",
+            "rule_version": "rv_bond_analytics_formal_materialize_v2",
+            "cache_version": "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v2",
         },
     )
     monkeypatch.setattr(
@@ -378,8 +378,8 @@ def test_risk_tensor_materialize_fails_closed_on_unknown_payment_frequency_prove
         "load_latest_bond_analytics_lineage",
         lambda **_kwargs: {
             "source_version": "sv_bond_snap_1",
-            "rule_version": "rv_bond_analytics_formal_materialize_v1",
-            "cache_version": "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v1",
+            "rule_version": "rv_bond_analytics_formal_materialize_v2",
+            "cache_version": "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v2",
         },
     )
     monkeypatch.setattr(
@@ -512,8 +512,8 @@ def test_risk_tensor_materialize_fails_closed_when_discount_ncd_predicate_not_fu
         "load_latest_bond_analytics_lineage",
         lambda **_kwargs: {
             "source_version": "sv_bond_snap_1",
-            "rule_version": "rv_bond_analytics_formal_materialize_v1",
-            "cache_version": "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v1",
+            "rule_version": "rv_bond_analytics_formal_materialize_v2",
+            "cache_version": "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v2",
         },
     )
     monkeypatch.setattr(
@@ -595,9 +595,9 @@ def test_risk_tensor_module_descriptor_registers_without_collision():
     assert descriptor.cache_key == risk_task_mod.CACHE_KEY
     assert descriptor.cache_key != bond_task_mod.CACHE_KEY
     assert descriptor.lock_key != bond_task_mod.BOND_ANALYTICS_LOCK.key
-    assert descriptor.rule_version == "rv_risk_tensor_formal_materialize_v5"
+    assert descriptor.rule_version == "rv_risk_tensor_formal_materialize_v6"
     assert (
-        descriptor.cache_version == "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v5"
+        descriptor.cache_version == "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v6"
     )
 
 

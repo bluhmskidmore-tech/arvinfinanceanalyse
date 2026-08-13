@@ -58,9 +58,9 @@ type FetchLike = typeof fetch;
 type Delay = () => Promise<void>;
 
 const RISK_TENSOR_FORMAL_SOURCE_VERSION = "sv_risk_tensor_fact_mock_v3";
-const RISK_TENSOR_FORMAL_RULE_VERSION = "rv_risk_tensor_formal_materialize_v5";
+const RISK_TENSOR_FORMAL_RULE_VERSION = "rv_risk_tensor_formal_materialize_v6";
 const RISK_TENSOR_FORMAL_CACHE_VERSION =
-  "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v5";
+  "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v6";
 
 type ExecutiveThinClientMethods = Pick<
   ExecutiveClientMethods,

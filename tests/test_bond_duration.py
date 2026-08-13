@@ -415,24 +415,30 @@ class TestConvexity:
         assert convexity == estimate_convexity(duration, ytm, coupon_frequency=frequency)
 
     def test_zero_yield(self):
-        """Zero yield: 收敛到 common 口径的 ``D²`` 分支（原 ×1.1 系数已删除）。"""
+        """Zero yield: W-fi-2026-08 P4 起不再特判 ``D²``。
+
+        标准式退化为单笔现金流闭式解 ``D(D + 1/f)/(1+y/f)²``，``y=0`` 时即
+        ``5 × (5 + 0.5) = 27.5``（旧实现给 ``D² = 25``，且在 ``y=0`` 处跳变 ``D``）。
+        """
         duration = Decimal("5.0")
         ytm = Decimal("0.0")
         frequency = 2
 
         convexity = estimate_convexity_bond(duration, ytm, coupon_frequency=frequency)
 
-        assert convexity == Decimal("25.00")
+        assert convexity == Decimal("27.50")
 
     def test_negative_yield(self):
-        """Negative yield: 同样走 ``D²`` 分支，不再乘 1.1。"""
+        """Negative yield: 同一条标准式，``5 × 5.5 / (1 − 0.005)²``。"""
         duration = Decimal("5.0")
         ytm = Decimal("-0.01")
         frequency = 2
 
         convexity = estimate_convexity_bond(duration, ytm, coupon_frequency=frequency)
 
-        assert convexity == Decimal("25.00")
+        expected = Decimal("27.5") / (Decimal("0.995") ** 2)
+        assert convexity == expected
+        assert convexity > Decimal("27.5")
 
     def test_wind_override(self):
         """Wind convexity overrides calculation."""

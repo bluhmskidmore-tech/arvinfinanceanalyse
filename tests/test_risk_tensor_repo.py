@@ -143,15 +143,15 @@ def test_risk_tensor_repo_round_trip_preserves_materialized_duration_scope(tmp_p
             upstream_cache_version="cv_bond_snap_1",
             liability_source_version="",
             liability_rule_version="",
-            rule_version="rv_risk_tensor_formal_materialize_v5",
-            cache_version="cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v5",
+            rule_version="rv_risk_tensor_formal_materialize_v6",
+            cache_version="cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v6",
             trace_id="trace_risk_tensor_20260331",
         )
 
     row = repo.fetch_risk_tensor_row("2026-03-31")
     assert row is not None
-    assert row["rule_version"] == "rv_risk_tensor_formal_materialize_v5"
-    assert row["cache_version"] == "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v5"
+    assert row["rule_version"] == "rv_risk_tensor_formal_materialize_v6"
+    assert row["cache_version"] == "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v6"
     assert row["rate_risk_market_value"] == Decimal("80.00000000")
     assert row["rate_risk_dv01"] == Decimal("1.00000000")
     assert row["rate_risk_modified_duration"] == Decimal("1.50000000")

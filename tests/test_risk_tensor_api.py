@@ -101,9 +101,9 @@ def test_risk_tensor_api_returns_formal_envelope(tmp_path, monkeypatch):
     assert payload["result_meta"]["result_kind"] == "risk.tensor"
     assert payload["result_meta"]["formal_use_allowed"] is True
     assert payload["result_meta"]["quality_flag"] == "ok"
-    assert payload["result_meta"]["rule_version"] == "rv_risk_tensor_formal_materialize_v5"
+    assert payload["result_meta"]["rule_version"] == "rv_risk_tensor_formal_materialize_v6"
     assert (
-        payload["result_meta"]["cache_version"] == "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v5"
+        payload["result_meta"]["cache_version"] == "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v6"
     )
     assert payload["result"]["report_date"] == REPORT_DATE
     assert payload["result"]["bond_count"] == 3
@@ -219,9 +219,9 @@ def test_risk_scenario_stress_api_returns_scenario_envelope(tmp_path, monkeypatc
     assert payload["result"]["scenario_set_id"] == "standard_risk_tensor_scenario_v1"
     assert payload["result"]["rule_version"] == "rv_risk_tensor_scenario_stress_v1"
     assert payload["result"]["source"]["result_kind"] == "risk.tensor"
-    assert payload["result"]["source"]["rule_version"] == "rv_risk_tensor_formal_materialize_v5"
+    assert payload["result"]["source"]["rule_version"] == "rv_risk_tensor_formal_materialize_v6"
     assert (
-        payload["result"]["source"]["cache_version"] == "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v5"
+        payload["result"]["source"]["cache_version"] == "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v6"
     )
     assert payload["result"]["summary"]["scenario_count"] == 4
     assert payload["result"]["summary"]["available_count"] == 3

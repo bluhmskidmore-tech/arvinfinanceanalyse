@@ -9,10 +9,13 @@ from typing import Any
 
 from backend.app.core_finance.bond_analytics.common import (
     ACCOUNTING_BASIS_RISK_CLASS_RULE_IDS,
+    DURATION_TERM_MATURITY_UNAVAILABLE,
+    DURATION_TERM_NO_REMAINING_TERM,
+    DURATION_UNAVAILABLE,
+    MISSING_MATURITY_RULE_ID,
     YTM_PAR_FALLBACK_RULE_ID,
     classify_asset_class,
-    estimate_convexity,
-    estimate_duration,
+    compute_macaulay_duration_and_convexity,
     estimate_modified_duration,
     get_accounting_rule_trace,
     get_tenor_bucket,
@@ -56,12 +59,20 @@ RATE_INPUT_STATUS_DIRTY = "dirty"
 #                         凸性退化为 D²，属近似值。
 # coupon_unavailable   —— 票息缺失/脏值：久期退化为「剩余年限」这一零息代理，
 #                         该行久期/DV01/凸性不可当作正式风险指标使用。
-# no_remaining_term    —— 无剩余期限（已到期或缺到期日），三项指标按 0 记，与利率输入无关。
+# no_remaining_term    —— 到期日可得且 <= 报告日：已到期，久期真的是 0。
+# maturity_unavailable —— 到期日缺失：久期**不适用**（该行多半根本不是债券），
+#                         三项指标按 DURATION_UNAVAILABLE(0) 记，但那是「不可用」标记
+#                         而非观测到的零久期。聚合层必须整行移出久期分母并单独披露。
+#
+# W-fi-2026-08 P2：后两者此前共用 no_remaining_term 一个标记，把「已到期的债」和
+# 「根本没有到期日的基金」混在一起，消费方无从区分。字面量与
+# ``bond_analytics.common`` 的 DURATION_TERM_* 同源，三条路径共用一套词表。
 DURATION_QUALITY_OBSERVED = "observed"
 DURATION_QUALITY_YTM_PAR_FALLBACK = "ytm_par_fallback"
 DURATION_QUALITY_YTM_UNAVAILABLE = "ytm_unavailable"
 DURATION_QUALITY_COUPON_UNAVAILABLE = "coupon_unavailable"
-DURATION_QUALITY_NO_REMAINING_TERM = "no_remaining_term"
+DURATION_QUALITY_NO_REMAINING_TERM = DURATION_TERM_NO_REMAINING_TERM
+DURATION_QUALITY_MATURITY_UNAVAILABLE = DURATION_TERM_MATURITY_UNAVAILABLE
 
 COUPON_UNAVAILABLE_RULE_ID = "duration_coupon_unavailable_proxy_v1"
 
@@ -175,6 +186,7 @@ def compute_bond_analytics_rows(
     analytics_rows: list[BondAnalyticsRow] = []
     ytm_par_fallback = _AssumptionDisclosure()
     coupon_unavailable = _AssumptionDisclosure()
+    maturity_unavailable = _AssumptionDisclosure()
     for index, snapshot_row in enumerate(snapshot_rows):
         if _coerce_bool(snapshot_row.get("is_issuance_like")):
             continue
@@ -248,11 +260,22 @@ def compute_bond_analytics_rows(
             native_value=accrued_interest_native,
         )
         if years_to_maturity == Decimal("0"):
-            macaulay_duration = Decimal("0")
-            modified_duration = Decimal("0")
-            convexity = Decimal("0")
-            dv01 = Decimal("0")
-            duration_quality_flag = DURATION_QUALITY_NO_REMAINING_TERM
+            # 缺到期日与已到期都没有可用的剩余期限，数值同为 DURATION_UNAVAILABLE(0)，
+            # 但成因完全不同，必须分开标记：已到期的债久期真的是 0；缺到期日的行
+            # 久期不适用，0 只是「不可用」标记。取值定义见
+            # ``common.resolve_missing_maturity_duration``（三条路径唯一常数出处）。
+            macaulay_duration = DURATION_UNAVAILABLE
+            modified_duration = DURATION_UNAVAILABLE
+            convexity = DURATION_UNAVAILABLE
+            dv01 = DURATION_UNAVAILABLE
+            if maturity_date is None:
+                duration_quality_flag = DURATION_QUALITY_MATURITY_UNAVAILABLE
+                maturity_unavailable.record(
+                    instrument_code=instrument_code,
+                    market_value=market_value,
+                )
+            else:
+                duration_quality_flag = DURATION_QUALITY_NO_REMAINING_TERM
         else:
             # 缺失/脏值的票息与 ytm 在算式入口仍按 0 代入（保持既有数值行为），
             # 但不再静默：duration_quality_flag 逐行声明该行三项指标究竟由观测值
@@ -281,20 +304,17 @@ def compute_bond_analytics_rows(
                     instrument_code=instrument_code,
                     market_value=market_value,
                 )
-            macaulay_duration = estimate_duration(
-                maturity_date,
-                report_date,
+            # W-fi-2026-08 P4：久期与标准现金流凸性由同一次现金流遍历产出，
+            # 保证两者恒基于同一组 (时点, 金额)。此处不再走 estimate_duration
+            # 外壳：缺到期日/已到期已由上面的 years_to_maturity == 0 分支处理，
+            # 且 years_to_maturity 与该外壳内部的 (到期日-报告日)/365 同式同值。
+            macaulay_duration, convexity = compute_macaulay_duration_and_convexity(
                 coupon_rate=coupon_rate_for_math,
-                ytm=ytm_for_math,
-                bond_code=instrument_code,
+                ytm=effective_ytm,
+                years_to_maturity=years_to_maturity,
                 coupon_frequency=coupon_frequency,
             )
             modified_duration = estimate_modified_duration(
-                macaulay_duration,
-                effective_ytm,
-                coupon_frequency=coupon_frequency,
-            )
-            convexity = estimate_convexity(
                 macaulay_duration,
                 effective_ytm,
                 coupon_frequency=coupon_frequency,
@@ -374,6 +394,26 @@ def compute_bond_analytics_rows(
             ytm_par_fallback.market_value,
             report_date.isoformat(),
             _format_disclosure_instrument_codes(ytm_par_fallback.instrument_codes),
+        )
+
+    if maturity_unavailable.row_count:
+        # 缺到期日：久期/修正久期/凸性/DV01 全部不可得，按 DURATION_UNAVAILABLE 记 0。
+        # 这不是「久期为 0 的债」，多半根本不是债券（2026-07-31 实测 127 笔 / 434.00 亿
+        # 全是公募基金与 ETF）。消费方必须整行移出久期分母并单独披露 —— 正面样板见
+        # ``risk_tensor.missing_maturity_count`` / ``missing_maturity_market_value``。
+        logger.warning(
+            "compute_bond_analytics_rows: %d rows without maturity_date have NO available "
+            "duration (rule_id=%s, duration_quality_flag=%s); duration/modified_duration/"
+            "convexity/dv01 are recorded as %s = UNAVAILABLE marker, not an observed zero — "
+            "exclude them from the duration denominator and disclose separately; "
+            "market_value_cny=%s report_date=%s instrument_codes=%s",
+            maturity_unavailable.row_count,
+            MISSING_MATURITY_RULE_ID,
+            DURATION_QUALITY_MATURITY_UNAVAILABLE,
+            DURATION_UNAVAILABLE,
+            maturity_unavailable.market_value,
+            report_date.isoformat(),
+            _format_disclosure_instrument_codes(maturity_unavailable.instrument_codes),
         )
 
     if coupon_unavailable.row_count:

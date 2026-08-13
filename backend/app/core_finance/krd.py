@@ -363,6 +363,17 @@ def build_krd_position_metrics(
             )
         )
         wind_convexity = _optional_decimal(wind_bond.get("convexity"))
+        # W-fi-2026-08 P4：传现金流入参，凸性走标准现金流二阶导而非久期型近似。
+        # 剩余年限与 estimate_duration 内部同式（ACT/365F，剩余天数/365）。
+        krd_report_date = report_for_position or report_date or date.today()
+        remaining_days = (
+            (maturity_date - krd_report_date).days if maturity_date is not None else 0
+        )
+        years_to_maturity = (
+            Decimal(str(remaining_days)) / Decimal("365")
+            if remaining_days > 0
+            else Decimal("0")
+        )
         convexity = (
             wind_convexity
             if wind_convexity is not None
@@ -371,6 +382,8 @@ def build_krd_position_metrics(
                 ytm=ytm,
                 wind_convexity=None,
                 coupon_frequency=max(coupon_frequency, 1),
+                coupon_rate=coupon_rate,
+                years_to_maturity=years_to_maturity,
             )
         )
         weight = market_value / total_market_value if total_market_value > 0 else Decimal("0")

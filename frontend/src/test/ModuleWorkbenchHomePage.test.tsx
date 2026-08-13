@@ -38,8 +38,8 @@ const MARKET_HOME_NOCTURNE_CSS_PATH = resolve(
   "src/features/workbench/module-home/marketHomeNocturne.module.css",
 );
 
-vi.mock("../mocks/navigation", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../mocks/navigation")>()),
+vi.mock("../app/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../app/navigation")>()),
   isAgentFrontendEnabled: () => true,
 }));
 
@@ -193,7 +193,7 @@ function realPortfolioMeta(resultKind: string, overrides: Partial<ResultMeta> = 
     formal_use_allowed: false,
     source_version: "sv_real_bond_analytics",
     vendor_version: "vv_none",
-    rule_version: "rv_bond_analytics_formal_materialize_v1",
+    rule_version: "rv_bond_analytics_formal_materialize_v2",
     cache_version: "cv_real_bond_analytics",
     quality_flag: "warning",
     vendor_status: "ok",
@@ -823,7 +823,7 @@ function bondDv01EvidenceEnvelope(
       as_of_date: reportDate,
       fallback_date: null,
       source_version: "sv_a583ab603b92",
-      rule_version: "rv_bond_analytics_formal_materialize_v1",
+      rule_version: "rv_bond_analytics_formal_materialize_v2",
     },
   );
 }
@@ -1392,7 +1392,7 @@ describe("ModuleWorkbenchHomePage", () => {
       "sv_risk_tensor_fact_mock_v3",
     );
     expect(within(page).getByTestId("risk-overview-lineage")).toHaveTextContent(
-      "rv_risk_tensor_formal_materialize_v5",
+      "rv_risk_tensor_formal_materialize_v6",
     );
   });
 

@@ -320,38 +320,47 @@ for `PAGE-BOND-ANALYSIS-001`. They do not replace business-owner sign-off.
 - `accrued_interest_usage=dirty_price`.
 - `carry and action attribution do not directly consume accrued_interest`.
 - `day_count=ACT/365_approximation`.
-- `yield_compounding=nominal_annual_with_coupon_frequency`.
+- `yield_compounding=nominal_annual_with_coupon_frequency`（**已实证，2026-08-13**，非仅约定；证据见下方"YTM 复利口径实证"小节）.
 - `duration_convexity_scope=vanilla_fixed_rate_only`.
 - `DV01 = CNY face_value * modified_duration / 10000`.
 - `dv01_unit=CNY_per_1bp`.
 - `dv01_base=CNY_face_value`.
 - `market_value/dirty_value DV01 is not the current formal DV01 convention`.
 
+YTM 复利口径实证（2026-08-13，`.tmp-agent/ytm-compounding-empirical.md`）：
+
+- 上条 `yield_compounding=nominal_annual_with_coupon_frequency` 已由真实账本实证，从"owner-review convention"升级为"已实证"。`bond_analytics/common.py` 的 `(1 + ytm/f)` 折现除数与源报价惯例一致，**付息频率 `f` 同时决定现金流时点与折现除数是正确行为**，不得拆成两个参数。
+- 关键证据：源字段 `到期收益率` 不是市场收益率，而是账面实际利率 EIR——用它折现复现"摊余成本"中位残差 0.0123 元/百元，复现"公允价值"差 63 倍（0.7741），因此检验走会计恒等式、噪声底仅 0.006~0.032。在 63 只由应收/应付利息独立反推为半年付的券上（不含价格信息，无循环论证）：按 `f` 复利 RMSE 0.0100、63/63 全胜，年复利 RMSE 0.2621。反解隐含收益率，年复利口径实测偏移 +2.77bp，与"名义半年复利被误按年复利解读"的理论偏移 `(1+y/2)²−1−y ≈ y²/4 = +2.96bp` 在中位/均值/标准差三个矩上吻合。8 个报告日、6 个券种、4 个期限段、56 只零噪声平价券、以及一个价格侧独立倒推样本（250/252 选按 f 复利）全部一致。
+- 局限（结论不外推到这些范围）：判别集仅占当日全簿公允价值 4.3%（63 只 / 193.6 亿），券种 76% 集中在地方政府债券（山东/青岛为主），有效独立样本量约 81 只券，只覆盖 2026-03 单月 8 天，`f=4` / `f=12` 未被非 ABS 样本覆盖，且乙口径仍有未解释的 −0.010 元/百元稳定小负偏。
+
 Coupon-frequency authority（2026-07-20）：
 - 正式 Bond Analytics 物化以 `interest_mode.coupon_frequency_per_year` 为唯一频率解析权威；`bond_analytics.engine` 必须把解析结果显式传入 Macaulay 久期、修正久期与凸性计算。
 - `bond_four_effects`、`bond_duration` 与 `bond_analytics.common` 的默认参数仅为兼容入口，不构成正式业务口径；正式调用链必须显式传入频率。
 - Campisi 正式归因当前尚未接入该权威：`merge_positions` 未保留 `interest_mode`，`campisi._coupon_freq` 仍按资产类别启发式取 1/2。切换该路径会改变历史归因结果，须经 owner 裁决并安排全期回归/重算；在此之前不得宣称 Campisi 与 Bond Analytics 已统一频率口径。
 
-## Convexity single-caliber baseline（2026-08-12 建立；2026-08-13 口径 B 已收敛）
+## Convexity single-caliber baseline（2026-08-12 建立；2026-08-13 P3 收敛口径 B、P4 升级为标准现金流凸性）
 
-仓库内**只保留一套**凸性实现，以 **Macaulay 久期** `D` 为入参，属于基于久期的近似式，**不是**按现金流对收益率求二阶导得到的标准现金流凸性。标准参照式为
-`C_std = Σ[CF_k × k(k+1) / (1+y/f)^(k+2)] / (P × f²)`，可等价写成 `C_std = (D² + D/f + M²) / (1+y/f)²`，其中 `M²` 是现值加权付息时点方差（年²）。
+仓库内**只保留一套**凸性实现，且自 W-fi-2026-08 P4 起即为**标准现金流凸性**（按现金流对收益率求二阶导），不再是基于久期的近似式：
 
-- **唯一在用口径**：`bond_analytics/common.py::estimate_convexity`，正收益率分支 `C = D(D+1) / (1+y/f)²`，`y<=0` 时回退 `D²`。它是**零息近似族**：单笔现金流（`M²=0`、`f=1`）时与 `C_std` 精确一致；付息债的系统性低估量即 `M²/(1+y/f)²`。
-- **调用方**：`bond_analytics/engine.py::compute_bond_analytics_rows`（正式 Bond Analytics 物化）直接调用；`bond_duration.py::estimate_convexity_bond` 自 2026-08-13 起是委托本函数的薄封装（保留 Wind 覆盖分支：外部观测凸性优先），其下游为 `bond_four_effects.py::compute_bond_six_effects`（→ `campisi.py::campisi_enhanced`）与 `krd.py::build_krd_position_metrics`（休眠模块，无 API 消费方）。
+`C = Σ[CF_k × k(k+1) / (1+y/f)^(k+2)] / (P × f²)`，等价写作 `C = (D² + D/f + M²) / (1+y/f)²`，其中 `M²` 是现值加权付息时点方差（年²）。折现按 `f` 复利，与源 `到期收益率` 的报价惯例一致（见上文"YTM 复利口径实证"）。`C` 单位为年²，`y` 为名义年利率。
 
-已下线口径（W-fi-2026-08 P3，**修 bug 性质，非精度升级**）：`bond_duration.py::estimate_convexity_bond` 原有独立实现 `[D² + D(1+1/f)] / (1+y/f)²`（`y<=0` 时另乘 `1.1`）。删除依据：该式相对 `C_std` 等价于强行假设 `M² = D`，无任何教科书近似族与之对应；`1.1` 系数同样无出处。实测偏差（`f=1`，`(近似值-C_std)/C_std`）：0.25Y **+80%**、1Y +50%、5Y +14%、10~12Y 附近过零、30Y **−17%**；`f=2` 短端最高 **+133%**——只在 7~12Y 段巧合接近标准值。
+- **唯一在用口径**：`bond_analytics/common.py::estimate_convexity`。传入 `coupon_rate` 与 `years_to_maturity` 时走标准现金流路径（与 Macaulay 久期共用同一次遍历，见 `compute_macaulay_duration_and_convexity`）；缺现金流入参、零息或 `y<=0` 时退化为单笔现金流闭式解 `t(t + 1/f) / (1+y/f)²`——该式对零息券精确（`M²=0`）。
+- **`y<=0` 不再特判 `D²`**：标准式在 `y=0` 处连续（旧实现 `y→0⁺` 给 `D(D+1)`、`y=0` 给 `D²`，跳变 `D`）。live 库 2026-07-31 有 18 笔 / 65.98 亿走该分支。
+- **调用方**：`bond_analytics/engine.py::compute_bond_analytics_rows`（正式物化）直接调用一次遍历原语；`bond_duration.py::estimate_convexity_bond` 是委托薄封装（保留 Wind 覆盖分支：外部观测凸性优先），其下游 `bond_four_effects.py::compute_bond_six_effects`（→ `campisi.py::campisi_enhanced`）与 `krd.py::build_krd_position_metrics` 均已改为传入现金流入参。
+- **`f` 敏感性**：改 `f` 会**同时**改变现金流时点与折现除数，这是正确行为。par 网格实测 `f=1→2`：Macaulay −0.74%~−1.41%、修正久期 +0.51%~+0.73%、凸性 −23.5%（1Y）~ +0.2%（30Y）。
 
-相对标准现金流凸性的扫描证据（1Y~30Y × 年付/半年付）：
+已下线口径（仅作历史记录，`tests/test_convexity_caliber_baseline.py` 显式钉死不得复活）：
 
-- 在用口径 `C = D(D+1)/(1+y/f)²`：−26.1% ~ +33.2%（**尚未解决**）。
-- 已下线口径 `[D² + D(1+1/f)]/(1+y/f)²`：−23.4% ~ +66.6%（仅作历史记录）。
+- **口径 A**（W-fi-2026-08 P4 下线）：`C = D(D+1)/(1+y/f)²`，`y<=0` 回退 `D²`。零息近似族：单笔现金流且 `f=1` 时与 `C_std` 精确一致，付息债系统性低估 `M²/(1+y/f)²`；且分子 `D(D+1)` 与 `f` 无关，而零息恒等式要求 `D² + D/f`，故 `f=2` 短端反而高估 `D/f`。par 3% 网格偏差 −20.4%（30Y f=1）~ +33.2%（1Y f=2）。
+- **口径 B**（P3 下线）：`bond_duration.py::estimate_convexity_bond` 原有独立实现 `[D² + D(1+1/f)]/(1+y/f)²`（`y<=0` 时另乘 `1.1`）。相对 `C_std` 等价于强行假设 `M² = D`，无任何教科书近似族与之对应；`1.1` 系数同样无出处。偏差 −23.4% ~ +66.6%。
 
-`tests/test_convexity_caliber_baseline.py` 从"冻结两套口径"改为：冻结在用口径的数值与偏差区间、断言两个入口同值（防止第二套口径回流）、显式钉死已下线的 B 式不得复活。
+P4 的业务影响（live 库 2026-07-31 只读实测，1,750 行）：
 
-收敛的业务影响（live 库实测，`campisi_enhanced` 核心路径）：`convexity_effect` / `cross_effect` 下降约 4.4%~6.3%，等额反向进入 `selection_effect`，`total_return` 与逐券闭合恒等式不变；不落库、无重物化。
-
-**剩余项**：在用口径相对 `C_std` 的 −26.1% ~ +33.2% 偏差仍待独立的 rule_version 升级 + 全史重述处理；在该升级批准前不得以"公式对齐"为由单独修改本口径数值、提升规则版本或触发重物化。
+- 组合层 `portfolio_convexity`（MTR-RSK-009）：29.79（当前代码旧口径）→ 33.20，**+11.42%**；相对库内持久化值 30.13 为 **+10.19%**。`portfolio_modified_duration` / `portfolio_dv01` **逐位不变**。
+- 逐券：1,220 上调 / 2 下调 / 395 不变；中位 +1.18%，p95 +7.74%。按期限桶中位：2Y +0.59%、3Y +1.66%、5Y +2.71%、7Y +4.74%、10Y +5.38%、20Y +15.87%、30Y +19.25%。
+- KRD 页曲线情景 `convexity_contribution` 全档 **+11.42%**（+100bp：4.424 亿 → 4.929 亿，占同档利率项 −109.76 亿的 4.49%）。
+- Campisi 六效应（`campisi.py::campisi_enhanced` 分支）：`convexity_effect` +4.29%（2026-04）/ +8.21%（2026-06）/ +13.40%（2026-03），`cross_effect` −5.99%（2026-03），等额反向进入 `selection_effect`，`total_return` 与逐券闭合恒等式不变。注意 live 请求当前走 `_formal_bridge_to_enhanced_result` 直通分支，该分支不计算凸性，故线上 Campisi 输出实际不变。
+- 规则版本：`bond_analytics` v1→v2、`risk_tensor` v5→v6（含对应 `cache_version`）。**需要一次全史重物化**（`fact_formal_bond_analytics_daily` 578 个报告日 / 874,367 行 → `fact_formal_risk_tensor_daily`），须独占写窗口，另行安排。
 
 Credit-spread benchmark tenor（2026-07-20）：
 - 信用利差逐券基准优先按 `years_to_maturity` 在同日国债曲线上线性插值。

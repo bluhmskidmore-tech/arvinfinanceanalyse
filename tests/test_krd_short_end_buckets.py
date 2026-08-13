@@ -16,7 +16,8 @@
   到期日、其余按 1/f 年向前排，首期为残期；
   PV_k = CF_k / (1+y)^(t_k·f)，MacD = Σt_k·PV_k / ΣPV_k，**不量化**。
 - D_mod = MacD / (1 + ytm/f)，不量化。
-- 凸性 = [D² + D(1 + 1/f)] / (1 + ytm/f)²。
+- 凸性 = 标准现金流二阶导 Σ t_k(t_k + 1/f)·PV_k / ΣPV_k / (1 + ytm/f)²（单笔现金流时
+  退化为闭式解 t(t + 1/f)/(1 + ytm/f)²）。
 - KRD[桶] = Σ weight × D_mod；桶 DV01 = Σ face × D_mod / 10000。
 
 W-fi-2026-08 口径修正：旧实现是整期闭式（N = to_integral_value(years×f)，
@@ -286,23 +287,26 @@ class TestParallelScenarioCoversShortEnd:
         assert set(scenario["shocks"]) == {"all"}
 
     def test_parallel_up_25bp_hits_short_end_only_portfolio_golden(self):
-        """单只 3M 券（D_mod = 16/81，凸性 = D(D+1)/1.0125²）+25bp：
+        """单只 3M 券（D_mod = 16/81，凸性 = t(t+1/f)/1.0125²）+25bp：
 
           利率效应 = -16/81 × 1,000,000 × 0.0025 = -493.827160493827…
-          凸性     = 0.2×1.2/1.0125² = 0.24/1.02515625 = 0.234110653863…
-          凸性效应 = 0.5 × 0.234110653863… × 1,000,000 × 0.0025² = 0.731595793324…
-          ΔPnL     = -493.827160493827… + 0.731595793324… = -493.095564700502…
+          凸性     = 0.2×(0.2+0.5)/1.0125² = 0.14/1.02515625 = 0.136564548087…
+          凸性效应 = 0.5 × 0.136564548087… × 1,000,000 × 0.0025² = 0.426764212772…
+          ΔPnL     = -493.827160493827… + 0.426764212772… = -493.400396281055…
 
         归并/``all`` 语义修复前该值恒为 0（3M 不在 shocks 里）。
-        凸性口径于 W-fi-2026-08 P3 由 ``[D² + D(1+1/f)]/(1+y/f)²``（无出处）收敛到
-        ``common.estimate_convexity``，本 golden 随之从 -492.790733119951 更新。
+        golden 演进：P3 由 ``[D² + D(1+1/f)]/(1+y/f)²``（无出处）收敛到
+        ``common.estimate_convexity``（-492.790733119951 → -493.095564700502）；
+        P4 再由久期型近似 ``D(D+1)/(1+y/f)²`` 升级为标准现金流凸性
+        （-493.095564700502 → -493.400396281055）。本券只有一笔现金流，两次变化
+        全部来自分子：``t(t+1)`` → ``t(t+1/f)``，即修掉了 f=2 下对短端高估的 ``D/f``。
         """
         metrics = build_krd_position_metrics([BOND_3M], report_date=REPORT_DATE)
         scenario = next(s for s in STANDARD_KRD_SCENARIOS if s["name"] == "parallel_up_25bp")
         result = compute_curve_scenario(metrics, scenario)
 
         assert result["pnl_economic"] != Decimal("0")
-        assert abs(result["pnl_economic"] - Decimal("-493.095564700502")) < TOL_PNL
+        assert abs(result["pnl_economic"] - Decimal("-493.400396281055")) < TOL_PNL
 
     def test_parallel_down_flips_sign_for_short_end(self):
         metrics = build_krd_position_metrics([BOND_ON, BOND_3M, BOND_6M], report_date=REPORT_DATE)

@@ -122,7 +122,7 @@ def test_risk_coupon_window_repair_updates_exact_rows_and_governance(tmp_path, m
         return {
             "status": "completed",
             "source_version": "sv_risk_test",
-            "rule_version": "rv_risk_tensor_formal_materialize_v5",
+            "rule_version": "rv_risk_tensor_formal_materialize_v6",
             "cache_version": "risk-test-cache",
         }
 
@@ -250,7 +250,7 @@ def test_risk_coupon_window_repair_records_failure_and_retries_idempotently(
         return {
             "status": "failed" if fail_risk else "completed",
             "source_version": "sv_risk_test",
-            "rule_version": "rv_risk_tensor_formal_materialize_v5",
+            "rule_version": "rv_risk_tensor_formal_materialize_v6",
             "cache_version": "risk-test-cache",
         }
 

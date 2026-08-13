@@ -244,8 +244,8 @@ def _replace_test_risk_tensor_row(
             upstream_cache_version="cv_bond_snap_test",
             liability_source_version="",
             liability_rule_version="",
-            rule_version="rv_risk_tensor_formal_materialize_v5",
-            cache_version="cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v5",
+            rule_version="rv_risk_tensor_formal_materialize_v6",
+            cache_version="cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v6",
             trace_id=f"trace_risk_tensor_{report_date.replace('-', '')}",
         )
 
@@ -257,8 +257,8 @@ def _append_bond_analytics_terminal(
     status: str,
     run_id: str,
     source_version: str,
-    rule_version: str = "rv_bond_analytics_formal_materialize_v1",
-    cache_version: str = "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v1",
+    rule_version: str = "rv_bond_analytics_formal_materialize_v2",
+    cache_version: str = "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v2",
 ) -> None:
     GovernanceRepository(base_dir=governance_dir).append(
         CACHE_BUILD_RUN_STREAM,
@@ -294,8 +294,8 @@ def test_risk_tensor_service_returns_formal_envelope_with_lineage(tmp_path, monk
     assert payload["result_meta"]["scenario_flag"] is False
     assert payload["result_meta"]["result_kind"] == "risk.tensor"
     assert payload["result_meta"]["source_version"] == "sv_risk_tensor__sv_bond_snap_1"
-    assert payload["result_meta"]["rule_version"] == "rv_risk_tensor_formal_materialize_v5"
-    assert payload["result_meta"]["cache_version"] == "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v5"
+    assert payload["result_meta"]["rule_version"] == "rv_risk_tensor_formal_materialize_v6"
+    assert payload["result_meta"]["cache_version"] == "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v6"
     assert payload["result_meta"]["tables_used"] == ["fact_formal_risk_tensor_daily"]
     assert payload["result_meta"]["evidence_rows"] == 1
     assert payload["result_meta"]["quality_flag"] == "ok"

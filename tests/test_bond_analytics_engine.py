@@ -129,10 +129,13 @@ def test_compute_bond_analytics_rows_filters_issuance_like_and_derives_credit_me
         Decimal("0.035"),
         coupon_frequency=2,
     )
+    # W-fi-2026-08 P4：凸性走标准现金流二阶导，需与久期使用同一组 (时点, 金额)。
     expected_convexity = common.estimate_convexity(
         expected_macaulay,
         Decimal("0.035"),
         coupon_frequency=2,
+        coupon_rate=Decimal("0.03"),
+        years_to_maturity=expected_years,
     )
 
     assert row.instrument_code == "BOND-001"
@@ -219,9 +222,13 @@ def test_compute_bond_analytics_rows_par_fallback_for_coupon_bond_missing_ytm(
     黄金手算（10Y=3650 天、年付 3%、par ytm=3%；闭式独立推导，未经被测函数）：
       Macaulay  = (1.03/0.03)(1 - 1.03^-10)      = 8.786108921879104...
       修正久期  = Macaulay / 1.03                 = 8.530202836775829...
-      凸性      = Macaulay(Macaulay+1) / 1.03^2   = 81.046110763505234...
+      凸性      = Σ t(t+1)·CF_t/1.03^t / P / 1.03²= 87.066004719213807...
       DV01      = 100 × 修正久期 / 10000          = 0.0853020283677582...
     旧缺陷下 Macaulay=修正久期=10（零息假设）、DV01=0.1，系统性高估。
+
+    凸性黄金值于 W-fi-2026-08 P4 由久期型近似 ``D(D+1)/1.03² = 81.046110763505234``
+    更新为标准现金流凸性 ``87.066004719213807``（par 券的付息时点方差
+    ``M² = C·1.03² − D² − D`` 被旧式整体丢掉，低估 6.91%）。
     """
     module = _module()
     report_date = date(2026, 1, 1)
@@ -238,7 +245,7 @@ def test_compute_bond_analytics_rows_par_fallback_for_coupon_bond_missing_ytm(
     assert row.years_to_maturity == Decimal("10")
     assert abs(row.macaulay_duration - Decimal("8.786108921879104")) < tol
     assert abs(row.modified_duration - Decimal("8.530202836775829")) < tol
-    assert abs(row.convexity - Decimal("81.046110763505234")) < tol
+    assert abs(row.convexity - Decimal("87.066004719213807")) < tol
     assert abs(row.dv01 - Decimal("0.085302028367758")) < tol
     # 不再等于剩余年限（旧回退值 10）。
     assert row.macaulay_duration < row.years_to_maturity
@@ -292,7 +299,11 @@ def test_compute_bond_analytics_rows_par_fallback_code_list_truncates_beyond_20(
 def test_compute_bond_analytics_rows_zero_coupon_missing_ytm_unchanged(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """零票息 + ytm 缺失：仍回退剩余年限（正确口径），不触发 par 假设告警。"""
+    """真实零息券（coupon=0）+ ytm 缺失：仍回退剩余年限（正确口径），不触发任何回退告警。
+
+    真实 0 是合法观测值，必须与「票息缺失」分开：这里断言数值口径与输入分级都不受
+    诚实性披露改造影响。
+    """
     module = _module()
     report_date = date(2026, 1, 1)
     with caplog.at_level(
@@ -302,18 +313,246 @@ def test_compute_bond_analytics_rows_zero_coupon_missing_ytm_unchanged(
             [
                 _par_fallback_snapshot_row(
                     instrument_code="ZERO-FB-001",
-                    coupon_rate=None,
+                    coupon_rate=Decimal("0"),
                 )
             ],
             report_date,
         )
 
     row = rows[0]
+    assert row.coupon_rate == Decimal("0")
+    assert row.coupon_rate_input_status == module.RATE_INPUT_STATUS_OBSERVED
+    assert row.ytm_input_status == module.RATE_INPUT_STATUS_MISSING
+    # 零息券的 Macaulay=剩余年限本就正确，但修正久期未按 ytm 折现，标记为近似。
+    assert row.duration_quality_flag == module.DURATION_QUALITY_YTM_UNAVAILABLE
     assert row.macaulay_duration == Decimal("10")
     assert row.modified_duration == Decimal("10")
-    assert row.convexity == Decimal("100")
+    # W-fi-2026-08 P4：零息单笔现金流的标准凸性 t(t+1/f)/(1+y/f)²，f=1 且 y=0 → 10×11。
+    # 旧实现在 ytm<=0 时特判 D²=100，在 y=0 处相对 y→0⁺ 有 D 大小的跳变。
+    assert row.convexity == Decimal("110")
     assert row.dv01 == Decimal("100") * Decimal("10") / Decimal("10000")
     assert not [m for m in caplog.messages if "par-assumption duration" in m]
+    assert not [m for m in caplog.messages if "remaining-term duration proxy" in m]
+
+
+def test_classify_rate_input_separates_true_zero_missing_and_dirty() -> None:
+    """归一入口必须把「真实 0」「缺失」「脏值」分成三类，而不是统一成 None。"""
+    module = _module()
+
+    assert module._classify_rate_input(Decimal("0")) == (
+        Decimal("0"),
+        module.RATE_INPUT_STATUS_OBSERVED,
+    )
+    assert module._classify_rate_input(Decimal("3.0")) == (
+        Decimal("0.03"),
+        module.RATE_INPUT_STATUS_OBSERVED,
+    )
+    assert module._classify_rate_input(None) == (None, module.RATE_INPUT_STATUS_MISSING)
+    assert module._classify_rate_input("") == (None, module.RATE_INPUT_STATUS_MISSING)
+    assert module._classify_rate_input("   ") == (None, module.RATE_INPUT_STATUS_MISSING)
+    # > 20%、负数、非数值都是脏值：有值但不可用，与「字段为空」成因不同。
+    assert module._classify_rate_input(Decimal("25")) == (None, module.RATE_INPUT_STATUS_DIRTY)
+    assert module._classify_rate_input(Decimal("-0.5")) == (None, module.RATE_INPUT_STATUS_DIRTY)
+    assert module._classify_rate_input("abc") == (None, module.RATE_INPUT_STATUS_DIRTY)
+
+
+def test_compute_bond_analytics_rows_distinguishes_true_zero_missing_and_dirty_coupon(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """票息三类输入必须可区分：真实 0 正常计算，缺失/脏值带明确质量标记。
+
+    缺失与脏值行的久期/DV01/凸性数值与零息券完全一致（``estimate_duration`` 在
+    ``coupon_rate<=0`` 时返回剩余年限），因此**只能**靠行级标记区分——这正是审计
+    「缺失数据仍产生看似正式的久期、DV01」所指的缺陷。
+    """
+    module = _module()
+    report_date = date(2026, 1, 1)
+    with caplog.at_level(
+        logging.WARNING, logger="backend.app.core_finance.bond_analytics.engine"
+    ):
+        true_zero, missing, dirty = module.compute_bond_analytics_rows(
+            [
+                _par_fallback_snapshot_row(
+                    instrument_code="ZERO-TRUE-001",
+                    coupon_rate=Decimal("0"),
+                    ytm_value=Decimal("3.0"),
+                ),
+                _par_fallback_snapshot_row(
+                    instrument_code="COUPON-MISSING-001",
+                    coupon_rate=None,
+                    ytm_value=Decimal("3.0"),
+                ),
+                _par_fallback_snapshot_row(
+                    instrument_code="COUPON-DIRTY-001",
+                    coupon_rate=Decimal("25"),  # > 20% 脏值 → 归一拒收
+                    ytm_value=Decimal("3.0"),
+                ),
+            ],
+            report_date,
+        )
+
+    # 真实零息券：合法观测值，正常计算路径，不打降级标记。
+    assert true_zero.coupon_rate == Decimal("0")
+    assert true_zero.coupon_rate_input_status == module.RATE_INPUT_STATUS_OBSERVED
+    assert true_zero.ytm_input_status == module.RATE_INPUT_STATUS_OBSERVED
+    assert true_zero.duration_quality_flag == module.DURATION_QUALITY_OBSERVED
+    assert true_zero.macaulay_duration == Decimal("10")
+
+    # 缺失与脏值：数值上无法与零息券区分，故必须由标记区分。
+    assert missing.coupon_rate is None
+    assert missing.coupon_rate_input_status == module.RATE_INPUT_STATUS_MISSING
+    assert missing.duration_quality_flag == module.DURATION_QUALITY_COUPON_UNAVAILABLE
+    assert dirty.coupon_rate is None
+    assert dirty.coupon_rate_input_status == module.RATE_INPUT_STATUS_DIRTY
+    assert dirty.duration_quality_flag == module.DURATION_QUALITY_COUPON_UNAVAILABLE
+    assert missing.coupon_rate_input_status != dirty.coupon_rate_input_status
+    for row in (missing, dirty):
+        assert row.macaulay_duration == true_zero.macaulay_duration
+        assert row.dv01 == true_zero.dv01
+
+    proxy_warnings = [
+        message for message in caplog.messages if "remaining-term duration proxy" in message
+    ]
+    assert len(proxy_warnings) == 1
+    assert module.COUPON_UNAVAILABLE_RULE_ID in proxy_warnings[0]
+    assert "2 rows with missing/dirty coupon_rate" in proxy_warnings[0]
+    assert "market_value_cny=190" in proxy_warnings[0]
+    assert "COUPON-MISSING-001,COUPON-DIRTY-001" in proxy_warnings[0]
+    # 零息券不得混入告警清单。
+    assert "ZERO-TRUE-001" not in proxy_warnings[0]
+
+
+@pytest.mark.parametrize(
+    ("ytm_value", "expected_ytm_status"),
+    [
+        (None, "missing"),
+        (Decimal("25"), "dirty"),  # > 20% 脏值
+    ],
+)
+def test_compute_bond_analytics_rows_flags_par_fallback_for_missing_and_dirty_ytm(
+    ytm_value: object,
+    expected_ytm_status: str,
+) -> None:
+    """有票息、ytm 缺失/脏值：同走 par 假设，但两种成因由 ytm_input_status 区分。"""
+    module = _module()
+    report_date = date(2026, 1, 1)
+
+    row = module.compute_bond_analytics_rows(
+        [_par_fallback_snapshot_row(ytm_value=ytm_value)],
+        report_date,
+    )[0]
+
+    assert row.ytm is None
+    assert row.coupon_rate_input_status == module.RATE_INPUT_STATUS_OBSERVED
+    assert row.ytm_input_status == expected_ytm_status
+    assert row.duration_quality_flag == module.DURATION_QUALITY_YTM_PAR_FALLBACK
+    # par 假设数值口径不变（10Y/3% 年付黄金手算）。
+    assert abs(row.macaulay_duration - Decimal("8.786108921879104")) < Decimal("0.000001")
+
+
+def test_compute_bond_analytics_rows_marks_observed_rates_and_missing_maturity() -> None:
+    """观测值齐全的行标记为 observed；缺到期日的行标记为 maturity_unavailable。"""
+    module = _module()
+    report_date = date(2026, 1, 1)
+
+    observed, no_maturity = module.compute_bond_analytics_rows(
+        [
+            _par_fallback_snapshot_row(
+                instrument_code="OBSERVED-001",
+                ytm_value=Decimal("3.5"),
+            ),
+            _par_fallback_snapshot_row(
+                instrument_code="NO-TERM-001",
+                coupon_rate=None,
+                ytm_value=None,
+                maturity_date=None,
+            ),
+        ],
+        report_date,
+    )
+
+    assert observed.coupon_rate_input_status == module.RATE_INPUT_STATUS_OBSERVED
+    assert observed.ytm_input_status == module.RATE_INPUT_STATUS_OBSERVED
+    assert observed.duration_quality_flag == module.DURATION_QUALITY_OBSERVED
+
+    # 三项指标按 0 记是「久期不可得」的标记，与利率输入无关，不得冒充观测支撑。
+    assert no_maturity.macaulay_duration == Decimal("0")
+    assert no_maturity.dv01 == Decimal("0")
+    assert no_maturity.duration_quality_flag == module.DURATION_QUALITY_MATURITY_UNAVAILABLE
+    assert no_maturity.coupon_rate_input_status == module.RATE_INPUT_STATUS_MISSING
+    assert no_maturity.ytm_input_status == module.RATE_INPUT_STATUS_MISSING
+
+
+def test_compute_bond_analytics_rows_separates_matured_from_missing_maturity() -> None:
+    """已到期与缺到期日必须用不同标记（W-fi-2026-08 P2）。
+
+    两者数值同为 0，但成因完全不同：已到期的债久期真的是 0；缺到期日的行久期
+    **不适用**（2026-07-31 实测的 127 笔 434.00 亿全是公募基金与 ETF），必须整行移出
+    久期分母并单独披露。此前两者共用 ``no_remaining_term``，消费方无从区分。
+    """
+    module = _module()
+    report_date = date(2026, 1, 1)
+
+    matured, no_maturity = module.compute_bond_analytics_rows(
+        [
+            _par_fallback_snapshot_row(
+                instrument_code="MATURED-001",
+                maturity_date=date(2025, 12, 31),
+            ),
+            _par_fallback_snapshot_row(
+                instrument_code="NO-MATURITY-001",
+                maturity_date=None,
+            ),
+        ],
+        report_date,
+    )
+
+    assert matured.macaulay_duration == no_maturity.macaulay_duration == Decimal("0")
+    assert matured.dv01 == no_maturity.dv01 == Decimal("0")
+    assert matured.duration_quality_flag == module.DURATION_QUALITY_NO_REMAINING_TERM
+    assert no_maturity.duration_quality_flag == module.DURATION_QUALITY_MATURITY_UNAVAILABLE
+    assert matured.duration_quality_flag != no_maturity.duration_quality_flag
+
+
+def test_compute_bond_analytics_rows_discloses_missing_maturity_exposure(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """缺到期日的敞口必须聚合披露（行数 / 市值 / 代码 / rule_id）。
+
+    对标 ``risk_tensor.missing_maturity_count`` / ``missing_maturity_market_value``
+    的正面样板：测量并披露缺口，而不是拿占位常数把它糊过去。
+    """
+    module = _module()
+    report_date = date(2026, 1, 1)
+
+    with caplog.at_level(logging.WARNING):
+        module.compute_bond_analytics_rows(
+            [
+                _par_fallback_snapshot_row(
+                    instrument_code="SA0106070101",
+                    maturity_date=None,
+                    market_value_native=Decimal("100"),
+                ),
+                _par_fallback_snapshot_row(
+                    instrument_code="SA5110300101",
+                    maturity_date=None,
+                    market_value_native=Decimal("40"),
+                ),
+            ],
+            report_date,
+        )
+
+    disclosure = [
+        record.message
+        for record in caplog.records
+        if module.MISSING_MATURITY_RULE_ID in record.message
+        and "rows without maturity_date" in record.message
+    ]
+    assert len(disclosure) == 1
+    assert "2 rows without maturity_date" in disclosure[0]
+    assert "market_value_cny=140" in disclosure[0]
+    assert "SA0106070101" in disclosure[0]
+    assert "SA5110300101" in disclosure[0]
 
 
 def test_compute_bond_analytics_rows_uses_formal_cny_values_and_accounting_basis() -> None:
@@ -544,10 +783,13 @@ def test_compute_bond_analytics_rows_uses_payment_frequency_for_duration_and_con
         Decimal("0.04"),
         coupon_frequency=2,
     )
+    # W-fi-2026-08 P4：凸性走标准现金流二阶导，需与久期使用同一组 (时点, 金额)。
     expected_convexity = common.estimate_convexity(
         expected_macaulay,
         Decimal("0.04"),
         coupon_frequency=2,
+        coupon_rate=Decimal("0.03"),
+        years_to_maturity=years_to_maturity,
     )
 
     assert row.interest_payment_frequency == "semi-annual"
@@ -1025,6 +1267,10 @@ def test_compute_bond_analytics_rows_treats_dirty_rates_as_missing() -> None:
     # Dirty rates (> 20) are treated as missing rather than silently divided by 100.
     assert row.coupon_rate is None
     assert row.ytm is None
+    # 但「脏值」与「字段为空」在行级仍可区分，且该行久期不得冒充观测支撑。
+    assert row.coupon_rate_input_status == module.RATE_INPUT_STATUS_DIRTY
+    assert row.ytm_input_status == module.RATE_INPUT_STATUS_DIRTY
+    assert row.duration_quality_flag == module.DURATION_QUALITY_COUPON_UNAVAILABLE
     expected_macaulay = common.estimate_duration(
         date(2031, 3, 31),
         report_date,

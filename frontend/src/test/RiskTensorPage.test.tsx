@@ -505,8 +505,8 @@ describe("RiskTensorPage", () => {
     const getRiskTensor = vi.fn(async (reportDate: string) => ({
       result_meta: {
         ...buildMeta("risk.tensor", `tr_tensor_${reportDate}`),
-        rule_version: "rv_risk_tensor_formal_materialize_v5",
-        cache_version: "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v5",
+        rule_version: "rv_risk_tensor_formal_materialize_v6",
+        cache_version: "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v6",
       },
       result: tensorResult(reportDate),
     }));

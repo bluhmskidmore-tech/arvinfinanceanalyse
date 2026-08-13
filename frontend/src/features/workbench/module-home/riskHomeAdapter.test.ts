@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { EM_DASH } from "../../../utils/format";
 import type {
   ApiEnvelope,
   CashflowProjectionPayload,
@@ -218,7 +219,7 @@ describe("buildRiskV6KpiCards", () => {
   it("surfaces missing values explicitly instead of backfilling", () => {
     const tensor = { ...tensorFixture(), regulatory_dv01: null };
     const cards = buildRiskV6KpiCards(tensor, historyFixture());
-    expect(cards[0].amount).toBe("-");
+    expect(cards[0].amount).toBe(EM_DASH);
     expect(cards[0].valuePresent).toBe(false);
     expect(cards[0].caption).toBe("待接入");
   });
@@ -422,8 +423,8 @@ describe("buildRiskV6LineageRows", () => {
     formal_use_allowed: true,
     source_version: "sv_risk_tensor__sv_a583ab603b92__sv_fa8f64e200b6",
     vendor_version: "vv_none",
-    rule_version: "rv_risk_tensor_formal_materialize_v5",
-    cache_version: "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v5",
+    rule_version: "rv_risk_tensor_formal_materialize_v6",
+    cache_version: "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v6",
     quality_flag: "warning",
     vendor_status: "ok",
     fallback_mode: "none",
@@ -440,8 +441,8 @@ describe("buildRiskV6LineageRows", () => {
     const rows = buildRiskV6LineageRows(meta);
     const byKey = new Map(rows.map((row) => [row.key, row.value]));
     expect(byKey.get("source")).toBe("sv_risk_tensor__sv_a583ab603b92__sv_fa8f64e200b6");
-    expect(byKey.get("rule")).toBe("rv_risk_tensor_formal_materialize_v5");
-    expect(byKey.get("cache")).toBe("cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v5");
+    expect(byKey.get("rule")).toBe("rv_risk_tensor_formal_materialize_v6");
+    expect(byKey.get("cache")).toBe("cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v6");
     expect(byKey.get("trace")).toBe("tr_9f65d8ba5e40");
     expect(byKey.has("fallback")).toBe(false);
   });

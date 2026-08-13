@@ -410,12 +410,14 @@ def test_bond_analytics_krd_curve_risk_with_real_facts_formats_exact_risk_output
     payload = service_mod.get_krd_curve_risk(date.fromisoformat(REPORT_DATE), "standard")
     result = payload["result"]
 
-    assert payload["result_meta"]["rule_version"] == "rv_bond_analytics_formal_materialize_v1"
+    assert payload["result_meta"]["rule_version"] == "rv_bond_analytics_formal_materialize_v2"
     assert result["portfolio_duration"] == "5.05978431"
     assert result["portfolio_modified_duration"] == "4.87293147"
     assert result["portfolio_dv01"] == "0.22175249"
     # 8c422eff made convexity use the parsed coupon frequency; these annual-pay fixtures no longer use the old semi-annual default.
-    assert result["portfolio_convexity"] == "35.23794449"
+    # W-fi-2026-08 P4：凸性由久期型近似 D(D+1)/(1+y/f)² 升级为标准现金流凸性，
+    # 组合层 35.23794449 -> 37.92819750（+7.63%）。久期 / DV01 未变，见上三条断言。
+    assert result["portfolio_convexity"] == "37.92819750"
     assert result["krd_buckets"] == [
         {
             "tenor": "10Y",
@@ -440,7 +442,8 @@ def test_bond_analytics_krd_curve_risk_with_real_facts_formats_exact_risk_output
         },
     ]
     assert result["scenarios"][0]["scenario_name"] == "parallel_up_25bp"
-    assert result["scenarios"][0]["pnl_economic"] == "-5.17897813"
+    # 同上：凸性项（正）随标准化变大 0.00360662，情景损益相应少亏。
+    assert result["scenarios"][0]["pnl_economic"] == "-5.17537151"
     assert result["by_asset_class"] == [
         {
             "asset_class": "credit",

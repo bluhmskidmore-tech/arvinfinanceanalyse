@@ -264,18 +264,21 @@ def estimate_convexity_bond(
     ytm: Decimal,
     wind_convexity: Decimal | None = None,
     coupon_frequency: int = 2,
+    *,
+    coupon_rate: Decimal | None = None,
+    years_to_maturity: Decimal | None = None,
 ) -> Decimal:
-    """基于 Macaulay 久期 ``D`` 的凸性近似（非现金流二阶导凸性）。
+    """凸性；委托 ``bond_analytics.common.estimate_convexity`` 的薄封装。
 
     W-fi-2026-08 P3：本函数原有独立实现 ``[D² + D(1 + 1/f)] / (1 + y/f)²``
-    （``y<=0`` 时另乘 ``1.1``）已删除，改为委托
-    ``bond_analytics.common.estimate_convexity``，仓库内只保留一套久期型凸性口径。
-    删除依据：以标准现金流凸性恒等式
-    ``C_std = (D² + D/f + M²) / (1 + y/f)²``（``M²`` 为现值加权付息时点方差，单位年²）
-    为参照，原式等价于强行假设 ``M² = D``——没有任何近似族这么取，实测 0.25Y 高估
-    80%（``f=2`` 时最高 133%）、30Y 低估 17%，只在 7~12Y 段巧合接近；``y<=0`` 分支的
-    ``1.1`` 系数同样无出处。委托口径是零息近似族（单笔现金流时精确），其对付息债的
-    系统性低估量 ``M²/(1+y/f)²`` 由 ``common.estimate_convexity`` 统一承担。
+    （``y<=0`` 时另乘 ``1.1``）已删除，仓库内只保留一套凸性口径。删除依据：以标准
+    现金流凸性恒等式 ``C_std = (D² + D/f + M²) / (1 + y/f)²``（``M²`` 为现值加权付息
+    时点方差，单位年²）为参照，原式等价于强行假设 ``M² = D``——没有任何近似族这么
+    取；``y<=0`` 分支的 ``1.1`` 系数同样无出处。
+
+    W-fi-2026-08 P4：共享实现已由久期型近似升级为**标准现金流凸性**。传入
+    ``coupon_rate`` / ``years_to_maturity`` 即走标准路径（Campisi 与 KRD 调用方均已
+    传入）；两者缺一时退化为单笔现金流闭式解，仍是零息近似。
 
     Wind 覆盖分支保留：外部观测凸性优先于估计值，与 ``estimate_duration`` /
     ``modified_duration_from_macaulay`` 的 Wind 优先约定一致。
@@ -284,4 +287,10 @@ def estimate_convexity_bond(
         return wind_convexity
 
     frequency = coupon_frequency if coupon_frequency and coupon_frequency > 0 else 1
-    return _shared_estimate_convexity(duration, ytm, coupon_frequency=frequency)
+    return _shared_estimate_convexity(
+        duration,
+        ytm,
+        coupon_frequency=frequency,
+        coupon_rate=coupon_rate,
+        years_to_maturity=years_to_maturity,
+    )

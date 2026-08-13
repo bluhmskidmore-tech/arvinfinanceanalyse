@@ -28,8 +28,8 @@ from backend.app.services.runtime_cache import get_runtime_cache
 
 # 与 risk_tensor_materialize 对齐；只读路径不得 import tasks（broker/actor 注册）。
 CACHE_KEY = "risk_tensor:materialize:formal"
-CACHE_VERSION = "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v5"
-RULE_VERSION = "rv_risk_tensor_formal_materialize_v5"
+CACHE_VERSION = "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v6"
+RULE_VERSION = "rv_risk_tensor_formal_materialize_v6"
 
 _RISK_TENSOR_CACHE_TTL_SECONDS = 300.0
 _RISK_TENSOR_CACHE = get_runtime_cache(
@@ -140,7 +140,6 @@ def _risk_tensor_dates_envelope_uncached(
 ) -> dict[str, object]:
     repo = RiskTensorRepository(str(duckdb_path))
     candidate_rows = repo.list_report_date_lineage_rows()
-    candidate_report_dates = [str(row["report_date"]) for row in candidate_rows]
     report_dates: list[str] = []
     blocked_report_dates: list[dict[str, str]] = []
     try:
@@ -184,7 +183,7 @@ def _risk_tensor_dates_envelope_uncached(
     source_version_value = "sv_risk_tensor_empty"
     rule_version_value = RULE_VERSION
     vendor_version_value = "vv_none"
-    if candidate_report_dates:
+    if candidate_rows:
         manifest_lineage = resolve_formal_manifest_lineage(
             governance_dir=governance_dir,
             cache_key=CACHE_KEY,
