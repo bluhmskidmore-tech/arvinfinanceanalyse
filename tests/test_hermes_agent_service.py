@@ -5,9 +5,18 @@ from types import SimpleNamespace
 
 import pytest
 
+from backend.app.agent.runtime.subprocess_env import (
+    build_agent_subprocess_env,
+    is_sensitive_env_name,
+)
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.governance.settings import get_settings
 from backend.app.services import hermes_agent_service as service
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_agent_mvp,
+]
 
 
 _BENIGN_MCP_SHUTDOWN_STDERR = (
@@ -1003,6 +1012,35 @@ def test_ensure_hermes_bridge_does_not_kill_external_healthy_bridge(monkeypatch)
     assert service._HERMES_BRIDGE_CONFIG is None
 
 
+def test_ensure_hermes_bridge_refuses_external_bridge_that_rejects_our_token(monkeypatch):
+    """A stale bridge would otherwise 403 every query while looking healthy."""
+    _reset_hermes_bridge_state()
+    popen_calls = []
+    monkeypatch.setattr(service, "_hermes_bridge_healthy", lambda _url: True)
+    monkeypatch.setattr(service, "_hermes_bridge_authorized", lambda _url: False)
+    monkeypatch.setattr(
+        service.subprocess,
+        "Popen",
+        lambda *args, **kwargs: popen_calls.append(1) or SimpleNamespace(poll=lambda: None),
+    )
+
+    with pytest.raises(RuntimeError, match="rejects this process's token"):
+        service._ensure_hermes_bridge(**_bridge_kwargs())
+
+    assert popen_calls == []
+
+
+def test_ensure_hermes_bridge_accepts_external_bridge_without_token_support(monkeypatch):
+    """A bridge predating token auth reports no verdict and still serves queries."""
+    _reset_hermes_bridge_state()
+    monkeypatch.setattr(service, "_hermes_bridge_healthy", lambda _url: True)
+    monkeypatch.setattr(service, "_hermes_bridge_authorized", lambda _url: None)
+
+    service._ensure_hermes_bridge(**_bridge_kwargs())
+
+    assert service._HERMES_BRIDGE_PROCESS is None
+
+
 def test_ensure_hermes_bridge_clears_config_when_managed_process_exits(monkeypatch):
     _reset_hermes_bridge_state()
     exited = SimpleNamespace(poll=lambda: 1, terminate=lambda: None, wait=lambda timeout=None: 0, kill=lambda: None)
@@ -1020,5 +1058,315 @@ def test_ensure_hermes_bridge_clears_config_when_managed_process_exits(monkeypat
 
     service._ensure_hermes_bridge(**_bridge_kwargs())
 
+    assert service._HERMES_BRIDGE_PROCESS is None
+    assert service._HERMES_BRIDGE_CONFIG is None
+
+
+def _hermes_settings(**overrides):
+    base = {
+        "agent_hermes_command": "hermes",
+        "agent_hermes_wsl_distro": "",
+        "agent_hermes_home": "",
+        "agent_hermes_transport": "cli",
+        "agent_hermes_bridge_url": "http://127.0.0.1:7891",
+        "agent_hermes_model": "gpt-test",
+        "agent_hermes_toolsets": "file",
+        "agent_hermes_max_turns": 3,
+        "agent_hermes_timeout_seconds": 9.0,
+    }
+    base.update(overrides)
+    return SimpleNamespace(**base)
+
+
+def test_execute_hermes_agent_query_falls_back_when_cli_spawn_raises_os_error(monkeypatch, tmp_path):
+    def fake_run(*_args, **_kwargs):
+        raise PermissionError("wsl.exe access denied")
+
+    monkeypatch.setattr(service.subprocess, "run", fake_run)
+    monkeypatch.setattr(service, "_append_hermes_audit", lambda *_args, **_kwargs: None)
+
+    envelope = service.execute_hermes_agent_query(
+        request=AgentQueryRequest(question="summarize this open ended question"),
+        governance_dir=str(tmp_path / "governance"),
+        settings=_hermes_settings(),
+    )
+
+    assert envelope.result_meta.result_kind == "agent.hermes_fallback"
+    assert envelope.result_meta.vendor_status == "vendor_unavailable"
+    assert envelope.evidence.filters_applied["fallback_reason"] == "hermes_runtime_unavailable"
+
+
+def test_execute_hermes_agent_query_falls_back_when_runtime_raises_json_decode_error(
+    monkeypatch,
+    tmp_path,
+):
+    def fake_run_hermes_agent(**_kwargs):
+        raise json.JSONDecodeError("Expecting value", "not-json", 0)
+
+    monkeypatch.setattr(service, "run_hermes_agent", fake_run_hermes_agent)
+    monkeypatch.setattr(service, "_append_hermes_audit", lambda *_args, **_kwargs: None)
+
+    envelope = service.execute_hermes_agent_query(
+        request=AgentQueryRequest(question="summarize this open ended question"),
+        governance_dir=str(tmp_path / "governance"),
+        settings=_hermes_settings(),
+    )
+
+    assert envelope.result_meta.result_kind == "agent.hermes_fallback"
+    assert envelope.evidence.filters_applied["fallback_reason"] == "hermes_runtime_unavailable"
+
+
+class _FakeBridgeResponse:
+    def __init__(self, body: bytes):
+        self._body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc_info):
+        return False
+
+    def read(self) -> bytes:
+        return self._body
+
+
+def test_post_hermes_bridge_query_converts_invalid_json_to_runtime_error(monkeypatch):
+    monkeypatch.setattr(
+        service.urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: _FakeBridgeResponse(b"<html>bad gateway</html>"),
+    )
+
+    with pytest.raises(RuntimeError, match="invalid JSON"):
+        service._post_hermes_bridge_query(
+            bridge_url="http://127.0.0.1:7891",
+            prompt="ping",
+            model="",
+            toolsets="evidence",
+            max_turns=1,
+            timeout_seconds=1.0,
+        )
+
+
+def test_post_hermes_bridge_query_tolerates_invalid_utf8_payload(monkeypatch):
+    body = b'{"ok": true, "answer": "p\xffng", "model": "m", "toolsets": "evidence"}'
+    monkeypatch.setattr(
+        service.urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: _FakeBridgeResponse(body),
+    )
+
+    result = service._post_hermes_bridge_query(
+        bridge_url="http://127.0.0.1:7891",
+        prompt="ping",
+        model="",
+        toolsets="evidence",
+        max_turns=1,
+        timeout_seconds=1.0,
+    )
+
+    assert result["answer"] == "p\ufffdng"
+    assert result["transport"] == "bridge"
+
+
+def test_ensure_hermes_bridge_converts_spawn_os_error_to_runtime_error(monkeypatch, tmp_path):
+    _reset_hermes_bridge_state()
+    monkeypatch.setattr(service, "_REPO_ROOT", tmp_path)
+    monkeypatch.setattr(service, "_hermes_bridge_healthy", lambda _url: False)
+    monkeypatch.setattr(service, "_build_hermes_bridge_command", lambda **_kwargs: ["missing-bridge"])
+    monkeypatch.setattr(service, "_build_hermes_subprocess_env", lambda *_args, **_kwargs: {})
+
+    def fake_popen(*_args, **_kwargs):
+        raise FileNotFoundError("missing-bridge")
+
+    monkeypatch.setattr(service.subprocess, "Popen", fake_popen)
+
+    with pytest.raises(RuntimeError, match="failed to start"):
+        service._ensure_hermes_bridge(**_bridge_kwargs())
+
+    assert service._HERMES_BRIDGE_PROCESS is None
+    assert service._HERMES_BRIDGE_CONFIG is None
+
+
+def test_stop_managed_hermes_bridge_survives_kill_timeout():
+    _reset_hermes_bridge_state()
+    calls = []
+
+    def fake_wait(timeout=None):
+        calls.append(("wait", timeout))
+        raise service.subprocess.TimeoutExpired(cmd="bridge", timeout=timeout or 0)
+
+    stubborn = SimpleNamespace(
+        poll=lambda: None,
+        terminate=lambda: calls.append("terminate"),
+        kill=lambda: calls.append("kill"),
+        wait=fake_wait,
+    )
+    service._HERMES_BRIDGE_PROCESS = stubborn
+
+    service._stop_managed_hermes_bridge_locked()
+
+    assert "terminate" in calls
+    assert "kill" in calls
+    assert service._HERMES_BRIDGE_PROCESS is None
+    assert service._HERMES_BRIDGE_CONFIG is None
+
+
+def test_execute_hermes_agent_query_returns_envelope_when_audit_write_fails(
+    monkeypatch,
+    tmp_path,
+    caplog,
+):
+    def fake_append_agent_audit(*_args, **_kwargs):
+        raise OSError("governance dir is read-only")
+
+    monkeypatch.setattr(service, "append_agent_audit", fake_append_agent_audit)
+
+    envelope = service.execute_hermes_agent_query(
+        request=AgentQueryRequest(question="在吗"),
+        governance_dir=str(tmp_path / "governance"),
+        settings=_hermes_settings(),
+    )
+
+    assert envelope.result_meta.result_kind == "agent.local_chat"
+    assert envelope.answer == "在，有什么可以帮你？"
+    assert "error_code=hermes_audit_append_failed" in caplog.text
+    assert "read-only" not in caplog.text
+
+
+def test_build_agent_subprocess_env_strips_pat_cookie_session_and_passfile_names(monkeypatch):
+    monkeypatch.setenv("GITHUB_PAT", "ghp_secret")
+    monkeypatch.setenv("GH_PAT", "ghp_secret_2")
+    monkeypatch.setenv("PGPASSFILE", "/home/user/.pgpass")
+    monkeypatch.setenv("BROWSER_COOKIE_JAR", "cookie-value")
+    monkeypatch.setenv("APP_SESSION_ID", "session-value")
+    monkeypatch.setenv("CARGO_TARGET_PATH", "/tmp/cargo-target")
+
+    env = build_agent_subprocess_env()
+
+    for blocked in ("GITHUB_PAT", "GH_PAT", "PGPASSFILE", "BROWSER_COOKIE_JAR", "APP_SESSION_ID"):
+        assert blocked not in env
+    assert env["CARGO_TARGET_PATH"] == "/tmp/cargo-target"
+
+
+def test_build_agent_subprocess_env_strips_values_with_embedded_url_credentials(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgres://svc:sekret@db.internal:5432/moss")
+    monkeypatch.setenv("REDIS_URL", "redis://:cache-pass@cache.internal:6379/0")
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy-user:proxy-pass@proxy.internal:8080")
+    monkeypatch.setenv("SERVICE_BASE_URL", "https://api.example.com:8443/v1")
+
+    env = build_agent_subprocess_env()
+
+    for blocked in ("DATABASE_URL", "REDIS_URL", "HTTPS_PROXY"):
+        assert blocked not in env
+    assert env["SERVICE_BASE_URL"] == "https://api.example.com:8443/v1"
+
+
+def test_run_hermes_agent_cli_env_excludes_sensitive_variables(monkeypatch):
+    monkeypatch.setenv("GITHUB_PAT", "ghp_secret")
+    monkeypatch.setenv("DATABASE_URL", "postgres://svc:sekret@db.internal:5432/moss")
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append({"args": args, **kwargs})
+        return SimpleNamespace(returncode=0, stdout="pong\n", stderr="")
+
+    monkeypatch.setattr(service.subprocess, "run", fake_run)
+
+    service.run_hermes_agent(
+        request=AgentQueryRequest(question="ping"),
+        command="hermes",
+        wsl_distro="",
+        hermes_home="",
+        model="",
+        toolsets="evidence",
+        max_turns=1,
+        timeout_seconds=5,
+    )
+
+    env = calls[0]["env"]
+    assert "GITHUB_PAT" not in env
+    assert "DATABASE_URL" not in env
+    assert not [name for name in env if is_sensitive_env_name(name)]
+
+
+def test_stop_managed_hermes_bridge_is_idempotent_without_managed_process():
+    _reset_hermes_bridge_state()
+
+    service.stop_managed_hermes_bridge()
+    service.stop_managed_hermes_bridge()
+
+    assert service._HERMES_BRIDGE_PROCESS is None
+    assert service._HERMES_BRIDGE_CONFIG is None
+
+
+def test_stop_managed_hermes_bridge_terminates_managed_process_then_ensure_restarts(
+    monkeypatch,
+    tmp_path,
+):
+    _reset_hermes_bridge_state()
+    calls = []
+    managed = SimpleNamespace(
+        poll=lambda: None,
+        terminate=lambda: calls.append("terminate"),
+        wait=lambda timeout=None: calls.append(("wait", timeout)) or 0,
+        kill=lambda: calls.append("kill"),
+    )
+    service._HERMES_BRIDGE_PROCESS = managed
+    service._HERMES_BRIDGE_CONFIG = service.HermesBridgeConfig(
+        command="wsl.exe",
+        wsl_distro="HermesUbuntu",
+        hermes_home="/home/hermes/.hermes",
+        bridge_url="http://127.0.0.1:7891",
+        model="gpt-test",
+        toolsets="evidence",
+        max_turns=3,
+    )
+
+    service.stop_managed_hermes_bridge()
+
+    assert "terminate" in calls
+    assert service._HERMES_BRIDGE_PROCESS is None
+    assert service._HERMES_BRIDGE_CONFIG is None
+
+    restarted = SimpleNamespace(
+        poll=lambda: None,
+        terminate=lambda: None,
+        wait=lambda timeout=None: 0,
+        kill=lambda: None,
+    )
+    health_state = {"healthy": False}
+
+    def fake_popen(*_args, **_kwargs):
+        health_state["healthy"] = True
+        return restarted
+
+    monkeypatch.setattr(service, "_REPO_ROOT", tmp_path)
+    monkeypatch.setattr(service, "_hermes_bridge_healthy", lambda _url: health_state["healthy"])
+    monkeypatch.setattr(service, "_build_hermes_bridge_command", lambda **_kwargs: ["hermes-bridge"])
+    monkeypatch.setattr(service, "_build_hermes_subprocess_env", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(service.subprocess, "Popen", fake_popen)
+
+    service._ensure_hermes_bridge(**_bridge_kwargs())
+
+    assert service._HERMES_BRIDGE_PROCESS is restarted
+    assert service._HERMES_BRIDGE_CONFIG is not None
+
+
+def test_stop_managed_hermes_bridge_never_touches_external_bridge(monkeypatch):
+    _reset_hermes_bridge_state()
+    popen_calls = []
+    monkeypatch.setattr(service, "_hermes_bridge_healthy", lambda _url: True)
+    monkeypatch.setattr(
+        service.subprocess,
+        "Popen",
+        lambda *args, **kwargs: popen_calls.append(1) or SimpleNamespace(poll=lambda: None),
+    )
+
+    # ensure 采认外部健康 bridge 但不接管；随后 stop 不应有任何进程可终止。
+    service._ensure_hermes_bridge(**_bridge_kwargs())
+    service.stop_managed_hermes_bridge()
+
+    assert popen_calls == []
     assert service._HERMES_BRIDGE_PROCESS is None
     assert service._HERMES_BRIDGE_CONFIG is None

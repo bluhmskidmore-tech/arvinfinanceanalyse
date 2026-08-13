@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +24,36 @@ DEFAULT_MACRO_SERIES_IDS = (
     "tushare.macro.cn_ppi.monthly",
     "tushare.macro.cn_money.monthly",
 )
+
+# 上下文体积预算：以注入 prompt 的同一序列化口径（ensure_ascii=False, indent=2）计。
+# 16K 字符约 4K token；叠加基础 prompt 后仍远低于 Windows CreateProcess 约 32K 的
+# argv 上限（CLI 模式 prompt 直接走命令行参数）。
+MAX_CONTEXT_SERIALIZED_CHARS = 16_000
+# 单条新闻 payload 字段上限：5 条新闻 × 两个字段 × 400 字符，最坏约 4K 字符。
+MAX_NEWS_PAYLOAD_FIELD_CHARS = 400
+_TRUNCATION_MARKER = "...[truncated]"
+# 体积超限时按证据价值从低到高逐来源丢行：新闻原文最先，宏观目录最后。
+_CONTEXT_TRIM_ORDER = (
+    ("stock", "news_events"),
+    ("macro", "tushare_series"),
+    ("macro", "choice_snapshots"),
+    ("macro", "choice_series"),
+    ("macro", "catalog"),
+)
+
+# stale 阈值（自然日）：日频给长假/停牌留缓冲；因子/行业快照按季度更新节奏；
+# 新闻按 30 天研究可用窗口。参考日期优先取 as_of_date，缺省用当天（UTC）。
+STALE_AFTER_DAYS_DAILY = 14
+STALE_AFTER_DAYS_NEWS = 30
+STALE_AFTER_DAYS_SNAPSHOT = 120
+_STALE_AFTER_DAYS_BY_FREQUENCY = {
+    "daily": 14,
+    "weekly": 35,
+    "monthly": 62,
+    "quarterly": 120,
+    "yearly": 430,
+}
+_STALE_AFTER_DAYS_DEFAULT = 62
 
 
 class ResearchContextBuilder:
@@ -53,6 +85,9 @@ class ResearchContextBuilder:
                 _build_stock_context(repo=repo, conn=conn, tables=tables, context=context)
             elif domain == "macro":
                 _build_macro_context(repo=repo, conn=conn, tables=tables, context=context)
+
+        _apply_stale_disclosures(context)
+        _enforce_context_budget(context)
 
         if context["evidence_rows"] <= 0 and context["quality_flag"] == "ok":
             context["quality_flag"] = "missing"
@@ -185,6 +220,18 @@ def _build_stock_context(
             sql_executed=context["sql_executed"],
             conn=conn,
         )
+        truncated_fields = 0
+        for news_row in rows:
+            for field in ("payload_text", "payload_json"):
+                value = news_row.get(field)
+                if isinstance(value, str) and len(value) > MAX_NEWS_PAYLOAD_FIELD_CHARS:
+                    news_row[field] = value[:MAX_NEWS_PAYLOAD_FIELD_CHARS] + _TRUNCATION_MARKER
+                    truncated_fields += 1
+        if truncated_fields:
+            context["limitations"].append(
+                f"choice_news_event payload fields truncated to {MAX_NEWS_PAYLOAD_FIELD_CHARS} "
+                f"characters for context budget ({truncated_fields} field(s))."
+            )
         stock["news_events"] = rows
         context["evidence_rows"] += len(rows)
         if not rows:
@@ -256,6 +303,150 @@ def _build_macro_context(
         context["limitations"].append("vw_external_macro_daily is not landed.")
 
     context["macro"] = macro
+
+
+def _apply_stale_disclosures(context: dict[str, Any]) -> None:
+    """标注证据新鲜度。
+
+    stale 说明写入独立的 ``stale_sources``（并镜像进 ``filters_applied`` 以随
+    Envelope evidence/meta 披露），不进 ``limitations``、不改 ``quality_flag``：
+    "最新落地行仍偏旧" 与 "证据缺失/不可定标" 是两类信号，前者不应把
+    fresh-but-limited 与 stale 混在同一质量降级里。
+    """
+    reference = _parse_iso_date(context.get("as_of_date")) or datetime.now(UTC).date()
+    notes: list[str] = []
+    stock = context.get("stock") or {}
+    _note_stale_row(
+        notes,
+        source=RELATION_CHOICE_STOCK_DAILY_OBSERVATION,
+        row=stock.get("daily_observation"),
+        date_key="trade_date",
+        threshold_days=STALE_AFTER_DAYS_DAILY,
+        reference=reference,
+    )
+    _note_stale_row(
+        notes,
+        source=RELATION_CHOICE_STOCK_FACTOR_SNAPSHOT,
+        row=stock.get("factor_snapshot"),
+        date_key="as_of_date",
+        threshold_days=STALE_AFTER_DAYS_SNAPSHOT,
+        reference=reference,
+    )
+    _note_stale_row(
+        notes,
+        source=RELATION_CHOICE_STOCK_SECTOR_MEMBERSHIP,
+        row=stock.get("sector_membership"),
+        date_key="as_of_date",
+        threshold_days=STALE_AFTER_DAYS_SNAPSHOT,
+        reference=reference,
+    )
+    news_rows = stock.get("news_events") or []
+    if news_rows:
+        # 新闻按 received_at 倒序取回，首行即最新一条。
+        _note_stale_row(
+            notes,
+            source=RELATION_CHOICE_NEWS_EVENT,
+            row=news_rows[0],
+            date_key="received_at",
+            threshold_days=STALE_AFTER_DAYS_NEWS,
+            reference=reference,
+        )
+
+    macro = context.get("macro") or {}
+    for source, key in (
+        (RELATION_FACT_CHOICE_MACRO_DAILY, "choice_series"),
+        (RELATION_CHOICE_MARKET_SNAPSHOT, "choice_snapshots"),
+        (RELATION_VW_EXTERNAL_MACRO_DAILY, "tushare_series"),
+    ):
+        stale_series: list[str] = []
+        for row in macro.get(key) or []:
+            frequency = str(row.get("frequency") or "").strip().lower()
+            threshold = _STALE_AFTER_DAYS_BY_FREQUENCY.get(frequency, _STALE_AFTER_DAYS_DEFAULT)
+            days = _days_behind(row.get("trade_date"), reference)
+            if days is not None and days > threshold:
+                row["stale"] = True
+                stale_series.append(f"{row.get('series_id')} ({days}d>{threshold}d)")
+        if stale_series:
+            notes.append(
+                f"{source} is stale vs {reference.isoformat()}: {', '.join(stale_series)}."
+            )
+
+    if notes:
+        context["stale_sources"] = notes
+        context["filters_applied"]["research_stale_sources"] = notes
+
+
+def _note_stale_row(
+    notes: list[str],
+    *,
+    source: str,
+    row: Any,
+    date_key: str,
+    threshold_days: int,
+    reference: date,
+) -> None:
+    if not isinstance(row, dict):
+        return
+    days = _days_behind(row.get(date_key), reference)
+    if days is None or days <= threshold_days:
+        return
+    row["stale"] = True
+    notes.append(
+        f"{source} is stale: {date_key} {str(row.get(date_key))[:10]} is {days} days "
+        f"behind {reference.isoformat()} (threshold {threshold_days}d)."
+    )
+
+
+def _days_behind(value: Any, reference: date) -> int | None:
+    parsed = _parse_iso_date(value)
+    if parsed is None:
+        return None
+    return (reference - parsed).days
+
+
+def _parse_iso_date(value: Any) -> date | None:
+    text = str(value or "").strip()[:10]
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        return None
+
+
+def _enforce_context_budget(context: dict[str, Any]) -> None:
+    if _serialized_context_chars(context) <= MAX_CONTEXT_SERIALIZED_CHARS:
+        return
+    dropped: list[str] = []
+    for section, key in _CONTEXT_TRIM_ORDER:
+        rows = (context.get(section) or {}).get(key)
+        if not isinstance(rows, list) or not rows:
+            continue
+        removed = 0
+        while rows and _serialized_context_chars(context) > MAX_CONTEXT_SERIALIZED_CHARS:
+            rows.pop()
+            removed += 1
+        if removed:
+            # 被丢弃的行不再注入语料，证据行数同步回减，保持披露口径一致。
+            context["evidence_rows"] = max(0, int(context["evidence_rows"]) - removed)
+            dropped.append(f"{key} -{removed}")
+        if _serialized_context_chars(context) <= MAX_CONTEXT_SERIALIZED_CHARS:
+            break
+    if dropped:
+        context["limitations"].append(
+            f"Research context exceeded the {MAX_CONTEXT_SERIALIZED_CHARS}-character budget; "
+            f"dropped rows: {', '.join(dropped)}."
+        )
+    if _serialized_context_chars(context) > MAX_CONTEXT_SERIALIZED_CHARS:
+        context["limitations"].append(
+            "Research context remains over budget after row trimming; "
+            "remaining evidence is kept as-is."
+        )
+
+
+def _serialized_context_chars(context: dict[str, Any]) -> int:
+    # 与 dexter_agent_service._build_dexter_prompt 注入 prompt 的序列化口径保持一致。
+    return len(json.dumps(context, ensure_ascii=False, default=str, indent=2))
 
 
 def _resolve_research_domain(request: AgentQueryRequest) -> str | None:

@@ -22,7 +22,10 @@ from backend.app.services.executive_service import (  # noqa: E402
     warm_home_income_trend_cache_in_current_thread_if_configured,
     warm_home_snapshot_cache_blocking_if_configured,
 )
-from backend.app.services.hermes_agent_service import warm_hermes_bridge_if_configured  # noqa: E402
+from backend.app.services.hermes_agent_service import (  # noqa: E402
+    stop_managed_hermes_bridge,
+    warm_hermes_bridge_if_configured,
+)
 from backend.app.services.market_home_warmup_service import (  # noqa: E402
     warm_market_home_cache_in_current_thread_if_configured,
 )
@@ -98,6 +101,7 @@ async def lifespan(_app: FastAPI):
     await asyncio.to_thread(warm_home_snapshot_cache_blocking_if_configured, settings)
     warm_home_background_caches_if_configured(settings)
     yield
+    stop_managed_hermes_bridge()
 
 
 app = FastAPI(

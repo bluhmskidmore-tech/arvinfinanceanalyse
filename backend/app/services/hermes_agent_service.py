@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import subprocess
 import threading
 import time
@@ -16,6 +17,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from backend.app.agent.runtime.subprocess_env import build_agent_subprocess_env
 from backend.app.agent.runtime.toolset_policy import normalize_read_only_toolsets
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.agent.schemas.agent_response import (
@@ -49,6 +51,9 @@ class HermesBridgeConfig:
 
 _HERMES_BRIDGE_PROCESS: subprocess.Popen | None = None
 _HERMES_BRIDGE_CONFIG: HermesBridgeConfig | None = None
+_BRIDGE_TOKEN_HEADER = "X-Hermes-Bridge-Token"
+# 供运维指向一个外部已启动的 bridge；未设置时每个后端进程自带一次性令牌。
+_PROCESS_BRIDGE_TOKEN = os.environ.get("HERMES_BRIDGE_TOKEN", "").strip() or secrets.token_hex(32)
 _LOCAL_OPEN_CHAT_EXACT = {
     "?",
     "？",
@@ -158,7 +163,9 @@ def execute_hermes_agent_query(
             timeout_seconds=float(settings.agent_hermes_timeout_seconds),
         )
         envelope = build_hermes_envelope(request=request, result=result)
-    except RuntimeError as exc:
+    except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as exc:
+        # 运行链任何失败（含 JSON 解析、子进程拉起、超时）都收敛到同一条确定性兜底路径，
+        # 不允许裸异常穿透到路由层变成 500。
         _LOGGER.warning(
             "Hermes provider runtime failed provider=hermes error_type=%s error_code=%s",
             exc.__class__.__name__,
@@ -312,13 +319,10 @@ def run_hermes_agent(
         max_turns=max_turns,
         prompt=prompt,
     )
-    env = os.environ.copy()
-    env.setdefault("PYTHONIOENCODING", "utf-8")
-    env.setdefault("PYTHONUTF8", "1")
-    env.setdefault("NO_COLOR", "1")
     normalized_home = str(hermes_home or "").strip()
-    if normalized_home and not _is_wsl_command(command):
-        env["HERMES_HOME"] = normalized_home
+    env = build_agent_subprocess_env(
+        HERMES_HOME=normalized_home if not _is_wsl_command(command) else "",
+    )
     try:
         completed = subprocess.run(
             args,
@@ -334,6 +338,8 @@ def run_hermes_agent(
         raise RuntimeError(f"Hermes command not found: {command}") from exc
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(f"Hermes timed out after {timeout_seconds:g}s") from exc
+    except OSError as exc:
+        raise RuntimeError(f"Hermes command failed to start: {exc}") from exc
 
     stdout = str(completed.stdout or "")
     stderr = str(completed.stderr or "")
@@ -413,6 +419,11 @@ def _ensure_hermes_bridge(
 
         if not managed_alive and healthy:
             # External bridge we do not own — never terminate it.
+            if _hermes_bridge_authorized(desired.bridge_url) is False:
+                raise RuntimeError(
+                    f"Hermes bridge at {desired.bridge_url} is running but rejects this "
+                    "process's token; set HERMES_BRIDGE_TOKEN to that bridge's token or stop it."
+                )
             return
 
         if managed_alive and _HERMES_BRIDGE_CONFIG == desired and not healthy:
@@ -432,23 +443,41 @@ def _ensure_hermes_bridge(
             max_turns=desired.max_turns,
         )
         log_dir = _REPO_ROOT / "tmp-governance" / "runtime-clean" / "logs"
-        log_dir.mkdir(parents=True, exist_ok=True)
-        stdout = (log_dir / "hermes-bridge.out.log").open("ab")
-        stderr = (log_dir / "hermes-bridge.err.log").open("ab")
-        _HERMES_BRIDGE_PROCESS = subprocess.Popen(
-            args,
-            cwd=str(_REPO_ROOT),
-            stdout=stdout,
-            stderr=stderr,
-            env=_build_hermes_subprocess_env(
-                desired.hermes_home if not _is_wsl_command(desired.command) else ""
-            ),
-        )
+        try:
+            log_dir.mkdir(parents=True, exist_ok=True)
+            stdout = (log_dir / "hermes-bridge.out.log").open("ab")
+            stderr = (log_dir / "hermes-bridge.err.log").open("ab")
+        except OSError as exc:
+            raise RuntimeError(f"Hermes bridge log files unavailable: {exc}") from exc
+        try:
+            _HERMES_BRIDGE_PROCESS = subprocess.Popen(
+                args,
+                cwd=str(_REPO_ROOT),
+                stdout=stdout,
+                stderr=stderr,
+                env=_build_hermes_subprocess_env(
+                    desired.hermes_home if not _is_wsl_command(desired.command) else ""
+                ),
+            )
+        except OSError as exc:
+            stdout.close()
+            stderr.close()
+            raise RuntimeError(f"Hermes bridge failed to start: {exc}") from exc
         _HERMES_BRIDGE_CONFIG = desired
         _wait_for_hermes_bridge_ready_locked(
             bridge_url=desired.bridge_url,
             timeout_seconds=timeout_seconds,
         )
+
+
+def stop_managed_hermes_bridge() -> None:
+    """backend 关停时终止本进程托管的 bridge；无托管进程时为幂等 no-op。
+
+    外部自行启动的 bridge 从不进入 ``_HERMES_BRIDGE_PROCESS``
+    （见 _ensure_hermes_bridge 的 external 分支），因此不会被本函数终止。
+    """
+    with _HERMES_BRIDGE_LOCK:
+        _stop_managed_hermes_bridge_locked()
 
 
 def _stop_managed_hermes_bridge_locked() -> None:
@@ -463,7 +492,13 @@ def _stop_managed_hermes_bridge_locked() -> None:
         process.wait(timeout=2)
     except subprocess.TimeoutExpired:
         process.kill()
-        process.wait(timeout=2)
+        try:
+            process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            _LOGGER.warning(
+                "Hermes bridge process did not exit after kill "
+                "error_code=hermes_bridge_stop_timeout"
+            )
 
 
 def _wait_for_hermes_bridge_ready_locked(*, bridge_url: str, timeout_seconds: float) -> None:
@@ -501,17 +536,25 @@ def _post_hermes_bridge_query(
     request = urllib.request.Request(
         url,
         data=body,
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            _BRIDGE_TOKEN_HEADER: _PROCESS_BRIDGE_TOKEN,
+        },
         method="POST",
     )
     try:
         with urllib.request.urlopen(request, timeout=max(timeout_seconds, 1.0)) as response:
-            payload = json.loads(response.read().decode("utf-8"))
+            raw_body = response.read()
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"Hermes bridge failed: {_truncate(detail, 2000)}") from exc
-    except (urllib.error.URLError, TimeoutError) as exc:
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise RuntimeError(f"Hermes bridge unavailable: {exc}") from exc
+
+    try:
+        payload = json.loads(raw_body.decode("utf-8", errors="replace"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("Hermes bridge returned invalid JSON.") from exc
 
     if not isinstance(payload, dict):
         raise RuntimeError("Hermes bridge returned an invalid payload.")
@@ -528,6 +571,28 @@ def _post_hermes_bridge_query(
         "toolsets": _normalize_toolsets(str(payload.get("toolsets") or toolsets)),
         "transport": "bridge",
     }
+
+
+def _hermes_bridge_authorized(bridge_url: str) -> bool | None:
+    """Whether a reachable bridge accepts this process's token.
+
+    ``None`` means "could not tell": either the probe failed, or the bridge predates
+    token auth and reports no ``authorized`` field (such a bridge serves queries
+    unauthenticated anyway). Only an explicit ``False`` justifies refusing to use it.
+    """
+    url = urllib.parse.urljoin(bridge_url.rstrip("/") + "/", "health")
+    request = urllib.request.Request(
+        url,
+        headers={_BRIDGE_TOKEN_HEADER: _PROCESS_BRIDGE_TOKEN},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=1.0) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception:
+        return None
+    if not isinstance(payload, dict) or "authorized" not in payload:
+        return None
+    return bool(payload.get("authorized"))
 
 
 def _hermes_bridge_healthy(bridge_url: str) -> bool:
@@ -737,6 +802,7 @@ def _build_hermes_bridge_command(
         normalized_home = str(hermes_home or "").strip()
         if normalized_home:
             args.append(f"HERMES_HOME={normalized_home}")
+        args.append(f"HERMES_BRIDGE_TOKEN={_PROCESS_BRIDGE_TOKEN}")
         args.extend(["PYTHONIOENCODING=utf-8", "PYTHONUTF8=1", "NO_COLOR=1", python_path])
         args.extend(bridge_args)
         return args
@@ -764,14 +830,10 @@ def _normalize_toolsets(toolsets: str) -> str:
 
 
 def _build_hermes_subprocess_env(hermes_home: str) -> dict[str, str]:
-    env = os.environ.copy()
-    env.setdefault("PYTHONIOENCODING", "utf-8")
-    env.setdefault("PYTHONUTF8", "1")
-    env.setdefault("NO_COLOR", "1")
-    normalized_home = str(hermes_home or "").strip()
-    if normalized_home:
-        env["HERMES_HOME"] = normalized_home
-    return env
+    return build_agent_subprocess_env(
+        HERMES_HOME=str(hermes_home or "").strip(),
+        HERMES_BRIDGE_TOKEN=_PROCESS_BRIDGE_TOKEN,
+    )
 
 
 def _windows_path_to_wsl_path(path: Path) -> str:
@@ -1030,20 +1092,26 @@ def _append_hermes_audit(
     envelope: AgentEnvelope,
     result: dict[str, str],
 ) -> None:
-    repo = GovernanceRepository(base_dir=governance_dir)
-    append_agent_audit(
-        repo,
-        AgentAuditPayload(
-            user_id=str(request.context.get("user_id") or "unknown"),
-            query_text=request.question,
-            tools_used=["hermes_cli"],
-            tables_used=envelope.evidence.tables_used,
-            filters_applied=envelope.evidence.filters_applied,
-            trace_id=envelope.result_meta.trace_id,
-            run_id=str(request.context.get("run_id") or "").strip() or None,
-            result_meta=envelope.result_meta.model_dump(mode="json"),
-        ),
-    )
+    try:
+        repo = GovernanceRepository(base_dir=governance_dir)
+        append_agent_audit(
+            repo,
+            AgentAuditPayload(
+                user_id=str(request.context.get("user_id") or "unknown"),
+                query_text=request.question,
+                tools_used=["hermes_cli"],
+                tables_used=envelope.evidence.tables_used,
+                filters_applied=envelope.evidence.filters_applied,
+                trace_id=envelope.result_meta.trace_id,
+                run_id=str(request.context.get("run_id") or "").strip() or None,
+                result_meta=envelope.result_meta.model_dump(mode="json"),
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001 - 审计写失败不得吞掉已生成的业务应答
+        _LOGGER.warning(
+            "Hermes audit append failed error_type=%s error_code=hermes_audit_append_failed",
+            exc.__class__.__name__,
+        )
 
 
 def _truncate(value: str, limit: int) -> str:

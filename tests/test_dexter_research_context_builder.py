@@ -8,6 +8,13 @@ from backend.app.services.dexter_research_context_builder import (
     build_dexter_research_context,
 )
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_agent_mvp,
+]
+
 
 def _connect(path):
     return duckdb.connect(str(path))
@@ -31,7 +38,7 @@ def test_build_stock_research_context_reads_choice_stock_tables_and_news(tmp_pat
         conn.execute(
             """
             insert into choice_stock_daily_observation values
-            ('2026-04-29','000001.SZ',20,22,19,21.9,1000,2000,3.2,1.5,4.1,'交易','N','N','[]','sv_price','vv_choice','rv_price','run-price')
+            ('2026-04-29','000001.SZ',20,22,19,21.9,1000,2000,3.2,1.5,4.1,'交易','N','N','[]','sv_price','vv_choice_stock_20260429_0123456789ab','rv_price','run-price')
             """
         )
         conn.execute(
@@ -146,7 +153,7 @@ def test_research_context_builder_class_matches_function_wrapper(tmp_path):
         conn.execute(
             """
             insert into choice_stock_daily_observation values
-            ('2026-04-29','000001.SZ',20,22,19,21.9,1000,2000,3.2,1.5,4.1,'open','N','N','[]','sv_price','vv_choice','rv_price','run-price')
+            ('2026-04-29','000001.SZ',20,22,19,21.9,1000,2000,3.2,1.5,4.1,'open','N','N','[]','sv_price','vv_choice_stock_20260429_0123456789ab','rv_price','run-price')
             """
         )
     finally:
