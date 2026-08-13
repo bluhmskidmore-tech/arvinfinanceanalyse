@@ -228,7 +228,7 @@ export function StockAnalysisThemeGroupedView({
       {evidenceRows.length > 0 && (
         <div
           className="stock-analysis-theme-grouped__section"
-          data-testid="stock-analysis-theme-grouped-evidence"
+          data-testid="stock-analysis-theme-evidence-state"
         >
           <div className="stock-analysis-theme-grouped__section-head">
             <strong
@@ -266,7 +266,7 @@ export function StockAnalysisThemeGroupedView({
       {reviewItems.length > 0 && (
         <div
           className="stock-analysis-theme-grouped__section"
-          data-testid="stock-analysis-theme-grouped-review"
+          data-testid="stock-analysis-theme-review-items"
         >
           <div className="stock-analysis-theme-grouped__section-head">
             <strong className="stock-analysis-theme-grouped__section-title stock-analysis-theme-grouped__section-title--warning">

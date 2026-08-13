@@ -253,12 +253,12 @@ describe("StockAnalysisThemeGroupedView", () => {
       />,
     );
 
-    const evidence = screen.getByTestId("stock-analysis-theme-grouped-evidence");
+    const evidence = screen.getByTestId("stock-analysis-theme-evidence-state");
     expect(within(evidence).getByText("题材证据受限")).toBeInTheDocument();
     expect(within(evidence).getByText("1 项证据")).toBeInTheDocument();
     expect(within(evidence).getByText("概念成分")).toBeInTheDocument();
 
-    const review = screen.getByTestId("stock-analysis-theme-grouped-review");
+    const review = screen.getByTestId("stock-analysis-theme-review-items");
     expect(within(review).getByText("题材未入选复核")).toBeInTheDocument();
     expect(within(review).getByText("待排查 1 项")).toBeInTheDocument();
     expect(within(review).getByText(/复核 #8 医药/)).toBeInTheDocument();

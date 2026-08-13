@@ -195,6 +195,7 @@ import { StockAnalysisStrategyLensSection } from "../components/StockAnalysisStr
 import { StockAnalysisWorkbenchDigest } from "../components/StockAnalysisWorkbenchDigest";
 import { CompactStatusTile } from "../components/StockAnalysisStatusPrimitives";
 import { StockAnalysisBacktestCaliberDisclosure } from "../components/StockAnalysisBacktestCaliberDisclosure";
+import { StockAnalysisWalkForwardPanel } from "../components/StockAnalysisWalkForwardPanel";
 import { StockAnalysisWorkbenchActions } from "../components/StockAnalysisWorkbenchActions";
 import {
   buildStockDataGapOverview,
@@ -254,9 +255,9 @@ const LazyStockAnalysisStrategyReviewCards = lazy(() =>
     default: module.StockAnalysisStrategyReviewCards,
   })),
 );
-const LazyStockAnalysisThemeBreakoutPanel = lazy(() =>
-  import("../components/StockAnalysisThemeBreakoutPanel").then((module) => ({
-    default: module.StockAnalysisThemeBreakoutPanel,
+const LazyStockAnalysisThemeGroupedView = lazy(() =>
+  import("../components/StockAnalysisThemeGroupedView").then((module) => ({
+    default: module.StockAnalysisThemeGroupedView,
   })),
 );
 const loadStockAnalysisDeepResearchPrimitives = () =>
@@ -3876,6 +3877,7 @@ export default function StockAnalysisPage() {
                       )
                     ) : null}
                   </div>
+                  <StockAnalysisWalkForwardPanel />
                 </LazyStrategyModuleCard>
               ) : null}
 
@@ -3902,7 +3904,7 @@ export default function StockAnalysisPage() {
                             complianceDetail={themeBreakoutPanelSummary?.complianceDetail}
                             testId="stock-analysis-theme-panel-compliance"
                           />
-                <LazyStockAnalysisThemeBreakoutPanel
+                <LazyStockAnalysisThemeGroupedView
                   cards={themeBreakoutCards}
                   evidenceRows={themeEvidenceRows}
                   reviewItems={themeBreakoutReviewItems}
