@@ -151,3 +151,8 @@ tmp-*.json
 **/tmp-*-shots/
 /design-qa.md
 /audit_pack/01_PROJECT_TREE.md
+
+## Agent investigation scratch (root-level probe outputs, frontend audit temp)
+# .codex-tmp/ is already ignored above under "Local runtime and orchestration state"
+/_*.txt
+frontend/.tmp-audit/
