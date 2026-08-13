@@ -9,7 +9,12 @@ import {
 } from "react";
 import { useLocation } from "react-router-dom";
 
-import styles from "./dashboardHomeShell.module.css";
+/* 顺序契约：shell 表必须先于 optionTwo 表注册。两表间存在同特异性 (0,3,0) 的
+   toolbar 锚点规则（shell 稠密层 id254 组 vs optionTwo .page>[toolbar] 组），
+   级联胜负由源顺序决定；首页根元素已不用 shell 局部类，但 Toolbar/SearchBox
+   等子组件仍消费其非前缀类，若移除此 side-effect import，shell 表会改由
+   子组件在 optionTwo 之后注册，顺序反转将令 toolbar 布局漂移。 */
+import "./dashboardHomeShell.module.css";
 import optionTwoStyles from "./dashboardHomeOptionTwo.module.css";
 import { DashboardHomeOptionTwoOverview } from "./DashboardHomeOptionTwoOverview";
 import { DeferredEvidenceIndexPreview } from "./DeferredEvidenceIndexPreview";
@@ -482,7 +487,7 @@ export default function DashboardHomePage() {
         data-testid="dashboard-home-page"
         data-moss-theme="dark"
         data-moss-theme-scope="dashboard-home"
-        className={`theme-dh-api ${styles.dhPage} ${styles.dhApiBackedHome} ${optionTwoStyles.page}`}
+        className={`theme-dh-api ${optionTwoStyles.page}`}
       >
         <DashboardHomeToolbar
           title="组合经营日报"

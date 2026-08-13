@@ -346,7 +346,7 @@
 .dhSearchOptionDesc {
   color: var(--dh-muted);
   flex: 1;
-  font-size: 11px;
+  font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -711,7 +711,7 @@
 
 .dhDataNote p {
   color: var(--dh-ink-2);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 500;
   line-height: 1.5;
   margin: 0 0 7px;
@@ -831,7 +831,7 @@
 }
 
 /* Custom Scrollbar */
-.dhPage ::-webkit-scrollbar {
+.dhPage ::-webkit-scrollbar, :global([data-testid="dashboard-home-page"]) ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
@@ -990,10 +990,6 @@
   padding: 0 0 42px;
 }
 
-.dhApiBackedHome > [data-testid="dashboard-home-toolbar"] {
-  display: flex;
-}
-
 :global(.workbench-shell-grid--cockpit:has([data-testid="dashboard-home-page"]) .workbench-main-surface) {
   background: transparent;
   border: 0;
@@ -1002,14 +998,14 @@
   padding: 0;
 }
 
-.dhApiBackedHome .dhTopbar {
+:global([data-testid="dashboard-home-page"]) .dhTopbar {
   /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   border-radius: 0;
   margin: 0;
   padding: 10px 31px;
 }
 
-.dhApiBackedHome .dhTitle {
+:global([data-testid="dashboard-home-page"]) .dhTitle {
   color: var(--dh-api-ink);
   font-size: 15px;
   font-weight: 700;
@@ -1044,10 +1040,6 @@
 }
 
 /* Phase 1.5: dark shell panel elevation off (keep status-dot glow) */
-.dhApiBackedHome .dhCard,
-.dhApiBackedHome .dhCard:hover {
-  box-shadow: none;
-}
 
 .dhApiBackedHome .dhRailCard {
   /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
@@ -1119,7 +1111,7 @@
 
 .dhApiBackedHome .dhRailActionRow > span:last-child {
   color: var(--dh-api-muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.45;
 }
 
@@ -1226,7 +1218,9 @@ i.dhApiStateMuted {
     border: 0;
   }
 
-  .dhApiBackedHome .dhTopbar,
+  /* 收尾轮 AMBIGUOUS id34 归档：.dhTopbar 分支在首页摘根类后全局零命中
+     （dhTopbar 仅首页 DOM 使用；stock/macro 根只挂 dhPage），已删；
+     .dhLayout 分支跨页（riskOverview）保留。 */
   .dhApiBackedHome .dhLayout {
     padding-left: 14px;
     padding-right: 14px;
@@ -1242,7 +1236,7 @@ i.dhApiStateMuted {
    `.workbench-shell-grid--cockpit:has(.theme-dh-api)` 变体（页根挂 theme-dh-api 即生效），
    此处不再保留页级 :global 壳层覆盖。 */
 
-.dhApiBackedHome .dhTopbar {
+:global([data-testid="dashboard-home-page"]) .dhTopbar {
   /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   background: linear-gradient(180deg, rgba(16, 26, 42, 0.98), rgba(7, 12, 20, 0.98)), var(--dh-api-rail);
   border-color: rgba(126, 157, 194, 0.2);
@@ -1251,7 +1245,7 @@ i.dhApiStateMuted {
   padding-top: 12px;
 }
 
-.dhApiBackedHome .dhTopbar::before {
+:global([data-testid="dashboard-home-page"]) .dhTopbar::before {
   background:
     linear-gradient(90deg, rgba(201, 165, 101, 0.34), rgba(114, 167, 220, 0.22), transparent 64%),
     repeating-linear-gradient(90deg, rgba(232, 238, 247, 0.08) 0 1px, transparent 1px 28px);
@@ -1262,20 +1256,21 @@ i.dhApiStateMuted {
   position: absolute;
 }
 
-.dhApiBackedHome .dhTitleBrand {
+:global([data-testid="dashboard-home-page"]) .dhTitleBrand {
   align-items: baseline;
   gap: 6px;
 }
 
-.dhApiBackedHome .dhToolbarControl {
+:global([data-testid="dashboard-home-page"]) .dhToolbarControl {
   align-items: center;
   display: inline-flex;
   gap: 7px;
 }
 
-.dhApiBackedHome .dhDateSelect,
-.dhApiBackedHome .dhSearch,
-.dhApiBackedHome .dhRefreshBtn {
+:global([data-testid="dashboard-home-page"]) .dhDateSelect,
+:global([data-testid="dashboard-home-page"]) .dhSearch,
+.dhApiBackedHome .dhRefreshBtn,
+:global([data-testid="dashboard-home-page"]) .dhRefreshBtn {
   border-radius: var(--dh-api-radius, 6px);
   background:
     linear-gradient(180deg, rgba(232, 238, 247, 0.035), rgba(232, 238, 247, 0)),
@@ -1285,14 +1280,15 @@ i.dhApiStateMuted {
   height: 34px;
 }
 
-.dhApiBackedHome .dhDateSelect:focus-within,
-.dhApiBackedHome .dhSearch:focus-within,
-.dhApiBackedHome .dhRefreshBtn:hover {
+:global([data-testid="dashboard-home-page"]) .dhDateSelect:focus-within,
+:global([data-testid="dashboard-home-page"]) .dhSearch:focus-within,
+.dhApiBackedHome .dhRefreshBtn:hover,
+:global([data-testid="dashboard-home-page"]) .dhRefreshBtn:hover {
   border-color: rgba(114, 167, 220, 0.56);
   box-shadow: none;
 }
 
-.dhApiBackedHome .dhStatusPill {
+:global([data-testid="dashboard-home-page"]) .dhStatusPill {
   /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   background: rgba(107, 120, 148, 0.08);
   border: 1px solid rgba(126, 157, 194, 0.14);
@@ -1300,7 +1296,7 @@ i.dhApiStateMuted {
   padding: 4px 9px;
 }
 
-.dhApiBackedHome .dhPartialToggle {
+:global([data-testid="dashboard-home-page"]) .dhPartialToggle {
   background: rgba(107, 120, 148, 0.08);
   border: 1px solid rgba(126, 157, 194, 0.14);
   border-radius: 999px;
@@ -1422,11 +1418,11 @@ i.dhApiStateMuted {
   width: 30px;
 }
 
-.dhApiBackedHome .dhRefreshBtn:hover :global(.moss-light-icon) {
+.dhApiBackedHome .dhRefreshBtn:hover :global(.moss-light-icon), :global([data-testid="dashboard-home-page"]) .dhRefreshBtn:hover :global(.moss-light-icon) {
   transform: rotate(45deg);
 }
 
-.dhApiBackedHome .dhRefreshBtn :global(.moss-light-icon) {
+.dhApiBackedHome .dhRefreshBtn :global(.moss-light-icon), :global([data-testid="dashboard-home-page"]) .dhRefreshBtn :global(.moss-light-icon) {
   transition: transform 180ms ease;
 }
 
@@ -1443,30 +1439,31 @@ i.dhApiStateMuted {
 }
 
 @media (max-width: 720px) {
-  .dhApiBackedHome .dhTopbar {
+  :global([data-testid="dashboard-home-page"]) .dhTopbar {
     /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     min-height: 0;
   }
 
-  .dhApiBackedHome .dhTitleBrand {
+  :global([data-testid="dashboard-home-page"]) .dhTitleBrand {
     /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     align-items: start;
     gap: 2px;
   }
 
-  .dhApiBackedHome .dhToolbarControl,
-  .dhApiBackedHome .dhSearch,
-  .dhApiBackedHome .dhStatusRow,
-  .dhApiBackedHome .dhRefreshBtn {
+  :global([data-testid="dashboard-home-page"]) .dhToolbarControl,
+:global([data-testid="dashboard-home-page"]) .dhSearch,
+:global([data-testid="dashboard-home-page"]) .dhStatusRow,
+.dhApiBackedHome .dhRefreshBtn,
+:global([data-testid="dashboard-home-page"]) .dhRefreshBtn {
     width: 100%;
   }
 
-  .dhApiBackedHome .dhStatusRow {
+  :global([data-testid="dashboard-home-page"]) .dhStatusRow {
     /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     gap: 5px;
   }
 
-  .dhApiBackedHome .dhStatusPill {
+  :global([data-testid="dashboard-home-page"]) .dhStatusPill {
     /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     justify-content: center;
     min-width: 0;
@@ -1474,7 +1471,7 @@ i.dhApiStateMuted {
     padding-right: 6px;
   }
 
-  .dhApiBackedHome .dhPartialToggle {
+  :global([data-testid="dashboard-home-page"]) .dhPartialToggle {
     /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     justify-content: center;
     width: 100%;
@@ -1486,58 +1483,59 @@ i.dhApiStateMuted {
 }
 
 /* Dashboard home refinement pass: mobile density, evidence scanning, and rail ledgers. */
-.dhApiBackedHome .dhTopbar {
+:global([data-testid="dashboard-home-page"]) .dhTopbar {
   box-shadow: none;
   display: grid;
   gap: 10px 14px;
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
-.dhApiBackedHome .dhTopbarLeft,
-.dhApiBackedHome .dhTopbarRight {
+:global([data-testid="dashboard-home-page"]) .dhTopbarLeft,
+:global([data-testid="dashboard-home-page"]) .dhTopbarRight {
   margin-left: 0;
   min-width: 0;
 }
 
-.dhApiBackedHome .dhTopbarLeft {
+:global([data-testid="dashboard-home-page"]) .dhTopbarLeft {
   flex: initial;
   flex-wrap: nowrap;
   gap: 12px;
 }
 
-.dhApiBackedHome .dhTopbarRight {
+:global([data-testid="dashboard-home-page"]) .dhTopbarRight {
   flex: initial;
   flex-wrap: nowrap;
   gap: 8px;
   justify-content: flex-end;
 }
 
-.dhApiBackedHome .dhTitleBrand,
-.dhApiBackedHome .dhToolbarControl,
-.dhApiBackedHome .dhPartialToggle,
-.dhApiBackedHome .dhRefreshBtn {
+:global([data-testid="dashboard-home-page"]) .dhTitleBrand,
+:global([data-testid="dashboard-home-page"]) .dhToolbarControl,
+:global([data-testid="dashboard-home-page"]) .dhPartialToggle,
+.dhApiBackedHome .dhRefreshBtn,
+:global([data-testid="dashboard-home-page"]) .dhRefreshBtn {
   flex: 0 0 auto;
 }
 
-.dhApiBackedHome .dhSearch {
+:global([data-testid="dashboard-home-page"]) .dhSearch {
   flex: 0 1 320px;
   min-width: 220px;
   width: min(320px, 24vw);
 }
 
-.dhApiBackedHome .dhStatusRow {
+:global([data-testid="dashboard-home-page"]) .dhStatusRow {
   background: rgba(7, 12, 20, 0.18);
   border: 1px solid rgba(126, 157, 194, 0.1);
   border-radius: 999px;
   padding: 3px;
 }
 
-.dhApiBackedHome .dhStatusPill {
+:global([data-testid="dashboard-home-page"]) .dhStatusPill {
   color: var(--dh-api-soft);
   height: 24px;
 }
 
-.dhApiBackedHome .dhDeferredIndexHead strong {
+:global([data-testid="dashboard-home-page"]) .dhDeferredIndexHead strong {
   color: rgba(191, 204, 217, 0.82);
 }
 
@@ -1605,70 +1603,66 @@ i.dhApiStateMuted {
 }
 
 @media (max-width: 1080px) {
-  .dhApiBackedHome .dhTopbar {
+  :global([data-testid="dashboard-home-page"]) .dhTopbar {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .dhApiBackedHome .dhTopbarLeft,
-  .dhApiBackedHome .dhTopbarRight {
-    flex-wrap: wrap;
-  }
-
-  .dhApiBackedHome .dhTopbarRight {
+  :global([data-testid="dashboard-home-page"]) .dhTopbarRight {
     justify-content: flex-start;
   }
 }
 
 @media (max-width: 720px) {
-  .dhApiBackedHome .dhTopbar {
+  :global([data-testid="dashboard-home-page"]) .dhTopbar {
     /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     padding-bottom: 8px;
     padding-top: 8px;
   }
 
-  .dhApiBackedHome .dhTopbar::before {
+  :global([data-testid="dashboard-home-page"]) .dhTopbar::before {
     inset-inline: 14px;
   }
 
-  .dhApiBackedHome .dhTopbarLeft,
-  .dhApiBackedHome .dhTopbarRight {
+  :global([data-testid="dashboard-home-page"]) .dhTopbarLeft,
+:global([data-testid="dashboard-home-page"]) .dhTopbarRight {
     flex-basis: 100%;
     gap: 8px;
     max-width: 100%;
     width: 100%;
   }
 
-  .dhApiBackedHome .dhTitleBrand {
+  :global([data-testid="dashboard-home-page"]) .dhTitleBrand {
     /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
-  .dhApiBackedHome .dhTitle {
+  :global([data-testid="dashboard-home-page"]) .dhTitle {
     font-size: 14px;
     min-width: 0;
   }
 
-  .dhApiBackedHome .dhToolbarControl {
+  :global([data-testid="dashboard-home-page"]) .dhToolbarControl {
     /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     gap: 6px;
   }
 
-  .dhApiBackedHome .dhDateLabel {
+  :global([data-testid="dashboard-home-page"]) .dhDateLabel {
     min-width: 38px;
   }
 
-  .dhApiBackedHome .dhDateSelect,
-  .dhApiBackedHome .dhSearch,
-  .dhApiBackedHome .dhRefreshBtn {
+  :global([data-testid="dashboard-home-page"]) .dhDateSelect,
+:global([data-testid="dashboard-home-page"]) .dhSearch,
+.dhApiBackedHome .dhRefreshBtn,
+:global([data-testid="dashboard-home-page"]) .dhRefreshBtn {
     flex-basis: auto;
     height: 31px;
   }
 
-  .dhApiBackedHome .dhDateSelect input {
+  :global([data-testid="dashboard-home-page"]) .dhDateSelect input {
     width: 100%;
   }
 
-  .dhApiBackedHome .dhStatusPill {
+  :global([data-testid="dashboard-home-page"]) .dhStatusPill {
     overflow: hidden;
     text-overflow: ellipsis;
     font-size: 11px;
@@ -1676,12 +1670,13 @@ i.dhApiStateMuted {
     height: 22px;
   }
 
-  .dhApiBackedHome .dhPartialToggle,
-  .dhApiBackedHome .dhRefreshBtn {
+  :global([data-testid="dashboard-home-page"]) .dhPartialToggle,
+.dhApiBackedHome .dhRefreshBtn,
+:global([data-testid="dashboard-home-page"]) .dhRefreshBtn {
     min-height: 31px;
   }
 
-  .dhApiBackedHome .dhRefreshBtn {
+  .dhApiBackedHome .dhRefreshBtn, :global([data-testid="dashboard-home-page"]) .dhRefreshBtn {
     /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     padding-inline: 10px;
   }
@@ -1848,16 +1843,16 @@ i.dhApiStateMuted {
 }
 
 @media (min-width: 721px) and (max-width: 1560px) {
-  .dhApiBackedHome .dhTopbar {
+  :global([data-testid="dashboard-home-page"]) .dhTopbar {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .dhApiBackedHome .dhTopbarLeft,
-  .dhApiBackedHome .dhTopbarRight {
+  :global([data-testid="dashboard-home-page"]) .dhTopbarLeft,
+:global([data-testid="dashboard-home-page"]) .dhTopbarRight {
     width: 100%;
   }
 
-  .dhApiBackedHome .dhTopbarRight {
+  :global([data-testid="dashboard-home-page"]) .dhTopbarRight {
     justify-content: flex-end;
   }
 }
@@ -1873,7 +1868,7 @@ i.dhApiStateMuted {
 
 @media (max-width: 720px) {
 
-  .dhApiBackedHome .dhStatusRow > :last-child:nth-child(odd) {
+  :global([data-testid="dashboard-home-page"]) .dhStatusRow > :last-child:nth-child(odd) {
     grid-column: 1 / -1;
   }
 
@@ -1928,7 +1923,7 @@ i.dhApiStateMuted {
 }
 
 /* ── 9. 首页字号最小不低于 12px（DESIGN.md §3 + 任务约束） ── */
-.dhApiBackedHome .dhStatusPill .dhNum,
+:global([data-testid="dashboard-home-page"]) .dhStatusPill .dhNum,
 .dhStatusPill .dhNum {
   font-size: 12px;
 }
@@ -1951,12 +1946,19 @@ i.dhApiStateMuted {
 
 /* ── 12. 可访问性：focus-visible 全局清晰焦点 ── */
 .dhApiBackedHome :focus-visible,
+:global([data-testid="dashboard-home-page"]) :focus-visible,
 .dhApiBackedHome a:focus-visible,
+:global([data-testid="dashboard-home-page"]) a:focus-visible,
 .dhApiBackedHome button:focus-visible,
+:global([data-testid="dashboard-home-page"]) button:focus-visible,
 .dhApiBackedHome input:focus-visible,
+:global([data-testid="dashboard-home-page"]) input:focus-visible,
 .dhApiBackedHome [role="combobox"]:focus-visible,
+:global([data-testid="dashboard-home-page"]) [role="combobox"]:focus-visible,
 .dhApiBackedHome [role="listbox"]:focus-visible,
-.dhApiBackedHome [role="option"]:focus-visible {
+:global([data-testid="dashboard-home-page"]) [role="listbox"]:focus-visible,
+.dhApiBackedHome [role="option"]:focus-visible,
+:global([data-testid="dashboard-home-page"]) [role="option"]:focus-visible {
   outline: 2px solid var(--dh-api-blue);
   outline-offset: 2px;
   box-shadow: none;
@@ -1964,19 +1966,20 @@ i.dhApiStateMuted {
 
 /* ── 13. 可访问性：触摸目标 ≥ 44×44（移动端） ── */
 @media (max-width: 720px) {
-  .dhApiBackedHome .dhDateSelect,
-  .dhApiBackedHome .dhSearch,
-  .dhApiBackedHome .dhRefreshBtn,
-  .dhApiBackedHome .dhPartialToggle,
-  .dhApiBackedHome .dhStatusPill {
+  :global([data-testid="dashboard-home-page"]) .dhDateSelect,
+:global([data-testid="dashboard-home-page"]) .dhSearch,
+.dhApiBackedHome .dhRefreshBtn,
+:global([data-testid="dashboard-home-page"]) .dhRefreshBtn,
+:global([data-testid="dashboard-home-page"]) .dhPartialToggle,
+:global([data-testid="dashboard-home-page"]) .dhStatusPill {
     min-height: 44px;
   }
-  .dhApiBackedHome .dhSearch input,
-  .dhApiBackedHome .dhDateSelect input {
+  :global([data-testid="dashboard-home-page"]) .dhSearch input,
+:global([data-testid="dashboard-home-page"]) .dhDateSelect input {
     min-height: 44px;
   }
-  .dhApiBackedHome .dhSearchClear,
-  .dhSearchClear {
+  :global([data-testid="dashboard-home-page"]) .dhSearchClear,
+.dhSearchClear {
     min-width: 44px;
     min-height: 44px;
   }
@@ -2031,7 +2034,7 @@ i.dhApiStateMuted {
 
 @media (max-width: 720px) {
 
-  .dhApiBackedHome .dhDateContext {
+  :global([data-testid="dashboard-home-page"]) .dhDateContext {
     max-width: 96px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2060,12 +2063,12 @@ i.dhApiStateMuted {
 
 /* Mobile toolbar closure: three compact rows with full-size touch targets. */
 @media (max-width: 720px) {
-  .dhApiBackedHome .dhTopbar {
+  :global([data-testid="dashboard-home-page"]) .dhTopbar {
     gap: 6px;
     padding: 8px 12px;
   }
 
-  .dhApiBackedHome .dhTopbarLeft {
+  :global([data-testid="dashboard-home-page"]) .dhTopbarLeft {
     flex-direction: column;
     align-items: center;
     display: grid;
@@ -2074,14 +2077,14 @@ i.dhApiStateMuted {
     grid-template-rows: 44px 44px;
   }
 
-  .dhApiBackedHome .dhTitleBrand {
+  :global([data-testid="dashboard-home-page"]) .dhTitleBrand {
     display: grid;
     grid-column: 1;
     grid-row: 1;
     width: auto;
   }
 
-  .dhApiBackedHome .dhSearch {
+  :global([data-testid="dashboard-home-page"]) .dhSearch {
     flex: none;
     min-width: 0;
     grid-column: 2;
@@ -2090,7 +2093,7 @@ i.dhApiStateMuted {
     width: 100%;
   }
 
-  .dhApiBackedHome .dhToolbarControl {
+  :global([data-testid="dashboard-home-page"]) .dhToolbarControl {
     display: grid;
     align-items: center;
     grid-column: 1 / -1;
@@ -2099,11 +2102,11 @@ i.dhApiStateMuted {
     min-height: 44px;
   }
 
-  .dhApiBackedHome .dhDateSelect {
+  :global([data-testid="dashboard-home-page"]) .dhDateSelect {
     height: 44px;
   }
 
-  .dhApiBackedHome .dhTopbarRight {
+  :global([data-testid="dashboard-home-page"]) .dhTopbarRight {
     align-items: center;
     display: grid;
     gap: 6px;
@@ -2111,7 +2114,7 @@ i.dhApiStateMuted {
     min-height: 44px;
   }
 
-  .dhApiBackedHome .dhStatusRow {
+  :global([data-testid="dashboard-home-page"]) .dhStatusRow {
     display: grid;
     background: transparent;
     border: 0;
@@ -2122,11 +2125,11 @@ i.dhApiStateMuted {
     padding: 0;
   }
 
-  .dhApiBackedHome .dhStatusRow > :nth-child(n + 2) {
+  :global([data-testid="dashboard-home-page"]) .dhStatusRow > :nth-child(n + 2) {
     display: none;
   }
 
-  .dhApiBackedHome .dhStatusRow > :first-child {
+  :global([data-testid="dashboard-home-page"]) .dhStatusRow > :first-child {
     justify-content: flex-start;
     max-width: 100%;
     min-height: 44px;
@@ -2136,13 +2139,13 @@ i.dhApiStateMuted {
     width: 100%;
   }
 
-  .dhApiBackedHome .dhPartialToggle {
+  :global([data-testid="dashboard-home-page"]) .dhPartialToggle {
     grid-column: 2;
     min-height: 44px;
     padding-inline: 8px;
   }
 
-  .dhApiBackedHome .dhRefreshBtn {
+  .dhApiBackedHome .dhRefreshBtn, :global([data-testid="dashboard-home-page"]) .dhRefreshBtn {
     grid-column: 3;
     height: 44px;
     justify-content: center;
@@ -2151,7 +2154,7 @@ i.dhApiStateMuted {
     width: 44px;
   }
 
-  .dhApiBackedHome .dhRefreshLabel {
+  :global([data-testid="dashboard-home-page"]) .dhRefreshLabel {
     display: none;
   }
 }
@@ -2177,7 +2180,7 @@ i.dhApiStateMuted {
 }
 
 /* Keep the lazy lower-screen handoff explicit without flashing a large empty panel. */
-.dhApiBackedHome .dhTerminalDeferredPlaceholder {
+:global([data-testid="dashboard-home-page"]) .dhTerminalDeferredPlaceholder {
   align-items: center;
   display: grid;
   gap: 16px;
@@ -2187,16 +2190,16 @@ i.dhApiStateMuted {
   padding: 12px 16px;
 }
 
-.dhApiBackedHome .dhTerminalDeferredPlaceholder::before {
+:global([data-testid="dashboard-home-page"]) .dhTerminalDeferredPlaceholder::before {
   color: var(--dh-api-muted);
   content: "\6b63\5728\8f7d\5165\6df1\5ea6\8bc1\636e";
   font-family: var(--dh-font-mono);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.04em;
   white-space: nowrap;
 }
 
-.dhApiBackedHome .dhTerminalDeferredPlaceholder::after {
+:global([data-testid="dashboard-home-page"]) .dhTerminalDeferredPlaceholder::after {
   background: linear-gradient(
     90deg,
     rgba(114, 167, 220, 0.08),
@@ -2209,7 +2212,7 @@ i.dhApiStateMuted {
 }
 
 @media (max-width: 720px) {
-  .dhApiBackedHome .dhTerminalDeferredPlaceholder {
+  :global([data-testid="dashboard-home-page"]) .dhTerminalDeferredPlaceholder {
     gap: 10px;
     margin-top: 10px;
     min-height: 52px;
@@ -2222,7 +2225,7 @@ i.dhApiStateMuted {
   composes: dhRefreshBtn;
 }
 
-.dhApiBackedHome .dhAgentEntryBtn:hover :global(.moss-light-icon) {
+:global([data-testid="dashboard-home-page"]) .dhAgentEntryBtn:hover :global(.moss-light-icon) {
   transform: none;
 }
 
@@ -2231,24 +2234,18 @@ i.dhApiStateMuted {
 }
 
 /* Phase 1.5: dashboard-home containers use the terminal shape/elevation contract. */
-.dhApiBackedHome .dhDateSelect,
-.dhApiBackedHome .dhSearch,
-.dhApiBackedHome .dhSearchListbox,
+/* 收尾轮 AMBIGUOUS id142/id143 归档：首页摘根类后零命中的死分支
+   （dhDateSelect、dhSearch、dhSearchListbox、dhDeferredIndex、dhDeferredIndexItem、
+   dhTopbar、dhCard，目标类仅首页 DOM 使用）已删；riskOverview 跨页活分支保留。 */
 .dhApiBackedHome .dhRefreshBtn,
 .dhApiBackedHome .dhRail,
 .dhApiBackedHome .dhRailActionRow,
-.dhApiBackedHome .dhRailSuggestionList li,
-.dhApiBackedHome .dhDeferredIndex,
-.dhApiBackedHome .dhDeferredIndexItem {
+.dhApiBackedHome .dhRailSuggestionList li {
   border-radius: var(--dh-api-radius, 6px);
 }
 
-.dhApiBackedHome .dhTopbar,
-.dhApiBackedHome .dhCard,
 .dhApiBackedHome .dhRailCard,
 .dhApiBackedHome .dhRail::before,
-.dhApiBackedHome .dhDeferredIndex,
-.dhApiBackedHome .dhDeferredIndexItem,
 .dhApiBackedHome .dhRefreshBtn:hover {
   box-shadow: none;
 }
@@ -2315,7 +2312,7 @@ i.dhApiStateMuted {
 
 :global([data-testid="dashboard-home-page"]) .dhRailActionRow[data-status-kind="empty"] > span:nth-child(2) {
   color: var(--dh-api-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 /* —— 12. 8px 基栅节奏（首屏卡片 padding / 栏间距统一到 8 的倍数） —— */
@@ -2337,28 +2334,9 @@ i.dhApiStateMuted {
    while matching the HTML shell, toolbar, first screen and decision rail.
    ========================================================================== */
 
-.dhApiBackedHome[data-testid="dashboard-home-page"] {
-  /* --dh-api-* 字面量与 background 已移除：Nocturne 换肤后由
-     dashboardHomeOptionTwo.module.css 的 .page.page.page（0,3,0）全量接管。 */
-  --dh-font-sans: var(--moss-font-sans);
-  --dh-font-mono: var(--moss-font-mono);
-  border: 0;
-  color: var(--dh-api-ink);
-  font-family: var(--dh-font-sans);
-  gap: 0;
-  min-height: 100vh;
-  padding: 0;
-}
-
-/* 首页壳层反写仅保留仍在级联中获胜的声明：129px 侧栏列宽 + grid gap 清零、
-   main 的 display:block。其余（背景/边框/圆角/阴影/竖直 padding 清零/aside 全组）
-   均被 dashboardCockpit.css 尾层 !important 压制，竖直 padding 清零现由
-   dashboardHomeOptionTwo.module.css 尾部 (0,3,0)+!important 规则接管，已删除。 */
-:global(.workbench-shell-grid--cockpit:has([data-testid="dashboard-home-page"])) {
-  gap: 0;
-  grid-template-columns: 129px minmax(0, 1fr);
-}
-
+/* 首页壳层反写仅保留 main 的 display:block。原 129px 侧栏列宽与 grid gap 清零已删：
+   桌面（≥1181px）列宽/贴边由 workbenchShell.css 末尾统一层（216px !important）负责，
+   ≤1180 由 dashboardCockpit.css 塌缩层（!important）接管，两处声明在级联中均不再获胜。 */
 :global(.workbench-shell-grid--cockpit:has([data-testid="dashboard-home-page"]) .workbench-main-column > main),
 :global(.workbench-shell-grid--cockpit:has([data-testid="dashboard-home-page"]) .workbench-main-surface) {
   display: block;
@@ -2411,7 +2389,7 @@ i.dhApiStateMuted {
 :global(.workbench-shell-grid--cockpit:has([data-testid="dashboard-home-page"]) .workbench-shell-section-label--rail) {
   color: var(--dh-home-nocturne-muted);
   font-family: var(--dh-font-mono);
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.22em;
   padding: 10px 8px 6px;
@@ -2461,7 +2439,7 @@ i.dhApiStateMuted {
 :global(.workbench-shell-grid--cockpit:has([data-testid="dashboard-home-page"]) .workbench-shell-agent-nav__badge) {
   color: #595d6c;
   font-family: var(--dh-font-mono);
-  font-size: 10px;
+  font-size: 11px;
   margin-left: auto;
 }
 
@@ -2478,7 +2456,7 @@ i.dhApiStateMuted {
   display: none;
 }
 
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhTopbar {
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbar {
   align-items: center;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.012), rgba(255, 255, 255, 0)),
     var(--dh-api-bg);
@@ -2496,21 +2474,15 @@ i.dhApiStateMuted {
 }
 
 @media (min-width: 1181px) {
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTopbar {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbar {
     position: sticky;
     top: 0;
     z-index: 30;
   }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] > .dhApiTopRail {
-    position: sticky;
-    top: 55px;
-    z-index: 29;
-  }
 }
 
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhTopbarLeft,
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhTopbarRight {
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbarLeft,
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbarRight {
   align-items: center;
   display: flex;
   flex-wrap: nowrap;
@@ -2518,19 +2490,19 @@ i.dhApiStateMuted {
   width: auto;
 }
 
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhTopbarLeft {
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbarLeft {
   flex: 1 1 auto;
   gap: 14px;
 }
 
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhTopbarRight {
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbarRight {
   flex: 0 0 auto;
   gap: 8px;
   justify-content: flex-end;
   margin-left: auto;
 }
 
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhTitleBrand {
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTitleBrand {
   display: grid;
   flex: 0 0 152px;
   gap: 0;
@@ -2538,7 +2510,7 @@ i.dhApiStateMuted {
   min-width: 152px;
 }
 
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhTitle {
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTitle {
   color: var(--dh-home-nocturne-ink);
   font-size: 17px;
   font-weight: 600;
@@ -2549,7 +2521,7 @@ i.dhApiStateMuted {
   white-space: nowrap;
 }
 
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhToolbarControl {
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhToolbarControl {
   align-items: center;
   display: flex;
   flex: 0 0 auto;
@@ -2558,24 +2530,24 @@ i.dhApiStateMuted {
   min-width: 0;
 }
 
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhDateLabel,
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhDateContext {
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDateLabel,
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDateContext {
   color: var(--dh-api-muted);
   font-size: 11.5px;
   white-space: nowrap;
 }
 
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhDateContext {
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDateContext {
   max-width: 94px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhDateContextDot {
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDateContextDot {
   display: none;
 }
 
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhDateSelect {
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDateSelect {
   align-items: center;
   background: color-mix(in srgb, var(--dh-api-panel-2) 88%, transparent);
   border: 1px solid color-mix(in srgb, var(--dh-api-blue) 24%, var(--dh-api-line));
@@ -2587,12 +2559,12 @@ i.dhApiStateMuted {
   padding: 0 10px;
 }
 
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhDateSelectIcon {
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDateSelectIcon {
   color: var(--dh-api-blue);
   font-size: 13px;
 }
 
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhDateSelect input {
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDateSelect input {
   background: transparent;
   border: 0;
   color: var(--dh-api-blue);
@@ -2603,11 +2575,11 @@ i.dhApiStateMuted {
   padding: 0 0 0 7px;
 }
 
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhDateSelect input::-webkit-calendar-picker-indicator {
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDateSelect input::-webkit-calendar-picker-indicator {
   display: none;
 }
 
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhSearch {
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhSearch {
   align-items: center;
   background: color-mix(in srgb, var(--dh-api-panel-2) 88%, var(--dh-api-blue) 12%);
   border: 1px solid var(--dh-api-line);
@@ -2621,30 +2593,30 @@ i.dhApiStateMuted {
   position: relative;
 }
 
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhSearch::after {
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhSearch::after {
   border: 1px solid var(--dh-api-line);
   border-radius: 4px;
   color: var(--dh-api-muted);
   content: "⌘K";
   flex: 0 0 auto;
   font-family: var(--dh-font-mono);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 16px;
   margin-left: 6px;
   padding: 0 5px;
 }
 
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhSearch:has(input:not(:placeholder-shown))::after {
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhSearch:has(input:not(:placeholder-shown))::after {
   display: none;
 }
 
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhSearchIcon {
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhSearchIcon {
   color: var(--dh-api-muted);
   flex: 0 0 auto;
   font-size: 13px;
 }
 
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhSearch input {
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhSearch input {
   background: transparent;
   border: 0;
   color: var(--dh-home-nocturne-ink);
@@ -2657,29 +2629,29 @@ i.dhApiStateMuted {
   padding: 0 8px;
 }
 
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhSearch input::placeholder {
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhSearch input::placeholder {
   color: var(--dh-home-nocturne-muted);
   opacity: 1;
 }
 
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhStatusRow {
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhStatusRow {
   display: flex;
   flex: 0 0 auto;
   width: auto;
 }
 
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhStatusRow > :nth-child(n + 2) {
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhStatusRow > :nth-child(n + 2) {
   display: none;
 }
 
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhStatusPill {
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhStatusPill {
   align-items: center;
   background: color-mix(in srgb, #62b98b 8%, transparent);
   border: 1px solid color-mix(in srgb, #62b98b 38%, transparent);
   border-radius: 999px;
   color: #62b98b;
   display: inline-flex;
-  font-size: 10.5px;
+  font-size: 11px;
   gap: 5px;
   height: 26px;
   line-height: 1;
@@ -2687,23 +2659,23 @@ i.dhApiStateMuted {
   white-space: nowrap;
 }
 
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhStatusPill .dhNum {
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhStatusPill .dhNum {
   color: inherit;
   font-family: var(--dh-font-mono);
 }
 
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhDot {
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDot {
   background: currentColor;
   height: 4px;
   width: 4px;
 }
 
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhPartialToggle {
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhPartialToggle {
   display: none;
 }
 
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhRefreshBtn,
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhAgentEntryBtn {
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhRefreshBtn,
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhAgentEntryBtn {
   align-items: center;
   background: transparent;
   border: 1px solid var(--dh-api-line);
@@ -2720,148 +2692,19 @@ i.dhApiStateMuted {
   white-space: nowrap;
 }
 
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhAgentEntryBtn {
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhAgentEntryBtn {
   border-color: color-mix(in srgb, var(--dh-api-blue) 30%, var(--dh-api-line));
   color: var(--dh-api-blue);
   padding-inline: 12px;
 }
 
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhRefreshBtn:hover,
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhAgentEntryBtn:hover {
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhRefreshBtn:hover,
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhAgentEntryBtn:hover {
   background: var(--dh-api-blue-soft);
   transform: none;
 }
 
-.dhApiBackedHome[data-testid="dashboard-home-page"] > .dhApiTopRail {
-  align-items: center;
-  background: color-mix(in srgb, #000 14%, #161826);
-  border: 0;
-  border-bottom: 1px solid var(--dh-api-line-soft);
-  color: var(--dh-home-nocturne-muted);
-  display: grid;
-  font-family: var(--dh-font-mono);
-  font-size: 10.5px;
-  gap: 16px;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  height: 27px;
-  min-height: 27px;
-  padding: 0 20px;
-}
-
-.dhApiBackedHome[data-testid="dashboard-home-page"] > .dhApiTopRail > strong {
-  display: none;
-}
-
-.dhApiBackedHome[data-testid="dashboard-home-page"] > .dhApiTopRail > span {
-  color: var(--dh-home-nocturne-muted);
-  font-family: var(--dh-font-mono);
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.dhApiBackedHome[data-testid="dashboard-home-page"] > .dhApiTopRail > span:first-of-type {
-  color: #62b98b;
-}
-
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhLayout {
-  align-items: start;
-  gap: 22px 14px;
-  grid-template-columns: minmax(0, 1fr) 288px;
-  margin: 0;
-  max-width: none;
-  padding: 4px 20px 20px;
-}
-
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhRail {
-  align-self: start;
-  display: flex;
-  flex-direction: column;
-  gap: 13px;
-  padding: 0;
-  position: static;
-  top: auto;
-}
-
 /* 首格与其余格一致纵向堆叠：标签占满整行宽度，避免「年度汇总损益」被值列挤截断 */
-
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailCard {
-  background: var(--dh-api-panel);
-  border: 1px solid var(--dh-api-line);
-  border-radius: var(--dh-home-nocturne-radius);
-  box-shadow: none;
-  color: var(--dh-home-nocturne-ink);
-  padding: 13px 14px;
-}
-
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailCard::before {
-  display: none;
-}
-
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailCard:hover {
-  border-color: color-mix(in srgb, var(--dh-api-blue) 22%, var(--dh-api-line));
-  transform: none;
-}
-
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailCardBody {
-  gap: 8px;
-}
-
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailCardHeader {
-  border: 0;
-  min-height: 20px;
-  padding: 0;
-}
-
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailCardHeader > span:first-child {
-  color: var(--dh-home-nocturne-ink);
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailCardHeader > span:first-child::before {
-  display: none;
-}
-
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailActionRow {
-  border-top: 1px solid var(--dh-api-line-soft);
-  gap: 2px;
-  min-height: 0;
-  padding: 7px 0 0;
-}
-
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailActionRow:first-child {
-  border-top: 0;
-  padding-top: 0;
-}
-
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailActionRow a,
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailActionRow > span:first-child {
-  color: #b2b6ca;
-  font-size: 11.5px;
-  font-weight: 400;
-  line-height: 1.7;
-}
-
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailSuggestionList {
-  gap: 0;
-  margin: 0;
-  padding: 0;
-}
-
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailSuggestionList li {
-  border-top: 1px solid var(--dh-api-line-soft);
-  color: #b2b6ca;
-  font-size: 12px;
-  line-height: 1.6;
-  margin: 0;
-  padding: 6px 0;
-}
-
-.dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailSuggestionList li::before {
-  color: var(--dh-api-blue);
-}
 
 :global(.workbench-shell-grid--cockpit:has([data-testid="dashboard-home-page"]) [data-testid="workbench-group-nav"] a:not([data-active="true"]) .workbench-shell-group-count) {
   font-size: 0;
@@ -2869,18 +2712,7 @@ i.dhApiStateMuted {
 
 :global(.workbench-shell-grid--cockpit:has([data-testid="dashboard-home-page"]) [data-testid="workbench-group-nav"] a:not([data-active="true"]) .workbench-shell-group-count)::after {
   content: "在建";
-  font-size: 10px;
-}
-
-@media (max-width: 1280px) {
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhLayout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRail {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
+  font-size: 11px;
 }
 
 @media (max-width: 1180px) {
@@ -2889,52 +2721,35 @@ i.dhApiStateMuted {
     padding: 0;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTopbar {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbar {
     height: auto;
     min-height: 55px;
   }
 }
 
 @media (max-width: 900px) {
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTopbar {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbar {
     align-items: stretch;
     flex-direction: column;
     gap: 8px;
     padding: 10px 14px;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTopbarLeft,
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTopbarRight {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbarLeft,
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbarRight {
     width: 100%;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhSearch {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhSearch {
     max-width: none;
   }
 
 }
 
 @media (max-width: 720px) {
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTopbarLeft {
-    /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
-    align-items: stretch;
-  }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhDateContext {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDateContext {
     display: none;
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] > .dhApiTopRail {
-    gap: 8px;
-    padding-inline: 12px;
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] > .dhApiTopRail > span:nth-of-type(2) {
-    display: none;
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhLayout {
-    padding: 12px;
   }
 }
 
@@ -2944,11 +2759,7 @@ i.dhApiStateMuted {
 
 @media (min-width: 961px) {
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] > .dhApiTopRail {
-    display: none;
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTopbar {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbar {
     /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     justify-content: space-between;
     width: 100%;
@@ -2958,14 +2769,14 @@ i.dhApiStateMuted {
     background: var(--dh-api-bg);
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTopbarLeft {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbarLeft {
     /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     flex: 1 1 auto;
     gap: 18px;
     min-width: 0;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTopbarRight {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbarRight {
     /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     display: flex;
     flex-direction: row;
@@ -2973,12 +2784,12 @@ i.dhApiStateMuted {
     gap: 10px;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTitleBrand {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTitleBrand {
     /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     flex: 0 0 auto;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTitle {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTitle {
     margin: 0;
     color: #eaf2f7;
     font-size: 17px;
@@ -2987,43 +2798,43 @@ i.dhApiStateMuted {
     letter-spacing: 0.01em;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhDateSelectIcon,
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhDateContextDot,
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhStatusRow > :not(:first-child),
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhPartialToggle,
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhAgentEntryBtn {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDateSelectIcon,
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDateContextDot,
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhStatusRow > :not(:first-child),
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhPartialToggle,
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhAgentEntryBtn {
     display: none;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhToolbarControl {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhToolbarControl {
     /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     display: flex;
     gap: 8px;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhDateLabel,
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhDateContext {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDateLabel,
+:global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDateContext {
     color: #8ea0ae;
-    font-size: 10.5px;
+    font-size: 11px;
     line-height: 1;
     white-space: nowrap;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhDateSelect {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDateSelect {
     /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     position: relative;
     display: inline-flex;
     border-right: 1px solid var(--dh-home-nocturne-rule);
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhDateSelectValue {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDateSelectValue {
     color: #d8e2e9;
     font-family: var(--dh-font-mono);
-    font-size: 10.5px;
+    font-size: 11px;
     font-weight: 600;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhDateSelect input {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDateSelect input {
     position: absolute;
     inset: 0;
     width: 100%;
@@ -3031,22 +2842,17 @@ i.dhApiStateMuted {
     cursor: pointer;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhDateContext {
-    /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
-    overflow: hidden;
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhSearch {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhSearch {
     /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
     min-width: 220px;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhStatusRow {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhStatusRow {
     display: flex;
     align-items: center;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhStatusPill {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhStatusPill {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -3056,11 +2862,11 @@ i.dhApiStateMuted {
     border-radius: 999px;
     background: color-mix(in srgb, #5bc489 8%, transparent);
     color: #5bc489;
-    font-size: 10.5px;
+    font-size: 11px;
     white-space: nowrap;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRefreshBtn {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhRefreshBtn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -3074,120 +2880,6 @@ i.dhApiStateMuted {
     color: #dbe5eb;
     font-size: 11px;
     box-shadow: none;
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhLayout {
-    height: 100%;
-    min-height: 0;
-    min-width: 0;
-    overflow-y: auto;
-    scrollbar-width: none;
-    background: #08111b;
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhLayout::-webkit-scrollbar {
-    width: 0;
-    height: 0;
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhMain {
-    min-width: 0;
-    gap: 0;
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailCard {
-    box-sizing: border-box;
-    flex: 0 0 auto;
-    min-width: 0;
-    min-height: 0;
-    margin: 0;
-    padding: 0;
-    overflow: hidden;
-    border: 0;
-    border-bottom: 1px solid var(--dh-home-nocturne-rule);
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailCard:last-child {
-    flex: 1 1 auto;
-    border-bottom: 0;
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailCardBody {
-    /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
-    height: 100%;
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailCardHeader {
-    /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
-    display: flex;
-    gap: 8px;
-    padding: 0;
-    border-bottom: 1px solid var(--dh-home-nocturne-rule);
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailActionList,
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailSuggestionList {
-    /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
-    display: grid;
-    gap: 0;
-    padding: 0;
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailActionRow {
-    /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
-    position: relative;
-    display: block;
-    border-bottom: 1px solid color-mix(in srgb, var(--dh-home-nocturne-rule) 75%, transparent);
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailActionRow::before {
-    position: absolute;
-    top: 12px;
-    left: 1px;
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background: #ff8a6b;
-    content: "";
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailActionRow > a,
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailActionRow > span:first-child {
-    display: block;
-    overflow: hidden;
-    color: #bac8d1;
-    font-size: 10.5px;
-    line-height: 1.35;
-    text-decoration: none;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailActionRow > span:nth-child(2) {
-    display: none;
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailSuggestionList {
-    list-style: none;
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailSuggestionList li::before {
-    position: absolute;
-    top: 14px;
-    left: 1px;
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background: #d6a959;
-    content: "";
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailSuggestionList a {
-    color: inherit;
-    text-decoration: none;
   }
 
 }
@@ -3224,7 +2916,7 @@ i.dhApiStateMuted {
     padding: 0;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTopbar {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbar {
     box-sizing: border-box;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
@@ -3236,7 +2928,7 @@ i.dhApiStateMuted {
     padding: 9px 10px;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTopbarLeft {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbarLeft {
     display: grid;
     grid-template-columns: auto minmax(0, auto) minmax(180px, 1fr);
     align-items: center;
@@ -3244,24 +2936,24 @@ i.dhApiStateMuted {
     min-width: 0;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTopbarRight {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbarRight {
     display: flex;
     align-items: center;
     gap: 8px;
     min-width: 0;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTitleBrand {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTitleBrand {
     grid-column: 1;
     grid-row: 1;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhToolbarControl {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhToolbarControl {
     grid-column: 2;
     grid-row: 1;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhSearch {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhSearch {
     box-sizing: border-box;
     align-self: center;
     width: 100%;
@@ -3274,64 +2966,43 @@ i.dhApiStateMuted {
     grid-row: 1;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhDateContext {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDateContext {
     display: none;
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] > .dhApiTopRail {
-    display: none;
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRail {
-    position: static;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    height: auto;
-    min-height: 0;
-    overflow: hidden;
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailCard {
-    min-width: 0;
   }
 }
 
 @media (max-width: 720px) {
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTopbar {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbar {
     grid-template-columns: minmax(0, 1fr);
     gap: 8px;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTopbarLeft {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbarLeft {
     flex-wrap: wrap;
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTitleBrand {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTitleBrand {
     flex-basis: 100%;
     grid-column: 1;
     grid-row: 1;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhToolbarControl {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhToolbarControl {
     max-width: 100%;
     grid-column: 2;
     grid-row: 1;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhSearch {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhSearch {
     grid-column: 1 / -1;
     grid-row: 2;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTopbarRight {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbarRight {
     flex-direction: row;
     justify-content: flex-end;
     height: auto;
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRail {
-    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -3341,7 +3012,6 @@ i.dhApiStateMuted {
 @media (min-width: 961px) {
   :global(.workbench-shell-grid--cockpit:has([data-testid="dashboard-home-page"])) {
     --dh-api-rail: #001428;
-    grid-template-columns: 129px minmax(0, 1fr);
   }
 
   :global(
@@ -3385,7 +3055,7 @@ i.dhApiStateMuted {
       .workbench-shell-section-label--rail
   ) {
     padding: 7px 6px 4px;
-    font-size: 8px;
+    font-size: 11px;
   }
 
   :global(
@@ -3406,7 +3076,7 @@ i.dhApiStateMuted {
     gap: 6px;
     padding: 5px 6px;
     border-radius: 5px;
-    font-size: 10px;
+    font-size: 12px;
   }
 
   :global(
@@ -3431,10 +3101,10 @@ i.dhApiStateMuted {
     .workbench-shell-grid--cockpit:has([data-testid="dashboard-home-page"])
       .workbench-shell-group-label
   ) {
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 500;
     letter-spacing: 0;
-    line-height: 15px;
+    line-height: 16px;
   }
 
   :global(
@@ -3493,7 +3163,12 @@ i.dhApiStateMuted {
     display: none;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] {
+  /* 皮肤统一批量迁移：worksheet id254 由 DELETE 改判 DEPREFIX（锚点复合版）。
+     原 DELETE 依据的摘类零 diff 证据已过期——optionTwo .page 的
+     grid-template-rows 后被并行会话改为 54px minmax(0,1fr)，删除本规则会让
+     54px 上位（toolbar 行 +12px 连锁位移）。锚点版保持 (0,2,0) 特异性，
+     挂类与摘类下均维持 42px 轨道。 */
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] {
     display: grid;
     height: 100vh;
     min-height: 0;
@@ -3502,7 +3177,7 @@ i.dhApiStateMuted {
     grid-template-rows: 42px minmax(0, 1fr);
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTopbar {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbar {
     box-sizing: border-box;
     align-items: center;
     box-shadow: none;
@@ -3514,16 +3189,16 @@ i.dhApiStateMuted {
     padding: 8px;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTopbarLeft {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbarLeft {
     align-items: center;
     display: contents;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTitleBrand {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTitleBrand {
     display: none;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhToolbarControl {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhToolbarControl {
     align-items: center;
     flex: 0 0 auto;
     min-width: 0;
@@ -3532,7 +3207,7 @@ i.dhApiStateMuted {
     max-width: 280px;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhDateSelect {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDateSelect {
     align-items: center;
     min-width: 84px;
     height: 26px;
@@ -3542,14 +3217,14 @@ i.dhApiStateMuted {
     background: var(--dh-api-panel);
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhDateContext {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhDateContext {
     max-width: 190px;
     color: #5bc489;
     text-overflow: ellipsis;
     display: none;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhSearch {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhSearch {
     flex: 0 1 324px;
     margin-left: clamp(30px, 13.5vw, 200px);
     grid-column: 2;
@@ -3560,7 +3235,7 @@ i.dhApiStateMuted {
     margin: 0;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTopbarRight {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbarRight {
     align-items: center;
     box-sizing: border-box;
     grid-column: 3;
@@ -3569,144 +3244,26 @@ i.dhApiStateMuted {
     padding-left: 150px;
     justify-content: space-between;
   }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRail {
-    box-sizing: border-box;
-    top: 5px;
-    flex-direction: column;
-    box-shadow: none;
-    position: static;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: 121px 122px 151px 123px 181px;
-    gap: 6px;
-    width: 199px;
-    height: 722px;
-    min-height: 722px;
-    padding: 0;
-    overflow: visible;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRail > .dhRailCard {
-    width: 199px;
-    height: auto;
-    min-height: 0;
-    overflow: hidden;
-    border: 1px solid var(--dh-api-line-soft);
-    border-radius: 5px;
-    background: var(--dh-api-panel);
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailCardBody {
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    padding: 0 9px 6px;
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailCardHeader {
-    align-items: center;
-    justify-content: space-between;
-    min-width: 0;
-    margin: 0;
-    height: 28px;
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailCardHeader h2 {
-    min-width: 0;
-    margin: 0;
-    overflow: hidden;
-    color: #dbe5eb;
-    font-weight: 700;
-    line-height: 1;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 10px;
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailActionList,
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailSuggestionList {
-    min-width: 0;
-    margin: 0;
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    scrollbar-width: none;
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailActionList::-webkit-scrollbar,
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailSuggestionList::-webkit-scrollbar {
-    width: 0;
-    height: 0;
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailActionList:focus-visible,
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailSuggestionList:focus-visible {
-    outline: 1px solid var(--dh-api-blue);
-    outline-offset: -1px;
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailActionRow {
-    min-width: 0;
-    min-height: 22px;
-    padding: 5px 0 5px 10px;
-  }
-
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailSuggestionList li {
-    position: relative;
-    min-width: 0;
-    margin: 0;
-    overflow: hidden;
-    border: 0;
-    border-bottom: 1px solid color-mix(in srgb, var(--dh-home-nocturne-rule) 75%, transparent);
-    color: #bac8d1;
-    line-height: 1.35;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    padding: 5px 0 5px 10px;
-    font-size: 9.5px;
-  }
-}
-
-@media (min-width: 1181px) and (max-width: 1280px) {
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRail {
-    grid-template-rows: 121px 122px 151px 123px minmax(181px, 1fr);
-    gap: 6px;
-    width: 199px;
-    height: 722px;
-    min-height: 722px;
-  }
 }
 
 @media (min-width: 961px) and (max-width: 1180px) {
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTopbar {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbar {
     grid-template-columns: minmax(220px, 260px) minmax(220px, 1fr) auto;
     gap: 8px;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhToolbarControl {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhToolbarControl {
     max-width: 260px;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhSearch {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhSearch {
     width: 100%;
     min-width: 0;
     max-width: 300px;
   }
 
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhTopbarRight {
+  :global([data-testid="dashboard-home-page"])[data-testid="dashboard-home-page"] .dhTopbarRight {
     width: auto;
     padding-left: 0;
-  }
-}
-
-@media (min-width: 1181px) {
-  .dhApiBackedHome[data-testid="dashboard-home-page"] .dhRailCardBody {
-    gap: 0;
   }
 }

@@ -21,7 +21,9 @@
   min-height: 0;
   padding: 0;
   overflow: hidden;
-  grid-template-rows: 54px minmax(0, 1fr);
+  /* 顶栏 grid 行高真值 42px（业主 2026-08-13 拍板）：与 shell 稠密层锚点版同值，
+     消除同特异性/注入顺序依赖。toolbar 自身 54px 内容盒被该行裁切属现状渲染，勿动。 */
+  grid-template-rows: 42px minmax(0, 1fr);
   background: var(--option-two-bg);
   font-family: var(--option-two-font-ui);
   font-feature-settings:
@@ -66,6 +68,21 @@
   --dh-api-red-soft: color-mix(in srgb, var(--nct-down) 13%, transparent);
   --dh-api-radius: 8px;
   background: var(--nct-bg);
+}
+
+/* 自 dashboardHomeShell MOVE 迁移（皮肤统一阶段1，worksheet id117）。
+   刻意置于本文件所有 transition/animation 声明之前：
+   同特异性(0,1,0)平局时按源序裁决，保持 reduce 模式下的赢家与迁移前
+   （shell 模块注入序在本文件之前）完全一致。 */
+@media (prefers-reduced-motion: reduce) {
+  .page *,
+  .page *::before,
+  .page *::after {
+    animation-duration: 0.001ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.001ms;
+    scroll-behavior: auto;
+  }
 }
 
 .page > [data-testid="dashboard-home-toolbar"] {
@@ -422,7 +439,7 @@
 .overviewSectionHeader > span {
   color: var(--option-two-muted);
   font-family: var(--font-tabular, Consolas, monospace);
-  font-size: 11px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -435,7 +452,7 @@
 
 .overviewSectionHeader > strong {
   color: var(--option-two-soft);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 400;
 }
 
@@ -472,7 +489,7 @@
 .overviewAttention > span {
   overflow: hidden;
   color: var(--option-two-muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 16px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -495,7 +512,7 @@
   align-items: center;
   gap: 4px;
   color: var(--option-two-blue);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 16px;
   text-decoration: none;
 }
@@ -584,7 +601,7 @@
 .productCategoryLeadCell > span,
 .productCategoryMetric > span {
   color: var(--option-two-muted);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 14px;
 }
 
@@ -602,7 +619,7 @@
 
 .productCategoryEmpty {
   color: var(--option-two-soft);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 14px;
 }
 
@@ -677,7 +694,7 @@
   gap: 5px;
   overflow: hidden;
   color: var(--option-two-muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 16px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -697,7 +714,7 @@
   gap: 5px;
   margin-top: 1px;
   color: var(--option-two-blue);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 16px;
   text-decoration: none;
 }
@@ -777,7 +794,7 @@
   margin-top: auto;
   overflow: hidden;
   color: var(--option-two-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   line-height: 16px;
   text-overflow: ellipsis;
@@ -846,7 +863,7 @@
   padding-bottom: 2px;
   border-bottom: 1px solid var(--option-two-line);
   color: var(--option-two-soft);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .statusHeading strong {
@@ -907,7 +924,7 @@
 
 .statusRows dd > small {
   color: var(--option-two-soft);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 16px;
 }
 
@@ -1091,7 +1108,7 @@
 .extendedEvidenceHeader span {
   color: var(--option-two-blue);
   font-family: var(--font-tabular, Consolas, monospace);
-  font-size: 11px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1142,7 +1159,7 @@
 .marketResearchPanel footer a,
 .trustFooter a {
   color: var(--option-two-blue);
-  font-size: 11px;
+  font-size: 12px;
   text-decoration: none;
 }
 
@@ -1299,7 +1316,7 @@
 }
 
 .positionMatrix th:first-child {
-  width: 44%;
+  width: 47%;
 }
 
 .positionMatrix td:first-child strong,
@@ -1318,6 +1335,7 @@
   margin-left: 4px;
   color: var(--option-two-muted);
   font-family: var(--font-tabular, Consolas, monospace);
+  font-size: 11px;
 }
 
 /* 语义色只落在承载方向的数字上，去掉整格底色块（色块减负）。 */
@@ -1331,7 +1349,7 @@
 
 .positionMatrix td[data-direction] a {
   color: var(--option-two-blue);
-  font-size: 10px;
+  font-size: 12px;
   text-decoration: none;
 }
 
@@ -1355,7 +1373,7 @@
   border-top: 1px solid var(--option-two-line);
   border-bottom: 1px solid var(--option-two-line);
   color: var(--option-two-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .positionComparisonState strong {
@@ -1373,7 +1391,7 @@
   gap: 8px;
   line-height: 24px;
   color: var(--option-two-ink);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
 }
 
@@ -1388,7 +1406,7 @@
   flex: 0 1 auto;
   overflow: hidden;
   color: var(--option-two-amber);
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1409,7 +1427,7 @@
 .incomeTrend table th {
   height: 18px;
   padding-block: 1px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .incomeTrend table td {
@@ -1437,7 +1455,7 @@
 
 .stateMessage span {
   max-width: 36ch;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .riskMetricGrid {
@@ -1472,7 +1490,7 @@
 .portfolioMetrics dt {
   display: block;
   color: var(--option-two-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .riskMetricGrid > div > strong,
@@ -1514,7 +1532,7 @@
 .riskTrend > span {
   display: block;
   color: var(--option-two-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .riskHeadlineMetrics strong {
@@ -1542,7 +1560,7 @@
 .riskTrend > strong small {
   margin-left: 5px;
   color: var(--option-two-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .riskTrendChart {
@@ -1553,7 +1571,7 @@
 }
 
 .actionList {
-  padding: 0 9px;
+  padding: 0 6px;
 }
 
 .actionList > h3 {
@@ -1569,7 +1587,7 @@
   min-height: 24px;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
   border-top: 1px solid color-mix(in srgb, var(--option-two-ink) 9%, transparent);
 }
 
@@ -1578,7 +1596,7 @@
   min-width: 0;
   align-items: center;
   grid-template-columns: 13px auto minmax(0, 1fr);
-  column-gap: 5px;
+  column-gap: 4px;
 }
 
 .actionList svg {
@@ -1602,16 +1620,16 @@
 
 .actionList strong {
   color: var(--option-two-ink);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
-  line-height: 1.1;
+  line-height: 1.3;
 }
 
 .actionList small {
   grid-column: auto;
   color: var(--option-two-muted);
-  font-size: 10px;
-  line-height: 1.1;
+  font-size: 11px;
+  line-height: 1.3;
 }
 
 .actionList [data-observation="true"] svg {
@@ -1621,12 +1639,12 @@
 .actionList a,
 .actionList em {
   flex: 0 0 auto;
-  padding: 2px 7px;
+  padding: 2px 5px;
   border: 1px solid color-mix(in srgb, var(--option-two-amber) 45%, transparent);
   border-radius: var(--dh-api-radius, 6px);
   background: transparent;
   color: var(--option-two-amber);
-  font-size: 10px;
+  font-size: 11px;
   font-style: normal;
   text-decoration: none;
 }
@@ -1634,7 +1652,7 @@
 .actionList > p {
   margin: 14px 0;
   color: var(--option-two-muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .tabHeader {
@@ -1684,8 +1702,8 @@
   height: 18px;
   min-height: 18px;
   padding: 3px 0;
-  font-size: 11px;
-  line-height: 12px;
+  font-size: 12px;
+  line-height: 14px;
   box-sizing: border-box;
 }
 
@@ -1770,7 +1788,7 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   color: var(--option-two-muted);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 16px;
 }
 
@@ -1836,7 +1854,7 @@
   grid-column: auto;
   overflow: hidden;
   color: var(--option-two-muted);
-  font-size: 10px;
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1848,7 +1866,7 @@
 }
 
 .marketTape em {
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .researchTableWrap {
@@ -1864,7 +1882,7 @@
   min-height: 18px;
   align-items: center;
   color: var(--option-two-amber);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 18px;
 }
 
@@ -1896,7 +1914,7 @@
 .marketResearchPanel .researchTableWrap th {
   height: 22px;
   padding-block: 2px;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .researchList {
@@ -1922,13 +1940,13 @@
 .researchList span,
 .researchList small {
   color: var(--option-two-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .researchList strong {
   overflow: hidden;
   color: var(--option-two-soft);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1995,19 +2013,19 @@
 .trustFooter {
   grid-column: 1 / -1;
   display: grid;
-  height: 96px;
-  max-height: 96px;
-  min-height: 96px;
+  height: 112px;
+  max-height: 112px;
+  min-height: 112px;
   margin-top: 0;
   padding: 10px 12px;
   align-content: center;
   align-items: stretch;
   grid-template-columns: 128px repeat(6, minmax(0, 1fr));
-  grid-template-rows: repeat(2, 30px);
-  grid-auto-rows: 30px;
+  grid-template-rows: repeat(2, 38px);
+  grid-auto-rows: 38px;
   gap: 6px;
   color: var(--option-two-soft);
-  font-size: 11px;
+  font-size: 12px;
   box-sizing: border-box;
 }
 
@@ -2147,7 +2165,7 @@
   margin: 0;
   padding: 6px 10px;
   color: var(--option-two-soft) !important;
-  font-size: 11px !important;
+  font-size: 12px !important;
   box-sizing: border-box;
 }
 
@@ -2180,7 +2198,7 @@
       > span
   ) {
   padding: 2px 5px !important;
-  font-size: 10px !important;
+  font-size: 11px !important;
   line-height: 14px !important;
 }
 
@@ -2197,10 +2215,8 @@
   overflow: hidden !important;
   margin: 2px 0 !important;
   padding: 3px 5px !important;
-  font-size: 10px !important;
-  line-height: 14px !important;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 12px !important;
+  line-height: 16px !important;
 }
 
 .extendedEvidence :global([data-layout-role="research-policy-pane"] > span) {
@@ -2251,14 +2267,14 @@
 .extendedEvidence :global([data-layout-role="bond-news-trust-strip"] > span) {
   max-width: 120px;
   padding: 2px 5px !important;
-  font-size: 10px !important;
+  font-size: 11px !important;
   line-height: 14px !important;
 }
 
 .extendedEvidence
   :global([data-layout-role="bond-news-internal-header"] > time) {
   flex: 0 0 auto;
-  font-size: 10px !important;
+  font-size: 12px !important;
   white-space: nowrap;
 }
 
@@ -2302,13 +2318,13 @@
 }
 
 .extendedEvidence :global([data-layout-role="bond-news-group-header"] > span) {
-  font-size: 11px !important;
+  font-size: 12px !important;
 }
 
 .extendedEvidence :global([data-layout-role="bond-news-group-header"] > small) {
   min-height: 18px !important;
   padding: 0 6px !important;
-  font-size: 10px !important;
+  font-size: 11px !important;
 }
 
 .extendedEvidence :global([data-layout-role="bond-news-list"]) {
@@ -2438,8 +2454,8 @@
 .extendedEvidence :global([data-layout-role="bond-news-topic"]) {
   min-width: 46px !important;
   min-height: 18px !important;
-  padding: 2px 5px !important;
-  font-size: 9px !important;
+  padding: 2px 3px !important;
+  font-size: 11px !important;
 }
 
 .extendedEvidence :global([data-layout-role="bond-news-body"]) {
@@ -2458,8 +2474,8 @@
 }
 
 .extendedEvidence :global([data-layout-role="bond-news-body"] > small) {
-  font-size: 9px !important;
-  line-height: 12px !important;
+  font-size: 12px !important;
+  line-height: 16px !important;
 }
 
 .extendedEvidence
@@ -2809,7 +2825,7 @@
   border: 0;
   background: transparent;
   color: var(--option-two-muted);
-  font-size: 11px;
+  font-size: 12px;
   cursor: pointer;
   font-weight: 450;
   letter-spacing: 0;
@@ -2868,12 +2884,12 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: color-mix(in srgb, var(--option-two-muted) 88%, var(--option-two-bg));
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .trustFooter > span,
 .trustFooter > a {
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 400;
   letter-spacing: 0;
   line-height: 1.35;
@@ -2910,7 +2926,7 @@
 .extendedEvidence
   :global([data-layout-role="research-decision-strip"] > div:last-child small) {
   font-family: var(--option-two-font-ui) !important;
-  font-size: 9.5px !important;
+  font-size: 12px !important;
   font-weight: 400 !important;
   line-height: 1.25 !important;
 }
@@ -2929,7 +2945,7 @@
 .extendedEvidence :global([data-layout-role="research-release-header"] > small),
 .extendedEvidence
   :global([data-layout-role="research-policy-pane"] > div:first-child > small) {
-  font-size: 9.5px !important;
+  font-size: 12px !important;
   font-weight: 400 !important;
   line-height: 1.35 !important;
 }
@@ -3004,7 +3020,7 @@
     var(--option-two-soft)
   ) !important;
   font-family: var(--option-two-font-ui) !important;
-  font-size: 11.5px !important;
+  font-size: 12px !important;
   font-weight: 500 !important;
   letter-spacing: 0 !important;
   line-height: 17px !important;
@@ -3012,10 +3028,10 @@
 
 .extendedEvidence :global([data-layout-role="bond-news-body"] > small) {
   font-family: var(--option-two-font-ui) !important;
-  font-size: 9.5px !important;
+  font-size: 12px !important;
   font-weight: 400 !important;
   letter-spacing: 0 !important;
-  line-height: 13px !important;
+  line-height: 16px !important;
 }
 
 .extendedEvidence
@@ -3030,7 +3046,7 @@
       [data-layout-role="bond-news-body"]
       > strong
   ) {
-  font-size: 10.5px !important;
+  font-size: 11px !important;
   font-weight: 500 !important;
   line-height: 15px !important;
 }
@@ -3046,7 +3062,7 @@
   }
 
   .kpiItem > strong small {
-    font-size: 10px;
+    font-size: 11px;
   }
 
   .riskTasks,
@@ -3341,13 +3357,13 @@
   }
 
   .trustFooter {
-    height: 96px;
-    min-height: 96px;
-    max-height: 96px;
+    height: 112px;
+    min-height: 112px;
+    max-height: 112px;
     grid-column: 1 / -1;
     grid-template-columns: 128px repeat(6, minmax(0, 1fr));
-    grid-template-rows: repeat(2, 30px);
-    grid-auto-rows: 30px;
+    grid-template-rows: repeat(2, 38px);
+    grid-auto-rows: 38px;
   }
 
   .trustFooter > strong {
@@ -3618,5 +3634,204 @@
 @media (prefers-reduced-motion: reduce) {
   .holdingsTablePanel tbody tr {
     transition: none;
+  }
+}
+
+/* ==========================================================================
+   自 dashboardHomeShell.module.css MOVE 迁移（皮肤统一阶段1）
+   worksheet id 0/5/6/7/8/9/10/11/34/96/145，按 shell 源序排列，声明值逐字
+   复制（以 meta.json md5=91d1512c 版本为准）。id12（toolbar display:flex）
+   由本文件既有 .page > [data-testid="dashboard-home-toolbar"] 规则同值覆盖，
+   不重复落地；id117 前置于 .page.page.page 之后（见上方注释）。
+   按「computed 值不变」原则做的三处等价调整：
+   - id8 略去 font-feature-settings："tnum" 1, "ss01" 1 在首页输给本文件
+     .page（同特异性、本文件注入序靠后），照抄到此处会反转赢家；
+   - id96 略去 min-height: 100vh：全视口输给 .page 的 min-height:0 或
+     shell 稠密层（@media ≥961px 的 min-height:0，shell 行3489）；
+   - id145 的 min-height: 100vh 改以 not (min-width: 961px) 限定：
+     ≥961px 时 shell 稠密层(0,2,0)靠源序获胜，等价复现分视口结果。
+   ========================================================================== */
+
+/* id0: .dhPage 基础块（shell 行1-8；shell 原规则因跨页共用保留） */
+.page {
+  color: var(--dh-ink);
+  background-color: var(--dh-bg);
+  display: grid;
+  font-family: var(--dh-font-sans);
+  width: 100%;
+}
+
+/* id5-7: .dhPage 滚动条 track/thumb/thumb:hover（shell 行839-850） */
+.page ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.page ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+}
+
+.page ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* id8: .dhPage 根变量块（shell 行853-922，58 变量 + 布局声明） */
+.page {
+  --dh-hex-64748b: #64748b;
+  --dh-hex-eef6ff: #eef6ff;
+  --dh-hex-2e6fd8: #2e6fd8;
+  --dh-hex-46b37b: #46b37b;
+  --dh-hex-9cc4ec: #9cc4ec;
+  --dh-hex-d9a05b: #d9a05b;
+  --dh-hex-e06c5f: #e06c5f;
+  --dh-hex-eef4ff: #eef4ff;
+  --dh-hex-ffffff: #ffffff;
+  --dh-bg: #070b12;
+  --dh-card: #111a28;
+  --dh-card-soft: #16202e;
+  --dh-surface-muted: var(--dh-api-rail);
+  --dh-line: rgba(148, 163, 184, 0.16);
+  --dh-line-soft: rgba(148, 163, 184, 0.1);
+  --dh-line-strong: rgba(148, 163, 184, 0.28);
+  --dh-ink: var(--dh-api-ink);
+  --dh-ink-2: #9aa8bc;
+  --dh-muted: var(--dh-hex-64748b);
+  --dh-muted-2: var(--dh-hex-64748b);
+  --dh-blue: var(--dh-hex-2e6fd8);
+  --dh-blue-2: #3b82f6;
+  --dh-blue-deep: var(--dh-hex-2e6fd8);
+  --dh-blue-soft: rgba(59, 130, 246, 0.12);
+  --dh-green: var(--dh-hex-46b37b);
+  --dh-green-soft: rgba(70, 179, 123, 0.14);
+  --dh-red: var(--dh-hex-e06c5f);
+  --dh-red-soft: rgba(224, 108, 95, 0.14);
+  --dh-amber: var(--dh-hex-d9a05b);
+  --dh-amber-soft: rgba(217, 160, 91, 0.14);
+  --dh-gold: var(--dh-api-blue);
+  --dh-space-1: 8px;
+  --dh-space-2: 12px;
+  --dh-space-3: 16px;
+  --dh-space-4: 24px;
+  --dh-shadow-card: none;
+  --dh-radius: 6px;
+  --dh-radius-lg: var(--dh-api-radius, 6px);
+  --dh-font-sans: var(--moss-font-sans);
+  --dh-font-mono: var(--moss-font-mono);
+  --ib-paper: var(--dh-bg);
+  --ib-surface: var(--dh-card);
+  --ib-surface-muted: var(--dh-card-soft);
+  --ib-hairline: var(--dh-line);
+  --ib-rule-strong: var(--dh-line-strong);
+  --ib-ink: var(--dh-ink);
+  --ib-ink-secondary: var(--dh-ink-2);
+  --ib-ink-muted: var(--dh-muted);
+  --ib-accent: var(--dh-api-blue);
+  --ib-accent-hover: var(--dh-hex-9cc4ec);
+  --ib-accent-surface: rgba(59, 130, 246, 0.12);
+  --ib-up: var(--dh-hex-46b37b);
+  --ib-down: var(--dh-hex-e06c5f);
+  --ib-warn: var(--dh-hex-d9a05b);
+  --ib-gold: var(--dh-gold);
+  --ib-serif: var(--dh-font-sans);
+  min-width: 0;
+  position: relative;
+  --dh-card-polish: #0b1728;
+  --dh-line-polish-soft: #1e3148;
+  background:
+    linear-gradient(180deg, rgba(12, 23, 39, 0.98), rgba(7, 17, 30, 1) 360px),
+    var(--dh-bg);
+  gap: 18px;
+  padding-bottom: 48px;
+}
+
+/* id9: .dhPage @720（shell 行965-969） */
+@media (max-width: 720px) {
+  .page {
+    gap: 14px;
+    padding-bottom: 18px;
+  }
+}
+
+/* id10: Nocturne 雏形变量（shell 行978-984）。只迁 .page 部分；
+   :global(.workbench-shell-grid--cockpit:has(...)) 部分继续由 shell
+   原规则（跨页保留）供给 cockpit 栅格，值为相同字面量。 */
+.page {
+  --dh-home-nocturne-ink: #e9e9ed;
+  --dh-home-nocturne-muted: #75798c;
+  --dh-home-nocturne-radius: 8px;
+  --dh-home-nocturne-rule: #1a2a38;
+}
+
+/* id11: .dhApiBackedHome 布局（shell 行986-991） */
+.page {
+  border: 1px solid rgba(15, 23, 42, 0.96);
+  gap: 14px;
+  padding: 0 0 42px;
+}
+
+/* id34: .dhApiBackedHome @720（shell 行1219-1227） */
+@media (max-width: 720px) {
+  .page {
+    gap: 10px;
+    margin: 0;
+    max-width: none;
+    padding-bottom: 20px;
+    width: 100%;
+    border: 0;
+  }
+}
+
+/* id96: .dhApiBackedHome api 变量重映射块（shell 行1761-1793，
+   min-height 略去见段首说明） */
+.page {
+  --dh-api-line: rgba(103, 119, 142, 0.34);
+  --dh-api-line-soft: rgba(103, 119, 142, 0.22);
+  --dh-api-gold: var(--dh-api-amber);
+  --dh-api-blue-soft: rgba(114, 167, 220, 0.12);
+  --dh-api-green-soft: rgba(102, 185, 139, 0.12);
+  --dh-api-amber-soft: rgba(201, 165, 101, 0.13);
+  --dh-api-red-soft: rgba(212, 122, 114, 0.13);
+  --dh-bg: var(--dh-api-bg);
+  --dh-card: var(--dh-api-panel);
+  --dh-card-soft: var(--dh-api-panel-2);
+  --dh-line: var(--dh-api-line-soft);
+  --dh-line-strong: var(--dh-api-line);
+  --dh-ink: var(--dh-api-ink);
+  --dh-ink-2: #bfccd9;
+  --dh-muted: var(--dh-api-muted);
+  --dh-muted-2: var(--dh-api-soft);
+  --dh-blue: var(--dh-api-blue);
+  --dh-blue-deep: var(--dh-api-blue);
+  --dh-blue-soft: var(--dh-api-blue-soft);
+  --dh-green: var(--dh-api-green);
+  --dh-green-soft: var(--dh-api-green-soft);
+  --dh-red: var(--dh-api-red);
+  --dh-red-soft: var(--dh-api-red-soft);
+  --dh-amber: var(--dh-api-amber);
+  --dh-amber-soft: var(--dh-api-amber-soft);
+  background: var(--dh-api-bg);
+  margin: 0;
+  max-width: none;
+  width: 100%;
+  --dh-motion-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* id145: Fable 1a 翻译层根规则（shell 行2340-2351）。保持 (0,2,0)
+   特异性以复现其对本段前面 (0,1,0) 块（gap/padding/border 等）的压制。 */
+.page[data-testid="dashboard-home-page"] {
+  --dh-font-sans: var(--moss-font-sans);
+  --dh-font-mono: var(--moss-font-mono);
+  border: 0;
+  color: var(--dh-api-ink);
+  font-family: var(--dh-font-sans);
+  gap: 0;
+  padding: 0;
+}
+
+/* id145 的 min-height: 100vh 等价限定：仅在 shell 稠密层
+   （@media (min-width: 961px)，行3489 min-height:0）不生效的宽度段生效。 */
+@media not (min-width: 961px) {
+  .page[data-testid="dashboard-home-page"] {
+    min-height: 100vh;
   }
 }
