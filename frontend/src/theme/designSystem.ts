@@ -353,6 +353,9 @@ export const dhApiTokens = {
     inkSoft: "#a9b6c7",
     inkMuted: "#8593a8",
     blue: "#72a7dc",
+    /** 链接/强调 hover 与 active 态；hover 与 tokens.css 的 --ib-accent-hover 深色重映射保持同值。 */
+    blueHover: "#8bb7e4",
+    blueActive: "#5c93c7",
     green: "#66b98b",
     amber: "#c9a565",
     gold: "#c9a565",
@@ -366,3 +369,38 @@ export const dhApiTokens = {
 } as const;
 
 export type DhApiTokens = typeof dhApiTokens;
+
+/**
+ * Nocturne palette — TS mirror of the Nocturne scope block in
+ * `src/styles/tokens.css`（数值源=tokens.css Nocturne scope，仅供 canvas/chart
+ * 等读不到 CSS 变量的消费方使用；CSS 侧一律走 --dh-api-* 引用，勿复制数值）。
+ */
+export const nocturneTokens = {
+  color: {
+    bg: "#161826",
+    rail: "#131522",
+    panel: "#232532",
+    panel2: "#1c1e2b",
+    panel3: "#2b2d3d",
+    line: "#3f424d",
+    lineSoft: "rgba(233, 233, 237, 0.12)",
+    ink: "#f3f5fe",
+    inkSoft: "#b2b6ca",
+    inkMuted: "#9397ab",
+    blue: "#9184d9",
+    /** tokens.css 的 --nct-accent-300/-400（rail 激活文字等高亮用途）。 */
+    accent300: "#d2cefd",
+    accent400: "#b5abfc",
+    green: "#5abd99",
+    amber: "#d5b26e",
+    gold: "#d5b26e",
+    red: "#d97b6c",
+    blueSoft: "rgba(145, 132, 217, 0.12)",
+    greenSoft: "rgba(90, 189, 153, 0.12)",
+    amberSoft: "rgba(213, 178, 110, 0.13)",
+    redSoft: "rgba(217, 123, 108, 0.13)",
+  },
+  radius: 8,
+} as const;
+
+export type NocturneTokens = typeof nocturneTokens;
