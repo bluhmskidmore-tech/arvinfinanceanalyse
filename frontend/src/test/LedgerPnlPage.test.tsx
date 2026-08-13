@@ -704,7 +704,7 @@ describe("LedgerPnlPage", () => {
     expect(formalPendingRow).toHaveTextContent("集团营业收入");
     expect(formalPendingRow).toHaveTextContent(/正式展示值\s*未接入/);
     expect(formalPendingRow).toHaveTextContent(/Excel 样本值\s*43.4194731314 亿元/);
-    expect(formalPendingRow).toHaveTextContent(/系统候选值\s*-/);
+    expect(formalPendingRow).toHaveTextContent(/系统候选值\s*—/);
 
     const qdbCandidateRow = screen.getByTestId(
       "ledger-pnl-formal-indicator-source-contract-row-parent.loan_balance",
@@ -920,7 +920,7 @@ describe("LedgerPnlPage", () => {
     expect(revenueRow).toHaveTextContent("集团营业收入");
     expect(revenueRow).toHaveTextContent(/正式展示值\s*43.4194731314 亿元/);
     expect(revenueRow).toHaveTextContent(/Excel 样本值\s*43.4194731314 亿元/);
-    expect(revenueRow).toHaveTextContent(/系统候选值\s*-/);
+    expect(revenueRow).toHaveTextContent(/系统候选值\s*—/);
   });
 
   it("treats registered formal contracts with no metric rows as missing formal detail", async () => {
@@ -1112,7 +1112,7 @@ describe("LedgerPnlPage", () => {
 
     expect(items[5]).toHaveTextContent("集团营业收入");
     expect(items[5]).toHaveTextContent("补正式财务指标来源");
-    expect(items[5]).toHaveTextContent("系统候选值 -");
+    expect(items[5]).toHaveTextContent("系统候选值 —");
   });
 
   it("surfaces missing formal financial indicator contracts as unavailable instead of empty success", async () => {

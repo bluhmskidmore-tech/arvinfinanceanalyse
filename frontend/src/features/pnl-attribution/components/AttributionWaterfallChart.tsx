@@ -6,15 +6,8 @@ import type { DataSectionState } from "../../../components/DataSection.types";
 import { designTokens, nocturneTokens } from "../../../theme/designSystem";
 import { numericRaw } from "../../../pageModel";
 import { EM_DASH } from "../../../utils/format";
+import { formatYi } from "./pnlAttributionViewModel";
 import "./AttributionWaterfallChart.css";
-
-function formatYi(value: number | null | undefined): string {
-  if (value === null || value === undefined) {
-    return EM_DASH;
-  }
-  const yi = value / 100_000_000;
-  return `${yi >= 0 ? "+" : ""}${yi.toFixed(2)} 亿`;
-}
 
 function rawOrNull(value: Numeric | null | undefined): number | null {
   return numericRaw(value);

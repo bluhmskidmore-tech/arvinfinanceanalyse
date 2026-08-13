@@ -12,6 +12,7 @@ import type {
 // canvas 不消费 CSS 变量：瀑布图取色走 nocturneTokens 常量组（页根已声明
 // Nocturne scope，risk-tensor / stock-analysis 先例），替换原浅色 designTokens。
 import { nocturneTokens } from "../../theme/designSystem";
+import { EM_DASH } from "../../utils/format";
 
 // 互斥分解口径（2026-08 审计 PNL-01）：未实现公允（516）是市场效应要解释的
 // 对象，不再作为解释分量进入瀑布；明细表仍保留该列作参照。
@@ -213,7 +214,7 @@ export function buildWaterfallOption(summary: PnlBridgeSummary): EChartsOption {
         const bar = list.find((item: { seriesName?: string }) => item.seriesName === "效应");
         const idx = (bar as { dataIndex?: number })?.dataIndex ?? 0;
         const label = BRIDGE_CATEGORIES[idx] ?? "";
-        return `${label}<br/>${displayStrings[idx] ?? "—"}`;
+        return `${label}<br/>${displayStrings[idx] ?? EM_DASH}`;
       },
     },
     grid: { left: 48, right: 24, top: 24, bottom: 44, containLabel: true },

@@ -8,7 +8,7 @@ import type {
   TPLMarketCorrelationPayload,
   VolumeRateAttributionPayload,
 } from "../../../api/contracts";
-import { EM_DASH } from "../../../utils/format";
+import { EM_DASH, formatYi as formatYiShared } from "../../../utils/format";
 
 export type PnlAttributionTab = "product-category" | "volume-rate" | "tpl-market" | "composition" | "advanced";
 export type MissingReportDateSource = "none" | "formal-attribution" | "product-category" | "both";
@@ -68,12 +68,9 @@ export function numericRaw(value: Numeric | null | undefined): number | undefine
   return value.raw ?? undefined;
 }
 
+/** 域内统一的带符号亿元入口：委托共享 formatYi（signed 恒真），输出与既往逐字一致。 */
 export function formatYi(value: number | null | undefined): string {
-  if (value === null || value === undefined) {
-    return MISSING_DISPLAY;
-  }
-  const yi = value / 100_000_000;
-  return `${yi >= 0 ? "+" : ""}${yi.toFixed(2)} 亿`;
+  return formatYiShared(value, true);
 }
 
 export function formatYiNumeric(value: Numeric | null | undefined): string {

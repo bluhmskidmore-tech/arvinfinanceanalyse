@@ -1,4 +1,5 @@
 import type { ApiEnvelope, PnlByBusinessInsightsPayload } from "../../api/contracts";
+import { EM_DASH } from "../../utils/format";
 
 export type PnlByBusinessInsightsLeadershipStatus = "loading" | "ready" | "review";
 
@@ -36,13 +37,13 @@ function numberValue(value: string | null | undefined): number | null {
 
 function pct(value: string | null | undefined, digits = 2): string {
   const parsed = numberValue(value);
-  return parsed === null ? "—" : `${parsed.toFixed(digits)}%`;
+  return parsed === null ? EM_DASH : `${parsed.toFixed(digits)}%`;
 }
 
 function signedPp(value: string | null | undefined): string {
   const parsed = numberValue(value);
   if (parsed === null) {
-    return "—";
+    return EM_DASH;
   }
   return `${parsed > 0 ? "+" : ""}${parsed.toFixed(2)}pp`;
 }
@@ -187,7 +188,7 @@ function buildLeadershipItems(result: PnlByBusinessInsightsPayload): PnlByBusine
           ? "合格观察样本中未发现达到预警阈值的业务"
           : "观察期不足，暂不形成结论",
       detail: negativeFtp
-        ? `近 ${result.negative_ftp_persistence.lookback_months} 个自然月，最长连续 ${negativeFtp.negative_ftp_longest_streak_months ?? "—"} 个月`
+        ? `近 ${result.negative_ftp_persistence.lookback_months} 个自然月，最长连续 ${negativeFtp.negative_ftp_longest_streak_months ?? EM_DASH} 个月`
         : `至少 ${result.negative_ftp_persistence.minimum_observed_months} 个有效月且负值月份占比达到 ${pct(result.negative_ftp_persistence.warning_threshold_pct)}`,
       rowKey: negativeFtp?.row_key ?? null,
     },
@@ -196,7 +197,7 @@ function buildLeadershipItems(result: PnlByBusinessInsightsPayload): PnlByBusine
       label: "日均份额同比漂移",
       value: drift ? `${drift.business_type} ${signedPp(drift.drift_pp)}` : "同比同期间基准不可用",
       detail: drift
-        ? `对比 ${result.share_drift.baseline_as_of_date ?? "—"}；新进/退出业务按 0 处理`
+        ? `对比 ${result.share_drift.baseline_as_of_date ?? EM_DASH}；新进/退出业务按 0 处理`
         : "当前口径不使用上一年末替代同期间基准",
       rowKey:
         drift?.lifecycle_status === "exited" || drift?.lifecycle_status === "unavailable"

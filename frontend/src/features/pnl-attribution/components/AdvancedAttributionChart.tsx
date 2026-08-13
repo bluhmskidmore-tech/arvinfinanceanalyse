@@ -13,6 +13,7 @@ import { dhApiChartTheme } from "../../../components/charts/chartTheme";
 import { designTokens, nocturneTokens } from "../../../theme/designSystem";
 import { numericRaw } from "../../../pageModel";
 import { EM_DASH } from "../../../utils/format";
+import { formatYi } from "./pnlAttributionViewModel";
 import "./AdvancedAttributionChart.css";
 
 // 本图挂在暗色路由（theme-dh-api）下且页面已切首页 Nocturne 色板：基础 option
@@ -87,14 +88,6 @@ function AttributionPctCaliberNote(props: { testId: string }) {
       {CONTRIBUTION_PCT_CALIBER_NOTE}
     </p>
   );
-}
-
-function formatYi(value: number | null | undefined): string {
-  if (value === null || value === undefined) {
-    return EM_DASH;
-  }
-  const yi = value / 100_000_000;
-  return `${yi >= 0 ? "+" : ""}${yi.toFixed(2)} 亿`;
 }
 
 /** 契约：`pct` 字段 raw 恒为小数比率，×100 转百分点；缺失（raw=null）返回 null，不补 0。 */

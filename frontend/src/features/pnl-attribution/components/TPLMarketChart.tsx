@@ -13,15 +13,8 @@ import { formatProductCategoryRowDisplayValue } from "../../product-category-pnl
 import { numericRaw as sharedNumericRaw } from "../../../pageModel";
 import { TONE_DH_CSS_VAR } from "../../../utils/tone";
 import { EM_DASH } from "../../../utils/format";
+import { formatYi } from "./pnlAttributionViewModel";
 import "./TPLMarketChart.css";
-
-function formatYi(value: number | null | undefined): string {
-  if (value === null || value === undefined) {
-    return EM_DASH;
-  }
-  const yi = value / 100_000_000;
-  return `${yi >= 0 ? "+" : ""}${yi.toFixed(2)} 亿`;
-}
 
 // 暗色路由（theme-dh-api，Nocturne 色板）着色一律走主题感知入口：文字色用
 // TONE_DH_CSS_VAR / --dh-api-* CSS 变量，背景用 --dh-api-panel-2，禁止浅色

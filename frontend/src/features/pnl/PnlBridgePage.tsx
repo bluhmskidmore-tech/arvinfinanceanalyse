@@ -24,6 +24,7 @@ import type {
   PnlBridgeRow,
   PnlBridgeSummary,
 } from "../../api/contracts";
+import { EM_DASH } from "../../utils/format";
 import { TONE_DH_CSS_VAR, toneFromNumeric } from "../../utils/tone";
 import { KpiCard } from "../../components/KpiCard";
 import { pnlSurfaceQualityToTone } from "../workbench/components/kpiFormat";
@@ -46,7 +47,7 @@ function kpiToneFromNumeric(n: Numeric): "default" | "positive" | "negative" {
 
 function cellText(value: string | number | null | undefined) {
   if (value === null || value === undefined) {
-    return "—";
+    return EM_DASH;
   }
   return String(value);
 }
@@ -61,7 +62,7 @@ function qualityLabel(value: PnlBridgeQuality | null | undefined) {
   if (value === "error") {
     return "错误";
   }
-  return "—";
+  return EM_DASH;
 }
 
 function buildBridgeConclusion(summary: PnlBridgeSummary | undefined) {
@@ -116,7 +117,7 @@ function numericNumericCol(
     width,
     type: "numericColumn",
     valueGetter: (params) => (params.data?.[field] as Numeric | undefined)?.raw ?? null,
-    valueFormatter: (params) => (params.data?.[field] as Numeric | undefined)?.display ?? "—",
+    valueFormatter: (params) => (params.data?.[field] as Numeric | undefined)?.display ?? EM_DASH,
     ...extra,
   };
 }
@@ -155,7 +156,7 @@ function marketEffectCol(field: MarketEffectField, headerName: string): ColDef<P
         ? (params.data?.[field] as Numeric | undefined)?.raw ?? null
         : null,
     valueFormatter: (params) =>
-      unavailableText(params.data) ?? (params.data?.[field] as Numeric | undefined)?.display ?? "—",
+      unavailableText(params.data) ?? (params.data?.[field] as Numeric | undefined)?.display ?? EM_DASH,
   };
 }
 

@@ -9,6 +9,7 @@ import { PageDataSection } from "../../../components/page/PageDataSection";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { EM_DASH } from "../../../utils/format";
 import { TONE_DH_CSS_VAR } from "../../../utils/tone";
+import { formatYi } from "./pnlAttributionViewModel";
 
 // 本面板挂在 Nocturne 深色路由（theme-dh-api + pnl-attribution scope）下，
 // 面色/文字/盈亏着色一律走主题感知 CSS 变量（--dh-api-* / TONE_DH_CSS_VAR），
@@ -107,11 +108,6 @@ type Props = {
   state: DataSectionState;
   onRetry: () => void;
 };
-
-function formatYi(value: number): string {
-  const amount = value / 100_000_000;
-  return `${amount >= 0 ? "+" : ""}${amount.toFixed(2)} 亿`;
-}
 
 function formatPct(value: number | null): string {
   if (value === null) {

@@ -23,6 +23,7 @@ import {
   PageV2Shell,
 } from "../../components/page/PagePrimitives";
 import { tableShellStyle, tableStyle, tdStyle, thStyle } from "../../components/page/pageStyles";
+import { EM_DASH } from "../../utils/format";
 import { CapitalEfficiencyQuadrantPanel } from "./CapitalEfficiencyQuadrantPanel";
 import { UntracedReconciliationTrendPanel } from "./UntracedReconciliationTrendPanel";
 import { hasApprovedPnlByBusinessInsightsEvidence } from "../pnl/pnlByBusinessInsightsModel";
@@ -41,13 +42,13 @@ function toNumber(value: string | null | undefined): number | null {
 
 function formatPct(value: string | null | undefined, digits = 2): string {
   const parsed = toNumber(value);
-  return parsed === null ? "—" : `${parsed.toFixed(digits)}%`;
+  return parsed === null ? EM_DASH : `${parsed.toFixed(digits)}%`;
 }
 
 function formatSignedPp(value: string | null | undefined): string {
   const parsed = toNumber(value);
   if (parsed === null) {
-    return "—";
+    return EM_DASH;
   }
   return `${parsed > 0 ? "+" : ""}${parsed.toFixed(2)}pp`;
 }
@@ -56,7 +57,7 @@ const YUAN_PER_YI = 100_000_000;
 
 function formatYuanAsYi(value: string | null | undefined): string {
   const parsed = toNumber(value);
-  return parsed === null ? "—" : (parsed / YUAN_PER_YI).toFixed(2);
+  return parsed === null ? EM_DASH : (parsed / YUAN_PER_YI).toFixed(2);
 }
 
 function validIsoDate(value: string | null): string | null {
@@ -157,7 +158,7 @@ function BusinessDecisionBrief({ result }: { result: PnlByBusinessInsightsPayloa
                   <p key={row.row_key}>
                     <strong>{row.business_type}</strong>
                     ：FTP后损益为负月份占比 {formatPct(row.negative_ftp_month_share_pct)}，最长连续
-                    {row.negative_ftp_longest_streak_months ?? "—"}个月
+                    {row.negative_ftp_longest_streak_months ?? EM_DASH}个月
                     {drift?.drift_pp !== null && drift?.drift_pp !== undefined ? (
                       <>
                         ；当前日均份额 {formatPct(drift.current_share_pct)}，较上年同期间 {formatSignedPp(drift.drift_pp)}
@@ -274,12 +275,12 @@ function NegativeFtpTable({ rows }: { rows: PnlByBusinessNegativeFtpPersistenceR
                 >
                   {row.eligible && row.status === "eligible"
                     ? formatPct(row.negative_ftp_month_share_pct)
-                    : "—"}
+                    : EM_DASH}
                 </td>
                 <td style={tdStyle}>
                   {row.eligible && row.status === "eligible" && row.negative_ftp_longest_streak_months !== null
                     ? `${row.negative_ftp_longest_streak_months} 个月`
-                    : "—"}
+                    : EM_DASH}
                 </td>
                 <td style={tdStyle}>{row.months_observed}</td>
                 <td style={tdStyle}>
@@ -515,7 +516,7 @@ export default function PnlByBusinessInsightsPage() {
                 <span><strong>截止</strong> {meta.resolved_report_date ?? result.as_of_date}</span>
                 <span><strong>降级</strong> {meta.fallback_mode}</span>
                 <span><strong>供应商</strong> {meta.vendor_status}</span>
-                <span><strong>生成</strong> {meta.generated_at ?? "—"}</span>
+                <span><strong>生成</strong> {meta.generated_at ?? EM_DASH}</span>
                 <span><strong>Trace</strong> {meta.trace_id}</span>
               </DataStatusStrip>
 
@@ -568,7 +569,7 @@ export default function PnlByBusinessInsightsPage() {
               <PageSectionLead
                 eyebrow="跨期结构"
                 title="日均份额同比漂移"
-                description={`当前YTD与上年同期间 ${result.share_drift.baseline_as_of_date ?? "—"} 对比；新进及退出业务缺失侧按0处理。`}
+                description={`当前YTD与上年同期间 ${result.share_drift.baseline_as_of_date ?? EM_DASH} 对比；新进及退出业务缺失侧按0处理。`}
               />
               <ShareDriftTable
                 rows={result.share_drift.rows}

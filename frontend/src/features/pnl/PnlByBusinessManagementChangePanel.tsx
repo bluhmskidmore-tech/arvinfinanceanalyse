@@ -2,6 +2,7 @@ import type {
   PnlByBusinessMonthlyChangeRow,
   PnlByBusinessMonthlyManagementChange,
 } from "../../api/contracts";
+import { EM_DASH } from "../../utils/format";
 
 type PnlByBusinessManagementChangePanelProps = {
   managementChange: PnlByBusinessMonthlyManagementChange | null | undefined;
@@ -37,7 +38,7 @@ function formatSignedDelta(
 ): string {
   const value = finiteNumber(raw);
   if (value === null) {
-    return "—";
+    return EM_DASH;
   }
   const scaled = value / scale;
   const sign = scaled > 0 ? "+" : "";

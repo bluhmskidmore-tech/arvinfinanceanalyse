@@ -1463,7 +1463,7 @@ function formalSourceContractTone(metric: LedgerPnlFormalFinancialIndicatorMetri
 
 function formatContractMetricValue(value: string | number | null | undefined, unit: string) {
   if (value === null || value === undefined || value === "") {
-    return "-";
+    return EM_DASH;
   }
   return unit ? `${value} ${unit}` : String(value);
 }
@@ -1647,8 +1647,8 @@ function FormalIndicatorSourceContractPanel(props: {
           </div>
         </div>
         <div className="ledger-pnl-analysis__status-summary">
-          <span>report_month {props.contract?.report_month || props.requestedReportMonth || "-"}</span>
-          <span>sample_status {props.contract?.sample_status ?? "-"}</span>
+          <span>report_month {props.contract?.report_month || props.requestedReportMonth || EM_DASH}</span>
+          <span>sample_status {props.contract?.sample_status ?? EM_DASH}</span>
           <span>formal_use_allowed={String(props.contract?.formal_use_allowed ?? false)}</span>
           <span>formal_pending {counts.formal_pending}</span>
           <span>candidate_qdb_aligned {counts.candidate_qdb_aligned}</span>
@@ -1782,7 +1782,7 @@ function FormalIndicatorSourceContractPanel(props: {
             <strong>缺契约补证动作</strong>
             <span>
               {props.contract.remediation?.action_label ??
-                `登记 ${props.contract.report_month || props.requestedReportMonth || "-"} 正式财务指标契约`}
+                `登记 ${props.contract.report_month || props.requestedReportMonth || EM_DASH} 正式财务指标契约`}
             </span>
           </div>
           <div className="ledger-pnl-analysis__source-contract-action-list">
@@ -1874,7 +1874,7 @@ function RatioRecomputationTable(props: { rows: LedgerPnlRatioRecomputationCheck
             <td>
               {row.status === "insufficient_inputs" && row.missing_inputs?.length
                 ? `缺失输入：${row.missing_inputs.join("；")}`
-                : row.note ?? "-"}
+                : row.note ?? EM_DASH}
             </td>
           </tr>
         ))}
@@ -1926,15 +1926,15 @@ function arrangementRuleDetail(rule: LedgerPnlArrangementRule) {
     return `缺失输入：${rule.missing_inputs.join("；")}`;
   }
   if (rule.status === "pass" || rule.status === "fail") {
-    return `实际值 ${rule.actual_value ?? "-"}${rule.unit ?? ""} ${rule.comparator ?? "<="} 目标值 ${rule.target_value ?? "-"}${rule.unit ?? ""}（${rule.quarter_end_type ?? "-"}）`;
+    return `实际值 ${rule.actual_value ?? EM_DASH}${rule.unit ?? ""} ${rule.comparator ?? "<="} 目标值 ${rule.target_value ?? EM_DASH}${rule.unit ?? ""}（${rule.quarter_end_type ?? EM_DASH}）`;
   }
   if (rule.status === "informational") {
-    return `管理层测算假设：${rule.assumption_value ?? "-"}${rule.assumption_unit ?? ""}。${rule.note ?? ""}`;
+    return `管理层测算假设：${rule.assumption_value ?? EM_DASH}${rule.assumption_unit ?? ""}。${rule.note ?? ""}`;
   }
   if (rule.status === "summary") {
-    return `引用勾稽 ${rule.referenced_additivity_check_keys?.join("、") ?? "-"}；exact ${rule.exact_count ?? 0} / residual_present ${rule.residual_present_count ?? 0}`;
+    return `引用勾稽 ${rule.referenced_additivity_check_keys?.join("、") ?? EM_DASH}；exact ${rule.exact_count ?? 0} / residual_present ${rule.residual_present_count ?? 0}`;
   }
-  return rule.note ?? "-";
+  return rule.note ?? EM_DASH;
 }
 
 function ArrangementRulesList(props: { rows: LedgerPnlArrangementRule[] }) {
@@ -1989,9 +1989,9 @@ function FormalIndicatorRuleChecksPanel(props: {
           </div>
         </div>
         <div className="ledger-pnl-analysis__status-summary">
-          <span>report_month {ruleChecks?.report_month || requestedReportMonth || "-"}</span>
+          <span>report_month {ruleChecks?.report_month || requestedReportMonth || EM_DASH}</span>
           <span>formal_use_allowed={String(ruleChecks?.formal_use_allowed ?? false)}</span>
-          <span>sample_status {ruleChecks?.sample_status ?? "-"}</span>
+          <span>sample_status {ruleChecks?.sample_status ?? EM_DASH}</span>
           {summary ? (
             <>
               <span>比率复算 {summary.ratio_recomputation.matched}/{summary.ratio_recomputation.total} matched</span>

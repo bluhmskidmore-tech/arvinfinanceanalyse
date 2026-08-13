@@ -10,7 +10,7 @@ import "../../styles/agGridInstitutional.css";
 import { useApiClient } from "../../api/client";
 import type { Numeric, PnlBasis, PnlV1DetailRow } from "../../api/contracts";
 import type { LiabilityYieldKpi } from "../../api/liabilityAdbContracts";
-import { formatNumeric } from "../../utils/format";
+import { EM_DASH, formatNumeric } from "../../utils/format";
 import { runPollingTask } from "../../app/jobs/polling";
 import { FilterBar } from "../../components/FilterBar";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
@@ -24,7 +24,7 @@ import "./FormalPnlV1Page.css";
 
 function cellText(value: string | number | null | undefined) {
   if (value === null || value === undefined) {
-    return "—";
+    return EM_DASH;
   }
   return String(value);
 }
@@ -32,7 +32,7 @@ function cellText(value: string | number | null | undefined) {
 function thousandsValueFormatter(params: ValueFormatterParams) {
   const value = params.value;
   if (value === null || value === undefined || value === "") {
-    return "—";
+    return EM_DASH;
   }
   const numeric = Number(String(value).replace(/,/g, ""));
   if (!Number.isFinite(numeric)) {
@@ -70,7 +70,7 @@ type DataTab = "fi" | "nonstd" | "yield";
 
 function formatYieldNumeric(value: Numeric | null | undefined) {
   if (value == null) {
-    return "—";
+    return EM_DASH;
   }
   return formatNumeric(value);
 }

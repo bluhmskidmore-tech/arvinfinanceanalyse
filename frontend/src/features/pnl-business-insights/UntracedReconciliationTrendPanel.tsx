@@ -1,5 +1,5 @@
-import ReactECharts from "../../lib/echarts";
 import type { PnlByBusinessUntracedTrendRow } from "../../api/contracts";
+import { BaseChart } from "../../components/charts/BaseChart";
 import { buildUntracedReconciliationTrendOption } from "./untracedReconciliationTrendOption";
 
 export type UntracedReconciliationTrendPanelProps = {
@@ -19,7 +19,7 @@ export function UntracedReconciliationTrendPanel({ rows, height = 260 }: Untrace
   const option = buildUntracedReconciliationTrendOption(rows);
   return (
     <div data-testid="untraced-reconciliation-trend-panel">
-      <ReactECharts option={option} style={{ height }} notMerge lazyUpdate />
+      <BaseChart option={option} height={height} />
     </div>
   );
 }

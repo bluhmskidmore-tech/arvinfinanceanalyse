@@ -5,6 +5,7 @@ import type {
   PnlByBusinessScaleYieldQuadrantRow,
   PnlByBusinessScaleYieldQuadrantSummary,
 } from "../../api/contracts";
+import { EM_DASH } from "../../utils/format";
 
 type QuadrantDefinition = {
   key: PnlByBusinessScaleYieldQuadrantKey;
@@ -50,7 +51,7 @@ function numberValue(value: string | null): number | null {
 
 function formatPct(value: string | null, digits = 2): string {
   const parsed = numberValue(value);
-  return parsed === null ? "—" : `${parsed.toFixed(digits)}%`;
+  return parsed === null ? EM_DASH : `${parsed.toFixed(digits)}%`;
 }
 
 function QuadrantCard({

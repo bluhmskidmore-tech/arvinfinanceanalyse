@@ -1,5 +1,6 @@
 import { useMemo } from "react";
-import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
+import { BaseChart } from "../../../components/charts/BaseChart";
+import type { EChartsOption } from "../../../lib/echarts";
 import type {
   CampisiAttributionPayload,
   CampisiFourEffectsPayload,
@@ -19,6 +20,7 @@ import {
   type CampisiEffectKey,
   type NormalizedCampisiItem,
 } from "./campisiAttributionPanelSupport";
+import { formatYi } from "./pnlAttributionViewModel";
 
 // 本面板挂在 Nocturne 深色路由（theme-dh-api + pnl-attribution scope）下，
 // 面色/文字/盈亏着色一律走主题感知 CSS 变量（--dh-api-* / TONE_DH_CSS_VAR），
@@ -66,14 +68,8 @@ const capabilityBoundaryStyle = {
   lineHeight: designTokens.lineHeight.normal,
 } as const;
 
-function formatYi(value: number | null): string {
-  if (value === null || !Number.isFinite(value)) {
-    return EM_DASH;
-  }
-  const yi = value / 100_000_000;
-  return `${yi >= 0 ? "+" : ""}${yi.toFixed(2)} 亿`;
-}
-
+// 金额一律走域内统一 formatYi（pnlAttributionViewModel → utils/format，signed 恒真）。
+// 本面板输入经 support 层 finiteOrNull 归一化，恒为有限数或 null，输出与原实现逐字一致。
 function formatOptionalYi(value: number | null | undefined): string {
   return typeof value === "number" && Number.isFinite(value)
     ? formatYi(value)
@@ -468,14 +464,7 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
               </div>
             ))}
           </div>
-          {barOption && (
-            <ReactECharts
-              option={barOption}
-              style={{ height: 220 }}
-              notMerge
-              lazyUpdate
-            />
-          )}
+          {barOption && <BaseChart option={barOption} height={220} />}
           {normalized.items.length > 0 && (
             <div style={{ marginTop: designTokens.space[5], overflow: "auto" }}>
               <table

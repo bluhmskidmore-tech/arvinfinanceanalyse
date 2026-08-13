@@ -8,6 +8,7 @@ import {
 } from "react";
 
 import { useApiClient } from "../../../api/client";
+import { EM_DASH } from "../../../utils/format";
 import type {
   LedgerPnlCandidateFinancialIndicatorAccountLineage,
   LedgerPnlCandidateFinancialIndicatorLineage,
@@ -896,7 +897,7 @@ function ValidationEvidenceCard({
 function MetricValue({ metric }: { metric: LedgerPnlCandidateFinancialIndicatorMetric | undefined }) {
   return (
     <>
-      <strong>{metric?.value ?? "—"}</strong>
+      <strong>{metric?.value ?? EM_DASH}</strong>
       <span>{metric?.value === null || metric === undefined ? "" : metric.unit}</span>
     </>
   );
@@ -935,8 +936,8 @@ function LineageEvidence({ lineage }: { lineage: LedgerPnlCandidateFinancialIndi
         </div>
         <p>状态 {STATUS_LABELS[lineage.dependency_status]} · 权重 {lineage.weight}</p>
         <dl>
-          <div><dt>依赖值</dt><dd>{lineage.metric_value_yi === null ? "—" : `${lineage.metric_value_yi} 亿元`}</dd></div>
-          <div><dt>贡献</dt><dd>{lineage.contribution_yi === null ? "—" : `${lineage.contribution_yi} 亿元`}</dd></div>
+          <div><dt>依赖值</dt><dd>{lineage.metric_value_yi === null ? EM_DASH : `${lineage.metric_value_yi} 亿元`}</dd></div>
+          <div><dt>贡献</dt><dd>{lineage.contribution_yi === null ? EM_DASH : `${lineage.contribution_yi} 亿元`}</dd></div>
         </dl>
       </article>
     );
@@ -1626,7 +1627,7 @@ export function LedgerPnlCandidateFinancialIndicatorsPanel({
             <article key={metricId} data-testid={`candidate-headline-${metricId}`}>
               <span>{metric?.name ?? metricId}</span>
               <MetricValue metric={metric} />
-              <small>{metric ? BASIS_LABELS[metric.basis] : "—"}</small>
+              <small>{metric ? BASIS_LABELS[metric.basis] : EM_DASH}</small>
               {metric ? (
                 <>
                   <em className="candidate-indicators__metric-status" data-status={metric.status}>
@@ -1742,7 +1743,7 @@ export function LedgerPnlCandidateFinancialIndicatorsPanel({
                   <code>{metric.metric_id}</code>
                 </span>
                 <span>
-                  <strong>{metric.value ?? "—"}</strong>
+                  <strong>{metric.value ?? EM_DASH}</strong>
                   <small>{metric.unit} · {STATUS_LABELS[metric.status]}</small>
                 </span>
               </button>
@@ -1809,7 +1810,7 @@ export function LedgerPnlCandidateFinancialIndicatorsPanel({
             {detailMetric && !detailUnavailable ? (
               <div className="candidate-indicators__detail-body">
                 <dl>
-                  <div><dt>值</dt><dd>{detailMetric.value ?? "—"} {detailMetric.unit}</dd></div>
+                  <div><dt>值</dt><dd>{detailMetric.value ?? EM_DASH} {detailMetric.unit}</dd></div>
                   <div>
                     <dt>口径</dt>
                     <dd>{BASIS_LABELS[detailMetric.basis]} · <code>{detailMetric.basis}</code></dd>

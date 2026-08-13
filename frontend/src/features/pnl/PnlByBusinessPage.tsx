@@ -576,7 +576,7 @@ function BusinessRowsTable({
                   {formatAnalysisYieldPct(summary?.ftp_net_annualized_yield_pct)}
                 </td>
                 <td className="pnl-by-business-table-footer-cell">{formatRatioPct(summary?.proportion)}</td>
-                <td className="pnl-by-business-table-footer-cell">{summary?.assets_count ?? "—"}</td>
+                <td className="pnl-by-business-table-footer-cell">{summary?.assets_count ?? EM_DASH}</td>
               </tr>
             </tfoot>
           ) : null}
@@ -718,15 +718,15 @@ function UnallocatedPnlPanel({
                       key={`${row.reason_code}:${row.source_kind}:${row.invest_type_std}:${row.accounting_basis}:${row.portfolio_name}:${row.cost_center}`}
                     >
                       <td>{UNALLOCATED_REASON_LABELS[row.reason_code]}</td>
-                      <td>{row.source_kind || "—"}</td>
-                      <td>{row.invest_type_std || "—"}</td>
-                      <td>{row.accounting_basis || "—"}</td>
-                      <td>{row.portfolio_name || "—"}</td>
-                      <td>{row.cost_center || "—"}</td>
+                      <td>{row.source_kind || EM_DASH}</td>
+                      <td>{row.invest_type_std || EM_DASH}</td>
+                      <td>{row.accounting_basis || EM_DASH}</td>
+                      <td>{row.portfolio_name || EM_DASH}</td>
+                      <td>{row.cost_center || EM_DASH}</td>
                       <td>{row.pnl_row_count}</td>
                       <td>{formatPnlWan(row.total_pnl)}</td>
                       <td>{formatPnlWan(row.abs_pnl)}</td>
-                      <td>{row.sample_instrument_codes.join("、") || "—"}</td>
+                      <td>{row.sample_instrument_codes.join("、") || EM_DASH}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -766,14 +766,14 @@ function UnallocatedPnlPanel({
                       <tr
                         key={`${item.report_date}:${item.source_kind}:${item.instrument_code}:${item.portfolio_name}:${item.cost_center}:${index}`}
                       >
-                        <td>{item.report_date || "—"}</td>
-                        <td>{item.instrument_code || "—"}</td>
-                        <td>{item.invest_type_std || "—"}</td>
-                        <td>{item.source_kind || "—"}</td>
-                        <td>{item.portfolio_name || "—"}</td>
-                        <td>{item.cost_center || "—"}</td>
-                        <td>{item.accounting_basis || "—"}</td>
-                        <td>{item.currency_basis || "—"}</td>
+                        <td>{item.report_date || EM_DASH}</td>
+                        <td>{item.instrument_code || EM_DASH}</td>
+                        <td>{item.invest_type_std || EM_DASH}</td>
+                        <td>{item.source_kind || EM_DASH}</td>
+                        <td>{item.portfolio_name || EM_DASH}</td>
+                        <td>{item.cost_center || EM_DASH}</td>
+                        <td>{item.accounting_basis || EM_DASH}</td>
+                        <td>{item.currency_basis || EM_DASH}</td>
                         <td>{formatPnlWan(item.total_pnl)}</td>
                         <td>{UNALLOCATED_REASON_LABELS[item.reason_code]}</td>
                       </tr>
