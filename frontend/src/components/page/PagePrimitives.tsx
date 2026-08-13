@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 
+import type { NocturneThemeScope } from "../../theme/themeScopes";
 import {
   PAGE_V2_CONTRACT,
   pageInsetCardStyle,
@@ -108,8 +109,9 @@ export type PageV2ShellProps = {
   /**
    * Nocturne 换肤 scope 透传（MarketWorkbenchFrame themeScope 同款先例）：
    * PageV2Shell 即页根时 scope 须落在 shell 根元素；不传时零影响。
+   * 类型收窄为 palette 字面量联合，拼写错误在编译期报错。
    */
-  themeScope?: string;
+  themeScope?: NocturneThemeScope;
 };
 
 export type PageV2SurfacePanelProps = {

@@ -15,6 +15,13 @@ import {
   workbenchNavigation,
 } from "../app/navigation";
 import { DataModeRibbon } from "../components/DataModeRibbon";
+import {
+  COCKPIT_SHELL_SECTION_KEYS,
+  DASHBOARD_COCKPIT_SECTION_KEYS,
+  MODULE_HOME_SECTION_KEYS,
+  SECTION_SUBNAV_EXCLUDED_SECTION_KEYS,
+  TERMINAL_BAR_EXCLUDED_SECTION_KEYS,
+} from "./workbenchShellSections";
 
 const WorkbenchShellMarketTicker = lazy(() => import("./WorkbenchShellMarketTicker"));
 const institutionalConsoleShellSectionKeys = new Set([
@@ -195,16 +202,11 @@ export function WorkbenchShell() {
     : [];
   const currentGroupSections =
     currentGroup?.key === "market" ? currentGroupVisibleSections : (currentGroup?.sections ?? []);
-  const isModuleHomePage = [
-    "portfolio-home",
-    "market-overview",
-    "risk-overview",
-    "performance-home",
-    "reports-center",
-  ].includes(currentSection.key);
+  const isModuleHomePage = MODULE_HOME_SECTION_KEYS.includes(currentSection.key);
   const isPortfolioGroup = currentGroup?.key === "portfolio";
-  const isDashboardCockpitShell =
-    currentSection.key === "dashboard" || currentSection.key === "portfolio-home";
+  const isDashboardCockpitShell = DASHBOARD_COCKPIT_SECTION_KEYS.includes(
+    currentSection.key,
+  );
   const useInstitutionalConsoleShell = institutionalConsoleShellSectionKeys.has(currentSection.key);
   useInstitutionalConsoleCss(useInstitutionalConsoleShell);
   useWorkbenchChromeCss(currentSection.key !== "dashboard");
@@ -215,29 +217,10 @@ export function WorkbenchShell() {
   /** 资产负债页以正式内容为主：壳层只保留页面顶栏，不再重复大号标题与市场条。 */
   const isBalanceAnalysisCompactChrome = currentSection.key === "balance-analysis";
   const isStockAnalysisMinimalShell = currentSection.key === "stock-analysis";
-  /**
-   * 宏观工具 / 宏观观察（同一页面组件）：页面自带页头是唯一标题带，
-   * 外壳终端条（大标题 + 报告日 chip + 市场 ticker + 工具链接）整块抑制，
-   * 报表中心 / 中台配置仍可从左栏「支持入口」进入；组内子导航保持渲染。
-   */
-  const isMacroToolkitShell =
-    currentSection.key === "macro-toolkit" || currentSection.key === "macro-observation";
-  const useCockpitShellFrame =
-    isDashboardCockpitShell ||
-    isBondAnalysisMinimalShell ||
-    isStockAnalysisMinimalShell ||
-    isBalanceAnalysisCompactChrome ||
-    currentSection.key === "balance-movement-analysis" ||
-    isProductCategoryPnlShell ||
-    isModuleHomePage;
-  const showShellTerminalBar =
-    !isDashboardCockpitShell &&
-    !isBondAnalysisMinimalShell &&
-    !isStockAnalysisMinimalShell &&
-    !isBalanceAnalysisCompactChrome &&
-    !isMacroToolkitShell &&
-    currentSection.key !== "balance-movement-analysis" &&
-    !isModuleHomePage;
+  const useCockpitShellFrame = COCKPIT_SHELL_SECTION_KEYS.includes(currentSection.key);
+  const showShellTerminalBar = !TERMINAL_BAR_EXCLUDED_SECTION_KEYS.includes(
+    currentSection.key,
+  );
   const showShellMarketTicker = showShellTerminalBar && !isDashboardCockpitShell;
   const isBalanceMovementAnalysisCompactChrome =
     currentSection.key === "balance-movement-analysis";
@@ -774,13 +757,7 @@ export function WorkbenchShell() {
             </section>
           ) : null}
 
-          {!isDashboardCockpitShell &&
-          !isBondAnalysisMinimalShell &&
-          !isStockAnalysisMinimalShell &&
-          !isBalanceAnalysisCompactChrome &&
-          !isBalanceMovementAnalysisCompactChrome &&
-          !isMarketDataTerminalMain &&
-          !isModuleHomePage &&
+          {!SECTION_SUBNAV_EXCLUDED_SECTION_KEYS.includes(currentSection.key) &&
           currentGroup ? (
             <section
               data-testid="workbench-section-subnav"

@@ -5,7 +5,13 @@ import { describe, expect, it } from "vitest";
 
 import { workbenchNavigation } from "../app/navigation";
 import { stockAnalysisPageCssVars } from "../features/stock-analysis/lib/stockAnalysisTokens";
-import { designTokens, dhApiTokens, ibTokens } from "../theme/designSystem";
+import {
+  COCKPIT_SHELL_SECTION_KEYS,
+  SECTION_SUBNAV_EXCLUDED_SECTION_KEYS,
+  TERMINAL_BAR_EXCLUDED_SECTION_KEYS,
+} from "../layouts/workbenchShellSections";
+import { designTokens, ibTokens, nocturneTokens } from "../theme/designSystem";
+import { NOCTURNE_THEME_SCOPES } from "../theme/themeScopes";
 import { shellTokens } from "../theme/tokens";
 import { workbenchTheme } from "../theme/theme";
 
@@ -61,6 +67,99 @@ function nocturneScopeSet(css: string, bodyMarker: string, selectorMarker?: stri
     let scope: RegExpExecArray | null;
     while ((scope = scopeRe.exec(rule[1])) !== null) {
       scopes.add(scope[1]);
+    }
+  }
+  return [...scopes].sort();
+}
+
+/** 选择器列表按顶层逗号拆条（:has(...) / :is(...) 括号内的逗号不拆）。 */
+function splitTopLevelSelectors(selectorList: string): string[] {
+  const legs: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (const char of selectorList) {
+    if (char === "," && depth === 0) {
+      legs.push(current);
+      current = "";
+      continue;
+    }
+    if (char === "(") depth += 1;
+    else if (char === ")") depth -= 1;
+    current += char;
+  }
+  legs.push(current);
+  return legs;
+}
+
+/**
+ * 成对子列表分列提取：与 nocturneScopeSet 同样按 bodyMarker 命中规则，
+ * 但只统计 legFilter 命中的顶层 selector 腿。nocturneScopeSet 对整条规则
+ * 并集提取，对「同一规则里的成对列表只往一半加/删 scope」不敏感；分列后
+ * 断言两半各自等于并集即可锁死（tokens.css「纯属性列表 + :has 列表」双写
+ * 与延迟分册终端条阴影组双 selector 都属此类结构）。
+ */
+function nocturneScopeSetForLegs(
+  css: string,
+  bodyMarker: string,
+  legFilter: (leg: string) => boolean,
+): string[] {
+  const cleaned = stripCssComments(css);
+  const scopes = new Set<string>();
+  const ruleRe = /([^{}]+)\{([^{}]*)\}/g;
+  let rule: RegExpExecArray | null;
+  while ((rule = ruleRe.exec(cleaned)) !== null) {
+    if (!rule[2].includes(bodyMarker)) continue;
+    for (const leg of splitTopLevelSelectors(rule[1])) {
+      if (!legFilter(leg)) continue;
+      const scopeRe = /data-moss-theme-scope="([a-z0-9-]+)"/g;
+      let scope: RegExpExecArray | null;
+      while ((scope = scopeRe.exec(leg)) !== null) {
+        scopes.add(scope[1]);
+      }
+    }
+  }
+  return [...scopes].sort();
+}
+
+/**
+ * section key → Nocturne scope 名映射：登记「key 与 scope 名不一致」的页面
+ * （dashboard 首页 scope 为 dashboard-home；kpi-performance 为 kpi；
+ * performance-home / reports-center 共用 ModuleWorkbenchHome 的
+ * module-workbench-home 单 scope；macro-observation 与 macro-toolkit
+ * 共用同一页面组件与 scope）。
+ */
+const NOCTURNE_SECTION_SCOPE_ALIASES: Record<string, string> = {
+  dashboard: "dashboard-home",
+  "kpi-performance": "kpi",
+  "performance-home": "module-workbench-home",
+  "reports-center": "module-workbench-home",
+  "macro-observation": "macro-toolkit",
+};
+
+/** 未接入 Nocturne 的 section（占位/隐藏路由）白名单，新增时须显式登记。 */
+const NON_NOCTURNE_SECTION_KEYS = new Set(["source-preview"]);
+
+/**
+ * 从 section key 推导 Nocturne scope 期望列表（治理横幅推导范式推广到
+ * 全部铬件清单）：别名解析后落在 palette 内 → 参与推导；否则该 section
+ * 必须命中 NON_NOCTURNE_SECTION_KEYS 白名单，缺席直接抛错——防止将来
+ * 「key 与 scope 名不一致且未登记别名」的页面被静默丢弃（旧
+ * palette.includes 过滤的口子）。
+ */
+function deriveNocturneScopes(sectionKeys: readonly string[], palette: string[]): string[] {
+  const scopes = new Set<string>();
+  for (const sectionKey of sectionKeys) {
+    const scope = NOCTURNE_SECTION_SCOPE_ALIASES[sectionKey] ?? sectionKey;
+    if (palette.includes(scope)) {
+      scopes.add(scope);
+      continue;
+    }
+    if (!NON_NOCTURNE_SECTION_KEYS.has(sectionKey)) {
+      throw new Error(
+        `workbenchNavigation section "${sectionKey}"（解析 scope "${scope}"）不在 Nocturne palette，` +
+          "也未登记 NOCTURNE_SECTION_SCOPE_ALIASES / NON_NOCTURNE_SECTION_KEYS；" +
+          "请显式登记后再更新断言，禁止静默丢弃。",
+      );
     }
   }
   return [...scopes].sort();
@@ -162,36 +261,39 @@ describe("shellTokens", () => {
 });
 
 describe("workbenchTheme", () => {
-  it("maps token fields to the route-scoped dark terminal palette", () => {
+  it("maps token fields to the Nocturne palette", () => {
     const { token } = workbenchTheme;
     expect(workbenchTheme.algorithm).toBeDefined();
     expect(token).toBeDefined();
-    expect(token?.colorPrimary).toBe(dhApiTokens.color.blue);
-    expect(token?.colorSuccess).toBe(dhApiTokens.color.green);
-    expect(token?.colorWarning).toBe(dhApiTokens.color.amber);
-    expect(token?.colorError).toBe(dhApiTokens.color.red);
-    expect(token?.colorText).toBe(dhApiTokens.color.ink);
-    expect(token?.colorTextSecondary).toBe(dhApiTokens.color.inkSoft);
-    expect(token?.colorBorder).toBe(dhApiTokens.color.line);
-    expect(token?.colorBgBase).toBe(dhApiTokens.color.bg);
-    expect(token?.colorBgContainer).toBe(dhApiTokens.color.panel);
-    expect(token?.colorFillAlter).toBe(dhApiTokens.color.panel2);
-    expect(token?.borderRadius).toBe(2);
+    expect(token?.colorPrimary).toBe(nocturneTokens.color.blue);
+    expect(token?.colorSuccess).toBe(nocturneTokens.color.green);
+    expect(token?.colorWarning).toBe(nocturneTokens.color.amber);
+    expect(token?.colorError).toBe(nocturneTokens.color.red);
+    expect(token?.colorText).toBe(nocturneTokens.color.ink);
+    expect(token?.colorTextSecondary).toBe(nocturneTokens.color.inkSoft);
+    expect(token?.colorBorder).toBe(nocturneTokens.color.line);
+    expect(token?.colorBgBase).toBe(nocturneTokens.color.bg);
+    expect(token?.colorBgContainer).toBe(nocturneTokens.color.panel);
+    // colorBgElevated / colorFillAlter 取 panel2（--nct-well），与页内压制层同源。
+    expect(token?.colorBgElevated).toBe(nocturneTokens.color.panel2);
+    expect(token?.colorFillAlter).toBe(nocturneTokens.color.panel2);
+    expect(token?.borderRadius).toBe(nocturneTokens.radius);
   });
 
-  it("defines Card and Layout overrides from the dark route tokens", () => {
+  it("defines Card and Layout overrides from the Nocturne tokens", () => {
     const { components } = workbenchTheme;
-    expect(components?.Card?.borderRadiusLG).toBe(2);
+    expect(components?.Card?.borderRadiusLG).toBe(nocturneTokens.radius);
     expect(components?.Card?.boxShadow).toBe("none");
-    expect(components?.Layout?.bodyBg).toBe(dhApiTokens.color.bg);
-    expect(components?.Layout?.siderBg).toBe(dhApiTokens.color.rail);
+    expect(components?.Layout?.bodyBg).toBe(nocturneTokens.color.bg);
+    expect(components?.Layout?.siderBg).toBe(nocturneTokens.color.rail);
   });
 
-  it("keeps table chrome on the dark route density and row tokens", () => {
+  it("keeps table chrome on the Nocturne density and row tokens", () => {
     const { components } = workbenchTheme;
-    expect(components?.Table?.headerBg).toBe(dhApiTokens.color.panel3);
-    expect(components?.Table?.headerColor).toBe(dhApiTokens.color.inkSoft);
-    expect(components?.Table?.rowHoverBg).toBe("rgba(114, 167, 220, 0.08)");
+    expect(components?.Table?.headerBg).toBe(nocturneTokens.color.panel3);
+    expect(components?.Table?.headerColor).toBe(nocturneTokens.color.inkSoft);
+    // accent 8% 行悬停，对齐 --moss-institutional-row-hover 的 mix 惯例。
+    expect(components?.Table?.rowHoverBg).toBe("rgba(145, 132, 217, 0.08)");
   });
 });
 
@@ -460,10 +562,39 @@ describe("globalCss design token bridge (:root)", () => {
       governanceSelectorMarker,
     );
 
+    // 渲染分支推导期望（WorkbenchShell 导出常量 + workbenchNavigation +
+    // 共享别名表）：终端条/子导航/cockpit 不再互为相对 parity，而是各自
+    // 对齐渲染分支的推导值——tokens.css 某块自身多写/漏写 scope 时同样红。
+    const navigationSectionKeys = workbenchNavigation.map((section) => section.key);
+    const terminalExpected = deriveNocturneScopes(
+      navigationSectionKeys.filter(
+        (key) => !TERMINAL_BAR_EXCLUDED_SECTION_KEYS.includes(key),
+      ),
+      palette,
+    );
+    const subnavExpected = deriveNocturneScopes(
+      navigationSectionKeys.filter(
+        (key) => !SECTION_SUBNAV_EXCLUDED_SECTION_KEYS.includes(key),
+      ),
+      palette,
+    );
+    const cockpitExpected = deriveNocturneScopes(COCKPIT_SHELL_SECTION_KEYS, palette);
+    // 推导锚点：market-data 渲染终端条但抑制子导航；宏观工具相反；
+    // dashboard / performance-home / reports-center 走别名解析入 cockpit。
+    expect(terminalExpected).toContain("market-data");
+    expect(terminalExpected).not.toContain("macro-toolkit");
+    expect(subnavExpected).toContain("macro-toolkit");
+    expect(subnavExpected).not.toContain("market-data");
+    expect(cockpitExpected).toContain("dashboard-home");
+    expect(cockpitExpected).toContain("module-workbench-home");
+
     // 主色板块（tokens.css）是唯一权威列表；收口层 grid/rail 必须同一份。
     expect(palette.length).toBeGreaterThanOrEqual(10);
     expect(gridOverride).toEqual(palette);
     expect(railOverride).toEqual(palette);
+    // themeScope 字面量联合（PageV2Shell / MarketWorkbenchFrame 类型收窄
+    // 的 union 来源）与主色板块同构全量。
+    expect([...NOCTURNE_THEME_SCOPES].sort()).toEqual(palette);
     // ThemedRouteBoundary 兜底底色块与主色板块同构全量
     // （无 boundary 的路由 :has() 不命中即零效果）。
     expect(boundaryOverride).toEqual(palette);
@@ -476,66 +607,38 @@ describe("globalCss design token bridge (:root)", () => {
     // page-v2 面板压制（背景 + 结论左边线）与 grid/rail 同构全量列表。
     expect(pageV2Override).toEqual(palette);
     expect(conclusionOverride).toEqual(palette);
-    // cockpit 壳 rail hover/active：十个 cockpit scope（WorkbenchShell
-    // useCockpitShellFrame 为真的 Nocturne 路由）全列（终层兜底）；
-    // dashboard-home / market-overview 由页内更高特异性块等值接管，
-    // 其余 scope（含 2026-08-13 批量接入的 balance-analysis /
-    // balance-movement-analysis / product-category-pnl）由终层直接生效。
-    expect(cockpitHoverOverride).toEqual([
-      "balance-analysis",
-      "balance-movement-analysis",
-      "bond-analysis",
-      "dashboard-home",
-      "market-overview",
-      "module-workbench-home",
-      "portfolio-home",
-      "product-category-pnl",
-      "risk-overview",
-      "stock-analysis",
-    ]);
-    expect(cockpitActiveOverride).toEqual([
-      "balance-analysis",
-      "balance-movement-analysis",
-      "bond-analysis",
-      "dashboard-home",
-      "market-overview",
-      "module-workbench-home",
-      "portfolio-home",
-      "product-category-pnl",
-      "risk-overview",
-      "stock-analysis",
-    ]);
+    // cockpit 壳 rail hover/active＝useCockpitShellFrame 渲染分支推导
+    // （终层兜底）；dashboard-home / market-overview 由页内更高特异性块
+    // 等值接管，其余 scope 由终层直接生效。
+    expect(cockpitHoverOverride).toEqual(cockpitExpected);
+    expect(cockpitActiveOverride).toEqual(cockpitExpected);
     // 首页 cockpit 壳不渲染主列纸面。
     expect(paper).toEqual(palette.filter((scope) => scope !== "dashboard-home"));
-    // 渲染终端条的 scope：tokens.css 终端条块与延迟分册必须同一份列表。
-    expect(terminalVars.length).toBeGreaterThan(0);
-    expect(terminalOverride).toEqual(terminalVars);
-    // 延迟分册终端条铬件四组（阴影 / chip+pill / utility navlink / 行情条）
-    // 与 tokens.css 终端条块同一份 showShellTerminalBar 列表。
-    expect(terminalChromeShadow).toEqual(terminalVars);
-    expect(terminalChromeChipPill).toEqual(terminalVars);
-    expect(terminalChromeNavlink).toEqual(terminalVars);
-    expect(terminalChromeTicker).toEqual(terminalVars);
-    // 子导航三组＝渲染组内子导航的 Nocturne scope：终端条列表去掉
-    // market-data（isMarketDataTerminalMain 抑制子导航）再加 macro-toolkit
-    // （宏观工具抑制终端条但保留组内子导航）。
-    const subnavExpected = [
-      ...terminalVars.filter((scope) => scope !== "market-data"),
-      "macro-toolkit",
-    ].sort();
+    // 渲染终端条的 scope＝showShellTerminalBar 渲染分支推导；tokens.css
+    // 终端条块与延迟分册收敛列表（含铬件四组：阴影 / chip+pill /
+    // utility navlink / 行情条）都必须等于这一份推导值。
+    expect(terminalVars).toEqual(terminalExpected);
+    expect(terminalOverride).toEqual(terminalExpected);
+    expect(terminalChromeShadow).toEqual(terminalExpected);
+    expect(terminalChromeChipPill).toEqual(terminalExpected);
+    expect(terminalChromeNavlink).toEqual(terminalExpected);
+    expect(terminalChromeTicker).toEqual(terminalExpected);
+    // 子导航三组＝组内子导航渲染分支推导（market-data 抑制子导航、
+    // 宏观工具抑制终端条但保留子导航，差异都由排除表常量表达）。
     expect(subnavOverride).toEqual(subnavExpected);
     expect(subnavLinkOverride).toEqual(subnavExpected);
     expect(subnavActiveOverride).toEqual(subnavExpected);
     // 治理横幅四块＝navigation.ts 中 governanceStatus="temporary-exception"
-    // 且已入 Nocturne palette 的 scope（kpi-performance 的 scope 名为 kpi），
-    // 外加 liability-analytics 历史零效果行（该 section 已无治理横幅）。
-    const governanceScopeAliases: Record<string, string> = { "kpi-performance": "kpi" };
+    // 的 section 走共享别名表推导（kpi-performance → kpi），外加
+    // liability-analytics 历史零效果行（该 section 已无治理横幅）。
     const governanceExpected = [
       ...new Set([
-        ...workbenchNavigation
-          .filter((section) => section.governanceStatus === "temporary-exception")
-          .map((section) => governanceScopeAliases[section.key] ?? section.key)
-          .filter((scope) => palette.includes(scope)),
+        ...deriveNocturneScopes(
+          workbenchNavigation
+            .filter((section) => section.governanceStatus === "temporary-exception")
+            .map((section) => section.key),
+          palette,
+        ),
         "liability-analytics",
       ]),
     ].sort();
@@ -544,6 +647,54 @@ describe("globalCss design token bridge (:root)", () => {
     expect(governanceTitleOverride).toEqual(governanceExpected);
     expect(governanceBodyOverride).toEqual(governanceExpected);
     expect(governanceHintOverride).toEqual(governanceExpected);
+
+    // 成对子列表一致性（分列提取）：tokens.css 三块「纯属性列表 + :has
+    // 列表」双写与延迟分册终端条阴影组「基础腿 + --desktop-aligned 腿」
+    // 双 selector，整条并集提取对「只往一半加/删 scope」不敏感；分列后
+    // 断言每一半各自等于对应权威列表。
+    const isHasLeg = (leg: string) => leg.includes(":has(");
+    const isPlainLeg = (leg: string) => !leg.includes(":has(");
+    const isDesktopAlignedLeg = (leg: string) => leg.includes("--desktop-aligned");
+    expect(nocturneScopeSetForLegs(tokensCss, "--nct-bg: #161826", isPlainLeg)).toEqual(
+      palette,
+    );
+    expect(nocturneScopeSetForLegs(tokensCss, "--nct-bg: #161826", isHasLeg)).toEqual(
+      palette,
+    );
+    expect(
+      nocturneScopeSetForLegs(tokensCss, "--moss-shell-paper-bg: var(--nct-bg)", isPlainLeg),
+    ).toEqual(paper);
+    expect(
+      nocturneScopeSetForLegs(tokensCss, "--moss-shell-paper-bg: var(--nct-bg)", isHasLeg),
+    ).toEqual(paper);
+    expect(
+      nocturneScopeSetForLegs(
+        tokensCss,
+        "--moss-shell-terminal-bg: var(--nct-rail)",
+        isPlainLeg,
+      ),
+    ).toEqual(terminalExpected);
+    expect(
+      nocturneScopeSetForLegs(
+        tokensCss,
+        "--moss-shell-terminal-bg: var(--nct-rail)",
+        isHasLeg,
+      ),
+    ).toEqual(terminalExpected);
+    expect(
+      nocturneScopeSetForLegs(
+        workbenchDeferredChromeCss,
+        "box-shadow: none !important",
+        (leg) => !isDesktopAlignedLeg(leg),
+      ),
+    ).toEqual(terminalExpected);
+    expect(
+      nocturneScopeSetForLegs(
+        workbenchDeferredChromeCss,
+        "box-shadow: none !important",
+        isDesktopAlignedLeg,
+      ),
+    ).toEqual(terminalExpected);
   });
 
   it("keeps AG Grid theme aliases out of the eager global stylesheet", () => {
