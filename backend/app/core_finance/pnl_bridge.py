@@ -32,6 +32,19 @@ ZERO = Decimal("0")
 HUNDRED = Decimal("100")
 AMOUNT_SCALE = Decimal("0.00000001")
 
+# 曲线类效应"归零但不是观测值"的诊断前缀。行级 `balance_diagnostics` 是本模块
+# 唯一能带出结构化信号的通道（`PnlBridgeRowSchema` 是 extra="forbid"），因此这些
+# 前缀就是调用方与页面用来区分"真为零"和"没有曲线"的判据。
+TREASURY_CURVE_UNAVAILABLE_PREFIX = "TREASURY_CURVE_UNAVAILABLE"
+TREASURY_CURVE_SAME_SOURCE_PREFIX = "TREASURY_CURVE_SAME_SOURCE"
+CREDIT_SPREAD_CURVE_UNAVAILABLE_PREFIX = "CREDIT_SPREAD_CURVE_UNAVAILABLE"
+CREDIT_SPREAD_CURVE_SAME_SOURCE_PREFIX = "CREDIT_SPREAD_CURVE_SAME_SOURCE"
+# 这两条不是曲线缺失，但同样把效应顶成 0：市值基数全 NULL（三项效应）和滚动窗口
+# 缺失（仅 roll_down）。它们此前只有字符串，没有结构化通道。
+MARKET_VALUE_BASE_MISSING_PREFIX = "MARKET_VALUE_BASE_MISSING"
+ROLL_DOWN_WINDOW_MISSING_PREFIX = "ROLL_DOWN_WINDOW_MISSING"
+ROLL_DOWN_TENOR_OUTSIDE_CURVE_PREFIX = "ROLL_DOWN_TENOR_OUTSIDE_CURVE"
+
 
 @dataclass(slots=True, frozen=True)
 class PnlBridgeRow:

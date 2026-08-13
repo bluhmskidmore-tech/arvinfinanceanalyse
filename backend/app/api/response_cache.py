@@ -209,3 +209,18 @@ def market_home_macro_analysis_cache_key(
 
 def market_home_strategy_summaries_cache_key(duckdb_path: str) -> str:
     return f"macro-toolkit/strategy-summaries::{duckdb_path}"
+
+
+def campisi_four_effects_cache_key(
+    duckdb_path: str,
+    *,
+    detail: str,
+    start_date: str | None,
+    end_date: str | None,
+    lookback_days: int,
+) -> str:
+    return (
+        "pnl-attribution/campisi/four-effects"
+        f"::{detail}::{start_date or 'auto'}::{end_date or 'auto'}"
+        f"::{lookback_days}::{duckdb_path}"
+    )
