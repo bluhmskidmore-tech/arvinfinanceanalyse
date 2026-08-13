@@ -18,6 +18,9 @@
  *    fixtures (14 shell-token `toBe("#...")` assertions plus the Nocturne scope-parity needle
  *    `"--nct-bg: #161826"`). Pre-existing drift surfaced once the audit stopped early-exiting;
  *    the file is unchanged relative to HEAD.
+ *  - 2026-08-13 frontend/src/test/theme.test.ts hex 15 -> 17: commit 04d9613e (antd cssinjs
+ *    tokens switched to Nocturne with derivation guardrails) added two more hex assertion
+ *    fixtures to the theme test; legitimate test samples, not UI literals.
  *  - 2026-08-13 frontend/src/theme/designSystem.ts hex -> 217: the token authority file is the
  *    sanctioned home for hex literals (Nocturne dark-theme tokens added here); 217 is the exact
  *    count under the ticket-guarded HEX_PATTERN (4 comment anchor references like `锚点 #1850a1）`

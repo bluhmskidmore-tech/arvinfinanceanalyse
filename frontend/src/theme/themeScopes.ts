@@ -1,7 +1,7 @@
 /**
  * Nocturne 色板已登记的页面 scope（`data-moss-theme-scope` 取值）。
  *
- * 与 `src/styles/tokens.css` 主色板块（`--nct-bg: #161826`）的 scope 列表
+ * 与 `src/styles/tokens.css` 主色板块（`--nct-bg` 深底）的 scope 列表
  * 同构全量；theme.test.ts 断言两者一致，防止本清单与 CSS 漂移。
  * `PageV2Shell` / `MarketWorkbenchFrame` 的 `themeScope` prop 收窄为该
  * 字面量联合，杜绝拼写错误产生静默死 scope（CSS 选择器永不命中）。

@@ -438,7 +438,7 @@
     "doubleDash": 2
   },
   "frontend/src/test/theme.test.ts": {
-    "hex": 15,
+    "hex": 17,
     "forbidden": 0,
     "offRadius": 0,
     "doubleDash": 0

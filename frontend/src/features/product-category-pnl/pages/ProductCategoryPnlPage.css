@@ -367,6 +367,14 @@
   padding: var(--moss-space-4);
 }
 
+/* 裸锚点触达目标 <24px（axe target-size）：补最小高度与内边距。 */
+.product-category-diagnostics__header > a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 8px;
+}
+
 .product-category-diagnostics__header {
   display: flex;
   justify-content: space-between;
@@ -7123,7 +7131,10 @@
   border-color: color-mix(in srgb, var(--dh-api-blue) 30%, transparent);
   border-left: 2px solid var(--dh-api-blue);
   background: var(--dh-api-blue-soft);
-  color: var(--dh-api-blue);
+  /* --dh-api-blue（中亮紫）在 blue-soft 深底上对比仅 3.97:1（<AA 4.5）；
+     与 BalanceAnalysisPage.css 的 on-accent 策略同源：文字走近白 ink，
+     激活语义由左侧 accent 边框承担。 */
+  color: var(--dh-api-ink);
 }
 
 .product-category-page-shell.theme-dh-api .product-category-contract-hero {
@@ -7227,7 +7238,7 @@
   :where(a, button):hover {
   border-color: color-mix(in srgb, var(--dh-api-blue) 48%, transparent);
   background: var(--dh-api-blue-soft);
-  color: var(--dh-api-blue);
+  color: var(--dh-api-ink);
   text-decoration: none;
 }
 
@@ -7484,7 +7495,9 @@
   border-color: var(--dh-api-blue);
   border-bottom: 2px solid var(--dh-api-blue);
   background: var(--dh-api-blue-soft);
-  color: var(--dh-api-blue);
+  /* blue-soft 深底上 --dh-api-blue 对比 3.97:1（<AA）；文字走 ink，
+     激活语义由 accent 底边框承担（与 BalanceAnalysisPage on-accent 同策略）。 */
+  color: var(--dh-api-ink);
 }
 
 .product-category-page-shell.theme-dh-api
@@ -7562,7 +7575,7 @@
   .product-category-section-nav
   a:hover {
   background: var(--dh-api-blue-soft);
-  color: var(--dh-api-blue);
+  color: var(--dh-api-ink);
 }
 
 .product-category-page-shell.theme-dh-api
@@ -7703,7 +7716,8 @@
   border: 1px solid color-mix(in srgb, var(--dh-api-blue) 32%, transparent);
   border-radius: 999px;
   background: var(--dh-api-blue-soft);
-  color: var(--dh-api-blue);
+  /* 徽章/状态件在 blue-soft 深底上的紫字对比不足（3.97:1），统一走 ink。 */
+  color: var(--dh-api-ink);
   font-family: var(--product-category-font-mono);
   font-size: 12px;
   font-weight: 750;
@@ -7806,7 +7820,7 @@
 .product-category-page-shell.theme-dh-api
   .product-category-attribution__segmented-button--active {
   background: var(--dh-api-blue-soft);
-  color: var(--dh-api-blue);
+  color: var(--dh-api-ink);
 }
 
 .product-category-page-shell.theme-dh-api
