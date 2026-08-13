@@ -9495,3 +9495,353 @@
     transition: none !important;
   }
 }
+
+/* 主屏利差读数：复用正式首屏读数带的面板与指标格，仅补列数与强调项。 */
+.product-category-spread-readout__totals {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.product-category-spread-readout__totals--liability {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.product-category-spread-readout__caption {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--moss-color-neutral-200);
+  font-size: 12px;
+}
+
+.product-category-spread-readout__gap {
+  margin: 0;
+  padding: 10px 14px;
+  border-top: 1px solid var(--moss-color-neutral-200);
+  font-size: 12px;
+}
+
+.product-category-page-shell.theme-dh-api
+  .product-category-spread-readout__caption,
+.product-category-page-shell.theme-dh-api .product-category-spread-readout__gap {
+  border-top: 1px solid var(--dh-api-line-soft);
+  color: var(--dh-api-muted);
+}
+
+.product-category-page-shell.theme-dh-api
+  .product-category-spread-readout__caption
+  strong {
+  color: var(--dh-api-ink);
+}
+
+/* 首格强调保留给正式结果带；利差读数改为强调两个利差本身。 */
+.product-category-page-shell.theme-dh-api
+  .product-category-spread-readout
+  .product-category-formal-readiness__metric:first-child {
+  background: var(--dh-api-panel);
+}
+
+.product-category-page-shell.theme-dh-api
+  .product-category-spread-readout
+  .product-category-formal-readiness__metric:first-child
+  strong {
+  color: var(--dh-api-ink);
+  font-size: 21px;
+}
+
+.product-category-page-shell.theme-dh-api
+  .product-category-spread-readout__metric--headline
+  strong {
+  color: var(--dh-api-blue);
+  font-size: 26px;
+}
+
+@media (max-width: 1120px) {
+  .product-category-spread-readout__totals,
+  .product-category-spread-readout__totals--liability {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .product-category-page-shell.theme-dh-api
+    .product-category-spread-readout
+    .product-category-formal-readiness__metric:nth-child(odd) {
+    border-left: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .product-category-spread-readout__totals,
+  .product-category-spread-readout__totals--liability {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .product-category-page-shell.theme-dh-api
+    .product-category-spread-readout
+    .product-category-formal-readiness__metric {
+    border-left: 0;
+  }
+}
+
+/* ============================================================
+   桌面首屏预算收口（1280×720 / 1440×720）
+   「整体利差」读数带入驻首屏后，desktop-layout / desktop-states 两条
+   spec 的首屏预算在 1280 与 1440 均溢出（实测 1280 需净省 >278px、
+   1440 需 >224px）。以下为页面作用域的垂直密度收紧：只动 padding /
+   gap / min-height / 行高与 1280 档驱动栏布局，不隐藏业务信息，
+   字号仅 26→22 一处（≥12px 地板不受影响），全部 var 引用。
+   ============================================================ */
+
+/* 外壳链：subnav 与页面之间约 53px 的工作台留白，本页首屏预算付不起。
+   基础值来自 workbenchInstitutionalConsole.css ≥901px 档的本路由壳类
+   （padding-top:10px / padding:16px 18px，均 !important），此处以双写壳类
+   （0-4-0）+ !important 同权后置压过；只动纵向，不碰左右与移动端档位。 */
+@media (min-width: 901px) {
+  .workbench-shell-grid--product-category-pnl.workbench-shell-grid--product-category-pnl
+    .workbench-main-column {
+    gap: 4px !important;
+    padding-top: 4px !important;
+  }
+
+  .workbench-shell-grid--product-category-pnl.workbench-shell-grid--product-category-pnl
+    .workbench-main-column
+    > main {
+    gap: 4px !important;
+    padding-top: 6px !important;
+  }
+
+  .workbench-shell-grid--product-category-pnl.workbench-shell-grid--product-category-pnl
+    [data-testid="workbench-section-subnav"] {
+    padding-bottom: 2px !important;
+  }
+
+  /* 页标题条（terminal-bar）：29px 展示字号 + 双行 meta 占 78px 纵深，
+     本页压到紧凑单层；只影响本路由壳。 */
+  .workbench-shell-grid--product-category-pnl.workbench-shell-grid--product-category-pnl
+    [data-testid="workbench-terminal-bar"] {
+    min-height: 0 !important;
+    padding-block: 4px !important;
+  }
+
+  .workbench-shell-grid--product-category-pnl.workbench-shell-grid--product-category-pnl
+    .workbench-page-title-display {
+    font-size: 18px;
+    line-height: 1.15;
+  }
+
+  .workbench-shell-grid--product-category-pnl.workbench-shell-grid--product-category-pnl
+    .workbench-terminal-bar-split {
+    gap: 2px !important;
+  }
+
+  .workbench-shell-grid--product-category-pnl.workbench-shell-grid--product-category-pnl
+    .workbench-page-context-shell,
+  .workbench-shell-grid--product-category-pnl.workbench-shell-grid--product-category-pnl
+    .workbench-operator-zone-shell {
+    min-height: 0 !important;
+  }
+
+  /* 行情 ticker：报价全保留，仅压行距与条目内边距。 */
+  .workbench-shell-grid--product-category-pnl.workbench-shell-grid--product-category-pnl
+    .workbench-market-ticker-shell {
+    gap: 2px 10px !important;
+    padding-block: 0 !important;
+  }
+
+  .workbench-shell-grid--product-category-pnl.workbench-shell-grid--product-category-pnl
+    .workbench-market-ticker-item {
+    min-height: 0 !important;
+    padding-block: 0 !important;
+    line-height: 1.2 !important;
+  }
+
+  .workbench-shell-grid--product-category-pnl.workbench-shell-grid--product-category-pnl
+    .workbench-market-ticker-label,
+  .workbench-shell-grid--product-category-pnl.workbench-shell-grid--product-category-pnl
+    .workbench-market-ticker-meta {
+    line-height: 1.2 !important;
+  }
+
+  /* 数据模式提示条（mock 模式下渲染在 subnav 与页面之间）：保留信息、压缩纵深。 */
+  .workbench-shell-grid--product-category-pnl.workbench-shell-grid--product-category-pnl
+    .workbench-main-surface
+    > .workbench-notice {
+    padding-block: 2px !important;
+    line-height: 1.25;
+  }
+}
+
+/* >1280 跟平 1121–1280 档已有的 4px 页内节奏，避免 1440 首屏比 1280 更松。 */
+@media (min-width: 1281px) {
+  .product-category-page-shell.theme-dh-api {
+    gap: 4px;
+  }
+}
+
+.product-category-page-shell.theme-dh-api .product-category-contract-hero {
+  padding-block: 5px;
+}
+
+.product-category-page-shell.theme-dh-api
+  .product-category-contract-hero
+  .moss-page-v2-decision-hero__top {
+  row-gap: 4px;
+}
+
+/* 页标题 20→18（DESIGN.md §3 页标题 18–20 下限内），标题行与业务问句收紧行距。 */
+.product-category-page-shell.theme-dh-api
+  .product-category-contract-hero
+  [data-testid="product-category-page-title"] {
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.product-category-page-shell.theme-dh-api
+  .product-category-contract-hero
+  [data-testid="product-category-page-subtitle"] {
+  line-height: 1.3;
+}
+
+.product-category-page-shell.theme-dh-api
+  .product-category-contract-hero
+  .moss-page-v2-decision-hero__titles {
+  row-gap: 0;
+}
+
+/* 正式结果带与利差读数共用的题头：52px 题头压到单行净高。 */
+.product-category-page-shell.theme-dh-api
+  .product-category-formal-readiness__header {
+  min-height: 0;
+  padding-block: 4px;
+}
+
+.product-category-page-shell.theme-dh-api
+  .product-category-formal-readiness__totals--attribution {
+  grid-template-rows: minmax(64px, auto);
+}
+
+.product-category-page-shell.theme-dh-api
+  .product-category-formal-readiness__metric {
+  min-height: 64px;
+  gap: 3px;
+  padding-block: 7px;
+}
+
+/* 驱动栏：压纵向节奏；行内 2px 行距在 720 高视口本就被压到 3px padding。 */
+.product-category-page-shell.theme-dh-api
+  .product-category-formal-readiness__driver-header {
+  padding-block: 5px;
+}
+
+.product-category-page-shell.theme-dh-api
+  .product-category-formal-readiness__driver-list {
+  padding-block: 1px;
+}
+
+.product-category-page-shell.theme-dh-api
+  .product-category-formal-readiness__driver-row {
+  row-gap: 0;
+  padding-block: 1px;
+}
+
+/* 利差读数：标题行数值 26→22（DESIGN.md §3 KPI 主值 20–24 区间内）。 */
+.product-category-page-shell.theme-dh-api
+  .product-category-spread-readout__metric--headline
+  strong {
+  font-size: 22px;
+}
+
+.product-category-spread-readout__caption {
+  padding-block: 1px;
+}
+
+.product-category-spread-readout__gap {
+  padding-block: 3px;
+}
+
+/* 控制条与数据状态条。 */
+.product-category-page-shell.theme-dh-api .product-category-command-surface {
+  padding-block: 5px;
+}
+
+.product-category-page-shell.theme-dh-api
+  :where(
+    .product-category-scenario-controls__select,
+    .product-category-scenario-controls__view-button,
+    .product-category-scenario-controls__apply
+  ) {
+  min-height: 28px;
+  padding-block: 3px;
+}
+
+/* 题头右侧口径徽标的胶囊内边距是题头 35px 的隐性底：压到单行净高。 */
+.product-category-page-shell.theme-dh-api
+  .product-category-formal-readiness__headline-meta
+  strong {
+  padding-block: 1px;
+}
+
+.product-category-page-shell.theme-dh-api
+  .product-category-operating-command-rail
+  > .moss-page-v2-data-status {
+  padding-bottom: 3px;
+}
+
+.product-category-page-shell.theme-dh-api
+  .product-category-governance-strip__health {
+  min-height: 30px;
+  padding-block: 4px;
+}
+
+.product-category-page-shell.theme-dh-api
+  .product-category-governance-strip__facts {
+  gap: 2px 10px;
+}
+
+.product-category-page-shell.theme-dh-api
+  .product-category-governance-strip__evidence
+  > summary {
+  min-height: 28px;
+  padding-block: 4px;
+}
+
+.product-category-page-shell.theme-dh-api .product-category-section-nav {
+  min-height: 28px;
+}
+
+.product-category-page-shell.theme-dh-api .product-category-section-nav__label,
+.product-category-page-shell.theme-dh-api .product-category-section-nav a {
+  min-height: 26px;
+  line-height: 26px;
+}
+
+/* 1200–1280 档驱动栏回到「序号 | 标签 | 数值」三列：此前右栏最小宽 320px
+   里说明格占 190px，列表轨道只剩 ~130px，数值折行把每行撑到 76px、整带撑
+   到 302px。右栏最小宽提到 384px（说明格保持 190px——再窄「单位：亿元」会
+   把标题挤成竖排），列表即可容纳数值同行展示，行高与 1440 档一致。 */
+@media (min-width: 1200px) and (max-width: 1280px) {
+  .product-category-formal-readiness__decision-canvas {
+    grid-template-columns: minmax(0, 1.42fr) minmax(384px, 0.85fr);
+  }
+
+  /* 基础的 minmax(190px,0.3fr)/minmax(0,0.7fr) 在 384px 栏里会把 0.3fr 钳到
+     190 后仍只给列表 0.7fr 份额（135px），58px 被空置、标签遭省略号截断；
+     此档改成说明格定宽 + 列表吃满剩余。 */
+  .product-category-page-shell.theme-dh-api
+    .product-category-formal-readiness__driver-readout {
+    grid-template-columns: 190px minmax(0, 1fr);
+  }
+
+  .product-category-formal-readiness__driver-row {
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+  }
+
+  .product-category-formal-readiness__driver-row > strong {
+    grid-column: 3;
+    text-align: right;
+  }
+
+  .product-category-formal-readiness__driver-row > small {
+    grid-column: 2 / -1;
+  }
+}

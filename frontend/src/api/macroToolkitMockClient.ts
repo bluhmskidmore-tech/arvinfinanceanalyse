@@ -1796,6 +1796,16 @@ const MOCK_ANALYSIS: MacroToolkitAnalysisPayload = {
     },
   ],
   signal_cards: [
+    // 与后端 _analysis_signal_cards 契约对齐：crisis_score_cn 恒在首位，共 6 张卡。
+    // 字段值由 MOCK_CAPABILITY_RESULTS 的 crisis_score_cn 能力结果按后端 _crisis_score_card 规则派生。
+    {
+      key: "crisis_score_cn",
+      title: "Crisis Score",
+      stance: "宽松",
+      tone: "positive",
+      score: -0.57,
+      evidence: ["score=-0.57", "regime=宽松", "percentile=36.21%"],
+    },
     {
       key: "a_share_stampede_risk",
       title: "市场踩踏风险",
