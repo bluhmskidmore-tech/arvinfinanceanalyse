@@ -1,26 +1,11 @@
-import { WarningFilled } from "@ant-design/icons";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import {
-  Alert,
-  Button,
-  Card,
-  Col,
-  Input,
-  Row,
-  Select,
-  Space,
-  Spin,
-  Table,
-  Tabs,
-  Typography,
-} from "antd";
+import { Alert, Button, Input, Select, Table, Tabs } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { Link, useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
 import { CalibrationBadge } from "../../../components/CalibrationBadge";
-import { SectionLead } from "../../../components/page/SectionLead";
 import { FilterBar } from "../../../components/FilterBar";
 import type {
   AdbCategoryItem,
@@ -35,18 +20,18 @@ import AdbDailyTrendChart from "./AdbDailyTrendChart";
 import AdbDenominatorSummary from "./AdbDenominatorSummary";
 import AdbAccountingBasisSection from "./AdbAccountingBasisSection";
 import AdbCoverageDiagnostics from "./AdbCoverageDiagnostics";
+import AdbKpiStrip, { type AdbKpiStripItem } from "./AdbKpiStrip";
 import AdbMonthlyHorizontalChart, {
   type AdbMonthlyHorizontalChartRow,
 } from "./AdbMonthlyHorizontalChart";
 import AdbMonthlyBreakdownTable from "./AdbMonthlyBreakdownTable";
 import AdbNimTrendChart from "./AdbNimTrendChart";
+import AdbSectionHead from "./AdbSectionHead";
 import { shiftIsoDateByYears } from "./averageBalanceDateUtils";
-import { ibTokens } from "../../../theme/designSystem";
 import { EM_DASH } from "../../../utils/format";
 
 import "./AverageBalanceView.css";
 
-const { Title, Paragraph, Text } = Typography;
 const YI = 100_000_000;
 
 type RangeKey = "7d" | "30d" | "ytd" | "custom";
@@ -381,6 +366,14 @@ function buildMonthlyProjectMatrixRows(months: AdbMonthlyDataItem[]): MonthlyMat
   return rows;
 }
 
+function resolvePopupContainer(trigger: HTMLElement): HTMLElement {
+  return trigger.parentElement ?? document.body;
+}
+
+/**
+ * 结果元信息（证据卡语言：muted 标签列 + ink 值列，视觉降权、字段逐字保留）。
+ * 标签内嵌分隔符（=／：／不换行空格），保证 textContent 与既有断言逐字一致。
+ */
 function ResultMetaNotice(props: {
   meta?: ResultMeta;
   testId: string;
@@ -405,28 +398,54 @@ function ResultMetaNotice(props: {
         ? "最新快照降级"
         : props.meta.fallback_mode;
   return (
-    <Alert
+    <div
+      className="adb-evidence"
       data-testid={props.testId}
-      type={hasQualityIssue ? "warning" : "info"}
-      showIcon
-      message={`候选指标 · 正式可用: ${props.meta.formal_use_allowed ? "是" : "否"}`}
-      description={
-        <div className="adb-result-meta">
-          <span className="adb-meta-line">PAGE-CONTRACT-PENDING:/average-balance</span>
-          <span className="adb-meta-line">日均余额后端链路：{props.meta.result_kind}</span>
-          <span className="adb-meta-line">口径 {props.meta.basis}</span>
-          <span className="adb-meta-line">来源={props.meta.source_version}</span>
-          <span className="adb-meta-line">规则={props.meta.rule_version}</span>
-          <span className="adb-meta-line">质量={qualityLabel}</span>
-          <span className="adb-meta-line">降级={fallbackLabel}</span>
-          <span className="adb-meta-line">日期基准 {props.meta.date_basis ?? EM_DASH}</span>
-          <span className="adb-meta-line">
-            使用表 {props.meta.tables_used?.join(", ") || EM_DASH}
-          </span>
-          <span className="adb-meta-line">证据行 {props.meta.evidence_rows ?? EM_DASH}</span>
-        </div>
-      }
-    />
+      data-tone={hasQualityIssue ? "warn" : "info"}
+    >
+      <span className="adb-evidence-title">
+        候选指标 · 正式可用: {props.meta.formal_use_allowed ? "是" : "否"}
+      </span>
+      <div className="adb-evidence-grid">
+        <span className="adb-evidence-line">PAGE-CONTRACT-PENDING:/average-balance</span>
+        <span className="adb-evidence-row">
+          <span className="adb-evidence-k">日均余额后端链路：</span>
+          <span className="adb-evidence-v">{props.meta.result_kind}</span>
+        </span>
+        <span className="adb-evidence-row">
+          <span className="adb-evidence-k">{"口径\u00A0"}</span>
+          <span className="adb-evidence-v">{props.meta.basis}</span>
+        </span>
+        <span className="adb-evidence-row">
+          <span className="adb-evidence-k">来源=</span>
+          <span className="adb-evidence-v">{props.meta.source_version}</span>
+        </span>
+        <span className="adb-evidence-row">
+          <span className="adb-evidence-k">规则=</span>
+          <span className="adb-evidence-v">{props.meta.rule_version}</span>
+        </span>
+        <span className="adb-evidence-row">
+          <span className="adb-evidence-k">质量=</span>
+          <span className="adb-evidence-v">{qualityLabel}</span>
+        </span>
+        <span className="adb-evidence-row">
+          <span className="adb-evidence-k">降级=</span>
+          <span className="adb-evidence-v">{fallbackLabel}</span>
+        </span>
+        <span className="adb-evidence-row">
+          <span className="adb-evidence-k">{"日期基准\u00A0"}</span>
+          <span className="adb-evidence-v">{props.meta.date_basis ?? EM_DASH}</span>
+        </span>
+        <span className="adb-evidence-row">
+          <span className="adb-evidence-k">{"使用表\u00A0"}</span>
+          <span className="adb-evidence-v">{props.meta.tables_used?.join(", ") || EM_DASH}</span>
+        </span>
+        <span className="adb-evidence-row">
+          <span className="adb-evidence-k">{"证据行\u00A0"}</span>
+          <span className="adb-evidence-v">{props.meta.evidence_rows ?? EM_DASH}</span>
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -645,7 +664,7 @@ export default function AverageBalanceView() {
 
   const monthlyTableColumns: ColumnsType<AdbMonthlyDataItem> = useMemo(
     () => [
-      { title: "月份", dataIndex: "month_label", key: "month_label", render: (value: string) => <Text strong>{value}</Text> },
+      { title: "月份", dataIndex: "month_label", key: "month_label", render: (value: string) => <span className="adb-cell-strong">{value}</span> },
       { title: "天数", dataIndex: "num_days", key: "num_days", align: "right" },
       { title: "日均资产(亿元)", dataIndex: "avg_assets", key: "avg_assets", align: "right", render: (value: number | null) => formatMatrixValue(value, "amount") },
       { title: "日均负债(亿元)", dataIndex: "avg_liabilities", key: "avg_liabilities", align: "right", render: (value: number | null) => formatMatrixValue(value, "amount") },
@@ -657,7 +676,7 @@ export default function AverageBalanceView() {
         key: "net_interest_margin",
         align: "right",
         render: (value: number | null) => (
-          <Text className={value !== null && value < 0 ? "adb-tone--down" : undefined}>{formatPct(value)}</Text>
+          <span className={value !== null && value < 0 ? "adb-tone--down" : undefined}>{formatPct(value)}</span>
         ),
       },
       {
@@ -666,14 +685,14 @@ export default function AverageBalanceView() {
         key: "mom_change_pct_assets",
         align: "right",
         render: (_value: number | null, row: AdbMonthlyDataItem) => (
-          <Space direction="vertical" size={0}>
-            <Text>{formatSignedPct(row.mom_change_pct_assets ?? row.mom_change_assets)}</Text>
+          <span className="adb-cell-stack">
+            <span>{formatSignedPct(row.mom_change_pct_assets ?? row.mom_change_assets)}</span>
             {row.mom_change_assets != null ? (
-              <Text type="secondary" className="adb-data-subline">
+              <span className="adb-data-subline">
                 额 {formatSignedYiBillions(row.mom_change_assets)} 亿元
-              </Text>
+              </span>
             ) : null}
-          </Space>
+          </span>
         ),
       },
       {
@@ -682,14 +701,14 @@ export default function AverageBalanceView() {
         key: "mom_change_pct_liabilities",
         align: "right",
         render: (_value: number | null, row: AdbMonthlyDataItem) => (
-          <Space direction="vertical" size={0}>
-            <Text>{formatSignedPct(row.mom_change_pct_liabilities ?? row.mom_change_liabilities)}</Text>
+          <span className="adb-cell-stack">
+            <span>{formatSignedPct(row.mom_change_pct_liabilities ?? row.mom_change_liabilities)}</span>
             {row.mom_change_liabilities != null ? (
-              <Text type="secondary" className="adb-data-subline">
+              <span className="adb-data-subline">
                 额 {formatSignedYiBillions(row.mom_change_liabilities)} 亿元
-              </Text>
+              </span>
             ) : null}
-          </Space>
+          </span>
         ),
       },
     ],
@@ -733,6 +752,94 @@ export default function AverageBalanceView() {
         ? "日均分析加载失败"
         : null;
 
+  /* 以下均为展示层派生（不改数值来源）：KPI 横带条目与 01 区警示可见性。 */
+  const dailyScaleKpis: AdbKpiStripItem[] = dailyData
+    ? [
+        { key: "spot-assets", label: "期末时点总资产", value: formatYi(dailyData.total_spot_assets) },
+        { key: "avg-assets", label: "日均总资产", value: formatYi(dailyData.total_avg_assets) },
+        {
+          key: "deviation-assets",
+          label: "偏离度（资产）",
+          value: formatSignedPct(assetDeviationPct),
+          tone: assetDeviationPct > 5 ? "down" : undefined,
+          warn: assetDeviationPct > 5,
+        },
+        { key: "spot-liabilities", label: "期末时点总负债", value: formatYi(dailyData.total_spot_liabilities) },
+        { key: "avg-liabilities", label: "日均总负债", value: formatYi(dailyData.total_avg_liabilities) },
+        {
+          key: "deviation-liabilities",
+          label: "偏离度（负债）",
+          value: formatSignedPct(liabilityDeviationPct),
+          tone: liabilityDeviationPct > 5 ? "down" : undefined,
+          warn: liabilityDeviationPct > 5,
+        },
+      ]
+    : [];
+  const dailyRateKpis: AdbKpiStripItem[] = dailyData
+    ? [
+        { key: "asset-yield", label: "资产加权平均YTM", value: formatPct(dailyData.asset_yield) },
+        { key: "liability-cost", label: "负债加权平均票息", value: formatPct(dailyData.liability_cost) },
+        {
+          key: "nim",
+          label: "利差（YTM−票息）",
+          value: formatPct(dailyData.net_interest_margin),
+          tone:
+            dailyData.net_interest_margin !== null && dailyData.net_interest_margin < 0
+              ? "down"
+              : undefined,
+        },
+        {
+          key: "interbank-assets",
+          label: "同业日均资产",
+          value: formatYi(dailyData.total_avg_interbank_assets),
+          detail: "TYW 正式余额（区间日均）",
+        },
+        {
+          key: "interbank-liabilities",
+          label: "同业日均负债",
+          value: formatYi(dailyData.total_avg_interbank_liabilities),
+          detail: "TYW 正式余额（区间日均）",
+        },
+      ]
+    : [];
+  const monthlyKpis: AdbKpiStripItem[] = monthlyData
+    ? [
+        { key: "ytd-avg-assets", label: "年初至今日均资产", value: formatYi(monthlyData.ytd_avg_assets) },
+        { key: "ytd-avg-liabilities", label: "年初至今日均负债", value: formatYi(monthlyData.ytd_avg_liabilities) },
+        { key: "ytd-asset-yield", label: "年初至今加权YTM", value: formatPct(monthlyData.ytd_asset_yield) },
+        { key: "ytd-liability-cost", label: "年初至今加权票息", value: formatPct(monthlyData.ytd_liability_cost) },
+        { key: "ytd-nim", label: "年初至今利差", value: formatPct(monthlyData.ytd_nim) },
+      ]
+    : [];
+
+  const dailyLowCoverageVisible =
+    dailyData != null &&
+    dailyData.coverage_days != null &&
+    dailyData.num_days > 1 &&
+    dailyData.coverage_days < dailyData.num_days * 0.5;
+  const dailySnapshotFallbackVisible =
+    dailyData != null &&
+    shouldShowSnapshotFallbackWarning(dailyData.adb_denominator_basis, dailyData.result_meta);
+  const hasDailyNotices = Boolean(
+    dailyData?.simulated ||
+      dailyLowCoverageVisible ||
+      dailySnapshotFallbackVisible ||
+      deviationWarning ||
+      rateCoverageWarning,
+  );
+  const dailyHasAccountingBasis = Boolean(
+    dailyData &&
+      (dailyData.accounting_basis_daily_avg ||
+        (dailyData.accounting_basis_daily_avg_trend &&
+          dailyData.accounting_basis_daily_avg_trend.length > 0)),
+  );
+  const monthlySnapshotFallbackVisible =
+    monthlyData != null && shouldShowSnapshotFallbackWarning(undefined, monthlyData.result_meta);
+  const monthlyHasAccountingBasis = Boolean(
+    monthlyData?.accounting_basis_daily_avg_trend &&
+      monthlyData.accounting_basis_daily_avg_trend.length > 0,
+  );
+
   /*
    * 深色 owner 由外层 ThemedRouteBoundary 的 data-moss-theme="dark" 独占；
    * 页根只声明换肤 scope，重复声明 owner 会让深色路由校验判定出两个 owner。
@@ -743,35 +850,38 @@ export default function AverageBalanceView() {
       data-moss-theme-scope="average-balance"
       className="average-balance-page theme-dh-api"
     >
-      <div className="adb-page-header">
-        <div>
-          <div className="adb-page-title-row">
-            <Title level={2} data-testid="average-balance-page-title" className="adb-page-title">
+      {/* 工具条（首页 dhTopbar 语言：无卡 + 发丝底边；左标题与口径 meta，右模式胶囊） */}
+      <header className="adb-topbar">
+        <div className="adb-topbar-left">
+          <div className="adb-title-row">
+            <h2 data-testid="average-balance-page-title" className="adb-page-title">
               日均分析
-            </Title>
+            </h2>
             <CalibrationBadge calibration={comparisonQuery.data?.calibration} />
           </div>
-          <Paragraph data-testid="average-balance-page-subtitle" className="adb-page-subtitle">
-            围绕期末是否偏离日均、偏离主因、区间日均结构与月度 NIM 变化展开。页面只消费后端返回结果，
-            不在前端补算正式金融口径，正式资产负债分析仍从专用正式页面进入。
-          </Paragraph>
-          <Alert
-            data-testid="average-balance-analysis-brief"
-            type="info"
-            showIcon
-            className="adb-analysis-brief"
-            message="日均分析回答什么"
-            description="期末是否偏离日均，偏离由资产/负债哪类驱动，以及月度日均结构和 NIM 是否变化。"
-          />
-          <Space size="small" className="adb-formal-link-row">
-            <Text type="secondary">当前页面为资产负债分析的分析口径子视图。</Text>
-            <Link to={formalAnalysisHref}>打开正式资产负债分析</Link>
-          </Space>
+          <div className="adb-topbar-meta">
+            <span data-testid="average-balance-page-subtitle" className="adb-page-subtitle">
+              期末是否偏离日均、偏离由资产/负债哪类驱动，以及月度日均结构和 NIM
+              是否变化。页面只消费后端返回结果，不在前端补算正式金融口径。
+            </span>
+            <span className="adb-scope-note">当前页面为资产负债分析的分析口径子视图。</span>
+            <Link className="adb-formal-link" to={formalAnalysisHref}>
+              打开正式资产负债分析
+            </Link>
+          </div>
         </div>
-        <span className="adb-mode-badge" data-mode={client.mode === "real" ? "real" : "mock"}>
+        <span className="adb-pill" data-tone={client.mode === "real" ? "ok" : "accent"}>
+          <i aria-hidden="true" />
           {client.mode === "real" ? "正式只读链路" : "本地演示数据"}
         </span>
-      </div>
+      </header>
+
+      <p className="adb-analysis-brief" data-testid="average-balance-analysis-brief">
+        <span className="adb-brief-label">日均分析回答什么</span>
+        <span className="adb-brief-text">
+          期末是否偏离日均，偏离由资产/负债哪类驱动，以及月度日均结构和 NIM 是否变化。
+        </span>
+      </p>
 
       <Tabs
         activeKey={activeTab}
@@ -782,87 +892,55 @@ export default function AverageBalanceView() {
             key: "daily",
             label: "日均分析",
             children: (
-              <Space direction="vertical" size="large" className="adb-stack">
-                <SectionLead
-                  eyebrow="日度"
-                  title="区间日均分析"
-                  description="先选择报告日和观察区间，再阅读期末时点与日均偏离、收益成本和分类明细；这里保持分析口径视图，不提升为正式口径。"
-                />
-                <Card size="small">
-                  <Row gutter={[16, 16]} align="middle" justify="space-between">
-                    <Col flex="auto">
-                      <FilterBar>
-                        <Text type="secondary">报告日</Text>
-                        <Select
-                          aria-label="adb-report-date"
-                          className="adb-filter-date"
-                          value={reportDate || undefined}
-                          options={dateOptions.map((item) => ({ label: item, value: item }))}
-                          onChange={setSelectedReportDate}
-                          disabled={Boolean(explicitReportDate)}
-                          placeholder="选择日期"
-                        />
-                        <Button type={rangeKey === "7d" ? "primary" : "default"} onClick={() => applyPreset("7d")}>7日</Button>
-                        <Button type={rangeKey === "30d" ? "primary" : "default"} onClick={() => applyPreset("30d")}>30日</Button>
-                        <Button type={rangeKey === "ytd" ? "primary" : "default"} onClick={() => applyPreset("ytd")}>年初至今</Button>
-                        <Input aria-label="adb-start-date" type="date" value={startDate} onChange={(event) => onCustomRangeChange("start", event.target.value)} className="adb-filter-input" />
-                        <Input aria-label="adb-end-date" type="date" value={endDate} onChange={(event) => onCustomRangeChange("end", event.target.value)} className="adb-filter-input" />
-                        <Text type="secondary">明细条数</Text>
-                        <Select
-                          aria-label="adb-top-n"
-                          data-testid="adb-top-n-select"
-                          className="adb-filter-top-n"
-                          value={adbTopN}
-                          options={[20, 50, 100, 200].map((n) => ({ label: String(n), value: n }))}
-                          onChange={(v) => setAdbTopN(v)}
-                        />
-                      </FilterBar>
-                    </Col>
-                    <Col>
-                      <Text strong>区间天数：{dailyData?.num_days ?? EM_DASH} 天</Text>
-                      {dailyData?.coverage_days != null && dailyData.coverage_days !== dailyData.num_days ? (
-                        <Text type="secondary" className="adb-inline-note">
-                          （实际有数据 {dailyData.coverage_days} 天）
-                        </Text>
-                      ) : null}
-                    </Col>
-                  </Row>
-                  {dailyData?.simulated ? (
-                    <Alert className="adb-block-gap" type="info" showIcon message="当前区间仅 1 天时，日均为稳态模拟，便于演示图表逻辑" />
-                  ) : null}
-                  {dailyData != null &&
-                   dailyData.coverage_days != null &&
-                   dailyData.num_days > 1 &&
-                   dailyData.coverage_days < dailyData.num_days * 0.5 ? (
-                    <Alert
-                      className="adb-block-gap"
-                      type="warning"
-                      showIcon
-                      message={`数据覆盖不足：区间 ${dailyData.num_days} 天中仅 ${dailyData.coverage_days} 天有正式表数据`}
-                      description="覆盖不足时日均余额会退化为有数据日的均值（极端情况等于期末时点），请确认 fact_formal 表已对区间内每个日期执行物化。"
+              <div className="adb-stack">
+                <div className="adb-tab-lead">
+                  <h3>区间日均分析</h3>
+                  <p>
+                    先选择报告日和观察区间，再阅读期末时点与日均偏离、收益成本和分类明细；这里保持分析口径视图，不提升为正式口径。
+                  </p>
+                </div>
+
+                <div className="adb-controls">
+                  <FilterBar>
+                    <span className="adb-control-label">报告日</span>
+                    <Select
+                      aria-label="adb-report-date"
+                      className="adb-filter-date"
+                      value={reportDate || undefined}
+                      options={dateOptions.map((item) => ({ label: item, value: item }))}
+                      onChange={setSelectedReportDate}
+                      disabled={Boolean(explicitReportDate)}
+                      placeholder="选择日期"
+                      getPopupContainer={resolvePopupContainer}
                     />
-                  ) : null}
-                  {(lowCoverageWarning || rateCoverageWarning) && startDate && endDate ? (
-                    <div className="adb-block-gap">
-                      <AdbCoverageDiagnostics
-                        loading={coverageQuery.isLoading}
-                        isError={coverageQuery.isError}
-                        data={coverageQuery.data}
-                        rateCoverage={
-                          rateCoverageWarning
-                            ? {
-                                assetRateCoverageRatio: dailyData?.asset_rate_coverage_ratio,
-                                liabilityRateCoverageRatio: dailyData?.liability_rate_coverage_ratio,
-                              }
-                            : undefined
-                        }
-                      />
-                    </div>
-                  ) : null}
-                </Card>
+                    <Button type={rangeKey === "7d" ? "primary" : "default"} onClick={() => applyPreset("7d")}>7日</Button>
+                    <Button type={rangeKey === "30d" ? "primary" : "default"} onClick={() => applyPreset("30d")}>30日</Button>
+                    <Button type={rangeKey === "ytd" ? "primary" : "default"} onClick={() => applyPreset("ytd")}>年初至今</Button>
+                    <Input aria-label="adb-start-date" type="date" value={startDate} onChange={(event) => onCustomRangeChange("start", event.target.value)} className="adb-filter-input" />
+                    <Input aria-label="adb-end-date" type="date" value={endDate} onChange={(event) => onCustomRangeChange("end", event.target.value)} className="adb-filter-input" />
+                    <span className="adb-control-label">明细条数</span>
+                    <Select
+                      aria-label="adb-top-n"
+                      data-testid="adb-top-n-select"
+                      className="adb-filter-top-n"
+                      value={adbTopN}
+                      options={[20, 50, 100, 200].map((n) => ({ label: String(n), value: n }))}
+                      onChange={(v) => setAdbTopN(v)}
+                      getPopupContainer={resolvePopupContainer}
+                    />
+                  </FilterBar>
+                  <div className="adb-days-box">
+                    <span className="adb-days">区间天数：{dailyData?.num_days ?? EM_DASH} 天</span>
+                    {dailyData?.coverage_days != null && dailyData.coverage_days !== dailyData.num_days ? (
+                      <span className="adb-days-note">（实际有数据 {dailyData.coverage_days} 天）</span>
+                    ) : null}
+                  </div>
+                </div>
 
                 {datesQuery.isLoading || comparisonQuery.isLoading ? (
-                  <Spin />
+                  <div className="adb-skeleton" aria-busy="true">
+                    <span>数据读取中…</span>
+                  </div>
                 ) : null}
                 {dailyErrorMessage ? <Alert type="error" showIcon message={dailyErrorMessage} /> : null}
                 {!datesQuery.isLoading &&
@@ -874,45 +952,122 @@ export default function AverageBalanceView() {
 
                 {canRunDailyQuery && dailyData ? (
                   <>
-                    <Alert type="info" showIcon message={`口径说明：期末时点=期末（${dailyData.end_date}）时点规模；区间日均=区间日均规模`} />
-                    <ResultMetaNotice
-                      meta={dailyData.result_meta}
-                      testId="adb-daily-result-meta"
-                    />
-                    {shouldShowSnapshotFallbackWarning(
-                      dailyData.adb_denominator_basis,
-                      dailyData.result_meta,
-                    ) ? (
-                      <Alert
-                        data-testid="adb-snapshot-fallback-warning"
-                        type="warning"
-                        showIcon
-                        message="快照补数降级"
-                        description={ADB_SNAPSHOT_FALLBACK_WARNING}
-                      />
+                    <AdbKpiStrip columns={6} items={dailyScaleKpis} />
+                    <AdbKpiStrip columns={5} items={dailyRateKpis} />
+
+                    <section className="adb-sec">
+                      <AdbSectionHead title="区间结论与警示" />
+                      {hasDailyNotices ? (
+                        <div className="adb-alert-stack">
+                          {dailyData.simulated ? (
+                            <Alert type="info" showIcon message="当前区间仅 1 天时，日均为稳态模拟，便于演示图表逻辑" />
+                          ) : null}
+                          {dailyLowCoverageVisible ? (
+                            <Alert
+                              type="warning"
+                              showIcon
+                              message={`数据覆盖不足：区间 ${dailyData.num_days} 天中仅 ${dailyData.coverage_days} 天有正式表数据`}
+                              description="覆盖不足时日均余额会退化为有数据日的均值（极端情况等于期末时点），请确认 fact_formal 表已对区间内每个日期执行物化。"
+                            />
+                          ) : null}
+                          {dailySnapshotFallbackVisible ? (
+                            <Alert
+                              data-testid="adb-snapshot-fallback-warning"
+                              type="warning"
+                              showIcon
+                              message="快照补数降级"
+                              description={ADB_SNAPSHOT_FALLBACK_WARNING}
+                            />
+                          ) : null}
+                          {deviationWarning ? <Alert type="warning" showIcon message={deviationWarning} /> : null}
+                          {rateCoverageWarning ? (
+                            <Alert
+                              data-testid="adb-rate-coverage-warning"
+                              type="warning"
+                              showIcon
+                              message={rateCoverageWarning}
+                            />
+                          ) : null}
+                        </div>
+                      ) : (
+                        <p className="adb-note">区间内未触发覆盖/降级/偏离警示。</p>
+                      )}
+                    </section>
+
+                    <section className="adb-sec">
+                      <AdbSectionHead title="口径与证据" />
+                      <div className="adb-panel">
+                        <p className="adb-note">
+                          口径说明：期末时点=期末（{dailyData.end_date}）时点规模；区间日均=区间日均规模
+                        </p>
+                        <AdbDenominatorSummary data={dailyData} />
+                        <ResultMetaNotice
+                          meta={dailyData.result_meta}
+                          testId="adb-daily-result-meta"
+                        />
+                        {(lowCoverageWarning || rateCoverageWarning) && startDate && endDate ? (
+                          <AdbCoverageDiagnostics
+                            loading={coverageQuery.isLoading}
+                            isError={coverageQuery.isError}
+                            data={coverageQuery.data}
+                            rateCoverage={
+                              rateCoverageWarning
+                                ? {
+                                    assetRateCoverageRatio: dailyData?.asset_rate_coverage_ratio,
+                                    liabilityRateCoverageRatio: dailyData?.liability_rate_coverage_ratio,
+                                  }
+                                : undefined
+                            }
+                          />
+                        ) : null}
+                      </div>
+                    </section>
+
+                    {dailyHasAccountingBasis ? (
+                      <section className="adb-sec">
+                        <AdbSectionHead title="会计计量分桶" />
+                        <AdbAccountingBasisSection
+                          snapshot={dailyData.accounting_basis_daily_avg}
+                          trend={dailyData.accounting_basis_daily_avg_trend}
+                          titleSuffix="日度区间"
+                        />
+                      </section>
                     ) : null}
-                    <AdbDenominatorSummary data={dailyData} />
-                    <AdbAccountingBasisSection
-                      snapshot={dailyData.accounting_basis_daily_avg}
-                      trend={dailyData.accounting_basis_daily_avg_trend}
-                      titleSuffix="日度区间"
-                    />
-                    {deviationWarning ? <Alert type="warning" showIcon message={deviationWarning} /> : null}
-                    {rateCoverageWarning ? (
-                      <Alert
-                        data-testid="adb-rate-coverage-warning"
-                        type="warning"
-                        showIcon
-                        message={rateCoverageWarning}
-                      />
+
+                    <section className="adb-sec">
+                      <AdbSectionHead title="期末时点与日均偏离对比" />
+                      <div className="adb-two-col">
+                        <div className="adb-panel adb-chart-panel">
+                          <div className="adb-subhead">期末时点与日均偏离对比 · 资产</div>
+                          <AdbComparisonChart rows={comparisonAssetRows} />
+                        </div>
+                        <div className="adb-panel adb-chart-panel">
+                          <div className="adb-subhead">期末时点与日均偏离对比 · 负债</div>
+                          <AdbComparisonChart rows={comparisonLiabilityRows} />
+                        </div>
+                      </div>
+                    </section>
+
+                    {trendQuery.data?.trend && trendQuery.data.trend.length > 0 ? (
+                      <section className="adb-sec" data-testid="adb-daily-trend-chart">
+                        <AdbSectionHead
+                          title="区间日均余额走势"
+                          meta="细线为日余额，粗线为 30 日移动均线，用于识别区间内规模异常波动"
+                        />
+                        <div className="adb-panel adb-chart-panel">
+                          <AdbDailyTrendChart trend={trendQuery.data.trend} />
+                        </div>
+                      </section>
                     ) : null}
+
                     {priorYearRange ? (
-                      <Card data-testid="adb-daily-yoy-summary" title="区间同比（去年同期对齐）" size="small">
-                        <Space direction="vertical" size="small" className="adb-stack">
-                          <Text type="secondary">
+                      <section className="adb-sec" data-testid="adb-daily-yoy-summary">
+                        <AdbSectionHead title="区间同比（去年同期对齐）" />
+                        <div className="adb-panel">
+                          <p className="adb-note">
                             本期 {startDate}～{endDate} 与去年同期 {priorYearRange.startDate}～{priorYearRange.endDate}{" "}
                             日历对齐。同比% =（本期−去年）/ 去年（分母为 0 时显示为「{EM_DASH}」）。
-                          </Text>
+                          </p>
                           <Alert
                             type="info"
                             showIcon
@@ -927,10 +1082,9 @@ export default function AverageBalanceView() {
                             />
                           ) : null}
                           {yoyAdbRows.length > 0 ? (
-                            <div>
-                              <Text strong>债券与同业 · 区间日均总规模</Text>
+                            <div className="adb-table-group">
+                              <div className="adb-subhead">债券与同业 · 区间日均总规模</div>
                               <Table<AdbYoYAmountRow>
-                                className="adb-table-gap"
                                 size="small"
                                 pagination={false}
                                 rowKey={(row) => row.key}
@@ -941,12 +1095,11 @@ export default function AverageBalanceView() {
                           ) : null}
                           {!priorYearComparisonQuery.isError &&
                           (yoyAssetCategoryRows.length > 0 || yoyLiabilityCategoryRows.length > 0) ? (
-                            <div data-testid="adb-daily-yoy-category">
+                            <div className="adb-table-group-stack" data-testid="adb-daily-yoy-category">
                               {yoyAssetCategoryRows.length > 0 ? (
-                                <div>
-                                  <Text strong>资产端分类 · 区间日均同比</Text>
+                                <div className="adb-table-group">
+                                  <div className="adb-subhead">资产端分类 · 区间日均同比</div>
                                   <Table<AdbYoYAmountRow>
-                                    className="adb-table-gap"
                                     size="small"
                                     pagination={false}
                                     rowKey={(row) => row.key}
@@ -956,10 +1109,9 @@ export default function AverageBalanceView() {
                                 </div>
                               ) : null}
                               {yoyLiabilityCategoryRows.length > 0 ? (
-                                <div className="adb-block-gap">
-                                  <Text strong>负债端分类 · 区间日均同比</Text>
+                                <div className="adb-table-group">
+                                  <div className="adb-subhead">负债端分类 · 区间日均同比</div>
                                   <Table<AdbYoYAmountRow>
-                                    className="adb-table-gap"
                                     size="small"
                                     pagination={false}
                                     rowKey={(row) => row.key}
@@ -970,224 +1122,122 @@ export default function AverageBalanceView() {
                               ) : null}
                             </div>
                           ) : null}
-                        </Space>
-                      </Card>
+                        </div>
+                      </section>
                     ) : null}
 
-                    <Row gutter={[16, 16]}>
-                      {[
-                        { title: "期末时点总资产", value: formatYi(dailyData.total_spot_assets) },
-                        { title: "日均总资产", value: formatYi(dailyData.total_avg_assets) },
-                        { title: "偏离度（资产）", value: formatSignedPct(assetDeviationPct), danger: assetDeviationPct > 5 },
-                        { title: "期末时点总负债", value: formatYi(dailyData.total_spot_liabilities) },
-                        { title: "日均总负债", value: formatYi(dailyData.total_avg_liabilities) },
-                        { title: "偏离度（负债）", value: formatSignedPct(liabilityDeviationPct), danger: liabilityDeviationPct > 5 },
-                      ].map((item) => (
-                        <Col xs={24} sm={12} xl={8} key={item.title}>
-                          <Card size="small">
-                            <Text type="secondary">{item.title}</Text>
-                            <div className="adb-kpi-value-row">
-                              <Title
-                                level={4}
-                                className={item.danger ? "adb-kpi-value adb-tone--down" : "adb-kpi-value"}
-                              >
-                                {item.value}
-                              </Title>
-                              {item.danger ? <WarningFilled className="adb-danger-icon" /> : null}
-                            </div>
-                          </Card>
-                        </Col>
-                      ))}
-                    </Row>
-
-                    <Row gutter={[16, 16]}>
-                      {[
-                        {
-                          title: "同业日均资产",
-                          subtitle: "TYW 正式余额（区间日均）",
-                          value: formatYi(dailyData.total_avg_interbank_assets),
-                        },
-                        {
-                          title: "同业日均负债",
-                          subtitle: "TYW 正式余额（区间日均）",
-                          value: formatYi(dailyData.total_avg_interbank_liabilities),
-                        },
-                      ].map((item) => (
-                        <Col xs={24} sm={12} md={12} key={item.title}>
-                          <Card size="small">
-                            <Text type="secondary">{item.title}</Text>
-                            {item.subtitle ? (
-                              <div className="adb-kpi-subtitle">
-                                <Text type="secondary" className="adb-kpi-subtitle-text">
-                                  {item.subtitle}
-                                </Text>
-                              </div>
-                            ) : null}
-                            <Title level={4} className="adb-kpi-value--spaced">
-                              {item.value}
-                            </Title>
-                          </Card>
-                        </Col>
-                      ))}
-                    </Row>
-
-                    <Row gutter={[16, 16]}>
-                      {[
-                        { title: "资产加权平均YTM", value: formatPct(dailyData.asset_yield) },
-                        { title: "负债加权平均票息", value: formatPct(dailyData.liability_cost) },
-                        { title: "利差（YTM−票息）", value: formatPct(dailyData.net_interest_margin), danger: dailyData.net_interest_margin !== null && dailyData.net_interest_margin < 0 },
-                      ].map((item) => (
-                        <Col xs={24} md={8} key={item.title}>
-                          <Card size="small">
-                            <Text type="secondary">{item.title}</Text>
-                            <Title
-                              level={4}
-                              className={
-                                item.danger ? "adb-kpi-value--spaced adb-tone--down" : "adb-kpi-value--spaced"
-                              }
-                            >
-                              {item.value}
-                            </Title>
-                          </Card>
-                        </Col>
-                      ))}
-                    </Row>
-
-                    <Card title="期末时点与日均偏离对比 · 资产" size="small">
-                      <AdbComparisonChart rows={comparisonAssetRows} />
-                    </Card>
-                    <Card title="期末时点与日均偏离对比 · 负债" size="small">
-                      <AdbComparisonChart rows={comparisonLiabilityRows} />
-                    </Card>
-
-                    {trendQuery.data?.trend && trendQuery.data.trend.length > 0 ? (
-                      <Card
-                        data-testid="adb-daily-trend-chart"
-                        title="区间日均余额走势"
-                        size="small"
-                        extra={
-                          <Text type="secondary" className="adb-card-extra">
-                            浅色线为日余额，深蓝线为 30 日移动均线；用于识别区间内规模异常波动
-                          </Text>
-                        }
-                      >
-                        <AdbDailyTrendChart trend={trendQuery.data.trend} />
-                      </Card>
-                    ) : null}
-
-                    <Row gutter={[16, 16]}>
-                      <Col xs={24} xl={12}>
-                        <Card
-                          title="资产端分类明细"
-                          size="small"
-                          extra={
-                            <Text type="secondary" className="adb-card-extra">
-                              债券投资（ZQTZ）与同业资产（TYW）；按日均规模降序；占比为占上方「日均总资产」比例；默认至多 20 类
-                            </Text>
-                          }
-                        >
+                    <section className="adb-sec">
+                      <AdbSectionHead title="分类明细" />
+                      <div className="adb-two-col">
+                        <div className="adb-panel">
+                          <div className="adb-subhead">资产端分类明细</div>
+                          <p className="adb-note">
+                            债券投资（ZQTZ）与同业资产（TYW）；按日均规模降序；占比为占上方「日均总资产」比例；默认至多 20 类
+                          </p>
                           <Table size="small" pagination={false} rowKey={(row) => `asset-${row.category}`} columns={dailyAssetColumns} dataSource={dailyData.assets_breakdown} locale={{ emptyText: "暂无数据" }} />
-                        </Card>
-                      </Col>
-                      <Col xs={24} xl={12}>
-                        <Card
-                          title="负债端分类明细"
-                          size="small"
-                          extra={
-                            <Text type="secondary" className="adb-card-extra">
-                              发行类债券与同业负债（ZQTZ/TYW）；按日均规模降序；占比为占上方「日均总负债」比例；默认至多 20 类
-                            </Text>
-                          }
-                        >
+                        </div>
+                        <div className="adb-panel">
+                          <div className="adb-subhead">负债端分类明细</div>
+                          <p className="adb-note">
+                            发行类债券与同业负债（ZQTZ/TYW）；按日均规模降序；占比为占上方「日均总负债」比例；默认至多 20 类
+                          </p>
                           <Table size="small" pagination={false} rowKey={(row) => `liability-${row.category}`} columns={dailyLiabilityColumns} dataSource={dailyData.liabilities_breakdown} locale={{ emptyText: "暂无数据" }} />
-                        </Card>
-                      </Col>
-                    </Row>
+                        </div>
+                      </div>
+                    </section>
                   </>
                 ) : null}
-              </Space>
+              </div>
             ),
           },
           {
             key: "monthly",
             label: "月度统计",
             children: (
-              <Space direction="vertical" size="large" className="adb-stack">
-                <SectionLead
-                  eyebrow="月度"
-                  title="月度日均统计"
-                  description="按年份查看年初至今日均摘要、月度汇总表和单月深度分布，继续复用后端日均余额月度读模型。"
-                />
-                <Card size="small">
-                  <FilterBar>
-                    <Text type="secondary">年份</Text>
-                    <Select aria-label="adb-year" className="adb-filter-year" value={selectedYear} options={yearOptions} onChange={setSelectedYear} />
-                  </FilterBar>
-                </Card>
+              <div className="adb-stack">
+                <div className="adb-tab-lead">
+                  <h3>月度日均统计</h3>
+                  <p>
+                    按年份查看年初至今日均摘要、月度汇总表和单月深度分布，继续复用后端日均余额月度读模型。
+                  </p>
+                </div>
 
-                {monthlyQuery.isLoading ? <Spin /> : null}
+                <div className="adb-controls">
+                  <FilterBar>
+                    <span className="adb-control-label">年份</span>
+                    <Select
+                      aria-label="adb-year"
+                      className="adb-filter-year"
+                      value={selectedYear}
+                      options={yearOptions}
+                      onChange={setSelectedYear}
+                      getPopupContainer={resolvePopupContainer}
+                    />
+                  </FilterBar>
+                </div>
+
+                {monthlyQuery.isLoading ? (
+                  <div className="adb-skeleton" aria-busy="true">
+                    <span>数据读取中…</span>
+                  </div>
+                ) : null}
                 {monthlyQuery.isError ? <Alert type="error" showIcon message="月度统计加载失败" /> : null}
 
                 {monthlyData ? (
                   <>
-                    <ResultMetaNotice
-                      meta={monthlyData.result_meta}
-                      testId="adb-monthly-result-meta"
-                    />
-                    {shouldShowSnapshotFallbackWarning(undefined, monthlyData.result_meta) ? (
-                      <Alert
-                        data-testid="adb-monthly-snapshot-fallback-warning"
-                        type="warning"
-                        showIcon
-                        message="快照补数降级"
-                        description={ADB_SNAPSHOT_FALLBACK_WARNING}
-                      />
-                    ) : null}
-                    <AdbAccountingBasisSection
-                      trend={monthlyData.accounting_basis_daily_avg_trend}
-                      titleSuffix={`${monthlyData.year} 月度`}
-                    />
-                    <Row gutter={[16, 16]}>
-                      {[
-                        { title: "年初至今日均资产", value: formatYi(monthlyData.ytd_avg_assets) },
-                        { title: "年初至今日均负债", value: formatYi(monthlyData.ytd_avg_liabilities) },
-                        { title: "年初至今加权YTM", value: formatPct(monthlyData.ytd_asset_yield) },
-                        { title: "年初至今加权票息", value: formatPct(monthlyData.ytd_liability_cost) },
-                        { title: "年初至今利差", value: formatPct(monthlyData.ytd_nim) },
-                      ].map((item) => (
-                        <Col xs={24} sm={12} xl={4} key={item.title}>
-                          <Card size="small">
-                            <Text type="secondary">{item.title}</Text>
-                            <Title level={4} className="adb-kpi-value--spaced">{item.value}</Title>
-                          </Card>
-                        </Col>
-                      ))}
-                    </Row>
+                    <AdbKpiStrip columns={5} items={monthlyKpis} />
 
                     {monthlyMatrixMonths.length > 1 ? (
-                      <Card
-                        data-testid="adb-monthly-nim-trend"
-                        title="月度利差走势"
-                        size="small"
-                        extra={
-                          <Text type="secondary" className="adb-card-extra">
-                            加权YTM vs 加权票息 vs NIM利差；用于跟踪利差边际变化方向
-                          </Text>
-                        }
-                      >
-                        <AdbNimTrendChart months={monthlyMatrixMonths} />
-                      </Card>
+                      <section className="adb-sec" data-testid="adb-monthly-nim-trend">
+                        <AdbSectionHead
+                          title="月度利差走势"
+                          meta="加权YTM vs 加权票息 vs NIM利差"
+                        />
+                        <div className="adb-panel adb-chart-panel">
+                          <AdbNimTrendChart months={monthlyMatrixMonths} />
+                        </div>
+                      </section>
                     ) : null}
 
-                    <Card
-                      data-testid="adb-monthly-analysis-matrix"
-                      title="月度日均分析矩阵"
-                      size="small"
-                    >
-                      <Space direction="vertical" size="middle">
-                        <Text type="secondary">
+                    <section className="adb-sec">
+                      <AdbSectionHead title="口径与证据" />
+                      {monthlyData.result_meta || monthlySnapshotFallbackVisible ? (
+                        <div className="adb-panel">
+                          <ResultMetaNotice
+                            meta={monthlyData.result_meta}
+                            testId="adb-monthly-result-meta"
+                          />
+                          {monthlySnapshotFallbackVisible ? (
+                            <Alert
+                              data-testid="adb-monthly-snapshot-fallback-warning"
+                              type="warning"
+                              showIcon
+                              message="快照补数降级"
+                              description={ADB_SNAPSHOT_FALLBACK_WARNING}
+                            />
+                          ) : null}
+                        </div>
+                      ) : (
+                        <p className="adb-note">本次月度读取未返回结果元信息。</p>
+                      )}
+                    </section>
+
+                    {monthlyHasAccountingBasis ? (
+                      <section className="adb-sec">
+                        <AdbSectionHead title="会计计量分桶" />
+                        <AdbAccountingBasisSection
+                          trend={monthlyData.accounting_basis_daily_avg_trend}
+                          titleSuffix={`${monthlyData.year} 月度`}
+                        />
+                      </section>
+                    ) : null}
+
+                    <section className="adb-sec" data-testid="adb-monthly-analysis-matrix">
+                      <AdbSectionHead title="月度日均分析矩阵" />
+                      <div className="adb-panel">
+                        <p className="adb-note">
                           单位：金额为亿元，收益率、付息率、NIM 为%；比上月、比年初均取最新月份相对变化。
-                        </Text>
+                        </p>
                         <Table<MonthlyMatrixRow>
                           size="small"
                           pagination={false}
@@ -1204,70 +1254,78 @@ export default function AverageBalanceView() {
                           dataSource={monthlyProjectMatrixRows}
                           scroll={{ x: "max-content" }}
                         />
-                      </Space>
-                    </Card>
+                      </div>
+                    </section>
 
-                    <Card title="月度汇总表" size="small">
-                      <Table<AdbMonthlyDataItem>
-                        size="small"
-                        rowKey={(row) => row.month}
-                        pagination={false}
-                        columns={monthlyTableColumns}
-                        dataSource={monthlyData.months}
-                        expandable={{
-                          expandedRowRender: (row) => (
-                            <Row gutter={[16, 16]}>
-                              <Col xs={24} xl={12}>
-                                <Card size="small" title="资产端分类明细">
+                    <section className="adb-sec">
+                      <AdbSectionHead title="月度汇总表" />
+                      <div className="adb-panel">
+                        <Table<AdbMonthlyDataItem>
+                          size="small"
+                          rowKey={(row) => row.month}
+                          pagination={false}
+                          columns={monthlyTableColumns}
+                          dataSource={monthlyData.months}
+                          expandable={{
+                            expandedRowRender: (row) => (
+                              <div className="adb-two-col">
+                                <div className="adb-expanded-group">
+                                  <div className="adb-subhead">资产端分类明细</div>
                                   <Table size="small" pagination={false} rowKey={(item) => `expanded-asset-${row.month}-${item.category}`} columns={monthlyAssetColumns} dataSource={row.breakdown_assets} />
-                                </Card>
-                              </Col>
-                              <Col xs={24} xl={12}>
-                                <Card size="small" title="负债端分类明细">
+                                </div>
+                                <div className="adb-expanded-group">
+                                  <div className="adb-subhead">负债端分类明细</div>
                                   <Table size="small" pagination={false} rowKey={(item) => `expanded-liability-${row.month}-${item.category}`} columns={monthlyLiabilityColumns} dataSource={row.breakdown_liabilities} />
-                                </Card>
-                              </Col>
-                            </Row>
-                          ),
-                        }}
-                      />
-                    </Card>
+                                </div>
+                              </div>
+                            ),
+                          }}
+                        />
+                      </div>
+                    </section>
 
                     {selectedMonthData ? (
-                      <Card
-                        title="按月度日均分析 - 深度分析"
-                        size="small"
-                        extra={<Select aria-label="adb-month" className="adb-filter-month" value={selectedMonth} options={monthlyData.months.map((item) => ({ label: item.month_label, value: item.month }))} onChange={setSelectedMonth} />}
-                      >
-                        <Row gutter={[16, 16]}>
-                          <Col xs={24} xl={12}>
-                            <Card size="small" title="资产端分类明细">
-                              <AdbMonthlyHorizontalChart
-                                className="adb-chart-block"
-                                rows={monthlyAssetRows}
-                                title={`${selectedMonthData.month_label} 资产端`}
-                                color={ibTokens.color.accent}
-                              />
-                              <AdbMonthlyBreakdownTable rows={selectedMonthData.breakdown_assets} columns={monthlyAssetColumns} rowKeyPrefix="asset-deep" />
-                            </Card>
-                          </Col>
-                          <Col xs={24} xl={12}>
-                            <Card size="small" title="负债端分类明细">
-                              <AdbMonthlyHorizontalChart
-                                className="adb-chart-block"
-                                rows={monthlyLiabilityRows}
-                                title={`${selectedMonthData.month_label} 负债端`}
-                                color={ibTokens.color.down}
-                              />
-                              <AdbMonthlyBreakdownTable rows={selectedMonthData.breakdown_liabilities} columns={monthlyLiabilityColumns} rowKeyPrefix="liability-deep" />
-                            </Card>
-                          </Col>
-                        </Row>
-                      </Card>
+                      <section className="adb-sec">
+                        <AdbSectionHead
+                          title="按月度日均分析 - 深度分析"
+                          actions={
+                            <Select
+                              aria-label="adb-month"
+                              className="adb-filter-month"
+                              value={selectedMonth}
+                              options={monthlyData.months.map((item) => ({ label: item.month_label, value: item.month }))}
+                              onChange={setSelectedMonth}
+                              getPopupContainer={resolvePopupContainer}
+                            />
+                          }
+                        />
+                        <div className="adb-two-col">
+                          <div className="adb-panel">
+                            <div className="adb-subhead">资产端分类明细</div>
+                            <AdbMonthlyHorizontalChart
+                              className="adb-chart-block"
+                              rows={monthlyAssetRows}
+                              title={`${selectedMonthData.month_label} 资产端`}
+                              variant="asset"
+                            />
+                            <AdbMonthlyBreakdownTable rows={selectedMonthData.breakdown_assets} columns={monthlyAssetColumns} rowKeyPrefix="asset-deep" />
+                          </div>
+                          <div className="adb-panel">
+                            <div className="adb-subhead">负债端分类明细</div>
+                            <AdbMonthlyHorizontalChart
+                              className="adb-chart-block"
+                              rows={monthlyLiabilityRows}
+                              title={`${selectedMonthData.month_label} 负债端`}
+                              variant="liability"
+                            />
+                            <AdbMonthlyBreakdownTable rows={selectedMonthData.breakdown_liabilities} columns={monthlyLiabilityColumns} rowKeyPrefix="liability-deep" />
+                          </div>
+                        </div>
+                      </section>
                     ) : null}
                   </>
                 ) : null}
-              </Space>
+              </div>
             ),
           },
         ]}

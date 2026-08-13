@@ -1,6 +1,7 @@
-import { ibChartTheme } from "../../../components/charts/chartTheme";
-import ReactECharts from "../../../lib/echarts";
+import { BaseChart } from "../../../components/charts/BaseChart";
+import { nocturneChartTheme } from "../../../components/charts/chartTheme";
 import type { AdbTrendItem } from "../../../api/contracts";
+import { nocturneTokens } from "../../../theme/designSystem";
 
 const YI = 100_000_000;
 
@@ -13,10 +14,10 @@ function buildTrendOption(trend: AdbTrendItem[]) {
   const dates = trend.map((item) => item.date);
   const dailyValues = trend.map((item) => item.daily_balance / YI);
   const ma30Values = trend.map((item) => item.moving_average_30d / YI);
-  const dailyColor = ibChartTheme.categoricalPalette[3];
-  const maColor = ibChartTheme.palette[0];
+  const dailyColor = nocturneTokens.color.inkMuted;
+  const maColor = nocturneChartTheme.palette[0];
 
-  return ibChartTheme.createLineChartOption({
+  return nocturneChartTheme.createLineChartOption({
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "cross" },
@@ -59,7 +60,7 @@ function buildTrendOption(trend: AdbTrendItem[]) {
         type: "line",
         data: dailyValues,
         symbol: "none",
-        lineStyle: { width: 1.5, color: dailyColor },
+        lineStyle: { width: 1, color: dailyColor },
         itemStyle: { color: dailyColor },
       },
       {
@@ -82,5 +83,5 @@ function buildTrendOption(trend: AdbTrendItem[]) {
  */
 export default function AdbDailyTrendChart({ trend, height = 340 }: AdbDailyTrendChartProps) {
   if (!trend.length) return null;
-  return <ReactECharts option={buildTrendOption(trend)} style={{ height }} notMerge lazyUpdate />;
+  return <BaseChart option={buildTrendOption(trend)} height={height} />;
 }

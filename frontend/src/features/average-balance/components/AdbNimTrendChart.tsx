@@ -1,7 +1,7 @@
-import { ibChartTheme } from "../../../components/charts/chartTheme";
-import ReactECharts from "../../../lib/echarts";
+import { BaseChart } from "../../../components/charts/BaseChart";
+import { nocturneChartTheme } from "../../../components/charts/chartTheme";
 import type { AdbMonthlyDataItem } from "../../../api/contracts";
-import { ibTokens } from "../../../theme/designSystem";
+import { nocturneTokens } from "../../../theme/designSystem";
 import { EM_DASH } from "../../../utils/format";
 
 export type AdbNimTrendChartProps = {
@@ -19,11 +19,11 @@ function buildNimTrendOption(months: AdbMonthlyDataItem[]) {
   const yieldValues = months.map((m) => m.asset_yield);
   const costValues = months.map((m) => m.liability_cost);
   const nimValues = months.map((m) => m.net_interest_margin);
-  const assetYieldColor = ibChartTheme.palette[0];
-  const liabilityCostColor = ibTokens.color.down;
-  const nimColor = ibTokens.color.up;
+  const assetYieldColor = nocturneChartTheme.palette[0];
+  const liabilityCostColor = nocturneTokens.color.red;
+  const nimColor = nocturneTokens.color.green;
 
-  return ibChartTheme.createLineChartOption({
+  return nocturneChartTheme.createLineChartOption({
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "cross" },
@@ -95,5 +95,5 @@ function buildNimTrendOption(months: AdbMonthlyDataItem[]) {
  */
 export default function AdbNimTrendChart({ months, height = 320 }: AdbNimTrendChartProps) {
   if (!months.length) return null;
-  return <ReactECharts option={buildNimTrendOption(months)} style={{ height }} notMerge lazyUpdate />;
+  return <BaseChart option={buildNimTrendOption(months)} height={height} />;
 }

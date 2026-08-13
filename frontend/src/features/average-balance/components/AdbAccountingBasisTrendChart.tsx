@@ -1,5 +1,5 @@
-import { ibChartTheme } from "../../../components/charts/chartTheme";
-import ReactECharts from "../../../lib/echarts";
+import { BaseChart } from "../../../components/charts/BaseChart";
+import { nocturneChartTheme } from "../../../components/charts/chartTheme";
 import type { AdbAccountingBasisDailyAvgTrendItem } from "../../../api/contracts";
 import { EM_DASH } from "../../../utils/format";
 
@@ -24,13 +24,14 @@ function collectBuckets(trend: AdbAccountingBasisDailyAvgTrendItem[]): string[] 
 function buildOption(trend: AdbAccountingBasisDailyAvgTrendItem[]) {
   const labels = trend.map((t) => t.report_month || t.report_date?.slice(0, 7) || EM_DASH);
   const buckets = collectBuckets(trend);
+  const categoricalPalette = nocturneChartTheme.categoricalPalette;
   const series = buckets.map((bucket, index) => ({
     name: bucket,
     type: "line" as const,
     symbol: "circle",
     symbolSize: 4,
-    itemStyle: { color: ibChartTheme.palette[index % ibChartTheme.palette.length] },
-    lineStyle: { color: ibChartTheme.palette[index % ibChartTheme.palette.length] },
+    itemStyle: { color: categoricalPalette[index % categoricalPalette.length] },
+    lineStyle: { color: categoricalPalette[index % categoricalPalette.length] },
     data: trend.map((t) => {
       const row = t.rows.find((r) => ((r.basis_bucket || "").trim() || EM_DASH) === bucket);
       if (!row) return null;
@@ -45,7 +46,7 @@ function buildOption(trend: AdbAccountingBasisDailyAvgTrendItem[]) {
     }),
   }));
 
-  return ibChartTheme.createLineChartOption({
+  return nocturneChartTheme.createLineChartOption({
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "cross" },
@@ -70,7 +71,7 @@ function buildOption(trend: AdbAccountingBasisDailyAvgTrendItem[]) {
     yAxis: {
       type: "value",
       axisLabel: { formatter: (v: number) => `${v.toFixed(0)}亿` },
-      splitLine: { lineStyle: { type: "dashed", color: ibChartTheme.splitLine.lineStyle.color } },
+      splitLine: { lineStyle: { type: "dashed", color: nocturneChartTheme.splitLine.lineStyle.color } },
     },
     series,
   });
@@ -82,5 +83,5 @@ export default function AdbAccountingBasisTrendChart({
   height = 300,
 }: AdbAccountingBasisTrendChartProps) {
   if (!trend.length) return null;
-  return <ReactECharts option={buildOption(trend)} style={{ width: "100%", height }} notMerge lazyUpdate />;
+  return <BaseChart option={buildOption(trend)} height={height} />;
 }

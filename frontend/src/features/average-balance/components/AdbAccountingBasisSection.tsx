@@ -1,4 +1,4 @@
-import { Card, Space, Table, Typography } from "antd";
+import { Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type {
   AdbAccountingBasisDailyAvg,
@@ -10,7 +10,6 @@ import AdbAccountingBasisTrendChart from "./AdbAccountingBasisTrendChart";
 import "./AverageBalanceView.css";
 
 const YI = 100_000_000;
-const { Text, Paragraph } = Typography;
 
 type Row = {
   key: string;
@@ -73,40 +72,35 @@ export default function AdbAccountingBasisSection({
     : "会计计量分桶 · 日均结构";
 
   return (
-    <Card size="small" data-testid="adb-accounting-basis-section" title={title}>
-      <Space direction="vertical" size="middle" className="adb-stack">
-        <Text type="secondary">
-          与「债券+同业」大类日均并列阅读；分桶口径以后端 rule_version / source_version 为准。
-        </Text>
-        {snapshot && snapshot.rows.length > 0 ? (
-          <div>
-            <Text strong>
-              参考日 {snapshot.report_date || EM_DASH}
-              {snapshot.currency_basis ? ` · ${snapshot.currency_basis}` : ""}
-            </Text>
-            {snapshot.accounting_controls.length > 0 ? (
-              <Paragraph type="secondary" className="adb-basis-controls">
-                控制项：{snapshot.accounting_controls.join("；")}
-              </Paragraph>
-            ) : null}
-            <Table<Row>
-              size="small"
-              pagination={false}
-              rowKey={(r) => r.key}
-              columns={snapshotColumns}
-              dataSource={buildSnapshotRows(snapshot)}
-            />
+    <section className="adb-panel" data-testid="adb-accounting-basis-section">
+      <div className="adb-subhead">{title}</div>
+      <div className="adb-note">
+        与「债券+同业」大类日均并列阅读；分桶口径以后端 rule_version / source_version 为准。
+      </div>
+      {snapshot && snapshot.rows.length > 0 ? (
+        <div>
+          <div className="adb-subhead">
+            参考日 {snapshot.report_date || EM_DASH}
+            {snapshot.currency_basis ? ` · ${snapshot.currency_basis}` : ""}
           </div>
-        ) : null}
-        {trend && trend.length > 1 ? (
-          <div data-testid="adb-accounting-basis-trend-chart">
-            <Text strong className="adb-basis-trend-title">
-              分桶日均走势（亿元）
-            </Text>
-            <AdbAccountingBasisTrendChart trend={trend} />
-          </div>
-        ) : null}
-      </Space>
-    </Card>
+          {snapshot.accounting_controls.length > 0 ? (
+            <div className="adb-note">控制项：{snapshot.accounting_controls.join("；")}</div>
+          ) : null}
+          <Table<Row>
+            size="small"
+            pagination={false}
+            rowKey={(r) => r.key}
+            columns={snapshotColumns}
+            dataSource={buildSnapshotRows(snapshot)}
+          />
+        </div>
+      ) : null}
+      {trend && trend.length > 1 ? (
+        <div data-testid="adb-accounting-basis-trend-chart">
+          <div className="adb-subhead">分桶日均走势（亿元）</div>
+          <AdbAccountingBasisTrendChart trend={trend} />
+        </div>
+      ) : null}
+    </section>
   );
 }

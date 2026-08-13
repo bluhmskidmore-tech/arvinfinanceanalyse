@@ -1,10 +1,8 @@
-import { Alert, Collapse, List, Space, Spin, Typography } from "antd";
+import { Alert, Collapse, List, Spin } from "antd";
 import type { AdbCoveragePayload } from "../../../api/contracts";
 import { EM_DASH } from "../../../utils/format";
 
 import "./AverageBalanceView.css";
-
-const { Text } = Typography;
 
 const MAX_DATES_SHOWN = 120;
 
@@ -46,7 +44,7 @@ export default function AdbCoverageDiagnostics({
           key: "coverage",
           label: "快照 vs formal 覆盖诊断（只读）",
           children: (
-            <Space direction="vertical" size="small" className="adb-stack">
+            <>
               {hasRateCoverage ? (
                 <Alert
                   data-testid="adb-rate-coverage-diagnostics"
@@ -61,21 +59,21 @@ export default function AdbCoverageDiagnostics({
               ) : isError ? (
                 <Alert type="error" showIcon message="覆盖诊断加载失败" />
               ) : data ? (
-                <Space direction="vertical" size="small" className="adb-stack">
-                  <div className="adb-coverage-lines">
-                    <Text type="secondary">
+                <>
+                  <div className="adb-lines">
+                    <div>
                       区间 {data.start_date}～{data.end_date} · 日历 {data.calendar_days} 天
-                    </Text>
-                    <Text type="secondary">
+                    </div>
+                    <div>
                       快照去重 {data.snapshot_date_count} 日 · formal 去重 {data.formal_date_count} 日
-                    </Text>
-                    <Text type="secondary">
+                    </div>
+                    <div>
                       缺口 {data.missing_count} 日（formal 相对快照并集约 {data.coverage_pct}%）
-                    </Text>
+                    </div>
                   </div>
                   {data.missing_dates.length > 0 ? (
                     <div data-testid="adb-coverage-missing-list">
-                      <Text strong>缺 formal 的日期（前 {MAX_DATES_SHOWN} 条）</Text>
+                      <div className="adb-subhead">缺 formal 的日期（前 {MAX_DATES_SHOWN} 条）</div>
                       <List
                         size="small"
                         bordered
@@ -86,19 +84,19 @@ export default function AdbCoverageDiagnostics({
                         )}
                       />
                       {data.missing_dates.length > MAX_DATES_SHOWN ? (
-                        <Text type="secondary" className="adb-aux-label">
+                        <div className="adb-note">
                           … 共 {data.missing_dates.length} 条，其余请复制接口 JSON 或缩小区间查看。
-                        </Text>
+                        </div>
                       ) : null}
                     </div>
                   ) : (
-                    <Text className="adb-tone--ok">未发现「快照有、formal 无」的缺口日期。</Text>
+                    <div className="adb-note adb-tone--ok">未发现「快照有、formal 无」的缺口日期。</div>
                   )}
-                </Space>
+                </>
               ) : (
-                <Text type="secondary">无数据</Text>
+                <div className="adb-note">无数据</div>
               )}
-            </Space>
+            </>
           ),
         },
       ]}

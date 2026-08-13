@@ -705,8 +705,8 @@ describe("AverageBalanceView", () => {
 
     await user.click(await screen.findByRole("tab", { name: "月度统计" }));
 
-    const ytdAssetCard = (await screen.findByText("年初至今日均资产")).closest(".ant-card");
-    const ytdLiabilityCard = screen.getByText("年初至今日均负债").closest(".ant-card");
+    const ytdAssetCard = (await screen.findByText("年初至今日均资产")).closest(".adb-kpi");
+    const ytdLiabilityCard = screen.getByText("年初至今日均负债").closest(".adb-kpi");
     expect(ytdAssetCard).toHaveTextContent("—");
     expect(ytdLiabilityCard).toHaveTextContent("—");
 

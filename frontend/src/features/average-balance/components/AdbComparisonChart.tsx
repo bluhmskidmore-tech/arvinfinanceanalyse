@@ -1,5 +1,6 @@
-import { ibChartTheme } from "../../../components/charts/chartTheme";
-import ReactECharts from "../../../lib/echarts";
+import { BaseChart } from "../../../components/charts/BaseChart";
+import { nocturneChartTheme } from "../../../components/charts/chartTheme";
+import { nocturneTokens } from "../../../theme/designSystem";
 import { EM_DASH } from "../../../utils/format";
 
 const YI = 100_000_000;
@@ -25,7 +26,7 @@ function formatSignedPct(value: number | null | undefined): string {
 }
 
 function buildComparisonOption(rows: AdbComparisonChartRow[]) {
-  return ibChartTheme.createBarChartOption({
+  return nocturneChartTheme.createBarChartOption({
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "shadow" },
@@ -57,21 +58,21 @@ function buildComparisonOption(rows: AdbComparisonChartRow[]) {
         name: SERIES_SPOT,
         type: "bar",
         data: rows.map((row) => row.spot),
-        itemStyle: { color: ibChartTheme.palette[0] },
+        itemStyle: { color: nocturneChartTheme.palette[0] },
         barGap: "10%",
       },
       {
         name: SERIES_AVG,
         type: "bar",
         data: rows.map((row) => row.avg),
-        itemStyle: { color: ibChartTheme.palette[2] },
+        itemStyle: { color: nocturneTokens.color.inkSoft },
         label: {
           show: true,
           position: "top",
           formatter: ({ dataIndex }: { dataIndex: number }) =>
             formatSignedPct(rows[dataIndex]?.deviationPct),
-          color: ibChartTheme.axisLabel.color,
-          fontSize: ibChartTheme.axisLabel.fontSize,
+          color: nocturneChartTheme.axisLabel.color,
+          fontSize: nocturneChartTheme.axisLabel.fontSize,
         },
       },
     ],
@@ -87,5 +88,5 @@ export default function AdbComparisonChart({
   rows,
   height = 420,
 }: AdbComparisonChartProps) {
-  return <ReactECharts option={buildComparisonOption(rows)} style={{ height }} notMerge lazyUpdate />;
+  return <BaseChart option={buildComparisonOption(rows)} height={height} />;
 }

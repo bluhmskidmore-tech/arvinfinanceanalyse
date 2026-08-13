@@ -1,6 +1,7 @@
-import { ibChartTheme } from "../../../components/charts/chartTheme";
+import { nocturneChartTheme } from "../../../components/charts/chartTheme";
 import ReactECharts from "../../../lib/echarts";
 import type { CSSProperties } from "react";
+import { nocturneTokens } from "../../../theme/designSystem";
 import { EM_DASH } from "../../../utils/format";
 
 export type AdbMonthlyHorizontalChartRow = {
@@ -9,20 +10,27 @@ export type AdbMonthlyHorizontalChartRow = {
   weightedRate: number | null;
 };
 
+export type AdbMonthlyHorizontalChartVariant = "asset" | "liability";
+
+const VARIANT_BAR_COLOR: Record<AdbMonthlyHorizontalChartVariant, string> = {
+  asset: nocturneTokens.color.blue,
+  liability: nocturneTokens.color.red,
+};
+
 function formatPct(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) return EM_DASH;
   return `${value.toFixed(2)}%`;
 }
 
 function buildHorizontalOption(rows: AdbMonthlyHorizontalChartRow[], title: string, color: string) {
-  return ibChartTheme.createBarChartOption({
+  return nocturneChartTheme.createBarChartOption({
     title: {
       text: title,
       left: 0,
       textStyle: {
         fontSize: 13,
         fontWeight: 600,
-        color: ibChartTheme.axisLabel.color,
+        color: nocturneChartTheme.axisLabel.color,
       },
     },
     tooltip: {
@@ -59,7 +67,7 @@ function buildHorizontalOption(rows: AdbMonthlyHorizontalChartRow[], title: stri
           position: "right",
           formatter: ({ dataIndex }: { dataIndex: number }) =>
             rows[dataIndex]?.avgYi.toFixed(2) ?? "0.00",
-          color: ibChartTheme.axisLabel.color,
+          color: nocturneChartTheme.axisLabel.color,
         },
       },
     ],
@@ -69,7 +77,9 @@ function buildHorizontalOption(rows: AdbMonthlyHorizontalChartRow[], title: stri
 type AdbMonthlyHorizontalChartProps = {
   rows: AdbMonthlyHorizontalChartRow[];
   title: string;
-  color: string;
+  /** 显式 color 优先于 variant；两者都缺省时回退 Nocturne 主题主色。 */
+  color?: string;
+  variant?: AdbMonthlyHorizontalChartVariant;
   height?: number;
   style?: CSSProperties;
   className?: string;
@@ -79,14 +89,16 @@ export default function AdbMonthlyHorizontalChart({
   rows,
   title,
   color,
+  variant,
   height = 320,
   style,
   className,
 }: AdbMonthlyHorizontalChartProps) {
+  const barColor = color ?? (variant ? VARIANT_BAR_COLOR[variant] : nocturneChartTheme.palette[0]);
   return (
     <ReactECharts
       className={className}
-      option={buildHorizontalOption(rows, title, color)}
+      option={buildHorizontalOption(rows, title, barColor)}
       style={{ height, ...style }}
       notMerge
       lazyUpdate
