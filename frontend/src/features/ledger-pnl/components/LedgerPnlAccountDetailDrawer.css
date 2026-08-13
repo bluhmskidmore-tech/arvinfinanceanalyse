@@ -19,7 +19,7 @@
 .ledger-account-detail__header span,
 .ledger-account-detail__section-head span {
   color: var(--dh-api-blue);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.1em;
 }
@@ -87,7 +87,7 @@
 .ledger-account-detail__metric-grid article > span,
 .ledger-account-detail__metric-grid article > small {
   color: var(--dh-api-muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .ledger-account-detail__source-grid {
@@ -95,7 +95,7 @@
   gap: 4px;
   margin-top: 9px;
   color: var(--dh-api-muted);
-  font-size: 10px;
+  font-size: 11px;
   overflow-wrap: anywhere;
 }
 
@@ -139,7 +139,7 @@
 
 .ledger-account-detail__exact-money small {
   color: var(--dh-api-muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .ledger-account-detail__state {
@@ -210,7 +210,7 @@
   flex-wrap: wrap;
   gap: 5px 12px;
   color: var(--dh-api-muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .ledger-account-detail__actions {

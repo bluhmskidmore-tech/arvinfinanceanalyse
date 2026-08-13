@@ -292,7 +292,7 @@
   border-radius: var(--dh-api-radius);
   background: transparent;
   color: var(--dh-api-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-style: normal;
   font-family: inherit;
   line-height: 1.4;
@@ -365,7 +365,7 @@
   margin-left: 6px;
   color: var(--dh-api-muted);
   font-family: var(--moss-font-tabular, ui-monospace, monospace);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 @media (max-width: 900px) {

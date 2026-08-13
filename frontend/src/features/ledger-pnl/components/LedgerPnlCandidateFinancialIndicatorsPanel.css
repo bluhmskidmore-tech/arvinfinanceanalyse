@@ -36,7 +36,7 @@
 .candidate-indicators__section-heading > div > span,
 .candidate-indicators__detail header > div > span {
   color: var(--candidate-blue);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.12em;
 }
@@ -226,7 +226,7 @@
   overflow-wrap: anywhere;
   color: inherit;
   font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .candidate-indicators__summary-strip {
@@ -249,7 +249,7 @@
 
 .candidate-indicators__summary-strip span {
   color: var(--candidate-muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .candidate-indicators__summary-strip strong {
@@ -308,7 +308,7 @@
 
 .candidate-indicators__view-switcher small {
   color: inherit;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.4;
   opacity: 0.82;
 }
@@ -339,7 +339,7 @@
 .candidate-indicators__version-impact-copy > span,
 .candidate-indicators__version-impact--unavailable > div > span {
   color: var(--candidate-blue);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.12em;
 }
@@ -381,7 +381,7 @@
 .candidate-indicators__decision-brief dt,
 .candidate-indicators__decision-brief dd {
   margin: 0;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.45;
 }
 
@@ -443,7 +443,7 @@
 .candidate-indicators__version-impact-metrics small,
 .candidate-indicators__version-impact > small {
   color: var(--candidate-muted);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.4;
 }
 
@@ -465,7 +465,7 @@
   padding-top: 10px;
   border-top: 1px solid var(--candidate-line);
   color: var(--candidate-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .candidate-indicators__version-impact summary {
@@ -529,7 +529,7 @@
 
 .candidate-indicators__promotion-heading span {
   color: var(--candidate-blue);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.12em;
 }
@@ -611,7 +611,7 @@
 
 .candidate-indicators__promotion-grid article em {
   color: var(--candidate-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-style: normal;
   font-weight: 800;
 }
@@ -628,7 +628,7 @@
 .candidate-indicators__promotion-grid details {
   width: 100%;
   color: var(--candidate-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .candidate-indicators__promotion-grid summary {
@@ -678,7 +678,7 @@
 
 .candidate-indicators__worklist-heading span {
   color: var(--candidate-blue);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.12em;
 }
@@ -799,7 +799,7 @@
 
 .candidate-indicators__worklist-items article header span {
   color: var(--dh-api-amber);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
 }
 
@@ -826,7 +826,7 @@
 .candidate-indicators__worklist-items article dd {
   margin: 0;
   color: var(--candidate-muted);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.45;
 }
 
@@ -897,7 +897,7 @@
   border-radius: var(--dh-api-radius);
   background: var(--moss-color-success-50);
   color: var(--dh-api-green);
-  font-size: 9px;
+  font-size: 11px;
   font-style: normal;
   font-weight: 750;
   line-height: 1.4;
@@ -931,7 +931,7 @@
   color: var(--candidate-blue);
   cursor: pointer;
   font: inherit;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 750;
 }
 
@@ -943,13 +943,13 @@
 .candidate-indicators__income-grid article > span:not(:first-child),
 .candidate-indicators__scale-grid article > div > span {
   color: var(--candidate-muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .candidate-indicators__income-grid small {
   grid-column: 1 / -1;
   color: var(--candidate-muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .candidate-indicators__scale-grid {
@@ -1021,7 +1021,7 @@
 .candidate-indicators__source-list span,
 .candidate-indicators__queue span {
   color: var(--candidate-muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .candidate-indicators__source-list span[data-match="false"] {
@@ -1042,7 +1042,7 @@
   display: block;
   margin-top: 4px;
   color: var(--candidate-muted);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.4;
 }
 
@@ -1071,7 +1071,7 @@
   display: block;
   margin-top: 5px;
   color: var(--candidate-muted);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
@@ -1083,7 +1083,7 @@
 
 .candidate-indicators__search > span {
   color: var(--candidate-muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .candidate-indicators__search input {
@@ -1153,7 +1153,7 @@
 
 .candidate-indicators__metric-list small {
   color: var(--candidate-muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .candidate-indicators__metric-list > p {
@@ -1270,7 +1270,7 @@
 .candidate-indicators__detail dt,
 .candidate-indicators__lineage-row dt {
   color: var(--candidate-muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .candidate-indicators__detail dd,
@@ -1299,7 +1299,7 @@
 .candidate-indicators__lineage-row > p,
 .candidate-indicators__lineage-row > small {
   color: var(--candidate-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .candidate-indicators__lineage-row > p {
@@ -1331,7 +1331,7 @@
 .candidate-indicators__revalidation > label,
 .candidate-indicators__revalidation > small {
   color: var(--candidate-muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .candidate-indicators__revalidation h3,

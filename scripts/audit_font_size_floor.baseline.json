@@ -3,18 +3,6 @@
     "frontend/src/features/agent/AgentWorkbenchPage.css": {
       "belowFloor": 1
     },
-    "frontend/src/features/balance-analysis/cockpit/balanceAnalysisCockpit.module.css": {
-      "belowFloor": 3
-    },
-    "frontend/src/features/balance-analysis/components/balanceAnalysisStageRow.module.css": {
-      "belowFloor": 1
-    },
-    "frontend/src/features/balance-analysis/components/balanceWorkbench.css": {
-      "belowFloor": 24
-    },
-    "frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.css": {
-      "belowFloor": 3
-    },
     "frontend/src/features/balance-movement-analysis/pages/BalanceMovementAnalysisFigma.css": {
       "belowFloor": 84
     },
@@ -29,33 +17,6 @@
     },
     "frontend/src/features/cross-asset/pages/CrossAssetDriversPage.css": {
       "belowFloor": 1
-    },
-    "frontend/src/features/ledger-pnl/components/LedgerPnlAccountDetailDrawer.css": {
-      "belowFloor": 5
-    },
-    "frontend/src/features/ledger-pnl/components/LedgerPnlAnalysisWorkbench.css": {
-      "belowFloor": 5
-    },
-    "frontend/src/features/ledger-pnl/components/LedgerPnlCandidateFinancialIndicatorsPanel.css": {
-      "belowFloor": 26
-    },
-    "frontend/src/features/ledger-pnl/components/LedgerPnlCandidatePeriodComparison.css": {
-      "belowFloor": 6
-    },
-    "frontend/src/features/ledger-pnl/components/LedgerPnlDataTable.css": {
-      "belowFloor": 1
-    },
-    "frontend/src/features/ledger-pnl/components/LedgerPnlFinancialIndicatorSummaryPanel.css": {
-      "belowFloor": 2
-    },
-    "frontend/src/features/ledger-pnl/components/LedgerPnlNetInterestComponentDetailDrawer.css": {
-      "belowFloor": 6
-    },
-    "frontend/src/features/ledger-pnl/components/LedgerPnlSectionNav.css": {
-      "belowFloor": 1
-    },
-    "frontend/src/features/ledger-pnl/pages/LedgerPnlPage.css": {
-      "belowFloor": 22
     },
     "frontend/src/features/market-data/components/LivermoreStrategyPanel.css": {
       "belowFloor": 1

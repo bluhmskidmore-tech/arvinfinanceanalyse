@@ -50,6 +50,7 @@
 
 .balance-analysis-abnormal-sentinels__item small {
   color: var(--ib-ink-secondary);
+  font-size: 11px;
 }
 
 
@@ -379,7 +380,7 @@
 }
 
 .balance-analysis-contract-kpis .moss-page-v2-kpi-metric__label {
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.2;
 }
 
@@ -398,7 +399,7 @@
 
 .balance-analysis-contract-kpis .moss-page-v2-kpi-metric__footer {
   overflow-wrap: anywhere;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.25;
 }
 
@@ -476,7 +477,7 @@
   }
 
   .balance-analysis-contract-kpis .moss-page-v2-kpi-metric__footer {
-    font-size: 10px;
+    font-size: 12px;
     line-height: 1.25;
   }
 }
@@ -1960,4 +1961,10 @@
   .balance-analysis-hero {
     border-top-width: 1px;
   }
+}
+
+/* antd 主题 token 派生的 Tag 字号为 10px，低于 DESIGN.md §3 的 11px 硬底线；
+   参照 macro-toolkit 的先例把页内 Tag 收敛到 11px 辅助档。 */
+.balance-analysis-page .ant-tag {
+  font-size: 11px;
 }
