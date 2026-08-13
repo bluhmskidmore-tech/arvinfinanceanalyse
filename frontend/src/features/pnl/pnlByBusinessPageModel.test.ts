@@ -444,9 +444,12 @@ describe("pnlByBusinessPageModel", () => {
     expect(model.hero.requestedReportDate).toBe("2026-04-30");
     expect(model.hero.asOfDate).toBe("2026-04-30");
     expect(model.hero.reportDateNote).toContain("fallback 快照");
-    expect(model.stateSurfaces.map((surface) => surface.key)).toEqual(
-      expect.arrayContaining(["warning", "fallback-date", "vendor-stale"]),
-    );
+    // 锁定完整顺序（不只是包含关系），保证声明式重写后 surface 次序逐字一致。
+    expect(model.stateSurfaces.map((surface) => surface.key)).toEqual([
+      "warning",
+      "fallback-date",
+      "vendor-stale",
+    ]);
   });
 
   it("builds hero date alignment note and quality error/missing state surfaces", () => {

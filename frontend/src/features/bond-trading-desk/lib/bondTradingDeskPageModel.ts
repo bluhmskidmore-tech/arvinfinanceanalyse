@@ -7,6 +7,8 @@ import type {
   Numeric,
   ResultMeta,
 } from "../../../api/contracts";
+import { EM_DASH } from "../../../utils/format";
+import type { LabeledValue } from "../../../pageModel";
 import { formatPct, formatYi } from "../../bond-analytics/utils/formatters";
 
 export type BondTradingDeskCoverageSource =
@@ -40,12 +42,13 @@ export interface BondTradingDeskConclusion {
   detail: string;
 }
 
-export interface BondTradingDeskMetricTile {
-  key: string;
-  label: string;
-  value: string;
+/**
+ * KPI 瓦片复用共享 `LabeledValue` 词汇；`caption` 语义等同 `LabeledValue.detail`，
+ * 因页面消费方正被并行改动暂不改名，批量迁移阶段收敛为 `detail`。
+ */
+export type BondTradingDeskMetricTile = Pick<LabeledValue, "key" | "label" | "value"> & {
   caption: string;
-}
+};
 
 export interface BondTradingDeskGapSection {
   key: string;
@@ -283,12 +286,12 @@ export function buildBondTradingDeskMetricTiles(
 ): BondTradingDeskMetricTile[] {
   if (!snapshot) {
     return [
-      { key: "market_value", label: "市值", value: "—", caption: "" },
-      { key: "weight", label: "组合权重", value: "—", caption: "" },
-      { key: "ytm", label: "YTM", value: "—", caption: "" },
-      { key: "duration", label: "修正久期", value: "—", caption: "" },
-      { key: "credit_spread", label: "信用利差", value: "—", caption: "" },
-      { key: "net_price", label: "估值净价", value: "—", caption: "" },
+      { key: "market_value", label: "市值", value: EM_DASH, caption: "" },
+      { key: "weight", label: "组合权重", value: EM_DASH, caption: "" },
+      { key: "ytm", label: "YTM", value: EM_DASH, caption: "" },
+      { key: "duration", label: "修正久期", value: EM_DASH, caption: "" },
+      { key: "credit_spread", label: "信用利差", value: EM_DASH, caption: "" },
+      { key: "net_price", label: "估值净价", value: EM_DASH, caption: "" },
     ];
   }
 

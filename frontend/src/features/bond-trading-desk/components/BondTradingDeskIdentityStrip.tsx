@@ -1,6 +1,7 @@
 import { Tag } from "antd";
 
 import type { BondTradingDeskBondSnapshot } from "../lib/bondTradingDeskPageModel";
+import { EM_DASH } from "../../../utils/format";
 import styles from "../BondTradingDeskPage.module.css";
 
 export function BondTradingDeskIdentityStrip({
@@ -12,7 +13,7 @@ export function BondTradingDeskIdentityStrip({
 }) {
   return (
     <div data-testid="bond-trading-desk-identity" className={styles.identityStrip}>
-      <span className={styles.identityCode}>{bondCode || "—"}</span>
+      <span className={styles.identityCode}>{bondCode || EM_DASH}</span>
       {snapshot ? (
         <>
           <span className={styles.identityMeta}>{snapshot.bondName ?? "名称待返回"}</span>

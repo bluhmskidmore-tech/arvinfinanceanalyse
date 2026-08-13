@@ -12,7 +12,13 @@ import type {
   PnlByBusinessYtdPayload,
   ResultMeta,
 } from "../../api/contracts";
-import { EM_DASH } from "../../utils/format";
+import {
+  EM_DASH,
+  buildStateSurfaces,
+  fixedOrDash,
+  type PageHero,
+  type StateSurfaceItem,
+} from "../../pageModel";
 import { resolveAdbAvgYuan } from "./zqtzAdbAvgRollup";
 
 export type PnlByBusinessViewMode = "monthly" | "ytd" | "formal";
@@ -36,30 +42,11 @@ export const VIEW_MODE_BUSINESS_QUESTIONS: Record<PnlByBusinessViewMode, string>
   formal: "所选报表日 formal primary 对账是否可追溯，未 join 损益有多少？",
 };
 
-export type PnlHeroModel = {
-  businessQuestion: string;
-  conclusionTitle: string;
-  conclusionDetail: string;
-  reportDateLabel: string;
-  requestedReportDate: string;
-  asOfDate: string;
-  reportDateNote: string;
-};
+/** 与共享 `PageHero` 同形；本页结论与日期字段全部必填。 */
+export type PnlHeroModel = Required<PageHero>;
 
-export type PnlStateSurfaceItem = {
-  key: string;
-  variant:
-    | "neutral"
-    | "loading"
-    | "empty"
-    | "error"
-    | "stale"
-    | "fallback-date"
-    | "mock"
-    | "definition-pending";
-  title: string;
-  description: string;
-};
+/** 状态面直接采用 `src/pageModel` 基元词汇（variant 联合与 PageStateSurface 对齐）。 */
+export type PnlStateSurfaceItem = StateSurfaceItem;
 
 const YUAN_PER_YI = 100_000_000;
 const YUAN_PER_WAN = 10_000;
@@ -303,10 +290,7 @@ function formatYuanByMateriality(raw: string | number | null | undefined): strin
 
 function formatYuanAsYiCell(raw: string | number | null | undefined): string {
   const value = numeric(raw);
-  if (value === null) {
-    return EM_DASH;
-  }
-  return (value / YUAN_PER_YI).toFixed(2);
+  return fixedOrDash(value === null ? null : value / YUAN_PER_YI, 2);
 }
 
 /** avg_balance=null（后端未匹配到日均数据）时的展示文案；真零显示 "0.00"。 */
@@ -742,7 +726,7 @@ function buildHeroConclusion(input: {
   };
 }
 
-function buildStateSurfaces(input: {
+function buildPnlStateSurfaces(input: {
   activeDataStatus: string;
   activeResultMeta?: ResultMeta;
   activeDiagnostics?: {
@@ -760,37 +744,53 @@ function buildStateSurfaces(input: {
   };
   clientMode?: "real" | "mock";
 }): PnlStateSurfaceItem[] {
-  const surfaces: PnlStateSurfaceItem[] = [];
+  const meta = input.activeResultMeta;
+  const diagnostics = input.activeDiagnostics;
 
-  if (input.clientMode === "mock") {
-    surfaces.push({
+  const manualAdjustment = numeric(diagnostics?.manual_adjustment);
+  const hasManualAdjustment = manualAdjustment !== null && manualAdjustment !== 0;
+  const sourceTotal = numeric(diagnostics?.source_total_pnl);
+  const preAdjustmentSource =
+    sourceTotal === null || manualAdjustment === null ? null : sourceTotal - manualAdjustment;
+
+  const coverageDays = diagnostics?.coverage_days;
+  const expectedDays = diagnostics?.expected_days;
+  const hasPartialCoverage =
+    typeof coverageDays === "number" &&
+    typeof expectedDays === "number" &&
+    expectedDays > 0 &&
+    coverageDays < expectedDays;
+
+  const unallocatedPnl = numeric(diagnostics?.unallocated_pnl);
+  const unallocatedRowCount = diagnostics?.unallocated_row_count ?? 0;
+  const hasUnallocated = unallocatedRowCount > 0 || (unallocatedPnl !== null && unallocatedPnl !== 0);
+
+  const reconciliationDelta = numeric(diagnostics?.reconciliation_delta);
+  const hasReconciliationBreak = reconciliationDelta !== null && reconciliationDelta !== 0;
+
+  // 与原 push 链等价：三类具体质量警告任一出现时抑制通用“质量预警”。
+  const hasSpecificQualityWarning = hasPartialCoverage || hasUnallocated || hasReconciliationBreak;
+
+  return buildStateSurfaces([
+    {
       key: "mock-mode",
       variant: "mock",
       title: "演示 / Mock 读路径",
       description: "当前为本地契约回放，不代表正式 DuckDB 读面。",
-    });
-  }
-
-  const meta = input.activeResultMeta;
-  if (meta?.formal_use_allowed === false) {
-    surfaces.push({
+      when: input.clientMode === "mock",
+    },
+    {
       key: "definition-pending",
       variant: "definition-pending",
       title: "指标口径待正式确认",
       description: "当前为分析候选口径，仅用于经营分析与对账，不作为正式报表口径。",
-    });
-  }
-
-  const diagnostics = input.activeDiagnostics;
-  const manualAdjustment = numeric(diagnostics?.manual_adjustment);
-  if (manualAdjustment !== null && manualAdjustment !== 0) {
-    const sourceTotal = numeric(diagnostics?.source_total_pnl);
-    const preAdjustmentSource = sourceTotal === null ? null : sourceTotal - manualAdjustment;
-    surfaces.push({
+      when: meta?.formal_use_allowed === false,
+    },
+    {
       key: "manual-adjustment-included",
       variant: "definition-pending",
       title: "月报已包含批准手工调整",
-      description: `已批准手工调整 ${manualAdjustment > 0 ? "+" : ""}${formatYuanAsWanUnit(
+      description: `已批准手工调整 ${manualAdjustment !== null && manualAdjustment > 0 ? "+" : ""}${formatYuanAsWanUnit(
         manualAdjustment,
       )} 已计入当前结果${
         preAdjustmentSource === null
@@ -801,120 +801,87 @@ function buildStateSurfaces(input: {
           ? `；调整后已分类损益为 ${formatYuanAsWanUnit(diagnostics.classified_parent_total_pnl)}`
           : ""
       }。`,
-    });
-  }
-  const coverageDays = diagnostics?.coverage_days;
-  const expectedDays = diagnostics?.expected_days;
-  if (
-    typeof coverageDays === "number" &&
-    typeof expectedDays === "number" &&
-    expectedDays > 0 &&
-    coverageDays < expectedDays
-  ) {
-    surfaces.push({
+      when: hasManualAdjustment,
+    },
+    {
       key: "coverage-partial",
       variant: "stale",
       title: "日均余额样本覆盖不足",
       description: `余额观测仅覆盖 ${coverageDays}/${expectedDays} 天；当前“日均”为已观测日的月度估算，不是完整自然月日均。月报收益率、FTP 成本及 FTP 后结果暂不作为汇报结论。（sample_filled=${String(
         diagnostics?.sample_filled ?? false,
       )}，method=${diagnostics?.sample_fill_method ?? "none"}）`,
-    });
-  }
-
-  const unallocatedPnl = numeric(diagnostics?.unallocated_pnl);
-  const unallocatedRowCount = diagnostics?.unallocated_row_count ?? 0;
-  if (unallocatedRowCount > 0 || (unallocatedPnl !== null && unallocatedPnl !== 0)) {
-    surfaces.push({
+      when: hasPartialCoverage,
+    },
+    {
       key: "unallocated",
       variant: "definition-pending",
       title: "存在未分类损益",
       description: `${unallocatedRowCount} 条损益未命中父级业务分类；净额 ${formatYuanByMateriality(
         diagnostics?.unallocated_pnl,
       )}${diagnostics?.unallocated_abs_pnl ? `，绝对额 ${formatYuanByMateriality(diagnostics.unallocated_abs_pnl)}` : ""}；未对 A/T 口径做推测映射。`,
-    });
-  }
-
-  const reconciliationDelta = numeric(diagnostics?.reconciliation_delta);
-  if (reconciliationDelta !== null && reconciliationDelta !== 0) {
-    surfaces.push({
+      when: hasUnallocated,
+    },
+    {
       key: "reconciliation-break",
       variant: "error",
       title: "分类损益未闭合",
       description: `源损益、父级分类与未分类差额仍有 ${formatYuanAsWanUnit(
         diagnostics?.reconciliation_delta,
       )}，请先核对规则与手工调整。`,
-    });
-  }
-  if (meta?.quality_flag === "error" || input.activeDataStatus === "错误") {
-    surfaces.push({
+      when: hasReconciliationBreak,
+    },
+    {
       key: "quality-error",
       variant: "error",
       title: "结果质量错误",
       description: `quality_flag=error；as_of ${meta?.as_of_date ?? "待返回"}。请勿据此做正式经营结论。`,
-    });
-  }
-
-  if (meta?.quality_flag === "missing" || input.activeDataStatus === "缺失") {
-    surfaces.push({
+      when: meta?.quality_flag === "error" || input.activeDataStatus === "错误",
+    },
+    {
       key: "quality-missing",
       variant: "empty",
       title: "结果数据缺失",
       description: "quality_flag=missing；当前读面未返回完整 formal 结果，需核对报表日与数据源。",
-    });
-  }
-
-  if (meta?.quality_flag === "stale" || input.activeDataStatus === "陈旧") {
-    surfaces.push({
+      when: meta?.quality_flag === "missing" || input.activeDataStatus === "缺失",
+    },
+    {
       key: "stale",
       variant: "stale",
       title: "结果可能陈旧",
       description: `as_of ${meta?.as_of_date ?? "待返回"}；请结合生成时间与 trace 核对是否仍适用。`,
-    });
-  }
-
-  const hasSpecificQualityWarning = surfaces.some((surface) =>
-    ["coverage-partial", "unallocated", "reconciliation-break"].includes(surface.key),
-  );
-  if (
-    !hasSpecificQualityWarning &&
-    (meta?.quality_flag === "warning" || input.activeDataStatus === "预警")
-  ) {
-    surfaces.push({
+      when: meta?.quality_flag === "stale" || input.activeDataStatus === "陈旧",
+    },
+    {
       key: "warning",
       variant: "stale",
       title: "质量预警",
       description: "结果 meta 标记为预警，下钻前请核对 vendor 与 fallback 状态。",
-    });
-  }
-
-  if (meta?.fallback_mode === "latest_snapshot") {
-    surfaces.push({
+      when:
+        !hasSpecificQualityWarning &&
+        (meta?.quality_flag === "warning" || input.activeDataStatus === "预警"),
+    },
+    {
       key: "fallback-date",
       variant: "fallback-date",
       title: "已启用 fallback 快照",
-      description: `展示 as_of ${meta.as_of_date ?? "待返回"}；非请求报表日的最新可用快照。`,
-    });
-  }
-
-  if (meta?.vendor_status === "vendor_stale") {
-    surfaces.push({
+      description: `展示 as_of ${meta?.as_of_date ?? "待返回"}；非请求报表日的最新可用快照。`,
+      when: meta?.fallback_mode === "latest_snapshot",
+    },
+    {
       key: "vendor-stale",
       variant: "stale",
       title: "供应商数据陈旧",
       description: "上游 vendor 标记为 stale，指标仍来自已返回 formal 结果。",
-    });
-  }
-
-  if (meta?.vendor_status === "vendor_unavailable") {
-    surfaces.push({
+      when: meta?.vendor_status === "vendor_stale",
+    },
+    {
       key: "vendor-unavailable",
       variant: "error",
       title: "供应商不可用",
       description: "上游 vendor 不可用；请结合降级模式与 trace 判断是否可决策。",
-    });
-  }
-
-  return surfaces;
+      when: meta?.vendor_status === "vendor_unavailable",
+    },
+  ]);
 }
 
 function buildStatusStrip(input: {
@@ -1457,7 +1424,7 @@ export function buildPnlByBusinessPageModel(
       topYtdRow,
       topFormalRow,
     }),
-    stateSurfaces: buildStateSurfaces({
+    stateSurfaces: buildPnlStateSurfaces({
       activeDataStatus,
       activeResultMeta,
       activeDiagnostics,

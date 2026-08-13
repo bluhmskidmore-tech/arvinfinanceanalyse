@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { EM_DASH } from "../../../pageModel";
 import { formatRawAsNumeric } from "../../../utils/format";
 import {
   buildBondTradingDeskComposeResult,
@@ -176,5 +177,25 @@ describe("bondTradingDeskPageModel", () => {
     expect(model.snapshot).toBeNull();
     expect(model.conclusion.title).toBe("未在当前查找范围命中");
     expect(model.gapSections[0]?.status).toBe("not_in_portfolio");
+  });
+
+  it("locks unmatched metric tiles to the shared EM_DASH placeholder", () => {
+    const model = buildBondTradingDeskPageModel({
+      bondCode: "999999.IB",
+      reportDate: "2026-04-30",
+      topHoldings: [],
+      positions: [],
+      creditSpreadRows: [],
+      positionChanges: [],
+    });
+
+    expect(model.metricTiles.map((tile) => [tile.key, tile.label, tile.value, tile.caption])).toEqual([
+      ["market_value", "市值", EM_DASH, ""],
+      ["weight", "组合权重", EM_DASH, ""],
+      ["ytm", "YTM", EM_DASH, ""],
+      ["duration", "修正久期", EM_DASH, ""],
+      ["credit_spread", "信用利差", EM_DASH, ""],
+      ["net_price", "估值净价", EM_DASH, ""],
+    ]);
   });
 });
