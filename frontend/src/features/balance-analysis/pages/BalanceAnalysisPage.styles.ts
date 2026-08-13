@@ -102,10 +102,11 @@ export const actionButtonStyle = {
   alignItems: "center",
   justifyContent: "center",
   padding: `${s[2]}px ${s[3]}px`,
-  borderRadius: ib.radius,
-  border: `1px solid ${ib.color.hairline}`,
-  background: ib.color.surface,
-  color: ib.color.accent,
+  // ibTokens JS 常量是浅色字面量，页面深色 scope 内改走 CSS 变量链（带同语义兜底）。
+  borderRadius: "var(--ib-radius, 2px)",
+  border: "1px solid var(--ib-hairline)",
+  background: "var(--ib-surface)",
+  color: "var(--ib-accent)",
   fontWeight: 600,
   cursor: "pointer",
 } as const;

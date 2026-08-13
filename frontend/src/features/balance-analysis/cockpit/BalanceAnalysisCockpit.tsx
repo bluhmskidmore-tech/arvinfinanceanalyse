@@ -23,6 +23,7 @@ import dhStyles from "../../workbench/dashboard-home/dashboardHome.module.css";
 import styles from "./balanceAnalysisCockpit.module.css";
 import toolbarStyles from "./balanceAnalysisToolbar.module.css";
 
+import { EM_DASH } from "../../../utils/format";
 type BalanceAnalysisCockpitProps = {
   model: BalanceCockpitViewModel;
   stageModel: BalanceStageRealDataModel;
@@ -47,13 +48,14 @@ function MiniDonut({ pct }: { pct: number }) {
   const dash = (clamped / 100) * circumference;
   return (
     <svg width={36} height={36} viewBox="0 0 36 36" aria-hidden>
-      <circle cx={18} cy={18} r={radius} fill="none" stroke="#e2e8f0" strokeWidth={5} />
+      {/* 轨道原 tailwind 浅灰，深色链取 panel-3；进度环走 Nocturne accent。 */}
+      <circle cx={18} cy={18} r={radius} fill="none" stroke="var(--dh-api-panel-3)" strokeWidth={5} />
       <circle
         cx={18}
         cy={18}
         r={radius}
         fill="none"
-        stroke="#1850a1"
+        stroke="var(--dh-api-blue)"
         strokeWidth={5}
         strokeDasharray={`${dash} ${circumference}`}
         transform="rotate(-90 18 18)"
@@ -85,7 +87,7 @@ function KpiCard({ kpi }: { kpi: BalanceCockpitViewModel["scaleKpis"][number] })
       ) : (
         <div className={`${dhStyles.dhTerminalKpiValue} ${dhStyles.dhNum}`}>
           {kpi.value}
-          {kpi.value !== "—" ? <small>{kpi.unit}</small> : null}
+          {kpi.value !== EM_DASH ? <small>{kpi.unit}</small> : null}
         </div>
       )}
     </article>

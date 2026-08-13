@@ -33,7 +33,7 @@ import dhStyles from "../../workbench/dashboard-home/dashboardHome.module.css";
 import { DeferredBalanceAnalysisGrid } from "../components/DeferredBalanceAnalysisGrid";
 import type { BalanceStateSentinel } from "../components/BalanceAnalysisWorkbenchLayout";
 import { useBalanceAnalysisData } from "../hooks/useBalanceAnalysisData";
-import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import { tabularNumsStyle } from "../../../theme/designSystem";
 import { actionButtonStyle } from "./BalanceAnalysisPage.styles";
 import {
   buildBalanceAnalysisPageModel,
@@ -219,13 +219,16 @@ function formatAdvancedAttributionWarningDisplay(warning: string): string {
   return "补充提示已记录。";
 }
 
+// 评级块色板走 Nocturne 链（DOM 内联消费用 var；--nct-accent-* 亮阶在
+// balance-analysis scope 的外壳块恒有定义），六档保持绿/紫/琥珀/亮紫/红/浅紫
+// 的评级区分度。
 const ratingBlockPalette = [
-  designTokens.color.success[400],
-  designTokens.color.info[400],
-  designTokens.color.warning[400],
-  designTokens.color.primary[400],
-  designTokens.color.danger[400],
-  designTokens.color.info[300],
+  "var(--dh-api-green)",
+  "var(--dh-api-blue)",
+  "var(--dh-api-amber)",
+  "var(--nct-accent-400)",
+  "var(--dh-api-red)",
+  "var(--nct-accent-300)",
 ] as const;
 
 function downloadBlobFile(filename: string, blob: Blob) {

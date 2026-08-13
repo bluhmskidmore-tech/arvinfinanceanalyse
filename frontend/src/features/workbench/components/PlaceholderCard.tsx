@@ -11,8 +11,10 @@ type PlaceholderCardProps = {
   surfaceTone?: PlaceholderCardSurfaceTone;
 };
 
+// default 面与文字/边框改走全局重映射变量（:root 浅色、深色边界翻深），
+// 避免 shellTokens 浅色字面量灌进深色 scope 页面；语义 tone 底保持原值。
 const surfaceToneBackground: Record<PlaceholderCardSurfaceTone, string> = {
-  default: t.colorBgSurface,
+  default: "var(--moss-color-card-bg)",
   ok: t.colorBgSuccessSoft,
   warning: t.colorBgWarningSoft,
   error: t.colorBgDangerSoft,
@@ -32,7 +34,7 @@ export function PlaceholderCard({
           marginBottom: 8,
           fontSize: 16,
           fontWeight: 600,
-          color: t.colorTextPrimary,
+          color: "var(--moss-color-text-primary)",
           lineHeight: 1.5,
         }
       : {
@@ -40,7 +42,7 @@ export function PlaceholderCard({
           marginBottom: 10,
           fontSize: 28,
           fontWeight: 600,
-          color: t.colorTextPrimary,
+          color: "var(--moss-color-text-primary)",
         };
 
   return (
@@ -50,13 +52,13 @@ export function PlaceholderCard({
         padding: 24,
         borderRadius: 18,
         background: surfaceToneBackground[surfaceTone],
-        border: `1px solid ${t.colorBorderSoft}`,
+        border: "1px solid var(--moss-color-border-default)",
         boxShadow: t.shadowPanel,
       }}
     >
       <div
         style={{
-          color: t.colorTextMuted,
+          color: "var(--moss-color-text-muted)",
           fontSize: 13,
           letterSpacing: "0.02em",
         }}
@@ -69,7 +71,7 @@ export function PlaceholderCard({
       <p
         style={{
           marginBottom: 0,
-          color: t.colorTextSecondary,
+          color: "var(--moss-color-text-secondary)",
           fontSize: 14,
         }}
       >

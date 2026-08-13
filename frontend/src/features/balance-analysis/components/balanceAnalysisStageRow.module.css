@@ -151,7 +151,7 @@
 
 .contributionTableShell .contributionTable tbody tr.contributionRowGap > td,
 .contributionTableShell .contributionTable tbody tr.contributionRowGap:hover > td {
-  background: var(--moss-color-danger-50);
+  background: var(--dh-api-red-soft);
   color: var(--ib-down);
   font-weight: 700;
 }
