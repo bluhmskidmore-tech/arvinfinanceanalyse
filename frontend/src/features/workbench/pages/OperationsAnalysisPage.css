@@ -1,21 +1,110 @@
 .operations-analysis-page {
-  /* Page-local aliases → IB light tokens (DESIGN.md §2.1). No bare hex. */
-  --ops-ink: var(--ib-ink);
-  --ops-muted: var(--ib-ink-secondary);
-  --ops-line: var(--ib-hairline);
-  --ops-soft-line: var(--ib-hairline);
-  --ops-blue: var(--ib-accent);
-  --ops-blue-soft: var(--ib-accent-surface);
-  --ops-green: var(--ib-up);
-  --ops-green-soft: color-mix(in srgb, var(--ib-up) 10%, var(--ib-surface));
-  --ops-amber: var(--ib-warn);
-  --ops-amber-soft: color-mix(in srgb, var(--ib-warn) 10%, var(--ib-surface));
+  /*
+   * Nocturne scope 页根（2026-08-13 换肤）：页根同元素声明
+   * data-moss-theme-scope="operations-analysis"，tokens.css 别名块把
+   * --dh-api-* 重映射至 --nct-* 色板；页面别名一律直指 --dh-api-*
+   * （ledger-pnl 先例），不再经 --ib-* 中转（--ib-* 在 ThemedRouteBoundary
+   * 上已被算成钢蓝字面值，页根 scope 翻不动继承值）。No bare hex.
+   */
+  --ops-ink: var(--dh-api-ink);
+  --ops-muted: var(--dh-api-soft);
+  --ops-line: var(--dh-api-line-soft);
+  --ops-soft-line: var(--dh-api-line-soft);
+  --ops-blue: var(--dh-api-blue);
+  --ops-blue-soft: var(--dh-api-blue-soft);
+  --ops-green: var(--dh-api-green);
+  --ops-green-soft: color-mix(in srgb, var(--dh-api-green) 10%, var(--dh-api-panel));
+  --ops-amber: var(--dh-api-amber);
+  --ops-amber-soft: color-mix(in srgb, var(--dh-api-amber) 10%, var(--dh-api-panel));
   --ops-display-font: var(--moss-font-sans);
-  --ops-shell-border-soft: var(--ib-hairline);
+  --ops-shell-border-soft: var(--dh-api-line-soft);
+
+  /*
+   * 共享组件重映射（risk-tensor / product-category 先例）：AlertList /
+   * CalendarList / StatusPill / PageAsyncSection / business-analysis 模块
+   * 仍消费 --ib-* 与 --moss-color-*（boundary 计算值为钢蓝或浅色字面量），
+   * 在 scope 元素上重解析回 --dh-api-* 链。
+   */
+  --ib-paper: var(--dh-api-bg);
+  --ib-surface: var(--dh-api-panel);
+  --ib-surface-muted: var(--dh-api-panel-2);
+  --ib-hairline: var(--dh-api-line-soft);
+  --ib-ink: var(--dh-api-ink);
+  --ib-ink-secondary: var(--dh-api-soft);
+  --ib-ink-muted: var(--dh-api-muted);
+  --ib-accent: var(--dh-api-blue);
+  --ib-accent-surface: var(--dh-api-blue-soft);
+  --ib-radius: var(--dh-api-radius);
+  --ib-shadow: none;
+  --ib-warn: var(--dh-api-amber);
+  --ib-up: var(--dh-api-green);
+  --ib-down: var(--dh-api-red);
+  --moss-color-border-default: var(--dh-api-line);
+  --moss-color-card-bg: var(--dh-api-panel);
+  --moss-color-danger-200: color-mix(in srgb, var(--dh-api-red) 42%, transparent);
+  --moss-color-danger-50: var(--dh-api-red-soft);
+  --moss-color-danger-500: var(--dh-api-red);
+  --moss-color-danger-600: var(--dh-api-red);
+  --moss-color-info-500: var(--dh-api-blue);
+  --moss-color-neutral-100: var(--dh-api-panel-3);
+  --moss-color-neutral-200: var(--dh-api-line-soft);
+  --moss-color-neutral-50: var(--dh-api-panel-2);
+  --moss-color-neutral-500: var(--dh-api-muted);
+  --moss-color-neutral-600: var(--dh-api-soft);
+  --moss-color-neutral-900: var(--dh-api-ink);
+  --moss-color-primary-600: var(--dh-api-blue);
+  --moss-color-success-200: color-mix(in srgb, var(--dh-api-green) 42%, transparent);
+  --moss-color-success-50: var(--dh-api-green-soft);
+  --moss-color-success-600: var(--dh-api-green);
+  --moss-color-text-muted: var(--dh-api-soft);
+  --moss-color-text-primary: var(--dh-api-ink);
+  --moss-color-text-secondary: var(--dh-api-soft);
+  --moss-color-warning-200: color-mix(in srgb, var(--dh-api-amber) 42%, transparent);
+  --moss-color-warning-300: color-mix(in srgb, var(--dh-api-amber) 56%, transparent);
+  --moss-color-warning-400: var(--dh-api-amber);
+  --moss-color-warning-50: var(--dh-api-amber-soft);
+  --moss-color-warning-500: var(--dh-api-amber);
+  --moss-color-warning-600: var(--dh-api-amber);
+  --moss-color-warning-700: var(--dh-api-amber);
+  --moss-shadow-card: none;
+
   display: grid;
   gap: 24px;
   color: var(--ops-ink);
   font-family: var(--moss-font-sans);
+}
+
+/*
+ * 共享 PageHeader（PagePrimitives.module.css）墨色与徽章为浅色字面量
+ * （IB 墨阶与浅底徽章，0-2-0 双类），页内以 0-3-0 升权覆盖为
+ * Nocturne 墨阶（stock-analysis「页内升权覆盖」先例；[class*=] 命中 CSS
+ * module 哈希类为 market-data / module-home 既有手法）。仅覆盖颜色。
+ */
+.operations-analysis-page .operations-analysis-page__hero-header span[class*="headerEyebrow"] {
+  color: var(--dh-api-muted);
+}
+
+.operations-analysis-page .operations-analysis-page__hero-header h1[class*="headerTitle"] {
+  color: var(--dh-api-ink);
+}
+
+.operations-analysis-page .operations-analysis-page__hero-header p[class*="headerDescription"] {
+  color: var(--dh-api-soft);
+}
+
+.operations-analysis-page .operations-analysis-page__hero-header span[class*="headerBadgePositive"] {
+  background: var(--dh-api-green-soft);
+  color: var(--dh-api-green);
+}
+
+.operations-analysis-page .operations-analysis-page__hero-header span[class*="headerBadgeAccent"] {
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-blue);
+}
+
+.operations-analysis-page .operations-analysis-page__hero-header span[class*="headerBadgeNeutral"] {
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
 }
 
 .operations-analysis-page__hero-shell {
@@ -25,9 +114,9 @@
   align-items: start;
   padding: 24px 24px 22px;
   border: 1px solid var(--ops-line);
-  border-radius: var(--ib-radius, 2px);
-  background: var(--ib-surface);
-  box-shadow: var(--ib-shadow);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+  box-shadow: none;
 }
 
 .operations-analysis-page__hero-header {
@@ -48,7 +137,7 @@
 
 .operations-analysis-page__filter-tray > div {
   border-color: var(--ops-line) !important;
-  background: var(--ib-surface-muted) !important;
+  background: var(--dh-api-panel-2) !important;
   box-shadow: none !important;
 }
 
@@ -65,8 +154,8 @@
   min-width: 172px;
   padding: 12px 14px;
   border: 1px solid var(--ops-line);
-  border-radius: var(--ib-radius, 2px);
-  background: var(--ib-surface);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
   box-shadow: none;
   color: var(--ops-ink);
   font-family: var(--moss-font-sans);
@@ -93,18 +182,18 @@
   min-height: 172px;
   padding: 18px 18px 16px;
   border: 1px solid var(--ops-shell-border-soft);
-  border-radius: var(--ib-radius, 2px);
-  background: var(--ib-surface);
-  box-shadow: var(--ib-shadow);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+  box-shadow: none;
   overflow: hidden;
 }
 
 .operations-analysis-page__metric-card--primary {
   min-height: 158px !important;
-  border-radius: var(--ib-radius, 2px) !important;
+  border-radius: var(--dh-api-radius) !important;
   border-color: var(--ops-line) !important;
-  background: var(--ib-surface) !important;
-  box-shadow: var(--ib-shadow) !important;
+  background: var(--dh-api-panel) !important;
+  box-shadow: none !important;
 }
 
 .operations-analysis-page__metric-card--primary::before {
@@ -121,8 +210,8 @@
   min-height: 112px !important;
   gap: 8px !important;
   padding: 14px !important;
-  border-radius: var(--ib-radius, 2px) !important;
-  background: var(--ib-surface-muted) !important;
+  border-radius: var(--dh-api-radius) !important;
+  background: var(--dh-api-panel-2) !important;
   box-shadow: none !important;
 }
 
@@ -130,7 +219,7 @@
   gap: 10px;
   min-height: 138px;
   padding: 16px 16px 14px;
-  border-radius: var(--ib-radius, 2px);
+  border-radius: var(--dh-api-radius);
   box-shadow: none;
 }
 
@@ -176,11 +265,11 @@
 }
 
 .operations-analysis-page__metric-card[data-status="warning"] .operations-analysis-page__metric-value {
-  color: var(--ib-warn);
+  color: var(--dh-api-amber);
 }
 
 .operations-analysis-page__metric-card[data-status="danger"] .operations-analysis-page__metric-value {
-  color: var(--ib-down);
+  color: var(--dh-api-red);
 }
 
 .operations-analysis-page__metric-card[data-compact="true"] .operations-analysis-page__metric-value {
@@ -261,9 +350,9 @@
   min-height: 0;
   padding: 22px;
   border: 1px solid var(--ops-shell-border-soft);
-  border-radius: var(--ib-radius, 2px);
-  background: var(--ib-surface);
-  box-shadow: var(--ib-shadow);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+  box-shadow: none;
 }
 
 .operations-analysis-page__panel-title {
@@ -288,7 +377,7 @@
 }
 
 .operations-analysis-page__text-link {
-  color: var(--ib-accent);
+  color: var(--dh-api-blue);
   font-weight: 700;
   letter-spacing: 0.01em;
   text-decoration: none;
@@ -360,8 +449,8 @@
   margin: 8px 0 2px !important;
   padding: 18px 22px 22px;
   border-left: 3px solid var(--ops-blue) !important;
-  border-radius: var(--ib-radius, 2px);
-  background: var(--ib-surface-muted) !important;
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2) !important;
 }
 
 @media (max-width: 1180px) {
@@ -391,8 +480,8 @@
   padding: 14px 16px;
   border: 1px solid var(--ops-line);
   border-left: 3px solid var(--ops-blue);
-  border-radius: var(--ib-radius, 2px);
-  background: var(--ib-surface-muted);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
   box-shadow: none;
 }
 
@@ -405,7 +494,7 @@
   padding: 8px 10px;
   border: 1px solid var(--ops-line);
   border-left: 3px solid var(--ops-green);
-  border-radius: var(--ib-radius, 2px);
-  background: var(--ib-surface);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
   box-shadow: none;
 }

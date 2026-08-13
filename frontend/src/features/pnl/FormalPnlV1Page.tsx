@@ -271,8 +271,12 @@ export default function FormalPnlV1Page() {
     }
   }
 
+  /*
+   * 深色 owner 由外层 ThemedRouteBoundary 承担；页根只声明 Nocturne scope
+   * （tokens.css 别名块将 --dh-api-* 重映射至 --nct-*，ledger-pnl 同款）。
+   */
   return (
-    <section data-testid="formal-pnl-v1-page">
+    <section data-testid="formal-pnl-v1-page" data-moss-theme-scope="pnl">
       <div className="formal-pnl-v1-page-header">
         <div>
           <h1

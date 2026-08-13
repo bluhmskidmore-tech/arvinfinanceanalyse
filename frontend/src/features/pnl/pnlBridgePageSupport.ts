@@ -9,7 +9,9 @@ import type {
   PnlBridgeSummary,
   ResultMeta,
 } from "../../api/contracts";
-import { designTokens } from "../../theme/designSystem";
+// canvas 不消费 CSS 变量：瀑布图取色走 nocturneTokens 常量组（页根已声明
+// Nocturne scope，risk-tensor / stock-analysis 先例），替换原浅色 designTokens。
+import { nocturneTokens } from "../../theme/designSystem";
 
 // 互斥分解口径（2026-08 审计 PNL-01）：未实现公允（516）是市场效应要解释的
 // 对象，不再作为解释分量进入瀑布；明细表仍保留该列作参照。
@@ -180,27 +182,27 @@ export function buildWaterfallOption(summary: PnlBridgeSummary): EChartsOption {
     if (value === null) {
       helperRaw.push(null);
       valueRaw.push(null);
-      barColors.push(designTokens.color.neutral[400]);
+      barColors.push(nocturneTokens.color.inkMuted);
     } else if (value >= 0) {
       helperRaw.push(running);
       valueRaw.push(value);
-      barColors.push(designTokens.color.semantic.profit);
+      barColors.push(nocturneTokens.color.green);
       running += value;
     } else {
       helperRaw.push(running + value);
       valueRaw.push(-value);
-      barColors.push(designTokens.color.semantic.loss);
+      barColors.push(nocturneTokens.color.red);
       running += value;
     }
   }
 
   helperRaw.push(0);
   valueRaw.push(summary.total_explained_pnl.raw);
-  barColors.push(designTokens.color.primary[600]);
+  barColors.push(nocturneTokens.color.blue);
 
   helperRaw.push(0);
   valueRaw.push(summary.total_actual_pnl.raw);
-  barColors.push(designTokens.color.primary[600]);
+  barColors.push(nocturneTokens.color.blue);
 
   return {
     tooltip: {
@@ -218,12 +220,12 @@ export function buildWaterfallOption(summary: PnlBridgeSummary): EChartsOption {
     xAxis: {
       type: "category",
       data: [...BRIDGE_CATEGORIES],
-      axisLabel: { interval: 0, rotate: 22, fontSize: 11, color: designTokens.color.neutral[600] },
+      axisLabel: { interval: 0, rotate: 22, fontSize: 11, color: nocturneTokens.color.inkMuted },
     },
     yAxis: {
       type: "value",
-      splitLine: { lineStyle: { type: "dashed" as const, color: designTokens.color.neutral[200] } },
-      axisLabel: { fontSize: 11, color: designTokens.color.neutral[600] },
+      splitLine: { lineStyle: { type: "dashed" as const, color: nocturneTokens.color.lineSoft } },
+      axisLabel: { fontSize: 11, color: nocturneTokens.color.inkMuted },
     },
     series: [
       {

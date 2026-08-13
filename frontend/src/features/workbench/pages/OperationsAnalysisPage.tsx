@@ -510,9 +510,14 @@ export default function OperationsAnalysisPage() {
       ]
     : [];
 
+  /*
+   * 深色 owner 由外层 ThemedRouteBoundary 承担；页根只声明 Nocturne scope
+   * （tokens.css 别名块将 --dh-api-* 重映射至 --nct-*，ledger-pnl 同款）。
+   */
   return (
     <section
       className="operations-analysis-page"
+      data-moss-theme-scope="operations-analysis"
       data-testid="operations-layout-preview"
     >
       <div className="operations-analysis-page__hero-shell">

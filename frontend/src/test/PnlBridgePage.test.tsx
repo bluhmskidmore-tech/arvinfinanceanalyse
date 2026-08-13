@@ -21,7 +21,7 @@ import {
   buildCurveAvailabilityNotices,
   buildWaterfallOption,
 } from "../features/pnl/pnlBridgePageSupport";
-import { designTokens } from "../theme/designSystem";
+import { nocturneTokens } from "../theme/designSystem";
 
 function renderPnlBridgePage(client: ApiClient) {
   function Wrapper({ children }: { children: ReactNode }) {
@@ -257,8 +257,8 @@ describe("PnlBridgePage", () => {
     };
     const effectSeries = option.series?.find((series) => series.name === "效应");
 
-    expect(effectSeries?.data?.[0]?.itemStyle?.color).toBe(designTokens.color.semantic.profit);
-    expect(effectSeries?.data?.[3]?.itemStyle?.color).toBe(designTokens.color.semantic.loss);
+    expect(effectSeries?.data?.[0]?.itemStyle?.color).toBe(nocturneTokens.color.green);
+    expect(effectSeries?.data?.[3]?.itemStyle?.color).toBe(nocturneTokens.color.red);
   });
 
   it("keeps missing waterfall steps as null gaps instead of drawing zero bars", () => {

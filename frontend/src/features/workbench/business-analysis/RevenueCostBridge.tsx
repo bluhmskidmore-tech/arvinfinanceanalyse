@@ -3,6 +3,9 @@ import type { EChartsOption } from "echarts";
 import { BaseChart } from "../../../components/charts/BaseChart";
 import { EvidencePanel } from "../../../components/page/PagePrimitives";
 import { DataSourceBadge } from "../../../components/StatusPill";
+// canvas 不消费 CSS 变量：示意瀑布取色走 nocturneTokens 常量组
+// （operations-analysis 页根已声明 Nocturne scope，risk-tensor 先例）。
+import { nocturneTokens } from "../../../theme/designSystem";
 import { EM_DASH } from "../../../utils/format";
 import styles from "./RevenueCostBridge.module.css";
 
@@ -38,7 +41,7 @@ function buildWaterfallParts() {
 function buildOption(): EChartsOption {
   const { placeholder, positive, negative, total, categories } = buildWaterfallParts();
   return {
-    color: ["rgba(0,0,0,0)", "#16a34a", "#dc2626"],
+    color: ["rgba(0,0,0,0)", nocturneTokens.color.green, nocturneTokens.color.red],
     grid: { left: 48, right: 24, top: 40, bottom: 72 },
     legend: { show: false },
     tooltip: {
@@ -58,15 +61,15 @@ function buildOption(): EChartsOption {
     xAxis: {
       type: "category",
       data: categories,
-      axisLabel: { interval: 0, rotate: 22, fontSize: 11, color: "#475569" },
-      axisLine: { lineStyle: { color: "#cbd5e1" } },
+      axisLabel: { interval: 0, rotate: 22, fontSize: 11, color: nocturneTokens.color.inkSoft },
+      axisLine: { lineStyle: { color: nocturneTokens.color.line } },
     },
     yAxis: {
       type: "value",
       name: "亿元",
-      nameTextStyle: { color: "#64748b", fontSize: 11 },
-      axisLabel: { color: "#64748b", fontSize: 11 },
-      splitLine: { lineStyle: { type: "dashed", color: "#e2e8f0" } },
+      nameTextStyle: { color: nocturneTokens.color.inkMuted, fontSize: 11 },
+      axisLabel: { color: nocturneTokens.color.inkMuted, fontSize: 11 },
+      splitLine: { lineStyle: { type: "dashed", color: nocturneTokens.color.lineSoft } },
     },
     series: [
       {
@@ -100,7 +103,7 @@ function buildOption(): EChartsOption {
         top: 8,
         style: {
           text: `示意瀑布（静态样例，累计 ${total.toFixed(2)} 为示意值）· 非正式口径，不作正式读数`,
-          fill: "#64748b",
+          fill: nocturneTokens.color.inkMuted,
           fontSize: 11,
         },
       },

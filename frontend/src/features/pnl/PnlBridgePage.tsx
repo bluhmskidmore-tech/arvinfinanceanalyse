@@ -24,8 +24,7 @@ import type {
   PnlBridgeRow,
   PnlBridgeSummary,
 } from "../../api/contracts";
-import { shellTokens } from "../../theme/tokens";
-import { toneFromNumeric } from "../../utils/tone";
+import { TONE_DH_CSS_VAR, toneFromNumeric } from "../../utils/tone";
 import { KpiCard } from "../../components/KpiCard";
 import { pnlSurfaceQualityToTone } from "../workbench/components/kpiFormat";
 import { PnlRefreshStatus } from "./PnlRuntimePanels";
@@ -192,13 +191,15 @@ const bridgeColumnDefsBase: ColDef<PnlBridgeRow>[] = [
     headerName: "质量",
     width: 80,
     valueFormatter: (params) => qualityLabel(params.value),
+    // DOM 单元格样式可解析 CSS 变量：走主题感知 tone 入口（Nocturne scope 内
+    // --dh-api-* 解析为 --nct-* 色板），替换原浅色 shellTokens 字面量。
     cellStyle: (params: CellClassParams<PnlBridgeRow, PnlBridgeQuality>) => ({
       color:
         params.value === "ok"
-          ? shellTokens.colorSuccess
+          ? TONE_DH_CSS_VAR.positive
           : params.value === "warning"
-            ? shellTokens.colorWarning
-            : shellTokens.colorDanger,
+            ? TONE_DH_CSS_VAR.warning
+            : TONE_DH_CSS_VAR.negative,
       fontWeight: 600,
     }),
   },
@@ -319,8 +320,12 @@ export default function PnlBridgePage() {
     }
   }
 
+  /*
+   * 深色 owner 由外层 ThemedRouteBoundary 承担；页根只声明 Nocturne scope
+   * （tokens.css 别名块将 --dh-api-* 重映射至 --nct-*，ledger-pnl 同款）。
+   */
   return (
-    <section data-testid="pnl-bridge-page">
+    <section data-testid="pnl-bridge-page" data-moss-theme-scope="pnl-bridge">
       <div className="pnl-bridge-page-header">
         <div>
           <h1 data-testid="pnl-bridge-page-title" className="pnl-bridge-page-title">

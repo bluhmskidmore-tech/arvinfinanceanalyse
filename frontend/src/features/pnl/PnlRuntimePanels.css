@@ -1,18 +1,21 @@
+/*
+ * 2026-08-13 Nocturne 换肤：/pnl 与 /pnl-bridge 页根均已声明 scope，
+ * 浅色字面量收敛为 --dh-api-* 链（scope 内解析为 --nct-* 色板）；
+ * 偏格圆角 14px 归一 var(--dh-api-radius)。下方 .pnl-debug-panel 无渲染方
+ * （dead code），按“不动无关死代码”原则保持原样。
+ */
 .pnl-refresh-status {
   margin-bottom: 16px;
   padding: 14px;
-  border-radius: 14px;
-  /* #e4ebf5: soft blue-gray border, no exact --moss-color-* token */
-  border: 1px solid #e4ebf5;
-  /* #f7f9fc: blue-tinted soft surface */
-  background: #f7f9fc;
-  /* #5c6b82: slate secondary text */
-  color: #5c6b82;
+  border-radius: var(--dh-api-radius);
+  border: 1px solid var(--dh-api-line-soft);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
 }
 
 .pnl-refresh-status--error {
-  background: #fff2f0;
-  color: #c83b3b;
+  background: var(--dh-api-red-soft);
+  color: var(--dh-api-red);
 }
 
 .pnl-debug-panel {

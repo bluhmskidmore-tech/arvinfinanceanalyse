@@ -9,7 +9,6 @@ import type {
   ProductCategoryPnlRow,
   ResultMeta,
 } from "../../../api/contracts";
-import { designTokens } from "../../../theme/designSystem";
 import { EM_DASH } from "../../../utils/format";
 
 import {
@@ -5446,10 +5445,11 @@ describe("productCategoryPnlPageModel", () => {
   });
 
   it("returns the current visible tone colors for positive, negative, zero, and invalid values", () => {
+    // 主题感知 tone 入口（TONE_DH_CSS_VAR 链）：Nocturne scope 内解析为 --nct- 色板。
     expect(PRODUCT_CATEGORY_VALUE_TONE_COLORS).toEqual({
-      default: designTokens.color.neutral[900],
-      positive: designTokens.color.semantic.profit,
-      negative: designTokens.color.semantic.loss,
+      default: "var(--dh-api-ink)",
+      positive: "var(--dh-api-green)",
+      negative: "var(--dh-api-red)",
     });
     expect(toneForProductCategoryValue("12.3")).toBe(
       PRODUCT_CATEGORY_VALUE_TONE_COLORS.positive,

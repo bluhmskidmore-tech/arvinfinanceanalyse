@@ -30,7 +30,7 @@ import {
   selectProductCategoryTrendReportPointsImpl,
   selectProductCategoryTwoYearInterestSpreadReportPointsImpl,
 } from "./model/productCategoryPnlTrendAndChartModel";
-import { designTokens } from "../../../theme/designSystem";
+import { TONE_DH_CSS_VAR } from "../../../utils/tone";
 import { EM_DASH } from "../../../utils/format";
 
 /** Display order for category rows; does not re-aggregate backend totals. */
@@ -146,10 +146,16 @@ function formatProductCategoryShortMonthLabel(month: number): string {
   return `${month}\u6708`;
 }
 
+/*
+ * 盈亏着色走主题感知 tone 入口（frontend/AGENTS.md：深色路由禁止浅色
+ * semantic.profit/loss 直灌）。消费方（本页 + operations-analysis 贡献表）
+ * 均为 DOM 内联样式且页根已声明 Nocturne scope，--dh-api-* 在 scope 内
+ * 解析为 --nct-* 色板；default 取强墨阶（原 neutral-900 语义）。
+ */
 export const PRODUCT_CATEGORY_VALUE_TONE_COLORS = {
-  default: designTokens.color.neutral[900],
-  positive: designTokens.color.semantic.profit,
-  negative: designTokens.color.semantic.loss,
+  default: "var(--dh-api-ink)",
+  positive: TONE_DH_CSS_VAR.positive,
+  negative: TONE_DH_CSS_VAR.negative,
 } as const;
 
 const YUAN_PER_YI = 100_000_000;

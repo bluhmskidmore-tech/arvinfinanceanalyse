@@ -1951,14 +1951,16 @@ export default function ProductCategoryPnlPage() {
               {
                 name: "生息资产日均额（亿元）",
                 data: interestEarningAssetLiabilityScaleChart.interestEarningAssetScale,
-                color: "rgba(114,167,220,0.72)",
-                borderColor: "rgba(114,167,220,0.4)",
+                /* nocturne accent 半透明（原 dh-api 钢蓝 rgba，canvas 不消费 CSS 变量）。 */
+                color: "rgba(145,132,217,0.72)",
+                borderColor: "rgba(145,132,217,0.4)",
               },
               {
                 name: "附息负债日均额（亿元）",
                 data: interestEarningAssetLiabilityScaleChart.interestBearingLiabilityScale,
-                color: "rgba(201,165,101,0.72)",
-                borderColor: "rgba(201,165,101,0.4)",
+                /* nocturne warn 半透明（原 dh-api 金琥珀 rgba）。 */
+                color: "rgba(213,178,110,0.72)",
+                borderColor: "rgba(213,178,110,0.4)",
               },
             ],
           })
@@ -2728,9 +2730,12 @@ export default function ProductCategoryPnlPage() {
   ) : null;
   const ledgerPnlHref = buildLedgerPnlHrefForReportDate(selectedDate);
 
+  // 深色 owner 由外层 ThemedRouteBoundary 承担；两个分支页根都只声明
+  // Nocturne scope（tokens.css 别名块将 --dh-api-* 重映射至 --nct-*，
+  // 页内既有 --ib- / --moss-color- 重映射块随 scope 自动翻转，ledger-pnl 同款）。
   if (selectedBranch === "monthly_operating_analysis") {
     return (
-      <section data-testid="product-category-page">
+      <section data-testid="product-category-page" data-moss-theme-scope="product-category-pnl">
         <FilterBar className="product-category-branch-switcher">
           <button
             type="button"
@@ -2758,6 +2763,7 @@ export default function ProductCategoryPnlPage() {
     <section
       id="product-category-overview"
       data-testid="product-category-page"
+      data-moss-theme-scope="product-category-pnl"
       className="product-category-page-shell theme-dh-api"
     >
       <header

@@ -1,18 +1,24 @@
 import type { EChartsOption } from "../../../lib/echarts";
-import { designTokens, dhApiTokens } from "../../../theme/designSystem";
+import { designTokens, nocturneTokens } from "../../../theme/designSystem";
 import { formatProductCategoryChartNumberTwoDecimals } from "./productCategoryPnlPageModel";
 
+/*
+ * canvas 不消费 CSS 变量：页根声明 Nocturne scope 后（2026-08-13 换肤），
+ * 取色由 dhApiTokens 钢蓝常量组切至 nocturneTokens 常量组
+ * （risk-tensor / stock-analysis 先例）；grid/border 原为钢蓝 rgba 字面量，
+ * 对应换为 nocturne 的 lineSoft / line。
+ */
 export const PRODUCT_CATEGORY_DARK_CHART_THEME = {
   canvas: "transparent",
-  panel: dhApiTokens.color.panel2,
-  ink: dhApiTokens.color.ink,
-  muted: dhApiTokens.color.inkMuted,
-  grid: "rgba(103,119,142,0.22)",
-  border: "rgba(103,119,142,0.34)",
-  blue: dhApiTokens.color.blue,
-  green: dhApiTokens.color.green,
-  amber: dhApiTokens.color.amber,
-  red: dhApiTokens.color.red,
+  panel: nocturneTokens.color.panel2,
+  ink: nocturneTokens.color.ink,
+  muted: nocturneTokens.color.inkMuted,
+  grid: nocturneTokens.color.lineSoft,
+  border: nocturneTokens.color.line,
+  blue: nocturneTokens.color.blue,
+  green: nocturneTokens.color.green,
+  amber: nocturneTokens.color.amber,
+  red: nocturneTokens.color.red,
 } as const;
 
 function buildDarkChartTooltip(unit: string): EChartsOption["tooltip"] {
@@ -678,7 +684,8 @@ export function buildInterestSpreadYearComparisonChartOption(input: {
       },
       markArea: {
         silent: true,
-        itemStyle: { color: "rgba(133,147,168,0.055)" },
+        /* nocturne muted（--nct-muted）的低透明度铺底（原 dh-api muted rgba）。 */
+        itemStyle: { color: "rgba(147,151,171,0.055)" },
         label: {
           show: true,
           formatter: `上年参考 ${input.labels[referenceStartIndex]}–${input.labels[input.labels.length - 1]}`,
@@ -1042,7 +1049,8 @@ export function buildIncomeYearComparisonChartOption(input: {
           isPrior && referenceStartIndex !== null
             ? {
                 silent: true,
-                itemStyle: { color: "rgba(133,147,168,0.07)" },
+                /* nocturne muted（--nct-muted）的低透明度铺底（原 dh-api muted rgba）。 */
+                itemStyle: { color: "rgba(147,151,171,0.07)" },
                 label: {
                   show: true,
                   formatter: "上年参考区",

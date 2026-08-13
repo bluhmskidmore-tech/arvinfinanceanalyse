@@ -6810,6 +6810,76 @@
 }
 
 /*
+ * 月度经营分析分支根（2026-08-13 Nocturne 换肤）：该分支根只带 scope 属性、
+ * 无 .product-category-page-shell 类，下方 0-2-0 重映射块够不到它，分支内
+ * ProductCategoryAuditPages.css 的 --moss-color-neutral-* / --ib-radius 会
+ * 回退到浅色字面量。此块按 0-1-0 补齐同一组重映射：主分支根同元素上被
+ * 0-2-0 类块按特异度覆盖（零影响），独立审计路由（/audit）无 scope 属性
+ * 不受影响。变量清单与下方类块保持同构子集（分支实际消费面）。
+ */
+[data-moss-theme-scope="product-category-pnl"] {
+  --ib-surface: var(--dh-api-panel);
+  --ib-surface-muted: var(--dh-api-panel-2);
+  --ib-ink: var(--dh-api-ink);
+  --ib-ink-secondary: var(--dh-api-soft);
+  --ib-ink-muted: var(--dh-api-muted);
+  --ib-hairline: var(--dh-api-line-soft);
+  --ib-accent: var(--dh-api-blue);
+  --ib-accent-hover: var(--dh-api-blue);
+  --ib-accent-surface: var(--dh-api-blue-soft);
+  --ib-up: var(--dh-api-green);
+  --ib-down: var(--dh-api-red);
+  --ib-warn: var(--dh-api-amber);
+  --ib-radius: var(--dh-api-radius, 6px);
+  --ib-shadow: none;
+  --moss-color-neutral-50: var(--dh-api-panel-2);
+  --moss-color-neutral-100: var(--dh-api-panel-3);
+  --moss-color-neutral-200: var(--dh-api-line-soft);
+  --moss-color-neutral-300: var(--dh-api-line);
+  --moss-color-neutral-400: var(--dh-api-muted);
+  --moss-color-neutral-500: var(--dh-api-muted);
+  --moss-color-neutral-600: var(--dh-api-soft);
+  --moss-color-neutral-700: var(--dh-api-soft);
+  --moss-color-neutral-800: var(--dh-api-ink);
+  --moss-color-neutral-900: var(--dh-api-ink);
+  --moss-color-primary-50: var(--dh-api-blue-soft);
+  --moss-color-primary-500: var(--dh-api-blue);
+  --moss-color-primary-600: var(--dh-api-blue);
+  --moss-color-primary-700: var(--dh-api-blue);
+  --moss-color-success-50: var(--dh-api-green-soft);
+  --moss-color-success-600: var(--dh-api-green);
+  --moss-color-info-500: var(--dh-api-blue);
+  --moss-color-warning-50: var(--dh-api-amber-soft);
+  --moss-color-warning-600: var(--dh-api-amber);
+  --moss-color-warning-700: var(--dh-api-amber);
+  --moss-color-danger-50: var(--dh-api-red-soft);
+  --moss-color-danger-600: var(--dh-api-red);
+  --moss-color-danger-700: var(--dh-api-red);
+
+  /*
+   * cockpit（institutional-console）壳对页内 moss-page-v2 面板吃
+   * --moss-institutional-*（boundary 计算值为钢蓝字面量，实测
+   * state-surface 边框命中钢蓝 line 值），页 scope 内拉回
+   * --dh-api-* 链；rail/终端条等外壳铬件在页根子树之外，由共享
+   * :has() 块负责，此处不涉及。
+   */
+  --moss-institutional-bg: var(--dh-api-bg);
+  --moss-institutional-bg-deep: var(--dh-api-bg);
+  --moss-institutional-surface: var(--dh-api-panel);
+  --moss-institutional-surface-raised: var(--dh-api-panel);
+  --moss-institutional-surface-muted: var(--dh-api-panel-2);
+  --moss-institutional-border: var(--dh-api-line);
+  --moss-institutional-border-strong: var(--dh-api-line);
+  --moss-institutional-divider: var(--dh-api-line-soft);
+  --moss-institutional-row-hover: color-mix(in srgb, var(--dh-api-blue) 8%, transparent);
+  --moss-institutional-text: var(--dh-api-ink);
+  --moss-institutional-text-muted: var(--dh-api-soft);
+  --moss-institutional-accent-gold: var(--dh-api-amber);
+  --moss-institutional-accent-cyan: var(--dh-api-blue);
+  --moss-institutional-focus-ring: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+}
+
+/*
  * Figma dark-terminal implementation layer
  * ----------------------------------------
  * Page-scoped overrides for the Product Category P&L decision desk.

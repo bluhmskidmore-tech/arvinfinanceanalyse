@@ -16,7 +16,7 @@ import {
 } from "../features/product-category-pnl/pages/productCategoryPnlPageModel";
 import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
 import { buildMockProductCategoryPnlEnvelope } from "../mocks/productCategoryPnl";
-import { dhApiTokens } from "../theme/designSystem";
+import { nocturneTokens } from "../theme/designSystem";
 import { EM_DASH } from "../utils/format";
 import { preloadWorkbenchRouteModules } from "./preloadWorkbenchRouteModules";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
@@ -3722,8 +3722,8 @@ describe("ProductCategoryPnlPage", () => {
       "transparent",
     );
     expect(interestEarningAssetLiabilityScaleOption.tooltip).toMatchObject({
-      backgroundColor: dhApiTokens.color.panel2,
-      borderColor: "rgba(103,119,142,0.34)",
+      backgroundColor: nocturneTokens.color.panel2,
+      borderColor: nocturneTokens.color.line,
     });
     expect(interestEarningAssetLiabilityScaleOption.legend).toMatchObject({
       top: 4,
@@ -3744,8 +3744,8 @@ describe("ProductCategoryPnlPage", () => {
       barMinHeight: 2,
       barGap: "36%",
       itemStyle: {
-        color: "rgba(114,167,220,0.72)",
-        borderColor: "rgba(114,167,220,0.4)",
+        color: "rgba(145,132,217,0.72)",
+        borderColor: "rgba(145,132,217,0.4)",
         borderRadius: [2, 2, 0, 0],
       },
     });
@@ -3753,8 +3753,8 @@ describe("ProductCategoryPnlPage", () => {
       barMaxWidth: 12,
       barMinHeight: 2,
       itemStyle: {
-        color: "rgba(201,165,101,0.72)",
-        borderColor: "rgba(201,165,101,0.4)",
+        color: "rgba(213,178,110,0.72)",
+        borderColor: "rgba(213,178,110,0.4)",
         borderRadius: [2, 2, 0, 0],
       },
     });
