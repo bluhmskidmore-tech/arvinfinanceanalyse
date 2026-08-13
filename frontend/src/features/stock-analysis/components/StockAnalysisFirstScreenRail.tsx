@@ -62,8 +62,10 @@ export function StockAnalysisFirstScreenRail({
               {canReviewCandidates ? "候选可继续只读复核" : "门禁未放行，候选仅可只读排查"}
             </p>
             <ol className="stock-analysis-page__fs-rail-queue">
-              {topCandidates.map((card) => (
-                <li key={`${card.stockCode}-${card.rank}`}>
+              {/* 同一股票可按来源模块各占一行且携带模块内 rank（后端按 (source_module, stock_code) 去重），
+                  stockCode+rank 会撞 key，补 index 保证唯一（与候选对比表同口径）。 */}
+              {topCandidates.map((card, index) => (
+                <li key={`${card.stockCode}-${card.rank}-${index}`}>
                   <button
                     type="button"
                     data-testid={`stock-analysis-rail-queue-${card.stockCode}`}
