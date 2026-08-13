@@ -1379,9 +1379,9 @@ i.dhApiStateMuted {
   z-index: 1;
 }
 
-/* 钢蓝收口（2026-08-13）：卡头底边的 126,157,194/.18 钢蓝复写删除，
-   由基础规则的 var(--dh-api-line-soft) 透传（钢蓝上下文视觉等价）。 */
-
+/* 钢蓝收口（2026-08-13）：原此处的卡头底边复写（126,157,194/.18 钢蓝）
+   已删除，由 .dhRailCardHeader 基础规则的 var(--dh-api-line-soft) 透传
+   （钢蓝上下文视觉等价，偏差 ≤5.1/255）。 */
 .dhApiBackedHome .dhRailCardHeader > span:first-child {
   display: inline-flex;
   gap: 7px;
@@ -1405,6 +1405,9 @@ i.dhApiStateMuted {
 .dhApiBackedHome .dhRailActionRow,
 .dhApiBackedHome .dhRailSuggestionList li {
   background: color-mix(in srgb, var(--dh-api-bg) 18%, transparent);
+  /* 边框取 soft 10% 而非语义更顺的 line-soft：原钢蓝字面量
+     rgba(126,157,194,.1) 换 line-soft 合成偏差达 8.7/255（超等价阈值），
+     soft 10% 偏差 ≤4.3。不要按语义"顺手改回"。 */
   border: 1px solid color-mix(in srgb, var(--dh-api-soft) 10%, transparent);
   border-radius: var(--dh-api-radius, 6px);
   margin-top: 6px;
