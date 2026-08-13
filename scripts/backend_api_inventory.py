@@ -5,7 +5,6 @@ import csv
 import importlib
 import io
 import json
-import os
 import sys
 from collections import Counter
 from pathlib import Path
@@ -15,15 +14,14 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from scripts.api_surface import (  # noqa: E402
+    REGISTRY_FEATURE_FLAGS,
+    SURFACE_CHOICES,
+    SURFACE_HELP,
+    surface_environment,
+)
+
 HTTP_METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"})
-SURFACE_AGENT_OVERRIDES: dict[str, str | None] = {
-    "default": "false",
-    "current": None,
-    "full": "true",
-}
-REGISTRY_FEATURE_FLAGS = {
-    "agent": "MOSS_AGENT_ENABLED",
-}
 CSV_FIELDS = (
     "surface",
     "method",
@@ -66,13 +64,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--surface",
-        choices=tuple(SURFACE_AGENT_OVERRIDES),
+        choices=SURFACE_CHOICES,
         default="default",
-        help=(
-            "Route surface to inspect: 'default' forces the release-default Agent-off surface, "
-            "'current' honors the current environment, and 'full' enables all known "
-            "registration feature flags."
-        ),
+        help=SURFACE_HELP,
     )
     parser.add_argument(
         "--format",
@@ -86,22 +80,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Output path, or '-' for stdout.",
     )
     return parser
-
-
-def _reset_backend_api_import_state() -> None:
-    settings_module = sys.modules.get("backend.app.governance.settings")
-    get_settings = getattr(settings_module, "get_settings", None)
-    cache_clear = getattr(get_settings, "cache_clear", None)
-    if callable(cache_clear):
-        cache_clear()
-
-    for module_name in tuple(sys.modules):
-        if (
-            module_name == "backend.app.main"
-            or module_name == "backend.app.api"
-            or module_name.startswith("backend.app.api.")
-        ):
-            sys.modules.pop(module_name, None)
 
 
 def _qualified_name(value: object | None) -> str:
@@ -263,13 +241,7 @@ def _response_model_name(route: Any) -> str:
 
 
 def _load_inventory(surface: str) -> dict[str, Any]:
-    original_agent_enabled = os.environ.get("MOSS_AGENT_ENABLED")
-    override = SURFACE_AGENT_OVERRIDES[surface]
-    if override is not None:
-        os.environ["MOSS_AGENT_ENABLED"] = override
-    _reset_backend_api_import_state()
-
-    try:
+    with surface_environment(surface):
         from fastapi import FastAPI
         from fastapi.routing import APIRoute
 
@@ -405,12 +377,6 @@ def _load_inventory(surface: str) -> dict[str, Any]:
             },
             "operations": operations,
         }
-    finally:
-        if original_agent_enabled is None:
-            os.environ.pop("MOSS_AGENT_ENABLED", None)
-        else:
-            os.environ["MOSS_AGENT_ENABLED"] = original_agent_enabled
-        _reset_backend_api_import_state()
 
 
 def _json_text(inventory: dict[str, Any]) -> str:

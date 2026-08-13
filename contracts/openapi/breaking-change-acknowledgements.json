@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "purpose": "Explicit, reviewable sign-off for breaking OpenAPI contract changes. scripts/api_contract_check.py baseline-check fails on any breaking finding that is not listed here.",
+  "how_to_use": [
+    "1. Run: python scripts/api_contract_check.py baseline-check --baseline-ref origin/main",
+    "2. Copy the printed 'id:' of each breaking finding you intend to ship.",
+    "3. Add one entry per id below with a real reason and an approver. Both fields are enforced.",
+    "4. Run: python scripts/api_contract_check.py baseline-update, and commit the refreshed snapshots in the same pull request.",
+    "5. After the pull request merges the change becomes part of the base-branch baseline, so delete the entry again; baseline-check reports leftover entries as unused."
+  ],
+  "id_format": "<surface>|<kind>|<METHOD /path>|<target>. Replace <surface> with '*' to cover the same change on both the default and full surfaces with one entry.",
+  "acknowledgements": []
+}

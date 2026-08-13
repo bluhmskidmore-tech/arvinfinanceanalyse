@@ -61,10 +61,10 @@ configuration. Do not treat `current` as the release default.
 
 | Surface | Registry entries | Unique paths | Operations |
 | --- | ---: | ---: | ---: |
-| Release default | 33 | 238 | 245 |
-| Full known surface | 34 | 251 | 262 |
+| Release default | 34 | 245 | 252 |
+| Full known surface | 35 | 258 | 269 |
 
-The full surface contains 209 GET, 49 POST, 2 PUT, 1 PATCH, and 1 DELETE
+The full surface contains 217 GET, 48 POST, 2 PUT, 1 PATCH, and 1 DELETE
 operation. The additional 17 operations are the feature-gated Agent and nested
 Agent Workspace surface.
 
