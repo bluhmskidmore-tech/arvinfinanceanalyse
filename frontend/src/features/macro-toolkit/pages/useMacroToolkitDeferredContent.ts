@@ -18,17 +18,14 @@ import type {
   MacroToolkitGovernanceFocusKey,
 } from "../lib/macroToolkitPageModel";
 
-// 宏观工具页（toolkit 模式）的渐进披露状态机：从 MacroToolkitPage 纯搬移，
-// 行为与文案不变。observation 模式下所有效果保持原有的 showOperations 早退。
+// 宏观工具页的渐进披露状态机：从 MacroToolkitPage 纯搬移，行为与文案不变。
 export function useMacroToolkitDeferredContent({
-  showOperations,
   selectedEvidenceHref,
   selectedExecutionHref,
   setSelectedEvidenceHref,
   setSelectedExecutionHref,
   setSelectedGovernanceFocus,
 }: {
-  showOperations: boolean;
   selectedEvidenceHref: string | null;
   selectedExecutionHref: string | null;
   setSelectedEvidenceHref: (href: string | null) => void;
@@ -38,16 +35,13 @@ export function useMacroToolkitDeferredContent({
   const deferredContentSentinelRef = useRef<HTMLDivElement | null>(null);
   const [deferredContentStage, setDeferredContentStage] =
     useState<MacroToolkitDeferredContentStage>(() =>
-      !showOperations
-        ? MACRO_TOOLKIT_FINAL_DEFERRED_CONTENT_STAGE
-        : typeof window !== "undefined"
-          ? (macroToolkitDeferredContentStageForHref(window.location.hash) ?? 0)
-          : 0,
+      typeof window !== "undefined"
+        ? (macroToolkitDeferredContentStageForHref(window.location.hash) ?? 0)
+        : 0,
   );
   const [pendingDeferredHashTarget, setPendingDeferredHashTarget] = useState<
     string | null
   >(() =>
-    showOperations &&
     typeof window !== "undefined" &&
     macroToolkitDeferredContentStageForHref(window.location.hash) !== null
       ? window.location.hash
@@ -55,35 +49,25 @@ export function useMacroToolkitDeferredContent({
   );
   const [receiptTechnicalDetailsExpanded, setReceiptTechnicalDetailsExpanded] = useState(
     () =>
-      showOperations &&
       typeof window !== "undefined" &&
       window.location.hash === "#macro-toolkit-script-artifact-detail",
   );
 
   const revealAllDeferredContent = useCallback(() => {
-    if (!showOperations) {
-      return;
-    }
     setDeferredContentStage(MACRO_TOOLKIT_FINAL_DEFERRED_CONTENT_STAGE);
     setReceiptTechnicalDetailsExpanded(true);
-  }, [showOperations]);
+  }, []);
 
   useEffect(() => {
-    if (!showOperations) {
-      return undefined;
-    }
     const handleBeforePrint = () => {
       flushSync(revealAllDeferredContent);
     };
     window.addEventListener("beforeprint", handleBeforePrint);
     return () => window.removeEventListener("beforeprint", handleBeforePrint);
-  }, [revealAllDeferredContent, showOperations]);
+  }, [revealAllDeferredContent]);
 
   useEffect(() => {
-    if (
-      !showOperations ||
-      deferredContentStage >= MACRO_TOOLKIT_FINAL_DEFERRED_CONTENT_STAGE
-    ) {
+    if (deferredContentStage >= MACRO_TOOLKIT_FINAL_DEFERRED_CONTENT_STAGE) {
       return undefined;
     }
 
@@ -114,11 +98,11 @@ export function useMacroToolkitDeferredContent({
     observer.observe(sentinel);
 
     return () => observer.disconnect();
-  }, [deferredContentStage, showOperations]);
+  }, [deferredContentStage]);
 
   const revealDeferredContentForHref = useCallback(
     (href: string | null) => {
-      if (!showOperations || !href) {
+      if (!href) {
         return;
       }
       const requestedStage = macroToolkitDeferredContentStageForHref(href);
@@ -132,7 +116,7 @@ export function useMacroToolkitDeferredContent({
         Math.max(currentStage, requestedStage) as MacroToolkitDeferredContentStage,
       );
     },
-    [showOperations],
+    [],
   );
 
   const syncDeferredContentSelectionForHref = useCallback((href: string) => {
@@ -160,9 +144,6 @@ export function useMacroToolkitDeferredContent({
   ]);
 
   useEffect(() => {
-    if (!showOperations) {
-      return undefined;
-    }
     const revealHashTarget = () => {
       const href = window.location.hash;
       setPendingDeferredHashTarget(
@@ -176,15 +157,11 @@ export function useMacroToolkitDeferredContent({
     return () => window.removeEventListener("hashchange", revealHashTarget);
   }, [
     revealDeferredContentForHref,
-    showOperations,
     syncDeferredContentSelectionForHref,
   ]);
 
   useEffect(() => {
-    if (
-      !showOperations ||
-      !pendingDeferredHashTarget?.startsWith("#macro-toolkit-")
-    ) {
+    if (!pendingDeferredHashTarget?.startsWith("#macro-toolkit-")) {
       return undefined;
     }
     const requestedStage = macroToolkitDeferredContentStageForHref(
@@ -250,14 +227,10 @@ export function useMacroToolkitDeferredContent({
     deferredContentStage,
     pendingDeferredHashTarget,
     receiptTechnicalDetailsExpanded,
-    showOperations,
   ]);
 
   const handleDeferredContentLinkClick = useCallback(
     (event: ReactMouseEvent<HTMLElement>) => {
-      if (!showOperations) {
-        return;
-      }
       const target = event.target;
       const anchor =
         target instanceof Element
@@ -275,7 +248,6 @@ export function useMacroToolkitDeferredContent({
     },
     [
       revealDeferredContentForHref,
-      showOperations,
       syncDeferredContentSelectionForHref,
     ],
   );

@@ -99,7 +99,6 @@ export default function MacroToolkitPage() {
   const [isLoadingFullAnalysis, setIsLoadingFullAnalysis] = useState(false);
 
   const deferredContent = useMacroToolkitDeferredContent({
-    showOperations: true,
     selectedEvidenceHref,
     selectedExecutionHref,
     setSelectedEvidenceHref,
@@ -264,7 +263,6 @@ export default function MacroToolkitPage() {
   ).length;
   const crisisScoreResult = capabilityResults.find((result) => result.key === "crisis_score_cn") ?? null;
   const degradedResultCount = capabilityResults.filter((result) => result.status !== "complete").length;
-  const missingIndicatorCount = analysis?.indicators.filter((indicator) => indicator.quality === "missing").length ?? 0;
   const analysisSignalCards = analysis?.signal_cards ?? [];
   // 脚本产物等运维元信息不进入核心信号区；产物状态保留在深度证据入口与执行区。
   const analyticalSignalCards = analysisSignalCards.filter((card) => !isObservationOutputSignal(card));
@@ -291,7 +289,6 @@ export default function MacroToolkitPage() {
       ? `${runtimeSections.length} 项证据延后确认`
       : "等待完整分析确认"
     : "证据已完整读取";
-  const dataFreshnessDetail = `${missingIndicatorCount} 个指标缺失；${sourceHitCount} 个源命中`;
   const repairItems = analysis?.data_health?.repair_items ?? [];
   const repairItemCount = repairItems.length;
   const primaryRepairItem = [...repairItems].sort(compareRepairPriority)[0] ?? null;
@@ -483,7 +480,7 @@ export default function MacroToolkitPage() {
 
   const isAnalysisLoading = analysisQuery.isLoading && !analysis;
   const initialAnalysisLoadingSection = isAnalysisLoading ? (
-    <MacroToolkitInitialAnalysisLoading showOperations observationSignalRiskLoadingSection={null} />
+    <MacroToolkitInitialAnalysisLoading />
   ) : null;
   const analysisFailedAlert = analysisQuery.isError ? (
     <Alert type="error" showIcon message="宏观分析结果加载失败" />
@@ -539,11 +536,7 @@ export default function MacroToolkitPage() {
       />
     ) : null;
   const hasonStrategySection = hasonStrategy ? (
-    <HasonMacroStrategyPanel
-      strategy={hasonStrategy}
-      modelReadiness={analysis?.model_readiness}
-      variant="detail"
-    />
+    <HasonMacroStrategyPanel strategy={hasonStrategy} />
   ) : null;
   const modelSignalReadiness = analysis?.model_readiness?.length
     ? analysis.model_readiness
@@ -558,7 +551,6 @@ export default function MacroToolkitPage() {
       chainRunError={chainRunError}
       chainRunModelId={chainRunModelId}
       isRunningChain={isRunningChain}
-      showActions
       onRunChain={runScriptChain}
     />
   ) : null;
@@ -574,12 +566,9 @@ export default function MacroToolkitPage() {
     <MacroToolkitAnalysisEvidenceFlow
       analysis={analysis}
       analysisMeta={analysisMeta}
-      showOperations
       isAuditTargetActive={isAuditTargetActive}
-      observationBoundaryPanel={null}
       runtimeSections={runtimeSections}
       isCoreAnalysis={isCoreAnalysis}
-      observationRuntimeSummary={observationRuntimeSummary}
       showFullAnalysisActionInRuntime={showFullAnalysisActionInRuntime}
       isLoadingFullAnalysis={isLoadingFullAnalysis}
       loadFullAnalysis={loadFullAnalysis}
@@ -593,11 +582,6 @@ export default function MacroToolkitPage() {
       sourceBackfillResult={sourceBackfillResult}
       sourceBackfillFeedbackTone={sourceBackfillFeedbackTone}
       sourceBackfillError={sourceBackfillError}
-      primarySignal={primarySignal}
-      dataFreshnessDetail={dataFreshnessDetail}
-      missingIndicatorCount={missingIndicatorCount}
-      capabilityResults={capabilityResults}
-      degradedResultCount={degradedResultCount}
       limitsDetails={analysisWarningsAlert}
     />
   ) : null;
@@ -608,14 +592,12 @@ export default function MacroToolkitPage() {
   if (!payload && !analysis && (analysisQuery.isError || scriptsQuery.isError)) {
     return (
       <MacroToolkitPageErrorState
-        showOperations
         queryErrorText={queryErrorText}
         analysisQuery={analysisQuery}
         scriptsQuery={scriptsQuery}
         strategyQuery={strategyQuery}
         hasReadScopeBlocker={hasReadScopeBlocker}
         failedReadMessages={failedReadMessages}
-        observationFailedReadMessages={[]}
       />
     );
   }
@@ -652,7 +634,6 @@ export default function MacroToolkitPage() {
           </div>
         </div>
         <MacroToolkitHeaderControls
-          showOperations
           clearFullAnalysisCache={clearFullAnalysisCache}
           analysisQuery={analysisQuery}
           scriptsQuery={scriptsQuery}

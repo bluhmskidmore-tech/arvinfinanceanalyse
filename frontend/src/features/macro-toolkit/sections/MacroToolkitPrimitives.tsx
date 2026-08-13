@@ -55,15 +55,13 @@ export function MacroToolkitContractBoundary({
   formalUseAllowed,
   resultKind,
   ruleVersion,
-  plainLanguage = false,
 }: {
   formalUseAllowed?: boolean;
   resultKind?: string;
   ruleVersion?: string;
-  plainLanguage?: boolean;
 }) {
-  const resultKindText = plainLanguage ? "宏观分析结果" : resultKind ?? MACRO_TOOLKIT_ANALYSIS_KIND;
-  const versionText = plainLanguage ? "规则版本已记录" : ruleVersion ?? MACRO_TOOLKIT_UI_RULE_VERSION;
+  const resultKindText = resultKind ?? MACRO_TOOLKIT_ANALYSIS_KIND;
+  const versionText = ruleVersion ?? MACRO_TOOLKIT_UI_RULE_VERSION;
   return (
     <div
       className="macro-toolkit-contract-boundary"

@@ -1239,57 +1239,6 @@
   background: var(--macro-toolkit-primary-soft);
 }
 
-.macro-toolkit-observation-evidence {
-  display: grid;
-  gap: 12px;
-  min-width: 0;
-  padding: 12px;
-  border: 1px solid var(--macro-toolkit-border-soft);
-  border-radius: var(--moss-radius-sm);
-  background: var(--macro-toolkit-card-soft);
-}
-
-.macro-toolkit-observation-evidence__head {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  align-items: center;
-  justify-content: space-between;
-  min-width: 0;
-}
-
-.macro-toolkit-observation-evidence__head > span {
-  color: var(--moss-color-text-primary);
-  font-size: 13px;
-  font-weight: 850;
-}
-
-.macro-toolkit-observation-evidence__legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  min-width: 0;
-}
-
-.macro-toolkit-observation-evidence__legend span {
-  min-width: 0;
-  padding: 3px 7px;
-  border: 1px solid var(--macro-toolkit-border-muted);
-  border-radius: var(--ib-radius, 2px);
-  background: var(--macro-toolkit-card);
-  color: var(--moss-color-text-muted);
-  font-size: 12px;
-  font-weight: 750;
-  line-height: 1.2;
-  overflow-wrap: anywhere;
-}
-
-.macro-toolkit-observation-evidence__body {
-  display: grid;
-  gap: 10px;
-  min-width: 0;
-}
-
 .macro-toolkit-data-health-summary {
   display: grid;
   gap: 9px;
@@ -1958,15 +1907,6 @@
 
 .macro-toolkit-hason-strategy__metrics {
   grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.macro-toolkit-hason-strategy--observation {
-  border-left: 2px solid var(--macro-toolkit-warning);
-  background: var(--macro-toolkit-warning-soft);
-}
-
-.macro-toolkit-hason-strategy--observation .macro-toolkit-hason-strategy__metrics {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .macro-toolkit-hason-module-grid {
@@ -4517,8 +4457,7 @@
   }
 
   .macro-toolkit-strategy-observation__grid,
-  .macro-toolkit-indicator-observation__grid,
-  .macro-toolkit-hason-strategy--observation .macro-toolkit-hason-strategy__metrics {
+  .macro-toolkit-indicator-observation__grid {
     grid-template-columns: 1fr;
   }
 

@@ -46,11 +46,6 @@ export function statusColor(status: string) {
   return "default";
 }
 
-export function observationStatusLabel(status: string | null | undefined) {
-  if (status === "observation_ready" || status === "degraded" || status === "partial") return "观察就绪";
-  return statusLabel(status ?? "unknown");
-}
-
 export function compactText(text: string | null | undefined, maxLength = 34) {
   if (!text) return "";
   const normalized = text.replace(/\s+/g, " ").trim();

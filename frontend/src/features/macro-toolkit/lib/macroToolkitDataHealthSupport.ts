@@ -19,18 +19,6 @@ export function formatMissingIndicatorDetail(items: MacroToolkitDataHealth["indi
     : "指标全部命中";
 }
 
-export function formatCompactObservationList(items: Array<string | null | undefined>, limit = 4) {
-  const visibleItems = Array.from(
-    new Set(items.map((item) => item?.trim()).filter((item): item is string => Boolean(item))),
-  );
-  if (!visibleItems.length) {
-    return "待确认";
-  }
-  const shownItems = visibleItems.slice(0, limit).join(" / ");
-  const hiddenCount = visibleItems.length - limit;
-  return hiddenCount > 0 ? `${shownItems}，另 ${hiddenCount} 项` : shownItems;
-}
-
 export function capabilityIssueCount(dataHealth: MacroToolkitDataHealth) {
   return dataHealth.capability_results.degraded + dataHealth.capability_results.unavailable;
 }
@@ -136,21 +124,6 @@ export function repairTicketReceiptStatus(receipt: MacroToolkitActionReceipt | n
     return "待执行留痕";
   }
   return receiptConfirmed ? "签核已确认" : "回执待复核";
-}
-
-export function formatObservationRepairTraceItem(item: MacroToolkitRepairItem) {
-  if (item.type === "deferred") {
-    return "完整分析补充项";
-  }
-  const label = formatDataHealthRepairLabel(item, true);
-  if (item.stale_days) {
-    return `${label} 落后 ${item.stale_days} 天`;
-  }
-  if (item.type === "degraded" && item.suggested_action) {
-    const missingInput = item.suggested_action.match(/[A-Z][A-Z0-9_]{2,}/)?.[0];
-    return missingInput ? `${label} ${missingInput}` : label;
-  }
-  return label;
 }
 
 export function formatObservationRepairSummary(items: MacroToolkitRepairItem[]) {
