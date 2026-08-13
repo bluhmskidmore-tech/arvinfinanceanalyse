@@ -358,9 +358,9 @@
  * + 模块工作台首页 /performance、/reports（同组件 ModuleWorkbenchHomePage，
  * 业主 2026-08-13 指示按首页排版标准重做，单 scope module-workbench-home
  * 服务双路由，同样只加选择器别名，不新增色值）
- * + 风险张量 /risk-tensor、集中度监控 /concentration-monitor（业主
- * 2026-08-13 指示风险工作台组按首页 Nocturne 色系换肤，仅换色不动版式，
- * 同样只加选择器别名，不新增色值）。
+ * + 风险张量 /risk-tensor、集中度监控 /concentration-monitor、现金流预测
+ * /cashflow-projection（业主 2026-08-13 指示风险工作台组按首页 Nocturne
+ * 色系换肤，仅换色不动版式，同样只加选择器别名，不新增色值）。
  * 色板源自设计交接包「三个布局方向设计评审」的 tokens/nocturne-styles.css：
  * 单一蓝紫 accent、低饱和绿涨红跌、8px 卡片圆角（--dh-api-radius）。
  * 作用域限定以上页面根及其所在工作台外壳，其余深色页面仍走 §2.2 的
@@ -387,6 +387,7 @@
 [data-moss-theme-scope="module-workbench-home"],
 [data-moss-theme-scope="risk-tensor"],
 [data-moss-theme-scope="concentration-monitor"],
+[data-moss-theme-scope="cashflow-projection"],
 /* 深色 owner 是 ThemedRouteBoundary 的路由（除首页外全部 scope）：钢蓝基准块以
    .workbench-shell-grid:has(.themed-route-boundary.theme-dh-api)（0-3-0）
    在外壳上定义 --dh-api-*，外壳别名须统一双写类名同权后置才能翻转
@@ -410,7 +411,8 @@
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-analysis"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="module-workbench-home"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-tensor"]),
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="concentration-monitor"]) {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="concentration-monitor"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cashflow-projection"]) {
   --nct-bg: #161826;
   --nct-rail: #131522;
   --nct-surface: #232532;
@@ -495,7 +497,8 @@
 .themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="bond-analysis"]),
 .themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="module-workbench-home"]),
 .themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="risk-tensor"]),
-.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="concentration-monitor"]) {
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="concentration-monitor"]),
+.themed-route-boundary.theme-dh-api:has([data-moss-theme-scope="cashflow-projection"]) {
   color: var(--nct-ink, var(--dh-api-ink));
   background: var(--nct-bg, var(--dh-api-bg));
 }
@@ -525,6 +528,7 @@
 [data-moss-theme-scope="module-workbench-home"],
 [data-moss-theme-scope="risk-tensor"],
 [data-moss-theme-scope="concentration-monitor"],
+[data-moss-theme-scope="cashflow-projection"],
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="average-balance"]),
@@ -543,7 +547,8 @@
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-analysis"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="module-workbench-home"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-tensor"]),
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="concentration-monitor"]) {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="concentration-monitor"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cashflow-projection"]) {
   --moss-shell-paper-bg: var(--nct-bg);
   --moss-shell-paper-shade: none;
 }
@@ -561,6 +566,7 @@
 [data-moss-theme-scope="pnl-by-business-insights"],
 [data-moss-theme-scope="risk-tensor"],
 [data-moss-theme-scope="concentration-monitor"],
+[data-moss-theme-scope="cashflow-projection"],
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="average-balance"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="positions"]),
@@ -572,6 +578,7 @@
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-attribution"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business-insights"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-tensor"]),
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="concentration-monitor"]) {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="concentration-monitor"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cashflow-projection"]) {
   --moss-shell-terminal-bg: var(--nct-rail);
 }

@@ -1262,7 +1262,8 @@ select {
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-analysis"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="module-workbench-home"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-tensor"]),
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="concentration-monitor"]) {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="concentration-monitor"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cashflow-projection"]) {
   background: var(--nct-bg) !important;
 }
 
@@ -1285,7 +1286,8 @@ select {
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-analysis"]) .workbench-shell-rail,
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="module-workbench-home"]) .workbench-shell-rail,
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-tensor"]) .workbench-shell-rail,
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="concentration-monitor"]) .workbench-shell-rail {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="concentration-monitor"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cashflow-projection"]) .workbench-shell-rail {
   background: var(--nct-rail) !important;
 }
 
@@ -1306,7 +1308,8 @@ select {
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-analysis"]) .workbench-shell-rail-mark,
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="module-workbench-home"]) .workbench-shell-rail-mark,
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-tensor"]) .workbench-shell-rail-mark,
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="concentration-monitor"]) .workbench-shell-rail-mark {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="concentration-monitor"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cashflow-projection"]) .workbench-shell-rail-mark {
   background: var(--nct-surface) !important;
   border-color: var(--nct-ring) !important;
   box-shadow: none !important;
@@ -1334,7 +1337,8 @@ select {
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-analysis"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="module-workbench-home"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-tensor"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="concentration-monitor"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion) {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="concentration-monitor"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cashflow-projection"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion) {
   background: var(--nct-surface) !important;
 }
 
@@ -1357,7 +1361,8 @@ select {
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-analysis"]) .moss-page-v2-decision-hero__conclusion,
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="module-workbench-home"]) .moss-page-v2-decision-hero__conclusion,
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-tensor"]) .moss-page-v2-decision-hero__conclusion,
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="concentration-monitor"]) .moss-page-v2-decision-hero__conclusion {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="concentration-monitor"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cashflow-projection"]) .moss-page-v2-decision-hero__conclusion {
   border-left-color: var(--nct-accent) !important;
 }
 

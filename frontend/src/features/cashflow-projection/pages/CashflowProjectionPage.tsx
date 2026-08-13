@@ -8,8 +8,7 @@ import type { DataSectionState } from "../../../components/DataSection.types";
 import { PageDataSection } from "../../../components/page/PageDataSection";
 import { modeBadgeStyle } from "../../../components/page/pageStyles";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
-import { designTokens } from "../../../theme/designSystem";
-import { displayTokens } from "../../../theme/displayTokens";
+import { nocturneTokens } from "../../../theme/designSystem";
 import { adaptCashflowProjection } from "../adapters/cashflowProjectionAdapter";
 import { EM_DASH } from "../../../utils/format";
 import {
@@ -249,10 +248,12 @@ export default function CashflowProjectionPage() {
       return null;
     }
     return {
+      // canvas 不消费 CSS 变量：取色走 nocturneTokens 常量组（组合工作台先例）。
+      // 语义：资产流入=绿 / 负债流出=红 / 累计净现金流=accent，方向不变仅去饱和。
       color: [
-        designTokens.color.success[500],
-        designTokens.color.danger[500],
-        designTokens.color.info[500],
+        nocturneTokens.color.green,
+        nocturneTokens.color.red,
+        nocturneTokens.color.blue,
       ],
       animationDuration: 420,
       grid: { left: 64, right: 24, top: 54, bottom: 50 },
@@ -265,29 +266,29 @@ export default function CashflowProjectionPage() {
         right: 8,
         itemWidth: 10,
         itemHeight: 10,
-        textStyle: { color: designTokens.color.neutral[700], fontSize: 12 },
+        textStyle: { color: nocturneTokens.color.inkSoft, fontSize: 12 },
         data: ["资产流入", "负债流出", "累计净现金流"],
       },
       xAxis: {
         type: "category",
         data: monthlySeries.categories,
         axisTick: { show: false },
-        axisLine: { lineStyle: { color: designTokens.color.neutral[300] } },
-        axisLabel: { color: designTokens.color.neutral[500], rotate: 30 },
+        axisLine: { lineStyle: { color: nocturneTokens.color.line } },
+        axisLabel: { color: nocturneTokens.color.inkMuted, rotate: 30 },
       },
       yAxis: [
         {
           type: "value",
           name: "当月流量",
-          nameTextStyle: { color: designTokens.color.neutral[500] },
-          axisLabel: { color: designTokens.color.neutral[500], formatter: axisYiLabel },
-          splitLine: { lineStyle: { color: designTokens.color.neutral[200] } },
+          nameTextStyle: { color: nocturneTokens.color.inkMuted },
+          axisLabel: { color: nocturneTokens.color.inkMuted, formatter: axisYiLabel },
+          splitLine: { lineStyle: { color: nocturneTokens.color.lineSoft } },
         },
         {
           type: "value",
           name: "累计",
-          nameTextStyle: { color: designTokens.color.neutral[500] },
-          axisLabel: { color: designTokens.color.neutral[500], formatter: axisYiLabel },
+          nameTextStyle: { color: nocturneTokens.color.inkMuted },
+          axisLabel: { color: nocturneTokens.color.inkMuted, formatter: axisYiLabel },
           splitLine: { show: false },
         },
       ],
@@ -321,7 +322,11 @@ export default function CashflowProjectionPage() {
   }, [monthlySeries]);
 
   return (
-    <section data-testid="cashflow-projection-page" className={styles.page}>
+    <section
+      data-testid="cashflow-projection-page"
+      data-moss-theme-scope="cashflow-projection"
+      className={styles.page}
+    >
       <div className={styles.hero}>
         <div className={styles.heroMain}>
           <div className={styles.eyebrowRow}>
@@ -330,11 +335,8 @@ export default function CashflowProjectionPage() {
               style={{
                 ...modeBadgeStyle,
                 background:
-                  client.mode === "real" ? designTokens.color.success[50] : designTokens.color.primary[50],
-                color:
-                  client.mode === "real"
-                    ? displayTokens.apiMode.realForeground
-                    : displayTokens.apiMode.mockForeground,
+                  client.mode === "real" ? "var(--dh-api-green-soft)" : "var(--dh-api-blue-soft)",
+                color: client.mode === "real" ? "var(--dh-api-green)" : "var(--dh-api-blue)",
               }}
             >
               {client.mode === "real" ? "真实只读链路" : "本地演示数据"}
