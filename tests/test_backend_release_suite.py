@@ -145,6 +145,8 @@ def test_backend_release_suite_declares_bounded_phase2_gate():
         "tests/test_golden_sample_release_matrix.py",
         "tests/test_live_route_page_contract_completeness.py",
         "tests/test_backend_dependency_contract.py",
+        "tests/test_api_contract_baseline_gate.py",
+        "tests/test_api_response_model_field_preservation.py",
         "tests/test_no_finance_logic_in_frontend.py",
         "tests/test_caliber_rule_fx_mid_conversion.py",
         "tests/test_caliber_rule_hat_mapping.py",

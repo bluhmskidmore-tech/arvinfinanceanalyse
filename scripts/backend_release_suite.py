@@ -48,6 +48,8 @@ RELEASE_SUITE_TESTS = [
     "tests/test_golden_sample_release_matrix.py",
     "tests/test_live_route_page_contract_completeness.py",
     "tests/test_backend_dependency_contract.py",
+    "tests/test_api_contract_baseline_gate.py",
+    "tests/test_api_response_model_field_preservation.py",
     "tests/test_no_finance_logic_in_frontend.py",
     # caliber 口径红线（无条件兜底；与 scripts/check_caliber_gate.py 路径触发门禁互为双保险）
     "tests/test_caliber_rule_fx_mid_conversion.py",

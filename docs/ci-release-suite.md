@@ -1,90 +1,105 @@
-﻿# CI 鍚庣 Release Suite 娓呭崟
+# CI 后端 Release Suite 清单
 
-- 鏉冨▉鏉ユ簮锛歚scripts/backend_release_suite.py` 鐨勫父閲?`RELEASE_SUITE_TESTS`銆乣GOVERNANCE_MCP_FAST_SUITE_TESTS`銆乣GOVERNANCE_MCP_FULL_SUITE_TESTS`銆乣EXECUTIVE_RELEASE_SAMPLE_IDS`
-- 鏈枃妗ｆ€ц川锛氫笂杩板父閲忕殑**鍙楁帶闈欐€侀暅鍍?*锛堜緵璇勫涓庢绱紝涓嶆槸绗簩浜嬪疄婧愶級
-- 蹇収鏃ユ湡锛?026-08-12锛坰uite_name锛歚governed-phase2-backend-release-suite`锛?- 闂ㄧ鍒嗗眰鑳屾櫙涓庣洸鍖哄垎鏋愶細瑙?`docs/plans/tech-debt-remediation/B0-ci-gate-layering.md`
+- 权威来源：`scripts/backend_release_suite.py` 的常量 `RELEASE_SUITE_TESTS`、`GOVERNANCE_MCP_FAST_SUITE_TESTS`、`GOVERNANCE_MCP_FULL_SUITE_TESTS`、`EXECUTIVE_RELEASE_SAMPLE_IDS`
+- 本文档性质：上述常量的**受控静态镜像**（供评审与检索，不是第二事实源）
+- 快照日期：2026-08-13（suite_name：`governed-phase2-backend-release-suite`）
+- 门禁分层背景与盲区分析：见 `docs/plans/tech-debt-remediation/B0-ci-gate-layering.md`
 
-## 1. 鍦?CI 涓殑浣嶇疆
+## 1. 在 CI 中的位置
 
-| 鐜妭 | 鍐呭 |
+| 环节 | 内容 |
 | --- | --- |
-| 瑙﹀彂 | `.github/workflows/ci.yml` 鐨?`backend` job锛坄pull_request` 鈫?main锛沗push` 鈫?main / `codex/**`锛夛紝姝ラ `Run bounded backend release suite`锛歚python scripts/backend_release_suite.py` |
-| 绗竴闃舵 | `python -m pytest -q <涓嬫柟 30 涓枃浠?` |
-| 绗簩闃舵 | 娌荤悊 MCP 鍚堢害锛氶粯璁?fast profile锛宍python -m pytest -q -m mcp_fast tests/test_project_mcp_fast_contracts.py` |
-| 鍚?job 琛ュ厖姝ラ | agent harness + 闂ㄧ鏄犲皠瀹堝崼锛?*涓嶅湪 release suite 鑴氭湰鍐?*锛夛細`python -m pytest -q tests/test_agent_eval_spec.py tests/test_agent_eval_reward.py tests/test_agent_eval_collect.py tests/test_agent_eval_scoring_integrity.py tests/test_agent_eval_replay.py tests/test_agent_eval_pr_replay.py tests/test_agent_eval_rollout.py tests/test_agent_eval_coverage_report.py tests/test_caliber_gate_mapping.py tests/test_mcp_config_consistency.py`锛沗Caliber path-trigger gate`锛堜粎 `pull_request`锛夛細`git fetch origin <base_ref>` 鍚庤繍琛?`python scripts/check_caliber_gate.py --base-ref origin/<base_ref>`锛孭R diff 瑙﹀強 `CALIBER_GATE_MAP` 涓殑 core_finance 鍙ｅ緞婧愭枃浠舵椂瀹氬悜杩愯瀵瑰簲 caliber 绾㈢嚎娴嬭瘯鏂囦欢锛堟槧灏勮〃鏉冨▉鍦ㄨ剼鏈唴锛屾嬁涓嶅埌 base-ref 鏃?fail-closed 闈為浂閫€鍑猴紱2026-08-12 璧峰叚涓?caliber 绾㈢嚎鏂囦欢鍚屾椂鏄?release suite 鏃犳潯浠舵垚鍛橈紝璺緞瑙﹀彂涓哄畾鍚戝揩鍙嶃€佸浠舵垚鍛樹负鏃犳潯浠跺厹搴曪紝浜掍负鍙屼繚闄╋級 |
-| 鍏ㄩ噺鍏滃簳 | `backend-full-pytest` job锛堜粎 schedule / push鈫抦ain锛夛細`python -m pytest -q`锛屾敹闆?`tests/` + `backend/tests/` 鍏ㄩ儴娴嬭瘯 |
+| 触发 | `.github/workflows/ci.yml` 的 `backend` job（`pull_request` → main；`push` → main / `codex/**`），步骤 `Run bounded backend release suite`：`python scripts/backend_release_suite.py` |
+| 第一阶段 | `python -m pytest -q -m "not excluded_surface_acceptance" <下方 32 个文件>` |
+| 第二阶段 | 治理 MCP 合约：默认 fast profile，`python -m pytest -q -m "mcp_fast and not excluded_surface_acceptance" tests/test_project_mcp_fast_contracts.py` |
+| 同 job 补充步骤 | agent harness + 门禁映射守卫（**不在 release suite 脚本内**）：`python -m pytest -q tests/test_agent_eval_spec.py tests/test_agent_eval_reward.py tests/test_agent_eval_collect.py tests/test_agent_eval_scoring_integrity.py tests/test_agent_eval_replay.py tests/test_agent_eval_pr_replay.py tests/test_agent_eval_rollout.py tests/test_agent_eval_coverage_report.py tests/test_caliber_gate_mapping.py tests/test_mcp_config_consistency.py`；`Caliber path-trigger gate`（仅 `pull_request`）：`git fetch origin <base_ref>` 后运行 `python scripts/check_caliber_gate.py --base-ref origin/<base_ref>`，PR diff 触及 `CALIBER_GATE_MAP` 中的 core_finance 口径源文件时定向运行对应 caliber 红线测试文件（映射表权威在脚本内，拿不到 base-ref 时 fail-closed 非零退出；2026-08-12 起六个 caliber 红线文件同时是 release suite 无条件成员，路径触发为定向快反、套件成员为无条件兜底，互为双保险） |
+| 全量兜底 | `backend-full-pytest` job（仅 schedule / push→main）：`python -m pytest -q`，收集 `tests/` + `backend/tests/` 全部测试 |
 
-鎵ц鐜锛堣剼鏈敞鍏ワ紝鍐冲畾濂椾欢鐨勮瘉鏄庤竟鐣岋級锛?
-- 涓存椂鐩綍闅旂锛歚MOSS_GOVERNANCE_PATH`銆乣MOSS_DUCKDB_PATH` 鎸囧悜涓€娆℃€?`moss-backend-release-*` 鐩綍
-- `MOSS_SKIP_STARTUP_STORAGE_MIGRATIONS=1`銆乣MOSS_SKIP_POSTGRES_MIGRATIONS=1`銆乣MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST=1`
-- 鍗筹細濂椾欢璇佹槑 fixture 闅旂鐜涓嬬殑鍚堢害琛屼负锛屼笉璇佹槑杩佺Щ銆佺湡瀹炲瓨鍌ㄤ笌鐪熷疄閴存潈閾捐矾
+执行环境（脚本注入，决定套件的证明边界）：
 
-CLI 琛ㄩ潰锛坄python scripts/backend_release_suite.py --help`锛夛細
+- 临时目录隔离：`MOSS_GOVERNANCE_PATH`、`MOSS_DUCKDB_PATH` 指向一次性 `moss-backend-release-*` 目录
+- `MOSS_SKIP_STARTUP_STORAGE_MIGRATIONS=1`、`MOSS_SKIP_POSTGRES_MIGRATIONS=1`、`MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST=1`
+- marker 过滤：两个阶段默认都带 `not excluded_surface_acceptance`（常量 `EXCLUDED_SURFACE_DEFAULT_MARKER_EXPR`），即 `tests/AGENTS.md` 第 3 层的排除面 feature / workflow / ETL acceptance 不进默认门禁
+- 即：套件证明 fixture 隔离环境下的合约行为，不证明迁移、真实存储与真实鉴权链路，也不证明排除面的验收行为
 
-| 鍙傛暟 | 鐢ㄩ€?|
+CLI 表面（`python scripts/backend_release_suite.py --help`）：
+
+| 参数 | 用途 |
 | --- | --- |
-| `--dry-run` | 鎵撳嵃濂椾欢鎵ц璁″垝 JSON锛堝惈 pytest 鍙傛暟涓庣幆澧冿級锛屾槸鍐嶇敓鎴愭湰娓呭崟鐨勪緷鎹?|
-| `--mcp-profile fast\|full` | fast 涓?CI 榛樿锛沠ull 璺?`tests/test_project_mcp_servers.py`锛屼粎鍦ㄥ叡浜?MCP 琛屼负鍙樻洿鎴栧彂甯冩鏌ユ椂鎵嬪姩浣跨敤 |
-| `--live-governance-dir` | 瀵规寚瀹氳繍琛屾椂娌荤悊鐩綍鍋氳缂樺璁★紝绌鸿緭鍏?fail-closed |
-| `--governance-audit-output` | 瀹¤鎽樿杈撳嚭璺緞锛堥』涓?`--live-governance-dir` 鍚岀敤锛?|
+| `--dry-run` | 打印套件执行计划 JSON（含 pytest 参数与环境），是再生成本清单的依据 |
+| `--mcp-profile fast\|full` | fast 为 CI 默认；full 跑 `tests/test_project_mcp_servers.py`，仅在共享 MCP 行为变更或发布检查时手动使用 |
+| `--include-excluded-surfaces` | 解除两个阶段的 `not excluded_surface_acceptance` 过滤，一并运行排除面验收；CI 不使用，仅供本地排查排除面回归 |
+| `--live-governance-dir` | 对指定运行时治理目录做血缘审计，空输入 fail-closed |
+| `--governance-audit-output` | 审计摘要输出路径（须与 `--live-governance-dir` 同用） |
 
-## 2. 绗竴闃舵锛歚RELEASE_SUITE_TESTS`锛?0 涓枃浠讹紝鎸夎剼鏈『搴忥級
+## 2. 第一阶段：`RELEASE_SUITE_TESTS`（32 个文件，按脚本顺序）
 
-| # | 鏂囦欢 | 鍩?| 淇濇姢闈?|
+| # | 文件 | 域 | 保护面 |
 | --- | --- | --- | --- |
-| 1 | `tests/test_settings_contract.py` | 骞冲彴涓庨厤缃?| governance settings 榛樿鍊?/ 鐜鍙橀噺瑕嗙洊 / helper |
-| 2 | `tests/test_health_endpoints.py` | 骞冲彴涓庨厤缃?| 鍋ュ悍妫€鏌ョ鐐?|
-| 3 | `tests/test_positions_api_contract.py` | 涓氬姟 API 鍚堢害 | 鎸佷粨 API 灏佸 + 蹇収璇诲彇琛屼负 |
-| 4 | `tests/test_pnl_api_contract.py` | 涓氬姟 API 鍚堢害 | PnL API 鍚堢害锛堝浠跺唴鏈€澶у崟鏂囦欢锛?|
-| 5 | `tests/test_pnl_by_business_insights_contract.py` | 涓氬姟 API 鍚堢害 | 涓氬姟鏉＄嚎 PnL 娲炲療 |
-| 6 | `tests/test_pnl_by_business_candidate_insights_contract.py` | 涓氬姟 API 鍚堢害 | 鍊欓€夊彛寰勶紙Scenario锛夋礊瀵?|
-| 7 | `tests/test_candidate_period_comparison_contract_alignment.py` | 涓氬姟 API 鍚堢害 | 鍊欓€夋湡闂村姣斿悎绾︾増鏈法灞傚榻?|
-| 8 | `tests/test_risk_tensor_api.py` | 涓氬姟 API 鍚堢害 | 椋庨櫓寮犻噺 API |
-| 9 | `tests/test_balance_analysis_api.py` | 涓氬姟 API 鍚堢害 | 浣欓鍒嗘瀽 API |
-| 10 | `tests/test_bond_analytics_api.py` | 涓氬姟 API 鍚堢害 | 鍊哄埜鍒嗘瀽 API 灏佸 + 鏍稿績缁撴灉瀛楁 |
-| 11 | `tests/test_executive_dashboard_endpoints.py` | 涓氬姟 API 鍚堢害 | 楂樼浠〃鐩樼鐐?|
-| 12 | `tests/test_cube_query_api.py` | 涓氬姟 API 鍚堢害 | cube 鏌ヨ API |
-| 13 | `tests/test_liability_analytics_api.py` | 涓氬姟 API 鍚堢害 | 璐熷€哄垎鏋?API |
-| 14 | `tests/test_liability_analytics_envelope_contract.py` | 涓氬姟 API 鍚堢害 | 璐熷€哄垎鏋愬搷搴斿皝濂?|
-| 15 | `tests/test_result_meta_on_all_ui_endpoints.py` | 璺ㄧ鐐瑰皝濂?| 鎵€鏈?UI 绔偣 `result_meta` / `result` / `basis` 璇箟 |
-| 16 | `tests/test_governance_lineage_audit.py` | 娌荤悊涓庤缂?| 琛€缂樺璁¤剼鏈涓猴紙鑴忚妫€娴嬨€佹棤鍓綔鐢級 |
-| 17 | `tests/test_governance_doc_contract.py` | 娌荤悊涓庤缂?| 娌荤悊鏂囨。缁撴瀯涓庡唴瀹瑰悎绾?|
-| 18 | `tests/test_golden_samples_capture_ready.py` | 榛勯噾鏍锋湰 | capture-ready 鏍锋湰瀛樺湪鎬?/ 鍏冩暟鎹?/ 瀛楁鍖归厤 / fail-closed 鍏佽娓呭崟 |
-| 19 | `tests/test_ledger_pnl_net_interest_golden_sample.py` | 榛勯噾鏍锋湰 | 鍑€鍒╂伅榛勯噾鏍锋湰瀵硅处 + 鐢熶骇璁＄畻閾惧洖鏀?|
-| 20 | `tests/test_executive_release_contract.py` | 榛勯噾鏍锋湰 | 鍙戝竷闂ㄦ牱鏈悎绾︼紙瀵瑰簲 `EXECUTIVE_RELEASE_SAMPLE_IDS`锛?|
-| 21 | `tests/test_golden_sample_release_matrix.py` | 榛勯噾鏍锋湰 | 鏍锋湰鐩綍涓庡彂甯冮棬鏍锋湰 ID 瀵归綈锛涘畧鍗浠惰嚜韬繀椤诲寘鍚?exec 鍚堢害涓庢紓绉绘鏌?|
-| 22 | `tests/test_live_route_page_contract_completeness.py` | 璺ㄧ鐐瑰皝濂?| 娲昏穬璺敱椤甸潰濂戠害瀹屽鎬?/ 鏄惧紡涓存椂璞佸厤锛堢鏍?+ burn-down锛?|
-| 23 | `tests/test_backend_dependency_contract.py` | 骞冲彴涓庨厤缃?| 杩愯鏃朵緷璧栦笌 dev 渚濊禆鍒嗙 |
-| 24 | `tests/test_no_finance_logic_in_frontend.py` | 鏋舵瀯杈圭晫 | 鍓嶇婧愮爜涓嶅緱鍚寮忛噾铻嶈绠?token |
-| 25 | `tests/test_caliber_rule_fx_mid_conversion.py` | 鍙ｅ緞绾㈢嚎 | FX 涓棿浠锋姌绠楀彛寰?|
-| 26 | `tests/test_caliber_rule_hat_mapping.py` | 鍙ｅ緞绾㈢嚎 | H/A/T 鏄犲皠鍙ｅ緞 |
-| 27 | `tests/test_caliber_rule_subject_514_516_517_merge.py` | 鍙ｅ緞绾㈢嚎 | 514/516/517 绉戠洰鍚堝苟鍙ｅ緞 |
-| 28 | `tests/test_caliber_rule_issuance_exclusion.py` | 鍙ｅ緞绾㈢嚎 | 鍙戣鍊烘帓闄ゅ彛寰?|
-| 29 | `tests/test_caliber_rule_formal_scenario_gate.py` | 鍙ｅ緞绾㈢嚎 | Formal-Scenario 闂?|
-| 30 | `tests/test_caliber_rule_accounting_basis.py` | 鍙ｅ緞绾㈢嚎 | 浼氳鍙ｅ緞褰掍竴 |
+| 1 | `tests/test_settings_contract.py` | 平台与配置 | governance settings 默认值 / 环境变量覆盖 / helper |
+| 2 | `tests/test_health_endpoints.py` | 平台与配置 | 健康检查端点 |
+| 3 | `tests/test_positions_api_contract.py` | 业务 API 合约 | 持仓 API 封套 + 快照读取行为 |
+| 4 | `tests/test_pnl_api_contract.py` | 业务 API 合约 | PnL API 合约（套件内最大单文件） |
+| 5 | `tests/test_pnl_by_business_insights_contract.py` | 业务 API 合约 | 业务条线 PnL 洞察 |
+| 6 | `tests/test_pnl_by_business_candidate_insights_contract.py` | 业务 API 合约 | 候选口径（Scenario）洞察 |
+| 7 | `tests/test_candidate_period_comparison_contract_alignment.py` | 业务 API 合约 | 候选期间对比合约版本跨层对齐 |
+| 8 | `tests/test_risk_tensor_api.py` | 业务 API 合约 | 风险张量 API |
+| 9 | `tests/test_balance_analysis_api.py` | 业务 API 合约 | 余额分析 API |
+| 10 | `tests/test_bond_analytics_api.py` | 业务 API 合约 | 债券分析 API 封套 + 核心结果字段 |
+| 11 | `tests/test_executive_dashboard_endpoints.py` | 业务 API 合约 | 高管仪表盘端点 |
+| 12 | `tests/test_cube_query_api.py` | 业务 API 合约 | cube 查询 API |
+| 13 | `tests/test_liability_analytics_api.py` | 业务 API 合约 | 负债分析 API |
+| 14 | `tests/test_liability_analytics_envelope_contract.py` | 业务 API 合约 | 负债分析响应封套 |
+| 15 | `tests/test_result_meta_on_all_ui_endpoints.py` | 跨端点封套 | 所有 UI 端点 `result_meta` / `result` / `basis` 语义 |
+| 16 | `tests/test_governance_lineage_audit.py` | 治理与血缘 | 血缘审计脚本行为（脏行检测、无副作用） |
+| 17 | `tests/test_governance_doc_contract.py` | 治理与血缘 | 治理文档结构与内容合约 |
+| 18 | `tests/test_golden_samples_capture_ready.py` | 黄金样本 | capture-ready 样本存在性 / 元数据 / 字段匹配 / fail-closed 允许清单 |
+| 19 | `tests/test_ledger_pnl_net_interest_golden_sample.py` | 黄金样本 | 净利息黄金样本对账 + 生产计算链回放 |
+| 20 | `tests/test_executive_release_contract.py` | 黄金样本 | 发布门样本合约（对应 `EXECUTIVE_RELEASE_SAMPLE_IDS`） |
+| 21 | `tests/test_golden_sample_release_matrix.py` | 黄金样本 | 样本目录与发布门样本 ID 对齐；守卫套件自身必须包含 exec 合约与漂移检查 |
+| 22 | `tests/test_live_route_page_contract_completeness.py` | 跨端点封套 | 活跃路由页面契约完备性 / 显式临时豁免（签核 + burn-down） |
+| 23 | `tests/test_backend_dependency_contract.py` | 平台与配置 | 运行时依赖与 dev 依赖分离 |
+| 24 | `tests/test_api_contract_baseline_gate.py` | 合约门禁 | OpenAPI 破坏性变更门禁的判定逻辑本身：`scripts/api_contract_check.py` 的 `diff_contracts` 对 breaking / additive 的分级，以及 `contracts/openapi/` 基线快照的提交状态、规范序列化、default 面裁剪与豁免条目合法性 |
+| 25 | `tests/test_api_response_model_field_preservation.py` | 合约门禁 | 声明 `response_model` 后端点未丢字段：服务层原始 dict 与经模型过滤后的 HTTP 响应字段路径集合必须完全相等；封套 `extra="forbid"` 结构性护栏；黄金样本原样回放 |
+| 26 | `tests/test_no_finance_logic_in_frontend.py` | 架构边界 | 前端源码不得含正式金融计算 token |
+| 27 | `tests/test_caliber_rule_fx_mid_conversion.py` | 口径红线 | FX 中间价折算口径 |
+| 28 | `tests/test_caliber_rule_hat_mapping.py` | 口径红线 | H/A/T 映射口径 |
+| 29 | `tests/test_caliber_rule_subject_514_516_517_merge.py` | 口径红线 | 514/516/517 科目合并口径 |
+| 30 | `tests/test_caliber_rule_issuance_exclusion.py` | 口径红线 | 发行债排除口径 |
+| 31 | `tests/test_caliber_rule_formal_scenario_gate.py` | 口径红线 | Formal-Scenario 门 |
+| 32 | `tests/test_caliber_rule_accounting_basis.py` | 口径红线 | 会计口径归一 |
 
-鍙戝竷闂ㄦ牱鏈?ID锛坄EXECUTIVE_RELEASE_SAMPLE_IDS`锛夛細`GS-EXEC-OVERVIEW-A`銆乣GS-EXEC-PNL-ATTR-A`銆乣GS-EXEC-SUMMARY-A`銆?
-## 3. 绗簩闃舵锛氭不鐞?MCP 鍚堢害
+发布门样本 ID（`EXECUTIVE_RELEASE_SAMPLE_IDS`）：`GS-EXEC-OVERVIEW-A`、`GS-EXEC-PNL-ATTR-A`、`GS-EXEC-SUMMARY-A`。
 
-| profile | 鏂囦欢 | pytest 鍙傛暟 | 浣跨敤鍦烘櫙 |
+## 3. 第二阶段：治理 MCP 合约
+
+| profile | 文件 | pytest 参数 | 使用场景 |
 | --- | --- | --- | --- |
-| fast锛堥粯璁わ紝CI 鍦ㄧ敤锛?| `tests/test_project_mcp_fast_contracts.py` | `-q -m mcp_fast` | PR / push 闂ㄧ锛涙湰鍦伴粯璁?MCP 鍙嶉鐜?|
-| full锛堟墜鍔級 | `tests/test_project_mcp_servers.py` | `-q` | 鍏变韩 MCP 琛屼负鍙樻洿銆佸彂甯冩鏌ワ紙`--mcp-profile full`锛夛紱nightly 鍏ㄩ噺 pytest 涔熶細鏀堕泦 |
+| fast（默认，CI 在用） | `tests/test_project_mcp_fast_contracts.py` | `-q -m mcp_fast` | PR / push 门禁；本地默认 MCP 反馈环 |
+| full（手动） | `tests/test_project_mcp_servers.py` | `-q` | 共享 MCP 行为变更、发布检查（`--mcp-profile full`）；nightly 全量 pytest 也会收集 |
 
-## 4. 鍐嶇敓鎴愭柟娉?
-娓呭崟鍞竴鏉冨▉鏄剼鏈父閲忋€傛牳瀵?/ 鍐嶇敓鎴愭椂鎵ц锛?
+## 4. 再生成方法
+
+清单唯一权威是脚本常量。核对 / 再生成时执行：
+
 ```powershell
 python scripts/backend_release_suite.py --dry-run
 ```
 
-杈撳嚭 JSON 鐨?`pytest_args` 鍗崇涓€闃舵鏂囦欢搴忓垪锛宍governance_mcp_suite.pytest_args` 鍗崇浜岄樁娈碉紝`env` 鍗虫敞鍏ョ幆澧冦€傚皢鍏朵笌鏈枃妗?搂2/搂3 琛ㄦ牸閫愯姣斿锛堥『搴忎篃搴斾竴鑷达級銆?
-## 5. 鏇存柊瑙勫垯
+输出 JSON 的 `pytest_args` 即第一阶段文件序列，`governance_mcp_suite.pytest_args` 即第二阶段，`env` 即注入环境。将其与本文档 §2/§3 表格逐行比对（顺序也应一致）。
 
-1. **鍚?PR 鍚屾**锛氫换浣曞鍒犳敼 `RELEASE_SUITE_TESTS`銆乣GOVERNANCE_MCP_*_SUITE_TESTS`銆乣EXECUTIVE_RELEASE_SAMPLE_IDS` 鐨?PR锛屽繀椤诲湪鍚屼竴 PR 鍐呮洿鏂版湰鏂囨。锛堣〃鏍艰 + 蹇収鏃ユ湡锛夛紝骞跺湪 PR 鎻忚堪娉ㄦ槑"濂椾欢鎴愬憳鍙樻洿"銆?2. **鍏ュ簱闂ㄦ**锛氭柊鏂囦欢鍔犲叆 release suite 搴旀弧瓒斥€斺€斿睘浜庡澶栧悎绾﹂潰 / 鍙戝竷闂ㄩ敋鐐癸紙鑰岄潪娣卞眰鍗曟祴锛夈€佽兘鍦ㄨ剼鏈敞鍏ョ殑闅旂鐜涓嬭繍琛屻€佹棤澶栭儴鏈嶅姟渚濊禆銆佽繍琛屾椂闂翠笌 `backend` job 20 鍒嗛挓闄愭椂鐩稿銆傛繁灞傚崟娴嬬殑 PR 闃叉姢璧?瑙﹁揪璺緞瀹氬悜娴嬭瘯"绾﹀畾锛堣 B0 鏂囨。 搂2锛夛紝涓嶈闈犳墿瀹?release suite 瑙ｅ喅銆?3. **绉婚櫎椤荤暀鐥?*锛氫粠濂椾欢绉婚櫎鏂囦欢鏃讹紝PR 鎻忚堪蹇呴』璇存槑璇ヤ繚鎶ら潰鐢变粈涔堟浛浠ｏ紙杩佺Щ鍒板埆鐨勬祴璇?/ 淇濇姢闈笅绾匡級銆?4. **閮ㄥ垎鎴愬憳璧勬牸鏈夋祴璇曞畧鍗?*锛歚tests/test_golden_sample_release_matrix.py` 浼氭柇瑷€濂椾欢鍖呭惈 exec 鍙戝竷鍚堢害涓庢紓绉绘鏌ユ枃浠垛€斺€斿姩杩欎簺鎴愬憳浼氱洿鎺ョ孩鐏紱浣嗗畠**涓嶅畧鍗湰鏂囨。**锛屾枃妗ｅ悓姝ラ潬鏈妭绾緥 + 涓嬫柟鏍￠獙鍛戒护銆?5. **涓€鑷存€ф牎楠?*锛堣瘎瀹?checklist 鍙洿鎺ュ紩鐢紱鑴氭湰涓庢枃妗ｄ换涓€婕傜Щ鍗抽潪闆堕€€鍑猴級锛?
+## 5. 更新规则
+
+1. **同 PR 同步**：任何增删改 `RELEASE_SUITE_TESTS`、`GOVERNANCE_MCP_*_SUITE_TESTS`、`EXECUTIVE_RELEASE_SAMPLE_IDS` 的 PR，必须在同一 PR 内更新本文档（表格行 + 快照日期），并在 PR 描述注明"套件成员变更"。
+2. **入库门槛**：新文件加入 release suite 应满足——属于对外合约面 / 发布门锚点（而非深层单测）、能在脚本注入的隔离环境下运行、无外部服务依赖、运行时间与 `backend` job 20 分钟限时相容。深层单测的 PR 防护走"触达路径定向测试"约定（见 B0 文档 §2），不要靠扩容 release suite 解决。
+3. **移除须留痕**：从套件移除文件时，PR 描述必须说明该保护面由什么替代（迁移到别的测试 / 保护面下线）。
+4. **部分成员资格有测试守卫**：`tests/test_golden_sample_release_matrix.py` 会断言套件包含 exec 发布合约与漂移检查文件——动这些成员会直接红灯；但它**不守卫本文档**，文档同步靠本节纪律 + 下方校验命令。
+5. **一致性校验**（评审 checklist 可直接引用；脚本与文档任一漂移即非零退出）：
+
 ```powershell
 python -c "import pathlib, re, sys; sys.path.insert(0, '.'); import scripts.backend_release_suite as s; doc = pathlib.Path('docs/ci-release-suite.md').read_text(encoding='utf-8'); allowed = set(s.RELEASE_SUITE_TESTS) | set(s.GOVERNANCE_MCP_FAST_SUITE_TESTS) | set(s.GOVERNANCE_MCP_FULL_SUITE_TESTS) | {'tests/test_agent_eval_spec.py', 'tests/test_agent_eval_reward.py', 'tests/test_agent_eval_collect.py', 'tests/test_agent_eval_scoring_integrity.py', 'tests/test_agent_eval_replay.py', 'tests/test_agent_eval_pr_replay.py', 'tests/test_agent_eval_rollout.py', 'tests/test_agent_eval_coverage_report.py', 'tests/test_caliber_gate_mapping.py', 'tests/test_mcp_config_consistency.py'}; referenced = set(re.findall(r'tests/test_[a-z0-9_]+\.py', doc)); missing = sorted(set(s.RELEASE_SUITE_TESTS) - referenced); stale = sorted(referenced - allowed); assert not missing, ('doc missing suite files', missing); assert not stale, ('doc references non-suite files', stale); print('ok: %d suite files documented, no stale references' % len(s.RELEASE_SUITE_TESTS))"
 ```
 
-璇勫 checklist 鏉℃锛堝彲璐磋繘璇勫瑙勭▼锛夛細
+评审 checklist 条款（可贴进评审规程）：
 
-> 鍑?diff 瑙﹀強 `scripts/backend_release_suite.py` 鐨勫浠跺父閲忥細鏍稿 `docs/ci-release-suite.md` 鏄惁鍚?PR 鏇存柊锛屽苟杩愯涓婃柟涓€鑷存€ф牎楠屽懡浠わ紱鏂板鎴愬憳鏍稿鍏ュ簱闂ㄦ锛埪?.2锛夛紝绉婚櫎鎴愬憳鏍稿鐣欑棔璇存槑锛埪?.3锛夈€?
+> 凡 diff 触及 `scripts/backend_release_suite.py` 的套件常量：核对 `docs/ci-release-suite.md` 是否同 PR 更新，并运行上方一致性校验命令；新增成员核对入库门槛（§5.2），移除成员核对留痕说明（§5.3）。
