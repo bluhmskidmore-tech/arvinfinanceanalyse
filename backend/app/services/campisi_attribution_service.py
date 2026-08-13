@@ -31,10 +31,15 @@ from backend.app.core_finance.accounting_basis_constants import (
     ACCOUNTING_BASIS_FVTPL,
 )
 from backend.app.core_finance.campisi import (
+    ACCRUED_INTEREST_MISSING_REASON,
     CampisiResult,
+    accrued_interest_basis,
     aggregate_maturity_buckets,
+    availability_diagnostics,
     campisi_attribution,
     campisi_enhanced,
+    coverage_status,
+    effect_availability_entry,
     infer_credit_rating_from_asset_class,
     maturity_bucket_attribution,
     treasury_tenor_coverage,
@@ -48,6 +53,15 @@ from backend.app.core_finance.campisi_decision_grade import (
 )
 from backend.app.core_finance.campisi_decision_grade import (
     decimal_value as campisi_decision_decimal,
+)
+from backend.app.core_finance.pnl_bridge import (
+    CREDIT_SPREAD_CURVE_SAME_SOURCE_PREFIX,
+    CREDIT_SPREAD_CURVE_UNAVAILABLE_PREFIX,
+    MARKET_VALUE_BASE_MISSING_PREFIX,
+    ROLL_DOWN_TENOR_OUTSIDE_CURVE_PREFIX,
+    ROLL_DOWN_WINDOW_MISSING_PREFIX,
+    TREASURY_CURVE_SAME_SOURCE_PREFIX,
+    TREASURY_CURVE_UNAVAILABLE_PREFIX,
 )
 from backend.app.core_finance.rate_units import normalize_annual_rate_to_decimal
 from backend.app.governance.settings import get_settings
@@ -88,12 +102,21 @@ FORMAL_REPORT_BASIS = "formal_report_pnl_bridge"
 FORMAL_BRIDGE_DECOMPOSITION_BASIS = (
     "bridge_path: selection_effect is residual after carry, treasury, spread, "
     "realized_trading, manual_adjustment, and fx_translation; "
+    "convexity_effect / cross_effect / reinvestment_effect are not decomposed on this "
+    "path and are published as an exact 0 with their contribution folded into "
+    "selection_effect — not an observation that second-order terms were nil; "
     "model_path: selection_effect is per-bond curve decomposition residual"
 )
 _FORMAL_BRIDGE_DETAIL_KEYS = ("realized_trading", "manual_adjustment", "fx_translation")
 _FORMAL_BRIDGE_ROW_CLOSURE_ABS_TOLERANCE = Decimal("0.000001")
 _FORMAL_BRIDGE_ROW_CLOSURE_REL_TOLERANCE = Decimal("0.000000000001")
+# 显式请求的 curve_window 超过该跨度时，仍按"远超月度期间"的口径错配升级为 warning。
 _DECISION_WINDOW_MISMATCH_THRESHOLD_DAYS = 45
+# 曲线陈旧守卫（owner 拍板值 7 天）：月末曲线观测常比自然月末提前 1-2 个交易日
+# （如 08-29 代 08-31），7 天足以放过这类正常提前；而"跳月"错位至少偏离约一个月
+# （≥28 天），必然被拦下。解析日偏离窗口端点超过阈值的曲线按缺失处理（相关效应
+# 进入 residual_noise 并显式披露），不得静默采用。
+_DECISION_CURVE_STALENESS_THRESHOLD_DAYS = 7
 _MATURITY_BUCKET_LABELS = ("0-1Y", "1-3Y", "3-5Y", "5-7Y", "7-10Y", "10Y+")
 
 _TREASURY_TENOR_MAP = {
@@ -373,6 +396,43 @@ def curve_to_market_dict(curve: dict[str, Any]) -> dict[str, Any]:
 
 # Private alias kept for backward compatibility with existing internal callers.
 _curve_to_market_dict = curve_to_market_dict
+
+# 国债曲线不可用的三种成因，必须被调用方与页面分开处理：
+# - curve_absent：仓储对该交易日一行都没有（2026-07-31 的真实情形）
+# - curve_unusable：有行但 6 个关键期限没有一个可用（单位/符号/解析问题）
+# - insufficient_shared_tenors：两端各自可用，但共同正期限 < 2，
+#   于是 campisi._build_benchmark_change_evaluator 退化为恒 0 求值器
+TREASURY_CURVE_ABSENT_REASON = "curve_absent"
+TREASURY_CURVE_UNUSABLE_REASON = "curve_unusable"
+TREASURY_CURVE_INSUFFICIENT_SHARED_TENORS_REASON = "insufficient_shared_tenors"
+# formal-bridge 路径的效应来自 pnl_bridge 行，成因已由桥的行级诊断给出，
+# 这里只标注"桥说这行的曲线效应不可用"。
+BRIDGE_CURVE_UNAVAILABLE_REASON = "bridge_curve_unavailable"
+
+
+def fetch_treasury_market_dict(
+    curve_repo: YieldCurveRepository,
+    trade_date: str,
+) -> tuple[dict[str, Any], bool]:
+    """取国债曲线并同时回报"仓储到底有没有这一天的行"。
+
+    ``fetch_curve`` 对缺数据的日期返回 ``{}``，与"取到了但期限都不可用"在下游
+    完全同形。把 rows_present 单独带出来，``_add_market_curve_quality`` 才能把
+    "报告日没有曲线事实"和"曲线质量不够"分开披露，而不是都塌成一句
+    "treasury effect 为 0"。
+    """
+    raw = curve_repo.fetch_curve(trade_date, "treasury")
+    rows_present = bool(raw)
+    if not rows_present:
+        logger.warning(
+            "No treasury yield curve rows for trade_date=%s; Campisi treasury_effect is "
+            "unavailable for this period, not an observed zero.",
+            trade_date,
+        )
+    return _curve_to_market_dict(raw), rows_present
+
+
+_fetch_treasury_market_dict = fetch_treasury_market_dict
 
 
 def fetch_credit_spread_market(curve_repo: YieldCurveRepository, trade_date: str) -> dict[str, Any]:
@@ -671,12 +731,83 @@ def _build_input_quality(
     }
 
 
+def _treasury_effect_availability(
+    tenors: dict[str, Any],
+    *,
+    start_curve_rows_present: bool | None,
+    end_curve_rows_present: bool | None,
+) -> dict[str, Any]:
+    """把国债曲线覆盖度折叠成一个页面可直接分支的显式状态块。
+
+    ``status="unavailable"`` 时 ``treasury_effect`` 的 0 是输入缺失的产物；
+    ``reason`` 进一步区分"没有曲线事实 / 曲线不可用 / 共同期限不足"，三者的
+    处置完全不同（补数、修单位、放宽期限口径），塌成一个 0 就全看不见了。
+    """
+    required = len(tenors["required_keys"])
+    start_usable = required - len(tenors["start_missing"])
+    end_usable = required - len(tenors["end_missing"])
+    shared = tenors["shared_positive_tenors"]
+
+    if start_curve_rows_present is False or end_curve_rows_present is False:
+        reason: str | None = TREASURY_CURVE_ABSENT_REASON
+    elif start_usable == 0 or end_usable == 0:
+        reason = TREASURY_CURVE_UNUSABLE_REASON
+    elif shared < 2:
+        reason = TREASURY_CURVE_INSUFFICIENT_SHARED_TENORS_REASON
+    else:
+        reason = None
+
+    return {
+        "status": "ok" if reason is None else "unavailable",
+        "reason": reason,
+        "start_curve_rows_present": start_curve_rows_present,
+        "end_curve_rows_present": end_curve_rows_present,
+        "start_usable_tenors": start_usable,
+        "end_usable_tenors": end_usable,
+        "shared_positive_tenors": shared,
+    }
+
+
+def _treasury_effect_warning(availability: dict[str, Any]) -> str | None:
+    """每个 reason 一句自己的话；文本里保留 "degrade to 0" 便于既有匹配器。"""
+    reason = availability["reason"]
+    if reason is None:
+        return None
+    if reason == TREASURY_CURVE_ABSENT_REASON:
+        sides = ", ".join(
+            side
+            for side, present in (
+                ("start", availability["start_curve_rows_present"]),
+                ("end", availability["end_curve_rows_present"]),
+            )
+            if present is False
+        )
+        return (
+            f"Campisi treasury curve is absent for the period {sides} date(s): the yield curve "
+            "fact table has no rows at all. Treasury effect and roll-down degrade to 0 for this "
+            "period; the 0 means \"no curve data\", not \"rates did not move\"."
+        )
+    if reason == TREASURY_CURVE_UNUSABLE_REASON:
+        return (
+            "Campisi treasury curve rows exist but no key tenor is usable on at least one period "
+            f"end (start_usable_tenors={availability['start_usable_tenors']}, "
+            f"end_usable_tenors={availability['end_usable_tenors']}); treasury effect and "
+            "roll-down degrade to 0 for this period rather than measuring a zero rate move."
+        )
+    return (
+        "Campisi treasury curve has fewer than 2 shared positive tenors between period "
+        "start and end; treasury effect and roll-down degrade to 0 for this period."
+    )
+
+
 def _add_market_curve_quality(
     input_quality: dict[str, Any],
     *,
     positions: list[dict[str, Any]],
     market_start: dict[str, Any],
     market_end: dict[str, Any],
+    start_curve_rows_present: bool | None = None,
+    end_curve_rows_present: bool | None = None,
 ) -> dict[str, Any]:
     coverage = _market_curve_coverage(positions=positions, market_start=market_start, market_end=market_end)
     input_quality["market_curve_coverage"] = coverage
@@ -688,11 +819,15 @@ def _add_market_curve_quality(
             f"{ratings}; spread effect may be understated because missing spread inputs are unavailable."
         )
     tenors = coverage["treasury_tenors"]
-    if tenors["shared_positive_tenors"] < 2:
-        input_quality["warnings"].append(
-            "Campisi treasury curve has fewer than 2 shared positive tenors between period "
-            "start and end; treasury effect and roll-down degrade to 0 for this period."
-        )
+    treasury_effect = _treasury_effect_availability(
+        tenors,
+        start_curve_rows_present=start_curve_rows_present,
+        end_curve_rows_present=end_curve_rows_present,
+    )
+    coverage["treasury_effect"] = treasury_effect
+    treasury_warning = _treasury_effect_warning(treasury_effect)
+    if treasury_warning is not None:
+        input_quality["warnings"].append(treasury_warning)
     elif tenors["start_missing"] or tenors["end_missing"]:
         missing_desc = "; ".join(
             f"{side} missing {', '.join(keys)}"
@@ -1004,65 +1139,136 @@ def _decision_window_declarations(
     anchor_end: str,
 ) -> tuple[dict[str, str], dict[str, str], int]:
     num_days = max((date.fromisoformat(anchor_end) - date.fromisoformat(anchor_start)).days, 0)
-    pnl_window = {"start": anchor_end, "end": anchor_end, "kind": "single_day"}
+    # fact_formal_pnl_fi 的一行是 anchor_end 报告月的月度期间流量（report_date 均为
+    # 月末），窗口声明必须按月度期间给出；此前的 single_day 声明与取数语义不符。
+    pnl_window = {
+        "start": date.fromisoformat(anchor_end).replace(day=1).isoformat(),
+        "end": anchor_end,
+        "kind": "monthly_period",
+    }
     curve_window = {"start": anchor_start, "end": anchor_end, "kind": "curve_displacement"}
     return pnl_window, curve_window, num_days
 
 
-def _decision_window_mismatch_warning(
+def _decision_window_base_clause(
     *,
-    anchor_start: str,
-    anchor_end: str,
+    pnl_window: dict[str, str],
+    curve_window: dict[str, str],
     num_days: int,
 ) -> str:
     return (
-        f"口径错配：市场效应按 curve_window（{anchor_start}→{anchor_end}，{num_days} 天）整段曲线位移计算，"
-        f"而 formal PnL 仅取 pnl_window 单日（{anchor_end}）；"
-        "selection_proxy 含窗口错配影响，不得解读为主动管理能力。"
-    )
-
-
-def _decision_window_info_disclosure(
-    *,
-    anchor_start: str,
-    anchor_end: str,
-    num_days: int,
-) -> str:
-    return (
-        f"口径说明：市场效应按 curve_window（{anchor_start}→{anchor_end}，{num_days} 天）整段曲线位移计算，"
-        f"而 formal PnL 仅取 pnl_window 单日（{anchor_end}）；"
-        "selection_proxy 含该窗口跨度影响，解读主动管理能力时需扣除。"
+        f"formal PnL 为 pnl_window（{pnl_window['start']}→{pnl_window['end']}）月度期间流量，"
+        f"市场效应按 curve_window（{curve_window['start']}→{curve_window['end']}，{num_days} 天）"
+        "整段曲线位移解释"
     )
 
 
 def _decision_window_disclosure(
     *,
-    anchor_start: str,
-    anchor_end: str,
+    pnl_window: dict[str, str],
+    curve_window: dict[str, str],
     num_days: int,
+    curve_alignment: dict[str, Any],
 ) -> dict[str, str] | None:
-    """curve_window 只要长于单日 pnl_window 就必须披露，45 天只决定严重度。
+    """披露分级由曲线解析偏差与窗口口径共同驱动。
 
-    默认 lookback_days=30，若仅在 >45 天时披露，最常见路径反而落进盲区——而
-    30 天曲线位移对单日 PnL 正是需要披露的失真本身。
+    warning 触发条件（任一）：
+    - 曲线陈旧守卫触发：解析日偏离窗口端点超过阈值，已按缺失处理；
+    - 国债曲线整侧缺失：市场效应整体不可解释；
+    - curve_window 跨度超过 45 天：显式长窗口请求相对月度期间属口径错配。
+    其余情况为 info：月度对齐是常态口径，但 selection_proxy 仍含残余错配影响，必须披露。
+    此前分级仅键在 num_days 上——默认路径 num_days 恒为 30，2026-02 这类曲线跳月的
+    危险月份与健康月份拿到同样的 info 级披露，warning 分支形同虚设。
     """
-    if num_days < 1:
-        return None
+    threshold = int(curve_alignment.get("threshold_days") or _DECISION_CURVE_STALENESS_THRESHOLD_DAYS)
+    discarded = list(curve_alignment.get("discarded") or [])
+    missing_treasury = list(curve_alignment.get("missing_treasury") or [])
+    issues: list[str] = []
+    if discarded:
+        detail = "；".join(
+            f"{item['label']}解析 {item['resolved']} 偏离窗口端点 {item['target']} 达 {item['deviation_days']} 天"
+            for item in discarded
+        )
+        issues.append(f"曲线陈旧守卫（>{threshold} 天）触发：{detail}，已按缺失处理并计入 residual_noise")
+    if missing_treasury:
+        issues.append("、".join(missing_treasury) + "缺失，相关市场效应计入 residual_noise")
     if num_days > _DECISION_WINDOW_MISMATCH_THRESHOLD_DAYS:
+        issues.append(
+            f"口径错配：curve_window 跨度 {num_days} 天，"
+            f"远超 formal PnL 月度期间（{pnl_window['start']}→{pnl_window['end']}）"
+        )
+    base = _decision_window_base_clause(pnl_window=pnl_window, curve_window=curve_window, num_days=num_days)
+    if issues:
         return {
             "level": "warning",
-            "message": _decision_window_mismatch_warning(
-                anchor_start=anchor_start,
-                anchor_end=anchor_end,
-                num_days=num_days,
+            "message": (
+                f"口径警示：{base}；" + "；".join(issues) + "；"
+                "selection_proxy 与 residual_noise 含上述影响，不得解读为主动管理能力。"
             ),
         }
+    if num_days < 1:
+        return None
     return {
         "level": "info",
-        "message": _decision_window_info_disclosure(
-            anchor_start=anchor_start,
-            anchor_end=anchor_end,
-            num_days=num_days,
+        "message": (
+            f"口径说明：{base}，曲线解析偏差未超过陈旧守卫阈值 {threshold} 天；"
+            "selection_proxy 含残余窗口错配影响，解读主动管理能力时需扣除。"
+        ),
+    }
+
+
+def _bridge_row_has_diagnostic(bridge_row: dict[str, Any], prefixes: tuple[str, ...]) -> bool:
+    raw = bridge_row.get("balance_diagnostics") or ()
+    return any(str(message).startswith(prefixes) for message in raw)
+
+
+def _formal_bridge_effect_availability(by_bond: list[dict[str, Any]]) -> dict[str, Any]:
+    """formal-bridge 路径的可用性块，形状与 Campisi 直算路径完全一致。
+
+    没有这一块时 ``CampisiResult.effect_availability`` 会退化成空 dict —— 页面看到
+    "没有 unavailable 标记"就会当成一切正常，而这正是本次整改要消灭的那种沉默。
+    """
+    bonds = len(by_bond)
+
+    def _fold(predicate, reason: str) -> tuple[str, int, Decimal]:
+        degraded = [row for row in by_bond if predicate(row)]
+        market_value = sum(
+            (_decimal_value(row.get("market_value_start")) for row in degraded), Decimal("0")
+        )
+        return coverage_status(len(degraded), bonds), len(degraded), market_value
+
+    treasury_status, treasury_bonds, treasury_mv = _fold(
+        lambda row: not row.get("treasury_effect_available", True),
+        BRIDGE_CURVE_UNAVAILABLE_REASON,
+    )
+    spread_status, spread_bonds, spread_mv = _fold(
+        lambda row: not row.get("spread_effect_available", True),
+        BRIDGE_CURVE_UNAVAILABLE_REASON,
+    )
+    accrued_status, accrued_bonds, accrued_mv = _fold(
+        lambda row: not row.get("has_accrued_interest", False),
+        ACCRUED_INTEREST_MISSING_REASON,
+    )
+    return {
+        "bonds": bonds,
+        "treasury_effect": effect_availability_entry(
+            status=treasury_status,
+            reason=None if treasury_status == "ok" else BRIDGE_CURVE_UNAVAILABLE_REASON,
+            unavailable_bonds=treasury_bonds,
+            unavailable_market_value_start=treasury_mv,
+        ),
+        "spread_effect": effect_availability_entry(
+            status=spread_status,
+            reason=None if spread_status == "ok" else BRIDGE_CURVE_UNAVAILABLE_REASON,
+            unavailable_bonds=spread_bonds,
+            unavailable_market_value_start=spread_mv,
+        ),
+        "accrued_interest": effect_availability_entry(
+            status=accrued_status,
+            reason=None if accrued_status == "ok" else ACCRUED_INTEREST_MISSING_REASON,
+            unavailable_bonds=accrued_bonds,
+            unavailable_market_value_start=accrued_mv,
+            basis=accrued_interest_basis(accrued_status),
         ),
     }
 
@@ -1119,6 +1325,29 @@ def _formal_bridge_bond_rows(
             "total_return": float(total),
             "mod_duration": float(_decimal_value((position or {}).get("mod_duration"))),
             "has_accrued_interest": not _is_missing((position or {}).get("accrued_interest_start")),
+            # 桥已经在行级把"缺曲线 / 两端同源 / 缺市值基数 / 缺滚动窗口"标出来了；
+            # 这里原样中继，免得同一个事实在 formal 路径上又退回成一个没有来历的 0。
+            # 本路径的 treasury_effect 是 roll_down + treasury_curve 之和，所以把
+            # 任一分量顶成 0 的诊断都会让这个和失去观测意义——只认曲线那两条前缀，
+            # 就会漏掉"骑乘缺滚动窗口"这一半。
+            "treasury_effect_available": not _bridge_row_has_diagnostic(
+                bridge_row,
+                (
+                    TREASURY_CURVE_UNAVAILABLE_PREFIX,
+                    TREASURY_CURVE_SAME_SOURCE_PREFIX,
+                    ROLL_DOWN_WINDOW_MISSING_PREFIX,
+                    ROLL_DOWN_TENOR_OUTSIDE_CURVE_PREFIX,
+                    MARKET_VALUE_BASE_MISSING_PREFIX,
+                ),
+            ),
+            "spread_effect_available": not _bridge_row_has_diagnostic(
+                bridge_row,
+                (
+                    CREDIT_SPREAD_CURVE_UNAVAILABLE_PREFIX,
+                    CREDIT_SPREAD_CURVE_SAME_SOURCE_PREFIX,
+                    MARKET_VALUE_BASE_MISSING_PREFIX,
+                ),
+            ),
         }
         if enhanced:
             record.update(
@@ -1186,12 +1415,14 @@ def _formal_bridge_to_campisi_result(
         positions=positions,
         start_date=start_date,
     )
+    availability = _formal_bridge_effect_availability(by_bond)
     return CampisiResult(
         num_days=max((end_date - start_date).days, 1),
         totals=_formal_totals(by_bond),
         by_asset_class=_aggregate_formal_rows(by_bond),
         by_bond=by_bond,
-        diagnostics=[],
+        diagnostics=availability_diagnostics(availability),
+        effect_availability=availability,
     )
 
 
@@ -1208,12 +1439,14 @@ def _formal_bridge_to_enhanced_result(
         start_date=start_date,
         enhanced=True,
     )
+    availability = _formal_bridge_effect_availability(by_bond)
     return {
         "num_days": max((end_date - start_date).days, 1),
         "totals": _formal_totals(by_bond, enhanced=True),
         "by_asset_class": _aggregate_formal_rows(by_bond, enhanced=True),
         "by_bond": by_bond,
-        "diagnostics": [],
+        "diagnostics": availability_diagnostics(availability),
+        "effect_availability": availability,
         "basis": FORMAL_REPORT_BASIS,
         "decomposition_basis": FORMAL_BRIDGE_DECOMPOSITION_BASIS,
     }
@@ -1419,6 +1652,9 @@ def _result_to_payload(
     if formal_closure is not None:
         payload["formal_closure"] = formal_closure
     payload["diagnostics"] = list(result.diagnostics)
+    # 逐效应可用性随 payload 一起下发：totals 里的 0 单独看无法区分"观测为零"和
+    # "输入缺失"，页面必须能拿到状态才能把后者渲染成"不可用"而不是一个数字。
+    payload["effect_availability"] = dict(result.effect_availability)
     return payload
 
 
@@ -1512,10 +1748,33 @@ def _empty_decision_grade_payload(start: str, end: str, warnings: list[str] | No
                 "aggregated_position_groups": 0,
                 "unmatched_pnl_rows": 0,
                 "stale_curve_fallback_count": 0,
+                "stale_curve_discarded_count": 0,
                 "warnings": list(warnings or []),
         },
         "warnings": list(warnings or []),
     }
+
+
+def _prior_month_end(day: str) -> str:
+    return (date.fromisoformat(day).replace(day=1) - timedelta(days=1)).isoformat()
+
+
+def _nearest_position_anchor(position_dates: list[str], boundary: str) -> str | None:
+    """默认路径的期初持仓锚：取距上月末边界最近的持仓观测日（同距优先边界前）。
+
+    持仓为日频时命中边界当日；但序列起点等极端情况下 on-or-before 会跳到整年前的
+    孤立观测日（如 live 库 2024-01-01），把匹配范围拖到过期账本。距边界最近的观测日
+    （哪怕在边界后 1 天）才是诚实的期初快照。
+    """
+    if not position_dates:
+        return None
+    boundary_day = date.fromisoformat(boundary)
+
+    def _distance(day: str) -> tuple[int, int]:
+        delta = (date.fromisoformat(day) - boundary_day).days
+        return (abs(delta), 0 if delta <= 0 else 1)
+
+    return min(position_dates, key=_distance)
 
 
 def _resolve_decision_dates(
@@ -1528,6 +1787,15 @@ def _resolve_decision_dates(
     end_date: str | None,
     lookback_days: int,
 ) -> tuple[str | None, str | None, str, str]:
+    """解析决策评级窗口锚点。
+
+    fact_formal_pnl_fi 的一行是 anchor_end 报告月的「月度期间 PnL」（全表 report_date
+    均为月末），因此默认路径的期初必须锚定该报告月的上月末（曲线对齐到 PnL 报告月），
+    而不是继承四效应路径的 lookback_days 滚动窗口——30 天滚动窗口接到月度事实表上
+    会造成曲线窗口与 PnL 报告月错位（2026-02 跳月虚增 rate_level 143% 的根因）。
+    显式传入 start_date 时行为与历史完全一致，lookback_days 仅在该默认推导中被忽略。
+    """
+    del lookback_days  # 默认窗口对齐到 PnL 报告月上月末后不再使用；保留参数以稳定 API。
     pnl_dates = pnl_repo.list_campisi_decision_pnl_report_dates(conn=conn)
     position_dates = sorted(
         set(
@@ -1538,14 +1806,19 @@ def _resolve_decision_dates(
     )
     all_dates = sorted(set(pnl_dates + position_dates), reverse=True)
     rd_end = end_date or (pnl_dates[0] if pnl_dates else (all_dates[0] if all_dates else ""))
-    rd_start = start_date or (
-        (date.fromisoformat(rd_end) - timedelta(days=max(1, lookback_days))).isoformat() if rd_end else ""
-    )
     anchor_end = (rd_end if rd_end in pnl_dates else _anchor_on_or_before(pnl_dates, rd_end)) or _anchor_on_or_before(
         all_dates,
         rd_end,
     )
-    anchor_start = _anchor_on_or_before(position_dates, rd_start) or _anchor_on_or_before(position_dates, anchor_end or "")
+    if start_date:
+        rd_start = start_date
+        anchor_start = _anchor_on_or_before(position_dates, rd_start)
+    else:
+        reference_end = anchor_end or rd_end
+        rd_start = _prior_month_end(reference_end) if reference_end else ""
+        eligible_dates = [d for d in position_dates if not anchor_end or d <= anchor_end]
+        anchor_start = _nearest_position_anchor(eligible_dates, rd_start) if rd_start else None
+    anchor_start = anchor_start or _anchor_on_or_before(position_dates, anchor_end or "")
     return anchor_start, anchor_end, rd_start, rd_end
 
 
@@ -1621,14 +1894,70 @@ def _fetch_decision_curves(
     conn: duckdb.DuckDBPyConnection,
     anchor_start: str,
     anchor_end: str,
-) -> tuple[dict[str, Any], list[str], int]:
+    start_target: str | None = None,
+    end_target: str | None = None,
+) -> tuple[dict[str, Any], list[str], int, dict[str, Any]]:
+    """取期初/期末国债与信用曲线，并施加曲线陈旧守卫。
+
+    start_target/end_target 是窗口目标端点（默认路径为 PnL 报告月上月末/月末，
+    显式路径为解析后的锚定日期）。解析出的曲线日期偏离目标端点超过
+    _DECISION_CURVE_STALENESS_THRESHOLD_DAYS 时，该侧曲线按缺失处理（走既有
+    missing_treasury_curve / missing_credit_curve → residual_noise 路径）而不是静默采用。
+    """
+    start_target = start_target or anchor_start
+    end_target = end_target or anchor_end
     warnings: list[str] = []
     fallback_count = 0
+    discarded: list[dict[str, Any]] = []
+    missing_treasury: list[str] = []
+    max_in_use_deviation_days = 0
+
+    def _apply_staleness_guard(
+        label: str,
+        curve: dict[str, Decimal],
+        resolved: str | None,
+        *,
+        requested: str,
+        target: str,
+    ) -> tuple[dict[str, Decimal], str | None]:
+        nonlocal fallback_count, max_in_use_deviation_days
+        if not resolved:
+            return {}, None
+        deviation_days = abs((date.fromisoformat(resolved) - date.fromisoformat(target)).days)
+        if deviation_days > _DECISION_CURVE_STALENESS_THRESHOLD_DAYS:
+            discarded.append(
+                {
+                    "label": label,
+                    "requested": requested,
+                    "target": target,
+                    "resolved": resolved,
+                    "deviation_days": deviation_days,
+                }
+            )
+            warnings.append(
+                f"{label}解析日期 {resolved} 偏离窗口端点 {target} 达 {deviation_days} 天，"
+                f"超过陈旧守卫阈值 {_DECISION_CURVE_STALENESS_THRESHOLD_DAYS} 天，"
+                "按缺失处理，相关影响进入残差噪音。"
+            )
+            return {}, None
+        max_in_use_deviation_days = max(max_in_use_deviation_days, deviation_days)
+        if resolved != requested:
+            fallback_count += 1
+            warnings.append(f"{label}使用 {resolved} 只读 fallback，目标日期为 {requested}。")
+        return curve, resolved
+
     treasury_start, treasury_start_date = _fetch_decision_curve(
         curve_repo,
         conn=conn,
         requested_date=anchor_start,
         curve_type="treasury",
+    )
+    treasury_start, treasury_start_date = _apply_staleness_guard(
+        "期初国债曲线",
+        treasury_start,
+        treasury_start_date,
+        requested=anchor_start,
+        target=start_target,
     )
     treasury_end, treasury_end_date = _fetch_decision_curve(
         curve_repo,
@@ -1636,15 +1965,21 @@ def _fetch_decision_curves(
         requested_date=anchor_end,
         curve_type="treasury",
     )
-    for label, requested, resolved in (
-        ("期初国债曲线", anchor_start, treasury_start_date),
-        ("期末国债曲线", anchor_end, treasury_end_date),
+    treasury_end, treasury_end_date = _apply_staleness_guard(
+        "期末国债曲线",
+        treasury_end,
+        treasury_end_date,
+        requested=anchor_end,
+        target=end_target,
+    )
+    for label, resolved in (
+        ("期初国债曲线", treasury_start_date),
+        ("期末国债曲线", treasury_end_date),
     ):
-        if not resolved:
+        # 守卫弃用的一侧已带"按缺失处理"披露，不再重复"缺失"文案。
+        if not resolved and not any(item["label"] == label for item in discarded):
+            missing_treasury.append(label)
             warnings.append(f"{label}缺失，相关利率影响进入残差噪音。")
-        elif resolved != requested:
-            fallback_count += 1
-            warnings.append(f"{label}使用 {resolved} 只读 fallback，目标日期为 {requested}。")
 
     credit_start_by_rating: dict[str, dict[str, Decimal]] = {}
     credit_end_by_rating: dict[str, dict[str, Decimal]] = {}
@@ -1655,24 +1990,37 @@ def _fetch_decision_curves(
             requested_date=anchor_start,
             curve_type=curve_type,
         )
+        start_curve, start_resolved = _apply_staleness_guard(
+            f"期初{rating}信用曲线",
+            start_curve,
+            start_resolved,
+            requested=anchor_start,
+            target=start_target,
+        )
         end_curve, end_resolved = _fetch_decision_curve(
             curve_repo,
             conn=conn,
             requested_date=anchor_end,
             curve_type=curve_type,
         )
+        end_curve, end_resolved = _apply_staleness_guard(
+            f"期末{rating}信用曲线",
+            end_curve,
+            end_resolved,
+            requested=anchor_end,
+            target=end_target,
+        )
         if start_curve:
             credit_start_by_rating[rating] = start_curve
         if end_curve:
             credit_end_by_rating[rating] = end_curve
-        for label, requested, resolved in (
-            (f"期初{rating}信用曲线", anchor_start, start_resolved),
-            (f"期末{rating}信用曲线", anchor_end, end_resolved),
-        ):
-            if resolved and resolved != requested:
-                fallback_count += 1
-                warnings.append(f"{label}使用 {resolved} 只读 fallback，目标日期为 {requested}。")
 
+    curve_alignment = {
+        "threshold_days": _DECISION_CURVE_STALENESS_THRESHOLD_DAYS,
+        "max_in_use_deviation_days": max_in_use_deviation_days,
+        "discarded": discarded,
+        "missing_treasury": missing_treasury,
+    }
     return (
         {
             "treasury_start": treasury_start,
@@ -1682,6 +2030,7 @@ def _fetch_decision_curves(
         },
         warnings,
         fallback_count,
+        curve_alignment,
     )
 
 
@@ -1951,19 +2300,25 @@ def campisi_decision_grade_envelope(
                 accounting_field="accounting_basis",
                 currency_field="currency_code",
             )
-            curves, curve_warnings, stale_curve_fallback_count = _fetch_decision_curves(
+            # 陈旧守卫的窗口目标端点：默认路径为 PnL 报告月上月末（rd_start 由
+            # _resolve_decision_dates 推导），显式路径尊重调用方声明的窗口（锚定日期）。
+            curve_start_target = rd_start if start_date is None else anchor_start
+            curves, curve_warnings, stale_curve_fallback_count, curve_alignment = _fetch_decision_curves(
                 curve_repo,
                 conn=conn,
                 anchor_start=anchor_start,
                 anchor_end=anchor_end,
+                start_target=curve_start_target,
+                end_target=anchor_end,
             )
 
             computed_rows: list[dict[str, Any]] = []
             warnings: list[str] = list(curve_warnings)
             window_disclosure = _decision_window_disclosure(
-                anchor_start=anchor_start,
-                anchor_end=anchor_end,
+                pnl_window=pnl_window,
+                curve_window=curve_window,
                 num_days=window_span_days,
+                curve_alignment=curve_alignment,
             )
             if window_disclosure is not None and window_disclosure["level"] == "warning":
                 warnings.append(window_disclosure["message"])
@@ -2197,6 +2552,7 @@ def campisi_decision_grade_envelope(
                     "unmatched_pnl_rows": out_of_scope_rows,
                     "dirty_input_row_count": dirty_input_rows,
                     "stale_curve_fallback_count": stale_curve_fallback_count,
+                    "stale_curve_discarded_count": len(curve_alignment["discarded"]),
                     "warnings": sorted(set(warnings)),
                 },
                 "warnings": sorted(set(warnings)),
@@ -2215,7 +2571,12 @@ def campisi_decision_grade_envelope(
                     source_version=SOURCE_VERSION,
                     rule_version=RULE_VERSION,
                     quality_flag=quality_flag,
-                    vendor_status="vendor_stale" if stale_curve_fallback_count else "ok",
+                    # 守卫弃用（discarded）的曲线虽未被采用，但反映供应商数据同样陈旧。
+                    vendor_status=(
+                        "vendor_stale"
+                        if stale_curve_fallback_count or curve_alignment["discarded"]
+                        else "ok"
+                    ),
                     fallback_mode="latest_snapshot" if stale_curve_fallback_count else "none",
                     filters_applied=filters,
                     tables_used=TABLES_CAMPISI_DECISION_GRADE,
@@ -2359,8 +2720,8 @@ def campisi_four_effects_envelope(
             formal_bridge=formal_bridge,
         )
 
-    treasury_start = _curve_to_market_dict(curve_repo.fetch_curve(anchor_start, "treasury"))
-    treasury_end = _curve_to_market_dict(curve_repo.fetch_curve(anchor_end, "treasury"))
+    treasury_start, treasury_start_present = _fetch_treasury_market_dict(curve_repo, anchor_start)
+    treasury_end, treasury_end_present = _fetch_treasury_market_dict(curve_repo, anchor_end)
     spread_start = fetch_credit_spread_market(curve_repo, anchor_start)
     spread_end = fetch_credit_spread_market(curve_repo, anchor_end)
     market_start = {**treasury_start, **spread_start}
@@ -2370,6 +2731,8 @@ def campisi_four_effects_envelope(
         positions=positions,
         market_start=market_start,
         market_end=market_end,
+        start_curve_rows_present=treasury_start_present,
+        end_curve_rows_present=treasury_end_present,
     )
 
     result = campisi_attribution(
@@ -2519,8 +2882,8 @@ def campisi_enhanced_envelope(
             result_payload=result,
         )
 
-    treasury_start = _curve_to_market_dict(curve_repo.fetch_curve(anchor_start, "treasury"))
-    treasury_end = _curve_to_market_dict(curve_repo.fetch_curve(anchor_end, "treasury"))
+    treasury_start, treasury_start_present = _fetch_treasury_market_dict(curve_repo, anchor_start)
+    treasury_end, treasury_end_present = _fetch_treasury_market_dict(curve_repo, anchor_end)
     spread_start = fetch_credit_spread_market(curve_repo, anchor_start)
     spread_end = fetch_credit_spread_market(curve_repo, anchor_end)
     market_start = {**treasury_start, **spread_start}
@@ -2530,6 +2893,8 @@ def campisi_enhanced_envelope(
         positions=positions,
         market_start=market_start,
         market_end=market_end,
+        start_curve_rows_present=treasury_start_present,
+        end_curve_rows_present=treasury_end_present,
     )
 
     result = campisi_enhanced(
@@ -2641,8 +3006,8 @@ def campisi_maturity_bucket_envelope(
             },
         )
 
-    treasury_start = _curve_to_market_dict(curve_repo.fetch_curve(anchor_start, "treasury"))
-    treasury_end = _curve_to_market_dict(curve_repo.fetch_curve(anchor_end, "treasury"))
+    treasury_start, treasury_start_present = _fetch_treasury_market_dict(curve_repo, anchor_start)
+    treasury_end, treasury_end_present = _fetch_treasury_market_dict(curve_repo, anchor_end)
     spread_start = fetch_credit_spread_market(curve_repo, anchor_start)
     spread_end = fetch_credit_spread_market(curve_repo, anchor_end)
     market_start = {**treasury_start, **spread_start}
@@ -2652,6 +3017,8 @@ def campisi_maturity_bucket_envelope(
         positions=positions,
         market_start=market_start,
         market_end=market_end,
+        start_curve_rows_present=treasury_start_present,
+        end_curve_rows_present=treasury_end_present,
     )
 
     # 复用四效应 envelope 已缓存的逐券结果做桶聚合，避免重跑完整 Campisi。
