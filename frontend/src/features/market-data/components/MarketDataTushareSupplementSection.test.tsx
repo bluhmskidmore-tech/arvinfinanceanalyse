@@ -5,6 +5,7 @@ import { vi } from "vitest";
 
 import { ApiClientProvider, createApiClient, type ApiClient } from "../../../api/client";
 import { buildMockApiEnvelope } from "../../../mocks/mockApiEnvelope";
+import { EM_DASH } from "../../../utils/format";
 import { MarketDataTushareSupplementSection } from "./MarketDataTushareSupplementSection";
 
 function renderSection(client: ApiClient) {
@@ -281,7 +282,7 @@ describe("MarketDataTushareSupplementSection", () => {
     const spreadCard = within(moneySummary).getByText("M2-M1 剪刀差").closest("div");
     const directionCard = within(moneySummary).getByText("近3月 M2 同比").closest("div");
 
-    expect(spreadCard).toHaveTextContent("—");
+    expect(spreadCard).toHaveTextContent(EM_DASH);
     expect(directionCard).toHaveTextContent("缺口");
     expect(directionCard).not.toHaveTextContent("震荡");
     expect(moneySummary).toHaveTextContent("仅作分析读面");

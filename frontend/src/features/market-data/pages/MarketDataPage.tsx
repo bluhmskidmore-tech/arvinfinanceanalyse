@@ -157,7 +157,7 @@ function coverageFallbackMode(value: ResultMeta["fallback_mode"] | undefined): "
 
 function weekChangeBpText(sparklineValues: readonly number[]): string {
   if (sparklineValues.length < 6) {
-    return "—";
+    return EM_DASH;
   }
   const latest = sparklineValues[sparklineValues.length - 1];
   const weekAgo = sparklineValues[sparklineValues.length - 6];

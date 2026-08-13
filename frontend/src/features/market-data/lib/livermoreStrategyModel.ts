@@ -11,6 +11,7 @@ import type {
   LivermoreStrategyPayload,
   ResultMeta,
 } from "../../../api/contracts";
+import { EM_DASH } from "../../../utils/format";
 
 export type MarketGateMacroDisclosure = {
   adjustmentLabel: string | null;
@@ -39,7 +40,7 @@ function formatMarketGateExposureRatio(
   format: MarketGateExposureFormat = "decimal",
 ): string {
   if (value == null || !Number.isFinite(value)) {
-    return "—";
+    return EM_DASH;
   }
   if (format === "percent") {
     return `${Math.round(value * 100)}%`;
@@ -360,7 +361,7 @@ function buildStatusNotes(
 }
 
 function formatMetric(value: number | null | undefined, digits = 3) {
-  return value == null ? "—" : value.toFixed(digits);
+  return value == null ? EM_DASH : value.toFixed(digits);
 }
 
 function formatPositionSizeHintLabel(

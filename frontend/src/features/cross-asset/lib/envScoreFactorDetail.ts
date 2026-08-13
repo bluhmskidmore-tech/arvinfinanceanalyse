@@ -1,4 +1,5 @@
 import type { MacroBondLinkageEnvironmentScore } from "../../../api/contracts";
+import { EM_DASH } from "../../../utils/format";
 
 /**
  * 环境评分贡献因子明细行（GET /api/macro-bond-linkage/analysis
@@ -48,7 +49,7 @@ function signedFixed(value: number, digits: number): string {
 /** Δ 展示：常规值带符号保留 4 位小数；|delta|>=1e4 用万紧凑、>=1e8 用亿紧凑。 */
 function formatDeltaLabel(delta: number | null): string {
   if (delta == null) {
-    return "—";
+    return EM_DASH;
   }
   const abs = Math.abs(delta);
   if (abs >= 1e8) {
@@ -64,7 +65,7 @@ function formatDeltaLabel(delta: number | null): string {
 
 function formatScoreLabel(score: number | null): string {
   if (score == null) {
-    return "—";
+    return EM_DASH;
   }
   return signedFixed(score, 3);
 }
@@ -103,7 +104,7 @@ export function buildEnvFactorDetailRows(
 
   return factors.map((factor) => {
     const category = String(factor.category ?? "").trim().toLowerCase();
-    const seriesName = String(factor.series_name ?? "").trim() || "—";
+    const seriesName = String(factor.series_name ?? "").trim() || EM_DASH;
     const delta = toFiniteNumber(factor.delta);
     const score = toFiniteNumber(factor.score);
 

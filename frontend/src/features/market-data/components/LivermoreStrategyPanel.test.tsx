@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { EM_DASH } from "../../../utils/format";
 import type { LivermoreStrategyModel } from "../lib/livermoreStrategyModel";
 import { LivermoreStrategyPanel } from "./LivermoreStrategyPanel";
 
@@ -216,7 +217,7 @@ describe("LivermoreStrategyPanel", () => {
           stockCode: "000777.SZ",
           stockName: "Watch Alpha",
           reason: "2d_below_ema10_with_volume",
-          entryCost: "—",
+          entryCost: EM_DASH,
           entryCostAvailable: false,
           barsSinceEntry: 4,
           latestClose: "19.800",

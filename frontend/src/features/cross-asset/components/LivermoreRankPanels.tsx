@@ -2,6 +2,7 @@ import type {
   FactorScreenCandidatesPayload,
   LivermoreSectorRankPayload,
 } from "../../../api/contracts";
+import { EM_DASH } from "../../../utils/format";
 import {
   buildLivermoreFactorCandidateRows,
   buildLivermoreSectorRankRows,
@@ -10,23 +11,23 @@ import { crossAssetPanelClass } from "./shared";
 import "./LivermoreRankPanels.css";
 
 function formatScore(value: number | null) {
-  return value == null ? "—" : value.toFixed(2);
+  return value == null ? EM_DASH : value.toFixed(2);
 }
 
 function formatSignedPct(value: number | null) {
   if (value == null) {
-    return { text: "—", tone: "neutral" as const };
+    return { text: EM_DASH, tone: "neutral" as const };
   }
   const text = `${value > 0 ? "+" : ""}${value.toFixed(2)}%`;
   return { text, tone: value > 0 ? ("positive" as const) : value < 0 ? ("negative" as const) : ("neutral" as const) };
 }
 
 function formatPlainNumber(value: number | null) {
-  return value == null ? "—" : String(value);
+  return value == null ? EM_DASH : String(value);
 }
 
 function formatPe(value: number | null) {
-  return value == null ? "—" : value.toFixed(1);
+  return value == null ? EM_DASH : value.toFixed(1);
 }
 
 export function LivermoreSectorRankPanel({
@@ -90,7 +91,7 @@ export function LivermoreSectorRankPanel({
                       <td>
                         <div className="cross-asset-livermore-rank__sector">
                           <strong>{row.sectorName}</strong>
-                          <small>{row.constituentCount == null ? "—" : `${row.constituentCount} 只成分股`}</small>
+                          <small>{row.constituentCount == null ? EM_DASH : `${row.constituentCount} 只成分股`}</small>
                         </div>
                       </td>
                       <td className="cross-asset-livermore-rank__num">{formatScore(row.score)}</td>
@@ -98,7 +99,7 @@ export function LivermoreSectorRankPanel({
                         {pct.text}
                       </td>
                       <td className="cross-asset-livermore-rank__leaders">
-                        {row.leaderNames.length > 0 ? row.leaderNames.join("、") : "—"}
+                        {row.leaderNames.length > 0 ? row.leaderNames.join("、") : EM_DASH}
                       </td>
                     </tr>
                   );

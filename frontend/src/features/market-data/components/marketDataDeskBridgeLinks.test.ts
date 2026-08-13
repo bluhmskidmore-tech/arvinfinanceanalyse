@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { EM_DASH } from "../../../utils/format";
 import { marketDataPageHref } from "./marketDataDeskBridgeLinks";
 
 describe("marketDataPageHref", () => {
@@ -9,6 +10,6 @@ describe("marketDataPageHref", () => {
 
   it("returns plain path when watch date is missing", () => {
     expect(marketDataPageHref("/market-data")).toBe("/market-data");
-    expect(marketDataPageHref("/market-data", "—")).toBe("/market-data");
+    expect(marketDataPageHref("/market-data", EM_DASH)).toBe("/market-data");
   });
 });

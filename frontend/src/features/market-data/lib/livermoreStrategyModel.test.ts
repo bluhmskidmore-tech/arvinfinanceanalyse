@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { EM_DASH } from "../../../utils/format";
 import type {
   ApiEnvelope,
   LivermoreModuleState,
@@ -389,7 +390,7 @@ describe("livermoreStrategyModel", () => {
       }),
     });
 
-    expect(model.riskExit?.items.map((item) => item.entryCost)).toEqual(["—", "10.500"]);
+    expect(model.riskExit?.items.map((item) => item.entryCost)).toEqual([EM_DASH, "10.500"]);
   });
 
   it("derives stock-candidate observation levels from the backend candidate fields", () => {
@@ -741,7 +742,7 @@ describe("livermoreStrategyModel", () => {
       }),
     });
     expect(modelWithMissingCost.riskExit?.items[0]).toMatchObject({
-      entryCost: "—",
+      entryCost: EM_DASH,
       entryCostAvailable: false,
     });
 

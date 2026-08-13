@@ -23,6 +23,7 @@ import { MarketDataLinkageSummaryBand } from "../components/MarketDataLinkageSum
 import { MarketDataChartShell } from "../components/MarketDataChartShell";
 import { KpiCard } from "../../../components/KpiCard";
 import { toneFromSignedDisplayString, toneFromSignedNumber } from "../../workbench/components/kpiFormat";
+import { EM_DASH } from "../../../utils/format";
 import { formatSignedNumber } from "../lib/marketDataFormat";
 import { buildMarketDataMultiSeriesTimeChartOption } from "../lib/charts/marketDataSeriesTimeChartOption";
 import { RATE_TREND_DEFINITIONS } from "./marketDataMacroConstants";
@@ -317,7 +318,7 @@ export function MarketDataMacroDepthTabs({
               value={
                 macroBondLinkage.environment_score?.composite_score != null
                   ? String(macroBondLinkage.environment_score.composite_score.toFixed(2))
-                  : "—"
+                  : EM_DASH
               }
               detail={`${
                 macroBondLinkage.environment_score?.signal_description ?? "缺少环境评分。"
@@ -333,7 +334,7 @@ export function MarketDataMacroDepthTabs({
               value={
                 macroBondLinkage.environment_score?.liquidity_score != null
                   ? macroBondLinkage.environment_score.liquidity_score.toFixed(2)
-                  : "—"
+                  : EM_DASH
               }
               detail="流动性正值偏松、负值偏紧；进入综合分时取反。"
               tone={
@@ -344,7 +345,7 @@ export function MarketDataMacroDepthTabs({
             />
             <KpiCard
               title="利率方向"
-              value={macroBondLinkage.environment_score?.rate_direction ?? "—"}
+              value={macroBondLinkage.environment_score?.rate_direction ?? EM_DASH}
               detail={
                 macroBondLinkage.environment_score?.rate_direction_score != null
                   ? `方向评分 ${macroBondLinkage.environment_score.rate_direction_score.toFixed(2)}`

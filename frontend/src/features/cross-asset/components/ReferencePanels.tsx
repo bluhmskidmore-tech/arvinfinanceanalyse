@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { EM_DASH } from "../../../utils/format";
 import { LightIcon } from "../../../components/LightIcon";
 import { DataStatusStrip } from "../../../components/page/PagePrimitives";
 import { StatusPill } from "../../../components/StatusPill";
@@ -57,10 +58,10 @@ function credibilityForKpi(
 }
 
 function referenceDirectionForKpi(kpi: ResolvedCrossAssetKpi | null | undefined) {
-  if (!kpi || kpi.changeLabel === "—") return { label: "—", tone: "flat" as const };
+  if (!kpi || kpi.changeLabel === EM_DASH) return { label: EM_DASH, tone: "flat" as const };
   if (kpi.changeTone === "positive") return { label: "↑", tone: "up" as const };
   if (kpi.changeTone === "negative") return { label: "↓", tone: "down" as const };
-  return { label: "—", tone: "flat" as const };
+  return { label: EM_DASH, tone: "flat" as const };
 }
 
 function findReferenceKpi(kpis: ResolvedCrossAssetKpi[], labels: string[]) {
@@ -253,7 +254,7 @@ export function CrossAssetReferenceMarketTape({ kpis }: { kpis: ResolvedCrossAss
         <div className={`cross-asset-market-tape__item cross-asset-market-tape__item--${kpi?.changeTone ?? "default"}`} role="listitem" key={label}>
           <span>{kpi?.label ?? label}</span>
           <strong>{kpi?.valueLabel ?? "待定"}</strong>
-          <em>{kpi?.changeLabel ?? "—"}</em>
+          <em>{kpi?.changeLabel ?? EM_DASH}</em>
         </div>
       ))}
     </div>
@@ -323,7 +324,7 @@ export function CrossAssetReferenceEvidenceMatrix({
                   <td>{kpi?.label ?? spec.fallback}</td>
                   <td className="cross-asset-reference-table__value">{kpi?.valueLabel ?? "待定"}</td>
                   <td className={`cross-asset-reference-table__change cross-asset-reference-tone--${kpi?.changeTone ?? "default"}`}>
-                    {kpi?.changeLabel ?? "—"}
+                    {kpi?.changeLabel ?? EM_DASH}
                   </td>
                   <td className={`cross-asset-reference-direction cross-asset-reference-direction--${direction.tone}`}>
                     {direction.label}
@@ -732,7 +733,7 @@ export function CrossAssetReferenceCorrelation({ matrix }: { matrix: Correlation
   });
 
   function valueFor(row: (typeof labelEntries)[number], col: (typeof labelEntries)[number]) {
-    if (!matrix || row.index < 0 || col.index < 0) return row.label === col.label ? "1.00" : "—";
+    if (!matrix || row.index < 0 || col.index < 0) return row.label === col.label ? "1.00" : EM_DASH;
     return formatCorrelation(matrix.cells[row.index]?.[col.index]?.value ?? null);
   }
 
@@ -877,7 +878,7 @@ export function CrossAssetReferenceTrendStrip({ kpis }: { kpis: ResolvedCrossAss
             <header>
               <strong>{label}</strong>
               <span>{kpi?.valueLabel ?? "待定"}</span>
-              <em className={`cross-asset-reference-tone--${kpi?.changeTone ?? "default"}`}>{kpi?.changeLabel ?? "—"}</em>
+              <em className={`cross-asset-reference-tone--${kpi?.changeTone ?? "default"}`}>{kpi?.changeLabel ?? EM_DASH}</em>
             </header>
             <div className="cross-asset-reference-trend-card__chart" aria-hidden="true">
               <CrossAssetSparkline values={kpi?.sparkline.slice(-30) ?? []} stroke="var(--ib-accent)" height={68} />

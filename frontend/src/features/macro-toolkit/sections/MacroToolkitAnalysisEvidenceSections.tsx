@@ -16,6 +16,7 @@ import type {
   MacroToolkitSignalCard,
 } from "../../../api/macroToolkitClient";
 import { DataStatusStrip } from "../../../components/page/PagePrimitives";
+import { EM_DASH } from "../../../utils/format";
 import {
   formatObservationDeferredSectionLabel,
   repairItemFocusKey,
@@ -146,10 +147,10 @@ export function MacroToolkitAnalysisEvidenceFlow({
               <DataStatusStrip className="macro-toolkit-status-strip">
                 {showOperations ? (
                   <>
-                    <span title={`读取口径：${analysisMeta?.basis ?? "-"}`}>
+                    <span title={`读取口径：${analysisMeta?.basis ?? EM_DASH}`}>
                       <DatabaseOutlined /> {formatAnalysisBasisLabel(analysisMeta?.basis)}
                     </span>
-                    <span title={`质量：${analysisMeta?.quality_flag ?? "-"}`}>
+                    <span title={`质量：${analysisMeta?.quality_flag ?? EM_DASH}`}>
                       <SafetyCertificateOutlined /> {formatQualityFlagLabel(analysisMeta?.quality_flag)}
                     </span>
                     <span title={`建议：${analysis.conclusion.recommended_action}`}>
@@ -158,7 +159,7 @@ export function MacroToolkitAnalysisEvidenceFlow({
                   </>
                 ) : (
                   <>
-                    <span title={`读取口径：${analysisMeta?.basis ?? "-"}`}>
+                    <span title={`读取口径：${analysisMeta?.basis ?? EM_DASH}`}>
                       <DatabaseOutlined /> {formatAnalysisBasisLabel(analysisMeta?.basis)}
                     </span>
                     <span title="数据质量状态已记录，具体诊断保留在宏观工具页。">

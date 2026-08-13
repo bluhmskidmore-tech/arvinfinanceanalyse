@@ -1,10 +1,5 @@
-export function formatSignedNumber(value: number | string | null | undefined, suffix = "") {
-  if (value == null || value === "") return "不可用";
-  const numericValue = typeof value === "number" ? value : Number.parseFloat(String(value));
-  if (Number.isNaN(numericValue)) return String(value);
-  const sign = numericValue > 0 ? "+" : "";
-  return `${sign}${numericValue.toFixed(2)}${suffix}`;
-}
+/** 与 market-data 联动区共用同一符号数格式化实现，避免双份漂移。 */
+export { formatSignedNumber } from "../../market-data/lib/marketDataFormat";
 
 export function correlationLedgerCellClassName(value: string) {
   if (value.includes("-")) return "cross-asset-linkage-heatmap-ledger__cell cross-asset-linkage-heatmap-ledger__cell--negative";

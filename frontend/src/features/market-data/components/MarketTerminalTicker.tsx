@@ -1,4 +1,5 @@
 import { tabularNumsStyle } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
 import type { MarketTerminalTickerItem } from "../lib/marketDataTerminalModel";
 import { MarketTerminalSparkline } from "./MarketTerminalSparkline";
 
@@ -72,7 +73,7 @@ export function MarketTerminalTicker({
         ))}
         {compact ? (
           <div className="market-data-terminal-ticker-status" data-testid="market-data-terminal-ticker-status">
-            <span>{statusDate ?? items[items.length - 1]?.tradeDate ?? "—"}</span>
+            <span>{statusDate ?? items[items.length - 1]?.tradeDate ?? EM_DASH}</span>
             <strong data-tone="ok">{statusLabel}</strong>
           </div>
         ) : null}

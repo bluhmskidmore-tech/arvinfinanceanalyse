@@ -4,6 +4,7 @@ import type { ColumnsType } from "antd/es/table";
 
 import type { NcdFundingProxyPayload, ResultMeta } from "../../../api/contracts";
 import { designTokens } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
 import { isMarketDataNarrowViewport } from "../lib/useMarketDataNarrowViewport";
 import { LiveResultMetaStrip } from "./LiveResultMetaStrip";
 import { MarketDataNcdHeatmap } from "./MarketDataNcdHeatmap";
@@ -32,7 +33,7 @@ function NcdNumericCell({ value }: { value: number | string | null | undefined }
 
 function formatProxyCell(value: number | string | null | undefined) {
   if (value == null || value === "") {
-    return "—";
+    return EM_DASH;
   }
   if (typeof value === "number") {
     return value.toFixed(3);

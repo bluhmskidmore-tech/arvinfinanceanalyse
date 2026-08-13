@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { EM_DASH } from "../../../utils/format";
 import type { ResolvedCrossAssetKpi } from "./crossAssetKpiModel";
 import { buildKpiBandItems, KPI_BAND_SLOTS, KPI_BAND_SPARK_LENGTH } from "./crossAssetKpiBand";
 
@@ -83,7 +84,7 @@ describe("crossAssetKpiBand", () => {
   });
 
   it("无变动（—/无符号）归为中性", () => {
-    expect(itemByKey([kpiFixture({ key: "cn_gov_10y", changeLabel: "—" })], "cn_gov_10y").impact).toBe("neutral");
+    expect(itemByKey([kpiFixture({ key: "cn_gov_10y", changeLabel: EM_DASH })], "cn_gov_10y").impact).toBe("neutral");
     expect(itemByKey([kpiFixture({ key: "gov_spread", changeLabel: "0.0bp" })], "gov_spread").impact).toBe("neutral");
   });
 
@@ -106,13 +107,13 @@ describe("crossAssetKpiBand", () => {
       expect(items).toHaveLength(6);
       for (const item of items) {
         expect(item).toMatchObject({
-          valueLabel: "—",
+          valueLabel: EM_DASH,
           unit: "",
-          changeLabel: "—",
+          changeLabel: EM_DASH,
           impact: "neutral",
           impactLabel: "中性",
           sourceLabel: "待接入",
-          dateLabel: "—",
+          dateLabel: EM_DASH,
           spark: [],
         });
       }
@@ -129,8 +130,8 @@ describe("crossAssetKpiBand", () => {
           resolvedSeriesId: "gov_spread:missing",
           tradeDate: null,
           unit: null,
-          valueLabel: "—",
-          changeLabel: "—",
+          valueLabel: EM_DASH,
+          changeLabel: EM_DASH,
           changeTone: "default",
           sparkline: [],
         }),
@@ -138,12 +139,12 @@ describe("crossAssetKpiBand", () => {
       "gov_spread",
     );
     expect(item).toMatchObject({
-      valueLabel: "—",
+      valueLabel: EM_DASH,
       unit: "",
-      changeLabel: "—",
+      changeLabel: EM_DASH,
       impact: "neutral",
       sourceLabel: "待接入",
-      dateLabel: "—",
+      dateLabel: EM_DASH,
       spark: [],
     });
   });
@@ -155,7 +156,7 @@ describe("crossAssetKpiBand", () => {
     expect(itemByKey([kpiFixture({ key: "cn_gov_10y", tradeDate: "2026-12-31" })], "cn_gov_10y").dateLabel).toBe(
       "12-31",
     );
-    expect(itemByKey([kpiFixture({ key: "cn_gov_10y", tradeDate: null })], "cn_gov_10y").dateLabel).toBe("—");
+    expect(itemByKey([kpiFixture({ key: "cn_gov_10y", tradeDate: null })], "cn_gov_10y").dateLabel).toBe(EM_DASH);
   });
 
   it("valueLabel 拆分为数值与单位", () => {

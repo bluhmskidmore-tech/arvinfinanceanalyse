@@ -7,6 +7,7 @@ import { externalDataQueryOptions } from "../../../app/externalDataRefreshPolicy
 import type { ChoiceNewsEvent, ChoiceNewsEventsPayload, ResearchCalendarEvent } from "../../../api/contracts";
 
 import { tabularNumsStyle } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
 
 export type NewsAndCalendarCalendarState = {
   rows: readonly ResearchCalendarEvent[];
@@ -37,11 +38,11 @@ function formatReceivedTime(iso: string) {
   try {
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) {
-      return iso.slice(11, 16) || "—";
+      return iso.slice(11, 16) || EM_DASH;
     }
     return d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
   } catch {
-    return "—";
+    return EM_DASH;
   }
 }
 

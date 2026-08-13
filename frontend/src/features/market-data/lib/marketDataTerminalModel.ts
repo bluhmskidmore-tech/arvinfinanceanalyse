@@ -8,6 +8,7 @@ import type {
   ResultMeta,
 } from "../../../api/contracts";
 import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../../../utils/choiceMacroFormat";
+import { EM_DASH } from "../../../utils/format";
 
 export type MarketDataTerminalStatus = "ready" | "empty" | "source-pending";
 export type MarketDataConnectedStatus = Exclude<MarketDataTerminalStatus, "source-pending">;
@@ -483,14 +484,14 @@ function bondFuturesSource(envelope?: ApiEnvelope<MarketDataBondFuturesRankingsP
 
 function formatRankNumber(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) {
-    return "—";
+    return EM_DASH;
   }
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value);
 }
 
 function formatRankChange(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) {
-    return "—";
+    return EM_DASH;
   }
   if (value === 0) {
     return "0";

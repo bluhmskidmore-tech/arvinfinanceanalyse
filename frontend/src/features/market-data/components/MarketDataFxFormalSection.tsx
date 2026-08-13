@@ -5,6 +5,7 @@ import type { ColumnsType } from "antd/es/table";
 import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
 import type { FxFormalStatusPayload, FxFormalStatusRow, ResultMeta } from "../../../api/contracts";
 import { tabularNumsStyle } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
 import { buildFxFormalStatusCollapseLabel } from "../pages/marketDataPageModel";
 
 type MarketDataFxFormalSectionProps = {
@@ -17,7 +18,7 @@ type MarketDataFxFormalSectionProps = {
 
 function formatMidRate(value: number | null) {
   if (value == null || Number.isNaN(value)) {
-    return "—";
+    return EM_DASH;
   }
   return value.toFixed(4);
 }

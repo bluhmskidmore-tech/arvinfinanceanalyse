@@ -3,6 +3,7 @@ import { Spin } from "antd";
 import type { MacroBondLinkageTopCorrelation } from "../../../api/contracts";
 
 import { tabularNumsStyle } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
 import { correlationStrength, formatCorrelation } from "../lib/marketDataLinkageFormat";
 import { LinkageDirectionPill } from "./LinkageDirectionPill";
 
@@ -22,7 +23,7 @@ export function LinkageSpreadTenorCards({
   slots,
   loading = false,
   testIdPrefix = "market-data-macro-spread-slot",
-  emptySeriesLabel = "—",
+  emptySeriesLabel = EM_DASH,
 }: LinkageSpreadTenorCardsProps) {
   if (loading) {
     return (
@@ -55,17 +56,17 @@ export function LinkageSpreadTenorCards({
               <div>
                 <dt>corr 1Y</dt>
                 <dd style={tabularNumsStyle} data-strength={corrStrength}>
-                  {point ? formatCorrelation(point.correlation_1y) : "—"}
+                  {point ? formatCorrelation(point.correlation_1y) : EM_DASH}
                 </dd>
               </div>
               <div>
                 <dt>lead/lag</dt>
-                <dd style={tabularNumsStyle}>{point ? `${point.lead_lag_days} 天` : "—"}</dd>
+                <dd style={tabularNumsStyle}>{point ? `${point.lead_lag_days} 天` : EM_DASH}</dd>
               </div>
               <div>
                 <dt>方向</dt>
                 <dd className="market-data-spread-tenor-card__direction">
-                  {point ? <LinkageDirectionPill direction={point.direction} /> : "—"}
+                  {point ? <LinkageDirectionPill direction={point.direction} /> : EM_DASH}
                 </dd>
               </div>
             </dl>

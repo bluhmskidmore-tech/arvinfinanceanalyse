@@ -1,4 +1,5 @@
 import type { ChoiceMacroLatestPoint, ChoiceMacroRecentPoint } from "../../../api/contracts";
+import { EM_DASH } from "../../../utils/format";
 
 export type CrossAssetKpiFormat = "percent" | "bp" | "index" | "fx" | "plain";
 
@@ -327,7 +328,7 @@ function changeLabelForSlot(
   delta: number | null | undefined,
 ): string {
   if (delta == null || Number.isNaN(delta)) {
-    return "—";
+    return EM_DASH;
   }
   if (format === "percent") {
     const sign = delta > 0 ? "+" : "";
@@ -357,7 +358,7 @@ function valueLabelForSlot(
   value: number | undefined,
 ): string {
   if (value == null || Number.isNaN(value)) {
-    return "—";
+    return EM_DASH;
   }
   if (format === "percent") {
     return formatPercent(value);
@@ -433,8 +434,8 @@ function resolveSpreadSlot(
       vendorName: null,
       tradeDate: null,
       unit: null,
-      valueLabel: "—",
-      changeLabel: "—",
+      valueLabel: EM_DASH,
+      changeLabel: EM_DASH,
       changeTone: "default",
       sparkline: [],
       sparklinePoints: [],

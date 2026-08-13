@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { EM_DASH } from "../../../utils/format";
 import type {
   ApiEnvelope,
   ChoiceMacroLatestPayload,
@@ -372,7 +373,7 @@ describe("marketDataPageModel", () => {
     expect(model.statusBadges.readinessVerdict).toBe("接入中");
     expect(model.statusBadges.overviewReadinessLabel).toBe("待确认");
     expect(model.statusBadges.secondaryLabel).toBe("查看数据诊断");
-    expect(model.stableLatestTradeDate).toBe("—");
+    expect(model.stableLatestTradeDate).toBe(EM_DASH);
     expect(model.linkageReportDate).toBe("");
     expect(model.sourcePendingCount).toBe(3);
     expect(model.terminalKpiMetrics).toEqual([]);
@@ -380,12 +381,12 @@ describe("marketDataPageModel", () => {
       ["market-data-catalog-count", "0", undefined],
       ["market-data-stable-count", "0 / 0", "default"],
       ["market-data-fallback-count", "0", "default"],
-      ["market-data-stable-trade-date", "—", "warning"],
+      ["market-data-stable-trade-date", EM_DASH, "warning"],
       ["market-data-missing-stable-count", "0", "default"],
       ["market-data-fx-formal-materialized", "0 / 0", "warning"],
       ["market-data-fx-analytical-group-count", "0", undefined],
       ["market-data-fx-analytical-series-count", "0", undefined],
-      ["market-data-linkage-report-date", "—", "warning"],
+      ["market-data-linkage-report-date", EM_DASH, "warning"],
     ]);
   });
 

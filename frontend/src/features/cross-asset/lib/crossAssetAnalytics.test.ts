@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { designTokens } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
 import {
   buildCorrelationMatrix,
   correlationColor,
@@ -198,7 +200,7 @@ describe("correlationColor", () => {
 
 describe("formatCorrelation", () => {
   it("formats null as dash", () => {
-    expect(formatCorrelation(null)).toBe("—");
+    expect(formatCorrelation(null)).toBe(EM_DASH);
   });
   it("formats number to 2 decimals", () => {
     expect(formatCorrelation(0.456)).toBe("0.46");
@@ -433,7 +435,7 @@ describe("buildDriverWaterfall", () => {
     expect(bars[0].key).toBe("liquidity");
     expect(bars[0].value).toBe(-0.06);
     expect(bars[0].color).toBe("#16a34a"); // liquidity easing pulls restrictive composite down
-    expect(bars[1].color).toBe("#dc2626"); // positive contribution is bond-unfavorable
-    expect(bars[2].color).toBe("#94a3b8"); // neutral
+    expect(bars[1].color).toBe(designTokens.color.danger[600]); // positive contribution is bond-unfavorable
+    expect(bars[2].color).toBe(designTokens.color.cockpit.ink450); // neutral
   });
 });

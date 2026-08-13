@@ -4,6 +4,7 @@ import type {
   FactorScreenCandidatesPayload,
   LivermoreSectorRankPayload,
 } from "../../../api/contracts";
+import { EM_DASH } from "../../../utils/format";
 import {
   buildLivermoreFactorCandidateRows,
   buildLivermoreSectorRankRows,
@@ -105,10 +106,10 @@ describe("buildLivermoreSectorRankRows", () => {
     const { rows, meta } = buildLivermoreSectorRankRows(null);
     expect(rows).toEqual([]);
     expect(meta).toEqual({
-      asOfDate: "—",
+      asOfDate: EM_DASH,
       sectorCount: 0,
       isProvisional: false,
-      formulaVersion: "—",
+      formulaVersion: EM_DASH,
     });
   });
 });
@@ -151,7 +152,7 @@ describe("buildLivermoreFactorCandidateRows", () => {
     const { rows, meta } = buildLivermoreFactorCandidateRows(undefined);
     expect(rows).toEqual([]);
     expect(meta).toEqual({
-      asOfDate: "—",
+      asOfDate: EM_DASH,
       candidateCount: 0,
       inputStockCount: 0,
       observationOnly: false,

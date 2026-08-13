@@ -1,3 +1,4 @@
+import { EM_DASH } from "../../../utils/format";
 import type { EnvFactorDetailRow, EnvFactorTone } from "../lib/envScoreFactorDetail";
 import styles from "./EnvScoreFactorDetailPanel.module.css";
 
@@ -38,7 +39,7 @@ function deltaTone(delta: number | null): EnvFactorTone {
 }
 
 function formatWeight(weight: number | null): string {
-  return weight == null ? "—" : weight.toFixed(1);
+  return weight == null ? EM_DASH : weight.toFixed(1);
 }
 
 export function EnvScoreFactorDetailPanel({

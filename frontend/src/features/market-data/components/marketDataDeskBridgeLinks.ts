@@ -1,3 +1,5 @@
+import { EM_DASH } from "../../../utils/format";
+
 export type MarketDataWorkbenchLink = {
   testId: string;
   label: string;
@@ -23,7 +25,7 @@ export const MARKET_DATA_WORKBENCH_LINKS: MarketDataWorkbenchLink[] = [
 ];
 
 export function marketDataPageHref(path: string, watchDate?: string): string {
-  if (!watchDate || watchDate === "—") {
+  if (!watchDate || watchDate === EM_DASH) {
     return path;
   }
   return `${path}?date=${encodeURIComponent(watchDate)}`;

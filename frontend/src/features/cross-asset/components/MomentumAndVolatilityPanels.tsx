@@ -1,3 +1,4 @@
+import { EM_DASH } from "../../../utils/format";
 import {
   TREND_GROUPS,
   type EquityBondERP,
@@ -36,7 +37,7 @@ export function MomentumScoreboardPanel({ rows }: { rows: MomentumRow[] }) {
             {rows.map((row) => (
               <tr key={row.key}>
                 <td>{row.label}</td>
-                <td>{row.chg5d == null ? "—" : `${row.chg5d.toFixed(2)}%`}</td>
+                <td>{row.chg5d == null ? EM_DASH : `${row.chg5d.toFixed(2)}%`}</td>
                 <td>{row.direction}</td>
               </tr>
             ))}

@@ -2,6 +2,7 @@ import type {
   FactorScreenCandidatesPayload,
   LivermoreSectorRankPayload,
 } from "../../../api/contracts";
+import { EM_DASH } from "../../../utils/format";
 
 export type LivermoreSectorRankRow = {
   rank: number;
@@ -52,7 +53,7 @@ function numericOrNull(value: number | null | undefined): number | null {
 
 function textOrPlaceholder(value: string | null | undefined): string {
   const normalized = value?.trim();
-  return normalized ? normalized : "—";
+  return normalized ? normalized : EM_DASH;
 }
 
 export function buildLivermoreSectorRankRows(

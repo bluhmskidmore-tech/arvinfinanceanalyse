@@ -1,6 +1,7 @@
 import type { ChoiceMacroLatestPoint } from "../../../api/contracts";
 import type { EChartsOption } from "../../../lib/echarts";
 import { designTokens } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
 
 import {
   resolveCrossAssetChartPalette,
@@ -210,7 +211,7 @@ export function buildCrossAssetTrendOption(
           const v = p.value;
           const str =
             v == null || (typeof v === "number" && Number.isNaN(v))
-              ? "—"
+              ? EM_DASH
               : typeof v === "number"
                 ? v.toFixed(1)
                 : String(v);

@@ -4,6 +4,7 @@ import type {
   FxAnalyticalSeriesPoint,
   MacroVendorSeries,
 } from "../../../api/contracts";
+import { EM_DASH } from "../../../utils/format";
 
 export type MarketObservationPoint = ChoiceMacroLatestPoint | FxAnalyticalSeriesPoint;
 type RefreshTier = "stable" | "fallback" | "isolated";
@@ -72,7 +73,7 @@ export function buildMarketDataCategoryStore(input: {
     fallbackSeries,
     stableCatalogSeries,
     missingStableSeries,
-    stableLatestTradeDate: latestTradeDate(stableSeries, "—"),
+    stableLatestTradeDate: latestTradeDate(stableSeries, EM_DASH),
     linkageReportDate: latestTradeDate(visibleLatestSeries),
     vendorVersions,
     fxAnalyticalSeriesCount,

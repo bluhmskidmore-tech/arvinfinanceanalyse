@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { EM_DASH } from "../../../utils/format";
 import type {
   ChoiceMacroLatestPoint,
   FxFormalStatusPayload,
@@ -895,11 +896,11 @@ describe("buildMarketDataTapeCockpitModel", () => {
       latestSeries: [macroPoint({ series_id: "macro-stable", latest_change: undefined })],
     }));
 
-    expect(model.topbarUpdatedAt).toBe("—");
-    expect(model.macroLatestRows[0]?.deltaText).toBe("—");
+    expect(model.topbarUpdatedAt).toBe(EM_DASH);
+    expect(model.macroLatestRows[0]?.deltaText).toBe(EM_DASH);
     expect(model.keyRateTiles.find((tile) => tile.key === "cgb10y")).toMatchObject({
-      value: "—",
-      delta: "—",
+      value: EM_DASH,
+      delta: EM_DASH,
     });
   });
 });

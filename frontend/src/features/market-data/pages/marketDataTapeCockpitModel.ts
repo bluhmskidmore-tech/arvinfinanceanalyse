@@ -20,6 +20,7 @@ import type {
 } from "../../../api/contracts";
 import type { MacroToolkitAnalysisPayload } from "../../../api/macroToolkitClient";
 import { marketCatalogRefreshTier, marketSeriesRefreshTier } from "../lib/marketDataCategoryStore";
+import { formatPct } from "../lib/marketDataFormat";
 import type { LivermoreStrategyModel } from "../lib/livermoreStrategyModel";
 import type { MarketDataTerminalModel } from "../lib/marketDataTerminalModel";
 import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../../../utils/choiceMacroFormat";
@@ -337,11 +338,6 @@ function formatFxPreviewRate(value: number | null | undefined) {
 function formatNcdProxyRate(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return EM_DASH;
   return value.toFixed(3);
-}
-
-function formatTusharePct(value: number | null | undefined): string {
-  if (value == null || Number.isNaN(value)) return EM_DASH;
-  return `${value.toFixed(2)}%`;
 }
 
 function formatTusharePp(value: number | null | undefined): string {
@@ -790,7 +786,7 @@ export function buildMarketDataTapeCockpitModel(input: BuildMarketDataTapeCockpi
       key: "m2-yoy",
       tone: "analytical",
       label: "M2 YoY",
-      value: formatTusharePct(latestTushareMoneyRow?.m2_yoy),
+      value: formatPct(latestTushareMoneyRow?.m2_yoy),
       detail: `latest ${normalizeCompactMonth(latestTushareMoneyRow?.month)}`,
     },
     {
@@ -798,7 +794,7 @@ export function buildMarketDataTapeCockpitModel(input: BuildMarketDataTapeCockpi
       tone: "analytical",
       label: "M2 - M1",
       value: formatTusharePp(m1M2Spread),
-      detail: `M1 ${formatTusharePct(latestTushareMoneyRow?.m1_yoy)} / M2 ${formatTusharePct(latestTushareMoneyRow?.m2_yoy)}`,
+      detail: `M1 ${formatPct(latestTushareMoneyRow?.m1_yoy)} / M2 ${formatPct(latestTushareMoneyRow?.m2_yoy)}`,
     },
     {
       key: "eco-calendar",
@@ -851,7 +847,7 @@ export function buildMarketDataTapeCockpitModel(input: BuildMarketDataTapeCockpi
   });
   const commodityPoint = copperPoint ?? aluminumPoint;
   const macroComparisonEvidence = [
-    latestTushareMoneyRow ? `M2 ${formatTusharePct(latestTushareMoneyRow.m2_yoy)}` : null,
+    latestTushareMoneyRow ? `M2 ${formatPct(latestTushareMoneyRow.m2_yoy)}` : null,
     pmiPoint ? formatLatestSeriesEvidence(pmiPoint) : null,
     cpiPoint ? formatLatestSeriesEvidence(cpiPoint) : null,
     ppiPoint ? formatLatestSeriesEvidence(ppiPoint) : null,

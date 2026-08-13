@@ -11,6 +11,7 @@
  */
 
 import { designTokens } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
 import {
   isAssetLevelKpiKey,
   type CrossAssetDatedValue,
@@ -174,7 +175,7 @@ export function correlationColor(r: number | null): string {
  * Format a correlation value for display.
  */
 export function formatCorrelation(r: number | null): string {
-  if (r == null) return "—";
+  if (r == null) return EM_DASH;
   return r.toFixed(2);
 }
 

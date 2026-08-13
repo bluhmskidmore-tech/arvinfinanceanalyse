@@ -1,3 +1,4 @@
+import { EM_DASH } from "../../../utils/format";
 import type { ResolvedCrossAssetKpi } from "./crossAssetKpiModel";
 
 export type CrossAssetKpiBandImpact = "bullish" | "bearish" | "neutral";
@@ -5,7 +6,7 @@ export type CrossAssetKpiBandImpact = "bullish" | "bearish" | "neutral";
 export type CrossAssetKpiBandItem = {
   key: string;
   label: string;
-  /** 大数值（已按格式剥离单位后缀；无数据 → "—"） */
+  /** 大数值（已按格式剥离单位后缀；无数据 → EM_DASH） */
   valueLabel: string;
   /** 单位（% / bp / 点 等；无数据 → ""） */
   unit: string;
@@ -13,7 +14,7 @@ export type CrossAssetKpiBandItem = {
   impact: CrossAssetKpiBandImpact;
   impactLabel: string;
   sourceLabel: string;
-  /** MM-DD；无日期 → "—" */
+  /** MM-DD；无日期 → EM_DASH */
   dateLabel: string;
   /** 近 20 点 sparkline */
   spark: number[];
@@ -78,9 +79,9 @@ function impactFor(rule: KpiBandImpactRule, direction: "up" | "down" | "flat"): 
 
 /** valueLabel（"1.88%" / "45bp" / "4102.3点" / "7.1234"）拆成数值与单位。 */
 function splitValueLabel(kpi: ResolvedCrossAssetKpi): { value: string; unit: string } {
-  const label = kpi.valueLabel?.trim() || "—";
-  if (label === "—") {
-    return { value: "—", unit: "" };
+  const label = kpi.valueLabel?.trim() || EM_DASH;
+  if (label === EM_DASH) {
+    return { value: EM_DASH, unit: "" };
   }
   if (label.endsWith("%")) {
     return { value: label.slice(0, -1), unit: "%" };
@@ -96,7 +97,7 @@ function splitValueLabel(kpi: ResolvedCrossAssetKpi): { value: string; unit: str
 
 function formatBandDate(tradeDate: string | null | undefined): string {
   if (!tradeDate) {
-    return "—";
+    return EM_DASH;
   }
   const match = tradeDate.match(/^\d{4}-(\d{2})-(\d{2})/);
   return match ? `${match[1]}-${match[2]}` : tradeDate;
@@ -123,13 +124,13 @@ function missingItem(slot: KpiBandSlot): CrossAssetKpiBandItem {
   return {
     key: slot.key,
     label: slot.label,
-    valueLabel: "—",
+    valueLabel: EM_DASH,
     unit: "",
-    changeLabel: "—",
+    changeLabel: EM_DASH,
     impact: "neutral",
     impactLabel: IMPACT_LABELS.neutral,
     sourceLabel: "待接入",
-    dateLabel: "—",
+    dateLabel: EM_DASH,
     spark: [],
   };
 }
@@ -151,7 +152,7 @@ export function buildKpiBandItems(
       label: slot.label,
       valueLabel: value,
       unit,
-      changeLabel: kpi.changeLabel?.trim() || "—",
+      changeLabel: kpi.changeLabel?.trim() || EM_DASH,
       impact,
       impactLabel: IMPACT_LABELS[impact],
       sourceLabel: resolveSourceLabel(slot, kpi),

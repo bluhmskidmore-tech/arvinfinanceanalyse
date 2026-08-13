@@ -14,6 +14,7 @@ import type {
 } from "../../../api/contracts";
 import type { EChartsOption } from "../../../lib/echarts";
 import { nocturneTokens } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
 import {
   buildMarketDataChartTooltip,
   marketDataChartTheme,
@@ -419,7 +420,7 @@ function buildPipelineOverviewMetrics(input: {
       testId: "market-data-fx-formal-materialized",
       title: "正式外汇物化",
       value: `${input.fxFormalStatus?.materialized_count ?? 0} / ${input.fxFormalStatus?.candidate_count ?? 0}`,
-      detail: `物化/候选对数 · 最新交易日 ${input.fxFormalStatus?.latest_trade_date ?? "—"} · 沿用 ${input.fxFormalStatus?.carry_forward_count ?? 0}`,
+      detail: `物化/候选对数 · 最新交易日 ${input.fxFormalStatus?.latest_trade_date ?? EM_DASH} · 沿用 ${input.fxFormalStatus?.carry_forward_count ?? 0}`,
       tone:
         input.fxFormalMeta?.formal_use_allowed === false
           ? "warning"
@@ -442,7 +443,7 @@ function buildPipelineOverviewMetrics(input: {
     {
       testId: "market-data-linkage-report-date",
       title: "联动报告日",
-      value: categoryStore.linkageReportDate || "—",
+      value: categoryStore.linkageReportDate || EM_DASH,
       detail: "宏观-债市联动分析使用的报告日期。",
       valueVariant: "text",
       tone: categoryStore.linkageReportDate ? "default" : "warning",

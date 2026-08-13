@@ -1,3 +1,4 @@
+import { EM_DASH } from "../../../utils/format";
 import { correlationColor, formatCorrelation, type CorrelationMatrix } from "../lib/crossAssetAnalytics";
 import { FrontendAnalyticsChip } from "./MomentumAndVolatilityPanels";
 import {
@@ -31,7 +32,7 @@ function buildCorrelationSummaryCards(matrix: CorrelationMatrix): CorrelationSum
 
   const fallback = {
     pair: "暂无可比组合",
-    value: "—",
+    value: EM_DASH,
   };
   const strongestPositive = pairs.slice().sort((left, right) => (right.value ?? -Infinity) - (left.value ?? -Infinity))[0];
   const strongestNegative = pairs.slice().sort((left, right) => (left.value ?? Infinity) - (right.value ?? Infinity))[0];

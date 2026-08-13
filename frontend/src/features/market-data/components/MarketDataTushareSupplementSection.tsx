@@ -6,6 +6,8 @@ import { useApiClient } from "../../../api/client";
 import { externalDataQueryOptions } from "../../../app/externalDataRefreshPolicy";
 import type { TushareEcoCalEventRow, TushareMoneySupplyRow } from "../../../api/contracts";
 import { tabularNumsStyle } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
+import { formatPct } from "../lib/marketDataFormat";
 import { LiveResultMetaStrip } from "./LiveResultMetaStrip";
 
 type MoneySummaryItem = {
@@ -29,13 +31,6 @@ type EcoCalendarSummary = {
   pending: number;
   currencies: Array<{ currency: string; count: number }>;
 };
-
-function formatPct(value: number | null | undefined) {
-  if (value == null || Number.isNaN(value)) {
-    return "—";
-  }
-  return `${value.toFixed(2)}%`;
-}
 
 function formatMonth(month: string) {
   return month.length >= 7 ? month.slice(0, 7) : month;
@@ -113,7 +108,7 @@ function buildMoneySummary(rows: readonly TushareMoneySupplyRow[]): MoneySummary
   return [
     {
       label: "最新月份",
-      value: latest ? formatMonth(latest.month) : "—",
+      value: latest ? formatMonth(latest.month) : EM_DASH,
       caption: "cn_m 可见最近月",
     },
     {
@@ -130,7 +125,7 @@ function buildMoneySummary(rows: readonly TushareMoneySupplyRow[]): MoneySummary
     },
     {
       label: "M2-M1 剪刀差",
-      value: spread == null ? "—" : formatPct(spread),
+      value: spread == null ? EM_DASH : formatPct(spread),
       caption: "仅作分析读面",
       tone: spread == null ? "neutral" : spread >= 0 ? "up" : "down",
     },
@@ -162,7 +157,7 @@ function buildMoneyTrendRows(rows: readonly TushareMoneySupplyRow[]): MoneyTrend
       month: formatMonth(row.month),
       m1Yoy: formatPct(row.m1_yoy),
       m2Yoy: formatPct(row.m2_yoy),
-      spread: spread == null ? "—" : formatPct(spread),
+      spread: spread == null ? EM_DASH : formatPct(spread),
       widthPct: spread == null ? 4 : Math.max(8, Math.min(100, Math.abs(spread) / maxAbsSpread * 100)),
     };
   });
@@ -561,7 +556,7 @@ export function MarketDataTushareSupplementSection() {
               : "ok"
           }
         >
-          数据截至 {resultMeta.as_of_date ?? "—"}
+          数据截至 {resultMeta.as_of_date ?? EM_DASH}
           {resultMeta.generated_at ? ` · 生成 ${resultMeta.generated_at}` : ""}
           {resultMeta.quality_flag === "stale" ||
           resultMeta.vendor_status === "vendor_unavailable" ||

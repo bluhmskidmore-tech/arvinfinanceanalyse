@@ -1,4 +1,5 @@
 import type { MacroBondLinkageTopCorrelation } from "../../../api/contracts";
+import { EM_DASH } from "../../../utils/format";
 import { formatCorrelation } from "../lib/marketDataLinkageFormat";
 
 type MarketDataLinkageSummaryBandProps = {
@@ -19,7 +20,7 @@ export function MarketDataLinkageSummaryBand({
   const scoreText =
     compositeScore != null && Number.isFinite(compositeScore)
       ? compositeScore.toFixed(2)
-      : "—";
+      : EM_DASH;
 
   return (
     <div className="market-data-linkage-summary-band" data-testid="market-data-linkage-summary-band">

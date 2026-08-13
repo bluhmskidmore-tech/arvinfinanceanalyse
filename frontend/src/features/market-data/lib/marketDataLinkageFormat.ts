@@ -1,3 +1,5 @@
+import { EM_DASH } from "../../../utils/format";
+
 export function formatCorrelation(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) {
     return "不可用";
@@ -8,7 +10,7 @@ export function formatCorrelation(value: number | null | undefined): string {
 export type LinkageDirectionTone = "up" | "down" | "neutral";
 
 export function linkageDirectionTone(direction: string | null | undefined): LinkageDirectionTone {
-  if (!direction || direction === "—") {
+  if (!direction || direction === EM_DASH) {
     return "neutral";
   }
   if (/上|涨|升|多|强|positive/i.test(direction)) {
@@ -21,8 +23,8 @@ export function linkageDirectionTone(direction: string | null | undefined): Link
 }
 
 export function formatLinkageDirectionLabel(direction: string | null | undefined): string {
-  if (!direction || direction === "—") {
-    return "—";
+  if (!direction || direction === EM_DASH) {
+    return EM_DASH;
   }
   const normalized = direction.trim().toLowerCase();
   if (normalized === "positive") {

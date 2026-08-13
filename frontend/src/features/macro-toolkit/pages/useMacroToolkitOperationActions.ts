@@ -15,6 +15,7 @@ import type {
   MacroToolkitScriptRecord,
 } from "../../../api/macroToolkitClient";
 import { runPollingTask } from "../../../app/jobs/polling";
+import { EM_DASH } from "../../../utils/format";
 import {
   buildCrisisGapRepairFeedback,
   canRefreshMacroSourceBackfill,
@@ -627,7 +628,7 @@ export function useMacroToolkitOperationActions({
         onUpdate: (payload) => {
           setStockRefreshResult(
             payload.status === "completed"
-              ? `刷新完成：历史 ${payload.history_row_count ?? "-"} 行，因子 ${payload.factor_row_count ?? "-"} 行`
+              ? `刷新完成：历史 ${payload.history_row_count ?? EM_DASH} 行，因子 ${payload.factor_row_count ?? EM_DASH} 行`
               : `刷新状态：${payload.status}`,
           );
         },
@@ -638,7 +639,7 @@ export function useMacroToolkitOperationActions({
         );
       }
       setStockRefreshResult(
-        `刷新完成：历史 ${refresh.history_row_count ?? "-"} 行，因子 ${refresh.factor_row_count ?? "-"} 行`,
+        `刷新完成：历史 ${refresh.history_row_count ?? EM_DASH} 行，因子 ${refresh.factor_row_count ?? EM_DASH} 行`,
       );
       recordActionReceipt({
         id: receiptId,
@@ -647,7 +648,7 @@ export function useMacroToolkitOperationActions({
         status: "completed",
         time: "刚刚",
         target: "Choice 股票历史 + 因子",
-        artifact: `历史 ${refresh.history_row_count ?? "-"} 行 · 因子 ${refresh.factor_row_count ?? "-"} 行`,
+        artifact: `历史 ${refresh.history_row_count ?? EM_DASH} 行 · 因子 ${refresh.factor_row_count ?? EM_DASH} 行`,
         nextStep: "核对策略展示和刷新状态",
       });
       await clearFullAnalysisCache();

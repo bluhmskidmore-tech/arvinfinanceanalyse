@@ -1,4 +1,5 @@
 import type { ResultMeta } from "../../../api/contracts";
+import { EM_DASH } from "../../../utils/format";
 import {
   crossAssetAssetDirectionLabel,
   type CrossAssetBondTransmissionJudgment,
@@ -263,7 +264,7 @@ export function AssetClassAnalysisPanel({
                             <span>{item.label}</span>
                             <strong>{item.valueLabel}</strong>
                             <small>
-                              {evidenceStatusLabel(item.status)} · {item.changeLabel} · {item.unitLabel} · {item.tradeDate ?? "—"} · {item.sourceLabel}
+                              {evidenceStatusLabel(item.status)} · {item.changeLabel} · {item.unitLabel} · {item.tradeDate ?? EM_DASH} · {item.sourceLabel}
                             </small>
                           </div>
                         ))}

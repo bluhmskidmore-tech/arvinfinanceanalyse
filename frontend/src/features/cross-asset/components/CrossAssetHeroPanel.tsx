@@ -1,3 +1,4 @@
+import { EM_DASH } from "../../../utils/format";
 import "./CrossAssetHeroPanel.css";
 
 export type CrossAssetHeroPanelProps = {
@@ -10,7 +11,7 @@ export type CrossAssetHeroPanelProps = {
   rateDirectionLabel: string;
   /** 报告日（crossAssetDataDate || linkageReportDate） */
   reportDate: string;
-  /** 环境综合评分（env.composite_score）；null → "—" */
+  /** 环境综合评分（env.composite_score）；null → EM_DASH */
   compositeScore: number | null;
   loading?: boolean;
 };
@@ -30,7 +31,7 @@ const UI = {
 
 function formatCompositeScore(score: number | null): string {
   if (score == null || Number.isNaN(score)) {
-    return "—";
+    return EM_DASH;
   }
   const sign = score > 0 ? "+" : "";
   return `${sign}${score.toFixed(2)}`;
@@ -67,7 +68,7 @@ export function CrossAssetHeroPanel({
         <p className="cross-asset-hero-panel__conclusion">{conclusionText}</p>
         <div className="cross-asset-hero-panel__meta">
           <span className="cross-asset-hero-panel__meta-item">
-            {UI.reportDateLabel} {reportDate || "—"}
+            {UI.reportDateLabel} {reportDate || EM_DASH}
           </span>
           <span className="cross-asset-hero-panel__chip" title={regimeDescription}>
             {UI.regimeChipPrefix} {regimeLabel}
