@@ -35,27 +35,29 @@
 
 ### 2.2 深色机构终端（Decision Desk，全站默认）
 
-用于全系统业务页面，包括经营日报、组合、债券、股票、市场数据、宏观、损益与治理工作流。近黑藏青底 + 分层面板 + **去饱和**冷强调。
+用于全系统业务页面，包括经营日报、组合、债券、股票、市场数据、宏观、损益与治理工作流。当前 37 个 canonical scope 与 AntD `workbenchTheme` 已统一使用 **Nocturne**：近黑蓝紫底 + 分层面板 + 单一低饱和蓝紫强调。`.theme-dh-api` 中的钢蓝值仅是未登记 scope / 明确例外的兼容回退，不是当前默认色板或新页面模板。
 
 > `/product-category-pnl` 已由产品确认锁定为深色完成版；不得用旧 IB 浅色实现或历史快照覆盖。现存浅色页面属于迁移债务，不构成后续设计权威。
 
 | Token | 值 | 用途 |
 |---|---|---|
-| `--dh-api-bg` | `#070a12` | 页面底（非纯黑） |
-| `--dh-api-panel` / `-2` / `-3` | `#0c1421` / `#101a2a` / `#132033` | 三层面板递进 |
-| `--dh-api-line` / `-soft` | `rgba(103,119,142,.34/.22)` | 边线两级 |
-| `--dh-api-ink` / `soft` / `muted` | `#e8eef7` / `#a9b6c7` / `#8593a8` | 文字三级 |
-| `--dh-api-blue` | `#72a7dc` | 强调/链接（去饱和） |
-| `--dh-api-green` / `amber` / `red` | `#66b98b` / `#c9a565` / `#d47a72` | 语义色（去饱和） |
+| `--nct-bg` / `--dh-api-bg` | `#161826` | 页面底（非纯黑） |
+| `--nct-rail` / `--dh-api-rail` | `#131522` | 工作台侧栏 |
+| `--nct-surface` / `well` / `raised` | `#232532` / `#1c1e2b` / `#2b2d3d` | `panel → panel-2 → panel-3` 三层面板 |
+| `--nct-ring` / `line` | `#3f424d` / `12%` 浅墨混合 | 实线边框 / 弱分隔线 |
+| `--nct-ink` / `soft` / `muted` | `#f3f5fe` / `#b2b6ca` / `#9397ab` | 文字三级 |
+| `--nct-accent` / `--dh-api-blue` | `#9184d9` | 唯一主强调、链接、主按钮 |
+| `--nct-up` / `warn` / `down` | `#5abd99` / `#d5b26e` / `#d97b6c` | 绿涨、琥珀警示、红跌 |
+| `--dh-api-radius` | `8px` | canonical Nocturne 圆角 |
 
 **规则：**
-- 深色页语义色必须用以上去饱和色阶，禁止把浅色主题的高饱和 `#ef4444`/`#2d8a5e` 直接搬进深色页。
+- 深色页语义色必须用以上 Nocturne 去饱和色阶，禁止把浅色主题的高饱和 `#ef4444`/`#2d8a5e` 直接搬进深色页。
 - 面板层级靠 `panel → panel-2 → panel-3` 背景递进 + 细边线表达，**不靠阴影**（深色底上阴影无效且脏）。
-- 页面主题由页面根容器一次性声明（token 重映射），子组件禁止各自覆盖主题变量。
+- 页面根声明已登记的 `data-moss-theme-scope`，子组件消费 `--dh-api-*` 语义链；AntD / canvas 等不能直接读取 CSS 变量的消费方使用 `nocturneTokens` 镜像，禁止各自另造色板。
 
 ### 2.3 选择规则
 
-- 新页面、重做页面和恢复页面默认使用深色机构终端主题，并在页面根容器一次性声明 `theme-dh-api` 或其统一后继主题标记。
+- 新页面、重做页面和恢复页面默认使用深色机构终端主题，在页面根登记 canonical `data-moss-theme-scope`，并沿用路由边界的 `theme-dh-api` 深色 owner。
 - IB 浅色只允许作为明确记录的临时兼容或产品例外；不得因旧文档、旧截图或旧提交把已确认的深色页面回退为浅色。
 - `/product-category-pnl`、经营日报首页、组合首页、债券分析和股票分析均为已锁定深色路由。
 - 同一路由树下的详情页/下钻页跟随其入口页主题，避免跳转时明暗闪切。
@@ -85,12 +87,12 @@
 
 ## 4. Color
 
-- **单一数值源：** `designSystem.ts`（`designTokens` + `ibTokens`）与 `tokens.css`。新色先入 token，禁止散落硬编码 hex。
+- **权威数值源：** `tokens.css`（CSS 变量）与 `designSystem.ts`（`designTokens`、`ibTokens`、`nocturneTokens`）。Nocturne 的 CSS / JS 镜像由 `theme.test.ts` 值级互锁；新色先入对应 token，禁止散落硬编码 hex。
 - **浅色例外主题锚点：** 主色 `primary[600]` `#1850a1`（偏蓝少青）；链接/次强调 `info[500]` `#3b82f6`。仅供已登记的浅色例外或迁移中页面使用；新组件默认使用 2.2 的深色终端 token。
-- **语义色统一：** `semantic.profit/up = #2d8a5e`、`loss/down = #ef4444`（浅色）；深色页用 2.2 的去饱和对应色。同一页面同一语义只允许一种色值。
+- **语义色统一：** `semantic.profit/up = #2d8a5e`、`loss/down = #ef4444`（浅色）；深色页使用 2.2 的 Nocturne 对应色。同一页面同一语义只允许一种色值。
 - **Color Consistency Lock：** 页面级强调色一旦确定，全页统一。不允许第 7 个区块突然出现主题外的新强调色。
-- **禁用：** AI 紫/霓虹渐变、纯黑 `#000` 大底、高饱和撞色、无语义的彩色装饰。
-- **域内调色板（`cockpit` / `warm` / `institutional`）：** 可继续使用，但仅限视觉层（visual-only），不承载业务语义；新页面优先从 IB / dh-api 两套主色系取色，确有需要再引用域内调色板，并保持与所在页面主题的明暗与饱和度协调。
+- **禁用：** Nocturne 单点批准强调色以外的 AI 紫/霓虹渐变、纯黑 `#000` 大底、高饱和撞色、无语义的彩色装饰。
+- **域内调色板（`cockpit` / `warm` / `institutional`）：** 可继续使用，但仅限视觉层（visual-only），不承载业务语义；新页面优先使用 Nocturne `--dh-api-*` 语义链，IB 仅供已登记浅色例外，钢蓝兼容回退不得作为新色板来源。
 
 ---
 
@@ -101,7 +103,7 @@
 - **栅格：** 主内容 + 右栏布局用 `minmax(0, 1fr) + 固定右栏（320px 级）`；三列区大桌面 8-8-8，窄屏先折 12+12 再单栏，**禁止**压缩字号保列数。
 - **不等高网格必须 `align-items: start`：** 多列卡片/新闻组内容量天然不等时，禁止默认 stretch 把空卡拉出大段空白（"空白比内容多"是版式事故）。左右双栏若追求齐底，用 `align-self: stretch` 让**卡片背景**补齐，而非留裸空白断层。
 - **空态收缩：** 0 条数据的分组收缩到消息框自身高度（min-height ≤ 120px 级），居中一句话说明 + 原因，不占满等高格。
-- **圆角一致性（Shape Lock）：** IB 主题全局 `2px` 锐角；深色终端页 `6px`。一页一套圆角制度，禁止混用大圆角"玩具感"卡片。
+- **圆角一致性（Shape Lock）：** IB 主题全局 `2px` 锐角；canonical Nocturne 深色终端页 `8px`（`--dh-api-radius` / `nocturneTokens.radius`）。一页一套圆角制度，禁止混用大圆角"玩具感"卡片。
 - **卡片使用纪律：** 仅当层级需要时才用卡片容器；同级信息优先用 `border-top` / `divide` / 留白分组。禁止"格子套格子"。
 
 ---
@@ -230,3 +232,4 @@
 | 2026-08-13 | 经营日报首页「机构终端级」降噪打磨（业主指示按代理自身标准执行、不必逐条对照本文；8 分区并行实现 + 视觉/工程双验收，版式区块顺序与业务口径零改动）：**常态零徽标**——快捷下钻 8×「已同步」、治理台账「已接入」描边胶囊、产品分类「已就绪」、组合对比就绪行全部改暗点/muted 或仅异常态发声；**可见截断清零**——hero 右栏元信息字段化（1440 下「核心域截至 …」完整可见）、支撑带 meta 行去「标签：」前缀留值 + 来源 snake_case token 剥离（`stripInternalTokens`/`metaValueDisplay`，全文保留 title）；**原始痕迹清零**——新增 `lib/researchTitleDisplay.ts` 显示层清洗（去 .pdf/尾部日期戳/下划线，href 与 title 保留原文）应用于债券新闻/政策资金面/研报列表三处，行内重复「债券市场」分类胶囊删除，资金代理行 `public_repo_rate_query` 型 vendor token 收进 title；**强调色纪律**——蓝紫只留可点击/tab 激活/主结论/图表数据线，分区编号（01-04）、panelHeader 信息 span、装饰数字全部转 muted（`.panelHeader > span` 从 accent 组拆出）；**空态降权**——「暂无正式待办源」由琥珀大字降为 13px muted、主视觉让位观察结论；**密度**——快捷下钻 2 列×4 行改单列 8 行（行高约 57px 均分，消除行内大空白）；**顶栏时间去重**三处→两处（数据状态胶囊去时间数字、市场/估值两段并一段 + title 全量，新增 `dhStatusPillQuiet` 系仅新增类不改共享值）；**数据证据带**六描边格收敛为单行安静摘要（去重「核心」前缀、仅异常项琥珀）；**图表语法**——`OptionTwoSparkline` 新增 `pointDots`（期限小图 1/3/5/10 锚点）、KPI spark 补 endDot、缺序列补「无历史序列」小注、DV01 条 `min-width: 2px` 保 30Y 可见 | 业主 2026-08-13 指示「不用完全对照 DESIGN，按照你的标准拆分 10 个子代理优化」；本条与 §6「状态即内容」不冲突——缺口与状态仍全部显式，只是常态收声、异常才亮。验收（DOM 审计 + 截图对比 + 工程回归）：常态徽标 0、字符省略号 0、原始 token 0、支撑带三卡底边差 0px，剩余非交互 accent 仅日期控件与图表容器（合规）、剩余单行截断仅新闻列表行（title 全文，终端列表惯例）；dashboard-home 31 文件 233 项 + 守卫 35 项 Vitest 全绿，eslint 0 error，typecheck 通过，debt:audit 本轮触碰文件零增长（2 项红为并行在途 `moss_project_mcp.py` 与 `theme.test.ts`/`themeScopes.ts`，git 归属核实非本轮） |
 | 2026-08-13 | 遗留四项并行轮收口（业主批准，按归属分四笔提交；本条为总条目）：① antd cssinjs token 全量切 Nocturne——`workbenchTheme`（唯一注入点 `ThemedRouteBoundary` 的 ConfigProvider）token 整组由钢蓝 dhApiTokens 切至 `nocturneTokens`（数值源=tokens.css Nocturne scope），Modal/Drawer/Select 下拉等 portal 弹层随 cssinjs context 全局翻转、免逐页局部修法，此前多条目记录的「antd cssinjs 基础皮肤钢蓝、待全站收敛后一次切常量」既定残留自本条闭合，`theme.test.ts` 17 处 antd 断言同步切源；② Nocturne 护栏推导化四项——WorkbenchShell 渲染分支常量化导出（新增 `workbenchShellSections.ts`，纯提炼零行为变化）、终端条/子导航/cockpit 清单期望改从 Shell 常量 + navigation 推导（替代手维护清单）、scope 别名口子封堵（别名缺席白名单即断言失败）、成对子列表分列护栏（tokens.css 成对块漏行单独可见）；灵敏度自检对「Shell 新增分支未登记」「tokens.css 漏行」两种漂移均验证可拦截；③ themeScope 收窄为 37 项字面量联合（新增 `themeScopes.ts`，与 tokens.css 主色板 scope 列表同构、parity 断言锁定），`PagePrimitives` 与 market-shell types 的 themeScope prop 由裸 string 收窄、拼写错误产生的静默死 scope 编译期即报；④ balance-analysis 深层明细浅色迁移（2026-08-13 批量条目预留的「单独轮次」）——页级两个中间变量层 + moss 十阶页根重映射，893 项浅色/钢蓝字面量归零，评级六档换 Nocturne 链，共享 `PlaceholderCard` 走 scoped 覆盖；审查修复 accent 底文字对比度（近白 ink 2.97:1→深墨 5.45:1，AA 达标）；`balanceWorkbench.css` 经证据评估为运行时死码留后续清理 | 业主批准的遗留项并行收口轮；`/kpi` owners 读接口 403 后端修复（dev 匿名 fallback 四条件放行 + 无 active owner 200 结构化空态 meta 披露）同轮完成，属后端契约不入 DESIGN 正文；三模型分工审查原定 Opus/GPT 因区域不可用改配 inherit/Grok4.5/Grok4.6，主题层与护栏全 PASS，KPI 与 balance 阻断项处理/拆分后放行。验收：theme+WorkbenchShell 定向 Vitest 105 项绿、KPI 拆分提交重建态 pytest 43 项绿；dev_postgres 两文件混有他人在途行（adb_analysis 授权、foreign-listener 防护），按归属只取 kpi 行提交 |
 | 2026-08-13 | 宏观观察 `/macro-observation` 按业主指示以十角色拆分（3 研究 / 5 实现 / 2 验收）照首页 Nocturne 标准从 `MacroToolkitPage` 双模式（`mode="observation"`）拆出独立页面 `features/macro-observation/`：编排壳 356 行 + `model/macroObservationPageModel` 纯函数层（65+ 单测，判定式自旧编排逐字迁移）+ 6 个编号分区组件；页头 20/12 + 只读观察徽标 + 状态 chips + 「查看完整分析」动作；CSS counter 编号分区（01 当日观察结论 / 02 信号与风险对照 / 03 模型与策略证据 / 04 危机分证据 / 05 数据健康与修复项 / 06 证据与口径）+ `scroll-margin-top` 52px；KPI 单框六格横带（投研观点 / 决策摘要可用模块 / 危机分 / A股风险 / 主信号 / 策略供数，core 态 deferred 以诚实 note 标注不装数）；危机分 430 点 ECharts 折线（scope 计算值取色 + nocturneTokens 回退）；「读取后端API信息」补露出 P0 字段——A股仓位规则与后续观察、策略供数状态与不可用原因、危机分模型建议、ETF 双频摘要、修复项最新日期/滞后天数、质量旗标恒 warning 防误读说明；后端 token 全量中文化（degraded_reason 6 种 / ETF boundary；Hason 边界句 title 保原文）；token scope 沿用 macro-toolkit（`theme.test.ts` NOCTURNE_SECTION_SCOPE_ALIASES 选择器别名先例）；只读边界降权为琥珀左线细注（Playwright dark-theme readySelector 保持）；**旧双模式收口**——`MacroToolkitPage` 删 `mode` prop/`MacroToolkitPageMode`、`showOperations` 恒真化简全部分支（876→732 行），删 `MacroToolkitObservationView.tsx`/`MacroToolkitObservationSections.tsx` 两文件与 `ObservationEvidenceTraceSummary` 死导出，CSS 删 cockpit--observation/observation-loop/observation-boundaries/observation-flow/signal-risk/trace-summary/investment-evidence 七族专属段（observation-evidence*/indicator-observation*/strategy-observation*/hason--observation 四族因禁触共享文件或 toolkit 侧仍引用而保留），`MacroToolkitPage.test.tsx` 删 11 个 observation 用例（route 级 7 + `mode="observation"` 直渲染 2 + 源码静态断言 2，断言已由 MacroObservationPage 测试体系覆盖）+ ReportBundle 集成测试收敛 toolkit 单面；mock 链路决策旗标/报告包 missing 契约保持 | 业主指示照首页 Nocturne 标准十角色拆分；只读观察与工具运营分离收窄误操作面，/macro-toolkit 工具页零漂移。验收：模型层 61 测 + 骨架 7 测 + 三分区测试组，父代理集成修正后 102 用例全绿，角色 9 浏览器视觉走查 8 项零缺陷；角色 10 收口回归——GitNexus upstream impact LOW（路由懒加载，caller 仅 routes.tsx 与测试），定向 8 文件 293 绿，全量 vitest 435 文件 4521 passed + 3 skipped 零失败，tsc/eslint(--max-warnings=0) 零错，debt:audit 三项 PASS（MacroToolkitPage.css hex 按收敛方向下调基线 21→17），Playwright live-route-dark-theme 双路由 2 绿 + a11y-visual-smoke 4 绿 + workbench-section-subnav 1 绿，/macro-toolkit 抽查 200 + `macro-toolkit-page`/`macro-toolkit-tailwind-cockpit` testid 完好且 cockpit 固定 `--toolkit` 形态 |
+| 2026-08-13 | 权威正文与活动注释校准：§2.2 / §4 / §5 追认已生效的 37 个 canonical Nocturne scope、AntD `workbenchTheme → nocturneTokens` 与 `8px` canonical radius；`macro-observation` 与 `macro-toolkit` 已拆为独立页面但共用 `macro-toolkit` scope | 权威文档追上已生效代码，本次仅改正文与注释，不改变运行时。以本条及同日「遗留四项并行轮收口」条目取代早期逐页 rollout、钢蓝默认、AntD 钢蓝残留和宏观同组件的**当前结论**；旧条目保留为当时事实，不篡改历史 |
