@@ -7,7 +7,7 @@ import type { BondPositionItem } from "../../../api/contracts";
 import { buildBondTradingDeskPath } from "../../bond-trading-desk/lib/bondTradingDeskPageModel";
 import type { PositionsPrimaryListTableState } from "../model/positionsPageModel";
 import { EM_DASH } from "../../../utils/format";
-import { formatAmountYi, formatRatePercent } from "../utils/format";
+import { formatAmountYiNumber, formatRatePercent } from "../utils/format";
 
 const ALL_BOND_SUBTYPE = "__all_bond_subtypes__";
 
@@ -70,18 +70,18 @@ export default function PositionsBondsWorkspaceSection({
       { title: "业务种类", dataIndex: "sub_type", render: (v: string | null) => v || EM_DASH },
       { title: "资产分类", dataIndex: "asset_class", render: (v: string | null) => v || EM_DASH },
       {
-        title: "市值",
+        title: "市值(亿元)",
         dataIndex: "market_value",
         align: "right",
         className: "positions-view__num-cell",
-        render: (v: string | null) => formatAmountYi(v),
+        render: (v: string | null) => formatAmountYiNumber(v),
       },
       {
-        title: "面值",
+        title: "面值(亿元)",
         dataIndex: "face_value",
         align: "right",
         className: "positions-view__num-cell",
-        render: (v: string | null) => formatAmountYi(v),
+        render: (v: string | null) => formatAmountYiNumber(v),
       },
       {
         title: "估值净价",

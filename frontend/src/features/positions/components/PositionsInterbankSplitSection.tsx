@@ -7,7 +7,7 @@ import type {
   InterbankCounterpartySplitResponse,
 } from "../../../api/contracts";
 import { EM_DASH } from "../../../utils/format";
-import { formatAmountYi, formatRatePercent } from "../utils/format";
+import { formatAmountYi, formatAmountYiNumber, formatRatePercent } from "../utils/format";
 import "./PositionsInterbankSections.css";
 
 type CounterpartyRow = CounterpartyStatItem & { key: string };
@@ -15,11 +15,11 @@ type CounterpartyRow = CounterpartyStatItem & { key: string };
 const INTERBANK_COUNTERPARTY_RANK_COLUMNS: TableColumnsType<CounterpartyRow> = [
   { title: "对手方", dataIndex: "customer_name", ellipsis: true },
   {
-    title: "日均",
+    title: "日均(亿元)",
     dataIndex: "avg_daily_balance",
     align: "right",
     className: "positions-view__num-cell",
-    render: (v: string) => formatAmountYi(v),
+    render: (v: string) => formatAmountYiNumber(v),
   },
   {
     title: "利率",

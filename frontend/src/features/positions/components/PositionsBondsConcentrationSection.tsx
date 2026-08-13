@@ -17,7 +17,12 @@ import {
   topRatingItem,
 } from "../model/positionsPageModel";
 import { EM_DASH } from "../../../utils/format";
-import { formatAmountYi, formatPercentValue, formatRatePercent } from "../utils/format";
+import {
+  formatAmountYi,
+  formatAmountYiNumber,
+  formatPercentValue,
+  formatRatePercent,
+} from "../utils/format";
 
 type CounterpartyRow = CounterpartyStatItem & { key: string };
 
@@ -29,18 +34,18 @@ const BONDS_COUNTERPARTY_COLUMNS: TableColumnsType<CounterpartyRow> = [
     render: (v: string) => <Typography.Link>{v}</Typography.Link>,
   },
   {
-    title: "区间累计",
+    title: "区间累计(亿元)",
     dataIndex: "total_amount",
     align: "right",
     className: "positions-view__num-cell",
-    render: (v: string) => formatAmountYi(v),
+    render: (v: string) => formatAmountYiNumber(v),
   },
   {
-    title: "日均",
+    title: "日均(亿元)",
     dataIndex: "avg_daily_balance",
     align: "right",
     className: "positions-view__num-cell",
-    render: (v: string) => formatAmountYi(v),
+    render: (v: string) => formatAmountYiNumber(v),
   },
   {
     title: "加权收益率",

@@ -9,7 +9,7 @@ import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { nocturneTokens } from "../../../theme/designSystem";
 import { EM_DASH } from "../../../utils/format";
 import { POSITIONS_QUERY_STALE_TIME_MS } from "../model/positionsPageModel";
-import { formatAmountYi, formatPercentValue, formatRatePercent } from "../utils/format";
+import { formatAmountYiNumber, formatPercentValue, formatRatePercent } from "../utils/format";
 
 /*
  * Nocturne 深色系列色板（canvas 读不到 CSS 变量，走 designSystem.ts 的 TS 镜像）。
@@ -45,11 +45,11 @@ const INDUSTRY_COLUMNS: TableColumnsType<IndustryRow> = [
     ),
   },
   {
-    title: "日均",
+    title: "日均(亿元)",
     dataIndex: "avg_daily_balance",
     align: "right",
     className: "positions-view__num-cell",
-    render: (v: string) => formatAmountYi(v),
+    render: (v: string) => formatAmountYiNumber(v),
   },
   {
     title: "占比",

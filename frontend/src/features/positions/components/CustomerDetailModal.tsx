@@ -10,7 +10,7 @@ import { buildBondTradingDeskPath } from "../../bond-trading-desk/lib/bondTradin
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { nocturneTokens } from "../../../theme/designSystem";
 import { POSITIONS_QUERY_STALE_TIME_MS } from "../model/positionsPageModel";
-import { formatAmountYi, formatRatePercent } from "../utils/format";
+import { formatAmountYi, formatAmountYiNumber, formatRatePercent } from "../utils/format";
 import { EM_DASH } from "../../../utils/format";
 import "./CustomerDetailModal.css";
 
@@ -119,11 +119,17 @@ export default function CustomerDetailModal({ open, onClose, customerName, repor
       {
         title: "评级",
         dataIndex: "rating",
-        render: (r: string) => (
-          <Typography.Text className={`positions-customer-detail__rating ${ratingToneClass(r)}`}>
-            {r}
-          </Typography.Text>
-        ),
+        /* 真实数据大量 rating 为空串：空白评级渲染 EM_DASH 纯文本，不出空胶囊。 */
+        render: (r: string | null) =>
+          r?.trim() ? (
+            <Typography.Text
+              className={`positions-customer-detail__rating ${ratingToneClass(r)}`}
+            >
+              {r}
+            </Typography.Text>
+          ) : (
+            EM_DASH
+          ),
       },
       {
         title: "行业",
@@ -135,7 +141,7 @@ export default function CustomerDetailModal({ open, onClose, customerName, repor
         dataIndex: "market_value",
         align: "right",
         className: "positions-customer-detail__num-cell",
-        render: (v: string) => formatAmountYi(v),
+        render: (v: string) => formatAmountYiNumber(v),
       },
       {
         title: "收益率",

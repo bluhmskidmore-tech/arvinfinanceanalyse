@@ -38,7 +38,8 @@ export function buildMockBondTradingDeskPositionsBonds(): BondPositionItem[] {
       market_value: "120000000",
       face_value: "100000000",
       valuation_net_price: "102.30",
-      yield_rate: "3.10",
+      // 小数口径（0.0310 → 3.10%），与真实契约 _fmt_rate 一致；演示数据自洽口径见 D 节审计。
+      yield_rate: "0.0310",
     },
   ];
 }

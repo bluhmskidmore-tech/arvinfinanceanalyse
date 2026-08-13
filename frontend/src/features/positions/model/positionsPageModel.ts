@@ -17,7 +17,12 @@ import type {
   ResultMeta,
 } from "../../../api/contracts";
 import { EM_DASH, type LabeledValue } from "../../../pageModel";
-import { formatAmountYi, formatPercentValue, formatRatePercent } from "../utils/format";
+import {
+  formatAmountYi,
+  formatAmountYiAuto,
+  formatPercentValue,
+  formatRatePercent,
+} from "../utils/format";
 
 /** 页面主 Tab：债券持仓 / 同业持仓。 */
 export type PositionsTabKey = "bonds" | "interbank";
@@ -398,7 +403,8 @@ export function buildPositionsBondsKpiBand(input: {
       value: formatAmountYi(stats.total_avg_daily),
       ...(stats.num_days != null ? { note: `分母 ${stats.num_days} 天` } : {}),
     },
-    { ...rangeTotal, value: formatAmountYi(stats.total_amount) },
+    /* 区间累计是全页最大读数（真实数据 70 万亿量级），超阈值切万亿避免 KPI 格折行。 */
+    { ...rangeTotal, value: formatAmountYiAuto(stats.total_amount) },
     {
       ...weightedRate,
       value: stats.total_weighted_rate ? formatRatePercent(stats.total_weighted_rate) : EM_DASH,
@@ -434,7 +440,7 @@ export function buildPositionsInterbankKpiBand(input: {
   return [
     {
       ...assetAvg,
-      value: formatAmountYi(split.asset_total_avg_daily),
+      value: formatAmountYiAuto(split.asset_total_avg_daily),
       ...(split.num_days != null ? { note: `分母 ${split.num_days} 天` } : {}),
     },
     {
@@ -444,7 +450,7 @@ export function buildPositionsInterbankKpiBand(input: {
         : EM_DASH,
     },
     { ...assetCustomers, value: `${split.asset_customer_count} 户` },
-    { ...liabilityAvg, value: formatAmountYi(split.liability_total_avg_daily) },
+    { ...liabilityAvg, value: formatAmountYiAuto(split.liability_total_avg_daily) },
     {
       ...liabilityRate,
       value: split.liability_total_weighted_rate

@@ -511,6 +511,23 @@ describe("buildPositionsBondsKpiBand", () => {
     expect(band[1].value).toBe("0.00 亿元");
   });
 
+  it("switches the range-total cell to wan-yi at the 1e12-yuan threshold", () => {
+    // 真实区间累计 709,623.88 亿元（70 万亿量级）单行显示为万亿
+    const band = buildPositionsBondsKpiBand({
+      stats: bondsStats({ total_amount: "70962388000000" }),
+      loading: false,
+    });
+    expect(band[1].value).toBe("70.96 万亿元");
+
+    // 阈值下 0.99 万亿保持亿元；日均合计格不参与万亿切换
+    const below = buildPositionsBondsKpiBand({
+      stats: bondsStats({ total_amount: "990000000000" }),
+      loading: false,
+    });
+    expect(below[1].value).toBe("9,900.00 亿元");
+    expect(below[0].value).toBe("2.00 亿元");
+  });
+
   it("omits the denominator note when num_days is missing", () => {
     const band = buildPositionsBondsKpiBand({
       stats: bondsStats({ num_days: null as unknown as number }),
@@ -562,6 +579,18 @@ describe("buildPositionsInterbankKpiBand", () => {
   it("never sets a tone on any cell", () => {
     const band = buildPositionsInterbankKpiBand({ split: interbankSplit(), loading: false });
     expect(band.every((cell) => cell.tone === undefined)).toBe(true);
+  });
+
+  it("switches both avg-daily cells to wan-yi at the 1e12-yuan threshold", () => {
+    const band = buildPositionsInterbankKpiBand({
+      split: interbankSplit({
+        asset_total_avg_daily: "70962388000000",
+        liability_total_avg_daily: "990000000000",
+      }),
+      loading: false,
+    });
+    expect(band[0].value).toBe("70.96 万亿元");
+    expect(band[3].value).toBe("9,900.00 亿元");
   });
 
   it("shows loading placeholders while the query is pending", () => {

@@ -57,12 +57,41 @@ export function scaledBigIntToDecimalString(x: bigint, scale: number, decimals: 
   return decimals > 0 ? `${sign}${groupInt(intRaw)}.${frac}` : `${sign}${groupInt(intRaw)}`;
 }
 
-export function formatAmountYi(amountYuan: string | null | undefined, decimals: number = 2): string {
+/** 元→亿元裸数（"1.15"，含千分位，不带单位）：单位收进表格列头时用。 */
+export function formatAmountYiNumber(
+  amountYuan: string | null | undefined,
+  decimals: number = 2,
+): string {
   if (!amountYuan) return EM_DASH;
   const { value, scale } = decimalToIntegerAndScale(amountYuan);
   const yiScaled = divideRoundHalfUp(value * pow10(decimals), 100000000n * pow10(scale));
-  const s = scaledBigIntToDecimalString(yiScaled, decimals, decimals);
-  return `${s} 亿元`;
+  return scaledBigIntToDecimalString(yiScaled, decimals, decimals);
+}
+
+export function formatAmountYi(amountYuan: string | null | undefined, decimals: number = 2): string {
+  if (!amountYuan) return EM_DASH;
+  return `${formatAmountYiNumber(amountYuan, decimals)} 亿元`;
+}
+
+export function formatAmountWanYi(
+  amountYuan: string | null | undefined,
+  decimals: number = 2,
+): string {
+  if (!amountYuan) return EM_DASH;
+  const { value, scale } = decimalToIntegerAndScale(amountYuan);
+  const wanYiScaled = divideRoundHalfUp(value * pow10(decimals), 1000000000000n * pow10(scale));
+  const s = scaledBigIntToDecimalString(wanYiScaled, decimals, decimals);
+  return `${s} 万亿元`;
+}
+
+/** 金额 ≥1 万亿（1e12 元）切万亿单位，否则亿元：只给 KPI 大数读数用。 */
+export function formatAmountYiAuto(amountYuan: string | null | undefined): string {
+  if (!amountYuan) return EM_DASH;
+  const { value, scale } = decimalToIntegerAndScale(amountYuan);
+  const abs = value < 0n ? -value : value;
+  return abs >= 1000000000000n * pow10(scale)
+    ? formatAmountWanYi(amountYuan)
+    : formatAmountYi(amountYuan);
 }
 
 export function formatAmountWan(amountYuan: string | null | undefined, decimals: number = 2): string {

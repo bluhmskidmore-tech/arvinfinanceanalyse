@@ -5,7 +5,7 @@ import type { TableColumnsType } from "antd";
 import type { InterbankPositionItem, PositionDirection } from "../../../api/contracts";
 import type { PositionsPrimaryListTableState } from "../model/positionsPageModel";
 import { EM_DASH } from "../../../utils/format";
-import { formatAmountYi, formatRatePercent } from "../utils/format";
+import { formatAmountYiNumber, formatRatePercent } from "../utils/format";
 import "./PositionsInterbankSections.css";
 
 const ALL_INTERBANK_PRODUCT = "__all_interbank_products__";
@@ -31,11 +31,11 @@ const INTERBANK_LIST_COLUMNS: TableColumnsType<InterbankListRow> = [
   { title: "产品类型", dataIndex: "product_type", render: (v: string | null) => v || EM_DASH },
   { title: "方向", dataIndex: "direction", render: (v: string | null) => v || EM_DASH },
   {
-    title: "金额",
+    title: "金额(亿元)",
     dataIndex: "amount",
     align: "right",
     className: "positions-view__num-cell",
-    render: (v: string) => formatAmountYi(v),
+    render: (v: string) => formatAmountYiNumber(v),
   },
   {
     title: "利率",

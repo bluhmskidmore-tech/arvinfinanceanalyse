@@ -186,10 +186,23 @@ describe("PositionsView business contract", () => {
     const codeCell = await screen.findByText("UNIT-001");
     const row = codeCell.closest("tr");
     expect(row).not.toBeNull();
-    // 市值元→亿元换算（150,000,000 元 = 1.50 亿元）
-    expect(row!).toHaveTextContent("1.50 亿元");
-    // 收益率小数→百分比，half-up 舍入（0.03125 → 3.13%）
-    expect(row!).toHaveTextContent("3.13%");
+    // 金额单位收进列头（格内裸数）；scroll.x 渲染隐藏测量行会复制表头，用 AllBy。
+    expect(screen.getAllByText("市值(亿元)").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("面值(亿元)").length).toBeGreaterThan(0);
+    // 行内逐格断言：市值元→亿元裸数（150,000,000 元 = 1.50）；
+    // 收益率小数→百分比，half-up 舍入（0.03125 → 3.13%）。
+    const cells = Array.from(row!.querySelectorAll("td")).map((td) => td.textContent);
+    expect(cells).toEqual([
+      "UNIT-001",
+      "契约测试主体",
+      "信用债",
+      "HTM",
+      "1.50",
+      "1.00",
+      "100.00000000",
+      "3.13%",
+      "打开",
+    ]);
 
     // KPI 横带与列表使用同一套单位换算（区间累计 / 日均 / 加权收益率 / 加权付息率 / 客户数）
     const kpiBand = screen.getByTestId("positions-kpi-band");
@@ -234,9 +247,20 @@ describe("PositionsView business contract", () => {
 
     const zeroRow = screen.getByText("ZERO-001").closest("tr");
     expect(zeroRow).not.toBeNull();
-    // 0 是真实数值：不得渲染为 EM_DASH（null 与 0 语义区分）
-    expect(zeroRow!).toHaveTextContent("0.00 亿元");
-    expect(zeroRow!).toHaveTextContent("0.00%");
+    // 0 是真实数值：不得渲染为 EM_DASH（null 与 0 语义区分）。
+    // 市值列裸数 "0.00"（单位在列头），逐格断言避免裸数字多匹配。
+    const zeroCells = Array.from(zeroRow!.querySelectorAll("td")).map((td) => td.textContent);
+    expect(zeroCells).toEqual([
+      "ZERO-001",
+      "零值主体",
+      "Gov",
+      "HTM",
+      "0.00",
+      "1.00",
+      "0.00000000",
+      "0.00%",
+      "打开",
+    ]);
     const zeroDashCells = Array.from(zeroRow!.querySelectorAll("td")).filter(
       (td) => td.textContent === EM_DASH,
     );
