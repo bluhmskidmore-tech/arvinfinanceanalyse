@@ -911,10 +911,10 @@ function LineageEvidence({ lineage }: { lineage: LedgerPnlCandidateFinancialIndi
           <code>{lineage.code}</code>
         </div>
         <p>
-          {LINEAGE_SOURCE_LABELS[lineage.source]} · {lineage.basis ? BASIS_LABELS[lineage.basis] : "无期间口径"} · {LINEAGE_LEVEL_LABELS[lineage.level]}
+          {LINEAGE_SOURCE_LABELS[lineage.source]}、{lineage.basis ? BASIS_LABELS[lineage.basis] : "无期间口径"}、{LINEAGE_LEVEL_LABELS[lineage.level]}
         </p>
         <small>
-          原始口径 <code>{lineage.source}</code> · <code>{lineage.basis ?? "none"}</code> · <code>{lineage.level}</code>
+          原始口径 <code>{lineage.source}</code> / <code>{lineage.basis ?? "none"}</code> / <code>{lineage.level}</code>
         </small>
         <dl>
           <div><dt>权重</dt><dd>{lineage.weight}</dd></div>

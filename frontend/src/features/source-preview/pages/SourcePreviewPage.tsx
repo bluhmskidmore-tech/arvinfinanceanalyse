@@ -550,7 +550,7 @@ export default function SourcePreviewPage() {
                   <KpiCard
                     title={source.source_family.toUpperCase()}
                     value={`共 ${source.total_rows} 行`}
-                    detail={`报告日期：${source.report_date ?? "—"} · ${groups || "暂无分组"} · 待人工复核 ${source.manual_review_count} 行`}
+                    detail={`报告日期 ${source.report_date ?? "—"}，${groups || "暂无分组"}，待人工复核 ${source.manual_review_count} 行`}
                     valueVariant="text"
                   />
                 </div>

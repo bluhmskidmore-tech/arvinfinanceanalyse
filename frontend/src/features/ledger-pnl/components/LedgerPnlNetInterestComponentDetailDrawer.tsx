@@ -218,7 +218,7 @@ function AvailableComponentDetailContent({
                           {row.sourceEvidence.map((evidence) => (
                             <li key={`${evidence.month}-${evidence.row}-${evidence.ending_cell}`}>
                               <strong>{evidence.month} · {evidence.ledger_file_name}</strong>
-                              <span>{evidence.sheet}!{evidence.ending_cell} · 行 {evidence.row} · 科目格 {evidence.account_code_cell}</span>
+                              <span>{evidence.sheet}!{evidence.ending_cell}，行 {evidence.row}，科目格 {evidence.account_code_cell}</span>
                               <span>期末余额 {evidence.ending_yuan} 元 · {lockLabel(evidence.lock_status)}</span>
                               <code>{evidence.ledger_sha256}</code>
                               <AntButton
@@ -255,16 +255,16 @@ function AvailableComponentDetailContent({
         aria-live="polite"
       >
         {copyFeedback?.state === "success"
-          ? `已复制 后端位置 #${copyFeedback.backendPosition} · ${copyFeedback.accountCode} · ${copyFeedback.month} 来源定位`
+          ? `已复制 后端位置 #${copyFeedback.backendPosition}，科目 ${copyFeedback.accountCode}，账期 ${copyFeedback.month} 来源定位`
           : copyFeedback?.state === "failure"
-            ? `复制失败，请手工复制 后端位置 #${copyFeedback.backendPosition} · ${copyFeedback.accountCode} · ${copyFeedback.month} 来源定位`
+            ? `复制失败，请手工复制 后端位置 #${copyFeedback.backendPosition}，科目 ${copyFeedback.accountCode}，账期 ${copyFeedback.month} 来源定位`
             : copyFeedback?.state === "unconfirmed"
-              ? `复制结果未确认，请手工复制 后端位置 #${copyFeedback.backendPosition} · ${copyFeedback.accountCode} · ${copyFeedback.month} 来源定位`
+              ? `复制结果未确认，请手工复制 后端位置 #${copyFeedback.backendPosition}，科目 ${copyFeedback.accountCode}，账期 ${copyFeedback.month} 来源定位`
             : null}
       </div>
       {copyFeedback?.state === "failure" || copyFeedback?.state === "unconfirmed" ? (
         <label className="ledger-net-interest-detail__manual-copy">
-          <span>后端位置 #{copyFeedback.backendPosition} · {copyFeedback.accountCode} · {copyFeedback.month} 来源定位文本</span>
+          <span>后端位置 #{copyFeedback.backendPosition}，科目 {copyFeedback.accountCode}，账期 {copyFeedback.month} 来源定位文本</span>
           <textarea
             aria-label={`后端位置 ${copyFeedback.backendPosition} ${copyFeedback.accountCode} ${copyFeedback.month} 来源定位文本`}
             readOnly

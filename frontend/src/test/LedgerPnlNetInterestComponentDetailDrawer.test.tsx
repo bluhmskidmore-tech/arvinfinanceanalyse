@@ -401,7 +401,7 @@ describe("LedgerPnlNetInterestComponentDetailDrawer", () => {
     ));
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining("综本!Q12"));
     expect(screen.getByRole("status", { name: "来源定位复制反馈" })).toHaveTextContent(
-      "已复制 后端位置 #1 · 51402010003 · 202606 来源定位",
+      "已复制 后端位置 #1，科目 51402010003，账期 202606 来源定位",
     );
 
     view.rerender(
@@ -468,7 +468,7 @@ describe("LedgerPnlNetInterestComponentDetailDrawer", () => {
       "指标 income.interest.loan.total 贷款利息收入",
     ));
     expect(screen.getByRole("status", { name: "来源定位复制反馈" })).toHaveTextContent(
-      "已复制 后端位置 #1 · 50101010001 · 202606 来源定位",
+      "已复制 后端位置 #1，科目 50101010001，账期 202606 来源定位",
     );
   });
 
@@ -484,7 +484,7 @@ describe("LedgerPnlNetInterestComponentDetailDrawer", () => {
     }));
 
     expect(screen.getByRole("status", { name: "来源定位复制反馈" })).toHaveTextContent(
-      "复制失败，请手工复制 后端位置 #1 · 51402010003 · 202605 来源定位",
+      "复制失败，请手工复制 后端位置 #1，科目 51402010003，账期 202605 来源定位",
     );
     const fallback = screen.getByRole("textbox", {
       name: "后端位置 1 51402010003 202605 来源定位文本",
@@ -527,7 +527,7 @@ describe("LedgerPnlNetInterestComponentDetailDrawer", () => {
       "后端位置 #2 | 科目 51402010003 相同代码的第二条后端记录",
     ));
     expect(screen.getByRole("status", { name: "来源定位复制反馈" })).toHaveTextContent(
-      "已复制 后端位置 #2 · 51402010003 · 202606 来源定位",
+      "已复制 后端位置 #2，科目 51402010003，账期 202606 来源定位",
     );
   });
 
@@ -553,7 +553,7 @@ describe("LedgerPnlNetInterestComponentDetailDrawer", () => {
     });
 
     expect(screen.getByRole("status", { name: "来源定位复制反馈" })).toHaveTextContent(
-      "复制结果未确认，请手工复制 后端位置 #1 · 51402010003 · 202606 来源定位",
+      "复制结果未确认，请手工复制 后端位置 #1，科目 51402010003，账期 202606 来源定位",
     );
     const fallback = screen.getByRole("textbox", {
       name: "后端位置 1 51402010003 202606 来源定位文本",
@@ -564,7 +564,7 @@ describe("LedgerPnlNetInterestComponentDetailDrawer", () => {
     await act(async () => resolveWrite?.());
 
     expect(screen.getByRole("status", { name: "来源定位复制反馈" })).toHaveTextContent(
-      "已复制 后端位置 #1 · 51402010003 · 202606 来源定位",
+      "已复制 后端位置 #1，科目 51402010003，账期 202606 来源定位",
     );
     expect(screen.queryByRole("textbox", {
       name: "后端位置 1 51402010003 202606 来源定位文本",
@@ -599,7 +599,7 @@ describe("LedgerPnlNetInterestComponentDetailDrawer", () => {
 
     await act(async () => resolveWrite?.());
     expect(screen.getByRole("status", { name: "来源定位复制反馈" })).toHaveTextContent(
-      "已复制 后端位置 #1 · 51402010003 · 202606 来源定位",
+      "已复制 后端位置 #1，科目 51402010003，账期 202606 来源定位",
     );
     expect(writeText).toHaveBeenCalledTimes(1);
     for (const copyButton of screen.getAllByRole("button", { name: /复制定位/ })) {

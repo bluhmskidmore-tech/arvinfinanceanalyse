@@ -106,7 +106,7 @@ function resultMetaSubline(meta: ResultMeta | undefined) {
   if (!meta) {
     return null;
   }
-  return `口径=${resultMetaBasisLabel(meta.basis)} · 质量=${resultMetaQualityLabel(meta.quality_flag)} · 供应商=${resultMetaVendorLabel(meta.vendor_status)} · 降级=${resultMetaFallbackLabel(meta.fallback_mode)}`;
+  return `口径=${resultMetaBasisLabel(meta.basis)}，质量=${resultMetaQualityLabel(meta.quality_flag)}，供应商=${resultMetaVendorLabel(meta.vendor_status)}，降级=${resultMetaFallbackLabel(meta.fallback_mode)}`;
 }
 
 export default function DecisionItemsPage() {
