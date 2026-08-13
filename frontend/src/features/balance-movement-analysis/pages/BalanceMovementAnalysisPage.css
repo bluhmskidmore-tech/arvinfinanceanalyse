@@ -244,7 +244,7 @@
   padding: 8px 10px;
   border: 1px solid var(--ib-hairline);
   border-radius: var(--ib-radius, 2px);
-  background: rgba(255, 255, 255, 0.72);
+  background: color-mix(in srgb, var(--dh-api-bg) 42%, transparent);
 }
 
 .balance-movement-freshness-strip__facts dt {
@@ -641,7 +641,7 @@
   overflow-y: auto;
   border-left: 1px solid var(--ib-hairline);
   background: var(--ib-surface);
-  box-shadow: -16px 0 32px rgba(15, 23, 42, 0.08);
+  box-shadow: -16px 0 32px color-mix(in srgb, var(--dh-api-bg) 8%, transparent);
 }
 
 .balance-movement-evidence-drawer__header {
@@ -2126,19 +2126,27 @@
 /* Figma decision-desk pass: page-local dark theme and decision-first chart language. */
 .balance-movement-page {
   --ib-surface: var(--dh-api-panel);
-  --ib-surface-muted: var(--dh-api-panel2);
+  --ib-surface-muted: var(--dh-api-panel-2);
   --ib-ink: var(--dh-api-ink);
   --ib-ink-secondary: var(--dh-api-soft);
   --ib-ink-muted: var(--dh-api-muted);
   --ib-hairline: var(--dh-api-line-soft, rgba(103, 119, 142, 0.22));
   --ib-accent: var(--dh-api-blue);
   --ib-accent-hover: var(--dh-api-blue);
-  --ib-accent-surface: rgba(114, 167, 220, 0.12);
+  --ib-accent-surface: var(--dh-api-blue-soft);
   --ib-up: var(--dh-api-green);
   --ib-down: var(--dh-api-red);
   --ib-warn: var(--dh-api-amber);
   --ib-shadow: none;
   --ib-radius: var(--dh-api-radius, 6px);
+  /* 共享 DataQualityBanner 的浅色 warning/danger 阶在页根拉回 --dh-api-*
+     链（cashflow-projection / risk-tensor 同款）。 */
+  --moss-color-warning-50: var(--dh-api-amber-soft);
+  --moss-color-warning-200: var(--dh-api-line);
+  --moss-color-warning-900: var(--dh-api-amber);
+  --moss-color-danger-50: var(--dh-api-red-soft);
+  --moss-color-danger-200: var(--dh-api-line);
+  --moss-color-danger-800: var(--dh-api-red);
   min-height: 100%;
   padding: 18px;
   color: var(--ib-ink);
@@ -2161,7 +2169,11 @@
   padding: 18px;
   border-color: var(--dh-api-line, rgba(103, 119, 142, 0.34));
   border-radius: var(--dh-api-radius, 6px);
-  background: linear-gradient(180deg, rgba(16, 26, 42, 0.7), rgba(12, 20, 33, 0.96));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--dh-api-panel-2) 70%, transparent),
+    color-mix(in srgb, var(--dh-api-panel) 96%, transparent)
+  );
 }
 
 .balance-movement-derived-panel--decision .balance-movement-derived-panel__header,
@@ -2200,8 +2212,8 @@
 }
 
 .balance-movement-derived-panel--decision .balance-movement-derived-panel__header > strong {
-  border: 1px solid rgba(102, 185, 139, 0.3);
-  background: rgba(102, 185, 139, 0.09);
+  border: 1px solid color-mix(in srgb, var(--dh-api-green) 30%, transparent);
+  background: color-mix(in srgb, var(--dh-api-green) 9%, transparent);
   font-family: var(--dh-api-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
   font-size: 10px;
   letter-spacing: 0.08em;
@@ -2212,7 +2224,7 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
   border: 1px solid var(--ib-hairline);
   border-radius: var(--ib-radius);
-  background: rgba(7, 10, 18, 0.55);
+  background: color-mix(in srgb, var(--dh-api-bg) 55%, transparent);
   overflow: hidden;
 }
 
@@ -2231,7 +2243,7 @@
   padding: 14px;
   border: 1px solid var(--ib-hairline);
   border-radius: var(--ib-radius);
-  background: rgba(7, 10, 18, 0.42);
+  background: color-mix(in srgb, var(--dh-api-bg) 42%, transparent);
 }
 
 .balance-movement-maturity-ladder__heading,
@@ -2284,13 +2296,13 @@
   margin: 0;
   padding: 9px 11px;
   border-left: 2px solid var(--ib-accent);
-  background: rgba(114, 167, 220, 0.06);
+  background: color-mix(in srgb, var(--dh-api-blue) 6%, transparent);
 }
 .balance-movement-derived-panel__caveat--governed > span { flex: 0 0 auto; color: var(--ib-accent); font-weight: 800; }
 
 .balance-movement-derived-table--decision { min-width: 720px; }
 .balance-movement-derived-table--decision thead th { border-bottom-color: var(--dh-api-line, rgba(103,119,142,.34)); color: var(--ib-ink-muted); letter-spacing: 0.04em; }
-.balance-movement-derived-table--decision tbody tr:hover { background: rgba(114, 167, 220, 0.04); }
+.balance-movement-derived-table--decision tbody tr:hover { background: color-mix(in srgb, var(--dh-api-blue) 4%, transparent); }
 .balance-movement-derived-table--decision tbody th { color: var(--ib-ink); }
 
 .balance-movement-concentration-layout {
@@ -2300,7 +2312,7 @@
   align-items: start;
 }
 .balance-movement-concentration-layout__secondary { display: grid; gap: 12px; }
-.balance-movement-concentration-card { padding: 14px; border-color: var(--ib-hairline); background: rgba(7, 10, 18, 0.42); }
+.balance-movement-concentration-card { padding: 14px; border-color: var(--ib-hairline); background: color-mix(in srgb, var(--dh-api-bg) 42%, transparent); }
 .balance-movement-concentration-card__header > div span { color: var(--ib-accent); font-size: 9px; font-weight: 800; letter-spacing: .12em; }
 .balance-movement-concentration-card__header h3 {
   margin: 0;
@@ -2315,7 +2327,7 @@
 .balance-movement-concentration-list__label > span { color: var(--ib-ink-muted); font-family: var(--dh-api-mono, monospace); font-size: 9px; }
 .balance-movement-concentration-list__label strong { overflow: hidden; color: var(--ib-ink); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .balance-movement-concentration-list__label em { color: var(--ib-ink-muted); font-size: 9px; font-style: normal; font-variant-numeric: tabular-nums; }
-.balance-movement-concentration-list__bar-track { height: 4px; background: rgba(133, 147, 168, 0.12); }
+.balance-movement-concentration-list__bar-track { height: 4px; background: color-mix(in srgb, var(--dh-api-muted) 12%, transparent); }
 .balance-movement-concentration-list__bar-track > span { display: block; height: 100%; background: var(--ib-accent); }
 .balance-movement-concentration-list__row--unknown .balance-movement-concentration-list__bar-track > span { background: var(--ib-warn); }
 .balance-movement-concentration-list__row--other .balance-movement-concentration-list__bar-track > span { background: var(--ib-ink-muted); }
@@ -2329,13 +2341,13 @@
 .balance-movement-business-summary--decision .balance-movement-business-summary__headline strong { display: block; max-width: 760px; margin-top: 6px; font-size: 25px; line-height: 1.25; letter-spacing: -0.03em; }
 .balance-movement-business-summary--decision .balance-movement-business-summary__headline p { margin-top: 8px; color: var(--ib-ink-secondary); font-size: 12px; }
 .balance-movement-business-summary__driver-fact { color: var(--ib-accent) !important; font-weight: 700; }
-.balance-movement-business-summary__lead-rail { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--ib-hairline); border-radius: var(--ib-radius); background: rgba(7,10,18,.45); }
+.balance-movement-business-summary__lead-rail { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--ib-hairline); border-radius: var(--ib-radius); background: color-mix(in srgb, var(--dh-api-bg) 45%, transparent); }
 .balance-movement-business-summary__lead-rail > div { display: grid; align-content: center; gap: 5px; padding: 14px; border-right: 1px solid var(--ib-hairline); }
 .balance-movement-business-summary__lead-rail > div:last-child { border-right: 0; }
 .balance-movement-business-summary__lead-rail span { color: var(--ib-ink-muted); font-size: 10px; }
 .balance-movement-business-summary__lead-rail strong { margin: 0 !important; color: var(--ib-ink) !important; font-size: 19px !important; }
 .balance-movement-business-summary__lead-rail small { color: var(--ib-ink-secondary); font-size: 10px; }
-.balance-movement-business-summary--decision .balance-movement-business-summary__facts div { border-color: var(--ib-hairline); background: rgba(7,10,18,.42); }
+.balance-movement-business-summary--decision .balance-movement-business-summary__facts div { border-color: var(--ib-hairline); background: color-mix(in srgb, var(--dh-api-bg) 42%, transparent); }
 .balance-movement-business-summary--decision .balance-movement-business-summary__facts p { color: var(--ib-ink-secondary); font-size: 12px; }
 
 .balance-movement-business-summary--decision .balance-movement-business-summary__top-moves { padding: 0; border: 0; background: transparent; }
@@ -2344,8 +2356,8 @@
   margin: 0;
   color: var(--ib-ink); margin-top: 3px; font-size: 16px; }
 .balance-movement-business-summary__top-moves-header p { margin: 5px 0 0; color: var(--ib-ink-muted); font-size: 10px; }
-.balance-movement-top-moves-panel { border-color: var(--ib-hairline); background: rgba(7,10,18,.42); }
-.balance-movement-top-moves-panel__title { padding: 10px 12px; background: rgba(16,26,42,.72); }
+.balance-movement-top-moves-panel { border-color: var(--ib-hairline); background: color-mix(in srgb, var(--dh-api-bg) 42%, transparent); }
+.balance-movement-top-moves-panel__title { padding: 10px 12px; background: color-mix(in srgb, var(--dh-api-panel-2) 72%, transparent); }
 .balance-movement-top-moves-panel__title > div > span { color: var(--ib-ink-muted); font-size: 9px; letter-spacing: .08em; }
 .balance-movement-top-moves-panel__title h3 {
   color: var(--ib-ink); margin-top: 3px; font-size: 13px; }
@@ -2363,8 +2375,8 @@
   vertical-align: middle;
   white-space: nowrap;
   font-variant-numeric: tabular-nums; padding-top: 7px; padding-bottom: 7px; }
-.balance-movement-mover-axis { position: relative; height: 4px; margin-top: 5px; background: rgba(133,147,168,.08); overflow: hidden; }
-.balance-movement-mover-axis > i { position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: rgba(169,182,199,.36); }
+.balance-movement-mover-axis { position: relative; height: 4px; margin-top: 5px; background: color-mix(in srgb, var(--dh-api-muted) 8%, transparent); overflow: hidden; }
+.balance-movement-mover-axis > i { position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: color-mix(in srgb, var(--dh-api-soft) 36%, transparent); }
 .balance-movement-mover-axis__bar--up {
   /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
   background: var(--ib-up);
@@ -2376,7 +2388,7 @@
 
 .balance-movement-business-summary--decision .balance-movement-business-summary__body { grid-template-columns: minmax(0, 1.15fr) minmax(350px, .85fr); gap: 12px; }
 .balance-movement-driver-chart--band,
-.balance-movement-structure-shift--decision { padding: 14px; border: 1px solid var(--ib-hairline); border-radius: var(--ib-radius); background: rgba(7,10,18,.42); }
+  .balance-movement-structure-shift--decision { padding: 14px; border: 1px solid var(--ib-hairline); border-radius: var(--ib-radius); background: color-mix(in srgb, var(--dh-api-bg) 42%, transparent); }
 .balance-movement-driver-chart__header h2,
 .balance-movement-structure-shift__header h2 { margin: 3px 0 0; color: var(--ib-ink); font-size: 15px; }
 .balance-movement-driver-chart__header p,
@@ -2389,7 +2401,7 @@
 .balance-movement-contribution-band__segment--oci { background: color-mix(in srgb, var(--ib-accent) 72%, var(--ib-surface-muted)); }
 .balance-movement-contribution-band__segment--tpl { background: var(--ib-warn); }
 .balance-movement-driver-ranking--inline { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-.balance-movement-driver-ranking--inline .balance-movement-driver-ranking__row { padding: 6px 8px; border: 0; background: rgba(16,26,42,.7); }
+.balance-movement-driver-ranking--inline .balance-movement-driver-ranking__row { padding: 6px 8px; border: 0; background: color-mix(in srgb, var(--dh-api-panel-2) 70%, transparent); }
 .balance-movement-driver-ranking--inline .balance-movement-driver-ranking__row > span { color: var(--ib-ink-muted); font-family: var(--dh-api-mono, monospace); font-size: 9px; }
 .balance-movement-driver-ranking--inline .balance-movement-driver-ranking__row strong { color: var(--ib-ink-secondary); font-size: 10px; }
 .balance-movement-structure-shift--decision .balance-movement-structure-shift__row { grid-template-columns: minmax(125px, .8fr) minmax(120px, 1fr) auto; padding: 11px 0; border-bottom: 1px solid var(--ib-hairline); }
@@ -2459,7 +2471,7 @@
   transform: none;
   overflow: visible;
 }
-.balance-movement-maturity-ladder__bar-base { fill: rgba(133, 147, 168, 0.12); }
+.balance-movement-maturity-ladder__bar-base { fill: color-mix(in srgb, var(--dh-api-muted) 12%, transparent); }
 .balance-movement-maturity-ladder__bar-value { fill: var(--ib-accent); }
 .balance-movement-maturity-ladder__bar-value--unknown { fill: var(--ib-warn); }
 

@@ -7,6 +7,39 @@
 .balance-analysis-page {
   padding: 0;
   gap: var(--dh-space-2, 12px);
+  /*
+   * --ib-* 在 ThemedRouteBoundary 上已被算成钢蓝字面值再继承（ledger-pnl
+   * 2026-08-12 结论），页根重声明令其在 Nocturne scope 内重新解析；
+   * dhLightPage 的 --dh-* → --ib-* 链与页内直用处随之翻转
+   * （cashflow-projection / risk-tensor 同款桥接，全 var 引用零字面量）。
+   */
+  --ib-paper: var(--dh-api-bg);
+  --ib-surface: var(--dh-api-panel);
+  --ib-surface-muted: var(--dh-api-panel-2);
+  --ib-hairline: var(--dh-api-line-soft);
+  --ib-rule-strong: var(--dh-api-line);
+  --ib-ink: var(--dh-api-ink);
+  --ib-ink-secondary: var(--dh-api-soft);
+  --ib-ink-muted: var(--dh-api-muted);
+  --ib-accent: var(--dh-api-blue);
+  --ib-accent-hover: var(--dh-api-blue);
+  --ib-accent-surface: var(--dh-api-blue-soft);
+  --ib-up: var(--dh-api-green);
+  --ib-down: var(--dh-api-red);
+  --ib-warn: var(--dh-api-amber);
+  --ib-gold: var(--dh-api-gold);
+  --ib-radius: var(--dh-api-radius);
+  --ib-shadow: none;
+  /*
+   * 只补 boundary 深色重映射块里已存在的 --moss-color-* 五项（今天即钢蓝，
+   * 供工作簿面板与共享 FormalResultMetaPanel 取用）；neutral/semantic 浅色系
+   * 属页内浅色实现，留待单独轮次，不在此处翻转。
+   */
+  --moss-color-card-bg: var(--dh-api-panel);
+  --moss-color-border-default: var(--dh-api-line);
+  --moss-color-text-primary: var(--dh-api-ink);
+  --moss-color-text-secondary: var(--dh-api-soft);
+  --moss-color-text-muted: var(--dh-api-muted);
   /* PagePrimitives（PageSectionLead）内联墨字浅色兜底在 theme-dh-api 深底不可读，经 --moss-page-* 变量接管 */
   --moss-page-ink: var(--ib-ink);
   --moss-page-ink-secondary: var(--ib-ink-secondary);
@@ -85,7 +118,7 @@
   padding: 0 12px;
   border-radius: 7px 0 7px 0;
   background: var(--moss-color-primary-600);
-  color: #fff;
+  color: var(--balance-on-accent);
   font-size: 12px;
   font-weight: 780;
 }
@@ -123,8 +156,8 @@
   height: 22px;
   padding: 0 8px;
   border-radius: 4px;
-  background: #e8f0fa;
-  color: #1850a1;
+  background: var(--moss-color-primary-50); /* 原 #e8f0fa，取最近主色 50 阶 */
+  color: var(--moss-color-primary-600);
   font-size: 11px;
   font-weight: 700;
 }
@@ -216,7 +249,7 @@
 .balance-analysis-source-badge[data-tone="mock"],
 .balance-analysis-status-badge[data-tone="mock"] {
   background: var(--moss-color-primary-600);
-  color: #ffffff;
+  color: var(--balance-on-accent);
 }
 
 .balance-analysis-status-badge[data-tone="info"] {
@@ -972,7 +1005,7 @@
   margin-top: var(--moss-space-6);
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: var(--moss-radius-lg);
-  background: #ffffff;
+  background: var(--balance-home-card);
   box-shadow: var(--moss-shadow-panel);
   overflow: hidden;
 }
@@ -986,7 +1019,7 @@
 }
 
 .balance-analysis-supplemental__eyebrow {
-  color: #7a8795;
+  color: var(--moss-color-neutral-500); /* 原 #7a8795。 */
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -999,7 +1032,7 @@
 }
 
 .balance-analysis-supplemental__description {
-  color: #586575;
+  color: var(--moss-color-neutral-600); /* 原 #586575。 */
   font-size: 13px;
   line-height: 1.7;
 }
@@ -1149,23 +1182,27 @@
 }
 
 .balance-analysis-reconciliation__status--aligned {
-  background: #22c55e1a;
-  color: #16a34a;
+  /* 原 tailwind 绿（10% 底/实心字）按语义映射 success 阶。 */
+  background: var(--moss-color-success-50);
+  color: var(--moss-color-success-600);
 }
 
 .balance-analysis-reconciliation__status--watch {
-  background: #f59e0b1a;
-  color: #d97706;
+  /* 原 tailwind 琥珀 10% 底映射 warning-50；文字同值 warning-500。 */
+  background: var(--moss-color-warning-50);
+  color: var(--moss-color-warning-500);
 }
 
 .balance-analysis-reconciliation__status--unavailable {
-  background: #64748b1a;
-  color: #64748b;
+  /* 原 tailwind slate（10% 底/实心字）按语义映射 neutral 阶。 */
+  background: var(--moss-color-neutral-100);
+  color: var(--moss-color-neutral-600);
 }
 
 .balance-analysis-reconciliation__status--pending {
-  background: #3b82f61a;
-  color: #2563eb;
+  /* 原 tailwind 蓝 10% 底映射 info-50；文字同值 info-600。 */
+  background: var(--moss-color-info-50);
+  color: var(--moss-color-info-600);
 }
 
 .balance-analysis-reconciliation__grid {
@@ -1184,19 +1221,19 @@
 }
 
 .balance-analysis-reconciliation__tile-label {
-  color: #4b5563;
+  color: var(--moss-color-neutral-700);
   font-size: 12px;
   font-weight: 700;
 }
 
 .balance-analysis-reconciliation__tile-value {
-  color: #111827;
+  color: var(--moss-color-neutral-900); /* 原 #111827。 */
   font-size: 20px;
   font-variant-numeric: tabular-nums;
 }
 
 .balance-analysis-reconciliation__tile-detail {
-  color: #4b5563;
+  color: var(--moss-color-neutral-700);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -1214,16 +1251,16 @@
   justify-content: center;
   width: fit-content;
   padding: 8px 12px;
-  border: 1px solid #93c5fd;
+  border: 1px solid var(--moss-color-info-300);
   border-radius: var(--ib-radius, 2px);
-  background: #ffffff;
-  color: #2563eb;
+  background: var(--balance-home-card);
+  color: var(--moss-color-info-600);
   font-weight: 700;
   text-decoration: none;
 }
 
 .balance-analysis-reconciliation__footnote {
-  color: #4b5563;
+  color: var(--moss-color-neutral-700);
   font-size: 12px;
 }
 
@@ -1245,7 +1282,7 @@
   justify-content: space-between;
   padding: 14px;
   border-radius: var(--moss-radius-sm);
-  color: #eff6ff;
+  color: var(--moss-color-info-50);
 }
 
 .balance-analysis-rating-card__label {
@@ -1263,20 +1300,20 @@
   display: grid;
   gap: 4px;
   padding: 10px 12px;
-  border: 1px solid #bfdbfe;
+  border: 1px solid var(--moss-color-info-200);
   border-radius: var(--ib-radius, 2px);
-  background: #ffffff;
+  background: var(--balance-home-card);
 }
 
 .balance-analysis-rating-reconciliation__total {
-  color: #111827;
+  color: var(--moss-color-neutral-900); /* 原 #111827。 */
   font-size: 13px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
 .balance-analysis-rating-reconciliation__note {
-  color: #4b5563;
+  color: var(--moss-color-neutral-700);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -1299,7 +1336,7 @@
 
 .balance-analysis-workbook-panel {
   padding: var(--moss-space-4);
-  border: 1px solid #e4e9f0;
+  border: 1px solid var(--balance-home-line);
   border-radius: var(--moss-radius-sm);
   background: var(--moss-color-card-bg);
   box-shadow: 0 8px 18px rgba(15, 37, 68, 0.035);
@@ -1330,7 +1367,7 @@
   display: inline-flex;
   align-items: center;
   padding: var(--moss-space-1) var(--moss-space-2);
-  border: 1px solid #e4e9f0;
+  border: 1px solid var(--balance-home-line);
   border-radius: var(--moss-radius-sm);
   background: var(--moss-color-neutral-100);
   color: var(--moss-color-text-secondary);
@@ -1370,7 +1407,7 @@
   padding: var(--moss-space-3);
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: var(--moss-radius-sm);
-  background: #ffffff;
+  background: var(--balance-home-card);
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
@@ -1459,7 +1496,7 @@
   padding: 8px 10px;
   border: 1px solid var(--moss-color-neutral-300);
   border-radius: var(--moss-radius-sm);
-  background: #ffffff;
+  background: var(--balance-home-card);
   color: var(--moss-color-neutral-900);
   font-size: 13px;
   line-height: 1.45;
@@ -1504,7 +1541,7 @@
   padding: 7px 9px;
   border: 1px solid var(--moss-color-neutral-300);
   border-radius: var(--moss-radius-sm);
-  background: #ffffff;
+  background: var(--balance-home-card);
   color: var(--moss-color-neutral-900);
   font-size: 13px;
 }
@@ -1517,11 +1554,11 @@
   gap: 7px;
   padding: 10px;
   border-radius: var(--moss-radius-sm);
-  background: #fbfdff;
+  background: var(--balance-home-card-soft); /* 原 #fbfdff，取最近浅底 */
 }
 
 .balance-analysis-right-rail .balance-analysis-ledger-card--warning {
-  background: #fffaf1;
+  background: var(--moss-color-warning-50); /* 原 #fffaf1，取最近琥珀 50 阶 */
 }
 
 .balance-analysis-right-rail .balance-analysis-ledger-card[data-selected="true"] {
@@ -1796,7 +1833,7 @@
 }
 
 .balance-analysis-hero__tab {
-  background: linear-gradient(135deg, #08213f, var(--moss-color-primary-700));
+  background: linear-gradient(135deg, var(--balance-ink), var(--moss-color-primary-700));
   box-shadow: 0 8px 18px rgba(8, 33, 63, 0.18);
 }
 
@@ -1812,7 +1849,7 @@
 
 .balance-analysis-hero__identity p,
 .balance-analysis-hero-conclusion {
-  color: #3f5875;
+  color: var(--moss-color-neutral-700); /* 原 #3f5875。 */
 }
 
 .balance-analysis-hero__report,
@@ -1830,27 +1867,27 @@
 
 .balance-analysis-action-button {
   border-color: rgba(37, 99, 235, 0.26);
-  background: linear-gradient(180deg, #ffffff, #f4f8ff);
+  background: linear-gradient(180deg, var(--balance-home-card), var(--balance-home-card-soft));
 }
 
 .balance-analysis-action-button[data-variant="primary"],
 [data-testid="balance-analysis-refresh-button"] {
   border-color: rgba(24, 80, 161, 0.38);
   background: linear-gradient(180deg, var(--moss-color-primary-600), var(--moss-color-primary-700));
-  color: #ffffff;
+  color: var(--balance-on-accent);
 }
 
 .balance-analysis-data-status {
   border-color: rgba(43, 86, 132, 0.14);
   background:
     linear-gradient(90deg, rgba(8, 33, 63, 0.04), rgba(255, 255, 255, 0.96)),
-    #ffffff;
+    var(--balance-home-card);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 .balance-analysis-evidence-details {
   border-color: var(--balance-line);
-  background: linear-gradient(180deg, #ffffff, #f8fbff);
+  background: linear-gradient(180deg, var(--balance-home-card), var(--balance-home-card-soft));
   box-shadow: var(--balance-shadow-soft);
 }
 
@@ -1869,7 +1906,7 @@
 .balance-analysis-ledger-panel,
 .balance-analysis-evidence-card {
   border-color: var(--balance-line);
-  background: linear-gradient(180deg, #ffffff, #f8fbff);
+  background: linear-gradient(180deg, var(--balance-home-card), var(--balance-home-card-soft));
 }
 
 @media (max-width: 900px) {
@@ -1885,13 +1922,14 @@
 
 /* Dashboard-home color alignment: reuse the homepage's cool institutional palette. */
 .balance-analysis-page {
+  --balance-on-accent: #ffffff; /* accent 底上的反白文本，单一定义 */
   --balance-home-card: #ffffff;
   --balance-home-card-soft: #f7f9fc;
   --balance-home-line: #e4e9f0;
   --balance-home-ink: #0c1c33;
   --balance-home-ink-2: #2c3e5a;
-  --balance-home-blue: #1850a1;
-  --balance-home-blue-deep: #10356a;
+  --balance-home-blue: var(--moss-color-primary-600);
+  --balance-home-blue-deep: var(--moss-color-primary-800);
   --balance-home-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06);
 }
 
@@ -1947,7 +1985,7 @@
 [data-testid="balance-analysis-refresh-button"] {
   border-color: var(--balance-home-blue);
   background: var(--balance-home-blue);
-  color: #ffffff;
+  color: var(--balance-on-accent);
 }
 
 .balance-analysis-control:hover,
@@ -1967,4 +2005,23 @@
    参照 macro-toolkit 的先例把页内 Tag 收敛到 11px 辅助档。 */
 .balance-analysis-page .ant-tag {
   font-size: 11px;
+}
+
+/*
+ * 结果元信息 Collapse 底色来自 ConfigProvider 的钢蓝 JS token
+ * （colorBgContainer/colorFillAlter），CSS 变量翻不动；页内按
+ * decision-items 先例 scoped 覆盖拉回 --dh-api-* 链（仅换色）。
+ */
+.balance-analysis-page :where(.ant-collapse) {
+  border-color: var(--dh-api-line-soft) !important;
+  background: var(--dh-api-panel-2) !important;
+}
+
+.balance-analysis-page :where(.ant-collapse > .ant-collapse-item) {
+  border-color: var(--dh-api-line-soft) !important;
+}
+
+.balance-analysis-page :where(.ant-collapse .ant-collapse-content) {
+  border-color: var(--dh-api-line-soft) !important;
+  background: var(--dh-api-panel) !important;
 }

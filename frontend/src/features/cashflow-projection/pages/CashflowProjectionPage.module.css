@@ -628,6 +628,26 @@
   color: color-mix(in srgb, var(--cf-info) 82%, var(--cf-text));
 }
 
+/*
+ * antd 控件底色来自 ConfigProvider 的钢蓝 JS token（colorBgContainer），
+ * CSS 变量翻不动；页内按 decision-items 先例 scoped 覆盖拉回 --cf-* 链。
+ */
+.datePanel :global(.ant-select-selector) {
+  border-color: var(--cf-border) !important;
+  background: var(--cf-paper-muted) !important;
+  color: var(--cf-text) !important;
+}
+
+.datePanel :global(.ant-select-arrow),
+.datePanel :global(.ant-select-selection-placeholder) {
+  color: var(--cf-muted) !important;
+}
+
+.tablePanel :global(.ant-table) {
+  background: var(--cf-paper) !important;
+  color: var(--cf-text);
+}
+
 .tablePanel :global(.ant-table-wrapper) {
   overflow: hidden;
   border: 1px solid var(--cf-border);

@@ -664,7 +664,7 @@ function formatSignedPoint(value: number) {
 
 function formatSignedPointNullable(value: number | null | undefined) {
   return value === null || value === undefined || !Number.isFinite(value)
-    ? "—"
+    ? EM_DASH
     : formatSignedPoint(value);
 }
 
@@ -687,14 +687,14 @@ function nullableDelta(
 
 function formatShareEvolutionPct(value: number | null | undefined) {
   if (value === null || value === undefined || !Number.isFinite(value)) {
-    return "—";
+    return EM_DASH;
   }
   return `${value.toFixed(2)}%`;
 }
 
 function formatShareEvolutionYi(value: number | undefined) {
   if (value === undefined || !Number.isFinite(value)) {
-    return "—";
+    return EM_DASH;
   }
   return `${value.toFixed(2)} 亿`;
 }
@@ -718,7 +718,7 @@ function formatSignedYiDelta(
     !Number.isFinite(current) ||
     !Number.isFinite(base)
   ) {
-    return "—";
+    return EM_DASH;
   }
   const d = current - base;
   const sign = d > 0 ? "+" : "";
@@ -825,7 +825,7 @@ function movementDirection(value: string | number | null | undefined) {
 }
 
 function formatMetaList(values: string[] | undefined) {
-  return values && values.length > 0 ? values.join("、") : "—";
+  return values && values.length > 0 ? values.join("、") : EM_DASH;
 }
 
 function csvCell(value: string | number | boolean | null | undefined) {
@@ -2247,13 +2247,13 @@ function StructureShareDetailTable({
                   <td>{formatShareEvolutionYi(point.acValueYi)}</td>
                   <td>{formatShareEvolutionYi(point.ociValueYi)}</td>
                   <td>{formatShareEvolutionYi(point.tplValueYi)}</td>
-                  <td>{prev ? formatSignedPointNullable(nullableDelta(point.AC, prev.point.AC)) : "—"}</td>
-                  <td>{prev ? formatSignedPointNullable(nullableDelta(point.OCI, prev.point.OCI)) : "—"}</td>
-                  <td>{prev ? formatSignedPointNullable(nullableDelta(point.TPL, prev.point.TPL)) : "—"}</td>
+                  <td>{prev ? formatSignedPointNullable(nullableDelta(point.AC, prev.point.AC)) : EM_DASH}</td>
+                  <td>{prev ? formatSignedPointNullable(nullableDelta(point.OCI, prev.point.OCI)) : EM_DASH}</td>
+                  <td>{prev ? formatSignedPointNullable(nullableDelta(point.TPL, prev.point.TPL)) : EM_DASH}</td>
                   <td>{formatSignedYiDelta(point.totalValueYi, prev?.point.totalValueYi)}</td>
-                  <td>{yoy ? formatSignedPointNullable(nullableDelta(point.AC, yoy.point.AC)) : "—"}</td>
-                  <td>{yoy ? formatSignedPointNullable(nullableDelta(point.OCI, yoy.point.OCI)) : "—"}</td>
-                  <td>{yoy ? formatSignedPointNullable(nullableDelta(point.TPL, yoy.point.TPL)) : "—"}</td>
+                  <td>{yoy ? formatSignedPointNullable(nullableDelta(point.AC, yoy.point.AC)) : EM_DASH}</td>
+                  <td>{yoy ? formatSignedPointNullable(nullableDelta(point.OCI, yoy.point.OCI)) : EM_DASH}</td>
+                  <td>{yoy ? formatSignedPointNullable(nullableDelta(point.TPL, yoy.point.TPL)) : EM_DASH}</td>
                   <td>{formatSignedYiDelta(point.totalValueYi, yoy?.point.totalValueYi)}</td>
                   {showFirstDelta ? (
                     <>
@@ -2565,7 +2565,7 @@ function StructureBridgeStage({
           <header>
             <h3>ZQTZ 明细汇总 → AC / OCI / TPL 合计</h3>
             <strong>
-              净差额 {waterfall ? `${formatSignedYiCell(waterfall.net_difference)} 亿` : "—"}
+              净差额 {waterfall ? `${formatSignedYiCell(waterfall.net_difference)} 亿` : EM_DASH}
             </strong>
           </header>
           {waterfall ? (
@@ -2677,7 +2677,7 @@ function HistoricalAnomalyPanel({
                     <span>{signal.headline}</span>
                     <p>
                       本期 {formatSignedYiCell(signal.currentDelta)} 亿；近 {signal.baselineCount} 期平均{" "}
-                      {signal.baselineAverageAbs === null ? "—" : `${formatYiCell(signal.baselineAverageAbs)} 亿`}
+                      {signal.baselineAverageAbs === null ? EM_DASH : `${formatYiCell(signal.baselineAverageAbs)} 亿`}
                       {signal.directionReversal ? "；方向反转" : ""}
                     </p>
                   </li>
@@ -2701,7 +2701,7 @@ function HistoricalAnomalyPanel({
                     <span>{formatSignedYiCell(signal.currentDelta)} 亿</span>
                     <p>
                       高于近 {signal.baselineCount} 期常态；历史平均{" "}
-                      {signal.baselineAverageAbs === null ? "—" : `${formatYiCell(signal.baselineAverageAbs)} 亿`}
+                      {signal.baselineAverageAbs === null ? EM_DASH : `${formatYiCell(signal.baselineAverageAbs)} 亿`}
                     </p>
                   </li>
                 ))}
@@ -3176,7 +3176,7 @@ function ConcentrationRow({
       className={`balance-movement-concentration-row balance-movement-concentration-row--${item.item_kind}${compact ? " balance-movement-concentration-row--compact" : ""}`}
     >
       <span className="balance-movement-concentration-row__rank">
-        {item.rank > 0 ? item.rank : item.item_kind === "unknown" ? "—" : "–"}
+        {item.rank > 0 ? item.rank : item.item_kind === "unknown" ? EM_DASH : "–"}
       </span>
       <strong title={item.dimension_value}>{item.dimension_value}</strong>
       <progress max={100} value={share} aria-label={`${item.dimension_value} ${formatPct(item.share_pct)}`} />
@@ -3811,10 +3811,10 @@ export default function BalanceMovementAnalysisPage() {
     const unsupportedLabels = unsupportedWaterfallComponents.map((component) => component.component_label);
     const maturityCoverage = zqtzMaturityStructure
       ? formatPct(zqtzMaturityStructure.meta.coverage_pct)
-      : "—";
+      : EM_DASH;
     const concentrationCoverage = zqtzConcentrationAnalysis
       ? formatPct(zqtzConcentrationAnalysis.meta.coverage_pct)
-      : "—";
+      : EM_DASH;
     return [
       {
         key: "business",
@@ -4079,7 +4079,11 @@ export default function BalanceMovementAnalysisPage() {
   }
 
   return (
-    <section data-testid="balance-movement-analysis-page" className="balance-movement-page theme-dh-api">
+    <section
+      data-testid="balance-movement-analysis-page"
+      data-moss-theme-scope="balance-movement-analysis"
+      className="balance-movement-page theme-dh-api"
+    >
       <header className="balance-movement-page-header" data-testid="balance-movement-analysis-page-header">
         <div className="balance-movement-page-header__identity">
           <span>投资组合 / 资产结构</span>

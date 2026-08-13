@@ -22,6 +22,7 @@ import { buildDecisionItemsPageViewModel } from "../lib/decisionItemsPageModel";
 
 import "./DecisionItemsPage.css";
 
+import { EM_DASH } from "../../../utils/format";
 type StatusFilter = "all" | BalanceAnalysisDecisionStatus;
 type SeverityFilter = "all" | BalanceAnalysisSeverity;
 
@@ -63,13 +64,13 @@ function cleanReportDateParam(value: string | null): string | null {
 
 function formatMetaLine(meta: ResultMeta | undefined) {
   if (!meta) {
-    return "—";
+    return EM_DASH;
   }
   return [
-    `追踪 ${meta.trace_id || "—"}`,
-    `来源 ${meta.source_version || "—"}`,
-    `规则 ${meta.rule_version || "—"}`,
-    `缓存 ${meta.cache_version || "—"}`,
+    `追踪 ${meta.trace_id || EM_DASH}`,
+    `来源 ${meta.source_version || EM_DASH}`,
+    `规则 ${meta.rule_version || EM_DASH}`,
+    `缓存 ${meta.cache_version || EM_DASH}`,
   ].join(" · ");
 }
 
@@ -296,10 +297,14 @@ export default function DecisionItemsPage() {
       : null;
   const userLabel = currentUserQuery.data
     ? `${currentUserQuery.data.user_id}（${currentUserQuery.data.role}）`
-    : "—";
+    : EM_DASH;
 
   return (
-    <div className="decision-items-page theme-dh-api" data-testid="decision-items-page">
+    <div
+      className="decision-items-page theme-dh-api"
+      data-moss-theme-scope="decision-items"
+      data-testid="decision-items-page"
+    >
       <PageDecisionHero
         testId="decision-items-contract-hero"
         title="决策事项"
@@ -308,7 +313,7 @@ export default function DecisionItemsPage() {
         eyebrow="工作台"
         reportDateSlot={
           <span data-testid="decision-items-report-date-slot">
-            报告日 <strong className="decision-items-page__mono">{reportDate || "-"}</strong>
+            报告日 <strong className="decision-items-page__mono">{reportDate || EM_DASH}</strong>
           </span>
         }
         businessQuestion="按报告日与口径拉取资产负债分析「决策事项」读模型，可在此确认/忽略并写回同一路径的更新接口。"
@@ -356,7 +361,7 @@ export default function DecisionItemsPage() {
           <div>
             <div className="decision-items-page__summary-label">报告日</div>
             <div className="decision-items-page__summary-value decision-items-page__mono">
-              {reportDate || "—"}
+              {reportDate || EM_DASH}
             </div>
           </div>
           <div>
@@ -527,7 +532,7 @@ export default function DecisionItemsPage() {
                           <td className="decision-items-page__table-cell decision-items-page__mono">{row.rule_version}</td>
                           <td className="decision-items-page__table-cell">{row.latest_status?.status}</td>
                           <td className="decision-items-page__table-cell decision-items-page__table-cell--small">
-                            {(row.latest_status?.updated_by || "—") + " / " + (row.latest_status?.updated_at || "—")}
+                            {(row.latest_status?.updated_by || EM_DASH) + " / " + (row.latest_status?.updated_at || EM_DASH)}
                           </td>
                           <td className="decision-items-page__table-cell">
                             {canWriteDecisionItems ? (
@@ -611,8 +616,8 @@ export default function DecisionItemsPage() {
                   <strong>规则</strong> {selectedRow.rule_id} @ {selectedRow.rule_version}
                 </div>
                 <div>
-                  <strong>状态</strong> {selectedRow.latest_status?.status} · 更新人 {selectedRow.latest_status?.updated_by || "—"}{" "}
-                  · {selectedRow.latest_status?.updated_at || "—"}
+                  <strong>状态</strong> {selectedRow.latest_status?.status} · 更新人 {selectedRow.latest_status?.updated_by || EM_DASH}{" "}
+                  · {selectedRow.latest_status?.updated_at || EM_DASH}
                 </div>
                 <label className="decision-items-page__filter-label">
                   备注

@@ -62,6 +62,7 @@ import {
   type BalanceAnalysisSummaryGridRow,
 } from "./balanceAnalysisGridRows";
 
+import { EM_DASH } from "../../../utils/format";
 const primaryWorkbookTableKeys = [
   "bond_business_types",
   "rating_analysis",
@@ -317,8 +318,8 @@ function formatInvestAccountingDisplay(data: {
   const investType = data.invest_type_std == null ? "" : formatBalanceBusinessTextDisplay(data.invest_type_std);
   const accountingBasis =
     data.accounting_basis == null ? "" : formatBalanceBusinessTextDisplay(data.accounting_basis);
-  const parts = [investType, accountingBasis].filter((part) => part && part !== "—");
-  return parts.length > 0 ? parts.join(" / ") : "—";
+  const parts = [investType, accountingBasis].filter((part) => part && part !== EM_DASH);
+  return parts.length > 0 ? parts.join(" / ") : EM_DASH;
 }
 
 const balanceSummaryColDefs: ColDef<BalanceAnalysisTableRow>[] = [
@@ -406,7 +407,7 @@ const balanceDetailColDefs: ColDef<BalanceAnalysisDetailGridRow>[] = [
     field: "is_issuance_like",
     headerName: "发行类",
     valueFormatter: (p) =>
-      p.value === null || p.value === undefined ? "—" : p.value ? "是" : "否",
+      p.value === null || p.value === undefined ? EM_DASH : p.value ? "是" : "否",
   },
 ];
 
@@ -734,12 +735,12 @@ function renderIssuancePanel(table: BalanceAnalysisWorkbookTable) {
 }
 
 function withYiUnit(value: string): string {
-  return value === "—" ? value : `${value} 亿`;
+  return value === EM_DASH ? value : `${value} 亿`;
 }
 
 function formatSignedBalanceYuanToYi(value: number | null): string {
   if (value === null) {
-    return "—";
+    return EM_DASH;
   }
   const formatted = formatBalanceAmountToYiFromYuan(value);
   return value > 0 ? `+${formatted}` : formatted;
@@ -1603,6 +1604,7 @@ export default function BalanceAnalysisPage() {
   return (
     <section
       data-testid="balance-analysis-page"
+      data-moss-theme-scope="balance-analysis"
       className={`${dhStyles.dhLightPage} balance-analysis-page`}
     >
       <BalanceAnalysisToolbar
@@ -2377,7 +2379,7 @@ export default function BalanceAnalysisPage() {
         <div className="balance-analysis-stage-details__content">
           <div className="balance-analysis-stage-warning">
             当前区块与首屏驾驶舱共用同一 stageModel 读面，报告日为{" "}
-            {pageModel.stageModel.summary.tags[0]?.label ?? "—"}；仍以页面上方正式总览、汇总、明细和受治理信号作为正式判断来源。
+            {pageModel.stageModel.summary.tags[0]?.label ?? EM_DASH}；仍以页面上方正式总览、汇总、明细和受治理信号作为正式判断来源。
             {pageModel.stageModel.hasRealData ? "" : " 当前筛选条件下未返回可展示的真实阶段切片。"}
           </div>
         </div>
