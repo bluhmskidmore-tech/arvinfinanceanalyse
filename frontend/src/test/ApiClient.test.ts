@@ -150,7 +150,8 @@ describe("createApiClient", () => {
       as_of_date: "2026-01-10",
       date_basis: "positions_snapshot_report_date",
       tables_used: ["zqtz_bond_daily_snapshot"],
-      evidence_rows: 0,
+      // 69dad892 起 mock 与真实契约一致：evidence_rows = 命中明细行数（demo 债券明细 1 行）。
+      evidence_rows: 1,
     });
     expect(interbank.result_meta).toMatchObject({
       basis: "analytical",

@@ -2690,10 +2690,14 @@ describe("DashboardHomePage", () => {
     await waitFor(() => {
       expect(calendar).toHaveTextContent("重大信息发布日期前瞻");
       expect(calendar).toHaveTextContent("政策与资金面");
-      expect(calendar).toHaveTextContent("来源：Choice 宏观新闻");
-      expect(calendar).toHaveTextContent("数据截至");
-      expect(calendar).toHaveTextContent("来源状态");
-      expect(calendar).toHaveTextContent("刷新：");
+      // b41cd303 视觉降噪后：信任条可见处收短文案，完整来源/状态/截至/刷新说明进 title。
+      const trustStrip = within(calendar).getByLabelText("政策与资金面数据状态");
+      expect(trustStrip).toHaveTextContent("来源 Choice 宏观新闻");
+      const trustTooltip = trustStrip.getAttribute("title") ?? "";
+      expect(trustTooltip).toContain("来源：Choice 宏观新闻");
+      expect(trustTooltip).toContain("来源状态");
+      expect(trustTooltip).toContain("数据截至");
+      expect(trustTooltip).toContain("刷新：");
       expect(calendar).toHaveTextContent("供给/招标：已查询当前窗口，暂无事件");
       expect(calendar).not.toHaveTextContent("当前窗口暂无供给/招标事件。");
     });
