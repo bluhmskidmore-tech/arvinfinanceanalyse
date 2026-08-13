@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import type { LivermoreStrategyPayload } from "../api/contracts";
+import { localizeThemeSourceKind } from "../features/stock-analysis/lib/stockAnalysisPageModel";
 import {
   buildThemeBreakoutCards,
   buildThemeBreakoutPanelSummary,
   buildThemeEvidenceStateRows,
-  localizeThemeSourceKind,
-} from "../features/stock-analysis/lib/stockAnalysisPageModel";
+} from "../features/stock-analysis/lib/stockAnalysisDeepResearchPanelsModel";
 
 function currentOverlayPayload(): LivermoreStrategyPayload {
   return {

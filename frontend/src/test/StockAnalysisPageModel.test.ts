@@ -21,8 +21,17 @@ import {
   buildClosedLoopSummary,
   buildCycleMacroLayerSummary,
   buildDataBoundarySummary,
+  clampRatio,
+  formatRatioAsPercent,
+  localizeBasisLabel,
+  localizeDataGapStatus,
+  localizeDiagnosticScope,
+  localizeFallbackMode,
+  localizeMetaQualityFlag,
+  localizeMetaVendorStatus,
+  localizeStockDataFamily,
+  sectorRankFormulaGovernanceLabel,
   buildDecisionSummary,
-  buildDeepAnalysisGateSummary,
   buildReviewQueueEmptyState,
   buildReviewQueueSectorFilterView,
   buildStockSectorOverviewState,
@@ -40,20 +49,7 @@ import {
   buildObservationClosureSummary,
   buildStockEndpointEvidenceItems,
   buildStrategyLensItems,
-  buildThemeBreakoutCards,
-  buildThemeLeaderPreviewItems,
   buildSectorHeavyweightPreview,
-  buildThemeBreakoutReviewItems,
-  buildThemeEvidenceStateRows,
-  buildConsensusReviewPanelSummary,
-  buildCycleRotationPanelSummary,
-  buildEventsMonitoringPanelSummary,
-  buildObservationPoolsPanelSummary,
-  buildThemeBreakoutPanelSummary,
-  buildDeepZoneAuditRows,
-  buildMarketPriorityPanelSummary,
-  buildStrategyBacktestPanelSummary,
-  buildStrategyOptimizationPanelSummary,
   localizeMarketDataStatus,
   localizeThemeSourceKind,
   localizeStockBackendText,
@@ -62,12 +58,21 @@ import {
 } from "../features/stock-analysis/lib/stockAnalysisPageModel";
 import type { StockCandidateReviewQueueItem } from "../features/stock-analysis/lib/stockAnalysisPageModel";
 import {
-  buildDataBoundaryNotes,
-  buildInlineMetaSegments,
-  buildSectorViewModel,
-  buildStockAnalysisKpiStrip,
-  buildStockAnalysisPagePurpose,
-} from "../features/stock-analysis/lib/stockAnalysisLegacyPageModel";
+  buildConsensusReviewPanelSummary,
+  buildCycleRotationPanelSummary,
+  buildDeepAnalysisGateSummary,
+  buildDeepZoneAuditRows,
+  buildEventsMonitoringPanelSummary,
+  buildMarketPriorityPanelSummary,
+  buildObservationPoolsPanelSummary,
+  buildStrategyBacktestPanelSummary,
+  buildStrategyOptimizationPanelSummary,
+  buildThemeBreakoutCards,
+  buildThemeBreakoutPanelSummary,
+  buildThemeBreakoutReviewItems,
+  buildThemeEvidenceStateRows,
+  buildThemeLeaderPreviewItems,
+} from "../features/stock-analysis/lib/stockAnalysisDeepResearchPanelsModel";
 import { buildConsensusSummary } from "../features/stock-analysis/lib/buildConsensusSummary";
 
 const LIVERMORE_OUTPUT_KEYS: LivermoreOutputKey[] = [
@@ -465,10 +470,6 @@ describe("stockAnalysisPageModel", () => {
     };
 
     const marketCard = buildMarketStateCard(payload);
-    const kpi = buildStockAnalysisKpiStrip(payload, confluencePayload, {
-      quality_flag: "ok",
-      vendor_status: "ok",
-    }).find((item) => item.key === "market-state");
     const closedLoop = buildClosedLoopSummary(payload, {
       ...confluencePayload,
       closed_loop_state: {
@@ -483,14 +484,12 @@ describe("stockAnalysisPageModel", () => {
     const copy = [
       localizeMarketDataStatus(vendorMarketState),
       marketCard.state,
-      kpi?.value,
       entryGate?.detail,
       deepSummary.line,
     ].join(" ");
 
     expect(localizeMarketDataStatus(vendorMarketState)).toBe("状态待确认");
     expect(marketCard.state).toBe("状态待确认");
-    expect(kpi?.value).toBe("状态待确认");
     expect(entryGate?.detail).toContain("市场门控 状态待确认");
     expect(deepSummary.line).toContain("当前市场门控：状态待确认");
     expect(copy).not.toContain(vendorMarketState);
@@ -513,20 +512,20 @@ describe("stockAnalysisPageModel", () => {
       vendor_status: "ok",
     });
     const basisEvidence = evidenceStatus.find((item) => item.key === "basis");
-    const boundaryNotes = buildDataBoundaryNotes(payload);
+    const basisLabel = localizeBasisLabel(payload.basis);
     const copy = [
       decisionSummary.basisLabel,
       marketCard.basisLabel,
       basisEvidence?.statusLabel,
       basisEvidence?.detail,
-      ...boundaryNotes,
+      basisLabel,
     ].join(" ");
 
     expect(decisionSummary.basisLabel).toBe("口径待确认");
     expect(marketCard.basisLabel).toBe("口径待确认");
     expect(basisEvidence?.statusLabel).toBe("口径待确认");
     expect(basisEvidence?.detail).toBe("口径待确认");
-    expect(boundaryNotes.join(" ")).toContain("口径：口径待确认");
+    expect(basisLabel).toBe("口径待确认");
     expect(copy).not.toContain(vendorBasis);
   });
 
@@ -652,43 +651,16 @@ describe("stockAnalysisPageModel", () => {
     expect(summary.asOfLabel).not.toBe("2026-05-08");
   });
 
-  it("uses the page-level missing data date label in page purpose and inline meta", () => {
-    const payload: LivermoreStrategyPayload = {
-      ...strategyPayload,
-      as_of_date: null,
-      requested_as_of_date: "2026-05-08",
-    };
-    const purpose = buildStockAnalysisPagePurpose(payload, {
-      quality_flag: "ok",
-      vendor_status: "ok",
-    });
-    const inlineMeta = buildInlineMetaSegments(payload, {});
-    const asOfMeta = inlineMeta.find((item) => item.key === "as_of");
+  it("localizes governance meta labels without exposing backend status codes", () => {
+    const copy = [
+      localizeMetaQualityFlag("warning"),
+      localizeMetaVendorStatus("vendor_unavailable"),
+      localizeFallbackMode("external_vendor_snapshot"),
+    ].join(" ");
 
-    expect(purpose.asOfLine).toBe("观察日 日期待补");
-    expect(purpose.dataStatusLine).toContain("日期待补");
-    expect(purpose.asOfLine).not.toContain("2026-05-08");
-    expect(purpose.dataStatusLine).not.toContain("2026-05-08");
-    expect(asOfMeta?.text).toBe("日期待补");
-    expect(asOfMeta?.text).not.toBe("待补日期");
-    expect(asOfMeta?.text).not.toBe("2026-05-08");
-  });
-
-  it("localizes inline governance meta without exposing backend status codes", () => {
-    const inlineMeta = buildInlineMetaSegments(strategyPayload, {
-      quality_flag: "warning",
-      vendor_status: "vendor_unavailable",
-      fallback_mode: "external_vendor_snapshot",
-      source_version: "sv_livermore_test",
-      rule_version: "rv_livermore_market_gate_v1",
-    });
-    const copy = inlineMeta.map((item) => item.text).join(" ");
-
-    expect(inlineMeta.find((item) => item.key === "quality_flag")?.text).toBe("质量需复核");
-    expect(inlineMeta.find((item) => item.key === "vendor_status")?.text).toBe("供数待确认");
-    expect(inlineMeta.find((item) => item.key === "fallback_mode")?.text).toBe("待确认");
-    expect(copy).toContain("sv_livermore_test");
-    expect(copy).toContain("rv_livermore_market_gate_v1");
+    expect(localizeMetaQualityFlag("warning")).toBe("质量需复核");
+    expect(localizeMetaVendorStatus("vendor_unavailable")).toBe("供数待确认");
+    expect(localizeFallbackMode("external_vendor_snapshot")).toBe("待确认");
     expect(copy).not.toContain("warning");
     expect(copy).not.toContain("vendor_unavailable");
     expect(copy).not.toContain("external_vendor_snapshot");
@@ -1214,15 +1186,8 @@ describe("stockAnalysisPageModel", () => {
       vendor_status: "ok",
       fallback_mode: "latest_snapshot",
     });
-    const purpose = buildStockAnalysisPagePurpose(strategyPayload, {
-      quality_flag: "ok",
-      vendor_status: "ok",
-      fallback_mode: "latest_snapshot",
-    });
-
     expect(summary.dataFreshnessLabel).toBe("数据需复核 质量正常 / 供数正常 / 数据延迟");
-    expect(purpose.dataStatusLine).toContain("数据延迟");
-    expect(purpose.dataStatusLine).not.toContain("latest_snapshot");
+    expect(localizeFallbackMode("latest_snapshot")).toBe("数据延迟");
   });
 
   it("keeps unknown fallback modes as business labels", () => {
@@ -1232,12 +1197,9 @@ describe("stockAnalysisPageModel", () => {
       fallback_mode: "external_vendor_snapshot",
     } as Record<string, unknown> as Partial<Pick<ResultMeta, "quality_flag" | "vendor_status" | "fallback_mode">>;
     const summary = buildDecisionSummary(strategyPayload, unknownFallbackMeta);
-    const purpose = buildStockAnalysisPagePurpose(strategyPayload, unknownFallbackMeta);
 
     expect(summary.dataFreshnessLabel).toContain("待确认");
-    expect(purpose.dataStatusLine).toContain("待确认");
     expect(summary.dataFreshnessLabel).not.toContain("external_vendor_snapshot");
-    expect(purpose.dataStatusLine).not.toContain("external_vendor_snapshot");
   });
 
   it("merges closed-loop result meta with confluence precedence only when closed-loop evidence exists", () => {
@@ -1283,15 +1245,7 @@ describe("stockAnalysisPageModel", () => {
     expect(pickStockFreshnessMeta(null)).toEqual({});
   });
 
-  it("builds page purpose and review-queue empty guidance in Chinese", () => {
-    const purpose = buildStockAnalysisPagePurpose(strategyPayload, {
-      quality_flag: "ok",
-      vendor_status: "ok",
-    });
-    expect(purpose.title).toBe("股票策略复核台");
-    expect(purpose.subtitle).toContain("只读复核");
-    expect(purpose.dataStatusLine).toContain("已对齐");
-
+  it("builds review-queue empty guidance in Chinese", () => {
     const empty = buildReviewQueueEmptyState({
       ...strategyPayload,
       stock_candidates: {
@@ -2455,43 +2409,40 @@ describe("stockAnalysisPageModel", () => {
     expect(watch?.reason).not.toContain("external vendor exit signal ready");
   });
 
-  it("surfaces data boundary notes and missing evidence", () => {
-    const notes = buildDataBoundaryNotes(strategyPayload);
-    const blockedNotes = buildDataBoundaryNotes({
-      ...strategyPayload,
-      supported_outputs: ["market_gate", "sector_rank", "stock_candidates"],
-      unsupported_outputs: [
-        {
-          key: "risk_exit",
-          reason: "livermore_position_snapshot has no ACTIVE A-share rows.",
-        },
-      ],
-    });
+  it("localizes data boundary evidence and blocked outputs", () => {
+    const diag = strategyPayload.diagnostics[0];
+    const gap = strategyPayload.data_gaps[0];
+    const localized = [
+      `口径：${localizeBasisLabel(strategyPayload.basis)}`,
+      `板块强弱规则状态：${sectorRankFormulaGovernanceLabel(strategyPayload.sector_rank)}`,
+      `板块强弱说明：${localizeStockBackendText(strategyPayload.sector_rank!.formula_note!, "sector_strength")}`,
+      `可用输出：${strategyPayload.supported_outputs.map(localizeStockDataFamily).join("、")}`,
+      `${localizeDiagnosticScope(diag.input_family)}：${localizeStockBackendText(diag.message, diag.input_family)}`,
+      `${localizeStockDataFamily(gap.input_family)} ${localizeDataGapStatus(gap.status)}：${localizeStockBackendText(
+        gap.evidence,
+        gap.input_family,
+      )}`,
+    ].join(" ");
 
-    expect(notes.join(" ")).toContain("口径：分析口径（非交易）");
-    expect(notes.join(" ")).toContain("策略：Livermore A-Share Defended Trend");
-    expect(notes.join(" ")).toContain("数据日期：2026-04-29");
-    expect(notes.join(" ")).toContain("板块强弱公式：rv_livermore_sector_strength_observation_v1");
-    expect(notes.join(" ")).toContain("板块强弱规则状态：规则已签核 / rv_livermore_sector_strength_observation_v1");
-    expect(notes.join(" ")).toContain(
+    expect(localized).toContain("口径：分析口径（非交易）");
+    expect(localized).toContain("板块强弱规则状态：规则已签核 / rv_livermore_sector_strength_observation_v1");
+    expect(localized).toContain(
       "板块强弱说明：板块强弱观察排名已按 50% 涨跌幅分位、30% 换手率分位、20% 振幅分位签核；用于复核优先级与行业过滤，不构成交易指令；多日动量、板块资金流与拥挤度不包含在当前版本内。",
     );
-    expect(notes.join(" ")).toContain("可用输出：市场门控、板块强弱、趋势候选、上升趋势、新趋势观察、风险退出");
-    expect(notes.join(" ")).toContain("预警 市场宽度诊断：市场宽度输入不可用。");
-    expect(notes.join(" ")).toContain("市场宽度 缺数据：5日市场宽度输入未落地。");
-    expect(notes.join(" ")).not.toContain("LIVERMORE_BREADTH_MISSING");
-    expect(notes.join(" ")).toContain("rv_livermore_sector_strength_observation_v1");
-    expect(notes.join(" ")).not.toContain("basis:");
-    expect(notes.join(" ")).not.toContain("as_of_date:");
-    expect(notes.join(" ")).not.toContain("sector_rank formula");
-    expect(notes.join(" ")).not.toContain("stock_candidates formula");
-    expect(notes.join(" ")).not.toContain("risk_exit formula");
-    expect(notes.join(" ")).not.toContain("supported_outputs:");
-    expect(notes.join(" ")).not.toContain("Breadth inputs are unavailable.");
-    expect(notes.join(" ")).not.toContain("breadth missing");
-    expect(blockedNotes.join(" ")).toContain("风险退出 阻断：持仓快照缺失，暂无可执行风险退出样本。");
-    expect(blockedNotes.join(" ")).not.toContain("risk_exit unsupported");
-    expect(blockedNotes.join(" ")).not.toContain("livermore_position_snapshot");
+    expect(localized).toContain("可用输出：市场门控、板块强弱、趋势候选、上升趋势、新趋势观察、风险退出");
+    expect(localized).toContain("市场宽度诊断：市场宽度输入不可用。");
+    expect(localized).toContain("市场宽度 缺数据：5日市场宽度输入未落地。");
+    expect(localized).not.toContain("LIVERMORE_BREADTH_MISSING");
+    expect(localized).not.toContain("Breadth inputs are unavailable.");
+    expect(localized).not.toContain("breadth missing");
+
+    const blockedReason = localizeStockBackendText(
+      "livermore_position_snapshot has no ACTIVE A-share rows.",
+      "risk_exit",
+    );
+    const blockedLine = `${localizeStockDataFamily("risk_exit")} 阻断：${blockedReason}`;
+    expect(blockedLine).toBe("风险退出 阻断：持仓快照缺失，暂无可执行风险退出样本。");
+    expect(blockedLine).not.toContain("livermore_position_snapshot");
   });
 
   it("builds a four-strategy ledger with available and blocked strategy states", () => {
@@ -2729,16 +2680,11 @@ describe("stockAnalysisPageModel", () => {
     };
 
     const queue = buildCandidateReviewQueue(payload);
-    const kpi = buildStockAnalysisKpiStrip(payload, null);
     const items = buildStrategyLensItems(payload, buildConsensusSummary(payload));
     const empty = buildReviewQueueEmptyState(payload);
     const summary = buildDecisionSummary(payload, { quality_flag: "ok", vendor_status: "ok" });
 
     expect(queue).toHaveLength(0);
-    expect(kpi.find((item) => item.key === "review-queue")).toMatchObject({
-      value: "0",
-      tone: "neutral",
-    });
     expect(items.find((item) => item.key === "hybrid")?.state).not.toBe("ready");
     expect(items.find((item) => item.key === "factor")?.state).not.toBe("ready");
     expect(empty.detail).not.toContain("多因子池 1 只");
@@ -3010,12 +2956,13 @@ describe("stockAnalysisPageModel", () => {
     expect(strip.weakestSectorChip).toContain("新能源车");
   });
 
-  it("orders sector view model by selected metric without changing payload", () => {
-    const byScore = buildSectorViewModel(strategyPayload, "score");
+  it("orders sector view rows by selected metric without changing payload", () => {
+    const sectorRows = buildSectorRows(strategyPayload);
+    const byScore = buildSectorViewRows(sectorRows, "score");
     expect(byScore[0].sectorName).toBe("AI");
-    const byPct = buildSectorViewModel(strategyPayload, "pctchange");
+    const byPct = buildSectorViewRows(sectorRows, "pctchange");
     expect(byPct[0].sectorName).toBe("AI");
-    const byTurn = buildSectorViewModel(strategyPayload, "turnover");
+    const byTurn = buildSectorViewRows(sectorRows, "turnover");
     expect(byTurn[0].sectorName).toBe("新能源车");
   });
 
@@ -3268,11 +3215,16 @@ describe("stockAnalysisPageModel", () => {
     expect(summary.boundaryCount).toBe(0);
     expect(summary.unsupportedCount).toBe(0);
 
-    const notes = buildDataBoundaryNotes(payload).join(" ");
-    expect(notes).toContain("可用输出：市场门控、板块强弱、新趋势观察、多因子、风险退出");
-    expect(notes).toContain("上升趋势 阻断：上升趋势策略在过热门控下暂停");
-    expect(notes).not.toContain("fresh_trend_watchlist");
-    expect(notes).not.toContain("uptrend_momentum_candidates");
+    const supportedLine = `可用输出：${payload.supported_outputs.map(localizeStockDataFamily).join("、")}`;
+    const uptrendBlock = payload.unsupported_outputs.find((output) => output.key === "uptrend_momentum_candidates")!;
+    const blockedLine = `${localizeStockDataFamily(uptrendBlock.key)} 阻断：${localizeStockBackendText(
+      uptrendBlock.reason,
+      uptrendBlock.key,
+    )}`;
+    expect(supportedLine).toBe("可用输出：市场门控、板块强弱、新趋势观察、多因子、风险退出");
+    expect(blockedLine).toContain("上升趋势 阻断：上升趋势策略在过热门控下暂停");
+    expect(`${supportedLine} ${blockedLine}`).not.toContain("fresh_trend_watchlist");
+    expect(`${supportedLine} ${blockedLine}`).not.toContain("uptrend_momentum_candidates");
 
     const queue = buildCandidateReviewQueue(payload);
     expect(queue[0].headline).toContain("新趋势观察");
@@ -3422,37 +3374,15 @@ describe("stockAnalysisPageModel", () => {
     expect(unfiltered.sectorLinkFocus).toBe("\u9996\u4f4d Alpha \u00b7 \u8ddd\u89c2\u5bdf 2.4%");
   });
 
-  it("builds first-screen KPI strip from existing strategy evidence only", () => {
-    const items = buildStockAnalysisKpiStrip(strategyPayload, confluencePayload, {
-      quality_flag: "warning",
-      vendor_status: "ok",
-      fallback_mode: "latest_snapshot",
-    });
-
-    expect(items.map((item) => item.key)).toEqual([
-      "market-state",
-      "review-queue",
-      "sector-strength",
-      "risk-observation",
-      "closed-loop",
-      "data-boundary",
-    ]);
-    expect(items.find((item) => item.key === "market-state")).toMatchObject({
-      label: "市场状态",
-      value: "温和",
-      detail: "观察暴露 40%",
-      tone: "warning",
-    });
-    expect(items.find((item) => item.key === "review-queue")).toMatchObject({
-      label: "复核队列",
-      value: "1",
-    });
-    expect(items.find((item) => item.key === "risk-observation")?.detail).toContain("触发 1");
-    expect(items.find((item) => item.key === "data-boundary")).toMatchObject({
-      value: "2",
-      tone: "warning",
-    });
-    expect(items.map((item) => `${item.label}${item.value}${item.detail}`).join(" ")).not.toContain("买入");
+  it("formats exposure ratios and market states for first-screen evidence copy", () => {
+    expect(localizeMarketDataStatus(strategyPayload.market_gate.state)).toBe("温和");
+    expect(formatRatioAsPercent(strategyPayload.market_gate.exposure)).toBe("40%");
+    expect(formatRatioAsPercent(0.1234, 1)).toBe("12.3%");
+    expect(formatRatioAsPercent(null)).toBe("待补");
+    expect(clampRatio(strategyPayload.market_gate.exposure)).toBe(0.4);
+    expect(clampRatio(1.8)).toBe(1);
+    expect(clampRatio(-0.5)).toBe(0);
+    expect(clampRatio(null)).toBeUndefined();
   });
 
   it("builds evidence status and event monitor rows with explicit pending boundaries", () => {

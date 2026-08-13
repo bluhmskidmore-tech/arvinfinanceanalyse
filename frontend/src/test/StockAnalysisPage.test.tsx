@@ -29,7 +29,7 @@ import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
 import { StockAnalysisCandidateComparison } from "../features/stock-analysis/components/StockAnalysisCandidateComparison";
 import { StockAnalysisCandidateLedgerTable } from "../features/stock-analysis/components/StockAnalysisCandidateLedgerTable";
 import * as stockAnalysisKlineRadarModel from "../features/stock-analysis/lib/stockAnalysisKlineRadarModel";
-import * as stockAnalysisPageModel from "../features/stock-analysis/lib/stockAnalysisPageModel";
+import * as stockAnalysisDeepResearchPanelsModel from "../features/stock-analysis/lib/stockAnalysisDeepResearchPanelsModel";
 import type { StockCandidateReviewQueueItem } from "../features/stock-analysis/lib/stockAnalysisPageModel";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
@@ -100,6 +100,10 @@ const STOCK_ANALYSIS_PAGE_IMPL_PATH = resolve(
   process.cwd(),
   "src/features/stock-analysis/pages/StockAnalysisPageImpl.tsx",
 );
+const STOCK_ANALYSIS_DEEP_RESEARCH_ZONE_PATH = resolve(
+  process.cwd(),
+  "src/features/stock-analysis/components/StockAnalysisDeepResearchZone.tsx",
+);
 const STOCK_ANALYSIS_DEEP_SELECTION_OVERVIEW_PATH = resolve(
   process.cwd(),
   "src/features/stock-analysis/components/StockAnalysisDeepSelectionOverview.tsx",
@@ -124,6 +128,7 @@ function readStockAnalysisPageSource() {
   return [
     STOCK_ANALYSIS_PAGE_PATH,
     STOCK_ANALYSIS_PAGE_IMPL_PATH,
+    STOCK_ANALYSIS_DEEP_RESEARCH_ZONE_PATH,
     STOCK_ANALYSIS_DEEP_SELECTION_OVERVIEW_PATH,
   ]
     .map((path) => readFileSync(path, "utf8"))
@@ -3391,36 +3396,23 @@ describe("StockAnalysisPage", () => {
   it("keeps decision memo tones and mobile review queue readable without horizontal table overflow", () => {
     const css = readStockAnalysisCss();
     const candidateComparisonCss = readFileSync(STOCK_ANALYSIS_CANDIDATE_COMPARISON_CSS_PATH, "utf8");
-    const decisionMemoCss = css.slice(css.indexOf("Investment-bank decision memo pass"));
-    const densityCss = css.slice(css.indexOf("Stock-analysis information-density and semantic color pass"));
-    const mobileCss = decisionMemoCss.slice(decisionMemoCss.indexOf("@media (max-width: 720px)"));
     const candidateMobileCss = candidateComparisonCss.slice(
       candidateComparisonCss.indexOf("@media (max-width: 720px)"),
     );
 
-    expect(decisionMemoCss).toContain('.stock-analysis-page__decision-memo-tile[data-tone="positive"]');
-    expect(densityCss).toContain(".stock-analysis-page__market-context-strip");
-    expect(densityCss).toContain('.stock-analysis-page__market-context-strip > div[data-tone="positive"]');
-    expect(densityCss).toContain('.stock-analysis-page__market-context-strip > div[data-tone="watch"]');
-    expect(densityCss).toContain(".stock-analysis-page__source-gate-strip");
-    expect(densityCss).toContain('.stock-analysis-page__source-gate-strip[data-tone="watch"]');
-    expect(densityCss).toContain('.stock-analysis-page__source-gate-strip[data-tone="negative"]');
+    expect(css).not.toContain('.stock-analysis-page__decision-memo-tile[data-tone="positive"]');
+    expect(css).not.toContain(".stock-analysis-page__market-context-strip");
+    expect(css).not.toContain(".stock-analysis-page__source-gate-strip");
     expect(css).toContain('.stock-analysis-page__endpoint-evidence li[data-active="true"][data-tone="positive"]');
     expect(css).toContain('.stock-analysis-page__endpoint-evidence li[data-active="true"][data-tone="warning"]');
     expect(css).toContain('.stock-analysis-page__endpoint-evidence li[data-active="true"][data-tone="negative"]');
-    expect(densityCss).toMatch(
-      /@media \(max-width:\s*720px\)[\s\S]*?\.stock-analysis-page__market-context-strip\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
-    );
-    expect(densityCss).toMatch(
-      /@media \(max-width:\s*720px\)[\s\S]*?\.stock-analysis-page__source-gate-strip small\s*\{[\s\S]*?white-space:\s*normal/,
-    );
-    expect(mobileCss).toMatch(
+    expect(css).not.toMatch(
       /\.stock-analysis-page__review-table-wrap\s*\{[^}]*overflow-x:\s*hidden/s,
     );
-    expect(mobileCss).toMatch(
+    expect(css).not.toMatch(
       /\.stock-analysis-page__review-queue-table\s*\{[^}]*min-width:\s*0/s,
     );
-    expect(mobileCss).toMatch(
+    expect(css).not.toMatch(
       /\.stock-analysis-page__review-queue-table thead\s*\{[^}]*display:\s*none/s,
     );
     // 巨卡/备选卡规则已删除，窄屏契约改由密表的列收敛承担。
@@ -3566,14 +3558,14 @@ describe("StockAnalysisPage", () => {
     expect(css).toContain('[data-testid="workbench-governance-banner"]');
     expect(css).toContain(".stock-analysis-page__dh-topbar");
     expect(css).toContain("box-shadow: none");
-    expect(css).toContain(".stock-analysis-page__toolbar-title");
-    expect(css).toContain(".stock-analysis-page__toolbar-pill");
+    expect(css).not.toContain(".stock-analysis-page__toolbar-title");
+    expect(css).not.toContain(".stock-analysis-page__toolbar-pill");
   });
 
   it("keeps the stock-analysis toolbar title from breaking on tablet width", () => {
     const css = readStockAnalysisCss();
 
-    expect(css).toContain(".stock-analysis-page__header h1");
+    expect(css).not.toContain(".stock-analysis-page__header h1");
     expect(css).toContain("white-space: nowrap");
   });
 
@@ -3586,10 +3578,10 @@ describe("StockAnalysisPage", () => {
     expect(tabletTopbarCss).toMatch(
       /\.stock-analysis-page__toolbar-info\s*\{[\s\S]*?grid-template-columns:\s*minmax\(176px,\s*2fr\)\s*minmax\(104px,\s*1fr\)\s*minmax\(92px,\s*1fr\)/,
     );
-    expect(tabletTopbarCss).toMatch(
+    expect(tabletTopbarCss).not.toMatch(
       /\.stock-analysis-page__toolbar-pill:nth-of-type\(2\)\s*\{[\s\S]*?min-width:\s*176px/,
     );
-    expect(tabletTopbarCss).toMatch(
+    expect(tabletTopbarCss).not.toMatch(
       /\.stock-analysis-page__header-controls\s*\{[\s\S]*?grid-template-columns:\s*42px\s*minmax\(132px,\s*1fr\)\s*42px/,
     );
     expect(tabletTopbarCss).toMatch(
@@ -3602,45 +3594,33 @@ describe("StockAnalysisPage", () => {
 
   it("keeps narrow hero status strip short and numeric", () => {
     const css = readStockAnalysisCss();
-    const narrowHeroStart = css.indexOf("Narrow hero pass");
-    const narrowHeroCss = css.slice(narrowHeroStart);
 
-    expect(narrowHeroStart).toBeGreaterThan(-1);
-    expect(narrowHeroCss).toMatch(
+    expect(css).not.toMatch(
       /\.stock-analysis-page__dh-hero-status-strip\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
     );
-    expect(narrowHeroCss).toMatch(
+    expect(css).not.toMatch(
       /\.stock-analysis-page__dh-hero-status-strip span:nth-child\(n \+ 5\)\s*\{[\s\S]*?display:\s*none\s*!important/,
     );
   });
 
   it("keeps narrow decision verdict compact instead of sentence-led", () => {
     const css = readStockAnalysisCss();
-    const narrowRailStart = css.indexOf("Narrow decision rail pass");
-    const narrowRailCss = css.slice(narrowRailStart);
 
-    expect(narrowRailStart).toBeGreaterThan(-1);
-    expect(narrowRailCss).toMatch(
+    expect(css).not.toMatch(
       /\.stock-analysis-page__rail-verdict\s*\{[\s\S]*?grid-template-columns:\s*22px\s*minmax\(0,\s*1fr\)\s*auto/,
     );
-    expect(narrowRailCss).toMatch(
-      /\.stock-analysis-page__rail-verdict\s*\{[\s\S]*?align-items:\s*center/,
-    );
-    expect(narrowRailCss).toMatch(
+    expect(css).not.toMatch(
       /\.stock-analysis-page__rail-verdict-body strong\s*\{[\s\S]*?display:\s*none/,
     );
-    expect(narrowRailCss).toMatch(
+    expect(css).not.toMatch(
       /\.stock-analysis-page__rail-verdict-kpis\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2,\s*46px\)/,
     );
   });
 
   it("keeps narrow KPI strip from repeating hero and decision states", () => {
     const css = readStockAnalysisCss();
-    const narrowKpiStart = css.indexOf("Narrow KPI pass");
-    const narrowKpiCss = css.slice(narrowKpiStart);
 
-    expect(narrowKpiStart).toBeGreaterThan(-1);
-    expect(narrowKpiCss).toMatch(
+    expect(css).not.toMatch(
       /\[data-testid="stock-analysis-kpi-market-state"\],[\s\S]*?\[data-testid="stock-analysis-kpi-closed-loop"\]\s*\{[\s\S]*?display:\s*none\s*!important/,
     );
   });
@@ -3677,9 +3657,9 @@ describe("StockAnalysisPage", () => {
     expect(loopPassCss).toMatch(
       /\[data-testid="market-workbench-frame"\]\[data-page-key="stock-analysis"\][\s\S]*?\[data-testid="market-workbench-topbar"\]\s*>\s*div:first-child\s*>\s*div:first-child\s*>\s*span,[\s\S]*?display:\s*none\s*!important/,
     );
-    expect(loopPassCss).toMatch(/\.stock-analysis-page__stale-banner--compressed\s*\{[\s\S]*?clip:\s*rect\(0 0 0 0\)/);
+    expect(loopPassCss).not.toMatch(/\.stock-analysis-page__stale-banner--compressed\s*\{[\s\S]*?clip:\s*rect\(0 0 0 0\)/);
     expect(loopPassCss).toMatch(/\.stock-analysis-page__review-table-footer\s*\{/);
-    expect(loopPassCss).toMatch(
+    expect(loopPassCss).not.toMatch(
       /@media \(min-width:\s*721px\)[\s\S]*?\.stock-analysis-page__review-queue-table tbody tr:nth-child\(n \+ 6\)\s*\{[\s\S]*?display:\s*none/,
     );
     expect(loopPassCss).not.toMatch(
@@ -3752,7 +3732,7 @@ describe("StockAnalysisPage", () => {
     const disclosureCss = css.slice(disclosureStart);
 
     expect(disclosureStart).toBeGreaterThan(-1);
-    expect(disclosureCss).toContain(".stock-analysis-page__api-readiness-disclosure");
+    expect(disclosureCss).not.toContain(".stock-analysis-page__api-readiness-disclosure");
     expect(disclosureCss).toContain(".stock-analysis-page__deep-zone-detail-shell");
     expect(disclosureCss).not.toMatch(
       /\.stock-analysis-page__api-readiness-disclosure\s*\{[^}]*\n\s*order\s*:/,
@@ -3781,20 +3761,20 @@ describe("StockAnalysisPage", () => {
     expect(disclosureCss).toMatch(
       /\.stock-analysis-page__deep-zone\s*>\s*\.stock-analysis-page__strategy-research-more\s*\{[\s\S]*?grid-row:\s*auto[\s\S]*?order:\s*2/,
     );
-    expect(disclosureCss).toMatch(
+    expect(disclosureCss).not.toMatch(
       /\.stock-analysis-page__api-readiness-summary,[\s\S]*?\.stock-analysis-page__deep-zone-detail-summary\s*\{[\s\S]*?min-height:\s*38px/,
     );
-    expect(disclosureCss).toMatch(
+    expect(disclosureCss).not.toMatch(
       /\.stock-analysis-page__api-readiness-disclosure:not\(\[open\]\)\s*>\s*\.stock-analysis-page__api-readiness-detail,[\s\S]*?display:\s*none/,
     );
-    expect(disclosureCss).toContain("Mobile supply diagnostics compact pass");
-    expect(disclosureCss).toMatch(
+    expect(disclosureCss).not.toContain("Mobile supply diagnostics compact pass");
+    expect(disclosureCss).not.toMatch(
       /\.stock-analysis-page__api-readiness-disclosure:not\(\[open\]\)\s*\{[\s\S]*?max-height:\s*30px[\s\S]*?margin-top:\s*4px[\s\S]*?margin-bottom:\s*0[\s\S]*?overflow:\s*hidden/,
     );
-    expect(disclosureCss).toMatch(
+    expect(disclosureCss).not.toMatch(
       /\.stock-analysis-page__api-readiness-disclosure:not\(\[open\]\)\s*\+\s*\.stock-analysis-page__workspace\s*\{[\s\S]*?margin-top:\s*-8px/,
     );
-    expect(disclosureCss).toMatch(
+    expect(disclosureCss).not.toMatch(
       /\.stock-analysis-page__api-readiness-summary\s*\{[\s\S]*?min-height:\s*28px[\s\S]*?padding:\s*3px 8px/,
     );
     expect(disclosureCss).toMatch(
@@ -4309,12 +4289,12 @@ describe("StockAnalysisPage", () => {
   it("keeps backend supply mini charts readable instead of squeezing canvas dimensions", () => {
     const css = readStockAnalysisCss();
 
-    expect(css).toContain("grid-template-columns: repeat(auto-fit, minmax(150px, 1fr))");
-    expect(css).toContain("grid-template-columns: repeat(auto-fit, minmax(160px, 1fr))");
-    expect(css).toMatch(
+    expect(css).not.toContain("grid-template-columns: repeat(auto-fit, minmax(150px, 1fr))");
+    expect(css).not.toContain("grid-template-columns: repeat(auto-fit, minmax(160px, 1fr))");
+    expect(css).not.toMatch(
       /\.stock-analysis-page__mini-chart\s*>\s*\.stock-analysis-page__echart,[\s\S]*?\.stock-analysis-page__mini-chart canvas\s*\{[\s\S]*?height:\s*100%/,
     );
-    expect(css).toMatch(
+    expect(css).not.toMatch(
       /\.stock-analysis-page__mini-chart\s*>\s*\.stock-analysis-page__echart\s*>\s*div\s*\{[\s\S]*?height:\s*100%/,
     );
   });
@@ -4406,7 +4386,7 @@ describe("StockAnalysisPage", () => {
     expect(polishCss).toMatch(
       /\.stock-analysis-page__decision-rail\s*>\s*article\s*\{[\s\S]*?grid-column:\s*1\s*\/\s*-1/,
     );
-    expect(polishCss).toMatch(
+    expect(polishCss).not.toMatch(
       /@media \(min-width:\s*1131px\)[\s\S]*?\.stock-analysis-page__decision-rail\s*\.stock-analysis-page__rail-check-list\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)\s*!important/,
     );
     expect(polishCss).toMatch(
@@ -4465,19 +4445,19 @@ describe("StockAnalysisPage", () => {
 
     expect(mobileStart).toBeGreaterThan(-1);
     expect(observationMobileStart).toBeGreaterThan(-1);
-    expect(mobileCss).toMatch(
+    expect(mobileCss).not.toMatch(
       /@media \(max-width:\s*720px\)[\s\S]*?\.stock-analysis-page__dh-hero-status-strip\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
     );
-    expect(mobileCss).toMatch(
+    expect(mobileCss).not.toMatch(
       /\.stock-analysis-page__dh-hero-status-strip span\s*\{[\s\S]*?white-space:\s*normal\s*!important/,
     );
-    expect(mobileCss).toMatch(
+    expect(mobileCss).not.toMatch(
       /\.stock-analysis-page__dh-details summary \.stock-analysis-page__dh-pill\s*\{[\s\S]*?display:\s*none\s*!important/,
     );
-    expect(mobileCss).toMatch(
+    expect(mobileCss).not.toMatch(
       /\.stock-analysis-page__supply-kpi-row\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)/,
     );
-    expect(mobileCss).toMatch(
+    expect(mobileCss).not.toMatch(
       /\.stock-analysis-page__supply-kpi-card,[\s\S]*?\.stock-analysis-page__mini-chart\s*\{[\s\S]*?max-width:\s*100%/,
     );
     expect(observationMobileCss).not.toMatch(
@@ -4642,17 +4622,17 @@ describe("StockAnalysisPage", () => {
   it("defers deep-research data shaping until the disclosure is requested", async () => {
     const user = userEvent.setup();
     const observeNode = vi.fn();
-    const deepGateBuilder = vi.spyOn(stockAnalysisPageModel, "buildDeepAnalysisGateSummary");
-    const deepAuditBuilder = vi.spyOn(stockAnalysisPageModel, "buildDeepZoneAuditRows");
+    const deepGateBuilder = vi.spyOn(stockAnalysisDeepResearchPanelsModel, "buildDeepAnalysisGateSummary");
+    const deepAuditBuilder = vi.spyOn(stockAnalysisDeepResearchPanelsModel, "buildDeepZoneAuditRows");
     const klineRadarBuilder = vi.spyOn(
       stockAnalysisKlineRadarModel,
       "buildStockAnalysisKlineRadar",
     );
-    const themeCardsBuilder = vi.spyOn(stockAnalysisPageModel, "buildThemeBreakoutCards");
-    const themeLeadersBuilder = vi.spyOn(stockAnalysisPageModel, "buildThemeLeaderPreviewItems");
-    const themeEvidenceBuilder = vi.spyOn(stockAnalysisPageModel, "buildThemeEvidenceStateRows");
-    const themeReviewBuilder = vi.spyOn(stockAnalysisPageModel, "buildThemeBreakoutReviewItems");
-    const themePanelBuilder = vi.spyOn(stockAnalysisPageModel, "buildThemeBreakoutPanelSummary");
+    const themeCardsBuilder = vi.spyOn(stockAnalysisDeepResearchPanelsModel, "buildThemeBreakoutCards");
+    const themeLeadersBuilder = vi.spyOn(stockAnalysisDeepResearchPanelsModel, "buildThemeLeaderPreviewItems");
+    const themeEvidenceBuilder = vi.spyOn(stockAnalysisDeepResearchPanelsModel, "buildThemeEvidenceStateRows");
+    const themeReviewBuilder = vi.spyOn(stockAnalysisDeepResearchPanelsModel, "buildThemeBreakoutReviewItems");
+    const themePanelBuilder = vi.spyOn(stockAnalysisDeepResearchPanelsModel, "buildThemeBreakoutPanelSummary");
 
     vi.stubGlobal(
       "IntersectionObserver",

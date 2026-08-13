@@ -128,6 +128,10 @@ const STOCK_ANALYSIS_DEEP_ZONE_HEADER_PATH = resolve(
   FRONTEND_ROOT,
   "src/features/stock-analysis/components/StockAnalysisDeepZoneHeader.tsx",
 );
+const STOCK_ANALYSIS_DEEP_RESEARCH_ZONE_PATH = resolve(
+  FRONTEND_ROOT,
+  "src/features/stock-analysis/components/StockAnalysisDeepResearchZone.tsx",
+);
 const STOCK_ANALYSIS_DEEP_RESEARCH_PRIMITIVES_PATH = resolve(
   FRONTEND_ROOT,
   "src/features/stock-analysis/components/StockAnalysisDeepResearchPrimitives.ts",
@@ -215,19 +219,18 @@ describe("startup performance guards", () => {
 
   it("keeps deep-research scripts and styles behind the lazy stock-analysis boundary", () => {
     const stockAnalysisPageSource = readFileSync(STOCK_ANALYSIS_PAGE_PATH, "utf8");
+    const deepResearchZoneSource = readFileSync(STOCK_ANALYSIS_DEEP_RESEARCH_ZONE_PATH, "utf8");
     const deepZoneHeaderSource = readFileSync(STOCK_ANALYSIS_DEEP_ZONE_HEADER_PATH, "utf8");
     const deepResearchPrimitivesSource = readFileSync(
       STOCK_ANALYSIS_DEEP_RESEARCH_PRIMITIVES_PATH,
       "utf8",
     );
 
-    expect(stockAnalysisPageSource).toContain('import("../components/StockAnalysisDeepZoneHeader")');
-    expect(stockAnalysisPageSource).toContain(
-      'import("../components/StockAnalysisDeepSelectionOverview")',
-    );
-    expect(stockAnalysisPageSource).toContain(
-      'import("../components/StockAnalysisDeepResearchPrimitives")',
-    );
+    expect(stockAnalysisPageSource).toContain('import("../components/StockAnalysisDeepResearchZone")');
+    expect(stockAnalysisPageSource).not.toContain('import("../components/StockAnalysisDeepZoneHeader")');
+    expect(deepResearchZoneSource).toContain('import("./StockAnalysisDeepZoneHeader")');
+    expect(deepResearchZoneSource).toContain('import("./StockAnalysisDeepSelectionOverview")');
+    expect(deepResearchZoneSource).toContain('import("./StockAnalysisDeepResearchPrimitives")');
     expect(stockAnalysisPageSource).not.toContain("StockAnalysisDeepResearch.css");
     for (const staticDeepImport of [
       "../components/StockAnalysisBacktestBoundaryChips",
