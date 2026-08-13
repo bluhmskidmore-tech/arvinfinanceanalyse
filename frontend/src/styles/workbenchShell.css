@@ -1181,12 +1181,24 @@ select {
    cockpit 外壳（dashboard-home / portfolio-home）的 rail-mark 制度
    是透明底 + 结构选择器 0-4-3 !important（dashboardCockpit.css），
    不入该列表。终端条分册按启动性能守卫住 workbenchDeferredChrome.css
-   末尾。新增 Nocturne scope 时共四处：tokens.css 别名三块列表、
-   本层三条选择器列表各加一行；若该路由渲染终端条
-   （WorkbenchShell 的 showShellTerminalBar），tokens.css 终端条块
-   与 workbenchDeferredChrome.css 分册再各加一行。
-   已知残留：page-v2 面板烘焙（本文件 §83-94）不在本层范围，
-   /positions 首屏结论块仍为钢蓝渐变，待后续收口。
+   末尾。新增 Nocturne scope 的完整清单：tokens.css 别名三块列表 +
+   本层 grid / rail / rail-mark / page-v2 背景 / 结论左边线五条选择器
+   列表各加一行（cockpit hover/active 两条只在新增 cockpit 壳路由时
+   扩展）；若该路由渲染终端条（WorkbenchShell 的 showShellTerminalBar），
+   tokens.css 终端条块与 workbenchDeferredChrome.css 分册再各加一行；
+   theme.test.ts 的 parity 断言会拦截漏改。
+   2026-08-13 残留收口（见 DESIGN.md Decisions Log 同日条目）：
+   ① page-v2 面板烘焙（本文件 §83-94，0-4-0 !important 钢蓝渐变 +
+   结论左边线钢蓝直写）——背景压平为 --nct-surface、结论左边线压为
+   --nct-accent；烘焙里的 border-color: var(--dh-api-line) 与
+   box-shadow: none 经变量翻转即为 Nocturne 值（实测 border 已是
+   --nct-ring），不重复声明。② cockpit 壳 rail hover/active 金蓝烘焙
+   （本文件 §cockpit，0-4-0 !important 直写金/钢蓝 rgba）——实测
+   /portfolio 激活态仍金蓝、/ 已被页内 0-5-0 !important 块
+   （dashboardHomeOptionTwo）接管为蓝紫、/market-overview 由页内
+   0-6-0 块等值接管；本层以同权 0-4-0 后置补压三个 cockpit scope
+   兜底（hover 9%/22%、active 14%/30% + inset 2px accent，取值来源
+   见 cockpit 组行内注释）。
    ══════════════════════════════════════════════════════════════ */
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="dashboard-home"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"]),
@@ -1225,4 +1237,63 @@ select {
   background: var(--nct-surface) !important;
   border-color: var(--nct-ring) !important;
   box-shadow: none !important;
+}
+
+/* page-v2 面板（§83-94 烘焙 0-4-0；:is() 取最高实参 0-1-0，本组同权后置）。
+   列表与 grid/rail 同构全量 10 scope：未渲染 page-v2 类的路由 :has() 命中
+   但无目标元素、零效果，保持 parity 可断言。 */
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="dashboard-home"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="average-balance"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="positions"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-dashboard"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="liability-analytics"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bank-ledger-dashboard"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="portfolio-home"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-overview"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion) {
+  background: var(--nct-surface) !important;
+}
+
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="dashboard-home"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="average-balance"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="positions"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-dashboard"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="liability-analytics"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bank-ledger-dashboard"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="portfolio-home"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-overview"]) .moss-page-v2-decision-hero__conclusion {
+  border-left-color: var(--nct-accent) !important;
+}
+
+/* cockpit 壳 rail hover/active（§cockpit 烘焙 0-4-0；选择器不双写以对齐烘焙
+   同权后置）。走 --cockpit 变体的 Nocturne scope 共三个：dashboard-home /
+   portfolio-home（isDashboardCockpitShell）与 market-overview
+   （isModuleHomePage 亦走 useCockpitShellFrame）。dashboard-home 页内
+   0-5-0 块、market-overview 页内 0-6-0 块取值等价并继续接管，列入此处
+   仅作终层兜底；实际生效目标是无页内块的 portfolio-home。取值：
+   hover 9%/22% 与 active 14% + inset 2px 对齐 tokens.css
+   --moss-shell-rail-active-bg / --moss-shadow-institutional-active 语义，
+   active 边线 30% mix 沿用 market-overview 验收块先例。 */
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="dashboard-home"]) .workbench-shell-group-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="dashboard-home"]) .workbench-shell-agent-nav__link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="dashboard-home"]) .workbench-shell-support-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="portfolio-home"]) .workbench-shell-group-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="portfolio-home"]) .workbench-shell-agent-nav__link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="portfolio-home"]) .workbench-shell-support-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="market-overview"]) .workbench-shell-group-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="market-overview"]) .workbench-shell-agent-nav__link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="market-overview"]) .workbench-shell-support-link:hover {
+  background: color-mix(in srgb, var(--nct-accent) 9%, transparent) !important;
+  border-color: color-mix(in srgb, var(--nct-accent) 22%, transparent) !important;
+}
+
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="dashboard-home"]) .workbench-shell-group-link[data-active="true"],
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="portfolio-home"]) .workbench-shell-group-link[data-active="true"],
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="market-overview"]) .workbench-shell-group-link[data-active="true"] {
+  background: color-mix(in srgb, var(--nct-accent) 14%, transparent) !important;
+  border-color: color-mix(in srgb, var(--nct-accent) 30%, transparent) !important;
+  box-shadow: inset 2px 0 0 var(--nct-accent) !important;
 }

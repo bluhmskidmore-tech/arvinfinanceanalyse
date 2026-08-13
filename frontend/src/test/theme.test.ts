@@ -45,14 +45,17 @@ function stripCssComments(source: string): string {
  * Nocturne 外壳收口的 scope 列表提取：收集 body 含指定声明片段的规则里
  * 出现的全部 data-moss-theme-scope 值（去重排序）。嵌套在 @media 里的
  * 规则同样能被逐条抓到（正则不跨花括号，外层壳被跳过）。
+ * selectorMarker 用于 body 声明相同的两组规则（rail-mark 与 page-v2
+ * 背景压制同为 `background: var(--nct-surface) !important`）按选择器区分。
  */
-function nocturneScopeSet(css: string, bodyMarker: string): string[] {
+function nocturneScopeSet(css: string, bodyMarker: string, selectorMarker?: string): string[] {
   const cleaned = stripCssComments(css);
   const scopes = new Set<string>();
   const ruleRe = /([^{}]+)\{([^{}]*)\}/g;
   let rule: RegExpExecArray | null;
   while ((rule = ruleRe.exec(cleaned)) !== null) {
     if (!rule[2].includes(bodyMarker)) continue;
+    if (selectorMarker && !rule[1].includes(selectorMarker)) continue;
     const scopeRe = /data-moss-theme-scope="([a-z0-9-]+)"/g;
     let scope: RegExpExecArray | null;
     while ((scope = scopeRe.exec(rule[1])) !== null) {
@@ -370,7 +373,29 @@ describe("globalCss design token bridge (:root)", () => {
     const terminalVars = nocturneScopeSet(tokensCss, "--moss-shell-terminal-bg: var(--nct-rail)");
     const gridOverride = nocturneScopeSet(shellCss, "background: var(--nct-bg) !important");
     const railOverride = nocturneScopeSet(shellCss, "background: var(--nct-rail) !important");
-    const railMarkOverride = nocturneScopeSet(shellCss, "background: var(--nct-surface) !important");
+    const railMarkOverride = nocturneScopeSet(
+      shellCss,
+      "background: var(--nct-surface) !important",
+      ".workbench-shell-rail-mark",
+    );
+    const pageV2Override = nocturneScopeSet(
+      shellCss,
+      "background: var(--nct-surface) !important",
+      ".moss-page-v2-",
+    );
+    const conclusionOverride = nocturneScopeSet(
+      shellCss,
+      "border-left-color: var(--nct-accent) !important",
+      ".moss-page-v2-decision-hero__conclusion",
+    );
+    const cockpitHoverOverride = nocturneScopeSet(
+      shellCss,
+      "color-mix(in srgb, var(--nct-accent) 9%, transparent) !important",
+    );
+    const cockpitActiveOverride = nocturneScopeSet(
+      shellCss,
+      "box-shadow: inset 2px 0 0 var(--nct-accent) !important",
+    );
     const terminalOverride = nocturneScopeSet(
       workbenchDeferredChromeCss,
       "background: var(--nct-rail) !important",
@@ -380,10 +405,18 @@ describe("globalCss design token bridge (:root)", () => {
     expect(palette.length).toBeGreaterThanOrEqual(10);
     expect(gridOverride).toEqual(palette);
     expect(railOverride).toEqual(palette);
-    // cockpit 壳（dashboard-home / portfolio-home）的 rail-mark 保持透明制度，不入收口列表。
+    // rail-mark：dashboard-home / portfolio-home 保持 cockpit 透明制度不入列表；
+    // market-overview 虽也走 cockpit 壳，但其 rail-mark 由页内更高特异性块接管，保留兜底行。
     expect(railMarkOverride).toEqual(
       palette.filter((scope) => scope !== "dashboard-home" && scope !== "portfolio-home"),
     );
+    // page-v2 面板压制（背景 + 结论左边线）与 grid/rail 同构全量列表。
+    expect(pageV2Override).toEqual(palette);
+    expect(conclusionOverride).toEqual(palette);
+    // cockpit 壳 rail hover/active：三个 cockpit scope 全列（终层兜底）；
+    // dashboard-home / market-overview 由页内更高特异性块等值接管，实际生效于 portfolio-home。
+    expect(cockpitHoverOverride).toEqual(["dashboard-home", "market-overview", "portfolio-home"]);
+    expect(cockpitActiveOverride).toEqual(["dashboard-home", "market-overview", "portfolio-home"]);
     // 首页 cockpit 壳不渲染主列纸面。
     expect(paper).toEqual(palette.filter((scope) => scope !== "dashboard-home"));
     // 渲染终端条的 scope：tokens.css 终端条块与延迟分册必须同一份列表。
