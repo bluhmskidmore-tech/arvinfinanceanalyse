@@ -30,7 +30,6 @@ import {
   buildRiskExitRows,
   buildSectorFilterSummary,
   buildSectorRows,
-  buildSectorTableSortComparator,
   buildSectorViewRows,
   buildStockAnalysisEvidenceStatus,
   buildStockEndpointEvidenceItems,
@@ -52,10 +51,7 @@ import type {
   WorkbenchFact,
   WorkbenchSlowState,
 } from "../lib/stockAnalysisPageModel";
-import {
-  buildSectorStrengthCardModel,
-  buildSectorStrengthOption,
-} from "../lib/stockAnalysisChartModel";
+import { buildSectorStrengthCardModel } from "../lib/stockAnalysisChartModel";
 import { buildCandidatePositionSizeHintNotice } from "../lib/stockAnalysisPositionSizeHintModel";
 import {
   buildStockAnalysisRailReviewState,
@@ -105,7 +101,6 @@ import { useDeferredSectionSeen } from "../../../hooks/useDeferredSectionSeen";
 import { useFirstScreenAnalyticsTabs } from "../hooks/useFirstScreenAnalyticsTabs";
 import { useSectorPanelState } from "../hooks/useSectorPanelState";
 import { useSectorRankSeriesSupport } from "../hooks/useSectorRankSeriesSupport";
-import { useSectorSortState } from "../hooks/useSectorSortState";
 import { useStockSelectionRefresh } from "../hooks/useStockSelectionRefresh";
 import { useStrategyCardExpansion } from "../hooks/useStrategyCardExpansion";
 import {
@@ -138,7 +133,6 @@ import "./StockAnalysisPage.css";
 
 
 const STOCK_ANALYSIS_ENDPOINT_EVIDENCE_RAIL_ID = "stock-analysis-endpoint-evidence-rail";
-const SECTOR_STRENGTH_DEFAULT_TOP_COUNT = 3;
 
 const LazyAgentPanel = lazy(() =>
   import("../../agent/AgentPanel").then((module) => ({ default: module.AgentPanel })),
@@ -375,7 +369,6 @@ export default function StockAnalysisPage() {
   const [activeWorkbenchFactId, setActiveWorkbenchFactId] = useState<string | null>(null);
   const [focusedEndpointKey, setFocusedEndpointKey] = useState<string | null>(null);
   const [requestedEndpointKeys, setRequestedEndpointKeys] = useState<string[]>([]);
-  const [sectorDetailOpen, setSectorDetailOpen] = useState(false);
   const {
     sectorFilterSectorCode,
     sectorView,
@@ -387,7 +380,6 @@ export default function StockAnalysisPage() {
     handleSectorSeriesCollapseChange,
     handleSectorSeriesWindowChange,
   } = useSectorPanelState();
-  const { sectorSort, toggleSort, renderSortSuffix } = useSectorSortState();
   const { toggleStrategyCard, isStrategyCardExpanded } = useStrategyCardExpansion();
   const {
     firstScreenAnalyticsTab,
@@ -510,11 +502,6 @@ export default function StockAnalysisPage() {
     () => buildSectorViewRows(sectorRowsFull, sectorView),
     [sectorRowsFull, sectorView],
   );
-
-  const sortedDetailRows = useMemo(() => {
-    const cmp = buildSectorTableSortComparator(sectorSort.key, sectorSort.order);
-    return [...sectorRowsFull].sort(cmp);
-  }, [sectorRowsFull, sectorSort]);
 
   const reviewQueue = useMemo(() => {
     const strategyQueueSourceModule =
@@ -705,18 +692,6 @@ export default function StockAnalysisPage() {
     ],
   );
 
-  const sectorStrengthChartRows = useMemo(() => sectorViewRows.slice(0, 10), [sectorViewRows]);
-
-  const sectorStrengthChartOption = useMemo(
-    () =>
-      buildSectorStrengthOption({
-        rows: sectorStrengthChartRows,
-        view: sectorView,
-        activeSectorCode: sectorFilterSectorCode,
-      }),
-    [sectorFilterSectorCode, sectorStrengthChartRows, sectorView],
-  );
-
   const closedLoopMeta = useMemo(
     () =>
       mergeStockClosedLoopMeta(
@@ -817,10 +792,6 @@ export default function StockAnalysisPage() {
     .filter((item): item is string => Boolean(item))
     .join("；");
 
-  const sectorViewOverview = useMemo(() => buildStockSectorOverviewState(sectorViewRows), [sectorViewRows]);
-  const { topBars, bottomBars } = sectorViewOverview;
-  const visibleSectorTopBars = topBars.slice(0, SECTOR_STRENGTH_DEFAULT_TOP_COUNT);
-  const backgroundSectorTopBars = topBars.slice(SECTOR_STRENGTH_DEFAULT_TOP_COUNT);
   const headerDateValue = normalizeIsoCalendarDate(strategyPayload?.as_of_date);
   const pickerDisplay = normalizeIsoCalendarDate(asOfOverride) ?? headerDateValue;
 
@@ -2415,15 +2386,6 @@ export default function StockAnalysisPage() {
                     sectorLeaderRow={sectorLeaderRow}
                     sectorTailRow={sectorTailRow}
                     sectorCoverageCount={sectorCoverageCount}
-                    visibleSectorTopBars={visibleSectorTopBars}
-                    backgroundSectorTopBars={backgroundSectorTopBars}
-                    bottomBars={bottomBars}
-                    sectorStrengthChartRows={sectorStrengthChartRows}
-                    sectorDetailOpen={sectorDetailOpen}
-                    setSectorDetailOpen={setSectorDetailOpen}
-                    sortedDetailRows={sortedDetailRows}
-                    toggleSort={toggleSort}
-                    renderSortSuffix={renderSortSuffix}
                     sectorSeriesCollapseKeys={sectorSeriesCollapseKeys}
                     handleSectorSeriesCollapseChange={handleSectorSeriesCollapseChange}
                     sectorSeriesWindow={sectorSeriesWindow}
@@ -2432,7 +2394,6 @@ export default function StockAnalysisPage() {
                     sectorSeriesTrendLines={sectorSeriesTrendLines}
                     sectorSeriesTrendChartOption={sectorSeriesTrendChartOption}
                     sectorSeriesTableRows={sectorSeriesTableRows}
-                    sectorStrengthChartOption={sectorStrengthChartOption}
                   />
                 </Suspense>
               ) : null}

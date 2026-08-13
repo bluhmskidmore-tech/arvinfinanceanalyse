@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, type Dispatch, type SetStateAction } from "react";
+import { lazy, Suspense, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 
 import type { ApiClient } from "../../../api/client";
 import type {
@@ -45,7 +45,7 @@ import {
   strategyBacktestHorizons,
   strategyDisplayLabel,
 } from "../lib/stockAnalysisBacktestModel";
-import { sectorViewTabs } from "../lib/stockAnalysisChartModel";
+import { buildSectorStrengthOption, sectorViewTabs } from "../lib/stockAnalysisChartModel";
 import {
   buildConsensusDetailSelection,
   buildFactorScreenDetailSelection,
@@ -71,7 +71,10 @@ import {
 } from "../lib/stockAnalysisDeepResearchPanelsModel";
 import {
   buildCycleMacroLayerSummary,
+  buildSectorTableSortComparator,
+  buildSectorViewRows,
   buildStockAnalysisEventMonitorRows,
+  buildStockSectorOverviewState,
   buildStrategyLensItems,
   isStockModulePrimaryExcluded,
   localizeImplementationStage,
@@ -79,7 +82,6 @@ import {
   localizeThemeRadarBadge,
   type StockSectorRow,
   type StockSectorViewKind,
-  type StockSectorViewRow,
 } from "../lib/stockAnalysisPageModel";
 import {
   buildThemeBreakoutBlockerCopy,
@@ -129,8 +131,8 @@ import {
   type SectorSeriesTrendLine,
 } from "../lib/stockAnalysisSectorSeriesModel";
 import { EMPTY_STRATEGY_PRIORITY_ROWS } from "../lib/stockAnalysisQueryOptions";
-import type { SectorSortKey } from "../lib/stockAnalysisChartModel";
 import type { SectorSeriesWindow } from "../hooks/useSectorPanelState";
+import { useSectorSortState } from "../hooks/useSectorSortState";
 import type { StockAnalysisKlineRadarItem } from "../lib/stockAnalysisKlineRadarModel";
 
 const SECTOR_STRENGTH_DEFAULT_TOP_COUNT = 3;
@@ -257,15 +259,6 @@ export type StockAnalysisDeepResearchZoneProps = {
   sectorLeaderRow: StockSectorRow | null;
   sectorTailRow: StockSectorRow | null;
   sectorCoverageCount: number;
-  visibleSectorTopBars: StockSectorViewRow[];
-  backgroundSectorTopBars: StockSectorViewRow[];
-  bottomBars: StockSectorViewRow[];
-  sectorStrengthChartRows: StockSectorViewRow[];
-  sectorDetailOpen: boolean;
-  setSectorDetailOpen: (open: boolean) => void;
-  sortedDetailRows: StockSectorRow[];
-  toggleSort: (key: SectorSortKey) => void;
-  renderSortSuffix: (key: SectorSortKey) => string;
   sectorSeriesCollapseKeys: string[];
   handleSectorSeriesCollapseChange: (keys: string | string[]) => void;
   sectorSeriesWindow: SectorSeriesWindow;
@@ -274,7 +267,6 @@ export type StockAnalysisDeepResearchZoneProps = {
   sectorSeriesTrendLines: SectorSeriesTrendLine[];
   sectorSeriesTrendChartOption: EChartsOption;
   sectorSeriesTableRows: LivermoreSectorRankSeriesPoint[];
-  sectorStrengthChartOption: EChartsOption;
 };
 
 export function StockAnalysisDeepResearchZone({
@@ -322,15 +314,6 @@ export function StockAnalysisDeepResearchZone({
   sectorLeaderRow,
   sectorTailRow,
   sectorCoverageCount,
-  visibleSectorTopBars,
-  backgroundSectorTopBars,
-  bottomBars,
-  sectorStrengthChartRows,
-  sectorDetailOpen,
-  setSectorDetailOpen,
-  sortedDetailRows,
-  toggleSort,
-  renderSortSuffix,
   sectorSeriesCollapseKeys,
   handleSectorSeriesCollapseChange,
   sectorSeriesWindow,
@@ -339,7 +322,6 @@ export function StockAnalysisDeepResearchZone({
   sectorSeriesTrendLines,
   sectorSeriesTrendChartOption,
   sectorSeriesTableRows,
-  sectorStrengthChartOption,
 }: StockAnalysisDeepResearchZoneProps) {
   const gateState = strategyPayload?.market_gate.state;
   const meanReversionPayload = strategyPayload?.mean_reversion_candidates;
@@ -385,6 +367,30 @@ export function StockAnalysisDeepResearchZone({
     () => (meanReversionMarketActive ? meanReversionPayload?.items.slice(0, 8) ?? [] : []),
     [meanReversionMarketActive, meanReversionPayload?.items],
   );
+  const [sectorDetailOpen, setSectorDetailOpen] = useState(false);
+  const { sectorSort, toggleSort, renderSortSuffix } = useSectorSortState();
+  const sectorViewRows = useMemo(
+    () => buildSectorViewRows(sectorRowsFull, sectorView),
+    [sectorRowsFull, sectorView],
+  );
+  const sortedDetailRows = useMemo(() => {
+    const cmp = buildSectorTableSortComparator(sectorSort.key, sectorSort.order);
+    return [...sectorRowsFull].sort(cmp);
+  }, [sectorRowsFull, sectorSort]);
+  const sectorStrengthChartRows = useMemo(() => sectorViewRows.slice(0, 10), [sectorViewRows]);
+  const sectorStrengthChartOption = useMemo(
+    () =>
+      buildSectorStrengthOption({
+        rows: sectorStrengthChartRows,
+        view: sectorView,
+        activeSectorCode: sectorFilterSectorCode,
+      }),
+    [sectorFilterSectorCode, sectorStrengthChartRows, sectorView],
+  );
+  const sectorViewOverview = useMemo(() => buildStockSectorOverviewState(sectorViewRows), [sectorViewRows]);
+  const { topBars, bottomBars } = sectorViewOverview;
+  const visibleSectorTopBars = topBars.slice(0, SECTOR_STRENGTH_DEFAULT_TOP_COUNT);
+  const backgroundSectorTopBars = topBars.slice(SECTOR_STRENGTH_DEFAULT_TOP_COUNT);
   function openKlineRadarItem(item: StockAnalysisKlineRadarItem) {
     const ranks = lookupStockStrategyRanks(strategyPayload ?? null, item.stockCode);
     setDetailSelection(
