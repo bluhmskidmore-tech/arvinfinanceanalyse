@@ -12,6 +12,25 @@
  * Baseline lives in scripts/audit_visual_tokens.baseline.json.
  * Regenerate after paying down debt with:  node scripts/audit_visual_tokens.mjs --update-baseline
  * Baselines must only go down; do not raise them without explicit justification.
+ *
+ * Baseline reconciliations (justified raises, not new violations):
+ *  - 2026-08-13 frontend/src/test/theme.test.ts hex 14 -> 15: all 15 hexes are theme test
+ *    fixtures (14 shell-token `toBe("#...")` assertions plus the Nocturne scope-parity needle
+ *    `"--nct-bg: #161826"`). Pre-existing drift surfaced once the audit stopped early-exiting;
+ *    the file is unchanged relative to HEAD.
+ *  - 2026-08-13 frontend/src/theme/designSystem.ts hex -> 217: the token authority file is the
+ *    sanctioned home for hex literals (Nocturne dark-theme tokens added here); 217 is the exact
+ *    count under the ticket-guarded HEX_PATTERN (4 comment anchor references like `锚点 #1850a1）`
+ *    are prose, no longer counted).
+ *  - 2026-08-13 frontend/src/components/page/PagePrimitives.module.css hex 0 -> 20: inline-style
+ *    extraction from PagePrimitives.tsx made previously invisible shellTokens constant references
+ *    visible as CSS literals. All 20 values verified identical to theme/tokens.ts shellTokens /
+ *    designTokens (see the file's header comment for the mapping); no new colors introduced.
+ *  - 2026-08-13 dashboard-home debt move reconciliation: dashboardHomeShell.module.css hex
+ *    84 -> 38 and dashboardHomeOptionTwo.module.css hex 0 -> 20. The 皮肤统一阶段1 MOVE
+ *    migration (commits 60b112db/1c561ed2) copied 20 legacy hex declarations verbatim from the
+ *    shell module into optionTwo (declaration-value fidelity contract, see optionTwo header
+ *    comments) without reconciling either per-file entry. Net -26 hex; no new colors introduced.
  */
 
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -21,7 +40,16 @@ const repoRoot = path.resolve(import.meta.dirname, "..");
 const baselinePath = path.join(repoRoot, "scripts", "audit_visual_tokens.baseline.json");
 const scanRoot = path.join(repoRoot, "frontend", "src");
 
-const HEX_PATTERN = /#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/g;
+/**
+ * Bare hex color literal.
+ * Guards against ticket-reference false positives in comments (e.g. `01#17a：`, `#17a/#17d。`):
+ *  - lookbehind: a real color literal is never directly preceded by an ASCII alphanumeric
+ *    (ticket ids like `01#17a` are);
+ *  - lookahead: a real color literal is never directly followed by CJK text or CJK/full-width
+ *    punctuation (`#17a工单`, `#17d。`, `#17a：` are prose, not colors).
+ */
+const HEX_PATTERN =
+  /(?<![0-9a-zA-Z])#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b(?![\u3000-\u303f\u4e00-\u9fff\uff00-\uffef])/g;
 
 /** AI purple family — forbidden by DESIGN.md §4 ("AI 紫/霓虹渐变"). */
 const FORBIDDEN_HEXES = [
@@ -145,6 +173,18 @@ function runSelfTest() {
   const tsxSample = 'const x = value ?? "--"; const y = `--`; const ok = "—";';
   if (countDoubleDashPlaceholders(tsxSample) !== 2) {
     throw new Error("double-dash counter mismatch");
+  }
+  // Ticket references in comments must not count as hex colors; real literals must.
+  const ticketSample = [
+    "// 01#17a：工单编号并非颜色。",
+    "// 01#17a/#17d：连续工单编号也不是颜色。",
+    'const label = "#17a工单";',
+    ".d { color: #17a; }",
+    'const accent = "#17ab";',
+  ].join("\n");
+  const ticketHex = countMatches(ticketSample, HEX_PATTERN);
+  if (ticketHex !== 2) {
+    throw new Error(`hex ticket-reference guard mismatch: hex=${ticketHex} (expected 2)`);
   }
   console.log("audit_visual_tokens self-test: ok");
 }

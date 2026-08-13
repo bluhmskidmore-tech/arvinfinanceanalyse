@@ -5,6 +5,9 @@
     "apiClientMockOccurrences": 36,
     "totalTsxStyleProps": 901,
     "totalStaticTsxStyleProps": 359,
+    "featuresEmDashLiterals": 497,
+    "featuresSemanticProfitLossRefs": 13,
+    "featuresEchartsForReactImportFiles": 0,
     "dashboardStyleFiles": {},
     "maxPageStyleProps": {
       "frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx": 8,

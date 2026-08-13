@@ -55,7 +55,15 @@ function loadBaselineDocument() {
   if (!frontend || typeof frontend !== "object") {
     fail(`${baselineRelativePath} must contain a "frontend" namespace object.`);
   }
-  for (const key of ["apiClientLines", "apiClientMockOccurrences", "totalTsxStyleProps", "totalStaticTsxStyleProps"]) {
+  for (const key of [
+    "apiClientLines",
+    "apiClientMockOccurrences",
+    "totalTsxStyleProps",
+    "totalStaticTsxStyleProps",
+    "featuresEmDashLiterals",
+    "featuresSemanticProfitLossRefs",
+    "featuresEchartsForReactImportFiles",
+  ]) {
     if (!isCounterValue(frontend[key])) {
       fail(`${baselineRelativePath}: frontend.${key} must be a non-negative integer.`);
     }
@@ -224,6 +232,46 @@ function countDashboardStyleDebt(text) {
   };
 }
 
+// ---- frontend/src/features debt counters (2026-08-13 登记) ----------------
+// 口径（三项共用同一文件集）：frontend/src/features 下的 .ts/.tsx 文件，
+// 排除文件名含 ".test." 的测试文件。
+// - featuresEmDashLiterals: 独立字符串字面量 "—" / '—' / `—`（整个字面量恰为
+//   一个 U+2014）的出现次数。长文案内部的破折号属于合法文案，不计入；目标是
+//   驱动缺省值占位改为 import EM_DASH（src/utils/format.ts / src/pageModel）。
+// - featuresSemanticProfitLossRefs: `semantic.profit` / `semantic.loss` 引用
+//   次数（含 designTokens.color.semantic.* 等任何点访问）。深色路由禁止直灌
+//   浅色语义色，应走 TONE_COLOR / TONE_CSS_VAR 入口；本计数是收敛代理指标。
+// - featuresEchartsForReactImportFiles: 文件内出现 "echarts-for-react" 模块
+//   说明符（静态或动态 import）的文件数，即绕过 BaseChart 直连
+//   echarts-for-react 的代理指标；按文件计数而非出现次数。
+
+const FEATURES_EM_DASH_LITERAL_PATTERN = /(["'`])\u2014\1/g;
+const FEATURES_SEMANTIC_PROFIT_LOSS_PATTERN = /\bsemantic\.(?:profit|loss)\b/g;
+const FEATURES_ECHARTS_FOR_REACT_PATTERN = /["']echarts-for-react["']/;
+
+function isFeaturesCountedFile(filePath) {
+  return (
+    (filePath.endsWith(".ts") || filePath.endsWith(".tsx")) &&
+    !path.basename(filePath).includes(".test.")
+  );
+}
+
+function collectFeaturesDebt() {
+  const files = walkFiles(path.join(repoRoot, "frontend/src/features"), isFeaturesCountedFile);
+  let emDashLiterals = 0;
+  let semanticProfitLossRefs = 0;
+  let echartsForReactImportFiles = 0;
+  for (const filePath of files) {
+    const text = readFileSync(filePath, "utf8");
+    emDashLiterals += countMatches(text, FEATURES_EM_DASH_LITERAL_PATTERN);
+    semanticProfitLossRefs += countMatches(text, FEATURES_SEMANTIC_PROFIT_LOSS_PATTERN);
+    if (FEATURES_ECHARTS_FOR_REACT_PATTERN.test(text)) {
+      echartsForReactImportFiles += 1;
+    }
+  }
+  return { emDashLiterals, semanticProfitLossRefs, echartsForReactImportFiles };
+}
+
 function runSelfTest() {
   if (!baseline.dashboardStyleFiles) {
     throw new Error("dashboard style debt baselines are required");
@@ -263,6 +311,30 @@ function runSelfTest() {
   }
   if (countLines("first\nsecond\n") !== 2) {
     throw new Error("line counter must ignore the trailing newline");
+  }
+  const featuresSample = [
+    'const a = value ?? "\u2014";',
+    "const b = ready ? fmt(x) : '\u2014';",
+    "const c = `\u2014`;",
+    'const copy = "\u8de8\u671f\u5bf9\u6bd4\u2014\u2014\u957f\u6587\u6848\u4e2d\u7684\u7834\u6298\u53f7\u4e0d\u8ba1\u5165";',
+    "const up = designTokens.color.semantic.profit;",
+    "const down = theme.semantic.loss;",
+    "const label = semanticProfit; // \u975e\u70b9\u8bbf\u95ee\u4e0d\u8ba1\u5165",
+  ].join("\n");
+  const emDashLiteralCount = countMatches(featuresSample, FEATURES_EM_DASH_LITERAL_PATTERN);
+  if (emDashLiteralCount !== 3) {
+    throw new Error(`features em-dash literal counter mismatch: ${emDashLiteralCount}`);
+  }
+  const semanticRefCount = countMatches(featuresSample, FEATURES_SEMANTIC_PROFIT_LOSS_PATTERN);
+  if (semanticRefCount !== 2) {
+    throw new Error(`features semantic.profit/loss counter mismatch: ${semanticRefCount}`);
+  }
+  if (
+    !FEATURES_ECHARTS_FOR_REACT_PATTERN.test('import ReactECharts from "echarts-for-react";') ||
+    !FEATURES_ECHARTS_FOR_REACT_PATTERN.test("const mod = await import('echarts-for-react');") ||
+    FEATURES_ECHARTS_FOR_REACT_PATTERN.test('import { BaseChart } from "../components/BaseChart";')
+  ) {
+    throw new Error("features echarts-for-react import detector mismatch");
   }
   for (const repoPath of requiredProtectedMonolithFiles) {
     if (!baseline.protectedMonolithFiles[repoPath]) {
@@ -395,6 +467,38 @@ function collectMeasurements() {
     kind: "info",
     label: "frontend TSX dynamic style props",
     actual: totalDynamicStyleProps,
+  });
+
+  const featuresDebt = collectFeaturesDebt();
+  measurements.push({
+    kind: "limit",
+    label: "features em-dash string literals",
+    actual: featuresDebt.emDashLiterals,
+    max: baseline.featuresEmDashLiterals,
+    hint: "Import EM_DASH from src/utils/format or src/pageModel instead of the string literal \"\u2014\".",
+    ratchet: (value) => {
+      baseline.featuresEmDashLiterals = value;
+    },
+  });
+  measurements.push({
+    kind: "limit",
+    label: "features semantic.profit/loss references",
+    actual: featuresDebt.semanticProfitLossRefs,
+    max: baseline.featuresSemanticProfitLossRefs,
+    hint: "Use TONE_COLOR / TONE_CSS_VAR from src/utils/tone.ts instead of referencing semantic.profit/loss directly.",
+    ratchet: (value) => {
+      baseline.featuresSemanticProfitLossRefs = value;
+    },
+  });
+  measurements.push({
+    kind: "limit",
+    label: "features direct echarts-for-react import files",
+    actual: featuresDebt.echartsForReactImportFiles,
+    max: baseline.featuresEchartsForReactImportFiles,
+    hint: "Render charts through the shared BaseChart wrapper instead of importing echarts-for-react directly.",
+    ratchet: (value) => {
+      baseline.featuresEchartsForReactImportFiles = value;
+    },
   });
 
   for (const [repoPath, max] of Object.entries(baseline.maxPageStyleProps)) {
