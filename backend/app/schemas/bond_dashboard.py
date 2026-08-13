@@ -4,7 +4,8 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, ClassVar, Literal
 
 from backend.app.schemas.common_numeric import Numeric, NumericRawScale, NumericUnit, numeric_from_raw
-from pydantic import BaseModel, Field, model_validator
+from backend.app.schemas.result_meta import ResultMeta
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # (unit, sign_aware) keeps the legacy "auto" pct heuristic;
 # (unit, sign_aware, raw_scale) declares the producing raw scale explicitly.
@@ -333,3 +334,86 @@ class BondDashboardBundlePayload(BaseModel):
     sections: dict[str, dict[str, object]] = Field(default_factory=dict)
     section_statuses: dict[str, BondDashboardBundleSectionStatus] = Field(default_factory=dict)
     failed_sections: list[str] = Field(default_factory=list)
+
+
+class BondDashboardDatesPayload(BaseModel):
+    report_dates: list[str] = Field(default_factory=list)
+
+
+# `bond_dashboard_service._with_bond_dashboard_data_source` stamps this on every
+# response, so it is a fixed literal rather than a free string.
+BondDashboardDataSource = Literal["bond_analytics_facts"]
+
+
+class _BondDashboardEnvelope(BaseModel):
+    """Top-level shape shared by every `/api/bond-dashboard` read.
+
+    `extra="forbid"` is the point of this class. Without it, FastAPI would
+    quietly drop any response key the model does not declare, which is exactly
+    the failure this envelope exists to prevent; with it, a wrapper that starts
+    emitting an undeclared key fails loudly instead.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: ResultMeta
+
+
+class BondDashboardDatesEnvelope(_BondDashboardEnvelope):
+    result: BondDashboardDatesPayload
+    data_source: BondDashboardDataSource
+
+
+class BondDashboardHeadlineEnvelope(_BondDashboardEnvelope):
+    result: BondDashboardHeadlinePayload
+    data_source: BondDashboardDataSource
+
+
+class BondDashboardHomeSummaryEnvelope(_BondDashboardEnvelope):
+    result: BondDashboardHomeSummaryPayload
+    data_source: BondDashboardDataSource
+
+
+class BondDashboardAssetStructureEnvelope(_BondDashboardEnvelope):
+    result: BondDashboardAssetStructurePayload
+    data_source: BondDashboardDataSource
+
+
+class BondDashboardYieldDistributionEnvelope(_BondDashboardEnvelope):
+    result: BondDashboardYieldDistributionPayload
+    data_source: BondDashboardDataSource
+
+
+class BondDashboardPortfolioComparisonEnvelope(_BondDashboardEnvelope):
+    result: BondDashboardPortfolioComparisonPayload
+    data_source: BondDashboardDataSource
+
+
+class BondDashboardSpreadAnalysisEnvelope(_BondDashboardEnvelope):
+    result: BondDashboardSpreadAnalysisPayload
+    data_source: BondDashboardDataSource
+
+
+class BondDashboardMaturityStructureEnvelope(_BondDashboardEnvelope):
+    result: BondDashboardMaturityStructurePayload
+    data_source: BondDashboardDataSource
+
+
+class BondDashboardIndustryDistributionEnvelope(_BondDashboardEnvelope):
+    result: BondDashboardIndustryDistributionPayload
+    data_source: BondDashboardDataSource
+
+
+class BondDashboardRiskIndicatorsEnvelope(_BondDashboardEnvelope):
+    result: BondDashboardRiskIndicatorsPayload
+    data_source: BondDashboardDataSource
+
+
+class BondDashboardBusinessTypeMetricsEnvelope(_BondDashboardEnvelope):
+    result: BondDashboardBusinessTypeMetricsPayload
+    data_source: BondDashboardDataSource
+
+
+class BondDashboardBundleEnvelope(_BondDashboardEnvelope):
+    result: BondDashboardBundlePayload
+    data_source: BondDashboardDataSource

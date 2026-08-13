@@ -7,6 +7,20 @@ from typing import Annotated, Literal
 from backend.app.api.deps import ensure_read_allowed
 from backend.app.api.perf_logging import timed_api_call
 from backend.app.governance.settings import get_settings
+from backend.app.schemas.bond_dashboard import (
+    BondDashboardAssetStructureEnvelope,
+    BondDashboardBundleEnvelope,
+    BondDashboardBusinessTypeMetricsEnvelope,
+    BondDashboardDatesEnvelope,
+    BondDashboardHeadlineEnvelope,
+    BondDashboardHomeSummaryEnvelope,
+    BondDashboardIndustryDistributionEnvelope,
+    BondDashboardMaturityStructureEnvelope,
+    BondDashboardPortfolioComparisonEnvelope,
+    BondDashboardRiskIndicatorsEnvelope,
+    BondDashboardSpreadAnalysisEnvelope,
+    BondDashboardYieldDistributionEnvelope,
+)
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.bond_dashboard_service import (
     get_bond_dashboard_asset_structure,
@@ -59,7 +73,7 @@ def _bundle_requests_bond_analytics(sections: str) -> bool:
     return bool(requested & BOND_DASHBOARD_BUNDLE_ANALYTICS_SECTIONS)
 
 
-@router.get("/dates")
+@router.get("/dates", response_model=BondDashboardDatesEnvelope)
 def dashboard_dates(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
 ):
@@ -70,7 +84,7 @@ def dashboard_dates(
     )
 
 
-@router.get("/headline-kpis")
+@router.get("/headline-kpis", response_model=BondDashboardHeadlineEnvelope)
 def headline_kpis(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
@@ -82,7 +96,7 @@ def headline_kpis(
     )
 
 
-@router.get("/home-summary")
+@router.get("/home-summary", response_model=BondDashboardHomeSummaryEnvelope)
 def home_summary(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
@@ -94,7 +108,7 @@ def home_summary(
     )
 
 
-@router.get("/asset-structure")
+@router.get("/asset-structure", response_model=BondDashboardAssetStructureEnvelope)
 def asset_structure(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
@@ -107,7 +121,7 @@ def asset_structure(
     )
 
 
-@router.get("/yield-distribution")
+@router.get("/yield-distribution", response_model=BondDashboardYieldDistributionEnvelope)
 def yield_distribution(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
@@ -119,7 +133,7 @@ def yield_distribution(
     )
 
 
-@router.get("/portfolio-comparison")
+@router.get("/portfolio-comparison", response_model=BondDashboardPortfolioComparisonEnvelope)
 def portfolio_comparison(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
@@ -131,7 +145,7 @@ def portfolio_comparison(
     )
 
 
-@router.get("/spread-analysis")
+@router.get("/spread-analysis", response_model=BondDashboardSpreadAnalysisEnvelope)
 def spread_analysis(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
@@ -143,7 +157,7 @@ def spread_analysis(
     )
 
 
-@router.get("/maturity-structure")
+@router.get("/maturity-structure", response_model=BondDashboardMaturityStructureEnvelope)
 def maturity_structure(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
@@ -155,7 +169,7 @@ def maturity_structure(
     )
 
 
-@router.get("/industry-distribution")
+@router.get("/industry-distribution", response_model=BondDashboardIndustryDistributionEnvelope)
 def industry_distribution(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
@@ -168,7 +182,7 @@ def industry_distribution(
     )
 
 
-@router.get("/risk-indicators")
+@router.get("/risk-indicators", response_model=BondDashboardRiskIndicatorsEnvelope)
 def risk_indicators(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
@@ -180,7 +194,7 @@ def risk_indicators(
     )
 
 
-@router.get("/business-type-metrics")
+@router.get("/business-type-metrics", response_model=BondDashboardBusinessTypeMetricsEnvelope)
 def business_type_metrics(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
@@ -192,7 +206,7 @@ def business_type_metrics(
     )
 
 
-@router.get("/bundle")
+@router.get("/bundle", response_model=BondDashboardBundleEnvelope)
 def dashboard_bundle(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     sections: str = Query(

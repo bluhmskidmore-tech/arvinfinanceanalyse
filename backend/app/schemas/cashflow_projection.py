@@ -5,7 +5,8 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, ClassVar
 
 from backend.app.schemas.common_numeric import Numeric, NumericRawScale, NumericUnit, numeric_from_raw
-from pydantic import BaseModel, Field, model_validator
+from backend.app.schemas.result_meta import ResultMeta
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # (unit, sign_aware) keeps the legacy "auto" pct heuristic;
 # (unit, sign_aware, raw_scale) declares the producing raw scale explicitly.
@@ -139,3 +140,16 @@ class CashflowProjectionResponse(BaseModel):
     @classmethod
     def _coerce(cls, data: Any) -> Any:
         return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
+
+
+class CashflowProjectionEnvelope(BaseModel):
+    """`GET /api/cashflow-projection` wire shape.
+
+    `extra="forbid"` keeps an undeclared response key loud instead of letting
+    FastAPI drop it on the way out.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: ResultMeta
+    result: CashflowProjectionResponse

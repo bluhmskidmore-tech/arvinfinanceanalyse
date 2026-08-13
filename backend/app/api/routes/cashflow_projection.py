@@ -5,6 +5,7 @@ from typing import Annotated
 
 from backend.app.api.deps import ensure_read_allowed
 from backend.app.governance.settings import get_settings
+from backend.app.schemas.cashflow_projection import CashflowProjectionEnvelope
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.cashflow_projection_service import get_cashflow_projection
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -12,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 router = APIRouter(prefix="/api/cashflow-projection", tags=["cashflow-projection"])
 
 
-@router.get("")
+@router.get("", response_model=CashflowProjectionEnvelope)
 def cashflow_projection(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(...),

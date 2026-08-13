@@ -23,6 +23,54 @@ def _money(yuan: str) -> dict[str, str]:
     return {"yuan": yuan, "yi": "0.00"}
 
 
+def _read_result_meta(result_kind: str) -> dict[str, Any]:
+    return {
+        "trace_id": f"tr_{result_kind.replace('.', '_').replace('-', '_')}_test",
+        "basis": "ledger",
+        "result_kind": result_kind,
+        "formal_use_allowed": False,
+        "source_version": "sv_current",
+        "rule_version": f"rv_{result_kind.replace('.', '_').replace('-', '_')}_v1",
+        "cache_version": f"cv_{result_kind.replace('.', '_').replace('-', '_')}_v1",
+    }
+
+
+def _data_envelope() -> dict[str, Any]:
+    return {
+        "result_meta": _read_result_meta("ledger_pnl.data"),
+        "result": {
+            "data_status": "ready",
+            "report_date": "2026-06-30",
+            "source_version": "sv_current",
+            "items": [],
+            "summary": {
+                "total_pnl_cnx": _money("0"),
+                "total_pnl_cny": _money("0"),
+                "total_pnl": _money("0"),
+                "count": 0,
+            },
+        },
+    }
+
+
+def _summary_envelope() -> dict[str, Any]:
+    return {
+        "result_meta": _read_result_meta("ledger_pnl.summary"),
+        "result": {
+            "data_status": "ready",
+            "report_date": "2026-06-30",
+            "source_version": "sv_current",
+            "ledger_total_assets": _money("0"),
+            "ledger_total_liabilities": _money("0"),
+            "ledger_net_assets": _money("0"),
+            "ledger_monthly_pnl_core": _money("0"),
+            "ledger_monthly_pnl_all": _money("0"),
+            "by_currency": [],
+            "by_account": [],
+        },
+    }
+
+
 def _analysis_envelope() -> dict[str, Any]:
     return {
         "result_meta": {
@@ -316,12 +364,12 @@ class FakeLedgerPnlService:
     def ledger_pnl_data_envelope(self, **kwargs: Any) -> dict[str, Any]:
         self.calls.append(("data", kwargs))
         self._raise_value_error()
-        return {"result_meta": {"result_kind": "ledger_pnl.data"}, "result": {}}
+        return _data_envelope()
 
     def ledger_pnl_summary_envelope(self, **kwargs: Any) -> dict[str, Any]:
         self.calls.append(("summary", kwargs))
         self._raise_value_error()
-        return {"result_meta": {"result_kind": "ledger_pnl.summary"}, "result": {}}
+        return _summary_envelope()
 
     def ledger_pnl_analysis_envelope(self, **kwargs: Any) -> dict[str, Any]:
         self.calls.append(("analysis", kwargs))
@@ -360,7 +408,7 @@ class FakeLedgerPnlService:
     def qdb_gl_monthly_analysis_dates_envelope(self, **kwargs: Any) -> dict[str, Any]:
         self.calls.append(("monthly_analysis_dates", kwargs))
         return {
-            "result_meta": {"result_kind": "qdb-gl-monthly-analysis.dates"},
+            "result_meta": _read_result_meta("qdb-gl-monthly-analysis.dates"),
             "result": {"report_months": ["202606"]},
         }
 

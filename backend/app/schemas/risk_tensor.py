@@ -7,7 +7,8 @@ from typing import Any, ClassVar
 
 from backend.app.core_finance.risk_tensor import PortfolioRiskTensor
 from backend.app.schemas.common_numeric import Numeric, NumericUnit, numeric_from_raw
-from pydantic import BaseModel, Field, model_validator
+from backend.app.schemas.result_meta import ResultMeta
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 def _coerce_value_to_numeric(value: Any, unit: NumericUnit, sign_aware: bool) -> Any:
@@ -127,3 +128,66 @@ class RiskTensorPayload(BaseModel):
     @classmethod
     def from_tensor(cls, tensor: PortfolioRiskTensor) -> RiskTensorPayload:
         return cls(**asdict(tensor))
+
+
+class RiskTensorBlockedReportDate(BaseModel):
+    report_date: str
+    reason: str
+
+
+class RiskTensorDatesPayload(BaseModel):
+    report_dates: list[str] = Field(default_factory=list)
+    blocked_report_dates: list[RiskTensorBlockedReportDate] = Field(default_factory=list)
+
+
+class RiskTensorHistoryWindow(BaseModel):
+    # `from` is a Python keyword, so the wire name has to come from an alias.
+    model_config = ConfigDict(populate_by_name=True)
+
+    from_: str = Field(alias="from")
+    to: str
+
+
+class RiskTensorHistoryPoint(BaseModel):
+    report_date: str
+    # `risk_tensor_service._history_scalar` stringifies the stored decimal and
+    # keeps None as None, so these are nullable strings rather than Numeric blocks.
+    portfolio_dv01: str | None
+    regulatory_dv01: str | None
+    portfolio_modified_duration: str | None
+    portfolio_convexity: str | None
+    cs01: str | None
+    issuer_concentration_hhi: str | None
+    issuer_top5_weight: str | None
+    liquidity_gap_30d: str | None
+
+
+class RiskTensorHistoryPayload(BaseModel):
+    report_date: str
+    periods: int
+    window: RiskTensorHistoryWindow
+    points: list[RiskTensorHistoryPoint] = Field(default_factory=list)
+
+
+class _RiskTensorEnvelope(BaseModel):
+    """Top-level shape shared by the `/api/risk/tensor*` reads.
+
+    `extra="forbid"` keeps an undeclared response key loud instead of letting
+    FastAPI drop it on the way out.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: ResultMeta
+
+
+class RiskTensorEnvelope(_RiskTensorEnvelope):
+    result: RiskTensorPayload
+
+
+class RiskTensorDatesEnvelope(_RiskTensorEnvelope):
+    result: RiskTensorDatesPayload
+
+
+class RiskTensorHistoryEnvelope(_RiskTensorEnvelope):
+    result: RiskTensorHistoryPayload

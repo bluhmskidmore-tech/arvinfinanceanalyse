@@ -8,6 +8,11 @@ from backend.app.api.response_cache import (
     market_home_response_cache,
 )
 from backend.app.governance.settings import get_settings
+from backend.app.schemas.campisi_attribution_read import (
+    CampisiEnhancedEnvelope,
+    CampisiFourEffectsReadEnvelope,
+    CampisiMaturityBucketEnvelope,
+)
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from fastapi import APIRouter, Depends, Query
 
@@ -22,7 +27,11 @@ def _ensure_pnl_attribution_read_allowed(auth: AuthContext) -> None:
     ensure_read_allowed(auth, "pnl_attribution", settings=get_settings(), authorize=ensure_user_allowed)
 
 
-@router.get("/campisi/four-effects")
+@router.get(
+    "/campisi/four-effects",
+    response_model=CampisiFourEffectsReadEnvelope,
+    response_model_exclude_unset=True,
+)
 def campisi_four_effects(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     start_date: str | None = Query(None, description="期初日期 YYYY-MM-DD"),
@@ -59,7 +68,11 @@ def campisi_four_effects(
     )
 
 
-@router.get("/campisi/enhanced")
+@router.get(
+    "/campisi/enhanced",
+    response_model=CampisiEnhancedEnvelope,
+    response_model_exclude_unset=True,
+)
 def campisi_enhanced(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     start_date: str | None = Query(None, description="期初日期 YYYY-MM-DD"),
@@ -74,7 +87,11 @@ def campisi_enhanced(
     )
 
 
-@router.get("/campisi/maturity-buckets")
+@router.get(
+    "/campisi/maturity-buckets",
+    response_model=CampisiMaturityBucketEnvelope,
+    response_model_exclude_unset=True,
+)
 def campisi_maturity_buckets(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     start_date: str | None = Query(None, description="期初日期 YYYY-MM-DD"),

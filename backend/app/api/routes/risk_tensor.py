@@ -5,6 +5,11 @@ from typing import Annotated
 
 from backend.app.api.deps import ensure_read_allowed
 from backend.app.governance.settings import get_settings
+from backend.app.schemas.risk_tensor import (
+    RiskTensorDatesEnvelope,
+    RiskTensorEnvelope,
+    RiskTensorHistoryEnvelope,
+)
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.risk_tensor_service import (
     risk_tensor_dates_envelope,
@@ -55,7 +60,7 @@ def _validate_risk_report_date(report_date: str) -> None:
         raise HTTPException(status_code=422, detail="Invalid report_date. Expected YYYY-MM-DD.") from exc
 
 
-@router.get("/tensor/dates")
+@router.get("/tensor/dates", response_model=RiskTensorDatesEnvelope)
 def risk_tensor_dates(auth: Annotated[AuthContext, Depends(get_auth_context)]) -> dict:
     settings = get_settings()
     _ensure_risk_tensor_read_allowed(auth, settings)
@@ -72,7 +77,7 @@ def risk_tensor_dates(auth: Annotated[AuthContext, Depends(get_auth_context)]) -
         )
 
 
-@router.get("/tensor")
+@router.get("/tensor", response_model=RiskTensorEnvelope)
 def risk_tensor(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(...),
@@ -97,7 +102,7 @@ def risk_tensor(
         )
 
 
-@router.get("/tensor/history")
+@router.get("/tensor/history", response_model=RiskTensorHistoryEnvelope)
 def risk_tensor_history(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(...),

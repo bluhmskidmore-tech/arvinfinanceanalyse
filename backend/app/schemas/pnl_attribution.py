@@ -697,3 +697,102 @@ class CampisiAttributionEnvelope(BaseModel):
 
     result_meta: ResultMeta
     result: CampisiAttributionPayload
+
+
+# =========================================================================
+# Workbench response envelopes
+#
+# `pnl_attribution_service` builds every workbench body as
+# ``<Payload>.model_validate(...).model_dump(mode="json")`` and then lets
+# ``_with_optional_warnings`` append a ``warnings`` list on degraded reads.
+# The response models below therefore restate exactly that: the payload the
+# service already validated against, plus the one key it may add afterwards.
+#
+# ``warnings`` is *absent* on a healthy read rather than empty, so the routes
+# pair these models with ``response_model_exclude_unset=True``; declaring a
+# default here without that flag would materialize a key the endpoint never
+# returned.
+# =========================================================================
+
+
+class _WorkbenchResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    warnings: list[str] | None = None
+
+
+class VolumeRateAttributionResult(VolumeRateAttributionPayload, _WorkbenchResult):
+    pass
+
+
+class VolumeRateAttributionEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: ResultMeta
+    result: VolumeRateAttributionResult
+
+
+class TPLMarketCorrelationResult(TPLMarketCorrelationPayload, _WorkbenchResult):
+    pass
+
+
+class TPLMarketCorrelationEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: ResultMeta
+    result: TPLMarketCorrelationResult
+
+
+class PnlCompositionResult(PnlCompositionPayload, _WorkbenchResult):
+    pass
+
+
+class PnlCompositionEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: ResultMeta
+    result: PnlCompositionResult
+
+
+class CarryRollDownResult(CarryRollDownPayload, _WorkbenchResult):
+    pass
+
+
+class CarryRollDownEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: ResultMeta
+    result: CarryRollDownResult
+
+
+class SpreadAttributionResult(SpreadAttributionPayload, _WorkbenchResult):
+    pass
+
+
+class SpreadAttributionEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: ResultMeta
+    result: SpreadAttributionResult
+
+
+class KRDAttributionResult(KRDAttributionPayload, _WorkbenchResult):
+    pass
+
+
+class KRDAttributionEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: ResultMeta
+    result: KRDAttributionResult
+
+
+class AdvancedAttributionSummaryResult(AdvancedAttributionSummary, _WorkbenchResult):
+    pass
+
+
+class AdvancedAttributionSummaryEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: ResultMeta
+    result: AdvancedAttributionSummaryResult

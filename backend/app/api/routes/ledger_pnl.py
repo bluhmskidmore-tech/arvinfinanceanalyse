@@ -20,6 +20,13 @@ from backend.app.schemas.ledger_pnl_analysis import (
     LedgerPnlAccountDetailEnvelope,
     LedgerPnlAnalysisEnvelope,
 )
+from backend.app.schemas.ledger_pnl_read import (
+    LedgerFinancialIndicatorSummaryEnvelope,
+    LedgerPnlDataEnvelope,
+    LedgerPnlDatesEnvelope,
+    LedgerPnlSummaryEnvelope,
+    QdbGlMonthlyAnalysisDatesEnvelope,
+)
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
@@ -77,7 +84,11 @@ def _validated_report_month(value: str) -> str:
     return value
 
 
-@router.get("/ledger-pnl/dates")
+@router.get(
+    "/ledger-pnl/dates",
+    response_model=LedgerPnlDatesEnvelope,
+    response_model_exclude_unset=True,
+)
 def dates(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
 ) -> dict[str, object]:
@@ -88,7 +99,11 @@ def dates(
     )
 
 
-@router.get("/ledger-pnl/data")
+@router.get(
+    "/ledger-pnl/data",
+    response_model=LedgerPnlDataEnvelope,
+    response_model_exclude_unset=True,
+)
 def data(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     date: str = Query(
@@ -115,7 +130,11 @@ def data(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-@router.get("/ledger-pnl/summary")
+@router.get(
+    "/ledger-pnl/summary",
+    response_model=LedgerPnlSummaryEnvelope,
+    response_model_exclude_unset=True,
+)
 def summary(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     date: str = Query(
@@ -206,7 +225,11 @@ def account_detail(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-@router.get("/ledger-pnl/financial-indicator-summary")
+@router.get(
+    "/ledger-pnl/financial-indicator-summary",
+    response_model=LedgerFinancialIndicatorSummaryEnvelope,
+    response_model_exclude_unset=True,
+)
 def financial_indicator_summary(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_month: str = Query(
@@ -248,7 +271,11 @@ def formal_financial_indicators(
     )
 
 
-@router.get("/ledger-pnl/monthly-analysis/dates")
+@router.get(
+    "/ledger-pnl/monthly-analysis/dates",
+    response_model=QdbGlMonthlyAnalysisDatesEnvelope,
+    response_model_exclude_unset=True,
+)
 def monthly_analysis_dates(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
 ) -> dict[str, object]:
