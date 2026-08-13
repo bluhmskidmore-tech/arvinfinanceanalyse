@@ -1,7 +1,12 @@
 /**
  * Agent API domain client. Keep endpoint ownership here; client.ts only composes it.
  */
-import type { AgentEnvelope, AgentQueryRequest } from "./contracts";
+import type {
+  AgentEnvelope,
+  AgentQueryRequest,
+  AgentRunCreateResult,
+  AgentRunStatusResponse,
+} from "./contracts";
 
 type FetchLike = typeof fetch;
 
@@ -12,8 +17,9 @@ export type AgentClientFactoryOptions = {
 
 export type AgentClientMethods = {
   queryAgent: (request: AgentQueryRequest) => Promise<AgentEnvelope>;
-  createAgentRun: (request: AgentQueryRequest) => Promise<unknown>;
-  getAgentRun: (runId: string) => Promise<unknown>;
+  createAgentRun: (request: AgentQueryRequest) => Promise<AgentRunCreateResult>;
+  getAgentRun: (runId: string) => Promise<AgentRunStatusResponse>;
+  cancelAgentRun: (runId: string) => Promise<AgentRunStatusResponse>;
 };
 
 export type AgentClientDelay = () => Promise<void>;
@@ -96,7 +102,11 @@ export function buildStableDemoAgentEnvelope(): AgentEnvelope {
   };
 }
 
-function buildDemoAgentRunPayload(request: AgentQueryRequest, runId = "agent_run:frontend_mock") {
+/** run_kind 为前端本地增强字段，后端契约不返回；demo 载荷保留以驱动本地 UI 分支。 */
+function buildDemoAgentRunPayload(
+  request: AgentQueryRequest,
+  runId = "agent_run:frontend_mock",
+): AgentRunStatusResponse & { run_kind: "sync" } {
   return {
     run_id: runId,
     status: "completed",
@@ -116,13 +126,21 @@ export function createDemoAgentClient(delay: AgentClientDelay): AgentClientMetho
       await delay();
       return buildStableDemoAgentEnvelope();
     },
-    async createAgentRun(request: AgentQueryRequest): Promise<unknown> {
+    async createAgentRun(request: AgentQueryRequest): Promise<AgentRunCreateResult> {
       await delay();
       return buildDemoAgentRunPayload(request);
     },
-    async getAgentRun(runId: string): Promise<unknown> {
+    async getAgentRun(runId: string): Promise<AgentRunStatusResponse> {
       await delay();
       return buildDemoAgentRunPayload({ question: "Agent demo run" }, runId);
+    },
+    async cancelAgentRun(runId: string): Promise<AgentRunStatusResponse> {
+      await delay();
+      return {
+        ...buildDemoAgentRunPayload({ question: "Agent demo run" }, runId),
+        status: "cancelled",
+        result: null,
+      };
     },
   };
 }
@@ -178,8 +196,8 @@ export function createRealAgentClient(options: AgentClientFactoryOptions): Agent
         body: JSON.stringify(request),
       });
     },
-    async createAgentRun(request: AgentQueryRequest): Promise<unknown> {
-      return requestAgentJson<unknown>("/api/agent/runs", {
+    async createAgentRun(request: AgentQueryRequest): Promise<AgentRunCreateResult> {
+      return requestAgentJson<AgentRunCreateResult>("/api/agent/runs", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -187,10 +205,16 @@ export function createRealAgentClient(options: AgentClientFactoryOptions): Agent
         body: JSON.stringify(request),
       });
     },
-    async getAgentRun(runId: string): Promise<unknown> {
-      return requestAgentJson<unknown>(`/api/agent/runs/${encodeURIComponent(runId)}`, {
+    async getAgentRun(runId: string): Promise<AgentRunStatusResponse> {
+      return requestAgentJson<AgentRunStatusResponse>(`/api/agent/runs/${encodeURIComponent(runId)}`, {
         method: "GET",
       });
+    },
+    async cancelAgentRun(runId: string): Promise<AgentRunStatusResponse> {
+      return requestAgentJson<AgentRunStatusResponse>(
+        `/api/agent/runs/${encodeURIComponent(runId)}/cancel`,
+        { method: "POST" },
+      );
     },
   };
 }

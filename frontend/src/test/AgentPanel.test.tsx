@@ -541,12 +541,105 @@ describe("AgentPanel", () => {
     const turnStatus = await screen.findByRole("status", { name: "回答状态：please judge current risk" });
     expect(turnStatus).toHaveTextContent("本地查询");
     expect(screen.getByText("正在回答 · Shift+Enter 换行")).toBeInTheDocument();
-    expect(screen.getByTestId("agent-panel-submit")).toBeDisabled();
+    // 嵌入态回答中：composer 主按钮切换为可点击的停止入口，而不是禁用的发送按钮。
+    const pendingAction = screen.getByTestId("agent-panel-submit");
+    expect(pendingAction).toHaveTextContent("停止等待");
+    expect(pendingAction).not.toBeDisabled();
     release?.();
     await waitFor(() => {
       expect(screen.getByTestId("agent-panel-submit")).toBeDisabled();
     });
     await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "follow-up risk check");
     expect(screen.getByTestId("agent-panel-submit")).not.toBeDisabled();
+  });
+
+  it("stops a pending embedded answer from the composer stop action", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockReturnValueOnce(new Promise(() => undefined));
+    renderAgentPanel();
+
+    await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "stop embedded answer");
+    await user.click(screen.getByTestId("agent-panel-submit"));
+
+    const stopAction = screen.getByTestId("agent-panel-submit");
+    expect(stopAction).toHaveAccessibleName("停止等待当前回答：stop embedded answer");
+    await user.click(stopAction);
+
+    expect(await screen.findByText("已停止等待这次回答。")).toBeInTheDocument();
+    expect(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL)).toHaveValue("stop embedded answer");
+    expect(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL)).toHaveFocus();
+  });
+
+  it("requests backend cancellation when stopping an embedded managed run with a known run id", async () => {
+    const user = userEvent.setup();
+    fetchMock
+      .mockResolvedValueOnce(
+        buildJsonResponse({
+          run_id: "agent_run:embedded-cancel",
+          status: "queued",
+          provider: "hermes",
+          model: "gpt-5.5",
+          transport: "bridge",
+          toolsets: "file",
+          queued_at: "2026-05-07T08:00:00Z",
+        }),
+      )
+      .mockRejectedValueOnce(new TypeError("sse unavailable"))
+      .mockReturnValueOnce(new Promise(() => undefined))
+      .mockResolvedValueOnce(
+        buildJsonResponse({
+          run_id: "agent_run:embedded-cancel",
+          status: "cancelled",
+          provider: "hermes",
+        }),
+      );
+    renderAgentPanel();
+
+    await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "cancel embedded run");
+    await user.click(screen.getByTestId("agent-panel-submit"));
+
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+
+    await user.click(screen.getByTestId("agent-panel-submit"));
+
+    expect(await screen.findByText("已停止等待这次回答。")).toBeInTheDocument();
+    await waitFor(() => {
+      const cancelCall = fetchMock.mock.calls.find(([url]) => String(url).includes("/cancel"));
+      expect(cancelCall).toBeTruthy();
+      expect(String(cancelCall?.[0])).toContain("agent_run%3Aembedded-cancel/cancel");
+      expect((cancelCall?.[1] as RequestInit | undefined)?.method).toBe("POST");
+    });
+  });
+
+  it("stops a pending embedded answer with Escape without leaking Escape to the host drawer", async () => {
+    const user = userEvent.setup();
+    const hostKeydownSpy = vi.fn();
+    document.body.addEventListener("keydown", hostKeydownSpy);
+    try {
+      fetchMock.mockReturnValueOnce(new Promise(() => undefined));
+      renderAgentPanel();
+
+      await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "escape embedded answer");
+      await user.click(screen.getByTestId("agent-panel-submit"));
+      hostKeydownSpy.mockClear();
+
+      await user.keyboard("{Escape}");
+
+      expect(await screen.findByText("已停止等待这次回答。")).toBeInTheDocument();
+      const escapesWhileLoading = hostKeydownSpy.mock.calls.filter(
+        ([event]) => (event as KeyboardEvent).key === "Escape",
+      );
+      expect(escapesWhileLoading).toHaveLength(0);
+
+      await user.keyboard("{Escape}");
+      const escapesAfterStop = hostKeydownSpy.mock.calls.filter(
+        ([event]) => (event as KeyboardEvent).key === "Escape",
+      );
+      expect(escapesAfterStop).toHaveLength(1);
+    } finally {
+      document.body.removeEventListener("keydown", hostKeydownSpy);
+    }
   });
 });

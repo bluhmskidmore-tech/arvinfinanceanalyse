@@ -129,4 +129,39 @@ describe("AgentClient", () => {
       expect.objectContaining({ method: "GET" }),
     );
   });
+
+  it("posts to the cancel endpoint with the encoded run id", async () => {
+    const cancelledPayload = { run_id: "agent_run:test", status: "cancelled", result: null };
+    const fetchImpl = vi.fn(async () =>
+      new Response(JSON.stringify(cancelledPayload), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const client = createRealAgentClient({
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      baseUrl: "http://example.test/base",
+    });
+
+    await expect(client.cancelAgentRun("agent_run:test")).resolves.toEqual(cancelledPayload);
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://example.test/base/api/agent/runs/agent_run%3Atest/cancel",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("returns a cancelled demo run without network in createDemoAgentClient", async () => {
+    const delay = vi.fn(async () => undefined);
+    const client = createDemoAgentClient(delay);
+
+    const run = await client.cancelAgentRun("agent_run:demo");
+
+    expect(delay).toHaveBeenCalledOnce();
+    expect(run).toMatchObject({
+      run_id: "agent_run:demo",
+      status: "cancelled",
+      result: null,
+    });
+  });
 });

@@ -104,7 +104,6 @@ function AgentResultSideDrawer({
 
 export function AgentTurnResultView({
   turn,
-  isLatestResultTurn,
   isEmbedded,
   readOnly,
   loading,
@@ -125,7 +124,8 @@ export function AgentTurnResultView({
   if (!turnResult) {
     return null;
   }
-  const governanceNotices = isLatestResultTurn ? buildGovernanceNotices(turnResult) : [];
+  // 治理警示（stale/降级/禁止正式使用）跟随结果本身常显，不随新回合出现而消失。
+  const governanceNotices = buildGovernanceNotices(turnResult);
   const researchRadarResult = isResearchRadarResult(turnResult);
   const compactProviderChatResult = isCompactProviderChatResult(turnResult);
   const copyStatus = copyFeedback?.turnId === turn.id ? copyFeedback.status : null;

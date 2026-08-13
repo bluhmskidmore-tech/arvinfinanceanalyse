@@ -1,9 +1,7 @@
 import { useEffect } from "react";
 
 import {
-  AGENT_RUN_POLL_MAX_ATTEMPTS,
   formatManagedRunFailureMessage,
-  getAgentRunPollIntervalMs,
   latestAgentRunStatusRequests,
   mergeRestoredManagedTurn,
 } from "../lib/agentWorkbenchModel";
@@ -15,7 +13,7 @@ import type {
   AgentConversationTurn,
 } from "../lib/agentWorkbenchModel";
 import { clearLatestAgentRunId, loadLatestAgentRunId } from "../lib/agentWorkbenchStorage";
-import { runPollingTask } from "../../../app/jobs/polling";
+import { isAbortError, pollAgentRunUntilTerminal } from "./agentRunStatusOrchestrator";
 
 type UseAgentRunRestoreOptions = {
   shouldPersistConversation: boolean;
@@ -62,6 +60,7 @@ export function useAgentRunRestore({
     }
 
     let cancelled = false;
+    const abortController = new AbortController();
     const restoreSession = currentConversationSession();
     setRestoringRunId(latestRunId);
     let restoreRequest = latestAgentRunStatusRequests.get(latestRunId);
@@ -73,11 +72,11 @@ export function useAgentRunRestore({
     }
     void restoreRequest
       .then((payload) =>
-        runPollingTask<AgentRunPayload>({
-          start: async () => payload,
-          getStatus: fetchAgentRunStatus,
-          getIntervalMs: getAgentRunPollIntervalMs,
-          maxAttempts: AGENT_RUN_POLL_MAX_ATTEMPTS,
+        pollAgentRunUntilTerminal({
+          runId: latestRunId,
+          initialPayload: payload,
+          fetchAgentRunStatus,
+          signal: abortController.signal,
           onUpdate: (nextPayload) => {
             if (cancelled || !isCurrentConversationSession(restoreSession)) {
               return;
@@ -107,8 +106,8 @@ export function useAgentRunRestore({
           });
         }
       })
-      .catch(() => {
-        if (cancelled || !isCurrentConversationSession(restoreSession)) {
+      .catch((error) => {
+        if (cancelled || isAbortError(error) || !isCurrentConversationSession(restoreSession)) {
           return;
         }
         setRestoringRunId("");
@@ -117,6 +116,7 @@ export function useAgentRunRestore({
       });
     return () => {
       cancelled = true;
+      abortController.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- preserve prior restore effect deps
   }, [shouldPersistConversation]);

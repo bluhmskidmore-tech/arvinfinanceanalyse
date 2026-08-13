@@ -57,4 +57,55 @@ describe("AgentTurnResultView", () => {
 
     expect(screen.getByText("外部模型运行证据")).toBeInTheDocument();
   });
+
+  it("keeps governance notices visible for non-latest turns", () => {
+    const turn: AgentConversationTurn = {
+      id: "turn-governance-history",
+      question: "历史轮问题",
+      agentRun: null,
+      result: {
+        answer: "历史轮回答",
+        cards: [],
+        evidence: {
+          tables_used: ["fact_positions"],
+          filters_applied: {},
+          sql_executed: [],
+          evidence_rows: 3,
+          quality_flag: "stale",
+        },
+        result_meta: {
+          result_kind: "agent.intent.duration_risk",
+          formal_use_allowed: false,
+        },
+        next_drill: [],
+        suggested_actions: [],
+      },
+      error: null,
+      activeSuggestedActionPayload: null,
+    };
+
+    render(
+      <AgentTurnResultView
+        turn={turn}
+        isLatestResultTurn={false}
+        isEmbedded={false}
+        readOnly={false}
+        loading={false}
+        latestConversationTurnId="turn-some-other-latest"
+        copyFeedback={null}
+        pendingSuggestedActionConfirmation={null}
+        canRegenerate={false}
+        onRegenerate={() => undefined}
+        onCopyAnswer={() => undefined}
+        onApplyNextDrill={() => undefined}
+        onSuggestedAction={() => undefined}
+        onFocusComposerFromFollowUp={() => undefined}
+        onApplyFollowUpChip={() => undefined}
+        onFocusComposerFromEmptyResult={() => undefined}
+        onSideDrawerOpen={() => undefined}
+      />,
+    );
+
+    expect(screen.getByRole("status", { name: "数据可信状态提示" })).toBeInTheDocument();
+  });
 });

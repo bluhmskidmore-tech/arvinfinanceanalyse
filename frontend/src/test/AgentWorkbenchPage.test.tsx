@@ -5994,7 +5994,96 @@ describe("AgentWorkbenchPage", () => {
 
     expect(screen.getByLabelText(AGENT_CONVERSATION_LABEL)).toHaveTextContent("stop after run id exists");
     expect(screen.getByText("已停止等待这次回答。")).toBeInTheDocument();
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    // 停止后除去建 run 与首次轮询，只允许追加一次后端 cancel 请求，不得继续轮询。
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/agent/runs/agent_run%3Aknown-before-stop/cancel",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("requests backend cancellation when stopping a run with a known run id", async () => {
+    const user = userEvent.setup();
+    fetchMock
+      .mockResolvedValueOnce(
+        buildJsonResponse({
+          run_id: "agent_run:cancel-me",
+          status: "queued",
+          provider: "hermes",
+          model: "gpt-5.5",
+          transport: "bridge",
+          toolsets: "file",
+          queued_at: "2026-05-07T08:00:00Z",
+        }),
+      )
+      .mockReturnValueOnce(new Promise(() => undefined))
+      .mockResolvedValueOnce(
+        buildJsonResponse({
+          run_id: "agent_run:cancel-me",
+          status: "cancelled",
+          provider: "hermes",
+          model: "gpt-5.5",
+          transport: "bridge",
+          toolsets: "file",
+        }),
+      );
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "cancel this pending run");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    await waitFor(() => {
+      expect(window.localStorage.getItem(LATEST_AGENT_RUN_ID_KEY)).toBe("agent_run:cancel-me");
+    });
+
+    await user.click(getWaitStatusStopAction());
+
+    expect(await screen.findByText("已停止等待这次回答。")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/agent/runs/agent_run%3Acancel-me/cancel",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+  });
+
+  it("renders a cancelled managed run as a cancelled turn with resend actions", async () => {
+    const user = userEvent.setup();
+    fetchMock
+      .mockResolvedValueOnce(
+        buildJsonResponse({
+          run_id: "agent_run:cancelled-elsewhere",
+          status: "queued",
+          provider: "hermes",
+          model: "gpt-5.5",
+          transport: "bridge",
+          toolsets: "file",
+          queued_at: "2026-05-07T08:00:00Z",
+        }),
+      )
+      .mockResolvedValueOnce(
+        buildJsonResponse({
+          run_id: "agent_run:cancelled-elsewhere",
+          status: "cancelled",
+          provider: "hermes",
+          model: "gpt-5.5",
+          transport: "bridge",
+          toolsets: "file",
+          elapsed_seconds: 2,
+        }),
+      );
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "cancelled elsewhere");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(await screen.findByText("这次回答的任务已取消，不会再返回结果。")).toBeInTheDocument();
+    expect(screen.getByText("任务已取消")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重新发送：cancelled elsewhere" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "编辑这句：cancelled elsewhere" })).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("restores the latest managed Hermes run after a refresh", async () => {

@@ -17,6 +17,7 @@ import { AgentRuntimeStrip } from "./components/AgentRuntimeStrip";
 import { AgentShortcutDrawer } from "./components/AgentShortcutDrawer";
 import { AgentTurnErrorCallout } from "./components/AgentTurnErrorCallout";
 import { AgentTurnResultView } from "./components/AgentTurnResultView";
+import { isAbortError } from "./hooks/agentRunStatusOrchestrator";
 import { runManagedAgentPolling } from "./hooks/runManagedAgentPolling";
 
 import "./AgentWorkbenchPage.css";
@@ -25,6 +26,7 @@ import {
   AGENT_STICKY_BOTTOM_THRESHOLD_PX,
   AgentDisabledQueryError,
   AgentManagedRunRequiresHermesError,
+  AgentRunCancelledError,
   GITNEXUS_QUICK_EXAMPLES,
   buildAgentRequestBody,
   buildConversationContext,
@@ -151,6 +153,8 @@ export function EmbeddedAgentCopilot({
   const shouldStickConversationToBottomRef = useRef(true);
   const stopActiveAgentTurnRef = useRef<() => void>(() => undefined);
   const submitQueuedQueryRef = useRef<(question: string) => Promise<void>>(async () => undefined);
+  const activeManagedRunAbortRef = useRef<AbortController | null>(null);
+  const activeManagedRunIdRef = useRef("");
   const [copyFeedback, setCopyFeedback] = useState<AgentCopyFeedback | null>(null);
   const deferredProcessSearch = useDeferredValue(processSearch);
   const filteredProcesses = availableProcesses.filter((processName) =>
@@ -440,8 +444,17 @@ export function EmbeddedAgentCopilot({
       if (copyFeedbackTimerRef.current !== null) {
         window.clearTimeout(copyFeedbackTimerRef.current);
       }
+      // 卸载时只中止前端等待（SSE/轮询），不取消后端 run：刷新或路由切换后仍可恢复。
+      activeManagedRunAbortRef.current?.abort();
     };
   }, []);
+
+  function requestBackendRunCancel(runId: string) {
+    if (!runId.trim()) {
+      return;
+    }
+    void apiClient.cancelAgentRun(runId).catch(() => undefined);
+  }
 
   async function fetchAgentRunStatus(runId: string): Promise<AgentRunPayload> {
     let payload: unknown;
@@ -550,14 +563,29 @@ export function EmbeddedAgentCopilot({
       conversationContext,
       pageContext,
     );
+    const abortController = new AbortController();
+    activeManagedRunAbortRef.current = abortController;
+    activeManagedRunIdRef.current = "";
     setAgentRun(null);
     setResult(null);
     try {
       const finalPayload = await runManagedAgentPolling({
         requestBody,
-        createAgentRun,
+        createAgentRun: async (body: AgentQueryRequest) => {
+          const payload = await createAgentRun(body);
+          if (payload.run_kind !== "sync") {
+            if (abortController.signal.aborted) {
+              // 用户在 run 建立前就点了停止：拿到 run_id 后立即请求后端取消。
+              requestBackendRunCancel(payload.run_id);
+            } else {
+              activeManagedRunIdRef.current = payload.run_id;
+            }
+          }
+          return payload;
+        },
         fetchAgentRunStatus,
         canCommit: () => canCommitProcessState(requestVersion, normalizedRepoPath),
+        signal: abortController.signal,
         onRunAccepted: (payload, runRequestLatencyMs) => {
           setOrdinaryConversationMode("managed");
           setAgentRun(payload);
@@ -605,6 +633,25 @@ export function EmbeddedAgentCopilot({
       shouldFocusComposerRef.current = true;
       window.setTimeout(focusComposerInput, 0);
     } catch (requestError) {
+      if (isAbortError(requestError)) {
+        return;
+      }
+      if (requestError instanceof AgentRunCancelledError) {
+        if (canCommitProcessState(requestVersion, normalizedRepoPath)) {
+          const cancelledRun = requestError.payload;
+          setAgentRun(cancelledRun);
+          updateConversationTurn(turnId, (turn) => ({
+            ...turn,
+            agentRun: cancelledRun,
+            result: null,
+            error: null,
+            activeSuggestedActionPayload: null,
+          }));
+          shouldFocusComposerRef.current = true;
+          window.setTimeout(focusComposerInput, 0);
+        }
+        return;
+      }
       if (
         requestError instanceof AgentManagedRunRequiresHermesError &&
         options?.rethrowLocalProviderFallback
@@ -632,6 +679,11 @@ export function EmbeddedAgentCopilot({
         updateConversationTurn(turnId, (turn) => ({ ...turn, error: nextError }));
         shouldFocusComposerRef.current = true;
         window.setTimeout(focusComposerInput, 0);
+      }
+    } finally {
+      if (activeManagedRunAbortRef.current === abortController) {
+        activeManagedRunAbortRef.current = null;
+        activeManagedRunIdRef.current = "";
       }
     }
   }
@@ -885,6 +937,15 @@ export function EmbeddedAgentCopilot({
       return;
     }
 
+    const activeAbortController = activeManagedRunAbortRef.current;
+    const activeManagedRunId = activeManagedRunIdRef.current;
+    activeManagedRunAbortRef.current = null;
+    activeManagedRunIdRef.current = "";
+    activeAbortController?.abort();
+    if (activeManagedRunId) {
+      requestBackendRunCancel(activeManagedRunId);
+    }
+
     invalidateActiveRequest();
     setLoading(false);
     setAgentWaitSeconds(0);
@@ -928,11 +989,17 @@ export function EmbeddedAgentCopilot({
       if (event.key !== "Escape" || event.isComposing) {
         return;
       }
+      if (isEmbedded) {
+        // 嵌入态回答中：Escape 只停止当前回答，拦截住不让宿主抽屉同时关闭；
+        // 停止后（loading=false）监听被移除，再按 Escape 才走宿主的关闭逻辑。
+        event.stopPropagation();
+      }
       stopActiveAgentTurnRef.current();
     }
-    window.addEventListener("keydown", handleEscapeStop);
-    return () => window.removeEventListener("keydown", handleEscapeStop);
-  }, [loading]);
+    // capture 阶段注册，才能抢在宿主（antd Drawer 等）的 Escape 处理之前拦截。
+    window.addEventListener("keydown", handleEscapeStop, { capture: isEmbedded });
+    return () => window.removeEventListener("keydown", handleEscapeStop, { capture: isEmbedded });
+  }, [loading, isEmbedded]);
 
   async function handleSubmit(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault();
@@ -1685,7 +1752,7 @@ export function EmbeddedAgentCopilot({
           onClearQuery={clearComposerQueryFromButton}
           onSubmit={handleSubmit}
           onQueueSubmit={isEmbedded ? undefined : queueCurrentQuery}
-          onStop={isEmbedded ? undefined : stopActiveAgentTurn}
+          onStop={stopActiveAgentTurn}
           inputRef={composerInputRef}
         />
       ) : null}
@@ -1813,6 +1880,40 @@ export function EmbeddedAgentCopilot({
                       </div>
                     ) : null}
 
+                    {turn.agentRun?.status === "cancelled" && !turn.result && !turn.stopped ? (
+                      <div className="agent-callout agent-callout--stopped" role="status">
+                        <strong>任务已取消</strong>
+                        <span>这次回答的任务已取消，不会再返回结果。</span>
+                        {turn.retryMode === "ordinary" && turn.question.trim() ? (
+                          <div className="agent-callout__actions">
+                            <button
+                              type="button"
+                              className="agent-callout__action"
+                              aria-label={`编辑这句：${turn.question}`}
+                              onClick={() => editAgentQuestion(turn)}
+                              disabled={loading}
+                            >
+                              编辑这句
+                            </button>
+                            <button
+                              type="button"
+                              className="agent-callout__action"
+                              aria-label={`重新发送：${turn.question}`}
+                              onClick={() =>
+                                void rerunOrdinaryTurn(
+                                  turn,
+                                  "正在重新发送已取消的回答 · 可继续输入下一句",
+                                )
+                              }
+                              disabled={loading}
+                            >
+                              重新发送
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+
                     <AgentTurnErrorCallout
                       turn={turn}
                       loading={loading}
@@ -1911,7 +2012,7 @@ export function EmbeddedAgentCopilot({
             onClearQuery={clearComposerQueryFromButton}
             onSubmit={handleSubmit}
             onQueueSubmit={isEmbedded ? undefined : queueCurrentQuery}
-            onStop={isEmbedded ? undefined : stopActiveAgentTurn}
+            onStop={stopActiveAgentTurn}
             inputRef={composerInputRef}
           />
         </div>

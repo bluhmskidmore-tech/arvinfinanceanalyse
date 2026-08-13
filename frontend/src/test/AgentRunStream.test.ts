@@ -62,4 +62,27 @@ describe("streamAgentRunEvents", () => {
     expect(fetchImpl.mock.calls[0]?.[1]).not.toHaveProperty("credentials");
     expect(fetchImpl.mock.calls[0]?.[1]?.headers).not.toHaveProperty("Authorization");
   });
+
+  it("ignores unknown event types and comment-only blocks without stopping the stream", async () => {
+    const fetchImpl = vi.fn(async () =>
+      buildEventStreamResponse([
+        "event: heartbeat\ndata: {\"ts\":\"2026-08-12T00:00:00Z\"}\n\n",
+        ": comment-only heartbeat\n\n",
+        "event: totally_unknown\ndata: not json at all\n\n",
+        "event: run_update\ndata: {\"run_id\":\"agent_run:test\",\"status\":\"completed\"}\n\n",
+      ]),
+    );
+    const updates: unknown[] = [];
+
+    await streamAgentRunEvents(
+      "agent_run:test",
+      (payload) => {
+        updates.push(payload);
+        return true;
+      },
+      { fetchImpl: fetchImpl as unknown as typeof fetch },
+    );
+
+    expect(updates).toEqual([{ run_id: "agent_run:test", status: "completed" }]);
+  });
 });

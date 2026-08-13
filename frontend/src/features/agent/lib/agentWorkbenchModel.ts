@@ -5,8 +5,11 @@ import type {
   AgentConversationContext,
   AgentPageContext,
   AgentQueryRequest,
+  AgentRunStatus,
   AgentSuggestedAction,
 } from "../../../api/contracts";
+
+export type { AgentRunStatus };
 
 export type AgentResultCard = {
   title: string;
@@ -38,8 +41,6 @@ export type AgentQueryResult = {
   next_drill: AgentNextDrill[];
   suggested_actions: AgentSuggestedAction[];
 };
-
-export type AgentRunStatus = "queued" | "starting" | "running" | "completed" | "failed";
 
 export type AgentCopyFeedback = { turnId: string; status: "success" | "error" };
 
@@ -148,13 +149,32 @@ export class AgentManagedRunRequiresHermesError extends Error {
   }
 }
 
+/** 托管 run 在等待期间进入 cancelled 终态：携带终态载荷，供 UI 渲染取消态而非错误态。 */
+export class AgentRunCancelledError extends Error {
+  readonly payload: AgentRunPayload;
+
+  constructor(payload: AgentRunPayload) {
+    super(payload.error_message || "这次回答的任务已取消。");
+    this.name = "AgentRunCancelledError";
+    this.payload = payload;
+  }
+}
+
 export const AGENT_RUN_STATUSES = new Set<AgentRunStatus>([
   "queued",
   "starting",
   "running",
   "completed",
   "failed",
+  "cancelled",
 ]);
+
+/** 后端 AgentRunStatus 终态集合：cancelled 与 completed/failed 一样结束 SSE/轮询等待。 */
+export const AGENT_RUN_TERMINAL_STATUSES = new Set<string>(["completed", "failed", "cancelled"]);
+
+export function isTerminalAgentRunStatus(status: string) {
+  return AGENT_RUN_TERMINAL_STATUSES.has(status);
+}
 
 export const MAX_AGENT_CONTEXT_TURNS = 4;
 
@@ -167,6 +187,20 @@ export const MAX_AGENT_CONTEXT_QUESTION_LENGTH = 800;
 export const MAX_AGENT_CONTEXT_ANSWER_LENGTH = 1400;
 
 export const AGENT_RUN_POLL_MAX_ATTEMPTS = 240;
+
+/** 轮询遇到瞬时错误（网络抖动等）时允许的最大连续重试次数。 */
+export const AGENT_RUN_POLL_TRANSIENT_RETRY_LIMIT = 3;
+
+/** 瞬时错误重试退避：500ms → 1s → 2s（consecutiveErrorCount 从 1 起）。 */
+export function getAgentRunPollTransientRetryDelayMs(consecutiveErrorCount: number) {
+  return Math.min(2000, 500 * 2 ** Math.max(0, consecutiveErrorCount - 1));
+}
+
+export const AGENT_RUN_POLL_NETWORK_RECOVERABLE_MESSAGE =
+  "网络连接不稳定，已暂停等待。任务可能仍在后台运行：可稍后重试这一轮，或刷新页面尝试恢复。";
+
+export const AGENT_RUN_POLL_TIMEOUT_RECOVERABLE_MESSAGE =
+  "等待超时：任务可能仍在后台运行。可刷新页面尝试恢复，或重试这一轮。";
 
 export const AGENT_STICKY_BOTTOM_THRESHOLD_PX = 96;
 
@@ -803,6 +837,8 @@ export function formatManagedRunTitle(status: AgentRunStatus | undefined, provid
       return providerLabel ? `${providerLabel} 托管任务完成` : "托管任务完成";
     case "failed":
       return providerLabel ? `${providerLabel} 托管任务失败` : "托管任务失败";
+    case "cancelled":
+      return providerLabel ? `${providerLabel} 托管任务已取消` : "托管任务已取消";
     default:
       return providerLabel ? `${providerLabel} 正在分析` : "托管任务分析中";
   }
@@ -835,6 +871,8 @@ export function formatAgentRunStatusLabel(status: AgentRunStatus | undefined, fa
       return "已完成";
     case "failed":
       return "失败";
+    case "cancelled":
+      return "已取消";
     default:
       return fallback;
   }
@@ -993,6 +1031,9 @@ export function formatAgentWaitHint(agentRun: AgentRunPayload | null, waitSecond
   }
   if (status === "failed") {
     return "这次没有完成，可以调整问题后重试。";
+  }
+  if (status === "cancelled") {
+    return "这次任务已取消，可编辑问题后重新发送。";
   }
   return "可以离开或刷新，回来后会继续显示这次结果。";
 }

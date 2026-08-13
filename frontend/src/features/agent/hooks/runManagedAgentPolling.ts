@@ -1,5 +1,6 @@
 import type { AgentQueryRequest } from "../../../api/contracts";
 import {
+  AgentRunCancelledError,
   formatManagedRunFailureMessage,
   getAgentRequestClockMs,
   normalizeAgentRunRequestLatencyMs,
@@ -14,6 +15,7 @@ type RunManagedAgentPollingOptions = {
   canCommit: () => boolean;
   onRunAccepted: (payload: AgentRunPayload, requestLatencyMs: number | undefined) => void;
   onRunUpdate: (payload: AgentRunPayload) => void;
+  signal?: AbortSignal;
 };
 
 /**
@@ -28,6 +30,7 @@ export async function runManagedAgentPolling({
   canCommit,
   onRunAccepted,
   onRunUpdate,
+  signal,
 }: RunManagedAgentPollingOptions): Promise<AgentRunPayload & { result: AgentQueryResult }> {
   const runRequestStartedAtMs = getAgentRequestClockMs();
   const initialPayload = await createAgentRun(requestBody);
@@ -44,12 +47,16 @@ export async function runManagedAgentPolling({
     fetchAgentRunStatus,
     canCommit,
     onRunUpdate,
+    signal,
   });
 
   if (finalPayload.status === "failed") {
     throw new Error(
       finalPayload.error_message || formatManagedRunFailureMessage(finalPayload.provider),
     );
+  }
+  if (finalPayload.status === "cancelled") {
+    throw new AgentRunCancelledError(finalPayload);
   }
   if (!finalPayload.result) {
     throw new Error("智能体任务完成但未返回结果。");
