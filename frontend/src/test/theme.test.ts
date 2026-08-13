@@ -203,6 +203,75 @@ function normalizeHex(value: string): string {
   return value.trim().toLowerCase();
 }
 
+/** 色值字面量比较归一化：小写 + 空白收敛（排版差异不报警，值差异照报）。 */
+function normalizeColorLiteral(value: string): string {
+  return value.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+/**
+ * tokens.css Nocturne 主色板块提取：全 src 仅此一个规则声明 --nct-*（其余
+ * 出现处均为 var(--nct-…) 引用）。出现第二个声明块＝引入第二套 Nocturne
+ * 数值源，直接抛错要求并回主色板块，防止分叉后互锁断言只盯其中一份。
+ */
+function nocturnePaletteDeclarations(css: string): string {
+  const cleaned = stripCssComments(css);
+  const bodies: string[] = [];
+  const ruleRe = /([^{}]+)\{([^{}]*)\}/g;
+  let rule: RegExpExecArray | null;
+  while ((rule = ruleRe.exec(cleaned)) !== null) {
+    if (/--nct-[a-z0-9-]+\s*:/.test(rule[2])) bodies.push(rule[2]);
+  }
+  if (bodies.length !== 1) {
+    throw new Error(
+      `tokens.css 应恰有 1 个 --nct-* 声明块，实际 ${bodies.length} 个；` +
+        "新增声明块会成为第二套 Nocturne 数值源，请并回主色板块或更新互锁断言。",
+    );
+  }
+  return bodies[0];
+}
+
+/** 提取单个规则体内的全部自定义属性声明（键不含 --，值空白收敛）。 */
+function parseCssVarDeclarations(ruleBody: string): Map<string, string> {
+  const map = new Map<string, string>();
+  const re = /--([a-z0-9-]+)\s*:\s*([\s\S]*?);/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(ruleBody)) !== null) {
+    map.set(m[1], m[2].replace(/\s+/g, " ").trim());
+  }
+  return map;
+}
+
+/**
+ * `color-mix(in srgb, <基色> N%, transparent)` → `rgba(r, g, b, N/100)`。
+ * 取舍：soft 槽位 CSS 侧写 color-mix（基色引 var(--nct-*)，改基色自动联动），
+ * JS 侧是 canvas/antd 可直接消费的 rgba 字面量，字符串无法直接对比。srgb
+ * 下与 transparent 的预乘插值恰等价于「基色 + alpha=N/100」，故解析基色
+ * （var 引用按同块声明解析一层）改写成 rgba 再比较——仍是值级互锁，而非
+ * 退化成只比透明度或跳过 soft 槽位。
+ */
+function nocturneColorMixToRgba(expression: string, blockVars: Map<string, string>): string {
+  const match = expression.match(
+    /^color-mix\(in srgb, (#[0-9a-f]{6}|var\(--[a-z0-9-]+\)) (\d+(?:\.\d+)?)%, transparent\)$/i,
+  );
+  if (!match) {
+    throw new Error(`无法归一化的 color-mix 表达式：${expression}`);
+  }
+  let base = match[1];
+  if (base.toLowerCase().startsWith("var(")) {
+    const resolved = blockVars.get(base.slice("var(--".length, -1));
+    if (!resolved) {
+      throw new Error(`color-mix 基色变量未在 Nocturne 块内声明：${base}`);
+    }
+    base = resolved;
+  }
+  const hex = /^#([0-9a-f]{6})$/i.exec(base)?.[1];
+  if (!hex) {
+    throw new Error(`color-mix 基色解析后不是 6 位 hex，无法归一化：${base}`);
+  }
+  const channel = (offset: number) => parseInt(hex.slice(offset, offset + 2), 16);
+  return `rgba(${channel(0)}, ${channel(2)}, ${channel(4)}, ${Number(match[2]) / 100})`;
+}
+
 describe("ibTokens", () => {
   const globalCss = extractRootCssBlock(readCssWithLocalImports(GLOBAL_CSS_PATH));
   const ibVars = parseIbCssVars(globalCss);
@@ -216,6 +285,128 @@ describe("ibTokens", () => {
     expect(normalizeHex(ibVars.get("ib-rail-bg") ?? "")).toBe(normalizeHex(ibTokens.color.railBg));
     expect(ibVars.get("ib-radius")).toBe(`${ibTokens.radius}px`);
     expect(ibVars.get("ib-shadow")).toBe(ibTokens.shadow);
+  });
+});
+
+/**
+ * Nocturne 双源互锁槽位映射（hex 槽位）：tokens.css Nocturne 块变量名
+ * （不含 --）→ nocturneTokens.color 键。两份数值手工同步：CSS 侧供页面
+ * 样式经 --dh-api-* 语义链消费，JS 侧供 antd cssinjs 与 canvas 图表等
+ * 读不到 CSS 变量的消费方。命名易混处：--nct-ring（实线边框）→ line，
+ * 而 --nct-line（弱分隔）→ lineSoft（登记在 color-mix 槽位表）；
+ * --nct-warn 是 JS amber 与 gold 双别名的共同源（tokens.css 侧
+ * --dh-api-amber / --dh-api-gold 亦同引 --nct-warn）。
+ */
+const NOCTURNE_HEX_SLOTS: ReadonlyArray<
+  readonly [cssVar: string, jsKey: keyof typeof nocturneTokens.color]
+> = [
+  ["nct-bg", "bg"],
+  ["nct-rail", "rail"],
+  ["nct-surface", "panel"],
+  ["nct-well", "panel2"],
+  ["nct-raised", "panel3"],
+  ["nct-ring", "line"],
+  ["nct-ink", "ink"],
+  ["nct-soft", "inkSoft"],
+  ["nct-muted", "inkMuted"],
+  ["nct-accent", "blue"],
+  ["nct-accent-300", "accent300"],
+  ["nct-accent-400", "accent400"],
+  ["nct-up", "green"],
+  ["nct-warn", "amber"],
+  ["nct-warn", "gold"],
+  ["nct-down", "red"],
+];
+
+/**
+ * Nocturne 双源互锁槽位映射（color-mix 槽位）：CSS 侧是 color-mix 表达式
+ * （soft 四件套挂在同块 --dh-api-*-soft 别名上、基色引 var(--nct-*)；
+ * --nct-line 直接基于 hex 字面量），JS 侧是 rgba 字面量；经
+ * nocturneColorMixToRgba 归一化成 rgba 后做值级对比（取舍见该函数注释）。
+ */
+const NOCTURNE_COLOR_MIX_SLOTS: ReadonlyArray<
+  readonly [cssVar: string, jsKey: keyof typeof nocturneTokens.color]
+> = [
+  ["nct-line", "lineSoft"],
+  ["dh-api-blue-soft", "blueSoft"],
+  ["dh-api-green-soft", "greenSoft"],
+  ["dh-api-amber-soft", "amberSoft"],
+  ["dh-api-red-soft", "redSoft"],
+];
+
+/**
+ * JS/CSS 双源数值互锁：nocturneTokens（designSystem.ts）与 tokens.css
+ * Nocturne scope 块是手工同步的两份色值。只改 CSS 侧时 antd cssinjs 与
+ * canvas 图表（JS 消费方）静默漂移，只改 JS 侧时页面样式（CSS 消费方）
+ * 静默漂移——此组断言按上方槽位映射逐一值级对拍。
+ */
+describe("nocturneTokens ↔ tokens.css Nocturne scope parity", () => {
+  const nocturneCssVars = parseCssVarDeclarations(
+    nocturnePaletteDeclarations(readFileSync(TOKENS_CSS_PATH, "utf8")),
+  );
+  const driftHint =
+    "改了一侧色值未同步另一侧：CSS 侧改动需同步 designSystem.ts nocturneTokens，" +
+    "JS 侧改动需同步 tokens.css Nocturne scope 块。";
+
+  it("keeps every hex slot in value parity", () => {
+    for (const [cssVar, jsKey] of NOCTURNE_HEX_SLOTS) {
+      const cssValue = nocturneCssVars.get(cssVar);
+      const jsValue = nocturneTokens.color[jsKey];
+      expect(cssValue, `tokens.css Nocturne 块缺少 --${cssVar} 声明；${driftHint}`).toBeDefined();
+      expect(
+        normalizeColorLiteral(cssValue ?? ""),
+        `Nocturne 双源漂移：tokens.css --${cssVar}="${cssValue}" ≠ ` +
+          `nocturneTokens.color.${jsKey}="${jsValue}"；${driftHint}`,
+      ).toBe(normalizeColorLiteral(jsValue));
+    }
+  });
+
+  it("keeps soft quad and line-soft color-mix slots equivalent to the JS rgba literals", () => {
+    for (const [cssVar, jsKey] of NOCTURNE_COLOR_MIX_SLOTS) {
+      const cssValue = nocturneCssVars.get(cssVar);
+      const jsValue = nocturneTokens.color[jsKey];
+      expect(cssValue, `tokens.css Nocturne 块缺少 --${cssVar} 声明；${driftHint}`).toBeDefined();
+      const normalized = nocturneColorMixToRgba(cssValue ?? "", nocturneCssVars);
+      expect(
+        normalizeColorLiteral(normalized),
+        `Nocturne 双源漂移：tokens.css --${cssVar}="${cssValue}"（归一化 "${normalized}"）≠ ` +
+          `nocturneTokens.color.${jsKey}="${jsValue}"；${driftHint}`,
+      ).toBe(normalizeColorLiteral(jsValue));
+    }
+  });
+
+  it("keeps --dh-api-radius in parity with nocturneTokens.radius", () => {
+    expect(
+      nocturneCssVars.get("dh-api-radius"),
+      `Nocturne 双源漂移：tokens.css --dh-api-radius="${nocturneCssVars.get("dh-api-radius")}" ≠ ` +
+        `nocturneTokens.radius=${nocturneTokens.radius}（期望 "${nocturneTokens.radius}px"）；${driftHint}`,
+    ).toBe(`${nocturneTokens.radius}px`);
+  });
+
+  it("registers every slot on both sides of the interlock map", () => {
+    const coveredCssVars = new Set(
+      [...NOCTURNE_HEX_SLOTS, ...NOCTURNE_COLOR_MIX_SLOTS].map(([cssVar]) => cssVar),
+    );
+    const unmappedCssVars = [...nocturneCssVars.keys()].filter(
+      (name) => name.startsWith("nct-") && !coveredCssVars.has(name),
+    );
+    expect(
+      unmappedCssVars,
+      "tokens.css Nocturne 块出现未登记进互锁映射表的 --nct-* 槽位；" +
+        "请同步扩展 nocturneTokens 与 NOCTURNE_*_SLOTS 映射。",
+    ).toEqual([]);
+
+    const coveredJsKeys = new Set<keyof typeof nocturneTokens.color>(
+      [...NOCTURNE_HEX_SLOTS, ...NOCTURNE_COLOR_MIX_SLOTS].map(([, jsKey]) => jsKey),
+    );
+    const unmappedJsKeys = (
+      Object.keys(nocturneTokens.color) as Array<keyof typeof nocturneTokens.color>
+    ).filter((key) => !coveredJsKeys.has(key));
+    expect(
+      unmappedJsKeys,
+      "nocturneTokens.color 出现未登记进互锁映射表的槽位；" +
+        "请同步扩展 tokens.css Nocturne 块与 NOCTURNE_*_SLOTS 映射。",
+    ).toEqual([]);
   });
 });
 

@@ -1,4 +1,12 @@
 /*
+ * ⚠️ 运行时死码（2026-08-13 审查确证）：唯一导入方 BalanceAnalysisWorkbenchLayout
+ * 全仓无值导入方（Page 的 type-only import 已迁至 balanceAnalysisPageModel），
+ * 本文件运行时不加载。浅色残留未收敛：约 226 处 rgba 字面量（白/浅蓝面板底、
+ * 浅色边线等）不在下方 hex→var 映射范围内；复活（恢复值导入）前必须先做
+ * Nocturne 迁移（见 DESIGN.md 2026-08-13 条目），否则浅色静默进包。
+ * 物理删除留待独立的清理提交。
+ */
+/*
  * 2026-08-13 债务清零：本文件全部裸 hex 按语义家族映射到 --dh-api-* 链
  * （深墨→ink、次墨→soft、弱墨→muted、白/浅蓝面板→panel/panel-2、
  * 蓝/绿/琥珀/红软底→*-soft、边线→line/line-soft、语义色→blue/green/amber/red；

@@ -31,11 +31,11 @@ import BalanceAnalysisCockpit from "../cockpit/BalanceAnalysisCockpit";
 import { BalanceAnalysisToolbar } from "../cockpit/BalanceAnalysisToolbar";
 import dhStyles from "../../workbench/dashboard-home/dashboardHome.module.css";
 import { DeferredBalanceAnalysisGrid } from "../components/DeferredBalanceAnalysisGrid";
-import type { BalanceStateSentinel } from "../components/BalanceAnalysisWorkbenchLayout";
 import { useBalanceAnalysisData } from "../hooks/useBalanceAnalysisData";
 import { tabularNumsStyle } from "../../../theme/designSystem";
 import { actionButtonStyle } from "./BalanceAnalysisPage.styles";
 import {
+  type BalanceStateSentinel,
   buildBalanceAnalysisPageModel,
   buildBalanceCockpitViewModel,
   distributionChartBarWidthPercent,

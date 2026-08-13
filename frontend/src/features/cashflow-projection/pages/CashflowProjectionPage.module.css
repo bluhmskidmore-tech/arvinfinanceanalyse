@@ -629,8 +629,9 @@
 }
 
 /*
- * antd 控件底色来自 ConfigProvider 的钢蓝 JS token（colorBgContainer），
- * CSS 变量翻不动；页内按 decision-items 先例 scoped 覆盖拉回 --cf-* 链。
+ * antd 控件覆盖：antd token 已全局切 Nocturne（04d9613e，colorBgContainer
+ * 与 --cf-* 链同出 Nocturne 色源），原钢蓝底色已不存在；此块保留为页内
+ * scoped 等价防御层（decision-items 先例的历史兜底）。
  */
 .datePanel :global(.ant-select-selector) {
   border-color: var(--cf-border) !important;

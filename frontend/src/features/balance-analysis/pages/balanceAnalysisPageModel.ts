@@ -22,6 +22,21 @@ import { designTokens } from "../../../theme/designSystem";
 /** Minimum bar width (%) used by workbook distribution / gap panels (matches BalanceAnalysisPage). */
 export const BALANCE_ANALYSIS_MIN_CHART_BAR_WIDTH_PCT = 14;
 
+/**
+ * 2026-08-13 自 BalanceAnalysisWorkbenchLayout 迁入：该 Layout 是运行时死码
+ * （全仓无值导入方），Page 只消费这两个类型，迁到页面模型以切断对死码文件的
+ * type-import 链。
+ */
+export type BalanceEndpointStatus = "ready" | "loading" | "deferred" | "idle" | "error";
+
+export type BalanceStateSentinel = {
+  key: string;
+  label: string;
+  status: BalanceEndpointStatus;
+  active: boolean;
+  detail: string;
+};
+
 export type BalanceChartMagnitude =
   | { kind: "missing" }
   | { kind: "invalid"; raw: string }

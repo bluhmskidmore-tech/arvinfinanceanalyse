@@ -1,3 +1,11 @@
+/*
+ * ⚠️ 运行时死码（2026-08-13 审查确证）：全仓无对本组件的值导入方——
+ * BalanceAnalysisPage 曾经的 type-only import 已迁至 balanceAnalysisPageModel，
+ * 本文件与其副作用引入的 balanceWorkbench.css 在运行时均不加载。
+ * balanceWorkbench.css 内浅色残留未收敛（约 226 处浅色 rgba 字面量）；
+ * 复活（恢复值导入）前必须先做 Nocturne 迁移（见 DESIGN.md 2026-08-13 条目），
+ * 否则这批浅色会静默进包。物理删除留待独立的清理提交。
+ */
 import type { ReactNode } from "react";
 import {
   AuditOutlined,
@@ -37,6 +45,8 @@ import type {
 } from "../../../api/contracts";
 import { primaryWorkbenchNavigationGroups } from "../../../app/navigation";
 import {
+  type BalanceEndpointStatus,
+  type BalanceStateSentinel,
   formatBalanceAmountToYiFromWan,
   formatBalanceAmountToYiFromYuan,
   formatBalanceBusinessTextDisplay,
@@ -64,7 +74,7 @@ export type BalanceWorkbenchKpiBar = {
   percent: number;
 };
 
-export type BalanceEndpointStatus = "ready" | "loading" | "deferred" | "idle" | "error";
+export type { BalanceEndpointStatus, BalanceStateSentinel };
 
 export type BalanceEndpointChip = {
   key: string;
@@ -90,14 +100,6 @@ export type BalanceDeferredSurface = {
   endpoint: string;
   status: BalanceEndpointStatus;
   value: string;
-  detail: string;
-};
-
-export type BalanceStateSentinel = {
-  key: string;
-  label: string;
-  status: BalanceEndpointStatus;
-  active: boolean;
   detail: string;
 };
 

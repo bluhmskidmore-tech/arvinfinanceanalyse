@@ -2026,9 +2026,10 @@
 }
 
 /*
- * 结果元信息 Collapse 底色来自 ConfigProvider 的钢蓝 JS token
- * （colorBgContainer/colorFillAlter），CSS 变量翻不动；页内按
- * decision-items 先例 scoped 覆盖拉回 --dh-api-* 链（仅换色）。
+ * 结果元信息 Collapse 覆盖：antd token 已全局切 Nocturne（04d9613e，
+ * colorBgContainer/colorFillAlter 与 --dh-api-* 链同出 Nocturne 色源），
+ * 原钢蓝底色已不存在；此块保留为页内 scoped 等价防御层
+ * （decision-items 先例的历史兜底，仅换色）。
  */
 .balance-analysis-page :where(.ant-collapse) {
   border-color: var(--dh-api-line-soft) !important;
