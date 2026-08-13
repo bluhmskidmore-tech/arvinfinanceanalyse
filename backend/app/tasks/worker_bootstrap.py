@@ -36,6 +36,7 @@ CANONICAL_TASK_MODULES: tuple[str, ...] = (
     "backend.app.tasks.macro_toolkit_write_refresh",
     "backend.app.tasks.livermore_position_snapshot_materialize",
     "backend.app.tasks.agent_run",
+    "backend.app.tasks.agent_run_stream_compaction",
     "backend.app.tasks.livermore_gate_supplement",
     "backend.app.tasks.ledger_import",
 )

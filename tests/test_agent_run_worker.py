@@ -6,6 +6,11 @@ import pytest
 
 from backend.app.tasks import agent_run as agent_run_task_module
 
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_agent_mvp,
+]
+
 
 @pytest.mark.parametrize(
     ("provider", "executor_name"),
@@ -88,6 +93,80 @@ def test_execute_agent_run_task_does_not_restart_cancelled_run(
     )
 
     assert agent_run_task_module.execute_agent_run_task.fn(run_id="agent_run:cancelled") is None
+
+
+def test_execute_agent_run_task_marks_run_failed_for_unsupported_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = SimpleNamespace()
+    monkeypatch.setattr(agent_run_task_module, "get_settings", lambda: settings)
+    monkeypatch.setattr(
+        agent_run_task_module.agent_run_service,
+        "get_agent_run_status",
+        lambda *, run_id, settings: SimpleNamespace(
+            run_id=run_id,
+            status="queued",
+            provider="bogus",
+        ),
+    )
+    executed: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        agent_run_task_module.agent_run_service,
+        "execute_agent_run_by_id",
+        lambda **kwargs: executed.append(kwargs),
+        raising=False,
+    )
+    failures: list[tuple[str, Exception]] = []
+    monkeypatch.setattr(
+        agent_run_task_module.agent_run_service,
+        "fail_agent_run",
+        lambda *, run_id, settings, error: failures.append((run_id, error)),
+    )
+
+    assert agent_run_task_module.execute_agent_run_task.fn(run_id="agent_run:bogus") is None
+
+    assert executed == []
+    assert len(failures) == 1
+    assert failures[0][0] == "agent_run:bogus"
+    assert isinstance(failures[0][1], ValueError)
+
+
+def test_execute_agent_run_task_marks_run_failed_when_execution_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = SimpleNamespace()
+    monkeypatch.setattr(agent_run_task_module, "get_settings", lambda: settings)
+    monkeypatch.setattr(
+        agent_run_task_module.agent_run_service,
+        "get_agent_run_status",
+        lambda *, run_id, settings: SimpleNamespace(
+            run_id=run_id,
+            status="queued",
+            provider="hermes",
+        ),
+    )
+
+    def broken_execution(**_kwargs):
+        raise RuntimeError("invalid persisted request payload")
+
+    monkeypatch.setattr(
+        agent_run_task_module.agent_run_service,
+        "execute_agent_run_by_id",
+        broken_execution,
+        raising=False,
+    )
+    failures: list[tuple[str, Exception]] = []
+    monkeypatch.setattr(
+        agent_run_task_module.agent_run_service,
+        "fail_agent_run",
+        lambda *, run_id, settings, error: failures.append((run_id, error)),
+    )
+
+    assert agent_run_task_module.execute_agent_run_task.fn(run_id="agent_run:broken") is None
+
+    assert len(failures) == 1
+    assert failures[0][0] == "agent_run:broken"
+    assert isinstance(failures[0][1], RuntimeError)
 
 
 def test_execute_agent_run_task_is_registered_without_external_call_retries() -> None:

@@ -25,7 +25,6 @@ from backend.app.repositories.governance_repo import GovernanceRepository
 AGENT_RUN_STREAM = "agent_run"
 AGENT_RUN_DISPATCH_STREAM = "agent_run_dispatch"
 AGENT_RUN_JOB_NAME = "agent_run"
-AGENT_RUN_LOCK = threading.Lock()
 AGENT_RUN_STATE_LOCK = threading.Lock()
 AGENT_RUN_TRANSITION_LOCK = threading.RLock()
 AGENT_RUN_TRANSITION_FILE_LOCK = LockDefinition(
@@ -34,14 +33,21 @@ AGENT_RUN_TRANSITION_FILE_LOCK = LockDefinition(
 )
 MAX_AGENT_RUN_CACHE_SIZE = 200
 AGENT_RUN_STALE_GRACE_SECONDS = 30.0
+AGENT_RUN_QUEUED_STALE_SECONDS = 600.0
 AGENT_RUN_DISPATCH_WAIT_SECONDS = 5.0
 AGENT_RUN_DISPATCH_POLL_SECONDS = 0.01
+AGENT_RUN_CANCEL_POLL_SECONDS = 0.5
+AGENT_RUN_HEARTBEAT_SECONDS = 15.0
 _AGENT_RUN_LATEST_RECORDS: dict[str, dict[str, object]] = {}
 _ACTIVE_AGENT_RUN_STATUSES = frozenset({"queued", "starting", "running"})
 _TERMINAL_AGENT_RUN_STATUSES = frozenset({"completed", "failed", "cancelled"})
 _DISPATCH_FAILURE_CODE = "AGENT_RUN_DISPATCH_FAILED"
 _EXECUTION_FAILURE_CODE = "AGENT_RUN_EXECUTION_FAILED"
+_PREPARATION_FAILURE_CODE = "AGENT_RUN_PREPARATION_FAILED"
 _LOGGER = logging.getLogger(__name__)
+
+# Indirection so tests can control heartbeat timing deterministically.
+_monotonic = time.monotonic
 
 AgentExecutor = Callable[[AgentQueryRequest, str, Any], AgentEnvelope]
 
@@ -70,10 +76,18 @@ async def iter_agent_run_events(
     settings: Any,
     initial_status: AgentRunStatusResponse | None = None,
     poll_interval_seconds: float = 0.5,
+    heartbeat_interval_seconds: float = AGENT_RUN_HEARTBEAT_SECONDS,
 ):
-    """Yield distinct run snapshots as SSE frames until the run is terminal."""
+    """Yield distinct run snapshots as SSE frames until the run is terminal.
+
+    While the snapshot is unchanged, an SSE comment frame (``: keepalive``) is
+    emitted every ``heartbeat_interval_seconds`` so idle proxies do not drop the
+    connection. Comment frames are ignored natively by EventSource-style
+    parsers and carry no event shape.
+    """
     current_status = initial_status or get_agent_run_status(run_id=run_id, settings=settings)
     last_frame: str | None = None
+    last_emit = _monotonic()
 
     while True:
         frame = (
@@ -83,8 +97,15 @@ async def iter_agent_run_events(
         if frame != last_frame:
             yield frame
             last_frame = frame
+            last_emit = _monotonic()
         if current_status.status in _TERMINAL_AGENT_RUN_STATUSES:
             return
+        if (
+            heartbeat_interval_seconds > 0
+            and _monotonic() - last_emit >= heartbeat_interval_seconds
+        ):
+            yield ": keepalive\n\n"
+            last_emit = _monotonic()
 
         await asyncio.sleep(max(0.0, poll_interval_seconds))
         current_status = await asyncio.to_thread(
@@ -416,6 +437,64 @@ def retry_agent_run(*, run_id: str, settings: Any) -> AgentRunCreateResponse:
     )
 
 
+def fail_agent_run(*, run_id: str, settings: Any, error: Exception) -> None:
+    """Persist a still-active run as failed after a worker-side preparation error.
+
+    Used by the run worker when execution cannot even start (for example an
+    unsupported provider or an unrecoverable persisted request payload), so the
+    run does not stay queued forever. Terminal runs are left untouched and the
+    raw error detail is never disclosed in run records or audit rows.
+    """
+    record = _latest_run_record(run_id=run_id, settings=settings)
+    if record is None:
+        return
+    if str(record.get("status") or "") in _TERMINAL_AGENT_RUN_STATUSES:
+        return
+
+    try:
+        request = _request_from_run_record(record=record, run_id=run_id)
+    except RuntimeError:
+        request = AgentQueryRequest(
+            question=str(record.get("question") or ""),
+            context={"run_id": run_id},
+        )
+    provider = str(record.get("provider") or "hermes")
+    error_message = _safe_run_error_message(
+        _PREPARATION_FAILURE_CODE,
+        provider=provider,
+    )
+    _LOGGER.error(
+        "Agent run preparation failed run_id=%s provider=%s error_type=%s error_code=%s",
+        run_id,
+        provider,
+        error.__class__.__name__,
+        _PREPARATION_FAILURE_CODE,
+    )
+    finished_at = _utc_now()
+    failed_record = _transition_record(
+        settings=settings,
+        run_id=run_id,
+        request=request,
+        status="failed",
+        started_at=_optional_text(record.get("started_at")),
+        finished_at=finished_at,
+        elapsed_seconds=_elapsed_between(record.get("started_at"), finished_at),
+        error_message=error_message,
+    )
+    _append_record_if_latest_status(
+        settings=settings,
+        record=failed_record,
+        allowed_statuses=set(_ACTIVE_AGENT_RUN_STATUSES),
+        audit_payload=_build_failed_run_audit_payload(
+            run_id=run_id,
+            request=request,
+            provider=failed_record.provider,
+            error_type=error.__class__.__name__,
+            error_code=_PREPARATION_FAILURE_CODE,
+        ),
+    )
+
+
 def _status_from_run_record(*, run_id: str, settings: Any) -> AgentRunStatusResponse:
     record = _latest_run_record(run_id=run_id, settings=settings)
     if record is None:
@@ -429,19 +508,41 @@ def _reconcile_stale_run_record(
     record: dict[str, object],
     settings: Any,
 ) -> dict[str, object]:
-    if str(record.get("status") or "") not in {"starting", "running"}:
+    status = str(record.get("status") or "")
+    if status not in _ACTIVE_AGENT_RUN_STATUSES:
         return record
 
-    started_at = _parse_utc_datetime(record.get("started_at"))
     finished_at_text = _utc_now()
     finished_at = _parse_utc_datetime(finished_at_text)
-    if started_at is None or finished_at is None:
+    if status == "queued":
+        anchor = _parse_utc_datetime(record.get("queued_at"))
+        stale_after_seconds = _agent_run_queued_stale_after_seconds(settings)
+        allowed_statuses = {"queued"}
+        error_type = "StaleQueuedAgentRun"
+    else:
+        anchor = _parse_utc_datetime(record.get("started_at"))
+        stale_after_seconds = _agent_run_stale_after_seconds(record=record, settings=settings)
+        allowed_statuses = {"starting", "running"}
+        error_type = "StaleAgentRun"
+    if anchor is None or finished_at is None:
         return record
 
-    elapsed_seconds = max((finished_at - started_at).total_seconds(), 0.0)
-    stale_after_seconds = _agent_run_stale_after_seconds(record=record, settings=settings)
+    elapsed_seconds = max((finished_at - anchor).total_seconds(), 0.0)
     if elapsed_seconds <= stale_after_seconds:
         return record
+
+    if status == "queued":
+        error_message = (
+            f"Agent run 排队超过 {stale_after_seconds:g}s 仍未开始执行，"
+            "可能因任务派发丢失或 worker 中断。"
+        )
+        reconciled_elapsed_seconds = None
+    else:
+        error_message = (
+            "Agent run 未在运行超时后进入终态"
+            f"（{stale_after_seconds:g}s），可能因进程重启或运行中断。"
+        )
+        reconciled_elapsed_seconds = round(elapsed_seconds, 3)
 
     request = record.get("request")
     failed_record = AgentRunRecord(
@@ -459,11 +560,8 @@ def _reconcile_stale_run_record(
         queued_at=_optional_text(record.get("queued_at")),
         started_at=_optional_text(record.get("started_at")),
         finished_at=finished_at_text,
-        elapsed_seconds=round(elapsed_seconds, 3),
-        error_message=(
-            "Agent run 未在运行超时后进入终态"
-            f"（{stale_after_seconds:g}s），可能因进程重启或运行中断。"
-        ),
+        elapsed_seconds=reconciled_elapsed_seconds,
+        error_message=error_message,
     )
     try:
         audit_request = AgentQueryRequest.model_validate(
@@ -474,17 +572,32 @@ def _reconcile_stale_run_record(
     appended = _append_record_if_latest_status(
         settings=settings,
         record=failed_record,
-        allowed_statuses={"starting", "running"},
+        allowed_statuses=allowed_statuses,
         audit_payload=_build_failed_run_audit_payload(
             run_id=failed_record.run_id,
             request=audit_request,
             provider=failed_record.provider,
-            error_type="StaleAgentRun",
+            error_type=error_type,
         ),
     )
     if not appended:
         return _latest_run_record(run_id=failed_record.run_id, settings=settings) or record
     return failed_record.model_dump(mode="json", exclude_none=True)
+
+
+def _agent_run_queued_stale_after_seconds(settings: Any) -> float:
+    try:
+        timeout = float(
+            getattr(
+                settings,
+                "agent_run_queued_timeout_seconds",
+                AGENT_RUN_QUEUED_STALE_SECONDS,
+            )
+            or AGENT_RUN_QUEUED_STALE_SECONDS
+        )
+    except (TypeError, ValueError):
+        timeout = AGENT_RUN_QUEUED_STALE_SECONDS
+    return max(timeout, 1.0)
 
 
 def _agent_run_stale_after_seconds(
@@ -781,99 +894,188 @@ def _execute_agent_run(
     settings: Any,
     executor: AgentExecutor,
 ) -> None:
-    with AGENT_RUN_LOCK:
-        started_at = _utc_now()
-        starting_record = _transition_record(
+    started_at = _utc_now()
+    starting_record = _transition_record(
+        settings=settings,
+        run_id=run_id,
+        request=request,
+        status="starting",
+        started_at=started_at,
+    )
+    if not _append_record_if_latest_status(
+        settings=settings,
+        record=starting_record,
+        allowed_statuses={"queued"},
+    ):
+        return
+    running_record = _transition_record(
+        settings=settings,
+        run_id=run_id,
+        request=request,
+        status="running",
+        started_at=started_at,
+    )
+    if not _append_record_if_latest_status(
+        settings=settings,
+        record=running_record,
+        allowed_statuses={"starting"},
+    ):
+        return
+    started = datetime.now(UTC)
+    outcome = _run_executor_until_run_is_terminal(
+        run_id=run_id,
+        request=request,
+        settings=settings,
+        executor=executor,
+    )
+    if outcome is None:
+        _LOGGER.info(
+            "Agent run execution abandoned after external terminal transition run_id=%s",
+            run_id,
+        )
+        return
+
+    error = outcome.get("error")
+    if isinstance(error, Exception):
+        finished_at = _utc_now()
+        provider = str(running_record.provider or "hermes")
+        error_message = str(error) or error.__class__.__name__
+        error_code: str | None = None
+        if provider != "local":
+            error_message = _safe_run_error_message(
+                _EXECUTION_FAILURE_CODE,
+                provider=provider,
+            )
+            error_code = _EXECUTION_FAILURE_CODE
+        _LOGGER.error(
+            "Agent run execution failed run_id=%s provider=%s error_type=%s error_code=%s",
+            run_id,
+            provider,
+            error.__class__.__name__,
+            _EXECUTION_FAILURE_CODE,
+        )
+        failed_record = _transition_record(
             settings=settings,
             run_id=run_id,
             request=request,
-            status="starting",
+            status="failed",
             started_at=started_at,
+            finished_at=finished_at,
+            elapsed_seconds=_elapsed_seconds(started),
+            error_message=error_message,
         )
-        if not _append_record_if_latest_status(
+        _append_record_if_latest_status(
             settings=settings,
-            record=starting_record,
-            allowed_statuses={"queued"},
-        ):
-            return
-        running_record = _transition_record(
-            settings=settings,
-            run_id=run_id,
-            request=request,
-            status="running",
-            started_at=started_at,
+            record=failed_record,
+            allowed_statuses={"starting", "running"},
+            audit_payload=_build_failed_run_audit_payload(
+                run_id=run_id,
+                request=request,
+                provider=failed_record.provider,
+                error_type=error.__class__.__name__,
+                error_code=error_code,
+            ),
         )
-        if not _append_record_if_latest_status(
-            settings=settings,
-            record=running_record,
-            allowed_statuses={"starting"},
-        ):
-            return
-        started = datetime.now(UTC)
+        return
+
+    envelope = outcome.get("envelope")
+    if not isinstance(envelope, AgentEnvelope):
+        # Class identity may rotate when the schemas module is reloaded (e.g.
+        # module fresh-loads in tests or hot reload); accept any same-shaped
+        # envelope by re-validating it instead of dropping the result.
         try:
-            envelope = executor(
+            envelope = AgentEnvelope.model_validate(envelope.model_dump(mode="python"))
+        except Exception:
+            # The executor thread ended without a usable result (e.g.
+            # interrupted by a BaseException); the run converges later via
+            # stale reconciliation. Log loudly: a dropped result must stay
+            # observable.
+            _LOGGER.warning(
+                "Agent run executor ended without a usable envelope run_id=%s outcome_type=%s outcome_type_module=%s",
+                run_id,
+                type(envelope).__name__,
+                getattr(type(envelope), "__module__", "<unknown>"),
+            )
+            return
+    finished_at = _utc_now()
+    completed_record = _transition_record(
+        settings=settings,
+        run_id=run_id,
+        request=request,
+        status="completed",
+        started_at=started_at,
+        finished_at=finished_at,
+        elapsed_seconds=_elapsed_seconds(started),
+        result=envelope.model_dump(mode="json"),
+    )
+    _append_record_if_latest_status(
+        settings=settings,
+        record=completed_record,
+        allowed_statuses={"starting", "running"},
+    )
+
+
+def _run_executor_until_run_is_terminal(
+    *,
+    run_id: str,
+    request: AgentQueryRequest,
+    settings: Any,
+    executor: AgentExecutor,
+) -> dict[str, object] | None:
+    """Invoke the executor on a side thread until it finishes or the run is terminal.
+
+    Returns the executor outcome (``envelope`` or ``error``), or ``None`` when
+    the run reached a terminal state externally (cancel or stale reconciliation)
+    while the provider call was still in flight. In that case the worker slot is
+    released immediately; the abandoned provider result is discarded later by
+    the status-guarded append.
+    """
+    outcome: dict[str, object] = {}
+    done = threading.Event()
+
+    def _invoke() -> None:
+        try:
+            outcome["envelope"] = executor(
                 request,
                 str(getattr(settings, "governance_path", "")),
                 settings,
             )
         except Exception as exc:
-            finished_at = _utc_now()
-            provider = str(running_record.provider or "hermes")
-            error_message = str(exc) or exc.__class__.__name__
-            error_code: str | None = None
-            if provider != "local":
-                error_message = _safe_run_error_message(
-                    _EXECUTION_FAILURE_CODE,
-                    provider=provider,
-                )
-                error_code = _EXECUTION_FAILURE_CODE
-            _LOGGER.error(
-                "Agent run execution failed run_id=%s provider=%s error_type=%s error_code=%s",
-                run_id,
-                provider,
-                exc.__class__.__name__,
-                _EXECUTION_FAILURE_CODE,
-            )
-            failed_record = _transition_record(
-                settings=settings,
-                run_id=run_id,
-                request=request,
-                status="failed",
-                started_at=started_at,
-                finished_at=finished_at,
-                elapsed_seconds=_elapsed_seconds(started),
-                error_message=error_message,
-            )
-            _append_record_if_latest_status(
-                settings=settings,
-                record=failed_record,
-                allowed_statuses={"starting", "running"},
-                audit_payload=_build_failed_run_audit_payload(
-                    run_id=run_id,
-                    request=request,
-                    provider=failed_record.provider,
-                    error_type=exc.__class__.__name__,
-                    error_code=error_code,
-                ),
-            )
-            return
+            outcome["error"] = exc
+        finally:
+            done.set()
 
-        finished_at = _utc_now()
-        completed_record = _transition_record(
-            settings=settings,
-            run_id=run_id,
-            request=request,
-            status="completed",
-            started_at=started_at,
-            finished_at=finished_at,
-            elapsed_seconds=_elapsed_seconds(started),
-            result=envelope.model_dump(mode="json"),
-        )
-        _append_record_if_latest_status(
-            settings=settings,
-            record=completed_record,
-            allowed_statuses={"starting", "running"},
-        )
+    threading.Thread(
+        target=_invoke,
+        name=f"agent-run-executor-{run_id}",
+        daemon=True,
+    ).start()
+
+    consecutive_poll_failures = 0
+    while not done.wait(timeout=AGENT_RUN_CANCEL_POLL_SECONDS):
+        try:
+            latest = _latest_run_record(run_id=run_id, settings=settings)
+        except Exception as exc:
+            # A transient governance read failure (e.g. lock contention) must not
+            # abort supervision of an in-flight provider call, but while it lasts
+            # the run cannot observe an external cancel. Report the start of each
+            # failure streak so a broken governance store is distinguishable from
+            # a cancel that was simply never requested.
+            consecutive_poll_failures += 1
+            if consecutive_poll_failures == 1:
+                _LOGGER.warning(
+                    "Agent run cancellation poll failed run_id=%s error_type=%s",
+                    run_id,
+                    exc.__class__.__name__,
+                )
+            continue
+        consecutive_poll_failures = 0
+        if (
+            latest is not None
+            and str(latest.get("status") or "") in _TERMINAL_AGENT_RUN_STATUSES
+        ):
+            return None
+    return outcome
 
 
 def _build_failed_run_audit_payload(
@@ -922,6 +1124,8 @@ def _safe_run_error_message(
     normalized_provider = str(provider or "").strip().lower()
     if error_code == _DISPATCH_FAILURE_CODE:
         return "Agent run dispatch failed."
+    if error_code == _PREPARATION_FAILURE_CODE:
+        return "Agent run preparation failed."
     if error_code == _EXECUTION_FAILURE_CODE and normalized_provider != "local":
         return "Agent provider execution failed."
     return "Agent run failed."

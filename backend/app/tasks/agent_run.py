@@ -52,11 +52,22 @@ def _execute_agent_run_task(*, run_id: str) -> None:
     if str(current_status.status) in _TERMINAL_AGENT_RUN_STATUSES:
         return None
 
-    agent_run_service.execute_agent_run_by_id(
-        run_id=run_id,
-        settings=settings,
-        executor=_executor_for_provider(current_status.provider),
-    )
+    try:
+        executor = _executor_for_provider(current_status.provider)
+        agent_run_service.execute_agent_run_by_id(
+            run_id=run_id,
+            settings=settings,
+            executor=executor,
+        )
+    except Exception as exc:
+        # The actor has max_retries=0: without this the run would stay queued
+        # forever after a preparation failure (e.g. unsupported provider or an
+        # unrecoverable persisted request payload).
+        agent_run_service.fail_agent_run(
+            run_id=run_id,
+            settings=settings,
+            error=exc,
+        )
     return None
 
 

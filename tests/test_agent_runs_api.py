@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import importlib
 import json
+import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -27,6 +28,11 @@ from tests.test_agent_api_contract import (
     _seed_agent_read_scope,
     _seed_agent_scope,
 )
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_agent_mvp,
+]
 
 
 def _settings(tmp_path: Path) -> SimpleNamespace:
@@ -303,6 +309,65 @@ def test_agent_run_event_iterator_orders_updates_and_suppresses_duplicates(monke
     ]
     assert all(event.startswith("event: run_update\n") and event.endswith("\n\n") for event in events)
     assert sleep_calls == [0.5, 0.5]
+
+
+def test_agent_run_event_iterator_emits_keepalive_comment_between_updates(
+    monkeypatch,
+    tmp_path,
+):
+    service_module = load_module(
+        "backend.app.services.agent_run_service",
+        "backend/app/services/agent_run_service.py",
+    )
+    initial = AgentRunStatusResponse(
+        run_id="agent_run:sse-heartbeat",
+        status="running",
+        provider="hermes",
+    )
+    completed = initial.model_copy(
+        update={
+            "status": "completed",
+            "finished_at": "2026-07-20T12:00:00+00:00",
+        }
+    )
+    status_updates = iter([initial, initial, completed])
+    clock = {"now": 0.0}
+
+    def fake_get_agent_run_status(*, run_id, settings):
+        assert run_id == initial.run_id
+        return next(status_updates)
+
+    async def fake_sleep(_delay):
+        clock["now"] += 10.0
+
+    monkeypatch.setattr(service_module, "get_agent_run_status", fake_get_agent_run_status)
+    monkeypatch.setattr(service_module, "_monotonic", lambda: clock["now"])
+    monkeypatch.setattr(service_module.asyncio, "sleep", fake_sleep)
+
+    async def collect_events():
+        return [
+            event
+            async for event in service_module.iter_agent_run_events(
+                run_id=initial.run_id,
+                settings=_settings(tmp_path),
+                initial_status=initial,
+                poll_interval_seconds=0.5,
+                heartbeat_interval_seconds=15.0,
+            )
+        ]
+
+    events = asyncio.run(collect_events())
+
+    assert len(events) == 3
+    assert events[0].startswith("event: run_update\n")
+    assert '"status":"running"' in events[0]
+    # The heartbeat is a bare SSE comment frame: EventSource-style parsers
+    # ignore comment lines natively, so no new event shape is introduced.
+    assert events[1] == ": keepalive\n\n"
+    assert "event:" not in events[1]
+    assert "data:" not in events[1]
+    assert events[2].startswith("event: run_update\n")
+    assert '"status":"completed"' in events[2]
 
 
 def test_agent_run_events_rejects_different_header_user(monkeypatch, tmp_path):
@@ -1364,6 +1429,18 @@ def test_agent_run_follow_up_context_stays_local_even_with_dexter_provider(monke
     route_module = load_module(
         "backend.app.api.routes.agent",
         "backend/app/api/routes/agent.py",
+    )
+    # load_module executes tasks/agent_run.py as a fresh module instance, and
+    # register_actor_once permanently swaps the shared actor's fn to that fresh
+    # function (whose globals bypass later monkeypatches, e.g. in
+    # test_agent_run_worker.py). Snapshot the canonical sys.modules entry and
+    # actor fn as no-op monkeypatches so teardown restores both.
+    canonical_task_module = importlib.import_module("backend.app.tasks.agent_run")
+    monkeypatch.setitem(sys.modules, "backend.app.tasks.agent_run", canonical_task_module)
+    monkeypatch.setattr(
+        canonical_task_module.execute_agent_run_task,
+        "fn",
+        canonical_task_module.execute_agent_run_task.fn,
     )
     task_module = load_module(
         "backend.app.tasks.agent_run",

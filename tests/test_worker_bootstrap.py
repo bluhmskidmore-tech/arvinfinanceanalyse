@@ -59,6 +59,7 @@ def test_worker_bootstrap_declares_canonical_dramatiq_task_modules():
         "backend.app.tasks.macro_toolkit_write_refresh",
         "backend.app.tasks.livermore_position_snapshot_materialize",
         "backend.app.tasks.agent_run",
+        "backend.app.tasks.agent_run_stream_compaction",
         "backend.app.tasks.livermore_gate_supplement",
         "backend.app.tasks.ledger_import",
     )

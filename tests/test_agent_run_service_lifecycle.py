@@ -18,6 +18,11 @@ from backend.app.agent.schemas.agent_run import AgentRunRecord, AgentRunStatusRe
 from backend.app.repositories.governance_repo import GovernanceRepository
 from backend.app.services import agent_run_service
 
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_agent_mvp,
+]
+
 
 def _settings(tmp_path: Path) -> SimpleNamespace:
     return SimpleNamespace(
@@ -62,6 +67,9 @@ def _envelope(answer: str = "done") -> AgentEnvelope:
             basis="formal",
             result_kind="agent.lifecycle_test",
             formal_use_allowed=False,
+            source_version="sv_agent_run_lifecycle",
+            rule_version="rv_agent_run_lifecycle",
+            cache_version="cv_agent_run_lifecycle",
             quality_flag="ok",
             scenario_flag=False,
             tables_used=["governed_agent_test"],
@@ -655,3 +663,219 @@ def test_retry_rejects_non_retryable_status_and_cancelled_sse_is_terminal(tmp_pa
     events = asyncio.run(collect_events())
     assert len(events) == 1
     assert '"status":"cancelled"' in events[0]
+
+
+def test_fail_agent_run_marks_active_run_failed_with_sanitized_message_and_audit(
+    tmp_path,
+    caplog,
+):
+    settings = _settings(tmp_path)
+    request = _request("prepare me")
+    _append_status(
+        settings=settings,
+        run_id="agent_run:prep",
+        status="queued",
+        request=request,
+        queued_at="2026-07-25T10:00:00+00:00",
+    )
+
+    agent_run_service.fail_agent_run(
+        run_id="agent_run:prep",
+        settings=settings,
+        error=ValueError("secret-broker-detail"),
+    )
+
+    repo = GovernanceRepository(settings.governance_path)
+    records = repo.read_all(agent_run_service.AGENT_RUN_STREAM)
+    assert [record["status"] for record in records] == ["queued", "failed"]
+    assert records[-1]["error_message"] == "Agent run preparation failed."
+    assert records[-1]["finished_at"]
+    audit = repo.read_all(agent_run_service.AGENT_AUDIT_STREAM)[-1]
+    assert audit["run_id"] == "agent_run:prep"
+    assert audit["result_meta"]["result_kind"] == "agent.run_failed"
+    assert audit["result_meta"]["error_type"] == "ValueError"
+    assert audit["result_meta"]["error_code"] == "AGENT_RUN_PREPARATION_FAILED"
+    public_material = str([records, audit])
+    assert "secret-broker-detail" not in public_material
+    assert "secret-broker-detail" not in caplog.text
+    assert "error_code=AGENT_RUN_PREPARATION_FAILED" in caplog.text
+
+    agent_run_service.fail_agent_run(
+        run_id="agent_run:prep",
+        settings=settings,
+        error=ValueError("again"),
+    )
+    agent_run_service.fail_agent_run(
+        run_id="agent_run:missing",
+        settings=settings,
+        error=ValueError("unknown run is a no-op"),
+    )
+    assert len(repo.read_all(agent_run_service.AGENT_RUN_STREAM)) == 2
+
+
+def test_stale_queued_run_reconciles_to_failed_with_audit(monkeypatch, tmp_path):
+    settings = _settings(tmp_path)
+    request = _request("stuck in queue")
+    _append_status(
+        settings=settings,
+        run_id="agent_run:stuck",
+        status="queued",
+        request=request,
+        queued_at="2026-07-20T08:00:00+00:00",
+    )
+    monkeypatch.setattr(
+        agent_run_service,
+        "_utc_now",
+        lambda: "2026-07-20T08:10:01+00:00",
+    )
+
+    status = agent_run_service.get_agent_run_status(
+        run_id="agent_run:stuck",
+        settings=settings,
+    )
+
+    assert status.status == "failed"
+    assert status.finished_at == "2026-07-20T08:10:01+00:00"
+    assert status.elapsed_seconds is None
+    assert status.error_message is not None
+    assert "排队超过 600s" in status.error_message
+    repo = GovernanceRepository(settings.governance_path)
+    records = repo.read_all(agent_run_service.AGENT_RUN_STREAM)
+    assert [record["status"] for record in records] == ["queued", "failed"]
+    audit = repo.read_all(agent_run_service.AGENT_AUDIT_STREAM)[-1]
+    assert audit["run_id"] == "agent_run:stuck"
+    assert audit["result_meta"]["error_type"] == "StaleQueuedAgentRun"
+
+    repeated = agent_run_service.get_agent_run_status(
+        run_id="agent_run:stuck",
+        settings=settings,
+    )
+    assert repeated.status == "failed"
+    assert len(repo.read_all(agent_run_service.AGENT_RUN_STREAM)) == 2
+
+
+def test_recent_queued_run_is_not_reconciled(monkeypatch, tmp_path):
+    settings = _settings(tmp_path)
+    request = _request("still waiting")
+    _append_status(
+        settings=settings,
+        run_id="agent_run:waiting",
+        status="queued",
+        request=request,
+        queued_at="2026-07-20T08:00:00+00:00",
+    )
+    monkeypatch.setattr(
+        agent_run_service,
+        "_utc_now",
+        lambda: "2026-07-20T08:09:59+00:00",
+    )
+
+    status = agent_run_service.get_agent_run_status(
+        run_id="agent_run:waiting",
+        settings=settings,
+    )
+
+    assert status.status == "queued"
+    records = GovernanceRepository(settings.governance_path).read_all(
+        agent_run_service.AGENT_RUN_STREAM
+    )
+    assert [record["status"] for record in records] == ["queued"]
+
+
+def test_cancel_during_execution_releases_worker_slot_without_waiting_for_provider(
+    monkeypatch,
+    tmp_path,
+):
+    settings = _settings(tmp_path)
+    monkeypatch.setattr(agent_run_service, "AGENT_RUN_CANCEL_POLL_SECONDS", 0.05)
+    monkeypatch.setattr(
+        agent_run_service.execute_agent_run_task,
+        "send",
+        lambda *, run_id: None,
+    )
+    created = agent_run_service.create_agent_run(
+        request=_request("cancel frees the slot"),
+        settings=settings,
+        provider="hermes",
+    )
+    executor_started = threading.Event()
+    release_executor = threading.Event()
+    executor_finished = threading.Event()
+
+    def blocking_executor(_request, _governance_dir, _settings):
+        executor_started.set()
+        assert release_executor.wait(timeout=10)
+        executor_finished.set()
+        return _envelope("late provider result")
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(
+            agent_run_service.execute_agent_run_by_id,
+            run_id=created.run_id,
+            settings=settings,
+            executor=blocking_executor,
+        )
+        assert executor_started.wait(timeout=5)
+        cancelled = agent_run_service.cancel_agent_run(
+            run_id=created.run_id,
+            settings=settings,
+        )
+        assert cancelled.status == "cancelled"
+        # The worker slot must be released while the provider call is still
+        # blocked (release_executor is intentionally not set yet).
+        status = future.result(timeout=5)
+
+    assert status.status == "cancelled"
+    release_executor.set()
+    assert executor_finished.wait(timeout=5)
+    records = GovernanceRepository(settings.governance_path).read_all(
+        agent_run_service.AGENT_RUN_STREAM
+    )
+    assert [record["status"] for record in records] == [
+        "queued",
+        "starting",
+        "running",
+        "cancelled",
+    ]
+
+
+def test_execution_is_not_globally_serialized_across_runs(monkeypatch, tmp_path):
+    settings = _settings(tmp_path)
+    monkeypatch.setattr(
+        agent_run_service.execute_agent_run_task,
+        "send",
+        lambda *, run_id: None,
+    )
+    created = [
+        agent_run_service.create_agent_run(
+            request=_request(
+                f"parallel {index}",
+                conversation_id="conv-parallel",
+                client_request_id=f"parallel-{index}",
+            ),
+            settings=settings,
+            provider="hermes",
+        )
+        for index in range(2)
+    ]
+    barrier = threading.Barrier(2)
+
+    def synchronized_executor(request, _governance_dir, _settings):
+        # Both executors must be in flight at the same time; a globally
+        # serialized execution path would deadlock this barrier until timeout.
+        barrier.wait(timeout=5)
+        return _envelope(f"done: {request.question}")
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        statuses = list(
+            pool.map(
+                lambda run_id: agent_run_service.execute_agent_run_by_id(
+                    run_id=run_id,
+                    settings=settings,
+                    executor=synchronized_executor,
+                ),
+                [item.run_id for item in created],
+            )
+        )
+
+    assert [status.status for status in statuses] == ["completed", "completed"]
