@@ -517,11 +517,16 @@
 }
 
 /*
- * Nocturne scope 铬件收敛（总账损益；子导航规则另含宏观工具）：这些铬件带
- * 浅色字面量（灰蓝描边、白色 chip、primary-50 亮 pill），暗色变量翻转覆盖
- * 不到。仅对列出的 scope 生效，色值全部走 --dh-api-* 链（该 scope 下即
- * Nocturne）。宏观工具路由已由 WorkbenchShell 的 isMacroToolkitShell 抑制
- * 整个终端条，不再需要终端条相关的 scope 规则。
+ * Nocturne scope 铬件收敛：这些铬件带浅色字面量（灰蓝描边、白色 chip、
+ * primary-50 亮 pill），暗色变量翻转覆盖不到。仅对列出的 scope 生效，
+ * 色值全部走 --dh-api-* 链（该 scope 下即 Nocturne）。
+ * 制度（2026-08-13 全量收齐，theme.test.ts parity 断言锁定）：
+ * ① 终端条铬件四组（阴影 / chip+pill / utility navlink / 行情条）＝
+ *   WorkbenchShell showShellTerminalBar 为真的 Nocturne scope，与
+ *   tokens.css 终端条块同一份列表（宏观工具已整块抑制终端条不入列）；
+ * ② 子导航三组＝渲染组内子导航的 Nocturne scope：即终端条列表去掉
+ *   market-data（isMarketDataTerminalMain 抑制子导航）再加 macro-toolkit
+ *   （宏观工具保留组内子导航）。
  */
 .workbench-shell-grid:has(
     [data-moss-theme-scope="ledger-pnl"],
@@ -530,9 +535,27 @@
     [data-moss-theme-scope="bond-dashboard"],
     [data-moss-theme-scope="liability-analytics"],
     [data-moss-theme-scope="bank-ledger-dashboard"],
+    [data-moss-theme-scope="market-data"],
+    [data-moss-theme-scope="pnl-by-business"],
+    [data-moss-theme-scope="pnl-attribution"],
+    [data-moss-theme-scope="pnl-by-business-insights"],
     [data-moss-theme-scope="risk-tensor"],
     [data-moss-theme-scope="concentration-monitor"],
-    [data-moss-theme-scope="cashflow-projection"]
+    [data-moss-theme-scope="cashflow-projection"],
+    [data-moss-theme-scope="operations-analysis"],
+    [data-moss-theme-scope="market-finance"],
+    [data-moss-theme-scope="decision-items"],
+    [data-moss-theme-scope="pnl"],
+    [data-moss-theme-scope="pnl-bridge"],
+    [data-moss-theme-scope="product-category-pnl"],
+    [data-moss-theme-scope="bond-trading-desk"],
+    [data-moss-theme-scope="cross-asset"],
+    [data-moss-theme-scope="cube-query"],
+    [data-moss-theme-scope="news-events"],
+    [data-moss-theme-scope="kpi"],
+    [data-moss-theme-scope="team-performance"],
+    [data-moss-theme-scope="platform-config"],
+    [data-moss-theme-scope="agent"]
   )
   .workbench-terminal-bar,
 .workbench-shell-grid--desktop-aligned:has(
@@ -542,9 +565,27 @@
     [data-moss-theme-scope="bond-dashboard"],
     [data-moss-theme-scope="liability-analytics"],
     [data-moss-theme-scope="bank-ledger-dashboard"],
+    [data-moss-theme-scope="market-data"],
+    [data-moss-theme-scope="pnl-by-business"],
+    [data-moss-theme-scope="pnl-attribution"],
+    [data-moss-theme-scope="pnl-by-business-insights"],
     [data-moss-theme-scope="risk-tensor"],
     [data-moss-theme-scope="concentration-monitor"],
-    [data-moss-theme-scope="cashflow-projection"]
+    [data-moss-theme-scope="cashflow-projection"],
+    [data-moss-theme-scope="operations-analysis"],
+    [data-moss-theme-scope="market-finance"],
+    [data-moss-theme-scope="decision-items"],
+    [data-moss-theme-scope="pnl"],
+    [data-moss-theme-scope="pnl-bridge"],
+    [data-moss-theme-scope="product-category-pnl"],
+    [data-moss-theme-scope="bond-trading-desk"],
+    [data-moss-theme-scope="cross-asset"],
+    [data-moss-theme-scope="cube-query"],
+    [data-moss-theme-scope="news-events"],
+    [data-moss-theme-scope="kpi"],
+    [data-moss-theme-scope="team-performance"],
+    [data-moss-theme-scope="platform-config"],
+    [data-moss-theme-scope="agent"]
   )
   [data-testid="workbench-terminal-bar"] {
   box-shadow: none !important;
@@ -557,9 +598,27 @@
     [data-moss-theme-scope="bond-dashboard"],
     [data-moss-theme-scope="liability-analytics"],
     [data-moss-theme-scope="bank-ledger-dashboard"],
+    [data-moss-theme-scope="market-data"],
+    [data-moss-theme-scope="pnl-by-business"],
+    [data-moss-theme-scope="pnl-attribution"],
+    [data-moss-theme-scope="pnl-by-business-insights"],
     [data-moss-theme-scope="risk-tensor"],
     [data-moss-theme-scope="concentration-monitor"],
-    [data-moss-theme-scope="cashflow-projection"]
+    [data-moss-theme-scope="cashflow-projection"],
+    [data-moss-theme-scope="operations-analysis"],
+    [data-moss-theme-scope="market-finance"],
+    [data-moss-theme-scope="decision-items"],
+    [data-moss-theme-scope="pnl"],
+    [data-moss-theme-scope="pnl-bridge"],
+    [data-moss-theme-scope="product-category-pnl"],
+    [data-moss-theme-scope="bond-trading-desk"],
+    [data-moss-theme-scope="cross-asset"],
+    [data-moss-theme-scope="cube-query"],
+    [data-moss-theme-scope="news-events"],
+    [data-moss-theme-scope="kpi"],
+    [data-moss-theme-scope="team-performance"],
+    [data-moss-theme-scope="platform-config"],
+    [data-moss-theme-scope="agent"]
   )
   :is(.workbench-shell-report-chip, .workbench-operator-pill-quiet) {
   background: var(--dh-api-panel-2);
@@ -574,9 +633,27 @@
     [data-moss-theme-scope="bond-dashboard"],
     [data-moss-theme-scope="liability-analytics"],
     [data-moss-theme-scope="bank-ledger-dashboard"],
+    [data-moss-theme-scope="market-data"],
+    [data-moss-theme-scope="pnl-by-business"],
+    [data-moss-theme-scope="pnl-attribution"],
+    [data-moss-theme-scope="pnl-by-business-insights"],
     [data-moss-theme-scope="risk-tensor"],
     [data-moss-theme-scope="concentration-monitor"],
-    [data-moss-theme-scope="cashflow-projection"]
+    [data-moss-theme-scope="cashflow-projection"],
+    [data-moss-theme-scope="operations-analysis"],
+    [data-moss-theme-scope="market-finance"],
+    [data-moss-theme-scope="decision-items"],
+    [data-moss-theme-scope="pnl"],
+    [data-moss-theme-scope="pnl-bridge"],
+    [data-moss-theme-scope="product-category-pnl"],
+    [data-moss-theme-scope="bond-trading-desk"],
+    [data-moss-theme-scope="cross-asset"],
+    [data-moss-theme-scope="cube-query"],
+    [data-moss-theme-scope="news-events"],
+    [data-moss-theme-scope="kpi"],
+    [data-moss-theme-scope="team-performance"],
+    [data-moss-theme-scope="platform-config"],
+    [data-moss-theme-scope="agent"]
   )
   .workbench-terminal-utility-navlink[data-active="true"] {
   border-bottom-color: var(--dh-api-blue);
@@ -589,9 +666,27 @@
     [data-moss-theme-scope="bond-dashboard"],
     [data-moss-theme-scope="liability-analytics"],
     [data-moss-theme-scope="bank-ledger-dashboard"],
+    [data-moss-theme-scope="market-data"],
+    [data-moss-theme-scope="pnl-by-business"],
+    [data-moss-theme-scope="pnl-attribution"],
+    [data-moss-theme-scope="pnl-by-business-insights"],
     [data-moss-theme-scope="risk-tensor"],
     [data-moss-theme-scope="concentration-monitor"],
-    [data-moss-theme-scope="cashflow-projection"]
+    [data-moss-theme-scope="cashflow-projection"],
+    [data-moss-theme-scope="operations-analysis"],
+    [data-moss-theme-scope="market-finance"],
+    [data-moss-theme-scope="decision-items"],
+    [data-moss-theme-scope="pnl"],
+    [data-moss-theme-scope="pnl-bridge"],
+    [data-moss-theme-scope="product-category-pnl"],
+    [data-moss-theme-scope="bond-trading-desk"],
+    [data-moss-theme-scope="cross-asset"],
+    [data-moss-theme-scope="cube-query"],
+    [data-moss-theme-scope="news-events"],
+    [data-moss-theme-scope="kpi"],
+    [data-moss-theme-scope="team-performance"],
+    [data-moss-theme-scope="platform-config"],
+    [data-moss-theme-scope="agent"]
   )
   .workbench-market-ticker-shell {
   border-top-color: var(--dh-api-line-soft);
@@ -605,9 +700,26 @@
     [data-moss-theme-scope="bond-dashboard"],
     [data-moss-theme-scope="liability-analytics"],
     [data-moss-theme-scope="bank-ledger-dashboard"],
+    [data-moss-theme-scope="pnl-by-business"],
+    [data-moss-theme-scope="pnl-attribution"],
+    [data-moss-theme-scope="pnl-by-business-insights"],
     [data-moss-theme-scope="risk-tensor"],
     [data-moss-theme-scope="concentration-monitor"],
-    [data-moss-theme-scope="cashflow-projection"]
+    [data-moss-theme-scope="cashflow-projection"],
+    [data-moss-theme-scope="operations-analysis"],
+    [data-moss-theme-scope="market-finance"],
+    [data-moss-theme-scope="decision-items"],
+    [data-moss-theme-scope="pnl"],
+    [data-moss-theme-scope="pnl-bridge"],
+    [data-moss-theme-scope="product-category-pnl"],
+    [data-moss-theme-scope="bond-trading-desk"],
+    [data-moss-theme-scope="cross-asset"],
+    [data-moss-theme-scope="cube-query"],
+    [data-moss-theme-scope="news-events"],
+    [data-moss-theme-scope="kpi"],
+    [data-moss-theme-scope="team-performance"],
+    [data-moss-theme-scope="platform-config"],
+    [data-moss-theme-scope="agent"]
   )
   .workbench-section-subnav {
   border-bottom-color: var(--dh-api-line-soft);
@@ -621,9 +733,26 @@
     [data-moss-theme-scope="bond-dashboard"],
     [data-moss-theme-scope="liability-analytics"],
     [data-moss-theme-scope="bank-ledger-dashboard"],
+    [data-moss-theme-scope="pnl-by-business"],
+    [data-moss-theme-scope="pnl-attribution"],
+    [data-moss-theme-scope="pnl-by-business-insights"],
     [data-moss-theme-scope="risk-tensor"],
     [data-moss-theme-scope="concentration-monitor"],
-    [data-moss-theme-scope="cashflow-projection"]
+    [data-moss-theme-scope="cashflow-projection"],
+    [data-moss-theme-scope="operations-analysis"],
+    [data-moss-theme-scope="market-finance"],
+    [data-moss-theme-scope="decision-items"],
+    [data-moss-theme-scope="pnl"],
+    [data-moss-theme-scope="pnl-bridge"],
+    [data-moss-theme-scope="product-category-pnl"],
+    [data-moss-theme-scope="bond-trading-desk"],
+    [data-moss-theme-scope="cross-asset"],
+    [data-moss-theme-scope="cube-query"],
+    [data-moss-theme-scope="news-events"],
+    [data-moss-theme-scope="kpi"],
+    [data-moss-theme-scope="team-performance"],
+    [data-moss-theme-scope="platform-config"],
+    [data-moss-theme-scope="agent"]
   )
   .workbench-section-subnav__link {
   border-color: var(--dh-api-line-soft);
@@ -637,9 +766,26 @@
     [data-moss-theme-scope="bond-dashboard"],
     [data-moss-theme-scope="liability-analytics"],
     [data-moss-theme-scope="bank-ledger-dashboard"],
+    [data-moss-theme-scope="pnl-by-business"],
+    [data-moss-theme-scope="pnl-attribution"],
+    [data-moss-theme-scope="pnl-by-business-insights"],
     [data-moss-theme-scope="risk-tensor"],
     [data-moss-theme-scope="concentration-monitor"],
-    [data-moss-theme-scope="cashflow-projection"]
+    [data-moss-theme-scope="cashflow-projection"],
+    [data-moss-theme-scope="operations-analysis"],
+    [data-moss-theme-scope="market-finance"],
+    [data-moss-theme-scope="decision-items"],
+    [data-moss-theme-scope="pnl"],
+    [data-moss-theme-scope="pnl-bridge"],
+    [data-moss-theme-scope="product-category-pnl"],
+    [data-moss-theme-scope="bond-trading-desk"],
+    [data-moss-theme-scope="cross-asset"],
+    [data-moss-theme-scope="cube-query"],
+    [data-moss-theme-scope="news-events"],
+    [data-moss-theme-scope="kpi"],
+    [data-moss-theme-scope="team-performance"],
+    [data-moss-theme-scope="platform-config"],
+    [data-moss-theme-scope="agent"]
   )
   .workbench-section-subnav__link[data-active="true"] {
   border-color: var(--dh-api-blue);
@@ -691,6 +837,11 @@
  * ink，落在浅底上不可读。仅对列出的 scope 生效，色值全部走 --dh-api-*
  * 链（该 scope 下即 Nocturne），密度对齐首页面板（12-14px padding、
  * 12px 正文、--dh-api-radius 圆角）。
+ * 制度（2026-08-13 全量收齐）：navigation.ts 中 governanceStatus =
+ * "temporary-exception" 的 Nocturne scope 全列（kpi-performance 的
+ * scope 名为 kpi）；liability-analytics 为历史零效果行保留（该 section
+ * 已无治理横幅）。theme.test.ts parity 断言从 navigation.ts 推导期望
+ * 列表锁定本组四块。
  */
 .workbench-shell-grid:has(
     [data-moss-theme-scope="ledger-pnl"],
@@ -699,8 +850,19 @@
     [data-moss-theme-scope="bond-dashboard"],
     [data-moss-theme-scope="liability-analytics"],
     [data-moss-theme-scope="bank-ledger-dashboard"],
+    [data-moss-theme-scope="stock-analysis"],
+    [data-moss-theme-scope="pnl-by-business"],
     [data-moss-theme-scope="concentration-monitor"],
-    [data-moss-theme-scope="cashflow-projection"]
+    [data-moss-theme-scope="cashflow-projection"],
+    [data-moss-theme-scope="operations-analysis"],
+    [data-moss-theme-scope="market-finance"],
+    [data-moss-theme-scope="decision-items"],
+    [data-moss-theme-scope="product-category-pnl"],
+    [data-moss-theme-scope="cross-asset"],
+    [data-moss-theme-scope="news-events"],
+    [data-moss-theme-scope="kpi"],
+    [data-moss-theme-scope="team-performance"],
+    [data-moss-theme-scope="platform-config"]
   )
   .workbench-notice[data-notice-tone="governance"] {
   gap: 4px;
@@ -719,8 +881,19 @@
     [data-moss-theme-scope="bond-dashboard"],
     [data-moss-theme-scope="liability-analytics"],
     [data-moss-theme-scope="bank-ledger-dashboard"],
+    [data-moss-theme-scope="stock-analysis"],
+    [data-moss-theme-scope="pnl-by-business"],
     [data-moss-theme-scope="concentration-monitor"],
-    [data-moss-theme-scope="cashflow-projection"]
+    [data-moss-theme-scope="cashflow-projection"],
+    [data-moss-theme-scope="operations-analysis"],
+    [data-moss-theme-scope="market-finance"],
+    [data-moss-theme-scope="decision-items"],
+    [data-moss-theme-scope="product-category-pnl"],
+    [data-moss-theme-scope="cross-asset"],
+    [data-moss-theme-scope="news-events"],
+    [data-moss-theme-scope="kpi"],
+    [data-moss-theme-scope="team-performance"],
+    [data-moss-theme-scope="platform-config"]
   )
   .workbench-notice[data-notice-tone="governance"]
   .workbench-notice__title {
@@ -735,8 +908,19 @@
     [data-moss-theme-scope="bond-dashboard"],
     [data-moss-theme-scope="liability-analytics"],
     [data-moss-theme-scope="bank-ledger-dashboard"],
+    [data-moss-theme-scope="stock-analysis"],
+    [data-moss-theme-scope="pnl-by-business"],
     [data-moss-theme-scope="concentration-monitor"],
-    [data-moss-theme-scope="cashflow-projection"]
+    [data-moss-theme-scope="cashflow-projection"],
+    [data-moss-theme-scope="operations-analysis"],
+    [data-moss-theme-scope="market-finance"],
+    [data-moss-theme-scope="decision-items"],
+    [data-moss-theme-scope="product-category-pnl"],
+    [data-moss-theme-scope="cross-asset"],
+    [data-moss-theme-scope="news-events"],
+    [data-moss-theme-scope="kpi"],
+    [data-moss-theme-scope="team-performance"],
+    [data-moss-theme-scope="platform-config"]
   )
   .workbench-notice[data-notice-tone="governance"]
   .workbench-notice__body {
@@ -751,13 +935,62 @@
     [data-moss-theme-scope="bond-dashboard"],
     [data-moss-theme-scope="liability-analytics"],
     [data-moss-theme-scope="bank-ledger-dashboard"],
+    [data-moss-theme-scope="stock-analysis"],
+    [data-moss-theme-scope="pnl-by-business"],
     [data-moss-theme-scope="concentration-monitor"],
-    [data-moss-theme-scope="cashflow-projection"]
+    [data-moss-theme-scope="cashflow-projection"],
+    [data-moss-theme-scope="operations-analysis"],
+    [data-moss-theme-scope="market-finance"],
+    [data-moss-theme-scope="decision-items"],
+    [data-moss-theme-scope="product-category-pnl"],
+    [data-moss-theme-scope="cross-asset"],
+    [data-moss-theme-scope="news-events"],
+    [data-moss-theme-scope="kpi"],
+    [data-moss-theme-scope="team-performance"],
+    [data-moss-theme-scope="platform-config"]
   )
   .workbench-notice[data-notice-tone="governance"]
   .workbench-notice__hint {
   color: var(--dh-api-muted);
   font-size: 11px;
+}
+
+/*
+ * /agent（MOSS Chat，readiness=gated）是 Nocturne 路由中唯一渲染
+ * readiness 外壳面的 scope：就绪横幅（data-readiness="gated"，非治理
+ * tone）与工作台导引 hero（.workbench-workspace-hero）基础样式都是浅色
+ * 字面量（cream / 白渐变），Nocturne 外壳翻转后正文继承近白 ink 落在
+ * 浅底上不可读。按上方治理横幅同款制度仅收敛颜色（密度/字号/版式不动），
+ * 色值全部走 --dh-api-* 链（该 scope 下即 Nocturne）。
+ */
+.workbench-shell-grid:has([data-moss-theme-scope="agent"]) .workbench-workspace-hero {
+  border-color: var(--dh-api-line);
+  background: var(--dh-api-panel);
+}
+
+/* hero 内 gated 徽章色 --moss-color-warning-600 无深色重映射，拉回琥珀链。 */
+.workbench-shell-grid:has([data-moss-theme-scope="agent"])
+  .workbench-shell-status-meta__badge[data-readiness-tone="gated"] {
+  color: var(--dh-api-amber);
+}
+
+.workbench-shell-grid:has([data-moss-theme-scope="agent"])
+  .workbench-notice[data-readiness="gated"] {
+  border-color: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
+  background: var(--dh-api-amber-soft);
+  color: var(--dh-api-soft);
+}
+
+.workbench-shell-grid:has([data-moss-theme-scope="agent"])
+  .workbench-notice[data-readiness="gated"]
+  .workbench-notice__title {
+  color: var(--dh-api-amber);
+}
+
+.workbench-shell-grid:has([data-moss-theme-scope="agent"])
+  .workbench-notice[data-readiness="gated"]
+  .workbench-notice__hint {
+  color: var(--dh-api-muted);
 }
 
 .portfolio-workbench-lead {
@@ -968,9 +1201,11 @@
 /* Nocturne 外壳统一收口的终端条分册（2026-08-12，主块见 workbenchShell.css 末尾；
    终端条铬件样式按启动性能守卫只允许住本延迟文件）：
    workbenchInstitutionalConsole.css 以 !important 在终端条卡面上叠钢青装饰渐层
-   （ledger-pnl 命中），其余 5 个 scope 走 --moss-shell-terminal-bg 变量即可
+   （ledger-pnl 命中），其余 scope 走 --moss-shell-terminal-bg 变量即可
    （tokens.css 已重映射），列在此处属冗余对齐——保持与 tokens.css 终端条块
-   同一份 scope 列表，避免两处漂移。值引用 --nct-*，不新增色值。 */
+   同一份 scope 列表（即 WorkbenchShell showShellTerminalBar 为真的 Nocturne
+   scope，完整清单见 theme.test.ts parity 断言），避免两处漂移。
+   值引用 --nct-*，不新增色值。 */
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]) .workbench-terminal-bar,
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="average-balance"]) .workbench-terminal-bar,
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="positions"]) .workbench-terminal-bar,
@@ -983,6 +1218,20 @@
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business-insights"]) .workbench-terminal-bar,
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-tensor"]) .workbench-terminal-bar,
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="concentration-monitor"]) .workbench-terminal-bar,
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cashflow-projection"]) .workbench-terminal-bar {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cashflow-projection"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="operations-analysis"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-finance"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="decision-items"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-bridge"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="product-category-pnl"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-trading-desk"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cross-asset"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cube-query"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="news-events"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="kpi"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="team-performance"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="platform-config"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="agent"]) .workbench-terminal-bar {
   background: var(--nct-rail) !important;
 }

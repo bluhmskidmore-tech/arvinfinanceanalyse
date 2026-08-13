@@ -1263,7 +1263,23 @@ select {
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="module-workbench-home"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-tensor"]),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="concentration-monitor"]),
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cashflow-projection"]) {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cashflow-projection"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="operations-analysis"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-finance"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="balance-analysis"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="balance-movement-analysis"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="decision-items"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-bridge"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="product-category-pnl"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-trading-desk"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cross-asset"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cube-query"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="news-events"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="kpi"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="team-performance"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="platform-config"]),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="agent"]) {
   background: var(--nct-bg) !important;
 }
 
@@ -1287,7 +1303,23 @@ select {
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="module-workbench-home"]) .workbench-shell-rail,
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-tensor"]) .workbench-shell-rail,
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="concentration-monitor"]) .workbench-shell-rail,
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cashflow-projection"]) .workbench-shell-rail {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cashflow-projection"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="operations-analysis"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-finance"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="balance-analysis"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="balance-movement-analysis"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="decision-items"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-bridge"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="product-category-pnl"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-trading-desk"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cross-asset"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cube-query"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="news-events"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="kpi"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="team-performance"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="platform-config"]) .workbench-shell-rail,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="agent"]) .workbench-shell-rail {
   background: var(--nct-rail) !important;
 }
 
@@ -1309,7 +1341,23 @@ select {
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="module-workbench-home"]) .workbench-shell-rail-mark,
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-tensor"]) .workbench-shell-rail-mark,
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="concentration-monitor"]) .workbench-shell-rail-mark,
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cashflow-projection"]) .workbench-shell-rail-mark {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cashflow-projection"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="operations-analysis"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-finance"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="balance-analysis"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="balance-movement-analysis"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="decision-items"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-bridge"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="product-category-pnl"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-trading-desk"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cross-asset"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cube-query"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="news-events"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="kpi"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="team-performance"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="platform-config"]) .workbench-shell-rail-mark,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="agent"]) .workbench-shell-rail-mark {
   background: var(--nct-surface) !important;
   border-color: var(--nct-ring) !important;
   box-shadow: none !important;
@@ -1338,7 +1386,23 @@ select {
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="module-workbench-home"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-tensor"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="concentration-monitor"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cashflow-projection"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion) {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cashflow-projection"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="operations-analysis"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-finance"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="balance-analysis"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="balance-movement-analysis"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="decision-items"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-bridge"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="product-category-pnl"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-trading-desk"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cross-asset"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cube-query"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="news-events"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="kpi"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="team-performance"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="platform-config"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion),
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="agent"]) :is(.moss-page-v2-surface, .moss-page-v2-evidence-panel, .moss-page-v2-decision-hero__conclusion) {
   background: var(--nct-surface) !important;
 }
 
@@ -1362,21 +1426,37 @@ select {
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="module-workbench-home"]) .moss-page-v2-decision-hero__conclusion,
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-tensor"]) .moss-page-v2-decision-hero__conclusion,
 .workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="concentration-monitor"]) .moss-page-v2-decision-hero__conclusion,
-.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cashflow-projection"]) .moss-page-v2-decision-hero__conclusion {
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cashflow-projection"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="operations-analysis"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-finance"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="balance-analysis"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="balance-movement-analysis"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="decision-items"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-bridge"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="product-category-pnl"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-trading-desk"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cross-asset"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cube-query"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="news-events"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="kpi"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="team-performance"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="platform-config"]) .moss-page-v2-decision-hero__conclusion,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="agent"]) .moss-page-v2-decision-hero__conclusion {
   border-left-color: var(--nct-accent) !important;
 }
 
 /* cockpit 壳 rail hover/active（§cockpit 烘焙 0-4-0；选择器不双写以对齐烘焙
-   同权后置）。走 --cockpit 变体的 Nocturne scope 共七个：dashboard-home /
-   portfolio-home（isDashboardCockpitShell）、market-overview /
-   risk-overview / module-workbench-home（isModuleHomePage 亦走
-   useCockpitShellFrame；module-workbench-home 单 scope 服务
-   /performance 与 /reports 双路由）、stock-analysis
-   （isStockAnalysisMinimalShell）与 bond-analysis
-   （isBondAnalysisMinimalShell）。dashboard-home 页内 0-5-0 块、
-   market-overview 页内 0-6-0 块取值等价并继续接管，列入此处仅作终层兜底；
-   实际生效目标是无页内块的 portfolio-home、stock-analysis、risk-overview、
-   module-workbench-home 与 bond-analysis。
+   同权后置）。走 --cockpit 变体（WorkbenchShell useCockpitShellFrame）的
+   Nocturne scope 共十个：dashboard-home / portfolio-home
+   （isDashboardCockpitShell）、market-overview / risk-overview /
+   module-workbench-home（isModuleHomePage；module-workbench-home 单 scope
+   服务 /performance 与 /reports 双路由）、stock-analysis、bond-analysis、
+   balance-analysis、balance-movement-analysis 与 product-category-pnl
+   （2026-08-13 批量接入；完整期望清单见 theme.test.ts parity 断言的
+   cockpit 期望数组）。dashboard-home 页内 0-5-0 块、market-overview 页内
+   0-6-0 块取值等价并继续接管，列入此处仅作终层兜底；其余 scope 由本层
+   直接生效。
    取值：hover 9%/22% 与 active 14% + inset 2px 对齐 tokens.css
    --moss-shell-rail-active-bg / --moss-shadow-institutional-active 语义，
    active 边线 30% mix 沿用 market-overview 验收块先例。 */
@@ -1400,7 +1480,16 @@ select {
 .workbench-shell-grid--cockpit:has([data-moss-theme-scope="bond-analysis"]) .workbench-shell-support-link:hover,
 .workbench-shell-grid--cockpit:has([data-moss-theme-scope="module-workbench-home"]) .workbench-shell-group-link:hover,
 .workbench-shell-grid--cockpit:has([data-moss-theme-scope="module-workbench-home"]) .workbench-shell-agent-nav__link:hover,
-.workbench-shell-grid--cockpit:has([data-moss-theme-scope="module-workbench-home"]) .workbench-shell-support-link:hover {
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="module-workbench-home"]) .workbench-shell-support-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="balance-analysis"]) .workbench-shell-group-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="balance-analysis"]) .workbench-shell-agent-nav__link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="balance-analysis"]) .workbench-shell-support-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="balance-movement-analysis"]) .workbench-shell-group-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="balance-movement-analysis"]) .workbench-shell-agent-nav__link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="balance-movement-analysis"]) .workbench-shell-support-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="product-category-pnl"]) .workbench-shell-group-link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="product-category-pnl"]) .workbench-shell-agent-nav__link:hover,
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="product-category-pnl"]) .workbench-shell-support-link:hover {
   background: color-mix(in srgb, var(--nct-accent) 9%, transparent) !important;
   border-color: color-mix(in srgb, var(--nct-accent) 22%, transparent) !important;
 }
@@ -1411,7 +1500,10 @@ select {
 .workbench-shell-grid--cockpit:has([data-moss-theme-scope="stock-analysis"]) .workbench-shell-group-link[data-active="true"],
 .workbench-shell-grid--cockpit:has([data-moss-theme-scope="risk-overview"]) .workbench-shell-group-link[data-active="true"],
 .workbench-shell-grid--cockpit:has([data-moss-theme-scope="bond-analysis"]) .workbench-shell-group-link[data-active="true"],
-.workbench-shell-grid--cockpit:has([data-moss-theme-scope="module-workbench-home"]) .workbench-shell-group-link[data-active="true"] {
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="module-workbench-home"]) .workbench-shell-group-link[data-active="true"],
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="balance-analysis"]) .workbench-shell-group-link[data-active="true"],
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="balance-movement-analysis"]) .workbench-shell-group-link[data-active="true"],
+.workbench-shell-grid--cockpit:has([data-moss-theme-scope="product-category-pnl"]) .workbench-shell-group-link[data-active="true"] {
   background: color-mix(in srgb, var(--nct-accent) 14%, transparent) !important;
   border-color: color-mix(in srgb, var(--nct-accent) 30%, transparent) !important;
   box-shadow: inset 2px 0 0 var(--nct-accent) !important;

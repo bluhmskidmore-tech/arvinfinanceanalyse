@@ -1627,7 +1627,13 @@ export function EmbeddedAgentCopilot({
   const runtimeStateLabel = loading ? "分析中" : latestResultTurn?.result ? "已连接" : "待提问";
 
   return (
-    <section className={shellClassName} data-testid={isEmbedded ? "agent-panel" : undefined}>
+    // Nocturne scope 只落在 /agent 页根（workbench 变体）；嵌入态 AgentPanel 跟随宿主页 scope，
+    // 深色 owner 仍由 ThemedRouteBoundary 独占（页根不声明 data-moss-theme="dark"）。
+    <section
+      className={shellClassName}
+      data-testid={isEmbedded ? "agent-panel" : undefined}
+      data-moss-theme-scope={isEmbedded ? undefined : "agent"}
+    >
       {isEmbedded && resolvedShowHeader ? (
         <header className="agent-embedded-header">
           <div>

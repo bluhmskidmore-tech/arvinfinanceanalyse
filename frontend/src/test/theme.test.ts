@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { workbenchNavigation } from "../app/navigation";
 import { stockAnalysisPageCssVars } from "../features/stock-analysis/lib/stockAnalysisTokens";
 import { designTokens, dhApiTokens, ibTokens } from "../theme/designSystem";
 import { shellTokens } from "../theme/tokens";
@@ -404,6 +405,60 @@ describe("globalCss design token bridge (:root)", () => {
       tokensCss,
       "background: var(--nct-bg, var(--dh-api-bg))",
     );
+    // 延迟分册的铬件收敛列表（workbenchDeferredChrome.css）：
+    // 终端条铬件四组（阴影 / chip+pill / utility navlink / 行情条）。
+    const terminalChromeShadow = nocturneScopeSet(
+      workbenchDeferredChromeCss,
+      "box-shadow: none !important",
+    );
+    const terminalChromeChipPill = nocturneScopeSet(
+      workbenchDeferredChromeCss,
+      "background: var(--dh-api-panel-2)",
+    );
+    const terminalChromeNavlink = nocturneScopeSet(
+      workbenchDeferredChromeCss,
+      "border-bottom-color: var(--dh-api-blue)",
+    );
+    const terminalChromeTicker = nocturneScopeSet(
+      workbenchDeferredChromeCss,
+      "border-top-color: var(--dh-api-line-soft)",
+    );
+    // 组内子导航三组（分隔线 / 链接描边 / active 链接）。
+    const subnavOverride = nocturneScopeSet(
+      workbenchDeferredChromeCss,
+      "border-bottom-color: var(--dh-api-line-soft)",
+    );
+    const subnavLinkOverride = nocturneScopeSet(
+      workbenchDeferredChromeCss,
+      "border-color: var(--dh-api-line-soft)",
+      ".workbench-section-subnav__link",
+    );
+    const subnavActiveOverride = nocturneScopeSet(
+      workbenchDeferredChromeCss,
+      "color-mix(in srgb, var(--dh-api-blue) 14%, transparent)",
+    );
+    // 治理横幅四块（selectorMarker 排除 /agent 的 gated 就绪横幅同款声明）。
+    const governanceSelectorMarker = '[data-notice-tone="governance"]';
+    const governanceBannerOverride = nocturneScopeSet(
+      workbenchDeferredChromeCss,
+      "background: var(--dh-api-amber-soft)",
+      governanceSelectorMarker,
+    );
+    const governanceTitleOverride = nocturneScopeSet(
+      workbenchDeferredChromeCss,
+      "color: var(--dh-api-amber)",
+      governanceSelectorMarker,
+    );
+    const governanceBodyOverride = nocturneScopeSet(
+      workbenchDeferredChromeCss,
+      "line-height: 1.5",
+      ".workbench-notice__body",
+    );
+    const governanceHintOverride = nocturneScopeSet(
+      workbenchDeferredChromeCss,
+      "color: var(--dh-api-muted)",
+      governanceSelectorMarker,
+    );
 
     // 主色板块（tokens.css）是唯一权威列表；收口层 grid/rail 必须同一份。
     expect(palette.length).toBeGreaterThanOrEqual(10);
@@ -421,25 +476,32 @@ describe("globalCss design token bridge (:root)", () => {
     // page-v2 面板压制（背景 + 结论左边线）与 grid/rail 同构全量列表。
     expect(pageV2Override).toEqual(palette);
     expect(conclusionOverride).toEqual(palette);
-    // cockpit 壳 rail hover/active：七个 cockpit scope 全列（终层兜底）；
+    // cockpit 壳 rail hover/active：十个 cockpit scope（WorkbenchShell
+    // useCockpitShellFrame 为真的 Nocturne 路由）全列（终层兜底）；
     // dashboard-home / market-overview 由页内更高特异性块等值接管，
-    // 实际生效于 portfolio-home、risk-overview、module-workbench-home
-    // （/performance 与 /reports 双路由共用）、stock-analysis 与 bond-analysis。
+    // 其余 scope（含 2026-08-13 批量接入的 balance-analysis /
+    // balance-movement-analysis / product-category-pnl）由终层直接生效。
     expect(cockpitHoverOverride).toEqual([
+      "balance-analysis",
+      "balance-movement-analysis",
       "bond-analysis",
       "dashboard-home",
       "market-overview",
       "module-workbench-home",
       "portfolio-home",
+      "product-category-pnl",
       "risk-overview",
       "stock-analysis",
     ]);
     expect(cockpitActiveOverride).toEqual([
+      "balance-analysis",
+      "balance-movement-analysis",
       "bond-analysis",
       "dashboard-home",
       "market-overview",
       "module-workbench-home",
       "portfolio-home",
+      "product-category-pnl",
       "risk-overview",
       "stock-analysis",
     ]);
@@ -448,6 +510,40 @@ describe("globalCss design token bridge (:root)", () => {
     // 渲染终端条的 scope：tokens.css 终端条块与延迟分册必须同一份列表。
     expect(terminalVars.length).toBeGreaterThan(0);
     expect(terminalOverride).toEqual(terminalVars);
+    // 延迟分册终端条铬件四组（阴影 / chip+pill / utility navlink / 行情条）
+    // 与 tokens.css 终端条块同一份 showShellTerminalBar 列表。
+    expect(terminalChromeShadow).toEqual(terminalVars);
+    expect(terminalChromeChipPill).toEqual(terminalVars);
+    expect(terminalChromeNavlink).toEqual(terminalVars);
+    expect(terminalChromeTicker).toEqual(terminalVars);
+    // 子导航三组＝渲染组内子导航的 Nocturne scope：终端条列表去掉
+    // market-data（isMarketDataTerminalMain 抑制子导航）再加 macro-toolkit
+    // （宏观工具抑制终端条但保留组内子导航）。
+    const subnavExpected = [
+      ...terminalVars.filter((scope) => scope !== "market-data"),
+      "macro-toolkit",
+    ].sort();
+    expect(subnavOverride).toEqual(subnavExpected);
+    expect(subnavLinkOverride).toEqual(subnavExpected);
+    expect(subnavActiveOverride).toEqual(subnavExpected);
+    // 治理横幅四块＝navigation.ts 中 governanceStatus="temporary-exception"
+    // 且已入 Nocturne palette 的 scope（kpi-performance 的 scope 名为 kpi），
+    // 外加 liability-analytics 历史零效果行（该 section 已无治理横幅）。
+    const governanceScopeAliases: Record<string, string> = { "kpi-performance": "kpi" };
+    const governanceExpected = [
+      ...new Set([
+        ...workbenchNavigation
+          .filter((section) => section.governanceStatus === "temporary-exception")
+          .map((section) => governanceScopeAliases[section.key] ?? section.key)
+          .filter((scope) => palette.includes(scope)),
+        "liability-analytics",
+      ]),
+    ].sort();
+    expect(governanceExpected).toContain("decision-items");
+    expect(governanceBannerOverride).toEqual(governanceExpected);
+    expect(governanceTitleOverride).toEqual(governanceExpected);
+    expect(governanceBodyOverride).toEqual(governanceExpected);
+    expect(governanceHintOverride).toEqual(governanceExpected);
   });
 
   it("keeps AG Grid theme aliases out of the eager global stylesheet", () => {

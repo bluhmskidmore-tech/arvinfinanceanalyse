@@ -159,8 +159,8 @@
   width: 8px;
   height: 8px;
   border-radius: 999px;
-  background: var(--moss-color-success-500);
-  box-shadow: 0 0 0 3px rgba(var(--moss-color-success-rgb), 0.12);
+  background: var(--agent-dot-ok, var(--moss-color-success-500));
+  box-shadow: 0 0 0 3px var(--agent-pulse-ring, rgba(var(--moss-color-success-rgb), 0.12));
 }
 
 .agent-runtime-strip__dot--active {
@@ -386,14 +386,15 @@
   font-weight: 780;
 }
 
+/* 脉冲环颜色经变量出口下发（Nocturne scope 重定义；回退值 = 原字面量，嵌入态零变化）。 */
 @keyframes agentPulse {
   0%,
   100% {
-    box-shadow: 0 0 0 3px rgba(var(--moss-color-success-rgb), 0.12);
+    box-shadow: 0 0 0 3px var(--agent-pulse-ring, rgba(var(--moss-color-success-rgb), 0.12));
     transform: scale(1);
   }
   50% {
-    box-shadow: 0 0 0 6px rgba(var(--moss-color-success-rgb), 0.04);
+    box-shadow: 0 0 0 6px var(--agent-pulse-ring-wide, rgba(var(--moss-color-success-rgb), 0.04));
     transform: scale(1.08);
   }
 }
@@ -2210,4 +2211,400 @@
   .agent-result-side {
     position: static;
   }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Nocturne 换肤（2026-08-13，业主指示按首页色系；仅换色，不动版式）。
+   scope 属性只落在 /agent 页根（workbench 变体），以下收敛只在
+   [data-moss-theme-scope="agent"] 内生效；嵌入态 AgentPanel（其他页面
+   抽屉复用同一批类名）保持上方基线不变，跟随各自宿主页主题。
+   浅色字面量按语义家族收敛 --dh-api-* var/color-mix 链（该 scope 下
+   即 Nocturne 色板），不新增色值；--moss-color-primary-rgb /
+   success-rgb 通道值在 scope 未重映射，消费处改 color-mix 链
+   （脉冲环经上方 --agent-pulse-ring 变量出口）。
+   ══════════════════════════════════════════════════════════════ */
+[data-moss-theme-scope="agent"] {
+  /* 桥变量在 ThemedRouteBoundary 上已被算成钢蓝字面值再继承（ledger-pnl
+     2026-08-12 结论），页根按语义映射重声明使其在 scope 内重新解析
+     （pnl-by-business-insights 同款桥接，全 var 引用零字面量）；
+     --ib-radius 随 Nocturne 圆角制度归一 8px。 */
+  --moss-color-text-primary: var(--dh-api-ink);
+  --moss-color-text-secondary: var(--dh-api-soft);
+  --moss-color-text-muted: var(--dh-api-muted);
+  --moss-color-link: var(--dh-api-blue);
+  --moss-color-card-bg: var(--dh-api-panel);
+  --moss-color-border-default: var(--dh-api-line);
+  --moss-color-surface-base: var(--dh-api-bg);
+  --ib-surface: var(--dh-api-panel);
+  --ib-hairline: var(--dh-api-line);
+  --ib-ink: var(--dh-api-ink);
+  --ib-ink-secondary: var(--dh-api-soft);
+  --ib-ink-muted: var(--dh-api-muted);
+  --ib-accent: var(--dh-api-blue);
+  --ib-radius: var(--dh-api-radius);
+  --agent-dot-ok: var(--dh-api-green);
+  --agent-pulse-ring: color-mix(in srgb, var(--dh-api-green) 12%, transparent);
+  --agent-pulse-ring-wide: color-mix(in srgb, var(--dh-api-green) 4%, transparent);
+}
+
+[data-moss-theme-scope="agent"] .agent-workbench-header__eyebrow {
+  color: var(--dh-api-blue);
+}
+
+[data-moss-theme-scope="agent"] .agent-workbench-header__new-chat {
+  border-color: var(--dh-api-line);
+  background: var(--dh-api-panel);
+}
+
+[data-moss-theme-scope="agent"] .agent-workbench-header__new-chat:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, var(--dh-api-panel));
+}
+
+[data-moss-theme-scope="agent"] .agent-runtime-strip__state {
+  border-color: var(--dh-api-line-soft);
+  background: color-mix(in srgb, var(--dh-api-panel) 86%, var(--dh-api-panel-3));
+}
+
+[data-moss-theme-scope="agent"] .agent-runtime-strip__details summary:hover,
+[data-moss-theme-scope="agent"] .agent-page-context summary:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+  background: var(--dh-api-blue-soft);
+}
+
+[data-moss-theme-scope="agent"] .agent-runtime-strip__item {
+  border-color: var(--dh-api-line-soft);
+  background: var(--dh-api-panel);
+}
+
+[data-moss-theme-scope="agent"] .agent-restore-status {
+  border-color: var(--dh-api-line);
+  background: var(--dh-api-panel);
+}
+
+[data-moss-theme-scope="agent"] .agent-restore-status code {
+  background: var(--dh-api-panel-2);
+}
+
+[data-moss-theme-scope="agent"] .agent-restore-status--error {
+  border-color: color-mix(in srgb, var(--dh-api-red) 40%, transparent);
+  background: var(--dh-api-red-soft);
+}
+
+[data-moss-theme-scope="agent"] .agent-restore-status--error strong {
+  color: var(--dh-api-red);
+}
+
+[data-moss-theme-scope="agent"] .agent-page-context__code {
+  border-color: var(--dh-api-line-soft);
+  background: var(--dh-api-panel);
+}
+
+[data-moss-theme-scope="agent"] .agent-context-change-notice {
+  border-color: color-mix(in srgb, var(--dh-api-green) 34%, transparent);
+  background: var(--dh-api-green-soft);
+}
+
+[data-moss-theme-scope="agent"] .agent-context-change-notice strong {
+  color: var(--dh-api-green);
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer {
+  border-color: var(--dh-api-line);
+  background: color-mix(in srgb, var(--dh-api-panel) 94%, var(--dh-api-panel-3));
+  box-shadow: var(--moss-shadow-card);
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer:focus-within {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+  background: var(--dh-api-panel);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dh-api-blue) 8%, transparent);
+}
+
+[data-moss-theme-scope="agent"] .agent-quick-entry .agent-financial-workflows {
+  border-color: var(--dh-api-line-soft);
+}
+
+[data-moss-theme-scope="agent"] .agent-financial-workflows {
+  border-color: var(--dh-api-line);
+  background: var(--dh-api-panel);
+  box-shadow: var(--moss-shadow-card);
+}
+
+[data-moss-theme-scope="agent"] .agent-financial-workflows__header > span {
+  border-color: var(--dh-api-line);
+}
+
+[data-moss-theme-scope="agent"] .agent-financial-workflows__button {
+  border-color: var(--dh-api-line);
+  background: var(--dh-api-panel-2);
+}
+
+[data-moss-theme-scope="agent"] .agent-financial-workflows__button:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, var(--dh-api-panel));
+}
+
+[data-moss-theme-scope="agent"] .agent-message--user .agent-message__body {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 22%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 10%, var(--dh-api-panel));
+}
+
+[data-moss-theme-scope="agent"] .agent-user-bubble__edit {
+  border-color: var(--dh-api-line);
+  background: var(--dh-api-panel);
+}
+
+[data-moss-theme-scope="agent"] .agent-user-bubble__edit:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, var(--dh-api-panel));
+}
+
+[data-moss-theme-scope="agent"] .agent-wait-status__copy {
+  border-color: var(--dh-api-line);
+  background: var(--dh-api-panel);
+  box-shadow: var(--moss-shadow-card);
+}
+
+[data-moss-theme-scope="agent"] .agent-run-progress__step {
+  border-color: var(--dh-api-line-soft);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-muted);
+}
+
+[data-moss-theme-scope="agent"] .agent-run-progress__dot {
+  background: var(--dh-api-muted);
+}
+
+[data-moss-theme-scope="agent"] .agent-run-progress__step--complete {
+  border-color: color-mix(in srgb, var(--dh-api-green) 34%, transparent);
+  background: var(--dh-api-green-soft);
+  color: var(--dh-api-green);
+}
+
+[data-moss-theme-scope="agent"] .agent-run-progress__step--complete .agent-run-progress__dot {
+  background: var(--dh-api-green);
+}
+
+[data-moss-theme-scope="agent"] .agent-run-progress__step--current {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 10%, var(--dh-api-panel));
+  color: var(--dh-api-blue);
+}
+
+[data-moss-theme-scope="agent"] .agent-run-progress__step--current .agent-run-progress__dot {
+  background: var(--dh-api-blue);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--dh-api-blue) 14%, transparent);
+}
+
+[data-moss-theme-scope="agent"] .agent-thinking__label {
+  color: var(--dh-api-blue);
+}
+
+[data-moss-theme-scope="agent"] .agent-thinking__dots span {
+  background: var(--dh-api-blue);
+}
+
+[data-moss-theme-scope="agent"] .agent-wait-status__details summary {
+  border-color: var(--dh-api-line);
+  background: color-mix(in srgb, var(--dh-api-panel) 74%, transparent);
+}
+
+[data-moss-theme-scope="agent"] .agent-wait-status__details summary:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+  background: var(--dh-api-panel);
+}
+
+[data-moss-theme-scope="agent"] .agent-wait-status__stop,
+[data-moss-theme-scope="agent"] .agent-chat-composer__send--stop {
+  border-color: color-mix(in srgb, var(--dh-api-red) 40%, transparent);
+  background: var(--dh-api-red-soft);
+  color: var(--dh-api-red);
+}
+
+[data-moss-theme-scope="agent"] .agent-wait-status__stop:hover,
+[data-moss-theme-scope="agent"] .agent-chat-composer__send--stop:hover {
+  border-color: color-mix(in srgb, var(--dh-api-red) 55%, transparent);
+  background: color-mix(in srgb, var(--dh-api-red) 20%, transparent);
+}
+
+[data-moss-theme-scope="agent"] .agent-result-toolbar__button,
+[data-moss-theme-scope="agent"] .agent-result-details summary {
+  border-color: var(--dh-api-line);
+  background: var(--dh-api-panel);
+}
+
+[data-moss-theme-scope="agent"] .agent-result-toolbar__button:hover:not(:disabled),
+[data-moss-theme-scope="agent"] .agent-result-details summary:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, var(--dh-api-panel));
+}
+
+[data-moss-theme-scope="agent"] .agent-copy-feedback--success {
+  color: var(--dh-api-green);
+}
+
+[data-moss-theme-scope="agent"] .agent-copy-feedback--error {
+  color: var(--dh-api-red);
+}
+
+[data-moss-theme-scope="agent"] .agent-follow-up-chips__button {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 22%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, var(--dh-api-panel));
+}
+
+[data-moss-theme-scope="agent"] .agent-follow-up-chips__button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 12%, var(--dh-api-panel));
+}
+
+[data-moss-theme-scope="agent"] .agent-follow-up-chips__button--primary {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+}
+
+[data-moss-theme-scope="agent"] .agent-follow-up-chips__details summary:hover,
+[data-moss-theme-scope="agent"] .agent-chat-composer__advanced > summary:hover,
+[data-moss-theme-scope="agent"] .agent-chat-composer__process-details summary:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 22%, transparent);
+  background: var(--dh-api-blue-soft);
+}
+
+[data-moss-theme-scope="agent"] .agent-result-side .agent-side-panel {
+  background: color-mix(in srgb, var(--dh-api-panel) 88%, var(--dh-api-panel-3));
+}
+
+[data-moss-theme-scope="agent"] .agent-result-side-drawer > summary {
+  background: color-mix(in srgb, var(--dh-api-panel) 90%, var(--dh-api-panel-3));
+}
+
+[data-moss-theme-scope="agent"] .agent-result-side-drawer > summary:hover {
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, var(--dh-api-panel));
+}
+
+[data-moss-theme-scope="agent"] .agent-suggested-actions__button {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+  background: var(--dh-api-blue-soft);
+}
+
+[data-moss-theme-scope="agent"] .agent-suggested-actions__button:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 45%, transparent);
+  background: var(--dh-api-blue-soft);
+}
+
+[data-moss-theme-scope="agent"] .agent-suggested-actions__button--confirm {
+  border-color: color-mix(in srgb, var(--dh-api-amber) 40%, transparent);
+  background: var(--dh-api-amber-soft);
+  color: var(--dh-api-amber);
+}
+
+[data-moss-theme-scope="agent"] .agent-suggested-actions__badge--warning {
+  color: var(--dh-api-amber);
+}
+
+[data-moss-theme-scope="agent"] .agent-next-drill-row button {
+  border-color: var(--dh-api-line);
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, var(--dh-api-panel));
+}
+
+[data-moss-theme-scope="agent"] .agent-next-drill-row button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer__quick-button,
+[data-moss-theme-scope="agent"] .agent-chat-composer__tool-button,
+[data-moss-theme-scope="agent"] .agent-chat-composer__secondary-action {
+  border-color: var(--dh-api-line);
+  background: var(--dh-api-panel);
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer__quick-button:hover,
+[data-moss-theme-scope="agent"] .agent-chat-composer__tool-button:hover,
+[data-moss-theme-scope="agent"] .agent-chat-composer__secondary-action:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer__clear {
+  border-color: var(--dh-api-line);
+  background: color-mix(in srgb, var(--dh-api-panel) 92%, transparent);
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer__clear:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, var(--dh-api-panel));
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer__send {
+  background: var(--dh-api-blue);
+  color: var(--dh-api-ink);
+  box-shadow: var(--moss-shadow-card);
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer__send:hover:not(:disabled) {
+  background: var(--ib-accent-hover);
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer__queue {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, var(--dh-api-panel));
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer__send--stop:hover {
+  box-shadow: none;
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer__send:disabled {
+  border-color: var(--dh-api-line);
+  background: var(--dh-api-panel-2);
+}
+
+[data-moss-theme-scope="agent"] .agent-chat-composer__field input,
+[data-moss-theme-scope="agent"] .agent-chat-composer__field select {
+  border-color: var(--dh-api-line);
+  background: var(--dh-api-panel-2);
+}
+
+[data-moss-theme-scope="agent"] .agent-callout--error {
+  border-color: color-mix(in srgb, var(--dh-api-red) 40%, transparent);
+  background: var(--dh-api-red-soft);
+  color: var(--dh-api-red);
+}
+
+[data-moss-theme-scope="agent"] .agent-callout--warning {
+  border-color: color-mix(in srgb, var(--dh-api-amber) 40%, transparent);
+  background: var(--dh-api-amber-soft);
+  color: var(--dh-api-amber);
+}
+
+[data-moss-theme-scope="agent"] .agent-callout--stopped {
+  border-color: var(--dh-api-line);
+  background: var(--dh-api-panel-2);
+}
+
+[data-moss-theme-scope="agent"] .agent-callout--empty {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 22%, transparent);
+  background: var(--dh-api-blue-soft);
+}
+
+[data-moss-theme-scope="agent"] .agent-queued-draft {
+  border-color: var(--dh-api-line);
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, var(--dh-api-panel));
+  box-shadow: var(--moss-shadow-card);
+}
+
+[data-moss-theme-scope="agent"] .agent-queued-draft__count {
+  border-color: var(--dh-api-line);
+  background: var(--dh-api-panel);
+}
+
+[data-moss-theme-scope="agent"] .agent-queued-draft__action {
+  border-color: var(--dh-api-line);
+}
+
+[data-moss-theme-scope="agent"] .agent-queued-draft__action:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 34%, transparent);
+}
+
+[data-moss-theme-scope="agent"] .agent-composer-dock .agent-chat-composer {
+  border-color: var(--dh-api-line);
+  box-shadow: var(--moss-shadow-card);
 }
