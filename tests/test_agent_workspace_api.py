@@ -13,12 +13,21 @@ from backend.app.agent.schemas.agent_response import (
     AgentEvidence,
     AgentResultMeta,
 )
+from backend.app.repositories.agent_workspace_repo import (
+    AGENT_WORKSPACE_PROJECT_STREAM,
+)
+from backend.app.repositories.governance_repo import GovernanceRepository
 from tests.helpers import load_module
 from tests.test_agent_api_contract import (
     _agent_auth_fields,
     _seed_agent_read_scope,
     _seed_agent_scope,
 )
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_agent_mvp,
+]
 
 
 def _settings(tmp_path: Path) -> SimpleNamespace:
@@ -30,6 +39,10 @@ def _settings(tmp_path: Path) -> SimpleNamespace:
         governance_path=str(tmp_path / "governance"),
         **_agent_auth_fields(tmp_path),
     )
+
+
+def _loopback_request() -> SimpleNamespace:
+    return SimpleNamespace(client=SimpleNamespace(host="127.0.0.1"))
 
 
 def _sample_envelope() -> AgentEnvelope:
@@ -68,6 +81,7 @@ def _client(
     grant_write: bool = True,
     grant_execute: bool = True,
     raise_server_exceptions: bool = True,
+    client_host: str = "testclient",
 ) -> tuple[TestClient, SimpleNamespace]:
     monkeypatch.setenv("MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST", "1")
     _seed_agent_read_scope(tmp_path, monkeypatch)
@@ -115,6 +129,7 @@ def _client(
     app.include_router(route_module.router)
     return TestClient(
         app,
+        client=(client_host, 50000),
         raise_server_exceptions=raise_server_exceptions,
     ), settings
 
@@ -173,7 +188,7 @@ def test_workspace_endpoints_fail_closed_without_writing_when_agent_is_disabled(
     path: str,
     payload: dict[str, object] | None,
 ) -> None:
-    client, settings = _client(monkeypatch, tmp_path)
+    client, settings = _client(monkeypatch, tmp_path, client_host="127.0.0.1")
     settings.agent_enabled = False
     workspace_route_module = importlib.import_module(
         "backend.app.api.routes.agent_workspace"
@@ -228,11 +243,13 @@ def test_workspace_development_environment_bypasses_scope_store(monkeypatch) -> 
     workspace_route_module._ensure_agent_workspace_allowed(
         auth,
         settings,
+        http_request=_loopback_request(),
         action="read",
     )
     workspace_route_module._ensure_agent_workspace_allowed(
         auth,
         settings,
+        http_request=_loopback_request(),
         action="write",
     )
 
@@ -266,6 +283,7 @@ def test_workspace_development_bypass_requires_explicit_opt_in(monkeypatch) -> N
             environment="development",
             agent_dev_scope_bypass=False,
         ),
+        http_request=_loopback_request(),
         action="read",
     )
     workspace_route_module._ensure_agent_workspace_allowed(
@@ -274,6 +292,7 @@ def test_workspace_development_bypass_requires_explicit_opt_in(monkeypatch) -> N
             agent_enabled=True,
             agent_dev_scope_bypass=True,
         ),
+        http_request=_loopback_request(),
         action="write",
     )
     workspace_route_module._ensure_agent_workspace_allowed(
@@ -283,6 +302,7 @@ def test_workspace_development_bypass_requires_explicit_opt_in(monkeypatch) -> N
             environment=" ",
             agent_dev_scope_bypass=True,
         ),
+        http_request=_loopback_request(),
         action="read",
     )
     workspace_route_module._ensure_agent_workspace_allowed(
@@ -292,6 +312,7 @@ def test_workspace_development_bypass_requires_explicit_opt_in(monkeypatch) -> N
             environment="staging",
             agent_dev_scope_bypass=True,
         ),
+        http_request=_loopback_request(),
         action="write",
     )
 
@@ -302,7 +323,7 @@ def test_workspace_development_bypass_preserves_owner_isolation(
     monkeypatch,
     tmp_path,
 ) -> None:
-    client, settings = _client(monkeypatch, tmp_path)
+    client, settings = _client(monkeypatch, tmp_path, client_host="127.0.0.1")
     settings.environment = "development"
     settings.agent_dev_scope_bypass = True
     workspace_route_module = importlib.import_module(
@@ -642,3 +663,139 @@ def test_workspace_owner_and_archive_guards_apply_to_linked_runs(
     assert [item["project_id"] for item in archived_projects] == [
         project["project_id"]
     ]
+
+
+def _append_corrupt_project_record(
+    settings: SimpleNamespace,
+    *,
+    project_id: str,
+    owner: str,
+) -> None:
+    # Missing created_at/updated_at makes the stored record fail validation.
+    GovernanceRepository(base_dir=settings.governance_path).append(
+        AGENT_WORKSPACE_PROJECT_STREAM,
+        {"project_id": project_id, "owner_user_id": owner, "name": "Broken"},
+    )
+
+
+def test_workspace_list_skips_corrupt_records_and_scopes_count_to_owner(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    client, settings = _client(monkeypatch, tmp_path)
+    headers = _headers("workspace-owner")
+    project_response = client.post(
+        "/api/agent/projects",
+        json={"name": "Rates review"},
+        headers=headers,
+    )
+    assert project_response.status_code == 200
+    project = project_response.json()
+    _append_corrupt_project_record(
+        settings,
+        project_id="project:corrupt",
+        owner="workspace-owner",
+    )
+
+    listed = client.get("/api/agent/projects", headers=headers)
+    other_listed = client.get(
+        "/api/agent/projects",
+        headers=_headers("other-user"),
+    )
+
+    assert listed.status_code == 200
+    body = listed.json()
+    assert [item["project_id"] for item in body["items"]] == [
+        project["project_id"]
+    ]
+    assert body["corrupt_records"] == 1
+    assert other_listed.status_code == 200
+    assert other_listed.json()["items"] == []
+    assert other_listed.json()["corrupt_records"] == 0
+
+
+def test_workspace_corrupt_record_is_not_reported_as_missing(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    client, settings = _client(
+        monkeypatch,
+        tmp_path,
+        raise_server_exceptions=False,
+    )
+    _append_corrupt_project_record(
+        settings,
+        project_id="project:corrupt",
+        owner="workspace-owner",
+    )
+
+    corrupt = client.get(
+        "/api/agent/projects/project:corrupt",
+        headers=_headers("workspace-owner"),
+    )
+    missing = client.get(
+        "/api/agent/projects/project:missing",
+        headers=_headers("workspace-owner"),
+    )
+    foreign = client.get(
+        "/api/agent/projects/project:corrupt",
+        headers=_headers("other-user"),
+    )
+
+    # Corrupt-but-present records map to 409 with a fixed structured detail,
+    # never to 404 (missing) or a generic 500.
+    assert corrupt.status_code == 409
+    assert corrupt.json()["detail"] == {
+        "code": "AGENT_WORKSPACE_RECORD_CORRUPT",
+        "message": "Agent workspace record is corrupt and cannot be read.",
+    }
+    # Stored record contents must not leak into the error response.
+    assert "Broken" not in corrupt.text
+    assert missing.status_code == 404
+    assert foreign.status_code == 403
+
+
+def test_workspace_corrupt_record_detail_is_machine_actionable_and_stable(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """The corrupt-record 409 detail must be a dict with a stable code so clients
+    can distinguish it from lifecycle-conflict 409s (whose detail is a string)."""
+    client, settings = _client(monkeypatch, tmp_path)
+    _append_corrupt_project_record(
+        settings,
+        project_id="project:corrupt",
+        owner="workspace-owner",
+    )
+
+    corrupt = client.get(
+        "/api/agent/projects/project:corrupt",
+        headers=_headers("workspace-owner"),
+    )
+
+    assert corrupt.status_code == 409
+    detail = corrupt.json()["detail"]
+    assert isinstance(detail, dict)
+    assert set(detail) == {"code", "message"}
+    assert detail["code"] == "AGENT_WORKSPACE_RECORD_CORRUPT"
+
+
+def test_workspace_disabled_error_uses_flat_agent_disabled_contract(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """Workspace endpoints share the flat AgentDisabledResponse 503 body with
+    /api/agent/query instead of an HTTPException-style {"detail": str} wrapper."""
+    client, settings = _client(monkeypatch, tmp_path, client_host="127.0.0.1")
+    settings.agent_enabled = False
+
+    response = client.get(
+        "/api/agent/projects",
+        headers=_headers("workspace-owner"),
+    )
+
+    assert response.status_code == 503
+    body = response.json()
+    assert body["enabled"] is False
+    assert body["phase"] == "phase1"
+    assert body["detail"] == "Agent endpoint is planned but disabled in Phase 1."

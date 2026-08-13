@@ -4,7 +4,10 @@ import logging
 import re
 from typing import Annotated
 
-from backend.app.agent.runtime.action_token import agent_action_confirmation_token_matches
+from backend.app.agent.runtime.action_token import (
+    action_requires_server_confirmation,
+    agent_action_confirmation_token_matches,
+)
 from backend.app.agent.runtime.local_request_resolution import resolve_local_request
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.agent.schemas.agent_response import AgentDisabledResponse, AgentEnvelope
@@ -15,7 +18,9 @@ from backend.app.agent.schemas.agent_run import (
 )
 from backend.app.api.routes.agent_workspace import (
     _dev_bypass_allowed,
+    agent_disabled_json_response,
     router as workspace_router,
+    workspace_record_corrupt_error_detail,
 )
 from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
@@ -33,16 +38,16 @@ from backend.app.services.agent_run_service import (
 from backend.app.services.agent_service import (
     audit_disabled_agent_query,
     execute_agent_query,
-    phase1_disabled_response,
 )
 from backend.app.services.agent_workspace_service import (
+    AgentWorkspaceRecordCorrupt,
     AgentWorkspaceStateConflict,
     agent_workspace_lifecycle_lock,
     assert_conversation_owned,
 )
 from backend.app.services.dexter_agent_service import execute_dexter_agent_query
 from backend.app.services.hermes_agent_service import execute_hermes_agent_query
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 router = APIRouter(prefix="/api/agent")
@@ -75,6 +80,9 @@ _MUTATING_ACTION_TOKENS = {
 _READ_ONLY_AGENT_DETAIL = "Agent endpoints are read-only; mutating actions are not allowed."
 _SUGGESTED_ACTION_CONFIRMATION_DETAIL = (
     "Suggested action execution requires a confirmation token."
+)
+_SUGGESTED_ACTION_SCOPE_USER_DETAIL = (
+    "Suggested action confirmation token is bound to a different user."
 )
 _SUGGESTED_ACTION_CONFIRMATION_TOKEN_PATTERN = re.compile(
     r"^agent_action:v1:\d{1,12}:[0-9a-f]{64}$"
@@ -140,12 +148,22 @@ def _enforce_read_only_agent_request(request: AgentQueryRequest) -> None:
             raise HTTPException(status_code=403, detail=_READ_ONLY_AGENT_DETAIL)
 
 
-def _enforce_suggested_action_confirmation(request: AgentQueryRequest) -> None:
+def _enforce_suggested_action_confirmation(
+    request: AgentQueryRequest,
+    auth: AuthContext,
+) -> None:
     action = request.context.get("suggested_action")
-    action_requires_confirmation = (
-        isinstance(action, dict) and action.get("requires_confirmation") is True
+    # 确认要求由服务端目录决定：命中目录的动作即使客户端剥离
+    # requires_confirmation 声明也必须携带有效 token。客户端声明仅作为
+    # 向后兼容的额外触发条件保留（只收紧，不放宽）。
+    server_requires_confirmation = isinstance(action, dict) and action_requires_server_confirmation(
+        str(action.get("type") or "")
     )
-    if request.context.get("suggested_action_requires_confirmation") is not True and not action_requires_confirmation:
+    client_declares_confirmation = (
+        request.context.get("suggested_action_requires_confirmation") is True
+        or (isinstance(action, dict) and action.get("requires_confirmation") is True)
+    )
+    if not server_requires_confirmation and not client_declares_confirmation:
         return
     token = str(request.context.get("suggested_action_confirmation_token") or "").strip()
     if not _SUGGESTED_ACTION_CONFIRMATION_TOKEN_PATTERN.fullmatch(token):
@@ -164,6 +182,27 @@ def _enforce_suggested_action_confirmation(request: AgentQueryRequest) -> None:
         payload=action_payload,
     ):
         raise HTTPException(status_code=403, detail=_SUGGESTED_ACTION_CONFIRMATION_DETAIL)
+    _enforce_confirmation_scope_user(action_payload, auth)
+
+
+def _enforce_confirmation_scope_user(
+    action_payload: dict[str, object],
+    auth: AuthContext,
+) -> None:
+    """纵深防御：签发用户与提交者必须一致（token HMAC 已保证 scope 未被篡改）。
+
+    工具执行层（AnalysisViewTool）有同语义校验；本检查在 token 校验点兜底，
+    覆盖未来绕过工具层的新执行路径。无 confirmation_scope 的历史 token 与
+    未填 user_id 的 scope 保持放行（向后兼容，仅收紧不放宽）。
+    """
+    scope = action_payload.get("confirmation_scope")
+    if not isinstance(scope, dict):
+        return
+    issued_user = str(scope.get("user_id") or "").strip()
+    if not issued_user:
+        return
+    if issued_user != str(auth.user_id or "").strip():
+        raise HTTPException(status_code=403, detail=_SUGGESTED_ACTION_SCOPE_USER_DETAIL)
 
 
 def _apply_auth_context(
@@ -238,13 +277,15 @@ def _ensure_agent_execute_allowed(
     )
 
 
-def _ensure_agent_enabled(settings: object) -> None:
-    """Fail closed before any run authorization, lookup, or dispatch work."""
+def _agent_disabled_response_if_off(settings: object) -> JSONResponse | None:
+    """Fail closed before any run authorization, lookup, or dispatch work.
+
+    Every agent endpoint shares the same flat 503 AgentDisabledResponse body so
+    clients can detect the disabled state with a single contract.
+    """
     if getattr(settings, "agent_enabled", False) is not True:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=phase1_disabled_response().detail,
-        )
+        return agent_disabled_json_response()
+    return None
 
 
 def _ensure_agent_run_owned_by_auth(
@@ -286,6 +327,11 @@ def _ensure_agent_conversation_owned_by_auth(
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except AgentWorkspaceRecordCorrupt as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=workspace_record_corrupt_error_detail(),
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except AgentWorkspaceStateConflict as exc:
@@ -300,17 +346,14 @@ def query_agent(
 ) -> AgentEnvelope | JSONResponse:
     request = _apply_auth_context(request, auth)
     _enforce_read_only_agent_request(request)
-    _enforce_suggested_action_confirmation(request)
+    _enforce_suggested_action_confirmation(request, auth)
     settings = get_settings()
     if not settings.agent_enabled:
         audit_disabled_agent_query(
             request=request,
             governance_dir=str(settings.governance_path),
         )
-        return JSONResponse(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            content=phase1_disabled_response().model_dump(mode="json"),
-        )
+        return agent_disabled_json_response()
 
     _ensure_agent_read_allowed(auth, settings, http_request=http_request)
 
@@ -350,17 +393,14 @@ def create_agent_run_endpoint(
 ) -> AgentRunCreateResponse | AgentEnvelope | JSONResponse:
     request = _apply_auth_context(request, auth)
     _enforce_read_only_agent_request(request)
-    _enforce_suggested_action_confirmation(request)
+    _enforce_suggested_action_confirmation(request, auth)
     settings = get_settings()
     if not settings.agent_enabled:
         audit_disabled_agent_query(
             request=request,
             governance_dir=str(settings.governance_path),
         )
-        return JSONResponse(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            content=phase1_disabled_response().model_dump(mode="json"),
-        )
+        return agent_disabled_json_response()
     _ensure_agent_read_allowed(auth, settings, http_request=http_request)
     conversation_id = _conversation_id_from_request(request)
     if conversation_id is not None:
@@ -409,9 +449,11 @@ def list_agent_runs_endpoint(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     conversation_id: Annotated[str | None, Query(min_length=1)] = None,
-) -> AgentRunListResponse:
+) -> AgentRunListResponse | JSONResponse:
     settings = get_settings()
-    _ensure_agent_enabled(settings)
+    disabled = _agent_disabled_response_if_off(settings)
+    if disabled is not None:
+        return disabled
     _ensure_agent_read_allowed(auth, settings, http_request=http_request)
     normalized_conversation_id = (
         str(conversation_id or "").strip() or None
@@ -445,9 +487,11 @@ def cancel_agent_run_endpoint(
     run_id: str,
     http_request: Request,
     auth: Annotated[AuthContext, Depends(get_auth_context)],
-) -> AgentRunStatusResponse:
+) -> AgentRunStatusResponse | JSONResponse:
     settings = get_settings()
-    _ensure_agent_enabled(settings)
+    disabled = _agent_disabled_response_if_off(settings)
+    if disabled is not None:
+        return disabled
     _ensure_agent_execute_allowed(auth, settings, http_request=http_request)
     try:
         _ensure_agent_run_owned_by_auth(
@@ -471,9 +515,11 @@ def retry_agent_run_endpoint(
     run_id: str,
     http_request: Request,
     auth: Annotated[AuthContext, Depends(get_auth_context)],
-) -> AgentRunCreateResponse:
+) -> AgentRunCreateResponse | JSONResponse:
     settings = get_settings()
-    _ensure_agent_enabled(settings)
+    disabled = _agent_disabled_response_if_off(settings)
+    if disabled is not None:
+        return disabled
     _ensure_agent_execute_allowed(auth, settings, http_request=http_request)
     try:
         _ensure_agent_run_owned_by_auth(
@@ -511,9 +557,11 @@ def get_agent_run_endpoint(
     run_id: str,
     http_request: Request,
     auth: Annotated[AuthContext, Depends(get_auth_context)],
-) -> AgentRunStatusResponse:
+) -> AgentRunStatusResponse | JSONResponse:
     settings = get_settings()
-    _ensure_agent_enabled(settings)
+    disabled = _agent_disabled_response_if_off(settings)
+    if disabled is not None:
+        return disabled
     _ensure_agent_read_allowed(auth, settings, http_request=http_request)
     try:
         _ensure_agent_run_owned_by_auth(
@@ -526,14 +574,16 @@ def get_agent_run_endpoint(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@router.get("/runs/{run_id}/events")
+@router.get("/runs/{run_id}/events", response_model=None)
 def get_agent_run_events_endpoint(
     run_id: str,
     http_request: Request,
     auth: Annotated[AuthContext, Depends(get_auth_context)],
-) -> StreamingResponse:
+) -> StreamingResponse | JSONResponse:
     settings = get_settings()
-    _ensure_agent_enabled(settings)
+    disabled = _agent_disabled_response_if_off(settings)
+    if disabled is not None:
+        return disabled
     _ensure_agent_read_allowed(auth, settings, http_request=http_request)
     try:
         _ensure_agent_run_owned_by_auth(
